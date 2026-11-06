@@ -15,7 +15,9 @@ SELECT pgp_sym_decrypt(pgp_sym_encrypt('Secret.', 'key', 'cipher-algo=aes256'),
 	'key', 'expect-cipher-algo=aes256');
 RESET pgcrypto.builtin_crypto_enabled;
 
--- crypto functions enabled.  All work.
+-- crypto functions enabled.  The GUC blocks nothing, but OpenSSL can't
+-- initialize bf or cast5 without its legacy provider, which YB doesn't load,
+-- or 3des in FIPS mode.
 SET pgcrypto.builtin_crypto_enabled = on;
 SELECT pgp_sym_decrypt(pgp_sym_encrypt('Secret.', 'key', 'cipher-algo=aes128'),
 	'key', 'expect-cipher-algo=aes128');

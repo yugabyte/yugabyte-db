@@ -999,6 +999,11 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
       auto txn_id = VERIFY_RESULT(
           TransactionId::FromString(historical_read_context_->transaction_id));
       options.set_historical_read_transaction_id(txn_id.data(), txn_id.size());
+      const auto& aborted_subtxn_set = historical_read_context_->aborted_subtxn_set;
+      if (!aborted_subtxn_set.empty()) {
+        options.mutable_historical_read_aborted_subtxns()->mutable_set()->Add(
+            aborted_subtxn_set.begin(), aborted_subtxn_set.end());
+      }
     }
   }
 
@@ -1159,9 +1164,12 @@ void PgSession::TrySetCatalogReadPoint(const ReadHybridTime& read_ht) {
 }
 
 void PgSession::SetHistoricalReadContext(
-    const ReadHybridTime& read_time, std::string transaction_id) {
+    const ReadHybridTime& read_time, std::string transaction_id,
+    std::vector<uint32_t> aborted_subtxn_set) {
   historical_read_context_ = HistoricalReadContext{
-      .read_time = read_time, .transaction_id = std::move(transaction_id)};
+      .read_time = read_time,
+      .transaction_id = std::move(transaction_id),
+      .aborted_subtxn_set = std::move(aborted_subtxn_set)};
 }
 
 void PgSession::ResetHistoricalReadContext() {

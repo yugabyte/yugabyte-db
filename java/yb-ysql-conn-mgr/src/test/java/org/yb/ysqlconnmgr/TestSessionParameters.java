@@ -29,6 +29,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.HashSet;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -41,6 +42,7 @@ import org.yb.client.TestUtils;
 import org.yb.util.ProcessUtil;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
+import com.google.common.base.Strings;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.PGConnection;
 
@@ -130,6 +132,16 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     new SessionParameter("IntervalStyle", "postgres", "sql_standard",
       new ExceptionType[] {}),
     new SessionParameter("search_path", "\"$user\", public", "test",
+      new ExceptionType[] {}),
+    // Conn mgr stores a value inline up to 127 characters (128 bytes with the NUL) and
+    // on the heap beyond, cover both sides of that boundary.
+    new SessionParameter("search_path", "\"$user\", public", buildSearchPath(127),
+      new ExceptionType[] {}),
+    new SessionParameter("search_path", "\"$user\", public", buildSearchPath(128),
+      new ExceptionType[] {}),
+    new SessionParameter("search_path", "\"$user\", public", buildSearchPath(129),
+      new ExceptionType[] {}),
+    new SessionParameter("search_path", "\"$user\", public", buildSearchPath(1000),
       new ExceptionType[] {}),
     // JDBC sends TimeZone in the startup packet, and it can't be overridden using startup options
     new SessionParameter("TimeZone", "UTC", "EST",
@@ -739,6 +751,91 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     }
   }
 
+  // Builds a search_path of exactly `length` characters. Each identifier is kept well under
+  // NAMEDATALEN since conn mgr replays search_path unquoted, and PG truncates longer identifiers.
+  private static String buildSearchPath(int length) {
+    final int maxIdentLen = 40;
+    final String separator = ", ";
+    StringBuilder sb = new StringBuilder();
+    while (sb.length() < length) {
+      if (sb.length() > 0)
+        sb.append(separator);
+      int remaining = length - sb.length();
+      int identLen = maxIdentLen;
+      if (remaining <= maxIdentLen)
+        identLen = remaining;
+      else if (remaining - maxIdentLen <= separator.length())
+        identLen = remaining - separator.length() - 1;
+      sb.append('s').append(Strings.repeat("x", identLen - 1));
+    }
+    return sb.toString();
+  }
+
+  // Long search_path values set via SET are covered through SessionParameters. This covers the
+  // paths that list can't: custom GUCs, and replay of long values received in the startup packet.
+  @Test
+  public void testLongParameterValues() throws Exception {
+    try (Connection conn = getConnectionBuilder()
+                               .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                               .connect();
+         Statement stmt = conn.createStatement()) {
+      // Quoted, since checkSetStatements() sends values unquoted and PG would truncate them.
+      final String customValue = Strings.repeat("v", 1000);
+      SessionParameter customSp = new SessionParameter("test_conn_mgr.long_value", "",
+          customValue, new ExceptionType[] {});
+      stmt.execute(String.format("SET %s = '%s'", customSp.parameterName, customValue));
+      assertEquals("custom GUC value mismatch after SET", customValue,
+          fetchParameterValue(stmt, customSp));
+      checkValueOnNewPhysicalConnection(stmt, customSp, customValue);
+
+      try (Connection otherConn = getConnectionBuilder()
+                                      .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                                      .connect();
+           Statement otherStmt = otherConn.createStatement();
+           ResultSet rs = otherStmt.executeQuery(String.format(
+               "SELECT current_setting('%s', true)", customSp.parameterName))) {
+        assertTrue("expected one row for current_setting", rs.next());
+        String leaked = rs.getString(1);
+        assertTrue(String.format("custom GUC leaked to another logical connection: %s", leaked),
+            leaked == null || leaked.isEmpty());
+      }
+    }
+
+    // Set via the startup packet's options parameter. testStartupParameters() only checks the
+    // value on the first backend, check that it is also replayed on another one.
+    for (SessionParameter sp : SessionParameters) {
+      if (!sp.parameterName.equals("search_path") || sp.expectedValue.length() < 127)
+        continue;
+      try (Connection conn = getConnectionBuilder()
+                                 .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                                 .withOptions(String.format("-c search_path=%s",
+                                     sp.expectedValue.replace(" ", "\\ ")))
+                                 .connect();
+           Statement stmt = conn.createStatement()) {
+        assertEquals(String.format("search_path of length %d from startup options",
+            sp.expectedValue.length()),
+            sp.expectedValue, fetchParameterValue(stmt, sp));
+        checkValueOnNewLogicalConnection(sp);
+        checkValueOnNewPhysicalConnection(stmt, sp, sp.expectedValue);
+      }
+    }
+
+    // Set as a startup packet parameter. PG truncates application_name to NAMEDATALEN - 1.
+    final String applicationName = Strings.repeat("a", 200);
+    final String expectedApplicationName = applicationName.substring(0, 63);
+    SessionParameter appNameSp = new SessionParameter("application_name", "",
+        expectedApplicationName, new ExceptionType[] {});
+    try (Connection conn = getConnectionBuilder()
+                               .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                               .withApplicationName(applicationName)
+                               .connect();
+         Statement stmt = conn.createStatement()) {
+      assertEquals("application_name from startup packet", expectedApplicationName,
+          fetchParameterValue(stmt, appNameSp));
+      checkValueOnNewPhysicalConnection(stmt, appNameSp, expectedApplicationName);
+    }
+  }
+
   @Test
   public void testInvalidStartupParameter() throws Exception {
     // Test that setting an invalid parameter in startup packet fails at the time of database
@@ -920,6 +1017,34 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     }
   }
 
+  // With a single backend, a PGC_BACKEND startup parameter of A must be undone when the backend
+  // is reset for B, and reapplied when A is deployed again.
+  @Test
+  public void testBackendContextStartupParameterDoesNotLeak() throws Exception {
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
+
+    try (Connection connA = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .withOptions("-c ignore_system_indexes=on")
+            .connect();
+         Connection connB = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect();
+         Statement stmtA = connA.createStatement();
+         Statement stmtB = connB.createStatement()) {
+      for (int i = 0; i < 3; i++) {
+        try (ResultSet rs = stmtA.executeQuery("SHOW ignore_system_indexes")) {
+          assertTrue("SHOW ignore_system_indexes should return a row", rs.next());
+          assertEquals("A's startup value should be applied", "on", rs.getString(1));
+        }
+        try (ResultSet rs = stmtB.executeQuery("SHOW ignore_system_indexes")) {
+          assertTrue("SHOW ignore_system_indexes should return a row", rs.next());
+          assertEquals("A's startup value should not leak to B", "off", rs.getString(1));
+        }
+      }
+    }
+  }
+
   @Test
   public void testUpdatingRuntimeFlagPGCSession() throws Exception {
     try (
@@ -1011,6 +1136,48 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     restartClusterWithAdditionalFlags(java.util.Collections.emptyMap(), tserverFlags);
 
     updateRuntimeFlagPGCBackend();
+  }
+
+  private List<Double> fetchRandomValues(Statement stmt, int count) throws Exception {
+    List<Double> values = new ArrayList<>();
+    for (int i = 0; i < count; i++) {
+      ResultSet rs = stmt.executeQuery("SELECT random()");
+      assertTrue(rs.next());
+      values.add(rs.getDouble(1));
+    }
+    return values;
+  }
+
+  @Test
+  public void testSeedMakesConnectionSticky() throws Exception {
+    for (String setSeed : Arrays.asList("SET seed = 0.5", "SELECT setseed(0.5)")) {
+      try (Connection conn = getConnectionBuilder()
+              .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+              .connect();
+           Statement stmt = conn.createStatement()) {
+        stmt.execute(setSeed);
+        List<Double> first = fetchRandomValues(stmt, 5);
+        assertConnectionStickyState(stmt, true);
+
+        stmt.execute(setSeed);
+        assertEquals(first, fetchRandomValues(stmt, 5));
+
+        stmt.execute("RESET seed");
+        stmt.execute("DISCARD ALL");
+        assertConnectionStickyState(stmt, true);
+      }
+    }
+
+    // Setting seed through startup packet doesn't do anything in vanilla PG
+    // since its check hook only allows interactive sets (>= PGC_S_INTERACTIVE).
+    // So we don't make the connection sticky with ConnMgr.
+    try (Connection conn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .withOptions("-c seed=0.5")
+            .connect();
+         Statement stmt = conn.createStatement()) {
+      assertConnectionStickyState(stmt, false);
+    }
   }
 
   // With a single backend, B's query resets the backend to defaults, so A's next query has to

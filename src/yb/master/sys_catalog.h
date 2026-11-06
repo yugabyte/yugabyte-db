@@ -514,6 +514,9 @@ class SysCatalogTable {
 
   ElectedLeaderCallback leader_cb_;
 
+  // Term for which leader_cb_ was last run from SysCatalogStateChanged.
+  std::atomic<int64_t> leader_cb_term_{-1};
+
   consensus::RaftPeerPB local_peer_pb_;
 
   std::atomic<PitrCount> pitr_count_{0};

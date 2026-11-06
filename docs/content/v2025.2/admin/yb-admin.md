@@ -619,7 +619,7 @@ yb-admin \
 * *keyspace*: The namespace, or name of the database or keyspace.
 * *table-name*: The name of the table.
 * *table-id*: The unique UUID associated with the table whose placement policy is being changed.
-* *placement-info*: Comma-delimited list of placements for *cloud*.*region*.*zone*. Default is `cloud1.datacenter1.rack1`.
+* *placement-info*: Comma-delimited list of placements for *cloud*.*region*.*zone*. Default is `cloud1.datacenter1.rack1`. In v2025.2.8.1 and later, each placement can also specify minimum and maximum replica counts using the format *cloud*.*region*.*zone*:*min*:*max*; see [modify_placement_info](#modify-placement-info) for the rules that apply when a maximum is specified.
 * *replication-factor*: The number of replicas for each tablet.
 * *placement-id*: Identifier of the primary cluster. Optional. If set, it has to match the placement ID specified for the primary cluster in the cluster configuration.
 
@@ -1650,6 +1650,7 @@ yb-admin \
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *placement-info*: Comma-delimited list of placements for *cloud*.*region*.*zone*. Optionally, after each placement block, you can also specify a minimum replica count separated by a colon. This count indicates how many minimum replicas of each tablet we want in that placement block. Its default value is 1. It is not recommended to repeat the same placement multiple times but instead specify the total count after the colon. However, if you specify a placement multiple times, the total count from all mentions is taken.
+    In v2025.2.8.1 and later, you can also specify a maximum replica count (`max_num_replicas`) as a second colon-separated value, using the format *cloud*.*region*.*zone*:*min*:*max* (for example, `aws.us-east-1.us-east-1a:1:2`). The maximum is an upper bound on the number of replicas of each tablet in that placement block, and must be at least the minimum. When omitted, the upper bound is the replication factor. If any placement block specifies a maximum, every block must name a specific cloud, region, and zone — wildcard (`*`) blocks cannot be combined with a maximum — and you cannot repeat the same placement.
 * *replication-factor*: The number of replicas for each tablet. This value should be greater than or equal to the total of replica counts specified in *placement-info*.
 * *placement-id*: The identifier of the primary cluster, which can be any unique string. Optional; if not set, a randomly-generated ID is used.
 
@@ -1878,7 +1879,7 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
-* *placement-info*: A comma-delimited list of read replica placements for *cloud*.*region*.*zone*, using the format `<cloud1.region1.zone1>:<num_replicas_in_zone1>,<cloud2.region2.zone2>:<num_replicas_in_zone2>,...`. Default is `cloud1.datacenter1.rack1`.
+* *placement-info*: A comma-delimited list of read replica placements for *cloud*.*region*.*zone*, using the format `<cloud1.region1.zone1>:<num_replicas_in_zone1>,<cloud2.region2.zone2>:<num_replicas_in_zone2>,...`. Default is `cloud1.datacenter1.rack1`. In v2025.2.8.1 and later, each placement can also specify a maximum replica count using the format `<cloud.region.zone>:<min>:<max>`; see [modify_placement_info](#modify-placement-info) for the rules that apply when a maximum is specified.
     Read replica availability zones must be uniquely different from the primary availability zones. To use the same cloud, region, and availability zone for a read replica as a primary cluster, you can suffix the zone with `_rr` (for read replica). For example, `c1.r1.z1` vs `c1.r1.z1_rr:1`.
 * *replication-factor*: The total number of read replicas.
 * *placement-id*: The identifier of the read replica cluster, which can be any unique string. If not set, a randomly-generated ID will be used. Primary and read replica clusters must use different placement IDs.
@@ -1896,7 +1897,7 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
-* *placement-info*: A comma-delimited list of placements for *cloud*.*region*.*zone*. Default is `cloud1.datacenter1.rack1`.
+* *placement-info*: A comma-delimited list of placements for *cloud*.*region*.*zone*. Default is `cloud1.datacenter1.rack1`. In v2025.2.8.1 and later, each placement can also specify minimum and maximum replica counts using the format *cloud*.*region*.*zone*:*min*:*max*; see [modify_placement_info](#modify-placement-info) for the rules that apply when a maximum is specified.
 * *replication-factor*: The number of replicas.
 * *placement-id*: The identifier of the read replica cluster.
 

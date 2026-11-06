@@ -65,6 +65,11 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
   @ApiModelProperty(hidden = true)
   private Date failedTaskCreateTime;
 
+  // Set only on RollbackResizeNode params, which clear forceResizeNode. A forced resize stops every
+  // node, so the rollback needs it to find nodes the failed resize may have left stopped.
+  @ApiModelProperty(hidden = true)
+  private boolean failedResizeForced;
+
   @Override
   public boolean isKubernetesUpgradeSupported() {
     return true;
@@ -111,7 +116,8 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
     for (Cluster cluster : clusters) {
       Collection<NodeDetails> nodesInCluster = universe.getNodesInCluster(cluster.uuid);
       UserIntent newUserIntent = cluster.userIntent;
-      Util.validateSpecificationsIfPresent(newUserIntent.providerSpecifications, true);
+      Util.validateSpecificationsIfPresent(
+          newUserIntent.dedicatedNodes, newUserIntent.providerSpecifications, true);
       UserIntent currentUserIntent =
           universe.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent;
       String masterDeviceInfoError =

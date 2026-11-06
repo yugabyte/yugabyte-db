@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
@@ -30,6 +32,7 @@ import com.yugabyte.yw.common.KubernetesFullMoveReplicas.KubernetesFullMoveRepli
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -38,6 +41,7 @@ import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -52,7 +56,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -105,6 +108,14 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     if (isFirstTry) {
       // Verify the task params.
       verifyParams(UniverseOpType.EDIT);
+      Universe universe = getUniverse();
+      for (Cluster cluster : taskParams().clusters) {
+        Cluster current = universe.getCluster(cluster.uuid);
+        if (current != null && ManagedLoadBalancerUtil.isTurnedOnOrOff(current, cluster)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Managed load balancers are not supported for Kubernetes universes");
+        }
+      }
     }
   }
 
@@ -149,6 +160,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           lockAndFreezeUniverseForUpdate(
               taskParams().expectedUniverseVersion,
               u -> setCommunicationPortsForNodes(false) /* Txn callback */);
+      // A YBC throttle update may run while this edit is failed, and a retry reuses the first
+      // params, so take the universe's ybcFlags on every run.
+      taskParams().copyYbcFlagsFrom(universe.getUniverseDetails());
 
       kubernetesStatus.startYBUniverseEventStatus(
           universe,
@@ -820,22 +834,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
     // Clear blacklist
     if (!tserversToRemove.isEmpty() || CollectionUtils.isNotEmpty(fullMoveTserverAZs)) {
-      Duration sleepBeforeStart =
-          confGetter.getConfForScope(
-              universe, UniverseConfKeys.ybEditWaitDurationBeforeBlacklistClear);
-      if (sleepBeforeStart.compareTo(Duration.ZERO) > 0) {
-        createWaitForDurationSubtask(universe, sleepBeforeStart)
-            .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
-      }
       // Clear blacklist for all pods
       Set<NodeDetails> removedTservers =
           nonFullMoveAZsPodsBiFunction.apply(tserversToRemoveAzMap, null /* fullMoveAZs */);
-
-      createModifyBlackListTask(
-              null /* addNodes */,
-              new ArrayList<>(removedTservers) /* removeNodes */,
-              false /* isLeaderBlacklist */)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      createClearTserverBlacklistTasks(universe, new ArrayList<>(removedTservers));
     }
 
     // Update the universe to the new state.

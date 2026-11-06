@@ -785,53 +785,158 @@ TEST_F(MasterTest, TestHeartbeatFromRegisteredTSPersisted) {
   ASSERT_EQ(list_resp.servers(0).instance_id().permanent_uuid(), kUUID);
 }
 
-// A placement that names a storage tier only counts tservers that registered that tier, so a
-// cluster with none of them rejects the replication info instead of creating tablets nowhere. A
-// placement without a tier is unconstrained, so an all-hdd cluster still accepts it.
+// A placement that names a storage tier needs a live tserver that registered the tier for every
+// replica, as replica selection can place them within the placement blocks, and the error names
+// the tier only when the tier is the reason. A placement without a tier is unconstrained, so an
+// all-hdd live placement still accepts it.
 TEST_F(MasterTest, ValidateReplicationInfoRequiresTserversOnStorageTier) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_check_ts_count_for_create_table) = true;
-  for (int i = 0; i < 3; ++i) {
-    TSRegistrationPB reg;
-    *reg.mutable_common()->add_private_rpc_addresses() = MakeHostPortPB("localhost", 1000 + i);
-    *reg.mutable_common()->add_http_addresses() = MakeHostPortPB("localhost", 2000 + i);
-    reg.mutable_common()->add_storage_tiers("hdd");
-    TSToMasterCommonPB common;
-    common.mutable_ts_instance()->set_permanent_uuid(Format("ts-$0", i));
-    common.mutable_ts_instance()->set_instance_seqno(1);
-    ASSERT_RESULT(SendHeartbeat(common, reg));
-  }
 
-  auto validate = [this](const std::string& storage_tier)
+  // Registers a live tserver in cloud1.region1.<zone> that has one storage tier. A placement uuid
+  // puts it outside the live placement, where a read replica is.
+  int next_port = 1000;
+  auto register_ts = [&](const std::string& uuid, const std::string& zone,
+                         const std::string& tier, const std::string& placement_uuid = "")
+      -> Result<TSHeartbeatResponsePB> {
+    TSRegistrationPB reg;
+    *reg.mutable_common()->add_private_rpc_addresses() = MakeHostPortPB("localhost", next_port);
+    *reg.mutable_common()->add_http_addresses() = MakeHostPortPB("localhost", next_port + 1000);
+    ++next_port;
+    auto* cloud_info = reg.mutable_common()->mutable_cloud_info();
+    cloud_info->set_placement_cloud("cloud1");
+    cloud_info->set_placement_region("region1");
+    cloud_info->set_placement_zone(zone);
+    if (!placement_uuid.empty()) {
+      reg.mutable_common()->set_placement_uuid(placement_uuid);
+    }
+    reg.mutable_common()->add_storage_tiers(tier);
+    TSToMasterCommonPB common;
+    common.mutable_ts_instance()->set_permanent_uuid(uuid);
+    common.mutable_ts_instance()->set_instance_seqno(1);
+    return SendHeartbeat(common, reg);
+  };
+
+  auto placement = [](const std::string& storage_tier, int num_replicas) {
+    PlacementInfoPB placement_info;
+    placement_info.set_num_replicas(num_replicas);
+    if (!storage_tier.empty()) {
+      placement_info.set_storage_tier(storage_tier);
+    }
+    return placement_info;
+  };
+  // A block for cloud1.region1.<zone>, or for the whole region when zone is empty.
+  auto add_block = [](PlacementInfoPB* placement_info, const std::string& zone,
+                      int min_num_replicas) {
+    auto* block = placement_info->add_placement_blocks();
+    block->mutable_cloud_info()->set_placement_cloud("cloud1");
+    block->mutable_cloud_info()->set_placement_region("region1");
+    if (!zone.empty()) {
+      block->mutable_cloud_info()->set_placement_zone(zone);
+    }
+    block->set_min_num_replicas(min_num_replicas);
+  };
+  auto validate = [this](const PlacementInfoPB& live_replicas)
       -> Result<ValidateReplicationInfoResponsePB> {
     ValidateReplicationInfoRequestPB req;
-    auto* live_replicas = req.mutable_replication_info()->mutable_live_replicas();
-    live_replicas->set_num_replicas(3);
-    if (!storage_tier.empty()) {
-      live_replicas->set_storage_tier(storage_tier);
-    }
+    *req.mutable_replication_info()->mutable_live_replicas() = live_replicas;
     ValidateReplicationInfoResponsePB resp;
     RETURN_NOT_OK(
         proxy_replication_->ValidateReplicationInfo(req, &resp, ResetAndGetController()));
     return resp;
   };
 
-  auto resp = ASSERT_RESULT(validate(kDefaultStorageTier));
+  // A read replica with the tier does not make it available to the live placement, and while
+  // the live placement has no tserver at all the count message, not the tier one, is the right
+  // one.
+  ASSERT_RESULT(register_ts("ts-read-replica", "zone0", kDefaultStorageTier, "read-replica"));
+  auto resp = ASSERT_RESULT(validate(placement(kDefaultStorageTier, 3)));
+  ASSERT_TRUE(resp.has_error()) << resp.ShortDebugString();
+  ASSERT_STR_CONTAINS(resp.error().status().message(), "whereas 0 are alive");
+
+  for (int i = 0; i < 3; ++i) {
+    ASSERT_RESULT(register_ts(Format("ts-$0", i), Format("zone$0", i), "hdd"));
+  }
+
+  // Three live hdd tservers: none is on ssd, so the tier is the reason.
+  resp = ASSERT_RESULT(validate(placement(kDefaultStorageTier, 3)));
   ASSERT_TRUE(resp.has_error()) << resp.ShortDebugString();
   ASSERT_STR_CONTAINS(
       resp.error().status().message(),
       "No live tablet server has registered a data directory on storage tier ssd");
 
-  resp = ASSERT_RESULT(validate("hdd"));
+  resp = ASSERT_RESULT(validate(placement("hdd", 3)));
   ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
 
-  resp = ASSERT_RESULT(validate(""));
+  resp = ASSERT_RESULT(validate(placement("", 3)));
+  ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+
+  // A tier needs a qualified tserver for every replica, not only for a quorum: three tservers
+  // accept an untiered 5-replica placement but not an hdd one.
+  resp = ASSERT_RESULT(validate(placement("", 5)));
+  ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+  resp = ASSERT_RESULT(validate(placement("hdd", 5)));
+  ASSERT_TRUE(resp.has_error()) << resp.ShortDebugString();
+  ASSERT_STR_CONTAINS(
+      resp.error().status().message(),
+      "The placement needs 5 replicas on storage tier hdd, but only 3 can be placed on live "
+      "tablet servers that have registered a data directory on it");
+
+  // Within placement blocks the count follows replica selection: zone0 has one hdd tserver, so a
+  // block that wants two replicas there leaves the placement one short although it has three hdd
+  // tservers, while the untiered placement with the same blocks is accepted on a quorum.
+  auto blocked = placement("hdd", 3);
+  add_block(&blocked, "zone0", 2);
+  add_block(&blocked, "zone1", 1);
+  resp = ASSERT_RESULT(validate(blocked));
+  ASSERT_TRUE(resp.has_error()) << resp.ShortDebugString();
+  ASSERT_STR_CONTAINS(
+      resp.error().status().message(),
+      "The placement needs 3 replicas on storage tier hdd, but only 2 can be placed on live "
+      "tablet servers that have registered a data directory on it");
+  blocked.clear_storage_tier();
+  resp = ASSERT_RESULT(validate(blocked));
+  ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+
+  // A tier tserver outside every block takes no replica: with blocks for zone0 and zone1 only,
+  // the hdd tserver in zone2 does not count and the placement is one short. The untiered
+  // placement with the same blocks is accepted on a quorum; the ssd-only tserver in zone0 is
+  // where the balancer would have completed the tiered tablet.
+  ASSERT_RESULT(register_ts("ts-ssd", "zone0", kDefaultStorageTier));
+  auto outside = placement("hdd", 3);
+  add_block(&outside, "zone0", 1);
+  add_block(&outside, "zone1", 1);
+  resp = ASSERT_RESULT(validate(outside));
+  ASSERT_TRUE(resp.has_error()) << resp.ShortDebugString();
+  ASSERT_STR_CONTAINS(
+      resp.error().status().message(),
+      "The placement needs 3 replicas on storage tier hdd, but only 2 can be placed on live "
+      "tablet servers that have registered a data directory on it");
+  outside.clear_storage_tier();
+  resp = ASSERT_RESULT(validate(outside));
+  ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+
+  // Blocks that overlap count a tserver once per block, while selection gives it to one block: a
+  // region-wide block of three next to a zone0 block of one would count the zone0 hdd tserver
+  // twice, so the count is capped at the three distinct hdd tservers and the 4-replica placement
+  // is one short, while the untiered placement with the same blocks is accepted.
+  auto overlapping = placement("hdd", 4);
+  add_block(&overlapping, "zone0", 1);
+  add_block(&overlapping, "", 3);
+  resp = ASSERT_RESULT(validate(overlapping));
+  ASSERT_TRUE(resp.has_error()) << resp.ShortDebugString();
+  ASSERT_STR_CONTAINS(
+      resp.error().status().message(),
+      "The placement needs 4 replicas on storage tier hdd, but only 3 can be placed on live "
+      "tablet servers that have registered a data directory on it");
+  overlapping.clear_storage_tier();
+  resp = ASSERT_RESULT(validate(overlapping));
   ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
 
   // With tiered storage off the tier is not acted on, so the ssd placement is validated as
-  // untiered and the all-hdd cluster accepts it.
+  // untiered and the all-hdd live placement accepts it.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = false;
-  resp = ASSERT_RESULT(validate(kDefaultStorageTier));
+  resp = ASSERT_RESULT(validate(placement(kDefaultStorageTier, 3)));
   ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
 }
 
@@ -3058,7 +3163,9 @@ class FakeTabletServerAdminService : public tserver::TabletServerAdminServiceIf 
                          tserver::GetSafeTimeResponsePB)
   UNUSED_TS_ADMIN_METHOD(BackfillIndex, tserver::BackfillIndexRequestPB,
                          tserver::BackfillIndexResponsePB)
-                         UNUSED_TS_ADMIN_METHOD(BackfillDone, tablet::ChangeMetadataRequestPB,
+  UNUSED_TS_ADMIN_METHOD(TableBackfillChunk, tserver::TableBackfillChunkRequestPB,
+                         tserver::TableBackfillChunkResponsePB)
+  UNUSED_TS_ADMIN_METHOD(BackfillDone, tablet::ChangeMetadataRequestPB,
                          tserver::ChangeMetadataResponsePB)
   UNUSED_TS_ADMIN_METHOD(FlushTablets, tserver::FlushTabletsRequestPB,
                          tserver::FlushTabletsResponsePB)

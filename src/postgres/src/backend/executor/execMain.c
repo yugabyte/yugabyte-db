@@ -1701,6 +1701,19 @@ ExecutePlan(QueryDesc *queryDesc,
 		use_parallel_mode = queryDesc->plannedstmt->parallelModeNeeded;
 		yb_read_ahead_allowed = IsYugaByteEnabled() && YbIsReadAheadAllowed();
 	}
+
+	/*
+	 * YB: Block parallel mode if a DDL was executed in the transaction block.
+	 * This is required until we stop forcing legacy catalog mode for parallel
+	 * workers (see YBCIsLegacyModeForCatalogOps). In legacy mode,
+	 * workers can't see uncommitted catalog writes done by previous DDLs
+	 * in the same transaction block: for example, they would run the old body of
+	 * a function that the block replaced.
+	 * TODO(#36825): drop this.
+	 */
+	if (use_parallel_mode && YBGetDdlUseRegularTransactionBlock())
+		use_parallel_mode = false;
+
 	queryDesc->already_executed = true;
 
 	estate->es_use_parallel_mode = use_parallel_mode;

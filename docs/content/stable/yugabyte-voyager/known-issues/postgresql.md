@@ -1909,7 +1909,7 @@ CREATE INDEX idx_child_parent_id ON child (parent_id);
 
 ### Missing primary key for table when unique and not null columns exist
 
-**Description**: YugabyteDB uses an index-organized table structure, which means that the primary key _is_ the table. When you don't explicitly define one, the system automatically assigns an internal `ybrowid` column as the primary key and uses [hash sharding](/stable/explore/going-beyond-sql/data-sharding/#hash-sharding) on it. However, if your table already contains columns that are both unique and not null, it's better to designate those as the primary key instead. This approach eliminates the need for an extra unique-constraint index structure, in addition to the primary key index (main table structure).
+**Description**: YugabyteDB uses an index-organized table structure, which means that the primary key _is_ the table. When you don't explicitly define one, the system automatically assigns an internal `ybrowid` column as the primary key and uses [hash sharding](/stable/architecture/docdb-sharding/sharding/#hash-sharding) on it. However, if your table already contains columns that are both unique and not null, it's better to designate those as the primary key instead. This approach eliminates the need for an extra unique-constraint index structure, in addition to the primary key index (main table structure).
 
 **Workaround**: Define a primary key using the columns that are already unique and not null.
 

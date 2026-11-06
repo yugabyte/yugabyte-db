@@ -148,6 +148,7 @@ struct TabletDeleteRetainerInfo;
 class AlterTableBatchTracker;
 class RestoreSysCatalogState;
 class YsqlInitDBAndMajorUpgradeHandler;
+class OnlineSchemaChangeController;
 class YsqlManager;
 class YsqlManagerIf;
 
@@ -458,6 +459,38 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                                      rpc::RpcContext* rpc,
                                      const LeaderEpoch& epoch);
 
+  Status StartTableBackfill(const StartTableBackfillRequestPB* req,
+                            StartTableBackfillResponsePB* resp,
+                            rpc::RpcContext* rpc,
+                            const LeaderEpoch& epoch);
+
+  // The target of an online schema change backfill always lives in the source table's namespace.
+  Result<scoped_refptr<TableInfo>> GetOnlineSchemaChangeTargetTable(
+      const NamespaceId& source_namespace_id, uint32_t target_table_oid);
+
+  // Sets retain_delete_markers and table_backfill_pin_job_id on an online schema change backfill's
+  // target and on each of its indexes, for the life of the backfill.
+  //
+  // The capture trigger writes a source DELETE as tombstones on the target and its indexes at the
+  // delete's hybrid time, which is above the backfill read time. The backfill then writes the same
+  // row at the read time, below those tombstones. A compaction that removed a tombstone first
+  // would make the row live again. retain_delete_markers also waives the snapshot-too-old check in
+  // TabletRetentionPolicy::RegisterReaderTimestamp, which backfill writes to the target and its
+  // unique indexes would otherwise fail once the job outlives the history retention cutoff.
+  //
+  // Idempotent for the same job. Returns TryAgain if a table already has retain_delete_markers set
+  // by someone else, e.g. an index backfill that has not finished releasing it.
+  Status PinOnlineSchemaChangeTargetDeleteMarkers(
+      const scoped_refptr<TableInfo>& target, int64_t pg_job_id, const LeaderEpoch& epoch);
+
+  // Releases the pin that PinOnlineSchemaChangeTargetDeleteMarkers placed for `pg_job_id`. Only
+  // clears tables whose table_backfill_pin_job_id matches, so it never takes a pin owned by an
+  // index backfill or by another online schema change job. The clear reaches the tablets through
+  // the BACKFILL_DONE op, as for the index backfill, because an alter does not see a
+  // retain_delete_markers change. Idempotent.
+  Status UnpinOnlineSchemaChangeTargetDeleteMarkers(
+      const scoped_refptr<TableInfo>& target, int64_t pg_job_id, const LeaderEpoch& epoch);
+
   void AcquireObjectLocksGlobal(
       const AcquireObjectLocksGlobalRequestPB* req, AcquireObjectLocksGlobalResponsePB* resp,
       rpc::RpcContext rpc);
@@ -618,7 +651,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                                       const SubTransactionId sub_txn_id,
                                       YsqlDdlSubTransactionRollbackState state);
 
-  bool HasDdlVerificationState(const TransactionId& txn) const EXCLUDES(ddl_txn_verifier_mutex_);
+  // Returns true if txn has a DDL verification entry, in which case the caller must not apply its
+  // release request yet. txn's locks are then released when the entry goes away: by the DDL
+  // verifier once txn finishes, or by txn's own release-all if the entry was erased while txn was
+  // running.
+  bool DeferObjectLockReleaseToDdlVerifier(const TransactionId& txn, bool release_all)
+      EXCLUDES(ddl_txn_verifier_mutex_);
   void RemoveDdlTransactionStateUnlocked(
       const TableId& table_id, const std::vector<TransactionId>& txn_ids)
       REQUIRES(ddl_txn_verifier_mutex_);
@@ -708,7 +746,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   void UpdateTabletReplicaLocations(
       const TabletInfoPtr& tablet, const std::string& ts_uuid, const TabletReplica& replica);
 
-  void WakeBgTaskIfPendingUpdates();
+  void WakeBgTaskIfPendingUpdates() EXCLUDES(mutex_);
 
   // Get the ycql system.partitions vtable. Note that this has EXCLUDES(mutex_), in order to
   // maintain lock ordering.
@@ -965,6 +1003,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   }
 
   YsqlManagerIf& GetYsqlManager();
+
+  OnlineSchemaChangeController& online_schema_change() { return *online_schema_change_; }
   YsqlManager& GetYsqlManagerImpl() { return *DCHECK_NOTNULL(ysql_manager_.get()); }
 
   // Dump all of the current state about tables and tablets to the
@@ -1074,6 +1114,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status CheckValidPlacementInfo(const PlacementInfoPB& placement_info,
                                  const TSDescriptorVector& ts_descs,
                                  ValidateReplicationInfoResponsePB* resp);
+
+  // How many replicas SelectReplicasForPlacement can put on ts_descs under placement_info:
+  // exact unless placement blocks overlap, then an upper bound.
+  Result<size_t> CountPlaceableReplicas(
+      const PlacementInfoPB& placement_info, const TSDescriptorVector& ts_descs);
 
   // The tservers allowed to host a table's replicas under one PlacementInfoPB (live or read
   // replica). Built once per table and reused for every tablet of that table; the bool vectors
@@ -1817,10 +1862,17 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const TableId& table_id, const std::unordered_set<xrepl::StreamId>& stream_ids);
 
   // Find all the CDC streams that have been marked as provided state.
+  // If is_cdcsdk_stream is specified, filters to only CDCSDK (true) or xCluster (false) streams.
   Result<std::vector<CDCStreamInfoPtr>> FindXReplStreamsMarkedForDeletion(
-      SysCDCStreamEntryPB::State deletion_state);
+      SysCDCStreamEntryPB::State deletion_state,
+      std::optional<bool> is_cdcsdk_stream = std::nullopt);
 
-  Status CleanUpDeletedXReplStreams(const LeaderEpoch& epoch);
+  Status CleanUpDeletedCDCSDKStreams(const LeaderEpoch& epoch);
+
+  Status CleanUpDeletedXClusterStreams(const LeaderEpoch& epoch);
+
+  Status CleanUpDeletedXReplStreams(
+      const LeaderEpoch& epoch, std::vector<CDCStreamInfoPtr> streams);
 
   Status GetValidTabletsAndDroppedTablesForStream(
       const CDCStreamInfoPtr stream, std::set<TabletId>* tablets_with_streams,
@@ -1957,6 +2009,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   std::unordered_set<TableId> GetSysCatalogTableIds() EXCLUDES(mutex_);
 
   // Mark specified CDC streams as DELETING/DELETING_METADATA so they can be removed later.
+  // CDCSDK cleanup runs on the CDC bg thread; xCluster cleanup stays on the catalog manager loop.
   Status DropXReplStreams(
       std::vector<CDCStreamInfoPtr>& streams, SysCDCStreamEntryPB::State delete_state);
 
@@ -2060,6 +2113,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   friend class MultiStageAlterTable;
   friend class BackfillTable;
   friend class BackfillTablet;
+  friend class OnlineSchemaChangeController;
   friend class YsqlBackendsManager;
   friend class BackendsCatalogVersionJob;
   friend class AddTableToXClusterTargetTask;
@@ -2356,6 +2410,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const scoped_refptr<TableInfo>& table, const TransactionId& txn_id, const LeaderEpoch& epoch,
       const AlterTableRequestPB* req = nullptr,
       std::shared_ptr<AlterTableBatchTracker> cdc_alter_batch_tracker = nullptr);
+
+  // The target and its existing indexes.
+  std::vector<scoped_refptr<TableInfo>> GetOnlineSchemaChangePinnedTables(
+      const scoped_refptr<TableInfo>& target);
 
   // Starts the background task to send the SplitTablet RPC to the leader for the specified tablet.
   Status SendSplitTabletRequest(
@@ -2724,7 +2782,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Background thread, used to execute the catalog manager tasks
   // like the assignment and cleaner.
   friend class CatalogManagerBgTasks;
+  friend class CatalogManagerCdcBgTasks;
   std::unique_ptr<CatalogManagerBgTasks> background_tasks_;
+  std::unique_ptr<CatalogManagerCdcBgTasks> cdc_background_tasks_;
 
   // Background threadpool, newer features use this (instead of the Background thread)
   // to execute time-lenient catalog manager tasks.
@@ -2858,6 +2918,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   std::unique_ptr<XClusterManager> xcluster_manager_;
 
   std::unique_ptr<YsqlManager> ysql_manager_;
+
+  std::unique_ptr<OnlineSchemaChangeController> online_schema_change_;
 
   Status CanAddPartitionsToTable(
       size_t desired_partitions, const PlacementInfoPB& placement_info) override;
@@ -3557,6 +3619,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
     std::unordered_set<TableId> processed_tables;
     // Set of tables whose DocDB schema do not change.
     std::unordered_set<TableId> nochange_tables;
+    // A release of all the txn's object locks was dropped while this entry existed.
+    bool release_all_deferred = false;
   };
 
   struct YsqlDdlSubTransactionRollbackMetadata {
