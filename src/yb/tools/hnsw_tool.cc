@@ -364,7 +364,8 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
        "does not reserve space in it.")
       ("ef_values", po::value(&args.ef_values_comma_sep)->default_value(
           args.ef_values_comma_sep),
-       "A comma-separated list of ef values used by the search benchmark. Defaults to ef.")
+       "A comma-separated list of ef values used by recall validation and the search benchmark. "
+       "Defaults to ef.")
       (OPTIONAL_ARG_FIELD(num_search_repeats),
        "Number of times every index is measured by the search benchmark, in rotating order. "
        "Reported values are medians across repeats. 0 disables the search benchmark.")
@@ -683,18 +684,22 @@ class BenchmarkTool {
           // of vectors we've inserted.
           loaded_ground_truth_.empty() ? vertex_ids_to_insert_ : all_vertex_ids_);
 
-      LOG(INFO) << "Validating top k=" << k << " results with " << query_vectors_.size()
-                << " queries using " << args_.num_query_threads << " threads "
-                << (args_.validate_ground_truth ? "(also recomputing and validating provided"
-                                                  " ground truth)"
-                                                : "");
+      for (auto ef : args_.ef_values) {
+        LOG(INFO) << "Validating top k=" << k << " ef=" << ef << " results with "
+                  << query_vectors_.size() << " queries using " << args_.num_query_threads
+                  << " threads "
+                  << (args_.validate_ground_truth ? "(also recomputing and validating provided"
+                                                    " ground truth)"
+                                                  : "");
 
-      auto start_time = MonoTime::Now();
-      auto result = VERIFY_RESULT(ground_truth.EvaluateRecall(args_.num_query_threads));
-      auto elapsed_time = MonoTime::Now() - start_time;
-      LOG(INFO) << "Validation finished in " << elapsed_time;
-      for (size_t j = 0; j < result.size(); ++j) {
-        LOG(INFO) << (j + 1) << "-recall @ " << k << ": " << FixedPoint(result[j], 10);
+        auto start_time = MonoTime::Now();
+        auto result = VERIFY_RESULT(ground_truth.EvaluateRecall(args_.num_query_threads, ef));
+        auto elapsed_time = MonoTime::Now() - start_time;
+        LOG(INFO) << "Validation finished in " << elapsed_time;
+        for (size_t j = 0; j < result.size(); ++j) {
+          LOG(INFO) << (j + 1) << "-recall @ k=" << k << " ef=" << ef << ": "
+                    << FixedPoint(result[j], 10);
+        }
       }
     }
     return Status::OK();
