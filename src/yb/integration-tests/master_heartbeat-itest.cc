@@ -19,7 +19,6 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
-#include "yb/client/snapshot_test_util.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
@@ -37,6 +36,7 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/master-test-util.h"
 #include "yb/master/master.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
@@ -60,7 +60,6 @@
 #include "yb/util/tostring.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
-#include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 using namespace std::literals;
 
@@ -1206,41 +1205,6 @@ TEST_F_EX(MasterHeartbeatITest, NoHintedElectionOnTServerRestart,
   ASSERT_FALSE(hinted_election_log.IsEventOccurred());
 }
 
-// What the counters must agree with: every replica of every live tablet.
-std::unordered_map<TabletServerId, int64_t> ExpectedReplicaLoad(master::MiniMaster* master) {
-  std::unordered_map<TabletServerId, int64_t> result;
-  for (const auto& table : master->catalog_manager().GetTables(
-           master::GetTablesMode::kAll, master::PrimaryTablesOnly::kTrue)) {
-    auto tablets = table->GetTablets();
-    if (!tablets.ok()) {
-      continue;
-    }
-    for (const auto& tablet : *tablets) {
-      if (tablet->LockForRead()->is_deleted()) {
-        continue;
-      }
-      for (const auto& [ts_uuid, _] : *tablet->GetReplicaLocations()) {
-        ++result[ts_uuid];
-      }
-    }
-  }
-  return result;
-}
-
-bool CountersMatch(master::MiniMaster* master) {
-  auto expected = ExpectedReplicaLoad(master);
-  for (const auto& desc : master->ts_manager().GetAllDescriptors()) {
-    auto it = expected.find(desc->permanent_uuid());
-    const int64_t want = it == expected.end() ? 0 : it->second;
-    if (desc->replica_load() != want) {
-      LOG(INFO) << desc->permanent_uuid() << " counts " << desc->replica_load() << " replicas, "
-                << "maps hold " << want;
-      return false;
-    }
-  }
-  return true;
-}
-
 int64_t TotalReplicaLoad(master::MiniMaster* master) {
   int64_t total = 0;
   for (const auto& desc : master->ts_manager().GetAllDescriptors()) {
@@ -1273,7 +1237,7 @@ class ReplicaLoadITest : public MasterHeartbeatITest {
   static Status WaitForTotal(master::MiniMaster* master, int64_t total, const std::string& what) {
     return WaitFor(
         [master, total]() -> Result<bool> {
-          return TotalReplicaLoad(master) == total && CountersMatch(master);
+          return TotalReplicaLoad(master) == total && master::ReplicaLoadMatchesReplicaMaps(master);
         },
         kTimeout, what);
   }
@@ -1282,8 +1246,8 @@ class ReplicaLoadITest : public MasterHeartbeatITest {
 TEST_F_EX(MasterHeartbeatITest, ReplicaLoadFollowsReplicaMaps, ReplicaLoadITest) {
   auto* master = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster());
   ASSERT_OK(WaitFor(
-      [master]() -> Result<bool> { return CountersMatch(master); }, kTimeout,
-      "Counters match the maps after table creation"));
+      [master]() -> Result<bool> { return master::ReplicaLoadMatchesReplicaMaps(master); },
+      kTimeout, "Counters match the maps after table creation"));
   const int64_t table_load = TableReplicaLoad(master);
   ASSERT_GT(table_load, 0);
   const int64_t total = TotalReplicaLoad(master);
@@ -1299,7 +1263,7 @@ TEST_F_EX(MasterHeartbeatITest, ReplicaLoadFollowsReplicaMaps, ReplicaLoadITest)
             return false;
           }
         }
-        return TotalReplicaLoad(master) == total && CountersMatch(master);
+        return TotalReplicaLoad(master) == total && master::ReplicaLoadMatchesReplicaMaps(master);
       },
       kTimeout, "Blacklisted tserver drained"));
 
@@ -1328,8 +1292,8 @@ class ReplacedTabletReplicaLoadITest : public ReplicaLoadITest {
 TEST_F_EX(MasterHeartbeatITest, ReplacedTabletLeavesReplicaLoad, ReplacedTabletReplicaLoadITest) {
   auto* master = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster());
   ASSERT_OK(WaitFor(
-      [master]() -> Result<bool> { return CountersMatch(master); }, kTimeout,
-      "Counters match the maps after table creation"));
+      [master]() -> Result<bool> { return master::ReplicaLoadMatchesReplicaMaps(master); },
+      kTimeout, "Counters match the maps after table creation"));
 
   // Without a leader the tablet stays CREATING while its reported replicas fill the map.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_do_not_start_election_test_only) = true;
@@ -1368,61 +1332,8 @@ TEST_F_EX(MasterHeartbeatITest, ReplacedTabletLeavesReplicaLoad, ReplacedTabletR
 
   ASSERT_FALSE(tablet->GetReplicaLocations()->empty());
   ASSERT_OK(WaitFor(
-      [master]() -> Result<bool> { return CountersMatch(master); }, kTimeout,
-      "Replaced tablet left the count"));
-}
-
-class RepartitionReplicaLoadTest : public pgwrapper::PgMiniTestBase {
- protected:
-  static constexpr auto kTimeout = 120s * kTimeMultiplier;
-
-  void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_enable_deleted_tablet_cleanup) = false;
-    pgwrapper::PgMiniTestBase::SetUp();
-  }
-
-  Result<TableId> TableIdOf(const std::string& table_name) {
-    auto tables = VERIFY_RESULT(client_->ListTables(
-        table_name, /* exclude_ysql */ false, /* ysql_db_filter */ "", client::SkipHidden::kTrue));
-    SCHECK_EQ(tables.size(), 1u, IllegalState, Format("Expected one table named $0", table_name));
-    return tables.front().table_id();
-  }
-};
-
-// Importing a two-tablet snapshot into a one-tablet table repartitions it: the one tablet is
-// marked DELETED and dropped from the table on the spot.
-TEST_F_EX(
-    MasterHeartbeatITest, RepartitionedTabletLeavesReplicaLoad, RepartitionReplicaLoadTest) {
-  auto* master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute("CREATE TABLE repartitioned (k INT PRIMARY KEY) SPLIT INTO 2 TABLETS"));
-  client::SnapshotTestUtil snapshot_util;
-  snapshot_util.SetProxy(&client_->proxy_cache());
-  snapshot_util.SetCluster(cluster_.get());
-  const auto first_table_id = ASSERT_RESULT(TableIdOf("repartitioned"));
-  const auto snapshot_id = ASSERT_RESULT(snapshot_util.CreateSnapshot(first_table_id));
-  const auto snapshots = ASSERT_RESULT(snapshot_util.ListSnapshots(
-      snapshot_id, client::ListDeleted::kFalse, client::PrepareForBackup::kTrue));
-  ASSERT_EQ(snapshots.size(), 1);
-
-  ASSERT_OK(conn.Execute("DROP TABLE repartitioned"));
-  ASSERT_OK(conn.Execute("CREATE TABLE repartitioned (k INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
-  const auto table_id = ASSERT_RESULT(TableIdOf("repartitioned"));
-  auto table = master->catalog_manager().GetTableInfo(table_id);
-  ASSERT_NE(table.get(), nullptr);
-  const auto old_tablets = ASSERT_RESULT(table->GetTablets());
-  ASSERT_EQ(old_tablets.size(), 1u);
-  ASSERT_OK(WaitFor(
-      [master]() -> Result<bool> { return CountersMatch(master); }, kTimeout,
-      "Counters match the maps before the import"));
-
-  ASSERT_RESULT(snapshot_util.StartImportSnapshot(snapshots[0]));
-  const auto& old_tablet = old_tablets.front();
-  ASSERT_TRUE(old_tablet->LockForRead()->is_deleted());
-  ASSERT_FALSE(old_tablet->GetReplicaLocations()->empty());
-  ASSERT_OK(WaitFor(
-      [master]() -> Result<bool> { return CountersMatch(master); }, kTimeout,
-      "Repartitioned tablet left the count"));
+      [master]() -> Result<bool> { return master::ReplicaLoadMatchesReplicaMaps(master); },
+      kTimeout, "Replaced tablet left the count"));
 }
 
 }  // namespace yb::integration_tests
