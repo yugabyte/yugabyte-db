@@ -8,8 +8,25 @@ CREATE TABLESPACE tsp3 WITH (replica_placement = '{"num_replicas": 3, "placement
 -- Should succeed in creating colocated partitioned tables with tablespace
 CREATE TABLE partitioned_table (name varchar, region varchar, PRIMARY KEY(name, region)) PARTITION BY LIST(region);
 CREATE TABLE partition_in_dc1 PARTITION OF partitioned_table FOR VALUES IN ('region1') TABLESPACE tsp1;
+CREATE INDEX partitioned_table_name_idx ON partitioned_table (name);
 CREATE TABLE partition_in_dc2 PARTITION OF partitioned_table FOR VALUES IN ('region2') TABLESPACE tsp2;
 CREATE TABLE partition_in_dc3 PARTITION OF partitioned_table FOR VALUES IN ('region3') TABLESPACE tsp3;
+-- automatic indexes must share the partition's tablespace and implicit tablegroup
+SELECT t.relname, t.reltablespace = c.reltablespace AS same_tablespace,
+       (yb_table_properties(t.oid)).tablegroup_oid =
+       (yb_table_properties(c.oid)).tablegroup_oid AS same_tablegroup
+FROM pg_inherits h JOIN pg_index i ON i.indexrelid = h.inhrelid
+    JOIN pg_class t ON t.oid = i.indrelid
+    JOIN pg_class c ON c.oid = i.indexrelid
+WHERE h.inhparent = 'partitioned_table_name_idx'::regclass
+ORDER BY t.relname;
+     relname      | same_tablespace | same_tablegroup 
+------------------+-----------------+-----------------
+ partition_in_dc1 | t               | t
+ partition_in_dc2 | t               | t
+ partition_in_dc3 | t               | t
+(3 rows)
+
 -- 4 implicit tablegroups must be created
 SELECT COUNT(*) FROM pg_yb_tablegroup;
  count 
