@@ -49,6 +49,10 @@
 #include "utils/snapmgr.h"
 #include "utils/timeout.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_pggate.h"
+
 /* max sleep time between cycles (3min) */
 #define DEFAULT_NAPTIME_PER_CYCLE 180000L
 
@@ -75,6 +79,9 @@ static void logicalrep_worker_detach(void);
 static void logicalrep_worker_cleanup(LogicalRepWorker *worker);
 
 static bool on_commit_launcher_wakeup = false;
+
+/* YB declarations */
+static bool YbSubscriptionOwnedElsewhere(Subscription *sub);
 
 
 /*
@@ -384,6 +391,7 @@ retry:
 	TIMESTAMP_NOBEGIN(worker->last_recv_time);
 	worker->reply_lsn = InvalidXLogRecPtr;
 	TIMESTAMP_NOBEGIN(worker->reply_time);
+	worker->yb_owns_subscription = false;
 
 	/* Before releasing lock, remember generation for future identification. */
 	generation = worker->generation;
@@ -832,6 +840,9 @@ ApplyLauncherMain(Datum main_arg)
 		TimestampTz now;
 		long		wait_time = DEFAULT_NAPTIME_PER_CYCLE;
 
+		/* YB declarations */
+		bool		yb_remote_owned = false;
+
 		CHECK_FOR_INTERRUPTS();
 
 		now = GetCurrentTimestamp();
@@ -845,6 +856,13 @@ ApplyLauncherMain(Datum main_arg)
 										   "Logical Replication Launcher sublist",
 										   ALLOCSET_DEFAULT_SIZES);
 			oldctx = MemoryContextSwitchTo(subctx);
+
+			/*
+			 * YB: Reset the catalog read time so the scan of
+			 * pg_subscription reads fresh data from DocDB.
+			 */
+			if (IsYugaByteEnabled())
+				YbInvalidateCatalogSnapshot();
 
 			/* search for subscriptions to start or stop. */
 			sublist = get_subscription_list();
@@ -864,6 +882,18 @@ ApplyLauncherMain(Datum main_arg)
 
 				if (w == NULL)
 				{
+					/*
+					 * YB: a subscription run by another node gets no worker
+					 * here; re-probing it (on the probe interval below) is
+					 * how this node takes over if the owner dies.
+					 */
+					if (IsYugaByteEnabled() &&
+						YbSubscriptionOwnedElsewhere(sub))
+					{
+						yb_remote_owned = true;
+						continue;
+					}
+
 					last_start_time = now;
 					wait_time = wal_retrieve_retry_interval;
 
@@ -887,6 +917,15 @@ ApplyLauncherMain(Datum main_arg)
 			 */
 			wait_time = wal_retrieve_retry_interval;
 		}
+
+		/*
+		 * YB: while another node owns a subscription this node would
+		 * otherwise run, wake up on the probe interval to probe again, so
+		 * this node takes over within that bound if the owner dies.
+		 */
+		if (yb_remote_owned)
+			wait_time = Min(wait_time,
+							yb_subscription_takeover_probe_interval_ms);
 
 		/* Wait for more work. */
 		rc = WaitLatch(MyLatch,
@@ -997,4 +1036,78 @@ pg_stat_get_subscription(PG_FUNCTION_ARGS)
 	LWLockRelease(LogicalRepWorkerLock);
 
 	return (Datum) 0;
+}
+
+/*
+ * YB: Probe (acquire no-wait + release) whether another node's apply worker
+ * holds the subscription's advisory lock; true also if the probe itself fails.
+ */
+static bool
+YbSubscriptionOwnedElsewhere(Subscription *sub)
+{
+	YbcAdvisoryLockId lock_id = YbSubscriptionAdvisoryLockId(sub->oid);
+	YbcStatus	status;
+	static TimestampTz yb_last_probe_warning = 0;
+
+	status = YBCAcquireAdvisoryLock(lock_id, YB_ADVISORY_LOCK_EXCLUSIVE,
+									false /* wait */ , true /* session */ );
+	if (!status)
+	{
+		status = YBCReleaseAdvisoryLock(lock_id, YB_ADVISORY_LOCK_EXCLUSIVE);
+		if (status)
+		{
+			/*
+			 * The launcher's session now holds the lock, and no apply worker
+			 * anywhere can stream the subscription while it does.  Exiting
+			 * releases the session's locks, and the postmaster restarts the
+			 * launcher.
+			 */
+			ereport(LOG,
+					(errmsg("logical replication launcher could not release the advisory lock probe for subscription \"%s\", restarting",
+							sub->name),
+					 errdetail("%s", YBCStatusMessageBegin(status))));
+			YBCFreeStatus(status);
+			proc_exit(1);
+		}
+		return false;
+	}
+
+	if (YBCStatusPgsqlError(status) == ERRCODE_YB_TXN_SKIP_LOCKING)
+	{
+		YBCFreeStatus(status);
+		return true;			/* a worker on another node holds it */
+	}
+
+	if (TimestampDifferenceExceeds(yb_last_probe_warning,
+								   GetCurrentTimestamp(),
+								   300000 /* 5 min */ ))
+	{
+		ereport(WARNING,
+				(errmsg("logical replication apply workers cannot be started on this node"),
+				 errdetail("Could not probe the advisory lock of subscription \"%s\": %s",
+						   sub->name, YBCStatusMessageBegin(status)),
+				 errhint("Advisory locks require ysql_yb_enable_advisory_locks.")));
+		yb_last_probe_warning = GetCurrentTimestamp();
+	}
+	YBCFreeStatus(status);
+	return true;
+}
+
+/*
+ * YB: Whether this node owns subscription subid: its apply worker here holds
+ * the subscription's advisory lock.  A slot alone is not enough: a worker
+ * that has not reached the lock yet, or lost it and is standing down, has
+ * one too.
+ */
+bool
+yb_logicalrep_owns_subscription(Oid subid)
+{
+	LogicalRepWorker *worker;
+	bool		owns;
+
+	LWLockAcquire(LogicalRepWorkerLock, LW_SHARED);
+	worker = logicalrep_worker_find(subid, InvalidOid, true);
+	owns = worker != NULL && worker->yb_owns_subscription;
+	LWLockRelease(LogicalRepWorkerLock);
+	return owns;
 }

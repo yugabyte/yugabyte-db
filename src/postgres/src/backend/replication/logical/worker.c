@@ -196,7 +196,20 @@
 #include "utils/syscache.h"
 #include "utils/timeout.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+#include "utils/snapmgr.h"
+#include "yb/yql/pggate/ybc_pggate.h"
+
 #define NAPTIME_PER_CYCLE 1000	/* max sleep time between cycles (1s) */
+
+/*
+ * YB: subscription-lock acquire attempts (1s apart) before a losing apply
+ * worker concludes another node owns the subscription and stands down.
+ * More than one only to ride out the window in which a launcher's probe
+ * transiently holds the lock.
+ */
+#define YB_SUBSCRIPTION_LOCK_ATTEMPTS 3
 
 typedef struct FlushPosition
 {
@@ -362,6 +375,16 @@ static void clear_subscription_skip_lsn(XLogRecPtr finish_lsn);
 static void apply_error_callback(void *arg);
 static inline void set_apply_error_context_xact(TransactionId xid, XLogRecPtr lsn);
 static inline void reset_apply_error_context_info(void);
+
+/* YB declarations */
+static void yb_force_subscription_reread(void);
+static void yb_apply_worker_onexit(int code, Datum arg);
+
+/*
+ * YB: the shared catalog version read just before this worker last read its
+ * subscription.  The apply loop re-reads once the shared version differs.
+ */
+static uint64_t yb_subscription_read_catalog_version = 0;
 
 /*
  * Should this worker apply changes for given relation.
@@ -2705,6 +2728,9 @@ LogicalRepApplyLoop(XLogRecPtr last_received)
 	TimeLineID	tli;
 	ErrorContextCallback errcallback;
 
+	/* YB declarations */
+	TimestampTz yb_last_sub_reread = GetCurrentTimestamp();
+
 	/*
 	 * Init the ApplyMessageContext which we clean up after each replication
 	 * protocol message.
@@ -2841,6 +2867,26 @@ LogicalRepApplyLoop(XLogRecPtr last_received)
 			 * now.
 			 */
 			AcceptInvalidationMessages();
+
+			/* YB: cross-node DDL sends no sinval; re-read on version change. */
+			if (IsYugaByteEnabled())
+			{
+				TimestampTz now = GetCurrentTimestamp();
+
+				if (TimestampDifferenceExceeds(yb_last_sub_reread, now,
+											   yb_subscription_reread_interval_ms))
+				{
+					uint64_t	yb_catalog_version = YbGetSharedCatalogVersion();
+
+					if (yb_catalog_version != yb_subscription_read_catalog_version)
+					{
+						yb_force_subscription_reread();
+						yb_subscription_read_catalog_version = yb_catalog_version;
+					}
+					yb_last_sub_reread = now;
+				}
+			}
+
 			maybe_reread_subscription();
 
 			/* Process any table synchronization changes. */
@@ -3065,6 +3111,10 @@ maybe_reread_subscription(void)
 
 	/* Ensure allocations in permanent context. */
 	oldctx = MemoryContextSwitchTo(ApplyContext);
+
+	/* YB: else the pinned read time would re-cache the pre-change tuple. */
+	if (IsYugaByteEnabled())
+		YbInvalidateCatalogSnapshot();
 
 	newsub = GetSubscription(MyLogicalRepWorker->subid, true);
 
@@ -3657,6 +3707,10 @@ ApplyWorkerMain(Datum main_arg)
 	StartTransactionCommand();
 	oldctx = MemoryContextSwitchTo(ApplyContext);
 
+	/* YB: read before the subscription, so a DDL in between still differs. */
+	if (IsYugaByteEnabled())
+		yb_subscription_read_catalog_version = YbGetSharedCatalogVersion();
+
 	MySubscription = GetSubscription(MyLogicalRepWorker->subid, true);
 	if (!MySubscription)
 	{
@@ -3699,6 +3753,66 @@ ApplyWorkerMain(Datum main_arg)
 						MySubscription->name)));
 
 	CommitTransactionCommand();
+
+	/* YB: only the advisory-lock holder streams; retry briefly, then stand down. */
+	if (IsYugaByteEnabled() && !am_tablesync_worker())
+	{
+		YbcAdvisoryLockId lock_id =
+			YbSubscriptionAdvisoryLockId(MySubscription->oid);
+		int			attempts = 0;
+
+		for (;;)
+		{
+			YbcStatus	status = YBCAcquireAdvisoryLock(lock_id,
+													   YB_ADVISORY_LOCK_EXCLUSIVE,
+													   false /* wait */ ,
+													   true /* session */ );
+			int			rc;
+
+			if (!status)
+				break;			/* this worker owns the subscription */
+
+			/*
+			 * Skip-locking is the expected failure: another worker holds the
+			 * lock.  Anything else - advisory locks disabled being the
+			 * likely one - will not resolve by retrying.
+			 */
+			if (YBCStatusPgsqlError(status) != ERRCODE_YB_TXN_SKIP_LOCKING)
+			{
+				ereport(WARNING,
+						(errmsg("logical replication apply worker for subscription \"%s\" is not started",
+								MySubscription->name),
+						 errdetail("Could not acquire the subscription's advisory lock: %s",
+								   YBCStatusMessageBegin(status)),
+						 errhint("Without the lock, apply workers on other nodes cannot be excluded and changes could be applied more than once.  Advisory locks require ysql_yb_enable_advisory_locks.")));
+				YBCFreeStatus(status);
+				proc_exit(0);
+			}
+
+			YBCFreeStatus(status);
+
+			if (++attempts >= YB_SUBSCRIPTION_LOCK_ATTEMPTS)
+			{
+				ereport(LOG,
+						(errmsg("logical replication apply worker for subscription \"%s\" is standing down: a worker on another node runs this subscription",
+								MySubscription->name)));
+				proc_exit(0);
+			}
+
+			rc = WaitLatch(MyLatch,
+						   WL_LATCH_SET | WL_TIMEOUT | WL_EXIT_ON_PM_DEATH,
+						   1000L /* ms */ ,
+						   WAIT_EVENT_LOGICAL_APPLY_MAIN);
+			if (rc & WL_LATCH_SET)
+				ResetLatch(MyLatch);
+			CHECK_FOR_INTERRUPTS();
+		}
+
+		before_shmem_exit(yb_apply_worker_onexit, (Datum) 0);
+		LWLockAcquire(LogicalRepWorkerLock, LW_EXCLUSIVE);
+		MyLogicalRepWorker->yb_owns_subscription = true;
+		LWLockRelease(LogicalRepWorkerLock);
+	}
 
 	/* Connect to the origin and start the replication. */
 	elog(DEBUG1, "connecting to publisher using connection string \"%s\"",
@@ -4003,7 +4117,9 @@ clear_subscription_skip_lsn(XLogRecPtr finish_lsn)
 
 		tup = heap_modify_tuple(tup, RelationGetDescr(rel), values, nulls,
 								replaces);
+		YB_BEGIN_NON_DDL_SYS_TABLE_WRITE();
 		CatalogTupleUpdate(rel, &tup->t_self, tup);
+		YB_END_NON_DDL_SYS_TABLE_WRITE();
 
 		if (myskiplsn != finish_lsn)
 			ereport(WARNING,
@@ -4084,4 +4200,66 @@ reset_apply_error_context_info(void)
 	apply_error_callback_arg.rel = NULL;
 	apply_error_callback_arg.remote_attnum = -1;
 	set_apply_error_context_xact(InvalidTransactionId, InvalidXLogRecPtr);
+}
+
+/*
+ * YB: before_shmem_exit callback of an apply worker that took its
+ * subscription's lock.  Tablesync workers must not outlive it: the SYNCWAIT /
+ * CATCHUP handoff lives in this node's shared memory, and once the lock is
+ * free another node can take the subscription over and start a second
+ * tablesync worker for a table one of them is still syncing.  So stop them
+ * first, then release the lock.  This runs for every exit except a signal
+ * kill, which restarts the whole postmaster anyway.
+ */
+static void
+yb_apply_worker_onexit(int code, Datum arg)
+{
+	YbcAdvisoryLockId lock_id =
+		YbSubscriptionAdvisoryLockId(MyLogicalRepWorker->subid);
+	List	   *workers;
+	ListCell   *lc;
+	YbcStatus	status;
+
+	/* An ERROR exit can get here holding LWLocks; nothing below needs them. */
+	LWLockReleaseAll();
+
+	LWLockAcquire(LogicalRepWorkerLock, LW_SHARED);
+	workers = logicalrep_workers_find(MyLogicalRepWorker->subid, false);
+	LWLockRelease(LogicalRepWorkerLock);
+	foreach(lc, workers)
+	{
+		LogicalRepWorker *w = (LogicalRepWorker *) lfirst(lc);
+
+		if (OidIsValid(w->relid))
+			logicalrep_worker_stop(w->subid, w->relid);
+	}
+	list_free(workers);
+
+	LWLockAcquire(LogicalRepWorkerLock, LW_EXCLUSIVE);
+	MyLogicalRepWorker->yb_owns_subscription = false;
+	LWLockRelease(LogicalRepWorkerLock);
+
+	/*
+	 * The session's end releases the lock too; this only does it sooner.  It
+	 * fails on a SIGTERM exit, which has already shut the session down.
+	 */
+	status = YBCReleaseAdvisoryLock(lock_id, YB_ADVISORY_LOCK_EXCLUSIVE);
+	if (status)
+	{
+		ereport(DEBUG1,
+				(errmsg("logical replication apply worker for subscription %u could not release its advisory lock",
+						MyLogicalRepWorker->subid),
+				 errdetail("%s", YBCStatusMessageBegin(status))));
+		YBCFreeStatus(status);
+	}
+}
+
+/* YB: drop this worker's subscription caches; the next lookup goes to storage. */
+static void
+yb_force_subscription_reread(void)
+{
+	YbInvalidateCatalogSnapshot();
+	CatalogCacheFlushCatalog(SubscriptionRelRelationId);
+	CatalogCacheFlushCatalog(SubscriptionRelationId);
+	MySubscriptionValid = false;
 }
