@@ -163,6 +163,7 @@ public class ResizeNode extends UpgradeTaskBase {
     }
     Universe universe = getUniverse();
     boolean flagsProvided = taskParams().flagsProvided(universe);
+    UserIntent userIntentForFlags = getUserIntent();
     nodesToApplyCalculated = new NodesToApply();
     LinkedHashSet<NodeDetails> allNodes = fetchNodesForCluster();
     LinkedHashSet<NodeDetails> nodesNotUpdated = new LinkedHashSet<>(allNodes);
@@ -183,15 +184,12 @@ public class ResizeNode extends UpgradeTaskBase {
                 ServerType.TSERVER,
                 newVersionsOfClusters.get(cluster.uuid),
                 newVersionsOfClusters.values());
-        // enable_ysql and similar are stored on the cluster intent configure uses.
-        UserIntent clusterIntent =
-            universe.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent;
-        boolean updatedByMasterFlags = GFlagsUtil.syncGflagsToIntent(masterGFlags, clusterIntent);
-        boolean updatedByTserverFlags = GFlagsUtil.syncGflagsToIntent(tserverGFlags, clusterIntent);
+        boolean updatedByMasterFlags =
+            GFlagsUtil.syncGflagsToIntent(masterGFlags, userIntentForFlags);
+        boolean updatedByTserverFlags =
+            GFlagsUtil.syncGflagsToIntent(tserverGFlags, userIntentForFlags);
         nodesToApplyCalculated.applyGFlagsToAllNodes =
-            nodesToApplyCalculated.applyGFlagsToAllNodes
-                || updatedByMasterFlags
-                || updatedByTserverFlags;
+            updatedByMasterFlags || updatedByTserverFlags;
       }
       LinkedHashSet<NodeDetails> clusterNodes =
           allNodes.stream()
@@ -288,9 +286,11 @@ public class ResizeNode extends UpgradeTaskBase {
                   });
 
           AtomicBoolean applyGFlagsToAllNodes = new AtomicBoolean();
+          Map<UUID, UserIntent> userIntentMap = new HashMap<>();
           // Create task sequence to resize allNodes.
           for (UniverseDefinitionTaskParams.Cluster cluster : taskParams().clusters) {
             final UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
+            userIntentMap.put(cluster.uuid, userIntent);
 
             UniverseDefinitionTaskParams.UserIntent currentIntent =
                 universe.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent;
@@ -316,6 +316,7 @@ public class ResizeNode extends UpgradeTaskBase {
                   createResizeNodeTasks(nodes, userIntent, currentIntent);
                   if (flagsProvided) {
                     createGFlagsUpgradeTasks(
+                        userIntentMap,
                         processTypes,
                         nodes,
                         universe,
@@ -370,6 +371,7 @@ public class ResizeNode extends UpgradeTaskBase {
             createRollingUpgradeTaskFlow(
                 (nodes, processTypes) ->
                     createGFlagsUpgradeTasks(
+                        userIntentMap,
                         processTypes,
                         nodes,
                         universe,
@@ -394,6 +396,7 @@ public class ResizeNode extends UpgradeTaskBase {
   }
 
   private void createGFlagsUpgradeTasks(
+      Map<UUID, UserIntent> userIntentMap,
       Set<ServerType> processTypes,
       List<NodeDetails> nodes,
       Universe universe,
@@ -403,36 +406,29 @@ public class ResizeNode extends UpgradeTaskBase {
     Map<UUID, UniverseDefinitionTaskParams.Cluster> gflagsBaseline =
         getGFlagsBaselineClusters(universe);
 
-    Map<UUID, List<NodeDetails>> nodesByCluster =
-        nodes.stream().collect(Collectors.groupingBy(n -> n.placementUuid));
-
-    for (Map.Entry<UUID, List<NodeDetails>> entry : nodesByCluster.entrySet()) {
-      UUID clusterUUID = entry.getKey();
-      List<NodeDetails> clusterNodes = entry.getValue();
+    for (NodeDetails node : nodes) {
+      UUID clusterUUID = node.placementUuid;
       UniverseDefinitionTaskParams.Cluster oldCluster = gflagsBaseline.get(clusterUUID);
       UniverseDefinitionTaskParams.Cluster newCluster = newVersionsOfClusters.get(clusterUUID);
-      UserIntent userIntent =
-          universe.getUniverseDetails().getClusterByUuid(clusterUUID).userIntent;
+      UserIntent userIntent = userIntentMap.get(clusterUUID);
 
-      for (NodeDetails node : clusterNodes) {
-        for (ServerType processType : processTypes) {
-          if (applyToAll
-              || GFlagsUpgradeParams.nodeHasGflagsChanges(
-                  node,
-                  processType,
-                  oldCluster,
-                  gflagsBaseline.values(),
-                  newCluster,
-                  newVersionsOfClusters.values())) {
-            createServerConfFileUpdateTasks(
-                userIntent,
-                clusterNodes,
-                Collections.singleton(processType),
+      for (ServerType processType : processTypes) {
+        if (applyToAll
+            || GFlagsUpgradeParams.nodeHasGflagsChanges(
+                node,
+                processType,
                 oldCluster,
                 gflagsBaseline.values(),
                 newCluster,
-                newVersionsOfClusters.values());
-          }
+                newVersionsOfClusters.values())) {
+          createServerConfFileUpdateTasks(
+              userIntent,
+              Collections.singletonList(node),
+              Collections.singleton(processType),
+              oldCluster,
+              gflagsBaseline.values(),
+              newCluster,
+              newVersionsOfClusters.values());
         }
       }
     }

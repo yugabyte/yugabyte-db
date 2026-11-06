@@ -763,16 +763,20 @@ public class ResizeNodeTest extends UpgradeTaskTest {
             defaultUniverse.getUniverseUUID(),
             univ -> {
               UniverseDefinitionTaskParams details = univ.getUniverseDetails();
-              UniverseDefinitionTaskParams.UserIntent primary =
+              UniverseDefinitionTaskParams.UserIntent primaryIntent =
                   details.getPrimaryCluster().userIntent;
-              primary.deviceInfo.numVolumes = 2;
-              primary.specificGFlags =
+              Util.providerInitializerForExistingIntent(
+                      primaryIntent, primaryIntent.maybeGetSingleProviderUUID().get())
+                  .updateDeviceInfo(deviceInfo -> deviceInfo.numVolumes = 2);
+              primaryIntent.specificGFlags =
                   SpecificGFlags.construct(Collections.emptyMap(), Collections.emptyMap());
 
-              UniverseDefinitionTaskParams.UserIntent rrIntent = primary.clone();
+              UniverseDefinitionTaskParams.UserIntent rrIntent = primaryIntent.clone();
               rrIntent.numNodes = 1;
               rrIntent.replicationFactor = 1;
-              rrIntent.deviceInfo.numVolumes = 1;
+              Util.providerInitializerForExistingIntent(
+                      rrIntent, primaryIntent.maybeGetSingleProviderUUID().get())
+                  .updateDeviceInfo(deviceInfo -> deviceInfo.numVolumes = 1);
               rrIntent.specificGFlags = SpecificGFlags.constructInherited();
               PlacementInfo rrPlacement = new PlacementInfo();
               PlacementInfoUtil.addPlacementZone(az1.getUuid(), rrPlacement, 1, 1, false);
@@ -811,7 +815,9 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     }
     UniverseDefinitionTaskParams.UserIntent primaryIntent =
         taskParams.getPrimaryCluster().userIntent;
-    primaryIntent.deviceInfo.volumeSize = DEFAULT_VOLUME_SIZE + 20;
+    Util.providerInitializerForExistingIntent(
+            primaryIntent, primaryIntent.maybeGetSingleProviderUUID().get())
+        .updateDeviceInfo(deviceInfo -> deviceInfo.volumeSize = DEFAULT_VOLUME_SIZE + 20);
     primaryIntent.specificGFlags =
         SpecificGFlags.construct(
             Collections.emptyMap(), ImmutableMap.of("ysql_max_connections", "400"));
