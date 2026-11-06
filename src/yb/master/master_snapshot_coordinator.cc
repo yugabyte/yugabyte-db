@@ -2031,11 +2031,12 @@ class MasterSnapshotCoordinator::Impl {
       }
     }
 
-    if (FLAGS_TEST_skip_sending_restore_finished) {
-      return;
+    // The flag skips only the RESTORE_FINISHED RPCs. The restoration must still be marked complete
+    // in sys catalog, otherwise a new master leader re-runs it and wipes newer writes.
+    std::vector<TabletId> tablet_ids;
+    if (!FLAGS_TEST_skip_sending_restore_finished) {
+      tablet_ids = restoration->TabletIdsInState(SysSnapshotEntryPB::RESTORED);
     }
-
-    std::vector<TabletId> tablet_ids = restoration->TabletIdsInState(SysSnapshotEntryPB::RESTORED);
     auto tablets = context_.GetTabletInfos(tablet_ids);
     auto epoch = LeaderEpoch(leader_term, context_.pitr_count());
     int tablet_ids_counter = 0;
