@@ -28,14 +28,17 @@ class PgAdvisoryLocksUpgradeTest : public UpgradeTestBase,
   void SetUpOptions(ExternalMiniClusterOptions& opts) override {
     AddUnDefOkAndSetFlag(
         opts.extra_master_flags, "num_advisory_locks_tablets", Format("$0", GetParam()));
+    // A leader move while a backend is blocked on an advisory lock leaves the waiter in the old
+    // leader's wait queue, where pg_locks no longer reports it (#36672). After the rolling restart,
+    // tablets elect leaders only after the load balancer has reported idle, so waiting for idle
+    // cannot prevent such a move. Disable leader balancing until #36672 is fixed.
+    AddUnDefOkAndSetFlag(opts.extra_master_flags, "load_balancer_max_concurrent_moves", "0");
     UpgradeTestBase::SetUpOptions(opts);
   }
 
   Status TestBasicFunctionality() {
     // The pg_advisory_locks tablets are created before every tserver has registered, so right after
-    // startup the load balancer adds replicas and moves leaders. A leader move while a backend is
-    // blocked on an advisory lock strands the waiter in the old leader's wait queue until the
-    // acquire deadline, so let the cluster settle before taking any locks.
+    // startup the load balancer adds replicas, so let the cluster settle before taking any locks.
     RETURN_NOT_OK(cluster_->WaitForLoadBalancerToBecomeIdle(client_, 5min * kTimeMultiplier));
 
     auto conn1 = VERIFY_RESULT(cluster_->ConnectToDB());
