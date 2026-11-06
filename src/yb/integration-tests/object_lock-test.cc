@@ -1168,6 +1168,41 @@ TEST_F(ObjectLockTest, TServerLeaseExpiresBeforeExclusiveLockRequest) {
   ASSERT_OK(cluster_->mini_tablet_server(idx_to_take_down)->Start());
 }
 
+// A global lock waiting on a dead tserver must go ahead soon after the master marks the tserver's
+// lease lost, not at the next step of the fan-out task's retry backoff.
+TEST_F(ObjectLockTest, AcquireSkipsDeadTServerSoonAfterLeaseLoss) {
+  // The test base caps the retry delay at 1s, which would exhaust the 20 attempts before the
+  // lease expires. With the production 60s cap, the fan-out task to the dead tserver starts its
+  // 11th attempt about 16.4s in and, unless capped by the lease, waits another 16.4s after it. The
+  // lease expires in between.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retrying_ts_rpc_max_delay_ms) = 60 * 1000;
+  const auto kLeaseTTL = MonoDelta::FromSeconds(18);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ysql_operation_lease_ttl_ms) =
+      kLeaseTTL.ToMilliseconds();
+  // Let every tserver refresh its lease under the new TTL.
+  SleepFor(MonoDelta::FromMilliseconds(4 * kDefaultYSQLLeaseRefreshIntervalMilli));
+
+  const auto dead_ts_uuid = TSUuid(0);
+  // Not Shutdown(): that relinquishes the lease, and the master drops the tserver right away.
+  LOG(INFO) << "Isolating tablet server " << dead_ts_uuid;
+  cluster_->mini_tablet_server(0)->Isolate();
+
+  auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
+  auto future = AcquireLockGloballyAsync(
+      &master_proxy, TSUuid(1), kTxn1, kDatabaseID, kRelationId, kLeaseEpoch,
+      /* clock */ nullptr, /* deadline */ std::nullopt, 60s * kTimeMultiplier);
+
+  const auto lease_timeout = kLeaseTTL + MonoDelta(10s * kTimeMultiplier);
+  ASSERT_OK(WaitForTServerLeaseToExpire(dead_ts_uuid, lease_timeout));
+  ASSERT_EQ(future.wait_for(5s * kTimeMultiplier), std::future_status::ready)
+      << "The global lock should not wait on the dead tserver once its lease is lost";
+  ASSERT_OK(future.get());
+
+  ASSERT_OK(cluster_->mini_tablet_server(0)->Reconnect());
+  ASSERT_OK(
+      WaitForTabletServersToAcquireYSQLLeases({cluster_->mini_tablet_server(0)}, lease_timeout));
+}
+
 // A tserver that keeps refreshing its lease but fails every release must lose its lease, so that
 // the release completes without it, and must not get a new lease until the hold-off passes.
 TEST_F(ObjectLockTest, FenceTServerThatFailsReleases) {

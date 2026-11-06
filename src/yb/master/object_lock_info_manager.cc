@@ -115,6 +115,7 @@ DEFINE_test_flag(bool, fail_master_local_release_once, false,
     "If true, fail the next release in the master leader's local lock manager and reset the flag.");
 
 DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
+DECLARE_int32(retrying_ts_rpc_max_delay_ms);
 DECLARE_int32(send_wait_for_report_interval_ms);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_yb_enable_invalidation_messages);
@@ -336,6 +337,8 @@ class ObjectLockInfoManager::Impl {
   }
 
   bool TabletServerHasLiveLease(const std::string& ts_uuid) const EXCLUDES(mutex_);
+  // Unset if the tserver has no live lease.
+  std::optional<MonoTime> LiveLeaseDeadline(const std::string& ts_uuid) const EXCLUDES(mutex_);
 
   void RecordReleaseOutcome(
       const TabletServerId& ts_uuid, uint64_t request_id, const Status& status) EXCLUDES(mutex_);
@@ -482,6 +485,7 @@ class UpdateAll {
   virtual const Req& request() const = 0;
   virtual CoarseTimePoint GetClientDeadline() const = 0;
   virtual bool TabletServerHasLiveLease(const std::string& uuid) = 0;
+  virtual std::optional<MonoTime> LiveLeaseDeadline(const std::string& uuid) = 0;
   virtual std::optional<uint64_t> GetLeaseEpoch(const std::string& uuid) = 0;
   virtual std::string LogPrefix() const = 0;
   virtual const ash::WaitStateInfoPtr& wait_state() const = 0;
@@ -516,6 +520,10 @@ class UpdateAllTServers : public std::enable_shared_from_this<UpdateAllTServers<
 
   bool TabletServerHasLiveLease(const std::string& uuid) override {
     return object_lock_info_manager_.TabletServerHasLiveLease(uuid);
+  }
+
+  std::optional<MonoTime> LiveLeaseDeadline(const std::string& uuid) override {
+    return object_lock_info_manager_.LiveLeaseDeadline(uuid);
   }
 
   std::optional<uint64_t> GetLeaseEpoch(const std::string& uuid) override {
@@ -608,6 +616,14 @@ class UpdateTServer : public RetrySpecificTSRpcTask {
 
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
+
+  // Completes this task without an RPC if the tserver has lost its lease since the last attempt.
+  bool SkipTServerWithoutLiveLease();
+
+  // A dead tserver is noticed only when an attempt finishes, so cap the wait at the first cleanup
+  // poll after its lease deadline, when the master will have marked the lease lost. Otherwise the
+  // backoff can leave the lock request waiting up to retrying_ts_rpc_max_delay_ms after that.
+  int max_delay_ms() override;
 
   StdStatusCallback callback_;
   Resp resp_;
@@ -935,6 +951,17 @@ bool ObjectLockInfoManager::Impl::TabletServerHasLiveLease(const std::string& ts
     return false;
   }
   return it->second->LockForRead()->pb.lease_info().live_lease();
+}
+
+std::optional<MonoTime> ObjectLockInfoManager::Impl::LiveLeaseDeadline(
+    const std::string& ts_uuid) const {
+  LockGuard lock(mutex_);
+  auto it = object_lock_infos_map_.find(ts_uuid);
+  if (it == object_lock_infos_map_.end() ||
+      !it->second->LockForRead()->pb.lease_info().live_lease()) {
+    return std::nullopt;
+  }
+  return it->second->ysql_lease_deadline();
 }
 
 void ObjectLockInfoManager::Impl::UpdateTxnHostSessionMap(
@@ -2405,6 +2432,9 @@ template <>
 bool UpdateTServer<AcquireObjectLockRequestPB, AcquireObjectLockResponsePB>::SendRequest(
     int attempt) {
   VLOG_WITH_PREFIX(3) << __func__ << " attempt " << attempt;
+  if (SkipTServerWithoutLiveLease()) {
+    return true;
+  }
   ADOPT_WAIT_STATE(shared_all_tservers_->wait_state());
   ts_proxy_->AcquireObjectLocksAsync(request(), &resp_, &rpc_, BindRpcCallback());
   return true;
@@ -2414,6 +2444,9 @@ template <>
 bool UpdateTServer<ReleaseObjectLockRequestPB, ReleaseObjectLockResponsePB>::SendRequest(
     int attempt) {
   VLOG_WITH_PREFIX(3) << __func__ << " attempt " << attempt;
+  if (SkipTServerWithoutLiveLease()) {
+    return true;
+  }
   ADOPT_WAIT_STATE(shared_all_tservers_->wait_state());
   ts_proxy_->ReleaseObjectLocksAsync(request(), &resp_, &rpc_, BindRpcCallback());
   return true;
@@ -2423,9 +2456,43 @@ template <>
 bool UpdateTServer<WaitForLockersMultipleRequestPB, WaitForLockersMultipleResponsePB>::SendRequest(
     int attempt) {
   VLOG_WITH_PREFIX(3) << __func__ << " attempt " << attempt;
+  if (SkipTServerWithoutLiveLease()) {
+    return true;
+  }
   ADOPT_WAIT_STATE(shared_all_tservers_->wait_state());
   ts_proxy_->WaitForLockersMultipleAsync(request(), &resp_, &rpc_, BindRpcCallback());
   return true;
+}
+
+template <class Req, class Resp>
+bool UpdateTServer<Req, Resp>::SkipTServerWithoutLiveLease() {
+  if (shared_all_tservers_->TabletServerHasLiveLease(permanent_uuid_)) {
+    return false;
+  }
+  LOG_WITH_PREFIX(WARNING) << "TServer no longer has a live lease. Ignoring this tserver for "
+                           << "object lock " << ObjectLockOpName<Req>() << " request";
+  // Finish as if the RPC succeeded: completing the task can run AfterRpcs, which writes to the sys
+  // catalog, and SendRequest runs on a reactor thread for retries. RpcCallback moves the rest to
+  // the callback pool, where HandleResponse sees no error and completes the task.
+  resp_.Clear();
+  RpcCallback();
+  return true;
+}
+
+template <class Req, class Resp>
+int UpdateTServer<Req, Resp>::max_delay_ms() {
+  // Keeps a delay past the lease deadline from failing the task as timed out, and from a burst of
+  // retries while the cleanup poll catches up.
+  constexpr int64_t kMinDelayMs = 1000;
+  const int64_t cap_ms = FLAGS_retrying_ts_rpc_max_delay_ms;
+  auto lease_deadline = shared_all_tservers_->LiveLeaseDeadline(permanent_uuid_);
+  if (!lease_deadline) {
+    return static_cast<int>(cap_ms);
+  }
+  const auto lease_lost_by =
+      *lease_deadline + MonoDelta::FromMilliseconds(FLAGS_object_lock_cleanup_interval_ms);
+  const auto ms_until_lease_lost = lease_lost_by.GetDeltaSince(MonoTime::Now()).ToMilliseconds();
+  return static_cast<int>(std::min(cap_ms, std::max(ms_until_lease_lost, kMinDelayMs)));
 }
 
 template <class Req, class Resp>
