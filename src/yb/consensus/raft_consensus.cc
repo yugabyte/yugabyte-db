@@ -1644,6 +1644,8 @@ void RaftConsensus::UpdateMajorityReplicated(
       // Under the lock, like DoReplicateBatch: storing after unlock() could overwrite the larger
       // index of a deferrable batch appended in between, and the surviving task would skip it.
       deferred_signal_op_index_.store(committed_op_id->index, std::memory_order_release);
+      // Set before arming; the task clears it under the state lock, so it cannot stay set.
+      queue_->SetCommitIndexUpdateDeferred();
       schedule_deferred_signal = !deferred_signal_armed_.exchange(true, std::memory_order_acq_rel);
     }
 
@@ -1670,6 +1672,7 @@ void RaftConsensus::SignalDeferredRequest(const Status& status) {
   // signal, rather than leaving an op behind with no task to send it.
   deferred_signal_armed_.store(false, std::memory_order_release);
   if (!status.ok()) {
+    queue_->ClearCommitIndexUpdateDeferred();
     VLOG_WITH_PREFIX(1) << "Deferred peer signal aborted: " << status;
     return;
   }
@@ -1678,6 +1681,15 @@ void RaftConsensus::SignalDeferredRequest(const Status& status) {
     // Firing anyway could pick up a batch mid-append and split it across two round trips; the
     // lock waits out an append in progress.
     auto lock = state_->LockForRead();
+    // Cleared before signalling: if that signal is dropped for an in-flight RPC, its response
+    // must report the commit index as more pending. A response suppressed before the clear can
+    // still drop it, so signal once more after another delay rather than wait for a heartbeat.
+    if (queue_->ClearCommitIndexUpdateDeferred() &&
+        !deferred_signal_armed_.exchange(true, std::memory_order_acq_rel)) {
+      deferred_signal_tracker_.Schedule(
+          std::bind(&RaftConsensus::SignalDeferredRequest, this, _1),
+          1ms * FLAGS_raft_deferred_update_delay_ms);
+    }
     if (state_->GetLastReceivedOpIdUnlocked().index >
             deferred_signal_op_index_.load(std::memory_order_acquire)) {
       return;

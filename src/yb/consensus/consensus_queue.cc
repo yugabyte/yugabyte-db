@@ -1704,9 +1704,14 @@ bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
     }
 
     // If our log has the next request for the peer or if the peer's committed index is lower than
-    // our own, set 'more_pending' to true.
-    result = log_cache_.HasOpBeenWritten(peer->next_index) ||
-        (peer->last_known_committed_idx < queue_state_.committed_op_id.index);
+    // our own, set 'more_pending' to true. A commit-index-only update is left to a pending deferred
+    // signal.
+    result = log_cache_.HasOpBeenWritten(peer->next_index);
+    if (!result && peer->last_known_committed_idx < queue_state_.committed_op_id.index) {
+      int state = kCommitUpdateDeferred;
+      commit_index_update_deferred_.compare_exchange_strong(state, kCommitUpdateSuppressed);
+      result = state == kCommitUpdateNotDeferred;
+    }
 
     mode_copy = queue_state_.mode;
     if (mode_copy == Mode::LEADER) {

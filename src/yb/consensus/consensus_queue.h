@@ -357,6 +357,19 @@ class PeerMessageQueue {
 
   void RequestWasNotSent(const std::string& peer_uuid);
 
+  // While set, ResponseFromPeer does not report a lagging commit index alone as more pending.
+  void SetCommitIndexUpdateDeferred() {
+    int expected = kCommitUpdateNotDeferred;
+    commit_index_update_deferred_.compare_exchange_strong(expected, kCommitUpdateDeferred);
+  }
+
+  // Returns true if a response was denied more pending since the deferral was set. That peer may
+  // still be finishing its response and drop the next signal, so the caller must signal again.
+  bool ClearCommitIndexUpdateDeferred() {
+    return commit_index_update_deferred_.exchange(kCommitUpdateNotDeferred) ==
+           kCommitUpdateSuppressed;
+  }
+
   // Closes the queue, peers are still allowed to call UntrackPeer() and ResponseFromPeer() but no
   // additional peers can be tracked or messages queued.
   virtual void Close();
@@ -665,6 +678,13 @@ class PeerMessageQueue {
   const TabletId tablet_id_;
 
   QueueState queue_state_ GUARDED_BY(queue_lock_);
+
+  // Set while RaftConsensus has a deferred signal pending that will send the commit index.
+  // One atomic, so that a suppression cannot slip in after ClearCommitIndexUpdateDeferred.
+  static constexpr int kCommitUpdateNotDeferred = 0;
+  static constexpr int kCommitUpdateDeferred = 1;
+  static constexpr int kCommitUpdateSuppressed = 2;
+  std::atomic<int> commit_index_update_deferred_{kCommitUpdateNotDeferred};
 
   // The currently tracked peers.
   PeersMap peers_map_;
