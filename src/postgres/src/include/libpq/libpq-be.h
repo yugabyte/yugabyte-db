@@ -206,13 +206,6 @@ typedef struct Port
 	int			yb_logical_conn_server_cert_hash_len;
 
 	/*
-	 * YB: Set when the last parsed startup or 'A' packet carried the
-	 * connection manager's yb_ycm_internal_end marker.  Everything after the
-	 * marker came from the logical client, including its "options".
-	 */
-	bool		yb_ycm_internal_end_seen;
-
-	/*
 	 * YB: W3C traceparent from the "yb_dist_traceparent" startup-packet param
 	 * (set by the tserver). Root span for backend init; read in InitPostgres.
 	 * NULL when absent.

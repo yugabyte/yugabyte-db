@@ -2156,6 +2156,7 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 	bool		yb_is_auth_via_conn_mgr = false;
 	bool		yb_is_control_conn = false;
 	bool		yb_ycm_internal_end_seen = false;
+	char	   *yb_reserved_parameter = NULL;
 
 retry:
 	pq_startmsgread();
@@ -2425,10 +2426,13 @@ retry1:
 				YbIsConnMgrReservedStartupParameter(nameptr))
 			{
 				if (yb_ycm_internal_end_seen)
-					ereport(FATAL,
-							(errcode(ERRCODE_PROTOCOL_VIOLATION),
-							 errmsg("startup parameter \"%s\" is reserved for "
-									"the connection manager", nameptr)));
+				{
+					/* Reported once the whole packet is read, see below. */
+					if (yb_reserved_parameter == NULL)
+						yb_reserved_parameter = pstrdup(nameptr);
+					offset = valoffset + strlen(valptr) + 1;
+					continue;
+				}
 				if (strcmp(nameptr, YB_YCM_INTERNAL_END) == 0)
 				{
 					yb_ycm_internal_end_seen = true;
@@ -2622,7 +2626,31 @@ retry1:
 				(errcode(ERRCODE_PROTOCOL_VIOLATION),
 				 errmsg("startup packet from the connection manager has no "
 						"\"%s\" marker", YB_YCM_INTERNAL_END)));
-	port->yb_ycm_internal_end_seen = yb_ycm_internal_end_seen;
+
+	/*
+	 * YB: "options" always comes from the logical client, so it must not set
+	 * a reserved parameter either.  In auth passthrough, fail only the logical
+	 * connection, as a failed auth does, so the shared control backend stays
+	 * up.
+	 */
+	if (yb_ycm_internal_end_seen && yb_reserved_parameter == NULL &&
+		port->cmdline_options != NULL)
+		yb_reserved_parameter =
+			YbFindConnMgrReservedParameterInOptions(port->cmdline_options);
+	if (yb_reserved_parameter != NULL)
+	{
+		bool		yb_auth_passthrough = YbIsAuthPassthroughInProgress(port);
+
+		if (yb_auth_passthrough)
+		{
+			YbSendFatalForLogicalConnectionPacket();
+			port->yb_has_auth_passthrough_finished = true;
+		}
+		ereport(YbAuthFailedErrorLevel(yb_auth_passthrough),
+				(errcode(ERRCODE_PROTOCOL_VIOLATION),
+				 errmsg("startup parameter \"%s\" is reserved for the "
+						"connection manager", yb_reserved_parameter)));
+	}
 
 	/*
 	 * YB: Connection Manager's auth-passthrough control backends are long-lived

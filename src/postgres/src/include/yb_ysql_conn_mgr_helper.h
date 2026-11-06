@@ -164,3 +164,4 @@ extern int YbAuthFailedErrorLevel(const bool auth_passthrough);
 extern bool YbIsAuthPassthroughInProgress(struct Port *port);
 
 extern bool YbIsConnMgrReservedStartupParameter(const char *name);
+extern char *YbFindConnMgrReservedParameterInOptions(const char *options);
