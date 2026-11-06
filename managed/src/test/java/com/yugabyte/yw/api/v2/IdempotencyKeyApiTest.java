@@ -175,19 +175,14 @@ public class IdempotencyKeyApiTest extends FakeDBApplication {
   }
 
   @Test
-  public void abandonedKeyIsTakenOver() {
-    // A request that started two hours ago and never finished, e.g. YBA restarted.
+  public void orphanedKeyStaysInProgressUntilItExpires() {
+    // A request that started two hours ago and never finished, without a restart to release it.
     claimInProgress(KEY, new Date(System.currentTimeMillis() - 2 * 3600 * 1000L));
 
-    Result retry = createCert(certSpec("root"), KEY);
+    Result retry = assertPlatformException(() -> createCert(certSpec("root"), KEY));
 
-    assertEquals(contentAsString(retry), OK, retry.status());
-    assertEquals(1, CertificateInfo.getAll(customerUuid).size());
-    ApiIdempotencyKey key = ApiIdempotencyKey.find(customerUuid, KEY).orElseThrow();
-    assertEquals(ApiIdempotencyKey.State.COMPLETED, key.getState());
-    // The retention restarts with the takeover: the abandoned claim's expiry was an hour away.
-    long retentionLeft = key.getExpireTime().getTime() - System.currentTimeMillis();
-    assertTrue(String.valueOf(retentionLeft), retentionLeft > 23 * 3600 * 1000L);
+    assertEquals(CONFLICT, retry.status());
+    assertTrue(CertificateInfo.getAll(customerUuid).isEmpty());
   }
 
   @Test

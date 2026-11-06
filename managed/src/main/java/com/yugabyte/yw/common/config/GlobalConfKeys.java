@@ -2539,15 +2539,4 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " replay. A retry with the same key after this period runs the operation again.",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Duration> idempotencyKeyInProgressTimeout =
-      new ConfKeyInfo<>(
-          "yb.api.idempotency.in_progress_timeout",
-          ScopeType.GLOBAL,
-          "Idempotency key in-progress timeout",
-          "How long a request sent with an Idempotency-Key header holds the key while it runs."
-              + " Until then a concurrent request with the same key gets 409; after it, the key"
-              + " is considered abandoned and a retry of the same request runs it again. A"
-              + " different request with the key still gets 422 until the retention ends.",
-          ConfDataType.DurationType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

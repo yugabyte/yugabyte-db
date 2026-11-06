@@ -126,7 +126,7 @@ public class IdempotencyService {
   /**
    * YBA runs one active process, so at startup every in-progress key belongs to a request that died
    * with the previous process. Its client lost the response and will retry: release the key so the
-   * retry runs now instead of getting 409 until the in-progress timeout.
+   * retry runs now instead of getting 409 until the key expires.
    */
   @VisibleForTesting
   public void releaseInProgressKeys() {
@@ -376,46 +376,15 @@ public class IdempotencyService {
       if (used.getState() == State.COMPLETED) {
         return new Claim(used, replay(used));
       }
-      Duration inProgressTimeout =
-          confGetter.getGlobalConf(GlobalConfKeys.idempotencyKeyInProgressTimeout);
-      Date abandonedAt = used.getUpdateTime();
-      if (plus(abandonedAt, inProgressTimeout).before(now)
-          && takeOver(used, now, plus(now, retention))) {
-        log.warn(
-            "Taking over idempotency key {}: its request started at {} and never finished",
-            key,
-            abandonedAt);
-        return new Claim(used, null);
-      }
+      // Still running, or orphaned by a failed key write: a restart releases the keys of the
+      // requests it interrupted, and the retention ends any other. Running the request again
+      // meanwhile could duplicate it.
       throw new PlatformServiceException(
           CONFLICT,
           "A request with " + IDEMPOTENCY_KEY_HEADER + " " + key + " is still in progress");
     }
     throw new PlatformServiceException(
         CONFLICT, "A concurrent request is using " + IDEMPOTENCY_KEY_HEADER + " " + key);
-  }
-
-  /**
-   * Claims an abandoned in-progress key, unless another request claimed it first. The retention
-   * restarts with the new claim, so that its response is kept as long as any other.
-   */
-  private static boolean takeOver(ApiIdempotencyKey used, Date now, Date expireTime) {
-    int updated =
-        DB.sqlUpdate(
-                "UPDATE api_idempotency_key SET update_time = :now, expire_time = :expireTime"
-                    + " WHERE uuid = :uuid AND state = :state AND update_time = :updateTime")
-            .setParameter("now", now)
-            .setParameter("expireTime", expireTime)
-            .setParameter("uuid", used.getUuid())
-            .setParameter("state", State.IN_PROGRESS.name())
-            .setParameter("updateTime", used.getUpdateTime())
-            .execute();
-    if (updated == 1) {
-      used.setUpdateTime(now);
-      used.setExpireTime(expireTime);
-      return true;
-    }
-    return false;
   }
 
   private static void deleteIfUnchanged(ApiIdempotencyKey used) {
@@ -431,8 +400,9 @@ public class IdempotencyService {
   }
 
   /**
-   * Stores the response on the key this request claimed. If the key was taken over meanwhile (this
-   * request outlived the in-progress timeout), the new owner's state is left alone.
+   * Stores the response on the key this request claimed. If the claim is gone meanwhile (this
+   * request outlived the retention and another request reused the key), the new owner's state is
+   * left alone.
    */
   @VisibleForTesting
   static void complete(ApiIdempotencyKey record, Result result) {
@@ -451,7 +421,7 @@ public class IdempotencyService {
               .findOne();
       if (claimed == null) {
         log.warn(
-            "Idempotency key {} was taken over while its request ran, not storing the response",
+            "Idempotency key {} was reclaimed while its request ran, not storing the response",
             record.getIdempotencyKey());
         return;
       }

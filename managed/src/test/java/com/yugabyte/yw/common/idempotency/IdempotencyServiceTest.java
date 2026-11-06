@@ -82,19 +82,19 @@ public class IdempotencyServiceTest extends FakeDBApplication {
   }
 
   @Test
-  public void keyTakenOverMeanwhileIsLeftToItsNewOwner() {
+  public void keyReclaimedMeanwhileIsLeftToItsNewOwner() {
     ApiIdempotencyKey record = claim("k");
-    // Another request took the key over after the in-progress timeout.
-    Date takenOverAt = new Date(record.getUpdateTime().getTime() + 1000);
+    // Another request claimed the key meanwhile.
+    Date reclaimedAt = new Date(record.getUpdateTime().getTime() + 1000);
     DB.sqlUpdate("UPDATE api_idempotency_key SET update_time = :t")
-        .setParameter("t", takenOverAt)
+        .setParameter("t", reclaimedAt)
         .execute();
 
     IdempotencyService.complete(record, Results.ok(Json.newObject()));
 
     ApiIdempotencyKey current = ApiIdempotencyKey.find(customer.getUuid(), "k").orElseThrow();
     assertEquals(State.IN_PROGRESS, current.getState());
-    assertEquals(takenOverAt, current.getUpdateTime());
+    assertEquals(reclaimedAt, current.getUpdateTime());
   }
 
   @Test
