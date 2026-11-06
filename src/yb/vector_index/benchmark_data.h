@@ -152,17 +152,14 @@ class VectorFileReader : public VectorSource<Vector> {
 
   static_assert(
       (std::is_integral<Scalar>::value || std::is_floating_point<Scalar>::value) &&
-      (1 <= kCoordinateSize || kCoordinateSize <= 8),
+      (1 <= kCoordinateSize && kCoordinateSize <= 8),
       "Scalar must be an integral or floating-point type of size 1 to 8 bytes");
 
   VectorFileReader(const std::string& file_path, VectorFileFormat format)
       : file_path_(file_path), format_(format) {}
 
   virtual ~VectorFileReader() {
-    if (input_file_) {
-      fclose(input_file_);
-      input_file_ = nullptr;
-    }
+    CloseFile();
   }
 
   bool is_file() const override { return true; }
@@ -188,7 +185,9 @@ class VectorFileReader : public VectorSource<Vector> {
     return current_vector_;
   }
 
+  // Reading starts over if the file is already open.
   Status Open() override {
+    CloseFile();
     auto file_size = VERIFY_RESULT(Env::Default()->GetFileSize(file_path_));
     const size_t header_size = (format_ == VectorFileFormat::kVecs ? 1 : 2) * sizeof(uint32_t);
     SCHECK_GE(file_size, header_size, IOError,
@@ -264,6 +263,13 @@ class VectorFileReader : public VectorSource<Vector> {
     FATAL_INVALID_ENUM_VALUE(VectorFileFormat, format_);
   }
 
+  void CloseFile() {
+    if (input_file_) {
+      fclose(input_file_);
+      input_file_ = nullptr;
+    }
+  }
+
   Result<uint32_t> ReadUInt32(const char* what) {
     uint32_t value;
     if (fread(&value, sizeof(uint32_t), 1, input_file_) != 1) {
@@ -281,31 +287,31 @@ class VectorFileReader : public VectorSource<Vector> {
   mutable Vector current_vector_;
 };
 
-// Determine coordinate kind by file name (.fvecs/.bvecs/.ivecs/.fbin).
-Result<CoordinateKind> GetCoordinateKindFromFileName(const std::string& file_path);
+struct VectorFileType {
+  VectorFileFormat format;
+  CoordinateKind coordinate_kind;
+};
 
-// Determine file format by file name (.fvecs/.bvecs/.ivecs/.fbin/.ibin).
-Result<VectorFileFormat> GetVectorFileFormatFromFileName(const std::string& file_path);
+// Determine file type by file name (.fvecs/.bvecs/.ivecs/.fbin/.ibin).
+Result<VectorFileType> GetVectorFileType(const std::string& file_path);
 
 template <IndexableVectorType Vector>
 Result<std::unique_ptr<VectorFileReader<Vector>>> OpenVectorFile(
     const std::string& file_path,
     const std::string& file_description = std::string()) {
-  auto reader = std::make_unique<VectorFileReader<Vector>>(
-      file_path, VERIFY_RESULT(GetVectorFileFormatFromFileName(file_path)));
+  constexpr auto kCoordinateKind = CoordinateTypeTraits<typename Vector::value_type>::kKind;
+  auto file_type = VERIFY_RESULT(GetVectorFileType(file_path));
+  if (file_type.coordinate_kind != kCoordinateKind) {
+    return STATUS_FORMAT(
+        InvalidArgument, "Expected a file with $0 coordinates, got $1 with $2 coordinates",
+        kCoordinateKind, file_path, file_type.coordinate_kind);
+  }
+  auto reader = std::make_unique<VectorFileReader<Vector>>(file_path, file_type.format);
   RETURN_NOT_OK(reader->Open());
   if (!file_description.empty()) {
     LOG(INFO) << "Opened " << file_description << ": " << reader->ToString();
   }
   return reader;
-}
-
-template <IndexableVectorType Vector>
-Result<std::vector<Vector>> LoadVectorFile(
-    const std::string& file_path,
-    const std::string& file_description = std::string()) {
-  auto reader = VERIFY_RESULT(OpenVectorFile<Vector>(file_path, file_description));
-  return reader->LoadVectors();
 }
 
 }  // namespace yb::vector_index

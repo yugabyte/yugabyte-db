@@ -25,39 +25,36 @@ std::unique_ptr<UniformRandomFloatVectorGenerator> CreateUniformRandomVectorSour
       num_vectors, dimensions, UniformRandomFloatDistribution(min_value, max_value));
 }
 
-Result<CoordinateKind> GetCoordinateKindFromFileName(const std::string& file_path) {
-  if (StringEndsWith(file_path, ".fvecs") || StringEndsWith(file_path, ".fbin")) {
-    return CoordinateKind::kFloat32;
-  }
-  if (StringEndsWith(file_path, ".bvecs")) {
-    return CoordinateKind::kUInt8;
-  }
-  if (StringEndsWith(file_path, ".ivecs")) {
-    return CoordinateKind::kInt32;
-  }
-  return STATUS_FORMAT(
-      InvalidArgument,
-      "Could not determine vector coordinate type from file name: $0. Expected a file name that "
-      "ends in one of .fvecs/.bvecs/.ivecs/.fbin.",
-      file_path);
-}
+namespace {
 
-Result<VectorFileFormat> GetVectorFileFormatFromFileName(const std::string& file_path) {
-  if (StringEndsWith(file_path, ".fvecs") || StringEndsWith(file_path, ".bvecs") ||
-      StringEndsWith(file_path, ".ivecs")) {
-    return VectorFileFormat::kVecs;
-  }
-  if (StringEndsWith(file_path, ".fbin")) {
-    return VectorFileFormat::kBin;
-  }
-  if (StringEndsWith(file_path, ".ibin")) {
-    return VectorFileFormat::kBinGroundTruth;
+struct VectorFileExtension {
+  const char* extension;
+  VectorFileType type;
+};
+
+constexpr VectorFileExtension kVectorFileExtensions[] = {
+  {".fvecs", {VectorFileFormat::kVecs, CoordinateKind::kFloat32}},
+  {".bvecs", {VectorFileFormat::kVecs, CoordinateKind::kUInt8}},
+  {".ivecs", {VectorFileFormat::kVecs, CoordinateKind::kInt32}},
+  {".fbin", {VectorFileFormat::kBin, CoordinateKind::kFloat32}},
+  {".ibin", {VectorFileFormat::kBinGroundTruth, CoordinateKind::kInt32}},
+};
+
+}  // namespace
+
+Result<VectorFileType> GetVectorFileType(const std::string& file_path) {
+  std::string extensions;
+  for (const auto& [extension, type] : kVectorFileExtensions) {
+    if (StringEndsWith(file_path, extension)) {
+      return type;
+    }
+    extensions += (extensions.empty() ? "" : "/") + std::string(extension);
   }
   return STATUS_FORMAT(
       InvalidArgument,
-      "Could not determine vector file format from file name: $0. Expected a file name that "
-      "ends in one of .fvecs/.bvecs/.ivecs/.fbin/.ibin.",
-      file_path);
+      "Could not determine vector file type from file name: $0. Expected a file name that ends "
+      "in one of $1.",
+      file_path, extensions);
 }
 
 }  // namespace yb::vector_index

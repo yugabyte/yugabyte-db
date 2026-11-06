@@ -269,8 +269,8 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
       (OPTIONAL_ARG_FIELD(ground_truth_path),
        "Input file containing integer vectors of correct nearest neighbor vector identifiers "
        "(0-based in the input dataset) for each query, in the ivecs format or the "
-       "big-ann-benchmarks ibin ground truth format (identifiers followed by distances). Rows "
-       "beyond the queries used are ignored.")
+       "big-ann-benchmarks ibin ground truth format (identifiers followed by distances). Needs a "
+       "record per query, or only per query used when --num_validation_queries limits them.")
       ("k", po::value(&args.k_values_comma_sep)->default_value(
           args.k_values_comma_sep),
        "A comma-separated list of the possible numbers of results k to retrieve with each "
@@ -383,7 +383,7 @@ Result<CoordinateKind> DetermineCoordinateKind(BenchmarkArguments& args) {
   std::optional<CoordinateKind> coordinate_kind;
   for (const std::string& file_path : {args.build_vecs_path, args.query_vecs_path}) {
     if (!file_path.empty()) {
-      auto file_coordinate_kind = VERIFY_RESULT(GetCoordinateKindFromFileName(file_path));
+      auto file_coordinate_kind = VERIFY_RESULT(GetVectorFileType(file_path)).coordinate_kind;
       if (coordinate_kind.has_value() &&
           *coordinate_kind != file_coordinate_kind) {
         return STATUS_FORMAT(
@@ -578,24 +578,21 @@ class BenchmarkTool {
           "Loading ground truth from file is only allowed when the queries are also loaded from "
           "a file.");
     }
-    if (!StringEndsWith(args_.ground_truth_path, ".ivecs") &&
-        !StringEndsWith(args_.ground_truth_path, ".ibin")) {
-      return STATUS_FORMAT(
-          InvalidArgument, "Expected a ground truth file name that ends in .ivecs or .ibin: $0",
-          args_.ground_truth_path);
-    }
     // The ground truth file contains result sets composed of 0-based vector indexes in the
     // corresponding "base" input file. Convert them to our vertex ids.
-    auto ground_truth_by_index = VERIFY_RESULT(
-        LoadVectorFile<Int32Vector>(args_.ground_truth_path, "precomputed ground truth file"));
-    if (ground_truth_by_index.size() < num_queries()) {
+    auto reader = VERIFY_RESULT(OpenVectorFile<Int32Vector>(
+        args_.ground_truth_path, "precomputed ground truth file"));
+    // One record per query, but only the queries used are needed when
+    // --num_validation_queries limits them.
+    const auto num_records = reader->num_points();
+    const bool queries_limited = num_queries() < query_vector_source_->num_points();
+    if (queries_limited ? num_records < num_queries() : num_records != num_queries()) {
       return STATUS_FORMAT(
           IllegalState,
-          "The number of provided ground truth records $0 is less than the number of queries $1.",
-          ground_truth_by_index.size(),
-          num_queries());
+          "The number of provided ground truth records $0 $1 the number of queries $2.",
+          num_records, queries_limited ? "is less than" : "does not match", num_queries());
     }
-    ground_truth_by_index.resize(num_queries());
+    auto ground_truth_by_index = VERIFY_RESULT(reader->LoadVectors(num_queries()));
     loaded_ground_truth_.clear();
     loaded_ground_truth_.reserve(ground_truth_by_index.size());
     std::unordered_set<int32_t> used_indexes;
