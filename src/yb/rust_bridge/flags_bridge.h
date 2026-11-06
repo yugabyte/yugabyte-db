@@ -11,9 +11,10 @@
 // under the License.
 
 
-// gflags access for Rust (common/yb-cpp-host/src/ffi/flags.rs, used by common/yb-flags). gflags stays the only flag registry: flags declared in
-// Rust are registered with it at startup, before the command line is parsed, so --helpxml,
-// flagfiles, /varz and SetFlag treat them like flags defined in C++.
+// gflags access for Rust (common/yb-cpp-host/src/ffi/flags.rs, used by common/yb-flags). gflags
+// stays the only flag registry: flags declared in Rust are registered with it at startup, before
+// the command line is parsed, so --helpxml, flagfiles, /varz and SetFlag treat them like flags
+// defined in C++.
 
 #pragma once
 

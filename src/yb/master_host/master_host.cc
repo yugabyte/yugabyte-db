@@ -1079,7 +1079,8 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
         request, [](const auto& req, auto*) -> Status {
           SCHECK_PB_FIELDS_NOT_EMPTY(req, entry_type);
           SCHECK_PB_FIELDS_SET(req, op_type);
-          return STATUS(IllegalState, "Updating sys_catalog is only allowed in emergency repair mode");
+          return STATUS(
+              IllegalState, "Updating sys_catalog is only allowed in emergency repair mode");
         });
   }
   throw std::runtime_error("The host does not serve " + name);

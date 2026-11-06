@@ -271,8 +271,8 @@ message TSHeartbeatRequestPB {
   optional LiveTServersVersionPB live_tservers_version = 25;
 }
 
-// Identifies one live tserver list sent by a master leader. The term makes a version from an earlier
-// leader never match.
+// Identifies one live tserver list sent by a master leader. The term makes a version from an
+// earlier leader never match.
 message LiveTServersVersionPB {
   optional int64 term = 1;
   optional uint64 counter = 2;

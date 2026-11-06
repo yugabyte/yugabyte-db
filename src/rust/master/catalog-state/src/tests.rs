@@ -541,11 +541,11 @@ proptest! {
                         let id = format!("t{t}");
                         writer
                             .mutate(&token, |snapshot| {
-                                let version = snapshot
-                                    .get(SysRowEntryType::TABLE, id.as_bytes())
+                                let current = snapshot.get(SysRowEntryType::TABLE, id.as_bytes());
+                                let version = current
                                     .and_then(|e| e.table().map(|t| t.schema_version))
                                     .unwrap_or(0);
-                                let base = match snapshot.get(SysRowEntryType::TABLE, id.as_bytes()) {
+                                let base = match current {
                                     Some(e) => Mutation::new().read(e),
                                     None => Mutation::new()
                                         .read_absent(SysRowEntryType::TABLE, id.as_bytes()),

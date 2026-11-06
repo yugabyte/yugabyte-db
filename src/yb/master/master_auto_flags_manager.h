@@ -46,9 +46,10 @@ YB_DEFINE_ENUM(PromoteAutoFlagsOutcome, (kNoFlagsPromoted)(kNewFlagsPromoted));
 // ProcessAutoFlagsConfigOperation on all master (including leader).
 class MasterAutoFlagsManager : public AutoFlagsManagerBase {
  public:
-  // `master` is null in the Rust master's host (src/yb/master_host), which uses only the parts every
-  // master runs: Init, LoadFromMasterLeader and ProcessAutoFlagsConfigOperation on Raft apply.
-  // Promotion and config changes need the C++ master leader and return NotSupported without it.
+  // `master` is null in the Rust master's host (src/yb/master_host), which uses only the parts
+  // every master runs: Init, LoadFromMasterLeader and ProcessAutoFlagsConfigOperation on Raft
+  // apply. Promotion and config changes need the C++ master leader and return NotSupported without
+  // it.
   MasterAutoFlagsManager(server::Clock* clock, FsManager* fs_manager, Master* master);
 
   virtual ~MasterAutoFlagsManager() {}

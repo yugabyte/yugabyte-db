@@ -326,7 +326,8 @@ impl TsManager {
         self.bump_membership();
     }
 
-    /// Whether CDC streams exist or existed while this process led (`xcluster_enabled_on_producer`).
+    /// Whether CDC streams exist or existed while this process led
+    /// (`xcluster_enabled_on_producer`).
     pub fn cdc_enabled(&self, snapshot: &CatalogSnapshot) -> bool {
         if !self.cdc_enabled.load(Ordering::Relaxed)
             && snapshot.count(SysRowEntryType::CDC_STREAM) > 0

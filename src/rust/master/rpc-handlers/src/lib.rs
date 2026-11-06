@@ -18,9 +18,9 @@
 //! when the tserver's is older.
 //!
 //! On a ready Rust leader (`TEST_rust_master_allow_leadership`), the core methods in
-//! `MasterServiceHandler::leader_call` are served from the catalog; other leader methods answer `NotSupported`
-//! naming the workstream that serves them. Elsewhere every leader method gets `NOT_THE_LEADER`,
-//! which makes clients rerun leader discovery.
+//! `MasterServiceHandler::leader_call` are served from the catalog; other leader methods answer
+//! `NotSupported` naming the workstream that serves them. Elsewhere every leader method gets
+//! `NOT_THE_LEADER`, which makes clients rerun leader discovery.
 //!
 //! Not served yet, though C++ serves them on every master: `DumpState` (yb-admin
 //! dump_masters_state), and the test-only `TestRetry` and `AccessYsqlBackendsManagerTestRegister`.

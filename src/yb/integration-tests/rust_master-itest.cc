@@ -622,8 +622,9 @@ TEST_F(RustMasterTest, TserverSimulator) {
   ASSERT_EQ(tservers.size(), cluster_->num_tablet_servers() + kFakeTservers);
 }
 
-// The Rust follower's in-memory catalog, built from the apply stream, equals the C++ leader's sys catalog row for row after randomized DDL, a snapshot schedule and a
-// PITR restore (which reloads the catalog).
+// The Rust follower's in-memory catalog, built from the apply stream, equals the C++ leader's sys
+// catalog row for row after randomized DDL, a snapshot schedule and a PITR restore (which reloads
+// the catalog).
 TEST_F(RustMasterTest, FollowerCatalogMatchesRandomWorkload) {
   const auto rust_index = ASSERT_RESULT(RestartFollowerAsRust(
       {{"rust_master_catalog_self_check_interval_ms", "1000"}}));
