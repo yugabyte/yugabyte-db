@@ -657,18 +657,22 @@ Status MiniCluster::StepDownMasterLeaderAndWaitForNewLeader(
     if (VERIFY_RESULT(leader_moved())) {
       return true;
     }
+    const auto stepped_down_uuid = VERIFY_RESULT(GetLeaderMiniMaster())->permanent_uuid();
     auto result = StepDownMasterLeader(new_leader_uuid);
     if (!result.ok()) {
       LOG(INFO) << "Master leader step down failed, retrying: " << result.status();
       return false;
     }
-    // Transfer to the protege is asynchronous, give it time before stepping down again.
-    auto status = WaitFor(leader_moved, 10s * kTimeMultiplier, "Wait for master leader to move");
+    // Transfer is asynchronous; wait only until leadership leaves the stepped down master, the
+    // outer loop retries if another master won.
+    auto status = WaitFor([&]() -> Result<bool> {
+      return VERIFY_RESULT(GetLeaderMiniMaster())->permanent_uuid() != stepped_down_uuid;
+    }, 10s * kTimeMultiplier, "Wait for master leader to move");
     if (!status.ok()) {
       LOG(INFO) << status;
       return false;
     }
-    return true;
+    return leader_moved();
   }, timeout, Format("Step down master leader to $0", new_leader_uuid));
 }
 
