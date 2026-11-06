@@ -179,7 +179,8 @@ KIWI_API static inline int kiwi_be_read_password(char *data, uint32_t size,
 		return -1;
 	if (kiwi_unlikely(header->type != KIWI_FE_PASSWORD_MESSAGE))
 		return -1;
-	if (len > PQ_SMALL_MESSAGE_LIMIT)
+	/* YB: Check against PG_MAX_AUTH_TOKEN_LENGTH */
+	if (len > PG_MAX_AUTH_TOKEN_LENGTH - sizeof(uint32_t))
 		return -1;
 	pw->password_len = len;
 	pw->password = malloc(len);

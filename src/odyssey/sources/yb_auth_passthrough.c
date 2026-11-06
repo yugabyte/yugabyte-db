@@ -273,7 +273,7 @@ static int yb_forward_auth_pkt_client_to_server(od_client_t *client,
 	/* Wait for password response packet from the client. */
 	uint64_t start_ts = machine_time_us();
 	while (true) {
-		msg = od_read(&client->io, login_timeout_ms);
+		msg = yb_od_read_auth(&client->io, login_timeout_ms);
 
 		/*
 		 * YB: Unconditionally exit if the client has not given a relevant
