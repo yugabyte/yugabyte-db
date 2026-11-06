@@ -101,7 +101,8 @@ YB_DEFINE_ENUM(SegmentOpIdRelation,
     (kOpIdIsInsideAndNotLast)
     // OpId corresponds to the last operation in the segment
     (kOpIdIsLast)
-    // OpId is after the segment
+    // Segment holds nothing past OpId: copy it whole and continue. OpId can still be the segment's
+    // last entry when this is decided from the footer.
     (kOpIdAfterSegment)
 );
 
@@ -387,6 +388,11 @@ class Log : public RefCountedThreadSafe<Log> {
 
   Status TEST_SubmitFuncToAppendToken(const std::function<void()>& func);
 
+  // Number of segments GetSegmentOpIdRelation has read in full.
+  size_t TEST_NumSegmentOpIdRelationReads() const {
+    return num_segment_op_id_relation_reads_.load(std::memory_order_acquire);
+  }
+
   // Returns the number of segments.
   size_t num_segments() const;
 
@@ -417,7 +423,8 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Copies log to a new dir. Expects dest_wal_dir to be absent.
   // If max_included_op_id is specified - only part of the log up to and including
-  // max_included_op_id is copied.
+  // max_included_op_id is copied. max_included_op_id must be committed: GetSegmentOpIdRelation
+  // relies on no later entry having an index <= max_included_op_id.index.
   // Flushes necessary files and uses hard links where it is safe.
   // The quiescent marker, if any, is copied with dest_tablet_id.
   Status CopyTo(
@@ -665,7 +672,8 @@ class Log : public RefCountedThreadSafe<Log> {
   WritableFileOptions GetNewSegmentWritableFileOptions();
 
   // See SegmentOpIdRelation comments.
-  // Returns SegmentOpIdRelation::kOpIdAfterSegment if op_id is not valid or empty.
+  // Returns SegmentOpIdRelation::kOpIdAfterSegment if op_id is not valid or empty, or if the
+  // footer shows no entry with an index above op_id.index (op_id must be committed).
   // Note: this function can potentially read all entries from WAL segment that might a large amount
   // of data.
   Result<SegmentOpIdRelation> GetSegmentOpIdRelation(
@@ -857,6 +865,8 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // The cached on-disk size of the log, used to track its size even if it has been closed.
   std::atomic<uint64_t> on_disk_size_;
+
+  std::atomic<size_t> num_segment_op_id_relation_reads_{0};
 
   // Listener that will be invoked after new entry was appended to the log.
   std::function<void()> post_append_listener_;
