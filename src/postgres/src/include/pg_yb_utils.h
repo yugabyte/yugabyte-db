@@ -1559,6 +1559,9 @@ bool		YbIsColumnPartOfKey(Relation rel, const char *column_name);
 /* Get a relation's split options. */
 YbOptSplit *YbGetSplitOptions(Relation rel);
 
+/* Convert a split point value into the A_Const of a SPLIT AT VALUES clause. */
+Node	   *YbSplitValueToNode(Datum value, Oid typid);
+
 /*
  * Convert split_points List to a string representation.
  * The format is "((val1, val2), (val3, val4), ...)" where each inner
@@ -1684,6 +1687,7 @@ extern bool YbIsIocPushdownEnabled(OnConflictAction action);
 
 extern void YbRelationSetNewRelfileNode(Relation rel, Oid relfileNodeId,
 										bool yb_copy_split_options,
+										YbOptSplit *split_options,
 										bool is_truncate);
 
 extern Relation YbGetRelationWithOverwrittenReplicaIdentity(Oid relid,
