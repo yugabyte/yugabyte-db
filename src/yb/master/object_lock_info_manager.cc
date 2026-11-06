@@ -30,6 +30,8 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/common/ysql_operation_lease.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
@@ -620,9 +622,9 @@ class UpdateTServer : public RetrySpecificTSRpcTask {
   // Completes this task without an RPC if the tserver has lost its lease since the last attempt.
   bool SkipTServerWithoutLiveLease();
 
-  // A dead tserver is noticed only when an attempt finishes, so cap the wait at the first cleanup
-  // poll after its lease deadline, when the master will have marked the lease lost. Otherwise the
-  // backoff can leave the lock request waiting up to retrying_ts_rpc_max_delay_ms after that.
+  // The lease is checked only when an attempt starts or finishes, never when the cleanup poll marks
+  // it lost. Without a cap, the task can sleep through the loss for up to
+  // retrying_ts_rpc_max_delay_ms, so wake by the first cleanup poll after the lease deadline.
   int max_delay_ms() override;
 
   StdStatusCallback callback_;
@@ -945,12 +947,7 @@ bool ObjectLockInfoManager::Impl::IsDdlVerificationInProgress(const TransactionI
 }
 
 bool ObjectLockInfoManager::Impl::TabletServerHasLiveLease(const std::string& ts_uuid) const {
-  LockGuard lock(mutex_);
-  auto it = object_lock_infos_map_.find(ts_uuid);
-  if (it == object_lock_infos_map_.end()) {
-    return false;
-  }
-  return it->second->LockForRead()->pb.lease_info().live_lease();
+  return LiveLeaseDeadline(ts_uuid).has_value();
 }
 
 std::optional<MonoTime> ObjectLockInfoManager::Impl::LiveLeaseDeadline(
@@ -2484,15 +2481,16 @@ int UpdateTServer<Req, Resp>::max_delay_ms() {
   // Keeps a delay past the lease deadline from failing the task as timed out, and from a burst of
   // retries while the cleanup poll catches up.
   constexpr int64_t kMinDelayMs = 1000;
-  const int64_t cap_ms = FLAGS_retrying_ts_rpc_max_delay_ms;
+  const int cap_ms = FLAGS_retrying_ts_rpc_max_delay_ms;
   auto lease_deadline = shared_all_tservers_->LiveLeaseDeadline(permanent_uuid_);
   if (!lease_deadline) {
-    return static_cast<int>(cap_ms);
+    return cap_ms;
   }
   const auto lease_lost_by =
       *lease_deadline + MonoDelta::FromMilliseconds(FLAGS_object_lock_cleanup_interval_ms);
   const auto ms_until_lease_lost = lease_lost_by.GetDeltaSince(MonoTime::Now()).ToMilliseconds();
-  return static_cast<int>(std::min(cap_ms, std::max(ms_until_lease_lost, kMinDelayMs)));
+  return narrow_cast<int>(
+      std::min<int64_t>(cap_ms, std::max(ms_until_lease_lost, kMinDelayMs)));
 }
 
 template <class Req, class Resp>

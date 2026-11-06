@@ -1179,10 +1179,24 @@ TEST_F(ObjectLockTest, AcquireSkipsDeadTServerSoonAfterLeaseLoss) {
   const auto kLeaseTTL = MonoDelta::FromSeconds(18);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ysql_operation_lease_ttl_ms) =
       kLeaseTTL.ToMilliseconds();
-  // Let every tserver refresh its lease under the new TTL.
-  SleepFor(MonoDelta::FromMilliseconds(4 * kDefaultYSQLLeaseRefreshIntervalMilli));
 
   const auto dead_ts_uuid = TSUuid(0);
+  auto* object_lock_info_manager =
+      cluster_->mini_master()->master()->catalog_manager_impl()->object_lock_info_manager();
+  // Isolating TS 0 before it refreshes under the new TTL would lose its lease before the backoff
+  // grows, and the test would pass without the fix.
+  ASSERT_OK(WaitFor(
+      [&] {
+        auto lease_infos = object_lock_info_manager->GetLeaseInfos();
+        auto it = lease_infos.find(dead_ts_uuid);
+        return it != lease_infos.end() &&
+               it->second.time_to_lease_deadline >
+                   MonoDelta::FromMilliseconds(kDefaultMasterYSQLLeaseTTLMilli);
+      },
+      kTimeout, "Waiting for TS 0 to refresh its lease under the new TTL"));
+
+  // Only TS 0 loses its lease in this test.
+  StringWaiterLogSink lease_lost_waiter("has just lost its lease");
   // Not Shutdown(): that relinquishes the lease, and the master drops the tserver right away.
   LOG(INFO) << "Isolating tablet server " << dead_ts_uuid;
   cluster_->mini_tablet_server(0)->Isolate();
@@ -1193,7 +1207,7 @@ TEST_F(ObjectLockTest, AcquireSkipsDeadTServerSoonAfterLeaseLoss) {
       /* clock */ nullptr, /* deadline */ std::nullopt, 60s * kTimeMultiplier);
 
   const auto lease_timeout = kLeaseTTL + MonoDelta(10s * kTimeMultiplier);
-  ASSERT_OK(WaitForTServerLeaseToExpire(dead_ts_uuid, lease_timeout));
+  ASSERT_OK(lease_lost_waiter.WaitFor(lease_timeout));
   ASSERT_EQ(future.wait_for(5s * kTimeMultiplier), std::future_status::ready)
       << "The global lock should not wait on the dead tserver once its lease is lost";
   ASSERT_OK(future.get());
