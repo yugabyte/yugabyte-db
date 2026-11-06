@@ -55,7 +55,7 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     setCheckNodesAreSafeToTakeDown(mockClient);
     lenient()
         .when(mockYBClient.getServerVersion(any(), anyString(), anyInt()))
-        .thenReturn(Optional.of("old-version"));
+        .thenReturn(Optional.of(YB_SOFTWARE_VERSION_OLD));
     this.rollbackKubernetesUpgrade =
         new RollbackKubernetesUpgrade(
             mockBaseTaskDependencies, mockSoftwareUpgradeHelper, mockOperatorStatusUpdaterFactory);
@@ -68,10 +68,10 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     UniverseDefinitionTaskParams.PrevYBSoftwareConfig ybSoftwareConfig =
         new UniverseDefinitionTaskParams.PrevYBSoftwareConfig();
     ybSoftwareConfig.setAutoFlagConfigVersion(1);
-    ybSoftwareConfig.setSoftwareVersion("old-version");
+    ybSoftwareConfig.setSoftwareVersion(YB_SOFTWARE_VERSION_OLD);
     TestHelper.updateUniversePrevSoftwareConfig(defaultUniverse, ybSoftwareConfig);
     TestHelper.updateUniverseIsRollbackAllowed(defaultUniverse, true);
-    TestHelper.updateUniverseVersion(defaultUniverse, "new-version");
+    TestHelper.updateUniverseVersion(defaultUniverse, YB_SOFTWARE_VERSION_NEW);
     RollbackUpgradeParams taskParams = new RollbackUpgradeParams();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = -1;
@@ -98,10 +98,10 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     UniverseDefinitionTaskParams.PrevYBSoftwareConfig ybSoftwareConfig =
         new UniverseDefinitionTaskParams.PrevYBSoftwareConfig();
     ybSoftwareConfig.setAutoFlagConfigVersion(1);
-    ybSoftwareConfig.setSoftwareVersion("old-version");
+    ybSoftwareConfig.setSoftwareVersion(YB_SOFTWARE_VERSION_OLD);
     TestHelper.updateUniversePrevSoftwareConfig(defaultUniverse, ybSoftwareConfig);
     TestHelper.updateUniverseIsRollbackAllowed(defaultUniverse, true);
-    TestHelper.updateUniverseVersion(defaultUniverse, "new-version");
+    TestHelper.updateUniverseVersion(defaultUniverse, YB_SOFTWARE_VERSION_NEW);
 
     ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
@@ -131,7 +131,7 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
         .getPodInfos(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedNamespace.capture());
 
-    assertEquals("old-version", expectedYbSoftwareVersion.getValue());
+    assertEquals(YB_SOFTWARE_VERSION_OLD, expectedYbSoftwareVersion.getValue());
     assertEquals(config, expectedConfig.getValue());
     assertEquals(NODE_PREFIX, expectedNodePrefix.getValue());
     assertEquals(NODE_PREFIX, expectedNamespace.getValue());
@@ -152,10 +152,10 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     UniverseDefinitionTaskParams.PrevYBSoftwareConfig ybSoftwareConfig =
         new UniverseDefinitionTaskParams.PrevYBSoftwareConfig();
     ybSoftwareConfig.setAutoFlagConfigVersion(1);
-    ybSoftwareConfig.setSoftwareVersion("old-version");
+    ybSoftwareConfig.setSoftwareVersion(YB_SOFTWARE_VERSION_OLD);
     TestHelper.updateUniversePrevSoftwareConfig(defaultUniverse, ybSoftwareConfig);
     TestHelper.updateUniverseIsRollbackAllowed(defaultUniverse, true);
-    TestHelper.updateUniverseVersion(defaultUniverse, "new-version");
+    TestHelper.updateUniverseVersion(defaultUniverse, YB_SOFTWARE_VERSION_NEW);
 
     ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
@@ -184,7 +184,7 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
         .getPodInfos(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedNamespace.capture());
 
-    assertEquals("old-version", expectedYbSoftwareVersion.getValue());
+    assertEquals(YB_SOFTWARE_VERSION_OLD, expectedYbSoftwareVersion.getValue());
     assertEquals(config, expectedConfig.getValue());
     assertTrue(expectedNodePrefix.getValue().contains(NODE_PREFIX));
     assertTrue(expectedNamespace.getValue().contains(NODE_PREFIX));
@@ -214,9 +214,6 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     TestHelper.updateUniversePrevSoftwareConfig(defaultUniverse, ybSoftwareConfig);
     TestHelper.updateUniverseIsRollbackAllowed(defaultUniverse, true);
     TestHelper.updateUniverseVersion(defaultUniverse, YB_SOFTWARE_VERSION_NEW);
-    lenient()
-        .when(mockYBClient.getServerVersion(any(), anyString(), anyInt()))
-        .thenReturn(Optional.of(YB_SOFTWARE_VERSION_OLD));
     when(mockSoftwareUpgradeHelper.isYsqlMajorVersionUpgradeRequired(
             any(), anyString(), anyString()))
         .thenReturn(true);
@@ -245,10 +242,10 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     UniverseDefinitionTaskParams.PrevYBSoftwareConfig ybSoftwareConfig =
         new UniverseDefinitionTaskParams.PrevYBSoftwareConfig();
     ybSoftwareConfig.setAutoFlagConfigVersion(1);
-    ybSoftwareConfig.setSoftwareVersion("old-version");
+    ybSoftwareConfig.setSoftwareVersion(YB_SOFTWARE_VERSION_OLD);
     TestHelper.updateUniversePrevSoftwareConfig(defaultUniverse, ybSoftwareConfig);
     TestHelper.updateUniverseIsRollbackAllowed(defaultUniverse, true);
-    TestHelper.updateUniverseVersion(defaultUniverse, "new-version");
+    TestHelper.updateUniverseVersion(defaultUniverse, YB_SOFTWARE_VERSION_NEW);
 
     UUID staleAz = defaultUniverse.getNodes().iterator().next().azUuid;
     when(mockYBClient.getServerVersion(any(), anyString(), anyInt()))
@@ -256,8 +253,8 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
             invocation ->
                 Optional.of(
                     isNodeInAz(invocation.getArgument(1), staleAz)
-                        ? "new-version"
-                        : "old-version"));
+                        ? YB_SOFTWARE_VERSION_NEW
+                        : YB_SOFTWARE_VERSION_OLD));
 
     RollbackUpgradeParams taskParams = new RollbackUpgradeParams();
     TaskInfo taskInfo = submitTask(taskParams);
@@ -276,7 +273,7 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
         SoftwareUpgradeState.RollbackFailed,
         defaultUniverse.getUniverseDetails().softwareUpgradeState);
     assertEquals(
-        "new-version",
+        YB_SOFTWARE_VERSION_NEW,
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
   }
 }
