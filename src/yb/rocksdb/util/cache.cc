@@ -763,9 +763,10 @@ size_t LRUCache::Evict(size_t required) {
   LRUHandleDeleter evicted(metrics_.get());
   {
     absl::MutexLock l(&mutex_);
-    EvictFromLRU(required, &evicted, SINGLE_TOUCH);
-    if (required > evicted.TotalCharge()) {
-      EvictFromLRU(required, &evicted, MULTI_TOUCH);
+    for (auto* sub_cache : {&single_touch_sub_cache_, &multi_touch_sub_cache_}) {
+      while (evicted.TotalCharge() < required && !sub_cache->IsLRUEmpty()) {
+        EvictLRUHead(sub_cache, &evicted);
+      }
     }
   }
   return evicted.TotalCharge();

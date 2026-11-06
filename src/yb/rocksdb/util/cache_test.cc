@@ -924,6 +924,40 @@ TEST_F(CacheTest, SingleTouchOverflowDisabled) {
   AssertCacheSizes(cache.get(), 2, 8);
 }
 
+TEST_F(CacheTest, EvictNotFull) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_single_touch_ratio) = 0.2;
+  std::shared_ptr<Cache> cache = NewLRUCache(10, 0);
+
+  for (int i = 0; i < 9; ++i) {
+    ASSERT_OK(InsertIntoCache(cache, i /* key */, i /* value */));
+  }
+  for (int i = 0; i < 4; ++i) {
+    Cache::Handle* h = cache->Lookup(ToString(i), 100 /* query_id */);
+    ASSERT_NE(h, nullptr);
+    cache->Release(h);
+  }
+  AssertCacheSizes(cache.get(), 5, 4);
+
+  // Evict releases the requested amount even though the cache has room for it, taking the oldest
+  // single-touch entries first and then the oldest multi-touch entries.
+  ASSERT_EQ(cache->Evict(1), 1U);
+  AssertCacheSizes(cache.get(), 4, 4);
+  ASSERT_EQ(cache->Evict(6), 6U);
+  AssertCacheSizes(cache.get(), 0, 2);
+
+  // Pinned entries are not evicted.
+  std::vector<Cache::Handle*> handles;
+  for (int i = 2; i < 4; ++i) {
+    handles.push_back(cache->Lookup(ToString(i), 100 /* query_id */));
+    ASSERT_NE(handles.back(), nullptr);
+  }
+  ASSERT_EQ(cache->Evict(5), 0U);
+  for (auto* h : handles) {
+    cache->Release(h);
+  }
+  AssertCacheSizes(cache.get(), 0, 2);
+}
+
 }  // namespace rocksdb
 
 int main(int argc, char** argv) {
