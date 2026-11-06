@@ -258,6 +258,19 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void ApplyTServerListUpdate(const master::TServerListUpdatePB& update) EXCLUDES(lock_);
   uint64_t tserver_list_version() const EXCLUDES(lock_);
   std::vector<KnownTServer> GetKnownTServers() const EXCLUDES(lock_);
+
+  // The master leader as of the last successful heartbeat and the outcome of the last attempt;
+  // the connectivity poller reports them.
+  struct MasterHeartbeatInfo {
+    std::string uuid;
+    HostPort host_port;
+    MonoTime time;
+    MonoDelta rtt;
+    Status last_failure;
+  };
+  void SetMasterHeartbeatInfo(MasterHeartbeatInfo info) EXCLUDES(lock_);
+  void SetMasterHeartbeatFailure(Status status) EXCLUDES(lock_);
+  MasterHeartbeatInfo GetMasterHeartbeatInfo() const EXCLUDES(lock_);
   Result<YSQLLeaseInfo> GetYSQLLeaseInfo() const override;
 
   // Conditionally restart PG: while the persistence gate is enforced and this TServer holds no
@@ -630,9 +643,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   int64_t master_config_index_;
 
   // Tservers the master knows, keyed by uuid, at tserver_list_version_. The heartbeater sends
-  // the version and applies the delta.
+  // the version and applies the delta; the connectivity poller reads the result.
   std::unordered_map<std::string, KnownTServer> known_tservers_ GUARDED_BY(lock_);
   uint64_t tserver_list_version_ GUARDED_BY(lock_) = 0;
+  MasterHeartbeatInfo master_heartbeat_info_ GUARDED_BY(lock_);
 
   // Map of 'RemoteTablerServer' shared ptrs keyed by the corresponding tsever uuid. This is used
   // to obtain a proxy handle to the local/remote tserver. It holds the alive entries of
@@ -640,7 +654,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::unordered_map<std::string, client::internal::RemoteTabletServerPtr>
       remote_tservers_ GUARDED_BY(lock_);
 
-  // Lock to protect known_tservers_, cluster_uuid_.
+  // Lock to protect known_tservers_, master_heartbeat_info_, cluster_uuid_.
   mutable rw_spinlock lock_;
 
   // Proxy to call this tablet server locally.
