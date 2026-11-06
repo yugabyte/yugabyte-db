@@ -36,12 +36,14 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.ProxyConfig;
 import com.yugabyte.yw.models.helpers.StateTransitionDetails;
+import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TransactionUtil;
 import io.ebean.DB;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.SqlQuery;
+import io.ebean.SqlRow;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.Transactional;
 import io.ebean.annotation.TxIsolation;
@@ -387,6 +389,39 @@ public class Universe extends Model {
    * parsing their details. For jobs that go over all universes and load each one when they process
    * it.
    */
+  /**
+   * Returns whether the universe is busy with a task, as {@link
+   * UniverseDefinitionTaskParams#isUniverseBusyByTask()} does, reading only the two fields that
+   * decide it rather than loading and parsing the universe details. Empty if the universe doesn't
+   * exist or has no details.
+   */
+  public static Optional<Boolean> isUniverseBusyByTask(UUID universeUUID) {
+    SqlRow row =
+        DB.sqlQuery(
+                "select json_typeof(universe_details_json::json) = 'object' as has_details,"
+                    + " (universe_details_json::json)->>'updateInProgress' as update_in_progress,"
+                    + " (universe_details_json::json)->>'updatingTask' as updating_task"
+                    + " from universe where universe_uuid = :universeUUID")
+            .setParameter("universeUUID", universeUUID)
+            .findOne();
+    if (row == null || !Boolean.TRUE.equals(row.getBoolean("has_details"))) {
+      return Optional.empty();
+    }
+    boolean updateInProgress = Boolean.parseBoolean(row.getString("update_in_progress"));
+    String updatingTaskName = row.getString("updating_task");
+    TaskType updatingTask = null;
+    if (updatingTaskName != null) {
+      try {
+        updatingTask = TaskType.valueOf(updatingTaskName);
+      } catch (IllegalArgumentException e) {
+        // An unknown task is not one of the backup tasks, so it keeps the universe busy.
+        return Optional.of(updateInProgress);
+      }
+    }
+    return Optional.of(
+        UniverseDefinitionTaskParams.isUniverseBusyByTask(updateInProgress, updatingTask));
+  }
+
   public static List<Summary> getSummaries() {
     return getSummaries(find.query().where().isNotNull("customerId"));
   }

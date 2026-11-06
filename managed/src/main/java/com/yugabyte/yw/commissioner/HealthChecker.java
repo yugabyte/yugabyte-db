@@ -1566,9 +1566,10 @@ public class HealthChecker {
 
   @VisibleForTesting
   static boolean canHealthCheckUniverse(UUID universeUUID) {
-    Optional<Universe> u = Universe.maybeGet(universeUUID);
-    UniverseDefinitionTaskParams universeDetails = u.map(Universe::getUniverseDetails).orElse(null);
-    if (universeDetails == null) {
+    // Read the current state from the database, since a task may have started since the check
+    // loaded the universe. Only the fields that tell whether it is busy are read.
+    Optional<Boolean> busyByTask = Universe.isUniverseBusyByTask(universeUUID);
+    if (busyByTask.isEmpty()) {
       log.warn(
           "Cancelling universe "
               + universeUUID
@@ -1576,9 +1577,8 @@ public class HealthChecker {
       return false;
     }
 
-    if (universeDetails.isUniverseBusyByTask()) {
-      log.warn(
-          "Cancelling universe " + u.get().getName() + " health-check, some task is in progress.");
+    if (busyByTask.get()) {
+      log.warn("Cancelling universe " + universeUUID + " health-check, some task is in progress.");
       return false;
     }
     return true;

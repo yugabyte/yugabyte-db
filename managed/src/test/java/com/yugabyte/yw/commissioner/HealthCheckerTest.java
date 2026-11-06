@@ -1120,6 +1120,41 @@ public class HealthCheckerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCanHealthCheckUniverse_LockedByBackup() {
+    Universe u = setupUniverse("univ1");
+    Universe.saveDetails(
+        u.getUniverseUUID(),
+        univ -> {
+          UniverseDefinitionTaskParams details = univ.getUniverseDetails();
+          details.updateInProgress = true;
+          details.updatingTask = TaskType.CreateBackup;
+          univ.setUniverseDetails(details);
+        });
+    assertTrue(HealthChecker.canHealthCheckUniverse(u.getUniverseUUID()));
+  }
+
+  @Test
+  public void testCanHealthCheckUniverse_LockedByOtherTask() {
+    Universe u = setupUniverse("univ1");
+    Universe.saveDetails(
+        u.getUniverseUUID(),
+        univ -> {
+          UniverseDefinitionTaskParams details = univ.getUniverseDetails();
+          details.updateInProgress = true;
+          details.updatingTask = TaskType.EditUniverse;
+          univ.setUniverseDetails(details);
+        });
+    assertFalse(HealthChecker.canHealthCheckUniverse(u.getUniverseUUID()));
+  }
+
+  @Test
+  public void testCanHealthCheckUniverse_NullDetails() {
+    Universe u = setupUniverse("univ1");
+    Universe.saveDetails(u.getUniverseUUID(), univ -> univ.setUniverseDetails(null));
+    assertFalse(HealthChecker.canHealthCheckUniverse(u.getUniverseUUID()));
+  }
+
+  @Test
   public void testCheckSingleUniverse_EmailNotSentIfMetricsOnly() throws MessagingException {
     Universe u = setupUniverse("test");
     when(mockEmailHelper.getSmtpData(defaultCustomer.getUuid()))

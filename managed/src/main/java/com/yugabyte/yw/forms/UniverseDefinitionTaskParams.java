@@ -2909,6 +2909,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   @JsonIgnore
   public boolean isUniverseBusyByTask() {
+    return isUniverseBusyByTask(updateInProgress, updatingTask);
+  }
+
+  /** Whether a universe with these update fields is busy with a task other than a backup. */
+  public static boolean isUniverseBusyByTask(boolean updateInProgress, TaskType updatingTask) {
     return updateInProgress
         && updatingTask != TaskType.BackupTable
         && updatingTask != TaskType.MultiTableBackup
