@@ -171,8 +171,13 @@ TEST_F(DebugUtilTest, TestStackTraceNoSymbolize) {
     ASSERT_GT(num_lines, 2);
     ASSERT_STR_NOT_CONTAINS(trace, "TestBody");
     // TestBody is the top frame, or the second one when GetStackTrace() reports itself first.
-    auto second_newline = trace.find('\n', trace.find('\n') + 1);
-    ASSERT_STR_CONTAINS(trace.substr(0, second_newline), "debug-util-test");
+    // Sanitizer builds collect via google::GetStackTrace(), which leaves one more frame on top.
+    const size_t num_top_frames = IsSanitizer() ? 3 : 2;
+    size_t top_end = 0;
+    for (size_t i = 0; i < num_top_frames && top_end != std::string::npos; ++i) {
+      top_end = trace.find('\n', top_end + 1);
+    }
+    ASSERT_STR_CONTAINS(trace.substr(0, top_end), "debug-util-test");
   }
 }
 
