@@ -58,7 +58,8 @@ import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
 import org.yb.client.LocatedTablet;
 import org.yb.client.TestUtils;
-import org.yb.master.MasterDdlOuterClass;
+import org.yb.client.YBClient;
+import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.pgsql.PgOutputMessageDecoder.*;
 import org.yb.util.BuildTypeUtil;
 
@@ -6476,32 +6477,25 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   }
 
   private void waitForAllTabletReplicasToBeVoters() throws Exception {
-    final int numTservers = miniCluster.getNumTServers();
+    YBClient client = miniCluster.getClient();
+    Set<HostAndPort> masterAddresses = miniCluster.getMasters().keySet();
     TestUtils.waitFor(() -> {
       try {
-        List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tables =
-            miniCluster.getClient().getTablesList(null, false, null).getTableInfoList();
-        if (tables.isEmpty()) {
-          return false;
-        }
-        for (MasterDdlOuterClass.ListTablesResponsePB.TableInfo table : tables) {
-          // Colocated children share the parent's tablet, which is checked on the parent row.
-          boolean colocatedChild = table.hasColocatedInfo()
-              && table.getColocatedInfo().hasParentTableId()
-              && !table.getColocatedInfo().getParentTableId().isEmpty();
-          List<LocatedTablet> tablets = miniCluster.getClient()
-              .openTableByUUID(table.getId().toStringUtf8())
-              .getTabletsLocations(10000);
-          if (tablets.isEmpty() && colocatedChild) {
-            continue;
-          }
-          boolean fullyReplicated = !tablets.isEmpty() && tablets.stream().allMatch(t ->
-              t.getReplicas().size() == numTservers &&
-              t.getReplicas().stream().allMatch(r -> r.getMemberType().equals("VOTER")));
-          if (!fullyReplicated) {
-            LOG.info("{}.{} is not fully replicated yet",
-                table.getNamespace().getName(), table.getName());
-            return false;
+        for (TableInfo table : client.getTablesList(null, false, null).getTableInfoList()) {
+          for (LocatedTablet tablet :
+               client.openTableByUUID(table.getId().toStringUtf8()).getTabletsLocations(10000)) {
+            List<LocatedTablet.Replica> replicas = tablet.getReplicas();
+            // The sys catalog and YCQL virtual tables are hosted by the masters.
+            boolean onMasters = replicas.stream().anyMatch(r -> r.getRpcHost() != null
+                && masterAddresses.contains(HostAndPort.fromParts(r.getRpcHost(), r.getRpcPort())));
+            int expectedReplicas =
+                onMasters ? miniCluster.getNumMasters() : miniCluster.getNumTServers();
+            if (replicas.size() != expectedReplicas ||
+                !replicas.stream().allMatch(r -> r.getMemberType().equals("VOTER"))) {
+              LOG.info("{}.{} is not voter ready yet",
+                  table.getNamespace().getName(), table.getName());
+              return false;
+            }
           }
         }
         return true;
@@ -6530,12 +6524,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
     createSlot(replApi0, slotName, "test_decoding");
 
-    try (Statement stmt = replConn0.createStatement()) {
-      // waitFor scales the replica wait by build type. The walsender has to outlast that
-      // scaled wait, or a timeout exit releases the slot lock before the kill.
-      long walSenderTimeoutMs = BuildTypeUtil.adjustTimeout(120_000L * kMultiplier) + 60_000L;
-      stmt.execute("SET wal_sender_timeout = " + walSenderTimeoutMs);
-    }
+    
 
     PGReplicationStream stream0 = replApi0.replicationStream()
         .logical()
@@ -6556,8 +6545,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         .findFirst()
         .orElseThrow(() -> new IllegalStateException(
             "Could not find tserver for host " + tserver0Host));
-    waitForAllTabletReplicasToBeVoters();
     LOG.info("Killing tserver at {} (index 0, holds the slot lock)", tserver0);
+    waitForAllTabletReplicasToBeVoters();
     miniCluster.killTabletServerOnHostPort(tserver0);
 
     miniCluster.startTServer(getTServerFlagsWithExclusiveLock());
