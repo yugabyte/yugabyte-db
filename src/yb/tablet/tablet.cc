@@ -137,7 +137,6 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-#include "yb/util/step_timer.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
@@ -411,7 +410,6 @@ DECLARE_bool(TEST_invalidate_last_change_metadata_op);
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_int32(rocksdb_level0_stop_writes_trigger);
 DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
-DECLARE_int32(tablet_snapshot_op_slow_log_threshold_ms);
 DECLARE_int64(apply_intents_task_injected_delay_ms);
 DECLARE_int64(db_block_size_bytes);
 DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
@@ -4713,31 +4711,23 @@ Status Tablet::ModifyFlushedFrontier(
     rocksdb::FrontierModificationMode mode,
     FlushFlags flags) {
   LongOperationTracker long_operation_tracker("Modify flushed frontier", 5s);
-  StepTimer timer;
-  auto log_step_times = ScopeExit([this, &timer, &frontier] {
-    // Every snapshot operation updates the flushed frontier on the Raft apply path, so this is
-    // logged like the snapshot steps in tablet_snapshots.cc.
-    if (timer.Elapsed() >=
-        MonoDelta::FromMilliseconds(FLAGS_tablet_snapshot_op_slow_log_threshold_ms)) {
-      LOG_WITH_PREFIX(INFO) << "Modify flushed frontier to " << frontier.op_id() << " " << timer;
-    } else {
-      VLOG_WITH_PREFIX(1) << "Modify flushed frontier to " << frontier.op_id() << " " << timer;
-    }
-  });
+  // Snapshot operations modify the flushed frontier on the Raft apply path, so its steps are
+  // logged like theirs.
+  auto step_start = MonoTime::Now();
   // We should always flush RocksDBs before modifying their frontiers, otherwise if we crash between
   // frontier is modified and regular DB is flushed we can lose data because of skipping ops replay
   // during local bootstrap.
-  timer.StartStep("flush");
   RETURN_NOT_OK(Flush(
       FlushMode::kSync, flags | FlushFlags::kRegular | FlushFlags::kIntents,
       rocksdb::FlushOptions::kNeverIgnore, rocksdb::FlushReason::kFlushedFrontierModification));
-  timer.StartStep("regular_db_manifest");
+  step_start = LogSnapshotStepDone(LogPrefix(), "Flushed frontier flush", step_start);
   const Status s = regular_db_->ModifyFlushedFrontier(frontier.Clone(), mode);
   if (PREDICT_FALSE(!s.ok())) {
     auto status = STATUS(IllegalState, "Failed to set flushed frontier", s.ToString());
     LOG_WITH_PREFIX(WARNING) << status;
     return status;
   }
+  step_start = LogSnapshotStepDone(LogPrefix(), "Regular DB flushed frontier write", step_start);
   {
     auto flushed_frontier = regular_db_->GetFlushedFrontier();
     const auto& consensus_flushed_frontier = *down_cast<docdb::ConsensusFrontier*>(
@@ -4784,8 +4774,8 @@ Status Tablet::ModifyFlushedFrontier(
     // It is OK to flush intents even if the regular DB is not yet flushed,
     // because it would wait for flush of regular DB if we have unflushed intents.
     // Otherwise it does not matter which flushed op id is stored.
-    timer.StartStep("intents_db_manifest");
     RETURN_NOT_OK(intents_db_->ModifyFlushedFrontier(frontier.Clone(), mode));
+    LogSnapshotStepDone(LogPrefix(), "Intents DB flushed frontier write", step_start);
   }
 
   return Status::OK();
