@@ -62,6 +62,7 @@ using namespace std::chrono_literals;
 DECLARE_bool(TEST_check_broadcast_address);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
 DECLARE_bool(TEST_skip_launch_release_request);
+DECLARE_bool(TEST_skip_marking_ysql_leases_lost);
 DECLARE_int32(heartbeat_max_failures_before_backoff);
 DECLARE_int32(retrying_ts_rpc_max_delay_ms);
 DECLARE_int32(retrying_rpc_max_jitter_ms);
@@ -1169,7 +1170,8 @@ TEST_F(ObjectLockTest, TServerLeaseExpiresBeforeExclusiveLockRequest) {
 }
 
 // A global lock waiting on a dead tserver must go ahead soon after the master marks the tserver's
-// lease lost, not at the next step of the fan-out task's retry backoff.
+// lease lost, not at the next step of the fan-out task's retry backoff. Between the lease deadline
+// and the master marking the lease lost, the task must not send the tserver more RPCs.
 TEST_F(ObjectLockTest, AcquireSkipsDeadTServerSoonAfterLeaseLoss) {
   // The test base caps the retry delay at 1s, which would exhaust the 20 attempts before the
   // lease expires. With the production 60s cap, the fan-out task to the dead tserver starts its
@@ -1195,8 +1197,14 @@ TEST_F(ObjectLockTest, AcquireSkipsDeadTServerSoonAfterLeaseLoss) {
       },
       kTimeout, "Waiting for TS 0 to refresh its lease under the new TTL"));
 
-  // Only TS 0 loses its lease in this test.
-  StringWaiterLogSink lease_lost_waiter("has just lost its lease");
+  // Hold the lease as live past its deadline, as a slow cleanup poll would.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_marking_ysql_leases_lost) = true;
+  auto se = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_marking_ysql_leases_lost) = false;
+  });
+  StringWaiterLogSink past_deadline_waiter("Lease deadline passed but the lease isn't marked lost");
+  // Only TS 0 is sent lock RPCs that fail.
+  StringWaiterLogSink rpc_failed_counter("Object Lock RPC failed");
   // Not Shutdown(): that relinquishes the lease, and the master drops the tserver right away.
   LOG(INFO) << "Isolating tablet server " << dead_ts_uuid;
   cluster_->mini_tablet_server(0)->Isolate();
@@ -1206,8 +1214,22 @@ TEST_F(ObjectLockTest, AcquireSkipsDeadTServerSoonAfterLeaseLoss) {
       &master_proxy, TSUuid(1), kTxn1, kDatabaseID, kRelationId, kLeaseEpoch,
       /* clock */ nullptr, /* deadline */ std::nullopt, 60s * kTimeMultiplier);
 
+  // Without the cap on the retry delay, the task would still be in its 16.4s backoff here.
   const auto lease_timeout = kLeaseTTL + MonoDelta(10s * kTimeMultiplier);
-  ASSERT_OK(lease_lost_waiter.WaitFor(lease_timeout));
+  ASSERT_OK(past_deadline_waiter.WaitFor(lease_timeout));
+  const auto rpc_failures_at_deadline = rpc_failed_counter.GetEventCount();
+  // Retries are 1s apart once the deadline has passed.
+  ASSERT_OK(WaitFor(
+      [&] { return past_deadline_waiter.GetEventCount() >= 3; }, kTimeout,
+      "Waiting for more retries past the lease deadline"));
+  ASSERT_EQ(rpc_failed_counter.GetEventCount(), rpc_failures_at_deadline)
+      << "No lock RPC should be sent to TS 0 after its lease deadline";
+  ASSERT_EQ(future.wait_for(0s), std::future_status::timeout)
+      << "TS 0 must not be dropped before its lease is marked lost";
+
+  StringWaiterLogSink lease_lost_waiter("has just lost its lease");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_marking_ysql_leases_lost) = false;
+  ASSERT_OK(lease_lost_waiter.WaitFor(kTimeout));
   ASSERT_EQ(future.wait_for(5s * kTimeMultiplier), std::future_status::ready)
       << "The global lock should not wait on the dead tserver once its lease is lost";
   ASSERT_OK(future.get());
