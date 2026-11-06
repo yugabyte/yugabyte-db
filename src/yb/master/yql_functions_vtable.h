@@ -25,7 +25,9 @@ class YQLFunctionsVTable : public YQLEmptyVTable {
                               const NamespaceName& namespace_name,
                               Master* const master);
  protected:
-  Schema CreateSchema() const;
+ public:
+  // Also used without an instance, to write the table's row in a new universe.
+  static Schema CreateSchema();
 };
 
 }  // namespace master

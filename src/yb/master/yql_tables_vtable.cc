@@ -93,7 +93,7 @@ Result<VTableDataPtr> YQLTablesVTable::RetrieveData(const QLReadRequestMsg& requ
   return vtable;
 }
 
-Schema YQLTablesVTable::CreateSchema() const {
+Schema YQLTablesVTable::CreateSchema() {
   SchemaBuilder builder;
   CHECK_OK(builder.AddHashKeyColumn(kKeyspaceName, QLType::Create(DataType::STRING)));
   CHECK_OK(builder.AddKeyColumn(kTableName, QLType::Create(DataType::STRING)));

@@ -17,6 +17,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use master_catalog_state::defaults::{write_default_rows, DefaultsHost, DefaultsOptions};
 use master_catalog_state::{run_materializer, self_check, Catalog, CatalogWriter, WriterOptions};
 use master_leadership::{Leadership, Phase};
 use master_rpc_handlers::{LeaderServices, MasterInfo};
@@ -109,6 +110,15 @@ static MAX_CONCURRENT_DELETE_REPLICA_RPCS_PER_TS: FlagRef<i32> =
 static MAX_LEADER_LEASE_EXPIRED_SECS: FlagRef<u32> =
     FlagRef::new("maximum_tablet_leader_lease_expired_secs");
 
+static CLUSTER_UUID: FlagRef<String> = FlagRef::new("cluster_uuid");
+static ALLOW_YCQL_ROLE_DROP: FlagRef<bool> = FlagRef::new("ycql_allow_cassandra_drop");
+
+const DEFAULTS_OPTIONS: DefaultsOptions = DefaultsOptions {
+    cluster_uuid: || CLUSTER_UUID.get(),
+    universe_uuid_check: || UNIVERSE_UUID_CHECK.get(),
+    allow_ycql_role_drop: || ALLOW_YCQL_ROLE_DROP.get(),
+};
+
 fn millis(value: i32) -> Duration {
     Duration::from_millis(value.max(0) as u64)
 }
@@ -165,6 +175,16 @@ fn retry_policy(limit_attempts: bool) -> RetryPolicy {
     }
 }
 
+/// What the core takes from the C++ host.
+pub(crate) struct HostParts {
+    /// The server's metric registry.
+    pub(crate) metrics: Arc<dyn MetricRegistry>,
+    /// What only the host can build of the default rows.
+    pub(crate) defaults: Arc<dyn DefaultsHost>,
+    /// Heartbeat response fields the host owns.
+    pub(crate) contributors: Vec<Arc<dyn HeartbeatContributor>>,
+}
+
 /// The core's components, built before the host starts so the apply tap has a sink.
 pub(crate) struct Core {
     pub(crate) catalog: Arc<Catalog>,
@@ -182,9 +202,13 @@ impl Core {
         events: ApplyEvents,
         catalog: Arc<Catalog>,
         leadership: Arc<Leadership>,
-        metrics: Arc<dyn MetricRegistry>,
-        contributors: Vec<Arc<dyn HeartbeatContributor>>,
+        host: HostParts,
     ) -> Core {
+        let HostParts {
+            metrics,
+            defaults,
+            contributors,
+        } = host;
         let _guard = runtime.enter();
         runtime.spawn(run_materializer(catalog.clone(), store.clone(), events));
         let writer = CatalogWriter::start(
@@ -201,7 +225,7 @@ impl Core {
         let ts_manager = TsManager::new(Arc::default(), ts_manager_options());
         let leader = Arc::new(LeaderServices {
             catalog: catalog.clone(),
-            writer,
+            writer: writer.clone(),
             leadership: leadership.clone(),
             ts_manager: ts_manager.clone(),
             contributors,
@@ -213,18 +237,29 @@ impl Core {
         // Ready only once the catalog reflects everything committed before the election: the
         // term's NoOp is committed (leadership checks LEADER_AND_READY), and the barrier makes
         // the materializer catch up to the tap.
+        // Then the default rows a catalog must have (K10): all of them in a new universe. They are
+        // written before Ready, as C++ writes them before setting leader_ready_term_.
         let hook_catalog = catalog.clone();
         let hook_ts_manager = ts_manager.clone();
-        leadership.add_ready_hook(Box::new(move |_term| {
+        let hook_writer = writer.clone();
+        let hook_leadership = Arc::downgrade(&leadership);
+        leadership.add_ready_hook(Box::new(move |term| {
             let catalog = hook_catalog.clone();
             let ts_manager = hook_ts_manager.clone();
+            let writer = hook_writer.clone();
+            let leadership = hook_leadership.clone();
+            let defaults = defaults.clone();
             Box::pin(async move {
                 catalog.barrier().await;
-                let snapshot = catalog.snapshot();
-                if !snapshot.loaded {
+                if !catalog.snapshot().loaded {
                     return Err(master_catalog_state::not_loaded_status());
                 }
-                ts_manager.on_leader_ready(&snapshot);
+                let leadership = leadership.upgrade().ok_or_else(|| {
+                    yb_host_api::Status::new(StatusCode::Aborted, "shutting down")
+                })?;
+                let token = leadership.catch_up_token(term)?;
+                write_default_rows(&writer, &token, &*defaults, &DEFAULTS_OPTIONS).await?;
+                ts_manager.on_leader_ready(&catalog.snapshot());
                 Ok(())
             })
         }));

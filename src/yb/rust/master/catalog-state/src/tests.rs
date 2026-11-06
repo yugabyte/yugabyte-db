@@ -730,3 +730,186 @@ async fn priority_lane_goes_first() {
     }
     assert_eq!(seen, vec!["blocker", "urgent", "normal"]);
 }
+
+mod default_rows {
+    use std::sync::Mutex;
+
+    use super::*;
+    use crate::defaults::{
+        default_rows, write_default_rows, DefaultsHost, DefaultsOptions, DEFAULT_YCQL_ROLE,
+        SECURITY_CONFIG_ID,
+    };
+    use yb_proto::pb::catalog_entity_info::SysConfigEntryPB;
+
+    /// Table ids, and ids with tablets.
+    type SystemTables = (Vec<Vec<u8>>, Vec<String>);
+
+    /// A host with one system table, "peers" in the system namespace.
+    #[derive(Default)]
+    struct FakeHost {
+        /// What the last call was given.
+        seen: Mutex<Option<SystemTables>>,
+    }
+
+    impl DefaultsHost for FakeHost {
+        fn system_table_rows(
+            &self,
+            tables: &[(Vec<u8>, Vec<u8>)],
+            tables_with_tablets: &[String],
+        ) -> Result<Vec<RowChange>, Status> {
+            *self.seen.lock().unwrap() = Some((
+                tables.iter().map(|(id, _)| id.clone()).collect(),
+                tables_with_tablets.to_vec(),
+            ));
+            if !tables.is_empty() {
+                return Ok(vec![]);
+            }
+            let mut table = SysTablesEntryPB::parse_from_bytes(&table_row("peers", 0)).unwrap();
+            table.set_namespace_id(b"00000000000000000000000000000001".to_vec());
+            Ok(vec![
+                upsert(
+                    SysRowEntryType::TABLE,
+                    "peers-id",
+                    table.write_to_bytes().unwrap(),
+                ),
+                upsert(
+                    SysRowEntryType::TABLET,
+                    "peers-tablet",
+                    tablet_row("peers-id", "", sys_tablets_entry_pb::State::RUNNING),
+                ),
+            ])
+        }
+
+        fn default_ycql_password_hash(&self) -> Result<Vec<u8>, Status> {
+            Ok(b"hash".to_vec())
+        }
+
+        fn ysql_major_version(&self) -> u32 {
+            15
+        }
+    }
+
+    const OPTIONS: DefaultsOptions = DefaultsOptions {
+        cluster_uuid: String::new,
+        universe_uuid_check: || true,
+        allow_ycql_role_drop: || true,
+    };
+
+    #[tokio::test]
+    async fn a_new_universe_gets_every_default_row_once() {
+        let (fake, events) = FakeSysCatalog::new();
+        let s = start(fake, events);
+        let (leadership, _source) = ready_for_tests(1).await;
+        let writer = CatalogWriter::start(
+            s.catalog.clone(),
+            s.fake.clone(),
+            leadership.clone(),
+            WriterOptions::default(),
+        );
+        s.catalog.barrier().await;
+        let host = FakeHost::default();
+        let token = leadership.token().unwrap();
+        write_default_rows(&writer, &token, &host, &OPTIONS)
+            .await
+            .unwrap();
+        assert_eq!(s.fake.writes(), 1, "one Raft write");
+
+        let snapshot = s.catalog.snapshot();
+        let types: Vec<i32> = snapshot.rows().map(|(t, _, _)| t).collect();
+        for (kind, count) in [
+            (SysRowEntryType::SYS_CONFIG, 3),
+            (SysRowEntryType::NAMESPACE, 3),
+            (SysRowEntryType::TABLE, 1),
+            (SysRowEntryType::TABLET, 1),
+            (SysRowEntryType::ROLE, 1),
+            (SysRowEntryType::CLUSTER_CONFIG, 1),
+            (SysRowEntryType::XCLUSTER_CONFIG, 1),
+            (SysRowEntryType::PERSISTENCE_BLOCK_MAP, 1),
+        ] {
+            assert_eq!(
+                types.iter().filter(|t| **t == kind as i32).count(),
+                count,
+                "{kind:?}"
+            );
+        }
+        let config: SysClusterConfigEntryPB = snapshot.cluster_config().unwrap().parse().unwrap();
+        assert_eq!(config.version(), 0);
+        assert_eq!(config.cluster_uuid().len(), 36);
+        assert_eq!(config.universe_uuid().len(), 36);
+        let security: SysConfigEntryPB = snapshot
+            .get(SysRowEntryType::SYS_CONFIG, SECURITY_CONFIG_ID)
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert!(security.security_config().cassandra_user_created());
+        let ysql: SysConfigEntryPB = snapshot
+            .get(SysRowEntryType::SYS_CONFIG, b"ysql-catalog-configuration")
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert!(ysql
+            .ysql_catalog_config()
+            .transactional_sys_catalog_enabled());
+        assert_eq!(
+            ysql.ysql_catalog_config()
+                .ysql_major_catalog_upgrade_info
+                .catalog_version(),
+            15
+        );
+
+        // The next term finds nothing missing; the host sees the system table and its tablet.
+        assert!(default_rows(&snapshot, &host, &OPTIONS).unwrap().is_empty());
+        assert_eq!(
+            host.seen.lock().unwrap().clone().unwrap(),
+            (vec![b"peers-id".to_vec()], vec!["peers-id".to_string()])
+        );
+
+        // A dropped default role stays dropped: its creation is recorded.
+        s.fake.apply(vec![RowChange::Delete {
+            entry_type: SysRowEntryType::ROLE,
+            id: DEFAULT_YCQL_ROLE.to_vec(),
+        }]);
+        s.catalog.barrier().await;
+        assert!(default_rows(&s.catalog.snapshot(), &host, &OPTIONS)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_existing_universe_gets_only_what_it_lacks() {
+        let (fake, events) = FakeSysCatalog::new();
+        let mut config = SysClusterConfigEntryPB::new();
+        config.set_version(7);
+        config.set_cluster_uuid("existing".into());
+        fake.apply(vec![upsert(
+            SysRowEntryType::CLUSTER_CONFIG,
+            "",
+            config.write_to_bytes().unwrap(),
+        )]);
+        let s = start(fake, events);
+        s.catalog.barrier().await;
+        let mutation = default_rows(&s.catalog.snapshot(), &FakeHost::default(), &OPTIONS).unwrap();
+        // The universe uuid is added with a new version; the cluster uuid stays.
+        let (leadership, _source) = ready_for_tests(1).await;
+        let writer = CatalogWriter::start(
+            s.catalog.clone(),
+            s.fake.clone(),
+            leadership.clone(),
+            WriterOptions::default(),
+        );
+        writer
+            .submit(&leadership.token().unwrap(), mutation)
+            .await
+            .unwrap();
+        let config: SysClusterConfigEntryPB = s
+            .catalog
+            .snapshot()
+            .cluster_config()
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert_eq!(config.version(), 8);
+        assert_eq!(config.cluster_uuid(), "existing");
+        assert!(!config.universe_uuid().is_empty());
+    }
+}

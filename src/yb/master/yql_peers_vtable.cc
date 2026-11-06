@@ -157,7 +157,7 @@ Result<VTableDataPtr> PeersVTable::RetrieveData(
   return vtable;
 }
 
-Schema PeersVTable::CreateSchema() const {
+Schema PeersVTable::CreateSchema() {
   SchemaBuilder builder;
   CHECK_OK(builder.AddHashKeyColumn(kPeer, QLType::Create(DataType::INET)));
   CHECK_OK(builder.AddColumn(kDataCenter, QLType::Create(DataType::STRING)));

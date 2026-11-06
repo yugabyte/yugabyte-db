@@ -59,7 +59,7 @@ Result<VTableDataPtr> YQLAuthRolesVTable::RetrieveData(
 }
 
 
-Schema YQLAuthRolesVTable::CreateSchema() const {
+Schema YQLAuthRolesVTable::CreateSchema() {
   SchemaBuilder builder;
   CHECK_OK(builder.AddHashKeyColumn(kRole, DataType::STRING));
   CHECK_OK(builder.AddColumn(kCanLogin, QLType::Create(DataType::BOOL)));

@@ -27,7 +27,11 @@ class YQLColumnsVTable : public YQLVirtualTable {
   Result<VTableDataPtr> RetrieveData(const QLReadRequestMsg& request) const override;
 
  protected:
-  Schema CreateSchema() const;
+ public:
+  // Also used without an instance, to write the table's row in a new universe.
+  static Schema CreateSchema();
+
+ private:
  private:
   Status PopulateColumnInformation(const Schema& schema,
                                    const std::string& keyspace_name,

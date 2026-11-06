@@ -25,7 +25,7 @@ YQLViewsVTable::YQLViewsVTable(const TableName& table_name,
     : YQLEmptyVTable(table_name, namespace_name, master, CreateSchema()) {
 }
 
-Schema YQLViewsVTable::CreateSchema() const {
+Schema YQLViewsVTable::CreateSchema() {
   SchemaBuilder builder;
   CHECK_OK(builder.AddHashKeyColumn("keyspace_name", QLType::Create(DataType::STRING)));
   CHECK_OK(builder.AddKeyColumn("view_name", QLType::Create(DataType::STRING)));

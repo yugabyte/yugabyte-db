@@ -252,9 +252,35 @@ impl Leadership {
         Ok(LeaderToken { term, pitr_count })
     }
 
+    /// A token for the ready hooks of `term`: they run while CatchingUp, after the term's NoOp is
+    /// committed and the lease is held, and some must write (a new universe's default rows)
+    /// before the term is Ready, as C++ writes them before setting `leader_ready_term_`. It stays
+    /// valid once the term is Ready.
+    pub fn catch_up_token(&self, term: i64) -> Result<LeaderToken, Status> {
+        let pitr_count = {
+            let inner = self.inner.lock().unwrap();
+            match inner.phase {
+                Phase::CatchingUp { term: current } if current == term => inner.pitr_count,
+                other => return Err(phase_status(other)),
+            }
+        };
+        let live = self.source.leader_state();
+        if live.role != PeerRole::LEADER || live.term != term {
+            self.nudge();
+            return Err(LeaderStatus::NotLeader.status());
+        }
+        if live.status != LeaderStatus::Ready {
+            return Err(live.status.status());
+        }
+        Ok(LeaderToken { term, pitr_count })
+    }
+
     /// Whether `token` is still current.
     pub fn check(&self, token: &LeaderToken) -> Result<(), Status> {
-        let current = self.token()?;
+        let current = match self.phase() {
+            Phase::CatchingUp { term } if term == token.term => self.catch_up_token(term)?,
+            _ => self.token()?,
+        };
         if current != *token {
             return Err(Status::new(
                 StatusCode::LeaderNotReadyToServe,
@@ -521,6 +547,38 @@ mod tests {
         leadership.step();
         assert_eq!(leadership.phase(), Phase::Follower);
         assert!(scope.is_cancelled());
+        assert!(leadership.check(&token).is_err());
+    }
+
+    #[tokio::test]
+    async fn hooks_write_with_a_catch_up_token() {
+        let source = FakeLeaderState::new();
+        let leadership = Leadership::new(source.clone(), || true, Arc::default());
+        let (sender, mut hook_tokens) = tokio::sync::mpsc::unbounded_channel();
+        let weak = Arc::downgrade(&leadership);
+        leadership.add_ready_hook(Box::new(move |term| {
+            let (weak, sender) = (weak.clone(), sender.clone());
+            Box::pin(async move {
+                let leadership = weak.upgrade().unwrap();
+                let token = leadership.catch_up_token(term)?;
+                // Valid while catching up, which a plain token never is.
+                leadership.check(&token)?;
+                assert!(leadership.token().is_err());
+                sender.send(token).unwrap();
+                Ok(())
+            })
+        }));
+        source.lead(3);
+        leadership.step();
+        wait_for(&leadership, |p| matches!(p, Phase::Ready { .. })).await;
+        let token = hook_tokens.recv().await.unwrap();
+        // The same token once Ready.
+        assert_eq!(leadership.token().unwrap(), token);
+        assert!(leadership.check(&token).is_ok());
+        // Not for another term, and not outside CatchingUp.
+        assert!(leadership.catch_up_token(3).is_err());
+        source.set(PeerRole::FOLLOWER, 4, LeaderStatus::NotLeader);
+        leadership.step();
         assert!(leadership.check(&token).is_err());
     }
 

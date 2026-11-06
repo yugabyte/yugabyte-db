@@ -49,7 +49,7 @@ Result<VTableDataPtr> YQLAuthResourceRolePermissionsIndexVTable::RetrieveData(
 }
 
 
-Schema YQLAuthResourceRolePermissionsIndexVTable::CreateSchema() const {
+Schema YQLAuthResourceRolePermissionsIndexVTable::CreateSchema() {
   SchemaBuilder builder;
   CHECK_OK(builder.AddHashKeyColumn(kResource, DataType::STRING));
   CHECK_OK(builder.AddColumn(kRole, QLType::Create(DataType::STRING)));

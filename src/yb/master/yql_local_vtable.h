@@ -26,8 +26,8 @@ class LocalVTable : public YQLVirtualTable {
                        Master * const master);
   Result<VTableDataPtr> RetrieveData(const QLReadRequestMsg& request) const override;
 
- private:
-  Schema CreateSchema() const;
+  // Also used without an instance, to write the table's row in a new universe.
+  static Schema CreateSchema();
 };
 
 }  // namespace master

@@ -72,7 +72,7 @@ Result<VTableDataPtr> QLTypesVTable::RetrieveData(
   return vtable;
 }
 
-Schema QLTypesVTable::CreateSchema() const {
+Schema QLTypesVTable::CreateSchema() {
   SchemaBuilder builder;
   CHECK_OK(builder.AddHashKeyColumn("keyspace_name", QLType::Create(DataType::STRING)));
   CHECK_OK(builder.AddKeyColumn("type_name", QLType::Create(DataType::STRING)));

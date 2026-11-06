@@ -33,6 +33,11 @@ live Raft state, so a lapsed lease is seen on the next call rather than the next
 refuses a mutation whose token is not current; the Raft write also carries the term, so a write
 from a deposed leader fails even if it passed the token check.
 
+`catch_up_token(term)` gives the ready hooks a token while the term is CatchingUp, once its NoOp
+is committed and the lease is held, so a hook can write before the term is Ready (a new
+universe's default rows, as C++ writes them before setting `leader_ready_term_`). `check` accepts
+it while the term catches up, and it equals the Ready token afterwards.
+
 ## Readiness errors
 
 `token()` fails with what `ScopedLeaderSharedLock` reports, which handlers put in

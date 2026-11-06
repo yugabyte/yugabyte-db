@@ -2135,12 +2135,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status PrepareSysCatalogTable(const LeaderEpoch& epoch) REQUIRES(mutex_);
 
-  template <class T>
-  Status PrepareSystemTableTemplate(const TableName& table_name,
-                                    const NamespaceName& namespace_name,
-                                    const NamespaceId& namespace_id,
-                                    const LeaderEpoch& epoch) REQUIRES(mutex_);
-
   Status PrepareSystemTable(const TableName& table_name,
                             const NamespaceName& namespace_name,
                             const NamespaceId& namespace_id,

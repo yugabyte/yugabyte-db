@@ -133,6 +133,7 @@ set(MASTER_SRCS
   sys_catalog_initialization.cc
   sys_catalog_writer.cc
   system_tablet.cc
+  system_tables.cc
   table_index.cc
   tablet_creation_limits.cc
   tablet_health_manager.cc

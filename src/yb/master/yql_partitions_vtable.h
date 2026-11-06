@@ -77,7 +77,11 @@ class YQLPartitionsVTable : public YQLVirtualTable {
   Status InsertTabletIntoRowUnlocked(const TabletData& tablet, qlexpr::QLRow* row,
       const std::unordered_map<std::string, InetAddress>& dns_results) const;
 
-  Schema CreateSchema() const;
+ public:
+  // Also used without an instance, to write the table's row in a new universe.
+  static Schema CreateSchema();
+
+ private:
 
   mutable std::shared_timed_mutex mutex_;
   mutable VTableDataPtr cache_ GUARDED_BY(mutex_);

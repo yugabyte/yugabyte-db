@@ -17,6 +17,7 @@ master-catalog-entity.workspace = true
 master-leadership.workspace = true
 master-sys-catalog.workspace = true
 protobuf.workspace = true
+rand.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 yb-host-api.workspace = true

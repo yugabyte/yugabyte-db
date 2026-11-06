@@ -223,7 +223,7 @@ Result<VTableDataPtr> YQLIndexesVTable::RetrieveData(
   return vtable;
 }
 
-Schema YQLIndexesVTable::CreateSchema() const {
+Schema YQLIndexesVTable::CreateSchema() {
   SchemaBuilder builder;
   CHECK_OK(builder.AddHashKeyColumn(kKeyspaceName, QLType::Create(DataType::STRING)));
   CHECK_OK(builder.AddKeyColumn(kTableName, QLType::Create(DataType::STRING)));

@@ -21,6 +21,7 @@
 //! - Mutations are optimistic (L3): one that read a stale version, or a row another mutation has
 //!   in flight, conflicts and [`CatalogWriter::mutate`] rebuilds it from the newer snapshot.
 
+pub mod defaults;
 mod materializer;
 mod snapshot;
 mod writer;

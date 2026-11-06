@@ -71,7 +71,7 @@ Result<VTableDataPtr> YQLAuthRolePermissionsVTable::RetrieveData(
 }
 
 
-Schema YQLAuthRolePermissionsVTable::CreateSchema() const {
+Schema YQLAuthRolePermissionsVTable::CreateSchema() {
   SchemaBuilder builder;
   CHECK_OK(builder.AddHashKeyColumn(kRole, DataType::STRING));
   CHECK_OK(builder.AddColumn(kResource, QLType::Create(DataType::STRING)));

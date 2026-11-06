@@ -143,7 +143,7 @@ Result<VTableDataPtr> LocalVTable::RetrieveData(
   return vtable;
 }
 
-Schema LocalVTable::CreateSchema() const {
+Schema LocalVTable::CreateSchema() {
   SchemaBuilder builder;
   CHECK_OK(builder.AddHashKeyColumn(kSystemLocalKeyColumn, QLType::Create(DataType::STRING)));
   CHECK_OK(builder.AddColumn(kSystemLocalBootstrappedColumn, QLType::Create(DataType::STRING)));

@@ -17,6 +17,7 @@ use std::sync::{Arc, RwLock, RwLockReadGuard};
 use std::time::Duration;
 
 use cxx::UniquePtr;
+use master_catalog_state::defaults::DefaultsHost;
 use master_leadership::{LeaderStateSource, LeaderStatus, Leadership, RaftLeaderState};
 use master_sys_catalog::{
     AppliedBatch, ApplyEvent, ApplySender, HybridTime, OpId, Row, RowChange, SysCatalogStore,
@@ -30,7 +31,7 @@ use yb_proto::pb::common_types::PeerRole;
 use yb_proto::pb::master_heartbeat::{TSHeartbeatRequestPB, TSHeartbeatResponsePB};
 use yb_proto::pb::master_types::SysRowEntryType;
 
-use crate::ffi::bridge::{MasterInfoHandle, RowChangeFfi};
+use crate::ffi::bridge::{MasterInfoHandle, RowChangeFfi, ScannedRow};
 
 fn host_error(e: cxx::Exception) -> Status {
     Status::new(StatusCode::IllegalState, e.what())
@@ -271,5 +272,53 @@ impl HeartbeatContributor for HostHeartbeatParts {
             resp.auto_flags_config = parts.auto_flags_config;
         }
         Ok(())
+    }
+}
+
+/// What only the host can build of a catalog's default rows (K10).
+pub(crate) struct HostDefaults(
+    pub(crate) UniquePtr<MasterInfoHandle>,
+    pub(crate) Arc<HostGate>,
+);
+
+impl DefaultsHost for HostDefaults {
+    fn system_table_rows(
+        &self,
+        tables: &[(Vec<u8>, Vec<u8>)],
+        tables_with_tablets: &[String],
+    ) -> Result<Vec<RowChange>, Status> {
+        let tables: Vec<ScannedRow> = tables
+            .iter()
+            .map(|(id, data)| ScannedRow {
+                id: id.clone(),
+                data: data.clone(),
+            })
+            .collect();
+        let _open = self.1.enter().ok_or_else(shut_down)?;
+        let rows = self
+            .0
+            .system_table_rows(&tables, &tables_with_tablets.to_vec())
+            .map_err(host_error)?;
+        rows.into_iter()
+            .map(|row| {
+                let entry_type = SysRowEntryType::from_i32(row.entry_type).ok_or_else(|| {
+                    Status::new(StatusCode::Corruption, "unknown entry type from the host")
+                })?;
+                Ok(RowChange::Upsert {
+                    entry_type,
+                    id: row.id,
+                    data: row.data,
+                })
+            })
+            .collect()
+    }
+
+    fn default_ycql_password_hash(&self) -> Result<Vec<u8>, Status> {
+        let _open = self.1.enter().ok_or_else(shut_down)?;
+        self.0.default_ycql_password_hash().map_err(host_error)
+    }
+
+    fn ysql_major_version(&self) -> u32 {
+        self.0.ysql_major_version()
     }
 }

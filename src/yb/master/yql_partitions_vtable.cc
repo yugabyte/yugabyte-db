@@ -373,7 +373,7 @@ void YQLPartitionsVTable::ResetAndRegenerateCache() const {
       "Error while regenerating YQL system.partitions cache");
 }
 
-Schema YQLPartitionsVTable::CreateSchema() const {
+Schema YQLPartitionsVTable::CreateSchema() {
   SchemaBuilder builder;
   CHECK_OK(builder.AddHashKeyColumn(kKeyspaceName, QLType::Create(DataType::STRING)));
   CHECK_OK(builder.AddKeyColumn(kTableName, QLType::Create(DataType::STRING)));

@@ -41,6 +41,7 @@
 
 #include "yb/integration-tests/external_mini_cluster.h"
 
+#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.proxy.h"
@@ -138,6 +139,25 @@ class RustMasterTest : public YBTest {
   }
 
   // Waits until every master has applied everything the leader committed.
+  // Waits for a master to lead and report its leader services ready.
+  Status WaitForLeaderReady() {
+    return WaitFor(
+        [&]() -> Result<bool> {
+          auto leader = cluster_->GetLeaderMasterIndex();
+          if (!leader.ok()) {
+            return false;
+          }
+          auto proxy = cluster_->GetProxy<master::MasterClusterProxy>(cluster_->master(*leader));
+          master::IsMasterLeaderReadyRequestPB req;
+          master::IsMasterLeaderReadyResponsePB resp;
+          rpc::RpcController controller;
+          controller.set_timeout(10s);
+          return proxy.IsMasterLeaderServiceReady(req, &resp, &controller).ok() &&
+                 !resp.has_error();
+        },
+        kTimeout, "a ready master leader");
+  }
+
   Status WaitForMastersToCatchUp() {
     OpIdPB op_id;
     RETURN_NOT_OK(cluster_->GetLastOpIdForLeader(&op_id));
@@ -213,6 +233,22 @@ class RustMasterTest : public YBTest {
         Format("http://$0:$1$2", master->bound_rpc_hostport().host(), master->http_port(), path),
         &buf));
     return buf.ToString();
+  }
+
+  // The Rust master's in-memory catalog, once it has loaded one.
+  Result<master::DumpCatalogResponsePB> DumpLoadedCatalog(ExternalMaster* master) {
+    master::DumpCatalogResponsePB result;
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          auto catalog = DumpCatalog(master);
+          if (!catalog.ok() || catalog->rows().empty()) {
+            return false;
+          }
+          result = std::move(*catalog);
+          return true;
+        },
+        kTimeout, "the Rust master to load its catalog"));
+    return result;
   }
 
   // The Rust master's in-memory catalog.
@@ -857,6 +893,132 @@ TEST_F(RustMasterTest, LiveTserverListVersion) {
         return dump.ok() && dump->live_tservers_unchanged_responses() > before + 4;
       },
       kTimeout, "the remaining tservers to hold the new list"));
+}
+
+namespace {
+
+constexpr std::string_view kSystemNamespaceIds[] = {
+    "00000000000000000000000000000001", "00000000000000000000000000000002",
+    "00000000000000000000000000000003"};
+
+template <class PB>
+Result<PB> ParseRow(const master::DumpCatalogResponsePB::Row& row) {
+  PB pb;
+  SCHECK(pb.ParseFromString(row.data()), Corruption, "Unparsable row");
+  return pb;
+}
+
+// The rows every new universe gets (K10), keyed so that two universes compare: random ids,
+// uuids and the password salt are left out.
+Result<std::map<std::string, std::string>> DefaultRows(
+    const master::DumpCatalogResponsePB& catalog) {
+  using master::SysRowEntryType;
+  std::map<std::string, std::string> tables;  // table id -> "<namespace id>/<name>"
+  for (const auto& row : catalog.rows()) {
+    if (row.entry_type() == SysRowEntryType::TABLE) {
+      auto table = VERIFY_RESULT(ParseRow<master::SysTablesEntryPB>(row));
+      if (std::ranges::find(kSystemNamespaceIds, table.namespace_id()) !=
+          std::end(kSystemNamespaceIds)) {
+        tables[row.id()] = table.namespace_id() + "/" + table.name();
+      }
+    }
+  }
+  std::map<std::string, std::string> result;
+  for (const auto& row : catalog.rows()) {
+    const auto type = SysRowEntryType_Name(row.entry_type());
+    switch (row.entry_type()) {
+      case SysRowEntryType::SYS_CONFIG:
+      case SysRowEntryType::XCLUSTER_CONFIG:
+      case SysRowEntryType::PERSISTENCE_BLOCK_MAP:
+        result[type + "/" + row.id()] = row.data();
+        break;
+      case SysRowEntryType::NAMESPACE:
+        if (std::ranges::find(kSystemNamespaceIds, row.id()) != std::end(kSystemNamespaceIds)) {
+          result[type + "/" + row.id()] = row.data();
+        }
+        break;
+      case SysRowEntryType::TABLE:
+        if (tables.contains(row.id())) {
+          result[type + "/" + tables[row.id()]] = row.data();
+        }
+        break;
+      case SysRowEntryType::TABLET: {
+        auto tablet = VERIFY_RESULT(ParseRow<master::SysTabletsEntryPB>(row));
+        if (!tables.contains(tablet.table_id())) {
+          break;
+        }
+        const auto name = tables[tablet.table_id()];
+        SCHECK_EQ(tablet.table_ids_size(), 1, IllegalState, tablet.ShortDebugString());
+        SCHECK_EQ(tablet.table_ids(0), tablet.table_id(), IllegalState, tablet.ShortDebugString());
+        tablet.clear_table_id();
+        tablet.clear_table_ids();
+        result[type + "/" + name] = tablet.ShortDebugString();
+        break;
+      }
+      case SysRowEntryType::ROLE: {
+        auto role = VERIFY_RESULT(ParseRow<master::SysRoleEntryPB>(row));
+        SCHECK(!role.salted_hash().empty(), IllegalState, "Role without a password");
+        role.clear_salted_hash();
+        result[type + "/" + row.id()] = role.ShortDebugString();
+        break;
+      }
+      case SysRowEntryType::CLUSTER_CONFIG: {
+        auto config = VERIFY_RESULT(ParseRow<master::SysClusterConfigEntryPB>(row));
+        SCHECK(!config.cluster_uuid().empty(), IllegalState, "No cluster uuid");
+        config.clear_cluster_uuid();
+        config.clear_universe_uuid();
+        result[type] = config.ShortDebugString();
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  return result;
+}
+
+}  // namespace
+
+// A quorum of Rust masters creates a universe with the same default rows as C++ masters: the
+// system namespaces and tables with their tablets, the default role and the configs.
+TEST_F(RustMasterTest, CreatesUniverseLikeCpp) {
+  client_.reset();
+  cluster_->Shutdown();
+  auto new_cluster = [this](RustMasters rust_masters) -> Status {
+    ExternalMiniClusterOptions opts;
+    opts.num_masters = 3;
+    opts.num_tablet_servers = 0;
+    opts.replication_factor = 3;
+    opts.enable_ysql = false;
+    opts.rust_masters = rust_masters;
+    opts.cluster_id = Format("cluster-$0", ToString(rust_masters));
+    cluster_ = std::make_unique<ExternalMiniCluster>(opts);
+    return cluster_->Start();
+  };
+
+  // The C++ masters' rows, as a Rust follower holds them.
+  ASSERT_OK(new_cluster(RustMasters::kNone));
+  ASSERT_OK(WaitForLeaderReady());
+  const auto follower = ASSERT_RESULT(RestartFollowerAsRust());
+  ASSERT_OK(WaitForMastersToCatchUp());
+  const auto cpp_rows = ASSERT_RESULT(DefaultRows(
+      ASSERT_RESULT(DumpLoadedCatalog(cluster_->master(follower)))));
+  cluster_->Shutdown();
+
+  ASSERT_OK(new_cluster(RustMasters::kAll));
+  ASSERT_OK(WaitForLeaderReady());
+  const auto leader = ASSERT_RESULT(cluster_->GetLeaderMasterIndex());
+  ASSERT_OK(WaitForMastersToCatchUp());
+  const auto leader_catalog = ASSERT_RESULT(DumpLoadedCatalog(cluster_->master(leader)));
+  const auto rust_rows = ASSERT_RESULT(DefaultRows(leader_catalog));
+  ASSERT_EQ(rust_rows.size(), 3 + 3 + 2 * 17 + 4);
+  ASSERT_EQ(rust_rows, cpp_rows);
+
+  // Written once, through Raft: every master holds the same rows.
+  for (size_t i = 0; i < cluster_->num_masters(); ++i) {
+    const auto catalog = ASSERT_RESULT(DumpLoadedCatalog(cluster_->master(i)));
+    ASSERT_EQ(catalog.rows_size(), leader_catalog.rows_size()) << "master " << i;
+  }
 }
 
 }  // namespace yb

@@ -239,6 +239,10 @@ std::string GetMasterBinaryName() {
   return kMasterBinaryNamePrefix + FLAGS_dynamically_linked_exe_suffix;
 }
 
+std::string GetRustMasterBinaryName() {
+  return std::string(kMasterBinaryNamePrefix) + "-rs" + FLAGS_dynamically_linked_exe_suffix;
+}
+
 std::string GetTServerBinaryName() {
   return kTabletServerBinaryNamePrefix + FLAGS_dynamically_linked_exe_suffix;
 }
@@ -484,6 +488,21 @@ Status ExternalMiniCluster::Restart() {
   return Status::OK();
 }
 
+RustMasters RustMastersFromEnv() {
+  const char* value = getenv("YB_RUST_MASTER");
+  if (value == nullptr) {
+    return RustMasters::kNone;
+  }
+  const std::string_view mode(value);
+  if (mode == "1" || mode == "all") {
+    return RustMasters::kAll;
+  }
+  if (mode == "mixed") {
+    return RustMasters::kFirst;
+  }
+  return RustMasters::kNone;
+}
+
 string ExternalMiniCluster::GetBinaryPath(const string& binary) const {
   CHECK(!daemon_bin_path_.empty());
   string default_path = JoinPathSegments(daemon_bin_path_, binary);
@@ -556,9 +575,17 @@ Result<ExternalMasterPtr> ExternalMiniCluster::StartMaster(
             << " to start a new external mini-cluster master with index " << add_new_master_at_;
 
   string addr = MasterAddressForPort(rpc_port);
-  string exe = exe_override.empty() ? GetBinaryPath(GetMasterBinaryName()) : exe_override;
+  const bool rust = exe_override.empty() &&
+      (opts_.rust_masters == RustMasters::kAll ||
+       (opts_.rust_masters == RustMasters::kFirst && add_new_master_at_ == 0));
+  string exe = !exe_override.empty() ? exe_override
+      : rust ? GetBinaryPath(GetRustMasterBinaryName())
+      : GetBinaryPath(GetMasterBinaryName());
 
   vector<string> flags = opts_.extra_master_flags;
+  if (rust) {
+    flags.push_back("--TEST_rust_master_allow_leadership=true");
+  }
   // Disable WAL fsync for tests
   flags.push_back("--durable_wal_write=false");
   flags.push_back("--enable_leader_failure_detection=true");

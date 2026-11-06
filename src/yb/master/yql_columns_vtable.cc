@@ -138,7 +138,7 @@ Result<VTableDataPtr> YQLColumnsVTable::RetrieveData(
   return vtable;
 }
 
-Schema YQLColumnsVTable::CreateSchema() const {
+Schema YQLColumnsVTable::CreateSchema() {
   SchemaBuilder builder;
   CHECK_OK(builder.AddHashKeyColumn(kKeyspaceName, DataType::STRING));
   CHECK_OK(builder.AddKeyColumn(kTableName, DataType::STRING));

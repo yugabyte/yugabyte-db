@@ -149,6 +149,7 @@
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/sys_catalog_initialization.h"
+#include "yb/master/system_tables.h"
 #include "yb/master/sys_catalog_writer.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/system_tablet.h"
@@ -1902,48 +1903,12 @@ Status CatalogManager::PrepareSystemTables(const LeaderEpoch& epoch) {
   RETURN_NOT_OK(PrepareSysCatalogTable(epoch));
 
   // Create the required system tables here.
-  RETURN_NOT_OK((PrepareSystemTableTemplate<PeersVTable>(
-      kSystemPeersTableName, kSystemNamespaceName, kSystemNamespaceId, epoch)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<LocalVTable>(
-      kSystemLocalTableName, kSystemNamespaceName, kSystemNamespaceId, epoch)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLKeyspacesVTable>(
-      kSystemSchemaKeyspacesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId,
-      epoch)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLTablesVTable>(
-      kSystemSchemaTablesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId, epoch)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLColumnsVTable>(
-      kSystemSchemaColumnsTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId, epoch)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLSizeEstimatesVTable>(
-      kSystemSizeEstimatesTableName, kSystemNamespaceName, kSystemNamespaceId, epoch)));
-
-  // Empty tables.
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLAggregatesVTable>(
-      kSystemSchemaAggregatesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId,
-      epoch)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLFunctionsVTable>(
-      kSystemSchemaFunctionsTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId,
-      epoch)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLIndexesVTable>(
-      kSystemSchemaIndexesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId, epoch)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLTriggersVTable>(
-      kSystemSchemaTriggersTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId,
-      epoch)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLViewsVTable>(
-      kSystemSchemaViewsTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId, epoch)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<QLTypesVTable>(
-      kSystemSchemaTypesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId, epoch)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLPartitionsVTable>(
-      kSystemPartitionsTableName, kSystemNamespaceName, kSystemNamespaceId, epoch)));
-
-  // System auth tables.
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLAuthRolesVTable>(
-      kSystemAuthRolesTableName, kSystemAuthNamespaceName, kSystemAuthNamespaceId, epoch)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLAuthRolePermissionsVTable>(
-      kSystemAuthRolePermissionsTableName, kSystemAuthNamespaceName, kSystemAuthNamespaceId,
-      epoch)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLAuthResourceRolePermissionsIndexVTable>(
-      kSystemAuthResourceRolePermissionsIndexTableName, kSystemAuthNamespaceName,
-      kSystemAuthNamespaceId, epoch)));
+  for (const auto& def : SystemTableDefs()) {
+    auto vtable = def.make_vtable(def, master_);
+    const auto schema = vtable->schema();
+    RETURN_NOT_OK(PrepareSystemTable(
+        def.table_name, def.namespace_name, def.namespace_id, schema, epoch, vtable.release()));
+  }
 
   // Ensure kNumSystemTables is in-sync with the system tables created.
   LOG_IF(DFATAL, system_tablets_.size() != kNumSystemTables)
@@ -1964,14 +1929,7 @@ Status CatalogManager::PrepareSysCatalogTable(const LeaderEpoch& epoch) {
   if (sys_catalog_table == nullptr) {
     scoped_refptr<TableInfo> table = NewTableInfo(kSysCatalogTableId, /*colocated=*/false);
     table->mutable_metadata()->StartMutation();
-    SysTablesEntryPB& metadata = table->mutable_metadata()->mutable_dirty()->pb;
-    metadata.set_state(SysTablesEntryPB::RUNNING);
-    metadata.set_namespace_id(kSystemSchemaNamespaceId);
-    metadata.set_namespace_name(kSystemSchemaNamespaceName);
-    metadata.set_name(kSysCatalogTableName);
-    metadata.set_table_type(TableType::YQL_TABLE_TYPE);
-    SchemaToPB(sys_catalog_->schema(), metadata.mutable_schema());
-    metadata.set_version(0);
+    table->mutable_metadata()->mutable_dirty()->pb = SysCatalogTableEntry(sys_catalog_->schema());
 
     auto table_map_checkout = tables_.CheckOut();
     table_map_checkout->AddOrReplace(table);
@@ -1987,18 +1945,11 @@ Status CatalogManager::PrepareSysCatalogTable(const LeaderEpoch& epoch) {
   if (tablet_map_->count(kSysCatalogTabletId) == 0) {
     auto tablet = std::make_shared<TabletInfo>(sys_catalog_table, kSysCatalogTabletId);
     tablet->mutable_metadata()->StartMutation();
-    SysTabletsEntryPB& metadata = tablet->mutable_metadata()->mutable_dirty()->pb;
-    metadata.set_state(SysTabletsEntryPB::RUNNING);
-
-    auto l = sys_catalog_table->LockForRead();
-    PartitionSchema partition_schema;
-    RETURN_NOT_OK(PartitionSchema::FromPB(
-        l->pb.partition_schema(), sys_catalog_->schema(), &partition_schema));
-    vector<Partition> partitions;
-    RETURN_NOT_OK(partition_schema.CreatePartitions(1, &partitions));
-    partitions[0].ToPB(metadata.mutable_partition());
-    metadata.set_table_id(sys_catalog_table->id());
-    metadata.add_table_ids(sys_catalog_table->id());
+    {
+      auto l = sys_catalog_table->LockForRead();
+      tablet->mutable_metadata()->mutable_dirty()->pb =
+          VERIFY_RESULT(SysCatalogTabletEntry(sys_catalog_->schema(), l->pb));
+    }
 
     sys_catalog_table->set_is_system();
     RETURN_NOT_OK(sys_catalog_table->AddTablet(tablet));
@@ -2015,16 +1966,6 @@ Status CatalogManager::PrepareSysCatalogTable(const LeaderEpoch& epoch) {
   system_tablets_[kSysCatalogTabletId] = sys_catalog_tablet;
 
   return Status::OK();
-}
-
-template <class T>
-Status CatalogManager::PrepareSystemTableTemplate(const TableName& table_name,
-                                                  const NamespaceName& namespace_name,
-                                                  const NamespaceId& namespace_id,
-                                                  const LeaderEpoch& epoch) {
-  YQLVirtualTable* vtable = new T(table_name, namespace_name, master_);
-  return PrepareSystemTable(
-      table_name, namespace_name, namespace_id, vtable->schema(), epoch, vtable);
 }
 
 Status CatalogManager::PrepareSystemTable(const TableName& table_name,
@@ -2046,18 +1987,16 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
     // Mark the table as a system table.
     table->set_is_system();
 
-    auto persisted_schema = VERIFY_RESULT(table->GetSchema());
-    if (!persisted_schema.Equals(schema)) {
-      LOG_WITH_PREFIX(INFO)
-          << "Updating schema of " << namespace_name << "." << table_name << " ...";
+    {
       auto l = table->LockForWrite();
-      SchemaToPB(schema, l.mutable_data()->pb.mutable_schema());
-      l.mutable_data()->pb.set_version(l->pb.version() + 1);
-      l.mutable_data()->pb.set_updates_only_index_permissions(false);
+      if (VERIFY_RESULT(UpdateSystemTableSchema(schema, &l.mutable_data()->pb))) {
+        LOG_WITH_PREFIX(INFO)
+            << "Updated schema of " << namespace_name << "." << table_name;
 
-      // Update sys-catalog with the new table schema.
-      RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
-      l.Commit();
+        // Update sys-catalog with the new table schema.
+        RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
+        l.Commit();
+      }
     }
 
     // There might have been a failure after writing the table but before writing the tablets. As
@@ -6458,30 +6397,10 @@ std::string CatalogManager::GenerateIdUnlocked(std::optional<const SysRowEntryTy
   }
 }
 
-scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableRequestPB& req,
-                                                         const Schema& schema,
-                                                         const PartitionSchema& partition_schema,
-                                                         const NamespaceId& namespace_id,
-                                                         const NamespaceName& namespace_name,
-                                                         bool colocated,
-                                                         IndexInfoPB* index_info,
-                                                         TableInfoWithWriteLock* indexed_table) {
-  DCHECK(schema.has_column_ids());
-  TableId table_id
-      = !req.table_id().empty() ? req.table_id() : GenerateIdUnlocked(SysRowEntryType::TABLE);
-  scoped_refptr<TableInfo> table = NewTableInfo(table_id, colocated);
-  if (indexed_table && *indexed_table) {
-    if ((**indexed_table).id() < table_id) {
-      indexed_table->Lock();
-      table->mutable_metadata()->StartMutation();
-    } else {
-      table->mutable_metadata()->StartMutation();
-      indexed_table->Lock();
-    }
-  } else {
-    table->mutable_metadata()->StartMutation();
-  }
-  SysTablesEntryPB *metadata = &table->mutable_metadata()->mutable_dirty()->pb;
+void FillNewTableEntry(
+    const CreateTableRequestPB& req, const Schema& schema, const PartitionSchema& partition_schema,
+    const NamespaceId& namespace_id, const NamespaceName& namespace_name, bool colocated,
+    SysTablesEntryPB* metadata) {
   metadata->set_state(SysTablesEntryPB::PREPARING);
   metadata->set_name(req.name());
   metadata->set_table_type(req.table_type());
@@ -6534,12 +6453,6 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
     metadata->set_indexed_table_id(req.index_info().indexed_table_id());
     metadata->set_is_local_index(req.index_info().is_local());
     metadata->set_is_unique_index(req.index_info().is_unique());
-
-    // Setup index info.
-    if (index_info != nullptr) {
-      index_info->set_table_id(table->id());
-      metadata->mutable_index_info()->CopyFrom(*index_info);
-    }
   } else if (req.has_indexed_table_id()) {
     // Read data from the deprecated field and update the new fields.
     metadata->mutable_index_info()->set_indexed_table_id(req.indexed_table_id());
@@ -6550,12 +6463,6 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
     metadata->set_indexed_table_id(req.indexed_table_id());
     metadata->set_is_local_index(req.is_local_index());
     metadata->set_is_unique_index(req.is_unique_index());
-
-    // Setup index info.
-    if (index_info != nullptr) {
-      index_info->set_table_id(table->id());
-      metadata->mutable_index_info()->CopyFrom(*index_info);
-    }
   }
 
   if (req.is_pg_shared_table()) {
@@ -6572,6 +6479,39 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
 
   if (colocated) {
     metadata->set_colocated(true);
+  }
+}
+
+scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableRequestPB& req,
+                                                         const Schema& schema,
+                                                         const PartitionSchema& partition_schema,
+                                                         const NamespaceId& namespace_id,
+                                                         const NamespaceName& namespace_name,
+                                                         bool colocated,
+                                                         IndexInfoPB* index_info,
+                                                         TableInfoWithWriteLock* indexed_table) {
+  DCHECK(schema.has_column_ids());
+  TableId table_id
+      = !req.table_id().empty() ? req.table_id() : GenerateIdUnlocked(SysRowEntryType::TABLE);
+  scoped_refptr<TableInfo> table = NewTableInfo(table_id, colocated);
+  if (indexed_table && *indexed_table) {
+    if ((**indexed_table).id() < table_id) {
+      indexed_table->Lock();
+      table->mutable_metadata()->StartMutation();
+    } else {
+      table->mutable_metadata()->StartMutation();
+      indexed_table->Lock();
+    }
+  } else {
+    table->mutable_metadata()->StartMutation();
+  }
+  SysTablesEntryPB *metadata = &table->mutable_metadata()->mutable_dirty()->pb;
+  FillNewTableEntry(
+      req, schema, partition_schema, namespace_id, namespace_name, colocated, metadata);
+  // Setup index info.
+  if ((req.has_index_info() || req.has_indexed_table_id()) && index_info != nullptr) {
+    index_info->set_table_id(table->id());
+    metadata->mutable_index_info()->CopyFrom(*index_info);
   }
 
   return table;

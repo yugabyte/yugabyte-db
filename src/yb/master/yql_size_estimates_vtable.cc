@@ -89,7 +89,7 @@ Result<VTableDataPtr> YQLSizeEstimatesVTable::RetrieveData(const QLReadRequestMs
   return vtable;
 }
 
-Schema YQLSizeEstimatesVTable::CreateSchema() const {
+Schema YQLSizeEstimatesVTable::CreateSchema() {
   SchemaBuilder builder;
   CHECK_OK(builder.AddHashKeyColumn(kKeyspaceName, DataType::STRING));
   CHECK_OK(builder.AddKeyColumn(kTableName, DataType::STRING));

@@ -47,6 +47,20 @@ re-serialize identically. That check is manual: the release binary is not part o
 | `RustLeaderServesCoreRpcs` | With `TEST_rust_master_allow_leadership`, the Rust master takes leadership; real tservers register and report to it; it serves table locations with leaders, `IsMasterLeaderServiceReady`, a cluster config change, and `NotSupported` for DDL. After failing back, the C++ leader reads the change, and every master's rows match. |
 | `WarmFailover` | Two Rust masters: the leader's location stream reaches the other, which, after a failover with every tserver stopped, serves non-stale locations and the tserver list. |
 | `LiveTserverListVersion` | Tservers echo the live-list version and the Rust leader answers "unchanged"; after a tserver stops, the others get the new list and keep heartbeating. |
+| `CreatesUniverseLikeCpp` | A quorum of Rust masters creates a universe whose default rows equal those of a universe C++ masters created (random ids, uuids and the password salt aside), and every master holds them. |
+
+### Running existing tests against Rust masters
+
+`ExternalMiniClusterOptions::rust_masters` starts masters as `yb-master-rs` with
+`--TEST_rust_master_allow_leadership`: `kAll` for every master, `kFirst` for one Rust master among
+C++ ones. Its default comes from `YB_RUST_MASTER` (`1` or `all`, `mixed`), so an existing
+ExternalMiniCluster test runs against Rust masters with, for example:
+
+```bash
+YB_RUST_MASTER=1 ./yb_build.sh release --cxx-test master_failover-itest
+```
+
+A test that starts masters with an explicit binary keeps it.
 
 ## Tserver simulator and the C++ baseline
 

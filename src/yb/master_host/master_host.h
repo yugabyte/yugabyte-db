@@ -141,6 +141,22 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   rust::Vec<uint8_t> HeartbeatHostParts(
       rust::Slice<const uint8_t> encryption_info, bool send_universe_key_registry,
       int64_t auto_flags_config_version) const;
+
+  // What a first leader writes and only C++ can build (K10, master/system_tables.h).
+
+  // The rows of the system tables (sys.catalog and the YCQL virtual tables) missing from
+  // `tables`: a new table and its tablet, a tablet for a table without one, and the new schema of
+  // a table whose schema this release changed. `tables` are the stored TABLE rows of the system
+  // namespaces and `tables_with_tablets` the ids among them that have a tablet. New ids are
+  // random.
+  rust::Vec<RowChangeFfi> SystemTableRows(
+      rust::Slice<const ScannedRow> tables, const rust::Vec<rust::String>& tables_with_tablets)
+      const;
+  // The salted hash a new universe's default YCQL superuser gets, as C++ stores it.
+  rust::Vec<uint8_t> DefaultYcqlPasswordHash() const;
+  // This release's YSQL major version.
+  uint32_t YsqlMajorVersion() const;
+
   int32_t MasterServiceQueueLength() const;
   int32_t YsqlLeaseServiceQueueLength() const;
 
@@ -273,6 +289,11 @@ class MasterInfoHandle {
   rust::Vec<uint8_t> HeartbeatHostParts(
       rust::Slice<const uint8_t> encryption_info, bool send_universe_key_registry,
       int64_t auto_flags_config_version) const;
+  rust::Vec<RowChangeFfi> SystemTableRows(
+      rust::Slice<const ScannedRow> tables, const rust::Vec<rust::String>& tables_with_tablets)
+      const;
+  rust::Vec<uint8_t> DefaultYcqlPasswordHash() const;
+  uint32_t YsqlMajorVersion() const;
 
  private:
   MasterHost& host_;

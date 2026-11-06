@@ -25,7 +25,7 @@ YQLAggregatesVTable::YQLAggregatesVTable(const TableName& table_name,
     : YQLEmptyVTable(table_name, namespace_name, master, CreateSchema()) {
 }
 
-Schema YQLAggregatesVTable::CreateSchema() const {
+Schema YQLAggregatesVTable::CreateSchema() {
   SchemaBuilder builder;
   CHECK_OK(builder.AddHashKeyColumn("keyspace_name", DataType::STRING));
   CHECK_OK(builder.AddKeyColumn("aggregate_name", DataType::STRING));

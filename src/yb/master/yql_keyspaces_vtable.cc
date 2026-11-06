@@ -57,7 +57,7 @@ Result<VTableDataPtr> YQLKeyspacesVTable::RetrieveData(
   return vtable;
 }
 
-Schema YQLKeyspacesVTable::CreateSchema() const {
+Schema YQLKeyspacesVTable::CreateSchema() {
   SchemaBuilder builder;
   CHECK_OK(builder.AddHashKeyColumn(kKeyspaceName, QLType::Create(DataType::STRING)));
   CHECK_OK(builder.AddColumn(kDurableWrites, QLType::Create(DataType::BOOL)));

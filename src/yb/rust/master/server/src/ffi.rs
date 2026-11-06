@@ -178,6 +178,16 @@ pub(crate) mod bridge {
         );
         #[cxx_name = "SysCatalogLeaderState"]
         fn sys_catalog_leader_state(self: &MasterInfoHandle) -> RaftLeaderStateFfi;
+        #[cxx_name = "SystemTableRows"]
+        fn system_table_rows(
+            self: &MasterInfoHandle,
+            tables: &[ScannedRow],
+            tables_with_tablets: &Vec<String>,
+        ) -> Result<Vec<RowChangeFfi>>;
+        #[cxx_name = "DefaultYcqlPasswordHash"]
+        fn default_ycql_password_hash(self: &MasterInfoHandle) -> Result<Vec<u8>>;
+        #[cxx_name = "YsqlMajorVersion"]
+        fn ysql_major_version(self: &MasterInfoHandle) -> u32;
         #[cxx_name = "HeartbeatHostParts"]
         fn heartbeat_host_parts(
             self: &MasterInfoHandle,

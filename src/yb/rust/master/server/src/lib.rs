@@ -104,11 +104,17 @@ fn run() -> Result<(), String> {
         apply_events,
         Catalog::new(apply_sender),
         leadership,
-        metrics,
-        vec![Arc::new(store::HostHeartbeatParts(
-            host.pin_mut().info_handle(),
-            gate.clone(),
-        ))],
+        wiring::HostParts {
+            metrics,
+            defaults: Arc::new(store::HostDefaults(
+                host.pin_mut().info_handle(),
+                gate.clone(),
+            )),
+            contributors: vec![Arc::new(store::HostHeartbeatParts(
+                host.pin_mut().info_handle(),
+                gate.clone(),
+            ))],
+        },
     );
     let options = HandlerOptions {
         master_rpc_timeout: || Duration::from_millis(MASTER_RPC_TIMEOUT_MS.get().max(0) as u64),

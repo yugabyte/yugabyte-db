@@ -13,7 +13,10 @@
 #include "yb/master_host/master_host.h"
 
 #include <algorithm>
+#include <map>
 #include <stdexcept>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "yb/client/client.h"
 
@@ -48,6 +51,7 @@
 #include "yb/master/sys_catalog_context.h"
 #include "yb/master/sys_catalog_restore.h"
 #include "yb/master/sys_catalog_writer.h"
+#include "yb/master/system_tables.h"
 #include "yb/master/encryption_manager.h"
 #include "yb/master/master_heartbeat.pb.h"
 
@@ -79,9 +83,11 @@
 #include "yb/tserver/tablet_service.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/crypt.h"
 #include "yb/util/flags.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/logging.h"
+#include "yb/util/oid_generator.h"
 #include "yb/util/status_format.h"
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
@@ -705,12 +711,12 @@ Status MasterHost::OpenSysCatalog() {
     LOG(INFO) << "Starting master in shell mode.";
     return Status::OK();
   }
-  // Creating a universe makes this master its first leader.
-  return STATUS(
-      NotSupported,
-      "The Rust master cannot create a new universe yet. Start it on an existing master's data, "
-      "or in shell mode (no --master_addresses, or --master_join_existing_universe) and add it "
-      "with change_master_config.");
+  // A new universe, as CatalogManager::InitSysCatalogAsync does: the first leader writes the
+  // default rows (K10).
+  RETURN_NOT_OK_PREPEND(
+      sys_catalog_->CreateNew(fs_manager()), "Unable to create new system catalog");
+  tablet_exists_ = true;
+  return Status::OK();
 }
 
 Status MasterHost::ElectedAsLeader() {
@@ -1240,6 +1246,102 @@ void MasterInfoHandle::WriteSysCatalogRows(
 
 RaftLeaderStateFfi MasterInfoHandle::SysCatalogLeaderState() const {
   return host_.SysCatalogLeaderState();
+}
+
+rust::Vec<RowChangeFfi> MasterHost::SystemTableRows(
+    rust::Slice<const ScannedRow> tables, const rust::Vec<rust::String>& tables_with_tablets)
+    const {
+  // CatalogManager::PrepareSysCatalogTable and PrepareSystemTable, as rows.
+  std::unordered_map<TableId, master::SysTablesEntryPB> by_id;
+  std::map<std::pair<NamespaceId, TableName>, TableId> by_name;
+  for (const auto& row : tables) {
+    master::SysTablesEntryPB table;
+    if (!table.ParseFromArray(row.data.data(), narrow_cast<int>(row.data.size()))) {
+      throw std::runtime_error("Unparsable table row");
+    }
+    TableId id(reinterpret_cast<const char*>(row.id.data()), row.id.size());
+    by_name[{table.namespace_id(), table.name()}] = id;
+    by_id.emplace(std::move(id), std::move(table));
+  }
+  std::unordered_set<TableId> with_tablets;
+  for (const auto& id : tables_with_tablets) {
+    with_tablets.emplace(std::string(id));
+  }
+
+  rust::Vec<RowChangeFfi> rows;
+  auto add = [&rows](master::SysRowEntryType type, const std::string& id, const auto& pb) {
+    rows.push_back(RowChangeFfi{
+        .entry_type = type, .id = ToRustBytes(id), .data = ToRustBytes(pb.SerializeAsString()),
+        .deleted = false});
+  };
+  auto value = [](auto&& result) {
+    ThrowIfNotOk(ResultToStatus(result));
+    return std::move(*result);
+  };
+
+  const auto& sys_catalog_schema = sys_catalog_->schema();
+  master::SysTablesEntryPB sys_catalog_table;
+  if (auto it = by_id.find(master::kSysCatalogTableId); it != by_id.end()) {
+    sys_catalog_table = it->second;
+  } else {
+    sys_catalog_table = master::SysCatalogTableEntry(sys_catalog_schema);
+    add(master::SysRowEntryType::TABLE, master::kSysCatalogTableId, sys_catalog_table);
+  }
+  if (!with_tablets.contains(master::kSysCatalogTableId)) {
+    add(master::SysRowEntryType::TABLET, master::kSysCatalogTabletId,
+        value(master::SysCatalogTabletEntry(sys_catalog_schema, sys_catalog_table)));
+  }
+
+  for (const auto& def : master::SystemTableDefs()) {
+    TableId table_id;
+    master::SysTablesEntryPB table;
+    if (auto it = by_name.find({def.namespace_id, def.table_name}); it != by_name.end()) {
+      table_id = it->second;
+      table = by_id[table_id];
+      if (value(master::UpdateSystemTableSchema(def.create_schema(), &table))) {
+        add(master::SysRowEntryType::TABLE, table_id, table);
+      }
+      if (with_tablets.contains(table_id)) {
+        continue;
+      }
+    } else {
+      table_id = GenerateObjectId();
+      table = value(master::NewSystemTableEntry(def));
+      add(master::SysRowEntryType::TABLE, table_id, table);
+    }
+    const auto tablet_id = GenerateObjectId();
+    add(master::SysRowEntryType::TABLET, tablet_id,
+        value(master::NewSystemTabletEntry(table_id, table, tablet_id)));
+  }
+  return rows;
+}
+
+rust::Vec<uint8_t> MasterHost::DefaultYcqlPasswordHash() const {
+  // PermissionsManager::PrepareDefaultRoles stores all kBcryptHashSize bytes, NUL padding
+  // included.
+  char hash[util::kBcryptHashSize];
+  if (util::bcrypt_hashpw(master::kDefaultCassandraPassword, hash) != 0) {
+    throw std::runtime_error("Could not hash the default YCQL password");
+  }
+  return ToRustBytes(std::string(hash, util::kBcryptHashSize));
+}
+
+uint32_t MasterHost::YsqlMajorVersion() const {
+  return VersionInfo::YsqlMajorVersion();
+}
+
+rust::Vec<RowChangeFfi> MasterInfoHandle::SystemTableRows(
+    rust::Slice<const ScannedRow> tables, const rust::Vec<rust::String>& tables_with_tablets)
+    const {
+  return host_.SystemTableRows(tables, tables_with_tablets);
+}
+
+rust::Vec<uint8_t> MasterInfoHandle::DefaultYcqlPasswordHash() const {
+  return host_.DefaultYcqlPasswordHash();
+}
+
+uint32_t MasterInfoHandle::YsqlMajorVersion() const {
+  return host_.YsqlMajorVersion();
 }
 
 rust::Vec<uint8_t> MasterInfoHandle::HeartbeatHostParts(

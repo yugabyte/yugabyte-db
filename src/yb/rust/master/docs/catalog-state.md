@@ -72,6 +72,18 @@ Metrics: `rust_master_catalog_writer_queue_wait_us` (submit to joining a batch o
 Flags: `rust_master_catalog_writer_max_batch_rows` (1000), `..._max_batch_bytes` (4 MiB),
 `..._max_inflight` (4 Raft writes).
 
+## Default rows (K10)
+
+`defaults::default_rows` builds one mutation with every row a catalog must have and lacks, as
+`CatalogManager::VisitSysCatalog` writes them: the security, transaction-tables and YSQL catalog
+configs, the YCQL system namespaces, the system tables and their tablets (built by the host), the
+default `cassandra` role, the cluster config (with a universe uuid when
+`master_enable_universe_uuid_heartbeat_check` is on), the xCluster config and the persistence
+block map. The leader writes it on every election, in a ready hook with a catch-up token
+([leadership.md](leadership.md)): a new universe gets everything in one Raft write, and an existing
+one only what a newer release added. With `ycql_allow_cassandra_drop`, the security config records
+that the default role was created, so a dropped role stays dropped.
+
 ## Self-check
 
 `self_check` hashes the snapshot and a scan of the tablet at the snapshot's `as_of`. A mismatch
