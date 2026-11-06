@@ -50,11 +50,13 @@ public class BackendSteering implements AutoCloseable {
       "SELECT pid FROM pg_stat_activity" +
       " WHERE backend_type = 'yb-conn-mgr worker connection' AND datname = current_database()";
 
-  // Bounds the search if the pool keeps handing out backends we have not seen.
+  // Bounds the search if the pool has this many idle backends.
   private static final int MAX_HOLDERS = 64;
 
-  // A holder sees its ROLLBACK complete before Connection Manager has put the backend back in
-  // the idle list; a client query sent in that gap gets another backend.
+  // A client sees its transaction end before Connection Manager has put the backend back in the
+  // idle list; a query sent in that gap gets another backend. This applies both to the steered
+  // client's last transaction before the first holder connects and to a released holder's
+  // ROLLBACK before the client's next query.
   private static final long RELEASE_SETTLE_MS = 200;
 
   private final ConnectionBuilder builder;
@@ -131,6 +133,9 @@ public class BackendSteering implements AutoCloseable {
     if (holders.containsKey(target)) {
       return true;
     }
+    if (holders.isEmpty()) {
+      Thread.sleep(RELEASE_SETTLE_MS);
+    }
     Set<Integer> existing = workerPids();
     while (holders.size() < MAX_HOLDERS) {
       Connection conn = builder.connect();
@@ -152,8 +157,8 @@ public class BackendSteering implements AutoCloseable {
         return false;
       }
     }
-    throw new IllegalStateException("Pool kept handing out backends after " + MAX_HOLDERS +
-                                    " holders; held " + holders.keySet());
+    throw new IllegalStateException("Held " + MAX_HOLDERS + " idle backends without reaching " +
+                                    target + "; held " + holders.keySet());
   }
 
   private Set<Integer> workerPids() throws SQLException {
