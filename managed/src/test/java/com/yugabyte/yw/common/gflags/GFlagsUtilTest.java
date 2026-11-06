@@ -846,6 +846,43 @@ public class GFlagsUtilTest extends FakeDBApplication {
     }
   }
 
+  @Test
+  public void testApiRedactionThenMergeRestoresUnquotedPasswordEndingQuotedRecord() {
+    try (var mockedRedactingService =
+        Mockito.mockStatic(RedactingService.class, Mockito.CALLS_REAL_METHODS)) {
+      mockedRedactingService
+          .when(() -> RedactingService.getSensitiveGflagsForRedaction(any(), any()))
+          .thenReturn(Set.of("ycql_ldap_bind_passwd", "ysql_hba_conf_csv"));
+
+      String recordPrefix =
+          "local all yugabyte trust,\"host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com"
+              + " ldapbasedn=\"\"dc=example,dc=com\"\" ldapbindpasswd=";
+      String hbaOriginal = recordPrefix + "secret123\"";
+
+      Map<String, String> existing = new HashMap<>();
+      existing.put(YSQL_HBA_CONF_CSV, hbaOriginal);
+      existing.put("ycql_ldap_bind_passwd", "ycqlSecret");
+      existing.put("webserver_port", "9000");
+
+      JsonNode apiRedacted =
+          RedactingService.filterSecretFields(
+              universeJsonWithTserverGFlags(hbaOriginal, "ycqlSecret", "9000"),
+              RedactionTarget.APIS,
+              null,
+              null,
+              true);
+      Map<String, String> clientPayload = new HashMap<>(tserverGFlagsFromUniverseJson(apiRedacted));
+
+      assertEquals(recordPrefix + SECRET_REPLACEMENT + "\"", clientPayload.get(YSQL_HBA_CONF_CSV));
+
+      Map<String, String> merged =
+          GFlagsUtil.mergeSensitiveGFlags(existing, clientPayload, gFlagsValidation, "2.18");
+
+      assertEquals(hbaOriginal, merged.get(YSQL_HBA_CONF_CSV));
+      assertEquals("ycqlSecret", merged.get("ycql_ldap_bind_passwd"));
+    }
+  }
+
   /**
    * Changing other HBA fields while keeping REDACTED ldapbindpasswd throws BAD_REQUEST; the user
    * must supply the full ysql_hba_conf_csv with the actual ldapbindpasswd when editing HBA fields.

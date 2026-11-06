@@ -147,6 +147,64 @@ public class RedactingServiceTest {
   }
 
   @Test
+  public void testLogsRedactionKeepsJsonWhenUnquotedLdapBindPasswdEndsHbaValue() {
+    String hbaOld =
+        "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com ldapbindpasswd=oldSecret";
+    String hbaNew =
+        "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com ldapbindpasswd=newSecret";
+    ObjectNode hbaChange =
+        Json.newObject().put("name", "ysql_hba_conf_csv").put("old", hbaOld).put("new", hbaNew);
+    ObjectNode portChange =
+        Json.newObject().put("name", "webserver_port").put("old", "9000").put("new", "9100");
+    ObjectNode auditDetails = Json.newObject();
+    auditDetails.putObject("gflags").putArray("tserver").add(hbaChange).add(portChange);
+
+    JsonNode redactedAudit =
+        RedactingService.filterSecretFields(auditDetails, RedactionTarget.LOGS, null, null, false);
+
+    assertFalse(redactedAudit.has("_redactionParseError"));
+    JsonNode tserver = redactedAudit.get("gflags").get("tserver");
+    assertEquals(
+        hbaOld.replace("oldSecret", SECRET_REPLACEMENT), tserver.get(0).get("old").asText());
+    assertEquals(
+        hbaNew.replace("newSecret", SECRET_REPLACEMENT), tserver.get(0).get("new").asText());
+    assertEquals(portChange, tserver.get(1));
+
+    ObjectNode universeDetails = Json.newObject();
+    universeDetails
+        .putObject("tserverGFlags")
+        .put("ysql_hba_conf_csv", hbaOld)
+        .put("webserver_port", "9000");
+
+    JsonNode redactedDetails =
+        RedactingService.filterSecretFields(
+            universeDetails, RedactionTarget.LOGS, null, null, false);
+
+    assertFalse(redactedDetails.has("_redactionParseError"));
+    JsonNode tserverGFlags = redactedDetails.get("tserverGFlags");
+    assertEquals(
+        hbaOld.replace("oldSecret", SECRET_REPLACEMENT),
+        tserverGFlags.get("ysql_hba_conf_csv").asText());
+    assertEquals("9000", tserverGFlags.get("webserver_port").asText());
+  }
+
+  @Test
+  public void testServerConfRedactsUnquotedLdapBindPasswdEndingALine() {
+    String serverConf =
+        "--ysql_hba_conf_csv=host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com"
+            + " ldapbindpasswd=hbaSecret\n"
+            + "--ycql_ldap_bind_passwd=ycqlSecret\n"
+            + "--placement_cloud=aws\n";
+
+    String redacted = RedactingService.redactSensitiveInfoInString(serverConf);
+
+    assertFalse(redacted.contains("hbaSecret"));
+    assertFalse(redacted.contains("ycqlSecret"));
+    assertTrue(redacted.contains("ldapbindpasswd=" + SECRET_REPLACEMENT + "\n--ycql_ldap_bind"));
+    assertTrue(redacted.endsWith("\n--placement_cloud=aws\n"));
+  }
+
+  @Test
   public void testPrivateKeyObfuscation() {
     JsonNode formData =
         new ObjectMapper()
