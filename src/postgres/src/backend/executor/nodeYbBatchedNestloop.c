@@ -913,10 +913,7 @@ CreateBatch(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 			if (have_outer_tuple)
 			{
 				elog(DEBUG2, "saving new outer tuple information");
-				if (bnlstate->js.ps.outeropsset)
-					ExecCopySlot(econtext->ecxt_outertuple, outerTupleSlot);
-				else
-					econtext->ecxt_outertuple = outerTupleSlot;
+				ExecCopySlot(econtext->ecxt_outertuple, outerTupleSlot);
 				LOCAL_JOIN_FN(AddTupleToOuterBatch, bnlstate, econtext->ecxt_outertuple);
 			}
 		}
@@ -1025,17 +1022,18 @@ ExecInitYbBatchedNestLoop(YbBatchedNestLoop *plan, EState *estate, int eflags)
 
 	PlanState  *outerPlan = outerPlanState(bnlstate);
 
-	if (outerPlan->resultopsset && outerPlan->resultops != &TTSOpsMinimalTuple)
-	{
-		/* the outer tuple always has to be a minimal tuple */
-		bnlstate->js.ps.outerops = &TTSOpsMinimalTuple;
-		bnlstate->js.ps.outeropsfixed = true;
-		bnlstate->js.ps.outeropsset = true;
-		bnlstate->js.ps.ps_ExprContext->ecxt_outertuple =
-			ExecInitExtraTupleSlot(estate,
-								   outerPlan->ps_ResultTupleDesc,
-								   &TTSOpsMinimalTuple);
-	}
+	/*
+	 * Own the outer slot even when the child's is already minimal: batch
+	 * tuples are stored into it, and a child such as Unique keeps its last
+	 * returned tuple in its result slot (#35565).
+	 */
+	bnlstate->js.ps.outerops = &TTSOpsMinimalTuple;
+	bnlstate->js.ps.outeropsfixed = true;
+	bnlstate->js.ps.outeropsset = true;
+	bnlstate->js.ps.ps_ExprContext->ecxt_outertuple =
+		ExecInitExtraTupleSlot(estate,
+							   outerPlan->ps_ResultTupleDesc,
+							   &TTSOpsMinimalTuple);
 
 	/*
 	 * Initialize result slot, type and projection.
