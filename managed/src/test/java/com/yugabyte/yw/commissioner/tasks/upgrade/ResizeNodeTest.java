@@ -755,6 +755,95 @@ public class ResizeNodeTest extends UpgradeTaskTest {
   }
 
   @Test
+  public void testReadReplicaKeepsOwnVolumeCountWhenPrimaryGFlagsChange() {
+    final String rrNodeName = "yb-rr-n1";
+    final UUID rrClusterUuid = UUID.randomUUID();
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            univ -> {
+              UniverseDefinitionTaskParams details = univ.getUniverseDetails();
+              UniverseDefinitionTaskParams.UserIntent primary =
+                  details.getPrimaryCluster().userIntent;
+              primary.deviceInfo.numVolumes = 2;
+              primary.specificGFlags =
+                  SpecificGFlags.construct(Collections.emptyMap(), Collections.emptyMap());
+
+              UniverseDefinitionTaskParams.UserIntent rrIntent = primary.clone();
+              rrIntent.numNodes = 1;
+              rrIntent.replicationFactor = 1;
+              rrIntent.deviceInfo.numVolumes = 1;
+              rrIntent.specificGFlags = SpecificGFlags.constructInherited();
+              PlacementInfo rrPlacement = new PlacementInfo();
+              PlacementInfoUtil.addPlacementZone(az1.getUuid(), rrPlacement, 1, 1, false);
+              details.upsertCluster(
+                  rrIntent,
+                  Collections.emptyList(),
+                  rrPlacement,
+                  rrClusterUuid,
+                  UniverseDefinitionTaskParams.ClusterType.ASYNC);
+
+              NodeDetails rr =
+                  details
+                      .getNodesInCluster(details.getPrimaryCluster().uuid)
+                      .iterator()
+                      .next()
+                      .clone();
+              rr.nodeName = rrNodeName;
+              rr.nodeUuid = UUID.randomUUID();
+              rr.nodeIdx = 100;
+              rr.placementUuid = rrClusterUuid;
+              rr.isMaster = false;
+              rr.isTserver = true;
+              rr.state = NodeDetails.NodeState.Live;
+              rr.cloudInfo.private_ip = "10.9.9.9";
+              details.nodeDetailsSet.add(rr);
+            });
+
+    ResizeNodeParams taskParams = createResizeParams();
+    for (UniverseDefinitionTaskParams.Cluster cluster :
+        defaultUniverse.getUniverseDetails().clusters) {
+      UniverseDefinitionTaskParams.Cluster copy =
+          new UniverseDefinitionTaskParams.Cluster(cluster.clusterType, cluster.userIntent.clone());
+      copy.uuid = cluster.uuid;
+      copy.placementInfo = cluster.placementInfo;
+      taskParams.clusters.add(copy);
+    }
+    UniverseDefinitionTaskParams.UserIntent primaryIntent =
+        taskParams.getPrimaryCluster().userIntent;
+    primaryIntent.deviceInfo.volumeSize = DEFAULT_VOLUME_SIZE + 20;
+    primaryIntent.specificGFlags =
+        SpecificGFlags.construct(
+            Collections.emptyMap(), ImmutableMap.of("ysql_max_connections", "400"));
+
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+
+    boolean sawPrimary = false;
+    boolean sawReadReplica = false;
+    for (TaskInfo subTask : taskInfo.getSubTasks()) {
+      if (subTask.getTaskType() != TaskType.AnsibleConfigureServers) {
+        continue;
+      }
+      JsonNode params = subTask.getTaskParams();
+      JsonNode deviceInfo = params.get("deviceInfo");
+      if (deviceInfo == null || deviceInfo.get("numVolumes") == null) {
+        continue;
+      }
+      int numVolumes = deviceInfo.get("numVolumes").asInt();
+      if (rrNodeName.equals(params.get("nodeName").asText())) {
+        sawReadReplica = true;
+        assertEquals(1, numVolumes);
+      } else {
+        sawPrimary = true;
+        assertEquals(2, numVolumes);
+      }
+    }
+    assertTrue(sawPrimary);
+    assertTrue(sawReadReplica);
+  }
+
+  @Test
   public void testNonRollingOnlyGFlagRejectedForResize() {
     ResizeNodeParams taskParams = createResizeParams();
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
