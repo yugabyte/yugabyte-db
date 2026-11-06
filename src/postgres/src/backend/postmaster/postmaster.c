@@ -2626,17 +2626,13 @@ retry1:
 				(errcode(ERRCODE_PROTOCOL_VIOLATION),
 				 errmsg("startup packet from the connection manager has no "
 						"\"%s\" marker", YB_YCM_INTERNAL_END)));
+	port->yb_ycm_internal_end_seen = yb_ycm_internal_end_seen;
 
 	/*
-	 * YB: "options" always comes from the logical client, so it must not set
-	 * a reserved parameter either.  In auth passthrough, fail only the logical
-	 * connection, as a failed auth does, so the shared control backend stays
-	 * up.
+	 * YB: In auth passthrough, fail only the logical connection, as a failed
+	 * auth does, so the shared control backend stays up.  Reserved names in
+	 * "options" are checked when it's applied, in process_postgres_switches().
 	 */
-	if (yb_ycm_internal_end_seen && yb_reserved_parameter == NULL &&
-		port->cmdline_options != NULL)
-		yb_reserved_parameter =
-			YbFindConnMgrReservedParameterInOptions(port->cmdline_options);
 	if (yb_reserved_parameter != NULL)
 	{
 		bool		yb_auth_passthrough = YbIsAuthPassthroughInProgress(port);
