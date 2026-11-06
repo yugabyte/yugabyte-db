@@ -1329,6 +1329,10 @@ TEST_F(HeartbeatLeaderInfoLiveTest, LeaseFollowsLeadership) {
   }
   ASSERT_FALSE(old_leader.empty());
   ASSERT_FALSE(new_leader.empty());
+  // The master logs the fields that changed, not the whole consensus state.
+  RegexWaiterLogSink change_logged(Format(
+      ".*Tablet $0 consensus state change from \\S+: .*leader \\S+ -> $1.*", tablet->id(),
+      new_leader));
   ASSERT_OK(TransferLeadership(mini_cluster_.get(), tablet->id(), new_leader, kTimeout));
 
   ASSERT_OK(WaitFor(
@@ -1339,6 +1343,7 @@ TEST_F(HeartbeatLeaderInfoLiveTest, LeaseFollowsLeadership) {
                AllLeaseStatesConsistent(tablets);
       },
       kTimeout, "Lease moved from the old leader to the new one"));
+  ASSERT_OK(change_logged.WaitFor(kTimeout));
 }
 
 class PersistTabletServerRegistryUpgradeTest : public MasterHeartbeatITest {
