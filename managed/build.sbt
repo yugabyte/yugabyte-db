@@ -159,9 +159,9 @@ libraryDependencies ++= Seq(
   javaWs,
   filters,
   guice,
-  "org.postgresql" % "postgresql" % "42.7.13",
+  "org.postgresql" % "postgresql" % "42.7.14",
   "net.logstash.logback" % "logstash-logback-encoder" % "8.1",
-  "ch.qos.logback" % "logback-classic" % "1.5.38",
+  "ch.qos.logback" % "logback-classic" % "1.6.3",
   "org.codehaus.janino" % "janino" % "3.1.9",
   "org.apache.commons" % "commons-lang3" % "3.20.0",
   "org.apache.commons" % "commons-collections4" % "4.4",
@@ -179,7 +179,10 @@ libraryDependencies ++= Seq(
   "org.bouncycastle" % "bcpkix-fips" % "2.1.9",
   "org.bouncycastle" % "bctls-fips" % "2.1.20",
   "org.mindrot" % "jbcrypt" % "0.4",
-  "org.springframework.security" % "spring-security-core" % "5.8.16",
+  // Only the crypto module is used (Encryptors, BCrypt). It has no Spring dependencies, so taking
+  // it alone keeps spring-security-core and spring-expression out of the image. Ciphertext and
+  // bcrypt hashes written by 5.8.x read back unchanged on 6.5.x.
+  "org.springframework.security" % "spring-security-crypto" % "6.5.11",
   // AWS SDK 2.x dependencies
   "software.amazon.awssdk" % "bom" % "2.29.52" pomOnly(),
   "software.amazon.awssdk" % "core" % "2.29.52",
@@ -245,7 +248,7 @@ libraryDependencies ++= Seq(
   // Compatible with protoc 33.0 https://protobuf.dev/support/version-support/
   "com.google.protobuf" % "protobuf-java" % "4.33.0",
   "com.google.protobuf" % "protobuf-java-util" % "4.33.0",
-  "org.xerial.snappy" % "snappy-java" % "1.1.10.7",
+  "org.xerial.snappy" % "snappy-java" % "1.1.10.12",
   "io.kamon" %% "kamon-bundle" % "2.7.5",
   "io.kamon" %% "kamon-prometheus" % "2.7.5",
   "org.unix4j" % "unix4j-command" % "0.6",
@@ -1066,9 +1069,25 @@ dependencyOverrides += "io.netty" % "netty-handler" % "4.1.139.Final"
 dependencyOverrides += "io.netty" % "netty-transport" % "4.1.139.Final"
 dependencyOverrides += "io.netty" % "netty-transport-sctp" % "4.1.139.Final"
 
-// Play pulls the at.yawk fork of lz4-java transitively; pinned for CVE-2026-59949 and
-// CVE-2026-106451.
-dependencyOverrides += "at.yawk.lz4" % "lz4-java" % "1.11.4"
+// Play pulls the at.yawk fork of lz4-java transitively; pinned for CVE-2026-59949,
+// CVE-2026-106451 and GHSA-48mj-8f7c-7qfm.
+dependencyOverrides += "at.yawk.lz4" % "lz4-java" % "1.12.1"
+
+// Google Cloud libraries pull Guava and the OpenTelemetry API/SDK transitively. The OpenTelemetry
+// core modules are released in lockstep and must stay on one version.
+dependencyOverrides += "com.google.guava" % "guava" % "33.7.2-jre"
+val openTelemetryVersion = "1.67.0"
+dependencyOverrides ++= Seq(
+  "io.opentelemetry" % "opentelemetry-api",
+  "io.opentelemetry" % "opentelemetry-context",
+  "io.opentelemetry" % "opentelemetry-common",
+  "io.opentelemetry" % "opentelemetry-sdk",
+  "io.opentelemetry" % "opentelemetry-sdk-common",
+  "io.opentelemetry" % "opentelemetry-sdk-trace",
+  "io.opentelemetry" % "opentelemetry-sdk-metrics",
+  "io.opentelemetry" % "opentelemetry-sdk-logs",
+  "io.opentelemetry" % "opentelemetry-sdk-extension-autoconfigure-spi",
+).map(_ % openTelemetryVersion)
 
 // cron-utils pulls org.glassfish:javax.el 3.0.0 (CVE-2021-28170), which has no fixed release.
 // The fix shipped as org.glassfish:jakarta.el 3.0.4, which keeps the javax.el package.
