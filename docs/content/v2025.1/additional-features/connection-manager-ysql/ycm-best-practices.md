@@ -31,7 +31,7 @@ To avoid this:
 - Pass such values as bind parameters (for example, `$1::timestamptz`) instead of literals. Parameters are converted at execution time using the settings of the client running the statement.
 - Write literals that do not depend on settings, for example, `'2020-01-01 00:00+00'::timestamptz` with an explicit UTC offset, and ISO dates such as `'2020-01-02'::date`.
 - Use `now()`, `CURRENT_DATE`, and similar functions instead of the strings `'now'`, `'today'`, `'tomorrow'`, and `'yesterday'`.
-- Use the same values for these settings in all connections of a user and database, for example by setting them with `ALTER ROLE ... SET` or `ALTER DATABASE ... SET` instead of per connection.
+- Use the same values for these settings on every connection for a given user and database. Set the defaults with `ALTER ROLE ... SET` or `ALTER DATABASE ... SET` rather than setting them on each connection.
 
 ## Use sticky connections for long-running workloads
 
