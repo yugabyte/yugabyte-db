@@ -11,9 +11,9 @@
 # under the License.
 
 # C++ side of the cxx bridges shared by every executable that hosts Rust code. See
-# src/rust/docs/cpp-host.md.
+# src/yb/rust/docs/cpp-host.md.
 
-# Shared #[cxx::bridge] files (paths under src/rust); a component's own bridges are generated in
+# Shared #[cxx::bridge] files (paths under src/yb/rust); a component's own bridges are generated in
 # its directory (e.g. src/yb/master_host). This call also writes rust/cxx.h.
 yb_rust_cxxgen(RUST_BRIDGE_CXXGEN_SRCS WITH_CXX_HEADER
   common/yb-cpp-host/src/ffi/flags.rs

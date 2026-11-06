@@ -11,7 +11,7 @@
 // under the License.
 
 // main() of master-tserver-sim, which loads a master with fake tservers; see
-// src/rust/master/docs/testing.md.
+// src/yb/rust/master/docs/testing.md.
 
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"

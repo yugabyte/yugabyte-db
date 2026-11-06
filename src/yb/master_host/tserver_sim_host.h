@@ -12,7 +12,7 @@
 
 // The C++ process host of master-tserver-sim: an RPC server with no storage, listening on one
 // address per simulated tserver, whose services Rust handles
-// (src/rust/master/tools/tserver-sim-main).
+// (src/yb/rust/master/tools/tserver-sim-main).
 
 #pragma once
 

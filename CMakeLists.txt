@@ -918,7 +918,7 @@ foreach(subdir_name IN LISTS YB_SUBDIR_NAMES)
   add_subdirectory("src/yb/${subdir_name}")
 endforeach()
 
-# Rust code (src/rust) and its C++ hosts. Needs cargo; see src/rust/docs/build.md.
+# Rust code (src/yb/rust) and its C++ hosts. Needs cargo; see src/yb/rust/docs/build.md.
 if("$ENV{YB_SKIP_RUST}" STREQUAL "1")
   message("Skipping Rust code because YB_SKIP_RUST is set to 1")
 else()

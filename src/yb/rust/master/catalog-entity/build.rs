@@ -18,7 +18,7 @@ use std::path::PathBuf;
 
 fn main() {
     let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
-    let header_path = manifest_dir.join("../../../yb/master/catalog_entity_types.h");
+    let header_path = manifest_dir.join("../../../master/catalog_entity_types.h");
     println!("cargo:rerun-if-changed={}", header_path.display());
     let header = std::fs::read_to_string(&header_path).unwrap();
     let start = header

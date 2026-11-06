@@ -2,7 +2,7 @@
 
 `src/yb/master_host/` holds the C++ side of the Rust master: `main()`, `MasterHost` and the
 master's own bridge. The shared bridges are in `src/yb/rust_bridge/`
-([src/rust/docs/cpp-host.md](../../docs/cpp-host.md)).
+([src/yb/rust/docs/cpp-host.md](../../docs/cpp-host.md)).
 
 ## main()
 

@@ -16,7 +16,7 @@
 //
 // Apply must never block, so a batch is pushed onto Rust's unbounded queue and nothing waits for
 // Rust. Changes the tap cannot see as rows (a PITR restore, a remote bootstrap, shell mode) are
-// posted as a Reload instead; see src/rust/master/docs/sys-catalog.md.
+// posted as a Reload instead; see src/yb/rust/master/docs/sys-catalog.md.
 
 #pragma once
 

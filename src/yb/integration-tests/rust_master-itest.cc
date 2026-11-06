@@ -14,7 +14,7 @@
 // sys catalog and the same in-memory catalog as the C++ leader through DDL, snapshots and a PITR
 // restore, answers the follower-servable RPCs, and never claims to lead. With
 // --TEST_rust_master_allow_leadership it leads and serves the core cluster, client and heartbeat
-// RPCs (src/rust/master/docs/testing.md). YSQL is off: a layer-2 Rust leader does not serve it.
+// RPCs (src/yb/rust/master/docs/testing.md). YSQL is off: a layer-2 Rust leader does not serve it.
 
 #include <algorithm>
 #include <map>

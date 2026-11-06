@@ -10,7 +10,7 @@ executable and is covered by C++ tests.
 ## Sys-catalog row conformance
 
 The Rust master must serialize every sys-catalog row exactly as the C++ master does (see
-[src/rust/docs/proto.md](../../docs/proto.md)). To check a real catalog:
+[src/yb/rust/docs/proto.md](../../docs/proto.md)). To check a real catalog:
 
 ```bash
 # With the masters stopped:
@@ -65,7 +65,7 @@ Fake replicas cannot share Raft groups with real tservers, so measure a master w
 tservers and the load balancer off. `run_baseline.sh` does that for a fresh single master:
 
 ```bash
-src/rust/master/tools/tserver-sim/run_baseline.sh build/latest [master binary] -- \
+src/yb/rust/master/tools/tserver-sim/run_baseline.sh build/latest [master binary] -- \
   --tserver_sim_num_tservers=100 --tserver_sim_steady_state_sec=20 \
   --tserver_sim_num_tables=50 --tserver_sim_tablets_per_table=8
 ```

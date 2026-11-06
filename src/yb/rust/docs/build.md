@@ -7,11 +7,11 @@
 ./yb_build.sh release --target rust_checks   # rustfmt, clippy -D warnings, cargo test
 ```
 
-`--skip-rust` leaves out `src/rust`, `src/yb/rust_bridge` and every component's C++ host.
+`--skip-rust` leaves out `src/yb/rust`, `src/yb/rust_bridge` and every component's C++ host.
 
 ## Toolchain
 
-`src/rust/rust-toolchain.toml` pins the Rust version. With rustup, Cargo picks it up automatically;
+`src/yb/rust/rust-toolchain.toml` pins the Rust version. With rustup, Cargo picks it up automatically;
 without rustup, the installed `cargo` must be that version. `cmake_modules/YugabyteRust.cmake`
 fails the configure step otherwise.
 

@@ -98,7 +98,8 @@ Build options:
   --skip-pg-parquet
     Skip pg_parquet extension build.
   --skip-rust
-    Skip building Rust code (src/rust) and its C++ hosts, including the Rust master (yb-master-rs).
+    Skip building Rust code (src/yb/rust) and its C++ hosts, including the Rust master
+    (yb-master-rs).
   --skip-extra-pg-extensions
     Skip building extra (non-essential) PG extensions: documentdb (also skips its pgrx/Rust build)
     and pg_parquet.

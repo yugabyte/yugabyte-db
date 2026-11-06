@@ -10,9 +10,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-// Calls only the Rust master (src/rust/master) serves: the location stream between Rust masters
-// (src/rust/master/docs/tablet-locations.md) and a dump of the in-memory catalog for tests. A C++
-// master does not register the service and answers "not registered"; C++ only uses the proxy.
+// Calls only the Rust master (src/yb/rust/master) serves: the location stream between Rust masters
+// (src/yb/rust/master/docs/tablet-locations.md) and a dump of the in-memory catalog for tests. A
+// C++ master does not register the service and answers "not registered"; C++ only uses the proxy.
 
 syntax = "proto2";
 

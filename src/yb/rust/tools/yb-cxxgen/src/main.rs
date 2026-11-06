@@ -14,7 +14,7 @@
 //! compiler, flags and standard library as the rest of the server, instead of `cxx-build`
 //! compiling it from a build script.
 //!
-//! Usage: `yb-cxxgen <src/rust dir> <output dir> <bridge.rs relative path>...`
+//! Usage: `yb-cxxgen <src/yb/rust dir> <output dir> <bridge.rs relative path>...`
 //!
 //! For each `crate/src/x.rs` it writes `<output dir>/crate/src/x.rs.h` and `.rs.cc`, plus the cxx
 //! runtime header as `<output dir>/rust/cxx.h`. Files are only rewritten when their content
@@ -43,7 +43,7 @@ fn with_suffix(base: &Path, rel: &str, suffix: &str) -> PathBuf {
 fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let [src_root, out_dir, bridges @ ..] = args.as_slice() else {
-        return Err("usage: yb-cxxgen <src/rust dir> <output dir> <bridge.rs>...".into());
+        return Err("usage: yb-cxxgen <src/yb/rust dir> <output dir> <bridge.rs>...".into());
     };
     let src_root = Path::new(src_root);
     let out_dir = Path::new(out_dir);

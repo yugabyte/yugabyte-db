@@ -10,7 +10,7 @@
 # or implied.  See the License for the specific language governing permissions and limitations
 # under the License.
 
-# The C++ host of the Rust master (yb-master-rs). See src/rust/master/docs/cpp-host.md.
+# The C++ host of the Rust master (yb-master-rs). See src/yb/rust/master/docs/cpp-host.md.
 
 yb_rust_cxxgen(MASTER_HOST_CXXGEN_SRCS
   master/server/src/ffi.rs)
@@ -42,7 +42,7 @@ yb_add_lto_target(yb-master-rs${YB_DYNAMICALLY_LINKED_EXE_SUFFIX} yb-master-rs "
 # Checks the Rust protobuf runtime against rows dumped by `sys-catalog-tool dump-rows`.
 yb_add_rust_tool(master-conformance)
 
-# Fake tservers for loading a master (src/rust/master/docs/testing.md). Its own executable with its
+# Fake tservers for loading a master (src/yb/rust/master/docs/testing.md). Its own executable with its
 # own Rust static library.
 yb_rust_cxxgen(TSERVER_SIM_CXXGEN_SRCS
   master/tools/tserver-sim-main/src/ffi.rs)

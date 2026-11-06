@@ -31,7 +31,7 @@ without it the Rust master never leads ([leadership.md](leadership.md)).
 | [testing.md](testing.md) | Unit tests, conformance against the C++ master, itests |
 
 Shared Rust pieces (build, bridges, protobuf, flags) are documented in
-[src/rust/docs](../../docs/README.md).
+[src/yb/rust/docs](../../docs/README.md).
 
 ## Crates
 

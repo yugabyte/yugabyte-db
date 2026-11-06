@@ -15,8 +15,8 @@
 // no CatalogManager. Rust drives it through master/server/src/ffi.rs and serves the master RPCs.
 //
 // The host leads only with --TEST_rust_master_allow_leadership: a Rust leader serves only the core
-// RPCs (src/rust/master/docs/leadership.md). Without the flag it never starts an election and steps
-// down at once if it wins one.
+// RPCs (src/yb/rust/master/docs/leadership.md). Without the flag it never starts an election and
+// steps down at once if it wins one.
 
 #pragma once
 
@@ -120,7 +120,7 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   // initialization where C++ does.
   rust::Vec<uint8_t> HandleOnHost(rust::Str method, rust::Slice<const uint8_t> request);
 
-  // The sys-catalog store (src/rust/master/sys-catalog). Failures throw.
+  // The sys-catalog store (src/yb/rust/master/sys-catalog). Failures throw.
 
   // Whether the sys-catalog tablet is open: initialized and not in shell mode.
   bool SysCatalogIsOpen() const;

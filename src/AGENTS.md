@@ -137,9 +137,9 @@ the `create-pr` and `create-diff` skills re-check it before publishing.
 
 ## Rust
 
-Rust code lives in `src/rust/` (C++ side in `src/yb/rust_bridge/` and each component's host, such
-as `src/yb/master_host/`). Start with `src/rust/docs/README.md`; the Rust master, being built on the
-`feature-stack/hari-yb-master-rust` branch, is documented in `src/rust/master/docs/`.
+Rust code lives in `src/yb/rust/` (C++ side in `src/yb/rust_bridge/` and each component's host, such
+as `src/yb/master_host/`). Start with `src/yb/rust/docs/README.md`; the Rust master, being built on the
+`feature-stack/hari-yb-master-rust` branch, is documented in `src/yb/rust/master/docs/`.
 
 ## Build System
 

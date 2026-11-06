@@ -940,8 +940,8 @@ string ToHex(const Slice& slice) {
 } // namespace
 
 // One line per row: "<type>\t<hex id>\t<hex row>\t<hex row parsed and serialized by C++>". The
-// Rust master's conformance check (src/rust/yb-master-conformance) requires the Rust runtime to
-// serialize each row exactly as the last column does.
+// Rust master's conformance check (src/yb/rust/master/tools/conformance) requires the Rust runtime
+// to serialize each row exactly as the last column does.
 Status SysCatalogTool::DumpRows(const string& file_name) {
   RETURN_NOT_OK(Init());
   tablet::TabletPtr tablet = sys_catalog_->tablet();

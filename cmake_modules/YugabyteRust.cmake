@@ -10,9 +10,9 @@
 # or implied.  See the License for the specific language governing permissions and limitations
 # under the License.
 
-# Builds the Cargo workspace at src/rust (Rust code in YugabyteDB, starting with the master) as
+# Builds the Cargo workspace at src/yb/rust (Rust code in YugabyteDB, starting with the master) as
 # part of the CMake build.
-# See src/rust/docs/build.md for the overall layout.
+# See src/yb/rust/docs/build.md for the overall layout.
 #
 # CMake owns every final link (sanitizer runtimes, tcmalloc, rpaths, LTO), so Cargo only produces
 # static libraries and build-time tools. Each executable links exactly one Rust static library:
@@ -21,13 +21,13 @@
 # Included once, from the top-level CMakeLists.txt, so its variables reach every directory.
 include_guard(GLOBAL)
 
-set(YB_RUST_SRC_DIR "${YB_SRC_ROOT}/src/rust")
+set(YB_RUST_SRC_DIR "${YB_SRC_ROOT}/src/yb/rust")
 set(YB_RUST_TARGET_DIR "${YB_BUILD_ROOT}/rust/target")
 set(YB_RUST_CXXGEN_DIR "${YB_BUILD_ROOT}/rust/cxxgen")
 
 file(READ "${YB_RUST_SRC_DIR}/rust-toolchain.toml" _yb_rust_toolchain_toml)
 if(NOT _yb_rust_toolchain_toml MATCHES "channel = \"([0-9.]+)\"")
-  message(FATAL_ERROR "Could not find the toolchain channel in src/rust/rust-toolchain.toml")
+  message(FATAL_ERROR "Could not find the toolchain channel in src/yb/rust/rust-toolchain.toml")
 endif()
 set(YB_RUST_TOOLCHAIN_VERSION "${CMAKE_MATCH_1}")
 
@@ -36,10 +36,10 @@ find_program(YB_CARGO_EXECUTABLE cargo
 if(NOT YB_CARGO_EXECUTABLE)
   message(FATAL_ERROR
           "cargo not found. The Rust yb-master needs Rust ${YB_RUST_TOOLCHAIN_VERSION} "
-          "(see src/rust/docs/build.md), or pass --skip-rust to yb_build.sh.")
+          "(see src/yb/rust/docs/build.md), or pass --skip-rust to yb_build.sh.")
 endif()
 
-# rustup reads rust-toolchain.toml when cargo runs from inside src/rust; without rustup the
+# rustup reads rust-toolchain.toml when cargo runs from inside src/yb/rust; without rustup the
 # installed cargo must already be the pinned version.
 execute_process(
   COMMAND "${YB_CARGO_EXECUTABLE}" --version
@@ -50,8 +50,8 @@ execute_process(
 if(NOT _yb_cargo_version_result EQUAL 0 OR
    NOT _yb_cargo_version_output MATCHES "^cargo ${YB_RUST_TOOLCHAIN_VERSION} ")
   message(FATAL_ERROR
-          "Expected cargo ${YB_RUST_TOOLCHAIN_VERSION} (pinned in src/rust/rust-toolchain.toml), "
-          "got: '${_yb_cargo_version_output}'")
+          "Expected cargo ${YB_RUST_TOOLCHAIN_VERSION} "
+          "(pinned in src/yb/rust/rust-toolchain.toml), got: '${_yb_cargo_version_output}'")
 endif()
 message("Using ${_yb_cargo_version_output} from ${YB_CARGO_EXECUTABLE}")
 
@@ -126,7 +126,7 @@ function(yb_add_rust_staticlib target_name package_name)
 endfunction()
 
 # Generates the C++ half of the #[cxx::bridge] modules in the given files (paths relative to
-# src/rust) with the yb-cxxgen tool, which uses the same cxx version as the Rust side. Output for
+# src/yb/rust) with the yb-cxxgen tool, which uses the same cxx version as the Rust side. Output for
 # dir/src/x.rs is ${YB_RUST_CXXGEN_DIR}/dir/src/x.rs.{h,cc}; include the header as
 # "dir/src/x.rs.h". Sets <out_var> to the generated .cc files. Exactly one call, in
 # src/yb/rust_bridge, passes WITH_CXX_HEADER: the tool writes rust/cxx.h on every run, but only one

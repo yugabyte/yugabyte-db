@@ -295,7 +295,7 @@ fn write_files(files: &[FileDescriptorProto], out: &Path) {
 
 fn main() {
     let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
-    let src_dir = manifest_dir.join("../../..").canonicalize().unwrap();
+    let src_dir = manifest_dir.join("../../../..").canonicalize().unwrap();
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
     let proto_dir = out_dir.join("protos");
     let _ = fs::remove_dir_all(&proto_dir);
