@@ -6531,9 +6531,10 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     createSlot(replApi0, slotName, "test_decoding");
 
     try (Statement stmt = replConn0.createStatement()) {
-      // The replica wait below can exceed the 60s default. A timeout shutdown releases the slot
-      // lock before the kill, so the test would pass without checking crash release.
-      stmt.execute("SET wal_sender_timeout = 0");
+      // waitFor scales the replica wait by build type. The walsender has to outlast that
+      // scaled wait, or a timeout exit releases the slot lock before the kill.
+      long walSenderTimeoutMs = BuildTypeUtil.adjustTimeout(120_000L * kMultiplier) + 60_000L;
+      stmt.execute("SET wal_sender_timeout = " + walSenderTimeoutMs);
     }
 
     PGReplicationStream stream0 = replApi0.replicationStream()
