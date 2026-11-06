@@ -169,7 +169,7 @@ struct TierMigrationStatus {
 
   // True while a migration pass still has moves outstanding. Independent of `state`: a tablet
   // stays kInProgress between passes.
-  bool pass_in_flight = false;
+  bool migration_pass_in_flight = false;
 
   // Counters of the most recent pass.
   uint32_t files_total = 0;     // live SSTs its scan found outside the target directory
@@ -1826,9 +1826,9 @@ class Tablet : public AbstractTablet,
   // Tiered storage: serializes the target write (SetTierMigrationTargetUnlocked's in-flight check
   // + superblock write + SetOptions, so the persisted target and the regular DB's target_path_id
   // cannot diverge) against a pass claiming the tablet (RunTierMigrationPass's target read through
-  // pass_in_flight = true), so a pass always runs toward the current persisted target. Taken
-  // before tier_migration_mutex_, never inside it. Deliberately not tier_migration_mutex_: that
-  // one is taken by every move callback and by GetTierInfo, and must not be held across a
+  // migration_pass_in_flight = true), so a pass always runs toward the current persisted target.
+  // Taken before tier_migration_mutex_, never inside it. Deliberately not tier_migration_mutex_:
+  // that one is taken by every move callback and by GetTierInfo, and must not be held across a
   // superblock flush or a SetOptions call.
   std::mutex tier_target_mutex_;
 
