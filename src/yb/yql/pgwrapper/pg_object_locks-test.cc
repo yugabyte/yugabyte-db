@@ -1488,6 +1488,7 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyReadOnlyTxnReleasesLocksAtRollb
 // transaction that holds that row lock then runs an ALTER TABLE, which waits on the object lock.
 // The deadlock detector sees the cycle only if the fast path write waits as its object lock owner,
 // as in TestDeadlockFastPath; otherwise both sides wait until the ALTER's statement timeout.
+// Exactly one of the two writers commits.
 TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyFastPathWriteDeadlockIsDetected) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
@@ -1520,15 +1521,21 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyFastPathWriteDeadlockIsDetected
 
   ASSERT_OK(new_conn.Execute("SET statement_timeout = '30s'"));
   auto alter_status = new_conn.Execute("ALTER TABLE test ADD COLUMN v1 INT");
+  // A missed cycle leaves the ALTER waiting until its statement timeout.
+  ASSERT_STR_NOT_CONTAINS(alter_status.ToString(), "statement timeout");
+  // The detector aborts one side. The new mode transaction's abort can surface at the ALTER or
+  // only at COMMIT; a failed transaction's COMMIT rolls back.
+  auto commit_status = new_conn.Execute("COMMIT");
   auto legacy_status = legacy_future.get();
-  LOG(INFO) << "ALTER: " << alter_status << ", legacy UPDATE: " << legacy_status;
-  // The detector breaks the cycle. Which side it aborts, and whether a retry hides that, varies;
-  // a missed cycle shows as the ALTER's statement timeout.
-  for (const auto& status : {alter_status, legacy_status}) {
-    ASSERT_TRUE(status.ok() || status.ToString().find("deadlock") != std::string::npos)
-        << "ALTER: " << alter_status << ", legacy UPDATE: " << legacy_status;
-  }
-  ASSERT_OK(new_conn.Execute("ROLLBACK"));
+  LOG(INFO) << "ALTER: " << alter_status << ", COMMIT: " << commit_status
+            << ", legacy UPDATE: " << legacy_status;
+  const auto new_txn_committed = alter_status.ok() && commit_status.ok();
+  ASSERT_NE(new_txn_committed, legacy_status.ok());
+  auto check_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_EQ(ASSERT_RESULT(check_conn.FetchRow<int32_t>("SELECT v FROM test WHERE k = 1")), 1);
+  ASSERT_EQ(ASSERT_RESULT(check_conn.FetchRow<int64_t>(
+      "SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'test' AND "
+      "column_name = 'v1'")), new_txn_committed ? 1 : 0);
 }
 
 INSTANTIATE_TEST_SUITE_P(
