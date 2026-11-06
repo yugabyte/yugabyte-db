@@ -1368,10 +1368,9 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
         std::unique_lock <std::mutex> lock(link_list_locks_[internalId]);
         unsigned int *data = get_linklist_at_level(internalId, level);
         int size = getListCount(data);
-        std::vector<tableint> result(size);
         tableint *ll = (tableint *) (data + 1);
-        memcpy(result.data(), ll, size * sizeof(tableint));
-        return result;
+        // Not memcpy: the data of an empty vector can be null, which memcpy must not get.
+        return std::vector<tableint>(ll, ll + size);
     }
 
 
