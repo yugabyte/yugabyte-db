@@ -1613,6 +1613,49 @@ TEST_P(YbAshV2TestWithCircularBufferSize, TestYbAshFunctionAndViewReturnSameSamp
              kView, start_time, end_time)}));
 }
 
+TEST_P(YbAshV2TestWithCircularBufferSize, TestEveryTimeBound) {
+  // While a single session sleeps, each sampling tick normally stores one sample. With the 1 KiB
+  // buffer, that leaves a gap in time between the last slot and slot 0.
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Fetch("SELECT pg_sleep(2)"));
+  ASSERT_OK(StopAshSampling());
+
+  // Use every sample_time, every midpoint between consecutive sample_times, and points just
+  // outside the buffer's time range as bounds.
+  const auto [num_bounds, bad_start_time, bad_end_time, bad_empty_range] = ASSERT_RESULT((
+      conn_->FetchRow<int64_t, int64_t, int64_t, int64_t>(R"#(
+          WITH times AS (SELECT DISTINCT sample_time AS ts FROM yb_active_session_history),
+               bounds AS (SELECT ts FROM times
+                          UNION
+                          SELECT ts + (LEAD(ts) OVER (ORDER BY ts) - ts) / 2 FROM times
+                          UNION
+                          SELECT MIN(ts) - INTERVAL '1 ms' FROM times
+                          UNION
+                          SELECT MAX(ts) + INTERVAL '1 ms' FROM times),
+               results AS (
+                 SELECT
+                   ARRAY(SELECT sample_time FROM yb_active_session_history
+                         WHERE sample_time >= b.ts ORDER BY 1) AS expected_from,
+                   ARRAY(SELECT sample_time FROM yb_active_session_history(b.ts)
+                         ORDER BY 1) AS actual_from,
+                   ARRAY(SELECT sample_time FROM yb_active_session_history
+                         WHERE sample_time < b.ts ORDER BY 1) AS expected_until,
+                   ARRAY(SELECT sample_time FROM yb_active_session_history(NULL, b.ts)
+                         ORDER BY 1) AS actual_until,
+                   (SELECT COUNT(*) FROM yb_active_session_history(b.ts, b.ts)) AS actual_empty
+                 FROM bounds b WHERE b.ts IS NOT NULL)
+          SELECT COUNT(*),
+                 COUNT(*) FILTER (WHERE expected_from <> actual_from),
+                 COUNT(*) FILTER (WHERE expected_until <> actual_until),
+                 COUNT(*) FILTER (WHERE actual_empty <> 0)
+          FROM results
+      )#")));
+  ASSERT_GT(num_bounds, 0);
+  EXPECT_EQ(bad_start_time, 0);
+  EXPECT_EQ(bad_end_time, 0);
+  EXPECT_EQ(bad_empty_range, 0);
+}
+
 // Regression test: ASH samples for ConflictResolution_WaitOnConflictingTxns must carry the user's
 // query_id across wait-queue refresh retries. The wait queue refreshes a stalled waiter every
 // refresh_waiter_timeout_ms; the waiter's Write RPC times out and is re-sent by RpcRetrier on a

@@ -207,9 +207,8 @@ static YbcAshSample *YbAshGetNextCircularBufferSlot(void);
 static void uchar_to_uuid(unsigned char *in, pg_uuid_t *out);
 static void client_ip_to_string(unsigned char *client_addr, uint16 client_port,
 								uint8_t addr_family, char *client_ip);
-static void GetAshRangeIndexes(TimestampTz start_time, TimestampTz end_time,
-							   int *start_index, int *end_index,
-							   bool is_end_time_exclusive);
+static int	BinarySearchAshIndex(TimestampTz target_time, int oldest_index,
+								 int nsamples);
 
 bool
 yb_ash_circular_buffer_size_check_hook(int *newval, void **extra, GucSource source)
@@ -1213,20 +1212,25 @@ YbAshGetNextCircularBufferSlot(void)
  * be more than or equal to end_time. If this is NULL, rows will be returned
  * till the most recent available time in the circular buffer
  *
- * The start index is always inclusive and the end index is always exclusive.
+ * Sets *start_idx to the circular buffer index of the first sample to return
+ * and *num_samples to the number of samples to return from there on.
  */
 static void
-GetAshIndexesFromInput(FunctionCallInfo fcinfo, int *start_idx, int *end_idx)
+GetAshIndexesFromInput(FunctionCallInfo fcinfo, int *start_idx,
+					   int *num_samples)
 {
 	int			index = yb_ash->index;
+	/* Once the buffer has wrapped around, the oldest sample is at index */
+	bool		is_wrapped = yb_ash->circular_buffer[index].sample_time != 0;
+	int			oldest_index = is_wrapped ? index : 0;
+	int			nsamples = is_wrapped ? yb_ash->max_entries : index;
+	int			start_pos = 0;
+	int			end_pos = nsamples;
 	static int	nargs = -1;
 	bool		is_start_time_null = true;
 	bool		is_end_time_null = true;
 	TimestampTz start_time = 0;
 	TimestampTz end_time = 0;
-
-	*start_idx = -1;
-	*end_idx = -1;
 
 	if (nargs == -1)
 		nargs = YbGetNumberOfFunctionInputParameters(F_YB_ACTIVE_SESSION_HISTORY);
@@ -1256,27 +1260,14 @@ GetAshIndexesFromInput(FunctionCallInfo fcinfo, int *start_idx, int *end_idx)
 		}
 	}
 
-	/*
-	 * Either the schema is of older version, or the input
-	 * parameters were not given.
-	 */
-	if (is_start_time_null)
-	{
-		if (yb_ash->circular_buffer[index].sample_time != 0)
-			*start_idx = index;
-		else /* buffer has not wrapped around */
-			*start_idx = 0;
-	}
+	if (!is_start_time_null)
+		start_pos = BinarySearchAshIndex(start_time, oldest_index, nsamples);
 
-	if (is_end_time_null)
-		*end_idx = index; /* always return exclusive index */
+	if (!is_end_time_null)
+		end_pos = BinarySearchAshIndex(end_time, oldest_index, nsamples);
 
-	/*
-	 * Find the indices that were not set in the above step
-	 * for the given time range.
-	 */
-	GetAshRangeIndexes(start_time, end_time, start_idx, end_idx,
-					   !is_end_time_null);
+	*start_idx = (oldest_index + start_pos) % yb_ash->max_entries;
+	*num_samples = end_pos - start_pos;
 }
 
 static void
@@ -1286,7 +1277,7 @@ yb_active_session_history_init(FunctionCallInfo fcinfo,
 	MemoryContext oldcontext;
 	TupleDesc	tupdesc;
 	int			start_index;
-	int			end_index;
+	int			num_samples;
 	int		   *cur_index;
 
 	funcctx = SRF_FIRSTCALL_INIT();
@@ -1302,29 +1293,8 @@ yb_active_session_history_init(FunctionCallInfo fcinfo,
 	/* Acquire buffer lock (will be released when iteration completes) */
 	YbAshAcquireBufferLock(false /* exclusive */ );
 
-	GetAshIndexesFromInput(fcinfo, &start_index, &end_index);
-
-	if (start_index == -1 || end_index == -1)	/* No data */
-		funcctx->max_calls = 0;
-	else if (start_index > end_index)	/* Range wraps around */
-		funcctx->max_calls = (yb_ash->max_entries - start_index) + end_index;
-	else						/* Simple sequential range */
-	{
-		if (start_index != end_index)
-			funcctx->max_calls = end_index - start_index;
-		else
-		{
-			/*
-			 * If start index and end index are same, either the buffer is
-			 * empty, or the buffer has wrapped around and we need to scan
-			 * the entire buffer.
-			 */
-			if (yb_ash->circular_buffer[start_index].sample_time != 0)
-				funcctx->max_calls = yb_ash->max_entries;
-			else
-				funcctx->max_calls = 0;
-		}
-	}
+	GetAshIndexesFromInput(fcinfo, &start_index, &num_samples);
+	funcctx->max_calls = num_samples;
 
 	cur_index = (int *) palloc(sizeof(int));
 	*cur_index = start_index;
@@ -1501,109 +1471,28 @@ client_ip_to_string(unsigned char *client_addr, uint16 client_port,
 }
 
 /*
- * Performs binary search on a range of the circular buffer to find
- * an index.
- *
- * Both left and right are inclusive bounds.
- *
- * If is_lower_bound is true, this function searches for the first
- * element in the range [left, right] which is not ordered before target.
- *
- * If is_lower_bound is false, this function searches for the first
- * element in the range [left, right] which is ordered after target.
- *
- * For example, consider this buffer of timestamps
- * [1, 1, 3, 3, 5, 5]
- * If target is 3 and is_lower_bound is true, this function would
- * return 2 (the index of the first occurence of 3)
- * If target is 3 and is_lower_bound is false, this function would
- * return 4 (the index after the last occurence of 3)
+ * Searches the nsamples samples of the circular buffer, oldest first starting
+ * at oldest_index, for the first one whose sample_time is not before
+ * target_time. Returns its position counted from the oldest sample, or
+ * nsamples if every sample is before target_time.
  */
 static int
-BinarySearchAshIndex(TimestampTz target_time, int left, int right,
-					 bool is_lower_bound)
+BinarySearchAshIndex(TimestampTz target_time, int oldest_index, int nsamples)
 {
 	YbcAshSample *cb = yb_ash->circular_buffer;
-	Assert(left <= right && left >= 0 && right < yb_ash->max_entries);
-	Assert(target_time >= cb[left].sample_time &&
-		   target_time <= cb[right].sample_time);
+	int			left = 0;
+	int			right = nsamples;
 
-	while (left <= right)
+	while (left < right)
 	{
 		int			mid = left + (right - left) / 2;
-		TimestampTz mid_time = cb[mid].sample_time;
-		bool		condition = is_lower_bound
-								? (mid_time < target_time)
-								: (mid_time <= target_time);
+		int			slot = (oldest_index + mid) % yb_ash->max_entries;
 
-		if (condition)
+		if (cb[slot].sample_time < target_time)
 			left = mid + 1;
 		else
-			right = mid - 1;
+			right = mid;
 	}
 
 	return left;
-}
-
-/*
- * Gets start_index and end_index of the ASH circular buffer range
- * for the given time range. The start index is always inclusive
- * and the end index is always exclusive.
- *
- * is_end_time_exclusive controls whether the range is for
- * [start_time, end_time] or [start_time, end_time)
- */
-static void
-GetAshRangeIndexes(TimestampTz start_time, TimestampTz end_time,
-				   int *start_index, int *end_index,
-				   bool is_end_time_exclusive)
-{
-	YbcAshSample *cb = yb_ash->circular_buffer;
-	int			index = yb_ash->index;
-	int			max_entries = yb_ash->max_entries;
-
-	int			max_time_index = (index - 1 + max_entries) % max_entries;
-	int			min_time_index = cb[index].sample_time ? index : 0;
-	TimestampTz buffer_min_time = cb[min_time_index].sample_time;
-	TimestampTz buffer_max_time = cb[max_time_index].sample_time;
-	TimestampTz buffer_first_entry_time = cb[0].sample_time;
-
-	/* Time range is not there in the buffer */
-	if ((start_time > 0 && start_time > buffer_max_time) ||
-		(end_time > 0 && end_time < buffer_min_time))
-		return;
-
-	/* Find the start_index, if not already set */
-	if (*start_index == -1)
-	{
-		if (start_time <= buffer_min_time)
-			*start_index = min_time_index;
-		else if (start_time < buffer_first_entry_time)
-			*start_index = BinarySearchAshIndex(start_time, index,
-												max_entries - 1,
-												true /* is_lower_bound */ );
-		else
-			*start_index = BinarySearchAshIndex(start_time, 0, max_time_index,
-												true /* is_lower_bound */ );
-	}
-
-	/* Find the end_index, if not already set */
-	if (*end_index == -1)
-	{
-		if (end_time > buffer_max_time)
-			*end_index = max_time_index + 1;
-		else if (end_time < buffer_first_entry_time)
-			*end_index = BinarySearchAshIndex(end_time, index, max_entries - 1,
-											  is_end_time_exclusive);
-		else
-			*end_index = BinarySearchAshIndex(end_time, 0, max_time_index,
-											  is_end_time_exclusive);
-	}
-
-	/* if upper bound is used, end index can go out of bounds */
-	if (*end_index == max_entries)
-		*end_index = 0;
-
-	Assert(*start_index >= 0 && *start_index < max_entries);
-	Assert(*end_index >= 0 && *end_index < max_entries);
 }
