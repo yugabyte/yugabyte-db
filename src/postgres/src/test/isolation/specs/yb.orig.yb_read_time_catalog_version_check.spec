@@ -77,11 +77,10 @@ step "ddl_rename"		{ ALTER TABLE t RENAME COLUMN v TO v2; }
 step "ddl_add_col"		{ ALTER TABLE t ADD COLUMN c INT; }
 step "ddl_revoke"		{ REVOKE SELECT ON t FROM yb_tt_user; }
 step "ddl_rls"			{ ALTER TABLE t ENABLE ROW LEVEL SECURITY; }
-step "ddl_tt_version_current"
+step "ddl_tt_no_version"
 {
-  SELECT a.catalog_version = v.current_version AS tt_version_current
-    FROM pg_stat_activity a JOIN pg_yb_catalog_version v ON v.db_oid = a.datid
-    WHERE a.application_name = 'yb_tt';
+  SELECT catalog_version IS NULL AS tt_no_version
+    FROM pg_stat_activity WHERE application_name = 'yb_tt';
 }
 
 # A breaking DDL after the read time fails every read.
@@ -116,10 +115,10 @@ permutation "ddl_read_time" "ddl_revoke" "tt_role" "tt_set" "tt_sel" "tt_sel"
 # from the role now are still returned.
 permutation "ddl_read_time" "ddl_rls" "tt_role" "tt_set" "tt_sel"
 
-# The pinned session reports the current catalog version in pg_stat_activity,
-# so it doesn't hold up DDLs that wait for backends to catch up, even while it
-# is idle in a transaction (as ysql_dump --read-time is).
-permutation "ddl_read_time" "ddl_rename" "tt_set" "tt_sel" "tt_begin" "ddl_tt_version_current" "tt_rollback"
+# The pinned session reports no catalog version in pg_stat_activity, so it
+# doesn't hold up DDLs that wait for backends to catch up, even while it is idle
+# in a transaction (as ysql_dump --read-time is).
+permutation "ddl_read_time" "ddl_rename" "tt_set" "tt_sel" "tt_begin" "ddl_tt_no_version" "tt_rollback"
 
 # Parallel workers: the worker reads the catalog version itself at startup.
 permutation "ddl_read_time" "ddl_add_col" "tt_set" "tt_parallel" "tt_sel"
