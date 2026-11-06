@@ -37,6 +37,7 @@ DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
 DECLARE_bool(force_global_transactions);
 DECLARE_bool(transaction_tables_use_preferred_zones);
 DECLARE_bool(TEST_skip_election_when_fail_detected);
+DECLARE_int32(ysql_tablespace_info_refresh_secs);
 
 using namespace std::literals;
 
@@ -743,6 +744,39 @@ TEST_F(PgTablespacesTest, CreateTablePersistsTablespace) {
     ASSERT_TRUE(table->LockForRead()->pb.has_no_custom_tablespace()) << table->id();
   }
   ASSERT_EQ(num_tablegroup_parents, 1);
+}
+
+// ALTER TABLESPACE does not notify the master, so CREATE TABLE must not place a new table with the
+// placement the master cached before the ALTER.
+TEST_F(PgTablespacesTest, CreateTableUsesAlteredPlacement) {
+  // Stop the periodic tablespace refresh, so that only CREATE TABLE can pick up the ALTER.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_tablespace_info_refresh_secs) = 0;
+  SleepFor(3s * kTimeMultiplier);
+
+  auto conn = ASSERT_RESULT(Connect());
+  const Tablespace rf1("ts", 1, {PlacementBlock(1, 1)});
+  ASSERT_OK(conn.Execute(rf1.CreateCmd()));
+  ASSERT_OK(conn.Execute("CREATE TABLE warm (k INT PRIMARY KEY) TABLESPACE ts"));
+  ASSERT_OK(conn.Execute("DROP TABLE warm"));
+
+  // No tserver is in region9. ALTER allows it because the tablespace is unused, so CREATE TABLE
+  // must reject it.
+  const Tablespace unsatisfiable("ts", 1, {PlacementBlock(9, 1)});
+  ASSERT_OK(conn.ExecuteFormat(
+      "ALTER TABLESPACE ts SET (replica_placement='$0')", unsatisfiable.LiveJson()));
+  auto status = conn.Execute("CREATE TABLE altered_placement (k INT PRIMARY KEY) TABLESPACE ts");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "Not enough tablet servers");
+
+  const Tablespace rf3(
+      "ts", 3, {PlacementBlock(1, 1), PlacementBlock(2, 1), PlacementBlock(3, 1)});
+  ASSERT_OK(conn.ExecuteFormat(
+      "ALTER TABLESPACE ts SET (replica_placement='$0')", rf3.LiveJson()));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE altered_placement (k INT PRIMARY KEY) TABLESPACE ts"));
+  VerifyTablePlacement(
+      "altered_placement", rf3.PlacementBlocks(), /* read_replica_placement_blocks = */ {},
+      rf3.NumReplicas());
 }
 
 } // namespace client

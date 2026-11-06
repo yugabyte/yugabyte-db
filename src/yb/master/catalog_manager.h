@@ -1969,6 +1969,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Result<std::optional<ReplicationInfoPB>> GetTablespaceReplicationInfoWithRetry(
       const TablespaceId& tablespace_id);
 
+  // Rereads pg_tablespace and replaces the cached tablespace placements. Returns the new manager.
+  Result<std::shared_ptr<YsqlTablespaceManager>> ReloadTablespaceMap();
+
   // Promote the table from a PREPARING state to a RUNNING state, and persist in sys_catalog.
   Status PromoteTableToRunningState(TableInfoPtr table_info, const LeaderEpoch& epoch) override;
 
