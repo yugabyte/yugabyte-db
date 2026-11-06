@@ -2176,4 +2176,3 @@ SELECT * FROM self_assign WHERE k = 1;
 (1 row)
 
 DROP TABLE self_assign;
-
