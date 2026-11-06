@@ -1485,6 +1485,8 @@ void PgVectorIndexTest::TestRestart(
     }
     ASSERT_OK(InsertRows(
         conn, kNumRows + 1, kNumRows * 2, /* keep_vectors = */ false, non_transactional_writes));
+    // Followers may not have applied the last rows yet; the check below runs on every replica.
+    ASSERT_OK(WaitAllReplicasAppliedLeaderCommitted(cluster_.get(), 30s * kTimeMultiplier));
     ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, flush_flags));
 
     // Check that the vector indexes lag the regular DB, so the restart below exercises bootstrap
