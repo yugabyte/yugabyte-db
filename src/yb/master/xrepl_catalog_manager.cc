@@ -6100,8 +6100,16 @@ std::unordered_set<xrepl::StreamId> CatalogManager::GetAllCDCSDKStreamsForNamesp
 
 Result<HybridTime> CatalogManager::GetMinRestartTimeAcrossSlots(
     const std::unordered_set<xrepl::StreamId>& stream_ids) {
-  if (stream_ids.empty()) {
+  if (!AreLogicalReplicationStreams(stream_ids)) {
     return HybridTime::kInvalid;
+  }
+  return ReadMinRestartTimeAcrossSlots(stream_ids);
+}
+
+bool CatalogManager::AreLogicalReplicationStreams(
+    const std::unordered_set<xrepl::StreamId>& stream_ids) {
+  if (stream_ids.empty()) {
+    return false;
   }
 
   // stream_ids are CDCSDK-only (from GetCDCSDKStreamsForTable), so no xCluster check is needed. A
@@ -6109,13 +6117,14 @@ Result<HybridTime> CatalogManager::GetMinRestartTimeAcrossSlots(
   // whole DB is gRPC.
   for (const auto stream_id : stream_ids) {
     if (cdc_stream_map_.contains(stream_id)) {
-      if (!IsCdcLogicalReplicationStream(*cdc_stream_map_[stream_id])) {
-        return HybridTime::kInvalid;
-      }
-      break;
+      return IsCdcLogicalReplicationStream(*cdc_stream_map_[stream_id]);
     }
   }
+  return true;
+}
 
+Result<HybridTime> CatalogManager::ReadMinRestartTimeAcrossSlots(
+    const std::unordered_set<xrepl::StreamId>& stream_ids) {
   HybridTime min_restart_time_across_all_slots;
   for (const auto& stream_id : stream_ids) {
     auto entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
@@ -6434,6 +6443,7 @@ void CatalogManager::ProcessXReplHiddenObjectDeletionPeriodically() {
 }
 
 void CatalogManager::DoProcessCDCSDKHiddenObjectDeletion() {
+  TEST_SYNC_POINT("DoProcessCDCSDKHiddenObjectDeletion::Start");
   std::unordered_map<TabletId, HiddenReplicationTabletInfo> hidden_tablets;
   std::unordered_map<TableId, std::pair<TabletId, HybridTime>> hidden_colocated_tables;
   {
@@ -6705,6 +6715,24 @@ Status CatalogManager::FillHeartbeatResponseCDC(
 bool CatalogManager::CDCSDKShouldRetainHiddenTablet(const TabletId& tablet_id) {
   SharedLock read_lock(mutex_);
   return retained_by_cdcsdk_.contains(tablet_id);
+}
+
+HybridTime CatalogManager::GetMinRestartTimeAcrossSlotsForTable(const TableId& table_id) {
+  std::unordered_set<xrepl::StreamId> stream_ids;
+  {
+    SharedLock read_lock(mutex_);
+    stream_ids = GetCDCSDKStreamsForTable(table_id);
+    if (!AreLogicalReplicationStreams(stream_ids)) {
+      return HybridTime::kInvalid;
+    }
+  }
+  auto min_restart_time_result = ReadMinRestartTimeAcrossSlots(stream_ids);
+  if (!min_restart_time_result.ok()) {
+    LOG(WARNING) << "Failed to read the min restart time across slots for table " << table_id
+                 << ": " << min_restart_time_result.status();
+    return HybridTime::kInvalid;
+  }
+  return *min_restart_time_result;
 }
 
 bool CatalogManager::CDCSDKShouldRetainHiddenColocatedTable(const TableId& table_id) {

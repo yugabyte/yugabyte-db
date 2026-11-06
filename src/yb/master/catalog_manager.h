@@ -3405,6 +3405,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Result<HybridTime> GetMinRestartTimeAcrossSlots(
       const std::unordered_set<xrepl::StreamId>& stream_ids) REQUIRES_SHARED(mutex_);
 
+  bool AreLogicalReplicationStreams(const std::unordered_set<xrepl::StreamId>& stream_ids)
+      REQUIRES_SHARED(mutex_);
+
+  Result<HybridTime> ReadMinRestartTimeAcrossSlots(
+      const std::unordered_set<xrepl::StreamId>& stream_ids);
+
   Result<std::unordered_map<xrepl::StreamId, std::optional<HybridTime>>>
   GetCDCSDKStreamCreationTimeMap(const std::unordered_set<xrepl::StreamId>& stream_ids)
       REQUIRES_SHARED(mutex_);
@@ -3470,6 +3476,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status LoadUniverseReplicationBootstrap() REQUIRES(mutex_);
 
   bool CDCSDKShouldRetainHiddenTablet(const TabletId& tablet_id) EXCLUDES(mutex_);
+
+  // Min restart time across the logical slots on table_id, or invalid if there are none or the
+  // cdc_state read fails.
+  HybridTime GetMinRestartTimeAcrossSlotsForTable(const TableId& table_id) EXCLUDES(mutex_);
 
   bool CDCSDKShouldRetainHiddenColocatedTable(const TableId& table_id) EXCLUDES(mutex_);
 
