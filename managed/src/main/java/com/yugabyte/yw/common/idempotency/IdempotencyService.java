@@ -407,12 +407,7 @@ public class IdempotencyService {
     UUID uuid = record.getUuid();
     try (Transaction txn = DB.beginTransaction()) {
       ApiIdempotencyKey claimed =
-          ApiIdempotencyKey.find
-              .query()
-              .forUpdate()
-              .where()
-              .eq("uuid", uuid)
-              .findOne();
+          ApiIdempotencyKey.find.query().forUpdate().where().eq("uuid", uuid).findOne();
       if (claimed == null) {
         log.warn(
             "Idempotency key {} expired while its request ran, not storing the response",
