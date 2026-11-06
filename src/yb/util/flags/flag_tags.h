@@ -171,7 +171,8 @@ YB_DEFINE_ENUM(FlagTag,
     (kConnMgr)
     (kDeprecated)
     (kPreview)
-    (kHasNewInstallValue));
+    (kHasNewInstallValue)
+    (kLocked_reads));
 
 #define FLAG_TAG_stable ::yb::FlagTag::kStable
 #define FLAG_TAG_evolving ::yb::FlagTag::kEvolving
@@ -180,6 +181,9 @@ YB_DEFINE_ENUM(FlagTag,
 #define FLAG_TAG_advanced ::yb::FlagTag::kAdvanced
 #define FLAG_TAG_unsafe ::yb::FlagTag::kUnsafe
 #define FLAG_TAG_sensitive_info ::yb::FlagTag::kSensitive_info
+// kLocked_reads: a runtime string flag that is only read via GET_STRING_FLAG once the process is
+// serving (direct FLAGS_ reads are limited to startup), so it is safe to advertise as runtime.
+#define FLAG_TAG_locked_reads ::yb::FlagTag::kLocked_reads
 // Disallow explicit use of the following tags
 // kRuntime: Use DEFINE_RUNTIME_type macro instead
 // kAuto: Use DEFINE_RUNTIME_AUTO_type or DEFINE_NON_RUNTIME_AUTO_type macros instead
