@@ -36,6 +36,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/env.h"
 #include "yb/util/format.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
 #include "yb/util/scope_exit.h"
@@ -45,6 +46,7 @@
 
 DECLARE_bool(enable_async_snapshot_directory_cleanup);
 DECLARE_int32(TEST_snapshot_cleanup_retry_delay_ms);
+DECLARE_int32(tablet_snapshot_op_slow_log_threshold_ms);
 
 METRIC_DECLARE_counter(snapshot_cleanup_failures);
 METRIC_DECLARE_counter(snapshot_cleanup_retries);
@@ -343,6 +345,68 @@ TEST_F(TabletSnapshotsTest, DeletesSynchronouslyWhenAsyncCleanupDisabled) {
   ASSERT_FALSE(test_env_->FileExists(paths.tombstone));
   ASSERT_EQ(MetricValue<AtomicGauge<uint64_t>>(METRIC_snapshot_pending_logical_deletions), 0);
   ASSERT_EQ(MetricValue<AtomicGauge<uint64_t>>(METRIC_snapshot_pending_physical_deletions), 0);
+}
+
+// Snapshot operations that reach --tablet_snapshot_op_slow_log_threshold_ms log how long each of
+// their steps took at INFO, and faster ones do not.
+TEST_F(TabletSnapshotsTest, LogsStepTimesOfSlowOperations) {
+  // Above any op id LocalTabletWriter assigns, so the flushed frontier update moves forward.
+  constexpr int64_t kCreateOpIndex = 1000000;
+  constexpr auto kTime = "[0-9]+\\.[0-9]{3}s";
+  const auto expect_log = [kTime](const std::string& prefix, const std::string& steps) {
+    return std::make_unique<RegexWaiterLogSink>(
+        Format(".*$0 took $1: $2.*", prefix, kTime, Format(steps, kTime)));
+  };
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_snapshot_op_slow_log_threshold_ms) = 0;
+  InstallCleanupPool();
+
+  auto create_log = expect_log(
+      "Create snapshot in .*/snapshot\\.timed",
+      "flush=$0, cleanup_old_dirs=$0, checkpoint=$0, save_metadata=$0, rename_dir=$0");
+  // The intents DB only exists for transactional tables.
+  auto checkpoint_log = expect_log(
+      "Checkpoint created in .*/snapshot\\.timed\\.tmp,",
+      "wait_for_lock=$0, (intents_checkpoint=$0, )?regular_checkpoint=$0");
+  auto frontier_log = expect_log(
+      Format("Modify flushed frontier to 1\\.$0", kCreateOpIndex),
+      "flush=$0, regular_db_manifest=$0(, intents_db_manifest=$0)?");
+  auto tombstone_log = expect_log(
+      "Tombstone snapshot dir .*/snapshot\\.timed",
+      "wait_for_lock=$0, check_dirs=$0, rename_dir=$0, sync_parent_dir=$0");
+  auto cleanup_log = expect_log(
+      "Delete tombstoned snapshot dir .*/snapshot\\.timed\\..*\\.deleted\\.tmp",
+      "delete_recursively=$0, sync_parent_dir=$0");
+  auto sync_delete_log = expect_log(
+      "Delete snapshot in .*/snapshot\\.sync\\.timed",
+      "wait_for_lock=$0, delete_recursively=$0, sync_parent_dir=$0");
+
+  ASSERT_OK(WriteRow(1));
+  tserver::TabletSnapshotOpRequestPB request;
+  request.set_operation(tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET);
+  request.set_snapshot_id("snapshot.timed");
+  SnapshotOperation operation(harness_->tablet());
+  operation.AllocateRequest()->CopyFrom(request);
+  operation.set_op_id(OpId(1, kCreateOpIndex));
+  operation.set_hybrid_time(harness_->clock()->Now());
+  ASSERT_OK(operation.Replicated(OpId::kUnknownTerm, WasPending::kFalse));
+  ASSERT_TRUE(create_log->IsEventOccurred());
+  ASSERT_TRUE(checkpoint_log->IsEventOccurred());
+  ASSERT_TRUE(frontier_log->IsEventOccurred());
+
+  ASSERT_OK(DeleteSnapshot("snapshot.timed", kCreateOpIndex + 1));
+  ASSERT_TRUE(tombstone_log->IsEventOccurred());
+  ASSERT_OK(cleanup_log->WaitFor(10s));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_async_snapshot_directory_cleanup) = false;
+  CreateSnapshotDirectory("snapshot.sync.timed", kCreateOpIndex + 2);
+  ASSERT_OK(DeleteSnapshot("snapshot.sync.timed", kCreateOpIndex + 2));
+  ASSERT_TRUE(sync_delete_log->IsEventOccurred());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_snapshot_op_slow_log_threshold_ms) = 3600 * 1000;
+  auto fast_delete_log = std::make_unique<RegexWaiterLogSink>(".*Delete snapshot in .* took .*");
+  CreateSnapshotDirectory("snapshot.fast", kCreateOpIndex + 3);
+  ASSERT_OK(DeleteSnapshot("snapshot.fast", kCreateOpIndex + 3));
+  ASSERT_FALSE(fast_delete_log->IsEventOccurred());
 }
 
 TEST_F(TabletSnapshotsTest, RetainsDeletionUntilCleanupPoolIsInstalled) {

@@ -44,6 +44,7 @@ namespace yb {
 class Env;
 class FsManager;
 class RWOperationCounter;
+class StepTimer;
 class rw_semaphore;
 
 namespace rpc {
@@ -202,7 +203,7 @@ class TabletSnapshots : public TabletComponent {
 
   Status DoCreateCheckpoint(
       const std::string& dir, CreateCheckpointIn create_checkpoint_in,
-      SkipVectorIndexFlush skip_vector_index_flush);
+      SkipVectorIndexFlush skip_vector_index_flush, StepTimer& timer);
 
   std::string TEST_last_rocksdb_checkpoint_dir_;
   std::unique_ptr<Metrics> metrics_;
