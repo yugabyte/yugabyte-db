@@ -183,6 +183,13 @@ void PgDmlRead::SetForwardScan(bool is_forward_scan) {
   }
 }
 
+void PgDmlRead::SetCatalogReadPoint(YbcReadPointHandle read_point) {
+  if (auto* secondary_index = SecondaryIndexQuery(); secondary_index) {
+    secondary_index->SetCatalogReadPoint(read_point);
+  }
+  PgDml::SetCatalogReadPoint(read_point);
+}
+
 void PgDmlRead::SetDistinctPrefixLength(int distinct_prefix_length) {
   if (auto* secondary_index = SecondaryIndexQuery(); secondary_index) {
     secondary_index->SetDistinctPrefixLength(distinct_prefix_length);

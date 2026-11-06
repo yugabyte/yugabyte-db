@@ -32,6 +32,7 @@ struct YbctidReaderOptions {
   std::optional<int> pg_wait_policy{};
   std::optional<int> docdb_wait_policy{};
   std::optional<PgSessionRunOperationMarker> run_marker{};
+  std::optional<YbcReadPointHandle> catalog_read_point{};
 };
 
 class YbctidReader {

@@ -105,6 +105,7 @@ uint64_t yb_read_time = 0;
 bool yb_is_read_time_ht = false;
 bool yb_disable_catalog_version_check = false;
 bool yb_read_time_skip_catalog = false;
+bool yb_catalog_scans_use_scan_snapshot = true;
 
 int yb_read_after_commit_visibility = 0;
 

@@ -185,5 +185,8 @@ extern void YbInitSnapshot(Snapshot snap, YbOptionalReadPointHandle read_point_h
 extern void YbLogSnapshotData(const char *msg, const SnapshotData *snap, bool log_stack_trace);
 extern YbcReadPointHandle YbGetCatalogSnapshotReadPoint(YbcPgOid table_oid, bool create_if_not_exists);
 extern void YbInvalidateCatalogSnapshot(void);
+extern YbcReadPointHandle YbGetCatalogReadPoint(Snapshot snapshot);
+extern void YbSetCatalogReadPoint(YbcPgStatement handle, Relation relation,
+								  Snapshot snapshot);
 
 #endif							/* SNAPMGR_H */

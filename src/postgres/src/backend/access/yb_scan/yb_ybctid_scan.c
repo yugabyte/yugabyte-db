@@ -30,6 +30,7 @@
 #include "executor/ybExpr.h"
 #include "pg_yb_utils.h"
 #include "utils/rel.h"
+#include "utils/snapmgr.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
 static bool
@@ -86,6 +87,9 @@ YbFetchHeapTuple(Relation relation, Datum ybctid, HeapTuple *tuple)
 
 	/* Read data */
 	YbcPgStatement ybc_stmt = YbNewSelect(relation, NULL /* prepare_params */ );
+
+	/* Callers are internal catalog accesses. */
+	YbSetCatalogReadPoint(ybc_stmt, relation, NULL /* snapshot */ );
 
 	const bool has_data = YbFetchRowData(ybc_stmt, relation, ybctid, values, nulls, &syscols);
 

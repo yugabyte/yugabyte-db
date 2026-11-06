@@ -1834,6 +1834,16 @@ Status PgApiImpl::SetDistinctPrefixLength(PgStatement* handle, int distinct_pref
   return Status::OK();
 }
 
+Status PgApiImpl::DmlSetCatalogReadPoint(PgStatement* handle, YbcReadPointHandle read_point) {
+  VERIFY_RESULT_REF(GetStatementAs<PgDml>(handle, {
+          StatementTag<PgInsert>(),
+          StatementTag<PgUpdate>(),
+          StatementTag<PgDelete>(),
+          StatementTag<PgSelect>()
+      })).SetCatalogReadPoint(read_point);
+  return Status::OK();
+}
+
 Result<bool> PgApiImpl::RetrieveYbctids(
     PgStatement* handle, const YbcPgExecParameters* exec_params, int natts, YbcSliceVector* ybctids,
     size_t* count) {
@@ -2464,7 +2474,9 @@ Status PgApiImpl::AddExplicitRowLockIntent(
           .rowmark = params.rowmark,
           .pg_wait_policy = params.pg_wait_policy,
           .docdb_wait_policy = params.docdb_wait_policy,
-          .database_id = table_id.database_oid},
+          .database_id = table_id.database_oid,
+          .catalog_read_point = params.catalog_read_point == YbcInvalidReadPointHandle
+              ? std::nullopt : std::optional(params.catalog_read_point)},
       .lock_key{table_id.object_oid, ybctid},
       .table_locality = locality_info,
       .error_info = adapter};

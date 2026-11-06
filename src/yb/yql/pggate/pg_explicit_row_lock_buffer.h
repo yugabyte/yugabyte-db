@@ -34,6 +34,7 @@ class ExplicitRowLockBuffer {
     int pg_wait_policy;
     int docdb_wait_policy;
     PgOid database_id;
+    std::optional<YbcReadPointHandle> catalog_read_point;
 
     friend bool operator==(const LockInfo&, const LockInfo&) = default;
   };

@@ -50,11 +50,12 @@ relpages
 step s1_increment_a: UPDATE pg_class SET relpages = relpages + 1 WHERE relname = 'a';
 step s1_commit: COMMIT;
 step s2_increment_a: UPDATE pg_class SET relpages = relpages + 1 WHERE relname = 'a';
+ERROR:  could not serialize access due to concurrent update (query layer retry isn't possible because this is not the first command in the transaction. Consider using READ COMMITTED isolation level.)
 step s2_commit: COMMIT;
 step s2_select_relpages: SELECT relname, relpages FROM pg_class WHERE relname IN ('a', 'b') ORDER BY relname;
 relname|relpages
 -------+--------
-a      |       2
+a      |       1
 b      |       0
 (2 rows)
 
@@ -77,11 +78,12 @@ relpages
 step s1_increment_a: UPDATE pg_class SET relpages = relpages + 1 WHERE relname = 'a';
 step s1_commit: COMMIT;
 step s2_increment_a: UPDATE pg_class SET relpages = relpages + 1 WHERE relname = 'a';
+ERROR:  could not serialize access due to concurrent update (query layer retry isn't possible because this is not the first command in the transaction. Consider using READ COMMITTED isolation level.)
 step s2_commit: COMMIT;
 step s2_select_relpages: SELECT relname, relpages FROM pg_class WHERE relname IN ('a', 'b') ORDER BY relname;
 relname|relpages
 -------+--------
-a      |       2
+a      |       1
 b      |       0
 (2 rows)
 

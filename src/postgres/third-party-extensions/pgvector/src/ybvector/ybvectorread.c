@@ -424,7 +424,8 @@ ybvectorrescan(IndexScanDesc scan, ScanKey scankeys, int nscankeys,
 									 scan->yb_distinct_prefixlen,
 									 scan->yb_exec_params,
 									 false,	/* is_internal_scan */
-									 scan->fetch_ybctids_only);
+									 scan->fetch_ybctids_only,
+									 scan->xs_snapshot);
 
 	/* For vector indexes, we either recheck all rows or no rows. */
 	scan->xs_recheck = YbNeedsPgRecheck(ybScan);

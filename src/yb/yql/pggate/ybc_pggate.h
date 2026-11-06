@@ -768,6 +768,11 @@ YbcStatus YBCPgSetForwardScan(YbcPgStatement handle, bool is_forward_scan);
 // Set prefix length for distinct index scans.
 YbcStatus YBCPgSetDistinctPrefixLength(YbcPgStatement handle, int distinct_prefix_length);
 
+// Read point for a DML statement on a YSQL catalog table in non-legacy catalog mode.
+// YbcInvalidReadPointHandle means PG's catalog snapshot. Without it, a read uses the current read
+// point and a write uses the catalog snapshot.
+YbcStatus YBCPgDmlSetCatalogReadPoint(YbcPgStatement handle, YbcReadPointHandle read_point);
+
 YbcStatus YBCPgExecSelect(YbcPgStatement handle, const YbcPgExecParameters *exec_params);
 
 // Gets the ybctids from a request. Returns a vector of all the results.
