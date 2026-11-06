@@ -10471,10 +10471,13 @@ components:
           additionalProperties:
             type: string
         audit_log_config:
+          description: If omitted on a non-primary cluster, inherited from the primary cluster.
           $ref: '#/components/schemas/AuditLogConfig'
         query_log_config:
+          description: If omitted on a non-primary cluster, inherited from the primary cluster.
           $ref: '#/components/schemas/QueryLogConfig'
         metrics_export_config:
+          description: If omitted on a non-primary cluster, inherited from the primary cluster.
           $ref: '#/components/schemas/MetricsExportConfig'
         gflags:
           description: The set of user defined gflags for tserver and master processes

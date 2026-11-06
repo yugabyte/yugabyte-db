@@ -69,10 +69,13 @@ properties:
     additionalProperties:
       type: string
   audit_log_config:
+    description: If omitted on a non-primary cluster, inherited from the primary cluster.
     $ref: "./AuditLogConfig.yaml"
   query_log_config:
+    description: If omitted on a non-primary cluster, inherited from the primary cluster.
     $ref: "./QueryLogConfig.yaml"
   metrics_export_config:
+    description: If omitted on a non-primary cluster, inherited from the primary cluster.
     $ref: "./MetricsExportConfig.yaml"
   gflags:
     description: 'The set of user defined gflags for tserver and master processes running on nodes. Can be changed using API /customers/:cUUID/universes/:uniUUID/upgrade/gflags.'

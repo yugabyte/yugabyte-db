@@ -605,7 +605,6 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     UniverseCreateSpec universeCreateSpec = getUniverseCreateSpecV2();
     ClusterSpec primary = universeCreateSpec.getSpec().getClusters().get(0);
     ClusterSpec rrClusterSpec = new ClusterSpec();
-    // Unset RR properties inherit from primary, except placement/partitions/nodeSpec.
     // TODO: Rename ASYNC to READ_REPLICA
     rrClusterSpec.setClusterType(ClusterTypeEnum.ASYNC);
     rrClusterSpec.setNumNodes(3);
@@ -614,6 +613,10 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     rrNodeSpec.setStorageSpec(rrNodeSpec.getStorageSpec().numVolumes(1));
     rrClusterSpec.setNodeSpec(rrNodeSpec);
     rrClusterSpec.setProviderSpec(primary.getProviderSpec());
+    rrClusterSpec.setUseSpotInstance(primary.getUseSpotInstance());
+    rrClusterSpec.setNetworkingSpec(primary.getNetworkingSpec());
+    rrClusterSpec.setGflags(primary.getGflags());
+    rrClusterSpec.setInstanceTags(primary.getInstanceTags());
     universeCreateSpec.getSpec().addClustersItem(rrClusterSpec);
     return universeCreateSpec;
   }

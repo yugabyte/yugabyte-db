@@ -19,7 +19,6 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.List;
 import java.util.UUID;
 import org.mapstruct.AfterMapping;
-import org.mapstruct.BeanMapping;
 import org.mapstruct.InheritInverseConfiguration;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -125,34 +124,6 @@ public interface ClusterMapper {
     }
     return v1Clusters;
   }
-
-  // Used when RR/async clusters inherit unset fields from primary. Placement, partitions, and
-  // nodeSpec (incl. AZ instance-type overrides) stay cluster-specific and must not be copied.
-  @BeanMapping(nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
-  @Mapping(target = "placementSpec", ignore = true)
-  @Mapping(target = "partitionsSpec", ignore = true)
-  @Mapping(target = "nodeSpec", ignore = true)
-  // These two fields are related to placement.
-  @Mapping(target = "replicationFactor", ignore = true)
-  @Mapping(target = "numNodes", ignore = true)
-  ClusterSpec deepCopyInheritableClusterSpec(ClusterSpec source, @MappingTarget ClusterSpec target);
-
-  @BeanMapping(nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
-  ClusterSpec deepCopyClusterSpec(ClusterSpec source, @MappingTarget ClusterSpec target);
-
-  // Same exclusions as deepCopyInheritableClusterSpec for edit-path inheritance.
-  @BeanMapping(nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
-  @Mapping(target = "placementSpec", ignore = true)
-  @Mapping(target = "partitionsSpec", ignore = true)
-  @Mapping(target = "nodeSpec", ignore = true)
-  // Related to placement.
-  @Mapping(target = "numNodes", ignore = true)
-  ClusterEditSpec deepCopyInheritableClusterEditSpec(
-      ClusterSpec source, @MappingTarget ClusterEditSpec target);
-
-  @BeanMapping(nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
-  ClusterEditSpec deepCopyClusterEditSpec(
-      ClusterEditSpec source, @MappingTarget ClusterEditSpec target);
 
   @Mapping(target = "userIntent", source = ".")
   @Mapping(target = "placementInfo", source = "placementSpec")

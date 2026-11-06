@@ -28,12 +28,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import org.mapstruct.factory.Mappers;
 
 public abstract class UniverseDefinitionTaskParamsDecorator
     implements UniverseDefinitionTaskParamsMapper {
   private final UniverseDefinitionTaskParamsMapper delegate;
-  private final ClusterMapper clusterMapper = Mappers.getMapper(ClusterMapper.class);
 
   public UniverseDefinitionTaskParamsDecorator(UniverseDefinitionTaskParamsMapper delegate) {
     this.delegate = delegate;
@@ -154,35 +152,41 @@ public abstract class UniverseDefinitionTaskParamsDecorator
     return params;
   }
 
-  private UniverseSpec inheritFromPrimaryBeforeMapping(UniverseSpec universeSpec) {
+  // Read replicas that omit telemetry use the primary cluster's config.
+  private static void inheritTelemetryFromPrimary(UniverseSpec universeSpec) {
     if (universeSpec == null || universeSpec.getClusters() == null) {
-      return universeSpec;
+      return;
     }
-    ClusterSpec primaryClusterSpec =
+    ClusterSpec primary =
         universeSpec.getClusters().stream()
-            .filter(c -> c.getClusterType().equals(ClusterTypeEnum.PRIMARY))
-            .findAny()
+            .filter(c -> c != null && c.getClusterType() == ClusterTypeEnum.PRIMARY)
+            .findFirst()
             .orElse(null);
-    List<ClusterSpec> clusters = new ArrayList<>();
-    clusters.add(primaryClusterSpec);
-    for (ClusterSpec otherCluster : universeSpec.getClusters()) {
-      if (!otherCluster.getClusterType().equals(ClusterTypeEnum.PRIMARY)) {
-        ClusterSpec mergedClusterSpec = new ClusterSpec();
-        clusterMapper.deepCopyInheritableClusterSpec(primaryClusterSpec, mergedClusterSpec);
-        clusterMapper.deepCopyClusterSpec(otherCluster, mergedClusterSpec);
-        clusters.add(mergedClusterSpec);
+    if (primary == null) {
+      return;
+    }
+    for (ClusterSpec cluster : universeSpec.getClusters()) {
+      if (cluster == null || cluster.getClusterType() == ClusterTypeEnum.PRIMARY) {
+        continue;
+      }
+      if (cluster.getAuditLogConfig() == null) {
+        cluster.setAuditLogConfig(primary.getAuditLogConfig());
+      }
+      if (cluster.getQueryLogConfig() == null) {
+        cluster.setQueryLogConfig(primary.getQueryLogConfig());
+      }
+      if (cluster.getMetricsExportConfig() == null) {
+        cluster.setMetricsExportConfig(primary.getMetricsExportConfig());
       }
     }
-    universeSpec.clusters(clusters);
-    return universeSpec;
   }
 
   @Override
   public UniverseDefinitionTaskParams toV1UniverseDefinitionTaskParamsFromCreateSpec(
       UniverseCreateSpec universeCreateSpec) {
-    // Copy unset RR/async properties from primary (excludes placement, partitions, nodeSpec).
-    UniverseSpec universeSpec = inheritFromPrimaryBeforeMapping(universeCreateSpec.getSpec());
-    UniverseDefinitionTaskParams params = toV1UniverseDefinitionTaskParams(universeSpec);
+    inheritTelemetryFromPrimary(universeCreateSpec.getSpec());
+    UniverseDefinitionTaskParams params =
+        toV1UniverseDefinitionTaskParams(universeCreateSpec.getSpec());
     // set Arch
     params.arch = toV1Arch(universeCreateSpec.getArch());
     // set ysqlPassword, ycqlPassword into all cluster's userIntent
