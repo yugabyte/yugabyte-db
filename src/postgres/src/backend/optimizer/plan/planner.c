@@ -469,17 +469,6 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 	 * trying to create their own parallel workers.
 	 *
 	 * YB: TODO GHI 23549: enable parallel query in serializable isolation.
-	 *
-	 * YB: Make no parallel plan if a DDL was executed in the transaction
-	 * block. This is required until we stop forcing legacy catalog mode for
-	 * parallel workers (see YBCIsLegacyModeForCatalogOps). In legacy mode,
-	 * workers can't see uncommitted catalog writes done by previous DDLs in
-	 * the same transaction block: for example, a worker fails with "invalid
-	 * attnum 3" for a column the block added (#30978, #34740).
-	 * yb_disable_parallel_query_after_ddl = off turns this check off.
-	 * YB: TODO(#36825): once the leader and its workers can share the
-	 * PgClientSession read point safely (#32729, #35498), let workers read the
-	 * catalog in the leader's mode and drop this check.
 	 */
 	if ((cursorOptions & CURSOR_OPT_PARALLEL_OK) != 0 &&
 		IsUnderPostmaster &&
@@ -487,8 +476,7 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 		!parse->hasModifyingCTE &&
 		max_parallel_workers_per_gather > 0 &&
 		!IsParallelWorker() &&
-		!IsolationIsSerializable() &&
-		!YbDdlDisablesParallelQuery())
+		!IsolationIsSerializable())
 	{
 		/* all the cheap tests pass, so scan the query tree */
 		glob->maxParallelHazard = max_parallel_hazard(parse);
@@ -680,20 +668,6 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 	result->stmt_location = parse->stmt_location;
 	result->stmt_len = parse->stmt_len;
 	result->yb_num_referenced_relations = root->yb_num_referenced_relations;
-	/*
-	 * YB: The DDL check above allows no parallel plan while a DDL has run in
-	 * the block. Without this mark, a cached copy of a SELECT planned then
-	 * would stay serial for the rest of the session: once the block ends,
-	 * nothing invalidates it when the block's DDL touched nothing it uses,
-	 * e.g. CREATE OR REPLACE of a function it does not call. The mark also
-	 * covers a SELECT that is serial for another reason, which then gets one
-	 * needless replan after the block.
-	 * TODO(#36825): drop this together with the DDL check above.
-	 */
-	result->yb_parallel_off_for_ddl =
-		(cursorOptions & CURSOR_OPT_PARALLEL_OK) != 0 &&
-		parse->commandType == CMD_SELECT &&
-		YbDdlDisablesParallelQuery();
 	result->ybPlanId = 0;
 
 	result->jitFlags = PGJIT_NONE;

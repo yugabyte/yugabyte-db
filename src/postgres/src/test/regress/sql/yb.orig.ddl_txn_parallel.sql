@@ -1,11 +1,11 @@
 --
--- GH #30978: once a DDL has run in a transaction block, the block makes no
--- parallel plan and launches no parallel workers. This is needed until
--- parallel workers stop reading the catalog in legacy mode (see
+-- GH #30978: once a DDL has run in a transaction block, parallel plans in the
+-- block launch no workers, and the leader runs the whole plan. This is needed
+-- until parallel workers stop reading the catalog in legacy mode (see
 -- YBCIsLegacyModeForCatalogOps). In legacy mode, workers do not see the
--- uncommitted catalog writes of earlier DDLs in the block.
--- yb_disable_parallel_query_after_ddl = off turns this off; it is on here
--- except in the case that tests it.
+-- uncommitted catalog writes of earlier DDLs in the block. Plans stay
+-- parallel: EXPLAIN shows the Gather, and EXPLAIN ANALYZE shows
+-- Workers Launched: 0.
 -- Scenario: BEGIN, ALTER TABLE ADD COLUMN c, then a scan that filters on c.
 -- A worker launched there fails with "invalid attnum 3 for relation".
 --
@@ -20,8 +20,9 @@ CREATE TABLE ddl_par (id INT, name TEXT, PRIMARY KEY (id ASC));
 INSERT INTO ddl_par SELECT i, 'n' || i FROM generate_series(1, 1000) i;
 ANALYZE ddl_par;
 
--- A generic plan cached before the block is parallel; the ALTER TABLE
--- invalidates it, and the replanned query has no Gather.
+-- A generic plan cached before the block is parallel. The ALTER TABLE
+-- invalidates it; the replanned plan is parallel too, and in the block it
+-- launches no workers.
 PREPARE ddl_par_count AS SELECT COUNT(*) FROM ddl_par;
 EXPLAIN (COSTS OFF) EXECUTE ddl_par_count;
 
@@ -47,9 +48,8 @@ COMMIT;
 EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM ddl_par;
 DROP TABLE ddl_par_commit;
 
--- A generic plan first built after the DDL has no Gather. It depends on
--- nothing the block changed, so once the block ends it must still be
--- replanned, or it stays serial for the rest of the session.
+-- A generic plan first built after the DDL is parallel too, and stays parallel
+-- after the block ends.
 BEGIN;
 CREATE TABLE ddl_par_after_t (k INT);
 PREPARE ddl_par_after AS SELECT COUNT(*) FROM ddl_par;
@@ -59,9 +59,7 @@ EXPLAIN (COSTS OFF) EXECUTE ddl_par_after;
 DEALLOCATE ddl_par_after;
 DROP TABLE ddl_par_after_t;
 
--- The same with an ALTER TABLE on a table the plan does not use: the plan
--- has no dependency on what the block changed, yet it must still get its
--- Gather back after COMMIT.
+-- The same with an ALTER TABLE on a table the plan does not use.
 CREATE TABLE ddl_par_other (k INT);
 BEGIN;
 ALTER TABLE ddl_par_other ADD COLUMN x INT;
@@ -81,9 +79,7 @@ EXPLAIN (COSTS OFF) EXECUTE ddl_par_rb;
 DEALLOCATE ddl_par_rb;
 
 -- The same when the block's only DDL replaces a function the plan does not
--- call. Nothing invalidates the plan, so the plan cache must replan it once
--- the block ends, after COMMIT and after ROLLBACK. Inside the block it stays
--- serial.
+-- call, after COMMIT and after ROLLBACK.
 CREATE FUNCTION ddl_par_noop() RETURNS INT LANGUAGE sql AS 'SELECT 1';
 BEGIN;
 CREATE OR REPLACE FUNCTION ddl_par_noop() RETURNS INT LANGUAGE sql
@@ -104,9 +100,8 @@ EXPLAIN (COSTS OFF) EXECUTE ddl_par_fn_r;
 DEALLOCATE ddl_par_fn_r;
 DROP FUNCTION ddl_par_noop();
 
--- Generic plans cached before the block keep their Gather when the block's
--- only DDL replaces a function they do not call, and run in the leader with
--- no workers. Without workers no shared scan state is set up, so each
+-- Generic plans cached before the block keep their Gather and, after the
+-- block's DDL, run in the leader with no workers. Without workers no shared scan state is set up, so each
 -- parallel scan must read the whole table alone: both counts are 1000.
 CREATE FUNCTION ddl_par_unused() RETURNS INT LANGUAGE sql AS 'SELECT 1';
 PREPARE ddl_par_seq AS SELECT COUNT(*) FROM ddl_par WHERE name LIKE 'n%';
@@ -138,39 +133,22 @@ DEALLOCATE ddl_par_gm;
 DROP FUNCTION ddl_par_unused();
 
 -- CREATE INDEX in a block builds the index nonconcurrently and marks the
--- block like any other DDL: no Gather after it.
+-- block like any other DDL: no workers after it.
 BEGIN;
 CREATE INDEX ddl_par_other_k ON ddl_par_other (k);
-EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM ddl_par;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT COUNT(*) FROM ddl_par;
 ROLLBACK;
 DROP TABLE ddl_par_other;
 
--- yb_disable_parallel_query_after_ddl = off turns the checks off: after a DDL
--- that touches nothing the query reads, the query gets a parallel plan in the
--- same block. The setting cannot change inside a block, so every plan cached
--- in a block was made under one setting.
-SET yb_disable_parallel_query_after_ddl = off;
-BEGIN;
-CREATE TABLE ddl_par_guc (k INT);
-EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM ddl_par;
-SELECT COUNT(*) FROM ddl_par;
-SET yb_disable_parallel_query_after_ddl = on;
-ROLLBACK;
-RESET yb_disable_parallel_query_after_ddl;
-BEGIN;
-CREATE TABLE ddl_par_guc (k INT);
-EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM ddl_par;
-ROLLBACK;
-
 -- A DDL outside a block ends with its own implicit commit, so the next query
--- gets a parallel plan.
+-- launches workers again.
 CREATE TABLE ddl_par_auto (k INT);
 EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM ddl_par;
 DROP TABLE ddl_par_auto;
 
 -- GH #30978 as filed ran in REPEATABLE READ and rolled back to a savepoint
 -- taken after the DDL. The DDL before the savepoint stays, so the block
--- still has uncommitted catalog rows and the query gets no parallel plan.
+-- still has uncommitted catalog rows and the query launches no workers.
 -- This schedule turns DDL savepoint support off (#33497), so no DDL runs
 -- after the savepoint here.
 CREATE TABLE ddl_par_sp (id INT, PRIMARY KEY (id ASC));
@@ -188,13 +166,13 @@ SELECT COUNT(*) FROM ddl_par_sp WHERE c = 'g';
 ROLLBACK;
 DROP TABLE ddl_par_sp;
 
--- A temp-table DDL also turns off parallel query for the rest of the block,
+-- A temp-table DDL also turns off parallel workers for the rest of the block,
 -- even for queries on permanent tables, although workers never read temp
--- tables. This block also skips the catalog version bump, so a generic plan
--- made in it must still be replanned with a Gather after COMMIT.
+-- tables. A generic plan made in the block is parallel and stays so after
+-- COMMIT.
 BEGIN;
 CREATE TEMP TABLE ddl_par_tmp (k INT);
-EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM ddl_par;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT COUNT(*) FROM ddl_par;
 PREPARE ddl_par_tmp_q AS SELECT COUNT(*) FROM ddl_par;
 EXPLAIN (COSTS OFF) EXECUTE ddl_par_tmp_q;
 COMMIT;
@@ -202,9 +180,9 @@ EXPLAIN (COSTS OFF) EXECUTE ddl_par_tmp_q;
 DEALLOCATE ddl_par_tmp_q;
 DROP TABLE ddl_par_tmp;
 
--- CREATE TABLE AS is a DDL, so it sets the flag before it plans its query.
+-- CREATE TABLE AS is a DDL, so it sets the flag before it runs its query.
 -- With transactional DDL on, yb_disable_parallel_query_in_ddl = off then
--- brings no parallel plan back while yb_disable_parallel_query_after_ddl is on.
+-- gives it a parallel plan that launches no workers.
 SET yb_disable_parallel_query_in_ddl = off;
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
   CREATE TABLE ddl_par_ctas AS SELECT COUNT(*) FROM ddl_par;
@@ -229,8 +207,8 @@ ROLLBACK;
 -- replacing g, which f calls, does not invalidate it. Workers read the
 -- committed catalog and would run the old g. With leader participation off,
 -- every row goes through a worker, so a wrong run sums to 1000; the correct
--- sum in the block is 2000. The same query planned in the block has no
--- Gather. The cached plan keeps its Gather, but must launch no workers.
+-- sum in the block is 2000. Both the cached plan and the same query planned
+-- in the block keep their Gather, and must launch no workers.
 SET parallel_leader_participation = off;
 CREATE TABLE ddl_par_gap (k INT, PRIMARY KEY (k ASC));
 INSERT INTO ddl_par_gap SELECT i FROM generate_series(1, 1000) i;

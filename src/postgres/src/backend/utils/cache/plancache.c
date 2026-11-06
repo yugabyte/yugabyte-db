@@ -945,17 +945,6 @@ CheckCachedPlan(CachedPlanSource *plansource)
 			plan->is_valid = false;
 
 		/*
-		 * YB: If the plan was made while a DDL had run in the transaction
-		 * block, when no parallel plan was allowed, and that block has ended,
-		 * replan it so that it can be parallel again.
-		 * TODO(#36825): drop this together with the DDL check in
-		 * standard_planner.
-		 */
-		if (plan->is_valid && plan->yb_parallel_off_for_ddl &&
-			!YBGetDdlUseRegularTransactionBlock())
-			plan->is_valid = false;
-
-		/*
 		 * By now, if any invalidation has happened, the inval callback
 		 * functions will have marked the plan invalid.
 		 */
@@ -1114,18 +1103,6 @@ BuildCachedPlan(CachedPlanSource *plansource, List *qlist,
 	}
 	else
 		plan->saved_xmin = InvalidTransactionId;
-
-	/* YB */
-	plan->yb_parallel_off_for_ddl = false;
-	foreach(lc, plist)
-	{
-		PlannedStmt *plannedstmt = lfirst_node(PlannedStmt, lc);
-
-		if (plannedstmt->commandType != CMD_UTILITY &&
-			plannedstmt->yb_parallel_off_for_ddl)
-			plan->yb_parallel_off_for_ddl = true;
-	}
-
 	plan->refcount = 0;
 	plan->context = plan_context;
 	plan->is_oneshot = plansource->is_oneshot;

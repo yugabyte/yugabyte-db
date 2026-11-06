@@ -181,10 +181,6 @@ typedef struct CachedPlan
 	int			generation;		/* parent's generation number for this plan */
 	int			refcount;		/* count of live references to this struct */
 	MemoryContext context;		/* context containing this CachedPlan */
-
-	/* YB */
-	bool		yb_parallel_off_for_ddl;	/* replan once the DDL transaction
-											 * block ends */
 } CachedPlan;
 
 /*

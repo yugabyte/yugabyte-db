@@ -1,9 +1,9 @@
 --
 -- GH #30978 with DDL savepoints on: once a DDL has run in a transaction
--- block, no query in the block gets a parallel plan, even after ROLLBACK TO
--- a savepoint that undoes the DDL: ROLLBACK TO does not clear the block's
--- DDL state, so the block stays serial until it ends. Companion of
--- yb.orig.ddl_txn_parallel, which says why the block is serial, and
+-- block, no query in the block launches parallel workers, even after
+-- ROLLBACK TO a savepoint that undoes the DDL: ROLLBACK TO does not clear the
+-- block's DDL state. Companion of yb.orig.ddl_txn_parallel, which says why
+-- the block launches no workers, and
 -- whose schedule turns DDL savepoint support off (#33497).
 --
 SET yb_enable_cbo = on;
@@ -18,7 +18,7 @@ INSERT INTO ddl_sp_par SELECT i FROM generate_series(1, 1000) i;
 ANALYZE ddl_sp_par;
 
 -- ROLLBACK TO a savepoint taken before the DDL: the DDL is undone, but the
--- block stays serial.
+-- block still launches no workers.
 BEGIN;
 SAVEPOINT s1;
 ALTER TABLE ddl_sp_par ADD COLUMN c TEXT DEFAULT 'g';

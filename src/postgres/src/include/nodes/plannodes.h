@@ -73,11 +73,6 @@ typedef struct
  * nodes; in such cases, commandType == CMD_UTILITY, the statement itself
  * is in the utilityStmt field, and the rest of the struct is mostly dummy.
  * (We do use canSetTag, stmt_location, stmt_len, and possibly queryId.)
- *
- * YB: yb_parallel_off_for_ddl is set for a SELECT planned with
- * CURSOR_OPT_PARALLEL_OK while a DDL has run in the transaction block, when
- * standard_planner allows no parallel plan. The plan cache replans such a
- * plan once the block ends, so that it can be parallel again.
  * ----------------
  */
 typedef struct PlannedStmt
@@ -136,8 +131,6 @@ typedef struct PlannedStmt
 	 * constraint exclusion and partition pruning.
 	 */
 	int			yb_num_referenced_relations;
-
-	bool		yb_parallel_off_for_ddl;	/* replan once the DDL block ends */
 
 	uint64		ybPlanId;		/* plan id */
 } PlannedStmt;

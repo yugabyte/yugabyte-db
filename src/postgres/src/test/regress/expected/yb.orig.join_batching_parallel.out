@@ -7,10 +7,6 @@ set client_min_messages = 'warning';
 drop database if exists colocateddb with (force);
 create database colocateddb with colocation = on;
 \c colocateddb
--- bnl_variants drops and creates temp tables in the statement that runs the
--- parallel EXPLAIN. Those DDLs touch nothing the parallel plans read, so keep
--- parallel query on after them.
-set yb_disable_parallel_query_after_ddl = off;
 create table r (a int, x char(10), data text, primary key(a))
 with (colocation = on);
 create table s (b int, data text, primary key(b))

@@ -113,7 +113,6 @@ _copyPlannedStmt(const PlannedStmt *from)
 	COPY_SCALAR_FIELD(stmt_len);
 
 	COPY_SCALAR_FIELD(yb_num_referenced_relations);
-	COPY_SCALAR_FIELD(yb_parallel_off_for_ddl);
 	COPY_SCALAR_FIELD(ybPlanId);
 
 	return newnode;

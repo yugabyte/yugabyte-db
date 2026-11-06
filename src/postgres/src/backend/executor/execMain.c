@@ -1709,10 +1709,9 @@ ExecutePlan(QueryDesc *queryDesc,
 	 * workers can't see uncommitted catalog writes done by previous DDLs
 	 * in the same transaction block: for example, they would run the old body of
 	 * a function that the block replaced.
-	 * yb_disable_parallel_query_after_ddl = off turns this check off.
-	 * TODO(#36825): drop this together with the check in standard_planner.
+	 * TODO(#36825): drop this.
 	 */
-	if (use_parallel_mode && YbDdlDisablesParallelQuery())
+	if (use_parallel_mode && YBGetDdlUseRegularTransactionBlock())
 		use_parallel_mode = false;
 
 	queryDesc->already_executed = true;

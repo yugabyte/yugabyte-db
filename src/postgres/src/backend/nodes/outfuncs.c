@@ -343,7 +343,6 @@ _outPlannedStmt(StringInfo str, const PlannedStmt *node)
 	WRITE_LOCATION_FIELD(stmt_location);
 	WRITE_INT_FIELD(stmt_len);
 	WRITE_INT_FIELD(yb_num_referenced_relations);
-	WRITE_BOOL_FIELD(yb_parallel_off_for_ddl);
 	WRITE_UINT64_FIELD(ybPlanId);
 }
 

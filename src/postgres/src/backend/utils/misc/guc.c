@@ -311,7 +311,6 @@ static bool check_transaction_priority_lower_bound(double *newval, void **extra,
 static bool check_transaction_priority_upper_bound(double *newval, void **extra, GucSource source);
 static bool check_yb_explicit_row_locking_batch_size(int *newval, void **extra, GucSource source);
 static bool yb_check_no_txn(int *newval, void **extra, GucSource source);
-static bool yb_check_bool_no_txn(bool *newval, void **extra, GucSource source);
 static bool yb_check_toast_catcache_threshold(int *newval, void **extra, GucSource source);
 static bool yb_check_password_validity_source(int *newval, void **extra, GucSource source);
 static bool check_yb_password_reuse(int *newval, void **extra, GucSource source);
@@ -3315,31 +3314,11 @@ static struct config_bool ConfigureNamesBool[] =
 			gettext_noop("Enabled by default because parallel query in these "
 						 "DDLs has not been QA tested in YugabyteDB. Set to off "
 						 "as an escape hatch to restore upstream PostgreSQL "
-						 "behavior for workloads that rely on it. With "
-						 "transactional DDL on, these DDLs also need "
-						 "yb_disable_parallel_query_after_ddl off.")
+						 "behavior for workloads that rely on it.")
 		},
 		&yb_disable_parallel_query_in_ddl,
 		true,
 		NULL, NULL, NULL
-	},
-
-	{
-		{"yb_disable_parallel_query_after_ddl", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("[This is an advanced flag, avoid using it unless "
-						 "recommended by Yugabyte support.] Disables parallel "
-						 "query once a DDL has run in the current transaction, "
-						 "including a DDL earlier in the same statement."),
-			gettext_noop("Parallel workers read the catalog in legacy mode and "
-						 "do not see the uncommitted catalog writes of the "
-						 "transaction's DDLs. Set to off only when no parallel "
-						 "query in the transaction reads anything those DDLs "
-						 "changed."),
-			GUC_NOT_IN_SAMPLE
-		},
-		&yb_disable_parallel_query_after_ddl,
-		true,
-		yb_check_bool_no_txn, NULL, NULL
 	},
 
 	{
@@ -18166,19 +18145,6 @@ yb_check_no_txn(int *newVal, void **extra, GucSource source)
 		yb_ysql_conn_mgr_sticky_guc = true;
 	}
 	return true;
-}
-
-/*
- * YB: yb_check_bool_no_txn
- *
- * yb_check_no_txn for a bool GUC. yb_disable_parallel_query_after_ddl uses it
- * so that a plan cached in a transaction block was always made under one
- * setting.
- */
-static bool
-yb_check_bool_no_txn(bool *newval, void **extra, GucSource source)
-{
-	return yb_check_no_txn(NULL, extra, source);
 }
 
 static const char *
