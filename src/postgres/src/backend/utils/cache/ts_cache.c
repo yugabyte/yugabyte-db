@@ -48,6 +48,9 @@
 #include "utils/regproc.h"
 #include "utils/syscache.h"
 
+/* YB includes */
+#include "yb_ysql_conn_mgr_helper.h"
+
 
 /*
  * MAXTOKENTYPE/MAXDICTSPERTT are arbitrary limits on the workspace size
@@ -638,6 +641,13 @@ check_TSCurrentConfig(char **newval, void **extra, GucSource source)
 		pfree(buf);
 		if (!*newval)
 			return false;
+	}
+
+	if (YbIsClientYsqlConnMgr() &&
+		(source == PGC_S_SESSION || source == PGC_S_CLIENT))
+	{
+		elog(LOG, "Making connection sticky for default_text_search_config");
+		yb_ysql_conn_mgr_sticky_guc = true;
 	}
 
 	return true;
