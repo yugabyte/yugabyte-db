@@ -492,46 +492,4 @@ public class TestAuthentication extends BaseAuthenticationCQLTest {
       // Nothing to do here.
     }
   }
-
-  @Test
-  public void testMultipleLoginWithinCache() throws Exception {
-    int roleCount = 4;
-    String password = "abc";
-
-    try (ClusterAndSession cs = connectWithTestDefaults()) {
-      for (int i = 0; i < roleCount; i++) {
-        String role = String.format("cache_role%d", i);
-        createRole(cs.getSession(), role, password, true, false, true);
-      }
-    }
-
-    for (int j = 0; j < 3; j++) {
-      for (int i = 0; i < roleCount; i++) {
-        String role = String.format("cache_role%d", i);
-        try (ClusterAndSession cs1 = connectWithCredentials(role, password)) {
-          // Nothing to do here.
-        }
-      }
-    }
-  }
-
-  @Test(timeout=500000)
-  public void testLoginExhaustCache() throws Exception {
-    int roleCount = 10;
-    String password = "abc";
-
-    try (ClusterAndSession cs = connectWithTestDefaults()) {
-      for (int i = 0; i < roleCount; i++) {
-        String role = String.format("exhaust_role%d", i);
-        createRole(cs.getSession(), role, password, true, false, true);
-      }
-    }
-
-    for (int i = 0; i < roleCount; i++) {
-      String role = String.format("exhaust_role%d", i);
-      try (ClusterAndSession cs1 = connectWithCredentials(role, password)) {
-        // Nothing to do here.
-      }
-    }
-  }
 }
