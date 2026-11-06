@@ -57,6 +57,13 @@ class TestHeadinglessDocuments:
         assert chunk.to_embed_text("Guide") == (
             "Document: Guide\nSection: Palette\n\nUse six colours.")
 
+    def test_a_chunk_under_an_empty_heading_keeps_its_section_line(self):
+        # "#" alone is a heading with no text. The chunk has a heading, so it
+        # embeds with "Section: " as it did before the fix.
+        chunk = parse_markdown("#\n\nBody.\n", "x.md").chunks[0]
+        assert chunk.heading_path == [""]
+        assert chunk.to_embed_text("") == "Section: \n\nBody."
+
     def test_a_headingless_chunk_has_metadata(self):
         doc = parse_markdown(HEADINGLESS, "notes.md")
         meta = doc.chunks[0].to_metadata(doc)
@@ -110,6 +117,30 @@ class TestBothFineTuningPaths:
         monkeypatch.setitem(sys.modules, "pdf_processing.docling_loader", fake)
         out = list(chunk_pdf_whole_file("s3://bucket/inventory.pdf"))
         assert len(out) == 1 and "item 838" in out[0]
+
+
+class TestSplittingALargeChunk:
+    # Big enough that split_embed_text cuts it at MAX_EMBED_CHARS (24,000).
+    FILLER = "\n\n".join(f"Clause {i}: the parties agree to term {i}." for i in range(1500))
+
+    def test_a_headingless_paragraph_starting_with_section_is_not_taken_as_a_header(self, tmp_path):
+        # A contract PDF or plain .md can open with "Section: 4.2 Terms". With
+        # no heading there is no generated header, so that paragraph is body
+        # text and appears once, not on every part.
+        f = tmp_path / "contract.md"
+        f.write_text("Section: 4.2 Terms\n\n" + self.FILLER + "\n", encoding="utf-8")
+        out = list(chunk_markdown_whole_file(str(f)))
+        assert len(out) > 1
+        assert out[0].startswith("Section: 4.2 Terms\n\nClause 0:")
+        assert all(not part.startswith("Section:") for part in out[1:])
+        assert all(len(part) <= 24000 for part in out)
+
+    def test_a_large_chunk_with_a_heading_repeats_its_header_on_every_part(self, tmp_path):
+        f = tmp_path / "terms.md"
+        f.write_text("# Terms\n\n" + self.FILLER + "\n", encoding="utf-8")
+        out = list(chunk_markdown_whole_file(str(f)))
+        assert len(out) > 1
+        assert all(part.startswith("Section: Terms\n\nClause ") for part in out)
 
 
 def test_parsed_document_is_unchanged():

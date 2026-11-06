@@ -44,13 +44,24 @@ class ParsedChunk:
     links:         list[str]       = field(default_factory=list)
     chunk_index:   int = 0
 
-    def to_embed_text(self, doc_title: str = "") -> str:
-        breadcrumb = " > ".join(self.heading_path)
+    def embed_header(self, doc_title: str = "") -> str:
+        """The ``Document:``/``Section:`` lines that start :meth:`to_embed_text`.
+
+        A chunk under a heading always gets a ``Section:`` line, even when the
+        heading's text is empty. A chunk with no heading gets none.
+        """
         lines = []
         if doc_title:
             lines.append(f"Document: {doc_title}")
-        if breadcrumb:
-            lines.append(f"Section: {breadcrumb}")
+        if self.heading_path:
+            lines.append(f"Section: {' > '.join(self.heading_path)}")
+        return "\n".join(lines)
+
+    def to_embed_text(self, doc_title: str = "") -> str:
+        lines = []
+        header = self.embed_header(doc_title)
+        if header:
+            lines.append(header)
         lines.append("")
         lines.append(self.text)
         for cb in self.code_blocks:
@@ -962,24 +973,28 @@ def parse_file(path: str | Path) -> ParsedDocument:
 MAX_EMBED_CHARS = 24000
 
 
-def split_embed_text(text: str, max_chars: int = MAX_EMBED_CHARS) -> list[str]:
+def split_embed_text(text: str, max_chars: int = MAX_EMBED_CHARS,
+                     header: str = "") -> list[str]:
     """Split an embed-ready block into a few parts if it exceeds ``max_chars``.
 
     Returns ``[text]`` unchanged when it fits (the common case). Oversized text
     is packed into the fewest parts that each fit, breaking on nearby paragraph
     boundaries; a single paragraph larger than the budget is hard-split by
-    characters. The ``Document:``/``Section:`` breadcrumb header is repeated on
-    each part so every piece keeps its context.
+    characters. ``header`` is the ``Document:``/``Section:`` block that
+    :meth:`ParsedChunk.embed_header` put at the start of ``text``; it is
+    repeated on each part so every piece keeps its context. The caller passes
+    it rather than this function guessing it from the text, because a chunk
+    with no heading has no header and its first paragraph may itself start
+    with "Section:".
     """
     if len(text) <= max_chars:
         return [text]
 
-    # Keep the breadcrumb header (the first line block) to repeat on every part.
-    header = ""
     body = text
-    head, sep, rest = text.partition("\n\n")
-    if sep and (head.startswith("Document:") or head.startswith("Section:")):
-        header, body = head, rest
+    if header and text.startswith(header + "\n\n"):
+        body = text[len(header) + 2:]
+    else:
+        header = ""
 
     budget = max(1, max_chars - len(header) - 2)
     parts: list[str] = []
