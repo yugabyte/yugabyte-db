@@ -910,6 +910,33 @@ public class GFlagsUtil {
     return null;
   }
 
+  /**
+   * Runs {@link #checkTmpDirGflagConsistency} for every on-prem provider of the given clusters,
+   * honoring the provider skip flag. Throws BAD_REQUEST on the first mismatch.
+   */
+  public static void validateTmpDirGflagConsistencyOrThrow(
+      RuntimeConfGetter confGetter, Collection<Cluster> clusters) {
+    for (Cluster cluster : clusters) {
+      if (!cluster.userIntent.getAllCloudTypes().contains(CloudType.onprem)) {
+        continue;
+      }
+      for (UUID providerUuid : cluster.userIntent.getAllProviderUUIDs()) {
+        Provider provider = Provider.getOrBadRequest(providerUuid);
+        if (provider.getCloudCode() != CloudType.onprem) {
+          continue;
+        }
+        if (confGetter.getConfForScope(
+            provider, ProviderConfKeys.skipTmpDirGflagConsistencyCheck)) {
+          continue;
+        }
+        String tmpDirErrMsg = checkTmpDirGflagConsistency(confGetter, provider, cluster, clusters);
+        if (tmpDirErrMsg != null) {
+          throw new PlatformServiceException(BAD_REQUEST, tmpDirErrMsg);
+        }
+      }
+    }
+  }
+
   private static Collection<UUID> getAzUuidsForTmpDirGflagCheck(
       Cluster cluster, Provider provider) {
     PlacementInfo placementInfo = cluster.getOverallPlacement();
