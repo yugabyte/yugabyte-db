@@ -153,15 +153,18 @@ Compile / managedClasspath += baseDirectory.value / "target/scala-2.13/"
 version := sys.process.Process("cat version.txt").lineStream_!.head
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
+val bouncyCastleFipsVersion = "2.1.1"
+val bouncyCastleUtilFipsVersion = "2.1.7"
+
 libraryDependencies ++= Seq(
   javaJdbc,
   caffeine,
   javaWs,
   filters,
   guice,
-  "org.postgresql" % "postgresql" % "42.7.13",
+  "org.postgresql" % "postgresql" % "42.7.14",
   "net.logstash.logback" % "logstash-logback-encoder" % "8.1",
-  "ch.qos.logback" % "logback-classic" % "1.5.38",
+  "ch.qos.logback" % "logback-classic" % "1.6.3",
   "org.codehaus.janino" % "janino" % "3.1.9",
   "org.apache.commons" % "commons-lang3" % "3.20.0",
   "org.apache.commons" % "commons-collections4" % "4.4",
@@ -175,11 +178,19 @@ libraryDependencies ++= Seq(
   // https://github.com/YugaByte/cassandra-java-driver/releases
   "com.yugabyte" % "java-driver-core" % "4.15.0-yb-3",
   "org.yaml" % "snakeyaml" % "2.1",
-  "org.bouncycastle" % "bc-fips" % "2.1.0",
-  "org.bouncycastle" % "bcpkix-fips" % "2.1.9",
-  "org.bouncycastle" % "bctls-fips" % "2.1.20",
+  // bc-fips is the FIPS 140-3 validated module itself, so it tracks the newest *certified*
+  // build rather than the newest published one: 2.1.1 is CMVP certificate #4943 (17 Jan 2025),
+  // while 2.1.2 and 2.1.3 carry no certificate of their own. The rest are outside the validated
+  // boundary and track latest. See the dependencyOverrides below - declaring them is not enough.
+  "org.bouncycastle" % "bc-fips" % bouncyCastleFipsVersion,
+  "org.bouncycastle" % "bcutil-fips" % bouncyCastleUtilFipsVersion,
+  "org.bouncycastle" % "bcpkix-fips" % "2.1.12",
+  "org.bouncycastle" % "bctls-fips" % "2.1.24",
   "org.mindrot" % "jbcrypt" % "0.4",
-  "org.springframework.security" % "spring-security-core" % "5.8.16",
+  // Only the crypto module is used (Encryptors, BCrypt). It has no Spring dependencies, so taking
+  // it alone keeps spring-security-core and spring-expression out of the image. Ciphertext and
+  // bcrypt hashes written by 5.8.x read back unchanged on 6.5.x.
+  "org.springframework.security" % "spring-security-crypto" % "6.5.11",
   // AWS SDK 2.x dependencies
   "software.amazon.awssdk" % "bom" % "2.29.52" pomOnly(),
   "software.amazon.awssdk" % "core" % "2.29.52",
@@ -245,7 +256,7 @@ libraryDependencies ++= Seq(
   // Compatible with protoc 33.0 https://protobuf.dev/support/version-support/
   "com.google.protobuf" % "protobuf-java" % "4.33.0",
   "com.google.protobuf" % "protobuf-java-util" % "4.33.0",
-  "org.xerial.snappy" % "snappy-java" % "1.1.10.7",
+  "org.xerial.snappy" % "snappy-java" % "1.1.10.12",
   "io.kamon" %% "kamon-bundle" % "2.7.5",
   "io.kamon" %% "kamon-prometheus" % "2.7.5",
   "org.unix4j" % "unix4j-command" % "0.6",
@@ -255,7 +266,6 @@ libraryDependencies ++= Seq(
   "io.fabric8" % "kubernetes-client" % "6.14.0",
   "io.fabric8" % "kubernetes-client-api" % "6.14.0",
   "io.fabric8" % "kubernetes-model-core" % "6.14.0",
-  "io.fabric8" % "kubernetes-server-mock" % "6.14.0",
   "org.modelmapper" % "modelmapper" % "2.4.4",
   // Used by the generated v2 server models (JsonNullable); was only pulled in transitively before.
   "org.openapitools" % "jackson-databind-nullable" % "0.2.3",
@@ -291,6 +301,7 @@ libraryDependencies ++= Seq(
   "io.zonky.test.postgres" % "embedded-postgres-binaries-darwin-arm64v8" % "14.5.0" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
   "com.yugabyte" % "yba-client-v2" % "1.7.1-2026.1" % Test,
+  "io.fabric8" % "kubernetes-server-mock" % "6.14.0" % Test,
   // yba-client-v2's ApiClient registers MultiPartFeature. The POM it installs is the shade
   // plugin's dependency-reduced one, which drops all compile deps, so declare this one here.
   "org.glassfish.jersey.media" % "jersey-media-multipart" % "2.41" % Test
@@ -1045,6 +1056,12 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
+// bcpkix-fips and bctls-fips depend on bcutil-fips by version range, and bcutil-fips depends on
+// bc-fips by range, so a plain declaration loses to the range: a build declaring bc-fips 2.1.0
+// was resolving 2.1.3, an uncertified module. Only an override fixes the FIPS module version.
+dependencyOverrides += "org.bouncycastle" % "bc-fips" % bouncyCastleFipsVersion
+dependencyOverrides += "org.bouncycastle" % "bcutil-fips" % bouncyCastleUtilFipsVersion
+
 libraryDependencies += "org.yb" % "yb-client" % "0.8.115.2-SNAPSHOT"
 libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b12"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
@@ -1070,15 +1087,33 @@ dependencyOverrides += "io.netty" % "netty-handler" % "4.1.139.Final"
 dependencyOverrides += "io.netty" % "netty-transport" % "4.1.139.Final"
 dependencyOverrides += "io.netty" % "netty-transport-sctp" % "4.1.139.Final"
 
-// Play pulls the at.yawk fork of lz4-java transitively; pinned for CVE-2026-59949 and
-// CVE-2026-106451.
-dependencyOverrides += "at.yawk.lz4" % "lz4-java" % "1.11.4"
+// Play pulls the at.yawk fork of lz4-java transitively; pinned for CVE-2026-59949,
+// CVE-2026-106451 and GHSA-48mj-8f7c-7qfm.
+dependencyOverrides += "at.yawk.lz4" % "lz4-java" % "1.12.1"
+
+// Google Cloud libraries pull Guava and the OpenTelemetry API/SDK transitively. The OpenTelemetry
+// core modules are released in lockstep and must stay on one version.
+dependencyOverrides += "com.google.guava" % "guava" % "33.7.2-jre"
+val openTelemetryVersion = "1.67.0"
+dependencyOverrides ++= Seq(
+  "io.opentelemetry" % "opentelemetry-api",
+  "io.opentelemetry" % "opentelemetry-context",
+  "io.opentelemetry" % "opentelemetry-common",
+  "io.opentelemetry" % "opentelemetry-sdk",
+  "io.opentelemetry" % "opentelemetry-sdk-common",
+  "io.opentelemetry" % "opentelemetry-sdk-trace",
+  "io.opentelemetry" % "opentelemetry-sdk-metrics",
+  "io.opentelemetry" % "opentelemetry-sdk-logs",
+  "io.opentelemetry" % "opentelemetry-sdk-extension-autoconfigure-spi",
+).map(_ % openTelemetryVersion)
 
 // cron-utils pulls org.glassfish:javax.el 3.0.0 (CVE-2021-28170), which has no fixed release.
 // The fix shipped as org.glassfish:jakarta.el 3.0.4, which keeps the javax.el package.
 // Hibernate Validator needs an EL implementation at runtime, so swap the artifact.
 excludeDependencies += "org.glassfish" % "javax.el"
 libraryDependencies += "org.glassfish" % "jakarta.el" % "3.0.4"
+
+dependencyOverrides += "junit" % "junit" % "4.13.2" % Test
 
 // Following library versions for jersey, jakarta glassfish, jakarta ws.rs and
 // jackson-module-jaxb-annotations are needed by the openapi java client, which is not
