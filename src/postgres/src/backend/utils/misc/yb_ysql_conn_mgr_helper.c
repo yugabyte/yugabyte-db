@@ -40,8 +40,6 @@
 #include "libpq/libpq-be.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
-#include "miscadmin.h"
-#include "pg_getopt.h"
 #include "pg_yb_utils.h"
 #include "storage/dsm_impl.h"
 #include "storage/procarray.h"
@@ -1141,48 +1139,4 @@ YbIsConnMgrReservedStartupParameter(const char *name)
 						  strlen(YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX)) == 0 ||
 		pg_strcasecmp(name, "yb_is_client_ysqlconnmgr") == 0 ||
 		pg_strcasecmp(name, "yb_use_tserver_key_auth") == 0;
-}
-
-/*
- * Returns the first parameter reserved for the connection manager that the
- * "options" startup parameter sets with -c or --, or NULL.  Parses the string
- * like process_postgres_switches() does, so nothing can hide a -c from it.
- */
-char *
-YbFindConnMgrReservedParameterInOptions(const char *options)
-{
-	char	  **av;
-	int			ac = 0;
-	int			flag;
-	char	   *found = NULL;
-
-	av = palloc((2 + (strlen(options) + 1) / 2) * sizeof(char *));
-	av[ac++] = "postgres";
-	pg_split_opts(av, &ac, options);
-	av[ac] = NULL;
-
-	opterr = 0;
-	/* Keep the option string in sync with process_postgres_switches(). */
-	while (found == NULL &&
-		   (flag = getopt(ac, av, "B:bc:C:D:d:EeFf:h:ijk:lN:nOPp:r:S:sTt:v:W:-:")) != -1)
-	{
-		char	   *name;
-		char	   *value;
-
-		if (flag != 'c' && flag != '-')
-			continue;
-		ParseLongOption(optarg, &name, &value);
-		if (YbIsConnMgrReservedStartupParameter(name))
-			found = pstrdup(name);
-		free(name);
-		if (value)
-			free(value);
-	}
-
-	optind = 1;
-#ifdef HAVE_INT_OPTRESET
-	optreset = 1;
-#endif
-	pfree(av);
-	return found;
 }

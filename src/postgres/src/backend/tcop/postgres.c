@@ -4694,6 +4694,26 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 									 errmsg("-c %s requires a value",
 											optarg)));
 					}
+
+					/*
+					 * YB: "options" always comes from the logical client, so
+					 * it must not set a parameter reserved for the
+					 * connection manager.
+					 *
+					 * TODO(#29818): This runs after authentication, so in
+					 * auth passthrough the FATAL ends the shared control
+					 * backend.  Send a FatalForLogicalConnection packet
+					 * instead, as the top-level check in
+					 * ProcessStartupPacket() does.
+					 */
+					if (MyProcPort && MyProcPort->yb_ycm_internal_end_seen &&
+						gucsource == PGC_S_CLIENT &&
+						YbIsConnMgrReservedStartupParameter(name))
+						ereport(FATAL,
+								(errcode(ERRCODE_PROTOCOL_VIOLATION),
+								 errmsg("startup parameter \"%s\" is reserved "
+										"for the connection manager", name)));
+
 					SetConfigOption(name, value, ctx, gucsource);
 					free(name);
 					if (value)
@@ -8086,7 +8106,7 @@ PostgresMain(const char *dbname, const char *username)
 
 						/*
 						 * YB: The startup packet may already have failed this
-						 * logical connection (a reserved parameter).
+						 * logical connection (a reserved top-level parameter).
 						 */
 						if (!MyProcPort->yb_has_auth_passthrough_finished)
 							ClientAuthentication(MyProcPort);

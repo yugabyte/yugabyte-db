@@ -106,8 +106,8 @@ public class TestReservedStartupParameters extends BaseYsqlConnMgr {
 
   /*
    * Postgres rejects reserved parameters sent as top-level keys or in "options" (wherever they
-   * appear in it), in both auth passthrough and auth backend modes. In auth passthrough only the
-   * logical connection fails; the shared control backend stays up.
+   * appear in it), in both auth passthrough and auth backend modes. In auth passthrough a
+   * top-level key fails only the logical connection; the shared control backend stays up.
    */
   @Test
   public void testRejectsReservedParametersInBothAuthModes() throws Exception {
@@ -119,19 +119,10 @@ public class TestReservedStartupParameters extends BaseYsqlConnMgr {
   }
 
   private void assertReservedParametersRejected(boolean isAuthPassthrough) throws Exception {
-    for (String[][] parameters :
-         new String[][][] {RESERVED_PARAMETERS, LEGACY_RESERVED_PARAMETERS}) {
+    String[][][] allParameters = {RESERVED_PARAMETERS, LEGACY_RESERVED_PARAMETERS};
+    for (String[][] parameters : allParameters) {
       for (String[] parameter : parameters) {
         assertReservedParameterRejected(parameter[0], parameter[1]);
-        try (Connection connection = getConnectionBuilder()
-                 .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
-                 .withOptions("-e -c " + parameter[0] + "=" + parameter[1])
-                 .connect()) {
-          fail("Reserved startup parameter accepted: " + parameter[0]);
-        } catch (SQLException error) {
-          assertTrue("Unexpected error for startup parameter " + parameter[0] + ": " + error,
-              errorContains(error, "startup parameter \"" + parameter[0] + "\" is reserved"));
-        }
       }
     }
 
@@ -142,6 +133,20 @@ public class TestReservedStartupParameters extends BaseYsqlConnMgr {
       assertEquals("Control backend should stay up after rejecting reserved parameters", 1,
           pool.get("active_physical_connections").getAsInt()
               + pool.get("idle_physical_connections").getAsInt());
+    }
+
+    for (String[][] parameters : allParameters) {
+      for (String[] parameter : parameters) {
+        try (Connection connection = getConnectionBuilder()
+                 .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                 .withOptions("-e -c " + parameter[0] + "=" + parameter[1])
+                 .connect()) {
+          fail("Reserved startup parameter accepted: " + parameter[0]);
+        } catch (SQLException error) {
+          assertTrue("Unexpected error for startup parameter " + parameter[0] + ": " + error,
+              errorContains(error, "startup parameter \"" + parameter[0] + "\" is reserved"));
+        }
+      }
     }
 
     // Other switches in "options" still work.
