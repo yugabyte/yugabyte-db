@@ -954,7 +954,9 @@ message PgPerformOptionsPB {
 
   // A legacy mode transaction (is_using_table_locks is false) that takes local DML object locks
   // anyway, so that new mode DDLs wait for it while ysql_yb_enable_object_locking_infra is being
-  // promoted (#36572).
+  // promoted (#36572). Its fast path writes carry the lock owner for deadlock detection, as new
+  // mode ones do. is_using_table_locks stays false so that tablets, including those still on an
+  // older binary during the upgrade, keep checking its catalog version.
   bool is_using_local_dml_locks = 41;
 }
 

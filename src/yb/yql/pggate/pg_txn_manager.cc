@@ -236,7 +236,7 @@ void PgTxnManager::DEBUG_CheckOptionsForPerform(
   // Functions like YBCheckSharedCatalogCacheVersion, being executed outside scope of a
   // transaction block seem to issue custom selects on pg_yb_catalog_version table using
   // YBCPgNewSelect, skipping object locks. Skip the assertion for such cases for now.
-  if (!IsTableLockingEnabledForCurrentTxn() || options.ddl_mode() ||
+  if (!IsTakingObjectLocksForCurrentTxn() || options.ddl_mode() ||
       options.use_legacy_catalog_session() || options.yb_non_ddl_txn_for_sys_tables_allowed() ||
       YBCIsInitDbModeEnvVarSet() || !YBCIsLegacyModeForCatalogOps()) {
     return;
@@ -951,6 +951,7 @@ Status PgTxnManager::SetupPerformOptions(
   options.set_connected_database_oid(connected_database_oid_);
   options.set_origination_ht(GetOriginationHt());
   options.set_is_using_table_locks(IsTableLockingEnabledForCurrentTxn());
+  options.set_is_using_local_dml_locks(IsUsingLocalDmlLocksForCurrentTxn());
   options.set_uses_catalog_snapshot(is_catalog_snapshot);
   // Follower reads are applicable on user tables and as such catalog ops bypass it.
   options.set_read_from_followers(UsesFollowerReads() && !is_catalog_snapshot);
@@ -1207,7 +1208,6 @@ Status PgTxnManager::AcquireObjectLock(
   RETURN_NOT_OK(SetupPerformOptions(
       tag, options, NonTransactionalWrites::kFalse, /* read_time_action= */ {},
       SkipReadTimeOptions::kTrue));
-  options.set_is_using_local_dml_locks(IsUsingLocalDmlLocksForCurrentTxn());
   RETURN_NOT_OK(client_->AcquireObjectLock(
       &options, lock_id, mode, is_session_lock, tablespace_oid));
   DEBUG_ONLY(DEBUG_UpdateLastObjectLockingInfo());

@@ -1484,6 +1484,53 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyReadOnlyTxnReleasesLocksAtRollb
   ASSERT_OK(legacy_conn.Execute("ROLLBACK"));
 }
 
+// A legacy fast path write holds a local object lock while it waits on a row lock. A new mode
+// transaction that holds that row lock then runs an ALTER TABLE, which waits on the object lock.
+// The deadlock detector sees the cycle only if the fast path write waits as its object lock owner,
+// as in TestDeadlockFastPath; otherwise both sides wait until the ALTER's statement timeout.
+TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyFastPathWriteDeadlockIsDetected) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
+  }
+
+  ASSERT_OK(cluster_->SetFlag(ts2, "ysql_yb_enable_object_locking_infra", "true"));
+  auto new_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(new_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(new_conn.Execute("UPDATE test SET v = v + 1 WHERE k = 1"));
+
+  std::vector<ExternalDaemon*> tservers;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    tservers.push_back(cluster_->tablet_server(i));
+  }
+  ASSERT_OK(cluster_->SetFlagOnTServers("vmodule", "wait_queue=4"));
+  LogWaiter waiter_log(tservers, "WaitOn: waiter_txn_id=");
+  auto legacy_future = std::async(std::launch::async, [&]() -> Status {
+    auto legacy_conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    RETURN_NOT_OK(legacy_conn.Execute("SET statement_timeout = '60s'"));
+    return legacy_conn.Execute("UPDATE test SET v = v + 1 WHERE k = 1");
+  });
+  ASSERT_OK(waiter_log.WaitFor(30s * kTimeMultiplier));
+  if (GetParam()) {
+    ASSERT_OK(cluster_->SetFlag(ts1, "ysql_yb_enable_object_locking_infra", "true"));
+  }
+
+  ASSERT_OK(new_conn.Execute("SET statement_timeout = '30s'"));
+  auto alter_status = new_conn.Execute("ALTER TABLE test ADD COLUMN v1 INT");
+  auto legacy_status = legacy_future.get();
+  LOG(INFO) << "ALTER: " << alter_status << ", legacy UPDATE: " << legacy_status;
+  // The detector breaks the cycle. Which side it aborts, and whether a retry hides that, varies;
+  // a missed cycle shows as the ALTER's statement timeout.
+  for (const auto& status : {alter_status, legacy_status}) {
+    ASSERT_TRUE(status.ok() || status.ToString().find("deadlock") != std::string::npos)
+        << "ALTER: " << alter_status << ", legacy UPDATE: " << legacy_status;
+  }
+  ASSERT_OK(new_conn.Execute("ROLLBACK"));
+}
+
 INSTANTIATE_TEST_SUITE_P(
     PromoteLegacyTxnNode, PgObjectLocksTestLegacyTxnVsNewDdl, ::testing::Bool(),
     ::testing::PrintToStringParamName());
