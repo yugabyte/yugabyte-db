@@ -593,8 +593,8 @@ typedef struct ResultRelInfo
 	 */
 	bool		ri_ybUseIocPushdown;
 
-	bool		ri_ybUpsertModeChecked; /* YbUseUpsertMode() has run */
-	bool		ri_ybUpsertModeAllowed; /* YbUseUpsertMode() result */
+	bool		ri_ybUpsertModeChecked; /* YbCanUseUpsertMode() has run */
+	bool		ri_ybUpsertModeAllowed; /* YbCanUseUpsertMode() result */
 } ResultRelInfo;
 
 /*

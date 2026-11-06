@@ -1678,7 +1678,8 @@ YBCRelInfoHasSecondaryIndices(ResultRelInfo *resultRelInfo)
 
 /*
  * Returns whether inserts into this result relation may use upsert mode
- * (blind writes).  Call it only for a statement that asked for upsert mode.
+ * (blind writes).  Call it only for a statement that asked for upsert mode,
+ * because when the relation is unsafe it also warns or errors (see below).
  *
  * is_copy_replace says how the statement asked for it: true for COPY ...
  * WITH (REPLACE), false for the yb_enable_upsert_mode setting (COPY or
@@ -1694,7 +1695,7 @@ YBCRelInfoHasSecondaryIndices(ResultRelInfo *resultRelInfo)
  * statement.
  */
 bool
-YbUseUpsertMode(ResultRelInfo *resultRelInfo, bool is_copy_replace)
+YbCanUseUpsertMode(ResultRelInfo *resultRelInfo, bool is_copy_replace)
 {
 	Relation	rel = resultRelInfo->ri_RelationDesc;
 

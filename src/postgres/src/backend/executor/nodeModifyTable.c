@@ -1373,7 +1373,8 @@ YbExecInsertAct(ModifyTableContext *context,
 				 * even when the target is not.
 				 */
 				if (mtstate->yb_use_upsert_mode &&
-					YbUseUpsertMode(resultRelInfo, false /* is_copy_replace */ ))
+					YbCanUseUpsertMode(resultRelInfo,
+									   false /* is_copy_replace */ ))
 					onconflict = ONCONFLICT_YB_REPLACE;
 
 				YBCHeapInsert(resultRelInfo, slot, blockInsertStmt, estate,
@@ -4863,7 +4864,7 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 	 * GUC for a plain INSERT, the per-row insert path enables DocDB upsert
 	 * mode like COPY REPLACE, unless the target relation is unsafe (has
 	 * secondary indexes, triggers, or rewrite rules / foreign key
-	 * constraints): then YbUseUpsertMode emits a WARNING and the statement
+	 * constraints): then YbCanUseUpsertMode emits a WARNING and the statement
 	 * falls back to a normal insert.  A partitioned target is checked here,
 	 * and each partition again on its first row in YbExecInsertAct.  The
 	 * decision is kept in mtstate, not written into the plan, because a
@@ -4874,7 +4875,8 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 		(operation == CMD_INSERT &&
 		 yb_enable_upsert_mode &&
 		 node->onConflictAction == ONCONFLICT_NONE &&
-		 YbUseUpsertMode(mtstate->resultRelInfo, false /* is_copy_replace */ ));
+		 YbCanUseUpsertMode(mtstate->resultRelInfo,
+							false /* is_copy_replace */ ));
 
 	/* set up epqstate with dummy subplan data for the moment */
 	EvalPlanQualInitExt(&mtstate->mt_epqstate, estate, NULL, NIL,

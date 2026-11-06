@@ -957,7 +957,7 @@ CopyFrom(CopyFromState cstate)
 
 		/* If upsert was requested, drop it when the target is unsafe for it. */
 		if (cstate->opts.on_conflict_action == ONCONFLICT_YB_REPLACE &&
-			!YbUseUpsertMode(resultRelInfo, yb_is_copy_replace))
+			!YbCanUseUpsertMode(resultRelInfo, yb_is_copy_replace))
 			cstate->opts.on_conflict_action = ONCONFLICT_NONE;
 
 		yb_on_conflict_action = cstate->opts.on_conflict_action;
@@ -1158,7 +1158,7 @@ yb_process_more_batches:
 				 */
 				yb_on_conflict_action = cstate->opts.on_conflict_action;
 				if (yb_on_conflict_action == ONCONFLICT_YB_REPLACE &&
-					!YbUseUpsertMode(resultRelInfo, yb_is_copy_replace))
+					!YbCanUseUpsertMode(resultRelInfo, yb_is_copy_replace))
 					yb_on_conflict_action = ONCONFLICT_NONE;
 			}
 
