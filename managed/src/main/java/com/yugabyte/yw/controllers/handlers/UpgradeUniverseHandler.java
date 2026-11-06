@@ -303,23 +303,31 @@ public class UpgradeUniverseHandler {
         continue;
       }
       String ybSoftwareVersion = universeCluster.userIntent.ybSoftwareVersion;
-      if (clusterParam.userIntent.masterGFlags != null) {
-        clusterParam.userIntent.masterGFlags =
-            GFlagsUtil.mergeSensitiveGFlags(
-                universeCluster.userIntent.masterGFlags,
-                clusterParam.userIntent.masterGFlags,
-                gFlagsValidation,
-                ybSoftwareVersion);
-      }
-      if (clusterParam.userIntent.tserverGFlags != null) {
-        clusterParam.userIntent.tserverGFlags =
-            GFlagsUtil.mergeSensitiveGFlags(
-                universeCluster.userIntent.tserverGFlags,
-                clusterParam.userIntent.tserverGFlags,
-                gFlagsValidation,
-                ybSoftwareVersion);
-      }
+      clusterParam.userIntent.masterGFlags =
+          mergeSensitiveLegacyGFlags(
+              universeCluster.userIntent.masterGFlags,
+              clusterParam.userIntent.masterGFlags,
+              ybSoftwareVersion);
+      clusterParam.userIntent.tserverGFlags =
+          mergeSensitiveLegacyGFlags(
+              universeCluster.userIntent.tserverGFlags,
+              clusterParam.userIntent.tserverGFlags,
+              ybSoftwareVersion);
     }
+  }
+
+  // UniverseControllerRequestBinder fills legacy maps the client omitted (the UI sends only
+  // specificGFlags) from the stored cluster, so an unchanged map is not client input. Checking it
+  // would block every edit once a stored value is REDACTED; UpdateAndPersistGFlags rebuilds these
+  // maps from specificGFlags, whose values are still checked.
+  private Map<String, String> mergeSensitiveLegacyGFlags(
+      Map<String, String> stored, Map<String, String> requested, String ybSoftwareVersion) {
+    if (requested == null
+        || (stored != null
+            && GFlagsUtil.trimFlags(stored).equals(GFlagsUtil.trimFlags(requested)))) {
+      return requested;
+    }
+    return GFlagsUtil.mergeSensitiveGFlags(stored, requested, gFlagsValidation, ybSoftwareVersion);
   }
 
   private void mergeSensitiveSpecificGFlagsForRequestClusters(
