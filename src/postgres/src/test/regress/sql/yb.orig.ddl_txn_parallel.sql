@@ -39,23 +39,23 @@ ROLLBACK;
 
 DEALLOCATE ddl_par_count;
 
--- Once the block ends, queries get parallel plans again, whether the block
+-- Once the block ends, queries launch workers again, whether the block
 -- rolled back (above) or committed.
-EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM ddl_par;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT COUNT(*) FROM ddl_par;
 BEGIN;
 CREATE TABLE ddl_par_commit (k INT);
 COMMIT;
-EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM ddl_par;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT COUNT(*) FROM ddl_par;
 DROP TABLE ddl_par_commit;
 
--- A generic plan first built after the DDL is parallel too, and stays parallel
--- after the block ends.
+-- A generic plan first built after the DDL is parallel too, and launches
+-- workers again once the block ends.
 BEGIN;
 CREATE TABLE ddl_par_after_t (k INT);
 PREPARE ddl_par_after AS SELECT COUNT(*) FROM ddl_par;
 EXPLAIN (COSTS OFF) EXECUTE ddl_par_after;
 COMMIT;
-EXPLAIN (COSTS OFF) EXECUTE ddl_par_after;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) EXECUTE ddl_par_after;
 DEALLOCATE ddl_par_after;
 DROP TABLE ddl_par_after_t;
 
@@ -66,7 +66,7 @@ ALTER TABLE ddl_par_other ADD COLUMN x INT;
 PREPARE ddl_par_alter AS SELECT COUNT(*) FROM ddl_par;
 EXPLAIN (COSTS OFF) EXECUTE ddl_par_alter;
 COMMIT;
-EXPLAIN (COSTS OFF) EXECUTE ddl_par_alter;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) EXECUTE ddl_par_alter;
 DEALLOCATE ddl_par_alter;
 
 -- The same after ROLLBACK.
@@ -75,7 +75,7 @@ ALTER TABLE ddl_par_other ADD COLUMN y INT;
 PREPARE ddl_par_rb AS SELECT COUNT(*) FROM ddl_par;
 EXPLAIN (COSTS OFF) EXECUTE ddl_par_rb;
 ROLLBACK;
-EXPLAIN (COSTS OFF) EXECUTE ddl_par_rb;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) EXECUTE ddl_par_rb;
 DEALLOCATE ddl_par_rb;
 
 -- The same when the block's only DDL replaces a function the plan does not
@@ -88,7 +88,7 @@ PREPARE ddl_par_fn_c AS SELECT COUNT(*) FROM ddl_par;
 EXPLAIN (COSTS OFF) EXECUTE ddl_par_fn_c;
 EXPLAIN (COSTS OFF) EXECUTE ddl_par_fn_c;
 COMMIT;
-EXPLAIN (COSTS OFF) EXECUTE ddl_par_fn_c;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) EXECUTE ddl_par_fn_c;
 DEALLOCATE ddl_par_fn_c;
 BEGIN;
 CREATE OR REPLACE FUNCTION ddl_par_noop() RETURNS INT LANGUAGE sql
@@ -96,7 +96,7 @@ CREATE OR REPLACE FUNCTION ddl_par_noop() RETURNS INT LANGUAGE sql
 PREPARE ddl_par_fn_r AS SELECT COUNT(*) FROM ddl_par;
 EXPLAIN (COSTS OFF) EXECUTE ddl_par_fn_r;
 ROLLBACK;
-EXPLAIN (COSTS OFF) EXECUTE ddl_par_fn_r;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) EXECUTE ddl_par_fn_r;
 DEALLOCATE ddl_par_fn_r;
 DROP FUNCTION ddl_par_noop();
 
@@ -143,7 +143,7 @@ DROP TABLE ddl_par_other;
 -- A DDL outside a block ends with its own implicit commit, so the next query
 -- launches workers again.
 CREATE TABLE ddl_par_auto (k INT);
-EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM ddl_par;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT COUNT(*) FROM ddl_par;
 DROP TABLE ddl_par_auto;
 
 -- GH #30978 as filed ran in REPEATABLE READ and rolled back to a savepoint
@@ -167,16 +167,17 @@ ROLLBACK;
 DROP TABLE ddl_par_sp;
 
 -- A temp-table DDL also turns off parallel workers for the rest of the block,
--- even for queries on permanent tables, although workers never read temp
--- tables. A generic plan made in the block is parallel and stays so after
--- COMMIT.
+-- even for queries on permanent tables. Workers never scan temp tables, but
+-- they can still need the block's temp catalog rows, for example a pg_temp
+-- function the query calls, so this is not only a cost. A generic plan made in
+-- the block launches workers again after COMMIT.
 BEGIN;
 CREATE TEMP TABLE ddl_par_tmp (k INT);
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT COUNT(*) FROM ddl_par;
 PREPARE ddl_par_tmp_q AS SELECT COUNT(*) FROM ddl_par;
 EXPLAIN (COSTS OFF) EXECUTE ddl_par_tmp_q;
 COMMIT;
-EXPLAIN (COSTS OFF) EXECUTE ddl_par_tmp_q;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) EXECUTE ddl_par_tmp_q;
 DEALLOCATE ddl_par_tmp_q;
 DROP TABLE ddl_par_tmp;
 

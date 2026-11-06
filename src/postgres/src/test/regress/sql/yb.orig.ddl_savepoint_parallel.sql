@@ -29,8 +29,8 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
 SELECT COUNT(*) FROM ddl_sp_par;
 COMMIT;
 
--- Once the block ends, the query gets a parallel plan again.
-EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM ddl_sp_par;
+-- Once the block ends, the query launches workers again.
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT COUNT(*) FROM ddl_sp_par;
 
 -- GH #30978 as filed: REPEATABLE READ, a DDL, a savepoint, more DDL after
 -- the savepoint, then ROLLBACK TO it. The DDL before the savepoint stays, so

@@ -53,17 +53,19 @@ SELECT COUNT(*) FROM ddl_sp_par;
 (1 row)
 
 COMMIT;
--- Once the block ends, the query gets a parallel plan again.
-EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM ddl_sp_par;
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
- Finalize Aggregate
-   ->  Gather
+-- Once the block ends, the query launches workers again.
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT COUNT(*) FROM ddl_sp_par;
+                                               QUERY PLAN                                               
+--------------------------------------------------------------------------------------------------------
+ Finalize Aggregate (actual rows=1 loops=1)
+   ->  Gather (actual rows=3 loops=1)
          Workers Planned: 2
-         ->  Noop Aggregate
-               ->  Parallel Index Only Scan using ddl_sp_par_pkey on ddl_sp_par
+         Workers Launched: 2
+         ->  Noop Aggregate (actual rows=1 loops=3)
+               ->  Parallel Index Only Scan using ddl_sp_par_pkey on ddl_sp_par (actual rows=0 loops=3)
+                     Heap Fetches: 0
                      Partial Aggregate: true
-(6 rows)
+(8 rows)
 
 -- GH #30978 as filed: REPEATABLE READ, a DDL, a savepoint, more DDL after
 -- the savepoint, then ROLLBACK TO it. The DDL before the savepoint stays, so
