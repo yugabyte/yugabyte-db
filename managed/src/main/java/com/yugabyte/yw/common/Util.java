@@ -305,9 +305,16 @@ public class Util {
     return inetAddrs;
   }
 
+  // A plain or '"'"'-escaped password literal, with or without a ';' after it. The lookahead
+  // keeps a quote inside the password from ending the match early.
+  private static final Pattern YSQL_PASSWORD_LITERAL =
+      Pattern.compile(
+          "(?i)"
+              + YSQL_PASSWORD_KEYWORD
+              + "\\s+(?:'\"'\"'.*?'\"'\"'(?=[;\\s\"]|$)|'(?:[^']|'')*')");
+
   public static String redactYsqlQuery(String input) {
-    return input.replaceAll(
-        YSQL_PASSWORD_KEYWORD + " (.+?)';", String.format("%s %s;", YSQL_PASSWORD_KEYWORD, REDACT));
+    return YSQL_PASSWORD_LITERAL.matcher(input).replaceAll(YSQL_PASSWORD_KEYWORD + " " + REDACT);
   }
 
   /**

@@ -16,6 +16,8 @@
 #include <cmath>
 #include <memory>
 #include <mutex>
+#include <queue>
+#include <tuple>
 #include <utility>
 
 #include <boost/multi_index/hashed_index.hpp>
@@ -193,11 +195,13 @@ class HnswlibIndex :
       const hnsw::BlockCachePtr& block_cache, const HNSWOptions& options,
       const MemTrackerPtr& mem_tracker,
       std::shared_ptr<hnswlib::SpaceInterface<DistanceResult>> space,
-      vector_index::StoreVectorPayload store_vector_payload)
+      vector_index::StoreVectorPayload store_vector_payload,
+      vector_index::VectorTenantExtractor tenant_extractor)
       : Base(store_vector_payload),
         block_cache_(block_cache),
         options_(options),
-        space_(std::move(space)) {
+        space_(std::move(space)),
+        tenant_extractor_(std::move(tenant_extractor)) {
     consumption_.Init(mem_tracker);
     static std::once_flag once_flag;
     std::call_once(once_flag, [func = space_->get_dist_func()]() {
@@ -272,16 +276,23 @@ class HnswlibIndex :
     return Status::OK();
   }
 
-  Result<size_t> DoInsertVector(VectorId vector_id, const Vector& v) {
+  Result<size_t> DoInsertVector(VectorId vector_id, const Vector& v, Slice payload) {
     // Only data grows on insert (level-0 segments, level1+ linkLists_[i] entries and
     // label_lookup_); the search-contexts pool is sized at construction.
     auto se = UpdateDataConsumptionOnExit();
     // A failure before the new element becomes reachable, such as running out of memory for its
     // storage, leaves the index unchanged. A later one, including running out of memory while
-    // linking it, can leave the element half-linked. Both are returned only because no caller
-    // keeps using the index after a failed insert: VectorLSM crashes on a failed insert into a
-    // mutable chunk, and compaction discards its merged index.
+    // linking it or adding its tenant, can leave the element half-linked. Both are returned only
+    // because no caller keeps using the index after a failed insert: VectorLSM crashes on a failed
+    // insert into a mutable chunk, and compaction discards its merged index.
     try {
+      if (tenant_extractor_) {
+        // The tenant points into the stored payload, which hnswlib could keep as the tenant key.
+        RSTATUS_DCHECK(
+            this->payloads(), IllegalState, "Vectors with tenants require a chunk with payloads");
+        auto tenant = VERIFY_RESULT(tenant_extractor_(payload));
+        return hnsw_->addTenantPoint(v.data(), vector_id, tenant.AsStringView());
+      }
       return hnsw_->addPoint(v.data(), vector_id);
     } catch (const std::bad_alloc&) {
       return STATUS_FORMAT(
@@ -331,10 +342,14 @@ class HnswlibIndex :
 
   Result<std::vector<VectorWithDistance<DistanceResult>>> DoSearch(
       const Vector& query_vector, const SearchOptions& options) const {
+    SCHECK(tenant_extractor_ || options.tenant.empty(), InvalidArgument,
+           "Tenant search of a vector index without tenants");
     std::vector<VectorWithDistance<DistanceResult>> result;
     HnswlibVectorFilter filter(options.filter, this->payloads());
-    auto tmp_result = hnsw_->searchKnnCloserFirst(
-        query_vector.data(), options.max_num_results, &filter, options.ef);
+    auto tmp_result = tenant_extractor_
+        ? SearchTenants(query_vector, options, &filter)
+        : hnsw_->searchKnnCloserFirst(
+              query_vector.data(), options.max_num_results, &filter, options.ef);
     RETURN_NOT_OK(filter.status());
     result.reserve(tmp_result.size());
     const auto* payloads = this->payloads();
@@ -352,6 +367,38 @@ class HnswlibIndex :
   Result<Vector> GetVector(VectorId vector_id) const override {
     return STATUS(
         NotSupported, "Hnswlib wrapper currently does not allow retriving vectors by id");
+  }
+
+  // Tenants are separate graph clusters, so a search without a tenant searches every cluster.
+  // TODO(#36087): DocDB passes no tenant yet, so a search of an index with tenants searches every
+  // tenant cluster, one at a time.
+  // Returns results closer first.
+  std::vector<std::tuple<DistanceResult, VectorId, hnswlib::tableint>> SearchTenants(
+      const Vector& query_vector, const SearchOptions& options,
+      HnswlibVectorFilter* filter) const {
+    // Further first.
+    std::priority_queue<std::tuple<DistanceResult, VectorId, hnswlib::tableint>> top;
+    if (!options.tenant.empty()) {
+      top = hnsw_->searchTenantKnn(
+          query_vector.data(), options.max_num_results, options.tenant.AsStringView(), filter,
+          options.ef);
+    } else {
+      for (auto entry : hnsw_->getTenantEntries()) {
+        auto tenant_top = hnsw_->searchKnnFrom(
+            query_vector.data(), options.max_num_results, filter, options.ef, entry);
+        for (; !tenant_top.empty(); tenant_top.pop()) {
+          top.push(tenant_top.top());
+          if (top.size() > options.max_num_results) {
+            top.pop();
+          }
+        }
+      }
+    }
+    std::vector<std::tuple<DistanceResult, VectorId, hnswlib::tableint>> result(top.size());
+    for (auto it = result.rbegin(); it != result.rend(); ++it, top.pop()) {
+      *it = top.top();
+    }
+    return result;
   }
 
   static std::string StatsToStringHelper(const Stats& stats) {
@@ -420,6 +467,8 @@ class HnswlibIndex :
   const HNSWOptions options_;
   // Shared with HnswlibIndexTraits and all indexes it created.
   const std::shared_ptr<hnswlib::SpaceInterface<DistanceResult>> space_;
+  // Not null when vectors belong to tenants, see VectorTenantExtractor.
+  const vector_index::VectorTenantExtractor tenant_extractor_;
   std::unique_ptr<HNSWImpl> hnsw_;
   IndexMemoryConsumption consumption_;
 };
@@ -478,7 +527,7 @@ class HnswlibIndexTraits :
       return CreateYbHnsw<Vector, DistanceResult>(block_cache_, options_);
     }
     return std::make_shared<HnswlibIndex<Vector, DistanceResult>>(
-        block_cache_, options_, mem_tracker_, space_, store_vector_payload);
+        block_cache_, options_, mem_tracker_, space_, store_vector_payload, tenant_extractor_);
   }
 
   DistanceResult Distance(const Vector& lhs, const Vector& rhs) const override {
@@ -496,8 +545,9 @@ class HnswlibIndexTraits :
   // called after construction.
   HnswlibIndexTraits(
       const hnsw::BlockCachePtr& block_cache, const HNSWOptions& options,
-      const MemTrackerPtr& mem_tracker)
-      : block_cache_(block_cache), options_(options), mem_tracker_(mem_tracker) {
+      const MemTrackerPtr& mem_tracker, vector_index::VectorTenantExtractor tenant_extractor)
+      : block_cache_(block_cache), options_(options), mem_tracker_(mem_tracker),
+        tenant_extractor_(std::move(tenant_extractor)) {
   }
 
   Status Init() {
@@ -509,11 +559,12 @@ class HnswlibIndexTraits :
   friend Result<vector_index::VectorIndexTraitsPtr<FriendVector, FriendDistanceResult>>
       ann_methods::CreateHnswlibIndexTraits(
           const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options,
-          const MemTrackerPtr& mem_tracker);
+          const MemTrackerPtr& mem_tracker, vector_index::VectorTenantExtractor tenant_extractor);
 
   const hnsw::BlockCachePtr block_cache_;
   const HNSWOptions options_;
   const MemTrackerPtr mem_tracker_;
+  const vector_index::VectorTenantExtractor tenant_extractor_;
   // Shared with all created indexes, see Create. Safe to share: the space is immutable after
   // creation and only provides data sizes and a stateless distance function.
   std::shared_ptr<hnswlib::SpaceInterface<DistanceResult>> space_;
@@ -524,9 +575,10 @@ class HnswlibIndexTraits :
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> CreateHnswlibIndexTraits(
     const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options,
-    const MemTrackerPtr& mem_tracker) {
+    const MemTrackerPtr& mem_tracker, vector_index::VectorTenantExtractor tenant_extractor) {
   std::shared_ptr<HnswlibIndexTraits<Vector, DistanceResult>> traits(
-      new HnswlibIndexTraits<Vector, DistanceResult>(block_cache, options, mem_tracker));
+      new HnswlibIndexTraits<Vector, DistanceResult>(
+          block_cache, options, mem_tracker, std::move(tenant_extractor)));
   RETURN_NOT_OK(traits->Init());
   return traits;
 }
@@ -534,6 +586,6 @@ Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> CreateHnswlib
 template Result<vector_index::VectorIndexTraitsPtr<FloatVector, float>>
     CreateHnswlibIndexTraits<FloatVector, float>(
         const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options,
-        const MemTrackerPtr& mem_tracker);
+        const MemTrackerPtr& mem_tracker, vector_index::VectorTenantExtractor tenant_extractor);
 
 }  // namespace yb::ann_methods

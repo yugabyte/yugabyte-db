@@ -433,6 +433,25 @@ public class UtilTest extends FakeDBApplication {
   }
 
   @Test
+  public void testYsqlRedactionOfUnterminatedQuotedAndLowercasePasswords() {
+    assertEquals(
+        "CREATE USER u PASSWORD REDACTED", Util.redactYsqlQuery("CREATE USER u PASSWORD 'p@ss'"));
+    assertEquals(
+        "ALTER USER u PASSWORD REDACTED; SELECT 1;",
+        Util.redactYsqlQuery("ALTER USER u PASSWORD 'a'';b'; SELECT 1;"));
+    assertEquals(
+        "create user u PASSWORD REDACTED", Util.redactYsqlQuery("create user u password 'x y'"));
+    // The shape NodeUniverseManager logs: the query inside ysqlsh -c "...", $ escaped for bash.
+    assertEquals(
+        "ysqlsh -d 'yugabyte' -c \"CREATE USER s PASSWORD REDACTED\"",
+        Util.redactYsqlQuery("ysqlsh -d 'yugabyte' -c \"CREATE USER s PASSWORD 'Up1\\$ ''q'\""));
+    // Older '"'"'-escaped form with a quote inside the password.
+    assertEquals(
+        "ALTER USER u PASSWORD REDACTED; SELECT 1;",
+        Util.redactYsqlQuery("ALTER USER u PASSWORD '\"'\"'a'\"'\"''\"'\"'b'\"'\"'; SELECT 1;"));
+  }
+
+  @Test
   @Parameters({
     "3ns, 3",
     "2us, 2000",

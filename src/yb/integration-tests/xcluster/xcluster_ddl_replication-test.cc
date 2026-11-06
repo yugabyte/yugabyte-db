@@ -6995,8 +6995,7 @@ TEST_F(XClusterDDLReplicationRetriedRewriteVectorIndexTest, RowsAppliedBeforeBac
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_before_vector_index_backfill_seconds) =
       15 * kTimeMultiplier;
   StringWaiterLogSink backfill_started_log("Backfill: vector_index:");
-  StringWaiterLogSink backfill_read_rows_log(Format("Backfill with chunk size $0 ", kNumRows));
-  StringWaiterLogSink backfill_done_log("Backfill: Backfilled ");
+  StringWaiterLogSink backfill_done_log(Format(": $0 entries in ", kNumRows));
   auto wait_for_both_replays = [](StringWaiterLogSink& log, const std::string& description) {
     return WaitFor(
         [&log] { return log.GetEventCount() >= 2; }, kTimeout,
@@ -7006,9 +7005,8 @@ TEST_F(XClusterDDLReplicationRetriedRewriteVectorIndexTest, RowsAppliedBeforeBac
 
   ASSERT_OK(wait_for_both_replays(backfill_started_log, "backfill started"));
   ReleaseRetryPoller();
-  // Confirms the rows were applied before the retry's backfill read the table.
-  ASSERT_OK(wait_for_both_replays(backfill_read_rows_log, "backfill read the rows"));
-  ASSERT_OK(wait_for_both_replays(backfill_done_log, "backfill done"));
+  // Backfilling all the rows confirms they were applied before the retry's backfill read the table.
+  ASSERT_OK(wait_for_both_replays(backfill_done_log, "backfill done with all the rows"));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_before_vector_index_backfill_seconds) = 0;
 
   ASSERT_OK(WaitForRetriedRewrite());

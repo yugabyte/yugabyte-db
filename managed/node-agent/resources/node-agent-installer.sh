@@ -652,7 +652,7 @@ main() {
     if [ "$FIPS_ENABLED" = "true" ]; then
       NODE_AGENT_CONFIG_ARGS+=(--fips_enabled)
     fi
-    node-agent node configure ${NODE_AGENT_CONFIG_ARGS[@]}
+    node-agent node configure "${NODE_AGENT_CONFIG_ARGS[@]}"
     if [ $? -ne 0 ]; then
       echo "Node agent setup failed."
       exit 1

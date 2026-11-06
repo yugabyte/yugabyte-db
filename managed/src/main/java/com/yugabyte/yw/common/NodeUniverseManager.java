@@ -41,6 +41,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.io.FileUtils;
@@ -48,11 +50,21 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.time.DateUtils;
 import play.libs.Json;
 
+/**
+ * Runs commands, scripts and file transfers on DB nodes, over node agent gRPC, Kubernetes or SSH.
+ *
+ * <p>Only SSH re-parses argv (ssh.py joins it into one line), so with {@code useBash=false} {@link
+ * #runCommand} compensates through {@link #escapeForSshTransport}, and {@link #runScript} quotes
+ * its params on every transport. {@code NodeUniverseManagerTransportTest} pins this per transport;
+ * extend it for callers with unusual quoting.
+ */
 @Slf4j
 @Singleton
 public class NodeUniverseManager extends DevopsBase {
   private static final ShellProcessContext DEFAULT_CONTEXT =
       ShellProcessContext.builder().logCmdOutput(true).build();
+  // Characters no shell treats specially; Python's shlex.quote leaves the same set bare.
+  private static final Pattern SHELL_SAFE_ARG = Pattern.compile("[A-Za-z0-9_@%+=:,./-]+");
   public static final String NODE_ACTION_SSH_SCRIPT = "bin/run_node_action.py";
   public static final String CERTS_DIR = "/yugabyte-tls-config";
   public static final String K8S_CERTS_DIR = "/opt/certs/yugabyte";
@@ -328,6 +340,12 @@ public class NodeUniverseManager extends DevopsBase {
     return runCommand(node, universe, command, context, true /* use bash */);
   }
 
+  /**
+   * Runs a command on the node.
+   *
+   * @param useBash false when the argv is exact and must not be re-parsed by a shell, e.g. quoted
+   *     SQL; see {@link #escapeForSshTransport} for how SSH honours it.
+   */
   public ShellResponse runCommand(
       NodeDetails node,
       Universe universe,
@@ -346,8 +364,62 @@ public class NodeUniverseManager extends DevopsBase {
       actionArgs.add("--skip_cmd_logging");
     }
     actionArgs.add("--command");
-    actionArgs.addAll(command);
+    if (fallsBackToSsh(universe.getNodeDeploymentMode(node)) && !useBash) {
+      actionArgs.addAll(escapeForSshTransport(command, useBash));
+      context = withSshEscapedRedactionKeys(context);
+    } else {
+      actionArgs.addAll(command);
+    }
     return executeNodeAction(UniverseNodeAction.RUN_COMMAND, universe, node, actionArgs, context);
+  }
+
+  /**
+   * Whether a command that bypasses node agent goes through ssh.py, the one transport that
+   * re-parses argv; kubectl exec, local and unknown don't.
+   */
+  static boolean fallsBackToSsh(CloudType cloudType) {
+    return cloudType != CloudType.kubernetes
+        && cloudType != CloudType.local
+        && cloudType != Common.CloudType.unknown;
+  }
+
+  /**
+   * Compensates for ssh.py folding argv back into one command line: it wraps each argument holding
+   * a space in single quotes without escaping the quotes inside, so {@code SELECT 'a'} reaches the
+   * shell as {@code 'SELECT 'a''}. Pre-escaping those quotes with {@code '"'"'} lets its wrapper
+   * rebuild the argument exactly. ssh.py leaves other arguments bare, so one holding a shell
+   * character ({@code ;}, {@code $(..)}, a glob, a quote) is quoted here in full, to arrive as node
+   * agent passes it. With useBash the caller asked for re-parsing, which is what ssh.py and node
+   * agent both do.
+   */
+  static List<String> escapeForSshTransport(List<String> command, boolean useBash) {
+    if (useBash) {
+      return command;
+    }
+    return command.stream().map(NodeUniverseManager::escapeArgForSsh).collect(Collectors.toList());
+  }
+
+  private static String escapeArgForSsh(String part) {
+    String quotesEscaped = part.replace("'", "'\"'\"'");
+    if (part.contains(" ")) {
+      return quotesEscaped; // ssh.py adds the enclosing quotes
+    }
+    return SHELL_SAFE_ARG.matcher(part).matches() ? part : "'" + quotesEscaped + "'";
+  }
+
+  /**
+   * Redaction matches whole arguments, so after {@link #escapeForSshTransport} rewrites one it has
+   * to match the rewritten form too, or a password in it is logged.
+   */
+  private static ShellProcessContext withSshEscapedRedactionKeys(ShellProcessContext context) {
+    if (MapUtils.isEmpty(context.getRedactedVals())) {
+      return context;
+    }
+    Map<String, String> redactedVals = new HashMap<>(context.getRedactedVals());
+    context
+        .getRedactedVals()
+        .forEach((arg, redacted) -> redactedVals.put(escapeArgForSsh(arg), redacted));
+    return context.toBuilder().redactedVals(redactedVals).build();
   }
 
   /**
@@ -409,8 +481,22 @@ public class NodeUniverseManager extends DevopsBase {
     actionArgs.add("--local_script_path");
     actionArgs.add(localScriptPath);
     actionArgs.add("--params");
-    actionArgs.addAll(params);
+    actionArgs.addAll(quoteScriptParams(params));
     return executeNodeAction(UniverseNodeAction.RUN_SCRIPT, universe, node, actionArgs, context);
+  }
+
+  /**
+   * Quotes script parameters for the run_node_action.py transports (ssh, rpc and k8s), which build
+   * a {@code /bin/bash -s <params> <<'EOF'} line and let a shell split it. Node agent already
+   * quotes them the same way in {@code NodeAgentClient.executeScript}.
+   */
+  static List<String> quoteScriptParams(List<String> params) {
+    return params.stream().map(NodeUniverseManager::shellQuote).collect(Collectors.toList());
+  }
+
+  /** Wraps a value in single quotes, escaping embedded ones with the {@code '\''} idiom. */
+  private static String shellQuote(String value) {
+    return value == null ? "''" : "'" + value.replace("'", "'\\''") + "'";
   }
 
   public ShellResponse runYbAdminCommand(
@@ -554,7 +640,27 @@ public class NodeUniverseManager extends DevopsBase {
         node, universe, dbName, ysqlCommands, timeoutSec, authEnabled, cpEnabled, true);
   }
 
+  /**
+   * useBash=false: the spec is already a {@code bash -c} script, and a second wrap breaks quoted
+   * SQL literals such as the UUIDs in UpdateConsistencyCheck's INSERT.
+   */
   public ShellResponse runYsqlBatchCommands(
+      NodeDetails node,
+      Universe universe,
+      String dbName,
+      List<String> ysqlCommands,
+      long timeoutSec,
+      boolean authEnabled,
+      boolean cpEnabled,
+      boolean logCmdOutput) {
+    RemoteBashRunSpec spec =
+        buildYsqlBatchRunSpec(
+            node, universe, dbName, ysqlCommands, timeoutSec, authEnabled, cpEnabled, logCmdOutput);
+    return runCommand(node, universe, spec.command, spec.context, false /* useBash */);
+  }
+
+  /** Builds the {@code bash -c} ysqlsh command and its context; run it with useBash=false. */
+  public RemoteBashRunSpec buildYsqlBatchRunSpec(
       NodeDetails node,
       Universe universe,
       String dbName,
@@ -568,10 +674,28 @@ public class NodeUniverseManager extends DevopsBase {
     command.add("-c");
     List<String> bashCommand = new ArrayList<>();
     Cluster cluster = universe.getUniverseDetails().getPrimaryCluster();
-    String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(confGetter, node, universe);
+    appendYsqlSslExport(bashCommand, cluster);
+    bashCommand.addAll(buildYsqlshInvocationArgs(node, universe, dbName, authEnabled, cpEnabled));
+    for (var ysqlCommand : ysqlCommands) {
+      bashCommand.add("-c");
+      bashCommand.add("\"" + escapeYsqlQueryForShell(ysqlCommand) + "\"");
+    }
+    String bashCommandStr = String.join(" ", bashCommand);
+    command.add(bashCommandStr);
+    return new RemoteBashRunSpec(
+        command, buildYsqlShellContext(bashCommandStr, timeoutSec, logCmdOutput));
+  }
+
+  private void appendYsqlSslExport(List<String> bashCommand, Cluster cluster) {
     if (cluster.userIntent.enableClientToNodeEncrypt && !cluster.userIntent.enableYSQLAuth) {
       bashCommand.add("export sslmode=\"require\";");
     }
+  }
+
+  private List<String> buildYsqlshInvocationArgs(
+      NodeDetails node, Universe universe, String dbName, boolean authEnabled, boolean cpEnabled) {
+    List<String> bashCommand = new ArrayList<>();
+    String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(confGetter, node, universe);
     String port =
         String.valueOf(cpEnabled ? node.internalYsqlServerRpcPort : node.ysqlServerRpcPort);
     bashCommand.add(getYbHomeDir(node, universe) + "/tserver/bin/ysqlsh");
@@ -587,34 +711,50 @@ public class NodeUniverseManager extends DevopsBase {
     bashCommand.add("yugabyte");
     if (StringUtils.isNotEmpty(dbName)) {
       bashCommand.add("-d");
-      bashCommand.add(dbName);
+      bashCommand.add(shellQuote(dbName));
     }
-    for (var ysqlCommand : ysqlCommands) {
-      bashCommand.add("-c");
-      // Escaping double quotes and $ at first.
-      String escapedYsqlCommand = ysqlCommand.replace("\"", "\\\"");
-      escapedYsqlCommand = escapedYsqlCommand.replace("$", "\\$");
-      // Escaping single quotes after for non k8s deployments.
-      if (!universe.getNodeDeploymentMode(node).equals(Common.CloudType.kubernetes)) {
-        escapedYsqlCommand = escapedYsqlCommand.replace("'", "'\"'\"'");
-      }
-      bashCommand.add("\"" + escapedYsqlCommand + "\"");
-    }
-    String bashCommandStr = String.join(" ", bashCommand);
-    command.add(bashCommandStr);
+    return bashCommand;
+  }
+
+  /**
+   * Escapes a YSQL query for {@code ysqlsh -c "..."}: the four characters special inside bash
+   * double quotes ({@code \}, {@code `}, {@code "}, {@code $}). Single quotes stay literal, since
+   * the {@code '"'"'} idiom here corrupts SQL literals such as the UUIDs in UpdateConsistencyCheck;
+   * the SSH transport's own quoting is handled by {@link #escapeForSshTransport}.
+   */
+  static String escapeYsqlQueryForShell(String ysqlCommand) {
+    // Backslash is escaped first so the backslashes added below are not escaped a second time.
+    return ysqlCommand
+        .replace("\\", "\\\\")
+        .replace("`", "\\`")
+        .replace("\"", "\\\"")
+        .replace("$", "\\$");
+  }
+
+  private ShellProcessContext buildYsqlShellContext(
+      String bashCommandStr, long timeoutSec, boolean logCmdOutput) {
     Map<String, String> valsToRedact = new HashMap<>();
     if (!logCmdOutput) {
       valsToRedact.put(bashCommandStr, Util.REDACTED_YSQL_QUERY);
-    } else if (bashCommandStr.contains(Util.YSQL_PASSWORD_KEYWORD)) {
+    } else if (StringUtils.containsIgnoreCase(bashCommandStr, Util.YSQL_PASSWORD_KEYWORD)) {
       valsToRedact.put(bashCommandStr, Util.redactYsqlQuery(bashCommandStr));
     }
-    ShellProcessContext context =
-        ShellProcessContext.builder()
-            .logCmdOutput(logCmdOutput && valsToRedact.isEmpty())
-            .timeoutSecs(timeoutSec)
-            .redactedVals(valsToRedact)
-            .build();
-    return runCommand(node, universe, command, context);
+    return ShellProcessContext.builder()
+        .logCmdOutput(logCmdOutput && valsToRedact.isEmpty())
+        .timeoutSecs(timeoutSec)
+        .redactedVals(valsToRedact)
+        .build();
+  }
+
+  /** A {@code bash -c} command and its shell context, to be run with useBash=false. */
+  public static final class RemoteBashRunSpec {
+    public final List<String> command;
+    public final ShellProcessContext context;
+
+    public RemoteBashRunSpec(List<String> command, ShellProcessContext context) {
+      this.command = command;
+      this.context = context;
+    }
   }
 
   // ysqlsh opens <dir>/.s.PGSQL.<port>, so ignore sockets a SIGKILLed postmaster left on another

@@ -203,6 +203,10 @@ TEST_F(
   // 1.6 WRITE OP (aborted multi-shard txn)
   // 1.7 WRITE OP (aborted multi-shard txn)
   log::SegmentSequence segments;
+  // The committed index check below is a one-shot read on every replica, so followers must already
+  // know index 7 is committed.
+  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(
+      test_cluster(), 30s * kTimeMultiplier, RequireLeaderIsReady::kTrue));
   for (int i = 0; i < num_tservers; i++) {
     for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
       auto tablet_id = peer->tablet_id();
