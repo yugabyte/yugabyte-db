@@ -37,6 +37,8 @@
 using std::shared_ptr;
 
 DECLARE_double(cache_single_touch_ratio);
+DECLARE_bool(cache_overflow_single_touch);
+DECLARE_bool(cache_overflow_multi_touch);
 
 namespace rocksdb {
 
@@ -826,6 +828,100 @@ TEST_F(CacheTest, MultiTouchOverflow) {
   AssertCacheSizes(cache.get(), 1, 4);
   ASSERT_OK(InsertIntoCache(cache, 11 /* key */, 11 /* value */));
   AssertCacheSizes(cache.get(), 1, 4);
+}
+
+TEST_F(CacheTest, MultiTouchOverflowDisabled) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_single_touch_ratio) = 0.2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_overflow_multi_touch) = false;
+  std::shared_ptr<Cache> cache = NewLRUCache(10, 0);
+
+  for (int i = 0; i < 10; ++i) {
+    ASSERT_OK(InsertIntoCache(cache, i /* key */, i /* value */));
+  }
+  AssertCacheSizes(cache.get(), 10, 0);
+
+  // Multi-touch stays at its share, so promotions past it evict multi-touch entries.
+  for (int i = 0; i < 10; ++i) {
+    Cache::Handle* h = cache->Lookup(ToString(i), 100 /* query_id */);
+    ASSERT_NE(h, nullptr);
+    cache->Release(h);
+  }
+  AssertCacheSizes(cache.get(), 0, 8);
+
+  // Single-touch can still overflow into unused multi-touch space.
+  ASSERT_OK(InsertIntoCache(cache, 10 /* key */, 10 /* value */));
+  ASSERT_OK(InsertIntoCache(cache, 11 /* key */, 11 /* value */));
+  AssertCacheSizes(cache.get(), 2, 8);
+}
+
+TEST_F(CacheTest, MultiTouchOverShareWithoutOverflow) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_single_touch_ratio) = 0.2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_overflow_multi_touch) = false;
+  std::shared_ptr<Cache> cache = NewLRUCache(10, 0);
+
+  // Fill the multi-touch share with pinned entries.
+  std::vector<Cache::Handle*> handles;
+  for (int i = 0; i < 8; ++i) {
+    ASSERT_OK(InsertIntoCache(cache, i /* key */, i /* value */));
+    handles.push_back(cache->Lookup(ToString(i), 100 /* query_id */));
+    ASSERT_NE(handles.back(), nullptr);
+  }
+  AssertCacheSizes(cache.get(), 0, 8);
+
+  // A second query loading the same block inserts it directly into multi-touch, past its share.
+  ASSERT_OK(InsertIntoCache(cache, 8 /* key */, 8 /* value */));
+  ASSERT_OK(InsertIntoCache(cache, 8 /* key */, 8 /* value */, 2 /* query_id */));
+  ASSERT_OK(InsertIntoCache(cache, 9 /* key */, 9 /* value */));
+  AssertCacheSizes(cache.get(), 1, 9);
+
+  // Without multi-touch overflow, a single-touch insertion evicts single-touch entries only.
+  ASSERT_OK(InsertIntoCache(cache, 10 /* key */, 10 /* value */));
+  AssertCacheSizes(cache.get(), 1, 9);
+  {
+    Cache::Handle* h = cache->Lookup(ToString(9), 100 /* query_id */);
+    ASSERT_EQ(h, nullptr);
+  }
+
+  for (auto* h : handles) {
+    cache->Release(h);
+  }
+}
+
+TEST_F(CacheTest, SingleTouchOverflowDisabled) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_single_touch_ratio) = 0.2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_overflow_single_touch) = false;
+  std::shared_ptr<Cache> cache = NewLRUCache(10, 0);
+
+  // Single-touch is capped at its share.
+  int key = 0;
+  for (; key < 10; ++key) {
+    ASSERT_OK(InsertIntoCache(cache, key, key /* value */));
+  }
+  AssertCacheSizes(cache.get(), 2, 0);
+
+  // Multi-touch can still grow into unused single-touch space.
+  for (int round = 0; round < 5; ++round) {
+    for (int i = key - 2; i < key; ++i) {
+      Cache::Handle* h = cache->Lookup(ToString(i), 100 /* query_id */);
+      ASSERT_NE(h, nullptr);
+      cache->Release(h);
+    }
+    if (round < 4) {
+      ASSERT_OK(InsertIntoCache(cache, key, key /* value */));
+      ASSERT_OK(InsertIntoCache(cache, key + 1, key + 1 /* value */));
+      key += 2;
+    }
+  }
+  AssertCacheSizes(cache.get(), 0, 10);
+
+  // Single-touch insertions take back the single-touch share.
+  ASSERT_OK(InsertIntoCache(cache, key, key /* value */));
+  ASSERT_OK(InsertIntoCache(cache, key + 1, key + 1 /* value */));
+  ASSERT_OK(InsertIntoCache(cache, key + 2, key + 2 /* value */));
+  AssertCacheSizes(cache.get(), 2, 8);
 }
 
 }  // namespace rocksdb

@@ -51,6 +51,10 @@ DEFINE_UNKNOWN_bool(cache_overflow_single_touch, true,
             "Whether to enable overflow of single touch cache into the multi touch cache "
             "allocation");
 
+DEFINE_RUNTIME_bool(cache_overflow_multi_touch, true,
+    "Whether the multi touch cache can grow past its share into space that the single touch cache "
+    "is not using. Single touch insertions take that space back when the cache is full.");
+
 namespace rocksdb {
 
 Cache::~Cache() {
@@ -466,8 +470,16 @@ class LRUCache {
   // cache can grow past its share into space that the single touch cache is not using.
   size_t GetSubCacheCapacity(const SubCacheType subcache_type);
 
-  bool CanOverflow() const {
-    return !strict_capacity_limit_ && FLAGS_cache_overflow_single_touch;
+  // Whether the subcache can grow past its share into space that the other one is not using.
+  bool CanOverflow(SubCacheType subcache_type) const {
+    if (strict_capacity_limit_) {
+      return false;
+    }
+    switch (subcache_type) {
+      case SINGLE_TOUCH: return FLAGS_cache_overflow_single_touch;
+      case MULTI_TOUCH: return FLAGS_cache_overflow_multi_touch;
+    }
+    FATAL_INVALID_ENUM_VALUE(SubCacheType, subcache_type);
   }
 
   // Evicts from the multi touch LRU while the multi touch cache is above its share and the cache
@@ -550,7 +562,7 @@ void LRUCache::LRU_Append(LRUHandle* e) {
 size_t LRUCache::GetSubCacheCapacity(const SubCacheType subcache_type) {
   switch (subcache_type) {
     case SINGLE_TOUCH :
-      if (!CanOverflow()) {
+      if (!CanOverflow(SINGLE_TOUCH)) {
         return total_capacity_ - multi_touch_capacity_;
       }
       // total_capacity_ can drop below the multi-touch usage held by pinned entries once
@@ -561,7 +573,7 @@ size_t LRUCache::GetSubCacheCapacity(const SubCacheType subcache_type) {
       return total_capacity_ > multi_touch_sub_cache_.Usage()
           ? total_capacity_ - multi_touch_sub_cache_.Usage() : 0;
     case MULTI_TOUCH :
-      if (!CanOverflow()) {
+      if (!CanOverflow(MULTI_TOUCH)) {
         return multi_touch_capacity_;
       }
       // Like the single touch cache, the multi touch cache can use any space the other one is not
@@ -644,10 +656,11 @@ void LRUCache::ReleaseSpace(size_t bytes) {
 void LRUCache::SetStrictCapacityLimit(bool strict_capacity_limit) {
   absl::MutexLock l(&mutex_);
   // Allow setting strict capacity limit only when there are no elements in the cache.
-  // This is because we disable overflowing single touch cache when strict_capacity_limit_ is true.
-  // We cannot ensure that single touch cache has not already overflown when the cache already has
+  // This is because we disable overflow when strict_capacity_limit_ is true.
+  // We cannot ensure that neither subcache has already overflown when the cache already has
   // elements in it.
-  assert(TotalUsage() == 0 || !FLAGS_cache_overflow_single_touch);
+  assert(TotalUsage() == 0 ||
+         (!FLAGS_cache_overflow_single_touch && !FLAGS_cache_overflow_multi_touch));
   strict_capacity_limit_ = strict_capacity_limit;
 }
 
@@ -699,7 +712,7 @@ Cache::Handle* LRUCache::Lookup(const Slice& key, uint32_t hash, const QueryId q
 bool LRUCache::HasFreeSpace(const SubCacheType subcache_type) {
   switch(subcache_type) {
     case SINGLE_TOUCH :
-      if (!CanOverflow()) {
+      if (!CanOverflow(SINGLE_TOUCH)) {
         return single_touch_sub_cache_.Usage() <= (total_capacity_ - multi_touch_capacity_);
       }
       return TotalUsage() <= total_capacity_;
@@ -802,7 +815,7 @@ Status LRUCache::Insert(const Slice& key, uint32_t hash, const QueryId query_id,
     } else {
       subcache_type = table_.GetSubCacheTypeCandidate(e);
     }
-    if (subcache_type == SINGLE_TOUCH) {
+    if (subcache_type == SINGLE_TOUCH && CanOverflow(MULTI_TOUCH)) {
       EvictMultiTouchOverShare(charge, &last_reference_list);
     }
     EvictFromLRU(charge, &last_reference_list, subcache_type);
