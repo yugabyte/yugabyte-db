@@ -701,9 +701,10 @@ extern int	yb_subscription_reread_interval_ms;
  * another node's apply worker owns, so it can take over if that owner dies.
  * Each probe is a no-wait lock acquire, a transactional write to the advisory
  * lock table, and every non-owning node pays it for every subscription, so
- * this is deliberately much longer than the worker's reread interval.  The
- * lock itself is freed within seconds of the owner's death, so this interval
- * is the dominant term in takeover latency.
+ * this is deliberately much longer than the worker's reread interval.  It
+ * adds to the time the owner's lock takes to be freed: at once when the apply
+ * worker exits, but only when its session expires when the whole node dies,
+ * which took minutes in tests.
  */
 extern int	yb_subscription_takeover_probe_interval_ms;
 

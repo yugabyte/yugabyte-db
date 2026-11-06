@@ -298,6 +298,9 @@ static int	relcache_callback_count = 0;
 
 bool yb_refresh_cache_in_progress = false;
 
+/* YB declarations */
+static void YbInvalidateAllCachesToVersion(uint64_t version);
+
 /* ----------------------------------------------------------------
  *				Invalidation subgroup support functions
  * ----------------------------------------------------------------
@@ -832,6 +835,22 @@ InvalidateSystemCaches(void)
 	if (IsYugaByteEnabled())
 	{
 		/*
+		 * YB: a logical replication worker never reaches the PostgresMain
+		 * refresh that the reset below relies on, so do what PG does.
+		 */
+		if (IsLogicalWorker() && !YBCIsSysTablePrefetchingStarted() &&
+			!yb_refresh_cache_in_progress)
+		{
+			elog(LOG,
+				 "InvalidateSystemCaches: full invalidation in logical replication worker, version %" PRIu64,
+				 YbGetCatalogCacheVersion());
+			if (YBCIsLegacyModeForCatalogOps())
+				YBCPgResetCatalogReadTime();
+			YbInvalidateAllCachesToVersion(YbGetSharedCatalogVersion());
+			return;
+		}
+
+		/*
 		 * In case of YugaByte it is necessary to refresh YB caches by calling
 		 * 'YBRefreshCache'. But it can't be done here as 'YBRefreshCache'
 		 * can't be called from within the transaction. Resetting catalog
@@ -968,10 +987,7 @@ YbMaybeRefreshCache(void)
 				 "version %" PRIu64 " -> %" PRIu64
 				 ", subsequent execution may be slow until caches are re-warmed",
 				 local_catalog_version, shared_catalog_version);
-			InvalidateSystemCachesExtended(false, false);
-			YbUpdateCatalogCacheVersionNoPgStat(shared_catalog_version);
-			/* invalidate all docdb table caches */
-			HandleYBStatus(YBCPgInvalidateCache(shared_catalog_version));
+			YbInvalidateAllCachesToVersion(shared_catalog_version);
 		}
 	}
 	PG_FINALLY();
@@ -2268,3 +2284,18 @@ YbAssertSubscriptionInvalsOnly(void)
 								YbAssertSubscriptionInvalMessage);
 }
 #endif
+
+/*
+ * YB: PG's handling of lost invalidation messages (flush every catcache and
+ * relcache entry and run every callback), then move this backend to catalog
+ * version, since everything it caches from now on is read fresh.  Safe
+ * mid-statement for the reasons given in YbMaybeRefreshCache.
+ */
+static void
+YbInvalidateAllCachesToVersion(uint64_t version)
+{
+	InvalidateSystemCachesExtended(false, false);
+	YbUpdateCatalogCacheVersionNoPgStat(version);
+	/* invalidate all docdb table caches */
+	HandleYBStatus(YBCPgInvalidateCache(version));
+}

@@ -478,8 +478,8 @@ public class TestPgSubscriptionLifecycleMultiNode
   }
 
   /**
-   * DROP issued on a different node must also stop the worker, which notices
-   * that its subscription row is gone.
+   * DISABLE then DROP (with slot_name = NONE) issued on a different node: the
+   * worker exits on the DISABLE re-read, and DROP leaves no worker behind.
    */
   @Test
   public void testCrossNodeDropStopsWorker() throws Exception {
