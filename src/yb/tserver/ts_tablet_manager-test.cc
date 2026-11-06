@@ -1252,7 +1252,7 @@ class TierMigrationReconcilerTest : public TsTabletManagerTieredDriveTest {
 
   Status WaitForPassToFinish(const tablet::TabletPtr& tablet) {
     return WaitFor([&]() -> Result<bool> {
-      return !tablet->tier_migration_status().pass_in_flight;
+      return !tablet->tier_migration_status().migration_pass_in_flight;
     }, MonoDelta::FromSeconds(10), "tier migration pass to finish");
   }
 
@@ -1330,7 +1330,7 @@ TEST_F(TierMigrationReconcilerTest, CleanPassWakesReconcilerForVerdict) {
   // Already converged: the pass schedules nothing and the wake comes at once.
   status = ASSERT_RESULT(tablet->AlterTabletTier("hdd", hdd_pid));
   ASSERT_EQ(status.state, tablet::TierMigrationStatus::State::kInProgress);
-  ASSERT_FALSE(status.pass_in_flight);
+  ASSERT_FALSE(status.migration_pass_in_flight);
   ASSERT_OK(WaitForMigrationState(tablet, tablet::TierMigrationStatus::State::kDone));
 }
 

@@ -401,7 +401,7 @@ message TierMigrationStatusPB {
   optional uint32 obsoleted = 7;
 
   // True while the most recent pass still has moves outstanding.
-  optional bool pass_in_flight = 8;
+  optional bool migration_pass_in_flight = 8;
   // Passes in a row that hit a hard error without moving a single file.
   optional uint32 consecutive_failed_passes = 9;
 }
