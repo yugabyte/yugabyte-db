@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
@@ -29,6 +30,7 @@ import com.yugabyte.yw.common.KubernetesFullMoveReplicas.KubernetesFullMoveRepli
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -1721,7 +1723,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           } else {
             taskParams().getClusterByUuid(clusterUUID).setCurrentMasterFullMoveBatchIndex(index);
           }
-          tf.setTaskParams(Json.toJson(taskParams()));
+          tf.setTaskParams(taskParamsForStorage());
         };
     return getUpdateParentTaskParamsTask(taskInfoConsumer);
   }
@@ -2133,6 +2135,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     return task;
   }
 
+  private JsonNode taskParamsForStorage() {
+    return RedactingService.filterSecretFieldsForStorage(Json.toJson(taskParams()));
+  }
+
   protected void persistGflagsChecksumInTaskParams(String universeName) {
     if (MapUtils.isNotEmpty(
         taskParams().getPrimaryCluster().getPerAZServerTypeGflagsChecksumMap())) {
@@ -2149,7 +2155,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         log.debug("Persisting gflags checksum");
       }
     }
-    TaskInfo.updateInTxn(getUserTaskUUID(), tf -> tf.setTaskParams(Json.toJson(taskParams())));
+    TaskInfo.updateInTxn(getUserTaskUUID(), tf -> tf.setTaskParams(taskParamsForStorage()));
   }
 
   protected void persistCertChecksumInTaskParams(String universeName) {
@@ -2164,7 +2170,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     for (Cluster newCluster : taskParams().clusters) {
       newCluster.setCertChecksum(certChecksum);
     }
-    TaskInfo.updateInTxn(getUserTaskUUID(), tf -> tf.setTaskParams(Json.toJson(taskParams())));
+    TaskInfo.updateInTxn(getUserTaskUUID(), tf -> tf.setTaskParams(taskParamsForStorage()));
   }
 
   protected void persistOriginalDiskSizeInTaskParams(UUID clusterUUID) {
@@ -2187,7 +2193,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               originalDiskSizeMap.put(azUUID, diskSizes);
             });
     taskParams().getClusterByUuid(cluster.uuid).setOriginalDiskSize(originalDiskSizeMap);
-    TaskInfo.updateInTxn(getUserTaskUUID(), tf -> tf.setTaskParams(Json.toJson(taskParams())));
+    TaskInfo.updateInTxn(getUserTaskUUID(), tf -> tf.setTaskParams(taskParamsForStorage()));
   }
 
   private void createCheckNodeSafeToDeleteTasks(
