@@ -212,21 +212,19 @@ class ObjectLockInfoManager::Impl {
     poller_.Start(
         &catalog_manager_.Scheduler(),
         MonoDelta::FromMilliseconds(FLAGS_object_lock_cleanup_interval_ms));
-    waiting_txn_registry_ = std::make_unique<docdb::LocalWaitingTxnRegistry>(
+    auto waiting_txn_registry = std::make_unique<docdb::LocalWaitingTxnRegistry>(
         master_.client_future(), clock_, master_.permanent_uuid(), lock_manager_thread_pool_.get());
     waiting_txn_registry_poller_ = std::make_unique<rpc::Poller>(
         master_.permanent_uuid(), std::bind(&docdb::LocalWaitingTxnRegistry::SendWaitForGraph,
-        waiting_txn_registry_.get()));
-    tserver::TSLocalLockManagerPtr lock_manager = nullptr;
+        waiting_txn_registry.get()));
     {
+      // Races with Clear() during sys catalog load; each lock manager must be started exactly once.
       LockGuard lock(mutex_);
+      waiting_txn_registry_ = std::move(waiting_txn_registry);
       object_lock_infos_map_.clear();
       if (local_lock_manager_) {
-        lock_manager = local_lock_manager_;
+        local_lock_manager_->Start(waiting_txn_registry_.get());
       }
-    }
-    if (lock_manager) {
-      lock_manager->Start(waiting_txn_registry_.get());
     }
     waiting_txn_registry_poller_->Start(
         &master_.messenger()->scheduler(), FLAGS_send_wait_for_report_interval_ms * 1ms);
@@ -249,10 +247,14 @@ class ObjectLockInfoManager::Impl {
       waiting_txn_registry_poller_->Shutdown();
       waiting_txn_registry_poller_.reset();
     }
-    if (waiting_txn_registry_) {
-      waiting_txn_registry_->StartShutdown();
-      waiting_txn_registry_->CompleteShutdown();
-      waiting_txn_registry_.reset();
+    std::unique_ptr<docdb::LocalWaitingTxnRegistry> waiting_txn_registry;
+    {
+      LockGuard lock(mutex_);
+      waiting_txn_registry = std::move(waiting_txn_registry_);
+    }
+    if (waiting_txn_registry) {
+      waiting_txn_registry->StartShutdown();
+      waiting_txn_registry->CompleteShutdown();
     }
   }
 
@@ -439,7 +441,7 @@ class ObjectLockInfoManager::Impl {
   // threads, and poll_running_ both serializes them and orders their accesses to this map.
   std::unordered_map<TabletServerId, std::shared_ptr<CountDownLatch>>
       expired_lease_epoch_cleanup_tasks_;
-  std::unique_ptr<docdb::LocalWaitingTxnRegistry> waiting_txn_registry_;
+  std::unique_ptr<docdb::LocalWaitingTxnRegistry> waiting_txn_registry_ GUARDED_BY(mutex_);
   std::unique_ptr<rpc::Poller> waiting_txn_registry_poller_;
 
   // Set while a Poll is queued or running, so that a slow Poll is skipped rather than overlapped.
@@ -1741,7 +1743,10 @@ void ObjectLockInfoManager::Impl::Clear() {
         std::make_shared<tserver::TSLocalLockManager>(
             clock_, master_.tablet_server(), master_, lock_manager_thread_pool_.get(),
             master_.metric_entity()));
-    local_lock_manager_->Start(waiting_txn_registry_.get());
+    // Otherwise Start() has not run yet and will start it.
+    if (waiting_txn_registry_) {
+      local_lock_manager_->Start(waiting_txn_registry_.get());
+    }
   }
   // Shutdown waits for in-progress requests to drain, so don't hold mutex_ across it.
   if (old_local_lock_manager) {

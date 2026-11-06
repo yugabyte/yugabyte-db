@@ -88,6 +88,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/key_encoder.h"
 #include "yb/common/pg_catversions.h"
+#include "yb/common/pg_types.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/ql_type_util.h"
 #include "yb/common/ql_type.h"
@@ -117,6 +118,7 @@
 
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/backfill_index.h"
+#include "yb/master/online_schema_change.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_entity_parser.h"
@@ -1160,6 +1162,7 @@ CatalogManager::CatalogManager(Master* master, SysCatalogTable* sys_catalog)
   cdcsdk_manager_ = std::make_unique<CdcsdkManager>(*master_, *this, *sys_catalog_);
   xcluster_manager_ = std::make_unique<XClusterManager>(*master_, *this, *sys_catalog_);
   ysql_manager_ = std::make_unique<YsqlManager>(*master_, *this, *sys_catalog_);
+  online_schema_change_ = std::make_unique<OnlineSchemaChangeController>(master_, this);
 }
 
 CatalogManager::~CatalogManager() {
@@ -3217,7 +3220,31 @@ Result<SplitPhase> CatalogManager::GetTableSplitPhase(
 
 Result<SplitPhase> CatalogManager::GetTableSplitPhase(
     const TableInfo& table, const ReplicationInfoPB& table_replication_info) const {
-  TSDescriptorVector ts_descs = GetAllLiveNotBlacklistedTServers();
+  // The phase thresholds are per-node leader counts, so count only tservers in the live placement:
+  // read-replica tservers host observers, never leaders, even when they share a zone with it.
+  // A table-level placement may omit the uuid; fall back to the cluster's, as the load balancer
+  // does. Membership is the same as GetNumLiveTServersForPlacement, which sizes new tables.
+  auto live_placement_uuid = table_replication_info.live_replicas().placement_uuid();
+  if (live_placement_uuid.empty()) {
+    live_placement_uuid = VERIFY_RESULT(placement_uuid());
+  }
+  TSDescriptorVector ts_descs;
+  auto blacklist = BlacklistSetFromPB();
+  master_->ts_manager()->GetAllLiveDescriptorsInCluster(
+      &ts_descs, live_placement_uuid, blacklist.ok() ? *blacklist : BlacklistSet());
+  // No live tserver matches when the cluster config's live uuid disagrees with the tservers' (for
+  // example after yb-admin clear_placement_info, or a uuid set only on the tservers). Such a
+  // cluster can't place new replicas, but its existing tables should keep splitting, so count
+  // every live tserver as before and warn: nothing else surfaces the mismatch on this path.
+  if (ts_descs.empty()) {
+    ts_descs = GetAllLiveNotBlacklistedTServers();
+    if (!ts_descs.empty()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 60) << Format(
+          "None of the $0 live tservers is in the live placement '$1'; counting all of them, "
+          "including any read replicas, for the automatic tablet split phase",
+          ts_descs.size(), live_placement_uuid);
+    }
+  }
 
   size_t num_servers = 0;
   // If there is custom placement information present then
@@ -7137,6 +7164,12 @@ void CatalogManager::GetBackfillStatus(
   std::vector<std::pair<TableId, IndexStatusPB::BackfillStatus>> indexes_for_callback;
   {
     auto indexed_table_lock = indexed_table->LockForRead();
+
+    // The indexes of an online schema change backfill target carry retain_delete_markers while the
+    // pin is held. The tablet validator clears the property on any index reported as backfilled, so
+    // report BACKFILL_UNKNOWN until the pin is released.
+    const bool osc_pinned = indexed_table_lock->pb.has_table_backfill_pin_job_id();
+
     for (const auto& index_info_pb : indexed_table_lock->pb.indexes()) {
       if (filter_by_index) {
         if (indexes.empty()) {
@@ -7159,7 +7192,9 @@ void CatalogManager::GetBackfillStatus(
               IndexPermissions_Name(index_info_pb.index_permissions()) : "-");
 
       indexes_for_callback.emplace_back(
-          index_info_pb.table_id(), master::GetBackfillStatus(index_info_pb));
+          index_info_pb.table_id(),
+          osc_pinned ? IndexStatusPB::BACKFILL_UNKNOWN
+                        : master::GetBackfillStatus(index_info_pb));
     }
   }
 
@@ -7203,6 +7238,16 @@ Status CatalogManager::GetBackfillStatus(
     } else {
       const auto& table_info = *result;
       const auto indexed_table_id = table_info->indexed_table_id();
+      if (table_info->LockForRead()->pb.has_table_backfill_pin_job_id()) {
+        // A pinned online schema change backfill target is not an index. The tablet validator asks
+        // about it because retain_delete_markers is set, and acts only on BACKFILL_SUCCESS, so
+        // BACKFILL_UNKNOWN makes it leave the pin alone. The controller reaps pins of finished
+        // jobs.
+        auto* index_status = resp->add_index_status();
+        index_status->mutable_index_table()->CopyFrom(index_table_pb);
+        index_status->set_backfill_status(IndexStatusPB::BACKFILL_UNKNOWN);
+        continue;
+      }
       if (indexed_table_id.empty()) {
         status = STATUS_FORMAT(InvalidArgument,
             "Table $0 is not an index table", index_table_pb.ShortDebugString());
@@ -7285,6 +7330,157 @@ Status CatalogManager::LaunchBackfillIndexForTable(
   if (!s.ok()) {
     VLOG(3) << __func__ << " Done failed " << s;
     return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, s);
+  }
+  return Status::OK();
+}
+
+Status CatalogManager::StartTableBackfill(
+    const StartTableBackfillRequestPB* req,
+    StartTableBackfillResponsePB* resp,
+    rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG(INFO) << "StartTableBackfill for " << req->source_table().ShortDebugString();
+
+  HybridTime backfill_ts(req->backfill_timestamp());
+  if (!req->has_source_table() || req->target_table_oid() == kPgInvalidOid ||
+      req->transform_fn_oid() == kPgInvalidOid || req->pg_job_id() == 0 ||
+      !req->has_backfill_timestamp() || !backfill_ts.is_valid()) {
+    return SetupError(
+        resp->mutable_error(), MasterErrorPB::INVALID_REQUEST,
+        STATUS_FORMAT(
+            InvalidArgument, "Incomplete online schema change backfill request: $0",
+            req->ShortDebugString()));
+  }
+
+  scoped_refptr<TableInfo> source_table = VERIFY_RESULT(FindTable(req->source_table()));
+  if (source_table == nullptr) {
+    return SetupError(
+        resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND,
+        STATUS(NotFound, "Source table not found", req->source_table().ShortDebugString()));
+  }
+
+  if (source_table->GetTableType() != PGSQL_TABLE_TYPE) {
+    return SetupError(
+        resp->mutable_error(), MasterErrorPB::INVALID_REQUEST,
+        STATUS(InvalidArgument, "Online schema change backfill only supported for YSQL tables"));
+  }
+
+  auto ns_info = FindNamespaceById(source_table->namespace_id());
+  RETURN_NOT_OK_PREPEND(ns_info, "Unable to get namespace info for online schema change backfill");
+
+  OnlineSchemaChangeJobPB job;
+  job.set_pg_job_id(req->pg_job_id());
+  job.set_state(OnlineSchemaChangeJobPB::COMPUTING_READ_TIME);
+  job.set_backfilling_timestamp(backfill_ts.ToUint64());
+  job.set_source_table_oid(VERIFY_RESULT(GetPgsqlTableOid(source_table->id())));
+  job.set_target_table_oid(req->target_table_oid());
+  job.set_transform_fn_oid(req->transform_fn_oid());
+  job.set_database_name((*ns_info)->name());
+
+  Status s = online_schema_change_->Start(source_table, job, epoch);
+  if (!s.ok()) {
+    return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, s);
+  }
+  return Status::OK();
+}
+
+Result<scoped_refptr<TableInfo>> CatalogManager::GetOnlineSchemaChangeTargetTable(
+    const NamespaceId& source_namespace_id, uint32_t target_table_oid) {
+  const auto db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(source_namespace_id));
+  return FindTableById(GetPgsqlTableId(db_oid, target_table_oid));
+}
+
+std::vector<scoped_refptr<TableInfo>> CatalogManager::GetOnlineSchemaChangePinnedTables(
+    const scoped_refptr<TableInfo>& target) {
+  std::vector<TableId> index_ids;
+  {
+    auto l = target->LockForRead();
+    for (const auto& index_info : l->pb.indexes()) {
+      index_ids.push_back(index_info.table_id());
+    }
+  }
+  // GetTableInfo takes the catalog manager lock, so it must not run under the table lock.
+  std::vector<scoped_refptr<TableInfo>> tables{target};
+  for (const auto& index_id : index_ids) {
+    if (auto index = GetTableInfo(index_id)) {
+      tables.push_back(std::move(index));
+    }
+  }
+  return tables;
+}
+
+Status CatalogManager::PinOnlineSchemaChangeTargetDeleteMarkers(
+    const scoped_refptr<TableInfo>& target, int64_t pg_job_id, const LeaderEpoch& epoch) {
+  for (const auto& table : GetOnlineSchemaChangePinnedTables(target)) {
+    bool needs_alter = false;
+    {
+      auto l = table->LockForWrite();
+      auto& pb = l.mutable_data()->pb;
+      if (pb.has_table_backfill_pin_job_id() && pb.table_backfill_pin_job_id() == pg_job_id) {
+        continue;
+      }
+      if (pb.schema().table_properties().retain_delete_markers()) {
+        // In practice an index whose CREATE INDEX backfill has returned to the client but whose
+        // AsyncBackfillDone has not cleared the property yet. Taking it over would let that
+        // AsyncBackfillDone clear it under this backfill.
+        return STATUS_FORMAT(
+            TryAgain,
+            "Table $0 still has delete-marker retention held by another backfill; retry the "
+            "online schema change once that backfill has finished finalizing.",
+            table->ToString());
+      }
+      pb.mutable_schema()->mutable_table_properties()->set_retain_delete_markers(true);
+      pb.set_table_backfill_pin_job_id(pg_job_id);
+      // TableProperties::operator== ignores retain_delete_markers, so the version bump is what
+      // makes the alter reach the tablets.
+      pb.set_version(pb.version() + 1);
+      pb.set_updates_only_index_permissions(false);
+      l.mutable_data()->set_state(
+          SysTablesEntryPB::ALTERING,
+          Format("Retain delete markers for online schema change job $0", pg_job_id));
+      RETURN_NOT_OK_PREPEND(
+          sys_catalog_->Upsert(epoch, table),
+          "Failed to persist retain_delete_markers on the target.");
+      l.Commit();
+      needs_alter = true;
+    }
+    if (needs_alter) {
+      RETURN_NOT_OK(SendAlterTableRequest(table, epoch));
+      LOG(INFO) << "Pinned delete-marker retention for online schema change job " << pg_job_id
+                << " on " << table->ToString();
+    }
+  }
+  return Status::OK();
+}
+
+Status CatalogManager::UnpinOnlineSchemaChangeTargetDeleteMarkers(
+    const scoped_refptr<TableInfo>& target, int64_t pg_job_id, const LeaderEpoch& epoch) {
+  for (const auto& table : GetOnlineSchemaChangePinnedTables(target)) {
+    {
+      auto l = table->LockForWrite();
+      auto& pb = l.mutable_data()->pb;
+      if (!pb.has_table_backfill_pin_job_id() ||
+          pb.table_backfill_pin_job_id() != pg_job_id) {
+        continue;
+      }
+      pb.clear_table_backfill_pin_job_id();
+      pb.mutable_schema()->mutable_table_properties()->set_retain_delete_markers(false);
+      // No version bump: the BACKFILL_DONE op below carries the clear to the tablets.
+      RETURN_NOT_OK_PREPEND(
+          sys_catalog_->Upsert(epoch, table),
+          "Failed to persist cleared retain_delete_markers on the target.");
+      l.Commit();
+    }
+
+    for (const auto& tablet : VERIFY_RESULT(table->GetTablets())) {
+      auto call = std::make_shared<AsyncBackfillDone>(
+          master_, AsyncTaskPool(), tablet, table->id(), epoch);
+      table->AddTask(call);
+      RETURN_NOT_OK_PREPEND(
+          ScheduleTask(call), "Failed to send mark-backfill-done to the target.");
+    }
+    LOG(INFO) << "Released delete-marker retention pin of online schema change job " << pg_job_id
+              << " on " << table->ToString();
   }
   return Status::OK();
 }
@@ -8275,20 +8471,34 @@ void CatalogManager::RemoveDeletedTabletsFromTables(const TabletInfos& candidate
           tablet_lock->pb.split_tablet_ids().begin(), tablet_lock->pb.split_tablet_ids().end());
       split_parent.state_msg = tablet_lock->pb.state_msg();
     }
-    // Vector indexes share their indexed table's tablets and list them in their own tablets_ too.
-    // Every table listing the tablet must drop it before tablet_map_ can: their tablets_ hold only
-    // weak pointers, which would otherwise dangle.
-    std::vector<TableInfoPtr> tables{table};
-    for (const auto& index_id : table->GetVectorIndexIds()) {
-      if (auto index = GetTableInfo(index_id)) {
-        tables.push_back(std::move(index));
-      }
-    }
     // Tablets of a table that is going away are left alone, in tablets_ and tablet_map_. That keeps
     // AreAllTabletsDeleted / AreAllTabletsHidden meaningful, and snapshot, PITR and clone flows can
-    // still look the tablets up; CleanUpDeletedTables removes them with the table.
-    if (!table->LockForRead()->started_hiding_or_deleting() &&
-        std::ranges::all_of(tables, [&tablet](const auto& t) {
+    // still look the tablets up; CleanUpDeletedTables removes them with the table. This is checked
+    // only for the tablet's own table, see below for its vector indexes.
+    if (table->LockForRead()->started_hiding_or_deleting()) {
+      continue;
+    }
+    // Vector indexes share their indexed table's tablets and list them in their own tablets_ too.
+    // Every table listing the tablet must drop it before tablet_map_ can: their tablets_ hold only
+    // weak pointers, which would otherwise dangle. The tablet's hosted tables are used rather than
+    // the indexed table's index list, as they still include a dropped vector index that a snapshot
+    // schedule keeps hidden. Such an index is going away too, but unlike the indexed table it
+    // drops the tablet here: the tablet is already deleted, so the index has nothing left to
+    // retain on it, and AreAllTabletsDeleted on the index is unaffected.
+    // A vector index dropped before the split still has the parent as the owner of its partition,
+    // as SplitScope adds only live vector indexes to the children. RemoveInactiveTablet then
+    // refuses, and the parent stays in tablet_map_ until hidden table cleanup removes it from the
+    // index.
+    std::vector<TableInfoPtr> tables{table};
+    for (const auto& table_id : tablet->GetTableIds()) {
+      if (table_id == table->id()) {
+        continue;
+      }
+      if (auto hosted_table = GetTableInfo(table_id)) {
+        tables.push_back(std::move(hosted_table));
+      }
+    }
+    if (std::ranges::all_of(tables, [&tablet](const auto& t) {
           return t->RemoveInactiveTablet(tablet);
         })) {
       tablets_to_erase.emplace_back(tablet->tablet_id(), std::move(split_parent));

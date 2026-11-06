@@ -365,6 +365,11 @@ class YBClient {
       bool wait = true,
       CoarseTimePoint deadline = CoarseTimePoint());
 
+  Status StartTableBackfill(
+      const TableId& source_table_id, uint32_t target_table_oid,
+      uint32_t transform_fn_oid, uint64_t backfill_timestamp, int64_t pg_job_id,
+      CoarseTimePoint deadline = CoarseTimePoint());
+
   Status GetIndexBackfillProgress(
       const TableIds& index_ids,
       google::protobuf::RepeatedField<google::protobuf::uint64>*

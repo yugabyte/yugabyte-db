@@ -251,7 +251,8 @@ public class UniverseCRUDHandler {
                 && !isSameInstanceTypes(
                     cluster.userIntent, currentCluster.userIntent, nodesInCluster))
             || cluster.userIntent.enableExposingService
-                != currentCluster.userIntent.enableExposingService;
+                != currentCluster.userIntent.enableExposingService
+            || ManagedLoadBalancerUtil.isTurnedOnOrOff(currentCluster, cluster);
 
     boolean nodeSettingsChanges =
         isAwsArnChanged(cluster, currentCluster)
@@ -2953,6 +2954,13 @@ public class UniverseCRUDHandler {
               universe.getUniverseDetails().nodePrefix, taskParams.nodePrefix));
     }
 
+    for (Cluster cluster : taskParams.clusters) {
+      cluster.userIntent.setManagedLoadBalancer(
+          ManagedLoadBalancerUtil.getEditedSetting(
+              universe.getCluster(cluster.uuid).userIntent.getManagedLoadBalancer(),
+              cluster.userIntent.getManagedLoadBalancer()));
+    }
+
     Set<UniverseDefinitionTaskParams.UpdateOptions> updateOptions =
         getUpdateOptions(taskParams, UniverseConfigureTaskParams.ClusterOperationType.EDIT);
     if (!updateOptions.contains(UniverseDefinitionTaskParams.UpdateOptions.UPDATE)
@@ -3002,8 +3010,6 @@ public class UniverseCRUDHandler {
       // Fixed at creation. Clients that predate the field send false, so keep the current value.
       newCluster.userIntent.useNodeToNodeClientCerts =
           curCluster.userIntent.useNodeToNodeClientCerts;
-      ManagedLoadBalancerUtil.validateEditedCluster(
-          universe.getUniverseDetails().getPrimaryCluster(), curCluster, newCluster);
       UserIntent newIntent = newCluster.userIntent;
       UserIntent curIntent = curCluster.userIntent;
       for (UUID providerUUID : newIntent.getAllProviderUUIDs()) {

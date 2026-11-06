@@ -408,6 +408,7 @@ func TestRenderTemplatesExistingProviderValidation(t *testing.T) {
 				"instance_type_name":         "c5.large",
 				"instance_type_mount_points": "['/mnt/d0']",
 				"tmp_directory":              tmpDir,
+				"yb_user_id":                 "1000",
 				"node_external_fqdn":         "10.0.0.1",
 				"node_name":                  "node-1",
 			}
@@ -684,6 +685,7 @@ func TestCreateInstanceIfNotExists(t *testing.T) {
 				"instance_type_volume_size":  250.0,
 				"instance_type_mount_points": tt.mountPoints,
 				"tmp_directory":              tmpDir,
+				"yb_user_id":                 "1000",
 			}
 			provider := &model.Provider{BasicInfo: model.BasicInfo{Uuid: "provider-123"}}
 
@@ -701,7 +703,7 @@ func TestCreateInstanceIfNotExists(t *testing.T) {
 			if err != nil {
 				t.Fatalf("createInstanceIfNotExists() error = %v", err)
 			}
-			payloadPath := filepath.Join(tmpDir, "create_instance.json")
+			payloadPath := filepath.Join(tmpDir, "ynp-node-agent-1000", "create_instance.json")
 			_, statErr := os.Stat(payloadPath)
 			if tt.wantCreate {
 				if statErr != nil {

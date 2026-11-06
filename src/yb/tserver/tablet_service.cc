@@ -1139,6 +1139,15 @@ void TabletServiceAdminImpl::BackfillIndex(
   context.RespondSuccess();
 }
 
+void TabletServiceAdminImpl::TableBackfillChunk(
+    const TableBackfillChunkRequestPB* req,
+    TableBackfillChunkResponsePB* resp,
+    rpc::RpcContext context) {
+  SetupErrorAndRespond(
+      resp->mutable_error(), STATUS(NotSupported, "TableBackfillChunk is not implemented yet"),
+      &context);
+}
+
 void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* req,
                                          ChangeMetadataResponsePB* resp,
                                          rpc::RpcContext context) {
@@ -2203,14 +2212,22 @@ void TabletServiceAdminImpl::AlterTabletTier(
                         << context.requestor_string();
 
   const auto meta = peer_tablet.tablet_peer->tablet_metadata();
+  auto* tablet_manager = server_->tablet_manager();
 
-  // Keep the disk already resolved for this tier when the tier is unchanged. Re-running the
-  // least-loaded-disk policy could pick a different disk within the same tier purely because the
-  // first call changed the load counts, forcing a pointless rewrite of every SST.
-  Result<uint32_t> path_id = meta->target_storage_tier() == req->target_tier()
-      ? server_->tablet_manager()->ResolveTargetTierPathId(meta)
-      : server_->tablet_manager()->SelectPathIdForTier(
-            *meta, meta->table_id(), req->target_tier());
+  // Same tier: reuse the persisted disk while it still passes OpenTablet's checks; re-resolving
+  // could pick another disk in the tier just because the load counts changed, rewriting every
+  // SST for nothing. OpenTablet leaves a stale path_id behind when the tier has no disks on this
+  // node, and SelectPathIdForTier then refuses with NotFound, as for a tier change. Nothing is
+  // persisted here: the tablet's guarded write stays the only writer. The pair is read once and
+  // the path_id validated and sent is the one read; a concurrent AlterTabletTier can still switch
+  // the tablet underneath, and the tablet refuses a path_id that is not a disk of the tier.
+  const auto persisted_tier = meta->target_storage_tier();
+  const auto persisted_path_id = meta->target_tier_path_id();
+  Result<uint32_t> path_id =
+      persisted_tier == req->target_tier() &&
+              tablet_manager->IsTargetTierPathIdValid(*meta, persisted_tier, persisted_path_id)
+          ? Result<uint32_t>(persisted_path_id)
+          : tablet_manager->SelectPathIdForTier(*meta, meta->table_id(), req->target_tier());
   if (!path_id.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), path_id.status(), &context);
     return;

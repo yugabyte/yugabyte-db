@@ -40,6 +40,8 @@ service PgClientService {
   rpc AlterDatabase(PgAlterDatabaseRequestPB) returns (PgAlterDatabaseResponsePB);
   rpc AlterTable(PgAlterTableRequestPB) returns (PgAlterTableResponsePB);
   rpc BackfillIndex(PgBackfillIndexRequestPB) returns (PgBackfillIndexResponsePB);
+  rpc StartTableBackfill(PgStartTableBackfillRequestPB)
+      returns (PgStartTableBackfillResponsePB);
   rpc CreateDatabase(PgCreateDatabaseRequestPB) returns (PgCreateDatabaseResponsePB);
   rpc CreateReplicationSlot(PgCreateReplicationSlotRequestPB)
       returns (PgCreateReplicationSlotResponsePB);
@@ -279,6 +281,19 @@ message PgBackfillIndexRequestPB {
 }
 
 message PgBackfillIndexResponsePB {
+  AppStatusPB status = 1;
+}
+
+message PgStartTableBackfillRequestPB {
+  uint64 session_id = 1;
+  PgObjectIdPB source_table_id = 2;
+  uint32 target_table_oid = 3;
+  uint32 transform_fn_oid = 4;
+  uint64 backfill_timestamp = 5;
+  int64 pg_job_id = 6;
+}
+
+message PgStartTableBackfillResponsePB {
   AppStatusPB status = 1;
 }
 
@@ -951,6 +966,10 @@ message PgPerformOptionsPB {
 
   // This op uses the read_time_serial_no of the CatalogSnapshot in Postgres.
   bool uses_catalog_snapshot = 40;
+
+  // Subtransactions of historical_read_transaction_id rolled back to a savepoint.
+  // Only applicable when historical_read_transaction_id is set.
+  SubtxnSetPB historical_read_aborted_subtxns = 41;
 }
 
 message PgRequestSequenceNumPB {
