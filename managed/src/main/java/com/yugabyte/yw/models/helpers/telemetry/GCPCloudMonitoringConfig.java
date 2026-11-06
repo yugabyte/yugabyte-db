@@ -12,6 +12,7 @@ import com.google.api.services.cloudresourcemanager.model.TestIamPermissionsResp
 import com.google.api.services.iam.v1.IamScopes;
 import com.google.auth.http.HttpCredentialsAdapter;
 import com.google.auth.oauth2.GoogleCredentials;
+import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -47,7 +48,7 @@ public class GCPCloudMonitoringConfig extends TelemetryProviderConfig {
   }
 
   @Override
-  public void validate() {
+  public void validate(ApiHelper apiHelper) {
     // Check if project is given in atleast one of the param or creds.
     if (StringUtils.isBlank(project) && !credentials.hasNonNull("project_id")) {
       throw new PlatformServiceException(

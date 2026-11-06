@@ -13,8 +13,10 @@ import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.WSClientRefresher;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -39,17 +41,24 @@ import org.apache.commons.collections4.CollectionUtils;
 public class TelemetryProviderService {
 
   private final BeanValidator beanValidator;
+  private static final String WS_CLIENT_KEY = "yb.ws";
+
   private final RuntimeConfGetter confGetter;
+  private final WSClientRefresher wsClientRefresher;
 
   @Inject
-  public TelemetryProviderService(BeanValidator beanValidator, RuntimeConfGetter confGetter) {
+  public TelemetryProviderService(
+      BeanValidator beanValidator,
+      RuntimeConfGetter confGetter,
+      WSClientRefresher wsClientRefresher) {
     this.beanValidator = beanValidator;
     this.confGetter = confGetter;
+    this.wsClientRefresher = wsClientRefresher;
   }
 
   @VisibleForTesting
   public TelemetryProviderService() {
-    this(new BeanValidator(null), null);
+    this(new BeanValidator(null), null, null);
   }
 
   @Transactional
@@ -189,6 +198,6 @@ public class TelemetryProviderService {
   }
 
   public void validateTelemetryProvider(TelemetryProvider provider) {
-    provider.getConfig().validate();
+    provider.getConfig().validate(new ApiHelper(wsClientRefresher.getClient(WS_CLIENT_KEY)));
   }
 }
