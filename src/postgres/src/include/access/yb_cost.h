@@ -6,8 +6,11 @@
  *	  Selectivity constants and cost functions used by the optimizer
  *	  to estimate costs.
  *
- *	  Used by the planner, the access methods' cost estimators, and
- *	  ANALYZE.
+ *	  Mostly planner code: used by the planner, the access methods'
+ *	  cost estimators, and ANALYZE.  The exception is
+ *	  YbIsScanningEmbeddedIdx(), which scan execution also calls.
+ *	  It is a fact about how relations are stored, not cost logic,
+ *	  and #37095 tracks moving it out.
  *
  * Copyright (c) YugabyteDB, Inc.
  *

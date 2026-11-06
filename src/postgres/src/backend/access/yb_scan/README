@@ -19,8 +19,9 @@ tableam, the index AM interface, and genam's systable functions.  YB extends
 those interfaces where it needs to, as with table_beginscan_*_yb() and the
 yb_ammightrecheck index AM callback, rather than going around them.  The write
 path, which goes around tuple_insert, tuple_update, and tuple_delete, is not
-covered yet.  The groups below sort the headers by how they relate to that
-rule.  The comment at the top of each header says what belongs in it and,
+structured this way yet, but new write-path code should still go through
+tableam where it can.  The groups below sort the headers by how they relate to
+that rule.  The comment at the top of each header says what belongs in it and,
 where only some code may include it, which code that is.
 
 Headers
@@ -39,8 +40,10 @@ Execution logic that the planner shares instead of copying:
 
   yb_scan_plan.h
 
-The YB cost model.  It is planner code that sits under access/ for historical
-reasons and should move to the optimizer:
+The YB cost model.  It is mostly planner code, which sits under access/ for
+historical reasons and should move to the optimizer.  Its one function that
+scan execution also calls is a fact about how relations are stored, and #37095
+tracks moving it out:
 
   yb_cost.h
 

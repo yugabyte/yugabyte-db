@@ -3,20 +3,24 @@
  * yb_scan_core.h
  *	  Internal YB scan types and functions for the AM layer.
  *
- *	  This header is intended for access-method implementations
- *	  (heapam, yb_lsm, ybgin, ybvector) that need direct access to
- *	  YbOpaque and the low-level scan primitives.  Only
- *	  access-method code includes it (the YB access methods, the AM
- *	  code under src/backend/access/, and AM extensions such as
- *	  ybvector), plus guc.c for the GUC variables declared here.
- *	  Planner code that sits under src/backend/access/ for
- *	  historical reasons, such as yb_cost.c, does not.  Code above
- *	  the AM layer, such as executor nodes, the optimizer, commands
- *	  such as ANALYZE, and catalog and cache code, uses a header
- *	  that exposes no AM internals instead: yb_scan_plan.h,
- *	  yb_table_scan_options.h, yb_cost.h, and so on.  A function
- *	  declared in such a header is defined in the file that
- *	  implements that header, not in yb_scan_core.c.
+ *	  YbOpaque and the functions that build, bind, execute, and
+ *	  fetch a scan: the scan engine that the YB access methods
+ *	  share.  Only the scan engine belongs here.  A function that
+ *	  code other than scans also needs goes in a header outside the
+ *	  scan engine, so that its callers do not depend on the scan
+ *	  engine to reach it.
+ *
+ *	  Only access-method code includes this header (the YB access
+ *	  methods, the AM code under src/backend/access/, and AM
+ *	  extensions such as ybvector), plus guc.c for the GUC variables
+ *	  declared here.  The cost model in yb_cost.c does not, although
+ *	  it sits under src/backend/access/.  Code above the AM layer,
+ *	  such as executor nodes, the optimizer, commands such as
+ *	  ANALYZE, and catalog and cache code, uses the other headers
+ *	  that src/backend/access/yb_scan/README groups, as that README
+ *	  describes.  A function declared in one of those headers is
+ *	  defined in the file that implements that header, not in
+ *	  yb_scan_core.c.
  *
  * Copyright (c) YugabyteDB, Inc.
  *

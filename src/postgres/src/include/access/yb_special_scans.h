@@ -49,8 +49,9 @@
  * yb_inheritscache.c also calls that directly to fill the pg_inherits cache,
  * because systable_beginscan() on pg_inherits reads the cache.  The
  * SysScanDesc they return works with systable_getnext() and
- * systable_endscan(), but it reads at pggate's current read point, whatever
- * snapshot the caller passes.
+ * systable_endscan().  It reads at pggate's current read point, whatever
+ * snapshot the caller passes, except that a pg_inherits scan reads the
+ * pg_inherits cache.
  */
 extern SysScanDesc ybc_systable_beginscan(Relation relation,
 										  Oid indexId,
@@ -70,7 +71,9 @@ extern SysScanDesc ybc_systable_begin_default_scan(Relation relation,
  * ANALYZE row sampling (yb_sample_scan.c): the YB backend of
  * yb_acquire_sample_rows() in analyze.c, which takes the place of
  * acquire_sample_rows() for YB relations.  tableam's analyze callbacks do not
- * fit, because they assume block sampling while DocDB samples rows itself.
+ * fit, because they read the block numbers that the caller's BlockSampler
+ * chooses, while YB's sampler reads the table in its own blocks, runs of rows
+ * from one partition, and selects the sample rows below PostgreSQL.
  */
 typedef struct YbSampleData
 {
