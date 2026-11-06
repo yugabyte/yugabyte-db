@@ -20,6 +20,19 @@ Where possible, design application sessions to avoid using session-level state, 
 - Using superuser connections: In some corner cases, providing temporary superuser access to a user on a connection can break the connection after revoking the superuser privileges. If there are no cases of temporarily providing superuser privileges to any user, then you can safely set the [ysql_conn_mgr_superuser_sticky](../ycm-setup/#configure) flag to false.
 <!-- (WIP/guarded by a flag) Setting the role or session authorization during a session (SET role/SET session authorization) makes the connection sticky, but this can be disabled by setting <WIP flag name> to false.-->
 
+## Avoid setting-dependent literals in prepared statements
+
+In PostgreSQL, a literal in a prepared statement is converted to a value when the statement is parsed, using the session's settings at that time, and that value is reused by every later execution. Changing a setting afterwards does not re-parse the statement. The statement is parsed again only when an object it uses changes, when `search_path` changes, or, for a statement that row-level security policies apply to, when the current role or the `row_security` setting changes (see [PREPARE](https://www.postgresql.org/docs/current/sql-prepare.html#SQL-PREPARE-NOTES)). For example, `'2020-01-01 00:00'::timestamptz` is read in the `TimeZone` in effect at parse time, `'01/02/2020'::date` is read according to `DateStyle`, and `'now'::timestamptz` is fixed at the time of parsing (see [Special Values](https://www.postgresql.org/docs/current/datatype-datetime.html#DATATYPE-DATETIME-SPECIAL-VALUES)).
+
+YSQL Connection Manager shares protocol-level prepared statements across the client connections of a pool. When two clients prepare a statement with the same name and query text, the second client can reuse the statement that the first client parsed on that server connection. Because of the PostgreSQL behavior above, such literals then carry the settings of the client that parsed the statement first, not the settings of the client running it. No error is raised, and the client's own settings (for example, `SHOW TimeZone`) are unchanged. Settings that affect how literals are read include `TimeZone`, `DateStyle`, `IntervalStyle`, `standard_conforming_strings`, `backslash_quote`, `array_nulls`, `transform_null_equals`, and `lc_monetary`. Drivers that name statements by their query text, such as pgx, make this sharing common.
+
+To avoid this:
+
+- Pass such values as bind parameters (for example, `$1::timestamptz`) instead of literals. Parameters are converted at execution time using the settings of the client running the statement.
+- Write literals that do not depend on settings, for example, `'2020-01-01 00:00+00'::timestamptz` with an explicit UTC offset, and ISO dates such as `'2020-01-02'::date`.
+- Use `now()`, `CURRENT_DATE`, and similar functions instead of the strings `'now'`, `'today'`, `'tomorrow'`, and `'yesterday'`.
+- Use the same values for these settings on every connection for a given user and database. Set the defaults with `ALTER ROLE ... SET` or `ALTER DATABASE ... SET` rather than setting them on each connection.
+
 ## Use sticky connections for long-running workloads
 
 Sticky connections are ideal for workloads where avoiding the overhead of connection pooling context switches is important. Currently, you cannot explicitly request a sticky connection through configuration or connection parameters (this capability is planned for a future release).
