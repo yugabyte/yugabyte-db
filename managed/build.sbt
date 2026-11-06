@@ -260,7 +260,6 @@ libraryDependencies ++= Seq(
   "io.fabric8" % "kubernetes-client" % "6.14.0",
   "io.fabric8" % "kubernetes-client-api" % "6.14.0",
   "io.fabric8" % "kubernetes-model-core" % "6.14.0",
-  "io.fabric8" % "kubernetes-server-mock" % "6.14.0",
   "org.modelmapper" % "modelmapper" % "2.4.4",
   "com.datadoghq" % "datadog-api-client" % "2.25.0" classifier "shaded-jar",
   "javax.xml.bind" % "jaxb-api" % "2.3.1",
@@ -295,7 +294,7 @@ libraryDependencies ++= Seq(
   "io.zonky.test.postgres" % "embedded-postgres-binaries-darwin-arm64v8" % "14.5.0" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
   "com.yugabyte" % "yba-client-v2" % "0.1.0-SNAPSHOT" % Test,
-  "io.fabric8" % "kubernetes-server-mock" % "6.8.0" % Test
+  "io.fabric8" % "kubernetes-server-mock" % "6.14.0" % Test
 )
 
 // Clear default resolvers.
