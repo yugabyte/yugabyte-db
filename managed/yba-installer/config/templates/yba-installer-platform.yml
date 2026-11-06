@@ -220,7 +220,7 @@ services:
       {{ end}}
       Type=simple
 
-      Environment="JAVA_HOME={{ installVersionDir }}/jdk-17.0.7+7-jre/"
+      Environment="JAVA_HOME={{ installVersionDir }}/jdk-17.0.21+9-jre/"
       Environment="YB_OIDC_SECRET={{ yamlPath "platform.ybOidcSecret" }}"
       Environment="PLATFORM_APP_SECRET={{ yamlPath "platform.appSecret" }}"
 
