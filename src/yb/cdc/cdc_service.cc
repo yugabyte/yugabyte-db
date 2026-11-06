@@ -4912,13 +4912,12 @@ void CDCServiceImpl::UpdateTabletCDCSDKMetrics(
                                 ? last_record_time.value()
                                 : tablet_metric->cdcsdk_last_sent_physicaltime->value();
   auto last_replicated_micros = GetLastReplicatedTime(tablet_peer);
-  // 0 means last-sent is unknown: a new metrics entity, or one cleared while this peer was a
-  // follower. Leave it at 0 and compute sent lag from this response's last record time.
   if (last_record_micros == 0) {
     const auto& last_row = resp.cdc_sdk_proto_records(cdc_sdk_proto_records_size - 1).row_message();
     last_record_micros =
-        last_row.has_commit_time() ? HybridTime(last_row.commit_time()).GetPhysicalValueMicros()
-                                   : resp.safe_hybrid_time();
+        last_row.has_commit_time()
+            ? HybridTime(last_row.commit_time()).GetPhysicalValueMicros()
+            : HybridTime(resp.safe_hybrid_time()).GetPhysicalValueMicros();
   }
   tablet_metric->cdcsdk_last_sent_physicaltime->set_value(last_record_micros);
   const int64_t sent_lag_value = last_replicated_micros - last_record_micros;
