@@ -117,7 +117,6 @@ DEFINE_test_flag(bool, fail_master_local_release_once, false,
     "If true, fail the next release in the master leader's local lock manager and reset the flag.");
 
 DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
-DECLARE_int32(retrying_ts_rpc_max_delay_ms);
 DECLARE_int32(send_wait_for_report_interval_ms);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_yb_enable_invalidation_messages);
@@ -2481,16 +2480,16 @@ int UpdateTServer<Req, Resp>::max_delay_ms() {
   // Keeps a delay past the lease deadline from failing the task as timed out, and from a burst of
   // retries while the cleanup poll catches up.
   constexpr int64_t kMinDelayMs = 1000;
-  const int cap_ms = FLAGS_retrying_ts_rpc_max_delay_ms;
-  auto lease_deadline = shared_all_tservers_->LiveLeaseDeadline(permanent_uuid_);
-  if (!lease_deadline) {
-    return cap_ms;
+  // Without a live lease, the next SendRequest drops the tserver, so retry soon. The lease can be
+  // lost after HandleResponse checked it, or the attempt can fail before reaching SendRequest.
+  int64_t delay_ms = kMinDelayMs;
+  if (auto lease_deadline = shared_all_tservers_->LiveLeaseDeadline(permanent_uuid_)) {
+    const auto lease_lost_by =
+        *lease_deadline + MonoDelta::FromMilliseconds(FLAGS_object_lock_cleanup_interval_ms);
+    delay_ms = std::max(
+        lease_lost_by.GetDeltaSince(MonoTime::Now()).ToMilliseconds(), kMinDelayMs);
   }
-  const auto lease_lost_by =
-      *lease_deadline + MonoDelta::FromMilliseconds(FLAGS_object_lock_cleanup_interval_ms);
-  const auto ms_until_lease_lost = lease_lost_by.GetDeltaSince(MonoTime::Now()).ToMilliseconds();
-  return narrow_cast<int>(
-      std::min<int64_t>(cap_ms, std::max(ms_until_lease_lost, kMinDelayMs)));
+  return narrow_cast<int>(std::min<int64_t>(RetrySpecificTSRpcTask::max_delay_ms(), delay_ms));
 }
 
 template <class Req, class Resp>

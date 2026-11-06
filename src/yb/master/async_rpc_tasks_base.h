@@ -220,6 +220,8 @@ class RetryingRpcTask : public server::RunnableMonitoredTask {
   mutable simple_spinlock status_mutex_;
   Status final_status_ GUARDED_BY(status_mutex_);
 
+  virtual int max_delay_ms();
+
  private:
   // Returns true if we should impose a limit in the number of retries for this task type.
   bool RetryLimitTaskType() {
@@ -245,7 +247,6 @@ class RetryingRpcTask : public server::RunnableMonitoredTask {
   void SaveFinalStatusAndCallFinished(const Status& status);
 
   virtual int num_max_retries();
-  virtual int max_delay_ms();
 
   // Trace context active when this task was created, re-activated at the top of Run() so the task's
   // RPCs nest under it.
