@@ -750,6 +750,8 @@ typedef struct YbConvertedSplits
 	Oid			relid;
 	YbOptSplit *split_options;	/* NULL: the relation gets the default layout */
 	char	   *presplit;		/* new yb_presplit reloption, NULL: none */
+	char	   *split_error;	/* why the split points were not converted */
+	char	   *presplit_error; /* why yb_presplit was not converted */
 } YbConvertedSplits;
 
 /*
@@ -760,7 +762,7 @@ typedef struct YbConvertedSplits
 typedef struct YbAlterTypeSplits
 {
 	YbConvertedSplits *table;	/* NULL if no primary key column changes */
-	List	   *table_key_attnums;	/* the primary key the above is for */
+	Oid			pk_constraint;	/* the primary key the above is for */
 	List	   *indexes;		/* YbConvertedSplits of range indexes whose key
 								 * columns change */
 } YbAlterTypeSplits;
@@ -768,9 +770,11 @@ typedef struct YbAlterTypeSplits
 static void YbATConvertAlterTypeSplits(List *wqueue);
 static YbConvertedSplits *YbATFindConvertedIndexSplits(AlteredTableInfo *tab,
 													   Oid indexoid);
+static void YbATReportUnconvertedSplits(YbConvertedSplits *converted,
+										Relation rel);
 static YbOptSplit *YbATGetTableRewriteSplitOptions(AlteredTableInfo *tab,
 												   Relation rel);
-static char *YbATGetPresplitReloption(Oid relid);
+static char *YbATGetPresplit(Relation rel);
 
 /* ----------------------------------------------------------------
  *		DefineRelation
@@ -23957,7 +23961,7 @@ YbATCopyIndexSplitOptions(Oid oldId, IndexStmt *stmt, AlteredTableInfo *tab)
 		ListCell   *lcmd;
 		bool		yb_copy_split_options = true;
 		YbConvertedSplits *converted = YbATFindConvertedIndexSplits(tab, oldId);
-		char	   *presplit = YbATGetPresplitReloption(oldId);
+		char	   *presplit = YbATGetPresplit(idx_rel);
 
 		YbGetTableProperties(idx_rel);
 		/*
@@ -23981,9 +23985,12 @@ YbATCopyIndexSplitOptions(Oid oldId, IndexStmt *stmt, AlteredTableInfo *tab)
 
 		if (converted)
 		{
+			YbATReportUnconvertedSplits(converted, idx_rel);
 			stmt->split_options = copyObject(converted->split_options);
 			presplit = converted->presplit;
 		}
+		else if (!yb_copy_split_options)
+			presplit = NULL;	/* its values are of the old key types */
 
 		/*
 		 * The index definition carries no reloptions, so carry over
@@ -24530,6 +24537,11 @@ YbATConvertSplitPoints(AlteredTableInfo *tab, Relation index,
 		MemoryContextSwitchTo(oldcontext);
 		CurrentResourceOwner = oldowner;
 
+		/* As in a PL/pgSQL WHEN OTHERS handler, let a cancel through. */
+		if (edata->sqlerrcode == ERRCODE_QUERY_CANCELED ||
+			edata->sqlerrcode == ERRCODE_ASSERT_FAILURE)
+			ReThrowError(edata);
+
 		*reason = edata->message;
 		result = NULL;
 	}
@@ -24551,7 +24563,6 @@ YbATConvertRelSplits(AlteredTableInfo *tab, Relation rel, Relation index)
 	bool		key_altered = false;
 	YbConvertedSplits *result;
 	YbOptSplit *split;
-	char	   *reason = NULL;
 	ListCell   *lc;
 
 	if (!IsYBRelation(splitrel))
@@ -24581,19 +24592,11 @@ YbATConvertRelSplits(AlteredTableInfo *tab, Relation rel, Relation index)
 	result = palloc0(sizeof(YbConvertedSplits));
 	result->relid = RelationGetRelid(splitrel);
 	result->split_options = split;
-	result->presplit = YbATGetPresplitReloption(result->relid);
+	result->presplit = YbATGetPresplit(splitrel);
 
 	if (split && split->split_type == SPLIT_POINTS)
-	{
 		result->split_options = YbATConvertSplitPoints(tab, index, split,
-													   &reason);
-		if (!result->split_options)
-			ereport(NOTICE,
-					(errmsg("relation \"%s\" will have a single tablet",
-							RelationGetRelationName(splitrel)),
-					 errdetail("Its split points cannot be converted to the new column type: %s.",
-							   reason)));
-	}
+													   &result->split_error);
 
 	if (result->presplit)
 	{
@@ -24601,18 +24604,35 @@ YbATConvertRelSplits(AlteredTableInfo *tab, Relation rel, Relation index)
 
 		if (presplit && presplit->split_type == SPLIT_POINTS)
 		{
-			presplit = YbATConvertSplitPoints(tab, index, presplit, &reason);
+			presplit = YbATConvertSplitPoints(tab, index, presplit,
+											  &result->presplit_error);
 			result->presplit = YbSplitOptionsToPresplitString(presplit);
-			if (!presplit)
-				ereport(NOTICE,
-						(errmsg("removing yb_presplit of relation \"%s\"",
-								RelationGetRelationName(splitrel)),
-						 errdetail("Its split points cannot be converted to the new column type: %s.",
-								   reason)));
 		}
 	}
 
 	return result;
+}
+
+/*
+ * YB: Report the split points of `rel` that could not be converted.  This is
+ * deferred until the relation is known to be rebuilt with the converted
+ * layout: an index can still be reused in place by phase 2.
+ */
+static void
+YbATReportUnconvertedSplits(YbConvertedSplits *converted, Relation rel)
+{
+	if (converted->split_error)
+		ereport(NOTICE,
+				(errmsg("relation \"%s\" will have a single tablet",
+						RelationGetRelationName(rel)),
+				 errdetail("Its split points cannot be converted to the new column type: %s.",
+						   converted->split_error)));
+	if (converted->presplit_error)
+		ereport(NOTICE,
+				(errmsg("removing yb_presplit of relation \"%s\"",
+						RelationGetRelationName(rel)),
+				 errdetail("Its split points cannot be converted to the new column type: %s.",
+						   converted->presplit_error)));
 }
 
 /*
@@ -24656,10 +24676,8 @@ YbATConvertAlterTypeSplits(List *wqueue)
 			if (converted && index->rd_index->indisprimary)
 			{
 				splits->table = converted;
-				for (int i = 0; i < index->rd_index->indnkeyatts; i++)
-					splits->table_key_attnums =
-						lappend_int(splits->table_key_attnums,
-									index->rd_index->indkey.values[i]);
+				splits->pk_constraint =
+					get_index_constraint(RelationGetRelid(index));
 			}
 			else if (converted)
 				splits->indexes = lappend(splits->indexes, converted);
@@ -24693,32 +24711,24 @@ YbATFindConvertedIndexSplits(AlteredTableInfo *tab, Oid indexoid)
  * YB: Return the split options for the table rewrite of an ALTER TYPE on a
  * primary key column, after setting the table's yb_presplit reloption to
  * match them.  Returns NULL if there are none, or if the same ALTER TABLE
- * also changes the primary key.
+ * also replaces the primary key.  The converted points are only valid for
+ * the old key, which ALTER TYPE rebuilds as a changed constraint unless an
+ * earlier pass dropped it.
  */
 static YbOptSplit *
 YbATGetTableRewriteSplitOptions(AlteredTableInfo *tab, Relation rel)
 {
 	YbConvertedSplits *converted;
-	Oid			pkoid;
-	Relation	pk;
-	List	   *key = NIL;
-	char	   *presplit;
+	const char *presplit;
 
-	if (!tab->yb_alter_type_splits || !tab->yb_alter_type_splits->table)
+	if (!tab->yb_alter_type_splits || !tab->yb_alter_type_splits->table ||
+		!list_member_oid(tab->changedConstraintOids,
+						 tab->yb_alter_type_splits->pk_constraint))
 		return NULL;
 	converted = tab->yb_alter_type_splits->table;
+	YbATReportUnconvertedSplits(converted, rel);
 
-	pkoid = RelationGetPrimaryKeyIndex(rel);
-	if (!OidIsValid(pkoid))
-		return NULL;
-	pk = index_open(pkoid, AccessShareLock);
-	for (int i = 0; i < pk->rd_index->indnkeyatts; i++)
-		key = lappend_int(key, pk->rd_index->indkey.values[i]);
-	index_close(pk, AccessShareLock);
-	if (!equal(key, tab->yb_alter_type_splits->table_key_attnums))
-		return NULL;
-
-	presplit = YbATGetPresplitReloption(RelationGetRelid(rel));
+	presplit = YbRelationGetPresplit(rel);
 	if (presplit != converted->presplit &&
 		(!presplit || !converted->presplit ||
 		 strcmp(presplit, converted->presplit) != 0))
@@ -24764,29 +24774,14 @@ YbATGetTableRewriteSplitOptions(AlteredTableInfo *tab, Relation rel)
 	return converted->split_options;
 }
 
+/*
+ * YB: Copy of the yb_presplit reloption of `rel`, which outlives its relcache
+ * entry, or NULL if unset.
+ */
 static char *
-YbATGetPresplitReloption(Oid relid)
+YbATGetPresplit(Relation rel)
 {
-	HeapTuple	tuple = SearchSysCache1(RELOID, ObjectIdGetDatum(relid));
-	Datum		reloptions;
-	bool		isnull;
-	char	   *result = NULL;
-	ListCell   *lc;
+	const char *presplit = YbRelationGetPresplit(rel);
 
-	if (!HeapTupleIsValid(tuple))
-		elog(ERROR, "cache lookup failed for relation %u", relid);
-	reloptions = SysCacheGetAttr(RELOID, tuple, Anum_pg_class_reloptions,
-								 &isnull);
-	if (!isnull)
-	{
-		foreach(lc, untransformRelOptions(reloptions))
-		{
-			DefElem    *def = lfirst_node(DefElem, lc);
-
-			if (strcmp(def->defname, "yb_presplit") == 0)
-				result = defGetString(def);
-		}
-	}
-	ReleaseSysCache(tuple);
-	return result;
+	return presplit ? pstrdup(presplit) : NULL;
 }

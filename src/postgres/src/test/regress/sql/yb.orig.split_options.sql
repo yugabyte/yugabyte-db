@@ -548,12 +548,13 @@ ALTER TABLE alt_t ALTER COLUMN k TYPE int;
 SELECT * FROM alt_splits;
 DROP TABLE alt_t;
 
-CREATE TABLE alt_t (k int, v int, PRIMARY KEY (k ASC))
+CREATE TABLE alt_t (k int, v int, w int, PRIMARY KEY (k ASC))
     SPLIT AT VALUES ((100), (200));
 CREATE INDEX alt_t_v ON alt_t (v ASC) SPLIT AT VALUES ((100), (200));
-CREATE INDEX alt_t_expr ON alt_t ((v + 1) ASC) SPLIT AT VALUES ((100));
+CREATE INDEX alt_t_expr ON alt_t ((w + 1) ASC) SPLIT AT VALUES ((100));
 ALTER TABLE alt_t ALTER COLUMN k TYPE bigint USING k + v;
 ALTER TABLE alt_t ALTER COLUMN v TYPE float8 USING v + random();
+ALTER TABLE alt_t ALTER COLUMN w TYPE bigint;
 SELECT * FROM alt_splits;
 DROP TABLE alt_t;
 
@@ -567,5 +568,39 @@ COMMIT;
 SELECT * FROM alt_splits;
 SELECT * FROM alt_t;
 DROP TABLE alt_t;
+
+-- Replacing the primary key in the same ALTER TABLE gives the default layout.
+CREATE TABLE alt_t (k int, PRIMARY KEY (k ASC)) SPLIT AT VALUES ((100), (200));
+ALTER TABLE alt_t DROP CONSTRAINT alt_t_pkey, ADD PRIMARY KEY (k HASH),
+    ALTER COLUMN k TYPE bigint;
+SELECT * FROM alt_splits;
+DROP TABLE alt_t;
+
+CREATE TABLE alt_t (k int, PRIMARY KEY (k ASC)) SPLIT AT VALUES ((100), (200));
+ALTER TABLE alt_t DROP CONSTRAINT alt_t_pkey, ADD PRIMARY KEY (k DESC),
+    ALTER COLUMN k TYPE bigint;
+SELECT * FROM alt_splits;
+DROP TABLE alt_t;
+
+-- An index that is reused in place keeps its layout, and no NOTICE claims
+-- otherwise.
+CREATE TABLE alt_t (k int, v varchar(10), PRIMARY KEY (k ASC));
+CREATE INDEX alt_t_v ON alt_t (lower(v) ASC) SPLIT AT VALUES (('m'));
+ALTER TABLE alt_t ALTER COLUMN v TYPE varchar(20);
+SELECT * FROM alt_splits;
+DROP TABLE alt_t;
+
+-- A cancel during the conversion cancels the ALTER.
+CREATE FUNCTION alt_slow(int) RETURNS bigint IMMUTABLE LANGUAGE plpgsql AS
+    $$ BEGIN PERFORM pg_sleep(60); RETURN $1; END $$;
+CREATE TABLE alt_t (k int, PRIMARY KEY (k ASC)) SPLIT AT VALUES ((100));
+SET statement_timeout = '3s';
+\set VERBOSITY terse
+ALTER TABLE alt_t ALTER COLUMN k TYPE bigint USING alt_slow(k);
+\set VERBOSITY default
+RESET statement_timeout;
+SELECT * FROM alt_splits;
+DROP TABLE alt_t;
+DROP FUNCTION alt_slow;
 
 DROP VIEW alt_splits;
