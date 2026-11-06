@@ -14,6 +14,7 @@
 package org.yb.ysqlconnmgr;
 
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertNotNull;
 import static org.yb.AssertionWrappers.assertNull;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
@@ -52,11 +53,12 @@ public class TestNoAttachOnClientTerminate extends BaseYsqlConnMgr {
   // Message type byte plus the int32 length.
   private static final int HEADER_LEN = 5;
   private static final String CLIENT_ATTACH_REGEX = "client \\S+ attached to \\S+";
+  private static final String WARMUP_MARKER = "warmup_done";
 
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
-    builder.addCommonTServerFlag("ysql_conn_mgr_log_settings", "log_debug");
+    builder.addCommonTServerFlag("ysql_conn_mgr_log_settings", "log_debug,log_query");
   }
 
   private int getLogicalConns() throws Exception {
@@ -88,9 +90,18 @@ public class TestNoAttachOnClientTerminate extends BaseYsqlConnMgr {
       }
     }
 
-    TestUtils.waitFor(() -> getLogicalConns() == NUM_CLIENTS, DRAIN_TIMEOUT_MS);
-
-    // Ignore the attaches done for the queries above.
+    // Odyssey writes log lines asynchronously, so the attach lines for the
+    // queries above may still be on their way. Its single logger task writes
+    // lines in the order they were logged, so once the log_query line for this
+    // marker query is seen, all of them have arrived and can be skipped. The
+    // marker's own attach is logged before its query line, so it is skipped
+    // too.
+    try (Statement stmt = conns.get(NUM_CLIENTS - 1).createStatement()) {
+      stmt.execute("SELECT '" + WARMUP_MARKER + "'");
+    }
+    assertNotNull("Marker query was not logged",
+        tailer.waitForLogRegex("SELECT '" + WARMUP_MARKER + "'",
+            DRAIN_TIMEOUT_MS, TimeUnit.MILLISECONDS));
     tailer.skipToEnd();
 
     // Connection.close() sends Terminate ('X') to the connection manager.
