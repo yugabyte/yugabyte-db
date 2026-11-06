@@ -412,15 +412,14 @@ static bool yb_curr_txn_skips_object_locks = false;
  * keeps the catalog version check for its requests, which is what rejects
  * reads across a breaking catalog change made after yb_read_time.
  *
- * yb_read_time_skip_catalog sessions read the current catalog, and walsender
- * manages yb_read_time itself, so both keep object locks.
+ * yb_read_time_skip_catalog sessions read the current catalog, so they keep
+ * object locks.
  */
 void
 YbSetObjectLockingForCurrTxn()
 {
 	yb_curr_txn_skips_object_locks = (yb_read_time != 0 &&
-									  !yb_read_time_skip_catalog &&
-									  !am_walsender);
+									  !yb_read_time_skip_catalog);
 	YBCSetObjectLockingInfraForCurrTxn(yb_enable_object_locking_infra &&
 									   !yb_curr_txn_skips_object_locks);
 }
