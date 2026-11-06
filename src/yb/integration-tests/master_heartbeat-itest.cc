@@ -55,6 +55,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/metrics.h"
+#include "yb/util/storage_tier.h"
 #include "yb/util/tostring.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -71,6 +72,7 @@ DECLARE_string(TEST_master_universe_uuid);
 DECLARE_int32(TEST_mini_cluster_registration_wait_time_sec);
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_bool(persist_tserver_registry);
+DECLARE_bool(enable_tiered_storage);
 DECLARE_uint32(xcluster_guarded_lease_duration_ms);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
@@ -720,6 +722,92 @@ TEST_F(MasterHeartbeatITest, TestRegistrationThroughRaftPersisted) {
       });
   ASSERT_TRUE(live_ts_it == live_tservers_resp.servers().end())
       << "TS registered through raft config should be unresponsive, not live";
+}
+
+class MasterHeartbeatITestPersistedRegistry : public MasterHeartbeatITest {
+ public:
+  void SetUp() override {
+    // Must be on before the tservers register, or their entries never reach the sys catalog.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_persist_tserver_registry) = true;
+    MasterHeartbeatITest::SetUp();
+  }
+
+  std::vector<std::string> TServerUuids() {
+    std::vector<std::string> uuids;
+    for (size_t i = 0; i < mini_cluster_->num_tablet_servers(); ++i) {
+      uuids.push_back(mini_cluster_->mini_tablet_server(i)->server()->permanent_uuid());
+    }
+    return uuids;
+  }
+};
+
+// With tiered storage off a tserver registers no tiers, so the master treats them as unknown and
+// persists none.
+TEST_F(MasterHeartbeatITestPersistedRegistry, RegistrationCarriesNoStorageTiersWhenDisabled) {
+  ASSERT_FALSE(FLAGS_enable_tiered_storage);
+  auto* ts_manager = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())->master()->ts_manager();
+  for (const auto& uuid : TServerUuids()) {
+    auto ts_desc = ASSERT_RESULT(ts_manager->LookupTSByUUID(uuid));
+    ASSERT_TRUE(ts_desc->GetRegistration().storage_tiers().empty()) << uuid;
+    ASSERT_TRUE(ts_desc->GetStorageTiers().empty()) << uuid;
+    ASSERT_FALSE(ts_desc->HasStorageTier(kDefaultStorageTier)) << uuid;
+  }
+}
+
+class MasterHeartbeatITestTieredStorage : public MasterHeartbeatITestPersistedRegistry {
+ public:
+  void SetUp() override {
+    // Must be on before the tservers register, or they register no tiers.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = true;
+    MasterHeartbeatITestPersistedRegistry::SetUp();
+  }
+
+  void TearDown() override {
+    MasterHeartbeatITestPersistedRegistry::TearDown();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = false;
+  }
+
+  // A default cluster has unlabeled data dirs, so each tserver registers kDefaultStorageTier alone
+  // and the master answers tier questions from that registration.
+  Status CheckRegisteredStorageTiers(const std::vector<std::string>& uuids) {
+    auto* ts_manager =
+        VERIFY_RESULT(mini_cluster_->GetLeaderMiniMaster())->master()->ts_manager();
+    for (const auto& uuid : uuids) {
+      auto ts_desc = VERIFY_RESULT(ts_manager->LookupTSByUUID(uuid));
+      const auto registration = ts_desc->GetRegistration();
+      const auto& registered = registration.storage_tiers();
+      SCHECK_EQ(registered.size(), 1, IllegalState, Format("Tiers registered by $0", uuid));
+      SCHECK_EQ(registered.Get(0), kDefaultStorageTier, IllegalState,
+                Format("Tier registered by $0", uuid));
+      SCHECK(ts_desc->HasStorageTier(kDefaultStorageTier), IllegalState,
+             Format("$0 should have the default tier", uuid));
+      SCHECK(!ts_desc->HasStorageTier("hdd"), IllegalState,
+             Format("$0 should not have an hdd tier", uuid));
+    }
+    return Status::OK();
+  }
+};
+
+TEST_F(MasterHeartbeatITestTieredStorage, RegistrationCarriesStorageTiers) {
+  const auto uuids = TServerUuids();
+  ASSERT_OK(CheckRegisteredStorageTiers(uuids));
+
+  // With no tserver running, a restarted master rebuilds the descriptors from the persisted
+  // registry, so the tiers are known before any heartbeat arrives.
+  ShutdownAllTServers(mini_cluster_.get());
+  ShutdownAllMasters(mini_cluster_.get());
+  ASSERT_OK(StartAllMasters(mini_cluster_.get()));
+  Status last_check;
+  auto waited = WaitFor(
+      [&]() -> Result<bool> {
+        last_check = CheckRegisteredStorageTiers(uuids);
+        return last_check.ok();
+      },
+      30s, "Waiting for the persisted tserver registry to load");
+  ASSERT_OK(last_check);
+  ASSERT_OK(waited);
+
+  ASSERT_OK(StartAllTServers(mini_cluster_.get()));
 }
 
 class DriveInfoTest : public MasterHeartbeatITest {
