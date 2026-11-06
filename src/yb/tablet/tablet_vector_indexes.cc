@@ -636,6 +636,10 @@ Status TabletVectorIndexes::Backfill(
   // fails fast via the aborted MvccManager safe time wait instead of hanging.
   TEST_SYNC_POINT("TabletVectorIndexes::Backfill:Start");
 
+  // Keeps transactions applied mid-backfill known to the participant, since the reader's snapshot
+  // may have only their intents.
+  // Must be registered before the reader takes its snapshot.
+  auto request_scope = VERIFY_RESULT(tablet().CreateRequestScope());
   IndexedTableReader reader(*vector_index);
   RETURN_NOT_OK(reader.Init(backfill_ht, from_key));
 
