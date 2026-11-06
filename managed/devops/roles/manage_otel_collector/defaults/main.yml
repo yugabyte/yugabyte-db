@@ -16,7 +16,7 @@ otel_col_gcp_creds: "{{ yb_home_dir }}/otel-collector/gcp_creds"
 otel_col_log_cleanup_env: "{{ yb_home_dir }}/otel-collector/log_cleanup_env"
 # Keep in step with ManageOtelCollector.OtelCollectorVersion and the URLs in
 # support/thirdparty-dependencies.txt - this role installs the same artifact as the node-agent path.
-otel_col_version: "0.145.0"
+otel_col_version: "0.145.0-1"
 # Name of the executable inside the published archive. The YugabyteDB unified collector is a custom
 # ocb distribution rather than the upstream contrib one, so it does not ship under the contrib name.
 otel_col_packaged_binary: "otelcol-unified"
