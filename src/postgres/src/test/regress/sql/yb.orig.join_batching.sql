@@ -1331,12 +1331,67 @@ SELECT COUNT(*) FROM w1, w2, w3, w4
 SELECT COUNT(*) FROM w1, w2, w3, w4
  WHERE w3.k = w1.a AND w3.j <= w4.j AND w4.j = w2.j AND w3.v < w1.b + w4.c;
 
+-- Nested loops over a partitioned inner relation, forced with the BNL hint and
+-- GUC (yb_prefer_bnl off, yb_enable_batchednl on, nested loops off from the
+-- top of the file, YbBatchedNL or NestLoop) rather than the pre-hint way.
+-- Under the cost-based optimizer the partitioned table needs two
+-- parameterized Appends for the same outer relation: one whose children all
+-- take the batch, for the batched nested loop, and one whose children take
+-- one outer row, for the classic one.  Without the first, YbBatchedNL is not
+-- followed; the NestLoop statements check that the second is still built.
+-- Legacy costing builds the batched one only, so the batched join is checked
+-- there too.  In p5_subparts one partition is itself partitioned: that
+-- partition builds its own Appends, which the top-level Appends take and
+-- flatten, so its partitions show as children of the same Append (#35384).
+-- Expected: a YB Batched Nested Loop over an Append of batched index scans in
+-- both cost modes, a Nested Loop over an Append of parameterized index scans
+-- for the NestLoop hint, and 300 rows each.
+SET yb_prefer_bnl = off;
+SET yb_enable_batchednl = on;
+CREATE TABLE p5_parts (a int, b int, c varchar, primary key(a asc, b asc))
+  PARTITION BY RANGE (a);
+CREATE TABLE p5_parts_lo PARTITION OF p5_parts FOR VALUES FROM (MINVALUE) TO (30);
+CREATE TABLE p5_parts_hi PARTITION OF p5_parts FOR VALUES FROM (30) TO (MAXVALUE);
+INSERT INTO p5_parts SELECT * FROM p5;
+ANALYZE p5_parts;
+CREATE TABLE p5_subparts (a int, b int, c varchar, primary key(a asc, b asc))
+  PARTITION BY RANGE (a);
+CREATE TABLE p5_subparts_lo PARTITION OF p5_subparts FOR VALUES FROM (MINVALUE) TO (30);
+CREATE TABLE p5_subparts_hi PARTITION OF p5_subparts FOR VALUES FROM (30) TO (MAXVALUE)
+  PARTITION BY RANGE (b);
+CREATE TABLE p5_subparts_hi_lo PARTITION OF p5_subparts_hi FOR VALUES FROM (MINVALUE) TO (5);
+CREATE TABLE p5_subparts_hi_hi PARTITION OF p5_subparts_hi FOR VALUES FROM (5) TO (MAXVALUE);
+INSERT INTO p5_subparts SELECT * FROM p5;
+ANALYZE p5_subparts;
+/*+ Leading((t1a t2b)) SeqScan(t1a) IndexScan(t2b) YbBatchedNL(t1a t2b) */
+EXPLAIN (COSTS OFF)
+SELECT * FROM p1 t1a, p5_parts t2b WHERE t2b.a = t1a.a AND t1a.a < 60;
+/*+ Set(yb_enable_cbo on) Leading((t1a t2b)) SeqScan(t1a) IndexScan(t2b) YbBatchedNL(t1a t2b) */
+EXPLAIN (COSTS OFF)
+SELECT * FROM p1 t1a, p5_parts t2b WHERE t2b.a = t1a.a AND t1a.a < 60;
+/*+ Leading((t1a t2b)) SeqScan(t1a) IndexScan(t2b) YbBatchedNL(t1a t2b) */
+SELECT COUNT(*) FROM p1 t1a, p5_parts t2b WHERE t2b.a = t1a.a AND t1a.a < 60;
+/*+ Leading((t1a t2b)) SeqScan(t1a) IndexScan(t2b) YbBatchedNL(t1a t2b) */
+EXPLAIN (COSTS OFF)
+SELECT * FROM p1 t1a, p5_subparts t2b WHERE t2b.a = t1a.a AND t1a.a < 60;
+/*+ Set(yb_enable_cbo on) Leading((t1a t2b)) SeqScan(t1a) IndexScan(t2b) YbBatchedNL(t1a t2b) */
+EXPLAIN (COSTS OFF)
+SELECT * FROM p1 t1a, p5_subparts t2b WHERE t2b.a = t1a.a AND t1a.a < 60;
+/*+ Leading((t1a t2b)) SeqScan(t1a) IndexScan(t2b) YbBatchedNL(t1a t2b) */
+SELECT COUNT(*) FROM p1 t1a, p5_subparts t2b WHERE t2b.a = t1a.a AND t1a.a < 60;
+/*+ Set(yb_enable_cbo on) Leading((t1a t2b)) SeqScan(t1a) IndexScan(t2b) NestLoop(t1a t2b) */
+EXPLAIN (COSTS OFF)
+SELECT * FROM p1 t1a, p5_subparts t2b WHERE t2b.a = t1a.a AND t1a.a < 60;
+/*+ Set(yb_enable_cbo on) Leading((t1a t2b)) SeqScan(t1a) IndexScan(t2b) NestLoop(t1a t2b) */
+SELECT COUNT(*) FROM p1 t1a, p5_subparts t2b WHERE t2b.a = t1a.a AND t1a.a < 60;
+RESET yb_enable_batchednl;
+SET yb_prefer_bnl = on;
+
 -- Batched nested loop over a partitioned inner relation under the cost
 -- model, forced the pre-hint way (#25078): each scanned partition takes the
 -- batch, the partitions outside p.i <= 201 are pruned, and no Memoize sits
 -- under the batched join (#25251).  It keeps yb_prefer_bnl on with nested
--- loops enabled: with yb_prefer_bnl off, no batched nested loop is built over
--- a partitioned inner relation (#35384).
+-- loops enabled.
 CREATE TABLE t_part (i int, a int, b int) PARTITION BY RANGE (i);
 CREATE TABLE t_part1 PARTITION OF t_part FOR VALUES FROM (1) TO (200);
 CREATE TABLE t_part2 PARTITION OF t_part FOR VALUES FROM (200) TO (400);

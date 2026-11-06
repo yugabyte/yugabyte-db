@@ -229,6 +229,8 @@ class HnswlibIndex :
     // strict mode without first allocating the memory it is intended to control.
     // TODO(vector_index): a specific signal may be needed to indicate that it would be not
     // possible to reserve the space even with empty block cache.
+    // TODO(#36467): the reservation covers the full capacity, while level-0 data is allocated as
+    // vectors are inserted.
     RETURN_NOT_OK(this->ReserveBlockCacheSpace(
         block_cache_ ? &block_cache_->cache() : nullptr,
         HNSWImpl::estimateBytesForNumVectors(
@@ -236,7 +238,8 @@ class HnswlibIndex :
             options_.num_neighbors_per_vertex_base, options_.dimensions * sizeof(Scalar)),
         reservation_mode));
 
-    // Both data and search-context allocations are sized off max_elements at construction.
+    // Per-slot bookkeeping and the search-context pool are sized off max_elements at
+    // construction; level-0 data is allocated as vectors are inserted.
     auto se = UpdateAllConsumptionOnExit();
     // TODO(vector_index): each HierarchicalNSW instance owns its own VisitedListPool sized to
     // num_vectors (`unsigned short` per slot, plus one fresh VisitedList per concurrent
@@ -248,22 +251,46 @@ class HnswlibIndex :
     //
     // Please be careful about adding and removing arguments here and make sure they match the
     // actual list of arguments in hnswalg.h.
-    hnsw_ = std::make_unique<HNSWImpl>(
-        /* s= */ space_.get(),
-        /* max_elements= */ num_vectors,
-        /* M= */ options_.num_neighbors_per_vertex,
-        /* ef_construction= */ options_.ef_construction,
-        /* random_seed= */ 100,              // Default value from hnswalg.h
-        /* allow_replace_deleted= */ false,  // Default value from hnswalg.h
-        /* ef= */ 128);
+    try {
+      hnsw_ = std::make_unique<HNSWImpl>(
+          /* s= */ space_.get(),
+          /* max_elements= */ num_vectors,
+          /* M= */ options_.num_neighbors_per_vertex,
+          /* ef_construction= */ options_.ef_construction,
+          /* random_seed= */ 100,              // Default value from hnswalg.h
+          /* allow_replace_deleted= */ false,  // Default value from hnswalg.h
+          /* ef= */ 128);
+    } catch (const std::bad_alloc&) {
+      return STATUS_FORMAT(
+          ServiceUnavailable, "Not enough memory to create Hnswlib index for $0 vectors",
+          num_vectors);
+    } catch (const std::exception& e) {
+      return STATUS_FORMAT(
+          RuntimeError, "Failed to create Hnswlib index for $0 vectors: $1", num_vectors,
+          e.what());
+    }
     return Status::OK();
   }
 
   Result<size_t> DoInsertVector(VectorId vector_id, const Vector& v) {
-    // Only data grows on insert (level1+ linkLists_[i] entries and label_lookup_); the
-    // search-contexts pool is sized at construction.
+    // Only data grows on insert (level-0 segments, level1+ linkLists_[i] entries and
+    // label_lookup_); the search-contexts pool is sized at construction.
     auto se = UpdateDataConsumptionOnExit();
-    return hnsw_->addPoint(v.data(), vector_id);
+    // A failure before the new element becomes reachable, such as running out of memory for its
+    // storage, leaves the index unchanged. A later one, including running out of memory while
+    // linking it, can leave the element half-linked. Both are returned only because no caller
+    // keeps using the index after a failed insert: VectorLSM crashes on a failed insert into a
+    // mutable chunk, and compaction discards its merged index.
+    try {
+      return hnsw_->addPoint(v.data(), vector_id);
+    } catch (const std::bad_alloc&) {
+      return STATUS_FORMAT(
+          ServiceUnavailable, "Not enough memory to insert vector $0 into Hnswlib index",
+          vector_id);
+    } catch (const std::exception& e) {
+      return STATUS_FORMAT(
+          RuntimeError, "Failed to insert vector $0 into Hnswlib index: $1", vector_id, e.what());
+    }
   }
 
   size_t Size() const override {

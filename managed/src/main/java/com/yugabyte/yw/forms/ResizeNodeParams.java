@@ -26,12 +26,10 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.Date;
-import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -60,20 +58,17 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
    */
   public static final int AZU_PREMIUM_PERF_TIER_COOLDOWN_HOURS = 12;
 
-  private static final Set<Common.CloudType> SUPPORTED_CLOUD_TYPES =
-      EnumSet.of(
-          Common.CloudType.gcp,
-          Common.CloudType.aws,
-          Common.CloudType.kubernetes,
-          Common.CloudType.azu,
-          Common.CloudType.local);
-
   private boolean forceResizeNode;
 
   // Set only on RollbackResizeNode params. Azure disk cooldown starts at the later of this and the
   // node's lastVolumeUpdateTime, which can be older than a modify the failed resize never saved.
   @ApiModelProperty(hidden = true)
   private Date failedTaskCreateTime;
+
+  // Set only on RollbackResizeNode params, which clear forceResizeNode. A forced resize stops every
+  // node, so the rollback needs it to find nodes the failed resize may have left stopped.
+  @ApiModelProperty(hidden = true)
+  private boolean failedResizeForced;
 
   @Override
   public boolean isKubernetesUpgradeSupported() {
@@ -121,7 +116,8 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
     for (Cluster cluster : clusters) {
       Collection<NodeDetails> nodesInCluster = universe.getNodesInCluster(cluster.uuid);
       UserIntent newUserIntent = cluster.userIntent;
-      Util.validateSpecificationsIfPresent(newUserIntent.providerSpecifications, true);
+      Util.validateSpecificationsIfPresent(
+          newUserIntent.dedicatedNodes, newUserIntent.providerSpecifications, true);
       UserIntent currentUserIntent =
           universe.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent;
       String masterDeviceInfoError =

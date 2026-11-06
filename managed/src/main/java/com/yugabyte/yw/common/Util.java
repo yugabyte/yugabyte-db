@@ -1327,7 +1327,7 @@ public class Util {
   /** Copies ProviderSpecification fields onto the legacy flat UserIntent fields. */
   private static void fillOldSchemaFieldsFromProviderSpecification(
       UserIntent userIntent, UniverseDefinitionTaskParams.ProviderSpecification spec) {
-    spec.validate(false);
+    spec.validate(userIntent.dedicatedNodes, false);
     UUID providerUUID = spec.getProviderUUID();
     userIntent.provider = providerUUID.toString();
     userIntent.providerType = spec.getProviderType();
@@ -2342,13 +2342,15 @@ public class Util {
   }
 
   public static void validateSpecificationsIfPresent(
-      List<UniverseDefinitionTaskParams.ProviderSpecification> specs, boolean isPartialUpdate) {
+      boolean isDedicatedNodes,
+      List<UniverseDefinitionTaskParams.ProviderSpecification> specs,
+      boolean isPartialUpdate) {
     if (specs != null) {
       for (UniverseDefinitionTaskParams.ProviderSpecification spec : specs) {
         if (spec == null) {
           throw new PlatformServiceException(BAD_REQUEST, "Found null specification");
         }
-        spec.validate(isPartialUpdate);
+        spec.validate(isDedicatedNodes, isPartialUpdate);
       }
     }
   }
@@ -2600,5 +2602,11 @@ public class Util {
       }
     }
     return null;
+  }
+
+  public static boolean isMulticloud(Universe universe) {
+    // Universe can't have both migrated and non-migrated so we can check any.
+    return universe.getUniverseDetails().clusters.stream()
+        .anyMatch(c -> c.userIntent.isMulticloudSupport());
   }
 }

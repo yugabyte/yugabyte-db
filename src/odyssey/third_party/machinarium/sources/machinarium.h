@@ -206,6 +206,8 @@ MACHINE_API int machine_io_attach(machine_io_t *);
 
 MACHINE_API int machine_io_detach(machine_io_t *);
 
+MACHINE_API int machine_io_poll(machine_io_t *);
+
 MACHINE_API char *machine_error(machine_io_t *);
 
 MACHINE_API int machine_fd(machine_io_t *);

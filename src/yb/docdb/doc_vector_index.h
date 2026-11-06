@@ -250,6 +250,9 @@ class DocVectorIndex {
   storage::UserFrontierPtr GetInMemoryFrontier(storage::UpdateUserValueType type);
 
   virtual storage::FlushAbility GetFlushAbility() = 0;
+
+  // Returns terminal failure without waiting for in-flight saves.
+  virtual Status GetFlushStatus() const = 0;
   virtual Status CreateCheckpoint(const std::string& out) = 0;
   virtual const std::string& ToString() const = 0;
   virtual Status Destroy() = 0;
@@ -317,6 +320,12 @@ struct DocVectorIndexThreadPools {
   PriorityThreadPoolTokenPtr compaction_token;
 };
 using DocVectorIndexThreadPoolProvider = std::function<DocVectorIndexThreadPools()>;
+
+// The counterpart of DocVectorIndex::ModifyFlushedFrontier with kForce for a vector index that is
+// not open: sets the OpId of every chunk of the index stored in storage_dir to op_id, and adds a
+// chunk without a file carrying it, see vector_index::VectorLSMMetadataModifyChunkFrontiers.
+// Does nothing if storage_dir does not exist. Returns false if its manifest could not be loaded.
+Result<bool> ForceVectorIndexStorageOpId(const std::string& storage_dir, const OpId& op_id);
 
 // Doc vector index starts with background compactions disabled, they must be enabled explicitly:
 // don't forget to call EnableAutoCompactions().

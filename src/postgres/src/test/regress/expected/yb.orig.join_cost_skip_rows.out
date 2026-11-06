@@ -37,9 +37,10 @@ delete from variants;
 ------------------------------------------------------------------------------
 -- 100: the bound's collation.  The inner bound (100) and the outer bound
 -- (110) are the two directions; only the outer one reaches the batched nested
--- loop.  120 and 130 read the inner bound descending, where the bounds swap
--- roles: 120's lower bound stops the merge and 130's upper bound moves its
--- start.  Their bounds sit where both collations estimate the same inner
+-- loop here, since an ascending inner's upper bound does not move where its
+-- keys start.  120 and 130 read the inner bound descending, where the bounds
+-- swap roles: 120's lower bound stops the merge and 130's upper bound moves
+-- its start.  Their bounds sit where both collations estimate the same inner
 -- rows (12 and 15), inside one 16-row page, so the inner scans cost the same
 -- and the merge rows differ by the clamp alone.  "c" and "posix" select the
 -- same rows, so any cost difference between them is the estimate's alone.
@@ -78,19 +79,22 @@ insert into variants values
      'select o.k from cln_o o join cln_i i on o.k = i.k
       where i.k < ''p'' collate "POSIX" order by o.k desc');
 ------------------------------------------------------------------------------
--- 200: the conditioning ratio.  o.g groups the key 52 rows at a time, so a
--- bound on g bounds the key.  The inner starts at 131: "ge3" leaves 26 outer
--- rows below it, "ge4" leaves none.  Both must be cheaper than no bound, and
--- ge4 cheaper than ge3.  The group is reported again after creating extended
--- statistics over (g, k); see the comparison below.
+-- 200: a restriction on a column correlated with the key.  o.g groups the
+-- key 52 rows at a time, so a bound on g bounds the key, but neither join
+-- reads it as one: both condition only on bounds on the join key itself, so
+-- the bounds act through the outer's row count.  The inner starts at 131:
+-- "ge3" leaves 26 outer rows below it, "ge4" leaves none.  Both must be
+-- cheaper than no bound, and ge4 cheaper than ge3.  The group is reported
+-- again after creating extended statistics over (g, k); see the comparison
+-- below.
 ------------------------------------------------------------------------------
 insert into variants values
-    (200, 'conditioning ratio', 1, 'none',
+    (200, 'correlated restriction', 1, 'none',
      'select o.k from ext_o o join ext_i i on o.k = i.k order by o.k'),
-    (200, 'conditioning ratio', 2, 'ge3',
+    (200, 'correlated restriction', 2, 'ge3',
      'select o.k from ext_o o join ext_i i on o.k = i.k
       where o.g >= 3 order by o.k'),
-    (200, 'conditioning ratio', 3, 'ge4',
+    (200, 'correlated restriction', 3, 'ge4',
      'select o.k from ext_o o join ext_i i on o.k = i.k
       where o.g >= 4 order by o.k');
 ------------------------------------------------------------------------------
@@ -98,7 +102,7 @@ insert into variants values
 -- differ only in the key's declared type, so text and varchar must cost the
 -- same both with and without the bound: the expected ordering pairs them up
 -- ('text-ge=vchr-ge text-none=vchr-none').  If the relabeling defeats the
--- clause pairing, the varchar bound stops working and its label separates.
+-- bound matching, the varchar bound stops working and its label separates.
 ------------------------------------------------------------------------------
 insert into variants values
     (300, 'relabeled key', 1, 'text-none',
@@ -297,8 +301,8 @@ order by gid, vid;
 -- exactly the same work -- cost_order and work_order disagree, and that
 -- conservative fallback is the expected result, not a defect.
 --
--- BNL, inner bound (100): the skip reads the inner's boundary from its
--- full-column histogram, so an inner bound cannot move it, and the two bounds
+-- BNL, inner bound (100): the skip depends only on where the inner's keys
+-- start, which an upper bound on the inner does not move, so the two bounds
 -- are costed identically.  The work splits them anyway: "c" matches the
 -- index's collation and becomes an index condition that ends the probe early,
 -- while "posix" is left as a filter and reads what no bound at all reads.
@@ -325,11 +329,16 @@ order by gid, vid;
 -- back to ascending orders only (#34905).
 --
 -- BNL, inner bound read descending (120, 130): the two bounds are costed
--- identically and "c" scans the fewest rows, both for 100's reason.  Unlike
--- 100, "posix" also does less work than no bound: its filter still scans all
--- 26 inner rows but leaves 12 or 15, which fit in one 16-row page, where
--- 100's leaves 16, which fill the page, so a second request follows.  The
--- planner's credit to "posix" over no bound, unearned at 100, is earned here.
+-- identically and "c" scans the fewest rows, as at 100.  At 120 the lower
+-- bound is on the side where a descending inner's keys end, which does not
+-- move the skip.  At 130 the upper bound moves where they start, so "c" is
+-- charged a skip of the 11 outer rows from 'p' up ("posix" fails the
+-- collation check), but a skip within the first batch leaves the startup
+-- cost unchanged.  Unlike 100, "posix" also does less work than no
+-- bound: its filter still scans all 26 inner rows but leaves 12 or 15, which
+-- fit in one 16-row page, where 100's leaves 16, which fill the page, so a
+-- second request follows.  The planner's credit to "posix" over no bound,
+-- unearned at 100, is earned here.
 ------------------------------------------------------------------------------
 select gid, grp, method, cost_order, work_order
 from skip_report
@@ -348,28 +357,24 @@ order by gid, method;
 (8 rows)
 
 ------------------------------------------------------------------------------
--- 200, the conditioning ratio, before extended statistics.  Both bounds must
--- be cheaper than none, and ge4 (no rows below the inner's first key) cheaper
--- than ge3 (26 rows below it), matching the work ordering.
+-- 200, the correlated restriction, before extended statistics.  Both bounds
+-- must be cheaper than none, and ge4 (no rows below the inner's first key)
+-- cheaper than ge3 (26 rows below it), matching the work ordering.
 ------------------------------------------------------------------------------
 select gid, grp, method, cost_order, work_order
 from skip_report
 where gid = 200
 order by method;
- gid |        grp         | method |  cost_order  |  work_order  
------+--------------------+--------+--------------+--------------
- 200 | conditioning ratio | BNL    | ge4 ge3 none | ge4 ge3 none
- 200 | conditioning ratio | MJ     | ge4 ge3 none | ge4 ge3 none
+ gid |          grp           | method |  cost_order  |  work_order  
+-----+------------------------+--------+--------------+--------------
+ 200 | correlated restriction | BNL    | ge4 ge3 none | ge4 ge3 none
+ 200 | correlated restriction | MJ     | ge4 ge3 none | ge4 ge3 none
 (2 rows)
 
 ------------------------------------------------------------------------------
--- 200 again, with extended statistics over (g, k).  The conditioned fraction
--- is a ratio whose numerator lists the range clause with the restriction and
--- whose denominator lists the restriction alone; extended statistics apply to
--- a list of two or more RestrictInfos, so they can reach the numerator while
--- the single-clause denominator gives them nothing to apply to.  A ratio whose
--- halves come from different models is not a probability, so the object must
--- leave these costs alone.
+-- 200 again, with extended statistics over (g, k).  The estimates use only
+-- per-column selectivities of the join key, and g never enters them, so the
+-- object must leave these costs alone.
 --
 -- The check compares the raw costs of every (variant, method) pair before and
 -- after, symmetrically.  It asserts equality without printing a cost, and it
@@ -401,10 +406,10 @@ select gid, grp, method, cost_order, work_order
 from skip_report
 where gid = 200
 order by method;
- gid |        grp         | method |  cost_order  |  work_order  
------+--------------------+--------+--------------+--------------
- 200 | conditioning ratio | BNL    | ge4 ge3 none | ge4 ge3 none
- 200 | conditioning ratio | MJ     | ge4 ge3 none | ge4 ge3 none
+ gid |          grp           | method |  cost_order  |  work_order  
+-----+------------------------+--------+--------------+--------------
+ 200 | correlated restriction | BNL    | ge4 ge3 none | ge4 ge3 none
+ 200 | correlated restriction | MJ     | ge4 ge3 none | ge4 ge3 none
 (2 rows)
 
 drop statistics ext_o_g_k;
@@ -415,8 +420,8 @@ delete from costs where gid = 200;
 insert into costs select * from skip_costs where gid = 200;
 ------------------------------------------------------------------------------
 -- 300, a relabeled join key.  text and varchar must pair up in both
--- orderings.  A separated varchar label means the relabeling defeated the
--- clause pairing and the bound stopped being usable on that side.
+-- orderings.  A separated varchar label means the relabeling hid the varchar
+-- bound from the bound matching and the bound stopped being usable.
 ------------------------------------------------------------------------------
 select gid, grp, method, cost_order, work_order
 from skip_report

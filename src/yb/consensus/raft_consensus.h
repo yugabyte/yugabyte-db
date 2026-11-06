@@ -258,6 +258,10 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   OpId GetAllAppliedOpId();
 
+  // Index of the last op replicated to all peers, as known by the leader. On a follower it is the
+  // value most recently sent by a leader.
+  int64_t GetAllReplicatedIndex() const;
+
   struct WalGcRetentionOpIdInfo {
     OpId committed_op_id = OpId::Max();
     OpId majority_replicated_op_id = OpId::Max();
@@ -299,6 +303,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     reject_mode_.store(value, std::memory_order_release);
   }
 
+  // Delays each Update by duration. Setting it to zero also releases any hold in progress.
   void TEST_DelayUpdate(MonoDelta duration) {
     TEST_delay_update_.store(duration, std::memory_order_release);
   }
@@ -775,6 +780,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // the request will be ignored. This prevents abandoned or partitioned
   // nodes from disturbing the healthy leader.
   std::atomic<MonoTime> withhold_votes_until_;
+
+  std::atomic<int64_t> all_replicated_index_from_leader_{0};
 
   // UUID of new desired leader during stepdown.
   TabletServerId protege_leader_uuid_;
