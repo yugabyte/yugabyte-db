@@ -41,7 +41,7 @@ public class TestPgRegressThirdPartyExtensionsPgaudit extends BasePgRegressTestP
 
   @Test
   public void schedule() throws Exception {
-    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.ROUND_ROBIN);
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.NONE);
     runPgRegressTest(new File(TestUtils.getBuildRootDir(),
                               "postgres_build/third-party-extensions/pgaudit"),
                      "yb_schedule");
