@@ -186,10 +186,14 @@ class WriteCounter {
   size_t value_ = 0;
 };
 
-size_t SerializedSize(const Header& header) {
+size_t SerializedSize(const Header& header, size_t flags) {
   WriteCounter counter;
-  Convert(FooterFlags(header), header, counter);
+  Convert(flags, header, counter);
   return counter.value();
+}
+
+size_t SerializedSize(const Header& header) {
+  return SerializedSize(header, FooterFlags(header));
 }
 
 class SliceReader {
@@ -452,6 +456,9 @@ Result<Header> FileBlockCache::Load() {
   SCHECK(
       (flags & kFooterBase) && !(flags & ~kFooterKnownFlags), Corruption,
       Format("Unsupported vector index file flags: $0", flags));
+  // The size check above covers only the fields of every release.
+  SCHECK_GE(
+      reader.Left(), SerializedSize(Header(), flags), Corruption, "Footer size too small");
   Deserialize(flags, header, reader);
   AllocateBlocks(reader.Left() / sizeof(uint64_t));
   size_t prev_end = 0;
