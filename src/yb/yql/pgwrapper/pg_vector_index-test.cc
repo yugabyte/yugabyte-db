@@ -1719,10 +1719,7 @@ TEST_P(PgVectorIndexTest, BackfillLargeTransactionAppliedAfterCommit) {
   num_pre_split_tablets_ = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = kApplyBatchRecords;
-  // Backfill in small batches and slow each one down, so the apply can finish mid-backfill.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_initial_chunk_size) = kApplyBatchRecords;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_after_vector_index_backfill_chunk_ms) =
-      200 * kTimeMultiplier;
 
   auto conn = ASSERT_RESULT(MakeTable());
 
@@ -1741,17 +1738,25 @@ TEST_P(PgVectorIndexTest, BackfillLargeTransactionAppliedAfterCommit) {
     }, 30s * kTimeMultiplier, "First chunk applied"));
   }
 
+  // Park every backfill between its first and second batch.
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_batch) = true;
   TestThreadHolder threads;
+  // Declared after threads, so a failed assertion releases the backfills before joining them.
+  auto unblock_backfills = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_batch) =
+        false;
+  });
   threads.AddThreadFunctor([this] {
     auto index_conn = ASSERT_RESULT(Connect());
     ASSERT_OK(CreateIndex(index_conn));
   });
-
-  // Release the apply once every replica's backfill has read past its first batch.
   ASSERT_OK(WaitForVectorIndexBackfillsStarted(cluster_->num_tablet_servers()));
+
+  // The apply finishes before the backfills read on.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_and_skip_apply_intents_task_loop_ms) = 0;
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
 
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_batch) = false;
   threads.JoinAll();
   ASSERT_OK(WaitForVectorIndexBackfills(cluster_->num_tablet_servers(), "Replica backfills"));
 
@@ -1765,15 +1770,12 @@ TEST_P(PgVectorIndexTest, BackfillLargeTransactionAppliedAfterCommit) {
 // transaction participant until it ends: that holds back their cleanup and their intents.
 // See #36909.
 TEST_P(PgVectorIndexTest, BackfillReleasesFinishedTransactionsBetweenBatches) {
-  constexpr int64_t kNumRows = 200;
+  constexpr int64_t kNumRows = 100;
   constexpr size_t kBatchSize = 10;
 
   num_pre_split_tablets_ = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
-  // About 20 batches, each followed by a pause, so the backfill outlasts the transaction below.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_initial_chunk_size) = kBatchSize;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_after_vector_index_backfill_chunk_ms) =
-      200 * kTimeMultiplier;
 
   auto conn = ASSERT_RESULT(MakeTable());
   ASSERT_OK(InsertBatch(conn, 1, kNumRows));
@@ -1787,7 +1789,14 @@ TEST_P(PgVectorIndexTest, BackfillReleasesFinishedTransactionsBetweenBatches) {
   // Send the buffered intents to the tablet.
   ASSERT_RESULT(txn_conn.FetchRow<int64_t>("SELECT id FROM test WHERE id = 1"));
 
+  // Park every backfill between its first and second batch.
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_batch) = true;
   TestThreadHolder threads;
+  // Declared after threads, so a failed assertion releases the backfills before joining them.
+  auto unblock_backfills = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_batch) =
+        false;
+  });
   threads.AddThreadFunctor([this] {
     auto index_conn = ASSERT_RESULT(Connect());
     ASSERT_OK(CreateIndex(index_conn));
@@ -1795,6 +1804,7 @@ TEST_P(PgVectorIndexTest, BackfillReleasesFinishedTransactionsBetweenBatches) {
   ASSERT_OK(WaitForVectorIndexBackfillsStarted(cluster_->num_tablet_servers()));
   ASSERT_OK(txn_conn.CommitTransaction());
 
+  // The parked backfills hold no request, so the committed transaction leaves the participant.
   auto peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"));
   ASSERT_EQ(peers.size(), cluster_->num_tablet_servers());
   ASSERT_OK(WaitFor([&peers]() -> Result<bool> {
@@ -1806,10 +1816,8 @@ TEST_P(PgVectorIndexTest, BackfillReleasesFinishedTransactionsBetweenBatches) {
     }
     return true;
   }, 30s * kTimeMultiplier, "Finished transactions removed"));
-  for (const auto& index : ListVectorIndexes(cluster_.get())) {
-    ASSERT_FALSE(ASSERT_RESULT(index->BackfillDone())) << index->ToString();
-  }
 
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_batch) = false;
   threads.JoinAll();
   ASSERT_OK(WaitForVectorIndexBackfills(cluster_->num_tablet_servers(), "Replica backfills"));
   for (const auto& index : ListVectorIndexes(cluster_.get())) {

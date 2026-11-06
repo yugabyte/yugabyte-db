@@ -666,16 +666,26 @@ Status TabletVectorIndexes::Backfill(
   // only its intents, so its rows are skipped.
   // Unless reuse_reader is set, both are released after each batch is read, before it is inserted
   // into the index, so they hold back the cleanup of transactions on the tablet for one read only.
+  // open_reader returns false when the indexed table is gone, e.g. dropped while a follower was
+  // still backfilling, since each new iterator looks it up again.
   RequestScope request_scope;
   std::optional<IndexedTableReader> reader;
-  auto open_reader = [&](Slice key) -> Status {
+  auto open_reader = [&](Slice key) -> Result<bool> {
     if (reader && reuse_reader) {
+      // The reused iterator keeps its blocking operation, so check for a pause that a new iterator
+      // would fail on.
+      RETURN_NOT_OK(tablet().CreateScopedRWOperationBlockingRocksDbShutdownStart());
       reader->Restart(key);
-      return Status::OK();
+      return true;
     }
     request_scope = VERIFY_RESULT(tablet().CreateRequestScope());
     reader.emplace(*vector_index);
-    return reader->Init(backfill_ht, key);
+    auto status = reader->Init(backfill_ht, key);
+    if (status.IsNotFound() && !metadata().GetTableInfo(indexed_table.table_id).ok()) {
+      return false;
+    }
+    RETURN_NOT_OK(status);
+    return true;
   };
   auto close_reader = [&] {
     if (!reuse_reader) {
@@ -708,7 +718,10 @@ Status TabletVectorIndexes::Backfill(
   const size_t limit = bytes_limit ? vector_index->EstimateNumVectorsForBytes(bytes_limit) : 0;
   size_t chunk_size = 0;
   if (limit != 0) {
-    RETURN_NOT_OK(open_reader(from_key));
+    if (!VERIFY_RESULT(open_reader(from_key))) {
+      LOG_WITH_FUNC(INFO) << "Indexed table removed: " << AsString(*vector_index);
+      return Status::OK();
+    }
     while (VERIFY_RESULT(reader->FetchNext()) && chunk_size < limit) {
       ++chunk_size;
     }
@@ -749,7 +762,10 @@ Status TabletVectorIndexes::Backfill(
       continue;
     }
     if (!reader_open) {
-      RETURN_NOT_OK(open_reader(next_key));
+      if (!VERIFY_RESULT(open_reader(next_key))) {
+        LOG_WITH_FUNC(INFO) << "Indexed table removed: " << AsString(*vector_index);
+        return Status::OK();
+      }
       reader_open = true;
     }
     if (!VERIFY_RESULT(reader->FetchNext())) {
