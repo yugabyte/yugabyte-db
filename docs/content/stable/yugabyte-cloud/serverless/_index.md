@@ -27,14 +27,13 @@ A Serverless Postgres cluster includes the following features:
 - An isolated PostgreSQL database for each agent or tenant.
 - Zero-copy branching.
 - A path to a distributed YugabyteDB cluster without a migration.
-- Built-in connection pooling.
-- Fair CPU sharing across tenants.
+- Resource isolation between tenants.
 
 Your organization has a single account for serverless clusters, created when you create your first Serverless Postgres cluster. YugabyteDB Aeon prepares the environment and the shared pool for you.
 
 Serverless Postgres is free to start, and includes 2 vCPU, 16 GiB RAM, and 100 GiB storage.
 
-This is shared by everything run in the account. You can upgrade to larger sizes; this requires creating a [billing profile](../cloud-admin/cloud-billing-profile/) for the serverless account. Only Admin users can create a billing profile.
+This is shared by every cluster run in the account. You can upgrade to larger sizes; this requires creating a [billing profile](../cloud-admin/cloud-billing-profile/) for the serverless account. Only Admin users can create a billing profile.
 
 {{<index/block>}}
 

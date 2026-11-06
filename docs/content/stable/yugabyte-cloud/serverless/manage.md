@@ -16,9 +16,9 @@ To manage a cluster, click **Clusters** in the left navigation and open the clus
 
 ## Add a branch
 
-A branch is an isolated, zero-copy version of a database. The cluster starts with a `main` branch, and you fork other branches from it. The new branch starts with the parent's data, and writes to the branch stay on the branch. Creating a branch does not add storage cost. Additional storage is charged only when branch data changes.
+A branch is an isolated, zero-copy clone of a database. The cluster starts with a `main` branch, and you fork other branches from it. The new branch starts with the parent's data, and writes to the branch stay on the branch. Creating a branch does not add storage cost. Additional storage is charged only when branch data changes.
 
-A branch can have one read-write endpoint, with its own URL, vCPU, memory, trusted IP addresses, and PostgreSQL extensions.
+Each branch has its own read-write endpoint, with its own URL, vCPU, memory, trusted IP addresses, and PostgreSQL extensions.
 
 Fork a branch when you need a separate copy of the data:
 
