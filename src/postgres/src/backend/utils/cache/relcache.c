@@ -2630,6 +2630,12 @@ typedef struct YbCatalogPreloadCacheList
 
 static const YbCatalogPreloadCacheList *yb_catalog_preload_cache_list = NULL;
 
+/*
+ * Whether the postmaster has reached YbReportCatalogPreloadCacheList, after
+ * starting the logging collector.
+ */
+static bool yb_postmaster_reported_catalog_preload_cache_list = false;
+
 static const YbCatNamePfId *
 YbFindPrefetchTableByName(const char *name)
 {
@@ -2710,9 +2716,15 @@ YbSelectCatalogPreloadItem(const char *name, YbCatalogPreloadCacheList *list)
 {
 	/*
 	 * The check hook runs in the postmaster and in every backend on each
-	 * reload, so warn only once, from the postmaster.
+	 * reload, so warn only once, from the postmaster.  At postmaster start-up
+	 * it runs before the logging collector starts, when a warning would go
+	 * only to the postmaster's stderr, so YbReportCatalogPreloadCacheList
+	 * warns then instead.
 	 */
-	const int	elevel = IsUnderPostmaster ? DEBUG2 : WARNING;
+	const int	elevel = (IsUnderPostmaster ||
+						  (IsPostmasterEnvironment &&
+						   !yb_postmaster_reported_catalog_preload_cache_list)) ?
+		DEBUG2 : WARNING;
 	const YbCatNamePfId *table = YbFindPrefetchTableByName(name);
 
 	if (table)
@@ -2827,6 +2839,23 @@ void
 yb_assign_test_catalog_preload_cache_list(const char *newval, void *extra)
 {
 	yb_catalog_preload_cache_list = extra;
+}
+
+/*
+ * Warn about the items of yb_test_catalog_preload_cache_list that select no
+ * catalog cache.  The postmaster calls this once it has started the logging
+ * collector, so that the warnings reach the postgres log.
+ */
+void
+YbReportCatalogPreloadCacheList(void)
+{
+	const char *value = GetConfigOption("yb_test_catalog_preload_cache_list",
+										false, false);
+	YbCatalogPreloadCacheList list;
+	bool		is_empty;
+
+	yb_postmaster_reported_catalog_preload_cache_list = true;
+	(void) YbParseCatalogPreloadCacheList(value, &list, &is_empty);
 }
 
 /*
