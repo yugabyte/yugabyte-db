@@ -12943,6 +12943,7 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
 
   // Send DeleteTablet requests to tablet servers serving deleted tablets.
   // This is asynchronous / non-blocking.
+  std::vector<TabletInfoPtr> deleted_tablets;
   for (const TabletInfoPtr& tablet : deferred.modified_tablets) {
     if (tablet->metadata().dirty().is_deleted()) {
       // Actual delete, because we delete tablet replica.
@@ -12951,6 +12952,7 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
       DeleteTabletReplicas(tablet, tablet->metadata().dirty().pb.state_msg(), HideOnly::kFalse,
                            KeepData::kFalse,
                            TransactionId::Nil() /* exclude_aborting_transaction_id */, epoch);
+      deleted_tablets.push_back(tablet);
     }
   }
   // Send the CreateTablet() requests to the servers. This is asynchronous / non-blocking.
@@ -12958,10 +12960,8 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
 
   // A replaced tablet is only dropped from the maps by the next background pass; its replicas
   // leave the load count now rather than then.
-  for (const TabletInfoPtr& tablet : deferred.modified_tablets) {
-    if (tablet->LockForRead()->is_deleted()) {
-      tablet->StopCountingReplicaLoad();
-    }
+  for (const TabletInfoPtr& tablet : deleted_tablets) {
+    tablet->StopCountingReplicaLoad();
   }
 
   {
