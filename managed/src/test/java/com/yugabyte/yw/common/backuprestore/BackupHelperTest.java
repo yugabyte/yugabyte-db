@@ -19,8 +19,10 @@ import static org.mockito.Mockito.when;
 import com.google.protobuf.ByteString;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeCloudDetector;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestUtils;
@@ -52,6 +54,7 @@ import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupVersion;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
@@ -59,11 +62,16 @@ import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
+import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.OnPremCloudInfo;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -87,6 +95,7 @@ import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.master.MasterTypes.NamespaceIdentifierPB;
 import org.yb.ybc.BackupServiceTaskEnabledFeaturesResponse;
 import org.yb.ybc.CloudStoreSpec;
+import play.libs.Json;
 
 @Slf4j
 @RunWith(JUnitParamsRunner.class)
@@ -100,6 +109,7 @@ public class BackupHelperTest extends FakeDBApplication {
   private ValidateReplicationInfo mockValidateReplicationInfo;
   private NodeUniverseManager mockNodeUniverseManager;
   private YbcBackupUtil mockYbcBackupUtil;
+  private NodeCloudDetector mockNodeCloudDetector;
 
   @Before
   public void setup() {
@@ -111,6 +121,7 @@ public class BackupHelperTest extends FakeDBApplication {
     mockValidateReplicationInfo = mock(ValidateReplicationInfo.class);
     mockNodeUniverseManager = mock(NodeUniverseManager.class);
     mockYbcBackupUtil = mock(YbcBackupUtil.class);
+    mockNodeCloudDetector = mock(NodeCloudDetector.class);
     spyBackupHelper =
         Mockito.spy(
             new BackupHelper(
@@ -123,7 +134,8 @@ public class BackupHelperTest extends FakeDBApplication {
                 mockValidateReplicationInfo,
                 mockNodeUniverseManager,
                 mockYbcBackupUtil,
-                mockSoftwareUpgradeHelper));
+                mockSoftwareUpgradeHelper,
+                mockNodeCloudDetector));
     when(mockStorageUtilFactory.getStorageUtil(eq("S3"))).thenReturn(mockAWSUtil);
     when(mockStorageUtilFactory.getStorageUtil(eq("NFS"))).thenReturn(mockNfsUtil);
   }
@@ -1438,5 +1450,121 @@ public class BackupHelperTest extends FakeDBApplication {
 
     assertEquals(target.audience, s3Data.crossCloudFederationAudience);
     assertEquals(target.roleArn, s3Data.crossCloudFederationRoleArn);
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Fail-fast when the nodes need cross-cloud federation that is not configured on the universe.
+  // ---------------------------------------------------------------------------------------------
+
+  /** A universe with live nodes, on a provider that federates to GCP when asked to. */
+  private Universe universeOnFederatingProvider(
+      CloudType providerCloud, boolean providerFederates) {
+    Universe universe =
+        ModelFactory.createUniverse("fed-not-configured", testCustomer.getId(), providerCloud);
+    universe = Universe.saveDetails(universe.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
+    Provider provider =
+        Provider.getOrBadRequest(
+            UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+    if (providerFederates) {
+      CrossCloudFederationTarget target = new CrossCloudFederationTarget();
+      target.targetCloud = CloudType.gcp;
+      target.audience = "//iam.googleapis.com/projects/1/test-audience";
+      if (providerCloud == CloudType.onprem) {
+        OnPremCloudInfo info = CloudInfoInterface.get(provider);
+        info.enableFederatedIam = true;
+        info.crossCloudFederationTargets = Collections.singletonList(target);
+      } else {
+        AWSCloudInfo info = CloudInfoInterface.get(provider);
+        info.enableFederatedIam = true;
+        info.crossCloudFederationTargets = Collections.singletonList(target);
+      }
+      provider.save();
+    }
+    when(mockRuntimeConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.skipConfigBasedPreflightValidation)))
+        .thenReturn(false);
+    when(mockStorageUtilFactory.getStorageUtil(eq("GCS"))).thenReturn(mockGCPUtil);
+    return universe;
+  }
+
+  private CustomerConfig gcsIamConfig() {
+    return CustomerConfig.createWithFormData(
+        testCustomer.getUuid(),
+        Json.parse(
+            "{\"configName\": \"gcs-iam\", \"name\": \"GCS\", \"type\": \"STORAGE\","
+                + " \"data\": {\"BACKUP_LOCATION\": \"gs://foo\", \"USE_GCP_IAM\": true}}"));
+  }
+
+  @Test
+  public void testBackupPrecheckFailsFastWhenFederationIsNotConfigured() {
+    Universe universe = universeOnFederatingProvider(CloudType.aws, true);
+    CustomerConfig config = gcsIamConfig();
+
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> spyBackupHelper.validateStorageConfigForBackupOnUniverse(config, universe));
+
+    assertTrue(e.getMessage(), e.getMessage().contains("not enabled on this universe"));
+    assertTrue(e.getMessage(), e.getMessage().contains("/cross-cloud-federation"));
+    // Rejected before any node is asked to reach the bucket.
+    Mockito.verify(mockYbcManager, Mockito.never())
+        .validateCloudConfigIgnoreIfYbcUnavailable(any(), any(), any());
+  }
+
+  @Test
+  public void testBackupPrecheckPassesOnceFederationIsConfigured() {
+    Universe universe =
+        Universe.saveDetails(
+            universeOnFederatingProvider(CloudType.aws, true).getUniverseUUID(),
+            u ->
+                u.getUniverseDetails()
+                    .getPrimaryCluster()
+                    .userIntent
+                    .setFederationConfigured(true));
+
+    spyBackupHelper.validateStorageConfigForBackupOnUniverse(gcsIamConfig(), universe);
+  }
+
+  @Test
+  public void testBackupPrecheckIgnoresProviderWithoutFederation() {
+    Universe universe = universeOnFederatingProvider(CloudType.aws, false);
+
+    spyBackupHelper.validateStorageConfigForBackupOnUniverse(gcsIamConfig(), universe);
+  }
+
+  /**
+   * An on-prem node's cloud is unknown until federation is configured on it, so it is probed: only
+   * a node on the other cloud fails the precheck. One on the bucket's own cloud reaches it
+   * natively, and one the probe cannot place as a cloud VM is left to the YBC check. Only an AWS or
+   * GCP answer is recorded, so the next precheck probes the others again.
+   */
+  @Test
+  @Parameters({"gcp, false", "aws, true", "onprem, false", "unknown, false"})
+  public void testBackupPrecheckProbesOnPremNodes(String probedCloud, boolean rejected) {
+    Universe universe = universeOnFederatingProvider(CloudType.onprem, true);
+    CloudType probed = "unknown".equals(probedCloud) ? null : CloudType.valueOf(probedCloud);
+    when(mockNodeCloudDetector.detect(any(), any(), any())).thenReturn(probed);
+    CustomerConfig config = gcsIamConfig();
+
+    if (rejected) {
+      PlatformServiceException e =
+          assertThrows(
+              PlatformServiceException.class,
+              () -> spyBackupHelper.validateStorageConfigForBackupOnUniverse(config, universe));
+      assertTrue(e.getMessage(), e.getMessage().contains("runs on aws"));
+      return;
+    }
+    spyBackupHelper.validateStorageConfigForBackupOnUniverse(config, universe);
+
+    String recorded = probed == CloudType.gcp ? probedCloud : null;
+    Universe reloaded = Universe.getOrBadRequest(universe.getUniverseUUID());
+    for (NodeDetails node : reloaded.getRunningTserversInPrimaryCluster()) {
+      assertEquals(recorded, node.cloudInfo.physicalCloud);
+    }
+    spyBackupHelper.validateStorageConfigForBackupOnUniverse(config, reloaded);
+    int tservers = reloaded.getRunningTserversInPrimaryCluster().size();
+    Mockito.verify(mockNodeCloudDetector, Mockito.times(recorded != null ? tservers : 2 * tservers))
+        .detect(any(), any(), any());
   }
 }
