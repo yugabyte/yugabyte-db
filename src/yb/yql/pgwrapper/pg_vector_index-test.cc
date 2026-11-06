@@ -9359,6 +9359,166 @@ TEST_P(PgVectorIndexStorageSetCapacityTest, BootstrapReplayWith64VectorIndexes) 
   ASSERT_NO_FATALS(VerifyAllIndexesReturnAllRows());
 }
 
+// ExecScan clears plan_limit when the scan has a qual. A ybhnsw scan keeps the LIMIT
+// separately and must prefetch that many rows when Postgres evaluates the WHERE (#37005).
+// Reading the whole table is what overflows the RPC on a large vector column.
+class PgVectorIndexLimitTest : public PgVectorIndexTestBase {
+ protected:
+  bool IsColocated() const override {
+    return false;
+  }
+
+  VectorIndexEngine Engine() const override {
+    return VectorIndexEngine::kYbHnswHnswlib;
+  }
+
+  PackingMode GetPackingMode() const override {
+    return PackingMode::kV2;
+  }
+
+  size_t NumTabletServers() override {
+    return 1;
+  }
+
+  // Rows the items vector index placed in search responses since the tablet opened.
+  Result<uint64_t> VectorRowsReturned() {
+    const auto table_id = VERIFY_RESULT(GetTableIDFromTableName("items"));
+    uint64_t sum = 0;
+    for (const auto& peer : ListTableActiveTabletLeadersPeers(cluster_.get(), table_id)) {
+      auto tablet = VERIFY_RESULT(peer->shared_tablet());
+      auto indexes = tablet->vector_indexes().List();
+      if (!indexes) {
+        continue;
+      }
+      for (const auto& index : *indexes) {
+        sum += index->metrics().result_size->TotalSum();
+      }
+    }
+    return sum;
+  }
+};
+
+TEST_F(PgVectorIndexLimitTest, FilteredTopKUsesLimit) {
+  constexpr int kNumRows = 400;
+  constexpr int kLimit = 4;
+  // Embeddings are [id, 0, 0], so distance to the origin is the id order.
+  const auto query_vector = "'[0, 0, 0]'";
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE items (id int PRIMARY KEY, content text, metadata json, tenant text, "
+      "embedding vector(3)) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE INDEX ON items USING ybhnsw (embedding vector_l2_ops) WITH ($0)",
+      kCheapIndexBuildOptions));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO items SELECT g, 'chunk ' || g, "
+      "json_build_object('category', (ARRAY['news','blog','doc','faq'])[1 + (g % 4)], "
+      "'year', 2010 + (g % 15)), "
+      "'t' || (g % 20), vector('[' || g || ', 0, 0]') "
+      "FROM generate_series(1, $0) g",
+      kNumRows));
+  ASSERT_OK(CreateEchoFunction(conn));
+
+  const auto index_query = [&](const std::string& where) {
+    return Format(
+        "/*+IndexScan(items items_embedding_idx)*/ SELECT id FROM items $0 "
+        "ORDER BY embedding <-> $1 LIMIT $2",
+        where, query_vector, kLimit);
+  };
+
+  auto expect = [&](const std::string& name, const std::string& query,
+                    const std::vector<int32_t>& expected, uint64_t max_rows) -> Status {
+    const auto before = VERIFY_RESULT(VectorRowsReturned());
+    auto ids = VERIFY_RESULT(conn.FetchRows<int32_t>(query));
+    SCHECK_EQ(AsString(ids), AsString(expected), IllegalState, name);
+    const auto read = VERIFY_RESULT(VectorRowsReturned()) - before;
+    // The broken scan prefetches every row of the table into one response.
+    SCHECK_LT(read, static_cast<uint64_t>(kNumRows), IllegalState,
+              Format("$0 read $1 rows", name, read));
+    SCHECK_LE(read, max_rows, IllegalState, Format("$0 read $1 rows", name, read));
+    SCHECK_GE(read, expected.size(), IllegalState, Format("$0 read $1 rows", name, read));
+    return Status::OK();
+  };
+
+  auto expect_plan = [&](const std::string& query, bool postgres_filter) -> Status {
+    auto plan = VERIFY_RESULT(conn.FetchAllAsString("EXPLAIN (COSTS OFF) " + query));
+    SCHECK_NE(plan.find("Index Scan"), std::string::npos, IllegalState, plan);
+    if (postgres_filter) {
+      SCHECK_EQ(plan.find("Storage Filter:"), std::string::npos, IllegalState, plan);
+      SCHECK_NE(plan.find("Filter:"), std::string::npos, IllegalState, plan);
+    } else if (query.find("WHERE") != std::string::npos) {
+      SCHECK_NE(plan.find("Storage Filter:"), std::string::npos, IllegalState, plan);
+    }
+    return Status::OK();
+  };
+
+  const std::vector<int32_t> nearest = {1, 2, 3, 4};
+  // One prefetch of LIMIT, plus a second page the scan may open before it stops.
+  const uint64_t kOnePage = 2 * kLimit;
+  // A qual Postgres evaluates. Every row passes, so the scan stops after the nearest page.
+  const auto always_true = index_query("WHERE id >= echo_int(0)");
+  ASSERT_OK(expect_plan(always_true, true));
+  ASSERT_OK(expect("volatile filter", always_true, nearest, kOnePage));
+
+  const auto no_filter = index_query("");
+  ASSERT_OK(expect_plan(no_filter, false));
+  ASSERT_OK(expect("no filter", no_filter, nearest, kOnePage));
+
+  const auto distance = index_query(Format("WHERE embedding <-> $0 < 1000000", query_vector));
+  ASSERT_OK(expect_plan(distance, true));
+  ASSERT_OK(expect("distance threshold", distance, nearest, kOnePage));
+
+  // category cycles news, blog, doc, faq. The doc rows are 2, 6, 10, 14.
+  const auto json_filter = index_query(
+      "WHERE metadata::jsonb @@ '$.category == \"doc\"'");
+  ASSERT_OK(expect_plan(json_filter, true));
+  ASSERT_OK(expect("json filter", json_filter, {2, 6, 10, 14}, 32));
+
+  // year is 2010 + (id % 15). The first ids at or above 2020 are 10..13.
+  const auto cast_filter = index_query("WHERE (metadata->>'year')::int >= 2020");
+  ASSERT_OK(expect_plan(cast_filter, true));
+  ASSERT_OK(expect("cast filter", cast_filter, {10, 11, 12, 13}, 32));
+
+  // Pushed to DocDB, so plan_limit already survived. tenant 't3' is id % 20 == 3.
+  const auto pushed = index_query("WHERE tenant = 't3'");
+  ASSERT_OK(expect_plan(pushed, false));
+  ASSERT_OK(expect("pushed filter", pushed, {3, 23, 43, 63}, 160));
+
+  // OFFSET has to page: the prefetch is the LIMIT, and the scan keeps fetching.
+  const auto offset_query = Format(
+      "/*+IndexScan(items items_embedding_idx)*/ SELECT id FROM items "
+      "ORDER BY embedding <-> $0 LIMIT $1 OFFSET 2",
+      query_vector, kLimit);
+  ASSERT_OK(expect("offset", offset_query, {3, 4, 5, 6}, 24));
+
+  ASSERT_OK(conn.Execute("CREATE ROLE limit_reader"));
+  ASSERT_OK(conn.Execute("GRANT SELECT ON items TO limit_reader"));
+  ASSERT_OK(conn.Execute("ALTER TABLE items ENABLE ROW LEVEL SECURITY"));
+  ASSERT_OK(conn.Execute(
+      "CREATE POLICY items_tenant ON items USING (tenant = current_setting('app.tenant'))"));
+  ASSERT_OK(conn.Execute("SET app.tenant = 't3'"));
+  ASSERT_OK(conn.Execute("SET ROLE limit_reader"));
+  const auto rls = index_query("");
+  ASSERT_OK(expect_plan(rls, true));
+  ASSERT_OK(expect("row level security", rls, {3, 23, 43, 63}, 160));
+  ASSERT_OK(conn.Execute("RESET ROLE"));
+
+  // Same top-k without the vector index.
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
+  ASSERT_OK(conn.Execute("SET enable_indexscan = off"));
+  ASSERT_OK(conn.Execute("SET enable_indexonlyscan = off"));
+  const auto seq_query = Format(
+      "SELECT id FROM items ORDER BY embedding <-> $0 LIMIT $1", query_vector, kLimit);
+  const auto before = ASSERT_RESULT(VectorRowsReturned());
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRows<int32_t>(seq_query)), nearest);
+  ASSERT_EQ(ASSERT_RESULT(VectorRowsReturned()), before);
+  ASSERT_OK(conn.Execute("RESET enable_indexscan"));
+  ASSERT_OK(conn.Execute("RESET enable_indexonlyscan"));
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = true;
+}
+
 class PgVectorIndexBackendFlagTest : public YBTest {};
 
 TEST_F(PgVectorIndexBackendFlagTest, RejectsRemovedBackends) {
