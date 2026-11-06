@@ -171,8 +171,16 @@ func (pg Postgres) Initialize() error {
 	}
 
 	if viper.GetBool("postgres.install.enabled") {
-		pg.createYugawareDatabase()
-		pg.createTSDatabase()
+		// Before createdb, which refuses to copy a template1 with a stale collation version.
+		if err := pg.refreshCollationVersions(); err != nil {
+			return err
+		}
+		if err := pg.createDatabase("yugaware"); err != nil {
+			return err
+		}
+		if err := pg.createDatabase(common.PerfAdvisorDBName); err != nil {
+			return err
+		}
 	}
 
 	log.Info("Finishing Postgres initialize")
@@ -369,7 +377,9 @@ func (pg Postgres) Upgrade() error {
 
 	// Needs the installed postgres running, which a major upgrade stops.
 	if viper.GetBool("postgres.install.enabled") {
-		pg.createTSDatabase()
+		if err := pg.createDatabase(common.PerfAdvisorDBName); err != nil {
+			return err
+		}
 	}
 
 	oldDataDir, err := common.InstalledPostgresDataDir()
@@ -586,7 +596,9 @@ func (pg Postgres) replicatedMigrateStep2() error {
 	pg.Start()
 
 	if viper.GetBool("postgres.install.enabled") {
-		pg.createYugawareDatabase()
+		if err := pg.createDatabase("yugaware"); err != nil {
+			log.Fatal(err.Error())
+		}
 	}
 	return nil
 }
@@ -801,52 +813,85 @@ func (pg Postgres) copyConfFiles() error {
 	return nil
 }
 
-func (pg Postgres) createTSDatabase() {
-	cmd := pg.PgBin + "/createdb"
+// psql runs each statement in database db of the installed postgres, stopping at the first error.
+func (pg Postgres) psql(db string, statements ...string) *shell.Output {
 	args := []string{
-		"-h", pg.MountPath,
-		"-U", pg.getPgUserName(),
+		"-d", db,
+		"-h", "localhost",
 		"-p", viper.GetString("postgres.install.port"),
-		common.PerfAdvisorDBName,
+		"-U", pg.getPgUserName(),
+		"-qAtX", "-v", "ON_ERROR_STOP=1",
 	}
-	var out *shell.Output
-	if common.HasSudoAccess() {
-		// RUns as service user
-		// This is needed for the ts db to be created in the right location
-		out = shell.RunAsUser(viper.GetString("service_username"), cmd, args...)
-	} else {
-		out = shell.Run(cmd, args...)
+	for _, sql := range statements {
+		args = append(args, "-c", sql)
 	}
-	if !out.Succeeded() {
-		if strings.Contains(out.StderrString(), "already exists") {
-			// db already existing is fine because this may be a resumed failed install
-			return
-		}
-		log.Fatal(fmt.Sprintf("Could not create ts database: %s", out.Error.Error()))
-	}
+	return shell.Run(filepath.Join(pg.PgBin, "psql"), args...)
 }
 
-func (pg Postgres) createYugawareDatabase() {
+// createDatabase creates database name unless it already exists, as it does after a resumed
+// install, an upgrade, or a data volume moved over from another host. Letting createdb fail with
+// "already exists" is not enough: it checks template1's collation version first.
+func (pg Postgres) createDatabase(name string) error {
+	out := pg.psql("postgres", "SELECT 1 FROM pg_database WHERE datname = "+common.PgQuoteLiteral(name))
+	if !out.Succeeded() {
+		return fmt.Errorf("failed to check for postgres database %s: %w: %s",
+			name, out.Error, out.StderrString())
+	}
+	if strings.TrimSpace(out.StdoutString()) == "1" {
+		log.Debug("postgres database " + name + " already exists")
+		return nil
+	}
+
 	cmd := pg.PgBin + "/createdb"
 	args := []string{
 		"-h", pg.MountPath,
 		"-U", pg.getPgUserName(),
 		"-p", viper.GetString("postgres.install.port"),
-		"yugaware",
+		name,
 	}
-	var out *shell.Output
 	if common.HasSudoAccess() {
 		out = shell.RunAsUser(viper.GetString("service_username"), cmd, args...)
 	} else {
 		out = shell.Run(cmd, args...)
 	}
 	if !out.Succeeded() {
-		if strings.Contains(out.StderrString(), "already exists") {
-			// db already existing is fine because this may be a resumed failed install
-			return
-		}
-		log.Fatal(fmt.Sprintf("Could not create yugaware database: %s", out.Error.Error()))
+		return fmt.Errorf("could not create postgres database %s: %w: %s",
+			name, out.Error, out.StderrString())
 	}
+	return nil
+}
+
+// refreshCollationVersions rebuilds the indexes of each database whose recorded collation version
+// differs from the one the OS provides now, then records the new version. For a libc locale that
+// version is the glibc version, so it changes when the data directory moves to a host with a
+// different glibc (RHEL 8 to 9). Text indexes built under the old sort rules can silently miss rows
+// or admit duplicates until rebuilt, and postgres refuses to create a database from a template1
+// whose version is stale.
+func (pg Postgres) refreshCollationVersions() error {
+	// postgres records collation versions per database from 15 on.
+	if pgMajorVersion(pg.version) < 15 {
+		return nil
+	}
+	out := pg.psql("postgres", "SELECT datname FROM pg_database WHERE datallowconn AND "+
+		"datcollversion IS DISTINCT FROM pg_database_collation_actual_version(oid)")
+	if !out.Succeeded() {
+		return fmt.Errorf("failed to check postgres database collation versions: %w: %s",
+			out.Error, out.StderrString())
+	}
+	for db := range strings.SplitSeq(strings.TrimSpace(out.StdoutString()), "\n") {
+		if db == "" {
+			continue
+		}
+		log.Info("Rebuilding the indexes of postgres database " + db + " because the OS collation " +
+			"version changed. This can take a while for a large database.")
+		quoted := common.PgQuoteIdent(db)
+		if out := pg.psql(db, "REINDEX DATABASE "+quoted,
+			"ALTER DATABASE "+quoted+" REFRESH COLLATION VERSION"); !out.Succeeded() {
+			return fmt.Errorf("failed to rebuild indexes of postgres database %s for its new collation "+
+				"version: %w: %s", db, out.Error, out.StderrString())
+		}
+	}
+	return nil
 }
 
 func (pg Postgres) createFilesAndDirs() error {
