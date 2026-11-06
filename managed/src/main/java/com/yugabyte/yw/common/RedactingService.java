@@ -170,13 +170,12 @@ public class RedactingService {
       new CopyOnWriteArraySet<>(
           SECRET_PATHS_FOR_LOGS.stream().map(JsonPath::compile).collect(Collectors.toList()));
 
-  private static final String REDACTION_PARSE_ERROR_KEY = "_redactionParseError";
   private static final String REDACTED_PAYLOAD_KEY = "_redactedPayload";
 
   /** Returns a safe fallback ObjectNode when JSON reparsing after redaction fails. */
   private static ObjectNode redactionParseErrorFallback(String redactedPayload) {
     ObjectNode fallback = Json.mapper().createObjectNode();
-    fallback.put(REDACTION_PARSE_ERROR_KEY, true);
+    fallback.put("_redactionParseError", true);
     fallback.put(REDACTED_PAYLOAD_KEY, redactedPayload);
     return fallback;
   }
@@ -1018,47 +1017,27 @@ public class RedactingService {
     if (auditEntry == null || !auditEntry.isObject()) {
       return;
     }
-    if (auditEntry.has("additionalDetails")) {
-      redactGFlagChanges(auditEntry.get("additionalDetails"), universe, gFlagsValidation);
-    }
-  }
-
-  private static void redactGFlagChanges(
-      JsonNode additionalDetails, Universe universe, GFlagsValidation gFlagsValidation) {
-    if (additionalDetails != null && !additionalDetails.isNull()) {
-      if (additionalDetails.has("gflags")) {
-        redactGflagsSection(additionalDetails.get("gflags"), universe, gFlagsValidation);
-      }
-      if (additionalDetails.has("readonly_cluster_gflags")) {
-        redactGflagsSection(
-            additionalDetails.get("readonly_cluster_gflags"), universe, gFlagsValidation);
-      }
-    }
-  }
-
-  /**
-   * Redacts the LDAP passwords in the gflag changes in the additionalDetails of an audit entry, for
-   * storing or logging it: ycql_ldap_bind_passwd, and ldapbindpasswd in ysql_hba_conf_csv. Other
-   * sensitive gflags are not covered. Each changed gflag there is a {"name", "old", "new",
-   * "default"} object, so the key-based LOGS redaction never sees the values. A parse-error
-   * fallback written by an earlier redaction holds the gflag changes only as text, so it is
-   * replaced whole when it names ycql_ldap_bind_passwd.
-   */
-  public static JsonNode redactAuditGFlagChanges(JsonNode additionalDetails) {
+    // Audit API responses wrap the details in the audit entry; audit writes and the audit job pass
+    // them bare.
+    JsonNode additionalDetails =
+        auditEntry.has("additionalDetails") ? auditEntry.get("additionalDetails") : auditEntry;
     if (additionalDetails == null || !additionalDetails.isObject()) {
-      return additionalDetails;
+      return;
     }
-    ObjectNode details = additionalDetails.deepCopy();
-    redactGFlagChanges(details, null, null);
-    JsonNode fallbackPayload = details.get(REDACTED_PAYLOAD_KEY);
-    if (details.has(REDACTION_PARSE_ERROR_KEY)
-        && fallbackPayload != null
-        && fallbackPayload.isTextual()
-        && getSensitiveGflagsForRedaction(null, null).stream()
-            .anyMatch(fallbackPayload.asText()::contains)) {
-      details.put(REDACTED_PAYLOAD_KEY, SECRET_REPLACEMENT);
+    if (additionalDetails.has("gflags")) {
+      redactGflagsSection(additionalDetails.get("gflags"), universe, gFlagsValidation);
     }
-    return details;
+    if (additionalDetails.has("readonly_cluster_gflags")) {
+      redactGflagsSection(
+          additionalDetails.get("readonly_cluster_gflags"), universe, gFlagsValidation);
+    }
+    // A parse-error fallback holds the gflag changes only as text, where neither the redaction
+    // above nor the string scan reliably finds their values.
+    String fallbackPayload = additionalDetails.path(REDACTED_PAYLOAD_KEY).asText();
+    if (fallbackPayload.contains("\"name\":\"ycql_ldap_bind_passwd\"")
+        || fallbackPayload.contains("\"name\":\"ysql_hba_conf_csv\"")) {
+      ((ObjectNode) additionalDetails).put(REDACTED_PAYLOAD_KEY, SECRET_REPLACEMENT);
+    }
   }
 
   /** Redacts all ldapbindpasswd values in HBA-formatted strings, preserving quoting style. */

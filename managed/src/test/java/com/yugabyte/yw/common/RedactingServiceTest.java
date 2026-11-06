@@ -4,7 +4,6 @@ import static com.yugabyte.yw.common.RedactingService.SECRET_REPLACEMENT;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -685,7 +684,7 @@ public class RedactingServiceTest {
   }
 
   @Test
-  public void testRedactAuditGFlagChanges() {
+  public void testFilterSecretFieldsForLogsRedactsBareAuditGFlagChanges() {
     ObjectNode details = Json.newObject();
     ArrayNode tserver = details.putObject("gflags").putArray("tserver");
     tserver
@@ -709,7 +708,8 @@ public class RedactingServiceTest {
         .put("new", "readReplicaSecret");
     ObjectNode original = details.deepCopy();
 
-    JsonNode redacted = RedactingService.redactAuditGFlagChanges(details);
+    JsonNode redacted =
+        RedactingService.filterSecretFields(details, RedactionTarget.LOGS, null, null, true);
 
     assertEquals(original, details);
     JsonNode ycql = redacted.get("gflags").get("tserver").get(0);
@@ -731,24 +731,28 @@ public class RedactingServiceTest {
   }
 
   @Test
-  public void testRedactAuditGFlagChangesReplacesFallbackNamingSensitiveGFlag() {
-    ObjectNode fallback =
-        Json.newObject()
-            .put("_redactionParseError", true)
-            .put(
-                "_redactedPayload",
-                "{\"gflags\":{\"tserver\":[{\"name\":\"ycql_ldap_bind_passwd\",\"old\":\"secret\"");
-    assertEquals(
-        SECRET_REPLACEMENT,
-        RedactingService.redactAuditGFlagChanges(fallback).get("_redactedPayload").asText());
+  public void testFilterSecretFieldsForLogsReplacesFallbackNamingLdapGFlag() {
+    for (String name : List.of("ycql_ldap_bind_passwd", "ysql_hba_conf_csv")) {
+      ObjectNode fallback =
+          Json.newObject()
+              .put("_redactionParseError", true)
+              .put(
+                  "_redactedPayload",
+                  "{\"gflags\":{\"tserver\":[{\"name\":\"" + name + "\",\"old\":\"secret\"");
+      assertEquals(
+          SECRET_REPLACEMENT,
+          RedactingService.filterSecretFields(fallback, RedactionTarget.LOGS, null, null, true)
+              .get("_redactedPayload")
+              .asText());
+    }
 
     ObjectNode otherFallback =
         Json.newObject()
             .put("_redactionParseError", true)
             .put("_redactedPayload", "{\"gflags\":{\"tserver\":[{\"name\":\"webserver_port\"");
-    assertEquals(otherFallback, RedactingService.redactAuditGFlagChanges(otherFallback));
-
-    assertNull(RedactingService.redactAuditGFlagChanges(null));
+    assertEquals(
+        otherFallback,
+        RedactingService.filterSecretFields(otherFallback, RedactionTarget.LOGS, null, null, true));
   }
 
   /** Verifies ldapbindpasswd redaction for various password shapes and API JSON responses. */

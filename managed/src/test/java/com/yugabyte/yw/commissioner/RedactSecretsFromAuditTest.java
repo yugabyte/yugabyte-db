@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
@@ -82,7 +83,7 @@ public class RedactSecretsFromAuditTest extends FakeDBApplication {
     try (MockedStatic<RedactingService> redacting =
         mockStatic(RedactingService.class, CALLS_REAL_METHODS)) {
       redacting
-          .when(() -> RedactingService.redactAuditGFlagChanges(failingChange))
+          .when(() -> RedactingService.filterSecretFields(failingChange, RedactionTarget.LOGS))
           .thenThrow(new RuntimeException("injected"));
       runRedaction();
     }

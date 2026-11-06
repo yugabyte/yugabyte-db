@@ -26,8 +26,8 @@ import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
 /**
- * Scheduled task that redacts secrets from audit payloads and from the gflag changes in their
- * additional details. Each run processes all pending audit entries batch-wise until no more
+ * Scheduled task that redacts secrets from audit payloads, and from additional details that name an
+ * LDAP password gflag. Each run processes all pending audit entries batch-wise until no more
  * batches. Uses an in-memory cursor (resets on restart). Already redacted rows are skipped (no
  * update). Migration checksum is used to determine if redaction is needed and to avoid re-redacting
  * already redacted.
@@ -125,7 +125,7 @@ public class RedactSecretsFromAudit {
       if (batch.isEmpty()) {
         return;
       }
-      Set<Long> unredactedIds = redactGFlagChangesInAdditionalDetails(batch);
+      Set<Long> unredactedIds = redactAdditionalDetails(batch);
       long currentMaxId = lastProcessedId;
       List<Audit> toUpdate = new ArrayList<>();
       for (Audit audit : batch) {
@@ -159,27 +159,28 @@ public class RedactSecretsFromAudit {
   }
 
   /**
-   * Redacts the LDAP passwords (ycql_ldap_bind_passwd, and ldapbindpasswd in ysql_hba_conf_csv)
-   * that audit entries written by older versions hold in plain text in the gflag changes in
-   * additionalDetails. Reads the column with plain SQL for the reason given on {@link #redact()}.
-   * Returns the ids of the entries whose additionalDetails it failed to parse or update; they must
-   * stay unmarked so that the job retries them once the cursor resets. The gflag redaction logs and
-   * swallows its own errors, so those never leave an entry unmarked.
+   * Redacts the additionalDetails that name ycql_ldap_bind_passwd or ldapbindpasswd (in
+   * ysql_hba_conf_csv), whose values older versions stored in plain text in the gflag changes.
+   * Reads the column with plain SQL for the reason given on {@link #redact()}. Returns the ids of
+   * the entries whose additionalDetails it failed to parse, redact or update; they must stay
+   * unmarked so that the job retries them once the cursor resets. Errors the redaction logs and
+   * swallows itself don't count.
    */
-  private Set<Long> redactGFlagChangesInAdditionalDetails(List<Audit> batch) {
+  private Set<Long> redactAdditionalDetails(List<Audit> batch) {
     Set<Long> unredactedIds = new HashSet<>();
     List<Long> ids = batch.stream().map(Audit::getId).toList();
     List<SqlRow> rows =
         DB.sqlQuery(
-                "SELECT id, additional_details FROM audit"
-                    + " WHERE id IN (:ids) AND additional_details IS NOT NULL")
+                "SELECT id, additional_details FROM audit WHERE id IN (:ids)"
+                    + " AND (additional_details LIKE '%ycql_ldap_bind_passwd%'"
+                    + " OR additional_details LIKE '%ldapbindpasswd%')")
             .setParameter("ids", ids)
             .findList();
     for (SqlRow row : rows) {
       Long id = row.getLong("id");
       try {
         JsonNode details = Json.parse(row.getString("additional_details"));
-        JsonNode redacted = RedactingService.redactAuditGFlagChanges(details);
+        JsonNode redacted = redactingService.filterSecretFields(details, RedactionTarget.LOGS);
         if (!details.equals(redacted)) {
           DB.sqlUpdate("UPDATE audit SET additional_details = :details WHERE id = :id")
               .setParameter("details", Json.stringify(redacted))
