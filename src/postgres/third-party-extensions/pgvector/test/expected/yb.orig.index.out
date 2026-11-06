@@ -339,8 +339,24 @@ DROP TABLE items;
 -- ALTER COLUMN TYPE is rejected on a column used by a ybhnsw index (#36753),
 -- whether or not it rewrites the table.
 CREATE TABLE items (id int PRIMARY KEY, embedding vector(3));
+-- Before the index exists, the ALTER works.
+ALTER TABLE items ALTER COLUMN embedding TYPE vector;
+ALTER TABLE items ALTER COLUMN embedding TYPE vector(3);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 CREATE INDEX items_idx ON items USING ybhnsw (embedding vector_l2_ops);
+-- Once the index exists, the ALTER is rejected, on the empty table...
+ALTER TABLE items ALTER COLUMN embedding TYPE vector;
+ERROR:  cannot alter type of a column used by a vector index
+DETAIL:  index items_idx depends on column "embedding"
+HINT:  Drop the index first, or add a new column with the new type.
+ALTER TABLE items ALTER COLUMN embedding TYPE vector(4);
+ERROR:  cannot alter type of a column used by a vector index
+DETAIL:  index items_idx depends on column "embedding"
+HINT:  Drop the index first, or add a new column with the new type.
 INSERT INTO items VALUES (1, '[1, 1, 1]'), (2, '[2, 2, 2]'), (3, '[3, 3, 3]');
+-- ...and with rows.
 ALTER TABLE items ALTER COLUMN embedding TYPE vector;
 ERROR:  cannot alter type of a column used by a vector index
 DETAIL:  index items_idx depends on column "embedding"

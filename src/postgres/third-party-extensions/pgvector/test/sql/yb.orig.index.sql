@@ -106,8 +106,15 @@ DROP TABLE items;
 -- ALTER COLUMN TYPE is rejected on a column used by a ybhnsw index (#36753),
 -- whether or not it rewrites the table.
 CREATE TABLE items (id int PRIMARY KEY, embedding vector(3));
+-- Before the index exists, the ALTER works.
+ALTER TABLE items ALTER COLUMN embedding TYPE vector;
+ALTER TABLE items ALTER COLUMN embedding TYPE vector(3);
 CREATE INDEX items_idx ON items USING ybhnsw (embedding vector_l2_ops);
+-- Once the index exists, the ALTER is rejected, on the empty table...
+ALTER TABLE items ALTER COLUMN embedding TYPE vector;
+ALTER TABLE items ALTER COLUMN embedding TYPE vector(4);
 INSERT INTO items VALUES (1, '[1, 1, 1]'), (2, '[2, 2, 2]'), (3, '[3, 3, 3]');
+-- ...and with rows.
 ALTER TABLE items ALTER COLUMN embedding TYPE vector;
 ALTER TABLE items ALTER COLUMN embedding TYPE vector(4);
 ALTER TABLE items ALTER COLUMN embedding TYPE vector(3);
