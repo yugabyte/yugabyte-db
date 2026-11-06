@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { DatePicker } from 'react-widgets';
+import { DateTimePicker } from 'react-widgets';
 
 import './DateRangePicker.scss';
+
+export const DATE_FORMAT = 'YYYY-MM-DD HH:mm:ss';
 
 export const CustomDateRangePicker = ({ onRangeChange }) => {
   const yesterday = new Date();
@@ -21,18 +23,21 @@ export const CustomDateRangePicker = ({ onRangeChange }) => {
 
   return (
     <span className="support-bundle-custom-date-range">
-      <DatePicker
-        placeholder="yyyy-MM-DD"
+      <DateTimePicker
+        placeholder="Pick a start time"
+        step={10}
         defaultValue={yesterday}
+        formats={DATE_FORMAT}
         onChange={handleStartDateTimeChange}
         max={new Date()}
       />
       &ndash;
-      <DatePicker
-        placeholder="yyyy-MM-DD"
+      <DateTimePicker
+        placeholder="Pick an end time"
         defaultValue={new Date()}
         onChange={handleEndDateTimeChange}
         max={new Date()}
+        formats={DATE_FORMAT}
         min={localStartDate}
       />
     </span>
