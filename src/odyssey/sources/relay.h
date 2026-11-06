@@ -472,6 +472,13 @@ static inline od_frontend_status_t od_relay_step(od_relay_t *relay)
 	/* on read event */
 	int rc;
 	if (machine_cond_try(relay->src->on_read)) {
+		/*
+		 * YB: Upstream reads here with od_relay_read_pending_aware()
+		 * (odyssey 535a27e), which also signals on_read when the
+		 * readahead is full but the io still has pending bytes (e.g. TLS
+		 * data buffered by OpenSSL), so that they are not left unread.
+		 * That is not ported here yet, so plain od_relay_read() is used.
+		 */
 		rc = od_relay_read(relay);
 		if (rc != OD_OK)
 			return rc;
