@@ -472,16 +472,11 @@ static inline od_frontend_status_t od_relay_step(od_relay_t *relay)
 	/* on read event */
 	int rc;
 	if (machine_cond_try(relay->src->on_read)) {
-		if (relay->dst == NULL) {
-			/*
-			 * YB: Upstream reads the client data into readahead before
-			 * this point. Read it here, so that the next packet type can
-			 * be checked. It is relayed from readahead once attached.
-			 */
-			rc = od_relay_read(relay);
-			if (rc != OD_OK)
-				return rc;
+		rc = od_relay_read(relay);
+		if (rc != OD_OK)
+			return rc;
 
+		if (relay->dst == NULL) {
 			/* signal to retry on read logic */
 			machine_cond_signal(relay->src->on_read);
 
@@ -495,10 +490,6 @@ static inline od_frontend_status_t od_relay_step(od_relay_t *relay)
 
 			return OD_ATTACH;
 		}
-
-		rc = od_relay_read(relay);
-		if (rc != OD_OK)
-			return rc;
 
 		rc = od_relay_pipeline(relay);
 

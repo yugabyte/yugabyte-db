@@ -14,6 +14,7 @@
 package org.yb.ysqlconnmgr;
 
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertNull;
 import static org.yb.AssertionWrappers.assertTrue;
 
 import com.google.gson.JsonObject;
@@ -22,6 +23,7 @@ import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -47,6 +49,7 @@ import org.yb.util.RequiresLinux;
 public class TestNoAttachOnClientTerminate extends BaseYsqlConnMgr {
   private static final int NUM_CLIENTS = 20;
   private static final long DRAIN_TIMEOUT_MS = 30000;
+  private static final long LOG_WAIT_SECS = 5;
   private static final String CLIENT_ATTACH_REGEX = "client \\S+ attached to \\S+";
 
   @Override
@@ -94,10 +97,13 @@ public class TestNoAttachOnClientTerminate extends BaseYsqlConnMgr {
       conn.close();
     }
 
-    // The client is attached (if at all) before it is freed, so once all
-    // logical connections are gone any such attach is already logged.
     TestUtils.waitFor(() -> getLogicalConns() == 0, DRAIN_TIMEOUT_MS);
 
-    tailer.assertNoMatch(CLIENT_ATTACH_REGEX);
+    // Odyssey writes log lines asynchronously through its logger task, so an
+    // attach done just before a client was freed may not have reached the
+    // tailer yet. Wait a bounded time for it instead of checking once.
+    String attach = tailer.waitForLogRegex(
+        CLIENT_ATTACH_REGEX, LOG_WAIT_SECS, TimeUnit.SECONDS);
+    assertNull("Server attached to a client that sent Terminate: " + attach, attach);
   }
 }
