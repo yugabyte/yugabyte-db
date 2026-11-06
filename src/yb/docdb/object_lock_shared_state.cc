@@ -19,6 +19,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/flags.h"
 #include "yb/util/crash_point.h"
+#include "yb/util/logging.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/shmem/annotations.h"
 #include "yb/util/shmem/robust_mutex.h"
@@ -30,11 +31,12 @@ DEFINE_RUNTIME_uint64(object_lock_fastpath_buffer_size, 256,
     "created after changing the flag.");
 
 DEFINE_RUNTIME_bool(object_lock_fastpath_skip_duplicate_requests, true,
-    "When true, a shared memory fastpath object lock request that is identical to one already "
-    "pending in the session's fastpath buffer is not added again. Postgres re-requests a lock "
-    "each time it re-opens a relation within a transaction, so without this, catalog heavy "
-    "statements can exhaust object_lock_fastpath_buffer_size with duplicates. Changes to this "
-    "flag will only apply to postgres sessions created after changing the flag.");
+    "When true, a shared memory fastpath object lock request is not added to the session's "
+    "fastpath buffer if a request for the same object, lock type and subtransaction is already "
+    "pending. Postgres re-requests a lock each time it re-opens a relation within a transaction, "
+    "so without this, catalog heavy statements can exhaust object_lock_fastpath_buffer_size with "
+    "duplicates. Changes to this flag will only apply to postgres sessions created after changing "
+    "the flag.");
 
 namespace yb::docdb {
 
@@ -47,13 +49,6 @@ struct FastpathLockRequestEntry {
 };
 
 YB_DEFINE_ENUM(FastpathLockResult, (kAdded)(kDuplicate)(kBufferFull)(kFastpathUnusable));
-
-// Whether the two requests are for the same lock, ignoring subtxn_id.
-bool IsSameLock(const ObjectLockFastpathRequest& lhs, const ObjectLockFastpathRequest& rhs) {
-  return lhs.database_oid == rhs.database_oid && lhs.relation_oid == rhs.relation_oid &&
-         lhs.object_oid == rhs.object_oid && lhs.object_sub_oid == rhs.object_sub_oid &&
-         lhs.lock_type == rhs.lock_type;
-}
 
 class PendingLockRequests {
  public:
@@ -69,8 +64,9 @@ class PendingLockRequests {
       const ObjectLockFastpathRequest& request, size_t accounting_lock_count) {
     size_t index = SHARED_MEMORY_LOAD(next_);
     if (skip_duplicates_ && HasPendingRequest(request, index)) {
-      // Any request in the pending shared locks should be active both transaction finish and subtxn
-      // rollback consume/drop the pending requests.
+      // A pending request for the same lock and subtransaction is released together with the new
+      // one, so the new one adds nothing. Redundant acquires are not counted by ObjectLockManager
+      // either, so skip metrics accounting too.
       return FastpathLockResult::kDuplicate;
     }
     if (index >= buffer_size_) {
@@ -138,7 +134,7 @@ class PendingLockRequests {
   bool HasPendingRequest(const ObjectLockFastpathRequest& request, size_t end) const {
     // Scan backwards since repeated requests for the same lock tend to be close together.
     for (size_t i = end; i > 0; --i) {
-      if (IsSameLock(requests_[i - 1].request, request)) {
+      if (requests_[i - 1].request == request) {
         return true;
       }
     }
@@ -454,9 +450,10 @@ class ObjectLockSharedState::Impl {
         VLOG_WITH_FUNC(1) << AsString(request) << ": skipped duplicate request";
         break;
       case FastpathLockResult::kBufferFull:
-        LOG(WARNING) << AsString(request) << ": too many active fastpath requests, consider "
-                     << "increasing object_lock_fastpath_buffer_size (current value: "
-                     << FLAGS_object_lock_fastpath_buffer_size << ")";
+        YB_LOG_EVERY_N_SECS(WARNING, 60)
+            << AsString(request) << ": too many active fastpath requests, consider increasing "
+            << "object_lock_fastpath_buffer_size (current value: "
+            << FLAGS_object_lock_fastpath_buffer_size << ")";
         break;
       case FastpathLockResult::kFastpathUnusable:
         LOG(DFATAL) << "Unexpected result from AddLockRequest: " << AsString(result);

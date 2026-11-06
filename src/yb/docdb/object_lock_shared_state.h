@@ -60,6 +60,8 @@ struct ObjectLockFastpathRequest {
   uint32_t object_sub_oid;
   ObjectLockFastpathLockType lock_type;
 
+  bool operator==(const ObjectLockFastpathRequest&) const = default;
+
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
         subtxn_id, database_oid, relation_oid, object_oid, object_sub_oid, lock_type);

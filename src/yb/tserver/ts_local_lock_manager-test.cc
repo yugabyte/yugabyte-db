@@ -50,6 +50,7 @@ DECLARE_bool(TEST_olm_skip_scheduling_waiter_resumption);
 DECLARE_bool(TEST_olm_skip_sending_wait_for_probes);
 DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_bool(enable_ysql);
+DECLARE_bool(object_lock_fastpath_skip_duplicate_requests);
 
 DECLARE_uint64(object_lock_fastpath_buffer_size);
 
@@ -82,6 +83,7 @@ constexpr auto kDatabase2 = 2;
 constexpr auto kObject1 = 1;
 constexpr auto kObject2 = 2;
 constexpr auto kObject3 = 3;
+constexpr auto kObject4 = 4;
 constexpr uint32_t kDefaultObjectId = 0;
 constexpr uint32_t kDefaultObjectSubId = 0;
 constexpr auto kDefaultTestStatusTabletId = "test_status_tablet";
@@ -1393,6 +1395,74 @@ TEST_F(TSLocalLockManagerTest, TestFastpathOverflow) {
   ASSERT_OK(ReleaseLocksForOwner(kTxn1));
 }
 
+// A fastpath request for a lock already pending for the same subtransaction is skipped, so it
+// doesn't use up the buffer.
+TEST_F(TSLocalLockManagerTest, TestFastpathSkipsDuplicateRequests) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_object_lock_fastpath_buffer_size) = 1;
+
+  auto txn1 = ASSERT_RESULT(RegisterTransaction(kTxn1.txn_id));
+  ASSERT_TRUE(LockRelationPgFastpath(
+      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject1,
+      ObjectLockFastpathLockType::kAccessShare));
+  // Duplicates of the pending request succeed even though the buffer is full.
+  for (int i = 0; i < 3; ++i) {
+    ASSERT_TRUE(LockRelationPgFastpath(
+        kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject1,
+        ObjectLockFastpathLockType::kAccessShare));
+  }
+  // A different lock type, or the same lock from another subtransaction, needs its own entry.
+  ASSERT_FALSE(LockRelationPgFastpath(
+      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject1,
+      ObjectLockFastpathLockType::kRowExclusive));
+  ASSERT_FALSE(LockRelationPgFastpath(
+      kTxn1.txn_id, kTxn1.subtxn_id + 1, kDatabase1, kObject1,
+      ObjectLockFastpathLockType::kAccessShare));
+  ASSERT_TRUE(ReleaseLocksPgFastpath(kTxn1.txn_id));
+
+  // With the flag off, every request takes a slot.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_object_lock_fastpath_skip_duplicate_requests) = false;
+  auto txn2 = ASSERT_RESULT(RegisterTransaction(kTxn2.txn_id));
+  ASSERT_TRUE(LockRelationPgFastpath(
+      kTxn2.txn_id, kTxn2.subtxn_id, kDatabase1, kObject1,
+      ObjectLockFastpathLockType::kAccessShare));
+  ASSERT_FALSE(LockRelationPgFastpath(
+      kTxn2.txn_id, kTxn2.subtxn_id, kDatabase1, kObject1,
+      ObjectLockFastpathLockType::kAccessShare));
+  ASSERT_TRUE(ReleaseLocksPgFastpath(kTxn2.txn_id));
+}
+
+// A redundant slow path acquire, as sent by a session whose fastpath buffer is full, drains the
+// buffer so that later requests can use the fastpath again.
+TEST_F(TSLocalLockManagerTest, TestRedundantLockDrainsFastpathBuffer) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_object_lock_fastpath_buffer_size) = 1;
+
+  auto txn1 = ASSERT_RESULT(RegisterTransaction(kTxn1.txn_id));
+  ASSERT_TRUE(LockRelationTServerFastpath(
+      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject1,
+      ObjectLockFastpathLockType::kRowShare));
+  // A non-redundant slow path acquire drains kObject1 into the lock manager.
+  ASSERT_OK(LockRelation(
+      kTxn1, kDatabase1, kObject2, TableLockType::ROW_SHARE, /*deadline=*/{}));
+
+  // Fill the buffer again.
+  ASSERT_TRUE(LockRelationTServerFastpath(
+      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject3,
+      ObjectLockFastpathLockType::kRowShare));
+  ASSERT_FALSE(LockRelationTServerFastpath(
+      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject4,
+      ObjectLockFastpathLockType::kRowShare));
+
+  // kObject1 is already held in the lock manager, so this acquire is redundant.
+  ASSERT_OK(LockRelation(
+      kTxn1, kDatabase1, kObject1, TableLockType::ROW_SHARE, /*deadline=*/{}));
+
+  // The redundant acquire drained the buffer.
+  ASSERT_TRUE(LockRelationTServerFastpath(
+      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject4,
+      ObjectLockFastpathLockType::kRowShare));
+
+  ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+}
 
 // A release naming specific objects leaves the subtxn's other locks held, so it must keep the
 // subtxn's tracked acquire deadline. Otherwise the later release-all of the subtxn finds no
