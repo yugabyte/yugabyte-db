@@ -1412,6 +1412,13 @@ typedef struct
 	YbCatalogMessageList *committed_pg_txn_messages;
 	bool		force_send_inval_messages;
 	YbUserIdAndSecContext userid_and_sec_context;
+
+	/*
+	 * Whether this transaction-block DDL consumed
+	 * yb_force_catalog_update_on_next_ddl. PgGate drops its DDL state on a
+	 * transaction restart, so the force must be re-applied after it.
+	 */
+	bool		force_catalog_modification;
 } YbDdlTransactionState;
 
 static YbDdlTransactionState ddl_transaction_state = {0};
@@ -2813,6 +2820,23 @@ YbTrackAlteredTableId(Oid relid)
 	MemoryContextSwitchTo(oldcontext);
 }
 
+/*
+ * yb_force_catalog_update_on_next_ddl forces only the next DDL, so the DDL
+ * that reads it also resets it.
+ */
+static bool
+YbConsumeForceCatalogUpdateOnNextDdl()
+{
+	if (!yb_force_catalog_update_on_next_ddl)
+		return false;
+
+	yb_force_catalog_update_on_next_ddl = false;
+	if (YbIsClientYsqlConnMgr())
+		YbSendParameterStatusForConnectionManager("yb_force_catalog_update_on_next_ddl",
+												  "false");
+	return true;
+}
+
 void
 YBIncrementDdlNestingLevel(YbDdlMode mode)
 {
@@ -2838,14 +2862,8 @@ YBIncrementDdlNestingLevel(YbDdlMode mode)
 		ddl_transaction_state.use_regular_txn_block = false;
 		HandleYBStatus(YBCPgEnterSeparateDdlTxnMode());
 
-		if (yb_force_catalog_update_on_next_ddl)
-		{
+		if (YbConsumeForceCatalogUpdateOnNextDdl())
 			YBCDdlEnableForceCatalogModification();
-			yb_force_catalog_update_on_next_ddl = false;
-			if (YbIsClientYsqlConnMgr())
-				YbSendParameterStatusForConnectionManager("yb_force_catalog_update_on_next_ddl",
-														  "false");
-		}
 		YbMaybeLockMasterCatalogVersion();
 	}
 
@@ -2886,7 +2904,11 @@ YBAddDdlTxnState(YbDdlMode mode)
 		 * again because it has been reset.
 		 */
 		if (!YBCPgIsDdlMode())
+		{
 			HandleYBStatus(YBCPgSetDdlStateInPlainTransaction());
+			if (ddl_transaction_state.force_catalog_modification)
+				YBCDdlEnableForceCatalogModification();
+		}
 		return;
 	}
 
@@ -2904,6 +2926,10 @@ YBAddDdlTxnState(YbDdlMode mode)
 							  "aux ddl memory context",
 							  ALLOCSET_DEFAULT_SIZES);
 	HandleYBStatus(YBCPgSetDdlStateInPlainTransaction());
+	ddl_transaction_state.force_catalog_modification =
+		YbConsumeForceCatalogUpdateOnNextDdl();
+	if (ddl_transaction_state.force_catalog_modification)
+		YBCDdlEnableForceCatalogModification();
 	ddl_transaction_state.use_regular_txn_block = true;
 	ddl_transaction_state.catalog_modification_aspects.pending |= mode;
 	YbMaybeLockMasterCatalogVersion();
