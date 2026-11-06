@@ -197,7 +197,8 @@ struct TierReconcileResult {
   size_t candidates = 0;
   // Moves this pass scheduled.
   size_t scheduled = 0;
-  // status.state differs from what it was before the pass.
+  // The pass's verdict changed status.state. A change made under the pass by
+  // SetTierMigrationTarget is not counted: that call reports its own.
   bool state_changed = false;
   // The target changed between the scan and the verdict on it, so the scan was discarded: nothing
   // scheduled, nothing declared, candidates reported as 0. The next pass works on the new target.
@@ -1416,7 +1417,7 @@ class Tablet : public AbstractTablet,
 
   // Tiered storage: TierMigrationHooks::tier_state_changed, when there is one. Never call it
   // with tier_migration_mutex_ or tier_target_mutex_ held: the hook takes the tablet manager's
-  // lock, and the tablet report calls GetTierInfo, which takes tier_migration_mutex_.
+  // lock, which must not nest under a tablet's locks.
   void NotifyTierStateChanged();
 
   // Opens read-only rocksdb at the specified directory and checks for any file corruption.

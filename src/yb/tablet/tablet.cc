@@ -5270,7 +5270,6 @@ Result<TierReconcileResult> Tablet::DoRunTierMigrationPass(
     return result;
   }
 
-  auto state_before = State::kNone;
   {
     std::lock_guard lock(tier_migration_mutex_);
     auto& status = tier_migration_status_;
@@ -5284,7 +5283,6 @@ Result<TierReconcileResult> Tablet::DoRunTierMigrationPass(
       return result;
     }
     status.pass_in_flight = true;
-    state_before = status.state;
   }
 
   auto candidates = CollectTierMigrationCandidates(target_dir);
@@ -5295,12 +5293,15 @@ Result<TierReconcileResult> Tablet::DoRunTierMigrationPass(
   {
     std::lock_guard lock(tier_migration_mutex_);
     auto& status = tier_migration_status_;
+    // state_changed is measured against the state the verdict replaces, not the one the pass
+    // started from: a same-target AlterTabletTier during the scan sets kInProgress and reports
+    // it, and the verdict that restores kDone has to be reported too.
+    const auto state_before = status.state;
     // The target may have changed since the scan started, so the candidates are no longer valid.
     if (metadata()->target_tier_path_id() != target_path_id) {
       status.pass_in_flight = false;
       result.candidates = 0;
       result.target_changed = true;
-      result.state_changed = status.state != state_before;
       result.status = status;
       return result;
     }

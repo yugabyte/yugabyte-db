@@ -524,7 +524,9 @@ TEST_F(TierMigrationTest, TargetChangeDuringScanIsAppliedByNextPass) {
   result = ASSERT_RESULT(tablet()->RunTierReconcilePass(TierReconcileOptions()));
   ASSERT_FALSE(switch_to);
   ASSERT_TRUE(result.target_changed);
-  ASSERT_TRUE(result.state_changed);  // kDone -> kInProgress, by SetTierMigrationTarget
+  // kDone -> kInProgress was SetTierMigrationTarget's change, and it reported it; this pass
+  // changed nothing.
+  ASSERT_FALSE(result.state_changed);
   ASSERT_EQ(result.status.state, TierMigrationStatus::State::kInProgress);
   ASSERT_EQ(tablet()->tier_migration_status().state, TierMigrationStatus::State::kInProgress);
 
@@ -535,6 +537,51 @@ TEST_F(TierMigrationTest, TargetChangeDuringScanIsAppliedByNextPass) {
   ASSERT_EQ(SstCountOnPath(info, kDecoyPathId), 0u);
   result = ASSERT_RESULT(tablet()->RunTierReconcilePass(TierReconcileOptions()));
   ASSERT_EQ(result.status.state, TierMigrationStatus::State::kDone);
+}
+
+// A same-target AlterTabletTier lands between a reconciler pass's scan and its verdict. The
+// re-assert puts the converged tablet back to kInProgress and reports it; the verdict then restores
+// kDone and must report that too, so it is measured against the state it replaces, not the one the
+// pass started from. Against the latter it reads kDone -> kDone, nothing fires, and the master
+// keeps IN_PROGRESS for a converged tablet until something unrelated re-reports it.
+TEST_F(TierMigrationTest, SameTargetReassertDuringScanIsReportedWithVerdict) {
+  std::atomic<int> state_changes{0};
+  tablet()->TEST_SetTierMigrationHooks(std::make_shared<TierMigrationHooks>(TierMigrationHooks{
+      .files_moved = nullptr,
+      .files_failed = nullptr,
+      .wake_reconciler = {},
+      .tier_state_changed = [&state_changes](const TabletId&) { ++state_changes; },
+  }));
+  WriteFileWithKey(1);
+  ASSERT_OK(tablet()->SetTierMigrationTarget("hdd", kTargetPathId));
+  ASSERT_EQ(state_changes.load(), 1);  // kNone -> kInProgress
+
+  // Converge: the first pass moves the file, the next one finds nothing and declares kDone.
+  auto result = ASSERT_RESULT(tablet()->RunTierReconcilePass(TierReconcileOptions()));
+  ASSERT_EQ(result.scheduled, 1u);
+  ASSERT_RESULT(WaitForPassToFinish());
+  result = ASSERT_RESULT(tablet()->RunTierReconcilePass(TierReconcileOptions()));
+  ASSERT_EQ(result.status.state, TierMigrationStatus::State::kDone);
+  ASSERT_EQ(state_changes.load(), 2);  // kInProgress -> kDone
+
+  // Re-asserts the same target once, from inside the next pass, right after its scan. The pass
+  // it tries to start finds this one in flight and only reports the status.
+  bool reassert = true;
+  yb::SyncPoint::GetInstance()->SetCallBack(
+      "Tablet::RunTierMigrationPass:AfterScan", [this, &reassert](void*) {
+        if (reassert) {
+          reassert = false;
+          ASSERT_RESULT(tablet()->AlterTabletTier("hdd", kTargetPathId));
+        }
+      });
+  yb::SyncPoint::GetInstance()->EnableProcessing();
+
+  result = ASSERT_RESULT(tablet()->RunTierReconcilePass(TierReconcileOptions()));
+  ASSERT_FALSE(reassert);
+  ASSERT_FALSE(result.target_changed);
+  ASSERT_EQ(result.status.state, TierMigrationStatus::State::kDone);
+  ASSERT_TRUE(result.state_changed);  // the re-assert's kInProgress -> kDone
+  ASSERT_EQ(state_changes.load(), 4);  // the re-assert, then the verdict
 }
 
 // A pass that leaves a busy file behind does not wake the reconciler: the file is waiting on its
