@@ -142,7 +142,7 @@ TEST_F(CrcTest, ImplementationsMatchCrcutil) {
   }
 
   // Every variant of the abseil engine, not only the one this CPU model gets.
-  for (const auto& variant : internal::NewAbseilEnginesForTests()) {
+  for (const auto& variant : internal::TEST_NewAbseilEngines()) {
     const auto& engine = *variant.engine;
     ASSERT_NO_FATALS(CheckMatchesCrcutil(
         variant.name,

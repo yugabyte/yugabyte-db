@@ -34,8 +34,8 @@ const std::vector<Crc32cImplementation>& Crc32cImplementations();
 
 namespace internal {
 
-// Copied from Abseil, see crc32c/. The engine is compiled for the CPU features it needs, so it may
-// be used only after checking that the CPU has them.
+// Copied from Abseil, see crc32c/. The engine is compiled for CPU features beyond the baseline, and
+// the functions below create only the variants that this CPU can run.
 
 class Crc32cEngine {
  public:
@@ -45,8 +45,7 @@ class Crc32cEngine {
   virtual void Extend(uint32_t* crc, const void* bytes, size_t length) const = 0;
 };
 
-// Needs SSE4.2, PCLMULQDQ and AVX on x86_64. Checks the other features it uses itself, CRC32 and
-// PMULL on aarch64 among them. Returns nullptr when the implementation is not available.
+// Returns the variant tuned for this CPU, or nullptr when the CPU lacks the features it needs.
 Crc32cEngine* TryNewCRC32AcceleratedX86ARMCombined();
 
 struct NamedCrc32cEngine {
@@ -55,7 +54,7 @@ struct NamedCrc32cEngine {
 };
 
 // Every variant of the engine above that this CPU can run, so tests can check all of them.
-std::vector<NamedCrc32cEngine> NewAbseilEnginesForTests();
+std::vector<NamedCrc32cEngine> TEST_NewAbseilEngines();
 
 } // namespace internal
 } // namespace yb::crc

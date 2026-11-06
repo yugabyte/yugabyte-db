@@ -74,18 +74,7 @@ uint32_t AbseilExtend(uint32_t crc, const void* data, size_t length) {
 
 std::vector<Crc32cImplementation> DetectImplementations() {
   std::vector<Crc32cImplementation> result;
-#if defined(__x86_64__)
-  __builtin_cpu_init();
-  // The engine's PCLMULQDQ paths are compiled with AVX.
-  const bool try_abseil = __builtin_cpu_supports("sse4.2") && __builtin_cpu_supports("pclmul") &&
-                          __builtin_cpu_supports("avx");
-#else
-  // Checks the CPU features itself.
-  const bool try_abseil = true;
-#endif
-  if (try_abseil) {
-    abseil_engine = internal::TryNewCRC32AcceleratedX86ARMCombined();
-  }
+  abseil_engine = internal::TryNewCRC32AcceleratedX86ARMCombined();
   if (abseil_engine) {
     result.push_back({"abseil", &AbseilExtend});
   }

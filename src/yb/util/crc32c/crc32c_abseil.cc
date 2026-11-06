@@ -31,12 +31,12 @@
 // absl/crc/internal/crc_x86_arm_combined.cc, crc32_x86_arm_combined_simd.h and crc32c_inline.h
 // (Abseil master 921be849a0 of 2026-11-05), because the prebuilt Abseil library is older and
 // compiled without the CPU features this code needs. Here the code is compiled for them with target
-// attributes, so callers check that the CPU has them first. The code lives in the yb namespace, so
-// it does not clash with the Abseil symbols, and Extend also handles the short inputs that
-// absl::ExtendCrc32c() handles before calling it. Unknown x86 CPUs with VPCLMULQDQ get the Ice Lake
-// tuning instead of the one for CPUs with slow PCLMULQDQ, and CPU models whose tuning needs
-// features the CPU does not report get the tuning of a similar model, see AdjustForMissingFeatures.
-// NewAbseilEnginesForTests is added at the end.
+// attributes, so TryNewCRC32AcceleratedX86ARMCombined checks that the CPU has them first. The code
+// lives in the yb namespace, so it does not clash with the Abseil symbols, and Extend also handles
+// the short inputs that absl::ExtendCrc32c() handles before calling it. Unknown x86 CPUs with
+// VPCLMULQDQ get the Ice Lake tuning instead of the one for CPUs with slow PCLMULQDQ, and CPU
+// models whose tuning needs features the CPU does not report get the tuning of a similar model, see
+// AdjustForMissingFeatures. TEST_NewAbseilEngines is added at the end.
 
 #include <cassert>
 #include <cstddef>
@@ -86,7 +86,9 @@
 #endif
 
 #if defined(ABSL_INTERNAL_CAN_FORCE_AVX)
-#define ABSL_INTERNAL_ATTRIBUTE_AVX [[gnu::target("avx")]]
+// A target attribute replaces the target of the pragma region below, so it repeats its
+// features.
+#define ABSL_INTERNAL_ATTRIBUTE_AVX [[gnu::target("avx,sse4.2,pclmul")]]
 #else
 #define ABSL_INTERNAL_ATTRIBUTE_AVX
 #endif
@@ -118,6 +120,11 @@ using absl::crc_internal::RoundUp;
 #else
 #pragma GCC push_options
 #pragma GCC target("+crc+crypto")
+#endif
+#if !defined(__clang__)
+// PclmulProduct passes the vector types to std::conditional_t, which drops their attributes.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wignored-attributes"
 #endif
 
 namespace {
@@ -1514,7 +1521,8 @@ class CRC32AcceleratedX86ARMCombinedMultipleStreams
       PclmulStream(V128* partialCRC) const {
     if constexpr (pclmul_stream_type == PclmulStreamType::NONE ||
                   (kIsVpclmul && kVpclmulBytes == 0)) {
-      return {};
+      // GCC does not convert {} to the vector type.
+      return PclmulProduct<kVpclmulBytes>();
     } else if constexpr (kIsVpclmul && kVpclmulBytes == 32) {
       return Pclmul32BytesVpclmul(reinterpret_cast<V256*>(partialCRC));
     } else {
@@ -1627,12 +1635,20 @@ class CRC32AcceleratedX86ARMCombinedMultipleStreams
 #if defined(__clang__)
 #pragma clang attribute pop
 #else
+#pragma GCC diagnostic pop
 #pragma GCC pop_options
 #endif
 
 namespace {
 
 #if defined(__x86_64__)
+// Every x86 engine needs SSE4.2 and PCLMULQDQ, and its PCLMULQDQ code is compiled with AVX.
+bool SupportsX86Engine() {
+  __builtin_cpu_init();
+  return __builtin_cpu_supports("sse4.2") && __builtin_cpu_supports("pclmul") &&
+         __builtin_cpu_supports("avx");
+}
+
 // The VPCLMUL engines need AVX2 and VPCLMULQDQ.
 bool SupportsVpclmul() {
   __builtin_cpu_init();
@@ -1700,6 +1716,11 @@ CpuType AdjustForMissingFeatures(CpuType type) {
 // Intel processors with SSE4.2 have an instruction for one particular
 // 32-bit CRC polynomial:  crc32c
 Crc32cEngine* TryNewCRC32AcceleratedX86ARMCombined() {
+#if defined(__x86_64__)
+  if (!SupportsX86Engine()) {
+    return nullptr;
+  }
+#endif
   CpuType type = AdjustForMissingFeatures(GetCpuType());
   switch (type) {
     case CpuType::kIntelHaswell:
@@ -1787,7 +1808,6 @@ Crc32cEngine* TryNewCRC32AcceleratedX86ARMCombined() {
     default:
       // VPCLMULQDQ first shipped on Ice Lake and Zen 3, and every CPU with it has fast PCLMULQDQ,
       // so the CPUs that have it and are not listed above get the Ice Lake tuning.
-      __builtin_cpu_init();
       if (__builtin_cpu_supports("vpclmulqdq")) {
         return new CRC32AcceleratedX86ARMCombinedMultipleStreams<
             3, 3, PclmulStreamType::PCLMUL>();
@@ -1803,44 +1823,42 @@ namespace {
 
 template <size_t num_crc_streams, size_t num_pclmul_streams,
           PclmulStreamType pclmul_stream_type>
-void AddEngineForTests(const char* name, std::vector<NamedCrc32cEngine>* engines) {
+void AddTestEngine(const char* name, std::vector<NamedCrc32cEngine>* engines) {
   engines->push_back({name, std::make_unique<CRC32AcceleratedX86ARMCombinedMultipleStreams<
       num_crc_streams, num_pclmul_streams, pclmul_stream_type>>()});
 }
 
 }  // namespace
 
-std::vector<NamedCrc32cEngine> NewAbseilEnginesForTests() {
+std::vector<NamedCrc32cEngine> TEST_NewAbseilEngines() {
   std::vector<NamedCrc32cEngine> result;
 #if defined(__x86_64__)
-  __builtin_cpu_init();
-  if (!__builtin_cpu_supports("sse4.2") || !__builtin_cpu_supports("pclmul") ||
-      !__builtin_cpu_supports("avx")) {
+  if (!SupportsX86Engine()) {
     return result;
   }
-  AddEngineForTests<3, 0, PclmulStreamType::NONE>("abseil<3, 0, NONE>", &result);
-  AddEngineForTests<3, 1, PclmulStreamType::PCLMUL>("abseil<3, 1, PCLMUL>", &result);
-  AddEngineForTests<3, 2, PclmulStreamType::PCLMUL>("abseil<3, 2, PCLMUL>", &result);
-  AddEngineForTests<3, 3, PclmulStreamType::PCLMUL>("abseil<3, 3, PCLMUL>", &result);
+  AddTestEngine<3, 0, PclmulStreamType::NONE>("abseil<3, 0, NONE>", &result);
+  AddTestEngine<3, 1, PclmulStreamType::PCLMUL>("abseil<3, 1, PCLMUL>", &result);
+  AddTestEngine<3, 2, PclmulStreamType::PCLMUL>("abseil<3, 2, PCLMUL>", &result);
+  AddTestEngine<3, 3, PclmulStreamType::PCLMUL>("abseil<3, 3, PCLMUL>", &result);
 #if (defined(__AVX__) || defined(ABSL_INTERNAL_CAN_FORCE_AVX)) && \
     (!defined(_MSC_VER) || defined(__clang__))
   if (SupportsVpclmul()) {
-    AddEngineForTests<2, 3, PclmulStreamType::VPCLMUL>("abseil<2, 3, VPCLMUL>", &result);
-    AddEngineForTests<3, 3, PclmulStreamType::VPCLMUL>("abseil<3, 3, VPCLMUL>", &result);
+    AddTestEngine<2, 3, PclmulStreamType::VPCLMUL>("abseil<2, 3, VPCLMUL>", &result);
+    AddTestEngine<3, 3, PclmulStreamType::VPCLMUL>("abseil<3, 3, VPCLMUL>", &result);
   }
 #endif
 #else
   if (!SupportsArmCRC32PMULL()) {
     return result;
   }
-  AddEngineForTests<1, 1, PclmulStreamType::NEON_PCLMUL>("abseil<1, 1, NEON_PCLMUL>", &result);
-  AddEngineForTests<3, 3, PclmulStreamType::NEON_PCLMUL>("abseil<3, 3, NEON_PCLMUL>", &result);
+  AddTestEngine<1, 1, PclmulStreamType::NEON_PCLMUL>("abseil<1, 1, NEON_PCLMUL>", &result);
+  AddTestEngine<3, 3, PclmulStreamType::NEON_PCLMUL>("abseil<3, 3, NEON_PCLMUL>", &result);
   if (SupportsArmSha3()) {
-    AddEngineForTests<1, 1, PclmulStreamType::NEON_PCLMUL_EOR3>(
+    AddTestEngine<1, 1, PclmulStreamType::NEON_PCLMUL_EOR3>(
         "abseil<1, 1, NEON_PCLMUL_EOR3>", &result);
-    AddEngineForTests<1, 2, PclmulStreamType::NEON_PCLMUL_EOR3>(
+    AddTestEngine<1, 2, PclmulStreamType::NEON_PCLMUL_EOR3>(
         "abseil<1, 2, NEON_PCLMUL_EOR3>", &result);
-    AddEngineForTests<3, 2, PclmulStreamType::NEON_PCLMUL_EOR3>(
+    AddTestEngine<3, 2, PclmulStreamType::NEON_PCLMUL_EOR3>(
         "abseil<3, 2, NEON_PCLMUL_EOR3>", &result);
   }
 #endif
@@ -1852,7 +1870,7 @@ std::vector<NamedCrc32cEngine> NewAbseilEnginesForTests() {
 // no hardware acceleration available
 Crc32cEngine* TryNewCRC32AcceleratedX86ARMCombined() { return nullptr; }
 
-std::vector<NamedCrc32cEngine> NewAbseilEnginesForTests() { return {}; }
+std::vector<NamedCrc32cEngine> TEST_NewAbseilEngines() { return {}; }
 
 #endif
 
