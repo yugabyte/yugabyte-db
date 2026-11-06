@@ -39,6 +39,10 @@ public class TestPgRegressThirdPartyExtensionsPgaudit extends BasePgRegressTestP
     return flags;
   }
 
+  // STATEMENT_ID in the expected output is a per-backend counter. With no warmup, each session
+  // stays on one backend. A \connect gets a fresh backend only because every session before it
+  // runs ALTER ROLE ... SET, which bumps the LCV and leaves all existing backends stale. The TTL
+  // of -1 keeps the session that ran the ALTER on its own, now stale, backend.
   @Test
   public void schedule() throws Exception {
     setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.NONE);
