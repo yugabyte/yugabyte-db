@@ -307,6 +307,17 @@ public class IdempotencyKeyApiTest extends FakeDBApplication {
                 + " WHERE task_uuid = :uuid")
         .setParameter("uuid", retryUuid)
         .execute();
+    // The target keeps getting tasks of the same type afterwards, e.g. scheduled backups.
+    for (int i = 0; i < 12; i++) {
+      UUID other = UUID.randomUUID();
+      task(other, TaskInfo.State.Success, null);
+      customerTask(other);
+      DB.sqlUpdate(
+              "UPDATE customer_task SET create_time = create_time + interval '2 seconds'"
+                  + " WHERE task_uuid = :uuid")
+          .setParameter("uuid", other)
+          .execute();
+    }
 
     Result retry = assertPlatformException(() -> createCert(certSpec("root"), KEY));
 

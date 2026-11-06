@@ -245,6 +245,9 @@ public class IdempotencyService {
    * Retries are separate customer tasks on the same target, whose task params name the original.
    */
   private static Optional<UUID> latestRetry(CustomerTask original) {
+    // Retries of retries carry the same root, so one match on originalTaskUUID covers the chain.
+    // Filtering in the query, not over a capped list, finds the retry however many other tasks
+    // (e.g. scheduled backups) the target got since.
     return CustomerTask.find
         .query()
         .where()
@@ -252,22 +255,15 @@ public class IdempotencyService {
         .eq("target_uuid", original.getTargetUUID())
         .eq("type", original.getType())
         .gt("create_time", original.getCreateTime())
+        // A primary-key probe of task_info per customer task of the target, not a JSON scan.
+        .raw(
+            "exists (select 1 from task_info ti where ti.uuid = t0.task_uuid"
+                + " and ti.task_params->>'originalTaskUUID' = ?)",
+            original.getTaskUUID().toString())
         .orderBy("create_time desc")
-        .setMaxRows(10)
-        .findList()
-        .stream()
-        .filter(retry -> original.getTaskUUID().equals(originalTaskUuid(retry.getTaskUUID())))
-        .map(CustomerTask::getTaskUUID)
-        .findFirst();
-  }
-
-  private static UUID originalTaskUuid(UUID taskUUID) {
-    return TaskInfo.maybeGet(taskUUID)
-        .map(TaskInfo::getTaskParams)
-        .map(params -> params.get("originalTaskUUID"))
-        .filter(node -> node.isTextual() && !node.asText().isEmpty())
-        .map(node -> UUID.fromString(node.asText()))
-        .orElse(null);
+        .setMaxRows(1)
+        .findOneOrEmpty()
+        .map(CustomerTask::getTaskUUID);
   }
 
   /**
