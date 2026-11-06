@@ -1155,6 +1155,10 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
     auto status = DoRun(suspender);
     if (status.ok() || status.IsShutdownInProgress()) {
       LOG_WITH_PREFIX(INFO) << "Done: " << status;
+    } else if (status.IsServiceUnavailable()) {
+      // Not enough memory for the merged index. The input chunks stay as they are, and a later
+      // compaction retries them.
+      LOG_WITH_PREFIX(WARNING) << "Failed, to be retried: " << status;
     } else {
       LOG_WITH_PREFIX(DFATAL) << "Failed: " << status;
       lsm_.CheckFailure(status);
@@ -1206,7 +1210,10 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
     if (callback_) {
       callback_(status);
     }
-    if (last_serial_no == lsm_.LastSerialNo()) {
+    // Out of memory is retried after the next flush, not right away. A chunked compaction
+    // changes the serial number by saving its first output chunks, so it would be resubmitted
+    // at once and fail the same way.
+    if (status.IsServiceUnavailable() || last_serial_no == lsm_.LastSerialNo()) {
       lsm_.Deregister(*this);
     } else {
       lsm_.ScheduleBackgroundCompaction(this);
@@ -1389,7 +1396,12 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
   merge_registry_ = std::make_shared<MergeRegistry>(
       options_.log_prefix, *options_.insert_thread_pool);
 
-  RETURN_NOT_OK(env_->CreateDirs(options_.storage_dir));
+  // Manifest appends sync only the directory, not its entry in the parent. Losing that entry would
+  // silently reopen the index empty.
+  if (!env_->DirExists(options_.storage_dir)) {
+    RETURN_NOT_OK(env_->CreateDirs(options_.storage_dir));
+    RETURN_NOT_OK(env_->SyncDir(DirName(options_.storage_dir)));
+  }
   auto load_result = VERIFY_RESULT(VectorLSMMetadataLoad(env_, options_.storage_dir));
   next_manifest_file_no_ = load_result.next_free_file_no;
   for (const auto& chunk_pb : load_result.chunks) {
@@ -1436,12 +1448,16 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
       promise.set_value(status);
     });
   }
+  // Fail rather than run with a vector index that fails every write, since applying a failed write
+  // FATALs the tserver. On tablet open this fails only the tablet.
+  Status load_status;
   for (auto& promise : promises) {
     auto status = promise.get_future().get();
-    if (!status.ok() && failed_status_.ok()) {
-      failed_status_ = status;
+    if (!status.ok() && load_status.ok()) {
+      load_status = std::move(status);
     }
   }
+  RETURN_NOT_OK(load_status);
 
   std::sort(
       immutable_chunks_.begin(), immutable_chunks_.end(), [](const auto& lhs, const auto& rhs) {
@@ -1483,6 +1499,7 @@ Status VectorLSM<Vector, DistanceResult>::CreateCheckpoint(const std::string& ou
   }
 
   RETURN_NOT_OK(env_->CreateDirs(out));
+  RETURN_NOT_OK(env_->SyncDir(DirName(out)));
   VectorLSMUpdatePB update;
   for (const auto& chunk : chunks) {
     if (chunk->file) {
@@ -1495,7 +1512,7 @@ Status VectorLSM<Vector, DistanceResult>::CreateCheckpoint(const std::string& ou
   }
 
   auto manifest_file = VERIFY_RESULT(VectorLSMMetadataOpenFile(env_, out, 0));
-  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*manifest_file, update));
+  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*env_, *manifest_file, update));
 
   // Some chunks could become obsolete, let's explicitly unreference them. Their files are removed
   // by obsolete_files_remover_.
@@ -1565,16 +1582,15 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
   }
   insert_registry_->BindTasks(
       tasks, chunk->index, [this, chunk, frontiers_to_apply](const Status& status) {
-        if (!status.ok()) {
-          auto failure = status.CloneAndPrepend("VectorLSM insertion failed");
-          LOG(ERROR) << LogPrefix() << failure;
-          CheckFailure(failure);
-        } else if (frontiers_to_apply) {
+        // A chunk missing vectors must not be saved: other inserts into it that succeed can carry
+        // later frontiers, so bootstrap would not replay the failed one. Crashing before the save
+        // leaves it in the WAL. Skipping the save instead is not an option, an unsaved chunk would
+        // block the updates queue and CompleteShutdown.
+        LOG_IF_WITH_PREFIX(FATAL, !status.ok()) << "VectorLSM insertion failed: " << status;
+        if (frontiers_to_apply) {
           std::lock_guard lock(mutex_);
           chunk->ApplyFrontiers(*frontiers_to_apply);
         }
-        // A failed chunk is still saved: CheckFailure records the failure, and an unsaved chunk
-        // would block the updates queue and CompleteShutdown.
         chunk->InsertTaskDone();
       });
 
@@ -1984,7 +2000,7 @@ Status VectorLSM<Vector, DistanceResult>::AddChunkToManifest(
   chunk.AddToUpdate(update);
   VLOG_WITH_PREFIX_AND_FUNC(3) << update.ShortDebugString();
 
-  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(manifest_file, update));
+  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*env_, manifest_file, update));
 
   // TODO(vector_index): print chunk number as well, could be covered within #27098.
   LOG_WITH_PREFIX(INFO) << Format("Added chunk to manifest: $0", chunk.ToShortString());
@@ -2239,7 +2255,7 @@ Status VectorLSM<Vector, DistanceResult>::ModifyChunkFrontiers(
   }
 
   VLOG_WITH_PREFIX_AND_FUNC(3) << update.ShortDebugString();
-  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*manifest_file, update));
+  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*env_, *manifest_file, update));
 
   {
     std::lock_guard lock(mutex_);
@@ -3008,6 +3024,7 @@ class VectorLSM<Vector, DistanceResult>::Merger {
 
     size_t num_scheduled_tasks = 0;
     std::atomic<size_t> num_completed_tasks = 0;
+    StatusHolder failure;
 
     size_t num_remaining_vectors = num_vectors_to_merge;
     while (num_remaining_vectors > 0 && source_iterator.Valid()) {
@@ -3022,12 +3039,27 @@ class VectorLSM<Vector, DistanceResult>::Merger {
         break;
       }
 
-      auto tasks = VERIFY_RESULT(merge_registry_.AllocateTasks(
+      // After a failed insert the merged index is incomplete, so stop scheduling; the failure is
+      // returned once the scheduled tasks are drained.
+      if (!failure.GetStatus().ok()) {
+        break;
+      }
+
+      auto tasks_result = merge_registry_.AllocateTasks(
           num_total_tasks, target_index,
-          [&num_completed_tasks](const Status&) {
-            // TODO: Handle failure
-            num_completed_tasks.fetch_add(1, std::memory_order::relaxed);
-          }));
+          [&num_completed_tasks, &failure](const Status& status) {
+            failure.UpdateError(status);
+            // Must stay last: once all tasks are counted, the waiting frame returns and destroys
+            // failure. Release pairs with the acquire in the wait loop below, so the frame sees it.
+            num_completed_tasks.fetch_add(1, std::memory_order::release);
+          });
+      // Not VERIFY_RESULT: tasks from earlier batches may still be running, and returning now
+      // would destroy what their callbacks use. Stop scheduling, drain, and report it below.
+      if (!tasks_result.ok()) {
+        failure.UpdateError(tasks_result.status());
+        break;
+      }
+      auto tasks = std::move(*tasks_result);
 
       VLOG_WITH_PREFIX(3) << "Allocated " << tasks.size() << " merge tasks";
 
@@ -3051,7 +3083,7 @@ class VectorLSM<Vector, DistanceResult>::Merger {
     }
 
     // Wait for everything got merged.
-    while (num_scheduled_tasks != num_completed_tasks.load(std::memory_order::relaxed)) {
+    while (num_scheduled_tasks != num_completed_tasks.load(std::memory_order::acquire)) {
       MaybeYield();
       std::this_thread::sleep_for(200ms);
     }
@@ -3059,6 +3091,10 @@ class VectorLSM<Vector, DistanceResult>::Merger {
     // All scheduled tasks have completed, so it is now safe to propagate a shutdown that may have
     // broken the loop above.
     RETURN_NOT_OK(lsm_.RUNNING_STATUS());
+
+    // The merged index is missing the vectors of the failed tasks, so it must not replace the
+    // compaction input.
+    RETURN_NOT_OK_PREPEND(failure.GetStatus(), "Merge into compaction output failed");
 
     LOG_WITH_PREFIX(INFO) << "Chunks merge done via " << num_scheduled_tasks << " tasks";
     return Status::OK();
@@ -3195,7 +3231,7 @@ Status VectorLSM<Vector, DistanceResult>::DoCompact(
   // Not after the append: it can fail after writing the record, which a reopen still loads, and a
   // manifest chunk without its file fails the load. Leaking the files is the lesser harm.
   delete_merged_files.Cancel();
-  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*manifest_file, update));
+  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*env_, *manifest_file, update));
 
   // Update in-memory structure.
   ImmutableChunkPtr writing_chunk;

@@ -2,10 +2,7 @@
 package com.yugabyte.yw.metrics;
 
 import static com.yugabyte.yw.metrics.MetricQueryHelper.AZ_NAME;
-import static com.yugabyte.yw.metrics.MetricQueryHelper.CONTAINER_METRIC_PREFIX;
-import static com.yugabyte.yw.metrics.MetricQueryHelper.CONTAINER_VOLUME_METRIC_PREFIX;
 import static com.yugabyte.yw.metrics.MetricQueryHelper.EXPORTED_INSTANCE;
-import static com.yugabyte.yw.metrics.MetricQueryHelper.KUBELET_VOLUME_METRIC_PREFIX;
 import static com.yugabyte.yw.metrics.MetricQueryHelper.NAMESPACE;
 import static com.yugabyte.yw.metrics.MetricQueryHelper.NAMESPACE_ID;
 import static com.yugabyte.yw.metrics.MetricQueryHelper.NAMESPACE_NAME;
@@ -23,6 +20,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.models.MetricConfigDefinition;
 import com.yugabyte.yw.models.MetricConfigDefinition.Layout;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -67,20 +65,39 @@ public class MetricQueryResponse {
   /**
    * Format MetricQueryResponse object as a json for graph(plot.ly) consumption.
    *
-   * @param metricName, metric name
-   * @param config, metric definition
-   * @param metricSettings, metric query settings
-   * @return JsonNode, Json data that plot.ly can understand
+   * <p>Convenience overload used by call sites without universe context; skips the resolver-based
+   * lookup entirely.
    */
   public List<MetricGraphData> getGraphData(
       String metricName, MetricConfigDefinition config, MetricSettings metricSettings) {
+    return getGraphData(metricName, config, metricSettings, null);
+  }
+
+  /**
+   * Format MetricQueryResponse object as a json for graph(plot.ly) consumption.
+   *
+   * @param metricName, metric name
+   * @param config, metric definition
+   * @param metricSettings, metric query settings
+   * @param k8sPodNodeNameResolver, resolver keyed off the universe's cluster / helm-release
+   *     metadata; when non-null it names the lines of the k8s_ keys with YBA node names
+   * @return JsonNode, Json data that plot.ly can understand
+   */
+  public List<MetricGraphData> getGraphData(
+      String metricName,
+      MetricConfigDefinition config,
+      MetricSettings metricSettings,
+      K8sPodNodeNameResolver k8sPodNodeNameResolver) {
     List<MetricGraphData> metricGraphDataList = new ArrayList<>();
 
     Layout layout = config.getLayout();
     // We should use instance name for aggregated graph in case it's grouped by instance.
     boolean useInstanceName =
         config.getGroupBy() != null
-            && config.getGroupBy().equals(EXPORTED_INSTANCE)
+            && (config.getGroupBy().equals(EXPORTED_INSTANCE)
+                || Arrays.stream(config.getGroupBy().split(","))
+                    .map(String::trim)
+                    .anyMatch(PVC::equals))
             && metricSettings.getSplitMode() == SplitMode.NONE;
     for (final JsonNode objNode : data.result) {
       MetricGraphData metricGraphData = new MetricGraphData();
@@ -90,9 +107,11 @@ public class MetricQueryResponse {
       metricGraphData.instanceName = getAndRemoveLabelValue(metricInfo, EXPORTED_INSTANCE);
       // For container metrics, also check for pod_name label to set instanceName
       if (metricGraphData.instanceName == null
-          && (metricName.startsWith(CONTAINER_METRIC_PREFIX)
-              || metricName.startsWith(KUBELET_VOLUME_METRIC_PREFIX))) {
-        metricGraphData.instanceName = getInstanceNameLabelForKubernetes(metricInfo, metricName);
+          && MetricQueryHelper.getKubernetesKind(metricSettings.getMetric())
+              != MetricQueryHelper.KubernetesKind.NONE) {
+        metricGraphData.instanceName =
+            getInstanceNameLabelForKubernetes(
+                metricInfo, metricSettings.getMetric(), k8sPodNodeNameResolver);
       }
       metricGraphData.tableId = getAndRemoveLabelValue(metricInfo, TABLE_ID);
       metricGraphData.tableName = getAndRemoveLabelValue(metricInfo, TABLE_NAME);
@@ -219,21 +238,44 @@ public class MetricQueryResponse {
     return value;
   }
 
-  private String getInstanceNameLabelForKubernetes(ObjectNode metricInfo, String metricName) {
-    metricInfo.remove(NAMESPACE);
-    // For container volume metrics, use pvc instead of pod_name
-    if (metricName.startsWith(CONTAINER_VOLUME_METRIC_PREFIX)
-        || metricName.startsWith(KUBELET_VOLUME_METRIC_PREFIX)) {
-      return getInstanceNameLabel(
-          getAndRemoveLabelValue(metricInfo, PVC),
-          getAndRemoveLabelValue(metricInfo, AZ_NAME),
-          true);
+  // A data volume claim is `<volume-claim-template>-<pod>`, with the template ending in
+  // `datadir<N>`; the non-greedy prefix stops at the first `datadir<N>-`.
+  private static final Pattern PVC_DATADIR_POD_PATTERN = Pattern.compile("^.*?(datadir\\d+)-(.+)$");
+
+  private String getInstanceNameLabelForKubernetes(
+      ObjectNode metricInfo, String metricName, K8sPodNodeNameResolver k8sPodNodeNameResolver) {
+    String namespaceLabel = getAndRemoveLabelValue(metricInfo, NAMESPACE);
+    String azNameLabel = getAndRemoveLabelValue(metricInfo, AZ_NAME);
+    // For volume metrics, use pvc instead of pod_name
+    boolean isVolumeMetric =
+        MetricQueryHelper.getKubernetesKind(metricName) == MetricQueryHelper.KubernetesKind.VOLUME;
+    String rawLabel =
+        isVolumeMetric
+            ? getAndRemoveLabelValue(metricInfo, PVC)
+            : getAndRemoveLabelValue(metricInfo, POD_NAME);
+
+    // The k8s_ keys name their lines by the universe's release metadata, so a series summed by
+    // claim or pod, which has no az_name, still gets the YBA node name. The older container keys
+    // keep their label-based names.
+    if (k8sPodNodeNameResolver != null
+        && rawLabel != null
+        && metricName.startsWith(MetricQueryHelper.K8S_METRIC_PREFIX)) {
+      String podName = rawLabel;
+      String datadirSuffix = null;
+      if (isVolumeMetric) {
+        Matcher m = PVC_DATADIR_POD_PATTERN.matcher(rawLabel);
+        if (m.matches()) {
+          datadirSuffix = m.group(1);
+          podName = m.group(2);
+        }
+      }
+      String resolvedNodeName =
+          k8sPodNodeNameResolver.resolveNodeName(podName, namespaceLabel, azNameLabel);
+      if (resolvedNodeName != null) {
+        return datadirSuffix != null ? resolvedNodeName + "_" + datadirSuffix : resolvedNodeName;
+      }
     }
-    // For rest of container metrics, use pod_name
-    return getInstanceNameLabel(
-        getAndRemoveLabelValue(metricInfo, POD_NAME),
-        getAndRemoveLabelValue(metricInfo, AZ_NAME),
-        false);
+    return getInstanceNameLabel(rawLabel, azNameLabel, isVolumeMetric);
   }
 
   private String getInstanceNameLabel(String baseLabel, String azName, boolean extractDatadir) {

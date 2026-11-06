@@ -120,6 +120,7 @@
 #include "access/yb_scan.h"
 #include "catalog/index.h"
 #include "commands/copy.h"
+#include "commands/yb_analyze.h"
 #include "common/ip.h"
 #include "common/pg_yb_conn_mgr_protocol.h"
 #include "executor/ybModifyTable.h"
@@ -3709,6 +3710,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_analyze_width_skip", PGC_USERSET, RESOURCES_MEM,
+			gettext_noop("Do not materialize sampled values ANALYZE will not read."),
+			gettext_noop("The statistics code ignores varlena values wider than its "
+						 "per-type width threshold, so ANALYZE keeps only their size."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_analyze_width_skip,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_extension_upgrade", PGC_SUSET, CUSTOM_OPTIONS,
 			gettext_noop("Set to true when upgrading extensions during "
 						 "a YSQL major version upgrade."),
@@ -4335,6 +4348,18 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_test_notify_queue_max_pages,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_test_notifs_poller_init_delay_ms", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("Time in milliseconds for which the notifications "
+						 "poller waits before it initializes, for testing."),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_UNIT_MS
+		},
+		&yb_test_notifs_poller_init_delay_ms,
 		0, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
@@ -6033,7 +6058,7 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"yb_major_version_upgrade_compatibility", PGC_SIGHUP, CUSTOM_OPTIONS,
 			gettext_noop("The compatibility level to use during a YSQL Major version upgrade. "
-						 "Allowed values are 0 and 11."),
+						 "Allowed values are 0, 11 and 15."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
@@ -6475,6 +6500,15 @@ static struct config_real ConfigureNamesReal[] =
 		{"seed", PGC_USERSET, UNGROUPED,
 			gettext_noop("Sets the seed for random-number generation."),
 			NULL,
+			/*
+			 * YB: We don't report this variable to ConnMgr because:
+			 * - Setting this from startup packet is ignored by the check hook
+			 * - Setting this using SET makes the connection sticky
+			 * - Its show hook reports "unavailable", so ConnMgr can't replay
+			 *   it and replaying it would also be wrong as it would reset RNG
+			 *   state.
+			 */
+			GUC_YB_NO_CONN_MGR_REPORT |
 			GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 		},
 		&phony_random_seed,
@@ -9439,6 +9473,9 @@ yb_should_report_guc(struct config_generic *record)
 
 	if (YbIsClientYsqlConnMgr())
 	{
+		if (record->flags & GUC_YB_NO_CONN_MGR_REPORT)
+			return false;
+
 		shouldReportGUC =
 			shouldReportGUC ||
 			(record->status & (YB_GUC_VALUE_RESET | YB_GUC_DEFAULT_RESET)) ||
@@ -10127,12 +10164,6 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 								set_extra_field(&conf->gen, &conf->gen.extra,
 												newextra);
 								changed = true;
-								if (conf->gen.flags & GUC_YB_CUSTOM_STICKY)
-								{
-									elog(LOG, "Making connection sticky for %s",
-										 conf->gen.name);
-									yb_ysql_conn_mgr_sticky_guc = true;
-								}
 							}
 
 							/*
@@ -10176,6 +10207,7 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 				 * set by the user is rolled back
 				 */
 				if (YbIsClientYsqlConnMgr() && changed &&
+					!(gconf->flags & GUC_YB_NO_CONN_MGR_REPORT) &&
 					(gconf->context == PGC_SUSET ||
 					 gconf->context == PGC_USERSET) &&
 					gconf->source == PGC_S_SESSION)
@@ -12141,7 +12173,10 @@ set_config_option_ext(const char *name, const char *value,
 													 elevel,
 													 false);
 
-					if (conf->gen.flags & GUC_YB_CUSTOM_STICKY)
+					if ((conf->gen.flags & GUC_YB_CUSTOM_STICKY) &&
+						(source == PGC_S_SESSION || source == PGC_S_CLIENT) &&
+						action == GUC_ACTION_SET &&
+						YbIsClientYsqlConnMgr())
 					{
 						elog(LOG, "Making connection sticky for setting %s", name);
 						yb_ysql_conn_mgr_sticky_guc = true;
@@ -12322,6 +12357,24 @@ set_config_option_ext(const char *name, const char *value,
 		 value == NULL))		/* RESET statement */
 	{
 		YbAddToChangedSessionParametersList(name);
+	}
+
+	/*
+	 * YB: Make the connection sticky when a PGC_SUSET GUC is set while running
+	 * as a user other than the session user (e.g. a SECURITY DEFINER function).
+	 * Conn Mgr replays the GUC as the session user, which can fail with a
+	 * permission error.
+	 */
+	if (changeVal &&
+		YbIsClientYsqlConnMgr() &&
+		record->context == PGC_SUSET &&
+		source == PGC_S_SESSION &&
+		action == GUC_ACTION_SET &&
+		GetUserId() != GetSessionUserId())
+	{
+		elog(LOG, "Making connection sticky for setting %s as a user other than the session user",
+			 name);
+		yb_ysql_conn_mgr_sticky_guc = true;
 	}
 
 	return changeVal ? 1 : -1;

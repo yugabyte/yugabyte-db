@@ -17,6 +17,7 @@
 
 #include "yb/gutil/endian.h"
 
+#include "yb/util/monotime.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -126,6 +127,25 @@ class PlainIntegralTraits {
 
 template <class ValueType>
 struct IntegralErrorTag : public IntegralBackedErrorTag<PlainIntegralTraits<ValueType>> {
+};
+
+// Traits for an error tag whose value is a duration. Carried on the wire as nanoseconds.
+class MonoDeltaTraits {
+ public:
+  using ValueType = MonoDelta;
+  using RepresentationType = int64_t;
+
+  static MonoDelta FromRepresentation(RepresentationType source) {
+    return MonoDelta::FromNanoseconds(source);
+  }
+
+  static RepresentationType ToRepresentation(MonoDelta value) {
+    return value.ToNanoseconds();
+  }
+
+  static std::string ToString(MonoDelta value) {
+    return value.ToString();
+  }
 };
 
 // Extra error code assigned to status.

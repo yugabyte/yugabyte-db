@@ -758,7 +758,8 @@ Status TabletSnapshots::RestoreCheckpoint(
   bool need_flush = false;
 
   if (restore_metadata.schema) {
-    // TODO(pitr) check deleted columns
+    // SetSchema forgets deleted columns that the restored schema brings back.
+    // TODO(pitr) record the columns that the restore removes as deleted.
     // OpId::Invalid() is used to indicate the callee to not
     // set last_applied_change_metadata_op_id field of tablet metadata.
     tablet().metadata()->SetSchema(
@@ -798,6 +799,23 @@ Status TabletSnapshots::RestoreCheckpoint(
   if (need_flush) {
     RETURN_NOT_OK(tablet().metadata()->Flush());
     RefreshYBMetaDataCache();
+  }
+
+  // The snapshot holds the storage of every vector index the tablet had at snapshot time, including
+  // dropped ones a snapshot schedule retains and, in a clone, ones the clone does not have. A
+  // storage dir is named by index oid, so a later index of a clone that reuses such an oid would
+  // load its chunks. Best effort: a failure here would fail the restore apply, which is fatal for
+  // the tserver, after the frontier patch that keeps the restore from being replayed. A crash
+  // before this point is covered by the startup sweep in TSTabletManager.
+  // Runs after MergeWithRestored: it can change the id, and so the storage dir, of a listed index.
+  if (!snapshot_dir.empty()) {
+    auto children = env().GetChildren(snapshot_dir, ExcludeDots::kTrue);
+    if (children.ok()) {
+      metadata().DeleteUnlistedVectorIndexStorages(*children);
+    } else {
+      LOG_WITH_PREFIX(WARNING) << "Failed to list " << snapshot_dir
+                               << " for vector index storages to delete: " << children.status();
+    }
   }
 
   // Reopen database from copied checkpoint.

@@ -48,9 +48,12 @@ DEFINE_test_flag(uint32, ysql_conn_mgr_auth_delay_ms, 0,
 DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_superuser_sticky, true,
     "If enabled, make superuser connections sticky in Ysql Connection Manager.");
 
-DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_use_auth_backend, true,
+DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_use_auth_backend, false,
     "Enable the use of the auth-backend for authentication of logical connections. "
-    "When false, the older auth-passthrough implementation is used."
+    "When false, the auth-passthrough implementation is used. Auth Backend mode involves "
+    "spawning a fresh PG backend to perform authentication for each incoming auth request."
+    "Auth Passthrough mode allows reusing spawned 'control backends' to authenticate clients "
+    "and thus is faster as it skips needing to spawn a new backend process each time."
     );
 
 DEFINE_NON_RUNTIME_int32(ysql_conn_mgr_max_query_size, 4096,
@@ -194,6 +197,7 @@ DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
 DECLARE_bool(use_fast_backward_scan);
 DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 DECLARE_uint32(max_replication_slots);
+DECLARE_uint32(pg_cache_response_trust_auth_lifetime_limit_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
@@ -300,6 +304,8 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_catalog_prefetch_size_limit = &FLAGS_ysql_catalog_prefetch_size_limit,
       .ysql_enable_startup_client_connection_check =
           &FLAGS_ysql_enable_startup_client_connection_check,
+      .pg_cache_response_trust_auth_lifetime_limit_ms =
+          &FLAGS_pg_cache_response_trust_auth_lifetime_limit_ms,
   };
   // clang-format on
   return &accessor;

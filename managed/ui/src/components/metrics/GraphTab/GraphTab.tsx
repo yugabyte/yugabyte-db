@@ -163,6 +163,7 @@ export const GraphTab: FC<MetricsData> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     nodeName,
+    currentSelectedNodeType,
     nodePrefix,
     startTimestamp,
     endTimestamp,

@@ -150,6 +150,10 @@ public class RollbackKubernetesUpgrade extends KubernetesUpgradeTaskBase {
                       ? YsqlMajorVersionUpgradeState.ROLLBACK_IN_PROGRESS
                       : null));
 
+          // Fail the rollback if any pod is still reporting the pre-rollback version.
+          createCheckSoftwareVersionTaskForPods(universe, targetVersion)
+              .setSubTaskGroupType(getTaskSubGroupType());
+
           if (ysqlMajorVersionUpgrade) {
             // Un-set the flag ysql_yb_major_version_upgrade_compatibility as major version upgrade
             // is

@@ -903,7 +903,10 @@
             "THP_INCORRECT_SETTINGS",
             "OTEL_LOG_EXPORT_FAILURE",
             "CDCSDK_FLUSH_LAG",
-            "CDCSDK_EXPIRY"
+            "CDCSDK_EXPIRY",
+            "DB_K8S_CPU_USAGE",
+            "DB_K8S_MEMORY_USAGE",
+            "DB_K8S_DATA_VOLUME_USAGE"
           ],
           "type" : "string"
         },
@@ -1087,7 +1090,10 @@
             "THP_INCORRECT_SETTINGS",
             "OTEL_LOG_EXPORT_FAILURE",
             "CDCSDK_FLUSH_LAG",
-            "CDCSDK_EXPIRY"
+            "CDCSDK_EXPIRY",
+            "DB_K8S_CPU_USAGE",
+            "DB_K8S_MEMORY_USAGE",
+            "DB_K8S_DATA_VOLUME_USAGE"
           ],
           "type" : "string"
         },
@@ -1367,7 +1373,10 @@
             "THP_INCORRECT_SETTINGS",
             "OTEL_LOG_EXPORT_FAILURE",
             "CDCSDK_FLUSH_LAG",
-            "CDCSDK_EXPIRY"
+            "CDCSDK_EXPIRY",
+            "DB_K8S_CPU_USAGE",
+            "DB_K8S_MEMORY_USAGE",
+            "DB_K8S_DATA_VOLUME_USAGE"
           ],
           "type" : "string"
         },
