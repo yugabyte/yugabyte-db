@@ -41,6 +41,7 @@
 #include "yb/yql/cql/ql/ptree/pt_drop.h"
 #include "yb/yql/cql/ql/ptree/pt_explain.h"
 #include "yb/yql/cql/ql/ptree/pt_grant_revoke.h"
+#include "yb/yql/cql/ql/ptree/pt_list_roles_permissions.h"
 #include "yb/yql/cql/ql/ptree/pt_select.h"
 #include "yb/yql/cql/ql/ptree/pt_truncate.h"
 #include "yb/yql/cql/ql/ptree/pt_use_keyspace.h"
@@ -135,6 +136,8 @@ YB_DEFINE_ENUM(Category, (QUERY)(DML)(DDL)(DCL)(AUTH)(PREPARE)(ERROR)(OTHER))
     ((CREATE_ROLE, DCL)) \
     ((DROP_ROLE, DCL)) \
     ((ALTER_ROLE, DCL)) \
+    ((LIST_ROLES, DCL)) \
+    ((LIST_PERMISSIONS, DCL)) \
     \
     /* AUTH */ \
     \
@@ -328,7 +331,7 @@ void LoadAuditFilters(std::shared_ptr<const AuditFilterSet>* filters, uint64_t* 
 const Type* GetAuditLogTypeOption(const TreeNode& tnode,
                                   std::string* keyspace,
                                   std::string* scope) {
-  // FIXME: DESCRIBE and LIST <...> are client-only operations and are not audited!
+  // FIXME: DESCRIBE is a client-only operation and is not audited!
   switch (tnode.opcode()) {
     case TreeNodeOpcode::kPTSelectStmt: {
       const auto& cast_node = static_cast<const PTSelectStmt&>(tnode);
@@ -471,6 +474,35 @@ const Type* GetAuditLogTypeOption(const TreeNode& tnode,
           return &Type::REVOKE;
       }
       FATAL_INVALID_ENUM_VALUE(client::GrantRevokeStatementType, cast_node.statement_type());
+    }
+
+    case TreeNodeOpcode::kPTListRoles: {
+      // Scope is not used, as for the other role statements.
+      return &Type::LIST_ROLES;
+    }
+    case TreeNodeOpcode::kPTListPermissions: {
+      const auto& cast_node = static_cast<const PTListPermissions&>(tnode);
+      // Same keyspace / scope hierarchy as GRANT / REVOKE: the scope is the canonical ON resource
+      // and the keyspace is its parent. Without an ON clause, neither is set.
+      if (cast_node.has_resource()) {
+        *scope = cast_node.canonical_resource();
+        switch (cast_node.resource_type()) {
+          case ALL_KEYSPACES:
+          case KEYSPACE:
+            *keyspace = kRolesDataResource;
+            break;
+          case TABLE:
+            // Built from the statement's keyspace name, like GRANT / REVOKE above: splitting the
+            // canonical name is ambiguous when the keyspace name contains '/'.
+            *keyspace = Format("data/$0", cast_node.keyspace_name());
+            break;
+          case ALL_ROLES:
+          case ROLE:
+            *keyspace = kRolesRoleResource;
+            break;
+        }
+      }
+      return &Type::LIST_PERMISSIONS;
     }
 
     case TreeNodeOpcode::kPTListNode: {

@@ -152,6 +152,9 @@ class SemContext : public ProcessContext {
   // Find table descriptor from metadata server.
   std::shared_ptr<client::YBTable> GetTableDesc(const TableId& table_id);
 
+  // Check with the metadata server whether a CQL keyspace exists.
+  Result<bool> KeyspaceExists(const std::string& keyspace_name);
+
   // Get (user-defined) type from metadata server.
   std::shared_ptr<QLType> GetUDType(const std::string &keyspace_name, const std::string &type_name);
 
