@@ -508,6 +508,14 @@ YbcStatus YBCPgBackfillIndex(
     const YbcPgOid index_relfilenode_oid,
     bool use_regular_transaction_block);
 
+YbcStatus YBCPgStartTableBackfill(
+    const YbcPgOid database_oid,
+    const YbcPgOid source_table_oid,
+    const YbcPgOid target_table_oid,
+    const YbcPgOid transform_fn_oid,
+    uint64_t backfill_timestamp,
+    int64_t pg_job_id);
+
 YbcStatus YBCPgWaitVectorIndexReady(
     const YbcPgOid database_oid,
     const YbcPgOid index_relfilenode_oid);
@@ -982,7 +990,9 @@ YbcPgThreadLocalRegexpCache* YBCPgInitThreadLocalRegexpCache(
 
 void YBCPgResetCatalogReadTime();
 
-void YBCPgSetHistoricalReadContext(YbcReadHybridTime read_time, const char* transaction_id);
+void YBCPgSetHistoricalReadContext(
+    YbcReadHybridTime read_time, const char* transaction_id, const uint32_t* aborted_subtxn_set,
+    size_t aborted_subtxn_set_size);
 
 void YBCPgResetHistoricalReadContext();
 

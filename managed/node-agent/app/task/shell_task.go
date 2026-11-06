@@ -19,10 +19,14 @@ import (
 	"sync/atomic"
 
 	"github.com/olekukonko/tablewriter"
+	"github.com/olekukonko/tablewriter/tw"
 	funk "github.com/thoas/go-funk"
 )
 
 const (
+	ansiRed   = 31
+	ansiGreen = 32
+
 	mountPointsVolume    = "mount_points_volume"
 	mountPointsWritable  = "mount_points_writable"
 	masterHTTPPort       = "master_http_port"
@@ -193,48 +197,34 @@ func HandleUpgradeScript(ctx context.Context, config *util.Config) error {
 }
 
 func OutputPreflightCheck(responses map[string]model.NodeInstanceValidationResponse) bool {
-	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"Preflight Check", "Value", "Description", "Required", "Result"})
-	table.SetAlignment(tablewriter.ALIGN_LEFT)
-	table.SetAutoWrapText(false)
-	table.SetRowLine(true)
-	table.SetHeaderColor(
-		tablewriter.Colors{},
-		tablewriter.Colors{},
-		tablewriter.Colors{},
-		tablewriter.Colors{},
-		tablewriter.Colors{},
+	table := tablewriter.NewTable(
+		os.Stdout,
+		tablewriter.WithSymbols(tw.NewSymbols(tw.StyleASCII)),
+		tablewriter.WithHeaderAlignment(tw.AlignCenter),
+		tablewriter.WithRowAlignment(tw.AlignLeft),
+		tablewriter.WithRowAutoWrap(tw.WrapNone),
+		tablewriter.WithRendition(tw.Rendition{
+			Settings: tw.Settings{Separators: tw.Separators{BetweenRows: tw.On}},
+		}),
 	)
+	table.Header("Preflight Check", "Value", "Description", "Required", "Result")
 	keys := funk.Keys(responses).([]string)
 	sort.Strings(keys)
 	allValid := true
 	for _, k := range keys {
 		v := responses[k]
-		if v.Valid {
-			data := []string{k, v.Value, v.Description, strconv.FormatBool(v.Required), "Passed"}
-			table.Rich(
-				data,
-				[]tablewriter.Colors{
-					tablewriter.Colors{tablewriter.FgGreenColor},
-					tablewriter.Colors{tablewriter.FgGreenColor},
-					tablewriter.Colors{tablewriter.FgGreenColor},
-					tablewriter.Colors{tablewriter.FgGreenColor},
-					tablewriter.Colors{tablewriter.FgGreenColor},
-				},
-			)
-		} else {
+		result, color := "Passed", ansiGreen
+		if !v.Valid {
 			if v.Required {
 				allValid = false
 			}
-			data := []string{k, v.Value, v.Description, strconv.FormatBool(v.Required), "Failed"}
-			table.Rich(data, []tablewriter.Colors{
-				tablewriter.Colors{tablewriter.FgRedColor},
-				tablewriter.Colors{tablewriter.FgRedColor},
-				tablewriter.Colors{tablewriter.FgRedColor},
-				tablewriter.Colors{tablewriter.FgRedColor},
-				tablewriter.Colors{tablewriter.FgRedColor},
-			})
+			result, color = "Failed", ansiRed
 		}
+		data := []string{k, v.Value, v.Description, strconv.FormatBool(v.Required), result}
+		for i := range data {
+			data[i] = fmt.Sprintf("\033[%dm%s\033[0m", color, data[i])
+		}
+		table.Append(data)
 	}
 	table.Render()
 	return allValid

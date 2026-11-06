@@ -13,7 +13,7 @@
 
 #include "yb/tablet/tablet_snapshots.h"
 
-#include <unordered_set>
+#include <set>
 
 #include <boost/algorithm/string/predicate.hpp>
 
@@ -125,6 +125,10 @@ DEFINE_test_flag(bool, pause_create_checkpoint, false,
 DEFINE_test_flag(int32, snapshot_cleanup_retry_delay_ms, 0,
     "If positive, override the snapshot cleanup retry backoff in tests.");
 
+DEFINE_test_flag(bool, skip_vector_index_stamp_after_restore_reopen, false,
+    "If true, a checkpoint restore does not stamp the restore op id on the vector indexes after "
+    "reopening them, as if the tserver crashed right after the reopen.");
+
 namespace yb::tablet {
 
 namespace {
@@ -166,40 +170,6 @@ void CleanupLastSnapshotHybridTime(
   VLOG(2) << "Cleanup snapshot ht: " << path;
   if (env.FileExists(path)) {
     WARN_NOT_OK(env.DeleteFile(path), "Failed to cleanup last snapshot time");
-  }
-}
-
-// The snapshot holds the storage of every vector index the tablet had at snapshot time, including
-// dropped ones a snapshot schedule retains and, in a clone, ones the clone does not have. The
-// tablet destroys only the storages of the indexes its metadata lists, and a storage dir is named
-// by index oid, so a later index of a clone that reuses such an oid would load its chunks.
-// Best effort: a failure here would fail the restore apply, which is fatal for the tserver, after
-// the frontier patch that keeps the restore from being replayed.
-void DeleteUnlistedVectorIndexStorages(
-    Env& env, const std::string& snapshot_dir, const RaftGroupMetadata& metadata) {
-  auto children = env.GetChildren(snapshot_dir, ExcludeDots::kTrue);
-  if (!children.ok()) {
-    LOG(WARNING) << metadata.LogPrefix() << "Failed to list " << snapshot_dir
-                 << " for vector index storages to delete: " << children.status();
-    return;
-  }
-  const auto listed_dirs_list = metadata.vector_index_dirs();
-  const std::unordered_set<std::string> listed_dirs(
-      listed_dirs_list.begin(), listed_dirs_list.end());
-  for (const auto& child : *children) {
-    if (!child.starts_with(docdb::kVectorIndexDirPrefix)) {
-      continue;
-    }
-    auto dir = docdb::GetStorageDir(metadata.rocksdb_dir(), child);
-    if (listed_dirs.contains(dir) || !env.DirExists(dir)) {
-      continue;
-    }
-    LOG(INFO) << metadata.LogPrefix() << "Deleting storage of vector index not in the tablet: "
-              << dir;
-    auto status = env.DeleteRecursively(dir);
-    LOG_IF(WARNING, !status.ok())
-        << metadata.LogPrefix() << "Failed to delete vector index storage " << dir << ": "
-        << status;
   }
 }
 
@@ -434,8 +404,8 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
   }
 
   if (PREDICT_FALSE(!s.ok())) {
-    LOG_WITH_PREFIX(WARNING) << "RocksDB flush status: " << s;
-    return s.CloneAndPrepend("Unable to flush RocksDB");
+    LOG_WITH_PREFIX(WARNING) << "Tablet flush status: " << s;
+    return s.CloneAndPrepend("Unable to flush tablet storages");
   }
 
   const std::string& snapshot_dir = data.snapshot_dir;
@@ -788,6 +758,36 @@ Status TabletSnapshots::RestoreCheckpoint(
     }
   }
 
+  // Force the restore op id on the restored vector index storages. With the snapshot's lower
+  // OpIds, bootstrap would replay the rolled back writes into them. With the higher OpIds of
+  // another Raft group, e.g. the source of a clone or of an imported backup, it would skip this
+  // group's writes to them. This must precede the regular DB patch: once the regular DB has the
+  // restore op id, a crash no longer replays the restore. The storages are the snapshot's or,
+  // without a snapshot dir, those of the listed indexes. The restored metadata, which can rename
+  // them, is merged only later, so the storages it leaves unlisted are stamped too and deleted
+  // below. A listing failure fails the restore before the patch, so the restore is replayed.
+  std::vector<std::string> snapshot_children;
+  if (!snapshot_dir.empty()) {
+    snapshot_children = VERIFY_RESULT(env().GetChildren(snapshot_dir, ExcludeDots::kTrue));
+  }
+  {
+    std::set<std::string> vector_index_dirs;
+    for (auto& dir : metadata().vector_index_dirs()) {
+      vector_index_dirs.insert(std::move(dir));
+    }
+    for (const auto& child : snapshot_children) {
+      if (child.starts_with(docdb::kVectorIndexDirPrefix)) {
+        vector_index_dirs.insert(docdb::GetStorageDir(db_dir, child));
+      }
+    }
+    // A storage whose manifest cannot be loaded is left unstamped rather than failing the restore,
+    // which bootstrap would then replay and fail again: the merge may leave it unlisted, and it is
+    // deleted below. One that stays listed fails OpenStorages as without the stamp.
+    for (const auto& dir : vector_index_dirs) {
+      RETURN_NOT_OK(ResultToStatus(docdb::ForceVectorIndexStorageOpId(dir, frontier.op_id())));
+    }
+  }
+
   {
     rocksdb::Options rocksdb_options;
     tablet().InitRocksDBOptions(
@@ -805,7 +805,8 @@ Status TabletSnapshots::RestoreCheckpoint(
   bool need_flush = false;
 
   if (restore_metadata.schema) {
-    // TODO(pitr) check deleted columns
+    // SetSchema forgets deleted columns that the restored schema brings back.
+    // TODO(pitr) record the columns that the restore removes as deleted.
     // OpId::Invalid() is used to indicate the callee to not
     // set last_applied_change_metadata_op_id field of tablet metadata.
     tablet().metadata()->SetSchema(
@@ -847,10 +848,13 @@ Status TabletSnapshots::RestoreCheckpoint(
     RefreshYBMetaDataCache();
   }
 
-  // After MergeWithRestored: it can change the id, and so the storage dir, of a listed index.
-  if (!snapshot_dir.empty()) {
-    DeleteUnlistedVectorIndexStorages(env(), snapshot_dir, metadata());
-  }
+  // The snapshot holds the storage of every vector index the tablet had at snapshot time, including
+  // dropped ones a snapshot schedule retains and, in a clone, ones the clone does not have. A
+  // storage dir is named by index oid, so a later index of a clone that reuses such an oid would
+  // load its chunks. Best effort: a failure here would fail the restore apply, which is fatal for
+  // the tserver. A crash before this point is covered by the startup sweep in TSTabletManager.
+  // Runs after MergeWithRestored: it can change the id, and so the storage dir, of a listed index.
+  metadata().DeleteUnlistedVectorIndexStorages(snapshot_children);
 
   // Reopen database from copied checkpoint.
   // Note: db_dir == metadata()->rocksdb_dir() is still valid db dir.
@@ -860,13 +864,14 @@ Status TabletSnapshots::RestoreCheckpoint(
     return s;
   }
 
-  // The restore replaced the vector index storages together with the regular DB, but the patcher
-  // above moved only the regular DB's flushed frontier to the restore op id. Force the same op id
-  // on the vector indexes. With a lower snapshot time OpId, bootstrap would replay the rolled back
-  // writes back into them. With a higher OpId of another Raft group, e.g. the source of a clone
-  // or of an imported backup, it would skip this group's writes to them.
-  RETURN_NOT_OK(tablet().vector_indexes().ModifyFlushedFrontier(
-      frontier, rocksdb::FrontierModificationMode::kForce));
+  // The storages stamped above already have the restore op id and are skipped. This covers a listed
+  // index whose storage was not stamped: one the restore did not bring, e.g. created after the
+  // snapshot, or a leftover one the restored metadata lists, which can carry the OpIds of another
+  // Raft group.
+  if (!FLAGS_TEST_skip_vector_index_stamp_after_restore_reopen) {
+    RETURN_NOT_OK(tablet().vector_indexes().ModifyFlushedFrontier(
+        frontier, rocksdb::FrontierModificationMode::kForce));
+  }
 
   LOG_WITH_PREFIX(INFO) << "Checkpoint restored from " << snapshot_dir;
   LOG_WITH_PREFIX(INFO) << "Re-enabling compactions";
@@ -1345,10 +1350,12 @@ Status TabletSnapshots::DoCreateCheckpoint(
       // A vector index checkpoint only takes chunks that are already flushed. Vectors are queued
       // inside the write that adds their row, so flushing after the regular DB checkpoint puts the
       // vectors of every row in it into the chunks below, including rows written during the
-      // checkpoint. See #34759. A failed chunk save leaves WaitForFlush blocked, and other flush
-      // errors are only logged (#35156).
-      vector_indexes.Flush();
-      RETURN_NOT_OK(vector_indexes.WaitForFlush());
+      // checkpoint. See #34759.
+      // Waits for the saves started by the other indexes also when one failed.
+      auto flush_status = vector_indexes.Flush();
+      auto wait_status = vector_indexes.WaitForFlush();
+      RETURN_NOT_OK(flush_status);
+      RETURN_NOT_OK(wait_status);
     }
     for (const auto& vector_index : *vector_indexes) {
       const auto storage_name = docdb::GetVectorIndexStorageName(vector_index->options());

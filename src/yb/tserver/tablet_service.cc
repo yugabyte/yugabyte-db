@@ -261,11 +261,22 @@ DEFINE_test_flag(bool, pause_tserver_get_split_key, false,
 DEFINE_test_flag(bool, pause_wait_for_ysql_backends_catalog_version, false,
     "Pause any WaitForYsqlBackendsCatalogVersion requests until flags is reset.");
 
+DEFINE_test_flag(bool, pause_ysql_upgrade, false,
+    "Pause any UpgradeYsql requests, after they start the upgrade, until flag is reset.");
+
 DEFINE_test_flag(bool, pause_wait_for_lockers, false,
     "Pause any WaitForLockers requests until flags is reset.");
 
 DEFINE_test_flag(bool, fail_wait_for_lockers, false,
     "Fail any WaitForLockers requests received by this tserver.");
+
+DEFINE_test_flag(bool, fail_release_object_locks, false,
+    "Fail any ReleaseObjectLocks requests received by the tserver whose uuid is "
+    "TEST_fail_release_object_locks_on_tserver_uuid.");
+
+DEFINE_test_flag(string, fail_release_object_locks_on_tserver_uuid, "",
+    "The tserver that TEST_fail_release_object_locks applies to. Set it before enabling that flag "
+    "and leave it unchanged while releases may be in flight.");
 
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
@@ -349,7 +360,6 @@ DEFINE_test_flag(bool, persistence_dfatal_unstamped_pgsql_write, false,
 
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_tiered_storage);
-DECLARE_bool(ysql_enable_object_locking_infra);
 DECLARE_bool(enable_active_table_metrics_filtering);
 DECLARE_uint32(max_active_table_metrics_table_count);
 
@@ -1127,6 +1137,15 @@ void TabletServiceAdminImpl::BackfillIndex(
   }
 
   context.RespondSuccess();
+}
+
+void TabletServiceAdminImpl::TableBackfillChunk(
+    const TableBackfillChunkRequestPB* req,
+    TableBackfillChunkResponsePB* resp,
+    rpc::RpcContext context) {
+  SetupErrorAndRespond(
+      resp->mutable_error(), STATUS(NotSupported, "TableBackfillChunk is not implemented yet"),
+      &context);
 }
 
 void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* req,
@@ -2193,14 +2212,22 @@ void TabletServiceAdminImpl::AlterTabletTier(
                         << context.requestor_string();
 
   const auto meta = peer_tablet.tablet_peer->tablet_metadata();
+  auto* tablet_manager = server_->tablet_manager();
 
-  // Keep the disk already resolved for this tier when the tier is unchanged. Re-running the
-  // least-loaded-disk policy could pick a different disk within the same tier purely because the
-  // first call changed the load counts, forcing a pointless rewrite of every SST.
-  Result<uint32_t> path_id = meta->target_storage_tier() == req->target_tier()
-      ? server_->tablet_manager()->ResolveTargetTierPathId(meta)
-      : server_->tablet_manager()->SelectPathIdForTier(
-            *meta, meta->table_id(), req->target_tier());
+  // Same tier: reuse the persisted disk while it still passes OpenTablet's checks; re-resolving
+  // could pick another disk in the tier just because the load counts changed, rewriting every
+  // SST for nothing. OpenTablet leaves a stale path_id behind when the tier has no disks on this
+  // node, and SelectPathIdForTier then refuses with NotFound, as for a tier change. Nothing is
+  // persisted here: the tablet's guarded write stays the only writer. The pair is read once and
+  // the path_id validated and sent is the one read; a concurrent AlterTabletTier can still switch
+  // the tablet underneath, and the tablet refuses a path_id that is not a disk of the tier.
+  const auto persisted_tier = meta->target_storage_tier();
+  const auto persisted_path_id = meta->target_tier_path_id();
+  Result<uint32_t> path_id =
+      persisted_tier == req->target_tier() &&
+              tablet_manager->IsTargetTierPathIdValid(*meta, persisted_tier, persisted_path_id)
+          ? Result<uint32_t>(persisted_path_id)
+          : tablet_manager->SelectPathIdForTier(*meta, meta->table_id(), req->target_tier());
   if (!path_id.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), path_id.status(), &context);
     return;
@@ -2508,7 +2535,23 @@ void TabletServiceAdminImpl::UpgradeYsql(
     return;
   }
 
+  // A caller that times out does not stop the upgrade it started, so its retry can arrive while
+  // that upgrade is still running. Two upgrades running at once apply the same migrations to the
+  // same databases and fail each other with serialization errors. Wait for the running upgrade
+  // instead. If it succeeded, this upgrade finds nothing left to do. Reserve 1s to respond before
+  // the caller's deadline.
+  std::unique_lock lock(ysql_upgrade_mutex_, std::defer_lock);
+  if (!lock.try_lock_until(context.GetClientDeadline() - 1s)) {
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS(TimedOut, "Timed out waiting for a YSQL upgrade already in progress"),
+        &context);
+    return;
+  }
+
   LOG(INFO) << "Starting YSQL upgrade";
+
+  TEST_PAUSE_IF_FLAG(TEST_pause_ysql_upgrade);
 
   pgwrapper::YsqlUpgradeHelper upgrade_helper(server_->pgsql_proxy_bind_address(),
                                               server_->GetSharedMemoryPostgresAuthKey(),
@@ -4129,6 +4172,13 @@ void TabletServiceImpl::ReleaseObjectLocks(
     LOG_WITH_FUNC(INFO)
         << "Flag enable_object_locking_for_table_locks disabled. Ignoring release request.";
     return context.RespondSuccess();
+  }
+
+  if (PREDICT_FALSE(FLAGS_TEST_fail_release_object_locks) &&
+      FLAGS_TEST_fail_release_object_locks_on_tserver_uuid == server_->permanent_uuid()) {
+    return SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS(TimedOut, "TEST_fail_release_object_locks_on_tserver_uuid set"), &context);
   }
 
   if (auto s = CheckLocalLeaseEpoch(GetRecipientLeaseEpoch(*req)); !s.ok()) {

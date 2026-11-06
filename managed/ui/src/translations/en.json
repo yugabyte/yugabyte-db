@@ -4052,6 +4052,8 @@
         "databaseVersionPlaceholder": "Select Database Version",
         "errMsg": {
           "universeNameRequired": "Universe name is required",
+          "universeNameInvalid": "Universe name can only contain letters, numbers and hyphens, and must start and end with a letter or number",
+          "universeNameLowercase": "{{cloudType}} Universe name cannot contain capital letters",
           "cloudProviderRequired": "Cloud provider is required",
           "universeNameUnique": "Universe name \"{{display_name}}\" is already taken. Use a different name.",
           "providerConfigurationRequired": "Provider configuration is required",

@@ -4028,11 +4028,15 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 				AH->outputKind == OUTPUT_SQLCMDS)
 			{
 				ArchiverOutput yb_saved_output_kind = AH->outputKind;
-				static const char yb_zero_sqlparse[sizeof(AH->sqlparse)];
 
-				if (memcmp(&AH->sqlparse, &yb_zero_sqlparse,
-						   sizeof(AH->sqlparse)) != 0)
-					pg_fatal("AH->sqlparse not 0 before printing definition");
+				/*
+				 * Earlier OUTPUT_OTHERDATA output, such as TABLE DATA from an
+				 * --inserts dump, leaves curCmd allocated but empty.  Only a
+				 * partial statement would be a problem.
+				 */
+				if (AH->sqlparse.state != SQL_SCAN ||
+					(AH->sqlparse.curCmd && AH->sqlparse.curCmd->len > 0))
+					pg_fatal("AH->sqlparse not at a statement boundary before printing definition");
 				AH->outputKind = OUTPUT_OTHERDATA;
 				ahprintf(AH, "%s\n\n", te->defn);
 				/*
@@ -4040,8 +4044,11 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 				 * in upstream Postgres, this sequence of SQL statements is sent
 				 * to the backend as one block), so reset the state of sqlparse,
 				 * which is normally meant to be stitching together strings with
-				 * arbitrary boundaries.
+				 * arbitrary boundaries.  ExecuteSimpleCommands() allocated
+				 * curCmd, and the memset drops the only pointer to it.
 				 */
+				if (AH->sqlparse.curCmd)
+					destroyPQExpBuffer(AH->sqlparse.curCmd);
 				memset(&AH->sqlparse, 0, sizeof(AH->sqlparse));
 				AH->outputKind = yb_saved_output_kind;
 			}

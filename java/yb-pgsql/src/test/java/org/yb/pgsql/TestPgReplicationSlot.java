@@ -56,7 +56,10 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
+import org.yb.client.LocatedTablet;
 import org.yb.client.TestUtils;
+import org.yb.client.YBClient;
+import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.pgsql.PgOutputMessageDecoder.*;
 import org.yb.util.BuildTypeUtil;
 
@@ -6380,6 +6383,130 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   }
 
   @Test
+  public void testSecondConsumerAcquiresSlotAfterHeartbeatLoss() throws Exception {
+    Map<String, String> tserverFlags = getTServerFlagsWithExclusiveLock();
+    tserverFlags.put("transaction_heartbeat_usec", Integer.toString(500000 * kMultiplier));
+    tserverFlags.put("transaction_max_missed_heartbeat_periods", "2");
+    tserverFlags.put("transaction_check_interval_usec", Integer.toString(200000 * kMultiplier));
+    restartClusterWithFlags(getMasterFlags(), tserverFlags);
+
+    String slotName = "heartbeat_loss_slot";
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS t_heartbeat_loss");
+      stmt.execute("CREATE TABLE t_heartbeat_loss(k int primary key, v text)");
+    }
+
+    Connection replConn0 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replApi0 =
+        replConn0.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replApi0, slotName, "test_decoding");
+
+    PGReplicationStream stream0 = replApi0.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .start();
+
+    PGReplicationStream stream1 = null;
+    Connection replConn1 = null;
+    try {
+      // Heartbeats stop reaching the coordinator, so the transaction that holds the slot expires
+      // and its lock goes away. Same outcome as a partition between them.
+      for (HostAndPort tServer : miniCluster.getTabletServers().keySet()) {
+        assertTrue(miniCluster.getClient().setFlag(
+            tServer, "transaction_disable_heartbeat_in_tests", "true", true));
+      }
+
+      final int maxAttempts = 30;
+      final int sleepBetweenAttemptsMs = 2000 * kMultiplier;
+      for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          replConn1 = getConnectionBuilder().withTServer(1).replicationConnect();
+          PGReplicationConnection replApi1 =
+              replConn1.unwrap(PGConnection.class).getReplicationAPI();
+          stream1 = replApi1.replicationStream()
+              .logical()
+              .withSlotName(slotName)
+              .withStartPosition(LogSequenceNumber.valueOf(0L))
+              .start();
+          LOG.info("Second consumer acquired slot on attempt {}", attempt);
+          break;
+        } catch (PSQLException e) {
+          if (replConn1 != null) {
+            replConn1.close();
+            replConn1 = null;
+          }
+          if (attempt == maxAttempts) {
+            throw e;
+          }
+          LOG.info("Attempt {} failed, retrying in {}ms: {}", attempt, sleepBetweenAttemptsMs,
+                   e.getMessage());
+          Thread.sleep(sleepBetweenAttemptsMs);
+        }
+      }
+      assertNotNull("Expected a second consumer to acquire the slot", stream1);
+
+      PGReplicationStream closingStream = stream0;
+      Connection closingConn = replConn0;
+      stream0 = null;
+      replConn0 = null;
+      closingStream.close();
+      closingConn.close();
+
+      try (Connection conn = getConnectionBuilder().withTServer(0).connect();
+           Statement stmt = conn.createStatement();
+           ResultSet res = stmt.executeQuery("SELECT 1")) {
+        assertTrue(res.next());
+        assertEquals(1, res.getInt(1));
+      }
+    } finally {
+      if (stream0 != null) {
+        stream0.close();
+      }
+      if (replConn0 != null) {
+        replConn0.close();
+      }
+      if (stream1 != null) {
+        stream1.close();
+      }
+      if (replConn1 != null) {
+        replConn1.close();
+      }
+    }
+  }
+
+  private void waitForAllTabletReplicasToBeVoters() throws Exception {
+    YBClient client = miniCluster.getClient();
+    Set<HostAndPort> masterAddresses = miniCluster.getMasters().keySet();
+    TestUtils.waitFor(() -> {
+      try {
+        for (TableInfo table : client.getTablesList(null, false, null).getTableInfoList()) {
+          for (LocatedTablet tablet :
+               client.openTableByUUID(table.getId().toStringUtf8()).getTabletsLocations(10000)) {
+            List<LocatedTablet.Replica> replicas = tablet.getReplicas();
+            // The sys catalog and YCQL virtual tables are hosted by the masters.
+            boolean onMasters = replicas.stream().anyMatch(r -> r.getRpcHost() != null
+                && masterAddresses.contains(HostAndPort.fromParts(r.getRpcHost(), r.getRpcPort())));
+            int expectedReplicas =
+                onMasters ? miniCluster.getNumMasters() : miniCluster.getNumTServers();
+            if (replicas.size() != expectedReplicas ||
+                !replicas.stream().allMatch(r -> r.getMemberType().equals("VOTER"))) {
+              LOG.info("{}.{} is not voter ready yet",
+                  table.getNamespace().getName(), table.getName());
+              return false;
+            }
+          }
+        }
+        return true;
+      } catch (Exception e) {
+        LOG.info("Tablets not ready yet: {}", e.getMessage());
+        return false;
+      }
+    }, 120000 * kMultiplier);
+  }
+
+  @Test
   public void testSlotLockReleasedOnTserverCrash() throws Exception {
     restartClusterWithFlags(getMasterFlags(), getTServerFlagsWithExclusiveLock());
 
@@ -6396,6 +6523,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         replConn0.unwrap(PGConnection.class).getReplicationAPI();
 
     createSlot(replApi0, slotName, "test_decoding");
+
+    
 
     PGReplicationStream stream0 = replApi0.replicationStream()
         .logical()
@@ -6417,6 +6546,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         .orElseThrow(() -> new IllegalStateException(
             "Could not find tserver for host " + tserver0Host));
     LOG.info("Killing tserver at {} (index 0, holds the slot lock)", tserver0);
+    waitForAllTabletReplicasToBeVoters();
     miniCluster.killTabletServerOnHostPort(tserver0);
 
     miniCluster.startTServer(getTServerFlagsWithExclusiveLock());
@@ -7468,7 +7598,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   private void addConcurrentDdlFlags(Map<String, String> flags) {
     toggleDDLMode(flags, /* useLegacy */ false);
-    flags.put("ysql_enable_object_locking_infra", "true");
+    flags.put("ysql_yb_enable_object_locking_infra", "true");
   }
 
   @Test

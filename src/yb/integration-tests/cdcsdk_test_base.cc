@@ -73,6 +73,21 @@ std::string GenerateRandomReplicationSlotName() {
   return Format("test_replication_slot_$0", uuid_without_dash);
 }
 
+int NumberOfCatalogTablesBeingPolledByCDC() {
+  return FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 6 : 4;
+}
+
+void AddCatalogTableIdsPolledByCDC(PgOid database_oid, std::unordered_set<TableId>* table_ids) {
+  table_ids->insert(GetPgsqlTableId(database_oid, kPgClassTableOid));
+  table_ids->insert(GetPgsqlTableId(database_oid, kPgPublicationRelOid));
+  table_ids->insert(GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));
+  table_ids->insert(GetPgsqlTableId(database_oid, kPgPublicationOid));
+  if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
+    table_ids->insert(GetPgsqlTableId(database_oid, kPgAttributeTableOid));
+    table_ids->insert(GetPgsqlTableId(database_oid, kPgPublicationRelPrpubidIndexOid));
+  }
+}
+
 void CDCSDKTestBase::TearDown() {
   YBTest::TearDown();
 

@@ -53,6 +53,7 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.certmgmt.RpcClientCert;
 import com.yugabyte.yw.common.certmgmt.providers.VaultPKI;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -76,6 +77,7 @@ import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.AdditionalServicesStateData;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.DiskIncreaseFormData;
+import com.yugabyte.yw.forms.HierarchicalNodesSpec;
 import com.yugabyte.yw.forms.ImportUniverseTaskParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.TlsConfigUpdateParams;
@@ -128,6 +130,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import javax.inject.Singleton;
+import javax.validation.constraints.NotNull;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -248,7 +251,8 @@ public class UniverseCRUDHandler {
                 && !isSameInstanceTypes(
                     cluster.userIntent, currentCluster.userIntent, nodesInCluster))
             || cluster.userIntent.enableExposingService
-                != currentCluster.userIntent.enableExposingService;
+                != currentCluster.userIntent.enableExposingService
+            || ManagedLoadBalancerUtil.isTurnedOnOrOff(currentCluster, cluster);
 
     boolean nodeSettingsChanges =
         isAwsArnChanged(cluster, currentCluster)
@@ -484,16 +488,7 @@ public class UniverseCRUDHandler {
               + "master and tserver are selected.");
     }
     if (userIntent.dedicatedNodes) {
-      if (userIntent.masterDeviceInfo == null && userIntent.deviceInfo != null) {
-        if (Util.isKubernetesBasedUniverse(taskParams)) {
-          userIntent.masterDeviceInfo = OperatorUtils.defaultMasterDeviceInfo();
-        } else {
-          userIntent.masterDeviceInfo = userIntent.deviceInfo.clone();
-        }
-      }
-      if (userIntent.masterInstanceType == null) {
-        userIntent.masterInstanceType = userIntent.instanceType;
-      }
+      checkAndInitMasterSettingsForDedicated(taskParams, userIntent);
     }
     if (userIntent.deviceInfo != null) {
       userIntent.deviceInfo.validate();
@@ -577,6 +572,47 @@ public class UniverseCRUDHandler {
       LOG.error("Failed to update universe definition", e);
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
+  }
+
+  private void checkAndInitMasterSettingsForDedicated(
+      UniverseDefinitionTaskParams taskParams, UserIntent userIntent) {
+    if (userIntent.isMulticloudSupport()) {
+      for (UniverseDefinitionTaskParams.ProviderSpecification providerSpecification :
+          userIntent.providerSpecifications) {
+        if (providerSpecification == null
+            || providerSpecification.getNodesSpecs() == null
+            || providerSpecification.getNodesSpecs().getTserverSpecification() == null) {
+          // Validation will fail later.
+          continue;
+        }
+        HierarchicalNodesSpec.NodeSpec tserverSpec =
+            providerSpecification.getNodesSpecs().getNodesSpec().getTserverSpecification();
+        HierarchicalNodesSpec.NodeSpec masterSpec =
+            providerSpecification.getNodesSpecs().getNodesSpec().getOrCreateMasterSpec();
+        if (masterSpec.getDeviceInfo() == null) {
+          masterSpec.setDeviceInfo(
+              getDefaultMasterDeviceInfoForDedicated(taskParams, tserverSpec.getDeviceInfo()));
+        }
+        if (masterSpec.getInstanceType() == null) {
+          masterSpec.setInstanceType(tserverSpec.getInstanceType());
+        }
+      }
+    } else {
+      if (userIntent.masterDeviceInfo == null && userIntent.deviceInfo != null) {
+        userIntent.masterDeviceInfo =
+            getDefaultMasterDeviceInfoForDedicated(taskParams, userIntent.deviceInfo);
+      }
+      if (userIntent.masterInstanceType == null) {
+        userIntent.masterInstanceType = userIntent.instanceType;
+      }
+    }
+  }
+
+  private DeviceInfo getDefaultMasterDeviceInfoForDedicated(
+      UniverseDefinitionTaskParams taskParams, @NotNull DeviceInfo tserverDeviceInfo) {
+    return Util.isKubernetesBasedUniverse(taskParams)
+        ? OperatorUtils.defaultMasterDeviceInfo()
+        : (tserverDeviceInfo == null ? null : tserverDeviceInfo.clone());
   }
 
   public void checkGeoPartitioningParameters(
@@ -842,6 +878,7 @@ public class UniverseCRUDHandler {
 
   public UniverseResp createUniverse(Customer customer, UniverseDefinitionTaskParams taskParams) {
     LOG.info("Create for {}.", customer.getUuid());
+
     if (appConfig.getBoolean(CommonUtils.FIPS_ENABLED)) {
       // Not every caller runs configure() first, which is where this is otherwise enforced.
       taskParams.fipsEnabled = true;
@@ -898,9 +935,17 @@ public class UniverseCRUDHandler {
             BAD_REQUEST, CrossCloudFederationTarget.MULTICLOUD_UNSUPPORTED_ERROR);
       }
       c.userIntent.setFederationConfigured(federationConfigured);
+      if (c.userIntent.dedicatedNodes) {
+        checkAndInitMasterSettingsForDedicated(taskParams, c.userIntent);
+      }
 
       isK8s = c.userIntent.getAllCloudTypes().contains(Common.CloudType.kubernetes);
-      c.validate(!cloudEnabled, isAuthEnforced, taskParams.fipsEnabled, taskParams.nodeDetailsSet);
+      c.validate(
+          !cloudEnabled,
+          isAuthEnforced,
+          taskParams.fipsEnabled,
+          taskParams.getPrimaryCluster().userIntent.useNodeToNodeClientCerts,
+          taskParams.nodeDetailsSet);
       ManagedLoadBalancerUtil.validateNewCluster(
           c, taskParams.getPrimaryCluster(), confGetter, cloudAPIFactory);
       // Enforce user tags.
@@ -1135,6 +1180,7 @@ public class UniverseCRUDHandler {
     }
 
     checkGeoPartitioningParameters(customer, taskParams, OpType.CREATE);
+    RpcClientCert.validate(taskParams);
     validateTmpDirGflagConsistency(taskParams);
     validateOciInstanceTags(taskParams);
 
@@ -1931,7 +1977,11 @@ public class UniverseCRUDHandler {
     boolean isAuthEnforced = confGetter.getConfForScope(customer, CustomerConfKeys.isAuthEnforced);
     addOnCluster.userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
     addOnCluster.validate(
-        !cloudEnabled, isAuthEnforced, taskParams.fipsEnabled, taskParams.nodeDetailsSet);
+        !cloudEnabled,
+        isAuthEnforced,
+        taskParams.fipsEnabled,
+        primaryCluster.userIntent.useNodeToNodeClientCerts,
+        taskParams.nodeDetailsSet);
     addOnCluster.userIntent.enableNodeToNodeEncrypt =
         primaryCluster.userIntent.enableNodeToNodeEncrypt;
     addOnCluster.userIntent.enableClientToNodeEncrypt =
@@ -2023,7 +2073,11 @@ public class UniverseCRUDHandler {
         runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
     boolean isAuthEnforced = confGetter.getConfForScope(customer, CustomerConfKeys.isAuthEnforced);
     readOnlyCluster.validate(
-        !cloudEnabled, isAuthEnforced, taskParams.fipsEnabled, taskParams.nodeDetailsSet);
+        !cloudEnabled,
+        isAuthEnforced,
+        taskParams.fipsEnabled,
+        primaryCluster.userIntent.useNodeToNodeClientCerts,
+        taskParams.nodeDetailsSet);
     if (readOnlyCluster.userIntent.specificGFlags != null) {
       SpecificGFlags primaryGFlags = primaryCluster.userIntent.specificGFlags;
       if (primaryGFlags != null) {
@@ -2900,6 +2954,13 @@ public class UniverseCRUDHandler {
               universe.getUniverseDetails().nodePrefix, taskParams.nodePrefix));
     }
 
+    for (Cluster cluster : taskParams.clusters) {
+      cluster.userIntent.setManagedLoadBalancer(
+          ManagedLoadBalancerUtil.getEditedSetting(
+              universe.getCluster(cluster.uuid).userIntent.getManagedLoadBalancer(),
+              cluster.userIntent.getManagedLoadBalancer()));
+    }
+
     Set<UniverseDefinitionTaskParams.UpdateOptions> updateOptions =
         getUpdateOptions(taskParams, UniverseConfigureTaskParams.ClusterOperationType.EDIT);
     if (!updateOptions.contains(UniverseDefinitionTaskParams.UpdateOptions.UPDATE)
@@ -2946,8 +3007,9 @@ public class UniverseCRUDHandler {
           && curCluster.clusterType == ClusterType.PRIMARY) {
         throw new PlatformServiceException(BAD_REQUEST, "RF change is not available");
       }
-      ManagedLoadBalancerUtil.validateEditedCluster(
-          universe.getUniverseDetails().getPrimaryCluster(), curCluster, newCluster);
+      // Fixed at creation. Clients that predate the field send false, so keep the current value.
+      newCluster.userIntent.useNodeToNodeClientCerts =
+          curCluster.userIntent.useNodeToNodeClientCerts;
       UserIntent newIntent = newCluster.userIntent;
       UserIntent curIntent = curCluster.userIntent;
       for (UUID providerUUID : newIntent.getAllProviderUUIDs()) {

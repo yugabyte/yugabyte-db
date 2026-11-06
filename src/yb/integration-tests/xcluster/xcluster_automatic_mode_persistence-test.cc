@@ -40,6 +40,7 @@
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
+DECLARE_bool(abort_active_txns_during_xrepl_bootstrap);
 DECLARE_bool(enable_persistence_gate);
 DECLARE_bool(enforce_xcluster_guarded_lease);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
@@ -74,9 +75,10 @@ class XClusterAutomaticModePersistenceTest : public XClusterDDLReplicationSwitch
     return conn.FetchRow<int64_t>(Format("SELECT COUNT(*) FROM $0", kTableName));
   }
 
-  // Expects kTableName to be empty on both universes after a switchover from A to B.
+  // Expects kTableName to be empty on both universes.
   void ExpectNoRowsOnEitherUniverse() {
-    // A is now the target, so wait for its safe time to pass anything just written before reading.
+    // Reads on the target happen at its xCluster safe time; wait for that to reach the current
+    // time so that they see everything written so far.
     ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
     ASSERT_EQ(ASSERT_RESULT(CountRows(*cluster_A_)), 0);
     ASSERT_EQ(ASSERT_RESULT(CountRows(*cluster_B_)), 0);
@@ -276,6 +278,46 @@ TEST_F(XClusterAutomaticModePersistenceTest, WriteStartedAfterSwitchoverBarrier)
   pause_controller.Release();
   thread_holder.JoinAll();
   ASSERT_OK(switchover_status);
+}
+
+// Checks that a distributed transaction that wrote on the source before setup checkpointed it,
+// and that the checkpoint failed to abort, cannot commit after setup's backup, and that none of
+// its writes are visible on either universe.
+TEST_F(XClusterAutomaticModePersistenceTest, DistributedTransactionSpanningSetup) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "This test does not work with yb_backup.py";
+  }
+  constexpr int kRowCount = 10;
+  auto params = kDefaultParams;
+  params.start_yb_controller_servers = true;
+  ASSERT_OK(SetUpClusters(params));
+  // B gets the table from the restore.
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0 (k INT PRIMARY KEY) SPLIT INTO 3 TABLETS", kTableName));
+
+  auto conn = ASSERT_RESULT(cluster_A_->ConnectToDB(namespace_name));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  // Each statement flushes its write, so the transaction's provisional records precede the
+  // checkpoint: the stream will not carry them, only the eventual commit.
+  for (int i = 0; i < kRowCount; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1)", kTableName, i));
+  }
+
+  // Checkpointing a tablet aborts its active transactions, but carries on if an abort fails, e.g.,
+  // by timing out (see XClusterCheckpointNamespaceTask::MarkTablesAsCheckpointed for other such
+  // cases).  Skipping the aborts simulates that.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_abort_active_txns_during_xrepl_bootstrap) = false;
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces({namespace_name}));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_abort_active_txns_during_xrepl_bootstrap) = true;
+  ASSERT_OK(BackupFromProducer());
+
+  // Committing after the backup's read time keeps the rows out of the backup too.
+  ASSERT_NO_FATALS(ExpectBlocked(conn.Execute("COMMIT"), conn));
+
+  ASSERT_OK(RestoreToConsumer());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  ASSERT_NO_FATALS(ExpectNoRowsOnEitherUniverse());
 }
 
 }  // namespace yb

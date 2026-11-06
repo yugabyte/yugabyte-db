@@ -724,6 +724,10 @@ typedef struct {
 // DeepFreeRecordBatch function of yb_virtual_wal_client.c.
 typedef struct {
   const char* column_name;
+  // When TEST_ysql_yb_enable_replication_slot_transactional_ddl is on, the column is identified by
+  // column_attr_num and column_name is NULL. Otherwise it is identified by column_name and
+  // column_attr_num is 0.
+  int column_attr_num;
   // Null indicates that the value is explicitly null while Omitted indicates that the value is
   // present but was just not sent from the CDC service due to the Replica Identity (CHANGE,
   // MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES).
@@ -770,6 +774,10 @@ typedef struct {
   // DocDB transaction id associated with the record.
   bool has_docdb_txn_id;
   char docdb_txn_id[37]; /* UUID string length (36) + null terminator */
+  // Subtransactions of the DocDB transaction rolled back to a savepoint, run length encoded as in
+  // SubtxnSetPB. Only set on BEGIN records.
+  uint32_t* aborted_subtxn_set;
+  int aborted_subtxn_set_size;
 } YbcPgRowMessage;
 
 // Upon adding any more palloc'd members in the below struct, add logic to free it in

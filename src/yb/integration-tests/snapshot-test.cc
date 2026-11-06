@@ -727,6 +727,9 @@ TEST_F(SnapshotTest, SameTermMembershipChangeRejectsPreflight) {
       ListTabletPeersForTableName(cluster_.get(), kTableName.table_name()));
   ASSERT_EQ(peers.size(), 3);
   const auto tablet_id = peers.front()->tablet_id();
+  // Workload setup does not wait for the tablet leader election to finish.
+  ASSERT_OK(WaitUntilTabletHasLeader(
+      cluster_.get(), tablet_id, CoarseMonoClock::Now() + 10s, RequireLeaderIsReady::kTrue));
   auto* leader = GetLeaderForTablet(cluster_.get(), tablet_id);
   ASSERT_NE(leader, nullptr);
   auto leader_peer = ASSERT_RESULT(GetLeaderPeerForTablet(cluster_.get(), tablet_id));
@@ -798,6 +801,10 @@ TEST_F(SnapshotTest, LocalFlushCapacityRejectsBeforeFollowerFlush) {
       ListTabletPeersForTableName(cluster_.get(), kTableName.table_name()));
   ASSERT_EQ(peers.size(), 6);
   const auto snapshot_tablet_id = peers.front()->tablet_id();
+  // Setup returns once each tablet has elected a leader, but that leader may not be ready yet.
+  ASSERT_OK(WaitUntilTabletHasLeader(
+      cluster_.get(), snapshot_tablet_id, CoarseMonoClock::Now() + 30s,
+      RequireLeaderIsReady::kTrue));
   auto* leader = GetLeaderForTablet(cluster_.get(), snapshot_tablet_id);
   ASSERT_NE(leader, nullptr);
   // Occupy the leader's only flush slot with a different tablet hosted on the same server.
@@ -1007,6 +1014,10 @@ TEST_F(SnapshotTest, MissingFollowerTabletIsRetryable) {
       ListTabletPeersForTableName(cluster_.get(), kTableName.table_name()));
   ASSERT_EQ(peers.size(), 3);
   const auto tablet_id = peers.front()->tablet_id();
+  // No writes precede this, so the tablet may not have elected a leader yet.
+  ASSERT_OK(WaitUntilTabletHasLeader(
+      cluster_.get(), tablet_id, CoarseMonoClock::now() + 30s * kTimeMultiplier,
+      RequireLeaderIsReady::kTrue));
   auto* leader = GetLeaderForTablet(cluster_.get(), tablet_id);
   ASSERT_NE(leader, nullptr);
   auto* follower = cluster_->mini_tablet_server(leader == cluster_->mini_tablet_server(0) ? 1 : 0);

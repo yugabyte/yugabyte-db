@@ -18,7 +18,8 @@ In addition to password login, you can use social logins, including Google, GitH
 
 To manage the social logins available to your account users, do the following:
 
-1. Navigate to **Security > Access Control > Authentication**, and click **Edit Configuration** to display the **Login Methods** dialog.
+1. Navigate to **Organization > Security > Access Control > Authentication**.
+1. Click **Edit Configuration** to display the **Login Methods** dialog.
 
     ![Login methods](/images/yb-cloud/managed-authentication-social.png)
 
@@ -26,3 +27,5 @@ To manage the social logins available to your account users, do the following:
 1. Click **Save Changes**.
 
 If you revoke a social login that is already in use, users using that social login can either [reset their password](../../manage-access/#reset-your-password) to configure email-based login, or sign in using a different social login. The social account must be associated with the same email address.
+
+If you are not using federated authentication, then at least one method must be enabled.
