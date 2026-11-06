@@ -32,8 +32,6 @@ import org.yb.pgsql.ConnectionEndpoint;
 import org.yb.util.RequiresLinux;
 
 /**
- * Regression test for DB-14520.
- *
  * When a logical client that is not attached to any server connection closes
  * the connection, it sends a Terminate ('X') message. The connection manager
  * used to treat that read as regular client activity: it attached a server
@@ -54,7 +52,6 @@ public class TestNoAttachOnClientTerminate extends BaseYsqlConnMgr {
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
-    disableWarmupRandomMode(builder);
     builder.addCommonTServerFlag("ysql_conn_mgr_log_settings", "log_debug");
   }
 

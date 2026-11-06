@@ -60,6 +60,19 @@ static inline char *od_readahead_pos_read(od_readahead_t *readahead)
 	return (char *)machine_msg_data(readahead->buf) + readahead->pos_read;
 }
 
+static inline int od_readahead_next_byte_is(od_readahead_t *readahead,
+					    uint8_t value)
+{
+	if (od_readahead_unread(readahead) == 0) {
+		/* no bytes in buf */
+		return 0;
+	}
+
+	/* no read commit - just check first byte */
+
+	return ((uint8_t *)od_readahead_pos_read(readahead))[0] == value;
+}
+
 static inline void od_readahead_pos_advance(od_readahead_t *readahead,
 					    int value)
 {
