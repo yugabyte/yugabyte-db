@@ -60,12 +60,6 @@ class XClusterUpgradeTestBase : public UpgradeTestBase {
     producer_cluster_ = cluster_.get();
     producer_client_ = client_.get();
 
-#if !defined(NDEBUG)
-    if (IsYsqlMajorVersionUpgrade()) {
-      GTEST_SKIP() << "xCluster major YSQL Upgrade testing not supported in debug mode";
-    }
-#endif
-
     SwitchToConsumerCluster();
     opts.cluster_id = "consumer_cluster";
     opts.cluster_short_name = "C";
