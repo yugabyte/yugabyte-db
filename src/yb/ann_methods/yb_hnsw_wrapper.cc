@@ -30,40 +30,60 @@ using vector_index::VectorId;
 using vector_index::ValidDistanceResultType;
 
 template<IndexableVectorType Vector>
-class YbHnswIterator : public AbstractIterator<vector_index::VectorIndexIteratorEntry<Vector>> {
+class YbHnswIterator : public vector_index::VectorIndexIterator<Vector> {
  public:
-  using ValueType = vector_index::VectorIndexIteratorEntry<Vector>;
-  using Base = AbstractIterator<ValueType>;
+  using EntryType = typename vector_index::VectorIndexIterator<Vector>::EntryType;
 
-  YbHnswIterator(const hnsw::YbHnsw& hnsw, size_t index)
-      : cache_scope_(cache_, hnsw), dimensions_(hnsw.header().dimensions), index_(index) {
+  explicit YbHnswIterator(const hnsw::YbHnsw& hnsw)
+      : cache_scope_(cache_, hnsw), dimensions_(hnsw.header().dimensions),
+        size_(hnsw.header().layers.front().size) {
+    Load();
   }
 
   void Next() override {
     ++index_;
+    Load();
   }
 
-  ValueType Dereference() const override {
-    const auto* coordinates = cache_.CoordinatesPtr(index_);
-    ValueType result;
-    auto [vector_id, payload] = cache_.GetVectorIdAndPayload(index_);
-    result.vector_id = vector_id;
+  EntryType Entry() const override {
+    EntryType result;
+    result.vector_id = vector_id_;
     result.vector.resize(dimensions_);
-    memcpy(result.vector.data(), coordinates, dimensions_ * sizeof(typename Vector::value_type));
-    result.payload = payload;
+    memcpy(result.vector.data(), coordinates_, dimensions_ * sizeof(typename Vector::value_type));
+    result.payload = payload_;
     return result;
   }
 
-  bool NotEquals(const Base& other) const override {
-    auto& rhs = down_cast<const YbHnswIterator&>(other);
-    return index_ != rhs.index_;
+ protected:
+  bool DoValid() const override {
+    return index_ < size_;
+  }
+
+  Status DoStatus() const override {
+    return cache_.status();
   }
 
  private:
-  mutable hnsw::SearchCache cache_;
+  // Reads the current vector, so that a read error ends the iteration before Entry.
+  void Load() {
+    if (index_ >= size_) {
+      return;
+    }
+    coordinates_ = cache_.CoordinatesPtr(index_);
+    std::tie(vector_id_, payload_) = cache_.GetVectorIdAndPayload(index_);
+    if (PREDICT_FALSE(!cache_.status().ok())) {
+      index_ = size_;
+    }
+  }
+
+  hnsw::SearchCache cache_;
   hnsw::SearchCacheScope cache_scope_;
   const size_t dimensions_;
-  size_t index_;
+  const size_t size_;
+  size_t index_ = 0;
+  const std::byte* coordinates_ = nullptr;
+  VectorId vector_id_;
+  Slice payload_;
 };
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -97,14 +117,8 @@ class YbHnswIndex :
     return index_.Import(index, path, payloads);
   }
 
-  std::unique_ptr<AbstractIterator<vector_index::VectorIndexIteratorEntry<Vector>>> BeginImpl()
-      const override {
-    return std::make_unique<YbHnswIterator<Vector>>(index_, 0);
-  }
-
-  std::unique_ptr<AbstractIterator<vector_index::VectorIndexIteratorEntry<Vector>>> EndImpl()
-      const override {
-    return std::make_unique<YbHnswIterator<Vector>>(index_, Size());
+  std::unique_ptr<vector_index::VectorIndexIterator<Vector>> CreateIterator() const override {
+    return std::make_unique<YbHnswIterator<Vector>>(index_);
   }
 
   Status Reserve(
