@@ -956,7 +956,7 @@ static inline int od_auth_backend_sasl_continue(od_server_t *server,
 	if (client != NULL && client->password.password != NULL) {
 		od_error(
 			&instance->logger, "auth", NULL, server,
-			"cannot authenticate with SCRAM secret from auth_query",
+			"cannot authenticate with SCRAM secret from auth_query (db %s, user %s)",
 			route->rule->db_name, route->rule->user_name);
 
 		return -1;

@@ -14,6 +14,8 @@
 package org.yb.ysqlconnmgr;
 
 import java.sql.Connection;
+import java.sql.Statement;
+import java.util.Collections;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.minicluster.MiniYBClusterBuilder;
@@ -109,5 +111,61 @@ public class TestCorrectErrorMessage extends BaseYsqlConnMgr {
     }
 
     checkBrokenControlConnection();
+  }
+
+  // Logs in as a role that does not exist, with %08x and %% in its name.
+  // The FATAL message shows the name as it was sent.
+  @Test
+  public void testFormatCharsInLoginErrMsg() throws Exception {
+    final String user = "no_user_%08x.%08x.%08x.%08x_%%";
+    try (Connection connection =
+        getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                              .withUser(user)
+                              .withPassword("yugabyte")
+                              .connect()) {
+      fail("Did not expect to login with a wrong username");
+    } catch (Exception e) {
+      assertTrue("Got wrong error message: " + e.getMessage(),
+                 e.getMessage().contains("role \"" + user + "\" does not exist"));
+    }
+
+    checkBrokenControlConnection();
+  }
+
+  // Sets default_text_search_config to a config with %08x in its name, then drops the
+  // config from a direct connection. The next query runs on another backend, where
+  // replaying the SET fails. The FATAL message shows the config name as it was set.
+  @Test
+  public void testFormatCharsInDeployErrMsg() throws Exception {
+    markClusterNeedsRecreation();
+    restartClusterWithAdditionalFlags(Collections.emptyMap(),
+        Collections.singletonMap("TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "round_robin"));
+
+    final String cfg = "public.\"cfg_%08x.%08x\"";
+    try (Connection conn =
+             getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                                   .withUser("yugabyte")
+                                   .withPassword("yugabyte")
+                                   .connect();
+         Connection directConn =
+             getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.POSTGRES)
+                                   .withUser("yugabyte")
+                                   .withPassword("yugabyte")
+                                   .connect();
+         Statement stmt = conn.createStatement();
+         Statement directStmt = directConn.createStatement()) {
+      directStmt.execute("CREATE TEXT SEARCH CONFIGURATION " + cfg + " (COPY = english)");
+      stmt.execute("SET default_text_search_config = '" + cfg + "'");
+      directStmt.execute("DROP TEXT SEARCH CONFIGURATION " + cfg);
+      try {
+        stmt.execute("SELECT 1");
+        fail("Expected the SET replay on another backend to fail");
+      } catch (Exception e) {
+        assertTrue("Got wrong error message: " + e.getMessage(),
+                   e.getMessage().contains(
+                       "invalid value for parameter \"default_text_search_config\": \"" +
+                       cfg + "\""));
+      }
+    }
   }
 }

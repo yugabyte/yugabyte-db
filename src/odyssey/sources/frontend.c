@@ -381,7 +381,7 @@ od_frontend_attach(od_client_t *client, char *context,
 		/* connect to server, if necessary */
 		if (server->io.io) {
 			od_debug(&instance->logger, "frontend-attach", client,
-				 server, "updating client lcv from %d to %d",
+				 server, "updating client lcv from %" PRId64 " to %" PRId64,
 				 client->yb_logical_client_version,
 				 server->yb_logical_client_version);
 			client->yb_logical_client_version =
@@ -432,8 +432,8 @@ od_frontend_attach(od_client_t *client, char *context,
 		    client->yb_logical_client_version <
 			    server->yb_logical_client_version) {
 			od_log(&instance->logger, context, client, server,
-			       "no matching server version found for client as client's logical version = %d "
-			       "and server's logical version = %d",
+			       "no matching server version found for client as client's logical version = %" PRId64 " "
+			       "and server's logical version = %" PRId64,
 			       client->yb_logical_client_version,
 			       server->yb_logical_client_version);
 			return OD_ESERVER_CONNECT;
@@ -442,7 +442,7 @@ od_frontend_attach(od_client_t *client, char *context,
 		if (client->yb_logical_client_version !=
 		    server->yb_logical_client_version) {
 			od_debug(&instance->logger, "frontend-attach", client,
-				 server, "updating client lcv from %d to %d",
+				 server, "updating client lcv from %" PRId64 " to %" PRId64,
 				 client->yb_logical_client_version,
 				 server->yb_logical_client_version);
 		}
@@ -516,7 +516,7 @@ static inline od_frontend_status_t od_frontend_setup(od_client_t *client)
 	if (instance->config.log_session) {
 		client->time_setup = machine_time_us();
 		yb_od_session(&instance->logger, "setup", client, NULL,
-		       "login time: %d microseconds",
+		       "login time: %" PRIu64 " microseconds",
 		       (client->time_setup - client->time_accept));
 		yb_od_session(&instance->logger, "setup", client, NULL,
 		       "client connection from %s to route %s.%s accepted",
@@ -596,14 +596,14 @@ static inline bool od_eject_conn_with_rate(od_client_t *client,
 	{
 		if (info->last_conn_drop_ts + /* 1 sec */ 1 > tv.tv_sec) {
 			od_log(&instance->logger, "shutdown", client, server,
-			       "delay drop client connection on restart, last drop was too recent (wid %d, last drop %d, curr time %d)",
+			       "delay drop client connection on restart, last drop was too recent (wid %d, last drop %d, curr time %ld)",
 			       (*gl)->wid, info->last_conn_drop_ts, tv.tv_sec);
 		} else {
 			info->last_conn_drop_ts = tv.tv_sec;
 			res = true;
 
 			od_log(&instance->logger, "shutdown", client, server,
-			       "drop client connection on restart (wid %d, last eject %d, curr time %d)",
+			       "drop client connection on restart (wid %d, last eject %d, curr time %ld)",
 			       (*gl)->wid, info->last_conn_drop_ts, tv.tv_sec);
 		}
 	}
@@ -618,7 +618,9 @@ static inline bool od_eject_conn_with_timeout(od_client_t *client,
 					      uint64_t timeout)
 {
 	assert(server != NULL);
-	od_dbg_printf_on_dvl_lvl(1, "current time %lld, drop horizon %lld\n",
+	od_dbg_printf_on_dvl_lvl(1,
+				 "current time %" PRIu64 ", drop horizon %" PRIu64
+				 "\n",
 				 machine_time_us(),
 				 client->time_last_active + timeout);
 
@@ -652,7 +654,7 @@ static inline bool od_should_drop_connection(od_client_t *client,
 						    ->client_idle_timeout)) {
 					od_log(&instance->logger, "shutdown",
 					       client, server,
-					       "drop idle client connection on due timeout %d sec",
+					       "drop idle client connection on due timeout %" PRIu64 " sec",
 					       client->rule->pool
 						       ->client_idle_timeout);
 
@@ -673,7 +675,7 @@ static inline bool od_should_drop_connection(od_client_t *client,
 						    ->idle_in_transaction_timeout)) {
 					od_log(&instance->logger, "shutdown",
 					       client, server,
-					       "drop idle in transaction connection on due timeout %d sec",
+					       "drop idle in transaction connection on due timeout %" PRIu64 " sec",
 					       client->rule->pool
 						       ->idle_in_transaction_timeout);
 
@@ -1409,6 +1411,7 @@ char *yb_prepare_server_key(char *stmt_name, int stmt_name_len, char *query_stri
 	return server_key;
 }
 
+__attribute__((format(printf, 5, 6)))
 static od_frontend_status_t
 yb_frontend_throw_error(od_relay_t *relay, od_client_t *client,
 			od_server_t *server, char *sqlstate, char *fmt, ...)
@@ -1623,7 +1626,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				od_debug(
 					&instance->logger, "remote client",
 					client, server,
-					"%.*s (len %d) (%u) operator was not prepared by this client",
+					"%.*s (len %d) (%" PRIu64 ") operator was not prepared by this client",
 					operator_name_len, operator_name,
 					operator_name_len, keyhash);
 				retstatus = yb_frontend_throw_error(
@@ -1659,7 +1662,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 			od_debug(&instance->logger, "rewrite describe", client,
 				 server, "statement: %.*s, hash: %016" PRIx64,
-				 desc->len, desc->data, yb_stmt_hash);
+				 (int)desc->len, (char *)desc->data, yb_stmt_hash);
 
 			char opname[YB_OD_HASH_64_LEN];
 			od_snprintf(opname, YB_OD_HASH_64_LEN, "%016" PRIx64,
@@ -1675,8 +1678,8 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 					 server,
 					 "deploy %.*s operator hash %016" PRIx64
 					 " to server",
-					 server_key_desc.len,
-					 server_key_desc.data, keyhash);
+					 (int)server_key_desc.len,
+					 (char *)server_key_desc.data, keyhash);
 				free(server_key_desc.data);
 				// rewrite msg
 				// allocate prepered statement under name equal to yb_stmt_hash
@@ -1794,7 +1797,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				desc.operator_name, desc.operator_name_len);
 			od_debug(&instance->logger, "parse", client, server,
 				 "saving %.*s operator hash %016" PRIx64,
-				 desc.operator_name_len, desc.operator_name,
+				 (int)desc.operator_name_len, desc.operator_name,
 				 keyhash);
 
 			od_hashmap_elt_t key;
@@ -2032,7 +2035,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				if (rc == -1) {
 					od_error(&instance->logger,
 						 "rewrite parse", NULL, server,
-						 "out of memory",
+						 "out of memory: %s",
 						 od_io_error(&server->io));
 					return OD_ESERVER_WRITE;
 				}
@@ -2060,7 +2063,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				od_debug(
 					&instance->logger, "remote client",
 					client, server,
-					"%.*s (%u) operator was not prepared by this client",
+					"%.*s (%" PRIu64 ") operator was not prepared by this client",
 					operator_name_len, operator_name,
 					keyhash);
 				retstatus = yb_frontend_throw_error(
@@ -2095,7 +2098,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 			od_debug(&instance->logger, "rewrite bind", client,
 				 server, "statement: %.*s, hash: %016" PRIx64,
-				 desc->len, desc->data, yb_stmt_hash);
+				 (int)desc->len, (char *)desc->data, yb_stmt_hash);
 
 			char opname[YB_OD_HASH_64_LEN];
 			od_snprintf(opname, YB_OD_HASH_64_LEN, "%016" PRIx64,
@@ -2110,7 +2113,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 					"rewrite parse before bind", client,
 					server,
 					"deploy %.*s operator hash %016" PRIx64 " to server",
-					server_key_desc.len, server_key_desc.data, keyhash);
+					(int)server_key_desc.len, (char *)server_key_desc.data, keyhash);
 				free(server_key_desc.data);
 				// rewrite msg
 				// allocate prepered statement under name equal to yb_stmt_hash
@@ -2815,7 +2818,8 @@ static void od_frontend_cleanup(od_client_t *client, char *context,
 		od_error(&instance->logger, context, client, server,
 				"deploy error: %s, status %s", client->deploy_err->message,
 				od_frontend_status_to_str(status));
-		od_frontend_fatal(client, client->deploy_err->code, client->deploy_err->message);
+		od_frontend_fatal(client, client->deploy_err->code, "%s",
+				  client->deploy_err->message);
 		/* close backend connection */
 		od_router_close(router, client);
 		break;
@@ -3551,7 +3555,7 @@ int yb_auth_via_auth_backend(od_client_t *client)
 							control_conn_client);
 	/*Store the client's logical_client_version as auth backend's logical_client_version*/
 	od_debug(&instance->logger, "auth backend", client, server,
-		 "setting client's logical client version to %d",
+		 "setting client's logical client version to %" PRId64,
 		 server->yb_logical_client_version);
 	client->yb_logical_client_version = server->yb_logical_client_version;
 
