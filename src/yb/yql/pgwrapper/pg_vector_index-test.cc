@@ -206,6 +206,7 @@ YB_STRONGLY_TYPED_BOOL(Backfill);
 YB_STRONGLY_TYPED_BOOL(CrashAfterRestoreReopen);
 YB_STRONGLY_TYPED_BOOL(NonTransactionalWrites);
 YB_STRONGLY_TYPED_BOOL(NullVectorBeforeSchemaChange);
+YB_STRONGLY_TYPED_BOOL(StorePayload);
 YB_STRONGLY_TYPED_BOOL(UseSharedMemory);
 YB_STRONGLY_TYPED_BOOL(WaitForIntents);
 
@@ -5311,6 +5312,8 @@ class PgVectorIndexSingleServerTestBase : public PgVectorIndexTestBase {
 
 class PgVectorIndexSingleServerTest
     : public PgVectorIndexTestParamsDecorator<PgVectorIndexSingleServerTestBase> {
+ protected:
+  void TestSearchWithConcurrentUpdates(AddFilter add_filter, StorePayload store_payload);
 };
 
 MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexSingleServerTest);
@@ -5614,19 +5617,22 @@ TEST_P(PgVectorIndexSingleServerTest, ConcurrentDeleteApplyDuringSearchStress) {
 }
 
 // A writer keeps moving the vectors of a few rows between Vector(id) and -Vector(id), while
-// searchers with a filter read a row's vector and search near Vector(id) in one statement. Whenever
-// the row is at Vector(id), the search has to return it. The filter fetches the rows of the
-// candidate vectors, and could read a row updated in the uncertainty window, i.e. after the read
-// time, leaving out its vector without restarting the read.
+// searchers read a row's vector and search near Vector(id) in one statement. Whenever the row is at
+// Vector(id), the search has to return it. The search resolves candidate vectors through the
+// reverse mapping, or fetches their rows when there is a filter or the index stores the ybctid as
+// the payload. Either could see an update in the uncertainty window, i.e. after the read time, and
+// leave out the vector without restarting the read.
 //
 // Covers https://github.com/yugabyte/yugabyte-db/issues/36618.
-TEST_P(PgVectorIndexSingleServerTest, FilteredSearchWithConcurrentUpdates) {
+void PgVectorIndexSingleServerTest::TestSearchWithConcurrentUpdates(
+    AddFilter add_filter, StorePayload store_payload) {
   constexpr int64_t kNumRows = 1000;
   constexpr int64_t kNumHotRows = 20;
   constexpr size_t kRowsPerTransaction = 5;
   constexpr size_t kNumSearchers = 4;
   const auto kRunTime = RegularBuildVsSanitizers<std::chrono::seconds>(15s, 10s);
 
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = store_payload;
   auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
 
   TestThreadHolder threads;
@@ -5652,21 +5658,22 @@ TEST_P(PgVectorIndexSingleServerTest, FilteredSearchWithConcurrentUpdates) {
     }
   });
 
+  // id + 0 keeps the always true filter from becoming a key bound, so the search is done with a
+  // DocDB filter, i.e. PgsqlVectorFilter fetches the row of every candidate vector.
+  const std::string where = add_filter ? "WHERE id + 0 >= 0" : "";
   std::atomic<size_t> num_searches{0};
   std::atomic<size_t> num_misses{0};
   for (size_t i = 0; i != kNumSearchers; ++i) {
     threads.AddThreadFunctor(
-        [this, &num_searches, &num_misses, &stop_flag = threads.stop_flag()] {
+        [this, &where, &num_searches, &num_misses, &stop_flag = threads.stop_flag()] {
       auto read_conn = ASSERT_RESULT(Connect());
       while (!stop_flag.load(std::memory_order_acquire)) {
         auto id = RandomUniformInt<int64_t>(1, kNumHotRows);
         auto near = AsString(Vector(id));
-        // id + 0 keeps the always true filter from becoming a key bound, so the search is done
-        // with a DocDB filter, i.e. PgsqlVectorFilter fetches the row of every candidate vector.
         auto result = read_conn.FetchRow<bool, int64_t>(Format(
             "SELECT (SELECT embedding = '$1' FROM test WHERE id = $0), "
-            "(SELECT id FROM test WHERE id + 0 >= 0 $2)",
-            id, near, IndexQuerySuffix(near, 1)));
+            "(SELECT id FROM test $2 $3)",
+            id, near, where, IndexQuerySuffix(near, 1)));
         if (!result.ok()) {
           ASSERT_TRUE(IsRetryable(result.status())) << result.status();
           continue;
@@ -5686,6 +5693,22 @@ TEST_P(PgVectorIndexSingleServerTest, FilteredSearchWithConcurrentUpdates) {
   LOG(INFO) << "Searches: " << num_searches << ", misses: " << num_misses;
   ASSERT_GT(num_searches, 0);
   ASSERT_EQ(num_misses, 0);
+}
+
+TEST_P(PgVectorIndexSingleServerTest, SearchWithConcurrentUpdates) {
+  TestSearchWithConcurrentUpdates(AddFilter::kFalse, StorePayload::kFalse);
+}
+
+TEST_P(PgVectorIndexSingleServerTest, FilteredSearchWithConcurrentUpdates) {
+  TestSearchWithConcurrentUpdates(AddFilter::kTrue, StorePayload::kFalse);
+}
+
+TEST_P(PgVectorIndexSingleServerTest, SearchWithConcurrentUpdatesStorePayload) {
+  TestSearchWithConcurrentUpdates(AddFilter::kFalse, StorePayload::kTrue);
+}
+
+TEST_P(PgVectorIndexSingleServerTest, FilteredSearchWithConcurrentUpdatesStorePayload) {
+  TestSearchWithConcurrentUpdates(AddFilter::kTrue, StorePayload::kTrue);
 }
 
 TEST_P(PgVectorIndexSingleServerTest, OnDiskSize) {
