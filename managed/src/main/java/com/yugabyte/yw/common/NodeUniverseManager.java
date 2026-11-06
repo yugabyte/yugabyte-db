@@ -767,16 +767,6 @@ public class NodeUniverseManager extends DevopsBase {
     return String.format("$(dirname \"$(ls -t %s 2>/dev/null | head -1)\")", sockets);
   }
 
-  // ysqlsh opens <dir>/.s.PGSQL.<port>, so ignore sockets a SIGKILLed postmaster left on another
-  // port. Postgres falls back to /tmp when tmp_dir is too long; the newest socket wins.
-  static String getYsqlSocketDirExpression(String tmpDirectory, String port) {
-    String sockets = tmpDirectory + "/.yb.*/.s.PGSQL." + port;
-    if (!"/tmp".equals(tmpDirectory)) {
-      sockets += " /tmp/.yb.*/.s.PGSQL." + port;
-    }
-    return String.format("$(dirname \"$(ls -t %s 2>/dev/null | head -1)\")", sockets);
-  }
-
   /**
    * Returns yb home directory for node
    *
