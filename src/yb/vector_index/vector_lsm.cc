@@ -2858,7 +2858,9 @@ VectorLSM<Vector, DistanceResult>::PickChunksForCompaction(CompactionType type) 
     return PickChunksForFullCompaction();
   }
 
-  SharedLock lock(mutex_);
+  // Exclusive lock: concurrent pickers could otherwise both see the same chunks as ready and
+  // then race on locking them.
+  UniqueLock lock(mutex_);
   if (auto chunks = PickChunksBySizeAmplification(); !chunks.empty()) {
     return chunks;
   }
