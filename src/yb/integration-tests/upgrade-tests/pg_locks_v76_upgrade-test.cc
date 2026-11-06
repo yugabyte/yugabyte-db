@@ -38,6 +38,10 @@ TEST_F(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
   for (const auto& [flag, value] : flag_pairs) {
     ASSERT_OK(cluster_->AddAndSetExtraFlag(flag, value));
   }
+  // Node restarts during the upgrade trigger leader rebalancing, which may start only after the
+  // locks below are taken. A transactions/pg_advisory_locks tablet leader move while the locks are
+  // held can hide the transaction's locks from pg_locks.
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_load_balancing", "false"));
   auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
   ASSERT_OK(conn.Execute("CREATE TABLE foo (id INT PRIMARY KEY, value TEXT);"));
   ASSERT_OK(conn.Execute("INSERT INTO foo VALUES (1, 'test');"));
