@@ -66,6 +66,8 @@ struct StateChangeContext {
       case StateChangeReason::FOLLOWER_CONFIG_CHANGE_COMPLETE:
         return Format("Config change $0 complete on follower",
           change_record.ShortDebugString());
+      case StateChangeReason::TIER_MIGRATION_STATE_CHANGED:
+        return "Tier migration target or state changed";
       case StateChangeReason::INVALID_REASON: FALLTHROUGH_INTENDED;
       default:
         return "INVALID REASON";

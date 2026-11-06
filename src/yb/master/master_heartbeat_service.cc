@@ -1448,15 +1448,21 @@ void MasterHeartbeatServiceImpl::UpdateTabletReplicasAfterConfigChange(
     const auto& ts_desc = *ts_desc_result;
 
     const TabletReplica* existing_replica = FindOrNull(*prev_rl, ts_desc->permanent_uuid());
+    const bool is_sender = sender_uuid == ts_desc->permanent_uuid();
     // The RaftGroupStatePB in the report is only applicable to the replica that is owned by the
     // sender. Initialize the other replicas with an unknown state.
     const RaftGroupStatePB replica_state =
-        (sender_uuid == ts_desc->permanent_uuid()) ? report.state() : RaftGroupStatePB::UNKNOWN;
+        is_sender ? report.state() : RaftGroupStatePB::UNKNOWN;
 
     auto replica = CreateNewReplicaForLocalMemory(ts_desc, &consensus_state, report, replica_state);
     if (existing_replica) {
       replica.UpdateDriveInfo(existing_replica->drive_info);
       replica.UpdateLeaderLeaseInfo(existing_replica->leader_lease_info);
+    }
+    if (!is_sender) {
+      // The tier fields in the report, like its state, describe the sender's replica only. The
+      // other replicas keep what they last reported for themselves, nothing until then.
+      replica.UpdateStorageTierInfo(existing_replica);
     }
     auto result = replica_locations.get()->insert({ts_desc->id(), replica});
     LOG_IF(FATAL, !result.second) << "duplicate uuid: " << ts_desc->id();
@@ -1496,6 +1502,15 @@ TabletReplica MasterHeartbeatServiceImpl::CreateNewReplicaForLocalMemory(
   }
   if (report.has_fs_data_dir()) {
     replica.fs_data_dir = report.fs_data_dir();
+  }
+  if (report.has_current_storage_tier()) {
+    replica.current_storage_tier = report.current_storage_tier();
+  }
+  if (report.has_target_storage_tier()) {
+    replica.target_storage_tier = report.target_storage_tier();
+  }
+  if (report.has_tier_migration_state()) {
+    replica.tier_migration_state = report.tier_migration_state();
   }
   replica.state = state;
   replica.ts_desc = ts_desc;

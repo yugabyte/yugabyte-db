@@ -24,6 +24,9 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/consensus/consensus.h"
+#include "yb/consensus/state_change_context.h"
+
 #include "yb/util/background_task.h"
 #include "yb/util/enums.h"
 #include "yb/util/flags.h"
@@ -78,6 +81,35 @@ namespace yb::tserver {
 
 using tablet::TierMigrationStatus;
 
+TierMigrationStatusPB::State ToTierMigrationStatePB(const tablet::TierMigrationStatus& status) {
+  switch (status.state) {
+    case tablet::TierMigrationStatus::State::kNone:
+      return TierMigrationStatusPB::NONE;
+    case tablet::TierMigrationStatus::State::kInProgress:
+      return TierMigrationStatusPB::IN_PROGRESS;
+    case tablet::TierMigrationStatus::State::kDone:
+      return TierMigrationStatusPB::DONE;
+    case tablet::TierMigrationStatus::State::kFailed:
+      return TierMigrationStatusPB::FAILED;
+  }
+  FATAL_INVALID_ENUM_VALUE(tablet::TierMigrationStatus::State, status.state);
+}
+
+void FillTierMigrationStatusPB(
+    const tablet::TierMigrationStatus& status, TierMigrationStatusPB* pb) {
+  pb->set_state(ToTierMigrationStatePB(status));
+  pb->set_pass_in_flight(status.pass_in_flight);
+  pb->set_files_total(status.files_total);
+  pb->set_files_moved(status.files_moved);
+  pb->set_files_failed(status.files_failed);
+  pb->set_files_deferred(status.files_deferred);
+  pb->set_obsoleted(status.obsoleted);
+  pb->set_consecutive_failed_passes(status.consecutive_failed_passes);
+  if (!status.last_error.ok()) {
+    pb->set_last_error(status.last_error.ToString());
+  }
+}
+
 TierMigrationReconciler::TierMigrationReconciler(TSTabletManager* ts_tablet_manager)
     : ts_tablet_manager_(ts_tablet_manager) {
   const auto& entity = ts_tablet_manager_->server()->metric_entity();
@@ -87,6 +119,11 @@ TierMigrationReconciler::TierMigrationReconciler(TSTabletManager* ts_tablet_mana
       // Safe for as long as a tablet holds this: TSTabletManager shuts every tablet down before
       // it destroys the reconciler, and Wake after Shutdown does nothing.
       .wake_reconciler = [this] { Wake(); },
+      .tier_state_changed = [this](const TabletId& tablet_id) {
+        ts_tablet_manager_->MarkTabletReportDirty(
+            tablet_id, std::make_shared<consensus::StateChangeContext>(
+                           consensus::StateChangeReason::TIER_MIGRATION_STATE_CHANGED));
+      },
   });
   tablets_in_progress_ = METRIC_ts_tier_migration_tablets_in_progress.Instantiate(entity, 0);
   tablets_done_ = METRIC_ts_tier_migration_tablets_done.Instantiate(entity, 0);
