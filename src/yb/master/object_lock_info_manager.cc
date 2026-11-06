@@ -193,6 +193,10 @@ struct LiveLeaseSnapshotEntry {
 // Tservers that have not acked a release, with the lease epoch the failed attempt was sent under.
 using UnackedTServers = std::unordered_map<TabletServerId, uint64_t>;
 
+bool IsReleaseAll(const ReleaseObjectLockRequestPB& req) {
+  return !req.subtxn_id() && req.object_locks_size() == 0;
+}
+
 }  // namespace
 
 class ObjectLockInfoManager::Impl {
@@ -276,7 +280,6 @@ class ObjectLockInfoManager::Impl {
   Status MaybePopulateHostInfo(ReleaseObjectLockRequestPB& req) EXCLUDES(mutex_);
   Status PopulateHostInfo(const TransactionId& txn_id, ReleaseObjectLockRequestPB& req)
       EXCLUDES(mutex_);
-  bool IsDdlVerificationInProgress(const TransactionId& txn) const;
 
   Status RefreshYsqlLease(const RefreshYsqlLeaseRequestPB& req,
                           RefreshYsqlLeaseResponsePB& resp,
@@ -924,10 +927,6 @@ std::shared_ptr<ObjectLockInfo> ObjectLockInfoManager::Impl::GetOrCreateObjectLo
   }
 }
 
-bool ObjectLockInfoManager::Impl::IsDdlVerificationInProgress(const TransactionId& txn) const {
-  return catalog_manager_.HasDdlVerificationState(txn);
-}
-
 bool ObjectLockInfoManager::Impl::TabletServerHasLiveLease(const std::string& ts_uuid) const {
   LockGuard lock(mutex_);
   auto it = object_lock_infos_map_.find(ts_uuid);
@@ -1037,7 +1036,7 @@ Status ObjectLockInfoManager::Impl::PersistRequest(
   VLOG(3) << __PRETTY_FUNCTION__ << ReleaseObjectLockRequestToString(req);
   const auto& session_host_uuid = req.session_host_uuid();
   const auto lease_epoch = req.lease_epoch();
-  const bool erase_txn = !req.subtxn_id() && req.object_locks_size() == 0;
+  const bool erase_txn = IsReleaseAll(req);
   if (erase_txn) {
     RemoveTxnFromHostSessionMap(txn_id);
   }
@@ -1326,9 +1325,12 @@ Status ObjectLockInfoManager::Impl::UnlockObjectSync(
   auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req.txn_id()));
   // If the txn is scheduled for ddl verification, UnlockObject will be a no-op.
   // Let us first wait to make sure that it is not queued for ddl verification.
+  const bool release_all = IsReleaseAll(tserver_req);
   RETURN_NOT_OK(Wait(
-      [this, &txn_id] { return !IsDdlVerificationInProgress(txn_id); }, deadline,
-      "Waiting for DDL verification to finish"));
+      [this, &txn_id, release_all] {
+        return !catalog_manager_.DeferObjectLockReleaseToDdlVerifier(txn_id, release_all);
+      },
+      deadline, "Waiting for DDL verification to finish"));
   const auto request_id = tserver_req.request_id();
   auto promise = std::make_shared<std::promise<Status>>();
   WARN_NOT_OK(
@@ -1376,9 +1378,10 @@ Status ObjectLockInfoManager::Impl::UnlockObject(
   auto txn_id = std::move(*txn_id_result);
 
   // Check if DDL verification is in progress
-  if (IsDdlVerificationInProgress(txn_id)) {
+  if (catalog_manager_.DeferObjectLockReleaseToDdlVerifier(txn_id, IsReleaseAll(req))) {
     VLOG(1) << "Transaction " << txn_id << " is already scheduled for ddl verification. "
-            << "Ignoring release request, as it will be released by the ddl verifier.";
+            << "Ignoring release request, as the locks are released once its verification "
+            << "state goes away.";
     return callback_and_return(Status::OK());
   }
 
@@ -1562,7 +1565,7 @@ std::shared_ptr<CountDownLatch> ObjectLockInfoManager::Impl::ReleaseLocksHeldByE
     // Txns with a persisted release of all their locks are left to RetryFailedReleases.
     std::unordered_set<TransactionId> txns_being_released;
     for (const auto& [_, request] : l->pb.in_progress_release_request()) {
-      if (!request.subtxn_id() && request.object_locks_size() == 0) {
+      if (IsReleaseAll(request)) {
         txns_being_released.insert(CHECK_RESULT(FullyDecodeTransactionId(request.txn_id())));
       }
     }
