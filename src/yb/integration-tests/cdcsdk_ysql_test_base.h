@@ -719,6 +719,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const TabletId& tablet_id, const yb::client::YBTableName& table,
       const int expected_num_tablets = 2);
 
+  void WaitUntilPeerLeaderState(
+      const tablet::TabletPeerPtr& peer, bool is_leader_and_ready, const std::string& description);
+
   void PollUntilTabletSplit(
       const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
