@@ -6247,7 +6247,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_EXPLAIN
 		},
 		&yb_parallel_fetch_row_limit,
-		0, 0, INT_MAX,
+		1024, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 

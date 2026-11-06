@@ -396,9 +396,7 @@ yb_scan_apply_next_parallel_range(YbcPgStatement handle,
 		pfree((void *) high_bound);
 
 	/*
-	 * Parallel scan is limited by the parallel range size, so it does not need
-	 * regular limits. Parallel limits here are available to serve as safeguards
-	 * in some exceptional cases.
+	 * Parallel scan fetch limits are separately configurable.
 	 */
 	exec_params->plan_limit = 0;
 	exec_params->yb_fetch_row_limit = yb_parallel_fetch_row_limit;
