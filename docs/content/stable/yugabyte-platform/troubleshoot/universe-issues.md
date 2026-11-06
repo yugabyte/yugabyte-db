@@ -117,11 +117,8 @@ Starting in YugabyteDB Anywhere v2026.1.2.0, the [YBA installer](../../install-y
 
 To enable the PA collector for a universe:
 
-1. Open the universe and click **Actions > More > Enable Performance Monitoring**.
-
-1. Choose **Basic** to only enable PA Collector, or **Advanced** to also enable Advanced Observability features.
-
-1. Click **Apply changes**.
+- In versions earlier than v2026.1.3.0, open the universe and click **Actions > More > Enable Perf Advisor Collector**.
+- In v2026.1.3.0 and later, open the universe and click **Actions > More > Enable Performance Monitoring**, choose **Basic** to only enable PA Collector, or **Advanced** to also enable Advanced Observability features, and click **Apply changes**.
 
 After you enable the collector, it runs in the background and gathers metadata for that universe, such as PostgreSQL Statement Statistics (PGSS) and ASH data.
 

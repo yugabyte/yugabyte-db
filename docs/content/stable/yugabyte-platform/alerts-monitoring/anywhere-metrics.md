@@ -290,7 +290,7 @@ To enable Advanced Observability for the universe:
 
 1. Choose **Advanced** and click **Apply changes**.
 
-Advanced Observability is a licensed feature. If you do not already have a license, contact {{% support-platform %}}.
+Advanced Observability is a licensed feature and available in v2026.1.3.0 and later. If you do not already have a license, contact {{% support-platform %}}.
 
 To view advanced metrics, open the universe **Performance** tab and select **Metrics**.
 

@@ -20,7 +20,7 @@ The chart is built from [Active Session History](../../../launch-and-manage/moni
 
 ## Before you begin
 
-Cluster Load is part of Advanced Observability, which is a licensed feature. If you do not already have a license, contact {{% support-platform %}}.
+Cluster Load is part of Advanced Observability (available in v2026.1.3.0 and later), which is a licensed feature. If you do not already have a license, contact {{% support-platform %}}.
 
 To enable Advanced Observability for the universe:
 
