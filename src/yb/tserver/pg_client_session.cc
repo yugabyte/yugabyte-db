@@ -350,12 +350,16 @@ struct FetchedVector {
 struct VectorIndexQueryPartitionData {
   size_t number_of_vectors_returned_to_postgres = 0;
   size_t number_of_vectors_fetched_from_tablet = 0;
+  // Fetched vectors that were dropped as not farther than max_fetched_distance.
+  size_t number_of_vectors_dropped = 0;
+  // The largest distance fetched from the tablet.
+  std::optional<uint64_t> max_fetched_distance;
   bool whether_all_vectors_was_fetched = false;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
         number_of_vectors_returned_to_postgres, number_of_vectors_fetched_from_tablet,
-        whether_all_vectors_was_fetched);
+        number_of_vectors_dropped, max_fetched_distance, whether_all_vectors_was_fetched);
   }
 };
 
@@ -402,7 +406,8 @@ class VectorIndexQuery {
       VLOG_WITH_FUNC(4) << partition_idx << ": " << partition_state.ToString();
       if (!partition_state.whether_all_vectors_was_fetched &&
           partition_state.number_of_vectors_returned_to_postgres + prefetch_size_
-              > partition_state.number_of_vectors_fetched_from_tablet) {
+              > partition_state.number_of_vectors_fetched_from_tablet
+                    - partition_state.number_of_vectors_dropped) {
         auto new_read_req = arena->NewArenaObject<LWPgsqlReadRequestPB>(read_req);
         new_read_req->dup_partition_key(key);
         auto& vector_idx_options = *new_read_req->mutable_index_request()
@@ -648,17 +653,31 @@ class VectorIndexQuery {
       }
       auto& distances = op_resp.vector_index_distances();
       auto& ends = op_resp.vector_index_ends();
+      auto& partition_state = partitions_[op.partition_idx];
+      // A later page re-runs the search and skips the rows fetched before by count. The new search
+      // may cut ties or order rows differently, so a skipped row may be returned again. Keep only
+      // the rows farther than all fetched before. Rows tied with the farthest fetched row are
+      // lost, as approximate search allows.
+      const auto skip_distances_up_to = partition_state.max_fetched_distance;
       size_t sidecar_offset = 8;
       for (size_t index = 0; index != distances.size(); ++index) {
         auto new_offset = ends[index];
-        vectors_.push_back(FetchedVector {
-          .distance = distances[index],
-          .data = op_sidecars.SubSlice(sidecar_offset, new_offset),
-          .partition_idx = op.partition_idx,
-        });
+        auto distance = distances[index];
+        if (!skip_distances_up_to || distance > *skip_distances_up_to) {
+          vectors_.push_back(FetchedVector {
+            .distance = distance,
+            .data = op_sidecars.SubSlice(sidecar_offset, new_offset),
+            .partition_idx = op.partition_idx,
+          });
+          partition_state.max_fetched_distance = std::max(
+              partition_state.max_fetched_distance.value_or(0), distance);
+        } else {
+          ++partition_state.number_of_vectors_dropped;
+        }
         sidecar_offset = new_offset;
       }
-      partitions_[op.partition_idx].number_of_vectors_fetched_from_tablet += distances.size();
+      // Counts the dropped rows too: the tablet skips them on the next page.
+      partition_state.number_of_vectors_fetched_from_tablet += distances.size();
       if (!op_resp.vector_index_could_have_more_data()) {
         partitions_[op.partition_idx].whether_all_vectors_was_fetched = true;
       }
