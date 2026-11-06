@@ -246,8 +246,8 @@ typedef enum
 
 #define GUC_UNIT				(GUC_UNIT_MEMORY | GUC_UNIT_TIME)
 
-#define GUC_YB_CUSTOM_STICKY	0x40000000	/* YB: stickiness for custom
-											 * string variables */
+#define GUC_YB_CONN_MGR_STICKY	0x40000000	/* YB: SET makes the Connection
+												 * Manager connection sticky */
 #define GUC_YB_NO_CONN_MGR_REPORT	0x20000000	/* YB: never report to
 												 * Connection Manager */
 

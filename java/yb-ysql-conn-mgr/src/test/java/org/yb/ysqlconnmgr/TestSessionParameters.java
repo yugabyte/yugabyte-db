@@ -1180,6 +1180,43 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     }
   }
 
+  @Test
+  public void testTextSearchConfigMakesConnectionSticky() throws Exception {
+    try (Connection conn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("CREATE TEXT SEARCH CONFIGURATION public.cm_ts_cfg (COPY = english)");
+    }
+
+    try (Connection conn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("SET default_text_search_config = 'public.cm_ts_cfg'");
+      assertConnectionStickyState(stmt, true);
+    }
+
+    try (Connection conn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .withOptions("-c default_text_search_config=public.cm_ts_cfg")
+            .connect();
+         Statement stmt = conn.createStatement()) {
+      assertConnectionStickyState(stmt, true);
+
+      try (Connection other = getConnectionBuilder()
+              .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+              .connect();
+           Statement otherStmt = other.createStatement()) {
+        otherStmt.execute("DROP TEXT SEARCH CONFIGURATION public.cm_ts_cfg");
+      }
+
+      ResultSet rs = stmt.executeQuery("SHOW default_text_search_config");
+      assertTrue(rs.next());
+      assertEquals("public.cm_ts_cfg", rs.getString(1));
+    }
+  }
+
   // With a single backend, B's query resets the backend to defaults, so A's next query has to
   // replay both its startup parameter ('G' packet) and its SET on it. Postgres reports those
   // GUC_REPORT variables again, but A already knows their values and must not be sent a
