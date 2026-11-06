@@ -271,8 +271,7 @@ TEST_F(CDCSDKYsqlTest, TestSentLagNoSpikeAfterLeaderChange) {
   ASSERT_EQ(tablets.size(), 1);
   const auto tablet_id = tablets[0].tablet_id();
 
-  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
-      CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT, CDCCheckpointType::IMPLICIT));
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   ASSERT_OK(WriteRowsHelper(0, 1, &test_cluster_, true));
   GetChangesResponsePB change_resp;
@@ -304,12 +303,11 @@ TEST_F(CDCSDKYsqlTest, TestSentLagNoSpikeAfterLeaderChange) {
   // caught up.
   StartYbAdminClient();
   ASSERT_OK(StepDownLeader(follower_index, tablet_id));
+  WaitUntilPeerLeaderState(
+      original_leader_peer, /* is_leader_and_ready */ false, "Original leader stepped down");
   ASSERT_OK(WaitFor(
-      [&] {
-        return !original_leader_peer->IsLeaderAndReady() &&
-               metrics->cdcsdk_last_sent_physicaltime->value() == 0;
-      },
-      MonoDelta::FromSeconds(30) * kTimeMultiplier, "Original leader cleared last-sent"));
+      [&] { return metrics->cdcsdk_last_sent_physicaltime->value() == 0; },
+      MonoDelta::FromSeconds(30) * kTimeMultiplier, "Last-sent cleared"));
   ASSERT_EQ(metrics->cdcsdk_sent_lag_micros->value(), 0);
   ASSERT_EQ(metrics->cdcsdk_flush_lag->value(), 0);
 
@@ -319,7 +317,7 @@ TEST_F(CDCSDKYsqlTest, TestSentLagNoSpikeAfterLeaderChange) {
   ASSERT_OK(WriteRowsHelper(1, 2, &test_cluster_, true));
   auto cp = change_resp.cdc_sdk_checkpoint();
   ASSERT_OK(WaitForGetChangesToFetchRecords(
-      &change_resp, stream_id, tablets, 1, /* is_explicit_checkpoint */ false, &cp));
+      &change_resp, stream_id, tablets, 1, /* is_explicit_checkpoint */ true, &cp));
 
   auto new_leader_metrics = ASSERT_RESULT(GetCDCSDKTabletMetrics(
       *CDCService(test_cluster()->mini_tablet_server(follower_index)->server()), tablet_id,
@@ -329,10 +327,12 @@ TEST_F(CDCSDKYsqlTest, TestSentLagNoSpikeAfterLeaderChange) {
   ASSERT_GT(new_leader_metrics->cdcsdk_last_sent_physicaltime->value(), 0);
   ASSERT_LT(new_leader_metrics->cdcsdk_sent_lag_micros->value(), 1000 * 1000);
 
+  change_resp = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+      stream_id, tablets, &change_resp.cdc_sdk_checkpoint(), &change_resp.cdc_sdk_checkpoint()));
+
   ASSERT_OK(StepDownLeader(leader_index, tablet_id));
-  ASSERT_OK(WaitFor(
-      [&] { return original_leader_peer->IsLeaderAndReady(); },
-      MonoDelta::FromSeconds(30) * kTimeMultiplier, "Original leader is ready"));
+  WaitUntilPeerLeaderState(
+      original_leader_peer, /* is_leader_and_ready */ true, "Original leader is ready");
 
   // No GetChanges. UpdateMetrics is the only thing that can publish sent lag now.
   const auto deadline = MonoTime::Now() + MonoDelta::FromSeconds(3) * kTimeMultiplier;
@@ -357,12 +357,12 @@ TEST_F(CDCSDKYsqlTest, TestSentLagNoSpikeWhenNoDataRecord) {
   ASSERT_EQ(tablets.size(), 1);
   const auto tablet_id = tablets[0].tablet_id();
 
-  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
-      CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT, CDCCheckpointType::IMPLICIT));
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   ASSERT_OK(WriteRowsHelper(0, 1, &test_cluster_, true));
   GetChangesResponsePB change_resp;
-  ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp, stream_id, tablets, 1));
+  ASSERT_OK(WaitForGetChangesToFetchRecords(
+      &change_resp, stream_id, tablets, 1, /* is_explicit_checkpoint */ true));
   auto cp = change_resp.cdc_sdk_checkpoint();
 
   size_t leader_index = 0;
@@ -386,12 +386,11 @@ TEST_F(CDCSDKYsqlTest, TestSentLagNoSpikeWhenNoDataRecord) {
   ASSERT_NE(original_leader_peer, nullptr);
   StartYbAdminClient();
   ASSERT_OK(StepDownLeader(follower_index, tablet_id));
+  WaitUntilPeerLeaderState(
+      original_leader_peer, /* is_leader_and_ready */ false, "Original leader stepped down");
   ASSERT_OK(WaitFor(
-      [&] {
-        return !original_leader_peer->IsLeaderAndReady() &&
-               metrics->cdcsdk_last_sent_physicaltime->value() == 0;
-      },
-      MonoDelta::FromSeconds(30) * kTimeMultiplier, "Original leader cleared last-sent"));
+      [&] { return metrics->cdcsdk_last_sent_physicaltime->value() == 0; },
+      MonoDelta::FromSeconds(30) * kTimeMultiplier, "Last-sent cleared"));
   ASSERT_EQ(metrics->cdcsdk_sent_lag_micros->value(), 0);
 
   // Stop UpdateMetrics before this peer is leader again. Only the GetChanges below can publish
@@ -399,9 +398,8 @@ TEST_F(CDCSDKYsqlTest, TestSentLagNoSpikeWhenNoDataRecord) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_collect_cdc_metrics) = false;
 
   ASSERT_OK(StepDownLeader(leader_index, tablet_id));
-  ASSERT_OK(WaitFor(
-      [&] { return original_leader_peer->IsLeaderAndReady(); },
-      MonoDelta::FromSeconds(30) * kTimeMultiplier, "Original leader is ready"));
+  WaitUntilPeerLeaderState(
+      original_leader_peer, /* is_leader_and_ready */ true, "Original leader is ready");
   ASSERT_EQ(metrics->cdcsdk_last_sent_physicaltime->value(), 0);
   ASSERT_EQ(metrics->cdcsdk_sent_lag_micros->value(), 0);
 

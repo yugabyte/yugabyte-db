@@ -3063,6 +3063,13 @@ void CDCSDKYsqlTest::ValidateInsertCounts(const GetChangesResponsePB& resp,
   ASSERT_EQ(insert_count, excepted_insert_counts);
 }
 
+void CDCSDKYsqlTest::WaitUntilPeerLeaderState(
+    const tablet::TabletPeerPtr& peer, bool is_leader_and_ready, const std::string& description) {
+  ASSERT_OK(WaitFor(
+      [&] { return peer->IsLeaderAndReady() == is_leader_and_ready; },
+      MonoDelta::FromSeconds(30) * kTimeMultiplier, description));
+}
+
 void CDCSDKYsqlTest::WaitUntilSplitIsSuccesful(
     const TabletId& tablet_id, const yb::client::YBTableName& table,
     const int expected_num_tablets) {
