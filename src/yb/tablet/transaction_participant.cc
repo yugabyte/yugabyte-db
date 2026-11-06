@@ -1034,11 +1034,19 @@ class TransactionParticipant::Impl
         CHECK(transactions_.modify(lock_and_iterator.iterator, [&data](auto& txn) {
           txn->SetLocalCommitData(data.commit_ht, data.aborted);
         }));
+        applying_transactions_.insert(data.transaction_id);
         LOG_IF_WITH_PREFIX(DFATAL, data.log_ht < last_safe_time_)
             << "Apply transaction before last safe time " << data.transaction_id << ": "
             << data.log_ht << " vs " << last_safe_time_;
       }
     }
+
+    auto applying_se = ScopeExit([this, &data, was_previously_committed] {
+      if (!was_previously_committed) {
+        std::lock_guard lock(mutex_);
+        applying_transactions_.erase(data.transaction_id);
+      }
+    });
 
     if (!was_previously_committed) {
       if (wait_queue_) {
@@ -1416,19 +1424,31 @@ class TransactionParticipant::Impl
           for (const auto& transaction : transactions_) {
             if (!transaction->local_commit_time().is_valid()) {
               resolver.Add(transaction->metadata().status_tablet, transaction->id());
+            } else if (applying_transactions_.contains(transaction->id())) {
+              committed_ids.push_back(transaction->id());
             }
           }
         } else {
           for (const auto& id : recheck_ids) {
             auto it = transactions_.find(id);
-            if (it == transactions_.end() || (**it).local_commit_time().is_valid()) {
+            if (it == transactions_.end()) {
+              continue;
+            }
+            if ((**it).local_commit_time().is_valid()) {
+              if (applying_transactions_.contains(id)) {
+                committed_ids.push_back(id);
+              }
               continue;
             }
             resolver.Add((**it).metadata().status_tablet, id);
           }
+          // Local commit time is set before intents are written to regular DB, so also wait for
+          // ProcessApply to finish.
           auto filter = [this](const TransactionId& id) {
             auto it = transactions_.find(id);
-            return it == transactions_.end() || (**it).local_commit_time().is_valid();
+            return it == transactions_.end() ||
+                   ((**it).local_commit_time().is_valid() &&
+                    !applying_transactions_.contains(id));
           };
           committed_ids.erase(std::remove_if(committed_ids.begin(), committed_ids.end(), filter),
                               committed_ids.end());
@@ -2984,6 +3004,10 @@ class TransactionParticipant::Impl
   HybridTime last_safe_time_ = HybridTime::kMin;
 
   HybridTime ignore_all_transactions_started_before_ GUARDED_BY(mutex_) = HybridTime::kMin;
+
+  // Transactions that have local commit time set, but ProcessApply has not yet written them.
+  // Guarded by RunningTransactionContext::mutex_
+  TransactionIdSet applying_transactions_;
 
   std::unordered_set<TransactionId, TransactionIdHash> recently_removed_transactions_;
   struct RecentlyRemovedTransaction {
