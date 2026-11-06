@@ -143,6 +143,7 @@ add_dependencies(
 add_executable(yb-ysck yb-ysck.cc)
 target_link_libraries(yb-ysck
   ysck
+  yb_tools_util
 )
 
 add_library(yb-generate_partitions bulk_load_utils.cc yb-generate_partitions.cc)
