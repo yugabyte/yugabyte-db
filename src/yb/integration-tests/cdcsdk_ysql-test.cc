@@ -343,8 +343,7 @@ TEST_F(CDCSDKYsqlTest, TestSentLagNoSpikeAfterLeaderChange) {
   }
 }
 
-// A GetChanges response with no data record has no last-sent time. Last-sent stays 0 and sent lag
-// does not spike when UpdateMetrics is not running.
+// A schema-only GetChanges publishes last-sent and does not spike sent lag.
 TEST_F(CDCSDKYsqlTest, TestSentLagNoSpikeWhenNoDataRecord) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_metrics_interval_ms) = 1;
@@ -377,7 +376,7 @@ TEST_F(CDCSDKYsqlTest, TestSentLagNoSpikeWhenNoDataRecord) {
       [&]() -> Result<bool> { return metrics->cdcsdk_last_sent_physicaltime->value() > 0; },
       MonoDelta::FromSeconds(10) * kTimeMultiplier, "Last-sent set"));
 
-  // A schema change is not a data row, so the next GetChanges has records but no last-sent time.
+  // A schema change is not a data row.
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN extra INT"));
 
@@ -416,8 +415,8 @@ TEST_F(CDCSDKYsqlTest, TestSentLagNoSpikeWhenNoDataRecord) {
     ASSERT_NE(record.row_message().op(), RowMessage::SAFEPOINT);
   }
 
-  ASSERT_EQ(metrics->cdcsdk_last_sent_physicaltime->value(), 0);
-  ASSERT_EQ(metrics->cdcsdk_sent_lag_micros->value(), 0);
+  ASSERT_GT(metrics->cdcsdk_last_sent_physicaltime->value(), 0);
+  ASSERT_LT(metrics->cdcsdk_sent_lag_micros->value(), 1000 * 1000);
 }
 
 // Begin transaction, perform some operations and abort transaction.
