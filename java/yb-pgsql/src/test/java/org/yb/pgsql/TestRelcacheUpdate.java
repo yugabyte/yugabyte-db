@@ -25,6 +25,7 @@ import java.sql.SQLException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Scanner;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -546,6 +547,37 @@ public class TestRelcacheUpdate extends BasePgSQLTest {
         // Expecting a SQL exception due to RLS policy violation
         assertEquals("42501", e.getSQLState());
       }
+    }
+  }
+
+  /**
+   * Tests that a relation with several row-level security policies can be loaded from the pg_policy
+   * tuple cache, and that its permissive policies are combined in the same order as in vanilla PG.
+   */
+  @Test
+  public void testRowLevelSecurityPolicyOrder() throws Exception {
+    // Preload the relcache on every connection startup so that the connection under test loads the
+    // policies through the tuple cache rather than from the relcache init file.
+    restartClusterWithFlags(Collections.emptyMap(),
+        Collections.singletonMap("ysql_catalog_preload_additional_tables", "true"));
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE ROLE frank LOGIN PASSWORD 'frankpass';");
+      stmt.execute("CREATE TABLE policy_order (a INT);");
+      stmt.execute("ALTER TABLE policy_order ENABLE ROW LEVEL SECURITY;");
+      stmt.execute("GRANT SELECT ON policy_order TO frank;");
+      stmt.execute("CREATE POLICY p_b ON policy_order USING (a > 0);");
+      stmt.execute("CREATE POLICY p_c ON policy_order USING (a <> 5);");
+      stmt.execute("CREATE POLICY p_a ON policy_order USING (a < 10);");
+    }
+
+    try (Connection frankConn =
+        getConnectionBuilder().withUser("frank").withPassword("frankpass").connect();
+        Statement frankStmt = frankConn.createStatement()) {
+      String plan = getRowList(frankStmt, "EXPLAIN (COSTS OFF) SELECT * FROM policy_order;")
+          .toString();
+      // Vanilla PG keeps the policies in reverse name order.
+      assertTrue(plan, plan.contains("((a <> 5) OR (a > 0) OR (a < 10))"));
     }
   }
 
