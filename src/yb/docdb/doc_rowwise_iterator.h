@@ -134,6 +134,17 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
   // So extended slice could be used as upperbound.
   Result<bool> PgFetchNext(dockv::PgTableRow* table_row) override;
 
+  // Sets the filter that PgFetchNext evaluates for each fetched row, see row_filter_matched.
+  // nullptr to reset. A row that does not match could have columns not read by the filter
+  // left undecoded.
+  // columns - the columns read by the filter, a bit per projection column.
+  void SetRowFilter(PgRowFilter* filter, DynamicBitSet columns);
+
+  // Whether the row fetched by the last PgFetchNext call matches the row filter.
+  bool row_filter_matched() const {
+    return row_filter_matched_;
+  }
+
   bool TEST_is_flat_doc() const {
     return doc_mode_ == DocMode::kFlat;
   }
@@ -219,6 +230,8 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
   };
 
   Result<DocReaderResult> FetchRow(const FetchedEntry& fetched_entry, dockv::PgTableRow* table_row);
+  Result<DocReaderResult> FetchFilteredRow(
+      const FetchedEntry& fetched_entry, dockv::PgTableRow* table_row);
   Result<DocReaderResult> FetchRow(const FetchedEntry& fetched_entry, QLTableRowPair table_row);
 
   Status FillRow(QLTableRowPair table_row);
@@ -302,6 +315,12 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
   std::optional<dockv::SubDocument> row_;
 
   std::unique_ptr<DocDBTableReader> doc_reader_;
+
+  PgRowFilter* row_filter_ = nullptr;
+  // Columns read by row_filter_, a bit per projection column.
+  DynamicBitSet row_filter_columns_;
+  bool row_filter_reads_key_columns_ = false;
+  bool row_filter_matched_ = false;
 
   // DocReader result returned by the previous fetch.
   DocReaderResult prev_doc_found_ = DocReaderResult::kNotFound;

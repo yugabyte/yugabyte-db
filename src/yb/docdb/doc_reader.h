@@ -30,6 +30,7 @@
 #include "yb/dockv/subdocument.h"
 #include "yb/dockv/value.h"
 
+#include "yb/util/dynamic_bitset.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -39,6 +40,27 @@ namespace yb::docdb {
 class IntentAwareIterator;
 
 YB_DEFINE_ENUM(DocReaderResult, (kNotFound)(kFoundAndFinished)(kFoundNotFinished));
+
+// Pushed down filter that DocDBTableReader evaluates on a packed row as soon as the columns read by
+// the filter are decoded, so other columns of a filtered out row are not decoded.
+class PgRowFilter {
+ public:
+  virtual ~PgRowFilter() = default;
+
+  // Returns whether the row matches the filter. Only the columns read by the filter, as passed to
+  // DocDBTableReader::SetRowFilter, are guaranteed to be decoded.
+  virtual Result<bool> Match(const dockv::PgTableRow& row) = 0;
+};
+
+YB_DEFINE_ENUM(PgRowFilterResult,
+    // The row is read completely, the filter was not evaluated.
+    (kUnknown)
+    (kMatch)
+    // Columns not read by the filter could be left undecoded.
+    (kMismatch)
+    // The filter was not evaluated after a column it reads was updated, and columns not read by
+    // the filter could be left undecoded.
+    (kIncomplete));
 
 // Get table tombstone time from doc_db. If the table is not a colocated table as indicated
 // by the provided root_doc_key, this method returns DocHybridTime::kInvalid.
@@ -81,6 +103,11 @@ struct DocDBTableReaderData final {
   const dockv::SchemaPackingStorage& schema_packing_storage;
   std::unique_ptr<PackedRowData> packed_row;
   const Schema& schema;
+
+  PgRowFilter* row_filter = nullptr;
+  // Projection columns read by row_filter, and the remaining projection columns.
+  DynamicBitSet row_filter_columns;
+  DynamicBitSet non_row_filter_columns;
 
   std::vector<dockv::KeyBytes> encoded_projection;
   EncodedDocHybridTime table_tombstone_time{EncodedDocHybridTime::kMin};
@@ -126,6 +153,10 @@ class DocDBTableReader {
   // subsequently read SubDocuments.
   void SetTableTtl(const Schema& table_schema);
 
+  // Sets the filter applied by GetFlat to PgTableRow, nullptr to reset.
+  // columns - the columns read by the filter, a bit per projection column.
+  void SetRowFilter(PgRowFilter* filter, const DynamicBitSet& columns);
+
   // Read value (i.e. row), identified by root_doc_key to result.
   // Returns true if value was found, false otherwise.
   // FetchedEntry will contain last entry fetched by the iterator.
@@ -138,8 +169,10 @@ class DocDBTableReader {
   // columns passed to ctor in projection and in the same order.
   Result<DocReaderResult> GetFlat(
       KeyBuffer* root_doc_key, const FetchedEntry& fetched_entry, qlexpr::QLTableRow* result);
+  // When filter_result is not null, the row filter is applied and its outcome is stored there.
   Result<DocReaderResult> GetFlat(
-      KeyBuffer* root_doc_key, const FetchedEntry& fetched_entry, dockv::PgTableRow* result);
+      KeyBuffer* root_doc_key, const FetchedEntry& fetched_entry, dockv::PgTableRow* result,
+      PgRowFilterResult* filter_result = nullptr);
 
  private:
   void Init();
