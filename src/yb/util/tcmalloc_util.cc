@@ -332,10 +332,10 @@ void SetTCMallocSkipSubreleaseIntervals(int32_t short_interval_secs, int32_t lon
 #endif
 }
 
-void SetTCMallocReleasePartialAllocPages(bool enabled) {
+void SetTCMallocReleasePartialAllocPages(ReleasePartialAllocPages enabled) {
 #if YB_GOOGLE_TCMALLOC
   if (&TCMalloc_Internal_SetReleasePartialAllocPagesEnabled != nullptr) {
-    TCMalloc_Internal_SetReleasePartialAllocPagesEnabled(enabled);
+    TCMalloc_Internal_SetReleasePartialAllocPagesEnabled(enabled.get());
   }
 #endif
 }

@@ -134,10 +134,13 @@ TAG_FLAG(tcmalloc_background_thread, advanced);
 
 DEFINE_RUNTIME_int64(tcmalloc_background_release_rate_bytes_per_sec, 16_MB,
     "Rate at which the TCMalloc background thread releases free page heap memory to the OS. "
-    "While the thread runs and this is positive, only the thread releases free memory. Set to 0 "
-    "to release it in bursts instead, from the thread that frees memory or serves a webserver "
-    "request. A burst holds the TCMalloc page heap lock for ~150 ms per GB released, which "
-    "blocks every thread that allocates from the page heap.");
+    "While the thread runs and this is positive, free memory is released in a burst only when "
+    "the TCMalloc heap, free pages included, is above the root soft memory limit. Set to 0 to "
+    "release it in bursts instead, from the thread that frees memory or serves a webserver "
+    "request, and to restore TCMalloc's default release of free pages on partially released "
+    "hugepages; the thread keeps reclaiming idle per-CPU and transfer caches. A burst holds the "
+    "TCMalloc page heap lock for ~150 ms per GB released, which blocks every thread that "
+    "allocates from the page heap.");
 TAG_FLAG(tcmalloc_background_release_rate_bytes_per_sec, advanced);
 
 DEFINE_RUNTIME_int32(tcmalloc_skip_subrelease_short_interval_secs, 60,
@@ -155,6 +158,10 @@ DEFINE_RUNTIME_int32(tcmalloc_skip_subrelease_long_interval_secs, 300,
     "reused. 0 disables this check.");
 TAG_FLAG(tcmalloc_skip_subrelease_long_interval_secs, advanced);
 DEFINE_validator(tcmalloc_skip_subrelease_long_interval_secs, FLAG_RANGE_VALIDATOR(0, 600));
+
+DEFINE_test_flag(int64, tcmalloc_gc_soft_limit_bytes, -1,
+    "If non-negative, GcTcmallocIfNeeded compares the TCMalloc heap size with this instead of "
+    "the root memory tracker's soft limit.");
 
 DECLARE_int64(server_tcmalloc_max_total_thread_cache_bytes);
 
@@ -179,7 +186,11 @@ std::atomic<bool> tcmalloc_background_thread_running{false};
 
 void UpdateTCMallocBackgroundReleaseRate() {
   if (tcmalloc_background_thread_running.load(std::memory_order_acquire)) {
-    SetTCMallocBackgroundReleaseRate(FLAGS_tcmalloc_background_release_rate_bytes_per_sec);
+    const auto rate = FLAGS_tcmalloc_background_release_rate_bytes_per_sec;
+    SetTCMallocBackgroundReleaseRate(rate);
+    // Releasing extra pages from partially released hugepages makes a background pass much
+    // larger than the rate. Without background release, keep TCMalloc's default.
+    SetTCMallocReleasePartialAllocPages(ReleasePartialAllocPages(rate <= 0));
   }
 }
 
@@ -190,6 +201,20 @@ void UpdateTCMallocSkipSubreleaseIntervals() {
         FLAGS_tcmalloc_skip_subrelease_long_interval_secs);
   }
 }
+
+#if YB_TCMALLOC_ENABLED
+// Root consumption leaves out free page heap bytes by default, so it can't tell whether free
+// memory is pushing the process over its limit. The TCMalloc heap size counts them.
+bool TCMallocHeapAboveSoftLimit() {
+  const auto& root = MemTracker::GetRootTracker();
+  if (!root->has_limit()) {
+    return false;
+  }
+  const auto soft_limit = FLAGS_TEST_tcmalloc_gc_soft_limit_bytes >= 0
+      ? FLAGS_TEST_tcmalloc_gc_soft_limit_bytes : root->soft_limit();
+  return GetTCMallocCurrentHeapSizeBytes() > soft_limit;
+}
+#endif
 
 DEFINE_validator(default_memory_limit_to_ram_ratio, &::yb::internal::ValidateMemoryLimitToRamRatio);
 
@@ -318,7 +343,6 @@ Status MemTracker::StartTCMallocBackgroundThread() {
   if (!FLAGS_tcmalloc_background_thread) {
     return Status::OK();
   }
-  SetTCMallocReleasePartialAllocPages(false);
   if (!VERIFY_RESULT(::yb::StartTCMallocBackgroundThread())) {
     return Status::OK();
   }
@@ -874,9 +898,10 @@ bool MemTracker::GcTcmallocIfNeeded() {
 #ifdef YB_TCMALLOC_ENABLED
   released_memory_since_gc = 0;
   // A burst release holds the page heap lock throughout and stalls every thread that allocates
-  // from the page heap, so leave the release to the background thread.
+  // from the page heap, so leave the release to the background thread unless memory is short.
   if (tcmalloc_background_thread_running.load(std::memory_order_acquire) &&
-      FLAGS_tcmalloc_background_release_rate_bytes_per_sec > 0) {
+      FLAGS_tcmalloc_background_release_rate_bytes_per_sec > 0 &&
+      !TCMallocHeapAboveSoftLimit()) {
     return false;
   }
   TRACE_EVENT0("process", "MemTracker::GcTcmallocIfNeeded");
@@ -893,9 +918,9 @@ bool MemTracker::GcTcmallocIfNeeded() {
     return false;
   }
   while (extra > 0) {
-    // Release 1MB at a time, so that tcmalloc releases its page heap lock
-    // allowing other threads to make progress. This still disrupts the current
-    // thread, but is better than disrupting all.
+    // Each call drops the page heap lock when it returns, but the lock is not fair: this thread
+    // usually takes it back before a waiting thread wakes up, so the whole loop blocks every
+    // thread that allocates from the page heap.
 #if YB_GOOGLE_TCMALLOC
     tcmalloc::MallocExtension::ReleaseMemoryToSystem(1024 * 1024);
 #else

@@ -19,8 +19,11 @@
 #include <optional>
 
 #include "yb/util/status_fwd.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
+
+YB_STRONGLY_TYPED_BOOL(ReleasePartialAllocPages);
 
 // Returns the tcmalloc property with the given name, or 0 if tcmalloc is not used. In case of an
 // error, logs it as DFATAL and returns 0.
@@ -76,9 +79,9 @@ void SetTCMallocBackgroundReleaseRate(int64_t bytes_per_sec);
 // partially allocated hugepages to keep mapped instead of releasing them. Zero disables the check.
 void SetTCMallocSkipSubreleaseIntervals(int32_t short_interval_secs, int32_t long_interval_secs);
 
-// Google TCMalloc raises every release request to at least 10% of the free pages in partially
-// allocated hugepages unless this is disabled, so a small periodic release can turn into a long
+// Google TCMalloc raises every release request to at least 10% of the free pages on partially
+// released hugepages unless this is disabled, so a small periodic release can turn into a long
 // one.
-void SetTCMallocReleasePartialAllocPages(bool enabled);
+void SetTCMallocReleasePartialAllocPages(ReleasePartialAllocPages enabled);
 
 }  // namespace yb
