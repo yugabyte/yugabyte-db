@@ -1,6 +1,8 @@
 [package]
 name = "master-conformance"
-description = "Checks that the Rust master serializes real sys-catalog rows exactly as the C++ master does."
+description = """\
+    Checks that the Rust master serializes real sys-catalog rows exactly as the C++ master does.\
+"""
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

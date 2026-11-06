@@ -13,8 +13,8 @@
 //! Interfaces a C++ server process provides to the Rust code it hosts.
 //!
 //! Every crate except `yb-cpp-host` and the static-library crates depends on these traits rather
-//! than on the cxx bridges, so `cargo test -p <crate>` runs without linking any C++. The in-memory fakes
-//! next to each trait are what those tests use.
+//! than on the cxx bridges, so `cargo test -p <crate>` runs without linking any C++. The in-memory
+//! fakes next to each trait are what those tests use.
 
 pub mod rpc;
 pub mod status;

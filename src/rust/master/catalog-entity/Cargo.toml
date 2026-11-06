@@ -1,6 +1,8 @@
 [package]
 name = "master-catalog-entity"
-description = "Master sys-catalog entities: parsing, re-serializing and the in-memory entity with hot fields."
+description = """\
+    Master sys-catalog entities: parsing, re-serializing and the in-memory entity with hot fields.\
+"""
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

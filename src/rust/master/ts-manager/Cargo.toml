@@ -1,6 +1,9 @@
 [package]
 name = "master-ts-manager"
-description = "The tserver registry, liveness and the leader's TSHeartbeat, tablet reports and live-tserver list."
+description = """\
+    The tserver registry, liveness and the leader's TSHeartbeat, tablet reports and live-tserver \
+    list.\
+"""
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

@@ -237,7 +237,8 @@ fn write_services(files: &[FileDescriptorProto], out: &Path) {
             let wire_name = custom_service_name(s).unwrap_or_else(|| proto_name.clone());
             writeln!(
                 code,
-                "    ServiceDesc {{ proto_name: {proto_name:?}, wire_name: {wire_name:?}, methods: &["
+                "    ServiceDesc {{ proto_name: {proto_name:?}, wire_name: {wire_name:?}, \
+                 methods: &["
             )
             .unwrap();
             for m in &s.method {

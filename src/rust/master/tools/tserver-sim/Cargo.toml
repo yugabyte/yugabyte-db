@@ -1,6 +1,8 @@
 [package]
 name = "master-tserver-sim"
-description = "Fake tablet servers that load a master: registration, heartbeats, tablet reports, tablet RPCs."
+description = """\
+    Fake tablet servers that load a master: registration, heartbeats, tablet reports, tablet RPCs.\
+"""
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

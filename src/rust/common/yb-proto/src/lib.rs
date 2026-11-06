@@ -54,8 +54,8 @@ mod tests {
     #[test]
     fn interleaved_oneof_serializes_in_field_number_order() {
         use protobuf::Message;
-        // AppStatusPB: code = 1, message = 2, oneof error_codes { posix_code = 4 }, source_file = 6,
-        // source_line = 7. The C++ runtime writes them in that order.
+        // AppStatusPB: code = 1, message = 2, oneof error_codes { posix_code = 4 },
+        // source_file = 6, source_line = 7. The C++ runtime writes them in that order.
         let mut status = pb::wire_protocol::AppStatusPB::new();
         status.set_code(pb::wire_protocol::app_status_pb::ErrorCode::IO_ERROR);
         status.set_message("m".into());

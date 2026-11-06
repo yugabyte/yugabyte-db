@@ -1,6 +1,9 @@
 [package]
 name = "master-task-runtime"
-description = "Master background work: term and entity scopes, controllers, retries and bounded blocking pools."
+description = """\
+    Master background work: term and entity scopes, controllers, retries and bounded blocking \
+    pools.\
+"""
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

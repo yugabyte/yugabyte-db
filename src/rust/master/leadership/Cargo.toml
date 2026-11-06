@@ -1,6 +1,9 @@
 [package]
 name = "master-leadership"
-description = "Master leadership: the Raft role as a state machine, LeaderToken fencing and the readiness gate."
+description = """\
+    Master leadership: the Raft role as a state machine, LeaderToken fencing and the readiness \
+    gate.\
+"""
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

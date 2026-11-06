@@ -1,6 +1,8 @@
 [package]
 name = "yb-web"
-description = "A server's public web port: HTTP or HTTPS, proxying to the C++ Webserver on loopback."
+description = """\
+    A server's public web port: HTTP or HTTPS, proxying to the C++ Webserver on loopback.\
+"""
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

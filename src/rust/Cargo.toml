@@ -51,7 +51,9 @@ arc-swap = "=1.7.1"
 axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio"] }
 cxx = "=1.0.202"
 cxx-gen = "=0.7.202"
-hyper-util = { version = "=0.1.20", features = ["client-legacy", "http1", "server-auto", "service", "tokio"] }
+hyper-util = { version = "=0.1.20", features = [
+    "client-legacy", "http1", "server-auto", "service", "tokio",
+] }
 imbl = "=7.0.2"
 openssl = "=0.10.81"
 proc-macro2 = "1"
@@ -60,11 +62,15 @@ protobuf = "=3.7.2"
 protobuf-codegen = "=3.7.2"
 protobuf-parse = "=3.7.2"
 rand = "=0.9.2"
-tokio = { version = "=1.53.2", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
+tokio = { version = "=1.53.2", features = [
+    "io-util", "macros", "net", "rt-multi-thread", "sync", "time",
+] }
 tokio-openssl = "=0.6.5"
 tokio-util = { version = "=0.7.16", features = ["rt"] }
 tracing = "=0.1.41"
-tracing-subscriber = { version = "=0.3.20", default-features = false, features = ["std", "registry"] }
+tracing-subscriber = { version = "=0.3.20", default-features = false, features = [
+    "std", "registry",
+] }
 
 yb-cpp-host = { path = "common/yb-cpp-host" }
 yb-flags = { path = "common/yb-flags" }

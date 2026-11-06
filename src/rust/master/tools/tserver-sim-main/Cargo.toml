@@ -1,6 +1,8 @@
 [package]
 name = "master-tserver-sim-main"
-description = "The static library the master-tserver-sim executable links: flags and the C++ host bridge."
+description = """\
+    The static library the master-tserver-sim executable links: flags and the C++ host bridge.\
+"""
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

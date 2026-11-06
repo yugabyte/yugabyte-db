@@ -1,6 +1,9 @@
 [package]
 name = "master-sys-catalog"
-description = "The master's sys-catalog store: scans, Raft writes and the apply stream, with an in-memory fake."
+description = """\
+    The master's sys-catalog store: scans, Raft writes and the apply stream, with an in-memory \
+    fake.\
+"""
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

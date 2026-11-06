@@ -1,6 +1,9 @@
 [package]
 name = "master-catalog-state"
-description = "The master's in-memory catalog: materialized from the sys-catalog apply stream, written through one group-committing writer."
+description = """\
+    The master's in-memory catalog: materialized from the sys-catalog apply stream, written \
+    through one group-committing writer.\
+"""
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
