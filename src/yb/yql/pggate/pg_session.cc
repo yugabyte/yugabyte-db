@@ -1442,6 +1442,12 @@ Status PgSession::AcquireObjectLock(
   // A legacy mode transaction takes only the DML locks that new mode DDLs wait for (#36572). The
   // stronger ones are global or exclusive, and would change how legacy mode DDLs and LOCK TABLE
   // behave before the infra flag is promoted.
+  //
+  // Session locks are left out too. Every session lock PG takes is ShareUpdateExclusive or
+  // stronger (CREATE INDEX, VACUUM), so none would be forwarded anyway. Forwarding local ones
+  // would also need ReleaseSessionObjectLock to forward their releases in legacy mode. But PG
+  // forwards every session lock release, including those of the global locks dropped here, and
+  // the tserver fails a release for a session that holds no session locks.
   const auto is_legacy_txn_dml_lock =
       pg_txn_manager_->IsUsingLocalDmlLocksForCurrentTxn() && !is_session_lock &&
       !pg_txn_manager_->IsDdlMode() && mode <= YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK;
@@ -1467,6 +1473,7 @@ Status PgSession::AcquireObjectLock(
 }
 
 Status PgSession::ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool release_all) {
+  // A legacy mode transaction takes no session locks; see AcquireObjectLock.
   if (!pg_txn_manager_->IsTableLockingEnabledForCurrentTxn()) {
     return Status::OK();
   }
