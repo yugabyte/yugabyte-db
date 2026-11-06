@@ -527,5 +527,6 @@ extern void YbResetYsqlConnMgrGucDefaults(void);
 extern void YbSetParallelWorker();
 extern char *YbResolveGucValue(const char *name, const char *value);
 extern bool YbIsValidConfigFileName(const char *name);
+extern bool YbDbAdminCanSetRoleSetting(const char *name);
 
 #endif							/* GUC_H */

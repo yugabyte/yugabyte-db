@@ -1083,6 +1083,9 @@ AlterRoleSet(AlterRoleSetStmt *stmt)
 		/*
 		 * To mess with a superuser you gotta be superuser; else you need
 		 * createrole, or just want to change your own settings
+		 *
+		 * YB: or be yb_db_admin setting a parameter it is allowed to manage
+		 * per role.
 		 */
 		if (roleform->rolsuper)
 		{
@@ -1093,7 +1096,8 @@ AlterRoleSet(AlterRoleSetStmt *stmt)
 		}
 		else
 		{
-			if (!have_createrole_privilege() && roleid != GetUserId())
+			if (!have_createrole_privilege() && roleid != GetUserId() &&
+				!YbDbAdminCanSetRoleSetting(stmt->setstmt->name))
 				ereport(ERROR,
 						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 						 errmsg("permission denied")));
