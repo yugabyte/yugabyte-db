@@ -23,10 +23,14 @@ use master_rpc_handlers::{LeaderServices, MasterInfo};
 use master_sys_catalog::{ApplyEvents, SysCatalogStore};
 use master_task_runtime::{
     run_controller, Attempt, BlockingPool, BoxFuture, Controller, RetryPolicy, TermScope,
+    TsRpcExecutor,
 };
-use master_ts_manager::{HeartbeatContributor, LocationStream, Peer, TsManager, TsManagerOptions};
+use master_ts_manager::{
+    DeleteReplica, HeartbeatContributor, LocationStream, Peer, TsManager, TsManagerOptions,
+};
 use tokio::sync::watch;
 use yb_flags::{yb_flag, FlagRef, FlagTag};
+use yb_host_api::metrics::MetricRegistry;
 use yb_host_api::rpc::RpcClient;
 use yb_host_api::StatusCode;
 
@@ -100,6 +104,10 @@ static TOMBSTONE_EVICTED_REPLICAS: FlagRef<bool> =
 static USE_PENDING_CONFIG_OP_ID: FlagRef<bool> =
     FlagRef::new("use_tablet_report_pending_config_op_id");
 static REGISTER_TS_FROM_RAFT: FlagRef<bool> = FlagRef::new("enable_register_ts_from_raft");
+static MAX_CONCURRENT_DELETE_REPLICA_RPCS_PER_TS: FlagRef<i32> =
+    FlagRef::new("max_concurrent_delete_replica_rpcs_per_ts");
+static MAX_LEADER_LEASE_EXPIRED_SECS: FlagRef<u32> =
+    FlagRef::new("maximum_tablet_leader_lease_expired_secs");
 
 fn millis(value: i32) -> Duration {
     Duration::from_millis(value.max(0) as u64)
@@ -127,6 +135,18 @@ fn ts_manager_options() -> TsManagerOptions {
         tombstone_evicted_replicas: || TOMBSTONE_EVICTED_REPLICAS.get(),
         use_pending_config_op_id: || USE_PENDING_CONFIG_OP_ID.get(),
         register_from_raft: || REGISTER_TS_FROM_RAFT.get(),
+        metadata_min_time_left: || millis(HEARTBEAT_RPC_TIMEOUT_MS.get()) / 2,
+        max_leader_lease_expired: || {
+            Duration::from_secs(MAX_LEADER_LEASE_EXPIRED_SECS.get().into())
+        },
+    }
+}
+
+/// Calls in flight per tserver, by RPC kind (K2). Kinds without a C++ cap are not limited.
+fn ts_rpc_limit(kind: &str) -> usize {
+    match kind {
+        "DeleteTablet" => MAX_CONCURRENT_DELETE_REPLICA_RPCS_PER_TS.get().max(1) as usize,
+        _ => usize::MAX,
     }
 }
 
@@ -150,6 +170,8 @@ pub(crate) struct Core {
     pub(crate) catalog: Arc<Catalog>,
     pub(crate) leadership: Arc<Leadership>,
     pub(crate) leader: Arc<LeaderServices>,
+    /// Paces master-to-tserver RPCs across terms (K2).
+    ts_rpc: Arc<TsRpcExecutor>,
 }
 
 impl Core {
@@ -160,6 +182,7 @@ impl Core {
         events: ApplyEvents,
         catalog: Arc<Catalog>,
         leadership: Arc<Leadership>,
+        metrics: Arc<dyn MetricRegistry>,
         contributors: Vec<Arc<dyn HeartbeatContributor>>,
     ) -> Core {
         let _guard = runtime.enter();
@@ -172,6 +195,7 @@ impl Core {
                 max_batch_rows: || CATALOG_WRITER_MAX_BATCH_ROWS.get().max(1) as usize,
                 max_batch_bytes: || CATALOG_WRITER_MAX_BATCH_BYTES.get().max(1) as usize,
                 max_inflight: || CATALOG_WRITER_MAX_INFLIGHT.get().max(1) as usize,
+                metrics,
             },
         );
         let ts_manager = TsManager::new(Arc::default(), ts_manager_options());
@@ -209,6 +233,7 @@ impl Core {
             catalog,
             leadership,
             leader,
+            ts_rpc: TsRpcExecutor::new(ts_rpc_limit),
         }
     }
 
@@ -274,6 +299,7 @@ impl Core {
         });
 
         let leader = self.leader.clone();
+        let ts_rpc = self.ts_rpc.clone();
         let mut phases = self.leadership.subscribe();
         runtime.spawn(async move {
             let mut started: Option<TermScope> = None;
@@ -283,7 +309,7 @@ impl Core {
                         .as_ref()
                         .is_none_or(|s| s.is_cancelled() || s.term() != scope.term());
                     if fresh && !scope.is_cancelled() {
-                        start_term(&scope, &leader, &info, &rpc);
+                        start_term(&scope, &leader, &info, &rpc, &ts_rpc);
                         started = Some(scope);
                     }
                 }
@@ -301,6 +327,7 @@ fn start_term(
     leader: &Arc<LeaderServices>,
     info: &Arc<dyn MasterInfo>,
     rpc: &Arc<dyn RpcClient>,
+    ts_rpc: &Arc<TsRpcExecutor>,
 ) {
     tracing::info!("Starting leader controllers for term {}", scope.term());
     // Runs on its interval only: nothing triggers it.
@@ -314,15 +341,24 @@ fn start_term(
 
     let deletes_leader = leader.clone();
     let deletes_rpc = rpc.clone();
+    let deletes_executor = ts_rpc.clone();
     let deletes_scope = scope.clone();
     scope.spawn("replica-deletes", async move {
         loop {
             for delete in deletes_leader.ts_manager.deletes.drain() {
                 let leader = deletes_leader.clone();
                 let rpc = deletes_rpc.clone();
+                let executor = deletes_executor.clone();
                 deletes_scope.entity().spawn("delete-replica", async move {
-                    let result = retry_policy(false)
-                        .run(|_| {
+                    // Lets a later report queue it again, also when the term's tasks are
+                    // cancelled.
+                    let _sent = SentGuard {
+                        leader: leader.clone(),
+                        delete: delete.clone(),
+                    };
+                    let ts_uuid = delete.ts_uuid.clone();
+                    let result = executor
+                        .run(&ts_uuid, "DeleteTablet", &retry_policy(false), |_| {
                             let current = leader.leadership.check(&delete.token);
                             let address = leader.ts_manager.get(&delete.ts_uuid).and_then(|d| {
                                 let reg = &d.pb.registration;
@@ -405,6 +441,18 @@ fn start_term(
         || millis(LOCATION_PUSH_INTERVAL_MS.get()),
         || millis(MASTER_TS_RPC_TIMEOUT_MS.get()),
     );
+}
+
+/// Marks a drained delete as no longer being sent when dropped.
+struct SentGuard {
+    leader: Arc<LeaderServices>,
+    delete: DeleteReplica,
+}
+
+impl Drop for SentGuard {
+    fn drop(&mut self) {
+        self.leader.ts_manager.deletes.sent(&self.delete);
+    }
 }
 
 /// Marks tservers that stopped heartbeating unresponsive and persists the change.

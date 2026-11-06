@@ -18,6 +18,7 @@
 yb_rust_cxxgen(RUST_BRIDGE_CXXGEN_SRCS WITH_CXX_HEADER
   common/yb-cpp-host/src/ffi/flags.rs
   common/yb-cpp-host/src/ffi/log.rs
+  common/yb-cpp-host/src/ffi/metrics.rs
   common/yb-cpp-host/src/ffi/rpc.rs)
 
 # An object library rather than a shared one: bridge code and the Rust static library call each
@@ -25,6 +26,7 @@ yb_rust_cxxgen(RUST_BRIDGE_CXXGEN_SRCS WITH_CXX_HEADER
 add_library(yb_rust_bridge_obj OBJECT
   flags_bridge.cc
   log_bridge.cc
+  metrics_bridge.cc
   rpc_bridge.cc
   ${RUST_BRIDGE_CXXGEN_SRCS})
 target_include_directories(yb_rust_bridge_obj PUBLIC "${YB_RUST_CXXGEN_DIR}")

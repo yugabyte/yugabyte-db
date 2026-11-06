@@ -15,7 +15,7 @@
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::Status;
 
@@ -76,6 +76,7 @@ pub enum FakeResponse {
 pub struct FakeInboundCall {
     method_index: usize,
     request: Vec<u8>,
+    deadline: Instant,
     outcome: Arc<Mutex<Option<FakeResponse>>>,
 }
 
@@ -89,9 +90,16 @@ impl FakeInboundCall {
         let call = FakeInboundCall {
             method_index,
             request,
+            deadline: Instant::now() + Duration::from_secs(60),
             outcome: outcome.clone(),
         };
         (Box::new(call), outcome)
+    }
+
+    /// The same call with `timeout` left until its deadline.
+    pub fn with_timeout(mut self: Box<Self>, timeout: Duration) -> Box<FakeInboundCall> {
+        self.deadline = Instant::now() + timeout;
+        self
     }
 
     fn set(&self, response: FakeResponse) {
@@ -116,7 +124,7 @@ impl InboundCall for FakeInboundCall {
     }
 
     fn time_to_deadline(&self) -> Duration {
-        Duration::from_secs(60)
+        self.deadline.saturating_duration_since(Instant::now())
     }
 
     fn respond(self: Box<Self>, response: &[u8]) {

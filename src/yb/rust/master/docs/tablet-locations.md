@@ -28,3 +28,18 @@ term or than the last push it applied: a deposed leader may not have noticed yet
 A follower applies pushed locations as unconfirmed and keeps pushed tservers in its registry, so
 right after a failover it answers `GetTableLocations` and `ListTabletServers` before any tserver
 has reported. The new leader still asks every tserver for a full report on its first heartbeat.
+
+## Leaderless tablets (K7)
+
+`record_leader_lease` keeps, per tablet, the lease its current leader reported, with C++'s rules: a
+report counts as a valid leader when its expiration does not go backwards for the same leader (an
+RF1 leader's infinite expiration is superseded by any later one) and is not more than
+`maximum_tablet_leader_lease_expired_secs` in the past. Reports from a tserver the locations do not
+name as leader are ignored.
+
+`leaderless` reports a tablet once it has gone without a valid leader for more than the alert delay
+of observable time. C++ counts from the last valid report to now, so heartbeats queued on a busy
+master, or a new leader that has not heard from tservers, look like outages. Here the window starts
+no earlier than the caller's `observable_from` (the term's start plus a grace period), and while the
+last leader's tserver is live it ends at that tserver's latest processed heartbeat. A tablet whose
+leader's tserver is unresponsive is still reported.

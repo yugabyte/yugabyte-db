@@ -142,6 +142,11 @@ impl RpcHandler for MasterServiceHandler {
             ));
             return;
         };
+        // The host's service pool drops calls that expire in its queue; this catches the ones
+        // that expired between that check and here.
+        if call.time_to_deadline().is_zero() {
+            return call.respond_error(expired_call());
+        }
         let shared = self.shared.clone();
         match method.name {
             "GetMasterRegistration" => {
@@ -225,6 +230,15 @@ pub const HOST_METHODS: &[(&str, bool)] = &[
     ("AddUniverseKeys", false),
     ("HasUniverseKeyInMemory", false),
 ];
+
+/// The answer to a call whose deadline passed before it was handled: the caller has given up, so
+/// it is not served late.
+fn expired_call() -> Status {
+    Status::new(
+        StatusCode::TimedOut,
+        "The call's deadline passed before the master handled it",
+    )
+}
 
 fn host_method(name: &str) -> Option<bool> {
     HOST_METHODS
@@ -364,7 +378,15 @@ impl Shared {
         };
         let master_config = resp.master_config.take();
         let instance = self.info.instance();
+        // Taken here, on the RPC thread, so heartbeats of one tserver are processed in the order
+        // they arrived (K6).
+        let ticket = leader
+            .ts_manager
+            .heartbeat_ticket(req.common.ts_instance.permanent_uuid());
         self.runtime.clone().spawn(async move {
+            if let Err(status) = ticket.wait(call.time_to_deadline()).await {
+                return call.respond_error(status);
+            }
             let ctx = master_ts_manager::HeartbeatContext {
                 token,
                 writer: &leader.writer,
@@ -389,6 +411,7 @@ impl Shared {
                 }
                 Err(status) => call.respond_error(status),
             }
+            drop(ticket);
         });
     }
 
@@ -502,6 +525,10 @@ impl Shared {
 
     /// A leader method on a master with leader services.
     async fn leader_call(self: Arc<Self>, call: Box<dyn InboundCall>, method: &'static MethodDesc) {
+        // It may have waited for a runtime worker.
+        if call.time_to_deadline().is_zero() {
+            return call.respond_error(expired_call());
+        }
         let leader = self.leader.clone().expect("leader services");
         let (token, snapshot) = match self.leader_ready(&leader) {
             Ok(ready) => ready,

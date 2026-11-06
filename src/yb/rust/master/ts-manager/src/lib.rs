@@ -19,12 +19,14 @@
 
 mod deletes;
 mod heartbeat;
+mod order;
 mod peer;
 pub mod placement;
 mod report;
 
 pub use deletes::{DeleteReplica, DeleteReplicaQueue};
 pub use heartbeat::{master_error, ContributorContext, HeartbeatContext, HeartbeatContributor};
+pub use order::Ticket;
 pub use peer::{
     apply_push, full_push, FollowerStreamState, LocationStream, Peer, SERVICE as PEER_SERVICE,
 };
@@ -71,6 +73,12 @@ pub struct TsManagerOptions {
     pub use_pending_config_op_id: fn() -> bool,
     /// `enable_register_ts_from_raft`.
     pub register_from_raft: fn() -> bool,
+    /// Half of `heartbeat_rpc_timeout_ms`: tablet metadata (leader leases) is processed only when
+    /// at least this much time is left, as in C++.
+    pub metadata_min_time_left: fn() -> Duration,
+    /// `maximum_tablet_leader_lease_expired_secs`: a lease expired longer ago than this does not
+    /// make a valid leader.
+    pub max_leader_lease_expired: fn() -> Duration,
 }
 
 impl Default for TsManagerOptions {
@@ -85,6 +93,8 @@ impl Default for TsManagerOptions {
             tombstone_evicted_replicas: || true,
             use_pending_config_op_id: || true,
             register_from_raft: || true,
+            metadata_min_time_left: || Duration::from_millis(7500),
+            max_leader_lease_expired: || Duration::from_secs(120),
         }
     }
 }
@@ -193,6 +203,7 @@ pub struct TsManager {
     unpersisted: Mutex<HashSet<EntityId>>,
     /// CDC streams were seen: `CatalogManager::cdc_enabled_`, which stays set.
     cdc_enabled: AtomicBool,
+    heartbeat_order: order::HeartbeatOrder,
     options: TsManagerOptions,
 }
 
@@ -210,13 +221,31 @@ impl TsManager {
             deletes: DeleteReplicaQueue::default(),
             unpersisted: Mutex::default(),
             cdc_enabled: AtomicBool::new(false),
+            heartbeat_order: Default::default(),
             options,
         })
+    }
+
+    /// A place in the queue of the tserver's heartbeats; take it when the call arrives, and wait
+    /// for its turn before [`TsManager::heartbeat`].
+    pub fn heartbeat_ticket(&self, uuid: &[u8]) -> Ticket {
+        self.heartbeat_order.ticket(uuid)
     }
 
     /// The settings.
     pub fn options(&self) -> &TsManagerOptions {
         &self.options
+    }
+
+    /// When the tserver's latest heartbeat was processed, if it is live: the end of the window
+    /// the leaderless check may count for tablets it leads (K7).
+    pub fn live_heartbeat_time(&self, uuid: &[u8]) -> Option<Instant> {
+        let descriptors = self.descriptors.read().unwrap();
+        let descriptor = descriptors.get(uuid)?;
+        descriptor
+            .is_live()
+            .then_some(descriptor.last_heartbeat)
+            .flatten()
     }
 
     /// One tserver.

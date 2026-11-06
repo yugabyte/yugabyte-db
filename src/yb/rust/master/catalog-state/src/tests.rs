@@ -12,6 +12,7 @@
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use master_catalog_entity::HotFields;
 use master_leadership::ready_for_tests;
@@ -582,4 +583,150 @@ proptest! {
             assert_eq!(snapshot.digest(), digest);
         });
     }
+}
+
+fn one_at_a_time(metrics: Arc<yb_host_api::metrics::InMemoryMetrics>) -> WriterOptions {
+    WriterOptions {
+        max_batch_rows: || 1,
+        max_inflight: || 1,
+        metrics,
+        ..Default::default()
+    }
+}
+
+#[tokio::test]
+async fn expired_mutation_is_dropped_unwritten() {
+    let (fake, events) = FakeSysCatalog::new();
+    let s = start(fake, events);
+    let (leadership, _source) = ready_for_tests(1).await;
+    let metrics = yb_host_api::metrics::InMemoryMetrics::new();
+    let writer = CatalogWriter::start(
+        s.catalog.clone(),
+        s.fake.clone(),
+        leadership.clone(),
+        one_at_a_time(metrics.clone()),
+    );
+    s.catalog.barrier().await;
+    let token = leadership.token().unwrap();
+
+    // The first write holds the only in-flight slot, so the second waits in the queue past its
+    // deadline.
+    s.fake.pause_writes();
+    let first = {
+        let (writer, token) = (writer.clone(), token);
+        tokio::spawn(async move {
+            writer
+                .submit(
+                    &token,
+                    Mutation::new().upsert(SysRowEntryType::TABLE, b"t1", table_row("a", 1)),
+                )
+                .await
+        })
+    };
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    let second = {
+        let (writer, token) = (writer.clone(), token);
+        tokio::spawn(async move {
+            writer
+                .submit_with(
+                    &token,
+                    Mutation::new().upsert(SysRowEntryType::TABLE, b"t2", table_row("b", 1)),
+                    WriteOptions::with_timeout(Duration::from_millis(10)),
+                )
+                .await
+        })
+    };
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    s.fake.resume_writes();
+    first.await.unwrap().unwrap();
+    assert_eq!(second.await.unwrap().unwrap_err(), MutationError::Expired);
+    assert!(s
+        .catalog
+        .snapshot()
+        .get(SysRowEntryType::TABLE, b"t2")
+        .is_none());
+    assert_eq!(s.fake.writes(), 1);
+    assert_eq!(
+        metrics.counter_value("rust_master_catalog_writer_expired"),
+        1
+    );
+    assert_eq!(
+        metrics.histogram_values("rust_master_catalog_writer_batch_rows"),
+        vec![1]
+    );
+    assert_eq!(
+        metrics
+            .histogram_values("rust_master_catalog_writer_commit_latency_us")
+            .len(),
+        1
+    );
+
+    // mutate_with reports the deadline as TimedOut.
+    let status = writer
+        .mutate_with(
+            &token,
+            WriteOptions {
+                deadline: Some(tokio::time::Instant::now()),
+                ..Default::default()
+            },
+            |_| {
+                Ok((
+                    Mutation::new().upsert(SysRowEntryType::TABLE, b"t3", table_row("c", 1)),
+                    (),
+                ))
+            },
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(status.code, StatusCode::TimedOut);
+}
+
+#[tokio::test]
+async fn priority_lane_goes_first() {
+    let (fake, events) = FakeSysCatalog::new();
+    let s = start(fake, events);
+    let (leadership, _source) = ready_for_tests(1).await;
+    let writer = CatalogWriter::start(
+        s.catalog.clone(),
+        s.fake.clone(),
+        leadership.clone(),
+        one_at_a_time(yb_host_api::metrics::InMemoryMetrics::new()),
+    );
+    s.catalog.barrier().await;
+    let token = leadership.token().unwrap();
+    let (order_tx, mut order) = tokio::sync::mpsc::unbounded_channel();
+    let submit = |id: &'static str, lane: Lane| {
+        let (writer, order_tx) = (writer.clone(), order_tx.clone());
+        tokio::spawn(async move {
+            writer
+                .submit_with(
+                    &token,
+                    Mutation::new().upsert(SysRowEntryType::TABLE, id.as_bytes(), table_row(id, 1)),
+                    WriteOptions {
+                        lane,
+                        ..Default::default()
+                    },
+                )
+                .await
+                .unwrap();
+            order_tx.send(id).unwrap();
+        })
+    };
+
+    s.fake.pause_writes();
+    let blocker = submit("blocker", Lane::Normal);
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    let normal = submit("normal", Lane::Normal);
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    let urgent = submit("urgent", Lane::Priority);
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    s.fake.resume_writes();
+    for task in [blocker, normal, urgent] {
+        task.await.unwrap();
+    }
+    let mut seen = Vec::new();
+    while let Ok(id) = order.try_recv() {
+        seen.push(id);
+    }
+    assert_eq!(seen, vec!["blocker", "urgent", "normal"]);
 }

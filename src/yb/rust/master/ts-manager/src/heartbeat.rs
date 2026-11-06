@@ -14,16 +14,19 @@
 //! check. Field for field as C++, minus what later layers own (YSQL catalog versions and pins,
 //! xCluster-guarded info, the leader-blacklist drain list).
 
+use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use master_catalog_entity::EntityId;
 use master_catalog_state::{CatalogSnapshot, CatalogWriter};
 use master_leadership::LeaderToken;
+use master_tablet_locations::LeaseReport;
 use protobuf::EnumOrUnknown;
 use yb_host_api::{Status, StatusCode};
 use yb_proto::pb::catalog_entity_info::{SysClusterConfigEntryPB, SysConfigEntryPB};
 use yb_proto::pb::consensus_metadata::RaftPeerPB;
+use yb_proto::pb::consensus_types::LeaderLeaseStatus;
 use yb_proto::pb::master_heartbeat::{TSHeartbeatRequestPB, TSHeartbeatResponsePB};
 use yb_proto::pb::master_types::{master_error_pb, MasterErrorPB, SysRowEntryType};
 use yb_proto::pb::wire_protocol::{app_status_pb, AppStatusPB, NodeInstancePB};
@@ -153,6 +156,16 @@ impl TsManager {
         if !has_report {
             resp.set_needs_full_tablet_report(true);
         }
+        let incremental = req
+            .tablet_report
+            .as_ref()
+            .is_none_or(|r| r.is_incremental());
+        if incremental
+            && deadline.saturating_duration_since(Instant::now())
+                > (self.options.metadata_min_time_left)()
+        {
+            self.record_leader_leases(req);
+        }
 
         let (version, list) = self.live_list(ctx.token.term());
         if req.live_tservers_version.as_ref() == Some(&version) {
@@ -173,6 +186,41 @@ impl TsManager {
             }
         }
         Ok(resp)
+    }
+
+    /// The leader-lease half of `ProcessTabletMetadata`, for the tablets in `storage_metadata`
+    /// whose leader is the reporting tserver.
+    fn record_leader_leases(&self, req: &TSHeartbeatRequestPB) {
+        if req.leader_info.is_empty() {
+            return;
+        }
+        let uuid = req.common.ts_instance.permanent_uuid();
+        let leader_info: HashMap<&[u8], _> = req
+            .leader_info
+            .iter()
+            .map(|info| (info.tablet_id(), info))
+            .collect();
+        let now = Instant::now();
+        let now_physical_us = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |d| d.as_micros() as u64);
+        let max_expired = (self.options.max_leader_lease_expired)();
+        for metadata in &req.storage_metadata {
+            let Some(info) = leader_info.get(metadata.tablet_id()) else {
+                continue;
+            };
+            self.locations.record_leader_lease(
+                LeaseReport {
+                    tablet_id: metadata.tablet_id(),
+                    leader: uuid,
+                    has_lease: info.leader_lease_status() == LeaderLeaseStatus::HAS_LEASE,
+                    ht_lease_expiration: info.ht_lease_expiration(),
+                },
+                now_physical_us,
+                max_expired,
+                now,
+            );
+        }
     }
 
     /// `ValidateTServerUniverseOrRespond`. `Ok(false)` means the response carries the error.

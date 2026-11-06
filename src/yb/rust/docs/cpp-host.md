@@ -10,6 +10,7 @@ its Rust static library (the two call each other). A component's own host, such 
 | `common/yb-cpp-host/src/ffi/log.rs` | `log_bridge.{h,cc}` | glog for Rust `tracing` and panics |
 | `common/yb-cpp-host/src/ffi/rpc.rs` | `rpc_bridge.{h,cc}` | Rust RPC services and outbound calls on the C++ Messenger |
 | `common/yb-cpp-host/src/ffi/flags.rs` | `flags_bridge.{h,cc}` | gflags values, watches, and flags declared in Rust |
+| `common/yb-cpp-host/src/ffi/metrics.rs` | `metrics_bridge.{h,cc}` | Counters, gauges and histograms in the server's metric entity |
 
 ## Logging
 
@@ -39,3 +40,11 @@ startup through `DefineFlag`, before gflags parses the command line, so they app
 `--helpxml`, flagfiles, `/varz` and `SetFlag` like flags defined in C++, with their yb tags.
 `FlagRef` reads any flag by name, and `subscribe()` follows runtime changes through
 `RegisterFlagUpdateCallback`.
+
+## Metrics
+
+Rust code creates metrics through `yb_host_api::metrics::MetricRegistry`; `CppMetricRegistry`
+implements it on the server's metric entity, so `/metrics` and `/prometheus-metrics` export them
+with the C++ metrics. Each name gets a prototype the first time it is used, kept for the life of
+the process like a static `METRIC_DEFINE_*` one. Several servers in one process (MiniCluster) share
+the prototype and each gets its own metric. Crates test against `InMemoryMetrics`.

@@ -15,4 +15,5 @@
 
 pub mod flags;
 pub(crate) mod log;
+pub mod metrics;
 pub mod rpc;

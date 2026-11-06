@@ -20,4 +20,5 @@
 pub mod ffi;
 pub mod flags;
 pub mod logging;
+pub mod metrics;
 pub mod rpc;

@@ -727,6 +727,20 @@ TEST_F(RustMasterTest, RustLeaderServesCoreRpcs) {
     new_version = get_resp.cluster_config().version() + 1;
   }
 
+  // The catalog writer's metrics, registered from Rust, are in the server's metric entity.
+  {
+    const auto metrics = ASSERT_RESULT(FetchPage(rust_master, "/prometheus-metrics"));
+    for (const auto* name :
+         {"rust_master_catalog_writer_queue_wait_us",
+          "rust_master_catalog_writer_commit_latency_us",
+          "rust_master_catalog_writer_batch_rows",
+          "rust_master_catalog_writer_queue_depth",
+          "rust_master_catalog_writer_conflicts",
+          "rust_master_catalog_writer_expired"}) {
+      ASSERT_STR_CONTAINS(metrics, name);
+    }
+  }
+
   // A leader method of a later layer is refused, not forwarded.
   {
     auto proxy = cluster_->GetProxy<master::MasterDdlProxy>(rust_master);

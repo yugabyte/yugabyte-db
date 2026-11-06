@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+use std::collections::HashSet;
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -97,20 +98,27 @@ impl DeleteReplica {
     }
 }
 
-/// Deletes waiting to be sent, deduplicated by tserver and tablet.
+/// Deletes waiting to be sent, deduplicated by tserver and tablet against both the queue and the
+/// deletes being sent: after a large drop every report repeats the same deletes (CE-1629).
 #[derive(Default)]
 pub struct DeleteReplicaQueue {
     queue: Mutex<Vec<DeleteReplica>>,
+    in_flight: Mutex<HashSet<(EntityId, Vec<u8>)>>,
     added: Notify,
 }
 
 impl DeleteReplicaQueue {
-    /// Queues a delete unless one for the same replica is queued.
+    /// Queues a delete unless one for the same replica is queued or being sent.
     pub fn push(&self, delete: DeleteReplica) {
         let mut queue = self.queue.lock().unwrap();
         if queue
             .iter()
             .any(|d| d.ts_uuid == delete.ts_uuid && d.tablet_id == delete.tablet_id)
+            || self
+                .in_flight
+                .lock()
+                .unwrap()
+                .contains(&(delete.ts_uuid.clone(), delete.tablet_id.clone()))
         {
             return;
         }
@@ -125,9 +133,24 @@ impl DeleteReplicaQueue {
         self.added.notify_one();
     }
 
-    /// Takes everything queued.
+    /// Takes everything queued. Each one counts as being sent until [`DeleteReplicaQueue::sent`].
     pub fn drain(&self) -> Vec<DeleteReplica> {
-        std::mem::take(&mut *self.queue.lock().unwrap())
+        // Lock order as in push: queue, then in_flight.
+        let mut queue = self.queue.lock().unwrap();
+        let mut in_flight = self.in_flight.lock().unwrap();
+        let drained = std::mem::take(&mut *queue);
+        for delete in &drained {
+            in_flight.insert((delete.ts_uuid.clone(), delete.tablet_id.clone()));
+        }
+        drained
+    }
+
+    /// A drained delete was sent or given up on: a later report may queue it again.
+    pub fn sent(&self, delete: &DeleteReplica) {
+        self.in_flight
+            .lock()
+            .unwrap()
+            .remove(&(delete.ts_uuid.clone(), delete.tablet_id.clone()));
     }
 
     /// Drops everything queued: a new term decides again from reports.

@@ -15,11 +15,16 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
+use tokio::time::Instant;
+
 use master_catalog_entity::{Entity, RowKey};
 use master_leadership::{LeaderToken, Leadership};
 use master_sys_catalog::{RowChange, SysCatalogStore};
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinSet;
+use yb_host_api::metrics::{
+    Counter, Gauge, Histogram, InMemoryMetrics, MetricDef, MetricRegistry, MetricUnit,
+};
 use yb_host_api::{Status, StatusCode};
 use yb_proto::pb::master_types::SysRowEntryType;
 
@@ -90,6 +95,48 @@ impl Mutation {
     }
 }
 
+/// Which queue a mutation waits in. The writer fills each batch from the priority lane first.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Lane {
+    /// Everything else.
+    #[default]
+    Normal,
+    /// Writes that must not wait behind bulk work: YSQL lease grants, DDL completion.
+    Priority,
+}
+
+/// How a mutation is written.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct WriteOptions {
+    /// The caller's deadline. A mutation still queued when it passes is dropped, not written:
+    /// the caller has given up, and writing it late could surprise a retry.
+    pub deadline: Option<Instant>,
+    /// The queue it waits in.
+    pub lane: Lane,
+}
+
+impl WriteOptions {
+    /// Options with `deadline` as the time left to the caller's deadline from now.
+    pub fn with_timeout(timeout: Duration) -> WriteOptions {
+        WriteOptions {
+            deadline: Some(Instant::now() + timeout),
+            ..Default::default()
+        }
+    }
+
+    /// The same options in the priority lane.
+    pub fn priority(self) -> WriteOptions {
+        WriteOptions {
+            lane: Lane::Priority,
+            ..self
+        }
+    }
+
+    fn expired(&self, now: Instant) -> bool {
+        self.deadline.is_some_and(|d| d <= now)
+    }
+}
+
 /// Why a mutation was not applied.
 #[derive(Clone, Debug, PartialEq)]
 pub enum MutationError {
@@ -97,6 +144,8 @@ pub enum MutationError {
     Conflict,
     /// The token is not current.
     NotLeader(Status),
+    /// Its deadline passed before it joined a Raft write; nothing was written.
+    Expired,
     /// The Raft write failed.
     Write(Status),
 }
@@ -106,6 +155,7 @@ impl fmt::Display for MutationError {
         match self {
             MutationError::Conflict => write!(f, "conflict"),
             MutationError::NotLeader(s) => write!(f, "not the leader: {s}"),
+            MutationError::Expired => write!(f, "deadline passed before it was written"),
             MutationError::Write(s) => write!(f, "write failed: {s}"),
         }
     }
@@ -118,13 +168,18 @@ impl From<MutationError> for Status {
                 StatusCode::TryAgain,
                 "Catalog mutation kept conflicting with concurrent changes",
             ),
+            MutationError::Expired => Status::new(
+                StatusCode::TimedOut,
+                "Catalog mutation not written: the request's deadline passed while it was queued",
+            ),
             MutationError::NotLeader(s) | MutationError::Write(s) => s,
         }
     }
 }
 
-/// Writer limits, read when each batch is formed so flag changes take effect.
-#[derive(Clone, Copy)]
+/// Writer limits, read when each batch is formed so flag changes take effect, and where the
+/// writer's metrics go.
+#[derive(Clone)]
 pub struct WriterOptions {
     /// `catalog_writer_max_batch_rows`.
     pub max_batch_rows: fn() -> usize,
@@ -132,6 +187,8 @@ pub struct WriterOptions {
     pub max_batch_bytes: fn() -> usize,
     /// `catalog_writer_max_inflight`: Raft writes outstanding at once.
     pub max_inflight: fn() -> usize,
+    /// The registry the writer's metrics are created in.
+    pub metrics: Arc<dyn MetricRegistry>,
 }
 
 impl Default for WriterOptions {
@@ -140,6 +197,76 @@ impl Default for WriterOptions {
             max_batch_rows: || 1000,
             max_batch_bytes: || 4 << 20,
             max_inflight: || 4,
+            metrics: InMemoryMetrics::new(),
+        }
+    }
+}
+
+/// Upper bound of the writer's latency histograms: 60 s in microseconds.
+const MAX_LATENCY_US: u64 = 60_000_000;
+
+const QUEUE_WAIT: MetricDef = MetricDef {
+    name: "rust_master_catalog_writer_queue_wait_us",
+    label: "Catalog writer queue wait",
+    description: "Time a catalog mutation waited in the Rust master's writer queue before it \
+                  joined a Raft write, or was dropped as stale, conflicting or expired.",
+    unit: MetricUnit::Microseconds,
+};
+const COMMIT_LATENCY: MetricDef = MetricDef {
+    name: "rust_master_catalog_writer_commit_latency_us",
+    label: "Catalog writer commit latency",
+    description: "Time from sending a catalog Raft write until its rows are in the Rust \
+                  master's in-memory catalog.",
+    unit: MetricUnit::Microseconds,
+};
+const BATCH_ROWS: MetricDef = MetricDef {
+    name: "rust_master_catalog_writer_batch_rows",
+    label: "Catalog writer batch rows",
+    description: "Sys catalog rows in each Raft write of the Rust master's catalog writer.",
+    unit: MetricUnit::Entries,
+};
+const QUEUE_DEPTH: MetricDef = MetricDef {
+    name: "rust_master_catalog_writer_queue_depth",
+    label: "Catalog writer queue depth",
+    description: "Catalog mutations waiting in the Rust master's writer queue.",
+    unit: MetricUnit::Operations,
+};
+const CONFLICTS: MetricDef = MetricDef {
+    name: "rust_master_catalog_writer_conflicts",
+    label: "Catalog writer conflicts",
+    description: "Catalog mutations the Rust master's writer refused because a row they read \
+                  changed or was being written. Each is rebuilt from a newer snapshot.",
+    unit: MetricUnit::Operations,
+};
+const EXPIRED: MetricDef = MetricDef {
+    name: "rust_master_catalog_writer_expired",
+    label: "Catalog writer expired mutations",
+    description: "Catalog mutations the Rust master's writer dropped unwritten because the \
+                  request's deadline passed while they were queued.",
+    unit: MetricUnit::Operations,
+};
+
+/// Upper bound of the batch-rows histogram.
+const MAX_BATCH_ROWS_METRIC: u64 = 1_000_000;
+
+struct WriterMetrics {
+    queue_wait: Arc<dyn Histogram>,
+    commit_latency: Arc<dyn Histogram>,
+    batch_rows: Arc<dyn Histogram>,
+    queue_depth: Arc<dyn Gauge>,
+    conflicts: Arc<dyn Counter>,
+    expired: Arc<dyn Counter>,
+}
+
+impl WriterMetrics {
+    fn new(registry: &dyn MetricRegistry) -> WriterMetrics {
+        WriterMetrics {
+            queue_wait: registry.histogram(&QUEUE_WAIT, MAX_LATENCY_US),
+            commit_latency: registry.histogram(&COMMIT_LATENCY, MAX_LATENCY_US),
+            batch_rows: registry.histogram(&BATCH_ROWS, MAX_BATCH_ROWS_METRIC),
+            queue_depth: registry.gauge(&QUEUE_DEPTH),
+            conflicts: registry.counter(&CONFLICTS),
+            expired: registry.counter(&EXPIRED),
         }
     }
 }
@@ -151,6 +278,8 @@ type Finished = (Vec<RowKey>, Vec<Done>, Result<(), Status>);
 struct Pending {
     token: LeaderToken,
     mutation: Mutation,
+    options: WriteOptions,
+    queued_at: Instant,
     done: Done,
 }
 
@@ -173,12 +302,15 @@ impl CatalogWriter {
         options: WriterOptions,
     ) -> Arc<CatalogWriter> {
         let (queue, receiver) = mpsc::unbounded_channel();
+        let metrics = WriterMetrics::new(&*options.metrics);
         let task = WriterTask {
             catalog: catalog.clone(),
             store,
             leadership,
             options,
-            pending: VecDeque::new(),
+            metrics,
+            priority: VecDeque::new(),
+            normal: VecDeque::new(),
             in_flight: HashSet::new(),
             batches: JoinSet::new(),
         };
@@ -192,11 +324,24 @@ impl CatalogWriter {
         token: &LeaderToken,
         mutation: Mutation,
     ) -> Result<Arc<CatalogSnapshot>, MutationError> {
+        self.submit_with(token, mutation, WriteOptions::default())
+            .await
+    }
+
+    /// [`CatalogWriter::submit`] with a deadline and lane.
+    pub async fn submit_with(
+        &self,
+        token: &LeaderToken,
+        mutation: Mutation,
+        options: WriteOptions,
+    ) -> Result<Arc<CatalogSnapshot>, MutationError> {
         let (done, result) = oneshot::channel();
         self.queue
             .send(Pending {
                 token: *token,
                 mutation,
+                options,
+                queued_at: Instant::now(),
                 done,
             })
             .map_err(|_| writer_stopped())?;
@@ -208,11 +353,23 @@ impl CatalogWriter {
     pub async fn mutate<T>(
         &self,
         token: &LeaderToken,
+        build: impl FnMut(&CatalogSnapshot) -> Result<(Mutation, T), Status>,
+    ) -> Result<(T, Arc<CatalogSnapshot>), Status> {
+        self.mutate_with(token, WriteOptions::default(), build)
+            .await
+    }
+
+    /// [`CatalogWriter::mutate`] with a deadline and lane. Rebuilding stops at the deadline too.
+    pub async fn mutate_with<T>(
+        &self,
+        token: &LeaderToken,
+        options: WriteOptions,
         mut build: impl FnMut(&CatalogSnapshot) -> Result<(Mutation, T), Status>,
     ) -> Result<(T, Arc<CatalogSnapshot>), Status> {
         let mut changes = self.catalog.subscribe();
-        let deadline = tokio::time::Instant::now() + CONFLICT_RETRY_BUDGET;
-        while tokio::time::Instant::now() < deadline {
+        let budget = Instant::now() + CONFLICT_RETRY_BUDGET;
+        let deadline = options.deadline.map_or(budget, |d| d.min(budget));
+        while Instant::now() < deadline {
             let snapshot = self.catalog.snapshot();
             changes.borrow_and_update();
             let (mut mutation, value) = build(&snapshot)?;
@@ -220,7 +377,7 @@ impl CatalogWriter {
             if mutation.is_empty() {
                 return Ok((value, snapshot));
             }
-            match self.submit(token, mutation).await {
+            match self.submit_with(token, mutation, options).await {
                 Ok(snapshot) => return Ok((value, snapshot)),
                 Err(MutationError::Conflict) => {
                     // Wait for the snapshot that resolves the conflict, but not forever: the row
@@ -230,6 +387,9 @@ impl CatalogWriter {
                 }
                 Err(e) => return Err(e.into()),
             }
+        }
+        if options.expired(Instant::now()) {
+            return Err(MutationError::Expired.into());
         }
         Err(MutationError::Conflict.into())
     }
@@ -247,26 +407,56 @@ struct WriterTask {
     store: Arc<dyn SysCatalogStore>,
     leadership: Arc<Leadership>,
     options: WriterOptions,
-    pending: VecDeque<Pending>,
+    metrics: WriterMetrics,
+    /// Queued mutations of [`Lane::Priority`]; each batch takes these first.
+    priority: VecDeque<Pending>,
+    /// Queued mutations of [`Lane::Normal`].
+    normal: VecDeque<Pending>,
     /// Rows written by batches in Raft.
     in_flight: HashSet<RowKey>,
     batches: JoinSet<Finished>,
 }
 
 impl WriterTask {
+    fn queued(&self) -> usize {
+        self.priority.len() + self.normal.len()
+    }
+
+    fn enqueue(&mut self, pending: Pending) {
+        match pending.options.lane {
+            Lane::Priority => self.priority.push_back(pending),
+            Lane::Normal => self.normal.push_back(pending),
+        }
+    }
+
+    /// The next mutation a batch takes: the oldest of the priority lane, else of the normal one.
+    fn front(&self) -> Option<&Pending> {
+        self.priority.front().or_else(|| self.normal.front())
+    }
+
+    fn pop_front(&mut self) -> Option<Pending> {
+        self.priority
+            .pop_front()
+            .or_else(|| self.normal.pop_front())
+    }
+
     async fn run(mut self, mut receiver: mpsc::UnboundedReceiver<Pending>) {
         loop {
             let can_send = self.batches.len() < (self.options.max_inflight)().max(1);
+            let idle = self.queued() == 0;
             tokio::select! {
-                received = receiver.recv(), if self.pending.is_empty() => {
+                // While mutations are queued, newly submitted ones are taken in with try_recv
+                // after each batch, so a priority mutation never waits behind a full queue.
+                received = receiver.recv(), if idle => {
                     match received {
-                        Some(pending) => self.pending.push_back(pending),
+                        Some(pending) => self.enqueue(pending),
                         None if self.batches.is_empty() => return,
                         None => {}
                     }
                     while let Ok(pending) = receiver.try_recv() {
-                        self.pending.push_back(pending);
+                        self.enqueue(pending);
                     }
+                    self.metrics.queue_depth.set(self.queued() as i64);
                 }
                 Some(finished) = self.batches.join_next() => {
                     let (keys, waiters, result) = finished.expect("catalog write task panicked");
@@ -281,8 +471,12 @@ impl WriterTask {
                         let _ = done.send(outcome.clone());
                     }
                 }
-                _ = std::future::ready(()), if can_send && !self.pending.is_empty() => {
+                _ = std::future::ready(()), if can_send && !idle => {
+                    while let Ok(pending) = receiver.try_recv() {
+                        self.enqueue(pending);
+                    }
                     self.send_batch();
+                    self.metrics.queue_depth.set(self.queued() as i64);
                 }
             }
         }
@@ -301,7 +495,8 @@ impl WriterTask {
         let mut keys = Vec::new();
         let mut waiters = Vec::new();
         let mut term = None;
-        while let Some(pending) = self.pending.front() {
+        let now = Instant::now();
+        while let Some(pending) = self.front() {
             let size: usize = pending.mutation.writes.iter().map(RowChange::size).sum();
             if !rows.is_empty()
                 && (rows.len() + pending.mutation.writes.len() > max_rows
@@ -309,13 +504,22 @@ impl WriterTask {
             {
                 break;
             }
-            let pending = self.pending.pop_front().unwrap();
+            let pending = self.pop_front().unwrap();
+            self.metrics
+                .queue_wait
+                .record_duration(now.saturating_duration_since(pending.queued_at));
+            if pending.options.expired(now) {
+                self.metrics.expired.increment();
+                let _ = pending.done.send(Err(MutationError::Expired));
+                continue;
+            }
             if let Err(status) = self.leadership.check(&pending.token) {
                 let _ = pending.done.send(Err(MutationError::NotLeader(status)));
                 continue;
             }
             if reloading || !snapshot.loaded || !self.is_fresh(&snapshot, &pending.mutation, &keys)
             {
+                self.metrics.conflicts.increment();
                 let _ = pending.done.send(Err(MutationError::Conflict));
                 continue;
             }
@@ -338,14 +542,18 @@ impl WriterTask {
             waiters.push(pending.done);
         }
         let Some(term) = term else { return };
+        self.metrics.batch_rows.record(rows.len() as u64);
         self.in_flight.extend(keys.iter().cloned());
         let store = self.store.clone();
         let catalog = self.catalog.clone();
+        let commit_latency = self.metrics.commit_latency.clone();
         self.batches.spawn(async move {
+            let sent = Instant::now();
             let result = store.write_rows(term, rows).await;
             if result.is_ok() {
                 // The write's rows are on the apply stream; ack once they are in the snapshot.
                 catalog.barrier().await;
+                commit_latency.record_duration(sent.elapsed());
             }
             (keys, waiters, result)
         });

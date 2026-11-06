@@ -27,7 +27,7 @@ mod writer;
 
 pub use materializer::run_materializer;
 pub use snapshot::{is_inactive_state, rows_digest, CatalogSnapshot};
-pub use writer::{CatalogWriter, Mutation, MutationError, WriterOptions};
+pub use writer::{CatalogWriter, Lane, Mutation, MutationError, WriteOptions, WriterOptions};
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;

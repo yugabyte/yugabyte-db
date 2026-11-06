@@ -134,6 +134,11 @@ impl Harness {
 
     /// Calls `method` and waits for the answer.
     fn call(&self, method: &str, request: Vec<u8>) -> FakeResponse {
+        self.call_with_timeout(method, request, Duration::from_secs(60))
+    }
+
+    /// Calls `method` with `timeout` left to the call's deadline and waits for the answer.
+    fn call_with_timeout(&self, method: &str, request: Vec<u8>, timeout: Duration) -> FakeResponse {
         let (service, index, _) = find_method("yb.master.MasterService", method)
             .or_else(|| find_method("yb.master.MasterBackup", method))
             .or_else(|| find_method("yb.master.MasterRustPeer", method))
@@ -150,7 +155,7 @@ impl Harness {
             self.leader.clone(),
         );
         let (call, outcome) = FakeInboundCall::new(index, request);
-        handler.handle(call);
+        handler.handle(call.with_timeout(timeout));
         for _ in 0..500 {
             if let Some(response) = outcome.lock().unwrap().clone() {
                 return response;
@@ -179,6 +184,15 @@ fn registration_reports_follower_even_when_leader() {
     assert_eq!(resp.role(), PeerRole::FOLLOWER);
     assert_eq!(resp.instance_id.instance_seqno(), 42);
     assert!(resp.error.is_none());
+}
+
+#[test]
+fn expired_calls_are_not_served() {
+    let h = Harness::new();
+    match h.call_with_timeout("GetMasterRegistration", vec![], Duration::ZERO) {
+        FakeResponse::Error(status) => assert_eq!(status.code, StatusCode::TimedOut),
+        other => panic!("expected TimedOut, got {other:?}"),
+    }
 }
 
 #[test]

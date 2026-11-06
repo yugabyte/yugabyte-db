@@ -26,8 +26,10 @@ use master_catalog_state::Catalog;
 use master_leadership::Leadership;
 use master_rpc_handlers::{HandlerOptions, MasterInfo, MasterServiceHandler};
 use master_sys_catalog::SysCatalogStore;
+use yb_cpp_host::metrics::CppMetricRegistry;
 use yb_cpp_host::rpc::{register_service, CppRpcClient};
 use yb_flags::{yb_flag, FlagRef, FlagTag};
+use yb_host_api::metrics::MetricRegistry;
 use yb_host_api::rpc::RpcClient;
 
 yb_flag!(
@@ -76,6 +78,7 @@ fn run() -> Result<(), String> {
     let info: Arc<dyn MasterInfo> =
         Arc::new(host_info::HostInfo::new(host.pin_mut().info_handle()));
     let rpc: Arc<dyn RpcClient> = Arc::new(CppRpcClient::new(host.pin_mut().server_handle()));
+    let metrics: Arc<dyn MetricRegistry> = CppMetricRegistry::new(&host.pin_mut().server_handle());
 
     // The core, before the host opens the sys catalog: the tap needs its sink from the start.
     let (apply_sender, apply_events) = master_sys_catalog::apply_channel();
@@ -101,6 +104,7 @@ fn run() -> Result<(), String> {
         apply_events,
         Catalog::new(apply_sender),
         leadership,
+        metrics,
         vec![Arc::new(store::HostHeartbeatParts(
             host.pin_mut().info_handle(),
             gate.clone(),

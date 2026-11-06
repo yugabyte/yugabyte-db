@@ -17,7 +17,7 @@
 use std::time::Instant;
 
 use master_catalog_entity::{Entity, EntityId};
-use master_catalog_state::{is_inactive_state, CatalogSnapshot, Mutation};
+use master_catalog_state::{is_inactive_state, CatalogSnapshot, Mutation, WriteOptions};
 use master_leadership::LeaderToken;
 use master_tablet_locations::{Replica, TabletReplicas};
 use protobuf::{Enum, EnumOrUnknown, Message};
@@ -98,20 +98,25 @@ impl TsManager {
 
         if !catalog_updates.is_empty() {
             ctx.writer
-                .mutate(&ctx.token, |snapshot| {
-                    let mut mutation = Mutation::new();
-                    for tablet in &catalog_updates {
-                        let Some((entity, pb)) = next_tablet_pb(snapshot, uuid, tablet) else {
-                            continue;
-                        };
-                        mutation = mutation.read(&entity).upsert_message(
-                            SysRowEntryType::TABLET,
-                            tablet.tablet_id(),
-                            &pb,
-                        )?;
-                    }
-                    Ok((mutation, ()))
-                })
+                .mutate_with(
+                    &ctx.token,
+                    // Not after the tserver gives up: it resends the report in its next heartbeat.
+                    WriteOptions::with_timeout(deadline.saturating_duration_since(Instant::now())),
+                    |snapshot| {
+                        let mut mutation = Mutation::new();
+                        for tablet in &catalog_updates {
+                            let Some((entity, pb)) = next_tablet_pb(snapshot, uuid, tablet) else {
+                                continue;
+                            };
+                            mutation = mutation.read(&entity).upsert_message(
+                                SysRowEntryType::TABLET,
+                                tablet.tablet_id(),
+                                &pb,
+                            )?;
+                        }
+                        Ok((mutation, ()))
+                    },
+                )
                 .await?;
         }
 

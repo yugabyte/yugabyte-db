@@ -22,7 +22,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::sync::Mutex;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use master_catalog_entity::EntityId;
 use protobuf::{Enum, EnumOrUnknown};
@@ -30,6 +30,10 @@ use tokio::sync::watch;
 use yb_proto::pb::common_types::PeerRole;
 use yb_proto::pb::consensus_metadata::PeerMemberType;
 use yb_proto::pb::master_rust_peer::{ReplicaLocationPB, TabletReplicasPB};
+
+mod leaderless;
+
+pub use leaderless::{LeaderlessCheck, LeaseReport, INFINITE_HT_LEASE_EXPIRATION};
 
 const SHARDS: usize = 64;
 
@@ -78,6 +82,7 @@ pub struct TabletLocations {
     changed: watch::Sender<u64>,
     /// When the leader last heard about each tablet, for the location stream's pacing.
     updated_at: Mutex<Option<Instant>>,
+    leases: leaderless::LeaderLeases,
 }
 
 impl Default for TabletLocations {
@@ -88,15 +93,68 @@ impl Default for TabletLocations {
             dirty: Mutex::default(),
             changed: watch::channel(0).0,
             updated_at: Mutex::new(None),
+            leases: leaderless::LeaderLeases::new(SHARDS),
         }
     }
 }
 
 impl TabletLocations {
-    fn shard(&self, tablet_id: &[u8]) -> &Mutex<HashMap<EntityId, TabletReplicas>> {
+    fn shard_index(tablet_id: &[u8]) -> usize {
         let mut hasher = DefaultHasher::new();
         tablet_id.hash(&mut hasher);
-        &self.shards[hasher.finish() as usize % SHARDS]
+        hasher.finish() as usize % SHARDS
+    }
+
+    fn shard(&self, tablet_id: &[u8]) -> &Mutex<HashMap<EntityId, TabletReplicas>> {
+        &self.shards[Self::shard_index(tablet_id)]
+    }
+
+    /// Records a leader-lease report. Ignored unless the locations name the reporting tserver as
+    /// the tablet's leader, as C++ only tracks leases of the current leader.
+    pub fn record_leader_lease(
+        &self,
+        report: LeaseReport<'_>,
+        now_physical_us: u64,
+        max_expired: Duration,
+        now: Instant,
+    ) {
+        let is_leader = self
+            .get(report.tablet_id)
+            .is_some_and(|r| r.leader().is_some_and(|l| &*l.ts_uuid == report.leader));
+        if is_leader {
+            self.leases.record(
+                Self::shard_index(report.tablet_id),
+                report,
+                now_physical_us,
+                max_expired,
+                now,
+            );
+        }
+    }
+
+    /// The tablets among `tablet_ids` that have observably gone without a valid leader for
+    /// longer than the alert delay, with how long (K7; see the `leaderless` module).
+    pub fn leaderless<'a>(
+        &self,
+        tablet_ids: impl IntoIterator<Item = &'a [u8]>,
+        check: &LeaderlessCheck<'_>,
+    ) -> Vec<(EntityId, Duration)> {
+        tablet_ids
+            .into_iter()
+            .filter_map(|tablet_id| {
+                let leader = self
+                    .get(tablet_id)
+                    .and_then(|r| r.leader().map(|l| l.ts_uuid.clone()));
+                self.leases
+                    .leaderless_for(
+                        Self::shard_index(tablet_id),
+                        tablet_id,
+                        leader.as_deref(),
+                        check,
+                    )
+                    .map(|gone| (EntityId::from(tablet_id), gone))
+            })
+            .collect()
     }
 
     /// The tablet's replicas.
@@ -153,6 +211,7 @@ impl TabletLocations {
             self.account(old.as_ref(), None);
             old.is_some()
         };
+        self.leases.forget(Self::shard_index(tablet_id), tablet_id);
         if removed {
             self.mark_dirty(tablet_id);
         }
@@ -166,6 +225,7 @@ impl TabletLocations {
         }
         self.loads.lock().unwrap().clear();
         drop(shards);
+        self.leases.clear();
         self.changed.send_modify(|v| *v += 1);
     }
 
@@ -377,5 +437,131 @@ mod tests {
         assert!(locations.get(b"t1").unwrap().confirmed);
         locations.mark_all_unconfirmed();
         assert!(!locations.get(b"t1").unwrap().confirmed);
+    }
+
+    fn led_by_a() -> TabletLocations {
+        let locations = TabletLocations::default();
+        locations.set(
+            b"t1",
+            TabletReplicas {
+                replicas: vec![
+                    replica("a", PeerRole::LEADER),
+                    replica("b", PeerRole::FOLLOWER),
+                ],
+                confirmed: true,
+            },
+        );
+        locations
+    }
+
+    fn lease(leader: &'static str, has_lease: bool, expiration: u64) -> LeaseReport<'static> {
+        LeaseReport {
+            tablet_id: b"t1",
+            leader: leader.as_bytes(),
+            has_lease,
+            ht_lease_expiration: expiration,
+        }
+    }
+
+    const NOW_US: u64 = 1_000_000_000;
+    const MAX_EXPIRED: Duration = Duration::from_secs(120);
+    const DELAY: Duration = Duration::from_secs(120);
+
+    #[test]
+    fn late_heartbeats_are_not_leaderless() {
+        let locations = led_by_a();
+        let t0 = Instant::now();
+        locations.record_leader_lease(lease("a", true, NOW_US), NOW_US, MAX_EXPIRED, t0);
+        let now = t0 + Duration::from_secs(300);
+        let leaderless = |last_heartbeat: &dyn Fn(&[u8]) -> Option<Instant>| {
+            locations.leaderless(
+                [&b"t1"[..]],
+                &LeaderlessCheck {
+                    now,
+                    alert_delay: DELAY,
+                    observable_from: t0 - Duration::from_secs(1000),
+                    last_heartbeat,
+                },
+            )
+        };
+        // The leader's tserver is live but its heartbeats have not been processed since t0 + 10s:
+        // nothing says the tablet lost its leader.
+        assert!(leaderless(&|_| Some(t0 + Duration::from_secs(10))).is_empty());
+        // Its heartbeats were processed until now without a valid lease: leaderless for 300 s.
+        let found = leaderless(&|_| Some(now));
+        assert_eq!(
+            found,
+            vec![(EntityId::from(&b"t1"[..]), Duration::from_secs(300))]
+        );
+        // The leader's tserver is unresponsive: leaderless as well.
+        assert_eq!(leaderless(&|_| None).len(), 1);
+    }
+
+    #[test]
+    fn a_new_term_waits_for_the_grace_period() {
+        let locations = led_by_a();
+        let term_start = Instant::now();
+        let check = |now: Instant| LeaderlessCheck {
+            now,
+            alert_delay: DELAY,
+            observable_from: term_start,
+            last_heartbeat: &|_: &[u8]| None,
+        };
+        // No lease report in this term, and the leader's tserver never heartbeated.
+        assert!(locations
+            .leaderless([&b"t1"[..]], &check(term_start + DELAY / 2))
+            .is_empty());
+        assert_eq!(
+            locations
+                .leaderless([&b"t1"[..]], &check(term_start + DELAY * 2))
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn lease_reports_follow_the_cpp_rules() {
+        let locations = led_by_a();
+        let t0 = Instant::now();
+        let gone_at = |now: Instant| {
+            locations
+                .leaderless(
+                    [&b"t1"[..]],
+                    &LeaderlessCheck {
+                        now,
+                        alert_delay: Duration::ZERO,
+                        observable_from: t0,
+                        last_heartbeat: &|_: &[u8]| None,
+                    },
+                )
+                .first()
+                .map(|(_, gone)| *gone)
+        };
+        let later = |s: u64| t0 + Duration::from_secs(s);
+
+        // An RF1 leader's infinite expiration is valid, and any later expiration supersedes it.
+        locations.record_leader_lease(
+            lease("a", true, INFINITE_HT_LEASE_EXPIRATION),
+            NOW_US,
+            MAX_EXPIRED,
+            later(10),
+        );
+        assert_eq!(gone_at(later(10)), None);
+        locations.record_leader_lease(lease("a", true, NOW_US), NOW_US, MAX_EXPIRED, later(20));
+        assert_eq!(gone_at(later(25)), Some(Duration::from_secs(5)));
+        // An expiration that goes backwards is a stale report.
+        locations.record_leader_lease(lease("a", true, NOW_US - 1), NOW_US, MAX_EXPIRED, later(30));
+        assert_eq!(gone_at(later(30)), Some(Duration::from_secs(10)));
+        // No lease, or a lease expired for too long, is not a valid leader.
+        locations.record_leader_lease(lease("a", false, NOW_US), NOW_US, MAX_EXPIRED, later(40));
+        let long_ago = NOW_US - MAX_EXPIRED.as_micros() as u64 - 1;
+        locations.record_leader_lease(lease("a", true, long_ago), NOW_US, MAX_EXPIRED, later(40));
+        assert_eq!(gone_at(later(40)), Some(Duration::from_secs(20)));
+        // A tserver the locations do not name as leader is ignored.
+        locations.record_leader_lease(lease("b", true, NOW_US), NOW_US, MAX_EXPIRED, later(50));
+        assert_eq!(gone_at(later(50)), Some(Duration::from_secs(30)));
+        // A removed tablet forgets its lease.
+        locations.remove(b"t1");
+        assert_eq!(gone_at(later(60)), Some(Duration::from_secs(60)));
     }
 }

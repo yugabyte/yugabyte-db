@@ -58,6 +58,17 @@ writer validates mutations in order and sends the valid ones as one Raft write:
 A write is acknowledged once its rows are in the published snapshot (write, then barrier), so the
 caller's next snapshot contains it. A failed Raft write fails every mutation in its batch.
 
+**Deadlines and lanes (K6).** `mutate_with` and `submit_with` take `WriteOptions`: the caller's
+deadline, and a lane. A mutation still queued when its deadline passes is dropped unwritten with
+`Expired` (`TimedOut` to the caller), since the caller has given up and a late write could surprise
+its retry; once in a Raft write it can no longer be dropped. Each batch takes the priority lane
+first (lease grants, DDL completion), then the normal lane; mutations submitted while a batch is
+being formed join it. Heartbeat reports pass the tserver's deadline.
+
+Metrics: `rust_master_catalog_writer_queue_wait_us` (submit to joining a batch or being dropped),
+`..._commit_latency_us` (Raft write sent to rows in the snapshot), `..._batch_rows`,
+`..._queue_depth`, `..._conflicts` and `..._expired`.
+
 Flags: `rust_master_catalog_writer_max_batch_rows` (1000), `..._max_batch_bytes` (4 MiB),
 `..._max_inflight` (4 Raft writes).
 

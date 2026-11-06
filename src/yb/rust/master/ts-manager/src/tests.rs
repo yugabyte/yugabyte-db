@@ -548,3 +548,59 @@ async fn deleted_tablets_do_not_block_removing_a_tserver() {
         .await;
     s.ts.remove(&s.catalog.snapshot(), b"ts1", true).unwrap();
 }
+
+#[tokio::test]
+async fn leader_leases_from_heartbeats_feed_the_leaderless_check() {
+    use master_tablet_locations::LeaderlessCheck;
+    use yb_proto::pb::consensus_types::LeaderLeaseStatus;
+    use yb_proto::pb::master_heartbeat::{TabletDriveStorageMetadataPB, TabletLeaderMetricsPB};
+
+    let s = setup(false).await;
+    s.set_tablet(
+        sys_tablets_entry_pb::State::RUNNING,
+        Some(cstate(1, 5, "ts1", &["ts1"])),
+    )
+    .await;
+    s.register("ts1", 1, &[9100]).await;
+    s.report("ts1", vec![reported(Some(cstate(1, 5, "ts1", &["ts1"])))])
+        .await;
+    // The term started long enough ago for the alert delay to have passed.
+    let term_start = std::time::Instant::now() - Duration::from_secs(100);
+    let leaderless = |now| {
+        s.ts.locations.leaderless(
+            [&b"tablet"[..]],
+            &LeaderlessCheck {
+                now,
+                alert_delay: Duration::from_secs(10),
+                observable_from: term_start,
+                last_heartbeat: &|uuid| s.ts.live_heartbeat_time(uuid),
+            },
+        )
+    };
+
+    // ts1 leads and heartbeats, but has reported no valid lease in this term.
+    s.heartbeat(&request("ts1", 1, 0)).await.unwrap();
+    assert_eq!(leaderless(std::time::Instant::now()).len(), 1);
+
+    // A lease report, in an incremental heartbeat with storage metadata.
+    let mut req = request("ts1", 1, 0);
+    let mut metadata = TabletDriveStorageMetadataPB::new();
+    metadata.set_tablet_id(b"tablet".to_vec());
+    req.storage_metadata.push(metadata);
+    let mut info = TabletLeaderMetricsPB::new();
+    info.set_tablet_id(b"tablet".to_vec());
+    info.set_leader_lease_status(LeaderLeaseStatus::HAS_LEASE);
+    info.set_ht_lease_expiration(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_micros() as u64,
+    );
+    req.leader_info.push(info);
+    s.heartbeat(&req).await.unwrap();
+    let reported_at = std::time::Instant::now();
+
+    // ts1 is live and its latest heartbeat is the one with the lease: whatever the clock says
+    // later, nothing observed contradicts a valid leader.
+    assert!(leaderless(reported_at + Duration::from_secs(60)).is_empty());
+}

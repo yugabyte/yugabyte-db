@@ -23,6 +23,14 @@ as `MasterHeartbeatServiceImpl::TSHeartbeat`.
   a fresh heartbeat time, so none is declared unresponsive by a new leader that has not heard from
   it yet. Locations of tablets no longer active and deletes queued in an earlier term are dropped.
 
+## Order and deadlines (K6)
+
+The handler takes a ticket in the tserver's queue on the RPC thread, before handing the call to the
+runtime, and processes the heartbeat only when its turn comes: one tserver's heartbeats run one at
+a time, in arrival order, so a retry that overlaps a slow heartbeat cannot be overtaken by it. A
+heartbeat whose deadline passes while it waits is answered `TimedOut` without being processed, and
+its turn passes to the next. The report's catalog mutation carries the deadline into the writer.
+
 ## The heartbeat response (L7)
 
 Each field has one owner:
@@ -57,6 +65,13 @@ reported pending config when `use_tablet_report_pending_config_op_id` is on) and
 decided under and is sent only while that token is current; like C++ `DeleteReplica` tasks, it is
 retried until `unresponsive_ts_rpc_timeout_ms` with no attempt limit. A replica of a tablet the
 catalog never had is only logged, as with `master_enable_deletion_check_for_orphaned_tablets`.
+
+## Leader leases (K7)
+
+As in `ProcessTabletMetadata`, an incremental heartbeat with more than half of
+`heartbeat_rpc_timeout_ms` left records the leader leases of the tablets in its `storage_metadata`
+that it leads, from `leader_info`, in `master-tablet-locations`. `live_heartbeat_time` gives the
+leaderless check when a live tserver's latest heartbeat was processed.
 
 ## The versioned live tserver list (L8, Q3)
 
