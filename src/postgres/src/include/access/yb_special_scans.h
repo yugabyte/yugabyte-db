@@ -95,8 +95,7 @@ extern int	ybFetchSample(YbSample ybSample, HeapTuple *rows);
 /*
  * Single-row fetch by ybctid (yb_ybctid_scan.c): the YB counterpart of
  * heap_fetch() in heapam.c, keyed by ybctid in place of a heap TID, so
- * tableam's tuple_fetch_row_version() does not fit.  Unlike heap_fetch(), it
- * takes no snapshot and reads at pggate's current read point.
+ * tableam's tuple_fetch_row_version() does not fit.
  */
 extern bool YbFetchHeapTuple(Relation relation, Datum ybctid,
 							 HeapTuple *tuple);
