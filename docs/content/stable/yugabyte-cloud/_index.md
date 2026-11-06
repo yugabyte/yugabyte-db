@@ -23,69 +23,39 @@ YugabyteDB Aeon is a fully managed YugabyteDB-as-a-Service that allows you to ru
 YugabyteDB Aeon SLA service availability is [99.99%](https://www.yugabyte.com/yugabytedb-managed-service-level-agreement/#:~:text=a%20minimum%20of-,99.99,-%25%20of%20the%20time). For the current status of the service, see [Status](https://status.yugabyte.cloud/).
 {{</tip>}}
 
-{{<note>}}
-YugabyteDB Managed is now YugabyteDB Aeon! [Learn more](https://www.yugabyte.com/blog/introducing-yugabytedb-aeon/).
-{{</note>}}
-
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
-    title="Sign up to create a Sandbox cluster"
-    description="Sign up, log in, and follow the built-in tutorial to create your first cluster, and build a sample application. No credit card required."
-    buttonText="Sign up"
-    buttonTarget="_blank"
-    buttonUrl="https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup"
-    button2Text="Learn more"
-    button2Url="cloud-quickstart"
-    imageAlt="Yugabyte cloud" imageUrl="/images/homepage/yugabyte-in-cloud.svg"
+    title="Serverless Postgres"
+    description="Agentic Multitenant PostgreSQL for AI agents and bursty or idle workloads. Free up to 2 vCPU. Fully managed by Yugabyte."
+    buttonText="Learn more"
+    buttonUrl="serverless/"
+    imageAlt="Serverless Postgres" imageUrl="/images/homepage/serverless-postgres.svg"
   >}}
 
   {{< sections/bottom-image-box
-    title="Deploy dedicated clusters"
-    description="Deploy single- and multi-region production clusters on Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP)."
+    title="Distributed Postgres"
+    description="Deploy single- and multi-region YugabyteDB clusters on Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP)."
     buttonText="Learn more"
-    buttonUrl="cloud-basics/"
-    imageAlt="Locally Laptop" imageUrl="/images/homepage/locally-laptop.svg"
+    buttonUrl="distributed-postgres/"
+    imageAlt="Distributed Postgres" imageUrl="/images/homepage/locally-laptop.svg"
   >}}
 {{< /sections/2-boxes >}}
 
-## Cluster basics
+## Choose the right cluster
 
-{{< sections/3-boxes>}}
-  {{< sections/3-box-card
-    title="Deploy"
-    description="Create single- and multi-region clusters in a variety of topologies."
-    buttonText="Learn More"
-    buttonUrl="cloud-basics/"
-  >}}
+Use [Serverless Postgres](serverless/) for AI agents, a database per tenant, and workloads that are bursty or often idle. Each agent or tenant gets an isolated PostgreSQL database. The cluster scales to zero, and you can fork a zero-copy branch when an agent or a test needs its own copy of the data. Serverless Postgres is free to start.
 
-  {{< sections/3-box-card
-    title="Secure"
-    description="Authorize access to clusters and databases, download cluster certificates, and audit account activity."
-    buttonText="Secure"
-    buttonUrl="cloud-secure-clusters/"
-  >}}
+Use [Distributed Postgres](distributed-postgres/) for production applications that must stay available as load grows, or that serve users in more than one region. You choose the fault tolerance and topology, and deploy on Amazon Web Services (AWS), Microsoft Azure, or Google Cloud Platform (GCP). Clusters are billed per vCPU.
 
-  {{< sections/3-box-card
-    title="Connect"
-    description="Connect to your cluster using Cloud Shell, a client shell, and from applications."
-    buttonText="Connect"
-    buttonUrl="cloud-connect/"
-  >}}
-
-  {{< sections/3-box-card
-    title="Monitor"
-    description="Monitor cluster performance and get notified of potential problems."
-    buttonText="Monitor"
-    buttonUrl="cloud-monitor/"
-  >}}
-
-  {{< sections/3-box-card
-    title="Manage"
-    description="Scale clusters, configure backups, set maintenance windows, and pause or delete clusters."
-    buttonText="Manage"
-    buttonUrl="cloud-clusters/"
-  >}}
-{{< /sections/3-boxes >}}
+| | [Serverless Postgres](serverless/) | [Distributed Postgres](distributed-postgres/) |
+| :--- | :--- | :--- |
+| Best for | AI agents, tenants, and workloads that are idle between bursts | Production applications that need high availability, more nodes, or several regions |
+| Start | Free, up to 2 vCPU, 16 GiB RAM, and 100 GiB storage, shared by the account | Billed per vCPU. [Free trial](managed-freetrial/) credits are available |
+| Availability | Scales to zero when idle. Active tenants share CPU fairly | Fault tolerance across nodes, availability zones, or regions |
+| Topology | A shared pool. Fork zero-copy branches for separate copies of the data | Single region, replicate across regions, partition by region, and read replicas |
+| Scale | Resize the vCPU and memory of an endpoint | Add or remove nodes, or change vCPUs and disk size |
+| Network | Public endpoint with trusted IP addresses | VPC peering or a private link, plus IP allow lists |
+| Next step | Move to a Distributed Postgres cluster without a migration | Scale the cluster you already have |
 
 ## More resources
 
