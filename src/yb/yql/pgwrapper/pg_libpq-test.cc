@@ -6234,9 +6234,9 @@ class PgLibPqYsqlUpgradeRetryTest : public PgLibPqTest {
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgLibPqTest::UpdateMiniClusterOptions(options);
-    // Object locking is on by default only in release builds, and the deadlock test needs it. A
-    // deadlock victim that waits on a global object lock fails only when its wait times out, so
-    // shorten the wait from 30 s.
+    // Object locking is off by default, and the deadlock test needs it. ysql_enable_concurrent_ddl,
+    // which object locking requires, is a preview flag. A deadlock victim that waits on a global
+    // object lock fails only when its wait times out, so shorten the wait from 30 s.
     for (auto* flags : {&options->extra_master_flags, &options->extra_tserver_flags}) {
       flags->insert(flags->end(), {
           "--enable_object_locking_for_table_locks=true",
@@ -6245,6 +6245,7 @@ class PgLibPqYsqlUpgradeRetryTest : public PgLibPqTest {
           "--ysql_yb_enable_invalidation_messages=true",
           "--refresh_waiter_timeout_ms=5000",
       });
+      AppendFlagToAllowedPreviewFlagsCsv(*flags, "ysql_enable_concurrent_ddl");
     }
   }
 
