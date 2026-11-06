@@ -52,6 +52,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/tcmalloc_impl_util.h"
 #include "yb/util/tcmalloc_util.h"
 
 DECLARE_bool(mem_tracker_include_pageheap_free_in_root_consumption);
@@ -60,6 +61,8 @@ DECLARE_int32(memory_limit_soft_percentage);
 DECLARE_int64(mem_tracker_tcmalloc_gc_release_bytes);
 DECLARE_int64(mem_tracker_update_consumption_interval_us);
 DECLARE_int64(tcmalloc_background_release_rate_bytes_per_sec);
+DECLARE_int32(tcmalloc_skip_subrelease_long_interval_secs);
+DECLARE_int32(tcmalloc_skip_subrelease_short_interval_secs);
 
 using namespace std::literals;
 
@@ -492,7 +495,6 @@ TEST(MemTrackerTest, TcMallocBackgroundRelease) {
   SetTCMallocBackgroundReleaseRate(0);
 
   auto root = MemTracker::GetRootTracker();
-  ASSERT_LE(root->consumption(), root->soft_limit());
   MemTracker::TEST_SetReleasedMemorySinceGC(0);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_mem_tracker_tcmalloc_gc_release_bytes) = 1_MB;
   std::unique_ptr<char[]> big_alloc(new char[4_MB]);
@@ -503,8 +505,8 @@ TEST(MemTrackerTest, TcMallocBackgroundRelease) {
   LOG(INFO) << "Overhead before free: " << overhead_before << ", after free: " << overhead_after;
   ASSERT_GT(overhead_after, overhead_before);
 
-  // Crossing the GC threshold does not release memory while below the soft limit. Other
-  // allocations can still take a few free pages.
+  // Crossing the GC threshold does not release memory. Other allocations can still take a few free
+  // pages.
   root->Release(1_MB + 1);
   ASSERT_GT(GetTCMallocPageHeapFreeBytes(), overhead_after - static_cast<int64_t>(1_MB));
 
@@ -512,6 +514,11 @@ TEST(MemTrackerTest, TcMallocBackgroundRelease) {
   ASSERT_OK(WaitFor(
       [overhead_after] { return GetTCMallocPageHeapFreeBytes() < overhead_after; }, 10s,
       "Background thread releases free memory"));
+
+  ASSERT_OK(SET_FLAG(tcmalloc_skip_subrelease_short_interval_secs, 5));
+  ASSERT_OK(SET_FLAG(tcmalloc_skip_subrelease_long_interval_secs, 20));
+  ASSERT_EQ(tcmalloc::MallocExtension::GetSkipSubreleaseShortInterval(), absl::Seconds(5));
+  ASSERT_EQ(tcmalloc::MallocExtension::GetSkipSubreleaseLongInterval(), absl::Seconds(20));
 }
 #endif
 

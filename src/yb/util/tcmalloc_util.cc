@@ -325,6 +325,13 @@ void SetTCMallocBackgroundReleaseRate(int64_t bytes_per_sec) {
 #endif
 }
 
+void SetTCMallocSkipSubreleaseIntervals(int32_t short_interval_secs, int32_t long_interval_secs) {
+#if YB_GOOGLE_TCMALLOC
+  tcmalloc::MallocExtension::SetSkipSubreleaseShortInterval(absl::Seconds(short_interval_secs));
+  tcmalloc::MallocExtension::SetSkipSubreleaseLongInterval(absl::Seconds(long_interval_secs));
+#endif
+}
+
 void SetTCMallocReleasePartialAllocPages(bool enabled) {
 #if YB_GOOGLE_TCMALLOC
   if (&TCMalloc_Internal_SetReleasePartialAllocPagesEnabled != nullptr) {

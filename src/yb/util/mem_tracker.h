@@ -164,8 +164,9 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   static void ConfigureTCMalloc();
   static void PrintTCMallocConfigs();
 
-  // Starts the TCMalloc background thread if tcmalloc_background_thread is set. Also disables the
-  // TCMalloc partial alloc pages release, which inflates every release request.
+  // Starts the TCMalloc background thread if tcmalloc_background_thread is set and applies the
+  // tcmalloc_skip_subrelease_*_interval_secs flags. Also disables the TCMalloc partial alloc pages
+  // release, which inflates every release request.
   static Status StartTCMallocBackgroundThread();
 
   // Removes this tracker from its parent's children. This tracker retains its
@@ -321,8 +322,7 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   // TcMalloc holds onto released memory and very slowly (if ever) releases it back to
   // the OS. This is problematic since it is memory we are not constantly tracking which
   // can cause us to go way over mem limits.
-  // While the TCMalloc background thread releases memory, this only releases memory if root
-  // consumption is above the soft limit.
+  // Does nothing while the TCMalloc background thread releases memory.
   // Returns whether we've really attempted to do GC.
   static bool GcTcmallocIfNeeded();
 

@@ -72,6 +72,10 @@ Result<bool> StartTCMallocBackgroundThread();
 
 void SetTCMallocBackgroundReleaseRate(int64_t bytes_per_sec);
 
+// Sets how far back Google TCMalloc looks at recent demand when it decides which free pages in
+// partially allocated hugepages to keep mapped instead of releasing them. Zero disables the check.
+void SetTCMallocSkipSubreleaseIntervals(int32_t short_interval_secs, int32_t long_interval_secs);
+
 // Google TCMalloc raises every release request to at least 10% of the free pages in partially
 // allocated hugepages unless this is disabled, so a small periodic release can turn into a long
 // one.

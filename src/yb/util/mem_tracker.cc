@@ -48,6 +48,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/memory/memory.h"
@@ -133,12 +134,27 @@ TAG_FLAG(tcmalloc_background_thread, advanced);
 
 DEFINE_RUNTIME_int64(tcmalloc_background_release_rate_bytes_per_sec, 16_MB,
     "Rate at which the TCMalloc background thread releases free page heap memory to the OS. "
-    "While the thread runs and this is positive, the thread that frees memory or serves a "
-    "webserver request only releases free memory in a burst when the root memory tracker "
-    "consumption is above the soft memory limit. A burst holds the TCMalloc page heap lock for "
-    "~150 ms per GB released, which blocks every thread that allocates from the page heap. "
-    "Set to 0 to release only in bursts.");
+    "While the thread runs and this is positive, only the thread releases free memory. Set to 0 "
+    "to release it in bursts instead, from the thread that frees memory or serves a webserver "
+    "request. A burst holds the TCMalloc page heap lock for ~150 ms per GB released, which "
+    "blocks every thread that allocates from the page heap.");
 TAG_FLAG(tcmalloc_background_release_rate_bytes_per_sec, advanced);
+
+DEFINE_RUNTIME_int32(tcmalloc_skip_subrelease_short_interval_secs, 60,
+    "While the TCMalloc background thread runs, free pages in partially allocated hugepages are "
+    "not released if the short-term demand fluctuation seen over this many seconds may need them "
+    "again. Lower values return free memory to the OS sooner at the cost of more page faults when "
+    "it is reused. 0 disables this check.");
+TAG_FLAG(tcmalloc_skip_subrelease_short_interval_secs, advanced);
+DEFINE_validator(tcmalloc_skip_subrelease_short_interval_secs, FLAG_RANGE_VALIDATOR(0, 600));
+
+DEFINE_RUNTIME_int32(tcmalloc_skip_subrelease_long_interval_secs, 300,
+    "While the TCMalloc background thread runs, free pages in partially allocated hugepages are "
+    "not released if the long-term demand trend seen over this many seconds may need them again. "
+    "Lower values return free memory to the OS sooner at the cost of more page faults when it is "
+    "reused. 0 disables this check.");
+TAG_FLAG(tcmalloc_skip_subrelease_long_interval_secs, advanced);
+DEFINE_validator(tcmalloc_skip_subrelease_long_interval_secs, FLAG_RANGE_VALIDATOR(0, 600));
 
 DECLARE_int64(server_tcmalloc_max_total_thread_cache_bytes);
 
@@ -167,6 +183,14 @@ void UpdateTCMallocBackgroundReleaseRate() {
   }
 }
 
+void UpdateTCMallocSkipSubreleaseIntervals() {
+  if (tcmalloc_background_thread_running.load(std::memory_order_acquire)) {
+    SetTCMallocSkipSubreleaseIntervals(
+        FLAGS_tcmalloc_skip_subrelease_short_interval_secs,
+        FLAGS_tcmalloc_skip_subrelease_long_interval_secs);
+  }
+}
+
 DEFINE_validator(default_memory_limit_to_ram_ratio, &::yb::internal::ValidateMemoryLimitToRamRatio);
 
 // Marked as unused because this is not referenced in release mode.
@@ -175,6 +199,12 @@ DEFINE_validator(memory_limit_warn_threshold_percentage, &::yb::ValidatePercenta
 
 REGISTER_CALLBACK(tcmalloc_background_release_rate_bytes_per_sec,
                   "Update TCMalloc background release rate", &UpdateTCMallocBackgroundReleaseRate);
+REGISTER_CALLBACK(tcmalloc_skip_subrelease_short_interval_secs,
+                  "Update TCMalloc skip subrelease intervals",
+                  &UpdateTCMallocSkipSubreleaseIntervals);
+REGISTER_CALLBACK(tcmalloc_skip_subrelease_long_interval_secs,
+                  "Update TCMalloc skip subrelease intervals",
+                  &UpdateTCMallocSkipSubreleaseIntervals);
 
 std::string CreateMetricName(
     const MemTracker& mem_tracker, std::string metric_name) {
@@ -294,8 +324,12 @@ Status MemTracker::StartTCMallocBackgroundThread() {
   }
   tcmalloc_background_thread_running.store(true, std::memory_order_release);
   UpdateTCMallocBackgroundReleaseRate();
+  UpdateTCMallocSkipSubreleaseIntervals();
   LOG(INFO) << "Started TCMalloc background thread, release rate "
-            << FLAGS_tcmalloc_background_release_rate_bytes_per_sec << " bytes/s";
+            << FLAGS_tcmalloc_background_release_rate_bytes_per_sec
+            << " bytes/s, skip subrelease intervals "
+            << FLAGS_tcmalloc_skip_subrelease_short_interval_secs << "s/"
+            << FLAGS_tcmalloc_skip_subrelease_long_interval_secs << "s";
   return Status::OK();
 }
 
@@ -840,13 +874,10 @@ bool MemTracker::GcTcmallocIfNeeded() {
 #ifdef YB_TCMALLOC_ENABLED
   released_memory_since_gc = 0;
   // A burst release holds the page heap lock throughout and stalls every thread that allocates
-  // from the page heap, so leave the release to the background thread unless memory is short.
+  // from the page heap, so leave the release to the background thread.
   if (tcmalloc_background_thread_running.load(std::memory_order_acquire) &&
       FLAGS_tcmalloc_background_release_rate_bytes_per_sec > 0) {
-    const auto& root = GetRootTracker();
-    if (root->consumption() <= root->soft_limit()) {
-      return false;
-    }
+    return false;
   }
   TRACE_EVENT0("process", "MemTracker::GcTcmallocIfNeeded");
 
