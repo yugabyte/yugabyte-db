@@ -23,6 +23,8 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/consensus/raft_consensus.h"
+
 #include "yb/dockv/partition.h"
 
 #include "yb/integration-tests/cluster_itest_util.h"
@@ -280,6 +282,77 @@ TEST_F(
       },
       30s /* timeout */,
       "Waiting for all full compaction states to be reported as COMPACTING"));
+}
+
+class TServerLeaderInfoHeartbeatDataProviderITest
+    : public TServerMetricsHeartbeatDataProviderITest {
+ public:
+  void SetUp() override {
+    TServerMetricsHeartbeatDataProviderITest::SetUp();
+    const client::YBTableName kTableName(YQL_DATABASE_CQL, "my_keyspace", "leader-info-table");
+    ASSERT_OK(client_->CreateNamespaceIfNotExists(
+        kTableName.namespace_name(), kTableName.namespace_type()));
+    std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
+    const auto schema = itest::SimpleIntKeyYBSchema();
+    ASSERT_OK(table_creator->table_name(kTableName)
+                  .schema(&schema)
+                  .hash_schema(dockv::YBHashSchema::kMultiColumnHash)
+                  .num_tablets(kNumTablets)
+                  .Create());
+    std::shared_ptr<client::YBTable> table;
+    ASSERT_OK(client_->OpenTable(kTableName, &table));
+    test_table_id_ = table->id();
+  }
+
+ protected:
+  static constexpr int kNumTablets = 3;
+
+  master::TSHeartbeatRequestPB BuildRequest(MiniTabletServer* tablet_server) {
+    const master::TSHeartbeatResponsePB resp;
+    master::TSHeartbeatRequestPB req;
+    TServerMetricsHeartbeatDataProvider(tablet_server->server()).AddData(resp, &req);
+    return req;
+  }
+
+  TableId test_table_id_;
+};
+
+// A tserver reports leader_info for exactly the tablets it leads, each with its lease, and
+// nothing for the tablets it follows.
+TEST_F(TServerLeaderInfoHeartbeatDataProviderITest, LeaderInfoOnlyForLedTablets) {
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> {
+        size_t leaders = 0;
+        for (const auto& tablet_server : cluster_->mini_tablet_servers()) {
+          std::set<TabletId> hosted;
+          std::set<TabletId> led;
+          for (const auto& peer :
+               tablet_server->server()->tablet_manager()->GetTabletPeersWithTableId(
+                   test_table_id_)) {
+            hosted.insert(peer->tablet_id());
+            if (VERIFY_RESULT(peer->GetRaftConsensus())->role() == PeerRole::LEADER) {
+              led.insert(peer->tablet_id());
+            }
+          }
+          std::set<TabletId> reported;
+          for (const auto& info : BuildRequest(tablet_server.get()).leader_info()) {
+            if (!hosted.contains(info.tablet_id())) {
+              continue;
+            }
+            if (info.leader_lease_status() != consensus::LeaderLeaseStatus::HAS_LEASE ||
+                info.ht_lease_expiration() == 0) {
+              return false;
+            }
+            reported.insert(info.tablet_id());
+          }
+          if (reported != led) {
+            return false;
+          }
+          leaders += led.size();
+        }
+        return leaders == kNumTablets;
+      },
+      30s * kTimeMultiplier, "Waiting for every tablet leader to report its lease"));
 }
 
 }  // namespace tserver
