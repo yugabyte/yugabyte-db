@@ -56,6 +56,11 @@ class TabletRestorePatch;
 
 YB_DEFINE_ENUM(CreateCheckpointIn, (kSubDir)(kUseSuffix));
 
+// Logs that a step of a snapshot operation is done and how long it took since start: at INFO if
+// it took at least --tablet_snapshot_op_slow_log_threshold_ms, at VLOG(1) otherwise. Returns the
+// current time, to be used as the start of the next step.
+MonoTime LogSnapshotStepDone(const std::string& log_prefix, const char* step, MonoTime start);
+
 struct CreateSnapshotData {
   HybridTime snapshot_hybrid_time;
   HybridTime hybrid_time;
