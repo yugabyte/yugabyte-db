@@ -68,12 +68,14 @@ class XClusterRpcTasks {
       const std::vector<client::YBTableName>& tables, TxnSnapshotId* snapshot_id);
   client::YBClient* client() const { return yb_client_.get(); }
   Result<client::YBClient*> UpdateMasters(const std::string& master_addrs);
+  Status ReloadCertificates();
 
  private:
   Result<TableBootstrapIdsMap> HandleBootstrapProducerResponse(
       client::BootstrapProducerResult bootstrap_result);
   Result<SnapshotInfoPB> CreateSnapshotCallback(const TxnSnapshotId& snapshot_id);
 
+  xcluster::ReplicationGroupId replication_group_id_;
   std::unique_ptr<rpc::SecureContext> secure_context_;
   std::unique_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<client::YBClient> yb_client_;

@@ -1514,6 +1514,9 @@ class UniverseReplicationInfoBase {
   Result<std::shared_ptr<XClusterRpcTasks>> GetOrCreateXClusterRpcTasks(
       google::protobuf::RepeatedPtrField<HostPortPB> producer_masters);
 
+  // Reloads the certificates of the cached XClusterRpcTasks, if there is one.
+  Status ReloadCertificates();
+
  protected:
   explicit UniverseReplicationInfoBase(xcluster::ReplicationGroupId replication_group_id)
       : replication_group_id_(std::move(replication_group_id)) {}

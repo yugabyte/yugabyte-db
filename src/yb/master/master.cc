@@ -790,9 +790,16 @@ Status Master::ReloadKeysAndCertificates() {
     return Status::OK();
   }
 
-  return rpc::ReloadSecureContextKeysAndCertificates(
+  RETURN_NOT_OK(rpc::ReloadSecureContextKeysAndCertificates(
       secure_context_.get(), fs_manager_->GetDefaultRootDir(), rpc::SecureContextType::kInternal,
-      options_.HostsString());
+      options_.HostsString()));
+
+  // The clients of source universes cached per replication group load their own copy of the node
+  // certificate.
+  for (const auto& universe : catalog_manager_impl()->GetAllUniverseReplications()) {
+    RETURN_NOT_OK(universe->ReloadCertificates());
+  }
+  return Status::OK();
 }
 
 std::string Master::GetCertificateDetails() {

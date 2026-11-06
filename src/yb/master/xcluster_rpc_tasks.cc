@@ -31,7 +31,6 @@
 #include "yb/server/clock.h"
 
 #include "yb/util/logging.h"
-#include "yb/util/path_util.h"
 #include "yb/util/result.h"
 
 DEFINE_RUNTIME_int32(list_snapshot_backoff_increment_ms, 1000,
@@ -56,7 +55,6 @@ DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_string(certs_dir);
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_string(certs_for_client_dir);
-DECLARE_string(certs_for_cdc_dir);
 
 namespace yb {
 namespace master {
@@ -66,17 +64,12 @@ Result<std::shared_ptr<XClusterRpcTasks>> XClusterRpcTasks::CreateWithMasterAddr
     const xcluster::ReplicationGroupId& replication_group_id, const std::string& master_addrs) {
   // NOTE: This is currently an expensive call (5+ sec). Encountered during Task #10611.
   auto xcluster_rpc_tasks = std::make_shared<XClusterRpcTasks>();
-  std::string dir;
+  xcluster_rpc_tasks->replication_group_id_ = replication_group_id;
 
   if (FLAGS_use_node_to_node_encryption) {
     rpc::MessengerBuilder messenger_builder("cdc-rpc-tasks");
-    if (!FLAGS_certs_for_cdc_dir.empty()) {
-      dir = JoinPathSegments(
-          FLAGS_certs_for_cdc_dir,
-          xcluster::GetOriginalReplicationGroupId(replication_group_id).ToString());
-    }
-    xcluster_rpc_tasks->secure_context_ = VERIFY_RESULT(rpc::SetupSecureContext(
-        dir, /*root_dir=*/"", /*name=*/"", rpc::SecureContextType::kInternal, &messenger_builder));
+    xcluster_rpc_tasks->secure_context_ = VERIFY_RESULT(rpc::SetupRemoteUniverseSecureContext(
+        xcluster::GetRemoteUniverseCertsDir(replication_group_id), &messenger_builder));
     xcluster_rpc_tasks->messenger_ = VERIFY_RESULT(messenger_builder.Build());
   }
 
@@ -96,6 +89,14 @@ XClusterRpcTasks::~XClusterRpcTasks() {
   if (messenger_) {
     messenger_->Shutdown();
   }
+}
+
+Status XClusterRpcTasks::ReloadCertificates() {
+  if (!secure_context_) {
+    return Status::OK();
+  }
+  return rpc::ReloadRemoteUniverseSecureContext(
+      secure_context_.get(), xcluster::GetRemoteUniverseCertsDir(replication_group_id_));
 }
 
 Result<client::YBClient*> XClusterRpcTasks::UpdateMasters(const std::string& master_addrs) {

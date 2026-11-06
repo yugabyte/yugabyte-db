@@ -19,6 +19,8 @@
 #include <openssl/ssl.h>
 #include <openssl/x509v3.h>
 
+#include <atomic>
+
 #include <boost/tokenizer.hpp>
 
 #include "yb/encryption/encryption_util.h"
@@ -495,7 +497,11 @@ class SecureContext::Impl {
   }
 
   UseClientCertificate use_client_certificate() const {
-    return use_client_certificate_;
+    return UseClientCertificate(use_client_certificate_.load(std::memory_order_acquire));
+  }
+
+  void SetUseClientCertificate(UseClientCertificate value) {
+    use_client_certificate_.store(value.get(), std::memory_order_release);
   }
 
   const std::string& required_uid() const {
@@ -524,7 +530,7 @@ class SecureContext::Impl {
   std::vector<X509Ptr> certificates_ GUARDED_BY(mutex_);
 
   RequireClientCertificate require_client_certificate_;
-  UseClientCertificate use_client_certificate_;
+  std::atomic<bool> use_client_certificate_;
   std::string required_uid_;
 };
 
@@ -532,7 +538,7 @@ SecureContext::Impl::Impl(
     RequireClientCertificate require_client_certificate,
     UseClientCertificate use_client_certificate, const std::string& required_uid):
   require_client_certificate_(require_client_certificate),
-  use_client_certificate_(use_client_certificate), required_uid_(required_uid) {
+  use_client_certificate_(use_client_certificate.get()), required_uid_(required_uid) {
 
   InitOpenSSL();
 
@@ -728,6 +734,10 @@ Status SecureContext::UseCertificates(
 
 std::string SecureContext::GetCertificateDetails() {
   return impl_->GetCertificateDetails();
+}
+
+void SecureContext::SetUseClientCertificate(UseClientCertificate value) {
+  impl_->SetUseClientCertificate(value);
 }
 
 Status SecureContext::TEST_GenerateKeys(int bits, const std::string& common_name,
