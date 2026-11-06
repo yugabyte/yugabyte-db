@@ -9600,7 +9600,9 @@ components:
           writeOnly: true
     CommunicationPortsSpec:
       title: CommunicationPortsSpec
-      description: Communication Ports used by nodes of this Universe. Part of UniverseNetworkingSpec. Omitted ports use the platform defaults on create and are left unchanged on edit.
+      description: Communication Ports used by nodes of this Universe. Part of UniverseNetworkingSpec.
+        Omitted ports use the platform defaults on create and are left unchanged on
+        edit.
       type: object
       readOnly: false
       properties:
@@ -9675,7 +9677,8 @@ components:
           format: int32
           example: 5433
         internal_ysql_server_rpc_port:
-          description: Internal YSQL RPC port used when connection pooling is enabled. Defaults to 6433 on create.
+          description: Internal YSQL RPC port used when connection pooling is enabled.
+            Defaults to 6433 on create.
           type: integer
           format: int32
           example: 6433
@@ -9688,18 +9691,18 @@ components:
         communication_ports:
           $ref: '#/components/schemas/CommunicationPortsSpec'
         assign_public_ip:
-          description: Whether to assign a public IP for nodes in this Universe.
+          description: Whether to assign a public IP for nodes in this Universe. Defaults
+            to true on create. On edit, omit to leave unchanged.
           type: boolean
           example: true
-          default: true
         assign_static_public_ip:
           description: Whether to assign a static public IP for nodes in this Universe.
+            Defaults to false on create. On edit, omit to leave unchanged.
           type: boolean
           example: false
-          default: false
         enable_ipv6:
           description: Whether to enable IPv6 on nodes in this cluster. Defaults to
-            false.
+            false on create. On edit, omit to leave unchanged.
           type: boolean
           example: false
     UniverseSettings:
@@ -9710,9 +9713,9 @@ components:
       properties:
         expert_mode:
           description: Whether expert mode was used when configuring this Universe.
+            Defaults to false on create. On edit, omit to leave unchanged.
           type: boolean
           example: false
-          default: false
     ClusterProviderSpec:
       title: ClusterProviderSpec
       description: Cloud Provider settings for the cluster. Part of ClusterSpec.
