@@ -567,76 +567,6 @@ class SnapshotTest : public SnapshotTestBase<MiniCluster> {
     }
     return Status::OK();
   }
-
-  // DELETE_ON_TABLET does not record itself in the flushed frontier, so a tserver that goes down
-  // with the delete still unflushed replays it on bootstrap. The replay must be a no-op, and the
-  // writes applied around the delete must survive.
-  void TestUnflushedDeleteReplayedOnRestart(bool async_cleanup) {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_async_snapshot_directory_cleanup) = async_cleanup;
-    const auto kTimeout = 30s * kTimeMultiplier;
-
-    auto workload = SetupWorkload();
-    workload.Start();
-    workload.WaitInserted(100);
-    workload.StopAndJoin();
-
-    // CREATE_ON_TABLET flushes and records itself in the frontier, so everything that follows it
-    // in the log stays above the frontier until the next flush.
-    const auto snapshot_id = CreateSnapshot();
-    ASSERT_NO_FATALS(VerifySnapshotFiles(snapshot_id));
-    workload.Start();
-    workload.WaitInserted(200);
-    workload.StopAndJoin();
-    ASSERT_OK(DeleteSnapshotAndWait(snapshot_id));
-    const auto rows_inserted = workload.rows_inserted();
-
-    auto peers =
-        ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), kTableName.table_name()));
-    for (const auto& peer : peers) {
-      const auto snapshot_dir =
-          JoinPathSegments(peer->tablet_metadata()->snapshots_dir(), snapshot_id.ToString());
-      auto* const env = peer->tablet_metadata()->fs_manager()->env();
-      ASSERT_OK(WaitFor(
-          [&] { return !env->FileExists(snapshot_dir); }, kTimeout,
-          Format("Wait for snapshot $0 to be deleted on $1", snapshot_id, peer->LogPrefix())));
-      // The delete is applied, so it is the latest op in the log, and the log is ahead of the
-      // flushed frontier: bootstrap will replay it.
-      auto tablet = ASSERT_RESULT(peer->shared_tablet());
-      const auto flushed_op_id = docdb::MaxPersistentOpIdForDb(
-          tablet->regular_db(), /* invalid_if_no_new_data = */ false);
-      const auto last_op_id = peer->GetLatestLogEntryOpId();
-      LOG(INFO) << peer->LogPrefix() << "flushed op id: " << flushed_op_id
-                << ", last log op id: " << last_op_id;
-      ASSERT_LT(flushed_op_id.index, last_op_id.index);
-    }
-    peers.clear();
-
-    // Lose the memtables with the restart, so bootstrap has to replay the writes and the delete.
-    // Nothing flushes during the first restart either, so the second one replays them again.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;
-    for (int restart = 0; restart < 2; ++restart) {
-      ASSERT_OK(cluster_->RestartSync());
-      ASSERT_OK(WaitAllReplicasReady(cluster_.get(), kTimeout));
-      peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), kTableName.table_name()));
-      for (const auto& peer : peers) {
-        const auto top_snapshots_dir = peer->tablet_metadata()->snapshots_dir();
-        const auto children = ASSERT_RESULT(
-            peer->tablet_metadata()->fs_manager()->env()->GetChildren(
-                top_snapshots_dir, ExcludeDots::kTrue));
-        for (const auto& child : children) {
-          ASSERT_FALSE(child.starts_with(snapshot_id.ToString()))
-              << peer->LogPrefix() << "unexpected " << child << " in " << top_snapshots_dir;
-        }
-      }
-      peers.clear();
-
-      ClusterVerifier cluster_verifier(cluster_.get());
-      cluster_verifier.SetVerificationTimeout(kTimeout);
-      ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
-      ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(
-          kTableName, ClusterVerifier::EXACTLY, rows_inserted));
-    }
-  }
 };
 
 class SnapshotExternalMiniClusterTest : public SnapshotTestBase<ExternalMiniCluster> {
@@ -1215,12 +1145,73 @@ TEST_F(SnapshotTest, DeleteSnapshotTombstoneCompletedBeforePhysicalCleanup) {
   }
 }
 
+// DELETE_ON_TABLET does not record itself in the flushed frontier, so a tserver that goes down
+// with the delete still unflushed replays it on bootstrap. The replay must be a no-op, and the
+// writes applied around the delete must survive.
 TEST_F(SnapshotTest, UnflushedDeleteReplayedOnRestart) {
-  TestUnflushedDeleteReplayedOnRestart(/* async_cleanup = */ false);
-}
+  const auto kTimeout = 30s * kTimeMultiplier;
 
-TEST_F(SnapshotTest, UnflushedDeleteReplayedOnRestartWithAsyncCleanup) {
-  TestUnflushedDeleteReplayedOnRestart(/* async_cleanup = */ true);
+  auto workload = SetupWorkload();
+  workload.Start();
+  workload.WaitInserted(100);
+  workload.StopAndJoin();
+
+  // CREATE_ON_TABLET flushes and records itself in the frontier, so everything that follows it
+  // in the log stays above the frontier until the next flush.
+  const auto snapshot_id = CreateSnapshot();
+  ASSERT_NO_FATALS(VerifySnapshotFiles(snapshot_id));
+  workload.Start();
+  workload.WaitInserted(200);
+  workload.StopAndJoin();
+  ASSERT_OK(DeleteSnapshotAndWait(snapshot_id));
+  const auto rows_inserted = workload.rows_inserted();
+
+  auto peers =
+      ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), kTableName.table_name()));
+  for (const auto& peer : peers) {
+    const auto snapshot_dir =
+        JoinPathSegments(peer->tablet_metadata()->snapshots_dir(), snapshot_id.ToString());
+    auto* const env = peer->tablet_metadata()->fs_manager()->env();
+    ASSERT_OK(WaitFor(
+        [&] { return !env->FileExists(snapshot_dir); }, kTimeout,
+        Format("Wait for snapshot $0 to be deleted on $1", snapshot_id, peer->LogPrefix())));
+    // The delete is applied, so it is the latest op in the log, and the log is ahead of the
+    // flushed frontier: bootstrap will replay it.
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    const auto flushed_op_id = docdb::MaxPersistentOpIdForDb(
+        tablet->regular_db(), /* invalid_if_no_new_data = */ false);
+    const auto last_op_id = peer->GetLatestLogEntryOpId();
+    LOG(INFO) << peer->LogPrefix() << "flushed op id: " << flushed_op_id
+              << ", last log op id: " << last_op_id;
+    ASSERT_LT(flushed_op_id.index, last_op_id.index);
+  }
+  peers.clear();
+
+  // Lose the memtables with the restart, so bootstrap has to replay the writes and the delete.
+  // Nothing flushes during the first restart either, so the second one replays them again.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;
+  for (int restart = 0; restart < 2; ++restart) {
+    ASSERT_OK(cluster_->RestartSync());
+    ASSERT_OK(WaitAllReplicasReady(cluster_.get(), kTimeout));
+    peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), kTableName.table_name()));
+    for (const auto& peer : peers) {
+      const auto top_snapshots_dir = peer->tablet_metadata()->snapshots_dir();
+      const auto children = ASSERT_RESULT(
+          peer->tablet_metadata()->fs_manager()->env()->GetChildren(
+              top_snapshots_dir, ExcludeDots::kTrue));
+      for (const auto& child : children) {
+        ASSERT_FALSE(child.starts_with(snapshot_id.ToString()))
+            << peer->LogPrefix() << "unexpected " << child << " in " << top_snapshots_dir;
+      }
+    }
+    peers.clear();
+
+    ClusterVerifier cluster_verifier(cluster_.get());
+    cluster_verifier.SetVerificationTimeout(kTimeout);
+    ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+    ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(
+        kTableName, ClusterVerifier::EXACTLY, rows_inserted));
+  }
 }
 
 // Tests that a non-imported snapshot hides a table that is dropped subsequently.

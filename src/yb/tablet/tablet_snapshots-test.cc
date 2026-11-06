@@ -48,7 +48,6 @@
 #include "yb/util/threadpool.h"
 
 DECLARE_bool(enable_async_snapshot_directory_cleanup);
-DECLARE_bool(skip_flushed_frontier_update_on_snapshot_delete);
 DECLARE_int32(TEST_snapshot_cleanup_retry_delay_ms);
 
 METRIC_DECLARE_counter(snapshot_cleanup_failures);
@@ -295,36 +294,6 @@ class TabletSnapshotsTest : public YBTest {
   OpId RegularDbFlushedOpId() {
     return docdb::MaxPersistentOpIdForDb(
         harness_->tablet()->regular_db(), /* invalid_if_no_new_data = */ false);
-  }
-
-  void TestReplayedDeleteIsNoOp(bool async_cleanup) {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_async_snapshot_directory_cleanup) = async_cleanup;
-    constexpr int64_t kDeleteOpIndex = kSnapshotOpIndexBase + 1;
-
-    const auto paths = CreateSnapshotDirectory("snapshot.replay", kDeleteOpIndex);
-    ASSERT_OK(ReplicateSnapshotOperation(
-        tserver::TabletSnapshotOpRequestPB::DELETE_ON_TABLET, "snapshot.replay", kDeleteOpIndex));
-    ASSERT_FALSE(test_env_->FileExists(paths.active));
-    ASSERT_EQ(test_env_->FileExists(paths.tombstone), async_cleanup);
-
-    // Without a frontier update the delete stays above the flushed frontier until the next flush,
-    // so a bootstrap in that window applies it again, with the same op id.
-    ASSERT_OK(ReplicateSnapshotOperation(
-        tserver::TabletSnapshotOpRequestPB::DELETE_ON_TABLET, "snapshot.replay", kDeleteOpIndex));
-    ASSERT_FALSE(test_env_->FileExists(paths.active));
-    ASSERT_EQ(test_env_->FileExists(paths.tombstone), async_cleanup);
-
-    // Bootstrap removes leftover tombstones before replaying anything, so the replay can also find
-    // both directories gone.
-    if (async_cleanup) {
-      ASSERT_OK(test_env_->DeleteRecursively(paths.tombstone));
-      ASSERT_OK(ReplicateSnapshotOperation(
-          tserver::TabletSnapshotOpRequestPB::DELETE_ON_TABLET, "snapshot.replay",
-          kDeleteOpIndex));
-      ASSERT_FALSE(test_env_->FileExists(paths.active));
-      ASSERT_FALSE(test_env_->FileExists(paths.tombstone));
-    }
-    ASSERT_EQ(NumRegularDbSSTFiles(), 0);
   }
 
   uint64_t NumRegularDbSSTFiles() {
@@ -658,10 +627,10 @@ TEST_F(TabletSnapshotsTest, PrepareDoesNotFlush) {
 }
 
 // DELETE_ON_TABLET writes nothing to RocksDB, so recording it in the flushed frontier only saved
-// its replay on bootstrap, and that replay is a no-op (ReplayedDeleteIsNoOp). The synchronous flush
-// the update requires is what stalled writes on busy tablets (#36655). CREATE_ON_TABLET keeps the
-// update: replaying a create after history was compacted past its snapshot time would produce a
-// different snapshot.
+// its replay on bootstrap, and that replay is a no-op (see
+// SnapshotTest.UnflushedDeleteReplayedOnRestart). The synchronous flush the update requires is
+// what stalled writes on busy tablets (#36655). CREATE_ON_TABLET keeps the update: replaying a
+// create after history was compacted past its snapshot time would produce a different snapshot.
 TEST_F(TabletSnapshotsTest, DeleteDoesNotFlushOrUpdateFlushedFrontier) {
   constexpr int64_t kDeleteOpIndex = kSnapshotOpIndexBase + 1;
   constexpr int64_t kCreateOpIndex = kSnapshotOpIndexBase + 2;
@@ -690,26 +659,6 @@ TEST_F(TabletSnapshotsTest, DeleteDoesNotFlushOrUpdateFlushedFrontier) {
       JoinPathSegments(harness_->tablet()->metadata()->snapshots_dir(), "snapshot.create")));
   ASSERT_EQ(NumRegularDbSSTFiles(), 1);
   ASSERT_EQ(RegularDbFlushedOpId(), OpId(1, kCreateOpIndex));
-}
-
-TEST_F(TabletSnapshotsTest, DeleteUpdatesFlushedFrontierWhenNotSkipped) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_skip_flushed_frontier_update_on_snapshot_delete) = false;
-  constexpr int64_t kDeleteOpIndex = kSnapshotOpIndexBase + 1;
-
-  ASSERT_OK(WriteRow(1));
-  CreateSnapshotDirectory("snapshot.delete", kDeleteOpIndex);
-  ASSERT_OK(ReplicateSnapshotOperation(
-      tserver::TabletSnapshotOpRequestPB::DELETE_ON_TABLET, "snapshot.delete", kDeleteOpIndex));
-  ASSERT_EQ(NumRegularDbSSTFiles(), 1);
-  ASSERT_EQ(RegularDbFlushedOpId(), OpId(1, kDeleteOpIndex));
-}
-
-TEST_F(TabletSnapshotsTest, ReplayedDeleteIsNoOp) {
-  TestReplayedDeleteIsNoOp(/* async_cleanup = */ true);
-}
-
-TEST_F(TabletSnapshotsTest, ReplayedDeleteIsNoOpWithSyncCleanup) {
-  TestReplayedDeleteIsNoOp(/* async_cleanup = */ false);
 }
 
 }  // namespace
