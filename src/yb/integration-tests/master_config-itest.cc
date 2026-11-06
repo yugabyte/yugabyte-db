@@ -25,6 +25,7 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/entity_ids_types.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.proxy.h"
@@ -33,9 +34,13 @@
 
 #include "yb/integration-tests/external_mini_cluster.h"
 
+#include "yb/master/master_cluster.proxy.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/env.h"
 #include "yb/util/format.h"
+#include "yb/util/path_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/test_macros.h"
@@ -416,6 +421,78 @@ TEST_F(MasterChangeConfigTest, TestChangeAllMasters) {
 
   // Followers might not be up to speed as we did not wait, so just check leader.
   VerifyLeaderMasterPeerCount();
+}
+
+// Whether the master leader got a heartbeat from 'ts' in the last few seconds.
+Result<bool> DoHasRecentHeartbeat(ExternalMiniCluster& cluster, const ExternalTabletServer& ts) {
+  ListTabletServersRequestPB req;
+  ListTabletServersResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(5s);
+  const auto leader_idx = VERIFY_RESULT(cluster.GetLeaderMasterIndex());
+  RETURN_NOT_OK(cluster.GetMasterProxy<MasterClusterProxy>(leader_idx).ListTabletServers(
+      req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  for (const auto& server : resp.servers()) {
+    if (server.instance_id().permanent_uuid() == ts.uuid()) {
+      return server.alive() && server.millis_since_heartbeat() < 3000;
+    }
+  }
+  return false;
+}
+
+// Treats errors, such as asking a master that just lost leadership, as no recent heartbeat.
+Result<bool> HasRecentHeartbeat(ExternalMiniCluster& cluster, const ExternalTabletServer& ts) {
+  auto result = DoHasRecentHeartbeat(cluster, ts);
+  if (!result.ok()) {
+    LOG(INFO) << "Checking heartbeat from " << ts.uuid() << ": " << result.status();
+    return false;
+  }
+  return *result;
+}
+
+// A tserver that misses the whole move only knows removed masters, which send it no config. It
+// must find the new masters from --tserver_master_addrs in its flag file.
+TEST_F(MasterChangeConfigTest, TestTServerFindsMovedMastersFromFlagFile) {
+  const auto flag_file = JoinPathSegments(GetTestDataDirectory(), "tserver.conf");
+  const std::string kRefreshFlag = "--tserver_master_addrs_flagfile_refresh_interval_ms=1000\n";
+  ASSERT_OK(WriteStringToFile(Env::Default(), kRefreshFlag, flag_file));
+  ASSERT_OK(cluster_->AddTabletServer(
+      ExternalMiniClusterOptions::kDefaultStartCqlProxy, {"--flagfile=" + flag_file}));
+  auto* ts = cluster_->tablet_server(0);
+  ASSERT_OK(WaitFor([&] { return HasRecentHeartbeat(*cluster_, *ts); },
+                    30s * kTimeMultiplier, "Initial heartbeat"));
+
+  std::vector<ExternalMasterPtr> new_masters;
+  for (int i = 0; i < 3; ++i) {
+    new_masters.push_back(ASSERT_RESULT(cluster_->StartShellMaster()));
+  }
+
+  ASSERT_OK(ts->Pause());
+  for (const auto& new_master : new_masters) {
+    ASSERT_OK(cluster_->ChangeConfig(new_master, consensus::ADD_SERVER));
+    ExternalMasterPtr remove_master = cluster_->master(0);
+    ASSERT_OK(cluster_->ChangeConfig(remove_master, consensus::REMOVE_SERVER));
+  }
+  ASSERT_OK(ts->Resume());
+
+  // Without the new masters in the flag file, the tserver has nowhere to learn them from.
+  SleepFor(5s * kTimeMultiplier);
+  ASSERT_FALSE(ASSERT_RESULT(HasRecentHeartbeat(*cluster_, *ts)));
+
+  std::vector<HostPort> new_master_hostports;
+  for (const auto& new_master : new_masters) {
+    new_master_hostports.push_back(new_master->bound_rpc_hostport());
+  }
+  ASSERT_OK(WriteStringToFile(
+      Env::Default(),
+      kRefreshFlag + "--tserver_master_addrs=" +
+          HostPort::ToCommaSeparatedString(new_master_hostports) + "\n",
+      flag_file));
+  ASSERT_OK(WaitFor([&] { return HasRecentHeartbeat(*cluster_, *ts); },
+                    30s * kTimeMultiplier, "Heartbeat to the new master leader"));
 }
 
 TEST_F(MasterChangeConfigTest, TestAddPreObserverMaster) {

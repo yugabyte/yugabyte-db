@@ -234,6 +234,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Status UpdateMasterAddresses(const consensus::RaftConfigPB& new_config,
                                bool is_master_leader);
 
+  // Adds any masters listed by --tserver_master_addrs in the flag file that are not in the
+  // in-memory list. Must be called from the heartbeater thread, like UpdateMasterAddresses.
+  Status AddMasterAddressesFromFlagFile();
+
   server::Clock* Clock() override { return clock(); }
 
   void SetClockForTests(server::ClockPtr clock) { clock_ = std::move(clock); }
