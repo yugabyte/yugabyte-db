@@ -78,6 +78,7 @@ set(ROCKSDB_SRCS
     db/db_iterator_wrapper.cc
     memtable/hash_linklist_rep.cc
     memtable/hash_skiplist_rep.cc
+    memtable/btree_rep.cc
     memtable/skiplistrep.cc
     memtable/vectorrep.cc
     port/stack_trace.cc
@@ -244,6 +245,7 @@ ADD_YB_TEST(db/version_set_test)
 ADD_YB_TEST(db/wal_manager_test)
 ADD_YB_TEST(db/write_batch_test)
 ADD_YB_TEST(db/write_controller_test)
+ADD_YB_TEST(memtable/btree_rep_test)
 ADD_YB_TEST(table/block_based_filter_block_test)
 ADD_YB_TEST(table/block_hash_index_test)
 ADD_YB_TEST(table/block_test)
