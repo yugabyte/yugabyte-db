@@ -539,6 +539,7 @@ class UpdateAllTServers : public std::enable_shared_from_this<UpdateAllTServers<
   // Returns true if relaunched.
   Result<bool> RelaunchIfNecessary();
   void DoneAll();
+  Status BeforeRpcs();
   Status AfterRpcs();
   void DoCallbackAndRespond(const Status& s);
   Status DoPersistRequestUnlocked(const ScopedLeaderSharedLock& l);
@@ -1217,9 +1218,6 @@ void ObjectLockInfoManager::Impl::LockObject(
       *req_shared, deadline,
       [req_shared, epoch, requestor_latest_lease_epoch, deadline, txn_id,
        wait_state_ptr, callback = std::move(callback), this](Status s) mutable {
-        if (s.ok()) {
-          s = PersistRequest(epoch, *req_shared, txn_id);
-        }
         if (!s.ok()) {
           LOG(WARNING) << "Failed to acquire object locks locally: " << s;
           callback(s);
@@ -2180,6 +2178,10 @@ Result<bool> UpdateAllTServers<AcquireObjectLockRequestPB>::LaunchRpcs() {
 template <class Req>
 Status UpdateAllTServers<Req>::Launch() {
   TRACE_FUNC();
+  if (auto s = BeforeRpcs(); !s.ok()) {
+    DoCallbackAndRespond(s);
+    return Status::OK();
+  }
   auto launched = LaunchRpcs();
   if (!launched.ok()) {
     DoCallbackAndRespond(launched.status());
@@ -2329,6 +2331,19 @@ template <class Req>
 Status UpdateAllTServers<Req>::DoPersistRequest() {
   SCOPED_LEADER_SHARED_LOCK(l, &catalog_manager_);
   return DoPersistRequestUnlocked(l);
+}
+
+template <class Req>
+Status UpdateAllTServers<Req>::BeforeRpcs() {
+  return Status::OK();
+}
+
+// Under the leader lock, so that an acquire from an earlier epoch can't write into the in-memory
+// state that the catalog load clears and rebuilds.
+template <>
+Status UpdateAllTServers<AcquireObjectLockRequestPB>::BeforeRpcs() {
+  TRACE_FUNC();
+  return DoPersistRequest();
 }
 
 template <>
