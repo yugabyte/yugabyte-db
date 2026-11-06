@@ -728,6 +728,7 @@ void LRUCache::Release(Cache::Handle* handle) {
   }
   LRUHandle* e = reinterpret_cast<LRUHandle*>(handle);
   bool last_reference = false;
+  LRUHandleDeleter evicted(metrics_.get());
   {
     absl::MutexLock l(&mutex_);
     LRUSubCache* sub_cache = GetSubCache(e->GetSubCacheType());
@@ -736,7 +737,10 @@ void LRUCache::Release(Cache::Handle* handle) {
       sub_cache->DecrementUsage(e->charge);
     }
     if (e->refs == 1 && e->in_cache) {
-      // The item is still in cache, and nobody else holds a reference to it
+      // The item is still in cache, and nobody else holds a reference to it.
+      // Insert keeps an entry that does not fit when the rest of the subcache is pinned, so the
+      // subcache can be over capacity with that entry on its LRU list. Evict such entries first.
+      EvictFromLRU(0, &evicted, e->GetSubCacheType());
       if (!HasFreeSpace(e->GetSubCacheType())) {
         // The LRU list must be empty since the cache is full.
         assert(sub_cache->IsLRUEmpty());

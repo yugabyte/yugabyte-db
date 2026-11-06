@@ -884,8 +884,14 @@ TEST_F(CacheTest, MultiTouchOverShareWithoutOverflow) {
     ASSERT_EQ(h, nullptr);
   }
 
+  // Releasing the pinned entries evicts the entry that is past the multi-touch share, not them.
   for (auto* h : handles) {
     cache->Release(h);
+  }
+  AssertCacheSizes(cache.get(), 1, 8);
+  {
+    Cache::Handle* h = cache->Lookup(ToString(8), 100 /* query_id */);
+    ASSERT_EQ(h, nullptr);
   }
 }
 
