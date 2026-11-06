@@ -82,19 +82,19 @@ public class IdempotencyServiceTest extends FakeDBApplication {
   }
 
   @Test
-  public void keyReclaimedMeanwhileIsLeftToItsNewOwner() {
+  public void keyReusedAfterExpiryIsLeftToItsNewOwner() {
     ApiIdempotencyKey record = claim("k");
-    // Another request claimed the key meanwhile.
-    Date reclaimedAt = new Date(record.getUpdateTime().getTime() + 1000);
-    DB.sqlUpdate("UPDATE api_idempotency_key SET update_time = :t")
-        .setParameter("t", reclaimedAt)
-        .execute();
+    // The request outlived the retention: the expired row was deleted and another request claimed
+    // the key under a new row.
+    DB.sqlUpdate("DELETE FROM api_idempotency_key").execute();
+    ApiIdempotencyKey newClaim = claim("k");
 
     IdempotencyService.complete(record, Results.ok(Json.newObject()));
 
     ApiIdempotencyKey current = ApiIdempotencyKey.find(customer.getUuid(), "k").orElseThrow();
+    assertEquals(newClaim.getUuid(), current.getUuid());
     assertEquals(State.IN_PROGRESS, current.getState());
-    assertEquals(reclaimedAt, current.getUpdateTime());
+    assertNull(current.getResponseBody());
   }
 
   @Test

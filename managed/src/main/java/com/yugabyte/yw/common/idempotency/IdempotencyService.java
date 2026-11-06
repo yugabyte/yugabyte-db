@@ -359,7 +359,7 @@ public class IdempotencyService {
       }
       ApiIdempotencyKey used = existing.get();
       if (used.getExpireTime().before(now)) {
-        deleteIfUnchanged(used);
+        deleteClaim(used.getUuid());
         continue;
       }
       if (!used.getRequestFingerprint().equals(fingerprint)) {
@@ -387,29 +387,24 @@ public class IdempotencyService {
         CONFLICT, "A concurrent request is using " + IDEMPOTENCY_KEY_HEADER + " " + key);
   }
 
-  private static void deleteIfUnchanged(ApiIdempotencyKey used) {
-    deleteIfUnchanged(used.getUuid(), used.getUpdateTime());
-  }
-
-  /** Deletes the key unless another request claimed it after {@code claimedAt}. */
-  private static void deleteIfUnchanged(UUID uuid, Date claimedAt) {
-    DB.sqlUpdate("DELETE FROM api_idempotency_key WHERE uuid = :uuid AND update_time = :updateTime")
+  /**
+   * Deletes a claim by its row UUID. A later claim of the same key is a new row (the expired one is
+   * deleted first), so this never removes another request's claim.
+   */
+  private static void deleteClaim(UUID uuid) {
+    DB.sqlUpdate("DELETE FROM api_idempotency_key WHERE uuid = :uuid")
         .setParameter("uuid", uuid)
-        .setParameter("updateTime", claimedAt)
         .execute();
   }
 
   /**
    * Stores the response on the key this request claimed. If the claim is gone meanwhile (this
-   * request outlived the retention and another request reused the key), the new owner's state is
+   * request outlived the retention and another request reused the key under a new row), that row is
    * left alone.
    */
   @VisibleForTesting
   static void complete(ApiIdempotencyKey record, Result result) {
-    // The update time identifies this request's claim: compare and release against it, not
-    // against the bean, which the update below changes.
     UUID uuid = record.getUuid();
-    Date claimedAt = record.getUpdateTime();
     try (Transaction txn = DB.beginTransaction()) {
       ApiIdempotencyKey claimed =
           ApiIdempotencyKey.find
@@ -417,11 +412,10 @@ public class IdempotencyService {
               .forUpdate()
               .where()
               .eq("uuid", uuid)
-              .eq("update_time", claimedAt)
               .findOne();
       if (claimed == null) {
         log.warn(
-            "Idempotency key {} was reclaimed while its request ran, not storing the response",
+            "Idempotency key {} expired while its request ran, not storing the response",
             record.getIdempotencyKey());
         return;
       }
@@ -440,7 +434,7 @@ public class IdempotencyService {
           record.getIdempotencyKey(),
           e);
       try {
-        deleteIfUnchanged(uuid, claimedAt);
+        deleteClaim(uuid);
       } catch (Exception releaseError) {
         log.error("Failed to release idempotency key {}", record.getIdempotencyKey(), releaseError);
       }
@@ -449,7 +443,7 @@ public class IdempotencyService {
 
   private static void release(ApiIdempotencyKey record) {
     try {
-      deleteIfUnchanged(record);
+      deleteClaim(record.getUuid());
     } catch (Exception e) {
       log.error("Failed to release idempotency key {}", record.getIdempotencyKey(), e);
     }
