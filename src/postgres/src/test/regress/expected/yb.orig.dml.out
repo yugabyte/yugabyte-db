@@ -312,6 +312,29 @@ select v1 from upsert_guard_part10_a where v1 > 0 order by v1;
  40
 (4 rows)
 
+-- Test K: a cached plan follows the current yb_enable_upsert_mode setting.
+create table upsert_guard_test11 (h int primary key, v1 int);
+insert into upsert_guard_test11 values (1, 10);
+prepare upsert_guard_ins11(int, int) as
+    insert into upsert_guard_test11 values ($1, $2);
+set plan_cache_mode = force_generic_plan;
+set yb_enable_upsert_mode = true;
+execute upsert_guard_ins11(1, 11);
+set yb_enable_upsert_mode = false;
+-- upsert mode is off now: duplicate key error
+execute upsert_guard_ins11(1, 12);
+ERROR:  duplicate key value violates unique constraint "upsert_guard_test11_pkey"
+set yb_enable_upsert_mode = true;
+execute upsert_guard_ins11(1, 13);
+set yb_enable_upsert_mode = false;
+reset plan_cache_mode;
+deallocate upsert_guard_ins11;
+select * from upsert_guard_test11 order by h;
+ h | v1 
+---+----
+ 1 | 13
+(1 row)
+
 -- clean up
 DROP TABLE upsert_guard_test2;
 DROP TABLE upsert_guard_test4;
@@ -323,6 +346,7 @@ DROP FUNCTION upsert_guard_trig5();
 DROP TABLE upsert_guard_test6;
 DROP TABLE upsert_guard_test7;
 DROP TABLE upsert_guard_part10;
+DROP TABLE upsert_guard_test11;
 -- GH-31214 - validate single shard updates on various partition table hierarchies.
 -- Case 1: Root and leaf share the same primary key (k1 - cluster key, k2 - partition key).
 -- So, the partition key (k2) is a subset of the primary key (k1, k2).
