@@ -841,6 +841,7 @@ TEST_F(PgAshSingleNode, CheckWaitEventsDescription) {
       "OnCpu_Active",
       "QueryDiagnosticsMain",
       "YbAshMain",
+      "YbMemoryWatcherMain",
       "YBParallelScanEmpty",
       "YBTxnConflictBackoff",
       "CopyCommandStreamRead",
