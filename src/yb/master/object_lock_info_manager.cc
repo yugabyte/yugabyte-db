@@ -1731,18 +1731,24 @@ void ObjectLockInfoManager::Impl::RelaunchInProgressRequests(
 
 void ObjectLockInfoManager::Impl::Clear() {
   catalog_manager_.AssertLeaderLockAcquiredForWriting();
-  LockGuard lock(mutex_);
-  object_lock_infos_map_.clear();
-  unacked_release_tservers_.clear();
-  release_failures_.clear();
-  fenced_tservers_.clear();
-  if (local_lock_manager_) {
-    local_lock_manager_->Shutdown();
+  tserver::TSLocalLockManagerPtr old_local_lock_manager;
+  {
+    LockGuard lock(mutex_);
+    object_lock_infos_map_.clear();
+    unacked_release_tservers_.clear();
+    release_failures_.clear();
+    fenced_tservers_.clear();
+    old_local_lock_manager = std::exchange(
+        local_lock_manager_,
+        std::make_shared<tserver::TSLocalLockManager>(
+            clock_, master_.tablet_server(), master_, lock_manager_thread_pool_.get(),
+            master_.metric_entity()));
+    local_lock_manager_->Start(waiting_txn_registry_.get());
   }
-  local_lock_manager_.reset(new tserver::TSLocalLockManager(
-      clock_, master_.tablet_server(), master_, lock_manager_thread_pool_.get(),
-      master_.metric_entity()));
-  local_lock_manager_->Start(waiting_txn_registry_.get());
+  // Shutdown waits for in-progress requests to drain, so don't hold mutex_ across it.
+  if (old_local_lock_manager) {
+    old_local_lock_manager->Shutdown();
+  }
 }
 
 std::optional<uint64_t> ObjectLockInfoManager::Impl::GetLeaseEpoch(const std::string& ts_uuid) {
