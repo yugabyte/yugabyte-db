@@ -26,7 +26,7 @@ For agents that want to deploy, configure and run YugabyteDB refer to instructio
 
 When working on DB code (`src/`), refer to `src/AGENTS.md` for build and test guidance
 
-When working on YBA (`managed/`), refer to `managed/AGENTS.md`, which covers the v2 REST API
+When working on YBA (`managed/`), refer to `managed/AGENTS.md`
 
 ### Meko datapacks (`MEKO.md`)
 
