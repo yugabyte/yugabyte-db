@@ -592,6 +592,9 @@ typedef struct ResultRelInfo
 	 * pushdown GUC setting for the ON CONFLICT action.
 	 */
 	bool		ri_ybUseIocPushdown;
+
+	bool		ri_ybUpsertModeChecked; /* YbUseUpsertMode() has run */
+	bool		ri_ybUpsertModeAllowed; /* YbUseUpsertMode() result */
 } ResultRelInfo;
 
 /*

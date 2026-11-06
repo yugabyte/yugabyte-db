@@ -1365,6 +1365,18 @@ YbExecInsertAct(ModifyTableContext *context,
 			{
 				MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 
+				/*
+				 * In upsert mode, check the relation this row goes into and
+				 * fall back to a normal insert if it is unsafe.  That is the
+				 * target itself, which already passed in ExecInitModifyTable,
+				 * or, for a partitioned target, the leaf partition the row
+				 * was routed to, which can be unsafe even when the target is
+				 * not.
+				 */
+				if (onconflict == ONCONFLICT_YB_REPLACE &&
+					!YbUseUpsertMode(resultRelInfo, false /* is_copy_replace */ ))
+					onconflict = ONCONFLICT_NONE;
+
 				YBCHeapInsert(resultRelInfo, slot, blockInsertStmt, estate,
 							  onconflict);
 
@@ -4853,30 +4865,17 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 	 * ONCONFLICT_YB_REPLACE (so the per-row insert path enables DocDB upsert
 	 * mode like COPY REPLACE) or, if the target relation is unsafe (has
 	 * secondary indexes, triggers, or rewrite rules / foreign key
-	 * constraints), leave onConflictAction alone and emit a WARNING so the
-	 * statement silently falls back to a normal insert. COPY has its own
-	 * equivalent handling before the row loop in copyfrom.c.
+	 * constraints), leave onConflictAction alone and let YbUseUpsertMode
+	 * emit a WARNING so the statement silently falls back to a normal
+	 * insert. A partitioned target is checked here, and each partition again
+	 * on its first row in YbExecInsertAct. COPY has its own equivalent
+	 * handling before the row loop in copyfrom.c.
 	 */
 	if (operation == CMD_INSERT &&
 		yb_enable_upsert_mode &&
-		node->onConflictAction == ONCONFLICT_NONE)
-	{
-		if (YBIsUpsertUnsafeOnRel(mtstate->resultRelInfo[0].ri_RelationDesc))
-		{
-			const char *relname =
-				RelationGetRelationName(mtstate->resultRelInfo[0].ri_RelationDesc);
-
-			ereport(WARNING,
-					(errmsg("upsert mode disabled for table \"%s\" "
-							"because it has secondary indexes, "
-							"triggers, or foreign key constraints",
-							relname),
-					 errhint("Consider using INSERT ... ON CONFLICT "
-							 "for true upsert semantics instead.")));
-		}
-		else
-			node->onConflictAction = ONCONFLICT_YB_REPLACE;
-	}
+		node->onConflictAction == ONCONFLICT_NONE &&
+		YbUseUpsertMode(mtstate->resultRelInfo, false /* is_copy_replace */ ))
+		node->onConflictAction = ONCONFLICT_YB_REPLACE;
 
 	/* set up epqstate with dummy subplan data for the moment */
 	EvalPlanQualInitExt(&mtstate->mt_epqstate, estate, NULL, NIL,

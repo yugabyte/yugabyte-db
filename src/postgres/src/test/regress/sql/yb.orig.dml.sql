@@ -212,6 +212,32 @@ set yb_enable_upsert_mode = false;
 -- Upsert succeeded, v1 replaced and v2 regenerated.
 select * from upsert_guard_test7 order by h;
 
+-- Test J: INSERT into a partitioned table whose secondary index exists only
+-- on one partition. Each partition that rows are routed to is checked.
+create table upsert_guard_part10 (h int primary key, v1 int)
+    partition by range (h);
+create table upsert_guard_part10_a partition of upsert_guard_part10
+    for values from (1) to (100);
+create table upsert_guard_part10_b partition of upsert_guard_part10
+    for values from (100) to (200);
+create unique index upsert_guard_part10_a_v1 on upsert_guard_part10_a (v1);
+insert into upsert_guard_part10 values (1, 10), (2, 20), (101, 1010);
+
+set yb_enable_upsert_mode = true;
+-- partition without the index: upsert overwrites the row
+insert into upsert_guard_part10 values (101, 1011);
+-- partition with the index: warning, then a duplicate key error
+insert into upsert_guard_part10 values (1, 11);
+-- rows for both partitions: one warning, for the partition with the index
+insert into upsert_guard_part10 values (102, 1020), (3, 30), (103, 1030), (4, 40);
+set yb_enable_upsert_mode = false;
+
+select * from upsert_guard_part10 order by h;
+
+-- Index should be consistent with the partition.
+/*+IndexOnlyScan(upsert_guard_part10_a upsert_guard_part10_a_v1)*/
+select v1 from upsert_guard_part10_a where v1 > 0 order by v1;
+
 -- clean up
 DROP TABLE upsert_guard_test2;
 DROP TABLE upsert_guard_test4;
@@ -222,6 +248,7 @@ DROP TABLE upsert_guard_audit5;
 DROP FUNCTION upsert_guard_trig5();
 DROP TABLE upsert_guard_test6;
 DROP TABLE upsert_guard_test7;
+DROP TABLE upsert_guard_part10;
 
 -- GH-31214 - validate single shard updates on various partition table hierarchies.
 -- Case 1: Root and leaf share the same primary key (k1 - cluster key, k2 - partition key).
