@@ -25,21 +25,36 @@ std::unique_ptr<UniformRandomFloatVectorGenerator> CreateUniformRandomVectorSour
       num_vectors, dimensions, UniformRandomFloatDistribution(min_value, max_value));
 }
 
-Result<CoordinateKind> GetCoordinateKindFromVecsFileName(const std::string& vecs_file_path) {
-  if (StringEndsWith(vecs_file_path, ".fvecs")) {
-    return CoordinateKind::kFloat32;
+namespace {
+
+struct VectorFileExtension {
+  const char* extension;
+  VectorFileType type;
+};
+
+constexpr VectorFileExtension kVectorFileExtensions[] = {
+  {".fvecs", {VectorFileFormat::kVecs, CoordinateKind::kFloat32}},
+  {".bvecs", {VectorFileFormat::kVecs, CoordinateKind::kUInt8}},
+  {".ivecs", {VectorFileFormat::kVecs, CoordinateKind::kInt32}},
+  {".fbin", {VectorFileFormat::kBin, CoordinateKind::kFloat32}},
+  {".ibin", {VectorFileFormat::kBinGroundTruth, CoordinateKind::kInt32}},
+};
+
+}  // namespace
+
+Result<VectorFileType> GetVectorFileType(const std::string& file_path) {
+  std::string extensions;
+  for (const auto& [extension, type] : kVectorFileExtensions) {
+    if (StringEndsWith(file_path, extension)) {
+      return type;
+    }
+    extensions += (extensions.empty() ? "" : "/") + std::string(extension);
   }
-  if (StringEndsWith(vecs_file_path, ".bvecs")) {
-    return CoordinateKind::kUInt8;
-  }
-  if (StringEndsWith(vecs_file_path, ".ivecs")) {
-    return CoordinateKind::kInt32;
-  }
-  return STATUS(
+  return STATUS_FORMAT(
       InvalidArgument,
-      "Could not determine vector coordinate type from file name: $0. Expected a file name that "
-      "ends in one of .fvecs/.bvecs/.ivecs.",
-      vecs_file_path);
+      "Could not determine vector file type from file name: $0. Expected a file name that ends "
+      "in one of $1.",
+      file_path, extensions);
 }
 
 }  // namespace yb::vector_index
