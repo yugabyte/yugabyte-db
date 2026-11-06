@@ -190,6 +190,21 @@ public class RedactingService {
         isGFlagsSensitiveDataApiRedactionEnabled());
   }
 
+  /**
+   * Redacts JSON that YBA persists and reads back to act on: universe details and task params.
+   * Stored gflags are what gets written to server.conf, and what a task retry re-applies, so only
+   * {@link #SECRET_PATHS_FOR_APIS} apply here and the gflags-sensitive-data API redaction never
+   * does, whatever its runtime config says.
+   */
+  public static JsonNode filterSecretFieldsForStorage(JsonNode input) {
+    return filterSecretFields(
+        input,
+        RedactionTarget.APIS,
+        /* ybSoftwareVersion */ null,
+        /* gFlagsValidation */ null,
+        /* enableGFlagsSensitiveDataApiRedaction */ false);
+  }
+
   public static boolean isGFlagsSensitiveDataApiRedactionEnabled() {
     RuntimeConfGetter runtimeConfGetter =
         StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);

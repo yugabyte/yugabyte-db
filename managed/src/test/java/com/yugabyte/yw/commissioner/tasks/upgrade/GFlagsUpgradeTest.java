@@ -41,6 +41,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
@@ -1183,6 +1184,62 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t2");
     taskInfo = submitTask(taskParams, -1);
     assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testGFlagsUpgradeRetryAppliesSensitiveGFlags() throws InterruptedException {
+    factory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey(), "true");
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> u.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQLAuth = true);
+    ShellResponse dummyShellResponse = new ShellResponse();
+    doAnswer(
+            inv -> {
+              AnsibleClusterServerCtl.Params params =
+                  (AnsibleClusterServerCtl.Params) inv.getArgument(1);
+              if (params.process.equalsIgnoreCase("tserver")
+                  && params.command.equalsIgnoreCase("stop")) {
+                throw new RuntimeException("Stop failed");
+              }
+              return dummyShellResponse;
+            })
+        .when(mockNodeManager)
+        .nodeCommand(eq(NodeCommandType.Control), any());
+    String hba =
+        "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com ldapbindpasswd=hba-secret";
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of("master-flag", "m1");
+    taskParams.tserverGFlags =
+        ImmutableMap.of(
+            "ycql_ldap_bind_passwd", "ycql-ldap-secret", GFlagsUtil.YSQL_HBA_CONF_CSV, hba);
+    TaskInfo taskInfo = submitTask(taskParams, -1);
+    assertEquals(Failure, taskInfo.getTaskState());
+
+    when(mockNodeManager.nodeCommand(eq(NodeCommandType.Control), any()))
+        .thenReturn(dummyShellResponse);
+    // submitTask goes straight to the commissioner, so there is no CustomerTask for the retry yet.
+    CustomerTask.create(
+        defaultCustomer,
+        defaultUniverse.getUniverseUUID(),
+        taskInfo.getUuid(),
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.GFlagsUpgrade,
+        defaultUniverse.getName());
+    CustomerTask retry =
+        customerTaskManager.retryCustomerTask(defaultCustomer.getUuid(), taskInfo.getUuid());
+    assertEquals(Success, waitForTask(retry.getTaskUUID()).getTaskState());
+
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    Map<String, String> tserverGFlags =
+        GFlagsUtil.getGFlagsForNode(
+            null,
+            TSERVER,
+            universe.getUniverseDetails().getPrimaryCluster(),
+            universe.getUniverseDetails().clusters);
+    assertEquals("ycql-ldap-secret", tserverGFlags.get("ycql_ldap_bind_passwd"));
+    assertEquals(hba, tserverGFlags.get(GFlagsUtil.YSQL_HBA_CONF_CSV));
   }
 
   @Test

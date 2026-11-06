@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.common.RedactingService.SECRET_REPLACEMENT;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
@@ -28,6 +29,8 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -661,6 +664,34 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     subTasks = taskInfo.getSubTasks();
     subTasksByPosition = subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(UNIVERSE_CREATE_TASK_RETRY_SEQUENCE, subTasksByPosition);
+  }
+
+  @Test
+  public void testCreateUniverseStoredParamsKeepSensitiveGFlags() {
+    factory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey(), "true");
+    String hba =
+        "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com ldapbindpasswd=hba-secret";
+    Map<String, String> tserverGFlags =
+        Map.of("ycql_ldap_bind_passwd", "ycql-ldap-secret", GFlagsUtil.YSQL_HBA_CONF_CSV, hba);
+    UniverseDefinitionTaskParams taskParams = getTaskParams(true);
+    taskParams.getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(Map.of(), tserverGFlags);
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+
+    // CreateUniverse re-saves its params mid-task, and retries and reruns read them back.
+    taskInfo = TaskInfo.getOrBadRequest(taskInfo.getUuid());
+    UniverseDefinitionTaskParams stored =
+        Json.fromJson(taskInfo.getTaskParams(), UniverseDefinitionTaskParams.class);
+    Cluster primary = stored.getPrimaryCluster();
+    assertEquals(SECRET_REPLACEMENT, primary.userIntent.ysqlPassword);
+    assertEquals(SECRET_REPLACEMENT, primary.userIntent.ycqlPassword);
+    Map<String, String> storedGFlags =
+        GFlagsUtil.getGFlagsForNode(
+            null, UniverseTaskBase.ServerType.TSERVER, primary, stored.clusters);
+    tserverGFlags.forEach((name, value) -> assertEquals(value, storedGFlags.get(name)));
   }
 
   @Test
