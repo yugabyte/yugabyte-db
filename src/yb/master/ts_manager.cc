@@ -70,10 +70,16 @@ DEFINE_RUNTIME_AUTO_bool(persist_tserver_registry, kLocalPersisted, false, true,
 
 DEFINE_RUNTIME_bool(skip_tserver_version_checks, false, "Skip all tserver version checks");
 
+DEFINE_RUNTIME_int32(master_tserver_list_history_sec, 600,
+    "How long the master keeps a tserver list change, removals included, so tservers holding an "
+    "older tserver list version can be sent a delta instead of the full list.");
+
 DECLARE_uint32(initial_tserver_registration_duration_secs);
 
 namespace yb::master {
 namespace {
+
+constexpr uint32_t kTServerListCounterLimit = 1u << 31;
 
 bool HasSameHostPort(const HostPortPB& lhs, const HostPortPB& rhs);
 
@@ -235,12 +241,16 @@ Status TSManager::RegisterFromRaftConfig(
 }
 
 Result<TSDescriptorPtr> TSManager::LookupAndUpdateTSFromHeartbeat(
-    const TSHeartbeatRequestPB& heartbeat_request, const LeaderEpoch& epoch) const {
+    const TSHeartbeatRequestPB& heartbeat_request, const LeaderEpoch& epoch) {
   auto desc = VERIFY_RESULT(LookupTS(heartbeat_request.common().ts_instance()));
   auto lock = desc->LockForWrite();
+  const bool was_live = lock->IsLive();
   RETURN_NOT_OK(desc->UpdateFromHeartbeat(heartbeat_request, lock));
   RETURN_NOT_OK(UpsertIfRequired(epoch, sys_catalog_, desc));
   lock.Commit();
+  if (!was_live) {
+    StampTServerListChange(*desc);
+  }
   return desc;
 }
 
@@ -306,6 +316,9 @@ Result<std::pair<TSDescriptorPtr, TSCountCallback>> TSManager::DoRegistrationMut
     LOG(INFO) << "Re-registered known tablet server { " << new_ts_instance.ShortDebugString()
               << " }: " << registration.ShortDebugString();
   }
+  auto& stamped = registration_data.replaced_descs;
+  stamped.push_back(registration_data.desc);
+  StampTServerListChanges(stamped);
 
   return std::make_pair(std::move(registration_data.desc), std::move(callback));
 }
@@ -461,9 +474,15 @@ Status TSManager::MarkUnresponsiveTServers(const LeaderEpoch& epoch) {
     SharedLock<decltype(map_lock_)> l(map_lock_);
     std::vector<TSDescriptor*> updated_descs;
     std::vector<TSDescriptor::WriteLock> cow_locks;
+    // Only a state change is visible to tservers; a lease-only change is not stamped.
+    std::vector<TSDescriptorPtr> newly_unresponsive_descs;
     for (const auto& [id, desc] : servers_by_id_) {
+      const bool was_live = desc->IsLive();
       auto lock_opt = desc->MaybeUpdateLiveness(current_time);
       if (lock_opt) {
+        if (was_live && !(*lock_opt)->IsLive()) {
+          newly_unresponsive_descs.push_back(desc);
+        }
         updated_descs.push_back(desc.get());
         cow_locks.push_back(std::move(lock_opt).value());
       }
@@ -472,12 +491,26 @@ Status TSManager::MarkUnresponsiveTServers(const LeaderEpoch& epoch) {
     for (auto& l : cow_locks) {
       l.Commit();
     }
+    if (!newly_unresponsive_descs.empty()) {
+      StampTServerListChanges(newly_unresponsive_descs);
+    }
   }
   return Status::OK();
 }
 
 Status TSManager::RunLoader(
     const CloudInfoPB& cloud_info, rpc::ProxyCache* proxy_cache, SysCatalogLoadingState& state) {
+  {
+    // Every version issued before the reload must get a full list once.
+    std::lock_guard l(version_lock_);
+    const auto term = static_cast<uint32_t>(state.epoch.leader_term);
+    const uint32_t counter = static_cast<uint32_t>(tserver_list_version_ >> 32) == term
+        ? static_cast<uint32_t>(tserver_list_version_) + 1 : 0;
+    tserver_list_version_ = static_cast<uint64_t>(term) << 32 | counter;
+    tserver_list_changes_.clear();
+    tserver_list_stamps_.clear();
+    tserver_list_horizon_ = counter;
+  }
   if (!FLAGS_persist_tserver_registry) {
     return Status::OK();
   }
@@ -561,7 +594,116 @@ Status TSManager::RemoveTabletServer(
     std::lock_guard map_l(map_lock_);
     servers_by_id_.erase(desc->id());
   }
+  StampTServerListChange(*desc);
   return Status::OK();
+}
+
+void TSManager::StampTServerListChange(TSDescriptor& desc) {
+  std::lock_guard l(version_lock_);
+  StampTServerListChangeUnlocked(desc, NextTServerListCounterUnlocked(), MonoTime::Now());
+}
+
+void TSManager::StampTServerListChanges(const std::vector<TSDescriptorPtr>& descs) {
+  std::lock_guard l(version_lock_);
+  const auto counter = NextTServerListCounterUnlocked();
+  const auto now = MonoTime::Now();
+  for (const auto& desc : descs) {
+    StampTServerListChangeUnlocked(*desc, counter, now);
+  }
+}
+
+uint32_t TSManager::NextTServerListCounterUnlocked() {
+  // Restart before the counter can carry into the term bits; older versions are then "ahead".
+  if (static_cast<uint32_t>(tserver_list_version_) >= kTServerListCounterLimit) {
+    tserver_list_version_ &= ~uint64_t{std::numeric_limits<uint32_t>::max()};
+    tserver_list_changes_.clear();
+    tserver_list_stamps_.clear();
+    tserver_list_horizon_ = 0;
+  }
+  return static_cast<uint32_t>(++tserver_list_version_);
+}
+
+void TSManager::TEST_SetTServerListCounter(uint32_t counter) {
+  std::lock_guard l(version_lock_);
+  tserver_list_version_ =
+      (tserver_list_version_ & ~uint64_t{std::numeric_limits<uint32_t>::max()}) | counter;
+}
+
+void TSManager::StampTServerListChangeUnlocked(
+    TSDescriptor& desc, uint32_t counter, MonoTime now) {
+  const auto retention = MonoDelta::FromSeconds(FLAGS_master_tserver_list_history_sec);
+  while (!tserver_list_changes_.empty() &&
+         now - tserver_list_changes_.begin()->second.time > retention) {
+    tserver_list_horizon_ = tserver_list_changes_.begin()->first;
+    for (const auto& id : tserver_list_changes_.begin()->second.ids) {
+      tserver_list_stamps_.erase(id);
+    }
+    tserver_list_changes_.erase(tserver_list_changes_.begin());
+  }
+  auto [stamp, is_new] = tserver_list_stamps_.try_emplace(desc.id(), counter);
+  if (!is_new) {
+    auto it = tserver_list_changes_.find(stamp->second);
+    it->second.ids.erase(desc.id());
+    if (it->second.ids.empty()) {
+      tserver_list_changes_.erase(it);
+    }
+    stamp->second = counter;
+  }
+  auto [change, inserted] = tserver_list_changes_.try_emplace(counter);
+  if (inserted) {
+    change->second.time = now;
+  }
+  change->second.ids.insert(desc.id());
+}
+
+void TSManager::FillTServerListUpdate(
+    uint64_t since_version, TServerListUpdatePB* update) const {
+  uint64_t version;
+  bool full;
+  std::vector<std::string> changed;
+  {
+    std::lock_guard l(version_lock_);
+    version = tserver_list_version_;
+    full = since_version == 0 || (since_version >> 32) != (version >> 32) ||
+           static_cast<uint32_t>(since_version) < tserver_list_horizon_ ||
+           static_cast<uint32_t>(since_version) > static_cast<uint32_t>(version);
+    if (!full) {
+      for (auto it = tserver_list_changes_.upper_bound(static_cast<uint32_t>(since_version));
+           it != tserver_list_changes_.end(); ++it) {
+        changed.insert(changed.end(), it->second.ids.begin(), it->second.ids.end());
+      }
+    }
+  }
+  update->set_version(version);
+  update->set_full(full);
+  // Returns false for a tserver in a state tservers do not see; a delta reports it as removed.
+  const auto add_entry = [update](const std::string& id, const TSDescriptor& desc) {
+    auto l = desc.LockForRead();
+    const auto state = l->pb.state();
+    if (state != SysTabletServerEntryPB::LIVE && state != SysTabletServerEntryPB::UNRESPONSIVE) {
+      return false;
+    }
+    auto* entry = update->add_tservers();
+    entry->mutable_instance()->set_permanent_uuid(id);
+    entry->mutable_instance()->set_instance_seqno(l->pb.instance_seqno());
+    *entry->mutable_registration()->mutable_common() = l->pb.registration();
+    *entry->mutable_registration()->mutable_resources() = l->pb.resources();
+    entry->set_alive(state == SysTabletServerEntryPB::LIVE);
+    return true;
+  };
+  SharedLock<decltype(map_lock_)> map_l(map_lock_);
+  if (full) {
+    for (const auto& [id, desc] : servers_by_id_) {
+      add_entry(id, *desc);
+    }
+    return;
+  }
+  for (const auto& id : changed) {
+    const auto it = servers_by_id_.find(id);
+    if (it == servers_by_id_.end() || !add_entry(id, *it->second)) {
+      update->add_removed(id);
+    }
+  }
 }
 
 void TSManager::MarkTServersForLeaderBlacklistNotification() {
