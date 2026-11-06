@@ -33,8 +33,6 @@
 
 using namespace yb::size_literals;
 
-DECLARE_bool(TEST_yb_hnsw_write_version_1);
-
 DEFINE_RUNTIME_uint64(yb_hnsw_max_block_size, 64_KB,
     "Individual block max size in YbHnsw vector index");
 
@@ -423,7 +421,7 @@ class YbHnswBuilder {
 
   Result<BlockWriter> StartNewBlock(size_t size) {
     RETURN_NOT_OK(FlushBlock());
-    current_block_.Allocate(size + (write_block_trailers_ ? kBlockTrailerSize : 0));
+    current_block_.Allocate(size + (builder_.has_block_trailers() ? kBlockTrailerSize : 0));
     ++num_blocks_;
     auto* data = current_block_.data.get();
     return BlockWriter(data, data + size);
@@ -433,7 +431,7 @@ class YbHnswBuilder {
     if (num_blocks_ == 0) {
       return Status::OK();
     }
-    if (write_block_trailers_) {
+    if (builder_.has_block_trailers()) {
       WriteBlockTrailer(current_block_);
     }
     RETURN_NOT_OK(out_->Append(Slice(current_block_.AsSlice())));
@@ -456,7 +454,6 @@ class YbHnswBuilder {
   Header header_;
   size_t num_blocks_ = 0;
   DataBlock current_block_;
-  const bool write_block_trailers_ = !FLAGS_TEST_yb_hnsw_write_version_1;
   FileBlockCacheBuilder builder_;
   std::unique_ptr<WritableFile> out_;
   size_t size_ = 0;
@@ -718,8 +715,16 @@ void YbHnsw::SearchInBaseLayer(
   auto top_limit = options.max_num_results;
   auto extra_top_limit = std::max<size_t>(
       options.ef, options.max_num_results) - options.max_num_results;
+  // The filter must not see the Nil id that GetVectorIdAndPayload returns after a failed load.
+  auto accepted = [&options, &cache](VectorNo vector) {
+    if (!options.filter) {
+      return true;
+    }
+    auto [vector_id, payload] = cache.GetVectorIdAndPayload(vector);
+    return cache.status().ok() && options.filter(vector_id, payload);
+  };
   next.push({best_dist, best_vector});
-  if (!options.filter || std::apply(options.filter, cache.GetVectorIdAndPayload(best_vector))) {
+  if (accepted(best_vector)) {
     top.push({best_dist, best_vector});
   }
   visited.set(best_vector);
@@ -746,7 +751,7 @@ void YbHnsw::SearchInBaseLayer(
       if (top.size() < top_limit || extra_top.size() < extra_top_limit ||
           neighbor_dist < best_dist) {
         next.push({neighbor_dist, neighbor});
-        if (!options.filter || std::apply(options.filter, cache.GetVectorIdAndPayload(neighbor))) {
+        if (accepted(neighbor)) {
           if (top.size() == top_limit) {
             auto extra_push = top.top().first;
             if (neighbor_dist < extra_push) {
@@ -780,17 +785,6 @@ YbHnsw::DistanceType YbHnsw::Distance(
     return std::numeric_limits<DistanceType>::max();
   }
   return Distance(lhs, coordinates);
-}
-
-boost::iterator_range<MisalignedPtr<const YbHnsw::CoordinateType>> YbHnsw::MakeCoordinates(
-    const std::byte* ptr) const {
-  auto start = MisalignedPtr<const CoordinateType>(ptr);
-  return boost::make_iterator_range(start, start + header_.dimensions);
-}
-
-boost::iterator_range<MisalignedPtr<const YbHnsw::CoordinateType>> YbHnsw::Coordinates(
-    size_t vector, SearchCache& cache) const {
-  return MakeCoordinates(cache.CoordinatesPtr(vector));
 }
 
 const Header& YbHnsw::header() const {

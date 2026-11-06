@@ -38,7 +38,10 @@ class VectorIndexTestBase : public YBTest {
   // intact, so the file still loads.
   Status DamageYbHnswBlocks(const std::string& path, size_t stride);
 
-  Result<uint8_t> YbHnswFormatVersion(const std::string& path);
+  Result<uint8_t> YbHnswFooterFlags(const std::string& path);
+
+  // Sets the flags of the YbHnsw file at path, keeping its footer checksum valid.
+  Status SetYbHnswFooterFlags(const std::string& path, uint8_t flags);
 
   size_t dimensions_ = 8;
   size_t max_vectors_ = 65536;

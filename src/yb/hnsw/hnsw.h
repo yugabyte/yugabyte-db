@@ -44,7 +44,8 @@ struct YbHnswVectorData;
 // Provides access to a raw bytes data for a single search.
 // Could be reused between searches using Bind/Release method.
 // After a block fails to load, the error is kept in status(), and no more blocks are loaded:
-// accessors return null pointers and empty ranges instead. Searches stop once status() is not OK.
+// accessors return null pointers and empty ranges instead. A search stops after the neighbor list
+// it is visiting, and never passes a vector it failed to read to the filter.
 class SearchCache {
  public:
   const std::byte* Data(size_t index);
@@ -189,10 +190,6 @@ class YbHnsw {
   SearchResult MakeResult(size_t max_results, YbHnswSearchContext& context) const;
 
   DistanceType Distance(const std::byte* lhs, size_t vector, SearchCache& cache) const;
-  boost::iterator_range<MisalignedPtr<const CoordinateType>> MakeCoordinates(
-      const std::byte* ptr) const;
-  boost::iterator_range<MisalignedPtr<const CoordinateType>> Coordinates(
-      size_t vector, SearchCache& cache) const;
 
   MetricPtr metric_;
   const BlockCachePtr block_cache_;

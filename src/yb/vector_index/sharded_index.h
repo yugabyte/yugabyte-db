@@ -90,7 +90,7 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
     return Vector();  // Return an empty vector if not found.
   }
 
-  // TODO(vector_index): define begin and end methods to iterate over all shareded indexes.
+  // TODO(vector_index): chain the iterators of all shards, this returns only the first shard's.
   std::unique_ptr<VectorIndexIterator<Vector>> CreateIterator() const override {
     CHECK(!indexes_.empty());
     return indexes_[0]->CreateIterator();

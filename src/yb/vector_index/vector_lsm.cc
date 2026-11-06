@@ -1197,6 +1197,12 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
       // Not enough memory for the merged index. The input chunks stay as they are, and a later
       // compaction retries them.
       LOG_WITH_PREFIX(WARNING) << "Failed, to be retried: " << status;
+    } else if (status.IsCorruption()) {
+      // A damaged input chunk, which would fail every later compaction too. The input chunks stay
+      // as they are. The failed state would fail the next write, which crashes the tablet server,
+      // so only background compactions stop, and searches that read the chunk return the error.
+      LOG_WITH_PREFIX(ERROR) << "Failed, background compactions stopped: " << status;
+      lsm_.auto_compactions_enabled_ = false;
     } else {
       LOG_WITH_PREFIX(ERROR) << "Failed: " << status;
       lsm_.CheckFailure(status);
@@ -1249,10 +1255,11 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
     if (callback_) {
       callback_(status);
     }
-    // Out of memory is retried after the next flush, not right away. A chunked compaction
-    // changes the serial number by saving its first output chunks, so it would be resubmitted
-    // at once and fail the same way.
-    if (status.IsServiceUnavailable() || last_serial_no == lsm_.LastSerialNo()) {
+    // Out of memory is retried after the next flush, not right away, and a damaged chunk is not
+    // retried. A chunked compaction changes the serial number by saving its first output chunks,
+    // so it would be resubmitted at once and fail the same way.
+    if (status.IsServiceUnavailable() || status.IsCorruption() ||
+        last_serial_no == lsm_.LastSerialNo()) {
       lsm_.Deregister(*this);
     } else {
       lsm_.ScheduleBackgroundCompaction(this);

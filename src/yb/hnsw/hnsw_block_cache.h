@@ -20,17 +20,27 @@
 #include "yb/util/env.h"
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb::hnsw {
 
 // Each block ends with the CRC32C of the rest of the block.
 constexpr size_t kBlockTrailerSize = sizeof(uint32_t);
 
+YB_STRONGLY_TYPED_BOOL(HasBlockTrailers);
+
 // Fills the trailer of a block whose contents are fully written.
 void WriteBlockTrailer(DataBlock& block);
 
 class FileBlockCacheBuilder {
  public:
+  FileBlockCacheBuilder();
+
+  // Whether the blocks of the file being built end with trailers, decided once per file.
+  HasBlockTrailers has_block_trailers() const {
+    return has_block_trailers_;
+  }
+
   void Add(DataBlock&& block) {
     DCHECK_GT(block.size, 0);
     blocks_.push_back(std::move(block));
@@ -43,6 +53,7 @@ class FileBlockCacheBuilder {
   }
 
  private:
+  const HasBlockTrailers has_block_trailers_;
   std::vector<DataBlock> blocks_;
 };
 
@@ -84,8 +95,8 @@ class FileBlockCache {
   std::unique_ptr<RandomAccessFile> file_;
   std::unique_ptr<CachedBlock[]> blocks_;
   size_t size_ = 0;
-  // False for files written before block trailers were added.
-  bool has_block_trailers_ = true;
+  // False for files without footer flag 0x02, which have no block trailers.
+  HasBlockTrailers has_block_trailers_ = HasBlockTrailers::kTrue;
 };
 
 class BlockCacheHandle {

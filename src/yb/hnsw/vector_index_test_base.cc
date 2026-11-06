@@ -17,6 +17,8 @@
 
 #include "yb/rocksdb/cache.h"
 
+#include "yb/util/crc.h"
+
 #include "yb/util/env.h"
 #include "yb/util/faststring.h"
 #include "yb/util/size_literals.h"
@@ -59,7 +61,7 @@ void VectorIndexTestBase::SetUp() {
 
 namespace {
 
-// Returns the offset of the footer, which starts with the format version.
+// Returns the offset of the footer, which starts with the flags.
 Result<size_t> YbHnswFooterOffset(const faststring& content, const std::string& path) {
   SCHECK_GE(content.size(), sizeof(uint64_t), IllegalState, Format("$0 is too small", path));
   const auto footer_size = LittleEndian::Load64(
@@ -80,10 +82,23 @@ Status VectorIndexTestBase::DamageYbHnswBlocks(const std::string& path, size_t s
   return WriteStringToFile(env_.get(), content, path);
 }
 
-Result<uint8_t> VectorIndexTestBase::YbHnswFormatVersion(const std::string& path) {
+Result<uint8_t> VectorIndexTestBase::YbHnswFooterFlags(const std::string& path) {
   faststring content;
   RETURN_NOT_OK(ReadFileToString(env_.get(), path, &content));
   return content[VERIFY_RESULT(YbHnswFooterOffset(content, path))];
+}
+
+Status VectorIndexTestBase::SetYbHnswFooterFlags(const std::string& path, uint8_t flags) {
+  faststring content;
+  RETURN_NOT_OK(ReadFileToString(env_.get(), path, &content));
+  const auto footer_offset = VERIFY_RESULT(YbHnswFooterOffset(content, path));
+  content[footer_offset] = flags;
+  // The footer ends with its CRC32C and its size.
+  const auto crc_offset = content.size() - sizeof(uint64_t) - sizeof(uint32_t);
+  LittleEndian::Store32(
+      content.data() + crc_offset,
+      crc::Crc32c(content.data() + footer_offset, crc_offset - footer_offset));
+  return WriteStringToFile(env_.get(), content, path);
 }
 
 size_t VectorIndexTestBase::BlockCacheCapacity() {

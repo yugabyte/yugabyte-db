@@ -2402,7 +2402,7 @@ TEST_P(VectorLSMTest, ConcurrentSearchWhileInsertingAcrossSegments) {
   ASSERT_GE(found * 100, inserted_entries_.size() * 99);
 }
 
-// Reading a damaged chunk fails searches and compactions instead of crashing.
+// Reading a damaged chunk fails searches and compactions, but not later writes.
 void VectorLSMTestBase::TestDamagedChunk(bool use_merge_tasks) {
   constexpr size_t kDimensions = 8;
   constexpr size_t kNumChunks = 2;
@@ -2454,6 +2454,9 @@ void VectorLSMTestBase::TestDamagedChunk(bool use_merge_tasks) {
   ASSERT_TRUE(status.IsCorruption()) << status;
   ASSERT_STR_CONTAINS(status.ToString(), "Block checksum mismatch");
   ASSERT_EQ(lsm.NumImmutableChunks(), kNumChunks);
+
+  ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, kDefaultChunkSize));
+  ASSERT_EQ(lsm.NumImmutableChunks(), kNumChunks + 1);
 }
 
 TEST_P(VectorLSMTest, DamagedChunk) {
