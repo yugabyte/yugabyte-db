@@ -3658,13 +3658,15 @@ class PgClientSession::Impl {
       WARN_NOT_OK(MoveSessionToDatabaseCgroup(*database_oid), "Setting cgroup of PgClientSession");
     }
 
-    // A request that is not part of a connection start's prefetch ends the claim here rather
-    // than leaving it for the session to drop. That usually means the prefetch is over, having
-    // either finished or given up. The exception is a read of a sys table the prefetch did not
-    // register, which carries no caching info either: it ends the claim while the prefetch is
-    // still running, so the gaps between its remaining requests go uncounted until its next
-    // fill takes a fresh token. Rounds still in flight keep their own tokens either way, so
-    // what is lost is the gap cover, not the protection while a round is filling. pggate logs
+    // A request that is not part of a connection start's prefetch drops the session's
+    // reference to the claim here rather than leaving it for the session to go away. A round
+    // still in flight holds the same token, so the database stays counted until that round
+    // lands. Such a request usually means the prefetch is over, having finished or given up.
+    //
+    // The exception is a read of a sys table the prefetch did not register, which carries no
+    // caching info either: it drops the claim while the prefetch is still running, so the gaps
+    // between its remaining requests go uncounted until its next fill takes a fresh token.
+    // What is lost is the gap cover, not the protection while a round is filling. pggate logs
     // such a read as not prefetched, and the answer to it is to register the table.
     //
     // TODO(#34309): the no-cache starter is the wider case. It runs a connection start's

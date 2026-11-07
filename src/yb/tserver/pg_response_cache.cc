@@ -601,10 +601,10 @@ class PgResponseCache::Impl : private GarbageCollector {
   }
 
   // A connection start's prefetch reuses the session's token; every other caching read takes one
-  // of its own, which the setter drops with the request. A released token is one whose prefetch
-  // has ended, so it is replaced rather than reused. The group check beside it is defensive: a
-  // session's prefetch keys on the database it connected to, so today it never holds a token on
-  // another.
+  // of its own, which the setter drops with the request. A released token no longer counts the
+  // database, whether or not its prefetch has ended, so it is replaced rather than reused. The
+  // group check beside it is defensive: a session's prefetch keys on the database it connected
+  // to, so today it never holds a token on another.
   [[nodiscard]] FillTokenPtr TakeFillToken(
       PartOfConnectionPrefetch part_of_connection_prefetch, KeyGroup group,
       uint64_t session_id,
