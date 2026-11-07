@@ -1583,6 +1583,94 @@ INSTANTIATE_TEST_SUITE_P(
     PromoteLegacyTxnNode, PgObjectLocksTestLegacyTxnVsNewDdl, ::testing::Bool(),
     ::testing::PrintToStringParamName());
 
+// Tests for turning ysql_yb_enable_object_locking_infra off on a running cluster (#36572).
+//
+// A transaction that started in new mode on one node keeps running there while another node,
+// with the infra flag turned off, runs a legacy mode DDL. The legacy DDL takes no object locks, so
+// it must not miss the new mode transaction's write.
+class PgObjectLocksTestNewTxnVsLegacyDdl : public PgObjectLocksTestMixModeDuringPromotion {
+ protected:
+  void PromoteAll() {
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+      ASSERT_OK(cluster_->SetFlag(
+          cluster_->tablet_server(i), "ysql_yb_enable_object_locking_infra", "true"));
+    }
+  }
+
+  void CheckIndex(PGConn& conn, int64_t expected_rows_with_v_42) {
+    ASSERT_OK(conn.Fetch("SELECT yb_index_check('test_v_idx'::regclass)"));
+    ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+        "SELECT COUNT(*) FROM test WHERE v = 42")), expected_rows_with_v_42);
+    ASSERT_OK(conn.Execute("SET enable_seqscan = on"));
+  }
+};
+
+// The new mode transaction writes before the legacy CREATE INDEX starts.
+TEST_F(PgObjectLocksTestNewTxnVsLegacyDdl, LegacyCreateIndexWithNewModeWriter) {
+  ASSERT_NO_FATALS(PromoteAll());
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
+  }
+
+  auto new_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(new_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(new_conn.Execute("UPDATE test SET v = 42 WHERE k = 1"));
+
+  ASSERT_OK(cluster_->SetFlag(ts2, "ysql_yb_enable_object_locking_infra", "false"));
+  auto create_index_future = std::async(std::launch::async, [&]() -> Status {
+    auto ddl_conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+    return ddl_conn.Execute("CREATE INDEX test_v_idx ON test(v)");
+  });
+  const auto create_index_waited =
+      create_index_future.wait_for(3s * kTimeMultiplier) == std::future_status::timeout;
+  // The legacy CREATE INDEX waits for the new mode backend to reach its catalog version.
+  ASSERT_TRUE(create_index_waited);
+  ASSERT_OK(new_conn.Execute("COMMIT"));
+  ASSERT_OK(create_index_future.get());
+
+  auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_NO_FATALS(CheckIndex(conn, 1));
+}
+
+// The new mode transaction reads before the legacy CREATE INDEX and writes after it.
+TEST_F(PgObjectLocksTestNewTxnVsLegacyDdl, NewModeWriteAfterLegacyCreateIndex) {
+  ASSERT_NO_FATALS(PromoteAll());
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
+  }
+
+  auto new_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(new_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_EQ(ASSERT_RESULT(new_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
+
+  ASSERT_OK(cluster_->SetFlag(ts2, "ysql_yb_enable_object_locking_infra", "false"));
+  auto create_index_future = std::async(std::launch::async, [&]() -> Status {
+    auto ddl_conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+    return ddl_conn.Execute("CREATE INDEX test_v_idx ON test(v)");
+  });
+  // Let the CREATE INDEX commit its first catalog change and reach the backends wait.
+  const auto create_index_waited =
+      create_index_future.wait_for(3s * kTimeMultiplier) == std::future_status::timeout;
+  ASSERT_TRUE(create_index_waited);
+  // The new mode INSERT refreshes its catalog cache when it takes its lock, sees the index, and
+  // writes the index entry.
+  ASSERT_OK(new_conn.Execute("INSERT INTO test VALUES (100, 42)"));
+  ASSERT_OK(new_conn.Execute("COMMIT"));
+  ASSERT_OK(create_index_future.get());
+
+  auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_NO_FATALS(CheckIndex(conn, 1));
+}
+
 TEST_F(PgObjectLocksTest, ExclusiveLockReleaseInvalidatesCatalogCache) {
   const auto ts1_idx = 1;
   const auto ts2_idx = 2;
