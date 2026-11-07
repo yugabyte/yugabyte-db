@@ -394,6 +394,10 @@ message TSHeartbeatResponsePB {
   // If present, this heartbeat response grants the TServer a xCluster-guarded information lease
   // of this duration from when the TServer sent the heartbeat request.
   optional uint32 xcluster_guarded_lease_duration_ms = 36;
+
+  // Blacklisted tservers absent from all non-deleted tablets' replica maps. Repeated every
+  // heartbeat while the condition holds so recipients can exclude stale cached replicas.
+  repeated string blacklisted_tservers_with_no_tablets = 38;
 }
 
 service MasterHeartbeat {

@@ -32,11 +32,13 @@
 // This module is internal to the client and not a public API.
 #pragma once
 
+#include <atomic>
 #include <shared_mutex>
 #include <map>
 #include <string>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <boost/variant.hpp>
@@ -165,6 +167,15 @@ class RemoteTabletServer {
 
   std::string TEST_PlacementZone() const;
 
+  // Survives metadata refreshes until a heartbeat releases the tserver from the drained set.
+  bool drained() const {
+    return drained_.load(std::memory_order_acquire);
+  }
+
+  void set_drained(bool drained) {
+    drained_.store(drained, std::memory_order_release);
+  }
+
  private:
   mutable rw_spinlock mutex_;
   const std::string uuid_;
@@ -176,25 +187,40 @@ class RemoteTabletServer {
   ::yb::HostPort proxy_endpoint_;
   const tserver::LocalTabletServer* const local_tserver_ = nullptr;
   scoped_refptr<EventStats> dns_resolve_stats_;
+  std::atomic<bool> drained_{false};
 
   DISALLOW_COPY_AND_ASSIGN(RemoteTabletServer);
 };
+
+YB_STRONGLY_TYPED_BOOL(PermanentFailure);
 
 struct RemoteReplica {
   RemoteTabletServer* ts;
   PeerRole role;
   MonoTime last_failed_time = MonoTime::kUninitialized;
+  // Not retried after retry_failed_replica_ms; cleared only by replacing this replica.
+  bool permanent_failure = false;
   // The state of this replica. Only updated after calling GetTabletStatus.
   tablet::RaftGroupStatePB state = tablet::RaftGroupStatePB::UNKNOWN;
 
+  // Late master or Raft metadata must not resurrect a replica swept by an earlier drain hint.
   RemoteReplica(RemoteTabletServer* ts_, PeerRole role_)
-      : ts(ts_), role(role_) {}
-
-  void MarkFailed() {
-    last_failed_time = MonoTime::Now();
+      : ts(ts_), role(role_) {
+    if (ts_->drained()) {
+      MarkFailed(PermanentFailure::kTrue);
+    }
   }
 
+  void MarkFailed(PermanentFailure permanent = PermanentFailure::kFalse) {
+    last_failed_time = MonoTime::Now();
+    permanent_failure = permanent_failure || permanent;
+  }
+
+  // The deferred clear of an expired transient failure must not undo an intervening drain mark.
   void ClearFailed() {
+    if (permanent_failure) {
+      return;
+    }
     last_failed_time = MonoTime::kUninitialized;
   }
 
@@ -299,9 +325,12 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   // Mark any replicas of this tablet hosted by 'ts' as failed. They will
   // not be returned in future cache lookups.
   //
-  // The provided status is used for logging.
+  // The provided status is used for logging. A permanent failure is not retried after
+  // retry_failed_replica_ms; see RemoteReplica::permanent_failure.
   // Returns true if 'ts' was found among this tablet's replicas, false if not.
-  bool MarkReplicaFailed(RemoteTabletServer *ts, const Status& status);
+  bool MarkReplicaFailed(
+      RemoteTabletServer *ts, const Status& status,
+      PermanentFailure permanent = PermanentFailure::kFalse);
 
   // Return the number of failed replicas for this tablet.
   int GetNumFailedReplicas() const;
@@ -639,13 +668,22 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   }
 
   // Mark any replicas of any tablets hosted by 'ts' as failed. They will
-  // not be returned in future cache lookups.
-  void MarkTSFailed(RemoteTabletServer* ts, const Status& status);
+  // not be returned in future cache lookups. Permanent marks require ts to still be drained.
+  void MarkTSFailed(
+      RemoteTabletServer* ts, const Status& status,
+      PermanentFailure permanent = PermanentFailure::kFalse);
 
   // For each tserver UUID in the given list, mark any replicas hosted by that tserver as
   // followers across all cached tablets. Used to proactively demote leaders on
   // leader-blacklisted tservers.
   void MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids);
+
+  // Permanently fail replicas on drained tservers, including those introduced by later metadata.
+  // Release a UUID only when absent from 'drained' and present in 'live': an empty post-failover
+  // hint must not resurrect a dead server. During failover, live UUIDs can be released, allowing
+  // stale metadata to restore routing until hints resume. The local tserver is ignored.
+  void UpdateDrainedTServers(
+      const std::vector<std::string>& drained, const std::vector<std::string>& live);
 
   // Acquire or release a permit to perform a (slow) master lookup.
   //
@@ -808,6 +846,9 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // evict entries from this map until the MetaCache is destructed. So, no need to use
   // shared_ptr, etc.
   TabletServerMap ts_cache_ GUARDED_BY(mutex_);
+
+  // Includes unseen UUIDs and dead servers no longer advertised; mirrored into cached tservers.
+  std::unordered_set<std::string> drained_tserver_uuids_ GUARDED_BY(mutex_);
 
   // Local tablet server.
   RemoteTabletServer* local_tserver_ = nullptr;
