@@ -2683,6 +2683,97 @@ TEST_P(PgIndexBackfillMultiMaster, BackfillResumesAfterMasterFailover) {
   ASSERT_EQ(ASSERT_RESULT(conn_->FetchRow<int32_t>(query)), 1);
 }
 
+// A backfill chunk that outlives its RPC must not write after the backfill is done.  The chunk is
+// blocked on the tserver that led the table's tablet when the master sent it; the master's RPC
+// times out and is resent to the tablet's new leader, which completes the backfill.  Rows deleted
+// during the backfill leave tombstones in the index, which hide the entries the backfill writes
+// for them at its read time.  Once the backfill is done the index no longer retains delete
+// markers, and a compaction with no history retention drops those tombstones along with the
+// entries below them.  The first chunk then resumes and writes the entries it was about to write,
+// at the read time, which nothing hides anymore.
+TEST_P(PgIndexBackfillTest, LateChunkAfterBackfillDone) {
+  constexpr int kNumRows = 300;
+  constexpr int kDeleted = 50;
+  // The chunk runs on the tablet's leader, which the load balancer would otherwise move.
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_load_balancing", "false"));
+  // The master gives up on the blocked chunk quickly and resends it.
+  ASSERT_OK(cluster_->SetFlagOnMasters("ysql_index_backfill_rpc_timeout_ms", "5000"));
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i FROM generate_series(1, $1) AS i", kTableName, kNumRows));
+  const auto table_id = ASSERT_RESULT(GetTableIdByTableName(
+      client.get(), kDatabaseName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  ASSERT_EQ(tablets.size(), 1);
+  const auto tablet_id = tablets[0].tablet_id();
+  const auto leader_idx = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet_id));
+  auto* leader = cluster_->tablet_server(leader_idx);
+
+  LogWaiter blocked(leader, "blocking index backfill chunk");
+  ASSERT_OK(cluster_->SetFlag(leader, "ysql_yb_test_block_index_phase", "backfill_chunk"));
+  auto unblock = ScopeExit([this, leader] {
+    WARN_NOT_OK(
+        cluster_->SetFlag(leader, "ysql_yb_test_block_index_phase", ""), "Failed to unblock");
+  });
+  thread_holder_.AddThreadFunctor([this] {
+    auto create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+    ASSERT_OK(create_conn.ExecuteFormat(
+        "CREATE INDEX $0 ON $1 (v ASC)", kIndexName, kTableName));
+  });
+  ASSERT_OK(blocked.WaitFor(60s * kTimeMultiplier));
+
+  ASSERT_OK(conn_->ExecuteFormat("DELETE FROM $0 WHERE k <= $1", kTableName, kDeleted));
+
+  // The backfill is done on each replica of each index tablet once its delete markers are no
+  // longer retained.
+  const auto index_table_id = ASSERT_RESULT(GetTableIdByTableName(
+      client.get(), kDatabaseName, kIndexName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> index_tablets;
+  ASSERT_OK(client->GetTabletsFromTableId(index_table_id, 0, &index_tablets));
+  std::vector<TabletId> index_tablet_ids;
+  std::vector<std::unique_ptr<LogWaiter>> backfill_done;
+  for (const auto& index_tablet : index_tablets) {
+    index_tablet_ids.push_back(index_tablet.tablet_id());
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+      auto* ts = cluster_->tablet_server(i);
+      backfill_done.push_back(std::make_unique<LogWaiter>(
+          ts, Format("T $0 P $1: Setting backfill as done", index_tablet.tablet_id(), ts->uuid())));
+    }
+  }
+
+  ASSERT_OK(cluster_->MoveTabletLeader(
+      tablet_id, (leader_idx + 1) % cluster_->num_tablet_servers()));
+  for (auto& waiter : backfill_done) {
+    ASSERT_OK(waiter->WaitFor(120s * kTimeMultiplier));
+  }
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("timestamp_history_retention_interval_sec", "0"));
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(i, index_tablet_ids));
+    ASSERT_OK(cluster_->CompactTabletsOnSingleTServer(i, index_tablet_ids));
+  }
+  ASSERT_OK(cluster_->SetFlagOnTServers("timestamp_history_retention_interval_sec", "900"));
+
+  ASSERT_OK(cluster_->SetFlag(leader, "ysql_yb_test_block_index_phase", ""));
+  auto leader_conn = ASSERT_RESULT(ConnectToTs(*leader));
+  ASSERT_OK(WaitFor([&leader_conn]() -> Result<bool> {
+    return VERIFY_RESULT(leader_conn.FetchRow<int64_t>(
+        "SELECT count(*) FROM pg_stat_activity WHERE backend_type = 'yb index backfill'")) == 0;
+  }, 60s * kTimeMultiplier, "Wait for the late chunk to end"));
+  thread_holder_.JoinAll();
+
+  ASSERT_OK(CheckIndexConsistency(kIndexName));
+  ASSERT_OK(conn_->Execute("SET enable_seqscan = off"));
+  // An index-only scan counts the index entries themselves.
+  const auto query = Format("SELECT count(*) FROM $0 WHERE v <= $1", kTableName, kDeleted);
+  ASSERT_TRUE(ASSERT_RESULT(conn_->HasScanType(query, "Index Only")));
+  ASSERT_EQ(ASSERT_RESULT(conn_->FetchRow<int64_t>(query)), 0);
+}
+
 // Override the index backfill test class to use colocated tables.
 class PgIndexBackfillColocated : public PgIndexBackfillTest {
  public:
