@@ -274,6 +274,59 @@ TEST_F(PgResponseCacheTest, APagedCompletingRoundServedFromCacheDoesNotEndTheCla
       << "a round with paging state behind it ended the claim: " << probe_result.status();
 }
 
+// A round that fills after its session's claim has ended takes a fresh token rather than reusing
+// the released one. The comments at the disabled-cache return and at EndPrefetchClaimIfComplete
+// both rest on that: a claim can end a round or two early there, and what keeps the database
+// counted for the rounds still to come is the next fill taking a token of its own. Reusing a
+// released token would leave that round uncounted, and a connection arriving during it would
+// read the whole catalog itself.
+TEST_F(PgResponseCacheTest, AFillAfterAReleasedClaimTakesAFreshToken) {
+  ThreadSafeArena arena;
+  const auto deadline = CoarseMonoClock::Now() + 60s;
+
+  // A connection start takes its session's claim on an earlier round.
+  auto& round1 = MakeCachingInfo(arena, "round-1"sv, SendAway::kFalse,
+                                 PartOfConnectionPrefetch::kTrue);
+  PgResponseCache::FillTokenPtr token;
+  auto my_waiter = std::make_shared<CountingWaiter>();
+  auto first = ASSERT_RESULT(cache_->Get(&round1, deadline, my_waiter, kSessionId, &token));
+  ASSERT_TRUE(first);
+  first(MakeResponse());
+  first = {};
+  ASSERT_TRUE(token) << "a connection start's fill must leave its claim with the session";
+
+  // A completing round answered while the database's cache is disabled ends that claim, leaving
+  // the slot holding a token that has already been released.
+  {
+    auto disabler = cache_->Disable(kKeyGroup);
+    auto& completing = MakeCachingInfo(arena, "round-2"sv, SendAway::kFalse,
+                                       PartOfConnectionPrefetch::kTrue);
+    completing.set_completes_connection_prefetch(true);
+    auto completing_waiter = std::make_shared<CountingWaiter>();
+    auto setter = ASSERT_RESULT(
+        cache_->Get(&completing, deadline, completing_waiter, kSessionId, &token));
+    setter(MakeResponse());
+  }
+  ASSERT_TRUE(token) << "the slot still names the token the completing round released";
+
+  // The prefetch runs on: a later round fills through that same slot.
+  auto& round3 = MakeCachingInfo(arena, "round-3"sv, SendAway::kFalse,
+                                 PartOfConnectionPrefetch::kTrue);
+  auto third_waiter = std::make_shared<CountingWaiter>();
+  auto third = ASSERT_RESULT(cache_->Get(&round3, deadline, third_waiter, kSessionId, &token));
+  ASSERT_TRUE(third) << "the later round was not given a fill of its own";
+
+  // That round has to be counted, so another connection asking is sent away.
+  auto& probe = MakeCachingInfo(arena, "probe-key"sv, SendAway::kTrue,
+                                PartOfConnectionPrefetch::kFalse);
+  auto probe_waiter = std::make_shared<CountingWaiter>();
+  auto probe_result = cache_->Get(&probe, deadline, probe_waiter, kOtherSessionId, nullptr);
+  ASSERT_NOK(probe_result);
+  ASSERT_TRUE(probe_result.status().IsIncomplete())
+      << "the round reused a released token, so its fill was never counted: "
+      << probe_result.status();
+}
+
 // A connection is not sent away while its database's cache is disabled, even with another
 // session's fill counted. There is nothing to send it to: Disable bumps the bucket's version, so
 // every entry filled before it is already invalid and a lookup-only read finds nothing. The

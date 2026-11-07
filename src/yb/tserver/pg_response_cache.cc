@@ -772,10 +772,22 @@ class PgResponseCache::Impl : private GarbageCollector {
       {
         std::lock_guard lock(mutex_);
         // Not while the cache is disabled for this database. There is nothing to send the
-        // caller to: Disable bumps the bucket's version, so every entry filled before it is
-        // already invalid, and a lookup-only read finds nothing both during the window and
-        // after it. The caller would pay the catch-up wait and the message fetch, miss, and
-        // rerun without the ask to make the read it would have made here.
+        // caller to: a lookup-only read finds nothing while the disabler is held, so the
+        // caller would pay the catch-up wait and the message fetch, miss, and rerun without
+        // the ask to make the read it would have made here.
+        //
+        // TODO(#34309): this covers the window and not what outlives it. Disable also bumps
+        // the bucket's version, so every entry filled before it fails IsValid afterwards,
+        // while the recorded version stays where it was -- SetYsqlDbLastPrefetchedCatalogVersion
+        // only ever raises it. So until some connection start records a version filled after
+        // the disable, a caller sent away here still misses and still pays that attempt.
+        // A temp relation's DDL is what produces one of these commits in practice: namespace.c
+        // marks the temp namespace work YB_DDL_MODE_SILENT_ALTERING. Buckets are shared,
+        // group % pg_response_cache_num_key_group_bucket, so one database's temp table opens
+        // that window for every database sharing its bucket.
+        // Closing it means remembering, per key group, the bucket version its recorded catalog
+        // version was filled under, which is a map under this lock written from the publish
+        // path -- more than the wasted attempt it saves is worth here.
         send_away = !GetKeyGroupBucket(group).disabler.lock() &&
                     AnotherFillInFlight(group, session_id);
       }
