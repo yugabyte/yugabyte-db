@@ -156,8 +156,8 @@ class IndexContext : public docdb::DocVectorIndexContext {
     return tablet_.key_bounds();
   }
 
-  Status WaitWalDurable(const OpId& op_id) const override {
-    return tablet_.WaitWalDurable(op_id);
+  void WaitWalDurable(const OpId& op_id) const override {
+    tablet_.WaitWalDurable(op_id);
   }
 
   Result<docdb::DocRowwiseIteratorPtr> CreateVectorColumnIterator(

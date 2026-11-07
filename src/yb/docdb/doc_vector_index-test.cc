@@ -41,9 +41,7 @@ class StubVectorIndexContext : public DocVectorIndexContext {
     return KeyBounds::kNoBounds;
   }
 
-  Status WaitWalDurable(const OpId&) const override {
-    return Status::OK();
-  }
+  void WaitWalDurable(const OpId&) const override {}
 };
 
 } // namespace

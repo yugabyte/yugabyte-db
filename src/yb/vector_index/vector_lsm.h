@@ -104,7 +104,7 @@ struct VectorLSMOptions {
   using VectorIndexTraits = vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>;
   using MergeFilterFactory = std::function<Result<VectorLSMMergeFilterPtr>()>;
   using FrontiersFactory   = std::function<storage::UserFrontiersPtr()>;
-  using FrontierDurabilityWaiter = std::function<Status(const storage::UserFrontier&)>;
+  using FrontierDurabilityWaiter = std::function<void(const storage::UserFrontier&)>;
 
   std::string log_prefix;
   std::string storage_dir;

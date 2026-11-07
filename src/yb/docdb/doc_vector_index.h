@@ -145,7 +145,7 @@ class DocVectorIndexContext {
   virtual const KeyBounds& key_bounds() const = 0;
 
   // Blocks until the WAL entry with op_id is durable, see VectorLSMOptions::wait_frontier_durable.
-  virtual Status WaitWalDurable(const OpId& op_id) const = 0;
+  virtual void WaitWalDurable(const OpId& op_id) const = 0;
 };
 
 using DocVectorIndexContextPtr = std::unique_ptr<DocVectorIndexContext>;

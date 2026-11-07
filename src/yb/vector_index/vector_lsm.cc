@@ -2057,7 +2057,7 @@ Status VectorLSM<Vector, DistanceResult>::AddChunkToManifest(
   DCHECK(ManifestAcquired());
 
   if (options_.wait_frontier_durable && chunk.applied_frontiers) {
-    RETURN_NOT_OK(options_.wait_frontier_durable(chunk.applied_frontiers->Largest()));
+    options_.wait_frontier_durable(chunk.applied_frontiers->Largest());
   }
 
   VectorLSMUpdatePB update;

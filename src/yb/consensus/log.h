@@ -260,7 +260,8 @@ class Log : public RefCountedThreadSafe<Log> {
   // returns (0, 0)
   OpId GetLatestEntryOpId() const;
 
-  // Returns the state of the entry with op_id. Starts a background fsync when it is kAppended.
+  // Returns the state of the entry with op_id.
+  // Starts a background fsync when it is kAppended and already written.
   WalEntryState WalState(const OpId& op_id) EXCLUDES(background_sync_token_mutex_);
 
   int64_t GetMinReplicateIndex() const;

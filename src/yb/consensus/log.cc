@@ -1850,7 +1850,8 @@ OpId Log::GetLatestEntryOpId() const {
 
 WalEntryState Log::WalState(const OpId& op_id) {
   if (op_id > GetLatestEntryOpId()) {
-    return WalEntryState::kNone;
+    // Still queued, a fsync now would not cover it.
+    return WalEntryState::kAppended;
   }
   if (op_id <= last_durable_entry_op_id_.load(std::memory_order_acquire)) {
     return WalEntryState::kDurable;
