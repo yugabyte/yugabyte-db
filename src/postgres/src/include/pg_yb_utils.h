@@ -728,6 +728,12 @@ extern bool yb_enable_new_relation_fastpath_write;
  */
 extern bool yb_enable_new_relation_fastpath_write_in_txn_blocks;
 
+/*
+ * Free the memory context of a READ COMMITTED statement's internal savepoint
+ * on release if nothing allocated in it is still in use.
+ */
+extern bool yb_free_read_committed_savepoint_memory;
+
 /* ------------------------------------------------------------------------------ */
 /* YB Debug utils. */
 
