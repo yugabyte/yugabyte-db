@@ -284,6 +284,7 @@
         resourceLocation:
           path: customers
           sourceType: endpoint
+    x-yba-api-idempotent: true
     x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/auto-yba-backups':
