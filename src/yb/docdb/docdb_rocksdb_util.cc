@@ -1127,7 +1127,9 @@ class RocksDBPatcher::Impl {
     RocksDBPatcherHelper helper(&version_set_);
 
     helper.IterateFiles([&helper](int level, const rocksdb::FileMetaData& file) {
-      if (!OldestEntryHybridTime(file)) {
+      if (!file.smallest.user_frontier ||
+          !down_cast<const ConsensusFrontier&>(*file.smallest.user_frontier)
+              .hybrid_time_bounds_entries()) {
         return;
       }
       rocksdb::FileMetaData fmd = file;

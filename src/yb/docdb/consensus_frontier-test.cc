@@ -225,7 +225,7 @@ TEST_F(ConsensusFrontierTest, HybridTimeBoundsEntries) {
   smallest.Update(bounds, UpdateUserValueType::kSmallest);
   ASSERT_FALSE(smallest.hybrid_time_bounds_entries());
 
-  // A largest frontier does not carry it.
+  // Merging largest frontiers leaves it as it is: only a smallest frontier carries it.
   ConsensusFrontier largest = bounds;
   largest.Update(legacy, UpdateUserValueType::kLargest);
   ASSERT_TRUE(largest.hybrid_time_bounds_entries());

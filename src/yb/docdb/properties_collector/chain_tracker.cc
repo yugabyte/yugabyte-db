@@ -118,7 +118,7 @@ void ChainTracker::Add(Slice key, Slice value) {
   const size_t subdoc_key_end = key.size() - *ht_size - 1;
   const Slice subdoc_key(key.data(), subdoc_key_end);
   EncodedDocHybridTime encoded_ht(key.Suffix(*ht_size));
-  write_ht_range_.Add(encoded_ht);
+  UpdateWriteHtRange(encoded_ht);
 
   // Chain boundary detection: the length of the prefix shared with the previous subdoc key.
   const size_t compare_len = std::min(subdoc_key_end, prev_key_.size());
@@ -229,11 +229,12 @@ const SstStats& ChainTracker::Finish() {
   if (!finished_) {
     CloseRow();
     CloseStretch();
-    if (!write_ht_range_.empty()) {
-      auto range = write_ht_range_.Decode();
-      if (range.ok()) {
-        stats_.min_write_ht = range->min;
-        stats_.max_write_ht = range->max;
+    if (!min_encoded_ht_.empty()) {
+      auto min_ht = min_encoded_ht_.Decode();
+      auto max_ht = max_encoded_ht_.Decode();
+      if (min_ht.ok() && max_ht.ok()) {
+        stats_.min_write_ht = min_ht->hybrid_time();
+        stats_.max_write_ht = max_ht->hybrid_time();
       } else {
         Invalidate();
       }
@@ -319,6 +320,16 @@ void ChainTracker::AddReclaimable(size_t entry_bytes, int64_t droppable_by_micro
   stats_.droppable_age_bytes[band] += entry_bytes;
   ++stretch_entries_;
   stretch_bytes_ += entry_bytes;
+}
+
+void ChainTracker::UpdateWriteHtRange(const EncodedDocHybridTime& encoded_ht) {
+  // EncodedDocHybridTime orders by the time it encodes (the byte order is reversed internally).
+  if (min_encoded_ht_.empty() || encoded_ht < min_encoded_ht_) {
+    min_encoded_ht_ = encoded_ht;
+  }
+  if (max_encoded_ht_.empty() || encoded_ht > max_encoded_ht_) {
+    max_encoded_ht_ = encoded_ht;
+  }
 }
 
 void ChainTracker::AddCoveringWrite(

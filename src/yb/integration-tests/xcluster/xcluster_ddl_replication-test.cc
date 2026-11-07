@@ -3883,11 +3883,27 @@ TEST_F(XClusterDDLReplicationTest, PITRKeepsReplicatedRowsOlderThanTheirApply) {
   for (int i = 101; i <= 110; ++i) {
     ASSERT_OK(producer_conn_->ExecuteFormat("INSERT INTO my_table VALUES ($0);", i));
   }
+  auto max_now = [](MiniCluster& cluster) {
+    HybridTime result = HybridTime::kMin;
+    for (size_t i = 0; i != cluster.num_tablet_servers(); ++i) {
+      result = std::max(result, cluster.mini_tablet_server(i)->server()->Clock()->Now());
+    }
+    return result;
+  };
   const auto restore_ht = std::max(
-      producer_cluster_.mini_cluster_->mini_tablet_server(0)->server()->Clock()->Now(),
-      consumer_cluster_.mini_cluster_->mini_tablet_server(0)->server()->Clock()->Now());
-  // So the consumer applies the rows after restore_ht.
-  SleepFor(100ms * kTimeMultiplier);
+      max_now(*producer_cluster_.mini_cluster_), max_now(*consumer_cluster_.mini_cluster_));
+  // So the consumer applies the rows after restore_ht, on whichever tablet server leads.
+  ASSERT_OK(WaitFor(
+      [this, restore_ht] {
+        auto& cluster = *consumer_cluster_.mini_cluster_;
+        for (size_t i = 0; i != cluster.num_tablet_servers(); ++i) {
+          if (cluster.mini_tablet_server(i)->server()->Clock()->Now() <= restore_ht) {
+            return false;
+          }
+        }
+        return true;
+      },
+      10s * kTimeMultiplier, "Wait for the consumer clocks to pass the restore time"));
   ASSERT_OK(ToggleUniverseReplication(
       consumer_cluster(), consumer_client(), kReplicationGroupId, /*is_enabled=*/true));
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());

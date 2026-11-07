@@ -19,7 +19,6 @@ set(YB_PCH_PATH ../)
 
 set(DOCDB_PROPERTIES_COLLECTOR_SRCS
     chain_tracker.cc
-    encoded_hybrid_time_range.cc
     exponential_histogram.cc
     sst_stats_aggregator.cc
     sst_stats_collector.cc
