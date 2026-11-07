@@ -715,15 +715,14 @@ class ScanResultChecksummer {
         value.value().AppendToString(&buffer_);
       }
     }
-    crc_->Compute(buffer_.c_str(), buffer_.size(), &agg_checksum_, nullptr);
+    crc_.Feed(buffer_.data(), buffer_.size());
   }
 
   // Accessors for initializing / setting the checksum.
-  uint64_t agg_checksum() const { return agg_checksum_; }
+  uint64_t agg_checksum() const { return crc_.result(); }
 
  private:
-  crc::Crc* const crc_ = crc::GetCrc32cInstance();
-  uint64_t agg_checksum_ = 0;
+  crc::Crc32Accumulator crc_;
   std::string buffer_;
 };
 
