@@ -2,9 +2,6 @@
 
 package com.yugabyte.yw.common;
 
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
 /**
  * Parse, encode, and redact ldapbindpasswd in ysql_hba style strings (doubled CSV, single quotes,
  * unquoted, JSON escapes).
@@ -22,37 +19,6 @@ public final class LdapBindPasswdHbaFormat {
   }
 
   private static final String LDAPBINDPASSWD_KEY = "ldapbindpasswd=";
-
-  // HBA connection-type keywords that can appear after a comma and signal a new record boundary.
-  private static final String HBA_RECORD_START_CONN_TYPE =
-      "local|host(?:ssl|nossl|gssenc|nogssenc)?";
-
-  // Quotes, each possibly JSON-escaped, that close the CSV field and JSON string holding the
-  // record. A line break or the end follows them, or a } or ] that more JSON or the end follows,
-  // or a comma and then another HBA record (quoted or not), a JSON "key": or a name= pair. HBA
-  // quotes any part of a value, so a quote inside a password can precede a comma or brace too
-  // (pa",ss" and pa","ss are pa,ss). A quote run followed by anything else is part of the value,
-  // such as the escaped opening of a quoted password.
-  private static final String CLOSING_QUOTES =
-      "(?:\\\\*\")+(?=[ \\t]*(?:[\\r\\n]|$|[}\\]](?=[ \\t]*(?:[,}\\]\"\\\\\\r\\n]|$))"
-          + "|,[ \\t]*(?:(?:\\\\*\")*[ \\t]*(?:"
-          + HBA_RECORD_START_CONN_TYPE
-          + ")\\s|\\\\*\"[A-Za-z0-9_.$-]*\\\\*\"[ \\t]*:|[A-Za-z][A-Za-z0-9_]*=)))";
-
-  // Unquoted value ends before the next ldap*= attr, a comma+name= pair, a new HBA record, a
-  // closing quote, a line break, or end. A password that ends a record is followed only by the
-  // closing quote or line break, so without those stops it swallows the rest of a JSON document,
-  // or never matches in a multi-line file and stays unredacted.
-  // Prefer quoted passwords for values that contain commas without a following '='.
-  private static final Pattern UNQUOTED_VALUE =
-      Pattern.compile(
-          "ldapbindpasswd=(?!\")"
-              + "((?:(?!\\s+ldap[a-zA-Z0-9_]*=).)+?)"
-              + "(?=\\s+ldap[a-zA-Z0-9_]*=|,(?=\\s*[A-Za-z][A-Za-z0-9_]*=)|,(?=\\s*(?:"
-              + HBA_RECORD_START_CONN_TYPE
-              + ")\\s)|"
-              + CLOSING_QUOTES
-              + "|[\\r\\n]|$)");
 
   private record ParsedValue(int endExclusive, String decoded, QuoteStyle style) {}
 
@@ -128,14 +94,21 @@ public final class LdapBindPasswdHbaFormat {
       }
       return true;
     }
-    if (s.regionMatches(j, "ldap", 0, 4)) {
-      int k = j + 4;
-      while (k < s.length() && (Character.isLetterOrDigit(s.charAt(k)) || s.charAt(k) == '_')) {
-        k++;
-      }
-      return k < s.length() && s.charAt(k) == '=';
+    if (s.startsWith("\\\"", j)) {
+      return !s.startsWith("\\\"\\\"", j);
     }
-    return false;
+    // Postgres separates options with whitespace, so a password containing a quote followed by
+    // whitespace and an option name is cut there.
+    return j > indexAfterDelimiter && isOptionAssignment(s, j);
+  }
+
+  /** True if s[i..] is an HBA option name, such as ldapserver or clientcert, followed by '='. */
+  private static boolean isOptionAssignment(String s, int i) {
+    int k = i;
+    while (k < s.length() && ((s.charAt(k) >= 'a' && s.charAt(k) <= 'z') || s.charAt(k) == '_')) {
+      k++;
+    }
+    return k > i && k < s.length() && s.charAt(k) == '=';
   }
 
   /**
@@ -249,15 +222,54 @@ public final class LdapBindPasswdHbaFormat {
       }
       return null;
     }
-    int keyStart = eqIndex - LDAPBINDPASSWD_KEY.length();
-    if (keyStart < 0) {
-      return null;
+    int end = unquotedValueEnd(s, eqIndex);
+    if (end == eqIndex && end < s.length() && s.charAt(end) == '\\') {
+      // A quote escaped deeper than the forms above opens the value.
+      end = enclosingJsonStringEnd(s, eqIndex);
     }
-    Matcher um = UNQUOTED_VALUE.matcher(s);
-    um.region(keyStart, s.length());
-    if (um.find()) {
-      return new ParsedValue(um.end(), um.group(1), QuoteStyle.UNQUOTED);
+    if (end > eqIndex) {
+      return new ParsedValue(end, s.substring(eqIndex, end), QuoteStyle.UNQUOTED);
     }
     return null;
+  }
+
+  /**
+   * Postgres ends an unquoted option value at whitespace or a comma, and an unquoted password with
+   * either is not valid HBA. A quote, raw or backslash-escaped, closes the CSV field or JSON string
+   * holding the record. GFlagsUtil.checkLdapBindPasswdQuoting rejects a value quoted only in part,
+   * which this would cut at its first quote.
+   */
+  private static int unquotedValueEnd(String s, int i) {
+    while (i < s.length()) {
+      char c = s.charAt(i);
+      if (c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == ',' || c == '"') {
+        return i;
+      }
+      if (c == '\\') {
+        int j = i;
+        while (j < s.length() && s.charAt(j) == '\\') {
+          j++;
+        }
+        if (j < s.length() && s.charAt(j) == '"') {
+          return i;
+        }
+        i = j;
+        continue;
+      }
+      i++;
+    }
+    return i;
+  }
+
+  /** Index of the unescaped quote or line break ending the JSON string that s[i] is in. */
+  private static int enclosingJsonStringEnd(String s, int i) {
+    while (i < s.length()) {
+      char c = s.charAt(i);
+      if (c == '"' || c == '\r' || c == '\n') {
+        return i;
+      }
+      i += c == '\\' ? 2 : 1;
+    }
+    return s.length();
   }
 }

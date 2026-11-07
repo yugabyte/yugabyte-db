@@ -133,6 +133,7 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
         newCluster.userIntent.specificGFlags.validateConsistency();
       }
       GFlagsUtil.validateGFlagValues(newCluster.userIntent);
+      GFlagsUtil.checkLdapBindPasswdQuoting(newCluster.userIntent, universe);
       GFlagsUtil.validateFipsCompliancy(
           newCluster.userIntent, universe.getUniverseDetails().fipsEnabled);
       GFlagsUtil.validateNodeToNodeClientCerts(

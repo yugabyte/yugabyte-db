@@ -43,6 +43,7 @@ public class KubernetesOverridesUpgradeParams extends UpgradeTaskParams {
 
     GFlagsUtil.validateHelmOverridesGFlags(
         universeOverrides, azOverrides, universe.getUniverseDetails().fipsEnabled);
+    GFlagsUtil.checkLdapBindPasswdQuoting(universeOverrides, azOverrides, universe);
     GFlagsUtil.validateNodeToNodeClientCertsOfHelmOverrides(
         universeOverrides, azOverrides, userIntent.useNodeToNodeClientCerts);
 

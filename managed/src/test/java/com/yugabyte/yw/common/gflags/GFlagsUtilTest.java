@@ -1334,6 +1334,79 @@ public class GFlagsUtilTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCheckLdapBindPasswdQuoting() {
+    String record =
+        "\"host all all 0.0.0.0/0 ldap ldapserver=x ldapbindpasswd=%s\",local all all trust";
+    // HBA reads these as se,cret, pa,ss, pass and secret.
+    for (String password :
+        List.of("se\"\",cret\"\"", "pa\"\",\"\"ss", "\"\"pa\"\"ss", "se\"\"cret")) {
+      UserIntent userIntent = hbaUserIntent(String.format(record, password));
+      PlatformServiceException exception =
+          assertThrows(
+              PlatformServiceException.class,
+              () -> GFlagsUtil.checkLdapBindPasswdQuoting(userIntent, null));
+      assertEquals(
+          "GFlag ysql_hba_conf_csv: quote the whole ldapbindpasswd value or use no quotes in it",
+          exception.getLocalizedMessage());
+    }
+
+    UserIntent overrides = new UserIntent();
+    overrides.universeOverrides =
+        "gflags:\n  tserver:\n    ysql_hba_conf_csv: '\"host all all 0.0.0.0/0 ldap"
+            + " ldapbindpasswd=se\"\"cret\"'\n";
+    assertThrows(
+        PlatformServiceException.class,
+        () -> GFlagsUtil.checkLdapBindPasswdQuoting(overrides, null));
+
+    for (String hba :
+        List.of(
+            String.format(record, "secret"),
+            String.format(record, "\"\"pa,ss\"\""),
+            String.format(record, "\"\"pa\"\"\"\"ss\"\""),
+            String.format(record, "\"\"\"\""),
+            // Quoted in an unquoted CSV field.
+            "host all all 0.0.0.0/0 ldap ldapbindpasswd=\"\"secret\"\"")) {
+      GFlagsUtil.checkLdapBindPasswdQuoting(hbaUserIntent(hba), null);
+    }
+
+    String storedHba = String.format(record, "se\"\"cret");
+    Universe universe =
+        ModelFactory.createUniverse(
+            "ldap-universe", ModelFactory.testCustomer().getId(), Common.CloudType.aws);
+    Universe stored =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.getPrimaryCluster().userIntent.specificGFlags =
+                  hbaUserIntent(storedHba).specificGFlags;
+              u.setUniverseDetails(details);
+            });
+    GFlagsUtil.checkLdapBindPasswdQuoting(hbaUserIntent(storedHba), stored);
+    assertThrows(
+        PlatformServiceException.class,
+        () ->
+            GFlagsUtil.checkLdapBindPasswdQuoting(
+                hbaUserIntent(String.format(record, "pa\"\"ss")), stored));
+    assertThrows(
+        PlatformServiceException.class,
+        () -> GFlagsUtil.checkLdapBindPasswdQuoting(overrides.universeOverrides, null, stored));
+
+    mutableConfigFactory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey(), "false");
+    GFlagsUtil.checkLdapBindPasswdQuoting(hbaUserIntent(String.format(record, "pa\"\"ss")), null);
+  }
+
+  private static UserIntent hbaUserIntent(String hbaConf) {
+    UserIntent userIntent = new UserIntent();
+    userIntent.specificGFlags =
+        SpecificGFlags.construct(
+            Collections.emptyMap(), Map.of(GFlagsUtil.YSQL_HBA_CONF_CSV, hbaConf));
+    return userIntent;
+  }
+
+  @Test
   public void testValidateFipsCompliancyRejectsFipsGFlagFromEnv() {
     for (String value : List.of("openssl_require_fips", "a, openssl_require_fips")) {
       for (String flag : List.of("fromenv", "tryfromenv")) {

@@ -945,6 +945,7 @@ public class UniverseCRUDHandler {
           taskParams.fipsEnabled,
           taskParams.getPrimaryCluster().userIntent.useNodeToNodeClientCerts,
           taskParams.nodeDetailsSet);
+      GFlagsUtil.checkLdapBindPasswdQuoting(c.userIntent, null /* universe */);
       ManagedLoadBalancerUtil.validateNewCluster(
           c, taskParams.getPrimaryCluster(), confGetter, cloudAPIFactory);
       // Enforce user tags.
@@ -1520,6 +1521,7 @@ public class UniverseCRUDHandler {
     for (Cluster cluster : taskParams.clusters) {
       validateUserTags(customer, cluster.userIntent);
       GFlagsUtil.validateGFlagValues(cluster.userIntent);
+      GFlagsUtil.checkLdapBindPasswdQuoting(cluster.userIntent, u);
     }
     validateOciInstanceTags(taskParams);
     if (u.isYbcEnabled()) {
@@ -1981,6 +1983,7 @@ public class UniverseCRUDHandler {
         taskParams.fipsEnabled,
         primaryCluster.userIntent.useNodeToNodeClientCerts,
         taskParams.nodeDetailsSet);
+    GFlagsUtil.checkLdapBindPasswdQuoting(addOnCluster.userIntent, universe);
     addOnCluster.userIntent.enableNodeToNodeEncrypt =
         primaryCluster.userIntent.enableNodeToNodeEncrypt;
     addOnCluster.userIntent.enableClientToNodeEncrypt =
@@ -2077,6 +2080,7 @@ public class UniverseCRUDHandler {
         taskParams.fipsEnabled,
         primaryCluster.userIntent.useNodeToNodeClientCerts,
         taskParams.nodeDetailsSet);
+    GFlagsUtil.checkLdapBindPasswdQuoting(readOnlyCluster.userIntent, universe);
     if (readOnlyCluster.userIntent.specificGFlags != null) {
       SpecificGFlags primaryGFlags = primaryCluster.userIntent.specificGFlags;
       if (primaryGFlags != null) {

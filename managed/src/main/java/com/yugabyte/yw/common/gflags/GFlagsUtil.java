@@ -1515,6 +1515,101 @@ public class GFlagsUtil {
         });
   }
 
+  private static final Pattern LDAP_BIND_PASSWD_KEY =
+      Pattern.compile("(?<![^\\s,\"])ldapbindpasswd=");
+
+  // The ldapbindpasswd values LdapBindPasswdHbaFormat reads in full, as written in the CSV: quoted
+  // in a quoted CSV field, quoted in an unquoted one, or unquoted up to whitespace, a comma, the
+  // end, or the quote closing its CSV field. The parser still cuts a quoted password at a literal
+  // quote followed by a comma, brace or option; those pass, as no quoting avoids the cut.
+  private static final Pattern REDACTABLE_LDAP_BIND_PASSWD =
+      Pattern.compile(
+          "\"\"(?:[^\"]|\"\"\"\")*+\"\"(?=[\\s,\"]|$)"
+              + "|\"(?:[^\"]|\"\")*+\"(?=[\\s,]|$)"
+              + "|[^\\s,\"]*+(?=[\\s,]|$|\"(?=,|$))");
+
+  /**
+   * Redaction ends an unquoted ldapbindpasswd at its first quote, so a value quoted only in part
+   * (pa",ss" for pa,ss) would keep the rest of the password in logs and audit entries. HBA values
+   * the universe already stores pass, so one saved before this check doesn't block other edits.
+   */
+  public static void checkLdapBindPasswdQuoting(
+      UniverseDefinitionTaskParams.UserIntent userIntent, @Nullable Universe universe) {
+    checkLdapBindPasswdQuoting(getYsqlHbaConfCsvs(userIntent), universe);
+  }
+
+  /** The same check on the overrides of a Kubernetes overrides upgrade. */
+  public static void checkLdapBindPasswdQuoting(
+      @Nullable String universeOverrides,
+      @Nullable Map<String, String> azOverrides,
+      Universe universe) {
+    Set<String> hbaConfs = new HashSet<>();
+    addYsqlHbaConfCsvsOfOverrides(hbaConfs, universeOverrides, azOverrides);
+    checkLdapBindPasswdQuoting(hbaConfs, universe);
+  }
+
+  private static void checkLdapBindPasswdQuoting(
+      Set<String> hbaConfs, @Nullable Universe universe) {
+    hbaConfs.removeIf(hbaConf -> !hbaConf.contains("ldapbindpasswd="));
+    if (hbaConfs.isEmpty() || !RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()) {
+      return;
+    }
+    if (universe != null) {
+      universe
+          .getUniverseDetails()
+          .clusters
+          .forEach(cluster -> hbaConfs.removeAll(getYsqlHbaConfCsvs(cluster.userIntent)));
+    }
+    for (String hbaConf : hbaConfs) {
+      Matcher key = LDAP_BIND_PASSWD_KEY.matcher(hbaConf);
+      Matcher value = REDACTABLE_LDAP_BIND_PASSWD.matcher(hbaConf);
+      while (key.find()) {
+        if (!value.region(key.end(), hbaConf.length()).lookingAt()) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "GFlag %s: quote the whole ldapbindpasswd value or use no quotes in it",
+                  YSQL_HBA_CONF_CSV));
+        }
+      }
+    }
+  }
+
+  /** The ysql_hba_conf_csv values a user intent sets, in gflags and in K8s overrides. */
+  private static Set<String> getYsqlHbaConfCsvs(
+      UniverseDefinitionTaskParams.UserIntent userIntent) {
+    List<Map<String, String>> gflagMaps = new ArrayList<>(getUserGFlagMaps(userIntent).values());
+    gflagMaps.add(userIntent.masterGFlags);
+    gflagMaps.add(userIntent.tserverGFlags);
+    Set<String> result = new HashSet<>();
+    for (Map<String, String> gflags : gflagMaps) {
+      if (gflags != null && gflags.get(YSQL_HBA_CONF_CSV) != null) {
+        result.add(gflags.get(YSQL_HBA_CONF_CSV));
+      }
+    }
+    addYsqlHbaConfCsvsOfOverrides(result, userIntent.universeOverrides, userIntent.azOverrides);
+    return result;
+  }
+
+  private static void addYsqlHbaConfCsvsOfOverrides(
+      Set<String> result,
+      @Nullable String universeOverrides,
+      @Nullable Map<String, String> azOverrides) {
+    Map<String, String> hbaOverrides;
+    try {
+      hbaOverrides = getYsqlHbaHelmOverrides(universeOverrides, azOverrides);
+    } catch (PlatformServiceException e) {
+      // Left to the overrides validation.
+      return;
+    }
+    hbaOverrides.forEach(
+        (path, hbaConf) -> {
+          if (path.endsWith("." + YSQL_HBA_CONF_CSV)) {
+            result.add(hbaConf);
+          }
+        });
+  }
+
   /**
    * Kubernetes helm overrides carry gflags too (gflags.master and gflags.tserver in the values) and
    * are merged over the gflags YBA generates, so they could inject gflag lines or, on a FIPS
