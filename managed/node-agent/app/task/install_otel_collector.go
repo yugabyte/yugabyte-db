@@ -10,11 +10,15 @@ import (
 	"node-agent/app/task/module"
 	pb "node-agent/generated/service"
 	"node-agent/util"
+	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 const OtelCollectorService = "otel-collector.service"
+
+const otelCollectorRootUnitName = "otel-collector"
 
 const (
 	// Name of the executable inside the published archive. The YugabyteDB unified collector is a
@@ -32,6 +36,8 @@ type InstallOtelCollector struct {
 	param     *pb.InstallOtelCollectorInput
 	username  string
 	logOut    util.Buffer
+	// Where a root-level unit lives, on nodes provisioned with root systemd.
+	rootUnitPath string
 }
 
 func NewInstallOtelCollectorHandler(
@@ -39,9 +45,10 @@ func NewInstallOtelCollectorHandler(
 	username string,
 ) *InstallOtelCollector {
 	return &InstallOtelCollector{
-		param:    param,
-		username: username,
-		logOut:   util.NewBuffer(module.MaxBufferCapacity),
+		param:        param,
+		username:     username,
+		logOut:       util.NewBuffer(module.MaxBufferCapacity),
+		rootUnitPath: filepath.Join(systemSystemdUnitDir, OtelCollectorService),
 	}
 }
 
@@ -75,6 +82,18 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 		util.FileLogger().Infof(
 			ctx, "Refresh-only mode: skipping otel-collector install steps")
 		if err := h.writeLogCleanupEnv(ctx, h.param.GetYbHomeDir()); err != nil {
+			util.FileLogger().Error(ctx, err.Error())
+			return nil, err
+		}
+		if err := h.refreshLogPurgeScript(ctx, h.param.GetYbHomeDir()); err != nil {
+			util.FileLogger().Error(ctx, err.Error())
+			return nil, err
+		}
+		return nil, nil
+	}
+
+	if h.param.GetDisableCollector() {
+		if err := h.disableOtelCollector(ctx, h.param.GetYbHomeDir()); err != nil {
 			util.FileLogger().Error(ctx, err.Error())
 			return nil, err
 		}
@@ -135,7 +154,9 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 		return nil, err
 	}
 
-	// 4) Stop and disable the systemd service
+	// 4) Stop and disable the systemd service. The root stop goes first, so that a failed user stop
+	// cannot leave a root collector running.
+	h.stopRootOtelCollector(ctx)
 	if err := module.DisableSystemdService(
 		ctx,
 		h.username,
@@ -215,14 +236,7 @@ func (h *InstallOtelCollector) execOtelCollectorSetupSteps(
 		Desc string
 		Cmd  string
 	}{
-		{
-			"make-yb-otel-collector-dir",
-			fmt.Sprintf(
-				"mkdir -p %s && chmod 0755 %s",
-				otelCollectorDirectory,
-				otelCollectorDirectory,
-			),
-		},
+		ensureOtelCollectorDirStep(ybHome),
 		{
 			"untar-otel-collector",
 			fmt.Sprintf(
@@ -394,6 +408,277 @@ func (h *InstallOtelCollector) configureOtelCollector(ctx context.Context, ybHom
 	return nil
 }
 
+// userOtelCollectorNeedsStop reports whether the disable path must stop the user unit. Earlier
+// installs wrote it also on root-systemd nodes, where systemctl --user can fail.
+func (h *InstallOtelCollector) userOtelCollectorNeedsStop(
+	ctx context.Context,
+	rootStopFailed bool,
+) (bool, error) {
+	hasUserUnit, _, err := module.IsUserSystemd(h.username, OtelCollectorService)
+	if err != nil || !hasUserUnit {
+		return false, err
+	}
+	managerRuns, err := module.IsUserSystemdEnabled(ctx, h.username, h.logOut)
+	if err != nil || managerRuns {
+		return managerRuns, err
+	}
+	return false, h.disableUserOtelCollectorWithoutManager(ctx, rootStopFailed)
+}
+
+// disableUserOtelCollectorWithoutManager runs when the manager probe fails. The probe can be
+// wrong, so it tries one stop first, then disables the unit by removing its link.
+func (h *InstallOtelCollector) disableUserOtelCollectorWithoutManager(
+	ctx context.Context,
+	rootStopFailed bool,
+) error {
+	steps := []struct {
+		Desc string
+		Cmd  string
+	}{
+		{"StopOtelCollector", "systemctl --user stop " + OtelCollectorService},
+		{"DisableOtelCollector", "systemctl --user disable " + OtelCollectorService},
+	}
+	if err := module.RunShellSteps(ctx, h.username, steps, h.logOut); err == nil {
+		return nil
+	}
+	info, err := util.UserInfo(h.username)
+	if err != nil {
+		return err
+	}
+	if err := h.removeOtelCollectorWantsLink(ctx, info.User.HomeDir); err != nil {
+		return err
+	}
+	binary := filepath.Join(h.param.GetYbHomeDir(), "otel-collector", otelCollectorInstalledBinary)
+	// The unit restarts every RestartSec, so one check can miss a crash-looping collector.
+	running, err := otelCollectorRunsWithin(
+		ctx,
+		module.SystemdSettleInterval,
+		module.SystemdReadyPollInterval,
+		func() (bool, error) {
+			cmdInfo, err := module.RunShellCmd(
+				ctx,
+				h.username,
+				"CheckOtelCollectorProcess",
+				fmt.Sprintf("pgrep -f '^%s( |$)' || true", binary),
+				h.logOut,
+			)
+			if err != nil {
+				return false, err
+			}
+			return strings.TrimSpace(cmdInfo.StdOut.String()) != "", nil
+		},
+	)
+	if err != nil {
+		return err
+	}
+	if running {
+		return otelCollectorStillRunningError(binary, rootStopFailed)
+	}
+	msg := "No user systemd manager: otel-collector unit disabled by removing its link"
+	util.FileLogger().Warnf(ctx, "%s", msg)
+	h.logOut.WriteLine("%s", msg)
+	return nil
+}
+
+// removeOtelCollectorWantsLink does what systemctl --user disable does for this unit, whose only
+// install target is default.target. The unit file stays for a later enable.
+func (h *InstallOtelCollector) removeOtelCollectorWantsLink(
+	ctx context.Context,
+	homeDir string,
+) error {
+	link := filepath.Join(
+		homeDir,
+		".config/systemd/user/default.target.wants",
+		OtelCollectorService,
+	)
+	_, err := module.RunShellCmd(
+		ctx,
+		h.username,
+		"RemoveOtelCollectorWantsLink",
+		"rm -f "+shellSingleQuote(link),
+		h.logOut,
+	)
+	return err
+}
+
+// otelCollectorRunsWithin calls isRunning until it reports true or the window ends.
+func otelCollectorRunsWithin(
+	ctx context.Context,
+	window, interval time.Duration,
+	isRunning func() (bool, error),
+) (bool, error) {
+	deadline := time.Now().Add(window)
+	for {
+		running, err := isRunning()
+		if err != nil || running {
+			return running, err
+		}
+		if time.Now().Add(interval).After(deadline) {
+			return false, nil
+		}
+		select {
+		case <-ctx.Done():
+			return false, ctx.Err()
+		case <-time.After(interval):
+		}
+	}
+}
+
+// otelCollectorStillRunningError names the likely cause. pgrep also matches a root collector, so
+// after a failed root stop, the root unit is the likely cause.
+func otelCollectorStillRunningError(binary string, rootStopFailed bool) error {
+	if rootStopFailed {
+		return fmt.Errorf(
+			"%s is still running: the root-level %s could not be stopped, check its sudoers rules",
+			binary,
+			otelCollectorRootUnitName,
+		)
+	}
+	return fmt.Errorf(
+		"%s is still running and cannot be stopped: the user systemd manager does not respond",
+		binary,
+	)
+}
+
+func (h *InstallOtelCollector) hasRootOtelCollectorUnit() (bool, error) {
+	if _, err := os.Stat(h.rootUnitPath); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+// stopRootOtelCollector stops a root-level collector unit. Earlier installs wrote the user unit
+// also on root-systemd nodes, so a node can have both, and node agent only runs the user unit.
+// Stopping an enabled or running root unit needs the YNP rootsystemd sudoers rules. Nodes without
+// them ran both collectors before, so a failure is logged and does not fail the task. It returns
+// true when the stop failed.
+func (h *InstallOtelCollector) stopRootOtelCollector(ctx context.Context) bool {
+	if err := h.stopRootOtelCollectorIfInUse(ctx); err != nil {
+		util.FileLogger().Warnf(ctx, "Failed to stop the root-level otel-collector - %s", err)
+		h.logOut.WriteLine("Failed to stop the root-level otel-collector - %s", err)
+		return true
+	}
+	return false
+}
+
+// stopRootOtelCollectorIfInUse stops and disables the root unit when it is active or enabled. The
+// state check needs no sudo, so a root unit that is stopped and disabled needs no sudoers rules.
+func (h *InstallOtelCollector) stopRootOtelCollectorIfInUse(ctx context.Context) error {
+	hasRoot, err := h.hasRootOtelCollectorUnit()
+	if err != nil || !hasRoot {
+		return err
+	}
+	active, err := h.rootOtelCollectorState(ctx, "is-active")
+	if err != nil {
+		return err
+	}
+	enabled, err := h.rootOtelCollectorState(ctx, "is-enabled")
+	if err != nil {
+		return err
+	}
+	if !rootOtelCollectorInUse(active, enabled) {
+		return nil
+	}
+	util.FileLogger().Infof(ctx, "Stopping the root-level otel-collector")
+	// An empty user makes the systemd helpers use sudo systemctl, and the YNP rootsystemd sudoers
+	// rules name the unit without the .service suffix.
+	return module.DisableSystemdService(
+		ctx,
+		"",
+		otelCollectorRootUnitName,
+		"", // Keep the unit file, which the node agent did not write.
+		h.logOut)
+}
+
+// rootOtelCollectorState returns the output of systemctl is-active or is-enabled for the root
+// unit. Both exit non-zero for a stopped or disabled unit, so only empty output is an error.
+func (h *InstallOtelCollector) rootOtelCollectorState(
+	ctx context.Context,
+	check string,
+) (string, error) {
+	cmd := fmt.Sprintf("systemctl %s %s || true", check, otelCollectorRootUnitName)
+	cmdInfo, err := module.RunShellCmd(ctx, h.username, "CheckRootOtelCollector", cmd, h.logOut)
+	if err != nil {
+		return "", err
+	}
+	state := strings.TrimSpace(cmdInfo.StdOut.String())
+	if state == "" {
+		return "", fmt.Errorf(
+			"systemctl %s %s returned no state: %s",
+			check,
+			otelCollectorRootUnitName,
+			strings.TrimSpace(cmdInfo.StdErr.String()),
+		)
+	}
+	return state, nil
+}
+
+// rootOtelCollectorInUse reports whether the root unit runs now or starts at boot.
+func rootOtelCollectorInUse(active, enabled string) bool {
+	switch enabled {
+	case "enabled", "enabled-runtime", "linked", "linked-runtime", "alias", "indirect":
+		return true
+	}
+	switch active {
+	case "inactive", "failed", "unknown":
+		return false
+	}
+	return true
+}
+
+// ensureOtelCollectorDirStep creates <yb_home>/otel-collector. The package setup, the disable
+// path and the log_cleanup_env write all use it, so they create the directory the same way.
+func ensureOtelCollectorDirStep(ybHome string) struct {
+	Desc string
+	Cmd  string
+} {
+	dir := filepath.Join(ybHome, "otel-collector")
+	return struct {
+		Desc string
+		Cmd  string
+	}{
+		"ensure-otel-collector-dir",
+		fmt.Sprintf("mkdir -p %s && chmod 0755 %s", dir, dir),
+	}
+}
+
+// disableOtelCollector stops the collector and removes its config without the package setup, so
+// that a broken package cannot block turning export off.
+func (h *InstallOtelCollector) disableOtelCollector(ctx context.Context, ybHome string) error {
+	// The root stop goes first, so that a failed user stop cannot leave a root collector running.
+	rootStopFailed := h.stopRootOtelCollector(ctx)
+	stopUserUnit, err := h.userOtelCollectorNeedsStop(ctx, rootStopFailed)
+	if err != nil {
+		return err
+	}
+	if stopUserUnit {
+		util.FileLogger().Infof(ctx, "Disable mode: stopping otel-collector")
+		if err := module.DisableSystemdService(
+			ctx,
+			h.username,
+			OtelCollectorService,
+			"", // Keep the unit file so that a later enable can start the service again.
+			h.logOut); err != nil {
+			return err
+		}
+	}
+	// configureOtelCollector writes into this directory, and this path skips the package setup.
+	steps := []struct {
+		Desc string
+		Cmd  string
+	}{
+		ensureOtelCollectorDirStep(ybHome),
+	}
+	if err := module.RunShellSteps(ctx, h.username, steps, h.logOut); err != nil {
+		return err
+	}
+	// No config file is sent in this mode, so this removes config.yml and the credentials.
+	return h.configureOtelCollector(ctx, ybHome)
+}
+
 // refreshLogPurgeScript renders the bundled zip_purge_yb_logs.sh.j2 template
 // and copies it into <yb_home>/bin/zip_purge_yb_logs.sh so that nodes always
 // run the script version shipped with the current node-agent build. This is a
@@ -485,18 +770,14 @@ func shellSingleQuote(s string) string {
 // missing). Used by the refresh-only path to propagate audit-log retention
 // changes even when otel-collector isn't being (re)installed.
 func (h *InstallOtelCollector) writeLogCleanupEnv(ctx context.Context, ybHome string) error {
-	otelDir := filepath.Join(ybHome, "otel-collector")
-	envPath := filepath.Join(otelDir, "log_cleanup_env")
+	envPath := filepath.Join(ybHome, "otel-collector", "log_cleanup_env")
 	steps := []struct {
 		Desc string
 		Cmd  string
 	}{
 		// Refresh-only mode can run on universes that never had otel-collector
 		// installed, so ensure the directory exists before writing the env file.
-		{
-			"ensure-otel-collector-dir",
-			fmt.Sprintf("mkdir -p %s && chmod 0755 %s", otelDir, otelDir),
-		},
+		ensureOtelCollectorDirStep(ybHome),
 	}
 	steps = append(steps, logCleanupEnvSteps(envPath,
 		h.param.GetYcqlAuditLogLevel(),

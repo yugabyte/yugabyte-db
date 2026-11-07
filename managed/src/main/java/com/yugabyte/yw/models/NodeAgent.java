@@ -11,6 +11,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.models.common.YbaApi;
@@ -632,6 +633,15 @@ public class NodeAgent extends Model {
   @JsonIgnore
   public boolean isActive() {
     return !INACTIVE_STATES.contains(getState());
+  }
+
+  /** True if this node agent runs YBA's version, by the comparison that decides its upgrade. */
+  @JsonIgnore
+  public boolean isOnYbaVersion() {
+    String ybaVersion = Util.getYbaVersion();
+    return ybaVersion != null
+        && getVersion() != null
+        && Util.areYbVersionsEqual(ybaVersion, getVersion(), true);
   }
 
   @JsonIgnore
