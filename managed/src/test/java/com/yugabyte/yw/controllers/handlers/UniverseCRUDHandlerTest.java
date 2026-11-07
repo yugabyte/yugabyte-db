@@ -16,6 +16,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -630,6 +631,67 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
     // az-2 must NOT have been added here; volume-override computation happens later.
     assertEquals(Set.of(az1.getUuid()), azOverrides.keySet());
     assertNull(azOverrides.get(az2.getUuid()));
+  }
+
+  private Cluster buildK8sClusterWithVolumeOverrides(
+      Provider k8sProvider, String storageClass, AvailabilityZone... zones) {
+    UserIntent userIntent = buildK8sUserIntent(k8sProvider);
+    userIntent.deviceInfo.storageClass = storageClass;
+    Cluster cluster = buildPrimaryK8sTaskParams(userIntent, false, zones).getPrimaryCluster();
+    userIntent.setUserIntentOverrides(
+        KubernetesUtil.generateVolumeOverridesForUserIntent(
+            userIntent.getUserIntentOverrides(),
+            cluster.placementInfo.getAllAZUUIDs(),
+            null /* universeOverridesStr */,
+            null /* azOverrides */,
+            null /* skipAZs */));
+    return cluster;
+  }
+
+  // PLAT-23423: a zone-level storage class outranks the cluster-level one, so changing only the
+  // cluster-level class would be recorded but never applied to the PVCs.
+  @Test
+  public void validateK8sStorageClassChangeRejectsWhenZoneSetsStorageClass() {
+    Provider k8sProvider = ModelFactory.kubernetesProvider(customer);
+    Region region = Region.create(k8sProvider, "region-1", "Region 1", "default-image");
+    AvailabilityZone az1 = createK8sAZ(region, "az-1", "yb-standard");
+    AvailabilityZone az2 = createK8sAZ(region, "az-2", "yb-standard");
+
+    Cluster curr = buildK8sClusterWithVolumeOverrides(k8sProvider, "yb-standard", az1, az2);
+    Cluster next = buildK8sClusterWithVolumeOverrides(k8sProvider, "premium-rwo", az1);
+
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> UniverseCRUDHandler.validateK8sStorageClassChange(next, curr));
+    assertEquals(BAD_REQUEST, e.getHttpStatus());
+    assertTrue(e.getMessage(), e.getMessage().contains("az-1"));
+  }
+
+  @Test
+  public void validateK8sStorageClassChangeAllowsWhenZoneHasNoStorageClass() {
+    Provider k8sProvider = ModelFactory.kubernetesProvider(customer);
+    Region region = Region.create(k8sProvider, "region-1", "Region 1", "default-image");
+    AvailabilityZone az1 = createK8sAZ(region, "az-1", null);
+    AvailabilityZone az2 = createK8sAZ(region, "az-2", null);
+
+    Cluster curr = buildK8sClusterWithVolumeOverrides(k8sProvider, "yb-standard", az1, az2);
+    Cluster next = buildK8sClusterWithVolumeOverrides(k8sProvider, "premium-rwo", az1, az2);
+
+    UniverseCRUDHandler.validateK8sStorageClassChange(next, curr);
+  }
+
+  @Test
+  public void validateK8sStorageClassChangeAllowsUnchangedStorageClass() {
+    Provider k8sProvider = ModelFactory.kubernetesProvider(customer);
+    Region region = Region.create(k8sProvider, "region-1", "Region 1", "default-image");
+    AvailabilityZone az1 = createK8sAZ(region, "az-1", "yb-standard");
+    AvailabilityZone az2 = createK8sAZ(region, "az-2", "yb-standard");
+
+    Cluster curr = buildK8sClusterWithVolumeOverrides(k8sProvider, "premium-rwo", az1, az2);
+    Cluster next = buildK8sClusterWithVolumeOverrides(k8sProvider, "premium-rwo", az1);
+
+    UniverseCRUDHandler.validateK8sStorageClassChange(next, curr);
   }
 
   // PLAT-21736: use_memory_defaults_optimized_for_ysql must be set on both Master and TServer,
