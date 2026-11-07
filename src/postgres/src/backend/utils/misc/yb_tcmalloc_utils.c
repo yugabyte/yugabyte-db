@@ -353,3 +353,18 @@ YbReleaseFreeMemoryAfterStartup(void)
 		(int64) yb_startup_free_memory_release_threshold * 1024)
 		YBCTCMallocReleaseFreeMemory(PG_INT64_MAX);
 }
+
+const char *
+show_tcmalloc_sample_period(void)
+{
+	static char nbuf[32];
+
+	snprintf(nbuf, sizeof(nbuf), "%" PRId64, YBCGetTCMallocSamplingPeriod());
+	return nbuf;
+}
+
+void
+assign_tcmalloc_sample_period(int newval, void *extra)
+{
+	YBCSetTCMallocSamplingPeriod(newval);
+}

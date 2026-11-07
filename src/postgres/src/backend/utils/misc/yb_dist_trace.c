@@ -158,3 +158,69 @@ YbDistTraceInstallExecutorHooks(void)
 	prev_ExecutorEnd = ExecutorEnd_hook;
 	ExecutorEnd_hook = YbDistTrace_ExecutorEnd;
 }
+
+bool
+check_yb_dist_tracecontext(char **newval, void **extra, GucSource source)
+{
+	if (newval == NULL || *newval == NULL)
+	{
+		*extra = NULL;
+		return true;
+	}
+
+	if (!YBCIsDistTraceEnabled())
+	{
+		GUC_check_errdetail("distributed tracing is not enabled. " \
+							"Set otel_collector_traces_endpoint flag to enable " \
+							"distributed tracing.");
+		return false;
+	}
+
+	if ((*newval)[0] == '\0')
+	{
+		GUC_check_errdetail("yb_dist_tracecontext must not be empty");
+		return false;
+	}
+
+	char		traceparent[YB_TRACEPARENT_VALUE_LEN + 1] = {0};
+	YbTraceparentResult tp_result =
+		YbGetTraceparentFromTraceContext(*newval, strlen(*newval), traceparent);
+
+	if (tp_result != YB_TRACEPARENT_OK)
+	{
+		GUC_check_errdetail("%s", YbGetTraceparentResultErrmsg(tp_result));
+		return false;
+	}
+
+	bool		is_valid_and_remote = YBCIsTraceParentValidAndRemote(traceparent);
+
+	if (!is_valid_and_remote)
+	{
+		GUC_check_errdetail("traceparent format is invalid");
+		return false;
+	}
+
+	char	   *myextra = (char *) guc_malloc(ERROR, YB_TRACEPARENT_VALUE_LEN + 1);
+	memcpy(myextra, traceparent, YB_TRACEPARENT_VALUE_LEN + 1);
+	*extra = (void *) myextra;
+
+	return true;
+}
+
+void
+assign_yb_dist_tracecontext(const char *newval, void *extra)
+{
+	if (yb_guc_remote_span_ctx)
+	{
+		YBCDestroySpanContext(yb_guc_remote_span_ctx);
+		yb_guc_remote_span_ctx = NULL;
+	}
+
+	if (extra == NULL)
+		return;
+
+	/* YB: Storing span context in TopMemoryContext to ensure it persists across query executions */
+	MemoryContext oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+	yb_guc_remote_span_ctx = YBCGetValidSpanContext((const char *) extra);
+	MemoryContextSwitchTo(oldcontext);
+}
