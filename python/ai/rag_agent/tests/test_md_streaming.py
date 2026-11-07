@@ -58,7 +58,8 @@ def reference_walk(body: str) -> list[ParsedChunk]:
 
     Kept verbatim so the streaming implementation has something independent to
     be equal to. If this and md_parser ever disagree, the embeddings for that
-    document have changed.
+    document have changed. One deliberate change since, made in both: the last
+    flush emits content even when no heading was seen (MEKO-1140).
     """
     ast = REFERENCE_PARSER(body) or []
     chunks: list[ParsedChunk] = []
@@ -69,8 +70,8 @@ def reference_walk(body: str) -> list[ParsedChunk]:
     current_tables: list = []
     current_links: list[str] = []
 
-    def flush():
-        if not heading_stack:
+    def flush(final=False):
+        if not heading_stack and not final:
             return
         table_prose = "\n\n".join(t.to_prose() for t in current_tables)
         full_text = "\n\n".join(filter(None, [
@@ -113,7 +114,7 @@ def reference_walk(body: str) -> list[ParsedChunk]:
         elif ntype in ("paragraph", "block_quote", "list"):
             current_text.append(_extract_text(node).strip())
             current_links.extend(_extract_links(node))
-    flush()
+    flush(final=True)
     return chunks
 
 
