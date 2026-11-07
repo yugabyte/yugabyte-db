@@ -1444,6 +1444,15 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
         if (curlevel <= maxlevelcopy)
             templock.unlock();
 
+        // A point above the level of the tenant entry point replaces it, so like a point above
+        // maxlevel_ it keeps a lock until it is linked, but one that only points of the tenant
+        // wait for. Otherwise concurrent replacements would all link from the old entry point,
+        // and all but one keep their upper levels unlinked. It is taken before lock_el, since it
+        // is held while linking, which locks link lists of other points.
+        std::unique_lock<std::mutex> tenant_lock;
+        if (tenant)
+            tenant_lock = std::unique_lock<std::mutex>(getTenantEntryMutex(*tenant));
+
         std::unique_lock <std::mutex> lock_el(link_list_locks_[cur_c]);
         element_levels_[cur_c] = curlevel;
 
@@ -1459,15 +1468,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
         // Level of currObj, the point to start linking from.
         int entry_level = maxlevelcopy;
         std::optional<tableint> tenant_entry;
-        std::unique_lock<std::mutex> tenant_lock;
         if (tenant) {
-            // A point above the level of the tenant entry point replaces it, so like a point above
-            // maxlevel_ it keeps a lock until it is linked, but one that only points of the tenant
-            // wait for. Otherwise concurrent replacements would all link from the old entry point,
-            // and all but one keep their upper levels unlinked. It is taken under lock_el, which no
-            // other insert waits for yet: the point is not reachable before it is linked or added
-            // as the tenant entry point below.
-            tenant_lock = std::unique_lock<std::mutex>(getTenantEntryMutex(*tenant));
             tenant_entry = findOrAddTenantEntry(*tenant, cur_c);
             // Nothing to link the first point of a tenant to.
             currObj = tenant_entry ? *tenant_entry : -1;
