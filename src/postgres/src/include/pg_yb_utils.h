@@ -845,6 +845,8 @@ extern double yb_test_ybgin_disable_cost_factor;
  * - "indisready": index state change to indisready
  *   (not supported for non-concurrent)
  * - "backfill": index backfill phase
+ * - "backfill_chunk": a backfill chunk that a tserver runs, before it reads
+ *   the table
  * - "postbackfill": post-backfill operations like validation and event triggers
  */
 extern char *yb_test_block_index_phase;
