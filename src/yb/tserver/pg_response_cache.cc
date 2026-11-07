@@ -588,8 +588,10 @@ class PgResponseCache::Impl : private GarbageCollector {
   // between the two -- against a claim held for the whole connection start if this never fired.
   //
   // A round that failed is not one of those, and the callers that can see the outcome check it
-  // before calling: the setter, and the arm that serves a response already stored. A round
-  // queued behind another session's fill has no response yet and cannot.
+  // before calling: the setter, and the arm that serves a response already stored. Two callers
+  // cannot. A round queued behind another session's fill has no response yet, and a round
+  // answered while the database's cache is disabled has not read anything at all. Both end the
+  // claim whatever the round goes on to do, and both leave the retry to take a fresh token.
   static void EndPrefetchClaimIfComplete(
       const LWPgPerformOptionsPB::LWCachingInfoPB& cache_info, FillTokenPtr* token) {
     if (cache_info.completes_connection_prefetch() && token && *token) {
@@ -703,10 +705,14 @@ class PgResponseCache::Impl : private GarbageCollector {
     }
     if (!data) {
       // The cache is disabled for this database, as it is across a DDL commit, so nothing is
-      // served or filled. The prefetch is over all the same, and this return comes before both
-      // of the places that would end its claim, so end it here: otherwise a connection start
-      // whose completing round landed in this window would keep its database counted busy
-      // until the session sent something that is not part of a prefetch, or ended.
+      // served or filled. This return comes before both of the places that would end a claim,
+      // so end it here: otherwise a connection start whose completing round landed in this
+      // window would keep its database counted busy until the session sent something that is
+      // not part of a prefetch, or ended.
+      //
+      // Nothing has been read yet, so unlike the setter and the arm below this cannot tell a
+      // round that is finishing the prefetch from one that will fail and be retried. It ends
+      // the claim either way, and the retry's first fill takes a fresh token.
       EndPrefetchClaimIfComplete(*cache_info, token);
       return [](Response&& response) {};
     }
