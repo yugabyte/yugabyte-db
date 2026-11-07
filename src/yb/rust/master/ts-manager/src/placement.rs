@@ -253,6 +253,16 @@ pub fn blacklist_addresses(config: &SysClusterConfigEntryPB) -> HashSet<(String,
         .collect()
 }
 
+/// The leader blacklist's addresses, for [`is_blacklisted`].
+pub fn leader_blacklist_addresses(config: &SysClusterConfigEntryPB) -> HashSet<(String, u32)> {
+    config
+        .leader_blacklist
+        .hosts
+        .iter()
+        .map(|h| (h.host().to_string(), h.port()))
+        .collect()
+}
+
 /// Whether any of the tserver's addresses is blacklisted.
 pub fn is_blacklisted(descriptor: &TsDescriptor, blacklist: &HashSet<(String, u32)>) -> bool {
     let reg = &descriptor.pb.registration;

@@ -32,11 +32,17 @@
 
 #include "yb/master/mini_master.h"
 
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_tablet_manager.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
 using namespace std::literals;
+
+DECLARE_int32(load_balancer_initial_delay_secs);
 
 namespace yb {
 
@@ -165,6 +171,35 @@ TEST_F(RustMasterMiniClusterTest, CreatesTransactionalYcqlTables) {
     ASSERT_RESULT(client::kv_table_test::WriteRow(&table, session, key, key));
   }
   ASSERT_EQ(ASSERT_RESULT(client::kv_table_test::SelectAllRows(&table, session)).size(), 10);
+}
+
+// The Rust leader's cluster balancer moves replicas to a new tserver until the load is even, then
+// reports itself idle; the data stays readable throughout.
+TEST_F(RustMasterMiniClusterTest, BalancesReplicasToANewTserver) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_initial_delay_secs) = 0;
+  ASSERT_OK(cluster_->WaitForTabletServerCount(3));
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const client::YBTableName name(YQL_DATABASE_CQL, "ks", "balanced");
+  client::TableHandle table;
+  ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
+      client::Transactional::kFalse, /* num_tablets= */ 6, client.get(), &table, name));
+  auto session = client->NewSession(60s);
+  for (int32_t key = 0; key < 100; ++key) {
+    ASSERT_RESULT(client::kv_table_test::WriteRow(&table, session, key, key));
+  }
+
+  ASSERT_OK(cluster_->AddTabletServer());
+  ASSERT_OK(cluster_->WaitForTabletServerCount(4));
+  // 18 replicas over 4 tservers: the new one gets at least 4.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto on_new = cluster_->mini_tablet_server(3)->server()->tablet_manager()
+            ->GetNumLiveTablets();
+        return on_new >= 4 && VERIFY_RESULT(client->IsLoadBalancerIdle());
+      },
+      120s, "replicas moved to the new tserver and the balancer idle"));
+  ASSERT_TRUE(ASSERT_RESULT(client->IsLoadBalanced(4)));
+  ASSERT_EQ(ASSERT_RESULT(client::kv_table_test::SelectAllRows(&table, session)).size(), 100);
 }
 
 }  // namespace yb

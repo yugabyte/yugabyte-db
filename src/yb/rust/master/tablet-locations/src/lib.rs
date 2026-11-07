@@ -21,7 +21,7 @@
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use master_catalog_entity::EntityId;
@@ -30,6 +30,7 @@ use tokio::sync::watch;
 use yb_proto::pb::common_types::PeerRole;
 use yb_proto::pb::consensus_metadata::PeerMemberType;
 use yb_proto::pb::master_rust_peer::{ReplicaLocationPB, TabletReplicasPB};
+use yb_proto::pb::tablet_types::RaftGroupStatePB;
 
 mod leaderless;
 
@@ -37,8 +38,8 @@ pub use leaderless::{LeaderlessCheck, LeaseReport, INFINITE_HT_LEASE_EXPIRATION}
 
 const SHARDS: usize = 64;
 
-/// One replica of a tablet.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// One replica of a tablet (`TabletReplica`).
+#[derive(Clone, Debug)]
 pub struct Replica {
     /// The tserver.
     pub ts_uuid: EntityId,
@@ -46,6 +47,73 @@ pub struct Replica {
     pub role: PeerRole,
     /// Its member type.
     pub member_type: PeerMemberType,
+    /// Its state, as its own tserver last reported it; UNKNOWN when only a peer reported it.
+    pub state: RaftGroupStatePB,
+    /// The tserver asked the balancer not to move it (just split).
+    pub should_disable_lb_move: bool,
+    /// The data directory holding it, as its tserver reported it.
+    pub fs_data_dir: Arc<str>,
+    /// From the tserver's metrics heartbeats. Not part of equality: it changes with every
+    /// heartbeat and is not a change of the replica set.
+    pub drive: DriveInfo,
+}
+
+impl Replica {
+    /// A replica known from a Raft config or a report, with no state or drive info yet.
+    pub fn new(ts_uuid: EntityId, role: PeerRole, member_type: PeerMemberType) -> Replica {
+        Replica {
+            ts_uuid,
+            role,
+            member_type,
+            state: RaftGroupStatePB::UNKNOWN,
+            should_disable_lb_move: false,
+            fs_data_dir: Arc::from(""),
+            drive: DriveInfo::default(),
+        }
+    }
+}
+
+impl PartialEq for Replica {
+    fn eq(&self, other: &Replica) -> bool {
+        self.ts_uuid == other.ts_uuid
+            && self.role == other.role
+            && self.member_type == other.member_type
+            && self.state == other.state
+            && self.should_disable_lb_move == other.should_disable_lb_move
+            && self.fs_data_dir == other.fs_data_dir
+    }
+}
+
+impl Eq for Replica {}
+
+/// `TabletReplicaDriveInfo`: a replica's sizes, from `TabletDriveStorageMetadataPB`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DriveInfo {
+    /// SST files on disk.
+    pub sst_files_size: u64,
+    /// WAL files on disk.
+    pub wal_files_size: u64,
+    /// SST data before compression.
+    pub uncompressed_sst_file_size: u64,
+    /// The children of a split keep the parent's data until compacted; true until reported.
+    pub may_have_orphaned_post_split_data: bool,
+    /// Everything on disk, snapshots included; the size the balancer moves.
+    pub total_size: u64,
+    /// A vector index backfill runs on the tserver, which blocks automatic splits.
+    pub has_active_vector_index_backfill: bool,
+}
+
+impl Default for DriveInfo {
+    fn default() -> DriveInfo {
+        DriveInfo {
+            sst_files_size: 0,
+            wal_files_size: 0,
+            uncompressed_sst_file_size: 0,
+            may_have_orphaned_post_split_data: true,
+            total_size: 0,
+            has_active_vector_index_backfill: false,
+        }
+    }
 }
 
 /// A tablet's replicas.
@@ -172,9 +240,17 @@ impl TabletLocations {
     }
 
     /// Replaces the tablet's replica set.
-    pub fn set(&self, tablet_id: &[u8], replicas: TabletReplicas) {
+    pub fn set(&self, tablet_id: &[u8], mut replicas: TabletReplicas) {
         let added = {
             let mut shard = self.shard(tablet_id).lock().unwrap();
+            // A replica that stays keeps its drive info, which only heartbeats update.
+            if let Some(old) = shard.get(tablet_id) {
+                for replica in &mut replicas.replicas {
+                    if let Some(o) = old.replicas.iter().find(|o| o.ts_uuid == replica.ts_uuid) {
+                        replica.drive = o.drive.clone();
+                    }
+                }
+            }
             let old = shard.insert(tablet_id.into(), replicas.clone());
             self.account(old.as_ref(), Some(&replicas));
             old.is_none()
@@ -184,6 +260,18 @@ impl TabletLocations {
                 .track(Self::shard_index(tablet_id), tablet_id, Instant::now());
         }
         self.mark_dirty(tablet_id);
+    }
+
+    /// Records a replica's drive info from a metrics heartbeat (`UpdateReplicaInfo`): ignored for
+    /// a replica the locations do not have, and not a change of the replica set.
+    pub fn record_drive_info(&self, tablet_id: &[u8], ts_uuid: &[u8], drive: DriveInfo) {
+        let mut shard = self.shard(tablet_id).lock().unwrap();
+        if let Some(replica) = shard
+            .get_mut(tablet_id)
+            .and_then(|t| t.replicas.iter_mut().find(|r| &*r.ts_uuid == ts_uuid))
+        {
+            replica.drive = drive;
+        }
     }
 
     /// Sets one tserver's replica of the tablet, keeping the others, and confirms the entry.
@@ -198,7 +286,10 @@ impl TabletLocations {
                 .iter_mut()
                 .find(|r| r.ts_uuid == replica.ts_uuid)
             {
-                Some(existing) => *existing = replica,
+                Some(existing) => {
+                    let drive = std::mem::take(&mut existing.drive);
+                    *existing = Replica { drive, ..replica };
+                }
                 None => entry.replicas.push(replica),
             }
             entry.confirmed = true;
@@ -358,16 +449,16 @@ impl TabletLocations {
         let replicas = pb
             .replicas
             .iter()
-            .map(|r| Replica {
-                ts_uuid: r.ts_uuid().into(),
-                role: r
-                    .role
-                    .and_then(|v| PeerRole::from_i32(v.value()))
-                    .unwrap_or(PeerRole::UNKNOWN_ROLE),
-                member_type: r
-                    .member_type
-                    .and_then(|v| PeerMemberType::from_i32(v.value()))
-                    .unwrap_or(PeerMemberType::UNKNOWN_MEMBER_TYPE),
+            .map(|r| {
+                Replica::new(
+                    r.ts_uuid().into(),
+                    r.role
+                        .and_then(|v| PeerRole::from_i32(v.value()))
+                        .unwrap_or(PeerRole::UNKNOWN_ROLE),
+                    r.member_type
+                        .and_then(|v| PeerMemberType::from_i32(v.value()))
+                        .unwrap_or(PeerMemberType::UNKNOWN_MEMBER_TYPE),
+                )
             })
             .collect();
         self.set(
@@ -385,11 +476,7 @@ mod tests {
     use super::*;
 
     fn replica(ts: &str, role: PeerRole) -> Replica {
-        Replica {
-            ts_uuid: ts.as_bytes().into(),
-            role,
-            member_type: PeerMemberType::VOTER,
-        }
+        Replica::new(ts.as_bytes().into(), role, PeerMemberType::VOTER)
     }
 
     #[test]
@@ -443,6 +530,41 @@ mod tests {
         assert_eq!(warm.leader().unwrap().ts_uuid.as_ref(), b"a");
         follower.apply_pb(&TabletLocations::to_pb(b"t1", None));
         assert!(follower.get(b"t1").is_none());
+    }
+
+    #[test]
+    fn drive_info_survives_reports_and_is_not_a_change() {
+        let locations = TabletLocations::default();
+        locations.update_replica(b"t1", replica("a", PeerRole::LEADER));
+        locations.take_dirty();
+        let drive = DriveInfo {
+            total_size: 42,
+            may_have_orphaned_post_split_data: false,
+            ..DriveInfo::default()
+        };
+        locations.record_drive_info(b"t1", b"a", drive.clone());
+        locations.record_drive_info(b"t1", b"b", drive.clone());
+        assert!(locations.take_dirty().is_empty());
+        let drive_of = |l: &TabletLocations| l.get(b"t1").unwrap().replicas[0].drive.clone();
+        assert_eq!(drive_of(&locations), drive);
+        // A report replaces the replica but keeps what only heartbeats tell.
+        locations.update_replica(b"t1", replica("a", PeerRole::FOLLOWER));
+        assert_eq!(drive_of(&locations), drive);
+        locations.set(
+            b"t1",
+            TabletReplicas {
+                replicas: vec![
+                    replica("a", PeerRole::LEADER),
+                    replica("b", PeerRole::FOLLOWER),
+                ],
+                confirmed: true,
+            },
+        );
+        assert_eq!(drive_of(&locations), drive);
+        assert_eq!(
+            locations.get(b"t1").unwrap().replicas[1].drive,
+            DriveInfo::default()
+        );
     }
 
     #[test]

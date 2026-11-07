@@ -11,6 +11,7 @@ publish.workspace = true
 master-catalog-entity.workspace = true
 master-catalog-state.workspace = true
 master-leadership.workspace = true
+master-cluster-balancer.workspace = true
 master-table-lifecycle.workspace = true
 master-ts-manager.workspace = true
 protobuf.workspace = true

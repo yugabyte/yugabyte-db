@@ -21,7 +21,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use master_catalog_entity::EntityId;
 use master_catalog_state::{CatalogSnapshot, CatalogWriter};
 use master_leadership::LeaderToken;
-use master_tablet_locations::LeaseReport;
+use master_tablet_locations::{DriveInfo, LeaseReport};
 use protobuf::EnumOrUnknown;
 use yb_host_api::{Status, StatusCode};
 use yb_proto::pb::catalog_entity_info::{SysClusterConfigEntryPB, SysConfigEntryPB};
@@ -188,8 +188,8 @@ impl TsManager {
         Ok(resp)
     }
 
-    /// The leader-lease half of `ProcessTabletMetadata`, for the tablets in `storage_metadata`
-    /// whose leader is the reporting tserver.
+    /// `ProcessTabletMetadata`: drive info for every tablet in `storage_metadata`, and leader leases
+    /// for those whose leader is the reporting tserver.
     fn record_leader_leases(&self, req: &TSHeartbeatRequestPB) {
         if req.storage_metadata.is_empty() {
             return;
@@ -198,6 +198,21 @@ impl TsManager {
         let now = Instant::now();
         if let Some(descriptor) = self.descriptors.write().unwrap().get_mut(uuid) {
             descriptor.last_lease_report = Some(now);
+        }
+        // The drive half of `ProcessTabletMetadata`, which the balancer and splits read.
+        for metadata in &req.storage_metadata {
+            self.locations.record_drive_info(
+                metadata.tablet_id(),
+                uuid,
+                DriveInfo {
+                    sst_files_size: metadata.sst_file_size(),
+                    wal_files_size: metadata.wal_file_size(),
+                    uncompressed_sst_file_size: metadata.uncompressed_sst_file_size(),
+                    may_have_orphaned_post_split_data: metadata.may_have_orphaned_post_split_data(),
+                    total_size: metadata.total_size(),
+                    has_active_vector_index_backfill: metadata.has_active_vector_index_backfill(),
+                },
+            );
         }
         if req.leader_info.is_empty() {
             return;

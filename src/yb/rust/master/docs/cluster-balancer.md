@@ -28,6 +28,40 @@ deciding, consume the global add, remove and leader-move budgets, and keep a tab
 second task of the same kind. Like C++, the planner keeps nothing else between runs except whether
 global balancing is allowed (from the first idle run until a move that is not global).
 
+## The controller
+
+`controller::BalancerController` runs each leader term, every `catalog_manager_bg_task_wait_ms`,
+once `load_balancer_initial_delay_secs` have passed since the term began and while
+`enable_load_balancing` and `ChangeLoadBalancerState` allow it. Each pass builds the view:
+
+- tservers from the registry: live and reported (`IsLiveAndHasReported`), blacklisted or
+  leader-blacklisted by address, disk use summed over the last metrics heartbeat's paths, and the
+  replica deletes queued or in flight to them;
+- tables from the catalog snapshot, skipping system tables, colocated tables other than the parent
+  and tables being dropped, with `table_replication_info` (the table's, else the cluster's);
+- replicas from the observed locations (role, state, member type, data directory, size). Whether
+  a config is in transition (a PRE_VOTER) is read from the observed replicas, which hold the
+  leader-reported config, rather than by parsing every tablet row each pass.
+
+Actions become tasks of their table for the term, in the view's `pending` until they finish:
+
+- `AddReplica` and `RemoveReplica`: `ChangeConfig` (ADD_SERVER with the tserver's addresses and
+  cloud info, or REMOVE_SERVER) on the tablet's leader, with the committed config index as the
+  compare-and-set index. An attempt is dropped once the tablet is no longer RUNNING or a newer
+  config is committed; CAS_FAILED, ADD_CHANGE_CONFIG_ALREADY_PRESENT,
+  REMOVE_CHANGE_CONFIG_NOT_PRESENT, LEADER_NEEDS_STEP_DOWN and NOT_THE_LEADER end it, as in
+  `AsyncChangeConfigTask`; other errors are retried.
+- `MoveLeader`: one `LeaderStepDown` to the leader with the new leader, then the REMOVE_SERVER if
+  asked. A failed stepdown keeps the planner from nominating the same new leader for
+  `min_leader_stepdown_retry_interval_ms`. C++ registers the failure under the old leader's uuid
+  but looks it up by the new leader's; the controller records it by the new leader.
+
+`BalancerStatus` keeps the last `load_balancer_num_idle_runs` placement runs and the last run's
+metrics for the RPCs: `IsLoadBalancerIdle` and `IsLoadBalanced` (idle, or disabled; enough live
+tservers), and `GetLoadMoveCompletion` / `GetLeaderBlacklistCompletion` (replicas or leaders still
+on blacklisted tservers against the blacklist's initial load, 0% within
+`blacklist_progress_initial_delay_secs` of the election).
+
 ## Order of a run
 
 As `RunClusterBalancerWithOptions`: every table is analyzed first, since one table's adds change

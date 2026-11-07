@@ -340,11 +340,11 @@ fn location_stream_gap_asks_for_full() {
     leader.locations.set(
         b"t1",
         master_tablet_locations::TabletReplicas {
-            replicas: vec![master_tablet_locations::Replica {
-                ts_uuid: b"ts1".as_slice().into(),
-                role: PeerRole::LEADER,
-                member_type: PeerMemberType::VOTER,
-            }],
+            replicas: vec![master_tablet_locations::Replica::new(
+                b"ts1".as_slice().into(),
+                PeerRole::LEADER,
+                PeerMemberType::VOTER,
+            )],
             confirmed: true,
         },
     );
@@ -537,11 +537,11 @@ async fn deleted_tablets_do_not_block_removing_a_tserver() {
     s.ts.locations.set(
         b"tablet",
         master_tablet_locations::TabletReplicas {
-            replicas: vec![master_tablet_locations::Replica {
-                ts_uuid: b"ts1".as_slice().into(),
-                role: PeerRole::FOLLOWER,
-                member_type: PeerMemberType::VOTER,
-            }],
+            replicas: vec![master_tablet_locations::Replica::new(
+                b"ts1".as_slice().into(),
+                PeerRole::FOLLOWER,
+                PeerMemberType::VOTER,
+            )],
             confirmed: true,
         },
     );

@@ -7,6 +7,13 @@ reports say. It is not catalog state and is never written to the sys catalog. Sh
 Each entry is `confirmed` once a report in the current term set it. A new leader marks everything
 unconfirmed; `GetTableLocations` still serves it.
 
+A replica also carries what the balancer and splits read (`TabletReplica`): the Raft state, data
+directory and `should_disable_lb_move` its own tserver last reported (a peer named only by another
+tserver's config has state UNKNOWN; C++ gives every peer the reporting tserver's directory), and
+its drive info (sizes, `may_have_orphaned_post_split_data`) from metrics heartbeats. Drive info is
+kept when a report rebuilds the entry and is not part of equality, so a heartbeat never marks a
+tablet changed for the location stream, which carries neither.
+
 ## The location stream (L9)
 
 C++ followers keep no locations, so every C++ failover starts cold until tservers report. A Rust

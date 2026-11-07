@@ -628,8 +628,15 @@ dependencies = [
 name = "master-cluster-balancer"
 version = "0.1.0"
 dependencies = [
+ "master-catalog-state",
+ "master-leadership",
+ "master-table-lifecycle",
+ "master-task-runtime",
+ "master-ts-manager",
  "protobuf",
+ "tokio",
  "tracing",
+ "yb-host-api",
  "yb-proto",
 ]
 
@@ -659,6 +666,7 @@ version = "0.1.0"
 dependencies = [
  "master-catalog-entity",
  "master-catalog-state",
+ "master-cluster-balancer",
  "master-leadership",
  "master-sys-catalog",
  "master-table-lifecycle",
@@ -678,6 +686,7 @@ dependencies = [
  "axum",
  "cxx",
  "master-catalog-state",
+ "master-cluster-balancer",
  "master-leadership",
  "master-rpc-handlers",
  "master-sys-catalog",

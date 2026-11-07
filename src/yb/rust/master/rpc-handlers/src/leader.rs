@@ -74,16 +74,18 @@ pub struct LeaderServices {
     pub load_balancer_enabled: AtomicBool,
     /// `replication_factor`, for tables and clusters with no replication info.
     pub replication_factor: fn() -> i32,
+    /// The cluster balancer's recent runs, for its RPCs.
+    pub balancer: Arc<master_cluster_balancer::controller::BalancerStatus>,
+    /// `enable_load_balancing`.
+    pub load_balancing_flag: fn() -> bool,
+    /// `blacklist_progress_initial_delay_secs`.
+    pub blacklist_progress_initial_delay: fn() -> std::time::Duration,
 }
 
 /// Who serves a leader method a layer-2 Rust leader does not.
 pub fn owner(method: &str) -> &'static str {
     match method {
-        "GetLoadMoveCompletion"
-        | "GetLeaderBlacklistCompletion"
-        | "IsLoadBalanced"
-        | "IsLoadBalancerIdle"
-        | "AreLeadersOnPreferredOnly" => "the load balancer (W8)",
+        "AreLeadersOnPreferredOnly" => "the load balancer (W8)",
         "PromoteAutoFlags"
         | "RollbackAutoFlags"
         | "PromoteSingleAutoFlag"

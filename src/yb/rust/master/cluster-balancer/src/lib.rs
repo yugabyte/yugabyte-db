@@ -20,6 +20,7 @@
 //! global balancing is allowed; the tasks in flight carry the rest. The caller (the
 //! `cluster-balancer` controller) builds the view, sends the actions and tracks them as tasks.
 
+pub mod controller;
 mod distribution;
 mod planner;
 mod state;

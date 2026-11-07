@@ -21,6 +21,8 @@ use master_catalog_state::defaults::{
     set_universe_uuid_if_needed, write_default_rows, DefaultsHost, DefaultsOptions,
 };
 use master_catalog_state::{run_materializer, self_check, Catalog, CatalogWriter, WriterOptions};
+use master_cluster_balancer::controller::{BalancerController, BalancerFlags, BalancerStatus};
+use master_cluster_balancer::Options as BalancerOptions;
 use master_leadership::{Leadership, Phase};
 use master_rpc_handlers::{LeaderServices, MasterInfo};
 use master_sys_catalog::{ApplyEvents, SysCatalogStore};
@@ -111,6 +113,45 @@ static TRANSACTION_TABLE_NUM_TABLETS_PER_TSERVER: FlagRef<i32> =
     FlagRef::new("transaction_table_num_tablets_per_tserver");
 static ENABLE_DELETE_TRUNCATE_XCLUSTER_REPLICATED_TABLE: FlagRef<bool> =
     FlagRef::new("enable_delete_truncate_xcluster_replicated_table");
+static BLACKLIST_PROGRESS_INITIAL_DELAY_SECS: FlagRef<i32> =
+    FlagRef::new("blacklist_progress_initial_delay_secs");
+static ENABLE_LOAD_BALANCING: FlagRef<bool> = FlagRef::new("enable_load_balancing");
+static LB_INITIAL_DELAY_SECS: FlagRef<i32> = FlagRef::new("load_balancer_initial_delay_secs");
+static LB_NUM_IDLE_RUNS: FlagRef<i32> = FlagRef::new("load_balancer_num_idle_runs");
+static MIN_LEADER_STEPDOWN_RETRY_INTERVAL_MS: FlagRef<i32> =
+    FlagRef::new("min_leader_stepdown_retry_interval_ms");
+static LEADER_BALANCE_THRESHOLD: FlagRef<i32> = FlagRef::new("leader_balance_threshold");
+static LEADER_BALANCE_UNRESPONSIVE_TIMEOUT_MS: FlagRef<i32> =
+    FlagRef::new("leader_balance_unresponsive_timeout_ms");
+static LB_MAX_RBS: FlagRef<i32> =
+    FlagRef::new("load_balancer_max_concurrent_tablet_remote_bootstraps");
+static LB_MAX_RBS_PER_TABLE: FlagRef<i32> =
+    FlagRef::new("load_balancer_max_concurrent_tablet_remote_bootstraps_per_table");
+static LB_MAX_INBOUND_RBS: FlagRef<i32> =
+    FlagRef::new("load_balancer_max_inbound_remote_bootstraps_per_tserver");
+static LB_MIN_INBOUND_RBS: FlagRef<i32> =
+    FlagRef::new("load_balancer_min_inbound_remote_bootstraps_per_tserver");
+static RBS_RATE_LIMIT: FlagRef<i64> = FlagRef::new("remote_bootstrap_rate_limit_bytes_per_sec");
+static LB_MAX_OVER_REPLICATED: FlagRef<i32> =
+    FlagRef::new("load_balancer_max_over_replicated_tablets");
+static LB_MAX_ADDS: FlagRef<i32> = FlagRef::new("load_balancer_max_concurrent_adds");
+static LB_MAX_REMOVALS: FlagRef<i32> = FlagRef::new("load_balancer_max_concurrent_removals");
+static LB_MAX_MOVES: FlagRef<i32> = FlagRef::new("load_balancer_max_concurrent_moves");
+static LB_MAX_MOVES_PER_TABLE: FlagRef<i32> =
+    FlagRef::new("load_balancer_max_concurrent_moves_per_table");
+static ALLOW_LEADER_BALANCING_DEAD_NODE: FlagRef<bool> =
+    FlagRef::new("allow_leader_balancing_dead_node");
+static LB_MIN_FREE_DISK_PCT: FlagRef<u32> = FlagRef::new("load_balancer_min_free_disk_space_pct");
+static TXN_TABLES_USE_PREFERRED_ZONES: FlagRef<bool> =
+    FlagRef::new("transaction_tables_use_preferred_zones");
+static ENABLE_GLOBAL_LOAD_BALANCING: FlagRef<bool> = FlagRef::new("enable_global_load_balancing");
+static LB_DRIVE_AWARE: FlagRef<bool> = FlagRef::new("load_balancer_drive_aware");
+static LB_IGNORE_CLOUD_INFO_SIMILARITY: FlagRef<bool> =
+    FlagRef::new("load_balancer_ignore_cloud_info_similarity");
+static STEPDOWN_TO_PREFERRED_LEADER_ON_REMOVE: FlagRef<bool> =
+    FlagRef::new("cluster_balancer_stepdown_to_preferred_leader_on_remove");
+static LB_UNDER_REPLICATED_ONLY: FlagRef<bool> =
+    FlagRef::new("TEST_load_balancer_handle_under_replicated_tablets_only");
 static BG_TASK_WAIT_MS: FlagRef<i32> = FlagRef::new("catalog_manager_bg_task_wait_ms");
 static MASTER_TS_RPC_TIMEOUT_MS: FlagRef<i32> = FlagRef::new("master_ts_rpc_timeout_ms");
 static RETRY_MAX_DELAY_MS: FlagRef<i32> = FlagRef::new("retrying_ts_rpc_max_delay_ms");
@@ -280,6 +321,11 @@ impl Core {
             follower_stream: Default::default(),
             load_balancer_enabled: AtomicBool::new(true),
             replication_factor: || REPLICATION_FACTOR.get(),
+            balancer: Arc::new(BalancerStatus::new(LB_NUM_IDLE_RUNS.get().max(1) as usize)),
+            load_balancing_flag: || ENABLE_LOAD_BALANCING.get(),
+            blacklist_progress_initial_delay: || {
+                Duration::from_secs(BLACKLIST_PROGRESS_INITIAL_DELAY_SECS.get().max(0) as u64)
+            },
         });
 
         // Ready only once the catalog reflects everything committed before the election: the
@@ -436,6 +482,36 @@ fn start_term(
         watch::channel(0).1,
     );
 
+    let enabled_leader = leader.clone();
+    run_controller(
+        scope,
+        BalancerController::new(
+            leader.catalog.clone(),
+            leader.leadership.clone(),
+            leader.ts_manager.clone(),
+            rpc.clone(),
+            ts_rpc.clone(),
+            retry_policy(false),
+            BalancerFlags {
+                enabled: Arc::new(move || {
+                    ENABLE_LOAD_BALANCING.get()
+                        && enabled_leader
+                            .load_balancer_enabled
+                            .load(std::sync::atomic::Ordering::Relaxed)
+                }),
+                initial_delay: || Duration::from_secs(LB_INITIAL_DELAY_SECS.get().max(0) as u64),
+                interval: || millis(BG_TASK_WAIT_MS.get().max(1)),
+                rpc_timeout: || millis(MASTER_TS_RPC_TIMEOUT_MS.get()),
+                min_leader_stepdown_retry_interval: || {
+                    millis(MIN_LEADER_STEPDOWN_RETRY_INTERVAL_MS.get())
+                },
+                num_idle_runs: || LB_NUM_IDLE_RUNS.get().max(1) as usize,
+                options: balancer_options,
+            },
+            leader.balancer.clone(),
+        ),
+        watch::channel(0).1,
+    );
     run_controller(
         scope,
         TabletAssigner::new(
@@ -650,4 +726,34 @@ impl Controller for UniverseUuidController {
 /// `TEST_rust_master_allow_leadership`.
 pub(crate) fn leadership_allowed() -> bool {
     ALLOW_LEADERSHIP.get()
+}
+
+/// The balancer's flags, read for each run as C++ builds `Options` for each run.
+fn balancer_options() -> BalancerOptions {
+    BalancerOptions {
+        max_tablet_remote_bootstraps: LB_MAX_RBS.get(),
+        max_tablet_remote_bootstraps_per_table: LB_MAX_RBS_PER_TABLE.get(),
+        max_inbound_remote_bootstraps_per_ts: LB_MAX_INBOUND_RBS.get(),
+        min_inbound_remote_bootstraps_per_ts: LB_MIN_INBOUND_RBS.get(),
+        max_inbound_bytes_per_ts: (RBS_RATE_LIMIT.get().max(0) as u64)
+            * BG_TASK_WAIT_MS.get().max(0) as u64
+            / 1000,
+        max_over_replicated_tablets_per_table: LB_MAX_OVER_REPLICATED.get(),
+        max_concurrent_removals: LB_MAX_REMOVALS.get(),
+        max_concurrent_adds: LB_MAX_ADDS.get(),
+        max_concurrent_leader_moves: LB_MAX_MOVES.get(),
+        max_concurrent_leader_moves_per_table: LB_MAX_MOVES_PER_TABLE.get(),
+        leader_balance_threshold: LEADER_BALANCE_THRESHOLD.get(),
+        leader_balance_unresponsive_timeout: millis(LEADER_BALANCE_UNRESPONSIVE_TIMEOUT_MS.get()),
+        allow_leader_balancing_dead_node: ALLOW_LEADER_BALANCING_DEAD_NODE.get(),
+        min_free_disk_space_pct: LB_MIN_FREE_DISK_PCT.get(),
+        replication_factor: REPLICATION_FACTOR.get(),
+        transaction_tables_use_preferred_zones: TXN_TABLES_USE_PREFERRED_ZONES.get(),
+        enable_global_load_balancing: ENABLE_GLOBAL_LOAD_BALANCING.get(),
+        drive_aware: LB_DRIVE_AWARE.get(),
+        ignore_cloud_info_similarity: LB_IGNORE_CLOUD_INFO_SIMILARITY.get(),
+        stepdown_to_preferred_leader_on_remove: STEPDOWN_TO_PREFERRED_LEADER_ON_REMOVE.get(),
+        handle_under_replicated_tablets_only: LB_UNDER_REPLICATED_ONLY.get(),
+        ..BalancerOptions::default()
+    }
 }

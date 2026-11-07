@@ -227,11 +227,12 @@ impl TsManager {
                 {
                     self.locations.update_replica(
                         tablet_id,
-                        Replica {
-                            ts_uuid: uuid.into(),
-                            role: PeerRole::NON_PARTICIPANT,
-                            member_type: PeerMemberType::UNKNOWN_MEMBER_TYPE,
-                        },
+                        reported_replica(
+                            uuid,
+                            PeerRole::NON_PARTICIPANT,
+                            PeerMemberType::UNKNOWN_MEMBER_TYPE,
+                            reported,
+                        ),
                     );
                 }
             }
@@ -313,11 +314,11 @@ impl TsManager {
                     }
                 }
             }
-            self.set_replicas_from_config(ctx.snapshot, tablet_id, &cstate, registered);
+            self.set_replicas_from_config(ctx, tablet_id, &cstate, reported, registered);
         } else if (self.options.register_from_raft)()
             && self.replicas_differ_from_config(tablet_id, &cstate)
         {
-            self.set_replicas_from_config(ctx.snapshot, tablet_id, &cstate, registered);
+            self.set_replicas_from_config(ctx, tablet_id, &cstate, reported, registered);
         } else {
             let member_type = cstate
                 .config
@@ -327,14 +328,9 @@ impl TsManager {
                 .map_or(PeerMemberType::UNKNOWN_MEMBER_TYPE, |p| p.member_type());
             self.locations.update_replica(
                 tablet_id,
-                Replica {
-                    ts_uuid: uuid.into(),
-                    role: consensus_role(&cstate, uuid),
-                    member_type,
-                },
+                reported_replica(uuid, consensus_role(&cstate, uuid), member_type, reported),
             );
         }
-        let _ = reported;
     }
 
     /// `ReplicaMapDiffersFromConsensusState`.
@@ -352,11 +348,14 @@ impl TsManager {
     /// registering peers never heard from when `enable_register_ts_from_raft` is on.
     fn set_replicas_from_config(
         &self,
-        snapshot: &CatalogSnapshot,
+        ctx: &ReportContext<'_>,
         tablet_id: &[u8],
         cstate: &ConsensusStatePB,
+        reported: &ReportedTabletPB,
         registered: &mut Vec<EntityId>,
     ) {
+        let snapshot = ctx.snapshot;
+        let existing = self.locations.get(tablet_id).unwrap_or_default();
         let mut replicas = Vec::new();
         for peer in &cstate.config.peers {
             let peer_uuid = peer.permanent_uuid();
@@ -377,10 +376,18 @@ impl TsManager {
                 }
                 registered.push(peer_uuid.into());
             }
-            replicas.push(Replica {
-                ts_uuid: peer_uuid.into(),
-                role: consensus_role(cstate, peer_uuid),
-                member_type: peer.member_type(),
+            let role = consensus_role(cstate, peer_uuid);
+            // The report's state, directory and flag are the sender's own replica's; a peer keeps
+            // what its own reports said. (C++ gives every peer the sender's directory.)
+            replicas.push(if peer_uuid == ctx.uuid {
+                reported_replica(peer_uuid, role, peer.member_type(), reported)
+            } else {
+                let mut replica = Replica::new(peer_uuid.into(), role, peer.member_type());
+                if let Some(old) = existing.replicas.iter().find(|r| &*r.ts_uuid == peer_uuid) {
+                    replica.fs_data_dir = old.fs_data_dir.clone();
+                    replica.should_disable_lb_move = old.should_disable_lb_move;
+                }
+                replica
             });
         }
         self.locations.set(
@@ -577,4 +584,19 @@ pub fn consensus_role(cstate: &ConsensusStatePB, uuid: &[u8]) -> PeerRole {
             _ => PeerRole::UNKNOWN_ROLE,
         },
     }
+}
+
+/// The reporting tserver's own replica (`CreateNewReplicaForLocalMemory`).
+fn reported_replica(
+    uuid: &[u8],
+    role: PeerRole,
+    member_type: PeerMemberType,
+    reported: &ReportedTabletPB,
+) -> Replica {
+    let mut replica = Replica::new(uuid.into(), role, member_type);
+    replica.state = reported.state();
+    replica.should_disable_lb_move = reported.should_disable_lb_move();
+    replica.fs_data_dir =
+        std::sync::Arc::from(String::from_utf8_lossy(reported.fs_data_dir()).as_ref());
+    replica
 }

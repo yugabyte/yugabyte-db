@@ -37,7 +37,7 @@ pub(crate) fn cluster_config(snapshot: &CatalogSnapshot) -> SysClusterConfigEntr
 
 /// `GetTableReplicationInfo` for a YCQL table: its own replication info when set, else the
 /// cluster's.
-pub(crate) fn table_replication_info(
+pub fn table_replication_info(
     table: Option<&ReplicationInfoPB>,
     config: &SysClusterConfigEntryPB,
 ) -> ReplicationInfoPB {
@@ -48,7 +48,7 @@ pub(crate) fn table_replication_info(
 }
 
 /// `IsReplicationInfoSet`.
-pub(crate) fn replication_info_set(info: &ReplicationInfoPB) -> bool {
+pub fn replication_info_set(info: &ReplicationInfoPB) -> bool {
     info.live_replicas.as_ref().is_some_and(|l| {
         l.num_replicas() > 0 || !l.placement_blocks.is_empty() || !l.placement_uuid().is_empty()
     }) || !info.read_replicas.is_empty()

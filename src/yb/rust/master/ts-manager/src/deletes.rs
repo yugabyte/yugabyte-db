@@ -10,7 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -165,6 +165,20 @@ impl DeleteReplicaQueue {
         );
         state.queue.push(delete);
         self.added.notify_one();
+    }
+
+    /// The deletes queued or being sent, by tserver: `TabletsPendingDeletion`, which the balancer
+    /// avoids as destinations.
+    pub fn pending(&self) -> HashMap<EntityId, BTreeSet<Vec<u8>>> {
+        let state = self.state.lock().unwrap();
+        let mut pending: HashMap<EntityId, BTreeSet<Vec<u8>>> = HashMap::new();
+        for (ts, tablet) in state.queued.iter().chain(state.in_flight.iter()) {
+            pending
+                .entry(ts.clone())
+                .or_default()
+                .insert(tablet.clone());
+        }
+        pending
     }
 
     /// Takes everything queued. Each one counts as being sent until [`DeleteReplicaQueue::sent`].

@@ -509,6 +509,9 @@ mod leader_tests {
                 follower_stream: Default::default(),
                 load_balancer_enabled: AtomicBool::new(true),
                 replication_factor: || 3,
+                balancer: Arc::new(master_cluster_balancer::controller::BalancerStatus::new(5)),
+                load_balancing_flag: || true,
+                blacklist_progress_initial_delay: || std::time::Duration::ZERO,
             })
         });
         harness.leader = Some(leader);

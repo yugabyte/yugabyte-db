@@ -44,6 +44,7 @@ mod tests;
 pub use alter::TableAlterer;
 pub use assign::TabletAssigner;
 pub use drop::TableDeleter;
+pub use placement::{replication_info_set, table_replication_info};
 
 /// The C++ steps the host runs: schema normalization, partitioning and alter steps, which are
 /// engine formats Rust does not reimplement (K4). `method` is a `MasterHost::HandleOnHost` name.

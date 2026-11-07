@@ -25,6 +25,7 @@
 //! Not served yet, though C++ serves them on every master: `DumpState` (yb-admin
 //! dump_masters_state), and the test-only `TestRetry` and `AccessYsqlBackendsManagerTestRegister`.
 
+mod balancer;
 pub mod leader;
 mod list_masters;
 
@@ -48,13 +49,15 @@ use yb_proto::pb::master_client::{
 use yb_proto::pb::master_cluster::{
     ChangeLoadBalancerStateRequestPB, ChangeLoadBalancerStateResponsePB,
     ChangeMasterClusterConfigRequestPB, ChangeMasterClusterConfigResponsePB,
-    GetLoadBalancerStateResponsePB, GetMasterClusterConfigRequestPB,
-    GetMasterClusterConfigResponsePB, GetMasterRegistrationResponsePB,
-    GetMasterXClusterConfigRequestPB, GetMasterXClusterConfigResponsePB,
-    IsMasterLeaderReadyRequestPB, IsMasterLeaderReadyResponsePB, ListLiveTabletServersRequestPB,
-    ListLiveTabletServersResponsePB, ListMasterRaftPeersResponsePB, ListTabletServersRequestPB,
-    ListTabletServersResponsePB, RemoveTabletServerRequestPB, RemoveTabletServerResponsePB,
-    SetPreferredZonesRequestPB, SetPreferredZonesResponsePB,
+    GetLoadBalancerStateResponsePB, GetLoadMovePercentRequestPB, GetLoadMovePercentResponsePB,
+    GetMasterClusterConfigRequestPB, GetMasterClusterConfigResponsePB,
+    GetMasterRegistrationResponsePB, GetMasterXClusterConfigRequestPB,
+    GetMasterXClusterConfigResponsePB, IsLoadBalancedRequestPB, IsLoadBalancedResponsePB,
+    IsLoadBalancerIdleRequestPB, IsLoadBalancerIdleResponsePB, IsMasterLeaderReadyRequestPB,
+    IsMasterLeaderReadyResponsePB, ListLiveTabletServersRequestPB, ListLiveTabletServersResponsePB,
+    ListMasterRaftPeersResponsePB, ListTabletServersRequestPB, ListTabletServersResponsePB,
+    RemoveTabletServerRequestPB, RemoveTabletServerResponsePB, SetPreferredZonesRequestPB,
+    SetPreferredZonesResponsePB,
 };
 use yb_proto::pb::master_ddl::{
     AlterTableRequestPB, AlterTableResponsePB, CreateNamespaceRequestPB, CreateNamespaceResponsePB,
@@ -734,6 +737,35 @@ impl Shared {
                 IsMasterLeaderReadyRequestPB,
                 IsMasterLeaderReadyResponsePB,
                 |_req, _resp| Ok(())
+            ),
+            "IsLoadBalancerIdle" => serve!(
+                IsLoadBalancerIdleRequestPB,
+                IsLoadBalancerIdleResponsePB,
+                |_req, resp| {
+                    leader.is_load_balancer_idle(&mut resp);
+                    Ok(())
+                }
+            ),
+            "IsLoadBalanced" => serve!(
+                IsLoadBalancedRequestPB,
+                IsLoadBalancedResponsePB,
+                |req, resp| {
+                    leader.is_load_balanced(&req, &mut resp);
+                    Ok(())
+                }
+            ),
+            "GetLoadMoveCompletion" | "GetLeaderBlacklistCompletion" => serve!(
+                GetLoadMovePercentRequestPB,
+                GetLoadMovePercentResponsePB,
+                |_req, resp| {
+                    leader.load_move_completion(
+                        &snapshot,
+                        method.name == "GetLeaderBlacklistCompletion",
+                        (leader.blacklist_progress_initial_delay)(),
+                        &mut resp,
+                    );
+                    Ok(())
+                }
             ),
             "GetMasterClusterConfig" => serve!(
                 GetMasterClusterConfigRequestPB,
