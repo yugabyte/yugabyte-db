@@ -82,6 +82,7 @@ DECLARE_bool(ysql_enable_relcache_init_optimization);
 DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 DECLARE_bool(TEST_pg_response_cache_force_lookup_only_miss);
 DECLARE_bool(TEST_pg_response_cache_force_lookup_only_miss_on_final_request);
+DECLARE_bool(TEST_pg_response_cache_keep_claim_past_completion);
 DECLARE_bool(TEST_pg_response_cache_pause_fill);
 DECLARE_bool(ysql_yb_enable_stale_catalog_prefetch);
 DECLARE_uint64(ysql_catalog_prefetch_row_limit);
@@ -2067,6 +2068,49 @@ TEST_F(PgStaleCatalogPrefetchTest, OnlyTheOpeningRoundAsksToBeSentAway) {
   ASSERT_EQ(delta.cache.send_away_asks, 1)
       << "a connection start must ask once, on the opening round of its prefetch, rather than "
       << "on every round";
+}
+
+// A connection start whose completing round never reaches the cache leaves its claim with no
+// round to end it -- what a preload list covering that request's tables leaves behind. The only
+// thing that ends it then is the session's next request that is not part of a prefetch, which
+// DoPerform resets the slot on. Without that reset the database would stay counted busy for the
+// life of the connection, and every later connection would be sent to the older version with
+// nothing filling at all.
+TEST_F(PgStaleCatalogPrefetchTest, AnOrdinaryRequestEndsAClaimNoRoundEnded) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t_unended (k INT)"));
+  ASSERT_OK(SetPrefetchLoad(master::YSQL_CATALOG_PREFETCH_LOAD_LOW));
+  ASSERT_OK(LoggedWaitFor([this, &conn]() -> Result<bool> {
+    return VERIFY_RESULT(RecordedCatalogVersion(&conn)) != 0;
+  }, 60s, "a version for the next connection to ask about"));
+
+  ASSERT_OK(conn.Execute("ALTER TABLE t_unended ADD COLUMN v INT"));
+
+  // The holder's prefetch fills and takes its session's claim, and no round of it ends that
+  // claim. Its first ordinary query is what has to.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pg_response_cache_keep_claim_past_completion) = true;
+  auto holder = ASSERT_RESULT(Connect());
+  // Reads a table, so a Perform actually reaches the tserver. SELECT 1 is answered inside PG
+  // and sends nothing, so it would never reach the reset this test is about.
+  ASSERT_OK(holder.FetchRow<PGUint64>("SELECT count(*) FROM t_unended"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pg_response_cache_keep_claim_past_completion) = false;
+
+  // Moves the catalog again. The holder's prefetch recorded the version it read, so without
+  // this the next connection wants exactly that entry, hits it, and never reaches the ask.
+  ASSERT_OK(conn.Execute("ALTER TABLE t_unended ADD COLUMN v2 INT"));
+
+  // Nothing of the holder's is filling now, so a connection that asks has to be answered rather
+  // than sent away. Retried because a fill of someone else's -- the refresh the DDL above makes
+  // on a live backend -- can be in flight for a moment and send one away legitimately. A claim
+  // that outlived its prefetch is not a moment: it would send every one of these away until the
+  // holder's session ended, so the wait is what tells the two apart.
+  ASSERT_OK(LoggedWaitFor([this]() -> Result<bool> {
+    const auto delta = VERIFY_RESULT(metrics_->Delta([this]() -> Status {
+      auto later = VERIFY_RESULT(Connect());
+      return ResultToStatus(later.FetchRow<int32_t>("SELECT 1"));
+    }));
+    return delta.cache.send_away_asks > 0 && delta.cache.send_aways == 0;
+  }, 60s, "a connection that asked to be answered rather than sent away"));
 }
 
 // A run of DDLs gives each connection a version of its own, so the entry one wants is not the

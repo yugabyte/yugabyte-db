@@ -62,6 +62,13 @@ DEFINE_test_flag(bool, pg_response_cache_force_lookup_only_miss_on_final_request
     "The earlier requests still hit, so this reproduces a connection that has already built its "
     "relcache from the older version by the time it has to fall back.");
 
+DEFINE_test_flag(bool, pg_response_cache_keep_claim_past_completion, false,
+    "Do not end a connection start's claim on the round that completes its prefetch, leaving "
+    "the session's next request that is not part of a prefetch to end it. Reproduces a "
+    "connection whose completing round never reached the cache, which a preload list covering "
+    "that request's tables leaves behind. The round still records the version it published, so "
+    "a later connection still has one to fall back on.");
+
 DEFINE_test_flag(bool, pg_response_cache_pause_fill, false,
     "Hold every response cache fill open before it stores its response, for as long as this is "
     "set. The entries stay claimed and unanswered meanwhile, which is the window another "
@@ -594,6 +601,9 @@ class PgResponseCache::Impl : private GarbageCollector {
   // claim whatever the round goes on to do, and both leave the retry to take a fresh token.
   static void EndPrefetchClaimIfComplete(
       const LWPgPerformOptionsPB::LWCachingInfoPB& cache_info, FillTokenPtr* token) {
+    if (PREDICT_FALSE(FLAGS_TEST_pg_response_cache_keep_claim_past_completion)) {
+      return;
+    }
     if (cache_info.completes_connection_prefetch() && token && *token) {
       (*token)->Release();
     }
@@ -843,7 +853,8 @@ class PgResponseCache::Impl : private GarbageCollector {
       // long costs other connections a version they can bridge from; ending it too early costs
       // them the wait this change exists to remove. The session ends it instead, on its next
       // request that is not part of a prefetch or when it goes away.
-      if (is_final_round) {
+      if (is_final_round &&
+          PREDICT_TRUE(!FLAGS_TEST_pg_response_cache_keep_claim_past_completion)) {
         fill->Release();
       }
     };
