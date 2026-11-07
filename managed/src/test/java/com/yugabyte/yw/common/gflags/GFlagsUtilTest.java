@@ -17,6 +17,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.LdapBindPasswdHbaFormat;
 import com.yugabyte.yw.common.LdapBindPasswdHbaFormat.QuoteStyle;
@@ -27,6 +29,7 @@ import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -39,8 +42,11 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -60,6 +66,16 @@ import org.mockito.Mockito;
 import play.libs.Json;
 
 public class GFlagsUtilTest extends FakeDBApplication {
+
+  /**
+   * ysql_pg_conf_csv for user log_statement=DDL, new install yb_enable_cbo=on, and query logging
+   * with log_statement=MOD and other defaults. The gflags file and the in-memory value must both
+   * have this exact string (GFlagsUpgradeTest checks the in-memory one).
+   */
+  public static final String USER_DDL_CBO_AND_QUERY_LOG_MOD_PG_CONF_CSV =
+      "log_statement=MOD,yb_enable_cbo=on,log_duration=OFF,debug_print_plan=OFF,"
+          + "log_connections=OFF,log_disconnections=OFF,log_min_error_statement=ERROR,"
+          + "log_error_verbosity=DEFAULT,log_min_duration_statement=-1";
 
   @Mock private GFlagsValidation gFlagsValidation;
 
@@ -274,6 +290,69 @@ public class GFlagsUtilTest extends FakeDBApplication {
     k8sUniverse.updateConfig(
         ImmutableMap.of(Universe.K8S_APPLY_NEW_INSTALL_GFLAGS, Boolean.toString(true)));
     assertTrue(GFlagsUtil.areNewInstallGFlagsApplied(k8sUniverse));
+  }
+
+  @Test
+  public void testDefaultGFlagsMergeQueryLogPgConfWithNewInstallPgConf() {
+    Customer customer = ModelFactory.testCustomer();
+    Provider provider = ModelFactory.awsProvider(customer);
+    Region region = Region.create(provider, "region-1", "Region 1", "yb-image-1");
+    AvailabilityZone az = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
+    Universe universe = ModelFactory.createUniverse("pg-conf-universe", customer.getId());
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              Cluster primary = details.getPrimaryCluster();
+              primary.userIntent.provider = provider.getUuid().toString();
+              primary.userIntent.enableYSQL = true;
+              NodeDetails node = ApiUtils.getDummyNodeDetails(1);
+              node.azUuid = az.getUuid();
+              node.placementUuid = primary.uuid;
+              node.isTserver = true;
+              details.nodeDetailsSet = new HashSet<>(Set.of(node));
+              u.setUniverseDetails(details);
+            });
+    PerProcessFlags newInstallGFlags = new PerProcessFlags();
+    newInstallGFlags.value.put(
+        ServerType.TSERVER, ImmutableMap.of(GFlagsUtil.YSQL_PG_CONF_CSV, "yb_enable_cbo=on"));
+    universe.setNewInstallGFlags(newInstallGFlags);
+    universe.save();
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(
+        "yb_enable_cbo=on",
+        universe.getNewInstallGFlags(ServerType.TSERVER).get(GFlagsUtil.YSQL_PG_CONF_CSV));
+    NodeDetails node = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
+
+    YSQLQueryLogConfig ysqlQueryLogConfig = new YSQLQueryLogConfig();
+    ysqlQueryLogConfig.setEnabled(true);
+    ysqlQueryLogConfig.setLogStatement(YSQLQueryLogConfig.YSQLLogStatement.MOD);
+    QueryLogConfig queryLogConfig = new QueryLogConfig();
+    queryLogConfig.setYsqlQueryLogConfig(ysqlQueryLogConfig);
+
+    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.nodeName = node.nodeName;
+    params.azUuid = az.getUuid();
+    params.placementUuid = node.placementUuid;
+    params.deviceInfo = new DeviceInfo();
+    params.deviceInfo.mountPoints = "/mnt/d0";
+    params.enableYSQL = true;
+    params.setProperty("processType", ServerType.TSERVER.toString());
+    params.telemetryConfig = TelemetryConfig.builder().queryLogConfig(queryLogConfig).build();
+
+    Map<String, String> gflags =
+        GFlagsUtil.getAllDefaultGFlags(
+            params,
+            universe,
+            universe.getUniverseDetails().getPrimaryCluster().userIntent,
+            false /* useHostname */,
+            app.injector().instanceOf(RuntimeConfGetter.class));
+
+    String pgConfCsv = gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV);
+    assertTrue(pgConfCsv, pgConfCsv.contains("log_statement=MOD"));
+    assertTrue(pgConfCsv, pgConfCsv.contains("yb_enable_cbo=on"));
   }
 
   @Test
@@ -1205,6 +1284,136 @@ public class GFlagsUtilTest extends FakeDBApplication {
     GFlagsUtil.processUserGFlags(node, userGFlags, new HashMap<>(), false, null, null);
 
     assertEquals(Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "false"), userGFlags);
+  }
+
+  @Test
+  public void testProcessUserGFlagsTelemetryPgConfWinsOverUserPgConf() {
+    NodeDetails node = new NodeDetails();
+    node.nodeName = "host-n1";
+    YSQLQueryLogConfig ysqlQueryLogConfig = new YSQLQueryLogConfig();
+    ysqlQueryLogConfig.setEnabled(true);
+    ysqlQueryLogConfig.setLogStatement(YSQLQueryLogConfig.YSQLLogStatement.MOD);
+    QueryLogConfig queryLogConfig = new QueryLogConfig();
+    queryLogConfig.setYsqlQueryLogConfig(ysqlQueryLogConfig);
+    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+    params.telemetryConfig = TelemetryConfig.builder().queryLogConfig(queryLogConfig).build();
+    params.enableYSQL = true;
+    Map<String, String> userGFlags =
+        new HashMap<>(Map.of(GFlagsUtil.YSQL_PG_CONF_CSV, "log_statement=all,yb_enable_cbo=off"));
+    Map<String, String> platformGFlags =
+        new HashMap<>(
+            Map.of(
+                GFlagsUtil.YSQL_PG_CONF_CSV,
+                GFlagsUtil.mergeCSVs(
+                    GFlagsUtil.getYsqlPgConfCsv(params), "yb_enable_cbo=on", true)));
+
+    GFlagsUtil.processUserGFlags(node, userGFlags, platformGFlags, false, null, params);
+
+    String pgConfCsv = userGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV);
+    assertTrue(pgConfCsv, pgConfCsv.contains("log_statement=MOD"));
+    assertFalse(pgConfCsv, pgConfCsv.contains("log_statement=all"));
+    // User entries still win over non-telemetry platform defaults.
+    assertTrue(pgConfCsv, pgConfCsv.contains("yb_enable_cbo=off"));
+    assertFalse(pgConfCsv, pgConfCsv.contains("yb_enable_cbo=on"));
+
+    // Without YSQL, getYSQLGFlags adds no telemetry entries, so the user value stays as is.
+    params.enableYSQL = false;
+    userGFlags = new HashMap<>(Map.of(GFlagsUtil.YSQL_PG_CONF_CSV, "log_statement=all"));
+    GFlagsUtil.processUserGFlags(node, userGFlags, new HashMap<>(), false, null, params);
+    assertEquals("log_statement=all", userGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV));
+  }
+
+  @Test
+  public void testProcessUserGFlagsPgConfOrderMatchesInMemoryOrder() {
+    NodeDetails node = new NodeDetails();
+    node.nodeName = "host-n1";
+    YSQLQueryLogConfig ysqlQueryLogConfig = new YSQLQueryLogConfig();
+    ysqlQueryLogConfig.setEnabled(true);
+    ysqlQueryLogConfig.setLogStatement(YSQLQueryLogConfig.YSQLLogStatement.MOD);
+    QueryLogConfig queryLogConfig = new QueryLogConfig();
+    queryLogConfig.setYsqlQueryLogConfig(ysqlQueryLogConfig);
+    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+    params.telemetryConfig = TelemetryConfig.builder().queryLogConfig(queryLogConfig).build();
+    params.enableYSQL = true;
+    // Platform value as getAllDefaultGFlags builds it: new install entries, then telemetry.
+    Map<String, String> platformGFlags =
+        new HashMap<>(
+            Map.of(
+                GFlagsUtil.YSQL_PG_CONF_CSV,
+                GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(
+                    "yb_enable_cbo=on", GFlagsUtil.getYsqlPgConfCsv(params))));
+    // A case variant of a telemetry key gives the same value: PostgreSQL ignores the case.
+    for (String userPgConfCsv : List.of("log_statement=DDL", "Log_Statement=all")) {
+      Map<String, String> userGFlags =
+          new HashMap<>(Map.of(GFlagsUtil.YSQL_PG_CONF_CSV, userPgConfCsv));
+
+      GFlagsUtil.processUserGFlags(
+          node, userGFlags, new HashMap<>(platformGFlags), false, null, params);
+
+      assertEquals(
+          USER_DDL_CBO_AND_QUERY_LOG_MOD_PG_CONF_CSV, userGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV));
+    }
+  }
+
+  @Test
+  public void testOverrideWithTelemetryYsqlPgConfCsv() {
+    // No conflict: the base keeps its exact string and new keys are appended.
+    String base = mergeCSVs("yb_enable_cbo=off,log_statement=MOD", "", true);
+    assertEquals(base, GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(base, "log_statement=MOD"));
+    assertEquals(
+        "yb_enable_cbo=off,log_duration=ON",
+        GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv("yb_enable_cbo=off", "log_duration=ON"));
+    // Conflict: the telemetry value replaces the base one in place.
+    assertEquals(
+        "log_statement=MOD,yb_enable_cbo=off,log_duration=ON",
+        GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(
+            "log_statement=all,yb_enable_cbo=off", "log_statement=MOD,log_duration=ON"));
+    // PostgreSQL setting names are case-insensitive: a telemetry key replaces the first base
+    // entry for it in any case and drops the later ones.
+    assertEquals(
+        "log_statement=MOD",
+        GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv("Log_Statement=all", "log_statement=MOD"));
+    assertEquals(
+        "log_statement=MOD,work_mem=4MB",
+        GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(
+            "log_statement=ddl,work_mem=4MB,Log_Statement=all", "log_statement=MOD"));
+    // Other keys match exactly and, as in mergeCSVs, the first base entry for a key wins.
+    assertEquals(
+        "work_mem=4MB,Work_Mem=8MB,log_statement=MOD",
+        GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(
+            "work_mem=4MB,Work_Mem=8MB,work_mem=64MB", "log_statement=MOD"));
+    assertEquals(
+        "log_statement=MOD",
+        GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(null, "log_statement=MOD"));
+    // With no telemetry entries, the base is printed as mergeCSVs prints it.
+    assertEquals("a=1", GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv("a=1", ""));
+    assertEquals("", GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(null, null));
+    String userCsv = "work_mem=4MB,work_mem=64MB,\"log_line_prefix='%m [%p] '\"";
+    assertEquals(
+        mergeCSVs(userCsv, "", true), GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(userCsv, ""));
+  }
+
+  @Test
+  public void testGetLogLinePrefixPrefersQueryLogConfig() {
+    String userCsv = mergeCSVs("\"log_line_prefix='%m user '\"", "", true);
+    YSQLQueryLogConfig ysqlQueryLogConfig = new YSQLQueryLogConfig();
+    ysqlQueryLogConfig.setEnabled(true);
+    ysqlQueryLogConfig.setLogLinePrefix("%m api ");
+    QueryLogConfig queryLogConfig = new QueryLogConfig();
+    queryLogConfig.setYsqlQueryLogConfig(ysqlQueryLogConfig);
+
+    assertEquals("%m api ", GFlagsUtil.getLogLinePrefix(queryLogConfig, userCsv));
+    // getYsqlPgConfCsv emits nothing for a disabled config, so the user value is in effect.
+    ysqlQueryLogConfig.setEnabled(false);
+    assertEquals("%m user ", GFlagsUtil.getLogLinePrefix(queryLogConfig, userCsv));
+    assertEquals("%m user ", GFlagsUtil.getLogLinePrefix(null, userCsv));
+    // PostgreSQL ignores the case of setting names.
+    assertEquals(
+        "%m upper ",
+        GFlagsUtil.getLogLinePrefix(null, mergeCSVs("\"LOG_LINE_PREFIX='%m upper '\"", "", true)));
+    assertEquals(
+        GFlagsUtil.getLogLinePrefix(null, ""),
+        GFlagsUtil.getLogLinePrefix(queryLogConfig, "yb_enable_cbo=on"));
   }
 
   @Test

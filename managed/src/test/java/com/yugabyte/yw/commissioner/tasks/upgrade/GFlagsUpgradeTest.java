@@ -18,8 +18,10 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -44,6 +46,7 @@ import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.GFlagsUtilTest;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
@@ -57,6 +60,8 @@ import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig;
 import com.yugabyte.yw.nodeagent.ServerControlInput;
 import com.yugabyte.yw.nodeagent.ServerControlOutput;
 import com.yugabyte.yw.nodeagent.ServerControlType;
@@ -1368,9 +1373,74 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
             eq(GFlagsUtil.YSQL_PG_CONF_CSV),
             eq("log_statement=DDL,yb_enable_cbo=on"),
             anyBoolean());
-    // Masters have no user ysql_pg_conf_csv, so it is not set on them at all.
-    verify(mockClient, times(numTservers))
+    // Masters have no user ysql_pg_conf_csv, so they get only the new install entries, as in
+    // their gflags file.
+    int numMasters = defaultUniverse.getMasters().size();
+    verify(mockClient, times(numMasters))
+        .setFlag(any(), eq(GFlagsUtil.YSQL_PG_CONF_CSV), eq("yb_enable_cbo=on"), anyBoolean());
+    verify(mockClient, times(numTservers + numMasters))
         .setFlag(any(), eq(GFlagsUtil.YSQL_PG_CONF_CSV), anyString(), anyBoolean());
+  }
+
+  @Test
+  public void testGFlagsUpgradeNonRestartTelemetryPgConfWinsOverUserPgConf() throws Exception {
+    verifyNonRestartTelemetryPgConfWinsOverUserPgConf("log_statement=DDL");
+  }
+
+  @Test
+  public void testGFlagsUpgradeNonRestartTelemetryPgConfWinsOverUserPgConfCaseVariant()
+      throws Exception {
+    verifyNonRestartTelemetryPgConfWinsOverUserPgConf("Log_Statement=all");
+  }
+
+  private void verifyNonRestartTelemetryPgConfWinsOverUserPgConf(String userPgConfCsv)
+      throws Exception {
+    Map<String, String> userTserverGFlags =
+        ImmutableMap.of(GFlagsUtil.YSQL_PG_CONF_CSV, userPgConfCsv);
+    YSQLQueryLogConfig ysqlQueryLogConfig = new YSQLQueryLogConfig();
+    ysqlQueryLogConfig.setEnabled(true);
+    ysqlQueryLogConfig.setLogStatement(YSQLQueryLogConfig.YSQLLogStatement.MOD);
+    QueryLogConfig queryLogConfig = new QueryLogConfig();
+    queryLogConfig.setYsqlQueryLogConfig(ysqlQueryLogConfig);
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            universe -> {
+              UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+              userIntent.specificGFlags =
+                  SpecificGFlags.construct(ImmutableMap.of(), userTserverGFlags);
+              userIntent.queryLogConfig = queryLogConfig;
+              SpecificGFlags.PerProcessFlags newInstallGFlags =
+                  new SpecificGFlags.PerProcessFlags();
+              newInstallGFlags.value.put(
+                  TSERVER, ImmutableMap.of(GFlagsUtil.YSQL_PG_CONF_CSV, "yb_enable_cbo=on"));
+              universe.setNewInstallGFlags(newInstallGFlags);
+            });
+    expectedUniverseVersion++;
+
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    Map<String, String> tserverGFlags = new HashMap<>(userTserverGFlags);
+    tserverGFlags.put("enable_automatic_tablet_splitting", "false");
+    taskParams.getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(
+            ImmutableMap.of("enable_automatic_tablet_splitting", "false"), tserverGFlags);
+    taskParams.upgradeOption = UpgradeOption.NON_RESTART_UPGRADE;
+
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+
+    // Same order as the server's gflags file: the user entries, with the query log value
+    // replacing the user one in place, then the new install entry, then the other query log keys.
+    int numTservers = defaultUniverse.getTServers().size();
+    verify(mockClient, times(numTservers))
+        .setFlag(
+            any(),
+            eq(GFlagsUtil.YSQL_PG_CONF_CSV),
+            eq(GFlagsUtilTest.USER_DDL_CBO_AND_QUERY_LOG_MOD_PG_CONF_CSV),
+            anyBoolean());
+    verify(mockClient, never())
+        .setFlag(any(), eq(GFlagsUtil.YSQL_PG_CONF_CSV), contains(userPgConfCsv), anyBoolean());
   }
 
   @Test

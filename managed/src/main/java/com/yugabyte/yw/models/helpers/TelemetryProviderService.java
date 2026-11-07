@@ -18,12 +18,13 @@ import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.WSClientRefresher;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.ExportTelemetryConfig;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
@@ -42,7 +43,6 @@ import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -281,15 +281,9 @@ public class TelemetryProviderService {
       // log export exist only here. Checking just the mirrored fields let a provider referenced
       // by one of those be deleted, stranding a dangling exporterUuid that breaks every later
       // collector-config regeneration for the universe.
-      Optional<ExportTelemetryConfig> exportConfig =
-          ExportTelemetryConfig.getForUniverse(universe.getUniverseUUID());
-      if (exportConfig.isPresent()
-          && exportConfig.get().getTelemetryConfig() != null
-          && exportConfig
-              .get()
-              .getTelemetryConfig()
-              .referencedExporterUuids()
-              .contains(providerUUID)) {
+      TelemetryConfig persisted =
+          OtelCollectorUtil.getPersistedTelemetryConfig(universe.getUniverseUUID());
+      if (persisted != null && persisted.referencedExporterUuids().contains(providerUUID)) {
         return true;
       }
 
