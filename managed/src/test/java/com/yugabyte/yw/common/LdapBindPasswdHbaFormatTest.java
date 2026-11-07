@@ -162,6 +162,46 @@ public class LdapBindPasswdHbaFormatTest {
         LdapBindPasswdHbaFormat.redactAllValues(quoteInPassword, SECRET_REPLACEMENT));
   }
 
+  // The four P1-04 forms, each as the CSV field of a quoted record: se",cret" pa","ss "pa"ss
+  // se"cret
+  private static final String[] PARTLY_QUOTED_CSV_PASSWORDS = {
+    "se\"\",cret\"\"", "pa\"\",\"\"ss", "\"\"pa\"\"ss", "se\"\"cret"
+  };
+
+  @Test
+  public void redactAllValuesRedactsPartlyQuotedPasswordToEndOfField() {
+    for (String password : PARTLY_QUOTED_CSV_PASSWORDS) {
+      String hba =
+          "\"host all all 0.0.0.0/0 ldap ldapserver=x ldapbindpasswd="
+              + password
+              + "\",local all all trust";
+      String expected =
+          "\"host all all 0.0.0.0/0 ldap ldapserver=x ldapbindpasswd="
+              + SECRET_REPLACEMENT
+              + "\",local all all trust";
+      assertEquals(
+          password, expected, LdapBindPasswdHbaFormat.redactAllValues(hba, SECRET_REPLACEMENT));
+      String in = Json.newObject().put("ysql_hba_conf_csv", hba).put("other", "keep").toString();
+      String out = LdapBindPasswdHbaFormat.redactAllValues(in, SECRET_REPLACEMENT);
+      assertEquals(password, expected, Json.parse(out).get("ysql_hba_conf_csv").asText());
+      assertEquals("keep", Json.parse(out).get("other").asText());
+    }
+  }
+
+  @Test
+  public void redactAllValuesRedactsPartlyQuotedPasswordEndingString() {
+    assertEquals(
+        "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + SECRET_REPLACEMENT,
+        LdapBindPasswdHbaFormat.redactAllValues(
+            "host all all 0.0.0.0/0 ldap ldapbindpasswd=\"pa\"ss", SECRET_REPLACEMENT));
+  }
+
+  @Test
+  public void redactAllValuesKeepsEmptyValue() {
+    String in = "host all all 0.0.0.0/0 ldap ldapbindpasswd= ldapserver=x,local all all trust";
+    assertEquals(in, LdapBindPasswdHbaFormat.redactAllValues(in, SECRET_REPLACEMENT));
+  }
+
   @Test
   public void encodeNullDecodedReturnsEmpty() {
     assertEquals("", LdapBindPasswdHbaFormat.encode(QuoteStyle.UNQUOTED, null));

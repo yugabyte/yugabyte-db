@@ -211,6 +211,32 @@ public class RedactingServiceTest {
   }
 
   @Test
+  public void testLogsRedactionRedactsPartlyQuotedLdapBindPasswdInRequestBody() {
+    String recordStart =
+        "local all yugabyte trust,\"host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com"
+            + " ldapbindpasswd=";
+    String nextRecord = "\",host all all ::/0 md5";
+    ObjectNode body = Json.newObject();
+    body.putObject("specificGFlags")
+        .putObject("perProcessFlags")
+        .putObject("value")
+        .putObject("TSERVER")
+        .put("ysql_hba_conf_csv", recordStart + "\"\"partOne\"\"partTwo" + nextRecord)
+        .put("webserver_port", "9000");
+
+    JsonNode redacted =
+        RedactingService.filterSecretFields(body, RedactionTarget.LOGS, null, null, false);
+
+    assertFalse(redacted.has("_redactionParseError"));
+    assertFalse(redacted.toString(), redacted.toString().contains("partOne"));
+    assertFalse(redacted.toString(), redacted.toString().contains("partTwo"));
+    JsonNode tserver = redacted.at("/specificGFlags/perProcessFlags/value/TSERVER");
+    assertEquals(
+        recordStart + SECRET_REPLACEMENT + nextRecord, tserver.get("ysql_hba_conf_csv").asText());
+    assertEquals("9000", tserver.get("webserver_port").asText());
+  }
+
+  @Test
   public void testServerConfRedactsUnquotedLdapBindPasswdEndingALine() {
     String serverConf =
         "--ysql_hba_conf_csv=host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com"

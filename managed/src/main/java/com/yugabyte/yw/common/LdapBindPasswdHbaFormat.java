@@ -36,18 +36,107 @@ public final class LdapBindPasswdHbaFormat {
     while ((idx = input.indexOf(LDAPBINDPASSWD_KEY, last)) >= 0) {
       out.append(input, last, idx);
       int eq = idx + LDAPBINDPASSWD_KEY.length();
-      ParsedValue parsed = tryParseValue(input, eq);
-      if (parsed == null) {
-        out.append(LDAPBINDPASSWD_KEY);
-        last = eq;
-        continue;
-      }
       out.append(LDAPBINDPASSWD_KEY);
-      out.append(encode(parsed.style(), replacement));
-      last = parsed.endExclusive();
+      ParsedValue parsed = tryParseValue(input, eq);
+      if (parsed != null && endsValue(input, parsed.endExclusive())) {
+        out.append(encode(parsed.style(), replacement));
+        last = parsed.endExclusive();
+      } else if (endsValue(input, eq)) {
+        last = eq;
+      } else {
+        // A value quoted only in part. GFlagsUtil.checkLdapBindPasswdQuoting refuses one, but the
+        // refused request is still logged, and a universe may store one from before that check.
+        out.append(replacement);
+        last = partlyQuotedValueEnd(input, eq);
+      }
     }
     out.append(input, last, input.length());
     return out.toString();
+  }
+
+  /**
+   * True if a value ending at s[i] ends there: at the end, whitespace, a comma, a JSON delimiter,
+   * or a quote that closes the CSV field or JSON string. A doubled quote is part of the value.
+   */
+  private static boolean endsValue(String s, int i) {
+    if (i >= s.length()) {
+      return true;
+    }
+    char c = s.charAt(i);
+    if (Character.isWhitespace(c)
+        || c == ','
+        || c == '}'
+        || c == ']'
+        || isJsonEscapedWhitespace(s, i)) {
+      return true;
+    }
+    int quoteLength = quoteLengthAt(s, i);
+    if (quoteLength == 0 || isDoubledQuote(s, i, quoteLength)) {
+      return false;
+    }
+    int after = i + quoteLength;
+    return after >= s.length()
+        || Character.isWhitespace(s.charAt(after))
+        || isFieldEndAfterQuote(s, after);
+  }
+
+  /**
+   * End of a value quoted only in part: the first quote, at any escape depth, that is not doubled
+   * and closes the CSV field or JSON string holding the record, or a line break. Postgres can't
+   * parse such a value, so everything up to the end of its field may be password.
+   */
+  private static int partlyQuotedValueEnd(String s, int i) {
+    while (i < s.length()) {
+      char c = s.charAt(i);
+      if (c == '\n' || c == '\r') {
+        return i;
+      }
+      int quoteLength = quoteLengthAt(s, i);
+      if (quoteLength == 0) {
+        i++;
+      } else if (isDoubledQuote(s, i, quoteLength)) {
+        i += 2 * quoteLength;
+      } else if (isFieldEndAfterQuote(s, i + quoteLength)) {
+        return i;
+      } else {
+        i += quoteLength;
+      }
+    }
+    return s.length();
+  }
+
+  /** Length of the quote at s[i], with the backslashes escaping it, or 0 if none starts there. */
+  private static int quoteLengthAt(String s, int i) {
+    int j = i;
+    while (j < s.length() && s.charAt(j) == '\\') {
+      j++;
+    }
+    return j < s.length() && s.charAt(j) == '"' ? j - i + 1 : 0;
+  }
+
+  private static boolean isDoubledQuote(String s, int i, int quoteLength) {
+    return s.startsWith(s.substring(i, i + quoteLength), i + quoteLength);
+  }
+
+  private static boolean isFieldEndAfterQuote(String s, int i) {
+    if (i >= s.length()) {
+      return true;
+    }
+    char c = s.charAt(i);
+    return c == ','
+        || c == '}'
+        || c == ']'
+        || c == '"'
+        || c == ':'
+        || c == '\n'
+        || c == '\r'
+        || isJsonEscapedWhitespace(s, i);
+  }
+
+  private static boolean isJsonEscapedWhitespace(String s, int i) {
+    return s.charAt(i) == '\\'
+        && i + 1 < s.length()
+        && (s.charAt(i + 1) == 'n' || s.charAt(i + 1) == 'r' || s.charAt(i + 1) == 't');
   }
 
   /** Encodes a decoded password for output using the given hba quoting style. */
@@ -236,8 +325,8 @@ public final class LdapBindPasswdHbaFormat {
   /**
    * Postgres ends an unquoted option value at whitespace or a comma, and an unquoted password with
    * either is not valid HBA. A quote, raw or backslash-escaped, closes the CSV field or JSON string
-   * holding the record. GFlagsUtil.checkLdapBindPasswdQuoting rejects a value quoted only in part,
-   * which this would cut at its first quote.
+   * holding the record. A value quoted only in part continues past that quote; redactAllValues
+   * finds that it doesn't end there and redacts it to the end of its field.
    */
   private static int unquotedValueEnd(String s, int i) {
     while (i < s.length()) {
