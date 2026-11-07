@@ -232,6 +232,12 @@ ash::WaitStateInfoPtr InitMinRunningHybridTimeWaitState(TabletIdView tablet_id) 
   return bg_wait_state;
 }
 
+// Whether the transaction is committed at or before resolve_at, but its intents are not yet
+// fully written to regular DB.
+bool IsApplyPending(const RunningTransaction& txn, HybridTime resolve_at) {
+  return txn.ProcessingApply() && txn.local_commit_time() <= resolve_at;
+}
+
 } // namespace
 
 using DeadlockInfo = std::pair<Status, CoarseTimePoint>;
@@ -1033,6 +1039,10 @@ class TransactionParticipant::Impl
                             << " with commit_time: " << data.commit_ht.ToUint64();
         CHECK(transactions_.modify(lock_and_iterator.iterator, [&data](auto& txn) {
           txn->SetLocalCommitData(data.commit_ht, data.aborted);
+          // Keeps ResolveIntents waiting until intents are written to regular DB.
+          if (data.apply_to_storages.Any()) {
+            txn->SetProcessingApply(true);
+          }
         }));
         LOG_IF_WITH_PREFIX(DFATAL, data.log_ht < last_safe_time_)
             << "Apply transaction before last safe time " << data.transaction_id << ": "
@@ -1079,6 +1089,7 @@ class TransactionParticipant::Impl
     if (lock_and_iterator.found()) {
       lock_and_iterator.transaction().SetApplyOpId(data.op_id);
       if (!apply_state.active()) {
+        lock_and_iterator.transaction().SetProcessingApply(false);
         RemoveUnlocked(
             lock_and_iterator.iterator, RemoveReason::kApplied, &min_running_notifier);
       } else if (started_) {
@@ -1416,19 +1427,26 @@ class TransactionParticipant::Impl
           for (const auto& transaction : transactions_) {
             if (!transaction->local_commit_time().is_valid()) {
               resolver.Add(transaction->metadata().status_tablet, transaction->id());
+            } else if (IsApplyPending(*transaction, resolve_at)) {
+              committed_ids.push_back(transaction->id());
             }
           }
         } else {
           for (const auto& id : recheck_ids) {
             auto it = transactions_.find(id);
-            if (it == transactions_.end() || (**it).local_commit_time().is_valid()) {
+            if (it == transactions_.end()) {
               continue;
             }
-            resolver.Add((**it).metadata().status_tablet, id);
+            if (!(**it).local_commit_time().is_valid()) {
+              resolver.Add((**it).metadata().status_tablet, id);
+            } else if (IsApplyPending(**it, resolve_at)) {
+              committed_ids.push_back(id);
+            }
           }
           auto filter = [this](const TransactionId& id) {
             auto it = transactions_.find(id);
-            return it == transactions_.end() || (**it).local_commit_time().is_valid();
+            return it == transactions_.end() ||
+                   ((**it).local_commit_time().is_valid() && !(**it).ProcessingApply());
           };
           committed_ids.erase(std::remove_if(committed_ids.begin(), committed_ids.end(), filter),
                               committed_ids.end());
