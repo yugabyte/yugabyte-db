@@ -181,11 +181,12 @@ public class MiniYugabytedCluster implements AutoCloseable {
     }
 
     /**
-     * Runs `yugabyted stop` and `yugabyted destroy` for one node
+     * Runs `yugabyted stop` and `yugabyted destroy` for one node, and in between checks the node's
+     * logs for errors such as sanitizer reports.  Returns the first error, or null if none.
      */
-    private void stopDestroyYugabytedInstance(String baseDir) {
+    private String stopDestroyYugabytedInstance(String baseDir) {
         if (baseDir == null || baseDir.isEmpty()) {
-            return;
+            return null;
         }
         try {
             YugabytedCommands.stop(baseDir);
@@ -204,16 +205,37 @@ public class MiniYugabytedCluster implements AutoCloseable {
             LOG.warn("Error while waiting for yugabyted node ({}) to stop {}",
                      baseDir, e.getMessage());
         }
+        String error = null;
+        try {
+            // yugabyted sends the output of the master, tserver and postgres to files in
+            // <base_dir>/logs, which no log listener sees.
+            ExternalDaemonLogErrorListener.checkLogFiles(
+                Paths.get(baseDir.replaceFirst("^~", System.getProperty("user.home")), "logs"),
+                "yugabyted node " + baseDir);
+        } catch (AssertionError e) {
+            LOG.error(e.getMessage());
+            error = e.getMessage();
+        } catch (IOException e) {
+            LOG.warn("Could not check the logs of yugabyted node {}: {}", baseDir, e.getMessage());
+        }
         try {
             YugabytedCommands.destroy(baseDir);
         } catch (Exception e) {
             LOG.warn("yugabyted destroy failed for base_dir {}: {}", baseDir, e.getMessage());
         }
+        return error;
     }
 
     public void shutdown() throws Exception {
+        List<String> errors = new ArrayList<>();
         for (MiniYBDaemon daemon : yugabytedProcesses.values()) {
-            stopDestroyYugabytedInstance(daemon.getDataDirPath());
+            String error = stopDestroyYugabytedInstance(daemon.getDataDirPath());
+            if (error != null) {
+                errors.add(error);
+            }
+        }
+        if (!errors.isEmpty()) {
+            throw new AssertionError(String.join("\n", errors));
         }
     }
 

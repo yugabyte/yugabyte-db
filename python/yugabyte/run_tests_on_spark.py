@@ -699,8 +699,11 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
                             csi_result = 'skipped'
                         if 'fail_tags' in result_summary:
                             csi_tags = result_summary['fail_tags']
+                        if 'sanitizer_reports' in result_summary:
+                            csi_tags = csi_tags + ['sanitizer_report']
 
-                if csi_result in ['failed', 'skipped']:
+                # Keep the log of a passing test that has sanitizer reports; nothing else keeps it.
+                if csi_result in ['failed', 'skipped'] or 'sanitizer_report' in csi_tags:
                     csi_report.upload_log(csi_id, end_time_sec, artifact_paths)
             else:
                 logging.warning("Artifact list does not exist: '%s'", artifact_list_path)
