@@ -86,21 +86,16 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CloudVolumeEncryption;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.YCQLAuditConfig;
 import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.OCIRegionCloudInfo;
-import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
-import com.yugabyte.yw.models.helpers.telemetry.GCPCloudMonitoringConfig;
-import com.yugabyte.yw.models.helpers.telemetry.S3Config;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -163,8 +158,6 @@ public class NodeManager extends DevopsBase {
   @Inject NodeAgentPoller nodeAgentPoller;
 
   @Inject OtelCollectorConfigGenerator otelCollectorConfigGenerator;
-
-  @Inject TelemetryProviderService telemetryProviderService;
 
   @Inject LocalNodeManager localNodeManager;
 
@@ -2932,54 +2925,8 @@ public class NodeManager extends DevopsBase {
                   NodeAgent.maybeGetByIp(nodeDetails.cloudInfo.private_ip).orElse(null))
               .toAbsolutePath()
               .toString());
-
-      for (UUID exporterUUID : OtelCollectorUtil.getActiveExporterUuids(telemetryConfig)) {
-        addOtelColArgsForExporters(
-            commandArgs, exporterUUID, taskParams.getUniverseUUID(), taskParams.nodeUuid);
-      }
-    }
-  }
-
-  private void addAwsCredentialsToCommandArgs(
-      String accessKey, String secretKey, List<String> commandArgs) {
-    if (StringUtils.isNotEmpty(accessKey)) {
-      commandArgs.add("--otel_col_aws_access_key");
-      commandArgs.add(accessKey);
-    }
-    if (StringUtils.isNotEmpty(secretKey)) {
-      commandArgs.add("--otel_col_aws_secret_key");
-      commandArgs.add(secretKey);
-    }
-  }
-
-  private void addOtelColArgsForExporters(
-      List<String> commandArgs, UUID exporterUUID, UUID universeUUID, UUID nodeUUID) {
-    TelemetryProvider telemetryProvider = telemetryProviderService.get(exporterUUID);
-    switch (telemetryProvider.getConfig().getType()) {
-      case AWS_CLOUDWATCH -> {
-        AWSCloudWatchConfig awsCloudWatchConfig =
-            (AWSCloudWatchConfig) telemetryProvider.getConfig();
-        addAwsCredentialsToCommandArgs(
-            awsCloudWatchConfig.getAccessKey(), awsCloudWatchConfig.getSecretKey(), commandArgs);
-      }
-      case S3 -> {
-        S3Config s3Config = (S3Config) telemetryProvider.getConfig();
-        addAwsCredentialsToCommandArgs(
-            s3Config.getAccessKey(), s3Config.getSecretKey(), commandArgs);
-      }
-      case GCP_CLOUD_MONITORING -> {
-        GCPCloudMonitoringConfig gcpCloudMonitoringConfig =
-            (GCPCloudMonitoringConfig) telemetryProvider.getConfig();
-        if (gcpCloudMonitoringConfig.getGcmCredentials() != null) {
-          Path path =
-              fileHelperService.createTempFile(
-                  "otel_collector_gcp_creds_" + universeUUID + "_" + nodeUUID, ".json");
-          String filePath = path.toAbsolutePath().toString();
-          FileUtils.writeJsonFile(filePath, gcpCloudMonitoringConfig.getGcmCredentials());
-          commandArgs.add("--otel_col_gcp_creds_file");
-          commandArgs.add(filePath);
-        }
-      }
+      // No exporter credentials here: node-agent installs the collector and gets them over RPC,
+      // and this command line is logged.
     }
   }
 

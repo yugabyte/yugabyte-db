@@ -2,7 +2,7 @@
 exporters:
   otlphttp/metrics_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$DynatraceExporter
     endpoint: https://test.live.dynatrace.com/api/v2/otlp
-    headers: {Authorization: Api-Token dynatrace-api-token}
+    headers: {Authorization: 'Api-Token ${env:YB_OTEL_00000000_0000_0000_0000_000000000000_DT_API_TOKEN}'}
     retry_on_failure: {enabled: true, initial_interval: 30s, max_elapsed_time: 60m, max_interval: 10m}
 extensions:
   file_storage/queue: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$StorageExtension

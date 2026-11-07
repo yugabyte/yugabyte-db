@@ -649,9 +649,8 @@ public class NodeAgentRpcPayload {
       installOtelCollectorInputBuilder.setOtelColConfigFile(
           customTmpDirectory + "/" + Paths.get(otelCollectorConfigFile).getFileName().toString());
 
-      // Same helper the legacy NodeManager path uses, so every export section contributes its
-      // credential-bearing exporters rather than only audit and query logs.
-      for (UUID exporterUUID : OtelCollectorUtil.getActiveExporterUuids(telemetryConfig)) {
+      // Every exporter the config renders needs its credentials, or its ${env:...} is unset.
+      for (UUID exporterUUID : OtelCollectorUtil.getVmConfigExporterUuids(telemetryConfig)) {
         installOtelCollectorInputBuilder =
             setupInstallOtelCollectorBitsEnv(
                 installOtelCollectorInputBuilder,
@@ -755,6 +754,8 @@ public class NodeAgentRpcPayload {
       UUID universeUUID,
       UUID nodeUUID) {
     TelemetryProvider telemetryProvider = telemetryProviderService.get(exporterUUID);
+    installOtelCollectorInputBuilder.putAllOtelColSecretEnv(
+        OtelCollectorConfigGenerator.getCredentialEnv(telemetryProvider));
     switch (telemetryProvider.getConfig().getType()) {
       case AWS_CLOUDWATCH -> {
         log.info("Setting AWS credentials in builder for exporter UUID: {}", exporterUUID);

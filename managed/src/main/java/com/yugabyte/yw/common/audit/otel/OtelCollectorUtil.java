@@ -285,6 +285,22 @@ public class OtelCollectorUtil {
   }
 
   /**
+   * Exporters that the VM collector config renders: the active ones, plus every listed audit
+   * exporter, because the VM config renders those even while audit export is paused.
+   */
+  public static Set<UUID> getVmConfigExporterUuids(TelemetryConfig tc) {
+    Set<UUID> uuids = getActiveExporterUuids(tc);
+    if (tc != null
+        && tc.getAuditLogConfig() != null
+        && tc.getAuditLogConfig().getUniverseLogsExporterConfig() != null) {
+      tc.getAuditLogConfig()
+          .getUniverseLogsExporterConfig()
+          .forEach(c -> uuids.add(c.getExporterUuid()));
+    }
+    return uuids;
+  }
+
+  /**
    * The universe's current full telemetry config. The ExportTelemetryConfig table is the source of
    * truth, but audit/query/metrics are also mirrored into the primary cluster userIntent by paths
    * that do not update the table (e.g. edit universe), so the table row can lag userIntent for

@@ -57,9 +57,11 @@ import com.yugabyte.yw.models.helpers.telemetry.OTLPConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
 import com.yugabyte.yw.models.helpers.telemetry.S3Config;
 import com.yugabyte.yw.models.helpers.telemetry.SplunkConfig;
+import com.yugabyte.yw.models.helpers.telemetry.TelemetryProviderConfig;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.StringWriter;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -2992,6 +2994,8 @@ public class OtelCollectorConfigGenerator {
     Map<String, OtelCollectorConfigFormat.Exporter> exporters = collectorConfig.getExporters();
     Map<String, OtelCollectorConfigFormat.Extension> extensions = collectorConfig.getExtensions();
     boolean setExtension = false;
+    UUID providerUuid = telemetryProvider.getUuid();
+    Map<String, String> credentials = credentialFields(telemetryProvider.getConfig());
     switch (telemetryProvider.getConfig().getType()) {
       case DATA_DOG:
         DataDogConfig dataDogConfig = (DataDogConfig) telemetryProvider.getConfig();
@@ -2999,7 +3003,8 @@ public class OtelCollectorConfigGenerator {
             new OtelCollectorConfigFormat.DataDogExporter();
         OtelCollectorConfigFormat.DataDogApiConfig apiConfig =
             new OtelCollectorConfigFormat.DataDogApiConfig();
-        apiConfig.setKey(dataDogConfig.getApiKey());
+        apiConfig.setKey(
+            credentialRef(providerUuid, CRED_DD_API_KEY, credentials.get(CRED_DD_API_KEY)));
         apiConfig.setSite(dataDogConfig.getSite());
         dataDogExporter.setApi(apiConfig);
         exporterName = EXPORTER_PREFIX_DATADOG + exportTypeAndUUIDString;
@@ -3023,7 +3028,11 @@ public class OtelCollectorConfigGenerator {
 
         // Set the Authorization header with the API token
         Map<String, String> dynatraceHeaders = new HashMap<>();
-        dynatraceHeaders.put("Authorization", "Api-Token " + dynatraceConfig.getApiToken());
+        dynatraceHeaders.put(
+            "Authorization",
+            "Api-Token "
+                + credentialRef(
+                    providerUuid, CRED_DT_API_TOKEN, credentials.get(CRED_DT_API_TOKEN)));
         dynatraceExporter.setHeaders(dynatraceHeaders);
 
         exporterName = EXPORTER_PREFIX_DYNATRACE + exportTypeAndUUIDString;
@@ -3034,7 +3043,8 @@ public class OtelCollectorConfigGenerator {
         SplunkConfig splunkConfig = (SplunkConfig) telemetryProvider.getConfig();
         OtelCollectorConfigFormat.SplunkExporter splunkExporter =
             new OtelCollectorConfigFormat.SplunkExporter();
-        splunkExporter.setToken(splunkConfig.getToken());
+        splunkExporter.setToken(
+            credentialRef(providerUuid, CRED_SPLUNK_TOKEN, credentials.get(CRED_SPLUNK_TOKEN)));
         splunkExporter.setEndpoint(splunkConfig.getEndpoint());
         splunkExporter.setSource(splunkConfig.getSource());
         splunkExporter.setSourcetype(splunkConfig.getSourceType());
@@ -3143,14 +3153,11 @@ public class OtelCollectorConfigGenerator {
           setHeaders = true;
         }
         if (lokiConfig.getAuthType() == AuthType.BasicAuth) {
-          String credentials =
-              Base64.getEncoder()
-                  .encodeToString(
-                      (lokiConfig.getBasicAuth().getUsername()
-                              + ":"
-                              + lokiConfig.getBasicAuth().getPassword())
-                          .getBytes());
-          headers.put("Authorization", "Basic " + credentials);
+          headers.put(
+              "Authorization",
+              "Basic "
+                  + credentialRef(
+                      providerUuid, CRED_LOKI_BASIC_AUTH, credentials.get(CRED_LOKI_BASIC_AUTH)));
           setHeaders = true;
         }
         if (setHeaders) {
@@ -3167,7 +3174,15 @@ public class OtelCollectorConfigGenerator {
         otlpExporter.setEndpoint(otlpConfig.getEndpoint());
         otlpExporter.setTimeout(otlpConfig.getTimeoutSeconds() + "s");
         otlpExporter.setCompression(otlpConfig.getCompression().name());
-        otlpExporter.setHeaders(otlpConfig.getHeaders());
+        if (otlpConfig.getHeaders() != null) {
+          Map<String, String> otlpHeaders = new LinkedHashMap<>();
+          otlpHeaderFields(otlpConfig)
+              .forEach(
+                  (header, field) ->
+                      otlpHeaders.put(
+                          header, credentialRef(providerUuid, field, credentials.get(field))));
+          otlpExporter.setHeaders(otlpHeaders);
+        }
 
         OtelCollectorConfigFormat.TlsSettings otlpTLSSettings =
             new OtelCollectorConfigFormat.TlsSettings();
@@ -3190,7 +3205,9 @@ public class OtelCollectorConfigGenerator {
             OtelCollectorConfigFormat.ClientAuth clientAuth =
                 new OtelCollectorConfigFormat.ClientAuth();
             clientAuth.setUsername(otlpConfig.getBasicAuth().getUsername());
-            clientAuth.setPassword(otlpConfig.getBasicAuth().getPassword());
+            clientAuth.setPassword(
+                credentialRef(
+                    providerUuid, CRED_OTLP_PASSWORD, credentials.get(CRED_OTLP_PASSWORD)));
             basicAuthExt.setClient_auth(clientAuth);
 
             authExtensionName = "basicauth/" + exportTypeAndUUIDString;
@@ -3207,7 +3224,9 @@ public class OtelCollectorConfigGenerator {
           case BearerToken:
             OtelCollectorConfigFormat.BearerTokenAuthExtension bearerAuthExt =
                 new OtelCollectorConfigFormat.BearerTokenAuthExtension();
-            bearerAuthExt.setToken(otlpConfig.getBearerToken().getToken());
+            bearerAuthExt.setToken(
+                credentialRef(
+                    providerUuid, CRED_OTLP_BEARER_TOKEN, credentials.get(CRED_OTLP_BEARER_TOKEN)));
 
             authExtensionName = "bearertokenauth/" + exportTypeAndUUIDString;
             extensions.put(authExtensionName, bearerAuthExt);
@@ -3399,6 +3418,96 @@ public class OtelCollectorConfigGenerator {
         }
         break;
     }
+    getCredentialEnv(telemetryProvider)
+        .forEach(
+            (name, value) ->
+                secretEnv.add(
+                    ImmutableMap.of(
+                        "envName",
+                        name,
+                        "envValue",
+                        Base64.getEncoder()
+                            .encodeToString(value.getBytes(StandardCharsets.UTF_8)))));
+  }
+
+  private static final String CRED_DD_API_KEY = "DD_API_KEY";
+  private static final String CRED_SPLUNK_TOKEN = "SPLUNK_TOKEN";
+  private static final String CRED_DT_API_TOKEN = "DT_API_TOKEN";
+  private static final String CRED_LOKI_BASIC_AUTH = "LOKI_BASIC_AUTH";
+  private static final String CRED_OTLP_PASSWORD = "OTLP_PASSWORD";
+  private static final String CRED_OTLP_BEARER_TOKEN = "OTLP_BEARER_TOKEN";
+  private static final String CRED_OTLP_HEADER_PREFIX = "OTLP_HEADER_";
+
+  /**
+   * Credentials the exporter config of this provider references, keyed by env var name. They reach
+   * the collector out-of-band: a K8s Secret, or an env file on VM nodes.
+   */
+  public static Map<String, String> getCredentialEnv(TelemetryProvider telemetryProvider) {
+    Map<String, String> env = new LinkedHashMap<>();
+    credentialFields(telemetryProvider.getConfig())
+        .forEach(
+            (field, value) -> {
+              if (StringUtils.isNotEmpty(value)) {
+                env.put(credentialEnvName(telemetryProvider.getUuid(), field), value);
+              }
+            });
+    return env;
+  }
+
+  /**
+   * Credential values by field. Each is a {@link TelemetryProviderConfig#secretValues()} entry, so
+   * the base64 copy in a K8s Secret is redacted by value too.
+   */
+  private static Map<String, String> credentialFields(TelemetryProviderConfig config) {
+    Map<String, String> fields = new LinkedHashMap<>();
+    switch (config.getType()) {
+      case DATA_DOG -> fields.put(CRED_DD_API_KEY, ((DataDogConfig) config).getApiKey());
+      case SPLUNK -> fields.put(CRED_SPLUNK_TOKEN, ((SplunkConfig) config).getToken());
+      case DYNATRACE -> fields.put(CRED_DT_API_TOKEN, ((DynatraceConfig) config).getApiToken());
+      case LOKI -> {
+        LokiConfig lokiConfig = (LokiConfig) config;
+        if (lokiConfig.getAuthType() == AuthType.BasicAuth) {
+          fields.put(CRED_LOKI_BASIC_AUTH, lokiConfig.basicAuthCredential());
+        }
+      }
+      case OTLP -> {
+        OTLPConfig otlpConfig = (OTLPConfig) config;
+        if (otlpConfig.getAuthType() == AuthType.BasicAuth) {
+          fields.put(CRED_OTLP_PASSWORD, otlpConfig.getBasicAuth().getPassword());
+        } else if (otlpConfig.getAuthType() == AuthType.BearerToken) {
+          fields.put(CRED_OTLP_BEARER_TOKEN, otlpConfig.getBearerToken().getToken());
+        }
+        // Header names are user-chosen, so every value is treated as a credential.
+        otlpHeaderFields(otlpConfig)
+            .forEach((header, field) -> fields.put(field, otlpConfig.getHeaders().get(header)));
+      }
+      default -> {}
+    }
+    return fields;
+  }
+
+  /** Header names map to indexed fields, as a header name need not be a valid env var name. */
+  private static Map<String, String> otlpHeaderFields(OTLPConfig otlpConfig) {
+    Map<String, String> fields = new LinkedHashMap<>();
+    if (otlpConfig.getHeaders() != null) {
+      List<String> names = new ArrayList<>(otlpConfig.getHeaders().keySet());
+      Collections.sort(names);
+      for (int i = 0; i < names.size(); i++) {
+        fields.put(names.get(i), CRED_OTLP_HEADER_PREFIX + i);
+      }
+    }
+    return fields;
+  }
+
+  private static String credentialEnvName(UUID providerUuid, String field) {
+    return "YB_OTEL_" + providerUuid.toString().replace('-', '_').toUpperCase() + "_" + field;
+  }
+
+  /** The config references a credential by env var, so its value never lands in the config. */
+  private static String credentialRef(UUID providerUuid, String field, String value) {
+    return StringUtils.isEmpty(value)
+        ? value
+        : "${env:" + credentialEnvName(providerUuid, field) + "}";
   }
 
   private void addCommonTransformProcessor(OtelCollectorConfigFormat collectorConfig) {

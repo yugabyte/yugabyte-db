@@ -88,6 +88,8 @@ public class ShellProcessContext {
       redactedCommand.replaceAll(
           entry -> getRedactedVals().containsKey(entry) ? getRedactedVals().get(entry) : entry);
     }
+    // Catches a telemetry credential however it got onto the command line.
+    redactedCommand.replaceAll(RedactingService::redactTelemetryCredentials);
     return redactedCommand;
   }
 }
