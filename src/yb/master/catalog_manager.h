@@ -2978,6 +2978,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const PlacementInfoPB& placement_info,
       const TSDescriptorVector& ts_descs) const;
 
+  // Live, non-blacklisted tservers of the live placement in the zones of 'live_placement'.
+  // Read-replica tservers in those zones are left out: they host no leaders. A placement without
+  // a uuid, such as a table-level one, uses the cluster's live placement uuid.
+  Result<TSDescriptorVector> FindLiveTServersForLivePlacement(
+      const PlacementInfoPB& live_placement) const;
+
   // Using the TServer info in 'ts_descs', return the TServers that match 'pplacement_block'.
   // Returns error if there aren't enough TServers to fulfill the min_num_replicas requirement
   // outlined in 'placement_block'.
@@ -3019,6 +3025,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Result<std::shared_ptr<TableToTablespaceIdMap>> GetYsqlTableToTablespaceMap(
       const TablespaceIdToReplicationInfoMap& tablespace_info) EXCLUDES(mutex_);
 
+  // Live, non-blacklisted tservers of the cluster with this placement uuid. For the live
+  // placement, tservers without a placement uuid are included.
+  TSDescriptorVector GetLiveTServersForPlacement(const PlacementId& placement_id) const;
   size_t GetNumLiveTServersForPlacement(const PlacementId& placement_id);
 
   TSDescriptorVector GetAllLiveNotBlacklistedTServers() const override;

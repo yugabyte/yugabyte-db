@@ -390,8 +390,18 @@ void CatalogManagerBgTasks::ScaleUpTransactionStatusTablesIfNeeded(const LeaderE
   }
   last_transaction_status_check_time_ = now;
 
-  size_t num_live_tservers = master_->ts_manager()->NumLiveDescriptors();
-  if (last_live_tservers_ == num_live_tservers) {
+  // Count the tservers the global table was sized for at creation: live, non-blacklisted tservers
+  // of the live placement. Read-replica tservers host no transaction status leaders.
+  auto live_placement_uuid = catalog_manager_->placement_uuid();
+  if (!live_placement_uuid.ok()) {
+    WARN_NOT_OK(live_placement_uuid.status(), "Transaction status table scaleup check failed");
+    return;
+  }
+  size_t num_live_tservers =
+      catalog_manager_->GetNumLiveTServersForPlacement(*live_placement_uuid);
+  // Zero tservers leaves nothing to size for, and AddTabletsToTransactionStatusTableIfNeeded
+  // divides by the count.
+  if (num_live_tservers == 0 || last_live_tservers_ == num_live_tservers) {
     return;  // No change in number of live tservers, nothing to do
   }
 
@@ -449,8 +459,8 @@ Status CatalogManagerBgTasks::ScaleUpLocalTransactionStatusTablesIfNeeded(
   // If not, add more tablets to the table.
   for (const auto& [table, repl_info] : transaction_tables) {
 
-    auto live_tservers_result = catalog_manager_->FindTServersForPlacementInfo(
-        repl_info.live_replicas(), catalog_manager_->GetAllLiveNotBlacklistedTServers());
+    auto live_tservers_result =
+        catalog_manager_->FindLiveTServersForLivePlacement(repl_info.live_replicas());
     if (!live_tservers_result.ok()) {
       WARN_NOT_OK(live_tservers_result, Format(
           "Failed to find live tservers for placement info - skipping table $0 ($1)",

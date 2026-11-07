@@ -4578,12 +4578,17 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceInfo& ns,
   return Status::OK();
 }
 
-size_t CatalogManager::GetNumLiveTServersForPlacement(const PlacementId& placement_id) {
+TSDescriptorVector CatalogManager::GetLiveTServersForPlacement(
+    const PlacementId& placement_id) const {
   auto blacklist = BlacklistSetFromPB();
   TSDescriptorVector ts_descs;
   master_->ts_manager()->GetAllLiveDescriptorsInCluster(
       &ts_descs, placement_id, (blacklist.ok() ? *blacklist : BlacklistSet()));
-  return ts_descs.size();
+  return ts_descs;
+}
+
+size_t CatalogManager::GetNumLiveTServersForPlacement(const PlacementId& placement_id) {
+  return GetLiveTServersForPlacement(placement_id).size();
 }
 
 TSDescriptorVector CatalogManager::GetAllLiveNotBlacklistedTServers() const {
@@ -5782,8 +5787,8 @@ Status CatalogManager::CreateTransactionStatusTableInternal(
     if (req.has_tablespace_id() || req.has_replication_info()) {
       const ReplicationInfoPB& table_replication_info =
           VERIFY_RESULT(GetTableReplicationInfo(req.replication_info(), req.tablespace_id()));
-      auto live_tservers = VERIFY_RESULT(FindTServersForPlacementInfo(
-          table_replication_info.live_replicas(), GetAllLiveNotBlacklistedTServers()));
+      auto live_tservers = VERIFY_RESULT(
+          FindLiveTServersForLivePlacement(table_replication_info.live_replicas()));
       num_tablets = narrow_cast<int>(
           live_tservers.size() * FLAGS_transaction_table_num_tablets_per_tserver);
     } else {
@@ -13200,6 +13205,16 @@ Result<vector<shared_ptr<TSDescriptor>>> CatalogManager::FindTServersForPlacemen
   }
 
   return all_allowed_ts;
+}
+
+Result<TSDescriptorVector> CatalogManager::FindLiveTServersForLivePlacement(
+    const PlacementInfoPB& live_placement) const {
+  auto live_placement_uuid = live_placement.placement_uuid();
+  if (live_placement_uuid.empty()) {
+    live_placement_uuid = VERIFY_RESULT(placement_uuid());
+  }
+  return FindTServersForPlacementInfo(
+      live_placement, GetLiveTServersForPlacement(live_placement_uuid));
 }
 
 Result<vector<shared_ptr<TSDescriptor>>> CatalogManager::FindTServersForPlacementBlock(
