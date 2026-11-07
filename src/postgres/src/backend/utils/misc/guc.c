@@ -3698,6 +3698,34 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_tcmalloc_release_after_statement", PGC_SUSET, RESOURCES_MEM,
+			gettext_noop("After each statement, return the free TCMalloc page "
+						 "heap memory of the backend to the operating system."),
+			gettext_noop("Free pages in partially used hugepages are kept only "
+						 "if yb_tcmalloc_skip_subrelease_short_interval or "
+						 "yb_tcmalloc_skip_subrelease_long_interval attributes "
+						 "them to recent demand."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_tcmalloc_release_after_statement,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_tcmalloc_drain_cpu_caches_after_statement", PGC_SUSET, RESOURCES_MEM,
+			gettext_noop("After each statement, return the objects cached in "
+						 "the TCMalloc per-CPU caches of the backend to the "
+						 "central free lists."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_tcmalloc_drain_cpu_caches_after_statement,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_fkey_batched_docdb_lookup_when_types_mismatch", PGC_BACKEND, DEVELOPER_OPTIONS,
 			gettext_noop("Enable batched DocDB lookup for foreign key constraint check "
 						 "when types mismatch."),
@@ -6522,11 +6550,45 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"yb_tcmalloc_skip_subrelease_short_interval", PGC_SUSET, RESOURCES_MEM,
+			gettext_noop("How far back the release after each statement looks "
+						 "for short-term peaks in demand when it decides which "
+						 "free pages in partially used hugepages to keep "
+						 "instead of returning them to the operating system."),
+			gettext_noop("0 disables this lookback. Other TCMalloc releases "
+						 "keep TCMalloc's own lookback."),
+			GUC_UNIT_MS | GUC_NOT_IN_SAMPLE
+		},
+		&yb_tcmalloc_skip_subrelease_short_interval,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_tcmalloc_skip_subrelease_long_interval", PGC_SUSET, RESOURCES_MEM,
+			gettext_noop("How far back the release after each statement looks "
+						 "for the long-term demand trend when it decides which "
+						 "free pages in partially used hugepages to keep "
+						 "instead of returning them to the operating system."),
+			gettext_noop("0 disables this lookback. Other TCMalloc releases "
+						 "keep TCMalloc's own lookback."),
+			GUC_UNIT_MS | GUC_NOT_IN_SAMPLE
+		},
+		&yb_tcmalloc_skip_subrelease_long_interval,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_startup_free_memory_release_threshold", PGC_SIGHUP, RESOURCES_MEM,
 			gettext_noop("When a backend finishes connection startup, return "
 						 "the free memory held by TCMalloc to the operating "
 						 "system if it is at least this amount."),
-			gettext_noop("0 (the default) always releases. -1 disables the release."),
+			gettext_noop("0 (the default) always releases. -1 disables the "
+						 "release. Has no effect while "
+						 "yb_tcmalloc_release_after_statement is on, which "
+						 "releases when the backend first becomes ready for "
+						 "queries."),
 			GUC_UNIT_KB
 		},
 		&yb_startup_free_memory_release_threshold,
