@@ -792,6 +792,14 @@ class PgResponseCache::Impl : private GarbageCollector {
       // waiting for the session to drop it. An ordinary fill's token is nobody else's and is
       // released when this setter dies, which is the request's end.
       //
+      // One prefetch per session is the usual case but not the only one: parallel workers share
+      // their leader's session, and so this token, where they run connection starts of their
+      // own. The first of them to finish ends the claim for all, leaving a sibling that is
+      // still filling uncounted until its next round takes a fresh token. For that round only
+      // the per-entry check stands between an arriving connection and a catalog read of its
+      // own. Telling the two apart would need a per-prefetch identifier the wire does not
+      // carry, and the case needs preload_rel_cache to arise at all.
+      //
       // Last, not before the two above. While this round publishes, this claim is the only
       // thing that can send an arriving connection away, and Set hands the response to every
       // waiter inline before it returns. One sent away before the
