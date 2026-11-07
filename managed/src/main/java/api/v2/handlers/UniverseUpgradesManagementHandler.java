@@ -47,6 +47,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
@@ -91,6 +93,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import play.libs.Json;
 import play.mvc.Http.Request;
 
 @Singleton
@@ -115,7 +118,9 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
   public YBATask editGFlags(
       Request request, UUID cUUID, UUID uniUUID, UniverseEditGFlags editGFlags)
       throws JsonProcessingException {
-    log.info("Starting v2 edit GFlags with {}", editGFlags);
+    log.info(
+        "Starting v2 edit GFlags with {}",
+        RedactingService.filterSecretFields(Json.toJson(editGFlags), RedactionTarget.LOGS));
 
     // get universe from db
     Customer customer = Customer.getOrNotFound(cUUID);
