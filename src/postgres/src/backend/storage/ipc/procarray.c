@@ -1454,10 +1454,14 @@ TransactionIdIsInProgress(TransactionId xid)
 	int			numProcs;
 	int			j;
 
+	/*
+	 * YB: PG transaction state is only used for temp relations, which are
+	 * private to this backend, so the only transaction that can still be in
+	 * progress is our own.  It must be reported as such, or, for example,
+	 * pruning treats an xmax set by the running statement as aborted.
+	 */
 	if (IsYugaByteEnabled())
-	{
-		return false;
-	}
+		return TransactionIdIsCurrentTransactionId(xid);
 
 	/*
 	 * Don't bother checking a transaction older than RecentXmin; it could not
