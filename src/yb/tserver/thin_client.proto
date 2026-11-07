@@ -23,6 +23,7 @@ import "yb/common/wire_protocol.proto";
 import "yb/master/master_ddl.proto";
 import "yb/rpc/lightweight_message.proto";
 import "yb/rpc/service.proto";
+import "yb/tserver/pg_client.proto";
 
 // Minimal service for thin Perform-based clients (see src/yb/thin_client). Thin clients are
 // upgraded independently of the cluster, so this service's messages and semantics must stay
@@ -73,6 +74,16 @@ message ThinReadTimeOptionsPB {
   // page was served at on every continuation, so all pages observe one snapshot without the server
   // keeping any per-session read state.
   ReadHybridTimePB read_time = 1;
+  // Serve the batch's reads at CONSISTENT_PREFIX, so the client inside the tserver picks the
+  // closest replica, a follower included. A follower that cannot serve the read time redirects
+  // the read to another replica inside the tserver. Applies to every page of a scan it starts, so
+  // a continuation must send it again alongside the pinned read_time. Ignored on a write batch.
+  bool read_from_followers = 2;
+  // With read_from_followers and no read_time: the tserver reads at its own clock minus this
+  // staleness, so only the cluster's own clock skew bound applies, as for YSQL follower reads.
+  // Must be positive. Ignored when read_time is set (a continuation keeps the scan's snapshot).
+  // Rejected on a write batch.
+  OptionalUint32PB follower_read_staleness_ms = 3;
 }
 
 message ThinPerformRequestPB {

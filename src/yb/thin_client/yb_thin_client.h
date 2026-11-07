@@ -261,6 +261,32 @@ typedef void (*ybthin_write_cb)(void* ctx, ybthin_status status);
 void ybthin_read_async(ybthin_client*, const ybthin_read_op* ops, size_t n_ops,
                        uint64_t read_time_ht, ybthin_read_cb cb, void* ctx);
 
+// Batch-level read options for ybthin_read_async2. A zeroed struct (or NULL) is exactly
+// ybthin_read_async: leader reads, unpinned.
+typedef struct {
+  // As ybthin_read_async's read_time_ht: pins the batch snapshot; 0 => the server picks one.
+  uint64_t read_time_ht;
+  // bool. Serve the batch's reads from the closest replica, a follower included, at a snapshot
+  // the tserver computes as its own clock minus `follower_read_staleness_ms` (which must then be
+  // positive, unless read_time_ht is set). A follower behind that snapshot hands the read to
+  // another replica inside the tserver, still as one Perform -- but not for free: the tserver's
+  // client marks that replica failed in its shared meta cache until its next refresh
+  // (--lookup_cache_refresh_secs, 60 s by default), so every follower read of that tablet through
+  // that tserver goes to a remote replica for up to that long. YSQL follower reads behave the
+  // same way. The pages of a scan started this way stay on followers at the first page's
+  // snapshot on their own (the flag travels inside paging_state), so a continuation needs
+  // neither field set again.
+  int read_from_followers;
+  // Only read with read_from_followers and read_time_ht == 0, and then it must be > 0 (0 is
+  // YBTHIN_INVALID); ignored otherwise. Needs a tserver that understands it; an older one serves
+  // the batch at the leader, unpinned.
+  uint32_t follower_read_staleness_ms;
+} ybthin_read_options;
+
+// ybthin_read_async with batch options; `options` NULL means all zero.
+void ybthin_read_async2(ybthin_client*, const ybthin_read_op* ops, size_t n_ops,
+                        const ybthin_read_options* options, ybthin_read_cb cb, void* ctx);
+
 // Apply N upserts as the ops of ONE Perform, on one write session. Each row names its own table, so
 // the batch may span tables. Every per-row response status is verified; any failure surfaces via
 // `status`.
