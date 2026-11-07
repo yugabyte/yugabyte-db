@@ -1965,6 +1965,24 @@ TEST_F(PgStaleCatalogPrefetchTest, ARefreshDoesNotRecordAVersion) {
 // means the window ends when the test has seen what it was waiting for, not when a timer runs
 // out. A connection that is sent away never fills, so it completes while the pause is on -- that
 // it completes at all is the proof it did not wait for the fill.
+// Keeps a connection start's claim past the round that completes its prefetch, and lifts that
+// however the test leaves. The flag is process-wide, so a test returning early on a failed
+// assertion would otherwise leave every later test in the binary with claims that never end.
+class ClaimKeptPastCompletion {
+ public:
+  ClaimKeptPastCompletion() { Set(true); }
+
+  ~ClaimKeptPastCompletion() { Set(false); }
+
+  ClaimKeptPastCompletion(const ClaimKeptPastCompletion&) = delete;
+  ClaimKeptPastCompletion& operator=(const ClaimKeptPastCompletion&) = delete;
+
+ private:
+  static void Set(bool kept) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pg_response_cache_keep_claim_past_completion) = kept;
+  }
+};
+
 class PausedFills {
  public:
   PausedFills() { Set(true); }
@@ -2088,12 +2106,14 @@ TEST_F(PgStaleCatalogPrefetchTest, AnOrdinaryRequestEndsAClaimNoRoundEnded) {
 
   // The holder's prefetch fills and takes its session's claim, and no round of it ends that
   // claim. Its first ordinary query is what has to.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pg_response_cache_keep_claim_past_completion) = true;
-  auto holder = ASSERT_RESULT(Connect());
-  // Reads a table, so a Perform actually reaches the tserver. SELECT 1 is answered inside PG
-  // and sends nothing, so it would never reach the reset this test is about.
-  ASSERT_OK(holder.FetchRow<PGUint64>("SELECT count(*) FROM t_unended"));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pg_response_cache_keep_claim_past_completion) = false;
+  std::optional<PGConn> holder;
+  {
+    ClaimKeptPastCompletion kept;
+    holder = ASSERT_RESULT(Connect());
+    // Reads a table, so a Perform actually reaches the tserver. SELECT 1 is answered inside PG
+    // and sends nothing, so it would never reach the reset this test is about.
+    ASSERT_OK(holder->FetchRow<PGUint64>("SELECT count(*) FROM t_unended"));
+  }
 
   // Moves the catalog again. The holder's prefetch recorded the version it read, so without
   // this the next connection wants exactly that entry, hits it, and never reaches the ask.

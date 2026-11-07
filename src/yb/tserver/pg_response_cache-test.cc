@@ -182,10 +182,11 @@ TEST_F(PgResponseCacheTest, AFillOutlivingItsDeadlineStillServesItsWaiters) {
       << "unserved; the setter holds that entry, so the fill must still reach its waiters";
 }
 
-// The group check skips the asking session's own counts, so a session is never sent away from a
-// fill of its own. Round 2 asks here only to reach the skip directly; a backend asks on its
-// opening round alone, and parallel workers sharing a session id are what exercise this in
-// production.
+// The group check skips the asking session's own counts, so it never sends a session away on a
+// fill of its own on another key. The entry check still can, where the session asks for the very
+// entry it is filling -- ACallerOnTheEntryBeingFilledIsSentAway covers that. Round 2 asks here
+// only to reach the skip directly; a backend asks on its opening round alone, and parallel
+// workers sharing a session id are what exercise this in production.
 TEST_F(PgResponseCacheTest, AConnectionIsNotSentAwayFromAFillOfItsOwn) {
   ThreadSafeArena arena;
   auto& round1 = MakeCachingInfo(arena, "round-1"sv, SendAway::kTrue,
@@ -202,7 +203,8 @@ TEST_F(PgResponseCacheTest, AConnectionIsNotSentAwayFromAFillOfItsOwn) {
   auto second_waiter = std::make_shared<CountingWaiter>();
   auto second = ASSERT_RESULT(cache_->Get(&round2, deadline, second_waiter, kSessionId, nullptr));
   ASSERT_TRUE(second)
-      << "a connection was sent away from a fill of its own, so nothing finishes its prefetch";
+      << "the group check sent a connection away on a fill of its own, so nothing finishes its "
+      << "prefetch";
 }
 
 // The same fill seen by a different connection, which is what the check is for.

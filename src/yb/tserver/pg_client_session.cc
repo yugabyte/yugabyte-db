@@ -3666,6 +3666,14 @@ class PgClientSession::Impl {
     // fill takes a fresh token. Rounds still in flight keep their own tokens either way, so
     // what is lost is the gap cover, not the protection while a round is filling. pggate logs
     // such a read as not prefetched, and the answer to it is to register the table.
+    //
+    // TODO(#34309): the no-cache starter is the wider case. It runs a connection start's
+    // rounds with no caching info at all -- YBCStartSysTablePrefetchingNoCache passes none --
+    // so its first round ends the claim and the whole uncached catalog read runs uncounted,
+    // not just the gaps. Reaching it needs the earlier starters to fail on a snapshot too old
+    // in turn, which is why this is a note rather than a fix: carrying
+    // part_of_connection_prefetch there means giving a prefetch that wants no cache something
+    // to put it in.
     if (!options.has_caching_info() ||
         !options.caching_info().part_of_connection_prefetch()) {
       prefetch_fill_token_.reset();
