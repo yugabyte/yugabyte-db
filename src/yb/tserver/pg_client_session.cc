@@ -5048,7 +5048,7 @@ class PgClientSession::Impl {
   // This session's claim on its database while a connection start's prefetch runs. Held here
   // rather than by the request that took it, so the gaps between that prefetch's requests do
   // not read as an idle database. Three things end it: the request that completes the prefetch,
-  // the next request that is not part of one, which resets this below, and the session.
+  // the next request that is not part of one, which DoPerform resets it on, and the session.
   //
   // The pointer is only touched under the session lock, but the token it names is not: the
   // setter releases it from FlushDone with the lock already dropped. That is one thread; a

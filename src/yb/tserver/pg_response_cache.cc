@@ -589,11 +589,11 @@ class PgResponseCache::Impl : private GarbageCollector {
     }
   }
 
-  // Counted, not a set, and it is the second kind that needs it. Those tokens are per request
-  // and a request's token outlives its response, so the next round of the same read can be
-  // counted before the previous one lets go. In a set that release would erase the mark the
-  // next round had just made, and a connection arriving then would start a whole-catalog read
-  // of its own. A connection start never exceeds one, since its rounds share a token.
+  // Counted, not a set, because a request's token outlives its response, so the next round of
+  // the same read can be counted before the previous one lets go. In a set that release would
+  // erase the mark the next round had just made, and a connection arriving then would start a
+  // whole-catalog read of its own. A connection start never exceeds one, since its rounds
+  // share a token.
   void NoteFillStarted(KeyGroup group, uint64_t session_id) EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
     ++fills_in_flight_[group][session_id];
@@ -710,6 +710,14 @@ class PgResponseCache::Impl : private GarbageCollector {
     // spared the wait either: the rounds after it carry no ask of their own and queue behind
     // the rest of the same fill. What it reads instead is a version this node already holds and
     // can bridge from. When the fill ends nothing is counted and connections are served as usual.
+    //
+    // The count read here is taken a moment later, when the setter takes its token, so two
+    // connections on keys of their own that both reach this point inside that window both go on
+    // to fill. The per-entry check below closes it where they want the same entry; on different
+    // keys nothing does, so a burst costs a few whole-catalog reads rather than one. Closing it
+    // means taking a token speculatively under this lock for every request that might fill and
+    // undoing it on the three paths that do not, which is more machinery in this path than a
+    // window of a few instructions is worth.
     if (cache_info->send_away_if_fill_in_flight()) {
       bool another_fill;
       {

@@ -1959,18 +1959,6 @@ TEST_F(PgStaleCatalogPrefetchTest, ARefreshDoesNotRecordAVersion) {
       << "a refresh recorded a version it had not cached a whole connection start for";
 }
 
-// The filling connection and the one that follows it want the same entry, so queueing behind the
-// fill is what would otherwise happen. The second is sent away instead and reads the version this
-// node holds.
-//
-// The leader is pinned at LOW. A connection first checks whether the leader is busy, and asks to
-// be sent away only if that check says it is not. So if the leader looked busy, this connection
-// would read the older version right then, and the test would prove nothing about a connection
-// being sent away from a fill in flight.
-//
-// Pinned rather than left to the master, because the master derives the load from the prefetches
-// it has in flight, and this test holds one open on purpose. On a small enough machine that one
-// prefetch is already enough to read as BUSY.
 // Holds every response cache fill open until the test lets it go. A paused fill is what makes a
 // connection arriving behind it find a fill already under way, and pausing rather than sleeping
 // means the window ends when the test has seen what it was waiting for, not when a timer runs
@@ -1995,6 +1983,18 @@ class PausedFills {
   }
 };
 
+// The filling connection and the one that follows it want the same entry, so queueing behind the
+// fill is what would otherwise happen. The second is sent away instead and reads the version this
+// node holds.
+//
+// The leader is pinned at LOW. A connection first checks whether the leader is busy, and asks to
+// be sent away only if that check says it is not. So if the leader looked busy, this connection
+// would read the older version right then, and the test would prove nothing about a connection
+// being sent away from a fill in flight.
+//
+// Pinned rather than left to the master, because the master derives the load from the prefetches
+// it has in flight, and this test holds one open on purpose. On a small enough machine that one
+// prefetch is already enough to read as BUSY.
 TEST_F(PgStaleCatalogPrefetchTest, DefersToAFillAlreadyUnderWay) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t_defer (k INT)"));
