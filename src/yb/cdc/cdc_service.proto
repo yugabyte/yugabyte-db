@@ -45,6 +45,7 @@ import "yb/master/master_client.proto";
 import "yb/rpc/service.proto";
 import "yb/tablet/operations.proto";
 import "yb/tserver/tserver.proto";
+import "yb/rpc/lightweight_message.proto";
 
 service CDCService {
   option (yb.rpc.service_send_metadata) = true;
@@ -333,7 +334,7 @@ enum CDCSDKRequestSource {
 message GetChangesRequestPB {
   optional bytes stream_id = 1;
   // Tablet to get the changes for.
-  optional bytes tablet_id = 2;
+  optional bytes tablet_id = 2 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 
   // Checkpoint to start reading from (exclusive).
   // Start reading from the first record after this checkpoint.
@@ -619,7 +620,7 @@ message GetChangesResponsePB {
 
 message GetCheckpointRequestPB {
   optional bytes stream_id = 1;
-  optional bytes tablet_id = 2;
+  optional bytes tablet_id = 2 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   // The table_id will be required in case of colocated tables.
   optional bytes table_id = 3;
   // Whether the caller knows the tablet address or needs to use us as a proxy.
@@ -636,12 +637,12 @@ message GetCheckpointResponsePB {
 
 message UpdateCdcReplicatedIndexRequestPB {
   // Old API. Deprecated.
-  optional bytes tablet_id = 1;
+  optional bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   optional int64 replicated_index = 2;
   optional int64 replicated_term = 3;
   // Batch API.
   // Tablets being updated.
-  repeated bytes tablet_ids = 4;
+  repeated bytes tablet_ids = 4 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   // Minimum replicated index for each tablet across all the streams.
   repeated int64 replicated_indices = 5;
   repeated int64 replicated_terms = 6;
@@ -685,8 +686,10 @@ message BootstrapProducerResponsePB {
 }
 
 message GetLatestEntryOpIdRequestPB {
-  optional bytes tablet_id = 1; // Deprecated.
-  repeated bytes tablet_ids = 2; // Batch param.
+  // Deprecated.
+  optional bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
+  // Batch param.
+  repeated bytes tablet_ids = 2 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 }
 
 message GetLatestEntryOpIdResponsePB {
@@ -717,7 +720,7 @@ message SetCDCCheckpointRequestPB {
   optional CDCCheckpointPB checkpoint = 1;
   optional CDCSDKCheckpointPB cdc_sdk_checkpoint = 2;
   optional bytes stream_id = 3;
-  optional bytes tablet_id = 4;
+  optional bytes tablet_id = 4 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   optional bool initial_checkpoint = 5 [default = false];
   optional bool bootstrap = 6 [default = false];
   optional fixed64 cdc_sdk_safe_time = 7;
@@ -736,7 +739,7 @@ message TabletCheckpointPair {
 
 message GetTabletListToPollForCDCRequestPB {
   optional TableInfo table_info = 1;
-  optional bytes tablet_id = 2;
+  optional bytes tablet_id = 2 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 }
 
 message GetTabletListToPollForCDCResponsePB {
@@ -745,7 +748,7 @@ message GetTabletListToPollForCDCResponsePB {
 }
 
 message IsBootstrapRequiredRequestPB {
-  repeated string tablet_ids = 1;
+  repeated string tablet_ids = 1 [(yb.rpc.trace) = {enabled: true}];
   optional string stream_id = 2;
 }
 
