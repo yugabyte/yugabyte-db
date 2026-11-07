@@ -82,6 +82,12 @@ typedef struct YbOpaqueData
 	List	   *hash_code_keys;
 
 	/*
+	 * Scalar copies that keys points to in place of the non-equality array
+	 * keys they replace.  See ybReduceInequalityArrayKeys.
+	 */
+	List	   *reduced_keys;
+
+	/*
 	 * True if any type of recheck (YB or PG) is needed because not all scan
 	 * keys are bound.  There could be false positives: it could say true when
 	 * recheck is actually not needed.
