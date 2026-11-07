@@ -726,3 +726,238 @@ SELECT col1, col2, col3, col4 FROM mv_nullkeys_dup
 
 DROP TABLE t_nullkeys_dup CASCADE;
 NOTICE:  drop cascades to materialized view mv_nullkeys_dup
+-- DDL run through SPI after REFRESH MATERIALIZED VIEW CONCURRENTLY in the same
+-- transaction must still bump the catalog version, while the refresh itself must
+-- not.
+CREATE TABLE cv_base (k int PRIMARY KEY, v int);
+INSERT INTO cv_base VALUES (1, 1);
+CREATE MATERIALIZED VIEW cv_mv AS SELECT * FROM cv_base;
+CREATE UNIQUE INDEX ON cv_mv (k);
+CREATE TABLE cv_t (k int PRIMARY KEY, v int);
+CREATE PROCEDURE cv_refresh_then_index() LANGUAGE plpgsql AS $$
+BEGIN
+  REFRESH MATERIALIZED VIEW CONCURRENTLY cv_mv;
+  CREATE INDEX NONCONCURRENTLY cv_t_v ON cv_t (v);
+END $$;
+CREATE FUNCTION cv_create_index() RETURNS int LANGUAGE plpgsql AS $$
+BEGIN
+  CREATE INDEX NONCONCURRENTLY cv_t_v ON cv_t (v);
+  RETURN 1;
+END $$;
+CREATE PROCEDURE cv_refresh_twice() LANGUAGE plpgsql AS $$
+BEGIN
+  REFRESH MATERIALIZED VIEW CONCURRENTLY cv_mv;
+  REFRESH MATERIALIZED VIEW CONCURRENTLY cv_mv;
+END $$;
+SELECT oid AS cv_db_oid FROM pg_database WHERE datname = current_database() \gset
+\set cv_save 'SELECT current_version AS cv_version FROM pg_yb_catalog_version WHERE db_oid = :cv_db_oid \\gset'
+\set cv_bumped 'SELECT current_version > :cv_version AS bumped FROM pg_yb_catalog_version WHERE db_oid = :cv_db_oid;'
+:cv_save
+CALL cv_refresh_then_index();
+:cv_bumped
+ bumped 
+--------
+ t
+(1 row)
+
+DROP INDEX cv_t_v;
+:cv_save
+DO $$
+BEGIN
+  REFRESH MATERIALIZED VIEW CONCURRENTLY cv_mv;
+  CREATE INDEX NONCONCURRENTLY cv_t_v ON cv_t (v);
+END $$;
+:cv_bumped
+ bumped 
+--------
+ t
+(1 row)
+
+DROP INDEX cv_t_v;
+:cv_save
+BEGIN;
+REFRESH MATERIALIZED VIEW CONCURRENTLY cv_mv;
+SELECT cv_create_index();
+ cv_create_index 
+-----------------
+               1
+(1 row)
+
+COMMIT;
+:cv_bumped
+ bumped 
+--------
+ t
+(1 row)
+
+DROP INDEX cv_t_v;
+-- The refresh is rolled back by the exception block before the DDL runs.
+:cv_save
+DO $$
+BEGIN
+  BEGIN
+    REFRESH MATERIALIZED VIEW CONCURRENTLY cv_mv;
+    PERFORM 1 / 0;
+  EXCEPTION WHEN division_by_zero THEN NULL;
+  END;
+  CREATE INDEX NONCONCURRENTLY cv_t_v ON cv_t (v);
+END $$;
+:cv_bumped
+ bumped 
+--------
+ t
+(1 row)
+
+-- The refresh fails on duplicate rows and the exception block catches it.
+CREATE TABLE cv_dup_base (k int, v int);
+CREATE MATERIALIZED VIEW cv_dup_mv AS SELECT * FROM cv_dup_base;
+CREATE UNIQUE INDEX ON cv_dup_mv (k);
+INSERT INTO cv_dup_base VALUES (1, 1), (1, 1);
+DROP INDEX cv_t_v;
+:cv_save
+DO $$
+BEGIN
+  BEGIN
+    REFRESH MATERIALIZED VIEW CONCURRENTLY cv_dup_mv;
+  EXCEPTION WHEN cardinality_violation THEN NULL;
+  END;
+  CREATE INDEX NONCONCURRENTLY cv_t_v ON cv_t (v);
+END $$;
+:cv_bumped
+ bumped 
+--------
+ t
+(1 row)
+
+-- REFRESH MATERIALIZED VIEW CONCURRENTLY alone does not bump the catalog version.
+:cv_save
+CALL cv_refresh_twice();
+DO $$ BEGIN REFRESH MATERIALIZED VIEW CONCURRENTLY cv_mv; END $$;
+BEGIN;
+REFRESH MATERIALIZED VIEW CONCURRENTLY cv_mv;
+REFRESH MATERIALIZED VIEW CONCURRENTLY cv_mv;
+COMMIT;
+:cv_bumped
+ bumped 
+--------
+ f
+(1 row)
+
+-- DDL run by an event trigger that the refresh fires is not part of the refresh.
+CREATE FUNCTION cv_evt_create_index() RETURNS event_trigger LANGUAGE plpgsql AS $$
+BEGIN
+  CREATE INDEX NONCONCURRENTLY cv_t_v ON cv_t (v);
+END $$;
+CREATE EVENT TRIGGER cv_evt ON ddl_command_end
+  WHEN TAG IN ('REFRESH MATERIALIZED VIEW') EXECUTE FUNCTION cv_evt_create_index();
+DROP INDEX cv_t_v;
+:cv_save
+REFRESH MATERIALIZED VIEW CONCURRENTLY cv_mv;
+:cv_bumped
+ bumped 
+--------
+ t
+(1 row)
+
+DROP EVENT TRIGGER cv_evt;
+-- DDL run by an event trigger that the refresh's own temp-table DDL fires is not
+-- part of the refresh either.
+CREATE EVENT TRIGGER cv_evt_create_table ON ddl_command_end
+  WHEN TAG IN ('CREATE TABLE') EXECUTE FUNCTION cv_evt_create_index();
+DROP INDEX cv_t_v;
+:cv_save
+REFRESH MATERIALIZED VIEW CONCURRENTLY cv_mv;
+:cv_bumped
+ bumped 
+--------
+ t
+(1 row)
+
+DROP EVENT TRIGGER cv_evt_create_table;
+-- Rolling back a refresh must not leave the session in the refresh's
+-- security-restricted context.
+BEGIN;
+REFRESH MATERIALIZED VIEW CONCURRENTLY cv_mv;
+ROLLBACK;
+CREATE TEMP TABLE cv_tmp (a int);
+DROP TABLE cv_tmp;
+DROP TABLE cv_t;
+DROP TABLE cv_base CASCADE;
+NOTICE:  drop cascades to materialized view cv_mv
+DROP TABLE cv_dup_base CASCADE;
+NOTICE:  drop cascades to materialized view cv_dup_mv
+DROP PROCEDURE cv_refresh_then_index, cv_refresh_twice;
+DROP FUNCTION cv_create_index, cv_evt_create_index;
+-- ANALYZE of only temporary tables does not bump the catalog version, at top
+-- level or through SPI. An ANALYZE that writes nothing skips the bump anyway,
+-- so each one below runs on changed data.
+CREATE TABLE cv_perm (k int PRIMARY KEY);
+CREATE TEMP TABLE cv_tmp1 (a int);
+CREATE TEMP TABLE cv_tmp2 (a int);
+INSERT INTO cv_tmp1 VALUES (1);
+:cv_save
+ANALYZE cv_tmp1;
+INSERT INTO cv_tmp1 VALUES (2);
+INSERT INTO cv_tmp2 VALUES (1);
+ANALYZE cv_tmp1, cv_tmp2;
+INSERT INTO cv_tmp1 VALUES (3);
+DO $$ BEGIN ANALYZE cv_tmp1; END $$;
+:cv_bumped
+ bumped 
+--------
+ f
+(1 row)
+
+-- ANALYZE of a permanent table bumps it, including from a DO block or a
+-- procedure.
+INSERT INTO cv_perm VALUES (1);
+:cv_save
+DO $$ BEGIN ANALYZE cv_perm; END $$;
+:cv_bumped
+ bumped 
+--------
+ t
+(1 row)
+
+CREATE PROCEDURE cv_analyze() LANGUAGE plpgsql AS $$
+BEGIN
+  ANALYZE cv_perm;
+END $$;
+INSERT INTO cv_perm VALUES (2), (3);
+:cv_save
+CALL cv_analyze();
+:cv_bumped
+ bumped 
+--------
+ t
+(1 row)
+
+INSERT INTO cv_tmp1 VALUES (4);
+INSERT INTO cv_perm SELECT generate_series(10, 20);
+:cv_save
+ANALYZE cv_tmp1, cv_perm;
+:cv_bumped
+ bumped 
+--------
+ t
+(1 row)
+
+DROP PROCEDURE cv_analyze;
+DROP TABLE cv_tmp1, cv_tmp2;
+-- Rolling back an ANALYZE must not leak a SET ROLE that was rolled back with it.
+CREATE ROLE cv_role;
+GRANT SELECT ON cv_perm TO cv_role;
+BEGIN;
+SET ROLE cv_role;
+ANALYZE cv_perm;
+WARNING:  skipping "cv_perm" --- only table or database owner can analyze it
+ROLLBACK;
+SELECT current_user = session_user AS user_restored, current_setting('role') AS role;
+ user_restored | role 
+---------------+------
+ t             | none
+(1 row)
+
+DROP OWNED BY cv_role;
+DROP ROLE cv_role;
+DROP TABLE cv_perm;
