@@ -139,8 +139,10 @@ ybginTupleWrite(GinState *ginstate, OffsetNumber attnum,
 
 		/* Assume single-column index for parameters values and isnull. */
 		if (isinsert)
+			/* GIN indexes are never unique, so the check mode is inert. */
 			YBCExecuteInsertIndex(index, &entries[i], &isnull, ybctid,
 								  backfilltime /* backfill_write_time */ ,
+								  YB_UNIQUE_INDEX_BACKFILL_CHECK_ALL,
 								  doBindsForIdxWrite, (void *) ginstate);
 		else
 		{
