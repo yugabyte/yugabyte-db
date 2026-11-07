@@ -2239,6 +2239,12 @@ TEST_F(PgUnbridgeableCatalogPrefetchTest, FallsBackWhenTheMessagesCannotBeApplie
          "the read that had just been refused";
 }
 
+// TODO(#34309): this cannot tell a connection that never failed from one whose first attempt
+// failed and whose retry succeeded, because PGConn::Connect retries until its deadline. Dropping
+// the !sent_away guard in YbRunWithPrefetcher makes the first attempt raise the Incomplete this
+// test exists to rule out, and the test still passes. Strengthening it needs a signal a retry
+// moves: send_aways does not, since the pause is released once the first send-away is counted.
+//
 // A connection sent away from a fill cannot always use the older version it is sent to: this
 // fixture makes the messages that would carry it forward unusable. It has to come up anyway, by
 // queueing behind the fill as it would have without the ask. The tserver answers Incomplete to
