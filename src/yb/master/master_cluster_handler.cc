@@ -40,6 +40,12 @@ DEFINE_RUNTIME_bool(delay_leader_blacklist_completion_percent_until_tservers_hea
     "leader blacklist completion percent.");
 TAG_FLAG(delay_leader_blacklist_completion_percent_until_tservers_heartbeat, advanced);
 
+DEFINE_RUNTIME_bool(wait_for_full_tablet_reports_on_blacklist_completion, false,
+    "Hold blacklist completion at zero until every live tserver has completed a full tablet "
+    "report after master failover. A live tserver that never completes its report blocks "
+    "completion; disable this flag to restore the time-based grace period.");
+TAG_FLAG(wait_for_full_tablet_reports_on_blacklist_completion, advanced);
+
 namespace yb::master {
 
 MasterClusterHandler::MasterClusterHandler(CatalogManager* catalog_manager, TSManager* ts_manager)
@@ -226,6 +232,9 @@ Status MasterClusterHandler::RemoveTabletServer(
 
 Status MasterClusterHandler::GetLoadMoveCompletionPercent(
     GetLoadMovePercentResponsePB* resp, bool blacklist_leader) {
+  // Check before scanning: reports may finish concurrently and populate previously empty maps.
+  const bool waiting_for_reports = FLAGS_wait_for_full_tablet_reports_on_blacklist_completion &&
+      !catalog_manager_->AreTabletReportsComplete();
   // Fine to pass in empty defaults if server_blacklist or leader_blacklist is not filled.
   auto state = GetBlacklist(catalog_manager_->ClusterConfig()->LockForRead()->pb, blacklist_leader);
   int64_t blacklist_replicas = catalog_manager_->GetNumRelevantReplicas(state, blacklist_leader);
@@ -234,10 +243,11 @@ Status MasterClusterHandler::GetLoadMoveCompletionPercent(
   // If we are starting up and don't find any load on the tservers, return progress as 0.
   // We expect that by blacklist_progress_initial_delay_secs time, this should go away and if the
   // load is reported as 0 on the blacklisted tservers after this time then it means that
-  // the transfer is successfully complete.
+  // the transfer is successfully complete. Optionally wait for full reports as well: a slow
+  // catalog load can consume the grace period before any tserver can report.
   if (blacklist_replicas == 0 &&
-      catalog_manager_->TimeSinceElectedLeader() <=
-          MonoDelta::FromSeconds(FLAGS_blacklist_progress_initial_delay_secs)) {
+      (waiting_for_reports || catalog_manager_->TimeSinceElectedLeader() <=
+          MonoDelta::FromSeconds(FLAGS_blacklist_progress_initial_delay_secs))) {
     LOG(INFO) << "Master leadership has changed. Reporting progress as 0 until the catalog "
               << "manager gets the correct estimates of the remaining load on the blacklisted"
               << "tservers.";
