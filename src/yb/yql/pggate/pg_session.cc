@@ -1439,20 +1439,7 @@ Status PgSession::ReleaseAllAdvisoryLocks(uint32_t db_oid) {
 
 Status PgSession::AcquireObjectLock(
     const YbcObjectLockId& lock_id, YbcObjectLockMode mode, bool is_session_lock) {
-  // A legacy mode transaction takes only the DML locks that new mode DDLs wait for (#36572). The
-  // stronger ones are global or exclusive, and would change how legacy mode DDLs and LOCK TABLE
-  // behave before the infra flag is promoted.
-  //
-  // Session locks are left out too. Every session lock PG takes is ShareUpdateExclusive or
-  // stronger (CREATE INDEX, VACUUM), so none would be forwarded anyway. Forwarding local ones
-  // would also need ReleaseSessionObjectLock to forward their releases in legacy mode. But PG
-  // forwards every session lock release, including those of the global locks dropped here, and
-  // the tserver fails a release for a session that holds no session locks.
-  const auto skips_legacy_mode_lock =
-      !pg_txn_manager_->IsTableLockingEnabledForCurrentTxn() &&
-      (is_session_lock || pg_txn_manager_->IsDdlMode() ||
-       mode > YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK);
-  if (!pg_txn_manager_->IsTakingObjectLocksForCurrentTxn() || skips_legacy_mode_lock) {
+  if (!pg_txn_manager_->IsLocalTableLockingEnabledForCurrentTxn()) {
     // Object locking feature is not enabled. YB makes best efforts to achieve necessary semantics
     // using mechanisms like catalog version update by DDLs, DDLs aborting on progress DMLs etc.
     // Also skip object locking during initdb bootstrap mode, since it's a single-process,
@@ -1461,6 +1448,10 @@ Status PgSession::AcquireObjectLock(
     // traffic. However, YB guarantees that there will be no DDLs running at that time.
     return Status::OK();
   }
+  // PG decides which locks a legacy mode transaction sends (YbShouldSendObjectLock in lock.c).
+  DCHECK(pg_txn_manager_->IsTableLockingEnabledForCurrentTxn() ||
+         (!is_session_lock && !pg_txn_manager_->IsDdlMode() &&
+          mode <= YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK));
   auto fastpath_lock_type = docdb::MakeObjectLockFastpathLockType(TableLockType(mode));
   if (!is_session_lock && fastpath_lock_type &&
       pg_txn_manager_->TryAcquireObjectLock(lock_id, *fastpath_lock_type)) {
@@ -1474,7 +1465,7 @@ Status PgSession::AcquireObjectLock(
 }
 
 Status PgSession::ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool release_all) {
-  // A legacy mode transaction takes no session locks; see AcquireObjectLock.
+  // A legacy mode transaction sends no session locks, so PG sends no releases for them.
   if (!pg_txn_manager_->IsTableLockingEnabledForCurrentTxn()) {
     return Status::OK();
   }

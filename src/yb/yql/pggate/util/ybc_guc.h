@@ -206,7 +206,7 @@ extern bool yb_cdcsdk_allow_dml_without_pk;
 
 extern bool yb_enable_object_locking_infra;
 
-extern bool yb_enable_object_locks_for_legacy_txns;
+extern bool yb_disable_legacy_mode_local_object_locks;
 
 extern bool yb_enable_ddl_savepoint_infra;
 

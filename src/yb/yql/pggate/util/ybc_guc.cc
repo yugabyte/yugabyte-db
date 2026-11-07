@@ -167,7 +167,7 @@ bool yb_disable_pg_snapshot_mgmt_in_repeatable_read = false;
 
 bool yb_enable_object_locking_infra = true;
 
-bool yb_enable_object_locks_for_legacy_txns = true;
+bool yb_disable_legacy_mode_local_object_locks = false;
 
 bool yb_enable_ddl_savepoint_infra = true;
 

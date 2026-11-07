@@ -2826,14 +2826,14 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_enable_object_locks_for_legacy_txns", PGC_SIGHUP, LOCK_MANAGEMENT,
-			gettext_noop("Take local DML object locks in transactions that "
-						 "start while yb_enable_object_locking_infra is off."),
+		{"yb_disable_legacy_mode_local_object_locks", PGC_SIGHUP, LOCK_MANAGEMENT,
+			gettext_noop("Take no object locks in transactions that start while "
+						 "yb_enable_object_locking_infra is off."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
-		&yb_enable_object_locks_for_legacy_txns,
-		true,
+		&yb_disable_legacy_mode_local_object_locks,
+		false,
 		NULL, NULL, NULL
 	},
 

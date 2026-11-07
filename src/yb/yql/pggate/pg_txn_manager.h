@@ -197,7 +197,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   }
 
   bool IsTableLockingEnabledForCurrentTxn() const;
-  bool IsTakingObjectLocksForCurrentTxn() const;
+  bool IsLocalTableLockingEnabledForCurrentTxn() const;
 
   void SetClampUncertaintyWindow(bool clamp) { clamp_uncertainty_window_ = clamp; }
 

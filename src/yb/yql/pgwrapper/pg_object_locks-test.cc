@@ -1201,9 +1201,9 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestModeChangeDuringStatementFai
 //
 // A transaction that started before the object locking infra auto flag was promoted keeps running
 // in the legacy mode, and must not use a catalog cache that a breaking DDL (REVOKE here)
-// invalidated. With ysql_yb_enable_object_locks_for_legacy_txns off (the parameter is false), it
+// invalidated. With ysql_yb_disable_legacy_mode_local_object_locks on (the parameter is false), it
 // takes no object locks, so the tserver catalog version check is what stops it. The check must be
-// skipped based on the mode of the request's transaction, not on the tserver's flags. With it on,
+// skipped based on the mode of the request's transaction, not on the tserver's flags. With it off,
 // the transaction's next new object lock refreshes its catalog cache, and PG's own privilege check
 // stops it.
 class PgObjectLocksTestLegacyTxnAcrossRevoke : public PgObjectLocksTestMixModeDuringPromotion,
@@ -1217,8 +1217,8 @@ TEST_P(PgObjectLocksTestLegacyTxnAcrossRevoke, LegacyTxnKeepsCatalogVersionCheck
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
   ASSERT_OK(cluster_->SetFlag(
-      ts1, "ysql_yb_enable_object_locks_for_legacy_txns",
-      legacy_txn_takes_object_locks ? "true" : "false"));
+      ts1, "ysql_yb_disable_legacy_mode_local_object_locks",
+      legacy_txn_takes_object_locks ? "false" : "true"));
   {
     auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
     ASSERT_OK(conn.Execute("CREATE ROLE r"));
@@ -1283,7 +1283,8 @@ class PgObjectLocksTestLegacyTxnVsNewDdl : public PgObjectLocksTestMixModeDuring
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     PgObjectLocksTestMixModeDuringPromotion::UpdateMiniClusterOptions(opts);
-    opts->extra_tserver_flags.emplace_back("--ysql_yb_enable_object_locks_for_legacy_txns=true");
+    opts->extra_tserver_flags.emplace_back(
+        "--ysql_yb_disable_legacy_mode_local_object_locks=false");
   }
 
   void PromoteForDdl() {
@@ -1536,6 +1537,46 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyFastPathWriteDeadlockIsDetected
   ASSERT_EQ(ASSERT_RESULT(check_conn.FetchRow<int64_t>(
       "SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'test' AND "
       "column_name = 'v1'")), new_txn_committed ? 1 : 0);
+}
+
+// A legacy transaction's lock taken in DDL mode is kept only in PG's local lock table. A DML that
+// later takes the same lock in the same transaction must still send it, or a new mode DDL does
+// not wait for the DML.
+TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyDmlSendsLockFirstTakenInDdlMode) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
+  }
+
+  auto legacy_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(legacy_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  // AccessShare on test, taken in DDL mode.
+  ASSERT_OK(legacy_conn.Execute("CREATE VIEW test_view AS SELECT * FROM test"));
+  // The same AccessShare on test, taken by a DML.
+  ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
+
+  ASSERT_NO_FATALS(PromoteForDdl());
+  auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(ddl_conn.Execute("SET statement_timeout = '5s'"));
+  auto alter_status = ddl_conn.Execute("ALTER TABLE test ADD COLUMN v1 INT");
+  ASSERT_NOK(alter_status);
+  ASSERT_STR_CONTAINS(alter_status.ToString(), "statement timeout");
+  ASSERT_OK(legacy_conn.Execute("COMMIT"));
+  ASSERT_OK(ddl_conn.Execute("ALTER TABLE test ADD COLUMN v1 INT"));
+}
+
+// A legacy CREATE INDEX takes transaction and session locks that a legacy transaction does not
+// send. PG must still record them, since LockRelationIdForSession requires the transaction lock
+// to be held, and must send no session lock release for them.
+TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyCreateIndexSucceeds) {
+  auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*cluster_->tablet_server(0)));
+  ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 42"));
+  ASSERT_OK(conn.Execute("CREATE INDEX test_v_idx ON test(v)"));
+  ASSERT_NO_FATALS(CheckIndex(conn, 10));
 }
 
 INSTANTIATE_TEST_SUITE_P(

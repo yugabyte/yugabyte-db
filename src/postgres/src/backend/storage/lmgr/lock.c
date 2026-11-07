@@ -364,6 +364,7 @@ static void RemoveLocalLock(LOCALLOCK *locallock);
 static PROCLOCK *SetupLockInTable(LockMethod lockMethodTable, PGPROC *proc,
 								  const LOCKTAG *locktag, uint32 hashcode, LOCKMODE lockmode);
 static void GrantLockLocal(LOCALLOCK *locallock, ResourceOwner owner);
+static bool YbShouldSendObjectLock(LOCKMODE lockmode, bool sessionLock);
 static void BeginStrongLockAcquire(LOCALLOCK *locallock, uint32 fasthashcode);
 static void FinishStrongLockAcquire(void);
 static void WaitOnLock(LOCALLOCK *locallock, ResourceOwner owner);
@@ -920,6 +921,7 @@ LockAcquireExtended(const LOCKTAG *locktag,
 		locallock->nLocks = 0;
 		locallock->holdsStrongLockCount = false;
 		locallock->lockCleared = false;
+		locallock->yb_legacy_mode_skipped = false;
 		locallock->numLockOwners = 0;
 		locallock->maxLockOwners = 8;
 		locallock->lockOwners = NULL;	/* in case next line fails */
@@ -963,7 +965,9 @@ LockAcquireExtended(const LOCKTAG *locktag,
 	bool yb_force_tserver_lock_acquire =
 		IsYugaByteEnabled() &&
 		((locallock->numLockOwners == 1 && locallock->lockOwners[0].owner == NULL) ||
-		 sessionLock);
+		 sessionLock ||
+		 (locallock->yb_legacy_mode_skipped &&
+		  YbShouldSendObjectLock(lockmode, sessionLock)));
 	if (locallock->nLocks > 0 && !yb_force_tserver_lock_acquire) /* YB: session locks go to the tserver */
 	{
 		GrantLockLocal(locallock, owner);
@@ -1021,10 +1025,23 @@ LockAcquireExtended(const LOCKTAG *locktag,
 			lock_timeout_ms = rpc_timeout_ms - slack_ms;
 		}
 
+		/*
+		 * YB: A legacy mode transaction keeps the lock in the local table, as
+		 * PG does, but sends it to the tserver only if new mode DDLs wait for
+		 * it (#36572).
+		 */
+		if (!YbShouldSendObjectLock(lockmode, sessionLock))
+		{
+			locallock->yb_legacy_mode_skipped = true;
+			GrantLockLocal(locallock, owner);
+			return LOCKACQUIRE_OK;
+		}
+
 		if (lock_timeout_ms > 0)
 			enable_timeout_after(LOCK_TIMEOUT, lock_timeout_ms);
 
 		HandleYBStatus(YBCAcquireObjectLock(GetYbObjectLockId(locktag), (YbcObjectLockMode) lockmode, sessionLock));
+		locallock->yb_legacy_mode_skipped = false;
 
 		if (lock_timeout_ms > 0)
 			disable_timeout(LOCK_TIMEOUT, false);
@@ -2224,9 +2241,9 @@ LockRelease(const LOCKTAG *locktag, LOCKMODE lockmode, bool sessionLock)
 
 	/*
 	 * YB Note: Always forward the session lock release to the tserver as this
-	 * is tied to a different transaction.
+	 * is tied to a different transaction, unless the tserver never had it.
 	 */
-	if (sessionLock)
+	if (sessionLock && !locallock->yb_legacy_mode_skipped)
 	{
 		HandleYBStatus(YBCReleaseSessionObjectLock(GetYbObjectLockId(locktag),
 												   YbNumSessionObjectLocks() == 0));
@@ -2459,7 +2476,8 @@ LockReleaseAll(LOCKMETHODID lockmethodid, bool allLocks)
 			else
 				locallock->numLockOwners = 0;
 		}
-		else if (lockmethodid == DEFAULT_LOCKMETHOD && !yb_has_active_session_locks)
+		else if (lockmethodid == DEFAULT_LOCKMETHOD && !yb_has_active_session_locks &&
+				 !locallock->yb_legacy_mode_skipped)
 		{
 			LOCALLOCKOWNER *lockOwners = locallock->lockOwners;
 			for (i = 0; i < locallock->numLockOwners; i++)
@@ -5057,6 +5075,24 @@ LockWaiterCount(const LOCKTAG *locktag)
 	LWLockRelease(partitionLock);
 
 	return waiters;
+}
+
+/*
+ * YB: Whether the current transaction sends this lock to the tserver. A new
+ * mode transaction sends every lock. A legacy mode transaction, one that
+ * started before yb_enable_object_locking_infra was promoted, sends only the
+ * local DML locks that new mode DDLs wait for (#36572). The stronger ones are
+ * global or exclusive and would change how legacy mode DDLs and LOCK TABLE
+ * behave before the promotion. Session locks are left out too: every session
+ * lock PG takes is ShareUpdateExclusive or stronger (CREATE INDEX, VACUUM).
+ */
+static bool
+YbShouldSendObjectLock(LOCKMODE lockmode, bool sessionLock)
+{
+	if (YBCIsObjectLockingEnabled())
+		return true;
+	return YBCIsLocalObjectLockingEnabled() && !sessionLock &&
+		!YBCPgIsDdlMode() && lockmode <= RowExclusiveLock;
 }
 
 bool
