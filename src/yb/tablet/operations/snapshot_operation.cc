@@ -150,11 +150,18 @@ bool SnapshotOperation::NeedOperationFilter() const {
 void SnapshotOperation::AddedAsPending(const TabletPtr& tablet) {
   if (NeedOperationFilter()) {
     tablet->RegisterOperationFilter(this);
+    filter_registered_ = true;
   }
 }
 
 void SnapshotOperation::RemovedFromPending(const TabletPtr& tablet) {
-  if (NeedOperationFilter()) {
+  // The operation can be aborted without ever having been added as pending: AddedAsPending runs
+  // at the end of Operation::AddedToLeader, whose earlier steps can fail (e.g. tablet_safe()
+  // while the tablet shuts down), while the abort path infers was_pending from OpId validity,
+  // which the operation driver sets before invoking the operation. Unregistering a
+  // never-registered filter would corrupt the tablet's operation-filter list.
+  if (filter_registered_) {
+    filter_registered_ = false;
     tablet->UnregisterOperationFilter(this);
   }
 }
