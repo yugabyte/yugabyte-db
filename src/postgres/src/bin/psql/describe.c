@@ -2643,13 +2643,14 @@ describeOneTableDetails(const char *schemaname,
 				appendPQExpBufferStr(&buf, ", i.indisreplident");
 			else
 				appendPQExpBufferStr(&buf, ", false AS indisreplident");
-			/* YB: i.indexrelid for yb_table_properties below */
-			/* YB_TODO_PG19MERGE: numbering below might need to be shifted. */
-			appendPQExpBufferStr(&buf, ", c2.reltablespace, i.indexrelid");
+			appendPQExpBufferStr(&buf, ", c2.reltablespace");
 			if (pset.sversion >= 180000)
 				appendPQExpBufferStr(&buf, ", con.conperiod");
 			else
 				appendPQExpBufferStr(&buf, ", false AS conperiod");
+
+			/* YB: index oid for yb_table_properties below. Last column. */
+			appendPQExpBufferStr(&buf, ", i.indexrelid");
 			appendPQExpBuffer(&buf,
 							  "\nFROM pg_catalog.pg_class c, pg_catalog.pg_class c2, pg_catalog.pg_index i\n"
 							  "  LEFT JOIN pg_catalog.pg_constraint con ON (conrelid = i.indrelid AND conindid = i.indexrelid AND contype IN ("
@@ -2737,7 +2738,7 @@ describeOneTableDetails(const char *schemaname,
 									  "FROM yb_table_properties(%s) props,\n"
 									  "   pg_yb_tablegroup tg\n"
 									  "WHERE tg.oid = props.tablegroup_oid;",
-									  PQgetvalue(result, i, 12));
+									  PQgetvalue(result, i, 13));	/* Index oid (i.indexrelid) */
 
 					tgres = PSQLexec(tablegroupbuf.data);
 					char	   *idx_grpname;

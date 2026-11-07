@@ -1,0 +1,354 @@
+-- YB: GiST is not supported on a YB table.
+-- GHI: https://github.com/yugabyte/yugabyte-db/issues/1337
+-- But a WITHOUT OVERLAPS constraint needs a GiST index, so the statements
+-- that must succeed use temporary tables.
+--
+-- \d prints the temporary schema pg_temp_<tserver uuid>_<backend id>.
+-- That name changes between runs, so it is replaced with yb_temp.
+-- Tests for WITHOUT OVERLAPS.
+--
+-- We leave behind several tables to test pg_dump etc:
+-- temporal_rng, temporal_rng2,
+-- temporal_fk_rng2rng, temporal_fk2_rng2rng.
+SET datestyle TO ISO, YMD;
+--
+-- test input parser
+--
+-- PK with no columns just WITHOUT OVERLAPS:
+CREATE TABLE temporal_rng (
+  valid_at daterange,
+  CONSTRAINT temporal_rng_pk PRIMARY KEY (valid_at WITHOUT OVERLAPS)
+);
+ERROR:  constraint using WITHOUT OVERLAPS needs at least two columns
+-- PK with a range column/PERIOD that isn't there:
+CREATE TABLE temporal_rng (
+  id INTEGER,
+  CONSTRAINT temporal_rng_pk PRIMARY KEY (id, valid_at WITHOUT OVERLAPS)
+);
+ERROR:  column "valid_at" named in key does not exist
+LINE 3:   CONSTRAINT temporal_rng_pk PRIMARY KEY (id, valid_at WITHO...
+          ^
+-- PK with a non-range column:
+-- YB: PRIMARY KEY containing column of type 'INT4RANGE' not yet supported.
+CREATE TABLE temporal_rng (
+  id int4range,
+  valid_at TEXT,
+  CONSTRAINT temporal_rng_pk PRIMARY KEY (id, valid_at WITHOUT OVERLAPS)
+);
+ERROR:  PRIMARY KEY containing column of type 'INT4RANGE' not yet supported
+-- PK with one column plus a range:
+-- YB: PRIMARY KEY containing column of type 'INT4RANGE' not yet supported.
+CREATE TABLE temporal_rng (
+  -- Since we can't depend on having btree_gist here,
+  -- use an int4range instead of an int.
+  -- (The rangetypes regression test uses the same trick.)
+  id int4range,
+  valid_at daterange,
+  CONSTRAINT temporal_rng_pk PRIMARY KEY (id, valid_at WITHOUT OVERLAPS)
+);
+ERROR:  PRIMARY KEY containing column of type 'INT4RANGE' not yet supported
+-- YB: Create temporal_rng as a temporary table.
+select current_setting('data_directory') || '/describe.out' as yb_desc_output_file \gset
+\set yb_replace_temp_schema_name 'select regexp_replace(pg_read_file(:\'yb_desc_output_file\'), \'pg_temp_.{32}_\\d+\', \'yb_temp\', \'g\');'
+\set yb_stdout
+\pset format unaligned
+CREATE TEMP TABLE temporal_rng ( -- YB: temporary table
+  id int4range,
+  valid_at daterange,
+  CONSTRAINT temporal_rng_pk PRIMARY KEY (id, valid_at WITHOUT OVERLAPS)
+);
+\o :yb_desc_output_file
+\d temporal_rng
+\o :yb_stdout
+:yb_replace_temp_schema_name
+regexp_replace
+Table "yb_temp.temporal_rng"
+Column|Type|Collation|Nullable|Default
+id|int4range||not null|
+valid_at|daterange||not null|
+Indexes:
+    "temporal_rng_pk" PRIMARY KEY (id, valid_at WITHOUT OVERLAPS)
+
+(1 row)
+SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'temporal_rng_pk';
+pg_get_constraintdef
+PRIMARY KEY (id, valid_at WITHOUT OVERLAPS)
+(1 row)
+SELECT pg_get_indexdef(conindid, 0, true) FROM pg_constraint WHERE conname = 'temporal_rng_pk';
+pg_get_indexdef
+CREATE UNIQUE INDEX temporal_rng_pk ON temporal_rng USING gist (id, valid_at)
+(1 row)
+-- PK from LIKE:
+CREATE TEMP TABLE temporal_rng2 (LIKE temporal_rng INCLUDING ALL); -- YB: temporary table
+\o :yb_desc_output_file
+\d temporal_rng2
+\o :yb_stdout
+:yb_replace_temp_schema_name
+regexp_replace
+Table "yb_temp.temporal_rng2"
+Column|Type|Collation|Nullable|Default
+id|int4range||not null|
+valid_at|daterange||not null|
+Indexes:
+    "temporal_rng2_pkey" PRIMARY KEY (id, valid_at WITHOUT OVERLAPS)
+
+(1 row)
+DROP TABLE temporal_rng2;
+-- no PK from INHERITS:
+CREATE TEMP TABLE temporal_rng2 () INHERITS (temporal_rng); -- YB: temporary table
+\o :yb_desc_output_file
+\d temporal_rng2
+\o :yb_stdout
+:yb_replace_temp_schema_name
+regexp_replace
+Table "yb_temp.temporal_rng2"
+Column|Type|Collation|Nullable|Default
+id|int4range||not null|
+valid_at|daterange||not null|
+Inherits:
+    temporal_rng
+
+(1 row)
+DROP TABLE temporal_rng2;
+DROP TABLE temporal_rng;
+-- PK in inheriting table:
+CREATE TEMP TABLE temporal_rng ( -- YB: temporary table
+  id int4range,
+  valid_at daterange
+);
+CREATE TEMP TABLE temporal_rng2 ( -- YB: temporary table
+  CONSTRAINT temporal_rng_pk PRIMARY KEY (id, valid_at WITHOUT OVERLAPS)
+) INHERITS (temporal_rng);
+\o :yb_desc_output_file
+\d temporal_rng2
+\o :yb_stdout
+:yb_replace_temp_schema_name
+regexp_replace
+Table "yb_temp.temporal_rng2"
+Column|Type|Collation|Nullable|Default
+id|int4range||not null|
+valid_at|daterange||not null|
+Indexes:
+    "temporal_rng_pk" PRIMARY KEY (id, valid_at WITHOUT OVERLAPS)
+Inherits:
+    temporal_rng
+
+(1 row)
+DROP TABLE temporal_rng CASCADE;
+NOTICE:  drop cascades to table temporal_rng2
+-- Add PK to already inheriting table:
+CREATE TEMP TABLE temporal_rng ( -- YB: temporary table
+  id int4range,
+  valid_at daterange
+);
+CREATE TEMP TABLE temporal_rng2 () INHERITS (temporal_rng); -- YB: temporary table
+ALTER TABLE temporal_rng2
+  ADD CONSTRAINT temporal_rng_pk PRIMARY KEY (id, valid_at WITHOUT OVERLAPS);
+\o :yb_desc_output_file
+\d temporal_rng2
+\o :yb_stdout
+:yb_replace_temp_schema_name
+regexp_replace
+Table "yb_temp.temporal_rng2"
+Column|Type|Collation|Nullable|Default
+id|int4range||not null|
+valid_at|daterange||not null|
+Indexes:
+    "temporal_rng_pk" PRIMARY KEY (id, valid_at WITHOUT OVERLAPS)
+Inherits:
+    temporal_rng
+
+(1 row)
+DROP TABLE temporal_rng2;
+DROP TABLE temporal_rng;
+-- PK with two columns plus a range:
+CREATE TEMP TABLE temporal_rng2 ( -- YB: temporary table
+  id1 int4range,
+  id2 int4range,
+  valid_at daterange,
+  CONSTRAINT temporal_rng2_pk PRIMARY KEY (id1, id2, valid_at WITHOUT OVERLAPS)
+);
+\o :yb_desc_output_file
+\d temporal_rng2
+\o :yb_stdout
+:yb_replace_temp_schema_name
+regexp_replace
+Table "yb_temp.temporal_rng2"
+Column|Type|Collation|Nullable|Default
+id1|int4range||not null|
+id2|int4range||not null|
+valid_at|daterange||not null|
+Indexes:
+    "temporal_rng2_pk" PRIMARY KEY (id1, id2, valid_at WITHOUT OVERLAPS)
+
+(1 row)
+SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'temporal_rng2_pk';
+pg_get_constraintdef
+PRIMARY KEY (id1, id2, valid_at WITHOUT OVERLAPS)
+(1 row)
+SELECT pg_get_indexdef(conindid, 0, true) FROM pg_constraint WHERE conname = 'temporal_rng2_pk';
+pg_get_indexdef
+CREATE UNIQUE INDEX temporal_rng2_pk ON temporal_rng2 USING gist (id1, id2, valid_at)
+(1 row)
+-- PK with a custom range type:
+CREATE TYPE textrange2 AS range (subtype=text, collation="C");
+CREATE TEMP TABLE temporal_rng3 ( -- YB: temporary table
+  id int4range,
+  valid_at textrange2,
+  CONSTRAINT temporal_rng3_pk PRIMARY KEY (id, valid_at WITHOUT OVERLAPS)
+);
+ALTER TABLE temporal_rng3 DROP CONSTRAINT temporal_rng3_pk;
+DROP TABLE temporal_rng3;
+DROP TYPE textrange2;
+-- PK with one column plus a multirange:
+CREATE TEMP TABLE temporal_mltrng ( -- YB: temporary table
+  id int4range,
+  valid_at datemultirange,
+  CONSTRAINT temporal_mltrng_pk PRIMARY KEY (id, valid_at WITHOUT OVERLAPS)
+);
+\o :yb_desc_output_file
+\d temporal_mltrng
+\o :yb_stdout
+:yb_replace_temp_schema_name
+regexp_replace
+Table "yb_temp.temporal_mltrng"
+Column|Type|Collation|Nullable|Default
+id|int4range||not null|
+valid_at|datemultirange||not null|
+Indexes:
+    "temporal_mltrng_pk" PRIMARY KEY (id, valid_at WITHOUT OVERLAPS)
+
+(1 row)
+SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'temporal_mltrng_pk';
+pg_get_constraintdef
+PRIMARY KEY (id, valid_at WITHOUT OVERLAPS)
+(1 row)
+SELECT pg_get_indexdef(conindid, 0, true) FROM pg_constraint WHERE conname = 'temporal_mltrng_pk';
+pg_get_indexdef
+CREATE UNIQUE INDEX temporal_mltrng_pk ON temporal_mltrng USING gist (id, valid_at)
+(1 row)
+-- PK with two columns plus a multirange:
+CREATE TEMP TABLE temporal_mltrng2 ( -- YB: temporary table
+  id1 int4range,
+  id2 int4range,
+  valid_at datemultirange,
+  CONSTRAINT temporal_mltrng2_pk PRIMARY KEY (id1, id2, valid_at WITHOUT OVERLAPS)
+);
+\o :yb_desc_output_file
+\d temporal_mltrng2
+\o :yb_stdout
+:yb_replace_temp_schema_name
+regexp_replace
+Table "yb_temp.temporal_mltrng2"
+Column|Type|Collation|Nullable|Default
+id1|int4range||not null|
+id2|int4range||not null|
+valid_at|datemultirange||not null|
+Indexes:
+    "temporal_mltrng2_pk" PRIMARY KEY (id1, id2, valid_at WITHOUT OVERLAPS)
+
+(1 row)
+SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'temporal_mltrng2_pk';
+pg_get_constraintdef
+PRIMARY KEY (id1, id2, valid_at WITHOUT OVERLAPS)
+(1 row)
+SELECT pg_get_indexdef(conindid, 0, true) FROM pg_constraint WHERE conname = 'temporal_mltrng2_pk';
+pg_get_indexdef
+CREATE UNIQUE INDEX temporal_mltrng2_pk ON temporal_mltrng2 USING gist (id1, id2, valid_at)
+(1 row)
+-- UNIQUE with no columns just WITHOUT OVERLAPS:
+CREATE TABLE temporal_rng3 (
+  valid_at daterange,
+  CONSTRAINT temporal_rng3_uq UNIQUE (valid_at WITHOUT OVERLAPS)
+);
+ERROR:  constraint using WITHOUT OVERLAPS needs at least two columns
+-- UNIQUE with a range column/PERIOD that isn't there:
+CREATE TABLE temporal_rng3 (
+  id INTEGER,
+  CONSTRAINT temporal_rng3_uq UNIQUE (id, valid_at WITHOUT OVERLAPS)
+);
+ERROR:  column "valid_at" named in key does not exist
+LINE 3:   CONSTRAINT temporal_rng3_uq UNIQUE (id, valid_at WITHOUT O...
+          ^
+-- UNIQUE with a non-range column:
+-- YB: GiST index method is not supported yet. (#1337)
+CREATE TABLE temporal_rng3 (
+  id int4range,
+  valid_at TEXT,
+  CONSTRAINT temporal_rng3_uq UNIQUE (id, valid_at WITHOUT OVERLAPS)
+);
+ERROR:  index method "gist" not supported yet
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1337. React with thumbs up to raise its priority
+-- UNIQUE with one column plus a range:
+CREATE TEMP TABLE temporal_rng3 ( -- YB: temporary table
+  id int4range,
+  valid_at daterange,
+  CONSTRAINT temporal_rng3_uq UNIQUE (id, valid_at WITHOUT OVERLAPS)
+);
+\o :yb_desc_output_file
+\d temporal_rng3
+\o :yb_stdout
+:yb_replace_temp_schema_name
+regexp_replace
+Table "yb_temp.temporal_rng3"
+Column|Type|Collation|Nullable|Default
+id|int4range|||
+valid_at|daterange|||
+Indexes:
+    "temporal_rng3_uq" UNIQUE (id, valid_at WITHOUT OVERLAPS)
+
+(1 row)
+SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'temporal_rng3_uq';
+pg_get_constraintdef
+UNIQUE (id, valid_at WITHOUT OVERLAPS)
+(1 row)
+SELECT pg_get_indexdef(conindid, 0, true) FROM pg_constraint WHERE conname = 'temporal_rng3_uq';
+pg_get_indexdef
+CREATE UNIQUE INDEX temporal_rng3_uq ON temporal_rng3 USING gist (id, valid_at)
+(1 row)
+DROP TABLE temporal_rng3;
+-- UNIQUE with two columns plus a range:
+CREATE TEMP TABLE temporal_rng3 ( -- YB: temporary table
+  id1 int4range,
+  id2 int4range,
+  valid_at daterange,
+  CONSTRAINT temporal_rng3_uq UNIQUE (id1, id2, valid_at WITHOUT OVERLAPS)
+);
+\o :yb_desc_output_file
+\d temporal_rng3
+\o :yb_stdout
+:yb_replace_temp_schema_name
+regexp_replace
+Table "yb_temp.temporal_rng3"
+Column|Type|Collation|Nullable|Default
+id1|int4range|||
+id2|int4range|||
+valid_at|daterange|||
+Indexes:
+    "temporal_rng3_uq" UNIQUE (id1, id2, valid_at WITHOUT OVERLAPS)
+
+(1 row)
+SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'temporal_rng3_uq';
+pg_get_constraintdef
+UNIQUE (id1, id2, valid_at WITHOUT OVERLAPS)
+(1 row)
+SELECT pg_get_indexdef(conindid, 0, true) FROM pg_constraint WHERE conname = 'temporal_rng3_uq';
+pg_get_indexdef
+CREATE UNIQUE INDEX temporal_rng3_uq ON temporal_rng3 USING gist (id1, id2, valid_at)
+(1 row)
+DROP TABLE temporal_rng3;
+-- UNIQUE with a custom range type:
+CREATE TYPE textrange2 AS range (subtype=text, collation="C");
+CREATE TEMP TABLE temporal_rng3 ( -- YB: temporary table
+  id int4range,
+  valid_at textrange2,
+  CONSTRAINT temporal_rng3_uq UNIQUE (id, valid_at WITHOUT OVERLAPS)
+);
+ALTER TABLE temporal_rng3 DROP CONSTRAINT temporal_rng3_uq;
+DROP TABLE temporal_rng3;
+DROP TYPE textrange2;
+-- YB: omitted the rest of without_overlaps.sql (domains, row checks, INSERT
+-- and UPDATE, partitions, foreign keys). Those statements create this
+-- constraint on an ordinary table, which fails with the gist error above.
+-- The \d cases here are the ones that print PRIMARY KEY / UNIQUE ... WITHOUT OVERLAPS.
+\pset format aligned
