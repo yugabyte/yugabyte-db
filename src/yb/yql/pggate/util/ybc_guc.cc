@@ -108,6 +108,10 @@ bool yb_read_time_skip_catalog = false;
 
 int yb_read_after_commit_visibility = 0;
 
+int yb_txn_read_after_commit_visibility = -1;
+
+bool yb_disable_relaxed_read_after_commit_visibility_guardrail;
+
 int yb_db_history_retention_pin_mode = YB_DB_HISTORY_RETENTION_PIN_MODE_DDL_ONLY;
 
 bool yb_allow_block_based_sampling_algorithm = true;

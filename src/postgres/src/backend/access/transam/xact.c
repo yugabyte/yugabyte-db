@@ -4344,10 +4344,6 @@ BeginTransactionBlock(void)
 				 BlockStateAsString(s->blockState));
 			break;
 	}
-
-	/* YB: Notify pggate that we are within a txn block. */
-	if (IsYugaByteEnabled())
-		HandleYBStatus(YBCPgSetInTxnBlock(true));
 }
 
 /*
@@ -4712,10 +4708,6 @@ BeginImplicitTransactionBlock(void)
 	 */
 	if (s->blockState == TBLOCK_STARTED)
 		s->blockState = TBLOCK_IMPLICIT_INPROGRESS;
-
-	/* YB: Notify pggate that we are within an (implicit) txn block. */
-	if (IsYugaByteEnabled())
-		HandleYBStatus(YBCPgSetInTxnBlock(true));
 }
 
 /*
