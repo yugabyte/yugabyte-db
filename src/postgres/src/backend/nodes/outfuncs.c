@@ -783,7 +783,11 @@ _outYbUpdateAffectedEntities(StringInfo str, const YbUpdateAffectedEntities *nod
 	WRITE_BITMAPSET_FIELD(matrix.data);
 }
 
-/* YB: custom write for YbBatchedNestLoop due to loop logic for hashClauseInfos */
+/*
+ * YB: custom write for YbBatchedNestLoop due to loop logic for hashClauseInfos.
+ * Inherited Plan/Join/NestLoop fields are listed by hand: keep them in sync
+ * with plannodes.h.
+ */
 static void
 _outYbBatchedNestLoop(StringInfo str, const YbBatchedNestLoop *node)
 {
@@ -810,6 +814,7 @@ _outYbBatchedNestLoop(StringInfo str, const YbBatchedNestLoop *node)
 	WRITE_STRING_FIELD(nl.join.plan.ybInheritedHintAlias);
 	WRITE_BOOL_FIELD(nl.join.plan.ybIsHinted);
 	WRITE_BOOL_FIELD(nl.join.plan.ybHasHintedUid);
+	WRITE_BOOL_FIELD(nl.join.plan.ybReadAheadCapable);
 	WRITE_ENUM_FIELD(nl.join.jointype, JoinType);
 	WRITE_BOOL_FIELD(nl.join.inner_unique);
 	WRITE_NODE_FIELD(nl.join.joinqual);
