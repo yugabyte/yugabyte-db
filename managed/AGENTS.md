@@ -58,6 +58,25 @@ shapes, so treat every change as a contract change.
   are documented in `src/main/resources/openapi_templates/server/README.txt`. Read it before
   adding an operation.
 
+### Porting a v1 endpoint
+
+v2 is the chance to fix v1's design, not to copy it. Before writing the spec, review the v1
+endpoint and its handler, and fix in v2:
+
+- Status codes: v1 answers 400 for missing resources, and 500 for client errors in places.
+- Payload shape: drop attributes that are internal, redundant or misleadingly named, and add the
+  ones clients work around today (by parsing messages or making a second call). Secrets are
+  `writeOnly`: accepted in `spec`, never returned.
+- Spec structure: path files only `$ref` request bodies, responses and schemas under
+  `components/`; give each reusable type its own schema. When the valid fields depend on a type
+  field, define one schema per variant (`oneOf` with a `discriminator`) instead of one schema
+  that holds every variant's fields.
+- Retrieval: filter, sort and page in the database query, not in Java over a full or capped
+  list. Avoid a query per row, and scope every lookup to the customer.
+
+Keep the v1 contract unchanged: share a fix with v1 only when it doesn't change v1's requests or
+responses, and file v1 bugs as separate tickets.
+
 ### Tests
 
 Test v2 endpoints through the generated Java client (`com.yugabyte.yba.v2.client`), as the
