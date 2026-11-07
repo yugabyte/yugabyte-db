@@ -48,6 +48,7 @@ Specifically, **do not** flag:
 - Anything that contradicts a comment, docstring, or commit message in the same diff.
 - Non-ASCII characters in new source code or comments, unless the file is test data that needs them.
 - Under `src/yb/`, departures from the conventions in [`src/yb/REVIEW.md`](src/yb/REVIEW.md).
+- Under `src/postgres/`, what [`src/postgres/REVIEW.md`](src/postgres/REVIEW.md) asks to flag.
 
 Default comment severity threshold: **MEDIUM**. Suppress LOW-severity nits unless they reveal an underlying correctness issue.
 

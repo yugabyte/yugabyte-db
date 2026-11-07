@@ -15,10 +15,11 @@
  *	  an interim executor bypass of the tableam parallelscan_*
  *	  callbacks (parallelscan_estimate, parallelscan_initialize,
  *	  parallelscan_reinitialize), which upstream nodeSeqscan routes
- *	  through.  The mapping is nearly one to one, so routing it is
- *	  mechanical: once done, YBParallelPartitionKeysData's layout
- *	  can retreat to an AM-private header, and the executor keeps
- *	  only an opaque pointer.
+ *	  through, and #36166 tracks routing it the same way.  The
+ *	  mapping is nearly one to one, so routing it is mechanical:
+ *	  once done, YBParallelPartitionKeysData's layout can retreat to
+ *	  an AM-private header, and the executor keeps only an opaque
+ *	  pointer.
  *
  * Copyright (c) YugabyteDB, Inc.
  *

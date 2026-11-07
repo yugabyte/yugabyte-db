@@ -4,10 +4,16 @@
  *	  Internal YB scan types and functions for the AM layer.
  *
  *	  This header is intended for access-method implementations
- *	  (heapam, yb_lsm, ybgin, ybvector) that need direct access
- *	  to YbOpaque and the low-level scan primitives.  Code above
- *	  the AM layer (executor, optimizer) should use yb_table_scan.h
- *	  or yb_table_scan_options.h instead.
+ *	  (heapam, yb_lsm, ybgin, ybvector) that need direct access to
+ *	  YbOpaque and the low-level scan primitives.  Only files under
+ *	  src/backend/access/ and AM extensions such as ybvector include
+ *	  it, plus guc.c for the GUC variables declared here.  Code
+ *	  above the AM layer, such as executor nodes, the optimizer,
+ *	  commands such as ANALYZE, and catalog and cache code, uses a
+ *	  header that exposes no AM internals instead: yb_scan_plan.h,
+ *	  yb_table_scan_options.h, yb_target.h, yb_cost.h, and so on.  A
+ *	  function declared in such a header is defined in that header's
+ *	  matching .c file, not in yb_scan_core.c.
  *
  * Copyright (c) YugabyteDB, Inc.
  *
