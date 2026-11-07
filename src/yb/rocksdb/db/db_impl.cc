@@ -182,6 +182,14 @@ DEFINE_RUNTIME_bool(rocksdb_determine_compaction_input_at_start, true,
     "compaction. Only has effect when use_priority_thread_pool_for_compactions is set to true.");
 TAG_FLAG(rocksdb_determine_compaction_input_at_start, hidden);
 
+// Set to true on backports to keep the old behavior. Retire once 2026.1 and 2025.2 are out of
+// support.
+DEFINE_RUNTIME_bool(nonexclusive_manual_compaction_blocks_auto_compactions, false,
+    "If true, a non-exclusive manual compaction that waits to start blocks automatic "
+    "compactions for its column family. Files can then pile up behind a long running "
+    "compaction until writes are rejected (#16798).");
+TAG_FLAG(nonexclusive_manual_compaction_blocks_auto_compactions, advanced);
+
 namespace rocksdb {
 
 namespace {
@@ -3722,7 +3730,9 @@ void DBImpl::MaybeAddToCompactionQueue(ColumnFamilyData* cfd, bool use_priority_
   const MutableCFOptions* mutable_cf_options = cfd->GetLatestMutableCFOptions();
 
   if (mutable_cf_options->disable_auto_compactions || cfd->IsDropped()
-      || HasExclusiveManualCompaction() || HaveManualCompaction(cfd)) {
+      || HasExclusiveManualCompaction()
+      || (FLAGS_nonexclusive_manual_compaction_blocks_auto_compactions &&
+          HaveManualCompaction(cfd))) {
     return;
   }
 
