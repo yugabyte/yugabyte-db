@@ -864,9 +864,10 @@ class PgResponseCache::Impl : private GarbageCollector {
       // the one just stored and bridgeable like any other, so that costs nothing.
       // TheClaimOutlivesThePublish covers this.
       //
-      // A failed round does not end the claim, because a failure does not mean the prefetch is
-      // over: PG retries a failed attempt, and the gap before the next one is where the claim
-      // matters most, since preparing the older read can wait for a heartbeat. Holding it too
+      // EndsPrefetch is what decides, and the failure half of it is the part worth the words
+      // here: a failure does not mean the prefetch is over, since PG retries the attempt, and
+      // the gap before the next one is where the claim matters most -- preparing the older
+      // read can wait for a heartbeat. Holding it too
       // long costs other connections a version they can bridge from; ending it too early costs
       // them the wait this change exists to remove. The session ends it instead, on its next
       // request that is not part of a prefetch or when it goes away.
