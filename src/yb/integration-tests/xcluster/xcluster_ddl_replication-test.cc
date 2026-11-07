@@ -18,6 +18,7 @@
 #include "yb/cdc/xcluster_types.h"
 
 #include "yb/client/schema.h"
+#include "yb/client/snapshot_test_util.h"
 #include "yb/client/table.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
@@ -3886,6 +3887,80 @@ TEST_F(XClusterDDLReplicationTest, ColumnIdsOnFailover) {
   ASSERT_OK(consumer_conn_->Execute("INSERT INTO my_table (x,q) VALUES (777777, 666666);"));
   result = ASSERT_RESULT(consumer_conn_->FetchAllAsString("SELECT * FROM my_table", ", ", "\n"));
   ASSERT_EQ(result, "777777, 666666");
+}
+
+// A row replicated by xCluster keeps the producer's hybrid time, which is older than the consumer
+// operation that applies it. A PITR on the consumer to a time between the two must keep the row,
+// even when the SST file it was flushed to holds nothing else: that file's smallest frontier has to
+// cover the producer's hybrid time, or the restore removes the file as entirely hidden (#36621).
+TEST_F(XClusterDDLReplicationTest, PITRKeepsReplicatedRowsOlderThanTheirApply) {
+  ASSERT_OK(SetUpClustersAndReplication());
+  // A schedule that takes no snapshot of its own during the test, so the restore takes one after
+  // the consumer applied the rows. A snapshot taken before that would not hold them at all.
+  {
+    client::SnapshotTestUtil snapshot_util;
+    snapshot_util.SetProxy(&consumer_cluster_.client_->proxy_cache());
+    snapshot_util.SetCluster(consumer_cluster_.mini_cluster_.get());
+    ASSERT_RESULT(snapshot_util.CreateSchedule(
+        nullptr, YQL_DATABASE_PGSQL, namespace_name, client::WaitSnapshot::kTrue, 1h, 20h));
+  }
+
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE my_table (x INT PRIMARY KEY);"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  // So the rows replicated below land in files of their own on the consumer.
+  ASSERT_OK(consumer_cluster_.mini_cluster_->FlushTablets());
+
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, /*is_enabled=*/false));
+  // A transaction, applied on the consumer at its commit hybrid time, and single-row writes, each
+  // applied at its own hybrid time.
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO my_table SELECT generate_series(1, 100);"));
+  for (int i = 101; i <= 110; ++i) {
+    ASSERT_OK(producer_conn_->ExecuteFormat("INSERT INTO my_table VALUES ($0);", i));
+  }
+  auto max_now = [](MiniCluster& cluster) {
+    HybridTime result = HybridTime::kMin;
+    for (size_t i = 0; i != cluster.num_tablet_servers(); ++i) {
+      result = std::max(result, cluster.mini_tablet_server(i)->server()->Clock()->Now());
+    }
+    return result;
+  };
+  const auto restore_ht = std::max(
+      max_now(*producer_cluster_.mini_cluster_), max_now(*consumer_cluster_.mini_cluster_));
+  // So the consumer applies the rows after restore_ht, on whichever tablet server leads.
+  ASSERT_OK(WaitFor(
+      [this, restore_ht] {
+        auto& cluster = *consumer_cluster_.mini_cluster_;
+        for (size_t i = 0; i != cluster.num_tablet_servers(); ++i) {
+          if (cluster.mini_tablet_server(i)->server()->Clock()->Now() <= restore_ht) {
+            return false;
+          }
+        }
+        return true;
+      },
+      10s * kTimeMultiplier, "Wait for the consumer clocks to pass the restore time"));
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, /*is_enabled=*/true));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(consumer_cluster_.mini_cluster_->FlushTablets());
+
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, /*is_enabled=*/false));
+  ASSERT_OK(PerformPITROnConsumerCluster(restore_ht));
+  ASSERT_OK(DeleteUniverseReplication(
+      kReplicationGroupId, consumer_client(), consumer_cluster_.mini_cluster_.get()));
+  auto* consumer_tablet_server = consumer_cluster_.mini_cluster_->mini_tablet_server(0)->server();
+  auto namespace_id = ASSERT_RESULT(GetNamespaceId(consumer_client()));
+  auto& consumer_xcluster_context = consumer_tablet_server->GetXClusterContext();
+  ASSERT_OK(WaitFor(
+      [&]() -> bool {
+        return !consumer_xcluster_context.IsTargetAndInAutomaticMode(namespace_id) &&
+               !consumer_xcluster_context.IsReadOnlyMode(namespace_id);
+      },
+      10s, "Wait for TServer to know that it is no longer a target"));
+
+  auto conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM my_table")), 110);
 }
 
 TEST_F(XClusterDDLReplicationTest, RollbackPreservesDeletedColumns) {

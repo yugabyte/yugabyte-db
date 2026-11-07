@@ -168,6 +168,13 @@ message ConsensusFrontierPB {
   // compaction. Compacted when  MinSerialNo() is at least this value. Default 0 means
   // the index has no inherited parent data.
   optional uint64 split_min_chunk_serial_no = 13;
+
+  // Set on a smallest frontier whose hybrid_time is at most the write hybrid time of every entry it
+  // covers, so that a restore to a point in time can remove the file when its filter hides all of
+  // them. Writes with an external hybrid time (xCluster, index backfill) store entries older than
+  // their Raft operation; frontiers written before they were widened to cover those entries lack
+  // the flag, and merging frontiers keeps it only when all of them have it.
+  optional bool hybrid_time_bounds_entries = 14;
 }
 
 message ApplyTransactionStatePB {

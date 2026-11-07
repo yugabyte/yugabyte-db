@@ -360,6 +360,7 @@ void WriteToRocksDB(
   docdb::ConsensusFrontiers frontiers;
   set_op_id(op_id, &frontiers);
   set_hybrid_time(write_time, &frontiers);
+  frontiers.Smallest().set_hybrid_time_bounds_entries(true);
 
   tablet->WriteToRocksDB(frontiers, &rocksdb_write_batch, docdb::StorageDbType::kRegular);
 }

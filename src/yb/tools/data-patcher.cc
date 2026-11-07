@@ -956,6 +956,8 @@ class ApplyPatch {
             docdb::RocksDBPatcher patcher(patched_path, options);
             RETURN_NOT_OK(patcher.Load());
             RETURN_NOT_OK(patcher.UpdateFileSizes());
+            // The hybrid times of the entries changed, but not those of the frontiers.
+            RETURN_NOT_OK(patcher.ClearHybridTimeBoundsEntries());
             docdb::ConsensusFrontier frontier;
             frontier.set_hybrid_time(HybridTime::kMin);
             frontier.set_history_cutoff_information(
