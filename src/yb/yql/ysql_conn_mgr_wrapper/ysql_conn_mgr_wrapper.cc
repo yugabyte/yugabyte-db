@@ -339,6 +339,7 @@ Status YsqlConnMgrWrapper::Start() {
       ysql_conn_mgr_executable, VERIFY_RESULT(conf_.CreateYsqlConnMgrConfigAndGetPath())};
   proc_.emplace(ysql_conn_mgr_executable, argv);
   proc_->SetEnv("YB_YSQLCONNMGR_PDEATHSIG", Format("$0", SIGINT));
+  proc_->SetEnv("YB_YSQLCONNMGR_PARENT_PID", Format("$0", getpid()));
 
   if (getenv("YB_YSQL_CONN_MGR_USER") == NULL) {
     proc_->SetEnv("YB_YSQL_CONN_MGR_USER", FLAGS_ysql_conn_mgr_internal_conn_user);
