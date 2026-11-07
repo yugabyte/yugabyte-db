@@ -43,12 +43,16 @@
 #include "yb/tserver/server_main_util.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/flags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/tcmalloc_impl_util.h"
 #include "yb/util/tcmalloc_util.h"
 
 DECLARE_bool(mem_tracker_include_pageheap_free_in_root_consumption);
@@ -56,6 +60,10 @@ DECLARE_double(mem_tracker_external_consumption_accuracy_percentage);
 DECLARE_int32(memory_limit_soft_percentage);
 DECLARE_int64(mem_tracker_tcmalloc_gc_release_bytes);
 DECLARE_int64(mem_tracker_update_consumption_interval_us);
+DECLARE_int64(tcmalloc_background_release_rate_bytes_per_sec);
+DECLARE_int64(TEST_tcmalloc_gc_soft_limit_bytes);
+DECLARE_int32(tcmalloc_skip_subrelease_long_interval_secs);
+DECLARE_int32(tcmalloc_skip_subrelease_short_interval_secs);
 
 using namespace std::literals;
 
@@ -473,6 +481,75 @@ TEST(MemTrackerTest, RootConsumptionAccuracy) {
     }
   }
 }
+
+#if YB_GOOGLE_TCMALLOC
+TEST(MemTrackerTest, TcMallocBackgroundRelease) {
+  constexpr int64_t kReleaseRate = 16_MB;
+  ASSERT_OK(SET_FLAG(tcmalloc_background_release_rate_bytes_per_sec, kReleaseRate));
+  ASSERT_OK(MemTracker::StartTCMallocBackgroundThread());
+  // Restore the burst release for the tests that run after this one in the same process.
+  auto se = ScopeExit([] {
+    CHECK_OK(SET_FLAG(tcmalloc_background_release_rate_bytes_per_sec, int64_t{0}));
+  });
+  // Pause the background release without changing the flag, so that nothing is released unless
+  // the thread that frees memory releases it.
+  SetTCMallocBackgroundReleaseRate(0);
+
+  auto root = MemTracker::GetRootTracker();
+  MemTracker::TEST_SetReleasedMemorySinceGC(0);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_mem_tracker_tcmalloc_gc_release_bytes) = 1_MB;
+  std::unique_ptr<char[]> big_alloc(new char[4_MB]);
+  VLOG(8) << static_cast<void*>(big_alloc.get());
+  auto overhead_before = GetTCMallocPageHeapFreeBytes();
+  big_alloc.reset();
+  auto overhead_after = GetTCMallocPageHeapFreeBytes();
+  LOG(INFO) << "Overhead before free: " << overhead_before << ", after free: " << overhead_after;
+  ASSERT_GT(overhead_after, overhead_before);
+
+  // Crossing the GC threshold does not release memory. Other allocations can still take a few free
+  // pages.
+  root->Release(1_MB + 1);
+  ASSERT_GT(GetTCMallocPageHeapFreeBytes(), overhead_after - static_cast<int64_t>(1_MB));
+
+  ASSERT_OK(SET_FLAG(tcmalloc_background_release_rate_bytes_per_sec, kReleaseRate));
+  ASSERT_OK(WaitFor(
+      [overhead_after] { return GetTCMallocPageHeapFreeBytes() < overhead_after; }, 10s,
+      "Background thread releases free memory"));
+
+  ASSERT_OK(SET_FLAG(tcmalloc_skip_subrelease_short_interval_secs, 5));
+  ASSERT_OK(SET_FLAG(tcmalloc_skip_subrelease_long_interval_secs, 20));
+  ASSERT_EQ(tcmalloc::MallocExtension::GetSkipSubreleaseShortInterval(), absl::Seconds(5));
+  ASSERT_EQ(tcmalloc::MallocExtension::GetSkipSubreleaseLongInterval(), absl::Seconds(20));
+}
+
+TEST(MemTrackerTest, TcMallocBackgroundReleaseAboveSoftLimit) {
+  constexpr int64_t kReleaseRate = 16_MB;
+  ASSERT_OK(SET_FLAG(tcmalloc_background_release_rate_bytes_per_sec, kReleaseRate));
+  ASSERT_OK(MemTracker::StartTCMallocBackgroundThread());
+  auto se = ScopeExit([] {
+    CHECK_OK(SET_FLAG(tcmalloc_background_release_rate_bytes_per_sec, int64_t{0}));
+    CHECK_OK(SET_FLAG(TEST_tcmalloc_gc_soft_limit_bytes, int64_t{-1}));
+  });
+  SetTCMallocBackgroundReleaseRate(0);
+  // Any TCMalloc heap is above this limit, even though root consumption is not.
+  ASSERT_OK(SET_FLAG(TEST_tcmalloc_gc_soft_limit_bytes, int64_t{1}));
+
+  auto root = MemTracker::GetRootTracker();
+  MemTracker::TEST_SetReleasedMemorySinceGC(0);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_mem_tracker_tcmalloc_gc_release_bytes) = 1_MB;
+  std::unique_ptr<char[]> big_alloc(new char[4_MB]);
+  VLOG(8) << static_cast<void*>(big_alloc.get());
+  auto overhead_before = GetTCMallocPageHeapFreeBytes();
+  big_alloc.reset();
+  auto overhead_after = GetTCMallocPageHeapFreeBytes();
+  LOG(INFO) << "Overhead before free: " << overhead_before << ", after free: " << overhead_after;
+  ASSERT_GT(overhead_after, overhead_before);
+
+  // Crossing the GC threshold releases memory inline, as without the background thread.
+  root->Release(1_MB + 1);
+  ASSERT_LT(GetTCMallocPageHeapFreeBytes(), overhead_after);
+}
+#endif
 
 #endif
 
