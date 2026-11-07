@@ -12,6 +12,7 @@
 
 use std::collections::{HashSet, VecDeque};
 use std::fmt;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -280,6 +281,9 @@ struct Pending {
     mutation: Mutation,
     options: WriteOptions,
     queued_at: Instant,
+    /// Set by whichever comes first: the writer taking the mutation from the queue, or its caller
+    /// giving up at the deadline. So a caller told `Expired` can rely on nothing being written.
+    claimed: Arc<AtomicBool>,
     done: Done,
 }
 
@@ -287,6 +291,8 @@ struct Pending {
 pub struct CatalogWriter {
     catalog: Arc<Catalog>,
     queue: mpsc::UnboundedSender<Pending>,
+    /// The writer's `expired` counter, for mutations their callers give up on.
+    expired: Arc<dyn Counter>,
 }
 
 /// How long [`CatalogWriter::mutate`] keeps rebuilding a conflicting mutation. Bounded by time
@@ -303,6 +309,7 @@ impl CatalogWriter {
     ) -> Arc<CatalogWriter> {
         let (queue, receiver) = mpsc::unbounded_channel();
         let metrics = WriterMetrics::new(&*options.metrics);
+        let expired = metrics.expired.clone();
         let task = WriterTask {
             catalog: catalog.clone(),
             store,
@@ -315,7 +322,11 @@ impl CatalogWriter {
             batches: JoinSet::new(),
         };
         tokio::spawn(task.run(receiver));
-        Arc::new(CatalogWriter { catalog, queue })
+        Arc::new(CatalogWriter {
+            catalog,
+            queue,
+            expired,
+        })
     }
 
     /// Writes one mutation. On success the returned snapshot (and every later one) contains it.
@@ -328,23 +339,36 @@ impl CatalogWriter {
             .await
     }
 
-    /// [`CatalogWriter::submit`] with a deadline and lane.
+    /// [`CatalogWriter::submit`] with a deadline and lane. A mutation still queued at the deadline
+    /// is answered `Expired` then, not when the writer reaches it.
     pub async fn submit_with(
         &self,
         token: &LeaderToken,
         mutation: Mutation,
         options: WriteOptions,
     ) -> Result<Arc<CatalogSnapshot>, MutationError> {
-        let (done, result) = oneshot::channel();
+        let (done, mut result) = oneshot::channel();
+        let claimed = Arc::new(AtomicBool::new(false));
         self.queue
             .send(Pending {
                 token: *token,
                 mutation,
                 options,
                 queued_at: Instant::now(),
+                claimed: claimed.clone(),
                 done,
             })
             .map_err(|_| writer_stopped())?;
+        if let Some(deadline) = options.deadline {
+            if let Ok(outcome) = tokio::time::timeout_at(deadline, &mut result).await {
+                return outcome.unwrap_or_else(|_| Err(writer_stopped()));
+            }
+            // Once the writer has taken it, its answer is the outcome.
+            if !claimed.swap(true, Ordering::AcqRel) {
+                self.expired.increment();
+                return Err(MutationError::Expired);
+            }
+        }
         result.await.unwrap_or_else(|_| Err(writer_stopped()))
     }
 
@@ -441,20 +465,23 @@ impl WriterTask {
     }
 
     async fn run(mut self, mut receiver: mpsc::UnboundedReceiver<Pending>) {
+        let mut open = true;
         loop {
             let can_send = self.batches.len() < (self.options.max_inflight)().max(1);
             let idle = self.queued() == 0;
             tokio::select! {
-                // While mutations are queued, newly submitted ones are taken in with try_recv
-                // after each batch, so a priority mutation never waits behind a full queue.
-                received = receiver.recv(), if idle => {
+                // Submissions are taken into the lanes as they arrive, also while every Raft
+                // write slot is busy, so the queue depth counts them and a priority mutation
+                // joins the next batch ahead of the normal lane.
+                received = receiver.recv(), if open => {
                     match received {
-                        Some(pending) => self.enqueue(pending),
-                        None if self.batches.is_empty() => return,
-                        None => {}
-                    }
-                    while let Ok(pending) = receiver.try_recv() {
-                        self.enqueue(pending);
+                        Some(pending) => {
+                            self.enqueue(pending);
+                            while let Ok(pending) = receiver.try_recv() {
+                                self.enqueue(pending);
+                            }
+                        }
+                        None => open = false,
                     }
                     self.metrics.queue_depth.set(self.queued() as i64);
                 }
@@ -478,6 +505,8 @@ impl WriterTask {
                     self.send_batch();
                     self.metrics.queue_depth.set(self.queued() as i64);
                 }
+                // Stopped: no more submissions, nothing queued and no write in flight.
+                else => return,
             }
         }
     }
@@ -505,6 +534,10 @@ impl WriterTask {
                 break;
             }
             let pending = self.pop_front().unwrap();
+            // Its caller gave up at the deadline, and counted it as expired.
+            if pending.claimed.swap(true, Ordering::AcqRel) {
+                continue;
+            }
             self.metrics
                 .queue_wait
                 .record_duration(now.saturating_duration_since(pending.queued_at));

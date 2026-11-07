@@ -368,14 +368,11 @@ impl Shared {
             resp.error = Some(self.not_the_leader_error()).into();
             return respond(call, &resp);
         };
-        let (token, snapshot) = match self.leader_ready(&leader) {
-            Ok(ready) => ready,
-            Err(error) => {
-                resp.set_leader_master(false);
-                resp.error = Some(error).into();
-                return respond(call, &resp);
-            }
-        };
+        if let Err(error) = self.leader_ready(&leader) {
+            resp.set_leader_master(false);
+            resp.error = Some(error).into();
+            return respond(call, &resp);
+        }
         let master_config = resp.master_config.take();
         let instance = self.info.instance();
         // Taken here, on the RPC thread, so heartbeats of one tserver are processed in the order
@@ -387,6 +384,23 @@ impl Shared {
             if let Err(status) = ticket.wait(call.time_to_deadline()).await {
                 return call.respond_error(status);
             }
+            // The turn can come after the deadline, which the wait does not check when the turn
+            // is already free.
+            if call.time_to_deadline().is_zero() {
+                return call.respond_error(expired_call());
+            }
+            // Read once the turn comes, so the catalog includes what the heartbeats before this
+            // one wrote, and the token is that of the current leadership.
+            let (token, snapshot) = match leader.ready() {
+                Ok(ready) => ready,
+                Err(error) => {
+                    let mut resp = TSHeartbeatResponsePB::new();
+                    resp.master_config = master_config.into();
+                    resp.set_leader_master(false);
+                    resp.error = Some(error).into();
+                    return respond(call, &resp);
+                }
+            };
             let ctx = master_ts_manager::HeartbeatContext {
                 token,
                 writer: &leader.writer,

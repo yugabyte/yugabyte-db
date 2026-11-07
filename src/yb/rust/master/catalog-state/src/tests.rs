@@ -636,10 +636,14 @@ async fn expired_mutation_is_dropped_unwritten() {
                 .await
         })
     };
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    // It is answered at its deadline, while the first write still holds the slot.
+    let second = tokio::time::timeout(Duration::from_secs(10), second)
+        .await
+        .expect("answered at the deadline")
+        .unwrap();
+    assert_eq!(second.unwrap_err(), MutationError::Expired);
     s.fake.resume_writes();
     first.await.unwrap().unwrap();
-    assert_eq!(second.await.unwrap().unwrap_err(), MutationError::Expired);
     assert!(s
         .catalog
         .snapshot()
@@ -731,13 +735,66 @@ async fn priority_lane_goes_first() {
     assert_eq!(seen, vec!["blocker", "urgent", "normal"]);
 }
 
+#[tokio::test]
+async fn queue_depth_counts_mutations_behind_a_busy_write() {
+    let (fake, events) = FakeSysCatalog::new();
+    let s = start(fake, events);
+    let (leadership, _source) = ready_for_tests(1).await;
+    let metrics = yb_host_api::metrics::InMemoryMetrics::new();
+    let writer = CatalogWriter::start(
+        s.catalog.clone(),
+        s.fake.clone(),
+        leadership.clone(),
+        one_at_a_time(metrics.clone()),
+    );
+    s.catalog.barrier().await;
+    let token = leadership.token().unwrap();
+    let depth = || metrics.gauge_value("rust_master_catalog_writer_queue_depth");
+    let eventually = |expected: i64| async move {
+        for _ in 0..500 {
+            if depth() == expected {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(depth(), expected);
+    };
+
+    // The first write holds the only slot; the others wait in the queue.
+    s.fake.pause_writes();
+    let tasks: Vec<_> = ["a", "b", "c"]
+        .into_iter()
+        .map(|id| {
+            let writer = writer.clone();
+            tokio::spawn(async move {
+                writer
+                    .submit(
+                        &token,
+                        Mutation::new().upsert(
+                            SysRowEntryType::TABLE,
+                            id.as_bytes(),
+                            table_row(id, 1),
+                        ),
+                    )
+                    .await
+            })
+        })
+        .collect();
+    eventually(2).await;
+    s.fake.resume_writes();
+    for task in tasks {
+        task.await.unwrap().unwrap();
+    }
+    eventually(0).await;
+}
+
 mod default_rows {
     use std::sync::Mutex;
 
     use super::*;
     use crate::defaults::{
-        default_rows, write_default_rows, DefaultsHost, DefaultsOptions, DEFAULT_YCQL_ROLE,
-        SECURITY_CONFIG_ID,
+        default_rows, set_universe_uuid_if_needed, write_default_rows, DefaultsHost,
+        DefaultsOptions, DEFAULT_YCQL_ROLE, SECURITY_CONFIG_ID,
     };
     use yb_proto::pb::catalog_entity_info::SysConfigEntryPB;
 
@@ -911,5 +968,131 @@ mod default_rows {
         assert_eq!(config.version(), 8);
         assert_eq!(config.cluster_uuid(), "existing");
         assert!(!config.universe_uuid().is_empty());
+    }
+
+    #[tokio::test]
+    async fn the_host_gets_the_system_tables_cpp_finds_by_name() {
+        use yb_proto::pb::catalog_entity_info::sys_tables_entry_pb::State;
+        let system_table = |name: &str, state: State| {
+            let mut table = SysTablesEntryPB::parse_from_bytes(&table_row(name, 0)).unwrap();
+            table.set_namespace_id(b"00000000000000000000000000000001".to_vec());
+            table.set_state(state);
+            table.write_to_bytes().unwrap()
+        };
+        let (fake, events) = FakeSysCatalog::new();
+        fake.apply(vec![
+            // C++ finds an ALTERING table by name, but not a DELETED one.
+            upsert(
+                SysRowEntryType::TABLE,
+                "altering",
+                system_table("peers", State::ALTERING),
+            ),
+            upsert(
+                SysRowEntryType::TABLE,
+                "deleted",
+                system_table("local", State::DELETED),
+            ),
+            // A replaced tablet is no tablet.
+            upsert(
+                SysRowEntryType::TABLET,
+                "replaced",
+                tablet_row("altering", "", sys_tablets_entry_pb::State::REPLACED),
+            ),
+        ]);
+        let s = start(fake, events);
+        s.catalog.barrier().await;
+        let host = FakeHost::default();
+        default_rows(&s.catalog.snapshot(), &host, &OPTIONS).unwrap();
+        assert_eq!(
+            host.seen.lock().unwrap().clone().unwrap(),
+            (vec![b"altering".to_vec()], vec![])
+        );
+    }
+
+    #[tokio::test]
+    async fn a_malformed_cluster_uuid_creates_no_universe() {
+        let (fake, events) = FakeSysCatalog::new();
+        let s = start(fake, events);
+        s.catalog.barrier().await;
+        let snapshot = s.catalog.snapshot();
+        let host = FakeHost::default();
+        let with_flag = |cluster_uuid: fn() -> String| DefaultsOptions {
+            cluster_uuid,
+            ..OPTIONS
+        };
+        let status = default_rows(&snapshot, &host, &with_flag(|| "not-a-uuid".into()))
+            .err()
+            .unwrap();
+        assert_eq!(status.code, StatusCode::Corruption);
+
+        let valid = || "0BADF00D-0000-4000-8000-000000000001".to_string();
+        let mutation = default_rows(&snapshot, &host, &with_flag(valid)).unwrap();
+        let (leadership, _source) = ready_for_tests(1).await;
+        let writer = CatalogWriter::start(
+            s.catalog.clone(),
+            s.fake.clone(),
+            leadership.clone(),
+            WriterOptions::default(),
+        );
+        writer
+            .submit(&leadership.token().unwrap(), mutation)
+            .await
+            .unwrap();
+        let config: SysClusterConfigEntryPB = s
+            .catalog
+            .snapshot()
+            .cluster_config()
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert_eq!(config.cluster_uuid(), valid());
+    }
+
+    #[tokio::test]
+    async fn the_universe_uuid_is_set_once_the_check_is_on() {
+        let (fake, events) = FakeSysCatalog::new();
+        let mut config = SysClusterConfigEntryPB::new();
+        config.set_version(3);
+        config.set_cluster_uuid("existing".into());
+        fake.apply(vec![upsert(
+            SysRowEntryType::CLUSTER_CONFIG,
+            "",
+            config.write_to_bytes().unwrap(),
+        )]);
+        let s = start(fake, events);
+        let (leadership, _source) = ready_for_tests(1).await;
+        let writer = CatalogWriter::start(
+            s.catalog.clone(),
+            s.fake.clone(),
+            leadership.clone(),
+            WriterOptions::default(),
+        );
+        s.catalog.barrier().await;
+        let token = leadership.token().unwrap();
+        let off = DefaultsOptions {
+            universe_uuid_check: || false,
+            ..OPTIONS
+        };
+        set_universe_uuid_if_needed(&writer, &token, &off)
+            .await
+            .unwrap();
+        assert_eq!(s.fake.writes(), 0);
+
+        set_universe_uuid_if_needed(&writer, &token, &OPTIONS)
+            .await
+            .unwrap();
+        set_universe_uuid_if_needed(&writer, &token, &OPTIONS)
+            .await
+            .unwrap();
+        assert_eq!(s.fake.writes(), 1, "set once");
+        let config: SysClusterConfigEntryPB = s
+            .catalog
+            .snapshot()
+            .cluster_config()
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert_eq!(config.version(), 4);
+        assert_eq!(config.universe_uuid().len(), 36);
     }
 }

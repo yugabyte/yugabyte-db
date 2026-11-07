@@ -81,7 +81,7 @@ class YQLPartitionsVTable : public YQLVirtualTable {
   // Also used without an instance, to write the table's row in a new universe.
   static Schema CreateSchema();
 
- private:
+ protected:
 
   mutable std::shared_timed_mutex mutex_;
   mutable VTableDataPtr cache_ GUARDED_BY(mutex_);

@@ -16,6 +16,7 @@ use std::time::Duration;
 
 use master_catalog_entity::EntityId;
 use master_leadership::LeaderToken;
+use master_task_runtime::Attempt;
 use protobuf::{Enum, EnumOrUnknown, Message};
 use tokio::sync::Notify;
 use yb_host_api::rpc::RpcClient;
@@ -61,18 +62,20 @@ impl DeleteReplica {
         req
     }
 
-    /// Sends it to the tserver at `host:port`.
+    /// Sends it to the tserver at `host:port`. Like C++ `AsyncDeleteReplica`, a CAS failure or a
+    /// wrong tserver uuid is final: the replica changed since the decision, and while a delete is
+    /// being sent [`DeleteReplicaQueue`] holds back newer decisions for the same replica.
     pub async fn send(
         &self,
         rpc: &dyn RpcClient,
         host: &str,
         port: u16,
         timeout: Duration,
-    ) -> Result<(), Status> {
+    ) -> Result<(), Attempt> {
         let bytes = self
             .request()
             .write_to_bytes()
-            .map_err(|e| Status::new(StatusCode::InternalError, e.to_string()))?;
+            .map_err(|e| Attempt::Fail(Status::new(StatusCode::InternalError, e.to_string())))?;
         let response = rpc
             .call(
                 host,
@@ -82,19 +85,24 @@ impl DeleteReplica {
                 &bytes,
                 timeout,
             )
-            .await?;
+            .await
+            .map_err(Attempt::Retry)?;
         let response = DeleteTabletResponsePB::parse_from_bytes(&response)
-            .map_err(|e| Status::new(StatusCode::Corruption, e.to_string()))?;
-        if let Some(error) = response.error.as_ref() {
+            .map_err(|e| Attempt::Retry(Status::new(StatusCode::Corruption, e.to_string())))?;
+        let Some(error) = response.error.as_ref() else {
+            return Ok(());
+        };
+        let status = Status::new(
+            StatusCode::from_i32(error.status.code().value()),
+            error.status.message().to_string(),
+        );
+        match error.code() {
             // Already gone is what was asked for.
-            if error.code() != tablet_server_error_pb::Code::TABLET_NOT_FOUND {
-                return Err(Status::new(
-                    StatusCode::from_i32(error.status.code().value()),
-                    error.status.message().to_string(),
-                ));
-            }
+            tablet_server_error_pb::Code::TABLET_NOT_FOUND => Ok(()),
+            tablet_server_error_pb::Code::CAS_FAILED
+            | tablet_server_error_pb::Code::WRONG_SERVER_UUID => Err(Attempt::Fail(status)),
+            _ => Err(Attempt::Retry(status)),
         }
-        Ok(())
     }
 }
 
@@ -102,24 +110,31 @@ impl DeleteReplica {
 /// deletes being sent: after a large drop every report repeats the same deletes (CE-1629).
 #[derive(Default)]
 pub struct DeleteReplicaQueue {
-    queue: Mutex<Vec<DeleteReplica>>,
-    in_flight: Mutex<HashSet<(EntityId, Vec<u8>)>>,
+    state: Mutex<QueueState>,
     added: Notify,
+}
+
+/// A replica: tserver and tablet.
+type ReplicaKey = (EntityId, Vec<u8>);
+
+#[derive(Default)]
+struct QueueState {
+    queue: Vec<DeleteReplica>,
+    /// Keys of `queue`, so a push after a large drop is O(1) rather than a scan.
+    queued: HashSet<ReplicaKey>,
+    in_flight: HashSet<ReplicaKey>,
+}
+
+fn key(delete: &DeleteReplica) -> ReplicaKey {
+    (delete.ts_uuid.clone(), delete.tablet_id.clone())
 }
 
 impl DeleteReplicaQueue {
     /// Queues a delete unless one for the same replica is queued or being sent.
     pub fn push(&self, delete: DeleteReplica) {
-        let mut queue = self.queue.lock().unwrap();
-        if queue
-            .iter()
-            .any(|d| d.ts_uuid == delete.ts_uuid && d.tablet_id == delete.tablet_id)
-            || self
-                .in_flight
-                .lock()
-                .unwrap()
-                .contains(&(delete.ts_uuid.clone(), delete.tablet_id.clone()))
-        {
+        let mut state = self.state.lock().unwrap();
+        let key = key(&delete);
+        if state.in_flight.contains(&key) || !state.queued.insert(key) {
             return;
         }
         tracing::info!(
@@ -129,33 +144,29 @@ impl DeleteReplicaQueue {
             String::from_utf8_lossy(&delete.ts_uuid),
             delete.reason
         );
-        queue.push(delete);
+        state.queue.push(delete);
         self.added.notify_one();
     }
 
     /// Takes everything queued. Each one counts as being sent until [`DeleteReplicaQueue::sent`].
     pub fn drain(&self) -> Vec<DeleteReplica> {
-        // Lock order as in push: queue, then in_flight.
-        let mut queue = self.queue.lock().unwrap();
-        let mut in_flight = self.in_flight.lock().unwrap();
-        let drained = std::mem::take(&mut *queue);
-        for delete in &drained {
-            in_flight.insert((delete.ts_uuid.clone(), delete.tablet_id.clone()));
-        }
+        let mut state = self.state.lock().unwrap();
+        let drained = std::mem::take(&mut state.queue);
+        let queued = std::mem::take(&mut state.queued);
+        state.in_flight.extend(queued);
         drained
     }
 
     /// A drained delete was sent or given up on: a later report may queue it again.
     pub fn sent(&self, delete: &DeleteReplica) {
-        self.in_flight
-            .lock()
-            .unwrap()
-            .remove(&(delete.ts_uuid.clone(), delete.tablet_id.clone()));
+        self.state.lock().unwrap().in_flight.remove(&key(delete));
     }
 
     /// Drops everything queued: a new term decides again from reports.
     pub fn clear(&self) {
-        self.queue.lock().unwrap().clear();
+        let mut state = self.state.lock().unwrap();
+        state.queue.clear();
+        state.queued.clear();
     }
 
     /// Resolves when something is queued.
@@ -165,7 +176,7 @@ impl DeleteReplicaQueue {
 
     /// How many are queued.
     pub fn len(&self) -> usize {
-        self.queue.lock().unwrap().len()
+        self.state.lock().unwrap().queue.len()
     }
 
     /// Whether none are queued.

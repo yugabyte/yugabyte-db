@@ -157,8 +157,12 @@ impl LeaderToken {
 pub type HookFuture = Pin<Box<dyn Future<Output = Result<(), Status>> + Send>>;
 
 /// Runs after election and before Ready, with the new term; Ready waits until every hook
-/// succeeds. Hooks are retried on failure.
+/// succeeds. Hooks are retried on failure; one that keeps failing for `HOOK_FAILURE_LIMIT` ends the
+/// process.
 pub type ReadyHook = Box<dyn Fn(i64) -> HookFuture + Send + Sync>;
+
+/// How long a ready hook may keep failing before the process gives up leadership by exiting.
+const HOOK_FAILURE_LIMIT: Duration = Duration::from_secs(60);
 
 /// How often the Raft state is polled; election and step-down also nudge.
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
@@ -393,12 +397,21 @@ impl Leadership {
         }
         let hooks = self.hooks.lock().unwrap().clone();
         for hook in hooks {
+            let started = tokio::time::Instant::now();
             loop {
                 if !still_catching_up() {
                     return;
                 }
                 match hook(term).await {
                     Ok(()) => break,
+                    Err(status) if started.elapsed() > HOOK_FAILURE_LIMIT => {
+                        // As C++ does with LOG(FATAL) when VisitSysCatalog fails: a leader that
+                        // cannot initialize must not hold leadership, or no master ever serves.
+                        panic!(
+                            "Leader initialization in term {term} kept failing for {:?}: {status}",
+                            HOOK_FAILURE_LIMIT
+                        );
+                    }
                     Err(status) => {
                         tracing::warn!("Leader initialization step failed, retrying: {status}");
                         tokio::time::sleep(Duration::from_millis(200)).await;

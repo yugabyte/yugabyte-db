@@ -304,10 +304,17 @@ impl DefaultsHost for HostDefaults {
                 let entry_type = SysRowEntryType::from_i32(row.entry_type).ok_or_else(|| {
                     Status::new(StatusCode::Corruption, "unknown entry type from the host")
                 })?;
-                Ok(RowChange::Upsert {
-                    entry_type,
-                    id: row.id,
-                    data: row.data,
+                Ok(if row.deleted {
+                    RowChange::Delete {
+                        entry_type,
+                        id: row.id,
+                    }
+                } else {
+                    RowChange::Upsert {
+                        entry_type,
+                        id: row.id,
+                        data: row.data,
+                    }
                 })
             })
             .collect()

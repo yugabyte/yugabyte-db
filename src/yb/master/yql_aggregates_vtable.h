@@ -24,7 +24,6 @@ class YQLAggregatesVTable : public YQLEmptyVTable {
   explicit YQLAggregatesVTable(const TableName& table_name,
                                const NamespaceName& namespace_name,
                                Master * const master);
- protected:
  public:
   // Also used without an instance, to write the table's row in a new universe.
   static Schema CreateSchema();

@@ -18,6 +18,8 @@
 //! with some of them. YSQL's initial sys catalog snapshot is not restored here: a Rust leader
 //! serves no YSQL until W9.
 
+use std::sync::OnceLock;
+
 use master_leadership::LeaderToken;
 use master_sys_catalog::RowChange;
 use protobuf::{EnumOrUnknown, Message};
@@ -173,14 +175,16 @@ pub fn default_rows(
         config.set_ysql_catalog_config(ysql);
         config
     });
-    let has_pgsql_tables = snapshot.iter(SysRowEntryType::TABLE).any(|e| {
-        e.table()
-            .is_some_and(|t| t.table_type == TableType::PGSQL_TABLE_TYPE as i32)
-    });
+    let has_pgsql_tables = || {
+        snapshot.iter(SysRowEntryType::TABLE).any(|e| {
+            e.table()
+                .is_some_and(|t| t.table_type == TableType::PGSQL_TABLE_TYPE as i32)
+        })
+    };
     if !ysql
         .ysql_catalog_config()
         .transactional_sys_catalog_enabled()
-        && !has_pgsql_tables
+        && !has_pgsql_tables()
     {
         ysql.mut_ysql_catalog_config()
             .set_transactional_sys_catalog_enabled(true);
@@ -210,7 +214,9 @@ pub fn default_rows(
         }
     }
 
-    // PrepareSystemTables: the host builds the rows.
+    // PrepareSystemTables: the host builds the rows. It gets the system tables C++ finds by name
+    // in `table_names_map_` (not deleting, deleted or hidden), and which of them have a tablet
+    // that is not deleted or replaced, as `TableInfo::GetTablets` returns them.
     let mut tables = Vec::new();
     let mut with_tablets = Vec::new();
     for entity in snapshot.iter(SysRowEntryType::TABLE) {
@@ -220,10 +226,14 @@ pub fn default_rows(
         let system = SYSTEM_NAMESPACES
             .iter()
             .any(|(id, _)| table.namespace_id == *id);
-        if !system || crate::is_inactive_state(table.state) {
+        if !system
+            || snapshot
+                .table_by_name(&table.namespace_id, &table.name)
+                .is_none_or(|found| found.key.id != entity.key.id)
+        {
             continue;
         }
-        if !snapshot.tablets_of(&entity.key.id).is_empty() {
+        if !snapshot.active_tablets_of(&entity.key.id).is_empty() {
             with_tablets.push(String::from_utf8_lossy(&entity.key.id).into_owned());
         }
         tables.push((entity.key.id.to_vec(), entity.raw.to_vec()));
@@ -235,7 +245,10 @@ pub fn default_rows(
             data,
         } = row
         else {
-            continue;
+            return Err(Status::new(
+                StatusCode::IllegalState,
+                "The host asked to delete a system table row",
+            ));
         };
         mutation = add(mutation, entry_type, &id, data);
     }
@@ -275,18 +288,23 @@ pub fn default_rows(
     }
 
     // PrepareDefaultClusterConfig, and SetUniverseUuidIfNeeded on an existing universe.
-    let universe_uuid = (options.universe_uuid_check)();
     match parse::<SysClusterConfigEntryPB>(snapshot, SysRowEntryType::CLUSTER_CONFIG, b"")? {
         None => {
             let mut config = SysClusterConfigEntryPB::new();
             config.set_version(0);
             let cluster_uuid = (options.cluster_uuid)();
-            config.set_cluster_uuid(if cluster_uuid.is_empty() {
-                random_uuid()
+            if cluster_uuid.is_empty() {
+                config.set_cluster_uuid(random_uuid());
+            } else if is_uuid(&cluster_uuid) {
+                config.set_cluster_uuid(cluster_uuid);
             } else {
-                cluster_uuid
-            });
-            if universe_uuid {
+                // `Uuid::FromString`'s error: no universe is created with a malformed flag.
+                return Err(Status::new(
+                    StatusCode::Corruption,
+                    format!("Couldn't read Uuid from string: {cluster_uuid}"),
+                ));
+            }
+            if (options.universe_uuid_check)() {
                 config.set_universe_uuid(random_uuid());
             }
             mutation = add(
@@ -296,17 +314,16 @@ pub fn default_rows(
                 encode(&config)?,
             );
         }
-        Some(mut config) if universe_uuid && config.universe_uuid().is_empty() => {
-            config.set_universe_uuid(random_uuid());
-            config.set_version(config.version() + 1);
-            mutation = add(
-                mutation,
-                SysRowEntryType::CLUSTER_CONFIG,
-                b"",
-                encode(&config)?,
-            );
+        Some(config) => {
+            if let Some(config) = with_universe_uuid(config, options) {
+                mutation = add(
+                    mutation,
+                    SysRowEntryType::CLUSTER_CONFIG,
+                    b"",
+                    encode(&config)?,
+                );
+            }
         }
-        Some(_) => {}
     }
 
     // XClusterManager::PrepareDefaultXClusterConfig and PrepareDefaultPersistenceBlockMap.
@@ -347,10 +364,97 @@ pub async fn write_default_rows(
     host: &dyn DefaultsHost,
     options: &DefaultsOptions,
 ) -> Result<(), Status> {
+    // bcrypt is slow on purpose; hash once, not on every rebuild after a conflict.
+    let host = HashOnce {
+        host,
+        hash: OnceLock::new(),
+    };
     writer
         .mutate(token, |snapshot| {
-            Ok((default_rows(snapshot, host, options)?, ()))
+            Ok((default_rows(snapshot, &host, options)?, ()))
         })
         .await
         .map(|_| ())
+}
+
+/// A host whose password hash is computed at most once.
+struct HashOnce<'a> {
+    host: &'a dyn DefaultsHost,
+    hash: OnceLock<Result<Vec<u8>, Status>>,
+}
+
+impl DefaultsHost for HashOnce<'_> {
+    fn system_table_rows(
+        &self,
+        tables: &[(Vec<u8>, Vec<u8>)],
+        tables_with_tablets: &[String],
+    ) -> Result<Vec<RowChange>, Status> {
+        self.host.system_table_rows(tables, tables_with_tablets)
+    }
+
+    fn default_ycql_password_hash(&self) -> Result<Vec<u8>, Status> {
+        self.hash
+            .get_or_init(|| self.host.default_ycql_password_hash())
+            .clone()
+    }
+
+    fn ysql_major_version(&self) -> u32 {
+        self.host.ysql_major_version()
+    }
+}
+
+/// `SetUniverseUuidIfNeeded`, which C++ runs from its background task and the leader runs
+/// periodically too: the `master_enable_universe_uuid_heartbeat_check` AutoFlag is promoted while
+/// masters run, and until the universe has a uuid every tserver heartbeat is refused.
+pub async fn set_universe_uuid_if_needed(
+    writer: &CatalogWriter,
+    token: &LeaderToken,
+    options: &DefaultsOptions,
+) -> Result<(), Status> {
+    if !(options.universe_uuid_check)() {
+        return Ok(());
+    }
+    writer
+        .mutate(token, |snapshot| {
+            let mut mutation = Mutation::new();
+            let Some(entity) = snapshot.cluster_config() else {
+                return Ok((mutation, ()));
+            };
+            let config = entity
+                .parse::<SysClusterConfigEntryPB>()
+                .map_err(|e| Status::new(StatusCode::Corruption, e.to_string()))?;
+            if let Some(config) = with_universe_uuid(config, options) {
+                mutation = mutation.read(entity).upsert(
+                    SysRowEntryType::CLUSTER_CONFIG,
+                    b"",
+                    encode(&config)?,
+                );
+            }
+            Ok((mutation, ()))
+        })
+        .await
+        .map(|_| ())
+}
+
+/// The cluster config with a new universe uuid, if the check is on and it has none.
+fn with_universe_uuid(
+    mut config: SysClusterConfigEntryPB,
+    options: &DefaultsOptions,
+) -> Option<SysClusterConfigEntryPB> {
+    if !(options.universe_uuid_check)() || !config.universe_uuid().is_empty() {
+        return None;
+    }
+    config.set_universe_uuid(random_uuid());
+    config.set_version(config.version() + 1);
+    Some(config)
+}
+
+/// Whether `value` is a UUID in the form `Uuid::FromString` reads: 8-4-4-4-12 hex digits.
+fn is_uuid(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    bytes.len() == 36
+        && bytes.iter().enumerate().all(|(i, b)| match i {
+            8 | 13 | 18 | 23 => *b == b'-',
+            _ => b.is_ascii_hexdigit(),
+        })
 }

@@ -101,6 +101,12 @@ impl LeaderServices {
     /// A token if this master is a ready leader with a loaded catalog, else the error
     /// `ScopedLeaderSharedLock` reports, as `NOT_THE_LEADER`.
     pub fn ready(&self) -> Result<(LeaderToken, Arc<CatalogSnapshot>), MasterErrorPB> {
+        // The token first: a snapshot taken after it has every row written before Ready, such as
+        // a new universe's default rows.
+        let token = self
+            .leadership
+            .token()
+            .map_err(|status| master_error_from(master_error_pb::Code::NOT_THE_LEADER, &status))?;
         let snapshot = self.catalog.snapshot();
         if !snapshot.loaded {
             return Err(master_error_from(
@@ -108,13 +114,7 @@ impl LeaderServices {
                 &master_catalog_state::not_loaded_status(),
             ));
         }
-        match self.leadership.token() {
-            Ok(token) => Ok((token, snapshot)),
-            Err(status) => Err(master_error_from(
-                master_error_pb::Code::NOT_THE_LEADER,
-                &status,
-            )),
-        }
+        Ok((token, snapshot))
     }
 
     fn cluster_config(snapshot: &CatalogSnapshot) -> Result<SysClusterConfigEntryPB, Status> {

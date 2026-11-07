@@ -23,8 +23,7 @@ use std::future::Future;
 use std::sync::{Arc, Mutex};
 
 use tokio::sync::oneshot;
-use tokio::time::Instant;
-use yb_host_api::{Status, StatusCode};
+use yb_host_api::Status;
 
 use crate::{Attempt, RetryPolicy};
 
@@ -51,7 +50,8 @@ struct LaneState {
 
 /// A slot in a lane, released on drop.
 struct Permit {
-    lane: Arc<Lane>,
+    /// `None` once the slot was taken back from a waiter that gave up.
+    lane: Option<Arc<Lane>>,
 }
 
 impl Lane {
@@ -60,42 +60,54 @@ impl Lane {
     }
 
     async fn acquire(self: &Arc<Lane>) -> Permit {
+        let limit = self.limit();
         let receiver = {
             let mut state = self.state.lock().unwrap();
-            if state.waiters.is_empty() && state.in_flight < self.limit() {
+            if state.waiters.is_empty() && state.in_flight < limit {
                 state.in_flight += 1;
-                return Permit { lane: self.clone() };
+                return Permit {
+                    lane: Some(self.clone()),
+                };
             }
             let (sender, receiver) = oneshot::channel();
             state.waiters.push_back(sender);
             receiver
         };
+        // The limit may have been raised since the last call finished.
+        self.grant();
         // The sender is only dropped together with the lane, which `self` keeps alive.
         receiver.await.expect("a lane outlives its waiters")
     }
 
-    /// Hands the slot to the oldest live waiter, or frees it.
     fn release(self: &Arc<Lane>) {
+        self.state.lock().unwrap().in_flight -= 1;
+        self.grant();
+    }
+
+    /// Hands slots to the oldest waiters while fewer than `limit()` calls are in flight, so a
+    /// raised limit admits waiters at the next call or completion, and a lowered one takes effect
+    /// as calls finish.
+    fn grant(self: &Arc<Lane>) {
         loop {
+            let limit = self.limit();
             let sender = {
                 let mut state = self.state.lock().unwrap();
-                // A limit lowered at runtime takes effect as calls finish.
-                let over_limit = state.in_flight > self.limit();
-                match state.waiters.pop_front() {
-                    Some(sender) if !over_limit => sender,
-                    other => {
-                        if let Some(sender) = other {
-                            state.waiters.push_front(sender);
-                        }
-                        state.in_flight -= 1;
-                        return;
-                    }
+                if state.in_flight >= limit {
+                    return;
                 }
+                let Some(sender) = state.waiters.pop_front() else {
+                    return;
+                };
+                state.in_flight += 1;
+                sender
             };
-            match sender.send(Permit { lane: self.clone() }) {
-                Ok(()) => return,
-                // The waiter gave up (its task was cancelled): try the next one with the slot.
-                Err(permit) => std::mem::forget(permit),
+            let permit = Permit {
+                lane: Some(self.clone()),
+            };
+            if let Err(mut permit) = sender.send(permit) {
+                // The waiter gave up (its task was cancelled): take the slot back for the next.
+                permit.lane = None;
+                self.state.lock().unwrap().in_flight -= 1;
             }
         }
     }
@@ -103,7 +115,9 @@ impl Lane {
 
 impl Drop for Permit {
     fn drop(&mut self) {
-        self.lane.release();
+        if let Some(lane) = self.lane.take() {
+            lane.release();
+        }
     }
 }
 
@@ -134,41 +148,21 @@ impl TsRpcExecutor {
 
     /// Calls `send` in the tserver's lane for `kind` until it succeeds, fails for good, or
     /// `policy` runs out. `send` gets the 0-based attempt number. Each attempt holds a slot only
-    /// while it runs; backoff happens outside the lane.
+    /// while it runs; backoff happens outside the lane. The deadline starts with the first send,
+    /// and no attempt starts after it, however long the wait for a slot was.
     pub async fn run<T, F, Fut>(
         &self,
         ts_uuid: &[u8],
         kind: &'static str,
         policy: &RetryPolicy,
-        mut send: F,
+        send: F,
     ) -> Result<T, Status>
     where
         F: FnMut(u32) -> Fut,
         Fut: Future<Output = Result<T, Attempt>>,
     {
         let lane = self.lane(ts_uuid, kind);
-        let mut deadline = None;
-        let mut last = Status::new(StatusCode::TimedOut, "no attempt made");
-        for n in 0..policy.max_attempts.max(1) {
-            let permit = lane.acquire().await;
-            let deadline = *deadline.get_or_insert_with(|| Instant::now() + policy.deadline);
-            let result = send(n).await;
-            drop(permit);
-            match result {
-                Ok(value) => return Ok(value),
-                Err(Attempt::Fail(status)) => return Err(status),
-                Err(Attempt::Retry(status)) => last = status,
-            }
-            let wake = Instant::now() + policy.delay(n);
-            if wake >= deadline {
-                break;
-            }
-            tokio::time::sleep_until(wake).await;
-        }
-        Err(Status::new(
-            last.code,
-            format!("giving up after retries: {}", last.message),
-        ))
+        policy.run_gated(|| lane.acquire(), send).await
     }
 
     /// Calls in flight and waiting in the tserver's lane for `kind`.
@@ -185,6 +179,7 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
+    use yb_host_api::StatusCode;
 
     fn two(_: &str) -> usize {
         2
@@ -328,5 +323,81 @@ mod tests {
             .await;
         assert_eq!(result.unwrap_err().code, StatusCode::NotFound);
         assert_eq!(executor.load(b"ts", "DeleteTablet"), (0, 0));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_raised_limit_admits_waiters() {
+        static LIMIT: AtomicUsize = AtomicUsize::new(1);
+        fn limit(_: &str) -> usize {
+            LIMIT.load(Ordering::SeqCst)
+        }
+        let executor = TsRpcExecutor::new(limit);
+        let hold = || {
+            let executor = executor.clone();
+            tokio::spawn(async move {
+                executor
+                    .run(b"ts", "DeleteTablet", &RetryPolicy::default(), |_| async {
+                        tokio::time::sleep(Duration::from_secs(5)).await;
+                        Ok::<_, Attempt>(())
+                    })
+                    .await
+            })
+        };
+        let mut tasks: Vec<_> = (0..4).map(|_| hold()).collect();
+        tokio::task::yield_now().await;
+        assert_eq!(executor.load(b"ts", "DeleteTablet"), (1, 3));
+
+        // The next call admits the queued ones up to the new limit, oldest first.
+        LIMIT.store(4, Ordering::SeqCst);
+        tasks.push(hold());
+        tokio::task::yield_now().await;
+        assert_eq!(executor.load(b"ts", "DeleteTablet"), (4, 1));
+        for task in tasks {
+            task.await.unwrap().unwrap();
+        }
+        assert_eq!(executor.load(b"ts", "DeleteTablet"), (0, 0));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn no_attempt_starts_after_the_deadline() {
+        fn one(_: &str) -> usize {
+            1
+        }
+        let executor = TsRpcExecutor::new(one);
+        let policy = RetryPolicy {
+            max_attempts: 5,
+            deadline: Duration::from_secs(1),
+            ..Default::default()
+        };
+        let attempts = AtomicUsize::new(0);
+        let mut holder = None;
+        let result: Result<(), _> = executor
+            .run(b"ts", "DeleteTablet", &policy, |_| {
+                attempts.fetch_add(1, Ordering::SeqCst);
+                // Another call queues behind this attempt, then holds the slot for longer than
+                // this call's deadline.
+                if holder.is_none() {
+                    let executor = executor.clone();
+                    holder = Some(tokio::spawn(async move {
+                        executor
+                            .run(b"ts", "DeleteTablet", &RetryPolicy::default(), |_| async {
+                                tokio::time::sleep(Duration::from_secs(30)).await;
+                                Ok::<_, Attempt>(())
+                            })
+                            .await
+                    }));
+                }
+                async {
+                    tokio::task::yield_now().await;
+                    Err(Attempt::Retry(Status::new(
+                        StatusCode::NetworkError,
+                        "down",
+                    )))
+                }
+            })
+            .await;
+        assert_eq!(result.unwrap_err().code, StatusCode::NetworkError);
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+        holder.unwrap().await.unwrap().unwrap();
     }
 }

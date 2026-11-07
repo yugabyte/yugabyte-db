@@ -108,6 +108,8 @@ pub struct TsDescriptor {
     pub pb: SysTabletServerEntryPB,
     /// The last heartbeat; `None` for one loaded from the catalog and not heard from yet.
     pub last_heartbeat: Option<Instant>,
+    /// When leader leases from its heartbeats were last recorded in this term (K7).
+    pub last_lease_report: Option<Instant>,
     /// A full report was completed since registration (or since the term began).
     pub has_tablet_report: bool,
     /// The sequence number of the full report in progress.
@@ -130,6 +132,7 @@ impl TsDescriptor {
             uuid,
             pb: SysTabletServerEntryPB::new(),
             last_heartbeat: None,
+            last_lease_report: None,
             has_tablet_report: false,
             receiving_full_report_seq_no: None,
             latest_report_seqno: i32::MIN,
@@ -237,14 +240,15 @@ impl TsManager {
         &self.options
     }
 
-    /// When the tserver's latest heartbeat was processed, if it is live: the end of the window
-    /// the leaderless check may count for tablets it leads (K7).
-    pub fn live_heartbeat_time(&self, uuid: &[u8]) -> Option<Instant> {
+    /// When leader leases from the tserver's heartbeats were last recorded, if it is live: the end
+    /// of the window the leaderless check may count for tablets it leads (K7). A heartbeat whose
+    /// leases were not recorded (a full report, or too little time left) does not move it.
+    pub fn live_lease_report_time(&self, uuid: &[u8]) -> Option<Instant> {
         let descriptors = self.descriptors.read().unwrap();
         let descriptor = descriptors.get(uuid)?;
         descriptor
             .is_live()
-            .then_some(descriptor.last_heartbeat)
+            .then_some(descriptor.last_lease_report)
             .flatten()
     }
 
@@ -348,6 +352,7 @@ impl TsManager {
             descriptor.has_tablet_report = false;
             descriptor.receiving_full_report_seq_no = None;
             descriptor.last_heartbeat = Some(now);
+            descriptor.last_lease_report = None;
         }
         drop(descriptors);
         self.sent_key_registry.lock().unwrap().clear();

@@ -2122,47 +2122,6 @@ Status CatalogManager::PrepareNamespace(
   return Status::OK();
 }
 
-Status CatalogManager::CheckLocalHostInMasterAddresses() {
-  auto local_hostport = master_->first_rpc_address();
-  std::vector<IpAddress> local_addrs;
-
-  if (local_hostport.address().is_unspecified()) {
-    auto status = GetLocalAddresses(&local_addrs, AddressFilter::ANY);
-    if (!status.ok() || local_addrs.empty()) {
-      LOG(WARNING) << "Could not enumerate network interfaces due to " << status << ", found "
-                   << local_addrs.size() << " local addresses.";
-      return Status::OK();
-    }
-  } else {
-    for (auto const &addr : master_->rpc_addresses()) {
-      local_addrs.push_back(addr.address());
-    }
-  }
-
-  auto broadcast_addresses = master_->opts().broadcast_addresses;
-  if (!broadcast_addresses.empty()) {
-    auto resolved_broadcast_addresses = VERIFY_RESULT(server::ResolveMasterAddresses(
-        {broadcast_addresses}));
-    for (auto const &addr : resolved_broadcast_addresses) {
-      local_addrs.push_back(addr.address());
-    }
-  }
-
-  auto resolved_addresses = VERIFY_RESULT(server::ResolveMasterAddresses(
-      *master_->opts().GetMasterAddresses()));
-
-  for (auto const &addr : resolved_addresses) {
-    if (addr.address().is_unspecified() ||
-        std::find(local_addrs.begin(), local_addrs.end(), addr.address()) !=
-            local_addrs.end()) {
-      return Status::OK();
-    }
-  }
-  return STATUS_FORMAT(IllegalState,
-      "None of the local addresses are present in master_addresses $0.",
-      master_->opts().master_addresses_flag);
-}
-
 Status CatalogManager::InitSysCatalogAsync() {
   LockGuard lock(mutex_);
 
@@ -2186,7 +2145,7 @@ Status CatalogManager::InitSysCatalogAsync() {
     // master_join_existing_universe is false and master_addresses is set. This is how operators
     // tell a set of master processes with empty on-disk state to create a new universe.
 
-    RETURN_NOT_OK(CheckLocalHostInMasterAddresses());
+    RETURN_NOT_OK(CheckLocalHostInMasterAddresses(*master_, master_->opts()));
     RETURN_NOT_OK_PREPEND(
         sys_catalog_->CreateNew(master_->fs_manager()),
         Format(

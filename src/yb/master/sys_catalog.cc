@@ -87,6 +87,9 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/thread_pool.h"
 
+#include "yb/server/server_base.h"
+#include "yb/server/server_base_options.h"
+
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
@@ -104,6 +107,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/dns_resolver.h"
+#include "yb/util/net/net_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
@@ -2473,6 +2477,48 @@ Result<docdb::DocRowwiseIteratorPtr> PgTableReadData::NewUninitializedIterator(
 Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> PgTableReadData::NewIterator(
     const dockv::ReaderProjection& projection) const {
   return tablet->NewRowIterator(projection, read_hybrid_time, table_id);
+}
+
+Status CheckLocalHostInMasterAddresses(
+    const server::RpcServerBase& rpc_server, const server::ServerBaseOptions& options) {
+  auto local_hostport = rpc_server.first_rpc_address();
+  std::vector<IpAddress> local_addrs;
+
+  if (local_hostport.address().is_unspecified()) {
+    auto status = GetLocalAddresses(&local_addrs, AddressFilter::ANY);
+    if (!status.ok() || local_addrs.empty()) {
+      LOG(WARNING) << "Could not enumerate network interfaces due to " << status << ", found "
+                   << local_addrs.size() << " local addresses.";
+      return Status::OK();
+    }
+  } else {
+    for (auto const &addr : rpc_server.rpc_addresses()) {
+      local_addrs.push_back(addr.address());
+    }
+  }
+
+  auto broadcast_addresses = options.broadcast_addresses;
+  if (!broadcast_addresses.empty()) {
+    auto resolved_broadcast_addresses = VERIFY_RESULT(server::ResolveMasterAddresses(
+        {broadcast_addresses}));
+    for (auto const &addr : resolved_broadcast_addresses) {
+      local_addrs.push_back(addr.address());
+    }
+  }
+
+  auto resolved_addresses = VERIFY_RESULT(server::ResolveMasterAddresses(
+      *options.GetMasterAddresses()));
+
+  for (auto const &addr : resolved_addresses) {
+    if (addr.address().is_unspecified() ||
+        std::find(local_addrs.begin(), local_addrs.end(), addr.address()) !=
+            local_addrs.end()) {
+      return Status::OK();
+    }
+  }
+  return STATUS_FORMAT(IllegalState,
+      "None of the local addresses are present in master_addresses $0.",
+      options.master_addresses_flag);
 }
 
 } // namespace yb::master

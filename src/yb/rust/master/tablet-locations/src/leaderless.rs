@@ -17,8 +17,9 @@
 //! `leaderless_tablet_alert_delay_secs` past the last valid-leader report, so heartbeats that queue
 //! on a busy master, or a new leader that has not heard from tservers yet, look like outages. Here
 //! only observable time counts: the window starts no earlier than the term's start plus a grace
-//! period, and while the last leader's tserver is live it ends at that tserver's latest processed
-//! heartbeat, since a report not yet processed is not evidence of anything.
+//! period, or than when the locations first had the tablet, and while the leader's tserver is live
+//! it ends at the latest heartbeat of that tserver whose leases were recorded, since a report not
+//! yet processed, or skipped, is not evidence of anything.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -26,8 +27,9 @@ use std::time::{Duration, Instant};
 
 use master_catalog_entity::EntityId;
 
-/// `consensus::kInfiniteHybridTimeLeaseExpiration`: what an RF1 leader reports.
-pub const INFINITE_HT_LEASE_EXPIRATION: u64 = u64::MAX;
+/// `consensus::kInfiniteHybridTimeLeaseExpiration`, what an RF1 leader reports: the physical
+/// microseconds of `HybridTime::kMax`, whose low 12 bits are the logical component.
+pub const INFINITE_HT_LEASE_EXPIRATION: u64 = u64::MAX >> 12;
 
 #[derive(Clone, Debug)]
 struct LeaseInfo {
@@ -36,6 +38,9 @@ struct LeaseInfo {
     ht_lease_expiration: u64,
     /// When a valid-leader report was last processed.
     last_valid: Option<Instant>,
+    /// When the locations first had the tablet, as C++ counts a new `TabletInfo` from its
+    /// creation.
+    since: Instant,
 }
 
 /// One leader-lease report: `TabletLeaderMetricsPB` from a tserver that leads the tablet.
@@ -60,9 +65,9 @@ pub struct LeaderlessCheck<'a> {
     /// The term's start plus the grace period while locations are unconfirmed: nothing before it
     /// counts.
     pub observable_from: Instant,
-    /// When the tserver's latest heartbeat was processed, if it is live; `None` for an
-    /// unresponsive or unknown tserver.
-    pub last_heartbeat: &'a dyn Fn(&[u8]) -> Option<Instant>,
+    /// When leases from the tserver's heartbeats were last recorded, if it is live; `None` for an
+    /// unresponsive or unknown tserver, or one whose leases were not recorded in this term.
+    pub last_lease_report: &'a dyn Fn(&[u8]) -> Option<Instant>,
 }
 
 /// Leader leases, sharded like the locations.
@@ -99,6 +104,7 @@ impl LeaderLeases {
                 leader: report.leader.into(),
                 ht_lease_expiration: 0,
                 last_valid: None,
+                since: now,
             });
         if &*info.leader != report.leader {
             info.leader = report.leader.into();
@@ -116,6 +122,20 @@ impl LeaderLeases {
             info.ht_lease_expiration = report.ht_lease_expiration;
             info.last_valid = Some(now);
         }
+    }
+
+    /// Starts the tablet's window at `now`, when the locations first have it.
+    pub(crate) fn track(&self, shard: usize, tablet_id: &[u8], now: Instant) {
+        self.shard(shard)
+            .lock()
+            .unwrap()
+            .entry(tablet_id.into())
+            .or_insert_with(|| LeaseInfo {
+                leader: EntityId::from(&[][..]),
+                ht_lease_expiration: 0,
+                last_valid: None,
+                since: now,
+            });
     }
 
     pub(crate) fn forget(&self, shard: usize, tablet_id: &[u8]) {
@@ -137,15 +157,15 @@ impl LeaderLeases {
         leader: Option<&[u8]>,
         check: &LeaderlessCheck<'_>,
     ) -> Option<Duration> {
-        let last_valid = self
+        let counted_from = self
             .shard(shard)
             .lock()
             .unwrap()
             .get(tablet_id)
-            .and_then(|info| info.last_valid);
-        let start = last_valid.map_or(check.observable_from, |t| t.max(check.observable_from));
-        let end = match leader.and_then(|uuid| (check.last_heartbeat)(uuid)) {
-            Some(heartbeat) => heartbeat.min(check.now),
+            .map(|info| info.last_valid.unwrap_or(info.since));
+        let start = counted_from.map_or(check.observable_from, |t| t.max(check.observable_from));
+        let end = match leader.and_then(|uuid| (check.last_lease_report)(uuid)) {
+            Some(reported) => reported.min(check.now),
             None => check.now,
         };
         let gone = end.saturating_duration_since(start);

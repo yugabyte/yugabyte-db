@@ -40,6 +40,8 @@ name as leader are ignored.
 `leaderless` reports a tablet once it has gone without a valid leader for more than the alert delay
 of observable time. C++ counts from the last valid report to now, so heartbeats queued on a busy
 master, or a new leader that has not heard from tservers, look like outages. Here the window starts
-no earlier than the caller's `observable_from` (the term's start plus a grace period), and while the
-last leader's tserver is live it ends at that tserver's latest processed heartbeat. A tablet whose
+no earlier than the caller's `observable_from` (the term's start plus a grace period), or than when
+the locations first had the tablet (C++ counts a new tablet from its creation). While the leader's
+tserver is live, the window ends at the latest heartbeat of that tserver whose leases were recorded:
+one that skipped them, for lack of time or as part of a full report, is no evidence. A tablet whose
 leader's tserver is unresponsive is still reported.

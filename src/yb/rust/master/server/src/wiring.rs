@@ -17,7 +17,9 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use master_catalog_state::defaults::{write_default_rows, DefaultsHost, DefaultsOptions};
+use master_catalog_state::defaults::{
+    set_universe_uuid_if_needed, write_default_rows, DefaultsHost, DefaultsOptions,
+};
 use master_catalog_state::{run_materializer, self_check, Catalog, CatalogWriter, WriterOptions};
 use master_leadership::{Leadership, Phase};
 use master_rpc_handlers::{LeaderServices, MasterInfo};
@@ -155,7 +157,12 @@ fn ts_manager_options() -> TsManagerOptions {
 /// Calls in flight per tserver, by RPC kind (K2). Kinds without a C++ cap are not limited.
 fn ts_rpc_limit(kind: &str) -> usize {
     match kind {
-        "DeleteTablet" => MAX_CONCURRENT_DELETE_REPLICA_RPCS_PER_TS.get().max(1) as usize,
+        // A negative value is no limit, as the C++ throttler's conversion to uint64 makes it; 0
+        // would never send there, and is one call here.
+        "DeleteTablet" => match MAX_CONCURRENT_DELETE_REPLICA_RPCS_PER_TS.get() {
+            limit if limit < 0 => usize::MAX,
+            limit => limit.max(1) as usize,
+        },
         _ => usize::MAX,
     }
 }
@@ -365,10 +372,17 @@ fn start_term(
     ts_rpc: &Arc<TsRpcExecutor>,
 ) {
     tracing::info!("Starting leader controllers for term {}", scope.term());
-    // Runs on its interval only: nothing triggers it.
+    // These run on their interval only: nothing triggers them.
     run_controller(
         scope,
         Arc::new(LivenessController {
+            leader: leader.clone(),
+        }),
+        watch::channel(0).1,
+    );
+    run_controller(
+        scope,
+        Arc::new(UniverseUuidController {
             leader: leader.clone(),
         }),
         watch::channel(0).1,
@@ -384,13 +398,14 @@ fn start_term(
                 let leader = deletes_leader.clone();
                 let rpc = deletes_rpc.clone();
                 let executor = deletes_executor.clone();
+                // Lets a later report queue it again. Built before spawning: a task cancelled
+                // before its first poll, or not spawned because the term ended, drops it too.
+                let sent = SentGuard {
+                    leader: leader.clone(),
+                    delete: delete.clone(),
+                };
                 deletes_scope.entity().spawn("delete-replica", async move {
-                    // Lets a later report queue it again, also when the term's tasks are
-                    // cancelled.
-                    let _sent = SentGuard {
-                        leader: leader.clone(),
-                        delete: delete.clone(),
-                    };
+                    let _sent = sent;
                     let ts_uuid = delete.ts_uuid.clone();
                     let result = executor
                         .run(&ts_uuid, "DeleteTablet", &retry_policy(false), |_| {
@@ -421,7 +436,6 @@ fn start_term(
                                         millis(MASTER_TS_RPC_TIMEOUT_MS.get()),
                                     )
                                     .await
-                                    .map_err(Attempt::Retry)
                             }
                         })
                         .await;
@@ -525,6 +539,35 @@ impl Controller for LivenessController {
             };
             if let Err(status) = result {
                 tracing::warn!("Persisting tserver registrations failed, will retry: {status}");
+            }
+        })
+    }
+}
+
+/// Gives an existing universe a uuid once the heartbeat check is on: C++ runs
+/// `SetUniverseUuidIfNeeded` from its background task, since the AutoFlag is promoted mid-term.
+struct UniverseUuidController {
+    leader: Arc<LeaderServices>,
+}
+
+impl Controller for UniverseUuidController {
+    fn name(&self) -> &'static str {
+        "universe-uuid"
+    }
+
+    fn interval(&self) -> Duration {
+        Duration::from_secs(1)
+    }
+
+    fn reconcile<'a>(&'a self, _scope: &'a TermScope) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            let Ok(token) = self.leader.leadership.token() else {
+                return;
+            };
+            let result =
+                set_universe_uuid_if_needed(&self.leader.writer, &token, &DEFAULTS_OPTIONS).await;
+            if let Err(status) = result {
+                tracing::warn!("Setting the universe uuid failed, will retry: {status}");
             }
         })
     }

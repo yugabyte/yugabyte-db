@@ -64,15 +64,40 @@ impl RetryPolicy {
     }
 
     /// Calls `attempt` until it succeeds, fails for good, or the attempts or deadline run out.
-    pub async fn run<T, F, Fut>(&self, mut attempt: F) -> Result<T, Status>
+    pub async fn run<T, F, Fut>(&self, attempt: F) -> Result<T, Status>
     where
         F: FnMut(u32) -> Fut,
         Fut: Future<Output = Result<T, Attempt>>,
     {
-        let deadline = Instant::now() + self.deadline;
+        self.run_gated(|| std::future::ready(()), attempt).await
+    }
+
+    /// [`RetryPolicy::run`] with `gate` awaited before each attempt and its value held while the
+    /// attempt runs. Waiting at the gate is not an attempt, and the deadline starts once the first
+    /// attempt passes it; no attempt starts after the deadline.
+    pub(crate) async fn run_gated<T, P, G, GFut, F, Fut>(
+        &self,
+        mut gate: G,
+        mut attempt: F,
+    ) -> Result<T, Status>
+    where
+        G: FnMut() -> GFut,
+        GFut: Future<Output = P>,
+        F: FnMut(u32) -> Fut,
+        Fut: Future<Output = Result<T, Attempt>>,
+    {
+        let mut deadline: Option<Instant> = None;
         let mut last = Status::new(StatusCode::TimedOut, "no attempt made");
         for n in 0..self.max_attempts.max(1) {
-            match attempt(n).await {
+            let permit = gate().await;
+            let now = Instant::now();
+            if deadline.is_some_and(|d| now >= d) {
+                break;
+            }
+            let deadline = *deadline.get_or_insert(now + self.deadline);
+            let result = attempt(n).await;
+            drop(permit);
+            match result {
                 Ok(value) => return Ok(value),
                 Err(Attempt::Fail(status)) => return Err(status),
                 Err(Attempt::Retry(status)) => last = status,

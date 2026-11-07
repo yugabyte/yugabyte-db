@@ -10,10 +10,12 @@ any phase -> Follower when the term changes or the peer is no longer leader
 ```
 
 - **CatchingUp.** Elected in term t. Waits for `LEADER_AND_READY` (the term's NoOp committed and
-  the lease held), then runs the ready hooks in order, retrying a failed hook. `master-server`
-  registers one: a catalog barrier, so the catalog reflects everything committed before the
-  election, then `TsManager::on_leader_ready` (tservers must send full reports, registrations get
-  a heartbeat grace period, warm locations become unconfirmed).
+  the lease held), then runs the ready hooks in order, retrying a failed hook. A hook that keeps
+  failing for 60 s ends the process, as C++ does with `LOG(FATAL)` when `VisitSysCatalog` fails, so
+  another master can lead. `master-server` registers one: a catalog barrier, so the catalog
+  reflects everything committed before the election; the missing default rows
+  ([catalog-state.md](catalog-state.md)); then `TsManager::on_leader_ready` (tservers must send
+  full reports, registrations get a heartbeat grace period, warm locations become unconfirmed).
 - **Ready.** A new `TermScope` (`master-task-runtime`) starts the term's controllers.
 - **LeaseLapsed.** Same term, lease lost: no tokens, but the scope keeps running.
 - **Reloading.** A catalog reload was requested while leading (a restore, a self-check mismatch,

@@ -191,16 +191,22 @@ impl TsManager {
     /// The leader-lease half of `ProcessTabletMetadata`, for the tablets in `storage_metadata`
     /// whose leader is the reporting tserver.
     fn record_leader_leases(&self, req: &TSHeartbeatRequestPB) {
-        if req.leader_info.is_empty() {
+        if req.storage_metadata.is_empty() {
             return;
         }
         let uuid = req.common.ts_instance.permanent_uuid();
+        let now = Instant::now();
+        if let Some(descriptor) = self.descriptors.write().unwrap().get_mut(uuid) {
+            descriptor.last_lease_report = Some(now);
+        }
+        if req.leader_info.is_empty() {
+            return;
+        }
         let leader_info: HashMap<&[u8], _> = req
             .leader_info
             .iter()
             .map(|info| (info.tablet_id(), info))
             .collect();
-        let now = Instant::now();
         let now_physical_us = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |d| d.as_micros() as u64);

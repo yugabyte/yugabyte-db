@@ -29,7 +29,9 @@ The handler takes a ticket in the tserver's queue on the RPC thread, before hand
 runtime, and processes the heartbeat only when its turn comes: one tserver's heartbeats run one at
 a time, in arrival order, so a retry that overlaps a slow heartbeat cannot be overtaken by it. A
 heartbeat whose deadline passes while it waits is answered `TimedOut` without being processed, and
-its turn passes to the next. The report's catalog mutation carries the deadline into the writer.
+its turn passes to the next. Its leader token and catalog snapshot are read when its turn comes, so
+it sees what the heartbeats before it wrote. The report's catalog mutation carries the deadline
+into the writer, which answers it at the deadline, so a stalled write does not hold the turn.
 
 ## The heartbeat response (L7)
 
@@ -63,15 +65,17 @@ Replicas of deleted tablets and tables, evicted replicas (`ShouldDeleteNonMember
 reported pending config when `use_tablet_report_pending_config_op_id` is on) and hidden tablets get
 `DeleteTablet` through the `replica-deletes` task. Each delete carries the `LeaderToken` it was
 decided under and is sent only while that token is current; like C++ `DeleteReplica` tasks, it is
-retried until `unresponsive_ts_rpc_timeout_ms` with no attempt limit. A replica of a tablet the
-catalog never had is only logged, as with `master_enable_deletion_check_for_orphaned_tablets`.
+retried until `unresponsive_ts_rpc_timeout_ms` with no attempt limit, and `CAS_FAILED` or
+`WRONG_SERVER_UUID` ends it. While one is being sent, later reports do not queue another for the
+same replica. A replica of a tablet the catalog never had is only logged, as with
+`master_enable_deletion_check_for_orphaned_tablets`.
 
 ## Leader leases (K7)
 
 As in `ProcessTabletMetadata`, an incremental heartbeat with more than half of
 `heartbeat_rpc_timeout_ms` left records the leader leases of the tablets in its `storage_metadata`
-that it leads, from `leader_info`, in `master-tablet-locations`. `live_heartbeat_time` gives the
-leaderless check when a live tserver's latest heartbeat was processed.
+that it leads, from `leader_info`, in `master-tablet-locations`. `live_lease_report_time` gives the
+leaderless check when leases from a live tserver's heartbeats were last recorded in this term.
 
 ## The versioned live tserver list (L8, Q3)
 

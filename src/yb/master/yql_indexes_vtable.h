@@ -26,12 +26,10 @@ class YQLIndexesVTable : public YQLVirtualTable {
                             Master * const master);
   Result<VTableDataPtr> RetrieveData(const QLReadRequestMsg& request) const override;
 
- protected:
  public:
   // Also used without an instance, to write the table's row in a new universe.
   static Schema CreateSchema();
 
- private:
  private:
   static constexpr const char* const kKeyspaceName = "keyspace_name";
   static constexpr const char* const kTableName = "table_name";

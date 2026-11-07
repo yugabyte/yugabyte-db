@@ -80,6 +80,8 @@ class RustMasterTest : public YBTest {
     opts.num_tablet_servers = 3;
     opts.replication_factor = 3;
     opts.enable_ysql = false;
+    // These tests start from a C++ quorum, whatever YB_RUST_MASTER says.
+    opts.rust_masters = RustMasters::kNone;
     cluster_ = std::make_unique<ExternalMiniCluster>(opts);
     ASSERT_OK(cluster_->Start());
     rust_master_exe_ = BinaryPath("yb-master-rs");
@@ -138,7 +140,6 @@ class RustMasterTest : public YBTest {
         kTimeout, Format("$0 to report role $1", master->uuid(), PeerRole_Name(role)));
   }
 
-  // Waits until every master has applied everything the leader committed.
   // Waits for a master to lead and report its leader services ready.
   Status WaitForLeaderReady() {
     return WaitFor(
@@ -158,6 +159,8 @@ class RustMasterTest : public YBTest {
         kTimeout, "a ready master leader");
   }
 
+  // Waits until every master has committed everything the leader wrote. Committed is not yet
+  // applied: to compare catalogs, use DumpQuietCatalog.
   Status WaitForMastersToCatchUp() {
     OpIdPB op_id;
     RETURN_NOT_OK(cluster_->GetLastOpIdForLeader(&op_id));
@@ -1000,9 +1003,9 @@ TEST_F(RustMasterTest, CreatesUniverseLikeCpp) {
   ASSERT_OK(new_cluster(RustMasters::kNone));
   ASSERT_OK(WaitForLeaderReady());
   const auto follower = ASSERT_RESULT(RestartFollowerAsRust());
-  ASSERT_OK(WaitForMastersToCatchUp());
+  ASSERT_OK(DumpLoadedCatalog(cluster_->master(follower)));
   const auto cpp_rows = ASSERT_RESULT(DefaultRows(
-      ASSERT_RESULT(DumpLoadedCatalog(cluster_->master(follower)))));
+      ASSERT_RESULT(DumpQuietCatalog(cluster_->master(follower)))));
   cluster_->Shutdown();
 
   ASSERT_OK(new_cluster(RustMasters::kAll));
@@ -1016,7 +1019,8 @@ TEST_F(RustMasterTest, CreatesUniverseLikeCpp) {
 
   // Written once, through Raft: every master holds the same rows.
   for (size_t i = 0; i < cluster_->num_masters(); ++i) {
-    const auto catalog = ASSERT_RESULT(DumpLoadedCatalog(cluster_->master(i)));
+    ASSERT_OK(DumpLoadedCatalog(cluster_->master(i)));
+    const auto catalog = ASSERT_RESULT(DumpQuietCatalog(cluster_->master(i)));
     ASSERT_EQ(catalog.rows_size(), leader_catalog.rows_size()) << "master " << i;
   }
 }

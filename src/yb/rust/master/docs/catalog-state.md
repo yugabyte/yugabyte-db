@@ -61,9 +61,11 @@ caller's next snapshot contains it. A failed Raft write fails every mutation in 
 **Deadlines and lanes (K6).** `mutate_with` and `submit_with` take `WriteOptions`: the caller's
 deadline, and a lane. A mutation still queued when its deadline passes is dropped unwritten with
 `Expired` (`TimedOut` to the caller), since the caller has given up and a late write could surprise
-its retry; once in a Raft write it can no longer be dropped. Each batch takes the priority lane
-first (lease grants, DDL completion), then the normal lane; mutations submitted while a batch is
-being formed join it. Heartbeat reports pass the tserver's deadline.
+its retry; once in a Raft write it can no longer be dropped. The caller gets `Expired` at the
+deadline, not when the writer reaches the mutation: a flag set by whichever of the two claims the
+mutation first keeps the writer from taking one its caller gave up on. Each batch takes the priority
+lane first (lease grants, DDL completion), then the normal lane; mutations submitted while a batch
+is being formed join it. Heartbeat reports pass the tserver's deadline.
 
 Metrics: `rust_master_catalog_writer_queue_wait_us` (submit to joining a batch or being dropped),
 `..._commit_latency_us` (Raft write sent to rows in the snapshot), `..._batch_rows`,
@@ -78,11 +80,14 @@ Flags: `rust_master_catalog_writer_max_batch_rows` (1000), `..._max_batch_bytes`
 `CatalogManager::VisitSysCatalog` writes them: the security, transaction-tables and YSQL catalog
 configs, the YCQL system namespaces, the system tables and their tablets (built by the host), the
 default `cassandra` role, the cluster config (with a universe uuid when
-`master_enable_universe_uuid_heartbeat_check` is on), the xCluster config and the persistence
-block map. The leader writes it on every election, in a ready hook with a catch-up token
+`master_enable_universe_uuid_heartbeat_check` is on), the xCluster config and the persistence block
+map. The leader writes it on every election, in a ready hook with a catch-up token
 ([leadership.md](leadership.md)): a new universe gets everything in one Raft write, and an existing
-one only what a newer release added. With `ycql_allow_cassandra_drop`, the security config records
-that the default role was created, so a dropped role stays dropped.
+one only what a newer release added or a flag now asks for (a universe uuid, the default role's
+creation marker). With `ycql_allow_cassandra_drop`, the security config records that the default
+role was created, so a dropped role stays dropped. A malformed `--cluster_uuid` fails the hook, as
+it fails `VisitSysCatalog`. The universe uuid of an existing universe is also set by a leader-term
+controller (`set_universe_uuid_if_needed`), since the AutoFlag can be promoted after the election.
 
 ## Self-check
 

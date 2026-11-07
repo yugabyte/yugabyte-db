@@ -68,6 +68,11 @@ class Schema;
 class FsManager;
 class ThreadPool;
 
+namespace server {
+class RpcServerBase;
+class ServerBaseOptions;
+}
+
 namespace tserver {
 class WriteRequestPB;
 class WriteResponsePB;
@@ -541,6 +546,12 @@ class SysCatalogTable {
 
   DISALLOW_COPY_AND_ASSIGN(SysCatalogTable);
 };
+
+// Checks that one of the server's own addresses is in the master addresses, before a master
+// creates a new universe. On error, master_addresses is set incorrectly for shell master startup,
+// or misses this master although it should be part of the very first quorum.
+Status CheckLocalHostInMasterAddresses(
+    const server::RpcServerBase& rpc_server, const server::ServerBaseOptions& options);
 
 } // namespace master
 } // namespace yb

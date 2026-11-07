@@ -151,13 +151,22 @@ fn registration(port: u32) -> TSRegistrationPB {
 
 impl Setup {
     async fn heartbeat(&self, req: &TSHeartbeatRequestPB) -> Result<TSHeartbeatResponsePB, Status> {
+        self.heartbeat_with_time_left(req, Duration::from_secs(10))
+            .await
+    }
+
+    async fn heartbeat_with_time_left(
+        &self,
+        req: &TSHeartbeatRequestPB,
+        time_to_deadline: Duration,
+    ) -> Result<TSHeartbeatResponsePB, Status> {
         let ctx = HeartbeatContext {
             token: self.leadership.token().unwrap(),
             writer: &self.writer,
             snapshot: self.catalog.snapshot(),
             contributors: &[],
             master_instance: NodeInstancePB::new(),
-            time_to_deadline: Duration::from_secs(10),
+            time_to_deadline,
         };
         self.ts.heartbeat(ctx, req).await
     }
@@ -564,43 +573,62 @@ async fn leader_leases_from_heartbeats_feed_the_leaderless_check() {
     s.register("ts1", 1, &[9100]).await;
     s.report("ts1", vec![reported(Some(cstate(1, 5, "ts1", &["ts1"])))])
         .await;
-    // The term started long enough ago for the alert delay to have passed.
-    let term_start = std::time::Instant::now() - Duration::from_secs(100);
+    let term_start = std::time::Instant::now();
+    let delay = Duration::from_millis(20);
     let leaderless = |now| {
         s.ts.locations.leaderless(
             [&b"tablet"[..]],
             &LeaderlessCheck {
                 now,
-                alert_delay: Duration::from_secs(10),
+                alert_delay: delay,
                 observable_from: term_start,
-                last_heartbeat: &|uuid| s.ts.live_heartbeat_time(uuid),
+                last_lease_report: &|uuid| s.ts.live_lease_report_time(uuid),
             },
         )
     };
+    // An incremental heartbeat with storage metadata and ts1's lease of the tablet.
+    let lease_report = |status| {
+        let mut req = request("ts1", 1, 0);
+        let mut metadata = TabletDriveStorageMetadataPB::new();
+        metadata.set_tablet_id(b"tablet".to_vec());
+        req.storage_metadata.push(metadata);
+        let mut info = TabletLeaderMetricsPB::new();
+        info.set_tablet_id(b"tablet".to_vec());
+        info.set_leader_lease_status(status);
+        info.set_ht_lease_expiration(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_micros() as u64,
+        );
+        req.leader_info.push(info);
+        req
+    };
 
-    // ts1 leads and heartbeats, but has reported no valid lease in this term.
-    s.heartbeat(&request("ts1", 1, 0)).await.unwrap();
+    // ts1 leads, and the leases recorded after the alert delay show none valid.
+    tokio::time::sleep(delay * 2).await;
+    s.heartbeat(&lease_report(
+        LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE,
+    ))
+    .await
+    .unwrap();
     assert_eq!(leaderless(std::time::Instant::now()).len(), 1);
 
-    // A lease report, in an incremental heartbeat with storage metadata.
-    let mut req = request("ts1", 1, 0);
-    let mut metadata = TabletDriveStorageMetadataPB::new();
-    metadata.set_tablet_id(b"tablet".to_vec());
-    req.storage_metadata.push(metadata);
-    let mut info = TabletLeaderMetricsPB::new();
-    info.set_tablet_id(b"tablet".to_vec());
-    info.set_leader_lease_status(LeaderLeaseStatus::HAS_LEASE);
-    info.set_ht_lease_expiration(
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_micros() as u64,
-    );
-    req.leader_info.push(info);
-    s.heartbeat(&req).await.unwrap();
-    let reported_at = std::time::Instant::now();
+    // A valid lease: whatever the clock says later, nothing observed contradicts it.
+    s.heartbeat(&lease_report(LeaderLeaseStatus::HAS_LEASE))
+        .await
+        .unwrap();
+    let later = std::time::Instant::now() + Duration::from_secs(60);
+    assert!(leaderless(later).is_empty());
 
-    // ts1 is live and its latest heartbeat is the one with the lease: whatever the clock says
-    // later, nothing observed contradicts a valid leader.
-    assert!(leaderless(reported_at + Duration::from_secs(60)).is_empty());
+    // A heartbeat with too little time left keeps the tserver live but skips its leases, so it is
+    // no evidence of a lost leader either.
+    tokio::time::sleep(delay * 2).await;
+    s.heartbeat_with_time_left(
+        &lease_report(LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE),
+        Duration::from_secs(1),
+    )
+    .await
+    .unwrap();
+    assert!(leaderless(later).is_empty());
 }

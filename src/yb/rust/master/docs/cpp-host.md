@@ -46,12 +46,14 @@ It serves ConsensusService and RemoteBootstrapService in C++, and the remote-boo
 master added from shell mode are the same as `CatalogManager::StartRemoteBootstrap`.
 
 **A new universe (K10).** With `--master_addresses` and no data, the host creates the sys-catalog
-tablet (`SysCatalogTable::CreateNew`, as `CatalogManager::InitSysCatalogAsync` does) and the first
-Rust leader writes the default rows ([catalog-state.md](catalog-state.md)). Only C++ can build the
-system tables' rows (their schemas come from the YCQL virtual table classes), so
-`SystemTableRows` builds them with `src/yb/master/system_tables.{h,cc}`, which `CatalogManager`
-uses too. The host also gives the default YCQL superuser's bcrypt hash and the YSQL major version.
-YSQL's initial sys catalog snapshot is not restored yet (W9).
+tablet (`SysCatalogTable::CreateNew`, after the same `CheckLocalHostInMasterAddresses` as
+`CatalogManager::InitSysCatalogAsync`) and the first Rust leader writes the default rows
+([catalog-state.md](catalog-state.md)). Without `--TEST_rust_master_allow_leadership` it refuses:
+such a master never starts an election. Only C++ can build the system tables' rows (their schemas
+come from the YCQL virtual table classes), so `SystemTableRows` builds them with
+`src/yb/master/system_tables.{h,cc}`, which `CatalogManager` uses too. The host also gives the
+default YCQL superuser's bcrypt hash and the YSQL major version. YSQL's initial sys catalog snapshot
+is not restored yet (W9).
 
 The master RPCs every C++ master serves from state the host has go to `MasterHost::HandleOnHost`
 (`HOST_METHODS` in `master-rpc-handlers`): `RemovedMasterUpdate` (shell mode, as

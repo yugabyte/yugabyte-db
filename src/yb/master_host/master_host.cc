@@ -711,8 +711,18 @@ Status MasterHost::OpenSysCatalog() {
     LOG(INFO) << "Starting master in shell mode.";
     return Status::OK();
   }
+  // A master that may not lead never starts an election (leader failure detection is off), so a
+  // quorum of them would create a universe that nobody leads.
+  if (!FLAGS_TEST_rust_master_allow_leadership) {
+    return STATUS(
+        NotSupported,
+        "The Rust master creates a new universe only with --TEST_rust_master_allow_leadership. "
+        "Start it on an existing master's data, or in shell mode (no --master_addresses, or "
+        "--master_join_existing_universe) and add it with change_master_config.");
+  }
   // A new universe, as CatalogManager::InitSysCatalogAsync does: the first leader writes the
   // default rows (K10).
+  RETURN_NOT_OK(master::CheckLocalHostInMasterAddresses(*this, opts_));
   RETURN_NOT_OK_PREPEND(
       sys_catalog_->CreateNew(fs_manager()), "Unable to create new system catalog");
   tablet_exists_ = true;
@@ -1319,7 +1329,8 @@ rust::Vec<RowChangeFfi> MasterHost::SystemTableRows(
 rust::Vec<uint8_t> MasterHost::DefaultYcqlPasswordHash() const {
   // PermissionsManager::PrepareDefaultRoles stores all kBcryptHashSize bytes, NUL padding
   // included.
-  char hash[util::kBcryptHashSize];
+  // Zeroed: the hash is shorter than the buffer, and all of it is stored.
+  char hash[util::kBcryptHashSize] = {};
   if (util::bcrypt_hashpw(master::kDefaultCassandraPassword, hash) != 0) {
     throw std::runtime_error("Could not hash the default YCQL password");
   }
