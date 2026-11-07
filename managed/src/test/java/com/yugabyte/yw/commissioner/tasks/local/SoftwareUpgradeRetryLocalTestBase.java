@@ -13,6 +13,7 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.forms.AZUpgradeStatus;
 import com.yugabyte.yw.forms.AZUpgradeStep;
 import com.yugabyte.yw.forms.CanaryPauseState;
 import com.yugabyte.yw.forms.CanaryUpgradeConfig;
@@ -20,6 +21,7 @@ import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PrevYBSoftwareConfig;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.ProviderDetails;
@@ -38,6 +40,7 @@ import java.util.TreeMap;
 import java.util.UUID;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 
@@ -294,9 +297,7 @@ public abstract class SoftwareUpgradeRetryLocalTestBase extends LocalProviderUni
    */
   protected void finalizeCanaryUpgradeWithFaultInjection(UUID universeUUID)
       throws InterruptedException {
-    assertEquals(
-        SoftwareUpgradeState.PreFinalize,
-        Universe.getOrBadRequest(universeUUID).getUniverseDetails().softwareUpgradeState);
+    assertUpgradeProgressCompleted(Universe.getOrBadRequest(universeUUID));
 
     FinalizeUpgradeParams finalizeParams = new FinalizeUpgradeParams();
     finalizeParams.setUniverseUUID(universeUUID);
@@ -451,6 +452,27 @@ public abstract class SoftwareUpgradeRetryLocalTestBase extends LocalProviderUni
     params.canaryUpgradeConfig.pauseAfterMasters = true;
     params.canaryUpgradeConfig.primaryClusterAZSteps = steps;
     return params;
+  }
+
+  /**
+   * The upgrade reached PreFinalize and its saved progress shows every master and t-server AZ as
+   * upgraded, however many retries it took.
+   */
+  protected void assertUpgradeProgressCompleted(Universe universe) {
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    assertEquals(SoftwareUpgradeState.PreFinalize, details.softwareUpgradeState);
+    PrevYBSoftwareConfig prev = details.prevYBSoftwareConfig;
+    assertFalse(prev.getMasterAZUpgradeStatesList().isEmpty());
+    assertFalse(prev.getTserverAZUpgradeStatesList().isEmpty());
+    Stream.concat(
+            prev.getMasterAZUpgradeStatesList().stream(),
+            prev.getTserverAZUpgradeStatesList().stream())
+        .forEach(
+            s ->
+                assertEquals(
+                    s.getServerType() + " AZ " + s.getAzName(),
+                    AZUpgradeStatus.COMPLETED,
+                    s.getStatus()));
   }
 
   protected SoftwareUpgradeParams getBaseUpgradeParams() {
