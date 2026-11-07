@@ -9,9 +9,10 @@
  *	  yb_table_scan.h, these stay until an AM interface fits them.
  *
  *	  Each section below is the API of one implementation file and
- *	  says why no AM interface replaces it.  A contract that belongs
- *	  to the callers' subsystem, such as the format of the rows
- *	  ANALYZE samples, goes in a header of that subsystem, not here.
+ *	  says why no AM interface replaces it yet.  A contract that
+ *	  belongs to the callers' subsystem, such as the format of the
+ *	  rows ANALYZE samples, goes in a header of that subsystem, not
+ *	  here.
  *
  * Copyright (c) YugabyteDB, Inc.
  *
@@ -95,7 +96,9 @@ extern int	ybFetchSample(YbSample ybSample, HeapTuple *rows);
 /*
  * Single-row fetch by ybctid (yb_ybctid_scan.c): the YB counterpart of
  * heap_fetch() in heapam.c, keyed by ybctid in place of a heap TID, so
- * tableam's tuple_fetch_row_version() does not fit.
+ * tableam's tuple_fetch_row_version() does not fit as it is.  #37232 tracks
+ * adding a YB variant of that callback that takes a ybctid and routing the
+ * callers through it.
  */
 extern bool YbFetchHeapTuple(Relation relation, Datum ybctid,
 							 HeapTuple *tuple);

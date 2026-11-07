@@ -53,7 +53,8 @@ accounted for:
 
   yb_target.h
 
-Entry points that no AM interface fits:
+Entry points outside the AM interfaces, which its sections explain.  Its
+catalog scans and fetch by ybctid are among the bypasses tracked in #36168:
 
   yb_special_scans.h
 
