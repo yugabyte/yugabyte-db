@@ -258,6 +258,79 @@ public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
     conn.close();
   }
 
+  @Test
+  public void addColumnInsideTransactionWithRowFilter() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1 WHERE (a > 0)");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'one')");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN c int");
+      stmt.execute("INSERT INTO t1 VALUES (2, 'two', 20)");
+      stmt.execute("INSERT INTO t1 VALUES (-1, 'not_streamed', -10)");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 6);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "one"),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID), column("c", INT4_OID)),
+        insert("2", "two", "20"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // Same as addColumnInsideTransactionWithRowFilter, with a column list instead of a row filter.
+  @Test
+  public void addColumnInsideTransactionWithColumnList() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1 (a, b)");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'one')");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN c int");
+      stmt.execute("INSERT INTO t1 VALUES (2, 'two', 20)");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 6);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "one"),
+        // c is not in the column list, so it is not streamed.
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("2", "two"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
   // Dropping a column in the middle of a transaction.
   @Test
   public void dropColumnInsideTransaction() throws Exception {

@@ -1428,6 +1428,24 @@ Default: `900`
 
 Interval in seconds at which the table list in the publication will be refreshed. Applies in versions earlier than v2026.1, or on v2026.1 and later when [ysql_yb_enable_implicit_dynamic_tables_logical_replication](#ysql-yb-enable-implicit-dynamic-tables-logical-replication) is set to `false`.
 
+##### --cdcsdk_update_restart_time_when_nothing_to_stream
+
+{{% tags/wrap %}}
+
+Default: `true`
+{{% /tags/wrap %}}
+
+When set to `true`, the restart time of a replication slot moves forward while there is nothing to stream, provided the client has acknowledged everything it received. The restart time advances to the commit time of the most recent commit or safepoint record processed by the virtual WAL, at the interval set by [cdcsdk_update_restart_time_interval_secs](#cdcsdk-update-restart-time-interval-secs). This keeps an idle slot from holding back WAL, intent, and history retention.
+
+##### --cdcsdk_update_restart_time_interval_secs
+
+{{% tags/wrap %}}
+
+Default: `60`
+{{% /tags/wrap %}}
+
+Interval in seconds at which the virtual WAL checks whether the restart time of an idle replication slot can be moved forward. Applies when [cdcsdk_update_restart_time_when_nothing_to_stream](#cdcsdk-update-restart-time-when-nothing-to-stream) is `true`.
+
 ##### --cdc_stream_records_threshold_size_bytes
 
 {{% tags/wrap %}}
@@ -1526,7 +1544,7 @@ Timeout after which it is inferred that a particular tablet is not of interest f
 Default: `false`
 {{% /tags/wrap %}}
 
-Available in v2026.1.2.0 and later.
+Available in v2025.2.7.0, v2026.1.2.0, and later.
 
 When set to `true`, Virtual WAL (VWAL) skips unqualified tables (expired or not-of-interest) and keeps streaming qualified tables. The check runs when VWAL initializes a replication slot and when it refreshes a publication's table list. VWAL does not poll a skipped table's tablets on a later refresh, so changes to that table are never streamed by this slot.
 
@@ -3308,6 +3326,23 @@ Specifies the database where pg_cron is to be installed. You can create the data
 The [pg_cron extension](../../../additional-features/pg-extensions/extension-pgcron/) is installed on only one database (by default, `yugabyte`).
 
 To change the database after the extension is created, you must first drop the extension and then change the flag value.
+
+##### --pg_cron_leader_lease_sec
+
+{{% tags/wrap %}}
+
+Default: `60`
+{{% /tags/wrap %}}
+
+The time, in seconds, that the [pg_cron](../../../additional-features/pg-extensions/extension-pgcron/) leader holds its lease.
+
+In v2026.1.4.0 and later, when the pg_cron leader moves to another node, the old leader lets its running jobs continue for at least `pg_cron_leader_lease_sec` minus 15 seconds before canceling them, and the new leader waits about this long before it starts running jobs. Increase this value to give long-running jobs more time to complete during a planned leader change; a larger value also delays jobs after any leader change.
+
+In earlier v2026.1 releases, a leader change cancels running jobs immediately, and the new leader runs no jobs for the first minute.
+
+For more information, see [Failures and leader changes](../../../additional-features/pg-extensions/extension-pgcron/#failures-and-leader-changes).
+
+Set this flag on all YB-TServers. The value must be greater than `--pg_cron_leadership_refresh_sec` (default `10`).
 
 ##### --ysql_output_buffer_size
 

@@ -59,6 +59,7 @@
 #include "yb/docdb/object_lock_shared_state_manager.h"
 
 #include "yb/dockv/doc_vector_id.h"
+#include "yb/dockv/key_bytes.h"
 #include "yb/dockv/partition.h"
 
 #include "yb/master/master_ddl.pb.h"
@@ -97,6 +98,7 @@
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/lw_function.h"
+#include "yb/util/operation_counter.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
@@ -982,13 +984,21 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
  public:
   SharedExchangeQuery(
       PrivateTag, std::shared_ptr<PgClientSession>&& session, SharedExchange& exchange,
-      const EventStatsPtr& stats_exchange_response_size)
-      : req_(arena_.get()), resp_(arena_.get()), session_(std::move(session)), exchange_(exchange),
+      const EventStatsPtr& stats_exchange_response_size, OperationCounter& queries)
+      : operation_(queries), req_(arena_.get()), resp_(arena_.get()),
+        session_(std::move(session)), exchange_(exchange),
         stats_exchange_response_size_(stats_exchange_response_size) {}
 
   ~SharedExchangeQuery() {
-    exchange_.ResetBusy();
+    // Timed out local calls could read the request from the exchange until the query is destroyed,
+    // so only now the response is written over it. Busy is reset before the response is posted, so
+    // pggate does not find the exchange busy when it sends the next request.
     LOG_IF(DFATAL, !responded_.load()) << "Response did not send";
+    const auto response_size = responded_.load() ? WriteResponse() : 0;
+    exchange_.ResetBusy();
+    if (response_size) {
+      exchange_.Respond(response_size);
+    }
   }
 
   using RequestInfo = std::pair<std::shared_ptr<QueryData<T>>, CoarseTimePoint>;
@@ -1064,10 +1074,16 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
   void SendResponse() {
     EndSharedMemSpan(
         &trace_span_, resp_.has_status() ? StatusFromPB(resp_.status()) : Status::OK());
+    responded_ = true;
+  }
+
+  // Runs from the destructor, so everything the response references without a copy must be owned
+  // by the query: arena_, sidecars_ or the ops in data_, which hold their RPC response buffers.
+  // Returns the size to post to the exchange, 0 when the session is gone.
+  size_t WriteResponse() {
     auto locked_session = session_.lock();
     if (!locked_session) {
-      responded_ = true;
-      return;
+      return 0;
     }
 
     using google::protobuf::io::CodedOutputStream;
@@ -1119,10 +1135,12 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
       auto id = locked_session->SaveData(buffer, std::move(sidecars_.buffer()));
       response_size = kTooBigResponseMark | id;
     }
-    exchange_.Respond(response_size);
-    responded_ = true;
+    return response_size;
   }
 
+  // Destroyed last, after the destructor is done with the exchange. The session waits for it
+  // before the exchange is unmapped.
+  ScopedOperation operation_;
   ThreadSafeArenaPtr arena_ = SharedThreadSafeArena();
   std::remove_const_t<typename T::ReqPB> req_;
   typename T::RespPB resp_;
@@ -1734,6 +1752,27 @@ void ClearTransaction(client::YBSession& session) {
   session.read_point()->SetMomento(momento);
 }
 
+// Returns the key used to route a GetTableKeyRanges request with the specified exclusive upper
+// bound. Tablet::GetTabletKeyRanges returns the boundary between hash tablets as the encoded hash
+// partition key [kUInt16Hash, B]. InitHashPartitionKey decodes it as the inclusive max hash code
+// B, so the backward request would be routed back to the tablet starting at B. We route it by
+// [kUInt16Hash, B - 1, kHighest] instead, which has the same keys below it. Other representations
+// of the same boundary (see PartitionSchema::DecodeEncodedHashPartitionKeyBound) are routed the
+// same way.
+std::string UpperBoundRoutingKey(const Schema& schema, Slice upper_bound_key) {
+  if (schema.num_hash_key_columns() == 0) {
+    return upper_bound_key.ToBuffer();
+  }
+  const auto hash_code =
+      dockv::PartitionSchema::DecodeEncodedHashPartitionKeyBound(upper_bound_key);
+  // Hash code 0 is the start of the first tablet, it is never returned as the boundary.
+  if (!hash_code || *hash_code == 0) {
+    return upper_bound_key.ToBuffer();
+  }
+  return dockv::PartitionSchema::HashCodeToDocKeyBound(
+      schema, *hash_code - 1, /* is_lower = */ false).ToStringBuffer();
+}
+
 } // namespace
 
 class PgClientSession::Impl {
@@ -1757,6 +1796,11 @@ class PgClientSession::Impl {
             object_lock_shared_state_ ? object_lock_shared_state_->get() : nullptr),
         big_shared_mem_expiration_task_("big_shared_mem_expiration_task", &scheduler),
         read_point_history_(PrefixLogger(id_, pid_)) {}
+
+  ~Impl() {
+    // The session shared memory is unmapped right after the session is destroyed.
+    shared_exchange_queries_.Shutdown();
+  }
 
   [[nodiscard]] auto id() const {return id_; }
   [[nodiscard]] pid_t pid() const { return pid_; }
@@ -2116,6 +2160,17 @@ class PgClientSession::Impl {
         PgObjectId::GetYbTableIdFromPB(req.table_id()),
         std::move(txn_metadata),
         /* wait= */ true, context->GetClientDeadline());
+  }
+
+  Status StartTableBackfill(
+      const PgStartTableBackfillRequestPB& req,
+      PgStartTableBackfillResponsePB* resp,
+      rpc::RpcContext* context) {
+    return client_.StartTableBackfill(
+        PgObjectId::GetYbTableIdFromPB(req.source_table_id()),
+        req.target_table_oid(), req.transform_fn_oid(),
+        req.backfill_timestamp(), req.pg_job_id(),
+        context->GetClientDeadline());
   }
 
   Status CreateTablegroup(
@@ -2750,11 +2805,9 @@ class PgClientSession::Impl {
     }
     if (!req.upper_bound_key().empty()) {
       read_request->mutable_upper_bound()->set_is_inclusive(false);
-      for (auto* dest_key :
-           {embedded_req->mutable_upper_bound_key(),
-            read_request->mutable_upper_bound()->mutable_key()}) {
-        *dest_key = req.upper_bound_key();
-      }
+      *embedded_req->mutable_upper_bound_key() = req.upper_bound_key();
+      read_request->mutable_upper_bound()->dup_key(
+          UpperBoundRoutingKey((*table)->InternalSchema(), req.upper_bound_key()));
     }
     embedded_req->set_range_size_bytes(req.range_size_bytes());
     embedded_req->set_max_key_length(req.max_key_length());
@@ -2816,7 +2869,8 @@ class PgClientSession::Impl {
       const RequestProcessingPreconditionWaiter& precondition_waiter,
       SharedExchange& exchange, uint8_t* input, size_t size, Args&&... args) {
     auto query = SharedExchangeQuery<T>::MakeShared(
-        SharedSessionFromThis(), exchange, stats_exchange_response_size());
+        SharedSessionFromThis(), exchange, stats_exchange_response_size(),
+        shared_exchange_queries_);
     const auto status = DoHandleSharedExchangeQuery(
         precondition_waiter, *query, input, size, id(), pid_, std::forward<Args>(args)...);
     if (!status.ok()) {
@@ -3270,7 +3324,8 @@ class PgClientSession::Impl {
   }
 
   bool ReadyToShutdown() {
-    return big_shared_mem_expiration_task_.ReadyToShutdown();
+    return big_shared_mem_expiration_task_.ReadyToShutdown() &&
+           shared_exchange_queries_.ReadyToShutdown();
   }
 
   void CompleteShutdown() {
@@ -4953,6 +5008,8 @@ class PgClientSession::Impl {
   SharedMemorySegmentHandle big_shared_mem_handle_ GUARDED_BY(big_shared_mem_mutex_);
   bool big_shared_mem_expiration_task_scheduled_ GUARDED_BY(big_shared_mem_mutex_) = false;
   rpc::ScheduledTaskTracker big_shared_mem_expiration_task_;
+  // Shared exchange queries, which use the session shared memory until destroyed.
+  OperationCounter shared_exchange_queries_{Format("Session $0: ", id_)};
 
   std::array<SessionData, kPgClientSessionKindMapSize> sessions_;
   uint64_t txn_serial_no_ = 0;

@@ -10037,10 +10037,11 @@ components:
       description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
         version 2.31.0.0 that could change.</b></p>Load balancers that YBA creates,
         manages and deletes for the cluster. Each enabled kind gives one L4 load balancer
-        in every region of the cluster, serving all zones of the region. When set,
+        in every region of the cluster, serving all zones of the region. At create,
         this object must enable at least one load balancer. ClusterInfo.load_balancers
-        lists them with their scheme and address. The settings are fixed when the
-        universe is created. Part of ClusterNetworkingSpec.'
+        lists them with their scheme and address. An edit of the universe can turn
+        them on or off; in an edit, an object that enables none turns them off. Part
+        of ClusterNetworkingSpec and ClusterNetworkingEditSpec.'
       type: object
       properties:
         enable_private:
@@ -10076,7 +10077,8 @@ components:
             - $ref: '#/components/schemas/ExposingServiceState'
           managed_load_balancer:
             description: Load balancers that YBA creates, manages and deletes. Set
-              when the universe is created. Do not combine with enable_lb.
+              it when the universe is created, or turn it on or off later with an
+              edit of the universe. Do not combine with enable_lb.
             $ref: '#/components/schemas/ManagedLoadBalancerSpec'
             x-yba-api-since: 2.31.0.0
             x-yba-api-visibility: preview
@@ -10680,9 +10682,9 @@ components:
       x-yba-api-since: 2.31.0.0
       title: ManagedLoadBalancerInfo
       description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
-        version 2.31.0.0 that could change.</b></p>A load balancer that YBA created
-        for the cluster. It serves a set of availability zones in one region. Part
-        of ClusterInfo.'
+        version 2.31.0.0 that could change.</b></p>A load balancer that YBA manages
+        for the cluster, because YBA created it or took it over. It serves a set of
+        availability zones in one region. Part of ClusterInfo.'
       type: object
       properties:
         scheme:
@@ -10730,7 +10732,7 @@ components:
         load_balancers:
           description: '<b style="color:#FFA500">WARNING: This is a preview API in
             YBA version 2.31.0.0 that could change.</b></p>The load balancers that
-            YBA created for this cluster.'
+            YBA manages for this cluster.'
           type: array
           items:
             $ref: '#/components/schemas/ManagedLoadBalancerInfo'
@@ -11191,6 +11193,15 @@ components:
         enable_exposing_service:
           description: Whether to create a load balancer service for this cluster.
           $ref: '#/components/schemas/ExposingServiceState'
+        managed_load_balancer:
+          description: '<b style="color:#FFA500">WARNING: This is a preview API in
+            YBA version 2.31.0.0 that could change.</b></p>Turns the load balancers
+            that YBA manages on or off. When turned on, YBA takes over the load balancer
+            that every zone of a region names in lb_name. Omit to leave the existing
+            value unchanged.'
+          $ref: '#/components/schemas/ManagedLoadBalancerSpec'
+          x-yba-api-since: 2.31.0.0
+          x-yba-api-visibility: preview
     ClusterProviderEditSpec:
       title: ClusterProviderEditSpec
       description: Edit Cloud Provider settings for the cluster. Part of ClusterAddSpec
