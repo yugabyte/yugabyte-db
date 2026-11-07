@@ -352,7 +352,8 @@ Status GetChangesForXCluster(const XClusterGetChangesContext& context) {
             now) {
       update_apply_safe_time = true;
       // Resolve and apply intents to make the leader_safe_time a valid apply_safe_time candidate.
-      RETURN_NOT_OK(txn_participant->ResolveIntents(leader_safe_time, context.deadline));
+      RETURN_NOT_OK(txn_participant->ResolveIntents(
+          leader_safe_time, context.deadline, tablet::WaitForApply::kFalse));
     }
   }
 

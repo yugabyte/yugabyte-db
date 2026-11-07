@@ -1003,7 +1003,7 @@ TEST_F_EX(SnapshotTxnTest, ResolveIntents, SingleTabletSnapshotTxnTest) {
     auto peer = peers[0];
     auto tablet = ASSERT_RESULT(peer->shared_tablet());
     ASSERT_OK(tablet->transaction_participant()->ResolveIntents(
-        peer->clock().Now(), CoarseTimePoint::max()));
+        peer->clock().Now(), CoarseTimePoint::max(), tablet::WaitForApply::kTrue));
     auto current_ht = clock_->Now();
     ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
     bool found = false;

@@ -115,8 +115,9 @@ void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* 
     if (temp_read_operation_result.ok()) {
       read_operation = std::move(*temp_read_operation_result);
       if (tablet.tablet->transaction_participant()) {
+        // Snapshot checkpoints only regular DB, so committed intents must be written there.
         status = tablet.tablet->transaction_participant()->ResolveIntents(
-            snapshot_hybrid_time, context.GetClientDeadline());
+            snapshot_hybrid_time, context.GetClientDeadline(), tablet::WaitForApply::kTrue);
       }
     } else {
       status = temp_read_operation_result.status();

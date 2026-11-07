@@ -2527,7 +2527,8 @@ Result<HybridTime> GetConsistentStreamSafeTime(
         << FLAGS_cdc_resolve_intent_lag_threshold_ms;
 
     RETURN_NOT_OK(
-        tablet_ptr->transaction_participant()->ResolveIntents(leader_safe_time, deadline));
+        tablet_ptr->transaction_participant()->ResolveIntents(
+            leader_safe_time, deadline, tablet::WaitForApply::kFalse));
 
     return leader_safe_time;
   }
