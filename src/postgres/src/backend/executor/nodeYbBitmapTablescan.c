@@ -81,24 +81,8 @@ YbBitmapTableNext(YbBitmapTableScanState *node)
 		node->average_ybctid_bytes = yb_tbm_get_average_bytes(ybtbm);
 		node->skipped_tuples = 0;
 
-		if (node->aggrefs)
-		{
-			Assert(!node->recheck_required || node->recheck_local_quals == NULL);
-			/*
-			 * For aggregate pushdown, we read just the aggregates from DocDB
-			 * and pass that up to the aggregate node (agg pushdown wouldn't be
-			 * enabled if we needed to read more than that).  Set up a dummy
-			 * scan slot to hold as many attributes as there are pushed
-			 * aggregates.
-			 */
-			TupleDesc	tupdesc = CreateTemplateTupleDesc(list_length(node->aggrefs));
-
-			ExecInitScanTupleSlot(node->ss.ps.state, &node->ss, tupdesc,
-								  &TTSOpsVirtual);
-
-			/* Refresh the local pointer. */
-			slot = node->ss.ss_ScanTupleSlot;
-		}
+		Assert(!node->aggrefs || !node->recheck_required ||
+			   node->recheck_local_quals == NULL);
 	}
 
 	if (!node->ss.ss_currentScanDesc)
