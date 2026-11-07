@@ -717,6 +717,12 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 	if (SPI_connect() != SPI_OK_CONNECT)
 		elog(ERROR, "SPI_connect failed");
 
+	/*
+	 * YB: Mark the SPI DDL below as part of the refresh, so that it does not
+	 * bump the catalog version.
+	 */
+	YbSetInRefreshMatviewSpi(true);
+
 	/* Analyze the temp table with the new contents. */
 	appendStringInfo(&querybuf, "ANALYZE %s", tempname);
 	if (SPI_exec(querybuf.data, 0) != SPI_OK_UTILITY)
@@ -1063,6 +1069,8 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 	if (SPI_exec(querybuf.data, 0) != SPI_OK_UTILITY)
 		elog(ERROR, "SPI_exec failed: %s", querybuf.data);
 
+	YbSetInRefreshMatviewSpi(false);	/* YB */
+
 	/* Close SPI context. */
 	if (SPI_finish() != SPI_OK_FINISH)
 		elog(ERROR, "SPI_finish failed");
@@ -1183,6 +1191,7 @@ yb_refresh_in_place_update(Relation matviewRel, Oid tempOid)
 
 	if (SPI_connect() != SPI_OK_CONNECT)
 		elog(ERROR, "SPI_connect failed");
+	YbSetInRefreshMatviewSpi(true);
 
 	OpenMatViewIncrementalMaintenance();
 
@@ -1206,6 +1215,7 @@ yb_refresh_in_place_update(Relation matviewRel, Oid tempOid)
 	if (SPI_exec(querybuf.data, 0) != SPI_OK_UTILITY)
 		elog(ERROR, "SPI_exec failed: %s", querybuf.data);
 
+	YbSetInRefreshMatviewSpi(false);
 	if (SPI_finish() != SPI_OK_FINISH)
 		elog(ERROR, "SPI_finish failed");
 }
