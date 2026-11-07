@@ -764,7 +764,7 @@ class PgResponseCache::Impl : private GarbageCollector {
     // to fill. The per-entry check below closes it where they want the same entry; on different
     // keys nothing does, so a burst costs a few whole-catalog reads rather than one. Closing it
     // means taking a token speculatively under this lock for every request that might fill and
-    // undoing it on the three paths that do not, which is more machinery in this path than a
+    // undoing it on every path that does not, which is more machinery in this path than a
     // window of a few instructions is worth.
     if (cache_info->send_away_if_fill_in_flight()) {
       send_away_asks_->Increment();
