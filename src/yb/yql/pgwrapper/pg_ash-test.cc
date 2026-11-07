@@ -790,21 +790,22 @@ TEST_F_EX(PgWaitEventAuxTest, PgCDCServiceRPCs, PgCDCWaitEventAux) {
   // Create a new table after slot creation so that UpdatePublicationTableListRPC is called.
   ASSERT_OK(conn_->Execute("CREATE TABLE test_table_2 (k INT PRIMARY KEY)"));
 
-  TestThreadHolder thread_holder;
-  thread_holder.AddThreadFunctor([this]() {
-    std::vector<std::string> argv = {
-        GetPgToolPath("pg_recvlogical"),
-        "--dbname=yugabyte",
-        "--username=yugabyte",
-        Format("--host=$0", pg_ts->bind_host()),
-        Format("--port=$0", pg_ts->ysql_port()),
-        Format("--slot=$0", kSlotName),
-        "--endpos=0/6", // so that the replication stops after 2 commits
-        "--file=-",
-        "--start"
-    };
-    ASSERT_OK(Subprocess::Call(argv));
+  // How many LSNs reach the slot before the inserts below depends on the catalog transactions,
+  // which also take LSNs when DDL is streamed transactionally. So --endpos is set past the inserts
+  // and more transactions are committed at the end until pg_recvlogical reaches it.
+  const auto recvlogical_path = GetPgToolPath("pg_recvlogical");
+  Subprocess recvlogical(recvlogical_path, {
+      recvlogical_path,
+      "--dbname=yugabyte",
+      "--username=yugabyte",
+      Format("--host=$0", pg_ts->bind_host()),
+      Format("--port=$0", pg_ts->ysql_port()),
+      Format("--slot=$0", kSlotName),
+      "--endpos=0/40",
+      "--file=-",
+      "--start"
   });
+  ASSERT_OK(recvlogical.Start());
 
   // wait for the walsender process
   SleepFor(2s * kTimeMultiplier);
@@ -824,7 +825,24 @@ TEST_F_EX(PgWaitEventAuxTest, PgCDCServiceRPCs, PgCDCWaitEventAux) {
   ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (4)", kTableName));
   ASSERT_OK(conn_->CommitTransaction());
 
-  // wait for DestroyVirtualWALForCDC RPC to be called
+  // wait for UpdateAndPersistLSN RPC to be called
+  SleepFor(2s * kTimeMultiplier);
+
+  // pg_recvlogical stops at --endpos, and the walsender then calls DestroyVirtualWALForCDC.
+  int next_key = 5;
+  int exit_status = 0;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        RETURN_NOT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES ($1)", kTableName, next_key++));
+        auto s = recvlogical.WaitNoBlock(&exit_status);
+        if (s.IsTimedOut()) {
+          return false;
+        }
+        RETURN_NOT_OK(s);
+        return true;
+      },
+      60s * kTimeMultiplier, "Wait for pg_recvlogical to reach --endpos"));
+  ASSERT_TRUE(WIFEXITED(exit_status) && WEXITSTATUS(exit_status) == 0) << exit_status;
   SleepFor(2s * kTimeMultiplier);
 
   const auto walsender_samples = ASSERT_RESULT(conn_->FetchRow<PGUint64>(
