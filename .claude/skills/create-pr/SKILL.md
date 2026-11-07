@@ -65,7 +65,9 @@ Commit the resulting fixes -- amend Step 1's commit or add a new one -- before S
 
 The PR targets `master`. Do **not** prompt the user for a base branch — `create-pr.sh` defaults to `master`. Backports are not opened with this skill — use `/backport-commit` instead.
 
-**One exception: a stacked PR.** If the current branch is named `feature-stack/<feature>/<change>`, this change is a layer of a PR stack and its base is the layer below it. Don't pass `-b`; `create-pr.sh` reads the base from `gh stack`. See [Stacked PRs](#stacked-prs) before going further.
+**Exception: a PG-version branch.** For a PR into a PG-version development branch such as `pg19` (the user names it, or the branch is based on `origin/pg19`), pass `-b pg19`. The script then titles the PR `[pg19] <Component>: <Title>`, or `[pg19][<issue>] ...` when `-i` is given; `-i` is optional there.
+
+**Another exception: a stacked PR.** If the current branch is named `feature-stack/<feature>/<change>`, this change is a layer of a PR stack and its base is the layer below it. Don't pass `-b`; `create-pr.sh` reads the base from `gh stack`. See [Stacked PRs](#stacked-prs) before going further.
 
 ### Step 3: Gather PR metadata
 
@@ -104,6 +106,8 @@ Construct the title in the format:
 [<#GH issue> or <JIRA>] <Component>: <Title>
 ```
 
+For a PG-version base (`-b pg19`), the script leads with the branch instead: `[pg19] <Component>: <Title>`, or `[pg19][<issue>] ...` when `-i` is given.
+
 Examples:
 - `[#31151] DocDB: Fix SamplingProfilerTest.EstimatedBytesAndCount in release`
 - `[PLAT-20518] YBA: Fix full move edit universe to populate userIntentOverrides during configure call`
@@ -113,7 +117,7 @@ Examples:
 - `-i`: must be a GH issue (`#NNNN` or bare `NNNN`) or a JIRA key (`PROJECT-NNN`, where `PROJECT` is uppercase letters only — no digits). A **comma-separated list** is also accepted for a change that closes several issues (e.g. `31151,#31152`) — the script joins the tokens with `,` and renders them as `[#a,#b] <Component>: <Title>`. The list must be **all GH or all JIRA**; mixing them, or putting a space after the comma, is rejected by `.github/workflows/pr-title.yml` (which gates every PR that touches code — it carries `paths-ignore` for `README.md` and `docs/**`). Anything else is rejected by the script.
 - `-t`: must match `^[A-Za-z][A-Za-z0-9]+:[[:space:]].+` — i.e. a Component prefix (letter-led, alphanumeric, ≥2 chars), then `: `, then a non-empty description. Known components: `DocDB`, `YSQL`, `YCQL`, `YBA`, `CDC`, `xCluster`, `yugabyted`, `Docs`, `Agents`, `Build`.
 
-If the user supplies a title that already includes `[<issue>] ` or doesn't match the format, fix it before calling the script — don't rely on the script's auto-strip (it only handles the leading `[*] ` case) and don't surprise the user with an `exit 1` after they confirmed the metadata.
+If the user supplies a title that already includes `[<issue>] ` or doesn't match the format, fix it before calling the script — don't rely on the script's auto-strip (it only handles leading `[...]` tags) and don't surprise the user with an `exit 1` after they confirmed the metadata.
 
 ### Step 4b: Cut the prose the branch added
 
@@ -220,7 +224,7 @@ A stack is for a feature that splits into several dependent changes. Reach for i
 ## Notes
 
 - **Never push to `yugabyte/yugabyte-db`, or use `gh pr create`.** Always use the create-pr.sh script. (A `feature-stack/<feature>/<change>` branch does go to upstream, through `git-push.sh` and `gh stack`. That is the sanctioned stacked-PR path; see [Stacked PRs](#stacked-prs).)
-- The title format is strict: `[<issue>] <Component>: <Title>`. Don't deviate.
+- The title format is strict: `[<issue>] <Component>: <Title>`, or `[pgNN] ...` / `[pgNN][<issue>] ...` into a `pgNN` branch. Don't deviate.
 - **Never rewrite a PR's history once it is ready for review** (see [Pushing follow-up commits](#pushing-follow-up-commits)); `git-push.sh` refuses such a push. Stack branches are the exception; see [Stacked PRs](#stacked-prs).
 - Jenkins does not start on push: some `bld-*` run waits for approval in the `jenkins` environment, and merge needs a passing build on the latest commit. Don't trigger it automatically; when the user says the PR is ready for CI, run `.agents/scripts/trigger-jenkins.sh <pr-number>` (or they click "Review deployments" -> Approve on the PR).
 - `gh pr create --repo yugabyte/yugabyte-db` opens the PR in the upstream repo even when the branch lives on a fork — the `head:` field is inferred from the tracking branch.
