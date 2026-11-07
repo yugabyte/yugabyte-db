@@ -252,22 +252,26 @@ add the commands for running those tests to the test plan.
 
 Show the user the resulting diff URL (e.g., `https://phorge.dev.yugabyte.com/D<id>`).
 
-### Step 7: Post a "trigger jenkins" comment
+### Step 7: Trigger Jenkins only when an early signal is needed
 
-After the diff is created, post a comment on the new revision with the
-exact text:
-```
-trigger Jenkins
-```
+Jenkins runs are expensive, so **do not trigger CI by default.**  Trigger
+only for changes where an early signal is worth the cost — typically a
+large or more foundational change that could affect many areas and risk
+regressions.  For a small, well-tested, low-risk change, leave CI
+untriggered; the reviewer can request a run.  When unsure, ask the user
+rather than triggering.
 
-Use `arc` to post the comment (do not use the Phorge MCP server).  For
-example:
+If a run is warranted (or the user asks), post a comment on the new
+revision with the exact text `trigger Jenkins` using `arc` (do not use
+the Phorge MCP server).  For example:
 ```
 echo "trigger jenkins" | arc call-conduit differential.createcomment -- '{"revision_id": "<id>", "message": "trigger jenkins"}'
 ```
-
 Or use whatever `arc` subcommand is appropriate for the local setup.
 Confirm the comment was posted successfully.
+
+Otherwise, do not post it — tell the user CI was not triggered and that
+they can ask for a run after review.
 
 ### Step 8: Report back to the user
 
@@ -276,7 +280,8 @@ Output:
 - The diff URL
 - The constructed title
 - The subscribers that were added
-- Confirmation that `trigger Jenkins` was posted
+- Whether Jenkins was triggered (and, if not, that it can be triggered
+  later on request)
 
 
 ## Notes
@@ -290,4 +295,6 @@ Output:
 - `ybase` for DB, `yugaware` for YBA/platform — add both when changes
   span both.
 - The `trigger jenkins` comment kicks off continuous integration
-  testing; forgetting it is a common mistake.
+  testing.  It is expensive, so it is not triggered by default — only
+  for large or foundational changes that need an early signal (see
+  Step 7).
