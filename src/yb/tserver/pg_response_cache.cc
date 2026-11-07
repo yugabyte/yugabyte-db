@@ -534,10 +534,14 @@ class PgResponseCache::Impl : private GarbageCollector {
     return key_group_buckets_[group % sz];
   }
 
-  // Whether a connection other than this one is filling an entry of this key group. A session's
-  // own counts are skipped: a prefetch pages, every round is cached under a key of its own, and
-  // the session's token covers all of them at once, so a session that holds a claim must not be
-  // sent away on account of it.
+  // Whether a connection other than this one is filling an entry of this key group. The session
+  // id is the only handle on "another connection" a Perform carries, so a session's own counts
+  // are skipped.
+  //
+  // Within one backend the skip decides nothing: pggate asks only on a prefetch's opening round
+  // and clears the ask before any rerun, and at that round the session has filled nothing yet,
+  // so there is no count of its own to find. What it decides is the parallel-worker case below,
+  // where siblings share a session id -- there the skip is why they do not send each other away.
   //
   // Counted per session rather than per entry because a connection start wants a different entry
   // from the fill it is sent away from -- it pinned a version of its own -- so there is no entry
@@ -808,10 +812,12 @@ class PgResponseCache::Impl : private GarbageCollector {
       // own. Telling the two apart would need a per-prefetch identifier the wire does not
       // carry, and the case needs preload_rel_cache to arise at all.
       //
-      // Last, not before the two above. While this round publishes, this claim is the only
-      // thing that can send an arriving connection away, and Set hands the response to every
-      // waiter inline before it returns. One sent away before the
-      // observer runs would aim at the version this fill has just replaced.
+      // Last, not before the two above: a connection arriving while this round publishes is
+      // still sent away by this claim, where releasing first would leave nothing to send it
+      // away and it would read the whole catalog itself. One sent away between Set and the
+      // observer aims at the version the observer has not replaced yet, which is older than
+      // the one just stored and bridgeable like any other, so that costs nothing.
+      // TheClaimOutlivesThePublish covers this.
       //
       // A failed round does not end the claim, because a failure does not mean the prefetch is
       // over: PG retries a failed attempt, and the gap before the next one is where the claim

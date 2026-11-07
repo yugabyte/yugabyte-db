@@ -173,11 +173,10 @@ TEST_F(PgResponseCacheTest, AFillOutlivingItsDeadlineStillServesItsWaiters) {
       << "unserved; the setter holds that entry, so the fill must still reach its waiters";
 }
 
-// The group check skips the asking session's own counts. Without that a session would be sent
-// away from a fill of its own: a round's token outlives the response that lets the next round be
-// sent, so two of one session's rounds are counted at once, and the second would find the first
-// and abandon the prefetch part-way -- when a prefetch that finishes is what records a version
-// for the next connection.
+// The group check skips the asking session's own counts, so a session is never sent away from a
+// fill of its own. Round 2 asks here only to reach the skip directly; a backend asks on its
+// opening round alone, and parallel workers sharing a session id are what exercise this in
+// production.
 TEST_F(PgResponseCacheTest, AConnectionIsNotSentAwayFromAFillOfItsOwn) {
   ThreadSafeArena arena;
   auto& round1 = MakeCachingInfo(arena, "round-1"sv, SendAway::kTrue,
