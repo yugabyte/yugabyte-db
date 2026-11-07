@@ -725,15 +725,47 @@ class PgResponseCache::Impl : private GarbageCollector {
     if (cache_info->lookup_only()) {
       return LookupOnlyGet(cache_info, waiter);
     }
-    auto data = GetEntryData(cache_info, deadline);
+    const auto group = cache_info->key_group();
     queries_->Increment();
-    // Before the disabled-cache return below, so the count stays one per connection start that
-    // asked. A connection whose opening round lands in a disabled window met every condition on
-    // the PG side and is simply unanswerable here; leaving it out would drop it from the
-    // denominator and make send-aways look rarer than the asks warranted.
+    // Answered before the entry is looked up, because looking it up inserts it: GetEntryData
+    // adds a fresh entry for a key this node has nothing for, and replaces one that is due for
+    // renewal. A caller that is then sent away never fills what it left behind, and the entry
+    // carries that caller's RPC deadline as its readiness deadline. Whoever fills it later
+    // inherits a deadline that is not theirs, and a fill still running when it passes makes the
+    // entry invalid, so the next caller rebuilds it and starts a second whole-catalog read --
+    // the very thing this check exists to prevent, at exactly the times it matters.
+    //
+    // While another session is filling this database, send the asking connection away. A
+    // connection starting during a run of DDLs pins a version of its own, so the entry it wants
+    // is nobody else's and the per-entry check below would not see that fill at all. A
+    // connection whose opening round would have hit the cache is not spared the wait either:
+    // the rounds after it carry no ask of their own and queue behind the rest of the same fill.
+    // What it reads instead is a version this node already holds and can bridge from. When the
+    // fill ends nothing is counted and connections are served as usual.
+    //
+    // The ask is counted wherever it arrives, so the count stays one per connection start that
+    // asked rather than one per connection that was sent away.
+    //
+    // The count read here is taken a moment later, when the setter takes its token, so two
+    // connections on keys of their own that both reach this point inside that window both go on
+    // to fill. The per-entry check below closes it where they want the same entry; on different
+    // keys nothing does, so a burst costs a few whole-catalog reads rather than one. Closing it
+    // means taking a token speculatively under this lock for every request that might fill and
+    // undoing it on the three paths that do not, which is more machinery in this path than a
+    // window of a few instructions is worth.
     if (cache_info->send_away_if_fill_in_flight()) {
       send_away_asks_->Increment();
+      bool another_fill;
+      {
+        std::lock_guard lock(mutex_);
+        another_fill = AnotherFillInFlight(group, session_id);
+      }
+      if (another_fill) {
+        send_aways_->Increment();
+        return STATUS(Incomplete, "A fill for this database is already under way");
+      }
     }
+    auto data = GetEntryData(cache_info, deadline);
     if (!data) {
       // The cache is disabled for this database, as it is across a DDL commit, so nothing is
       // served or filled. This return comes before both of the places that would end a claim,
@@ -746,37 +778,6 @@ class PgResponseCache::Impl : private GarbageCollector {
       // the claim either way, and the retry's first fill takes a fresh token.
       EndPrefetchClaimIfComplete(*cache_info, token);
       return [](Response&& response) {};
-    }
-    const auto group = cache_info->key_group();
-    // While another session is filling this database, send the asking connection away, whatever
-    // state the entry it asked for is in. A connection starting during a run of DDLs pins a
-    // version of its own, so the entry it wants is nobody else's and the per-entry check below
-    // would not see that fill at all. A connection whose opening round hits the cache is not
-    // spared the wait either: the rounds after it carry no ask of their own and queue behind
-    // the rest of the same fill. What it reads instead is a version this node already holds and
-    // can bridge from. When the fill ends nothing is counted and connections are served as usual.
-    //
-    // The count read here is taken a moment later, when the setter takes its token, so two
-    // connections on keys of their own that both reach this point inside that window both go on
-    // to fill. The per-entry check below closes it where they want the same entry; on different
-    // keys nothing does, so a burst costs a few whole-catalog reads rather than one. Closing it
-    // means taking a token speculatively under this lock for every request that might fill and
-    // undoing it on the three paths that do not, which is more machinery in this path than a
-    // window of a few instructions is worth.
-    if (cache_info->send_away_if_fill_in_flight()) {
-      bool another_fill;
-      {
-        std::lock_guard lock(mutex_);
-        another_fill = AnotherFillInFlight(group, session_id);
-      }
-      if (another_fill) {
-        send_aways_->Increment();
-        // The lookup above inserts the entry, replacing one that was due for renewal, and a
-        // send-away leaves nothing to fill it. Harmless: no fill is claimed on it, so the next
-        // query for that key fills it as usual -- unlike LookupOnlyGet, where an entry left
-        // claimed for a fill that is not coming makes every later query wait out its deadline.
-        return STATUS(Incomplete, "A fill for this database is already under way");
-      }
     }
     auto join = data->RegisterWaiter(waiter, SendAway(cache_info->send_away_if_fill_in_flight()));
     switch (join.state) {
