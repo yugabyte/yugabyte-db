@@ -10,22 +10,37 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-//! `GlobalLoadState` and `PerTableLoadState` (`cluster_balance_util.cc`). Sets are ordered as the
-//! C++ `std::set`s are; where C++ iterates an unordered map the port iterates in key order, so
-//! ties C++ leaves to hash order are broken by uuid or path here.
+//! `GlobalLoadState` and `PerTableLoadState` (`cluster_balance_util.cc`).
+//!
+//! Tservers and tablets are indices: [`Ts`] into the tservers sorted by uuid, [`Tab`] into a
+//! table's tablets sorted by id. Index order is id order, so the sets iterate as the C++
+//! `std::set`s of ids do and ties broken by id are broken by index. Where C++ iterates an unordered
+//! map the port iterates in id order, so ties C++ leaves to hash order are broken by id here.
 
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 use yb_proto::pb::common_net::{CloudInfoPB, PlacementInfoPB};
 use yb_proto::pb::consensus_metadata::PeerMemberType;
 use yb_proto::pb::tablet_types::RaftGroupStatePB;
 
 use crate::{
-    matches_cloud_info, placement_id, Activity, FxHashMap, Options, ReplicaInfo, TabletInfo, TsInfo,
+    matches_cloud_info, placement_id, Activity, FxHashMap, Options, ReplicaInfo, TableInfo,
+    TabletInfo, TsInfo,
 };
 
 pub(crate) type Result<T> = std::result::Result<T, String>;
+
+/// A tserver: an index into [`GlobalState::ts`].
+pub(crate) type Ts = u32;
+/// A tablet: an index into its [`TableState::tablets`].
+pub(crate) type Tab = u32;
+/// A placement block: the index of the first block of the table's placement with its cloud info.
+pub(crate) type Block = usize;
+
+/// The leader of a tablet on a tserver the view does not know.
+pub(crate) const UNKNOWN_TS: Ts = Ts::MAX;
 
 /// Which replicas a placement run balances.
 #[derive(Clone, Debug)]
@@ -42,20 +57,19 @@ pub(crate) struct TabletMeta {
     pub running: i32,
     pub starting: i32,
     pub is_under_replicated: bool,
-    /// Blocks below their minimum, by placement id.
-    pub under_replicated_placements: BTreeMap<String, CloudInfoPB>,
-    /// Blocks above their maximum, by placement id.
-    pub over_max_placements: BTreeSet<String>,
-    /// Running and starting replicas per block, by placement id.
-    pub placement_replica_counts: FxHashMap<String, usize>,
+    pub under_replicated_placements: BTreeSet<Block>,
+    pub over_max_placements: BTreeSet<Block>,
+    /// Running and starting replicas per block.
+    pub placement_replica_counts: FxHashMap<Block, usize>,
     pub is_over_replicated: bool,
-    pub over_replicated_tablet_servers: BTreeSet<String>,
-    pub wrong_placement_tablet_servers: BTreeSet<String>,
-    pub removal_pending_tablet_servers: BTreeSet<String>,
-    pub blacklisted_tablet_servers: BTreeSet<String>,
-    pub leader_blacklisted_tablet_servers: BTreeSet<String>,
-    pub leader_uuid: String,
-    pub leader_stepdown_failures: BTreeSet<String>,
+    pub over_replicated_tablet_servers: BTreeSet<Ts>,
+    pub wrong_placement_tablet_servers: BTreeSet<Ts>,
+    pub removal_pending_tablet_servers: BTreeSet<Ts>,
+    pub blacklisted_tablet_servers: BTreeSet<Ts>,
+    pub leader_blacklisted_tablet_servers: BTreeSet<Ts>,
+    /// `leader_uuid`: none, a tserver, or [`UNKNOWN_TS`].
+    pub leader: Option<Ts>,
+    pub leader_stepdown_failures: BTreeSet<Ts>,
     /// The largest replica's size.
     pub size: u64,
 }
@@ -87,37 +101,28 @@ impl TabletMeta {
         }
     }
 
-    pub fn can_add_ts_to_missing_placements(&self, ts: &TsInfo) -> bool {
-        self.under_replicated_placements
-            .values()
-            .any(|ci| matches_cloud_info(&ts.cloud_info, ci))
+    pub fn count_in(&self, block: Block) -> usize {
+        self.placement_replica_counts
+            .get(&block)
+            .copied()
+            .unwrap_or(0)
     }
 }
 
 /// `CBTabletServerMetadata`.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct TsMeta {
-    /// Index into `GlobalState::ts`.
-    pub desc: usize,
     /// `GetValidPlacement`, computed once per table.
-    pub placement: Option<Placement>,
-    pub path_to_tablets: BTreeMap<String, BTreeSet<String>>,
-    pub path_to_starting_tablets_count: HashMap<String, i32>,
-    pub sorted_path_load_by_tablets_count: Vec<String>,
-    pub sorted_path_load_by_leader_count: Vec<String>,
-    pub running_tablets: BTreeSet<String>,
-    pub starting_tablets: BTreeSet<String>,
-    pub leaders: BTreeSet<String>,
-    pub path_to_leaders: BTreeMap<String, BTreeSet<String>>,
-    pub disabled_by_ts_tablets: BTreeSet<String>,
-}
-
-/// A placement block, or a tserver's own cloud info when the table has no blocks.
-#[derive(Clone, Debug, Default)]
-pub(crate) struct Placement {
-    /// `generate_placement_id`.
-    pub id: String,
-    pub ci: CloudInfoPB,
+    pub placement: Option<Block>,
+    pub path_to_tablets: BTreeMap<Arc<str>, BTreeSet<Tab>>,
+    pub path_to_starting_tablets_count: FxHashMap<Arc<str>, i32>,
+    pub sorted_path_load_by_tablets_count: Vec<Arc<str>>,
+    pub sorted_path_load_by_leader_count: Vec<Arc<str>>,
+    pub running_tablets: BTreeSet<Tab>,
+    pub starting_tablets: BTreeSet<Tab>,
+    pub leaders: BTreeSet<Tab>,
+    pub path_to_leaders: BTreeMap<Arc<str>, BTreeSet<Tab>>,
+    pub disabled_by_ts_tablets: BTreeSet<Tab>,
 }
 
 /// `CBTabletServerGlobalMetadata`.
@@ -134,102 +139,112 @@ pub(crate) struct TsGlobal {
 /// `GlobalLoadState`, reset for each placement.
 pub(crate) struct GlobalState<'a> {
     pub options: &'a Options,
-    pub ts: &'a [TsInfo],
-    pub ts_index: FxHashMap<&'a str, usize>,
+    /// Sorted by uuid.
+    pub ts: Vec<&'a TsInfo>,
+    pub ts_index: FxHashMap<&'a str, Ts>,
     pub total_starting_tablets: i32,
     pub drive_aware: bool,
-    pub blacklisted: BTreeSet<String>,
-    pub leader_blacklisted: BTreeSet<String>,
+    pub blacklisted: Vec<bool>,
+    pub leader_blacklisted: Vec<bool>,
     pub activity: Activity,
-    pub per_ts: FxHashMap<String, TsGlobal>,
+    pub per_ts: Vec<TsGlobal>,
 }
 
 impl<'a> GlobalState<'a> {
     /// `ResetGlobalState` and `SetBlacklistAndPendingDeleteTS`.
-    pub fn new(options: &'a Options, ts: &'a [TsInfo]) -> GlobalState<'a> {
+    pub fn new(options: &'a Options, tservers: &'a [TsInfo]) -> GlobalState<'a> {
+        let mut ts: Vec<&TsInfo> = tservers.iter().collect();
+        ts.sort_by(|a, b| a.uuid.cmp(&b.uuid));
+        ts.dedup_by(|a, b| a.uuid == b.uuid);
         GlobalState {
             options,
-            ts,
             ts_index: ts
                 .iter()
                 .enumerate()
-                .map(|(i, t)| (t.uuid.as_str(), i))
+                .map(|(i, t)| (t.uuid.as_str(), i as Ts))
                 .collect(),
             total_starting_tablets: 0,
             drive_aware: options.drive_aware,
-            blacklisted: ts
-                .iter()
-                .filter(|t| t.blacklisted)
-                .map(|t| t.uuid.clone())
-                .collect(),
-            leader_blacklisted: ts
-                .iter()
-                .filter(|t| t.leader_blacklisted)
-                .map(|t| t.uuid.clone())
-                .collect(),
+            blacklisted: ts.iter().map(|t| t.blacklisted).collect(),
+            leader_blacklisted: ts.iter().map(|t| t.leader_blacklisted).collect(),
             activity: Activity::default(),
-            per_ts: FxHashMap::default(),
+            per_ts: ts
+                .iter()
+                .map(|t| TsGlobal {
+                    disk_used_bytes: t.disk_used_bytes,
+                    disk_capacity_bytes: t.disk_capacity_bytes,
+                    ..TsGlobal::default()
+                })
+                .collect(),
+            ts,
         }
     }
 
-    pub fn ts_info(&self, uuid: &str) -> Option<&'a TsInfo> {
-        self.ts_index.get(uuid).map(|i| &self.ts[*i])
+    pub fn index(&self, uuid: &str) -> Option<Ts> {
+        self.ts_index.get(uuid).copied()
     }
 
-    pub fn global_load(&self, uuid: &str) -> i32 {
-        self.per_ts
-            .get(uuid)
-            .map_or(0, |m| m.starting_tablets_count + m.running_tablets_count)
+    pub fn uuid(&self, ts: Ts) -> &'a str {
+        &self.ts[ts as usize].uuid
     }
 
-    pub fn global_leader_load(&self, uuid: &str) -> i32 {
-        self.per_ts.get(uuid).map_or(0, |m| m.leaders_count)
+    pub fn info(&self, ts: Ts) -> Option<&'a TsInfo> {
+        self.ts.get(ts as usize).copied()
     }
 
-    pub fn estimated_disk_used_bytes(&self, uuid: &str) -> u64 {
-        self.per_ts
-            .get(uuid)
-            .map_or(0, |m| m.disk_used_bytes + m.starting_tablets_size)
+    pub fn is_blacklisted(&self, ts: Ts) -> bool {
+        self.blacklisted.get(ts as usize).copied().unwrap_or(false)
+    }
+
+    pub fn is_leader_blacklisted(&self, ts: Ts) -> bool {
+        self.leader_blacklisted
+            .get(ts as usize)
+            .copied()
+            .unwrap_or(false)
+    }
+
+    pub fn global_load(&self, ts: Ts) -> i32 {
+        let m = &self.per_ts[ts as usize];
+        m.starting_tablets_count + m.running_tablets_count
+    }
+
+    pub fn global_leader_load(&self, ts: Ts) -> i32 {
+        self.per_ts[ts as usize].leaders_count
+    }
+
+    pub fn estimated_disk_used_bytes(&self, ts: Ts) -> u64 {
+        let m = &self.per_ts[ts as usize];
+        m.disk_used_bytes + m.starting_tablets_size
     }
 
     /// Whether the tserver can take `additional` bytes and keep `min_free_disk_space_pct` free.
-    pub fn has_free_disk_space_for(&self, uuid: &str, additional: u64) -> bool {
+    pub fn has_free_disk_space_for(&self, ts: Ts, additional: u64) -> bool {
         let min_free_pct = u64::from(self.options.min_free_disk_space_pct.min(100));
         if min_free_pct == 0 {
             return true;
         }
-        let Some(m) = self.per_ts.get(uuid).filter(|m| m.disk_capacity_bytes != 0) else {
+        let m = &self.per_ts[ts as usize];
+        if m.disk_capacity_bytes == 0 {
             return true;
-        };
+        }
         let capacity = m.disk_capacity_bytes;
         let max_used = capacity - capacity * min_free_pct / 100;
         m.disk_used_bytes + m.starting_tablets_size + additional <= max_used
     }
 
     pub fn tservers_low_on_disk(&self) -> Vec<String> {
-        let mut low: Vec<String> = self
-            .per_ts
-            .iter()
-            .filter(|(uuid, _)| !self.has_free_disk_space_for(uuid, 0))
-            .map(|(uuid, m)| {
+        (0..self.ts.len() as Ts)
+            .filter(|ts| !self.has_free_disk_space_for(*ts, 0))
+            .map(|ts| {
                 format!(
-                    "{uuid} ({} of {} bytes in use)",
-                    self.estimated_disk_used_bytes(uuid),
-                    m.disk_capacity_bytes
+                    "{} ({} of {} bytes in use)",
+                    self.uuid(ts),
+                    self.estimated_disk_used_bytes(ts),
+                    self.per_ts[ts as usize].disk_capacity_bytes
                 )
             })
-            .collect();
-        low.sort();
-        low
+            .collect()
     }
-}
-
-/// The tserver's global counts, without allocating its key once it has them.
-fn ts_global<'g>(g: &'g mut GlobalState, uuid: &str) -> &'g mut TsGlobal {
-    if !g.per_ts.contains_key(uuid) {
-        g.per_ts.insert(uuid.to_string(), TsGlobal::default());
-    }
-    g.per_ts.get_mut(uuid).unwrap()
 }
 
 /// `IsReplicaConsensusReady`: running and a VOTER or OBSERVER.
@@ -275,27 +290,43 @@ fn cloud_info_contains(lhs: &CloudInfoPB, rhs: &CloudInfoPB) -> bool {
     lhs.placement_zone() == rhs.placement_zone()
 }
 
+/// A placement block, as `PerTableLoadState` keys its maps by cloud info: blocks with the same
+/// cloud info are one, with the last one's minimum and maximum (map assignment order).
+#[derive(Clone, Debug)]
+pub(crate) struct BlockInfo {
+    pub ci: CloudInfoPB,
+    pub min: usize,
+    pub max: usize,
+}
+
 /// `PerTableLoadState`.
 pub(crate) struct TableState<'a> {
-    pub table_id: String,
+    pub table_id: &'a str,
     pub options: &'a Options,
     pub mode: &'a RunMode,
-    pub per_tablet_meta: FxHashMap<String, TabletMeta>,
-    pub per_ts_meta: BTreeMap<String, TsMeta>,
+    /// The table's tablets, by [`Tab`].
+    pub tablets: Vec<&'a TabletInfo>,
+    pub tablet_index: FxHashMap<&'a str, Tab>,
+    pub per_tablet_meta: Vec<Option<TabletMeta>>,
+    /// By [`Ts`], for every tserver.
+    pub per_ts_meta: Vec<TsMeta>,
     pub placement: PlacementInfoPB,
-    placement_block_max: HashMap<String, usize>,
+    /// By [`Block`]; a block whose cloud info an earlier block has is not used.
+    pub blocks: Vec<BlockInfo>,
+    /// Each block's [`Block`].
+    block_of: Vec<Block>,
     pub total_running: i32,
     pub total_starting: i32,
-    pub sorted_load: Vec<String>,
-    pub tablets_missing_replicas: BTreeSet<String>,
-    pub tablets_over_replicated: BTreeSet<String>,
-    pub tablets_over_max_placements: BTreeSet<String>,
-    pub tablets_wrong_placement: BTreeSet<String>,
-    pub tablets_with_badly_placed_leaders: BTreeSet<String>,
-    pub tablets_added: BTreeSet<String>,
+    pub sorted_load: Vec<Ts>,
+    pub tablets_missing_replicas: BTreeSet<Tab>,
+    pub tablets_over_replicated: BTreeSet<Tab>,
+    pub tablets_over_max_placements: BTreeSet<Tab>,
+    pub tablets_wrong_placement: BTreeSet<Tab>,
+    pub tablets_with_badly_placed_leaders: BTreeSet<Tab>,
+    pub tablets_added: BTreeSet<Tab>,
     /// By leader affinity priority, each sorted by leader load; leader-blacklisted tservers are
     /// in the last priority.
-    pub sorted_leader_load: Vec<Vec<String>>,
+    pub sorted_leader_load: Vec<Vec<Ts>>,
     pub use_preferred_zones: bool,
     pub allow_only_leader_balancing: bool,
     pub affinitized_zones: Vec<Vec<CloudInfoPB>>,
@@ -305,15 +336,30 @@ pub(crate) struct TableState<'a> {
 }
 
 impl<'a> TableState<'a> {
-    pub fn new(table_id: &str, options: &'a Options, mode: &'a RunMode) -> TableState<'a> {
+    pub fn new(
+        table: &'a TableInfo,
+        options: &'a Options,
+        mode: &'a RunMode,
+        num_ts: usize,
+    ) -> TableState<'a> {
+        let mut tablets: Vec<&TabletInfo> = table.tablets.iter().collect();
+        tablets.sort_by(|a, b| a.id.cmp(&b.id));
+        tablets.dedup_by(|a, b| a.id == b.id);
         TableState {
-            table_id: table_id.to_string(),
+            table_id: &table.id,
             options,
             mode,
-            per_tablet_meta: FxHashMap::default(),
-            per_ts_meta: BTreeMap::new(),
+            tablet_index: tablets
+                .iter()
+                .enumerate()
+                .map(|(i, t)| (t.id.as_str(), i as Tab))
+                .collect(),
+            per_tablet_meta: vec![None; tablets.len()],
+            tablets,
+            per_ts_meta: vec![TsMeta::default(); num_ts],
             placement: PlacementInfoPB::new(),
-            placement_block_max: HashMap::new(),
+            blocks: Vec::new(),
+            block_of: Vec::new(),
             total_running: 0,
             total_starting: 0,
             sorted_load: Vec::new(),
@@ -333,98 +379,90 @@ impl<'a> TableState<'a> {
         }
     }
 
-    fn not_initialized(&self, what: &str, tablet_id: &str) -> String {
-        format!("PerTableLoadState not initialized before calling {what} for tablet {tablet_id}")
+    pub fn tablet_id(&self, tablet: Tab) -> &'a str {
+        &self.tablets[tablet as usize].id
     }
 
-    fn ts_meta(&self, uuid: &str) -> Result<&TsMeta> {
-        self.per_ts_meta.get(uuid).ok_or_else(|| {
-            format!(
-                "Found uninitialized ts_meta: ts_uuid: {uuid}, table_uuid: {}",
-                self.table_id
-            )
-        })
+    pub fn tablet_index(&self, id: &str) -> Option<Tab> {
+        self.tablet_index.get(id).copied()
     }
 
-    fn ts_meta_mut(&mut self, uuid: &str) -> Result<&mut TsMeta> {
-        let table_id = self.table_id.clone();
-        self.per_ts_meta.get_mut(uuid).ok_or_else(|| {
-            format!("Found uninitialized ts_meta: ts_uuid: {uuid}, table_uuid: {table_id}")
-        })
+    fn not_initialized(&self, what: &str, tablet: Tab) -> String {
+        format!(
+            "PerTableLoadState not initialized before calling {what} for tablet {}",
+            self.tablet_id(tablet)
+        )
     }
 
-    pub fn tablet_meta(&self, tablet_id: &str) -> Result<&TabletMeta> {
-        self.per_tablet_meta
-            .get(tablet_id)
-            .ok_or_else(|| format!("No balancer metadata for tablet {tablet_id}"))
+    pub fn tablet_meta(&self, tablet: Tab) -> Result<&TabletMeta> {
+        self.per_tablet_meta[tablet as usize]
+            .as_ref()
+            .ok_or_else(|| format!("No balancer metadata for tablet {}", self.tablet_id(tablet)))
     }
 
-    pub fn load(&self, uuid: &str) -> usize {
-        self.per_ts_meta
-            .get(uuid)
-            .map_or(0, |m| m.starting_tablets.len() + m.running_tablets.len())
+    /// `per_tablet_meta_[tablet_id]`: the entry, made if missing.
+    pub fn meta_mut(&mut self, tablet: Tab) -> &mut TabletMeta {
+        self.per_tablet_meta[tablet as usize].get_or_insert_with(TabletMeta::default)
     }
 
-    pub fn leader_load(&self, uuid: &str) -> usize {
-        self.per_ts_meta.get(uuid).map_or(0, |m| m.leaders.len())
+    pub fn ts_meta(&self, ts: Ts) -> &TsMeta {
+        &self.per_ts_meta[ts as usize]
+    }
+
+    pub fn load(&self, ts: Ts) -> usize {
+        let m = self.ts_meta(ts);
+        m.starting_tablets.len() + m.running_tablets.len()
+    }
+
+    pub fn leader_load(&self, ts: Ts) -> usize {
+        self.ts_meta(ts).leaders.len()
     }
 
     /// Running replicas on the tserver that are over-replicated, so about to be removed.
-    pub fn possibly_transient_load(&self, uuid: &str) -> usize {
-        self.per_ts_meta.get(uuid).map_or(0, |m| {
-            m.running_tablets
-                .iter()
-                .filter(|t| {
-                    self.per_tablet_meta
-                        .get(*t)
-                        .is_some_and(|tm| tm.is_over_replicated)
-                })
-                .count()
-        })
+    pub fn possibly_transient_load(&self, ts: Ts) -> usize {
+        self.ts_meta(ts)
+            .running_tablets
+            .iter()
+            .filter(|t| {
+                self.per_tablet_meta[**t as usize]
+                    .as_ref()
+                    .is_some_and(|m| m.is_over_replicated)
+            })
+            .count()
     }
 
     /// Replicas on the drive of the tserver that holds the tablet.
-    pub fn tablet_drive_load(&self, uuid: &str, tablet_id: &str) -> usize {
-        self.per_ts_meta
-            .get(uuid)
-            .and_then(|m| {
-                m.path_to_tablets
-                    .values()
-                    .find(|tablets| tablets.contains(tablet_id))
-                    .map(BTreeSet::len)
-            })
+    pub fn tablet_drive_load(&self, ts: Ts, tablet: Tab) -> usize {
+        self.ts_meta(ts)
+            .path_to_tablets
+            .values()
+            .find(|tablets| tablets.contains(&tablet))
+            .map(BTreeSet::len)
             .unwrap_or(0)
     }
 
     /// `CompareLoad`: table load, then global load, then (for a tablet) the drive's load, then uuid.
-    pub fn compare_load(
-        &self,
-        a: &str,
-        b: &str,
-        tablet_id: Option<&str>,
-        g: &GlobalState,
-    ) -> Ordering {
+    pub fn compare_load(&self, a: Ts, b: Ts, tablet: Option<Tab>, g: &GlobalState) -> Ordering {
         self.load(a)
             .cmp(&self.load(b))
             .then_with(|| g.global_load(a).cmp(&g.global_load(b)))
-            .then_with(|| match tablet_id {
+            .then_with(|| match tablet {
                 Some(t) => self
                     .tablet_drive_load(a, t)
                     .cmp(&self.tablet_drive_load(b, t)),
                 None => Ordering::Equal,
             })
-            .then_with(|| a.cmp(b))
+            .then_with(|| a.cmp(&b))
     }
 
     /// `LeaderLoadComparator`: not leader-blacklisted first, then leader load, global leader load
     /// and uuid.
-    fn compare_leader_load(&self, a: &str, b: &str, g: &GlobalState) -> Ordering {
-        g.leader_blacklisted
-            .contains(a)
-            .cmp(&g.leader_blacklisted.contains(b))
+    fn compare_leader_load(&self, a: Ts, b: Ts, g: &GlobalState) -> Ordering {
+        g.is_leader_blacklisted(a)
+            .cmp(&g.is_leader_blacklisted(b))
             .then_with(|| self.leader_load(a).cmp(&self.leader_load(b)))
             .then_with(|| g.global_leader_load(a).cmp(&g.global_leader_load(b)))
-            .then_with(|| a.cmp(b))
+            .then_with(|| a.cmp(&b))
     }
 
     fn is_ts_in_live_placement(&self, ts: &TsInfo) -> bool {
@@ -433,8 +471,8 @@ impl<'a> TableState<'a> {
 
     /// `ShouldSkipReplica`: a replica of the other replica type, or of another read replica
     /// cluster, or on a tserver no longer known.
-    fn should_skip_replica(&self, ts_uuid: &str, g: &GlobalState) -> bool {
-        let Some(ts) = g.ts_info(ts_uuid) else {
+    fn should_skip_replica(&self, ts: Option<Ts>, g: &GlobalState) -> bool {
+        let Some(ts) = ts.and_then(|ts| g.info(ts)) else {
             return true;
         };
         let live = self.is_ts_in_live_placement(ts);
@@ -446,162 +484,125 @@ impl<'a> TableState<'a> {
     }
 
     /// `UpdateTablet`, for a RUNNING tablet.
-    pub fn update_tablet(&mut self, tablet: &TabletInfo, g: &mut GlobalState) -> Result<()> {
-        let tablet_id = tablet.id.as_str();
-        self.per_tablet_meta
-            .entry(tablet_id.to_string())
-            .or_default();
-        let replica_count = tablet
+    pub fn update_tablet(&mut self, tablet: Tab, g: &mut GlobalState) -> Result<()> {
+        let info = self.tablets[tablet as usize];
+        let tablet_id = info.id.as_str();
+        self.meta_mut(tablet);
+        let replicas: Vec<(&str, Option<Ts>, &ReplicaInfo)> = info
             .replicas
-            .keys()
-            .filter(|ts| !self.should_skip_replica(ts, g))
+            .iter()
+            .map(|(uuid, r)| (uuid.as_str(), g.index(uuid), r))
+            .collect();
+        let replica_count = replicas
+            .iter()
+            .filter(|(_, ts, _)| !self.should_skip_replica(*ts, g))
             .count();
-        for (ts_uuid, replica) in &tablet.replicas {
-            let meta = self.per_tablet_meta.get_mut(tablet_id).unwrap();
+        for &(uuid, ts, replica) in &replicas {
+            let meta = self.meta_mut(tablet);
             // Even a skipped replica tells whether the tablet has a leader at all.
             if replica.is_leader {
-                meta.leader_uuid = ts_uuid.clone();
+                meta.leader = Some(ts.unwrap_or(UNKNOWN_TS));
             }
             meta.size = meta.size.max(replica.total_size);
-            if self.should_skip_replica(ts_uuid, g) {
+            if self.should_skip_replica(ts, g) {
                 continue;
             }
-            let Some(ts_meta) = self.per_ts_meta.get(ts_uuid) else {
-                return Err(format!(
-                    "TServer {ts_uuid} has a replica of tablet {tablet_id} but is not in the \
-                     master's tserver list (replaced, or registered after this load-balancer run \
-                     started)"
-                ));
-            };
+            let ts = ts.expect("a known tserver");
             // A replica on a dead tserver is only balanced off if the tserver is blacklisted.
             if self.options.check_ts_liveness
-                && !g.ts[ts_meta.desc].live_and_reported
-                && !g.blacklisted.contains(ts_uuid)
+                && !g.ts[ts as usize].live_and_reported
+                && !g.is_blacklisted(ts)
             {
                 if !self.options.allow_leader_balancing_dead_node {
                     return Err(format!(
-                        "Master leader has not yet received heartbeat from ts {ts_uuid}. \
-                         Aborting load balancing."
+                        "Master leader has not yet received heartbeat from ts {uuid}. Aborting \
+                         load balancing."
                     ));
                 }
                 self.allow_only_leader_balancing = true;
             }
             if replica.is_leader {
-                self.add_leader_tablet(tablet_id, ts_uuid, &replica.fs_data_dir, g)?;
+                self.add_leader_tablet(tablet, ts, &replica.fs_data_dir, g);
             }
-            if is_replica_consensus_ready(ts_uuid, tablet_id, replica)? {
-                self.add_running_tablet(tablet_id, ts_uuid, &replica.fs_data_dir, g)?;
+            if is_replica_consensus_ready(uuid, tablet_id, replica)? {
+                self.add_running_tablet(tablet, ts, &replica.fs_data_dir, g)?;
             } else {
                 // Usually a remote bootstrap; SHUTDOWN and QUIESCING peers land here too.
-                self.add_starting_tablet(tablet_id, ts_uuid, g)?;
-                *self
-                    .ts_meta_mut(ts_uuid)?
+                self.add_starting_tablet(tablet, ts, g);
+                *self.per_ts_meta[ts as usize]
                     .path_to_starting_tablets_count
                     .entry(replica.fs_data_dir.clone())
                     .or_default() += 1;
                 g.activity.has_ongoing_remote_bootstraps = true;
             }
             if replica.should_disable_lb_move {
-                self.ts_meta_mut(ts_uuid)?
+                self.per_ts_meta[ts as usize]
                     .disabled_by_ts_tablets
-                    .insert(tablet_id.to_string());
+                    .insert(tablet);
             }
-            let meta = self.per_tablet_meta.get_mut(tablet_id).unwrap();
-            if g.blacklisted.contains(ts_uuid) {
-                meta.blacklisted_tablet_servers.insert(ts_uuid.clone());
+            let meta = self.meta_mut(tablet);
+            if g.is_blacklisted(ts) {
+                meta.blacklisted_tablet_servers.insert(ts);
             }
-            if replica.is_leader && g.leader_blacklisted.contains(ts_uuid) {
-                meta.leader_blacklisted_tablet_servers
-                    .insert(ts_uuid.clone());
+            if replica.is_leader && g.is_leader_blacklisted(ts) {
+                meta.leader_blacklisted_tablet_servers.insert(ts);
             }
         }
 
-        let num_replicas = self.placement.num_replicas();
-        {
-            let meta = self.per_tablet_meta.get_mut(tablet_id).unwrap();
-            meta.is_over_replicated = (num_replicas as i64) < replica_count as i64;
-            meta.is_under_replicated = (num_replicas as i64) > replica_count as i64;
+        let num_replicas = self.placement.num_replicas() as i64;
+        let mut by_block: BTreeMap<Block, Vec<Ts>> = (0..self.blocks.len())
+            .filter(|b| self.block_of[*b] == *b)
+            .map(|b| (b, Vec::new()))
+            .collect();
+        let mut wrong = Vec::new();
+        for &(_, ts, _) in &replicas {
+            if self.should_skip_replica(ts, g) {
+                continue;
+            }
+            let ts = ts.expect("a known tserver");
+            match self.per_ts_meta[ts as usize].placement {
+                Some(block) => by_block.entry(block).or_default().push(ts),
+                // The config or schema changed: the replica should no longer live here.
+                None => wrong.push(ts),
+            }
         }
-
-        if self.placement.placement_blocks.is_empty() {
-            // Without placement every replica is a removal candidate of an over-replicated tablet.
-            let candidates: Vec<String> = tablet
-                .replicas
-                .keys()
-                .filter(|ts| !self.should_skip_replica(ts, g))
-                .cloned()
-                .collect();
-            let meta = self.per_tablet_meta.get_mut(tablet_id).unwrap();
-            if meta.is_over_replicated {
-                meta.over_replicated_tablet_servers.extend(candidates);
+        let meta = self.per_tablet_meta[tablet as usize].as_mut().unwrap();
+        meta.is_over_replicated = num_replicas < replica_count as i64;
+        meta.is_under_replicated = num_replicas > replica_count as i64;
+        meta.wrong_placement_tablet_servers.extend(wrong);
+        for (block, replicas) in &by_block {
+            meta.placement_replica_counts.insert(*block, replicas.len());
+        }
+        for (block, replicas) in &by_block {
+            let info = &self.blocks[*block];
+            if info.min > replicas.len() {
+                // Blocks below their minimum are repaired first.
+                meta.under_replicated_placements.insert(*block);
+            } else if replicas.len() > info.max {
+                meta.over_max_placements.insert(*block);
             }
-        } else {
-            let mut placement_to_replicas: BTreeMap<String, (CloudInfoPB, Vec<String>)> =
-                BTreeMap::new();
-            let mut placement_to_min: HashMap<String, usize> = HashMap::new();
-            for block in &self.placement.placement_blocks {
-                let id = placement_id(&block.cloud_info);
-                placement_to_replicas
-                    .entry(id.clone())
-                    .or_insert_with(|| (block.cloud_info.clone().unwrap_or_default(), Vec::new()));
-                placement_to_min.insert(id, block.min_num_replicas().max(0) as usize);
-            }
-            let mut wrong = Vec::new();
-            for ts_uuid in tablet.replicas.keys() {
-                if self.should_skip_replica(ts_uuid, g) {
-                    continue;
-                }
-                match self.valid_placement(ts_uuid) {
-                    Some(p) => match placement_to_replicas.get_mut(&p.id) {
-                        Some(entry) => entry.1.push(ts_uuid.clone()),
-                        None => {
-                            placement_to_replicas
-                                .insert(p.id.clone(), (p.ci.clone(), vec![ts_uuid.clone()]));
-                        }
-                    },
-                    // The config or schema changed: the replica should no longer live here.
-                    None => wrong.push(ts_uuid.clone()),
-                }
-            }
-            let maxima: HashMap<String, usize> = placement_to_replicas
-                .keys()
-                .map(|id| (id.clone(), self.placement_block_max_replicas(id)))
-                .collect();
-            let meta = self.per_tablet_meta.get_mut(tablet_id).unwrap();
-            meta.wrong_placement_tablet_servers.extend(wrong);
-            for (id, (_, replicas)) in &placement_to_replicas {
-                meta.placement_replica_counts
-                    .insert(id.clone(), replicas.len());
-            }
-            for (id, (ci, replicas)) in &placement_to_replicas {
-                let min = placement_to_min.get(id).copied().unwrap_or(0);
-                if min > replicas.len() {
-                    // Blocks below their minimum are repaired first.
-                    meta.under_replicated_placements
-                        .insert(id.clone(), ci.clone());
-                } else if replicas.len() > maxima[id] {
-                    meta.over_max_placements.insert(id.clone());
-                }
-            }
-            // Removal candidates: the replicas of a block above its maximum if there is one, else
-            // those of every block above its minimum.
-            if meta.is_over_replicated {
-                let any_over_max = meta.has_over_max_placements();
-                for (id, (_, replicas)) in &placement_to_replicas {
-                    let candidate = if any_over_max {
-                        meta.over_max_placements.contains(id)
-                    } else {
-                        replicas.len() > placement_to_min.get(id).copied().unwrap_or(0)
-                    };
-                    if candidate {
-                        meta.over_replicated_tablet_servers
-                            .extend(replicas.iter().cloned());
-                    }
+        }
+        // Removal candidates: the replicas of a block above its maximum if there is one, else
+        // those of every block above its minimum.
+        if meta.is_over_replicated {
+            let any_over_max = meta.has_over_max_placements();
+            for (block, replicas) in &by_block {
+                let candidate = if any_over_max {
+                    meta.over_max_placements.contains(block)
+                } else {
+                    replicas.len() > self.blocks[*block].min
+                };
+                if candidate {
+                    meta.over_replicated_tablet_servers
+                        .extend(replicas.iter().copied());
                 }
             }
         }
-        let meta = self.per_tablet_meta.get_mut(tablet_id).unwrap();
-        meta.leader_stepdown_failures = tablet.recent_stepdown_failures.clone();
+        meta.leader_stepdown_failures = info
+            .recent_stepdown_failures
+            .iter()
+            .filter_map(|u| g.index(u))
+            .collect();
         let (missing, over, over_max, wrong, badly_placed_leader) = (
             meta.is_missing_replicas(),
             meta.is_over_replicated,
@@ -610,46 +611,81 @@ impl<'a> TableState<'a> {
             !meta.leader_blacklisted_tablet_servers.is_empty(),
         );
         if missing {
-            self.tablets_missing_replicas.insert(tablet_id.to_string());
+            self.tablets_missing_replicas.insert(tablet);
         }
         if over {
-            self.tablets_over_replicated.insert(tablet_id.to_string());
+            self.tablets_over_replicated.insert(tablet);
         }
         // A maximum violation is repaired by an add-before-remove move only when neither the
         // missing-replica nor the over-replication path owns the tablet.
         if over_max && !over && !missing {
-            self.tablets_over_max_placements
-                .insert(tablet_id.to_string());
+            self.tablets_over_max_placements.insert(tablet);
         }
         if wrong {
-            self.tablets_wrong_placement.insert(tablet_id.to_string());
+            self.tablets_wrong_placement.insert(tablet);
         }
         if badly_placed_leader {
-            self.tablets_with_badly_placed_leaders
-                .insert(tablet_id.to_string());
+            self.tablets_with_badly_placed_leaders.insert(tablet);
         }
         Ok(())
     }
 
+    /// Sets the table's placement: `CachePlacementBlockMaxReplicas`, and the blocks by cloud info.
+    pub fn set_placement(&mut self, placement: PlacementInfoPB) {
+        let num_replicas = placement.num_replicas();
+        let mut by_id: FxHashMap<String, Block> = FxHashMap::default();
+        self.blocks.clear();
+        self.block_of.clear();
+        for (i, b) in placement.placement_blocks.iter().enumerate() {
+            let max = if b.has_max_num_replicas() {
+                b.max_num_replicas()
+            } else {
+                num_replicas
+            };
+            let info = BlockInfo {
+                ci: b.cloud_info.clone().unwrap_or_default(),
+                min: b.min_num_replicas().max(0) as usize,
+                max: max.max(0) as usize,
+            };
+            let block = *by_id.entry(placement_id(&b.cloud_info)).or_insert(i);
+            // The later block's minimum and maximum win, as map assignment does in C++.
+            if block != i {
+                self.blocks[block].min = info.min;
+                self.blocks[block].max = info.max;
+            }
+            self.blocks.push(info);
+            self.block_of.push(block);
+        }
+        self.placement = placement;
+    }
+
+    /// `GetValidPlacement` of a tserver: the first block it matches.
+    fn placement_of(&self, ts: &TsInfo) -> Option<Block> {
+        self.placement
+            .placement_blocks
+            .iter()
+            .position(|b| matches_cloud_info(&ts.cloud_info, &b.cloud_info))
+            .map(|i| self.block_of[i])
+    }
+
+    /// `GetValidPlacement`, as cached for the table.
+    pub fn valid_placement(&self, ts: Ts) -> Option<Block> {
+        self.per_ts_meta[ts as usize].placement
+    }
+
+    /// `PlacementBlockMaxReplicas`.
+    pub fn block_max(&self, block: Block) -> usize {
+        self.blocks[block].max
+    }
+
     /// `UpdateTabletServer`.
-    pub fn update_tablet_server(&mut self, desc: usize, g: &mut GlobalState) {
-        let ts = &g.ts[desc];
-        let uuid = ts.uuid.clone();
-        let placement = self.placement_of(ts);
-        let meta = self.per_ts_meta.entry(uuid.clone()).or_default();
-        meta.desc = desc;
-        meta.placement = placement;
-        g.per_ts.entry(uuid.clone()).or_insert_with(|| TsGlobal {
-            disk_used_bytes: ts.disk_used_bytes,
-            disk_capacity_bytes: ts.disk_capacity_bytes,
-            ..TsGlobal::default()
-        });
-        let is_blacklisted = g.blacklisted.contains(&uuid);
-        let is_leader_blacklisted = g.leader_blacklisted.contains(&uuid);
-        if self.options.check_ts_liveness && !ts.live_and_reported {
+    pub fn update_tablet_server(&mut self, ts: Ts, g: &mut GlobalState) {
+        let info = g.ts[ts as usize];
+        self.per_ts_meta[ts as usize].placement = self.placement_of(info);
+        if self.options.check_ts_liveness && !info.live_and_reported {
             return;
         }
-        let live = self.is_ts_in_live_placement(ts);
+        let live = self.is_ts_in_live_placement(info);
         if !self.mode.read_only {
             if !live {
                 return;
@@ -658,26 +694,28 @@ impl<'a> TableState<'a> {
             if live {
                 return;
             }
-            if ts.placement_uuid.is_empty() {
-                tracing::warn!("Read only ts {uuid} has empty placement uuid");
-            } else if ts.placement_uuid != self.mode.placement_uuid {
+            if info.placement_uuid.is_empty() {
+                tracing::warn!("Read only ts {} has empty placement uuid", info.uuid);
+            } else if info.placement_uuid != self.mode.placement_uuid {
                 return;
             }
         }
-        self.sorted_load.push(uuid.clone());
+        self.sorted_load.push(ts);
         if self.mode.read_only {
             return;
         }
         // Leaders go only to live, non-blacklisted tservers that heartbeat recently enough.
-        if !is_blacklisted && ts.heartbeat_age < self.options.leader_balance_unresponsive_timeout {
+        if !g.is_blacklisted(ts)
+            && info.heartbeat_age < self.options.leader_balance_unresponsive_timeout
+        {
             let mut priority = 0;
-            if is_leader_blacklisted {
+            if g.is_leader_blacklisted(ts) {
                 priority = self.affinitized_zones.len();
             } else if !self.affinitized_zones.is_empty() {
                 while priority < self.affinitized_zones.len()
                     && !self.affinitized_zones[priority]
                         .iter()
-                        .any(|zone| cloud_info_contains(zone, &ts.cloud_info))
+                        .any(|zone| cloud_info_contains(zone, &info.cloud_info))
                 {
                     priority += 1;
                 }
@@ -685,68 +723,51 @@ impl<'a> TableState<'a> {
             if self.sorted_leader_load.len() <= priority {
                 self.sorted_leader_load.resize(priority + 1, Vec::new());
             }
-            self.sorted_leader_load[priority].push(uuid);
+            self.sorted_leader_load[priority].push(ts);
         }
     }
 
-    /// `CanAddTabletToTabletServer`. `from_ts` is the source of a move, or empty: a move within
-    /// one block may go to a block at its maximum, since the remove that follows restores it.
+    /// `CanAddTabletToTabletServer`. `from` is the source of a move: a move within one block may go
+    /// to a block at its maximum, since the remove that follows restores it.
     pub fn can_add_tablet_to_tablet_server(
         &self,
-        tablet_id: &str,
-        to_ts: &str,
-        from_ts: &str,
+        tablet: Tab,
+        to: Ts,
+        from: Option<Ts>,
         g: &GlobalState,
     ) -> Result<bool> {
-        let Some(ts_meta) = self.per_ts_meta.get(to_ts) else {
+        let ts_meta = self.ts_meta(to);
+        if self.options.check_ts_liveness && !g.ts[to as usize].live_and_reported {
+            return Ok(false);
+        }
+        if self.tablets_added.contains(&tablet) {
+            return Ok(false);
+        }
+        if g.is_blacklisted(to) {
+            return Ok(false);
+        }
+        if ts_meta.running_tablets.contains(&tablet) || ts_meta.starting_tablets.contains(&tablet) {
+            return Ok(false);
+        }
+        let tablet_meta = self.tablet_meta(tablet)?;
+        if tablet_meta.removal_pending_tablet_servers.contains(&to) {
+            return Ok(false);
+        }
+        let Some(to_block) = self.valid_placement(to) else {
             return Ok(false);
         };
-        if self.options.check_ts_liveness && !g.ts[ts_meta.desc].live_and_reported {
-            return Ok(false);
-        }
-        if self.tablets_added.contains(tablet_id) {
-            return Ok(false);
-        }
-        if g.blacklisted.contains(to_ts) {
-            return Ok(false);
-        }
-        if ts_meta.running_tablets.contains(tablet_id)
-            || ts_meta.starting_tablets.contains(tablet_id)
-        {
-            return Ok(false);
-        }
-        let tablet_meta = self
-            .per_tablet_meta
-            .get(tablet_id)
-            .ok_or_else(|| format!("No balancer metadata for tablet {tablet_id}"))?;
-        if tablet_meta.removal_pending_tablet_servers.contains(to_ts) {
-            return Ok(false);
-        }
-        let to_placement = self.valid_placement(to_ts);
-        if !self.placement.placement_blocks.is_empty() && to_placement.is_none() {
-            return Ok(false);
-        }
-        if let Some(to_placement) = to_placement {
-            let to_id = &to_placement.id;
-            let mut projected = tablet_meta
-                .placement_replica_counts
-                .get(to_id)
-                .copied()
-                .unwrap_or(0);
-            // The source is only removed once the add over-replicates the tablet, which an
-            // under-replicated tablet never reaches.
-            if !from_ts.is_empty() && !tablet_meta.is_under_replicated {
-                if let Some(from_placement) = self.valid_placement(from_ts) {
-                    if from_placement.id == *to_id {
-                        projected = projected.saturating_sub(1);
-                    }
-                }
-            }
-            if projected >= self.placement_block_max_replicas(to_id) {
-                return Ok(false);
+        let mut projected = tablet_meta.count_in(to_block);
+        // The source is only removed once the add over-replicates the tablet, which an
+        // under-replicated tablet never reaches.
+        if let Some(from) = from {
+            if !tablet_meta.is_under_replicated && self.valid_placement(from) == Some(to_block) {
+                projected = projected.saturating_sub(1);
             }
         }
-        let global = g.per_ts.get(to_ts).cloned().unwrap_or_default();
+        if projected >= self.block_max(to_block) {
+            return Ok(false);
+        }
+        let global = &g.per_ts[to as usize];
         if global.starting_tablets_count >= self.options.max_inbound_remote_bootstraps_per_ts {
             return Ok(false);
         }
@@ -757,94 +778,43 @@ impl<'a> TableState<'a> {
         {
             return Ok(false);
         }
-        if !g.has_free_disk_space_for(to_ts, tablet_meta.size_or_default()) {
+        if !g.has_free_disk_space_for(to, tablet_meta.size_or_default()) {
             return Ok(false);
         }
-        if g.ts[ts_meta.desc].pending_deletes.contains(tablet_id) {
+        let tablet_id = self.tablet_id(tablet);
+        if g.ts[to as usize].pending_deletes.contains(tablet_id) {
             tracing::info!(
-                "tablet server {to_ts} has a pending delete for tablet {tablet_id}. Not allowing \
-                 it to take another replica."
+                "tablet server {} has a pending delete for tablet {tablet_id}. Not allowing it to \
+                 take another replica.",
+                g.uuid(to)
             );
             return Ok(false);
         }
         Ok(true)
     }
 
-    /// `CachePlacementBlockMaxReplicas`.
-    pub fn cache_placement_block_max_replicas(&mut self) {
-        let num_replicas = self.placement.num_replicas();
-        self.placement_block_max = self
-            .placement
-            .placement_blocks
-            .iter()
-            .map(|b| {
-                let max = if b.has_max_num_replicas() {
-                    b.max_num_replicas()
-                } else {
-                    num_replicas
-                };
-                (placement_id(&b.cloud_info), max.max(0) as usize)
-            })
-            .collect();
-    }
-
-    /// The effective maximum of a block, by placement id; without a block, the replication factor.
-    pub fn placement_block_max_replicas(&self, id: &str) -> usize {
-        self.placement_block_max
-            .get(id)
-            .copied()
-            .unwrap_or(self.placement.num_replicas().max(0) as usize)
-    }
-
-    /// `GetValidPlacement` of a tserver: the first block it matches; without blocks, its own
-    /// cloud info.
-    fn placement_of(&self, ts: &TsInfo) -> Option<Placement> {
-        if self.placement.placement_blocks.is_empty() {
-            return Some(Placement {
-                id: placement_id(&ts.cloud_info),
-                ci: ts.cloud_info.clone(),
-            });
-        }
-        self.placement
-            .placement_blocks
-            .iter()
-            .find(|b| matches_cloud_info(&ts.cloud_info, &b.cloud_info))
-            .map(|b| Placement {
-                id: placement_id(&b.cloud_info),
-                ci: b.cloud_info.clone().unwrap_or_default(),
-            })
-    }
-
-    /// `GetValidPlacement`, as cached for the table.
-    pub fn valid_placement(&self, uuid: &str) -> Option<&Placement> {
-        self.per_ts_meta.get(uuid)?.placement.as_ref()
-    }
-
     /// `CanSelectWrongPlacementReplicaToMove`: a (from, to) pair moving a replica off a blacklisted
     /// tserver (preferring a destination in the same placement), else off a wrongly placed one.
     pub fn select_wrong_placement_replica_to_move(
         &self,
-        tablet_id: &str,
+        tablet: Tab,
         g: &GlobalState,
-    ) -> Result<Option<(String, String)>> {
-        let meta = self.tablet_meta(tablet_id)?;
-        let mut fallback: Option<(String, String)> = None;
-        for from_uuid in &meta.blacklisted_tablet_servers {
-            let invalid_placement = meta.wrong_placement_tablet_servers.contains(from_uuid);
-            for to_uuid in &self.sorted_load {
-                let can_add =
-                    self.can_add_tablet_to_tablet_server(tablet_id, to_uuid, from_uuid, g)?;
+    ) -> Result<Option<(Ts, Ts)>> {
+        let meta = self.tablet_meta(tablet)?;
+        let mut fallback: Option<(Ts, Ts)> = None;
+        for &from in &meta.blacklisted_tablet_servers {
+            let invalid_placement = meta.wrong_placement_tablet_servers.contains(&from);
+            for &to in &self.sorted_load {
+                let can_add = self.can_add_tablet_to_tablet_server(tablet, to, Some(from), g)?;
                 let found = if invalid_placement && can_add {
                     // A wrongly placed source's placement need not be kept.
                     true
                 } else if can_add {
-                    let from_ci = self.valid_placement(from_uuid);
-                    let to_ci = self.valid_placement(to_uuid);
-                    match (from_ci, to_ci) {
-                        (Some(f), Some(t)) if f.id == t.id => true,
+                    match (self.valid_placement(from), self.valid_placement(to)) {
+                        (Some(f), Some(t)) if f == t => true,
                         _ => {
                             // Another placement still works as a fallback; the last pair wins.
-                            fallback = Some((from_uuid.clone(), to_uuid.clone()));
+                            fallback = Some((from, to));
                             false
                         }
                     }
@@ -852,22 +822,19 @@ impl<'a> TableState<'a> {
                     false
                 };
                 if found {
-                    return Ok(Some((from_uuid.clone(), to_uuid.clone())));
+                    return Ok(Some((from, to)));
                 }
             }
             if fallback.is_none() {
-                let from_placement = self.valid_placement(from_uuid);
                 let blocked_by_max = meta.is_under_replicated
-                    && from_placement.is_some_and(|p| {
-                        meta.placement_replica_counts
-                            .get(&p.id)
-                            .copied()
-                            .unwrap_or(0)
-                            >= self.placement_block_max_replicas(&p.id)
-                    });
+                    && self
+                        .valid_placement(from)
+                        .is_some_and(|b| meta.count_in(b) >= self.block_max(b));
                 tracing::info!(
-                    "Cannot move tablet {tablet_id} from blacklisted tablet server {from_uuid}: \
-                     no eligible destination tablet servers{}",
+                    "Cannot move tablet {} from blacklisted tablet server {}: no eligible \
+                     destination tablet servers{}",
+                    self.tablet_id(tablet),
+                    g.uuid(from),
                     if blocked_by_max {
                         ". Its placement is at its max_num_replicas and the tablet is \
                          under-replicated; add tservers where its missing replicas can go"
@@ -880,10 +847,10 @@ impl<'a> TableState<'a> {
         if fallback.is_some() {
             return Ok(fallback);
         }
-        if let Some(from_uuid) = meta.wrong_placement_tablet_servers.iter().next() {
-            for to_uuid in &self.sorted_load {
-                if self.can_add_tablet_to_tablet_server(tablet_id, to_uuid, from_uuid, g)? {
-                    return Ok(Some((from_uuid.clone(), to_uuid.clone())));
+        if let Some(&from) = meta.wrong_placement_tablet_servers.iter().next() {
+            for &to in &self.sorted_load {
+                if self.can_add_tablet_to_tablet_server(tablet, to, Some(from), g)? {
+                    return Ok(Some((from, to)));
                 }
             }
         }
@@ -895,48 +862,38 @@ impl<'a> TableState<'a> {
     }
 
     /// `AddReplica`.
-    pub fn add_replica(&mut self, tablet_id: &str, to_ts: &str, g: &mut GlobalState) -> Result<()> {
+    pub fn add_replica(&mut self, tablet: Tab, to: Ts, g: &mut GlobalState) -> Result<()> {
         if !self.initialized {
-            return Err(self.not_initialized("AddReplica", tablet_id));
+            return Err(self.not_initialized("AddReplica", tablet));
         }
-        self.add_starting_tablet(tablet_id, to_ts, g)?;
-        self.tablets_added.insert(tablet_id.to_string());
+        self.add_starting_tablet(tablet, to, g);
+        self.tablets_added.insert(tablet);
         self.sort_load(g);
         Ok(())
     }
 
     /// `RemoveReplica`.
-    pub fn remove_replica(
-        &mut self,
-        tablet_id: &str,
-        from_ts: &str,
-        g: &mut GlobalState,
-    ) -> Result<()> {
+    pub fn remove_replica(&mut self, tablet: Tab, from: Ts, g: &mut GlobalState) -> Result<()> {
         if !self.initialized {
-            return Err(self.not_initialized("RemoveReplica", tablet_id));
+            return Err(self.not_initialized("RemoveReplica", tablet));
         }
-        self.remove_running_tablet(tablet_id, from_ts, g)?;
-        if self.ts_meta(from_ts)?.starting_tablets.contains(tablet_id) {
+        self.remove_running_tablet(tablet, from, g)?;
+        if self.ts_meta(from).starting_tablets.contains(&tablet) {
             tracing::error!(
-                "Invalid request: remove starting tablet {tablet_id} from ts {from_ts}"
+                "Invalid request: remove starting tablet {} from ts {}",
+                self.tablet_id(tablet),
+                g.uuid(from)
             );
         }
-        let meta = self
-            .per_tablet_meta
-            .entry(tablet_id.to_string())
-            .or_default();
-        meta.removal_pending_tablet_servers
-            .insert(from_ts.to_string());
-        if meta.leader_uuid == from_ts {
-            self.move_leader(tablet_id, from_ts, "", "", g)?;
+        let meta = self.meta_mut(tablet);
+        meta.removal_pending_tablet_servers.insert(from);
+        if meta.leader == Some(from) {
+            self.move_leader(tablet, from, None, None, g)?;
         }
         // Only one replica of a tablet is removed per run.
-        self.tablets_over_replicated.remove(tablet_id);
-        self.per_tablet_meta
-            .get_mut(tablet_id)
-            .unwrap()
-            .is_over_replicated = false;
-        self.tablets_wrong_placement.remove(tablet_id);
+        self.tablets_over_replicated.remove(&tablet);
+        self.meta_mut(tablet).is_over_replicated = false;
+        self.tablets_wrong_placement.remove(&tablet);
         self.sort_load(g);
         Ok(())
     }
@@ -944,7 +901,7 @@ impl<'a> TableState<'a> {
     /// `SortLoad`.
     pub fn sort_load(&mut self, g: &GlobalState) {
         let mut sorted = std::mem::take(&mut self.sorted_load);
-        sorted.sort_by(|a, b| self.compare_load(a, b, None, g));
+        sorted.sort_by(|a, b| self.compare_load(*a, *b, None, g));
         self.sorted_load = sorted;
         if g.drive_aware {
             self.sort_drive_load();
@@ -954,11 +911,9 @@ impl<'a> TableState<'a> {
     /// `SortDriveLoad`: each tserver's paths by decreasing replica count; the empty path (a
     /// tserver that reported no path) last.
     fn sort_drive_load(&mut self) {
-        for ts in self.sorted_load.clone() {
-            let Some(m) = self.per_ts_meta.get_mut(&ts) else {
-                continue;
-            };
-            let mut loads: Vec<(String, usize)> = Vec::new();
+        for i in 0..self.sorted_load.len() {
+            let m = &mut self.per_ts_meta[self.sorted_load[i] as usize];
+            let mut loads: Vec<(Arc<str>, usize)> = Vec::new();
             let mut empty_path_found = false;
             for (path, running) in &m.path_to_tablets {
                 if path.is_empty() {
@@ -973,39 +928,45 @@ impl<'a> TableState<'a> {
                 loads.push((path.clone(), running.len() + starting.max(0) as usize));
             }
             loads.sort_by(|a, b| b.1.cmp(&a.1));
-            m.sorted_path_load_by_tablets_count = loads.into_iter().map(|(p, _)| p).collect();
+            m.sorted_path_load_by_tablets_count.clear();
+            m.sorted_path_load_by_tablets_count
+                .extend(loads.into_iter().map(|(p, _)| p));
             if empty_path_found {
-                m.sorted_path_load_by_tablets_count.push(String::new());
+                m.sorted_path_load_by_tablets_count.push(Arc::from(""));
             }
         }
     }
 
-    /// `MoveLeader`: `to_ts` empty for a stepdown to any peer.
+    /// `MoveLeader`: `to` none for a stepdown to any peer.
     pub fn move_leader(
         &mut self,
-        tablet_id: &str,
-        from_ts: &str,
-        to_ts: &str,
-        to_ts_path: &str,
+        tablet: Tab,
+        from: Ts,
+        to: Option<Ts>,
+        to_path: Option<&Arc<str>>,
         g: &mut GlobalState,
     ) -> Result<()> {
         if !self.initialized {
-            return Err(self.not_initialized("MoveLeader", tablet_id));
+            return Err(self.not_initialized("MoveLeader", tablet));
         }
-        let meta = self
-            .per_tablet_meta
-            .entry(tablet_id.to_string())
-            .or_default();
-        if meta.leader_uuid != from_ts {
+        let tablet_id = self.tablet_id(tablet);
+        let meta = self.meta_mut(tablet);
+        if meta.leader != Some(from) {
             return Err(format!(
-                "Tablet {tablet_id} has leader {}, but {from_ts} expected.",
-                meta.leader_uuid
+                "Tablet {tablet_id} has leader {}, but {} expected.",
+                match meta.leader {
+                    None => "",
+                    Some(UNKNOWN_TS) => "<unknown>",
+                    Some(l) => g.uuid(l),
+                },
+                g.uuid(from)
             ));
         }
-        meta.leader_uuid = to_ts.to_string();
-        self.remove_leader_tablet(tablet_id, from_ts, g)?;
-        if !to_ts.is_empty() {
-            self.add_leader_tablet(tablet_id, to_ts, to_ts_path, g)?;
+        meta.leader = to;
+        self.remove_leader_tablet(tablet, from, g);
+        if let Some(to) = to {
+            let empty: Arc<str> = Arc::from("");
+            self.add_leader_tablet(tablet, to, to_path.unwrap_or(&empty), g);
         }
         self.sort_leader_load(g);
         Ok(())
@@ -1015,7 +976,7 @@ impl<'a> TableState<'a> {
     pub fn sort_leader_load(&mut self, g: &GlobalState) {
         let mut sets = std::mem::take(&mut self.sorted_leader_load);
         for set in &mut sets {
-            set.sort_by(|a, b| self.compare_leader_load(a, b, g));
+            set.sort_by(|a, b| self.compare_leader_load(*a, *b, g));
         }
         self.sorted_leader_load = sets;
         if g.drive_aware {
@@ -1026,32 +987,31 @@ impl<'a> TableState<'a> {
     /// `SortDriveLeaderLoad`: each tserver's paths by increasing leader count, the empty path
     /// first when the tserver reported one or has no leaders.
     fn sort_drive_leader_load(&mut self) {
-        let tservers: Vec<String> = self.sorted_leader_load.iter().flatten().cloned().collect();
-        for ts in tservers {
-            let Some(m) = self.per_ts_meta.get_mut(&ts) else {
-                continue;
-            };
-            let mut loads: Vec<(String, usize)> = Vec::new();
-            let mut empty_path_found = false;
-            for (path, leaders) in &m.path_to_leaders {
-                if path.is_empty() {
-                    empty_path_found = true;
-                    continue;
+        for p in 0..self.sorted_leader_load.len() {
+            for i in 0..self.sorted_leader_load[p].len() {
+                let m = &mut self.per_ts_meta[self.sorted_leader_load[p][i] as usize];
+                let mut loads: Vec<(Arc<str>, usize)> = Vec::new();
+                let mut empty_path_found = false;
+                for (path, leaders) in &m.path_to_leaders {
+                    if path.is_empty() {
+                        empty_path_found = true;
+                        continue;
+                    }
+                    loads.push((path.clone(), leaders.len()));
                 }
-                loads.push((path.clone(), leaders.len()));
-            }
-            for path in m.path_to_tablets.keys() {
-                if !path.is_empty() && !m.path_to_leaders.contains_key(path) {
-                    loads.push((path.clone(), 0));
+                for path in m.path_to_tablets.keys() {
+                    if !path.is_empty() && !m.path_to_leaders.contains_key(path) {
+                        loads.push((path.clone(), 0));
+                    }
                 }
+                loads.sort_by_key(|l| l.1);
+                m.sorted_path_load_by_leader_count.clear();
+                if empty_path_found || m.path_to_leaders.is_empty() {
+                    m.sorted_path_load_by_leader_count.push(Arc::from(""));
+                }
+                m.sorted_path_load_by_leader_count
+                    .extend(loads.into_iter().map(|(p, _)| p));
             }
-            loads.sort_by_key(|l| l.1);
-            m.sorted_path_load_by_leader_count.clear();
-            if empty_path_found || m.path_to_leaders.is_empty() {
-                m.sorted_path_load_by_leader_count.push(String::new());
-            }
-            m.sorted_path_load_by_leader_count
-                .extend(loads.into_iter().map(|(p, _)| p));
         }
     }
 
@@ -1061,10 +1021,11 @@ impl<'a> TableState<'a> {
         if threshold == 0 {
             return 0;
         }
+        let tablets = self.per_tablet_meta.iter().filter(|m| m.is_some()).count();
         let min = if zone_set_size == 0 {
             0
         } else {
-            self.per_tablet_meta.len().div_ceil(zone_set_size)
+            tablets.div_ceil(zone_set_size)
         };
         if threshold < min {
             tracing::warn!(
@@ -1078,131 +1039,101 @@ impl<'a> TableState<'a> {
 
     fn add_running_tablet(
         &mut self,
-        tablet_id: &str,
-        uuid: &str,
-        path: &str,
+        tablet: Tab,
+        ts: Ts,
+        path: &Arc<str>,
         g: &mut GlobalState,
     ) -> Result<()> {
         if self.initialized {
             return Err(format!(
-                "AddRunningTablet called after PerTableLoadState initialized for tablet {tablet_id}"
+                "AddRunningTablet called after PerTableLoadState initialized for tablet {}",
+                self.tablet_id(tablet)
             ));
         }
-        let m = self.ts_meta_mut(uuid)?;
-        let inserted = m.running_tablets.insert(tablet_id.to_string());
-        m.path_to_tablets
-            .entry(path.to_string())
-            .or_default()
-            .insert(tablet_id.to_string());
+        let m = &mut self.per_ts_meta[ts as usize];
+        let inserted = m.running_tablets.insert(tablet);
+        match m.path_to_tablets.get_mut(path) {
+            Some(tablets) => {
+                tablets.insert(tablet);
+            }
+            None => {
+                m.path_to_tablets
+                    .insert(path.clone(), BTreeSet::from([tablet]));
+            }
+        }
         if inserted {
-            g.per_ts
-                .entry(uuid.to_string())
-                .or_default()
-                .running_tablets_count += 1;
+            g.per_ts[ts as usize].running_tablets_count += 1;
             self.total_running += 1;
-            self.per_tablet_meta
-                .entry(tablet_id.to_string())
-                .or_default()
-                .running += 1;
+            self.meta_mut(tablet).running += 1;
         }
         Ok(())
     }
 
-    fn remove_running_tablet(
-        &mut self,
-        tablet_id: &str,
-        uuid: &str,
-        g: &mut GlobalState,
-    ) -> Result<()> {
-        let m = self.ts_meta_mut(uuid)?;
-        if !m.running_tablets.remove(tablet_id) {
+    fn remove_running_tablet(&mut self, tablet: Tab, ts: Ts, g: &mut GlobalState) -> Result<()> {
+        let m = &mut self.per_ts_meta[ts as usize];
+        if !m.running_tablets.remove(&tablet) {
             return Err(format!(
-                "Could not find running tablet to remove: ts_uuid: {uuid}, tablet_id: {tablet_id}"
+                "Could not find running tablet to remove: ts_uuid: {}, tablet_id: {}",
+                g.uuid(ts),
+                self.tablet_id(tablet)
             ));
         }
         // C++ stops at the first path that does not hold the tablet (an inverted check), so the
         // tablet can stay listed on its path; it is dropped from every path here.
         for tablets in m.path_to_tablets.values_mut() {
-            tablets.remove(tablet_id);
+            tablets.remove(&tablet);
         }
-        g.per_ts
-            .entry(uuid.to_string())
-            .or_default()
-            .running_tablets_count -= 1;
+        g.per_ts[ts as usize].running_tablets_count -= 1;
         self.total_running -= 1;
-        self.per_tablet_meta
-            .entry(tablet_id.to_string())
-            .or_default()
-            .running -= 1;
+        self.meta_mut(tablet).running -= 1;
         Ok(())
     }
 
     /// `AddStartingTablet`. After initialization an add over-replicates the tablet, unless it was
     /// missing replicas.
-    pub fn add_starting_tablet(
-        &mut self,
-        tablet_id: &str,
-        uuid: &str,
-        g: &mut GlobalState,
-    ) -> Result<()> {
-        let inserted = self
-            .ts_meta_mut(uuid)?
+    pub fn add_starting_tablet(&mut self, tablet: Tab, ts: Ts, g: &mut GlobalState) {
+        if !self.per_ts_meta[ts as usize]
             .starting_tablets
-            .insert(tablet_id.to_string());
-        if !inserted {
-            return Ok(());
+            .insert(tablet)
+        {
+            return;
         }
-        let size = self
-            .per_tablet_meta
-            .entry(tablet_id.to_string())
-            .or_default()
-            .size_or_default();
-        let global = ts_global(g, uuid);
+        let size = self.meta_mut(tablet).size_or_default();
+        let global = &mut g.per_ts[ts as usize];
         global.starting_tablets_count += 1;
         global.starting_tablets_size += size;
         self.total_starting += 1;
         g.total_starting_tablets += 1;
-        let missing = self.tablets_missing_replicas.contains(tablet_id);
-        let meta = self.per_tablet_meta.get_mut(tablet_id).unwrap();
+        let missing = self.tablets_missing_replicas.contains(&tablet);
+        let initialized = self.initialized;
+        let meta = self.meta_mut(tablet);
         meta.starting += 1;
-        if self.initialized && !missing {
+        if initialized && !missing {
             meta.is_over_replicated = true;
-            self.tablets_over_replicated.insert(tablet_id.to_string());
+            self.tablets_over_replicated.insert(tablet);
         }
-        Ok(())
     }
 
-    fn add_leader_tablet(
-        &mut self,
-        tablet_id: &str,
-        uuid: &str,
-        path: &str,
-        g: &mut GlobalState,
-    ) -> Result<()> {
-        let m = self.ts_meta_mut(uuid)?;
-        let inserted = m.leaders.insert(tablet_id.to_string());
-        m.path_to_leaders
-            .entry(path.to_string())
-            .or_default()
-            .insert(tablet_id.to_string());
+    fn add_leader_tablet(&mut self, tablet: Tab, ts: Ts, path: &Arc<str>, g: &mut GlobalState) {
+        let m = &mut self.per_ts_meta[ts as usize];
+        let inserted = m.leaders.insert(tablet);
+        match m.path_to_leaders.get_mut(path) {
+            Some(leaders) => {
+                leaders.insert(tablet);
+            }
+            None => {
+                m.path_to_leaders
+                    .insert(path.clone(), BTreeSet::from([tablet]));
+            }
+        }
         if inserted {
-            ts_global(g, uuid).leaders_count += 1;
+            g.per_ts[ts as usize].leaders_count += 1;
         }
-        Ok(())
     }
 
-    fn remove_leader_tablet(
-        &mut self,
-        tablet_id: &str,
-        uuid: &str,
-        g: &mut GlobalState,
-    ) -> Result<()> {
-        if !self.initialized {
-            return Err(self.not_initialized("RemoveLeaderTablet", tablet_id));
+    fn remove_leader_tablet(&mut self, tablet: Tab, ts: Ts, g: &mut GlobalState) {
+        if self.per_ts_meta[ts as usize].leaders.remove(&tablet) {
+            g.per_ts[ts as usize].leaders_count -= 1;
         }
-        if self.ts_meta_mut(uuid)?.leaders.remove(tablet_id) {
-            ts_global(g, uuid).leaders_count -= 1;
-        }
-        Ok(())
     }
 }

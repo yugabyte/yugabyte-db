@@ -29,6 +29,7 @@ mod state;
 mod tests;
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::sync::Arc;
 use std::time::Duration;
 
 use yb_proto::pb::common_net::{CloudInfoPB, ReplicationInfoPB};
@@ -72,7 +73,7 @@ pub struct ReplicaInfo {
     /// Its member type in the Raft config.
     pub member_type: PeerMemberType,
     /// The data directory holding it.
-    pub fs_data_dir: String,
+    pub fs_data_dir: Arc<str>,
     /// `drive_info.total_size`.
     pub total_size: u64,
     /// The tserver asked not to move it (just split).
@@ -85,7 +86,7 @@ impl Default for ReplicaInfo {
             is_leader: false,
             state: RaftGroupStatePB::RUNNING,
             member_type: PeerMemberType::VOTER,
-            fs_data_dir: String::new(),
+            fs_data_dir: Arc::from(""),
             total_size: 0,
             should_disable_lb_move: false,
         }

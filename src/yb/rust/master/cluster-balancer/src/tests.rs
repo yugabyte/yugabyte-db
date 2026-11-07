@@ -302,10 +302,12 @@ fn pending_stepdown() {
         .stepdowns
         .insert(tablet_id.clone(), new_leader.clone());
     let run = analyze!(h);
-    let state = run.state();
-    assert_eq!(state.per_tablet_meta[&tablet_id].leader_uuid, new_leader);
-    assert!(!state.per_ts_meta[&old_leader].leaders.contains(&tablet_id));
-    assert!(state.per_ts_meta[&new_leader].leaders.contains(&tablet_id));
+    assert_eq!(
+        run.leader_of(&tablet_id).as_deref(),
+        Some(new_leader.as_str())
+    );
+    assert!(!run.leads(&old_leader, &tablet_id));
+    assert!(run.leads(&new_leader, &tablet_id));
 }
 
 #[test]
@@ -1517,5 +1519,11 @@ fn scale() {
             start.elapsed(),
             result.actions().count()
         );
+    }
+    // The peak resident set, view included.
+    if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
+        if let Some(line) = status.lines().find(|l| l.starts_with("VmHWM")) {
+            println!("{line}");
+        }
     }
 }

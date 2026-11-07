@@ -300,7 +300,7 @@ impl Inner {
                                     is_leader: r.role == PeerRole::LEADER,
                                     state: r.state,
                                     member_type: r.member_type,
-                                    fs_data_dir: r.fs_data_dir.to_string(),
+                                    fs_data_dir: r.fs_data_dir.clone(),
                                     total_size: r.drive.total_size,
                                     should_disable_lb_move: r.should_disable_lb_move,
                                 },

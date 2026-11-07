@@ -92,8 +92,14 @@ then within them).
 
 `tests::scale` (ignored; `cargo test --release -p master-cluster-balancer scale -- --ignored
 --nocapture`, sized by `SCALE_TSERVERS` and `SCALE_TABLETS`) times runs over one RF3 cluster with
-an empty tserver. Measured on an 8-core dev server: 500 tservers and 500,000 tablets take about
-4.5 s per run; 5,000 tservers and 5 million tablets take 94 to 135 s per run with a 26 GB peak
-(the view included). The cost is the string-keyed maps and sets of the state, which C++ also
-uses; interning tserver and tablet ids as indices is what the W8 target needs. The controller
-runs the planner on a blocking thread so a long run does not hold an async worker.
+an empty tserver. Measured on an 8-core dev server: 500 tservers and 500,000 tablets take 0.7 to
+0.9 s per run; 5,000 tservers and 5 million tablets take 16 to 21 s per run with a 14.7 GB peak
+(the view included).
+
+Inside a run, tservers and tablets are indices (`state::Ts`, `state::Tab`) assigned in sorted-id
+order, and placement blocks are indices into `TableState::blocks`; per-tserver and per-tablet
+state are vectors. Ids are looked up only to build actions and messages. Keeping C++'s
+string-keyed maps cost 6x the time at 500k tablets and 5x at 5M, almost all of it comparing
+uuid and tablet-id strings as B-tree keys. Because indices follow id order, every iteration
+order, and so every tie-break, matches the string-keyed C++. The controller runs the planner on
+a blocking thread so a long run does not hold an async worker.
