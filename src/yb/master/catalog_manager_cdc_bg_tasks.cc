@@ -101,10 +101,6 @@ void CatalogManagerCdcBgTasks::RunOnceAsLeader(const LeaderEpoch& epoch) {
         "Failed cleanup CDCSDK streams metadata");
   }
 
-  WARN_NOT_OK(
-      catalog_manager_->AddCatalogTablesToCDCSDKStreamsForTransactionalDdl(epoch),
-      "Failed adding catalog tables to logical replication streams");
-
   catalog_manager_->cdcsdk_manager_->RunBgTasks(epoch);
 }
 

@@ -916,6 +916,21 @@ message GetUniverseReplicationInfoResponsePB {
   optional bool automatic_ddl_mode = 6; // [default = false]
 }
 
+message PrepareCDCStreamsForTransactionalDDLRequestPB {
+  // The stream to prepare. If not set, then all implicit pub refresh streams are prepared.
+  optional string stream_id = 1;
+}
+
+message PrepareCDCStreamsForTransactionalDDLResponsePB {
+  message StreamPB {
+    optional string stream_id = 1;
+  }
+
+  optional MasterErrorPB error = 1;
+  // The prepared streams.
+  repeated StreamPB streams = 2;
+}
+
 message DisableDynamicTableAdditionOnCDCSDKStreamRequestPB {
   optional string stream_id = 1;
 }
@@ -1136,6 +1151,9 @@ service MasterReplication {
       returns (ValidateAndSyncCDCStateEntriesForCDCSDKStreamResponsePB);
   rpc CleanupStaleCDCStreams(CleanupStaleCDCStreamsRequestPB)
       returns (CleanupStaleCDCStreamsResponsePB);
+  rpc PrepareCDCStreamsForTransactionalDDL(
+      PrepareCDCStreamsForTransactionalDDLRequestPB)
+      returns (PrepareCDCStreamsForTransactionalDDLResponsePB);
   // Introduced for bug (#22876, #22773)
   rpc RemoveTablesFromCDCSDKStream (RemoveTablesFromCDCSDKStreamRequestPB)
       returns (RemoveTablesFromCDCSDKStreamResponsePB);

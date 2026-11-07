@@ -16,12 +16,13 @@
 #include "yb/cdc/cdc_types.h"
 #include "yb/client/client.h"
 #include "yb/common/entity_ids.h"
-#include "yb/gutil/endian.h"
-#include "yb/gutil/strings/join.h"
 #include "yb/integration-tests/upgrade-tests/upgrade_test_base.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/string_util.h"
+#include "yb/util/subprocess.h"
+#include "yb/util/test_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/logical_replication_test_utils.h"
 
 namespace yb {
 
@@ -129,24 +130,43 @@ class CdcUpgradeTest : public UpgradeTestBase {
     return std::make_pair(stream_id, implicit.value_or(false));
   }
 
-  Status WaitForTxnDdlCatalogTables(const std::string& slot_name) {
+  Result<bool> HasTxnDdlCatalogTables(const std::string& slot_name) {
     const auto stream_id = VERIFY_RESULT(GetSlotStream(slot_name)).first;
     auto conn = VERIFY_RESULT(cluster_->ConnectToDB(kDbName));
     auto db_oid = VERIFY_RESULT(conn.FetchRow<pgwrapper::PGOid>(
         "SELECT oid FROM pg_database WHERE datname = current_database()"));
-    const auto pg_attribute_id = GetPgsqlTableId(db_oid, kPgAttributeTableOid);
     auto client = VERIFY_RESULT(cluster_->CreateClient());
-    return WaitFor(
-        [&]() -> Result<bool> {
-          NamespaceId ns_id;
-          TableIds table_ids;
-          std::unordered_map<std::string, std::string> options;
-          cdc::StreamModeTransactional transactional(false);
-          RETURN_NOT_OK(
-              client->GetCDCStream(stream_id, &ns_id, &table_ids, &options, &transactional));
-          return std::ranges::find(table_ids, pg_attribute_id) != table_ids.end();
-        },
-        60s, Format("pg_attribute added to the stream of $0", slot_name));
+    NamespaceId ns_id;
+    TableIds table_ids;
+    std::unordered_map<std::string, std::string> options;
+    cdc::StreamModeTransactional transactional(false);
+    RETURN_NOT_OK(client->GetCDCStream(stream_id, &ns_id, &table_ids, &options, &transactional));
+    return std::ranges::find(table_ids, GetPgsqlTableId(db_oid, kPgAttributeTableOid)) !=
+           table_ids.end();
+  }
+
+  // Returns yb-admin's output, or its error output as the error.
+  Result<std::string> PrepareStreamForTxnDdl(const xrepl::StreamId& stream_id) {
+    auto command = ToStringVector(
+        GetToolPath("yb-admin"), "--master_addresses", cluster_->GetMasterAddresses(),
+        "--timeout_ms", 60000, "prepare_cdc_streams_for_transactional_ddl", stream_id);
+    std::string output, error;
+    auto status = Subprocess::Call(command, &output, &error);
+    LOG(INFO) << "yb-admin output: " << output << ", error output: " << error;
+    if (!status.ok()) {
+      return STATUS_FORMAT(RuntimeError, "$0: $1", status, error);
+    }
+    return output;
+  }
+
+  Status PrepareSlotForTxnDdl(const std::string& slot_name) {
+    const auto stream_id = VERIFY_RESULT(GetSlotStream(slot_name)).first;
+    auto output = VERIFY_RESULT(PrepareStreamForTxnDdl(stream_id));
+    SCHECK_STR_CONTAINS(
+        output, Format("Prepared CDC streams for transactional DDL: $0", stream_id));
+    SCHECK(VERIFY_RESULT(HasTxnDdlCatalogTables(slot_name)), IllegalState,
+           Format("$0 lacks the transactional DDL catalog tables", slot_name));
+    return Status::OK();
   }
 
   // Takes effect when the daemons restart in the current version.
@@ -160,16 +180,18 @@ class CdcUpgradeTest : public UpgradeTestBase {
     }
   }
 
+  // The masters aren't restarted, so their CDC services keep the stream metadata they cached, as
+  // they would when an AutoFlag is promoted.
   Status EnableTxnDdlReplication() {
+    constexpr auto kFlag = "TEST_ysql_yb_enable_replication_slot_transactional_ddl";
     for (auto* daemon : cluster_->daemons()) {
-      daemon->AddExtraFlag("TEST_ysql_yb_enable_replication_slot_transactional_ddl", "true");
+      daemon->AddExtraFlag(kFlag, "true");
     }
-    RETURN_NOT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
+    RETURN_NOT_OK(cluster_->SetFlagOnMasters(kFlag, "true"));
     return RestartAllTServersInCurrentVersion(kNoDelayBetweenNodes);
   }
 
   void TestImplicitSlotDecodesTxnDdlAfterUpgrade();
-  void TestDdlBeforeFinalizeStreamedAfter();
 
   // 2024.2 only supports USE_SNAPSHOT, which 2026.1 only allows inside a transaction.
   Status CreatePublicationAndSlots(
@@ -234,107 +256,13 @@ class CdcUpgradeTest : public UpgradeTestBase {
       bool ignore_read_time = true, std::vector<std::string>* inserted_rows = nullptr) {
     auto* ts = cluster_->tablet_server(0);
     auto conn_str = Format(
-        "host=$0 port=$1 dbname=$2 user=postgres replication=database", ts->bind_host(),
-        ts->ysql_port(), kDbName);
+        "host=$0 port=$1 dbname=$2 user=postgres", ts->bind_host(), ts->ysql_port(), kDbName);
     // Needed after a PG11 -> PG15 upgrade; 2024.2 doesn't have the GUC.
     if (ignore_read_time) {
       conn_str += " options='-c yb_ignore_read_time_in_walsender=true'";
     }
-    pgwrapper::PGConnPtr conn(PQconnectdb(conn_str.c_str()));
-    SCHECK_EQ(PQstatus(conn.get()), CONNECTION_OK, IllegalState, PQerrorMessage(conn.get()));
-    pgwrapper::PGResultPtr result(PQexec(
-        conn.get(),
-        Format(
-            "START_REPLICATION SLOT $0 LOGICAL 0/0 (proto_version '1', publication_names '$1')",
-            slot_name, kPubName).c_str()));
-    SCHECK_EQ(
-        PQresultStatus(result.get()), PGRES_COPY_BOTH, IllegalState, PQerrorMessage(conn.get()));
-
-    // XLogData: 'w', start LSN, end LSN, send time, message. Commit: 'C', flags, commit LSN, end
-    // LSN, commit time.
-    constexpr size_t kXLogDataHeaderSize = 25;
-    constexpr size_t kCommitEndLsnOffset = 10;
-    bool found = false;
-    std::optional<uint64_t> ack_lsn;
-    auto deadline = CoarseMonoClock::now() + timeout;
-    auto next_ack_time = CoarseMonoClock::now();
-    while (CoarseMonoClock::now() < deadline) {
-      char* buffer = nullptr;
-      auto length = PQgetCopyData(conn.get(), &buffer, /*async=*/1);
-      if (length > 0) {
-        std::string_view message(buffer, length);
-        if (message[0] == 'w' && message.size() > kXLogDataHeaderSize) {
-          auto payload = message.substr(kXLogDataHeaderSize);
-          if (inserted_rows && payload[0] == 'I') {
-            inserted_rows->push_back(VERIFY_RESULT(DecodeInsert(payload)));
-          }
-          found = found || payload.find(needle) != std::string_view::npos;
-          if (found && !ack_lsn && payload[0] == 'C') {
-            ack_lsn = BigEndian::Load64(payload.data() + kCommitEndLsnOffset);
-            deadline = CoarseMonoClock::now() + 3s;
-          }
-        }
-        PQfreemem(buffer);
-      } else if (length == 0) {
-        SCHECK_GE(PQconsumeInput(conn.get()), 1, IllegalState, PQerrorMessage(conn.get()));
-        SleepFor(10ms);
-      } else {
-        // Virtual WAL init errors arrive after COPY BOTH mode is entered.
-        if (length == -1) {
-          result.reset(PQgetResult(conn.get()));
-        }
-        return STATUS(IllegalState, PQerrorMessage(conn.get()));
-      }
-      if (ack_lsn && CoarseMonoClock::now() >= next_ack_time) {
-        RETURN_NOT_OK(SendStandbyStatusUpdate(conn.get(), *ack_lsn));
-        next_ack_time = CoarseMonoClock::now() + 200ms;
-      }
-    }
-    SCHECK_FORMAT(
-        ack_lsn, TimedOut, "Slot $0 did not stream a committed change containing $1", slot_name,
-        needle);
-    return Status::OK();
-  }
-
-  // pgoutput insert: 'I', relation id, 'N', column count, then per column a kind byte and, for
-  // 't', the value's length and text.
-  static Result<std::string> DecodeInsert(std::string_view message) {
-    constexpr size_t kTupleOffset = 6;
-    SCHECK_GE(message.size(), kTupleOffset + 2, IllegalState, "Truncated insert message");
-    const auto num_columns = BigEndian::Load16(message.data() + kTupleOffset);
-    size_t pos = kTupleOffset + 2;
-    std::vector<std::string> values;
-    for (uint16_t i = 0; i < num_columns; ++i) {
-      SCHECK_LT(pos, message.size(), IllegalState, "Truncated insert message");
-      const auto kind = message[pos++];
-      if (kind != 't') {
-        values.push_back(kind == 'n' ? "NULL" : "UNCHANGED");
-        continue;
-      }
-      SCHECK_LE(pos + 4, message.size(), IllegalState, "Truncated insert message");
-      const auto length = BigEndian::Load32(message.data() + pos);
-      pos += 4;
-      SCHECK_LE(pos + length, message.size(), IllegalState, "Truncated insert message");
-      values.emplace_back(message.substr(pos, length));
-      pos += length;
-    }
-    return JoinStrings(values, ",");
-  }
-
-  static Status SendStandbyStatusUpdate(PGconn* conn, uint64_t lsn) {
-    // 'r', written, flushed and applied LSN, send time since 2000-01-01, reply requested.
-    constexpr int64_t kPostgresEpochUnixMicros = 946684800000000;
-    char message[34];
-    message[0] = 'r';
-    BigEndian::Store64(message + 1, lsn);
-    BigEndian::Store64(message + 9, lsn);
-    BigEndian::Store64(message + 17, lsn);
-    BigEndian::Store64(message + 25, GetCurrentTimeMicros() - kPostgresEpochUnixMicros);
-    message[33] = 0;
-    SCHECK_EQ(
-        PQputCopyData(conn, message, sizeof(message)), 1, IllegalState, PQerrorMessage(conn));
-    SCHECK_EQ(PQflush(conn), 0, IllegalState, PQerrorMessage(conn));
-    return Status::OK();
+    return pgwrapper::StreamSlotAndAcknowledge(
+        conn_str, slot_name, kPubName, needle, timeout, inserted_rows);
   }
 
   // Creates a replication connection to the database.
@@ -441,8 +369,7 @@ TEST_F(CdcUpgradeTest, RollbackBeforeFinalize) {
       << "Should not be snapshot ID format after rollback";
 }
 
-// A slot created on 2026.1 lacks the catalog tables that transactional DDLs are decoded from. Once
-// transactional DDL replication is enabled, the master adds them to its stream.
+// A slot created on 2026.1 lacks the catalog tables that transactional DDLs are decoded from.
 void CdcUpgradeTest::TestImplicitSlotDecodesTxnDdlAfterUpgrade() {
   ASSERT_OK(StartClusterInOldVersion());
   ASSERT_OK(PrepareTableWithData());
@@ -460,56 +387,34 @@ void CdcUpgradeTest::TestImplicitSlotDecodesTxnDdlAfterUpgrade() {
   ASSERT_OK(InsertRows(21, 25));
   ASSERT_OK(CheckNoRowsLost(
       ASSERT_RESULT(StreamRows(kSlot, 25, /*ignore_read_time=*/false)), ExpectedRows(21, 25)));
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB(kDbName));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN new_col INT", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (26, 'value_26', 26)", kTableName));
 
   ASSERT_OK(FinalizeUpgrade());
   ASSERT_OK(EnableTxnDdlReplication());
-  ASSERT_OK(WaitForTxnDdlCatalogTables(kSlot));
+  ASSERT_NOK_STR_CONTAINS(
+      StreamAndAcknowledge(kSlot, "value_26", 60s),
+      "prepare_cdc_streams_for_transactional_ddl");
+  ASSERT_OK(PrepareSlotForTxnDdl(kSlot));
 
-  auto conn = ASSERT_RESULT(cluster_->ConnectToDB(kDbName));
+  conn = ASSERT_RESULT(cluster_->ConnectToDB(kDbName));
+  // DROP COLUMN changes pg_attribute but not pg_class, so the slot sees it only through the
+  // catalog tables added to its stream.
   ASSERT_OK(conn.Execute("BEGIN"));
-  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN new_col INT", kTableName));
-  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (26, 'value_26', 26)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN new_col", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (27, 'value_27')", kTableName));
   ASSERT_OK(conn.Execute("COMMIT"));
-  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (27, 'value_27', 27)", kTableName));
   // A transactional DDL that is rolled back must not change the schema the slot streams.
   ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN aborted_col INT", kTableName));
   ASSERT_OK(conn.Execute("ROLLBACK"));
-  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (28, 'value_28', 28)", kTableName));
-  ASSERT_OK(CheckNoRowsLost(
-      ASSERT_RESULT(StreamRows(kSlot, 28)), ExpectedRows(26, 28, /*with_new_col=*/true)));
-}
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (28, 'value_28')", kTableName));
 
-// A DDL run before the master adds the transactional DDL catalog tables to the stream is streamed
-// after.
-void CdcUpgradeTest::TestDdlBeforeFinalizeStreamedAfter() {
-  ASSERT_OK(StartClusterInOldVersion());
-  ASSERT_OK(PrepareTableWithData());
-  constexpr auto kSlot = "implicit_slot";
-  ASSERT_OK(CreatePublicationAndSlots({kSlot}, /*use_snapshot=*/false));
-  ASSERT_OK(InsertRows(11, 20));
-  ASSERT_OK(CheckNoRowsLost(
-      ASSERT_RESULT(StreamRows(kSlot, 20, /*ignore_read_time=*/false)), ExpectedRows(11, 20)));
-
-  EnableTxnDdlInCurrentVersion();
-  ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes, /*auto_finalize=*/false));
-
-  auto conn = ASSERT_RESULT(cluster_->ConnectToDB(kDbName));
-  ASSERT_OK(InsertRows(21, 25));
-  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN new_col INT", kTableName));
-  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (26, 'value_26', 26)", kTableName));
-
-  ASSERT_OK(FinalizeUpgrade());
-  ASSERT_OK(EnableTxnDdlReplication());
-  ASSERT_OK(WaitForTxnDdlCatalogTables(kSlot));
-  conn = ASSERT_RESULT(cluster_->ConnectToDB(kDbName));
-  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (27, 'value_27', 27)", kTableName));
-
-  auto expected_rows = ExpectedRows(21, 25);
-  for (const auto& row : ExpectedRows(26, 27, /*with_new_col=*/true)) {
-    expected_rows.push_back(row);
-  }
-  ASSERT_OK(CheckNoRowsLost(ASSERT_RESULT(StreamRows(kSlot, 27)), expected_rows));
+  auto expected_rows = ExpectedRows(26, 26, /*with_new_col=*/true);
+  expected_rows.push_back("27,value_27");
+  expected_rows.push_back("28,value_28");
+  ASSERT_OK(CheckNoRowsLost(ASSERT_RESULT(StreamRows(kSlot, 28)), expected_rows));
 }
 
 class CdcUpgradeFrom2026_1Test : public CdcUpgradeTest {
@@ -519,10 +424,6 @@ class CdcUpgradeFrom2026_1Test : public CdcUpgradeTest {
 
 TEST_F(CdcUpgradeFrom2026_1Test, ImplicitSlotDecodesTxnDdlAfterUpgrade) {
   TestImplicitSlotDecodesTxnDdlAfterUpgrade();
-}
-
-TEST_F(CdcUpgradeFrom2026_1Test, DdlBeforeFinalizeStreamedAfter) {
-  TestDdlBeforeFinalizeStreamedAfter();
 }
 
 }  // namespace yb

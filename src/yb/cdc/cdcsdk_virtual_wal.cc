@@ -262,6 +262,21 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
         "while the flag ysql_yb_enable_implicit_dynamic_tables_logical_replication is disabled.");
   }
 
+  if (detect_publication_changes_implicitly_ &&
+      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
+    const auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(stream->GetNamespaceId()));
+    const auto stream_table_ids = stream->GetTableIds();
+    for (const auto table_oid : {kPgAttributeTableOid, kPgPublicationRelPrpubidIndexOid}) {
+      SCHECK_FORMAT(
+          std::ranges::find(stream_table_ids, GetPgsqlTableId(database_oid, table_oid)) !=
+              stream_table_ids.end(),
+          IllegalState,
+          "Replication slot $0 lacks the catalog tables used to decode transactional DDL. Stop "
+          "its consumer and run 'yb-admin prepare_cdc_streams_for_transactional_ddl $1'",
+          stream->GetReplicationSlotName().value_or(stream_id_.ToString()), stream_id_);
+    }
+  }
+
   if (detect_publication_changes_implicitly_) {
     pub_all_tables_ = pub_all_tables;
     publications_list_ = std::move(publications_list);

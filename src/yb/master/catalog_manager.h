@@ -1650,6 +1650,13 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // were created with an empty plugin name.
   Status BackfillNotificationsStreamsPluginName(const LeaderEpoch& epoch);
 
+  // Adds the catalog tables used to decode transactional DDL to implicit streams created without
+  // them.
+  Status PrepareCDCStreamsForTransactionalDDL(
+      const PrepareCDCStreamsForTransactionalDDLRequestPB* req,
+      PrepareCDCStreamsForTransactionalDDLResponsePB* resp, rpc::RpcContext* rpc)
+      EXCLUDES(mutex_);
+
   Status DisableDynamicTableAdditionOnCDCSDKStream(
       const DisableDynamicTableAdditionOnCDCSDKStreamRequestPB* req,
       DisableDynamicTableAdditionOnCDCSDKStreamResponsePB* resp, rpc::RpcContext* rpc);
@@ -1879,7 +1886,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Delete specified CDC streams metadata.
   Status CleanUpCDCSDKStreamsMetadata(const LeaderEpoch& epoch) EXCLUDES(mutex_);
 
-  Status AddCatalogTablesToCDCSDKStreamsForTransactionalDdl(const LeaderEpoch& epoch)
+  Status AddTransactionalDdlCatalogTablesToStream(const CDCStreamInfoPtr& stream)
       EXCLUDES(mutex_);
 
   // Returns CDCSDK streams that need metadata cleanup. This includes streams with non-empty
@@ -3708,8 +3715,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   std::unordered_map<TableId, std::unordered_set<xrepl::StreamId>> cdcsdk_tables_to_stream_map_
       GUARDED_BY(mutex_);
-
-  std::atomic<bool> implicit_streams_have_catalog_tables_{false};
 
   // Maps a ReplicationSlotName to the xrepl::StreamId of the stream it belongs to. Present for
   // CDCSDK streams created from the YSQL syntax.
