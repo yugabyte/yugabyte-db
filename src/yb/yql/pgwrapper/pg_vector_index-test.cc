@@ -8613,4 +8613,3 @@ TEST_F(PgVectorIndexBackendFlagTest, RejectsRemovedBackends) {
 }
 
 }  // namespace yb::pgwrapper
-// Retrigger CI; reverted in the next commit.
