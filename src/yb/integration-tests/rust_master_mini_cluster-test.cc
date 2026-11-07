@@ -149,4 +149,22 @@ TEST_F(RustMasterMiniClusterTest, CreatesYcqlTables) {
   ASSERT_FALSE(ASSERT_RESULT(client->NamespaceExists("empty", YQL_DATABASE_CQL)));
 }
 
+// A transactional table makes the Rust leader create system.transactions first; the table
+// serves writes once both run.
+TEST_F(RustMasterMiniClusterTest, CreatesTransactionalYcqlTables) {
+  ASSERT_OK(cluster_->WaitForTabletServerCount(3));
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const client::YBTableName name(YQL_DATABASE_CQL, "ks", "txn_kv");
+  client::TableHandle table;
+  ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
+      client::Transactional::kTrue, /* num_tablets= */ 2, client.get(), &table, name));
+  ASSERT_TRUE(ASSERT_RESULT(client->TableExists(
+      client::YBTableName(YQL_DATABASE_CQL, "system", "transactions"))));
+  auto session = client->NewSession(60s);
+  for (int32_t key = 0; key < 10; ++key) {
+    ASSERT_RESULT(client::kv_table_test::WriteRow(&table, session, key, key));
+  }
+  ASSERT_EQ(ASSERT_RESULT(client::kv_table_test::SelectAllRows(&table, session)).size(), 10);
+}
+
 }  // namespace yb

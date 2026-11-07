@@ -15,16 +15,19 @@
 
 use std::collections::BTreeSet;
 
+use master_catalog_state::defaults::TRANSACTION_TABLES_CONFIG_ID;
+use master_catalog_state::CatalogSnapshot;
 use master_catalog_state::Mutation;
 use master_leadership::LeaderToken;
 use protobuf::{Enum, EnumOrUnknown, Message, MessageField};
 use tokio::time::Instant;
 use yb_host_api::StatusCode;
+use yb_proto::pb::catalog_entity_info::SysConfigEntryPB;
 use yb_proto::pb::catalog_entity_info::{
     sys_namespace_entry_pb, sys_tables_entry_pb, sys_tablets_entry_pb, SysTablesEntryPB,
     SysTabletsEntryPB,
 };
-use yb_proto::pb::common::QLTypePB;
+use yb_proto::pb::common::{ColumnSchemaPB, QLTypePB};
 use yb_proto::pb::common_types::{TableType, YQLDatabase};
 use yb_proto::pb::master_ddl::{
     CreateTableRequestPB, CreateTableResponsePB, IsCreateTableDoneRequestPB,
@@ -32,6 +35,7 @@ use yb_proto::pb::master_ddl::{
 };
 use yb_proto::pb::master_rust_peer::{PrepareTableSchemaRequestPB, PrepareTableSchemaResponsePB};
 use yb_proto::pb::master_types::{master_error_pb::Code, MasterErrorPB, SysRowEntryType};
+use yb_proto::pb::value::PersistentDataType;
 
 use crate::lookup::{check_visible, find_namespace, find_table};
 use crate::namespaces::unused_id;
@@ -73,7 +77,7 @@ impl TableLifecycle {
         let snapshot = self.catalog.snapshot();
         find_namespace(&snapshot, &req.namespace)?;
         match req.table_type() {
-            TableType::YQL_TABLE_TYPE => {}
+            TableType::YQL_TABLE_TYPE | TableType::TRANSACTION_STATUS_TABLE_TYPE => {}
             TableType::PGSQL_TABLE_TYPE => return Err(not_yet("YSQL CREATE TABLE (W7)")),
             TableType::REDIS_TABLE_TYPE => {
                 return Err(error(
@@ -85,9 +89,7 @@ impl TableLifecycle {
             other => return Err(not_yet(&format!("CREATE TABLE of {other:?}"))),
         }
         if req.schema.table_properties.is_transactional() {
-            return Err(not_yet(
-                "A transactional YCQL table (W7, transaction status table)",
-            ));
+            self.ensure_transaction_table(token, deadline).await?;
         }
         if req.index_info.is_some() || req.has_indexed_table_id() {
             return Err(not_yet("A YCQL index (W7)"));
@@ -245,6 +247,11 @@ impl TableLifecycle {
                         .read_absent(SysRowEntryType::TABLET, tablet_id)
                         .upsert(SysRowEntryType::TABLET, tablet_id, encode(&tablet)?);
                 }
+                if req.table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE {
+                    // `IncrementTransactionTablesVersion`, in the same write: tservers learn of
+                    // the new status table from the version in their heartbeat response.
+                    mutation = bump_transaction_tables_version(snapshot, mutation)?;
+                }
                 Ok((mutation, Ok(table_id)))
             })
             .await?;
@@ -270,8 +277,76 @@ impl TableLifecycle {
         let table = find_table(snapshot, &req.table, false)?;
         check_visible(&table, false)?;
         let state = table.table().map_or(0, |t| t.state);
-        resp.set_done(state != sys_tables_entry_pb::State::PREPARING as i32);
+        let mut done = state != sys_tables_entry_pb::State::PREPARING as i32;
+        // A transactional table also waits for the transaction status table.
+        if done
+            && table
+                .parse::<SysTablesEntryPB>()
+                .is_ok_and(|pb| pb.schema.table_properties.is_transactional())
+        {
+            done = snapshot
+                .table_by_name(SYSTEM_NAMESPACE_ID, TRANSACTIONS_TABLE)
+                .and_then(|t| t.table())
+                .is_some_and(|t| t.state != sys_tables_entry_pb::State::PREPARING as i32);
+        }
+        resp.set_done(done);
         Ok(())
+    }
+
+    /// `CreateGlobalTransactionStatusTableIfNotPresent`: `system.transactions`, which every
+    /// transactional table needs.
+    async fn ensure_transaction_table(
+        &self,
+        token: &LeaderToken,
+        deadline: Instant,
+    ) -> Result<(), MasterErrorPB> {
+        let snapshot = self.catalog.snapshot();
+        if snapshot
+            .table_by_name(SYSTEM_NAMESPACE_ID, TRANSACTIONS_TABLE)
+            .is_some()
+        {
+            return Ok(());
+        }
+        tracing::info!("Creating transaction status table: {TRANSACTIONS_TABLE}");
+        let mut req = CreateTableRequestPB::new();
+        req.set_name(TRANSACTIONS_TABLE.into());
+        req.namespace
+            .mut_or_insert_default()
+            .set_name("system".into());
+        req.table_type = Some(EnumOrUnknown::new(TableType::TRANSACTION_STATUS_TABLE_TYPE));
+        let num_tablets = match (self.options.transaction_table_num_tablets)() {
+            n if n > 0 => n,
+            // A negative count (the auto-detect default) makes the host pick, as C++ does.
+            _ => {
+                let config = cluster_config(&snapshot);
+                let placement = config
+                    .replication_info
+                    .live_replicas
+                    .placement_uuid()
+                    .to_vec();
+                live_tservers(&self.ts_manager, &config, &placement).len() as i32
+                    * (self.options.transaction_table_num_tablets_per_tserver)()
+            }
+        };
+        let schema = req.schema.mut_or_insert_default();
+        schema
+            .table_properties
+            .mut_or_insert_default()
+            .set_num_tablets(num_tablets);
+        let mut key = ColumnSchemaPB::new();
+        key.set_name("key".into());
+        key.type_
+            .mut_or_insert_default()
+            .set_main(PersistentDataType::BINARY);
+        key.set_is_key(true);
+        key.set_is_hash_key(true);
+        key.set_is_nullable(false);
+        schema.columns.push(key);
+        let mut resp = CreateTableResponsePB::new();
+        match Box::pin(self.create_table(token, deadline, &req, &mut resp)).await {
+            Err(e) if e.code() == Code::OBJECT_ALREADY_PRESENT => Ok(()),
+            result => result,
+        }
     }
 
     /// The host's schema steps of `CreateTable`.
@@ -320,4 +395,29 @@ fn new_table_row(
     table.partition_schema = prepared.partition_schema.clone();
     table.state = Some(EnumOrUnknown::new(sys_tables_entry_pb::State::PREPARING));
     table
+}
+
+/// `kSystemNamespaceId`, the `system` keyspace.
+pub(crate) const SYSTEM_NAMESPACE_ID: &[u8] = b"00000000000000000000000000000001";
+/// `kGlobalTransactionsTableName`.
+pub(crate) const TRANSACTIONS_TABLE: &str = "transactions";
+
+/// The transaction tables config with its version + 1.
+fn bump_transaction_tables_version(
+    snapshot: &CatalogSnapshot,
+    mutation: Mutation,
+) -> Result<Mutation, MasterErrorPB> {
+    let Some(row) = snapshot.get(SysRowEntryType::SYS_CONFIG, TRANSACTION_TABLES_CONFIG_ID) else {
+        return Ok(mutation);
+    };
+    let mut pb: SysConfigEntryPB = row
+        .parse()
+        .map_err(|e| error(Code::UNKNOWN_ERROR, StatusCode::Corruption, e.to_string()))?;
+    let config = pb.mut_transaction_tables_config();
+    config.set_version(config.version() + 1);
+    Ok(mutation.read(row).upsert(
+        SysRowEntryType::SYS_CONFIG,
+        TRANSACTION_TABLES_CONFIG_ID,
+        encode(&pb)?,
+    ))
 }

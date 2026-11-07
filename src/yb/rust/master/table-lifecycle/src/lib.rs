@@ -66,6 +66,10 @@ pub struct LifecycleOptions {
     pub tablet_creation_timeout_ms: fn() -> i64,
     /// The `use_parent_table_id_field` AutoFlag: new tablets name their table by parent id.
     pub use_parent_table_id_field: fn() -> bool,
+    /// `transaction_table_num_tablets`; 0 for the per-tserver count.
+    pub transaction_table_num_tablets: fn() -> i32,
+    /// `transaction_table_num_tablets_per_tserver`; -1 to auto-detect.
+    pub transaction_table_num_tablets_per_tserver: fn() -> i32,
 }
 
 impl Default for LifecycleOptions {
@@ -76,6 +80,8 @@ impl Default for LifecycleOptions {
             check_ts_count_for_create_table: || true,
             tablet_creation_timeout_ms: || 600_000,
             use_parent_table_id_field: || true,
+            transaction_table_num_tablets: || 0,
+            transaction_table_num_tablets_per_tserver: || -1,
         }
     }
 }

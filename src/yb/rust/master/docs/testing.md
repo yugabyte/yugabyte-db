@@ -71,7 +71,8 @@ the C++ master show up. MiniCluster's own helpers (leader lookup, `WaitForTablet
 `WaitForReplicaCount`) go through RPCs for Rust masters. `rust_master_mini_cluster-test` checks
 leadership, a step-down and a follower restart with three Rust masters, and YCQL keyspace and table
 DDL served by them: a table's tablets are created on every replica and serve reads and writes
-before and after a leader change.
+before and after a leader change, the new leader alters and drops it, and a transactional table
+gets `system.transactions` created first.
 
 Java tests read the same variable: `MiniYBCluster` starts those masters as `yb-master-rs`.
 

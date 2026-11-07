@@ -106,6 +106,9 @@ static CHECK_TS_COUNT_FOR_CREATE_TABLE: FlagRef<bool> =
     FlagRef::new("catalog_manager_check_ts_count_for_create_table");
 static TABLET_CREATION_TIMEOUT_MS: FlagRef<i32> = FlagRef::new("tablet_creation_timeout_ms");
 static USE_PARENT_TABLE_ID_FIELD: FlagRef<bool> = FlagRef::new("use_parent_table_id_field");
+static TRANSACTION_TABLE_NUM_TABLETS: FlagRef<i32> = FlagRef::new("transaction_table_num_tablets");
+static TRANSACTION_TABLE_NUM_TABLETS_PER_TSERVER: FlagRef<i32> =
+    FlagRef::new("transaction_table_num_tablets_per_tserver");
 static BG_TASK_WAIT_MS: FlagRef<i32> = FlagRef::new("catalog_manager_bg_task_wait_ms");
 static MASTER_TS_RPC_TIMEOUT_MS: FlagRef<i32> = FlagRef::new("master_ts_rpc_timeout_ms");
 static RETRY_MAX_DELAY_MS: FlagRef<i32> = FlagRef::new("retrying_ts_rpc_max_delay_ms");
@@ -256,6 +259,10 @@ impl Core {
                 check_ts_count_for_create_table: || CHECK_TS_COUNT_FOR_CREATE_TABLE.get(),
                 tablet_creation_timeout_ms: || TABLET_CREATION_TIMEOUT_MS.get() as i64,
                 use_parent_table_id_field: || USE_PARENT_TABLE_ID_FIELD.get(),
+                transaction_table_num_tablets: || TRANSACTION_TABLE_NUM_TABLETS.get(),
+                transaction_table_num_tablets_per_tserver: || {
+                    TRANSACTION_TABLE_NUM_TABLETS_PER_TSERVER.get()
+                },
             },
         );
         let leader = Arc::new(LeaderServices {

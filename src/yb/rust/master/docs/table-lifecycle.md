@@ -6,7 +6,7 @@ persisted rows alone, so a new leader picks it up where the last one stopped (K1
 
 ## Served so far
 
-YCQL keyspaces and tables that are neither transactional nor indexes:
+YCQL keyspaces and tables that are not indexes:
 
 | RPC | Notes |
 |---|---|
@@ -18,8 +18,7 @@ YCQL keyspaces and tables that are neither transactional nor indexes:
 | `AlterTable`, `IsAlterTableDone` | Below. |
 | `DeleteTable`, `IsDeleteTableDone` | Below. Dropping an index on its own, and a table a snapshot schedule covers (which C++ hides rather than deletes), are not served yet. |
 
-YSQL databases and tables, transactional YCQL tables (which need the transaction status table) and
-indexes answer `NotSupported`. Roles, permissions and UDTs are `master-ycql`'s.
+YSQL databases and tables and indexes answer `NotSupported`. Roles, permissions and UDTs are `master-ycql`'s.
 
 Lookups follow `FindNamespace` and `FindTable`: by id, else by name (and database type, from
 `GetDatabaseType`). A name is unique per database type; uniqueness is checked and written under a
@@ -35,6 +34,13 @@ order: namespace type, user-defined types, `max_create_tablets_per_ts`, the part
 the placement checks of `CheckValidPlacementInfo` (quorum of live tservers, block minimums and
 maximums), then, under the name lock, the duplicate name and the namespace state. The table and
 all its tablets are written PREPARING in one mutation, with tablet ids sorted as C++ sorts them.
+
+A transactional table needs `system.transactions`: if it does not exist, it is created first, as
+`CreateGlobalTransactionStatusTableIfNotPresent` does, with one BINARY hash column `key` and
+`transaction_table_num_tablets` tablets (or the per-tserver count). Its create mutation also bumps
+`transaction_tables_config.version`, which C++ writes separately; tservers refresh their status
+tablets when the version in their heartbeat response changes. `IsCreateTableDone` of a
+transactional table waits for the transaction table too.
 
 The placement check codes are dropped by C++ (they are set on a response it discards), so the
 client gets `UNKNOWN_ERROR`; Rust answers the same.

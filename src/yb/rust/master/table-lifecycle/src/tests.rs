@@ -645,3 +645,92 @@ async fn drop_marks_the_table_deleting_and_the_deleter_finishes_it() {
         .await
         .unwrap();
 }
+
+#[tokio::test]
+async fn a_transactional_table_creates_the_transaction_table_first() {
+    let h = Harness::new(3).await;
+    // The system keyspace and the transaction tables config, as default rows give them.
+    let mut req = CreateNamespaceRequestPB::new();
+    req.set_name("system".into());
+    req.set_namespace_id(b"00000000000000000000000000000001".to_vec());
+    h.lifecycle
+        .create_namespace(
+            &h.token,
+            Harness::deadline(),
+            &req,
+            &mut CreateNamespaceResponsePB::new(),
+        )
+        .await
+        .unwrap();
+    let mut config = yb_proto::pb::catalog_entity_info::SysConfigEntryPB::new();
+    config.mut_transaction_tables_config().set_version(0);
+    h.lifecycle
+        .writer
+        .submit(
+            &h.token,
+            master_catalog_state::Mutation::new().upsert(
+                SysRowEntryType::SYS_CONFIG,
+                master_catalog_state::defaults::TRANSACTION_TABLES_CONFIG_ID,
+                config.write_to_bytes().unwrap(),
+            ),
+        )
+        .await
+        .unwrap();
+    h.create_namespace("ks").await.unwrap();
+
+    let mut req = CreateTableRequestPB::new();
+    req.set_name("t".into());
+    req.table_type = Some(EnumOrUnknown::new(TableType::YQL_TABLE_TYPE));
+    req.namespace.mut_or_insert_default().set_name("ks".into());
+    req.schema
+        .mut_or_insert_default()
+        .table_properties
+        .mut_or_insert_default()
+        .set_is_transactional(true);
+    req.set_num_tablets(1);
+    let mut resp = CreateTableResponsePB::new();
+    h.lifecycle
+        .create_table(&h.token, Harness::deadline(), &req, &mut resp)
+        .await
+        .unwrap();
+
+    let snapshot = h.snapshot();
+    let txn = snapshot
+        .table_by_name(b"00000000000000000000000000000001", "transactions")
+        .expect("system.transactions");
+    let txn_pb: SysTablesEntryPB = txn.parse().unwrap();
+    assert_eq!(
+        txn_pb.table_type(),
+        TableType::TRANSACTION_STATUS_TABLE_TYPE
+    );
+    assert_eq!(txn_pb.schema.columns[0].name(), "key");
+    let config: yb_proto::pb::catalog_entity_info::SysConfigEntryPB = snapshot
+        .get(
+            SysRowEntryType::SYS_CONFIG,
+            master_catalog_state::defaults::TRANSACTION_TABLES_CONFIG_ID,
+        )
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert_eq!(config.transaction_tables_config().version(), 1);
+
+    // Not done while the transaction table is being created, even once the table runs.
+    h.set_table_state(resp.table_id(), sys_tables_entry_pb::State::RUNNING)
+        .await;
+    let mut done_req = yb_proto::pb::master_ddl::IsCreateTableDoneRequestPB::new();
+    done_req
+        .table
+        .mut_or_insert_default()
+        .set_table_id(resp.table_id().to_vec());
+    let mut done = yb_proto::pb::master_ddl::IsCreateTableDoneResponsePB::new();
+    h.lifecycle
+        .is_create_table_done(&h.snapshot(), &done_req, &mut done)
+        .unwrap();
+    assert!(!done.done());
+    h.set_table_state(&txn.key.id, sys_tables_entry_pb::State::RUNNING)
+        .await;
+    h.lifecycle
+        .is_create_table_done(&h.snapshot(), &done_req, &mut done)
+        .unwrap();
+    assert!(done.done());
+}
