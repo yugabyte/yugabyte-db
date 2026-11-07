@@ -3057,10 +3057,12 @@ TEST_F(PgCatalogVersionTest, InvalMessageMinimalRetention) {
 // https://github.com/yugabyte/yugabyte-db/issues/27822
 TEST_F(PgCatalogVersionTest, InvalMessageWaitOnVersionGap) {
   // Disable auto analyze in this test because it introduce flakiness of metrics.
+  // The connection-auth cache changes the catalog refreshes new connections do.
   RestartClusterWithInvalMessageEnabled(
       { "--heartbeat_interval_ms=10000",
         "--ysql_pg_conf_csv=log_statement=all",
-        "--ysql_enable_auto_analyze=false" });
+        "--ysql_enable_auto_analyze=false",
+        "--ysql_enable_read_request_cache_for_connection_auth=false" });
   // Create a test table.
   auto conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
   ASSERT_OK(conn.Execute("CREATE TABLE test_table(id int)"));
@@ -3188,12 +3190,16 @@ TEST_F(PgCatalogVersionTest, TestAlterRoleSetGUCHasGlobalImpact) {
 TEST_F(PgCatalogVersionTest, InvalMessageDeltaTableLoad) {
   for (int i = 0; i < 2; i++) {
     // Disable auto analyze in this test because it introduce flakiness of metrics.
+    // The connection-auth cache changes the catalog reads new connections do.
     if (i == 0) {
-      RestartClusterWithInvalMessageEnabled({ "--ysql_enable_auto_analyze=false" });
+      RestartClusterWithInvalMessageEnabled(
+          { "--ysql_enable_auto_analyze=false",
+            "--ysql_enable_read_request_cache_for_connection_auth=false" });
     } else {
       RestartClusterWithInvalMessageEnabled(
           { "--ysql_yb_enable_invalidate_table_cache_entry=false",
-            "--ysql_enable_auto_analyze=false" });
+            "--ysql_enable_auto_analyze=false",
+            "--ysql_enable_read_request_cache_for_connection_auth=false" });
     }
     auto conn = CHECK_RESULT(Connect());
     ASSERT_OK(conn.ExecuteFormat("create table test_table$0(id int)", i));
@@ -3685,6 +3691,31 @@ TEST_P(PgCatalogVersionConnManagerOnlyTest,
   ASSERT_EQ(version_after, version_x + 2);
 }
 
+// Without global impact DDLs, ALTER USER does not bump template1's catalog version, which keys the
+// connection-auth cache, so the cache must not be used: a password change made on ts-1 must be
+// seen at once by a new connection on ts-0, which already cached the old password.
+TEST_F(PgCatalogVersionTest, ConnectionAuthCacheNotUsedWithoutGlobalImpactDdls) {
+  auto conn = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "yugabyte"));
+  ASSERT_OK(conn.Execute("CREATE USER test_user PASSWORD 'old_password'"));
+  RestartClusterWithInvalMessageEnabled(
+      {"--ysql_enable_auth=true", "--ysql_disable_global_impact_ddl_statements=true"});
+
+  pg_ts = cluster_->tablet_server(0);
+  setenv("PGPASSWORD", "old_password", /*overwrite=*/true);
+  ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "test_user"));
+
+  pg_ts = cluster_->tablet_server(1);
+  setenv("PGPASSWORD", "yugabyte", /*overwrite=*/true);
+  conn = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "yugabyte"));
+  ASSERT_OK(conn.Execute("ALTER USER test_user WITH PASSWORD 'new_password'"));
+  WaitForCatalogVersionToPropagate();
+
+  pg_ts = cluster_->tablet_server(0);
+  setenv("PGPASSWORD", "old_password", /*overwrite=*/true);
+  ASSERT_NOK_STR_CONTAINS(ConnectToDBAsUser("yugabyte", "test_user"),
+      "password authentication failed for user \"test_user\"");
+}
+
 TEST_F(PgCatalogVersionTest, NewConnectionRelCachePreloadTest) {
   // Disable auto analyze because it makes the number of the metric: RelCachePreload flaky.
   // Also set ysql_enable_relcache_init_optimization=false to show concurrent new connections
@@ -3977,7 +4008,10 @@ TEST_F(PgCatalogVersionTest, RefreshMaterializedViewConcurrently) {
 // so that the new connection waits for the local tserver to catch up before attempting
 // to fetch invalidation messages.
 TEST_F(PgCatalogVersionTest, RelcacheInitFileRevalidationRace) {
-  RestartClusterWithInvalMessageEnabled();
+  // With the connection-auth cache, new connections here never revalidate the relcache init file,
+  // so the race this test targets does not occur.
+  RestartClusterWithInvalMessageEnabled(
+      {"--ysql_enable_read_request_cache_for_connection_auth=false"});
   pg_ts = cluster_->tablet_server(0);
   auto conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
   ASSERT_OK(conn.Execute("CREATE TABLE race_test(id INT)"));
