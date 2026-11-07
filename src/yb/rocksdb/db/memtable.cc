@@ -590,6 +590,19 @@ bool MemTable::Erase(const Slice& user_key) {
   return false;
 }
 
+bool MemTable::EraseIfNotPickedForFlush(const Slice& user_key) {
+  std::lock_guard lock(erase_flush_mutex_);
+  if (picked_for_flush_) {
+    return false;
+  }
+  return Erase(user_key);
+}
+
+void MemTable::MarkPickedForFlush() {
+  std::lock_guard lock(erase_flush_mutex_);
+  picked_for_flush_ = true;
+}
+
 // Callback from MemTable::Get()
 namespace {
 
