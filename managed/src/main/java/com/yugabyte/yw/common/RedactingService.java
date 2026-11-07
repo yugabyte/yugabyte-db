@@ -387,6 +387,7 @@ public class RedactingService {
     output = redactKeyEqualsValue(output, pattern, SECRET_REPLACEMENT);
     output = redactCliFlagValue(output, pattern, SECRET_REPLACEMENT);
     output = redactPythonDictValue(output, pattern, SECRET_REPLACEMENT);
+    output = redactYamlKeyValue(output, pattern, SECRET_REPLACEMENT);
     return output;
   }
 
@@ -990,6 +991,245 @@ public class RedactingService {
       from = valueEnd + 1;
     }
     return out.toString();
+  }
+
+  /**
+   * Redacts the YAML form field: value, as in Kubernetes overrides and Helm --debug output. The
+   * YAML may be raw or inside a JSON string, where its line breaks and double quotes are escaped. A
+   * value that is not quoted runs to the end of its line plus any following lines indented past the
+   * key, which covers block scalars and plain scalars folded over several lines.
+   */
+  private static String redactYamlKeyValue(String input, String field, String replacement) {
+    String needle = field + ":";
+    int pos = input.indexOf(needle);
+    if (pos < 0) {
+      return input;
+    }
+    int n = input.length();
+    StringBuilder out = new StringBuilder(n);
+    int from = 0;
+    while (pos >= 0) {
+      int next = pos + needle.length();
+      if (pos > 0 && isFlagNameChar(input.charAt(pos - 1))) {
+        pos = input.indexOf(needle, next);
+        continue;
+      }
+      int lineStart = yamlLineStart(input, pos);
+      // In raw text \n is a backslash and an n, which a password may hold. Only YAML inside a JSON
+      // string, whose lines start after an escaped line break or the opening quote, escapes them.
+      boolean escaped =
+          lineStart > 0
+              && input.charAt(lineStart - 1) != '\n'
+              && input.charAt(lineStart - 1) != '\r';
+      int column = pos - lineStart;
+      int vs = next;
+      while (vs < n && (input.charAt(vs) == ' ' || input.charAt(vs) == '\t')) {
+        vs++;
+      }
+      if (yamlLineEnd(input, vs, escaped) == vs) {
+        // Nothing follows on this line, so the value (if any) is on the lines indented below it.
+        int end = yamlIndentedLinesEnd(input, vs, column, escaped);
+        if (end > vs) {
+          out.append(input, from, next).append(' ').append(replacement);
+          from = end;
+          next = end;
+        }
+        pos = input.indexOf(needle, next);
+        continue;
+      }
+      char c = input.charAt(vs);
+      int end = -1;
+      String quote = "";
+      if (c == '"') {
+        int close = indexOfUnescapedDoubleQuote(input, vs + 1);
+        if (close >= 0) {
+          end = close + 1;
+          quote = "\"";
+        }
+      } else if (escaped && c == '\\' && vs + 1 < n && input.charAt(vs + 1) == '"') {
+        int close = escapedYamlDoubleQuoteClose(input, vs + 2);
+        if (close >= 0) {
+          end = close + 2;
+          quote = "\\\"";
+        }
+      } else if (c == '\'') {
+        int close = yamlSingleQuoteClose(input, vs + 1, escaped);
+        if (close >= 0) {
+          end = close + 1;
+          quote = "'";
+        }
+      }
+      if (end < 0) {
+        end = yamlIndentedLinesEnd(input, vs, column, escaped);
+      }
+      out.append(input, from, vs).append(quote).append(replacement).append(quote);
+      from = end;
+      pos = input.indexOf(needle, end);
+    }
+    out.append(input, from, n);
+    return out.toString();
+  }
+
+  /**
+   * Start of pos's line: after a line break, raw or escaped, or after a JSON string's opening
+   * quote.
+   */
+  private static int yamlLineStart(String s, int pos) {
+    int i = pos;
+    while (i > 0) {
+      char c = s.charAt(i - 1);
+      boolean afterBackslash = backslashesBefore(s, i - 1) % 2 == 1;
+      if (c == '\n'
+          || c == '\r'
+          || ((c == 'n' || c == 'r') && afterBackslash)
+          || (c == '"' && !afterBackslash)) {
+        return i;
+      }
+      i--;
+    }
+    return 0;
+  }
+
+  private static int backslashesBefore(String s, int i) {
+    int count = 0;
+    while (i - count - 1 >= 0 && s.charAt(i - count - 1) == '\\') {
+      count++;
+    }
+    return count;
+  }
+
+  /** End of the line at i; in escaped YAML also an escaped line break or the JSON string end. */
+  private static int yamlLineEnd(String s, int i, boolean escaped) {
+    int n = s.length();
+    while (i < n) {
+      char c = s.charAt(i);
+      if (c == '\n' || c == '\r' || (escaped && isJsonStringEnd(s, i))) {
+        return i;
+      }
+      if (escaped && c == '\\') {
+        int run = backslashRunLength(s, i);
+        if ((run & 1) == 1
+            && i + run < n
+            && (s.charAt(i + run) == 'n' || s.charAt(i + run) == 'r')) {
+          return i + run - 1;
+        }
+        i += run;
+        continue;
+      }
+      i++;
+    }
+    return n;
+  }
+
+  /** Start of the next line after the line end at i (see yamlLineEnd), or -1 if there is none. */
+  private static int afterYamlLineBreak(String s, int i) {
+    int n = s.length();
+    if (i >= n) {
+      return -1;
+    }
+    char c = s.charAt(i);
+    if (c == '\r') {
+      return i + 1 < n && s.charAt(i + 1) == '\n' ? i + 2 : i + 1;
+    }
+    if (c == '\n') {
+      return i + 1;
+    }
+    if (c == '\\' && i + 1 < n && s.charAt(i + 1) == 'r') {
+      return s.startsWith("\\n", i + 2) ? i + 4 : i + 2;
+    }
+    if (c == '\\' && i + 1 < n && s.charAt(i + 1) == 'n') {
+      return i + 2;
+    }
+    return -1;
+  }
+
+  /** End of the line at start and of any following lines indented more than column. */
+  private static int yamlIndentedLinesEnd(String s, int start, int column, boolean escaped) {
+    int end = yamlLineEnd(s, start, escaped);
+    int lineStart = afterYamlLineBreak(s, end);
+    while (lineStart >= 0) {
+      int content = lineStart;
+      while (content < s.length() && s.charAt(content) == ' ') {
+        content++;
+      }
+      int lineEnd = yamlLineEnd(s, content, escaped);
+      if (lineEnd > content) {
+        if (content - lineStart <= column) {
+          break;
+        }
+        end = lineEnd;
+      }
+      lineStart = afterYamlLineBreak(s, lineEnd);
+    }
+    return end;
+  }
+
+  /**
+   * Closing \" of a YAML double-quoted value inside a JSON string, or -1 if the string ends first.
+   */
+  private static int escapedYamlDoubleQuoteClose(String s, int start) {
+    int n = s.length();
+    int i = start;
+    while (i < n) {
+      char c = s.charAt(i);
+      if (c == '"') {
+        return -1;
+      }
+      if (c == '\\') {
+        int run = backslashRunLength(s, i);
+        if (i + run < n && s.charAt(i + run) == '"') {
+          if (run == 1) {
+            return i;
+          }
+          if ((run & 1) == 0) {
+            return -1;
+          }
+          i += run + 1;
+          continue;
+        }
+        i += run;
+        continue;
+      }
+      i++;
+    }
+    return -1;
+  }
+
+  /** Closing quote of a YAML single-quoted value, where '' is a literal quote. */
+  private static int yamlSingleQuoteClose(String s, int start, boolean escaped) {
+    for (int i = start; i < s.length(); i++) {
+      if (escaped && isJsonStringEnd(s, i)) {
+        return -1;
+      }
+      if (s.charAt(i) == '\'') {
+        if (i + 1 < s.length() && s.charAt(i + 1) == '\'') {
+          i++;
+          continue;
+        }
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  /** True if the double quote at i ends a JSON string: unescaped, then , } ] : or the end. */
+  private static boolean isJsonStringEnd(String s, int i) {
+    if (s.charAt(i) != '"' || isBackslashEscapedDoubleQuote(s, i)) {
+      return false;
+    }
+    int j = i + 1;
+    while (j < s.length() && Character.isWhitespace(s.charAt(j))) {
+      j++;
+    }
+    return j >= s.length() || ",}]:".indexOf(s.charAt(j)) >= 0;
+  }
+
+  private static int backslashRunLength(String s, int i) {
+    int j = i;
+    while (j < s.length() && s.charAt(j) == '\\') {
+      j++;
+    }
+    return j - i;
   }
 
   /** Redacts sensitive gflags in the additionalDetails section of audit entries. */
