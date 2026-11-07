@@ -524,7 +524,7 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
   // TODO(#26139): this set_allocated_* call is not safe.
   req_.ref_tablet_id(tablet_invoker_.tablet()->tablet_id());
   req_.set_include_trace(IsTracingEnabled());
-  const ConsistentReadPoint* read_point = batcher_->read_point();
+  const ConsistentReadPoint* read_point = batcher_->read_point().get();
   const auto& metadata = batcher_->in_flight_ops().metadata;
   const bool serializable =
       !metadata.transaction.transaction_id.IsNil() &&
@@ -634,7 +634,7 @@ bool AsyncRpcBase<Req, Resp>::CommonResponseCheck(const Status& status) {
   }
   auto restart_read_time = ReadHybridTime::FromRestartReadTimePB(resp_);
   if (restart_read_time) {
-    auto read_point = batcher_->read_point();
+    const auto& read_point = batcher_->read_point();
     auto tablet_id = req_.tablet_id();
     HybridTime original_read_time;
     if (read_point) {
@@ -658,7 +658,7 @@ bool AsyncRpcBase<Req, Resp>::CommonResponseCheck(const Status& status) {
   }
   auto local_limit_ht = resp_.local_limit_ht();
   if (local_limit_ht) {
-    auto read_point = batcher_->read_point();
+    const auto& read_point = batcher_->read_point();
     if (read_point) {
       read_point->UpdateLocalLimit(req_.tablet_id(), HybridTime(local_limit_ht));
     }
