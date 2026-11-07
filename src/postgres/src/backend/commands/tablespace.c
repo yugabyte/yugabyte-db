@@ -110,6 +110,10 @@ static void create_tablespace_directories(const char *location,
 										  const Oid tablespaceoid);
 static bool destroy_tablespace_directories(Oid tablespaceoid, bool redo);
 
+/* YB declarations */
+static void yb_check_read_replica_placement_allowed(Datum old_options,
+													Datum new_options);
+
 /*
  * A valid placement configuration is a JSON formatted string with array of
  * placement policies. Each placement policy has the keys "cloud", "region",
@@ -385,7 +389,10 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 									 stmt->options,
 									 NULL, NULL, false, false);
 	if (IsYugaByteEnabled())
+	{
 		(void) yb_tablespace_reloptions(newOptions, true);
+		yb_check_read_replica_placement_allowed((Datum) 0, newOptions);
+	}
 	else
 		(void) tablespace_reloptions(newOptions, true);
 
@@ -1212,6 +1219,8 @@ AlterTableSpaceOptions(AlterTableSpaceOptionsStmt *stmt)
 		 * load balancer after this catalog update commits.
 		 */
 		(void) yb_tablespace_reloptions(newOptions, true);
+		yb_check_read_replica_placement_allowed(isnull ? (Datum) 0 : datum,
+												newOptions);
 		yb_tablespace_in_use = yb_tablespace_has_dependencies(tablespaceoid);
 		yb_validate_tablespace_placement_options(newOptions,
 										   yb_tablespace_in_use);
@@ -1850,6 +1859,41 @@ yb_validate_tablespace_placement_by_oid(Oid spc_oid, bool check_satisfiable)
 		pfree(read_replica_placement);
 	if (options)
 		pfree(options);
+}
+
+static bool
+yb_has_read_replica_placement(Datum options)
+{
+	ListCell   *lc;
+
+	foreach(lc, untransformRelOptions(options))
+	{
+		DefElem    *def = lfirst_node(DefElem, lc);
+
+		if (strcmp(def->defname, "read_replica_placement") == 0)
+			return true;
+	}
+	return false;
+}
+
+/*
+ * Releases without read replica support in tablespaces cannot parse a
+ * tablespace that has read_replica_placement: after a rollback, their master
+ * deletes its transaction status table and tables can no longer be created in
+ * it. So only allow adding the option once the upgrade is finalized.
+ */
+static void
+yb_check_read_replica_placement_allowed(Datum old_options, Datum new_options)
+{
+	if (yb_enable_tablespace_read_replica_placement || IsBinaryUpgrade)
+		return;
+
+	if (yb_has_read_replica_placement(new_options) &&
+		!yb_has_read_replica_placement(old_options))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("read_replica_placement cannot be set until the "
+						"upgrade is finalized")));
 }
 
 /*
