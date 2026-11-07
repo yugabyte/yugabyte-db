@@ -54,12 +54,12 @@ transaction_block ::= START TRANSACTION ';'
 ## Semantics
 
 - An error is raised if transactions are not enabled in any of the tables inserted, updated, or deleted.
-- Currently, an error is raised if any of the `INSERT`, `UPDATE`, or `DELETE` statements contains an `IF` clause.
 - If transactions are enabled for a table, its indexes must have them enabled as well, and vice versa.
 - There is no explicit rollback. To rollback a transaction, abort, or interrupt the client session.
 - DDLs are always executed outside of a transaction block, and like DMLs outside a transaction block, are committed immediately.
 - Inside a transaction block only insert, update, and delete statements are allowed. Select statements are not allowed.
-- The insert, update, and delete statements inside a transaction block cannot have any [if_expression](../grammar_diagrams/#if-expression).
+- An error is raised if any of the `INSERT`, `UPDATE`, or `DELETE` statements contains an `IF` clause without `ELSE ERROR`. If any `IF` condition is not satisfied, the transaction fails and none of its statements are applied.
+- If the row does not exist, an `UPDATE` statement whose assignments all use `+` or `-` on the column's current value, such as `SET balance = balance + 200`, has no effect and does not raise an error. This applies to `TINYINT`, `SMALLINT`, `INT`, `BIGINT`, `VARINT`, `FLOAT`, and `DOUBLE` columns, and to `+` on `TEXT` columns, both inside and outside a transaction block. The other statements in the transaction block are still applied. To raise an error instead, add `IF EXISTS ELSE ERROR` to the statement, as shown in [Transfer a balance to a new row](#transfer-a-balance-to-a-new-row).
 
 ## Examples
 
@@ -143,6 +143,79 @@ ycqlsh:example> SELECT account_name, account_type, balance, writetime(balance) F
          John |      savings |     800 |   1523313983201270
         Smith |     checking |     250 |   1523314002218558
         Smith |      savings |    2000 |   1523313964363056
+```
+
+### Transfer a balance to a new row
+
+`IF EXISTS ELSE ERROR` makes the transaction fail if Smith's savings account does not exist.
+
+```sql
+ycqlsh:example> BEGIN TRANSACTION
+                 INSERT INTO accounts (account_name, account_type, balance)
+                   VALUES ('Mary', 'savings', 300) IF NOT EXISTS ELSE ERROR;
+                 UPDATE accounts SET balance = balance - 300
+                   WHERE account_name = 'Smith' AND account_type = 'savings' IF EXISTS ELSE ERROR;
+               END TRANSACTION;
+```
+
+```output
+ [applied]
+-----------
+      True
+      True
+```
+
+```sql
+ycqlsh:example> SELECT account_name, account_type, balance FROM accounts;
+```
+
+```output
+ account_name | account_type | balance
+--------------+--------------+---------
+         Mary |      savings |     300
+         John |     checking |     100
+         John |      savings |     800
+        Smith |     checking |     250
+        Smith |      savings |    1700
+```
+
+### Transfer a balance between existing rows
+
+Insert the row outside the transaction block, and use `IF EXISTS ELSE ERROR` on both `UPDATE` statements.
+
+```sql
+ycqlsh:example> INSERT INTO accounts (account_name, account_type, balance) VALUES ('Mary', 'checking', 0);
+```
+
+```sql
+ycqlsh:example> BEGIN TRANSACTION
+                 UPDATE accounts SET balance = balance - 100
+                   WHERE account_name = 'Mary' AND account_type = 'savings' IF EXISTS ELSE ERROR;
+                 UPDATE accounts SET balance = balance + 100
+                   WHERE account_name = 'Mary' AND account_type = 'checking' IF EXISTS ELSE ERROR;
+               END TRANSACTION;
+```
+
+```output
+ [applied]
+-----------
+      True
+      True
+```
+
+```sql
+ycqlsh:example> SELECT account_name, account_type, balance FROM accounts;
+```
+
+```output
+ account_name | account_type | balance
+--------------+--------------+---------
+         Mary |     checking |     100
+         Mary |      savings |     200
+         John |     checking |     100
+         John |      savings |     800
+        Smith |     checking |     250
+        Smith |      savings |    1700
 ```
 
 {{< note title="Note" >}}
