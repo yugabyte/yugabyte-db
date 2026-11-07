@@ -12783,6 +12783,12 @@ TEST_F(CDCSDKYsqlTest, TestYbRestartCommitTimeInPgReplicationSlots) {
   ASSERT_EQ(view_time, expected_time);
 }
 
+static bool IsTxnDdlOnlyCatalogTableRecord(const CDCSDKProtoRecordPB& record, PgOid database_oid) {
+  const auto& table_id = record.row_message().table_id();
+  return table_id == GetPgsqlTableId(database_oid, kPgAttributeTableOid) ||
+         table_id == GetPgsqlTableId(database_oid, kPgPublicationRelPrpubidIndexOid);
+}
+
 // This test verifies that we are able to call GetChanges successfully on master tablet.
 TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTables) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
@@ -12833,7 +12839,12 @@ TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTables) {
   const int expected_count_without_packed_row[] = {4, 12, 4, 2, 0, 0, 11, 11};
   const int expected_count_with_packed_row[] = {4, 16, 0, 2, 0, 0, 11, 11};
 
+  const auto database_oid =
+      ASSERT_RESULT(GetPgsqlDatabaseOid(ASSERT_RESULT(GetNamespaceId(test_namespace_name))));
   for (auto record : change_resp.cdc_sdk_proto_records()) {
+    if (IsTxnDdlOnlyCatalogTableRecord(record, database_oid)) {
+      continue;
+    }
     UpdateRecordCount(record, record_count);
   }
 
@@ -12885,7 +12896,13 @@ TEST_F(CDCSDKYsqlTest, TestStreamIndependenceWhilePollingCatalogTablet) {
   // corresponding to the ALTER PUB (BEGIN, DDL, INSERT, COMMIT).
   auto change_resp = ASSERT_RESULT(GetChangesFromMaster(stream_id_1));
   ASSERT_FALSE(change_resp.has_error());
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 11);
+  const auto database_oid =
+      ASSERT_RESULT(GetPgsqlDatabaseOid(ASSERT_RESULT(GetNamespaceId(test_namespace_name))));
+  int num_records = 0;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    num_records += !IsTxnDdlOnlyCatalogTableRecord(record, database_oid);
+  }
+  ASSERT_EQ(num_records, 11);
 
   // Call GetChanges on sys catalog tablet using stream_2. We will not get any DMLs as sys catalog
   // tablet only has change records corresponding to the DB 1. These records will be filtered by CDC
@@ -12933,7 +12950,12 @@ TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTablesAfterLeaderStepDown) {
   const int expected_count_with_packed_row[] = {1, 3, 0, 0, 0, 0, 1, 1};
 
   // None of the records should belong to the DDL which was performed before stream creation.
+  const auto database_oid =
+      ASSERT_RESULT(GetPgsqlDatabaseOid(ASSERT_RESULT(GetNamespaceId(test_namespace_name))));
   for (auto record : change_resp.cdc_sdk_proto_records()) {
+    if (IsTxnDdlOnlyCatalogTableRecord(record, database_oid)) {
+      continue;
+    }
     UpdateRecordCount(record, record_count);
     if (record.row_message().op() == RowMessage_Op_INSERT ||
         record.row_message().op() == RowMessage_Op_UPDATE) {
