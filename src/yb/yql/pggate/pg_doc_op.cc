@@ -876,56 +876,64 @@ Status PgDocReadOp::DoPopulateByYbctidOps(const YbctidGenerator& generator, Keep
   //
   // 2- Select 1024 ybctids (prefetch limit) from INDEX.
   //
-  // 3- ONLY ONE TIME: Create a batch of operators, one per partition.
-  //    * Each operator has a clone requests from template_op_.
-  //    * We will reuse the created operators & requests for the future batches of 1024 ybctids.
-  //    * Certain fields in the protobuf requests MUST BE RESET for each batches.
+  // 3- Assign the selected ybctids to operators. A partition's operator is
+  //    cloned from template_op_ when its first ybctid is assigned, so partitions that get no
+  //    ybctids cost nothing.
   //
-  // 4- Assign the selected 1024 ybctids to the batch of operators.
+  // 4- Send requests to tablet servers to read data from <tab> associated with ybctid values.
   //
-  // 5- Send requests to tablet servers to read data from <tab> associated with ybctid values.
-  //
-  // 6- Repeat step 2 thru 5 for the next batch of 1024 ybctids till done.
+  // 5- Repeat step 2 thru 4 for the next batch of 1024 ybctids till done.
   end_of_data_ = false;
   InitializeYbctidOperators();
   VLOG(1) << "Row order " << (keep_order ? "is" : "is not") << " important";
-  if (keep_order) {
-    if (!result_stream_) {
-      result_stream_ = std::make_unique<MergingPgDocOpFetchStream<DocResult>>(
-          [this]() { return this->FetchMoreResults(); }, pgsql_ops_);
-      result_stream_->SetFetchedTargets(targets_);
-      VLOG(3) << "Created MergingPgDocOpFetchStream";
+  // The template carries the request bounds, so an out of bounds ybctid does not cause a clone.
+  const auto& template_req = GetTemplateReadReq();
+  const auto* lower_bound = template_req.has_lower_bound() ? &template_req.lower_bound() : nullptr;
+  const auto* upper_bound = template_req.has_upper_bound() ? &template_req.upper_bound() : nullptr;
+  DCHECK(!lower_bound ||
+         !dockv::PartitionSchema::IsValidHashPartitionKeyBound(lower_bound->key()));
+  DCHECK(!upper_bound ||
+         !dockv::PartitionSchema::IsValidHashPartitionKeyBound(upper_bound->key()));
+  const auto in_request_bounds = [lower_bound, upper_bound](Slice ybctid) {
+    if (lower_bound &&
+        (lower_bound->is_inclusive() ? ybctid < lower_bound->key()
+                                     : ybctid <= lower_bound->key())) {
+      return false;
     }
-  }
+    return !upper_bound ||
+           (upper_bound->is_inclusive() ? ybctid <= upper_bound->key()
+                                        : ybctid < upper_bound->key());
+  };
+  // This batch's operators, by partition. Operators left in pgsql_ops_ by a previous batch are
+  // never assigned ybctids, as they may still be active.
+  std::vector<PgsqlReadOp*> partition_ops(table_->GetPartitionListSize());
   while (true) {
     const auto ybctid = generator.next();
     if (ybctid.empty()) {
       break;
     }
+    if (!in_request_bounds(ybctid)) {
+      continue;
+    }
+
     // Find partition. The partition index is the boundary order minus 1.
     // - For hash partitioning, we use hashcode to find the right index.
     // - For range partitioning, we pass partition key to seek the index.
     const auto partition = VERIFY_RESULT(table_->FindPartitionIndex(ybctid));
-
     // Assign ybctids to operators.
-    auto& read_op = GetReadOp(partition);
-    auto& read_req = read_op.read_request();
-
-    // Check bounds, if set.
-    if (read_req.has_lower_bound()) {
-      const auto& lower_bound = read_req.lower_bound();
-      DCHECK(!dockv::PartitionSchema::IsValidHashPartitionKeyBound(lower_bound.key()));
-      if (lower_bound.is_inclusive() ? ybctid < lower_bound.key() : ybctid <= lower_bound.key()) {
-        continue;
-      }
+    auto*& partition_op = partition_ops[partition];
+    if (!partition_op) {
+      partition_op = &CloneOnePgsqlOp();
+      // For every read operation set partition boundary. In case a tablet is split between
+      // preparing requests and executing them, DocDB will return a paging state for pggate to
+      // continue till the end of current tablet is reached.
+      // The ybctid is within both the request and the partition bounds, so they intersect.
+      const auto has_rows =
+          VERIFY_RESULT(SetLowerUpperBound(&partition_op->read_request(), partition));
+      RSTATUS_DCHECK(has_rows, IllegalState, "Empty read range for partition $0", partition);
+      partition_op->set_active(true);
     }
-    if (read_req.has_upper_bound()) {
-      const auto& upper_bound = read_req.upper_bound();
-      DCHECK(!dockv::PartitionSchema::IsValidHashPartitionKeyBound(upper_bound.key()));
-      if (upper_bound.is_inclusive() ? ybctid > upper_bound.key() : ybctid >= upper_bound.key()) {
-        continue;
-      }
-    }
+    auto& read_req = partition_op->read_request();
 
     // Append ybctid and its order to batch_arguments.
     // The "ybctid" values are returned in the same order as the row in the IndexTable. To keep
@@ -945,13 +953,16 @@ Status PgDocReadOp::DoPopulateByYbctidOps(const YbctidGenerator& generator, Keep
       read_req.mutable_ybctid_column_value()->mutable_value()
           ->ref_binary_value(arg_value->binary_value());
     }
+  }
 
-    // For every read operation set partition boundary. In case a tablet is split between
-    // preparing requests and executing them, DocDB will return a paging state for pggate to
-    // continue till the end of current tablet is reached.
-    if (VERIFY_RESULT(SetLowerUpperBound(&read_req, partition))) {
-      read_op.set_active(true);
-    }
+  parallelism_level_ = pgsql_ops_.size();
+  if (keep_order && !result_stream_) {
+    result_stream_ = std::make_unique<MergingPgDocOpFetchStream<DocResult>>(
+        [this]() { return this->FetchMoreResults(); }, pgsql_ops_);
+    result_stream_->SetFetchedTargets(targets_);
+    VLOG(3) << "Created MergingPgDocOpFetchStream";
+  } else {
+    AddOpsToResultStream();
   }
 
   // Done creating request, but not all partition or operator has arguments (inactive).
@@ -992,8 +1003,6 @@ void PgDocReadOp::InitializeYbctidOperators() {
     pgsql_op_arena_ = SharedThreadSafeArena();
   }
   ResetInactivePgsqlOps();
-  // Make sure we have one operation per partition
-  ClonePgsqlOps(table_->GetPartitionListSize());
 }
 
 Status PgDocReadOp::DoPopulateMergeStreamRequests(
