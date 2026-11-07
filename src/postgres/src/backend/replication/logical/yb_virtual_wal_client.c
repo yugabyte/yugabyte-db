@@ -446,7 +446,6 @@ YbSetVirtualWalCatalogSnapshot(uint64_t read_time_ht, uint64_t in_txn_limit_ht,
 													   docdb_txn_id,
 													   aborted_subtxn_set,
 													   aborted_subtxn_set_size);
-		CatalogCacheFlushCatalog(PublicationRelationId);
 	}
 	else
 	{
@@ -558,6 +557,7 @@ InitVirtualWal(List *publication_names,
 			 MyReplicationSlot->data.yb_initial_record_commit_time_ht);
 		YbSetVirtualWalCatalogSnapshot(MyReplicationSlot->data.yb_initial_record_commit_time_ht,
 									   PG_UINT64_MAX, "");
+		CatalogCacheFlushCatalog(PublicationRelationId);
 	}
 
 	pfree(table_oids);
