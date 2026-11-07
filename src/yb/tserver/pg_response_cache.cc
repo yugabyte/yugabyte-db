@@ -589,7 +589,8 @@ class PgResponseCache::Impl : private GarbageCollector {
   // sent away from an entry the first has already stored rather than queueing behind the fills
   // it still has in flight. The check then fires before RegisterWaiter, so answering kReady
   // ahead of the ask stops mattering. It inverts what AConnectionIsNotSentAwayFromAFillOfItsOwn
-  // pins, so it wants a change of its own.
+  // and AGroupStaysBusyAcrossOverlappingRounds pin: both ask on a later round of one session,
+  // which pggate does not send, so both want revisiting with the change rather than before it.
   [[nodiscard]] bool AnotherFillInFlight(KeyGroup group, uint64_t session_id) REQUIRES(mutex_) {
     auto it = fills_in_flight_.find(group);
     if (it == fills_in_flight_.end()) {
