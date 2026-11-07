@@ -603,8 +603,7 @@ public class TaskExecutor {
       log.info("Did not inherit runtime info due to unsatisfied conditions");
     }
     // Set the task params.
-    taskInfo.setTaskParams(
-        RedactingService.filterSecretFields(task.getTaskParams(), RedactionTarget.APIS));
+    taskInfo.setTaskParams(RedactingService.filterSecretFieldsForStorage(task.getTaskParams()));
     // Set the owner info.
     taskInfo.setOwner(taskOwner);
     taskInfo.setTaskVersion(taskVersion);

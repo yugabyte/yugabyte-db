@@ -13,6 +13,7 @@ import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
@@ -28,6 +29,7 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.forms.AuditLogConfigParams;
@@ -97,6 +99,7 @@ public class UpgradeUniverseHandler {
   private final XClusterUniverseService xClusterUniverseService;
   private final TelemetryProviderService telemetryProviderService;
   private final SoftwareUpgradeHelper softwareUpgradeHelper;
+  private final GFlagsValidation gFlagsValidation;
 
   @Inject
   public UpgradeUniverseHandler(
@@ -109,7 +112,8 @@ public class UpgradeUniverseHandler {
       AutoFlagUtil autoFlagUtil,
       XClusterUniverseService xClusterUniverseService,
       TelemetryProviderService telemetryProviderService,
-      SoftwareUpgradeHelper softwareUpgradeHelper) {
+      SoftwareUpgradeHelper softwareUpgradeHelper,
+      GFlagsValidation gFlagsValidation) {
     this.commissioner = commissioner;
     this.kubernetesManagerFactory = kubernetesManagerFactory;
     this.runtimeConfigFactory = runtimeConfigFactory;
@@ -120,6 +124,7 @@ public class UpgradeUniverseHandler {
     this.xClusterUniverseService = xClusterUniverseService;
     this.telemetryProviderService = telemetryProviderService;
     this.softwareUpgradeHelper = softwareUpgradeHelper;
+    this.gFlagsValidation = gFlagsValidation;
   }
 
   public UUID restartUniverse(
@@ -272,6 +277,69 @@ public class UpgradeUniverseHandler {
         taskType, CustomerTask.TaskType.RollbackUpgrade, requestParams, customer, universe);
   }
 
+  private void mergeSensitiveMasterTserverGFlagsForRequestClusters(
+      UpgradeWithGFlags requestParams, Universe universe) {
+    if (!RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()) {
+      return;
+    }
+    if (requestParams.clusters == null) {
+      return;
+    }
+    for (UniverseDefinitionTaskParams.Cluster clusterParam : requestParams.clusters) {
+      if (clusterParam.userIntent == null || clusterParam.uuid == null) {
+        continue;
+      }
+      UniverseDefinitionTaskParams.Cluster universeCluster = universe.getCluster(clusterParam.uuid);
+      if (universeCluster == null || universeCluster.userIntent == null) {
+        continue;
+      }
+      String ybSoftwareVersion = universeCluster.userIntent.ybSoftwareVersion;
+      if (clusterParam.userIntent.masterGFlags != null) {
+        clusterParam.userIntent.masterGFlags =
+            GFlagsUtil.mergeSensitiveGFlags(
+                universeCluster.userIntent.masterGFlags,
+                clusterParam.userIntent.masterGFlags,
+                gFlagsValidation,
+                ybSoftwareVersion);
+      }
+      if (clusterParam.userIntent.tserverGFlags != null) {
+        clusterParam.userIntent.tserverGFlags =
+            GFlagsUtil.mergeSensitiveGFlags(
+                universeCluster.userIntent.tserverGFlags,
+                clusterParam.userIntent.tserverGFlags,
+                gFlagsValidation,
+                ybSoftwareVersion);
+      }
+    }
+  }
+
+  private void mergeSensitiveSpecificGFlagsForRequestClusters(
+      UpgradeWithGFlags requestParams, Universe universe) {
+    if (!RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()) {
+      return;
+    }
+    if (requestParams.clusters == null) {
+      return;
+    }
+    for (UniverseDefinitionTaskParams.Cluster clusterParam : requestParams.clusters) {
+      if (clusterParam.userIntent == null
+          || clusterParam.userIntent.specificGFlags == null
+          || clusterParam.uuid == null) {
+        continue;
+      }
+      UniverseDefinitionTaskParams.Cluster universeCluster = universe.getCluster(clusterParam.uuid);
+      if (universeCluster == null || universeCluster.userIntent == null) {
+        continue;
+      }
+      clusterParam.userIntent.specificGFlags =
+          GFlagsUtil.mergeSensitiveSpecificGFlags(
+              universeCluster.userIntent.specificGFlags,
+              clusterParam.userIntent.specificGFlags,
+              gFlagsValidation,
+              universeCluster.userIntent.ybSoftwareVersion);
+    }
+  }
+
   public UUID upgradeGFlags(
       GFlagsUpgradeParams requestParams, Customer customer, Universe universe) {
     UserIntent userIntent;
@@ -283,6 +351,11 @@ public class UpgradeUniverseHandler {
       GFlagsUtil.trimFlags(userIntent.specificGFlags);
       userIntent.masterGFlags = GFlagsUtil.trimFlags(userIntent.masterGFlags);
       userIntent.tserverGFlags = GFlagsUtil.trimFlags(userIntent.tserverGFlags);
+
+      mergeSensitiveMasterTserverGFlagsForRequestClusters(requestParams, universe);
+      mergeSensitiveSpecificGFlagsForRequestClusters(requestParams, universe);
+      // The merges replace the cluster maps, so copy them only now:
+      // checkGFlagsProvidedInOldSchema rebuilds specificGFlags from these top-level maps.
       requestParams.masterGFlags = userIntent.masterGFlags;
       requestParams.tserverGFlags = userIntent.tserverGFlags;
     } else {
@@ -290,6 +363,29 @@ public class UpgradeUniverseHandler {
       GFlagsUtil.trimFlags(userIntent.specificGFlags);
       requestParams.masterGFlags = GFlagsUtil.trimFlags(requestParams.masterGFlags);
       requestParams.tserverGFlags = GFlagsUtil.trimFlags((requestParams.tserverGFlags));
+
+      // Merge sensitive gflags to preserve actual values when REDACTED is received
+      if (RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()) {
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        UniverseDefinitionTaskParams.Cluster primaryUniverseCluster =
+            universeDetails != null ? universeDetails.getPrimaryCluster() : null;
+        if (primaryUniverseCluster != null && primaryUniverseCluster.userIntent != null) {
+          requestParams.masterGFlags =
+              GFlagsUtil.mergeSensitiveGFlags(
+                  primaryUniverseCluster.userIntent.masterGFlags,
+                  requestParams.masterGFlags,
+                  gFlagsValidation,
+                  primaryUniverseCluster.userIntent.ybSoftwareVersion);
+          requestParams.tserverGFlags =
+              GFlagsUtil.mergeSensitiveGFlags(
+                  primaryUniverseCluster.userIntent.tserverGFlags,
+                  requestParams.tserverGFlags,
+                  gFlagsValidation,
+                  primaryUniverseCluster.userIntent.ybSoftwareVersion);
+        }
+      }
+      mergeSensitiveMasterTserverGFlagsForRequestClusters(requestParams, universe);
+      mergeSensitiveSpecificGFlagsForRequestClusters(requestParams, universe);
     }
 
     // Temporary fix for PLAT-4791 until PLAT-4653 fixed.
@@ -335,7 +431,7 @@ public class UpgradeUniverseHandler {
    * @return true if successfully synchronized old fields into specificGFlags.
    */
   private boolean checkGFlagsProvidedInOldSchema(
-      Universe universe, GFlagsUpgradeParams requestParams) {
+      Universe universe, UpgradeWithGFlags requestParams) {
     boolean cloudEnabled =
         confGetter.getConfForScope(
             Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled);
@@ -374,7 +470,7 @@ public class UpgradeUniverseHandler {
         if (!universe.getUniverseDetails().getReadOnlyClusters().isEmpty()) {
           SpecificGFlags specificGFlagsForRR =
               universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.specificGFlags;
-          if (specificGFlagsForRR.hasPerAZOverrides()) {
+          if (specificGFlagsForRR != null && specificGFlagsForRR.hasPerAZOverrides()) {
             throw new PlatformServiceException(
                 BAD_REQUEST,
                 "Cannot upgrade gflags using old fields because there are overrides per az"
@@ -554,6 +650,28 @@ public class UpgradeUniverseHandler {
   public UUID resizeNode(ResizeNodeParams requestParams, Customer customer, Universe universe) {
     // Verify request params
     requestParams.verifyParams(universe, true);
+
+    if (RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()) {
+      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+      UniverseDefinitionTaskParams.Cluster primaryUniverseCluster =
+          universeDetails != null ? universeDetails.getPrimaryCluster() : null;
+      if (primaryUniverseCluster != null && primaryUniverseCluster.userIntent != null) {
+        requestParams.masterGFlags =
+            GFlagsUtil.mergeSensitiveGFlags(
+                primaryUniverseCluster.userIntent.masterGFlags,
+                requestParams.masterGFlags,
+                gFlagsValidation,
+                primaryUniverseCluster.userIntent.ybSoftwareVersion);
+        requestParams.tserverGFlags =
+            GFlagsUtil.mergeSensitiveGFlags(
+                primaryUniverseCluster.userIntent.tserverGFlags,
+                requestParams.tserverGFlags,
+                gFlagsValidation,
+                primaryUniverseCluster.userIntent.ybSoftwareVersion);
+      }
+    }
+    mergeSensitiveMasterTserverGFlagsForRequestClusters(requestParams, universe);
+    mergeSensitiveSpecificGFlagsForRequestClusters(requestParams, universe);
 
     return submitUpgradeTask(
         Util.isKubernetesBasedUniverse(universe)
