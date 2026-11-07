@@ -673,8 +673,9 @@ class PgResponseCache::Impl : private GarbageCollector {
     // PG side can send it -- the two ends are the same build -- and what it would do is record a
     // version for a prefetch this node has no reason to believe it holds whole. A connection
     // reading back at that version then misses an entry and falls back to a full prefetch, so the
-    // cost is a wasted attempt rather than a catalog read at the wrong version. Not worth killing
-    // a tserver over, and worth seeing in a log if it ever happens.
+    // cost is a wasted attempt rather than a catalog read at the wrong version. DFATAL rather
+    // than FATAL: a debug build fails on it, since only a bug produces it, while a release
+    // tserver logs it and carries on.
     LOG_IF(DFATAL, cache_info->completes_connection_prefetch() &&
                        !cache_info->part_of_connection_prefetch())
         << "Request completes a connection prefetch it is not part of, key group "
@@ -689,19 +690,19 @@ class PgResponseCache::Impl : private GarbageCollector {
       return [](Response&& response) {};
     }
     const auto group = cache_info->key_group();
-    // Counted wherever the ask arrives, including when the entry turns out to be ready, so it
-    // is one per connection start that was in a position to be sent away rather than one per
-    // connection that was.
+    // The ask is counted wherever it arrives, whether or not a fill turns out to be under way,
+    // so it is one per connection start that was in a position to be sent away rather than one
+    // per connection that was.
+    //
+    // While another session is filling this database, send the asking connection away, whatever
+    // state the entry it asked for is in. A connection starting during a run of DDLs pins a
+    // version of its own, so the entry it wants is nobody else's and the per-entry check below
+    // would not see that fill at all. A connection whose opening round hits the cache is not
+    // spared the wait either: the rounds after it carry no ask of their own and queue behind
+    // the rest of the same fill. What it reads instead is a version this node already holds and
+    // can bridge from. When the fill ends nothing is counted and connections are served as usual.
     if (cache_info->send_away_if_fill_in_flight()) {
       send_away_asks_->Increment();
-    }
-    // A connection starting during a run of DDLs pins a version of its own, so the entry it
-    // wants is nobody else's and the check below would not see the fill that is already reading
-    // the catalog for this database. Send it away from that one too: what it would read is a
-    // whole catalog the leader is already producing, and the older version this node holds is
-    // bridgeable to either way. Readiness is settled before the lock, so this never holds the
-    // cache's mutex while taking an entry's.
-    if (cache_info->send_away_if_fill_in_flight() && !data->ReadyResponse()) {
       bool another_fill;
       {
         std::lock_guard lock(mutex_);
@@ -709,6 +710,10 @@ class PgResponseCache::Impl : private GarbageCollector {
       }
       if (another_fill) {
         send_aways_->Increment();
+        // The lookup above inserts the entry, replacing one that was due for renewal, and a
+        // send-away leaves nothing to fill it. Harmless: no fill is claimed on it, so the next
+        // query for that key fills it as usual -- unlike LookupOnlyGet, where an entry left
+        // claimed for a fill that is not coming makes every later query wait out its deadline.
         return STATUS(Incomplete, "A fill for this database is already under way");
       }
     }
@@ -727,6 +732,11 @@ class PgResponseCache::Impl : private GarbageCollector {
         // Not a hit: nothing was served. The caller reads the version this node already holds
         // and catches up from there, and asks again without send_away_if_fill_in_flight if it
         // cannot, so this cannot be answered the same way twice.
+        //
+        // The group check above covers another session's fill, but only once that fill is
+        // counted, which its setter does a moment after the entry is marked as filling. This
+        // arm covers that gap, and the case of a session asking for an entry it is filling
+        // itself, which parallel workers sharing a session can reach.
         send_aways_->Increment();
         return STATUS(Incomplete, "A fill for this key is already under way");
       case Data::JoinState::kFill:
@@ -780,10 +790,17 @@ class PgResponseCache::Impl : private GarbageCollector {
       // waiting for the session to drop it. An ordinary fill's token is nobody else's and is
       // released when this setter dies, which is the request's end.
       //
-      // Last, not before the two above. A connection arriving while this round publishes wants
-      // an entry of its own, so this claim is the only thing that can send it away, and Set
-      // hands the response to every waiter inline before it returns. One sent away before the
+      // Last, not before the two above. While this round publishes, this claim is the only
+      // thing that can send an arriving connection away, and Set hands the response to every
+      // waiter inline before it returns. One sent away before the
       // observer runs would aim at the version this fill has just replaced.
+      //
+      // A failed round does not end the claim, because a failure does not mean the prefetch is
+      // over: PG retries a failed attempt, and the gap before the next one is where the claim
+      // matters most, since preparing the older read can wait for a heartbeat. Holding it too
+      // long costs other connections a version they can bridge from; ending it too early costs
+      // them the wait this change exists to remove. The session ends it instead, on its next
+      // request that is not part of a prefetch or when it goes away.
       if (is_final_round) {
         fill->Release();
       }

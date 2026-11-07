@@ -209,6 +209,43 @@ TEST_F(PgResponseCacheTest, AnotherConnectionIsSentAwayFromAFillUnderWay) {
   ASSERT_TRUE(theirs_result.status().IsIncomplete()) << theirs_result.status();
 }
 
+// A connection whose opening round is already in the cache is sent away all the same. Serving
+// it that round would not spare it the wait: the rounds after it carry no ask of their own, so
+// each one queues behind a round the same fill has yet to produce, and the connection holds a
+// backend for the rest of the fill.
+TEST_F(PgResponseCacheTest, AConnectionIsSentAwayEvenWhenTheEntryItAsksForIsReady) {
+  ThreadSafeArena arena;
+  const auto deadline = CoarseMonoClock::Now() + 60s;
+
+  // A connection start fills and completes an early round, which leaves that entry ready and
+  // the claim with its session.
+  auto& round1 = MakeCachingInfo(arena, "round-1"sv, SendAway::kFalse,
+                                 PartOfConnectionPrefetch::kTrue);
+  PgResponseCache::FillTokenPtr token;
+  auto filler_waiter = std::make_shared<CountingWaiter>();
+  auto first = ASSERT_RESULT(cache_->Get(&round1, deadline, filler_waiter, kSessionId, &token));
+  ASSERT_TRUE(first);
+  first(MakeResponse());
+  first = {};
+  ASSERT_TRUE(token) << "a connection start's fill must leave its claim with the session";
+
+  // Its next round is still filling, so the database is still counted busy.
+  auto& round2 = MakeCachingInfo(arena, "round-2"sv, SendAway::kFalse,
+                                 PartOfConnectionPrefetch::kTrue);
+  auto second = ASSERT_RESULT(cache_->Get(&round2, deadline, filler_waiter, kSessionId, &token));
+  ASSERT_TRUE(second);
+
+  // Another connection asks for the round that is already stored.
+  auto& theirs = MakeCachingInfo(arena, "round-1"sv, SendAway::kTrue);
+  auto their_waiter = std::make_shared<CountingWaiter>();
+  auto theirs_result = cache_->Get(&theirs, deadline, their_waiter, kOtherSessionId, nullptr);
+  ASSERT_NOK(theirs_result);
+  ASSERT_TRUE(theirs_result.status().IsIncomplete()) << theirs_result.status();
+  ASSERT_EQ(their_waiter->applied(), 0)
+      << "the cached round was served, which commits the connection to waiting for the rounds "
+      << "still filling behind it";
+}
+
 // Fills are counted per connection, so releasing an earlier round while a later one is still
 // filling leaves the group busy. Erasing on the first release would let a connection arriving
 // inside the overlap start a whole-catalog read of its own.
