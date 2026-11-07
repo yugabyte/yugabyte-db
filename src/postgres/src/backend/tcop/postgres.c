@@ -5330,8 +5330,8 @@ yb_check_retry_allowed(const char *query_string)
 	return yb_is_dml_command_ext(query_string, true);
 }
 
-static void
-YBCheckSharedCatalogCacheVersion()
+void
+YBCheckSharedCatalogCacheVersion(void)
 {
 	/*
 	 * We cannot refresh the cache if we are already inside a transaction, so don't

@@ -424,6 +424,19 @@ begin_replication_step(void)
 
 	if (!IsTransactionState())
 	{
+		/*
+		 * YB: without object locking, AcceptInvalidationMessages does not
+		 * refresh the caches when another session's DDL bumps the catalog
+		 * version, and the catalog read time stays where it was, so the
+		 * worker keeps acting on relations as they were before that DDL.  A
+		 * background worker never runs PostgresMain's per-statement reset and
+		 * check, so do both here, in the same order.
+		 */
+		if (IsYugaByteEnabled())
+		{
+			YbInvalidateCatalogSnapshot();
+			YBCheckSharedCatalogCacheVersion();
+		}
 		StartTransactionCommand();
 		maybe_reread_subscription();
 	}
