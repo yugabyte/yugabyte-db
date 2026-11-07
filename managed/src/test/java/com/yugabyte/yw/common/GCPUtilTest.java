@@ -754,8 +754,7 @@ public class GCPUtilTest extends FakeDBApplication {
     }
   }
 
-  // useGcpIam with no resolvable audience: every YBA-side bucket call short-circuits before
-  // touching GCS, deferring real access to the node via YBC.
+  // useGcpIam with no audience: these backup-time checks skip and defer to YBC on the node.
 
   @Test
   public void testCanCredentialListObjectsSkipsForFederationConfig() {
