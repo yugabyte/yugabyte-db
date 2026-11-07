@@ -102,4 +102,42 @@ TEST_F(PgInjectReadRestartTest, FanOutReadRestart) {
   ASSERT_EQ(ASSERT_RESULT(read_conn.FetchRow<int64_t>(kFanOutQuery)), 10);
 }
 
+// The replay retry against read restarts the tablet server reports, rather than errors raised in
+// SQL. A fan-out read has its read time picked by the query layer, so the restart reaches the
+// query-layer retry. In an RR block after SET LOCAL, today's gate refuses the retry; the replay
+// restarts the block. Restarts here mix with clean reads; ReplayRetryConvergesOnEveryReadRestart
+// covers a restart on every read.
+TEST_F(PgInjectReadRestartTest, ReplayRetryOnReadRestart) {
+  auto read_conn = ASSERT_RESULT(SetUpKeysTable());
+  ASSERT_OK(read_conn.Execute("SET yb_max_query_layer_retries = 60"));
+  ASSERT_OK(read_conn.Execute("SET yb_enable_replay_retry = on"));
+  ASSERT_OK(SET_FLAG(TEST_inject_read_restart_with_probability, 0.3));
+  for (int i = 0; i < 20; ++i) {
+    ASSERT_OK(read_conn.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+    ASSERT_OK(read_conn.Execute("SET LOCAL work_mem = '8MB'"));
+    ASSERT_EQ(ASSERT_RESULT(read_conn.FetchRow<int64_t>(kFanOutQuery)), 10);
+    ASSERT_OK(read_conn.Execute("COMMIT"));
+  }
+  ASSERT_OK(SET_FLAG(TEST_inject_read_restart_with_probability, 0.0));
+}
+
+
+// With a read restart on every read, the replay must still converge, as the in-place restart
+// does: the replayed transaction starts from the restart point with the old global limit, so the
+// read time moves toward that limit instead of opening a new uncertainty window each attempt.
+// Covers a read-only autocommit statement (restart left on the session read point) and an RR
+// block after SET LOCAL (restart saved from the aborted transaction).
+TEST_F(PgInjectReadRestartTest, ReplayRetryConvergesOnEveryReadRestart) {
+  auto read_conn = ASSERT_RESULT(SetUpKeysTable());
+  ASSERT_OK(read_conn.Execute("SET yb_max_query_layer_retries = 60"));
+  ASSERT_OK(read_conn.Execute("SET yb_enable_replay_retry = on"));
+  ASSERT_OK(SET_FLAG(TEST_inject_read_restart_with_probability, 1.0));
+  ASSERT_EQ(ASSERT_RESULT(read_conn.FetchRow<int64_t>(kFanOutQuery)), 10);
+  ASSERT_OK(read_conn.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(read_conn.Execute("SET LOCAL work_mem = '8MB'"));
+  ASSERT_EQ(ASSERT_RESULT(read_conn.FetchRow<int64_t>(kFanOutQuery)), 10);
+  ASSERT_OK(read_conn.Execute("COMMIT"));
+  ASSERT_OK(SET_FLAG(TEST_inject_read_restart_with_probability, 0.0));
+}
+
 } // namespace yb::pgwrapper

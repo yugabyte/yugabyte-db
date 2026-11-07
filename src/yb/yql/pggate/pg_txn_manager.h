@@ -85,6 +85,11 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
       IsLocalObjectLockOp is_local_object_lock_op = IsLocalObjectLockOp::kFalse);
   Status RecreateTransaction();
   Status RestartTransaction();
+  // A replay retry aborts the transaction for real, so the tserver cannot keep its priority the
+  // way it does for RecreateTransaction; the next transaction takes it from here instead.
+  void CarryPriorityToNextTransaction(CarryToNextTxn carry);
+  // The same for the read-restart point, so a replay retry converges as an in-place restart does.
+  void CarryReadRestartToNextTransaction(CarryToNextTxn carry);
   Status ResetTransactionReadPoint(bool is_catalog_snapshot);
   Status EnsureReadPoint();
   Status RestartReadPoint();
@@ -313,6 +318,9 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   // the last transaction. This avoids the case where the current transaction gets a higher priority
   // and cancels the other transaction.
   std::optional<uint64_t> priority_;
+  std::optional<uint64_t> carried_priority_;
+  KeepReadRestart keep_read_restart_ = KeepReadRestart::kFalse;
+  bool apply_carried_read_restart_ = false;
   SavePriority use_saved_priority_ = SavePriority::kFalse;
   int64_t pg_txn_start_us_ = 0;
   PgOid connected_database_oid_ = kPgInvalidOid;
