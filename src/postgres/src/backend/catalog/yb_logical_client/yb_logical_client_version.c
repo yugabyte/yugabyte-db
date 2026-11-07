@@ -247,6 +247,92 @@ YbGetMasterLogicalClientVersionTableEntryYbctid(Relation logical_client_version_
 	return ybctid;
 }
 
+/*
+ * Releases before the coarse-grained logical client version read a
+ * per-database row on every connection and fail the connection if it is
+ * missing. Until the migration that replaces those rows with the DefaultOid
+ * row runs at finalize, a rollback to such a release is still possible, so
+ * CREATE/DROP DATABASE must keep the per-database rows in sync. The
+ * DefaultOid row being present means that migration has run.
+ */
+bool
+YbNeedsLegacyPerDbLogicalClientVersionRows()
+{
+	return (IsYugaByteEnabled() &&
+			!IsBootstrapProcessingMode() &&
+			YbGetLogicalClientVersionType() == LOGICAL_CLIENT_VERSION_UNSET &&
+			YbLogicalClientVersionTableExists());
+}
+
+void
+YbCreateMasterDBLogicalClientVersionTableEntry(Oid db_oid)
+{
+	Relation	rel = RelationIdGetRelation(YBLogicalClientVersionRelationId);
+
+	YbcPgStatement insert_stmt = YbNewInsert(rel, YB_SINGLE_SHARD_TRANSACTION);
+
+	Datum		ybctid = YbGetMasterLogicalClientVersionTableEntryYbctid(rel, db_oid);
+
+	YbcPgExpr	ybctid_expr = YBCNewConstant(insert_stmt, BYTEAOID, InvalidOid,
+											 ybctid, false /* is_null */ );
+
+	HandleYBStatus(YBCPgDmlBindColumn(insert_stmt, YBTupleIdAttributeNumber,
+									  ybctid_expr));
+
+	AttrNumber	attnum = Anum_pg_yb_logical_client_version_current_version;
+	Datum		initial_version = 1;
+	YbcPgExpr	initial_version_expr = YBCNewConstant(insert_stmt, INT8OID,
+													  InvalidOid,
+													  initial_version,
+													  false /* is_null */ );
+
+	HandleYBStatus(YBCPgDmlBindColumn(insert_stmt, attnum,
+									  initial_version_expr));
+
+	int			rows_affected_count = 0;
+
+	if (*YBCGetGFlags()->log_ysql_catalog_versions)
+		ereport(LOG,
+				(errmsg("%s: creating master logical client version for database %u",
+						__func__, db_oid)));
+	HandleYBStatus(YBCPgDmlExecWriteOp(insert_stmt, &rows_affected_count));
+	Assert(rows_affected_count == 0);
+
+	RelationClose(rel);
+}
+
+void
+YbDeleteMasterDBLogicalClientVersionTableEntry(Oid db_oid)
+{
+	Relation	rel = RelationIdGetRelation(YBLogicalClientVersionRelationId);
+
+	YbcPgStatement delete_stmt = YbNewDelete(rel, YB_SINGLE_SHARD_TRANSACTION);
+
+	Datum		ybctid = YbGetMasterLogicalClientVersionTableEntryYbctid(rel, db_oid);
+
+	YbcPgExpr	ybctid_expr = YBCNewConstant(delete_stmt, BYTEAOID, InvalidOid,
+											 ybctid, false /* is_null */ );
+
+	HandleYBStatus(YBCPgDmlBindColumn(delete_stmt, YBTupleIdAttributeNumber,
+									  ybctid_expr));
+
+	int			rows_affected_count = 0;
+
+	if (*YBCGetGFlags()->log_ysql_catalog_versions)
+		ereport(LOG,
+				(errmsg("%s: deleting master logical client version for database %u",
+						__func__, db_oid)));
+	HandleYBStatus(YBCPgDmlExecWriteOp(delete_stmt, &rows_affected_count));
+
+	/*
+	 * The row may be missing if the database was created during the upgrade by a build
+	 * that did not write per-database rows. The delete is then a no-op, so the number of
+	 * affected rows is not checked.
+	 */
+
+	RelationClose(rel);
+}
+
 YbLogicalClientVersionType
 YbGetLogicalClientVersionType()
 {
