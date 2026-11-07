@@ -31,3 +31,4 @@ test: yb.orig.only-abort-sub-txn
 test: yb.orig.drop-expression-partitioned-table
 test: yb.orig.row-lock-conflict-matrix
 test: yb.orig.partial-pk-conflict
+test: yb.orig.yb_read_time_catalog_version_check

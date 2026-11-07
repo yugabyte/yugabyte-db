@@ -4844,6 +4844,12 @@ YBRefreshCacheWrapperImpl(uint64_t catalog_master_version, bool is_retry,
 	/* The reason that we need a full catalog cache refresh. */
 	int			reason = 0;
 
+	if (YbIsCatalogPinnedToReadTime())
+	{
+		yb_need_cache_refresh = false;
+		return false;
+	}
+
 	if (enable_inval_messages)
 	{
 		if (is_retry &&

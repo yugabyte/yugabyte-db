@@ -647,6 +647,95 @@ TEST_P(PgReadTimeCatalogModeTest, ReadDataAsOfPastTimeWithCurrentCatalogInTxn) {
   ASSERT_OK(conn.Execute("COMMIT"));
 }
 
+// A transaction that starts with yb_read_time set takes no object locks, so a time-travel reader
+// (e.g. ysql_dump --read-time) neither waits on nor blocks concurrent DDLs (#34349).
+TEST_P(PgReadTimeCatalogModeTest, NoObjectLocksWithYbReadTime) {
+  if (GetParam()) {
+    GTEST_SKIP() << "Legacy mode takes no object locks";
+  }
+  auto ddl_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(ddl_conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(ddl_conn.Execute("CREATE INDEX t_v ON t (v)"));
+  ASSERT_OK(ddl_conn.Execute("INSERT INTO t VALUES (1, 1)"));
+  const auto t1 = ASSERT_RESULT(ddl_conn.FetchRow<PGUint64>(
+      "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint"));
+
+  auto tt_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(tt_conn.Execute("SET statement_timeout = 10000"));
+  ASSERT_OK(tt_conn.ExecuteFormat("SET yb_read_time TO $0", t1));
+
+  ASSERT_OK(ddl_conn.Execute("BEGIN"));
+  ASSERT_OK(ddl_conn.Execute("LOCK TABLE t IN ACCESS EXCLUSIVE MODE"));
+  ASSERT_EQ(ASSERT_RESULT(tt_conn.FetchRow<PGUint64>("SELECT count(*) FROM t")), 1);
+  ASSERT_OK(tt_conn.Fetch("SELECT pg_get_indexdef('t_v'::regclass)"));
+  ASSERT_OK(tt_conn.Execute("BEGIN"));
+  ASSERT_OK(tt_conn.Execute("LOCK TABLE t IN ACCESS SHARE MODE"));
+  ASSERT_OK(tt_conn.Execute("COMMIT"));
+  ASSERT_OK(ddl_conn.Execute("COMMIT"));
+
+  ASSERT_OK(tt_conn.Execute("BEGIN"));
+  ASSERT_EQ(ASSERT_RESULT(tt_conn.FetchRow<PGUint64>("SELECT count(*) FROM t")), 1);
+  ASSERT_OK(ddl_conn.Execute("SET statement_timeout = 10000"));
+  ASSERT_OK(ddl_conn.Execute("ALTER TABLE t ADD COLUMN w INT"));
+  ASSERT_OK(tt_conn.Execute("COMMIT"));
+}
+
+// Locks taken as of yb_read_time can't fence other sessions, so modes stronger than ACCESS SHARE
+// are refused, and yb_read_time can't change inside a transaction block that started with it.
+TEST_P(PgReadTimeCatalogModeTest, YbReadTimeTransactionRestrictions) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+  const auto t1 = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint"));
+  // Allows SET yb_read_time inside a transaction block, as CDC snapshots and ysql_dump do.
+  ASSERT_OK(conn.Execute("SET yb_disable_catalog_version_check = on"));
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", t1));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  if (GetParam()) {
+    ASSERT_NOK(conn.Execute("LOCK TABLE t IN SHARE MODE"));
+  } else {
+    ASSERT_NOK_STR_CONTAINS(
+        conn.Execute("LOCK TABLE t IN SHARE MODE"),
+        "LOCK TABLE in a mode stronger than ACCESS SHARE is not allowed while yb_read_time is set");
+  }
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute("SET yb_read_time TO 0"),
+      "yb_read_time cannot be changed inside a transaction block that started with it set");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  // A transaction that started without yb_read_time keeps its object locks, so setting it inside
+  // the block is still allowed.
+  ASSERT_OK(conn.Execute("SET yb_read_time TO 0"));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("SET LOCAL yb_read_time TO $0", t1));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t")), 0);
+  ASSERT_OK(conn.Execute("COMMIT"));
+}
+
+// One session alternating between time-travel transactions (no object locks, catalog pinned to
+// yb_read_time) and normal ones.
+TEST_P(PgReadTimeCatalogModeTest, AlternateYbReadTimeAndNormalTransactions) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 1)"));
+  const auto t1 = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint"));
+  for (int i = 2; i <= 4; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE t ADD COLUMN c$0 INT", i));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO t (k, v) VALUES ($0, $0)", i));
+    ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", t1));
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t")), 1);
+    ASSERT_NOK_STR_CONTAINS(conn.Fetch("SELECT c2 FROM t"), "column \"c2\" does not exist");
+    ASSERT_OK(conn.Execute("RESET yb_read_time"));
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t")), i);
+    ASSERT_OK(conn.Fetch(Format("SELECT c$0 FROM t", i)));
+  }
+}
+
 // Test that write DMLs are disallowed in a pg session when yb_read_time is set to non-zero.
 TEST_F(PgMiniTestBase, DisallowWriteDMLsWithYbReadTime) {
   auto conn = ASSERT_RESULT(Connect());
