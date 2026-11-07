@@ -75,6 +75,14 @@ class PgResponseCacheTest : public YBTest {
     return info;
   }
 
+  // A successful fill whose one operation still has paging state, so later rounds follow it.
+  PgResponseCache::Response MakePagedResponse() {
+    response_msg_ = rpc::MakeSharedMessage<PgPerformResponseMsg>();
+    auto& op = response_msg_->mutable_responses()->emplace_back();
+    op.mutable_paging_state();
+    return PgResponseCache::Response(*response_msg_, {RefCntSlice()});
+  }
+
   // A minimal successful fill: no operations, so no rows data to hand back.
   PgResponseCache::Response MakeResponse() {
     response_msg_ = rpc::MakeSharedMessage<PgPerformResponseMsg>();
@@ -216,6 +224,54 @@ TEST_F(PgResponseCacheTest, AnotherConnectionIsSentAwayFromAFillUnderWay) {
   // Incomplete is how the cache says a fill is already under way. The caller is not queued
   // behind it, and reads the older version this node already holds instead.
   ASSERT_TRUE(theirs_result.status().IsIncomplete()) << theirs_result.status();
+}
+
+// Every round of the completing request carries the flag, so the flag alone does not end the
+// claim: a round served from the cache whose response still has paging state has later rounds
+// behind it, and ending the claim there uncounts the database while the prefetch runs on.
+TEST_F(PgResponseCacheTest, APagedCompletingRoundServedFromCacheDoesNotEndTheClaim) {
+  ThreadSafeArena arena;
+  const auto deadline = CoarseMonoClock::Now() + 60s;
+
+  // A connection start takes its session's claim on an earlier round.
+  auto& round1 = MakeCachingInfo(arena, "round-1"sv, SendAway::kFalse,
+                                 PartOfConnectionPrefetch::kTrue);
+  PgResponseCache::FillTokenPtr token;
+  auto my_waiter = std::make_shared<CountingWaiter>();
+  auto first = ASSERT_RESULT(cache_->Get(&round1, deadline, my_waiter, kSessionId, &token));
+  ASSERT_TRUE(first);
+  first(MakeResponse());
+  first = {};
+  ASSERT_TRUE(token) << "a connection start's fill must leave its claim with the session";
+
+  // Another session stores a round that still has paging state behind it.
+  auto& theirs = MakeCachingInfo(arena, "final-round"sv, SendAway::kFalse,
+                                 PartOfConnectionPrefetch::kFalse);
+  auto their_waiter = std::make_shared<CountingWaiter>();
+  auto theirs_setter = ASSERT_RESULT(
+      cache_->Get(&theirs, deadline, their_waiter, kOtherSessionId, nullptr));
+  ASSERT_TRUE(theirs_setter);
+  theirs_setter(MakePagedResponse());
+  theirs_setter = {};
+
+  // The connection start's completing round is served that entry.
+  auto& final_round = MakeCachingInfo(arena, "final-round"sv, SendAway::kFalse,
+                                      PartOfConnectionPrefetch::kTrue);
+  final_round.set_completes_connection_prefetch(true);
+  auto final_waiter = std::make_shared<CountingWaiter>();
+  auto final_setter = ASSERT_RESULT(
+      cache_->Get(&final_round, deadline, final_waiter, kSessionId, &token));
+  ASSERT_FALSE(final_setter);
+  ASSERT_EQ(final_waiter->applied(), 1) << "the stored round was not served";
+
+  // Rounds are still to come, so the claim stands and a connection asking is sent away.
+  auto& probe = MakeCachingInfo(arena, "probe-key"sv, SendAway::kTrue,
+                                PartOfConnectionPrefetch::kFalse);
+  auto probe_waiter = std::make_shared<CountingWaiter>();
+  auto probe_result = cache_->Get(&probe, deadline, probe_waiter, kThirdSessionId, nullptr);
+  ASSERT_NOK(probe_result);
+  ASSERT_TRUE(probe_result.status().IsIncomplete())
+      << "a round with paging state behind it ended the claim: " << probe_result.status();
 }
 
 // A connection is not sent away while its database's cache is disabled, even with another
