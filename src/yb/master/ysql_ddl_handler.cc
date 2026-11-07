@@ -234,6 +234,15 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(TableInfoPtr table,
     auto verifier_state = FindOrNull(ysql_ddl_txn_verfication_state_map_, txn);
     if (!verifier_state) {
       VLOG(3) << "Transaction " << txn << " is already verified, ignoring";
+      // The txn has finished, but its entry may have been erased while it ran, e.g. by a PITR
+      // that removed its table after a sys catalog reload dropped release_all_deferred, so no one
+      // else releases its locks. A no-op if the locks are already released.
+      if (!FLAGS_TEST_disable_release_object_locks_on_ddl_verification) {
+        WARN_NOT_OK(
+            background_tasks_thread_pool_->SubmitFunc(
+                [this, txn]() { DoReleaseObjectLocksIfNecessary(txn); }),
+            Format("Failed to submit task for releasing object locks of txn $0", txn));
+      }
       return Status::OK();
     }
 
