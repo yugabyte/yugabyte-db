@@ -1449,9 +1449,9 @@ Status PgSession::AcquireObjectLock(
     return Status::OK();
   }
   // PG decides which locks a legacy mode transaction sends (YbShouldSendObjectLock in lock.c).
+  DCHECK(!pg_txn_manager_->IsDdlModeWithSeparateTransaction());
   DCHECK(pg_txn_manager_->IsTableLockingEnabledForCurrentTxn() ||
-         (!is_session_lock && !pg_txn_manager_->IsDdlMode() &&
-          mode <= YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK));
+         (!is_session_lock && mode <= YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK));
   auto fastpath_lock_type = docdb::MakeObjectLockFastpathLockType(TableLockType(mode));
   if (!is_session_lock && fastpath_lock_type &&
       pg_txn_manager_->TryAcquireObjectLock(lock_id, *fastpath_lock_type)) {

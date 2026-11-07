@@ -5079,23 +5079,28 @@ LockWaiterCount(const LOCKTAG *locktag)
 }
 
 /*
- * YB: A new mode DDL waits for DMLs only through object locks. So a legacy
- * mode transaction, one that started before yb_enable_object_locking_infra was
+ * YB: A DDL that runs in a separate (autonomous) DDL transaction sends no lock,
+ * up to and including that transaction's commit. Every legacy mode DDL runs in
+ * one, and the tserver releases that transaction's locks only once the infra
+ * flag is on.
+ *
+ * A new mode DDL waits for DMLs only through object locks. So a legacy mode
+ * transaction, one that started before yb_enable_object_locking_infra was
  * promoted, sends the local DML locks that such a DDL waits for (#36572). It
  * sends no stronger lock: those are global or exclusive, and would change how
- * legacy DDLs and LOCK TABLE behave before the promotion. It sends no lock
- * taken in DDL mode: a legacy DDL runs in a separate DDL transaction, and the
- * tserver releases that transaction's locks only once the infra flag is on. It
- * sends no session lock: every session lock PG takes is ShareUpdateExclusive
- * or stronger (CREATE INDEX, VACUUM).
+ * legacy DDLs and LOCK TABLE behave before the promotion. It sends no session
+ * lock: every session lock PG takes is ShareUpdateExclusive or stronger
+ * (CREATE INDEX, VACUUM).
  */
 static bool
 YbShouldSendObjectLock(LOCKMODE lockmode, bool sessionLock)
 {
+	if (YBCPgIsDdlMode() && !YBCPgIsDdlModeWithRegularTransactionBlock())
+		return false;
 	if (YBCIsObjectLockingEnabled())
 		return true;
 	return YBCIsLocalObjectLockingEnabled() && !sessionLock &&
-		!YBCPgIsDdlMode() && lockmode <= RowExclusiveLock;
+		lockmode <= RowExclusiveLock;
 }
 
 bool
