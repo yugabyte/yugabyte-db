@@ -4365,6 +4365,23 @@ void CDCSDKYsqlTest::CheckRecordCount(
   ASSERT_EQ(commit_records, expected_boundary_records);
 }
 
+int CDCSDKYsqlTest::NumDDLStatements(
+    const std::vector<CDCSDKProtoRecordPB>& records, size_t num_tablets) {
+  if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
+    std::unordered_set<uint32_t> ddl_txn_ids;
+    for (const auto& record : records) {
+      if (record.row_message().op() == RowMessage_Op_DDL) {
+        ddl_txn_ids.insert(record.row_message().pg_transaction_id());
+      }
+    }
+    return narrow_cast<int>(ddl_txn_ids.size());
+  }
+  auto num_ddl_records = std::count_if(records.begin(), records.end(), [](const auto& record) {
+    return record.row_message().op() == RowMessage_Op_DDL;
+  });
+  return narrow_cast<int>(num_ddl_records / num_tablets);
+}
+
 void CDCSDKYsqlTest::CheckRecordsConsistencyFromVWAL(
     const std::vector<CDCSDKProtoRecordPB>& records) {
   RowMessage_Op prev_op = RowMessage::UNKNOWN;
@@ -4464,7 +4481,10 @@ void CDCSDKYsqlTest::CheckRecordsConsistencyFromVWAL(
       prev_primary_key = record.row_message().primary_key();
     }
 
-    if (record.row_message().op() == RowMessage::DDL) {
+    if (record.row_message().op() == RowMessage::DDL && in_transaction) {
+      ASSERT_EQ(record.row_message().commit_time(), prev_commit_time);
+      ASSERT_EQ(record.row_message().pg_transaction_id(), prev_txn_id);
+    } else if (record.row_message().op() == RowMessage::DDL) {
       if (prev_op == RowMessage::DDL) {
         // There can be two DDLs received back to back with the same commit_time.
         ASSERT_GE(record.row_message().commit_time(), prev_commit_time);

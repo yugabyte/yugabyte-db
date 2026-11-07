@@ -1458,13 +1458,13 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWitDDLStatemen
   t4.join();
 
   int expected_dml_records = 4 * num_batches * inserts_per_batch;
-  int expected_ddl_records = 2 * 3;  // 2 DDL / tablet
   auto get_all_pending_changes_resp = ASSERT_RESULT(
       GetAllPendingTxnsFromVirtualWAL(stream_id, {table.table_id()}, expected_dml_records, true));
 
   CheckRecordsConsistencyFromVWAL(get_all_pending_changes_resp.records);
   LOG(INFO) << "Got " << get_all_pending_changes_resp.records.size() << " records.";
-  CheckRecordCount(get_all_pending_changes_resp, expected_dml_records, expected_ddl_records);
+  CheckRecordCount(get_all_pending_changes_resp, expected_dml_records);
+  ASSERT_EQ(NumDDLStatements(get_all_pending_changes_resp.records, tablets.size()), 2);
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWitDDLStatementsAndRestart) {
@@ -1592,18 +1592,14 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWithMultipleAl
   }
   LOG(INFO) << "Added columns and pushed required records";
 
-  int expected_ddl_records = 13 * 3;  // 13 DDL / tablet
   expected_dml_records = 13 * 10;     /* number of add columns 'times' insert per batch */
   auto consistent_change_resp_after_alter = ASSERT_RESULT(
       GetAllPendingTxnsFromVirtualWAL(stream_id, {table.table_id()}, expected_dml_records, false));
   LOG(INFO) << "Got " << consistent_change_resp_after_alter.records.size() << " records.";
 
-  int seen_ddl_records = 0;
   int seen_dml_records = 0;
   for (const auto& record : consistent_change_resp_after_alter.records) {
-    if (record.row_message().op() == RowMessage::DDL) {
-      seen_ddl_records += 1;
-    } else if (record.row_message().op() == RowMessage::INSERT) {
+    if (record.row_message().op() == RowMessage::INSERT) {
       seen_dml_records += 1;
       auto key_value = record.row_message().new_tuple(0).pg_ql_value().int32_value();
       auto expected_column_count = std::ceil(key_value / 10.0);
@@ -1611,7 +1607,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWithMultipleAl
     }
   }
 
-  ASSERT_EQ(seen_ddl_records, expected_ddl_records);
+  ASSERT_EQ(NumDDLStatements(consistent_change_resp_after_alter.records, num_tablets), 13);
   ASSERT_EQ(seen_dml_records, expected_dml_records);
   CheckRecordsConsistencyFromVWAL(consistent_change_resp_after_alter.records);
 }
@@ -5057,7 +5053,8 @@ void CDCSDKConsumptionConsistentChangesTest::TestExplcictCheckpointMovementAfter
         stream_id, {table.table_id()}, 1 /* expected_dml_records */,
         false /* init_virtual_wal */, kVWALSessionId1,
         false /* allow_sending_feedback */));
-    ASSERT_EQ(change_resp.records.size(), 4);
+    ASSERT_EQ(change_resp.record_count[1], 1);
+    ASSERT_EQ(NumDDLStatements(change_resp.records, tablets.size()), 1);
 
     // Since we haven't acknowledged anything after getting the old_checkpoint, the checkpoints in
     // the state table should not move.
@@ -5124,7 +5121,8 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestExplcictCheckpointMovementAft
       stream_id, {table.table_id()}, 1 /* expected_dml_records */,
       false /* init_virtual_wal */, kVWALSessionId1,
       false /* allow_sending_feedback */));
-  ASSERT_EQ(change_resp.records.size(), 4);
+  ASSERT_EQ(change_resp.record_count[1], 1);
+  ASSERT_EQ(NumDDLStatements(change_resp.records, tablets.size()), 1);
   auto record = change_resp.records.back();
   ASSERT_EQ(record.row_message().op(), RowMessage_Op_COMMIT);
   auto commit_lsn_1 = record.row_message().pg_lsn();
@@ -5138,7 +5136,8 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestExplcictCheckpointMovementAft
       stream_id, {table.table_id()}, 1 /* expected_dml_records */,
       false /* init_virtual_wal */, kVWALSessionId1,
       false /* allow_sending_feedback */));
-  ASSERT_EQ(change_resp.records.size(), 4);
+  ASSERT_EQ(change_resp.record_count[1], 1);
+  ASSERT_EQ(NumDDLStatements(change_resp.records, tablets.size()), 1);
   auto record_2 = change_resp.records.back();
   ASSERT_EQ(record_2.row_message().op(), RowMessage_Op_COMMIT);
   auto commit_lsn_2 = record_2.row_message().pg_lsn();
