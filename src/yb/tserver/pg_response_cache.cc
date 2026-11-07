@@ -786,11 +786,12 @@ class PgResponseCache::Impl : private GarbageCollector {
     }
     auto data = GetEntryData(cache_info, deadline);
     if (!data) {
-      // The cache is disabled for this database, as it is across a DDL commit, so nothing is
-      // served or filled. This return comes before both of the places that would end a claim,
-      // so end it here: otherwise a connection start whose completing round landed in this
-      // window would keep its database counted busy until the session sent something that is
-      // not part of a prefetch, or ended.
+      // The cache is disabled for this database, as it is across the commit of a DDL that alters
+      // the catalog without bumping its version -- not every DDL, and not the version bumps this
+      // change is built around -- so nothing is served or filled. This return comes before both of
+      // the places that would end a claim, so end it here: otherwise a connection start whose
+      // completing round landed in this window would keep its database counted busy until the
+      // session sent something that is not part of a prefetch, or ended.
       //
       // Nothing has been read yet, so unlike the setter and the arm below this cannot tell a
       // round that is finishing the prefetch from one that will fail and be retried. It ends

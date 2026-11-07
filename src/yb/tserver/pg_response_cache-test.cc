@@ -218,10 +218,49 @@ TEST_F(PgResponseCacheTest, AnotherConnectionIsSentAwayFromAFillUnderWay) {
   ASSERT_TRUE(theirs_result.status().IsIncomplete()) << theirs_result.status();
 }
 
-// A DDL commit disables its database's cache for the length of the commit, and every query
-// arriving then is answered without an entry. A connection start's completing round can land in
-// that window, and the claim has to end there too: it is taken by the rounds before it, and the
-// early return for a disabled cache comes before both of the places that would otherwise end it.
+// A connection is not sent away while its database's cache is disabled, even with another
+// session's fill counted. There is nothing to send it to: Disable bumps the bucket's version, so
+// every entry filled before it is already invalid and a lookup-only read finds nothing. The
+// caller would pay the catch-up wait and the message fetch, miss, and rerun without the ask to
+// make the read it could have made here.
+TEST_F(PgResponseCacheTest, AConnectionIsNotSentAwayWhileTheCacheIsDisabled) {
+  ThreadSafeArena arena;
+  const auto deadline = CoarseMonoClock::Now() + 60s;
+
+  // Another session's fill, counted for this database.
+  auto& theirs = MakeCachingInfo(arena, "their-key"sv, SendAway::kFalse,
+                                 PartOfConnectionPrefetch::kFalse);
+  auto their_waiter = std::make_shared<CountingWaiter>();
+  auto theirs_setter = ASSERT_RESULT(
+      cache_->Get(&theirs, deadline, their_waiter, kOtherSessionId, nullptr));
+  ASSERT_TRUE(theirs_setter);
+
+  // With the cache live, a connection asking now is sent away by that fill.
+  auto& probe = MakeCachingInfo(arena, "probe-key"sv, SendAway::kTrue,
+                                PartOfConnectionPrefetch::kFalse);
+  auto probe_waiter = std::make_shared<CountingWaiter>();
+  auto sent_away = cache_->Get(&probe, deadline, probe_waiter, kSessionId, nullptr);
+  ASSERT_NOK(sent_away);
+  ASSERT_TRUE(sent_away.status().IsIncomplete()) << sent_away.status();
+
+  // The same ask, with the same fill still counted, is answered rather than sent away once the
+  // database's cache is disabled.
+  {
+    auto disabler = cache_->Disable(kKeyGroup);
+    auto& asked = MakeCachingInfo(arena, "probe-key"sv, SendAway::kTrue,
+                                  PartOfConnectionPrefetch::kFalse);
+    auto asked_waiter = std::make_shared<CountingWaiter>();
+    auto result = cache_->Get(&asked, deadline, asked_waiter, kSessionId, nullptr);
+    ASSERT_TRUE(result.ok())
+        << "sent away into a disabled cache, which holds nothing to read: " << result.status();
+  }
+}
+
+// Committing a DDL that alters the catalog without bumping its version disables that database's
+// cache for the length of the commit, and every query arriving then is answered without an entry. A
+// DDL that bumps the version does not. A connection start's completing round can land in that
+// window, and the claim has to end there too: it is taken by the rounds before it, and the early
+// return for a disabled cache comes before both of the places that would otherwise end it.
 TEST_F(PgResponseCacheTest, AClaimEndsOnACompletingRoundThatFoundTheCacheDisabled) {
   ThreadSafeArena arena;
   const auto deadline = CoarseMonoClock::Now() + 60s;
