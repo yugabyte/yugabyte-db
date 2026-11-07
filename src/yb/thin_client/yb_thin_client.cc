@@ -492,19 +492,21 @@ ybthin_session& NextWriteSession(ybthin_client& client) {
 }
 
 // The shim's own envelope around the server's paging state, handed back to the caller opaquely:
-//   [magic][version][u32 read-session index][u32 generation][u64 read_ht]
+//   [magic][version][u32 read-session index][u32 generation][u64 read_ht][u8 flags]
 //   + the server's paging state.
 // A continuation routes back to the same session (generation-checked) and replays the read time its
 // scan was served at, so every page reads at one snapshot without the server tracking read points.
-// Nothing in YugabyteDB defines this format -- pggate keeps the equivalent state in process memory
-// and never serializes it. Version 3 replaced the read serial with the read time itself; bump the
-// version for any further layout change.
+// The flags carry the scan's read_from_followers, so every page of a follower scan asks for a
+// follower. Nothing in YugabyteDB defines this format -- pggate keeps the equivalent state in
+// process memory and never serializes it. Version 3 replaced the read serial with the read time
+// itself, version 4 added the flags; bump the version for any further layout change.
 constexpr uint8_t kPagingMagic = 0xB1;
-constexpr uint8_t kPagingVersion = 3;
+constexpr uint8_t kPagingVersion = 4;
 constexpr size_t kPagingPrefixLen = 2;  // magic + version
+constexpr uint8_t kPagingFlagReadFromFollowers = 0x01;
 // Derived from the layout above so the writer, the reader and the length cannot drift apart.
 constexpr size_t kPagingHeaderLen =
-    kPagingPrefixLen + 2 * sizeof(uint32_t) + sizeof(uint64_t);
+    kPagingPrefixLen + 2 * sizeof(uint32_t) + sizeof(uint64_t) + sizeof(uint8_t);
 
 void AppendU32LE(std::string* out, uint32_t value) {
   char buf[sizeof(value)];
@@ -531,7 +533,7 @@ uint64_t ReadU64LE(const uint8_t** cursor) {
 }
 
 std::string WrapPagingState(
-    uint32_t session_index, uint32_t generation, uint64_t read_ht,
+    uint32_t session_index, uint32_t generation, uint64_t read_ht, bool read_from_followers,
     const std::string& server_paging_state) {
   std::string out;
   out.reserve(kPagingHeaderLen + server_paging_state.size());
@@ -540,6 +542,7 @@ std::string WrapPagingState(
   AppendU32LE(&out, session_index);
   AppendU32LE(&out, generation);
   AppendU64LE(&out, read_ht);
+  out.push_back(static_cast<char>(read_from_followers ? kPagingFlagReadFromFollowers : 0));
   out.append(server_paging_state);
   return out;
 }
@@ -549,6 +552,8 @@ struct PinInfo {
   uint32_t generation;
   // Replayed by a continuation so the server restores the scan's read point.
   uint64_t read_ht;
+  // Replayed alongside it, so the continuation is served by a follower like its first page.
+  bool read_from_followers;
   Slice server_paging_state;
 };
 
@@ -561,6 +566,7 @@ Result<PinInfo> UnwrapPagingState(const uint8_t* data, size_t len) {
   pin.session_index = ReadU32LE(&cursor);
   pin.generation = ReadU32LE(&cursor);
   pin.read_ht = ReadU64LE(&cursor);
+  pin.read_from_followers = (*cursor++ & kPagingFlagReadFromFollowers) != 0;
   pin.server_paging_state = Slice(cursor, data + len);
   return pin;
 }
@@ -665,6 +671,9 @@ struct ReadCall : SessionCall {
   // The read time this batch was pinned to, either by the caller or, for a continuation, by the
   // scan. 0 means the server picked one, which FinishRead reads out of the response paging state.
   uint64_t read_ht;
+  // Whether the batch asked for followers, by the caller or by the scan it continues. Wrapped into
+  // the response paging state so the next page asks again.
+  bool read_from_followers;
   tserver::ThinPerformRequestPB req;
   tserver::ThinPerformResponsePB resp;
   rpc::RpcController controller;
@@ -862,7 +871,7 @@ void FinishRead(ReadCall* read_call) {
       std::string srv;
       op.paging_state().SerializeToString(&srv);
       std::string wrapped = WrapPagingState(
-          call->session_index, call->generation, scan_read_ht, srv);
+          call->session_index, call->generation, scan_read_ht, call->read_from_followers, srv);
       op_result.paging_state = DupBytes(wrapped.data(), wrapped.size());
       op_result.paging_state_len = wrapped.size();
     }
@@ -1223,14 +1232,28 @@ void ybthin_columns_free(ybthin_column* columns, size_t /* n */) {
 void ybthin_read_async(
     ybthin_client* client, const ybthin_read_op* ops, size_t n_ops, uint64_t read_time_ht,
     ybthin_read_cb cb, void* ctx) {
+  ybthin_read_options options = {};
+  options.read_time_ht = read_time_ht;
+  ybthin_read_async2(client, ops, n_ops, &options, cb, ctx);
+}
+
+void ybthin_read_async2(
+    ybthin_client* client, const ybthin_read_op* ops, size_t n_ops,
+    const ybthin_read_options* options, ybthin_read_cb cb, void* ctx) {
   if (n_ops == 0) {
     cb(ctx, MakeStatus(YBTHIN_INVALID, "read batch has no ops"), nullptr);
     return;
   }
+  const ybthin_read_options no_options = {};
+  if (!options) {
+    options = &no_options;
+  }
+  const uint64_t read_time_ht = options->read_time_ht;
   auto call = std::make_unique<ReadCall>();
   call->cb = cb;
   call->ctx = ctx;
   call->read_ht = read_time_ht;
+  call->read_from_followers = options->read_from_followers != 0;
 
   // A continuation must return to the session that issued it, so every one in a batch has to pin
   // the same session. A batch with no continuations round-robins the read pool.
@@ -1238,6 +1261,7 @@ void ybthin_read_async(
   size_t session_index = 0;
   uint32_t pinned_generation = 0;
   uint64_t pinned_read_ht = 0;
+  bool pinned_read_from_followers = false;
   std::vector<Slice> server_paging_states(n_ops);  // empty entry => fresh op
   for (size_t op_idx = 0; op_idx < n_ops; ++op_idx) {
     const auto& op = ops[op_idx];
@@ -1258,9 +1282,11 @@ void ybthin_read_async(
       session_index = pin->session_index;
       pinned_generation = pin->generation;
       pinned_read_ht = pin->read_ht;
+      pinned_read_from_followers = pin->read_from_followers;
     } else if (pin->session_index != session_index || pin->generation != pinned_generation ||
-               pin->read_ht != pinned_read_ht) {
-      // One Perform carries one read time, hence one snapshot.
+               pin->read_ht != pinned_read_ht ||
+               pin->read_from_followers != pinned_read_from_followers) {
+      // One Perform carries one read time, hence one snapshot, and one replica choice.
       cb(ctx, MakeStatus(
              YBTHIN_INVALID, "all continuation ops in a batch must share the paging session"),
          nullptr);
@@ -1277,6 +1303,10 @@ void ybthin_read_async(
   call->has_continuation = have_pinned;
   call->pinned_generation = pinned_generation;
   call->pinned_read_ht = pinned_read_ht;
+  // The scan's choice outlives the first page's options: a continuation asks for a follower again.
+  if (have_pinned && pinned_read_from_followers) {
+    call->read_from_followers = true;
+  }
 
   // One Perform with n_ops read requests, in caller order -- results map back by index.
   auto& req = call->req;
@@ -1439,6 +1469,15 @@ void ybthin_read_async(
     auto* rt = rto->mutable_read_time();
     rt->set_read_ht(read_time_ht);
     rt->set_global_limit_ht(read_time_ht);
+  }
+  if (call->read_from_followers) {
+    rto->set_read_from_followers(true);
+    // The staleness only applies to a fresh, unpinned batch: a pinned one, and a continuation
+    // (pinned below), read at their snapshot. Sending both would leave the server to pick, so the
+    // request carries at most one.
+    if (read_time_ht == 0 && !call->has_continuation) {
+      rto->mutable_follower_read_staleness_ms()->set_value(options->follower_read_staleness_ms);
+    }
   }
 
   // A continuation whose session was dropped or reopened can no longer be served, so report

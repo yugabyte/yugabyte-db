@@ -185,6 +185,21 @@ class ThinSession : public ClientSessionBase,
       (op.has_read() ? has_read : has_write) = true;
     }
     SCHECK(!(has_read && has_write), InvalidArgument, "Mixed read/write Perform batch");
+    const auto& read_time_options = req.read_time_options();
+    const bool has_read_time =
+        read_time_options.has_read_time() && read_time_options.read_time().read_ht();
+    const bool has_staleness = read_time_options.has_follower_read_staleness_ms();
+    SCHECK(
+        !(has_write && has_staleness), InvalidArgument,
+        "follower_read_staleness_ms is not allowed on a write batch");
+    // A follower read needs a read time it can judge against its safe time: the pinned one of a
+    // continuation, or one derived from the staleness. Without either, a follower would serve
+    // whatever its safe time is, however far behind.
+    SCHECK(
+        !(has_read && read_time_options.read_from_followers() && !has_read_time &&
+          !has_staleness),
+        InvalidArgument,
+        "read_from_followers needs a read_time or a follower_read_staleness_ms");
     VLOG_WITH_PREFIX(2) << "Perform: " << req.ops().size() << (has_read ? " read" : " write")
                         << " op(s)";
 
@@ -199,11 +214,17 @@ class ThinSession : public ClientSessionBase,
     session->set_allow_local_calls_in_curr_thread(false);
     CancelableScopeExit abort_se{[&session] { session->Abort(); }};
 
-    const auto& read_time_options = req.read_time_options();
-    if (has_read && read_time_options.has_read_time() && read_time_options.read_time().read_ht()) {
+    if (has_read && has_read_time) {
       // The client pins the snapshot: a paged scan echoes the time its first page was served at, so
       // every page reads at that one snapshot without the server tracking anything.
       session->SetReadPoint(ReadHybridTime::FromPB(read_time_options.read_time()));
+    } else if (has_read && has_staleness) {
+      // The read time is computed here, not by the client, so the only clock skew that matters is
+      // the cluster's own (mirrors SetFollowerReadTime in pg_client_session.cc). Being explicit, a
+      // follower that has not reached it hands the read to another replica
+      // (ReadQuery::WaitForSafeTime) rather than waiting for its safe time to catch up.
+      session->SetReadPoint(ReadHybridTime::SingleTime(clock_->Now().AddMilliseconds(
+          -static_cast<int64_t>(read_time_options.follower_read_staleness_ms().value()))));
     } else {
       // No read time: leave it unset so the tablet serving the op reads at its own safe time,
       // instead of this node stamping its current time and leaving the read to wait for safe time
@@ -223,8 +244,12 @@ class ThinSession : public ClientSessionBase,
       if (op.has_read()) {
         auto& read = *op.mutable_read();
         RETURN_NOT_OK(GetTable(read.table_id(), tables, &table));
-        query->ops.push_back(std::make_shared<client::YBPgsqlReadOp>(
-            table, query->arena(), query->sidecars(), &read));
+        auto read_op = std::make_shared<client::YBPgsqlReadOp>(
+            table, query->arena(), query->sidecars(), &read);
+        if (read_time_options.read_from_followers()) {
+          read_op->set_yb_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
+        }
+        query->ops.push_back(std::move(read_op));
       } else {
         auto& write = *op.mutable_write();
         RETURN_NOT_OK(GetTable(write.table_id(), tables, &table));
