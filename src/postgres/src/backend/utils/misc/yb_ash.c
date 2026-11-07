@@ -1237,6 +1237,13 @@ GetAshIndexesFromInput(FunctionCallInfo fcinfo, int *start_idx, int *end_idx)
 							   timestamptz_to_str(start_time),
 							   timestamptz_to_str(end_time))));
 		}
+
+		/*
+		 * Every sample is after 2000-01-01, where TimestampTz is 0. Return
+		 * here, as an end_time of 0 means "not given" from here on.
+		 */
+		if (!is_end_time_null && end_time <= 0)
+			return;
 	}
 
 	/*
@@ -1548,21 +1555,29 @@ GetAshRangeIndexes(TimestampTz start_time, TimestampTz end_time,
 	TimestampTz buffer_min_time = cb[min_time_index].sample_time;
 	TimestampTz buffer_max_time = cb[max_time_index].sample_time;
 	TimestampTz buffer_first_entry_time = cb[0].sample_time;
+	TimestampTz buffer_last_entry_time = cb[max_entries - 1].sample_time;
 
 	/* Time range is not there in the buffer */
 	if ((start_time > 0 && start_time > buffer_max_time) ||
 		(end_time > 0 && end_time < buffer_min_time))
 		return;
 
+	/*
+	 * A time after the last slot but before slot 0, in the gap where the
+	 * buffer wraps, has no match in the older half. It maps to slot 0.
+	 */
+
 	/* Find the start_index, if not already set */
 	if (*start_index == -1)
 	{
 		if (start_time <= buffer_min_time)
 			*start_index = min_time_index;
-		else if (start_time < buffer_first_entry_time)
+		else if (start_time <= buffer_last_entry_time)
 			*start_index = BinarySearchAshIndex(start_time, index,
 												max_entries - 1,
 												true /* is_lower_bound */ );
+		else if (start_time < buffer_first_entry_time)
+			*start_index = 0;
 		else
 			*start_index = BinarySearchAshIndex(start_time, 0, max_time_index,
 												true /* is_lower_bound */ );
@@ -1573,9 +1588,11 @@ GetAshRangeIndexes(TimestampTz start_time, TimestampTz end_time,
 	{
 		if (end_time > buffer_max_time)
 			*end_index = max_time_index + 1;
-		else if (end_time < buffer_first_entry_time)
+		else if (end_time <= buffer_last_entry_time)
 			*end_index = BinarySearchAshIndex(end_time, index, max_entries - 1,
 											  is_end_time_exclusive);
+		else if (end_time < buffer_first_entry_time)
+			*end_index = 0;
 		else
 			*end_index = BinarySearchAshIndex(end_time, 0, max_time_index,
 											  is_end_time_exclusive);
@@ -1587,4 +1604,12 @@ GetAshRangeIndexes(TimestampTz start_time, TimestampTz end_time,
 
 	Assert(*start_index >= 0 && *start_index < max_entries);
 	Assert(*end_index >= 0 && *end_index < max_entries);
+
+	/*
+	 * Equal indexes mean either the whole wrapped buffer or no samples. With
+	 * an end time, there are none when that slot is not before end_time.
+	 */
+	if (end_time > 0 && *start_index == *end_index &&
+		cb[*start_index].sample_time >= end_time)
+		*start_index = *end_index = -1;
 }
