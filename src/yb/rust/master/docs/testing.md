@@ -62,6 +62,17 @@ YB_RUST_MASTER=1 ./yb_build.sh release --cxx-test master_failover-itest
 
 A test that starts masters with an explicit binary keeps it.
 
+`MiniClusterOptions::rust_masters` does the same for MiniCluster tests, with the same
+`YB_RUST_MASTER` default: MiniMaster runs those masters in the test process (see
+[cpp-host.md](cpp-host.md#embedded-in-a-test-process)). A Rust MiniMaster has no C++ `Master`:
+`master()` is null, and accessors of C++ master objects (`catalog_manager()`, `ts_manager()`,
+`flush_manager()`) fail the test at once rather than skipping it, so the tests that still need
+the C++ master show up. MiniCluster's own helpers (leader lookup, `WaitForTabletServerCount`,
+`WaitForReplicaCount`) go through RPCs for Rust masters. `rust_master_mini_cluster-test` checks
+leadership, a step-down and a follower restart with three Rust masters.
+
+Java tests read the same variable: `MiniYBCluster` starts those masters as `yb-master-rs`.
+
 ## Tserver simulator and the C++ baseline
 
 `master-tserver-sim` runs many fake tservers in one process, each on its own loopback address

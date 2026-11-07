@@ -537,6 +537,27 @@ impl Shared {
         respond(call, &resp);
     }
 
+    /// Answers `call` with what the host's C++ code returns for `request`.
+    async fn serve_on_host(
+        &self,
+        call: Box<dyn InboundCall>,
+        method: &'static MethodDesc,
+        request: Vec<u8>,
+    ) {
+        let info = self.info.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            let result = info.handle_on_host(method.name, &request);
+            (call, result)
+        })
+        .await;
+        if let Ok((call, result)) = result {
+            match result {
+                Ok(bytes) => call.respond(&bytes),
+                Err(status) => call.respond_error(status),
+            }
+        }
+    }
+
     /// A leader method on a master with leader services.
     async fn leader_call(self: Arc<Self>, call: Box<dyn InboundCall>, method: &'static MethodDesc) {
         // It may have waited for a runtime worker.
@@ -651,17 +672,31 @@ impl Shared {
                 |_req, resp| { leader.get_transaction_status_tablets(&snapshot, &mut resp) }
             ),
             "GetAutoFlagsConfig" | "ValidateAutoFlagsConfig" => {
-                let info = self.info.clone();
-                let result = tokio::task::spawn_blocking(move || {
-                    let result = info.handle_on_host(method.name, call.request());
-                    (call, result)
-                })
-                .await;
-                if let Ok((call, result)) = result {
-                    match result {
-                        Ok(bytes) => call.respond(&bytes),
-                        Err(status) => call.respond_error(status),
+                let request = call.request().to_vec();
+                self.serve_on_host(call, method, request).await
+            }
+            // CatalogManager answers these from the cluster config's encryption info with its
+            // EncryptionManager, so the host gets that instead of the (empty) request.
+            "GetFullUniverseKeyRegistry" | "IsEncryptionEnabled" => {
+                let encryption_info =
+                    LeaderServices::cluster_config(&snapshot).and_then(|config| {
+                        config
+                            .encryption_info
+                            .as_ref()
+                            .map(|info| info.write_to_bytes())
+                            .transpose()
+                            .map_err(|e| Status::new(StatusCode::InternalError, e.to_string()))
+                    });
+                match encryption_info {
+                    Ok(info) => {
+                        self.serve_on_host(call, method, info.unwrap_or_default())
+                            .await
                     }
+                    Err(status) => respond_or_fail(
+                        call,
+                        method,
+                        master_error_from(master_error_pb::Code::UNKNOWN_ERROR, &status),
+                    ),
                 }
             }
             "TSHeartbeat" => unreachable!("handled above"),

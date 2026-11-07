@@ -756,14 +756,30 @@ public class MiniYBCluster implements AutoCloseable {
   }
 
   /**
+   * Whether the master at {@code index} runs as the Rust master ({@code yb-master-rs}), as in
+   * the C++ ExternalMiniCluster: {@code YB_RUST_MASTER} set to "1" or "all" makes every master
+   * Rust, "mixed" only the first.
+   */
+  private static boolean isRustMaster(int index) {
+    final String mode = System.getenv("YB_RUST_MASTER");
+    if (mode == null) {
+      return false;
+    }
+    return mode.equals("1") || mode.equals("all") || (mode.equals("mixed") && index == 0);
+  }
+
+  /**
    * Returns the common options among regular masters and shell masters.
+   * @param masterIndex the master's position in the order masters were started
    * @return a list of command line options
    */
   private List<String> getCommonMasterCmdLine(String flagsPath, String dataDirPath,
                                               String masterBindAddress, int masterRpcPort,
-                                              int masterWebPort) throws Exception {
+                                              int masterWebPort, int masterIndex)
+      throws Exception {
+    final boolean rust = isRustMaster(masterIndex);
     List<String> masterCmdLine = Lists.newArrayList(
-      TestUtils.findBinary("yb-master"),
+      TestUtils.findBinary(rust ? "yb-master-rs" : "yb-master"),
       "--flagfile=" + flagsPath,
       "--fs_wal_dirs=" + dataDirPath,
       "--fs_data_dirs=" + dataDirPath,
@@ -776,6 +792,10 @@ public class MiniYBCluster implements AutoCloseable {
       "--callhome_enabled=false",
       "--TEST_process_info_dir=" + getProcessInfoDir(),
       "--never_fsync=true");
+    if (rust) {
+      // A cluster of Rust masters must elect one of them.
+      masterCmdLine.add("--TEST_rust_master_allow_leadership=true");
+    }
     if (clusterParameters.tserverHeartbeatTimeoutMsOpt.isPresent()) {
       masterCmdLine.add(
           "--tserver_unresponsive_timeout_ms=" +
@@ -819,7 +839,7 @@ public class MiniYBCluster implements AutoCloseable {
         baseDirPath + "/master-" + masterBindAddress + "-" + rpcPort + "-" + now;
     final String flagsPath = TestUtils.getFlagsPath();
     List<String> masterCmdLine = getCommonMasterCmdLine(flagsPath, dataDirPath,
-      masterBindAddress, rpcPort, webPort);
+      masterBindAddress, rpcPort, webPort, masterProcesses.size());
     for (Map.Entry<String, String> entry : extraArgs.entrySet()) {
       masterCmdLine.add("--" + entry.getKey() + "=" + entry.getValue());
     }
@@ -886,7 +906,8 @@ public class MiniYBCluster implements AutoCloseable {
     }
 
     updateMasterAddresses();
-    for (MasterHostPortAllocation masterAlloc : masterHostPortAlloc) {
+    for (int masterIndex = 0; masterIndex < masterHostPortAlloc.size(); ++masterIndex) {
+      final MasterHostPortAllocation masterAlloc = masterHostPortAlloc.get(masterIndex);
       final String masterBindAddress = masterAlloc.bindAddress;
       final int masterRpcPort = masterAlloc.rpcPort;
       final long now = System.currentTimeMillis();
@@ -895,7 +916,7 @@ public class MiniYBCluster implements AutoCloseable {
       String flagsPath = TestUtils.getFlagsPath();
       final int masterWebPort = masterAlloc.webPort;
       List<String> masterCmdLine = getCommonMasterCmdLine(flagsPath, dataDirPath,
-        masterBindAddress, masterRpcPort, masterWebPort);
+        masterBindAddress, masterRpcPort, masterWebPort, masterIndex);
       masterCmdLine.add("--master_addresses=" + masterAddresses);
       if (extraMasterFlags != null) {
         masterCmdLine.addAll(CommandUtil.flagsToArgs(extraMasterFlags));

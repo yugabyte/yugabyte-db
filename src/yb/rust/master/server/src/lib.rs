@@ -19,9 +19,11 @@ mod store;
 mod web;
 mod wiring;
 
-use std::sync::Arc;
+use std::sync::{Arc, Once};
 use std::time::Duration;
 
+use cxx::UniquePtr;
+use ffi::bridge::MasterHost;
 use master_catalog_state::Catalog;
 use master_leadership::Leadership;
 use master_rpc_handlers::{HandlerOptions, MasterInfo, MasterServiceHandler};
@@ -44,10 +46,16 @@ static MASTER_RPC_TIMEOUT_MS: FlagRef<i32> = FlagRef::new("master_rpc_timeout_ms
 static LIST_RAFT_PEERS_CHECK_IS_LEADER: FlagRef<bool> =
     FlagRef::new("master_list_raft_peers_check_is_leader");
 
+/// Registers the Rust-declared flags with gflags. The binary calls it before flag parsing; an
+/// embedded master (MiniCluster) calls it on its first start, after parsing, where the flags then
+/// keep their defaults. Several masters in one process share the flags.
 fn register_flags() {
-    yb_flags::set_backend(Box::new(yb_cpp_host::flags::CppFlagBackend::default()));
-    yb_flags::register(&[&RUST_MASTER_RUNTIME_THREADS]);
-    yb_flags::register(wiring::FLAGS);
+    static REGISTER: Once = Once::new();
+    REGISTER.call_once(|| {
+        yb_flags::set_backend(Box::new(yb_cpp_host::flags::CppFlagBackend::default()));
+        yb_flags::register(&[&RUST_MASTER_RUNTIME_THREADS]);
+        yb_flags::register(wiring::FLAGS);
+    });
 }
 
 fn run_master() -> i32 {
@@ -62,6 +70,49 @@ fn run_master() -> i32 {
 }
 
 fn run() -> Result<(), String> {
+    let host = ffi::bridge::create_master_host().map_err(|e| e.what().to_string())?;
+    let master = start(host)?;
+    master.host.wait_for_termination();
+    master.stop();
+    Ok(())
+}
+
+/// A started master, which `stop` shuts down. Each owns its runtime and host, so several can run
+/// in one process.
+struct RunningMaster {
+    host: UniquePtr<MasterHost>,
+    runtime: tokio::runtime::Runtime,
+    gate: Arc<store::HostGate>,
+}
+
+impl RunningMaster {
+    fn stop(mut self) {
+        tracing::info!("Rust master shutting down");
+        self.host.pin_mut().shutdown();
+        self.runtime.shutdown_timeout(Duration::from_secs(10));
+        self.gate.close();
+    }
+}
+
+/// A Rust master embedded in a C++ process (`src/yb/master_host/embedded_master.h`), for
+/// MiniCluster tests (D12).
+pub struct EmbeddedRustMaster(RunningMaster);
+
+/// Starts a master on a host the embedding process created with its own options.
+fn start_embedded(host: UniquePtr<MasterHost>) -> Result<Box<EmbeddedRustMaster>, String> {
+    register_flags();
+    yb_cpp_host::logging::init();
+    start(host).map(|master| Box::new(EmbeddedRustMaster(master)))
+}
+
+/// Shuts an embedded master down.
+// The C++ side owns a `rust::Box`, which cxx hands back as a `Box`.
+#[allow(clippy::boxed_local)]
+fn stop_embedded(master: Box<EmbeddedRustMaster>) {
+    master.0.stop();
+}
+
+fn start(mut host: UniquePtr<MasterHost>) -> Result<RunningMaster, String> {
     let mut runtime = tokio::runtime::Builder::new_multi_thread();
     if let Ok(threads @ 1..) = usize::try_from(RUST_MASTER_RUNTIME_THREADS.get()) {
         runtime.worker_threads(threads);
@@ -72,7 +123,6 @@ fn run() -> Result<(), String> {
         .build()
         .map_err(|e| format!("creating the async runtime: {e}"))?;
 
-    let mut host = ffi::bridge::create_master_host().map_err(|e| e.what().to_string())?;
     host.pin_mut().init().map_err(|e| e.what().to_string())?;
 
     let info: Arc<dyn MasterInfo> =
@@ -173,10 +223,9 @@ fn run() -> Result<(), String> {
         }
     });
     tracing::info!("Rust master started");
-    host.wait_for_termination();
-    tracing::info!("Rust master shutting down");
-    host.pin_mut().shutdown();
-    runtime.shutdown_timeout(Duration::from_secs(10));
-    gate.close();
-    Ok(())
+    Ok(RunningMaster {
+        host,
+        runtime,
+        gate,
+    })
 }

@@ -115,6 +115,7 @@ set(MASTER_SRCS
   master_tserver.cc
   master_types.cc
   master_ysql_lease_service.cc
+  embedded_master_if.cc
   mini_master.cc
   multi_step_monitored_task.cc
   object_lock_info_manager.cc

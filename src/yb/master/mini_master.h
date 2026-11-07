@@ -39,6 +39,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 
+#include "yb/master/embedded_master_if.h"
 #include "yb/master/master_fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
@@ -74,6 +75,14 @@ class MiniMaster {
     pass_master_addresses_ = value;
   }
 
+  // Runs the Rust master in-process instead of the C++ Master (embedded_master_if.h). Must be
+  // called before Start. Accessors of C++ master internals (catalog_manager(), ts_manager(), ...)
+  // then fail, naming themselves; master() returns null.
+  void set_rust(bool value) { rust_ = value; }
+  bool is_rust() const { return rust_; }
+
+  bool is_running() const { return running_; }
+
   Status StartDistributedMaster(const std::vector<uint16_t>& peer_ports);
 
   Status WaitForCatalogManagerInit();
@@ -94,6 +103,12 @@ class MiniMaster {
 
   HostPort bound_rpc_addr() const;
   Endpoint bound_http_addr() const;
+
+  // The options it was started with.
+  const MasterOptions& opts() const;
+
+  // Whether it leads with its leader services ready, as ScopedLeaderSharedLock reports.
+  Result<bool> IsLeaderAndReady() const;
 
   const Master* master() const { return master_.get(); }
   Master* master() { return master_.get(); }
@@ -132,6 +147,12 @@ class MiniMaster {
   Status StartOnPorts(uint16_t rpc_port, uint16_t web_port,
                       MasterOptions* options);
 
+  // The C++ Master or the Rust master's host.
+  server::RpcAndWebServerBase& server() const;
+
+  // Fails the test when a Rust master is asked for C++ master internals.
+  void CheckCppMaster(const char* accessor) const;
+
   bool running_;
 
   ATTRIBUTE_MEMBER_UNUSED Env* const env_;
@@ -139,6 +160,8 @@ class MiniMaster {
   const uint16_t rpc_port_, web_port_;
 
   std::unique_ptr<Master> master_;
+  bool rust_ = false;
+  std::unique_ptr<EmbeddedMasterIf> embedded_;
   int index_;
   std::unique_ptr<Tunnel> tunnel_;
   bool pass_master_addresses_ = true;

@@ -48,6 +48,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/integration-tests/mini_cluster_base.h"
 
+#include "yb/master/embedded_master_if.h"
 #include "yb/master/master_client.fwd.h"
 #include "yb/master/master_fwd.h"
 
@@ -89,6 +90,10 @@ YB_STRONGLY_TYPED_BOOL(RequireLeaderIsReady)
 struct MiniClusterOptions {
   // Number of master servers.
   size_t num_masters = 1;
+
+  // Masters that run the Rust master in-process (master/embedded_master_if.h). In a build without
+  // the Rust master they fail to start.
+  master::RustMasters rust_masters = master::RustMastersFromEnv();
 
   // Number of TS to start.
   size_t num_tablet_servers = 1;

@@ -383,7 +383,6 @@ MasterHost::MasterHost(const master::MasterOptions& opts, WebserverOptions publi
       encryption_manager_(std::make_unique<master::EncryptionManager>()),
       maintenance_manager_(
           std::make_shared<MaintenanceManager>(MaintenanceManager::DEFAULT_OPTIONS)),
-      termination_monitor_(TerminationMonitor::Create()),
       public_web_opts_(std::move(public_web_opts)) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       FLAGS_inbound_rpc_memory_limit, mem_tracker()));
@@ -416,15 +415,19 @@ std::unique_ptr<MasterHost> CreateMasterHost() {
   if (!opts.ok()) {
     throw std::runtime_error(opts.status().ToString());
   }
+  return CreateMasterHostWithOptions(std::move(*opts));
+}
+
+std::unique_ptr<MasterHost> CreateMasterHostWithOptions(master::MasterOptions opts) {
   // Rust serves the configured web port and TLS; the C++ Webserver moves behind it, to loopback.
-  auto public_web_opts = opts->webserver_opts;
-  auto& web = opts->webserver_opts;
+  auto public_web_opts = opts.webserver_opts;
+  auto& web = opts.webserver_opts;
   web.bind_interface = "127.0.0.1";
   web.port = 0;
   web.certificate_file.clear();
   web.private_key_file.clear();
   web.private_key_password.clear();
-  return std::make_unique<MasterHost>(*opts, std::move(public_web_opts));
+  return std::make_unique<MasterHost>(opts, std::move(public_web_opts));
 }
 
 void MasterHost::InitHost() {
@@ -659,8 +662,10 @@ void MasterHost::StartHost() {
 
 Status MasterHost::DoStart() {
   // As master_main.cc does around Master::Start.
-  UlimitUtil::InitUlimits();
-  LOG(INFO) << "ulimit cur(max)..." << UlimitUtil::GetUlimitInfo();
+  if (!embedded_) {
+    UlimitUtil::InitUlimits();
+    LOG(INFO) << "ulimit cur(max)..." << UlimitUtil::GetUlimitInfo();
+  }
   RETURN_NOT_OK(maintenance_manager_->Init());
   RETURN_NOT_OK(RegisterService(
       FLAGS_master_consensus_svc_queue_length,
@@ -679,21 +684,40 @@ Status MasterHost::DoStart() {
 
   RETURN_NOT_OK(sys_catalog_->Start(Bind(&MasterHost::ElectedAsLeader, Unretained(this))));
   sys_catalog_started_ = true;
-  RETURN_NOT_OK(OpenSysCatalog());
-  sys_catalog_initialized_ = true;
-  tap_->PostReload("sys catalog opened", clock()->Now());
+  if (embedded_) {
+    RETURN_NOT_OK(Thread::Create(
+        "master_host", "open_sys_catalog",
+        [this] {
+          auto status = OpenSysCatalog();
+          if (!status.ok()) {
+            LOG(DFATAL) << "Opening the sys catalog failed: " << status;
+            return;
+          }
+          sys_catalog_initialized_ = true;
+          tap_->PostReload("sys catalog opened", clock()->Now());
+        },
+        &open_sys_catalog_thread_));
+  } else {
+    RETURN_NOT_OK(OpenSysCatalog());
+    sys_catalog_initialized_ = true;
+    tap_->PostReload("sys catalog opened", clock()->Now());
+  }
 
   RETURN_NOT_OK(Thread::Create(
       "master_host", "pin_refresh", &MasterHost::RefreshHistoryRetentionPinLoop, this,
       &pin_refresh_thread_));
-  // Terminates the process past its memory limit, as in master_main.cc.
-  total_mem_watcher_ = server::TotalMemWatcher::Create();
-  RETURN_NOT_OK(Thread::Create(
-      "total_mem_watcher", "loop",
-      [this] {
-        total_mem_watcher_->MemoryMonitoringLoop([this] { termination_monitor_->Terminate(); });
-      },
-      &total_mem_watcher_thread_));
+  // Terminates the process past its memory limit, as in master_main.cc. Only one termination
+  // monitor may exist in a process, and an embedded master is stopped by its test instead.
+  if (!embedded_) {
+    termination_monitor_ = TerminationMonitor::Create();
+    total_mem_watcher_ = server::TotalMemWatcher::Create();
+    RETURN_NOT_OK(Thread::Create(
+        "total_mem_watcher", "loop",
+        [this] {
+          total_mem_watcher_->MemoryMonitoringLoop([this] { termination_monitor_->Terminate(); });
+        },
+        &total_mem_watcher_thread_));
+  }
   google::FlushLogFiles(google::INFO);
   return Status::OK();
 }
@@ -803,7 +827,9 @@ void MasterHost::RefreshHistoryRetentionPinLoop() {
   // CatalogManager's background thread refreshes the published pin on followers at this interval.
   const auto interval = MonoDelta::FromMilliseconds(FLAGS_catalog_manager_bg_task_wait_ms);
   do {
-    if (FLAGS_enable_db_history_retention_pins && !opts_.IsShellMode()) {
+    // An embedded master opens its sys catalog on another thread, which may not have finished.
+    if (FLAGS_enable_db_history_retention_pins && sys_catalog_initialized_ &&
+        !opts_.IsShellMode()) {
       WARN_NOT_OK(
           sys_catalog_->Load<master::HistoryRetentionPinLoader>(
               "ysql history retention pin", ysql_history_retention_pin_),
@@ -905,7 +931,7 @@ Status MasterHost::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB& req
 }
 
 void MasterHost::WaitForTermination() const {
-  termination_monitor_->WaitForTermination();
+  CHECK_NOTNULL(termination_monitor_.get())->WaitForTermination();
 }
 
 std::unique_ptr<MasterInfoHandle> MasterHost::InfoHandle() {
@@ -918,6 +944,9 @@ void MasterHost::ShutdownHost() {
   }
   LOG(INFO) << "Rust master host shutting down...";
   stop_latch_.CountDown();
+  if (open_sys_catalog_thread_) {
+    CHECK_OK(ThreadJoiner(open_sys_catalog_thread_.get()).Join());
+  }
   if (pin_refresh_thread_) {
     CHECK_OK(ThreadJoiner(pin_refresh_thread_.get()).Join());
   }
@@ -1085,6 +1114,23 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
                          master::ValidateAutoFlagsConfigResponsePB>(
         request, [this](const auto& req, auto* resp) {
           return auto_flags_manager_->ValidateAutoFlagsConfig(&req, resp);
+        });
+  }
+  // `request` is the cluster config's EncryptionInfoPB, empty when it has none, as
+  // CatalogManager passes to its EncryptionManager.
+  if (name == "GetFullUniverseKeyRegistry") {
+    if (request.empty()) {
+      return ToRustBytes(master::GetFullUniverseKeyRegistryResponsePB().SerializeAsString());
+    }
+    return HandleRequest<master::EncryptionInfoPB, master::GetFullUniverseKeyRegistryResponsePB>(
+        request, [this](const auto& info, auto* resp) {
+          return encryption_manager_->GetFullUniverseKeyRegistry(info, resp);
+        });
+  }
+  if (name == "IsEncryptionEnabled") {
+    return HandleRequest<master::EncryptionInfoPB, master::IsEncryptionEnabledResponsePB>(
+        request, [this](const auto& info, auto* resp) {
+          return encryption_manager_->IsEncryptionEnabled(info, resp);
         });
   }
   if (name == "WriteSysCatalogEntry") {

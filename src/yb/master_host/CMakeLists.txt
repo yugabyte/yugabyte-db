@@ -36,6 +36,12 @@ if(YB_LTO_ENABLED)
 endif()
 target_link_libraries(yb-master-rs${YB_DYNAMICALLY_LINKED_EXE_SUFFIX} ${YB_MASTER_RS_DEPS})
 
+# The Rust master as a library, for in-process test clusters (embedded_master.h). Only the
+# integration-tests library links it, so no executable gets two Rust static libraries.
+ADD_YB_LIBRARY(yb_master_rs_embedded
+  SRCS embedded_master.cc
+  DEPS yb_master_host_obj yb_rust_bridge_obj yb_master_rs master openssl ${YB_BASE_LIBS})
+
 # Built only on request until the LTO whole-program link is validated with a Rust static library.
 yb_add_lto_target(yb-master-rs${YB_DYNAMICALLY_LINKED_EXE_SUFFIX} yb-master-rs "" EXCLUDE_FROM_ALL)
 

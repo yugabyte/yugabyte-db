@@ -65,6 +65,7 @@
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_client.pb.h"
+#include "yb/master/master_client.proxy.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.pb.h"
@@ -72,6 +73,10 @@
 #include "yb/master/object_lock_info_manager.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/ts_manager.h"
+
+#ifdef YB_WITH_RUST_MASTER
+#include "yb/master_host/embedded_master.h"
+#endif
 
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/rate_limiter.h"
@@ -158,6 +163,46 @@ namespace {
 
 const int kMasterLeaderElectionWaitTimeSeconds = 20 * kTimeMultiplier;
 const int kTabletReportWaitTimeSeconds = 5;
+
+// A Rust master's catalog and registry are only visible through its RPCs.
+
+Status GetTabletLocationsByRpc(
+    MiniMaster& master, const TabletId& tablet_id, master::TabletLocationsPB* locations) {
+  rpc::ProxyCache proxy_cache(&master.messenger());
+  master::MasterClientProxy proxy(&proxy_cache, master.bound_rpc_addr());
+  master::GetTabletLocationsRequestPB req;
+  req.add_tablet_ids(tablet_id);
+  master::GetTabletLocationsResponsePB resp;
+  rpc::RpcController controller;
+  controller.set_timeout(10s);
+  RETURN_NOT_OK(proxy.GetTabletLocations(req, &resp, &controller));
+  RETURN_NOT_OK(ResponseStatus(resp));
+  SCHECK_EQ(
+      resp.tablet_locations_size(), 1, NotFound,
+      Format("No locations of tablet $0: $1", tablet_id, resp.ShortDebugString()));
+  *locations = resp.tablet_locations(0);
+  return Status::OK();
+}
+
+// The tservers of `tservers` (uuid to instance seqno) the master lists, live ones only when
+// `live_only`. Unlike the C++ path it cannot check that each sent a full tablet report.
+Result<size_t> CountRegisteredTabletServers(
+    MiniMaster& master, const std::unordered_map<std::string, int64_t>& tservers,
+    bool live_only) {
+  rpc::ProxyCache proxy_cache(&master.messenger());
+  master::MasterClusterProxy proxy(&proxy_cache, master.bound_rpc_addr());
+  master::ListTabletServersRequestPB req;
+  master::ListTabletServersResponsePB resp;
+  rpc::RpcController controller;
+  controller.set_timeout(10s);
+  RETURN_NOT_OK(proxy.ListTabletServers(req, &resp, &controller));
+  RETURN_NOT_OK(ResponseStatus(resp));
+  return std::ranges::count_if(resp.servers(), [&](const auto& server) {
+    auto it = tservers.find(server.instance_id().permanent_uuid());
+    return it != tservers.end() && it->second == server.instance_id().instance_seqno() &&
+           (!live_only || server.alive());
+  });
+}
 
 std::string GetClusterDataDirName(const MiniClusterOptions& options) {
   std::string cluster_name = "minicluster-data";
@@ -364,9 +409,15 @@ Status MiniCluster::StartMasters() {
     }
   }};
 
+#ifdef YB_WITH_RUST_MASTER
+  if (options_.rust_masters != master::RustMasters::kNone) {
+    master_host::RegisterEmbeddedRustMaster();
+  }
+#endif
   for (size_t i = 0; i < options_.num_masters; i++) {
     mini_masters_[i] = std::make_shared<MiniMaster>(
         options_.master_env, GetMasterFsRoot(i), master_rpc_ports_[i], master_web_ports_[i], i);
+    mini_masters_[i]->set_rust(master::IsRustMaster(options_.rust_masters, i));
     auto status = mini_masters_[i]->StartDistributedMaster(master_rpc_ports_);
     LOG_IF(INFO, !status.ok()) << "Failed to start master: " << status;
     RETURN_NOT_OK_PREPEND(status, Format("Couldn't start follower $0", i));
@@ -472,7 +523,7 @@ Status MiniCluster::AddTabletServer(
   auto master_addr = std::make_shared<server::MasterAddresses>();
   for (const shared_ptr<MiniMaster>& master : mini_masters_) {
     master_addr->push_back({HostPort(master->bound_rpc_addr())});
-    for (const auto& hp : master->master()->opts().broadcast_addresses) {
+    for (const auto& hp : master->opts().broadcast_addresses) {
       master_addr->back().push_back(hp);
     }
   }
@@ -601,11 +652,11 @@ ssize_t MiniCluster::LeaderMasterIdx() {
   while (sw.elapsed().wall_seconds() < kMasterLeaderElectionWaitTimeSeconds) {
     for (size_t i = 0; i < mini_masters_.size(); i++) {
       MiniMaster* master = mini_master(i);
-      if (master->master() == nullptr || master->master()->IsShutdown()) {
+      if (master->is_rust() ? !master->is_running()
+                            : master->master() == nullptr || master->master()->IsShutdown()) {
         continue;
       }
-      SCOPED_LEADER_SHARED_LOCK(l, master->master()->catalog_manager_impl());
-      if (l.IsInitializedAndIsLeader()) {
+      if (auto leader = master->IsLeaderAndReady(); leader.ok() && *leader) {
         return i;
       }
     }
@@ -832,10 +883,10 @@ Status MiniCluster::WaitForReplicaCount(const TableId& tablet_id,
       continue;
     }
     locations->Clear();
-    Status s = (*leader_mini_master)
-                   ->master()
-                   ->catalog_manager()
-                   ->GetTabletLocations(tablet_id, locations);
+    Status s = (*leader_mini_master)->is_rust()
+        ? GetTabletLocationsByRpc(**leader_mini_master, tablet_id, locations)
+        : (*leader_mini_master)->master()->catalog_manager()->GetTabletLocations(
+              tablet_id, locations);
     if (s.ok() && ((locations->stale() && expected_count == 0) ||
         (!locations->stale() && locations->replicas_size() == expected_count))) {
       return Status::OK();
@@ -870,7 +921,15 @@ Result<std::vector<std::shared_ptr<master::TSDescriptor>>> MiniCluster::WaitForT
   sw.start();
   while (sw.elapsed().wall_seconds() < FLAGS_TEST_mini_cluster_registration_wait_time_sec) {
     auto leader = GetLeaderMiniMaster();
-    if (leader.ok()) {
+    if (leader.ok() && (*leader)->is_rust()) {
+      // A Rust master has no descriptors to return.
+      auto registered = CountRegisteredTabletServers(**leader, mini_cluster_tservers, live_only);
+      if (registered.ok() && *registered == count) {
+        LOG(INFO) << count << " TS(s) registered with the Rust master after "
+                  << sw.elapsed().wall_seconds() << "s";
+        return std::vector<std::shared_ptr<master::TSDescriptor>>();
+      }
+    } else if (leader.ok()) {
       auto descs = (*leader)->ts_manager().GetAllDescriptors();
       if (live_only || descs.size() == count) {
         // GetAllDescriptors() may return servers that are no longer online.

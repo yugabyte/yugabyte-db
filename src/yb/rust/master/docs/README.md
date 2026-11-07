@@ -62,6 +62,7 @@ Dependencies point down: `rpc-handlers` -> `ts-manager` -> `tablet-locations`, `
 | MasterCluster | ListTabletServers, ListLiveTabletServers, RemoveTabletServer, IsMasterLeaderServiceReady, GetMasterClusterConfig, ChangeMasterClusterConfig, SetPreferredZones, GetMasterXClusterConfig, GetAutoFlagsConfig, ValidateAutoFlagsConfig; ChangeLoadBalancerState and GetLoadBalancerState on every master | Balancer status (W8); AutoFlags promote, rollback, single promote and demote (W9); DumpState |
 | MasterClient | GetTabletLocations, GetTableLocations, GetTransactionStatusTablets (global table) | GetTabletsMetadata, GetStatefulServiceLocation, GetIndexBackfillProgress (W7); GetYsqlCatalogConfig, ReservePgsqlOids, GetYsqlYbSystemTableInfo (W9); Redis methods never (D16) |
 | MasterYsqlLease | | RefreshYsqlLease (W9) |
+| MasterEncryption | GetFullUniverseKeyRegistry, IsEncryptionEnabled; GetUniverseKeyRegistry, AddUniverseKeys and HasUniverseKeyInMemory on every master | ChangeEncryptionInfo |
 | MasterRustPeer | PushLocations, DumpCatalog (tests), on every Rust master | |
 
 Every other leader method answers `NotSupported` on a ready Rust leader, naming its workstream.

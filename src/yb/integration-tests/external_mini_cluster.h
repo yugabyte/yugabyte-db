@@ -57,6 +57,8 @@
 #include "yb/integration-tests/external_yb_controller.h"
 #include "yb/integration-tests/mini_cluster_base.h"
 
+#include "yb/master/embedded_master_if.h"
+
 #include "yb/server/server_fwd.h"
 
 #include "yb/tserver/tserver_admin.proxy.h"
@@ -64,7 +66,6 @@
 #include "yb/tserver/tserver_types.pb.h"
 
 #include "yb/util/curl_util.h"
-#include "yb/util/enums.h"
 #include "yb/util/env.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_fwd.h"
@@ -116,12 +117,8 @@ struct ExternalClusterPGConnectionOptions {
   std::optional<size_t> timeout_secs;
 };
 
-// Which masters run the Rust master (yb-master-rs), with leading allowed.
-YB_DEFINE_ENUM(RustMasters, (kNone)(kAll)(kFirst));
-
-// The default from the YB_RUST_MASTER environment variable: "1" or "all" for kAll, "mixed" for
-// kFirst (one Rust master in a quorum of C++ masters), anything else for kNone.
-RustMasters RustMastersFromEnv();
+using master::RustMasters;
+using master::RustMastersFromEnv;
 
 struct ExternalMiniClusterOptions {
 

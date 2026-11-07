@@ -117,7 +117,9 @@ impl LeaderServices {
         Ok((token, snapshot))
     }
 
-    fn cluster_config(snapshot: &CatalogSnapshot) -> Result<SysClusterConfigEntryPB, Status> {
+    pub(crate) fn cluster_config(
+        snapshot: &CatalogSnapshot,
+    ) -> Result<SysClusterConfigEntryPB, Status> {
         snapshot
             .cluster_config()
             .ok_or_else(|| Status::new(StatusCode::IllegalState, "No cluster config"))?

@@ -31,6 +31,7 @@ struct FakeInfo {
     role: AtomicI32,
     config: Mutex<Option<RaftConfigPB>>,
     host_calls: Mutex<Vec<String>>,
+    last_host_request: Mutex<Vec<u8>>,
 }
 
 impl FakeInfo {
@@ -41,6 +42,7 @@ impl FakeInfo {
             role: AtomicI32::new(PeerRole::FOLLOWER as i32),
             config: Mutex::new(Some(config(&[("peer-a", 7100), ("peer-b", 7101)], 12))),
             host_calls: Mutex::new(vec![]),
+            last_host_request: Mutex::new(vec![]),
         })
     }
 }
@@ -99,8 +101,9 @@ impl MasterInfo for FakeInfo {
         vec![]
     }
 
-    fn handle_on_host(&self, method: &str, _request: &[u8]) -> Result<Vec<u8>, Status> {
+    fn handle_on_host(&self, method: &str, request: &[u8]) -> Result<Vec<u8>, Status> {
         self.host_calls.lock().unwrap().push(method.to_string());
+        *self.last_host_request.lock().unwrap() = request.to_vec();
         Ok(b"host".to_vec())
     }
 }
@@ -625,6 +628,21 @@ mod leader_tests {
             resp.error.status.code().value(),
             StatusCode::NotSupported as i32
         );
+    }
+
+    #[test]
+    fn encryption_methods_get_the_cluster_configs_encryption_info() {
+        let (harness, _source) = with_leader(true);
+        for method in ["GetFullUniverseKeyRegistry", "IsEncryptionEnabled"] {
+            *harness.info.last_host_request.lock().unwrap() = b"stale".to_vec();
+            assert_eq!(success(harness.call(method, b"ignored".to_vec())), b"host");
+            assert_eq!(
+                harness.info.host_calls.lock().unwrap().last().unwrap(),
+                method
+            );
+            // The cluster config has no encryption info.
+            assert!(harness.info.last_host_request.lock().unwrap().is_empty());
+        }
     }
 
     #[test]

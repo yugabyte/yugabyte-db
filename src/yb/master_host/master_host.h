@@ -106,6 +106,15 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   // Must not outlive it.
   std::unique_ptr<MasterInfoHandle> InfoHandle();
 
+  // For an embedded master's tests (embedded_master.h).
+  master::SysCatalogTable& sys_catalog() { return *sys_catalog_; }
+  // Marks this host as one of several masters in a test process. Must be called before
+  // StartHost: it then opens the sys catalog asynchronously, as C++ InitSysCatalogAsync does,
+  // since a new universe's CreateNew waits for every peer and an in-process cluster starts them one
+  // at a time; and it runs no process-wide memory watcher.
+  void SetEmbedded() { embedded_ = true; }
+  const master::MasterOptions& opts() const { return opts_; }
+
   rust::Vec<uint8_t> InstancePB() const;
   rust::Vec<uint8_t> RegistrationPB() const;
   rust::Vec<uint8_t> CommittedConsensusStatePB() const;
@@ -244,6 +253,8 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   scoped_refptr<Thread> pin_refresh_thread_;
   std::unique_ptr<server::TotalMemWatcher> total_mem_watcher_;
   scoped_refptr<Thread> total_mem_watcher_thread_;
+  bool embedded_ = false;
+  scoped_refptr<Thread> open_sys_catalog_thread_;
   CountDownLatch stop_latch_{1};
   std::unique_ptr<TerminationMonitor> termination_monitor_;
 
@@ -255,7 +266,8 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   bool sys_catalog_started_ = false;
   // Serializes remote bootstrap requests, as CatalogManager does.
   std::mutex remote_bootstrap_mutex_;
-  bool tablet_exists_ = false;
+  // Set by the sys-catalog open, which runs on its own thread in an embedded master.
+  std::atomic<bool> tablet_exists_{false};
 };
 
 class MasterInfoHandle {
@@ -299,7 +311,12 @@ class MasterInfoHandle {
   MasterHost& host_;
 };
 
+// The host of the yb-master-rs process, from the flags. Throws if they ask for something the Rust
+// master does not support.
 std::unique_ptr<MasterHost> CreateMasterHost();
+
+// A host with explicit options, for a master embedded in a test process (embedded_master.h).
+std::unique_ptr<MasterHost> CreateMasterHostWithOptions(master::MasterOptions opts);
 
 }  // namespace master_host
 }  // namespace yb

@@ -488,21 +488,6 @@ Status ExternalMiniCluster::Restart() {
   return Status::OK();
 }
 
-RustMasters RustMastersFromEnv() {
-  const char* value = getenv("YB_RUST_MASTER");
-  if (value == nullptr) {
-    return RustMasters::kNone;
-  }
-  const std::string_view mode(value);
-  if (mode == "1" || mode == "all") {
-    return RustMasters::kAll;
-  }
-  if (mode == "mixed") {
-    return RustMasters::kFirst;
-  }
-  return RustMasters::kNone;
-}
-
 string ExternalMiniCluster::GetBinaryPath(const string& binary) const {
   CHECK(!daemon_bin_path_.empty());
   string default_path = JoinPathSegments(daemon_bin_path_, binary);
@@ -576,8 +561,7 @@ Result<ExternalMasterPtr> ExternalMiniCluster::StartMaster(
 
   string addr = MasterAddressForPort(rpc_port);
   const bool rust = exe_override.empty() &&
-      (opts_.rust_masters == RustMasters::kAll ||
-       (opts_.rust_masters == RustMasters::kFirst && add_new_master_at_ == 0));
+      master::IsRustMaster(opts_.rust_masters, add_new_master_at_);
   string exe = !exe_override.empty() ? exe_override
       : rust ? GetBinaryPath(GetRustMasterBinaryName())
       : GetBinaryPath(GetMasterBinaryName());

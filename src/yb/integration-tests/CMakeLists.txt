@@ -135,6 +135,14 @@ target_link_libraries(integration-tests
   test_echo_service_proto
   tools_test_utils)
 
+# MiniCluster runs Rust masters in-process with YB_RUST_MASTER
+# (src/yb/master_host/embedded_master.h).
+# src/yb/master_host is configured after this directory, so this checks the same condition.
+if(NOT "$ENV{YB_SKIP_RUST}" STREQUAL "1")
+  target_link_libraries(integration-tests yb_master_rs_embedded)
+  target_compile_definitions(integration-tests PRIVATE YB_WITH_RUST_MASTER)
+endif()
+
 add_dependencies(integration-tests
   "${YB_MASTER_DYNAMIC_EXE_NAME}"
   "${YB_TSERVER_DYNAMIC_EXE_NAME}"
@@ -179,6 +187,10 @@ ADD_YB_TEST(client_failover-itest)
 ADD_YB_TEST(client-stress-test)
 ADD_YB_TEST(cluster_trace-test)
 ADD_YB_TEST(rust_master-itest)
+ADD_YB_TEST(rust_master_mini_cluster-test)
+if(NOT "$ENV{YB_SKIP_RUST}" STREQUAL "1")
+  target_compile_definitions(rust_master_mini_cluster-test PRIVATE YB_WITH_RUST_MASTER)
+endif()
 if(NOT "$ENV{YB_SKIP_RUST}" STREQUAL "1")
   # The executables the test runs (it is skipped when Rust is not built).
   add_dependencies(rust_master-itest

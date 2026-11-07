@@ -65,7 +65,10 @@ For the Rust catalog the host offers scans at a read time, the tablet's safe tim
 Raft writes in a term (`WriteSysCatalogRows`, the `SysCatalogTable::SyncWrite` request without
 the wait), the Raft leader state, and the heartbeat fields its C++ objects own
 (`HeartbeatHostParts`: universe key registry, snapshots info, AutoFlags config). On a leader it
-also serves `GetAutoFlagsConfig` and `ValidateAutoFlagsConfig` through `HandleOnHost`.
+also serves `GetAutoFlagsConfig` and `ValidateAutoFlagsConfig` through `HandleOnHost`, and
+`GetFullUniverseKeyRegistry` and `IsEncryptionEnabled`, for which Rust passes the cluster config's
+`EncryptionInfoPB` instead of the request. Tservers wait for `GetFullUniverseKeyRegistry` before
+they start (with `allow_encryption_at_rest`, the default).
 
 **Leading.** Only with `--TEST_rust_master_allow_leadership`
 ([leadership.md](leadership.md)): failure detection stays on and an election only nudges the
@@ -78,6 +81,24 @@ A Rust leader leaves these C++ leader duties undone, so leading stays test-only:
 schedules do not take snapshots and restores are not served (the coordinator's `LeaderTerm()` is
 -1), AutoFlags are not promoted, a removed master is not told (`InformRemovedMaster`), and the
 YSQL history retention pin is not published.
+
+## Embedded in a test process
+
+`src/yb/master_host/embedded_master.cc` runs the Rust master inside a MiniCluster test (D12).
+MiniMaster cannot link the host, which depends on the `master` library, so the host registers a
+factory in `src/yb/master/embedded_master_if.h` (`RegisterEmbeddedRustMaster`) that MiniMaster
+calls for each Rust master. The factory builds the host from MiniMaster's `MasterOptions`
+(`CreateMasterHostWithOptions`) and hands it to `master_rs::start_embedded`, which runs the same
+startup as `run_master` minus the wait for SIGTERM; `stop_embedded` shuts it down.
+
+An embedded host (`SetEmbedded`) differs from the binary's in what a process has only one of, or
+what would block the test:
+
+- It opens the sys catalog on a thread of its own. `SysCatalogTable::CreateNew` waits for every
+  peer, and MiniCluster starts the masters one after another.
+- It does not raise ulimits or start the `TotalMemWatcher` and its `TerminationMonitor` (one per
+  process).
+- `TEST_rust_master_allow_leadership` is set, process-wide, so a cluster of Rust masters elects one.
 
 ## Bridges
 

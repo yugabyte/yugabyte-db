@@ -15,7 +15,7 @@
 
 use crate::store::{complete_write, ApplySink, WriteCompletion};
 use crate::web::WebMasterList;
-use crate::{register_flags, run_master};
+use crate::{register_flags, run_master, start_embedded, stop_embedded, EmbeddedRustMaster};
 
 #[cxx::bridge(namespace = "yb::master_host")]
 pub(crate) mod bridge {
@@ -77,6 +77,16 @@ pub(crate) mod bridge {
         /// Runs the master; returns the process exit code. Called after flag parsing.
         #[namespace = "yb::master_rs"]
         fn run_master() -> i32;
+
+        /// A master running inside another process (MiniCluster).
+        #[namespace = "yb::master_rs"]
+        type EmbeddedRustMaster;
+        /// Starts a master on `host`, created by the embedding process; fails if it cannot start.
+        #[namespace = "yb::master_rs"]
+        fn start_embedded(host: UniquePtr<MasterHost>) -> Result<Box<EmbeddedRustMaster>>;
+        /// Shuts it down: the host, then the runtime.
+        #[namespace = "yb::master_rs"]
+        fn stop_embedded(master: Box<EmbeddedRustMaster>);
 
         /// The master list the host's web pages show.
         type WebMasterList;
