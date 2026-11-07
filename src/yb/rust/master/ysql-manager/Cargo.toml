@@ -1,0 +1,27 @@
+[package]
+name = "master-ysql-manager"
+description = """\
+    YSQL on the leader: initdb and the initial sys catalog snapshot, catalog versions, object \
+    locks and leases, and major upgrades.\
+"""
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+master-catalog-state.workspace = true
+master-table-lifecycle.workspace = true
+protobuf.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+yb-host-api.workspace = true
+yb-proto.workspace = true
+
+[dev-dependencies]
+master-sys-catalog.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true

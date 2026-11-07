@@ -794,7 +794,7 @@ mod default_rows {
     use super::*;
     use crate::defaults::{
         default_rows, set_universe_uuid_if_needed, write_default_rows, DefaultsHost,
-        DefaultsOptions, DEFAULT_YCQL_ROLE, SECURITY_CONFIG_ID,
+        DefaultsOptions, DEFAULT_YCQL_ROLE, SECURITY_CONFIG_ID, YSQL_CATALOG_CONFIG_ID,
     };
     use yb_proto::pb::catalog_entity_info::SysConfigEntryPB;
 
@@ -866,7 +866,7 @@ mod default_rows {
         s.catalog.barrier().await;
         let host = FakeHost::default();
         let token = leadership.token().unwrap();
-        write_default_rows(&writer, &token, &host, &OPTIONS)
+        write_default_rows(&writer, &token, &host, &OPTIONS, false)
             .await
             .unwrap();
         assert_eq!(s.fake.writes(), 1, "one Raft write");
@@ -915,7 +915,9 @@ mod default_rows {
         );
 
         // The next term finds nothing missing; the host sees the system table and its tablet.
-        assert!(default_rows(&snapshot, &host, &OPTIONS).unwrap().is_empty());
+        assert!(default_rows(&snapshot, &host, &OPTIONS, false)
+            .unwrap()
+            .is_empty());
         assert_eq!(
             host.seen.lock().unwrap().clone().unwrap(),
             (vec![b"peers-id".to_vec()], vec!["peers-id".to_string()])
@@ -927,7 +929,7 @@ mod default_rows {
             id: DEFAULT_YCQL_ROLE.to_vec(),
         }]);
         s.catalog.barrier().await;
-        assert!(default_rows(&s.catalog.snapshot(), &host, &OPTIONS)
+        assert!(default_rows(&s.catalog.snapshot(), &host, &OPTIONS, false)
             .unwrap()
             .is_empty());
     }
@@ -945,7 +947,8 @@ mod default_rows {
         )]);
         let s = start(fake, events);
         s.catalog.barrier().await;
-        let mutation = default_rows(&s.catalog.snapshot(), &FakeHost::default(), &OPTIONS).unwrap();
+        let mutation =
+            default_rows(&s.catalog.snapshot(), &FakeHost::default(), &OPTIONS, false).unwrap();
         // The universe uuid is added with a new version; the cluster uuid stays.
         let (leadership, _source) = ready_for_tests(1).await;
         let writer = CatalogWriter::start(
@@ -968,6 +971,80 @@ mod default_rows {
         assert_eq!(config.version(), 8);
         assert_eq!(config.cluster_uuid(), "existing");
         assert!(!config.universe_uuid().is_empty());
+    }
+
+    #[tokio::test]
+    async fn after_the_initial_snapshot_the_configs_are_new_and_initdb_is_done() {
+        use yb_proto::pb::catalog_entity_info::{SysConfigEntryPB, SysXClusterConfigEntryPB};
+        // The snapshot's rows: another universe's configs, and initdb not marked done.
+        let (fake, events) = FakeSysCatalog::new();
+        let mut config = SysClusterConfigEntryPB::new();
+        config.set_version(3);
+        config.set_cluster_uuid("snapshot-maker".into());
+        config.set_universe_uuid("snapshot-universe".into());
+        let mut xcluster = SysXClusterConfigEntryPB::new();
+        xcluster.set_version(5);
+        let mut ysql = SysConfigEntryPB::new();
+        let y = ysql.mut_ysql_catalog_config();
+        y.set_version(4);
+        y.set_initdb_error("stale".into());
+        fake.apply(vec![
+            upsert(
+                SysRowEntryType::CLUSTER_CONFIG,
+                "",
+                config.write_to_bytes().unwrap(),
+            ),
+            upsert(
+                SysRowEntryType::XCLUSTER_CONFIG,
+                "",
+                xcluster.write_to_bytes().unwrap(),
+            ),
+            upsert(
+                SysRowEntryType::SYS_CONFIG,
+                std::str::from_utf8(YSQL_CATALOG_CONFIG_ID).unwrap(),
+                ysql.write_to_bytes().unwrap(),
+            ),
+        ]);
+        let s = start(fake, events);
+        s.catalog.barrier().await;
+        let mutation =
+            default_rows(&s.catalog.snapshot(), &FakeHost::default(), &OPTIONS, true).unwrap();
+        let (leadership, _source) = ready_for_tests(1).await;
+        let writer = CatalogWriter::start(
+            s.catalog.clone(),
+            s.fake.clone(),
+            leadership.clone(),
+            WriterOptions::default(),
+        );
+        writer
+            .submit(&leadership.token().unwrap(), mutation)
+            .await
+            .unwrap();
+        let snapshot = s.catalog.snapshot();
+        let config: SysClusterConfigEntryPB = snapshot.cluster_config().unwrap().parse().unwrap();
+        assert_eq!(config.version(), 0);
+        assert_ne!(config.cluster_uuid(), "snapshot-maker");
+        assert_ne!(config.universe_uuid(), "snapshot-universe");
+        let xcluster: SysXClusterConfigEntryPB = snapshot
+            .get(SysRowEntryType::XCLUSTER_CONFIG, b"")
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert_eq!(xcluster.version(), 0);
+        let ysql: SysConfigEntryPB = snapshot
+            .get(SysRowEntryType::SYS_CONFIG, YSQL_CATALOG_CONFIG_ID)
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert!(ysql.ysql_catalog_config().initdb_done());
+        assert!(!ysql.ysql_catalog_config().has_initdb_error());
+        assert_eq!(ysql.ysql_catalog_config().version(), 4);
+        // Nothing is missing afterwards.
+        assert!(
+            default_rows(&snapshot, &FakeHost::default(), &OPTIONS, false)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[tokio::test]
@@ -1002,7 +1079,7 @@ mod default_rows {
         let s = start(fake, events);
         s.catalog.barrier().await;
         let host = FakeHost::default();
-        default_rows(&s.catalog.snapshot(), &host, &OPTIONS).unwrap();
+        default_rows(&s.catalog.snapshot(), &host, &OPTIONS, false).unwrap();
         assert_eq!(
             host.seen.lock().unwrap().clone().unwrap(),
             (vec![b"altering".to_vec()], vec![])
@@ -1020,13 +1097,13 @@ mod default_rows {
             cluster_uuid,
             ..OPTIONS
         };
-        let status = default_rows(&snapshot, &host, &with_flag(|| "not-a-uuid".into()))
+        let status = default_rows(&snapshot, &host, &with_flag(|| "not-a-uuid".into()), false)
             .err()
             .unwrap();
         assert_eq!(status.code, StatusCode::Corruption);
 
         let valid = || "0BADF00D-0000-4000-8000-000000000001".to_string();
-        let mutation = default_rows(&snapshot, &host, &with_flag(valid)).unwrap();
+        let mutation = default_rows(&snapshot, &host, &with_flag(valid), false).unwrap();
         let (leadership, _source) = ready_for_tests(1).await;
         let writer = CatalogWriter::start(
             s.catalog.clone(),

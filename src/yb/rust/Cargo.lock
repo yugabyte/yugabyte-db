@@ -674,6 +674,7 @@ dependencies = [
  "master-tablet-split-manager",
  "master-task-runtime",
  "master-ts-manager",
+ "master-ysql-manager",
  "protobuf",
  "tokio",
  "tracing",
@@ -696,6 +697,7 @@ dependencies = [
  "master-tablet-split-manager",
  "master-task-runtime",
  "master-ts-manager",
+ "master-ysql-manager",
  "protobuf",
  "tokio",
  "tracing",
@@ -812,6 +814,20 @@ dependencies = [
  "tracing",
  "yb-cpp-host",
  "yb-flags",
+ "yb-host-api",
+ "yb-proto",
+]
+
+[[package]]
+name = "master-ysql-manager"
+version = "0.1.0"
+dependencies = [
+ "master-catalog-state",
+ "master-sys-catalog",
+ "master-table-lifecycle",
+ "protobuf",
+ "tokio",
+ "tracing",
  "yb-host-api",
  "yb-proto",
 ]

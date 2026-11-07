@@ -15,8 +15,9 @@
 //! term before it becomes ready, in one mutation.
 //!
 //! C++ writes them one at a time; here they are one Raft write, so a crash cannot leave a universe
-//! with some of them. YSQL's initial sys catalog snapshot is not restored here: a Rust leader
-//! serves no YSQL until W9.
+//! with some of them. Right after the initial sys catalog snapshot is restored
+//! (`master-ysql-manager`), the same write replaces the snapshot's cluster config, xCluster config
+//! and persistence block map with new ones and marks initdb done, as C++ does after the restore.
 
 use std::sync::OnceLock;
 
@@ -117,10 +118,12 @@ fn parse<M: protobuf::MessageFull>(
 }
 
 /// The mutation that writes every missing default row of `snapshot`; empty when none is missing.
+/// `after_initial_snapshot`: the rows are the initial sys catalog snapshot's, just restored.
 pub fn default_rows(
     snapshot: &CatalogSnapshot,
     host: &dyn DefaultsHost,
     options: &DefaultsOptions,
+    after_initial_snapshot: bool,
 ) -> Result<Mutation, Status> {
     let mut mutation = Mutation::new();
     let add = |mutation: Mutation, kind, id: &[u8], data: Vec<u8>| -> Mutation {
@@ -188,6 +191,12 @@ pub fn default_rows(
     {
         ysql.mut_ysql_catalog_config()
             .set_transactional_sys_catalog_enabled(true);
+    }
+    if after_initial_snapshot {
+        // `YsqlCatalogConfig::SetInitDbDone`.
+        let config = ysql.mut_ysql_catalog_config();
+        config.set_initdb_done(true);
+        config.clear_initdb_error();
     }
     if stored_ysql.as_ref() != Some(&ysql) {
         mutation = add(
@@ -287,8 +296,14 @@ pub fn default_rows(
         );
     }
 
-    // PrepareDefaultClusterConfig, and SetUniverseUuidIfNeeded on an existing universe.
-    match parse::<SysClusterConfigEntryPB>(snapshot, SysRowEntryType::CLUSTER_CONFIG, b"")? {
+    // PrepareDefaultClusterConfig, and SetUniverseUuidIfNeeded on an existing universe. The
+    // snapshot's configs belong to the universe that made it.
+    let stored_cluster = if after_initial_snapshot {
+        None
+    } else {
+        parse::<SysClusterConfigEntryPB>(snapshot, SysRowEntryType::CLUSTER_CONFIG, b"")?
+    };
+    match stored_cluster {
         None => {
             let mut config = SysClusterConfigEntryPB::new();
             config.set_version(0);
@@ -327,9 +342,10 @@ pub fn default_rows(
     }
 
     // XClusterManager::PrepareDefaultXClusterConfig and PrepareDefaultPersistenceBlockMap.
-    if snapshot
-        .get(SysRowEntryType::XCLUSTER_CONFIG, b"")
-        .is_none()
+    if after_initial_snapshot
+        || snapshot
+            .get(SysRowEntryType::XCLUSTER_CONFIG, b"")
+            .is_none()
     {
         let mut config = SysXClusterConfigEntryPB::new();
         config.set_version(0);
@@ -340,9 +356,10 @@ pub fn default_rows(
             encode(&config)?,
         );
     }
-    if snapshot
-        .get(SysRowEntryType::PERSISTENCE_BLOCK_MAP, b"")
-        .is_none()
+    if after_initial_snapshot
+        || snapshot
+            .get(SysRowEntryType::PERSISTENCE_BLOCK_MAP, b"")
+            .is_none()
     {
         let mut map = SysPersistenceBlockMapEntryPB::new();
         map.set_version(0);
@@ -363,6 +380,7 @@ pub async fn write_default_rows(
     token: &LeaderToken,
     host: &dyn DefaultsHost,
     options: &DefaultsOptions,
+    after_initial_snapshot: bool,
 ) -> Result<(), Status> {
     // bcrypt is slow on purpose; hash once, not on every rebuild after a conflict.
     let host = HashOnce {
@@ -371,7 +389,10 @@ pub async fn write_default_rows(
     };
     writer
         .mutate(token, |snapshot| {
-            Ok((default_rows(snapshot, &host, options)?, ()))
+            Ok((
+                default_rows(snapshot, &host, options, after_initial_snapshot)?,
+                (),
+            ))
         })
         .await
         .map(|_| ())

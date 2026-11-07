@@ -43,9 +43,9 @@ use yb_proto::pb::common_types::PeerRole;
 use yb_proto::pb::consensus_metadata::ConsensusStatePB;
 use yb_proto::pb::master_admin::{
     DeleteNotServingTabletRequestPB, DeleteNotServingTabletResponsePB,
-    DisableTabletSplittingRequestPB, DisableTabletSplittingResponsePB,
-    IsTabletSplittingCompleteRequestPB, IsTabletSplittingCompleteResponsePB, SplitTabletRequestPB,
-    SplitTabletResponsePB,
+    DisableTabletSplittingRequestPB, DisableTabletSplittingResponsePB, IsInitDbDoneRequestPB,
+    IsInitDbDoneResponsePB, IsTabletSplittingCompleteRequestPB,
+    IsTabletSplittingCompleteResponsePB, SplitTabletRequestPB, SplitTabletResponsePB,
 };
 use yb_proto::pb::master_client::{
     GetTableLocationsRequestPB, GetTableLocationsResponsePB, GetTabletLocationsRequestPB,
@@ -835,6 +835,14 @@ impl Shared {
                         .splits
                         .delete_not_serving_tablet(token, deadline, &req)
                         .await
+                }
+            ),
+            "IsInitDbDone" => serve!(
+                IsInitDbDoneRequestPB,
+                IsInitDbDoneResponsePB,
+                |_req, resp| {
+                    master_ysql_manager::initdb::is_initdb_done(&snapshot, &mut resp);
+                    Ok(())
                 }
             ),
             "DisableTabletSplitting" => serve!(

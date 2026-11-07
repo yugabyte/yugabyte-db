@@ -29,6 +29,7 @@ without it the Rust master never leads ([leadership.md](leadership.md)).
 | [table-lifecycle.md](table-lifecycle.md) | Namespace and table DDL, tablet assignment |
 | [cluster-balancer.md](cluster-balancer.md) | The cluster balancer: planner, controller, RPCs |
 | [tablet-splits.md](tablet-splits.md) | Tablet splits |
+| [ysql-manager.md](ysql-manager.md) | YSQL on the leader: initdb, leases |
 | [task-runtime.md](task-runtime.md) | Scopes, controllers, retries, blocking pools |
 | [web.md](web.md) | The web port and pages |
 | [testing.md](testing.md) | Unit tests, conformance against the C++ master, itests |
@@ -47,6 +48,7 @@ Shared Rust pieces (build, bridges, protobuf, flags) are documented in
 | `master-catalog-state` | The in-memory catalog: snapshots, materializer, writer, self-check |
 | `master-cluster-balancer` | The cluster balancer: a pure planner (a view of the cluster in, replica and leader moves out) and the controller that sends its moves |
 | `master-tablet-split-manager` | Tablet splits: the split RPCs, the children's registration, the controller that sends splits |
+| `master-ysql-manager` | YSQL on the leader: the initial sys catalog snapshot and `IsInitDbDone` |
 | `master-leadership` | Leader phases and `LeaderToken` |
 | `master-task-runtime` | Term and entity scopes, controllers, retries, blocking pools |
 | `master-table-lifecycle` | Namespace and table DDL on the leader, and the controllers that create tablets |
@@ -68,7 +70,7 @@ Dependencies point down: `rpc-handlers` -> `ts-manager` -> `tablet-locations`, `
 | MasterCluster | ListTabletServers, ListLiveTabletServers, RemoveTabletServer, IsMasterLeaderServiceReady, GetMasterClusterConfig, ChangeMasterClusterConfig, SetPreferredZones, GetMasterXClusterConfig, GetAutoFlagsConfig, ValidateAutoFlagsConfig, IsLoadBalancerIdle, IsLoadBalanced, GetLoadMoveCompletion, GetLeaderBlacklistCompletion, AreLeadersOnPreferredOnly ([cluster-balancer.md](cluster-balancer.md)); ChangeLoadBalancerState and GetLoadBalancerState on every master | AutoFlags promote, rollback, single promote and demote (W9); DumpState |
 | MasterClient | GetTabletLocations, GetTableLocations, GetTransactionStatusTablets (global table) | GetTabletsMetadata, GetStatefulServiceLocation, GetIndexBackfillProgress (W7); GetYsqlCatalogConfig, ReservePgsqlOids, GetYsqlYbSystemTableInfo (W9); Redis methods never (D16) |
 | MasterDdl | CreateNamespace, DeleteNamespace, IsCreateNamespaceDone, IsDeleteNamespaceDone, ListNamespaces, GetNamespaceInfo, ListTables, GetTableSchema, CreateTable, IsCreateTableDone, AlterTable, IsAlterTableDone, DeleteTable and IsDeleteTableDone for YCQL tables that are not indexes ([table-lifecycle.md](table-lifecycle.md)) | The rest of W7 |
-| MasterAdmin | SplitTablet (manual), DeleteNotServingTablet ([tablet-splits.md](tablet-splits.md)) | The rest of the admin service |
+| MasterAdmin | SplitTablet, DeleteNotServingTablet, DisableTabletSplitting, IsTabletSplittingComplete ([tablet-splits.md](tablet-splits.md)); IsInitDbDone ([ysql-manager.md](ysql-manager.md)) | The rest of the admin service |
 | MasterYsqlLease | | RefreshYsqlLease (W9) |
 | MasterEncryption | GetFullUniverseKeyRegistry, IsEncryptionEnabled; GetUniverseKeyRegistry, AddUniverseKeys and HasUniverseKeyInMemory on every master | ChangeEncryptionInfo |
 | MasterRustPeer | PushLocations, DumpCatalog (tests), on every Rust master | |

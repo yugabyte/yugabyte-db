@@ -18,6 +18,7 @@
 
 #include "yb/master/master_flag_defaults.h"
 #include "yb/master/master_options.h"
+#include "yb/master/sys_catalog_initialization.h"
 
 #include "yb/tserver/server_main_util.h"
 
@@ -39,6 +40,8 @@ static int MasterHostMain(int argc, char** argv) {
   master_rs::register_flags();
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(MasterTServerParseFlagsAndInit(
       master::MasterOptions::kServerType, /*is_master=*/true, &argc, &argv));
+  // As master_main.cc: the shipped initial sys catalog snapshot, unless the flags say otherwise.
+  master::SetDefaultInitialSysCatalogSnapshotFlags();
   return master_rs::run_master();
 }
 

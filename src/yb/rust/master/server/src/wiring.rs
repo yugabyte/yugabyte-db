@@ -39,6 +39,7 @@ use master_task_runtime::{
 use master_ts_manager::{
     DeleteReplica, HeartbeatContributor, LocationStream, Peer, TsManager, TsManagerOptions,
 };
+use master_ysql_manager::initdb;
 use tokio::sync::watch;
 use yb_flags::{yb_flag, FlagRef, FlagTag};
 use yb_host_api::metrics::MetricRegistry;
@@ -360,7 +361,7 @@ impl Core {
             writer.clone(),
             leadership.clone(),
             ts_manager.clone(),
-            schema,
+            schema.clone(),
             LifecycleOptions {
                 replication_factor: || REPLICATION_FACTOR.get(),
                 max_create_tablets_per_ts: || MAX_CREATE_TABLETS_PER_TS.get(),
@@ -404,7 +405,9 @@ impl Core {
         let hook_ts_manager = ts_manager.clone();
         let hook_writer = writer.clone();
         let hook_leadership = Arc::downgrade(&leadership);
+        let hook_schema = schema.clone();
         leadership.add_ready_hook(Box::new(move |term| {
+            let schema = hook_schema.clone();
             let catalog = hook_catalog.clone();
             let ts_manager = hook_ts_manager.clone();
             let writer = hook_writer.clone();
@@ -419,7 +422,11 @@ impl Core {
                     yb_host_api::Status::new(StatusCode::Aborted, "shutting down")
                 })?;
                 let token = leadership.catch_up_token(term)?;
-                write_default_rows(&writer, &token, &*defaults, &DEFAULTS_OPTIONS).await?;
+                // A new YSQL universe's catalog starts as the initial sys catalog snapshot.
+                let restored =
+                    initdb::restore_initial_snapshot_if_needed(&catalog, schema, term).await?;
+                write_default_rows(&writer, &token, &*defaults, &DEFAULTS_OPTIONS, restored)
+                    .await?;
                 ts_manager.on_leader_ready(&catalog.snapshot());
                 Ok(())
             })

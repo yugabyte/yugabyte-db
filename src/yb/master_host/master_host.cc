@@ -49,6 +49,7 @@
 #include "yb/master/snapshot_coordinator_context.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
+#include "yb/master/sys_catalog_initialization.h"
 #include "yb/master/sys_catalog_context.h"
 #include "yb/master/sys_catalog_restore.h"
 #include "yb/master/sys_catalog_writer.h"
@@ -102,11 +103,13 @@
 #include "master/server/src/ffi.rs.h"
 
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
+DECLARE_bool(create_initial_sys_catalog_snapshot);
 DECLARE_int32(db_history_retention_pin_max_txn_age_sec);
 DECLARE_bool(emergency_repair_mode);
 DECLARE_bool(enable_db_history_retention_pins);
 DECLARE_bool(enable_leader_failure_detection);
 DECLARE_int64(inbound_rpc_memory_limit);
+DECLARE_string(initial_sys_catalog_snapshot_path);
 DECLARE_int32(master_consensus_svc_queue_length);
 DECLARE_bool(master_join_existing_universe);
 DECLARE_int32(master_remote_bootstrap_svc_queue_length);
@@ -1164,6 +1167,43 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
           for (const auto& partition : partitions->second) {
             partition.ToPB(resp->add_partitions());
           }
+          return Status::OK();
+        });
+  }
+  if (name == "RestoreInitialSysCatalogSnapshot") {
+    // CatalogManager::MaybeRestoreInitialSysCatalogSnapshotAndReloadSysCatalog, up to the restore;
+    // the Rust leader checks that initdb is not done and writes the rows C++ recreates after it.
+    return HandleRequest<master::RestoreInitialSysCatalogSnapshotRequestPB,
+                         master::RestoreInitialSysCatalogSnapshotResponsePB>(
+        request, [this](const auto& req, auto* resp) -> Status {
+          if (!FLAGS_enable_ysql || FLAGS_initial_sys_catalog_snapshot_path.empty() ||
+              FLAGS_create_initial_sys_catalog_snapshot) {
+            return Status::OK();
+          }
+          if (!fs_manager()->initdb_done_set_after_sys_catalog_restore()) {
+            LOG(INFO) << "This is an existing cluster, not initializing from a sys catalog "
+                      << "snapshot.";
+            return Status::OK();
+          }
+          auto dir_exists = Env::Default()->IsDirectory(FLAGS_initial_sys_catalog_snapshot_path);
+          if (!dir_exists.ok() || !*dir_exists) {
+            LOG(WARNING) << "Initial sys catalog snapshot directory does not exist: "
+                         << FLAGS_initial_sys_catalog_snapshot_path;
+            return Status::OK();
+          }
+          SCHECK(!FLAGS_master_join_existing_universe, IllegalState,
+                 "Master is joining an existing universe but wants to restore initial sys "
+                 "catalog snapshot. This should have been done during initial universe "
+                 "creation.");
+          LOG(INFO) << "Restoring snapshot in sys catalog";
+          RETURN_NOT_OK_PREPEND(
+              master::RestoreInitialSysCatalogSnapshot(
+                  FLAGS_initial_sys_catalog_snapshot_path, sys_catalog_->tablet_peer().get(),
+                  req.term()),
+              "Failed restoring snapshot in sys catalog");
+          // The restore replaces the tablet's rows without going through the tap.
+          tap_->PostReload("initial sys catalog snapshot", clock()->Now());
+          resp->set_restored(true);
           return Status::OK();
         });
   }

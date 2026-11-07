@@ -14,6 +14,7 @@ master-leadership.workspace = true
 master-cluster-balancer.workspace = true
 master-table-lifecycle.workspace = true
 master-tablet-split-manager.workspace = true
+master-ysql-manager.workspace = true
 master-ts-manager.workspace = true
 protobuf.workspace = true
 tokio.workspace = true

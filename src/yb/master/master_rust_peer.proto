@@ -140,6 +140,21 @@ message EncodedPartitionKeysResponsePB {
   repeated bytes encoded_keys = 2;
 }
 
+// A new YSQL universe's first leader restores the shipped initial sys catalog snapshot instead of
+// running initdb (MasterHost::HandleOnHost "RestoreInitialSysCatalogSnapshot", as
+// CatalogManager::MaybeRestoreInitialSysCatalogSnapshotAndReloadSysCatalog). The leader checks
+// that initdb is not done; the host checks the flags and the instance metadata.
+message RestoreInitialSysCatalogSnapshotRequestPB {
+  optional int64 term = 1;
+}
+
+message RestoreInitialSysCatalogSnapshotResponsePB {
+  optional MasterErrorPB error = 1;
+  // False when this universe does not restore one: YSQL is off, there is no snapshot, or the
+  // universe predates restoring it.
+  optional bool restored = 2;
+}
+
 service MasterRustPeer {
   rpc PushLocations(PushLocationsRequestPB) returns (PushLocationsResponsePB);
   rpc DumpCatalog(DumpCatalogRequestPB) returns (DumpCatalogResponsePB);
