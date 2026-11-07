@@ -797,7 +797,8 @@ Result<SchemaDetails> GetOrPopulateRequiredSchemaDetails(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, uint64 read_hybrid_time,
     SchemaDetailsMap* cached_schema_details, client::YBClient* client, const TableId& req_table_id,
     GetChangesResponsePB* resp, CDCThroughputMetrics* throughput_metrics,
-    bool emit_ddl_record = true) {
+    bool emit_ddl_record = true,
+    std::optional<SchemaVersion> dropped_schema_version = std::nullopt) {
   auto iter = cached_schema_details->find(req_table_id);
   if (iter != cached_schema_details->end()) {
     return iter->second;
@@ -840,7 +841,8 @@ Result<SchemaDetails> GetOrPopulateRequiredSchemaDetails(
             << " tablet " << tablet->tablet_id();
 
     const auto& schema_details = (*cached_schema_details)[cur_table_id];
-    if (emit_ddl_record) {
+    // Re-reading the version that was just dropped from the cache gives the consumer no new schema.
+    if (emit_ddl_record && schema_details.schema_version != dropped_schema_version) {
       FillDDLInfo(tablet_peer, schema_details, table_name, cur_table_id, resp, throughput_metrics);
     }
 
@@ -927,6 +929,7 @@ Result<std::pair<SchemaVersion, Schema>> GetSchemaAndVersion(
   // the row was packed with).
   bool resolve_schema_packing_from_sys_catalog = false;
   SchemaVersion pr_schema_version = std::numeric_limits<SchemaVersion>::max();
+  std::optional<SchemaVersion> dropped_schema_version;
   if (is_packed_row) {
     pr_schema_version =
         narrow_cast<SchemaVersion>(VERIFY_RESULT(FastDecodeUnsignedVarInt(&packed_row)));
@@ -944,13 +947,14 @@ Result<std::pair<SchemaVersion, Schema>> GetSchemaAndVersion(
         (resolve_schema_packing_from_sys_catalog ||
          (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
           it->second.schema_version != pr_schema_version))) {
+      dropped_schema_version = it->second.schema_version;
       (*cached_schema_details).erase(it);
     }
   }
 
   const auto& schema_details = VERIFY_RESULT(GetOrPopulateRequiredSchemaDetails(
       tablet_peer, read_hybrid_time, cached_schema_details, client, table_id, resp,
-      throughput_metrics, emit_ddl_record));
+      throughput_metrics, emit_ddl_record, dropped_schema_version));
   auto schema_version = schema_details.schema_version;
   auto schema = *schema_details.schema;
 
