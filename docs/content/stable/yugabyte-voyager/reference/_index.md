@@ -35,7 +35,7 @@ menu:
 
   {{<index/item
     title="Iterative cutover"
-    body="Peform multiple rounds of cutover between a PostgreSQL source and YugabyteDB target."
+    body="Perform multiple rounds of cutover between a PostgreSQL source and YugabyteDB target."
     href="iterative-cutover/"
     icon="fa-thin fa-repeat">}}
 

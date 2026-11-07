@@ -118,7 +118,7 @@ public class EmployeeDAO {
   }
 
   public Optional<Employee> findById(final Integer id) {
-    return Optional.ofNullable(session.get(Emplyee.class, id));
+    return Optional.ofNullable(session.get(Employee.class, id));
   }
 }
 ```
@@ -210,11 +210,11 @@ public class QuickStartOrmApp {
 
     try {
           System.out.println("Connected to the YugabyteDB Cluster successfully.");
-          EmplyeeDAO employeeDAO = new EmployeeDAO(session);
+          EmployeeDAO employeeDAO = new EmployeeDAO(session);
           // Save an employee
           employeeDAO.save(new Employee());
 
-          // Find the emplyee
+          // Find the employee
           Employee employee = employeeDAO.findByID(1);
           System.out.println("Query Returned:" + employee.toString());
         }

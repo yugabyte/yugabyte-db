@@ -74,7 +74,7 @@ INSERT INTO public.census ( id,name,age,zipcode,employed ) VALUES
 
 ## Simple index
 
-You can create indexes using [CREATE INDEX](../../../../api/ysql/the-sql-language/statements/ddl_create_index/) to speed up lookups on a singe column.
+You can create indexes using [CREATE INDEX](../../../../api/ysql/the-sql-language/statements/ddl_create_index/) to speed up lookups on a single column.
 
 For example to create an index on zipcode, you can run:
 

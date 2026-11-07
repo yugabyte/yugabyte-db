@@ -29,7 +29,7 @@ The number of new `members` added to the sorted set, unless the `CH` option is s
 ## ZADD options
 
 - XX: Only update `members` that already exist. Do not add new `members`.
-- NX: Do not update `members` that already exist. Only addd new `members`.
+- NX: Do not update `members` that already exist. Only add new `members`.
 - CH: Modify the return value from new `members` added to `members` added or updated.
 - INCR: Increment the specified `member` by `score`. Only one `score` `member` pair can be specified.
 
