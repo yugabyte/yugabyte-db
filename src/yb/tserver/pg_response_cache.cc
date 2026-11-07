@@ -578,6 +578,18 @@ class PgResponseCache::Impl : private GarbageCollector {
   // rounds, which carry no ask of their own, queue behind the fills the first still has in
   // flight. Sending a sibling away from an entry already stored would need this check to run
   // on the session's own counts, which is the one thing it is built not to do.
+  //
+  // What that costs is catalog work the node need not have done -- a sibling served or queued
+  // gets the same bytes any other caller would, and one that is sent away reads the older
+  // version through the same checks as anyone else. Siblings share the session's token, so two
+  // of their fills are counted once and released once, which cannot underflow the count or
+  // leave it held.
+  //
+  // TODO(#34309): separate siblings by counting the session's own fills here, so the second is
+  // sent away from an entry the first has already stored rather than queueing behind the fills
+  // it still has in flight. The check then fires before RegisterWaiter, so answering kReady
+  // ahead of the ask stops mattering. It inverts what AConnectionIsNotSentAwayFromAFillOfItsOwn
+  // pins, so it wants a change of its own.
   [[nodiscard]] bool AnotherFillInFlight(KeyGroup group, uint64_t session_id) REQUIRES(mutex_) {
     auto it = fills_in_flight_.find(group);
     if (it == fills_in_flight_.end()) {
