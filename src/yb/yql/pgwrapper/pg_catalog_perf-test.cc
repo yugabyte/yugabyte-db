@@ -2232,6 +2232,11 @@ TEST_F(PgUnbridgeableCatalogPrefetchTest, FallsBackWhenTheMessagesCannotBeApplie
   ASSERT_EQ(metrics.cache.lookup_only_misses, 0)
       << "the connection asked the response cache for an older catalog version although the "
          "messages that would carry it forward were already known to be unusable";
+  // The leader is shedding and the older read was refused, so asking to be sent away buys
+  // nothing: a send-away does no more than try that read again.
+  ASSERT_EQ(metrics.cache.send_away_asks, 0)
+      << "the connection asked to be sent away although the only thing it could be sent to is "
+         "the read that had just been refused";
 }
 
 // A connection sent away from a fill cannot always use the older version it is sent to: this

@@ -3570,6 +3570,13 @@ YbRunWithPrefetcher(YbcStatus (*func) (YbRunWithPrefetcherContext *),
 		 * away and the next one reads the catalog in full. The fill this caller was sent away
 		 * from need not be the thing that records -- it may be a refresh on a live backend,
 		 * which records nothing.
+		 *
+		 * Both of the other tests are load-bearing and neither is reachable from a test. The ask
+		 * is cleared only where this branch fires, so an attempt that failed on a snapshot too old
+		 * leaves it set while starter_idx moves on, and a renew attempt answering that nothing is
+		 * cached would be read as a send-away without the starter test. And only the cache miss
+		 * means a fill was under way: any other failure is a real one, and turning it into a stale
+		 * read would hide it.
 		 */
 		if (trust_cache.send_away_if_fill_in_flight &&
 			starter_idx == kFirstFullPrefetchIdx &&
