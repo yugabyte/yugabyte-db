@@ -14,11 +14,14 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
@@ -33,6 +36,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import lombok.extern.slf4j.Slf4j;
@@ -44,10 +48,13 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.mockito.Spy;
 import org.yb.ybc.CloudStoreSpec;
+import software.amazon.awssdk.awscore.exception.AwsErrorDetails;
 import software.amazon.awssdk.core.ResponseInputStream;
+import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectsRequest;
+import software.amazon.awssdk.services.s3.model.GetBucketLocationRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
@@ -700,6 +707,260 @@ public class AWSUtilTest extends FakeDBApplication {
     // A default config is not a cross-cloud federation config.
     assertFalse(AWSUtil.isCrossCloudFederationConfig(new CustomerConfigStorageS3Data()));
     assertFalse(AWSUtil.isCrossCloudFederationConfig(null));
+  }
+
+  @Test
+  public void testBucketRegionWarmUpSkipsForFederationConfig() {
+    // The federated role need not allow s3:GetBucketLocation, so the warm-up must not ask for it.
+    CustomerConfigStorageS3Data s3Data = federationS3Data();
+    s3Data.crossCloudFederationAudience = "//iam.googleapis.com/projects/1/x";
+    s3Data.crossCloudFederationRoleArn = "arn:aws:iam::123456789012:role/r";
+    mockAWSUtil.warmUpBucketRegion(mockS3Client, s3Data, YbcBackupUtil.DEFAULT_REGION_STRING);
+    verify(mockS3Client, never()).getBucketLocation(any(GetBucketLocationRequest.class));
+  }
+
+  @Test
+  public void testBucketRegionWarmUpIgnoresClientErrors() {
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.backupLocation = "s3://test-bucket/backup";
+    when(mockS3Client.getBucketLocation(any(GetBucketLocationRequest.class)))
+        .thenThrow(SdkClientException.create("unreachable"));
+    mockAWSUtil.warmUpBucketRegion(mockS3Client, s3Data, YbcBackupUtil.DEFAULT_REGION_STRING);
+    verify(mockS3Client).getBucketLocation(any(GetBucketLocationRequest.class));
+  }
+
+  @Test
+  public void testBucketRegionWarmUpReportsRefusalForNonFederatedConfig() {
+    // YB-Controller backups of this config need s3:GetBucketLocation, so saving it must fail, with
+    // a reason that names the call: S3's own message for it is a bare "Access Denied".
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.backupLocation = "s3://test-bucket/backup";
+    when(mockS3Client.getBucketLocation(any(GetBucketLocationRequest.class)))
+        .thenThrow(
+            S3Exception.builder()
+                .statusCode(403)
+                .awsErrorDetails(AwsErrorDetails.builder().errorMessage("Access Denied").build())
+                .build());
+    S3Exception e =
+        assertThrows(
+            S3Exception.class,
+            () ->
+                mockAWSUtil.warmUpBucketRegion(
+                    mockS3Client, s3Data, YbcBackupUtil.DEFAULT_REGION_STRING));
+    assertEquals(403, e.statusCode());
+    assertEquals(
+        "s3:GetBucketLocation on bucket test-bucket: Access Denied",
+        e.awsErrorDetails().errorMessage());
+  }
+
+  @Test
+  public void testBucketRegionWarmUpPassesOnS3Failure() {
+    // Throttling or an S3-side failure is not about the GetBucketLocation permission.
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.backupLocation = "s3://test-bucket/backup";
+    S3Exception slowDown =
+        (S3Exception)
+            S3Exception.builder()
+                .statusCode(503)
+                .awsErrorDetails(AwsErrorDetails.builder().errorMessage("SlowDown").build())
+                .build();
+    when(mockS3Client.getBucketLocation(any(GetBucketLocationRequest.class))).thenThrow(slowDown);
+    S3Exception e =
+        assertThrows(
+            S3Exception.class,
+            () ->
+                mockAWSUtil.warmUpBucketRegion(
+                    mockS3Client, s3Data, YbcBackupUtil.DEFAULT_REGION_STRING));
+    assertEquals("SlowDown", e.awsErrorDetails().errorMessage());
+  }
+
+  @Test
+  public void testBucketRegionWarmUpLeavesMissingBucketToTheCheck() {
+    // The listing check's HeadBucket reports a missing bucket; the warm-up must not claim it.
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.backupLocation = "s3://test-bucket/backup";
+    when(mockS3Client.getBucketLocation(any(GetBucketLocationRequest.class)))
+        .thenThrow(S3Exception.builder().statusCode(404).build());
+    mockAWSUtil.warmUpBucketRegion(mockS3Client, s3Data, YbcBackupUtil.DEFAULT_REGION_STRING);
+    verify(mockS3Client).getBucketLocation(any(GetBucketLocationRequest.class));
+  }
+
+  @Test
+  public void testCheckFileExistsHintsOnBareAccessDenied() {
+    // A cross-account refusal or an S3-compatible store may only say "Access Denied".
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.backupLocation = "s3://test-bucket/backup";
+    when(mockS3Client.listObjectsV2(any(ListObjectsV2Request.class)))
+        .thenThrow(
+            S3Exception.builder()
+                .statusCode(403)
+                .awsErrorDetails(AwsErrorDetails.builder().errorMessage("Access Denied").build())
+                .build());
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                mockAWSUtil.checkFileExists(
+                    s3Data, Collections.singleton("s3://test-bucket/backup"), "success", true));
+    assertEquals(PRECONDITION_FAILED, e.getHttpStatus());
+    assertTrue(
+        e.getMessage()
+            .endsWith(
+                ": Access Denied (HTTP 403); check the credentials and that they may list the"
+                    + " bucket (s3:ListBucket on AWS S3)"));
+  }
+
+  @Test
+  public void testCanCredentialListObjectsPassesOnThrottling() {
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.backupLocation = "s3://test-bucket/backup";
+    doReturn(mockS3Client).when(mockAWSUtil).createS3Client(any(), any());
+    when(mockS3Client.headBucket(any(Consumer.class)))
+        .thenThrow(S3Exception.builder().statusCode(429).build());
+    assertThrows(
+        S3Exception.class,
+        () ->
+            mockAWSUtil.canCredentialListObjects(
+                s3Data, Collections.singletonMap("us-east-1", "s3://test-bucket/backup")));
+  }
+
+  @Test
+  public void testCanCredentialListObjectsReportsAccessDenied() {
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.backupLocation = "s3://test-bucket/backup";
+    doReturn(mockS3Client).when(mockAWSUtil).createS3Client(any(), any());
+    // A HeadBucket refusal, as S3 sends it: a 403 with no body, so no error message.
+    when(mockS3Client.headBucket(any(Consumer.class)))
+        .thenThrow(S3Exception.builder().statusCode(403).build());
+    // An S3 refusal is the user's to fix, so it is a clear client error rather than a server error.
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                mockAWSUtil.canCredentialListObjects(
+                    s3Data, Collections.singletonMap("us-east-1", "s3://test-bucket/backup")));
+    assertEquals(PRECONDITION_FAILED, e.getHttpStatus());
+    assertEquals(
+        "Cannot list objects in backup location s3://test-bucket/backup: access denied (HTTP"
+            + " 403); check the credentials and that they may list the bucket (s3:ListBucket on"
+            + " AWS S3)",
+        e.getMessage());
+  }
+
+  @Test
+  public void testCanCredentialListObjectsPassesOnS3Failure() {
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.backupLocation = "s3://test-bucket/backup";
+    doReturn(mockS3Client).when(mockAWSUtil).createS3Client(any(), any());
+    when(mockS3Client.headBucket(any(Consumer.class)))
+        .thenThrow(S3Exception.builder().statusCode(503).build());
+    // S3's own failure is not the user's to fix, so it is not turned into a 412.
+    assertThrows(
+        S3Exception.class,
+        () ->
+            mockAWSUtil.canCredentialListObjects(
+                s3Data, Collections.singletonMap("us-east-1", "s3://test-bucket/backup")));
+  }
+
+  @Test
+  public void testCanCredentialListObjectsReportsBucketInAnotherRegion() {
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.backupLocation = "s3://test-bucket/backup";
+    doReturn(mockS3Client).when(mockAWSUtil).createS3Client(any(), any());
+    when(mockS3Client.headBucket(any(Consumer.class)))
+        .thenThrow(S3Exception.builder().statusCode(301).build());
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                mockAWSUtil.canCredentialListObjects(
+                    s3Data, Collections.singletonMap("us-east-1", "s3://test-bucket/backup")));
+    assertEquals(PRECONDITION_FAILED, e.getHttpStatus());
+    assertTrue(e.getMessage().contains("check the host base or signing region"));
+  }
+
+  private static YbcBackupResponse.ResponseCloudStoreSpec successMarkerSpec(String cloudDir) {
+    YbcBackupResponse.ResponseCloudStoreSpec spec = new YbcBackupResponse.ResponseCloudStoreSpec();
+    spec.defaultLocation = new YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation();
+    spec.defaultLocation.bucket = "test-bucket";
+    spec.defaultLocation.cloudDir = cloudDir;
+    return spec;
+  }
+
+  @Test
+  public void testSuccessMarkerListingReportsAccessDenied() {
+    // The restore path's check: a HeadBucket 403 with no message becomes a clear 412.
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.backupLocation = "s3://test-bucket/backup";
+    doReturn(mockS3Client).when(mockAWSUtil).createS3Client(any(), any());
+    when(mockS3Client.headBucket(any(Consumer.class)))
+        .thenThrow(S3Exception.builder().statusCode(403).build());
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                mockAWSUtil.checkListObjectsWithYbcSuccessMarkerCloudStore(
+                    s3Data, successMarkerSpec("backup/univ-1")));
+    assertEquals(PRECONDITION_FAILED, e.getHttpStatus());
+    assertEquals(
+        "Cannot list objects in cloud location with bucket test-bucket and cloud directory"
+            + " backup/univ-1: access denied (HTTP 403); check the credentials and that they may"
+            + " list the bucket (s3:ListBucket on AWS S3)",
+        e.getMessage());
+  }
+
+  @Test
+  public void testCanCredentialListObjectsReportsMissingBucket() {
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.backupLocation = "s3://test-bucket/backup";
+    doReturn(mockS3Client).when(mockAWSUtil).createS3Client(any(), any());
+    when(mockS3Client.headBucket(any(Consumer.class)))
+        .thenThrow(S3Exception.builder().statusCode(404).build());
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                mockAWSUtil.canCredentialListObjects(
+                    s3Data, Collections.singletonMap("us-east-1", "s3://test-bucket/backup")));
+    assertEquals(PRECONDITION_FAILED, e.getHttpStatus());
+    assertEquals("No S3 bucket found with name test-bucket", e.getMessage());
+  }
+
+  @Test
+  public void testSuccessMarkerListingPassesOnS3Failure() {
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.backupLocation = "s3://test-bucket/backup";
+    doReturn(mockS3Client).when(mockAWSUtil).createS3Client(any(), any());
+    when(mockS3Client.headBucket(any(Consumer.class)))
+        .thenThrow(S3Exception.builder().statusCode(503).build());
+    assertThrows(
+        S3Exception.class,
+        () ->
+            mockAWSUtil.checkListObjectsWithYbcSuccessMarkerCloudStore(
+                s3Data, successMarkerSpec("backup/univ-1")));
+  }
+
+  @Test
+  public void testCheckFileExistsReportsAccessDenied() {
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.backupLocation = "s3://test-bucket/backup";
+    when(mockS3Client.listObjectsV2(any(ListObjectsV2Request.class)))
+        .thenThrow(
+            S3Exception.builder()
+                .statusCode(403)
+                .awsErrorDetails(
+                    AwsErrorDetails.builder()
+                        .errorMessage("not authorized to perform: s3:ListBucket")
+                        .build())
+                .build());
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                mockAWSUtil.checkFileExists(
+                    s3Data, Collections.singleton("s3://test-bucket/backup"), "success", true));
+    assertEquals(PRECONDITION_FAILED, e.getHttpStatus());
+    assertTrue(e.getMessage().endsWith(": not authorized to perform: s3:ListBucket"));
   }
 
   // Federation with no resolved audience: every YBA-side bucket call short-circuits before touching
