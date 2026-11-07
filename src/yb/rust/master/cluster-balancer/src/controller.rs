@@ -181,7 +181,17 @@ impl Controller for BalancerController {
     }
 
     fn reconcile<'a>(&'a self, scope: &'a TermScope) -> BoxFuture<'a, ()> {
-        Box::pin(async move { self.0.pass(scope) })
+        Box::pin(async move {
+            // A run is O(tablets) (seconds at millions of tablets): off the async workers.
+            let inner = self.0.clone();
+            let Ok(Some((token, result))) = tokio::task::spawn_blocking(move || inner.plan()).await
+            else {
+                return;
+            };
+            for action in result.actions() {
+                self.0.send(scope, token, action.clone());
+            }
+        })
     }
 }
 
@@ -190,12 +200,11 @@ fn utf8(bytes: &[u8]) -> String {
 }
 
 impl Inner {
-    fn pass(self: &Arc<Self>, scope: &TermScope) {
-        let Ok(token) = self.leadership.token() else {
-            return;
-        };
+    /// One run of the planner over the cluster now, recorded for the RPCs.
+    fn plan(&self) -> Option<(LeaderToken, crate::RunResult)> {
+        let token = self.leadership.token().ok()?;
         if !(self.flags.enabled)() || self.term_start.elapsed() <= (self.flags.initial_delay)() {
-            return;
+            return None;
         }
         let snapshot = self.catalog.snapshot();
         let view = self.view(&snapshot);
@@ -205,9 +214,7 @@ impl Inner {
             .unwrap()
             .run(&view, &(self.flags.options)());
         self.status.record(&result, (self.flags.num_idle_runs)());
-        for action in result.actions() {
-            self.send(scope, token, action.clone());
-        }
+        Some((token, result))
     }
 
     /// The planner's view of the cluster now.

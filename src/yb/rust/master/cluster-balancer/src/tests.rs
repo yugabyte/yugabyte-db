@@ -1446,3 +1446,76 @@ fn tablet_ids_follow_create_table() {
     let unique: BTreeSet<String> = tablet_ids(40).into_iter().collect();
     assert_eq!(unique.len(), 40);
 }
+
+/// The planner at scale: `SCALE_TSERVERS` tservers (default 500) and `SCALE_TABLETS` tablets
+/// (default 500,000) in tables of 5,000 tablets, RF3, with one empty tserver to balance onto.
+/// Run with `cargo test --release -p master-cluster-balancer scale -- --ignored --nocapture`.
+#[test]
+#[ignore]
+fn scale() {
+    let env = |k: &str, d: usize| {
+        std::env::var(k)
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(d)
+    };
+    let (num_ts, num_tablets) = (env("SCALE_TSERVERS", 500), env("SCALE_TABLETS", 500_000));
+    let tservers: Vec<TsInfo> = (0..num_ts)
+        .map(|i| TsInfo {
+            uuid: format!("ts{i:05}"),
+            cloud_info: cloud(&format!("z{}", i % 3)),
+            live_and_reported: true,
+            ..TsInfo::default()
+        })
+        .collect();
+    // Every tserver but the last holds replicas, round robin within its zone.
+    let loaded = num_ts - 1;
+    let mut tables = Vec::new();
+    let per_table = 5000;
+    for t in 0..num_tablets.div_ceil(per_table) {
+        let tablets = (0..per_table.min(num_tablets - t * per_table))
+            .map(|i| {
+                let n = t * per_table + i;
+                let replicas = (0..3)
+                    .map(|r| {
+                        (
+                            tservers[(n * 3 + r) % loaded].uuid.clone(),
+                            ReplicaInfo {
+                                is_leader: r == 0,
+                                ..ReplicaInfo::default()
+                            },
+                        )
+                    })
+                    .collect();
+                TabletInfo {
+                    id: format!("tablet{n:08}"),
+                    running: true,
+                    replicas,
+                    ..TabletInfo::default()
+                }
+            })
+            .collect();
+        tables.push(TableInfo {
+            id: format!("table{t:05}"),
+            tablets,
+            ..TableInfo::default()
+        });
+    }
+    let view = ClusterView {
+        tservers,
+        tables,
+        ..ClusterView::default()
+    };
+    let mut balancer = ClusterBalancer::new();
+    let options = Options::default();
+    for run in 0..3 {
+        let start = std::time::Instant::now();
+        let result = balancer.run(&view, &options);
+        println!(
+            "run {run}: {} tservers, {num_tablets} tablets: {:?}, {} actions",
+            num_ts,
+            start.elapsed(),
+            result.actions().count()
+        );
+    }
+}

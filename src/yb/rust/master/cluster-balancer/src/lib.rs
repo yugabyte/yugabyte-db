@@ -471,6 +471,50 @@ impl ActivityBuffer {
     }
 }
 
+/// The Fx hash (as rustc uses): far cheaper than SipHash for the planner's short string keys,
+/// which come from the catalog, not from untrusted input.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct FxHasher {
+    hash: u64,
+}
+
+impl FxHasher {
+    fn add(&mut self, word: u64) {
+        self.hash = (self.hash.rotate_left(5) ^ word).wrapping_mul(0x51_7c_c1_b7_27_22_0a_95);
+    }
+}
+
+impl std::hash::Hasher for FxHasher {
+    fn write(&mut self, bytes: &[u8]) {
+        let mut chunks = bytes.chunks_exact(8);
+        for chunk in &mut chunks {
+            self.add(u64::from_le_bytes(chunk.try_into().unwrap()));
+        }
+        let rest = chunks.remainder();
+        if !rest.is_empty() {
+            let mut word = [0u8; 8];
+            word[..rest.len()].copy_from_slice(rest);
+            self.add(u64::from_le_bytes(word));
+        }
+    }
+
+    fn write_u8(&mut self, i: u8) {
+        self.add(u64::from(i));
+    }
+
+    fn write_usize(&mut self, i: usize) {
+        self.add(i as u64);
+    }
+
+    fn finish(&self) -> u64 {
+        self.hash
+    }
+}
+
+/// A `HashMap` with [`FxHasher`].
+pub(crate) type FxHashMap<K, V> =
+    std::collections::HashMap<K, V, std::hash::BuildHasherDefault<FxHasher>>;
+
 /// `TSDescriptor::generate_placement_id`: the key placement blocks are compared by.
 pub(crate) fn placement_id(ci: &CloudInfoPB) -> String {
     format!(

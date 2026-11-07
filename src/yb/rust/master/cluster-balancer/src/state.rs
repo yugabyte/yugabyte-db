@@ -21,7 +21,9 @@ use yb_proto::pb::common_net::{CloudInfoPB, PlacementInfoPB};
 use yb_proto::pb::consensus_metadata::PeerMemberType;
 use yb_proto::pb::tablet_types::RaftGroupStatePB;
 
-use crate::{matches_cloud_info, placement_id, Activity, Options, ReplicaInfo, TabletInfo, TsInfo};
+use crate::{
+    matches_cloud_info, placement_id, Activity, FxHashMap, Options, ReplicaInfo, TabletInfo, TsInfo,
+};
 
 pub(crate) type Result<T> = std::result::Result<T, String>;
 
@@ -45,7 +47,7 @@ pub(crate) struct TabletMeta {
     /// Blocks above their maximum, by placement id.
     pub over_max_placements: BTreeSet<String>,
     /// Running and starting replicas per block, by placement id.
-    pub placement_replica_counts: HashMap<String, usize>,
+    pub placement_replica_counts: FxHashMap<String, usize>,
     pub is_over_replicated: bool,
     pub over_replicated_tablet_servers: BTreeSet<String>,
     pub wrong_placement_tablet_servers: BTreeSet<String>,
@@ -97,6 +99,8 @@ impl TabletMeta {
 pub(crate) struct TsMeta {
     /// Index into `GlobalState::ts`.
     pub desc: usize,
+    /// `GetValidPlacement`, computed once per table.
+    pub placement: Option<Placement>,
     pub path_to_tablets: BTreeMap<String, BTreeSet<String>>,
     pub path_to_starting_tablets_count: HashMap<String, i32>,
     pub sorted_path_load_by_tablets_count: Vec<String>,
@@ -106,6 +110,14 @@ pub(crate) struct TsMeta {
     pub leaders: BTreeSet<String>,
     pub path_to_leaders: BTreeMap<String, BTreeSet<String>>,
     pub disabled_by_ts_tablets: BTreeSet<String>,
+}
+
+/// A placement block, or a tserver's own cloud info when the table has no blocks.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Placement {
+    /// `generate_placement_id`.
+    pub id: String,
+    pub ci: CloudInfoPB,
 }
 
 /// `CBTabletServerGlobalMetadata`.
@@ -123,13 +135,13 @@ pub(crate) struct TsGlobal {
 pub(crate) struct GlobalState<'a> {
     pub options: &'a Options,
     pub ts: &'a [TsInfo],
-    pub ts_index: HashMap<&'a str, usize>,
+    pub ts_index: FxHashMap<&'a str, usize>,
     pub total_starting_tablets: i32,
     pub drive_aware: bool,
     pub blacklisted: BTreeSet<String>,
     pub leader_blacklisted: BTreeSet<String>,
     pub activity: Activity,
-    pub per_ts: HashMap<String, TsGlobal>,
+    pub per_ts: FxHashMap<String, TsGlobal>,
 }
 
 impl<'a> GlobalState<'a> {
@@ -156,7 +168,7 @@ impl<'a> GlobalState<'a> {
                 .map(|t| t.uuid.clone())
                 .collect(),
             activity: Activity::default(),
-            per_ts: HashMap::new(),
+            per_ts: FxHashMap::default(),
         }
     }
 
@@ -212,6 +224,14 @@ impl<'a> GlobalState<'a> {
     }
 }
 
+/// The tserver's global counts, without allocating its key once it has them.
+fn ts_global<'g>(g: &'g mut GlobalState, uuid: &str) -> &'g mut TsGlobal {
+    if !g.per_ts.contains_key(uuid) {
+        g.per_ts.insert(uuid.to_string(), TsGlobal::default());
+    }
+    g.per_ts.get_mut(uuid).unwrap()
+}
+
 /// `IsReplicaConsensusReady`: running and a VOTER or OBSERVER.
 fn is_replica_consensus_ready(
     ts_uuid: &str,
@@ -260,7 +280,7 @@ pub(crate) struct TableState<'a> {
     pub table_id: String,
     pub options: &'a Options,
     pub mode: &'a RunMode,
-    pub per_tablet_meta: HashMap<String, TabletMeta>,
+    pub per_tablet_meta: FxHashMap<String, TabletMeta>,
     pub per_ts_meta: BTreeMap<String, TsMeta>,
     pub placement: PlacementInfoPB,
     placement_block_max: HashMap<String, usize>,
@@ -290,7 +310,7 @@ impl<'a> TableState<'a> {
             table_id: table_id.to_string(),
             options,
             mode,
-            per_tablet_meta: HashMap::new(),
+            per_tablet_meta: FxHashMap::default(),
             per_ts_meta: BTreeMap::new(),
             placement: PlacementInfoPB::new(),
             placement_block_max: HashMap::new(),
@@ -531,12 +551,14 @@ impl<'a> TableState<'a> {
                 if self.should_skip_replica(ts_uuid, g) {
                     continue;
                 }
-                match self.valid_placement(ts_uuid, g) {
-                    Some(ci) => placement_to_replicas
-                        .entry(placement_id(&ci))
-                        .or_insert_with(|| (ci, Vec::new()))
-                        .1
-                        .push(ts_uuid.clone()),
+                match self.valid_placement(ts_uuid) {
+                    Some(p) => match placement_to_replicas.get_mut(&p.id) {
+                        Some(entry) => entry.1.push(ts_uuid.clone()),
+                        None => {
+                            placement_to_replicas
+                                .insert(p.id.clone(), (p.ci.clone(), vec![ts_uuid.clone()]));
+                        }
+                    },
                     // The config or schema changed: the replica should no longer live here.
                     None => wrong.push(ts_uuid.clone()),
                 }
@@ -613,7 +635,10 @@ impl<'a> TableState<'a> {
     pub fn update_tablet_server(&mut self, desc: usize, g: &mut GlobalState) {
         let ts = &g.ts[desc];
         let uuid = ts.uuid.clone();
-        self.per_ts_meta.entry(uuid.clone()).or_default().desc = desc;
+        let placement = self.placement_of(ts);
+        let meta = self.per_ts_meta.entry(uuid.clone()).or_default();
+        meta.desc = desc;
+        meta.placement = placement;
         g.per_ts.entry(uuid.clone()).or_insert_with(|| TsGlobal {
             disk_used_bytes: ts.disk_used_bytes,
             disk_capacity_bytes: ts.disk_capacity_bytes,
@@ -697,27 +722,27 @@ impl<'a> TableState<'a> {
         if tablet_meta.removal_pending_tablet_servers.contains(to_ts) {
             return Ok(false);
         }
-        let to_placement = self.valid_placement(to_ts, g);
+        let to_placement = self.valid_placement(to_ts);
         if !self.placement.placement_blocks.is_empty() && to_placement.is_none() {
             return Ok(false);
         }
-        if let Some(to_placement) = &to_placement {
-            let to_id = placement_id(to_placement);
+        if let Some(to_placement) = to_placement {
+            let to_id = &to_placement.id;
             let mut projected = tablet_meta
                 .placement_replica_counts
-                .get(&to_id)
+                .get(to_id)
                 .copied()
                 .unwrap_or(0);
             // The source is only removed once the add over-replicates the tablet, which an
             // under-replicated tablet never reaches.
             if !from_ts.is_empty() && !tablet_meta.is_under_replicated {
-                if let Some(from_placement) = self.valid_placement(from_ts, g) {
-                    if placement_id(&from_placement) == to_id {
+                if let Some(from_placement) = self.valid_placement(from_ts) {
+                    if from_placement.id == *to_id {
                         projected = projected.saturating_sub(1);
                     }
                 }
             }
-            if projected >= self.placement_block_max_replicas(&to_id) {
+            if projected >= self.placement_block_max_replicas(to_id) {
                 return Ok(false);
             }
         }
@@ -771,22 +796,28 @@ impl<'a> TableState<'a> {
             .unwrap_or(self.placement.num_replicas().max(0) as usize)
     }
 
-    /// `GetValidPlacement`: the first block the tserver matches; without blocks, its own cloud
-    /// info.
-    pub fn valid_placement(&self, uuid: &str, g: &GlobalState) -> Option<CloudInfoPB> {
-        let ts = self
-            .per_ts_meta
-            .get(uuid)
-            .map(|m| &g.ts[m.desc])
-            .or_else(|| g.ts_info(uuid))?;
+    /// `GetValidPlacement` of a tserver: the first block it matches; without blocks, its own
+    /// cloud info.
+    fn placement_of(&self, ts: &TsInfo) -> Option<Placement> {
         if self.placement.placement_blocks.is_empty() {
-            return Some(ts.cloud_info.clone());
+            return Some(Placement {
+                id: placement_id(&ts.cloud_info),
+                ci: ts.cloud_info.clone(),
+            });
         }
         self.placement
             .placement_blocks
             .iter()
             .find(|b| matches_cloud_info(&ts.cloud_info, &b.cloud_info))
-            .map(|b| b.cloud_info.clone().unwrap_or_default())
+            .map(|b| Placement {
+                id: placement_id(&b.cloud_info),
+                ci: b.cloud_info.clone().unwrap_or_default(),
+            })
+    }
+
+    /// `GetValidPlacement`, as cached for the table.
+    pub fn valid_placement(&self, uuid: &str) -> Option<&Placement> {
+        self.per_ts_meta.get(uuid)?.placement.as_ref()
     }
 
     /// `CanSelectWrongPlacementReplicaToMove`: a (from, to) pair moving a replica off a blacklisted
@@ -807,10 +838,10 @@ impl<'a> TableState<'a> {
                     // A wrongly placed source's placement need not be kept.
                     true
                 } else if can_add {
-                    let from_ci = self.valid_placement(from_uuid, g);
-                    let to_ci = self.valid_placement(to_uuid, g);
+                    let from_ci = self.valid_placement(from_uuid);
+                    let to_ci = self.valid_placement(to_uuid);
                     match (from_ci, to_ci) {
-                        (Some(f), Some(t)) if placement_id(&f) == placement_id(&t) => true,
+                        (Some(f), Some(t)) if f.id == t.id => true,
                         _ => {
                             // Another placement still works as a fallback; the last pair wins.
                             fallback = Some((from_uuid.clone(), to_uuid.clone()));
@@ -825,12 +856,14 @@ impl<'a> TableState<'a> {
                 }
             }
             if fallback.is_none() {
-                let from_placement = self.valid_placement(from_uuid, g);
+                let from_placement = self.valid_placement(from_uuid);
                 let blocked_by_max = meta.is_under_replicated
-                    && from_placement.as_ref().is_some_and(|p| {
-                        let id = placement_id(p);
-                        meta.placement_replica_counts.get(&id).copied().unwrap_or(0)
-                            >= self.placement_block_max_replicas(&id)
+                    && from_placement.is_some_and(|p| {
+                        meta.placement_replica_counts
+                            .get(&p.id)
+                            .copied()
+                            .unwrap_or(0)
+                            >= self.placement_block_max_replicas(&p.id)
                     });
                 tracing::info!(
                     "Cannot move tablet {tablet_id} from blacklisted tablet server {from_uuid}: \
@@ -1124,7 +1157,7 @@ impl<'a> TableState<'a> {
             .entry(tablet_id.to_string())
             .or_default()
             .size_or_default();
-        let global = g.per_ts.entry(uuid.to_string()).or_default();
+        let global = ts_global(g, uuid);
         global.starting_tablets_count += 1;
         global.starting_tablets_size += size;
         self.total_starting += 1;
@@ -1153,7 +1186,7 @@ impl<'a> TableState<'a> {
             .or_default()
             .insert(tablet_id.to_string());
         if inserted {
-            g.per_ts.entry(uuid.to_string()).or_default().leaders_count += 1;
+            ts_global(g, uuid).leaders_count += 1;
         }
         Ok(())
     }
@@ -1168,7 +1201,7 @@ impl<'a> TableState<'a> {
             return Err(self.not_initialized("RemoveLeaderTablet", tablet_id));
         }
         if self.ts_meta_mut(uuid)?.leaders.remove(tablet_id) {
-            g.per_ts.entry(uuid.to_string()).or_default().leaders_count -= 1;
+            ts_global(g, uuid).leaders_count -= 1;
         }
         Ok(())
     }

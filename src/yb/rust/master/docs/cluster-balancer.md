@@ -87,3 +87,13 @@ then within them).
 - `PerTableLoadState::RemoveRunningTablet` stops at the first data path that does not hold the
   tablet (an inverted check), so a removed replica can stay listed on its path; the port removes
   it from every path.
+
+## Scale
+
+`tests::scale` (ignored; `cargo test --release -p master-cluster-balancer scale -- --ignored
+--nocapture`, sized by `SCALE_TSERVERS` and `SCALE_TABLETS`) times runs over one RF3 cluster with
+an empty tserver. Measured on an 8-core dev server: 500 tservers and 500,000 tablets take about
+4.5 s per run; 5,000 tservers and 5 million tablets take 94 to 135 s per run with a 26 GB peak
+(the view included). The cost is the string-keyed maps and sets of the state, which C++ also
+uses; interning tserver and tablet ids as indices is what the W8 target needs. The controller
+runs the planner on a blocking thread so a long run does not hold an async worker.

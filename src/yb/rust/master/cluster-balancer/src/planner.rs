@@ -675,13 +675,10 @@ impl<'a> Run<'a, '_> {
             }
             let meta = state.tablet_meta(&tablet_id)?;
             for to_ts in &state.sorted_load {
-                let Some(to_placement) = state.valid_placement(to_ts, &self.g) else {
+                let Some(to_placement) = state.valid_placement(to_ts) else {
                     continue;
                 };
-                if meta
-                    .over_max_placements
-                    .contains(&placement_id(&to_placement))
-                {
+                if meta.over_max_placements.contains(&to_placement.id) {
                     continue;
                 }
                 if !state.can_add_tablet_to_tablet_server(&tablet_id, to_ts, "", &self.g)? {
@@ -698,9 +695,9 @@ impl<'a> Run<'a, '_> {
                         {
                             continue;
                         }
-                        if let Some(p) = state.valid_placement(ts_uuid, &self.g) {
-                            if meta.over_max_placements.contains(&placement_id(&p)) {
-                                from = (ts_uuid.clone(), Some(p));
+                        if let Some(p) = state.valid_placement(ts_uuid) {
+                            if meta.over_max_placements.contains(&p.id) {
+                                from = (ts_uuid.clone(), Some(p.ci.clone()));
                                 break;
                             }
                         }
@@ -809,10 +806,10 @@ impl<'a> Run<'a, '_> {
             return Ok(None);
         };
         let by_drive = tablets_by_drive(self.g.drive_aware, from_meta);
-        let from_block = state.valid_placement(from_ts, &self.g);
-        let to_block = state.valid_placement(to_ts, &self.g);
-        let same_placement = matches!((&from_block, &to_block),
-            (Some(f), Some(t)) if placement_id(f) == placement_id(t));
+        let same_placement = matches!(
+            (state.valid_placement(from_ts), state.valid_placement(to_ts)),
+            (Some(f), Some(t)) if f.id == t.id
+        );
         let to_ci = self.g.ts_info(to_ts).map(|t| &t.cloud_info);
         for (_, tablets) in by_drive {
             let mut result: Option<(String, Similarity)> = None;
