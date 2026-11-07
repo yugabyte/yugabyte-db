@@ -382,6 +382,10 @@ message IndexStatusPB {
   // Index inception / birth hybrid time, used to reject reads from older backends with
   // read time < birth time that might hit the index.
   optional fixed64 birth_time = 4;
+
+  // The index's IndexInfoPB.birth_time_state on the master. Always set when error is not set, so
+  // that a tserver can tell a final state apart from a master that does not report it.
+  optional IndexInfoPB.BirthTimeState birth_time_state = 5;
 }
 
 message GetBackfillStatusResponsePB {

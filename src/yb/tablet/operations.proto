@@ -186,8 +186,17 @@ message ChangeMetadataRequestPB {
 
   optional bool only_abort_txns_not_using_table_locks = 22;
 
-  // Index inception / birth hybrid time, sent as part of the BackfillDone RPC.
+  // Index inception / birth hybrid time, sent as part of the BackfillDone and
+  // MarkNonConcurrentIndexDone RPCs.
   optional fixed64 birth_time = 23;
+
+  // Finalize a nonconcurrently-built index: set its birth_time (carried in the birth_time field
+  // above) and mark IndexInfoPB.birth_time_state final. Sent by AsyncMarkNonConcurrentIndexDone
+  // via the MarkNonConcurrentIndexDone RPC once the CREATE INDEX transaction commits, and only for
+  // indexes in BIRTH_TIME_PENDING_DDL_COMMIT. The master sets that state only while the
+  // enable_ysql_index_birth_time_state AutoFlag is on, i.e. after all tservers are upgraded and
+  // understand this field. The target index table id is carried in backfill_done_table_id.
+  optional bool mark_non_concurrent_index_done = 24;
 }
 
 message SplitTabletRequestPB {

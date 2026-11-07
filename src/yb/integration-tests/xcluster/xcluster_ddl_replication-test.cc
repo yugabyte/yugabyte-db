@@ -1207,6 +1207,25 @@ TEST_F(XClusterDDLReplicationTest, NonconcurrentBackfills) {
       kBaseTableName, kColumn2Name);
   ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(kCol2CountStmt)), 100);
 
+  // The autocommit read above does not send an explicit read time, so it bypasses the index
+  // birth-time read guard. Exercise the guard with a REPEATABLE READ snapshot: the first statement
+  // fixes the snapshot read time (picked on the fly), and the second statement reuses it and sends
+  // it explicitly on the read RPC, which arms the guard. If birth_time_state is left pending on the
+  // xCluster target index, the index read is rejected with a retryable LeaderNotReadyToServe error
+  // and retried until it times out. The marker must be cleared for the target in
+  // CatalogManager::HandleSuccessfulYsqlDdlTxn.
+  ASSERT_OK(consumer_conn_->Execute("SET statement_timeout = '60s'"));
+  ASSERT_OK(consumer_conn_->Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  // First statement: fix the snapshot read time.
+  ASSERT_EQ(
+      ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(
+          Format("SELECT COUNT(*) FROM $0", kBaseTableName))),
+      100);
+  // Second statement: reuses the fixed read time, sending it explicitly to arm the guard.
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(kCol2CountStmt)), 100);
+  ASSERT_OK(consumer_conn_->Execute("COMMIT"));
+  ASSERT_OK(consumer_conn_->Execute("RESET statement_timeout"));
+
   // Ensure that we can also create a unique index nonconcurrently.
   ASSERT_OK(producer_conn_->ExecuteFormat(
       "CREATE UNIQUE INDEX NONCONCURRENTLY ON $0($1)", kBaseTableName, kKeyColumnName));

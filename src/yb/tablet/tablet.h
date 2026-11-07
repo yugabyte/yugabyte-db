@@ -650,6 +650,10 @@ class Tablet : public AbstractTablet,
   Status MarkBackfillDone(
       const OpId& op_id, const TableId& table_id = "", uint64_t birth_time = 0);
 
+  // Used to finalize the birth_time of a nonconcurrently built index on its tablets.
+  Status MarkNonConcurrentIndexDone(
+      const OpId& op_id, const TableId& table_id, uint64_t birth_time);
+
   // Change wal_retention_secs in the metadata.
   Status AlterWalRetentionSecs(ChangeMetadataOperation* operation);
 

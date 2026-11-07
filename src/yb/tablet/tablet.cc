@@ -3679,6 +3679,17 @@ Status Tablet::MarkBackfillDone(
   return metadata_->Flush();
 }
 
+Status Tablet::MarkNonConcurrentIndexDone(
+    const OpId& op_id, const TableId& table_id, uint64_t birth_time) {
+  LOG_WITH_PREFIX(INFO) << "Setting non-concurrent index as done";
+  auto status = metadata_->OnNonConcurrentIndexDone(op_id, table_id, birth_time);
+  if (!status.ok()) {
+    LOG_WITH_PREFIX(WARNING) << "Triggering non-concurrent index done failed: " << status;
+    return status;
+  }
+  return metadata_->Flush();
+}
+
 Status Tablet::AlterSchema(ChangeMetadataOperation* operation) {
   const auto* request = operation->request();
   auto current_table_info = VERIFY_RESULT(metadata_->GetTableInfo(
