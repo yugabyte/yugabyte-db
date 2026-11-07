@@ -58,19 +58,22 @@ class GroundTruth {
   // true i results were included in that list, averaged over all queries.
   // precomputed_ground_truth is the ground truth loaded from a provided file, or it could be an
   // empty vector, if not available.
+  // ef is passed to the index searches, 0 means the index's ef.
   //
   // The result is always a FloatVector -- it is a vector of recall values.
-  Result<FloatVector> EvaluateRecall(size_t num_threads);
+  Result<FloatVector> EvaluateRecall(size_t num_threads, size_t ef);
 
  private:
   // Process a single query and increment stats of correct result vs. returned result overlap for
   // various sizes of the result set. Invoked from multiple threads once for each query index.
   Status ProcessQuery(
       size_t query_index,
+      size_t ef,
       AtomicUInt64Vector& total_overlap_counters);
 
   void DoApproxSearchAndUpdateStats(
       const Vector& query,
+      size_t ef,
       const std::vector<VectorId>& correct_result,
       AtomicUInt64Vector& total_overlap_counters);
 

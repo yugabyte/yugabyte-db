@@ -155,7 +155,7 @@ GroundTruth<Vector, DistanceResult>::GroundTruth(
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Result<FloatVector> GroundTruth<Vector, DistanceResult>::EvaluateRecall(
-    size_t num_threads) {
+    size_t num_threads, size_t ef) {
   SCHECK_GE(num_threads, static_cast<size_t>(1),
             InvalidArgument, "Number of threads must be at least 1");
 
@@ -171,8 +171,8 @@ Result<FloatVector> GroundTruth<Vector, DistanceResult>::EvaluateRecall(
       num_threads,
       /* start_index= */ static_cast<size_t>(0),
       /* end_index_exclusive= */ queries_.size(),
-      [this, &total_overlap](size_t query_index) -> Status {
-        return ProcessQuery(query_index, total_overlap);
+      [this, ef, &total_overlap](size_t query_index) -> Status {
+        return ProcessQuery(query_index, ef, total_overlap);
       }));
 
   // The result is always a vector of floats, regardless of the coordinate type.
@@ -192,12 +192,13 @@ Result<FloatVector> GroundTruth<Vector, DistanceResult>::EvaluateRecall(
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status GroundTruth<Vector, DistanceResult>::ProcessQuery(
     size_t query_index,
+    size_t ef,
     AtomicUInt64Vector& total_overlap_counters) {
   auto& query = queries_[query_index];
   if (!precomputed_ground_truth_.empty() && !validate_precomputed_ground_truth_) {
     // Fast path: no need to compute precise results at all. Just use the precomputed ground truth.
     DoApproxSearchAndUpdateStats(
-        query, precomputed_ground_truth_[query_index], total_overlap_counters);
+        query, ef, precomputed_ground_truth_[query_index], total_overlap_counters);
     return Status::OK();
   }
 
@@ -224,7 +225,8 @@ Status GroundTruth<Vector, DistanceResult>::ProcessQuery(
     }
   }
 
-  DoApproxSearchAndUpdateStats(query, VertexIdsOnly(our_correct_top_k), total_overlap_counters);
+  DoApproxSearchAndUpdateStats(
+      query, ef, VertexIdsOnly(our_correct_top_k), total_overlap_counters);
 
   return Status::OK();
 }
@@ -251,10 +253,11 @@ GroundTruth<Vector, DistanceResult>::AugmentWithDistancesAndTrimToK(
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void GroundTruth<Vector, DistanceResult>::DoApproxSearchAndUpdateStats(
     const Vector& query,
+    size_t ef,
     const std::vector<VectorId>& correct_result,
     AtomicUInt64Vector& total_overlap_counters) {
   auto approx_result = CHECK_RESULT(index_reader_.Search(
-      vector_cast<Vector>(query), SearchOptions{.max_num_results = k_, .ef = 0}));
+      vector_cast<Vector>(query), SearchOptions{.max_num_results = k_, .ef = ef}));
   std::unordered_set<VectorId> approx_set;
   for (const auto& approx_entry : approx_result) {
     approx_set.insert(approx_entry.vector_id);
