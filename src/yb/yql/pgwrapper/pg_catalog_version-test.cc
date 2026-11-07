@@ -3917,6 +3917,33 @@ TEST_F(PgCatalogVersionTest, TwoPhaseNegativeCacheUpgrade) {
   }
 }
 
+// Until an upgrade is finalized, nodes still on an older version may not increment the catalog
+// version on CREATE TABLE, so upgraded nodes must not cache negative entries before the
+// yb_test_make_all_ddl_statements_incrementing AutoFlag is promoted.
+TEST_F(PgCatalogVersionTest, NoNegativeCacheBeforeAutoFlagPromotion) {
+  RestartClusterWithInvalMessageEnabled(
+      {"--ysql_yb_test_make_all_ddl_statements_incrementing=false"});
+
+  // Make tserver 1 behave like a node on an older version.
+  auto* old_ts = cluster_->tablet_server(1);
+  old_ts->Shutdown();
+  old_ts->mutable_flags()->push_back(
+      "--ysql_pg_conf_csv=yb_always_increment_catalog_version_on_ddl=false");
+  ASSERT_OK(old_ts->Restart());
+
+  auto upgraded_conn = ASSERT_RESULT(ConnectToTs(*cluster_->tablet_server(0)));
+  auto old_conn = ASSERT_RESULT(ConnectToTs(*old_ts));
+
+  ASSERT_NOK(upgraded_conn.FetchRow<int32_t>("SELECT id FROM t"));
+
+  auto initial_version = ASSERT_RESULT(GetCatalogVersion(&old_conn));
+  ASSERT_OK(old_conn.Execute("CREATE TABLE t (id int)"));
+  ASSERT_EQ(ASSERT_RESULT(GetCatalogVersion(&old_conn)), initial_version);
+  ASSERT_OK(old_conn.Execute("INSERT INTO t VALUES (1)"));
+
+  ASSERT_EQ(ASSERT_RESULT(upgraded_conn.FetchRow<int32_t>("SELECT id FROM t")), 1);
+}
+
 // Test that REFRESH MATERIALIZED VIEW CONCURRENTLY does not increment the catalog version.
 TEST_F(PgCatalogVersionTest, RefreshMaterializedViewConcurrently) {
   auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
