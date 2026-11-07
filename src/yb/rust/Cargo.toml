@@ -23,6 +23,7 @@ members = [
     "common/yb-web",
     "master/catalog-entity",
     "master/catalog-state",
+    "master/cluster-balancer",
     "master/leadership",
     "master/server",
     "master/rpc-handlers",
@@ -78,6 +79,7 @@ yb-flags = { path = "common/yb-flags" }
 yb-host-api = { path = "common/yb-host-api" }
 master-catalog-entity = { path = "master/catalog-entity" }
 master-catalog-state = { path = "master/catalog-state" }
+master-cluster-balancer = { path = "master/cluster-balancer" }
 master-leadership = { path = "master/leadership" }
 master-rpc-handlers = { path = "master/rpc-handlers" }
 master-sys-catalog = { path = "master/sys-catalog" }

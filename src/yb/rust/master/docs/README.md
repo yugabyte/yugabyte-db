@@ -27,6 +27,7 @@ without it the Rust master never leads ([leadership.md](leadership.md)).
 | [ts-manager.md](ts-manager.md) | Tserver registry, heartbeats, tablet reports, the live tserver list |
 | [tablet-locations.md](tablet-locations.md) | Observed replica locations and the location stream |
 | [table-lifecycle.md](table-lifecycle.md) | Namespace and table DDL, tablet assignment |
+| [cluster-balancer.md](cluster-balancer.md) | The cluster balancer's planner |
 | [task-runtime.md](task-runtime.md) | Scopes, controllers, retries, blocking pools |
 | [web.md](web.md) | The web port and pages |
 | [testing.md](testing.md) | Unit tests, conformance against the C++ master, itests |
@@ -43,6 +44,7 @@ Shared Rust pieces (build, bridges, protobuf, flags) are documented in
 | `master-catalog-entity` | Sys-catalog rows by `SysRowEntryType` and the in-memory entity |
 | `master-sys-catalog` | `SysCatalogStore`: scans, Raft writes, the apply stream; `FakeSysCatalog` |
 | `master-catalog-state` | The in-memory catalog: snapshots, materializer, writer, self-check |
+| `master-cluster-balancer` | The cluster balancer's planner: a view of the cluster in, replica and leader moves out |
 | `master-leadership` | Leader phases and `LeaderToken` |
 | `master-task-runtime` | Term and entity scopes, controllers, retries, blocking pools |
 | `master-table-lifecycle` | Namespace and table DDL on the leader, and the controllers that create tablets |

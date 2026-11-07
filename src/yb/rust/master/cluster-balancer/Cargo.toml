@@ -1,0 +1,19 @@
+[package]
+name = "master-cluster-balancer"
+description = """\
+    The cluster balancer's planner: today's balancing policies over a view of the cluster, \
+    returning the replica and leader moves to make.\
+"""
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+protobuf.workspace = true
+tracing.workspace = true
+yb-proto.workspace = true
+
+[lints]
+workspace = true

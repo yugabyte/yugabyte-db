@@ -625,6 +625,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "master-cluster-balancer"
+version = "0.1.0"
+dependencies = [
+ "protobuf",
+ "tracing",
+ "yb-proto",
+]
+
+[[package]]
 name = "master-conformance"
 version = "0.1.0"
 dependencies = [
