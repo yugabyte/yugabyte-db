@@ -3,6 +3,8 @@
 package com.yugabyte.yw.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -73,6 +75,15 @@ public class HostCloudDetectorTest {
   }
 
   @Test
+  public void isHostCloudMatchesOnlyTheDetectedCloud() throws IOException {
+    dmi("chassis_asset_tag", "Amazon EC2");
+    HostCloudDetector detector = new HostCloudDetector(dmiDir, metadataUrl);
+
+    assertTrue(detector.isHostCloud(CloudType.aws));
+    assertFalse(detector.isHostCloud(CloudType.gcp));
+  }
+
+  @Test
   public void gcpFromDmi() throws IOException {
     dmi("chassis_asset_tag", "");
     dmi("product_name", "Google Compute Engine");
@@ -124,6 +135,27 @@ public class HostCloudDetectorTest {
     answers = e -> e.getRequestURI().getPath().equals("/latest/meta-data/instance-id");
 
     assertEquals(Optional.of(CloudType.aws), detect());
+  }
+
+  @Test
+  public void awsIsConfirmedOnlyBySignsOnlyAwsGives() throws IOException {
+    // EC2-compatible clouds answer IMDSv1 too.
+    answers = e -> e.getRequestURI().getPath().equals("/latest/meta-data/instance-id");
+    assertFalse(new HostCloudDetector(dmiDir, metadataUrl).isConfirmedAws());
+
+    answers =
+        e ->
+            e.getRequestMethod().equals("PUT")
+                && e.getRequestURI().getPath().equals("/latest/api/token");
+    assertTrue(new HostCloudDetector(dmiDir, metadataUrl).isConfirmedAws());
+
+    answers = e -> false;
+    rejects = e -> e.getRequestURI().getPath().equals("/latest/meta-data/instance-id");
+    assertTrue(new HostCloudDetector(dmiDir, metadataUrl).isConfirmedAws());
+
+    rejects = e -> false;
+    dmi("chassis_asset_tag", "Amazon EC2");
+    assertTrue(new HostCloudDetector(dmiDir, metadataUrl).isConfirmedAws());
   }
 
   @Test
