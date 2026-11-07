@@ -739,6 +739,31 @@ void YBCTCMallocReleaseFreeMemory(int64_t bytes) {
   TCMallocReleaseMemoryToSystemIgnoringRecentDemand(bytes);
 }
 
+void YBCTCMallocReleaseMemoryToSystemWithLookbacks(
+    int64_t bytes, int64_t short_interval_ms, int64_t long_interval_ms) {
+  TCMallocReleaseMemoryToSystemWithLookbacks(bytes, short_interval_ms, long_interval_ms);
+}
+
+void YBCTCMallocDrainCpuCaches() {
+  TCMallocDrainCpuCaches();
+}
+
+YbcStatus YBCStartTCMallocBackgroundThread() {
+  return ToYBCStatus(WithMaskedYsqlSignals(StartTCMallocBackgroundThread));
+}
+
+void YBCSetTCMallocBackgroundReleaseRate(int64_t bytes_per_sec) {
+  SetTCMallocBackgroundReleaseRate(bytes_per_sec);
+}
+
+void YBCSetTCMallocSkipSubreleaseIntervals(int64_t short_interval_ms, int64_t long_interval_ms) {
+  SetTCMallocSkipSubreleaseIntervals(short_interval_ms, long_interval_ms);
+}
+
+void YBCRestoreTCMallocSkipSubreleaseIntervals() {
+  RestoreTCMallocSkipSubreleaseIntervals();
+}
+
 YbcStatus YBCGetHeapSnapshot(
     YbcHeapSnapshotSample** snapshot, int64_t* num_samples, bool peak_heap) {
   // Always sort by estimated bytes on Google TCMalloc (sampled bytes if gperftools).

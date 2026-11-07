@@ -18,6 +18,8 @@
 #include <cstdint>
 #include <optional>
 
+#include "yb/util/status_fwd.h"
+
 namespace yb {
 
 // Returns the tcmalloc property with the given name, or 0 if tcmalloc is not used. In case of an
@@ -48,6 +50,16 @@ void TCMallocReleaseMemoryToSystem(int64_t bytes);
 // would otherwise keep mapped to cover the peak demand of the last few minutes.
 void TCMallocReleaseMemoryToSystemIgnoringRecentDemand(int64_t bytes);
 
+// Like TCMallocReleaseMemoryToSystem, but for this call only, Google TCMalloc keeps the free pages
+// in partially used hugepages that cover the peak demand of the given lookbacks instead of those
+// of its process-wide lookbacks. Zero disables the corresponding lookback.
+void TCMallocReleaseMemoryToSystemWithLookbacks(
+    int64_t bytes, int64_t short_interval_ms, int64_t long_interval_ms);
+
+// Returns the objects cached in every per-CPU cache to the central free lists. Does nothing unless
+// Google TCMalloc runs with per-CPU caches.
+void TCMallocDrainCpuCaches();
+
 void SetTCMallocTotalThreadCacheSize(int64_t max_size);
 
 // Sets tcmalloc properties based on the flags, as well as default values of some tcmalloc-related
@@ -60,5 +72,21 @@ void ConfigureTCMalloc(int64_t mem_limit);
 int64_t GetTCMallocSamplingPeriod();
 
 void SetTCMallocSamplingPeriod(int64_t sample_period_bytes);
+
+// Starts a thread that runs Google TCMalloc's ProcessBackgroundActions loop for the rest of the
+// process lifetime: it drains idle per-CPU and transfer caches and releases page heap memory at the
+// background release rate. The thread inherits the caller's signal mask. Does nothing if the thread
+// was already started or if Google TCMalloc is not used.
+Status StartTCMallocBackgroundThread();
+
+void SetTCMallocBackgroundReleaseRate(int64_t bytes_per_sec);
+
+// Sets Google TCMalloc's process-wide lookbacks, which every release that is not given its own
+// lookbacks uses, including the background thread's. Zero disables the corresponding lookback.
+void SetTCMallocSkipSubreleaseIntervals(int64_t short_interval_ms, int64_t long_interval_ms);
+
+// Restores the lookbacks that Google TCMalloc had before SetTCMallocSkipSubreleaseIntervals first
+// changed them.
+void RestoreTCMallocSkipSubreleaseIntervals();
 
 }  // namespace yb
