@@ -755,12 +755,18 @@ class PgResponseCache::Impl : private GarbageCollector {
     // window of a few instructions is worth.
     if (cache_info->send_away_if_fill_in_flight()) {
       send_away_asks_->Increment();
-      bool another_fill;
+      bool send_away;
       {
         std::lock_guard lock(mutex_);
-        another_fill = AnotherFillInFlight(group, session_id);
+        // Not while the cache is disabled for this database. There is nothing to send the
+        // caller to: Disable bumps the bucket's version, so every entry filled before it is
+        // already invalid, and a lookup-only read finds nothing both during the window and
+        // after it. The caller would pay the catch-up wait and the message fetch, miss, and
+        // rerun without the ask to make the read it would have made here.
+        send_away = !GetKeyGroupBucket(group).disabler.lock() &&
+                    AnotherFillInFlight(group, session_id);
       }
-      if (another_fill) {
+      if (send_away) {
         send_aways_->Increment();
         return STATUS(Incomplete, "A fill for this database is already under way");
       }
