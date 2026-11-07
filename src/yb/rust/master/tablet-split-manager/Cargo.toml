@@ -1,0 +1,31 @@
+[package]
+name = "master-tablet-split-manager"
+description = """\
+    Tablet splits on the leader: the split RPCs, registering the children, and the controller \
+    that sends splits to tservers.\
+"""
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+master-catalog-entity.workspace = true
+master-catalog-state.workspace = true
+master-leadership.workspace = true
+master-table-lifecycle.workspace = true
+master-task-runtime.workspace = true
+master-ts-manager.workspace = true
+protobuf.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+yb-host-api.workspace = true
+yb-proto.workspace = true
+
+[dev-dependencies]
+master-sys-catalog.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true

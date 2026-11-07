@@ -34,6 +34,7 @@ const ROOT_DIRS: &[&str] = &["yb/master"];
 /// simulator (master/tools/tserver-sim) serves.
 const ROOT_FILES: &[&str] = &[
     "yb/tserver/tserver_admin.proto",
+    "yb/tserver/tserver_service.proto",
     "yb/consensus/consensus.proto",
 ];
 

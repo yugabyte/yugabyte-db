@@ -78,6 +78,8 @@ pub struct LeaderServices {
     pub balancer: Arc<master_cluster_balancer::controller::BalancerStatus>,
     /// `enable_load_balancing`.
     pub load_balancing_flag: fn() -> bool,
+    /// Tablet splits.
+    pub splits: Arc<master_tablet_split_manager::TabletSplitManager>,
     /// `blacklist_progress_initial_delay_secs`.
     pub blacklist_progress_initial_delay: fn() -> std::time::Duration,
 }

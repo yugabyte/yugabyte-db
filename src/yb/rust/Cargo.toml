@@ -29,6 +29,7 @@ members = [
     "master/rpc-handlers",
     "master/sys-catalog",
     "master/table-lifecycle",
+    "master/tablet-split-manager",
     "master/tablet-locations",
     "master/task-runtime",
     "master/ts-manager",
@@ -84,6 +85,7 @@ master-leadership = { path = "master/leadership" }
 master-rpc-handlers = { path = "master/rpc-handlers" }
 master-sys-catalog = { path = "master/sys-catalog" }
 master-table-lifecycle = { path = "master/table-lifecycle" }
+master-tablet-split-manager = { path = "master/tablet-split-manager" }
 master-tablet-locations = { path = "master/tablet-locations" }
 master-task-runtime = { path = "master/task-runtime" }
 master-ts-manager = { path = "master/ts-manager" }

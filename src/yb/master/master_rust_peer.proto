@@ -128,6 +128,18 @@ message AlterTableSchemaResponsePB {
   optional int32 next_column_id = 3;
 }
 
+// The encoded (DocDB) keys of partition keys, as a split sends them to the tablet leader
+// (MasterHost::HandleOnHost "EncodedPartitionKeys", PartitionSchema::GetEncodedPartitionKey).
+message EncodedPartitionKeysRequestPB {
+  optional PartitionSchemaPB partition_schema = 1;
+  repeated bytes partition_keys = 2;
+}
+
+message EncodedPartitionKeysResponsePB {
+  optional MasterErrorPB error = 1;
+  repeated bytes encoded_keys = 2;
+}
+
 service MasterRustPeer {
   rpc PushLocations(PushLocationsRequestPB) returns (PushLocationsResponsePB);
   rpc DumpCatalog(DumpCatalogRequestPB) returns (DumpCatalogResponsePB);

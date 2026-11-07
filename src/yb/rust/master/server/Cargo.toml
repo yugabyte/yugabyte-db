@@ -19,6 +19,7 @@ master-rpc-handlers.workspace = true
 master-sys-catalog.workspace = true
 master-cluster-balancer.workspace = true
 master-table-lifecycle.workspace = true
+master-tablet-split-manager.workspace = true
 master-task-runtime.workspace = true
 master-ts-manager.workspace = true
 protobuf.workspace = true

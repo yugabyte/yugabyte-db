@@ -72,6 +72,7 @@
 
 #include "yb/docdb/doc_rowwise_iterator.h"
 
+#include "yb/dockv/partition.h"
 #include "yb/dockv/reader_projection.h"
 
 #include "yb/tablet/maintenance_manager.h"
@@ -1162,6 +1163,17 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
           partitions->first.ToPB(resp->mutable_partition_schema());
           for (const auto& partition : partitions->second) {
             partition.ToPB(resp->add_partitions());
+          }
+          return Status::OK();
+        });
+  }
+  if (name == "EncodedPartitionKeys") {
+    return HandleRequest<master::EncodedPartitionKeysRequestPB,
+                         master::EncodedPartitionKeysResponsePB>(
+        request, [](const auto& req, auto* resp) -> Status {
+          for (const auto& key : req.partition_keys()) {
+            resp->add_encoded_keys(VERIFY_RESULT(
+                dockv::PartitionSchema::GetEncodedPartitionKey(key, req.partition_schema())));
           }
           return Status::OK();
         });

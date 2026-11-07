@@ -15,7 +15,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// `YYYY-MM-DD HH:MM:SS UTC` for now.
-pub(crate) fn local_time_string() -> String {
+pub fn local_time_string() -> String {
     format_unix(
         SystemTime::now()
             .duration_since(UNIX_EPOCH)

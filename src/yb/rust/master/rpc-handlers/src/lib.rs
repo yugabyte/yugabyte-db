@@ -41,6 +41,10 @@ use yb_host_api::rpc::{InboundCall, RpcClient, RpcHandler};
 use yb_host_api::{Status, StatusCode};
 use yb_proto::pb::common_types::PeerRole;
 use yb_proto::pb::consensus_metadata::ConsensusStatePB;
+use yb_proto::pb::master_admin::{
+    DeleteNotServingTabletRequestPB, DeleteNotServingTabletResponsePB, SplitTabletRequestPB,
+    SplitTabletResponsePB,
+};
 use yb_proto::pb::master_client::{
     GetTableLocationsRequestPB, GetTableLocationsResponsePB, GetTabletLocationsRequestPB,
     GetTabletLocationsResponsePB, GetTransactionStatusTabletsRequestPB,
@@ -804,6 +808,23 @@ impl Shared {
                 GetTransactionStatusTabletsRequestPB,
                 GetTransactionStatusTabletsResponsePB,
                 |_req, resp| { leader.get_transaction_status_tablets(&snapshot, &mut resp) }
+            ),
+            "SplitTablet" => {
+                serve_ddl!(SplitTabletRequestPB, SplitTabletResponsePB, |req, resp| {
+                    let _ = &mut resp;
+                    leader.splits.split_tablet(token, &req)
+                })
+            }
+            "DeleteNotServingTablet" => serve_ddl!(
+                DeleteNotServingTabletRequestPB,
+                DeleteNotServingTabletResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    leader
+                        .splits
+                        .delete_not_serving_tablet(token, deadline, &req)
+                        .await
+                }
             ),
             "GetAutoFlagsConfig" | "ValidateAutoFlagsConfig" => {
                 let request = call.request().to_vec();

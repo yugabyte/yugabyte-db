@@ -499,6 +499,16 @@ mod leader_tests {
                 Arc::new(NoSchemaHost),
                 LifecycleOptions::default(),
             );
+            let splits = master_tablet_split_manager::TabletSplitManager::new(
+                catalog.clone(),
+                writer.clone(),
+                leadership.clone(),
+                ts_manager.clone(),
+                Arc::new(NoSchemaHost),
+                master_task_runtime::TsRpcExecutor::new(|_| 1),
+                Default::default(),
+                Default::default(),
+            );
             Arc::new(LeaderServices {
                 catalog,
                 writer,
@@ -511,6 +521,7 @@ mod leader_tests {
                 replication_factor: || 3,
                 balancer: Arc::new(master_cluster_balancer::controller::BalancerStatus::new(5)),
                 load_balancing_flag: || true,
+                splits,
                 blacklist_progress_initial_delay: || std::time::Duration::ZERO,
             })
         });

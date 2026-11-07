@@ -13,6 +13,7 @@ master-catalog-state.workspace = true
 master-leadership.workspace = true
 master-cluster-balancer.workspace = true
 master-table-lifecycle.workspace = true
+master-tablet-split-manager.workspace = true
 master-ts-manager.workspace = true
 protobuf.workspace = true
 tokio.workspace = true
@@ -21,6 +22,7 @@ yb-host-api.workspace = true
 yb-proto.workspace = true
 
 [dev-dependencies]
+master-task-runtime.workspace = true
 master-sys-catalog.workspace = true
 master-tablet-locations.workspace = true
 

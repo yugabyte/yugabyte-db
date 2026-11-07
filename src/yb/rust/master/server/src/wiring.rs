@@ -29,6 +29,7 @@ use master_sys_catalog::{ApplyEvents, SysCatalogStore};
 use master_table_lifecycle::{
     LifecycleOptions, SchemaHost, TableAlterer, TableDeleter, TableLifecycle, TabletAssigner,
 };
+use master_tablet_split_manager::{SplitController, SplitOptions, TabletSplitManager};
 use master_task_runtime::{
     run_controller, Attempt, BlockingPool, BoxFuture, Controller, RetryPolicy, TermScope,
     TsRpcExecutor,
@@ -115,6 +116,7 @@ static ENABLE_DELETE_TRUNCATE_XCLUSTER_REPLICATED_TABLE: FlagRef<bool> =
     FlagRef::new("enable_delete_truncate_xcluster_replicated_table");
 static BLACKLIST_PROGRESS_INITIAL_DELAY_SECS: FlagRef<i32> =
     FlagRef::new("blacklist_progress_initial_delay_secs");
+static ENABLE_MULTI_WAY_SPLIT: FlagRef<bool> = FlagRef::new("TEST_enable_multi_way_tablet_split");
 static ENABLE_LOAD_BALANCING: FlagRef<bool> = FlagRef::new("enable_load_balancing");
 static LB_INITIAL_DELAY_SECS: FlagRef<i32> = FlagRef::new("load_balancer_initial_delay_secs");
 static LB_NUM_IDLE_RUNS: FlagRef<i32> = FlagRef::new("load_balancer_num_idle_runs");
@@ -290,6 +292,22 @@ impl Core {
             },
         );
         let ts_manager = TsManager::new(Arc::default(), ts_manager_options());
+        let ts_rpc = TsRpcExecutor::new(ts_rpc_limit);
+        let splits = TabletSplitManager::new(
+            catalog.clone(),
+            writer.clone(),
+            leadership.clone(),
+            ts_manager.clone(),
+            schema.clone(),
+            ts_rpc.clone(),
+            retry_policy(false),
+            SplitOptions {
+                use_parent_table_id_field: || USE_PARENT_TABLE_ID_FIELD.get(),
+                enable_multi_way_split: || ENABLE_MULTI_WAY_SPLIT.get(),
+                rpc_timeout: || millis(MASTER_TS_RPC_TIMEOUT_MS.get()),
+                interval: || millis(BG_TASK_WAIT_MS.get().max(1)),
+            },
+        );
         let tables = TableLifecycle::new(
             catalog.clone(),
             writer.clone(),
@@ -323,6 +341,7 @@ impl Core {
             replication_factor: || REPLICATION_FACTOR.get(),
             balancer: Arc::new(BalancerStatus::new(LB_NUM_IDLE_RUNS.get().max(1) as usize)),
             load_balancing_flag: || ENABLE_LOAD_BALANCING.get(),
+            splits,
             blacklist_progress_initial_delay: || {
                 Duration::from_secs(BLACKLIST_PROGRESS_INITIAL_DELAY_SECS.get().max(0) as u64)
             },
@@ -362,7 +381,7 @@ impl Core {
             catalog,
             leadership,
             leader,
-            ts_rpc: TsRpcExecutor::new(ts_rpc_limit),
+            ts_rpc,
         }
     }
 
@@ -435,6 +454,7 @@ impl Core {
         });
 
         let leader = self.leader.clone();
+        leader.splits.set_rpc(rpc.clone());
         let ts_rpc = self.ts_rpc.clone();
         let mut phases = self.leadership.subscribe();
         runtime.spawn(async move {
@@ -482,6 +502,11 @@ fn start_term(
         watch::channel(0).1,
     );
 
+    run_controller(
+        scope,
+        SplitController::new(leader.splits.clone()),
+        leader.catalog.subscribe(),
+    );
     let enabled_leader = leader.clone();
     run_controller(
         scope,

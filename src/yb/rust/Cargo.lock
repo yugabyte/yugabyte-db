@@ -671,6 +671,8 @@ dependencies = [
  "master-sys-catalog",
  "master-table-lifecycle",
  "master-tablet-locations",
+ "master-tablet-split-manager",
+ "master-task-runtime",
  "master-ts-manager",
  "protobuf",
  "tokio",
@@ -691,6 +693,7 @@ dependencies = [
  "master-rpc-handlers",
  "master-sys-catalog",
  "master-table-lifecycle",
+ "master-tablet-split-manager",
  "master-task-runtime",
  "master-ts-manager",
  "protobuf",
@@ -738,6 +741,24 @@ dependencies = [
  "master-catalog-entity",
  "protobuf",
  "tokio",
+ "yb-proto",
+]
+
+[[package]]
+name = "master-tablet-split-manager"
+version = "0.1.0"
+dependencies = [
+ "master-catalog-entity",
+ "master-catalog-state",
+ "master-leadership",
+ "master-sys-catalog",
+ "master-table-lifecycle",
+ "master-task-runtime",
+ "master-ts-manager",
+ "protobuf",
+ "tokio",
+ "tracing",
+ "yb-host-api",
  "yb-proto",
 ]
 

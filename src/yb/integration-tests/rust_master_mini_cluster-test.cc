@@ -28,6 +28,10 @@
 
 #include "yb/integration-tests/mini_cluster.h"
 
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/master_admin.proxy.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_client.proxy.h"
 #include "yb/master/master_ddl.pb.h"
 
 #include "yb/master/mini_master.h"
@@ -42,6 +46,7 @@
 
 using namespace std::literals;
 
+DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(load_balancer_initial_delay_secs);
 
 namespace yb {
@@ -53,6 +58,8 @@ class RustMasterMiniClusterTest : public YBTest {
 #ifndef YB_WITH_RUST_MASTER
     GTEST_SKIP() << "This build has no Rust master (--skip-rust)";
 #endif
+    // Tservers retire split parents (DeleteNotServingTablet) from this periodic cleanup.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
     MiniClusterOptions opts;
     opts.num_masters = 3;
     opts.num_tablet_servers = 3;
@@ -200,6 +207,81 @@ TEST_F(RustMasterMiniClusterTest, BalancesReplicasToANewTserver) {
       120s, "replicas moved to the new tserver and the balancer idle"));
   ASSERT_TRUE(ASSERT_RESULT(client->IsLoadBalanced(4)));
   ASSERT_EQ(ASSERT_RESULT(client::kv_table_test::SelectAllRows(&table, session)).size(), 100);
+}
+
+// The Rust leader splits a tablet on request: the children serve the table's rows, and the parent
+// is deleted once they run.
+TEST_F(RustMasterMiniClusterTest, SplitsATablet) {
+  ASSERT_OK(cluster_->WaitForTabletServerCount(3));
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const client::YBTableName name(YQL_DATABASE_CQL, "ks", "split");
+  client::TableHandle table;
+  ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
+      client::Transactional::kFalse, /* num_tablets= */ 1, client.get(), &table, name));
+  auto session = client->NewSession(60s);
+  for (int32_t key = 0; key < 500; ++key) {
+    ASSERT_RESULT(client::kv_table_test::WriteRow(&table, session, key, key));
+  }
+  ASSERT_OK(cluster_->FlushTablets());
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(client->GetTabletsFromTableId(table->id(), 0, &tablets));
+  ASSERT_EQ(tablets.size(), 1);
+  const auto parent_id = tablets[0].tablet_id();
+
+  master::SplitTabletRequestPB req;
+  req.set_tablet_id(parent_id);
+  master::SplitTabletResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(30s);
+  auto proxy = ASSERT_RESULT(cluster_->GetLeaderMasterProxy<master::MasterAdminProxy>());
+  ASSERT_OK(proxy.SplitTablet(req, &resp, &rpc));
+  ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        google::protobuf::RepeatedPtrField<master::TabletLocationsPB> now;
+        RETURN_NOT_OK(client->GetTabletsFromTableId(table->id(), 0, &now));
+        if (now.size() != 2) {
+          return false;
+        }
+        for (const auto& tablet : now) {
+          if (tablet.tablet_id() == parent_id) {
+            return false;
+          }
+          bool has_leader = false;
+          for (const auto& replica : tablet.replicas()) {
+            has_leader |= replica.role() == PeerRole::LEADER;
+          }
+          if (!has_leader) {
+            return false;
+          }
+        }
+        return true;
+      },
+      120s, "two children with leaders in place of the parent"));
+  // Every row is read from the children once their first elections settle.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return VERIFY_RESULT(client::kv_table_test::SelectAllRows(&table, session)).size() == 500;
+      },
+      60s, "all rows read from the children"));
+
+  // Once the children serve, the tserver retires the parent: the master answers it as deleted.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        master::GetTabletLocationsRequestPB loc_req;
+        loc_req.add_tablet_ids(parent_id);
+        master::GetTabletLocationsResponsePB loc_resp;
+        rpc::RpcController loc_rpc;
+        loc_rpc.set_timeout(10s);
+        auto client_proxy =
+            VERIFY_RESULT(cluster_->GetLeaderMasterProxy<master::MasterClientProxy>());
+        RETURN_NOT_OK(client_proxy.GetTabletLocations(loc_req, &loc_resp, &loc_rpc));
+        // A deleted parent is an error that carries its children.
+        return loc_resp.tablet_locations_size() == 0 && loc_resp.errors_size() == 1;
+      },
+      60s, "the split parent deleted"));
 }
 
 }  // namespace yb

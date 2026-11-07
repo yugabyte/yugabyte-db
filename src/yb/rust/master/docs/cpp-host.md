@@ -77,6 +77,8 @@ For table DDL the host runs the C++ steps that read or write engine formats, als
 schedules that cover a namespace or table are not asked of the host's snapshot coordinator: it
 collects a schedule's entries through `CatalogManager`, which is never leader on a Rust master,
 so the Rust leader derives them from the `SNAPSHOT_SCHEDULE` rows (`schedules.rs`).
+`EncodedPartitionKeys` gives a split the DocDB-encoded keys of its children's partition keys
+(`PartitionSchema::GetEncodedPartitionKey`).
 
 **Leading.** Only with `--TEST_rust_master_allow_leadership`
 ([leadership.md](leadership.md)): failure detection stays on and an election only nudges the
