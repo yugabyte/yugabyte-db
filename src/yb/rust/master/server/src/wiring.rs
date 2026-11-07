@@ -24,7 +24,9 @@ use master_catalog_state::{run_materializer, self_check, Catalog, CatalogWriter,
 use master_leadership::{Leadership, Phase};
 use master_rpc_handlers::{LeaderServices, MasterInfo};
 use master_sys_catalog::{ApplyEvents, SysCatalogStore};
-use master_table_lifecycle::{LifecycleOptions, SchemaHost, TableLifecycle, TabletAssigner};
+use master_table_lifecycle::{
+    LifecycleOptions, SchemaHost, TableAlterer, TableDeleter, TableLifecycle, TabletAssigner,
+};
 use master_task_runtime::{
     run_controller, Attempt, BlockingPool, BoxFuture, Controller, RetryPolicy, TermScope,
     TsRpcExecutor,
@@ -432,6 +434,25 @@ fn start_term(
             || millis(MASTER_TS_RPC_TIMEOUT_MS.get()),
             || millis(BG_TASK_WAIT_MS.get().max(1)),
         ),
+        leader.catalog.subscribe(),
+    );
+    run_controller(
+        scope,
+        TableAlterer::new(
+            leader.tables.clone(),
+            rpc.clone(),
+            ts_rpc.clone(),
+            retry_policy(true),
+            || millis(MASTER_TS_RPC_TIMEOUT_MS.get()),
+            || millis(BG_TASK_WAIT_MS.get().max(1)),
+        ),
+        leader.catalog.subscribe(),
+    );
+    run_controller(
+        scope,
+        TableDeleter::new(leader.tables.clone(), || {
+            millis(BG_TASK_WAIT_MS.get().max(1))
+        }),
         leader.catalog.subscribe(),
     );
 

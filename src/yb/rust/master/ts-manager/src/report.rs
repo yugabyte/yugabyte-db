@@ -410,6 +410,7 @@ impl TsManager {
             delete_type,
             cas_config_index,
             hide_only,
+            abort_active_txns: false,
             reason,
         });
     }

@@ -19,7 +19,10 @@
 
 #include "yb/client/client.h"
 #include "yb/client/ql-dml-test-base.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
+#include "yb/client/table.h"
+#include "yb/client/table_alterer.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_table_name.h"
 
@@ -95,7 +98,8 @@ TEST_F(RustMasterMiniClusterTest, LeadsFailsOverAndRestarts) {
 }
 
 // A Rust leader serves YCQL keyspace and table DDL: the table's tablets are assigned, created and
-// serve reads and writes, before and after a leader change.
+// serve reads and writes, before and after a leader change, and the new leader alters and drops
+// the table.
 TEST_F(RustMasterMiniClusterTest, CreatesYcqlTables) {
   ASSERT_OK(cluster_->WaitForTabletServerCount(3));
   auto client = ASSERT_RESULT(cluster_->CreateClient());
@@ -126,6 +130,18 @@ TEST_F(RustMasterMiniClusterTest, CreatesYcqlTables) {
   ASSERT_OK(reopened.Open(name, client.get()));
   ASSERT_EQ(ASSERT_RESULT(client::kv_table_test::SelectAllRows(&reopened, session)).size(), 100);
   ASSERT_OK(client->CreateNamespaceIfNotExists("ks", YQL_DATABASE_CQL));
+
+  // The new leader alters the table, waiting for every tablet to take the new schema, and drops
+  // it, which frees the keyspace.
+  auto alterer = client->NewTableAlterer(name);
+  alterer->AddColumn("extra")->Type(DataType::INT32);
+  ASSERT_OK(alterer->Alter());
+  ASSERT_OK(reopened.Reopen());
+  ASSERT_EQ(reopened->schema().num_columns(), 3);
+  ASSERT_EQ(ASSERT_RESULT(client::kv_table_test::SelectAllRows(&reopened, session)).size(), 100);
+  ASSERT_OK(client->DeleteTable(name));
+  ASSERT_TRUE(ASSERT_RESULT(client->ListTables("kv")).empty());
+  ASSERT_OK(client->DeleteNamespace("ks", YQL_DATABASE_CQL));
 
   ASSERT_OK(client->CreateNamespace("empty", YQL_DATABASE_CQL));
   ASSERT_TRUE(ASSERT_RESULT(client->NamespaceExists("empty", YQL_DATABASE_CQL)));

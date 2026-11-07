@@ -29,17 +29,22 @@ use yb_host_api::{Status, StatusCode};
 use yb_proto::pb::master_rust_peer::{SnapshotSchedulesRequestPB, SnapshotSchedulesResponsePB};
 use yb_proto::pb::master_types::{master_error_pb::Code, MasterErrorPB, SysRowEntryType};
 
+mod alter;
 mod assign;
 mod create;
+mod drop;
 pub mod lookup;
 mod namespaces;
 mod placement;
 mod read;
+mod time;
 
 #[cfg(test)]
 mod tests;
 
+pub use alter::TableAlterer;
 pub use assign::TabletAssigner;
+pub use drop::TableDeleter;
 
 /// The C++ steps the host runs: schema normalization, partitioning and alter steps, which are
 /// engine formats Rust does not reimplement (K4). `method` is a `MasterHost::HandleOnHost` name.

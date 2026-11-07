@@ -30,14 +30,17 @@ use yb_proto::pb::common::{PartitionPB, SchemaPB};
 use yb_proto::pb::common_net::{CloudInfoPB, HostPortPB, PlacementBlockPB, PlacementInfoPB};
 use yb_proto::pb::common_types::{TableType, YQLDatabase};
 use yb_proto::pb::master_ddl::{
-    CreateNamespaceRequestPB, CreateNamespaceResponsePB, CreateTableRequestPB,
-    CreateTableResponsePB, DeleteNamespaceRequestPB, GetTableSchemaRequestPB,
-    GetTableSchemaResponsePB, ListNamespacesRequestPB, ListNamespacesResponsePB,
-    ListTablesRequestPB, ListTablesResponsePB,
+    alter_table_request_pb, AlterTableRequestPB, AlterTableResponsePB, CreateNamespaceRequestPB,
+    CreateNamespaceResponsePB, CreateTableRequestPB, CreateTableResponsePB,
+    DeleteNamespaceRequestPB, DeleteTableRequestPB, DeleteTableResponsePB, GetTableSchemaRequestPB,
+    GetTableSchemaResponsePB, IsAlterTableDoneRequestPB, IsAlterTableDoneResponsePB,
+    IsDeleteTableDoneRequestPB, IsDeleteTableDoneResponsePB, ListNamespacesRequestPB,
+    ListNamespacesResponsePB, ListTablesRequestPB, ListTablesResponsePB,
 };
 use yb_proto::pb::master_heartbeat::TSInformationPB;
 use yb_proto::pb::master_rust_peer::{
-    PrepareTableSchemaRequestPB, PrepareTableSchemaResponsePB, SnapshotSchedulesResponsePB,
+    AlterTableSchemaRequestPB, AlterTableSchemaResponsePB, PrepareTableSchemaRequestPB,
+    PrepareTableSchemaResponsePB, SnapshotSchedulesResponsePB,
 };
 use yb_proto::pb::master_types::{master_error_pb::Code, MasterErrorPB, SysRowEntryType};
 
@@ -83,6 +86,22 @@ impl SchemaHost for FakeSchemaHost {
                 Ok(resp.write_to_bytes().unwrap())
             }
             "SnapshotSchedules" => Ok(SnapshotSchedulesResponsePB::new().write_to_bytes().unwrap()),
+            "AlterTableSchema" => {
+                // Adds the request's columns, numbered from next_column_id.
+                let req = AlterTableSchemaRequestPB::parse_from_bytes(request).unwrap();
+                let mut resp = AlterTableSchemaResponsePB::new();
+                let mut schema = req.table.schema.clone().unwrap_or_default();
+                let mut next = req.table.next_column_id();
+                for step in &req.request.alter_schema_steps {
+                    let mut column = step.add_column.schema.clone().unwrap_or_default();
+                    column.set_id(next as u32);
+                    next += 1;
+                    schema.columns.push(column);
+                }
+                resp.schema = MessageField::some(schema);
+                resp.set_next_column_id(next);
+                Ok(resp.write_to_bytes().unwrap())
+            }
             _ => Err(Status::new(StatusCode::NotSupported, method)),
         }
     }
@@ -438,4 +457,191 @@ fn replicas_go_to_the_least_loaded_tservers_and_fill_block_minimums() {
         .count();
     assert_eq!(in_z1, 2);
     assert!(select_replicas(&placement, &tservers[..2], 3, &mut Load::default()).is_err());
+}
+
+impl Harness {
+    /// Sets a table's state, as the controllers would.
+    async fn set_table_state(&self, table_id: &[u8], state: sys_tables_entry_pb::State) {
+        self.lifecycle
+            .writer
+            .mutate(&self.token, |snapshot| {
+                let table = snapshot.get(SysRowEntryType::TABLE, table_id).unwrap();
+                let mut pb: SysTablesEntryPB = table.parse().unwrap();
+                pb.state = Some(EnumOrUnknown::new(state));
+                let mutation = master_catalog_state::Mutation::new().read(table).upsert(
+                    SysRowEntryType::TABLE,
+                    table_id,
+                    pb.write_to_bytes().unwrap(),
+                );
+                Ok((mutation, ()))
+            })
+            .await
+            .unwrap();
+    }
+
+    fn table(&self, table_id: &[u8]) -> SysTablesEntryPB {
+        self.snapshot()
+            .get(SysRowEntryType::TABLE, table_id)
+            .unwrap()
+            .parse()
+            .unwrap()
+    }
+}
+
+#[tokio::test]
+async fn alter_writes_the_new_schema_and_altering_once_running() {
+    let h = Harness::new(3).await;
+    h.create_namespace("ks").await.unwrap();
+    let (result, created) = h.create_table("ks", "t", Some(2)).await;
+    result.unwrap();
+    let table_id = created.table_id().to_vec();
+    h.create_table("ks", "other", Some(1)).await.0.unwrap();
+
+    let mut req = AlterTableRequestPB::new();
+    req.table
+        .mut_or_insert_default()
+        .set_table_id(table_id.clone());
+    let mut step = alter_table_request_pb::Step::new();
+    step.set_type(alter_table_request_pb::StepType::ADD_COLUMN);
+    let column = step
+        .add_column
+        .mut_or_insert_default()
+        .schema
+        .mut_or_insert_default();
+    column.set_name("c".into());
+    column
+        .type_
+        .mut_or_insert_default()
+        .set_main(yb_proto::pb::value::PersistentDataType::INT32);
+    req.alter_schema_steps.push(step);
+    let mut resp = AlterTableResponsePB::new();
+    // Not while the table is being created.
+    let e = h
+        .lifecycle
+        .alter_table(&h.token, Harness::deadline(), &req, &mut resp)
+        .await
+        .unwrap_err();
+    assert_eq!(e.code(), Code::TABLE_NOT_RUNNING);
+
+    h.set_table_state(&table_id, sys_tables_entry_pb::State::RUNNING)
+        .await;
+    h.lifecycle
+        .alter_table(&h.token, Harness::deadline(), &req, &mut resp)
+        .await
+        .unwrap();
+    assert_eq!(resp.schema_version(), 1);
+    let pb = h.table(&table_id);
+    assert_eq!(pb.state(), sys_tables_entry_pb::State::ALTERING);
+    assert_eq!(pb.version(), 1);
+    assert_eq!(pb.schema.columns.len(), 1);
+    assert!(pb.fully_applied_schema.is_some());
+    assert_eq!(pb.fully_applied_schema_version(), 0);
+
+    let mut done_req = IsAlterTableDoneRequestPB::new();
+    done_req
+        .table
+        .mut_or_insert_default()
+        .set_table_id(table_id.clone());
+    let mut done = IsAlterTableDoneResponsePB::new();
+    h.lifecycle
+        .is_alter_table_done(&h.snapshot(), &done_req, &mut done)
+        .unwrap();
+    assert!(!done.done());
+    assert_eq!(done.schema_version(), 1);
+
+    // A rename to a taken name is refused.
+    let mut rename = AlterTableRequestPB::new();
+    rename
+        .table
+        .mut_or_insert_default()
+        .set_table_id(table_id.clone());
+    rename.set_new_table_name("other".into());
+    let e = h
+        .lifecycle
+        .alter_table(&h.token, Harness::deadline(), &rename, &mut resp)
+        .await
+        .unwrap_err();
+    assert_eq!(e.code(), Code::OBJECT_ALREADY_PRESENT);
+}
+
+#[tokio::test]
+async fn drop_marks_the_table_deleting_and_the_deleter_finishes_it() {
+    let h = Harness::new(3).await;
+    h.create_namespace("ks").await.unwrap();
+    let (result, created) = h.create_table("ks", "t", Some(3)).await;
+    result.unwrap();
+    let table_id = created.table_id().to_vec();
+
+    let mut req = DeleteTableRequestPB::new();
+    req.table
+        .mut_or_insert_default()
+        .set_table_id(table_id.clone());
+    // The table is not an index.
+    req.set_is_index_table(true);
+    let mut resp = DeleteTableResponsePB::new();
+    let e = h
+        .lifecycle
+        .delete_table(&h.token, Harness::deadline(), &req, &mut resp)
+        .await
+        .unwrap_err();
+    assert_eq!(e.code(), Code::OBJECT_NOT_FOUND);
+
+    req.set_is_index_table(false);
+    h.lifecycle
+        .delete_table(&h.token, Harness::deadline(), &req, &mut resp)
+        .await
+        .unwrap();
+    assert_eq!(resp.deleted_table_ids, vec![table_id.clone()]);
+    assert_eq!(
+        h.table(&table_id).state(),
+        sys_tables_entry_pb::State::DELETING
+    );
+    // The name is free again, and a second drop is refused.
+    assert!(h
+        .snapshot()
+        .table_by_name(h.table(&table_id).namespace_id(), "t")
+        .is_none());
+    let e = h
+        .lifecycle
+        .delete_table(&h.token, Harness::deadline(), &req, &mut resp)
+        .await
+        .unwrap_err();
+    assert!(
+        e.status.message().starts_with("The object was deleted"),
+        "{e:?}"
+    );
+
+    let mut done_req = IsDeleteTableDoneRequestPB::new();
+    done_req.set_table_id(table_id.clone());
+    let mut done = IsDeleteTableDoneResponsePB::new();
+    h.lifecycle
+        .is_delete_table_done(&h.snapshot(), &done_req, &mut done)
+        .unwrap();
+    assert!(!done.done());
+
+    let deleter = crate::TableDeleter::new(h.lifecycle.clone(), || Duration::from_secs(1));
+    deleter.pass().await;
+    for tablet in h.snapshot().tablets_of(&table_id) {
+        let pb: SysTabletsEntryPB = tablet.parse().unwrap();
+        assert_eq!(pb.state(), sys_tablets_entry_pb::State::DELETED);
+    }
+    assert_eq!(
+        h.table(&table_id).state(),
+        sys_tables_entry_pb::State::DELETED
+    );
+    h.lifecycle
+        .is_delete_table_done(&h.snapshot(), &done_req, &mut done)
+        .unwrap();
+    assert!(done.done());
+
+    // The keyspace can go now.
+    let mut drop_req = DeleteNamespaceRequestPB::new();
+    drop_req
+        .namespace
+        .mut_or_insert_default()
+        .set_name("ks".into());
+    h.lifecycle
+        .delete_namespace(&h.token, Harness::deadline(), &drop_req)
+        .await
+        .unwrap();
 }

@@ -15,6 +15,8 @@ YCQL keyspaces and tables that are neither transactional nor indexes:
 | `IsCreateNamespaceDone`, `IsDeleteNamespaceDone`, `ListNamespaces`, `GetNamespaceInfo` | From the snapshot. `ListNamespaces` orders by id; C++ uses hash-map order. |
 | `ListTables`, `GetTableSchema` | From the snapshot, with C++'s visibility rules and relation types. |
 | `CreateTable`, `IsCreateTableDone` | Below. |
+| `AlterTable`, `IsAlterTableDone` | Below. |
+| `DeleteTable`, `IsDeleteTableDone` | Below. Dropping an index on its own, and a table a snapshot schedule covers (which C++ hides rather than deletes), are not served yet. |
 
 YSQL databases and tables, transactional YCQL tables (which need the transaction status table) and
 indexes answer `NotSupported`. Roles, permissions and UDTs are `master-ycql`'s.
@@ -60,3 +62,29 @@ This master's placement comes from its registration, not the `placement_*` gflag
 embedded in one test process share the gflags, and MiniCluster blocks the address a server of
 another placement group must not use, so a wrong choice leaves `CreateTablet` failing until the
 creation timeout.
+
+## ALTER TABLE
+
+One mutation: the schema from the host's `ApplyAlterSteps` (`AlterTableSchema`), version + 1,
+the new name, replication info or `wal_retention_secs`, and ALTERING, after C++'s checks in its
+order (namespace running, name free, table visible and not PREPARING, `wal_retention_secs` alone).
+The first change of an alter in flight copies the schema to the `fully_applied_*` fields. YCQL
+clients get the latest schema from `GetTableSchema` anyway.
+
+The `table-alters` controller sends `AlterSchema` (`ChangeMetadataRequestPB`) to each active
+tablet's leader once per (tablet, version) in a term. When every tablet has acknowledged the
+version (an answer that it is already there, or newer, counts), it writes RUNNING and clears the
+fully applied fields, if the version is still the one it sent. A tablet
+with no known leader yet is tried on the next pass. C++ instead completes an alter from tablet
+reports, and re-sends from heartbeats when a tablet reports an older version.
+
+## DROP TABLE (K1)
+
+One mutation sets the table and its indexes DELETING; the drop releases the name, since the name
+index skips deleting tables. The `table-deletes` controller then, for each DELETING table, marks
+its tablets DELETED in writes of at most 1000, queues `DeleteTablet` (`TABLET_DATA_DELETED`, with
+`should_abort_active_txns`) for every replica in the committed config or the observed locations,
+and marks the table DELETED once no tablet is left. All of it is derived from the rows, so a new
+leader finishes a drop the last one started; a replica missed here gets its delete from report
+processing. C++ writes DELETING, then the tablets, then DELETED, with in-memory bookkeeping in
+between (#33349).

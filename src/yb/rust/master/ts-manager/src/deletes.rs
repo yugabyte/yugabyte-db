@@ -41,6 +41,9 @@ pub struct DeleteReplica {
     pub cas_config_index: Option<i64>,
     /// Hide rather than delete (a hidden tablet that the tserver still shows).
     pub hide_only: bool,
+    /// Abort the tablet's active transactions: set for a dropped table, as `AsyncDeleteReplica`
+    /// sets it once the table started deleting.
+    pub abort_active_txns: bool,
     /// For the tserver's log.
     pub reason: String,
 }
@@ -55,6 +58,9 @@ impl DeleteReplica {
         req.delete_type = Some(EnumOrUnknown::new(self.delete_type));
         if let Some(index) = self.cas_config_index {
             req.set_cas_config_opid_index_less_or_equal(index);
+        }
+        if self.abort_active_txns {
+            req.set_should_abort_active_txns(true);
         }
         if self.hide_only {
             req.set_hide_only(true);

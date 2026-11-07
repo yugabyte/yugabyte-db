@@ -57,13 +57,15 @@ use yb_proto::pb::master_cluster::{
     SetPreferredZonesRequestPB, SetPreferredZonesResponsePB,
 };
 use yb_proto::pb::master_ddl::{
-    CreateNamespaceRequestPB, CreateNamespaceResponsePB, CreateTableRequestPB,
-    CreateTableResponsePB, DeleteNamespaceRequestPB, DeleteNamespaceResponsePB,
+    AlterTableRequestPB, AlterTableResponsePB, CreateNamespaceRequestPB, CreateNamespaceResponsePB,
+    CreateTableRequestPB, CreateTableResponsePB, DeleteNamespaceRequestPB,
+    DeleteNamespaceResponsePB, DeleteTableRequestPB, DeleteTableResponsePB,
     GetNamespaceInfoRequestPB, GetNamespaceInfoResponsePB, GetTableSchemaRequestPB,
-    GetTableSchemaResponsePB, IsCreateNamespaceDoneRequestPB, IsCreateNamespaceDoneResponsePB,
-    IsCreateTableDoneRequestPB, IsCreateTableDoneResponsePB, IsDeleteNamespaceDoneRequestPB,
-    IsDeleteNamespaceDoneResponsePB, ListNamespacesRequestPB, ListNamespacesResponsePB,
-    ListTablesRequestPB, ListTablesResponsePB,
+    GetTableSchemaResponsePB, IsAlterTableDoneRequestPB, IsAlterTableDoneResponsePB,
+    IsCreateNamespaceDoneRequestPB, IsCreateNamespaceDoneResponsePB, IsCreateTableDoneRequestPB,
+    IsCreateTableDoneResponsePB, IsDeleteNamespaceDoneRequestPB, IsDeleteNamespaceDoneResponsePB,
+    IsDeleteTableDoneRequestPB, IsDeleteTableDoneResponsePB, ListNamespacesRequestPB,
+    ListNamespacesResponsePB, ListTablesRequestPB, ListTablesResponsePB,
 };
 use yb_proto::pb::master_heartbeat::{TSHeartbeatRequestPB, TSHeartbeatResponsePB};
 use yb_proto::pb::master_rust_peer::{
@@ -681,6 +683,24 @@ impl Shared {
                     tables.create_table(&token, deadline, &req, &mut resp).await
                 })
             }
+            "AlterTable" => serve_ddl!(AlterTableRequestPB, AlterTableResponsePB, |req, resp| {
+                tables.alter_table(&token, deadline, &req, &mut resp).await
+            }),
+            "IsAlterTableDone" => serve_ddl!(
+                IsAlterTableDoneRequestPB,
+                IsAlterTableDoneResponsePB,
+                |req, resp| tables.is_alter_table_done(&snapshot, &req, &mut resp)
+            ),
+            "DeleteTable" => {
+                serve_ddl!(DeleteTableRequestPB, DeleteTableResponsePB, |req, resp| {
+                    tables.delete_table(&token, deadline, &req, &mut resp).await
+                })
+            }
+            "IsDeleteTableDone" => serve_ddl!(
+                IsDeleteTableDoneRequestPB,
+                IsDeleteTableDoneResponsePB,
+                |req, resp| tables.is_delete_table_done(&snapshot, &req, &mut resp)
+            ),
             "IsCreateTableDone" => serve_ddl!(
                 IsCreateTableDoneRequestPB,
                 IsCreateTableDoneResponsePB,
