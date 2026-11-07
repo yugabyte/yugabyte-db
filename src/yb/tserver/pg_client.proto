@@ -899,9 +899,10 @@ message PgPerformOptionsPB {
     // Set only by a caller that has somewhere else to go, on the opening round of its prefetch
     // and only on its first attempt. A later round is not sent away: being sent away discards
     // everything the prefetch has fetched, which costs the caller more than the rounds it saves
-    // the leader. A caller that tried the older version and could not use it asks again without
-    // this, and waits as it would have, so a prefetch that keeps failing cannot bounce between
-    // the two.
+    // the leader. A caller that tried the older version and could not use it asks again
+    // without this and does what it would have done without the ask -- queueing behind the
+    // fill when it wants the entry being filled, starting one of its own when it does not --
+    // so a prefetch that keeps failing cannot bounce between the two.
     bool send_away_if_fill_in_flight = 7;
 
     // Every round of a connection start's prefetch carries this; completes_connection_prefetch

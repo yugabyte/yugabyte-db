@@ -63,9 +63,8 @@ class PgResponseCacheTest : public YBTest {
   // A request for a key in the group these tests contend on. Rounds of one prefetch differ only
   // by key, so a distinct key stands for a distinct round.
   LWPgPerformOptionsPB::LWCachingInfoPB& MakeCachingInfo(
-      ThreadSafeArena& arena, std::string_view key = "the-only-key"sv,
-      SendAway send_away = SendAway::kFalse,
-      PartOfConnectionPrefetch part_of_connection_prefetch = PartOfConnectionPrefetch::kFalse) {
+      ThreadSafeArena& arena, std::string_view key, SendAway send_away,
+      PartOfConnectionPrefetch part_of_connection_prefetch) {
     auto& info = *arena.NewArenaObject<LWPgPerformOptionsPB::LWCachingInfoPB>();
     info.set_key_group(kKeyGroup);
     info.dup_key_value(key);
@@ -96,9 +95,12 @@ class PgResponseCacheTest : public YBTest {
 // releases them at once.
 TEST_F(PgResponseCacheTest, AbandonedFillReleasesItsWaiters) {
   ThreadSafeArena arena;
-  auto& filler_info = MakeCachingInfo(arena);
-  auto& waiter_info = MakeCachingInfo(arena);
-  auto& next_info = MakeCachingInfo(arena);
+  auto& filler_info = MakeCachingInfo(arena, "the-only-key"sv, SendAway::kFalse,
+                                      PartOfConnectionPrefetch::kFalse);
+  auto& waiter_info = MakeCachingInfo(arena, "the-only-key"sv, SendAway::kFalse,
+                                      PartOfConnectionPrefetch::kFalse);
+  auto& next_info = MakeCachingInfo(arena, "the-only-key"sv, SendAway::kFalse,
+                                    PartOfConnectionPrefetch::kFalse);
   const auto deadline = CoarseMonoClock::Now() + 60s;
 
   auto filler_waiter = std::make_shared<CountingWaiter>();
@@ -134,9 +136,12 @@ TEST_F(PgResponseCacheTest, AbandonedFillReleasesItsWaiters) {
 // the late fill lands. Its response is never cached, since the cache now keeps the fresh entry.
 TEST_F(PgResponseCacheTest, AFillOutlivingItsDeadlineStillServesItsWaiters) {
   ThreadSafeArena arena;
-  auto& filler_info = MakeCachingInfo(arena);
-  auto& waiter_info = MakeCachingInfo(arena);
-  auto& later_info = MakeCachingInfo(arena);
+  auto& filler_info = MakeCachingInfo(arena, "the-only-key"sv, SendAway::kFalse,
+                                      PartOfConnectionPrefetch::kFalse);
+  auto& waiter_info = MakeCachingInfo(arena, "the-only-key"sv, SendAway::kFalse,
+                                      PartOfConnectionPrefetch::kFalse);
+  auto& later_info = MakeCachingInfo(arena, "the-only-key"sv, SendAway::kFalse,
+                                     PartOfConnectionPrefetch::kFalse);
   // Short enough to wait out, long enough that the caller below queues rather than rebuilding.
   constexpr auto kReadiness = 2s;
 
@@ -175,8 +180,10 @@ TEST_F(PgResponseCacheTest, AFillOutlivingItsDeadlineStillServesItsWaiters) {
 // for the next connection.
 TEST_F(PgResponseCacheTest, AConnectionIsNotSentAwayFromAFillOfItsOwn) {
   ThreadSafeArena arena;
-  auto& round1 = MakeCachingInfo(arena, "round-1"sv, SendAway::kTrue);
-  auto& round2 = MakeCachingInfo(arena, "round-2"sv, SendAway::kTrue);
+  auto& round1 = MakeCachingInfo(arena, "round-1"sv, SendAway::kTrue,
+                                 PartOfConnectionPrefetch::kFalse);
+  auto& round2 = MakeCachingInfo(arena, "round-2"sv, SendAway::kTrue,
+                                 PartOfConnectionPrefetch::kFalse);
   const auto deadline = CoarseMonoClock::Now() + 60s;
 
   auto first_waiter = std::make_shared<CountingWaiter>();
@@ -193,8 +200,10 @@ TEST_F(PgResponseCacheTest, AConnectionIsNotSentAwayFromAFillOfItsOwn) {
 // The same fill seen by a different connection, which is what the check is for.
 TEST_F(PgResponseCacheTest, AnotherConnectionIsSentAwayFromAFillUnderWay) {
   ThreadSafeArena arena;
-  auto& mine = MakeCachingInfo(arena, "round-1"sv, SendAway::kTrue);
-  auto& theirs = MakeCachingInfo(arena, "their-key"sv, SendAway::kTrue);
+  auto& mine = MakeCachingInfo(arena, "round-1"sv, SendAway::kTrue,
+                               PartOfConnectionPrefetch::kFalse);
+  auto& theirs = MakeCachingInfo(arena, "their-key"sv, SendAway::kTrue,
+                                 PartOfConnectionPrefetch::kFalse);
   const auto deadline = CoarseMonoClock::Now() + 60s;
 
   auto my_waiter = std::make_shared<CountingWaiter>();
@@ -241,7 +250,8 @@ TEST_F(PgResponseCacheTest, AClaimEndsOnACompletingRoundThatFoundTheCacheDisable
   }
 
   // The prefetch is over, so another connection asking is not sent away.
-  auto& theirs = MakeCachingInfo(arena, "their-key"sv, SendAway::kTrue);
+  auto& theirs = MakeCachingInfo(arena, "their-key"sv, SendAway::kTrue,
+                                 PartOfConnectionPrefetch::kFalse);
   auto their_waiter = std::make_shared<CountingWaiter>();
   auto theirs_result = cache_->Get(&theirs, deadline, their_waiter, kOtherSessionId, nullptr);
   ASSERT_TRUE(theirs_result.ok())
@@ -276,7 +286,8 @@ TEST_F(PgResponseCacheTest, AConnectionIsSentAwayEvenWhenTheEntryItAsksForIsRead
   ASSERT_TRUE(second);
 
   // Another connection asks for the round that is already stored.
-  auto& theirs = MakeCachingInfo(arena, "round-1"sv, SendAway::kTrue);
+  auto& theirs = MakeCachingInfo(arena, "round-1"sv, SendAway::kTrue,
+                                 PartOfConnectionPrefetch::kFalse);
   auto their_waiter = std::make_shared<CountingWaiter>();
   auto theirs_result = cache_->Get(&theirs, deadline, their_waiter, kOtherSessionId, nullptr);
   ASSERT_NOK(theirs_result);
@@ -291,9 +302,12 @@ TEST_F(PgResponseCacheTest, AConnectionIsSentAwayEvenWhenTheEntryItAsksForIsRead
 // inside the overlap start a whole-catalog read of its own.
 TEST_F(PgResponseCacheTest, AGroupStaysBusyAcrossOverlappingRounds) {
   ThreadSafeArena arena;
-  auto& round1 = MakeCachingInfo(arena, "round-1"sv, SendAway::kTrue);
-  auto& round2 = MakeCachingInfo(arena, "round-2"sv, SendAway::kTrue);
-  auto& theirs = MakeCachingInfo(arena, "their-key"sv, SendAway::kTrue);
+  auto& round1 = MakeCachingInfo(arena, "round-1"sv, SendAway::kTrue,
+                                 PartOfConnectionPrefetch::kFalse);
+  auto& round2 = MakeCachingInfo(arena, "round-2"sv, SendAway::kTrue,
+                                 PartOfConnectionPrefetch::kFalse);
+  auto& theirs = MakeCachingInfo(arena, "their-key"sv, SendAway::kTrue,
+                                 PartOfConnectionPrefetch::kFalse);
   const auto deadline = CoarseMonoClock::Now() + 60s;
 
   auto first_waiter = std::make_shared<CountingWaiter>();
@@ -323,7 +337,8 @@ TEST_F(PgResponseCacheTest, AConnectionPrefetchStaysCountedBetweenItsRequests) {
   ThreadSafeArena arena;
   auto& round1 = MakeCachingInfo(arena, "round-1"sv, SendAway::kTrue,
                                  PartOfConnectionPrefetch::kTrue);
-  auto& theirs = MakeCachingInfo(arena, "their-key"sv, SendAway::kTrue);
+  auto& theirs = MakeCachingInfo(arena, "their-key"sv, SendAway::kTrue,
+                                 PartOfConnectionPrefetch::kFalse);
   const auto deadline = CoarseMonoClock::Now() + 60s;
 
   PgResponseCache::FillTokenPtr token;
@@ -353,7 +368,8 @@ TEST_F(PgResponseCacheTest, AConnectionPrefetchStaysCountedBetweenItsRequests) {
 // not ask alone, even while another connection is filling the same database.
 TEST_F(PgResponseCacheTest, ARequestThatDoesNotAskIsNotSentAway) {
   ThreadSafeArena arena;
-  auto& theirs = MakeCachingInfo(arena, "their-key"sv, SendAway::kTrue);
+  auto& theirs = MakeCachingInfo(arena, "their-key"sv, SendAway::kTrue,
+                                 PartOfConnectionPrefetch::kFalse);
   auto& later_round = MakeCachingInfo(arena, "round-2"sv, SendAway::kFalse,
                                       PartOfConnectionPrefetch::kTrue);
   const auto deadline = CoarseMonoClock::Now() + 60s;
@@ -379,7 +395,8 @@ TEST_F(PgResponseCacheTest, AConnectionPrefetchEndsItsClaimOnAFinalRoundServedFr
   const auto deadline = CoarseMonoClock::Now() + 60s;
 
   // Another connection has already cached the entry this one's last round will want.
-  auto& cached = MakeCachingInfo(arena, "final-round"sv);
+  auto& cached = MakeCachingInfo(arena, "final-round"sv, SendAway::kFalse,
+                                 PartOfConnectionPrefetch::kFalse);
   auto cached_waiter = std::make_shared<CountingWaiter>();
   auto cached_setter = ASSERT_RESULT(
       cache_->Get(&cached, deadline, cached_waiter, kOtherSessionId, nullptr));
@@ -409,7 +426,8 @@ TEST_F(PgResponseCacheTest, AConnectionPrefetchEndsItsClaimOnAFinalRoundServedFr
   ASSERT_EQ(final_waiter->applied(), 1);
 
   // The prefetch is over, so the next connection fills rather than being sent away from it.
-  auto& theirs = MakeCachingInfo(arena, "their-key"sv, SendAway::kTrue);
+  auto& theirs = MakeCachingInfo(arena, "their-key"sv, SendAway::kTrue,
+                                 PartOfConnectionPrefetch::kFalse);
   auto their_waiter = std::make_shared<CountingWaiter>();
   auto theirs_setter = ASSERT_RESULT(
       cache_->Get(&theirs, deadline, their_waiter, kOtherSessionId, nullptr));
@@ -439,7 +457,8 @@ TEST_F(PgResponseCacheTest, AClaimOutlivesTheSessionsHalfWhileARoundIsStillFilli
   // The session lets go of its half while the round it started is still outstanding.
   token.reset();
 
-  auto& theirs = MakeCachingInfo(arena, "their-key"sv, SendAway::kTrue);
+  auto& theirs = MakeCachingInfo(arena, "their-key"sv, SendAway::kTrue,
+                                 PartOfConnectionPrefetch::kFalse);
   auto their_waiter = std::make_shared<CountingWaiter>();
   auto theirs_result = cache_->Get(&theirs, deadline, their_waiter, kOtherSessionId, nullptr);
   ASSERT_NOK(theirs_result);
@@ -460,8 +479,10 @@ TEST_F(PgResponseCacheTest, AClaimOutlivesTheSessionsHalfWhileARoundIsStillFilli
 // and start at the same catalog version, so they want the same keys.
 TEST_F(PgResponseCacheTest, ACallerOnTheEntryBeingFilledIsSentAway) {
   ThreadSafeArena arena;
-  auto& filling = MakeCachingInfo(arena, "round-1"sv, SendAway::kTrue);
-  auto& sibling = MakeCachingInfo(arena, "round-1"sv, SendAway::kTrue);
+  auto& filling = MakeCachingInfo(arena, "round-1"sv, SendAway::kTrue,
+                                  PartOfConnectionPrefetch::kFalse);
+  auto& sibling = MakeCachingInfo(arena, "round-1"sv, SendAway::kTrue,
+                                  PartOfConnectionPrefetch::kFalse);
   const auto deadline = CoarseMonoClock::Now() + 60s;
 
   auto filler_waiter = std::make_shared<CountingWaiter>();
@@ -496,7 +517,7 @@ TEST_F(PgResponseCacheTest, ATokenIsSafeToReleaseFromTwoThreads) {
   // Two entries another connection has already cached, so both completing rounds below are
   // answered without a fill and release on the spot.
   for (const auto& key : {"cached-a"sv, "cached-b"sv}) {
-    auto& info = MakeCachingInfo(arena, key);
+    auto& info = MakeCachingInfo(arena, key, SendAway::kFalse, PartOfConnectionPrefetch::kFalse);
     auto waiter = std::make_shared<CountingWaiter>();
     auto setter = ASSERT_RESULT(cache_->Get(&info, deadline, waiter, kOtherSessionId, nullptr));
     ASSERT_TRUE(setter);
@@ -513,7 +534,8 @@ TEST_F(PgResponseCacheTest, ATokenIsSafeToReleaseFromTwoThreads) {
   ASSERT_TRUE(token);
 
   // An ordinary read of the same session, counted separately and held open throughout.
-  auto& ordinary = MakeCachingInfo(arena, "ordinary"sv);
+  auto& ordinary = MakeCachingInfo(arena, "ordinary"sv, SendAway::kFalse,
+                                   PartOfConnectionPrefetch::kFalse);
   auto ordinary_waiter = std::make_shared<CountingWaiter>();
   auto ordinary_setter = ASSERT_RESULT(
       cache_->Get(&ordinary, deadline, ordinary_waiter, kSessionId, nullptr));
@@ -545,7 +567,8 @@ TEST_F(PgResponseCacheTest, ATokenIsSafeToReleaseFromTwoThreads) {
   }
 
   // One release landed, not two: the ordinary read's token still counts the database.
-  auto& theirs = MakeCachingInfo(arena, "their-key"sv, SendAway::kTrue);
+  auto& theirs = MakeCachingInfo(arena, "their-key"sv, SendAway::kTrue,
+                                 PartOfConnectionPrefetch::kFalse);
   auto their_waiter = std::make_shared<CountingWaiter>();
   auto theirs_result = cache_->Get(&theirs, deadline, their_waiter, kOtherSessionId, nullptr);
   ASSERT_NOK(theirs_result) << "both threads released the one token the connection start held";
@@ -575,7 +598,8 @@ TEST_F(PgResponseCacheTest, TheClaimOutlivesThePublish) {
       mem_tracker_, metric_entity_.get(),
       [this, &observed, &sent_away_while_publishing](PgResponseCache::KeyGroup, uint64_t) {
         ThreadSafeArena probe_arena;
-        auto& theirs = MakeCachingInfo(probe_arena, "their-key"sv, SendAway::kTrue);
+        auto& theirs = MakeCachingInfo(probe_arena, "their-key"sv, SendAway::kTrue,
+                                       PartOfConnectionPrefetch::kFalse);
         auto waiter = std::make_shared<CountingWaiter>();
         sent_away_while_publishing = ResultToStatus(observed->Get(
             &theirs, CoarseMonoClock::Now() + 60s, waiter, kOtherSessionId, nullptr));

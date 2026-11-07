@@ -1978,18 +1978,21 @@ TEST_F(PgStaleCatalogPrefetchTest, ARefreshDoesNotRecordAVersion) {
 // it completes at all is the proof it did not wait for the fill.
 class PausedFills {
  public:
-  PausedFills() {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pg_response_cache_pause_fill) = true;
-  }
+  PausedFills() { Set(true); }
 
   ~PausedFills() { Resume(); }
 
-  void Resume() {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pg_response_cache_pause_fill) = false;
-  }
+  // Static, so a thread that releases the pause does not hold a reference to this object and
+  // cannot outlive it. The flag is the state; this class only bounds it to a scope.
+  static void Resume() { Set(false); }
 
   PausedFills(const PausedFills&) = delete;
   PausedFills& operator=(const PausedFills&) = delete;
+
+ private:
+  static void Set(bool paused) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pg_response_cache_pause_fill) = paused;
+  }
 };
 
 TEST_F(PgStaleCatalogPrefetchTest, DefersToAFillAlreadyUnderWay) {
@@ -2006,10 +2009,12 @@ TEST_F(PgStaleCatalogPrefetchTest, DefersToAFillAlreadyUnderWay) {
   // release branch, while ALTER TABLE increments either way.
   ASSERT_OK(conn.Execute("ALTER TABLE t_defer ADD COLUMN v INT"));
 
-  PausedFills paused;
-
   const auto queries_before = ResponseCacheQueries();
+  // After the thread holder, so it is destroyed first: an assertion that returns early has to
+  // lift the pause before JoinAll waits on a filler that is still blocked in it, or the test
+  // hangs instead of reporting the failure.
   TestThreadHolder threads;
+  PausedFills paused;
   threads.AddThreadFunctor([this] {
     auto filler = ASSERT_RESULT(Connect());
     ASSERT_OK(filler.FetchRow<int32_t>("SELECT 1"));
@@ -2079,10 +2084,12 @@ TEST_F(PgStaleCatalogPrefetchTest, DefersAcrossVersionsToAFillAlreadyUnderWay) {
 
   ASSERT_OK(conn.Execute("ALTER TABLE t_fan ADD COLUMN v1 INT"));
 
-  PausedFills paused;
-
   const auto queries_before = ResponseCacheQueries();
+  // After the thread holder, so it is destroyed first: an assertion that returns early has to
+  // lift the pause before JoinAll waits on a filler that is still blocked in it, or the test
+  // hangs instead of reporting the failure.
   TestThreadHolder threads;
+  PausedFills paused;
   threads.AddThreadFunctor([this] {
     auto filler = ASSERT_RESULT(Connect());
     ASSERT_OK(filler.FetchRow<int32_t>("SELECT 1"));
@@ -2198,11 +2205,11 @@ TEST_F(PgUnbridgeableCatalogPrefetchTest, ComesUpWhenSentAwayWithNoUsableOlderVe
 
   ASSERT_OK(conn.Execute("ALTER TABLE t_unusable ADD COLUMN v INT"));
 
-  PausedFills paused;
-
   const auto queries_before = ResponseCacheQueries();
   const auto send_aways_before = ResponseCacheSendAways();
+  // After the thread holder, for the reason DefersToAFillAlreadyUnderWay gives.
   TestThreadHolder threads;
+  PausedFills paused;
   threads.AddThreadFunctor([this] {
     auto filler = ASSERT_RESULT(Connect());
     ASSERT_OK(filler.FetchRow<int32_t>("SELECT 1"));
@@ -2216,11 +2223,11 @@ TEST_F(PgUnbridgeableCatalogPrefetchTest, ComesUpWhenSentAwayWithNoUsableOlderVe
   // send-away, though: releasing earlier would let the fill finish before the connection ever
   // met it, and the test would prove nothing. Released whatever the wait returns, so a failure
   // here reports itself rather than hanging the connection below.
-  threads.AddThreadFunctor([this, send_aways_before, &paused] {
+  threads.AddThreadFunctor([this, send_aways_before] {
     const auto sent_away = LoggedWaitFor([this, send_aways_before]() -> Result<bool> {
       return ResponseCacheSendAways() > send_aways_before;
     }, 60s, "the connection to be sent away from the fill");
-    paused.Resume();
+    PausedFills::Resume();
     ASSERT_OK(sent_away);
   });
 

@@ -3030,7 +3030,7 @@ typedef struct YbPrefetcherStarterWithCache
 	const YbcPgLastKnownCatalogVersionInfo *version;
 	YbcPgSysTablePrefetcherCacheMode mode;
 	YbcPgSysTablePrefetchKind kind;
-	/* Cleared once this attempt has been sent away, so the next one waits instead. */
+	/* Cleared once this attempt has been sent away, so the next one runs without the ask. */
 	bool		send_away_if_fill_in_flight;
 	bool		part_of_connection_prefetch;
 } YbPrefetcherStarterWithCache;
