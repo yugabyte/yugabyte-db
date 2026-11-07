@@ -1448,10 +1448,11 @@ Status PgSession::AcquireObjectLock(
   // would also need ReleaseSessionObjectLock to forward their releases in legacy mode. But PG
   // forwards every session lock release, including those of the global locks dropped here, and
   // the tserver fails a release for a session that holds no session locks.
-  const auto is_legacy_txn_dml_lock =
-      pg_txn_manager_->IsUsingLocalDmlLocksForCurrentTxn() && !is_session_lock &&
-      !pg_txn_manager_->IsDdlMode() && mode <= YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK;
-  if (!pg_txn_manager_->IsTableLockingEnabledForCurrentTxn() && !is_legacy_txn_dml_lock) {
+  const auto skips_legacy_mode_lock =
+      !pg_txn_manager_->IsTableLockingEnabledForCurrentTxn() &&
+      (is_session_lock || pg_txn_manager_->IsDdlMode() ||
+       mode > YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK);
+  if (!pg_txn_manager_->IsTakingObjectLocksForCurrentTxn() || skips_legacy_mode_lock) {
     // Object locking feature is not enabled. YB makes best efforts to achieve necessary semantics
     // using mechanisms like catalog version update by DDLs, DDLs aborting on progress DMLs etc.
     // Also skip object locking during initdb bootstrap mode, since it's a single-process,

@@ -967,12 +967,12 @@ char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len) {
 // YBCIsLegacyModeForCatalogOps during sys table prefetching, where
 // YBCIsSysTablePrefetchingStarted() forces legacy mode anyway.
 static bool object_locking_infra_for_curr_txn = false;
-static bool object_locks_for_curr_legacy_txn = false;
+static bool object_locks_for_curr_txn = false;
 
 void YBCSetObjectLockingInfraForCurrTxn() {
   object_locking_infra_for_curr_txn = yb_enable_object_locking_infra;
-  object_locks_for_curr_legacy_txn =
-      !yb_enable_object_locking_infra && yb_enable_object_locks_for_legacy_txns;
+  object_locks_for_curr_txn =
+      yb_enable_object_locking_infra || yb_enable_object_locks_for_legacy_txns;
 }
 
 bool YBCIsObjectLockingInfraEnabled() {
@@ -983,12 +983,8 @@ bool YBCIsObjectLockingEnabled() {
   return FLAGS_enable_object_locking_for_table_locks && YBCIsObjectLockingInfraEnabled();
 }
 
-bool YBCIsLegacyTxnTakingObjectLocks() {
-  return FLAGS_enable_object_locking_for_table_locks && object_locks_for_curr_legacy_txn;
-}
-
 bool YBCIsTxnTakingObjectLocks() {
-  return YBCIsObjectLockingEnabled() || YBCIsLegacyTxnTakingObjectLocks();
+  return FLAGS_enable_object_locking_for_table_locks && object_locks_for_curr_txn;
 }
 
 bool YBCIsAutoAnalyzeEnabled() {

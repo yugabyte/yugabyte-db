@@ -3004,7 +3004,7 @@ class PgClientSession::Impl {
         << " with lock type " << AsString(lock_type);
 
     RSTATUS_DCHECK(
-        options.is_using_table_locks() || options.is_using_local_dml_locks(), IllegalState,
+        options.is_taking_object_locks(), IllegalState,
         "Table Locking feature not enabled.");
     RSTATUS_DCHECK(
         options.read_time_options().read_time_serial_no() == kInvalidReadTimeSerialNo,
@@ -3710,8 +3710,7 @@ class PgClientSession::Impl {
           return NextObjectLockingTxnMeta(locality, deadline);
         }),
         IsTxnUsingTableLocks(options.is_using_table_locks()),
-        IsTxnTakingObjectLocks(
-            options.is_using_table_locks() || options.is_using_local_dml_locks()),
+        IsTxnTakingObjectLocks(options.is_taking_object_locks()),
         context_.metrics,
         MakeOriginationInfo(options.origination_ht())));
     // PrepareOperations has already applied the ops to the session. Failing out before the flush
