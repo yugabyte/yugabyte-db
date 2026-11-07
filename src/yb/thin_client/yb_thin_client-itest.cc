@@ -44,6 +44,7 @@
 
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -79,7 +80,6 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 
-DECLARE_bool(TEST_assert_reads_served_by_follower);
 DECLARE_bool(TEST_asyncrpc_finished_set_timedout);
 DECLARE_uint64(TEST_thin_client_perform_delay_ms);
 DECLARE_bool(TEST_thin_client_omit_session_lost_code);
@@ -2198,28 +2198,56 @@ class PgThinClientFollowerReadTest : public PgThinClientFailoverTest {
     return options;
   }
 
-  // Reads one page with the tserver asserting it is served by a follower. The assertion is a CHECK
-  // on every read the process serves, so it is on for just this read.
-  ReadOutcome ReadPageAtAFollower(
-      ybthin_client* client, ybthin_table* table, int32_t v_id, uint64_t limit,
-      const std::vector<uint8_t>& paging_state, const ybthin_read_options* options) {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_assert_reads_served_by_follower) = true;
-    auto se = ScopeExit([] {
-      ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_assert_reads_served_by_follower) = false;
-    });
-    return ReadKeys(client, table, kHashKey, v_id, limit, paging_state, true, options);
+  // The tablet's consistent-prefix read count on one tserver's replica. ReadQuery bumps it on
+  // every CONSISTENT_PREFIX read that reaches a replica, before deciding whether the replica can
+  // serve it, so a refused attempt counts too.
+  Result<uint64_t> ConsistentPrefixReads(const Replicas& replicas, size_t ts_idx) {
+    auto peer = VERIFY_RESULT(PeerOn(replicas, ts_idx));
+    return VERIFY_RESULT(peer->shared_tablet())->metrics()->Get(
+        tablet::TabletCounters::kConsistentPrefixReadRequests);
+  }
+
+  // One count per tserver, in tserver order.
+  Result<std::vector<uint64_t>> ConsistentPrefixReads(const Replicas& replicas) {
+    std::vector<uint64_t> counts;
+    for (size_t ts_idx = 0; ts_idx < cluster_->num_tablet_servers(); ++ts_idx) {
+      counts.push_back(VERIFY_RESULT(ConsistentPrefixReads(replicas, ts_idx)));
+    }
+    return counts;
+  }
+
+  // A session on the service itself, for batches the shim never builds.
+  Result<uint64_t> OpenRawSession(tserver::ThinClientServiceProxy* proxy) {
+    tserver::ThinHeartbeatRequestPB req;
+    tserver::ThinHeartbeatResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(MonoDelta::FromMilliseconds(kRpcTimeoutMs));
+    RETURN_NOT_OK(proxy->Heartbeat(req, &resp, &controller));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp.session_id();
+  }
+
+  // The service's status for a Perform, or the RPC's if that failed.
+  Status RawPerform(
+      tserver::ThinClientServiceProxy* proxy, const tserver::ThinPerformRequestPB& req) {
+    tserver::ThinPerformResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(MonoDelta::FromMilliseconds(kRpcTimeoutMs));
+    RETURN_NOT_OK(proxy->Perform(req, &resp, &controller));
+    return ResponseStatus(resp);
   }
 };
 
 // A Perform sent to a follower's tserver with read_from_followers and a staleness is served by that
-// follower: the client inside the tserver picks its local replica, and the tserver CHECKs it is not
-// the leader.
+// follower: the client inside the tserver picks its local replica, which is the only one that sees
+// a consistent-prefix read.
 TEST_F(PgThinClientFollowerReadTest, StaleReadIsServedByAFollower) {
   constexpr int kRows = 20;
   const auto oids = ASSERT_RESULT(CreateSingleTabletKeyTable());
   const auto replicas = ASSERT_RESULT(FindReplicas());
-  auto client = ASSERT_RESULT(
-      CreateThinClient({TServerAddrOf(replicas.follower_idxs[0])}, nullptr, kRpcTimeoutMs));
+  const size_t follower_idx = replicas.follower_idxs[0];
+  auto client =
+      ASSERT_RESULT(CreateThinClient({TServerAddrOf(follower_idx)}, nullptr, kRpcTimeoutMs));
   auto table = ASSERT_RESULT(ThinTable::Open(client.get(), oids));
   const int32_t v_id = table.ColumnId(1);
 
@@ -2227,10 +2255,17 @@ TEST_F(PgThinClientFollowerReadTest, StaleReadIsServedByAFollower) {
   // Let the rows, and the followers' safe time, get older than the staleness.
   SleepFor(MonoDelta::FromMilliseconds(2 * kStalenessMs));
 
+  const auto before = ASSERT_RESULT(ConsistentPrefixReads(replicas));
   const auto options = FollowerOptions();
-  auto out = ReadPageAtAFollower(client.get(), table.get(), v_id, /* limit= */ 0, {}, &options);
+  auto out = ReadKeys(
+      client.get(), table.get(), kHashKey, v_id, /* limit= */ 0, {}, true, &options);
   ASSERT_EQ(out.code, YBTHIN_OK) << out.message;
   ASSERT_EQ(out.n_rows, static_cast<size_t>(kRows));
+  const auto after = ASSERT_RESULT(ConsistentPrefixReads(replicas));
+  for (size_t ts_idx = 0; ts_idx < after.size(); ++ts_idx) {
+    ASSERT_EQ(after[ts_idx] - before[ts_idx], ts_idx == follower_idx ? 1 : 0)
+        << "tserver " << ts_idx << (ts_idx == replicas.leader_idx ? " (leader)" : "");
+  }
 }
 
 // A follower that has fallen further behind than the staleness cannot serve the read time. It hands
@@ -2238,7 +2273,7 @@ TEST_F(PgThinClientFollowerReadTest, StaleReadIsServedByAFollower) {
 // still returns the rows, promptly.
 TEST_F(PgThinClientFollowerReadTest, LaggingFollowerHandsTheReadOver) {
   constexpr int kRows = 20;
-  constexpr uint64_t kPageLimit = kRows / 2;  // a second page, so the batch reports its read time
+  constexpr uint64_t kPageLimit = kRows / 2;
   const auto oids = ASSERT_RESULT(CreateSingleTabletKeyTable());
   const auto replicas = ASSERT_RESULT(FindReplicas());
   const size_t lagging_idx = replicas.follower_idxs[0];
@@ -2257,9 +2292,8 @@ TEST_F(PgThinClientFollowerReadTest, LaggingFollowerHandsTheReadOver) {
     lagging_consensus->TEST_PauseUpdateConsensus(false);
   });
   SleepFor(MonoDelta::FromMilliseconds(3 * kStalenessMs));
-  const auto frozen_safe_time = ASSERT_RESULT(
-      ASSERT_RESULT(lagging_peer->shared_tablet())->SafeTime(tablet::RequireLease::kFalse));
 
+  const auto before = ASSERT_RESULT(ConsistentPrefixReads(replicas));
   const auto options = FollowerOptions();
   const auto start = MonoTime::Now();
   auto out = ReadKeys(
@@ -2269,12 +2303,19 @@ TEST_F(PgThinClientFollowerReadTest, LaggingFollowerHandsTheReadOver) {
   ASSERT_EQ(out.n_rows, kPageLimit);
   ASSERT_LT(elapsed, MonoDelta::FromMilliseconds(kRpcTimeoutMs / 4))
       << "the read waited rather than moving to another replica";
-  // The batch read at a time the frozen follower had not reached, so another replica served it.
-  ASSERT_NE(out.used_read_time_ht, 0u);
-  ASSERT_GT(out.used_read_time_ht, frozen_safe_time.ToUint64());
+  // The frozen follower saw the one attempt it refused, and exactly one other replica served it.
+  const auto after = ASSERT_RESULT(ConsistentPrefixReads(replicas));
+  ASSERT_EQ(after[lagging_idx] - before[lagging_idx], 1);
+  uint64_t served_elsewhere = 0;
+  for (size_t ts_idx = 0; ts_idx < after.size(); ++ts_idx) {
+    if (ts_idx != lagging_idx) {
+      served_elsewhere += after[ts_idx] - before[ts_idx];
+    }
+  }
+  ASSERT_EQ(served_elsewhere, 1);
 }
 
-// Every page of a follower scan is served by a follower at the first page's snapshot: a
+// Every page of a follower scan is served by the follower at the first page's snapshot: a
 // continuation carries the scan's read_from_followers and read time itself, so it needs no options.
 TEST_F(PgThinClientFollowerReadTest, PagedFollowerScanHoldsItsSnapshot) {
   constexpr int kRows = 30;
@@ -2282,16 +2323,18 @@ TEST_F(PgThinClientFollowerReadTest, PagedFollowerScanHoldsItsSnapshot) {
   constexpr uint64_t kPageLimit = 10;
   const auto oids = ASSERT_RESULT(CreateSingleTabletKeyTable());
   const auto replicas = ASSERT_RESULT(FindReplicas());
-  auto client = ASSERT_RESULT(
-      CreateThinClient({TServerAddrOf(replicas.follower_idxs[0])}, nullptr, kRpcTimeoutMs));
+  const size_t follower_idx = replicas.follower_idxs[0];
+  auto client =
+      ASSERT_RESULT(CreateThinClient({TServerAddrOf(follower_idx)}, nullptr, kRpcTimeoutMs));
   auto table = ASSERT_RESULT(ThinTable::Open(client.get(), oids));
   const int32_t v_id = table.ColumnId(1);
 
   ASSERT_EQ(UpsertKeys(client.get(), table.get(), kHashKey, 0, kRows).code, YBTHIN_OK);
   SleepFor(MonoDelta::FromMilliseconds(2 * kStalenessMs));
 
+  const auto before = ASSERT_RESULT(ConsistentPrefixReads(replicas));
   const auto options = FollowerOptions();
-  auto page = ReadPageAtAFollower(client.get(), table.get(), v_id, kPageLimit, {}, &options);
+  auto page = ReadKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit, {}, true, &options);
   ASSERT_EQ(page.code, YBTHIN_OK) << page.message;
   ASSERT_FALSE(page.paging_state.empty());
   const uint64_t snapshot_ht = page.used_read_time_ht;
@@ -2312,11 +2355,20 @@ TEST_F(PgThinClientFollowerReadTest, PagedFollowerScanHoldsItsSnapshot) {
       break;
     }
     ASSERT_LT(++pages, 100) << "paging did not terminate";
-    page = ReadPageAtAFollower(
-        client.get(), table.get(), v_id, kPageLimit, page.paging_state, /* options= */ nullptr);
+    page = ReadKeys(
+        client.get(), table.get(), kHashKey, v_id, kPageLimit, page.paging_state, true,
+        /* options= */ nullptr);
     ASSERT_EQ(page.code, YBTHIN_OK) << page.message;
   }
   ASSERT_GT(pages, 1);
+  // One consistent-prefix read per page, all on the Perform's own follower.
+  const auto after = ASSERT_RESULT(ConsistentPrefixReads(replicas));
+  for (size_t ts_idx = 0; ts_idx < after.size(); ++ts_idx) {
+    ASSERT_EQ(
+        after[ts_idx] - before[ts_idx],
+        ts_idx == follower_idx ? static_cast<uint64_t>(pages + 1) : 0)
+        << "tserver " << ts_idx << (ts_idx == replicas.leader_idx ? " (leader)" : "");
+  }
   std::sort(seen.begin(), seen.end());
   ASSERT_EQ(seen.size(), static_cast<size_t>(kRows))
       << "rows written after the first page became visible mid-scan";
@@ -2353,27 +2405,65 @@ TEST_F(PgThinClientFollowerReadTest, StalenessOnAWriteBatchIsRejected) {
   tserver::ThinClientServiceProxy proxy(
       &client_->proxy_cache(),
       HostPort::FromBoundEndpoint(cluster_->mini_tablet_server(0)->bound_rpc_addr()));
-
-  tserver::ThinHeartbeatRequestPB heartbeat_req;
-  tserver::ThinHeartbeatResponsePB heartbeat_resp;
-  rpc::RpcController heartbeat_controller;
-  heartbeat_controller.set_timeout(MonoDelta::FromMilliseconds(kRpcTimeoutMs));
-  ASSERT_OK(proxy.Heartbeat(heartbeat_req, &heartbeat_resp, &heartbeat_controller));
-  ASSERT_OK(ResponseStatus(heartbeat_resp));
-
   tserver::ThinPerformRequestPB req;
-  req.set_session_id(heartbeat_resp.session_id());
+  req.set_session_id(ASSERT_RESULT(OpenRawSession(&proxy)));
   req.mutable_read_time_options()->mutable_follower_read_staleness_ms()->set_value(kStalenessMs);
   auto* write = req.add_ops()->mutable_write();
   write->set_table_id(GetPgsqlTableId(oids.db_oid, oids.table_oid));
   write->set_stmt_type(PgsqlWriteRequestPB::PGSQL_UPSERT);
-  tserver::ThinPerformResponsePB resp;
-  rpc::RpcController controller;
-  controller.set_timeout(MonoDelta::FromMilliseconds(kRpcTimeoutMs));
-  ASSERT_OK(proxy.Perform(req, &resp, &controller));
-  const auto status = ResponseStatus(resp);
+  const auto status = RawPerform(&proxy, req);
   ASSERT_TRUE(status.IsInvalidArgument()) << status;
   ASSERT_STR_CONTAINS(status.ToString(), "follower_read_staleness_ms");
+}
+
+// A zero staleness would read at now, which no follower can serve, so every such read would be
+// handed to the leader. The service refuses it.
+TEST_F(PgThinClientFollowerReadTest, ZeroStalenessIsRejectedByTheService) {
+  const auto oids = ASSERT_RESULT(CreateSingleTabletKeyTable());
+  tserver::ThinClientServiceProxy proxy(
+      &client_->proxy_cache(),
+      HostPort::FromBoundEndpoint(cluster_->mini_tablet_server(0)->bound_rpc_addr()));
+  tserver::ThinPerformRequestPB req;
+  req.set_session_id(ASSERT_RESULT(OpenRawSession(&proxy)));
+  req.mutable_read_time_options()->set_read_from_followers(true);
+  req.mutable_read_time_options()->mutable_follower_read_staleness_ms()->set_value(0);
+  req.add_ops()->mutable_read()->set_table_id(GetPgsqlTableId(oids.db_oid, oids.table_oid));
+  const auto status = RawPerform(&proxy, req);
+  ASSERT_TRUE(status.IsInvalidArgument()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "positive");
+}
+
+// The shim refuses the same batch before it is sent; a pinned batch needs no staleness.
+TEST_F(PgThinClientFollowerReadTest, ZeroStalenessIsInvalidAtTheShim) {
+  constexpr int kRows = 10;
+  constexpr uint64_t kPageLimit = kRows / 2;  // a second page, so the batch reports its read time
+  const auto oids = ASSERT_RESULT(CreateSingleTabletKeyTable());
+  const auto replicas = ASSERT_RESULT(FindReplicas());
+  auto client = ASSERT_RESULT(
+      CreateThinClient({TServerAddrOf(replicas.follower_idxs[0])}, nullptr, kRpcTimeoutMs));
+  auto table = ASSERT_RESULT(ThinTable::Open(client.get(), oids));
+  const int32_t v_id = table.ColumnId(1);
+  ASSERT_EQ(UpsertKeys(client.get(), table.get(), kHashKey, 0, kRows).code, YBTHIN_OK);
+  SleepFor(MonoDelta::FromMilliseconds(2 * kStalenessMs));
+
+  ybthin_read_options zero_staleness = {};
+  zero_staleness.read_from_followers = 1;
+  auto out = ReadKeys(
+      client.get(), table.get(), kHashKey, v_id, kPageLimit, {}, true, &zero_staleness);
+  ASSERT_EQ(out.code, YBTHIN_INVALID) << out.message;
+  ASSERT_STR_CONTAINS(out.message, "follower_read_staleness_ms");
+
+  // Pinned to an earlier follower batch's snapshot, the batch has nothing to derive from the
+  // staleness, so none is needed.
+  const auto options = FollowerOptions();
+  auto stale = ReadKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit, {}, true, &options);
+  ASSERT_EQ(stale.code, YBTHIN_OK) << stale.message;
+  ASSERT_NE(stale.used_read_time_ht, 0u);
+  zero_staleness.read_time_ht = stale.used_read_time_ht;
+  auto pinned = ReadKeys(
+      client.get(), table.get(), kHashKey, v_id, kPageLimit, {}, true, &zero_staleness);
+  ASSERT_EQ(pinned.code, YBTHIN_OK) << pinned.message;
+  ASSERT_EQ(pinned.used_read_time_ht, stale.used_read_time_ht);
 }
 
 namespace {

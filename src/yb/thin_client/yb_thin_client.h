@@ -268,13 +268,18 @@ typedef struct {
   uint64_t read_time_ht;
   // bool. Serve the batch's reads from the closest replica, a follower included, at a snapshot
   // the tserver computes as its own clock minus `follower_read_staleness_ms` (which must then be
-  // set, unless read_time_ht is). A follower behind that snapshot hands the read to another
-  // replica inside the tserver; the caller sees one Perform either way. The pages of a scan
-  // started this way stay on followers at the first page's snapshot on their own (the flag
-  // travels inside paging_state), so a continuation needs neither field set again.
+  // positive, unless read_time_ht is set). A follower behind that snapshot hands the read to
+  // another replica inside the tserver, still as one Perform -- but not for free: the tserver's
+  // client marks that replica failed in its shared meta cache until its next refresh
+  // (--lookup_cache_refresh_secs, 60 s by default), so every follower read of that tablet through
+  // that tserver goes to a remote replica for up to that long. YSQL follower reads behave the
+  // same way. The pages of a scan started this way stay on followers at the first page's
+  // snapshot on their own (the flag travels inside paging_state), so a continuation needs
+  // neither field set again.
   int read_from_followers;
-  // Only read with read_from_followers and read_time_ht == 0; ignored otherwise. Needs a tserver
-  // that understands it; an older one serves the batch at the leader, unpinned.
+  // Only read with read_from_followers and read_time_ht == 0, and then it must be > 0 (0 is
+  // YBTHIN_INVALID); ignored otherwise. Needs a tserver that understands it; an older one serves
+  // the batch at the leader, unpinned.
   uint32_t follower_read_staleness_ms;
 } ybthin_read_options;
 

@@ -1307,6 +1307,16 @@ void ybthin_read_async2(
   if (have_pinned && pinned_read_from_followers) {
     call->read_from_followers = true;
   }
+  // A fresh follower batch reads at now - staleness, so a zero staleness would read at now, which
+  // no follower can serve: refuse it here rather than hand every such read to the leader.
+  if (call->read_from_followers && read_time_ht == 0 && !have_pinned &&
+      options->follower_read_staleness_ms == 0) {
+    cb(ctx, MakeStatus(
+           YBTHIN_INVALID,
+           "read_from_followers needs a positive follower_read_staleness_ms or a read_time_ht"),
+       nullptr);
+    return;
+  }
 
   // One Perform with n_ops read requests, in caller order -- results map back by index.
   auto& req = call->req;

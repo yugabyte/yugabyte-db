@@ -192,6 +192,10 @@ class ThinSession : public ClientSessionBase,
     SCHECK(
         !(has_write && has_staleness), InvalidArgument,
         "follower_read_staleness_ms is not allowed on a write batch");
+    // A zero staleness reads at now, which no follower can serve.
+    SCHECK(
+        !has_staleness || read_time_options.follower_read_staleness_ms().value() > 0,
+        InvalidArgument, "follower_read_staleness_ms must be positive");
     // A follower read needs a read time it can judge against its safe time: the pinned one of a
     // continuation, or one derived from the staleness. Without either, a follower would serve
     // whatever its safe time is, however far behind.
