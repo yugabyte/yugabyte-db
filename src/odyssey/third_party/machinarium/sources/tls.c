@@ -226,6 +226,31 @@ static int yb_mm_tls_cert_hash(X509 *cert, unsigned char *buf, int *len)
 	return 0;
 }
 
+static const unsigned char yb_mm_tls_alpn_protos[] = {
+	10, 'p', 'o', 's', 't', 'g', 'r', 'e', 's', 'q', 'l'
+};
+
+static int yb_mm_tls_alpn_cb(SSL *ssl, const unsigned char **out,
+			     unsigned char *outlen, const unsigned char *in,
+			     unsigned int inlen, void *arg)
+{
+	int rc = SSL_select_next_proto((unsigned char **)out, outlen,
+				       yb_mm_tls_alpn_protos,
+				       sizeof(yb_mm_tls_alpn_protos), in, inlen);
+	if (rc == OPENSSL_NPN_NEGOTIATED)
+		return SSL_TLSEXT_ERR_OK;
+	return SSL_TLSEXT_ERR_ALERT_FATAL;
+}
+
+int yb_mm_tls_alpn_negotiated(mm_io_t *io)
+{
+	const unsigned char *selected = NULL;
+	unsigned int len = 0;
+	SSL_get0_alpn_selected(io->tls_ssl, &selected, &len);
+	return selected != NULL && len == sizeof(yb_mm_tls_alpn_protos) - 1 &&
+	       memcmp(selected, yb_mm_tls_alpn_protos + 1, len) == 0;
+}
+
 SSL_CTX *mm_tls_get_context(mm_io_t *io, int is_client)
 {
 	mm_tls_ctx_t *ctx_container;
@@ -392,6 +417,8 @@ cache:
 	 * its channel binding hash once here. A failure only means SCRAM channel
 	 * binding is not offered.
 	 */
+	if (!is_client)
+		SSL_CTX_set_alpn_select_cb(ctx, yb_mm_tls_alpn_cb, NULL);
 	if (!is_client)
 	    yb_mm_tls_cert_hash(SSL_CTX_get0_certificate(ctx),
 				ctx_container->yb_cert_hash,

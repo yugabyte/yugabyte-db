@@ -26,6 +26,7 @@ int mm_tls_read(mm_io_t *, char *, int);
 int mm_tls_verify_common_name(mm_io_t *, char *);
 int yb_mm_tls_get_peer_cert_der(mm_io_t *, unsigned char **buf, int *len);
 int yb_mm_tls_get_server_cert_hash(mm_io_t *, unsigned char *buf, int *len);
+int yb_mm_tls_alpn_negotiated(mm_io_t *);
 SSL_CTX *mm_tls_get_context(mm_io_t *io, int is_client);
 
 #endif /* MM_TLS_H */
