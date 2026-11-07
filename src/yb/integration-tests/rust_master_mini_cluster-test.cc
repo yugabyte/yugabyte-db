@@ -32,6 +32,8 @@
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_client.proxy.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.pb.h"
 
 #include "yb/master/mini_master.h"
@@ -46,6 +48,7 @@
 
 using namespace std::literals;
 
+DECLARE_int32(blacklist_progress_initial_delay_secs);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(load_balancer_initial_delay_secs);
 
@@ -282,6 +285,48 @@ TEST_F(RustMasterMiniClusterTest, SplitsATablet) {
         return loc_resp.tablet_locations_size() == 0 && loc_resp.errors_size() == 1;
       },
       60s, "the split parent deleted"));
+}
+
+// Leader-blacklisting a tserver makes the Rust leader's balancer move every leader off it; the
+// completion RPC and the leader-preference check then agree.
+TEST_F(RustMasterMiniClusterTest, DrainsLeadersFromALeaderBlacklistedTserver) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_initial_delay_secs) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_blacklist_progress_initial_delay_secs) = 0;
+  ASSERT_OK(cluster_->WaitForTabletServerCount(3));
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const client::YBTableName name(YQL_DATABASE_CQL, "ks", "drained");
+  client::TableHandle table;
+  ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
+      client::Transactional::kFalse, /* num_tablets= */ 6, client.get(), &table, name));
+
+  auto proxy = ASSERT_RESULT(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>());
+  master::GetMasterClusterConfigRequestPB get_req;
+  master::GetMasterClusterConfigResponsePB get_resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(30s);
+  ASSERT_OK(proxy.GetMasterClusterConfig(get_req, &get_resp, &rpc));
+  master::ChangeMasterClusterConfigRequestPB change_req;
+  *change_req.mutable_cluster_config() = get_resp.cluster_config();
+  const auto addr = cluster_->mini_tablet_server(0)->bound_rpc_addr();
+  auto* host = change_req.mutable_cluster_config()->mutable_leader_blacklist()->add_hosts();
+  host->set_host(addr.address().to_string());
+  host->set_port(addr.port());
+  master::ChangeMasterClusterConfigResponsePB change_resp;
+  rpc.Reset();
+  ASSERT_OK(proxy.ChangeMasterClusterConfig(change_req, &change_resp, &rpc));
+  ASSERT_FALSE(change_resp.has_error()) << change_resp.ShortDebugString();
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        master::GetLeaderBlacklistPercentRequestPB req;
+        master::GetLoadMovePercentResponsePB resp;
+        rpc::RpcController controller;
+        controller.set_timeout(10s);
+        RETURN_NOT_OK(proxy.GetLeaderBlacklistCompletion(req, &resp, &controller));
+        return !resp.has_error() && resp.percent() >= 100;
+      },
+      120s, "no leaders left on the leader-blacklisted tserver"));
+  ASSERT_EQ(cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetLeaderCount(), 0);
 }
 
 }  // namespace yb

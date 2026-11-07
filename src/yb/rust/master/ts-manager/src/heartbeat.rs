@@ -176,6 +176,8 @@ impl TsManager {
             resp.tservers = (*list).clone();
         }
         resp.live_tservers_version = Some(version).into();
+        resp.leader_blacklisted_tservers_with_no_leaders =
+            self.drained_leader_blacklist(req.common.ts_instance.permanent_uuid(), &ctx.snapshot);
 
         if let Some(config) = ctx.snapshot.get(
             SysRowEntryType::SYS_CONFIG,

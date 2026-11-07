@@ -83,6 +83,8 @@ pub struct TsManagerOptions {
     /// `use_private_ip`: which of a tserver's addresses the leader calls, given this master's
     /// placement ([`TsManager::set_local_cloud_info`]).
     pub use_private_ip: fn() -> String,
+    /// `send_leader_blacklisted_tservers_on_heartbeat`.
+    pub send_leader_blacklisted_tservers: fn() -> bool,
 }
 
 impl Default for TsManagerOptions {
@@ -100,6 +102,7 @@ impl Default for TsManagerOptions {
             metadata_min_time_left: || Duration::from_millis(7500),
             max_leader_lease_expired: || Duration::from_secs(120),
             use_private_ip: || "never".to_string(),
+            send_leader_blacklisted_tservers: || true,
         }
     }
 }
@@ -209,6 +212,9 @@ pub struct TsManager {
     pub deletes: DeleteReplicaQueue,
     /// Tservers whose row could not be written yet; the liveness controller retries them.
     unpersisted: Mutex<HashSet<EntityId>>,
+    /// Tservers to tell, once the leader-blacklisted ones have no leaders left, which those are
+    /// (`pending_leader_drain_notification`).
+    pending_leader_drain: Mutex<HashSet<EntityId>>,
     /// CDC streams were seen: `CatalogManager::cdc_enabled_`, which stays set.
     cdc_enabled: AtomicBool,
     heartbeat_order: order::HeartbeatOrder,
@@ -231,6 +237,7 @@ impl TsManager {
             locations,
             deletes: DeleteReplicaQueue::default(),
             unpersisted: Mutex::default(),
+            pending_leader_drain: Mutex::default(),
             cdc_enabled: AtomicBool::new(false),
             heartbeat_order: Default::default(),
             options,
@@ -274,6 +281,42 @@ impl TsManager {
         let local = self.local_cloud_info.read().unwrap();
         placement::desired_host_port(&descriptor.pb.registration, &local, &mode)
             .map(|hp| (hp.host().to_string(), hp.port() as u16))
+    }
+
+    /// `MarkTServersForLeaderBlacklistNotification`: the leader blacklist grew, so every live
+    /// tserver is told which tservers are drained once they are.
+    pub fn mark_leader_blacklist_notification(&self) {
+        let live: Vec<EntityId> = self.live().into_iter().map(|d| d.uuid).collect();
+        self.pending_leader_drain.lock().unwrap().extend(live);
+    }
+
+    /// The tservers a heartbeat response names in `leader_blacklisted_tservers_with_no_leaders`:
+    /// once no leader-blacklisted live tserver reports leaders, every leader-blacklisted live
+    /// tserver, told once to each marked tserver.
+    fn drained_leader_blacklist(&self, uuid: &[u8], snapshot: &CatalogSnapshot) -> Vec<String> {
+        if !(self.options.send_leader_blacklisted_tservers)()
+            || !self.pending_leader_drain.lock().unwrap().contains(uuid)
+        {
+            return Vec::new();
+        }
+        let config: yb_proto::pb::catalog_entity_info::SysClusterConfigEntryPB = snapshot
+            .cluster_config()
+            .and_then(|c| c.parse().ok())
+            .unwrap_or_default();
+        let blacklist = placement::leader_blacklist_addresses(&config);
+        let blacklisted: Vec<TsDescriptor> = self
+            .live()
+            .into_iter()
+            .filter(|d| placement::is_blacklisted(d, &blacklist))
+            .collect();
+        if blacklisted.iter().any(|d| d.leader_count != 0) {
+            return Vec::new();
+        }
+        self.pending_leader_drain.lock().unwrap().remove(uuid);
+        blacklisted
+            .iter()
+            .map(|d| String::from_utf8_lossy(&d.uuid).into_owned())
+            .collect()
     }
 
     /// One tserver.

@@ -116,6 +116,8 @@ static ENABLE_DELETE_TRUNCATE_XCLUSTER_REPLICATED_TABLE: FlagRef<bool> =
     FlagRef::new("enable_delete_truncate_xcluster_replicated_table");
 static BLACKLIST_PROGRESS_INITIAL_DELAY_SECS: FlagRef<i32> =
     FlagRef::new("blacklist_progress_initial_delay_secs");
+static SEND_LEADER_BLACKLISTED_TSERVERS: FlagRef<bool> =
+    FlagRef::new("send_leader_blacklisted_tservers_on_heartbeat");
 static ENABLE_MULTI_WAY_SPLIT: FlagRef<bool> = FlagRef::new("TEST_enable_multi_way_tablet_split");
 static ENABLE_LOAD_BALANCING: FlagRef<bool> = FlagRef::new("enable_load_balancing");
 static LB_INITIAL_DELAY_SECS: FlagRef<i32> = FlagRef::new("load_balancer_initial_delay_secs");
@@ -210,6 +212,7 @@ fn ts_manager_options() -> TsManagerOptions {
             Duration::from_secs(MAX_LEADER_LEASE_EXPIRED_SECS.get().into())
         },
         use_private_ip: || USE_PRIVATE_IP.get(),
+        send_leader_blacklisted_tservers: || SEND_LEADER_BLACKLISTED_TSERVERS.get(),
     }
 }
 
@@ -341,6 +344,7 @@ impl Core {
             replication_factor: || REPLICATION_FACTOR.get(),
             balancer: Arc::new(BalancerStatus::new(LB_NUM_IDLE_RUNS.get().max(1) as usize)),
             load_balancing_flag: || ENABLE_LOAD_BALANCING.get(),
+            transaction_tables_use_preferred_zones: || TXN_TABLES_USE_PREFERRED_ZONES.get(),
             splits,
             blacklist_progress_initial_delay: || {
                 Duration::from_secs(BLACKLIST_PROGRESS_INITIAL_DELAY_SECS.get().max(0) as u64)

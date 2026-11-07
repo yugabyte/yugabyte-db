@@ -22,14 +22,115 @@ use yb_host_api::{Status, StatusCode};
 use yb_proto::pb::catalog_entity_info::{sys_tablets_entry_pb, SysClusterConfigEntryPB};
 use yb_proto::pb::common_types::PeerRole;
 use yb_proto::pb::master_cluster::{
-    GetLoadMovePercentResponsePB, IsLoadBalancedRequestPB, IsLoadBalancedResponsePB,
-    IsLoadBalancerIdleResponsePB,
+    AreLeadersOnPreferredOnlyResponsePB, GetLoadMovePercentResponsePB, IsLoadBalancedRequestPB,
+    IsLoadBalancedResponsePB, IsLoadBalancerIdleResponsePB,
 };
 use yb_proto::pb::master_types::{master_error_pb::Code, SysRowEntryType};
 
 use crate::{master_error_from, LeaderServices};
 
 impl LeaderServices {
+    /// `AreLeadersOnPreferredOnly`: every leader of a running table is on a live, non-blacklisted
+    /// tserver of the live placement that its table's leader affinity accepts.
+    pub fn are_leaders_on_preferred_only(
+        &self,
+        snapshot: &CatalogSnapshot,
+        resp: &mut AreLeadersOnPreferredOnlyResponsePB,
+    ) {
+        if let Err(status) = self.leaders_on_preferred_only(snapshot) {
+            resp.error = Some(master_error_from(
+                Code::CAN_RETRY_ARE_LEADERS_ON_PREFERRED_ONLY_CHECK,
+                &status,
+            ))
+            .into();
+        }
+    }
+
+    fn leaders_on_preferred_only(&self, snapshot: &CatalogSnapshot) -> Result<(), Status> {
+        use master_table_lifecycle::table_replication_info;
+        use yb_proto::pb::catalog_entity_info::{sys_tables_entry_pb, SysTablesEntryPB};
+        use yb_proto::pb::common_types::TableType;
+        let config: SysClusterConfigEntryPB = snapshot
+            .cluster_config()
+            .and_then(|c| c.parse().ok())
+            .unwrap_or_default();
+        let live_uuid = config
+            .replication_info
+            .live_replicas
+            .placement_uuid()
+            .to_vec();
+        let blacklist = master_ts_manager::placement::blacklist_addresses(&config);
+        let tservers: Vec<_> = self
+            .ts_manager
+            .live()
+            .into_iter()
+            .filter(|d| live_uuid.is_empty() || d.placement_uuid() == live_uuid.as_slice())
+            .filter(|d| !is_blacklisted(d, &blacklist))
+            .collect();
+        for table in snapshot.iter(SysRowEntryType::TABLE) {
+            let Some(hot) = table.table() else { continue };
+            // `is_running`: RUNNING or ALTERING.
+            if hot.state != sys_tables_entry_pb::State::RUNNING as i32
+                && hot.state != sys_tables_entry_pb::State::ALTERING as i32
+            {
+                continue;
+            }
+            if hot.table_type == TableType::TRANSACTION_STATUS_TABLE_TYPE as i32
+                && !(self.transaction_tables_use_preferred_zones)()
+            {
+                continue;
+            }
+            let Ok(pb) = table.parse::<SysTablesEntryPB>() else {
+                continue;
+            };
+            let info = table_replication_info(pb.replication_info.as_ref(), &config);
+            // `TSDescriptor::IsAcceptingLeaderLoad`.
+            let accepting = |d: &master_ts_manager::TsDescriptor| {
+                let read_only = if info.live_replicas.has_placement_uuid() {
+                    info.live_replicas.placement_uuid() != d.placement_uuid()
+                } else {
+                    !d.placement_uuid().is_empty()
+                };
+                if read_only {
+                    return false;
+                }
+                if info.affinitized_leaders.is_empty() && info.multi_affinitized_leaders.is_empty()
+                {
+                    return true;
+                }
+                let ci = d.pb.registration.cloud_info.clone().unwrap_or_default();
+                info.multi_affinitized_leaders
+                    .iter()
+                    .flat_map(|s| s.zones.iter())
+                    .chain(info.affinitized_leaders.iter())
+                    .any(|z| master_ts_manager::placement::is_cloud_info_prefix(z, &ci))
+            };
+            let accepting: Vec<&[u8]> = tservers
+                .iter()
+                .filter(|d| accepting(d))
+                .map(|d| &*d.uuid)
+                .collect();
+            for tablet in snapshot.active_tablets_of(&table.key.id) {
+                let Some(replicas) = self.ts_manager.locations.get(&tablet.key.id) else {
+                    continue;
+                };
+                if let Some(leader) = replicas.leader() {
+                    if !accepting.contains(&&*leader.ts_uuid) {
+                        return Err(Status::new(
+                            StatusCode::IllegalState,
+                            format!(
+                                "Tserver {} not expected to have leader of tablet {}",
+                                String::from_utf8_lossy(&leader.ts_uuid),
+                                String::from_utf8_lossy(&tablet.key.id)
+                            ),
+                        ));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// `ClusterLoadBalancer::IsIdle`: a disabled balancer is idle.
     fn balancer_idle(&self) -> Result<(), Status> {
         let enabled =

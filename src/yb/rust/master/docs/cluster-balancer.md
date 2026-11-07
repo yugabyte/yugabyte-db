@@ -60,7 +60,15 @@ Actions become tasks of their table for the term, in the view's `pending` until 
 metrics for the RPCs: `IsLoadBalancerIdle` and `IsLoadBalanced` (idle, or disabled; enough live
 tservers), and `GetLoadMoveCompletion` / `GetLeaderBlacklistCompletion` (replicas or leaders still
 on blacklisted tservers against the blacklist's initial load, 0% within
-`blacklist_progress_initial_delay_secs` of the election).
+`blacklist_progress_initial_delay_secs` of the election). `AreLeadersOnPreferredOnly` checks that
+every leader of a running table is on a live, non-blacklisted tserver of the live placement that
+the table's leader affinity accepts (`IsAcceptingLeaderLoad`).
+
+When `ChangeMasterClusterConfig` grows the leader blacklist, every live tserver is marked
+(`MarkTServersForLeaderBlacklistNotification`). Once no leader-blacklisted live tserver reports
+leaders, each marked tserver's next heartbeat response lists the leader-blacklisted tservers in
+`leader_blacklisted_tservers_with_no_leaders` (with `send_leader_blacklisted_tservers_on_heartbeat`),
+once, so it can stop sending them leader traffic.
 
 ## Order of a run
 

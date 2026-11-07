@@ -78,6 +78,8 @@ pub struct LeaderServices {
     pub balancer: Arc<master_cluster_balancer::controller::BalancerStatus>,
     /// `enable_load_balancing`.
     pub load_balancing_flag: fn() -> bool,
+    /// `transaction_tables_use_preferred_zones`.
+    pub transaction_tables_use_preferred_zones: fn() -> bool,
     /// Tablet splits.
     pub splits: Arc<master_tablet_split_manager::TabletSplitManager>,
     /// `blacklist_progress_initial_delay_secs`.
@@ -87,7 +89,6 @@ pub struct LeaderServices {
 /// Who serves a leader method a layer-2 Rust leader does not.
 pub fn owner(method: &str) -> &'static str {
     match method {
-        "AreLeadersOnPreferredOnly" => "the load balancer (W8)",
         "PromoteAutoFlags"
         | "RollbackAutoFlags"
         | "PromoteSingleAutoFlag"
@@ -341,18 +342,31 @@ impl LeaderServices {
                 }
                 let mut next = config.clone();
                 next.set_version(config.version() + 1);
+                // `ToBlacklistSet` sizes: a host listed twice counts once.
+                let hosts = |c: &SysClusterConfigEntryPB| {
+                    c.leader_blacklist
+                        .hosts
+                        .iter()
+                        .map(|h| (h.host().to_string(), h.port()))
+                        .collect::<std::collections::HashSet<_>>()
+                        .len()
+                };
+                let grew = hosts(&config) > hosts(&current);
                 Ok((
                     Mutation::new().read(entity).upsert_message(
                         SysRowEntryType::CLUSTER_CONFIG,
                         b"",
                         &next,
                     )?,
-                    (),
+                    grew,
                 ))
             })
             .await;
         if let (Err(status), Some(code)) = (&result, *error_code.lock().unwrap()) {
             resp.error = Some(master_error_from(code, status)).into();
+        }
+        if let Ok((true, _)) = &result {
+            self.ts_manager.mark_leader_blacklist_notification();
         }
         result.map(|_| ())
     }

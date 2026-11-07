@@ -51,6 +51,7 @@ use yb_proto::pb::master_client::{
     GetTransactionStatusTabletsResponsePB,
 };
 use yb_proto::pb::master_cluster::{
+    AreLeadersOnPreferredOnlyRequestPB, AreLeadersOnPreferredOnlyResponsePB,
     ChangeLoadBalancerStateRequestPB, ChangeLoadBalancerStateResponsePB,
     ChangeMasterClusterConfigRequestPB, ChangeMasterClusterConfigResponsePB,
     GetLoadBalancerStateResponsePB, GetLoadMovePercentRequestPB, GetLoadMovePercentResponsePB,
@@ -755,6 +756,14 @@ impl Shared {
                 IsLoadBalancedResponsePB,
                 |req, resp| {
                     leader.is_load_balanced(&req, &mut resp);
+                    Ok(())
+                }
+            ),
+            "AreLeadersOnPreferredOnly" => serve!(
+                AreLeadersOnPreferredOnlyRequestPB,
+                AreLeadersOnPreferredOnlyResponsePB,
+                |_req, resp| {
+                    leader.are_leaders_on_preferred_only(&snapshot, &mut resp);
                     Ok(())
                 }
             ),

@@ -521,6 +521,7 @@ mod leader_tests {
                 replication_factor: || 3,
                 balancer: Arc::new(master_cluster_balancer::controller::BalancerStatus::new(5)),
                 load_balancing_flag: || true,
+                transaction_tables_use_preferred_zones: || false,
                 splits,
                 blacklist_progress_initial_delay: || std::time::Duration::ZERO,
             })
