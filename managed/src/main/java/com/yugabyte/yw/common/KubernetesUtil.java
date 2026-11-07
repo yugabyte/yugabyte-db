@@ -1943,4 +1943,56 @@ public class KubernetesUtil {
     podSecurityContext.put("enabled", true);
     return podSecurityContext;
   }
+
+  public static void initializeK8sNodeResourceSpecsFromInstanceType(
+      UniverseDefinitionTaskParams taskParams, boolean overwrite) {
+    if (taskParams == null
+        || taskParams.clusters == null
+        || !Util.isKubernetesBasedUniverse(taskParams)) {
+      return;
+    }
+    for (Cluster cluster : taskParams.clusters) {
+      UserIntent ui = cluster.userIntent;
+      if (Util.isKubernetesBased(cluster)) {
+        UUID providerUUID = Util.getSingleProviderUUID(cluster);
+        ProviderInitializer pi =
+            Util.providerInitializerForExistingIntent(cluster.userIntent, providerUUID);
+        Set<ServerType> serverTypes = new HashSet<>();
+        serverTypes.add(ServerType.TSERVER);
+        if (cluster.clusterType == ClusterType.PRIMARY) {
+          serverTypes.add(ServerType.MASTER);
+        }
+
+        for (ServerType serverType : serverTypes) {
+          UserIntent.K8SNodeResourceSpec current =
+              serverType == ServerType.TSERVER
+                  ? ui.getTserverK8SNodeResourceSpec(providerUUID)
+                  : ui.getMasterK8SNodeResourceSpec(providerUUID);
+
+          if (current == null || overwrite) {
+            UserIntent.K8SNodeResourceSpec k8SNodeResourceSpec =
+                initK8sResourceSpec(ui, serverType);
+            if (k8SNodeResourceSpec != null) {
+              pi.setNodeResourceSpec(k8SNodeResourceSpec, serverType);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  public static UserIntent.K8SNodeResourceSpec initK8sResourceSpec(
+      UserIntent userIntent, ServerType serverType) {
+    UUID providerUUID = Util.getSingleProviderUUID(userIntent);
+
+    String instanceTypeCode = userIntent.getBaseInstanceType(providerUUID, serverType);
+    if (instanceTypeCode == null) {
+      return null;
+    }
+    UserIntent.K8SNodeResourceSpec spec = new UserIntent.K8SNodeResourceSpec();
+    InstanceType instanceType = InstanceType.getOrBadRequest(providerUUID, instanceTypeCode);
+    spec.memoryGib = instanceType.getMemSizeGB();
+    spec.cpuCoreCount = instanceType.getNumCores();
+    return spec;
+  }
 }
