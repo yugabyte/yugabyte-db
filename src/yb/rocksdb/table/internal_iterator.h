@@ -160,6 +160,22 @@ class DataBlockAwareIndexInternalIterator : public InternalIterator {
       Slice lower_bound_key, Slice upper_bound_key = Slice{}) const {
     return STATUS(NotSupported, "GetMiddleKey() not supported for this iterator.");
   }
+
+  // Positions the iterator on the bottom-level index entry at `position` (zero-indexed) and returns
+  // it; past the end, returns an invalid entry. NotSupported means this index can't seek by
+  // position: status() stays OK, and the iterator must be repositioned with Seek, SeekToFirst or
+  // SeekToLast before it is used. If an index block can't be read, or its stored counts don't
+  // match the index (Corruption), the error is returned and status() keeps reporting it.
+  virtual yb::Result<const KeyValueEntry&> SeekToPosition(uint64_t position) {
+    return STATUS(NotSupported, "SeekToPosition() not supported for this iterator.");
+  }
+
+  // Returns the position of the first bottom-level index entry whose key is >= `target`, which is
+  // the number of entries with a smaller key; if every key is smaller, returns the number of
+  // entries in the file.
+  virtual yb::Result<uint64_t> PositionOf(Slice target) {
+    return STATUS(NotSupported, "PositionOf() not supported for this iterator.");
+  }
 };
 
 template <class IteratorType>

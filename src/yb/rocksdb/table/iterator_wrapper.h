@@ -179,6 +179,13 @@ class IteratorWrapperBase {
     return Update(iter_->Prev());
   }
 
+  // Only for an IteratorType with SeekToRestart(), such as BlockIter.
+  const KeyValueEntry& SeekToRestart(uint32_t index) {
+    DCHECK(iter_);
+    iter_->SeekToRestart(index);
+    return Update(SkipLastIfNecessary(iter_->Entry()));
+  }
+
   // Returns true iff iterator matches updated file filter.
   bool UpdateUserKeyForFilter(UserKeyFilterContext& context) {
     if (context.version <= last_checked_filter_version_) {

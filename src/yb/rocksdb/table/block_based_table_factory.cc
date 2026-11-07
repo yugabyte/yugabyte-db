@@ -180,6 +180,9 @@ std::string BlockBasedTableFactory::GetPrintableTableOptions() const {
   snprintf(buffer, kBufferSize, "  index_block_restart_interval: %d\n",
            table_options_.index_block_restart_interval);
   ret.append(buffer);
+  snprintf(buffer, kBufferSize, "  write_cumulative_index_entry_counts: %d\n",
+           table_options_.write_cumulative_index_entry_counts);
+  ret.append(buffer);
   snprintf(buffer, kBufferSize, "  filter_policy: %s\n",
            table_options_.filter_policy == nullptr ?
              "nullptr" : table_options_.filter_policy->Name());
