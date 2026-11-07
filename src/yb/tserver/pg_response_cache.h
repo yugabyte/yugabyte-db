@@ -76,8 +76,9 @@ class PgResponseCache {
   class FillToken;
   using FillTokenPtr = std::shared_ptr<FillToken>;
 
-  // session_id identifies the connection performing a fill, so that its own rounds are not
-  // mistaken for another connection's fill. See AnotherFillInFlight.
+  // session_id is the only handle on "another connection" a Perform carries, and is what the
+  // in-flight count is kept under. See AnotherFillInFlight for what the session's own counts
+  // being skipped does and does not decide.
   //
   // token is the caller's slot for a connection start's claim, kept across that prefetch's
   // requests and released on its last one. The claim ends when its last holder lets go, so a

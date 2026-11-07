@@ -586,6 +586,10 @@ class PgResponseCache::Impl : private GarbageCollector {
   // Every round of that last request carries the flag, so a round before the last one can end the
   // claim early. The next round that fills takes a fresh token, so the database is uncounted only
   // between the two -- against a claim held for the whole connection start if this never fired.
+  //
+  // A round that failed is not one of those, and the callers that can see the outcome check it
+  // before calling: the setter, and the arm that serves a response already stored. A round
+  // queued behind another session's fill has no response yet and cannot.
   static void EndPrefetchClaimIfComplete(
       const LWPgPerformOptionsPB::LWCachingInfoPB& cache_info, FillTokenPtr* token) {
     if (cache_info.completes_connection_prefetch() && token && *token) {
@@ -741,11 +745,19 @@ class PgResponseCache::Impl : private GarbageCollector {
     switch (join.state) {
       case Data::JoinState::kReady:
         hits_->Increment();
-        EndPrefetchClaimIfComplete(*cache_info, token);
+        // Only a round that succeeded ends the claim, the rule the setter follows: a failure
+        // does not mean the prefetch is over, since PG retries it. A failure that is already
+        // stored sends the next caller to a rebuilt entry, so what reaches here is a fill this
+        // caller joined between the entry being read and this line, which has just failed.
+        if (IsOk(*join.response)) {
+          EndPrefetchClaimIfComplete(*cache_info, token);
+        }
         waiter->Apply(*join.response);
         return Setter();
       case Data::JoinState::kWaiting:
         hits_->Increment();
+        // No response yet, so the outcome cannot be checked as it is above, and a completing
+        // round that goes on to fail ends the claim here all the same.
         EndPrefetchClaimIfComplete(*cache_info, token);
         return Setter();
       case Data::JoinState::kSentAway:
