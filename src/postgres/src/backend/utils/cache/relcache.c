@@ -3694,9 +3694,14 @@ YbUpdateRelationCacheImpl(YbUpdateRelationCacheState *state,
 
 	if (state->has_partitioned_tables)
 	{
+		/*
+		 * pg_range: sorting the bounds of a range-type key looks up the
+		 * RANGETYPE cache.
+		 */
 		static const YbPFetchTable tables[] = {
 			YB_PFETCH_TABLE_PG_CAST,
 			YB_PFETCH_TABLE_PG_PROC,
+			YB_PFETCH_TABLE_PG_RANGE,
 		};
 
 		YbRegisterTablesForPrefill(prefetcher, tables, lengthof(tables));
