@@ -3559,8 +3559,10 @@ YbRunWithPrefetcher(YbcStatus (*func) (YbRunWithPrefetcherContext *),
 		 * Sent away from a fill already under way -- another connection's anywhere in this
 		 * database, or any session's on this very entry -- rather than queued behind it. Read
 		 * the version this node holds instead. The request is cleared first, so if that read
-		 * cannot be prepared or goes on to fail, the attempt after it waits for the fill as it
-		 * would have, and the two cannot send each other back and forth.
+		 * cannot be prepared or goes on to fail, the attempt after it runs as it would have
+		 * without the ask -- queueing behind the fill when it wants the entry being filled, and
+		 * starting one of its own when it does not -- so the two cannot send each other back and
+		 * forth.
 		 *
 		 * No leader check here, unlike the attempt above. What that check protects is that
 		 * something still records newer versions, and that is held instead by the gap: once a
@@ -3586,7 +3588,7 @@ YbRunWithPrefetcher(YbcStatus (*func) (YbRunWithPrefetcherContext *),
 		{
 			/*
 			 * A send-away leaves starter_idx alone, so the same starter runs again with the ask
-			 * cleared and this connection queues behind the fill. Advancing instead would raise
+			 * cleared and this connection does what it would have without it. Advancing would raise
 			 * the Incomplete here, since it is neither a snapshot-too-old nor a stale attempt --
 			 * failing a connection the full prefetch would have served.
 			 */

@@ -82,7 +82,7 @@ DECLARE_bool(ysql_enable_relcache_init_optimization);
 DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 DECLARE_bool(TEST_pg_response_cache_force_lookup_only_miss);
 DECLARE_bool(TEST_pg_response_cache_force_lookup_only_miss_on_final_request);
-DECLARE_uint64(TEST_pg_response_cache_fill_delay_ms);
+DECLARE_bool(TEST_pg_response_cache_pause_fill);
 DECLARE_bool(ysql_yb_enable_stale_catalog_prefetch);
 DECLARE_uint64(ysql_catalog_prefetch_row_limit);
 DECLARE_string(ysql_pg_conf_csv);
@@ -1722,6 +1722,12 @@ class PgStaleCatalogPrefetchTest : public PgCatalogPerfTestBase {
     return counter ? counter->value() : 0;
   }
 
+  [[nodiscard]] int64_t ResponseCacheSendAways() const {
+    auto counter = cluster_->mini_tablet_server(0)->server()->metric_entity()
+        ->FindOrNull<Counter>(METRIC_pg_response_cache_send_aways);
+    return counter ? counter->value() : 0;
+  }
+
   Result<uint64_t> CurrentCatalogVersion(PGConn* conn) {
     return conn->FetchRow<PGUint64>(
         "SELECT current_version FROM pg_yb_catalog_version WHERE db_oid = "
@@ -1965,9 +1971,28 @@ TEST_F(PgStaleCatalogPrefetchTest, ARefreshDoesNotRecordAVersion) {
 // Pinned rather than left to the master, because the master derives the load from the prefetches
 // it has in flight, and this test holds one open on purpose. On a small enough machine that one
 // prefetch is already enough to read as BUSY.
-TEST_F(PgStaleCatalogPrefetchTest, DefersToAFillAlreadyUnderWay) {
-  constexpr uint64_t kFillDelayMs = 10000;
+// Holds every response cache fill open until the test lets it go. A paused fill is what makes a
+// connection arriving behind it find a fill already under way, and pausing rather than sleeping
+// means the window ends when the test has seen what it was waiting for, not when a timer runs
+// out. A connection that is sent away never fills, so it completes while the pause is on -- that
+// it completes at all is the proof it did not wait for the fill.
+class PausedFills {
+ public:
+  PausedFills() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pg_response_cache_pause_fill) = true;
+  }
 
+  ~PausedFills() { Resume(); }
+
+  void Resume() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pg_response_cache_pause_fill) = false;
+  }
+
+  PausedFills(const PausedFills&) = delete;
+  PausedFills& operator=(const PausedFills&) = delete;
+};
+
+TEST_F(PgStaleCatalogPrefetchTest, DefersToAFillAlreadyUnderWay) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t_defer (k INT)"));
   ASSERT_OK(SetPrefetchLoad(master::YSQL_CATALOG_PREFETCH_LOAD_LOW));
@@ -1981,7 +2006,7 @@ TEST_F(PgStaleCatalogPrefetchTest, DefersToAFillAlreadyUnderWay) {
   // release branch, while ALTER TABLE increments either way.
   ASSERT_OK(conn.Execute("ALTER TABLE t_defer ADD COLUMN v INT"));
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pg_response_cache_fill_delay_ms) = kFillDelayMs;
+  PausedFills paused;
 
   const auto queries_before = ResponseCacheQueries();
   TestThreadHolder threads;
@@ -1993,23 +2018,19 @@ TEST_F(PgStaleCatalogPrefetchTest, DefersToAFillAlreadyUnderWay) {
     return ResponseCacheQueries() > queries_before;
   }, 60s, "the filling connection to reach the response cache"));
 
-  const auto start = MonoTime::Now();
+  // The fill is still held, so this connection comes up only by not waiting for it.
   const auto delta = ASSERT_RESULT(metrics_->Delta([this]() -> Status {
     auto deferred = VERIFY_RESULT(Connect());
     return ResultToStatus(deferred.FetchRow<int32_t>("SELECT 1"));
   }));
-  const auto elapsed = MonoTime::Now() - start;
 
+  paused.Resume();
   threads.JoinAll();
 
   ASSERT_GT(delta.cache.send_aways, 0)
       << "the connection queued behind the fill rather than being sent away from it";
   ASSERT_GT(delta.cache.lookup_only_hits, 0)
       << "the connection was sent away but did not read the version this node already held";
-  // Half the delay is far more than the older version takes to read, and far less than waiting
-  // for even one of the filling connection's rounds.
-  ASSERT_LT(elapsed.ToMilliseconds(), static_cast<int64_t>(kFillDelayMs / 2))
-      << "the connection took " << elapsed << ", so it waited for the fill after all";
 }
 
 // Only the opening round of a prefetch asks to be sent away. A connection start pages through
@@ -2048,8 +2069,6 @@ TEST_F(PgStaleCatalogPrefetchTest, OnlyTheOpeningRoundAsksToBeSentAway) {
 // database's catalog, so a connection that finds any fill under way for its database reads the
 // version this node holds rather than adding a second whole-catalog read to the leader's load.
 TEST_F(PgStaleCatalogPrefetchTest, DefersAcrossVersionsToAFillAlreadyUnderWay) {
-  constexpr uint64_t kFillDelayMs = 10000;
-
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t_fan (k INT)"));
   // An idle leader, for the reason DefersToAFillAlreadyUnderWay gives.
@@ -2060,7 +2079,7 @@ TEST_F(PgStaleCatalogPrefetchTest, DefersAcrossVersionsToAFillAlreadyUnderWay) {
 
   ASSERT_OK(conn.Execute("ALTER TABLE t_fan ADD COLUMN v1 INT"));
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pg_response_cache_fill_delay_ms) = kFillDelayMs;
+  PausedFills paused;
 
   const auto queries_before = ResponseCacheQueries();
   TestThreadHolder threads;
@@ -2076,21 +2095,19 @@ TEST_F(PgStaleCatalogPrefetchTest, DefersAcrossVersionsToAFillAlreadyUnderWay) {
   // collides with nothing the filling connection holds.
   ASSERT_OK(conn.Execute("ALTER TABLE t_fan ADD COLUMN v2 INT"));
 
-  const auto start = MonoTime::Now();
+  // The fill is still held, so this connection comes up only by not waiting for it.
   const auto delta = ASSERT_RESULT(metrics_->Delta([this]() -> Status {
     auto deferred = VERIFY_RESULT(Connect());
     return ResultToStatus(deferred.FetchRow<int32_t>("SELECT 1"));
   }));
-  const auto elapsed = MonoTime::Now() - start;
 
+  paused.Resume();
   threads.JoinAll();
 
   ASSERT_GT(delta.cache.send_aways, 0)
       << "a connection on its own version read the catalog alongside the fill already running";
   ASSERT_GT(delta.cache.lookup_only_hits, 0)
       << "the connection was sent away but did not read the version this node already held";
-  ASSERT_LT(elapsed.ToMilliseconds(), static_cast<int64_t>(kFillDelayMs / 2))
-      << "the connection took " << elapsed << ", so it did not take the older version";
 }
 
 // CheckMyDatabase decides whether a connection is allowed at all -- datallowconn, CONNECT
@@ -2172,8 +2189,6 @@ TEST_F(PgUnbridgeableCatalogPrefetchTest, FallsBackWhenTheMessagesCannotBeApplie
 // send it away, and raising that status instead of retrying would fail a connection the full
 // prefetch would have served.
 TEST_F(PgUnbridgeableCatalogPrefetchTest, ComesUpWhenSentAwayWithNoUsableOlderVersion) {
-  constexpr uint64_t kFillDelayMs = 10000;
-
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t_unusable (k INT)"));
   ASSERT_OK(SetPrefetchLoad(master::YSQL_CATALOG_PREFETCH_LOAD_LOW));
@@ -2183,9 +2198,10 @@ TEST_F(PgUnbridgeableCatalogPrefetchTest, ComesUpWhenSentAwayWithNoUsableOlderVe
 
   ASSERT_OK(conn.Execute("ALTER TABLE t_unusable ADD COLUMN v INT"));
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pg_response_cache_fill_delay_ms) = kFillDelayMs;
+  PausedFills paused;
 
   const auto queries_before = ResponseCacheQueries();
+  const auto send_aways_before = ResponseCacheSendAways();
   TestThreadHolder threads;
   threads.AddThreadFunctor([this] {
     auto filler = ASSERT_RESULT(Connect());
@@ -2194,6 +2210,19 @@ TEST_F(PgUnbridgeableCatalogPrefetchTest, ComesUpWhenSentAwayWithNoUsableOlderVe
   ASSERT_OK(LoggedWaitFor([this, queries_before]() -> Result<bool> {
     return ResponseCacheQueries() > queries_before;
   }, 60s, "the filling connection to reach the response cache"));
+
+  // Unlike the tests above, this connection has no older version it can use, so it reruns and
+  // queues behind the fill -- which has to be let go for it to come up at all. Not before the
+  // send-away, though: releasing earlier would let the fill finish before the connection ever
+  // met it, and the test would prove nothing. Released whatever the wait returns, so a failure
+  // here reports itself rather than hanging the connection below.
+  threads.AddThreadFunctor([this, send_aways_before, &paused] {
+    const auto sent_away = LoggedWaitFor([this, send_aways_before]() -> Result<bool> {
+      return ResponseCacheSendAways() > send_aways_before;
+    }, 60s, "the connection to be sent away from the fill");
+    paused.Resume();
+    ASSERT_OK(sent_away);
+  });
 
   Status connect_status;
   const auto delta = ASSERT_RESULT(metrics_->Delta([this, &connect_status]() -> Status {

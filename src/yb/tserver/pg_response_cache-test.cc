@@ -209,6 +209,46 @@ TEST_F(PgResponseCacheTest, AnotherConnectionIsSentAwayFromAFillUnderWay) {
   ASSERT_TRUE(theirs_result.status().IsIncomplete()) << theirs_result.status();
 }
 
+// A DDL commit disables its database's cache for the length of the commit, and every query
+// arriving then is answered without an entry. A connection start's completing round can land in
+// that window, and the claim has to end there too: it is taken by the rounds before it, and the
+// early return for a disabled cache comes before both of the places that would otherwise end it.
+TEST_F(PgResponseCacheTest, AClaimEndsOnACompletingRoundThatFoundTheCacheDisabled) {
+  ThreadSafeArena arena;
+  const auto deadline = CoarseMonoClock::Now() + 60s;
+
+  // An earlier round takes the session's claim.
+  auto& round1 = MakeCachingInfo(arena, "round-1"sv, SendAway::kFalse,
+                                 PartOfConnectionPrefetch::kTrue);
+  PgResponseCache::FillTokenPtr token;
+  auto my_waiter = std::make_shared<CountingWaiter>();
+  auto first = ASSERT_RESULT(cache_->Get(&round1, deadline, my_waiter, kSessionId, &token));
+  ASSERT_TRUE(first);
+  first(MakeResponse());
+  first = {};
+  ASSERT_TRUE(token) << "a connection start's fill must leave its claim with the session";
+
+  {
+    auto disabler = cache_->Disable(kKeyGroup);
+    auto& final_round = MakeCachingInfo(arena, "final-round"sv, SendAway::kFalse,
+                                        PartOfConnectionPrefetch::kTrue);
+    final_round.set_completes_connection_prefetch(true);
+    auto final_waiter = std::make_shared<CountingWaiter>();
+    auto final_setter = ASSERT_RESULT(
+        cache_->Get(&final_round, deadline, final_waiter, kSessionId, &token));
+    // Nothing was cached, so nothing is served and the setter stores nothing.
+    final_setter(MakeResponse());
+  }
+
+  // The prefetch is over, so another connection asking is not sent away.
+  auto& theirs = MakeCachingInfo(arena, "their-key"sv, SendAway::kTrue);
+  auto their_waiter = std::make_shared<CountingWaiter>();
+  auto theirs_result = cache_->Get(&theirs, deadline, their_waiter, kOtherSessionId, nullptr);
+  ASSERT_TRUE(theirs_result.ok())
+      << "the claim outlived a completing round that found the cache disabled, so the database "
+      << "still reads as busy with no fill under way: " << theirs_result.status();
+}
+
 // A connection whose opening round is already in the cache is sent away all the same. Serving
 // it that round would not spare it the wait: the rounds after it carry no ask of their own, so
 // each one queues behind a round the same fill has yet to produce, and the connection holds a

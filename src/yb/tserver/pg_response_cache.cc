@@ -27,7 +27,6 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/casts.h"
-#include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/rpc/lightweight_message.h"
@@ -36,6 +35,7 @@
 #include "yb/tserver/pg_client.messages.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
 #include "yb/util/flags.h"
 #include "yb/util/flags/flag_tags.h"
@@ -62,12 +62,12 @@ DEFINE_test_flag(bool, pg_response_cache_force_lookup_only_miss_on_final_request
     "The earlier requests still hit, so this reproduces a connection that has already built its "
     "relcache from the older version by the time it has to fall back.");
 
-DEFINE_test_flag(uint64, pg_response_cache_fill_delay_ms, 0,
-    "Hold the next response cache fill open for this long before storing its response. The entry "
-    "stays claimed and unanswered for the duration, which is the window another connection has "
-    "to arrive and find a fill already under way. The fill that takes the delay clears this "
-    "back to 0, so one fill waits and not every round of a paging prefetch, and the next test "
-    "to set it gets a delay of its own.");
+DEFINE_test_flag(bool, pg_response_cache_pause_fill, false,
+    "Hold every response cache fill open before it stores its response, for as long as this is "
+    "set. The entries stay claimed and unanswered meanwhile, which is the window another "
+    "connection has to arrive and find a fill already under way. A test clears it once it has "
+    "seen what it was waiting for, so the window is bounded by the test's own progress rather "
+    "than by a sleep.");
 
 METRIC_DEFINE_counter(server, pg_response_cache_lookup_only_hits,
                       "PgClientService Response Cache Lookup Only Hits",
@@ -101,9 +101,9 @@ METRIC_DEFINE_counter(server, pg_response_cache_send_aways,
                       "already under way -- another connection filling their database, or any "
                       "session filling the very entry they wanted -- and were told to read a "
                       "catalog version this node already holds instead of waiting for it. One "
-                      "that cannot use that version reruns its prefetch and waits for the fill "
-                      "after all, so this counts the connections turned away, not the ones "
-                      "that went on to read the older version. "
+                      "that cannot use that version reruns its prefetch without the ask and "
+                      "proceeds as it would have without it, so this counts the connections "
+                      "turned away, not the ones that went on to read the older version. "
                       "Counts requests rather than connections");
 METRIC_DEFINE_counter(server, pg_response_cache_queries,
                       "PgClientService Response Cache Queries",
@@ -687,6 +687,12 @@ class PgResponseCache::Impl : private GarbageCollector {
     auto data = GetEntryData(cache_info, deadline);
     queries_->Increment();
     if (!data) {
+      // The cache is disabled for this database, as it is across a DDL commit, so nothing is
+      // served or filled. The prefetch is over all the same, and this return comes before both
+      // of the places that would end its claim, so end it here: otherwise a connection start
+      // whose completing round landed in this window would keep its database counted busy
+      // until the session sent something that is not part of a prefetch, or ended.
+      EndPrefetchClaimIfComplete(*cache_info, token);
       return [](Response&& response) {};
     }
     const auto group = cache_info->key_group();
@@ -758,13 +764,7 @@ class PgResponseCache::Impl : private GarbageCollector {
             version,
             completes_connection_prefetch =
                 cache_info->completes_connection_prefetch()](Response&& response) {
-      if (PREDICT_FALSE(FLAGS_TEST_pg_response_cache_fill_delay_ms > 0)) {
-        const auto delay_ms = FLAGS_TEST_pg_response_cache_fill_delay_ms;
-        // Taken before sleeping, so a prefetch's later rounds run at full speed and the
-        // next test to set the flag is delayed in its turn.
-        ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pg_response_cache_fill_delay_ms) = 0;
-        SleepFor(MonoDelta::FromMilliseconds(delay_ms));
-      }
+      TEST_PAUSE_IF_FLAG(TEST_pg_response_cache_pause_fill);
       // A prefetch is paged. pggate keeps issuing reads while any operation still returns paging
       // state, and each round is cached under a key of its own, so an observer told about the
       // first round would learn of a version whose later rounds are not cached yet. The round
