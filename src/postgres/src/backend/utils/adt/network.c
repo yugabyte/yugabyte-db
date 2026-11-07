@@ -31,6 +31,9 @@
 #include "utils/lsyscache.h"
 #include "utils/sortsupport.h"
 
+/* YB includes */
+#include "yb_ysql_conn_mgr_helper.h"
+
 
 /*
  * An IPv4 netmask size is a value in the range of 0 - 32, which is
@@ -1719,6 +1722,14 @@ inet_client_addr(PG_FUNCTION_ARGS)
 	char		remote_host[NI_MAXHOST];
 	int			ret;
 
+	/*
+	 * YB: With Ysql Connection Manager, MyProcPort is the Unix socket from the
+	 * connection manager. Report the logical client's address instead.
+	 */
+	if (YbIsClientYsqlConnMgr() && yb_ycm_internal_client_addr &&
+		yb_ycm_internal_client_addr[0] != '\0')
+		PG_RETURN_INET_P(network_in(yb_ycm_internal_client_addr, false));
+
 	if (port == NULL)
 		PG_RETURN_NULL();
 
@@ -1757,6 +1768,15 @@ inet_client_port(PG_FUNCTION_ARGS)
 	Port	   *port = MyProcPort;
 	char		remote_port[NI_MAXSERV];
 	int			ret;
+
+	/* YB: See inet_client_addr(). */
+	if (YbIsClientYsqlConnMgr() && yb_ycm_internal_client_addr &&
+		yb_ycm_internal_client_addr[0] != '\0')
+	{
+		if (yb_ycm_internal_client_port < 0)
+			PG_RETURN_NULL();
+		PG_RETURN_INT32(yb_ycm_internal_client_port);
+	}
 
 	if (port == NULL)
 		PG_RETURN_NULL();

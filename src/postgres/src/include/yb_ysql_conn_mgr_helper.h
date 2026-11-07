@@ -93,6 +93,13 @@ extern bool yb_conn_mgr_sighup_had_backend_guc_change;
  extern bool yb_conn_mgr_is_auth_passthrough_backend;
 
 /*
+ * Address and port of the logical client currently attached to this backend,
+ * forwarded by Ysql Connection Manager. "" and -1 when not set.
+ */
+extern char *yb_ycm_internal_client_addr;
+extern int	yb_ycm_internal_client_port;
+
+/*
  * Check whether the connection is made from Ysql Connection Manager.
  */
 extern bool YbIsClientYsqlConnMgr();
