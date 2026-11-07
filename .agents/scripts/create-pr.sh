@@ -5,8 +5,8 @@
 # A "feature-stack/<feature>/<change>" branch is the exception: it lives in
 # the main repo (GitHub can only stack PRs whose head branches it owns), so
 # the push goes upstream and the PR is same-repo. Its base is the layer below
-# it in the local gh stack, and once opened the PR is linked into the native
-# GitHub stack with `gh stack link`.
+# it in the local gh stack.  Once a PR exists below it, the new PR is linked
+# with those below into the native GitHub stack with `gh stack link`.
 #
 # Designed to be invoked from the /create-pr Claude Code skill once metadata
 # (issue, title, body, reviewers) has been gathered. Usable standalone too.
@@ -272,12 +272,12 @@ is_stack_branch=false
 if $is_stack_branch; then
   if ! gh stack --help >/dev/null 2>&1; then
     echo "error: stacked PRs need the gh-stack extension, which is not" >&2
-    echo "       installed. See the gh-stack skill." >&2
+    echo "       installed. See the stack skill." >&2
     exit 1
   fi
   if ! stack_json=$(gh stack view --json); then
     echo "error: ${current_branch} is not in a local gh stack; see the" >&2
-    echo "       gh-stack skill to create or adopt one." >&2
+    echo "       stack skill to create or adopt one." >&2
     exit 1
   fi
   mapfile -t _stack < <(python3 -c 'import json, sys
@@ -320,7 +320,7 @@ print(" ".join(b["name"] for b in above if has_pr(b)))' "$current_branch" \
   if [[ -n "$stack_above_with_pr" ]]; then
     echo "error: layers above ${current_branch} already have PRs" >&2
     echo "       (${stack_above_with_pr}). Open PRs bottom-up; see the" >&2
-    echo "       gh-stack skill to restructure the stack." >&2
+    echo "       stack skill to restructure the stack." >&2
     exit 1
   fi
 fi
@@ -454,9 +454,10 @@ trap 'rm -f "$combined_body"' EXIT
 } > "$combined_body"
 gh_pr_create_args=(-R "$GH_REPO" -B "$base_branch" -H "$pr_head"
                    -t "$full_title" -F "$combined_body")
-# A stack layer always opens as a draft and is marked ready only after it is
-# linked, so the CI that readiness triggers already sees a stack member.
-if (( draft )) || $is_stack_branch; then
+# A stack layer with PRs below it opens as a draft and is marked ready only
+# after it is linked, so the CI that readiness triggers already sees a stack
+# member.
+if (( draft )) || { $is_stack_branch && [[ -n "$stack_below_prs" ]]; }; then
   gh_pr_create_args+=(--draft)
 fi
 pr_url=$(gh pr create "${gh_pr_create_args[@]}")
@@ -489,19 +490,25 @@ if [[ -n "$reviewers" && "$pr_num" =~ ^[0-9]+$ ]]; then
 fi
 
 if $is_stack_branch; then
-  echo ">>> gh stack link --base ${stack_trunk} ${stack_below_prs} ${pr_num}"
-  if ! gh stack link --remote "$UPSTREAM_REMOTE" --base "$stack_trunk" \
-         $stack_below_prs "$pr_num"; then
-    echo "" >&2
-    echo "error: PR #${pr_num} was opened as a draft, but linking it into the" >&2
-    echo "       stack failed. Fix the cause above, then link it with" >&2
-    echo "         gh stack link --remote ${UPSTREAM_REMOTE} --base ${stack_trunk}" \
-         "${stack_below_prs} ${pr_num}" >&2
-    (( draft )) || echo "       and mark it ready with: gh pr ready ${pr_num} -R ${GH_REPO}" >&2
-    exit 6
-  fi
-  if (( ! draft )); then
-    gh pr ready "$pr_num" -R "$GH_REPO"
+  # `gh stack link` needs at least two PRs, so the bottom layer's PR is linked
+  # when the next layer's PR opens.
+  if [[ -z "$stack_below_prs" ]]; then
+    echo ">>> no PR below ${current_branch} yet; it is linked when the next layer's PR opens"
+  else
+    echo ">>> gh stack link --base ${stack_trunk} ${stack_below_prs} ${pr_num}"
+    if ! gh stack link --remote "$UPSTREAM_REMOTE" --base "$stack_trunk" \
+           $stack_below_prs "$pr_num"; then
+      echo "" >&2
+      echo "error: PR #${pr_num} was opened as a draft, but linking it into the" >&2
+      echo "       stack failed. Fix the cause above, then link it with" >&2
+      echo "         gh stack link --remote ${UPSTREAM_REMOTE} --base ${stack_trunk}" \
+           "${stack_below_prs} ${pr_num}" >&2
+      (( draft )) || echo "       and mark it ready with: gh pr ready ${pr_num} -R ${GH_REPO}" >&2
+      exit 6
+    fi
+    if (( ! draft )); then
+      gh pr ready "$pr_num" -R "$GH_REPO"
+    fi
   fi
 fi
 
