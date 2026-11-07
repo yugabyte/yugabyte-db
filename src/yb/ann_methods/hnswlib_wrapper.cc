@@ -383,7 +383,7 @@ class HnswlibIndex :
           query_vector.data(), options.max_num_results, options.tenant.AsStringView(), filter,
           options.ef);
     } else {
-      for (auto entry : hnsw_->getTenantEntries()) {
+      for (auto [_, entry] : hnsw_->getTenantEntries()) {
         auto tenant_top = hnsw_->searchKnnFrom(
             query_vector.data(), options.max_num_results, filter, options.ef, entry);
         for (; !tenant_top.empty(); tenant_top.pop()) {
