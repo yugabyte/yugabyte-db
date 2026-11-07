@@ -5,6 +5,7 @@ package com.yugabyte.yw.controllers.handlers;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -14,6 +15,7 @@ import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
@@ -495,15 +497,22 @@ public class UpgradeUniverseHandler {
         log.warn(
             "GFlag request params are specified in old manner: specificGFlags: {}, masterGFlags:"
                 + " {}, tserverGFlags: {}",
-            Json.toJson(requestParamsCluster.userIntent.specificGFlags),
-            requestParams.masterGFlags,
-            requestParams.tserverGFlags);
+            redactForLog(requestParamsCluster.userIntent.specificGFlags),
+            redactForLog(requestParams.masterGFlags),
+            redactForLog(requestParams.tserverGFlags));
         requestParamsCluster.userIntent.specificGFlags =
             SpecificGFlags.construct(requestParams.masterGFlags, requestParams.tserverGFlags);
         return true;
       }
     }
     return false;
+  }
+
+  // By now the sensitive gflags merge has put the stored real values back into these maps.
+  private static JsonNode redactForLog(Object gflags) {
+    return gflags == null
+        ? null
+        : RedactingService.filterSecretFields(Json.toJson(gflags), RedactionTarget.LOGS);
   }
 
   public UUID upgradeKubernetesOverrides(

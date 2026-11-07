@@ -19,6 +19,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -92,6 +95,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
+import org.slf4j.LoggerFactory;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
@@ -396,6 +400,68 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     assertEquals(
         SpecificGFlags.construct(masterGFlags, tserverGFlags),
         newParams.getPrimaryCluster().userIntent.specificGFlags);
+  }
+
+  @Test
+  public void testUpgradeGFlagsOldSchemaLogsNoLdapPassword() throws IOException {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    when(runtimeConfGetter.getConfForScope(any(Customer.class), any())).thenReturn(false);
+    initGflagDefaults();
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              UniverseDefinitionTaskParams.UserIntent userIntent =
+                  details.getPrimaryCluster().userIntent;
+              userIntent.specificGFlags =
+                  SpecificGFlags.construct(
+                      ImmutableMap.of("master", "1"), ImmutableMap.of("tserver", "1"));
+              userIntent.masterGFlags =
+                  userIntent.specificGFlags.getPerProcessFlags().value.get(ServerType.MASTER);
+              userIntent.tserverGFlags =
+                  userIntent.specificGFlags.getPerProcessFlags().value.get(ServerType.TSERVER);
+              userIntent.enableYSQLAuth = true;
+              universe.setUniverseDetails(details);
+            });
+    String ycqlSecret = "ycql-bind-secret-xyz";
+    String hbaSecret = "hba-bind-secret-xyz";
+    GFlagsUpgradeParams params = new GFlagsUpgradeParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    params.masterGFlags = ImmutableMap.of("asd", "10");
+    params.tserverGFlags =
+        ImmutableMap.of(
+            "ycql_ldap_bind_passwd",
+            ycqlSecret,
+            "ysql_hba_conf_csv",
+            "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com ldapbindpasswd=" + hbaSecret);
+
+    Logger handlerLogger = (Logger) LoggerFactory.getLogger(UpgradeUniverseHandler.class);
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    handlerLogger.addAppender(appender);
+    try {
+      handler.upgradeGFlags(params, c, Universe.getOrBadRequest(u.getUniverseUUID()));
+    } finally {
+      handlerLogger.detachAppender(appender);
+    }
+
+    List<String> oldSchemaLogs =
+        appender.list.stream()
+            .map(ILoggingEvent::getFormattedMessage)
+            .filter(message -> message.contains("specified in old manner"))
+            .toList();
+    assertEquals(1, oldSchemaLogs.size());
+    String logged = oldSchemaLogs.get(0);
+    assertFalse(logged, logged.contains(ycqlSecret));
+    assertFalse(logged, logged.contains(hbaSecret));
+    assertTrue(logged, logged.contains("ldapbindpasswd=" + RedactingService.SECRET_REPLACEMENT));
+    assertTrue(logged, logged.contains("\"asd\":\"10\""));
   }
 
   @Test
