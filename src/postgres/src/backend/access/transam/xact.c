@@ -2375,6 +2375,9 @@ YBCRestartWriteTransaction()
 		ResourceOwnerRelease(TopTransactionResourceOwner,
 							 RESOURCE_RELEASE_BEFORE_LOCKS,
 							 false, true);
+		/* Like AbortTransaction, purge failed writes from caches. */
+		AtEOXact_RelationCache(false);
+		AtEOXact_Inval(false);
 		ResourceOwnerRelease(TopTransactionResourceOwner,
 							 RESOURCE_RELEASE_LOCKS,
 							 false, true);
