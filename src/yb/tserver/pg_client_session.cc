@@ -3669,6 +3669,14 @@ class PgClientSession::Impl {
     // What is lost is the gap cover, not the protection while a round is filling. pggate logs
     // such a read as not prefetched, and the answer to it is to register the table.
     //
+    // TODO(#34309): a connection start whose last YbPrefetch has nothing registered issues no
+    // request at all -- the preload note beside that call in relcache.c -- so no completing
+    // round reaches the cache and no round ends its claim. A pooled backend idle after startup
+    // sends nothing outside a prefetch either, so its database stays counted until the session
+    // exits. In that configuration nothing records a version either, so nothing asks and the
+    // held claim costs nothing; it bites only on a node that recorded one before the preload
+    // list grew to cover that round.
+    //
     // TODO(#34309): the no-cache starter is the wider case. It runs a connection start's
     // rounds with no caching info at all -- YBCStartSysTablePrefetchingNoCache passes none --
     // so its first round ends the claim and the whole uncached catalog read runs uncounted,

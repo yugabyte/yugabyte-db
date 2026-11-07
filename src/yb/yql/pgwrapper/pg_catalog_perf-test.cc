@@ -1960,9 +1960,10 @@ TEST_F(PgStaleCatalogPrefetchTest, ARefreshDoesNotRecordAVersion) {
       << "a refresh recorded a version it had not cached a whole connection start for";
 }
 
-// Keeps a connection start's claim past the round that completes its prefetch, and lifts that
-// however the test leaves. The flag is process-wide, so a test returning early on a failed
-// assertion would otherwise leave every later test in the binary with claims that never end.
+// Keeps a connection start's claim past the round that completes its prefetch, and lifts it at
+// the end of the scope. Not for the sake of later tests -- YBTest holds a FlagSaver and restores
+// every gflag after each one -- but for the rest of this test, whose probe connections run after
+// the holder and must see claims ending normally.
 class ClaimKeptPastCompletion {
  public:
   ClaimKeptPastCompletion() { Set(true); }
