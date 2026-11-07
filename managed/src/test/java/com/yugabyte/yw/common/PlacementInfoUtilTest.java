@@ -2204,6 +2204,11 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     "Case 4a, 3, r1-az1-2-2-0-1;r1-az2-2-0-1-1;r1-az3-1-0-2-1, 1",
     // Case 5a. Master without tserver.
     "Case 5a, 3, r1-az1-2-0-1-1;r1-az2-0-1-0-1;r1-az3-1-0-1-1, 0",
+    // Fewer tservers than masters. Spare onprem nodes in the zone cover the gap.
+    "Case 6a, 5, r1-az1-1-0-3-3;r1-az2-1-0-1-1;r1-az3-1-0-1-1, 0",
+    "Case 7a, 3, r1-az1-1-1-2-3, 0",
+    // Zone with no tserver: extra masters are cloned from the existing master.
+    "Case 8a, 3, r1-az1-1-0-1-1;r1-az2-0-1-1-2, 0",
   })
   // @formatter:on
   public void testSelectMastersForDedicatedOnprem(
