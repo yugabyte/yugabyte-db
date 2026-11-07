@@ -12450,6 +12450,9 @@ Status CatalogManager::DeleteOrHideTabletsAndSendRequests(
   for (auto& tablet_data : tablets_data) {
     LOG(INFO) << (hide_only ? "Hid" : "Deleted") << " tablet " << tablet_data.tablet->tablet_id();
     tablet_data.lock.Commit();
+    if (!hide_only) {
+      tablet_data.tablet->StopCountingReplicaLoad();
+    }
   }
 
   TEST_SYNC_POINT("CatalogManager::DeleteOrHideTabletsAndSendRequests::AddToMaps");
@@ -12940,6 +12943,7 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
 
   // Send DeleteTablet requests to tablet servers serving deleted tablets.
   // This is asynchronous / non-blocking.
+  std::vector<TabletInfoPtr> deleted_tablets;
   for (const TabletInfoPtr& tablet : deferred.modified_tablets) {
     if (tablet->metadata().dirty().is_deleted()) {
       // Actual delete, because we delete tablet replica.
@@ -12948,10 +12952,17 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
       DeleteTabletReplicas(tablet, tablet->metadata().dirty().pb.state_msg(), HideOnly::kFalse,
                            KeepData::kFalse,
                            TransactionId::Nil() /* exclude_aborting_transaction_id */, epoch);
+      deleted_tablets.push_back(tablet);
     }
   }
   // Send the CreateTablet() requests to the servers. This is asynchronous / non-blocking.
   unlocker.Commit();
+
+  // A replaced tablet is only dropped from the maps by the next background pass; its replicas
+  // leave the load count now rather than then.
+  for (const TabletInfoPtr& tablet : deleted_tablets) {
+    tablet->StopCountingReplicaLoad();
+  }
 
   {
     LockGuard lock(mutex_);
@@ -14654,24 +14665,9 @@ Result<CMGlobalLoadState> CatalogManager::InitializeGlobalLoadState(
     const TSDescriptorVector& ts_descs) {
   CMGlobalLoadState state;
   for (const auto& ts : ts_descs) {
-    // Touch every tserver with 0 load.
-    state.per_ts_replica_load_[ts->permanent_uuid()];
+    state.per_ts_replica_load_[ts->permanent_uuid()] =
+        narrow_cast<uint32_t>(std::max<int64_t>(ts->replica_load(), 0));
     state.per_ts_protege_load_[ts->permanent_uuid()];
-  }
-
-  SharedLock l(mutex_);
-  // todo(zdrudi): replace this with a better index
-  for (const auto& info : tables_->GetAllTables()) {
-    // Ignore system, colocated and deleting/deleted tables.
-    {
-      auto l = info->LockForRead();
-      if (info->is_system() ||
-          info->IsSecondaryTable() ||
-          l->started_deleting()) {
-        continue;
-      }
-    }
-    RETURN_NOT_OK(CatalogManagerUtil::FillTableLoadState(info, &state.per_ts_replica_load_));
   }
   return state;
 }
