@@ -26,6 +26,7 @@ without it the Rust master never leads ([leadership.md](leadership.md)).
 | [leadership.md](leadership.md) | Leader phases, the fencing token, readiness |
 | [ts-manager.md](ts-manager.md) | Tserver registry, heartbeats, tablet reports, the live tserver list |
 | [tablet-locations.md](tablet-locations.md) | Observed replica locations and the location stream |
+| [table-lifecycle.md](table-lifecycle.md) | Namespace and table DDL, tablet assignment |
 | [task-runtime.md](task-runtime.md) | Scopes, controllers, retries, blocking pools |
 | [web.md](web.md) | The web port and pages |
 | [testing.md](testing.md) | Unit tests, conformance against the C++ master, itests |
@@ -44,6 +45,7 @@ Shared Rust pieces (build, bridges, protobuf, flags) are documented in
 | `master-catalog-state` | The in-memory catalog: snapshots, materializer, writer, self-check |
 | `master-leadership` | Leader phases and `LeaderToken` |
 | `master-task-runtime` | Term and entity scopes, controllers, retries, blocking pools |
+| `master-table-lifecycle` | Namespace and table DDL on the leader, and the controllers that create tablets |
 | `master-tablet-locations` | Observed replica locations |
 | `master-ts-manager` | Tserver registry, `TSHeartbeat`, tablet reports, the location stream |
 | `tools/conformance` (`master-conformance`) | Checks Rust re-serialization of real rows against C++ |
@@ -54,13 +56,14 @@ Dependencies point down: `rpc-handlers` -> `ts-manager` -> `tablet-locations`, `
 `leadership` -> `task-runtime`, and `catalog-state` -> `sys-catalog`, `catalog-entity`. Only
 `master-server` touches the bridges; every other crate tests against fakes with `cargo test`.
 
-## RPCs a layer-2 leader serves
+## RPCs a Rust leader serves
 
 | Service | Served | Later |
 |---|---|---|
 | MasterHeartbeat | TSHeartbeat ([ts-manager.md](ts-manager.md)) | |
 | MasterCluster | ListTabletServers, ListLiveTabletServers, RemoveTabletServer, IsMasterLeaderServiceReady, GetMasterClusterConfig, ChangeMasterClusterConfig, SetPreferredZones, GetMasterXClusterConfig, GetAutoFlagsConfig, ValidateAutoFlagsConfig; ChangeLoadBalancerState and GetLoadBalancerState on every master | Balancer status (W8); AutoFlags promote, rollback, single promote and demote (W9); DumpState |
 | MasterClient | GetTabletLocations, GetTableLocations, GetTransactionStatusTablets (global table) | GetTabletsMetadata, GetStatefulServiceLocation, GetIndexBackfillProgress (W7); GetYsqlCatalogConfig, ReservePgsqlOids, GetYsqlYbSystemTableInfo (W9); Redis methods never (D16) |
+| MasterDdl | CreateNamespace, DeleteNamespace, IsCreateNamespaceDone, IsDeleteNamespaceDone, ListNamespaces, GetNamespaceInfo, ListTables, GetTableSchema, CreateTable and IsCreateTableDone for YCQL tables that are not transactional and not indexes ([table-lifecycle.md](table-lifecycle.md)) | The rest of W7 |
 | MasterYsqlLease | | RefreshYsqlLease (W9) |
 | MasterEncryption | GetFullUniverseKeyRegistry, IsEncryptionEnabled; GetUniverseKeyRegistry, AddUniverseKeys and HasUniverseKeyInMemory on every master | ChangeEncryptionInfo |
 | MasterRustPeer | PushLocations, DumpCatalog (tests), on every Rust master | |

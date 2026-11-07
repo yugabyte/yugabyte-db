@@ -164,6 +164,10 @@ fn start(mut host: UniquePtr<MasterHost>) -> Result<RunningMaster, String> {
                 host.pin_mut().info_handle(),
                 gate.clone(),
             ))],
+            schema: Arc::new(store::HostSchema(
+                host.pin_mut().info_handle(),
+                gate.clone(),
+            )),
         },
     );
     let options = HandlerOptions {

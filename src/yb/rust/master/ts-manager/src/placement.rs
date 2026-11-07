@@ -16,8 +16,12 @@
 use std::collections::HashSet;
 
 use yb_host_api::{Status, StatusCode};
-use yb_proto::pb::common_net::{CloudInfoPB, PlacementInfoPB, ReplicationInfoPB};
+
+use crate::TsDescriptor;
+use yb_proto::pb::catalog_entity_info::SysClusterConfigEntryPB;
+use yb_proto::pb::common_net::{CloudInfoPB, HostPortPB, PlacementInfoPB, ReplicationInfoPB};
 use yb_proto::pb::consensus_metadata::{PeerMemberType, RaftPeerPB};
+use yb_proto::pb::wire_protocol::ServerRegistrationPB;
 
 /// `TSDescriptor::generate_placement_id`.
 pub fn placement_id(ci: &CloudInfoPB) -> String {
@@ -235,6 +239,57 @@ pub fn placement_uuid_of_peer(
             "Member type unknown for peer {}",
             short_debug(peer)
         ))),
+    }
+}
+
+/// The addresses in the cluster config's server blacklist.
+pub fn blacklist_addresses(config: &SysClusterConfigEntryPB) -> HashSet<(String, u32)> {
+    config
+        .server_blacklist
+        .hosts
+        .iter()
+        .map(|h| (h.host().to_string(), h.port()))
+        .collect()
+}
+
+/// Whether any of the tserver's addresses is blacklisted.
+pub fn is_blacklisted(descriptor: &TsDescriptor, blacklist: &HashSet<(String, u32)>) -> bool {
+    let reg = &descriptor.pb.registration;
+    reg.private_rpc_addresses
+        .iter()
+        .chain(reg.broadcast_addresses.iter())
+        .any(|hp: &HostPortPB| blacklist.contains(&(hp.host().to_string(), hp.port())))
+}
+
+/// `UsePublicIp`: whether a server at `to` is called at its broadcast address from `from`, under
+/// `use_private_ip` (`never`, `cloud`, `region` or `zone`).
+pub fn use_public_ip(to: &CloudInfoPB, from: &CloudInfoPB, mode: &str) -> bool {
+    if mode == "never" || to.placement_cloud() != from.placement_cloud() {
+        return true;
+    }
+    if mode == "cloud" {
+        return false;
+    }
+    if to.placement_region() != from.placement_region() {
+        return true;
+    }
+    if mode == "region" {
+        return false;
+    }
+    to.placement_zone() != from.placement_zone()
+}
+
+/// `DesiredHostPort`: the first broadcast address when the public address may be used, else the
+/// first private one.
+pub fn desired_host_port<'a>(
+    registration: &'a ServerRegistrationPB,
+    from: &CloudInfoPB,
+    mode: &str,
+) -> Option<&'a HostPortPB> {
+    let public = use_public_ip(&registration.cloud_info, from, mode);
+    match registration.broadcast_addresses.first() {
+        Some(hp) if public => Some(hp),
+        _ => registration.private_rpc_addresses.first(),
     }
 }
 

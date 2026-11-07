@@ -17,6 +17,7 @@ master-catalog-state.workspace = true
 master-leadership.workspace = true
 master-rpc-handlers.workspace = true
 master-sys-catalog.workspace = true
+master-table-lifecycle.workspace = true
 master-task-runtime.workspace = true
 master-ts-manager.workspace = true
 protobuf.workspace = true

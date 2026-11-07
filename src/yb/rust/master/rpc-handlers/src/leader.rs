@@ -22,19 +22,19 @@ use master_catalog_entity::Entity;
 use master_catalog_state::is_inactive_state;
 use master_catalog_state::{Catalog, CatalogSnapshot, CatalogWriter, Mutation};
 use master_leadership::{LeaderToken, Leadership};
+use master_table_lifecycle::TableLifecycle;
 use master_ts_manager::placement::{
-    cloud_info_matches_placement, placement_id, validate_placement,
+    blacklist_addresses, cloud_info_matches_placement, is_blacklisted, placement_id,
+    validate_placement,
 };
-use master_ts_manager::{
-    consensus_role, FollowerStreamState, HeartbeatContributor, TsDescriptor, TsManager,
-};
+use master_ts_manager::{consensus_role, FollowerStreamState, HeartbeatContributor, TsManager};
 use protobuf::{Enum, EnumOrUnknown, MessageField};
 use yb_host_api::{Status, StatusCode};
 use yb_proto::pb::catalog_entity_info::{
     sys_tables_entry_pb, sys_tablets_entry_pb, SysClusterConfigEntryPB, SysTablesEntryPB,
     SysTabletsEntryPB, SysXClusterConfigEntryPB,
 };
-use yb_proto::pb::common_net::{CloudInfoPB, HostPortPB};
+use yb_proto::pb::common_net::CloudInfoPB;
 use yb_proto::pb::common_types::YQLDatabase;
 use yb_proto::pb::consensus_metadata::PeerMemberType;
 use yb_proto::pb::master_client::{
@@ -63,6 +63,8 @@ pub struct LeaderServices {
     pub writer: Arc<CatalogWriter>,
     /// Leadership.
     pub leadership: Arc<Leadership>,
+    /// Namespace and table DDL (W7).
+    pub tables: Arc<TableLifecycle>,
     /// The tserver registry and locations.
     pub ts_manager: Arc<TsManager>,
     /// Heartbeat parts owned elsewhere (L7).
@@ -921,23 +923,6 @@ fn primary_placement(snapshot: &CatalogSnapshot) -> Result<Vec<u8>, Status> {
         .live_replicas
         .placement_uuid()
         .to_vec())
-}
-
-fn blacklist_addresses(config: &SysClusterConfigEntryPB) -> HashSet<(String, u32)> {
-    config
-        .server_blacklist
-        .hosts
-        .iter()
-        .map(|h| (h.host().to_string(), h.port()))
-        .collect()
-}
-
-fn is_blacklisted(descriptor: &TsDescriptor, blacklist: &HashSet<(String, u32)>) -> bool {
-    let reg = &descriptor.pb.registration;
-    reg.private_rpc_addresses
-        .iter()
-        .chain(reg.broadcast_addresses.iter())
-        .any(|hp: &HostPortPB| blacklist.contains(&(hp.host().to_string(), hp.port())))
 }
 
 fn app_status(status: &Status) -> AppStatusPB {

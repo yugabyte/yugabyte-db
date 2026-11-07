@@ -18,12 +18,13 @@ use protobuf::{Enum, Message};
 use yb_host_api::rpc::{FakeInboundCall, FakeResponse, FakeRpcClient};
 use yb_proto::pb::common_net::HostPortPB;
 use yb_proto::pb::consensus_metadata::{RaftConfigPB, RaftPeerPB};
+use yb_proto::pb::master_backup::ListSnapshotsResponsePB;
 use yb_proto::pb::master_cluster::{ListMastersResponsePB, RemovedMasterUpdateResponsePB};
-use yb_proto::pb::master_ddl::CreateTableResponsePB;
 use yb_proto::pb::master_heartbeat::TSToMasterCommonPB;
 use yb_proto::{find_method, SERVICES};
 
 use super::*;
+use master_table_lifecycle::{LifecycleOptions, SchemaHost, TableLifecycle};
 
 struct FakeInfo {
     initialized: AtomicBool,
@@ -105,6 +106,15 @@ impl MasterInfo for FakeInfo {
         self.host_calls.lock().unwrap().push(method.to_string());
         *self.last_host_request.lock().unwrap() = request.to_vec();
         Ok(b"host".to_vec())
+    }
+}
+
+/// The handler tests send no table DDL that reaches the host.
+struct NoSchemaHost;
+
+impl SchemaHost for NoSchemaHost {
+    fn call(&self, method: &'static str, _request: &[u8]) -> Result<Vec<u8>, Status> {
+        Err(Status::new(StatusCode::NotSupported, method))
     }
 }
 
@@ -480,11 +490,21 @@ mod leader_tests {
                 leadership.clone(),
                 WriterOptions::default(),
             );
+            let ts_manager = TsManager::new(Arc::default(), TsManagerOptions::default());
+            let tables = TableLifecycle::new(
+                catalog.clone(),
+                writer.clone(),
+                leadership.clone(),
+                ts_manager.clone(),
+                Arc::new(NoSchemaHost),
+                LifecycleOptions::default(),
+            );
             Arc::new(LeaderServices {
                 catalog,
                 writer,
                 leadership,
-                ts_manager: TsManager::new(Arc::default(), TsManagerOptions::default()),
+                tables,
+                ts_manager,
                 contributors: vec![],
                 follower_stream: Default::default(),
                 load_balancer_enabled: AtomicBool::new(true),
@@ -620,10 +640,11 @@ mod leader_tests {
         .unwrap();
         assert_eq!(config.cluster_config.version(), 2);
 
-        // A leader method of a later layer.
-        let resp =
-            CreateTableResponsePB::parse_from_bytes(&success(harness.call("CreateTable", vec![])))
-                .unwrap();
+        // A leader method of a later workstream (snapshots, W10).
+        let resp = ListSnapshotsResponsePB::parse_from_bytes(&success(
+            harness.call("ListSnapshots", vec![]),
+        ))
+        .unwrap();
         assert_eq!(
             resp.error.status.code().value(),
             StatusCode::NotSupported as i32

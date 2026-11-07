@@ -136,6 +136,7 @@ set(MASTER_SRCS
   system_tablet.cc
   system_tables.cc
   table_index.cc
+  table_ddl_util.cc
   tablet_creation_limits.cc
   tablet_health_manager.cc
   tablet_split_manager.cc

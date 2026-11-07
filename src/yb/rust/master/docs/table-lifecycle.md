@@ -1,0 +1,62 @@
+# Namespaces and tables (`master-table-lifecycle`)
+
+The leader's namespace and table DDL (W7). Every DDL request is one catalog mutation; what follows
+it (creating tablets on tservers, finishing the table) is a controller that works from the
+persisted rows alone, so a new leader picks it up where the last one stopped (K1).
+
+## Served so far
+
+YCQL keyspaces and tables that are neither transactional nor indexes:
+
+| RPC | Notes |
+|---|---|
+| `CreateNamespace` | One write of the RUNNING row. C++ writes PREPARING, then RUNNING; nothing happens in between for a keyspace. |
+| `DeleteNamespace` | One write that removes the row, as C++ does. Refused while the keyspace has a table, a type, or a snapshot schedule (asked of the host's coordinator). |
+| `IsCreateNamespaceDone`, `IsDeleteNamespaceDone`, `ListNamespaces`, `GetNamespaceInfo` | From the snapshot. `ListNamespaces` orders by id; C++ uses hash-map order. |
+| `ListTables`, `GetTableSchema` | From the snapshot, with C++'s visibility rules and relation types. |
+| `CreateTable`, `IsCreateTableDone` | Below. |
+
+YSQL databases and tables, transactional YCQL tables (which need the transaction status table) and
+indexes answer `NotSupported`. Roles, permissions and UDTs are `master-ycql`'s.
+
+Lookups follow `FindNamespace` and `FindTable`: by id, else by name (and database type, from
+`GetDatabaseType`). A name is unique per database type; uniqueness is checked and written under a
+leader-local lock, since a mutation can read the absence of a row but not of a name.
+
+## CREATE TABLE
+
+The schema steps that read or write engine formats run in the host's C++ (`PrepareTableSchema`,
+shared with `CatalogManager` through `src/yb/master/table_ddl_util.cc`): `SchemaFromPB`, the key
+column checks, column ids, the default partition schema, the tablet count (`RequestedNumTablets`,
+from the live tservers of the table's placement) and the partitions. Rust does the rest in C++'s
+order: namespace type, user-defined types, `max_create_tablets_per_ts`, the partitioning error,
+the placement checks of `CheckValidPlacementInfo` (quorum of live tservers, block minimums and
+maximums), then, under the name lock, the duplicate name and the namespace state. The table and
+all its tablets are written PREPARING in one mutation, with tablet ids sorted as C++ sorts them.
+
+The placement check codes are dropped by C++ (they are set on a response it discards), so the
+client gets `UNKNOWN_ERROR`; Rust answers the same.
+
+## The `tablet-assignment` controller
+
+Runs every `catalog_manager_bg_task_wait_ms` and on every catalog change, in each leader term:
+
+- PREPARING tablets get replicas and become CREATING, one write per table. Replicas are the
+  least loaded live, non-blacklisted tservers of the placement, by the table's then the cluster's
+  replica count, then uuid, filling each placement block's minimum first, as
+  `SelectReplicasForTablet` does.
+- CREATING tablets get `CreateTablet` sent to each replica once per term, through the paced
+  executor (K2), retried until `tablet_creation_timeout_ms`. A new leader sends again, and so
+  does the next pass after a call fails for good; a tserver that has the tablet answers
+  AlreadyPresent, which counts as created. C++ instead waits for the timeout below.
+- A CREATING tablet still not RUNNING `tablet_creation_timeout_ms` after its first send in the
+  term becomes REPLACED, and a new PREPARING tablet takes its partition.
+- A PREPARING table whose active tablets all run becomes RUNNING. Report processing
+  (`master-ts-manager`) turns each tablet RUNNING once a replica reports it with a leader.
+
+The leader calls a tserver at the address `DesiredHostPort` picks: the broadcast address unless
+`use_private_ip` allows the private one for the tserver's placement compared with this master's.
+This master's placement comes from its registration, not the `placement_*` gflags: masters
+embedded in one test process share the gflags, and MiniCluster blocks the address a server of
+another placement group must not use, so a wrong choice leaves `CreateTablet` failing until the
+creation timeout.

@@ -23,6 +23,7 @@ use master_sys_catalog::{
     AppliedBatch, ApplyEvent, ApplySender, HybridTime, OpId, Row, RowChange, SysCatalogStore,
     WriteFuture,
 };
+use master_table_lifecycle::SchemaHost;
 use master_ts_manager::{ContributorContext, HeartbeatContributor};
 use protobuf::{Enum, Message};
 use tokio::sync::oneshot;
@@ -272,6 +273,19 @@ impl HeartbeatContributor for HostHeartbeatParts {
             resp.auto_flags_config = parts.auto_flags_config;
         }
         Ok(())
+    }
+}
+
+/// The host's C++ steps of table DDL (W7): schema normalization, partitions, alter steps.
+pub(crate) struct HostSchema(
+    pub(crate) UniquePtr<MasterInfoHandle>,
+    pub(crate) Arc<HostGate>,
+);
+
+impl SchemaHost for HostSchema {
+    fn call(&self, method: &'static str, request: &[u8]) -> Result<Vec<u8>, Status> {
+        let _open = self.1.enter().ok_or_else(shut_down)?;
+        self.0.handle_on_host(method, request).map_err(host_error)
     }
 }
 

@@ -45,6 +45,7 @@ use protobuf::{EnumOrUnknown, Message};
 use tokio::sync::watch;
 use yb_host_api::{Status, StatusCode};
 use yb_proto::pb::catalog_entity_info::{sys_tablet_server_entry_pb, SysTabletServerEntryPB};
+use yb_proto::pb::common_net::CloudInfoPB;
 use yb_proto::pb::master_heartbeat::{LiveTServersVersionPB, TSInformationPB};
 use yb_proto::pb::master_types::{SysRowEntryType, TSRegistrationPB, TServerMetricsPB};
 use yb_proto::pb::wire_protocol::NodeInstancePB;
@@ -79,6 +80,9 @@ pub struct TsManagerOptions {
     /// `maximum_tablet_leader_lease_expired_secs`: a lease expired longer ago than this does not
     /// make a valid leader.
     pub max_leader_lease_expired: fn() -> Duration,
+    /// `use_private_ip`: which of a tserver's addresses the leader calls, given this master's
+    /// placement ([`TsManager::set_local_cloud_info`]).
+    pub use_private_ip: fn() -> String,
 }
 
 impl Default for TsManagerOptions {
@@ -95,6 +99,7 @@ impl Default for TsManagerOptions {
             register_from_raft: || true,
             metadata_min_time_left: || Duration::from_millis(7500),
             max_leader_lease_expired: || Duration::from_secs(120),
+            use_private_ip: || "never".to_string(),
         }
     }
 }
@@ -208,6 +213,9 @@ pub struct TsManager {
     cdc_enabled: AtomicBool,
     heartbeat_order: order::HeartbeatOrder,
     options: TsManagerOptions,
+    /// This master's placement, from its registration (not the gflags, which an embedded master
+    /// shares with the others in its process).
+    local_cloud_info: RwLock<CloudInfoPB>,
 }
 
 impl TsManager {
@@ -226,6 +234,7 @@ impl TsManager {
             cdc_enabled: AtomicBool::new(false),
             heartbeat_order: Default::default(),
             options,
+            local_cloud_info: RwLock::default(),
         })
     }
 
@@ -250,6 +259,21 @@ impl TsManager {
             .is_live()
             .then_some(descriptor.last_lease_report)
             .flatten()
+    }
+
+    /// Sets this master's placement, which decides the addresses [`TsManager::rpc_address`]
+    /// picks.
+    pub fn set_local_cloud_info(&self, cloud_info: CloudInfoPB) {
+        *self.local_cloud_info.write().unwrap() = cloud_info;
+    }
+
+    /// The address the leader calls the tserver at, as C++ `DesiredHostPort` picks it.
+    pub fn rpc_address(&self, uuid: &[u8]) -> Option<(String, u16)> {
+        let descriptor = self.get(uuid)?;
+        let mode = (self.options.use_private_ip)();
+        let local = self.local_cloud_info.read().unwrap();
+        placement::desired_host_port(&descriptor.pb.registration, &local, &mode)
+            .map(|hp| (hp.host().to_string(), hp.port() as u16))
     }
 
     /// One tserver.

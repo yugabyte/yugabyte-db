@@ -22,6 +22,9 @@ option java_package = "org.yb.master";
 
 import "yb/common/common_types.proto";
 import "yb/consensus/metadata.proto";
+import "yb/common/common.proto";
+import "yb/master/catalog_entity_info.proto";
+import "yb/master/master_ddl.proto";
 import "yb/master/master_heartbeat.proto";
 import "yb/master/master_types.proto";
 
@@ -84,6 +87,54 @@ message DumpCatalogResponsePB {
   optional uint64 live_tservers_unchanged_responses = 9;
   // Replicas over all tablets with known replicas.
   optional uint64 num_tablet_replicas = 10;
+}
+
+// The host's C++ steps of CatalogManager::CreateTable that a Rust leader asks for
+// (MasterHost::HandleOnHost "PrepareTableSchema"): the schema checks, column ids, the default
+// partition schema, the tablet count and the partitions. Not sent over the wire.
+message PrepareTableSchemaRequestPB {
+  optional CreateTableRequestPB request = 1;
+  // Live tservers in the table's placement, for the default tablet count.
+  optional uint64 num_live_tservers = 2;
+}
+
+message PrepareTableSchemaResponsePB {
+  // A schema error; nothing else is set.
+  optional MasterErrorPB error = 1;
+  optional SchemaPB schema = 2;
+  optional PartitionSchemaPB partition_schema = 3;
+  optional int32 next_column_id = 4;
+  // Before partitioning, which the tablet limits check.
+  optional int32 num_tablets = 5;
+  repeated PartitionPB partitions = 6;
+  // A partitioning error, which C++ reports after the tablet limits.
+  optional MasterErrorPB partitions_error = 7;
+}
+
+// CatalogManager::AlterTable's schema step for a Rust leader ("AlterTableSchema").
+message AlterTableSchemaRequestPB {
+  optional bytes table_id = 1;
+  optional SysTablesEntryPB table = 2;
+  optional AlterTableRequestPB request = 3;
+}
+
+message AlterTableSchemaResponsePB {
+  optional MasterErrorPB error = 1;
+  // Unset when the request has no schema change.
+  optional SchemaPB schema = 2;
+  optional int32 next_column_id = 3;
+}
+
+// The snapshot schedules that cover a namespace or table, from the host's snapshot coordinator
+// ("SnapshotSchedules").
+message SnapshotSchedulesRequestPB {
+  optional SysRowEntryType entry_type = 1;
+  optional bytes id = 2;
+}
+
+message SnapshotSchedulesResponsePB {
+  optional MasterErrorPB error = 1;
+  repeated bytes schedule_ids = 2;
 }
 
 service MasterRustPeer {

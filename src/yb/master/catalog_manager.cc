@@ -126,6 +126,7 @@
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/cdcsdk_manager.h"
 #include "yb/master/clone/clone_state_manager.h"
+#include "yb/master/table_ddl_util.h"
 #include "yb/master/cluster_balance.h"
 #include "yb/master/encryption_manager.h"
 #include "yb/master/leader_epoch.h"
@@ -3929,20 +3930,6 @@ Status CatalogManager::DdlLog(
 
 namespace {
 
-Status ValidateCreateTableSchema(const Schema& schema, CreateTableResponsePB* resp) {
-  if (schema.num_key_columns() <= 0) {
-    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA,
-                      STATUS(InvalidArgument, "Must specify at least one key column"));
-  }
-  for (size_t i = 0; i < schema.num_key_columns(); i++) {
-    if (!IsTypeAllowableInKey(schema.column(i).type_info())) {
-      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA,
-                        STATUS(InvalidArgument, "Invalid datatype for primary key column"));
-    }
-  }
-  return Status::OK();
-}
-
 // Extract a colocation ID from request if explicitly passed, or generate a new valid one.
 // Will error if requested ID is taken or invalid.
 template<typename ContainsColocationIdFn>
@@ -4061,7 +4048,9 @@ struct CatalogManager::CreateYsqlSysTableData {
     RETURN_NOT_OK(SchemaFromPB(req.schema(), &schema));
     // If the schema contains column ids, we are copying a Postgres table from one namespace to
     // another. Anyway, validate the schema.
-    RETURN_NOT_OK(ValidateCreateTableSchema(schema, &resp));
+    if (auto s = ValidateCreateTableSchema(schema); !s.ok()) {
+      return SetupError(resp.mutable_error(), s);
+    }
     if (!schema.has_column_ids()) {
       schema.InitColumnIdsByDefault();
     }
@@ -4700,7 +4689,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // Validate schema.
   Schema schema;
   RETURN_NOT_OK(SchemaFromPB(req.schema(), &schema));
-  RETURN_NOT_OK(ValidateCreateTableSchema(schema, resp));
+  if (auto s = ValidateCreateTableSchema(schema); !s.ok()) {
+    return SetupError(resp->mutable_error(), s);
+  }
 
   // Pre-colocation GA colocated tables in a legacy colocated database are colocated via database,
   // but after GA, colocated tables are colocated via tablegroups.
@@ -8237,178 +8228,6 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
   return Status::OK();
 }
 
-namespace {
-// Given the SysTablesEntryPB for a table and 'col_name', return whether the column can be directly
-// dropped or if it should be marked for deletion first and dropped later.
-Result<bool> NeedTwoPhaseDeleteForColumn(const SysTablesEntryPB& pb, const string& col_name) {
-  // Applicable only for YSQL tables.
-  if (pb.table_type() != PGSQL_TABLE_TYPE) {
-    return false;
-  }
-
-  // In general, mark the column for deletion first and drop it only after the transaction commits
-  // to prevent data loss. However, if the table was created in the same transaction or if the
-  // column was added in this transaction, then we can safely skip 2-phase deletion because the
-  // column being dropped will not exist whether the transaction is a success or not, and no other
-  // clients can see this column.
-  if (pb.ysql_ddl_txn_verifier_state_size() == 0) {
-    return true;
-  }
-
-  // ysql_ddl_txn_verifier_state is a repeated field with as many entries as number of savepoints
-  // in the transaction so far. Since we don't support savepoints for DDL transactions today,
-  // default to picking the first entry.
-  const auto& state = pb.ysql_ddl_txn_verifier_state(0);
-  if (state.contains_create_table_op()) {
-    return false;
-  }
-  if (!state.contains_alter_table_op() || !state.has_previous_schema()) {
-    return true;
-  }
-
-  // Find whether this column was added in this transaction. This should be done by comparing the
-  // 'order' field which corresponds to postgres' attnum field. Comparing the name can result in
-  // erroneous conditions if the column was renamed in this transaction.
-  int order = -1;
-  // Find the order of column to be deleted. We can find the column based on the name, as columns
-  // are uniquely named.
-  for (const auto& col : pb.schema().columns()) {
-    if (col.name() == col_name) {
-      order = col.order();
-      break;
-    }
-  }
-
-  SCHECK(order != -1, NotFound, "Column for deletion not found", col_name);
-
-  // Find column with same order in previous schema.
-  for (const auto& col : state.previous_schema().columns()) {
-    if (col.order() == order) {
-      // This column already existed before the current transaction. Therefore it is not being
-      // added as part of this transaction and needs to be deleted using 2 phase deletion.
-      return true;
-    }
-  }
-  // This column was added as part of this transaction and need not be visible to any other
-  // transactions. It is safe to drop right away.
-  return false;
-}
-
-Status ApplyAlterSteps(server::Clock* clock,
-                       const TableId& table_id,
-                       const SysTablesEntryPB& current_pb,
-                       const AlterTableRequestPB* req,
-                       Schema* new_schema,
-                       ColumnId* next_col_id,
-                       std::vector<DdlLogEntry>* ddl_log_entries) {
-  const SchemaPB& current_schema_pb = current_pb.schema();
-  Schema cur_schema;
-  RETURN_NOT_OK(SchemaFromPB(current_schema_pb, &cur_schema));
-
-  SchemaBuilder builder(cur_schema);
-  if (current_pb.has_next_column_id()) {
-    builder.set_next_column_id(ColumnId(current_pb.next_column_id()));
-  }
-  if (current_pb.has_colocated() && current_pb.colocated()) {
-    if (current_schema_pb.table_properties().is_ysql_catalog_table()) {
-      builder.set_cotable_id(VERIFY_RESULT(Uuid::FromHexString(req->table().table_id())));
-    }
-    // Colocation ID is set in schema and cannot be altered.
-  }
-
-  for (const AlterTableRequestPB::Step& step : req->alter_schema_steps()) {
-    auto time = clock->Now();
-    switch (step.type()) {
-      case AlterTableRequestPB::ADD_COLUMN: {
-        if (!step.has_add_column()) {
-          return STATUS(InvalidArgument, "ADD_COLUMN missing column info");
-        }
-
-        // Verify that encoding is appropriate for the new column's type.
-        ColumnSchemaPB new_col_pb = step.add_column().schema();
-        if (new_col_pb.has_id()) {
-          return STATUS_FORMAT(InvalidArgument,
-              "column $0: client should not specify column id", new_col_pb.ShortDebugString());
-        }
-        ColumnSchema new_col = ColumnSchemaFromPB(new_col_pb);
-
-        RETURN_NOT_OK(builder.AddColumn(new_col));
-        ddl_log_entries->emplace_back(time, table_id, current_pb, Format("Add column $0", new_col));
-        break;
-      }
-
-      case AlterTableRequestPB::DROP_COLUMN: {
-        if (!step.has_drop_column()) {
-          return STATUS(InvalidArgument, "DROP_COLUMN missing column info");
-        }
-
-        const string& col_name = step.drop_column().name();
-        if (cur_schema.is_key_column(col_name)) {
-          return STATUS(InvalidArgument, "cannot remove a key column");
-        }
-
-        if (req->ysql_yb_ddl_rollback_enabled() &&
-            VERIFY_RESULT(NeedTwoPhaseDeleteForColumn(current_pb, col_name))) {
-          RETURN_NOT_OK(builder.MarkColumnForDeletion(col_name));
-          ddl_log_entries->emplace_back(
-              time, table_id, current_pb,
-              Format("Mark column $0 for deletion", col_name));
-        } else {
-          RETURN_NOT_OK(builder.RemoveColumn(col_name));
-          ddl_log_entries->emplace_back(
-              time, table_id, current_pb, Format("Drop column $0", col_name));
-        }
-        break;
-      }
-
-      case AlterTableRequestPB::RENAME_COLUMN: {
-        if (!step.has_rename_column()) {
-          return STATUS(InvalidArgument, "RENAME_COLUMN missing column info");
-        }
-
-        RETURN_NOT_OK(builder.RenameColumn(
-            step.rename_column().old_name(),
-            step.rename_column().new_name()));
-        ddl_log_entries->emplace_back(
-            time, table_id, current_pb,
-            Format("Rename column $0 => $1", step.rename_column().old_name(),
-                   step.rename_column().new_name()));
-        break;
-      }
-
-      case AlterTableRequestPB::SET_COLUMN_PG_TYPE: {
-        if (!step.has_set_column_pg_type()) {
-          return STATUS(InvalidArgument, "SET_COLUMN_PG_TYPE missing column info");
-        }
-
-        RETURN_NOT_OK(builder.SetColumnPGType(
-            step.set_column_pg_type().name(), step.set_column_pg_type().pg_type_oid()));
-        ddl_log_entries->emplace_back(
-            time, table_id, current_pb,
-            Format(
-                "Set pg_type_oid for column $0 => $1", step.set_column_pg_type().name(),
-                step.set_column_pg_type().pg_type_oid()));
-        break;
-      }
-
-        // TODO: EDIT_COLUMN.
-
-      default: {
-        return STATUS_FORMAT(InvalidArgument, "Invalid alter step type: $0", step.type());
-      }
-    }
-  }
-
-  if (req->has_alter_properties()) {
-    RETURN_NOT_OK(builder.AlterProperties(req->alter_properties()));
-  }
-
-  *new_schema = builder.Build();
-  *next_col_id = builder.next_column_id();
-  return Status::OK();
-}
-
-} // namespace
 
 Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
                                   AlterTableResponsePB* resp,
@@ -13143,29 +12962,13 @@ Result<int> CatalogManager::CalculateNumTabletsForTableCreation(
   //      If nothing is specified in this field, nothing will be stored in the table
   //      TablePropertiesPB for number of tablets
   //   3. Calculate own value.
-  int num_tablets = 0;
-  if (request.has_num_tablets()) {
-    num_tablets = request.num_tablets();  // Internal request.
-  }
-
-  if (num_tablets <= 0 && schema.table_properties().HasNumTablets()) {
-    num_tablets = schema.table_properties().num_tablets();  // User request.
-  }
-
-  if (num_tablets <= 0) {
-    // Use default as client could have gotten the value before any tserver had heartbeated
-    // to (a new) master leader.
-    // TODO: should we check num_live_tservers is greater than 0 and return IllegalState if not?
-    const auto num_live_tservers = GetNumLiveTServersForPlacement(placement_info.placement_uuid());
-    num_tablets = GetInitialNumTabletsPerTable(request.table_type(), num_live_tservers);
-    LOG(INFO) << "Setting default tablets to " << num_tablets << " with " << num_live_tservers
-              << " primary servers";
-  }
+  const auto num_tablets = RequestedNumTablets(
+      request, schema, GetNumLiveTServersForPlacement(placement_info.placement_uuid()));
 
   if (IsXClusterDDLReplicationTable(request)) {
     // xCluster DDL queue tables need to be single tablet tables - This ensures that we have a
     // singular stream of DDLs which simplifies ordering guarantees.
-    num_tablets = 1;
+    return 1;
   }
   return num_tablets;
 }
@@ -13176,43 +12979,11 @@ Result<std::pair<PartitionSchema, std::vector<Partition>>> CatalogManager::Creat
     bool colocated,
     CreateTableRequestPB* request,
     CreateTableResponsePB* resp) {
-  PartitionSchema partition_schema;
-  vector<Partition> partitions;
-  if (colocated) {
-    RETURN_NOT_OK(partition_schema.CreatePartitions(1, &partitions));
-    request->clear_partition_schema();
-    num_tablets = 1;
-  } else {
-    RETURN_NOT_OK(PartitionSchema::FromPB(request->partition_schema(), schema, &partition_schema));
-    if (request->partitions_size() > 0) {
-      if (request->partitions_size() != num_tablets) {
-        Status s = STATUS(InvalidArgument, "Partitions are not defined for all tablets");
-        return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
-      }
-      string last;
-      for (const auto& p : request->partitions()) {
-        Partition np;
-        Partition::FromPB(p, &np);
-        if (np.partition_key_start() != last) {
-          Status s =
-              STATUS(InvalidArgument, "Partitions does not cover the full partition keyspace");
-          return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
-        }
-        last = np.partition_key_end();
-        partitions.push_back(std::move(np));
-      }
-    } else {
-      // Supplied number of partitions is merely a suggestion, actual number of
-      // created partitions might differ.
-      RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets, &partitions));
-    }
-    // The vector 'partitions' contains real setup partitions, so the variable
-    // should be updated.
-    num_tablets = narrow_cast<int>(partitions.size());
+  auto result = CreateTablePartitions(schema, num_tablets, colocated, request);
+  if (!result.ok()) {
+    return SetupError(resp->mutable_error(), result.status());
   }
-  LOG(INFO) << "Set number of tablets: " << num_tablets;
-  request->set_num_tablets(num_tablets);
-  return std::pair{partition_schema, partitions};
+  return result;
 }
 
 Status CatalogManager::BuildLocationsForTablet(

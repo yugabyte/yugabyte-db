@@ -21,6 +21,7 @@
 #include "yb/client/client.h"
 
 #include "yb/common/common_flags.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/version_info.h"
 #include "yb/common/version_info.pb.h"
 #include "yb/common/wire_protocol.h"
@@ -52,8 +53,10 @@
 #include "yb/master/sys_catalog_restore.h"
 #include "yb/master/sys_catalog_writer.h"
 #include "yb/master/system_tables.h"
+#include "yb/master/table_ddl_util.h"
 #include "yb/master/encryption_manager.h"
 #include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/master_rust_peer.pb.h"
 
 #include "yb/master_host/sys_catalog_tap.h"
 
@@ -1114,6 +1117,90 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
                          master::ValidateAutoFlagsConfigResponsePB>(
         request, [this](const auto& req, auto* resp) {
           return auto_flags_manager_->ValidateAutoFlagsConfig(&req, resp);
+        });
+  }
+  if (name == "PrepareTableSchema") {
+    // CatalogManager::CreateTable from "Validate schema" to CreatePartitions, for a table that is
+    // not colocated (the Rust leader serves no colocation yet).
+    return HandleRequest<master::PrepareTableSchemaRequestPB,
+                         master::PrepareTableSchemaResponsePB>(
+        request, [](const auto& prepare, auto* resp) -> Status {
+          auto req = prepare.request();
+          Schema schema;
+          RETURN_NOT_OK(SchemaFromPB(req.schema(), &schema));
+          RETURN_NOT_OK(master::ValidateCreateTableSchema(schema));
+          if (!schema.has_column_ids()) {
+            schema.InitColumnIdsByDefault();
+          }
+          if (!req.partition_schema().has_hash_schema() &&
+              !req.partition_schema().has_range_schema()) {
+            if (req.table_type() == REDIS_TABLE_TYPE) {
+              req.mutable_partition_schema()->set_hash_schema(
+                  PartitionSchemaPB::REDIS_HASH_SCHEMA);
+            } else if (schema.num_hash_key_columns() > 0) {
+              req.mutable_partition_schema()->set_hash_schema(
+                  PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
+            } else {
+              return STATUS(InvalidArgument, "Unknown table type or partitioning method",
+                            master::MasterError(master::MasterErrorPB::INVALID_SCHEMA));
+            }
+          }
+          SchemaToPB(schema, resp->mutable_schema());
+          resp->set_next_column_id(schema.max_col_id() + 1);
+          const auto num_tablets =
+              master::RequestedNumTablets(req, schema, prepare.num_live_tservers());
+          resp->set_num_tablets(num_tablets);
+          auto partitions =
+              master::CreateTablePartitions(schema, num_tablets, /* colocated= */ false, &req);
+          if (!partitions.ok()) {
+            std::ignore = master::SetupError(resp->mutable_partitions_error(), partitions.status());
+            return Status::OK();
+          }
+          partitions->first.ToPB(resp->mutable_partition_schema());
+          for (const auto& partition : partitions->second) {
+            partition.ToPB(resp->add_partitions());
+          }
+          return Status::OK();
+        });
+  }
+  if (name == "AlterTableSchema") {
+    // CatalogManager::AlterTable's ApplyAlterSteps.
+    return HandleRequest<master::AlterTableSchemaRequestPB, master::AlterTableSchemaResponsePB>(
+        request, [this](const auto& alter, auto* resp) -> Status {
+          const auto& req = alter.request();
+          if (!req.alter_schema_steps_size() && !req.has_alter_properties() &&
+              !req.has_pgschema_name()) {
+            return Status::OK();
+          }
+          Schema new_schema;
+          auto next_col_id = ColumnId(alter.table().next_column_id());
+          std::vector<master::DdlLogEntry> ddl_log_entries;
+          auto s = master::ApplyAlterSteps(
+              clock(), alter.table_id(), alter.table(), &req, &new_schema, &next_col_id,
+              &ddl_log_entries);
+          if (!s.ok()) {
+            std::ignore =
+                master::SetupError(resp->mutable_error(), master::MasterErrorPB::INVALID_SCHEMA, s);
+            return Status::OK();
+          }
+          if (req.has_pgschema_name()) {
+            new_schema.SetSchemaName(req.pgschema_name());
+          }
+          SchemaToPB(new_schema, resp->mutable_schema());
+          resp->set_next_column_id(next_col_id);
+          return Status::OK();
+        });
+  }
+  if (name == "SnapshotSchedules") {
+    // The checks in CatalogManager::DeleteNamespace and DeleteTable.
+    return HandleRequest<master::SnapshotSchedulesRequestPB, master::SnapshotSchedulesResponsePB>(
+        request, [this](const auto& req, auto* resp) -> Status {
+          auto schedules = VERIFY_RESULT(
+              snapshot_coordinator_->GetSnapshotSchedules(req.entry_type(), req.id()));
+          for (const auto& id : schedules) {
+            resp->add_schedule_ids(id.ToString());
+          }
+          return Status::OK();
         });
   }
   // `request` is the cluster config's EncryptionInfoPB, empty when it has none, as

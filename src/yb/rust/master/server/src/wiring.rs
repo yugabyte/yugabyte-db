@@ -24,6 +24,7 @@ use master_catalog_state::{run_materializer, self_check, Catalog, CatalogWriter,
 use master_leadership::{Leadership, Phase};
 use master_rpc_handlers::{LeaderServices, MasterInfo};
 use master_sys_catalog::{ApplyEvents, SysCatalogStore};
+use master_table_lifecycle::{LifecycleOptions, SchemaHost, TableLifecycle, TabletAssigner};
 use master_task_runtime::{
     run_controller, Attempt, BlockingPool, BoxFuture, Controller, RetryPolicy, TermScope,
     TsRpcExecutor,
@@ -98,6 +99,12 @@ static UNIVERSE_UUID_CHECK: FlagRef<bool> =
 static GUARDED_LEASE_MS: FlagRef<u32> = FlagRef::new("xcluster_guarded_lease_duration_ms");
 static MAX_CLOCK_SKEW_USEC: FlagRef<u64> = FlagRef::new("max_clock_skew_usec");
 static REPLICATION_FACTOR: FlagRef<i32> = FlagRef::new("replication_factor");
+static MAX_CREATE_TABLETS_PER_TS: FlagRef<i32> = FlagRef::new("max_create_tablets_per_ts");
+static CHECK_TS_COUNT_FOR_CREATE_TABLE: FlagRef<bool> =
+    FlagRef::new("catalog_manager_check_ts_count_for_create_table");
+static TABLET_CREATION_TIMEOUT_MS: FlagRef<i32> = FlagRef::new("tablet_creation_timeout_ms");
+static USE_PARENT_TABLE_ID_FIELD: FlagRef<bool> = FlagRef::new("use_parent_table_id_field");
+static BG_TASK_WAIT_MS: FlagRef<i32> = FlagRef::new("catalog_manager_bg_task_wait_ms");
 static MASTER_TS_RPC_TIMEOUT_MS: FlagRef<i32> = FlagRef::new("master_ts_rpc_timeout_ms");
 static RETRY_MAX_DELAY_MS: FlagRef<i32> = FlagRef::new("retrying_ts_rpc_max_delay_ms");
 static RETRY_LIMIT: FlagRef<i32> = FlagRef::new("unresponsive_ts_rpc_retry_limit");
@@ -113,6 +120,7 @@ static MAX_LEADER_LEASE_EXPIRED_SECS: FlagRef<u32> =
     FlagRef::new("maximum_tablet_leader_lease_expired_secs");
 
 static CLUSTER_UUID: FlagRef<String> = FlagRef::new("cluster_uuid");
+static USE_PRIVATE_IP: FlagRef<String> = FlagRef::new("use_private_ip");
 static ALLOW_YCQL_ROLE_DROP: FlagRef<bool> = FlagRef::new("ycql_allow_cassandra_drop");
 
 const DEFAULTS_OPTIONS: DefaultsOptions = DefaultsOptions {
@@ -151,6 +159,7 @@ fn ts_manager_options() -> TsManagerOptions {
         max_leader_lease_expired: || {
             Duration::from_secs(MAX_LEADER_LEASE_EXPIRED_SECS.get().into())
         },
+        use_private_ip: || USE_PRIVATE_IP.get(),
     }
 }
 
@@ -190,6 +199,8 @@ pub(crate) struct HostParts {
     pub(crate) defaults: Arc<dyn DefaultsHost>,
     /// Heartbeat response fields the host owns.
     pub(crate) contributors: Vec<Arc<dyn HeartbeatContributor>>,
+    /// The C++ schema steps of table DDL.
+    pub(crate) schema: Arc<dyn SchemaHost>,
 }
 
 /// The core's components, built before the host starts so the apply tap has a sink.
@@ -215,6 +226,7 @@ impl Core {
             metrics,
             defaults,
             contributors,
+            schema,
         } = host;
         let _guard = runtime.enter();
         runtime.spawn(run_materializer(catalog.clone(), store.clone(), events));
@@ -230,10 +242,25 @@ impl Core {
             },
         );
         let ts_manager = TsManager::new(Arc::default(), ts_manager_options());
+        let tables = TableLifecycle::new(
+            catalog.clone(),
+            writer.clone(),
+            leadership.clone(),
+            ts_manager.clone(),
+            schema,
+            LifecycleOptions {
+                replication_factor: || REPLICATION_FACTOR.get(),
+                max_create_tablets_per_ts: || MAX_CREATE_TABLETS_PER_TS.get(),
+                check_ts_count_for_create_table: || CHECK_TS_COUNT_FOR_CREATE_TABLE.get(),
+                tablet_creation_timeout_ms: || TABLET_CREATION_TIMEOUT_MS.get() as i64,
+                use_parent_table_id_field: || USE_PARENT_TABLE_ID_FIELD.get(),
+            },
+        );
         let leader = Arc::new(LeaderServices {
             catalog: catalog.clone(),
             writer: writer.clone(),
             leadership: leadership.clone(),
+            tables,
             ts_manager: ts_manager.clone(),
             contributors,
             follower_stream: Default::default(),
@@ -287,6 +314,13 @@ impl Core {
         info: Arc<dyn MasterInfo>,
         rpc: Arc<dyn RpcClient>,
     ) {
+        match info.registration() {
+            Ok(registration) => self
+                .leader
+                .ts_manager
+                .set_local_cloud_info(registration.cloud_info.clone().unwrap_or_default()),
+            Err(status) => tracing::warn!("This master's registration is unknown: {status}"),
+        }
         let blocking = BlockingPool::new("catalog-check", 1, 2);
         let catalog = self.catalog.clone();
         runtime.spawn(async move {
@@ -388,6 +422,19 @@ fn start_term(
         watch::channel(0).1,
     );
 
+    run_controller(
+        scope,
+        TabletAssigner::new(
+            leader.tables.clone(),
+            rpc.clone(),
+            ts_rpc.clone(),
+            retry_policy(false),
+            || millis(MASTER_TS_RPC_TIMEOUT_MS.get()),
+            || millis(BG_TASK_WAIT_MS.get().max(1)),
+        ),
+        leader.catalog.subscribe(),
+    );
+
     let deletes_leader = leader.clone();
     let deletes_rpc = rpc.clone();
     let deletes_executor = ts_rpc.clone();
@@ -410,13 +457,7 @@ fn start_term(
                     let result = executor
                         .run(&ts_uuid, "DeleteTablet", &retry_policy(false), |_| {
                             let current = leader.leadership.check(&delete.token);
-                            let address = leader.ts_manager.get(&delete.ts_uuid).and_then(|d| {
-                                let reg = &d.pb.registration;
-                                reg.private_rpc_addresses
-                                    .first()
-                                    .or(reg.broadcast_addresses.first())
-                                    .map(|hp| (hp.host().to_string(), hp.port() as u16))
-                            });
+                            let address = leader.ts_manager.rpc_address(&delete.ts_uuid);
                             let (delete, rpc) = (delete.clone(), rpc.clone());
                             async move {
                                 // Decided under another term or before a restore: the next

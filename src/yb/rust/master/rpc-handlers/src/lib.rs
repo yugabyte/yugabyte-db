@@ -56,6 +56,15 @@ use yb_proto::pb::master_cluster::{
     ListTabletServersResponsePB, RemoveTabletServerRequestPB, RemoveTabletServerResponsePB,
     SetPreferredZonesRequestPB, SetPreferredZonesResponsePB,
 };
+use yb_proto::pb::master_ddl::{
+    CreateNamespaceRequestPB, CreateNamespaceResponsePB, CreateTableRequestPB,
+    CreateTableResponsePB, DeleteNamespaceRequestPB, DeleteNamespaceResponsePB,
+    GetNamespaceInfoRequestPB, GetNamespaceInfoResponsePB, GetTableSchemaRequestPB,
+    GetTableSchemaResponsePB, IsCreateNamespaceDoneRequestPB, IsCreateNamespaceDoneResponsePB,
+    IsCreateTableDoneRequestPB, IsCreateTableDoneResponsePB, IsDeleteNamespaceDoneRequestPB,
+    IsDeleteNamespaceDoneResponsePB, ListNamespacesRequestPB, ListNamespacesResponsePB,
+    ListTablesRequestPB, ListTablesResponsePB,
+};
 use yb_proto::pb::master_heartbeat::{TSHeartbeatRequestPB, TSHeartbeatResponsePB};
 use yb_proto::pb::master_rust_peer::{
     dump_catalog_response_pb, DumpCatalogResponsePB, PushLocationsRequestPB,
@@ -603,7 +612,80 @@ impl Shared {
                 }
             }};
         }
+        // A DDL answer: the handler's MasterErrorPB goes in `error` as is.
+        macro_rules! serve_ddl {
+            ($req_ty:ty, $resp_ty:ty, |$req:ident, $resp:ident| $body:expr) => {{
+                match <$req_ty>::parse_from_bytes(call.request()) {
+                    Err(e) => {
+                        call.respond_error(Status::new(StatusCode::InvalidArgument, e.to_string()))
+                    }
+                    Ok($req) => {
+                        let mut $resp = <$resp_ty>::new();
+                        let result: Result<(), MasterErrorPB> = $body;
+                        if let Err(error) = result {
+                            $resp.error = Some(error).into();
+                        }
+                        respond(call, &$resp);
+                    }
+                }
+            }};
+        }
+        let tables = leader.tables.clone();
+        let deadline = tokio::time::Instant::now() + call.time_to_deadline();
         match method.name {
+            "CreateNamespace" => serve_ddl!(
+                CreateNamespaceRequestPB,
+                CreateNamespaceResponsePB,
+                |req, resp| tables
+                    .create_namespace(&token, deadline, &req, &mut resp)
+                    .await
+            ),
+            "IsCreateNamespaceDone" => serve_ddl!(
+                IsCreateNamespaceDoneRequestPB,
+                IsCreateNamespaceDoneResponsePB,
+                |req, resp| tables.is_create_namespace_done(&snapshot, &req, &mut resp)
+            ),
+            "DeleteNamespace" => serve_ddl!(
+                DeleteNamespaceRequestPB,
+                DeleteNamespaceResponsePB,
+                |req, _resp| tables.delete_namespace(&token, deadline, &req).await
+            ),
+            "IsDeleteNamespaceDone" => serve_ddl!(
+                IsDeleteNamespaceDoneRequestPB,
+                IsDeleteNamespaceDoneResponsePB,
+                |req, resp| tables.is_delete_namespace_done(&snapshot, &req, &mut resp)
+            ),
+            "ListNamespaces" => serve_ddl!(
+                ListNamespacesRequestPB,
+                ListNamespacesResponsePB,
+                |req, resp| {
+                    tables.list_namespaces(&snapshot, &req, &mut resp);
+                    Ok(())
+                }
+            ),
+            "GetNamespaceInfo" => serve_ddl!(
+                GetNamespaceInfoRequestPB,
+                GetNamespaceInfoResponsePB,
+                |req, resp| tables.get_namespace_info(&snapshot, &req, &mut resp)
+            ),
+            "ListTables" => serve_ddl!(ListTablesRequestPB, ListTablesResponsePB, |req, resp| {
+                tables.list_tables(&snapshot, &req, &mut resp)
+            }),
+            "GetTableSchema" => serve_ddl!(
+                GetTableSchemaRequestPB,
+                GetTableSchemaResponsePB,
+                |req, resp| tables.get_table_schema(&snapshot, &req, &mut resp)
+            ),
+            "CreateTable" => {
+                serve_ddl!(CreateTableRequestPB, CreateTableResponsePB, |req, resp| {
+                    tables.create_table(&token, deadline, &req, &mut resp).await
+                })
+            }
+            "IsCreateTableDone" => serve_ddl!(
+                IsCreateTableDoneRequestPB,
+                IsCreateTableDoneResponsePB,
+                |req, resp| tables.is_create_table_done(&snapshot, &req, &mut resp)
+            ),
             "ListTabletServers" => serve!(
                 ListTabletServersRequestPB,
                 ListTabletServersResponsePB,

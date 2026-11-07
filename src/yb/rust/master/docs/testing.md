@@ -69,7 +69,9 @@ A test that starts masters with an explicit binary keeps it.
 `flush_manager()`) fail the test at once rather than skipping it, so the tests that still need
 the C++ master show up. MiniCluster's own helpers (leader lookup, `WaitForTabletServerCount`,
 `WaitForReplicaCount`) go through RPCs for Rust masters. `rust_master_mini_cluster-test` checks
-leadership, a step-down and a follower restart with three Rust masters.
+leadership, a step-down and a follower restart with three Rust masters, and YCQL keyspace and table
+DDL served by them: a table's tablets are created on every replica and serve reads and writes
+before and after a leader change.
 
 Java tests read the same variable: `MiniYBCluster` starts those masters as `yb-master-rs`.
 

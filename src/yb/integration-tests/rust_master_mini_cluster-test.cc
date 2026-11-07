@@ -17,7 +17,15 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/client/client.h"
+#include "yb/client/ql-dml-test-base.h"
+#include "yb/client/session.h"
+#include "yb/client/table_handle.h"
+#include "yb/client/yb_table_name.h"
+
 #include "yb/integration-tests/mini_cluster.h"
+
+#include "yb/master/master_ddl.pb.h"
 
 #include "yb/master/mini_master.h"
 
@@ -84,6 +92,45 @@ TEST_F(RustMasterMiniClusterTest, LeadsFailsOverAndRestarts) {
   ASSERT_OK(cluster_->WaitForTabletServerCount(3));
   ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())
                 ->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+}
+
+// A Rust leader serves YCQL keyspace and table DDL: the table's tablets are assigned, created and
+// serve reads and writes, before and after a leader change.
+TEST_F(RustMasterMiniClusterTest, CreatesYcqlTables) {
+  ASSERT_OK(cluster_->WaitForTabletServerCount(3));
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const client::YBTableName name(YQL_DATABASE_CQL, "ks", "kv");
+  client::TableHandle table;
+  ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
+      client::Transactional::kFalse, /* num_tablets= */ 3, client.get(), &table, name));
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables("kv")).size(), 1);
+
+  auto session = client->NewSession(60s);
+  for (int32_t key = 0; key < 100; ++key) {
+    ASSERT_RESULT(client::kv_table_test::WriteRow(&table, session, key, key * 2));
+  }
+  ASSERT_EQ(ASSERT_RESULT(client::kv_table_test::SelectAllRows(&table, session)).size(), 100);
+
+  master::GetNamespaceInfoResponsePB info;
+  ASSERT_OK(client->GetNamespaceInfo("ks", YQL_DATABASE_CQL, &info));
+  ASSERT_EQ(info.namespace_().name(), "ks");
+  auto status = client->DeleteNamespace("ks", YQL_DATABASE_CQL);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "Cannot delete keyspace which has table: kv");
+
+  // A new leader serves the same table, and creating it again finds it.
+  ASSERT_OK(cluster_->StepDownMasterLeader());
+  ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())
+                ->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+  client::TableHandle reopened;
+  ASSERT_OK(reopened.Open(name, client.get()));
+  ASSERT_EQ(ASSERT_RESULT(client::kv_table_test::SelectAllRows(&reopened, session)).size(), 100);
+  ASSERT_OK(client->CreateNamespaceIfNotExists("ks", YQL_DATABASE_CQL));
+
+  ASSERT_OK(client->CreateNamespace("empty", YQL_DATABASE_CQL));
+  ASSERT_TRUE(ASSERT_RESULT(client->NamespaceExists("empty", YQL_DATABASE_CQL)));
+  ASSERT_OK(client->DeleteNamespace("empty", YQL_DATABASE_CQL));
+  ASSERT_FALSE(ASSERT_RESULT(client->NamespaceExists("empty", YQL_DATABASE_CQL)));
 }
 
 }  // namespace yb

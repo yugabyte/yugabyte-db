@@ -70,6 +70,13 @@ also serves `GetAutoFlagsConfig` and `ValidateAutoFlagsConfig` through `HandleOn
 `EncryptionInfoPB` instead of the request. Tservers wait for `GetFullUniverseKeyRegistry` before
 they start (with `allow_encryption_at_rest`, the default).
 
+For table DDL the host runs the C++ steps that read or write engine formats, also through
+`HandleOnHost`, with request and response messages in `master_rust_peer.proto`:
+`PrepareTableSchema` (CREATE TABLE's schema, tablet count and partitions), `AlterTableSchema`
+(`ApplyAlterSteps`), and `SnapshotSchedules` (the schedules that cover a namespace or table, from
+the host's snapshot coordinator). The first two share `src/yb/master/table_ddl_util.cc` with
+`CatalogManager`.
+
 **Leading.** Only with `--TEST_rust_master_allow_leadership`
 ([leadership.md](leadership.md)): failure detection stays on and an election only nudges the
 Rust leadership loop. Without the flag the host turns off `enable_leader_failure_detection`, so it

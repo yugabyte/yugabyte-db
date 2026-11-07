@@ -652,6 +652,7 @@ dependencies = [
  "master-catalog-state",
  "master-leadership",
  "master-sys-catalog",
+ "master-table-lifecycle",
  "master-tablet-locations",
  "master-ts-manager",
  "protobuf",
@@ -671,6 +672,7 @@ dependencies = [
  "master-leadership",
  "master-rpc-handlers",
  "master-sys-catalog",
+ "master-table-lifecycle",
  "master-task-runtime",
  "master-ts-manager",
  "protobuf",
@@ -687,6 +689,24 @@ dependencies = [
 name = "master-sys-catalog"
 version = "0.1.0"
 dependencies = [
+ "tokio",
+ "tracing",
+ "yb-host-api",
+ "yb-proto",
+]
+
+[[package]]
+name = "master-table-lifecycle"
+version = "0.1.0"
+dependencies = [
+ "master-catalog-entity",
+ "master-catalog-state",
+ "master-leadership",
+ "master-sys-catalog",
+ "master-task-runtime",
+ "master-ts-manager",
+ "protobuf",
+ "rand 0.9.2",
  "tokio",
  "tracing",
  "yb-host-api",
