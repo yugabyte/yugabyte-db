@@ -36,6 +36,7 @@ constexpr PgResponseCache::KeyGroup kKeyGroup = 16384;
 constexpr auto kCatalogVersion = 42ULL;
 constexpr uint64_t kSessionId = 7;
 constexpr uint64_t kOtherSessionId = 8;
+constexpr uint64_t kThirdSessionId = 9;
 
 YB_STRONGLY_TYPED_BOOL(SendAway);
 YB_STRONGLY_TYPED_BOOL(PartOfConnectionPrefetch);
@@ -256,6 +257,57 @@ TEST_F(PgResponseCacheTest, AClaimEndsOnACompletingRoundThatFoundTheCacheDisable
   ASSERT_TRUE(theirs_result.ok())
       << "the claim outlived a completing round that found the cache disabled, so the database "
       << "still reads as busy with no fill under way: " << theirs_result.status();
+}
+
+// A connection start's completing round can arrive on an entry another session is filling, and
+// is then queued rather than served or sent away. That round still ends the claim: nothing of
+// this session's is left running, and leaving it would hold the database busy until the session
+// sent something that is not part of a prefetch -- which an idle pooled connection never does.
+TEST_F(PgResponseCacheTest, AConnectionPrefetchEndsItsClaimOnACompletingRoundThatQueues) {
+  ThreadSafeArena arena;
+  const auto deadline = CoarseMonoClock::Now() + 60s;
+
+  // This session takes its claim on an earlier round and finishes that round.
+  auto& round1 = MakeCachingInfo(arena, "round-1"sv, SendAway::kFalse,
+                                 PartOfConnectionPrefetch::kTrue);
+  PgResponseCache::FillTokenPtr token;
+  auto my_waiter = std::make_shared<CountingWaiter>();
+  auto first = ASSERT_RESULT(cache_->Get(&round1, deadline, my_waiter, kSessionId, &token));
+  ASSERT_TRUE(first);
+  first(MakeResponse());
+  first = {};
+  ASSERT_TRUE(token) << "a connection start's fill must leave its claim with the session";
+
+  // Another session starts filling the key this prefetch's completing round wants.
+  auto& theirs = MakeCachingInfo(arena, "final-round"sv, SendAway::kFalse,
+                                 PartOfConnectionPrefetch::kFalse);
+  auto their_waiter = std::make_shared<CountingWaiter>();
+  auto theirs_setter = ASSERT_RESULT(
+      cache_->Get(&theirs, deadline, their_waiter, kOtherSessionId, nullptr));
+  ASSERT_TRUE(theirs_setter);
+
+  // The completing round queues behind it: no setter, and nothing served yet.
+  auto& final_round = MakeCachingInfo(arena, "final-round"sv, SendAway::kFalse,
+                                      PartOfConnectionPrefetch::kTrue);
+  final_round.set_completes_connection_prefetch(true);
+  auto final_waiter = std::make_shared<CountingWaiter>();
+  auto final_setter = ASSERT_RESULT(
+      cache_->Get(&final_round, deadline, final_waiter, kSessionId, &token));
+  ASSERT_FALSE(final_setter) << "the round was given a fill of its own rather than queued";
+  ASSERT_EQ(final_waiter->applied(), 0) << "the round was served rather than queued";
+
+  // The other session's fill lands, which is the only one still counted.
+  theirs_setter(MakeResponse());
+  theirs_setter = {};
+
+  // This session's claim is over, so a third connection asking is not sent away.
+  auto& probe = MakeCachingInfo(arena, "probe-key"sv, SendAway::kTrue,
+                                PartOfConnectionPrefetch::kFalse);
+  auto probe_waiter = std::make_shared<CountingWaiter>();
+  auto probe_result = cache_->Get(&probe, deadline, probe_waiter, kThirdSessionId, nullptr);
+  ASSERT_TRUE(probe_result.ok())
+      << "the claim outlived a completing round that queued behind another session's fill: "
+      << probe_result.status();
 }
 
 // A connection whose opening round is already in the cache is sent away all the same. Serving

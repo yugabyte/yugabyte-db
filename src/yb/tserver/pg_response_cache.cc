@@ -187,6 +187,23 @@ void TEST_UpdateCatalogReadTime(
   return !resp.response->has_status();
 }
 
+// Whether this response is the one after which a connection start's prefetch holds everything.
+// A prefetch pages: pggate keeps issuing reads while any operation still returns paging state,
+// and each round is cached under a key of its own, so a round with paging state left has later
+// rounds still to come. A failed round holds no rows and no paging state, so it must not be
+// mistaken for the last one.
+[[nodiscard]] bool EndsPrefetch(const PgResponseCache::Response& resp) {
+  if (!IsOk(resp)) {
+    return false;
+  }
+  for (const auto& op_response : resp.response->responses()) {
+    if (op_response.has_paging_state()) {
+      return false;
+    }
+  }
+  return true;
+}
+
 class MetricContext {
  public:
   MetricContext(std::shared_ptr<MemTracker> mem_tracker,
@@ -555,9 +572,12 @@ class PgResponseCache::Impl : private GarbageCollector {
   // the two have in common to count.
   //
   // Parallel workers adopt their leader's session id, so this check does not separate siblings
-  // of one query. The entry-level check in RegisterWaiter still can: they start at one catalog
-  // version and want the same entries, so the one that arrives second is sent away and reads
-  // the version this node holds, which it then bridges to the same version its leader is on.
+  // of one query. The entry-level check in RegisterWaiter separates them only while the first
+  // is still filling the entry the second wants: RegisterWaiter answers kReady before it looks
+  // at the ask, so once that entry is stored the second sibling is served it and its later
+  // rounds, which carry no ask of their own, queue behind the fills the first still has in
+  // flight. Sending a sibling away from an entry already stored would need this check to run
+  // on the session's own counts, which is the one thing it is built not to do.
   [[nodiscard]] bool AnotherFillInFlight(KeyGroup group, uint64_t session_id) REQUIRES(mutex_) {
     auto it = fills_in_flight_.find(group);
     if (it == fills_in_flight_.end()) {
@@ -590,18 +610,19 @@ class PgResponseCache::Impl : private GarbageCollector {
   // or queued behind another session's fill, never gets one. Without this the claim would outlive
   // the connection start that took it and wait for whatever that session sent next.
   //
-  // Every round of that last request carries the flag, so a round before the last one can end the
-  // claim early. The next round that fills takes a fresh token, so the database is uncounted only
-  // between the two -- against a claim held for the whole connection start if this never fired.
+  // Every round of that last request carries the flag, so the flag alone does not say the
+  // prefetch is over. The callers that hold a response test it with EndsPrefetch before calling
+  // -- the setter, and the arm that serves a response already stored -- so a round that failed,
+  // or that still has paging state behind it, does not end the claim.
   //
-  // A round that failed is not one of those, and the callers that can see the outcome check it
-  // before calling: the setter, and the arm that serves a response already stored. Two callers
-  // cannot. A round queued behind another session's fill has no response yet, and a round
-  // answered while the database's cache is disabled has not read anything at all. Both end the
-  // claim whatever the round goes on to do, and both leave the retry to take a fresh token.
+  // Two callers have nothing to test. A round queued behind another session's fill has no
+  // response yet, and a round answered while the database's cache is disabled has read nothing
+  // at all. Both end the claim whatever the round turns out to be, so a claim can end a round
+  // or two early there; the next round that fills takes a fresh token, and the database is
+  // uncounted only in between.
   static void EndPrefetchClaimIfComplete(
       const LWPgPerformOptionsPB::LWCachingInfoPB& cache_info, FillTokenPtr* token) {
-    if (PREDICT_FALSE(FLAGS_TEST_pg_response_cache_keep_claim_past_completion)) {
+    if (FLAGS_TEST_pg_response_cache_keep_claim_past_completion) {
       return;
     }
     if (cache_info.completes_connection_prefetch() && token && *token) {
@@ -761,11 +782,10 @@ class PgResponseCache::Impl : private GarbageCollector {
     switch (join.state) {
       case Data::JoinState::kReady:
         hits_->Increment();
-        // Only a round that succeeded ends the claim, the rule the setter follows: a failure
-        // does not mean the prefetch is over, since PG retries it. A failure that is already
-        // stored sends the next caller to a rebuilt entry, so what reaches here is a fill this
-        // caller joined between the entry being read and this line, which has just failed.
-        if (IsOk(*join.response)) {
+        // The same test the setter applies, on a response that is already stored rather than
+        // one this caller produced: a round that failed, or that still has paging state behind
+        // it, is not the end of the prefetch and must not end the claim.
+        if (EndsPrefetch(*join.response)) {
           EndPrefetchClaimIfComplete(*cache_info, token);
         }
         waiter->Apply(*join.response);
@@ -809,19 +829,9 @@ class PgResponseCache::Impl : private GarbageCollector {
       TEST_PAUSE_IF_FLAG(TEST_pg_response_cache_pause_fill);
       // A prefetch is paged. pggate keeps issuing reads while any operation still returns paging
       // state, and each round is cached under a key of its own, so an observer told about the
-      // first round would learn of a version whose later rounds are not cached yet. The round
-      // where nothing is left to page is the one after which this node holds all of them.
-      // A failed round holds no rows and no paging state, so it must not be mistaken for the
-      // last one. Computed before the move below, which empties the response.
-      bool is_final_round = completes_connection_prefetch && IsOk(response);
-      if (is_final_round) {
-        for (const auto& op_response : response.response->responses()) {
-          if (op_response.has_paging_state()) {
-            is_final_round = false;
-            break;
-          }
-        }
-      }
+      // first round would learn of a version whose later rounds are not cached yet. Computed
+      // before the move below, which empties the response.
+      const bool is_final_round = completes_connection_prefetch && EndsPrefetch(response);
       abandon_guard->Cancel();
       data->Set(std::move(response), group, version);
       // After the entry is set, so an observer can rely on the entry being readable.
@@ -853,8 +863,7 @@ class PgResponseCache::Impl : private GarbageCollector {
       // long costs other connections a version they can bridge from; ending it too early costs
       // them the wait this change exists to remove. The session ends it instead, on its next
       // request that is not part of a prefetch or when it goes away.
-      if (is_final_round &&
-          PREDICT_TRUE(!FLAGS_TEST_pg_response_cache_keep_claim_past_completion)) {
+      if (is_final_round && !FLAGS_TEST_pg_response_cache_keep_claim_past_completion) {
         fill->Release();
       }
     };
