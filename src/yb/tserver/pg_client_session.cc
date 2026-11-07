@@ -3658,9 +3658,14 @@ class PgClientSession::Impl {
       WARN_NOT_OK(MoveSessionToDatabaseCgroup(*database_oid), "Setting cgroup of PgClientSession");
     }
 
-    // Anything this session sends that is not part of a connection start's prefetch means that
-    // prefetch is over -- it finished, or it gave up -- so the claim ends here rather than
-    // waiting for the session to go away.
+    // A request that is not part of a connection start's prefetch ends the claim here rather
+    // than leaving it for the session to drop. That usually means the prefetch is over, having
+    // either finished or given up. The exception is a read of a sys table the prefetch did not
+    // register, which carries no caching info either: it ends the claim while the prefetch is
+    // still running, so the gaps between its remaining requests go uncounted until its next
+    // fill takes a fresh token. Rounds still in flight keep their own tokens either way, so
+    // what is lost is the gap cover, not the protection while a round is filling. pggate logs
+    // such a read as not prefetched, and the answer to it is to register the table.
     if (!options.has_caching_info() ||
         !options.caching_info().part_of_connection_prefetch()) {
       prefetch_fill_token_.reset();

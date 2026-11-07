@@ -686,6 +686,13 @@ class PgResponseCache::Impl : private GarbageCollector {
     }
     auto data = GetEntryData(cache_info, deadline);
     queries_->Increment();
+    // Before the disabled-cache return below, so the count stays one per connection start that
+    // asked. A connection whose opening round lands in a disabled window met every condition on
+    // the PG side and is simply unanswerable here; leaving it out would drop it from the
+    // denominator and make send-aways look rarer than the asks warranted.
+    if (cache_info->send_away_if_fill_in_flight()) {
+      send_away_asks_->Increment();
+    }
     if (!data) {
       // The cache is disabled for this database, as it is across a DDL commit, so nothing is
       // served or filled. The prefetch is over all the same, and this return comes before both
@@ -696,10 +703,6 @@ class PgResponseCache::Impl : private GarbageCollector {
       return [](Response&& response) {};
     }
     const auto group = cache_info->key_group();
-    // The ask is counted wherever it arrives, whether or not a fill turns out to be under way,
-    // so it is one per connection start that was in a position to be sent away rather than one
-    // per connection that was.
-    //
     // While another session is filling this database, send the asking connection away, whatever
     // state the entry it asked for is in. A connection starting during a run of DDLs pins a
     // version of its own, so the entry it wants is nobody else's and the per-entry check below
@@ -708,7 +711,6 @@ class PgResponseCache::Impl : private GarbageCollector {
     // the rest of the same fill. What it reads instead is a version this node already holds and
     // can bridge from. When the fill ends nothing is counted and connections are served as usual.
     if (cache_info->send_away_if_fill_in_flight()) {
-      send_away_asks_->Increment();
       bool another_fill;
       {
         std::lock_guard lock(mutex_);
