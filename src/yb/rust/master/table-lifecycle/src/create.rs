@@ -99,7 +99,13 @@ impl TableLifecycle {
         let replication = table_replication_info(req.replication_info.as_ref(), &config);
         let placement = replication.live_replicas.clone().unwrap_or_default();
         let tservers = live_tservers(&self.ts_manager, &config, placement.placement_uuid());
-        let prepared = self.prepare_schema(req, tservers.len())?;
+        let replication_factor = (self.options.replication_factor)();
+        let rf = num_replicas(&placement, replication_factor);
+        // `CanAddPartitionsToTable` counts every live tserver, blacklisted or not.
+        let max_tablets =
+            (self.options.max_create_tablets_per_ts)() as i64 * self.ts_manager.live().len() as i64;
+        let max_tablets = if rf > 1 { max_tablets.max(0) } else { 0 };
+        let prepared = self.prepare_schema(req, tservers.len(), max_tablets)?;
 
         // C++ checks the namespace's type after the schema.
         let namespace = find_namespace(&snapshot, &req.namespace)?;
@@ -128,13 +134,8 @@ impl TableLifecycle {
             ));
         }
 
-        let replication_factor = (self.options.replication_factor)();
-        let rf = num_replicas(&placement, replication_factor);
         let num_tablets = prepared.num_tablets();
-        // `CanAddPartitionsToTable` counts every live tserver, blacklisted or not.
-        let max_tablets =
-            (self.options.max_create_tablets_per_ts)() as i64 * self.ts_manager.live().len() as i64;
-        if rf > 1 && max_tablets > 0 && num_tablets as i64 > max_tablets {
+        if max_tablets > 0 && num_tablets as i64 > max_tablets {
             return Err(error(
                 Code::TOO_MANY_TABLETS,
                 StatusCode::InvalidArgument,
@@ -354,10 +355,12 @@ impl TableLifecycle {
         &self,
         req: &CreateTableRequestPB,
         num_live_tservers: usize,
+        max_num_tablets: i64,
     ) -> Result<PrepareTableSchemaResponsePB, MasterErrorPB> {
         let mut prepare = PrepareTableSchemaRequestPB::new();
         prepare.request = MessageField::some(req.clone());
         prepare.set_num_live_tservers(num_live_tservers as u64);
+        prepare.set_max_num_tablets(max_num_tablets);
         let bytes = encode(&prepare)?;
         let response = self
             .host

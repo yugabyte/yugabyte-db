@@ -30,7 +30,8 @@ use protobuf::{EnumOrUnknown, Message};
 use tokio::time::Instant;
 use yb_host_api::{Status, StatusCode};
 use yb_proto::pb::catalog_entity_info::{
-    sys_tables_entry_pb, sys_tablets_entry_pb, SysTablesEntryPB, SysTabletsEntryPB,
+    sys_cdcstream_entry_pb, sys_tables_entry_pb, sys_tablets_entry_pb, SysCDCStreamEntryPB,
+    SysTablesEntryPB, SysTabletsEntryPB,
 };
 use yb_proto::pb::common_types::TableType;
 use yb_proto::pb::master_ddl::{
@@ -43,6 +44,9 @@ use yb_proto::pb::master_types::{
 use yb_proto::pb::tablet_types::TabletDataState;
 
 use crate::lookup::{find_table, is_hidden};
+use crate::namespaces::short_debug;
+use crate::placement::cluster_config;
+use crate::schedules::covering_schedules;
 use crate::time::local_time_string;
 use crate::{error, TableLifecycle};
 
@@ -70,10 +74,28 @@ impl TableLifecycle {
         let snapshot = self.catalog.snapshot();
         let table = find_table(&snapshot, &req.table, false)?;
         resp.set_table_id(table.key.id.to_vec());
-        if !self
-            .snapshot_schedules(SysRowEntryType::TABLE, &table.key.id)?
-            .is_empty()
+        if is_hidden(&table) {
+            // IgnoreHideRequest.
+            return Ok(());
+        }
+        if !(self
+            .options
+            .enable_delete_truncate_xcluster_replicated_table)()
+            && table
+                .table()
+                .is_some_and(|t| t.table_type == TableType::YQL_TABLE_TYPE as i32)
+            && xcluster_replicated(&snapshot, &table.key.id)
         {
+            return Err(error(
+                Code::INVALID_REQUEST,
+                StatusCode::NotSupported,
+                format!(
+                    "Cannot delete a table in replication.: {}",
+                    short_debug(req)
+                ),
+            ));
+        }
+        if !covering_schedules(&snapshot, SysRowEntryType::TABLE, &table.key.id).is_empty() {
             return Err(not_yet(
                 "Dropping a table a snapshot schedule covers (it is hidden, W10)",
             ));
@@ -360,4 +382,31 @@ impl Controller for TableDeleter {
 
 fn corrupt(e: impl std::fmt::Display) -> Status {
     Status::new(StatusCode::Corruption, e.to_string())
+}
+
+/// `XClusterManager::IsTableReplicated`: an xCluster stream out of the table that is not being
+/// deleted (a CDC stream with no namespace, whose first table is this one), or a stream into it in
+/// the cluster config's consumer registry.
+fn xcluster_replicated(snapshot: &CatalogSnapshot, table_id: &[u8]) -> bool {
+    let outbound = snapshot.iter(SysRowEntryType::CDC_STREAM).any(|stream| {
+        stream.parse::<SysCDCStreamEntryPB>().is_ok_and(|pb| {
+            pb.namespace_id().is_empty()
+                && pb
+                    .table_id
+                    .first()
+                    .is_some_and(|t| t.as_bytes() == table_id)
+                && !matches!(
+                    pb.state(),
+                    sys_cdcstream_entry_pb::State::DELETING
+                        | sys_cdcstream_entry_pb::State::DELETED
+                )
+        })
+    });
+    outbound
+        || cluster_config(snapshot)
+            .consumer_registry
+            .producer_map
+            .values()
+            .flat_map(|producer| producer.stream_map.values())
+            .any(|stream| stream.consumer_table_id.as_bytes() == table_id)
 }

@@ -96,6 +96,9 @@ message PrepareTableSchemaRequestPB {
   optional CreateTableRequestPB request = 1;
   // Live tservers in the table's placement, for the default tablet count.
   optional uint64 num_live_tservers = 2;
+  // The TOO_MANY_TABLETS limit the leader checks after; above it the partitions are not built,
+  // since building them allocates per tablet. 0 for none.
+  optional int64 max_num_tablets = 3;
 }
 
 message PrepareTableSchemaResponsePB {
@@ -123,18 +126,6 @@ message AlterTableSchemaResponsePB {
   // Unset when the request has no schema change.
   optional SchemaPB schema = 2;
   optional int32 next_column_id = 3;
-}
-
-// The snapshot schedules that cover a namespace or table, from the host's snapshot coordinator
-// ("SnapshotSchedules").
-message SnapshotSchedulesRequestPB {
-  optional SysRowEntryType entry_type = 1;
-  optional bytes id = 2;
-}
-
-message SnapshotSchedulesResponsePB {
-  optional MasterErrorPB error = 1;
-  repeated bytes schedule_ids = 2;
 }
 
 service MasterRustPeer {

@@ -17,6 +17,7 @@ use std::sync::Arc;
 
 use protobuf::rt::WireType;
 use protobuf::{Enum, MessageFull};
+use yb_proto::pb::catalog_entity_info::sys_namespace_entry_pb;
 use yb_proto::pb::common_types::{TableType, YQLDatabase};
 use yb_proto::pb::master_types::SysRowEntryType;
 
@@ -217,13 +218,26 @@ pub fn decode_entity(
     }
     let fields = WireFields::read(data)?;
     let hot = match entry_type {
-        SysRowEntryType::NAMESPACE => HotFields::Namespace(NamespaceHot {
-            name: fields.string(1),
-            database_type: fields
+        SysRowEntryType::NAMESPACE => {
+            // As `NamespaceLoader` reads a row an older release wrote: a missing or UNKNOWN
+            // database type is `GetDefaultDatabaseType`'s, a missing state RUNNING.
+            let name = fields.string(1);
+            let database_type = fields
                 .int(2)
-                .unwrap_or(YQLDatabase::YQL_DATABASE_CQL.value()),
-            state: fields.int(5).unwrap_or(UNKNOWN_STATE),
-        }),
+                .filter(|t| *t != YQLDatabase::YQL_DATABASE_UNKNOWN.value())
+                .unwrap_or(if name == "system_redis" {
+                    YQLDatabase::YQL_DATABASE_REDIS.value()
+                } else {
+                    YQLDatabase::YQL_DATABASE_CQL.value()
+                });
+            HotFields::Namespace(NamespaceHot {
+                name,
+                database_type,
+                state: fields
+                    .int(5)
+                    .unwrap_or(sys_namespace_entry_pb::State::RUNNING.value()),
+            })
+        }
         SysRowEntryType::TABLE => {
             let name = fields.string(1);
             let mut table_type = fields

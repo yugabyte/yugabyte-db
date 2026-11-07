@@ -23,11 +23,9 @@ use tokio::time::Instant;
 use master_catalog_state::{Catalog, CatalogWriter, Mutation, WriteOptions};
 use master_leadership::{LeaderToken, Leadership};
 use master_ts_manager::{master_error, TsManager};
-use protobuf::Message;
 use rand::RngCore;
 use yb_host_api::{Status, StatusCode};
-use yb_proto::pb::master_rust_peer::{SnapshotSchedulesRequestPB, SnapshotSchedulesResponsePB};
-use yb_proto::pb::master_types::{master_error_pb::Code, MasterErrorPB, SysRowEntryType};
+use yb_proto::pb::master_types::{master_error_pb::Code, MasterErrorPB};
 
 mod alter;
 mod assign;
@@ -37,6 +35,7 @@ pub mod lookup;
 mod namespaces;
 mod placement;
 mod read;
+mod schedules;
 mod time;
 
 #[cfg(test)]
@@ -70,6 +69,8 @@ pub struct LifecycleOptions {
     pub transaction_table_num_tablets: fn() -> i32,
     /// `transaction_table_num_tablets_per_tserver`; -1 to auto-detect.
     pub transaction_table_num_tablets_per_tserver: fn() -> i32,
+    /// `enable_delete_truncate_xcluster_replicated_table`.
+    pub enable_delete_truncate_xcluster_replicated_table: fn() -> bool,
 }
 
 impl Default for LifecycleOptions {
@@ -82,6 +83,7 @@ impl Default for LifecycleOptions {
             use_parent_table_id_field: || true,
             transaction_table_num_tablets: || 0,
             transaction_table_num_tablets_per_tserver: || -1,
+            enable_delete_truncate_xcluster_replicated_table: || false,
         }
     }
 }
@@ -150,36 +152,6 @@ impl TableLifecycle {
             Ok((value, _)) => value,
             Err(status) => Err(write_error(&status)),
         }
-    }
-}
-
-impl TableLifecycle {
-    /// The snapshot schedules that cover a namespace or table, from the host's coordinator.
-    pub(crate) fn snapshot_schedules(
-        &self,
-        entry_type: SysRowEntryType,
-        id: &[u8],
-    ) -> Result<Vec<Vec<u8>>, MasterErrorPB> {
-        let mut req = SnapshotSchedulesRequestPB::new();
-        req.entry_type = Some(protobuf::EnumOrUnknown::new(entry_type));
-        req.set_id(id.to_vec());
-        let bytes = req.write_to_bytes().map_err(|e| {
-            error(
-                Code::UNKNOWN_ERROR,
-                StatusCode::InternalError,
-                e.to_string(),
-            )
-        })?;
-        let resp = self
-            .host
-            .call("SnapshotSchedules", &bytes)
-            .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
-        let resp = SnapshotSchedulesResponsePB::parse_from_bytes(&resp)
-            .map_err(|e| error(Code::UNKNOWN_ERROR, StatusCode::Corruption, e.to_string()))?;
-        if let Some(e) = resp.error.into_option() {
-            return Err(e);
-        }
-        Ok(resp.schedule_ids)
     }
 }
 

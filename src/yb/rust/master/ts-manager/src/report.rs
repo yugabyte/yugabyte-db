@@ -403,6 +403,18 @@ impl TsManager {
         hide_only: bool,
         reason: String,
     ) {
+        // `AsyncDeleteReplica`: abort the replica's transactions unless its table is live.
+        let started_deleting = |state: i32| {
+            state == sys_tables_entry_pb::State::DELETING.value()
+                || state == sys_tables_entry_pb::State::DELETED.value()
+        };
+        let abort_active_txns = ctx
+            .snapshot
+            .get(SysRowEntryType::TABLET, tablet_id)
+            .and_then(|t| t.tablet())
+            .and_then(|t| ctx.snapshot.get(SysRowEntryType::TABLE, &t.table_id))
+            .and_then(|t| t.table())
+            .is_none_or(|t| started_deleting(t.state));
         self.deletes.push(DeleteReplica {
             token: ctx.token,
             ts_uuid: uuid.into(),
@@ -410,7 +422,7 @@ impl TsManager {
             delete_type,
             cas_config_index,
             hide_only,
-            abort_active_txns: false,
+            abort_active_txns,
             reason,
         });
     }

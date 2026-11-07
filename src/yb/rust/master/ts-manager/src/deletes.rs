@@ -136,11 +136,24 @@ fn key(delete: &DeleteReplica) -> ReplicaKey {
 }
 
 impl DeleteReplicaQueue {
-    /// Queues a delete unless one for the same replica is queued or being sent.
+    /// Queues a delete unless one for the same replica is queued or being sent. A queued one is
+    /// made to abort active transactions if the new one does.
     pub fn push(&self, delete: DeleteReplica) {
         let mut state = self.state.lock().unwrap();
         let key = key(&delete);
-        if state.in_flight.contains(&key) || !state.queued.insert(key) {
+        if state.in_flight.contains(&key) {
+            return;
+        }
+        if !state.queued.insert(key) {
+            if delete.abort_active_txns {
+                if let Some(queued) = state
+                    .queue
+                    .iter_mut()
+                    .find(|q| q.ts_uuid == delete.ts_uuid && q.tablet_id == delete.tablet_id)
+                {
+                    queued.abort_active_txns = true;
+                }
+            }
             return;
         }
         tracing::info!(

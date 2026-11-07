@@ -11,7 +11,7 @@ YCQL keyspaces and tables that are not indexes:
 | RPC | Notes |
 |---|---|
 | `CreateNamespace` | One write of the RUNNING row. C++ writes PREPARING, then RUNNING; nothing happens in between for a keyspace. |
-| `DeleteNamespace` | One write that removes the row, as C++ does. Refused while the keyspace has a table, a type, or a snapshot schedule (asked of the host's coordinator). |
+| `DeleteNamespace` | One write that removes the row, as C++ does. Refused while the keyspace has a table or a type, or a snapshot schedule covers it (`schedules.rs`, from the `SNAPSHOT_SCHEDULE` rows, since the host's coordinator can only collect entries through a leader `CatalogManager`). |
 | `IsCreateNamespaceDone`, `IsDeleteNamespaceDone`, `ListNamespaces`, `GetNamespaceInfo` | From the snapshot. `ListNamespaces` orders by id; C++ uses hash-map order. |
 | `ListTables`, `GetTableSchema` | From the snapshot, with C++'s visibility rules and relation types. |
 | `CreateTable`, `IsCreateTableDone` | Below. |
@@ -52,13 +52,17 @@ Runs every `catalog_manager_bg_task_wait_ms` and on every catalog change, in eac
 - PREPARING tablets get replicas and become CREATING, one write per table. Replicas are the
   least loaded live, non-blacklisted tservers of the placement, by the table's then the cluster's
   replica count, then uuid, filling each placement block's minimum first, as
-  `SelectReplicasForTablet` does.
-- CREATING tablets get `CreateTablet` sent to each replica once per term, through the paced
+  `SelectReplicasForTablet` does. With fewer such tservers than replicas the tablet starts
+  under-replicated, as in C++.
+- CREATING tablets get `CreateTablet` sent to each replica once per term (with the snapshot
+  schedules that cover the table), through the paced
   executor (K2), retried until `tablet_creation_timeout_ms`. A new leader sends again, and so
   does the next pass after a call fails for good; a tserver that has the tablet answers
   AlreadyPresent, which counts as created. C++ instead waits for the timeout below.
 - A CREATING tablet still not RUNNING `tablet_creation_timeout_ms` after its first send in the
   term becomes REPLACED, and a new PREPARING tablet takes its partition.
+- Split children and cloned tablets are left alone: the source tablet's replicas create them.
+  So are the tablets of a table being dropped.
 - A PREPARING table whose active tablets all run becomes RUNNING. Report processing
   (`master-ts-manager`) turns each tablet RUNNING once a replica reports it with a leader.
 
@@ -78,18 +82,26 @@ The first change of an alter in flight copies the schema to the `fully_applied_*
 clients get the latest schema from `GetTableSchema` anyway.
 
 The `table-alters` controller sends `AlterSchema` (`ChangeMetadataRequestPB`) to each active
-tablet's leader once per (tablet, version) in a term. When every tablet has acknowledged the
-version (an answer that it is already there, or newer, counts), it writes RUNNING and clears the
-fully applied fields, if the version is still the one it sent. A tablet
-with no known leader yet is tried on the next pass. C++ instead completes an alter from tablet
-reports, and re-sends from heartbeats when a tablet reports an older version.
+tablet's leader once per (tablet, table row version) in a term; the row version rather than the
+schema version, since a `wal_retention_secs` alter keeps the schema version. When every tablet
+has acknowledged it (an answer that the schema is already there, or newer, counts), it writes
+RUNNING and clears the fully applied fields, if the row is still the one it sent. A tablet with
+no known leader, or whose target answers that it lacks the tablet or does not lead it, is sent
+again on the next pass to the leader the locations then name. C++ instead completes an alter from
+tablet reports, and re-sends from heartbeats when a tablet reports an older version.
+
+Only YCQL alters with no index permission change in flight are completed here. A YSQL table, or
+one in a backfill's multi-stage alter (which a C++ leader may have started), stays ALTERING.
 
 ## DROP TABLE (K1)
 
-One mutation sets the table and its indexes DELETING; the drop releases the name, since the name
+A YCQL table in xCluster replication (an outbound xCluster stream, or an inbound stream in the
+consumer registry) is refused unless `enable_delete_truncate_xcluster_replicated_table`. Then one
+mutation sets the table and its indexes DELETING; the drop releases the name, since the name
 index skips deleting tables. The `table-deletes` controller then, for each DELETING table, marks
 its tablets DELETED in writes of at most 1000, queues `DeleteTablet` (`TABLET_DATA_DELETED`, with
-`should_abort_active_txns`) for every replica in the committed config or the observed locations,
+`should_abort_active_txns`, which report-driven deletes also set when the table is gone or being
+dropped, as `AsyncDeleteReplica` does) for every replica in the committed config or the observed locations,
 and marks the table DELETED once no tablet is left. All of it is derived from the rows, so a new
 leader finishes a drop the last one started; a replica missed here gets its delete from report
 processing. C++ writes DELETING, then the tablets, then DELETED, with in-memory bookkeeping in

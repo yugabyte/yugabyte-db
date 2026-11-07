@@ -17,7 +17,7 @@ use std::collections::HashMap;
 
 use master_catalog_state::CatalogSnapshot;
 use master_ts_manager::placement::{
-    blacklist_addresses, cloud_info_matches_placement, is_blacklisted,
+    blacklist_addresses, is_blacklisted, is_cloud_info_prefix, validate_max_num_replicas,
 };
 use master_ts_manager::{TsDescriptor, TsManager};
 use yb_host_api::{Status, StatusCode};
@@ -90,10 +90,17 @@ pub(crate) fn live_tservers(
         .collect()
 }
 
+/// `TSDescriptor::MatchesCloudInfo(block.cloud_info())`, as `PlacementCandidates` are built.
 fn in_block(descriptor: &TsDescriptor, block: &PlacementBlockPB) -> bool {
-    let mut placement = PlacementInfoPB::new();
-    placement.placement_blocks.push(block.clone());
-    cloud_info_matches_placement(&descriptor.pb.registration.cloud_info, &placement)
+    is_cloud_info_prefix(
+        &block.cloud_info.clone().unwrap_or_default(),
+        &descriptor
+            .pb
+            .registration
+            .cloud_info
+            .clone()
+            .unwrap_or_default(),
+    )
 }
 
 fn effective_max(block: &PlacementBlockPB, num_replicas: usize) -> usize {
@@ -192,7 +199,8 @@ impl Load {
 }
 
 /// `SelectReplicasForTablet` for the live replicas: each block's minimum first, then the least
-/// loaded tservers up to each block's maximum. Deterministic, as in C++.
+/// loaded tservers up to each block's maximum. Deterministic, as in C++, and as in C++ a block or a
+/// placement with fewer allowed tservers than replicas gets what it has.
 pub(crate) fn select_replicas(
     placement: &PlacementInfoPB,
     tservers: &[TsDescriptor],
@@ -258,13 +266,69 @@ pub(crate) fn select_replicas(
             chosen.push(d);
         }
     }
-    if chosen.len() < num_replicas {
+    // Fewer live tservers than replicas leaves the tablet under-replicated, as in C++ (the
+    // placement was checked for a quorum at create); none at all cannot create it.
+    if chosen.is_empty() {
         return Err(Status::new(
             StatusCode::IllegalState,
             format!("Not enough tablet servers to place {num_replicas} replicas"),
         ));
     }
     Ok(chosen)
+}
+
+/// `ValidateTableReplicationInfo`: only the per-block maximums, not `IsPlacementInfoValid`, which
+/// is stricter than table-level placements were ever held to, and the placement uuids.
+pub(crate) fn validate_table_replication_info(
+    info: &ReplicationInfoPB,
+    config: &SysClusterConfigEntryPB,
+) -> Result<(), Status> {
+    let invalid = |message: &str| Status::new(StatusCode::InvalidArgument, message.to_string());
+    if !replication_info_set(info) {
+        return Err(invalid("No replication info set."));
+    }
+    if let Some(live) = info.live_replicas.as_ref() {
+        validate_max_num_replicas(live)?;
+    }
+    for read in &info.read_replicas {
+        validate_max_num_replicas(read)?;
+    }
+    let cluster = &config.replication_info;
+    let live_uuid = info.live_replicas.placement_uuid();
+    if !live_uuid.is_empty() && live_uuid != cluster.live_replicas.placement_uuid() {
+        return Err(invalid(
+            "Placement uuid for table level replication info must match that of the cluster's \
+             live placement info.",
+        ));
+    }
+    let Some(first) = info.read_replicas.first() else {
+        return Ok(());
+    };
+    if first.placement_uuid().is_empty() {
+        let mut uuids = cluster.read_replicas.iter().map(|r| r.placement_uuid());
+        if let Some(uuid) = uuids.next() {
+            if uuids.any(|u| u != uuid) {
+                return Err(invalid(
+                    "Cluster has more than one read-replica cluster; the read_replica_placement \
+                     option must specify a placement_uuid to disambiguate which one to use.",
+                ));
+            }
+        }
+        return Ok(());
+    }
+    if cluster.read_replicas.is_empty()
+        || cluster
+            .read_replicas
+            .iter()
+            .any(|r| r.placement_uuid() == first.placement_uuid())
+    {
+        return Ok(());
+    }
+    Err(invalid(&format!(
+        "Read-replica placement_uuid '{}' does not match any read-replica cluster's \
+         placement_uuid in the cluster config.",
+        String::from_utf8_lossy(first.placement_uuid())
+    )))
 }
 
 /// Bytes of a message, for rows.

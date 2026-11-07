@@ -32,11 +32,11 @@ use crate::error;
 /// The sys-catalog tablet's id; the tables it hosts are YSQL system tables.
 pub const SYS_CATALOG_TABLET_ID: &[u8] = b"00000000000000000000000000000000";
 
-/// `GetDatabaseType`: the identifier's type, else REDIS for a namespace named "redis", else CQL.
+/// `GetDatabaseType`: the identifier's type, else `GetDefaultDatabaseType` of its name.
 pub fn database_type(ident: &NamespaceIdentifierPB) -> YQLDatabase {
     if ident.has_database_type() {
         ident.database_type()
-    } else if ident.name() == "redis" {
+    } else if ident.name() == "system_redis" {
         YQLDatabase::YQL_DATABASE_REDIS
     } else {
         YQLDatabase::YQL_DATABASE_CQL

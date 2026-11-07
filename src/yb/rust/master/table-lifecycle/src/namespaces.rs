@@ -33,6 +33,7 @@ use yb_proto::pb::master_types::{
 };
 
 use crate::lookup::{find_namespace, find_namespace_by_name, find_table};
+use crate::schedules::{covering_schedules, schedule_list};
 use crate::{error, generate_object_id, TableLifecycle};
 
 use sys_namespace_entry_pb::State;
@@ -69,7 +70,14 @@ impl TableLifecycle {
         req: &CreateNamespaceRequestPB,
         resp: &mut CreateNamespaceResponsePB,
     ) -> Result<(), MasterErrorPB> {
-        let db_type = req.database_type();
+        // `GetDatabaseType`: a keyspace named system_redis with no type is YEDIS.
+        let db_type = if req.has_database_type() {
+            req.database_type()
+        } else if req.name() == "system_redis" {
+            YQLDatabase::YQL_DATABASE_REDIS
+        } else {
+            YQLDatabase::YQL_DATABASE_CQL
+        };
         if db_type != YQLDatabase::YQL_DATABASE_CQL {
             return Err(unsupported_database(db_type));
         }
@@ -174,22 +182,6 @@ impl TableLifecycle {
         req: &DeleteNamespaceRequestPB,
     ) -> Result<(), MasterErrorPB> {
         let _names = self.names.lock().await;
-        // The schedules are the host's; checked before the write, as C++ checks them before its
-        // write under the namespace lock.
-        let snapshot = self.catalog.snapshot();
-        let namespace = find_namespace(&snapshot, &req.namespace)?;
-        let schedules = self.snapshot_schedules(SysRowEntryType::NAMESPACE, &namespace.key.id)?;
-        if let Some(schedule) = schedules.first() {
-            return Err(error(
-                Code::NAMESPACE_IS_NOT_EMPTY,
-                StatusCode::InvalidArgument,
-                format!(
-                    "Cannot delete keyspace which has schedule: {}, request: {}",
-                    String::from_utf8_lossy(schedule),
-                    short_debug(req)
-                ),
-            ));
-        }
         self.write(token, deadline, |snapshot| {
             let namespace = find_namespace(snapshot, &req.namespace)?;
             let ns = namespace.namespace().expect("namespace row");
@@ -265,6 +257,19 @@ impl TableLifecycle {
                         ),
                     ));
                 }
+            }
+            let schedules =
+                covering_schedules(snapshot, SysRowEntryType::NAMESPACE, &namespace.key.id);
+            if !schedules.is_empty() {
+                return Err(error(
+                    Code::NAMESPACE_IS_NOT_EMPTY,
+                    StatusCode::InvalidArgument,
+                    format!(
+                        "Cannot delete keyspace which has schedule: {}, request: {}",
+                        schedule_list(&schedules),
+                        short_debug(req)
+                    ),
+                ));
             }
             mutation = mutation.delete(SysRowEntryType::NAMESPACE, &namespace.key.id);
             Ok((mutation, ()))

@@ -32,7 +32,7 @@ use yb_host_api::{Status, StatusCode};
 use yb_proto::pb::catalog_entity_info::{
     sys_namespace_entry_pb, sys_tables_entry_pb, SysTablesEntryPB,
 };
-use yb_proto::pb::common_types::TableType;
+use yb_proto::pb::common_types::{IndexPermissions, TableType};
 use yb_proto::pb::master_ddl::{
     AlterTableRequestPB, AlterTableResponsePB, IsAlterTableDoneRequestPB,
     IsAlterTableDoneResponsePB,
@@ -44,7 +44,7 @@ use yb_proto::pb::tserver_admin::ChangeMetadataResponsePB;
 use yb_proto::pb::tserver_types::tablet_server_error_pb;
 
 use crate::lookup::{check_visible, find_table};
-use crate::placement::{encode, replication_info_set};
+use crate::placement::{cluster_config, encode, validate_table_replication_info};
 use crate::time::local_time_string;
 use crate::{error, TableLifecycle};
 
@@ -152,13 +152,8 @@ impl TableLifecycle {
                     changed = true;
                 }
                 if let Some(info) = req.replication_info.as_ref() {
-                    // Validated as `ValidateTableReplicationInfo` does for placement fields.
-                    if replication_info_set(info) {
-                        if let Some(live) = info.live_replicas.as_ref() {
-                            master_ts_manager::placement::validate_placement(live)
-                                .map_err(|s| error(Code::INVALID_REQUEST, s.code, s.message))?;
-                        }
-                    }
+                    validate_table_replication_info(info, &cluster_config(snapshot))
+                        .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
                     new.replication_info = req.replication_info.clone();
                     changed = true;
                 }
@@ -274,9 +269,10 @@ struct Alterer {
     retry: RetryPolicy,
     rpc_timeout: fn() -> Duration,
     interval: fn() -> Duration,
-    /// Per tablet: the schema version an `AlterSchema` this term was sent for, and whether the
-    /// tablet acknowledged it.
-    tablets: Mutex<HashMap<Vec<u8>, (u32, bool)>>,
+    /// Per tablet: the version of the table row (`Entity::version`) an `AlterSchema` this term
+    /// was sent for, and whether the tablet acknowledged it. The row version, not the schema
+    /// version, since a `wal_retention_secs` alter keeps the schema version.
+    tablets: Mutex<HashMap<Vec<u8>, (u64, bool)>>,
 }
 
 impl TableAlterer {
@@ -319,22 +315,32 @@ impl Alterer {
             let Ok(pb) = table.parse::<SysTablesEntryPB>() else {
                 continue;
             };
-            let version = pb.version();
+            if !single_stage_alter(&pb) {
+                continue;
+            }
+            let row_version = table.version;
             let tablets = snapshot.active_tablets_of(&table.key.id);
             let mut all_done = !tablets.is_empty();
             for tablet in tablets {
                 let state = self.tablets.lock().unwrap().get(&*tablet.key.id).copied();
                 match state {
-                    Some((v, true)) if v >= version => {}
-                    Some((v, false)) if v == version => all_done = false,
+                    Some((v, true)) if v == row_version => {}
+                    Some((v, false)) if v == row_version => all_done = false,
                     _ => {
                         all_done = false;
-                        self.send(scope, &token, &table.key.id, &pb, &tablet.key.id);
+                        self.send(
+                            scope,
+                            &token,
+                            &table.key.id,
+                            row_version,
+                            &pb,
+                            &tablet.key.id,
+                        );
                     }
                 }
             }
             if all_done {
-                if let Err(status) = self.finish(&token, &table.key.id, version).await {
+                if let Err(status) = self.finish(&token, &table.key.id, row_version).await {
                     tracing::warn!(
                         "Finishing the alter of table {} failed, will retry: {status}",
                         String::from_utf8_lossy(&table.key.id)
@@ -349,6 +355,7 @@ impl Alterer {
         scope: &TermScope,
         token: &LeaderToken,
         table_id: &[u8],
+        row_version: u64,
         table: &SysTablesEntryPB,
         tablet_id: &[u8],
     ) {
@@ -367,7 +374,7 @@ impl Alterer {
         self.tablets
             .lock()
             .unwrap()
-            .insert(tablet_id.to_vec(), (version, false));
+            .insert(tablet_id.to_vec(), (row_version, false));
         let this = self.clone();
         let token = *token;
         let tablet_id = tablet_id.to_vec();
@@ -407,7 +414,7 @@ impl Alterer {
             let mut tablets = this.tablets.lock().unwrap();
             match result {
                 Ok(()) => {
-                    tablets.insert(tablet_id, (version, true));
+                    tablets.insert(tablet_id, (row_version, true));
                 }
                 Err(status) => {
                     tracing::warn!(
@@ -420,13 +427,13 @@ impl Alterer {
         });
     }
 
-    /// `ClearFullyAppliedAndUpdateState`: RUNNING again, if the version is still the one every
-    /// tablet acknowledged.
+    /// `ClearFullyAppliedAndUpdateState`: RUNNING again, if the row is still the one every tablet
+    /// acknowledged.
     async fn finish(
         &self,
         token: &LeaderToken,
         table_id: &[u8],
-        version: u32,
+        row_version: u64,
     ) -> Result<(), Status> {
         self.lifecycle
             .writer
@@ -437,9 +444,10 @@ impl Alterer {
                 let mut pb: SysTablesEntryPB = table
                     .parse()
                     .map_err(|e| Status::new(StatusCode::Corruption, e.to_string()))?;
-                if pb.state() != TableState::ALTERING || pb.version() != version {
+                if table.version != row_version || pb.state() != TableState::ALTERING {
                     return Ok((Mutation::new(), ()));
                 }
+                let version = pb.version();
                 pb.fully_applied_schema.clear();
                 pb.clear_fully_applied_schema_version();
                 pb.fully_applied_indexes.clear();
@@ -475,7 +483,24 @@ impl Controller for TableAlterer {
     }
 }
 
-/// One `AlterSchema` call. A tablet that already has this or a newer schema counts as done.
+/// An alter this controller completes: of a YCQL table with no index permission change in
+/// flight. YSQL alters (DDL verification) and the multi-stage index permission alters of a
+/// backfill (`MultiStageAlterTable`), which a C++ leader may have started, are not served yet and
+/// stay ALTERING.
+fn single_stage_alter(pb: &SysTablesEntryPB) -> bool {
+    let settled = |p: IndexPermissions| p == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE;
+    pb.table_type() == TableType::YQL_TABLE_TYPE
+        && pb.indexes.iter().all(|i| settled(i.index_permissions()))
+        && pb
+            .index_info
+            .as_ref()
+            .is_none_or(|i| settled(i.index_permissions()))
+}
+
+/// One `AlterSchema` call. A tablet that already has this or a newer schema counts as done. A
+/// target that does not have the tablet, or no longer leads it, ends the call: the next pass sends
+/// to the leader the locations then name. (C++ counts TABLET_NOT_FOUND as done and re-sends from
+/// the tablet's reports; the Rust leader finishes an alter from the acknowledgements alone.)
 async fn send_alter(
     rpc: &dyn RpcClient,
     host: &str,
@@ -503,13 +528,17 @@ async fn send_alter(
         return Ok(());
     };
     use tablet_server_error_pb::Code as TsCode;
-    match error.code() {
-        TsCode::TABLET_NOT_FOUND
-        | TsCode::MISMATCHED_SCHEMA
-        | TsCode::TABLET_HAS_A_NEWER_SCHEMA => Ok(()),
-        _ => Err(Attempt::Retry(Status::new(
+    let status = || {
+        Status::new(
             StatusCode::from_i32(error.status.code().value()),
             error.status.message().to_string(),
-        ))),
+        )
+    };
+    match error.code() {
+        TsCode::MISMATCHED_SCHEMA | TsCode::TABLET_HAS_A_NEWER_SCHEMA => Ok(()),
+        TsCode::TABLET_NOT_FOUND | TsCode::NOT_THE_LEADER | TsCode::LEADER_NOT_READY_TO_SERVE => {
+            Err(Attempt::Fail(status()))
+        }
+        _ => Err(Attempt::Retry(status())),
     }
 }

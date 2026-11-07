@@ -72,10 +72,11 @@ they start (with `allow_encryption_at_rest`, the default).
 
 For table DDL the host runs the C++ steps that read or write engine formats, also through
 `HandleOnHost`, with request and response messages in `master_rust_peer.proto`:
-`PrepareTableSchema` (CREATE TABLE's schema, tablet count and partitions), `AlterTableSchema`
-(`ApplyAlterSteps`), and `SnapshotSchedules` (the schedules that cover a namespace or table, from
-the host's snapshot coordinator). The first two share `src/yb/master/table_ddl_util.cc` with
-`CatalogManager`.
+`PrepareTableSchema` (CREATE TABLE's schema, tablet count and partitions) and `AlterTableSchema`
+(`ApplyAlterSteps`), which share `src/yb/master/table_ddl_util.cc` with `CatalogManager`. The
+schedules that cover a namespace or table are not asked of the host's snapshot coordinator: it
+collects a schedule's entries through `CatalogManager`, which is never leader on a Rust master,
+so the Rust leader derives them from the `SNAPSHOT_SCHEDULE` rows (`schedules.rs`).
 
 **Leading.** Only with `--TEST_rust_master_allow_leadership`
 ([leadership.md](leadership.md)): failure detection stays on and an election only nudges the

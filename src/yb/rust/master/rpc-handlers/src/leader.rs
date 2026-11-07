@@ -28,14 +28,13 @@ use master_ts_manager::placement::{
     validate_placement,
 };
 use master_ts_manager::{consensus_role, FollowerStreamState, HeartbeatContributor, TsManager};
-use protobuf::{Enum, EnumOrUnknown, MessageField};
+use protobuf::{Enum, EnumOrUnknown};
 use yb_host_api::{Status, StatusCode};
 use yb_proto::pb::catalog_entity_info::{
     sys_tables_entry_pb, sys_tablets_entry_pb, SysClusterConfigEntryPB, SysTablesEntryPB,
     SysTabletsEntryPB, SysXClusterConfigEntryPB,
 };
 use yb_proto::pb::common_net::CloudInfoPB;
-use yb_proto::pb::common_types::YQLDatabase;
 use yb_proto::pb::consensus_metadata::PeerMemberType;
 use yb_proto::pb::master_client::{
     get_tablet_locations_response_pb, tablet_locations_pb, GetTableLocationsRequestPB,
@@ -558,15 +557,13 @@ impl LeaderServices {
                 "max_returned_locations must be greater than 0",
             ));
         }
-        let table = find_table(snapshot, &req.table).inspect_err(|status| {
-            if status.code == StatusCode::NotFound {
-                resp.error = Some(master_error_from(
-                    master_error_pb::Code::OBJECT_NOT_FOUND,
-                    status,
-                ))
-                .into();
-            }
-        })?;
+        // `FindTable`'s error, with its code, as the C++ handler returns it.
+        let table = master_table_lifecycle::lookup::find_table(snapshot, &req.table, false)
+            .map_err(|error| {
+                let status = crate::status_of(&error);
+                resp.error = Some(error).into();
+                status
+            })?;
         let hot = table.table().expect("a table");
         if hot.state == sys_tables_entry_pb::State::PREPARING.value() {
             resp.set_creating(true);
@@ -846,74 +843,6 @@ fn encode_split_children(children: &[Vec<u8>]) -> Vec<u8> {
     }
     errors.push(0);
     errors
-}
-
-fn find_table(
-    snapshot: &CatalogSnapshot,
-    identifier: &MessageField<yb_proto::pb::master_types::TableIdentifierPB>,
-) -> Result<Arc<Entity>, Status> {
-    let not_found = |what: String| Status::new(StatusCode::NotFound, what);
-    if identifier.has_table_id() {
-        let entity = snapshot
-            .get(SysRowEntryType::TABLE, identifier.table_id())
-            .filter(|t| {
-                t.table()
-                    .is_some_and(|t| t.state != sys_tables_entry_pb::State::DELETED.value())
-            })
-            .ok_or_else(|| {
-                not_found(format!(
-                    "Table with identifier {} not found",
-                    String::from_utf8_lossy(identifier.table_id())
-                ))
-            })?;
-        return Ok(entity.clone());
-    }
-    if identifier.has_table_name() {
-        let namespace = &identifier.namespace;
-        let ns = snapshot
-            .iter(SysRowEntryType::NAMESPACE)
-            .find(|n| {
-                if namespace.has_id() {
-                    &*n.key.id == namespace.id()
-                } else {
-                    // GetDatabaseType: CQL unless named, or the YEDIS keyspace.
-                    let database_type = if namespace.has_database_type() {
-                        namespace.database_type().value()
-                    } else if namespace.name() == "system_redis" {
-                        YQLDatabase::YQL_DATABASE_REDIS.value()
-                    } else {
-                        YQLDatabase::YQL_DATABASE_CQL.value()
-                    };
-                    n.namespace().is_some_and(|h| {
-                        h.name == namespace.name() && h.database_type == database_type
-                    })
-                }
-            })
-            .ok_or_else(|| not_found(format!("Keyspace name not found: {}", namespace.name())))?;
-        if ns
-            .namespace()
-            .is_some_and(|n| n.database_type == YQLDatabase::YQL_DATABASE_PGSQL.value())
-        {
-            return Err(Status::new(
-                StatusCode::InvalidArgument,
-                "Cannot lookup YSQL table by name",
-            ));
-        }
-        return snapshot
-            .table_by_name(&ns.key.id, identifier.table_name())
-            .cloned()
-            .ok_or_else(|| {
-                not_found(format!(
-                    "Table {}.{} not found",
-                    namespace.name(),
-                    identifier.table_name()
-                ))
-            });
-    }
-    Err(Status::new(
-        StatusCode::InvalidArgument,
-        "Neither table id nor table name are specified",
-    ))
 }
 
 fn primary_placement(snapshot: &CatalogSnapshot) -> Result<Vec<u8>, Status> {

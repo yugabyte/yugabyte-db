@@ -73,8 +73,9 @@ pub fn cloud_info_matches_placement(ci: &CloudInfoPB, placement: &PlacementInfoP
         .any(|b| cloud_info_contains(ci, &b.cloud_info) || cloud_info_contains(&b.cloud_info, ci))
 }
 
-/// `ComputeCloudInfoSimilarity(..) == ZONE_MATCH`: no field set in both differs.
-fn is_cloud_info_prefix(a: &CloudInfoPB, b: &CloudInfoPB) -> bool {
+/// `CatalogManagerUtil::IsCloudInfoPrefix` (`ComputeCloudInfoSimilarity(..) == ZONE_MATCH`): no
+/// field set in both differs. `TSDescriptor::MatchesCloudInfo`, which replica selection uses.
+pub fn is_cloud_info_prefix(a: &CloudInfoPB, b: &CloudInfoPB) -> bool {
     let differs =
         |x: Option<&String>, y: Option<&String>| matches!((x, y), (Some(x), Some(y)) if x != y);
     !differs(a.placement_cloud.as_ref(), b.placement_cloud.as_ref())
@@ -154,7 +155,7 @@ pub fn validate_placement(placement: &PlacementInfoPB) -> Result<(), Status> {
 }
 
 /// `CatalogManagerUtil::ValidateMaxNumReplicasFields`.
-fn validate_max_num_replicas(placement: &PlacementInfoPB) -> Result<(), Status> {
+pub fn validate_max_num_replicas(placement: &PlacementInfoPB) -> Result<(), Status> {
     if !placement
         .placement_blocks
         .iter()

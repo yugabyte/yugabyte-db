@@ -109,6 +109,8 @@ static USE_PARENT_TABLE_ID_FIELD: FlagRef<bool> = FlagRef::new("use_parent_table
 static TRANSACTION_TABLE_NUM_TABLETS: FlagRef<i32> = FlagRef::new("transaction_table_num_tablets");
 static TRANSACTION_TABLE_NUM_TABLETS_PER_TSERVER: FlagRef<i32> =
     FlagRef::new("transaction_table_num_tablets_per_tserver");
+static ENABLE_DELETE_TRUNCATE_XCLUSTER_REPLICATED_TABLE: FlagRef<bool> =
+    FlagRef::new("enable_delete_truncate_xcluster_replicated_table");
 static BG_TASK_WAIT_MS: FlagRef<i32> = FlagRef::new("catalog_manager_bg_task_wait_ms");
 static MASTER_TS_RPC_TIMEOUT_MS: FlagRef<i32> = FlagRef::new("master_ts_rpc_timeout_ms");
 static RETRY_MAX_DELAY_MS: FlagRef<i32> = FlagRef::new("retrying_ts_rpc_max_delay_ms");
@@ -262,6 +264,9 @@ impl Core {
                 transaction_table_num_tablets: || TRANSACTION_TABLE_NUM_TABLETS.get(),
                 transaction_table_num_tablets_per_tserver: || {
                     TRANSACTION_TABLE_NUM_TABLETS_PER_TSERVER.get()
+                },
+                enable_delete_truncate_xcluster_replicated_table: || {
+                    ENABLE_DELETE_TRUNCATE_XCLUSTER_REPLICATED_TABLE.get()
                 },
             },
         );

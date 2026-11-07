@@ -40,7 +40,7 @@ use yb_proto::pb::master_ddl::{
 use yb_proto::pb::master_heartbeat::TSInformationPB;
 use yb_proto::pb::master_rust_peer::{
     AlterTableSchemaRequestPB, AlterTableSchemaResponsePB, PrepareTableSchemaRequestPB,
-    PrepareTableSchemaResponsePB, SnapshotSchedulesResponsePB,
+    PrepareTableSchemaResponsePB,
 };
 use yb_proto::pb::master_types::{master_error_pb::Code, MasterErrorPB, SysRowEntryType};
 
@@ -85,7 +85,6 @@ impl SchemaHost for FakeSchemaHost {
                 }
                 Ok(resp.write_to_bytes().unwrap())
             }
-            "SnapshotSchedules" => Ok(SnapshotSchedulesResponsePB::new().write_to_bytes().unwrap()),
             "AlterTableSchema" => {
                 // Adds the request's columns, numbered from next_column_id.
                 let req = AlterTableSchemaRequestPB::parse_from_bytes(request).unwrap();
@@ -245,6 +244,8 @@ fn object_ids_are_uuid_v4_hex() {
 fn database_type_and_colocation_ids_follow_cpp() {
     let mut ident = yb_proto::pb::master_types::NamespaceIdentifierPB::new();
     ident.set_name("redis".into());
+    assert_eq!(database_type(&ident), YQLDatabase::YQL_DATABASE_CQL);
+    ident.set_name("system_redis".into());
     assert_eq!(database_type(&ident), YQLDatabase::YQL_DATABASE_REDIS);
     ident.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
     assert_eq!(database_type(&ident), YQLDatabase::YQL_DATABASE_PGSQL);
@@ -456,7 +457,10 @@ fn replicas_go_to_the_least_loaded_tservers_and_fill_block_minimums() {
         .filter(|d| d.pb.registration.cloud_info.placement_zone() == "z1")
         .count();
     assert_eq!(in_z1, 2);
-    assert!(select_replicas(&placement, &tservers[..2], 3, &mut Load::default()).is_err());
+    // Too few tservers: under-replicated, as in C++; none at all is an error.
+    let short = select_replicas(&placement, &tservers[..2], 3, &mut Load::default()).unwrap();
+    assert_eq!(short.len(), 2);
+    assert!(select_replicas(&placement, &[], 3, &mut Load::default()).is_err());
 }
 
 impl Harness {
@@ -733,4 +737,99 @@ async fn a_transactional_table_creates_the_transaction_table_first() {
         .is_create_table_done(&h.snapshot(), &done_req, &mut done)
         .unwrap();
     assert!(done.done());
+}
+
+#[tokio::test]
+async fn a_keyspace_schedule_refuses_drops_until_it_is_deleted() {
+    use yb_proto::pb::master_backup::SnapshotScheduleOptionsPB;
+    let h = Harness::new(3).await;
+    h.create_namespace("ks").await.unwrap();
+    let (result, created) = h.create_table("ks", "t", Some(1)).await;
+    result.unwrap();
+    let table_id = created.table_id().to_vec();
+
+    let schedule_id = [0x12u8; 16];
+    let write_schedule = |deleted: bool| {
+        let mut options = SnapshotScheduleOptionsPB::new();
+        let mut ident = yb_proto::pb::master_types::TableIdentifierPB::new();
+        ident
+            .namespace
+            .mut_or_insert_default()
+            .set_name("ks".into());
+        options
+            .filter
+            .mut_or_insert_default()
+            .mut_tables()
+            .tables
+            .push(ident);
+        if deleted {
+            options.set_delete_time(1);
+        }
+        master_catalog_state::Mutation::new().upsert(
+            SysRowEntryType::SNAPSHOT_SCHEDULE,
+            &schedule_id,
+            options.write_to_bytes().unwrap(),
+        )
+    };
+    h.lifecycle
+        .writer
+        .submit(&h.token, write_schedule(false))
+        .await
+        .unwrap();
+
+    let mut req = DeleteTableRequestPB::new();
+    req.table
+        .mut_or_insert_default()
+        .set_table_id(table_id.clone());
+    let mut resp = DeleteTableResponsePB::new();
+    let e = h
+        .lifecycle
+        .delete_table(&h.token, Harness::deadline(), &req, &mut resp)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        e.status.code(),
+        yb_proto::pb::wire_protocol::app_status_pb::ErrorCode::NOT_SUPPORTED,
+        "{e:?}"
+    );
+
+    let mut drop_req = DeleteNamespaceRequestPB::new();
+    drop_req
+        .namespace
+        .mut_or_insert_default()
+        .set_name("ks".into());
+    // The table is checked first, as in C++.
+    let e = h
+        .lifecycle
+        .delete_namespace(&h.token, Harness::deadline(), &drop_req)
+        .await
+        .unwrap_err();
+    assert!(e.status.message().contains("which has table"), "{e:?}");
+
+    h.lifecycle
+        .writer
+        .submit(&h.token, write_schedule(true))
+        .await
+        .unwrap();
+    h.lifecycle
+        .delete_table(&h.token, Harness::deadline(), &req, &mut resp)
+        .await
+        .unwrap();
+    h.lifecycle
+        .writer
+        .submit(&h.token, write_schedule(false))
+        .await
+        .unwrap();
+    let e = h
+        .lifecycle
+        .delete_namespace(&h.token, Harness::deadline(), &drop_req)
+        .await
+        .unwrap_err();
+    assert!(
+        e.status.message().starts_with(
+            "Cannot delete keyspace which has schedule: [12121212-1212-1212-1212-121212121212], \
+             request: "
+        ),
+        "{e:?}"
+    );
 }

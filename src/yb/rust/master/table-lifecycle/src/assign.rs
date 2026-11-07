@@ -46,6 +46,7 @@ use crate::namespaces::unused_id;
 use crate::placement::{
     cluster_config, live_tservers, select_replicas, table_replication_info, Load,
 };
+use crate::schedules::covering_schedules;
 use crate::TableLifecycle;
 
 use sys_tablets_entry_pb::State as TabletState;
@@ -155,6 +156,9 @@ impl TabletAssigner {
         let Some(table) = snapshot.get(SysRowEntryType::TABLE, table_id) else {
             return Ok(());
         };
+        if is_dropping(table) {
+            return Ok(());
+        }
         let table_pb: SysTablesEntryPB = table.parse().map_err(corrupt)?;
         let config = cluster_config(snapshot);
         let replication = table_replication_info(table_pb.replication_info.as_ref(), &config);
@@ -302,8 +306,7 @@ impl TabletAssigner {
     /// partition, as `HandleAssignCreatingTablet` does.
     async fn replace(&self, token: &LeaderToken, tablet: &Arc<Entity>) -> Result<(), Status> {
         let old_id = tablet.key.id.to_vec();
-        let result = self
-            .lifecycle
+        self.lifecycle
             .writer
             .mutate(token, |snapshot| {
                 let Some(current) = snapshot.get(SysRowEntryType::TABLET, &old_id) else {
@@ -344,9 +347,9 @@ impl TabletAssigner {
                     );
                 Ok((mutation, ()))
             })
-            .await;
+            .await?;
         self.sent.lock().unwrap().remove(&old_id);
-        result.map(|_| ())
+        Ok(())
     }
 
     /// PREPARING tables whose active tablets all run become RUNNING.
@@ -413,6 +416,14 @@ impl Controller for TabletAssigner {
     }
 }
 
+/// DELETING or DELETED: the table-deletes controller owns its tablets.
+fn is_dropping(table: &Entity) -> bool {
+    table.table().is_some_and(|t| {
+        t.state == sys_tables_entry_pb::State::DELETING as i32
+            || t.state == sys_tables_entry_pb::State::DELETED as i32
+    })
+}
+
 /// `TableInfo::AreAllTabletsRunning`, for a table with at least one tablet.
 fn all_tablets_running(snapshot: &CatalogSnapshot, table_id: &[u8]) -> bool {
     let tablets = snapshot.active_tablets_of(table_id);
@@ -437,10 +448,18 @@ fn raft_peer(descriptor: &TsDescriptor) -> RaftPeerPB {
     peer
 }
 
-/// `AsyncCreateReplica::SendRequest`'s request, without `dest_uuid`.
+/// `AsyncCreateReplica::SendRequest`'s request, without `dest_uuid`. None for a tablet the master
+/// does not create: a split child or a clone, which the source tablet's replicas create (and
+/// `ShouldReplaceCreatingTablet` never replaces), or one of a table being dropped.
 fn create_request(snapshot: &CatalogSnapshot, tablet: &Entity) -> Option<CreateTabletRequestPB> {
     let tablet_pb: SysTabletsEntryPB = tablet.parse().ok()?;
+    if tablet_pb.has_split_parent_tablet_id() || tablet_pb.created_by_clone() {
+        return None;
+    }
     let table = snapshot.get(SysRowEntryType::TABLE, tablet_pb.table_id())?;
+    if is_dropping(table) {
+        return None;
+    }
     let table_pb: SysTablesEntryPB = table.parse().ok()?;
     let mut req = CreateTabletRequestPB::new();
     req.set_table_id(table.key.id.to_vec());
@@ -466,6 +485,7 @@ fn create_request(snapshot: &CatalogSnapshot, tablet: &Entity) -> Option<CreateT
     if table_pb.has_wal_retention_secs() {
         req.set_wal_retention_secs(table_pb.wal_retention_secs());
     }
+    req.snapshot_schedules = covering_schedules(snapshot, SysRowEntryType::TABLE, &table.key.id);
     req.hosted_stateful_services = table_pb.hosted_stateful_services.clone();
     if !table_pb.pg_table_id().is_empty() {
         req.set_pg_table_id(table_pb.pg_table_id().to_vec());

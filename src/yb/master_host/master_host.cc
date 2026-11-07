@@ -1150,6 +1150,9 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
           const auto num_tablets =
               master::RequestedNumTablets(req, schema, prepare.num_live_tservers());
           resp->set_num_tablets(num_tablets);
+          if (prepare.max_num_tablets() > 0 && num_tablets > prepare.max_num_tablets()) {
+            return Status::OK();
+          }
           auto partitions =
               master::CreateTablePartitions(schema, num_tablets, /* colocated= */ false, &req);
           if (!partitions.ok()) {
@@ -1188,18 +1191,6 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
           }
           SchemaToPB(new_schema, resp->mutable_schema());
           resp->set_next_column_id(next_col_id);
-          return Status::OK();
-        });
-  }
-  if (name == "SnapshotSchedules") {
-    // The checks in CatalogManager::DeleteNamespace and DeleteTable.
-    return HandleRequest<master::SnapshotSchedulesRequestPB, master::SnapshotSchedulesResponsePB>(
-        request, [this](const auto& req, auto* resp) -> Status {
-          auto schedules = VERIFY_RESULT(
-              snapshot_coordinator_->GetSnapshotSchedules(req.entry_type(), req.id()));
-          for (const auto& id : schedules) {
-            resp->add_schedule_ids(id.ToString());
-          }
           return Status::OK();
         });
   }
