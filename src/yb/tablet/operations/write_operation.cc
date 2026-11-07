@@ -37,7 +37,10 @@
 
 #include "yb/consensus/consensus.messages.h"
 
+#include "yb/docdb/rocksdb_writer.h"
+
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/transaction_participant.h"
 
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
@@ -77,6 +80,47 @@ void WriteOperation::SetAsyncWrite(AsyncWriteCallback callback) {
   async_write_callback_ = std::move(callback);
 }
 
+void WriteOperation::AddedAsPending(const TabletPtr& tablet) {
+  const auto& write_batch = request()->write_batch();
+  if (!write_batch.has_transaction() || !tablet->transaction_participant()) {
+    return;
+  }
+  if (intra_txn_write_id_reservation_.records() != 0) {
+    // Leader: the admission reservation already holds this batch's bound; take it over.
+    pending_intra_txn_write_ids_txn_ = intra_txn_write_id_reservation_.id();
+    pending_intra_txn_write_ids_ = intra_txn_write_id_reservation_.records();
+    intra_txn_write_id_reservation_.Detach();
+    return;
+  }
+  // Follower (or a leader batch admitted without a reservation): account for it now.
+  auto txn_id = FullyDecodeTransactionId(write_batch.transaction().transaction_id());
+  if (!txn_id.ok()) {
+    return;  // Apply rejects the batch; nothing will consume write IDs.
+  }
+  const auto records = docdb::MaxIntraTxnWriteIdsForBatch(write_batch);
+  if (records == 0) {
+    return;
+  }
+  pending_intra_txn_write_ids_txn_ = *txn_id;
+  pending_intra_txn_write_ids_ = records;
+  tablet->transaction_participant()->AddPendingIntraTxnWriteIds(*txn_id, records);
+}
+
+void WriteOperation::RemovedFromPending(const TabletPtr& tablet) {
+  // Only the abort path has anything left to release: a successful apply released the bound
+  // (see ApplyOperation), and an operation aborted before AddedAsPending ran (AddedToLeader's
+  // earlier steps can fail while the abort path infers was_pending from OpId validity) never
+  // recorded one.
+  if (pending_intra_txn_write_ids_ == 0) {
+    return;
+  }
+  if (auto* participant = tablet->transaction_participant()) {
+    participant->RemovePendingIntraTxnWriteIds(
+        pending_intra_txn_write_ids_txn_, pending_intra_txn_write_ids_);
+  }
+  pending_intra_txn_write_ids_ = 0;
+}
+
 void WriteOperation::SubmittedToLeaderQueue() {
   if (!async_write_callback_) {
     return;
@@ -114,6 +158,9 @@ Status WriteOperation::ApplyOperation(int64_t leader_term, bool skip_opid_update
   TRACE("FINISH: making edits visible");
 
   apply_completed_ = true;
+  // A transactional batch that applied went through BatchReplicated, which released the
+  // bound atomically with advancing the counter; nothing is left for RemovedFromPending.
+  pending_intra_txn_write_ids_ = 0;
 
   return Status::OK();
 }

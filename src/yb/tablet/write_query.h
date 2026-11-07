@@ -225,6 +225,9 @@ class WriteQuery {
 
   const int64_t term_;
   ScopedRWOperation submit_token_;
+  // Admission reservation for the intra-transaction write-ID cap, handed to the operation at
+  // submit (see ReserveIntraTxnWriteIds in write_query.cc).
+  IntraTxnWriteIdReservation intra_txn_write_id_reservation_;
   const CoarseTimePoint deadline_;
   WriteQueryContext* const context_;
   rpc::RpcContext* const rpc_context_;
