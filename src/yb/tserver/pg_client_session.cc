@@ -404,10 +404,7 @@ class VectorIndexQuery {
         partition_state.whether_all_vectors_was_fetched = true;
       }
       VLOG_WITH_FUNC(4) << partition_idx << ": " << partition_state.ToString();
-      if (!partition_state.whether_all_vectors_was_fetched &&
-          partition_state.number_of_vectors_returned_to_postgres + prefetch_size_
-              > partition_state.number_of_vectors_fetched_from_tablet
-                    - partition_state.number_of_vectors_dropped) {
+      if (NeedsFetch(partition_state)) {
         auto new_read_req = arena->NewArenaObject<LWPgsqlReadRequestPB>(read_req);
         new_read_req->dup_partition_key(key);
         auto& vector_idx_options = *new_read_req->mutable_index_request()
@@ -479,7 +476,15 @@ class VectorIndexQuery {
     auto& out_resp = *responses.Add();
     auto& write_buffer = sidecars.Start();
 
+    // Rows are merged in order only while each partition that could have more has prefetch_size_
+    // rows buffered. A partition that got fewer because its tied rows were dropped could still
+    // have nearer rows than those buffered, so return nothing and requery it on the next page.
     size_t response_size = std::min(prefetch_size_, vectors_.size());
+    if (!partitions_are_stale && std::ranges::any_of(partitions_, [this](const auto& partition) {
+          return NeedsFetch(partition);
+        })) {
+      response_size = 0;
+    }
 
     pggate::PgWire::WriteInt64(response_size, &write_buffer);
     for (size_t i = 0; i != response_size; ++i) {
@@ -615,6 +620,13 @@ class VectorIndexQuery {
 
     ResetPartitions(table_partitions);
     return Status::OK();
+  }
+
+  // Whether the partition could have more rows and has fewer than prefetch_size_ buffered.
+  bool NeedsFetch(const VectorIndexQueryPartitionData& partition) const {
+    return !partition.whether_all_vectors_was_fetched &&
+           partition.number_of_vectors_fetched_from_tablet - partition.number_of_vectors_dropped
+               - partition.number_of_vectors_returned_to_postgres < prefetch_size_;
   }
 
   bool CouldFetchMore() const {

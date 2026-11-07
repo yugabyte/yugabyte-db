@@ -6977,8 +6977,8 @@ TEST_F(PgVectorIndexUtilTest, NumTopVectorsToRemoveExceedsResultEntries) {
 
 // Covers https://github.com/yugabyte/yugabyte-db/issues/37003.
 // The prefetch size is the scan's limit, so WITH TIES needs a page per extra row. Each page re-runs
-// the search, which may cut ties differently, so a page must not return a row sent before. Tied
-// rows may be left out, as approximate search allows.
+// the search, which may cut ties differently, so a page must not return a row sent before. Rows
+// tied with a row sent before may be left out.
 TEST_F(PgVectorIndexUtilTest, PagedSearchWithTies) {
   constexpr int kNumGroups = 10;
   constexpr int kGroupSize = 8;
@@ -7032,6 +7032,61 @@ TEST_F(PgVectorIndexUtilTest, PagedSearchWithTies) {
   ASSERT_OK(cluster_->CompactTablets());
   ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
   ASSERT_OK(check("After compaction"));
+}
+
+// Covers https://github.com/yugabyte/yugabyte-db/issues/37003.
+// The join rejects the rows at the query point, so each page drops the tied rows the re-run search
+// returns again. A tablet that is still dropping ties must not let another tablet's farther row out
+// before its own nearer one.
+TEST_F(PgVectorIndexUtilTest, PagedSearchWithTiesAcrossTablets) {
+  constexpr int kNumClusters = 20;
+  constexpr int kNumTies = 20;
+  constexpr int kNumFar = 10;
+
+  num_pre_split_tablets_ = 2;
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(CreateIndex(conn));
+  ASSERT_OK(conn.Execute("CREATE TABLE keep (id BIGINT PRIMARY KEY)"));
+
+  // Cluster c has kNumTies rows at its center [100 * c, 0, 0], the nearest row to the center after
+  // them at distance 10, and kNumFar rows at distance 20.
+  std::vector<int64_t> nearest(kNumClusters);
+  int64_t id = 0;
+  for (int c = 0; c != kNumClusters; ++c) {
+    for (int i = 0; i != kNumTies; ++i) {
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES ($0, '[$1, 0, 0]')", ++id, 100 * c));
+    }
+    nearest[c] = ++id;
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES ($0, '[$1, 10, 0]')", id, 100 * c));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO keep VALUES ($0)", id));
+    for (int i = 0; i != kNumFar; ++i) {
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES ($0, '[$1, 0, 20]')", ++id, 100 * c));
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO keep VALUES ($0)", id));
+    }
+  }
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+
+  // A batched nested loop or a hash join would sort the joined rows by distance again.
+  ASSERT_OK(conn.Execute("SET yb_bnl_batch_size = 1"));
+  ASSERT_OK(conn.Execute("SET enable_hashjoin = off"));
+  ASSERT_OK(conn.Execute("SET enable_mergejoin = off"));
+
+  auto rounds = [this] {
+    return cluster_->mini_tablet_server(0)->metric_entity()
+        .FindOrCreateMetric<EventStats>(&METRIC_vector_index_partitions_queried)->underlying()
+        ->TotalCount();
+  };
+
+  for (int c = 0; c != kNumClusters; ++c) {
+    auto query = Format(
+        "SELECT test.id FROM test INNER JOIN keep ON test.id = keep.id "
+        "ORDER BY test.embedding $0 '[$1, 0, 0]' LIMIT 1",
+        pgwrapper::DistanceOpName(distance_kind_), 100 * c);
+    auto rounds_before = rounds();
+    auto rows = ASSERT_RESULT(conn.FetchRows<int64_t>(query));
+    ASSERT_GT(rounds() - rounds_before, 1U) << "Cluster " << c;
+    ASSERT_EQ(rows, std::vector<int64_t>{nearest[c]}) << "Cluster " << c;
+  }
 }
 
 // Rows 1..20 hold [i, 2i, 3i]: row 20 is the nearest of them to kQueryA and row 1 to kQueryB. Each
