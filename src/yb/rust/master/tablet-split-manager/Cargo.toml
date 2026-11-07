@@ -15,6 +15,7 @@ master-catalog-entity.workspace = true
 master-catalog-state.workspace = true
 master-leadership.workspace = true
 master-table-lifecycle.workspace = true
+master-tablet-locations.workspace = true
 master-task-runtime.workspace = true
 master-ts-manager.workspace = true
 protobuf.workspace = true

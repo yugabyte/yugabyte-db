@@ -14,6 +14,7 @@
 // run against Rust masters with YB_RUST_MASTER.
 
 #include <memory>
+#include <thread>
 
 #include <gtest/gtest.h>
 
@@ -50,7 +51,13 @@ using namespace std::literals;
 
 DECLARE_int32(blacklist_progress_initial_delay_secs);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
+DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_int32(load_balancer_initial_delay_secs);
+DECLARE_int64(outstanding_tablet_split_limit_per_tserver);
+DECLARE_bool(rocksdb_disable_compactions);
+DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
+DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
+DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 
 namespace yb {
 
@@ -63,6 +70,10 @@ class RustMasterMiniClusterTest : public YBTest {
 #endif
     // Tservers retire split parents (DeleteNotServingTablet) from this periodic cleanup.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
+    // Tablet sizes reach the master in metrics heartbeats; read once, when a tserver starts.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 500;
+    // Only the test that wants automatic splits gets them.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
     MiniClusterOptions opts;
     opts.num_masters = 3;
     opts.num_tablet_servers = 3;
@@ -285,6 +296,72 @@ TEST_F(RustMasterMiniClusterTest, SplitsATablet) {
         return loc_resp.tablet_locations_size() == 0 && loc_resp.errors_size() == 1;
       },
       60s, "the split parent deleted"));
+}
+
+// The Rust leader splits a table's only tablet once its leader reports SST files over the low
+// phase threshold, but not while splitting is disabled for a feature; IsTabletSplittingComplete
+// follows the split.
+TEST_F(RustMasterMiniClusterTest, SplitsATabletAutomatically) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit_per_tserver) = 0;
+  // The children keep their parent's data until compacted, so they are not split again.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
+  ASSERT_OK(cluster_->WaitForTabletServerCount(3));
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const client::YBTableName name(YQL_DATABASE_CQL, "ks", "auto_split");
+  client::TableHandle table;
+  ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
+      client::Transactional::kFalse, /* num_tablets= */ 1, client.get(), &table, name));
+  auto session = client->NewSession(60s);
+  for (int32_t key = 0; key < 500; ++key) {
+    ASSERT_RESULT(client::kv_table_test::WriteRow(&table, session, key, key));
+  }
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto proxy = ASSERT_RESULT(cluster_->GetLeaderMasterProxy<master::MasterAdminProxy>());
+  auto splitting_complete = [&]() -> Result<bool> {
+    master::IsTabletSplittingCompleteRequestPB req;
+    master::IsTabletSplittingCompleteResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(10s);
+    RETURN_NOT_OK(proxy.IsTabletSplittingComplete(req, &resp, &rpc));
+    SCHECK(!resp.has_error(), IllegalState, resp.ShortDebugString());
+    return resp.is_tablet_splitting_complete();
+  };
+  auto num_tablets = [&]() -> Result<int> {
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+    RETURN_NOT_OK(client->GetTabletsFromTableId(table->id(), 0, &tablets));
+    return tablets.size();
+  };
+  ASSERT_TRUE(ASSERT_RESULT(splitting_complete()));
+
+  {
+    master::DisableTabletSplittingRequestPB req;
+    req.set_disable_duration_ms(5000);
+    req.set_feature_name("RustMasterMiniClusterTest");
+    master::DisableTabletSplittingResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(10s);
+    ASSERT_OK(proxy.DisableTabletSplitting(req, &resp, &rpc));
+    ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+  }
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
+  std::this_thread::sleep_for(3s);
+  ASSERT_EQ(ASSERT_RESULT(num_tablets()), 1);
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> { return VERIFY_RESULT(num_tablets()) == 2; }, 120s,
+      "the tablet split automatically"));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return VERIFY_RESULT(client::kv_table_test::SelectAllRows(&table, session)).size() == 500;
+      },
+      60s, "all rows read from the children"));
+  ASSERT_OK(WaitFor(splitting_complete, 60s, "splitting complete"));
+  // The uncompacted children are not split again.
+  std::this_thread::sleep_for(3s);
+  ASSERT_EQ(ASSERT_RESULT(num_tablets()), 2);
 }
 
 // Leader-blacklisting a tserver makes the Rust leader's balancer move every leader off it; the

@@ -308,3 +308,233 @@ async fn split_candidates_follow_cpp() {
     assert_eq!(parts[1].partition_key_start(), &[0x50]);
     assert_eq!(parts[1].partition_key_end(), &[0x90]);
 }
+
+mod automatic {
+    use std::collections::{HashMap, HashSet};
+
+    use master_tablet_locations::{DriveInfo, Replica, TabletReplicas};
+    use yb_proto::pb::common_net::CloudInfoPB;
+    use yb_proto::pb::common_types::PeerRole;
+    use yb_proto::pb::consensus_metadata::PeerMemberType;
+    use yb_proto::pb::tablet_types::RaftGroupStatePB;
+
+    use super::*;
+    use crate::auto::{plan, AutoSplitOptions, Cluster, Disabled, Plan};
+
+    const PEERS: [&str; 3] = ["ts0", "ts1", "ts2"];
+
+    fn options() -> AutoSplitOptions {
+        AutoSplitOptions {
+            enabled: || true,
+            low_phase_size_threshold_bytes: || 1000,
+            outstanding_limit_per_tserver: || 1,
+            ..AutoSplitOptions::default()
+        }
+    }
+
+    fn cluster() -> Cluster {
+        Cluster {
+            num_live: 3,
+            valid: vec![CloudInfoPB::new(); 3],
+            ..Cluster::default()
+        }
+    }
+
+    /// Three running voters, ts0 leading, the leader's SST files `size` bytes.
+    fn replicas(size: u64) -> TabletReplicas {
+        TabletReplicas {
+            replicas: PEERS
+                .iter()
+                .enumerate()
+                .map(|(i, ts)| {
+                    let role = if i == 0 {
+                        PeerRole::LEADER
+                    } else {
+                        PeerRole::FOLLOWER
+                    };
+                    let mut r = Replica::new(Arc::from(ts.as_bytes()), role, PeerMemberType::VOTER);
+                    r.state = RaftGroupStatePB::RUNNING;
+                    r.drive = DriveInfo {
+                        sst_files_size: size,
+                        may_have_orphaned_post_split_data: false,
+                        ..DriveInfo::default()
+                    };
+                    r
+                })
+                .collect(),
+            confirmed: true,
+        }
+    }
+
+    /// A RUNNING tablet of t1 from `start`, with a config of the three peers.
+    async fn add_tablet(h: &Harness, id: &[u8], start: &[u8], state: sys_tablets_entry_pb::State) {
+        let mut pb = h.tablet(b"parent");
+        pb.partition
+            .mut_or_insert_default()
+            .set_partition_key_start(start.to_vec());
+        pb.state = Some(EnumOrUnknown::new(state));
+        pb.split_tablet_ids.clear();
+        h.writer
+            .submit(
+                &h.token,
+                Mutation::new().upsert(SysRowEntryType::TABLET, id, pb.write_to_bytes().unwrap()),
+            )
+            .await
+            .unwrap();
+    }
+
+    fn run(
+        h: &Harness,
+        sizes: &HashMap<Vec<u8>, TabletReplicas>,
+        cluster: &Cluster,
+        disabled: &mut Disabled,
+        options: &AutoSplitOptions,
+    ) -> Plan {
+        plan(
+            &h.snapshot(),
+            cluster,
+            &|id| sizes.get(id).cloned(),
+            &HashSet::new(),
+            disabled,
+            options,
+            Instant::now(),
+        )
+    }
+
+    fn scheduled(plan: &Plan) -> Vec<String> {
+        plan.schedule
+            .iter()
+            .map(|(id, _)| String::from_utf8_lossy(id).into_owned())
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn the_largest_tablet_over_its_phase_threshold_is_split_first() {
+        let h = Harness::new().await;
+        add_tablet(&h, b"second", &[0x80], sys_tablets_entry_pb::State::RUNNING).await;
+        add_tablet(&h, b"third", &[0xc0], sys_tablets_entry_pb::State::RUNNING).await;
+        // 3 partitions on 3 tservers: 1 per tserver, the high phase (10 GB by default).
+        let mut sizes = HashMap::from([
+            (b"parent".to_vec(), replicas(5000)),
+            (b"second".to_vec(), replicas(20 << 30)),
+            (b"third".to_vec(), replicas(10)),
+        ]);
+        let mut disabled = Disabled::default();
+        let p = run(&h, &sizes, &cluster(), &mut disabled, &options());
+        assert_eq!(scheduled(&p), vec!["second"]);
+        assert_eq!((p.candidates, p.outstanding), (1, 1));
+
+        // With 4 tservers the table is in the low phase: both large tablets qualify, but with one
+        // split per tserver only the largest starts, and the smaller one is below 0.8 of it.
+        let four = Cluster {
+            num_live: 4,
+            valid: vec![CloudInfoPB::new(); 4],
+            ..Cluster::default()
+        };
+        let p = run(&h, &sizes, &four, &mut disabled, &options());
+        assert_eq!(scheduled(&p), vec!["second"]);
+        assert_eq!(p.candidates, 2);
+        // Comparable sizes on separate tservers: both start, largest first.
+        sizes.insert(b"parent".to_vec(), replicas(19 << 30));
+        let mut other = replicas(19 << 30);
+        for (r, ts) in other.replicas.iter_mut().zip(["ts3", "ts4", "ts5"]) {
+            r.ts_uuid = Arc::from(ts.as_bytes());
+        }
+        sizes.insert(b"parent".to_vec(), other);
+        let p = run(&h, &sizes, &four, &mut disabled, &options());
+        assert_eq!(scheduled(&p), vec!["second", "parent"]);
+    }
+
+    #[tokio::test]
+    async fn a_tablet_with_a_bootstrapping_replica_waits() {
+        let h = Harness::new().await;
+        let mut r = replicas(5000);
+        r.replicas[2].state = RaftGroupStatePB::BOOTSTRAPPING;
+        let sizes = HashMap::from([(b"parent".to_vec(), r)]);
+        let p = run(&h, &sizes, &cluster(), &mut Disabled::default(), &options());
+        assert!(p.schedule.is_empty());
+        let mut r = replicas(5000);
+        r.replicas[2].member_type = PeerMemberType::PRE_VOTER;
+        let sizes = HashMap::from([(b"parent".to_vec(), r)]);
+        let p = run(&h, &sizes, &cluster(), &mut Disabled::default(), &options());
+        assert!(p.schedule.is_empty());
+    }
+
+    #[tokio::test]
+    async fn registered_splits_count_against_the_limits() {
+        let h = Harness::new().await;
+        let children = h
+            .splits
+            .do_split(h.token, b"parent", vec![vec![0x80, 0x00]], true)
+            .await
+            .unwrap();
+        add_tablet(&h, b"other", &[0xf0], sys_tablets_entry_pb::State::RUNNING).await;
+        // The children replace the parent as partitions: 3 on 3 tservers, the high phase.
+        let mut sizes = HashMap::from([
+            (b"parent".to_vec(), replicas(5000)),
+            (b"other".to_vec(), replicas(20 << 30)),
+        ]);
+        // A child not running: the split restarts, and holds the slot on the tservers of
+        // `other`.
+        let p = run(&h, &sizes, &cluster(), &mut Disabled::default(), &options());
+        assert!(p.schedule.is_empty(), "{:?}", scheduled(&p));
+        assert_eq!((p.candidates, p.outstanding), (1, 1));
+
+        // Children running but compacting: still outstanding.
+        h.set_running(&children[0]).await;
+        h.set_running(&children[1]).await;
+        for c in &children {
+            let mut r = replicas(10);
+            r.replicas[1].drive.may_have_orphaned_post_split_data = true;
+            sizes.insert(c.clone(), r);
+        }
+        let p = run(&h, &sizes, &cluster(), &mut Disabled::default(), &options());
+        assert!(p.schedule.is_empty());
+        assert_eq!(p.outstanding, 1);
+
+        // Compacted: `other` may split; the children are too small.
+        for c in &children {
+            sizes.insert(c.clone(), replicas(10));
+        }
+        let p = run(&h, &sizes, &cluster(), &mut Disabled::default(), &options());
+        assert_eq!(scheduled(&p), vec!["other"]);
+    }
+
+    #[tokio::test]
+    async fn a_ttl_table_is_held_off() {
+        let h = Harness::new().await;
+        let mut table: SysTablesEntryPB = h
+            .snapshot()
+            .get(SysRowEntryType::TABLE, b"t1")
+            .unwrap()
+            .parse()
+            .unwrap();
+        table
+            .schema
+            .mut_or_insert_default()
+            .table_properties
+            .mut_or_insert_default()
+            .set_default_time_to_live(60_000);
+        h.writer
+            .submit(
+                &h.token,
+                Mutation::new().upsert(
+                    SysRowEntryType::TABLE,
+                    b"t1",
+                    table.write_to_bytes().unwrap(),
+                ),
+            )
+            .await
+            .unwrap();
+        let sizes = HashMap::from([(b"parent".to_vec(), replicas(5000))]);
+        let mut c = cluster();
+        c.ttl_split_disabled.insert(b"ts0".to_vec());
+        let mut disabled = Disabled::default();
+        let p = run(&h, &sizes, &c, &mut disabled, &options());
+        assert!(p.schedule.is_empty());
+        assert!(disabled.ttl_tables.contains_key(b"t1".as_slice()));
+        // Held off even once the tserver no longer asks.
+        let p = run(&h, &sizes, &cluster(), &mut disabled, &options());
+        assert!(p.schedule.is_empty());
+    }
+}

@@ -29,7 +29,9 @@ use master_sys_catalog::{ApplyEvents, SysCatalogStore};
 use master_table_lifecycle::{
     LifecycleOptions, SchemaHost, TableAlterer, TableDeleter, TableLifecycle, TabletAssigner,
 };
-use master_tablet_split_manager::{SplitController, SplitOptions, TabletSplitManager};
+use master_tablet_split_manager::{
+    AutoSplitOptions, SplitController, SplitOptions, TabletSplitManager,
+};
 use master_task_runtime::{
     run_controller, Attempt, BlockingPool, BoxFuture, Controller, RetryPolicy, TermScope,
     TsRpcExecutor,
@@ -136,6 +138,26 @@ static LB_MAX_INBOUND_RBS: FlagRef<i32> =
 static LB_MIN_INBOUND_RBS: FlagRef<i32> =
     FlagRef::new("load_balancer_min_inbound_remote_bootstraps_per_tserver");
 static RBS_RATE_LIMIT: FlagRef<i64> = FlagRef::new("remote_bootstrap_rate_limit_bytes_per_sec");
+static AUTO_SPLIT: FlagRef<bool> = FlagRef::new("enable_automatic_tablet_splitting");
+static SPLIT_CANDIDATES_INTERVAL_MS: FlagRef<i32> =
+    FlagRef::new("process_split_tablet_candidates_interval_msec");
+static OUTSTANDING_SPLIT_LIMIT: FlagRef<u64> = FlagRef::new("outstanding_tablet_split_limit");
+static OUTSTANDING_SPLIT_LIMIT_PER_TS: FlagRef<i64> =
+    FlagRef::new("outstanding_tablet_split_limit_per_tserver");
+static SPLIT_LIMIT_PER_TABLE: FlagRef<u64> = FlagRef::new("tablet_split_limit_per_table");
+static LOW_PHASE_SHARDS: FlagRef<i64> = FlagRef::new("tablet_split_low_phase_shard_count_per_node");
+static HIGH_PHASE_SHARDS: FlagRef<i64> =
+    FlagRef::new("tablet_split_high_phase_shard_count_per_node");
+static LOW_PHASE_SIZE: FlagRef<i64> = FlagRef::new("tablet_split_low_phase_size_threshold_bytes");
+static HIGH_PHASE_SIZE: FlagRef<i64> = FlagRef::new("tablet_split_high_phase_size_threshold_bytes");
+static FORCE_SPLIT_SIZE: FlagRef<i64> = FlagRef::new("tablet_force_split_threshold_bytes");
+static SORT_SPLIT_CANDIDATES: FlagRef<bool> =
+    FlagRef::new("sort_automatic_tablet_splitting_candidates");
+static SPLIT_MIN_SIZE_RATIO: FlagRef<f64> = FlagRef::new("tablet_split_min_size_ratio");
+static PREVENT_TTL_SPLIT_SECS: FlagRef<u64> =
+    FlagRef::new("prevent_split_for_ttl_tables_for_seconds");
+static PREVENT_SMALL_RANGE_SPLIT_SECS: FlagRef<u64> =
+    FlagRef::new("prevent_split_for_small_key_range_tablets_for_seconds");
 static LB_MAX_OVER_REPLICATED: FlagRef<i32> =
     FlagRef::new("load_balancer_max_over_replicated_tablets");
 static LB_MAX_ADDS: FlagRef<i32> = FlagRef::new("load_balancer_max_concurrent_adds");
@@ -309,6 +331,28 @@ impl Core {
                 enable_multi_way_split: || ENABLE_MULTI_WAY_SPLIT.get(),
                 rpc_timeout: || millis(MASTER_TS_RPC_TIMEOUT_MS.get()),
                 interval: || millis(BG_TASK_WAIT_MS.get().max(1)),
+                auto: AutoSplitOptions {
+                    enabled: || AUTO_SPLIT.get(),
+                    interval: || millis(SPLIT_CANDIDATES_INTERVAL_MS.get().max(0)),
+                    outstanding_limit: || OUTSTANDING_SPLIT_LIMIT.get(),
+                    outstanding_limit_per_tserver: || OUTSTANDING_SPLIT_LIMIT_PER_TS.get(),
+                    split_limit_per_table: || SPLIT_LIMIT_PER_TABLE.get(),
+                    low_phase_shard_count_per_node: || LOW_PHASE_SHARDS.get(),
+                    high_phase_shard_count_per_node: || HIGH_PHASE_SHARDS.get(),
+                    low_phase_size_threshold_bytes: || LOW_PHASE_SIZE.get(),
+                    high_phase_size_threshold_bytes: || HIGH_PHASE_SIZE.get(),
+                    force_split_threshold_bytes: || FORCE_SPLIT_SIZE.get(),
+                    sort_candidates: || SORT_SPLIT_CANDIDATES.get(),
+                    min_size_ratio: || SPLIT_MIN_SIZE_RATIO.get(),
+                    replication_factor: || REPLICATION_FACTOR.get(),
+                    max_create_tablets_per_ts: || MAX_CREATE_TABLETS_PER_TS.get(),
+                    prevent_split_for_ttl_tables: || {
+                        Duration::from_secs(PREVENT_TTL_SPLIT_SECS.get())
+                    },
+                    prevent_split_for_small_key_range_tablets: || {
+                        Duration::from_secs(PREVENT_SMALL_RANGE_SPLIT_SECS.get())
+                    },
+                },
             },
         );
         let tables = TableLifecycle::new(

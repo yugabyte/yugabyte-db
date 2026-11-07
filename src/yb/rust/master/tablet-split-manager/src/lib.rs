@@ -20,31 +20,38 @@
 //! as C++'s `DoSplitting` restarts them. The tserver creates the children; once they serve, its
 //! `DeleteNotServingTablet` retires the parent.
 
+mod auto;
 #[cfg(test)]
 mod tests;
 
-use std::collections::{BTreeSet, HashMap};
+pub use auto::AutoSplitOptions;
+
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use master_catalog_entity::Entity;
-use master_catalog_state::{Catalog, CatalogSnapshot, CatalogWriter, Mutation, WriteOptions};
+use master_catalog_state::{
+    is_inactive_state, Catalog, CatalogSnapshot, CatalogWriter, Mutation, WriteOptions,
+};
 use master_leadership::{LeaderToken, Leadership};
 use master_table_lifecycle::lookup::{is_hidden, is_system_table};
 use master_table_lifecycle::{
     covering_schedules, generate_object_id, local_time_string, SchemaHost,
 };
 use master_task_runtime::{Attempt, BoxFuture, Controller, RetryPolicy, TermScope, TsRpcExecutor};
+use master_ts_manager::placement::{blacklist_addresses, is_blacklisted};
 use master_ts_manager::{master_error, DeleteReplica, TsManager};
 use protobuf::{Enum, EnumOrUnknown, Message, MessageField};
 use tokio::time::Instant;
 use yb_host_api::rpc::RpcClient;
 use yb_host_api::{Status, StatusCode};
 use yb_proto::pb::catalog_entity_info::{
-    sys_tables_entry_pb, sys_tablets_entry_pb, SysTablesEntryPB, SysTabletsEntryPB,
+    sys_cdcstream_entry_pb, sys_tables_entry_pb, sys_tablets_entry_pb, SysCDCStreamEntryPB,
+    SysClusterConfigEntryPB, SysTablesEntryPB, SysTabletsEntryPB,
 };
 use yb_proto::pb::common::PartitionPB;
-use yb_proto::pb::common_types::TableType;
+use yb_proto::pb::common_types::{IndexPermissions, TableType};
 use yb_proto::pb::master_admin::{DeleteNotServingTabletRequestPB, SplitTabletRequestPB};
 use yb_proto::pb::master_rust_peer::{
     EncodedPartitionKeysRequestPB, EncodedPartitionKeysResponsePB,
@@ -69,6 +76,8 @@ pub struct SplitOptions {
     pub rpc_timeout: fn() -> Duration,
     /// `catalog_manager_bg_task_wait_ms`.
     pub interval: fn() -> Duration,
+    /// Automatic splitting.
+    pub auto: AutoSplitOptions,
 }
 
 impl Default for SplitOptions {
@@ -78,6 +87,7 @@ impl Default for SplitOptions {
             enable_multi_way_split: || false,
             rpc_timeout: || Duration::from_secs(15),
             interval: || Duration::from_secs(1),
+            auto: AutoSplitOptions::default(),
         }
     }
 }
@@ -94,6 +104,41 @@ pub struct TabletSplitManager {
     executor: Arc<TsRpcExecutor>,
     retry: RetryPolicy,
     options: SplitOptions,
+    /// Splits being started (`AsyncGetTabletSplitKey`, then the registration): by parent.
+    starting: Arc<Mutex<HashSet<Vec<u8>>>>,
+    auto: Mutex<AutoState>,
+}
+
+/// Automatic splitting's state, kept across terms.
+#[derive(Default)]
+struct AutoState {
+    disabled: auto::Disabled,
+    last_run: Option<Instant>,
+}
+
+/// Removes a split from [`TabletSplitManager::starting`] when it is done or abandoned.
+struct Starting {
+    set: Arc<Mutex<HashSet<Vec<u8>>>>,
+    tablet_id: Vec<u8>,
+}
+
+impl Starting {
+    /// None if the split is already being started.
+    fn begin(set: &Arc<Mutex<HashSet<Vec<u8>>>>, tablet_id: &[u8]) -> Option<Starting> {
+        set.lock()
+            .unwrap()
+            .insert(tablet_id.to_vec())
+            .then(|| Starting {
+                set: set.clone(),
+                tablet_id: tablet_id.to_vec(),
+            })
+    }
+}
+
+impl Drop for Starting {
+    fn drop(&mut self) {
+        self.set.lock().unwrap().remove(&self.tablet_id);
+    }
 }
 
 fn error(code: Code, status: StatusCode, message: impl Into<String>) -> MasterErrorPB {
@@ -135,6 +180,8 @@ impl TabletSplitManager {
             executor,
             retry,
             options,
+            starting: Arc::default(),
+            auto: Mutex::default(),
         })
     }
 
@@ -162,6 +209,7 @@ impl TabletSplitManager {
                 )
             })?;
         validate_split_candidate(&snapshot, tablet, true)?;
+        self.check_limits(&snapshot, &tablet.tablet().expect("tablet row").table_id)?;
         let split_factor = if req.has_split_factor() {
             req.split_factor()
         } else {
@@ -184,24 +232,221 @@ impl TabletSplitManager {
                 ),
             ));
         }
-        let this = self.clone();
-        tokio::spawn(async move {
-            match this.split_key(token, &tablet_id, split_factor).await {
-                Ok(keys) => {
-                    if let Err(status) = this.do_split(token, &tablet_id, keys, true).await {
-                        tracing::warn!(
-                            "Failed to split tablet {}: {status}",
-                            String::from_utf8_lossy(&tablet_id)
-                        );
-                    }
-                }
-                Err(status) => tracing::warn!(
-                    "GetSplitKey of tablet {} failed: {status}",
+        let Some(starting) = Starting::begin(&self.starting, &tablet_id) else {
+            return Err(error(
+                Code::UNKNOWN_ERROR,
+                StatusCode::AlreadyPresent,
+                format!(
+                    "A split of tablet {} is already being started",
                     String::from_utf8_lossy(&tablet_id)
                 ),
-            }
+            ));
+        };
+        let this = self.clone();
+        tokio::spawn(async move {
+            this.start_split(token, starting, split_factor, true).await;
         });
         Ok(())
+    }
+
+    /// `AsyncGetTabletSplitKey`, then `SplitTabletWithKeys`.
+    async fn start_split(
+        &self,
+        token: LeaderToken,
+        starting: Starting,
+        split_factor: i32,
+        manual: bool,
+    ) {
+        let tablet_id = &starting.tablet_id;
+        match self.split_key(token, tablet_id, split_factor, manual).await {
+            Ok(keys) => {
+                if let Err(status) = self.do_split(token, tablet_id, keys, manual).await {
+                    tracing::warn!(
+                        "Failed to split tablet {}: {status}",
+                        String::from_utf8_lossy(tablet_id)
+                    );
+                }
+            }
+            Err(status) => tracing::warn!(
+                "GetSplitKey of tablet {} failed: {status}",
+                String::from_utf8_lossy(tablet_id)
+            ),
+        }
+    }
+
+    /// The table limits a manual split is held to as well: `CanAddPartitionsToTable` and
+    /// `tablet_split_limit_per_table`.
+    fn check_limits(
+        &self,
+        snapshot: &CatalogSnapshot,
+        table_id: &[u8],
+    ) -> Result<(), MasterErrorPB> {
+        let Some(table) = snapshot.get(SysRowEntryType::TABLE, table_id) else {
+            return Ok(());
+        };
+        let table_pb: SysTablesEntryPB = table
+            .parse()
+            .map_err(|e| error(Code::UNKNOWN_ERROR, StatusCode::Corruption, e.to_string()))?;
+        auto::check_partition_limits(
+            snapshot,
+            table,
+            &table_pb,
+            self.ts_manager.live().len(),
+            &self.options.auto,
+        )
+        .map_err(|m| error(Code::REACHED_SPLIT_LIMIT, StatusCode::IllegalState, m))
+    }
+
+    /// The tservers automatic splitting looks at, now.
+    fn cluster(&self, snapshot: &CatalogSnapshot) -> auto::Cluster {
+        let config: SysClusterConfigEntryPB = snapshot
+            .cluster_config()
+            .and_then(|c| c.parse().ok())
+            .unwrap_or_default();
+        let blacklist = blacklist_addresses(&config);
+        let live = self.ts_manager.live();
+        auto::Cluster {
+            num_live: live.len(),
+            valid: live
+                .iter()
+                .filter(|d| !is_blacklisted(d, &blacklist))
+                .map(|d| d.pb.registration.cloud_info.clone().unwrap_or_default())
+                .collect(),
+            ttl_split_disabled: live
+                .iter()
+                .filter(|d| {
+                    d.metrics
+                        .as_ref()
+                        .is_some_and(|m| m.disable_tablet_split_if_default_ttl())
+                })
+                .map(|d| d.uuid.to_vec())
+                .collect(),
+            config,
+        }
+    }
+
+    /// `MaybeDoSplitting`: one automatic splitting pass, starting the splits it picks.
+    fn auto_split(self: &Arc<Self>, token: LeaderToken, scope: &TermScope) {
+        let options = &self.options.auto;
+        if !(options.enabled)() {
+            return;
+        }
+        let now = Instant::now();
+        let plan = {
+            let mut state = self.auto.lock().unwrap();
+            if let Some((feature, until)) = state.disabled.feature(now) {
+                tracing::trace!(
+                    "Skipping splitting run because automatic tablet splitting is disabled for                      another {:?} by feature {feature}",
+                    until - now
+                );
+                return;
+            }
+            if state
+                .last_run
+                .is_some_and(|last| now.duration_since(last) < (options.interval)())
+            {
+                return;
+            }
+            let snapshot = self.catalog.snapshot();
+            let cluster = self.cluster(&snapshot);
+            let starting = self.starting.lock().unwrap().clone();
+            let locations = &self.ts_manager.locations;
+            let plan = auto::plan(
+                &snapshot,
+                &cluster,
+                &|id| locations.get(id),
+                &starting,
+                &mut state.disabled,
+                options,
+                now,
+            );
+            state.last_run = Some(Instant::now());
+            if plan.candidates + plan.outstanding > 0 {
+                tracing::debug!(
+                    "Automatic splitting: {} candidate(s), {} outstanding split(s), {} new",
+                    plan.candidates,
+                    plan.outstanding,
+                    plan.schedule.len()
+                );
+            }
+            // Marked as starting before the lock is released, so `IsTabletSplittingComplete` sees
+            // them.
+            plan.schedule
+                .into_iter()
+                .filter_map(|(id, size)| Starting::begin(&self.starting, &id).map(|s| (s, size)))
+                .collect::<Vec<_>>()
+        };
+        for (starting, size) in plan {
+            tracing::info!(
+                "Scheduled split for tablet_id: {} with size {size} bytes",
+                String::from_utf8_lossy(&starting.tablet_id)
+            );
+            let this = self.clone();
+            scope.entity().spawn("auto-split", async move {
+                this.start_split(token, starting, 2, false).await;
+            });
+        }
+    }
+
+    /// `DisableTabletSplitting`: no automatic splits for a while, for a feature (a restore).
+    pub fn disable_splitting_for(&self, duration: Duration, feature: &str) {
+        tracing::info!(
+            "Disabling tablet splitting for {} milliseconds for feature {feature}.",
+            duration.as_millis()
+        );
+        self.auto
+            .lock()
+            .unwrap()
+            .disabled
+            .features
+            .insert(feature.to_string(), Instant::now() + duration);
+    }
+
+    /// `ReenableSplittingFor`.
+    pub fn reenable_splitting_for(&self, feature: &str) {
+        self.auto.lock().unwrap().disabled.features.remove(feature);
+    }
+
+    /// `IsTabletSplittingComplete`: no split being started, no split child not yet running, and,
+    /// if asked, no split parent left.
+    pub fn is_tablet_splitting_complete(&self, wait_for_parent_deletion: bool) -> bool {
+        // Held while a pass picks splits, so a pass that began before splitting was disabled
+        // has scheduled its splits by now (`WaitUntilIdle`).
+        let _pass = self.auto.lock().unwrap();
+        if !self.starting.lock().unwrap().is_empty() {
+            return false;
+        }
+        let snapshot = self.catalog.snapshot();
+        for table in snapshot.iter(SysRowEntryType::TABLE) {
+            let Some(hot) = table.table() else { continue };
+            use sys_tables_entry_pb::State as TableState;
+            if hot.state == TableState::DELETED as i32 {
+                continue;
+            }
+            let tablets = snapshot.tablets_of(&table.key.id);
+            let children: HashSet<&[u8]> = tablets
+                .iter()
+                .filter_map(|t| t.tablet())
+                .flat_map(|t| t.split_tablet_ids.iter().map(|c| c.as_slice()))
+                .collect();
+            let active: HashSet<&[u8]> = snapshot
+                .active_tablets_of(&table.key.id)
+                .into_iter()
+                .map(|t| &*t.key.id)
+                .collect();
+            for tablet in &tablets {
+                let Some(t) = tablet.tablet() else { continue };
+                let id: &[u8] = &tablet.key.id;
+                if active.contains(id) {
+                    if children.contains(id) && t.state != TabletState::RUNNING as i32 {
+                        return false;
+                    }
+                } else if wait_for_parent_deletion && !is_inactive_state(t.state) && !t.hidden {
+                    return false;
+                }
+            }
+        }
+        true
     }
 
     /// The RPC client tservers are called with; set once, before any leader term.
@@ -229,13 +474,14 @@ impl TabletSplitManager {
         token: LeaderToken,
         tablet_id: &[u8],
         split_factor: i32,
+        manual: bool,
     ) -> Result<Vec<Vec<u8>>, Status> {
         let leader = self.leader_of(tablet_id).ok_or_else(|| {
             Status::new(StatusCode::ServiceUnavailable, "No leader for the tablet")
         })?;
         let mut req = GetSplitKeyRequestPB::new();
         req.set_tablet_id(tablet_id.to_vec());
-        req.set_is_manual_split(true);
+        req.set_is_manual_split(manual);
         req.set_split_factor(split_factor);
         let rpc_timeout = (self.options.rpc_timeout)();
         let rpc = self.rpc()?;
@@ -276,6 +522,14 @@ impl TabletSplitManager {
                         StatusCode::from_i32(e.status.code().value()),
                         e.status.message().to_string(),
                     );
+                    if matches!(
+                        e.code(),
+                        TsCode::TABLET_SPLIT_DISABLED_TTL_EXPIRY
+                            | TsCode::TABLET_SPLIT_KEY_RANGE_TOO_SMALL
+                    ) {
+                        self.hold_off(tablet_id, e.code());
+                        return Err(Attempt::Fail(status));
+                    }
                     // An IllegalState other than NOT_THE_LEADER (not compacted yet after an
                     // earlier split, or all data under one key) is not retried.
                     if status.code == StatusCode::IllegalState && e.code() != TsCode::NOT_THE_LEADER
@@ -290,6 +544,40 @@ impl TabletSplitManager {
             Ok(resp.split_partition_keys)
         } else {
             Ok(vec![resp.DEPRECATED_split_partition_key().to_vec()])
+        }
+    }
+
+    /// After `GetSplitKey` refused: a table whose files expire by TTL is not split again for
+    /// `prevent_split_for_ttl_tables_for_seconds`, a tablet too small a key range to split for
+    /// `prevent_split_for_small_key_range_tablets_for_seconds`.
+    fn hold_off(&self, tablet_id: &[u8], code: TsCode) {
+        let now = Instant::now();
+        let mut state = self.auto.lock().unwrap();
+        if code == TsCode::TABLET_SPLIT_DISABLED_TTL_EXPIRY {
+            tracing::info!(
+                "Tablet split not supported for tablets with TTL file expiration: {}",
+                String::from_utf8_lossy(tablet_id)
+            );
+            let recheck = (self.options.auto.prevent_split_for_ttl_tables)();
+            let table = self
+                .catalog
+                .snapshot()
+                .get(SysRowEntryType::TABLET, tablet_id)
+                .and_then(|t| t.tablet().map(|t| t.table_id.clone()));
+            if let (false, Some(table)) = (recheck.is_zero(), table) {
+                state.disabled.ttl_tables.insert(table, now + recheck);
+            }
+        } else {
+            tracing::info!(
+                "Tablet key range is too small to split, disabling splitting temporarily."
+            );
+            let recheck = (self.options.auto.prevent_split_for_small_key_range_tablets)();
+            if !recheck.is_zero() {
+                state
+                    .disabled
+                    .small_key_range_tablets
+                    .insert(tablet_id.to_vec(), now + recheck);
+            }
         }
     }
 
@@ -309,6 +597,10 @@ impl TabletSplitManager {
             ));
         }
         let use_parent_table_id = (self.options.use_parent_table_id_field)();
+        let snapshot = self.catalog.snapshot();
+        let cluster = (!manual).then(|| self.cluster(&snapshot));
+        let num_live = self.ts_manager.live().len();
+        let locations = &self.ts_manager.locations;
         let (children, _) = self
             .writer
             .mutate(&token, |snapshot| {
@@ -339,6 +631,43 @@ impl TabletSplitManager {
                     .ok_or_else(|| {
                         Status::new(StatusCode::NotFound, "The tablet's table is gone")
                     })?;
+                let table_pb: SysTablesEntryPB = table.parse().map_err(corrupt)?;
+                auto::check_partition_limits(
+                    snapshot,
+                    table,
+                    &table_pb,
+                    num_live,
+                    &self.options.auto,
+                )
+                .map_err(|m| Status::new(StatusCode::IllegalState, m))?;
+                // The cluster may have moved on since the split was picked: another phase, or a
+                // replica being added (`ShouldSplitValidCandidate` again).
+                if let Some(cluster) = &cluster {
+                    let replicas = locations.get(tablet_id).unwrap_or_default();
+                    let drive = replicas.leader().map(|l| l.drive.clone()).ok_or_else(|| {
+                        Status::new(StatusCode::IllegalState, "No leader for the tablet")
+                    })?;
+                    auto::should_split(
+                        snapshot,
+                        tablet_id,
+                        &table.key.id,
+                        &table_pb,
+                        &drive,
+                        &replicas,
+                        cluster,
+                        &self.options.auto,
+                    )
+                    .map_err(|e| {
+                        Status::new(
+                            StatusCode::InvalidArgument,
+                            format!(
+                                "Tablet split candidate {} is no longer a valid split candidate: \
+                                 {e}",
+                                String::from_utf8_lossy(tablet_id)
+                            ),
+                        )
+                    })?;
+                }
                 let partitions =
                     child_partitions(tablet_id, &parent.partition, &split_partition_keys)?;
                 let mut ids: Vec<Vec<u8>> =
@@ -366,7 +695,7 @@ impl TabletSplitManager {
                     );
                     parent.split_tablet_ids.push(id.clone());
                 }
-                let mut table_pb: SysTablesEntryPB = table.parse().map_err(corrupt)?;
+                let mut table_pb = table_pb;
                 let version = table_pb.partition_list_version() + 1;
                 table_pb.set_partition_list_version(version);
                 tracing::info!(
@@ -572,6 +901,16 @@ pub fn validate_split_candidate(
                 "The tablet's table does not exist",
             )
         })?;
+    validate_table(snapshot, table)?;
+    validate_tablet(snapshot, tablet, manual)
+}
+
+/// `ValidateSplitCandidateTable` without the limits and the tables held off for a while.
+pub(crate) fn validate_table(
+    snapshot: &CatalogSnapshot,
+    table: &Entity,
+) -> Result<(), MasterErrorPB> {
+    let not_supported = |m: String| error(Code::UNKNOWN_ERROR, StatusCode::NotSupported, m);
     let table_hot = table.table().expect("table row");
     let table_pb: SysTablesEntryPB = table
         .parse()
@@ -641,6 +980,63 @@ pub fn validate_split_candidate(
             name()
         )));
     }
+    // A split must update the streams' tablet mappings (`ProcessSplitTabletResult`), which a
+    // Rust leader does not do yet.
+    if streamed(snapshot, &table.key.id) {
+        return Err(not_supported(format!(
+            "Splitting a table in an xCluster or CDC stream is not supported on a Rust leader \
+             yet: {}",
+            name()
+        )));
+    }
+    // `IsBackfilling`: the index backfill writes to the indexed table's tablets.
+    if table_pb
+        .indexes
+        .iter()
+        .any(|i| i.index_permissions() == IndexPermissions::INDEX_PERM_DO_BACKFILL)
+    {
+        return Err(error(
+            Code::SPLIT_OR_BACKFILL_IN_PROGRESS,
+            StatusCode::IllegalState,
+            format!("Backfill operation in progress, table: {}", name()),
+        ));
+    }
+    Ok(())
+}
+
+/// A CDC stream on the table that is not being deleted, or an xCluster stream into it.
+fn streamed(snapshot: &CatalogSnapshot, table_id: &[u8]) -> bool {
+    let outbound = snapshot.iter(SysRowEntryType::CDC_STREAM).any(|stream| {
+        stream.parse::<SysCDCStreamEntryPB>().is_ok_and(|pb| {
+            pb.table_id.iter().any(|t| t.as_bytes() == table_id)
+                && !matches!(
+                    pb.state(),
+                    sys_cdcstream_entry_pb::State::DELETING
+                        | sys_cdcstream_entry_pb::State::DELETED
+                )
+        })
+    });
+    let config: SysClusterConfigEntryPB = snapshot
+        .cluster_config()
+        .and_then(|c| c.parse().ok())
+        .unwrap_or_default();
+    outbound
+        || config
+            .consumer_registry
+            .producer_map
+            .values()
+            .flat_map(|producer| producer.stream_map.values())
+            .any(|stream| stream.consumer_table_id.as_bytes() == table_id)
+}
+
+/// `ValidateSplitCandidateTablet`, without TTL and the tablets held off for a while.
+fn validate_tablet(
+    snapshot: &CatalogSnapshot,
+    tablet: &Entity,
+    manual: bool,
+) -> Result<(), MasterErrorPB> {
+    let not_supported = |m: String| error(Code::UNKNOWN_ERROR, StatusCode::NotSupported, m);
+    let hot = tablet.tablet().expect("tablet row");
     let tablet_pb: SysTabletsEntryPB = tablet
         .parse()
         .map_err(|e| error(Code::UNKNOWN_ERROR, StatusCode::Corruption, e.to_string()))?;
@@ -798,6 +1194,7 @@ impl SplitController {
         let Ok(token) = self.manager.leadership.token() else {
             return;
         };
+        self.manager.auto_split(token, scope);
         let snapshot = self.manager.catalog.snapshot();
         for tablet in snapshot.iter(SysRowEntryType::TABLET) {
             let Some(hot) = tablet.tablet() else { continue };

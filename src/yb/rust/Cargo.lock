@@ -753,6 +753,7 @@ dependencies = [
  "master-leadership",
  "master-sys-catalog",
  "master-table-lifecycle",
+ "master-tablet-locations",
  "master-task-runtime",
  "master-ts-manager",
  "protobuf",

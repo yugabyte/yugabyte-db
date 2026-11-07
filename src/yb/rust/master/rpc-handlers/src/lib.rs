@@ -42,7 +42,9 @@ use yb_host_api::{Status, StatusCode};
 use yb_proto::pb::common_types::PeerRole;
 use yb_proto::pb::consensus_metadata::ConsensusStatePB;
 use yb_proto::pb::master_admin::{
-    DeleteNotServingTabletRequestPB, DeleteNotServingTabletResponsePB, SplitTabletRequestPB,
+    DeleteNotServingTabletRequestPB, DeleteNotServingTabletResponsePB,
+    DisableTabletSplittingRequestPB, DisableTabletSplittingResponsePB,
+    IsTabletSplittingCompleteRequestPB, IsTabletSplittingCompleteResponsePB, SplitTabletRequestPB,
     SplitTabletResponsePB,
 };
 use yb_proto::pb::master_client::{
@@ -833,6 +835,30 @@ impl Shared {
                         .splits
                         .delete_not_serving_tablet(token, deadline, &req)
                         .await
+                }
+            ),
+            "DisableTabletSplitting" => serve!(
+                DisableTabletSplittingRequestPB,
+                DisableTabletSplittingResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    leader.splits.disable_splitting_for(
+                        std::time::Duration::from_millis(req.disable_duration_ms()),
+                        req.feature_name(),
+                    );
+                    Ok(())
+                }
+            ),
+            "IsTabletSplittingComplete" => serve!(
+                IsTabletSplittingCompleteRequestPB,
+                IsTabletSplittingCompleteResponsePB,
+                |req, resp| {
+                    resp.set_is_tablet_splitting_complete(
+                        leader
+                            .splits
+                            .is_tablet_splitting_complete(req.wait_for_parent_deletion()),
+                    );
+                    Ok(())
                 }
             ),
             "GetAutoFlagsConfig" | "ValidateAutoFlagsConfig" => {
