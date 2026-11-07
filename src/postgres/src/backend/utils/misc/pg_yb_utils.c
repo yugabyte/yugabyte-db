@@ -9538,19 +9538,10 @@ YbResetTransactionReadPoint(bool is_catalog_snapshot)
 	};
 
 	/*
-	 * If this is a query layer retry for a kReadRestart error, avoid resetting the read point.
-	 *
-	 * TODO(#29272): Ensure that this logic of not resetting the read point works fine even when there
-	 * are multiple snapshots being used by Pg.
+	 * Flush all earlier operations so that they complete on the previous snapshot.
 	 */
-	if (!YBCIsRestartReadPointRequested())
-	{
-		/*
-		 * Flush all earlier operations so that they complete on the previous snapshot.
-		 */
-		YBFlushBufferedOperations(YBCMakeFlushDebugContextGetTxnSnapshot());
-		HandleYBStatus(YBCPgResetTransactionReadPoint(is_catalog_snapshot));
-	}
+	YBFlushBufferedOperations(YBCMakeFlushDebugContextGetTxnSnapshot());
+	HandleYBStatus(YBCPgResetTransactionReadPoint(is_catalog_snapshot));
 
 	if (!YBCIsLegacyModeForCatalogOps() && is_catalog_snapshot)
 		return YbMakeReadPointHandle(YBCPgGetMaxReadPoint());
