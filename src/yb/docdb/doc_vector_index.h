@@ -143,6 +143,9 @@ class DocVectorIndexContext {
 
   // Bounds of the keys served by the tablet. Initialized only for a tablet created by a split.
   virtual const KeyBounds& key_bounds() const = 0;
+
+  // Blocks until the WAL entry with op_id is durable, see VectorLSMOptions::wait_frontier_durable.
+  virtual void WaitWalDurable(const OpId& op_id) const = 0;
 };
 
 using DocVectorIndexContextPtr = std::unique_ptr<DocVectorIndexContext>;

@@ -475,6 +475,9 @@ class DocVectorIndexImpl : public DocVectorIndex {
       .insert_thread_pool = thread_pools.insert_thread_pool,
       .compaction_token = thread_pools.compaction_token,
       .frontiers_factory = [] { return std::make_unique<docdb::ConsensusFrontiers>(); },
+      .wait_frontier_durable = [this](const storage::UserFrontier& frontier) {
+        context_->WaitWalDurable(down_cast<const ConsensusFrontier&>(frontier).op_id());
+      },
       .vector_merge_filter_factory = std::move(merge_filter_factory),
       .file_extension = GetVectorIndexChunkFileExtension(options_),
       .metric_entity = metric_entity_,

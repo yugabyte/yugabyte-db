@@ -520,6 +520,7 @@ Status VectorLSMTestBase::OpenVectorLSM(
     .insert_thread_pool = &thread_pool_,
     .compaction_token = std::make_shared<PriorityThreadPoolToken>(priority_thread_pool_),
     .frontiers_factory = [] { return std::make_unique<TestFrontiers>(); },
+    .wait_frontier_durable = {},
     .vector_merge_filter_factory = [this] { return GetMergeFilter(); },
     .file_extension = "",
     .metric_entity = vector_index_metric_entity_,

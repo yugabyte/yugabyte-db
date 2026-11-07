@@ -121,6 +121,7 @@
 #include "yb/tserver/tserver_error.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/file_util.h"
@@ -1091,30 +1092,31 @@ struct Tablet::IntentsDbFlushFilterState {
   }
 };
 
+bool Tablet::WalAllowsPersist(const OpId& op_id, const char* what) {
+  auto state = tablet_context_->WalState(op_id);
+  switch (state) {
+    case log::WalEntryState::kAppended:
+      // A power loss could drop the ops from the WAL while their data is persisted.
+      return false;
+    case log::WalEntryState::kSyncFailed:
+      // Waiting could block flushes, including the shutdown one, for as long as fsync keeps
+      // failing, so risk the power loss case instead.
+      YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 10)
+          << "Flushing " << what << " with ops not fsynced in log, op id: " << op_id;
+      return true;
+    case log::WalEntryState::kDurable:
+      return true;
+  }
+  FATAL_INVALID_ENUM_VALUE(log::WalEntryState, state);
+}
+
 Result<bool> Tablet::RegularDbFlushFilter(const rocksdb::MemTable& memtable) {
   auto frontiers = memtable.Frontiers();
   if (frontiers) {
     const auto& op_id = down_cast<const docdb::ConsensusFrontier&>(frontiers->Largest()).op_id();
-    auto wal_state = tablet_context_->WalState(op_id);
-    switch (wal_state) {
-      case log::WalEntryState::kNone:
-        YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 10)
-            << "Skipping flush on memtable with ops not in log, memtable op id: " << op_id;
-        return false;
-      case log::WalEntryState::kAppended:
-        // A power loss could drop it from the WAL while it is flushed, and bootstrap would fail
-        // with "WAL files missing". The flush is retried after the fsync.
-        return false;
-      case log::WalEntryState::kSyncFailed:
-        // Waiting could block flushes, including the shutdown one, for as long as fsync keeps
-        // failing, so risk the power loss case instead.
-        YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 10)
-            << "Flushing memtable with ops not fsynced in log, memtable op id: " << op_id;
-        return true;
-      case log::WalEntryState::kDurable:
-        return true;
-    }
-    FATAL_INVALID_ENUM_VALUE(log::WalEntryState, wal_state);
+    // Otherwise bootstrap after a power loss could fail with "WAL files missing".
+    // A skipped flush is retried after the fsync.
+    return WalAllowsPersist(op_id, "memtable");
   }
 
   // It is correct to not have frontiers when memtable is empty
@@ -1129,6 +1131,23 @@ Result<bool> Tablet::RegularDbFlushFilter(const rocksdb::MemTable& memtable) {
       "flush! This should not happen.";
   LOG_WITH_PREFIX(DFATAL) << error_msg;
   return STATUS(IllegalState, error_msg);
+}
+
+void Tablet::WaitWalDurable(const OpId& op_id) {
+  const auto start = CoarseMonoClock::now();
+  CoarseBackoffWaiter waiter(
+      CoarseTimePoint::max(), /* max_wait= */ 100ms, /* base_delay= */ 1ms,
+      /* max_jitter_ms= */ 0, /* init_exponent= */ 1);
+  for (;;) {
+    if (WalAllowsPersist(op_id, "vector index")) {
+      return;
+    }
+    if (CoarseMonoClock::now() - start > 10s) {
+      YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 10)
+          << "Vector index flush waits for op " << op_id << " to become durable in log";
+    }
+    waiter.Wait();
+  }
 }
 
 Result<bool> Tablet::IntentsDbFlushFilter(
@@ -1206,13 +1225,10 @@ Result<bool> Tablet::IntentsDbFlushFilter(
   if (!state->HasNewData(memtable_index)) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "No new data: " << state->ToString();
     // Regular DB flushed op id does not bound this flush, so the intents must be durable in WAL.
-    // See RegularDbFlushFilter for kSyncFailed.
     if (!frontiers) {
       return true;
     }
-    auto wal_state = tablet_context_->WalState(memtable_op_id);
-    return wal_state == log::WalEntryState::kDurable ||
-           wal_state == log::WalEntryState::kSyncFailed;
+    return WalAllowsPersist(memtable_op_id, "intents");
   }
 
   // Force flush of regular DB if we were not able to flush for too long.

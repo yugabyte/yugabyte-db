@@ -156,6 +156,10 @@ class IndexContext : public docdb::DocVectorIndexContext {
     return tablet_.key_bounds();
   }
 
+  void WaitWalDurable(const OpId& op_id) const override {
+    tablet_.WaitWalDurable(op_id);
+  }
+
   Result<docdb::DocRowwiseIteratorPtr> CreateVectorColumnIterator(
       HybridTime read_ht, std::optional<Slice> start_key) const {
     auto result = VERIFY_RESULT(tablet_.NewUninitializedDocRowIterator(
