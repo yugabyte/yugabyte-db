@@ -46,6 +46,7 @@
 #include "yb/util/format.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/net/socket.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
@@ -60,6 +61,7 @@
 
 DECLARE_string(otel_collector_traces_endpoint);
 DECLARE_string(otel_internal_log_level);
+DECLARE_int32(ysql_yb_otel_log_throttle_interval_secs);
 DECLARE_uint32(otel_batch_max_queue_size);
 DECLARE_uint32(otel_batch_schedule_delay_ms);
 DECLARE_uint32(otel_batch_max_export_batch_size);
@@ -1332,6 +1334,134 @@ class DistTraceTxnHeartbeatTest : public DistTraceTest {
     // Keep ROLLBACK from sending UpdateTransaction(IMMEDIATE_CLEANUP) to participants, so
     // heartbeats are the only UpdateTransaction the transaction could produce.
     options->extra_tserver_flags.push_back("--TEST_disable_proactive_txn_cleanup_on_abort=true");
+  }
+};
+
+// Counts the lines matching a pattern in the output of one daemon, including its postgres logs.
+class DaemonLogCounter : public ExternalDaemon::StringListener {
+ public:
+  DaemonLogCounter(ExternalDaemon* daemon, std::string pattern)
+      : daemon_(daemon), pattern_(std::move(pattern)) {
+    daemon_->SetLogListener(this);
+  }
+
+  ~DaemonLogCounter() {
+    daemon_->RemoveLogListener(this);
+  }
+
+  void Handle(const GStringPiece& s) override {
+    if (s.find(pattern_) != GStringPiece::npos) {
+      ++count_;
+    }
+  }
+
+  int Count() const { return count_; }
+
+  Status WaitForCount(int count) {
+    return WaitFor(
+        [this, count] { return count_ >= count; }, 30s * kTimeMultiplier,
+        Format("$0 lines with '$1'", count, pattern_));
+  }
+
+ private:
+  ExternalDaemon* const daemon_;
+  const std::string pattern_;
+  std::atomic<int> count_{0};
+};
+
+// Runs traced queries against a collector that cannot take spans, and checks that a runtime change
+// of ysql_yb_otel_log_throttle_interval_secs reaches running and new postgres backends.
+class DistTraceOtelLogThrottleTest : public DistTraceTest {
+ protected:
+  void ConfigureDistTraceOptions(ExternalMiniClusterOptions* options) override {
+    auto endpoint = ASSERT_RESULT(StartCollector());
+    for (auto* flags : {&options->extra_tserver_flags, &options->extra_master_flags}) {
+      AppendFlagToAllowedPreviewFlagsCsv(*flags, "otel_collector_traces_endpoint");
+      flags->push_back(Format("--otel_collector_traces_endpoint=http://$0/v1/traces", endpoint));
+      flags->push_back("--otel_batch_max_export_batch_size=1");
+    }
+    options->extra_tserver_flags.push_back("--ysql_yb_otel_log_throttle_interval_secs=3600");
+  }
+
+  virtual Result<Endpoint> StartCollector() = 0;
+
+  Status RunTracedQueries(PGConn* conn) {
+    for (int i = 0; i < kQueries; ++i) {
+      RETURN_NOT_OK(conn->FetchFormat(
+          "/*traceparent='$0'*/ SELECT 1", GenerateTraceparent().full));
+    }
+    return Status::OK();
+  }
+
+  Status SetInterval(PGConn* conn, const std::string& secs) {
+    RETURN_NOT_OK(cluster_->SetFlagOnTServers("ysql_yb_otel_log_throttle_interval_secs", secs));
+    return WaitFor(
+        [conn, &secs]() -> Result<bool> {
+          return VERIFY_RESULT(conn->FetchRow<std::string>(
+              "SHOW yb_otel_log_throttle_interval_secs")) == secs;
+        },
+        30s * kTimeMultiplier, Format("yb_otel_log_throttle_interval_secs = $0", secs));
+  }
+
+  void TestIntervalChangeReachesBackends(const std::string& pattern) {
+    DaemonLogCounter counter(cluster_->tablet_server(0), pattern);
+
+    // At 3600, each process logs at most the first line of a window: one from the backend and one
+    // from yb-tserver, which exports its own spans to the same collector.
+    auto conn1 = ASSERT_RESULT(Connect());
+    ASSERT_OK(RunTracedQueries(&conn1));
+    SleepFor(2s * kTimeMultiplier);
+    ASSERT_LE(counter.Count(), 2);
+
+    ASSERT_OK(SetInterval(&conn1, "0"));
+    auto before = counter.Count();
+    ASSERT_OK(RunTracedQueries(&conn1));
+    ASSERT_OK(counter.WaitForCount(before + kQueries));
+
+    // The postmaster spawn env still holds 3600.
+    auto conn2 = ASSERT_RESULT(Connect());
+    before = counter.Count();
+    ASSERT_OK(RunTracedQueries(&conn2));
+    ASSERT_OK(counter.WaitForCount(before + kQueries));
+  }
+
+  static constexpr int kQueries = 10;
+};
+
+// Accepts connections and never replies. The backend export thread blocks on its first span, so
+// with a one-span queue the backend drops every later span.
+class DistTraceStalledCollectorTest : public DistTraceOtelLogThrottleTest {
+ protected:
+  void ConfigureDistTraceOptions(ExternalMiniClusterOptions* options) override {
+    DistTraceOtelLogThrottleTest::ConfigureDistTraceOptions(options);
+    options->extra_tserver_flags.push_back("--otel_ysql_batch_max_queue_size=1");
+  }
+
+  Result<Endpoint> StartCollector() override {
+    RETURN_NOT_OK(stalled_collector_.Init(0));
+    RETURN_NOT_OK(stalled_collector_.BindAndListen(
+        VERIFY_RESULT(ParseEndpoint("127.0.0.1:0", 0)), 128 /* listen_queue_size */));
+    Endpoint endpoint;
+    RETURN_NOT_OK(stalled_collector_.GetSocketAddress(&endpoint));
+    return endpoint;
+  }
+
+  void DoBeforeTearDown() override {
+    // Blocked exports would hold up daemon shutdown until they time out. Closing the listener
+    // resets the connections it never accepted.
+    WARN_NOT_OK(stalled_collector_.Close(), "Failed to close the stalled collector");
+    DistTraceOtelLogThrottleTest::DoBeforeTearDown();
+  }
+
+ private:
+  Socket stalled_collector_;
+};
+
+// Nothing listens on the port, so every export batch fails with connection refused.
+class DistTraceUnreachableCollectorTest : public DistTraceOtelLogThrottleTest {
+ protected:
+  Result<Endpoint> StartCollector() override {
+    return ParseEndpoint(Format("127.0.0.1:$0", AllocateFreePort()), 0);
   }
 };
 
@@ -3041,6 +3171,80 @@ TEST_F(DistTraceRpcTest, TestOtelInternalLogLevelNoneSuppressesAllMessages) {
   ASSERT_EQ(warning_waiter.GetEventCount(), 0);
   ASSERT_EQ(info_waiter.GetEventCount(), 0);
   ASSERT_EQ(debug_waiter.GetEventCount(), 0);
+}
+
+// The dropped-span and export-failure messages log at most once per
+// ysql_yb_otel_log_throttle_interval_secs each, with a suppressed count. Other SDK messages are not
+// throttled.
+TEST_F(DistTraceRpcTest, TestOtelLogThrottle) {
+  google::FlagSaver flag_saver;
+  dist_trace::ScopedTestDistTrace endpoint_setter(collector_.Url());
+
+  static constexpr auto kDroppedSpan = "BatchSpanProcessor queue is full - dropping span.";
+  static constexpr auto kSessionFailure =
+      "[OTLP HTTP Client] Session state: connection failed.Could not connect to server";
+  static constexpr auto kExportFailure =
+      "[OTLP TRACE HTTP Exporter] ERROR: Export 5 trace span(s) error: 1";
+  static constexpr auto kOtherWarning = "otel unthrottled internal warning";
+  static constexpr auto kOtherError = "otel unthrottled internal error";
+  static constexpr int kCount = 100;
+
+  RegexWaiterLogSink dropped_waiter("W.*queue is full - dropping span.*");
+  RegexWaiterLogSink session_waiter("E.*\\[OTLP HTTP Client\\] Session state.*");
+  RegexWaiterLogSink export_waiter("E.*\\[OTLP TRACE HTTP Exporter\\] ERROR.*");
+  RegexWaiterLogSink suppressed_waiter(
+      Format(".*\\[suppressed $0 similar messages\\].*", kCount));
+  RegexWaiterLogSink other_warning_waiter(Format("W.*$0.*", kOtherWarning));
+  RegexWaiterLogSink other_error_waiter(Format("E.*$0.*", kOtherError));
+
+  dist_trace::InitDistTrace("ysql" /* service_name */, "dist-trace-otel-log-throttle-test");
+  auto cleanup = ScopeExit([] {
+    dist_trace::ShutdownDistTrace();
+  });
+
+  auto log_throttled = [] {
+    OTEL_INTERNAL_LOG_WARN(kDroppedSpan);
+    OTEL_INTERNAL_LOG_ERROR(kSessionFailure);
+    OTEL_INTERNAL_LOG_ERROR(kExportFailure);
+  };
+  auto assert_throttled_counts = [&](int count) {
+    ASSERT_EQ(dropped_waiter.GetEventCount(), count);
+    ASSERT_EQ(session_waiter.GetEventCount(), count);
+    ASSERT_EQ(export_waiter.GetEventCount(), count);
+  };
+
+  // The throttle state is static per process and starts at time 0 of CLOCK_MONOTONIC. Logging at
+  // interval 0 starts each window now, independent of host uptime and earlier tests.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_otel_log_throttle_interval_secs) = 0;
+  log_throttled();
+  ASSERT_NO_FATALS(assert_throttled_counts(1));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_otel_log_throttle_interval_secs) = 3600;
+  for (int i = 0; i < kCount; ++i) {
+    log_throttled();
+    OTEL_INTERNAL_LOG_WARN(kOtherWarning);
+    OTEL_INTERNAL_LOG_ERROR(kOtherError);
+  }
+  ASSERT_EQ(other_warning_waiter.GetEventCount(), kCount);
+  ASSERT_EQ(other_error_waiter.GetEventCount(), kCount);
+  ASSERT_NO_FATALS(assert_throttled_counts(1));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_otel_log_throttle_interval_secs) = 0;
+  log_throttled();
+  ASSERT_NO_FATALS(assert_throttled_counts(2));
+  ASSERT_EQ(suppressed_waiter.GetEventCount(), 3);
+}
+
+TEST_F(DistTraceStalledCollectorTest, TestDroppedSpanLogIntervalChange) {
+  TestIntervalChangeReachesBackends("queue is full - dropping span");
+}
+
+TEST_F(DistTraceUnreachableCollectorTest, TestExportFailureLogIntervalChange) {
+  TestIntervalChangeReachesBackends("[OTLP TRACE HTTP Exporter] ERROR: Export");
+}
+
+TEST_F(DistTraceUnreachableCollectorTest, TestHttpClientFailureLogIntervalChange) {
+  TestIntervalChangeReachesBackends("[OTLP HTTP Client] Session state: connection failed");
 }
 
 // A multi-row scan must emit exactly one executor-node span (not one per

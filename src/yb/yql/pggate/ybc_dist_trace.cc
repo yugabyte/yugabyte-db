@@ -137,6 +137,10 @@ bool YBCIsDistTraceEnabled() {
   return dist_trace::IsDistTraceEnabled();
 }
 
+void YBCSetOtelLogThrottleIntervalSecs(int secs) {
+  dist_trace::SetOtelLogThrottleIntervalSecsFromGuc(secs);
+}
+
 bool YBCIsDistTraceActive() {
   return YBCIsDistTraceEnabled() && !YBCIsOtelScopeStackEmpty();
 }

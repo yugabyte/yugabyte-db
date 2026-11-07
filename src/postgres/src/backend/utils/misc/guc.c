@@ -178,6 +178,7 @@ static double yb_transaction_priority_lower_bound = 0.0;
 static double yb_transaction_priority_upper_bound = 1.0;
 static double yb_transaction_priority = 0.0;
 static int	yb_tcmalloc_sample_period = 1024 * 1024;	/* 1MB */
+static int	yb_otel_log_throttle_interval_secs = 10;
 
 /* YB: ConnMgr variables used to track SIGHUP */
 uint64_t	yb_conn_mgr_sighup_logical_client_version = 0;
@@ -333,6 +334,7 @@ static void check_reserved_prefixes(const char *varName);
 static void assign_yb_enable_cbo(int new_value, void *extra);
 static void assign_yb_enable_optimizer_statistics(bool new_value, void *extra);
 static void assign_yb_enable_base_scans_cost_model(bool new_value, void *extra);
+static void assign_yb_otel_log_throttle_interval_secs(int newval, void *extra);
 
 static bool check_yb_disable_pg_snapshot_mgmt_in_repeatable_read(bool *newval, void **extra, GucSource source);
 static bool check_yb_enable_advisory_locks(bool *newval, void **extra, GucSource source);
@@ -6620,6 +6622,19 @@ static struct config_int ConfigureNamesInt[] =
 		&yb_ycm_internal_client_port,
 		-1, -1, 65535,
 		check_yb_conn_mgr_client_port, assign_yb_conn_mgr_client_port, NULL
+	},
+
+	{
+		{"yb_otel_log_throttle_interval_secs", PGC_SIGHUP, LOGGING_WHAT,
+			gettext_noop("Minimum interval in seconds between two logs of the same "
+						 "OpenTelemetry dropped-span or export-failure message from one backend."),
+			gettext_noop("Set through the ysql_yb_otel_log_throttle_interval_secs "
+						 "yb-tserver flag. 0 disables throttling."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_otel_log_throttle_interval_secs,
+		10, 0, INT_MAX,
+		NULL, assign_yb_otel_log_throttle_interval_secs, NULL
 	},
 
 	/* End-of-list marker */
@@ -18456,6 +18471,13 @@ assign_yb_dist_tracecontext(const char *newval, void *extra)
 	MemoryContext oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 	yb_guc_remote_span_ctx = YBCGetValidSpanContext((const char *) extra);
 	MemoryContextSwitchTo(oldcontext);
+}
+
+/* See SetOtelLogThrottleIntervalSecsFromGuc. */
+static void
+assign_yb_otel_log_throttle_interval_secs(int newval, void *extra)
+{
+	YBCSetOtelLogThrottleIntervalSecs(newval);
 }
 
 /*
