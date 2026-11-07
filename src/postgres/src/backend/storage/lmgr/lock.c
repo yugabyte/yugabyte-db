@@ -1026,9 +1026,9 @@ LockAcquireExtended(const LOCKTAG *locktag,
 		}
 
 		/*
-		 * YB: A legacy mode transaction keeps the lock in the local table, as
-		 * PG does, but sends it to the tserver only if new mode DDLs wait for
-		 * it (#36572).
+		 * YB: Keep the lock in the local table, as upstream does, even when
+		 * the tserver does not get it. LockRelationIdForSession, for one,
+		 * requires the transaction lock to be held.
 		 */
 		if (!YbShouldSendObjectLock(lockmode, sessionLock))
 		{
@@ -2241,7 +2241,8 @@ LockRelease(const LOCKTAG *locktag, LOCKMODE lockmode, bool sessionLock)
 
 	/*
 	 * YB Note: Always forward the session lock release to the tserver as this
-	 * is tied to a different transaction, unless the tserver never had it.
+	 * is tied to a different transaction. Skip it if the tserver never got the
+	 * lock.
 	 */
 	if (sessionLock && !locallock->yb_legacy_mode_skipped)
 	{
@@ -5078,13 +5079,13 @@ LockWaiterCount(const LOCKTAG *locktag)
 }
 
 /*
- * YB: Whether the current transaction sends this lock to the tserver. A new
- * mode transaction sends every lock. A legacy mode transaction, one that
- * started before yb_enable_object_locking_infra was promoted, sends only the
- * local DML locks that new mode DDLs wait for (#36572). The stronger ones are
- * global or exclusive and would change how legacy mode DDLs and LOCK TABLE
- * behave before the promotion. Session locks are left out too: every session
- * lock PG takes is ShareUpdateExclusive or stronger (CREATE INDEX, VACUUM).
+ * YB: A new mode DDL waits for DMLs only through object locks. So a legacy
+ * mode transaction, one that started before yb_enable_object_locking_infra was
+ * promoted, sends the local DML locks that such a DDL waits for (#36572). It
+ * sends no stronger lock: those are global or exclusive, and would change how
+ * legacy DDLs and LOCK TABLE behave before the promotion. It sends no session
+ * lock: every session lock PG takes is ShareUpdateExclusive or stronger
+ * (CREATE INDEX, VACUUM).
  */
 static bool
 YbShouldSendObjectLock(LOCKMODE lockmode, bool sessionLock)

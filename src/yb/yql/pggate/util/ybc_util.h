@@ -198,9 +198,9 @@ bool YBCIsObjectLockingInfraEnabled();
 bool YBCIsObjectLockingEnabled();
 
 /*
- * Whether the current transaction takes local object locks: in new mode along with global ones,
- * and in legacy mode for its DMLs, so that new mode DDLs wait for it (#36572), unless
- * yb_disable_legacy_mode_local_object_locks is on. Latched by
+ * Whether the current transaction takes local object locks. A new mode transaction takes them
+ * along with global ones. A legacy mode transaction takes them for its DMLs, so that new mode
+ * DDLs wait for it (#36572), unless yb_disable_legacy_mode_local_object_locks is on. Latched by
  * YBCSetObjectLockingInfraForCurrTxn().
  */
 bool YBCIsLocalObjectLockingEnabled();
