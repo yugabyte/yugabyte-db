@@ -3571,12 +3571,15 @@ YbRunWithPrefetcher(YbcStatus (*func) (YbRunWithPrefetcherContext *),
 		 * from need not be the thing that records -- it may be a refresh on a live backend,
 		 * which records nothing.
 		 *
-		 * Both of the other tests are load-bearing and neither is reachable from a test. The ask
-		 * is cleared only where this branch fires, so an attempt that failed on a snapshot too old
-		 * leaves it set while starter_idx moves on, and a renew attempt answering that nothing is
-		 * cached would be read as a send-away without the starter test. And only the cache miss
-		 * means a fill was under way: any other failure is a real one, and turning it into a stale
-		 * read would hide it.
+		 * Only the cache miss means a fill was under way, and that test is load-bearing: any
+		 * other failure is a real one, and turning it into a stale read would hide it. No test
+		 * reaches it, since nothing makes the first attempt fail any other way.
+		 *
+		 * The starter test is defensive. The ask is cleared only where this branch fires, so an
+		 * attempt that failed on a snapshot too old carries it into a renew attempt -- but the
+		 * Incomplete this looks for comes from the cache only on a lookup-only read or a
+		 * send-away, and a renew attempt is neither, so it cannot arrive with the ask still set.
+		 * Keeping the test costs nothing and bounds the branch to the attempt it was written for.
 		 */
 		if (trust_cache.send_away_if_fill_in_flight &&
 			starter_idx == kFirstFullPrefetchIdx &&

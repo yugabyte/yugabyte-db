@@ -1960,11 +1960,6 @@ TEST_F(PgStaleCatalogPrefetchTest, ARefreshDoesNotRecordAVersion) {
       << "a refresh recorded a version it had not cached a whole connection start for";
 }
 
-// Holds every response cache fill open until the test lets it go. A paused fill is what makes a
-// connection arriving behind it find a fill already under way, and pausing rather than sleeping
-// means the window ends when the test has seen what it was waiting for, not when a timer runs
-// out. A connection that is sent away never fills, so it completes while the pause is on -- that
-// it completes at all is the proof it did not wait for the fill.
 // Keeps a connection start's claim past the round that completes its prefetch, and lifts that
 // however the test leaves. The flag is process-wide, so a test returning early on a failed
 // assertion would otherwise leave every later test in the binary with claims that never end.
@@ -1983,6 +1978,11 @@ class ClaimKeptPastCompletion {
   }
 };
 
+// Holds every response cache fill open until the test lets it go. A paused fill is what makes a
+// connection arriving behind it find a fill already under way, and pausing rather than sleeping
+// means the window ends when the test has seen what it was waiting for, not when a timer runs
+// out. A connection that is sent away never fills, so it completes while the pause is on -- that
+// it completes at all is the proof it did not wait for the fill.
 class PausedFills {
  public:
   PausedFills() { Set(true); }
