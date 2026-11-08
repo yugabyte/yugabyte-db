@@ -18,8 +18,10 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.client.TestUtils;
 import org.yb.YBTestRunner;
+import org.yb.minicluster.MiniYBClusterBuilder;
 
 import java.io.File;
+import java.util.Collections;
 import java.util.Map;
 
 @RunWith(value=YBTestRunner.class)
@@ -34,6 +36,15 @@ public class TestPgRegressThirdPartyExtensionsOrafce extends BasePgRegressTest {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("ysql_enable_auto_analyze", "false");
     return flagMap;
+  }
+
+  // utl_file.tmpdir() reads TMPDIR (default /tmp); use a per-test dir so that concurrent runs of
+  // the files test don't clobber each other's regress_orafce.txt.
+  @Override
+  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
+    super.customizeMiniClusterBuilder(builder);
+    builder.addEnvironmentVariables(
+        Collections.singletonMap("TMPDIR", TestUtils.getBaseTmpDir()));
   }
 
   @Test
