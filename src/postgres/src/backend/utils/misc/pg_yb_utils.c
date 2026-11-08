@@ -5156,19 +5156,6 @@ YBOnUtilityOperationEnd()
 }
 
 void
-YBOnUtilityOperationAbort()
-{
-	Assert(query_state.utility_operation_nesting_level > 0);
-	query_state.utility_operation_nesting_level--;
-}
-
-bool
-YBIsInUtilityOperation()
-{
-	return query_state.utility_operation_nesting_level > 0;
-}
-
-void
 YBResetOperationTracking()
 {
 	memset(&query_state, 0, sizeof(query_state));
