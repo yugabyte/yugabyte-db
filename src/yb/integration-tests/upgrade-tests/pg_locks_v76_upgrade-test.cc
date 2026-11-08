@@ -41,7 +41,11 @@ TEST_F(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
   auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
   ASSERT_OK(conn.Execute("CREATE TABLE foo (id INT PRIMARY KEY, value TEXT);"));
   ASSERT_OK(conn.Execute("INSERT INTO foo VALUES (1, 'test');"));
-  // Acquire advisory locks and a row lock.
+  // Cache the pre-upgrade row type of yb_lock_status in conn's backend, so that conn's read after
+  // finalize shows whether its transaction refreshes the catalog cache. Read outside the
+  // transaction below: the lock on the pg_locks view is released at once.
+  ASSERT_OK(conn.Fetch(kPgLocksQuery));
+  // Acquire advisory locks and a row lock, and hold them across the upgrade.
   ASSERT_OK(conn.Fetch("SELECT pg_advisory_lock(1);"));
   ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
   ASSERT_OK(conn.Fetch("SELECT pg_advisory_xact_lock_shared(2,2);"));
@@ -51,12 +55,16 @@ TEST_F(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
   SleepFor(MonoDelta::FromSeconds(1 * kTimeMultiplier));
 
   // Check that the pg_locks view does not include the new columns,
-  // classid, objid, objsubid, during the upgrade.
-  auto pg_locks_result = ASSERT_RESULT(conn.FetchAllAsString(
+  // classid, objid, objsubid, during the upgrade. Read pg_locks from another connection: a
+  // transaction that reads it holds a lock on the view, and the V76 migration that replaces the
+  // view in FinalizeUpgrade() waits for that lock.
+  auto observer = ASSERT_RESULT(cluster_->ConnectToDB());
+  ASSERT_OK(observer.ExecuteFormat("SET yb_locks_min_txn_age='$0ms'", kMinTxnAgeMs));
+  auto pg_locks_result = ASSERT_RESULT(observer.FetchAllAsString(
       Format("$0 WHERE locktype = 'advisory';", kPgLocksQuery)));
   ASSERT_EQ(pg_locks_result, "NULL, NULL, NULL, ShareLock; "
                              "NULL, NULL, NULL, ExclusiveLock");
-  pg_locks_result = ASSERT_RESULT(conn.FetchAllAsString(
+  pg_locks_result = ASSERT_RESULT(observer.FetchAllAsString(
       Format("$0 WHERE locktype = 'row';", kPgLocksQuery)));
   ASSERT_EQ(pg_locks_result, "NULL, NULL, NULL, STRONG_READ,STRONG_WRITE");
 
