@@ -467,6 +467,12 @@ class ClusterAdminClient {
 
   Status DisableDynamicTableAdditionOnCDCSDKStream(const std::string& stream_id);
 
+  Status SetReplicationSlotCatalogBarrier(const std::string& slot_name);
+
+  Status PauseReplicationSlot(const std::string& slot_name);
+
+  Status ReleaseReplicationSlot(const std::string& slot_name);
+
   Status RemoveUserTableFromCDCSDKStream(const std::string& stream_id, const std::string& table_id);
 
   Status ValidateAndSyncCDCStateEntriesForCDCSDKStream(const std::string& stream_id);

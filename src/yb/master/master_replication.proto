@@ -90,6 +90,15 @@ message CDCStreamInfoPB {
 
   // See SysCDCStreamEntryPB.xcluster_bootstrap_info.
   optional XClusterStreamBootstrapInfoPB xcluster_bootstrap_info = 22;
+
+  // See SysCDCStreamEntryPB.implicit_conversion_barrier_ht.
+  optional fixed64 implicit_conversion_barrier_ht = 23;
+
+  // See SysCDCStreamEntryPB.implicit_conversion_paused.
+  optional bool implicit_conversion_paused = 24 [default = false];
+
+  // See SysCDCStreamEntryPB.unusable_with_transactional_ddl.
+  optional bool unusable_with_transactional_ddl = 25 [default = false];
 }
 
 message ValidateReplicationInfoRequestPB {
@@ -917,8 +926,7 @@ message GetUniverseReplicationInfoResponsePB {
 }
 
 message PrepareReplicationSlotsForTransactionalDDLRequestPB {
-  // The replication slot to prepare. If not set, then all replication slots that detect
-  // publication changes implicitly are prepared.
+  // The replication slot to prepare. If not set, then all logical replication slots are prepared.
   optional string replication_slot_name = 1;
 }
 
@@ -943,6 +951,31 @@ message DisableDynamicTableAdditionOnCDCSDKStreamRequestPB {
 }
 
 message DisableDynamicTableAdditionOnCDCSDKStreamResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message SetReplicationSlotCatalogBarrierRequestPB {
+  optional string replication_slot_name = 1;
+}
+
+message SetReplicationSlotCatalogBarrierResponsePB {
+  optional MasterErrorPB error = 1;
+  optional fixed64 barrier_ht = 2;
+}
+
+message PauseReplicationSlotRequestPB {
+  optional string replication_slot_name = 1;
+}
+
+message PauseReplicationSlotResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message ReleaseReplicationSlotRequestPB {
+  optional string replication_slot_name = 1;
+}
+
+message ReleaseReplicationSlotResponsePB {
   optional MasterErrorPB error = 1;
 }
 
@@ -1161,6 +1194,13 @@ service MasterReplication {
   rpc PrepareReplicationSlotsForTransactionalDDL(
       PrepareReplicationSlotsForTransactionalDDLRequestPB)
       returns (PrepareReplicationSlotsForTransactionalDDLResponsePB);
+  // Prepare a pub-refresh replication slot for conversion to an implicit slot.
+  rpc SetReplicationSlotCatalogBarrier(SetReplicationSlotCatalogBarrierRequestPB)
+      returns (SetReplicationSlotCatalogBarrierResponsePB);
+  rpc PauseReplicationSlot(PauseReplicationSlotRequestPB)
+      returns (PauseReplicationSlotResponsePB);
+  rpc ReleaseReplicationSlot(ReleaseReplicationSlotRequestPB)
+      returns (ReleaseReplicationSlotResponsePB);
   // Introduced for bug (#22876, #22773)
   rpc RemoveTablesFromCDCSDKStream (RemoveTablesFromCDCSDKStreamRequestPB)
       returns (RemoveTablesFromCDCSDKStreamResponsePB);

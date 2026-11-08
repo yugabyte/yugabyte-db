@@ -153,16 +153,26 @@ class CdcUpgradeTest : public UpgradeTestBase {
     return true;
   }
 
-  Status PrepareSlotForTxnDdl(const std::string& slot_name) {
+  // Returns yb-admin's output, or its error output as the error.
+  Result<std::string> RunYbAdmin(const std::string& yb_admin_command, const std::string& arg) {
     auto command = ToStringVector(
         GetToolPath("yb-admin"), "--master_addresses", cluster_->GetMasterAddresses(),
-        "--timeout_ms", 60000, "prepare_replication_slots_for_transactional_ddl", slot_name);
+        "--timeout_ms", 60000, yb_admin_command);
+    if (!arg.empty()) {
+      command.push_back(arg);
+    }
     std::string output, error;
     auto status = Subprocess::Call(command, &output, &error);
     LOG(INFO) << "yb-admin output: " << output << ", error output: " << error;
     if (!status.ok()) {
       return STATUS_FORMAT(RuntimeError, "$0: $1", status, error);
     }
+    return output;
+  }
+
+  Status PrepareSlotForTxnDdl(const std::string& slot_name) {
+    auto output =
+        VERIFY_RESULT(RunYbAdmin("prepare_replication_slots_for_transactional_ddl", slot_name));
     SCHECK_STR_CONTAINS(
         output, Format("Prepared replication slots for transactional DDL: [$0]", slot_name));
     SCHECK(VERIFY_RESULT(HasTxnDdlCatalogTables(slot_name)), IllegalState,
@@ -192,7 +202,36 @@ class CdcUpgradeTest : public UpgradeTestBase {
     return RestartAllTServersInCurrentVersion(kNoDelayBetweenNodes);
   }
 
+  // Creates pub-refresh slots in the old version, streams from the first, and upgrades without
+  // finalizing.
+  void CreatePubRefreshSlotsAndUpgrade(const std::vector<std::string>& slot_names) {
+    constexpr auto kImplicitFlag = "ysql_yb_enable_implicit_dynamic_tables_logical_replication";
+    ExternalMiniClusterOptions opts;
+    opts.num_masters = 3;
+    opts.num_tablet_servers = 3;
+    for (auto* flags : {&opts.extra_master_flags, &opts.extra_tserver_flags}) {
+      flags->push_back(Format("--$0=false", kImplicitFlag));
+    }
+    ASSERT_OK(StartClusterInOldVersion(opts));
+    ASSERT_OK(PrepareTableWithData());
+    ASSERT_OK(CreatePublicationAndSlots(slot_names));
+    for (const auto& slot_name : slot_names) {
+      ASSERT_FALSE(ASSERT_RESULT(GetSlotStream(slot_name)).second);
+    }
+    ASSERT_OK(InsertRows(11, 20));
+    ASSERT_OK(CheckNoRowsLost(
+        ASSERT_RESULT(StreamRows(slot_names.front(), 20, IgnoreReadTime::kFalse)),
+        ExpectedRows(11, 20, WithNewCol::kFalse)));
+
+    for (auto* daemon : cluster_->daemons()) {
+      daemon->RemoveExtraFlag(kImplicitFlag);
+    }
+    EnableTxnDdlInCurrentVersion();
+    ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes, /*auto_finalize=*/false));
+  }
+
   void TestImplicitSlotDecodesTxnDdlAfterUpgrade();
+  void TestPausedPubRefreshSlotConvertedToImplicit();
 
   // 2026.1 allows USE_SNAPSHOT only inside a transaction.
   Status CreatePublicationAndSlots(const std::vector<std::string>& slot_names) {
@@ -416,6 +455,52 @@ void CdcUpgradeTest::TestImplicitSlotDecodesTxnDdlAfterUpgrade() {
       ASSERT_RESULT(StreamRows(kSlot, 28, IgnoreReadTime::kTrue)), expected_rows));
 }
 
+// A pub-refresh slot paused before finalize is converted to an implicit slot, which then decodes
+// DDL committed while it was paused. A pub-refresh slot that wasn't paused becomes unusable.
+void CdcUpgradeTest::TestPausedPubRefreshSlotConvertedToImplicit() {
+  constexpr auto kSlot = "pub_refresh_slot";
+  constexpr auto kUnpausedSlot = "unpaused_pub_refresh_slot";
+  ASSERT_NO_FATALS(CreatePubRefreshSlotsAndUpgrade({kSlot, kUnpausedSlot}));
+
+  ASSERT_OK(RunYbAdmin("set_replication_slot_catalog_barrier", kSlot));
+  ASSERT_OK(InsertRows(21, 25));
+  ASSERT_OK(CheckNoRowsLost(
+      ASSERT_RESULT(StreamRows(kSlot, 25, IgnoreReadTime::kTrue)),
+      ExpectedRows(21, 25, WithNewCol::kFalse)));
+  ASSERT_OK(WaitFor(
+      [this]() { return RunYbAdmin("pause_replication_slot", kSlot).ok(); }, 60s,
+      "Pause the slot once its restart time is past the barrier"));
+
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB(kDbName));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN new_col INT", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (26, 'value_26', 26)", kTableName));
+
+  ASSERT_OK(FinalizeUpgrade());
+  ASSERT_OK(EnableTxnDdlReplication());
+  ASSERT_OK(RunYbAdmin("prepare_replication_slots_for_transactional_ddl", ""));
+  ASSERT_NOK_STR_CONTAINS(
+      StreamAndAcknowledge(kUnpausedSlot, "value_26", 60s, IgnoreReadTime::kTrue, nullptr),
+      "is unusable");
+  ASSERT_TRUE(ASSERT_RESULT(GetSlotStream(kSlot)).second);
+  ASSERT_TRUE(ASSERT_RESULT(HasTxnDdlCatalogTables(kSlot)));
+
+  conn = ASSERT_RESULT(cluster_->ConnectToDB(kDbName));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN new_col", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (27, 'value_27')", kTableName));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN aborted_col INT", kTableName));
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (28, 'value_28')", kTableName));
+
+  auto expected_rows = ExpectedRows(26, 26, WithNewCol::kTrue);
+  expected_rows.push_back("27,value_27");
+  expected_rows.push_back("28,value_28");
+  ASSERT_OK(CheckNoRowsLost(
+      ASSERT_RESULT(StreamRows(kSlot, 28, IgnoreReadTime::kTrue)), expected_rows));
+}
+
 class CdcUpgradeFrom2026_1Test : public CdcUpgradeTest {
  public:
   CdcUpgradeFrom2026_1Test() : CdcUpgradeTest(kBuild_2026_1_2_0) {}
@@ -423,6 +508,10 @@ class CdcUpgradeFrom2026_1Test : public CdcUpgradeTest {
 
 TEST_F(CdcUpgradeFrom2026_1Test, ImplicitSlotDecodesTxnDdlAfterUpgrade) {
   TestImplicitSlotDecodesTxnDdlAfterUpgrade();
+}
+
+TEST_F(CdcUpgradeFrom2026_1Test, PausedPubRefreshSlotConvertedToImplicit) {
+  TestPausedPubRefreshSlotConvertedToImplicit();
 }
 
 }  // namespace yb

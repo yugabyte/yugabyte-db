@@ -795,6 +795,18 @@ message SysCDCStreamEntryPB {
   // stream is INITIATED, so a recorded checkpoint is never redone. Streams that are checkpointed
   // again on purpose (indexes after their backfill) are only recorded by that later checkpoint.
   optional XClusterStreamBootstrapInfoPB xcluster_bootstrap_info = 23;
+
+  // Set on a pub-refresh logical replication stream that is being prepared for conversion to an
+  // implicit stream: the time of the retention barrier set on the sys catalog tablet for it.
+  optional fixed64 implicit_conversion_barrier_ht = 24;
+
+  // A paused stream can't be streamed. Set once the slot's restart time is past the barrier, and
+  // cleared when the stream is converted or released.
+  optional bool implicit_conversion_paused = 25 [default = false];
+
+  // Set on a pub-refresh logical replication stream that wasn't converted to an implicit stream
+  // when transactional DDL replication was enabled. It can't be streamed.
+  optional bool unusable_with_transactional_ddl = 26 [default = false];
 }
 
 message XClusterStreamBootstrapInfoPB {

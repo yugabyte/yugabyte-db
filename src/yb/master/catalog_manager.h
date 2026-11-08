@@ -206,7 +206,8 @@ YB_DEFINE_ENUM(DeleteYsqlDBTablesType,
 YB_DEFINE_ENUM(CDCStreamType, (kNone)(kLogicalReplication)(kgRPC));
 
 YB_DEFINE_ENUM(PrepareSlotForTxnDdlResult,
-               (kPrepared)(kNotLogicalReplication)(kNotificationSlot)(kDeleting)(kNotImplicit));
+               (kPrepared)(kMarkedUnusable)(kNotLogicalReplication)(kNotificationSlot)(kDeleting)
+               (kUnusable));
 
 struct YsqlTableDdlTxnState;
 using google::protobuf::RepeatedPtrField;
@@ -1666,8 +1667,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // were created with an empty plugin name.
   Status BackfillNotificationsStreamsPluginName(const LeaderEpoch& epoch);
 
-  // Adds the catalog tables used to decode transactional DDL to implicit streams created without
-  // them.
+  // Converts paused pub-refresh slots to implicit slots and marks the other pub-refresh slots
+  // unusable. Then adds the catalog tables used to decode transactional DDL to implicit slots
+  // created without them.
   Status PrepareReplicationSlotsForTransactionalDDL(
       const PrepareReplicationSlotsForTransactionalDDLRequestPB* req,
       PrepareReplicationSlotsForTransactionalDDLResponsePB* resp, rpc::RpcContext* rpc)
@@ -1693,6 +1695,18 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status RemoveTablesFromCDCSDKStream(
       const RemoveTablesFromCDCSDKStreamRequestPB* req,
       RemoveTablesFromCDCSDKStreamResponsePB* resp, rpc::RpcContext* rpc);
+
+  Status SetReplicationSlotCatalogBarrier(
+      const SetReplicationSlotCatalogBarrierRequestPB* req,
+      SetReplicationSlotCatalogBarrierResponsePB* resp, rpc::RpcContext* rpc);
+
+  Status PauseReplicationSlot(
+      const PauseReplicationSlotRequestPB* req, PauseReplicationSlotResponsePB* resp,
+      rpc::RpcContext* rpc);
+
+  Status ReleaseReplicationSlot(
+      const ReleaseReplicationSlotRequestPB* req, ReleaseReplicationSlotResponsePB* resp,
+      rpc::RpcContext* rpc);
 
   // Query if Bootstrapping is required for a CDC stream (e.g. Are we missing logs).
   Status IsBootstrapRequired(
@@ -1902,8 +1916,13 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Delete specified CDC streams metadata.
   Status CleanUpCDCSDKStreamsMetadata(const LeaderEpoch& epoch) EXCLUDES(mutex_);
 
-  Result<PrepareSlotForTxnDdlResult> AddTransactionalDdlCatalogTablesToStream(
+  Result<PrepareSlotForTxnDdlResult> PrepareStreamForTransactionalDDL(
       const CDCStreamInfoPtr& stream) EXCLUDES(mutex_);
+
+  Result<CDCStreamInfoPtr> GetPubRefreshStream(const std::string& slot_name) EXCLUDES(mutex_);
+  Result<bool> HasSysCatalogRetentionBarrier(const xrepl::StreamId& stream_id);
+  // Clears the barrier and the paused marker, and deletes the stream's sys catalog cdc_state entry.
+  Status ClearImplicitConversionState(const CDCStreamInfoPtr& stream);
 
   // Returns CDCSDK streams that need metadata cleanup. This includes streams with non-empty
   // dropped_table_id list and, when FLAGS_cdcsdk_use_dropped_table_list_for_cleanup is false,
@@ -3734,6 +3753,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   std::unordered_map<TableId, std::unordered_set<xrepl::StreamId>> cdcsdk_tables_to_stream_map_
       GUARDED_BY(mutex_);
+
+  // Serializes the commands that prepare pub-refresh streams for conversion to implicit streams.
+  std::mutex implicit_conversion_mutex_;
 
   // Maps a ReplicationSlotName to the xrepl::StreamId of the stream it belongs to. Present for
   // CDCSDK streams created from the YSQL syntax.

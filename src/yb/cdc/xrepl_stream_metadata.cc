@@ -140,6 +140,8 @@ Status StreamMetadata::GetStreamInfoFromMaster(
   std::optional<bool> detect_publication_changes_implicitly;
   bool is_notification_slot = false;
   std::optional<bool> xcluster_use_target_applied_filter;
+  bool implicit_conversion_paused = false;
+  bool unusable_with_transactional_ddl = false;
 
   RETURN_NOT_OK(client->GetCDCStream(
       stream_id, &namespace_id, &object_ids, &options, &transactional, &consistent_snapshot_time,
@@ -147,7 +149,8 @@ Status StreamMetadata::GetStreamInfoFromMaster(
       &replication_slot_name, &unqualified_table_ids, &replication_slot_lsn_type,
       &replication_slot_ordering_mode, &detect_publication_changes_implicitly,
       &replication_slot_plugin_name, &is_notification_slot,
-      &xcluster_use_target_applied_filter));
+      &xcluster_use_target_applied_filter, &implicit_conversion_paused,
+      &unusable_with_transactional_ddl));
 
   AddDefaultOptionsIfMissing(&options);
 
@@ -216,6 +219,8 @@ Status StreamMetadata::GetStreamInfoFromMaster(
   replication_slot_ordering_mode_ = replication_slot_ordering_mode;
   detect_publication_changes_implicitly_ = detect_publication_changes_implicitly;
   is_notification_slot_ = is_notification_slot;
+  implicit_conversion_paused_ = implicit_conversion_paused;
+  unusable_with_transactional_ddl_ = unusable_with_transactional_ddl;
   // xcluster_use_target_applied_filter is immutable per stream.
   const bool use_target_applied_filter = xcluster_use_target_applied_filter.value_or(false);
   if (is_refresh) {
