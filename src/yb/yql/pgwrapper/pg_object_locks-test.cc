@@ -1553,6 +1553,64 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyWriteMaintainsNewIndex) {
   ASSERT_NO_FATALS(CheckIndex(ddl_conn, 1));
 }
 
+// The legacy transaction writes the table before the CREATE INDEX, so the CREATE INDEX must wait
+// for it to finish before the backfill. Before the fix, the backfill read the row before the
+// UPDATE committed, and the committed UPDATE left the index entry with the old value.
+TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, CreateIndexWaitsForLegacyWriter) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
+  }
+
+  auto legacy_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(legacy_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(legacy_conn.Execute("UPDATE test SET v = 42 WHERE k = 1"));
+
+  ASSERT_NO_FATALS(PromoteForDdl());
+  auto create_index_future = std::async(std::launch::async, [&]() -> Status {
+    auto ddl_conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+    return ddl_conn.Execute("CREATE INDEX test_v_idx ON test(v)");
+  });
+  ASSERT_EQ(create_index_future.wait_for(3s * kTimeMultiplier), std::future_status::timeout)
+      << "CREATE INDEX did not wait for the legacy transaction's UPDATE";
+
+  ASSERT_OK(legacy_conn.Execute("COMMIT"));
+  ASSERT_OK(create_index_future.get());
+
+  auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_NO_FATALS(CheckIndex(conn, 1));
+}
+
+// The legacy transaction deletes a referenced parent row before the ADD FOREIGN KEY, so the ADD
+// FOREIGN KEY must wait for it before validating the existing child rows, and then fail.
+TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, AddForeignKeyWaitsForLegacyDelete) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  ASSERT_NO_FATALS(CreateParentAndChild());
+
+  auto legacy_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(legacy_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(legacy_conn.Execute("DELETE FROM parent WHERE k = 1"));
+
+  ASSERT_NO_FATALS(PromoteForDdl());
+  auto add_fk_future = std::async(std::launch::async, [&]() -> Status {
+    auto ddl_conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+    return ddl_conn.Execute(kAddForeignKey);
+  });
+  EXPECT_EQ(add_fk_future.wait_for(3s * kTimeMultiplier), std::future_status::timeout)
+      << "ADD FOREIGN KEY did not wait for the legacy transaction's DELETE";
+
+  ASSERT_OK(legacy_conn.Execute("COMMIT"));
+  auto add_fk_status = add_fk_future.get();
+  auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_NO_FATALS(CheckNoOrphans(conn));
+  ASSERT_NOK(add_fk_status);
+  ASSERT_STR_CONTAINS(add_fk_status.ToString(), "violates foreign key constraint");
+}
+
 // The legacy transaction only reads the parent table before the ADD FOREIGN KEY, so the ADD
 // FOREIGN KEY does not wait for it. Its DELETE of a referenced parent row after that must fail.
 // Before the fix, its catalog cache had no foreign key trigger, so the DELETE left an orphan.
@@ -1577,9 +1635,162 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyDeleteChecksNewForeignKey) {
   ASSERT_NO_FATALS(CheckNoOrphans(ddl_conn));
 }
 
+// A read-only legacy transaction holds local locks too, so its commit must release them, or a later
+// new mode DDL that needs a conflicting lock waits for the next transaction of that session.
+TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyReadOnlyTxnReleasesLocksAtCommit) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
+  }
+
+  auto legacy_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(legacy_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
+  ASSERT_OK(legacy_conn.Execute("COMMIT"));
+
+  ASSERT_NO_FATALS(PromoteForDdl());
+  auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(ddl_conn.Execute("SET statement_timeout = '10s'"));
+  ASSERT_OK(ddl_conn.Execute("ALTER TABLE test ADD COLUMN v2 INT"));
+}
+
+// ROLLBACK TO SAVEPOINT in a read-only legacy transaction must release the locks taken after the
+// savepoint, as it does in new mode, or a new mode DDL waits for the rest of the transaction.
+TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyReadOnlyTxnReleasesLocksAtRollbackToSavepoint) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
+  }
+
+  auto legacy_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(legacy_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(legacy_conn.Execute("SAVEPOINT a"));
+  ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
+  ASSERT_OK(legacy_conn.Execute("ROLLBACK TO SAVEPOINT a"));
+
+  ASSERT_NO_FATALS(PromoteForDdl());
+  auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(ddl_conn.Execute("SET statement_timeout = '10s'"));
+  ASSERT_OK(ddl_conn.Execute("ALTER TABLE test ADD COLUMN v2 INT"));
+  ASSERT_OK(legacy_conn.Execute("ROLLBACK"));
+}
+
+// A legacy transaction's lock taken in DDL mode is kept only in PG's local lock table. A DML that
+// later takes the same lock in the same transaction finds it there and does not send it, so a new
+// mode DDL does not wait for the DML. This gap is accepted: only an AccessShare reader can hit it,
+// because DDLs take stronger modes on user tables, so every writer's RowExclusive is still sent.
+// The reader keeps reading its snapshot and commits.
+TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, NewDdlDoesNotWaitForLockFirstTakenInDdlMode) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
+  }
+
+  auto legacy_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(legacy_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  // AccessShare on test, taken in DDL mode.
+  ASSERT_OK(legacy_conn.Execute("CREATE VIEW test_view AS SELECT * FROM test"));
+  // The same AccessShare on test, taken by a DML.
+  ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
+
+  ASSERT_NO_FATALS(PromoteForDdl());
+  auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  // If the reader's lock were sent, the ALTER would wait for it and hit this timeout.
+  ASSERT_OK(ddl_conn.Execute("SET statement_timeout = '5s'"));
+  ASSERT_OK(ddl_conn.Execute("ALTER TABLE test ADD COLUMN v1 INT"));
+  ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
+  ASSERT_OK(legacy_conn.Execute("COMMIT"));
+}
+
+// A legacy CREATE INDEX takes transaction and session locks that a legacy transaction does not
+// send. PG must still record them, since LockRelationIdForSession requires the transaction lock
+// to be held, and the tserver must get no session lock release for them.
+TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyCreateIndexSucceeds) {
+  auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*cluster_->tablet_server(0)));
+  ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 42"));
+  ASSERT_OK(conn.Execute("CREATE INDEX test_v_idx ON test(v)"));
+  ASSERT_NO_FATALS(CheckIndex(conn, 10));
+}
+
 INSTANTIATE_TEST_SUITE_P(
     PromoteLegacyTxnNode, PgObjectLocksTestLegacyTxnVsNewDdl, ::testing::Bool(),
     ::testing::PrintToStringParamName());
+
+// A legacy writer that rolls back must release its locks, as one that commits does. Otherwise a new
+// mode DDL keeps waiting for a transaction that has ended.
+TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyWriterReleasesLocksAtRollback) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
+  }
+
+  auto legacy_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(legacy_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(legacy_conn.Execute("UPDATE test SET v = 1 WHERE k = 1"));
+
+  ASSERT_NO_FATALS(PromoteForDdl());
+  auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(ddl_conn.Execute("SET statement_timeout = '5s'"));
+  // The legacy writer holds its lock, so the ALTER waits.
+  auto status = ddl_conn.Execute("ALTER TABLE test ADD COLUMN v2 INT");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "statement timeout");
+
+  ASSERT_OK(legacy_conn.Execute("ROLLBACK"));
+  ASSERT_OK(ddl_conn.Execute("ALTER TABLE test ADD COLUMN v2 INT"));
+}
+
+// A CREATE INDEX takes a session lock on the table, then runs each phase in its own transaction,
+// and releases the lock in the last one. Started in legacy mode, it does not send the session lock.
+// If the infra flag is promoted between phases, the release runs in a new mode transaction. PG must
+// not send it: the tserver rejects the release of a session lock it never got, and the backend
+// FATALs.
+TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyCreateIndexAcrossPromotion) {
+  auto* ts1 = cluster_->tablet_server(0);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 42"));
+  }
+
+  ASSERT_OK(cluster_->SetFlag(ts1, "ysql_yb_test_block_index_phase", "indisready"));
+  LogWaiter blocked(ts1, "blocking index state change indisready=true");
+  auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  auto create_index_future = std::async(std::launch::async, [&ddl_conn]() {
+    return ddl_conn.Execute("CREATE INDEX test_v_idx ON test(v)");
+  });
+  ASSERT_OK(blocked.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 30)));
+
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    ASSERT_OK(cluster_->SetFlag(
+        cluster_->tablet_server(i), "ysql_yb_enable_object_locking_infra", "true"));
+  }
+  auto observer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(LoggedWaitFor(
+      [&observer]() -> Result<bool> {
+        return VERIFY_RESULT(observer.FetchRow<std::string>(
+                   "SHOW yb_enable_object_locking_infra")) == "on";
+      },
+      MonoDelta::FromSeconds(kTimeMultiplier * 60), "promotion to reach the backends"));
+  ASSERT_OK(cluster_->SetFlag(ts1, "ysql_yb_test_block_index_phase", "none"));
+
+  ASSERT_OK(create_index_future.get());
+  ASSERT_OK(ddl_conn.Fetch("SELECT 1"));
+  ASSERT_OK(ddl_conn.Fetch("SELECT yb_index_check('test_v_idx'::regclass)"));
+}
 
 // A legacy DDL reads the catalog in its DDL transaction, at that transaction's read time. If it
 // refreshed its catalog cache when PG acquires a lock, it would refill entries from before a DDL

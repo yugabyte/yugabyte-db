@@ -236,7 +236,7 @@ void PgTxnManager::DEBUG_CheckOptionsForPerform(
   // Functions like YBCheckSharedCatalogCacheVersion, being executed outside scope of a
   // transaction block seem to issue custom selects on pg_yb_catalog_version table using
   // YBCPgNewSelect, skipping object locks. Skip the assertion for such cases for now.
-  if (!IsTableLockingEnabledForCurrentTxn() || options.ddl_mode() ||
+  if (!IsLocalTableLockingEnabledForCurrentTxn() || options.ddl_mode() ||
       options.use_legacy_catalog_session() || options.yb_non_ddl_txn_for_sys_tables_allowed() ||
       YBCIsInitDbModeEnvVarSet() || !YBCIsLegacyModeForCatalogOps()) {
     return;
@@ -263,6 +263,10 @@ bool PgTxnManager::IsTableLockingEnabledForCurrentTxn() const {
   VLOG_WITH_FUNC(1) << "enable_table_locking_: " << enable_table_locking_
                     << " object locking infra: " << YBCIsObjectLockingInfraEnabled();
   return enable_table_locking_ && YBCIsObjectLockingInfraEnabled();
+}
+
+bool PgTxnManager::IsLocalTableLockingEnabledForCurrentTxn() const {
+  return enable_table_locking_ && YBCIsLocalObjectLockingEnabled();
 }
 
 PgTxnManager::~PgTxnManager() = default;
@@ -401,11 +405,11 @@ Status PgTxnManager::CalculateIsolation(
   }
 
   // Force use of a docdb distributed txn for YSQL read only transactions involving savepoints when
-  // object locking feature is enabled (only for isolation != read committed case).
+  // the transaction takes object locks (only for isolation != read committed case).
   //
   // TODO(table-locks): Need to explicitly handle READ_COMMITTED case since YSQL internally bumps up
   // subtxn id for every statement. Else, every RC read-only txn would burn a docdb txn.
-  if (IsTableLockingEnabledForCurrentTxn() &&
+  if (IsLocalTableLockingEnabledForCurrentTxn() &&
       active_sub_transaction_id_ > kMinSubTransactionId &&
       pg_isolation_level_ != PgIsolationLevel::READ_COMMITTED) {
     read_only_op = false;
@@ -558,7 +562,7 @@ Status PgTxnManager::FinishPlainTransaction(
 
   const auto is_read_only = isolation_level_ == IsolationLevel::NON_TRANSACTIONAL;
   if (is_read_only &&
-      (!IsTableLockingEnabledForCurrentTxn() ||
+      (!IsLocalTableLockingEnabledForCurrentTxn() ||
        client_->TryReleaseAllObjectLocksInSharedMemory())) {
     VLOG_TXN_STATE(2) << "This was a read-only transaction, nothing to commit.";
     ResetTxnAndSession();
@@ -943,6 +947,7 @@ Status PgTxnManager::SetupPerformOptions(
   options.set_connected_database_oid(connected_database_oid_);
   options.set_origination_ht(GetOriginationHt());
   options.set_is_using_table_locks(IsTableLockingEnabledForCurrentTxn());
+  options.set_is_using_local_table_locks(IsLocalTableLockingEnabledForCurrentTxn());
   options.set_uses_catalog_snapshot(is_catalog_snapshot);
   // Follower reads are applicable on user tables and as such catalog ops bypass it.
   options.set_read_from_followers(UsesFollowerReads() && !is_catalog_snapshot);
@@ -1160,7 +1165,7 @@ Status PgTxnManager::RollbackToSubTransaction(
     return Status::OK();
   }
   if (isolation_level_ == IsolationLevel::NON_TRANSACTIONAL &&
-      !IsTableLockingEnabledForCurrentTxn()) {
+      !IsLocalTableLockingEnabledForCurrentTxn()) {
     VLOG(4) << "This isn't a distributed transaction, so nothing to rollback.";
     return Status::OK();
   }
