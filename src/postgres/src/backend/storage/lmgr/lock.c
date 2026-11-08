@@ -921,7 +921,6 @@ LockAcquireExtended(const LOCKTAG *locktag,
 		locallock->nLocks = 0;
 		locallock->holdsStrongLockCount = false;
 		locallock->lockCleared = false;
-		locallock->yb_legacy_mode_skipped = false;
 		locallock->numLockOwners = 0;
 		locallock->maxLockOwners = 8;
 		locallock->lockOwners = NULL;	/* in case next line fails */
@@ -965,9 +964,7 @@ LockAcquireExtended(const LOCKTAG *locktag,
 	bool yb_force_tserver_lock_acquire =
 		IsYugaByteEnabled() &&
 		((locallock->numLockOwners == 1 && locallock->lockOwners[0].owner == NULL) ||
-		 sessionLock ||
-		 (locallock->yb_legacy_mode_skipped &&
-		  YbShouldSendObjectLock(lockmode, sessionLock)));
+		 sessionLock);
 	if (locallock->nLocks > 0 && !yb_force_tserver_lock_acquire) /* YB: session locks go to the tserver */
 	{
 		GrantLockLocal(locallock, owner);
@@ -1032,7 +1029,6 @@ LockAcquireExtended(const LOCKTAG *locktag,
 		 */
 		if (!YbShouldSendObjectLock(lockmode, sessionLock))
 		{
-			locallock->yb_legacy_mode_skipped = true;
 			GrantLockLocal(locallock, owner);
 			return LOCKACQUIRE_OK;
 		}
@@ -1041,7 +1037,6 @@ LockAcquireExtended(const LOCKTAG *locktag,
 			enable_timeout_after(LOCK_TIMEOUT, lock_timeout_ms);
 
 		HandleYBStatus(YBCAcquireObjectLock(GetYbObjectLockId(locktag), (YbcObjectLockMode) lockmode, sessionLock));
-		locallock->yb_legacy_mode_skipped = false;
 
 		if (lock_timeout_ms > 0)
 			disable_timeout(LOCK_TIMEOUT, false);
@@ -2241,10 +2236,9 @@ LockRelease(const LOCKTAG *locktag, LOCKMODE lockmode, bool sessionLock)
 
 	/*
 	 * YB Note: Always forward the session lock release to the tserver as this
-	 * is tied to a different transaction. Skip it if the tserver never got the
-	 * lock.
+	 * is tied to a different transaction.
 	 */
-	if (sessionLock && !locallock->yb_legacy_mode_skipped)
+	if (sessionLock)
 	{
 		HandleYBStatus(YBCReleaseSessionObjectLock(GetYbObjectLockId(locktag),
 												   YbNumSessionObjectLocks() == 0));
@@ -2477,8 +2471,7 @@ LockReleaseAll(LOCKMETHODID lockmethodid, bool allLocks)
 			else
 				locallock->numLockOwners = 0;
 		}
-		else if (lockmethodid == DEFAULT_LOCKMETHOD && !yb_has_active_session_locks &&
-				 !locallock->yb_legacy_mode_skipped)
+		else if (lockmethodid == DEFAULT_LOCKMETHOD && !yb_has_active_session_locks)
 		{
 			LOCALLOCKOWNER *lockOwners = locallock->lockOwners;
 			for (i = 0; i < locallock->numLockOwners; i++)
