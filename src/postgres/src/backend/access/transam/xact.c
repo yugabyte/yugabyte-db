@@ -3427,10 +3427,19 @@ YbCommitTransactionCommandIntermediate(void)
 	StartTransactionCommand();
 
 	/*
-	 * Every caller runs inside a utility statement, so the new transaction
-	 * kept the object locking mode (see StartTransaction).
+	 * YB: Every caller runs inside a utility statement, so the new transaction
+	 * kept the object locking mode (see StartTransaction). If a caller ever
+	 * runs outside one, the rest of the statement would run in the other mode
+	 * while the state it already built belongs to this one, so fail the
+	 * statement instead.
 	 */
-	Assert(YBIsDdlTransactionBlockEnabled() == ddl_txn_block_enabled);
+	if (YBIsDdlTransactionBlockEnabled() != ddl_txn_block_enabled)
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("transactional DDL was %s while the statement was "
+						"running",
+						ddl_txn_block_enabled ? "disabled" : "enabled"),
+				 errhint("Retry the statement.")));
 
 	if (ddl_txn_block_enabled && is_ddl_mode)
 	{
