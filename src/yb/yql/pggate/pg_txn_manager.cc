@@ -265,6 +265,10 @@ bool PgTxnManager::IsTableLockingEnabledForCurrentTxn() const {
   return enable_table_locking_ && YBCIsObjectLockingInfraEnabled();
 }
 
+bool PgTxnManager::IsLocalTableLockingEnabledForCurrentTxn() const {
+  return enable_table_locking_ && YBCIsLocalObjectLockingEnabled();
+}
+
 PgTxnManager::~PgTxnManager() = default;
 
 void PgTxnManager::Shutdown() {
