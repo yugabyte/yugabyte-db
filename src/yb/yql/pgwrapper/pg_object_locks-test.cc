@@ -1284,22 +1284,6 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestModeStableAcrossDoBlockCommi
       END $$)#", "probe")), "");
 }
 
-// Same as TestModeStableDuringStatement, for ALTER TABLE ... DETACH PARTITION CONCURRENTLY, which
-// commits through YbCommitTransactionCommandIntermediate() (tablecmds.c) before its second phase.
-// TODO(#28152): DETACH PARTITION CONCURRENTLY crashes the backend in legacy mode, with or without
-// a promotion. Enable once that is fixed.
-TEST_F(PgObjectLocksTestMixModeDuringPromotion, DISABLED_TestModeStableAcrossDetachConcurrently) {
-  {
-    auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
-    ASSERT_OK(conn.Execute("CREATE DATABASE testdb;"));
-    conn = ASSERT_RESULT(ConnectToDB("testdb"));
-    ASSERT_OK(conn.Execute("CREATE TABLE parent(k INT, v INT) PARTITION BY RANGE (k)"));
-    ASSERT_OK(conn.Execute("CREATE TABLE probe PARTITION OF parent FOR VALUES FROM (0) TO (10)"));
-  }
-  ASSERT_EQ(ASSERT_RESULT(ExecuteAcrossPromotion(
-      "testdb", "ALTER TABLE parent DETACH PARTITION probe CONCURRENTLY", "probe")), "");
-}
-
 // The CREATE INDEX phases start their transactions through StartTransactionCommand() directly.
 // Without the pin, the phases after the first run in new mode on state the first built in legacy
 // mode, and the statement fails ("Expected non-null kPgSession txn"). It runs without the lock
