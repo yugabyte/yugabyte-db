@@ -1216,9 +1216,10 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestDdlTxnBlockModeStableAcrossP
 }
 
 // A statement never changes object locking mode while it runs, even when the infra auto
-// flag is promoted between its Parse and its Execute. Multi-table ANALYZE commits after each table
-// through YbCommitTransactionCommandIntermediate() (vacuum.c), so `probe` is analyzed in a second
-// transaction, which must stay in legacy mode and not wait on the lock ts2 holds.
+// flag is promoted between its Parse and its Execute. Multi-table ANALYZE commits before each
+// table, through YbCommitTransactionCommandIntermediate() (vacuum.c). So it analyzes `probe` in a
+// later transaction than the one Parse started. That transaction must stay in legacy mode and not
+// wait on the lock ts2 holds.
 TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestModeStableDuringStatement) {
   {
     auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
