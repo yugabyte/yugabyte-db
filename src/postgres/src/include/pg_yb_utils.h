@@ -1439,6 +1439,8 @@ extern void assign_yb_read_time(const char *newval, void *extra);
 extern bool check_yb_read_time_skip_catalog(bool *newval, void **extra,
 											GucSource source);
 extern void assign_yb_read_time_skip_catalog(bool newval, void *extra);
+extern void YbHandleReadTimeSnapshotTooOld(void);
+extern void YbCheckReadTimeTooOld(Node *parsetree);
 
 extern uint64_t yb_origination_time;
 extern void YbRefreshOriginationTime(void);
@@ -1692,13 +1694,17 @@ extern void YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time);
 
 extern void YBCSetHistoricalReadContext(uint64_t read_time_ht,
 										uint64_t in_txn_limit_ht,
-										const char *docdb_txn_id);
+										const char *docdb_txn_id,
+										const uint32_t *aborted_subtxn_set,
+										int aborted_subtxn_set_size);
 
 extern void YBCInvalidateCachesForHistoricalReadContext(void);
 
 extern void YBCSetHistoricalReadContextAndInvalidateCaches(uint64_t read_time_ht,
 															 uint64_t in_txn_limit_ht,
-															 const char *docdb_txn_id);
+															 const char *docdb_txn_id,
+															 const uint32_t *aborted_subtxn_set,
+															 int aborted_subtxn_set_size);
 
 extern void YBCResetHistoricalReadContextAndInvalidateRelcache(void);
 

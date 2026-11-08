@@ -33,12 +33,20 @@ const stateFor = (currentSelectedNodeType: string) => ({
   }
 });
 
-const renderTab = () => (
+const kubernetesUniverse = (nodeExporterSidecarScraped: boolean) => ({
+  universeUUID: 'u1',
+  nodeExporterSidecarScraped,
+  universeDetails: {
+    clusters: [{ clusterType: 'PRIMARY', userIntent: { providerType: 'kubernetes' } }]
+  }
+});
+
+const renderTab = (selectedUniverse: any = null) => (
   <GraphTab
     type={MetricTypes.DISK_IO}
     metricsKey={['disk_iops']}
     nodePrefixes={'' as any}
-    selectedUniverse={null}
+    selectedUniverse={selectedUniverse}
     title="Disk I/O"
     isGranularMetricsEnabled={false}
     isMetricsTimezoneEnabled={false}
@@ -58,4 +66,19 @@ describe('GraphTab', () => {
     expect(queryMetrics).toHaveBeenCalledTimes(2);
     expect(queryMetrics.mock.calls[1][0].serverType).toBe('MASTER');
   });
+
+  it.each([
+    [true, true],
+    [false, false]
+  ])(
+    'queries the sidecar checks on Kubernetes only when the sidecar is scraped (%s)',
+    (scraped, queried) => {
+      queryMetrics.mockClear();
+      state = stateFor(NodeType.ALL);
+      render(renderTab(kubernetesUniverse(scraped)));
+      const metrics = queryMetrics.mock.calls[0][0].metricsWithSettings.map((m: any) => m.metric);
+      expect(metrics.includes('node_exporter_check')).toBe(queried);
+      expect(metrics.includes('node_exporter_collector_success')).toBe(queried);
+    }
+  );
 });

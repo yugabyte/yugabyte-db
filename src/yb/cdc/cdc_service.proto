@@ -39,6 +39,7 @@ import "yb/common/common.proto";
 import "yb/common/common_net.proto";
 import "yb/common/common_types.proto";
 import "yb/common/opid.proto";
+import "yb/common/transaction.proto";
 import "yb/common/value.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/master/master_client.proto";
@@ -590,6 +591,10 @@ message RowMessage {
 
   // Replication origin id associated with the transaction. Set on BEGIN, DML and COMMIT Ops.
   optional uint32 xrepl_origin_id = 19;
+
+  // Subtransactions of the transaction rolled back to a savepoint. Only set on BEGIN records for
+  // the walsender with transactional DDL, when not empty.
+  optional SubtxnSetPB aborted_subtxns = 20;
 }
 
 message CDCSDKProtoRecordPB {

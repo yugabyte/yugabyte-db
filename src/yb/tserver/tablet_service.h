@@ -358,6 +358,11 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
       const BackfillIndexRequestPB* req, BackfillIndexResponsePB* resp,
       rpc::RpcContext context) override;
 
+  // Copies one chunk of an online schema change's source tablet into the target.
+  void TableBackfillChunk(
+      const TableBackfillChunkRequestPB* req, TableBackfillChunkResponsePB* resp,
+      rpc::RpcContext context) override;
+
   // Called on the Index table(s) once the backfill is complete.
   void BackfillDone(
       const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,

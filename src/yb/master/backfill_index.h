@@ -16,6 +16,7 @@
 #include <float.h>
 
 #include <chrono>
+#include <functional>
 #include <optional>
 #include <set>
 #include <sstream>
@@ -440,21 +441,35 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
   std::atomic_bool done_{false};
 };
 
+// Fetches a safe read time (>= min_cutoff) from one tablet's leader. No write can commit on the
+// tablet at or below the returned time once it is returned, so the max over all tablets is a
+// correct backfill read time.
 class GetSafeTimeForTablet : public RetryingTSRpcTaskWithTable {
  public:
+  // Invoked once with the safe time or the error, except when the task is aborted.
+  using SafeTimeCallback = std::function<void(const Status&, HybridTime)>;
+
   GetSafeTimeForTablet(
-      std::shared_ptr<BackfillTable> backfill_table,
+      Master* master,
+      ThreadPool* callback_pool,
       const TabletInfoPtr& tablet,
       HybridTime min_cutoff,
-      LeaderEpoch epoch)
+      LeaderEpoch epoch,
+      ash::WaitStateInfoPtr wait_state,
+      bool only_abort_txns_not_using_table_locks,
+      std::string description_detail,
+      SafeTimeCallback callback)
       : RetryingTSRpcTaskWithTable(
-            backfill_table->master(), backfill_table->threadpool(),
+            master, callback_pool,
             std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)), tablet->table(),
             std::move(epoch),
             /* async_task_throttler */ nullptr),
-        backfill_table_(backfill_table),
         tablet_(tablet),
-        min_cutoff_(min_cutoff) {
+        min_cutoff_(min_cutoff),
+        wait_state_(std::move(wait_state)),
+        only_abort_txns_not_using_table_locks_(only_abort_txns_not_using_table_locks),
+        description_detail_(std::move(description_detail)),
+        callback_(std::move(callback)) {
     // No deadline for the task, refer to ComputeDeadline() for a single attempt deadline.
     deadline_ = MonoTime::Max();
   }
@@ -468,8 +483,7 @@ class GetSafeTimeForTablet : public RetryingTSRpcTaskWithTable {
   std::string type_name() const override { return "Get SafeTime for Tablet"; }
 
   std::string description() const override {
-    return yb::Format("GetSafeTime for $0 Backfilling index tables $1",
-                      tablet_id(), backfill_table_->requested_index_names());
+    return yb::Format("GetSafeTime for $0 $1", tablet_id(), description_detail_);
   }
 
  private:
@@ -482,9 +496,12 @@ class GetSafeTimeForTablet : public RetryingTSRpcTaskWithTable {
   void UnregisterAsyncTaskCallback() override;
 
   tserver::GetSafeTimeResponsePB resp_;
-  const std::shared_ptr<BackfillTable> backfill_table_;
   const TabletInfoPtr tablet_;
   const HybridTime min_cutoff_;
+  const ash::WaitStateInfoPtr wait_state_;
+  const bool only_abort_txns_not_using_table_locks_;
+  const std::string description_detail_;
+  const SafeTimeCallback callback_;
 };
 
 // A background task which is responsible for backfilling rows in the partitions

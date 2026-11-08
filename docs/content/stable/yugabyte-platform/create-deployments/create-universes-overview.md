@@ -193,6 +193,19 @@ Use **Expert** when **Guided** cannot represent the topology you need. For examp
 
 If you switch from **Expert** to **Guided** and the current placement is not a **Guided**-supported topology (for example, uneven node counts per zone), YugabyteDB Anywhere warns you and **resets** the placement configuration.
 
+{{< note title="Replication factor 9" >}}
+
+In v2026.1.3.0 and later, you can set RF to 9 when using Expert mode or the Classic UI. When using RF 9, ensure the number of availability zones _is equal to_ the RF.
+
+By default, the RF 9 option is not available. To enable the feature, set the **Enable primary replication factor 9** global runtime configuration option (config key `yb.universe.enable_primary_rf_9`) to true. Refer to [Manage runtime configuration settings](../../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/). Only a Super Admin can change a global runtime configuration option. Any universe that you created or modified with RF 9 stays at RF 9 if you later set the option back to false.
+
+**Known issues**:
+
+- With an uneven number of nodes spread across fewer than 9 zones, YugabyteDB Anywhere can place fewer YB-Master processes than the replication factor and still report that universe creation succeeded. You may see an **Under-replicated master** alert. Using 9 availability zones avoids this. (PLAT-23267)
+- For on-premises universes with [dedicated YB-Master nodes](../dedicated-master/), when a zone has more free master instances than TServer nodes, YugabyteDB Anywhere can create fewer master nodes than the replication factor, with no error. Check the number of master nodes on the **Nodes** page after you create the universe. (PLAT-23296)
+
+{{< /note >}}
+
 #### Preferred region
 
 You can rank availability zones so [tablet leaders](../../../architecture/key-concepts/#tablet-leader) sit close to your application. Give every zone in a region the same rank to prefer that region. See [Preferred region](../../../architecture/key-concepts/#preferred-region) and [leader affinity](../../../architecture/key-concepts/#leader-affinity).

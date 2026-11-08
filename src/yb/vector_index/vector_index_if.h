@@ -68,10 +68,17 @@ struct VectorIndexIteratorEntry {
   }
 };
 
+// Returns the tenant of a vector from its payload. An index with a tenant extractor never links
+// vectors of different tenants, see SearchOptions::tenant.
+using VectorTenantExtractor = std::function<Result<Slice>(Slice payload)>;
+
 struct SearchOptions {
   size_t max_num_results;
   size_t ef;
   VectorFilter filter = [](const auto&, const auto&) { return true; };
+  // Restricts the search to vectors of the tenant, see VectorTenantExtractor. Empty searches all
+  // tenants. Only hnswlib indexes with a tenant extractor support a tenant, others reject it.
+  Slice tenant = Slice();
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(max_num_results, ef);

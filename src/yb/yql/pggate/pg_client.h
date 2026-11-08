@@ -251,6 +251,8 @@ class PgClient {
   Result<int> WaitForBackendsCatalogVersion(
       tserver::PgWaitForBackendsCatalogVersionRequestPB* req, CoarseTimePoint deadline);
   Status BackfillIndex(tserver::PgBackfillIndexRequestPB* req, CoarseTimePoint deadline);
+  Status StartTableBackfill(
+      tserver::PgStartTableBackfillRequestPB* req, CoarseTimePoint deadline);
 
   Status GetIndexBackfillProgress(const std::vector<PgObjectId>& index_ids,
                                   uint64_t* num_rows_read_from_table,
