@@ -980,6 +980,10 @@ bool YBCIsObjectLockingEnabled() {
   return FLAGS_enable_object_locking_for_table_locks && YBCIsObjectLockingInfraEnabled();
 }
 
+bool YBCIsLocalObjectLockingEnabled() {
+  return FLAGS_enable_object_locking_for_table_locks;
+}
+
 bool YBCIsAutoAnalyzeEnabled() {
   return FLAGS_ysql_enable_auto_analyze_infra && FLAGS_ysql_enable_auto_analyze;
 }

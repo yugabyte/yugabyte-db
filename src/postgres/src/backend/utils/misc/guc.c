@@ -2825,6 +2825,7 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+
 	{
 		{"yb_enable_ddl_savepoint_infra", PGC_SIGHUP, LOCK_MANAGEMENT,
 			gettext_noop("Allow enabling ddl savepoint support."),

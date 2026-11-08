@@ -4624,7 +4624,7 @@ class PgClientSession::Impl {
     if (!txn) {
       VLOG_WITH_PREFIX_AND_FUNC(2)
           << FinishTxnLogPrefix(req) << (is_commit ? "commit" : "abort");
-      if (is_commit || is_ddl_mode || !IsObjectLockingEnabled()) {
+      if (is_commit || is_ddl_mode || !CanHoldPlainObjectLocks()) {
         return ReleaseObjectLocksIfNecessary(
             txn, kind, deadline, is_ddl_mode, GlobalObjectLocksReleaseMode::kSync);
       }
@@ -4747,7 +4747,8 @@ class PgClientSession::Impl {
       bool is_ddl = false,
       GlobalObjectLocksReleaseMode release_mode = GlobalObjectLocksReleaseMode::kAsync,
       std::optional<SubTransactionId> subtxn_id = std::nullopt) {
-    if (!IsObjectLockingEnabled()) {
+    if (!IsObjectLockingEnabled() &&
+        !(CanHoldPlainObjectLocks() && kind == PgClientSessionKind::kPlain && !is_ddl)) {
       return Status::OK();
     }
     if (!txn && kind != PgClientSessionKind::kPlain) {
@@ -4841,9 +4842,14 @@ class PgClientSession::Impl {
   }
 
   [[nodiscard]] bool IsObjectLockingEnabled() const {
-    return ts_lock_manager() != nullptr &&
-           FLAGS_enable_object_locking_for_table_locks &&
-           FLAGS_ysql_yb_enable_object_locking_infra;
+    return CanHoldPlainObjectLocks() && FLAGS_ysql_yb_enable_object_locking_infra;
+  }
+
+  // A legacy mode transaction takes local DML locks under the plain session whatever the value
+  // of ysql_yb_enable_object_locking_infra (#36572), which can also change while it runs. So its
+  // locks are released based on this rather than IsObjectLockingEnabled().
+  [[nodiscard]] bool CanHoldPlainObjectLocks() const {
+    return ts_lock_manager() != nullptr && FLAGS_enable_object_locking_for_table_locks;
   }
 
   Result<TransactionMetadata> NextObjectLockingTxnMeta(

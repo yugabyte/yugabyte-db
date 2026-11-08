@@ -364,6 +364,7 @@ static void RemoveLocalLock(LOCALLOCK *locallock);
 static PROCLOCK *SetupLockInTable(LockMethod lockMethodTable, PGPROC *proc,
 								  const LOCKTAG *locktag, uint32 hashcode, LOCKMODE lockmode);
 static void GrantLockLocal(LOCALLOCK *locallock, ResourceOwner owner);
+static bool YbShouldSendObjectLock(LOCKMODE lockmode, bool sessionLock);
 static void BeginStrongLockAcquire(LOCALLOCK *locallock, uint32 fasthashcode);
 static void FinishStrongLockAcquire(void);
 static void WaitOnLock(LOCALLOCK *locallock, ResourceOwner owner);
@@ -1019,6 +1020,17 @@ LockAcquireExtended(const LOCKTAG *locktag,
 			int			slack_ms = Min(2000, rpc_timeout_ms / 2);
 
 			lock_timeout_ms = rpc_timeout_ms - slack_ms;
+		}
+
+		/*
+		 * YB: Keep the lock in the local table, as upstream does, even when
+		 * the tserver does not get it. LockRelationIdForSession, for one,
+		 * requires the transaction lock to be held.
+		 */
+		if (!YbShouldSendObjectLock(lockmode, sessionLock))
+		{
+			GrantLockLocal(locallock, owner);
+			return LOCKACQUIRE_OK;
 		}
 
 		if (lock_timeout_ms > 0)
@@ -5057,6 +5069,27 @@ LockWaiterCount(const LOCKTAG *locktag)
 	LWLockRelease(partitionLock);
 
 	return waiters;
+}
+
+/*
+ * YB: A transaction sends no lock unless YbIsTakingObjectLocks().
+ *
+ * A new mode DDL waits for DMLs only through object locks. So a legacy mode
+ * transaction, one that started before yb_enable_object_locking_infra was
+ * promoted, sends the local DML locks that such a DDL waits for (#36572). It
+ * sends no stronger lock: those are global or exclusive, and would change how
+ * legacy DDLs and LOCK TABLE behave before the promotion. It sends no session
+ * lock: every session lock PG takes is ShareUpdateExclusive or stronger
+ * (CREATE INDEX, VACUUM).
+ */
+static bool
+YbShouldSendObjectLock(LOCKMODE lockmode, bool sessionLock)
+{
+	if (!YbIsTakingObjectLocks())
+		return false;
+	if (YBCIsObjectLockingEnabled())
+		return true;
+	return !sessionLock && lockmode <= RowExclusiveLock;
 }
 
 bool

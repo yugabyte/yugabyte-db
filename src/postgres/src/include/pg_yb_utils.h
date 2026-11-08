@@ -1121,6 +1121,7 @@ extern CommandTag YBGetTopLevelStmtDdlCommandTag();
 extern CommandTag YBGetGlobalDdlCommandTag();
 extern CommandTag YBGetBreakingDdlCommandTag();
 extern bool YBGetDdlUseRegularTransactionBlock();
+extern bool YbIsTakingObjectLocks(void);
 
 /*
  * Snapshot of the current top-level DDL statement identity. Used to preserve
