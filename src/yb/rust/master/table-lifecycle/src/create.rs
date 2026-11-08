@@ -14,11 +14,13 @@
 //! PREPARING in one mutation; the assignment controller ([`crate::assign`]) takes them on.
 
 use std::collections::BTreeSet;
+use std::sync::Arc;
 
 use master_catalog_state::defaults::TRANSACTION_TABLES_CONFIG_ID;
 use master_catalog_state::CatalogSnapshot;
 use master_catalog_state::Mutation;
 use master_leadership::LeaderToken;
+use master_task_runtime::{BoxFuture, Controller, TermScope};
 use protobuf::{Enum, EnumOrUnknown, Message, MessageField};
 use tokio::time::Instant;
 use yb_host_api::StatusCode;
@@ -296,7 +298,7 @@ impl TableLifecycle {
 
     /// `CreateGlobalTransactionStatusTableIfNotPresent`: `system.transactions`, which every
     /// transactional table needs.
-    async fn ensure_transaction_table(
+    pub(crate) async fn ensure_transaction_table(
         &self,
         token: &LeaderToken,
         deadline: Instant,
@@ -423,4 +425,57 @@ fn bump_transaction_tables_version(
         TRANSACTION_TABLES_CONFIG_ID,
         encode(&pb)?,
     ))
+}
+
+/// The `transaction-table` controller for one term: with YSQL on, `system.transactions` is
+/// created once `max(txn_table_wait_min_ts_count, replication_factor)` tservers have registered,
+/// as C++'s leader does from its tserver count callback, since every YSQL session needs it.
+pub struct TransactionTableController {
+    tables: Arc<TableLifecycle>,
+}
+
+impl TransactionTableController {
+    /// A controller for the term that just began.
+    pub fn new(tables: Arc<TableLifecycle>) -> Arc<TransactionTableController> {
+        Arc::new(TransactionTableController { tables })
+    }
+}
+
+impl Controller for TransactionTableController {
+    fn name(&self) -> &'static str {
+        "transaction-table"
+    }
+
+    fn interval(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(1)
+    }
+
+    fn reconcile<'a>(&'a self, _scope: &'a TermScope) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            let options = &self.tables.options;
+            if !(options.enable_ysql)() {
+                return;
+            }
+            if self
+                .tables
+                .catalog
+                .snapshot()
+                .table_by_name(SYSTEM_NAMESPACE_ID, TRANSACTIONS_TABLE)
+                .is_some()
+            {
+                return;
+            }
+            let wait = (options.txn_table_wait_min_ts_count)().max((options.replication_factor)());
+            if (self.tables.ts_manager.all().len() as i64) < i64::from(wait) {
+                return;
+            }
+            let Ok(token) = self.tables.leadership.token() else {
+                return;
+            };
+            let deadline = Instant::now() + std::time::Duration::from_secs(60);
+            if let Err(error) = self.tables.ensure_transaction_table(&token, deadline).await {
+                tracing::warn!("Failed creating transaction status table, waiting: {error:?}");
+            }
+        })
+    }
 }

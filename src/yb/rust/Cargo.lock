@@ -823,8 +823,11 @@ name = "master-ysql-manager"
 version = "0.1.0"
 dependencies = [
  "master-catalog-state",
+ "master-leadership",
  "master-sys-catalog",
  "master-table-lifecycle",
+ "master-task-runtime",
+ "master-ts-manager",
  "protobuf",
  "tokio",
  "tracing",

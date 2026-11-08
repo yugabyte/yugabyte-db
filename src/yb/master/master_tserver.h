@@ -23,7 +23,7 @@
 
 namespace yb::master {
 
-class Master;
+class MasterTabletServerContext;
 
 // Master's version of a TabletServer which is required to support virtual tables in the Master.
 // This isn't really an actual server and is just a nice way of overriding the default tablet
@@ -31,7 +31,7 @@ class Master;
 class MasterTabletServer : public tserver::TabletServerIf,
                            public tserver::TabletPeerLookupIf {
  public:
-  MasterTabletServer(Master* master, scoped_refptr<MetricEntity> metric_entity);
+  MasterTabletServer(MasterTabletServerContext* master, scoped_refptr<MetricEntity> metric_entity);
   tserver::TSTabletManager* tablet_manager() const override;
   tserver::TabletPeerLookupIf* tablet_peer_lookup() override;
   tserver::TSLocalLockManagerPtr ts_local_lock_manager() const override;
@@ -188,7 +188,7 @@ class MasterTabletServer : public tserver::TabletServerIf,
       const std::optional<CoarseTimePoint>& deadline = std::nullopt,
       std::string_view yb_internal_conn_kind = {}) override;
 
-  Master* master_ = nullptr;
+  MasterTabletServerContext* master_ = nullptr;
   scoped_refptr<MetricEntity> metric_entity_;
 
   // CDC service.

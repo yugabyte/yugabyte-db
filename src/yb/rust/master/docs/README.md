@@ -29,7 +29,7 @@ without it the Rust master never leads ([leadership.md](leadership.md)).
 | [table-lifecycle.md](table-lifecycle.md) | Namespace and table DDL, tablet assignment |
 | [cluster-balancer.md](cluster-balancer.md) | The cluster balancer: planner, controller, RPCs |
 | [tablet-splits.md](tablet-splits.md) | Tablet splits |
-| [ysql-manager.md](ysql-manager.md) | YSQL on the leader: initdb, leases |
+| [ysql-manager.md](ysql-manager.md) | YSQL on the leader: initdb, leases, the sys catalog tablet |
 | [task-runtime.md](task-runtime.md) | Scopes, controllers, retries, blocking pools |
 | [web.md](web.md) | The web port and pages |
 | [testing.md](testing.md) | Unit tests, conformance against the C++ master, itests |
@@ -48,7 +48,7 @@ Shared Rust pieces (build, bridges, protobuf, flags) are documented in
 | `master-catalog-state` | The in-memory catalog: snapshots, materializer, writer, self-check |
 | `master-cluster-balancer` | The cluster balancer: a pure planner (a view of the cluster in, replica and leader moves out) and the controller that sends its moves |
 | `master-tablet-split-manager` | Tablet splits: the split RPCs, the children's registration, the controller that sends splits |
-| `master-ysql-manager` | YSQL on the leader: the initial sys catalog snapshot and `IsInitDbDone` |
+| `master-ysql-manager` | YSQL on the leader: the initial sys catalog snapshot, `IsInitDbDone`, YSQL operation leases |
 | `master-leadership` | Leader phases and `LeaderToken` |
 | `master-task-runtime` | Term and entity scopes, controllers, retries, blocking pools |
 | `master-table-lifecycle` | Namespace and table DDL on the leader, and the controllers that create tablets |
@@ -71,7 +71,7 @@ Dependencies point down: `rpc-handlers` -> `ts-manager` -> `tablet-locations`, `
 | MasterClient | GetTabletLocations, GetTableLocations, GetTransactionStatusTablets (global table) | GetTabletsMetadata, GetStatefulServiceLocation, GetIndexBackfillProgress (W7); GetYsqlCatalogConfig, ReservePgsqlOids, GetYsqlYbSystemTableInfo (W9); Redis methods never (D16) |
 | MasterDdl | CreateNamespace, DeleteNamespace, IsCreateNamespaceDone, IsDeleteNamespaceDone, ListNamespaces, GetNamespaceInfo, ListTables, GetTableSchema, CreateTable, IsCreateTableDone, AlterTable, IsAlterTableDone, DeleteTable and IsDeleteTableDone for YCQL tables that are not indexes ([table-lifecycle.md](table-lifecycle.md)) | The rest of W7 |
 | MasterAdmin | SplitTablet, DeleteNotServingTablet, DisableTabletSplitting, IsTabletSplittingComplete ([tablet-splits.md](tablet-splits.md)); IsInitDbDone ([ysql-manager.md](ysql-manager.md)) | The rest of the admin service |
-| MasterYsqlLease | | RefreshYsqlLease (W9) |
+| MasterYsqlLease | RefreshYsqlLease, RelinquishYsqlLease ([ysql-manager.md](ysql-manager.md)) | |
 | MasterEncryption | GetFullUniverseKeyRegistry, IsEncryptionEnabled; GetUniverseKeyRegistry, AddUniverseKeys and HasUniverseKeyInMemory on every master | ChangeEncryptionInfo |
 | MasterRustPeer | PushLocations, DumpCatalog (tests), on every Rust master | |
 

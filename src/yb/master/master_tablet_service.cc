@@ -25,11 +25,7 @@
 
 #include "yb/dockv/doc_key.h"
 
-#include "yb/master/catalog_manager_if.h"
-#include "yb/master/master.h"
-#include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/scoped_leader_shared_lock-internal.h"
-#include "yb/master/ysql/ysql_manager.h"
 
 #include "yb/rpc/rpc_context.h"
 
@@ -175,15 +171,16 @@ void MasterTabletServiceImpl::AutoInitCatalogPrefetchLimit() {
   LOG(INFO) << "Auto setting FLAGS_master_max_concurrent_ysql_catalog_prefetches to " << limit;
 }
 
-MasterTabletServiceImpl::MasterTabletServiceImpl(MasterTabletServer* server, Master* master)
+MasterTabletServiceImpl::MasterTabletServiceImpl(
+    MasterTabletServer* server, MasterTabletServerContext* master)
     : TabletServiceImpl(server),
       master_(master),
       ysql_catalog_prefetches_in_progress_(
-          METRIC_ysql_catalog_prefetches_in_progress.Instantiate(master->metric_entity(), 0)),
+          METRIC_ysql_catalog_prefetches_in_progress.Instantiate(server->MetricEnt(), 0)),
       ysql_catalog_prefetch_rejections_(
-          METRIC_ysql_catalog_prefetch_rejections.Instantiate(master->metric_entity())),
+          METRIC_ysql_catalog_prefetch_rejections.Instantiate(server->MetricEnt())),
       ysql_catalog_prefetch_new_admissions_(
-          METRIC_ysql_catalog_prefetch_new_admissions.Instantiate(master->metric_entity())) {
+          METRIC_ysql_catalog_prefetch_new_admissions.Instantiate(server->MetricEnt())) {
   AutoInitCatalogPrefetchLimit();
 }
 
@@ -323,7 +320,7 @@ Result<std::shared_ptr<tablet::AbstractTablet>> MasterTabletServiceImpl::GetTabl
   YBConsistencyLevel consistency_level, tserver::AllowSplitTablet allow_split_tablet,
   tserver::ReadResponseMsg* resp) {
   // Ignore looked_up_tablet_peer.
-  return master_->catalog_manager()->GetSystemTablet(tablet_id);
+  return master_->GetSystemTablet(tablet_id);
 }
 
 void MasterTabletServiceImpl::AcquireObjectLocks(
@@ -347,11 +344,28 @@ Result<tserver::GetYSQLLeaseInfoResponsePB> MasterTabletServiceImpl::GetYSQLLeas
   return STATUS(NotSupported, "GetYSQLLeaseInfo is not implemented at masters");
 }
 
+namespace {
+
+// ScopedLeaderSharedLock::CheckIsInitializedAndIsLeaderOrRespondTServer.
+template <class Resp>
+bool CheckIsInitializedAndIsLeaderOrRespond(
+    const MasterTabletServerContext::LeaderGuard& guard, Resp* resp, rpc::RpcContext* context) {
+  const auto& status = guard.first_failed_status();
+  if (PREDICT_TRUE(status.ok())) {
+    return true;
+  }
+  FillStatus(status, tserver::TabletServerErrorPB::NOT_THE_LEADER, resp);
+  context->RespondSuccess();
+  return false;
+}
+
+}  // namespace
+
 void MasterTabletServiceImpl::Read(const tserver::ReadRequestMsg* req,
                                     tserver::ReadResponseMsg* resp,
                                     rpc::RpcContext context) {
-  SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespondTServer(resp, &context)) {
+  auto leader = master_->LockLeader();
+  if (!CheckIsInitializedAndIsLeaderOrRespond(leader, resp, &context)) {
     return;
   }
 
@@ -361,8 +375,8 @@ void MasterTabletServiceImpl::Read(const tserver::ReadRequestMsg* req,
 void MasterTabletServiceImpl::Write(const tserver::WriteRequestMsg* req,
                                     tserver::WriteResponseMsg* resp,
                                     rpc::RpcContext context) {
-  SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
-  if (!l.CheckIsInitializedAndIsLeaderOrRespondTServer(resp, &context)) {
+  auto leader = master_->LockLeader();
+  if (!CheckIsInitializedAndIsLeaderOrRespond(leader, resp, &context)) {
     return;
   }
 
@@ -389,7 +403,7 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestMsg* req,
     }
 
     {
-      auto write_allowed = master_->ysql_manager_impl().ValidateWriteToCatalogTableAllowed(
+      auto write_allowed = master_->ValidateWriteToCatalogTableAllowed(
           pg_req.table_id(), pg_req.force_catalog_modifications());
       if (!write_allowed.ok()) {
         VLOG(1) << "Write to catalog table while it is not allowed: " << pg_req.ShortDebugString();
@@ -399,7 +413,7 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestMsg* req,
     }
 
     if (pg_req.is_ysql_catalog_change_using_protobuf()) {
-      const auto& res = master_->catalog_manager()->IncrementYsqlCatalogVersion();
+      const auto& res = master_->IncrementYsqlCatalogVersion();
       if (!res.ok()) {
         context.RespondRpcFailure(rpc::ErrorStatusPB::ERROR_APPLICATION,
             STATUS(InternalError, "Failed to increment YSQL catalog version"));
@@ -444,8 +458,9 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestMsg* req,
     SleepFor(100ms);
     if (!db_oids.empty()) {
       for (const auto db_oid : db_oids) {
-        if (!master_->catalog_manager()->GetYsqlDBCatalogVersion(db_oid, &catalog_version,
-                                                                 &last_breaking_version).ok()) {
+        if (!master_->GetYsqlDBCatalogVersion(db_oid, &catalog_version,
+                                              &last_breaking_version, /* use_cache= */ false)
+                 .ok()) {
           LOG_WITH_FUNC(WARNING) << "failed to get db catalog version for "
                                  << db_oid << ", ignoring";
         } else {
@@ -455,8 +470,9 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestMsg* req,
         }
       }
     } else {
-      if (!master_->catalog_manager()->GetYsqlCatalogVersion(&catalog_version,
-                                                             &last_breaking_version).ok()) {
+      if (!master_->GetYsqlCatalogVersion(&catalog_version, &last_breaking_version,
+                                          /* use_cache= */ false)
+               .ok()) {
         LOG_WITH_FUNC(WARNING) << "failed to get catalog version, ignoring";
       } else {
         LOG_WITH_FUNC(INFO) << "catalog version: " << catalog_version << ", breaking version: "
@@ -470,14 +486,15 @@ void MasterTabletServiceImpl::IsTabletServerReady(
     const tserver::IsTabletServerReadyRequestPB* req,
     tserver::IsTabletServerReadyResponsePB* resp,
     rpc::RpcContext context) {
-  SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
+  auto leader = master_->LockLeader();
   int total_tablets = NUM_TABLETS_SYS_CATALOG;
   resp->set_total_tablets(total_tablets);
   resp->set_num_tablets_not_running(total_tablets);
 
   // Tablet 0 being ready corresponds to state_ = kRunning in catalog manager.
   // If catalog_status_ in not OK, then catalog manager state_ is not kRunning.
-  if (!l.CheckIsInitializedOrRespondTServer(resp, &context, false /* set_error */)) {
+  if (!leader.catalog_status.ok()) {
+    context.RespondSuccess();
     LOG(INFO) << "Zero tablets not running out of " << total_tablets;
   } else {
     LOG(INFO) << "All " << total_tablets << " tablets running.";

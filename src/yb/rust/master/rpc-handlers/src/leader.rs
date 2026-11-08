@@ -35,7 +35,7 @@ use yb_proto::pb::catalog_entity_info::{
     SysTabletsEntryPB, SysXClusterConfigEntryPB,
 };
 use yb_proto::pb::common_net::CloudInfoPB;
-use yb_proto::pb::consensus_metadata::PeerMemberType;
+use yb_proto::pb::consensus_metadata::{ConsensusStatePB, PeerMemberType};
 use yb_proto::pb::master_client::{
     get_tablet_locations_response_pb, tablet_locations_pb, GetTableLocationsRequestPB,
     GetTableLocationsResponsePB, GetTabletLocationsRequestPB, GetTabletLocationsResponsePB,
@@ -82,6 +82,8 @@ pub struct LeaderServices {
     pub transaction_tables_use_preferred_zones: fn() -> bool,
     /// Tablet splits.
     pub splits: Arc<master_tablet_split_manager::TabletSplitManager>,
+    /// YSQL operation leases.
+    pub leases: Arc<master_ysql_manager::lease::YsqlLeases>,
     /// `blacklist_progress_initial_delay_secs`.
     pub blacklist_progress_initial_delay: fn() -> std::time::Duration,
 }
@@ -95,8 +97,7 @@ pub fn owner(method: &str) -> &'static str {
         | "DemoteSingleAutoFlag"
         | "GetYsqlYbSystemTableInfo"
         | "GetYsqlCatalogConfig"
-        | "ReservePgsqlOids"
-        | "RefreshYsqlLease" => "YSQL and AutoFlags management (W9)",
+        | "ReservePgsqlOids" => "YSQL and AutoFlags management (W9)",
         "GetIndexBackfillProgress" => "DDL (W7)",
         "RedisConfigSet" | "RedisConfigGet" => "nobody: YEDIS is not supported (D16)",
         _ => "a later layer",
@@ -492,6 +493,7 @@ impl LeaderServices {
     pub fn get_tablet_locations(
         &self,
         snapshot: &CatalogSnapshot,
+        masters: Option<&ConsensusStatePB>,
         req: &GetTabletLocationsRequestPB,
         resp: &mut GetTabletLocationsResponsePB,
     ) {
@@ -511,7 +513,7 @@ impl LeaderServices {
                 );
                 let (live, read) = table.map_or((0, 0), |t| self.expected_replicas(snapshot, t));
                 let mut locations =
-                    self.tablet_locations(snapshot, tablet, req.include_hidden(), false)?;
+                    self.tablet_locations(snapshot, masters, tablet, req.include_hidden(), false)?;
                 locations.set_expected_live_replicas(live);
                 locations.set_expected_read_replicas(read);
                 Ok(locations)
@@ -557,6 +559,7 @@ impl LeaderServices {
     pub fn get_table_locations(
         &self,
         snapshot: &CatalogSnapshot,
+        masters: Option<&ConsensusStatePB>,
         req: &GetTableLocationsRequestPB,
         resp: &mut GetTableLocationsResponsePB,
     ) -> Result<(), Status> {
@@ -642,7 +645,7 @@ impl LeaderServices {
         };
         let (live, read) = self.expected_replicas(snapshot, &table);
         for tablet in tablets {
-            match self.tablet_locations(snapshot, tablet, true, req.partitions_only()) {
+            match self.tablet_locations(snapshot, masters, tablet, true, req.partitions_only()) {
                 Ok(mut locations) => {
                     locations.set_expected_live_replicas(live);
                     locations.set_expected_read_replicas(read);
@@ -686,7 +689,10 @@ impl LeaderServices {
                 status
             })?;
         for tablet in snapshot.active_tablets_of(&table.key.id) {
-            if self.tablet_locations(snapshot, tablet, false, true).is_ok() {
+            if self
+                .tablet_locations(snapshot, None, tablet, false, true)
+                .is_ok()
+            {
                 resp.global_tablet_id.push(tablet.key.id.to_vec());
             }
         }
@@ -714,10 +720,12 @@ impl LeaderServices {
         (live, read)
     }
 
-    /// `BuildLocationsForTablet`.
+    /// `BuildLocationsForTablet`. `masters` is the master quorum's committed consensus state, the
+    /// replicas of system tablets (`BuildLocationsForSystemTablet`).
     fn tablet_locations(
         &self,
         snapshot: &CatalogSnapshot,
+        masters: Option<&ConsensusStatePB>,
         tablet: &Entity,
         include_hidden: bool,
         partitions_only: bool,
@@ -774,7 +782,11 @@ impl LeaderServices {
         }
         locations.table_ids = snapshot.hosted_table_ids(tablet);
         locations.split_tablet_ids = pb.split_tablet_ids.clone();
-        if !observed.replicas.is_empty() {
+        let system_cstate = masters.filter(|_| is_system_tablet(snapshot, tablet));
+        if system_cstate.is_some() {
+            locations.set_stale(false);
+        }
+        if system_cstate.is_none() && !observed.replicas.is_empty() {
             for replica in &observed.replicas {
                 let mut r = tablet_locations_pb::ReplicaPB::new();
                 r.role = Some(EnumOrUnknown::new(replica.role));
@@ -793,8 +805,9 @@ impl LeaderServices {
                 r.ts_info = Some(ts_info).into();
                 locations.replicas.push(r);
             }
-        } else if let Some(cstate) = pb.committed_consensus_state.as_ref() {
-            // ConsensusStateToTabletLocations: no reports yet in this term.
+        } else if let Some(cstate) = system_cstate.or(pb.committed_consensus_state.as_ref()) {
+            // ConsensusStateToTabletLocations: a system tablet's masters, or no reports yet in
+            // this term.
             for peer in &cstate.config.peers {
                 let mut r = tablet_locations_pb::ReplicaPB::new();
                 r.role = Some(EnumOrUnknown::new(consensus_role(
@@ -816,6 +829,26 @@ impl LeaderServices {
         }
         Ok(locations)
     }
+}
+
+/// `system_tablets_`: the sys catalog tablet, and the tablets of the YCQL system keyspaces'
+/// virtual tables, whose replicas are the masters.
+fn is_system_tablet(snapshot: &CatalogSnapshot, tablet: &Entity) -> bool {
+    if &*tablet.key.id == master_table_lifecycle::lookup::SYS_CATALOG_TABLET_ID {
+        return true;
+    }
+    let Some(hot) = tablet.tablet() else {
+        return false;
+    };
+    snapshot
+        .get(SysRowEntryType::TABLE, &hot.table_id)
+        .and_then(|t| t.table())
+        .is_some_and(|t| {
+            t.table_type == yb_proto::pb::common_types::TableType::YQL_TABLE_TYPE as i32
+                && master_catalog_state::defaults::SYSTEM_NAMESPACES
+                    .iter()
+                    .any(|(id, _)| t.namespace_id == *id)
+        })
 }
 
 /// A tablet lookup failure, with the split children C++ attaches to a hidden or deleted tablet

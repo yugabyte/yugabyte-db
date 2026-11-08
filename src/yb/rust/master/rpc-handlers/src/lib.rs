@@ -82,6 +82,10 @@ use yb_proto::pb::master_rust_peer::{
     dump_catalog_response_pb, DumpCatalogResponsePB, PushLocationsRequestPB,
 };
 use yb_proto::pb::master_types::{master_error_pb, MasterErrorPB};
+use yb_proto::pb::master_ysql_lease::{
+    RefreshYsqlLeaseRequestPB, RefreshYsqlLeaseResponsePB, RelinquishYsqlLeaseRequestPB,
+    RelinquishYsqlLeaseResponsePB,
+};
 use yb_proto::pb::wire_protocol::{NodeInstancePB, ServerRegistrationPB};
 use yb_proto::{MethodDesc, ServiceDesc};
 
@@ -806,14 +810,18 @@ impl Shared {
                 GetTabletLocationsRequestPB,
                 GetTabletLocationsResponsePB,
                 |req, resp| {
-                    leader.get_tablet_locations(&snapshot, &req, &mut resp);
+                    let masters = self.info.committed_consensus_state().ok();
+                    leader.get_tablet_locations(&snapshot, masters.as_ref(), &req, &mut resp);
                     Ok(())
                 }
             ),
             "GetTableLocations" => serve!(
                 GetTableLocationsRequestPB,
                 GetTableLocationsResponsePB,
-                |req, resp| { leader.get_table_locations(&snapshot, &req, &mut resp) }
+                |req, resp| {
+                    let masters = self.info.committed_consensus_state().ok();
+                    leader.get_table_locations(&snapshot, masters.as_ref(), &req, &mut resp)
+                }
             ),
             "GetTransactionStatusTablets" => serve!(
                 GetTransactionStatusTabletsRequestPB,
@@ -835,6 +843,31 @@ impl Shared {
                         .splits
                         .delete_not_serving_tablet(token, deadline, &req)
                         .await
+                }
+            ),
+            "RefreshYsqlLease" => match RefreshYsqlLeaseRequestPB::parse_from_bytes(call.request())
+            {
+                Err(e) => {
+                    call.respond_error(Status::new(StatusCode::InvalidArgument, e.to_string()))
+                }
+                Ok(req) => {
+                    let mut resp = RefreshYsqlLeaseResponsePB::new();
+                    match leader.leases.refresh(&token, &req).await {
+                        Ok(info) => resp.set_info(info),
+                        Err(status) => resp.set_error(master_error_from(
+                            master_error_pb::Code::UNKNOWN_ERROR,
+                            &status,
+                        )),
+                    }
+                    respond(call, &resp);
+                }
+            },
+            "RelinquishYsqlLease" => serve!(
+                RelinquishYsqlLeaseRequestPB,
+                RelinquishYsqlLeaseResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    leader.leases.relinquish(&token, &req).await
                 }
             ),
             "IsInitDbDone" => serve!(

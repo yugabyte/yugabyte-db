@@ -155,6 +155,17 @@ message RestoreInitialSysCatalogSnapshotResponsePB {
   optional bool restored = 2;
 }
 
+// The Rust leader tells its host the term in which it became ready, or -1 when it is not ready
+// (MasterHost::HandleOnHost "SetLeaderReadyTerm"): the host serves YSQL's catalog reads and writes
+// only in that term, as CatalogManager does in leader_ready_term_.
+message SetLeaderReadyTermRequestPB {
+  optional int64 term = 1;
+}
+
+message SetLeaderReadyTermResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterRustPeer {
   rpc PushLocations(PushLocationsRequestPB) returns (PushLocationsResponsePB);
   rpc DumpCatalog(DumpCatalogRequestPB) returns (DumpCatalogResponsePB);

@@ -28,3 +28,55 @@ Rust leader created before this existed have no `initdb_done`, and the restore w
 
 `yb-master-rs` calls `SetDefaultInitialSysCatalogSnapshotFlags` at startup, as `yb-master` does,
 so the snapshot path defaults to the one shipped with the binary.
+
+## YSQL operation leases (K3)
+
+A tserver starts PG and keeps its sessions only while it holds a lease (`RefreshYsqlLease`). The
+lease state of each tserver is the `lease_info` of its OBJECT_LOCK_ENTRY row; when the lease ends
+on the master is kept in memory per term, and every lease gets a full TTL when a term begins, as
+C++ resets them on load.
+
+A refresh extends the lease, without a write, only when it is live, for the same tserver process
+(`instance_seqno`), and the tserver reports the current epoch. Anything else grants a new epoch:
+written in the writer's priority lane, answered with `new_lease` and the DDL locks held under live
+leases (less releases in progress) and every tserver's lease epoch floor, which the tserver
+bootstraps its lock table from. A spurious new lease restarts every PG session on that tserver, so
+the rule is C++'s exactly. A process older than the lease, or one that relinquished it, is refused.
+
+The `MasterYsqlLease` service runs on its own two-thread runtime, so refreshes never wait behind
+heartbeats or DDL. The `ysql-lease-expiry` controller marks leases past their deadline as not
+live (`object_lock_cleanup_interval_ms`). Releasing the DDL locks of expired epochs is not done
+yet: a Rust leader takes no DDL locks.
+
+## YSQL on the sys catalog tablet
+
+PG reads and writes its catalog on the leader's sys catalog tablet through
+`TabletServerService`. The host registers the C++ `MasterTabletServiceImpl` over
+`MasterTabletServer`, both of which now take a `MasterTabletServerContext` instead of the C++
+`Master`. The host's context:
+
+- serves only in the term the Rust leader reported ready in (`SetLeaderReadyTerm`, sent on every
+  leadership phase change), as `ScopedLeaderSharedLock` checks `leader_ready_term_`;
+- reads catalog versions from `pg_yb_catalog_version`, and skips version checks until that table
+  is readable (initdb done);
+- refuses the protobuf catalog version and initdb run by the master, and allows every catalog
+  write, since a Rust master runs no YSQL major upgrade.
+
+The YCQL virtual tables are not served from it yet.
+
+Tablet locations of system tablets (the sys catalog tablet and the YCQL system keyspaces' virtual
+tables) are the masters, with the current leader, from the quorum's committed consensus state, as
+`BuildLocationsForSystemTablet` does.
+
+Heartbeat responses carry the per-database catalog versions and invalidation messages, read from
+the sys catalog on each heartbeat unless the tserver's fingerprint matches. C++ serves them from a
+cache refreshed in the background (`enable_heartbeat_pg_catalog_versions_cache`); the Rust leader
+does not keep one yet.
+
+## system.transactions
+
+With YSQL on, the `transaction-table` controller creates `system.transactions` once
+`max(txn_table_wait_min_ts_count, replication_factor)` tservers have registered, as C++'s leader
+does from its tserver count callback. The transaction tables version is bumped when the table is
+created and again when one of its tablets turns RUNNING from a report: tservers refresh their
+usable status tablets only on a version change, and the first bump comes before any tablet runs.

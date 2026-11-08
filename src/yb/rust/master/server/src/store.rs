@@ -229,8 +229,8 @@ impl LeaderStateSource for HostLeaderState {
     }
 }
 
-/// The heartbeat fields the host's C++ objects own (L7): universe key registry, snapshots info
-/// and the AutoFlags config.
+/// The heartbeat fields the host's C++ objects own (L7): universe key registry, snapshots info,
+/// the AutoFlags config, and the YSQL catalog versions and invalidation messages.
 pub(crate) struct HostHeartbeatParts(
     pub(crate) UniquePtr<MasterInfoHandle>,
     pub(crate) Arc<HostGate>,
@@ -261,6 +261,8 @@ impl HeartbeatContributor for HostHeartbeatParts {
                 &encryption_info,
                 ctx.send_universe_key_registry,
                 auto_flags_version,
+                req.has_ysql_db_catalog_versions_fingerprint(),
+                req.ysql_db_catalog_versions_fingerprint(),
             )
             .map_err(host_error)?;
         let parts = TSHeartbeatResponsePB::parse_from_bytes(&bytes)
@@ -271,6 +273,12 @@ impl HeartbeatContributor for HostHeartbeatParts {
         resp.snapshots_info = parts.snapshots_info;
         if parts.auto_flags_config.is_some() {
             resp.auto_flags_config = parts.auto_flags_config;
+        }
+        if parts.db_catalog_version_data.is_some() {
+            resp.db_catalog_version_data = parts.db_catalog_version_data;
+        }
+        if parts.db_catalog_inval_messages_data.is_some() {
+            resp.db_catalog_inval_messages_data = parts.db_catalog_inval_messages_data;
         }
         Ok(())
     }

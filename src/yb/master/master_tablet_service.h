@@ -15,6 +15,7 @@
 
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/master_tablet_server_context.h"
 #include "yb/master/master_tserver.h"
 
 #include "yb/tserver/tablet_service.h"
@@ -32,7 +33,7 @@ YsqlCatalogPrefetchLoadPB GetYsqlCatalogPrefetchLoad();
 // A subset of the TabletService supported by the Master to query specific tables.
 class MasterTabletServiceImpl : public tserver::TabletServiceImpl {
  public:
-  MasterTabletServiceImpl(MasterTabletServer* server, Master* master);
+  MasterTabletServiceImpl(MasterTabletServer* server, MasterTabletServerContext* master);
 
   void Read(const tserver::ReadRequestMsg* req,
             tserver::ReadResponseMsg* resp,
@@ -98,7 +99,7 @@ class MasterTabletServiceImpl : public tserver::TabletServiceImpl {
   // its automatic default.
   static void AutoInitCatalogPrefetchLimit();
 
-  Master *const master_;
+  MasterTabletServerContext* const master_;
   scoped_refptr<AtomicGauge<int64_t>> ysql_catalog_prefetches_in_progress_;
   scoped_refptr<Counter> ysql_catalog_prefetch_rejections_;
   scoped_refptr<Counter> ysql_catalog_prefetch_new_admissions_;

@@ -204,6 +204,8 @@ pub(crate) mod bridge {
             encryption_info: &[u8],
             send_universe_key_registry: bool,
             auto_flags_config_version: i64,
+            has_catalog_versions_fingerprint: bool,
+            catalog_versions_fingerprint: u64,
         ) -> Result<Vec<u8>>;
     }
 }

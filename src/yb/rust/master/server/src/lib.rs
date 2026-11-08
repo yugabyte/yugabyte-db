@@ -82,6 +82,8 @@ fn run() -> Result<(), String> {
 struct RunningMaster {
     host: UniquePtr<MasterHost>,
     runtime: tokio::runtime::Runtime,
+    /// `MasterYsqlLease` calls run here, never behind heartbeats or DDL (K3).
+    lease_runtime: tokio::runtime::Runtime,
     gate: Arc<store::HostGate>,
 }
 
@@ -90,6 +92,7 @@ impl RunningMaster {
         tracing::info!("Rust master shutting down");
         self.host.pin_mut().shutdown();
         self.runtime.shutdown_timeout(Duration::from_secs(10));
+        self.lease_runtime.shutdown_timeout(Duration::from_secs(10));
         self.gate.close();
     }
 }
@@ -122,6 +125,12 @@ fn start(mut host: UniquePtr<MasterHost>) -> Result<RunningMaster, String> {
         .enable_all()
         .build()
         .map_err(|e| format!("creating the async runtime: {e}"))?;
+    let lease_runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .thread_name("rust-master-ysql-lease")
+        .enable_all()
+        .build()
+        .map_err(|e| format!("creating the YSQL lease runtime: {e}"))?;
 
     host.pin_mut().init().map_err(|e| e.what().to_string())?;
 
@@ -179,7 +188,8 @@ fn start(mut host: UniquePtr<MasterHost>) -> Result<RunningMaster, String> {
         .filter(|s| s.proto_name.starts_with("yb.master."))
     {
         // Same queues and priorities as Master::RegisterServices.
-        let (queue_limit, high_priority) = if service.proto_name == "yb.master.MasterYsqlLease" {
+        let lease_service = service.proto_name == "yb.master.MasterYsqlLease";
+        let (queue_limit, high_priority) = if lease_service {
             (host.ysql_lease_service_queue_length(), true)
         } else {
             (host.master_service_queue_length(), false)
@@ -188,7 +198,11 @@ fn start(mut host: UniquePtr<MasterHost>) -> Result<RunningMaster, String> {
             service,
             info.clone(),
             rpc.clone(),
-            runtime.handle().clone(),
+            if lease_service {
+                lease_runtime.handle().clone()
+            } else {
+                runtime.handle().clone()
+            },
             options,
             Some(core.leader.clone()),
         ));
@@ -230,6 +244,7 @@ fn start(mut host: UniquePtr<MasterHost>) -> Result<RunningMaster, String> {
     Ok(RunningMaster {
         host,
         runtime,
+        lease_runtime,
         gate,
     })
 }

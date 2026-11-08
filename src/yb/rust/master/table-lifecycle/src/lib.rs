@@ -43,6 +43,7 @@ mod tests;
 
 pub use alter::TableAlterer;
 pub use assign::TabletAssigner;
+pub use create::TransactionTableController;
 pub use drop::TableDeleter;
 pub use placement::{replication_info_set, table_replication_info};
 pub use schedules::covering_schedules;
@@ -74,6 +75,10 @@ pub struct LifecycleOptions {
     pub transaction_table_num_tablets_per_tserver: fn() -> i32,
     /// `enable_delete_truncate_xcluster_replicated_table`.
     pub enable_delete_truncate_xcluster_replicated_table: fn() -> bool,
+    /// `enable_ysql`: YSQL needs `system.transactions` from the start.
+    pub enable_ysql: fn() -> bool,
+    /// `txn_table_wait_min_ts_count`.
+    pub txn_table_wait_min_ts_count: fn() -> i32,
 }
 
 impl Default for LifecycleOptions {
@@ -87,6 +92,8 @@ impl Default for LifecycleOptions {
             transaction_table_num_tablets: || 0,
             transaction_table_num_tablets_per_tserver: || -1,
             enable_delete_truncate_xcluster_replicated_table: || false,
+            enable_ysql: || false,
+            txn_table_wait_min_ts_count: || 1,
         }
     }
 }

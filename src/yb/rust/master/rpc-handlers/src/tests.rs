@@ -509,6 +509,12 @@ mod leader_tests {
                 Default::default(),
                 Default::default(),
             );
+            let leases = master_ysql_manager::lease::YsqlLeases::new(
+                writer.clone(),
+                leadership.clone(),
+                ts_manager.clone(),
+                Default::default(),
+            );
             Arc::new(LeaderServices {
                 catalog,
                 writer,
@@ -523,6 +529,7 @@ mod leader_tests {
                 load_balancing_flag: || true,
                 transaction_tables_use_preferred_zones: || false,
                 splits,
+                leases,
                 blacklist_progress_initial_delay: || std::time::Duration::ZERO,
             })
         });
@@ -556,6 +563,19 @@ mod leader_tests {
         assert!(resp.leader_master(), "{resp:?}");
         assert!(resp.error.is_none());
         assert_eq!(resp.tservers.len(), 1);
+
+        // The registered tserver gets a YSQL lease.
+        let mut lease_req = yb_proto::pb::master_ysql_lease::RefreshYsqlLeaseRequestPB::new();
+        let lease_instance = lease_req.instance.mut_or_insert_default();
+        lease_instance.set_permanent_uuid(b"ts1".to_vec());
+        lease_instance.set_instance_seqno(1);
+        lease_req.set_local_request_send_time_ms(1);
+        let lease = yb_proto::pb::master_ysql_lease::RefreshYsqlLeaseResponsePB::parse_from_bytes(
+            &success(harness.call("RefreshYsqlLease", lease_req.write_to_bytes().unwrap())),
+        )
+        .unwrap();
+        assert!(lease.info().new_lease(), "{lease:?}");
+        assert_eq!(lease.info().lease_epoch(), 1);
 
         let servers = ListTabletServersResponsePB::parse_from_bytes(&success(
             harness.call("ListTabletServers", vec![]),

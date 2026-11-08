@@ -17,15 +17,16 @@
 use std::time::Instant;
 
 use master_catalog_entity::{Entity, EntityId};
+use master_catalog_state::defaults::TRANSACTION_TABLES_CONFIG_ID;
 use master_catalog_state::{is_inactive_state, CatalogSnapshot, Mutation, WriteOptions};
 use master_leadership::LeaderToken;
 use master_tablet_locations::{Replica, TabletReplicas};
 use protobuf::{Enum, EnumOrUnknown, Message};
-use yb_host_api::Status;
+use yb_host_api::{Status, StatusCode};
 use yb_proto::pb::catalog_entity_info::{
-    sys_tables_entry_pb, sys_tablets_entry_pb, SysTabletsEntryPB,
+    sys_tables_entry_pb, sys_tablets_entry_pb, SysConfigEntryPB, SysTabletsEntryPB,
 };
-use yb_proto::pb::common_types::PeerRole;
+use yb_proto::pb::common_types::{PeerRole, TableType};
 use yb_proto::pb::consensus_metadata::{ConsensusStatePB, PeerMemberType};
 use yb_proto::pb::master_heartbeat::{
     ReportedTabletPB, ReportedTabletUpdatesPB, TSHeartbeatRequestPB, TabletReportUpdatesPB,
@@ -104,15 +105,21 @@ impl TsManager {
                     WriteOptions::with_timeout(deadline.saturating_duration_since(Instant::now())),
                     |snapshot| {
                         let mut mutation = Mutation::new();
+                        let mut status_tablet_running = false;
                         for tablet in &catalog_updates {
                             let Some((entity, pb)) = next_tablet_pb(snapshot, uuid, tablet) else {
                                 continue;
                             };
+                            status_tablet_running |=
+                                becomes_running_status_tablet(snapshot, &entity, &pb);
                             mutation = mutation.read(&entity).upsert_message(
                                 SysRowEntryType::TABLET,
                                 tablet.tablet_id(),
                                 &pb,
                             )?;
+                        }
+                        if status_tablet_running {
+                            mutation = bump_transaction_tables_version(snapshot, mutation)?;
                         }
                         Ok((mutation, ()))
                     },
@@ -555,6 +562,43 @@ fn next_tablet_pb(
         return None;
     }
     Some((entity, pb))
+}
+
+/// A transaction status tablet turning RUNNING: tservers refresh their usable status tablets
+/// only when the transaction tables version changes, so it is bumped, as the C++ report path
+/// does. The bump when the table is created comes too early, before its tablets run.
+fn becomes_running_status_tablet(
+    snapshot: &CatalogSnapshot,
+    entity: &Entity,
+    pb: &SysTabletsEntryPB,
+) -> bool {
+    let running = sys_tablets_entry_pb::State::RUNNING.value();
+    pb.state() == sys_tablets_entry_pb::State::RUNNING
+        && entity.tablet().is_some_and(|t| t.state != running)
+        && snapshot
+            .get(SysRowEntryType::TABLE, pb.table_id())
+            .and_then(|t| t.table())
+            .is_some_and(|t| t.table_type == TableType::TRANSACTION_STATUS_TABLE_TYPE.value())
+}
+
+/// `IncrementTransactionTablesVersion`, in `mutation`.
+fn bump_transaction_tables_version(
+    snapshot: &CatalogSnapshot,
+    mutation: Mutation,
+) -> Result<Mutation, Status> {
+    let Some(row) = snapshot.get(SysRowEntryType::SYS_CONFIG, TRANSACTION_TABLES_CONFIG_ID) else {
+        return Ok(mutation);
+    };
+    let mut pb: SysConfigEntryPB = row
+        .parse()
+        .map_err(|e| Status::new(StatusCode::Corruption, e.to_string()))?;
+    let config = pb.mut_transaction_tables_config();
+    config.set_version(config.version() + 1);
+    mutation.read(row).upsert_message(
+        SysRowEntryType::SYS_CONFIG,
+        TRANSACTION_TABLES_CONFIG_ID,
+        &pb,
+    )
 }
 
 fn is_member(cstate: &ConsensusStatePB, uuid: &[u8]) -> bool {

@@ -21,6 +21,8 @@
 #include "yb/client/client.h"
 
 #include "yb/common/common_flags.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/pg_catversions.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/version_info.h"
 #include "yb/common/version_info.pb.h"
@@ -45,6 +47,8 @@
 #include "yb/master/master_encryption.pb.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_snapshot_coordinator.h"
+#include "yb/master/master_tablet_service.h"
+#include "yb/master/master_tablet_server_context.h"
 #include "yb/master/master_util.h"
 #include "yb/master/snapshot_coordinator_context.h"
 #include "yb/master/sys_catalog.h"
@@ -114,6 +118,7 @@ DECLARE_int32(master_consensus_svc_queue_length);
 DECLARE_bool(master_join_existing_universe);
 DECLARE_int32(master_remote_bootstrap_svc_queue_length);
 DECLARE_int32(master_svc_queue_length);
+DECLARE_int32(master_tserver_svc_queue_length);
 DECLARE_int32(master_yb_client_default_timeout_ms);
 DECLARE_int32(master_ysql_lease_svc_queue_length);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
@@ -197,6 +202,118 @@ rust::Vec<uint8_t> HandleRequest(rust::Slice<const uint8_t> request, const F& f)
 
 }  // namespace
 
+// What MasterTabletServer and MasterTabletServiceImpl use of the master: the sys catalog tablet,
+// read under the Rust leader's readiness, and its catalog versions. YSQL's other master-side
+// state (major upgrades, initdb run by the master) is not served on a Rust master.
+class MasterHost::TabletServerContextImpl : public master::MasterTabletServerContext {
+ public:
+  explicit TabletServerContextImpl(MasterHost* host) : host_(*host) {}
+
+  LeaderGuard LockLeader() override {
+    LeaderGuard guard;
+    if (!host_.SysCatalogIsOpen()) {
+      guard.catalog_status = STATUS(ServiceUnavailable, "Catalog manager is not initialized");
+      return guard;
+    }
+    const auto state = host_.SysCatalogLeaderState();
+    const auto ready_term = host_.leader_ready_term_.load();
+    if (state.leader_status != static_cast<int32_t>(consensus::LeaderStatus::LEADER_AND_READY) ||
+        ready_term < 0 || state.term != ready_term) {
+      guard.leader_status = STATUS_FORMAT(
+          IllegalState, "Not the leader. Local UUID: $0, Raft term: $1, ready term: $2",
+          host_.permanent_uuid(), state.term, ready_term);
+    }
+    return guard;
+  }
+
+  server::Clock* clock() override { return host_.clock(); }
+  const std::string& permanent_uuid() const override { return host_.permanent_uuid(); }
+  const NodeInstancePB& NodeInstance() const override { return host_.instance_pb(); }
+  const std::shared_ptr<MemTracker>& mem_tracker() const override { return host_.mem_tracker(); }
+  const std::shared_future<client::YBClient*>& client_future() const override {
+    return host_.client_future();
+  }
+  ConcurrentPointerReference<tserver::TServerSharedData> shared_object() override {
+    return host_.shared_object();
+  }
+
+  Result<tablet::TabletPeerPtr> GetServingTablet(const Slice& tablet_id) const override {
+    SCHECK_EQ(
+        tablet_id.ToBuffer(), master::kSysCatalogTabletId, NotFound,
+        Format("Tablet $0 not found", tablet_id.ToBuffer()));
+    auto peer = host_.sys_catalog_->tablet_peer();
+    SCHECK(peer, ServiceUnavailable, "The sys catalog tablet is not open");
+    return peer;
+  }
+  Result<std::shared_ptr<tablet::AbstractTablet>> GetSystemTablet(TabletIdView id) override {
+    // The YCQL virtual tables (system.peers and the like) are not served yet.
+    auto peer = VERIFY_RESULT(GetServingTablet(Slice(id)));
+    return std::static_pointer_cast<tablet::AbstractTablet>(VERIFY_RESULT(peer->shared_tablet()));
+  }
+
+  Status GetYsqlCatalogVersion(
+      uint64_t* catalog_version, uint64_t* last_breaking_version, bool) override {
+    return host_.sys_catalog_->ReadYsqlCatalogVersion(
+        kPgYbCatalogVersionTableId, catalog_version, last_breaking_version);
+  }
+  Status GetYsqlDBCatalogVersion(
+      uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version,
+      bool) override {
+    return host_.sys_catalog_->ReadYsqlDBCatalogVersion(
+        kPgYbCatalogVersionTableId, db_oid, catalog_version, last_breaking_version);
+  }
+  Result<uint64_t> IncrementYsqlCatalogVersion() override {
+    return STATUS(NotSupported, "The protobuf YSQL catalog version is not kept by a Rust master");
+  }
+  // CatalogManager skips the checks until initdb is done; pg_yb_catalog_version exists from
+  // then on, so once it is readable it stays so.
+  bool SkipCatalogVersionChecks() override {
+    if (catalog_versions_readable_.load()) {
+      return false;
+    }
+    uint64_t version, breaking;
+    if (host_.sys_catalog_->ReadYsqlCatalogVersion(
+            kPgYbCatalogVersionTableId, &version, &breaking).ok()) {
+      catalog_versions_readable_.store(true);
+      return false;
+    }
+    return true;
+  }
+  // YsqlManager refuses only writes a YSQL major upgrade forbids, which a Rust master does not
+  // run.
+  Status ValidateWriteToCatalogTableAllowed(TableIdView, bool) const override {
+    return Status::OK();
+  }
+
+  Status get_ysql_db_oid_to_cat_version_info_map(
+      const tserver::GetTserverCatalogVersionInfoRequestPB&,
+      tserver::GetTserverCatalogVersionInfoResponsePB*) const override {
+    return STATUS(NotSupported, "A Rust master does not run initdb");
+  }
+  Status GetTserverCatalogMessageLists(
+      const tserver::GetTserverCatalogMessageListsRequestPB&,
+      tserver::GetTserverCatalogMessageListsResponsePB*) const override {
+    return STATUS(NotSupported, "A Rust master does not run initdb");
+  }
+  Status SetTserverCatalogMessageList(
+      uint32_t, bool, uint64_t, const std::optional<std::string>&) override {
+    return STATUS(NotSupported, "A Rust master does not run initdb");
+  }
+  void TriggerRelcacheInitConnection(
+      const tserver::TriggerRelcacheInitConnectionRequestPB&,
+      StdStatusCallback callback) override {
+    callback(STATUS(NotSupported, "A Rust master does not run initdb"));
+  }
+
+  Result<master::SysClusterConfigEntryPB> GetClusterConfig() override {
+    return STATUS(NotSupported, "The cluster config is not read through a Rust master's host");
+  }
+
+ private:
+  MasterHost& host_;
+  std::atomic<bool> catalog_versions_readable_{false};
+};
+
 class MasterHost::SysCatalogContextImpl : public master::SysCatalogContext {
  public:
   explicit SysCatalogContextImpl(MasterHost* host) : host_(*host) {}
@@ -242,8 +359,10 @@ class MasterHost::SysCatalogContextImpl : public master::SysCatalogContext {
   scoped_refptr<master::TableInfo> GetTableInfo(const TableId& table_id) override {
     return nullptr;
   }
+  // YsqlManager maps to the prior version's table only during a YSQL major upgrade, which a Rust
+  // master does not run.
   Result<TableId> GetVersionSpecificCatalogTableId(const TableId& table_id) const override {
-    return STATUS(NotSupported, "YSQL catalog reads are served by the master leader");
+    return table_id;
   }
 
  private:
@@ -683,6 +802,14 @@ Status MasterHost::DoStart() {
       std::make_shared<tserver::RemoteBootstrapServiceImpl>(
           fs_manager_.get(), tablet_peer_lookup_.get(), metric_entity(), opts_.MakeCloudInfoPB(),
           &proxy_cache())));
+  // YSQL reads and writes its catalog on the leader's sys catalog tablet.
+  tablet_server_context_ = std::make_unique<TabletServerContextImpl>(this);
+  tablet_server_ = std::make_unique<master::MasterTabletServer>(
+      tablet_server_context_.get(), metric_entity());
+  RETURN_NOT_OK(RegisterService(
+      FLAGS_master_tserver_svc_queue_length,
+      std::make_shared<master::MasterTabletServiceImpl>(
+          tablet_server_.get(), tablet_server_context_.get())));
   RETURN_NOT_OK(DbServerBase::Start());
 
   auto reg = std::make_unique<ServerRegistrationPB>();
@@ -1170,6 +1297,14 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
           return Status::OK();
         });
   }
+  if (name == "SetLeaderReadyTerm") {
+    return HandleRequest<master::SetLeaderReadyTermRequestPB,
+                         master::SetLeaderReadyTermResponsePB>(
+        request, [this](const auto& req, auto*) {
+          leader_ready_term_.store(req.term());
+          return Status::OK();
+        });
+  }
   if (name == "RestoreInitialSysCatalogSnapshot") {
     // CatalogManager::MaybeRestoreInitialSysCatalogSnapshotAndReloadSysCatalog, up to the restore;
     // the Rust leader checks that initdb is not done and writes the rows C++ recreates after it.
@@ -1401,7 +1536,8 @@ RaftLeaderStateFfi MasterHost::SysCatalogLeaderState() const {
 
 rust::Vec<uint8_t> MasterHost::HeartbeatHostParts(
     rust::Slice<const uint8_t> encryption_info, bool send_universe_key_registry,
-    int64_t auto_flags_config_version) const {
+    int64_t auto_flags_config_version, bool has_catalog_versions_fingerprint,
+    uint64_t catalog_versions_fingerprint) const {
   // CatalogManager::FillHeartbeatResponse and the AutoFlags part of TSHeartbeat.
   master::TSHeartbeatResponsePB resp;
   if (send_universe_key_registry && !encryption_info.empty()) {
@@ -1416,7 +1552,61 @@ rust::Vec<uint8_t> MasterHost::HeartbeatHostParts(
       static_cast<uint64_t>(auto_flags_config_version) < auto_flags_manager_->GetConfigVersion()) {
     *resp.mutable_auto_flags_config() = auto_flags_manager_->GetConfig();
   }
+  FillYsqlCatalogVersions(has_catalog_versions_fingerprint, catalog_versions_fingerprint, &resp);
   return ToRustBytes(resp.SerializeAsString());
+}
+
+void MasterHost::FillYsqlCatalogVersions(
+    bool has_fingerprint, uint64_t fingerprint, master::TSHeartbeatResponsePB* resp) const {
+  // Read from the sys catalog on every heartbeat: the C++ leader's cache
+  // (enable_heartbeat_pg_catalog_versions_cache) is not kept here. Without YSQL there is nothing
+  // to send; C++ falls back to the legacy protobuf version for old tservers.
+  if (!FLAGS_enable_ysql || !SysCatalogIsOpen()) {
+    return;
+  }
+  master::DbOidToCatalogVersionMap versions;
+  HybridTime read_ht;
+  auto s = sys_catalog_->ReadYsqlAllDBCatalogVersions(
+      kPgYbCatalogVersionTableId, &versions, &read_ht);
+  if (!s.ok() || versions.empty()) {
+    YB_LOG_EVERY_N_SECS(WARNING, 60)
+        << "Could not get YSQL db catalog versions for heartbeat response: "
+        << s.ToUserMessage();
+    return;
+  }
+  if (has_fingerprint &&
+      fingerprint == FingerprintCatalogVersions<master::DbOidToCatalogVersionMap>(versions)) {
+    return;
+  }
+  auto* const version_data = resp->mutable_db_catalog_version_data();
+  if (read_ht.is_valid()) {
+    version_data->set_catalog_versions_read_time(read_ht.ToUint64());
+  }
+  for (const auto& [db_oid, version] : versions) {
+    auto* const entry = version_data->add_db_catalog_versions();
+    entry->set_db_oid(db_oid);
+    entry->set_current_version(version.current_version);
+    entry->set_last_breaking_version(version.last_breaking_version);
+  }
+  if (!FLAGS_ysql_yb_enable_invalidation_messages) {
+    return;
+  }
+  auto messages = sys_catalog_->ReadYsqlCatalogInvalationMessages();
+  if (!messages.ok()) {
+    YB_LOG_EVERY_N_SECS(WARNING, 60)
+        << "Could not get YSQL invalidation messages for heartbeat response: "
+        << messages.status();
+    return;
+  }
+  auto* const messages_data = resp->mutable_db_catalog_inval_messages_data();
+  for (auto& [db_oid_version, message_list] : *messages) {
+    auto* const inval_messages = messages_data->add_db_catalog_inval_messages();
+    inval_messages->set_db_oid(db_oid_version.first);
+    inval_messages->set_current_version(db_oid_version.second);
+    if (message_list.has_value()) {
+      inval_messages->set_message_list(std::move(*message_list));
+    }
+  }
 }
 
 rust::Vec<ScannedRow> MasterInfoHandle::ScanSysCatalog(
@@ -1533,9 +1723,11 @@ uint32_t MasterInfoHandle::YsqlMajorVersion() const {
 
 rust::Vec<uint8_t> MasterInfoHandle::HeartbeatHostParts(
     rust::Slice<const uint8_t> encryption_info, bool send_universe_key_registry,
-    int64_t auto_flags_config_version) const {
+    int64_t auto_flags_config_version, bool has_catalog_versions_fingerprint,
+    uint64_t catalog_versions_fingerprint) const {
   return host_.HeartbeatHostParts(
-      encryption_info, send_universe_key_registry, auto_flags_config_version);
+      encryption_info, send_universe_key_registry, auto_flags_config_version,
+      has_catalog_versions_fingerprint, catalog_versions_fingerprint);
 }
 
 // Master::GoIntoShellMode and CatalogManager::GoIntoShellMode.

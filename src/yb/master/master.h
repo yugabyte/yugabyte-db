@@ -80,6 +80,7 @@ class SecureContext;
 namespace master {
 
 class MasterAutoFlagsManager;
+class MasterTabletServerContext;
 
 class Master : public tserver::DbServerBase {
  public:
@@ -284,6 +285,9 @@ class Master : public tserver::DbServerBase {
 
   // The metric entity for the cluster.
   scoped_refptr<MetricEntity> metric_entity_cluster_;
+
+  // What master_tablet_server_ and the master tablet service use of this master.
+  std::unique_ptr<MasterTabletServerContext> tablet_server_context_;
 
   // Master's tablet server implementation used to host virtual tables like system.peers.
   std::unique_ptr<MasterTabletServer> master_tablet_server_;

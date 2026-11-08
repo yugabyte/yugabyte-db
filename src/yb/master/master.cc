@@ -56,6 +56,7 @@
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_service.h"
 #include "yb/master/master_snapshot_coordinator.h"
+#include "yb/master/master_tablet_server_context.h"
 #include "yb/master/master_tablet_service.h"
 #include "yb/master/master_util.h"
 #include "yb/master/master-path-handlers.h"
@@ -220,6 +221,97 @@ class MasterSysCatalogContext : public SysCatalogContext {
   Master* const master_;
 };
 
+class MasterTabletServerContextImpl : public MasterTabletServerContext {
+ public:
+  explicit MasterTabletServerContextImpl(Master* master) : master_(*master) {}
+
+  LeaderGuard LockLeader() override {
+    auto lock = std::make_shared<ScopedLeaderSharedLock>(
+        master_.catalog_manager_impl(), __FILE__, __LINE__, __func__);
+    auto catalog_status = lock->catalog_status();
+    auto leader_status = catalog_status.ok() ? lock->leader_status() : Status::OK();
+    return LeaderGuard{
+        .catalog_status = std::move(catalog_status),
+        .leader_status = std::move(leader_status),
+        .hold = std::move(lock),
+    };
+  }
+
+  server::Clock* clock() override { return master_.clock(); }
+  const std::string& permanent_uuid() const override { return master_.permanent_uuid(); }
+  const NodeInstancePB& NodeInstance() const override {
+    return master_.catalog_manager()->NodeInstance();
+  }
+  const std::shared_ptr<MemTracker>& mem_tracker() const override {
+    return master_.mem_tracker();
+  }
+  const std::shared_future<client::YBClient*>& client_future() const override {
+    return master_.client_future();
+  }
+  ConcurrentPointerReference<tserver::TServerSharedData> shared_object() override {
+    return master_.shared_object();
+  }
+
+  Result<tablet::TabletPeerPtr> GetServingTablet(const Slice& tablet_id) const override {
+    return master_.catalog_manager()->GetServingTablet(tablet_id);
+  }
+  Result<std::shared_ptr<tablet::AbstractTablet>> GetSystemTablet(TabletIdView id) override {
+    return master_.catalog_manager()->GetSystemTablet(id);
+  }
+
+  Status GetYsqlCatalogVersion(
+      uint64_t* catalog_version, uint64_t* last_breaking_version, bool use_cache) override {
+    return master_.catalog_manager()->GetYsqlCatalogVersion(
+        catalog_version, last_breaking_version, use_cache);
+  }
+  Status GetYsqlDBCatalogVersion(
+      uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version,
+      bool use_cache) override {
+    return master_.catalog_manager()->GetYsqlDBCatalogVersion(
+        db_oid, catalog_version, last_breaking_version, use_cache);
+  }
+  Result<uint64_t> IncrementYsqlCatalogVersion() override {
+    return master_.catalog_manager()->IncrementYsqlCatalogVersion();
+  }
+  bool SkipCatalogVersionChecks() override {
+    return master_.catalog_manager()->SkipCatalogVersionChecks();
+  }
+  Status ValidateWriteToCatalogTableAllowed(
+      TableIdView table_id, bool is_forced_update) const override {
+    return master_.ysql_manager_impl().ValidateWriteToCatalogTableAllowed(
+        table_id, is_forced_update);
+  }
+
+  Status get_ysql_db_oid_to_cat_version_info_map(
+      const tserver::GetTserverCatalogVersionInfoRequestPB& req,
+      tserver::GetTserverCatalogVersionInfoResponsePB* resp) const override {
+    return master_.get_ysql_db_oid_to_cat_version_info_map(req, resp);
+  }
+  Status GetTserverCatalogMessageLists(
+      const tserver::GetTserverCatalogMessageListsRequestPB& req,
+      tserver::GetTserverCatalogMessageListsResponsePB* resp) const override {
+    return master_.GetTserverCatalogMessageLists(req, resp);
+  }
+  Status SetTserverCatalogMessageList(
+      uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
+      const std::optional<std::string>& message_list) override {
+    return master_.SetTserverCatalogMessageList(
+        db_oid, is_breaking_change, new_catalog_version, message_list);
+  }
+  void TriggerRelcacheInitConnection(
+      const tserver::TriggerRelcacheInitConnectionRequestPB& req,
+      StdStatusCallback callback) override {
+    master_.TriggerRelcacheInitConnection(req, std::move(callback));
+  }
+
+  Result<SysClusterConfigEntryPB> GetClusterConfig() override {
+    return master_.catalog_manager()->GetClusterConfig();
+  }
+
+ private:
+  Master& master_;
+};
+
 }  // namespace
 
 Master::Master(const MasterOptions& opts)
@@ -227,7 +319,8 @@ Master::Master(const MasterOptions& opts)
       state_(kStopped),
       metric_entity_cluster_(
           METRIC_ENTITY_cluster.Instantiate(metric_registry_.get(), "yb.cluster")),
-      master_tablet_server_(new MasterTabletServer(this, metric_entity())),
+      tablet_server_context_(std::make_unique<MasterTabletServerContextImpl>(this)),
+      master_tablet_server_(new MasterTabletServer(tablet_server_context_.get(), metric_entity())),
       sys_catalog_context_(std::make_unique<MasterSysCatalogContext>(this)),
       sys_catalog_(new SysCatalogTable(sys_catalog_context_.get(), metric_registry_.get())),
       ts_manager_(new TSManager(*sys_catalog_)),
@@ -385,7 +478,8 @@ Status Master::RegisterServices() {
 
   RETURN_NOT_OK(RegisterService(
       FLAGS_master_tserver_svc_queue_length,
-      std::make_shared<MasterTabletServiceImpl>(master_tablet_server_.get(), this)));
+      std::make_shared<MasterTabletServiceImpl>(
+          master_tablet_server_.get(), tablet_server_context_.get())));
 
   if (FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
     auto cdc_service = master_tablet_server_->CreateCDCService(

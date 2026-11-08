@@ -35,6 +35,7 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_options.h"
+#include "yb/master/master_tserver.h"
 
 #include "yb/rust_bridge/rpc_bridge.h"
 
@@ -144,12 +145,14 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
       rust::Box<WriteCompletion> completion) const;
   RaftLeaderStateFfi SysCatalogLeaderState() const;
   // The heartbeat response fields the host owns (L7): universe key registry when
-  // `send_universe_key_registry`, snapshots info, and the AutoFlags config when the tserver's
-  // version (`auto_flags_config_version`, -1 when absent) is older. `encryption_info` is the
-  // cluster config's, serialized; empty when it has none.
+  // `send_universe_key_registry`, snapshots info, the AutoFlags config when the tserver's
+  // version (`auto_flags_config_version`, -1 when absent) is older, and the YSQL catalog versions
+  // and invalidation messages unless the tserver's fingerprint of them matches.
+  // `encryption_info` is the cluster config's, serialized; empty when it has none.
   rust::Vec<uint8_t> HeartbeatHostParts(
       rust::Slice<const uint8_t> encryption_info, bool send_universe_key_registry,
-      int64_t auto_flags_config_version) const;
+      int64_t auto_flags_config_version, bool has_catalog_versions_fingerprint,
+      uint64_t catalog_versions_fingerprint) const;
 
   // What a first leader writes and only C++ can build (K10, master/system_tables.h).
 
@@ -218,6 +221,7 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   class SysCatalogContextImpl;
   class SnapshotContextImpl;
   class TabletPeerLookupImpl;
+  class TabletServerContextImpl;
 
   Status DoInit();
   Status DoStart();
@@ -231,6 +235,9 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   Result<std::vector<ServerEntryPB>> ListMastersForWeb() const;
   docdb::HistoryCutoff AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata);
   void RefreshHistoryRetentionPinLoop();
+  // PopulatePgCatalogVersionInfo of the C++ heartbeat service, read from the sys catalog.
+  void FillYsqlCatalogVersions(
+      bool has_fingerprint, uint64_t fingerprint, master::TSHeartbeatResponsePB* resp) const;
   Status StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req);
 
   master::MasterOptions opts_;
@@ -268,6 +275,12 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   std::mutex remote_bootstrap_mutex_;
   // Set by the sys-catalog open, which runs on its own thread in an embedded master.
   std::atomic<bool> tablet_exists_{false};
+  // The term in which the Rust leader became ready, -1 when it is not ready
+  // ("SetLeaderReadyTerm"): CatalogManager's leader_ready_term_, for the tablet service.
+  std::atomic<int64_t> leader_ready_term_{-1};
+  // The sys catalog tablet served to YSQL (MasterTabletServiceImpl).
+  std::unique_ptr<TabletServerContextImpl> tablet_server_context_;
+  std::unique_ptr<master::MasterTabletServer> tablet_server_;
 };
 
 class MasterInfoHandle {
@@ -300,7 +313,8 @@ class MasterInfoHandle {
   RaftLeaderStateFfi SysCatalogLeaderState() const;
   rust::Vec<uint8_t> HeartbeatHostParts(
       rust::Slice<const uint8_t> encryption_info, bool send_universe_key_registry,
-      int64_t auto_flags_config_version) const;
+      int64_t auto_flags_config_version, bool has_catalog_versions_fingerprint,
+      uint64_t catalog_versions_fingerprint) const;
   rust::Vec<RowChangeFfi> SystemTableRows(
       rust::Slice<const ScannedRow> tables, const rust::Vec<rust::String>& tables_with_tablets)
       const;

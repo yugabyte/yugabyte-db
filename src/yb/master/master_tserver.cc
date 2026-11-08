@@ -30,9 +30,7 @@
 
 #include "yb/docdb/object_lock_shared_state_manager.h"
 
-#include "yb/master/catalog_manager_if.h"
-#include "yb/master/master.h"
-#include "yb/master/scoped_leader_shared_lock.h"
+#include "yb/master/master_tablet_server_context.h"
 #include "yb/master/sys_catalog_constants.h"
 
 #include "yb/tablet/tablet_peer.h"
@@ -110,7 +108,8 @@ class MasterCDCServiceContextImpl : public cdc::CDCServiceContext {
   MasterTabletServer& master_tablet_server_;
 };
 
-MasterTabletServer::MasterTabletServer(Master* master, scoped_refptr<MetricEntity> metric_entity)
+MasterTabletServer::MasterTabletServer(
+    MasterTabletServerContext* master, scoped_refptr<MetricEntity> metric_entity)
     : master_(master), metric_entity_(metric_entity) {
 }
 
@@ -136,11 +135,11 @@ tserver::TSLocalLockManagerPtr MasterTabletServer::ts_local_lock_manager() const
 
 Result<tablet::TabletPeerPtr> MasterTabletServer::GetServingTablet(
     const TabletId& tablet_id) const {
-  return master_->catalog_manager()->GetServingTablet(tablet_id);
+  return master_->GetServingTablet(Slice(tablet_id));
 }
 
 Result<tablet::TabletPeerPtr> MasterTabletServer::GetServingTablet(const Slice& tablet_id) const {
-  return master_->catalog_manager()->GetServingTablet(tablet_id);
+  return master_->GetServingTablet(tablet_id);
 }
 
 Status MasterTabletServer::GetTabletStatus(const tserver::GetTabletStatusRequestPB* req,
@@ -162,7 +161,7 @@ bool MasterTabletServer::LeaderAndReady(const TabletId& tablet_id, bool allow_st
 }
 
 const NodeInstancePB& MasterTabletServer::NodeInstance() const {
-  return master_->catalog_manager()->NodeInstance();
+  return master_->NodeInstance();
 }
 
 Status MasterTabletServer::GetRegistration(ServerRegistrationPB* reg) const {
@@ -197,9 +196,9 @@ void MasterTabletServer::get_ysql_db_catalog_version(
   };
 
   Status s = db_oid == kPgInvalidOid
-                 ? master_->catalog_manager()->GetYsqlCatalogVersion(
+                 ? master_->GetYsqlCatalogVersion(
                        current_version, last_breaking_version, use_cache)
-                 : master_->catalog_manager()->GetYsqlDBCatalogVersion(
+                 : master_->GetYsqlDBCatalogVersion(
                        db_oid, current_version, last_breaking_version, use_cache);
   if (!s.ok()) {
     LOG(WARNING) << "Could not get YSQL catalog version for master's tserver API: " << s;
@@ -318,7 +317,7 @@ Result<tserver::PgTxnSnapshot> MasterTabletServer::GetLocalPgTxnSnapshot(
 }
 
 bool MasterTabletServer::SkipCatalogVersionChecks() {
-  return master_->catalog_manager()->SkipCatalogVersionChecks();
+  return master_->SkipCatalogVersionChecks();
 }
 
 Result<tserver::YSQLLeaseInfo> MasterTabletServer::GetYSQLLeaseInfo() const {
@@ -365,7 +364,7 @@ tserver::ConnectivityStateResponsePB MasterTabletServer::ConnectivityState() {
 }
 
 ReplicationInfoPB MasterTabletServer::GetClusterReplicationInfo() const {
-  auto config = master_->catalog_manager()->GetClusterConfig();
+  auto config = master_->GetClusterConfig();
   if (!config.ok()) {
     LOG(WARNING) << "Failed to get cluster config for replication info: " << config.status();
     return {};
@@ -374,7 +373,7 @@ ReplicationInfoPB MasterTabletServer::GetClusterReplicationInfo() const {
 }
 
 int32_t MasterTabletServer::cluster_config_version() const {
-  auto config = master_->catalog_manager()->GetClusterConfig();
+  auto config = master_->GetClusterConfig();
   if (!config.ok()) {
     LOG(WARNING) << "Failed to get cluster config version: " << config.status();
     return -1;

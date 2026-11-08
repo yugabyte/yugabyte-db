@@ -26,6 +26,7 @@ use master_cluster_balancer::Options as BalancerOptions;
 use master_leadership::{Leadership, Phase};
 use master_rpc_handlers::{LeaderServices, MasterInfo};
 use master_sys_catalog::{ApplyEvents, SysCatalogStore};
+use master_table_lifecycle::TransactionTableController;
 use master_table_lifecycle::{
     LifecycleOptions, SchemaHost, TableAlterer, TableDeleter, TableLifecycle, TabletAssigner,
 };
@@ -40,11 +41,14 @@ use master_ts_manager::{
     DeleteReplica, HeartbeatContributor, LocationStream, Peer, TsManager, TsManagerOptions,
 };
 use master_ysql_manager::initdb;
+use master_ysql_manager::lease::{LeaseExpiryController, LeaseOptions, YsqlLeases};
+use protobuf::Message;
 use tokio::sync::watch;
 use yb_flags::{yb_flag, FlagRef, FlagTag};
 use yb_host_api::metrics::MetricRegistry;
 use yb_host_api::rpc::RpcClient;
 use yb_host_api::StatusCode;
+use yb_proto::pb::master_rust_peer::SetLeaderReadyTermRequestPB;
 
 yb_flag!(
     /// Rows per catalog Raft write.
@@ -140,6 +144,13 @@ static LB_MIN_INBOUND_RBS: FlagRef<i32> =
     FlagRef::new("load_balancer_min_inbound_remote_bootstraps_per_tserver");
 static RBS_RATE_LIMIT: FlagRef<i64> = FlagRef::new("remote_bootstrap_rate_limit_bytes_per_sec");
 static AUTO_SPLIT: FlagRef<bool> = FlagRef::new("enable_automatic_tablet_splitting");
+static ENABLE_YSQL: FlagRef<bool> = FlagRef::new("enable_ysql");
+static TXN_TABLE_WAIT_MIN_TS_COUNT: FlagRef<i32> = FlagRef::new("txn_table_wait_min_ts_count");
+static YSQL_LEASE_TTL_MS: FlagRef<u64> = FlagRef::new("master_ysql_operation_lease_ttl_ms");
+static YSQL_LEASE_CLIENT_BUFFER_MS: FlagRef<u64> =
+    FlagRef::new("ysql_operation_lease_ttl_client_buffer_ms");
+static OBJECT_LOCK_CLEANUP_INTERVAL_MS: FlagRef<u64> =
+    FlagRef::new("object_lock_cleanup_interval_ms");
 static SPLIT_CANDIDATES_INTERVAL_MS: FlagRef<i32> =
     FlagRef::new("process_split_tablet_candidates_interval_msec");
 static OUTSTANDING_SPLIT_LIMIT: FlagRef<u64> = FlagRef::new("outstanding_tablet_split_limit");
@@ -267,6 +278,32 @@ fn retry_policy(limit_attempts: bool) -> RetryPolicy {
     }
 }
 
+/// Tells the host the term in which this leader is ready, -1 when it is not, as C++ keeps
+/// `leader_ready_term_`: the host serves YSQL's catalog reads and writes only in that term. A
+/// lapsed lease keeps the term; the host's Raft check refuses such calls anyway.
+async fn report_ready_term(leadership: Arc<Leadership>, host: Arc<dyn SchemaHost>) {
+    let mut phases = leadership.subscribe();
+    loop {
+        let term = match *phases.borrow_and_update() {
+            Phase::Ready { term, .. } | Phase::LeaseLapsed { term, .. } => term,
+            _ => -1,
+        };
+        let mut req = SetLeaderReadyTermRequestPB::new();
+        req.set_term(term);
+        match req.write_to_bytes() {
+            Ok(bytes) => {
+                if let Err(status) = host.call("SetLeaderReadyTerm", &bytes) {
+                    tracing::warn!("Failed to report the ready term {term} to the host: {status}");
+                }
+            }
+            Err(e) => tracing::warn!("Failed to encode the ready term: {e}"),
+        }
+        if phases.changed().await.is_err() {
+            return;
+        }
+    }
+}
+
 /// What the core takes from the C++ host.
 pub(crate) struct HostParts {
     /// The server's metric registry.
@@ -366,6 +403,8 @@ impl Core {
                 replication_factor: || REPLICATION_FACTOR.get(),
                 max_create_tablets_per_ts: || MAX_CREATE_TABLETS_PER_TS.get(),
                 check_ts_count_for_create_table: || CHECK_TS_COUNT_FOR_CREATE_TABLE.get(),
+                enable_ysql: || ENABLE_YSQL.get(),
+                txn_table_wait_min_ts_count: || TXN_TABLE_WAIT_MIN_TS_COUNT.get(),
                 tablet_creation_timeout_ms: || TABLET_CREATION_TIMEOUT_MS.get() as i64,
                 use_parent_table_id_field: || USE_PARENT_TABLE_ID_FIELD.get(),
                 transaction_table_num_tablets: || TRANSACTION_TABLE_NUM_TABLETS.get(),
@@ -374,6 +413,18 @@ impl Core {
                 },
                 enable_delete_truncate_xcluster_replicated_table: || {
                     ENABLE_DELETE_TRUNCATE_XCLUSTER_REPLICATED_TABLE.get()
+                },
+            },
+        );
+        let leases = YsqlLeases::new(
+            writer.clone(),
+            leadership.clone(),
+            ts_manager.clone(),
+            LeaseOptions {
+                ttl: || Duration::from_millis(YSQL_LEASE_TTL_MS.get()),
+                client_buffer: || Duration::from_millis(YSQL_LEASE_CLIENT_BUFFER_MS.get()),
+                cleanup_interval: || {
+                    Duration::from_millis(OBJECT_LOCK_CLEANUP_INTERVAL_MS.get().max(1))
                 },
             },
         );
@@ -391,6 +442,7 @@ impl Core {
             load_balancing_flag: || ENABLE_LOAD_BALANCING.get(),
             transaction_tables_use_preferred_zones: || TXN_TABLES_USE_PREFERRED_ZONES.get(),
             splits,
+            leases,
             blacklist_progress_initial_delay: || {
                 Duration::from_secs(BLACKLIST_PROGRESS_INITIAL_DELAY_SECS.get().max(0) as u64)
             },
@@ -432,6 +484,7 @@ impl Core {
             })
         }));
         runtime.spawn(leadership.clone().run());
+        runtime.spawn(report_ready_term(leadership.clone(), schema.clone()));
         Core {
             catalog,
             leadership,
@@ -561,6 +614,16 @@ fn start_term(
         scope,
         SplitController::new(leader.splits.clone()),
         leader.catalog.subscribe(),
+    );
+    run_controller(
+        scope,
+        LeaseExpiryController::new(leader.leases.clone()),
+        watch::channel(0).1,
+    );
+    run_controller(
+        scope,
+        TransactionTableController::new(leader.tables.clone()),
+        leader.ts_manager.subscribe(),
     );
     let enabled_leader = leader.clone();
     run_controller(
