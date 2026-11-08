@@ -73,7 +73,6 @@
 
 /* YB includes */
 #include "pg_yb_utils.h"
-#include "tcop/pquery.h"
 #include "yb/yql/pggate/ybc_dist_trace.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -2311,16 +2310,18 @@ StartTransaction(void)
 	if (IsYugaByteEnabled())
 	{
 		/*
-		 * A statement that commits and starts transactions inside itself
-		 * (CREATE INDEX phases, ANALYZE of several tables, a procedure that
-		 * commits) does so while its portal runs. Those transactions keep the
-		 * object locking mode of the statement's first transaction, so the
-		 * whole statement runs in one mode. Upstream gets this for its own
-		 * settings because it applies a config reload only between client
-		 * messages, but here the statement's first transaction can start in
-		 * an earlier message (Parse) than the one that runs it (Execute).
+		 * A utility statement never changes object locking mode while it
+		 * runs: otherwise it would build state in one mode and use it in the
+		 * other. Only utility statements commit while they run (VACUUM,
+		 * REINDEX SCHEMA, the CREATE INDEX phases, COMMIT in a procedure; see
+		 * PreCommit_Portals), and the first transaction of each starts before
+		 * ProcessUtility, so it still takes the current flag value. Upstream
+		 * gets the same effect for its own settings by applying a config
+		 * reload only between client messages, but here the first
+		 * transaction can start in an earlier message (Parse) than the one
+		 * that runs the statement (Execute).
 		 */
-		if (ActivePortal == NULL)
+		if (!YBIsInUtilityOperation())
 			YBCSetObjectLockingInfraForCurrTxn();
 
 		/*
@@ -3426,22 +3427,10 @@ YbCommitTransactionCommandIntermediate(void)
 	StartTransactionCommand();
 
 	/*
-	 * YB: The new transaction keeps the statement's object locking mode while
-	 * a portal runs (see StartTransaction). A caller that runs no portal, such
-	 * as autovacuum's call to vacuum(), latches the mode again at each
-	 * transaction. If it changed, the rest of the statement would run in the
-	 * other mode with state from the first, so fail it.
+	 * Every caller runs inside a utility statement, so the new transaction
+	 * kept the object locking mode (see StartTransaction).
 	 */
-	if (YBIsDdlTransactionBlockEnabled() != ddl_txn_block_enabled)
-	{
-		Assert(ActivePortal == NULL);
-		ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("transactional DDL was %s while the statement was "
-						"running",
-						ddl_txn_block_enabled ? "disabled" : "enabled"),
-				 errhint("Retry the statement.")));
-	}
+	Assert(YBIsDdlTransactionBlockEnabled() == ddl_txn_block_enabled);
 
 	if (ddl_txn_block_enabled && is_ddl_mode)
 	{

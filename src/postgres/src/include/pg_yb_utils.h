@@ -1207,6 +1207,10 @@ extern void YBOnUtilityOperationBegin();
  * level, saves DocDB stats into the YBGetUtilityOperationStats() slot.
  */
 extern void YBOnUtilityOperationEnd();
+/* Called instead of YBOnUtilityOperationEnd when the call raises an error. */
+extern void YBOnUtilityOperationAbort();
+/* True while a tracked ProcessUtility call runs. */
+extern bool YBIsInUtilityOperation();
 /* DocDB stats from the last top-level utility (for pg_stat_statements). */
 extern YbInstrumentation *YBGetUtilityOperationStats();
 
