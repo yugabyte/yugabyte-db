@@ -1118,13 +1118,10 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestDdlTxnBlockModeStableAcrossP
   ASSERT_NOK(conn.FetchAllAsString("SELECT * FROM post_promotion"));
 }
 
-// A statement that commits intermediate transactions (ANALYZE on multiple tables here) re-latches
-// the object locking infra auto flag at every one of those commits. If the flag is promoted while
-// such a statement is in flight, the rest of the statement would run in the new mode while the
-// state it already built belongs to the old one, so the statement must fail instead.
-// TODO(#34635): Pin the latched value for the statement and replace this with an assertion that
-// the statement succeeds.
-TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestModeChangeDuringStatementFails) {
+// A statement that commits intermediate transactions (ANALYZE on multiple tables here) keeps the
+// object locking mode of its first transaction for all of them. The infra auto flag is promoted
+// while such a statement is in flight, and the statement must finish in the mode it started in.
+TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestModeStableDuringStatement) {
   {
     auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
     ASSERT_OK(conn.Execute("CREATE DATABASE testdb;"));
@@ -1193,8 +1190,7 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestModeChangeDuringStatementFai
   }
 
   LOG(INFO) << "ANALYZE returned: " << error_message;
-  ASSERT_STR_CONTAINS(error_message, "transactional DDL was enabled while the statement was "
-                                     "running");
+  ASSERT_EQ(error_message, "");
 }
 
 // Test for #32224.
