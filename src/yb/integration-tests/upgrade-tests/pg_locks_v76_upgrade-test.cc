@@ -41,9 +41,9 @@ TEST_F(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
   auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
   ASSERT_OK(conn.Execute("CREATE TABLE foo (id INT PRIMARY KEY, value TEXT);"));
   ASSERT_OK(conn.Execute("INSERT INTO foo VALUES (1, 'test');"));
-  // Load the old pg_locks row type into conn's catalog cache before the transaction starts. The
-  // read in that transaction after finalize then shows whether the transaction sees the new row
-  // type.
+  // Load the old pg_locks row type into conn's catalog cache, so the read after finalize shows
+  // whether the transaction below sees the new row type. Read before BEGIN: with #36572, a read
+  // in that transaction locks the view across finalize, and V76 cannot replace the view.
   ASSERT_OK(conn.Fetch(kPgLocksQuery));
   // Acquire advisory locks and a row lock, and hold them across the upgrade.
   ASSERT_OK(conn.Fetch("SELECT pg_advisory_lock(1);"));
@@ -55,9 +55,9 @@ TEST_F(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
   SleepFor(MonoDelta::FromSeconds(1 * kTimeMultiplier));
 
   // Check that the pg_locks view does not include the new columns,
-  // classid, objid, objsubid, during the upgrade. Read from another connection. Once #36572
-  // makes a transaction that starts before finalize take object locks, a read in conn's
-  // transaction locks the view until the transaction ends, and V76 cannot replace the view.
+  // classid, objid, objsubid, during the upgrade. Read from another connection, outside any
+  // transaction. With #36572, a read in conn's transaction locks the view until that
+  // transaction ends, and V76 cannot replace the view.
   auto observer = ASSERT_RESULT(cluster_->ConnectToDB());
   ASSERT_OK(observer.ExecuteFormat("SET yb_locks_min_txn_age='$0ms'", kMinTxnAgeMs));
   auto pg_locks_result = ASSERT_RESULT(observer.FetchAllAsString(
