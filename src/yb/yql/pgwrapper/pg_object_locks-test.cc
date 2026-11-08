@@ -946,8 +946,10 @@ class PgObjectLocksTestMixModeDuringPromotion : public PgObjectLocksTest {
   }
 
   // Promotes the infra auto flag on ts2 and returns a connection there whose open new mode
-  // transaction holds an ACCESS EXCLUSIVE lock on `table`. A new mode transaction on ts1 that
-  // touches `table` waits on it; a legacy mode one takes no object locks and goes on.
+  // transaction holds an ACCESS EXCLUSIVE lock on `table`. A transaction on ts1 that takes SHARE on
+  // `table` waits on it in new mode. In legacy mode it sends only locks of ROW EXCLUSIVE or weaker
+  // (YbShouldSendObjectLock), so it keeps SHARE in PG and goes on. A read cannot tell the modes
+  // apart: both send its ACCESS SHARE lock.
   Result<PGConn> HoldLockInNewMode(const std::string& db, const std::string& table) {
     auto* ts2 = cluster_->tablet_server(1);
     RETURN_NOT_OK(cluster_->SetFlag(ts2, "ysql_yb_enable_object_locking_infra", "true"));
@@ -974,9 +976,9 @@ class PgObjectLocksTestMixModeDuringPromotion : public PgObjectLocksTest {
   // and returns the error message, empty on success.
   //
   // Probe for the object locking mode, unless `locked_table` is empty: a new mode transaction on
-  // ts2 holds an ACCESS EXCLUSIVE lock on `locked_table`. A transaction of the statement that runs
-  // in new mode waits on that lock until statement_timeout; one that stays in legacy mode takes no
-  // object locks and goes on.
+  // ts2 holds an ACCESS EXCLUSIVE lock on `locked_table` (HoldLockInNewMode). A transaction of the
+  // statement that takes SHARE or stronger on it waits on that lock until statement_timeout in new
+  // mode, and goes on in legacy mode.
   //
   // Pipeline mode keeps Parse and Execute in separate protocol messages of one open transaction:
   // Parse starts the transaction and latches the flag, and the backend applies the promotion in
@@ -1246,7 +1248,7 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestModeStableAcrossProcedureCom
         BEGIN
           INSERT INTO test VALUES (1, 1);
           COMMIT;
-          PERFORM * FROM probe;
+          LOCK TABLE probe IN SHARE MODE;
         END $$)#"));
   }
   ASSERT_EQ(
@@ -1269,7 +1271,7 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestModeStableAcrossNestedProced
         BEGIN
           CREATE INDEX test_v ON test(v);
           COMMIT;
-          PERFORM * FROM probe;
+          LOCK TABLE probe IN SHARE MODE;
         END $$)#"));
     ASSERT_OK(conn.Execute(R"#(
         CREATE PROCEDURE outer_proc() LANGUAGE plpgsql AS $$
@@ -1294,7 +1296,7 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestModeStableAcrossDoBlockCommi
       BEGIN
         INSERT INTO test VALUES (1, 1);
         COMMIT;
-        PERFORM * FROM probe;
+        LOCK TABLE probe IN SHARE MODE;
       END $$)#", "probe")), "");
 }
 
@@ -1332,10 +1334,12 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestModeLatchedAfterStatementErr
   auto holder = ASSERT_RESULT(HoldLockInNewMode("testdb", "probe"));
   ASSERT_OK(PromoteInfraFlagAndWait(conn));
 
-  // In new mode the read waits on the lock ts2 holds until statement_timeout, and so does an
+  // In new mode a SHARE lock waits on the lock ts2 holds until statement_timeout, and so does an
   // ANALYZE that starts after the promotion.
   ASSERT_OK(conn.ExecuteFormat("SET statement_timeout = '$0s'", 5 * kTimeMultiplier));
-  ASSERT_NOK(conn.Fetch("SELECT * FROM probe"));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_NOK(conn.Execute("LOCK TABLE probe IN SHARE MODE"));
+  ASSERT_OK(conn.Execute("ROLLBACK"));
   ASSERT_NOK(conn.Execute("ANALYZE probe"));
   ASSERT_OK(holder.Execute("ROLLBACK"));
 }
@@ -1358,12 +1362,15 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestChainedTxnKeepsMode) {
   auto holder = ASSERT_RESULT(HoldLockInNewMode("testdb", "probe"));
   ASSERT_OK(PromoteInfraFlagAndWait(conn));
 
-  // The open transaction and its chained successor stay in legacy mode, so their reads do not wait.
-  ASSERT_OK(conn.Fetch("SELECT * FROM probe"));
+  // The open transaction and its chained successor stay in legacy mode, so their SHARE locks do not
+  // wait.
+  ASSERT_OK(conn.Execute("LOCK TABLE probe IN SHARE MODE"));
   ASSERT_OK(conn.Execute("COMMIT AND CHAIN"));
-  ASSERT_OK(conn.Fetch("SELECT * FROM probe"));
+  ASSERT_OK(conn.Execute("LOCK TABLE probe IN SHARE MODE"));
   ASSERT_OK(conn.Execute("COMMIT"));
-  ASSERT_NOK(conn.Fetch("SELECT * FROM probe"));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_NOK(conn.Execute("LOCK TABLE probe IN SHARE MODE"));
+  ASSERT_OK(conn.Execute("ROLLBACK"));
   ASSERT_OK(holder.Execute("ROLLBACK"));
 }
 
