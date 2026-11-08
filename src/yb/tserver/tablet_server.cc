@@ -1226,7 +1226,7 @@ Status TabletServer::KillPgUnlocked() const {
 }
 
 Status TabletServer::PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) {
-  std::lock_guard l(lock_);
+  std::lock_guard l(live_tservers_mutex_);
   // We reset the list each time, since we want to keep the tservers that are live from the
   // master's perspective.
   // TODO: In the future, we should enhance the logic here to keep track information retrieved
@@ -1241,14 +1241,14 @@ Status TabletServer::PopulateLiveTServers(const master::TSHeartbeatResponsePB& h
     }
   }
   // Prune handles to the TServers that are no longer alive.
-  std::erase_if(remote_tservers_, [&](const auto& remote_ts_pair) REQUIRES(lock_) {
+  std::erase_if(remote_tservers_, [&](const auto& remote_ts_pair) REQUIRES(live_tservers_mutex_) {
     return !live_tservers_.contains(remote_ts_pair.first);
   });
   return Status::OK();
 }
 
 Status TabletServer::GetLiveTServers(std::vector<master::TSInformationPB> *live_tservers) const {
-  SharedLock l(lock_);
+  SharedLock l(live_tservers_mutex_);
   live_tservers->reserve(live_tservers_.size());
   for (const auto& [_, ts_info_pb] : live_tservers_) {
     live_tservers->push_back(ts_info_pb);
@@ -1257,7 +1257,7 @@ Status TabletServer::GetLiveTServers(std::vector<master::TSInformationPB> *live_
 }
 
 Result<std::vector<RemoteTabletServerPtr>> TabletServer::GetRemoteTabletServers() const {
-  SharedLock l(lock_);
+  SharedLock l(live_tservers_mutex_);
   std::vector<RemoteTabletServerPtr> remote_tservers;
   remote_tservers.reserve(remote_tservers_.size());
   for (auto& [_, remote_ts_ptr] : remote_tservers_) {
@@ -1268,7 +1268,7 @@ Result<std::vector<RemoteTabletServerPtr>> TabletServer::GetRemoteTabletServers(
 
 Result<std::vector<RemoteTabletServerPtr>> TabletServer::GetRemoteTabletServers(
     const std::unordered_set<std::string>& ts_uuids) const {
-  SharedLock l(lock_);
+  SharedLock l(live_tservers_mutex_);
   std::vector<RemoteTabletServerPtr> remote_tservers;
   remote_tservers.reserve(ts_uuids.size());
   for (auto& ts_uuid : ts_uuids) {
