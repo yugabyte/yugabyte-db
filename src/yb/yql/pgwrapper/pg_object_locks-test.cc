@@ -945,6 +945,31 @@ class PgObjectLocksTestMixModeDuringPromotion : public PgObjectLocksTest {
     opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=true");
   }
 
+  // Promotes the infra auto flag on ts2 and returns a connection there whose open new mode
+  // transaction holds an ACCESS EXCLUSIVE lock on `table`. A new mode transaction on ts1 that
+  // touches `table` waits on it; a legacy mode one takes no object locks and goes on.
+  Result<PGConn> HoldLockInNewMode(const std::string& db, const std::string& table) {
+    auto* ts2 = cluster_->tablet_server(1);
+    RETURN_NOT_OK(cluster_->SetFlag(ts2, "ysql_yb_enable_object_locking_infra", "true"));
+    auto holder = VERIFY_RESULT(LibPqTestBase::ConnectToTsForDB(*ts2, db));
+    RETURN_NOT_OK(holder.Execute("BEGIN"));
+    RETURN_NOT_OK(holder.ExecuteFormat("LOCK TABLE $0 IN ACCESS EXCLUSIVE MODE", table));
+    return holder;
+  }
+
+  // Promotes the infra auto flag on ts1. The flag reaches a backend as a SIGHUP that it applies in
+  // its message loop, so wait until `observer`, a connection to ts1, shows it on.
+  Status PromoteInfraFlagAndWait(PGConn& observer) {
+    RETURN_NOT_OK(cluster_->SetFlag(
+        cluster_->tablet_server(0), "ysql_yb_enable_object_locking_infra", "true"));
+    return LoggedWaitFor(
+        [&observer]() -> Result<bool> {
+          return VERIFY_RESULT(observer.FetchRow<std::string>(
+                     "SHOW yb_enable_object_locking_infra")) == "on";
+        },
+        MonoDelta::FromSeconds(kTimeMultiplier * 60), "promotion to reach the backends");
+  }
+
   // Runs `query` on ts1 so that the infra auto flag is promoted between its Parse and its Execute,
   // and returns the error message, empty on success.
   //
@@ -959,13 +984,9 @@ class PgObjectLocksTestMixModeDuringPromotion : public PgObjectLocksTest {
   Result<std::string> ExecuteAcrossPromotion(
       const std::string& db, const std::string& query, const std::string& locked_table) {
     auto* ts1 = cluster_->tablet_server(0);
-    auto* ts2 = cluster_->tablet_server(1);
     std::optional<PGConn> holder;
     if (!locked_table.empty()) {
-      RETURN_NOT_OK(cluster_->SetFlag(ts2, "ysql_yb_enable_object_locking_infra", "true"));
-      holder = VERIFY_RESULT(LibPqTestBase::ConnectToTsForDB(*ts2, db));
-      RETURN_NOT_OK(holder->Execute("BEGIN"));
-      RETURN_NOT_OK(holder->ExecuteFormat("LOCK TABLE $0 IN ACCESS EXCLUSIVE MODE", locked_table));
+      holder = VERIFY_RESULT(HoldLockInNewMode(db, locked_table));
     }
 
     // Used to observe that the promotion has reached ts1's backends.
@@ -989,15 +1010,7 @@ class PgObjectLocksTestMixModeDuringPromotion : public PgObjectLocksTest {
           PQresultErrorMessage(res.get()));
     }
 
-    RETURN_NOT_OK(cluster_->SetFlag(ts1, "ysql_yb_enable_object_locking_infra", "true"));
-    // The flag reaches a backend as a SIGHUP that it applies in its message loop. Wait for another
-    // backend on ts1 to have applied it, which means the signal has been delivered.
-    RETURN_NOT_OK(LoggedWaitFor(
-        [&observer]() -> Result<bool> {
-          return VERIFY_RESULT(observer.FetchRow<std::string>(
-                     "SHOW yb_enable_object_locking_infra")) == "on";
-        },
-        MonoDelta::FromSeconds(kTimeMultiplier * 60), "promotion to reach the backends"));
+    RETURN_NOT_OK(PromoteInfraFlagAndWait(observer));
 
     SCHECK_EQ(
         PQsendQueryPrepared(conn.get(), "stmt", 0, nullptr, nullptr, nullptr, 0), 1, IllegalState,
@@ -1312,22 +1325,11 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestModeLatchedAfterStatementErr
     ASSERT_OK(conn.Execute("CREATE TABLE probe(k INT PRIMARY KEY, v INT)"));
   }
   auto* ts1 = cluster_->tablet_server(0);
-  auto* ts2 = cluster_->tablet_server(1);
   auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTsForDB(*ts1, "testdb"));
   ASSERT_NOK(conn.Fetch("SELECT * FROM no_such_table"));
 
-  ASSERT_OK(cluster_->SetFlag(ts2, "ysql_yb_enable_object_locking_infra", "true"));
-  auto holder = ASSERT_RESULT(LibPqTestBase::ConnectToTsForDB(*ts2, "testdb"));
-  ASSERT_OK(holder.Execute("BEGIN"));
-  ASSERT_OK(holder.Execute("LOCK TABLE probe IN ACCESS EXCLUSIVE MODE"));
-
-  ASSERT_OK(cluster_->SetFlag(ts1, "ysql_yb_enable_object_locking_infra", "true"));
-  ASSERT_OK(LoggedWaitFor(
-      [&conn]() -> Result<bool> {
-        return VERIFY_RESULT(conn.FetchRow<std::string>(
-                   "SHOW yb_enable_object_locking_infra")) == "on";
-      },
-      MonoDelta::FromSeconds(kTimeMultiplier * 60), "promotion to reach the backend"));
+  auto holder = ASSERT_RESULT(HoldLockInNewMode("testdb", "probe"));
+  ASSERT_OK(PromoteInfraFlagAndWait(conn));
 
   // In new mode the read waits on the lock ts2 holds until statement_timeout, and so does an
   // ANALYZE that starts after the promotion.
@@ -1348,23 +1350,12 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestChainedTxnKeepsMode) {
     ASSERT_OK(conn.Execute("CREATE TABLE probe(k INT PRIMARY KEY, v INT)"));
   }
   auto* ts1 = cluster_->tablet_server(0);
-  auto* ts2 = cluster_->tablet_server(1);
   auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTsForDB(*ts1, "testdb"));
   ASSERT_OK(conn.ExecuteFormat("SET statement_timeout = '$0s'", 5 * kTimeMultiplier));
   ASSERT_OK(conn.Execute("BEGIN"));
 
-  ASSERT_OK(cluster_->SetFlag(ts2, "ysql_yb_enable_object_locking_infra", "true"));
-  auto holder = ASSERT_RESULT(LibPqTestBase::ConnectToTsForDB(*ts2, "testdb"));
-  ASSERT_OK(holder.Execute("BEGIN"));
-  ASSERT_OK(holder.Execute("LOCK TABLE probe IN ACCESS EXCLUSIVE MODE"));
-
-  ASSERT_OK(cluster_->SetFlag(ts1, "ysql_yb_enable_object_locking_infra", "true"));
-  ASSERT_OK(LoggedWaitFor(
-      [&conn]() -> Result<bool> {
-        return VERIFY_RESULT(conn.FetchRow<std::string>(
-                   "SHOW yb_enable_object_locking_infra")) == "on";
-      },
-      MonoDelta::FromSeconds(kTimeMultiplier * 60), "promotion to reach the backend"));
+  auto holder = ASSERT_RESULT(HoldLockInNewMode("testdb", "probe"));
+  ASSERT_OK(PromoteInfraFlagAndWait(conn));
 
   // The open transaction and its chained successor stay in legacy mode, so their reads do not wait.
   ASSERT_OK(conn.Fetch("SELECT * FROM probe"));
