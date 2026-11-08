@@ -809,7 +809,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void CheckRecordsConsistencyFromVWAL(const std::vector<CDCSDKProtoRecordPB>& records);
 
-  // With transactional DDL, a DDL ships one synthetic DDL record per catalog row it writes.
+  // Returns the number of DDLs in records. With transactional DDL, a DDL ships a synthetic DDL
+  // record per pg_class / pg_attribute row it writes for a published table, so this counts distinct
+  // DDL transactions. Otherwise, each tablet ships one DDL record per DDL.
   int NumDDLStatements(const std::vector<CDCSDKProtoRecordPB>& records, size_t num_tablets);
 
   void GetRecordsAndSplitCount(
