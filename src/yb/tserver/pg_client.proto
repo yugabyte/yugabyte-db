@@ -970,6 +970,13 @@ message PgPerformOptionsPB {
   // Subtransactions of historical_read_transaction_id rolled back to a savepoint.
   // Only applicable when historical_read_transaction_id is set.
   SubtxnSetPB historical_read_aborted_subtxns = 41;
+
+  // The transaction takes object locks, in either mode: a legacy mode transaction takes its local
+  // DML locks too, so that new mode DDLs wait for it while ysql_yb_enable_object_locking_infra is
+  // being promoted (#36572). Its fast path writes carry the lock owner for deadlock detection.
+  // is_using_table_locks stays false for a legacy mode transaction, so that tablets, including
+  // those still on an older binary during the upgrade, keep checking its catalog version.
+  bool is_using_local_table_locks = 42;
 }
 
 message PgRequestSequenceNumPB {
