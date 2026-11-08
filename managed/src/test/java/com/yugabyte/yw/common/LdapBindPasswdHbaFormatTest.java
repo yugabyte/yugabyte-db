@@ -162,6 +162,63 @@ public class LdapBindPasswdHbaFormatTest {
         LdapBindPasswdHbaFormat.redactAllValues(quoteInPassword, SECRET_REPLACEMENT));
   }
 
+  @Test
+  public void redactAllValuesRedactsLiteralQuoteBeforeDelimiterInPassword() {
+    for (String password : new String[] {"ab\"]cd", "ab\"}cd", "ab\",cd", "ab\" ldapserver=cd"}) {
+      for (String after : new String[] {"", " ldapsearchattribute=cn"}) {
+        String pgQuoted = "\"" + password.replace("\"", "\"\"") + "\"";
+        String hba =
+            "\"host all all 0.0.0.0/0 ldap ldapserver=x ldapbindpasswd="
+                + pgQuoted.replace("\"", "\"\"")
+                + after
+                + "\",local all all trust";
+        String expected =
+            "\"host all all 0.0.0.0/0 ldap ldapserver=x ldapbindpasswd=\"\""
+                + SECRET_REPLACEMENT
+                + "\"\""
+                + after
+                + "\",local all all trust";
+        assertEquals(
+            password, expected, LdapBindPasswdHbaFormat.redactAllValues(hba, SECRET_REPLACEMENT));
+        String in = Json.newObject().put("ysql_hba_conf_csv", hba).toString();
+        assertEquals(
+            password,
+            expected,
+            Json.parse(LdapBindPasswdHbaFormat.redactAllValues(in, SECRET_REPLACEMENT))
+                .get("ysql_hba_conf_csv")
+                .asText());
+      }
+    }
+  }
+
+  @Test
+  public void redactAllValuesRedactsTrailingBackslashOfUnquotedPassword() {
+    // se\cret\ in a quoted CSV field, then oth\er\ in an unquoted one ending the string.
+    String hba =
+        "\"host all all 0.0.0.0/0 ldap ldapbindpasswd=se\\cret\\\","
+            + "host all all 0.0.0.0/0 ldap ldapbindpasswd=oth\\er\\";
+    String expected =
+        "\"host all all 0.0.0.0/0 ldap ldapbindpasswd="
+            + SECRET_REPLACEMENT
+            + "\",host all all 0.0.0.0/0 ldap ldapbindpasswd="
+            + SECRET_REPLACEMENT;
+    assertEquals(expected, LdapBindPasswdHbaFormat.redactAllValues(hba, SECRET_REPLACEMENT));
+    String in = Json.newObject().put("ysql_hba_conf_csv", hba).put("other", "keep").toString();
+    String out = LdapBindPasswdHbaFormat.redactAllValues(in, SECRET_REPLACEMENT);
+    assertEquals(expected, Json.parse(out).get("ysql_hba_conf_csv").asText());
+    assertEquals("keep", Json.parse(out).get("other").asText());
+  }
+
+  @Test(timeout = 10_000)
+  public void redactAllValuesStaysLinearWithManyValues() {
+    StringBuilder hba = new StringBuilder();
+    for (int i = 0; i < 20_000; i++) {
+      hba.append("\"host all all 0.0.0.0/0 ldap ldapbindpasswd=secret\\\",");
+    }
+    String in = Json.newObject().put("ysql_hba_conf_csv", hba.toString()).toString();
+    assertFalse(LdapBindPasswdHbaFormat.redactAllValues(in, SECRET_REPLACEMENT).contains("secret"));
+  }
+
   // The four P1-04 forms, each as the CSV field of a quoted record: se",cret" pa","ss "pa"ss
   // se"cret
   private static final String[] PARTLY_QUOTED_CSV_PASSWORDS = {

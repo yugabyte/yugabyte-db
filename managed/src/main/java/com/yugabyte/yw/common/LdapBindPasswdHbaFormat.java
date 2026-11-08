@@ -2,6 +2,9 @@
 
 package com.yugabyte.yw.common;
 
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 /**
  * Parse, encode, and redact ldapbindpasswd in ysql_hba style strings (doubled CSV, single quotes,
  * unquoted, JSON escapes).
@@ -19,6 +22,13 @@ public final class LdapBindPasswdHbaFormat {
   }
 
   private static final String LDAPBINDPASSWD_KEY = "ldapbindpasswd=";
+
+  private static final Pattern HBA_RECORD_TYPE =
+      Pattern.compile("(?<![\\w.-])(?:local|host(?:ssl|nossl|gssenc|nogssenc)?)[ \\t]");
+
+  // How far back closingQuoteEscapes looks for the record start, so a payload with many values
+  // stays linear.
+  private static final int RECORD_SEARCH_LIMIT = 4096;
 
   private record ParsedValue(int endExclusive, String decoded, QuoteStyle style) {}
 
@@ -186,8 +196,8 @@ public final class LdapBindPasswdHbaFormat {
     if (s.startsWith("\\\"", j)) {
       return !s.startsWith("\\\"\\\"", j);
     }
-    // Postgres separates options with whitespace, so a password containing a quote followed by
-    // whitespace and an option name is cut there.
+    // Postgres separates options with whitespace, so a quote followed by whitespace and an option
+    // name closes the value.
     return j > indexAfterDelimiter && isOptionAssignment(s, j);
   }
 
@@ -206,7 +216,11 @@ public final class LdapBindPasswdHbaFormat {
    */
   private static int scanDoubledCsvInner(String s, int i, StringBuilder decodedOut) {
     while (i < s.length()) {
-      if (i + 1 < s.length() && s.charAt(i) == '"' && s.charAt(i + 1) == '"') {
+      // A literal quote, "" in Postgres doubled again for CSV; its second half can't close.
+      if (s.startsWith("\"\"\"\"", i)) {
+        decodedOut.append("\"\"");
+        i += 4;
+      } else if (i + 1 < s.length() && s.charAt(i) == '"' && s.charAt(i + 1) == '"') {
         if (isClosingDelimiterFollowedByTerminator(s, i + 2)) {
           return i;
         }
@@ -241,7 +255,13 @@ public final class LdapBindPasswdHbaFormat {
   private static int scanEscapedWrapperInner(
       String s, int i, StringBuilder decodedOut, int wrapperLen) {
     while (i < s.length()) {
-      if ((wrapperLen == 4 && isEscapedDoubledOpen(s, i))
+      if ((wrapperLen == 4 && isEscapedDoubledOpen(s, i) && isEscapedDoubledOpen(s, i + 4))
+          || (wrapperLen == 6
+              && isDeepEscapedDoubledOpen(s, i)
+              && isDeepEscapedDoubledOpen(s, i + 6))) {
+        decodedOut.append("\"\"");
+        i += 2 * wrapperLen;
+      } else if ((wrapperLen == 4 && isEscapedDoubledOpen(s, i))
           || (wrapperLen == 6 && isDeepEscapedDoubledOpen(s, i))) {
         if (isClosingDelimiterFollowedByTerminator(s, i + wrapperLen)) {
           return i;
@@ -329,6 +349,7 @@ public final class LdapBindPasswdHbaFormat {
    * finds that it doesn't end there and redacts it to the end of its field.
    */
   private static int unquotedValueEnd(String s, int i) {
+    int start = i;
     while (i < s.length()) {
       char c = s.charAt(i);
       if (c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == ',' || c == '"') {
@@ -340,7 +361,7 @@ public final class LdapBindPasswdHbaFormat {
           j++;
         }
         if (j < s.length() && s.charAt(j) == '"') {
-          return i;
+          return j - Math.min(j - i, closingQuoteEscapes(s, start, j - i));
         }
         i = j;
         continue;
@@ -348,6 +369,31 @@ public final class LdapBindPasswdHbaFormat {
       i++;
     }
     return i;
+  }
+
+  /**
+   * Backslashes escaping the quote that closes the unquoted value at s[valueStart]. A raw abc\"
+   * reads the same as abc before a quote escaped once, so take the escapes of the quote just before
+   * the record: a CSV-quoted record's, or that of the JSON string the record starts. With no quote
+   * there, an even count is all password and an odd count leaves one for the quote.
+   */
+  private static int closingQuoteEscapes(String s, int valueStart, int backslashes) {
+    Matcher record = HBA_RECORD_TYPE.matcher(s).useTransparentBounds(true);
+    for (int i = valueStart - 1; i >= Math.max(0, valueStart - RECORD_SEARCH_LIMIT); i--) {
+      char c = s.charAt(i);
+      if ((c != 'l' && c != 'h') || !record.region(i, valueStart).lookingAt()) {
+        continue;
+      }
+      if (i == 0 || s.charAt(i - 1) != '"') {
+        break;
+      }
+      int k = i - 1;
+      while (k > 0 && s.charAt(k - 1) == '\\') {
+        k--;
+      }
+      return i - 1 - k;
+    }
+    return backslashes % 2;
   }
 
   /** Index of the unescaped quote or line break ending the JSON string that s[i] is in. */

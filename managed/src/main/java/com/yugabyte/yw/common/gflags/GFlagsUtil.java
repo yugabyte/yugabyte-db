@@ -1520,8 +1520,7 @@ public class GFlagsUtil {
 
   // The ldapbindpasswd values LdapBindPasswdHbaFormat reads in full, as written in the CSV: quoted
   // in a quoted CSV field, quoted in an unquoted one, or unquoted up to whitespace, a comma, the
-  // end, or the quote closing its CSV field. The parser still cuts a quoted password at a literal
-  // quote followed by a comma, brace or option; those pass, as no quoting avoids the cut.
+  // end, or the quote closing its CSV field.
   private static final Pattern REDACTABLE_LDAP_BIND_PASSWD =
       Pattern.compile(
           "\"\"(?:[^\"]|\"\"\"\")*+\"\"(?=[\\s,\"]|$)"
