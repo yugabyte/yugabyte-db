@@ -1884,14 +1884,27 @@ class PgObjectLocksTestNewTxnVsLegacyDdl : public PgObjectLocksTestMixModeDuring
     }
   }
 
+  // Restarts ts in the state a node is in after a rolling restart turns table locks off: the
+  // legacy DDL mode flags (table locks off needs concurrent and transactional DDL off too), and
+  // the infra AutoFlag still promoted. The flags replace the fixture's stored ones because flags
+  // passed to Restart come first on the command line, so the fixture's values would win.
   void RestartWithTableLocksOff(ExternalTabletServer* ts) {
+    std::vector<std::string> flags;
+    ToggleDDLMode(flags, /* use_legacy = */ true);
+    flags.push_back("--ysql_yb_enable_object_locking_infra=true");
+    for (const auto& flag : flags) {
+      const auto eq = flag.find('=');
+      const auto name = flag.substr(2, eq - 2);
+      ts->RemoveExtraFlag(name);
+      ts->AddExtraFlag(name, flag.substr(eq + 1));
+    }
     ts->Shutdown();
-    ASSERT_OK(ts->Restart(
-        ExternalMiniClusterOptions::kDefaultStartCqlProxy,
-        {std::make_pair("enable_object_locking_for_table_locks", "false")}));
+    ASSERT_OK(ts->Restart());
     ASSERT_OK(LoggedWaitFor(
         [this, ts]() -> Result<bool> { return LibPqTestBase::ConnectToTs(*ts).ok(); },
         MonoDelta::FromSeconds(kTimeMultiplier * 60), "restarted tserver to accept connections"));
+    ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("enable_object_locking_for_table_locks")), "false");
+    ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("ysql_yb_enable_object_locking_infra")), "true");
   }
 
   void CheckIndex(PGConn& conn, int64_t expected_rows_with_v_42) {
