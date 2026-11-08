@@ -790,9 +790,8 @@ TEST_F_EX(PgWaitEventAuxTest, PgCDCServiceRPCs, PgCDCWaitEventAux) {
   // Create a new table after slot creation so that UpdatePublicationTableListRPC is called.
   ASSERT_OK(conn_->Execute("CREATE TABLE test_table_2 (k INT PRIMARY KEY)"));
 
-  // How many LSNs reach the slot before the inserts below depends on the catalog transactions,
-  // which also take LSNs when DDL is streamed transactionally. So --endpos is set past the inserts
-  // and more transactions are committed at the end until pg_recvlogical reaches it.
+  // Catalog transactions can also take LSNs, so --endpos is set past the inserts and more
+  // transactions are committed at the end until pg_recvlogical reaches it.
   const auto recvlogical_path = GetPgToolPath("pg_recvlogical");
   Subprocess recvlogical(recvlogical_path, {
       recvlogical_path,
