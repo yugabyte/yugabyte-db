@@ -3427,10 +3427,12 @@ YbCommitTransactionCommandIntermediate(void)
 
 	/*
 	 * YB: A caller that runs inside a client statement kept the object
-	 * locking mode in the new transaction (see StartTransaction). If a caller
-	 * ever runs outside one, the rest of the statement would run in the other
-	 * mode while the state it already built belongs to this one, so fail the
-	 * statement instead.
+	 * locking mode in the new transaction (see StartTransaction). A caller
+	 * outside one reads the flag again here: a pg_cron background worker that
+	 * runs a scheduled ANALYZE of several tables, for example. If the mode
+	 * changed, the rest of the statement would run in the other mode while
+	 * the state it already built belongs to this one, so fail the statement
+	 * instead.
 	 */
 	if (YBIsDdlTransactionBlockEnabled() != ddl_txn_block_enabled)
 		ereport(ERROR,
