@@ -5079,10 +5079,7 @@ LockWaiterCount(const LOCKTAG *locktag)
 }
 
 /*
- * YB: A DDL that runs in a separate (autonomous) DDL transaction sends no lock,
- * up to and including that transaction's commit. Every legacy mode DDL runs in
- * one, and the tserver releases that transaction's locks only once the infra
- * flag is on.
+ * YB: A transaction sends no lock unless YbIsTakingObjectLocks().
  *
  * A new mode DDL waits for DMLs only through object locks. So a legacy mode
  * transaction, one that started before yb_enable_object_locking_infra was
@@ -5095,12 +5092,11 @@ LockWaiterCount(const LOCKTAG *locktag)
 static bool
 YbShouldSendObjectLock(LOCKMODE lockmode, bool sessionLock)
 {
-	if (YBCPgIsDdlMode() && !YBCPgIsDdlModeWithRegularTransactionBlock())
+	if (!YbIsTakingObjectLocks())
 		return false;
 	if (YBCIsObjectLockingEnabled())
 		return true;
-	return YBCIsLocalObjectLockingEnabled() && !sessionLock &&
-		lockmode <= RowExclusiveLock;
+	return !sessionLock && lockmode <= RowExclusiveLock;
 }
 
 bool
