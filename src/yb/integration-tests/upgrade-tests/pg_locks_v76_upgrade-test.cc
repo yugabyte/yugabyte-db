@@ -85,13 +85,20 @@ TEST_F(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
       Format("$0 WHERE locktype = 'row';", kPgLocksQuery)));
   ASSERT_EQ(pg_locks_result, "NULL, NULL, NULL, STRONG_READ,STRONG_WRITE");
 
-  // conn's transaction was opened before FinalizeUpgrade(), and the yb_enable_object_locking_infra
-  // auto flag is latched once per transaction in StartTransaction (c60f1cba1cd), so this
-  // transaction keeps the pre-finalize value no matter how enable_object_locking_for_table_locks
-  // is set. AcceptInvalidationMessages() therefore skips the full cache invalidation and the
-  // catcache stays stale (21 vs 24 columns).
+  // conn's transaction was opened before FinalizeUpgrade(), so it keeps the pre-finalize value of
+  // the yb_enable_object_locking_infra auto flag, latched in StartTransaction. Its first pg_locks
+  // read after finalize is a new lock for the transaction. With object locking on, a transaction
+  // that started before the promotion takes local object locks and refreshes its catalog cache on
+  // a new lock, as PG does (#36572), so it sees the new yb_lock_status row type. With object
+  // locking off, it does not refresh mid-transaction, and the catcache stays stale (21 vs 24
+  // columns).
   auto result = conn.FetchAllAsString(Format("$0 WHERE locktype = 'advisory';", kPgLocksQuery));
-  ASSERT_NOK_STR_CONTAINS(result, "Returned row contains 24 attributes, but query expects 21");
+  if (ASSERT_RESULT(cluster_->GetFlag(
+          cluster_->tablet_server(0), "enable_object_locking_for_table_locks")) == "true") {
+    ASSERT_EQ(ASSERT_RESULT(std::move(result)), "2, 2, 2, ShareLock; 0, 1, 1, ExclusiveLock");
+  } else {
+    ASSERT_NOK_STR_CONTAINS(result, "Returned row contains 24 attributes, but query expects 21");
+  }
 
   // Once the transaction block ends, YBCheckSharedCatalogCacheVersion() stops bailing out on
   // IsTransactionOrTransactionBlock() and refreshes the catalog cache, so the same connection
