@@ -4070,16 +4070,33 @@ YBProcessUtilityDefaultHook(PlannedStmt *pstmt,
 	if (track_utility)
 		YBOnUtilityOperationBegin();
 
-	if (wrap_buffering)
+	PG_TRY();
 	{
-		YBBeginOperationsBuffering();
-		standard_ProcessUtility(pstmt, queryString, readOnlyTree, context,
-								params, queryEnv, dest, qc);
-		YBEndOperationsBuffering();
+		if (wrap_buffering)
+		{
+			YBBeginOperationsBuffering();
+			standard_ProcessUtility(pstmt, queryString, readOnlyTree, context,
+									params, queryEnv, dest, qc);
+			YBEndOperationsBuffering();
+		}
+		else
+			standard_ProcessUtility(pstmt, queryString, readOnlyTree, context,
+									params, queryEnv, dest, qc);
 	}
-	else
-		standard_ProcessUtility(pstmt, queryString, readOnlyTree, context,
-								params, queryEnv, dest, qc);
+	PG_CATCH();
+	{
+		/*
+		 * StartTransaction reads the nesting level to decide whether to latch
+		 * the object locking mode, so it must drop on every exit. The client
+		 * retry wrapper resets it after an error, but a background worker
+		 * that runs utility statements through SPI never reaches that reset,
+		 * and a PL/pgSQL EXCEPTION block can catch the error and go on.
+		 */
+		if (track_utility)
+			YBOnUtilityOperationAbort();
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 
 	if (track_utility)
 		YBOnUtilityOperationEnd();
