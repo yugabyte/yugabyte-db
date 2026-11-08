@@ -73,6 +73,7 @@
 
 /* YB includes */
 #include "pg_yb_utils.h"
+#include "tcop/tcopprot.h"
 #include "yb/yql/pggate/ybc_dist_trace.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -2310,18 +2311,16 @@ StartTransaction(void)
 	if (IsYugaByteEnabled())
 	{
 		/*
-		 * A utility statement never changes object locking mode while it
-		 * runs: otherwise it would build state in one mode and use it in the
-		 * other. Only utility statements commit while they run (VACUUM,
-		 * REINDEX SCHEMA, the CREATE INDEX phases, COMMIT in a procedure; see
-		 * PreCommit_Portals), and the first transaction of each starts before
-		 * ProcessUtility, so it still takes the current flag value. Upstream
-		 * gets the same effect for its own settings by applying a config
-		 * reload only between client messages, but here the first
-		 * transaction can start in an earlier message (Parse) than the one
-		 * that runs the statement (Execute).
+		 * A statement keeps the object locking mode of its first transaction,
+		 * so that it never builds state in one mode and uses it in the other.
+		 * Upstream gets the same effect for its own settings by applying a
+		 * config reload only between client messages, but a statement's first
+		 * transaction can start in an earlier message (Parse or Bind) than the
+		 * one that runs it (Execute), and a statement can start more
+		 * transactions while it runs (ANALYZE of several tables, CREATE INDEX,
+		 * COMMIT in a procedure).
 		 */
-		if (!YBIsInUtilityOperation())
+		if (!YbIsStatementTransactionStarted())
 			YBCSetObjectLockingInfraForCurrTxn();
 
 		/*
@@ -3427,10 +3426,10 @@ YbCommitTransactionCommandIntermediate(void)
 	StartTransactionCommand();
 
 	/*
-	 * YB: Every caller runs inside a utility statement, so the new transaction
-	 * kept the object locking mode (see StartTransaction). If a caller ever
-	 * runs outside one, the rest of the statement would run in the other mode
-	 * while the state it already built belongs to this one, so fail the
+	 * YB: A caller that runs inside a client statement kept the object
+	 * locking mode in the new transaction (see StartTransaction). If a caller
+	 * ever runs outside one, the rest of the statement would run in the other
+	 * mode while the state it already built belongs to this one, so fail the
 	 * statement instead.
 	 */
 	if (YBIsDdlTransactionBlockEnabled() != ddl_txn_block_enabled)

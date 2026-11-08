@@ -105,4 +105,5 @@ extern bool set_plan_disabling_options(const char *arg,
 extern const char *get_stats_option_name(const char *arg);
 
 extern bool YBRefreshCacheUsingInvalMsgs();
+extern bool YbIsStatementTransactionStarted(void);
 #endif							/* TCOPPROT_H */

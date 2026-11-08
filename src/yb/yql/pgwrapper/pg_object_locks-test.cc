@@ -1202,7 +1202,7 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestDdlTxnBlockModeStableAcrossP
   ASSERT_NOK(conn.FetchAllAsString("SELECT * FROM post_promotion"));
 }
 
-// A utility statement never changes object locking mode while it runs, even when the infra auto
+// A statement never changes object locking mode while it runs, even when the infra auto
 // flag is promoted between its Parse and its Execute. Multi-table ANALYZE commits after each table
 // through YbCommitTransactionCommandIntermediate() (vacuum.c), so `probe` is analyzed in a second
 // transaction, which must stay in legacy mode and not wait on the lock ts2 holds.
@@ -1239,7 +1239,7 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestModeStableAcrossProcedureCom
       ASSERT_RESULT(ExecuteAcrossPromotion("testdb", "CALL commit_then_read()", "probe")), "");
 }
 
-// Same as TestModeStableAcrossProcedureCommit, for a COMMIT two utility statements deep: CALL
+// Same as TestModeStableAcrossProcedureCommit, for a COMMIT two procedure calls deep: CALL
 // outer_proc() calls inner_proc(), which creates an index and COMMITs. A CREATE INDEX below the top
 // level always builds in one transaction (IsInTransactionBlock() is true when !isTopLevel), so
 // the nested statement that starts a new transaction is the COMMIT.
@@ -1301,10 +1301,10 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestModeStableAcrossCreateIndexP
       "");
 }
 
-// A utility statement whose error is caught inside a PL/pgSQL EXCEPTION block must not leave the
-// backend counted as inside a utility statement: the next statement would then never latch the
-// infra auto flag and stay in legacy mode after the promotion.
-TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestModeLatchedAfterCaughtUtilityError) {
+// A statement that fails must not leave the backend counted as inside a statement: the next
+// statement would then never read the infra auto flag and would stay in legacy mode after the
+// promotion.
+TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestModeLatchedAfterStatementError) {
   {
     auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
     ASSERT_OK(conn.Execute("CREATE DATABASE testdb;"));
@@ -1314,13 +1314,7 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestModeLatchedAfterCaughtUtilit
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
   auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTsForDB(*ts1, "testdb"));
-  ASSERT_OK(conn.Execute(R"#(
-      DO $$
-      BEGIN
-        EXECUTE 'LOCK TABLE no_such_table';
-      EXCEPTION WHEN OTHERS THEN
-        NULL;
-      END $$)#"));
+  ASSERT_NOK(conn.Fetch("SELECT * FROM no_such_table"));
 
   ASSERT_OK(cluster_->SetFlag(ts2, "ysql_yb_enable_object_locking_infra", "true"));
   auto holder = ASSERT_RESULT(LibPqTestBase::ConnectToTsForDB(*ts2, "testdb"));
@@ -1335,19 +1329,18 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestModeLatchedAfterCaughtUtilit
       },
       MonoDelta::FromSeconds(kTimeMultiplier * 60), "promotion to reach the backend"));
 
-  // In new mode the read waits on the lock ts2 holds until statement_timeout. So does a utility
-  // statement that starts after the promotion: its first transaction starts before the utility
-  // call, so it takes the new value.
+  // In new mode the read waits on the lock ts2 holds until statement_timeout, and so does an
+  // ANALYZE that starts after the promotion.
   ASSERT_OK(conn.ExecuteFormat("SET statement_timeout = '$0s'", 5 * kTimeMultiplier));
   ASSERT_NOK(conn.Fetch("SELECT * FROM probe"));
   ASSERT_NOK(conn.Execute("ANALYZE probe"));
   ASSERT_OK(holder.Execute("ROLLBACK"));
 }
 
-// COMMIT AND CHAIN starts its next transaction after the COMMIT statement's utility call has
-// returned, so that transaction takes the current value of the infra auto flag: a chained
-// transaction after the promotion runs in new mode.
-TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestChainedTxnLatchesAfresh) {
+// COMMIT AND CHAIN starts its next transaction inside the COMMIT statement, so that transaction
+// keeps the mode of the one it follows, even after a promotion. The next statement that starts its
+// own transaction takes the new value.
+TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestChainedTxnKeepsMode) {
   {
     auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
     ASSERT_OK(conn.Execute("CREATE DATABASE testdb;"));
@@ -1373,11 +1366,12 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestChainedTxnLatchesAfresh) {
       },
       MonoDelta::FromSeconds(kTimeMultiplier * 60), "promotion to reach the backend"));
 
-  // The open transaction started in legacy mode, so its read does not wait.
+  // The open transaction and its chained successor stay in legacy mode, so their reads do not wait.
   ASSERT_OK(conn.Fetch("SELECT * FROM probe"));
   ASSERT_OK(conn.Execute("COMMIT AND CHAIN"));
+  ASSERT_OK(conn.Fetch("SELECT * FROM probe"));
+  ASSERT_OK(conn.Execute("COMMIT"));
   ASSERT_NOK(conn.Fetch("SELECT * FROM probe"));
-  ASSERT_OK(conn.Execute("ROLLBACK"));
   ASSERT_OK(holder.Execute("ROLLBACK"));
 }
 
