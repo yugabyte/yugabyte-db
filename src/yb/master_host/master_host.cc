@@ -96,6 +96,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/logging.h"
+#include "yb/util/metrics.h"
 #include "yb/util/oid_generator.h"
 #include "yb/util/status_format.h"
 #include "yb/util/thread.h"
@@ -105,6 +106,13 @@
 #include "yb/tserver/tserver.messages.h"
 
 #include "master/server/src/ffi.rs.h"
+
+METRIC_DECLARE_entity(cluster);
+METRIC_DECLARE_gauge_int64(is_load_balancing_enabled);
+METRIC_DECLARE_gauge_uint32(tablets_in_wrong_placement);
+METRIC_DECLARE_gauge_uint32(blacklisted_leaders);
+METRIC_DECLARE_gauge_uint32(total_table_load_difference);
+METRIC_DECLARE_gauge_uint64(estimated_data_to_balance_bytes);
 
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_bool(create_initial_sys_catalog_snapshot);
@@ -563,6 +571,18 @@ void MasterHost::InitHost() {
 Status MasterHost::DoInit() {
   RETURN_NOT_OK(ThreadPoolBuilder("leadership").set_max_threads(1).Build(&leadership_pool_));
   RETURN_NOT_OK(DbServerBase::Init());
+  // As Master's constructor and ClusterLoadBalancer::InitMetrics.
+  metric_entity_cluster_ =
+      METRIC_ENTITY_cluster.Instantiate(metric_registry_.get(), "yb.cluster");
+  is_load_balancing_enabled_metric_ =
+      METRIC_is_load_balancing_enabled.Instantiate(metric_entity_cluster_, 0);
+  tablets_in_wrong_placement_metric_ =
+      METRIC_tablets_in_wrong_placement.Instantiate(metric_entity_cluster_, 0);
+  blacklisted_leaders_metric_ = METRIC_blacklisted_leaders.Instantiate(metric_entity_cluster_, 0);
+  total_table_load_difference_metric_ =
+      METRIC_total_table_load_difference.Instantiate(metric_entity_cluster_, 0);
+  estimated_data_to_balance_bytes_metric_ =
+      METRIC_estimated_data_to_balance_bytes.Instantiate(metric_entity_cluster_, 0);
   RETURN_NOT_OK(fs_manager_->ListTabletIds(CleanupTemporaryFiles::kTrue));
 
   RegisterWebPages();
@@ -763,10 +783,16 @@ Status MasterHost::GetRegistration(ServerRegistrationPB* reg, server::RpcOnly rp
 
 void MasterHost::GetStatusPB(server::ServerStatusPB* status) const {
   RpcServerBase::GetStatusPB(status);
-  for (const auto& endpoint : public_web_endpoints_) {
-    auto* hp = status->add_bound_http_addresses();
-    hp->set_host(endpoint.address().to_string());
-    hp->set_port(endpoint.port());
+  // IPv4 first: callers take the first address, and a bare IPv6 host makes an invalid URL.
+  for (bool v4 : {true, false}) {
+    for (const auto& endpoint : public_web_endpoints_) {
+      if (endpoint.address().is_v4() != v4) {
+        continue;
+      }
+      auto* hp = status->add_bound_http_addresses();
+      hp->set_host(endpoint.address().to_string());
+      hp->set_port(endpoint.port());
+    }
   }
 }
 
@@ -1293,6 +1319,29 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
           partitions->first.ToPB(resp->mutable_partition_schema());
           for (const auto& partition : partitions->second) {
             partition.ToPB(resp->add_partitions());
+          }
+          return Status::OK();
+        });
+  }
+  if (name == "SetClusterMetrics") {
+    return HandleRequest<master::SetClusterMetricsRequestPB,
+                         master::SetClusterMetricsResponsePB>(
+        request, [this](const auto& req, auto*) {
+          if (req.has_is_load_balancing_enabled()) {
+            is_load_balancing_enabled_metric_->set_value(req.is_load_balancing_enabled());
+          }
+          if (req.has_tablets_in_wrong_placement()) {
+            tablets_in_wrong_placement_metric_->set_value(req.tablets_in_wrong_placement());
+          }
+          if (req.has_blacklisted_leaders()) {
+            blacklisted_leaders_metric_->set_value(req.blacklisted_leaders());
+          }
+          if (req.has_total_table_load_difference()) {
+            total_table_load_difference_metric_->set_value(req.total_table_load_difference());
+          }
+          if (req.has_estimated_data_to_balance_bytes()) {
+            estimated_data_to_balance_bytes_metric_->set_value(
+                req.estimated_data_to_balance_bytes());
           }
           return Status::OK();
         });

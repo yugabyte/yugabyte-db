@@ -56,6 +56,12 @@ Actions become tasks of their table for the term, in the view's `pending` until 
   `min_leader_stepdown_retry_interval_ms`. C++ registers the failure under the old leader's uuid
   but looks it up by the new leader's; the controller records it by the new leader.
 
+After each pass the controller reports the "cluster" metrics C++ keeps
+(`is_load_balancing_enabled`, `tablets_in_wrong_placement`, `blacklisted_leaders`,
+`total_table_load_difference`, `estimated_data_to_balance_bytes`); the host holds them in a
+`yb.cluster` metric entity (`SetClusterMetrics`). `TEST_pause_catalog_manager_bg_loop_start` and
+`_end` hold the controller before or after a pass, as they hold C++'s background loop.
+
 `BalancerStatus` keeps the last `load_balancer_num_idle_runs` placement runs and the last run's
 metrics for the RPCs: `IsLoadBalancerIdle` and `IsLoadBalanced` (idle, or disabled; enough live
 tservers), and `GetLoadMoveCompletion` / `GetLeaderBlacklistCompletion` (replicas or leaders still

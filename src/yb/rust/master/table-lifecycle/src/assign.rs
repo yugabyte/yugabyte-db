@@ -19,9 +19,11 @@
 //!   again; a replica that has the tablet answers AlreadyPresent, which counts as success);
 //! - a CREATING tablet still not RUNNING `tablet_creation_timeout_ms` after its first send in this
 //!   term is replaced by a new PREPARING tablet for the same partition;
+//! - a CREATING tablet whose voters mostly run, and that has no leader yet, gets its first
+//!   election started at the replica chosen when it was assigned (`use_create_table_leader_hint`);
 //! - a PREPARING table whose tablets all run becomes RUNNING (`PromoteTableToRunningState`).
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -29,6 +31,7 @@ use master_catalog_entity::Entity;
 use master_catalog_state::{CatalogSnapshot, Mutation};
 use master_leadership::LeaderToken;
 use master_task_runtime::{Attempt, BoxFuture, Controller, RetryPolicy, TermScope, TsRpcExecutor};
+use master_ts_manager::placement::{blacklist_addresses, is_accepting_leader_load, is_blacklisted};
 use master_ts_manager::TsDescriptor;
 use protobuf::{Enum, EnumOrUnknown, Message, MessageField};
 use tokio::time::Instant;
@@ -37,8 +40,10 @@ use yb_host_api::{Status, StatusCode};
 use yb_proto::pb::catalog_entity_info::{
     sys_tables_entry_pb, sys_tablets_entry_pb, SysTablesEntryPB, SysTabletsEntryPB,
 };
+use yb_proto::pb::consensus::{RunLeaderElectionRequestPB, RunLeaderElectionResponsePB};
 use yb_proto::pb::consensus_metadata::{PeerMemberType, RaftPeerPB};
 use yb_proto::pb::master_types::SysRowEntryType;
+use yb_proto::pb::tablet_types::RaftGroupStatePB;
 use yb_proto::pb::tserver_admin::{CreateTabletRequestPB, CreateTabletResponsePB};
 use yb_proto::pb::tserver_types::tablet_server_error_pb;
 
@@ -69,6 +74,11 @@ pub struct TabletAssigner {
     /// whether a call failed for good, so the next pass sends again. The first send time stays,
     /// so a tablet that keeps failing is still replaced at the creation timeout.
     sent: Arc<Mutex<HashMap<Vec<u8>, SentCreate>>>,
+    /// The replica each tablet assigned this term should elect as its first leader
+    /// (`SelectProtegeForTablet`): new tablets' leaders start out balanced.
+    proteges: Mutex<HashMap<Vec<u8>, Vec<u8>>>,
+    /// Tablets whose hinted election was started this term (`TabletInfo::InitiateElection`).
+    elections: Mutex<HashSet<Vec<u8>>>,
 }
 
 impl TabletAssigner {
@@ -90,6 +100,8 @@ impl TabletAssigner {
             rpc_timeout,
             interval,
             sent: Arc::default(),
+            proteges: Mutex::default(),
+            elections: Mutex::default(),
         })
     }
 
@@ -171,8 +183,18 @@ impl TabletAssigner {
         let mut load = self.load(snapshot, table_id);
         let replication_factor = (self.lifecycle.options.replication_factor)();
         let mut mutation = Mutation::new().read(table);
+        // `SelectProtegeForTablet`: the peer with the fewest proteges among this batch.
+        let mut protege_load: HashMap<Vec<u8>, u32> = HashMap::new();
+        let mut proteges = Vec::new();
         for tablet in tablets {
             let peers = select_replicas(&placement, &tservers, replication_factor, &mut load)?;
+            if let Some(protege) = peers
+                .iter()
+                .min_by_key(|p| protege_load.get(&*p.uuid).copied().unwrap_or(0))
+            {
+                *protege_load.entry(protege.uuid.to_vec()).or_default() += 1;
+                proteges.push((tablet.key.id.to_vec(), protege.uuid.to_vec()));
+            }
             let mut pb: SysTabletsEntryPB = tablet.parse().map_err(corrupt)?;
             pb.state = Some(EnumOrUnknown::new(TabletState::CREATING));
             pb.set_state_msg(b"Sending initial creation of tablet".to_vec());
@@ -194,8 +216,150 @@ impl TabletAssigner {
             .writer
             .submit(token, mutation)
             .await
-            .map(|_| ())
-            .map_err(Status::from)
+            .map_err(Status::from)?;
+        self.proteges.lock().unwrap().extend(proteges);
+        Ok(())
+    }
+
+    /// `StartElectionIfReady` for a tablet's first election: once a majority of its voters run,
+    /// the protege (else the first replica that may lead) is asked to run for leader, once a
+    /// term. Elections after the first are left to Raft.
+    fn start_election_if_ready(
+        &self,
+        scope: &TermScope,
+        token: &LeaderToken,
+        snapshot: &CatalogSnapshot,
+        tablet: &Arc<Entity>,
+    ) {
+        let tablet_id = tablet.key.id.to_vec();
+        if self.elections.lock().unwrap().contains(&tablet_id) {
+            return;
+        }
+        let ts_manager = &self.lifecycle.ts_manager;
+        let Some(observed) = ts_manager.locations.get(&tablet_id) else {
+            return;
+        };
+        if observed.leader().is_some() {
+            return;
+        }
+        let Ok(pb) = tablet.parse::<SysTabletsEntryPB>() else {
+            return;
+        };
+        let cstate = &pb.committed_consensus_state;
+        if cstate.has_leader_uuid() || cstate.current_term() != 0 {
+            return;
+        }
+        let voters = cstate
+            .config
+            .peers
+            .iter()
+            .filter(|p| p.member_type() == PeerMemberType::VOTER)
+            .count();
+        let running = observed
+            .replicas
+            .iter()
+            .filter(|r| {
+                r.member_type == PeerMemberType::VOTER && r.state == RaftGroupStatePB::RUNNING
+            })
+            .count();
+        if running < voters / 2 + 1 {
+            return;
+        }
+        let config = cluster_config(snapshot);
+        let blacklist = blacklist_addresses(&config);
+        let replication = config.replication_info.clone().unwrap_or_default();
+        let possible: Vec<Vec<u8>> = observed
+            .replicas
+            .iter()
+            .filter_map(|r| ts_manager.get(&r.ts_uuid))
+            .filter(|d| d.is_live() && !is_blacklisted(d, &blacklist))
+            .filter(|d| is_accepting_leader_load(d, &replication))
+            .map(|d| d.uuid.to_vec())
+            .collect();
+        if possible.is_empty() {
+            return;
+        }
+        self.elections.lock().unwrap().insert(tablet_id.clone());
+        let protege = self
+            .proteges
+            .lock()
+            .unwrap()
+            .get(&tablet_id)
+            .filter(|p| possible.contains(p))
+            .cloned()
+            .unwrap_or_else(|| possible[0].clone());
+        tracing::info!(
+            "Starting election at {} in favor of {}",
+            String::from_utf8_lossy(&tablet_id),
+            String::from_utf8_lossy(&protege)
+        );
+        let mut request = RunLeaderElectionRequestPB::new();
+        request.set_dest_uuid(protege.clone());
+        request.set_tablet_id(tablet_id.clone());
+        request.set_initial_election(true);
+        let (rpc, executor, lifecycle) = (
+            self.rpc.clone(),
+            self.executor.clone(),
+            self.lifecycle.clone(),
+        );
+        let token = *token;
+        let policy = RetryPolicy {
+            deadline: Duration::from_millis(
+                (self.lifecycle.options.tablet_creation_timeout_ms)().max(0) as u64,
+            ),
+            ..self.retry
+        };
+        let rpc_timeout = (self.rpc_timeout)();
+        scope.entity().spawn("start-election", async move {
+            let result = executor
+                .run(&protege, "RunLeaderElection", &policy, |_| {
+                    let current = lifecycle.leadership.check(&token);
+                    let address = lifecycle.ts_manager.rpc_address(&protege);
+                    let (rpc, request) = (rpc.clone(), request.clone());
+                    async move {
+                        current.map_err(Attempt::Fail)?;
+                        let (host, port) = address.ok_or_else(|| {
+                            Attempt::Retry(Status::new(
+                                StatusCode::NotFound,
+                                "tserver is not registered",
+                            ))
+                        })?;
+                        let bytes = request
+                            .write_to_bytes()
+                            .map_err(|e| Attempt::Fail(internal(e)))?;
+                        let response = rpc
+                            .call(
+                                &host,
+                                port,
+                                "yb.consensus.ConsensusService",
+                                "RunLeaderElection",
+                                &bytes,
+                                rpc_timeout,
+                            )
+                            .await
+                            .map_err(Attempt::Retry)?;
+                        let response = RunLeaderElectionResponsePB::parse_from_bytes(&response)
+                            .map_err(|e| Attempt::Retry(corrupt(e)))?;
+                        // As `AsyncStartElection`, whose task retries until its deadline: a
+                        // protege still bootstrapping refuses at first.
+                        if let Some(error) = response.error.as_ref() {
+                            return Err(Attempt::Retry(Status::new(
+                                StatusCode::from_i32(error.status.code().value()),
+                                error.status.message().to_string(),
+                            )));
+                        }
+                        Ok(())
+                    }
+                })
+                .await;
+            if let Err(status) = result {
+                tracing::warn!(
+                    "RunLeaderElection RPC for tablet {} on TS {} failed: {status}",
+                    String::from_utf8_lossy(&tablet_id),
+                    String::from_utf8_lossy(&protege)
+                );
+            }
+        });
     }
 
     /// Replica counts the choice balances: RUNNING replicas from the observed locations, of the
@@ -399,6 +563,45 @@ impl TabletAssigner {
                 );
             }
         }
+    }
+}
+
+impl TabletAssigner {
+    /// The `initial-elections` controller of this term's assigner: hinted first elections, run as
+    /// replicas report (C++ starts them from the tablet report), not on the assigner's interval.
+    pub fn elections(self: &Arc<Self>) -> Arc<dyn Controller> {
+        Arc::new(InitialElections(self.clone()))
+    }
+}
+
+/// See [`TabletAssigner::elections`].
+struct InitialElections(Arc<TabletAssigner>);
+
+impl Controller for InitialElections {
+    fn name(&self) -> &'static str {
+        "initial-elections"
+    }
+
+    fn interval(&self) -> Duration {
+        (self.0.interval)()
+    }
+
+    fn reconcile<'a>(&'a self, scope: &'a TermScope) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            let assigner = &self.0;
+            if !(assigner.lifecycle.options.use_create_table_leader_hint)() {
+                return;
+            }
+            let Ok(token) = assigner.lifecycle.leadership.token() else {
+                return;
+            };
+            let snapshot = assigner.lifecycle.catalog.snapshot();
+            for tablet in snapshot.iter(SysRowEntryType::TABLET) {
+                if tablet.tablet().map(|t| t.state) == Some(TabletState::CREATING as i32) {
+                    assigner.start_election_if_ready(scope, &token, &snapshot, tablet);
+                }
+            }
+        })
     }
 }
 

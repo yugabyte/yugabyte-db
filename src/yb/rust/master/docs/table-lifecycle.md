@@ -66,6 +66,15 @@ Runs every `catalog_manager_bg_task_wait_ms` and on every catalog change, in eac
 - A PREPARING table whose active tablets all run becomes RUNNING. Report processing
   (`master-ts-manager`) turns each tablet RUNNING once a replica reports it with a leader.
 
+Each tablet also gets a protege when it is assigned: the replica with the fewest proteges in the
+table's batch (`SelectProtegeForTablet`). The `initial-elections` controller, run on every change
+of the observed locations rather than on the interval, asks it to run for leader
+(`RunLeaderElection` with `initial_election`) once a majority of the CREATING tablet's voters run
+and no leader is known, once per term (`StartElectionIfReady`, `use_create_table_leader_hint`). If
+the protege is gone or does not accept leader load under the cluster's leader affinity, the first
+replica that does is asked. New tables so start with balanced leaders, and a table is created in
+tens of milliseconds rather than waiting for Raft's election timeout.
+
 The leader calls a tserver at the address `DesiredHostPort` picks: the broadcast address unless
 `use_private_ip` allows the private one for the tserver's placement compared with this master's.
 This master's placement comes from its registration, not the `placement_*` gflags: masters

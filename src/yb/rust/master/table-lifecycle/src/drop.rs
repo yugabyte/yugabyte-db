@@ -130,7 +130,7 @@ impl TableLifecycle {
                     ));
                 }
                 match pb.table_type() {
-                    TableType::YQL_TABLE_TYPE => {}
+                    TableType::YQL_TABLE_TYPE | TableType::DEFAULT_TABLE_TYPE => {}
                     TableType::PGSQL_TABLE_TYPE => return Err(not_yet("YSQL DROP TABLE (W7)")),
                     other => return Err(not_yet(&format!("DROP TABLE of {other:?}"))),
                 }

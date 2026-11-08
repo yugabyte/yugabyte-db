@@ -444,6 +444,8 @@ impl TsManager {
         let timeout = (self.options.unresponsive_timeout)();
         let lease_expiry = (self.options.guarded_lease_expiry)();
         let mut changed = Vec::new();
+        let mode = (self.options.use_private_ip)();
+        let local = self.local_cloud_info.read().unwrap().clone();
         let mut descriptors = self.descriptors.write().unwrap();
         let mut membership = false;
         for descriptor in descriptors.values_mut() {
@@ -452,9 +454,16 @@ impl TsManager {
             };
             let since = now.saturating_duration_since(last);
             if descriptor.is_live() && since > timeout {
-                tracing::info!(
-                    "Tablet server {} unresponsive for {since:?}",
-                    String::from_utf8_lossy(&descriptor.uuid)
+                // C++'s text: tests wait for it in the master log.
+                let (host, port) =
+                    placement::desired_host_port(&descriptor.pb.registration, &local, &mode)
+                        .map_or((String::new(), 0), |hp| (hp.host().to_string(), hp.port()));
+                tracing::warn!(
+                    "Marking tserver {} ({host}:{port}) as UNRESPONSIVE: no heartbeat received for \
+                     at least {}ms (threshold: {}ms)",
+                    String::from_utf8_lossy(&descriptor.uuid),
+                    since.as_millis(),
+                    timeout.as_millis()
                 );
                 descriptor.set_state(TsState::UNRESPONSIVE);
                 descriptor.has_tablet_report = false;

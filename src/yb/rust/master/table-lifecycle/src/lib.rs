@@ -79,6 +79,9 @@ pub struct LifecycleOptions {
     pub enable_ysql: fn() -> bool,
     /// `txn_table_wait_min_ts_count`.
     pub txn_table_wait_min_ts_count: fn() -> i32,
+    /// `use_create_table_leader_hint`: start each new tablet's first election at a chosen
+    /// replica, so new tables' leaders are balanced.
+    pub use_create_table_leader_hint: fn() -> bool,
 }
 
 impl Default for LifecycleOptions {
@@ -94,6 +97,7 @@ impl Default for LifecycleOptions {
             enable_delete_truncate_xcluster_replicated_table: || false,
             enable_ysql: || false,
             txn_table_wait_min_ts_count: || 1,
+            use_create_table_leader_hint: || true,
         }
     }
 }

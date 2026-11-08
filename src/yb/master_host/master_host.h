@@ -281,6 +281,13 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   // The sys catalog tablet served to YSQL (MasterTabletServiceImpl).
   std::unique_ptr<TabletServerContextImpl> tablet_server_context_;
   std::unique_ptr<master::MasterTabletServer> tablet_server_;
+  // The "cluster" metric entity and the cluster balancer's gauges in it ("SetClusterMetrics").
+  scoped_refptr<MetricEntity> metric_entity_cluster_;
+  scoped_refptr<AtomicGauge<int64_t>> is_load_balancing_enabled_metric_;
+  scoped_refptr<AtomicGauge<uint32_t>> tablets_in_wrong_placement_metric_;
+  scoped_refptr<AtomicGauge<uint32_t>> blacklisted_leaders_metric_;
+  scoped_refptr<AtomicGauge<uint32_t>> total_table_load_difference_metric_;
+  scoped_refptr<AtomicGauge<uint64_t>> estimated_data_to_balance_bytes_metric_;
 };
 
 class MasterInfoHandle {

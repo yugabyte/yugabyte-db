@@ -48,8 +48,8 @@ impl LeaderServices {
 
     fn leaders_on_preferred_only(&self, snapshot: &CatalogSnapshot) -> Result<(), Status> {
         use master_table_lifecycle::table_replication_info;
-        use yb_proto::pb::catalog_entity_info::{sys_tables_entry_pb, SysTablesEntryPB};
         use protobuf::Enum;
+        use yb_proto::pb::catalog_entity_info::{sys_tables_entry_pb, SysTablesEntryPB};
         use yb_proto::pb::common_types::TableType;
         let config: SysClusterConfigEntryPB = snapshot
             .cluster_config()
@@ -85,30 +85,9 @@ impl LeaderServices {
                 continue;
             };
             let info = table_replication_info(pb.replication_info.as_ref(), &config);
-            // `TSDescriptor::IsAcceptingLeaderLoad`.
-            let accepting = |d: &master_ts_manager::TsDescriptor| {
-                let read_only = if info.live_replicas.has_placement_uuid() {
-                    info.live_replicas.placement_uuid() != d.placement_uuid()
-                } else {
-                    !d.placement_uuid().is_empty()
-                };
-                if read_only {
-                    return false;
-                }
-                if info.affinitized_leaders.is_empty() && info.multi_affinitized_leaders.is_empty()
-                {
-                    return true;
-                }
-                let ci = d.pb.registration.cloud_info.clone().unwrap_or_default();
-                info.multi_affinitized_leaders
-                    .iter()
-                    .flat_map(|s| s.zones.iter())
-                    .chain(info.affinitized_leaders.iter())
-                    .any(|z| master_ts_manager::placement::is_cloud_info_prefix(z, &ci))
-            };
             let accepting: Vec<&[u8]> = tservers
                 .iter()
-                .filter(|d| accepting(d))
+                .filter(|d| master_ts_manager::placement::is_accepting_leader_load(d, &info))
                 .map(|d| &*d.uuid)
                 .collect();
             for tablet in snapshot.active_tablets_of(&table.key.id) {

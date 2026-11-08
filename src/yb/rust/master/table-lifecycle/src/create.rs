@@ -76,10 +76,33 @@ impl TableLifecycle {
         req: &CreateTableRequestPB,
         resp: &mut CreateTableResponsePB,
     ) -> Result<(), MasterErrorPB> {
+        tracing::info!("CreateTable: {}", req.name());
+        let result = self.create_table_unlogged(token, deadline, req, resp).await;
+        if let Err(error) = &result {
+            tracing::info!(
+                "CreateTable of {} failed: {:?} {}",
+                req.name(),
+                error.code(),
+                error.status.message()
+            );
+        }
+        result
+    }
+
+    async fn create_table_unlogged(
+        &self,
+        token: &LeaderToken,
+        deadline: Instant,
+        req: &CreateTableRequestPB,
+        resp: &mut CreateTableResponsePB,
+    ) -> Result<(), MasterErrorPB> {
         let snapshot = self.catalog.snapshot();
         find_namespace(&snapshot, &req.namespace)?;
         match req.table_type() {
-            TableType::YQL_TABLE_TYPE | TableType::TRANSACTION_STATUS_TABLE_TYPE => {}
+            // An unset type reads as the alias DEFAULT_TABLE_TYPE, a variant of its own.
+            TableType::YQL_TABLE_TYPE
+            | TableType::DEFAULT_TABLE_TYPE
+            | TableType::TRANSACTION_STATUS_TABLE_TYPE => {}
             TableType::PGSQL_TABLE_TYPE => return Err(not_yet("YSQL CREATE TABLE (W7)")),
             TableType::REDIS_TABLE_TYPE => {
                 return Err(error(
@@ -88,7 +111,6 @@ impl TableLifecycle {
                     "YEDIS is not supported by the Rust master (D16)",
                 ))
             }
-            other => return Err(not_yet(&format!("CREATE TABLE of {other:?}"))),
         }
         if req.schema.table_properties.is_transactional() {
             self.ensure_transaction_table(token, deadline).await?;

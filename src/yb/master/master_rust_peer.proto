@@ -166,6 +166,21 @@ message SetLeaderReadyTermResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+// The cluster balancer's metrics, which C++ keeps in the "cluster" metric entity
+// (MasterHost::HandleOnHost "SetClusterMetrics", ClusterLoadBalancer::ReportMetrics and
+// UpdatePerRunMetrics). A field left unset keeps its value.
+message SetClusterMetricsRequestPB {
+  optional bool is_load_balancing_enabled = 1;
+  optional uint32 tablets_in_wrong_placement = 2;
+  optional uint32 blacklisted_leaders = 3;
+  optional uint32 total_table_load_difference = 4;
+  optional uint64 estimated_data_to_balance_bytes = 5;
+}
+
+message SetClusterMetricsResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterRustPeer {
   rpc PushLocations(PushLocationsRequestPB) returns (PushLocationsResponsePB);
   rpc DumpCatalog(DumpCatalogRequestPB) returns (DumpCatalogResponsePB);

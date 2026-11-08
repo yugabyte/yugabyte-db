@@ -55,7 +55,9 @@ comparing content for messages with maps.
 
 Compare an enum field with `Enum::value()`, never `as i32`. rust-protobuf gives an enum explicit
 discriminants only when it has no aliases; `TableType` (`allow_alias`, `DEFAULT_TABLE_TYPE = 2`)
-gets none, so `TableType::TRANSACTION_STATUS_TABLE_TYPE as i32` is 3, not 5.
+gets none, so `TableType::TRANSACTION_STATUS_TABLE_TYPE as i32` is 3, not 5. Its generated `==`
+compares proto values, but a `match` compares variants: an unset `table_type` reads as
+`DEFAULT_TABLE_TYPE`, which a `YQL_TABLE_TYPE` arm does not match.
 
 ## Service tables
 

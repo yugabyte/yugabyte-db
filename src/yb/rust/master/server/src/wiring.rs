@@ -48,7 +48,7 @@ use yb_flags::{yb_flag, FlagRef, FlagTag};
 use yb_host_api::metrics::MetricRegistry;
 use yb_host_api::rpc::RpcClient;
 use yb_host_api::StatusCode;
-use yb_proto::pb::master_rust_peer::SetLeaderReadyTermRequestPB;
+use yb_proto::pb::master_rust_peer::{SetClusterMetricsRequestPB, SetLeaderReadyTermRequestPB};
 
 yb_flag!(
     /// Rows per catalog Raft write.
@@ -145,7 +145,11 @@ static LB_MIN_INBOUND_RBS: FlagRef<i32> =
 static RBS_RATE_LIMIT: FlagRef<i64> = FlagRef::new("remote_bootstrap_rate_limit_bytes_per_sec");
 static AUTO_SPLIT: FlagRef<bool> = FlagRef::new("enable_automatic_tablet_splitting");
 static ENABLE_YSQL: FlagRef<bool> = FlagRef::new("enable_ysql");
+static PAUSE_BG_LOOP_START: FlagRef<bool> =
+    FlagRef::new("TEST_pause_catalog_manager_bg_loop_start");
+static PAUSE_BG_LOOP_END: FlagRef<bool> = FlagRef::new("TEST_pause_catalog_manager_bg_loop_end");
 static TXN_TABLE_WAIT_MIN_TS_COUNT: FlagRef<i32> = FlagRef::new("txn_table_wait_min_ts_count");
+static USE_CREATE_TABLE_LEADER_HINT: FlagRef<bool> = FlagRef::new("use_create_table_leader_hint");
 static YSQL_LEASE_TTL_MS: FlagRef<u64> = FlagRef::new("master_ysql_operation_lease_ttl_ms");
 static YSQL_LEASE_CLIENT_BUFFER_MS: FlagRef<u64> =
     FlagRef::new("ysql_operation_lease_ttl_client_buffer_ms");
@@ -278,6 +282,30 @@ fn retry_policy(limit_attempts: bool) -> RetryPolicy {
     }
 }
 
+/// `ClusterLoadBalancer::ReportMetrics` and `UpdatePerRunMetrics`: the host keeps them in the
+/// "cluster" metric entity, as C++ does.
+fn report_cluster_metrics(
+    host: &dyn SchemaHost,
+    enabled: bool,
+    metrics: Option<&master_cluster_balancer::RunMetrics>,
+) {
+    let mut req = SetClusterMetricsRequestPB::new();
+    req.set_is_load_balancing_enabled(enabled);
+    if let Some(m) = metrics {
+        req.set_tablets_in_wrong_placement(m.tablets_in_wrong_placement);
+        req.set_blacklisted_leaders(m.blacklisted_leaders);
+        req.set_total_table_load_difference(m.total_table_load_difference);
+        req.set_estimated_data_to_balance_bytes(m.estimated_data_to_balance_bytes);
+    }
+    let result = req
+        .write_to_bytes()
+        .map_err(|e| yb_host_api::Status::new(StatusCode::InternalError, e.to_string()))
+        .and_then(|bytes| host.call("SetClusterMetrics", &bytes));
+    if let Err(status) = result {
+        tracing::warn!("Failed to report the cluster balancer's metrics: {status}");
+    }
+}
+
 /// Tells the host the term in which this leader is ready, -1 when it is not, as C++ keeps
 /// `leader_ready_term_`: the host serves YSQL's catalog reads and writes only in that term. A
 /// lapsed lease keeps the term; the host's Raft check refuses such calls anyway.
@@ -323,6 +351,8 @@ pub(crate) struct Core {
     pub(crate) leader: Arc<LeaderServices>,
     /// Paces master-to-tserver RPCs across terms (K2).
     ts_rpc: Arc<TsRpcExecutor>,
+    /// The host's C++ steps the controllers call.
+    host: Arc<dyn SchemaHost>,
 }
 
 impl Core {
@@ -405,6 +435,7 @@ impl Core {
                 check_ts_count_for_create_table: || CHECK_TS_COUNT_FOR_CREATE_TABLE.get(),
                 enable_ysql: || ENABLE_YSQL.get(),
                 txn_table_wait_min_ts_count: || TXN_TABLE_WAIT_MIN_TS_COUNT.get(),
+                use_create_table_leader_hint: || USE_CREATE_TABLE_LEADER_HINT.get(),
                 tablet_creation_timeout_ms: || TABLET_CREATION_TIMEOUT_MS.get() as i64,
                 use_parent_table_id_field: || USE_PARENT_TABLE_ID_FIELD.get(),
                 transaction_table_num_tablets: || TRANSACTION_TABLE_NUM_TABLETS.get(),
@@ -490,6 +521,7 @@ impl Core {
             leadership,
             leader,
             ts_rpc,
+            host: schema,
         }
     }
 
@@ -564,6 +596,7 @@ impl Core {
         let leader = self.leader.clone();
         leader.splits.set_rpc(rpc.clone());
         let ts_rpc = self.ts_rpc.clone();
+        let host = self.host.clone();
         let mut phases = self.leadership.subscribe();
         runtime.spawn(async move {
             let mut started: Option<TermScope> = None;
@@ -573,7 +606,7 @@ impl Core {
                         .as_ref()
                         .is_none_or(|s| s.is_cancelled() || s.term() != scope.term());
                     if fresh && !scope.is_cancelled() {
-                        start_term(&scope, &leader, &info, &rpc, &ts_rpc);
+                        start_term(&scope, &leader, &info, &rpc, &ts_rpc, &host);
                         started = Some(scope);
                     }
                 }
@@ -592,6 +625,7 @@ fn start_term(
     info: &Arc<dyn MasterInfo>,
     rpc: &Arc<dyn RpcClient>,
     ts_rpc: &Arc<TsRpcExecutor>,
+    host: &Arc<dyn SchemaHost>,
 ) {
     tracing::info!("Starting leader controllers for term {}", scope.term());
     // These run on their interval only: nothing triggers them.
@@ -650,22 +684,32 @@ fn start_term(
                 },
                 num_idle_runs: || LB_NUM_IDLE_RUNS.get().max(1) as usize,
                 options: balancer_options,
+                pause_before_run: || PAUSE_BG_LOOP_START.get(),
+                pause_after_run: || PAUSE_BG_LOOP_END.get(),
+                report: {
+                    let host = host.clone();
+                    Arc::new(move |enabled, metrics| {
+                        report_cluster_metrics(&*host, enabled, metrics)
+                    })
+                },
             },
             leader.balancer.clone(),
         ),
         watch::channel(0).1,
     );
+    let assigner = TabletAssigner::new(
+        leader.tables.clone(),
+        rpc.clone(),
+        ts_rpc.clone(),
+        retry_policy(false),
+        || millis(MASTER_TS_RPC_TIMEOUT_MS.get()),
+        || millis(BG_TASK_WAIT_MS.get().max(1)),
+    );
+    run_controller(scope, assigner.clone(), leader.catalog.subscribe());
     run_controller(
         scope,
-        TabletAssigner::new(
-            leader.tables.clone(),
-            rpc.clone(),
-            ts_rpc.clone(),
-            retry_policy(false),
-            || millis(MASTER_TS_RPC_TIMEOUT_MS.get()),
-            || millis(BG_TASK_WAIT_MS.get().max(1)),
-        ),
-        leader.catalog.subscribe(),
+        assigner.elections(),
+        leader.ts_manager.locations.subscribe(),
     );
     run_controller(
         scope,

@@ -304,6 +304,36 @@ pub fn desired_host_port<'a>(
     }
 }
 
+/// `TSDescriptor::IsAcceptingLeaderLoad`: in the live placement (not a read replica), and in a
+/// preferred leader zone when there are any.
+pub fn is_accepting_leader_load(
+    descriptor: &crate::TsDescriptor,
+    info: &yb_proto::pb::common_net::ReplicationInfoPB,
+) -> bool {
+    let read_only = if info.live_replicas.has_placement_uuid() {
+        info.live_replicas.placement_uuid() != descriptor.placement_uuid()
+    } else {
+        !descriptor.placement_uuid().is_empty()
+    };
+    if read_only {
+        return false;
+    }
+    if info.affinitized_leaders.is_empty() && info.multi_affinitized_leaders.is_empty() {
+        return true;
+    }
+    let ci = descriptor
+        .pb
+        .registration
+        .cloud_info
+        .clone()
+        .unwrap_or_default();
+    info.multi_affinitized_leaders
+        .iter()
+        .flat_map(|s| s.zones.iter())
+        .chain(info.affinitized_leaders.iter())
+        .any(|z| is_cloud_info_prefix(z, &ci))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

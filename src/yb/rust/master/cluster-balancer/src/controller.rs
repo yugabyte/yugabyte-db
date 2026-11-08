@@ -118,6 +118,24 @@ pub struct BalancerFlags {
     pub num_idle_runs: fn() -> usize,
     /// The planner's flags.
     pub options: fn() -> Options,
+    /// `TEST_pause_catalog_manager_bg_loop_start` and `_end`: tests hold the C++ background loop,
+    /// which runs the balancer, before or after a run, to get exactly one run.
+    pub pause_before_run: fn() -> bool,
+    /// See `pause_before_run`.
+    pub pause_after_run: fn() -> bool,
+    /// Publishes the "cluster" metrics after each pass: whether balancing is enabled, and the
+    /// run's metrics when it ran (`ReportMetrics`, `UpdatePerRunMetrics`).
+    pub report: MetricsReporter,
+}
+
+/// See [`BalancerFlags::report`].
+pub type MetricsReporter = Arc<dyn Fn(bool, Option<&crate::RunMetrics>) + Send + Sync>;
+
+/// Waits while `pause` holds, as `TEST_PAUSE_IF_FLAG` does.
+async fn wait_while(pause: fn() -> bool) {
+    while pause() {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
 }
 
 /// The balancer for one leader term.
@@ -182,6 +200,7 @@ impl Controller for BalancerController {
 
     fn reconcile<'a>(&'a self, scope: &'a TermScope) -> BoxFuture<'a, ()> {
         Box::pin(async move {
+            wait_while(self.0.flags.pause_before_run).await;
             // A run is O(tablets) (seconds at millions of tablets): off the async workers.
             let inner = self.0.clone();
             let Ok(Some((token, result))) = tokio::task::spawn_blocking(move || inner.plan()).await
@@ -191,6 +210,7 @@ impl Controller for BalancerController {
             for action in result.actions() {
                 self.0.send(scope, token, action.clone());
             }
+            wait_while(self.0.flags.pause_after_run).await;
         })
     }
 }
@@ -203,7 +223,9 @@ impl Inner {
     /// One run of the planner over the cluster now, recorded for the RPCs.
     fn plan(&self) -> Option<(LeaderToken, crate::RunResult)> {
         let token = self.leadership.token().ok()?;
-        if !(self.flags.enabled)() || self.term_start.elapsed() <= (self.flags.initial_delay)() {
+        let enabled = (self.flags.enabled)();
+        if !enabled || self.term_start.elapsed() <= (self.flags.initial_delay)() {
+            (self.flags.report)(enabled, None);
             return None;
         }
         let snapshot = self.catalog.snapshot();
@@ -214,6 +236,7 @@ impl Inner {
             .unwrap()
             .run(&view, &(self.flags.options)());
         self.status.record(&result, (self.flags.num_idle_runs)());
+        (self.flags.report)(true, Some(&result.metrics));
         Some((token, result))
     }
 
