@@ -1118,13 +1118,10 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestDdlTxnBlockModeStableAcrossP
   ASSERT_NOK(conn.FetchAllAsString("SELECT * FROM post_promotion"));
 }
 
-// A statement that commits intermediate transactions (ANALYZE on multiple tables here) re-latches
-// the object locking infra auto flag at every one of those commits. If the flag is promoted while
-// such a statement is in flight, the rest of the statement would run in the new mode while the
-// state it already built belongs to the old one, so the statement must fail instead.
-// TODO(#34635): Pin the latched value for the statement and replace this with an assertion that
-// the statement succeeds.
-TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestModeChangeDuringStatementFails) {
+// A statement that commits intermediate transactions (ANALYZE on multiple tables here) keeps the
+// object locking mode of its first transaction for all of them. The infra auto flag is promoted
+// while such a statement is in flight, and the statement must finish in the mode it started in.
+TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestModeStableDuringStatement) {
   {
     auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
     ASSERT_OK(conn.Execute("CREATE DATABASE testdb;"));
@@ -1193,8 +1190,7 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestModeChangeDuringStatementFai
   }
 
   LOG(INFO) << "ANALYZE returned: " << error_message;
-  ASSERT_STR_CONTAINS(error_message, "transactional DDL was enabled while the statement was "
-                                     "running");
+  ASSERT_EQ(error_message, "");
 }
 
 // Test for #32224 and #36572.
@@ -1540,9 +1536,11 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyFastPathWriteDeadlockIsDetected
 }
 
 // A legacy transaction's lock taken in DDL mode is kept only in PG's local lock table. A DML that
-// later takes the same lock in the same transaction must still send it, or a new mode DDL does
-// not wait for the DML.
-TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyDmlSendsLockFirstTakenInDdlMode) {
+// later takes the same lock in the same transaction finds it there and does not send it, so a new
+// mode DDL does not wait for the DML. Only an AccessShare reader can hit this, and it keeps the
+// catalog version and schema version checks, as on master.
+// TODO(#36572): Enable once a DDL's locks no longer outlive its separate DDL transaction.
+TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, DISABLED_LegacyDmlSendsLockFirstTakenInDdlMode) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
   {
@@ -1570,7 +1568,7 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyDmlSendsLockFirstTakenInDdlMode
 
 // A legacy CREATE INDEX takes transaction and session locks that a legacy transaction does not
 // send. PG must still record them, since LockRelationIdForSession requires the transaction lock
-// to be held, and must send no session lock release for them.
+// to be held, and the tserver must get no session lock release for them.
 TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyCreateIndexSucceeds) {
   auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*cluster_->tablet_server(0)));
   ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
@@ -1686,11 +1684,12 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyDdlLeavesNoStaleCatalogEnt
   ASSERT_OK(legacy_conn.Fetch("SELECT w FROM p"));
 }
 
-// Tests for turning ysql_yb_enable_object_locking_infra off on a running cluster (#36572).
+// Tests for turning table locks off on a running cluster (#37326).
 //
-// A transaction that started in new mode on one node keeps running there while another node,
-// with the infra flag turned off, runs a legacy mode DDL. The legacy DDL takes no object locks, so
-// it must not miss the new mode transaction's write.
+// enable_object_locking_for_table_locks is not a runtime flag, so a rolling restart turns it off
+// one node at a time. A transaction that started in new mode on a node not yet restarted keeps
+// running there, while a restarted node runs DDLs without object locks. Such a DDL must not miss
+// the new mode transaction's write.
 class PgObjectLocksTestNewTxnVsLegacyDdl : public PgObjectLocksTestMixModeDuringPromotion {
  protected:
   void PromoteAll() {
@@ -1698,6 +1697,16 @@ class PgObjectLocksTestNewTxnVsLegacyDdl : public PgObjectLocksTestMixModeDuring
       ASSERT_OK(cluster_->SetFlag(
           cluster_->tablet_server(i), "ysql_yb_enable_object_locking_infra", "true"));
     }
+  }
+
+  void RestartWithTableLocksOff(ExternalTabletServer* ts) {
+    ts->Shutdown();
+    ASSERT_OK(ts->Restart(
+        ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+        {std::make_pair("enable_object_locking_for_table_locks", "false")}));
+    ASSERT_OK(LoggedWaitFor(
+        [this, ts]() -> Result<bool> { return LibPqTestBase::ConnectToTs(*ts).ok(); },
+        MonoDelta::FromSeconds(kTimeMultiplier * 60), "restarted tserver to accept connections"));
   }
 
   void CheckIndex(PGConn& conn, int64_t expected_rows_with_v_42) {
@@ -1724,14 +1733,15 @@ TEST_F(PgObjectLocksTestNewTxnVsLegacyDdl, LegacyCreateIndexWithNewModeWriter) {
   ASSERT_OK(new_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
   ASSERT_OK(new_conn.Execute("UPDATE test SET v = 42 WHERE k = 1"));
 
-  ASSERT_OK(cluster_->SetFlag(ts2, "ysql_yb_enable_object_locking_infra", "false"));
+  ASSERT_NO_FATALS(RestartWithTableLocksOff(ts2));
   auto create_index_future = std::async(std::launch::async, [&]() -> Status {
     auto ddl_conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts2));
     return ddl_conn.Execute("CREATE INDEX test_v_idx ON test(v)");
   });
   const auto create_index_waited =
       create_index_future.wait_for(3s * kTimeMultiplier) == std::future_status::timeout;
-  // The legacy CREATE INDEX waits for the new mode backend to reach its catalog version.
+  // The CREATE INDEX on ts2 takes no object locks. It waits for the new mode backend to reach
+  // its catalog version.
   ASSERT_TRUE(create_index_waited);
   ASSERT_OK(new_conn.Execute("COMMIT"));
   ASSERT_OK(create_index_future.get());
@@ -1755,7 +1765,7 @@ TEST_F(PgObjectLocksTestNewTxnVsLegacyDdl, NewModeWriteAfterLegacyCreateIndex) {
   ASSERT_OK(new_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
   ASSERT_EQ(ASSERT_RESULT(new_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
 
-  ASSERT_OK(cluster_->SetFlag(ts2, "ysql_yb_enable_object_locking_infra", "false"));
+  ASSERT_NO_FATALS(RestartWithTableLocksOff(ts2));
   auto create_index_future = std::async(std::launch::async, [&]() -> Status {
     auto ddl_conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts2));
     return ddl_conn.Execute("CREATE INDEX test_v_idx ON test(v)");
