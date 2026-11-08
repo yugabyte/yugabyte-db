@@ -844,7 +844,7 @@ fn is_system_tablet(snapshot: &CatalogSnapshot, tablet: &Entity) -> bool {
         .get(SysRowEntryType::TABLE, &hot.table_id)
         .and_then(|t| t.table())
         .is_some_and(|t| {
-            t.table_type == yb_proto::pb::common_types::TableType::YQL_TABLE_TYPE as i32
+            t.table_type == yb_proto::pb::common_types::TableType::YQL_TABLE_TYPE.value()
                 && master_catalog_state::defaults::SYSTEM_NAMESPACES
                     .iter()
                     .any(|(id, _)| t.namespace_id == *id)

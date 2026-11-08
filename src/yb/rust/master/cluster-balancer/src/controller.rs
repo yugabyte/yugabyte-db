@@ -332,7 +332,7 @@ impl Inner {
                 .collect();
             tables.push(TableInfo {
                 is_transaction_status_table: hot.table_type
-                    == yb_proto::pb::common_types::TableType::TRANSACTION_STATUS_TABLE_TYPE as i32,
+                    == yb_proto::pb::common_types::TableType::TRANSACTION_STATUS_TABLE_TYPE.value(),
                 replication_info: table_replication_info(pb.replication_info.as_ref(), &config),
                 tablets,
                 pending: tasks.get(&id).cloned().unwrap_or_default(),

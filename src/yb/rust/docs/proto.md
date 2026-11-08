@@ -53,6 +53,10 @@ from a newer release re-serializes as C++ would write it.
 Map fields have no defined wire order in either runtime; checks that compare bytes fall back to
 comparing content for messages with maps.
 
+Compare an enum field with `Enum::value()`, never `as i32`. rust-protobuf gives an enum explicit
+discriminants only when it has no aliases; `TableType` (`allow_alias`, `DEFAULT_TABLE_TYPE = 2`)
+gets none, so `TableType::TRANSACTION_STATUS_TABLE_TYPE as i32` is 3, not 5.
+
 ## Service tables
 
 `yb_proto::SERVICES` lists every RPC service in the root files with its wire name

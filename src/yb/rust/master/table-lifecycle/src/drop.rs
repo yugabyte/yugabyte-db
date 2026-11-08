@@ -26,7 +26,7 @@ use master_catalog_state::{is_inactive_state, CatalogSnapshot, Mutation};
 use master_leadership::LeaderToken;
 use master_task_runtime::{BoxFuture, Controller, TermScope};
 use master_ts_manager::DeleteReplica;
-use protobuf::{EnumOrUnknown, Message};
+use protobuf::{Enum, EnumOrUnknown, Message};
 use tokio::time::Instant;
 use yb_host_api::{Status, StatusCode};
 use yb_proto::pb::catalog_entity_info::{
@@ -83,7 +83,7 @@ impl TableLifecycle {
             .enable_delete_truncate_xcluster_replicated_table)()
             && table
                 .table()
-                .is_some_and(|t| t.table_type == TableType::YQL_TABLE_TYPE as i32)
+                .is_some_and(|t| t.table_type == TableType::YQL_TABLE_TYPE.value())
             && xcluster_replicated(&snapshot, &table.key.id)
         {
             return Err(error(

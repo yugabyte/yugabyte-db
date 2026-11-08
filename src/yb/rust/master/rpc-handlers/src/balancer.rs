@@ -49,6 +49,7 @@ impl LeaderServices {
     fn leaders_on_preferred_only(&self, snapshot: &CatalogSnapshot) -> Result<(), Status> {
         use master_table_lifecycle::table_replication_info;
         use yb_proto::pb::catalog_entity_info::{sys_tables_entry_pb, SysTablesEntryPB};
+        use protobuf::Enum;
         use yb_proto::pb::common_types::TableType;
         let config: SysClusterConfigEntryPB = snapshot
             .cluster_config()
@@ -75,7 +76,7 @@ impl LeaderServices {
             {
                 continue;
             }
-            if hot.table_type == TableType::TRANSACTION_STATUS_TABLE_TYPE as i32
+            if hot.table_type == TableType::TRANSACTION_STATUS_TABLE_TYPE.value()
                 && !(self.transaction_tables_use_preferred_zones)()
             {
                 continue;

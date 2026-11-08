@@ -22,7 +22,7 @@ use yb_host_api::StatusCode;
 use yb_proto::pb::catalog_entity_info::{
     sys_namespace_entry_pb, sys_tables_entry_pb, SysTablesEntryPB,
 };
-use yb_proto::pb::common_types::YQLDatabase;
+use yb_proto::pb::common_types::{TableType, YQLDatabase};
 use yb_proto::pb::master_types::{
     master_error_pb::Code, MasterErrorPB, NamespaceIdentifierPB, SysRowEntryType, TableIdentifierPB,
 };
@@ -191,15 +191,19 @@ pub fn is_colocation_parent_table_id(id: &[u8]) -> bool {
     .any(|suffix| id.len() == 32 + suffix.len() && id.ends_with(suffix))
 }
 
-/// `TableInfo::is_system`: a YCQL system table (in a system keyspace) or a table hosted on the
-/// sys-catalog tablet.
+/// `TableInfo::is_system`: a table hosted on the sys-catalog tablet (sys.catalog and the YSQL
+/// catalog), or a YCQL virtual table of a system keyspace. Tables C++ creates in the `system`
+/// keyspace through CreateTable, such as `system.transactions`, are not system tables: the
+/// balancer and splits treat them as any other. (The YCQL metrics snapshots table, a real table
+/// in `system`, counts here as system, unlike in C++.)
 pub fn is_system_table(snapshot: &CatalogSnapshot, table: &Entity) -> bool {
     let Some(hot) = table.table() else {
         return false;
     };
-    SYSTEM_NAMESPACES
-        .iter()
-        .any(|(id, _)| hot.namespace_id == *id)
+    (hot.table_type == TableType::YQL_TABLE_TYPE.value()
+        && SYSTEM_NAMESPACES
+            .iter()
+            .any(|(id, _)| hot.namespace_id == *id))
         || snapshot
             .tablets_of(&table.key.id)
             .iter()

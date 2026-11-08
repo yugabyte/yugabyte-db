@@ -23,7 +23,7 @@ use std::sync::OnceLock;
 
 use master_leadership::LeaderToken;
 use master_sys_catalog::RowChange;
-use protobuf::{EnumOrUnknown, Message};
+use protobuf::{Enum, EnumOrUnknown, Message};
 use rand::RngCore;
 use yb_host_api::{Status, StatusCode};
 use yb_proto::pb::catalog_entity_info::{
@@ -181,7 +181,7 @@ pub fn default_rows(
     let has_pgsql_tables = || {
         snapshot.iter(SysRowEntryType::TABLE).any(|e| {
             e.table()
-                .is_some_and(|t| t.table_type == TableType::PGSQL_TABLE_TYPE as i32)
+                .is_some_and(|t| t.table_type == TableType::PGSQL_TABLE_TYPE.value())
         })
     };
     if !ysql
