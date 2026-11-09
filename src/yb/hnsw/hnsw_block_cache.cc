@@ -22,6 +22,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/unique_lock.h"
 
 using namespace yb::size_literals;
@@ -321,6 +322,7 @@ struct CachedBlock {
     auto future = load_future;
     lock.unlock();
 
+    TEST_SYNC_POINT("CachedBlock::Take:WaitForLoad");
     auto start = MonoTime::Now();
     auto result = future.get();
     cache->metrics().take_wait_us->Increment((MonoTime::Now() - start).ToMicroseconds());
@@ -372,6 +374,7 @@ struct CachedBlock {
   }
 
   Result<const std::byte*> Load(RandomAccessFile& file, HasBlockTrailers has_trailer) {
+    TEST_SYNC_POINT("CachedBlock::Load");
     auto start = MonoTime::Now();
     std::unique_ptr<std::byte[]> new_content(new std::byte[size]);
     Slice read_result;
