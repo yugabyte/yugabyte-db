@@ -70,7 +70,10 @@ extern SysScanDesc ybc_systable_begin_default_scan(Relation relation,
  * acquire_sample_rows() for YB relations.  tableam's analyze callbacks do not
  * fit, because they read the block numbers that the caller's BlockSampler
  * chooses, while YB's sampler reads the table in its own blocks, runs of rows
- * from one partition, and selects the sample rows below PostgreSQL.
+ * from one partition, and selects the sample rows below PostgreSQL.  Upstream
+ * has no interface yet for a table AM to supply its own sampling.  Wait for
+ * one rather than add a YB-only interface that upstream may later shape
+ * differently.
  */
 typedef struct YbSampleData
 {

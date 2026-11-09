@@ -54,7 +54,8 @@ accounted for:
   yb_target.h
 
 Entry points outside the AM interfaces, which its sections explain.  Its
-catalog scans and fetch by ybctid are among the bypasses tracked in #36168:
+catalog scans and fetch by ybctid are among the bypasses tracked in #36168.
+Its ANALYZE sampling waits for upstream to add an interface it fits:
 
   yb_special_scans.h
 
