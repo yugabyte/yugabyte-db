@@ -1753,6 +1753,39 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyWriterReleasesLocksAtRollback) 
   ASSERT_OK(ddl_conn.Execute("ALTER TABLE test ADD COLUMN v2 INT"));
 }
 
+// A legacy transaction refreshes its catalog cache when PG takes a new lock, and its requests then
+// carry the new catalog version, so the tablets' breaking catalog version check no longer stops
+// it. A new mode table rewrite must therefore wait for a legacy reader through the reader's local
+// lock. Otherwise the reader, after the refresh, would read the rewritten table at its old
+// snapshot.
+TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, TableRewriteWaitsForLegacyReader) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
+    ASSERT_OK(conn.Execute("CREATE TABLE other(k INT PRIMARY KEY)"));
+  }
+
+  auto legacy_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(legacy_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
+
+  ASSERT_NO_FATALS(PromoteForDdl());
+  auto alter_future = std::async(std::launch::async, [&]() -> Status {
+    auto ddl_conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+    return ddl_conn.Execute("ALTER TABLE test ALTER COLUMN v TYPE BIGINT");
+  });
+  ASSERT_EQ(alter_future.wait_for(5s * kTimeMultiplier), std::future_status::timeout);
+
+  // A new lock refreshes the reader's catalog cache; the table it then reads is unchanged.
+  ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM other")), 0);
+  ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
+  ASSERT_OK(legacy_conn.Execute("COMMIT"));
+  ASSERT_OK(alter_future.get());
+}
+
 // A CREATE INDEX takes a session lock on the table, then runs each phase in its own transaction,
 // and releases the lock in the last one. Started in legacy mode, it does not send the session lock.
 // If the infra flag is promoted between phases, the release runs in a new mode transaction. PG must
@@ -1823,7 +1856,7 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyDdlLeavesNoStaleCatalogEnt
   }
   // The outcome of the CREATE TABLE does not matter here. Today it fails in the event trigger
   // with XX000 "plancache reference ... is not owned by resource owner", also with the kill switch
-  // on.
+  // on. TODO(#30540)
   LOG(INFO) << "CREATE TABLE: " << create_future.get();
   ASSERT_OK(legacy_conn.Execute("SET test.slow = 'off'"));
   ASSERT_OK(legacy_conn.Fetch("SELECT w FROM p"));
