@@ -1307,12 +1307,15 @@ od_router_status_t od_router_attach(od_router_t *router,
 			return OD_ROUTER_ERROR;
 
 		/*
-		 * Wait wakeup condition for pool_timeout milliseconds.
+		 * Wait wakeup condition for yb_query_wait_timeout_ms milliseconds.
 		 *
 		 * The condition triggered when a server connection
 		 * put into idle state by DETACH events.
+		 *
+		 * YB: a global option instead of the rule's pool_timeout, so that a
+		 * reload changes it without making every rule obsolete.
 		 */
-		uint32_t timeout = route->rule->pool->timeout;
+		uint32_t timeout = instance->config.yb_query_wait_timeout_ms;
 		if (timeout == 0)
 			timeout = UINT32_MAX;
 		rc = od_route_wait(route, timeout);
