@@ -55,6 +55,7 @@ class AsyncTryStepDown;
 class CatalogManager;
 class CatalogManagerIf;
 class CatalogManagerBgTasks;
+class CatalogManagerCdcBgTasks;
 class CdcsdkManager;
 class CdcsdkManagerIf;
 class CloneStateManager;

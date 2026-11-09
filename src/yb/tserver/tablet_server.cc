@@ -313,6 +313,7 @@ DECLARE_bool(enable_db_history_retention_pins);
 DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_qos);
+DECLARE_bool(enable_tiered_storage);
 DECLARE_bool(enable_update_local_peer_min_index);
 DECLARE_bool(qos_system_dbs_use_shared_pool);
 DECLARE_bool(skip_fields_moved_to_xcluster_guarded_info);
@@ -897,10 +898,15 @@ Status TabletServer::GetRegistration(ServerRegistrationPB* reg, server::RpcOnly 
   } else {
     reg->set_pg_port(pgsql_proxy_bind_address().port());
   }
-  // Unlabeled data dirs are on kDefaultStorageTier, so this is never empty once the fs is open.
+  // Tiered storage is a preview feature: with it off the master must not learn or persist tiers,
+  // so a tserver registers none and the master treats its tiers as unknown, as for a tserver that
+  // predates the field. With it on, unlabeled data dirs are on kDefaultStorageTier, so this is
+  // never empty once the fs is open.
   reg->clear_storage_tiers();
-  for (const auto& [tier, _] : fs_manager_->GetDataRootsByTier()) {
-    reg->add_storage_tiers(tier);
+  if (FLAGS_enable_tiered_storage) {
+    for (const auto& [tier, _] : fs_manager_->GetDataRootsByTier()) {
+      reg->add_storage_tiers(tier);
+    }
   }
   return Status::OK();
 }
@@ -2772,6 +2778,7 @@ Status TabletServer::XClusterHandleMasterHeartbeatResponse(
         resp.xcluster_config_version()));
   }
 
+  xcluster_producer_state_known_.store(true, std::memory_order_release);
   return Status::OK();
 }
 

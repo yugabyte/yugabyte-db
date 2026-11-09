@@ -504,7 +504,8 @@ TEST_F(MasterChangeConfigTest, TestStepDownSucceedsWithStalePreVoter) {
   ASSERT_OK_PREPEND(cluster_->ChangeConfig(new_master, consensus::REMOVE_SERVER),
                     "Change Config(REMOVE_SERVER) of stale PRE_VOTER returned error");
   --num_masters_;
-  cur_log_index_ += 1;
+  // The new leader's NO_OP and the REMOVE_SERVER.
+  cur_log_index_ += 2;
   ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(cur_log_index_, initial_masters));
 
   VerifyLeaderMasterPeerCount();

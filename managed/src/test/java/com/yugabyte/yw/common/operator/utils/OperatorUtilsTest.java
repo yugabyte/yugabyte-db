@@ -721,6 +721,7 @@ public class OperatorUtilsTest extends FakeDBApplication {
     s3Data.put("IAM_INSTANCE_PROFILE", false);
     s3Data.put("BACKUP_LOCATION", "s3://test-bucket/backups");
     s3Data.put("PATH_STYLE_ACCESS", true);
+    s3Data.put("IMMUTABLE_STORAGE", true);
     s3Config.setData(s3Data);
     s3Config.save();
 
@@ -745,6 +746,7 @@ public class OperatorUtilsTest extends FakeDBApplication {
     assertFalse(data.getUSE_IAM());
     assertEquals("s3://test-bucket/backups", data.getBACKUP_LOCATION());
     assertTrue(data.getPATH_STYLE_ACCESS());
+    assertTrue(data.getIMMUTABLE_STORAGE());
 
     assertEquals("aws-secret", config.getSpec().getAwsSecretAccessKeySecret().getName());
     assertEquals("test-namespace", config.getSpec().getAwsSecretAccessKeySecret().getNamespace());
@@ -1037,6 +1039,7 @@ public class OperatorUtilsTest extends FakeDBApplication {
     assertEquals(Long.valueOf(userIntent.replicationFactor), spec.getReplicationFactor());
     assertEquals(userIntent.enableNodeToNodeEncrypt, spec.getEnableNodeToNodeEncrypt());
     assertEquals(userIntent.enableClientToNodeEncrypt, spec.getEnableClientToNodeEncrypt());
+    assertEquals(userIntent.useNodeToNodeClientCerts, spec.getUseNodeToNodeClientCerts());
     assertEquals(userIntent.ybSoftwareVersion, spec.getYbSoftwareVersion());
     assertEquals(providerName, spec.getProviderName());
     assertEquals(userIntent.enableIPV6, spec.getEnableIPV6());

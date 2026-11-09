@@ -24,6 +24,8 @@
 #include <utility>
 #include <vector>
 
+#include <boost/functional/hash.hpp>
+
 #include "yb/client/session.h"
 #include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
@@ -111,6 +113,7 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_user_ddls_preempt_auto_analyze, true,
     "yb_enable_invalidation_messages is enabled.");
 
 DECLARE_bool(TEST_ash_debug_aux);
+DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
 
 /* Constants for replication slot LSN types */
 const std::string YBC_LSN_TYPE_SEQUENCE = "SEQUENCE";
@@ -513,6 +516,15 @@ YbcPgTabletsDescriptor MakeYbcPgTabletsDescriptor(const tablet::TabletStatusPB& 
   };
 }
 
+bool HasCDCColumnKey(const DatumMessagePB& datum, bool use_attr_num) {
+  return use_attr_num ? datum.has_col_attr_num() : datum.has_column_name();
+}
+
+std::pair<int32_t, std::string> GetCDCColumnKey(const DatumMessagePB& datum, bool use_attr_num) {
+  return use_attr_num ? std::make_pair(datum.col_attr_num(), std::string())
+                      : std::make_pair(0, datum.column_name());
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -642,8 +654,12 @@ void YBCPgResetCatalogReadTime() {
   pgapi->ResetCatalogReadTime();
 }
 
-void YBCPgSetHistoricalReadContext(YbcReadHybridTime read_time, const char* transaction_id) {
-  pgapi->SetHistoricalReadContext(MakeReadHybridTime(read_time), transaction_id);
+void YBCPgSetHistoricalReadContext(
+    YbcReadHybridTime read_time, const char* transaction_id, const uint32_t* aborted_subtxn_set,
+    size_t aborted_subtxn_set_size) {
+  pgapi->SetHistoricalReadContext(
+      MakeReadHybridTime(read_time), transaction_id,
+      std::span(aborted_subtxn_set, aborted_subtxn_set_size));
 }
 
 void YBCPgResetHistoricalReadContext() {
@@ -1431,6 +1447,18 @@ YbcStatus YBCPgBackfillIndex(
     bool use_regular_transaction_block) {
   const PgObjectId index_id(database_oid, index_oid);
   return ToYBCStatus(pgapi->BackfillIndex(index_id, use_regular_transaction_block));
+}
+
+YbcStatus YBCPgStartTableBackfill(
+    const YbcPgOid database_oid,
+    const YbcPgOid source_table_oid,
+    const YbcPgOid target_table_oid,
+    const YbcPgOid transform_fn_oid,
+    uint64_t backfill_timestamp,
+    int64_t pg_job_id) {
+  const PgObjectId source_id(database_oid, source_table_oid);
+  return ToYBCStatus(pgapi->StartTableBackfill(
+      source_id, target_table_oid, transform_fn_oid, backfill_timestamp, pg_job_id));
 }
 
 YbcStatus YBCPgWaitVectorIndexReady(
@@ -3065,30 +3093,34 @@ YbcStatus YBCPgGetCDCConsistentChanges(
 
     static constexpr size_t OMITTED_VALUE = std::numeric_limits<size_t>::max();
 
-    // column_name -> (index in old tuples, index in new tuples).
+    const bool use_attr_num = FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl;
+
+    // (attnum, column name) -> (index in old tuples, index in new tuples).
     // OMITTED_VALUE indicates omission.
     // For insert: all the columns will be of form (OMITTED_VALUE, <index>).
     // For delete: all the columns will be of form (<index>, OMITTED_VALUE) or
     // won't exist in the map depending on the record type (replica identity) of the stream.
     // For update: both old and new tuples will be present.
-    std::unordered_map<std::string, std::pair<size_t, size_t>> col_name_idx_map;
+    std::unordered_map<
+        std::pair<int32_t, std::string>, std::pair<size_t, size_t>,
+        boost::hash<std::pair<int32_t, std::string>>> col_idx_map;
     int new_tuple_idx = 0;
     for (const auto &new_tuple : row_message_pb.new_tuple()) {
-      if (new_tuple.has_column_name()) {
-        col_name_idx_map.emplace(
-            new_tuple.column_name(), std::make_pair(OMITTED_VALUE, new_tuple_idx));
+      if (HasCDCColumnKey(new_tuple, use_attr_num)) {
+        col_idx_map.emplace(
+            GetCDCColumnKey(new_tuple, use_attr_num), std::make_pair(OMITTED_VALUE, new_tuple_idx));
       }
       new_tuple_idx++;
     }
     int old_tuple_idx = 0;
     for (const auto& old_tuple : row_message_pb.old_tuple()) {
-      if (old_tuple.has_column_name()) {
-        auto itr = col_name_idx_map.find(old_tuple.column_name());
-        if (itr != col_name_idx_map.end()) {
+      if (HasCDCColumnKey(old_tuple, use_attr_num)) {
+        auto col_key = GetCDCColumnKey(old_tuple, use_attr_num);
+        auto itr = col_idx_map.find(col_key);
+        if (itr != col_idx_map.end()) {
           itr->second.first = old_tuple_idx;
         } else {
-          col_name_idx_map.emplace(
-              old_tuple.column_name(), std::make_pair(old_tuple_idx, OMITTED_VALUE));
+          col_idx_map.emplace(std::move(col_key), std::make_pair(old_tuple_idx, OMITTED_VALUE));
         }
       }
       old_tuple_idx++;
@@ -3105,15 +3137,15 @@ YbcStatus YBCPgGetCDCConsistentChanges(
       table_oid = tableDesc->pg_table_id().object_oid;
     }
 
-    auto col_count = narrow_cast<int>(col_name_idx_map.size());
+    auto col_count = narrow_cast<int>(col_idx_map.size());
     YbcPgDatumMessage *cols = nullptr;
     if (col_count > 0) {
       cols = static_cast<YbcPgDatumMessage *>(YBCPAlloc(sizeof(YbcPgDatumMessage) * col_count));
 
       int tuple_idx = 0;
-      for (const auto& col_idxs : col_name_idx_map) {
+      for (const auto& col_idxs : col_idx_map) {
         YbcPgTypeAttrs type_attrs{-1 /* typmod */};
-        const auto& column_name = col_idxs.first;
+        const auto& [column_attr_num, column_name] = col_idxs.first;
 
         // Before Op value aka Before Image.
         uint64 before_op_datum = 0;
@@ -3154,7 +3186,8 @@ YbcStatus YBCPgGetCDCConsistentChanges(
         }
 
         auto col = &cols[tuple_idx++];
-        col->column_name = YBCPAllocStdString(column_name);
+        col->column_name = use_attr_num ? nullptr : YBCPAllocStdString(column_name);
+        col->column_attr_num = column_attr_num;
         col->after_op_datum = after_op_datum;
         col->after_op_is_null = after_op_is_null;
         col->after_op_is_omitted = after_op_is_omitted;
@@ -3166,6 +3199,15 @@ YbcStatus YBCPgGetCDCConsistentChanges(
 
     const auto& docdb_txn_id = row_message_pb.transaction_id();
     const bool has_docdb_txn_id = !docdb_txn_id.empty();
+
+    const auto& aborted_subtxn_set_pb = row_message_pb.aborted_subtxns().set();
+    uint32_t* aborted_subtxn_set = nullptr;
+    if (!aborted_subtxn_set_pb.empty()) {
+      aborted_subtxn_set = static_cast<uint32_t*>(
+          YBCPAlloc(sizeof(uint32_t) * aborted_subtxn_set_pb.size()));
+      std::copy(
+          aborted_subtxn_set_pb.begin(), aborted_subtxn_set_pb.end(), aborted_subtxn_set);
+    }
 
     new (&resp_rows[row_idx]) YbcPgRowMessage{
         .col_count = col_count,
@@ -3183,7 +3225,9 @@ YbcStatus YBCPgGetCDCConsistentChanges(
         .xrepl_origin_id =
             row_message_pb.has_xrepl_origin_id() ? row_message_pb.xrepl_origin_id() : 0,
         .has_docdb_txn_id = has_docdb_txn_id,
-        .docdb_txn_id = {}};
+        .docdb_txn_id = {},
+        .aborted_subtxn_set = aborted_subtxn_set,
+        .aborted_subtxn_set_size = aborted_subtxn_set_pb.size()};
     if (has_docdb_txn_id) {
       snprintf(
           resp_rows[row_idx].docdb_txn_id, sizeof(resp_rows[row_idx].docdb_txn_id), "%s",

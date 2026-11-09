@@ -44,6 +44,8 @@ import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -55,6 +57,7 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import io.ebean.DB;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -93,6 +96,35 @@ public class UniverseTest extends FakeDBApplication {
     //    mockConfGetter = Mockito.mock(RuntimeConfGetter.class);
     //    when(mockConfGetter.getStaticConf()).thenReturn(Mockito.mock(Config.class));
     mockConfGetter = app.injector().instanceOf(RuntimeConfGetter.class);
+  }
+
+  @Test
+  public void testGetSummaries() {
+    Customer otherCustomer = ModelFactory.testCustomer("tc2", "Customer 2");
+    Universe first = createUniverse("first", defaultCustomer.getId());
+    Universe second = createUniverse("second", otherCustomer.getId());
+    Universe unparsable = createUniverse("unparsable", defaultCustomer.getId());
+    Universe withoutCustomer = createUniverse("without-customer", otherCustomer.getId());
+    DB.sqlUpdate(
+            "update universe set universe_details_json = 'not json' where universe_uuid = :uuid")
+        .setParameter("uuid", unparsable.getUniverseUUID())
+        .execute();
+    DB.sqlUpdate("update universe set customer_id = null where universe_uuid = :uuid")
+        .setParameter("uuid", withoutCustomer.getUniverseUUID())
+        .execute();
+
+    // The details are not read, so a universe with details that don't parse is listed. A universe
+    // without a customer is not.
+    assertEquals(
+        Set.of(
+            new Universe.Summary(first.getUniverseUUID(), "first", defaultCustomer.getId()),
+            new Universe.Summary(second.getUniverseUUID(), "second", otherCustomer.getId()),
+            new Universe.Summary(
+                unparsable.getUniverseUUID(), "unparsable", defaultCustomer.getId())),
+        new HashSet<>(Universe.getSummaries()));
+    assertEquals(
+        List.of(new Universe.Summary(second.getUniverseUUID(), "second", otherCustomer.getId())),
+        Universe.getSummaries(otherCustomer));
   }
 
   @Test
@@ -452,6 +484,57 @@ public class UniverseTest extends FakeDBApplication {
     assertTrue(regionsNode.isArray());
     assertEquals(3, regionsNode.size());
     assertNull(universeJson.get("dnsName"));
+  }
+
+  @Test
+  public void testNodeExporterSidecarScrapedInUniverseResp() {
+    RuntimeConfGetter confGetter = app.injector().instanceOf(RuntimeConfGetter.class);
+    Universe k8s =
+        ModelFactory.createUniverse("k8s-resp", defaultCustomer.getId(), CloudType.kubernetes);
+    k8s =
+        Universe.saveDetails(
+            k8s.getUniverseUUID(),
+            u ->
+                u.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
+                    "2026.2.0.0-b1");
+    assertTrue(
+        new UniverseResp(k8s, null, null, null, null, confGetter).nodeExporterSidecarScraped);
+    assertFalse(new UniverseResp(k8s, null).nodeExporterSidecarScraped);
+
+    Universe vm = createUniverse("vm-resp", defaultCustomer.getId());
+    assertFalse(
+        new UniverseResp(vm, null, null, null, null, confGetter).nodeExporterSidecarScraped);
+  }
+
+  private Universe k8sUniverseAtVersion(String name, String ybSoftwareVersion) {
+    Universe universe =
+        ModelFactory.createUniverse(name, defaultCustomer.getId(), CloudType.kubernetes);
+    return Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u ->
+            u.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
+                ybSoftwareVersion);
+  }
+
+  @Test
+  public void testNodeExporterSidecarScrapedFollowsUniverseKeyAndVersion() {
+    RuntimeConfGetter confGetter = app.injector().instanceOf(RuntimeConfGetter.class);
+
+    Universe keyOff = k8sUniverseAtVersion("k8s-key-off", "2026.2.0.0-b1");
+    app.injector()
+        .instanceOf(SettableRuntimeConfigFactory.class)
+        .forUniverse(keyOff)
+        .setValue(UniverseConfKeys.k8sNodeExporterEnabled.getKey(), "false");
+    assertFalse(
+        new UniverseResp(keyOff, null, null, null, null, confGetter).nodeExporterSidecarScraped);
+
+    Universe belowGate = k8sUniverseAtVersion("k8s-below-gate", "2026.1.2.0-b100");
+    assertFalse(
+        new UniverseResp(belowGate, null, null, null, null, confGetter).nodeExporterSidecarScraped);
+
+    Universe noVersion = k8sUniverseAtVersion("k8s-no-version", null);
+    assertFalse(
+        new UniverseResp(noVersion, null, null, null, null, confGetter).nodeExporterSidecarScraped);
   }
 
   @Test

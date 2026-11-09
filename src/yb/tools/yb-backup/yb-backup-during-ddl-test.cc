@@ -67,11 +67,14 @@ YB_DEFINE_ENUM(YsqlColocationConfig, (kNotColocated)(kDBColocated));
 class YBBackupDuringDdl : public pgwrapper::PgMiniTestBase, public YBBackupTestBase {
  public:
   void SetUp() {
+    // Skip before TEST_SETUP_SUPER starts the cluster, so sanitizer builds do not pay for it.
+    // Derived fixtures must chain through TEST_SETUP_SUPER as well, or they would run their own
+    // setup against the cluster this skip never started.
+    YB_SKIP_TEST_IN_SANITIZERS();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
     // We need the following to be able to run yb-controller with MiniCluster.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_use_custom_varz) = true;
     TEST_SETUP_SUPER(PgMiniTestBase);
-    YB_SKIP_TEST_IN_SANITIZERS();
     ASSERT_OK(CreateClient());
     // Start Yb Controllers for backup/restore.
     if (UseYbController()) {
@@ -235,7 +238,7 @@ class YBBackupTestWithColocationParam : public YBBackupDuringDdl,
                                         public ::testing::WithParamInterface<YsqlColocationConfig> {
  public:
   void SetUp() override {
-    YBBackupDuringDdl::SetUp();
+    TEST_SETUP_SUPER(YBBackupDuringDdl);
     CreateDatabase(kBackupSourceDbName, GetParam());
   }
 };
@@ -611,7 +614,7 @@ class YBBackupDuringAlterTable : public YBBackupDuringDdl,
                                  public ::testing::WithParamInterface<YsqlColocationConfig> {
  public:
   void SetUp() override {
-    YBBackupDuringDdl::SetUp();
+    TEST_SETUP_SUPER(YBBackupDuringDdl);
     CreateDatabase(kBackupSourceDbName, GetParam());
   }
 
@@ -936,7 +939,7 @@ class YBBackupWithAnonymizerTest : public YBBackupDuringDdl {
       GTEST_SKIP() << "Test requires YBC";
     }
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_pg_anonymizer) = true;
-    YBBackupDuringDdl::SetUp();
+    TEST_SETUP_SUPER(YBBackupDuringDdl);
     CreateDatabase(kBackupSourceDbName);
   }
 
@@ -1001,7 +1004,7 @@ class YBCloneWithAnonymizerTest : public YBBackupWithAnonymizerTest {
  public:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_beta_features) = true;
-    YBBackupWithAnonymizerTest::SetUp();
+    TEST_SETUP_SUPER(YBBackupWithAnonymizerTest);
   }
 };
 
@@ -1029,7 +1032,7 @@ TEST_F(YBCloneWithAnonymizerTest, CloneAfterRoleRenameWithAnonymizer) {
 class YBBackupOfColocatedCloneTest : public YBBackupDuringDdl {
  public:
   void SetUp() override {
-    YBBackupDuringDdl::SetUp();
+    TEST_SETUP_SUPER(YBBackupDuringDdl);
     CreateDatabase(kBackupSourceDbName, YsqlColocationConfig::kDBColocated);
   }
 };

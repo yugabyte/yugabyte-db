@@ -76,6 +76,7 @@ DECLARE_string(TEST_master_universe_uuid);
 DECLARE_int32(TEST_mini_cluster_registration_wait_time_sec);
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_bool(persist_tserver_registry);
+DECLARE_bool(enable_tiered_storage);
 DECLARE_uint32(xcluster_guarded_lease_duration_ms);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
@@ -744,6 +745,33 @@ class MasterHeartbeatITestPersistedRegistry : public MasterHeartbeatITest {
     }
     return uuids;
   }
+};
+
+// With tiered storage off a tserver registers no tiers, so the master treats them as unknown and
+// persists none.
+TEST_F(MasterHeartbeatITestPersistedRegistry, RegistrationCarriesNoStorageTiersWhenDisabled) {
+  ASSERT_FALSE(FLAGS_enable_tiered_storage);
+  auto* ts_manager = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())->master()->ts_manager();
+  for (const auto& uuid : TServerUuids()) {
+    auto ts_desc = ASSERT_RESULT(ts_manager->LookupTSByUUID(uuid));
+    ASSERT_TRUE(ts_desc->GetRegistration().storage_tiers().empty()) << uuid;
+    ASSERT_TRUE(ts_desc->GetStorageTiers().empty()) << uuid;
+    ASSERT_FALSE(ts_desc->HasStorageTier(kDefaultStorageTier)) << uuid;
+  }
+}
+
+class MasterHeartbeatITestTieredStorage : public MasterHeartbeatITestPersistedRegistry {
+ public:
+  void SetUp() override {
+    // Must be on before the tservers register, or they register no tiers.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = true;
+    MasterHeartbeatITestPersistedRegistry::SetUp();
+  }
+
+  void TearDown() override {
+    MasterHeartbeatITestPersistedRegistry::TearDown();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = false;
+  }
 
   // A default cluster has unlabeled data dirs, so each tserver registers kDefaultStorageTier alone
   // and the master answers tier questions from that registration.
@@ -766,7 +794,7 @@ class MasterHeartbeatITestPersistedRegistry : public MasterHeartbeatITest {
   }
 };
 
-TEST_F(MasterHeartbeatITestPersistedRegistry, RegistrationCarriesStorageTiers) {
+TEST_F(MasterHeartbeatITestTieredStorage, RegistrationCarriesStorageTiers) {
   const auto uuids = TServerUuids();
   ASSERT_OK(CheckRegisteredStorageTiers(uuids));
 
@@ -852,6 +880,46 @@ TEST_F(TierStateHeartbeatTest, TierStateReachesMaster) {
     if (uuid != ts_uuid) {
       ASSERT_TRUE(replica.target_storage_tier.empty()) << replica.ToString();
     }
+  }
+
+  // A report with a new term, as a leader election produces, makes the master rebuild every
+  // replica's entry from that one report. Send one from the migrated replica: its tier fields
+  // describe that replica only, so the others must keep what they last reported.
+  auto* mini_master = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster());
+  auto ts_desc = ASSERT_RESULT(mini_master->ts_manager().LookupTSByUUID(ts_uuid));
+  master::MasterHeartbeatProxy master_proxy(proxy_cache_.get(), mini_master->bound_rpc_addr());
+  master::TSHeartbeatRequestPB req;
+  req.set_universe_uuid(ASSERT_RESULT(catalog_mgr.GetClusterConfig()).universe_uuid());
+  *req.mutable_common() = MakeTSToMasterCommonPB(*ts_desc, ts_desc->latest_seqno());
+  auto* report = req.mutable_tablet_report();
+  report->set_is_incremental(true);
+  report->set_sequence_number(ts_desc->latest_report_seqno() + 1);
+  auto* reported = report->add_updated_tablets();
+  reported->set_tablet_id(tablet->tablet_id());
+  reported->set_state(tablet::RaftGroupStatePB::RUNNING);
+  reported->set_tablet_data_state(tablet::TabletDataState::TABLET_DATA_READY);
+  auto* cstate = reported->mutable_committed_consensus_state();
+  *cstate = tablet->LockForRead()->pb.committed_consensus_state();
+  cstate->set_leader_uuid(ts_uuid);
+  cstate->set_current_term(cstate->current_term() + 1);
+  reported->set_current_storage_tier(kDefaultStorageTier);
+  reported->set_target_storage_tier(kDefaultStorageTier);
+  reported->set_tier_migration_state(tserver::TierMigrationStatusPB::DONE);
+  master::TSHeartbeatResponsePB resp;
+  rpc::RpcController rpc;
+  ASSERT_OK(master_proxy.TSHeartbeat(req, &resp, &rpc));
+  ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+  for (const auto& [uuid, replica] : *tablet->GetReplicaLocations()) {
+    if (uuid == ts_uuid) {
+      ASSERT_EQ(replica.target_storage_tier, kDefaultStorageTier) << replica.ToString();
+      ASSERT_EQ(replica.tier_migration_state, tserver::TierMigrationStatusPB::DONE)
+          << replica.ToString();
+      continue;
+    }
+    ASSERT_EQ(replica.current_storage_tier, kDefaultStorageTier) << replica.ToString();
+    ASSERT_TRUE(replica.target_storage_tier.empty()) << replica.ToString();
+    ASSERT_EQ(replica.tier_migration_state, tserver::TierMigrationStatusPB::NONE)
+        << replica.ToString();
   }
 }
 

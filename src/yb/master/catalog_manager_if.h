@@ -345,8 +345,9 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
 
   virtual Status UpdateCDCProducerOnTabletSplit(
       const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) = 0;
-  // The split phase a table is in, from its tablets per live tserver. ShouldSplitValidCandidate
-  // returns it only for a tablet it accepts; TabletSplitManager uses this to classify rejections.
+  // The split phase a table is in, from its tablets per live primary tserver.
+  // ShouldSplitValidCandidate returns it only for a tablet it accepts; TabletSplitManager uses this
+  // to classify rejections.
   virtual Result<SplitPhase> GetTableSplitPhase(
       const scoped_refptr<const TableInfo>& table) const = 0;
   virtual Result<SplitPhase> ShouldSplitValidCandidate(

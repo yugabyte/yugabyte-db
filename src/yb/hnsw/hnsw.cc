@@ -153,6 +153,7 @@ class YbHnswBuilder {
     RETURN_NOT_OK(BuildVectorDataBlocks());
     RETURN_NOT_OK(FlushBlock());
     RETURN_NOT_OK(WriteFooter());
+    RETURN_NOT_OK(out_->Sync());
     RETURN_NOT_OK(out_->Close());
     out_.reset();
     RETURN_NOT_OK(block_cache_.env().RenameFile(tmp_path, path_));

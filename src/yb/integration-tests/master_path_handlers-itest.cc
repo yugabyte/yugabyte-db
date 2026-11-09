@@ -104,6 +104,7 @@ DECLARE_bool(TEST_assert_local_op);
 DECLARE_bool(TEST_echo_service_enabled);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(enable_tiered_storage);
 DECLARE_bool(enable_ysql);
 DECLARE_bool(enable_ysql_operation_lease);
 DECLARE_int32(load_balancer_initial_delay_secs);
@@ -404,9 +405,46 @@ TEST_F(MasterPathHandlersItest, TestDeadTServers) {
       10s /* timeout */, "Waiting for tserver heartbeat to master"));
 }
 
+// With tiered storage off no tserver registers tiers and the master shows none: the HTML table
+// has no Storage Tiers column and the JSON listing no storage_tiers key.
+TEST_F(MasterPathHandlersItest, TabletServersListHidesStorageTiersWhenDisabled) {
+  ASSERT_FALSE(FLAGS_enable_tiered_storage);
+  auto cells = GetHtmlTableColumn("/tablet-servers", "[^']*_tserver", "Storage Tiers");
+  ASSERT_NOK(cells);
+  ASSERT_TRUE(cells.status().IsNotFound()) << cells.status();
+
+  faststring result;
+  ASSERT_OK(GetUrl("/api/v1/tablet-servers", &result));
+  JsonDocument doc;
+  auto json_obj = ASSERT_RESULT(doc.Parse(result.ToString()));
+  size_t tserver_count = 0;
+  for (const auto& [cluster_uuid, cluster_json] : ASSERT_RESULT(json_obj.GetObject())) {
+    for (const auto& [host_port, tserver_json] : ASSERT_RESULT(cluster_json.GetObject())) {
+      ASSERT_FALSE(tserver_json["storage_tiers"].IsValid())
+          << ASSERT_RESULT(tserver_json.ToString());
+      ++tserver_count;
+    }
+  }
+  ASSERT_EQ(tserver_count, cluster_->num_tablet_servers());
+}
+
+class MasterPathHandlersTieredStorageItest : public MasterPathHandlersItest {
+ public:
+  void SetUp() override {
+    // Must be on before the tservers register, or they register no tiers.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = true;
+    MasterPathHandlersItest::SetUp();
+  }
+
+  void DoTearDown() override {
+    MasterPathHandlersItest::DoTearDown();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = false;
+  }
+};
+
 // A default cluster has unlabeled data dirs, so every tserver registers kDefaultStorageTier only,
 // and both the HTML table and the JSON listing show it.
-TEST_F(MasterPathHandlersItest, TabletServersListStorageTiers) {
+TEST_F(MasterPathHandlersTieredStorageItest, TabletServersListStorageTiers) {
   const auto cells =
       ASSERT_RESULT(GetHtmlTableColumn("/tablet-servers", "[^']*_tserver", "Storage Tiers"));
   ASSERT_EQ(cells.size(), cluster_->num_tablet_servers());

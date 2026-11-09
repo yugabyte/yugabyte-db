@@ -130,6 +130,7 @@ DEFINE_test_flag(int32, sleep_before_reporting_lb_ui_ms, 0,
                  "Sleep before reporting tasks in the cluster balancer UI, to give tasks a chance "
                  "to complete.");
 
+DECLARE_bool(enable_tiered_storage);
 DECLARE_bool(enable_ysql);
 DECLARE_bool(enforce_tablet_replica_limits);
 DECLARE_int32(ysql_tablespace_info_refresh_secs);
@@ -604,12 +605,19 @@ void MasterPathHandlers::TServerDisplay(
   const auto lease_infos =
       master_->catalog_manager_impl()->object_lock_info_manager()->GetLeaseInfos();
 
-  auto html_table = html_print_helper.CreateTablePrinter(
-      Format("$0_tserver", current_uuid),
-      {"Server", "Time since heartbeat", "Status & Uptime", "User Tablet-Peers / Leaders",
-       "System Tablet-Peers / Leaders", "RAM Used", "Used / Total Disk Space", "Storage Tiers",
-       "Num SST Files", "Total SST Files Size", "Uncompressed SST </br>Files Size", "Read ops/sec",
+  std::vector<std::string> tserver_column_names = {
+      "Server", "Time since heartbeat", "Status & Uptime", "User Tablet-Peers / Leaders",
+      "System Tablet-Peers / Leaders", "RAM Used", "Used / Total Disk Space"};
+  // With tiered storage off no tserver registers tiers, so the column would be empty.
+  if (FLAGS_enable_tiered_storage) {
+    tserver_column_names.push_back("Storage Tiers");
+  }
+  tserver_column_names.insert(
+      tserver_column_names.end(),
+      {"Num SST Files", "Total SST Files Size", "Uncompressed SST </br>Files Size", "Read ops/sec",
        "Write ops/sec", "Placement", "Active Tablet-Peers", "YSQL Lease Expiry & Epoch"});
+  auto html_table = html_print_helper.CreateTablePrinter(
+      Format("$0_tserver", current_uuid), std::move(tserver_column_names));
 
   int max_peers = 0;
   for (const auto& desc : descs) {
@@ -682,7 +690,9 @@ void MasterPathHandlers::TServerDisplay(
       }
     }
 
-    html_row.AddColumn(JoinStrings(desc->GetStorageTiers(), ", "));
+    if (FLAGS_enable_tiered_storage) {
+      html_row.AddColumn(JoinStrings(desc->GetStorageTiers(), ", "));
+    }
 
     html_row.AddColumn(desc->num_sst_files());
     html_row.AddColumn(HumanizeBytes(desc->total_sst_file_size()));
@@ -1123,12 +1133,14 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
         jw.String("uncompressed_sst_file_size_bytes");
         jw.Uint64(desc->uncompressed_sst_file_size());
 
-        jw.String("storage_tiers");
-        jw.StartArray();
-        for (const auto& tier : desc->GetStorageTiers()) {
-          jw.String(tier);
+        if (FLAGS_enable_tiered_storage) {
+          jw.String("storage_tiers");
+          jw.StartArray();
+          for (const auto& tier : desc->GetStorageTiers()) {
+            jw.String(tier);
+          }
+          jw.EndArray();
         }
-        jw.EndArray();
 
         jw.String("path_metrics");
         jw.StartArray();
@@ -4114,9 +4126,14 @@ string MasterPathHandlers::ReplicaInfoToHtml(
         "WALs size: $0\n", HumanizeBytes(replica.drive_info.wal_files_size));
     // Tiered storage; reported only by tservers running with --enable_tiered_storage.
     if (!replica.current_storage_tier.empty() || !replica.target_storage_tier.empty()) {
-      html << Format(
-          "<br/>Storage tier: $0",
-          replica.current_storage_tier.empty() ? "migrating" : replica.current_storage_tier);
+      std::string tier = replica.current_storage_tier;
+      if (tier.empty()) {
+        // No single tier to name: nothing has looked at the tablet yet (not open, NONE), or a
+        // migration straddles two.
+        tier = replica.tier_migration_state == tserver::TierMigrationStatusPB::NONE
+            ? "unknown" : "migrating";
+      }
+      html << Format("<br/>Storage tier: $0", tier);
       if (!replica.target_storage_tier.empty()) {
         html << Format(
             " (target $0, $1)", replica.target_storage_tier,

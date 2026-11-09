@@ -206,9 +206,10 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   // Storage tiers this tserver registered for its data directories (labels from
   // ValidStorageTiers()). Persisted with the registration, so it is correct from the first
-  // heartbeat and right after a master failover. Empty for a tserver from before the field: its
-  // tiers are unknown, so create-time placement does not choose it for a placement that names a
-  // tier. The load balancer does not consider tiers.
+  // heartbeat and right after a master failover. Empty until the tserver registers through a
+  // heartbeat on a binary that sends the field: a tserver on an older binary, or one the master
+  // so far knows only from a Raft config, has unknown tiers, and create-time placement does not
+  // choose it for a placement that names a tier. The load balancer does not consider tiers.
   std::set<std::string> GetStorageTiers() const EXCLUDES(mutex_);
   bool HasStorageTier(const std::string& tier) const EXCLUDES(mutex_);
 

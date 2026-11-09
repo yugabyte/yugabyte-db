@@ -88,6 +88,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/key_encoder.h"
 #include "yb/common/pg_catversions.h"
+#include "yb/common/pg_types.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/ql_type_util.h"
 #include "yb/common/ql_type.h"
@@ -117,11 +118,13 @@
 
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/backfill_index.h"
+#include "yb/master/online_schema_change.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_entity_parser.h"
 #include "yb/master/catalog_loaders.h"
 #include "yb/master/catalog_manager_bg_tasks.h"
+#include "yb/master/catalog_manager_cdc_bg_tasks.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/cdcsdk_manager.h"
@@ -673,9 +676,12 @@ DEFINE_RUNTIME_uint32(vector_index_tenant_hash_group_and_range_components, 0,
     "0 means vectors have no tenant. Applies only to the yb_hnsw_hnswlib backend. The tenant never "
     "covers the full primary key: values greater than or equal to the number of components use all "
     "components but the last one, so a single-component primary key has no tenant. The value is "
-    "fixed when the index is created. Older releases cannot read payloads created with a nonzero "
+    "fixed when the index is created. Must stay 0 until #36086: until then a saved YbHnsw chunk "
+    "keeps a single entry point, so its searches miss the vectors of all tenants but one. "
+    "Older releases cannot read payloads created with a nonzero "
     "value and may write vectors without their tenant, so keep it 0 until the upgrade to this "
     "release is finalized.");
+TAG_FLAG(vector_index_tenant_hash_group_and_range_components, experimental);
 
 DEFINE_RUNTIME_AUTO_bool(enable_table_owned_vector_reverse_mapping, kExternal, false, true,
     "When true, newly created YSQL tables hold vector reverse mapping ownership. "
@@ -1056,7 +1062,7 @@ void RemoveTableIdsFromTabletInfo(
 // Helper function for CleanUpDeletedTables. Not intended for general use.
 Status PersistCleanUpOfDeletedTables(
     CatalogManager& cm, const LeaderEpoch& epoch, std::vector<TableInfo*>&& tables,
-    std::vector<std::pair<TableInfo::WriteLock, TransactionId>>&& table_locks,
+    std::vector<std::pair<TableInfo::WriteLock, TransactionId>> table_locks,
     const TabletInfoPtr& sys_catalog_tablet_info) {
   if (tables.empty()) {
     return Status::OK();
@@ -1160,6 +1166,7 @@ CatalogManager::CatalogManager(Master* master, SysCatalogTable* sys_catalog)
   cdcsdk_manager_ = std::make_unique<CdcsdkManager>(*master_, *this, *sys_catalog_);
   xcluster_manager_ = std::make_unique<XClusterManager>(*master_, *this, *sys_catalog_);
   ysql_manager_ = std::make_unique<YsqlManager>(*master_, *this, *sys_catalog_);
+  online_schema_change_ = std::make_unique<OnlineSchemaChangeController>(master_, this);
 }
 
 CatalogManager::~CatalogManager() {
@@ -2383,6 +2390,9 @@ void CatalogManager::CompleteShutdown() {
   xcluster_manager_->CompleteShutdown();
   ysql_manager_->CompleteShutdown();
 
+  if (cdc_background_tasks_) {
+    cdc_background_tasks_->Shutdown();
+  }
   if (background_tasks_) {
     background_tasks_->Shutdown();
   }
@@ -3214,7 +3224,31 @@ Result<SplitPhase> CatalogManager::GetTableSplitPhase(
 
 Result<SplitPhase> CatalogManager::GetTableSplitPhase(
     const TableInfo& table, const ReplicationInfoPB& table_replication_info) const {
-  TSDescriptorVector ts_descs = GetAllLiveNotBlacklistedTServers();
+  // The phase thresholds are per-node leader counts, so count only tservers in the live placement:
+  // read-replica tservers host observers, never leaders, even when they share a zone with it.
+  // A table-level placement may omit the uuid; fall back to the cluster's, as the load balancer
+  // does. Membership is the same as GetNumLiveTServersForPlacement, which sizes new tables.
+  auto live_placement_uuid = table_replication_info.live_replicas().placement_uuid();
+  if (live_placement_uuid.empty()) {
+    live_placement_uuid = VERIFY_RESULT(placement_uuid());
+  }
+  TSDescriptorVector ts_descs;
+  auto blacklist = BlacklistSetFromPB();
+  master_->ts_manager()->GetAllLiveDescriptorsInCluster(
+      &ts_descs, live_placement_uuid, blacklist.ok() ? *blacklist : BlacklistSet());
+  // No live tserver matches when the cluster config's live uuid disagrees with the tservers' (for
+  // example after yb-admin clear_placement_info, or a uuid set only on the tservers). Such a
+  // cluster can't place new replicas, but its existing tables should keep splitting, so count
+  // every live tserver as before and warn: nothing else surfaces the mismatch on this path.
+  if (ts_descs.empty()) {
+    ts_descs = GetAllLiveNotBlacklistedTServers();
+    if (!ts_descs.empty()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 60) << Format(
+          "None of the $0 live tservers is in the live placement '$1'; counting all of them, "
+          "including any read replicas, for the automatic tablet split phase",
+          ts_descs.size(), live_placement_uuid);
+    }
+  }
 
   size_t num_servers = 0;
   // If there is custom placement information present then
@@ -5585,35 +5619,8 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
 
     // Try allocating tservers for the replicas and see if we can place a quorum
     // number of replicas.
-    // Essentially, the logic is:
-    // 1. We satisfy whatever we can from the minimums.
-    // 2. We then satisfy whatever we can from the slack.
-    //    Slack replicas can go into any of the valid placement blocks, as long as the block
-    //    stays within its effective maximum number of replicas.
-    // Overall, if in this process we are able to place n/2 + 1 replicas
-    // then we succeed otherwise we fail.
-    size_t total_extra_replicas = num_replicas - minimum_sum;
-    size_t total_feasible_replicas = 0;
-    size_t total_extra_servers = 0;
-    for (const auto& pb : placement_info.placement_blocks()) {
-      auto allowed_ts = VERIFY_RESULT(FindTServersForPlacementBlock(pb, ts_descs));
-      size_t allowed_ts_size = allowed_ts.size();
-      size_t min_num_replicas = pb.min_num_replicas();
-      size_t max_num_replicas =
-          GetEffectiveMaxNumReplicas(pb, narrow_cast<int32_t>(num_replicas));
-      // For every placement block, we can only satisfy upto the number of
-      // tservers present in that particular placement block.
-      total_feasible_replicas += min(allowed_ts_size, min_num_replicas);
-      // Extra tablet servers beyond min_num_replicas will be used to place
-      // the extra replicas over and above the minimums.
-      size_t max_feasible_replicas = min(allowed_ts_size, max_num_replicas);
-      if (max_feasible_replicas > min_num_replicas) {
-        total_extra_servers += max_feasible_replicas - min_num_replicas;
-      }
-    }
-    // The total number of extra replicas that we can put cannot be more than
-    // the total tablet servers that are extra.
-    total_feasible_replicas += min(total_extra_replicas, total_extra_servers);
+    const size_t total_feasible_replicas =
+        VERIFY_RESULT(CountPlaceableReplicas(placement_info, ts_descs));
 
     // If we place the replicas in accordance with above, we should be able to place
     // at least replica_quorum_needed otherwise we fail.
@@ -5628,6 +5635,52 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
   }
 
   return Status::OK();
+}
+
+// Without placement blocks every tserver can take a replica. With them, replica selection
+// satisfies each block's minimum from the tservers in that block, then places the slack replicas
+// on the tservers left in any block that stays within its effective maximum, so a tserver outside
+// every block takes no replica. Blocks can overlap (a zone's block next to its region's; the
+// tablespace parser rejects duplicates only). Each block is counted from all of its tservers,
+// while selection gives a tserver to the first block that takes it, so the sum is capped at the
+// distinct tservers in some block; with overlapping blocks it stays an upper bound, since the
+// tservers an earlier block takes can leave a later one short.
+Result<size_t> CatalogManager::CountPlaceableReplicas(
+    const PlacementInfoPB& placement_info, const TSDescriptorVector& ts_descs) {
+  if (placement_info.placement_blocks().empty()) {
+    return ts_descs.size();
+  }
+  const size_t num_replicas = GetNumReplicasOrGlobalReplicationFactor(placement_info);
+  size_t minimum_sum = 0;
+  for (const auto& pb : placement_info.placement_blocks()) {
+    minimum_sum += pb.min_num_replicas();
+  }
+  // CheckValidPlacementInfo rejects minimums above num_replicas; there is no slack then.
+  const size_t total_extra_replicas = num_replicas > minimum_sum ? num_replicas - minimum_sum : 0;
+  size_t total_feasible_replicas = 0;
+  size_t total_extra_servers = 0;
+  for (const auto& pb : placement_info.placement_blocks()) {
+    const auto allowed_ts = VERIFY_RESULT(FindTServersForPlacementBlock(pb, ts_descs));
+    const size_t allowed_ts_size = allowed_ts.size();
+    const size_t min_num_replicas = pb.min_num_replicas();
+    const size_t max_num_replicas =
+        GetEffectiveMaxNumReplicas(pb, narrow_cast<int32_t>(num_replicas));
+    // For every placement block, we can only satisfy upto the number of
+    // tservers present in that particular placement block.
+    total_feasible_replicas += min(allowed_ts_size, min_num_replicas);
+    // Extra tablet servers beyond min_num_replicas will be used to place
+    // the extra replicas over and above the minimums.
+    const size_t max_feasible_replicas = min(allowed_ts_size, max_num_replicas);
+    if (max_feasible_replicas > min_num_replicas) {
+      total_extra_servers += max_feasible_replicas - min_num_replicas;
+    }
+  }
+  // The total number of extra replicas that we can put cannot be more than
+  // the total tablet servers that are extra.
+  const size_t total_placeable_replicas =
+      total_feasible_replicas + min(total_extra_replicas, total_extra_servers);
+  const auto in_some_block = VERIFY_RESULT(FindTServersForPlacementInfo(placement_info, ts_descs));
+  return min(total_placeable_replicas, in_some_block.size());
 }
 
 Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
@@ -7134,6 +7187,12 @@ void CatalogManager::GetBackfillStatus(
   std::vector<std::pair<TableId, IndexStatusPB::BackfillStatus>> indexes_for_callback;
   {
     auto indexed_table_lock = indexed_table->LockForRead();
+
+    // The indexes of an online schema change backfill target carry retain_delete_markers while the
+    // pin is held. The tablet validator clears the property on any index reported as backfilled, so
+    // report BACKFILL_UNKNOWN until the pin is released.
+    const bool osc_pinned = indexed_table_lock->pb.has_table_backfill_pin_job_id();
+
     for (const auto& index_info_pb : indexed_table_lock->pb.indexes()) {
       if (filter_by_index) {
         if (indexes.empty()) {
@@ -7156,7 +7215,9 @@ void CatalogManager::GetBackfillStatus(
               IndexPermissions_Name(index_info_pb.index_permissions()) : "-");
 
       indexes_for_callback.emplace_back(
-          index_info_pb.table_id(), master::GetBackfillStatus(index_info_pb));
+          index_info_pb.table_id(),
+          osc_pinned ? IndexStatusPB::BACKFILL_UNKNOWN
+                        : master::GetBackfillStatus(index_info_pb));
     }
   }
 
@@ -7200,6 +7261,16 @@ Status CatalogManager::GetBackfillStatus(
     } else {
       const auto& table_info = *result;
       const auto indexed_table_id = table_info->indexed_table_id();
+      if (table_info->LockForRead()->pb.has_table_backfill_pin_job_id()) {
+        // A pinned online schema change backfill target is not an index. The tablet validator asks
+        // about it because retain_delete_markers is set, and acts only on BACKFILL_SUCCESS, so
+        // BACKFILL_UNKNOWN makes it leave the pin alone. The controller reaps pins of finished
+        // jobs.
+        auto* index_status = resp->add_index_status();
+        index_status->mutable_index_table()->CopyFrom(index_table_pb);
+        index_status->set_backfill_status(IndexStatusPB::BACKFILL_UNKNOWN);
+        continue;
+      }
       if (indexed_table_id.empty()) {
         status = STATUS_FORMAT(InvalidArgument,
             "Table $0 is not an index table", index_table_pb.ShortDebugString());
@@ -7282,6 +7353,157 @@ Status CatalogManager::LaunchBackfillIndexForTable(
   if (!s.ok()) {
     VLOG(3) << __func__ << " Done failed " << s;
     return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, s);
+  }
+  return Status::OK();
+}
+
+Status CatalogManager::StartTableBackfill(
+    const StartTableBackfillRequestPB* req,
+    StartTableBackfillResponsePB* resp,
+    rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG(INFO) << "StartTableBackfill for " << req->source_table().ShortDebugString();
+
+  HybridTime backfill_ts(req->backfill_timestamp());
+  if (!req->has_source_table() || req->target_table_oid() == kPgInvalidOid ||
+      req->transform_fn_oid() == kPgInvalidOid || req->pg_job_id() == 0 ||
+      !req->has_backfill_timestamp() || !backfill_ts.is_valid()) {
+    return SetupError(
+        resp->mutable_error(), MasterErrorPB::INVALID_REQUEST,
+        STATUS_FORMAT(
+            InvalidArgument, "Incomplete online schema change backfill request: $0",
+            req->ShortDebugString()));
+  }
+
+  scoped_refptr<TableInfo> source_table = VERIFY_RESULT(FindTable(req->source_table()));
+  if (source_table == nullptr) {
+    return SetupError(
+        resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND,
+        STATUS(NotFound, "Source table not found", req->source_table().ShortDebugString()));
+  }
+
+  if (source_table->GetTableType() != PGSQL_TABLE_TYPE) {
+    return SetupError(
+        resp->mutable_error(), MasterErrorPB::INVALID_REQUEST,
+        STATUS(InvalidArgument, "Online schema change backfill only supported for YSQL tables"));
+  }
+
+  auto ns_info = FindNamespaceById(source_table->namespace_id());
+  RETURN_NOT_OK_PREPEND(ns_info, "Unable to get namespace info for online schema change backfill");
+
+  OnlineSchemaChangeJobPB job;
+  job.set_pg_job_id(req->pg_job_id());
+  job.set_state(OnlineSchemaChangeJobPB::COMPUTING_READ_TIME);
+  job.set_backfilling_timestamp(backfill_ts.ToUint64());
+  job.set_source_table_oid(VERIFY_RESULT(GetPgsqlTableOid(source_table->id())));
+  job.set_target_table_oid(req->target_table_oid());
+  job.set_transform_fn_oid(req->transform_fn_oid());
+  job.set_database_name((*ns_info)->name());
+
+  Status s = online_schema_change_->Start(source_table, job, epoch);
+  if (!s.ok()) {
+    return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, s);
+  }
+  return Status::OK();
+}
+
+Result<scoped_refptr<TableInfo>> CatalogManager::GetOnlineSchemaChangeTargetTable(
+    const NamespaceId& source_namespace_id, uint32_t target_table_oid) {
+  const auto db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(source_namespace_id));
+  return FindTableById(GetPgsqlTableId(db_oid, target_table_oid));
+}
+
+std::vector<scoped_refptr<TableInfo>> CatalogManager::GetOnlineSchemaChangePinnedTables(
+    const scoped_refptr<TableInfo>& target) {
+  std::vector<TableId> index_ids;
+  {
+    auto l = target->LockForRead();
+    for (const auto& index_info : l->pb.indexes()) {
+      index_ids.push_back(index_info.table_id());
+    }
+  }
+  // GetTableInfo takes the catalog manager lock, so it must not run under the table lock.
+  std::vector<scoped_refptr<TableInfo>> tables{target};
+  for (const auto& index_id : index_ids) {
+    if (auto index = GetTableInfo(index_id)) {
+      tables.push_back(std::move(index));
+    }
+  }
+  return tables;
+}
+
+Status CatalogManager::PinOnlineSchemaChangeTargetDeleteMarkers(
+    const scoped_refptr<TableInfo>& target, int64_t pg_job_id, const LeaderEpoch& epoch) {
+  for (const auto& table : GetOnlineSchemaChangePinnedTables(target)) {
+    bool needs_alter = false;
+    {
+      auto l = table->LockForWrite();
+      auto& pb = l.mutable_data()->pb;
+      if (pb.has_table_backfill_pin_job_id() && pb.table_backfill_pin_job_id() == pg_job_id) {
+        continue;
+      }
+      if (pb.schema().table_properties().retain_delete_markers()) {
+        // In practice an index whose CREATE INDEX backfill has returned to the client but whose
+        // AsyncBackfillDone has not cleared the property yet. Taking it over would let that
+        // AsyncBackfillDone clear it under this backfill.
+        return STATUS_FORMAT(
+            TryAgain,
+            "Table $0 still has delete-marker retention held by another backfill; retry the "
+            "online schema change once that backfill has finished finalizing.",
+            table->ToString());
+      }
+      pb.mutable_schema()->mutable_table_properties()->set_retain_delete_markers(true);
+      pb.set_table_backfill_pin_job_id(pg_job_id);
+      // TableProperties::operator== ignores retain_delete_markers, so the version bump is what
+      // makes the alter reach the tablets.
+      pb.set_version(pb.version() + 1);
+      pb.set_updates_only_index_permissions(false);
+      l.mutable_data()->set_state(
+          SysTablesEntryPB::ALTERING,
+          Format("Retain delete markers for online schema change job $0", pg_job_id));
+      RETURN_NOT_OK_PREPEND(
+          sys_catalog_->Upsert(epoch, table),
+          "Failed to persist retain_delete_markers on the target.");
+      l.Commit();
+      needs_alter = true;
+    }
+    if (needs_alter) {
+      RETURN_NOT_OK(SendAlterTableRequest(table, epoch));
+      LOG(INFO) << "Pinned delete-marker retention for online schema change job " << pg_job_id
+                << " on " << table->ToString();
+    }
+  }
+  return Status::OK();
+}
+
+Status CatalogManager::UnpinOnlineSchemaChangeTargetDeleteMarkers(
+    const scoped_refptr<TableInfo>& target, int64_t pg_job_id, const LeaderEpoch& epoch) {
+  for (const auto& table : GetOnlineSchemaChangePinnedTables(target)) {
+    {
+      auto l = table->LockForWrite();
+      auto& pb = l.mutable_data()->pb;
+      if (!pb.has_table_backfill_pin_job_id() ||
+          pb.table_backfill_pin_job_id() != pg_job_id) {
+        continue;
+      }
+      pb.clear_table_backfill_pin_job_id();
+      pb.mutable_schema()->mutable_table_properties()->set_retain_delete_markers(false);
+      // No version bump: the BACKFILL_DONE op below carries the clear to the tablets.
+      RETURN_NOT_OK_PREPEND(
+          sys_catalog_->Upsert(epoch, table),
+          "Failed to persist cleared retain_delete_markers on the target.");
+      l.Commit();
+    }
+
+    for (const auto& tablet : VERIFY_RESULT(table->GetTablets())) {
+      auto call = std::make_shared<AsyncBackfillDone>(
+          master_, AsyncTaskPool(), tablet, table->id(), epoch);
+      table->AddTask(call);
+      RETURN_NOT_OK_PREPEND(
+          ScheduleTask(call), "Failed to send mark-backfill-done to the target.");
+    }
+    LOG(INFO) << "Released delete-marker retention pin of online schema change job " << pg_job_id
+              << " on " << table->ToString();
   }
   return Status::OK();
 }
@@ -8169,6 +8391,7 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
   std::vector<TableInfo*> tables_to_remove_from_map;
   std::vector<std::map<TabletId, std::weak_ptr<TabletInfo>>> tablets_to_remove_from_map;
   std::vector<TableInfo*> newly_hidden_tables;
+  std::vector<TableInfoPtr> tables_to_prepare;
   for (const auto& table : tables) {
     if (table->is_deleted()) {
       tables_to_remove_from_map.push_back(table.get());
@@ -8196,6 +8419,12 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
         }
       }
     }
+    tables_to_prepare.push_back(table);
+  }
+  // Separate pass: mutex_ (GetTableInfo above, LockGuards below) must not be taken while holding
+  // the table write locks from PrepareTableDeletion. PersistCleanUpOfDeletedTables takes them by
+  // value, so they are released when it returns, even on failure.
+  for (const auto& table : tables_to_prepare) {
     auto lock_and_transaction_id = PrepareTableDeletion(table);
     if (lock_and_transaction_id.first.locked()) {
       if (lock_and_transaction_id.first.data().is_hidden()) {
@@ -8272,20 +8501,34 @@ void CatalogManager::RemoveDeletedTabletsFromTables(const TabletInfos& candidate
           tablet_lock->pb.split_tablet_ids().begin(), tablet_lock->pb.split_tablet_ids().end());
       split_parent.state_msg = tablet_lock->pb.state_msg();
     }
-    // Vector indexes share their indexed table's tablets and list them in their own tablets_ too.
-    // Every table listing the tablet must drop it before tablet_map_ can: their tablets_ hold only
-    // weak pointers, which would otherwise dangle.
-    std::vector<TableInfoPtr> tables{table};
-    for (const auto& index_id : table->GetVectorIndexIds()) {
-      if (auto index = GetTableInfo(index_id)) {
-        tables.push_back(std::move(index));
-      }
-    }
     // Tablets of a table that is going away are left alone, in tablets_ and tablet_map_. That keeps
     // AreAllTabletsDeleted / AreAllTabletsHidden meaningful, and snapshot, PITR and clone flows can
-    // still look the tablets up; CleanUpDeletedTables removes them with the table.
-    if (!table->LockForRead()->started_hiding_or_deleting() &&
-        std::ranges::all_of(tables, [&tablet](const auto& t) {
+    // still look the tablets up; CleanUpDeletedTables removes them with the table. This is checked
+    // only for the tablet's own table, see below for its vector indexes.
+    if (table->LockForRead()->started_hiding_or_deleting()) {
+      continue;
+    }
+    // Vector indexes share their indexed table's tablets and list them in their own tablets_ too.
+    // Every table listing the tablet must drop it before tablet_map_ can: their tablets_ hold only
+    // weak pointers, which would otherwise dangle. The tablet's hosted tables are used rather than
+    // the indexed table's index list, as they still include a dropped vector index that a snapshot
+    // schedule keeps hidden. Such an index is going away too, but unlike the indexed table it
+    // drops the tablet here: the tablet is already deleted, so the index has nothing left to
+    // retain on it, and AreAllTabletsDeleted on the index is unaffected.
+    // A vector index dropped before the split still has the parent as the owner of its partition,
+    // as SplitScope adds only live vector indexes to the children. RemoveInactiveTablet then
+    // refuses, and the parent stays in tablet_map_ until hidden table cleanup removes it from the
+    // index.
+    std::vector<TableInfoPtr> tables{table};
+    for (const auto& table_id : tablet->GetTableIds()) {
+      if (table_id == table->id()) {
+        continue;
+      }
+      if (auto hosted_table = GetTableInfo(table_id)) {
+        tables.push_back(std::move(hosted_table));
+      }
+    }
+    if (std::ranges::all_of(tables, [&tablet](const auto& t) {
           return t->RemoveInactiveTablet(tablet);
         })) {
       tablets_to_erase.emplace_back(tablet->tablet_id(), std::move(split_parent));
@@ -11811,6 +12054,10 @@ Status CatalogManager::EnableBgTasks() {
   RETURN_NOT_OK_PREPEND(background_tasks_->Init(),
                         "Failed to initialize catalog manager background tasks");
 
+  cdc_background_tasks_.reset(new CatalogManagerCdcBgTasks(master_));
+  RETURN_NOT_OK_PREPEND(cdc_background_tasks_->Init(),
+                        "Failed to initialize CDC cleanup background tasks");
+
   // Add bg thread to rebuild yql system partitions.
   refresh_yql_partitions_task_ = std::make_unique<rpc::ScheduledTaskTracker>();
   refresh_yql_partitions_task_->Bind(&master_->messenger()->scheduler());
@@ -11825,7 +12072,10 @@ Status CatalogManager::EnableBgTasks() {
 }
 
 void CatalogManager::WakeBgTaskIfPendingUpdates() {
-  background_tasks_->WakeIfHasPendingUpdates();
+  SharedLock lock(mutex_);
+  if (background_tasks_) {
+    background_tasks_->WakeIfHasPendingUpdates();
+  }
 }
 
 Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB& req) {
@@ -13815,11 +14065,19 @@ Status CatalogManager::GoIntoShellMode() {
   LOG(INFO) << "Starting going into shell mode.";
   master_->SetShellMode(true);
 
+  std::unique_ptr<CatalogManagerCdcBgTasks> cdc_background_tasks;
+  std::unique_ptr<CatalogManagerBgTasks> background_tasks;
   {
     LockGuard lock(mutex_);
     RETURN_NOT_OK(sys_catalog_->GoIntoShellMode());
-    background_tasks_->Shutdown();
-    background_tasks_.reset();
+    cdc_background_tasks = std::move(cdc_background_tasks_);
+    background_tasks = std::move(background_tasks_);
+  }
+  if (cdc_background_tasks) {
+    cdc_background_tasks->Shutdown();
+  }
+  if (background_tasks) {
+    background_tasks->Shutdown();
   }
   {
     std::lock_guard l(remote_bootstrap_mtx_);
@@ -13877,26 +14135,52 @@ Status CatalogManager::ValidateReplicationInfo(
   if (placement_info.placement_uuid().empty()) {
     placement_info.set_placement_uuid(VERIFY_RESULT(placement_uuid()));
   }
-  GetTsDescsFromPlacementInfo(placement_info, all_ts_descs, &ts_descs);
-  // When the tier is why nothing qualifies, say so: the count check below would only report that
-  // zero tablet servers are alive. Gated like that check. "Registered" also covers tservers whose
-  // tiers are unknown, which create-time placement does not use.
-  const auto& storage_tier = placement_info.storage_tier();
-  if (FLAGS_enable_tiered_storage && FLAGS_catalog_manager_check_ts_count_for_create_table &&
-      !storage_tier.empty() && ts_descs.empty() && !all_ts_descs.empty() &&
-      std::none_of(all_ts_descs.begin(), all_ts_descs.end(), [&](const auto& ts_desc) {
-        return ts_desc->HasStorageTier(storage_tier);
-      })) {
-    return SetupError(
-        resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO,
-        STATUS_FORMAT(
-            InvalidArgument,
-            "No live tablet server has registered a data directory on storage tier $0",
-            storage_tier));
+  // Validate the placement without its tier first, so a placement that is short of tservers
+  // whatever their tiers keeps the count messages below and the tier is blamed only when it is
+  // the reason.
+  {
+    PlacementInfoPB untiered_placement_info = placement_info;
+    untiered_placement_info.clear_storage_tier();
+    GetTsDescsFromPlacementInfo(untiered_placement_info, all_ts_descs, &ts_descs);
   }
   Status s = CheckValidPlacementInfo(placement_info, ts_descs, resp);
   if (!s.ok()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO, s);
+  }
+
+  // A tier is a hard constraint at creation. CheckValidPlacementInfo accepts a quorum of tservers,
+  // but a tablet created on fewer tservers than its replication factor starts under-replicated,
+  // and the load balancer, which does not consider tiers, would add the missing replicas on
+  // tservers without the tier. So every replica needs a live tserver that registered a data
+  // directory on the tier, within the placement blocks and under their maximums as
+  // CountPlaceableReplicas bounds it, exactly unless the blocks overlap. Gated on
+  // catalog_manager_check_ts_count_for_create_table like the live tablet server count.
+  // "Registered" also covers tservers whose tiers are unknown, which create-time placement does
+  // not use.
+  const auto& storage_tier = placement_info.storage_tier();
+  if (FLAGS_enable_tiered_storage && FLAGS_catalog_manager_check_ts_count_for_create_table &&
+      !storage_tier.empty()) {
+    GetTsDescsFromPlacementInfo(placement_info, all_ts_descs, &ts_descs);
+    if (ts_descs.empty()) {
+      return SetupError(
+          resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO,
+          STATUS_FORMAT(
+              InvalidArgument,
+              "No live tablet server has registered a data directory on storage tier $0",
+              storage_tier));
+    }
+    const size_t num_replicas = GetNumReplicasOrGlobalReplicationFactor(placement_info);
+    const size_t placeable_replicas =
+        VERIFY_RESULT(CountPlaceableReplicas(placement_info, ts_descs));
+    if (placeable_replicas < num_replicas) {
+      return SetupError(
+          resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO,
+          STATUS_FORMAT(
+              InvalidArgument,
+              "The placement needs $0 replicas on storage tier $1, but only $2 can be placed on "
+              "live tablet servers that have registered a data directory on it",
+              num_replicas, storage_tier, placeable_replicas));
+    }
   }
 
   s = CatalogManagerUtil::CheckValidLeaderAffinity(replication_info);

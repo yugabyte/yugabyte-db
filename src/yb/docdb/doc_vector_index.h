@@ -321,6 +321,12 @@ struct DocVectorIndexThreadPools {
 };
 using DocVectorIndexThreadPoolProvider = std::function<DocVectorIndexThreadPools()>;
 
+// The counterpart of DocVectorIndex::ModifyFlushedFrontier with kForce for a vector index that is
+// not open: sets the OpId of every chunk of the index stored in storage_dir to op_id, and adds a
+// chunk without a file carrying it, see vector_index::VectorLSMMetadataModifyChunkFrontiers.
+// Does nothing if storage_dir does not exist. Returns false if its manifest could not be loaded.
+Result<bool> ForceVectorIndexStorageOpId(const std::string& storage_dir, const OpId& op_id);
+
 // Doc vector index starts with background compactions disabled, they must be enabled explicitly:
 // don't forget to call EnableAutoCompactions().
 Result<DocVectorIndexPtr> CreateDocVectorIndex(

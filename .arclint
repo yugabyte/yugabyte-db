@@ -109,6 +109,7 @@
         "(^managed/.*/go[.]mod)",
         "(^managed/.*/go[.]sum)",
         "(^managed/yba-cli/GNUmakefile)",
+        "(^managed/devops/supportbundle/.*/GNUmakefile$)",
         "(^managed/ui/)",
         "(^troubleshoot/troubleshooting-framework-ui/)",
         "(^yugabyted-ui/.*/go[.]mod)",
