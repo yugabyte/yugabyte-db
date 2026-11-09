@@ -1281,14 +1281,14 @@ typedef struct YbCatalogMessageList
 } YbCatalogMessageList;
 
 /*
- * A multi-table ANALYZE commits once per table, and analyzes each table as
- * its owner under SECURITY_RESTRICTED_OPERATION. When it fails, the query
- * layer retry in postgres.c restarts only the YB transaction and does not
- * abort the PG transaction, so PG's abort-time restore of the userid and
- * SecurityRestrictionContext does not run, and StartTransactionCommand
- * asserts on the leftover context when the retry re-executes. This records
- * the context the ANALYZE started with, so that YBResetDdlState can restore
- * it from the PG_CATCH in YBTxnDdlProcessUtility before the retry.
+ * ANALYZE analyzes each table as its owner under
+ * SECURITY_RESTRICTED_OPERATION, and an error leaves that context in place
+ * until AbortTransaction restores the caller's. The query layer never retries
+ * an ANALYZE, but it does retry an enclosing statement, e.g. SELECT f() where
+ * f runs ANALYZE, and yb_restart_transaction does not abort the PG
+ * transaction. In legacy DDL mode, the PG_CATCH in YBTxnDdlProcessUtility
+ * calls YBResetDdlState before the error reaches that retry, and restores the
+ * context recorded here.
  */
 typedef struct YbUserIdAndSecContext
 {
@@ -3954,19 +3954,14 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			(node_tag == T_VacuumStmt &&
 			 ddl_transaction_state.current_stmt_ddl_command_tag == CMDTAG_ANALYZE);
 		/*
-		 * See YbUserIdAndSecContext. Only a top-level ANALYZE commits per
-		 * table, and only in legacy mode can the query layer retry it: with
-		 * transactional DDL, READ COMMITTED refuses to retry a DDL and the
-		 * other isolation levels retry ANALYZE only when it is listed in
-		 * yb_extra_commands_to_retry. Saving in any other case is harmful:
-		 * YBResetDdlState then restores the context after AbortTransaction
-		 * has already restored the session's own. That leaks a SET ROLE
-		 * rolled back with the transaction, or the matview owner and
-		 * SECURITY_RESTRICTED_OPERATION of an ANALYZE that REFRESH
+		 * See YbUserIdAndSecContext. With transactional DDL, YBResetDdlState
+		 * runs from YBCAbortTransaction, after AbortTransaction has restored
+		 * the session's own context, so a saved context would replace it:
+		 * a rolled-back SET ROLE, or the matview owner and
+		 * SECURITY_RESTRICTED_OPERATION of the ANALYZE that REFRESH
 		 * MATERIALIZED VIEW CONCURRENTLY runs through SPI.
 		 */
-		if (context == PROCESS_UTILITY_TOPLEVEL &&
-			!YBIsDdlTransactionBlockEnabled() && CheckIsAnalyzeDDL() &&
+		if (!YBIsDdlTransactionBlockEnabled() && CheckIsAnalyzeDDL() &&
 			!ddl_transaction_state.userid_and_sec_context.is_set)
 		{
 			Oid			save_userid;
@@ -4842,10 +4837,12 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 	const CommandTag prev_breaking_ddl_command_tag =
 		ddl_transaction_state.breaking_ddl_command_tag;
 	/*
-	 * A DDL run through SPI, e.g. by REFRESH MATERIALIZED VIEW CONCURRENTLY or
-	 * an event trigger, must hand back the enclosing statement's value when it
-	 * finishes. Clearing it would let the query layer retry the enclosing DDL
-	 * in READ COMMITTED, see postgres.c.
+	 * A statement run through SPI, e.g. by REFRESH MATERIALIZED VIEW
+	 * CONCURRENTLY or an event trigger, must hand back the enclosing
+	 * statement's value when it finishes. Clearing it would let the query
+	 * layer retry the enclosing DDL in READ COMMITTED, see postgres.c. It is
+	 * not restored on error: postgres.c reads it to decide whether the failed
+	 * statement can be retried.
 	 */
 	const bool	prev_is_top_level_ddl_active =
 		ddl_transaction_state.is_top_level_ddl_active;
@@ -4981,9 +4978,9 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 				YBDecrementDdlNestingLevel();
 			else
 				YBMergeDdlTxnState();
-
-			YbRestoreIsTopLevelDdlActive(context, prev_is_top_level_ddl_active);
 		}
+
+		YbRestoreIsTopLevelDdlActive(context, prev_is_top_level_ddl_active);
 	}
 	PG_CATCH();
 	{

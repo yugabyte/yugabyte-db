@@ -874,18 +874,64 @@ REFRESH MATERIALIZED VIEW CONCURRENTLY cv_mv;
 (1 row)
 
 DROP EVENT TRIGGER cv_evt_create_table;
--- Rolling back a refresh must not leave the session in the refresh's
--- security-restricted context.
+-- An aborted refresh must not leave the session as the matview owner, or in the
+-- refresh's security-restricted context.
+CREATE ROLE cv_mv_owner;
+ALTER TABLE cv_base OWNER TO cv_mv_owner;
+ALTER MATERIALIZED VIEW cv_mv OWNER TO cv_mv_owner;
+ALTER TABLE cv_dup_base OWNER TO cv_mv_owner;
+ALTER MATERIALIZED VIEW cv_dup_mv OWNER TO cv_mv_owner;
+\set cv_user_restored 'SELECT current_user = session_user AS user_restored, current_setting(''role'') AS role; CREATE TEMP TABLE cv_tmp (a int); DROP TABLE cv_tmp;'
 BEGIN;
 REFRESH MATERIALIZED VIEW CONCURRENTLY cv_mv;
 ROLLBACK;
-CREATE TEMP TABLE cv_tmp (a int);
-DROP TABLE cv_tmp;
+:cv_user_restored
+ user_restored | role 
+---------------+------
+ t             | none
+(1 row)
+
+REFRESH MATERIALIZED VIEW CONCURRENTLY cv_dup_mv;
+ERROR:  new data for materialized view "cv_dup_mv" contains duplicate rows without any null columns
+DETAIL:  Row: (1,1)
+:cv_user_restored
+ user_restored | role 
+---------------+------
+ t             | none
+(1 row)
+
+BEGIN;
+REFRESH MATERIALIZED VIEW CONCURRENTLY cv_dup_mv;
+ERROR:  new data for materialized view "cv_dup_mv" contains duplicate rows without any null columns
+DETAIL:  Row: (1,1)
+ROLLBACK;
+:cv_user_restored
+ user_restored | role 
+---------------+------
+ t             | none
+(1 row)
+
+DO $$
+BEGIN
+  BEGIN
+    REFRESH MATERIALIZED VIEW CONCURRENTLY cv_dup_mv;
+  EXCEPTION WHEN cardinality_violation THEN NULL;
+  END;
+  RAISE NOTICE 'user restored in block: %', current_user = session_user;
+END $$;
+NOTICE:  user restored in block: t
+:cv_user_restored
+ user_restored | role 
+---------------+------
+ t             | none
+(1 row)
+
 DROP TABLE cv_t;
 DROP TABLE cv_base CASCADE;
 NOTICE:  drop cascades to materialized view cv_mv
 DROP TABLE cv_dup_base CASCADE;
 NOTICE:  drop cascades to materialized view cv_dup_mv
+DROP ROLE cv_mv_owner;
 DROP PROCEDURE cv_refresh_then_index, cv_refresh_twice;
 DROP FUNCTION cv_create_index, cv_evt_create_index;
 -- ANALYZE of only temporary tables does not bump the catalog version, at top
@@ -961,3 +1007,53 @@ SELECT current_user = session_user AS user_restored, current_setting('role') AS 
 DROP OWNED BY cv_role;
 DROP ROLE cv_role;
 DROP TABLE cv_perm;
+-- A statement that a DDL runs through SPI must leave the DDL marked as one when
+-- it finishes, whether it is a DDL itself or not. Under SERIALIZABLE, a NOWAIT
+-- row lock warns that NOWAIT is not supported only outside a DDL.
+CREATE TABLE cv_lock (k int PRIMARY KEY);
+INSERT INTO cv_lock VALUES (1);
+CREATE MATERIALIZED VIEW cv_lock_mv AS SELECT * FROM cv_lock;
+CREATE UNIQUE INDEX ON cv_lock_mv (k);
+CREATE FUNCTION cv_evt_lock() RETURNS event_trigger LANGUAGE plpgsql AS $$
+BEGIN
+  PERFORM k FROM cv_lock WHERE k = 1 FOR UPDATE NOWAIT;
+END $$;
+CREATE FUNCTION cv_evt_set_then_lock() RETURNS event_trigger LANGUAGE plpgsql AS $$
+BEGIN
+  SET LOCAL work_mem = '8MB';
+  PERFORM k FROM cv_lock WHERE k = 1 FOR UPDATE NOWAIT;
+END $$;
+CREATE FUNCTION cv_evt_ddl_then_lock() RETURNS event_trigger LANGUAGE plpgsql AS $$
+BEGIN
+  COMMENT ON TABLE cv_lock IS 'locked';
+  PERFORM k FROM cv_lock WHERE k = 1 FOR UPDATE NOWAIT;
+END $$;
+CREATE FUNCTION cv_evt_set() RETURNS event_trigger LANGUAGE plpgsql AS $$
+BEGIN
+  SET LOCAL work_mem = '8MB';
+END $$;
+SET default_transaction_isolation = serializable;
+CREATE EVENT TRIGGER cv_evt ON ddl_command_end
+  WHEN TAG IN ('CREATE TABLE') EXECUTE FUNCTION cv_evt_set_then_lock();
+CREATE TABLE cv_created (a int);
+DROP EVENT TRIGGER cv_evt;
+DROP TABLE cv_created;
+CREATE EVENT TRIGGER cv_evt ON ddl_command_end
+  WHEN TAG IN ('CREATE TABLE') EXECUTE FUNCTION cv_evt_ddl_then_lock();
+CREATE TABLE cv_created (a int);
+DROP EVENT TRIGGER cv_evt;
+DROP TABLE cv_created;
+-- The refresh runs its own temp-table DDL and ANALYZE through SPI, and the
+-- CREATE TABLE trigger runs SET for each temp table it creates.
+CREATE EVENT TRIGGER cv_evt ON ddl_command_end
+  WHEN TAG IN ('REFRESH MATERIALIZED VIEW') EXECUTE FUNCTION cv_evt_lock();
+REFRESH MATERIALIZED VIEW CONCURRENTLY cv_lock_mv;
+CREATE EVENT TRIGGER cv_evt_create_table ON ddl_command_end
+  WHEN TAG IN ('CREATE TABLE') EXECUTE FUNCTION cv_evt_set();
+REFRESH MATERIALIZED VIEW CONCURRENTLY cv_lock_mv;
+DROP EVENT TRIGGER cv_evt_create_table;
+DROP EVENT TRIGGER cv_evt;
+RESET default_transaction_isolation;
+DROP TABLE cv_lock CASCADE;
+NOTICE:  drop cascades to materialized view cv_lock_mv
+DROP FUNCTION cv_evt_lock, cv_evt_set_then_lock, cv_evt_ddl_then_lock, cv_evt_set;

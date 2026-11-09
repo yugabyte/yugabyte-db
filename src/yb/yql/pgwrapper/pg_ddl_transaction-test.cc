@@ -1218,4 +1218,108 @@ TEST_F(PgMasterDDLReadRestartProbeTest,
   ASSERT_OK(RunRepro(false /* expect_error */));
 }
 
+class PgLegacyDdlUserContextTest : public LibPqTestBase {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    LibPqTestBase::UpdateMiniClusterOptions(options);
+    for (auto* flags : {&options->extra_master_flags, &options->extra_tserver_flags}) {
+      ToggleDDLMode(*flags, /* use_legacy = */ true);
+      // Fail-on-Conflict, so that a conflicting write aborts the lower-priority transaction.
+      flags->push_back("--enable_wait_queues=false");
+    }
+  }
+
+  // The session is back to its own user and out of any security-restricted operation.
+  static void AssertSessionUserRestored(PGConn& conn) {
+    ASSERT_TRUE(ASSERT_RESULT(conn.FetchRow<bool>("SELECT current_user = session_user")));
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>("SELECT current_setting('role')")),
+              "none");
+    ASSERT_OK(conn.Execute("CREATE TEMP TABLE restored_check (a int)"));
+    ASSERT_OK(conn.Execute("DROP TABLE restored_check"));
+  }
+};
+
+// An ANALYZE run through SPI switches to the table owner under SECURITY_RESTRICTED_OPERATION.
+// When it fails and the query layer retries the enclosing SELECT, which does not abort the PG
+// transaction, the retry must run as the caller again.
+TEST_F(PgLegacyDdlUserContextTest, RetriedStatementRestoresAnalyzeUser) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE ROLE analyze_owner"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k int PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT generate_series(1, 10)"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t OWNER TO analyze_owner"));
+  // The GUC survives the retry, so only the first attempt runs the ANALYZE, and it fails.
+  ASSERT_OK(conn.Execute(R"#(
+      CREATE FUNCTION analyze_once() RETURNS text LANGUAGE plpgsql AS $$
+      BEGIN
+        IF current_setting('test.analyzed', true) = 'true' THEN
+          RETURN current_user;
+        END IF;
+        PERFORM set_config('test.analyzed', 'true', false);
+        ANALYZE t;
+        RAISE EXCEPTION 'ANALYZE did not fail';
+      END $$
+  )#"));
+  const auto session_user = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT session_user::text"));
+
+  // Holds a write intent on the pg_class row of t, which ANALYZE updates while it runs as the
+  // table owner. The ANALYZE of an auto-ANALYZE connection has the lowest priority, so it is the
+  // one that fails.
+  auto blocker = ASSERT_RESULT(Connect());
+  ASSERT_OK(blocker.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = on"));
+  ASSERT_OK(blocker.Execute("BEGIN"));
+  ASSERT_OK(blocker.Execute(
+      "UPDATE pg_class SET reltuples = reltuples WHERE oid = 't'::regclass"));
+  ASSERT_OK(conn.Execute("SET yb_use_internal_auto_analyze_service_conn = on"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>("SELECT analyze_once()")), session_user);
+  ASSERT_OK(conn.Execute("RESET yb_use_internal_auto_analyze_service_conn"));
+  ASSERT_OK(blocker.Execute("ROLLBACK"));
+  ASSERT_NO_FATALS(AssertSessionUserRestored(conn));
+}
+
+// REFRESH MATERIALIZED VIEW CONCURRENTLY runs ANALYZE through SPI as the matview owner under
+// SECURITY_RESTRICTED_OPERATION. However the refresh ends, the session must get its own user
+// back.
+TEST_F(PgLegacyDdlUserContextTest, AbortedRefreshRestoresUser) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE ROLE mv_owner"));
+  ASSERT_OK(conn.Execute("CREATE TABLE base (k int, v int)"));
+  ASSERT_OK(conn.Execute("INSERT INTO base VALUES (1, 1)"));
+  ASSERT_OK(conn.Execute("CREATE MATERIALIZED VIEW mv AS SELECT * FROM base"));
+  ASSERT_OK(conn.Execute("CREATE UNIQUE INDEX ON mv (k)"));
+  ASSERT_OK(conn.Execute("ALTER TABLE base OWNER TO mv_owner"));
+  ASSERT_OK(conn.Execute("ALTER MATERIALIZED VIEW mv OWNER TO mv_owner"));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("REFRESH MATERIALIZED VIEW CONCURRENTLY mv"));
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+  ASSERT_NO_FATALS(AssertSessionUserRestored(conn));
+
+  // Fails after the refresh has analyzed its temp table.
+  ASSERT_OK(conn.Execute("INSERT INTO base VALUES (1, 1)"));
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute("REFRESH MATERIALIZED VIEW CONCURRENTLY mv"), "duplicate rows");
+  ASSERT_NO_FATALS(AssertSessionUserRestored(conn));
+
+  ASSERT_OK(conn.Execute(R"#(
+      DO $$
+      BEGIN
+        BEGIN
+          REFRESH MATERIALIZED VIEW CONCURRENTLY mv;
+        EXCEPTION WHEN cardinality_violation THEN NULL;
+        END;
+        IF current_user <> session_user THEN
+          RAISE EXCEPTION 'still running as %', current_user;
+        END IF;
+      END $$
+  )#"));
+  ASSERT_NO_FATALS(AssertSessionUserRestored(conn));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("SET ROLE mv_owner"));
+  ASSERT_OK(conn.Execute("ANALYZE base"));
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+  ASSERT_NO_FATALS(AssertSessionUserRestored(conn));
+}
+
 } // namespace yb::pgwrapper
