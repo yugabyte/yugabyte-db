@@ -1458,10 +1458,20 @@ Status PgSession::AcquireObjectLock(
     // traffic. However, YB guarantees that there will be no DDLs running at that time.
     return Status::OK();
   }
-  // PG decides which locks a legacy mode transaction sends (YbShouldSendObjectLock in lock.c).
-  DCHECK(!pg_txn_manager_->IsDdlModeWithSeparateTransaction());
-  DCHECK(pg_txn_manager_->IsTableLockingEnabledForCurrentTxn() ||
-         (!is_session_lock && mode <= YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK));
+  if (!pg_txn_manager_->IsTakingObjectLocks()) {
+    return Status::OK();
+  }
+  // While yb_enable_object_locking_infra is being promoted, a new mode CREATE INDEX waits for
+  // writers only through object locks. If a legacy mode transaction (one that latched the flag as
+  // off) sent no locks, the CREATE INDEX would backfill under its uncommitted UPDATE, and the index
+  // would miss the update once it commits (#36572). So a legacy mode transaction sends the locks a
+  // writer takes. It sends nothing stronger, so its LOCK TABLE and DDLs keep their pre-promotion
+  // behavior: LOCK TABLE t IN ACCESS EXCLUSIVE MODE still takes no object lock. PG records every
+  // lock in its own lock table either way.
+  if (!pg_txn_manager_->IsTableLockingEnabledForCurrentTxn() &&
+      (is_session_lock || mode > YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK)) {
+    return Status::OK();
+  }
   auto fastpath_lock_type = docdb::MakeObjectLockFastpathLockType(TableLockType(mode));
   if (!is_session_lock && fastpath_lock_type &&
       pg_txn_manager_->TryAcquireObjectLock(lock_id, *fastpath_lock_type)) {

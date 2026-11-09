@@ -2754,19 +2754,16 @@ YBGetDdlUseRegularTransactionBlock()
 }
 
 /*
- * Whether the current transaction takes object locks. A DDL in a separate
- * (autonomous) DDL transaction takes none: every legacy mode DDL runs in one,
- * and the tserver releases that transaction's locks only once the infra flag
- * is on. Without locks, it also does not refresh its catalog cache when PG
- * acquires a lock: it reads the catalog in its DDL transaction, at that
- * transaction's read time, so a refresh would record the new catalog version
- * with entries from before it.
+ * Whether the current transaction takes object locks. pggate decides it, for
+ * the locks it sends and for this. A transaction without locks does not refresh
+ * its catalog cache when PG acquires a lock. An autonomous DDL transaction, for
+ * one, reads the catalog at its own read time, so a refresh would record the
+ * new catalog version with entries from before it.
  */
 bool
 YbIsTakingObjectLocks(void)
 {
-	return YBCIsLocalObjectLockingEnabled() &&
-		!(YBCPgIsDdlMode() && !YBCPgIsDdlModeWithRegularTransactionBlock());
+	return YBCPgIsTakingObjectLocks();
 }
 
 void

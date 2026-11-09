@@ -2400,6 +2400,10 @@ bool PgApiImpl::IsDdlModeWithRegularTransactionBlock() const {
   return pg_txn_manager_->IsDdlModeWithRegularTransactionBlock();
 }
 
+bool PgApiImpl::IsTakingObjectLocks() const {
+  return pg_txn_manager_->IsTakingObjectLocks();
+}
+
 bool PgApiImpl::IsTableLockingEnabledForCurrentTxn() const {
   return pg_txn_manager_->IsTableLockingEnabledForCurrentTxn();
 }

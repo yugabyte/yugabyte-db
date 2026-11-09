@@ -364,7 +364,6 @@ static void RemoveLocalLock(LOCALLOCK *locallock);
 static PROCLOCK *SetupLockInTable(LockMethod lockMethodTable, PGPROC *proc,
 								  const LOCKTAG *locktag, uint32 hashcode, LOCKMODE lockmode);
 static void GrantLockLocal(LOCALLOCK *locallock, ResourceOwner owner);
-static bool YbShouldSendObjectLock(LOCKMODE lockmode, bool sessionLock);
 static void BeginStrongLockAcquire(LOCALLOCK *locallock, uint32 fasthashcode);
 static void FinishStrongLockAcquire(void);
 static void WaitOnLock(LOCALLOCK *locallock, ResourceOwner owner);
@@ -1020,17 +1019,6 @@ LockAcquireExtended(const LOCKTAG *locktag,
 			int			slack_ms = Min(2000, rpc_timeout_ms / 2);
 
 			lock_timeout_ms = rpc_timeout_ms - slack_ms;
-		}
-
-		/*
-		 * YB: Keep the lock in the local table, as upstream does, even when
-		 * the tserver does not get it. LockRelationIdForSession, for one,
-		 * requires the transaction lock to be held.
-		 */
-		if (!YbShouldSendObjectLock(lockmode, sessionLock))
-		{
-			GrantLockLocal(locallock, owner);
-			return LOCKACQUIRE_OK;
 		}
 
 		if (lock_timeout_ms > 0)
@@ -5069,26 +5057,6 @@ LockWaiterCount(const LOCKTAG *locktag)
 	LWLockRelease(partitionLock);
 
 	return waiters;
-}
-
-/*
- * YB: While yb_enable_object_locking_infra is being promoted, a new mode
- * CREATE INDEX waits for writers only through object locks. If a legacy mode
- * transaction (one that latched the flag as off) sent no locks, the CREATE
- * INDEX would backfill under its uncommitted UPDATE, and the index would miss
- * the update once it commits (#36572). So a legacy mode transaction sends the
- * locks a writer takes: RowExclusive or weaker. It still sends nothing
- * stronger, so a legacy LOCK TABLE or DDL keeps its pre-promotion behavior:
- * LOCK TABLE t IN ACCESS EXCLUSIVE MODE still takes no object lock.
- */
-static bool
-YbShouldSendObjectLock(LOCKMODE lockmode, bool sessionLock)
-{
-	if (!YbIsTakingObjectLocks())
-		return false;
-	if (YBCIsObjectLockingEnabled())
-		return true;
-	return !sessionLock && lockmode <= RowExclusiveLock;
 }
 
 bool

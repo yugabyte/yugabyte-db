@@ -269,6 +269,13 @@ bool PgTxnManager::IsLocalTableLockingEnabledForCurrentTxn() const {
   return enable_table_locking_ && YBCIsLocalObjectLockingEnabled();
 }
 
+// A DDL in a separate (autonomous) DDL transaction takes no object locks: every legacy mode DDL
+// runs in one, and the tserver releases that transaction's locks only once the infra flag is on,
+// so a lock it sent would stay held.
+bool PgTxnManager::IsTakingObjectLocks() const {
+  return YBCIsLocalObjectLockingEnabled() && !IsDdlModeWithSeparateTransaction();
+}
+
 PgTxnManager::~PgTxnManager() = default;
 
 void PgTxnManager::Shutdown() {

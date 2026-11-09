@@ -2155,6 +2155,12 @@ bool YBCPgIsDdlModeWithRegularTransactionBlock() {
   return pgapi->IsDdlModeWithRegularTransactionBlock();
 }
 
+bool YBCPgIsTakingObjectLocks() {
+  // Before YB starts a transaction, pgapi's transaction manager may not exist yet (initdb), and
+  // YBCIsLocalObjectLockingEnabled() is false.
+  return YBCIsLocalObjectLockingEnabled() && pgapi->IsTakingObjectLocks();
+}
+
 bool YBCCurrentTransactionUsesFastPath() {
   auto result = pgapi->CurrentTransactionUsesFastPath();
   if (!result.ok()) {
