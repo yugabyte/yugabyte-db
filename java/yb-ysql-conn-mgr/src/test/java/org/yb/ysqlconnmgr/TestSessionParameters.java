@@ -1217,6 +1217,29 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     }
   }
 
+  @Test
+  public void testTableAccessMethodMakesConnectionSticky() throws Exception {
+    try (Connection conn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("CREATE ACCESS METHOD cm_am TYPE TABLE HANDLER heap_tableam_handler");
+      stmt.execute("SET default_table_access_method = cm_am");
+      assertConnectionStickyState(stmt, true);
+
+      try (Connection other = getConnectionBuilder()
+              .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+              .connect();
+           Statement otherStmt = other.createStatement()) {
+        otherStmt.execute("DROP ACCESS METHOD cm_am");
+      }
+
+      ResultSet rs = stmt.executeQuery("SHOW default_table_access_method");
+      assertTrue(rs.next());
+      assertEquals("cm_am", rs.getString(1));
+    }
+  }
+
   // With a single backend, B's query resets the backend to defaults, so A's next query has to
   // replay both its startup parameter ('G' packet) and its SET on it. Postgres reports those
   // GUC_REPORT variables again, but A already knows their values and must not be sent a
