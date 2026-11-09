@@ -3155,6 +3155,11 @@ class PgClientServiceImpl::Impl : public SessionProvider {
 
   PgClientSessionContext session_context_;
 
+  // Declared after the members its sessions touch, because members are destroyed in reverse
+  // declaration order and a session can outlive Shutdown() (see stopping_sessions_). As it dies a
+  // PgClientSession returns a shared memory segment to shared_mem_pool_, reads session_context_,
+  // and drops any catalog prefetch claim it still holds into response_cache_, whose Impl the
+  // claim names by raw pointer, so the sessions have to be destroyed before all three.
   boost::multi_index_container<
       SessionInfoPtr,
       boost::multi_index::indexed_by<
