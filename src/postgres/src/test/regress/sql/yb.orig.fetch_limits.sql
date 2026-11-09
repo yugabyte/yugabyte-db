@@ -95,6 +95,7 @@ explain (analyze, costs off, timing off, summary off) select * from test_correct
 select a, b, substring(c, 0, 10) from test_correct where a < 20 and b % 5 = 0 order by a;
 
 -- #### parallel fetch limits ####
+-- Note: effects of this ANALYZE spill into the following tests (yb.orig.fetch_limits_joins).
 ANALYZE t_large, t_medium, t_small;
 set yb_enable_cbo = on;
 set yb_test_force_parallel = 'force';

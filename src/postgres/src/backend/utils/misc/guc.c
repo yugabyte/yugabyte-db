@@ -6242,7 +6242,7 @@ static struct config_int ConfigureNamesInt[] =
 
 	{
 		{"yb_parallel_fetch_row_limit", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Maximum number of rows to fetch per parallel range. 0 = No limit"),
+			gettext_noop("Maximum number of rows per response in a parallel query. 0 = No limit"),
 			NULL,
 			GUC_EXPLAIN
 		},
@@ -6253,7 +6253,7 @@ static struct config_int ConfigureNamesInt[] =
 
 	{
 		{"yb_parallel_fetch_size_limit", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Maximum size of a parallel fetch response. 0 = No limit"),
+			gettext_noop("Maximum number of bytes per response in a parallel query. 0 = No limit"),
 			NULL,
 			GUC_UNIT_BYTE | GUC_EXPLAIN
 		},

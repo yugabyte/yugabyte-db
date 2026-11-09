@@ -364,8 +364,8 @@ ybcUpdateFKCache(YbOpaque ybScan, Datum ybctid)
 
 /*
  * Obtain the next parallel range from pscan and apply it to handle.
- * Also sets exec_params for unlimited fetch (parallel ranges are
- * already bounded).
+ * Also sets the configured parallel fetch limits as the fetch limits in
+ * the exec_params.
  *
  * Returns true if a range was applied; false means no more ranges
  * and the worker should stop scanning.

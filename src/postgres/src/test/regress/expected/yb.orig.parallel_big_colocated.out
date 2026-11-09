@@ -230,8 +230,8 @@ SELECT * FROM pcustomer;
    Workers Planned: 2
    Workers Launched: 2
    ->  Parallel Seq Scan on pcustomer (actual rows=166667 loops=3)
-         Storage Table Read Requests: 6
-         Storage Table Read Ops: 6
+         Storage Table Read Requests: 165
+         Storage Table Read Ops: 165
          Storage Table Rows Scanned: 166667
 (7 rows)
 
