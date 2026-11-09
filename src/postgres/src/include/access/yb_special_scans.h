@@ -7,11 +7,11 @@
  *	  catalog scans (systable lookups), ANALYZE row sampling, and
  *	  single-row fetch by ybctid.  Above the access methods, only
  *	  analyze.c, indexing.c, and yb_inheritscache.c include this
- *	  header.  Only ANALYZE row sampling is meant to stay, until
- *	  upstream adds a table AM interface for sampling.  The catalog
- *	  scans and the fetch by ybctid are interim, like the accessors
- *	  in yb_table_scan.h, and their sections cite the issues that
- *	  track routing them through the access methods.
+ *	  header.  ANALYZE row sampling stays until upstream adds a
+ *	  table AM interface for sampling.  The catalog scans and the
+ *	  fetch by ybctid are bypasses to remove, like the accessors in
+ *	  yb_table_scan.h, and their sections cite the issues that track
+ *	  routing them through the access methods.
  *
  *	  Each section below is the API of one implementation file and
  *	  says why no AM interface replaces it yet.  A contract that
@@ -50,10 +50,11 @@
 /*
  * Catalog scans (yb_catalog_scan.c): ybc_systable_beginscan() implements
  * genam's systable_beginscan() and is called only from genam.c.
- * ybc_systable_begin_default_scan() exists so that yb_inheritscache.c can fill
- * the pg_inherits cache.  How these scans read is intricate.  A change that
- * needs more from this API should not add to it but first rework it by routing
- * catalog scans through upstream's systable_* path, as #36174 describes.
+ * ybc_systable_begin_default_scan() is the plain catalog scan underneath it,
+ * exported so that yb_inheritscache.c can fill the pg_inherits cache.  How
+ * these scans read is intricate, and #36174 lists what stands in the way of
+ * routing them through the access methods.  A change that needs more from this
+ * API should first take up #36174 rather than add to it.
  */
 extern SysScanDesc ybc_systable_beginscan(Relation relation,
 										  Oid indexId,
@@ -74,8 +75,8 @@ extern SysScanDesc ybc_systable_begin_default_scan(Relation relation,
  * yb_acquire_sample_rows() in analyze.c, which takes the place of
  * acquire_sample_rows() for YB relations.  tableam's analyze callbacks do not
  * fit, because they read the block numbers that the caller's BlockSampler
- * chooses, while YB's sampler reads the table in its own blocks, runs of rows
- * from one partition, and selects the sample rows below PostgreSQL.  Upstream
+ * chooses, while YB's sampler reads the table in its own blocks (runs of rows
+ * from one partition) and selects the sample rows below PostgreSQL.  Upstream
  * has no interface yet for a table AM to supply its own sampling.  Wait for
  * one rather than add a YB-only interface that upstream may later shape
  * differently.

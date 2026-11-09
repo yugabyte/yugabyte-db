@@ -40,7 +40,7 @@ Execution logic that the planner shares instead of copying:
 
   yb_scan_plan.h
 
-The YB cost model, planner code that sits under access/ for historical
+The YB cost model, mostly planner code that sits under access/ for historical
 reasons:
 
   yb_cost.h
@@ -50,7 +50,8 @@ code above them:
 
   yb_target.h
 
-Entry points outside the AM interfaces, some of them interim:
+Entry points outside the AM interfaces, some of them interim bypasses tracked
+in #36168:
 
   yb_special_scans.h
 
