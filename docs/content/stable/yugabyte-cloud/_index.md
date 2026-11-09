@@ -43,7 +43,7 @@ YugabyteDB Aeon SLA service availability is [99.99%](https://www.yugabyte.com/yu
 
 ## Choose the right cluster
 
-Use [Serverless Postgres](serverless/) for PostgreSQL applications and fleets of databases, including workloads moving from Amazon Aurora or other managed PostgreSQL services. Each application or tenant gets an isolated PostgreSQL database, and you can fork a zero-copy branch when a test, a migration, or an agent needs its own copy of the data. Serverless Postgres is free to start.
+Use [Serverless Postgres](serverless/) for PostgreSQL applications and fleets of databases, including workloads moving from another managed PostgreSQL service. Each application or tenant gets an isolated PostgreSQL database, and you can fork a zero-copy branch when a test, a migration, or an agent needs its own copy of the data. Serverless Postgres is free to start.
 
 Use [Distributed Postgres](distributed-postgres/) for production applications that must stay available as load grows, or that serve users in more than one region. You choose the fault tolerance and topology, and deploy on Amazon Web Services (AWS), Microsoft Azure, or Google Cloud Platform (GCP). Clusters are billed per vCPU.
 

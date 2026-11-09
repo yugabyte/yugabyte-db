@@ -19,7 +19,7 @@ type: indexpage
 showRightNav: true
 ---
 
-Serverless Postgres is a fully managed PostgreSQL service in YugabyteDB Aeon. Use it for any PostgreSQL workload, including applications moving from Amazon Aurora or other managed PostgreSQL services, and fleets of databases with one per application, tenant, or agent. Each gets its own isolated PostgreSQL database.
+Serverless Postgres is a fully managed PostgreSQL service in YugabyteDB Aeon. Use it for any PostgreSQL workload, including applications moving from another managed PostgreSQL service, and fleets of databases with one per application, tenant, or agent. Each gets its own isolated PostgreSQL database.
 
 A Serverless Postgres cluster includes the following features:
 
