@@ -148,6 +148,7 @@ DEFINE_RUNTIME_bool(vector_index_enable_compactions, true,
 
 DEFINE_RUNTIME_bool(vector_index_allow_parallel_compactions, false,
     "Allow running multiple compactions of the same vector LSM in parallel.");
+TAG_FLAG(vector_index_allow_parallel_compactions, hidden);
 
 DEFINE_test_flag(bool, vector_index_exact, false,
     "Use exact brute-force search in vector index to guarantee deterministic results.");
@@ -2854,13 +2855,14 @@ VectorLSM<Vector, DistanceResult>::PickChunksBySizeRatio() const {
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 typename VectorLSM<Vector, DistanceResult>::CompactionScope
 VectorLSM<Vector, DistanceResult>::PickChunksForCompaction(CompactionType type) const {
+  // Parallel compactions could otherwise both see the same chunks as ready and race on locking
+  // them.
+  std::lock_guard pick_lock(pick_chunks_mutex_);
   if (type == CompactionType::kManual) {
     return PickChunksForFullCompaction();
   }
 
-  // Exclusive lock: concurrent pickers could otherwise both see the same chunks as ready and
-  // then race on locking them.
-  UniqueLock lock(mutex_);
+  SharedLock lock(mutex_);
   if (auto chunks = PickChunksBySizeAmplification(); !chunks.empty()) {
     return chunks;
   }
