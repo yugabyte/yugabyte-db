@@ -80,8 +80,13 @@ public class TestPgauditBackendSharing extends BaseYsqlConnMgr {
 
   private List<Connection> connectClients(String db, int numClients) throws Exception {
     List<Connection> conns = new ArrayList<>();
-    for (int i = 0; i < numClients; i++) {
-      conns.add(connect(db, auditRole));
+    try {
+      for (int i = 0; i < numClients; i++) {
+        conns.add(connect(db, auditRole));
+      }
+    } catch (Exception e) {
+      closeAll(conns);
+      throw e;
     }
     return conns;
   }
