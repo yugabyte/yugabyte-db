@@ -1012,6 +1012,8 @@ TEST_F_EX(PgBackendsTest, RetryRefreshAcrossIndexCreate, PgBackendsTestRf3TableL
   LOG(INFO) << "Freeze the writer's tserver catalog version, then raise the master's";
   ASSERT_OK(cluster_->SetFlag(writer_ts, "TEST_tserver_disable_catalog_refresh_on_heartbeat",
                               "true"));
+  // Declared before cleanup, so cleanup unblocks the threads before the destructor joins them.
+  TestThreadHolder thread_holder;
   auto cleanup = ScopeExit([this, writer_ts] {
     WARN_NOT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"),
                 "unblock index phase");
@@ -1027,7 +1029,6 @@ TEST_F_EX(PgBackendsTest, RetryRefreshAcrossIndexCreate, PgBackendsTestRf3TableL
   LOG(INFO) << "Start CREATE INDEX and block it before the indislive commit";
   ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "indislive"));
   LogWaiter indislive_waiter(builder_ts, "blocking index state change indislive=true");
-  TestThreadHolder thread_holder;
   thread_holder.AddThreadFunctor([&builder] {
     ASSERT_OK(builder.ExecuteFormat("CREATE INDEX $0 ON $1 (value)", kIndex, kTable));
   });
