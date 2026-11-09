@@ -295,16 +295,32 @@ public interface UserIntentMapper {
     if (clusterSpec.getReplicationFactor() != null) {
       userIntent.replicationFactor = clusterSpec.getReplicationFactor();
     }
-    fillUserIntentFromClusterNodeSpec(clusterSpec.getNodeSpec(), userIntent);
+    // With provider_specs, a multicloud cluster reads these from ProviderSpecification and never
+    // from the flat UserIntent fields, so don't store the cluster-level copies.
+    boolean multiProvider =
+        clusterSpec.getProviderSpecs() != null && !clusterSpec.getProviderSpecs().isEmpty();
+    if (!multiProvider) {
+      fillUserIntentFromClusterNodeSpec(clusterSpec.getNodeSpec(), userIntent);
+    }
     applyDedicatedNodes(clusterSpec.getDedicatedNodes(), clusterSpec.getNodeSpec(), userIntent);
-    fillUserIntentFromClusterNetworkingSpec(clusterSpec.getNetworkingSpec(), userIntent);
-    fillUserIntentFromClusterProviderSpec(clusterSpec.getProviderSpec(), userIntent);
+    ClusterNetworkingSpec networkingSpec = clusterSpec.getNetworkingSpec();
+    if (multiProvider && networkingSpec != null) {
+      // enable_lb and managed_load_balancer are read from the flat UserIntent on every cluster.
+      networkingSpec =
+          new ClusterNetworkingSpec()
+              .enableLb(networkingSpec.getEnableLb())
+              .managedLoadBalancer(networkingSpec.getManagedLoadBalancer());
+    }
+    fillUserIntentFromClusterNetworkingSpec(networkingSpec, userIntent);
+    if (!multiProvider) {
+      fillUserIntentFromClusterProviderSpec(clusterSpec.getProviderSpec(), userIntent);
+    }
 
     if (clusterSpec.getUseSpotInstance() != null) {
       userIntent.useSpotInstance = clusterSpec.getUseSpotInstance();
     }
     Map<String, String> instanceTags = clusterSpec.getInstanceTags();
-    if (instanceTags != null) {
+    if (instanceTags != null && !multiProvider) {
       userIntent.instanceTags = new LinkedHashMap<String, String>(instanceTags);
     }
     userIntent.auditLogConfig = toV1AuditLogConfig(clusterSpec.getAuditLogConfig());
