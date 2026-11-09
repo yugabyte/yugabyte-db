@@ -7758,6 +7758,12 @@ static struct config_string ConfigureNamesString[] =
 		{"default_text_search_config", PGC_USERSET, CLIENT_CONN_LOCALE,
 			gettext_noop("Sets default text search configuration."),
 			NULL,
+			/*
+			 * YB: ConnMgr can't replay this safely since the check hook looks
+			 * up the name again. The config might have been dropped between
+			 * the SET and the replay, making the replay fail. So, setting this
+			 * GUC makes the connection sticky.
+			 */
 			GUC_YB_CONN_MGR_STICKY
 		},
 		&TSCurrentConfig,
@@ -12776,6 +12782,12 @@ set_config_option_ext(const char *name, const char *value,
 		yb_ysql_conn_mgr_sticky_guc = true;
 	}
 
+	/*
+	 * YB: Only a session-level SET or a startup-packet value of a
+	 * GUC_YB_CONN_MGR_STICKY variable is replayed by ConnMgr, so only those
+	 * make the connection sticky. SET LOCAL and function-level SET don't
+	 * outlive the transaction or call.
+	 */
 	if (changeVal &&
 		(record->flags & GUC_YB_CONN_MGR_STICKY) &&
 		(source == PGC_S_SESSION || source == PGC_S_CLIENT) &&
