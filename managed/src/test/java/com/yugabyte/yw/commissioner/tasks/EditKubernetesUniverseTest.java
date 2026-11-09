@@ -43,6 +43,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.ITask;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.ApiUtils;
@@ -83,6 +84,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -2029,5 +2031,212 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     assertTrue(universe.getUniverseDetails().updateSucceeded);
     assertNull(universe.getUniverseDetails().placementModificationTaskUuid);
     assertNull(universe.getStateTransitionDetails());
+  }
+
+  /** Adds a one-tserver read replica in az-1 to the multi-AZ universe. */
+  private void addReadReplicaToMultiAZUniverse() {
+    UniverseDefinitionTaskParams.UserIntent rrIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
+    rrIntent.numNodes = 1;
+    rrIntent.replicationFactor = 1;
+    ProviderInitializer providerInitializer =
+        TestUtils.getProviderInitializerForTests(rrIntent, kubernetesProvider.getUuid());
+    providerInitializer.setProviderType(Common.CloudType.kubernetes);
+    providerInitializer.setAccessCode("demo-access");
+    providerInitializer.setDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 100));
+    UniverseDefinitionTaskParams.UserIntent primaryIntent =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
+    rrIntent.ybSoftwareVersion = primaryIntent.ybSoftwareVersion;
+    rrIntent.tserverK8SNodeResourceSpec = primaryIntent.tserverK8SNodeResourceSpec;
+    rrIntent.masterK8SNodeResourceSpec = primaryIntent.masterK8SNodeResourceSpec;
+    rrIntent.regionList =
+        Collections.singletonList(Region.getByCode(kubernetesProvider, "region-1").getUuid());
+    PlacementInfo rrPlacement = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(
+        AvailabilityZone.getByCode(kubernetesProvider, "az-1").getUuid(), rrPlacement, 1, 1, true);
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdaterWithReadReplica(rrIntent, rrPlacement));
+  }
+
+  /**
+   * Builds an edit request with the given primary placement. Like the UI, it also carries the
+   * unchanged read replica when includeReadReplica is set; API clients may leave it out.
+   */
+  private UniverseDefinitionTaskParams editParams(PlacementInfo pi, boolean includeReadReplica) {
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = defaultUniverse.getVersion();
+    taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
+    taskParams.upsertPrimaryCluster(
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone(), null, pi);
+    taskParams.nodePrefix = NODE_PREFIX;
+    taskParams.getPrimaryCluster().uuid =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid;
+    if (includeReadReplica) {
+      taskParams.clusters.add(defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0));
+    }
+    return taskParams;
+  }
+
+  /**
+   * Submits the edit, pauses it once all its subtasks are queued, then aborts it. Returns the
+   * aborted task, whose subtasks are the queued ones.
+   */
+  private TaskInfo queueAndAbortEdit(UniverseDefinitionTaskParams taskParams)
+      throws InterruptedException {
+    setPausePosition(0);
+    UUID taskUUID = commissioner.submit(TaskType.EditKubernetesUniverse, taskParams);
+    waitForEditPaused(taskUUID);
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+    int freezePosition =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.FreezeUniverse)
+            .map(TaskInfo::getPosition)
+            .findFirst()
+            .orElseThrow();
+    setPausePosition(freezePosition + 1);
+    commissioner.resumeTask(taskUUID);
+    waitForEditPaused(taskUUID);
+    clearAbortOrPausePositions();
+    setAbortPosition(freezePosition + 1);
+    commissioner.resumeTask(taskUUID);
+    taskInfo = waitForTask(taskUUID);
+    clearAbortOrPausePositions();
+    return taskInfo;
+  }
+
+  /** Waits for the edit to pause, and reports the task's own failure if it ended instead. */
+  private void waitForEditPaused(UUID taskUUID) throws InterruptedException {
+    try {
+      waitForTaskPaused(taskUUID);
+    } catch (RuntimeException e) {
+      clearAbortOrPausePositions();
+      throw new AssertionError(describeFailure(waitForTask(taskUUID)), e);
+    }
+  }
+
+  /** The read replica helm upgrades queued after the primary cluster is saved, as task params. */
+  private List<JsonNode> readReplicaHelmUpgrades(TaskInfo taskInfo) {
+    List<TaskInfo> subTasks =
+        taskInfo.getSubTasks().stream()
+            .sorted(Comparator.comparing(TaskInfo::getPosition))
+            .collect(Collectors.toList());
+    int primaryIntentPosition =
+        subTasks.stream()
+            .filter(t -> t.getTaskType() == TaskType.UpdateUniverseIntent)
+            .map(TaskInfo::getPosition)
+            .findFirst()
+            .orElseThrow();
+    return subTasks.stream()
+        .filter(t -> t.getPosition() > primaryIntentPosition)
+        .filter(t -> t.getTaskType() == TaskType.KubernetesCommandExecutor)
+        .map(TaskInfo::getTaskParams)
+        .filter(
+            p ->
+                HELM_UPGRADE.name().equals(p.path("commandType").asText())
+                    && p.path("isReadOnlyCluster").asBoolean())
+        .collect(Collectors.toList());
+  }
+
+  /** Asserts that the read replica is upgraded with master addresses that include newMasterAz. */
+  private void assertReadReplicaGetsNewMasters(TaskInfo taskInfo, String newMasterAz) {
+    List<JsonNode> upgrades = readReplicaHelmUpgrades(taskInfo);
+    assertFalse("no read replica helm upgrade queued", upgrades.isEmpty());
+    for (JsonNode upgrade : upgrades) {
+      String masterAddresses = upgrade.path("masterAddresses").asText();
+      assertTrue(masterAddresses, masterAddresses.contains(newMasterAz));
+    }
+  }
+
+  /**
+   * Records a failed earlier attempt of the edit that already saved the primary cluster, as the
+   * last task of the universe.
+   */
+  private TaskInfo createFailedEarlierEdit() {
+    TaskInfo previousTask = new TaskInfo(TaskType.EditKubernetesUniverse, UUID.randomUUID());
+    previousTask.setOwner("test");
+    previousTask.setTaskParams(Json.newObject());
+    previousTask.setTaskVersion(ITask.DEFAULT_TASK_VERSION);
+    previousTask.save();
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.updatingTask = TaskType.EditKubernetesUniverse;
+              details.updatingTaskUUID = previousTask.getUuid();
+              details.placementModificationTaskUuid = previousTask.getUuid();
+              details.updateInProgress = false;
+              details.updateSucceeded = false;
+              u.setUniverseDetails(details);
+            });
+    return previousTask;
+  }
+
+  private void verifyRetryAfterPrimarySavedUpdatesReadReplica(boolean includeReadReplica)
+      throws InterruptedException {
+    setupUniverseMultiAZ(/* Create Masters */ true, 3);
+    addReadReplicaToMultiAZUniverse();
+    factory.globalRuntimeConf().setValue("yb.checks.leaderless_tablets.enabled", "false");
+    Region region = Region.getByCode(kubernetesProvider, "region-1");
+    AvailabilityZone az3 = AvailabilityZone.getByCode(kubernetesProvider, "az-3");
+    AvailabilityZone az4 =
+        AvailabilityZone.createOrThrow(region, "az-4", "PlacementAZ 4", "subnet-4");
+    // Replace az-3 with az-4, which moves a master.
+    PlacementInfo pi = defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
+    pi.cloudList.get(0).regionList.get(0).azList.removeIf(az -> az.uuid.equals(az3.getUuid()));
+    PlacementInfoUtil.addPlacementZone(az4.getUuid(), pi, 1, 1, true);
+
+    TaskInfo firstAttempt = queueAndAbortEdit(editParams(pi, includeReadReplica));
+    assertTrue(firstAttempt.getRuntimeInfo().path("masterAddressesChanged").asBoolean());
+    assertReadReplicaGetsNewMasters(firstAttempt, "az-4");
+
+    // The first attempt saved the primary cluster before it failed.
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.getPrimaryCluster().placementInfo = pi;
+              u.setUniverseDetails(details);
+            });
+    // Retry with the stored params, as CustomerTaskManager#retryCustomerTask does.
+    UniverseDefinitionTaskParams retryParams =
+        Json.fromJson(firstAttempt.getTaskParams(), UniverseDefinitionTaskParams.class);
+    retryParams.setPreviousTaskUUID(firstAttempt.getUuid());
+    TaskInfo retry = queueAndAbortEdit(retryParams);
+
+    assertReadReplicaGetsNewMasters(retry, "az-4");
+  }
+
+  @Test
+  public void testRetryAfterPrimarySavedUpdatesReadReplicaMasterAddresses()
+      throws InterruptedException {
+    verifyRetryAfterPrimarySavedUpdatesReadReplica(true /* includeReadReplica */);
+  }
+
+  @Test
+  public void testPrimaryOnlyRetryAfterPrimarySavedUpdatesReadReplicaMasterAddresses()
+      throws InterruptedException {
+    verifyRetryAfterPrimarySavedUpdatesReadReplica(false /* includeReadReplica */);
+  }
+
+  @Test
+  public void testRetryWithoutMasterAddressChangeLeavesReadReplica() throws InterruptedException {
+    setupUniverseMultiAZ(/* Create Masters */ true, 3);
+    addReadReplicaToMultiAZUniverse();
+    factory.globalRuntimeConf().setValue("yb.checks.leaderless_tablets.enabled", "false");
+    TaskInfo earlierEdit = createFailedEarlierEdit();
+    UniverseDefinitionTaskParams taskParams =
+        editParams(
+            defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo,
+            true /* includeReadReplica */);
+    taskParams.setPreviousTaskUUID(earlierEdit.getUuid());
+
+    TaskInfo taskInfo = queueAndAbortEdit(taskParams);
+
+    assertTrue(readReplicaHelmUpgrades(taskInfo).isEmpty());
   }
 }
