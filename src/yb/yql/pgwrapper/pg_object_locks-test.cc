@@ -1777,11 +1777,18 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, TableRewriteWaitsForLegacyReader) {
     auto ddl_conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts2));
     return ddl_conn.Execute("ALTER TABLE test ALTER COLUMN v TYPE BIGINT");
   });
-  ASSERT_EQ(alter_future.wait_for(5s * kTimeMultiplier), std::future_status::timeout);
+  auto observer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(observer.Execute("SET yb_locks_min_txn_age = '0s'"));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(observer.FetchRow<int64_t>(
+        "SELECT COUNT(*) FROM pg_locks WHERE relation = 'test'::regclass"
+        " AND mode = 'AccessExclusiveLock' AND NOT granted")) > 0;
+  }, 15s * kTimeMultiplier, "the ALTER to wait on the legacy reader's lock"));
 
   // A new lock refreshes the reader's catalog cache; the table it then reads is unchanged.
   ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM other")), 0);
   ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
+  ASSERT_EQ(alter_future.wait_for(0s), std::future_status::timeout);
   ASSERT_OK(legacy_conn.Execute("COMMIT"));
   ASSERT_OK(alter_future.get());
 }
