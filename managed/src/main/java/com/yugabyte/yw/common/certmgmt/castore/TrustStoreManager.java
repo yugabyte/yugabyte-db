@@ -24,15 +24,11 @@ public interface TrustStoreManager {
 
   default List<Certificate> getX509Certificate(String certPath)
       throws CertificateException, IOException {
-    List<Certificate> certificates = new ArrayList<>();
     try (FileInputStream certStream = new FileInputStream(certPath)) {
       CertificateFactory certificateFactory = CertificateFactory.getInstance("X.509");
-
-      while (certStream.available() > 0) {
-        Certificate certificate = certificateFactory.generateCertificate(certStream);
-        certificates.add(certificate);
-      }
-      return certificates;
+      // Not an available() loop over generateCertificate: the BCFIPS factory reads past the
+      // first certificate, which ended the loop after one.
+      return new ArrayList<>(certificateFactory.generateCertificates(certStream));
     }
   }
 

@@ -193,6 +193,34 @@ public class YBATrustStoreManager implements TrustStoreManager {
     }
   }
 
+  /**
+   * Adds the certificates in certPath that the trust store is missing under certAlias. Returns the
+   * number of certificates added.
+   */
+  public int addMissingCertificates(String certPath, String certAlias, String trustStoreHome)
+      throws KeyStoreException, IOException, CertificateException {
+    TrustStoreInfo trustStoreInfo = getYbaTrustStoreInfo(trustStoreHome);
+    KeyStore trustStore = getTrustStore(trustStoreInfo, false, true);
+    if (trustStore == null) {
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Truststore cannot be null");
+    }
+    List<Certificate> certificates = getX509Certificate(certPath);
+    int added = 0;
+    for (int i = 0; i < certificates.size(); i++) {
+      String alias = certAlias + "-" + i;
+      if (!trustStore.containsAlias(alias)) {
+        trustStore.setCertificateEntry(alias, certificates.get(i));
+        added++;
+      }
+    }
+    if (added > 0) {
+      saveTrustStore(trustStoreInfo, trustStore);
+      FileData.addToBackup(Collections.singletonList(trustStoreInfo.getPath()));
+      log.info("Added {} missing certificates of CA '{}' to YBA truststore", added, certAlias);
+    }
+    return added;
+  }
+
   @Override
   public void remove(
       String certPath, String certAlias, String trustStoreHome, boolean suppressErrors)
