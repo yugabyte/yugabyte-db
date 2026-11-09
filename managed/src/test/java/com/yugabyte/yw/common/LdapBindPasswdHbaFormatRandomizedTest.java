@@ -56,6 +56,14 @@ public class LdapBindPasswdHbaFormatRandomizedTest {
     return password.toString();
   }
 
+  private String alnum() {
+    StringBuilder s = new StringBuilder();
+    for (int i = 3 + random.nextInt(6); i > 0; i--) {
+      s.append(ALNUM.charAt(random.nextInt(ALNUM.length())));
+    }
+    return s.toString();
+  }
+
   private static String csvField(String record, boolean quote) {
     return quote || record.contains("\"") || record.contains(",")
         ? "\"" + record.replace("\"", "\"\"") + "\""
@@ -67,14 +75,23 @@ public class LdapBindPasswdHbaFormatRandomizedTest {
     List<String> fields = new ArrayList<>(List.of("local all yugabyte trust"));
     List<String> redactedFields = new ArrayList<>(fields);
     for (int i = 1 + random.nextInt(3); i > 0; i--) {
-      boolean quoted = random.nextInt(3) > 0;
-      String password = password(quoted);
-      String after = OPTIONS_AFTER[random.nextInt(OPTIONS_AFTER.length)];
+      // "pa"ss, quoted only in part: the API refuses a new one, but a universe may already store
+      // one. It is redacted with the rest of its field, and may be read on to a quoted option after
+      // it in that field, so it gets none.
+      boolean partly = random.nextInt(6) == 0;
+      boolean quoted = !partly && random.nextInt(3) > 0;
+      String password = partly ? "\"" + alnum() + "\"" + alnum() : password(quoted);
+      String after = OPTIONS_AFTER[random.nextInt(OPTIONS_AFTER.length - (partly ? 1 : 0))];
       String record =
           (after.contains("clientcert") ? "hostssl" : "host")
               + " all all 0.0.0.0/0 ldap ldapserver=ldap1.example.com"
               + (random.nextBoolean() ? " ldapbasedn=\"dc=example,dc=com\"" : "")
               + " ldapbinddn=cn=svc ldapbindpasswd=";
+      if (partly) {
+        fields.add(csvField(record + password + after, true));
+        redactedFields.add(csvField(record + SECRET_REPLACEMENT, true));
+        continue;
+      }
       boolean quoteField = random.nextBoolean();
       fields.add(
           csvField(
@@ -120,6 +137,12 @@ public class LdapBindPasswdHbaFormatRandomizedTest {
                   new String[] {
                     Json.newObject().put(HBA, hba).put("other", "keep").toString(),
                     Json.newObject().put(HBA, redacted).put("other", "keep").toString()
+                  },
+              // A task diff holds the HBA in more than one string.
+              "json twice",
+                  new String[] {
+                    Json.newObject().put(HBA, hba).put("old", hba).toString(),
+                    Json.newObject().put(HBA, redacted).put("old", redacted).toString()
                   },
               "server.conf",
                   new String[] {

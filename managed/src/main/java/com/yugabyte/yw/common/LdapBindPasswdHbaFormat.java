@@ -115,6 +115,31 @@ public final class LdapBindPasswdHbaFormat {
     return s.length();
   }
 
+  /**
+   * True if a line break, or a quote that the value's own scan didn't take as doubled, ends the CSV
+   * field or JSON string holding a value quoted with {@code escapes} backslashes per quote: a quote
+   * escaped less, or one escaped the same and followed by a field end. A quoted value closes before
+   * either, so a scan reaching one is reading a value quoted only in part, and must not go on into
+   * the next field for a closing quote. Backslashes escape nothing in raw text ({@code escapes} 0).
+   */
+  private static boolean endsEnclosingField(String s, int i, int escapes) {
+    char c = s.charAt(i);
+    if (c == '\n' || c == '\r') {
+      return true;
+    }
+    if (c != '"') {
+      return false;
+    }
+    int backslashes = 0;
+    while (escapes > 0
+        && backslashes <= escapes
+        && backslashes < i
+        && s.charAt(i - 1 - backslashes) == '\\') {
+      backslashes++;
+    }
+    return backslashes < escapes || (backslashes == escapes && isFieldEndAfterQuote(s, i + 1));
+  }
+
   /** Length of the quote at s[i], with the backslashes escaping it, or 0 if none starts there. */
   private static int quoteLengthAt(String s, int i) {
     int j = i;
@@ -226,6 +251,8 @@ public final class LdapBindPasswdHbaFormat {
         }
         decodedOut.append('"');
         i += 2;
+      } else if (endsEnclosingField(s, i, 0)) {
+        return -1;
       } else {
         decodedOut.append(s.charAt(i));
         i++;
@@ -268,6 +295,8 @@ public final class LdapBindPasswdHbaFormat {
         }
         decodedOut.append('"');
         i += wrapperLen;
+      } else if (endsEnclosingField(s, i, wrapperLen / 2 - 1)) {
+        return -1;
       } else {
         decodedOut.append(s.charAt(i));
         i++;

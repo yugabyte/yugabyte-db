@@ -254,6 +254,30 @@ public class LdapBindPasswdHbaFormatTest {
   }
 
   @Test
+  public void redactAllValuesRedactsPartlyQuotedPasswordBeforeQuotedOne() {
+    String quoted =
+        "\"host all all 0.0.0.0/0 ldap ldapbindpasswd=\"\"later\"\" ldapsearchattribute=cn\"";
+    String quotedRedacted = quoted.replace("later", SECRET_REPLACEMENT);
+    for (String password : PARTLY_QUOTED_CSV_PASSWORDS) {
+      String partly =
+          "\"host all all 0.0.0.0/0 ldap ldapbindpasswd=" + password + "\",local all all trust";
+      String partlyRedacted =
+          "\"host all all 0.0.0.0/0 ldap ldapbindpasswd="
+              + SECRET_REPLACEMENT
+              + "\",local all all trust";
+      assertEquals(
+          password,
+          partlyRedacted + "," + quotedRedacted,
+          LdapBindPasswdHbaFormat.redactAllValues(partly + "," + quoted, SECRET_REPLACEMENT));
+      // As in a task diff, where the new value comes before the old one of the next gflag map.
+      String in = Json.newObject().put("new", partly).put("old", quoted).toString();
+      String out = LdapBindPasswdHbaFormat.redactAllValues(in, SECRET_REPLACEMENT);
+      assertEquals(password, partlyRedacted, Json.parse(out).get("new").asText());
+      assertEquals(password, quotedRedacted, Json.parse(out).get("old").asText());
+    }
+  }
+
+  @Test
   public void redactAllValuesKeepsEmptyValue() {
     String in = "host all all 0.0.0.0/0 ldap ldapbindpasswd= ldapserver=x,local all all trust";
     assertEquals(in, LdapBindPasswdHbaFormat.redactAllValues(in, SECRET_REPLACEMENT));
