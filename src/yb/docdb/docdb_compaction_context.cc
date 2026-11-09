@@ -13,7 +13,6 @@
 
 #include "yb/docdb/docdb_compaction_context.h"
 
-#include <algorithm>
 #include <memory>
 
 #include "yb/common/schema.h"
@@ -876,6 +875,7 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
       meta->smallest.user_values = smallest_;
       meta->largest.user_values = largest_;
     }
+    RETURN_NOT_OK(UpdateSmallestFrontier(meta));
     return packed_row_.UpdateMeta(meta);
   }
 
@@ -948,7 +948,33 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
       RETURN_NOT_OK(UpdateBoundaryValues(key));
       last_passed_doc_key_serial_ = doc_key_serial;
     }
+    const auto user_key = key.WithoutSuffix(rocksdb::kLastInternalComponentSize);
+    const auto doc_ht = user_key.Suffix(VERIFY_RESULT(DocHybridTime::GetEncodedSize(user_key)));
+    // Doc hybrid times are encoded in reverse order: the oldest has the greatest encoding.
+    if (doc_ht.compare(oldest_output_doc_ht_.AsSlice()) > 0) {
+      oldest_output_doc_ht_.Assign(doc_ht);
+    }
     return next_feed_.Feed(key, value);
+  }
+
+  // Lowers the output file's smallest frontier to the oldest hybrid time of its keys and marks it
+  // as bounding them, whatever the inputs' frontiers were: an input written by an older version, or
+  // one without a frontier, may hold keys older than its frontier. The compaction job finishes an
+  // output file only between calls to Feed, so the keys passed on since the last output file are
+  // exactly this file's.
+  Status UpdateSmallestFrontier(rocksdb::FileMetaData* meta) {
+    const auto oldest_doc_ht = oldest_output_doc_ht_;
+    oldest_output_doc_ht_.Reset();
+    if (oldest_doc_ht.empty() || !meta->smallest.user_frontier) {
+      return Status::OK();
+    }
+    const auto oldest_ht = VERIFY_RESULT(oldest_doc_ht.Decode()).hybrid_time();
+    auto& frontier = down_cast<ConsensusFrontier&>(*meta->smallest.user_frontier);
+    if (!frontier.hybrid_time().is_valid() || oldest_ht < frontier.hybrid_time()) {
+      frontier.set_hybrid_time(oldest_ht);
+    }
+    frontier.set_hybrid_time_bounds_entries(true);
+    return Status::OK();
   }
 
   Status UpdateBoundaryValues(const Slice& key) {
@@ -1015,6 +1041,8 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
   boost::container::small_vector<size_t, 16> sub_key_ends_;
 
   size_t last_passed_doc_key_serial_ = 0;
+  // The oldest doc hybrid time of the keys passed on to the current output file.
+  EncodedDocHybridTime oldest_output_doc_ht_;
   // Serial number of doc key in processed key stream.
   size_t doc_key_serial_ = 0;
   boost::container::small_vector<rocksdb::UserBoundaryValueRef, 0x10> user_values_;
@@ -1602,8 +1630,7 @@ class DocDBCompactionContext : public rocksdb::CompactionContext {
       const KeyBounds* key_bounds,
       SchemaPackingProvider* schema_packing_provider,
       DocVectorMetadataIteratorProvider* vector_metadata_iterator_provider,
-      const CompactionMetrics& metrics,
-      bool inputs_hybrid_time_bounds_entries);
+      const CompactionMetrics& metrics);
 
   ~DocDBCompactionContext() = default;
 
@@ -1630,15 +1657,7 @@ class DocDBCompactionContext : public rocksdb::CompactionContext {
   std::vector<std::pair<Slice, Slice>> GetLiveRanges() const override;
 
   Status UpdateMeta(rocksdb::FileMetaData* meta) override {
-    RETURN_NOT_OK(feed_->UpdateMeta(meta));
-    // The output's entries are among its inputs', so its smallest frontier, the oldest of theirs,
-    // bounds them when every input's does. The compaction job merges only the inputs that have a
-    // frontier, so the flag is set here from all of them.
-    if (meta->smallest.user_frontier) {
-      down_cast<ConsensusFrontier&>(*meta->smallest.user_frontier)
-          .set_hybrid_time_bounds_entries(inputs_hybrid_time_bounds_entries_);
-    }
-    return Status::OK();
+    return feed_->UpdateMeta(meta);
   }
 
   void CompactionFinished() override {
@@ -1649,7 +1668,6 @@ class DocDBCompactionContext : public rocksdb::CompactionContext {
   HistoryCutoff history_cutoff_;
   const KeyBounds* key_bounds_;
   std::unique_ptr<DocDBCompactionFeed> feed_;
-  const bool inputs_hybrid_time_bounds_entries_;
 };
 
 DocDBCompactionContext::DocDBCompactionContext(
@@ -1661,15 +1679,13 @@ DocDBCompactionContext::DocDBCompactionContext(
     const KeyBounds* key_bounds,
     SchemaPackingProvider* schema_packing_provider,
     DocVectorMetadataIteratorProvider* vector_metadata_iterator_provider,
-    const CompactionMetrics& metrics,
-    bool inputs_hybrid_time_bounds_entries)
+    const CompactionMetrics& metrics)
     : history_cutoff_(retention.history_cutoff),
       key_bounds_(key_bounds),
       feed_(std::make_unique<DocDBCompactionFeed>(
           compaction_reason, next_feed, std::move(retention), hybrid_time_limits,
           boundary_extractor, key_bounds, schema_packing_provider,
-          vector_metadata_iterator_provider, metrics)),
-      inputs_hybrid_time_bounds_entries_(inputs_hybrid_time_bounds_entries) {
+          vector_metadata_iterator_provider, metrics)) {
 }
 
 storage::UserFrontierPtr DocDBCompactionContext::GetLargestUserFrontier() const {
@@ -1784,12 +1800,7 @@ std::shared_ptr<rocksdb::CompactionContextFactory> CreateCompactionContextFactor
           key_bounds,
           schema_packing_provider,
           vector_metadata_iterator_provider,
-          metrics,
-          std::ranges::all_of(options.level0_inputs, [](const rocksdb::FileMetaData* file) {
-            return file->smallest.user_frontier &&
-                   down_cast<const ConsensusFrontier&>(*file->smallest.user_frontier)
-                       .hybrid_time_bounds_entries();
-          }));
+          metrics);
   });
 }
 

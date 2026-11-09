@@ -2063,25 +2063,43 @@ TEST_P(DocDBTestWrapper, SetHybridTimeFilterRemovesCompactedFile) {
   )#");
 }
 
-// An input whose smallest frontier is not marked, e.g. written by an older version, may hold keys
-// older than its frontier, so the output is not marked either and a restore keeps it.
-TEST_P(DocDBTestWrapper, SetHybridTimeFilterKeepsCompactedFileWithUnmarkedInput) {
+// A compaction marks its output from the hybrid times of the keys it writes, so a restore can
+// remove the output even when an input's frontier is not marked, e.g. written by an older version.
+TEST_P(DocDBTestWrapper, SetHybridTimeFilterRemovesCompactedFileWithUnmarkedInput) {
   ASSERT_OK(WriteSimpleWithFrontierHt(this, 3, HybridTime::FromMicros(3000)));
   ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
   ASSERT_OK(WriteSimple(4));
   ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
   ASSERT_OK(ForceRocksDBCompact(rocksdb(), rocksdb::CompactRangeOptions()));
   ASSERT_EQ(rocksdb()->GetLiveFilesMetaData().size(), 1);
+  ASSERT_OK(WriteSimple(1));
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
 
-  CloseRocksDB();
-  {
-    RocksDBPatcher patcher(rocksdb_dir_, regular_db_options_);
-    ASSERT_OK(patcher.Load());
-    ASSERT_OK(patcher.SetHybridTimeFilter(std::nullopt, HybridTime::FromMicros(2000)));
-    ASSERT_TRUE(patcher.TEST_ContainsHybridTimeFilter());
-  }
-  ASSERT_OK(OpenRocksDB());
+  ASSERT_OK(SetHybridTimeFilter(std::nullopt, HybridTime::FromMicros(2000)));
+
   ASSERT_EQ(rocksdb()->GetLiveFilesMetaData().size(), 1);
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(10); HT{ physical: 1000 }]) -> 1
+  )#");
+}
+
+// An unmarked input can hold keys older than its frontier, e.g. written with an external hybrid
+// time by an older version. The compaction output's smallest frontier covers them, so a restore
+// keeps the output although the inputs' frontiers are all newer than its filter.
+TEST_P(DocDBTestWrapper, SetHybridTimeFilterKeepsCompactedKeysOlderThanFrontiers) {
+  ASSERT_OK(WriteSimpleWithFrontierHt(this, 1, HybridTime::FromMicros(5000)));
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+  ASSERT_OK(WriteSimple(4));
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+  ASSERT_OK(ForceRocksDBCompact(rocksdb(), rocksdb::CompactRangeOptions()));
+  ASSERT_EQ(rocksdb()->GetLiveFilesMetaData().size(), 1);
+
+  ASSERT_OK(SetHybridTimeFilter(std::nullopt, HybridTime::FromMicros(2000)));
+
+  ASSERT_EQ(rocksdb()->GetLiveFilesMetaData().size(), 1);
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(10); HT{ physical: 1000 }]) -> 1
+  )#");
 }
 
 TEST_P(DocDBTestWrapper, SetHybridTimeFilter) {

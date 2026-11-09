@@ -168,7 +168,8 @@ message ConsensusFrontierPB {
   // covers, so that a restore to a point in time can remove the file when its filter hides all of
   // them. Writes with an external hybrid time (xCluster, index backfill) store entries older than
   // their Raft operation; frontiers written before they were widened to cover those entries lack
-  // the flag, and merging frontiers keeps it only when all of them have it.
+  // the flag, and merging frontiers keeps it only when all of them have it. A DocDB compaction sets
+  // it on its outputs from the hybrid times of their entries.
   optional bool hybrid_time_bounds_entries = 14;
 }
 
