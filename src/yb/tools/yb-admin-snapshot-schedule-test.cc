@@ -664,6 +664,8 @@ class YbAdminSnapshotScheduleTestWithYsqlAndPackedRow : public YbAdminSnapshotSc
     opts->extra_master_flags.emplace_back("--ysql_enable_packed_row=true");
     opts->extra_master_flags.emplace_back("--timestamp_history_retention_interval_sec=0");
   }
+
+  void TestCompactAfterRestoringDroppedColumn(YsqlColocationConfig colocation);
 };
 
 TEST_F(YbAdminSnapshotScheduleTest, BadArguments) {
@@ -2284,6 +2286,49 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlAddColumnCompactWithPackedRow,
   auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, std::string, std::optional<std::string>>(
       "SELECT * FROM test_table ORDER BY key")));
   ASSERT_EQ(rows, (decltype(rows){{1, "one", std::nullopt}, {2, "two", "dva"}}));
+}
+
+void YbAdminSnapshotScheduleTestWithYsqlAndPackedRow::TestCompactAfterRestoringDroppedColumn(
+    YsqlColocationConfig colocation) {
+  auto schedule_id = ASSERT_RESULT(PreparePg(colocation));
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'one'), (2, 'two')"));
+  // A compaction discards a deleted column's values written outside packed rows, as an UPDATE
+  // writes them.
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value = 'updated' WHERE key = 1"));
+  auto time = ASSERT_RESULT(GetCurrentTime());
+
+  // The restore rolls back the table's next column id, so v3 below gets the id of extra.
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN extra TEXT"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN extra"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN value"));
+
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+  // A DDL fails on a catalog cache from before the restore.
+  conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  ASSERT_OK(WaitForSelectQueryToMatchExpectation(
+      "SELECT value FROM test_table WHERE key = 1", "updated", &conn));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN v3 TEXT"));
+  ASSERT_OK(conn.Execute("UPDATE test_table SET v3 = 'v3_' || key"));
+
+  // The history cutoff stops at the latest snapshot of the schedule, so a new one moves it past
+  // the drops.
+  ASSERT_OK(WaitNewSnapshot());
+  ASSERT_OK(CompactTablets(cluster_.get(), 300s * kTimeMultiplier));
+  auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, std::string, std::string>(
+      "SELECT key, value, v3 FROM test_table ORDER BY key")));
+  ASSERT_EQ(rows, (decltype(rows){{1, "updated", "v3_1"}, {2, "two", "v3_2"}}));
+}
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlCompactAfterRestoringDroppedColumn,
+          YbAdminSnapshotScheduleTestWithYsqlAndPackedRow) {
+  TestCompactAfterRestoringDroppedColumn(YsqlColocationConfig::kNotColocated);
+}
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlCompactAfterRestoringDroppedColumnColocated,
+          YbAdminSnapshotScheduleTestWithYsqlAndPackedRow) {
+  TestCompactAfterRestoringDroppedColumn(YsqlColocationConfig::kDBColocated);
 }
 
 TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlSingleColumnUpdate,
