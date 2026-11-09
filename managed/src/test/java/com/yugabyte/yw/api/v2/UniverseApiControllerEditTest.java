@@ -120,12 +120,13 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
   }
 
   // pass the edit payload to invoke the edit api and verify result
-  private void runEditUniverseV2(UniverseEditSpec universeEditSpec) throws ApiException {
-    runEditUniverseV2(universeUuid, universeEditSpec);
+  private UniverseConfigureTaskParams runEditUniverseV2(UniverseEditSpec universeEditSpec)
+      throws ApiException {
+    return runEditUniverseV2(universeUuid, universeEditSpec);
   }
 
-  private void runEditUniverseV2(UUID targetUniverseUuid, UniverseEditSpec universeEditSpec)
-      throws ApiException {
+  private UniverseConfigureTaskParams runEditUniverseV2(
+      UUID targetUniverseUuid, UniverseEditSpec universeEditSpec) throws ApiException {
     UniverseApi api = new UniverseApi();
     // setup mocks for edit universe
     UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
@@ -145,6 +146,7 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     com.yugabyte.yba.v2.client.models.Universe v2UniverseResp =
         api.getUniverse(customer.getUuid(), targetUniverseUuid);
     validateUniverseEditSpec(universeEditSpec, v1EditParams, v2UniverseResp.getSpec());
+    return v1EditParams;
   }
 
   @Test
@@ -878,6 +880,41 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
 
     // run the edit universe
     runEditUniverseV2(universeEditSpec);
+  }
+
+  // Fields omitted from a read replica edit spec must keep the replica's own values rather than
+  // be filled in from the primary.
+  @Test
+  public void testEditUniverseV2EditReadReplicaDoesNotInheritFromPrimary() throws ApiException {
+    Region region = Region.getByProvider(providerUuid).get(0);
+    UUID rrClusterUuid = addReadReplicaInDB(region).uuid;
+    Map<String, String> primaryTags = Map.of("env", "primary");
+    Map<String, String> rrTags = Map.of("env", "replica");
+    Universe.saveDetails(
+        universeUuid,
+        universe -> {
+          UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+          details.getPrimaryCluster().userIntent.instanceTags = new HashMap<>(primaryTags);
+          details.getReadOnlyClusters().get(0).userIntent.instanceTags = new HashMap<>(rrTags);
+          universe.setUniverseDetails(details);
+        });
+
+    // only numNodes is specified; instanceTags is omitted
+    ClusterEditSpec rrClusterEditSpec = new ClusterEditSpec().uuid(rrClusterUuid).numNodes(4);
+    UniverseEditSpec universeEditSpec =
+        new UniverseEditSpec().expectedUniverseVersion(-1).addClustersItem(rrClusterEditSpec);
+
+    UniverseConfigureTaskParams v1EditParams = runEditUniverseV2(universeEditSpec);
+
+    Cluster v1Primary = v1EditParams.getPrimaryCluster();
+    Cluster v1Rr =
+        v1EditParams.getReadOnlyClusters().stream()
+            .filter(c -> c.uuid.equals(rrClusterUuid))
+            .findAny()
+            .orElseThrow();
+    assertThat(v1Rr.userIntent.numNodes, is(4));
+    assertThat(v1Rr.userIntent.instanceTags, is(rrTags));
+    assertThat(v1Primary.userIntent.instanceTags, is(primaryTags));
   }
 
   @Test
