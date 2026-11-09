@@ -51,7 +51,7 @@ DEFINE_UNKNOWN_bool(cache_overflow_single_touch, true,
             "Whether to enable overflow of single touch cache into the multi touch cache "
             "allocation");
 
-DEFINE_RUNTIME_bool(cache_overflow_multi_touch, true,
+DEFINE_NON_RUNTIME_bool(cache_overflow_multi_touch, true,
     "Whether the multi touch cache can grow past its share into space that the single touch cache "
     "is not using. Single touch insertions take that space back when the cache is full.");
 
