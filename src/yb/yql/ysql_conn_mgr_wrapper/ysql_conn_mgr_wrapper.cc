@@ -143,7 +143,7 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_control_connection_pool_size, 0,
     "Maximum number of concurrent control connections in Ysql Connection Manager. "
     "If the value is zero, the default value is 0.1 * ysql_max_connections");
 
-DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, query_wait_timeout_ms, 0,
+DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, query_wait_timeout_ms, 120000,
     "Maximum time in milliseconds a client waits in Ysql Connection Manager for a server "
     "connection, after which the client is disconnected. If the value is set to zero, the client "
     "waits for the server connection indefinitely. Counterpart of PgBouncer's "
