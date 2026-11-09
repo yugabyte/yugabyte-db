@@ -6,7 +6,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 import api.v2.mappers.UserIntentMapper;
@@ -278,21 +277,21 @@ public class UserIntentMapperTest {
   }
 
   @Test
-  public void testEditOmittingK8sResourceSpecsPreservesExisting() {
+  public void testEditOmittingK8sResourceSpecsClearsThemForReinitialization() {
     UserIntent userIntent = new UserIntent();
     userIntent.instanceType = "large";
-    UserIntent.K8SNodeResourceSpec master = resourceSpec(2.5, 8.0);
-    UserIntent.K8SNodeResourceSpec tserver = resourceSpec(8.0, 32.0);
-    userIntent.masterK8SNodeResourceSpec = master;
-    userIntent.tserverK8SNodeResourceSpec = tserver;
+    userIntent.masterK8SNodeResourceSpec = resourceSpec(2.5, 8.0);
+    userIntent.tserverK8SNodeResourceSpec = resourceSpec(8.0, 32.0);
 
     ClusterNodeSpec nodeSpec = new ClusterNodeSpec().instanceType("xlarge");
     UserIntentMapper.INSTANCE.toV1UserIntentFromClusterEditSpec(
         new ClusterEditSpec().uuid(UUID.randomUUID()).nodeSpec(nodeSpec), userIntent);
 
+    // Left null so the handler derives them from the new instance type; keeping the old ones
+    // would hide the instance type change from EditKubernetesUniverse.
     assertEquals("xlarge", userIntent.instanceType);
-    assertSame(master, userIntent.masterK8SNodeResourceSpec);
-    assertSame(tserver, userIntent.tserverK8SNodeResourceSpec);
+    assertNull(userIntent.masterK8SNodeResourceSpec);
+    assertNull(userIntent.tserverK8SNodeResourceSpec);
   }
 
   @Test
@@ -318,28 +317,27 @@ public class UserIntentMapperTest {
   }
 
   @Test
-  public void testAddReadReplicaOmittingK8sResourceSpecsPreservesPrimary() {
+  public void testAddReadReplicaOmittingK8sResourceSpecsClearsPrimaryOnes() {
     UserIntent userIntent = new UserIntent();
     userIntent.instanceType = "large";
-    UserIntent.K8SNodeResourceSpec master = resourceSpec(2.5, 8.0);
-    UserIntent.K8SNodeResourceSpec tserver = resourceSpec(8.0, 32.0);
-    userIntent.masterK8SNodeResourceSpec = master;
-    userIntent.tserverK8SNodeResourceSpec = tserver;
+    userIntent.masterK8SNodeResourceSpec = resourceSpec(2.5, 8.0);
+    userIntent.tserverK8SNodeResourceSpec = resourceSpec(8.0, 32.0);
 
     ClusterAddSpec addSpec =
         new ClusterAddSpec().nodeSpec(new ClusterNodeSpec().instanceType("xlarge"));
     UserIntentMapper.INSTANCE.overwriteUserIntentFromClusterAddSpec(addSpec, userIntent);
 
+    // The read replica must not inherit the primary's specs; the handler derives the tserver one
+    // from the replica's instance type.
     assertEquals("xlarge", userIntent.instanceType);
-    assertSame(master, userIntent.masterK8SNodeResourceSpec);
-    assertSame(tserver, userIntent.tserverK8SNodeResourceSpec);
+    assertNull(userIntent.masterK8SNodeResourceSpec);
+    assertNull(userIntent.tserverK8SNodeResourceSpec);
   }
 
   @Test
   public void testAddReadReplicaK8sResourceSpecsReplacePrimary() {
     UserIntent userIntent = new UserIntent();
-    UserIntent.K8SNodeResourceSpec master = resourceSpec(2.5, 8.0);
-    userIntent.masterK8SNodeResourceSpec = master;
+    userIntent.masterK8SNodeResourceSpec = resourceSpec(2.5, 8.0);
     userIntent.tserverK8SNodeResourceSpec = resourceSpec(8.0, 32.0);
 
     K8SNodeResourceSpec tserver = new K8SNodeResourceSpec().cpuCoreCount(1.0).memoryGib(2.0);
@@ -348,7 +346,7 @@ public class UserIntentMapperTest {
             .nodeSpec(new ClusterNodeSpec().instanceType("xlarge").k8sTserverResourceSpec(tserver));
     UserIntentMapper.INSTANCE.overwriteUserIntentFromClusterAddSpec(addSpec, userIntent);
 
-    assertSame(master, userIntent.masterK8SNodeResourceSpec);
+    assertNull(userIntent.masterK8SNodeResourceSpec);
     assertEquals(1.0, userIntent.tserverK8SNodeResourceSpec.cpuCoreCount, 0.001);
     assertEquals(2.0, userIntent.tserverK8SNodeResourceSpec.memoryGib, 0.001);
   }
