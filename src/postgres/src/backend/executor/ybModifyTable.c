@@ -28,6 +28,7 @@
 #include "access/htup_details.h"
 #include "access/sysattr.h"
 #include "access/xact.h"
+#include "access/yb_scan_plan.h"
 #include "access/yb_target.h"
 #include "catalog/catalog.h"
 #include "catalog/heap.h"
@@ -202,10 +203,33 @@ YBCComputeYBTupleIdFromSlot(Relation rel, TupleTableSlot *slot)
 		{
 			Oid			type_id = TupleDescAttr(slot->tts_tupleDescriptor,
 												attnum - 1)->atttypid;
+			Oid			col_type_id = TupleDescAttr(RelationGetDescr(rel),
+													attnum - 1)->atttypid;
+
+			next_attr->datum = slot_getattr(slot, attnum, &next_attr->is_null);
+
+			/*
+			 * A key value of a single row UPDATE or DELETE can be an integer
+			 * of another width than its column (yb_single_row_key_value in
+			 * createplan.c):
+			 * (1) If the column's type can hold it, bind it with the column's
+			 *     type, as YbBindColumn does for scan keys: an integer has the
+			 *     same Datum at every width.
+			 * (2) Otherwise, bind it as NULL, which matches no row.
+			 */
+			if (type_id != col_type_id &&
+				YbIsScanCompatible(getBaseType(col_type_id), type_id,
+								   false /* is_value_scalar */ , (Datum) 0))
+			{
+				if (!next_attr->is_null &&
+					YbIsValueOutOfRange(getBaseType(col_type_id), type_id,
+										next_attr->datum))
+					next_attr->is_null = true;
+				type_id = col_type_id;
+			}
 
 			next_attr->type_entity = YbDataTypeFromOidMod(attnum, type_id);
 			next_attr->collation_id = ybc_get_attcollation(RelationGetDescr(rel), attnum);
-			next_attr->datum = slot_getattr(slot, attnum, &next_attr->is_null);
 		}
 		else if (attnum == YBRowIdAttributeNumber)
 		{

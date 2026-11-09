@@ -1192,6 +1192,15 @@ EXPLAIN (COSTS OFF) UPDATE sr_cross_int8 SET v = 1 WHERE k = -1;
 UPDATE sr_cross_int8 SET v = 1 WHERE k = -1;
 SELECT * FROM sr_cross_int8 ORDER BY k;
 
+-- The same with an int parameter in a generic plan (GH#36130).
+SET plan_cache_mode = force_generic_plan;
+PREPARE sr_cross_pw(int) AS UPDATE sr_cross_int8 SET v = 2 WHERE k = $1;
+EXPLAIN (COSTS OFF) EXECUTE sr_cross_pw(-1);
+EXECUTE sr_cross_pw(-1);
+SELECT * FROM sr_cross_int8 ORDER BY k;
+DEALLOCATE sr_cross_pw;
+RESET plan_cache_mode;
+
 -- A bind parameter in a generic plan, which is still single-row, gives the same
 -- result.
 SET plan_cache_mode = force_generic_plan;
@@ -1217,7 +1226,7 @@ SELECT * FROM sr_cross_part ORDER BY k;
 
 -- A two-column key: 4294967297 and 4294967298 are 2^32 + 1 and 2^32 + 2, their
 -- low 32 bits are the keys 1 and 2.  A generic plan checks the values of both
--- columns in its one-time filter.
+-- columns at execution.
 CREATE TABLE sr_cross_two (a int, b int, v int, PRIMARY KEY (a, b));
 INSERT INTO sr_cross_two VALUES (1, 1, 0), (1, 2, 0), (2, 1, 0);
 UPDATE sr_cross_two SET v = 1 WHERE a = 4294967297 AND b = 1;
@@ -1261,8 +1270,8 @@ EXPLAIN (COSTS OFF) UPDATE sr_cross_domain SET v = 1 WHERE k = 1;
 UPDATE sr_cross_domain SET v = 1 WHERE k = 1;
 SELECT * FROM sr_cross_domain ORDER BY k;
 
--- Two more casts never change the value, so they keep single-row too: a
--- double column with real values (the real 0.1 is the double
+-- Values of other types use the scan, which compares them as PostgreSQL does.
+-- A double column with real values (the real 0.1 is the double
 -- 0.10000000149011612), and a text column with name values.
 CREATE TABLE sr_cross_double (k float8 PRIMARY KEY, v int);
 INSERT INTO sr_cross_double VALUES (0.1, 0), (0.10000000149011612, 0), (1.5, 0);
@@ -1275,9 +1284,7 @@ EXPLAIN (COSTS OFF) UPDATE sr_cross_text SET v = 1 WHERE k = 'bbbb'::name;
 UPDATE sr_cross_text SET v = 1 WHERE k = 'bbbb'::name;
 SELECT * FROM sr_cross_text ORDER BY k;
 
--- Values of other types, such as a double for a real column, use the scan,
--- which compares them as PostgreSQL does.  A real column with double values:
--- only a double that is a real matches.
+-- A real column with double values: only a double that is a real matches.
 CREATE TABLE sr_cross_real (k real PRIMARY KEY, v int);
 INSERT INTO sr_cross_real VALUES (0.1, 0), (1.5, 0);
 EXPLAIN (COSTS OFF) UPDATE sr_cross_real SET v = 1 WHERE k = 1.5::float8;
@@ -1302,8 +1309,8 @@ UPDATE sr_cross_name SET v = 1 WHERE k = 'abc'::text;
 UPDATE sr_cross_name SET v = 1 WHERE k = repeat('a', 64);
 SELECT length(k), v FROM sr_cross_name ORDER BY k;
 
--- Each pair converted above keeps the single-shard fast path.  Values that use
--- the scan do not.
+-- Each single-row case above keeps the single-shard fast path.  Values that
+-- use the scan do not.
 CALL check_fast_path_txn('UPDATE sr_cross_int4 SET v = 6 WHERE k = 1::bigint', true);
 CALL check_fast_path_txn('UPDATE sr_cross_int4 SET v = 6 WHERE k = 1::smallint', true);
 CALL check_fast_path_txn('UPDATE sr_cross_int2 SET v = 6 WHERE k = 1::int', true);
@@ -1317,9 +1324,12 @@ SET plan_cache_mode = force_generic_plan;
 PREPARE sr_cross_pf(bigint) AS UPDATE sr_cross_int4 SET v = 7 WHERE k = $1;
 CALL check_fast_path_txn('EXECUTE sr_cross_pf(1)', true);
 DEALLOCATE sr_cross_pf;
+PREPARE sr_cross_pwf(int) AS UPDATE sr_cross_int8 SET v = 7 WHERE k = $1;
+CALL check_fast_path_txn('EXECUTE sr_cross_pwf(2)', true);
+DEALLOCATE sr_cross_pwf;
 RESET plan_cache_mode;
-CALL check_fast_path_txn('UPDATE sr_cross_double SET v = 6 WHERE k = 1.5::real', true);
-CALL check_fast_path_txn('UPDATE sr_cross_text SET v = 6 WHERE k = ''abc''::name', true);
+CALL check_fast_path_txn('UPDATE sr_cross_double SET v = 6 WHERE k = 1.5::real', false);
+CALL check_fast_path_txn('UPDATE sr_cross_text SET v = 6 WHERE k = ''abc''::name', false);
 CALL check_fast_path_txn('UPDATE sr_cross_real SET v = 6 WHERE k = 1.5::float8', false);
 CALL check_fast_path_txn('UPDATE sr_cross_date SET v = 6 WHERE k = ''2000-01-02''::timestamp', false);
 CALL check_fast_path_txn('UPDATE sr_cross_name SET v = 6 WHERE k = ''abc''::text', false);

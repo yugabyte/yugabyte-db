@@ -133,7 +133,6 @@ YbInternalConnKindDescriptor
 YbIssueDetectionCheck
 YbIssueDetectionPlan
 YbJumbleState
-YbKeyCast
 YbListedValues
 YbListenerQueueScanCurrentXactState
 YbLocationLen
