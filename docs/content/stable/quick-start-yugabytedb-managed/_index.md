@@ -80,7 +80,7 @@ You can now run SQL against your Serverless Postgres database, and connect appli
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
     title="Serverless Postgres"
-    description="Agentic Multitenant PostgreSQL for AI agents and bursty or idle workloads. Free up to 2 vCPU. Fully managed by Yugabyte."
+    description="Fully managed PostgreSQL for any workload, from a single application to fleets of databases. Free up to 2 vCPU."
     buttonText="Learn more"
     buttonUrl="/stable/yugabyte-cloud/serverless/"
   >}}

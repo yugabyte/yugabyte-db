@@ -26,7 +26,7 @@ YugabyteDB Aeon SLA service availability is [99.99%](https://www.yugabyte.com/yu
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
     title="Serverless Postgres"
-    description="Agentic Multitenant PostgreSQL for AI agents and bursty or idle workloads. Free up to 2 vCPU. Fully managed by Yugabyte."
+    description="Fully managed PostgreSQL for any workload, from a single application to fleets of databases. Free up to 2 vCPU."
     buttonText="Learn more"
     buttonUrl="serverless/"
     imageAlt="Serverless Postgres" imageUrl="/images/homepage/serverless-postgres.svg"
@@ -43,16 +43,16 @@ YugabyteDB Aeon SLA service availability is [99.99%](https://www.yugabyte.com/yu
 
 ## Choose the right cluster
 
-Use [Serverless Postgres](serverless/) for AI agents, a database per tenant, and workloads that are bursty or often idle. Each agent or tenant gets an isolated PostgreSQL database, and you can fork a zero-copy branch when an agent or a test needs its own copy of the data. Serverless Postgres is free to start.
+Use [Serverless Postgres](serverless/) for PostgreSQL applications and fleets of databases, including workloads moving from Amazon Aurora or other managed PostgreSQL services. Each application or tenant gets an isolated PostgreSQL database, and you can fork a zero-copy branch when a test, a migration, or an agent needs its own copy of the data. Serverless Postgres is free to start.
 
 Use [Distributed Postgres](distributed-postgres/) for production applications that must stay available as load grows, or that serve users in more than one region. You choose the fault tolerance and topology, and deploy on Amazon Web Services (AWS), Microsoft Azure, or Google Cloud Platform (GCP). Clusters are billed per vCPU.
 
 | | [Serverless Postgres](serverless/) | [Distributed Postgres](distributed-postgres/) |
 | :--- | :--- | :--- |
-| Best for | AI agents, tenants, and workloads that are idle between bursts | Production applications that need high availability, more nodes, or several regions |
+| Best for | PostgreSQL applications, and fleets of databases with one per application or tenant | Production applications that need high availability, more nodes, or several regions |
 | Start | Free, up to 2 vCPU, 16 GiB RAM, and 100 GiB storage, shared by the account | Billed per vCPU. [Free trial](managed-freetrial/) credits are available |
 | Availability | Runs on a shared pool, with resources isolated between tenants | Fault tolerance across nodes, availability zones, or regions |
-| Topology | One database per agent or tenant. Fork zero-copy branches for separate copies of the data | Single region, replicate across regions, partition by region, and read replicas |
+| Topology | One database per application or tenant. Fork zero-copy branches for separate copies of the data | Single region, replicate across regions, partition by region, and read replicas |
 | Scale | Resize the vCPU and memory of an endpoint | Add or remove nodes, or change vCPUs and disk size |
 | Network | Public endpoint with trusted IP addresses | VPC peering or a private link, plus IP allow lists |
 

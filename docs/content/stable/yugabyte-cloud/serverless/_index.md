@@ -2,8 +2,8 @@
 title: Serverless Postgres in YugabyteDB Aeon
 headerTitle: Serverless Postgres
 linkTitle: Serverless Postgres
-headContent: Agentic multitenant PostgreSQL, fully managed by Yugabyte
-description: Serverless Postgres in YugabyteDB Aeon for AI agents and bursty or idle workloads.
+headContent: Fully managed PostgreSQL, from a single application to fleets of databases
+description: Serverless Postgres in YugabyteDB Aeon, fully managed PostgreSQL for any workload.
 aliases:
   - /stable/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/
   - /stable/yugabyte-cloud/cloud-basics/create-clusters-free/
@@ -19,11 +19,11 @@ type: indexpage
 showRightNav: true
 ---
 
-Serverless Postgres is a fully managed PostgreSQL service in YugabyteDB Aeon. Each agent or tenant gets its own isolated PostgreSQL database. Use it for AI agents and for workloads that are bursty or often idle.
+Serverless Postgres is a fully managed PostgreSQL service in YugabyteDB Aeon. Use it for any PostgreSQL workload, including applications moving from Amazon Aurora or other managed PostgreSQL services, and fleets of databases with one per application, tenant, or agent. Each gets its own isolated PostgreSQL database.
 
 A Serverless Postgres cluster includes the following features:
 
-- An isolated PostgreSQL database for each agent or tenant.
+- An isolated PostgreSQL database for each application or tenant.
 - Zero-copy branching.
 - Resource isolation between tenants.
 
