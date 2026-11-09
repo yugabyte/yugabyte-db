@@ -304,6 +304,34 @@ public class CustomCAStoreManager {
     return deleted;
   }
 
+  /**
+   * Adds the certificates of active custom CAs that are missing from the YBA trust store. Before
+   * PLAT-23769 only the first certificate of a multi-certificate upload was stored.
+   */
+  public void addMissingTrustStoreCertificates(String storagePath) {
+    String trustStoreHome = getTruststoreHome(storagePath);
+    int added = 0;
+    for (CustomCaCertificateInfo cert : getAll()) {
+      if (!cert.isActive()) {
+        continue;
+      }
+      String certPath = getCustomCACertsPath(trustStoreHome, cert.getId());
+      if (!Files.exists(Path.of(certPath))) {
+        log.warn("CA certificate file {} of '{}' does not exist", certPath, cert.getName());
+        continue;
+      }
+      try {
+        added +=
+            ybaTrustStoreManager.addMissingCertificates(certPath, cert.getName(), trustStoreHome);
+      } catch (Exception e) {
+        log.error("Failed to add missing certificates of CA '{}'", cert.getName(), e);
+      }
+    }
+    if (added > 0) {
+      notifyListeners();
+    }
+  }
+
   public List<CustomCaCertificateInfo> getAll() {
     boolean noContents = true;
     return CustomCaCertificateInfo.getAll(noContents);

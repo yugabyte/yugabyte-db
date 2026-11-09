@@ -36,6 +36,7 @@ import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertsGarbageCollector;
 import com.yugabyte.yw.common.alerts.QueryAlerts;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.certmgmt.castore.CustomCAStoreManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
@@ -148,7 +149,8 @@ public class AppInit {
       SlowQueriesAggregator slowQueriesAggregator,
       EmbeddedCollectorInitializer embeddedCollectorInitializer,
       SettableRuntimeConfigFactory sConfigFactory,
-      LegacyLogArchiveCleanup legacyLogArchiveCleanup)
+      LegacyLogArchiveCleanup legacyLogArchiveCleanup,
+      CustomCAStoreManager customCAStoreManager)
       throws ReflectiveOperationException {
     try {
       log.info("Yugaware Application has started");
@@ -230,6 +232,8 @@ public class AppInit {
                     .getOrDefault("synced", "false")
                     .toString());
         fileDataService.syncFileData(storagePath, ywFileDataSynced);
+        // Needs the trust store and CA files that syncFileData restores.
+        customCAStoreManager.addMissingTrustStoreCertificates(storagePath);
 
         String devopsHome = config.getString("yb.devops.home");
         if (devopsHome == null || devopsHome.length() == 0) {
