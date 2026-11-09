@@ -578,6 +578,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     } else {
       queue_state_.committed_op_id.ToPB(request->mutable_committed_op_id());
     }
+    peer->last_sent_committed_idx = request->committed_op_id().index();
 
     request->set_caller_term(queue_state_.current_term);
     if (FLAGS_enable_quiescent_tablets) {
@@ -670,6 +671,10 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
         return STATUS(NotFound, "Peer not tracked.");
       }
 
+      // The committed op id is capped to the last op sent, see max_allowed_committed_op_id below.
+      peer->last_sent_committed_idx = std::min(
+          peer->last_sent_committed_idx,
+          request->ops().empty() ? preceding_id.index : request->ops().rbegin()->id().index());
       peer->last_num_messages_sent = result->messages.size();
       if (batch_reaches_majority_replicated &&
           queue_state_.majority_replicated_op_id.is_valid_not_empty()) {
@@ -1703,10 +1708,13 @@ bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
           << "Response: " << response.ShortDebugString();
     }
 
-    // If our log has the next request for the peer or if the peer's committed index is lower than
-    // our own, set 'more_pending' to true.
+    // If our log has the next request for the peer, or the peer's committed index is lower than our
+    // own and the peer was not sent it yet, set 'more_pending' to true. A peer that was sent it,
+    // but stopped applying because of a write stall or ConsensusContext::PostponeApply, gets it
+    // again in heartbeats, instead of in a tight loop of requests.
     result = log_cache_.HasOpBeenWritten(peer->next_index) ||
-        (peer->last_known_committed_idx < queue_state_.committed_op_id.index);
+        (peer->last_known_committed_idx < queue_state_.committed_op_id.index &&
+         peer->last_sent_committed_idx < queue_state_.committed_op_id.index);
 
     mode_copy = queue_state_.mode;
     if (mode_copy == Mode::LEADER) {

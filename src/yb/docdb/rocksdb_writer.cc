@@ -807,9 +807,10 @@ ApplyIntentsContext::ApplyIntentsContext(
     TableType table_type,
     ApplyIntentsContextCompleteListener complete_listener)
       // TODO(vector_index): Add support for large transactions. Their later chunks are applied by
-      // a deferred task that carries apply_to_storages across vector index list changes, which
+      // ApplyIntentsTask, which carries apply_to_storages across vector index list changes, which
       // StorageSet does not support yet; see the TODO in docdb::StorageSet. That requires
-      // reworking TransactionApplyData::apply_to_storages, which the deferred task keeps.
+      // reworking TransactionApplyData::apply_to_storages. Applies resumed after a restart do not
+      // keep it, they use StorageSet::All().
     : IntentsWriterContextBase(transaction_id, IgnoreMaxApplyLimit(vector_indexes != nullptr),
           intents_db, key_bounds, file_filter_ht),
       FrontierSchemaVersionUpdater(schema_packing_provider, frontiers),

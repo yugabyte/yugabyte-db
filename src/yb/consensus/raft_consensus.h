@@ -254,6 +254,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   OpId GetLastCommittedOpId() override;
 
+  // Same as GetLastCommittedOpId, but does not wait for the operations being applied.
+  OpId GetLastCommittedOpIdLockFree() const;
+
   OpId GetLastAppliedOpId() override;
 
   OpId GetAllAppliedOpId();

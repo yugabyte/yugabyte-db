@@ -28,6 +28,8 @@
 #include "yb/common/opid.pb.h"
 #include "yb/common/transaction.h"
 
+#include "yb/consensus/consensus_fwd.h"
+
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/storage_set.h"
 
@@ -77,8 +79,9 @@ struct TransactionApplyData {
   TabletId status_tablet = {};
 
   // TODO(vector_index): May need a rework once large transactions are supported for vector indexes:
-  // the deferred apply of the later chunks would carry this set across vector index list changes,
+  // ApplyIntentsTask would carry this set to the later chunks across vector index list changes,
   // and StorageSet addresses vector indexes by position. See the TODO in docdb::StorageSet.
+  // Applies resumed after a restart do not keep it, they use StorageSet::All().
   docdb::StorageSet apply_to_storages = docdb::StorageSet::All();
 
   // Owned by running transaction if non-null.
@@ -214,6 +217,21 @@ class TransactionParticipant : public TransactionStatusManager {
   // - All intents of committed transactions will have been applied.
   // - No transactions can be committed with commit time <= resolve_at from that point on..
   Status ResolveIntents(HybridTime resolve_at, CoarseTimePoint deadline);
+
+  // Returns non-null if WaitForPendingApplies(commit_ht) could wait: transactions are still being
+  // loaded, or one with local commit time <= commit_ht is still writing its intents to regular DB.
+  // Called for a snapshot operation after the operations preceding it are applied, and gets the
+  // result of the previous call for it.
+  consensus::PostponedApplyPtr PostponeForPendingApplies(
+      HybridTime commit_ht, consensus::PostponedApplyPtr postponed);
+
+  // Waits until transactions with local commit time <= commit_ht have all their intents written to
+  // regular DB. During bootstrap, when apply tasks do not run yet, writes them on the calling
+  // thread. Fails if transactions could not be loaded or shutdown has started.
+  // Called by a Raft apply under ReplicaState's lock, or during bootstrap, so shutdown waits for
+  // it, and tasks on the participant strand must not block on that apply, e.g. by taking the lock
+  // or waiting for safe time.
+  Status WaitForPendingApplies(HybridTime commit_ht);
 
   // Attempts to abort all transactions that started prior to cutoff time.
   // Waits until deadline, for txns to abort. If not, it returns a TimedOut.

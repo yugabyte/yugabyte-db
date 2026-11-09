@@ -38,6 +38,10 @@ class TransactionParticipantContext {
   // Fills RemoveIntentsData with information about replicated state.
   virtual Status GetLastReplicatedData(RemoveIntentsData* data) = 0;
 
+  // Same as GetLastReplicatedData, but does not wait for the Raft operations being applied, so
+  // tasks on the strand use it, because a Raft apply could wait for them.
+  virtual Status GetLastReplicatedDataLockFree(RemoveIntentsData* data) = 0;
+
   // Enqueue task to participant context strand.
   virtual void StrandEnqueue(rpc::StrandTask* task) = 0;
   virtual void UpdateClock(HybridTime hybrid_time) = 0;

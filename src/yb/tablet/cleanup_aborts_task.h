@@ -23,6 +23,9 @@
 #include "yb/tablet/tablet_fwd.h"
 
 namespace yb {
+
+class RWOperationCounter;
+
 namespace tablet {
 
 // Removes intents for specified transaction ids.
@@ -33,6 +36,7 @@ class CleanupAbortsTask : public rpc::StrandTask {
                     TransactionIdSet&& transactions_to_cleanup,
                     TransactionParticipantContext* participant_context,
                     TransactionStatusManager* status_manager,
+                    RWOperationCounter* pending_op_counter,
                     const std::string& log_prefix);
 
   void Prepare(std::shared_ptr<CleanupAbortsTask> cleanup_task);
@@ -49,7 +53,14 @@ class CleanupAbortsTask : public rpc::StrandTask {
   TransactionIdSet transactions_to_cleanup_;
   TransactionParticipantContext& participant_context_;
   TransactionStatusManager& status_manager_;
+  RWOperationCounter* const pending_op_counter_;
   const std::string& log_prefix_;
+  size_t initial_number_of_transactions_ = 0;
+  // The safe time to reach before removing intents, set once transactions are filtered.
+  HybridTime wait_safe_time_;
+  CoarseTimePoint wait_safe_time_deadline_;
+  // Set by Run when the safe time was not reached, so Done enqueues the task again later.
+  bool retry_ = false;
   std::shared_ptr<CleanupAbortsTask> retain_self_;
   std::mutex mutex_;
   std::condition_variable cond_;

@@ -559,11 +559,13 @@ std::string MakeTabletLogPrefix(
 // log_ht - apply raft operation hybrid time.
 // commit_ht - transaction commit hybrid time.
 // So frontiers should cover range of those times.
+// log_ht is not known for applies resumed after a restart, and HybridTime::kInvalid would be the
+// largest one, so their frontiers cover commit_ht only.
 void InitFrontiers(
     OpId op_id, HybridTime log_ht, HybridTime commit_ht, docdb::ConsensusFrontiers& frontiers) {
   set_op_id(op_id, &frontiers);
-  HybridTime min_ht = log_ht;
-  HybridTime max_ht = log_ht;
+  HybridTime min_ht = log_ht ? log_ht : commit_ht;
+  HybridTime max_ht = min_ht;
   if (commit_ht) {
     min_ht = std::min(min_ht, commit_ht);
     max_ht = std::max(max_ht, commit_ht);
@@ -2989,8 +2991,8 @@ docdb::ApplyTransactionState Tablet::ApplyIntents(const TransactionApplyData& da
 
   HybridTime min_running_ht = transaction_participant_->MinRunningHybridTime();
 
-  if (TEST_sleep_before_apply_intents_) {
-    std::this_thread::sleep_for(TEST_sleep_before_apply_intents_.ToSteadyDuration());
+  if (auto sleep = TEST_sleep_before_apply_intents_.load(std::memory_order_relaxed)) {
+    std::this_thread::sleep_for(sleep.ToSteadyDuration());
   }
   // This flag enables tests to induce a situation where a transaction has committed but its intents
   // haven't yet moved to regular db for a sufficiently long period. For example, it can help a test

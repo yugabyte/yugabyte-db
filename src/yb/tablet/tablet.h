@@ -1286,7 +1286,7 @@ class Tablet : public AbstractTablet,
   void CleanupIntentFiles();
 
   void TEST_SleepBeforeApplyIntents(MonoDelta value) {
-    TEST_sleep_before_apply_intents_ = value;
+    TEST_sleep_before_apply_intents_.store(value, std::memory_order_relaxed);
   }
 
   void TEST_SleepBeforeDeleteIntentsFile(MonoDelta value) {
@@ -1860,7 +1860,7 @@ class Tablet : public AbstractTablet,
   mutable simple_spinlock cdcsdk_retention_barrier_lock_;
   MonoTime cdcsdk_block_barrier_revision_start_time_ = MonoTime::Now();
 
-  MonoDelta TEST_sleep_before_apply_intents_;
+  std::atomic<MonoDelta> TEST_sleep_before_apply_intents_{MonoDelta::kZero};
   MonoDelta TEST_sleep_before_delete_intents_file_;
   std::atomic<bool> TEST_disable_flush_on_shutdown_{false};
 

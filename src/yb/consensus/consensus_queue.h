@@ -173,6 +173,9 @@ class PeerMessageQueue {
     // The last committed index this peer knows about.
     int64_t last_known_committed_idx;
 
+    // The committed index sent to this peer in the last request built for it.
+    int64_t last_sent_committed_idx = OpId::Min().index;
+
     // The ID of the operation last applied by this peer.
     OpId last_applied;
 

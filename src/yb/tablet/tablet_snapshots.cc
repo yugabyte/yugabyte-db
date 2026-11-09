@@ -39,6 +39,7 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_vector_indexes.h"
+#include "yb/tablet/transaction_participant.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/debug-util.h"
@@ -393,6 +394,16 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
 
   ScopedRWOperation scoped_read_operation(&pending_op_counter_blocking_rocksdb_shutdown_start());
   RETURN_NOT_OK(scoped_read_operation);
+
+  auto* participant = tablet().transaction_participant();
+  if (data.snapshot_hybrid_time && participant) {
+    // Restore drops intents, so transactions committed at or before the snapshot hybrid time must
+    // be fully written to regular DB. Their APPLY operations precede this one, but large ones are
+    // written by ApplyIntentsTask after it. Followers postpone this operation instead of waiting
+    // here once the postpone_snapshot_apply_on_followers AutoFlag is promoted, see
+    // TabletPeer::PostponeApply.
+    RETURN_NOT_OK(participant->WaitForPendingApplies(data.snapshot_hybrid_time));
+  }
 
   Status s;
   {
