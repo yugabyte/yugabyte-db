@@ -433,14 +433,8 @@ class PerTableLoadState {
     return ts_desc->placement_uuid() == options_->live_placement_uuid;
   }
 
-  // Whether the tserver belongs to the placement this run balances: the live placement for a
-  // live run, the run's read replica placement otherwise.
-  bool IsTsInRunPlacement(const TSDescriptorPtr& ts_desc) {
-    if (options_->type == ReplicaType::kLive) {
-      return IsTsInLivePlacement(ts_desc);
-    }
-    return !IsTsInLivePlacement(ts_desc) && ts_desc->placement_uuid() == options_->placement_uuid;
-  }
+  // Whether the replica is outside the placement this run balances (or its tserver is gone).
+  bool ShouldSkipReplica(const TabletReplica& replica);
 
   // Method called when initially analyzing tablets, to build up load and usage information.
   // Returns an OK status if the method succeeded or an error if there are transient errors in
@@ -463,6 +457,11 @@ class PerTableLoadState {
   // Callers must pass from_ts explicitly (empty if none) to make that decision conscious.
   Result<bool> CanAddTabletToTabletServer(
       const TabletId& tablet_id, const TabletServerId& to_ts, const TabletServerId& from_ts);
+
+  // Whether placement_ names a storage tier that at least one live tablet server has, with tiered
+  // storage on. A tier no server has is not enforced, so a tablespace naming a tier the cluster
+  // never had disks for keeps its tablets repairable. Computed once per run.
+  bool IsStorageTierEnforced();
 
   // Caches the per-block effective maximums from placement_. Must be called once placement_ is
   // final for the run (see ClusterLoadBalancer::PopulateReplicationInfo).
@@ -578,6 +577,9 @@ class PerTableLoadState {
   // track of the placement block policies between cluster and table level.
   PlacementInfoPB placement_;
 
+  // Cache for IsStorageTierEnforced.
+  std::optional<bool> storage_tier_enforced_;
+
   // Effective maximum replicas per placement block of placement_, see
   // CachePlacementBlockMaxReplicas.
   std::unordered_map<CloudInfoPB, size_t, cloud_hash, cloud_equal_to>
@@ -682,7 +684,6 @@ class PerTableLoadState {
   // can SCHECK initialized_ is false / true respectively.
   bool initialized_ = false;
 
-  bool ShouldSkipReplica(const TabletReplica& replica);
   size_t GetReplicaCount(std::shared_ptr<const TabletReplicaMap> replica_map);
   const std::string uninitialized_ts_meta_format_msg_ =
       "Found uninitialized ts_meta: ts_uuid: $0, table_uuid: $1";

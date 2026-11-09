@@ -199,13 +199,13 @@ class ClusterLoadBalancer {
   // one that is less loaded.
   //
   // Returns true if a move was actually made.
+  Result<bool> HandleAddReplicas(
+      TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts);
+
   // Tiered storage: sends one AlterTabletTier to a replica of this table whose tablespace asks
   // for another tier than the replica targets, or whose migration the tserver gave up on and
   // whose re-send is due. Bounded by the in-flight caps. Returns true if one was sent.
   Result<bool> HandleTierMigrations(TabletId* out_tablet_id, TabletServerId* out_ts_uuid);
-
-  Result<bool> HandleAddReplicas(
-      TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts);
 
   // Processes any required replica removals, as part of having added an extra replica to a
   // tablet's set of peers, which caused its quorum to be larger than the configured number.
@@ -449,7 +449,8 @@ class ClusterLoadBalancer {
 
   // Tiered storage: re-send schedule for replicas whose migration the tserver gave up on
   // (FAILED), keyed by tablet id and tserver uuid. An entry is dropped once the replica reports
-  // anything but FAILED. Only the balancer's own thread touches it.
+  // DONE or targets another tier; it survives the IN_PROGRESS each re-send causes, so the backoff
+  // grows across repeated failures. Only the balancer's own thread touches it.
   struct TierMigrationRetry {
     MonoTime next_attempt;
     MonoDelta backoff;

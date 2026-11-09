@@ -38,6 +38,8 @@ DECLARE_int32(replication_factor);
 
 DECLARE_bool(allow_leader_balancing_dead_node);
 
+DECLARE_bool(enable_tiered_storage);
+
 namespace yb {
 namespace master {
 
@@ -306,10 +308,16 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
     auto& meta_ts = per_ts_meta_[ts_uuid];
 
     // Tiered storage: a replica still moving toward its target counts against the migration
-    // caps until the tserver reports it on the target tier or gives up (FAILED).
+    // caps until the tserver reports it on the target tier, converged (DONE) or gave up (FAILED).
+    // DONE with another current tier is a replica on a tserver with no disk on its target, which
+    // runs on its home disk and never moves; like a replica on a dead tserver, it must not hold
+    // a slot.
     if (!replica.target_storage_tier.empty() &&
         replica.current_storage_tier != replica.target_storage_tier &&
-        replica.tier_migration_state != tserver::TierMigrationStatusPB::FAILED) {
+        replica.tier_migration_state != tserver::TierMigrationStatusPB::FAILED &&
+        replica.tier_migration_state != tserver::TierMigrationStatusPB::DONE &&
+        meta_ts.descriptor->HasStorageTier(replica.target_storage_tier) &&
+        (!check_ts_liveness_ || meta_ts.descriptor->IsLiveAndHasReported())) {
       ++global_state_->tier_migrations_in_flight_[ts_uuid];
       ++global_state_->total_tier_migrations_in_flight_;
     }
@@ -635,6 +643,20 @@ Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
     return false;
   }
 
+  // A placement that names a storage tier only gets load on servers with a disk on it, with two
+  // exceptions so a tier never blocks repair or a blacklist drain: a server whose tiers are
+  // unknown (registered none: an older binary, tiered storage off, or not re-registered yet) is
+  // accepted, and a tier no live server has is not enforced. Create-time placement stays strict
+  // in CatalogManager::GetTsDescsFromPlacementInfo.
+  if (IsStorageTierEnforced()) {
+    const auto tiers = ts_meta.descriptor->GetStorageTiers();
+    if (!tiers.empty() && !tiers.contains(placement_.storage_tier())) {
+      VLOG(4) << "TS " << to_ts << " has no " << placement_.storage_tier()
+              << " disk, so cannot add tablet " << tablet_id;
+      return false;
+    }
+  }
+
   // We cannot add a tablet to a tablet server if it is already serving it.
   if (ts_meta.running_tablets.count(tablet_id) || ts_meta.starting_tablets.count(tablet_id)) {
     VLOG(4) << "TS " << to_ts << " already has one replica either starting or running of tablet "
@@ -733,6 +755,27 @@ size_t PerTableLoadState::PlacementBlockMaxReplicas(const CloudInfoPB& cloud_inf
   // own cloud info): only the replication factor bounds the placement.
   return FindWithDefault(
       placement_block_max_replicas_, cloud_info, implicit_cast<size_t>(placement_.num_replicas()));
+}
+
+bool PerTableLoadState::IsStorageTierEnforced() {
+  if (!storage_tier_enforced_.has_value()) {
+    const auto& tier = placement_.storage_tier();
+    bool enforced = false;
+    if (FLAGS_enable_tiered_storage && !tier.empty()) {
+      for (const auto& [_, ts_meta] : per_ts_meta_) {
+        if (!ts_meta.descriptor ||
+            (check_ts_liveness_ && !ts_meta.descriptor->IsLiveAndHasReported())) {
+          continue;
+        }
+        if (ts_meta.descriptor->HasStorageTier(tier)) {
+          enforced = true;
+          break;
+        }
+      }
+    }
+    storage_tier_enforced_ = enforced;
+  }
+  return *storage_tier_enforced_;
 }
 
 std::optional<CloudInfoPB> PerTableLoadState::GetValidPlacement(const TabletServerId& ts_uuid) {

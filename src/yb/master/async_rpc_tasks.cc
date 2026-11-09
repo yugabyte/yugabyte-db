@@ -70,9 +70,10 @@ using tserver::TabletServerErrorPB;
 namespace {
 
 // The tier a new replica of this table belongs on: that of the placement its peer type is part
-// of (live replicas for voters, the read replica placement for observers). Empty when the
-// placement names no tier, and for a transaction status table: its tablets have no regular
-// RocksDB, so there is nothing to place and a target would only make the reconciler complain.
+// of (live replicas for voters, for observers the read replica placement whose uuid is the
+// tserver's, as the balancer's read replica run picks it). Empty when the placement names no
+// tier, and for a transaction status table: its tablets have no regular RocksDB, so there is
+// nothing to place and a target would only make the reconciler complain.
 std::string TargetStorageTierForPeer(
     Master* master, const TableInfoPtr& table, const consensus::RaftConfigPB& config,
     const std::string& ts_uuid) {
@@ -87,6 +88,17 @@ std::string TargetStorageTierForPeer(
     }
     if (peer.member_type() == consensus::PeerMemberType::OBSERVER ||
         peer.member_type() == consensus::PeerMemberType::PRE_OBSERVER) {
+      auto ts_desc = master->ts_manager()->LookupTSByUUID(ts_uuid);
+      if (!ts_desc.ok()) {
+        return std::string();
+      }
+      const auto& placement_uuid = (*ts_desc)->placement_uuid();
+      for (const auto& read_replicas : replication_info.read_replicas()) {
+        if (read_replicas.placement_uuid() == placement_uuid) {
+          return read_replicas.storage_tier();
+        }
+      }
+      // The balancer falls back to the first read replica placement too.
       return replication_info.read_replicas().empty()
           ? std::string() : replication_info.read_replicas(0).storage_tier();
     }
@@ -1563,9 +1575,9 @@ void AsyncAlterTabletTier::HandleResponse(int attempt) {
     TransitionToCompleteState();
     return;
   }
-  // IllegalState (still bootstrapping, no regular DB) and ServiceUnavailable (a pass toward
-  // another target is in flight): the base class retries with backoff until the unresponsive
-  // deadline.
+  // IllegalState (still bootstrapping, no regular DB) and any other transient error: the base
+  // class retries with backoff until the unresponsive deadline. A pass already in flight is not
+  // one of them: the tserver reports its progress as success.
   LOG_WITH_PREFIX(WARNING) << "AlterTabletTier for tablet " << tablet_id() << " on TS "
                            << permanent_uuid_ << " failed (attempt " << attempt
                            << "), will retry: " << status;
