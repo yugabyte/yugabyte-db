@@ -140,20 +140,6 @@ public interface ClusterMapper {
   @BeanMapping(nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
   ClusterSpec deepCopyClusterSpec(ClusterSpec source, @MappingTarget ClusterSpec target);
 
-  // Same exclusions as deepCopyInheritableClusterSpec for edit-path inheritance.
-  @BeanMapping(nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
-  @Mapping(target = "placementSpec", ignore = true)
-  @Mapping(target = "partitionsSpec", ignore = true)
-  @Mapping(target = "nodeSpec", ignore = true)
-  // Related to placement.
-  @Mapping(target = "numNodes", ignore = true)
-  ClusterEditSpec deepCopyInheritableClusterEditSpec(
-      ClusterSpec source, @MappingTarget ClusterEditSpec target);
-
-  @BeanMapping(nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
-  ClusterEditSpec deepCopyClusterEditSpec(
-      ClusterEditSpec source, @MappingTarget ClusterEditSpec target);
-
   @Mapping(target = "userIntent", source = ".")
   @Mapping(target = "placementInfo", source = "placementSpec")
   @Mapping(target = "partitions", source = "partitionsSpec")

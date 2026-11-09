@@ -298,27 +298,6 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     return new YBATask().resourceUuid(universeResp.universeUUID).taskUuid(universeResp.taskUUID);
   }
 
-  private UniverseEditSpec inheritFromPrimaryBeforeMapping(
-      UniverseEditSpec universeEditSpec, ClusterSpec primaryCluster) {
-    if (primaryCluster == null) {
-      return universeEditSpec;
-    }
-
-    List<ClusterEditSpec> clusters = new ArrayList<>();
-    for (ClusterEditSpec cluster : universeEditSpec.getClusters()) {
-      if (cluster.getUuid().equals(primaryCluster.getUuid())) {
-        clusters.add(cluster);
-        continue;
-      }
-      ClusterEditSpec merged = new ClusterEditSpec();
-      ClusterMapper.INSTANCE.deepCopyInheritableClusterEditSpec(primaryCluster, merged);
-      ClusterMapper.INSTANCE.deepCopyClusterEditSpec(cluster, merged);
-      clusters.add(merged);
-    }
-    universeEditSpec.clusters(clusters);
-    return universeEditSpec;
-  }
-
   public YBATask editUniverse(
       Request request, UUID cUUID, UUID uniUUID, UniverseEditSpec universeEditSpec) {
     boolean isNewUI = isNewUI();
@@ -332,7 +311,8 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     Map<UUID, Map<UUID, K8sStsIndices>> savedK8sStsIndices = captureK8sStsIndices(dbUniverse);
     UniverseCRUDHandler.checkInstanceTypeConsistency(dbUniverse);
     log.info("Edit Universe with v2 spec: {}", prettyPrint(universeEditSpec));
-    // Inherit unset RR properties from primary (excludes placement, partitions, nodeSpec).
+    // The edit spec is applied as a partial update onto the persisted clusters. Do not fill the
+    // read replica's omitted fields from the primary: that would silently modify the replica.
     UniverseSpec v2Universe =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toV2UniverseSpec(
             dbUniverse.getUniverseDetails());
@@ -346,7 +326,6 @@ public class UniverseManagementHandler extends ApiControllerUtils {
             .filter(c -> c.getClusterType().equals(ClusterTypeEnum.PRIMARY))
             .findAny()
             .orElse(null);
-    universeEditSpec = inheritFromPrimaryBeforeMapping(universeEditSpec, primaryV2Cluster);
     boolean isRREdited =
         universeEditSpec.getClusters().stream()
             .filter(c -> !c.getUuid().equals(primaryV2Cluster.getUuid()))
