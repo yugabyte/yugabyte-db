@@ -348,6 +348,15 @@ def classify_execution(rerun: bool, attempt: int, reps: str,
     return False, '', False
 
 
+# Mirrors ConnectionEndpoint.DEFAULT (Java) and ExternalMiniClusterOptions::IsYsqlConnMgrEnabled
+# (C++), so reports can tell which tests went through Connection Manager.
+def conn_mgr_enabled(test: TestDescriptor) -> bool:
+    env_vars = ['YB_ENABLE_YSQL_CONN_MGR_IN_TESTS']
+    if test.is_jvm_based:
+        env_vars.append('YB_ENABLE_YSQL_CONN_MGR_IN_JAVA_TESTS')
+    return any(os.getenv(var, '').lower() == 'true' for var in env_vars)
+
+
 # Normally, we want to use asynchronous reporting of results to not slow down test runs.
 # For test re-try, though, if the prior attempt did not get reported, then the re-try report will
 # fail and then there is no record. So we need to query to check for the prior attempt and in the
@@ -394,6 +403,8 @@ def create_test(test: TestDescriptor, time_sec: float, attempt: int, rerun: bool
     }
     if retry_kind:
         req_data['attributes'].append({'key': 'retry_kind', 'value': retry_kind})
+    if conn_mgr_enabled(test):
+        req_data['attributes'].append({'key': 'conn_mgr', 'value': 'true'})
     # For cxx tests, the name might not be unique if in different directories, so we add
     # parameter indicating the cxx_rel_binary that is included in test descriptor.
     if pt.cxx_rel_test_binary:

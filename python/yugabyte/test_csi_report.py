@@ -499,3 +499,31 @@ def test_a_serial_repetition_reports_without_querying(
     assert item['retry'] is True
     assert item['uniqueId'] == 'tests-x/a-test:::A.B'
     assert {'key': 'retry_kind', 'value': retry_kind} in item['attributes']
+
+
+# The conn_mgr attribute must follow the env vars each language's test harness reads: detective
+# builds the rerun command from it.
+@pytest.mark.parametrize('descriptor,env,tagged', [
+    ('org.yb.pgsql.TestFoo#testBar', {}, False),
+    ('org.yb.pgsql.TestFoo#testBar', {'YB_ENABLE_YSQL_CONN_MGR_IN_TESTS': 'true'}, True),
+    ('org.yb.pgsql.TestFoo#testBar', {'YB_ENABLE_YSQL_CONN_MGR_IN_JAVA_TESTS': 'TRUE'}, True),
+    ('org.yb.pgsql.TestFoo#testBar', {'YB_ENABLE_YSQL_CONN_MGR_IN_TESTS': 'false'}, False),
+    ('tests-x/a-test:::A.B', {'YB_ENABLE_YSQL_CONN_MGR_IN_TESTS': 'true'}, True),
+    # The Java-only override does not reach C++ tests.
+    ('tests-x/a-test:::A.B', {'YB_ENABLE_YSQL_CONN_MGR_IN_JAVA_TESTS': 'true'}, False),
+])
+def test_create_test_tags_conn_mgr(
+        monkeypatch: pytest.MonkeyPatch, descriptor: str, env: Dict[str, str],
+        tagged: bool) -> None:
+    monkeypatch.delenv('YB_ENABLE_YSQL_CONN_MGR_IN_TESTS', raising=False)
+    monkeypatch.delenv('YB_ENABLE_YSQL_CONN_MGR_IN_JAVA_TESTS', raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv('YB_CSI_Java', 'some-suite-uuid')
+    created = serve_create(monkeypatch)
+
+    assert csi_report.create_test(
+        test_descriptor.TestDescriptor(descriptor), 0.0, 0, rerun=False) == 'new-item-uuid'
+
+    [item] = created
+    assert ({'key': 'conn_mgr', 'value': 'true'} in item['attributes']) == tagged
