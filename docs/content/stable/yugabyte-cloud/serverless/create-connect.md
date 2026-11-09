@@ -113,4 +113,4 @@ To connect to an endpoint, do the following:
 
     If the endpoint has a DocumentDB address, the dialog also offers **DocumentDB**. Select it and copy that command instead.
 
-1. Run the command. When prompted, enter the password from the credentials file.
+1. Run the command. When prompted, enter the password from the credentials file you downloaded when you created the cluster.

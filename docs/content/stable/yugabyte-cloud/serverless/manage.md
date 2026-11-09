@@ -94,7 +94,13 @@ To add an endpoint, do the following:
 
 1. On **Network Access**, copy the access configuration from an existing endpoint in the cluster, or start from scratch. For a public endpoint, enter the **Trusted IP Addresses**.
 
-1. If the wizard shows **DB Credentials**, set and download the credentials.
+1. If the wizard shows **DB Credentials**, download the credentials.
+
+    {{< warning title="Credentials known issue" >}}
+
+An endpoint added to a branch keeps the password from when you [created the cluster](../create-connect/#create-a-serverless-cluster). Ignore the credentials file that you download here; connect using the credentials file you downloaded when you created the cluster.
+
+    {{< /warning >}}
 
 1. Click **Add Endpoint**.
 
