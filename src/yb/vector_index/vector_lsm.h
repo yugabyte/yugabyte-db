@@ -354,7 +354,7 @@ class VectorLSM {
       const ImmutableChunkPtrs& input_chunks, PriorityThreadPoolSuspender* suspender);
 
   Status DoCompact(
-      const CompactionContext& context, CompactionScope&& scope,
+      CompactionContext& context, CompactionScope&& scope,
       PriorityThreadPoolSuspender* suspender) EXCLUDES(mutex_);
 
   void ScheduleBackgroundCompaction(CompactionTask* task) EXCLUDES(mutex_);

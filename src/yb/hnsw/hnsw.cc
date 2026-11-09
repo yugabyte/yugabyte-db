@@ -671,7 +671,7 @@ std::pair<VectorNo, YbHnsw::DistanceType> YbHnsw::SearchInNonBaseLayers(
   VLOG_WITH_FUNC(4) << "best_vector: " << best_vector << ", best_dist: " << best_dist;
 
   for (auto level = header_.max_level; level > 0;) {
-    if (PREDICT_FALSE(!cache.status().ok())) {
+    if (!cache.status().ok()) {
       break;
     }
     auto updated = false;
@@ -730,7 +730,7 @@ void YbHnsw::SearchInBaseLayer(
   visited.set(best_vector);
 
   while (!next.empty()) {
-    if (PREDICT_FALSE(!cache.status().ok())) {
+    if (!cache.status().ok()) {
       return;
     }
     auto [dist, vector] = next.top();
@@ -781,7 +781,7 @@ YbHnsw::DistanceType YbHnsw::Distance(const std::byte* lhs, const std::byte* rhs
 YbHnsw::DistanceType YbHnsw::Distance(
     const std::byte* lhs, size_t vector, SearchCache& cache) const {
   auto coordinates = cache.CoordinatesPtr(vector);
-  if (PREDICT_FALSE(!coordinates)) {
+  if (!coordinates) {
     return std::numeric_limits<DistanceType>::max();
   }
   return Distance(lhs, coordinates);
@@ -797,11 +797,11 @@ const std::byte* SearchCache::Data(size_t index) {
     return block;
   }
   // The result of a failed search is discarded, so no point in loading more blocks.
-  if (PREDICT_FALSE(!status_.ok())) {
+  if (!status_.ok()) {
     return nullptr;
   }
   auto data = file_block_cache_->Take(index);
-  if (PREDICT_FALSE(!data.ok())) {
+  if (!data.ok()) {
     status_ = data.status();
     return nullptr;
   }
@@ -828,11 +828,11 @@ void SearchCache::Release() {
 boost::iterator_range<MisalignedPtr<const VectorNo>> SearchCache::GetNeighborsInBaseLayer(
     size_t vector) {
   auto vector_data = VectorHeader(vector);
-  if (PREDICT_FALSE(!vector_data.raw())) {
+  if (!vector_data.raw()) {
     return {};
   }
   auto base_ptr = Data(*YB_MISALIGNED_PTR(vector_data, VectorData, base_layer_neighbors_block));
-  if (PREDICT_FALSE(!base_ptr)) {
+  if (!base_ptr) {
     return {};
   }
   auto begin = *YB_MISALIGNED_PTR(vector_data, VectorData, base_layer_neighbors_begin);
@@ -855,7 +855,7 @@ boost::iterator_range<MisalignedPtr<const VectorNo>> SearchCache::GetNeighborsIn
   vector %= max_vectors_per_block;
   auto& layer = header_->layers[level];
   auto base_ptr = Data(layer.block + block_index);
-  if (PREDICT_FALSE(!base_ptr)) {
+  if (!base_ptr) {
     return {};
   }
   auto finish = Load<NeighborsRefType, HnswEndian>(base_ptr + vector * kNeighborsRefSize);
@@ -881,17 +881,17 @@ const std::byte* SearchCache::BlockPtr(
   block += entry / entries_per_block;
   entry %= entries_per_block;
   auto data = Data(block);
-  return PREDICT_TRUE(data) ? data + entry * entry_size : nullptr;
+  return data ? data + entry * entry_size : nullptr;
 }
 
 Slice SearchCache::GetVectorDataSlice(size_t vector) {
   auto vector_data = VectorHeader(vector);
-  if (PREDICT_FALSE(!vector_data.raw())) {
+  if (!vector_data.raw()) {
     return Slice();
   }
   auto base_ptr = Data(
       *YB_MISALIGNED_PTR(vector_data, VectorData, aux_data_block));
-  if (PREDICT_FALSE(!base_ptr)) {
+  if (!base_ptr) {
     return Slice();
   }
   auto begin = *YB_MISALIGNED_PTR(vector_data, VectorData, aux_data_begin);
@@ -902,7 +902,7 @@ Slice SearchCache::GetVectorDataSlice(size_t vector) {
 std::pair<vector_index::VectorId, Slice> SearchCache::GetVectorIdAndPayload(size_t vector) {
   auto data = GetVectorDataSlice(vector);
   // Empty only when a block failed to load, see SearchCache::status().
-  if (PREDICT_FALSE(data.empty())) {
+  if (data.empty()) {
     return {vector_index::VectorId::Nil(), Slice()};
   }
   return {
@@ -912,7 +912,7 @@ std::pair<vector_index::VectorId, Slice> SearchCache::GetVectorIdAndPayload(size
 
 const std::byte* SearchCache::CoordinatesPtr(size_t vector) {
   auto header = VectorHeader(vector).raw();
-  return PREDICT_TRUE(header) ? header + offsetof(VectorData, coordinates) : nullptr;
+  return header ? header + offsetof(VectorData, coordinates) : nullptr;
 }
 
 HnswDistanceType UsearchMetric::Distance(

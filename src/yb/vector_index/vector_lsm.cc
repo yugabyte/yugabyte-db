@@ -1129,6 +1129,8 @@ template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 struct VectorLSM<Vector, DistanceResult>::CompactionContext {
   size_t task_no;
   CompactionType type;
+  // Merging the input chunks failed with Corruption, before the manifest was acquired.
+  bool damaged_input = false;
 
   ManifestUpdateType GetManifestUpdateType() const {
     return type == CompactionType::kManual ? ManifestUpdateType::kFull
@@ -1197,11 +1199,11 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
       // Not enough memory for the merged index. The input chunks stay as they are, and a later
       // compaction retries them.
       LOG_WITH_PREFIX(WARNING) << "Failed, to be retried: " << status;
-    } else if (status.IsCorruption()) {
+    } else if (damaged_input_) {
       // A damaged input chunk, which would fail every later compaction too. The input chunks stay
       // as they are. The failed state would fail the next write, which crashes the tablet server,
       // so only background compactions stop, and searches that read the chunk return the error.
-      LOG_WITH_PREFIX(ERROR) << "Failed, background compactions stopped: " << status;
+      LOG_WITH_PREFIX(WARNING) << "Failed, background compactions stopped: " << status;
       lsm_.auto_compactions_enabled_ = false;
     } else {
       LOG_WITH_PREFIX(ERROR) << "Failed: " << status;
@@ -1248,7 +1250,9 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
       .type = compaction_type(),
     };
 
-    return lsm_.DoCompact(context, std::move(scope), suspender);
+    auto status = lsm_.DoCompact(context, std::move(scope), suspender);
+    damaged_input_ = context.damaged_input;
+    return status;
   }
 
   void Completed(const Status& status, uint64_t last_serial_no) {
@@ -1258,7 +1262,7 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
     // Out of memory is retried after the next flush, not right away, and a damaged chunk is not
     // retried. A chunked compaction changes the serial number by saving its first output chunks,
     // so it would be resubmitted at once and fail the same way.
-    if (status.IsServiceUnavailable() || status.IsCorruption() ||
+    if (status.IsServiceUnavailable() || damaged_input_ ||
         last_serial_no == lsm_.LastSerialNo()) {
       lsm_.Deregister(*this);
     } else {
@@ -1275,6 +1279,7 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
   CompactionType    compaction_type_;
   StdStatusCallback callback_;
   std::atomic<int>  priority_;
+  bool damaged_input_ = false;
 };
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -3307,7 +3312,7 @@ VectorLSM<Vector, DistanceResult>::DoCompactChunks(
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::DoCompact(
-    const CompactionContext& context, CompactionScope&& scope,
+    CompactionContext& context, CompactionScope&& scope,
     PriorityThreadPoolSuspender* suspender) {
   RETURN_NOT_OK(RUNNING_STATUS());
   RSTATUS_DCHECK(!scope.empty(), InvalidArgument, "Compaction scope must be specified");
@@ -3317,7 +3322,12 @@ Status VectorLSM<Vector, DistanceResult>::DoCompact(
   // writing the merged chunk to disk, updating the manifest, swapping the in-memory chunk
   // collection and triggering obsolete file cleanup.
   const auto compact_start = MonoTime::Now();
-  auto merged_chunks = VERIFY_RESULT(DoCompactChunks(scope.chunks(), suspender));
+  auto merge_result = DoCompactChunks(scope.chunks(), suspender);
+  if (!merge_result.ok()) {
+    context.damaged_input = merge_result.status().IsCorruption();
+    return merge_result.status();
+  }
+  auto merged_chunks = std::move(*merge_result);
 
   // Until the manifest references the output chunks, a failure below must delete their files.
   auto delete_merged_files = MarkChunkFilesObsoleteOnExit(merged_chunks);

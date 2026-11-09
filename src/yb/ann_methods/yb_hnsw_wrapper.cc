@@ -71,7 +71,7 @@ class YbHnswIterator : public vector_index::VectorIndexIterator<Vector> {
     }
     coordinates_ = cache_.CoordinatesPtr(index_);
     std::tie(vector_id_, payload_) = cache_.GetVectorIdAndPayload(index_);
-    if (PREDICT_FALSE(!cache_.status().ok())) {
+    if (!cache_.status().ok()) {
       index_ = size_;
     }
   }
