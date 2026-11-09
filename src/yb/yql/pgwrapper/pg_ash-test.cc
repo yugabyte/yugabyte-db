@@ -790,59 +790,63 @@ TEST_F_EX(PgWaitEventAuxTest, PgCDCServiceRPCs, PgCDCWaitEventAux) {
   // Create a new table after slot creation so that UpdatePublicationTableListRPC is called.
   ASSERT_OK(conn_->Execute("CREATE TABLE test_table_2 (k INT PRIMARY KEY)"));
 
-  // Catalog transactions can also take LSNs, so --endpos is set past the inserts and more
-  // transactions are committed at the end until pg_recvlogical reaches it.
-  const auto recvlogical_path = GetPgToolPath("pg_recvlogical");
-  Subprocess recvlogical(recvlogical_path, {
-      recvlogical_path,
-      "--dbname=yugabyte",
-      "--username=yugabyte",
-      Format("--host=$0", pg_ts->bind_host()),
-      Format("--port=$0", pg_ts->ysql_port()),
-      Format("--slot=$0", kSlotName),
-      "--endpos=0/40",
-      "--file=-",
-      "--start"
+  // --endpos is the BEGIN of the second transaction below. With transactional DDL, the CREATE
+  // TABLE above is streamed first and takes 11 LSNs: BEGIN, 9 synthetic DDL records and COMMIT.
+  const auto txn_ddl = ASSERT_RESULT(cluster_->GetFlag(
+      pg_ts, "TEST_ysql_yb_enable_replication_slot_transactional_ddl")) == "true";
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this, txn_ddl]() {
+    std::vector<std::string> argv = {
+        GetPgToolPath("pg_recvlogical"),
+        "--dbname=yugabyte",
+        "--username=yugabyte",
+        Format("--host=$0", pg_ts->bind_host()),
+        Format("--port=$0", pg_ts->ysql_port()),
+        Format("--slot=$0", kSlotName),
+        Format("--endpos=0/$0", txn_ddl ? "11" : "6"),
+        "--file=-",
+        "--start"
+    };
+    ASSERT_OK(Subprocess::Call(argv));
   });
-  ASSERT_OK(recvlogical.Start());
 
-  // wait for the walsender process
-  SleepFor(2s * kTimeMultiplier);
+  auto rpc_found = [this](ash::PggateRPC rpc) -> Result<bool> {
+    return VERIFY_RESULT(conn_->FetchRow<int64_t>(Format(
+        "SELECT COUNT(*) FROM yb_active_session_history WHERE wait_event_aux = '$0'",
+        ToString(rpc).erase(0, 1)))) > 0;
+  };
 
-  ASSERT_OK(conn_->Fetch("SELECT * FROM pg_stat_get_wal_senders()"));
+  // pg_stat_get_wal_senders() needs the walsender to have set the slot's active_pid.
+  ASSERT_OK(WaitFor([this]() -> Result<bool> {
+    return VERIFY_RESULT(conn_->FetchRow<bool>(Format(
+        "SELECT active_pid IS NOT NULL FROM pg_replication_slots WHERE slot_name = '$0'",
+        kSlotName)));
+  }, 60s * kTimeMultiplier, "Wait for the walsender to start"));
+
+  // GetLagMetrics is only called while the walsender is running.
+  ASSERT_OK(WaitFor([this, &rpc_found]() -> Result<bool> {
+    RETURN_NOT_OK(conn_->Fetch("SELECT * FROM pg_stat_get_wal_senders()"));
+    return rpc_found(ash::PggateRPC::kGetLagMetrics);
+  }, 60s * kTimeMultiplier, "Wait for GetLagMetrics RPC"));
 
   ASSERT_OK(conn_->StartTransaction(IsolationLevel::READ_COMMITTED));
   ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1)", kTableName));
   ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (2)", kTableName));
   ASSERT_OK(conn_->CommitTransaction());
 
-  // wait for UpdateAndPersistLSN RPC to be called
-  SleepFor(2s * kTimeMultiplier);
-
   ASSERT_OK(conn_->StartTransaction(IsolationLevel::READ_COMMITTED));
   ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (3)", kTableName));
   ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (4)", kTableName));
   ASSERT_OK(conn_->CommitTransaction());
 
-  // wait for UpdateAndPersistLSN RPC to be called
-  SleepFor(2s * kTimeMultiplier);
+  thread_holder.JoinAll();
 
-  // pg_recvlogical stops at --endpos, and the walsender then calls DestroyVirtualWALForCDC.
-  int next_key = 5;
-  int exit_status = 0;
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        RETURN_NOT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES ($1)", kTableName, next_key++));
-        auto s = recvlogical.WaitNoBlock(&exit_status);
-        if (s.IsTimedOut()) {
-          return false;
-        }
-        RETURN_NOT_OK(s);
-        return true;
-      },
-      60s * kTimeMultiplier, "Wait for pg_recvlogical to reach --endpos"));
-  ASSERT_TRUE(WIFEXITED(exit_status) && WEXITSTATUS(exit_status) == 0) << exit_status;
-  SleepFor(2s * kTimeMultiplier);
+  // pg_recvlogical sends its flush position before exiting.
+  for (auto rpc :
+       {ash::PggateRPC::kUpdateAndPersistLSN, ash::PggateRPC::kDestroyVirtualWALForCDC}) {
+    ASSERT_OK(WaitFor([&rpc_found, rpc] { return rpc_found(rpc); },
+        30s * kTimeMultiplier, Format("Wait for $0 RPC", rpc)));
+  }
 
   const auto walsender_samples = ASSERT_RESULT(conn_->FetchRow<PGUint64>(
       "SELECT COUNT(*) FROM yb_active_session_history WHERE query_id = 11"));
