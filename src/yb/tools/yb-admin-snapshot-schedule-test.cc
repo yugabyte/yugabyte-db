@@ -4485,12 +4485,17 @@ TEST_F(YbAdminSnapshotScheduleTest, ConsistentRestoreFailoverBeforeCompletionPer
 
   ASSERT_OK(WaitRestorationDone(restoration_id, 40s));
 
+  // Give tservers a few heartbeats to learn about a completion that was not persisted.
+  SleepFor(5s * kTimeMultiplier);
+  ASSERT_NOK(conn.ExecuteQueryFormat(expr, 3));
+
   for (auto* master : cluster_->master_daemons()) {
     master->Shutdown();
     ASSERT_OK(master->Restart());
   }
 
   // Tablets reject writes until the new leader re-runs the restoration and persists completion.
+  // The timeout covers master election, the re-run, and client retries of rejected inserts.
   ASSERT_OK(WaitFor([&conn, expr]() -> Result<bool> {
     auto status = conn.ExecuteQueryFormat(expr, 3);
     if (!status.ok()) {
@@ -4498,7 +4503,7 @@ TEST_F(YbAdminSnapshotScheduleTest, ConsistentRestoreFailoverBeforeCompletionPer
       return false;
     }
     return true;
-  }, 60s, "Insert after restoration"));
+  }, 120s * kTimeMultiplier, "Insert after restoration"));
 
   auto rows = ASSERT_RESULT(conn.ExecuteAndRenderToString("SELECT * FROM test_table"));
   ASSERT_EQ(rows, "1;3");

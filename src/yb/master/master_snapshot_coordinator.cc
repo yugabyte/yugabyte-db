@@ -165,13 +165,12 @@ YB_DEFINE_ENUM(Bound, (kFirst)(kLast));
 Status SubmitWrite(
     docdb::KeyValueWriteBatchPB&& write_batch, int64_t leader_term,
     SnapshotCoordinatorContext* context,
-    const std::shared_ptr<Synchronizer>& synchronizer = nullptr) {
+    tablet::OperationCompletionCallback callback = nullptr) {
   auto query = std::make_unique<tablet::WriteQuery>(
       leader_term, CoarseMonoClock::now() + FLAGS_sys_catalog_write_timeout_ms * 1ms,
       /* context */ nullptr, /* tablet= */ nullptr, /* rpc_context= */ nullptr);
-  if (synchronizer) {
-    query->set_callback(
-        tablet::MakeWeakSynchronizerOperationCompletionCallback(synchronizer));
+  if (callback) {
+    query->set_callback(std::move(callback));
   }
   *query->operation().AllocateRequest()->mutable_write_batch() = std::move(write_batch);
   return context->Submit(query.release()->PrepareSubmit(), leader_term);
@@ -181,7 +180,9 @@ Status SynchronizedWrite(
     docdb::KeyValueWriteBatchPB&& write_batch, int64_t leader_term, CoarseTimePoint deadline,
     SnapshotCoordinatorContext* context) {
   auto synchronizer = std::make_shared<Synchronizer>();
-  RETURN_NOT_OK(SubmitWrite(std::move(write_batch), leader_term, context, synchronizer));
+  RETURN_NOT_OK(SubmitWrite(
+      std::move(write_batch), leader_term, context,
+      tablet::MakeWeakSynchronizerOperationCompletionCallback(synchronizer)));
   return synchronizer->WaitUntil(ToSteady(deadline));
 }
 
@@ -1385,7 +1386,6 @@ class MasterSnapshotCoordinator::Impl {
     if (it == map->end()) {
       it = map->emplace(std::move(new_entry)).first;
     } else if ((**it).ShouldUpdate(*new_entry)) {
-      PreReplaceEntry(**it, *new_entry);
       map->replace(it, std::move(new_entry));
     } else {
       VLOG_WITH_FUNC(1) << "Ignore because of version check, existing: " << (**it).ToString()
@@ -1398,28 +1398,6 @@ class MasterSnapshotCoordinator::Impl {
 
   void PostLoadEntry(const RestorationState&) {}
   void PostLoadEntry(const SnapshotScheduleState&) {}
-
-  template <class State>
-  void PreReplaceEntry(const State&, const State&) {}
-
-  void PreReplaceEntry(const RestorationState& old_entry, const RestorationState& new_entry)
-      REQUIRES(mutex_) {
-    if (old_entry.complete_time() || !new_entry.complete_time()) {
-      return;
-    }
-    last_restorations_update_ht_ = context_.Clock()->Now();
-    auto it = restorations_completed_by_leader_.find(new_entry.restoration_id());
-    if (it == restorations_completed_by_leader_.end()) {
-      return;
-    }
-    auto leader_term = it->second;
-    restorations_completed_by_leader_.erase(it);
-    // Called from Raft apply, so finish outside of it.
-    context_.Scheduler().io_service().post(
-        [this, restoration_id = new_entry.restoration_id(), leader_term] {
-      RestorationCompletePersisted(restoration_id, leader_term);
-    });
-  }
 
   void PostLoadEntry(const SnapshotState& snapshot) REQUIRES(mutex_) {
     UpdateCoveringMap(snapshot);
@@ -2059,8 +2037,8 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   // Tablets accept writes again as soon as they learn complete_time, so it is set in memory only
-  // when the write is applied, see PreReplaceEntry. Otherwise a new leader could re-run the
-  // restoration and wipe writes made after it.
+  // when the write is applied (LoadEntry). Otherwise a new leader could re-run the restoration
+  // and wipe writes made after it.
   void PersistRestorationComplete(
       RestorationState* restoration, HybridTime complete_time, int64_t leader_term)
       REQUIRES(mutex_) {
@@ -2076,18 +2054,39 @@ class MasterSnapshotCoordinator::Impl {
       LOG(DFATAL) << "Failed to prepare write batch for snapshot: " << status;
       return;
     }
-    restorations_completed_by_leader_[restoration->restoration_id()] = leader_term;
-    status = SubmitWrite(std::move(write_batch), leader_term, &context_);
+    status = SubmitWrite(
+        std::move(write_batch), leader_term, &context_,
+        [this, restoration_id = restoration->restoration_id(), leader_term](
+            const Status& write_status) {
+          // Runs from Raft apply, or inline from SubmitWrite with mutex_ held.
+          context_.Scheduler().io_service().post(
+              [this, restoration_id, leader_term, write_status] {
+            RestorationCompletePersisted(restoration_id, leader_term, write_status);
+          });
+        });
     if (!status.ok()) {
-      restorations_completed_by_leader_.erase(restoration->restoration_id());
       // TODO(submit_error): is this sufficient to handle this error?
       LOG(DFATAL) << "Failed to submit snapshot operation: " << status;
     }
   }
 
   void RestorationCompletePersisted(
-      const TxnSnapshotRestorationId& restoration_id, int64_t leader_term) EXCLUDES(mutex_) {
+      const TxnSnapshotRestorationId& restoration_id, int64_t leader_term, const Status& status)
+      EXCLUDES(mutex_) {
+    if (!status.ok()) {
+      // Tablets keep rejecting writes until a new leader re-runs the restoration.
+      LOG(WARNING) << "Failed to persist completion of restoration " << restoration_id << ": "
+                   << status;
+      return;
+    }
     std::lock_guard lock(mutex_);
+    if (context_.LeaderTerm() != leader_term) {
+      LOG(INFO) << "Leader term changed from " << leader_term << " after persisting completion of "
+                << "restoration " << restoration_id;
+      return;
+    }
+    // complete_time was loaded when the write was applied.
+    last_restorations_update_ht_ = context_.Clock()->Now();
     auto restoration_result = FindRestoration(restoration_id);
     if (!restoration_result.ok()) {
       LOG(WARNING) << "Restoration " << restoration_id << " not found after persisting completion: "
@@ -2502,9 +2501,6 @@ class MasterSnapshotCoordinator::Impl {
   Snapshots snapshots_ GUARDED_BY(mutex_);
   Restorations restorations_ GUARDED_BY(mutex_);
   HybridTime last_restorations_update_ht_ GUARDED_BY(mutex_);
-  // Restorations whose completion this master submitted to sys catalog, with the leader term.
-  std::unordered_map<TxnSnapshotRestorationId, int64_t, TxnSnapshotRestorationIdHash>
-      restorations_completed_by_leader_ GUARDED_BY(mutex_);
   Schedules schedules_ GUARDED_BY(mutex_);
   // Stores tablets and their associated snapshots that are preventing the tablet
   // from getting deleted. A snapshot covers a tablet iff:
