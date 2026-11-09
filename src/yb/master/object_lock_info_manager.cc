@@ -19,6 +19,7 @@
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 #include <algorithm>
 
@@ -629,10 +630,10 @@ class UpdateTServer : public RetrySpecificTSRpcTask {
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
 
-  // Returns what SendRequest should return when this attempt must not send an RPC: true once the
-  // tserver's lease is marked lost (the task completes without it), false while the lease deadline
-  // has passed but the lease isn't marked lost yet (the task retries). Unset to send the RPC.
-  std::optional<bool> SkipRequestIfLeaseExpired();
+  // Returns true if this attempt doesn't send an RPC: once the tserver's lease is marked lost (the
+  // task completes without it), or while its lease deadline has passed but the lease isn't marked
+  // lost yet (the task retries). Either way the rest runs through RpcCallback.
+  bool SkipRequestIfLeaseExpired();
 
   // The lease is checked only when an attempt starts or finishes, never when the cleanup poll marks
   // it lost. Without a cap, the task can sleep through the loss for up to
@@ -643,6 +644,10 @@ class UpdateTServer : public RetrySpecificTSRpcTask {
   Resp resp_;
 
   std::shared_ptr<UpdateAll<Req>> shared_all_tservers_;
+
+  // Set by SendRequest when it skips an attempt to wait for the lease to be marked lost, so that
+  // HandleResponse retries instead of completing the task.
+  bool waiting_for_lease_loss_ = false;
 };
 
 namespace {
@@ -2308,7 +2313,16 @@ void UpdateAllTServers<Req>::CheckForDone() {
                           ts_descriptors_[i]->permanent_uuid(),
                           ObjectLockOpName<Req>())
                    << status;
-      DoCallbackAndRespond(status);
+      // A master that lost leadership has a stale view of the tservers' leases, and its fanout can
+      // fail because of that alone. Report it as not the leader so the client retries on the new
+      // leader.
+      Status leader_status;
+      {
+        SCOPED_LEADER_SHARED_LOCK(l, &catalog_manager_);
+        leader_status = CheckLeaderLockStatus(l, epoch_);
+      }
+      DoCallbackAndRespond(
+          leader_status.ok() ? status : STATUS(IllegalState, kNotTheMasterLeader));
       return;
     }
   }
@@ -2456,8 +2470,8 @@ template <>
 bool UpdateTServer<AcquireObjectLockRequestPB, AcquireObjectLockResponsePB>::SendRequest(
     int attempt) {
   VLOG_WITH_PREFIX(3) << __func__ << " attempt " << attempt;
-  if (auto sent = SkipRequestIfLeaseExpired()) {
-    return *sent;
+  if (SkipRequestIfLeaseExpired()) {
+    return true;
   }
   ADOPT_WAIT_STATE(shared_all_tservers_->wait_state());
   ts_proxy_->AcquireObjectLocksAsync(request(), &resp_, &rpc_, BindRpcCallback());
@@ -2468,8 +2482,8 @@ template <>
 bool UpdateTServer<ReleaseObjectLockRequestPB, ReleaseObjectLockResponsePB>::SendRequest(
     int attempt) {
   VLOG_WITH_PREFIX(3) << __func__ << " attempt " << attempt;
-  if (auto sent = SkipRequestIfLeaseExpired()) {
-    return *sent;
+  if (SkipRequestIfLeaseExpired()) {
+    return true;
   }
   ADOPT_WAIT_STATE(shared_all_tservers_->wait_state());
   ts_proxy_->ReleaseObjectLocksAsync(request(), &resp_, &rpc_, BindRpcCallback());
@@ -2480,8 +2494,8 @@ template <>
 bool UpdateTServer<WaitForLockersMultipleRequestPB, WaitForLockersMultipleResponsePB>::SendRequest(
     int attempt) {
   VLOG_WITH_PREFIX(3) << __func__ << " attempt " << attempt;
-  if (auto sent = SkipRequestIfLeaseExpired()) {
-    return *sent;
+  if (SkipRequestIfLeaseExpired()) {
+    return true;
   }
   ADOPT_WAIT_STATE(shared_all_tservers_->wait_state());
   ts_proxy_->WaitForLockersMultipleAsync(request(), &resp_, &rpc_, BindRpcCallback());
@@ -2489,27 +2503,28 @@ bool UpdateTServer<WaitForLockersMultipleRequestPB, WaitForLockersMultipleRespon
 }
 
 template <class Req, class Resp>
-std::optional<bool> UpdateTServer<Req, Resp>::SkipRequestIfLeaseExpired() {
+bool UpdateTServer<Req, Resp>::SkipRequestIfLeaseExpired() {
   auto lease_deadline = shared_all_tservers_->LiveLeaseDeadline(permanent_uuid_);
   if (!lease_deadline) {
     LOG_WITH_PREFIX(WARNING) << "TServer no longer has a live lease. Ignoring this tserver for "
                              << "object lock " << ObjectLockOpName<Req>() << " request";
-    // Finish as if the RPC succeeded: completing the task can run AfterRpcs, which writes to the
-    // sys catalog, and SendRequest runs on a reactor thread for retries. RpcCallback moves the rest
-    // to the callback pool, where HandleResponse sees no error and completes the task.
-    resp_.Clear();
-    RpcCallback();
-    return true;
-  }
-  if (MonoTime::Now() > *lease_deadline) {
+  } else if (MonoTime::Now() > *lease_deadline) {
     // The tserver is likely gone, and an RPC to a host that drops packets would block until its
     // timeout. But it can't be dropped yet: until the lease is marked lost, a late refresh still
     // extends the same lease epoch, and the tserver would keep serving without this lock.
     LOG_WITH_PREFIX(INFO) << "Lease deadline passed but the lease isn't marked lost yet. Not "
                           << "sending object lock " << ObjectLockOpName<Req>() << " request";
+    waiting_for_lease_loss_ = true;
+  } else {
     return false;
   }
-  return std::nullopt;
+  // SendRequest runs on a reactor thread for retries. Completing the task can run AfterRpcs, which
+  // writes to the sys catalog, and failing it checks the leader status in CheckForDone. So finish
+  // as if an RPC returned: RpcCallback moves the rest to the callback pool, where HandleResponse
+  // retries or, seeing no error, completes the task.
+  resp_.Clear();
+  RpcCallback();
+  return true;
 }
 
 template <class Req, class Resp>
@@ -2533,6 +2548,10 @@ template <class Req, class Resp>
 void UpdateTServer<Req, Resp>::HandleResponse(int attempt) {
   VLOG_WITH_PREFIX(3) << __func__ << " response is " << yb::ToString(resp_)
                       << " for tserver: " << permanent_uuid_;
+  if (std::exchange(waiting_for_lease_loss_, false)) {
+    // No RPC was sent. Leave the task running so that DoRpcCallback schedules the next attempt.
+    return;
+  }
   if (!resp_.has_error()) {
     TransitionToCompleteState();
     return;
