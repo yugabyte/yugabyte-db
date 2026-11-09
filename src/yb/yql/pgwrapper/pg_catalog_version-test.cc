@@ -3192,19 +3192,24 @@ TEST_F(PgCatalogVersionTest, TestGrantSetOnParameterHasGlobalImpact) {
   ASSERT_OK(conn.Execute("CREATE DATABASE db1"));
 
   auto conn_db1_user1 = ASSERT_RESULT(ConnectToDBAsUser("db1" /* db_name */, "user1"));
-  auto status = conn_db1_user1.Execute("SET log_planner_stats = on");
-  ASSERT_NOK(status);
-  ASSERT_STR_CONTAINS(status.ToString(), "permission denied to set parameter");
+  auto set_denied = [&]() -> Result<bool> {
+    auto s = conn_db1_user1.Execute("SET log_planner_stats = on");
+    if (s.ok()) {
+      return false;
+    }
+    if (s.ToString().find("permission denied to set parameter") == std::string::npos) {
+      return s;
+    }
+    return true;
+  };
+  ASSERT_TRUE(ASSERT_RESULT(set_denied()));
 
   ASSERT_OK(conn.Execute("GRANT SET ON PARAMETER log_planner_stats TO user1"));
-  WaitForCatalogVersionToPropagate();
-  ASSERT_OK(conn_db1_user1.Execute("SET log_planner_stats = on"));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> { return !VERIFY_RESULT(set_denied()); },
+                    60s * kTimeMultiplier, "GRANT to reach the db1 backend"));
 
   ASSERT_OK(conn.Execute("REVOKE SET ON PARAMETER log_planner_stats FROM user1"));
-  WaitForCatalogVersionToPropagate();
-  status = conn_db1_user1.Execute("SET log_planner_stats = off");
-  ASSERT_NOK(status);
-  ASSERT_STR_CONTAINS(status.ToString(), "permission denied to set parameter");
+  ASSERT_OK(WaitFor(set_denied, 60s * kTimeMultiplier, "REVOKE to reach the db1 backend"));
 }
 
 TEST_F(PgCatalogVersionTest, InvalMessageDeltaTableLoad) {
