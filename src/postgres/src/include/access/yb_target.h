@@ -11,6 +11,8 @@
  *	  Used by the access methods.  Some code above them also builds
  *	  its own pggate requests with it.  That should probably move
  *	  behind the access methods, though this is not yet settled.
+ *	  Until it is settled, a new use above them needs a stated
+ *	  reason.
  *
  * Copyright (c) YugabyteDB, Inc.
  *

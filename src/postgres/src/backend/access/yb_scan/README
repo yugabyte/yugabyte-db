@@ -45,9 +45,8 @@ reasons:
 
   yb_cost.h
 
-Building pggate requests.  It should probably be internal to the access
-methods, though that is not yet settled, so its use above them is not
-accounted for:
+Building pggate requests, used by the access methods and, for now, by some
+code above them:
 
   yb_target.h
 
