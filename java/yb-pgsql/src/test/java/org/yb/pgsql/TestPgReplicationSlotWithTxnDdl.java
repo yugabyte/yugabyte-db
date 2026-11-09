@@ -832,6 +832,199 @@ public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
     conn.close();
   }
 
+  // The producer otherwise moves the safe time of a tablet past a transaction open for longer than
+  // cdc_resolve_intent_lag_threshold_ms, which would put it after the commit time that
+  // commitAtSameTime forces.
+  private void restartClusterForCommitTimeTie() throws Exception {
+    Map<String, String> flags = new HashMap<>();
+    flags.put("cdc_resolve_intent_lag_threshold_ms", "3600000");
+    restartClusterWithFlags(flags, flags);
+  }
+
+  private static String currentTransactionId(Statement stmt) throws Exception {
+    return getSingleRow(stmt, "SELECT yb_get_current_transaction()::text").getString(0);
+  }
+
+  // Commits the two open transactions at the same hybrid time, with
+  // TEST_commit_time_override_ht. They must have written all their intents.
+  private void commitAtSameTime(Statement stmt1, String txnId1, Statement stmt2, String txnId2)
+      throws Exception {
+    // The producer's safe time on the tablets of the transactions is behind this time until they
+    // commit.
+    Thread.sleep(1000);
+    long commitTime;
+    try (Statement stmt = connection.createStatement()) {
+      commitTime = getSingleRow(stmt, "SELECT yb_get_current_hybrid_time_lsn()").getLong(0);
+    }
+
+    Set<HostAndPort> tServers = miniCluster.getTabletServers().keySet();
+    try {
+      for (HostAndPort tServer : tServers) {
+        setServerFlag(tServer, "TEST_commit_time_override_txn_ids", txnId1 + "," + txnId2);
+        setServerFlag(tServer, "TEST_commit_time_override_ht", Long.toString(commitTime));
+      }
+      stmt1.execute("COMMIT");
+      stmt2.execute("COMMIT");
+    } finally {
+      for (HostAndPort tServer : tServers) {
+        setServerFlag(tServer, "TEST_commit_time_override_ht", "0");
+        setServerFlag(tServer, "TEST_commit_time_override_txn_ids", "");
+      }
+    }
+  }
+
+  // The virtual WAL streams transactions that commit at the same hybrid time as one, and ships the
+  // BEGIN record of only the one with the lowest DocDB transaction id. The aborted subtransaction
+  // set of the other one must still reach the walsender, or its catalog reads see an ADD COLUMN it
+  // rolled back to a savepoint.
+  @Test
+  public void commitTimeTieWithAddColumnRolledBackToSavepoint() throws Exception {
+    restartClusterForCommitTimeTie();
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE TABLE t2 (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1, t2");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    String plainTable;
+    String ddlTable;
+    try (Connection conn1 = getConnectionBuilder().connect();
+         Connection conn2 = getConnectionBuilder().connect();
+         Statement stmt1 = conn1.createStatement();
+         Statement stmt2 = conn2.createStatement()) {
+      stmt1.execute("BEGIN");
+      stmt1.execute("INSERT INTO t1 VALUES (1, 'one')");
+      stmt2.execute("BEGIN");
+      stmt2.execute("INSERT INTO t2 VALUES (1, 'one')");
+      String txnId1 = currentTransactionId(stmt1);
+      String txnId2 = currentTransactionId(stmt2);
+
+      // The virtual WAL orders the transactions by the text form of their ids.
+      Statement ddlStmt;
+      if (txnId1.compareTo(txnId2) < 0) {
+        plainTable = "t1";
+        ddlTable = "t2";
+        ddlStmt = stmt2;
+      } else {
+        plainTable = "t2";
+        ddlTable = "t1";
+        ddlStmt = stmt1;
+      }
+      ddlStmt.execute("SAVEPOINT s1");
+      ddlStmt.execute("ALTER TABLE " + ddlTable + " ADD COLUMN d int");
+      ddlStmt.execute("ROLLBACK TO SAVEPOINT s1");
+      // Makes the walsender reload the relation within the transaction.
+      ddlStmt.execute("ALTER TABLE " + ddlTable + " ADD COLUMN c text");
+      ddlStmt.execute("INSERT INTO " + ddlTable + " VALUES (2, 'two', 'c2')");
+
+      commitAtSameTime(stmt1, txnId1, stmt2, txnId2);
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 8);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation(plainTable, column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "one"),
+        relation(ddlTable, column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "one"),
+        relation(ddlTable, column("a", INT4_OID), column("b", TEXT_OID), column("c", TEXT_OID)),
+        insert("2", "two", "c2"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // Like commitTimeTieWithAddColumnRolledBackToSavepoint, but the first record of the transaction
+  // whose BEGIN is dropped that reaches the virtual WAL triggers a publication refresh. That record
+  // is not shipped, so the aborted subtransaction set comes with the refresh, which must not see
+  // the ALTER PUBLICATION ADD TABLE rolled back to a savepoint. If it did, the slot would stream
+  // t3. pgoutput drops the rows of t3, so this only shows in the xid of the insert into t1 after
+  // the insert into t3.
+  @Test
+  public void commitTimeTieWithAlterPublicationRolledBackToSavepoint() throws Exception {
+    restartClusterForCommitTimeTie();
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE TABLE t2 (a int primary key, b text)");
+      stmt.execute("CREATE TABLE t3 (a int primary key, b text)");
+      stmt.execute("CREATE TABLE unpublished (a int primary key)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Connection conn1 = getConnectionBuilder().connect();
+         Connection conn2 = getConnectionBuilder().connect();
+         Statement stmt1 = conn1.createStatement();
+         Statement stmt2 = conn2.createStatement()) {
+      // Writes to a table the slot does not stream, so the transactions get their ids without
+      // shipping a record.
+      stmt1.execute("BEGIN");
+      stmt1.execute("INSERT INTO unpublished VALUES (1)");
+      stmt2.execute("BEGIN");
+      stmt2.execute("INSERT INTO unpublished VALUES (2)");
+      String txnId1 = currentTransactionId(stmt1);
+      String txnId2 = currentTransactionId(stmt2);
+
+      // The virtual WAL orders the transactions by the text form of their ids.
+      Statement plainStmt;
+      Statement ddlStmt;
+      if (txnId1.compareTo(txnId2) < 0) {
+        plainStmt = stmt1;
+        ddlStmt = stmt2;
+      } else {
+        plainStmt = stmt2;
+        ddlStmt = stmt1;
+      }
+      plainStmt.execute("INSERT INTO t1 VALUES (1, 'one')");
+      ddlStmt.execute("SAVEPOINT s1");
+      ddlStmt.execute("ALTER PUBLICATION pub ADD TABLE t3");
+      ddlStmt.execute("ROLLBACK TO SAVEPOINT s1");
+      ddlStmt.execute("ALTER PUBLICATION pub ADD TABLE t2");
+      ddlStmt.execute("INSERT INTO t3 VALUES (1, 'not_published')");
+      ddlStmt.execute("INSERT INTO t2 VALUES (1, 'one')");
+
+      commitAtSameTime(stmt1, txnId1, stmt2, txnId2);
+    }
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO t3 VALUES (2, 'not_published')");
+      stmt.execute("INSERT INTO t1 VALUES (2, 'two')");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 10);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "one"),
+        relation("t2", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("1", "one"),
+        commitMessage(),
+        beginMessage(3),
+        // The ALTER PUBLICATION invalidates pgoutput's entry, so RELATION is sent again.
+        relation("t1", column("a", INT4_OID), column("b", TEXT_OID)),
+        insert("2", "two"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
   // A large transaction with a DDL in the middle must still order the schema change correctly
   // after the reorder buffer spills to disk.
   @Test

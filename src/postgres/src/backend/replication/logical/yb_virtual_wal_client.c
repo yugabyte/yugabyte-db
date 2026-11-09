@@ -44,6 +44,7 @@
 static MemoryContext virtual_wal_context = NULL;
 static MemoryContext cached_records_context = NULL;
 static MemoryContext unacked_txn_list_context = NULL;
+static MemoryContext aborted_subtxn_sets_context = NULL;
 
 /* Cached records received from the CDC service. */
 static YbcPgChangeRecordBatch *cached_records = NULL;
@@ -55,13 +56,20 @@ static XLogRecPtr last_txn_begin_lsn = InvalidXLogRecPtr;
 static XLogRecPtr last_filtered_commit_lsn = InvalidXLogRecPtr;
 
 /*
- * Aborted subtransactions sent on the last BEGIN record. Transactions are not
- * interleaved and each one is decoded and replayed before the next BEGIN is
- * read, so this is the transaction whose records are being processed.
+ * Aborted subtransactions set of the transaction currently being streamed by
+ * the walsender. Ideally this should just have one entry. However, in the case
+ * of commit time ties between two different DocDB transactions, the virtual WAL
+ * combines them into a single BEGIN/COMMIT block. This is a set to handle that
+ * condition. This set is cleared on the next BEGIN record.
  */
-static char last_txn_docdb_txn_id[37] = "";
-static uint32_t *last_txn_aborted_subtxn_set = NULL;
-static int	last_txn_aborted_subtxn_set_size = 0;
+typedef struct YbAbortedSubtxnSet
+{
+	char		docdb_txn_id[37];
+	uint32_t   *set;
+	int			size;
+} YbAbortedSubtxnSet;
+
+static List *aborted_subtxn_sets = NIL;
 
 /*
  * Marker to refresh publication's tables list. If set to true call
@@ -150,6 +158,8 @@ static void PreProcessBeforeFetchingNextBatch();
 
 static void TrackUnackedTransaction(YbVirtualWalRecord *record);
 static void TrackAbortedSubtxnSet(YbVirtualWalRecord *record);
+static void AddAbortedSubtxnSet(const char *docdb_txn_id,
+								const uint32_t *set, int size);
 static void ResetAbortedSubtxnSet(void);
 static void AckFilteredTransactions(void);
 static XLogRecPtr CalculateRestartLSN(XLogRecPtr confirmed_flush);
@@ -205,6 +215,11 @@ YBCInitVirtualWal(List *yb_publication_names)
 												   "YB cached record batch "
 												   "context",
 												   ALLOCSET_DEFAULT_SIZES);
+	aborted_subtxn_sets_context = AllocSetContextCreate(virtual_wal_context,
+														"YB aborted subtxn sets "
+														"context",
+														ALLOCSET_DEFAULT_SIZES);
+	aborted_subtxn_sets = NIL;
 	/*
 	 * Reset cached state for a fresh start. Ensures we don't use stale data
 	 * from a previous session if Init is ever called without Destroy.
@@ -279,14 +294,14 @@ YBCDestroyVirtualWal()
 {
 	YBCDestroyVirtualWalForCDC();
 
-	/* Allocated in virtual_wal_context, so free it before deleting that. */
-	ResetAbortedSubtxnSet();
-
 	if (unacked_txn_list_context)
 		MemoryContextDelete(unacked_txn_list_context);
 
 	if (cached_records_context)
 		MemoryContextDelete(cached_records_context);
+
+	if (aborted_subtxn_sets_context)
+		MemoryContextDelete(aborted_subtxn_sets_context);
 
 	if (virtual_wal_context)
 		MemoryContextDelete(virtual_wal_context);
@@ -305,6 +320,7 @@ YBCDestroyVirtualWal()
 	publication_refresh_txn_id[0] = '\0';
 	publication_refresh_record.lsn = InvalidXLogRecPtr;
 	publication_refresh_record.xid = InvalidTransactionId;
+	aborted_subtxn_sets = NIL;
 
 	/* Reset catalog snapshot set by InitVirtualWal. */
 	YbResetVirtualWalCatalogSnapshot();
@@ -650,6 +666,12 @@ YBCReadRecord(List *publication_names)
 			return &publication_refresh_record;
 		}
 
+		if (cached_records &&
+			cached_records->publication_refresh_aborted_subtxn_set_size > 0)
+			AddAbortedSubtxnSet(cached_records->publication_refresh_txn_id,
+								cached_records->publication_refresh_aborted_subtxn_set,
+								cached_records->publication_refresh_aborted_subtxn_set_size);
+
 		PreProcessBeforeFetchingNextBatch();
 
 		if (needs_publication_table_list_refresh)
@@ -907,49 +929,57 @@ TrackUnackedTransaction(YbVirtualWalRecord *record)
 static void
 TrackAbortedSubtxnSet(YbVirtualWalRecord *record)
 {
-	if (record->action != YB_PG_ROW_MESSAGE_ACTION_BEGIN)
-		return;
+	if (record->action == YB_PG_ROW_MESSAGE_ACTION_BEGIN)
+		ResetAbortedSubtxnSet();
 
-	ResetAbortedSubtxnSet();
-	if (!record->has_docdb_txn_id)
-		return;
+	if (record->has_docdb_txn_id && record->aborted_subtxn_set_size > 0)
+		AddAbortedSubtxnSet(record->docdb_txn_id, record->aborted_subtxn_set,
+							record->aborted_subtxn_set_size);
+}
 
-	strlcpy(last_txn_docdb_txn_id, record->docdb_txn_id,
-			sizeof(last_txn_docdb_txn_id));
-	if (record->aborted_subtxn_set_size > 0)
-	{
-		size_t		size = sizeof(uint32_t) * record->aborted_subtxn_set_size;
+static void
+AddAbortedSubtxnSet(const char *docdb_txn_id, const uint32_t *set, int size)
+{
+	MemoryContext caller_context;
+	YbAbortedSubtxnSet *entry;
 
-		last_txn_aborted_subtxn_set = MemoryContextAlloc(virtual_wal_context,
-														 size);
-		memcpy(last_txn_aborted_subtxn_set, record->aborted_subtxn_set, size);
-		last_txn_aborted_subtxn_set_size = record->aborted_subtxn_set_size;
-	}
+	caller_context = MemoryContextSwitchTo(aborted_subtxn_sets_context);
+	entry = palloc(sizeof(YbAbortedSubtxnSet));
+	strlcpy(entry->docdb_txn_id, docdb_txn_id, sizeof(entry->docdb_txn_id));
+	entry->set = palloc(sizeof(uint32_t) * size);
+	memcpy(entry->set, set, sizeof(uint32_t) * size);
+	entry->size = size;
+	aborted_subtxn_sets = lappend(aborted_subtxn_sets, entry);
+	MemoryContextSwitchTo(caller_context);
 }
 
 static void
 ResetAbortedSubtxnSet(void)
 {
-	if (last_txn_aborted_subtxn_set)
-		pfree(last_txn_aborted_subtxn_set);
-	last_txn_docdb_txn_id[0] = '\0';
-	last_txn_aborted_subtxn_set = NULL;
-	last_txn_aborted_subtxn_set_size = 0;
+	if (aborted_subtxn_sets_context)
+		MemoryContextReset(aborted_subtxn_sets_context);
+	aborted_subtxn_sets = NIL;
 }
 
-/* Get the aborted subtxn set of the transaction currently being decoded. */
+/* Get the aborted subtxn set of a DocDB transaction being decoded. */
 const uint32_t *
 YBCGetAbortedSubtxnSet(const char *docdb_txn_id, int *size)
 {
-	if (docdb_txn_id[0] == '\0' || last_txn_docdb_txn_id[0] == '\0')
+	ListCell   *lc;
+
+	foreach(lc, aborted_subtxn_sets)
 	{
-		*size = 0;
-		return NULL;
+		YbAbortedSubtxnSet *entry = (YbAbortedSubtxnSet *) lfirst(lc);
+
+		if (strcmp(entry->docdb_txn_id, docdb_txn_id) == 0)
+		{
+			*size = entry->size;
+			return entry->set;
+		}
 	}
 
-	Assert(strcmp(docdb_txn_id, last_txn_docdb_txn_id) == 0);
-	*size = last_txn_aborted_subtxn_set_size;
-	return last_txn_aborted_subtxn_set;
+	*size = 0;
+	return NULL;
 }
 
 /*

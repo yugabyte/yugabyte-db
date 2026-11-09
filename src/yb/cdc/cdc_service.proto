@@ -234,6 +234,10 @@ message GetConsistentChangesResponsePB {
   // DocDB transaction id of that catalog write. in_txn_limit applies only to intents of this
   // transaction. Only set together with publication_refresh_record_time.
   optional bytes publication_refresh_txn_id = 7;
+
+  // Aborted subtransactions of that transaction, when the walsender has not received them on a
+  // record yet. See RowMessage.aborted_subtxns.
+  optional SubtxnSetPB publication_refresh_aborted_subtxns = 8;
 }
 
 message DestroyVirtualWALForCDCRequestPB {
@@ -592,8 +596,11 @@ message RowMessage {
   // Replication origin id associated with the transaction. Set on BEGIN, DML and COMMIT Ops.
   optional uint32 xrepl_origin_id = 19;
 
-  // Subtransactions of the transaction rolled back to a savepoint. Only set on BEGIN records for
-  // the walsender with transactional DDL, when not empty.
+  // Subtransactions of the transaction rolled back to a savepoint. Only set for the walsender with
+  // transactional DDL, when not empty. The aborted sub-transactions is set on the BEGIN records. In
+  // the case of commit-time ties, the virtual WAL groups different DocDB transactions into a single
+  // BEGIN/COMMIT. In such cases, the set is populated on the first record of the transaction -
+  // INSERT / UPDATE / DELETE / Publication Refresh.
   optional SubtxnSetPB aborted_subtxns = 20;
 }
 
