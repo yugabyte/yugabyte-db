@@ -278,8 +278,9 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     UniverseDefinitionTaskParams v1DefnParams =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toV1UniverseDefinitionTaskParamsFromCreateSpec(
             universeSpec);
-    // In case k8s resource specs are not initialized by client, need to init them.
-    KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(v1DefnParams, false);
+    // Before we completely replace instance type with resourceSpec for k8s,
+    // initializing it from instanceType.
+    KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(v1DefnParams);
     UniverseConfigureTaskParams v1Params =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toUniverseConfigureTaskParams(
             v1DefnParams, request);
@@ -368,7 +369,9 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       // Keeping these fields will lead to error in validation.
       clearNonDedicatedFields(cluster.userIntent);
     }
-    KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(v1Params, false);
+    // Before we completely replace instance type with resourceSpec for k8s,
+    // initializing it from instanceType.
+    KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(v1Params);
     log.debug("Edit Universe translated to v1 spec: {}", prettyPrint(v1Params));
 
     // edit universe with v1 spec
@@ -594,7 +597,10 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     // prepare the v1Params with only the read replica cluster in the payload
     v1Params.clusters.clear();
     v1Params.clusters.add(newReadReplica);
-    KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(v1Params, false);
+    // Before we completely replace instance type with resourceSpec for k8s,
+    // initializing it from instanceType.
+    KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(
+        newReadReplica.clusterType, newReadReplica.userIntent);
     v1Params.newUI =
         (hasPartitions(dbUniverse.getUniverseDetails()) || hasPartitions(v1Params)) && isNewUI();
     if (v1Params.newUI) {

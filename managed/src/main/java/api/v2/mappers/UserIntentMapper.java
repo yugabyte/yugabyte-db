@@ -351,7 +351,7 @@ public interface UserIntentMapper {
     if (clusterEditSpec.getNumNodes() != null) {
       userIntent.numNodes = clusterEditSpec.getNumNodes();
     }
-    applyClusterNodeSpecPreservingOmittedK8sResources(clusterEditSpec.getNodeSpec(), userIntent);
+    fillUserIntentFromClusterNodeSpec(clusterEditSpec.getNodeSpec(), userIntent);
     applyDedicatedNodes(
         clusterEditSpec.getDedicatedNodes(), clusterEditSpec.getNodeSpec(), userIntent);
     fillUserIntentFromClusterNetworkingEditSpec(clusterEditSpec.getNetworkingSpec(), userIntent);
@@ -567,9 +567,7 @@ public interface UserIntentMapper {
     if (clusterAddSpec.getNumNodes() != null) {
       userIntent.numNodes = clusterAddSpec.getNumNodes();
     }
-    // The intent is cloned from the primary. An omitted spec must stay that way; the add handler
-    // otherwise fills a null tserver spec from the instance type.
-    applyClusterNodeSpecPreservingOmittedK8sResources(clusterAddSpec.getNodeSpec(), userIntent);
+    fillUserIntentFromClusterNodeSpec(clusterAddSpec.getNodeSpec(), userIntent);
     applyDedicatedNodes(
         clusterAddSpec.getDedicatedNodes(), clusterAddSpec.getNodeSpec(), userIntent);
     fillUserIntentFromClusterProviderEditSpec(clusterAddSpec.getProviderSpec(), userIntent);
@@ -606,24 +604,6 @@ public interface UserIntentMapper {
       userIntent.dedicatedNodes = clusterDedicatedNodes;
     } else if (nodeSpec != null && nodeSpec.getDedicatedNodes() != null) {
       userIntent.dedicatedNodes = nodeSpec.getDedicatedNodes();
-    }
-  }
-
-  /**
-   * Applies {@code nodeSpec} without clearing k8s resource specs the payload omits. Create uses
-   * {@link #fillUserIntentFromClusterNodeSpec} directly, where omit means unset. Edit and
-   * read-replica add start from an existing intent.
-   */
-  default void applyClusterNodeSpecPreservingOmittedK8sResources(
-      ClusterNodeSpec nodeSpec, UserIntent userIntent) {
-    UserIntent.K8SNodeResourceSpec keptMasterSpec = userIntent.masterK8SNodeResourceSpec;
-    UserIntent.K8SNodeResourceSpec keptTserverSpec = userIntent.tserverK8SNodeResourceSpec;
-    fillUserIntentFromClusterNodeSpec(nodeSpec, userIntent);
-    if (nodeSpec != null && nodeSpec.getK8sMasterResourceSpec() == null) {
-      userIntent.masterK8SNodeResourceSpec = keptMasterSpec;
-    }
-    if (nodeSpec != null && nodeSpec.getK8sTserverResourceSpec() == null) {
-      userIntent.tserverK8SNodeResourceSpec = keptTserverSpec;
     }
   }
 

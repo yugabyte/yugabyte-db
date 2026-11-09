@@ -1945,37 +1945,40 @@ public class KubernetesUtil {
   }
 
   public static void initializeK8sNodeResourceSpecsFromInstanceType(
-      UniverseDefinitionTaskParams taskParams, boolean overwrite) {
+      UniverseDefinitionTaskParams taskParams) {
     if (taskParams == null
         || taskParams.clusters == null
         || !Util.isKubernetesBasedUniverse(taskParams)) {
       return;
     }
     for (Cluster cluster : taskParams.clusters) {
-      UserIntent ui = cluster.userIntent;
-      if (Util.isKubernetesBased(cluster)) {
-        UUID providerUUID = Util.getSingleProviderUUID(cluster);
-        ProviderInitializer pi =
-            Util.providerInitializerForExistingIntent(cluster.userIntent, providerUUID);
-        Set<ServerType> serverTypes = new HashSet<>();
-        serverTypes.add(ServerType.TSERVER);
-        if (cluster.clusterType == ClusterType.PRIMARY) {
-          serverTypes.add(ServerType.MASTER);
-        }
+      initializeK8sNodeResourceSpecsFromInstanceType(cluster.clusterType, cluster.userIntent);
+    }
+  }
 
-        for (ServerType serverType : serverTypes) {
-          UserIntent.K8SNodeResourceSpec current =
-              serverType == ServerType.TSERVER
-                  ? ui.getTserverK8SNodeResourceSpec(providerUUID)
-                  : ui.getMasterK8SNodeResourceSpec(providerUUID);
+  public static void initializeK8sNodeResourceSpecsFromInstanceType(
+      ClusterType clusterType, UserIntent userIntent) {
+    if (userIntent == null || !Util.isKubernetesBased(userIntent)) {
+      return;
+    }
+    UUID providerUUID = Util.getSingleProviderUUID(userIntent);
+    ProviderInitializer pi = Util.providerInitializerForExistingIntent(userIntent, providerUUID);
+    Set<ServerType> serverTypes = new HashSet<>();
+    serverTypes.add(ServerType.TSERVER);
+    if (clusterType == ClusterType.PRIMARY) {
+      serverTypes.add(ServerType.MASTER);
+    }
+    for (ServerType serverType : serverTypes) {
+      UserIntent.K8SNodeResourceSpec current =
+          serverType == ServerType.TSERVER
+              ? userIntent.getTserverK8SNodeResourceSpec(providerUUID)
+              : userIntent.getMasterK8SNodeResourceSpec(providerUUID);
 
-          if (current == null || overwrite) {
-            UserIntent.K8SNodeResourceSpec k8SNodeResourceSpec =
-                initK8sResourceSpec(ui, serverType);
-            if (k8SNodeResourceSpec != null) {
-              pi.setNodeResourceSpec(k8SNodeResourceSpec, serverType);
-            }
-          }
+      if (current == null) {
+        UserIntent.K8SNodeResourceSpec k8SNodeResourceSpec =
+            initK8sResourceSpec(userIntent, serverType);
+        if (k8SNodeResourceSpec != null) {
+          pi.setNodeResourceSpec(k8SNodeResourceSpec, serverType);
         }
       }
     }

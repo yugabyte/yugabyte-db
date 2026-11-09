@@ -97,9 +97,6 @@ public class UniverseControllerRequestBinder {
     // 2. encryptionAtRestConfig - See @JsonAlias annotations on the EncryptionAtRestConfig props
     // 3. cluster.userIntent gflags list to maps - TODO
 
-    RuntimeConfGetter runtimeConfGetter =
-        StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
-
     try {
       ObjectNode formData = (ObjectNode) request.body().asJson();
       List<UniverseDefinitionTaskParams.Cluster> clusters = mapClustersInParams(formData, true);
@@ -109,7 +106,7 @@ public class UniverseControllerRequestBinder {
       taskParams.creatingUser = CommonUtils.getUserFromContext();
       taskParams.platformUrl = request.host();
 
-      KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(taskParams, true);
+      KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(taskParams);
 
       return taskParams;
     } catch (JsonProcessingException exception) {
