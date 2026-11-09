@@ -270,6 +270,9 @@ extern YbcPgYBTupleIdDescriptor *YBCBuildUniqueIndexYBTupleId(Relation unique_in
  */
 extern bool YBCRelInfoHasSecondaryIndices(ResultRelInfo *resultRelInfo);
 
+extern bool YbCanUseUpsertMode(ResultRelInfo *resultRelInfo,
+							   bool is_copy_replace);
+
 /*
  * Returns the number of seconday indices excluding primary indexes.
  */
