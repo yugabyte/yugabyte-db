@@ -38,7 +38,7 @@ public class K8sResourceSpecInitializerTest {
         .setInstanceType("c5.xlarge");
     UniverseDefinitionTaskParams params = paramsWith(ui);
 
-    KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(params, true);
+    KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(params);
 
     assertNull(ui.getMasterK8SNodeResourceSpec(providerUUID));
     assertNull(ui.getTserverK8SNodeResourceSpec(providerUUID));
@@ -49,7 +49,7 @@ public class K8sResourceSpecInitializerTest {
     K8SNodeResourceSpec existing = resourceSpec(1.5, 3.0);
     UUID providerUUID = UUID.randomUUID();
     UserIntent ui = k8sIntent(providerUUID, null, null, existing, null);
-    KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(paramsWith(ui), true);
+    KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(paramsWith(ui));
 
     assertNull(ui.getMasterK8SNodeResourceSpec(providerUUID));
     assertSame(existing, ui.getTserverK8SNodeResourceSpec(providerUUID));
@@ -65,29 +65,10 @@ public class K8sResourceSpecInitializerTest {
     try (MockedStatic<InstanceType> instanceTypes = mockStatic(InstanceType.class)) {
       stubInstanceType(instanceTypes, providerUUID, masterInstType, 3.0, 4.0);
       stubInstanceType(instanceTypes, providerUUID, tserverInstType, 1.0, 2.0);
-      KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(paramsWith(ui), false);
+      KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(paramsWith(ui));
     }
     assertResourceSpec(ui.getTserverK8SNodeResourceSpec(providerUUID), 1.0, 2.0);
     assertResourceSpec(ui.getMasterK8SNodeResourceSpec(providerUUID), 3.0, 4.0);
-  }
-
-  @Test
-  public void testDoesntOverwriteExisting() {
-    K8SNodeResourceSpec existingTserver = resourceSpec(1.5, 3.0);
-    K8SNodeResourceSpec existingMaster = resourceSpec(2.5, 4.0);
-    String tserverInstType = "tserver.type";
-    String masterInstType = "master.type";
-    UUID providerUUID = UUID.randomUUID();
-    UserIntent ui =
-        k8sIntent(providerUUID, tserverInstType, masterInstType, existingTserver, existingMaster);
-
-    try (MockedStatic<InstanceType> instanceTypes = mockStatic(InstanceType.class)) {
-      stubInstanceType(instanceTypes, providerUUID, masterInstType, 4.0, 8.0);
-      stubInstanceType(instanceTypes, providerUUID, tserverInstType, 4.0, 8.0);
-      KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(paramsWith(ui), false);
-    }
-    assertSame(existingTserver, ui.getTserverK8SNodeResourceSpec(providerUUID));
-    assertSame(existingMaster, ui.getMasterK8SNodeResourceSpec(providerUUID));
   }
 
   private static void stubInstanceType(
