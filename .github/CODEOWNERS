@@ -1,5 +1,46 @@
-/.github/** @yugabyte/devops
+# GH teams must have write access to the repo to be auto-assigned.
+# This file auto-adds review teams, but does not require review from the team
+# (configurable in repo settings). So consider this a team notification only.
 
-# xCluster team:
+/.github/           @yugabyte/devops
+
+# DB - catchall
+# Indicates at least some paths in pull-request fell between the patterns below.
+# If CODEOWNER_Missing is the only reviewer, add one of the DB teams and consider updating this file.
+/src/postgres/      @yugabyte/CODEOWNER_Missing
+/src/yb/            @yugabyte/CODEOWNER_Missing
+
 /src/**/*xcluster*  @yugabyte/xcluster
 /src/**/*xrepl*     @yugabyte/xcluster
+
+/src/yb/consensus/  @yugabyte/ybase
+/src/yb/docdb/      @yugabyte/ybase
+/src/yb/dockv/      @yugabyte/ybase
+/src/yb/fs/         @yugabyte/ybase
+/src/yb/gen_yrpc/   @yugabyte/ybase
+/src/yb/master/     @yugabyte/ybase
+/src/yb/qlexpr/     @yugabyte/ybase
+/src/yb/rocksdb/    @yugabyte/ybase
+/src/yb/rocksutil/  @yugabyte/ybase
+/src/yb/rpc/        @yugabyte/ybase
+/src/yb/server/     @yugabyte/ybase
+/src/yb/tablet/     @yugabyte/ybase
+/src/yb/tserver/    @yugabyte/ybase
+/src/yb/client/     @yugabyte/ybase
+/src/yb/common/     @yugabyte/ybase
+/src/yb/encryption/ @yugabyte/ybase
+/src/yb/gutil/      @yugabyte/ybase
+/src/yb/tools/      @yugabyte/ybase
+/src/yb/util/       @yugabyte/ybase
+
+/src/postgres/                  @yugabyte/yql
+/src/yb/yql/                    @yugabyte/yql
+/src/yb/tserver/pg_client*      @yugabyte/yql
+/src/yb/docdb/pgsql_operation*  @yugabyte/yql
+/src/yb/docdb/cql_operation*    @yugabyte/yql
+/src/odyssey/                   @yugabyte/yql
+
+/src/yb/cdc/                            @yugabyte/ycdcxcluster
+/src/postgres/src/backend/replication/  @yugabyte/ycdcxcluster
+
+/managed/           @yugabyte/yugaware
