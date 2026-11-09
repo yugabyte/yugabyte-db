@@ -32,6 +32,8 @@ rightNav:
   </li>
 </ul>
 
+<!-- The steps from here to the end of "Connect to the cluster" are duplicated in quick-start-yugabytedb-managed/_index.md. Keep both in sync. -->
+
 The quickest way to get started with YugabyteDB Aeon is to create a free Serverless Postgres cluster. Serverless Postgres is free up to 2 vCPU and 16 GiB of memory, and no credit card is required.
 
 1. [Sign up](https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup).
@@ -58,29 +60,23 @@ The first time you create a cluster, YugabyteDB Aeon creates the [Serverless acc
 
 ## Connect to the cluster
 
-A new cluster has one read-write endpoint on main. Clients can connect through a public endpoint limited by trusted IP addresses. In this case, you provided the address of your own machine when creating the free cluster.
+A new cluster has one read-write endpoint on the `main` branch. Clients can connect through a public endpoint limited by trusted IP addresses. In this case, you provided the address of your own machine when creating the free cluster.
 
 Connect to your cluster's endpoint using psql:
 
 1. Under the main branch **Compute Endpoints**, click **Connect**.
 
-1. Click **Download CA Cert**.
+1. If the dialog offers **Download CA Cert**, click it and save the certificate.
 
-1. Click **Copy** to copy the connection string:
+1. Click **Copy** to copy the connection string. The host and port are the endpoint's address. In the copied string, do the following:
 
-    - The host address is populated with the address for the endpoint you selected. This is also shown under **Connection Details** for the endpoint.
-    - port is 55433.
     - Replace `<DB USER>` with your database username (`cloud_admin` unless you created another role).
-    - `postgres` is the default database; replace it if you're connecting to a database other than the default.
-    - Replace `<ROOT_CERT_PATH>` with the path to the root certificate you downloaded to your computer.
+    - Replace `postgres` if you're connecting to a database other than the default.
+    - Replace `<ROOT_CERT_PATH>` with the path to the CA certificate you downloaded. If the endpoint doesn't require the CA certificate, the string has no `sslmode` or `sslrootcert`.
 
     If the endpoint has a DocumentDB address, the dialog also offers **DocumentDB**. Select it and copy that command instead.
 
-1. Run the command in your terminal.
-
-    The client prompts for the password from the credentials file when you run the command.
-
-1. Enter your database password.
+1. Run the command. When prompted, enter the password from the credentials file.
 
 You can now run SQL against your Serverless Postgres database, and connect applications using any PostgreSQL driver.
 

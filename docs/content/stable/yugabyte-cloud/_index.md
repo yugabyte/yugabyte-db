@@ -43,7 +43,7 @@ YugabyteDB Aeon SLA service availability is [99.99%](https://www.yugabyte.com/yu
 
 ## Choose the right cluster
 
-Use [Serverless Postgres](serverless/) for AI agents, a database per tenant, and workloads that are bursty or often idle. Each agent or tenant gets an isolated PostgreSQL database. The cluster scales to zero, and you can fork a zero-copy branch when an agent or a test needs its own copy of the data. Serverless Postgres is free to start.
+Use [Serverless Postgres](serverless/) for AI agents, a database per tenant, and workloads that are bursty or often idle. Each agent or tenant gets an isolated PostgreSQL database, and you can fork a zero-copy branch when an agent or a test needs its own copy of the data. Serverless Postgres is free to start.
 
 Use [Distributed Postgres](distributed-postgres/) for production applications that must stay available as load grows, or that serve users in more than one region. You choose the fault tolerance and topology, and deploy on Amazon Web Services (AWS), Microsoft Azure, or Google Cloud Platform (GCP). Clusters are billed per vCPU.
 
@@ -51,11 +51,10 @@ Use [Distributed Postgres](distributed-postgres/) for production applications th
 | :--- | :--- | :--- |
 | Best for | AI agents, tenants, and workloads that are idle between bursts | Production applications that need high availability, more nodes, or several regions |
 | Start | Free, up to 2 vCPU, 16 GiB RAM, and 100 GiB storage, shared by the account | Billed per vCPU. [Free trial](managed-freetrial/) credits are available |
-| Availability | Scales to zero when idle. Active tenants share CPU fairly | Fault tolerance across nodes, availability zones, or regions |
-| Topology | A shared pool. Fork zero-copy branches for separate copies of the data | Single region, replicate across regions, partition by region, and read replicas |
+| Availability | Runs on a shared pool, with resources isolated between tenants | Fault tolerance across nodes, availability zones, or regions |
+| Topology | One database per agent or tenant. Fork zero-copy branches for separate copies of the data | Single region, replicate across regions, partition by region, and read replicas |
 | Scale | Resize the vCPU and memory of an endpoint | Add or remove nodes, or change vCPUs and disk size |
 | Network | Public endpoint with trusted IP addresses | VPC peering or a private link, plus IP allow lists |
-| Next step | Move to a Distributed Postgres cluster without a migration | Scale the cluster you already have |
 
 ## More resources
 
