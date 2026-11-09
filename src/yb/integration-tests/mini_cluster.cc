@@ -642,6 +642,40 @@ Result<TabletServerId> MiniCluster::StepDownMasterLeader(const std::string& new_
   return actual_new_leader_uuid;
 }
 
+Status MiniCluster::StepDownMasterLeaderAndWaitForNewLeader(
+    const TabletServerId& new_leader_uuid, MonoDelta timeout) {
+  const auto old_leader_uuid = VERIFY_RESULT(GetLeaderMiniMaster())->permanent_uuid();
+  if (old_leader_uuid == new_leader_uuid) {
+    return Status::OK();
+  }
+  auto leader_moved = [&]() -> Result<bool> {
+    const auto leader_uuid = VERIFY_RESULT(GetLeaderMiniMaster())->permanent_uuid();
+    return new_leader_uuid.empty() ? leader_uuid != old_leader_uuid
+                                   : leader_uuid == new_leader_uuid;
+  };
+  return WaitFor([&]() -> Result<bool> {
+    if (VERIFY_RESULT(leader_moved())) {
+      return true;
+    }
+    const auto stepped_down_uuid = VERIFY_RESULT(GetLeaderMiniMaster())->permanent_uuid();
+    auto result = StepDownMasterLeader(new_leader_uuid);
+    if (!result.ok()) {
+      LOG(INFO) << "Master leader step down failed, retrying: " << result.status();
+      return false;
+    }
+    // Transfer is asynchronous; wait only until leadership leaves the stepped down master, the
+    // outer loop retries if another master won.
+    auto status = WaitFor([&]() -> Result<bool> {
+      return VERIFY_RESULT(GetLeaderMiniMaster())->permanent_uuid() != stepped_down_uuid;
+    }, 10s * kTimeMultiplier, "Wait for master leader to move");
+    if (!status.ok()) {
+      LOG(INFO) << status;
+      return false;
+    }
+    return leader_moved();
+  }, timeout, Format("Step down master leader to $0", new_leader_uuid));
+}
+
 
 void MiniCluster::StopSync() {
   if (!running_) {

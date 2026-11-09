@@ -104,7 +104,7 @@ static inline void yb_od_backend_drain_until_eof(od_server_t *server)
 		uint64_t elapsed_us = yb_monotonic_time_us() - start_us;
 		if (elapsed_us >= timeout_ms * 1000llu) {
 			od_debug(&instance->logger, "backend-drain", NULL,
-				 server, "drain timed out after %llu us",
+				 server, "drain timed out after %" PRIu64 " us",
 				 elapsed_us);
 			rc = -1;
 			break;
@@ -113,7 +113,7 @@ static inline void yb_od_backend_drain_until_eof(od_server_t *server)
 		rc = machine_read_raw(io->io, buf, sizeof(buf));
 		if (rc == 0) {
 			od_debug(&instance->logger, "backend-drain", NULL,
-				 server, "drain complete (EOF) after %llu us",
+				 server, "drain complete (EOF) after %" PRIu64 " us",
 				 yb_monotonic_time_us() - start_us);
 			break;
 		}
@@ -130,7 +130,7 @@ static inline void yb_od_backend_drain_until_eof(od_server_t *server)
 			 */
 			od_debug(&instance->logger, "backend-drain", NULL,
 				 server,
-				 "drain ended with errno=%d after %llu us",
+				 "drain ended with errno=%d after %" PRIu64 " us",
 				 errno_, yb_monotonic_time_us() - start_us);
 			break;
 		}

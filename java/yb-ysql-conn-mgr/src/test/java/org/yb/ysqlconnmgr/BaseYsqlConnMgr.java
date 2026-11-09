@@ -67,7 +67,7 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   private static final long WAIT_FOR_PG_AFTER_CLUSTER_START_TIMEOUT_MS =
       30000 * BuildTypeUtil.nonSanitizerVsSanitizer(1, 3);
   private boolean warmup_random_mode = true;
-  private static boolean ysql_conn_mgr_superuser_sticky = false;
+  private boolean ysql_conn_mgr_superuser_sticky = false;
 
   protected static final String DISABLE_TEST_WITH_ASAN =
         "Test is not working correctly with asan build";
@@ -171,6 +171,7 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   protected void enableStickySuperuserConnsAndRestartCluster() throws Exception {
     ysql_conn_mgr_superuser_sticky = true;
     restartClusterWithAdditionalFlags(Collections.emptyMap(), Collections.emptyMap());
+    markClusterNeedsRecreation();
   }
 
   protected void reduceQuerySizePacketAndRestartCluster(int query_sz) throws Exception {

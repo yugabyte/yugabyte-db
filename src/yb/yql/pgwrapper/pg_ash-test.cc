@@ -1613,6 +1613,52 @@ TEST_P(YbAshV2TestWithCircularBufferSize, TestYbAshFunctionAndViewReturnSameSamp
              kView, start_time, end_time)}));
 }
 
+TEST_P(YbAshV2TestWithCircularBufferSize, TestTimeBoundsBetweenSamples) {
+  constexpr auto kView = "yb_active_session_history";
+  // A single sleeping session gives one sample per sampling round, so with the 1 KiB buffer
+  // there is a time gap between the last slot and slot 0.
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Fetch("SELECT pg_sleep(2)"));
+  ASSERT_OK(StopAshSampling());
+
+  // Bounds: every sample time, every midpoint between consecutive sample times, one point on
+  // each side of the buffer's time range, and times at and before 2000-01-01, where
+  // timestamptz is 0. The view filtered on sample_time is the expected result.
+  const auto [num_sample_times, bad_start_bounds, bad_end_bounds, bad_empty_ranges] =
+      ASSERT_RESULT((conn_->FetchRow<int64_t, int64_t, int64_t, int64_t>(Format(R"#(
+          WITH times AS (SELECT DISTINCT sample_time AS ts FROM $0),
+               bounds AS (SELECT ts FROM times
+                          UNION
+                          SELECT ts + (LEAD(ts) OVER (ORDER BY ts) - ts) / 2 FROM times
+                          UNION
+                          SELECT MIN(ts) - INTERVAL '1 ms' FROM times
+                          UNION
+                          SELECT MAX(ts) + INTERVAL '1 ms' FROM times
+                          UNION
+                          SELECT '2000-01-01 00:00:00+00'
+                          UNION
+                          SELECT '1999-12-31 00:00:00+00'),
+               results AS (
+                 SELECT
+                   ARRAY(SELECT sample_time FROM $0 WHERE sample_time >= b.ts ORDER BY 1)
+                     = ARRAY(SELECT sample_time FROM $0(b.ts) ORDER BY 1) AS start_ok,
+                   ARRAY(SELECT sample_time FROM $0 WHERE sample_time < b.ts ORDER BY 1)
+                     = ARRAY(SELECT sample_time FROM $0(NULL, b.ts) ORDER BY 1) AS end_ok,
+                   (SELECT COUNT(*) FROM $0(b.ts, b.ts)) = 0 AS empty_ok
+                 FROM bounds b WHERE b.ts IS NOT NULL)
+          SELECT (SELECT COUNT(*) FROM times),
+                 COUNT(*) FILTER (WHERE NOT start_ok),
+                 COUNT(*) FILTER (WHERE NOT end_ok),
+                 COUNT(*) FILTER (WHERE NOT empty_ok)
+          FROM results
+      )#", kView))));
+  // At least one gap between samples, or the checks below compare empty results.
+  ASSERT_GE(num_sample_times, 2);
+  EXPECT_EQ(bad_start_bounds, 0);
+  EXPECT_EQ(bad_end_bounds, 0);
+  EXPECT_EQ(bad_empty_ranges, 0);
+}
+
 // Regression test: ASH samples for ConflictResolution_WaitOnConflictingTxns must carry the user's
 // query_id across wait-queue refresh retries. The wait queue refreshes a stalled waiter every
 // refresh_waiter_timeout_ms; the waiter's Write RPC times out and is re-sent by RpcRetrier on a
