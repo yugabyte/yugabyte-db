@@ -48,6 +48,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/flags.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/signal_util.h"
 
 using namespace std::literals;
 
@@ -183,24 +184,33 @@ class DnsResolver::Impl {
       if (promise) {
         static const std::string kService = "";
         std::string host_copy(host);
-        resolver->async_resolve(
-            Resolver::query(host_copy, kService),
-            [this, host_copy, promise, metric, start_time = CoarseMonoClock::Now()](
-                const boost::system::error_code& error,
-                const Resolver::results_type& entries) mutable {
-          // Unfortunately there is no safe way to set promise value from 2 different threads, w/o
-          // catching exception in case of concurrency.
-          const auto now = CoarseMonoClock::Now();
-          if (metric) {
-            metric->Increment(ToMicroseconds(now - start_time));
-          }
-          if (start_time + 250ms < now) {
-            YB_LOG_EVERY_N_SECS(WARNING, 5)
-                << "Long time to resolve DNS for " << host_copy << ": "
-                << MonoDelta(now - start_time);
-          }
-          SetResult(PickResolvedAddress(host_copy, error, entries), promise.get());
+        // The first async_resolve on an io_service spawns boost's resolver thread, which inherits
+        // the calling thread's signal mask. Postgres signal handlers must only run on the main
+        // thread, so keep them blocked on the resolver thread.
+        auto status = WithMaskedYsqlSignals([&]() -> Status {
+          resolver->async_resolve(
+              Resolver::query(host_copy, kService),
+              [this, host_copy, promise, metric, start_time = CoarseMonoClock::Now()](
+                  const boost::system::error_code& error,
+                  const Resolver::results_type& entries) mutable {
+            // Unfortunately there is no safe way to set promise value from 2 different threads,
+            // w/o catching exception in case of concurrency.
+            const auto now = CoarseMonoClock::Now();
+            if (metric) {
+              metric->Increment(ToMicroseconds(now - start_time));
+            }
+            if (start_time + 250ms < now) {
+              YB_LOG_EVERY_N_SECS(WARNING, 5)
+                  << "Long time to resolve DNS for " << host_copy << ": "
+                  << MonoDelta(now - start_time);
+            }
+            SetResult(PickResolvedAddress(host_copy, error, entries), promise.get());
+          });
+          return Status::OK();
         });
+        if (!status.ok()) {
+          SetResult(status, promise.get());
+        }
 
         if (io_service->stopped()) {
           SetResult(STATUS(Aborted, "Messenger already stopped"), promise.get());

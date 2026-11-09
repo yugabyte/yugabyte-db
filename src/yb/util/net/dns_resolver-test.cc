@@ -32,6 +32,8 @@
 
 #include "yb/util/net/dns_resolver.h"
 
+#include <fstream>
+#include <unordered_set>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -39,8 +41,11 @@
 #include "yb/gutil/strings/util.h"
 
 #include "yb/util/countdown_latch.h"
+#include "yb/util/env.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/signal_util.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
@@ -49,6 +54,28 @@
 using namespace std::literals;
 
 namespace yb {
+
+namespace {
+
+constexpr auto kTaskDir = "/proc/self/task";
+
+Result<std::unordered_set<std::string>> ListThreads() {
+  auto tids = VERIFY_RESULT(Env::Default()->GetChildren(kTaskDir, ExcludeDots::kTrue));
+  return std::unordered_set<std::string>(tids.begin(), tids.end());
+}
+
+Result<uint64_t> BlockedSignals(const std::string& tid) {
+  std::ifstream status(Format("$0/$1/status", kTaskDir, tid));
+  std::string line;
+  while (std::getline(status, line)) {
+    if (line.starts_with("SigBlk:")) {
+      return std::stoull(line.substr(line.find_first_not_of(" \t", 7)), nullptr, 16);
+    }
+  }
+  return STATUS_FORMAT(NotFound, "No SigBlk for thread $0", tid);
+}
+
+} // namespace
 
 class DnsResolverTest : public YBTest {
  protected:
@@ -96,6 +123,30 @@ TEST_F(DnsResolverTest, TestResolution) {
   } else if (addr.is_v6()) {
     EXPECT_TRUE(HasPrefixString(ToString(addr), "[::1]"));
   }
+}
+
+TEST_F(DnsResolverTest, ResolverThreadBlocksYsqlSignals) {
+  auto old_mask = ASSERT_RESULT(ThreadSignalMaskUnblock(kYsqlHandledSignals));
+  auto se = ScopeExit([&old_mask] { CHECK_OK(ThreadSignalMaskRestore(old_mask)); });
+  auto threads_before = ASSERT_RESULT(ListThreads());
+
+  auto future = resolver_.ResolveFuture("localhost");
+  ASSERT_EQ(future.wait_for(1s), std::future_status::ready);
+  ASSERT_RESULT(Copy(future.get()));
+
+  size_t new_threads = 0;
+  for (const auto& tid : ASSERT_RESULT(ListThreads())) {
+    if (threads_before.contains(tid)) {
+      continue;
+    }
+    ++new_threads;
+    auto blocked = ASSERT_RESULT(BlockedSignals(tid));
+    for (int sig : kYsqlHandledSignals) {
+      EXPECT_TRUE(blocked & (1ULL << (sig - 1)))
+          << "Thread " << tid << " does not block " << strsignal(sig);
+    }
+  }
+  EXPECT_GT(new_threads, 0);
 }
 
 } // namespace yb
