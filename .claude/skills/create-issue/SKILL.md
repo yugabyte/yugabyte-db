@@ -15,7 +15,7 @@ model: sonnet
 Create a tracking issue for a YugabyteDB change: either a **GitHub issue** in
 `yugabyte/yugabyte-db` (the default for core DB code) or a **JIRA ticket** (the
 default for YBA/platform work). Return the resulting issue number / JIRA key so
-it can feed into `/create-pr` or `/create-diff`.
+it can feed into `/create-pr`.
 
 ## Confidentiality — read before you write anything public
 
@@ -187,7 +187,7 @@ issue from being created at all.
 Output:
 
 - The issue URL (from `gh issue create`) or the JIRA key + link.
-- The reference in the form you'd hand to `/create-pr` or `/create-diff`
+- The reference in the form you'd hand to `/create-pr`
   (a GitHub number like `#31151`, or a JIRA key like `PLAT-20518`).
 
 Then clean up any temp files created during this run.
@@ -199,5 +199,5 @@ Then clean up any temp files created during this run.
   issue.
 - The GitHub title the template proposes (e.g. `[DocDB] Title`) is the raw issue
   title. The `[<issue>] <Component>: <Title>` PR/commit format is applied later by
-  `/create-pr` or `/create-diff` — don't pre-format the issue title that way.
+  `/create-pr` — don't pre-format the issue title that way.
 - This skill only *creates* the tracker. Opening the PR/diff is a separate step.

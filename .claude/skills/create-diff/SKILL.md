@@ -1,13 +1,19 @@
 ---
 name: create-diff
 description: >-
-  Create a YugabyteDB Phorge diff for the current branch's changes.
-  Use when the user wants to publish their changes for review.
+  Create a YugabyteDB Phorge diff (`arc diff`) for the current branch's
+  changes.  Use ONLY when the user explicitly asks for a Phorge diff;
+  otherwise publish changes for review with the create-pr skill.
 ---
 
 # Create Diff
 
 Create a Phorge diff for the current branch using `arc diff --create`.
+
+**GitHub PRs are the default; Phorge is being retired.** It stops
+accepting new diffs on 2026-11-23 and stops landing them on 2026-12-21.
+Use this skill only when the user explicitly asks for a Phorge diff, and
+from 2026-11-23 on use the `create-pr` skill instead.
 
 
 ## Confidentiality -- read before you write anything

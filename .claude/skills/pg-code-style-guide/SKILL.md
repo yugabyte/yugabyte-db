@@ -4,7 +4,7 @@ description: >-
   The code style guide for YugabyteDB's PostgreSQL fork: required
   conventions for ANY change under src/postgres -- follow upstream
   PostgreSQL's rules, explicit and implicit, while isolating and marking
-  the YB delta so that the diff/merge tooling (git, Phorge, GitHub) and
+  the YB delta so that the diff/merge tooling (git, GitHub) and
   future PG major-version merges are not confused.  Follow it when writing or
   editing backend C files or headers (planner, executor, catalog, commands,
   utils, yb_*.c), adding or wiring a GUC, adding a field to a PG-owned
@@ -12,7 +12,7 @@ description: >-
   expected .out files (yb.port.*, yb.orig.*), cherry-picking or merging
   upstream PostgreSQL commits, cleanup-only passes bringing an existing
   file up to these conventions, and reviewing or fixing a src/postgres diff
-  before arc diff or when lint reports missing_yb_marker_for_yb_changes or
+  before opening a PR or when lint reports missing_yb_marker_for_yb_changes or
   another src/postgres check.  These requests look like ordinary edits,
   but code written from general PostgreSQL knowledge violates the fork's
   conventions and gets rejected in lint or review -- follow this guide

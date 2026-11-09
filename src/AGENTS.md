@@ -1,14 +1,15 @@
 ## Making changes and pushing to upstream
 Never operate on master branch directly. Always create a new local branch and work on that.
 Pushing the branch to yugabyte/yugabyte-db repository is not allowed. If you are on a personal fork, you can push to that.
-arc and phorge are used to review, run lab tests, and merge changes. This should ONLY be done by the human.
+Changes are reviewed, tested, and merged as GitHub PRs: publish with the `create-pr` skill and backport with `/backport-commit`. Merging is done by the human.
+Phorge (`arc diff` / `arc land`) is being retired: it stops accepting new diffs on 2026-11-23 and stops landing them on 2026-12-21. Use it only when the user explicitly asks for a Phorge diff.
 
 Avoid using non-ASCII characters in files and commit messages.
 There may be some exceptions where appropriate such as `collate.icu.utf8.sql` and `jsonpath_encoding.out`.
 
 ## Confidentiality — never leak customer data, YugabyteDB secrets, or PII
 
-The `yugabyte/yugabyte-db` repo is public, and **Phorge is treated as public too** (diff titles, summaries, test plans, and attached code land on the public repo verbatim when upstreamed). Anything you write to a public destination — repo, issues, PRs, comments, commit messages, Phorge diffs, mailing lists, public Slack, gists — is permanent and unretractable. This rule overrides convenience: if it means writing a slower synthetic reproducer instead of pasting the customer's repro, write the synthetic reproducer.
+The `yugabyte/yugabyte-db` repo is public. Anything you write to a public destination — repo, issues, PRs, comments, commit messages, Phorge diffs, mailing lists, public Slack, gists — is permanent and unretractable. This rule overrides convenience: if it means writing a slower synthetic reproducer instead of pasting the customer's repro, write the synthetic reproducer.
 
 Internal destinations are different: direct chat with the user, internal JIRA, internal Slack, and support cases are fine places to discuss customer specifics. The rules below are about what crosses into a public artifact.
 
@@ -37,7 +38,7 @@ When the source material is a customer report:
 
 ### Scrub checklist before any public publish
 
-Before running `create-pr.sh`, `arc diff --create`, `gh pr comment`, `gh issue create`, or any push of a branch that has an open PR, scan the new content (diffs, message files, comments) for:
+Before running `create-pr.sh`, `gh pr comment`, `gh issue create`, or any push of a branch that has an open PR, scan the new content (diffs, message files, comments) for:
 
 - [ ] No customer company names, account IDs, universe/cluster names or UUIDs, support case numbers, environment names, region/zone names.
 - [ ] No real email addresses, names, phone numbers, postal addresses, or IPs (public or private).
@@ -122,14 +123,14 @@ for the block below it, not narration of the change you just made. Don't restate
 retelling of the diff. Padding costs reviewers real time and rots as the code moves. Full
 rule and reasoning:
 [`AGENTS.md` § Prose discipline](../AGENTS.md#prose-discipline--write-for-the-reader-not-for-volume);
-the `create-pr` and `create-diff` skills re-check it before publishing.
+the `create-pr` skill re-checks it before publishing.
 
 ## Commit messages
 
 - Use backticks for method, class, and other code references.
 - Prefer `DocDB` over `docdb` as a component prefix.
 - When referencing other commits (for instance as the cause of a regression), use the form
-  `<COMMIT_HASH>/<DIFF_ID>`.
+  `<COMMIT_HASH>/#<PR>`, or `<COMMIT_HASH>/D<id>` for a commit that landed via Phorge.
 - The body carries the **why** — the constraint, the failure it fixes, the decision a
   reader would otherwise have to reverse-engineer. Not a file-by-file retelling of the
   diff (`git show` does that better). A commit whose reasoning is obvious from the subject
