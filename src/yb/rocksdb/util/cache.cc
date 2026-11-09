@@ -62,6 +62,10 @@ Cache::~Cache() {
 
 namespace {
 
+size_t SubtractOrZero(size_t a, size_t b) {
+  return a > b ? a - b : 0;
+}
+
 // LRU cache implementation
 
 // An entry is a variable length heap-allocated structure.
@@ -449,14 +453,14 @@ class LRUCache {
   LRUSubCache multi_touch_sub_cache_;
 
   // total_capacity_ is the effective capacity (base_total_capacity_ minus space_consumed_);
-  // multi_touch_capacity_ is derived from it. base_total_capacity_ is the configured capacity and
+  // multi_touch_share_ is derived from it. base_total_capacity_ is the configured capacity and
   // space_consumed_ is reserved-but-not-stored space (see ConsumeSpace).
   size_t total_capacity_;
-  size_t multi_touch_capacity_;
+  size_t multi_touch_share_;
   size_t base_total_capacity_ = 0;
   size_t space_consumed_ = 0;
 
-  // Recomputes total_capacity_/multi_touch_capacity_ from base_total_capacity_ and space_consumed_,
+  // Recomputes total_capacity_/multi_touch_share_ from base_total_capacity_ and space_consumed_,
   // then evicts to fit. Caller must hold mutex_; evicted handles are freed via `deleted`.
   void UpdateCapacities(LRUHandleDeleter* deleted);
 
@@ -563,33 +567,30 @@ size_t LRUCache::GetSubCacheCapacity(const SubCacheType subcache_type) {
   switch (subcache_type) {
     case SINGLE_TOUCH :
       if (!CanOverflow(SINGLE_TOUCH)) {
-        return total_capacity_ - multi_touch_capacity_;
+        return total_capacity_ - multi_touch_share_;
       }
       // total_capacity_ can drop below the multi-touch usage held by pinned entries once
       // ConsumeSpace (block cache reservation) shrinks the effective capacity. Guard against the
       // unsigned underflow; otherwise EvictFromLRU would compute a huge single-touch capacity and
       // evict nothing, leaving the single-touch LRU non-empty while the cache reports full and
       // tripping the IsLRUEmpty() assertion in Release.
-      return total_capacity_ > multi_touch_sub_cache_.Usage()
-          ? total_capacity_ - multi_touch_sub_cache_.Usage() : 0;
+      return SubtractOrZero(total_capacity_, multi_touch_sub_cache_.Usage());
     case MULTI_TOUCH :
       if (!CanOverflow(MULTI_TOUCH)) {
-        return multi_touch_capacity_;
+        return multi_touch_share_;
       }
       // Like the single touch cache, the multi touch cache can use any space the other one is not
       // using, but it keeps its share even when the single touch cache overflows into it.
       return std::max(
-          multi_touch_capacity_,
-          total_capacity_ > single_touch_sub_cache_.Usage()
-              ? total_capacity_ - single_touch_sub_cache_.Usage() : 0);
+          multi_touch_share_, SubtractOrZero(total_capacity_, single_touch_sub_cache_.Usage()));
   }
   FATAL_INVALID_ENUM_VALUE(SubCacheType, subcache_type);
 }
 
 void LRUCache::EvictLRUHead(LRUSubCache* sub_cache, LRUHandleDeleter* deleted) {
   LRUHandle* old = sub_cache->LRU_Head().next;
-  assert(old->in_cache);
-  assert(old->refs == 1);  // LRU list contains elements which may be evicted
+  DCHECK(old->in_cache);
+  DCHECK_EQ(old->refs, 1U);  // LRU list contains elements which may be evicted
   sub_cache->LRU_Remove(old);
   table_.Remove(old->key(), old->hash);
   old->in_cache = false;
@@ -609,16 +610,15 @@ void LRUCache::EvictFromLRU(const size_t charge,
 }
 
 void LRUCache::EvictMultiTouchOverShare(const size_t charge, LRUHandleDeleter* deleted) {
-  while (multi_touch_sub_cache_.Usage() > multi_touch_capacity_ &&
+  while (multi_touch_sub_cache_.Usage() > multi_touch_share_ &&
          TotalUsage() + charge > total_capacity_ && !multi_touch_sub_cache_.IsLRUEmpty()) {
     EvictLRUHead(&multi_touch_sub_cache_, deleted);
   }
 }
 
 void LRUCache::UpdateCapacities(LRUHandleDeleter* deleted) {
-  total_capacity_ =
-      base_total_capacity_ > space_consumed_ ? base_total_capacity_ - space_consumed_ : 0;
-  multi_touch_capacity_ = round((1 - FLAGS_cache_single_touch_ratio) * total_capacity_);
+  total_capacity_ = SubtractOrZero(base_total_capacity_, space_consumed_);
+  multi_touch_share_ = round((1 - FLAGS_cache_single_touch_ratio) * total_capacity_);
   EvictFromLRU(0, deleted, MULTI_TOUCH);
   EvictFromLRU(0, deleted, SINGLE_TOUCH);
 }
@@ -648,7 +648,7 @@ void LRUCache::ReleaseSpace(size_t bytes) {
 
   {
     absl::MutexLock l(&mutex_);
-    space_consumed_ = space_consumed_ > bytes ? space_consumed_ - bytes : 0;
+    space_consumed_ = SubtractOrZero(space_consumed_, bytes);
     UpdateCapacities(&last_reference_list);
   }
 }
@@ -659,7 +659,7 @@ void LRUCache::SetStrictCapacityLimit(bool strict_capacity_limit) {
   // This is because we disable overflow when strict_capacity_limit_ is true.
   // We cannot ensure that neither subcache has already overflown when the cache already has
   // elements in it.
-  assert(TotalUsage() == 0 ||
+  DCHECK(TotalUsage() == 0 ||
          (!FLAGS_cache_overflow_single_touch && !FLAGS_cache_overflow_multi_touch));
   strict_capacity_limit_ = strict_capacity_limit;
 }
@@ -688,7 +688,7 @@ Cache::Handle* LRUCache::Lookup(const Slice& key, uint32_t hash, const QueryId q
         assert(FLAGS_cache_single_touch_ratio != 0);
         if (!strict_capacity_limit_ ||
             multi_touch_sub_cache_.Usage() - multi_touch_sub_cache_.LRU_Usage() + e->charge <=
-            multi_touch_capacity_) {
+            multi_touch_share_) {
           e->query_id = kInMultiTouchId;
           single_touch_sub_cache_.DecrementUsage(e->charge);
           multi_touch_sub_cache_.IncrementUsage(e->charge);
@@ -713,7 +713,7 @@ bool LRUCache::HasFreeSpace(const SubCacheType subcache_type) {
   switch(subcache_type) {
     case SINGLE_TOUCH :
       if (!CanOverflow(SINGLE_TOUCH)) {
-        return single_touch_sub_cache_.Usage() <= (total_capacity_ - multi_touch_capacity_);
+        return single_touch_sub_cache_.Usage() <= (total_capacity_ - multi_touch_share_);
       }
       return TotalUsage() <= total_capacity_;
     case MULTI_TOUCH :
@@ -743,7 +743,7 @@ void LRUCache::Release(Cache::Handle* handle) {
       EvictFromLRU(0, &evicted, e->GetSubCacheType());
       if (!HasFreeSpace(e->GetSubCacheType())) {
         // The LRU list must be empty since the cache is full.
-        assert(sub_cache->IsLRUEmpty());
+        DCHECK(sub_cache->IsLRUEmpty());
         // take this opportunity and remove the item
         table_.Remove(e->key(), e->hash);
         e->in_cache = false;
@@ -989,7 +989,7 @@ class ShardedLRUCache : public Cache {
     int num_shards = 1 << num_shard_bits_;
     const size_t per_shard = (bytes + (num_shards - 1)) / num_shards;
     MutexLock l(&capacity_mutex_);
-    space_consumed_ = space_consumed_ > bytes ? space_consumed_ - bytes : 0;
+    space_consumed_ = SubtractOrZero(space_consumed_, bytes);
     for (int s = 0; s < num_shards; s++) {
       shards_[s].ReleaseSpace(per_shard);
     }
