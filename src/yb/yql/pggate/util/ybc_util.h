@@ -198,8 +198,11 @@ bool YBCIsObjectLockingInfraEnabled();
 bool YBCIsObjectLockingEnabled();
 
 /*
- * Whether the current transaction takes local object locks. A new mode transaction takes them
- * along with global ones. A legacy mode transaction takes them for its DMLs, so that new mode
+ * Whether the current transaction takes local object locks. Local locks are the modes DMLs take
+ * (ACCESS SHARE, ROW SHARE, ROW EXCLUSIVE): they do not conflict with each other, so the tserver
+ * grants them in its own lock manager. Every stronger mode is global: the master acquires it on
+ * every tserver, where it conflicts with the local locks held there. A new mode transaction takes
+ * both kinds. A legacy mode transaction takes only local ones, for its DMLs, so that new mode
  * DDLs wait for it (#36572), unless yb_disable_legacy_mode_local_object_locks is on. Latched by
  * YBCSetObjectLockingInfraForCurrTxn().
  */
