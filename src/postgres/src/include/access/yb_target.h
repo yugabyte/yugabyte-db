@@ -12,7 +12,9 @@
  *	  its own pggate requests with it.  That should probably move
  *	  behind the access methods, though this is not yet settled.
  *	  Until it is settled, a new use above them needs a stated
- *	  reason.
+ *	  reason.  ybc_get_attcollation() does not build requests at
+ *	  all, and #37403 tracks moving it out, which also removes the
+ *	  planner's use of this header.
  *
  * Copyright (c) YugabyteDB, Inc.
  *
