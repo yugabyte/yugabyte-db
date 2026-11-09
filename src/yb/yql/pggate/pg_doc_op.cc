@@ -214,6 +214,26 @@ LWPgsqlReadRequestPB& AsReadReq(const PgsqlOpPtr& op) {
   return AsReadOp(op).read_request();
 }
 
+// Returns a checker telling whether a ybctid satisfies the given request bound. The bound's kind
+// is resolved once here, so the checker only compares the ybctid with the bound key.
+std::function<bool(Slice)> MakeBoundChecker(const LWPgsqlPartitionBound* bound, bool is_lower) {
+  if (!bound) {
+    return [](Slice) { return true; };
+  }
+  DCHECK(!dockv::PartitionSchema::IsValidHashPartitionKeyBound(bound->key()));
+  const auto key = bound->key();
+  if (is_lower) {
+    if (bound->is_inclusive()) {
+      return [key](Slice ybctid) { return ybctid >= key; };
+    }
+    return [key](Slice ybctid) { return ybctid > key; };
+  }
+  if (bound->is_inclusive()) {
+    return [key](Slice ybctid) { return ybctid <= key; };
+  }
+  return [key](Slice ybctid) { return ybctid < key; };
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -888,22 +908,12 @@ Status PgDocReadOp::DoPopulateByYbctidOps(const YbctidGenerator& generator, Keep
   VLOG(1) << "Row order " << (keep_order ? "is" : "is not") << " important";
   // The template carries the request bounds, so an out of bounds ybctid does not cause a clone.
   const auto& template_req = GetTemplateReadReq();
-  const auto* lower_bound = template_req.has_lower_bound() ? &template_req.lower_bound() : nullptr;
-  const auto* upper_bound = template_req.has_upper_bound() ? &template_req.upper_bound() : nullptr;
-  DCHECK(!lower_bound ||
-         !dockv::PartitionSchema::IsValidHashPartitionKeyBound(lower_bound->key()));
-  DCHECK(!upper_bound ||
-         !dockv::PartitionSchema::IsValidHashPartitionKeyBound(upper_bound->key()));
-  const auto in_request_bounds = [lower_bound, upper_bound](Slice ybctid) {
-    if (lower_bound &&
-        (lower_bound->is_inclusive() ? ybctid < lower_bound->key()
-                                     : ybctid <= lower_bound->key())) {
-      return false;
-    }
-    return !upper_bound ||
-           (upper_bound->is_inclusive() ? ybctid <= upper_bound->key()
-                                        : ybctid < upper_bound->key());
-  };
+  const auto satisfies_lower_bound = MakeBoundChecker(
+      template_req.has_lower_bound() ? &template_req.lower_bound() : nullptr,
+      /* is_lower= */ true);
+  const auto satisfies_upper_bound = MakeBoundChecker(
+      template_req.has_upper_bound() ? &template_req.upper_bound() : nullptr,
+      /* is_lower= */ false);
   // This batch's operators, by partition. Operators left in pgsql_ops_ by a previous batch are
   // never assigned ybctids, as they may still be active.
   std::vector<PgsqlReadOp*> partition_ops(table_->GetPartitionListSize());
@@ -912,7 +922,7 @@ Status PgDocReadOp::DoPopulateByYbctidOps(const YbctidGenerator& generator, Keep
     if (ybctid.empty()) {
       break;
     }
-    if (!in_request_bounds(ybctid)) {
+    if (!satisfies_lower_bound(ybctid) || !satisfies_upper_bound(ybctid)) {
       continue;
     }
 
@@ -928,9 +938,10 @@ Status PgDocReadOp::DoPopulateByYbctidOps(const YbctidGenerator& generator, Keep
       // preparing requests and executing them, DocDB will return a paging state for pggate to
       // continue till the end of current tablet is reached.
       // The ybctid is within both the request and the partition bounds, so they intersect.
-      const auto has_rows =
+      const auto range_non_empty =
           VERIFY_RESULT(SetLowerUpperBound(&partition_op->read_request(), partition));
-      RSTATUS_DCHECK(has_rows, IllegalState, "Empty read range for partition $0", partition);
+      RSTATUS_DCHECK(
+          range_non_empty, IllegalState, "Empty read range for partition $0", partition);
       partition_op->set_active(true);
     }
     auto& read_req = partition_op->read_request();
