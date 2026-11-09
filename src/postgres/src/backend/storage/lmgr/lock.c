@@ -5072,15 +5072,11 @@ LockWaiterCount(const LOCKTAG *locktag)
 }
 
 /*
- * YB: A transaction sends no lock unless YbIsTakingObjectLocks().
- *
- * A new mode DDL waits for DMLs only through object locks. So a legacy mode
- * transaction, one that started before yb_enable_object_locking_infra was
+ * YB: A new mode DDL waits for DMLs only through object locks. So a legacy
+ * mode transaction, one that started before yb_enable_object_locking_infra was
  * promoted, sends the local DML locks that such a DDL waits for (#36572). It
  * sends no stronger lock: those are global or exclusive, and would change how
- * legacy DDLs and LOCK TABLE behave before the promotion. It sends no session
- * lock: every session lock PG takes is ShareUpdateExclusive or stronger
- * (CREATE INDEX, VACUUM).
+ * legacy DDLs and LOCK TABLE behave before the promotion.
  */
 static bool
 YbShouldSendObjectLock(LOCKMODE lockmode, bool sessionLock)
