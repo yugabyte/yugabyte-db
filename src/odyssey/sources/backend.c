@@ -1622,6 +1622,18 @@ int od_backend_connect_cancel(od_server_t *server, od_rule_storage_t *storage,
 		return -1;
 	}
 
+	/*
+	 * wait the pg to process the cancel request
+	 * modern pg uses pqFlush, which falls to send + read
+	 * but there is no that powerful function in mm
+	 * so just do the things older pg did - it will work too
+	 * https://github.com/postgres/postgres/blob/REL_16_0/src/interfaces/libpq/fe-connect.c#L4946-L4960
+	 */
+	machine_msg_t *unused = od_read(&server->io, UINT32_MAX);
+	if (unused != NULL) {
+		machine_msg_free(unused);
+	}
+
 	return 0;
 }
 
