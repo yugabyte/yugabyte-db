@@ -16,7 +16,7 @@
 #   TRUNCATE, ALTER TYPE rewrites). Without a snapshot schedule, which an
 #   isolation test can't create, the old table is deleted and reads fail with
 #   OBJECT_NOT_FOUND.
-# - TODO(#<issue>): DROP COLUMN after the read time. The catalog as of the read
+# - TODO(#37408): DROP COLUMN after the read time. The catalog as of the read
 #   time still has the column but the current DocDB schema doesn't, so every
 #   read fails with "Invalid column number". DROP COLUMN is non-breaking, so
 #   the catalog version check doesn't catch it first.
@@ -102,7 +102,7 @@ permutation "ddl_read_time" "ddl_rename" "tt_no_check" "tt_set" "tt_sel"
 # RESET yb_read_time reads the current data and schema again.
 permutation "ddl_read_time" "ddl_rename" "tt_set" "tt_sel" "tt_reset" "tt_sel"
 
-# TODO(#<issue>): non-breaking DDLs are never caught; after ADD COLUMN the read
+# TODO(#37408): non-breaking DDLs are never caught; after ADD COLUMN the read
 # returns the schema and data as of yb_read_time.
 permutation "ddl_read_time" "ddl_add_col" "tt_set" "tt_sel" "tt_sel"
 
@@ -110,7 +110,7 @@ permutation "ddl_read_time" "ddl_add_col" "tt_set" "tt_sel" "tt_sel"
 # privileges it had then.
 permutation "ddl_read_time" "ddl_revoke" "tt_role" "tt_set" "tt_sel" "tt_sel"
 
-# TODO(#<issue>): privileges are evaluated from the catalog as of yb_read_time,
+# TODO(#37408): privileges are evaluated from the catalog as of yb_read_time,
 # and ENABLE ROW LEVEL SECURITY is a non-breaking ALTER TABLE, so rows hidden
 # from the role now are still returned.
 permutation "ddl_read_time" "ddl_rls" "tt_role" "tt_set" "tt_sel"
