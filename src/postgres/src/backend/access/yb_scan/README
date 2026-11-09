@@ -40,10 +40,8 @@ Execution logic that the planner shares instead of copying:
 
   yb_scan_plan.h
 
-The YB cost model.  It is mostly planner code, which sits under access/ for
-historical reasons and should move to the optimizer.  Its one function that
-scan execution also calls is a fact about how relations are stored, and #37095
-tracks moving it out:
+The YB cost model, planner code that sits under access/ for historical
+reasons:
 
   yb_cost.h
 
@@ -53,9 +51,7 @@ accounted for:
 
   yb_target.h
 
-Entry points outside the AM interfaces.  Only its ANALYZE sampling is meant to
-stay, until upstream adds an interface it fits.  Its catalog scans and fetch
-by ybctid are interim bypasses tracked in #36168:
+Entry points outside the AM interfaces, some of them interim:
 
   yb_special_scans.h
 
