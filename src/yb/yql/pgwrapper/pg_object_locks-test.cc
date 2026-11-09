@@ -948,8 +948,8 @@ class PgObjectLocksTestMixModeDuringPromotion : public PgObjectLocksTest {
   // Promotes the infra auto flag on ts2 and returns a connection there whose open new mode
   // transaction holds an ACCESS EXCLUSIVE lock on `table`. A transaction on ts1 that takes SHARE on
   // `table` waits on it in new mode. In legacy mode it sends only locks of ROW EXCLUSIVE or weaker
-  // (YbShouldSendObjectLock), so it keeps SHARE in PG and goes on. A read cannot tell the modes
-  // apart: both send its ACCESS SHARE lock.
+  // (PgSession::AcquireObjectLock), so it keeps SHARE in PG and goes on. A read cannot tell the
+  // modes apart: both send its ACCESS SHARE lock.
   Result<PGConn> HoldLockInNewMode(const std::string& db, const std::string& table) {
     auto* ts2 = cluster_->tablet_server(1);
     RETURN_NOT_OK(cluster_->SetFlag(ts2, "ysql_yb_enable_object_locking_infra", "true"));
