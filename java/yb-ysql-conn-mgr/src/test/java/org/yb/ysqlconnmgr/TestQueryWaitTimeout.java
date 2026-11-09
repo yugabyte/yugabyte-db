@@ -29,6 +29,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
 import org.yb.minicluster.MiniYBClusterBuilder;
+import org.yb.pgsql.ConnectionBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 import org.yb.util.RequiresLinux;
 
@@ -51,17 +52,20 @@ public class TestQueryWaitTimeout extends BaseYsqlConnMgr {
     builder.addCommonTServerFlag("ysql_max_connections", Integer.toString(NUM_CONNECTIONS));
   }
 
-  private Connection connect() throws SQLException {
+  private ConnectionBuilder connBuilder() {
     return getConnectionBuilder()
         .withTServer(TSERVER_INDEX)
         .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
         .withUser("yugabyte")
-        .withPassword("yugabyte")
-        .connect();
+        .withPassword("yugabyte");
+  }
+
+  private Connection connect() throws Exception {
+    return connBuilder().connect();
   }
 
   // Holds a transactional backend in every slot (see TestAuthPoolTimeout).
-  private Connection[] saturatePool() throws SQLException {
+  private Connection[] saturatePool() throws Exception {
     Connection[] connections = new Connection[NUM_CONNECTIONS];
     for (int i = 0; i < NUM_CONNECTIONS; i++) {
       connections[i] = connect();
@@ -89,7 +93,10 @@ public class TestQueryWaitTimeout extends BaseYsqlConnMgr {
     try {
       long start = System.nanoTime();
       Future<?> attempt = executor.submit(() -> {
-        try (Connection conn = connect()) {
+        // ConnectionBuilder retries a failed connect, which would multiply the wait.
+        ConnectionBuilder builder = connBuilder();
+        builder.setMaxConnectionAttempts(1);
+        try (Connection conn = builder.connect()) {
           fail("Expected the connection to time out waiting for a server connection");
         } catch (SQLException e) {
           LOG.info("Connection failed as expected: " + e.getMessage());
