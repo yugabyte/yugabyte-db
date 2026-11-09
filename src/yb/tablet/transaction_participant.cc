@@ -1007,6 +1007,7 @@ class TransactionParticipant::Impl
     }
 
     bool was_previously_committed = false;
+    RunningTransactionPtr applying_txn;
 
     {
       // It is our last chance to load transaction metadata, if missing.
@@ -1038,11 +1039,12 @@ class TransactionParticipant::Impl
         UpdateHistoricalMaxOpId(&historical_max_op_id, data.op_id);
         VLOG_WITH_PREFIX(3) << "Committed a transaction with txn_id: " << data.transaction_id
                             << " with commit_time: " << data.commit_ht.ToUint64();
-        CHECK(transactions_.modify(lock_and_iterator.iterator, [&data](auto& txn) {
+        CHECK(transactions_.modify(lock_and_iterator.iterator, [&data, &applying_txn](auto& txn) {
           txn->SetLocalCommitData(data.commit_ht, data.aborted);
           // Keeps ResolveIntents waiting until intents are written to regular DB.
           if (data.apply_to_storages.Any()) {
             txn->SetProcessingApply(true);
+            applying_txn = txn;
           }
         }));
         LOG_IF_WITH_PREFIX(DFATAL, data.log_ht < last_safe_time_)
@@ -1068,7 +1070,7 @@ class TransactionParticipant::Impl
         VLOG_WITH_PREFIX(4) << "TXN: " << data.transaction_id << ": apply state: "
                             << apply_state.ToString();
 
-        RETURN_NOT_OK(UpdateAppliedTransaction(data, apply_state, &operation));
+        RETURN_NOT_OK(UpdateAppliedTransaction(data, apply_state, applying_txn.get(), &operation));
       } else if (!data.sealed) {
         return ProcessCleanup(data, CleanupType::kImmediate);
       }
@@ -1081,6 +1083,7 @@ class TransactionParticipant::Impl
   Status UpdateAppliedTransaction(
        const TransactionApplyData& data,
        const docdb::ApplyTransactionState& apply_state,
+       RunningTransaction* applying_txn,
        ScopedRWOperation* operation) NO_THREAD_SAFETY_ANALYSIS {
     MinRunningNotifier min_running_notifier(&applier_);
     // We are not trying to cleanup intents here because we don't know whether this transaction
@@ -1107,6 +1110,9 @@ class TransactionParticipant::Impl
           .apply_state = apply_state,
         });
       }
+    } else if (applying_txn) {
+      // E.g. ignored after restore, so its apply does not continue.
+      applying_txn->SetProcessingApply(false);
     }
     return Status::OK();
   }
