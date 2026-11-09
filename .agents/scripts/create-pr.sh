@@ -20,9 +20,12 @@
 #                  For several, pass a comma-separated list of one kind --
 #                  "33431,32640" -> "[#33431,#32640] ...". GH and JIRA cannot
 #                  be mixed; the pr-title check rejects that.
+#                  Optional when -b names a PG-version branch (e.g. pg19).
 #   -t title       Title body including the "Component: " prefix
 #                  (e.g. "DocDB: Fix flake in SamplingProfilerTest").
-#                  The "[<issue>] " prefix is added automatically.
+#                  The "[<issue>] " prefix is added automatically; for a
+#                  PG-version base (e.g. pg19) it is "[pg19] " or
+#                  "[pg19][<issue>] ", as the pr-title check requires.
 #   -d file        Path to a markdown file with the PR description (the
 #                  "what / why" prose). Becomes the "## Summary" section of
 #                  the body.
@@ -82,6 +85,7 @@ usage: $(basename "$0") -i <issue> -t <title> -d <description-file> -T <test-pla
 Required:
   -i issue       GitHub issue (#NNNN, NNNN) or JIRA key (PLAT-NNN).
                  Several: comma-separated, all one kind ("33431,32640").
+                 Optional when -b is a PG-version branch (e.g. pg19).
   -t title       Title with "Component: " prefix (e.g. "DocDB: Fix flake")
   -d file        Path to PR description (markdown). Becomes "## Summary".
   -T file        Path to test plan (markdown). Becomes "## Test plan".
@@ -121,7 +125,7 @@ while getopts ":i:t:d:T:U:r:b:Dh" opt; do
   esac
 done
 
-[[ -z "$issue" || -z "$title" || -z "$description_file" || -z "$test_plan_file" ]] && usage
+[[ -z "$title" || -z "$description_file" || -z "$test_plan_file" ]] && usage
 
 # Normalize the reviewer list: accept space- or comma-separated, collapse
 # repeated commas, strip leading/trailing commas. Without this, an input
@@ -163,51 +167,58 @@ command -v gh >/dev/null || { echo "error: 'gh' CLI not found in PATH" >&2; exit
 # by it; every PR touching code is.) Keep this validation in step with that
 # regex; a mismatch means the script builds titles that fail CI the moment the
 # PR is opened (#33472).
-normalized_issue=""
-sep=""
-issue_kind=""
-IFS=',' read -ra _issue_tokens <<< "$issue"
-for _tok in "${_issue_tokens[@]}"; do
-  # Trim leading/trailing whitespace.
-  _tok="${_tok#"${_tok%%[![:space:]]*}"}"
-  _tok="${_tok%"${_tok##*[![:space:]]}"}"
-  [[ -z "$_tok" ]] && continue
-  if [[ "$_tok" =~ ^[0-9]+$ ]]; then
-    _tok="#${_tok}"
-  fi
-  if [[ "$_tok" =~ ^#[0-9]+$ ]]; then
-    _kind="gh"
-  elif [[ "$_tok" =~ ^[A-Z]+-[0-9]+$ ]]; then
-    _kind="jira"
-  else
-    echo "error: -i tokens must be GH issues (#NNNN, NNNN) or JIRA keys" >&2
-    echo "       (PROJECT-NNN, uppercase letters only); use a comma-separated" >&2
-    echo "       list for multiple." >&2
-    echo "       got: $_tok" >&2
-    exit 1
-  fi
-  if [[ -n "$issue_kind" && "$_kind" != "$issue_kind" ]]; then
-    echo "error: -i cannot mix GH issues and JIRA keys -- the pr-title check" >&2
-    echo "       accepts an all-GH list or an all-JIRA list, not both." >&2
-    echo "       got: $issue" >&2
-    exit 1
-  fi
-  issue_kind="$_kind"
-  normalized_issue="${normalized_issue}${sep}${_tok}"
-  sep=","
-done
-[[ -z "$normalized_issue" ]] && {
-  echo "error: -i is empty after normalization" >&2; exit 1;
-}
-issue="$normalized_issue"
+#
+# -i may be empty for a PG-version base; skip the loop then, since bash < 4.4
+# treats an empty "${_issue_tokens[@]}" as unbound under set -u.
+if [[ -n "$issue" ]]; then
+  normalized_issue=""
+  sep=""
+  issue_kind=""
+  IFS=',' read -ra _issue_tokens <<< "$issue"
+  for _tok in "${_issue_tokens[@]}"; do
+    # Trim leading/trailing whitespace.
+    _tok="${_tok#"${_tok%%[![:space:]]*}"}"
+    _tok="${_tok%"${_tok##*[![:space:]]}"}"
+    [[ -z "$_tok" ]] && continue
+    if [[ "$_tok" =~ ^[0-9]+$ ]]; then
+      _tok="#${_tok}"
+    fi
+    if [[ "$_tok" =~ ^#[0-9]+$ ]]; then
+      _kind="gh"
+    elif [[ "$_tok" =~ ^[A-Z]+-[0-9]+$ ]]; then
+      _kind="jira"
+    else
+      echo "error: -i tokens must be GH issues (#NNNN, NNNN) or JIRA keys" >&2
+      echo "       (PROJECT-NNN, uppercase letters only); use a comma-separated" >&2
+      echo "       list for multiple." >&2
+      echo "       got: $_tok" >&2
+      exit 1
+    fi
+    if [[ -n "$issue_kind" && "$_kind" != "$issue_kind" ]]; then
+      echo "error: -i cannot mix GH issues and JIRA keys -- the pr-title check" >&2
+      echo "       accepts an all-GH list or an all-JIRA list, not both." >&2
+      echo "       got: $issue" >&2
+      exit 1
+    fi
+    issue_kind="$_kind"
+    normalized_issue="${normalized_issue}${sep}${_tok}"
+    sep=","
+  done
+  [[ -z "$normalized_issue" ]] && {
+    echo "error: -i is empty after normalization" >&2; exit 1;
+  }
+  issue="$normalized_issue"
+fi
 
-# If the user accidentally included an issue prefix in the title, strip it
-# along with any whitespace that follows. We add the canonical
-# "[<issue>] " prefix below; without the trim, an input like
+# If the user accidentally included issue or branch prefixes in the title
+# (e.g. "[pg19][#123] "), strip them along with any whitespace that follows.
+# We add the canonical prefix below; without the trim, an input like
 # "[#123]  Component: Title" (with two spaces) would leave a leading
 # space and trip the validation regex.
-title="${title#\[*\]}"
-title="${title#"${title%%[![:space:]]*}"}"
+while [[ "$title" == \[*\]* ]]; do
+  title="${title#\[*\]}"
+  title="${title#"${title%%[![:space:]]*}"}"
+done
 
 # Validate the title body is "<Component>: <Title>". Component must start with
 # a letter and contain at least one alphanumeric char; followed by ": " and
@@ -219,8 +230,6 @@ if ! [[ "$title" =~ ^[A-Za-z][A-Za-z0-9]+:[[:space:]].+ ]]; then
   echo "       yugabyted, Docs, Build" >&2
   exit 1
 fi
-
-full_title="[${issue}] ${title}"
 
 # Detect upstream remote (one that points at $GH_REPO).
 UPSTREAM_REMOTE="${UPSTREAM_REMOTE:-}"
@@ -323,6 +332,21 @@ print(" ".join(b["name"] for b in above if has_pr(b)))' "$current_branch" \
     echo "       gh-stack skill to restructure the stack." >&2
     exit 1
   fi
+fi
+
+# A PR into a PG-version development branch (e.g. pg19) must lead its title
+# with "[pg19]"; the issue tag after it is optional. This goes by the final
+# base, so a stack's bottom layer on a pg19 trunk gets "[pg19]" while the
+# layers above it, based on feature-stack/*, keep the master form.
+if [[ "$base_branch" =~ ^pg[0-9]+$ ]]; then
+  full_title="[${base_branch}]${issue:+[${issue}]} ${title}"
+else
+  if [[ -z "$issue" ]]; then
+    echo "error: -i is required unless the base is a PG-version branch" >&2
+    echo "       (base: ${base_branch})" >&2
+    exit 1
+  fi
+  full_title="[${issue}] ${title}"
 fi
 
 # Targeting a feature-stack branch from a fork produces a PR that looks like a
