@@ -5072,11 +5072,14 @@ LockWaiterCount(const LOCKTAG *locktag)
 }
 
 /*
- * YB: A new mode DDL waits for DMLs only through object locks. So a legacy
- * mode transaction, one that started before yb_enable_object_locking_infra was
- * promoted, sends the local DML locks that such a DDL waits for (#36572). It
- * sends no stronger lock: those are global or exclusive, and would change how
- * legacy DDLs and LOCK TABLE behave before the promotion.
+ * YB: While yb_enable_object_locking_infra is being promoted, a new mode
+ * CREATE INDEX waits for writers only through object locks. If a legacy mode
+ * transaction (one that latched the flag as off) sent no locks, the CREATE
+ * INDEX would backfill under its uncommitted UPDATE, and the index would miss
+ * the update once it commits (#36572). So a legacy mode transaction sends the
+ * locks a writer takes: RowExclusive or weaker. It still sends nothing
+ * stronger, so a legacy LOCK TABLE or DDL keeps its pre-promotion behavior:
+ * LOCK TABLE t IN ACCESS EXCLUSIVE MODE still takes no object lock.
  */
 static bool
 YbShouldSendObjectLock(LOCKMODE lockmode, bool sessionLock)
