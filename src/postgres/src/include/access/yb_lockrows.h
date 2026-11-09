@@ -4,8 +4,8 @@
  *	  YB row-locking and conflict-handling functions.
  *
  *	  Provides explicit row locking (SELECT FOR UPDATE/SHARE) and
- *	  conflict resolution for YB-backed relations.  Called from
- *	  nodeLockRows.c.
+ *	  conflict resolution for YB-backed relations.  Above the access
+ *	  methods, only nodeLockRows.c includes this header.
  *
  *	  Lifecycle: this is an interim executor bypass of the tableam
  *	  tuple_lock callback, which upstream ExecLockRows routes

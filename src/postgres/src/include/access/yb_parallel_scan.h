@@ -5,7 +5,8 @@
  *
  *	  Manages a shared-memory cyclic buffer of partition-key ranges
  *	  that parallel workers consume to divide a YB scan across
- *	  backends.
+ *	  backends.  Above the access methods, only nodeYbSeqscan.c
+ *	  includes this header, for the bypass described below.
  *
  *	  Lifecycle: the index-scan side consumes this properly through
  *	  amapi.  The direct calls in nodeYbSeqscan's DSM functions are

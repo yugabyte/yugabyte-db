@@ -5,12 +5,13 @@
  *
  *	  Scan APIs for consumers outside the executor scan nodes:
  *	  catalog scans (systable lookups), ANALYZE row sampling, and
- *	  single-row fetch by ybctid.  Only ANALYZE row sampling is
- *	  meant to stay, until upstream adds a table AM interface for
- *	  sampling.  The catalog scans and the fetch by ybctid are
- *	  interim, like the accessors in yb_table_scan.h, and their
- *	  sections cite the issues that track routing them through the
- *	  access methods.
+ *	  single-row fetch by ybctid.  Above the access methods, only
+ *	  analyze.c, indexing.c, and yb_inheritscache.c include this
+ *	  header.  Only ANALYZE row sampling is meant to stay, until
+ *	  upstream adds a table AM interface for sampling.  The catalog
+ *	  scans and the fetch by ybctid are interim, like the accessors
+ *	  in yb_table_scan.h, and their sections cite the issues that
+ *	  track routing them through the access methods.
  *
  *	  Each section below is the API of one implementation file and
  *	  says why no AM interface replaces it yet.  A contract that
