@@ -96,6 +96,12 @@ To add an endpoint, do the following:
 
 1. If the wizard shows **DB Credentials**, set and download the credentials.
 
+    {{< warning title="Credentials known issue" >}}
+
+An endpoint added to a branch uses the password set when the cluster was created. Ignore the credentials file that Add compute offers; connect with the cluster's original password.
+
+    {{< /warning >}}
+
 1. Click **Add Endpoint**.
 
 ### Edit compute
