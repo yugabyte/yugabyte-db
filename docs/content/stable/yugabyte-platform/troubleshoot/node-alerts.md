@@ -113,4 +113,6 @@ This alert fires when a YugabyteDB process (TServer or Master) restarts without 
 
 1. Check whether a core dump or out of memory event occurred.
 
+    If the universe runs [earlyoom](../../create-deployments/create-universes-overview/#user-level-oom-killer), a PostgreSQL backend may have been stopped before the Linux OOM killer. On the node, check the earlyoom user service.
+
 1. If a user or automation restarted the process, confirm the intent and whether alerts can be tuned.
