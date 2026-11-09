@@ -1904,6 +1904,35 @@ TEST_P(PgVectorIndexTest, NullVectorsInNotAppliedIntents) {
   TestNullVectorsInIntents(/* commit= */ true);
 }
 
+// In skip prefix locks mode a serializable write takes a strong intent on the table root key. The
+// search must not take it for a row with intents (GH#36749).
+TEST_P(PgVectorIndexTest, SearchAfterSerializableWrite) {
+  constexpr size_t kNumRows = 64;
+  const std::string kCloseVector = "[0.125, 0.25, 0.375]";
+
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES (1000, '$0')", kCloseVector));
+  ASSERT_NO_FATALS(VerifyRows(
+      conn, AddFilter::kFalse,
+      {BuildRow(1000, kCloseVector), ExpectedRow(1), ExpectedRow(2), ExpectedRow(3)}));
+  ASSERT_OK(conn.RollbackTransaction());
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  ASSERT_OK(conn.ExecuteFormat("UPDATE test SET embedding = '$0' WHERE id = 10", kCloseVector));
+  ASSERT_NO_FATALS(VerifyRows(
+      conn, AddFilter::kFalse,
+      {BuildRow(10, kCloseVector), ExpectedRow(1), ExpectedRow(2), ExpectedRow(3)}));
+  ASSERT_OK(conn.RollbackTransaction());
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 1"));
+  ASSERT_NO_FATALS(VerifyRows(
+      conn, AddFilter::kFalse, {ExpectedRow(2), ExpectedRow(3), ExpectedRow(4)}));
+  ASSERT_OK(conn.RollbackTransaction());
+}
+
 TEST_P(PgVectorIndexTest, IndexCheck) {
   constexpr size_t kNumRows = 64;
 
