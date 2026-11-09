@@ -1628,8 +1628,19 @@ int od_backend_connect_cancel(od_server_t *server, od_rule_storage_t *storage,
 	 * but there is no that powerful function in mm
 	 * so just do the things older pg did - it will work too
 	 * https://github.com/postgres/postgres/blob/REL_16_0/src/interfaces/libpq/fe-connect.c#L4946-L4960
+	 *
+	 * Use a bounded timeout - cancel is best-effort.
+	 * UINT32_MAX caused coroutines to hang forever if the backend
+	 * closed the connection in a way that machinarium didn't wake
+	 * the reader, leaking routing_clients counter and socket fds.
+	 * Configurable via cancel_timeout_ms (default 5000).
+	 * A value of 0 means no timeout (UINT32_MAX) - not recommended.
 	 */
-	machine_msg_t *unused = od_read(&server->io, UINT32_MAX);
+	uint32_t cancel_timeout =
+		instance->config.cancel_timeout_ms > 0 ?
+			(uint32_t)instance->config.cancel_timeout_ms :
+			UINT32_MAX;
+	machine_msg_t *unused = od_read(&server->io, cancel_timeout);
 	if (unused != NULL) {
 		machine_msg_free(unused);
 	}
