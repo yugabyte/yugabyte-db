@@ -408,9 +408,9 @@ static bool yb_is_historical_catalog_read = false;
  * A transaction that starts with yb_read_time set runs without object locks:
  * it reads the catalog and the data as of yb_read_time, so locks taken as of
  * now protect nothing and only make it wait on, and block, concurrent DDLs.
- * Without them it also uses the legacy catalog read path, and the tserver
- * keeps the catalog version check for its requests, which is what rejects
- * reads across a breaking catalog change made after yb_read_time.
+ * Since it skips object locking, it uses the legacy catalog read path, and
+ * the tserver keeps the catalog version check for its requests, which is what
+ * rejects reads across a breaking catalog change made after yb_read_time.
  *
  * yb_read_time_skip_catalog sessions read the current catalog, so they keep
  * object locks.

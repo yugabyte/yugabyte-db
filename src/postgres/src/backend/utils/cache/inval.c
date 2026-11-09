@@ -911,9 +911,9 @@ YbMaybeRefreshCache(void)
 		YbIsCatalogPinnedToReadTime())
 	{
 		elog(DEBUG2,
-			 "YbMaybeRefreshCache: prefetch_started=%d, shared = %" PRIu64 " local=%" PRIu64 " in_progress=%d",
+			 "YbMaybeRefreshCache: prefetch_started=%d, shared = %" PRIu64 " local=%" PRIu64 " in_progress=%d pinned_to_read_time=%d",
 			 YBCIsSysTablePrefetchingStarted(), shared_catalog_version, local_catalog_version,
-			 yb_refresh_cache_in_progress);
+			 yb_refresh_cache_in_progress, YbIsCatalogPinnedToReadTime());
 		return;
 	}
 

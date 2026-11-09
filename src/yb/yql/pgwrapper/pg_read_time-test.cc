@@ -661,7 +661,6 @@ TEST_P(PgReadTimeCatalogModeTest, NoObjectLocksWithYbReadTime) {
       "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint"));
 
   auto tt_conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(tt_conn.Execute("SET statement_timeout = 10000"));
   ASSERT_OK(tt_conn.ExecuteFormat("SET yb_read_time TO $0", t1));
 
   ASSERT_OK(ddl_conn.Execute("BEGIN"));
@@ -675,23 +674,21 @@ TEST_P(PgReadTimeCatalogModeTest, NoObjectLocksWithYbReadTime) {
 
   ASSERT_OK(tt_conn.Execute("BEGIN"));
   ASSERT_EQ(ASSERT_RESULT(tt_conn.FetchRow<PGUint64>("SELECT count(*) FROM t")), 1);
-  ASSERT_OK(ddl_conn.Execute("SET statement_timeout = 10000"));
   ASSERT_OK(ddl_conn.Execute("ALTER TABLE t ADD COLUMN w INT"));
   ASSERT_OK(tt_conn.Execute("COMMIT"));
 }
 
 // Locks taken as of yb_read_time can't fence other sessions, so modes stronger than ACCESS SHARE
-// are refused, and yb_read_time can't change inside a transaction block that started with it.
-TEST_P(PgReadTimeCatalogModeTest, YbReadTimeTransactionRestrictions) {
+// are refused.
+TEST_P(PgReadTimeCatalogModeTest, RejectStrongerLockModesWithYbReadTime) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
   const auto t1 = ASSERT_RESULT(conn.FetchRow<PGUint64>(
       "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint"));
-  // Allows SET yb_read_time inside a transaction block, as CDC snapshots and ysql_dump do.
-  ASSERT_OK(conn.Execute("SET yb_disable_catalog_version_check = on"));
   ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", t1));
 
   ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("LOCK TABLE t IN ACCESS SHARE MODE"));
   if (GetParam()) {
     ASSERT_NOK(conn.Execute("LOCK TABLE t IN SHARE MODE"));
   } else {
@@ -700,6 +697,18 @@ TEST_P(PgReadTimeCatalogModeTest, YbReadTimeTransactionRestrictions) {
         "LOCK TABLE in a mode stronger than ACCESS SHARE is not allowed while yb_read_time is set");
   }
   ASSERT_OK(conn.Execute("ROLLBACK"));
+}
+
+// A transaction that starts with yb_read_time set runs without object locks, so yb_read_time can't
+// change inside its transaction block, even in sessions allowed to set it inside one.
+TEST_P(PgReadTimeCatalogModeTest, KeepYbReadTimeInTxnBlockThatStartedWithIt) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+  const auto t1 = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint"));
+  // Allows SET yb_read_time inside a transaction block, as CDC snapshots do.
+  ASSERT_OK(conn.Execute("SET yb_disable_catalog_version_check = on"));
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", t1));
 
   ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_NOK_STR_CONTAINS(

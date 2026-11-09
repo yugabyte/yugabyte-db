@@ -316,6 +316,30 @@ TEST_F(PgBackendsTest, WaitOnlySameDatabase) {
   }
 }
 
+// A backend whose catalog is pinned to yb_read_time never catches up and can't write, so it must
+// not be counted as lagging, even while it is idle in a transaction (as ysql_dump --read-time is).
+TEST_F(PgBackendsTest, IgnoreBackendPinnedToYbReadTime) {
+  const auto read_time = ASSERT_RESULT(conn_->FetchRow<int64_t>(
+      "SELECT (EXTRACT (EPOCH FROM clock_timestamp()) * 1000000)::bigint"));
+
+  auto pinned_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(pinned_conn.ExecuteFormat("SET yb_read_time TO $0", read_time));
+  // The first statement after the SET loads the catalog as of yb_read_time and pins it.
+  ASSERT_OK(pinned_conn.Fetch("SELECT 1"));
+  ASSERT_OK(pinned_conn.Execute("BEGIN"));
+
+  auto normal_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(normal_conn.Execute("BEGIN"));
+
+  ASSERT_OK(BumpCatalogVersion(1));
+  const uint64_t cat_ver = ASSERT_RESULT(GetCatalogVersion());
+
+  ASSERT_EQ(1, ASSERT_RESULT(client_->WaitForYsqlBackendsCatalogVersion("yugabyte", cat_ver)));
+  ASSERT_OK(normal_conn.Execute("COMMIT"));
+  ASSERT_EQ(0, ASSERT_RESULT(client_->WaitForYsqlBackendsCatalogVersion("yugabyte", cat_ver)));
+  ASSERT_OK(pinned_conn.Execute("COMMIT"));
+}
+
 // Test that multiple waiters immediately resolve.  This tests the condition variable broadcast in
 // the implementation.
 TEST_F(PgBackendsTest, MultipleWaiters) {

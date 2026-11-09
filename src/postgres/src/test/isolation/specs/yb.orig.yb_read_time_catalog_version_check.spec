@@ -4,10 +4,11 @@
 # catalog version as of yb_read_time: it neither refreshes the catalog nor
 # applies invalidation messages until yb_read_time is reset. Its transactions
 # take no object locks, so the tserver keeps the catalog version check for
-# their requests even under object locking, and it rejects every read once a
-# breaking catalog change has committed after yb_read_time. That check is the
-# only guard against reading user data as of a time before a DDL, and it must
-# behave the same with and without object locking.
+# their requests, which it skips for backends that acquire object locks, and it
+# rejects every read once a breaking catalog change has committed after
+# yb_read_time. That check is the only guard against reading user data as of a
+# time before a DDL, and it must behave the same whether or not the object
+# locking feature (enable_object_locking_for_table_locks) is on.
 #
 # Permutations marked TODO record current behavior that is not intended.
 #
@@ -29,9 +30,7 @@ setup
   SELECT nextval('s');
   CREATE ROLE yb_tt_user;
   GRANT SELECT ON t TO yb_tt_user;
-  GRANT SET ON PARAMETER yb_read_time TO yb_tt_user;
   CREATE TABLE read_time (t BIGINT);
-  GRANT SELECT ON read_time TO yb_tt_user;
 }
 
 teardown
@@ -39,12 +38,10 @@ teardown
   DROP TABLE t;
   DROP SEQUENCE s;
   DROP TABLE read_time;
-  REVOKE SET ON PARAMETER yb_read_time FROM yb_tt_user;
   DROP ROLE yb_tt_user;
 }
 
 session "tt"
-setup			{ SET application_name = 'yb_tt'; }
 step "tt_set"
 {
   SELECT set_config('yb_read_time', t::text, false) IS NOT NULL AS set FROM read_time;
@@ -57,12 +54,17 @@ step "tt_reset"		{ RESET yb_read_time; }
 step "tt_no_check"	{ SET yb_disable_catalog_version_check = on; }
 step "tt_role"		{ SET ROLE yb_tt_user; }
 step "tt_parallel"	{ SET force_parallel_mode = on; }
+step "tt_explain"	{ EXPLAIN (COSTS OFF) SELECT * FROM t; }
+step "tt_explain_analyze"
+{
+  EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM t;
+}
 # The connection is reused by the next permutation, whose tables don't exist as
 # of this permutation's read time.
 teardown
 {
-  RESET yb_read_time;
   RESET ROLE;
+  RESET yb_read_time;
   RESET yb_disable_catalog_version_check;
   RESET force_parallel_mode;
 }
@@ -77,11 +79,6 @@ step "ddl_rename"		{ ALTER TABLE t RENAME COLUMN v TO v2; }
 step "ddl_add_col"		{ ALTER TABLE t ADD COLUMN c INT; }
 step "ddl_revoke"		{ REVOKE SELECT ON t FROM yb_tt_user; }
 step "ddl_rls"			{ ALTER TABLE t ENABLE ROW LEVEL SECURITY; }
-step "ddl_tt_no_version"
-{
-  SELECT catalog_version IS NULL AS tt_no_version
-    FROM pg_stat_activity WHERE application_name = 'yb_tt';
-}
 
 # A breaking DDL after the read time fails every read.
 permutation "ddl_read_time" "ddl_rename" "tt_set" "tt_sel" "tt_sel"
@@ -108,18 +105,13 @@ permutation "ddl_read_time" "ddl_add_col" "tt_set" "tt_sel" "tt_sel"
 
 # REVOKE is breaking, so the role can't read data as of yb_read_time with the
 # privileges it had then.
-permutation "ddl_read_time" "ddl_revoke" "tt_role" "tt_set" "tt_sel" "tt_sel"
+permutation "ddl_read_time" "ddl_revoke" "tt_set" "tt_role" "tt_sel" "tt_sel"
 
 # TODO(#37408): privileges are evaluated from the catalog as of yb_read_time,
 # and ENABLE ROW LEVEL SECURITY is a non-breaking ALTER TABLE, so rows hidden
 # from the role now are still returned.
-permutation "ddl_read_time" "ddl_rls" "tt_role" "tt_set" "tt_sel"
-
-# The pinned session reports no catalog version in pg_stat_activity, so it
-# doesn't hold up DDLs that wait for backends to catch up, even while it is idle
-# in a transaction (as ysql_dump --read-time is).
-permutation "ddl_read_time" "ddl_rename" "tt_set" "tt_sel" "tt_begin" "ddl_tt_no_version" "tt_rollback"
+permutation "ddl_read_time" "ddl_rls" "tt_set" "tt_role" "tt_sel"
 
 # Parallel workers: the worker reads the catalog version itself at startup.
-permutation "ddl_read_time" "ddl_add_col" "tt_set" "tt_parallel" "tt_sel"
-permutation "ddl_read_time" "ddl_rename" "tt_set" "tt_parallel" "tt_sel" "tt_sel"
+permutation "ddl_read_time" "ddl_add_col" "tt_set" "tt_parallel" "tt_explain_analyze" "tt_sel"
+permutation "ddl_read_time" "ddl_rename" "tt_set" "tt_parallel" "tt_explain" "tt_sel" "tt_sel"
