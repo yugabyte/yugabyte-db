@@ -283,6 +283,16 @@ In both the `gradual` and `connection_static` modes, new sessions always observe
 
 Independent of the adoption strategy, the `ysql_conn_mgr_alter_guc_stale_backend_ttl_ms` flag bounds how long backends that don't have the latest ALTER settings ("stale" backends) are allowed to stay alive, so that they are eventually recycled. Only _idle_ stale backends are terminated: a stale backend that is currently running a transaction is never interrupted, and is recycled only after it becomes idle. As a result, the effective lifetime of a stale backend can exceed the configured TTL if it stays busy.
 
+## Audit logging with pgaudit
+
+[pgaudit](../../../secure/audit-logging/audit-logging-ysql/) works with YSQL Connection Manager, with the following differences from PostgreSQL:
+
+- **ALTER ROLE SET and ALTER DATABASE SET changes reach existing sessions.** In PostgreSQL, a statement such as `ALTER ROLE app SET pgaudit.log = 'none'` applies only to sessions that connect afterwards. With the default `gradual` adoption strategy, an existing session starts using the new value when its next transaction runs on a backend that has it. For example, if you turn off auditing for a role, its existing sessions stop being audited mid-session; if you turn auditing on, they start being audited without reconnecting. To keep existing sessions on the values they connected with, as in PostgreSQL, set `ysql_conn_mgr_alter_guc_adoption_strategy` to `connection_static`. For details, see [ALTER ROLE SET and ALTER DATABASE SET commands](#alter-role-set-and-alter-database-set-commands).
+
+- **STATEMENT_ID is numbered per backend, not per session.** pgaudit documents STATEMENT_ID as a sequential ID unique within the session, but the counter belongs to the backend process that runs the statement. Because sessions share backends, a session's STATEMENT_IDs can start above 1 and skip numbers, the same ID can appear twice in one session after it moves to another backend, and two sessions can log the same ID. SUBSTATEMENT_ID is unaffected, because a statement always runs on a single backend.
+
+    Don't use STATEMENT_ID to group audit lines by session. The `%p` (process ID) and `%c` (session ID) escapes of `log_line_prefix` also identify the backend, not the client session. Instead, have each client set a distinct `application_name` and add `%a` to `log_line_prefix`, or combine `%u` (user) and `%d` (database) with the statement text and timestamp.
+
 ## Limitations
 
 - YSQL Connection Manager can route up to 10,000 connection pools. This includes pools corresponding to dropped users and databases.
