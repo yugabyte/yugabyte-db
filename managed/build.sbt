@@ -260,9 +260,9 @@ libraryDependencies ++= Seq(
   "io.fabric8" % "kubernetes-client" % "6.14.0",
   "io.fabric8" % "kubernetes-client-api" % "6.14.0",
   "io.fabric8" % "kubernetes-model-core" % "6.14.0",
-  "io.fabric8" % "kubernetes-server-mock" % "6.14.0",
   "org.modelmapper" % "modelmapper" % "2.4.4",
-  "com.datadoghq" % "datadog-api-client" % "2.25.0" classifier "shaded-jar",
+  // Used by the generated v2 server models (JsonNullable); was only pulled in transitively before.
+  "org.openapitools" % "jackson-databind-nullable" % "0.2.3",
   "javax.xml.bind" % "jaxb-api" % "2.3.1",
   "io.jsonwebtoken" % "jjwt-api" % "0.11.5",
   "io.jsonwebtoken" % "jjwt-impl" % "0.11.5",
@@ -295,7 +295,10 @@ libraryDependencies ++= Seq(
   "io.zonky.test.postgres" % "embedded-postgres-binaries-darwin-arm64v8" % "14.5.0" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
   "com.yugabyte" % "yba-client-v2" % "0.1.0-SNAPSHOT" % Test,
-  "io.fabric8" % "kubernetes-server-mock" % "6.8.0" % Test
+  "io.fabric8" % "kubernetes-server-mock" % "6.14.0" % Test,
+  // yba-client-v2's ApiClient registers MultiPartFeature. The POM it installs is the shade
+  // plugin's dependency-reduced one, which drops all compile deps, so declare this one here.
+  "org.glassfish.jersey.media" % "jersey-media-multipart" % "2.41" % Test
 )
 
 // Clear default resolvers.
@@ -1107,10 +1110,8 @@ libraryDependencies += "org.glassfish" % "jakarta.el" % "3.0.4"
 dependencyOverrides += "junit" % "junit" % "4.13.2" % Test
 
 // Following library versions for jersey, jakarta glassfish, jakarta ws.rs and
-// jackson-module-jaxb-annotations are needed by the openapi java client. The
-// datadog-api-client library also needs them, but the newer versions
-// pulled by datadog-api-client are not compatible with the openapi java client. So
-// fixing these to older versions.
+// jackson-module-jaxb-annotations are needed by the openapi java client, which is not
+// compatible with newer versions. So fixing these to older versions.
 val jerseyVersion = "2.41"
 dependencyOverrides += "org.glassfish.jersey.connectors" % "jersey-apache-connector" % jerseyVersion % Test
 dependencyOverrides += "org.glassfish.jersey.core" % "jersey-client" % jerseyVersion % Test
