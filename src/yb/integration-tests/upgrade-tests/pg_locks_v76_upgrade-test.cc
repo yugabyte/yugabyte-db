@@ -41,11 +41,12 @@ TEST_F(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
   auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
   ASSERT_OK(conn.Execute("CREATE TABLE foo (id INT PRIMARY KEY, value TEXT);"));
   ASSERT_OK(conn.Execute("INSERT INTO foo VALUES (1, 'test');"));
-  // Cache the pre-V76 definition of pg_locks (21 columns) in conn's backend. The read in the
-  // transaction below after finalize then shows whether that transaction refreshes its catalog
-  // cache: without a cached copy, the read would load the new definition either way. Read before
-  // BEGIN: since #36572, a transaction that starts before finalize takes object locks, so a read
-  // in that transaction locks the view across finalize, and V76 cannot replace the view.
+  // Cache the pre-V76 row type of yb_lock_status (21 columns), which pg_locks expands to, in
+  // conn's backend. The read in the transaction below after finalize then shows whether that
+  // transaction refreshes its catalog cache: without a cached copy, the read would load the new
+  // row type either way. Read before BEGIN: since #36572, a transaction that starts before
+  // finalize takes object locks, so a read in that transaction locks the view across finalize,
+  // and V76 cannot replace the view.
   ASSERT_OK(conn.Fetch(kPgLocksQuery));
   // Acquire advisory locks and a row lock, and hold them across the upgrade.
   ASSERT_OK(conn.Fetch("SELECT pg_advisory_lock(1);"));
