@@ -98,7 +98,7 @@ To add an endpoint, do the following:
 
     {{< warning title="Credentials known issue" >}}
 
-An endpoint added to a branch uses the password set when the cluster was created. Ignore the credentials file that you download here; connect using the credentials file you downloaded when you created the cluster.
+An endpoint added to a branch keeps the password from when you [created the cluster](../create-connect/#create-a-serverless-cluster). Ignore the credentials file that you download here; connect using the credentials file you downloaded when you created the cluster.
 
     {{< /warning >}}
 
