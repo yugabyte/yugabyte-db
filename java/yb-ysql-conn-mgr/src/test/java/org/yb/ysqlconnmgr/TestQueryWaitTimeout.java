@@ -18,6 +18,8 @@ import com.google.common.net.HostAndPort;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -38,16 +40,13 @@ public class TestQueryWaitTimeout extends BaseYsqlConnMgr {
   private static final int NUM_CONNECTIONS = 10;
   private static final int DEPRECATED_TIMEOUT_MS = 1000;
   private static final int RUNTIME_TIMEOUT_MS = 6000;
-  // A connect that does not time out would hang forever while the pool stays saturated.
-  private static final long CONNECT_GUARD_SECS = 60;
+  private static final int IGNORED_TIMEOUT_MS = 60000;
+  // A connect that does not time out would hang while the pool stays saturated.
+  private static final long CONNECT_GUARD_SECS = 90;
 
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
-
-    // Only the deprecated name is set, so it must be the one in effect at startup.
-    builder.addCommonTServerFlag("ysql_conn_mgr_pool_timeout",
-        Integer.toString(DEPRECATED_TIMEOUT_MS));
     builder.addCommonTServerFlag("ysql_conn_mgr_use_auth_backend", "true");
     builder.addCommonTServerFlag("ysql_max_connections", Integer.toString(NUM_CONNECTIONS));
   }
@@ -61,30 +60,8 @@ public class TestQueryWaitTimeout extends BaseYsqlConnMgr {
         .connect();
   }
 
-  // Returns how long a connect took to fail; fails the test if it succeeds or never returns.
-  private long timeFailedConnectMs(ExecutorService executor) throws Exception {
-    long start = System.nanoTime();
-    Future<?> attempt = executor.submit(() -> {
-      try (Connection conn = connect()) {
-        fail("Expected the connection to time out waiting for a server connection");
-      } catch (SQLException e) {
-        LOG.info("Connection failed as expected: " + e.getMessage());
-      }
-      return null;
-    });
-    try {
-      attempt.get(CONNECT_GUARD_SECS, TimeUnit.SECONDS);
-    } catch (TimeoutException e) {
-      attempt.cancel(true);
-      fail("Connection waited over " + CONNECT_GUARD_SECS + "s for a server connection");
-    }
-    return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
-  }
-
-  @Test
-  public void testDeprecatedFlagAndRuntimeChange() throws Exception {
-    // Create the logical connections first and then open a transaction on each, so that every
-    // backend slot is held by a transactional backend (see TestAuthPoolTimeout).
+  // Holds a transactional backend in every slot (see TestAuthPoolTimeout).
+  private Connection[] saturatePool() throws SQLException {
     Connection[] connections = new Connection[NUM_CONNECTIONS];
     for (int i = 0; i < NUM_CONNECTIONS; i++) {
       connections[i] = connect();
@@ -94,36 +71,89 @@ public class TestQueryWaitTimeout extends BaseYsqlConnMgr {
         stmt.execute("BEGIN");
       }
     }
+    return connections;
+  }
 
+  private void releasePool(Connection[] connections) throws SQLException {
+    for (Connection conn : connections) {
+      try (Statement stmt = conn.createStatement()) {
+        stmt.execute("COMMIT");
+      }
+      conn.close();
+    }
+  }
+
+  // Returns how long a connect took to fail; fails the test if it succeeds or never returns.
+  private long timeFailedConnectMs() throws Exception {
     ExecutorService executor = Executors.newSingleThreadExecutor();
     try {
-      long elapsedMs = timeFailedConnectMs(executor);
-      LOG.info("Connect with the deprecated flag failed after " + elapsedMs + " ms");
+      long start = System.nanoTime();
+      Future<?> attempt = executor.submit(() -> {
+        try (Connection conn = connect()) {
+          fail("Expected the connection to time out waiting for a server connection");
+        } catch (SQLException e) {
+          LOG.info("Connection failed as expected: " + e.getMessage());
+        }
+        return null;
+      });
+      try {
+        attempt.get(CONNECT_GUARD_SECS, TimeUnit.SECONDS);
+      } catch (TimeoutException e) {
+        attempt.cancel(true);
+        fail("Connection waited over " + CONNECT_GUARD_SECS + "s for a server connection");
+      }
+      return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+    } finally {
+      executor.shutdownNow();
+    }
+  }
 
-      HostAndPort tserver = miniCluster.getTabletServers().keySet().stream()
-          .filter(hp -> hp.getHost().equals(getPgHost(TSERVER_INDEX))).findFirst()
-          .orElseThrow(() -> new IllegalStateException("No tserver at index " + TSERVER_INDEX));
-      ConnMgrLogTailer tailer = ConnMgrLogTailer.create(miniCluster, TSERVER_INDEX);
-      setServerFlag(tserver, "ysql_conn_mgr_query_wait_timeout_ms",
-          Integer.toString(RUNTIME_TIMEOUT_MS));
-      // setServerFlag returns once the tserver has rewritten the config and signalled odyssey;
-      // the new value applies once odyssey has reloaded it.
-      assertNotNull("Expected odyssey to reload its config",
-          tailer.waitForLogRegex("reconfigure rules", 10, TimeUnit.SECONDS));
+  @Test
+  public void testRuntimeChange() throws Exception {
+    markClusterNeedsRecreation();
+    HostAndPort tserver = miniCluster.getTabletServers().keySet().stream()
+        .filter(hp -> hp.getHost().equals(getPgHost(TSERVER_INDEX))).findFirst()
+        .orElseThrow(() -> new IllegalStateException("No tserver at index " + TSERVER_INDEX));
+    ConnMgrLogTailer tailer = ConnMgrLogTailer.create(miniCluster, TSERVER_INDEX);
+    setServerFlag(tserver, "ysql_conn_mgr_query_wait_timeout_ms",
+        Integer.toString(RUNTIME_TIMEOUT_MS));
+    // setServerFlag returns once the tserver has rewritten the config and signalled odyssey;
+    // the new value applies once odyssey has reloaded it.
+    assertNotNull("Expected odyssey to reload its config",
+        tailer.waitForLogRegex("reconfigure rules", 10, TimeUnit.SECONDS));
 
-      elapsedMs = timeFailedConnectMs(executor);
+    Connection[] connections = saturatePool();
+    try {
+      long elapsedMs = timeFailedConnectMs();
       LOG.info("Connect after the runtime change failed after " + elapsedMs + " ms");
       assertGreaterThanOrEqualTo(
           "Connect should wait the runtime-set ysql_conn_mgr_query_wait_timeout_ms",
           elapsedMs, (long) RUNTIME_TIMEOUT_MS);
     } finally {
-      executor.shutdownNow();
-      for (Connection conn : connections) {
-        try (Statement stmt = conn.createStatement()) {
-          stmt.execute("COMMIT");
-        }
-        conn.close();
+      releasePool(connections);
+    }
+  }
+
+  @Test
+  public void testDeprecatedFlagTakesPrecedence() throws Exception {
+    markClusterNeedsRecreation();
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), new HashMap<String, String>() {
+      {
+        put("ysql_conn_mgr_pool_timeout", Integer.toString(DEPRECATED_TIMEOUT_MS));
+        put("ysql_conn_mgr_query_wait_timeout_ms", Integer.toString(IGNORED_TIMEOUT_MS));
       }
+    });
+
+    Connection[] connections = saturatePool();
+    try {
+      long elapsedMs = timeFailedConnectMs();
+      LOG.info("Connect with both flags set failed after " + elapsedMs + " ms");
+      assertLessThan(
+          "ysql_conn_mgr_pool_timeout should take precedence over "
+              + "ysql_conn_mgr_query_wait_timeout_ms",
+          elapsedMs, (long) IGNORED_TIMEOUT_MS / 2);
+    } finally {
+      releasePool(connections);
     }
   }
 }

@@ -150,8 +150,8 @@ DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, query_wait_timeout_ms, 120000,
     "query_wait_timeout, which is in seconds.");
 
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_pool_timeout, 0,
-    "Deprecated, use ysql_conn_mgr_query_wait_timeout_ms instead. Used only when "
-    "ysql_conn_mgr_query_wait_timeout_ms is not set.");
+    "Deprecated, use ysql_conn_mgr_query_wait_timeout_ms instead. If set, it takes precedence "
+    "over ysql_conn_mgr_query_wait_timeout_ms.");
 
 DEPRECATE_FLAG(bool, ysql_conn_mgr_optimized_extended_query_protocol, "10_2026");
 

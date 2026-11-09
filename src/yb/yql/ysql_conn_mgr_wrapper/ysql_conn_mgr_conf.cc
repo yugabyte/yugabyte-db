@@ -26,6 +26,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/path_util.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/status_format.h"
@@ -92,8 +93,11 @@ std::string BoolToString(bool value) {
 }
 
 uint32_t QueryWaitTimeoutMs() {
-  if (google::GetCommandLineFlagInfoOrDie("ysql_conn_mgr_query_wait_timeout_ms").is_default &&
-      !google::GetCommandLineFlagInfoOrDie("ysql_conn_mgr_pool_timeout").is_default) {
+  if (!google::GetCommandLineFlagInfoOrDie("ysql_conn_mgr_pool_timeout").is_default) {
+    YB_LOG_FIRST_N(WARNING, 1)
+        << "ysql_conn_mgr_pool_timeout is deprecated, use ysql_conn_mgr_query_wait_timeout_ms "
+        << "instead. Using ysql_conn_mgr_pool_timeout=" << FLAGS_ysql_conn_mgr_pool_timeout
+        << " and ignoring ysql_conn_mgr_query_wait_timeout_ms";
     return FLAGS_ysql_conn_mgr_pool_timeout;
   }
   return FLAGS_ysql_conn_mgr_query_wait_timeout_ms;
