@@ -1487,6 +1487,46 @@ class PgObjectLocksTestLegacyTxnVsNewDdl : public PgObjectLocksTestMixModeDuring
   }
 };
 
+// READ COMMITTED is off by default in debug builds, where it runs as REPEATABLE READ.
+class PgObjectLocksTestLegacyRcTxnVsNewDdl : public PgObjectLocksTestLegacyTxnVsNewDdl {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    PgObjectLocksTestLegacyTxnVsNewDdl::UpdateMiniClusterOptions(opts);
+    opts->extra_tserver_flags.emplace_back("--yb_enable_read_committed_isolation=true");
+  }
+};
+
+// The same as LegacyWriteMaintainsNewIndex, in READ COMMITTED. Each statement takes a new
+// snapshot, but the catalog cache still lives for the whole transaction.
+TEST_P(PgObjectLocksTestLegacyRcTxnVsNewDdl, LegacyWriteMaintainsNewIndex) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
+  }
+
+  auto legacy_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(legacy_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED"));
+  ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<std::string>(
+      "SHOW yb_effective_transaction_isolation_level")), "read committed");
+  ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
+
+  ASSERT_NO_FATALS(PromoteForDdl());
+  auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(ddl_conn.Execute("CREATE INDEX test_v_idx ON test(v)"));
+
+  ASSERT_OK(legacy_conn.Execute("INSERT INTO test VALUES (100, 42)"));
+  ASSERT_OK(legacy_conn.Execute("COMMIT"));
+
+  ASSERT_NO_FATALS(CheckIndex(ddl_conn, 1));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    PromoteLegacyTxnNode, PgObjectLocksTestLegacyRcTxnVsNewDdl, ::testing::Bool(),
+    ::testing::PrintToStringParamName());
+
 // The legacy transaction only reads the table before the CREATE INDEX, so the CREATE INDEX does
 // not wait for it. Its INSERT after the build must succeed and add the index entry. Before the
 // fix, the INSERT failed with a schema version mismatch.
