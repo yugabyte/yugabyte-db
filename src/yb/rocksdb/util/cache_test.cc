@@ -792,6 +792,7 @@ TEST_F(CacheTest, OverFlowTest) {
 }
 
 TEST_F(CacheTest, MultiTouchOverflow) {
+  google::FlagSaver flag_saver;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_single_touch_ratio) = 0.2;
   std::shared_ptr<Cache> cache = NewLRUCache(10, 0);
 
@@ -897,40 +898,52 @@ TEST_F(CacheTest, MultiTouchOverShareWithoutOverflow) {
 
 TEST_F(CacheTest, SingleTouchOverflowDisabled) {
   google::FlagSaver flag_saver;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_single_touch_ratio) = 0.2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_single_touch_ratio) = 0.5;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_overflow_single_touch) = false;
-  std::shared_ptr<Cache> cache = NewLRUCache(10, 0);
+  std::shared_ptr<Cache> cache = NewLRUCache(4, 0);
+
+  auto promote = [&cache](int key) {
+    Cache::Handle* h = cache->Lookup(ToString(key), 100 /* query_id */);
+    ASSERT_NE(h, nullptr);
+    cache->Release(h);
+  };
+  auto assert_evicted = [&cache](int key) {
+    ASSERT_EQ(cache->Lookup(ToString(key), 100 /* query_id */), nullptr);
+  };
 
   // Single-touch is capped at its share.
-  int key = 0;
-  for (; key < 10; ++key) {
-    ASSERT_OK(InsertIntoCache(cache, key, key /* value */));
+  for (int i = 0; i < 4; ++i) {
+    ASSERT_OK(InsertIntoCache(cache, i /* key */, i /* value */));
   }
   AssertCacheSizes(cache.get(), 2, 0);
 
   // Multi-touch can still grow into unused single-touch space.
-  for (int round = 0; round < 5; ++round) {
-    for (int i = key - 2; i < key; ++i) {
-      Cache::Handle* h = cache->Lookup(ToString(i), 100 /* query_id */);
-      ASSERT_NE(h, nullptr);
-      cache->Release(h);
-    }
-    if (round < 4) {
-      ASSERT_OK(InsertIntoCache(cache, key, key /* value */));
-      ASSERT_OK(InsertIntoCache(cache, key + 1, key + 1 /* value */));
-      key += 2;
-    }
-  }
-  AssertCacheSizes(cache.get(), 0, 10);
+  promote(2);
+  promote(3);
+  AssertCacheSizes(cache.get(), 0, 2);
+  ASSERT_OK(InsertIntoCache(cache, 4 /* key */, 4 /* value */));
+  ASSERT_OK(InsertIntoCache(cache, 5 /* key */, 5 /* value */));
+  AssertCacheSizes(cache.get(), 2, 2);
+  promote(4);
+  promote(5);
+  AssertCacheSizes(cache.get(), 0, 4);
 
-  // Single-touch insertions take back the single-touch share.
-  ASSERT_OK(InsertIntoCache(cache, key, key /* value */));
-  ASSERT_OK(InsertIntoCache(cache, key + 1, key + 1 /* value */));
-  ASSERT_OK(InsertIntoCache(cache, key + 2, key + 2 /* value */));
-  AssertCacheSizes(cache.get(), 2, 8);
+  // Single-touch insertions take back the single-touch share from the oldest multi-touch entries.
+  ASSERT_OK(InsertIntoCache(cache, 6 /* key */, 6 /* value */));
+  AssertCacheSizes(cache.get(), 1, 3);
+  assert_evicted(2);
+  ASSERT_OK(InsertIntoCache(cache, 7 /* key */, 7 /* value */));
+  AssertCacheSizes(cache.get(), 2, 2);
+  assert_evicted(3);
+
+  // Once multi-touch is back to its share, single-touch insertions evict single-touch entries.
+  ASSERT_OK(InsertIntoCache(cache, 8 /* key */, 8 /* value */));
+  AssertCacheSizes(cache.get(), 2, 2);
+  assert_evicted(6);
 }
 
 TEST_F(CacheTest, EvictNotFull) {
+  google::FlagSaver flag_saver;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_single_touch_ratio) = 0.2;
   std::shared_ptr<Cache> cache = NewLRUCache(10, 0);
 
