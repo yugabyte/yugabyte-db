@@ -1458,6 +1458,11 @@ void MasterHeartbeatServiceImpl::UpdateTabletReplicasAfterConfigChange(
       replica.UpdateDriveInfo(existing_replica->drive_info);
       replica.UpdateLeaderLeaseInfo(existing_replica->leader_lease_info);
     }
+    // Like the state, the report's should_disable_lb_move only applies to the sender's replica.
+    if (ts_desc->permanent_uuid() != sender_uuid) {
+      replica.should_disable_lb_move =
+          existing_replica && existing_replica->should_disable_lb_move;
+    }
     auto result = replica_locations.get()->insert({ts_desc->id(), replica});
     LOG_IF(FATAL, !result.second) << "duplicate uuid: " << ts_desc->id();
   }

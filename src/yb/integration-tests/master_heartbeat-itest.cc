@@ -335,6 +335,64 @@ TEST_F(MasterHeartbeatITest, IgnoreEarlierHeartbeatFromSameTSProcess) {
   }
 }
 
+// A report with a Raft config change rebuilds every replica of the tablet from the sender's report.
+// should_disable_lb_move must still only change for the sender's replica.
+TEST_F(MasterHeartbeatITest, ConfigChangePreservesOtherReplicasShouldDisableLbMove) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  CreateTable();
+  ASSERT_OK(mini_cluster_->AddTabletServer());
+  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(4));
+  // Stop all tservers so real heartbeats don't overwrite the replica map.
+  ShutdownAllTServers(mini_cluster_.get());
+
+  auto table = table_name();
+  auto& catalog_mgr = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto table_info = catalog_mgr.GetTableInfoFromNamespaceNameAndTableName(
+      table.namespace_type(), table.namespace_name(), table.table_name());
+  auto tablet = ASSERT_RESULT(table_info->GetTablets())[0];
+
+  // The existing replicas have finished post-split compaction.
+  auto replicas = std::make_shared<master::TabletReplicaMap>(*tablet->GetReplicaLocations());
+  for (auto& [ts_uuid, replica] : *replicas) {
+    replica.should_disable_lb_move = false;
+  }
+  tablet->SetReplicaLocations(replicas);
+
+  master::TSDescriptorVector ts_descs = catalog_mgr.GetAllLiveNotBlacklistedTServers();
+  auto extra_ts_it = std::find_if(
+      ts_descs.cbegin(), ts_descs.cend(), [&replicas](const master::TSDescriptorPtr& ts) {
+        return !replicas->contains(ts->permanent_uuid());
+      });
+  ASSERT_TRUE(extra_ts_it != ts_descs.cend());
+  auto ts = *extra_ts_it;
+
+  // The extra tserver reports a config change that adds it as leader, with compaction pending.
+  master::MasterHeartbeatProxy master_proxy(
+      proxy_cache_.get(), mini_cluster_->mini_master()->bound_rpc_addr());
+  auto cluster_config = ASSERT_RESULT(catalog_mgr.GetClusterConfig());
+  master::TSHeartbeatRequestPB req;
+  *req.mutable_common() = MakeTSToMasterCommonPB(*ts, ts->latest_seqno());
+  req.set_universe_uuid(cluster_config.universe_uuid());
+  *req.mutable_tablet_report() = MakeTabletReportPBWithNewLeader(
+      ts.get(), tablet.get(), true, ts->latest_report_seqno() + 1);
+  req.mutable_tablet_report()->mutable_updated_tablets(0)->set_should_disable_lb_move(true);
+  req.set_num_live_tablets(1);
+  master::TSHeartbeatResponsePB resp;
+  rpc::RpcController controller;
+  ASSERT_OK(master_proxy.TSHeartbeat(req, &resp, &controller));
+  ASSERT_FALSE(resp.has_error());
+
+  auto replica_locations = tablet->GetReplicaLocations();
+  ASSERT_TRUE(replica_locations->contains(ts->permanent_uuid()));
+  for (const auto& [ts_uuid, replica] : *replica_locations) {
+    if (ts_uuid == ts->permanent_uuid()) {
+      ASSERT_TRUE(replica.should_disable_lb_move);
+    } else {
+      ASSERT_FALSE(replica.should_disable_lb_move) << "Overwritten for replica on " << ts_uuid;
+    }
+  }
+}
+
 // Verifies the timed-lock heartbeat path (ProcessTabletReportBatch, #10304). When the master cannot
 // acquire a tablet's write lock within the heartbeat's deadline, it returns TryAgain without
 // applying the report. The test verifies that the tserver retries this heartbeat and it is
