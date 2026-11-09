@@ -592,6 +592,9 @@ typedef struct ResultRelInfo
 	 * pushdown GUC setting for the ON CONFLICT action.
 	 */
 	bool		ri_ybUseIocPushdown;
+
+	bool		ri_ybUpsertModeChecked; /* YbCanUseUpsertMode() has run */
+	bool		ri_ybUpsertModeAllowed; /* YbCanUseUpsertMode() result */
 } ResultRelInfo;
 
 /*
@@ -1472,6 +1475,13 @@ typedef struct ModifyTableState
 	 * the ModifyTable plan.
 	 */
 	struct YbInsertOnConflictBatchState *yb_ioc_state;
+
+	/*
+	 * YB: true if this INSERT uses upsert mode (yb_enable_upsert_mode).  Set
+	 * at executor startup instead of in the plan, because a cached plan is
+	 * reused after the setting changes.
+	 */
+	bool		yb_use_upsert_mode;
 } ModifyTableState;
 
 /* ----------------

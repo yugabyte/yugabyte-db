@@ -80,8 +80,8 @@ public class PACollectorControllerTest extends FakeDBApplication {
       perfAdvisorService.save(platform1, false);
       perfAdvisorService.save(platform2, false);
 
-      server.enqueue(new MockResponse().setBody("[]"));
-      server.enqueue(new MockResponse().setBody("[{},{}]"));
+      server.enqueue(new MockResponse().setBody("{\"entities\":[],\"has_next\":false}"));
+      server.enqueue(new MockResponse().setBody("{\"entities\":[{},{}],\"has_next\":false}"));
       Result result =
           doRequestWithAuthToken(
               "GET", "/api/customers/" + customer.getUuid() + "/pa_collector", authToken);

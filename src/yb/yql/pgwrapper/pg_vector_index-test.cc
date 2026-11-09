@@ -64,6 +64,7 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/tablet_vector_indexes.h"
+#include "yb/tablet/transaction_participant.h"
 
 #include "yb/tools/tools_test_utils.h"
 #include "yb/tools/yb-backup/yb-backup-test_base.h"
@@ -114,6 +115,7 @@ DECLARE_bool(enable_tablet_split_of_tables_with_vector_index);
 DECLARE_bool(vector_index_enable_compactions);
 DECLARE_bool(vector_index_enable_pk_routing);
 DECLARE_bool(vector_index_include_into_post_split_compaction);
+DECLARE_bool(vector_index_delete_list_after_rows);
 DECLARE_bool(vector_index_no_deletions_skip_filter_check);
 DECLARE_bool(vector_index_skip_filter_check);
 DECLARE_bool(vector_index_store_payload);
@@ -1486,6 +1488,8 @@ void PgVectorIndexTest::TestRestart(
     }
     ASSERT_OK(InsertRows(
         conn, kNumRows + 1, kNumRows * 2, /* keep_vectors = */ false, non_transactional_writes));
+    // Followers may not have applied the last rows yet; the check below runs on every replica.
+    ASSERT_OK(WaitAllReplicasAppliedLeaderCommitted(cluster_.get(), 30s * kTimeMultiplier));
     ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, flush_flags));
 
     // Check that the vector indexes lag the regular DB, so the restart below exercises bootstrap
@@ -6424,8 +6428,8 @@ TEST_P(PgVectorIndexSingleServerTest, ReverseMappingCleanup) {
           ybctid_4_vector_1 -> ybctid_4
           ybctid_5_vector_1 -> ybctid_5
           ybctid_2_vector_1 -> DEL
-          ybctid_4_vector_1 -> DEL
           ybctid_4_vector_2 -> ybctid_4
+          ybctid_4_vector_1 -> DEL
       )#",
       formatter.FormatVectorsMeta());
 
@@ -6480,14 +6484,14 @@ TEST_P(PgVectorIndexSingleServerTest, ReverseMappingCleanup) {
           ybctid_3_vector_1 -> ybctid_3
           ybctid_5_vector_1 -> ybctid_5
           ybctid_4_vector_2 -> ybctid_4
-          ybctid_4_vector_2 -> DEL
           ybctid_4_vector_3 -> ybctid_4
+          ybctid_4_vector_2 -> DEL
           ybctid_6_vector_1 -> ybctid_6
           ybctid_7_vector_1 -> ybctid_7
           ybctid_3_vector_1 -> DEL
           ybctid_6_vector_1 -> DEL
-          ybctid_4_vector_3 -> DEL
           ybctid_4_vector_4 -> ybctid_4
+          ybctid_4_vector_3 -> DEL
           ybctid_8_vector_1 -> ybctid_8
       )#",
       formatter.FormatVectorsMeta());
@@ -6536,14 +6540,14 @@ TEST_P(PgVectorIndexSingleServerTest, ReverseMappingCleanup) {
   // ybctid_4_vector_2 -> ybctid_4
   //
   // Other old files:
-  // ybctid_4_vector_2 -> DEL       => outside retention, but should be kept by min_other_ht
   // ybctid_4_vector_3 -> ybctid_4  => outside retention, should be filtered due to newer value
+  // ybctid_4_vector_2 -> DEL       => outside retention, but should be kept by min_other_ht
   // ybctid_6_vector_1 -> ybctid_6  => outside retention, should be filtered due to delete
   // ybctid_7_vector_1 -> ybctid_7  => visible
   // ybctid_3_vector_1 -> DEL       => outside retention, but should be kept by min_other_ht
   // ybctid_6_vector_1 -> DEL       => outside retention, but should be kept by min_other_ht
-  // ybctid_4_vector_3 -> DEL       => outside retention, but should be kept by min_other_ht
   // ybctid_4_vector_4 -> ybctid_4  => visible
+  // ybctid_4_vector_3 -> DEL       => outside retention, but should be kept by min_other_ht
   // ybctid_8_vector_1 -> ybctid_8  => outside retention, but should be kept as updates too fresh.
   //
   // Fresh files: => fresh data, within retention period.
@@ -6560,8 +6564,8 @@ TEST_P(PgVectorIndexSingleServerTest, ReverseMappingCleanup) {
           ybctid_7_vector_1 -> ybctid_7
           ybctid_3_vector_1 -> DEL
           ybctid_6_vector_1 -> DEL
-          ybctid_4_vector_3 -> DEL
           ybctid_4_vector_4 -> ybctid_4
+          ybctid_4_vector_3 -> DEL
           ybctid_8_vector_1 -> ybctid_8
       )#" + expected_tail.str()),
       output);
@@ -6828,6 +6832,26 @@ class PgVectorIndexUtilTest : public PgVectorIndexSingleServerDumpTestBase {
     return VERIFY_RESULT(peers.front()->shared_tablet())->vector_indexes().has_vector_deletion();
   }
 
+  // Restarts the cluster and waits until the tablets of test have loaded their transactions from
+  // the intents DB.
+  Status RestartAndWaitTransactionsLoaded() {
+    RETURN_NOT_OK(RestartCluster());
+    return WaitFor([this]() -> Result<bool> {
+      auto peers = VERIFY_RESULT(ListTabletPeersForTableName(
+          cluster_.get(), "test", ListPeersFilter::kAll));
+      if (peers.empty()) {
+        return false;
+      }
+      for (const auto& peer : peers) {
+        auto tablet = peer->shared_tablet_maybe_null();
+        if (!tablet || !tablet->transaction_participant()->AllTransactionsLoaded()) {
+          return false;
+        }
+      }
+      return true;
+    }, 10s * kTimeMultiplier, "Transactions loaded");
+  }
+
   // Ids of the rows nearest to the origin.
   Result<std::string> NearestIds(PGConn& conn, size_t limit) {
     return AsString(VERIFY_RESULT(conn.FetchRows<int64_t>(Format(
@@ -7049,6 +7073,126 @@ TEST_F(PgVectorIndexUtilTest, NumTopVectorsToRemoveExceedsResultEntries) {
   ASSERT_FALSE(ANNOTATE_UNPROTECTED_READ(docdb::TEST_vector_index_clear_result_entries_once));
 }
 
+// Rows 1..20 hold [i, 2i, 3i]: row 20 is the nearest of them to kQueryA and row 1 to kQueryB. Each
+// test moves some vector to a query point and away from it in one transaction, so a search there
+// must return the nearest of rows 1..20.
+constexpr auto kQueryA = "[100, 100, 100]";
+constexpr auto kQueryB = "[-100, 100, -100]";
+
+// Covers https://github.com/yugabyte/yugabyte-db/issues/34312.
+TEST_F(PgVectorIndexUtilTest, SameTxnReplacedVector) {
+  constexpr int64_t kNumRows = 20;
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+
+  // A new row whose vector is replaced in the transaction that inserted it.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES (1000, '$0')", kQueryA));
+  ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[-100, -100, -100]' WHERE id = 1000"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  // A committed row updated twice in one transaction, the middle vector must not stay.
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (2000, '[0, 0, -500]')"));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("UPDATE test SET embedding = '$0' WHERE id = 2000", kQueryB));
+  ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[100, -100, 100]' WHERE id = 2000"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  for (const auto& [query, expected] :
+           {std::pair(kQueryA, kNumRows), std::pair(kQueryB, int64_t{1})}) {
+    auto id = ASSERT_RESULT(
+        conn.FetchRow<int64_t>("SELECT id FROM test" + IndexQuerySuffix(query, 1)));
+    EXPECT_EQ(id, expected) << "Query: " << query;
+  }
+}
+
+// A search that finds the vector of a deleted row gets no row for it, which breaks its paging:
+// https://github.com/yugabyte/yugabyte-db/issues/34737.
+// Covers https://github.com/yugabyte/yugabyte-db/issues/34312.
+TEST_F(PgVectorIndexUtilTest, SameTxnDeletedVector) {
+  constexpr int64_t kNumRows = 20;
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+
+  // A new row deleted in the transaction that inserted it.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES (1000, '$0')", kQueryA));
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 1000"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  // A committed row whose vector is replaced, then deleted in one transaction.
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (2000, '[0, 0, -500]')"));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("UPDATE test SET embedding = '$0' WHERE id = 2000", kQueryB));
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 2000"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  // Without the fix, a LIMIT 1 search repeats the same page until the statement timeout.
+  ASSERT_OK(conn.ExecuteFormat(
+      "SET statement_timeout = $0", ToMilliseconds(10s * kTimeMultiplier)));
+  using Ids = std::vector<int64_t>;
+  for (const auto& [query, expected] : {
+           std::pair(kQueryA, Ids{20, 19, 18, 17, 16}), std::pair(kQueryB, Ids{1, 2, 3, 4, 5})}) {
+    for (size_t limit : {expected.size(), 1UL}) {
+      auto ids = ASSERT_RESULT(
+          conn.FetchRows<int64_t>("SELECT id FROM test" + IndexQuerySuffix(query, limit)));
+      EXPECT_EQ(ids, Ids(expected.begin(), expected.begin() + limit)) << "Query: " << query;
+    }
+  }
+}
+
+// A tablet that restarts with an uncommitted transaction in its intents DB scans the reverse index
+// of that transaction backwards for its last strong intent. The delete-list record of a DELETE sits
+// between the strong and the weak intents of its batch. An UPDATE also takes a row lock, a strong
+// intent written after the delete list.
+TEST_F(PgVectorIndexUtilTest, LoadTransactionWithDeleteList) {
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(20));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 1"));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  StringWaiterLogSink decode_failure_log("Failed to decode intent while loading transaction");
+  ASSERT_OK(RestartAndWaitTransactionsLoaded());
+  ASSERT_FALSE(decode_failure_log.IsEventOccurred());
+}
+
+// A transaction that spans the promotion of vector_index_delete_list_after_rows has delete lists
+// with both key encodings.
+TEST_F(PgVectorIndexUtilTest, DeleteListsWithBothEncodings) {
+  constexpr int64_t kNumRows = 20;
+  constexpr auto kQueryC = "[0, 0, -500]";
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+
+  // A committed row updated twice in one transaction: the old key tombstones the committed vector,
+  // the new key tombstones the vector of the first update.
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES (2000, '$0')", kQueryC));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_delete_list_after_rows) = false;
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("UPDATE test SET embedding = '$0' WHERE id = 2000", kQueryB));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_delete_list_after_rows) = true;
+  ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[100, -100, 100]' WHERE id = 2000"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  for (const auto& query : {kQueryB, kQueryC}) {
+    auto id = ASSERT_RESULT(
+        conn.FetchRow<int64_t>("SELECT id FROM test" + IndexQuerySuffix(query, 1)));
+    EXPECT_EQ(id, 1) << "Query: " << query;
+  }
+
+  // A pending transaction with both encodings, loaded by a restarted tablet.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_delete_list_after_rows) = false;
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 1"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_delete_list_after_rows) = true;
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 2"));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  StringWaiterLogSink decode_failure_log("Failed to decode intent while loading transaction");
+  ASSERT_OK(RestartAndWaitTransactionsLoaded());
+  ASSERT_FALSE(decode_failure_log.IsEventOccurred());
+}
+
 // Covers https://github.com/yugabyte/yugabyte-db/issues/30262.
 TEST_F(PgVectorIndexUtilTest, ReverseMappingPostSplitCompaction) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
@@ -7112,8 +7256,8 @@ TEST_F(PgVectorIndexUtilTest, ReverseMappingPostSplitCompaction) {
           ybctid_8_vector_1 -> ybctid_8
           ybctid_9_vector_1 -> ybctid_9
           ybctid_10_vector_1 -> ybctid_10
-          ybctid_2_vector_1 -> DEL
           ybctid_2_vector_2 -> ybctid_2
+          ybctid_2_vector_1 -> DEL
       )#",
       formatter.FormatVectorsMeta());
 
@@ -7168,8 +7312,8 @@ TEST_F(PgVectorIndexUtilTest, ReverseMappingPostSplitCompaction) {
           ybctid_2_vector_1 -> ybctid_2
           ybctid_6_vector_1 -> ybctid_6
           ybctid_8_vector_1 -> ybctid_8
-          ybctid_2_vector_1 -> DEL
           ybctid_2_vector_2 -> ybctid_2
+          ybctid_2_vector_1 -> DEL
       )#",
       with_row2_dump);
 }
@@ -7259,8 +7403,8 @@ TEST_F(PgVectorIndexUtilTest, SstDump) {
           ybctid_4_vector_1 -> ybctid_4
           ybctid_5_vector_1 -> ybctid_5
           ybctid_2_vector_1 -> DEL
-          ybctid_4_vector_1 -> DEL
           ybctid_4_vector_2 -> ybctid_4
+          ybctid_4_vector_1 -> DEL
       )#",
       output);
 }
@@ -7586,8 +7730,9 @@ TEST_F(PgVectorIndexUtilTest, StoredPayloadRestoreToTime) {
 
   ASSERT_OK(RestartCluster());
   conn = ASSERT_RESULT(Connect());
-  ASSERT_TRUE(ASSERT_RESULT(HasVectorDeletion()));
+  // The query waits for the tablet leader, which HasVectorDeletion requires.
   ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, kNumRows)), "[1, 2, 3, 4, 5]");
+  ASSERT_TRUE(ASSERT_RESULT(HasVectorDeletion()));
 }
 
 // A committed transaction is visible through its intents until it is applied, while the index
@@ -8569,8 +8714,8 @@ TEST_P(PgVectorIndexReverseMappingTest, UpdateReverseMapping_OneIndex) {
             ybctid_1_vector_1 -> ybctid_1
             ybctid_2_vector_1 -> ybctid_2
             ybctid_3_vector_1 -> ybctid_3
-            ybctid_2_vector_1 -> DEL
             ybctid_2_vector_2 -> ybctid_2
+            ybctid_2_vector_1 -> DEL
         )#",
         output);
   } else {
@@ -8580,8 +8725,8 @@ TEST_P(PgVectorIndexReverseMappingTest, UpdateReverseMapping_OneIndex) {
             ybctid_1_vector_1 -> ybctid_1
             ybctid_2_vector_1 -> ybctid_2
             ybctid_3_vector_1 -> ybctid_3
-            ybctid_2_vector_1 -> DEL
             ybctid_2_vector_2 -> ybctid_2
+            ybctid_2_vector_1 -> DEL
         )#",
         output);
   }
@@ -8601,8 +8746,8 @@ TEST_P(PgVectorIndexReverseMappingTest, UpdateReverseMapping_MultipleIndexes) {
             ybctid_1_vector_1 -> ybctid_1
             ybctid_2_vector_1 -> ybctid_2
             ybctid_3_vector_1 -> ybctid_3
-            ybctid_2_vector_1 -> DEL
             ybctid_2_vector_2 -> ybctid_2
+            ybctid_2_vector_1 -> DEL
         )#",
         output);
   } else {
@@ -8611,8 +8756,8 @@ TEST_P(PgVectorIndexReverseMappingTest, UpdateReverseMapping_MultipleIndexes) {
             ybctid_1_vector_1 -> ybctid_1
             ybctid_2_vector_1 -> ybctid_2
             ybctid_3_vector_1 -> ybctid_3
-            ybctid_2_vector_1 -> DEL
             ybctid_2_vector_2 -> ybctid_2
+            ybctid_2_vector_1 -> DEL
         )#",
         output);
   }

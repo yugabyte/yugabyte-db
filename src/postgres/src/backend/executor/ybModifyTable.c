@@ -1676,6 +1676,58 @@ YBCRelInfoHasSecondaryIndices(ResultRelInfo *resultRelInfo)
 			 !resultRelInfo->ri_IndexRelationDescs[0]->rd_index->indisprimary));
 }
 
+/*
+ * Returns whether inserts into this result relation may use upsert mode
+ * (blind writes).  Call it only for a statement that asked for upsert mode,
+ * because when the relation is unsafe it also warns or errors (see below).
+ *
+ * is_copy_replace says how the statement asked for it: true for COPY ...
+ * WITH (REPLACE), false for the yb_enable_upsert_mode setting (COPY or
+ * INSERT).  It decides what happens when the relation is unsafe, i.e. has
+ * secondary indexes, triggers, or rules (see YBIsUpsertUnsafeOnRel()): true
+ * raises an error; false emits a warning, and the caller falls back to a
+ * normal insert.
+ *
+ * A partitioned target routes each row to a leaf partition, which can have
+ * its own indexes or triggers, so callers must ask about each partition that
+ * rows are routed to, not only about the target.  The answer is cached in the
+ * ResultRelInfo, so each relation is checked, and warned about, once per
+ * statement.
+ */
+bool
+YbCanUseUpsertMode(ResultRelInfo *resultRelInfo, bool is_copy_replace)
+{
+	Relation	rel = resultRelInfo->ri_RelationDesc;
+
+	if (resultRelInfo->ri_ybUpsertModeChecked)
+		return resultRelInfo->ri_ybUpsertModeAllowed;
+
+	resultRelInfo->ri_ybUpsertModeChecked = true;
+	resultRelInfo->ri_ybUpsertModeAllowed = !YBIsUpsertUnsafeOnRel(rel);
+
+	if (!resultRelInfo->ri_ybUpsertModeAllowed)
+	{
+		if (is_copy_replace)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("COPY with REPLACE is not supported on "
+							"table \"%s\" because it has secondary "
+							"indexes, triggers, or foreign key "
+							"constraints", RelationGetRelationName(rel)),
+					 errhint("Consider using INSERT ... ON CONFLICT "
+							 "for true upsert semantics instead.")));
+		ereport(WARNING,
+				(errmsg("upsert mode disabled for table \"%s\" "
+						"because it has secondary indexes, "
+						"triggers, or foreign key constraints",
+						RelationGetRelationName(rel)),
+				 errhint("Consider using INSERT ... ON CONFLICT "
+						 "for true upsert semantics instead.")));
+	}
+
+	return resultRelInfo->ri_ybUpsertModeAllowed;
+}
+
 int
 YBCRelInfoGetSecondaryIndicesCount(ResultRelInfo *resultRelInfo)
 {
