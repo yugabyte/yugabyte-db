@@ -35,7 +35,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
@@ -91,17 +90,11 @@ public class RestoreManagerYb extends DevopsBase {
     }
 
     List<NodeDetails> tservers = universe.getTServers();
-    // Verify if secondary IPs exist. If so, create map.
+    // Map secondary IPs to primary IPs, if the tservers have any.
     boolean legacyNet =
         universe.getConfig().getOrDefault(Universe.DUAL_NET_LEGACY, "true").equals("true");
-    if (tservers.get(0).cloudInfo.secondary_private_ip != null
-        && !tservers.get(0).cloudInfo.secondary_private_ip.equals("null")
-        && !legacyNet) {
-      secondaryToPrimaryIP =
-          tservers.stream()
-              .collect(
-                  Collectors.toMap(
-                      t -> t.cloudInfo.secondary_private_ip, t -> t.cloudInfo.private_ip));
+    if (!legacyNet) {
+      secondaryToPrimaryIP = Util.getSecondaryToPrivateIps(tservers);
     }
 
     commandArgs.add(PY_WRAPPER);

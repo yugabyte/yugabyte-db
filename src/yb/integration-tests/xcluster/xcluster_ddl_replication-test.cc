@@ -4290,6 +4290,73 @@ TEST_F(XClusterDDLReplicationTest, AlterColumnCollation) {
                     producer_index_oid_before, consumer_index_oid_before);
 }
 
+// A typmod-only ALTER COLUMN TYPE reuses expression and partial indexes unless
+// yb_alter_type_reuse_expr_and_partial_indexes is off. The target must make the
+// same reuse/rebuild decision as the source session did.
+TEST_F(XClusterDDLReplicationTest, AlterColumnTypmodReuseExprAndPartialIndexes) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  const auto kTableName = "test_table";
+  // The table comes first, followed by its indexes.
+  const std::vector<std::string> kRelNames = {kTableName, "test_expr_index", "test_partial_index"};
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0 ($1 varchar(10))", kTableName, kKeyColumnName));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 ($1) SELECT 'row_' || i FROM generate_series(1, 50) as i",
+      kTableName, kKeyColumnName));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE INDEX $0 ON $1 (lower($2))", kRelNames[1], kTableName, kKeyColumnName));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE INDEX $0 ON $1 ($2) WHERE $2 IS NOT NULL",
+      kRelNames[2], kTableName, kKeyColumnName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // A table rewrite keeps the table's OID and changes only its relfilenode, so compare both.
+  auto get_rel_ids =
+      [&](pgwrapper::PGConn* conn) -> Result<std::vector<std::tuple<Oid, Oid>>> {
+    std::vector<std::tuple<Oid, Oid>> ids;
+    for (const auto& relname : kRelNames) {
+      ids.push_back(VERIFY_RESULT((conn->FetchRow<pgwrapper::PGOid, pgwrapper::PGOid>(
+          Format("SELECT oid, relfilenode FROM pg_class WHERE relname = '$0'", relname)))));
+    }
+    return ids;
+  };
+
+  auto alter_and_check = [&](const std::string& new_type, bool expect_reuse) {
+    auto producer_ids_before = ASSERT_RESULT(get_rel_ids(producer_conn_.get()));
+    auto consumer_ids_before = ASSERT_RESULT(get_rel_ids(consumer_conn_.get()));
+
+    ASSERT_OK(producer_conn_->ExecuteFormat(
+        "ALTER TABLE $0 ALTER COLUMN $1 TYPE $2", kTableName, kKeyColumnName, new_type));
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+    auto producer_ids_after = ASSERT_RESULT(get_rel_ids(producer_conn_.get()));
+    auto consumer_ids_after = ASSERT_RESULT(get_rel_ids(consumer_conn_.get()));
+    for (size_t i = 0; i < kRelNames.size(); ++i) {
+      SCOPED_TRACE(Format("relation: $0, new type: $1", kRelNames[i], new_type));
+      // A typmod-only change never rewrites the table, whatever the GUC says.
+      const bool expect_unchanged = i == 0 || expect_reuse;
+      ASSERT_EQ(expect_unchanged, producer_ids_before[i] == producer_ids_after[i]);
+      ASSERT_EQ(expect_unchanged, consumer_ids_before[i] == consumer_ids_after[i]);
+    }
+
+    auto producer_table = ASSERT_RESULT(GetProducerTable(ASSERT_RESULT(GetYsqlTable(
+        &producer_cluster_, namespace_name, /*schema_name=*/"", kTableName))));
+    auto consumer_table = ASSERT_RESULT(GetConsumerTable(ASSERT_RESULT(GetYsqlTable(
+        &consumer_cluster_, namespace_name, /*schema_name=*/"", kTableName))));
+    ASSERT_OK(VerifyWrittenRecords(producer_table, consumer_table));
+  };
+
+  ASSERT_OK(producer_conn_->Execute(
+      "SET yb_alter_type_reuse_expr_and_partial_indexes = on"));
+  ASSERT_NO_FATALS(alter_and_check("varchar(20)", /*expect_reuse=*/true));
+
+  // Only the source session turns the GUC off; the target keeps its default.
+  ASSERT_OK(producer_conn_->Execute(
+      "SET yb_alter_type_reuse_expr_and_partial_indexes = off"));
+  ASSERT_NO_FATALS(alter_and_check("varchar(30)", /*expect_reuse=*/false));
+}
+
 TEST_F(XClusterDDLReplicationTest, BackupRestorePreservesEnumSortValue) {
   if (!UseYbController()) {
     GTEST_SKIP() << "This test does not work with yb_backup.py";
