@@ -1945,7 +1945,7 @@ public class KubernetesUtil {
   }
 
   public static void initializeK8sNodeResourceSpecsFromInstanceType(
-      UniverseDefinitionTaskParams taskParams, boolean overwrite) {
+      UniverseDefinitionTaskParams taskParams) {
     if (taskParams == null
         || taskParams.clusters == null
         || !Util.isKubernetesBasedUniverse(taskParams)) {
@@ -1969,7 +1969,7 @@ public class KubernetesUtil {
                   ? ui.getTserverK8SNodeResourceSpec(providerUUID)
                   : ui.getMasterK8SNodeResourceSpec(providerUUID);
 
-          if (current == null || overwrite) {
+          if (current == null) {
             UserIntent.K8SNodeResourceSpec k8SNodeResourceSpec =
                 initK8sResourceSpec(ui, serverType);
             if (k8SNodeResourceSpec != null) {
