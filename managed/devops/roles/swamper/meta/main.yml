@@ -17,7 +17,11 @@ dependencies:
     become_method: sudo
     prometheus_go_version: 1.7
     prometheus_use_service: true
-    prometheus_node_exporter_version: 1.10.2
+    prometheus_node_exporter_version: 1.12.1-fips
+    prometheus_node_exporter_download_base: https://github.com/yugabyte/node_exporter/releases/download
+    # node_exporter is a GOFIPS140 build, which defaults to FIPS mode and its strict TLS rules.
+    prometheus_node_exporter_environment:
+      GODEBUG: fips140=off
     prometheus_node_exporter_opts: "--web.listen-address=:{{ node_exporter_port }} \
                                     --collector.textfile.directory={{ home_dir | default('/home/yugabyte') }}/metrics"
     prometheus_node_exporter_use_systemd: true
