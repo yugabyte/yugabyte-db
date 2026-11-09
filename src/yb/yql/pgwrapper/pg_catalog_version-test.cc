@@ -3185,6 +3185,28 @@ TEST_F(PgCatalogVersionTest, TestAlterRoleSetGUCHasGlobalImpact) {
   ASSERT_EQ(row6, "off");
 }
 
+// Make sure GRANT/REVOKE SET ON PARAMETER has global impact.
+TEST_F(PgCatalogVersionTest, TestGrantSetOnParameterHasGlobalImpact) {
+  auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
+  ASSERT_OK(conn.Execute("CREATE ROLE user1 WITH login"));
+  ASSERT_OK(conn.Execute("CREATE DATABASE db1"));
+
+  auto conn_db1_user1 = ASSERT_RESULT(ConnectToDBAsUser("db1" /* db_name */, "user1"));
+  auto status = conn_db1_user1.Execute("SET log_planner_stats = on");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "permission denied to set parameter");
+
+  ASSERT_OK(conn.Execute("GRANT SET ON PARAMETER log_planner_stats TO user1"));
+  WaitForCatalogVersionToPropagate();
+  ASSERT_OK(conn_db1_user1.Execute("SET log_planner_stats = on"));
+
+  ASSERT_OK(conn.Execute("REVOKE SET ON PARAMETER log_planner_stats FROM user1"));
+  WaitForCatalogVersionToPropagate();
+  status = conn_db1_user1.Execute("SET log_planner_stats = off");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "permission denied to set parameter");
+}
+
 TEST_F(PgCatalogVersionTest, InvalMessageDeltaTableLoad) {
   for (int i = 0; i < 2; i++) {
     // Disable auto analyze in this test because it introduce flakiness of metrics.

@@ -38,6 +38,7 @@
 #include "catalog/pg_database.h"
 #include "catalog/pg_db_role_setting_d.h"
 #include "catalog/pg_namespace.h"
+#include "catalog/pg_parameter_acl_d.h"
 #include "catalog/pg_replication_origin_d.h"
 #include "catalog/pg_shseclabel_d.h"
 #include "catalog/pg_subscription_d.h"
@@ -324,6 +325,9 @@ YBCExecWriteStmt(YbcPgStatement ybc_stmt,
 				   relid == SubscriptionRelationId ||
 				   relid == SubscriptionObjectIndexId ||
 				   relid == SubscriptionNameIndexId ||
+				   relid == ParameterAclRelationId ||
+				   relid == ParameterAclParnameIndexId ||
+				   relid == ParameterAclOidIndexId ||
 
 				   relid == DatabaseNameIndexId ||
 				   relid == SharedSecLabelRelationId ||
