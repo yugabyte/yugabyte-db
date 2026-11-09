@@ -68,6 +68,7 @@ struct od_client {
 	kiwi_vars_t yb_vars_session;
 	kiwi_key_t key;
 
+	/* do not set this field directly, use od_server_attach_client */
 	od_server_t *server;
 	/* od_route_t */
 	void *route;
