@@ -1180,8 +1180,8 @@ replorigin_session_setup(RepOriginId node)
 
 	if (YbIsClientYsqlConnMgr())
 	{
-		elog(LOG, "Incrementing sticky object count for setting replication origin in session");
-		increment_sticky_object_count();
+		elog(LOG, "Making connection sticky for setting replication origin in session");
+		yb_ysql_conn_mgr_sticky_nontxn_object = true;
 	}
 
 
@@ -1421,8 +1421,8 @@ yb_replication_origin_session_setup_shared(PG_FUNCTION_ARGS)
 	replorigin_session_origin = origin;
 	if (YbIsClientYsqlConnMgr())
 	{
-		elog(LOG, "Incrementing sticky object count for setting shared replication origin in session");
-		increment_sticky_object_count();
+		elog(LOG, "Making connection sticky for setting shared replication origin in session");
+		yb_ysql_conn_mgr_sticky_nontxn_object = true;
 	}
 
 	pfree(name);
