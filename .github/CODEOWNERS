@@ -10,9 +10,6 @@
 /src/postgres/      @yugabyte/CODEOWNER_Missing
 /src/yb/            @yugabyte/CODEOWNER_Missing
 
-/src/**/*xcluster*  @yugabyte/xcluster
-/src/**/*xrepl*     @yugabyte/xcluster
-
 /src/yb/consensus/  @yugabyte/ybase
 /src/yb/docdb/      @yugabyte/ybase
 /src/yb/dockv/      @yugabyte/ybase
@@ -42,5 +39,7 @@
 
 /src/yb/cdc/                            @yugabyte/ycdcxcluster
 /src/postgres/src/backend/replication/  @yugabyte/ycdcxcluster
+/src/**/*xcluster*  @yugabyte/xcluster
+/src/**/*xrepl*     @yugabyte/xcluster
 
 /managed/           @yugabyte/yugaware
