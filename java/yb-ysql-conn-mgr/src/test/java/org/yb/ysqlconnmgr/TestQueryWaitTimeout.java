@@ -90,11 +90,11 @@ public class TestQueryWaitTimeout extends BaseYsqlConnMgr {
     }
   }
 
+  // All logical connections are made before the pool is saturated, since a new one would wait
+  // for an auth backend. A timeout disconnects the client, so each timed wait uses its own
+  // connection.
   @Test
   public void testDeprecatedFlagAndRuntimeChange() throws Exception {
-    // All logical connections are made before the pool is saturated, since a new one would wait
-    // for an auth backend. A timeout disconnects the client, so each timed wait uses its own
-    // connection.
     List<Connection> conns = new ArrayList<>();
     for (int i = 0; i < MAX_CONNECTIONS + 2; i++) {
       conns.add(connect());
