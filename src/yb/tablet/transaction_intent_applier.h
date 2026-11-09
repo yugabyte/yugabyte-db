@@ -30,7 +30,7 @@ namespace yb::tablet {
 
 YB_DEFINE_ENUM(RemoveReason,
                (kApplied)(kLargeApplied)(kProcessCleanup)(kStatusReceived)(kAbortReceived)
-               (kShutdown)(kSetDB)(kCleanupAborts)(kNotFound)(kUnlock));
+               (kShutdown)(kSetDB)(kCleanupAborts)(kNotFound)(kUnlock)(kRestore));
 
 // Interface to object that should apply intents in RocksDB when transaction is applying.
 class TransactionIntentApplier {

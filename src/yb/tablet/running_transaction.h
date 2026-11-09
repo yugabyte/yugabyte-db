@@ -161,6 +161,16 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   bool IsTxnLoadedWithCDC() const;
 
+  // A transaction cut by a restore is looked up as if removed while its removal waits for the
+  // requests running at the time of the cut. Both accessed under the participant's mutex.
+  void MarkCutByRestore() {
+    cut_by_restore_ = true;
+  }
+
+  bool cut_by_restore() const {
+    return cut_by_restore_;
+  }
+
   void MarkHasRetryableRequestsReplicated();
 
   bool HasRetryableRequestsReplicated() const;
@@ -254,6 +264,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   // Whether or not transaction has any batches replicated by retryable requests.
   bool has_retryable_requests_replicated_ = false;
+
+  bool cut_by_restore_ = false;
 
   FastModeTransactionScope fast_mode_scope_;
 

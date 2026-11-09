@@ -695,6 +695,10 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   void SetRestorationHybridTime(HybridTime value);
   HybridTime restoration_hybrid_time() const;
 
+  // Sys catalog tablet: the latest in-place PITR restore of each YSQL database, by database oid.
+  void SetDbRestorationHybridTime(uint32_t db_oid, HybridTime value);
+  std::map<uint32_t, HybridTime> db_restoration_hybrid_times() const;
+
   // Flushes the superblock to disk.
   // If only_if_dirty is true, flushes only if there are metadata updates that have been applied but
   // not flushed to disk. This is checked by comparing last_applied_change_metadata_op_id_ and
@@ -1018,6 +1022,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   bool hidden_ GUARDED_BY(data_mutex_) = false;
 
   HybridTime restoration_hybrid_time_ GUARDED_BY(data_mutex_) = HybridTime::kMin;
+
+  std::map<uint32_t, HybridTime> db_restoration_hybrid_times_ GUARDED_BY(data_mutex_);
 
   // SPLIT_OP ID designated for this tablet (so child tablets will have this unset until they've
   // been split themselves).

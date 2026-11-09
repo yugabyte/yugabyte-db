@@ -132,7 +132,10 @@ class TransactionParticipant : public TransactionStatusManager {
 
   // Adds new running transaction.
   // Returns true if transaction was added, false if transaction already present.
-  Result<bool> Add(const TransactionMetadata& metadata, HybridTime batch_write_ht);
+  // put_batch is the batch that carries the metadata, see CutDbTransactionsStartedBefore.
+  Result<bool> Add(
+      const TransactionMetadata& metadata, HybridTime batch_write_ht,
+      const docdb::LWKeyValueWriteBatchPB& put_batch);
 
   Result<TransactionMetadata> PrepareMetadata(const LWTransactionMetadataPB& pb) override;
   Result<TransactionMetadata> PrepareMetadata(const TransactionMetadataPB& pb);
@@ -176,9 +179,12 @@ class TransactionParticipant : public TransactionStatusManager {
 
   Status ProcessReplicated(const ReplicatedData& data);
 
+  // keep_transactions: the intents DB was closed and reopened unchanged, so the transactions
+  // loaded from it still describe it. Otherwise a reopen forgets them (truncate, tablet restore).
   Status SetDB(
       const docdb::DocDB& db,
-      RWOperationCounter* pending_op_counter_blocking_rocksdb_shutdown_start);
+      RWOperationCounter* pending_op_counter_blocking_rocksdb_shutdown_start,
+      KeepTransactions keep_transactions = KeepTransactions::kFalse);
 
   Status CheckAborted(const TransactionId& id);
 
@@ -224,6 +230,16 @@ class TransactionParticipant : public TransactionStatusManager {
       CoarseTimePoint deadline, TransactionId* exclude_txn_id = nullptr);
 
   void IgnoreAllTransactionsStartedBefore(HybridTime limit);
+
+  // Sys catalog tablet, shared by every YSQL database: an in-place PITR restore of database
+  // db_oid at limit. The transactions of that database that started at or before limit are cut,
+  // as a restore of a data tablet cuts all of its transactions: forgotten, their intents removed,
+  // and never recreated by a later write (see Add). Transactions of other databases are untouched.
+  Status CutDbTransactionsStartedBefore(uint32_t db_oid, HybridTime limit);
+
+  // The persisted part of CutDbTransactionsStartedBefore, re-applied when the tablet opens: a cut
+  // transaction whose intents outlived the restore is not loaded, and Add keeps refusing it.
+  void IgnoreDbTransactionsStartedBefore(uint32_t db_oid, HybridTime limit);
 
   // Update transaction metadata to change the status tablet for the given transaction.
   Status UpdateTransactionPromoting(

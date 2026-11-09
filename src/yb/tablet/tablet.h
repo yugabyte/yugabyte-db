@@ -1221,7 +1221,8 @@ class Tablet : public AbstractTablet,
   std::vector<std::string> CompleteShutdownStorages(
       const TabletScopedRWOperationPauses& ops_pauses);
 
-  Status OpenKeyValueTablet();
+  // keep_transactions: see TransactionParticipant::SetDB.
+  Status OpenKeyValueTablet(KeepTransactions keep_transactions = KeepTransactions::kFalse);
 
   // Returns a pointer to the TableInfo corresponding to the colocated table. When called with
   // 'kColocationIdNotSet', returns the TableInfo of the parent/primary table.
@@ -1747,7 +1748,8 @@ class Tablet : public AbstractTablet,
 
   Result<rocksdb::Options> CommonRocksDBOptions();
   Status OpenRegularDB(const rocksdb::Options& common_options);
-  Status OpenIntentsDB(const rocksdb::Options& common_options);
+  Status OpenIntentsDB(
+      const rocksdb::Options& common_options, KeepTransactions keep_transactions);
 
   docdb::HistoryCutoff AllowedHistoryCutoff();
 

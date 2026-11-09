@@ -16,6 +16,7 @@
 #include "yb/tablet/transaction_participant.h"
 
 #include <ctime>
+#include <map>
 #include <queue>
 
 #include <boost/multi_index/hashed_index.hpp>
@@ -29,11 +30,16 @@
 #include "yb/client/transaction_rpc.h"
 #include "yb/client/transaction_status_tablets.h"
 
+#include "yb/common/entity_ids.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction_error.h"
 
 #include "yb/consensus/consensus_util.h"
 
+#include "yb/dockv/intent.h"
+#include "yb/dockv/key_bytes.h"
+
+#include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/transaction_dump.h"
 
@@ -58,6 +64,7 @@
 
 #include "yb/util/algorithm_util.h"
 #include "yb/util/async_util.h"
+#include "yb/util/bitmap.h"
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/format.h"
@@ -420,7 +427,9 @@ class TransactionParticipant::Impl
   }
 
   // Adds new running transaction.
-  Result<bool> Add(const TransactionMetadata& metadata, HybridTime batch_write_ht) {
+  Result<bool> Add(
+      const TransactionMetadata& metadata, HybridTime batch_write_ht,
+      const docdb::LWKeyValueWriteBatchPB& put_batch) {
     RETURN_NOT_OK(loader_.WaitLoaded(metadata.transaction_id));
 
     MinRunningNotifier min_running_notifier(&applier_);
@@ -439,6 +448,9 @@ class TransactionParticipant::Impl
       return CreateAbortedStatus(
           "Transaction $0 started at $1, which is at or before the restore boundary $2",
           metadata.transaction_id, metadata.start_time, ignore_all_transactions_started_before_);
+    }
+    if (!ignore_db_transactions_started_before_.empty()) {
+      RETURN_NOT_OK(CheckDbRestoreBoundariesUnlocked(metadata, batch_write_ht, put_batch));
     }
     VLOG_WITH_PREFIX(4) << "Create new transaction: " << metadata.transaction_id;
 
@@ -1202,7 +1214,8 @@ class TransactionParticipant::Impl
 
   Status SetDB(
       const docdb::DocDB& db,
-      RWOperationCounter* pending_op_counter_blocking_rocksdb_shutdown_start) {
+      RWOperationCounter* pending_op_counter_blocking_rocksdb_shutdown_start,
+      KeepTransactions keep_transactions) {
     bool had_db = db_.intents != nullptr;
     db_ = db;
     pending_op_counter_blocking_rocksdb_shutdown_start_ =
@@ -1223,6 +1236,9 @@ class TransactionParticipant::Impl
     }
 
     RETURN_NOT_OK(loader_.WaitAllLoaded());
+    if (keep_transactions) {
+      return Status::OK();
+    }
     MinRunningNotifier min_running_notifier(&applier_);
     std::lock_guard lock(mutex_);
     DumpClear(RemoveReason::kSetDB);
@@ -1591,6 +1607,150 @@ class TransactionParticipant::Impl
     std::lock_guard lock(mutex_);
     ignore_all_transactions_started_before_ =
         std::max(ignore_all_transactions_started_before_, limit);
+  }
+
+  void IgnoreDbTransactionsStartedBefore(uint32_t db_oid, HybridTime limit) {
+    std::lock_guard lock(mutex_);
+    auto& value =
+        ignore_db_transactions_started_before_.try_emplace(db_oid, HybridTime::kMin).first->second;
+    value = std::max(value, limit);
+  }
+
+  Status CutDbTransactionsStartedBefore(uint32_t db_oid, HybridTime limit) {
+    IgnoreDbTransactionsStartedBefore(db_oid, limit);
+    if (!FLAGS_consistent_restore) {
+      return Status::OK();
+    }
+    // A transaction the loader checked before the limit was set must already be in the map.
+    RETURN_NOT_OK(loader_.WaitAllLoaded());
+    std::vector<TransactionId> candidates;
+    {
+      std::lock_guard lock(mutex_);
+      for (const auto& txn : transactions_.get<StartTimeTag>()) {
+        if (txn->start_ht() > limit) {
+          break;
+        }
+        candidates.push_back(txn->id());
+      }
+    }
+    if (candidates.empty()) {
+      return Status::OK();
+    }
+    ScopedRWOperation operation(pending_op_counter_blocking_rocksdb_shutdown_start_);
+    RETURN_NOT_OK(operation);
+    std::vector<TransactionId> cut;
+    for (const auto& id : candidates) {
+      if (VERIFY_RESULT(HasIntentsInDb(id, db_oid))) {
+        cut.push_back(id);
+      }
+    }
+    MinRunningNotifier min_running_notifier(&applier_);
+    std::lock_guard lock(mutex_);
+    for (const auto& id : cut) {
+      auto it = transactions_.find(id);
+      if (it == transactions_.end()) {
+        continue;
+      }
+      LOG_WITH_PREFIX(INFO) << "Cutting transaction of database " << db_oid << " restored at "
+                            << limit << ": " << AsString(**it);
+      (**it).MarkCutByRestore();
+      RemoveUnlocked(it, RemoveReason::kRestore, &min_running_notifier);
+    }
+    return Status::OK();
+  }
+
+  // See CutDbTransactionsStartedBefore: a cut transaction whose intents outlived the restore,
+  // because the tablet restarted before their removal, is cut again when loaded.
+  Result<bool> IsCutByDbRestore(const TransactionId& id, HybridTime start_ht) {
+    if (!FLAGS_consistent_restore) {
+      return false;
+    }
+    std::vector<std::pair<uint32_t, HybridTime>> restores;
+    {
+      std::lock_guard lock(mutex_);
+      for (const auto& [db_oid, limit] : ignore_db_transactions_started_before_) {
+        if (start_ht <= limit) {
+          restores.emplace_back(db_oid, limit);
+        }
+      }
+    }
+    for (const auto& [db_oid, limit] : restores) {
+      if (VERIFY_RESULT(HasIntentsInDb(id, db_oid))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Whether the intents DB holds an intent of transaction id on a catalog table of database
+  // db_oid. Walks the transaction's reverse index, which points at its intents. The caller keeps
+  // RocksDB open.
+  Result<bool> HasIntentsInDb(const TransactionId& id, uint32_t db_oid) {
+    auto iterator = docdb::CreateRocksDBIterator(
+        db_.intents, &docdb::KeyBounds::kNoBounds, docdb::BloomFilterOptions::Inactive(),
+        rocksdb::kDefaultQueryId, /* file_filter = */ nullptr, /* iterate_upper_bound = */ nullptr,
+        rocksdb::CacheRestartBlockKeys::kFalse);
+    dockv::KeyBytes prefix;
+    prefix.AppendKeyEntryType(dockv::KeyEntryType::kTransactionId);
+    prefix.AppendRawBytes(id.AsSlice());
+    for (iterator.Seek(prefix.AsSlice()); iterator.Valid(); iterator.Next()) {
+      auto key = iterator.key();
+      if (!key.starts_with(prefix.AsSlice())) {
+        break;
+      }
+      // The metadata record and its update records come first, see IntentsWriter.
+      if (key.size() <= prefix.size() + 1 ||
+          key[prefix.size()] <= dockv::KeyEntryTypeAsChar::kTransactionMetadataUpdateTime) {
+        continue;
+      }
+      auto value = iterator.value();
+      if (value.TryConsumeByte(dockv::KeyEntryTypeAsChar::kBitSet)) {
+        RETURN_NOT_OK(OneWayBitmap::Skip(&value));
+      } else if (value.TryConsumeByte(dockv::ValueEntryTypeAsChar::kDeleteVectorIds)) {
+        continue;
+      }
+      if (docdb::DecodeDbOidFromCotableKey(value) == db_oid) {
+        return true;
+      }
+    }
+    RETURN_NOT_OK(iterator.status());
+    return false;
+  }
+
+  // A batch written after the restore of a database must not recreate a transaction the restore
+  // cut (see CutDbTransactionsStartedBefore): its earlier intents are gone and its write ids would
+  // restart at 0. The batch's keys tell whose transaction it is. A key of a catalog table of
+  // another database proves it is that database's; a batch with a key of the restored database, or
+  // with keys of shared catalog tables (template1's) only, is refused. A batch written at or
+  // before the restore is a WAL replay in the original order and is not affected.
+  Status CheckDbRestoreBoundariesUnlocked(
+      const TransactionMetadata& metadata, HybridTime batch_write_ht,
+      const docdb::LWKeyValueWriteBatchPB& put_batch) REQUIRES(mutex_) {
+    for (const auto& [db_oid, limit] : ignore_db_transactions_started_before_) {
+      if (metadata.start_time > limit || batch_write_ht <= limit) {
+        continue;
+      }
+      bool other_db = false;
+      for (const auto& pair : put_batch.write_pairs()) {
+        auto key_db_oid = docdb::DecodeDbOidFromCotableKey(pair.key());
+        if (!key_db_oid) {
+          continue;
+        }
+        if (*key_db_oid == db_oid) {
+          other_db = false;
+          break;
+        }
+        if (*key_db_oid != kTemplate1Oid) {
+          other_db = true;
+        }
+      }
+      if (!other_db) {
+        return CreateAbortedStatus(
+            "Transaction $0 started at $1, at or before the restore of database $2 at $3",
+            metadata.transaction_id, metadata.start_time, db_oid, limit);
+      }
+    }
+    return Status::OK();
   }
 
   TransactionStatusResult DoUpdateTransactionPromoting(
@@ -2198,6 +2358,12 @@ class TransactionParticipant::Impl
       UniqueLock<std::mutex> lock(mutex_);
       auto it = transactions_.find(id);
       if (it != transactions_.end()) {
+        if ((**it).cut_by_restore()) {
+          YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 1)
+              << "Ignore transaction for '" << reason << "' cut by a restore, removal pending: "
+              << AsString(**it);
+          return LockAndFindResult{};
+        }
         if (FLAGS_consistent_restore &&
             (**it).start_ht() <= ignore_all_transactions_started_before_) {
           YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 1)
@@ -2256,6 +2422,21 @@ class TransactionParticipant::Impl
       VLOG_WITH_PREFIX(5) << "Skip load of transaction: " << metadata.transaction_id
                           << " first_write_ht: " << first_write_ht
                           << " min_replay_txn_first_write_ht: " << replay_write_time;
+      return;
+    }
+
+    auto cut = IsCutByDbRestore(metadata.transaction_id, metadata.start_time);
+    if (!cut.ok()) {
+      LOG_WITH_PREFIX(DFATAL) << "Failed to check whether a restore cut transaction "
+                              << metadata.transaction_id << ": " << cut.status();
+    } else if (*cut) {
+      LOG_WITH_PREFIX(INFO) << "Not loading transaction " << metadata.transaction_id
+                            << " started at " << metadata.start_time
+                            << ": cut by a restore, removing its intents";
+      auto cleanup_task = std::make_shared<CleanupIntentsTask>(
+          &participant_context_, &applier_, RemoveReason::kRestore, metadata.transaction_id);
+      cleanup_task->Prepare(cleanup_task);
+      participant_context_.StrandEnqueue(cleanup_task.get());
       return;
     }
 
@@ -2985,6 +3166,9 @@ class TransactionParticipant::Impl
 
   HybridTime ignore_all_transactions_started_before_ GUARDED_BY(mutex_) = HybridTime::kMin;
 
+  // Per database restored in place on the sys catalog tablet, see CutDbTransactionsStartedBefore.
+  std::map<uint32_t, HybridTime> ignore_db_transactions_started_before_ GUARDED_BY(mutex_);
+
   std::unordered_set<TransactionId, TransactionIdHash> recently_removed_transactions_;
   struct RecentlyRemovedTransaction {
     TransactionId id;
@@ -3077,8 +3261,9 @@ void TransactionParticipant::Start() {
 }
 
 Result<bool> TransactionParticipant::Add(
-    const TransactionMetadata& metadata, HybridTime batch_write_ht) {
-  return impl_->Add(metadata, batch_write_ht);
+    const TransactionMetadata& metadata, HybridTime batch_write_ht,
+    const docdb::LWKeyValueWriteBatchPB& put_batch) {
+  return impl_->Add(metadata, batch_write_ht, put_batch);
 }
 
 Result<FastModeTransactionScope> TransactionParticipant::ShouldUseFastMode(
@@ -3171,8 +3356,9 @@ Result<std::optional<TabletId>> TransactionParticipant::FindStatusTablet(const T
 
 Status TransactionParticipant::SetDB(
     const docdb::DocDB& db,
-    RWOperationCounter* pending_op_counter_blocking_rocksdb_shutdown_start) {
-  return impl_->SetDB(db, pending_op_counter_blocking_rocksdb_shutdown_start);
+    RWOperationCounter* pending_op_counter_blocking_rocksdb_shutdown_start,
+    KeepTransactions keep_transactions) {
+  return impl_->SetDB(db, pending_op_counter_blocking_rocksdb_shutdown_start, keep_transactions);
 }
 
 void TransactionParticipant::GetStatus(
@@ -3259,6 +3445,14 @@ Result<HybridTime> TransactionParticipant::WaitForSafeTime(
 
 void TransactionParticipant::IgnoreAllTransactionsStartedBefore(HybridTime limit) {
   impl_->IgnoreAllTransactionsStartedBefore(limit);
+}
+
+Status TransactionParticipant::CutDbTransactionsStartedBefore(uint32_t db_oid, HybridTime limit) {
+  return impl_->CutDbTransactionsStartedBefore(db_oid, limit);
+}
+
+void TransactionParticipant::IgnoreDbTransactionsStartedBefore(uint32_t db_oid, HybridTime limit) {
+  impl_->IgnoreDbTransactionsStartedBefore(db_oid, limit);
 }
 
 Status TransactionParticipant::UpdateTransactionPromoting(
