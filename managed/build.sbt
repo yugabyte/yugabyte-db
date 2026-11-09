@@ -321,7 +321,7 @@ libraryDependencies ++= Seq(
   // aarch64 binaries (same PG 14.5) so the embedded server starts natively there.
   "io.zonky.test.postgres" % "embedded-postgres-binaries-darwin-arm64v8" % "14.5.0" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
-  "com.yugabyte" % "yba-client-v2" % "1.8.14" % Test,
+  "com.yugabyte" % "yba-client-v2" % "1.8.15" % Test,
   // yba-client-v2's ApiClient registers MultiPartFeature. The POM it installs is the shade
   // plugin's dependency-reduced one, which drops all compile deps, so declare this one here.
   "org.glassfish.jersey.media" % "jersey-media-multipart" % "2.41" % Test,
@@ -774,7 +774,7 @@ lazy val javaGenV2Client = project.in(file("client/java"))
     openApiConfigFile := "client/java/openapi-java-config-v2.json",
     openApiGlobalProperties += ("skipFormModel" -> "false"),
     openApiTemplateDir := (baseDirectory.value / resDir / "openapi_templates/clients/v2").absolutePath,
-    version := "1.8.14",
+    version := "1.8.15",
     openApiHttpUserAgent := s"yba-java-client/${version.value}",
     target := file("client/java/target/v2"),
   )
@@ -1099,6 +1099,7 @@ dependencyOverrides += "org.bouncycastle" % "bcutil-fips" % bouncyCastleUtilFips
 libraryDependencies += "org.yb" % "yb-client" % "0.8.125-SNAPSHOT"
 libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b13"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
+libraryDependencies += "com.yugabyte.troubleshoot" % "perf-advisor-client" % "0.2.0"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",

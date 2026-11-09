@@ -13,6 +13,7 @@ import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperation
 import static com.yugabyte.yw.models.TaskInfo.State.Aborted;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
+import static org.hamcrest.CoreMatchers.containsString;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -34,6 +35,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -57,6 +59,7 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.rollback.EditKubernetesUniverseRollbackComputer;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -87,6 +90,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.junit.Before;
@@ -744,6 +748,220 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         KUBERNETES_CHANGE_INSTANCE_TYPE_TASKS,
         getExpectedChangeInstaceTypeResults(),
         "change");
+  }
+
+  private Object readEnableLoadBalancer(String overrideFilePath) {
+    try (InputStream is = new FileInputStream(new File(overrideFilePath))) {
+      Map<String, Object> overrides = new Yaml().loadAs(is, Map.class);
+      return overrides.get("enableLoadBalancer");
+    } catch (IOException e) {
+      throw new RuntimeException("Could not read helm override file: " + overrideFilePath, e);
+    }
+  }
+
+  private void saveExposingService(
+      ExposingServiceState primary, @Nullable ExposingServiceState readReplica) {
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.getPrimaryCluster().userIntent.enableExposingService = primary;
+              if (readReplica != null) {
+                details.getReadOnlyClusters().get(0).userIntent.enableExposingService = readReplica;
+              }
+              u.setUniverseDetails(details);
+            });
+  }
+
+  /** Adds a one-pod read replica in az-1 to the single-AZ universe. */
+  private void addReadReplica() {
+    UniverseDefinitionTaskParams.UserIntent rrIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
+    rrIntent.numNodes = 1;
+    rrIntent.replicationFactor = 1;
+    ProviderInitializer providerInitializer =
+        TestUtils.getProviderInitializerForTests(rrIntent, kubernetesProvider.getUuid());
+    providerInitializer.setProviderType(Common.CloudType.kubernetes);
+    providerInitializer.setAccessCode("demo-access");
+    providerInitializer.setDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 100));
+    UniverseDefinitionTaskParams.UserIntent primaryIntent =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
+    rrIntent.ybSoftwareVersion = primaryIntent.ybSoftwareVersion;
+    rrIntent.tserverK8SNodeResourceSpec = primaryIntent.tserverK8SNodeResourceSpec;
+    rrIntent.masterK8SNodeResourceSpec = primaryIntent.masterK8SNodeResourceSpec;
+    rrIntent.regionList =
+        Collections.singletonList(Region.getByCode(kubernetesProvider, "region-1").getUuid());
+    PlacementInfo rrPlacement = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(
+        AvailabilityZone.getByCode(kubernetesProvider, "az-1").getUuid(), rrPlacement, 1, 1, true);
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdaterWithReadReplica(rrIntent, rrPlacement));
+    when(mockKubernetesManager.getPodInfos(any(), any(), any()))
+        .thenAnswer(
+            invocation ->
+                String.valueOf(invocation.<String>getArgument(1)).contains("-rr")
+                    ? tserverPods(1)
+                    : rollbackPods(3));
+  }
+
+  /** Edits the primary cluster's expose service setting and nothing else. */
+  private TaskInfo submitExposingServiceEdit(ExposingServiceState exposingService) {
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
+    UniverseDefinitionTaskParams.UserIntent newUserIntent =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+    newUserIntent.enableExposingService = exposingService;
+    return submitTask(
+        taskParams,
+        newUserIntent,
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo);
+  }
+
+  private Map<String, String> captureHelmUpgradeOverrideFiles(int times) {
+    ArgumentCaptor<String> releaseName = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> overrideFile = ArgumentCaptor.forClass(String.class);
+    verify(mockKubernetesManager, times(times))
+        .helmUpgrade(
+            any(), any(), any(), releaseName.capture(), any(), overrideFile.capture(), isNull());
+    Map<String, String> result = new HashMap<>();
+    for (int i = 0; i < times; i++) {
+      result.put(releaseName.getAllValues().get(i), overrideFile.getAllValues().get(i));
+    }
+    return result;
+  }
+
+  @Test
+  public void testExposingServiceChangeUpgradesWithoutRestart() {
+    setupUniverseSingleAZ(/* Create Masters */ true);
+    saveExposingService(ExposingServiceState.UNEXPOSED, null);
+    when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(rollbackPods(3));
+
+    TaskInfo taskInfo = submitExposingServiceEdit(ExposingServiceState.EXPOSED);
+    assertEquals(describeFailure(taskInfo), Success, taskInfo.getTaskState());
+
+    String overrideFile = captureHelmUpgradeOverrideFiles(1).get(NODE_PREFIX);
+    assertEquals(true, readEnableLoadBalancer(overrideFile));
+    // The partitions stay at the pod counts, so no pod is replaced.
+    Map<String, Object> partition = readPartitionOverrides(overrideFile);
+    assertEquals(1, partition.get("master"));
+    assertEquals(3, partition.get("tserver"));
+    verify(mockKubernetesManager, times(0)).deletePod(any(), any(), any());
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(
+        ExposingServiceState.EXPOSED,
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableExposingService);
+  }
+
+  @Test
+  public void testExposingServiceChangeWithInstanceTypeChange() {
+    setupUniverseSingleAZ(/* Create Masters */ true);
+    saveExposingService(ExposingServiceState.UNEXPOSED, null);
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(rollbackPods(3));
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
+    InstanceType.upsert(
+        kubernetesProvider.getUuid(), "c5.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    UniverseDefinitionTaskParams.UserIntent newUserIntent =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+    TestUtils.updateInstanceType(newUserIntent, "c5.xlarge");
+    newUserIntent.tserverK8SNodeResourceSpec = new K8SNodeResourceSpec();
+    newUserIntent.tserverK8SNodeResourceSpec.cpuCoreCount = 4.0;
+    newUserIntent.masterK8SNodeResourceSpec = new K8SNodeResourceSpec();
+    newUserIntent.enableExposingService = ExposingServiceState.EXPOSED;
+    TaskInfo taskInfo =
+        submitTask(
+            taskParams,
+            newUserIntent,
+            defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo);
+    assertEquals(describeFailure(taskInfo), Success, taskInfo.getTaskState());
+
+    // The tserver roll applies the new setting; no separate upgrade is added.
+    ArgumentCaptor<String> overrideFile = ArgumentCaptor.forClass(String.class);
+    verify(mockKubernetesManager, times(3))
+        .helmUpgrade(any(), any(), any(), any(), any(), overrideFile.capture(), isNull());
+    for (String file : overrideFile.getAllValues()) {
+      assertEquals(true, readEnableLoadBalancer(file));
+    }
+  }
+
+  @Test
+  public void testExposingServiceChangeUpgradesReadReplica() {
+    setupUniverseSingleAZ(/* Create Masters */ true);
+    addReadReplica();
+    saveExposingService(ExposingServiceState.UNEXPOSED, ExposingServiceState.UNEXPOSED);
+
+    TaskInfo taskInfo = submitExposingServiceEdit(ExposingServiceState.EXPOSED);
+    assertEquals(describeFailure(taskInfo), Success, taskInfo.getTaskState());
+
+    Map<String, String> overrideFiles = captureHelmUpgradeOverrideFiles(2);
+    assertEquals(true, readEnableLoadBalancer(overrideFiles.get(NODE_PREFIX)));
+    assertEquals(true, readEnableLoadBalancer(overrideFiles.get(NODE_PREFIX + "-rr")));
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(
+        ExposingServiceState.EXPOSED,
+        universe
+            .getUniverseDetails()
+            .getReadOnlyClusters()
+            .get(0)
+            .userIntent
+            .enableExposingService);
+  }
+
+  @Test
+  public void testReadReplicaExposingServiceBroughtInStepWithPrimary() {
+    // As left by an edit that saved the primary cluster and failed before the read replica.
+    setupUniverseSingleAZ(/* Create Masters */ true);
+    addReadReplica();
+    saveExposingService(ExposingServiceState.EXPOSED, ExposingServiceState.UNEXPOSED);
+
+    TaskInfo taskInfo = submitExposingServiceEdit(ExposingServiceState.EXPOSED);
+    assertEquals(describeFailure(taskInfo), Success, taskInfo.getTaskState());
+
+    Map<String, String> overrideFiles = captureHelmUpgradeOverrideFiles(1);
+    assertEquals(true, readEnableLoadBalancer(overrideFiles.get(NODE_PREFIX + "-rr")));
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(
+        ExposingServiceState.EXPOSED,
+        universe
+            .getUniverseDetails()
+            .getReadOnlyClusters()
+            .get(0)
+            .userIntent
+            .enableExposingService);
+  }
+
+  @Test
+  public void testReadReplicaExposingServiceChangeRejected() {
+    setupUniverseSingleAZ(/* Create Masters */ true);
+    addReadReplica();
+    saveExposingService(ExposingServiceState.UNEXPOSED, ExposingServiceState.UNEXPOSED);
+
+    Cluster readReplica = defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0);
+    readReplica.userIntent.enableExposingService = ExposingServiceState.EXPOSED;
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
+    taskParams.clusters = new ArrayList<>(Collections.singletonList(readReplica));
+    taskParams.nodePrefix = NODE_PREFIX;
+
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> commissioner.submit(TaskType.EditKubernetesUniverse, taskParams));
+    assertEquals(BAD_REQUEST, e.getHttpStatus());
+    assertThat(e.getMessage(), containsString("expose service setting follows the primary"));
   }
 
   //   @Test

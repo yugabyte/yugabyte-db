@@ -18,7 +18,7 @@ In addition, if you are using YugabyteDB Aeon, you need the following to run the
 
 - The cluster CA certificate.
 - Your computer added to the cluster IP allow list.
-- If your cluster is deployed in a VPC, you need Public Access enabled if you want to connect your application from a public IP address (this doesn't apply if you are using a Sandbox cluster).
+- If your cluster is deployed in a VPC, you need Public Access enabled if you want to connect your application from a public IP address.
 
 {{< note title="Note" >}}
 

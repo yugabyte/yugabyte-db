@@ -3723,7 +3723,8 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 
 				/*
 				 * Assuming that only join paths exist in the space
-				 * of enumerated joins.
+				 * of enumerated joins, except for joins proven empty,
+				 * whose only path is a dummy AppendPath.
 				 */
 				switch (ybRel->cheapest_total_path->type)
 				{
@@ -3732,6 +3733,8 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 					case T_HashPath:
 						break;
 					default:
+						if (IS_DUMMY_REL(ybRel))
+							break;
 						ereport(ERROR,
 								(errmsg("expected a join path (%u)",
 										ybRel->cheapest_total_path->ybUniqueId)));

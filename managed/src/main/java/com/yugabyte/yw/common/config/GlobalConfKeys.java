@@ -304,6 +304,52 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " a support bundle.",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> supportBundleEstimateScriptTimeout =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.estimate_script_timeout",
+          ScopeType.GLOBAL,
+          "Support bundle size estimate script timeout",
+          "Longest each support bundle size estimate script runs, on a node or the YBA host. A"
+              + " script still running then is stopped and its component counts as 0. Default: 2"
+              + " minutes.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> supportBundleCgroupEnabled =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.cgroup.enabled",
+          ScopeType.GLOBAL,
+          "Apply resource limits to support bundle commands on DB nodes",
+          "When true, support bundle commands on a VM DB node run under the CPU and memory"
+              + " limits below. Not applied on Kubernetes. Default: true.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> supportBundleCgroupCpuPercent =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.cgroup.cpu_percent",
+          ScopeType.GLOBAL,
+          "Support bundle CPU limit per node (percent of one core)",
+          "CPU cap shared by all support bundle commands on a node, in percent of one core"
+              + " (1-100). Default: 15.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> supportBundleCgroupMemorySoftPercent =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.cgroup.memory_soft_percent",
+          ScopeType.GLOBAL,
+          "Support bundle soft memory limit per node (percent of MemAvailable)",
+          "Soft memory limit (memory.high) shared by all support bundle commands on a node, in"
+              + " percent of its MemAvailable, at least 64 MiB; 0 disables it. Default: 3.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> supportBundleCgroupMemoryHardPercent =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.cgroup.memory_hard_percent",
+          ScopeType.GLOBAL,
+          "Support bundle hard memory limit per node (percent of MemAvailable)",
+          "Hard memory limit (memory.max) shared by all support bundle commands on a node, in"
+              + " percent of its MemAvailable, at least 128 MiB; 0 disables it. Default: 5.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> supportBundleApplicationLogsRegexPattern =
       new ConfKeyInfo<>(
           "yb.support_bundle.application_logs_regex_pattern",
@@ -2530,4 +2576,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " construction. When disabled, those endpoints always return a full 200 body.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC, ConfKeyTags.FEATURE_FLAG));
+  public static final ConfKeyInfo<Duration> idempotencyKeyRetention =
+      new ConfKeyInfo<>(
+          "yb.api.idempotency.retention",
+          ScopeType.GLOBAL,
+          "Idempotency key retention",
+          "How long the response of a request sent with an Idempotency-Key header is kept for"
+              + " replay. A retry with the same key after this period runs the operation again.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

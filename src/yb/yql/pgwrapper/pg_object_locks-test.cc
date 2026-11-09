@@ -1259,7 +1259,8 @@ TEST_F(PgObjectLocksTest, ExclusiveLockReleaseInvalidatesCatalogCache) {
   auto* ts1 = cluster_->tablet_server(ts1_idx);
   auto* ts2 = cluster_->tablet_server(ts2_idx);
 
-  ts2->Shutdown();
+  // SIGKILL could orphan a starting postgres, whose backends then crash on missing shared memory.
+  ts2->Shutdown(SafeShutdown::kTrue);
   LogWaiter log_waiter(ts2, "Received new lease epoch");
   ASSERT_OK(ts2->Restart(
       ExternalMiniClusterOptions::kDefaultStartCqlProxy,
@@ -1806,6 +1807,30 @@ TEST_F(PgObjectLocksTest, TestGlobalReleaseForFailedDdlsBeforeMetadataIsSet) {
 
 TEST_F(PgObjectLocksTest, TestSyncReleaseForGlobalLocksAndDdls) {
   testSyncReleaseForGlobalLocksAndDdls();
+}
+
+// A release whose catalog versions cannot be read is deferred, not sent without them: the DDL
+// returns, but conflicting DMLs stay blocked until the release goes out with the versions.
+TEST_F(PgObjectLocksTest, ReleaseWaitsForCatalogVersions) {
+  auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*cluster_->tablet_server(0)));
+  auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*cluster_->tablet_server(1)));
+  ASSERT_OK(conn1.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test VALUES (1, 0)"));
+  ASSERT_OK(conn2.FetchMatrix("SELECT * FROM test WHERE k = 1", 1 /* rows */, 2 /* columns */));
+
+  auto* master = cluster_->GetLeaderMaster();
+  ASSERT_OK(cluster_->SetFlag(master, "TEST_fail_populate_db_catalog_info_on_release", "true"));
+  ASSERT_OK(conn1.Execute("ALTER TABLE test ADD COLUMN v1 INT"));
+
+  // The ALTER's exclusive lock is still held, so the read times out waiting for it.
+  ASSERT_OK(conn2.Execute("SET statement_timeout = '3s'"));
+  auto status = ResultToStatus(conn2.Fetch("SELECT * FROM test WHERE k = 1"));
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "statement timeout");
+  ASSERT_OK(conn2.Execute("RESET statement_timeout"));
+
+  ASSERT_OK(cluster_->SetFlag(master, "TEST_fail_populate_db_catalog_info_on_release", "false"));
+  ASSERT_OK(conn2.FetchMatrix("SELECT * FROM test WHERE k = 1", 1 /* rows */, 3 /* columns */));
 }
 
 // Multi-node variant: verifies that pg_locks.ybdetails.blocked_by is populated for a waiting object
