@@ -348,8 +348,10 @@ def classify_execution(rerun: bool, attempt: int, reps: str,
     return False, '', False
 
 
-# Mirrors ConnectionEndpoint.DEFAULT (Java) and ExternalMiniClusterOptions::IsYsqlConnMgrEnabled
-# (C++), so reports can tell which tests went through Connection Manager.
+# True when the test environment turns Connection Manager on by default: the env-var part of
+# ConnectionEndpoint.DEFAULT (Java) and ExternalMiniClusterOptions::IsYsqlConnMgrEnabled (C++).
+# The test itself may still not use Connection Manager (no YSQL, or a POSTGRES endpoint), or may
+# use it regardless of the env. This is what a local rerun needs --enable-ysql-conn-mgr-test for.
 def conn_mgr_enabled(test: TestDescriptor) -> bool:
     env_vars = ['YB_ENABLE_YSQL_CONN_MGR_IN_TESTS']
     if test.is_jvm_based:
