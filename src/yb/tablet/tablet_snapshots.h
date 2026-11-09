@@ -15,6 +15,8 @@
 
 #include <memory>
 #include <mutex>
+#include <string>
+#include <string_view>
 #include <unordered_map>
 
 #include "yb/common/hybrid_time.h"
@@ -59,7 +61,7 @@ YB_DEFINE_ENUM(CreateCheckpointIn, (kSubDir)(kUseSuffix));
 // Logs that a step of a snapshot operation is done and how long it took since start: at INFO if
 // it took at least --tablet_snapshot_op_slow_log_threshold_ms, at VLOG(1) otherwise. Returns the
 // current time, to be used as the start of the next step.
-MonoTime LogSnapshotStepDone(const std::string& log_prefix, const char* step, MonoTime start);
+MonoTime LogSnapshotStepDone(const std::string& log_prefix, std::string_view step, MonoTime start);
 
 struct CreateSnapshotData {
   HybridTime snapshot_hybrid_time;

@@ -371,8 +371,13 @@ TEST_F(TabletSnapshotsTest, LogsSlowStepsAtInfo) {
   ASSERT_OK(DeleteSnapshot("snapshot.logged", 2));
   ASSERT_TRUE(delete_log.IsEventOccurred());
 
-  // Fast steps only go to VLOG(1).
+  // Fast steps only go to VLOG(1), so pin the verbosity to keep them out of the log sink.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_snapshot_op_slow_log_threshold_ms) = 3600 * 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_v) = 0;
+  const auto old_vlog_level = google::SetVLOGLevel("tablet_snapshots", 0);
+  auto restore_vlog_level = ScopeExit([old_vlog_level] {
+    google::SetVLOGLevel("tablet_snapshots", old_vlog_level);
+  });
   StringWaiterLogSink fast_delete_log("Snapshot dir delete done in");
   CreateSnapshotDirectory("snapshot.fast", 3);
   ASSERT_OK(DeleteSnapshot("snapshot.fast", 3));

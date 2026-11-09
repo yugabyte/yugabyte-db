@@ -73,8 +73,9 @@ DEFINE_NON_RUNTIME_int32(snapshot_cleanup_pool_size, 4,
 TAG_FLAG(snapshot_cleanup_pool_size, advanced);
 
 DEFINE_RUNTIME_int32(tablet_snapshot_op_slow_log_threshold_ms, 1000,
-    "Steps of tablet snapshot operations that take at least this many milliseconds are logged at "
-    "INFO level. Faster steps are logged at VLOG(1).");
+    "Steps of tablet snapshot operations and of flushed frontier updates (also done by truncate "
+    "and by bootstrap with --force_recover_flushed_frontier) that take at least this many "
+    "milliseconds are logged at INFO level. Faster steps are logged at VLOG(1).");
 TAG_FLAG(tablet_snapshot_op_slow_log_threshold_ms, advanced);
 
 DEFINE_test_flag(int32, delay_tablet_split_metadata_restore_secs, 0,
@@ -333,7 +334,7 @@ std::string TabletSnapshots::SnapshotsDirName(const std::string& rocksdb_dir) {
   return docdb::GetStorageDir(rocksdb_dir, docdb::kSnapshotsDirName);
 }
 
-MonoTime LogSnapshotStepDone(const std::string& log_prefix, const char* step, MonoTime start) {
+MonoTime LogSnapshotStepDone(const std::string& log_prefix, std::string_view step, MonoTime start) {
   const auto now = MonoTime::Now();
   const auto elapsed = now - start;
   if (elapsed >= MonoDelta::FromMilliseconds(FLAGS_tablet_snapshot_op_slow_log_threshold_ms)) {
@@ -1066,7 +1067,6 @@ bool TabletSnapshots::CleanupTombstonedSnapshot(PendingSnapshotDeletion* deletio
   }
 
   TEST_PAUSE_IF_FLAG(TEST_pause_after_tombstoning_snapshot);
-  LongOperationTracker long_operation_tracker("Delete tombstoned snapshot dir", 5s);
   auto step_start = MonoTime::Now();
   {
     SCOPED_WAIT_STATUS(Snapshot_CleanupSnapshotDir);
@@ -1085,7 +1085,9 @@ bool TabletSnapshots::CleanupTombstonedSnapshot(PendingSnapshotDeletion* deletio
   if (metrics_) {
     metrics_->cleanup_successes->Increment();
   }
-  step_start = LogSnapshotStepDone(LogPrefix(), "Tombstoned snapshot dir delete", step_start);
+  step_start = LogSnapshotStepDone(
+      LogPrefix(), Format("Tombstoned snapshot dir $0 delete", deletion->tombstone_dir),
+      step_start);
   const auto top_snapshots_dir = DirName(deletion->tombstone_dir);
   const Status sync_status = env().SyncDir(top_snapshots_dir);
   if (PREDICT_FALSE(!sync_status.ok())) {
@@ -1099,7 +1101,9 @@ bool TabletSnapshots::CleanupTombstonedSnapshot(PendingSnapshotDeletion* deletio
     PublishPendingDeletionState(*deletion);
     return false;
   }
-  LogSnapshotStepDone(LogPrefix(), "Tombstoned snapshot parent dir sync", step_start);
+  LogSnapshotStepDone(
+      LogPrefix(), Format("Tombstoned snapshot dir $0 parent dir sync", deletion->tombstone_dir),
+      step_start);
   deletion->physical_pending = false;
   PublishPendingDeletionState(*deletion);
   return !deletion->logical_pending;
