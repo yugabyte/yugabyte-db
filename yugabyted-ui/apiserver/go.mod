@@ -5,7 +5,7 @@ go 1.27.3
 require (
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/labstack/echo/v4 v4.16.1
-	github.com/yugabyte/gocql v0.0.0-20220204171058-0bd8e6cb12d0
+	github.com/yugabyte/gocql v1.6.0-yb-1
 	go.uber.org/zap v1.28.0
 )
 
@@ -15,7 +15,6 @@ require (
 )
 
 require (
-	github.com/gocql/gocql v1.1.0 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed // indirect
 	github.com/hashicorp/go-version v1.9.0 // indirect
