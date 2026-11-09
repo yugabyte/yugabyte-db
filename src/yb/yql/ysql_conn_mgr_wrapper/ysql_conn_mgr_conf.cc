@@ -92,11 +92,18 @@ std::string BoolToString(bool value) {
 }
 
 uint32_t QueryWaitTimeoutMs() {
-  if (google::GetCommandLineFlagInfoOrDie("ysql_conn_mgr_query_wait_timeout_ms").is_default &&
-      !google::GetCommandLineFlagInfoOrDie("ysql_conn_mgr_pool_timeout").is_default) {
-    return FLAGS_ysql_conn_mgr_pool_timeout;
+  if (google::GetCommandLineFlagInfoOrDie("ysql_conn_mgr_pool_timeout").is_default) {
+    return FLAGS_ysql_conn_mgr_query_wait_timeout_ms;
   }
-  return FLAGS_ysql_conn_mgr_query_wait_timeout_ms;
+  if (!google::GetCommandLineFlagInfoOrDie("ysql_conn_mgr_query_wait_timeout_ms").is_default) {
+    LOG(WARNING) << "Ignoring deprecated flag ysql_conn_mgr_pool_timeout="
+                 << FLAGS_ysql_conn_mgr_pool_timeout
+                 << " since ysql_conn_mgr_query_wait_timeout_ms is set";
+    return FLAGS_ysql_conn_mgr_query_wait_timeout_ms;
+  }
+  LOG(WARNING) << "Flag ysql_conn_mgr_pool_timeout is deprecated, use "
+               << "ysql_conn_mgr_query_wait_timeout_ms instead";
+  return FLAGS_ysql_conn_mgr_pool_timeout;
 }
 
 std::string PutConfigValue(
