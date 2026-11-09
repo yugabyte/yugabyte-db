@@ -24,6 +24,7 @@
 #include "yb/gutil/map-util.h"
 
 #include "yb/util/env_util.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/path_util.h"
 #include "yb/util/net/net_util.h"
@@ -66,6 +67,7 @@ DECLARE_uint32(ysql_conn_mgr_tcp_keepalive_probes);
 DECLARE_uint32(ysql_conn_mgr_tcp_keepalive_usr_timeout);
 DECLARE_uint32(ysql_conn_mgr_control_connection_pool_size);
 DECLARE_uint32(ysql_conn_mgr_pool_timeout);
+DECLARE_uint32(ysql_conn_mgr_query_wait_timeout_ms);
 DECLARE_bool(ysql_conn_mgr_optimized_session_parameters);
 DECLARE_int32(ysql_conn_mgr_max_pools);
 DECLARE_uint32(ysql_conn_mgr_max_prepared_statements);
@@ -87,6 +89,14 @@ namespace ysql_conn_mgr_wrapper {
 
 std::string BoolToString(bool value) {
   return value == true ? "yes" : "no";
+}
+
+uint32_t QueryWaitTimeoutMs() {
+  if (google::GetCommandLineFlagInfoOrDie("ysql_conn_mgr_query_wait_timeout_ms").is_default &&
+      !google::GetCommandLineFlagInfoOrDie("ysql_conn_mgr_pool_timeout").is_default) {
+    return FLAGS_ysql_conn_mgr_pool_timeout;
+  }
+  return FLAGS_ysql_conn_mgr_query_wait_timeout_ms;
 }
 
 std::string PutConfigValue(
@@ -307,7 +317,7 @@ Result<std::string> YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
     {"{%tcp_keepalive_probes%}", std::to_string(FLAGS_ysql_conn_mgr_tcp_keepalive_probes)},
     {"{%tcp_keepalive_usr_timeout%}",
      std::to_string(FLAGS_ysql_conn_mgr_tcp_keepalive_usr_timeout)},
-    {"{%pool_timeout%}", std::to_string(FLAGS_ysql_conn_mgr_pool_timeout)},
+    {"{%yb_query_wait_timeout_ms%}", std::to_string(QueryWaitTimeoutMs())},
     {"{%yb_enable_multi_route_pool%}", BoolToString(FLAGS_ysql_conn_mgr_enable_multi_route_pool)},
     {"{%yb_ysql_max_connections%}", std::to_string(conf_->ysql_max_connections)},
     {"{%yb_optimized_session_parameters%}",

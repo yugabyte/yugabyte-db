@@ -69,7 +69,7 @@ public class TestAuthSocketCloseWithLoad extends BaseYsqlConnMgr {
         put("ysql_conn_mgr_max_client_connections", "6000");
         put("ysql_conn_mgr_enable_multi_route_pool", "false");
         put("ysql_conn_mgr_num_workers", "4");
-        put("ysql_conn_mgr_pool_timeout", "10");
+        put("ysql_conn_mgr_query_wait_timeout_ms", "10");
         put("ysql_conn_mgr_server_lifetime", "600");
         put("ysql_conn_mgr_use_auth_backend", "false");
         put("ysql_conn_mgr_superuser_sticky", "false");
