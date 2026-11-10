@@ -354,12 +354,15 @@ struct VectorIndexQueryPartitionData {
   size_t number_of_vectors_dropped = 0;
   // The largest distance fetched from the tablet.
   std::optional<uint64_t> max_fetched_distance;
+  // Whether the last fetch from the tablet dropped rows.
+  bool last_fetch_dropped = false;
   bool whether_all_vectors_was_fetched = false;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
         number_of_vectors_returned_to_postgres, number_of_vectors_fetched_from_tablet,
-        number_of_vectors_dropped, max_fetched_distance, whether_all_vectors_was_fetched);
+        number_of_vectors_dropped, max_fetched_distance, last_fetch_dropped,
+        whether_all_vectors_was_fetched);
   }
 };
 
@@ -477,12 +480,14 @@ class VectorIndexQuery {
     auto& write_buffer = sidecars.Start();
 
     // Rows are merged in order only while each partition that could have more has prefetch_size_
-    // rows buffered. A partition that got fewer because its tied rows were dropped could still
-    // have nearer rows than those buffered, so return nothing and requery it on the next page.
+    // rows buffered. A partition left short by dropped rows could have nearer rows than those
+    // buffered, so return nothing and requery it, which moves past the dropped rows. Other short
+    // pages are returned: their requery may repeat itself and stall the query. Stale pages are held
+    // back too, the buffered rows may be out of order.
     size_t response_size = std::min(prefetch_size_, vectors_.size());
-    if (!partitions_are_stale && std::ranges::any_of(partitions_, [this](const auto& partition) {
-          return NeedsFetch(partition);
-        })) {
+    if (std::ranges::any_of(partitions_, [this](const auto& partition) {
+      return partition.last_fetch_dropped && NeedsFetch(partition);
+    })) {
       response_size = 0;
     }
 
@@ -671,6 +676,7 @@ class VectorIndexQuery {
       // the rows farther than all fetched before. Rows tied with the farthest fetched row are
       // lost, as approximate search allows.
       const auto skip_distances_up_to = partition_state.max_fetched_distance;
+      const auto dropped_before = partition_state.number_of_vectors_dropped;
       size_t sidecar_offset = 8;
       for (size_t index = 0; index != distances.size(); ++index) {
         auto new_offset = ends[index];
@@ -688,6 +694,8 @@ class VectorIndexQuery {
         }
         sidecar_offset = new_offset;
       }
+      partition_state.last_fetch_dropped =
+          partition_state.number_of_vectors_dropped != dropped_before;
       // Counts the dropped rows too: the tablet skips them on the next page.
       partition_state.number_of_vectors_fetched_from_tablet += distances.size();
       if (!op_resp.vector_index_could_have_more_data()) {
