@@ -1,0 +1,5 @@
+# src/test/regress/yb_alter_table2_schedule
+#
+# Second half of yb_alter_table_schedule.
+
+test: yb.orig.alter_table_typmod_index

@@ -47,6 +47,7 @@
 
 #include "yb/vector_index/vectorann_util.h"
 #include "yb/vector_index/vector_lsm.h"
+#include "yb/vector_index/vector_lsm_metadata.h"
 
 METRIC_DEFINE_event_stats(table, vector_index_convert_us,
     "Time to convert list of vector ids to ybctids", yb::MetricUnit::kMicroseconds,
@@ -105,6 +106,20 @@ namespace yb::docdb {
 
 namespace {
 
+// Shared by the forced OpId stamps of an open index, DocVectorIndex::ModifyFlushedFrontier, and
+// of one that is not open, ForceVectorIndexStorageOpId, so both write the same frontiers.
+void SetChunkOpId(storage::UserFrontiers& frontiers, const OpId& op_id) {
+  down_cast<ConsensusFrontier&>(frontiers.Smallest()).set_op_id(op_id);
+  down_cast<ConsensusFrontier&>(frontiers.Largest()).set_op_id(op_id);
+}
+
+// The frontiers of the chunk without a file that a stamp adds.
+ConsensusFrontiers StampChunkFrontiers(const OpId& op_id) {
+  ConsensusFrontiers frontiers;
+  frontiers.Largest().set_op_id(op_id);
+  return frontiers;
+}
+
 vector_index::DistanceKind ConvertDistanceKind(PgVectorDistanceType dist_type) {
   switch (dist_type) {
     case PgVectorDistanceType::DIST_L2:
@@ -140,9 +155,18 @@ Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> HnswTraits(
     case HnswBackend::YB_HNSW_USEARCH:
       return ann_methods::CreateUsearchIndexTraits<Vector, DistanceResult>(
           block_cache, hnsw_options, mem_tracker);
-    case HnswBackend::YB_HNSW_HNSWLIB:
+    case HnswBackend::YB_HNSW_HNSWLIB: {
+      vector_index::VectorTenantExtractor tenant_extractor;
+      // TODO(#36086): a saved YbHnsw chunk keeps a single entry point, so only the tenant cluster
+      // of that entry point is reachable in it.
+      if (options.tenant_hash_group_and_range_components()) {
+        tenant_extractor = [](Slice payload) -> Result<Slice> {
+          return VERIFY_RESULT(dockv::DecodeDocVectorIndexPayload(payload)).tenant;
+        };
+      }
       return ann_methods::CreateHnswlibIndexTraits<Vector, DistanceResult>(
-          block_cache, hnsw_options, mem_tracker);
+          block_cache, hnsw_options, mem_tracker, std::move(tenant_extractor));
+    }
     case HnswBackend::DEPRECATED_USEARCH: [[fallthrough]];
     case HnswBackend::DEPRECATED_HNSWLIB:
       break;
@@ -256,7 +280,9 @@ class DocVectorIndexViewImpl : public DocVectorIndexView {
   Status ForEachVector(const DocVectorIndexEntryCallback& callback) const override {
     ValueBuffer buffer;
     for (const auto& index : indexes_) {
-      for (const auto& entry : *index) {
+      auto it = index->CreateIterator();
+      for (; it->Valid(); it->Next()) {
+        const auto& entry = it->Entry();
         VectorToYSQL(entry.vector, &buffer);
         RETURN_NOT_OK(callback(DocVectorIndexEntry {
           .vector_id = entry.vector_id,
@@ -264,6 +290,7 @@ class DocVectorIndexViewImpl : public DocVectorIndexView {
           .payload = entry.payload,
         }));
       }
+      RETURN_NOT_OK(it->status());
     }
     return Status::OK();
   }
@@ -607,14 +634,12 @@ class DocVectorIndexImpl : public DocVectorIndex {
       const ConsensusFrontier& frontier, rocksdb::FrontierModificationMode mode) override {
     if (mode == rocksdb::FrontierModificationMode::kForce) {
       RETURN_NOT_OK(lsm_.ModifyChunkFrontiers([&frontier](storage::UserFrontiers& frontiers) {
-        down_cast<ConsensusFrontier&>(frontiers.Smallest()).set_op_id(frontier.op_id());
-        down_cast<ConsensusFrontier&>(frontiers.Largest()).set_op_id(frontier.op_id());
+        SetChunkOpId(frontiers, frontier.op_id());
       }));
     }
     // An empty insert only carries the frontier into the mutable chunk, the following flush
     // persists it. Same shape as the split generation update above.
-    ConsensusFrontiers frontiers;
-    frontiers.Largest().set_op_id(frontier.op_id());
+    auto frontiers = StampChunkFrontiers(frontier.op_id());
     RETURN_NOT_OK(Insert(
         DocVectorIndexInsertEntries{}, InsertOptions{ .frontiers = &frontiers, }));
     // Wait for the flush: callers stamp an OpId to make it durable, and an ungraceful restart
@@ -893,6 +918,15 @@ void DocVectorIndex::ApplyReverseEntry(
   auto value_buffer = dockv::DocVectorMetaValue(table_key_prefix, ybctid, column_id);
   auto value_slice = value_buffer.AsSlice();
   handler.Put(dockv::DocVectorKeyAsParts(vector_id, encoded_write_time), { &value_slice, 1 });
+}
+
+Result<bool> ForceVectorIndexStorageOpId(const std::string& storage_dir, const OpId& op_id) {
+  // The added chunk gives an index restored without chunks the OpId too.
+  // The same env VectorLSM loads its manifest with.
+  return vector_index::VectorLSMMetadataModifyChunkFrontiers(
+      Env::Default(), storage_dir, [] { return std::make_unique<ConsensusFrontiers>(); },
+      [&op_id](storage::UserFrontiers& frontiers) { SetChunkOpId(frontiers, op_id); },
+      StampChunkFrontiers(op_id));
 }
 
 Result<DocVectorIndexPtr> CreateDocVectorIndex(

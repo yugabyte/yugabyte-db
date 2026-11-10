@@ -15,16 +15,30 @@ from observability import meko_observe
 # registered through dist_rag.create_source has no size check at all, because
 # CreateSourceProcessorForAWS_S3 queues every object of a supported type. Keep
 # this above 60 MB, or raise MAX_FILE_SIZE_BYTES per deployment.
+#
+# The Markdown fine-tuning path shares this cap. It costs more per byte than
+# the plain-text path, because md_parser also holds the block tokens for the
+# piece it is parsing and the chunk it is assembling. Peak RSS measured at this
+# 64 MiB default, by document shape: 194 MB for 20-byte paragraphs, 228 MB for
+# prose, 242 MB for fenced code, 250 MB for table-heavy, 303 MB for a single
+# section of prose.
+#
+# The expensive shape is a table-heavy document with no column-0 ATX heading,
+# which is one chunk holding every table in the file. What dominates there is
+# the chunk under construction, not the parser: md_parser._table_to_block
+# keeps one str per cell, so the cost scales with cells per source byte, and
+# the TableBlock rows for the whole document are live at once. That is a
+# property of one-chunk-per-heading-section, not of the read cap, and it has
+# no fixed ceiling. Measured at 64 MiB: 1,211 MB with 3-column tables of
+# 6-byte cells ("| r1 | v1 | w1 |"), 1,887 MB with 8-column tables of 2-byte
+# cells ("|a1|b1|...|h1|"). A denser table costs more again.
+#
+# Those figures are per task. A worker claims one task at a time, so they are
+# also per pod; concurrency is how many rag-agent replicas run, set in the
+# agentic-cloud helm chart rather than by anything here. Size the text pod's
+# memory limit above the densest table you expect to index, not above a
+# number quoted here, and do not quote a single multiplier for this path.
 DEFAULT_MAX_FILE_SIZE_BYTES = 64 * 1024 * 1024  # 64 MiB
-
-
-# The Markdown fine-tuning path keeps its own, much lower cap. parse_markdown
-# peaks at about 23.4x the input, measured linearly at 1, 5 and 16 MiB (24.6 MB,
-# 122.8 MB and 392.9 MB), against roughly 2x for the plain-text path. At 64 MiB
-# that is about 1.5 GiB for one task, times WORKER_CONCURRENCY, so the two paths
-# cannot share one number. Raising this is MEKO-1128, which needs the worker
-# memory sized for it first.
-DEFAULT_MAX_MARKDOWN_FILE_SIZE_BYTES = 5 * 1024 * 1024  # 5 MiB
 
 
 def _env_size_bytes(var_name: str, default: int) -> int:
@@ -100,13 +114,6 @@ def max_file_size_bytes() -> int:
     )
     _warn_on_cap_drift(value)
     return value
-
-
-def max_markdown_file_size_bytes() -> int:
-    """Size cap for the Markdown fine-tuning read, overridable per deployment."""
-    return _env_size_bytes(
-        "MAX_MARKDOWN_FILE_SIZE_BYTES", DEFAULT_MAX_MARKDOWN_FILE_SIZE_BYTES
-    )
 
 
 def _iter_lines(text: str) -> Generator[str, None, None]:

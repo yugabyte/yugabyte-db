@@ -25,6 +25,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/init.h"
 #include "yb/common/pgsql_error.h"
+#include "yb/common/retryable_request.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 
@@ -269,7 +270,8 @@ bool YBCStatusIsSnapshotTooOld(YbcStatus s) {
   return FetchErrorCode(s) == YBPgErrorCode::YB_PG_SNAPSHOT_TOO_OLD;
 }
 
-// The tserver response cache was asked for an entry it does not hold, under lookup_only.
+// The tserver response cache did not serve this read: either it was asked under lookup_only for
+// an entry it does not hold, or it sent the caller away from a fill already under way.
 bool YBCStatusIsResponseCacheMiss(YbcStatus s) {
   return StatusWrapper(s)->IsIncomplete();
 }
@@ -280,6 +282,12 @@ bool YBCStatusIsTryAgain(YbcStatus s) {
 
 bool YBCStatusIsTimedOut(YbcStatus s) {
   return StatusWrapper(s)->IsTimedOut();
+}
+
+bool YBCStatusIsRetryableRequestTooOld(YbcStatus s) {
+  StatusWrapper wrapper(s);
+  return wrapper->IsExpired() &&
+         MinRunningRequestIdStatusData::ValueFromStatus(*wrapper).has_value();
 }
 
 bool YBCStatusIsAlreadyPresent(YbcStatus s) {
@@ -962,7 +970,7 @@ char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len) {
 static bool object_locking_infra_for_curr_txn = false;
 
 void YBCSetObjectLockingInfraForCurrTxn() {
-  object_locking_infra_for_curr_txn = enable_object_locking_infra;
+  object_locking_infra_for_curr_txn = yb_enable_object_locking_infra;
 }
 
 bool YBCIsObjectLockingInfraEnabled() {

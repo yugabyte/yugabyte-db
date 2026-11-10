@@ -56,7 +56,10 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
+import org.yb.client.LocatedTablet;
 import org.yb.client.TestUtils;
+import org.yb.client.YBClient;
+import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.pgsql.PgOutputMessageDecoder.*;
 import org.yb.util.BuildTypeUtil;
 
@@ -6473,6 +6476,36 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     }
   }
 
+  private void waitForAllTabletReplicasToBeVoters() throws Exception {
+    YBClient client = miniCluster.getClient();
+    Set<HostAndPort> masterAddresses = miniCluster.getMasters().keySet();
+    TestUtils.waitFor(() -> {
+      try {
+        for (TableInfo table : client.getTablesList(null, false, null).getTableInfoList()) {
+          for (LocatedTablet tablet :
+               client.openTableByUUID(table.getId().toStringUtf8()).getTabletsLocations(10000)) {
+            List<LocatedTablet.Replica> replicas = tablet.getReplicas();
+            // The sys catalog and YCQL virtual tables are hosted by the masters.
+            boolean onMasters = replicas.stream().anyMatch(r -> r.getRpcHost() != null
+                && masterAddresses.contains(HostAndPort.fromParts(r.getRpcHost(), r.getRpcPort())));
+            int expectedReplicas =
+                onMasters ? miniCluster.getNumMasters() : miniCluster.getNumTServers();
+            if (replicas.size() != expectedReplicas ||
+                !replicas.stream().allMatch(r -> r.getMemberType().equals("VOTER"))) {
+              LOG.info("{}.{} is not voter ready yet",
+                  table.getNamespace().getName(), table.getName());
+              return false;
+            }
+          }
+        }
+        return true;
+      } catch (Exception e) {
+        LOG.info("Tablets not ready yet: {}", e.getMessage());
+        return false;
+      }
+    }, 120000 * kMultiplier);
+  }
+
   @Test
   public void testSlotLockReleasedOnTserverCrash() throws Exception {
     restartClusterWithFlags(getMasterFlags(), getTServerFlagsWithExclusiveLock());
@@ -6490,6 +6523,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         replConn0.unwrap(PGConnection.class).getReplicationAPI();
 
     createSlot(replApi0, slotName, "test_decoding");
+
+    
 
     PGReplicationStream stream0 = replApi0.replicationStream()
         .logical()
@@ -6511,6 +6546,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         .orElseThrow(() -> new IllegalStateException(
             "Could not find tserver for host " + tserver0Host));
     LOG.info("Killing tserver at {} (index 0, holds the slot lock)", tserver0);
+    waitForAllTabletReplicasToBeVoters();
     miniCluster.killTabletServerOnHostPort(tserver0);
 
     miniCluster.startTServer(getTServerFlagsWithExclusiveLock());
@@ -7562,7 +7598,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   private void addConcurrentDdlFlags(Map<String, String> flags) {
     toggleDDLMode(flags, /* useLegacy */ false);
-    flags.put("ysql_enable_object_locking_infra", "true");
+    flags.put("ysql_yb_enable_object_locking_infra", "true");
   }
 
   @Test

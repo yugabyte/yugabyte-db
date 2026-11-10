@@ -19,11 +19,20 @@
 #include "yb/rocksdb/cache.h"
 
 #include "yb/util/crc.h"
+#include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/unique_lock.h"
 
 using namespace yb::size_literals;
+
+DEFINE_RUNTIME_AUTO_bool(yb_hnsw_write_block_checksums, kLocalPersisted, false, true,
+    "End every block of new YbHnsw vector index chunks with a checksum, footer flag 0x02. Older "
+    "releases ignore the checksums.");
+
+DEFINE_test_flag(bool, yb_hnsw_ignore_block_trailers, false,
+    "Read YbHnsw files like older releases, which ignore block trailers.");
 
 METRIC_DEFINE_counter(server, vector_index_cache_hit, "Vector index block cache hits",
                       yb::MetricUnit::kCacheHits,
@@ -83,7 +92,7 @@ template <class Converter, class Type>
 using RefForConverter = std::conditional_t<HasRead<uint64_t, Converter>, Type, const Type>&;
 
 template <class Converter>
-void Convert(size_t version, RefForConverter<Converter, LayerInfo> entry, Converter& serializer) {
+void Convert(size_t flags, RefForConverter<Converter, LayerInfo> entry, Converter& serializer) {
   ConvertField<uint64_t>(entry.size, serializer);
   ConvertField<uint64_t>(entry.block, serializer);
   ConvertField<uint64_t>(entry.last_block_index, serializer);
@@ -92,10 +101,10 @@ void Convert(size_t version, RefForConverter<Converter, LayerInfo> entry, Conver
 
 template <class Vector, class Writer>
 requires(HasAppend<uint64_t, uint64_t, Writer>)
-void ConvertVector(size_t version, const Vector& vector, Writer& writer) {
+void ConvertVector(size_t flags, const Vector& vector, Writer& writer) {
   writer.template Append<uint64_t>(vector.size());
   for (const auto& entry : vector) {
-    Convert(version, entry, writer);
+    Convert(flags, entry, writer);
   }
 }
 
@@ -107,32 +116,32 @@ void ConvertField(Value& value, Reader& reader) {
 
 template <class Vector, class Reader>
 requires(HasRead<uint64_t, Reader>)
-void ConvertVector(size_t version, Vector& vector, Reader& reader) {
+void ConvertVector(size_t flags, Vector& vector, Reader& reader) {
   auto size = reader.template Read<uint64_t>();
   vector.resize(size);
   for (size_t i = 0; i < size; ++i) {
-    Convert(version, vector[i], reader);
+    Convert(flags, vector[i], reader);
   }
 }
 
 template <class Converter>
-void Convert(size_t version, RefForConverter<Converter, Config> config, Converter& serializer) {
+void Convert(size_t flags, RefForConverter<Converter, Config> config, Converter& serializer) {
   ConvertField<uint64_t>(config.connectivity, serializer);
   ConvertField<uint64_t>(config.connectivity_base, serializer);
 }
 
 template <class Converter>
-void Convert(size_t version, RefForConverter<Converter, Header> header, Converter& serializer) {
+void Convert(size_t flags, RefForConverter<Converter, Header> header, Converter& serializer) {
   ConvertField<uint64_t>(header.dimensions, serializer);
   ConvertField<uint64_t>(header.vector_data_size, serializer);
   ConvertField<VectorNo>(header.entry, serializer);
   ConvertField<uint64_t>(header.max_level, serializer);
-  Convert(version, header.config, serializer);
+  Convert(flags, header.config, serializer);
   ConvertField<uint64_t>(header.max_block_size, serializer);
   ConvertField<uint64_t>(header.max_vectors_per_non_base_block, serializer);
   ConvertField<uint64_t>(header.vector_data_block, serializer);
   ConvertField<uint64_t>(header.vector_data_amount_per_block, serializer);
-  ConvertVector(version, header.layers, serializer);
+  ConvertVector(flags, header.layers, serializer);
 }
 
 class WriteCounter {
@@ -150,16 +159,30 @@ class WriteCounter {
   size_t value_ = 0;
 };
 
-constexpr size_t kSerializationVersion = 1;
+// The first byte of the footer is a set of flags for the fields it holds:
+//   0x01, always set: the fields of every release.
+//   0x02: every block ends with a CRC32C trailer, see kBlockTrailerSize. 0x04 is left for the
+//   tenant directory of #36086.
+// A chunk without trailers holds 0x01 alone, which older releases read as their version 1. They
+// also read 0x03 like version 1: they find data inside a block by offsets from other blocks and
+// never read past them, so they ignore the trailers, keeping rollback possible.
+constexpr uint8_t kFooterBase = 0x01;
+constexpr uint8_t kFooterBlockTrailers = 0x02;
+constexpr uint8_t kFooterKnownFlags = kFooterBase | kFooterBlockTrailers;
 
-template <class Out, class... Args>
-void Serialize(const Out& out, Args&&... args) {
-  Convert(kSerializationVersion, out, std::forward<Args&&>(args)...);
+// TODO(vector_index): #36086 computes the flags from the header alone, FooterFlags(header). When
+// merging, take both, FooterFlags(header, has_block_trailers), since the trailer decision is the
+// builder's, fixed once per file.
+uint8_t FooterFlags(HasBlockTrailers has_block_trailers) {
+  return kFooterBase | (has_block_trailers ? kFooterBlockTrailers : 0);
 }
 
 size_t SerializedSize(const Header& header) {
   WriteCounter counter;
-  Convert(kSerializationVersion, header, counter);
+  // No footer field depends on kFooterBlockTrailers.
+  // TODO(vector_index): the tenant directory fields of #36086 depend on its flag, so when merging
+  // pass the flags of the header here instead of kFooterBase, as #36086 does.
+  Convert(kFooterBase, header, counter);
   return counter.value();
 }
 
@@ -183,11 +206,33 @@ class SliceReader {
 };
 
 template <class Out, class... Args>
-void Deserialize(size_t version, Out& out, Args&&... args) {
-  Convert(version, out, std::forward<Args&&>(args)...);
+void Deserialize(size_t flags, Out& out, Args&&... args) {
+  Convert(flags, out, std::forward<Args&&>(args)...);
+}
+
+Status VerifyBlockTrailer(const RandomAccessFile& file, size_t offset, Slice block) {
+  SCHECK_GE(
+      block.size(), kBlockTrailerSize, Corruption,
+      Format("Block at $0 in $1 is too small: $2", offset, file.filename(), block.size()));
+  auto contents_size = block.size() - kBlockTrailerSize;
+  auto expected = Load<uint32_t, HnswEndian>(block.data() + contents_size);
+  auto actual = crc::Crc32c(block.data(), contents_size);
+  if (actual != expected) {
+    return STATUS_FORMAT(
+        Corruption, "Block checksum mismatch at $0 in $1, size: $2, expected: $3, actual: $4",
+        offset, file.filename(), block.size(), expected, actual);
+  }
+  return Status::OK();
 }
 
 } // namespace
+
+void WriteBlockTrailer(DataBlock& block) {
+  DCHECK_GE(block.size, kBlockTrailerSize);
+  auto contents_size = block.size - kBlockTrailerSize;
+  Store<uint32_t, HnswEndian>(
+      block.data.get() + contents_size, crc::Crc32c(block.data.get(), contents_size));
+}
 
 BlockCacheMetrics::BlockCacheMetrics(const MetricEntityPtr& entity)
     : hit(METRIC_vector_index_cache_hit.Instantiate(entity)),
@@ -199,6 +244,8 @@ BlockCacheMetrics::BlockCacheMetrics(const MetricEntityPtr& entity)
       read_us(METRIC_vector_index_cache_read_us.Instantiate(entity)),
       take_wait_us(METRIC_vector_index_cache_read_us.Instantiate(entity)) {
 }
+
+YB_STRONGLY_TYPED_BOOL(FailedTake);
 
 struct CachedBlock {
   BlockCache* cache = nullptr;
@@ -236,7 +283,8 @@ struct CachedBlock {
     }
   }
 
-  Result<const std::byte*> Take(RandomAccessFile& file) {
+  // The caller should call Release only if this succeeds.
+  Result<const std::byte*> Take(RandomAccessFile& file, HasBlockTrailers has_trailer) {
     cache->metrics().query->Increment();
 
     UniqueLock lock(mutex);
@@ -260,7 +308,15 @@ struct CachedBlock {
       std::promise<Result<const std::byte*>> promise;
       load_future = promise.get_future();
       lock.unlock();
-      auto result = Load(file);
+      auto result = Load(file, has_trailer);
+      if (!result.ok()) {
+        // Before the error is published, so a Take that starts after it reads the block again
+        // instead of returning this error. Waiters hold their own copy of the future.
+        lock.lock();
+        load_future = {};
+        --use_count;
+        lock.unlock();
+      }
       promise.set_value(result);
       return result;
     }
@@ -268,27 +324,19 @@ struct CachedBlock {
     auto future = load_future;
     lock.unlock();
 
+    TEST_SYNC_POINT("CachedBlock::Take:WaitForLoad");
     auto start = MonoTime::Now();
     auto result = future.get();
     cache->metrics().take_wait_us->Increment((MonoTime::Now() - start).ToMicroseconds());
+    if (!result.ok()) {
+      // Another Take could have loaded the block since, so the handle could be ours to release.
+      DoRelease(FailedTake::kTrue);
+    }
     return result;
   }
 
   void Release() {
-    BlockCacheHandle release_handle;
-    {
-      std::lock_guard lock(mutex);
-      if (--use_count != 0) {
-        return;
-      }
-      release_handle = std::exchange(handle, {});
-    }
-    if (release_handle) {
-      cache->metrics().add->IncrementBy(size);
-      cache->Release(release_handle);
-    } else {
-      cache->metrics().evict->IncrementBy(size);
-    }
+    DoRelease(FailedTake::kFalse);
   }
 
   void Unload() {
@@ -309,7 +357,26 @@ struct CachedBlock {
   }
 
  private:
-  Result<const std::byte*> Load(RandomAccessFile& file) {
+  // A failed Take did not hold the block, so it does not count an eviction.
+  void DoRelease(FailedTake failed_take) {
+    BlockCacheHandle release_handle;
+    {
+      std::lock_guard lock(mutex);
+      if (--use_count != 0) {
+        return;
+      }
+      release_handle = std::exchange(handle, {});
+    }
+    if (release_handle) {
+      cache->metrics().add->IncrementBy(size);
+      cache->Release(release_handle);
+    } else if (!failed_take) {
+      cache->metrics().evict->IncrementBy(size);
+    }
+  }
+
+  Result<const std::byte*> Load(RandomAccessFile& file, HasBlockTrailers has_trailer) {
+    TEST_SYNC_POINT("CachedBlock::Load");
     auto start = MonoTime::Now();
     std::unique_ptr<std::byte[]> new_content(new std::byte[size]);
     Slice read_result;
@@ -317,6 +384,9 @@ struct CachedBlock {
     RSTATUS_DCHECK_EQ(
         read_result.size(), size, Corruption,
         Format("Wrong number of read bytes in block $0 - $1", end - size, size));
+    if (has_trailer) {
+      RETURN_NOT_OK(VerifyBlockTrailer(file, end - size, read_result));
+    }
 
     cache->metrics().read_us->Increment((MonoTime::Now() - start).ToMicroseconds());
     cache->metrics().read->IncrementBy(size);
@@ -332,6 +402,10 @@ struct CachedBlock {
   }
 };
 
+FileBlockCacheBuilder::FileBlockCacheBuilder()
+    : has_block_trailers_(FLAGS_yb_hnsw_write_block_checksums) {
+}
+
 DataBlock FileBlockCacheBuilder::MakeFooter(const Header& header) const {
   DataBlock buffer(
     sizeof(uint8_t) +
@@ -339,8 +413,9 @@ DataBlock FileBlockCacheBuilder::MakeFooter(const Header& header) const {
     sizeof(uint32_t) + // CRC32
     sizeof(uint64_t)); // Size
   BlockWriter writer(buffer);
-  writer.Append<uint8_t>(kSerializationVersion);
-  Serialize(header, writer);
+  const auto flags = FooterFlags(has_block_trailers_);
+  writer.Append<uint8_t>(flags);
+  Convert(flags, header, writer);
   uint64_t sum = 0;
   for (const auto& block : blocks_) {
     sum += block.size;
@@ -359,6 +434,8 @@ FileBlockCache::FileBlockCache(
   if (!builder) {
     return;
   }
+  has_block_trailers_ = HasBlockTrailers(
+      builder->has_block_trailers() && !FLAGS_TEST_yb_hnsw_ignore_block_trailers);
   auto& blocks = builder->blocks();
   size_t total_size = 0;
   size_t index = 0;
@@ -387,30 +464,38 @@ Result<Header> FileBlockCache::Load() {
 
   using FooterSizeType = uint64_t;
   auto file_size = VERIFY_RESULT(file_->Size());
-  RSTATUS_DCHECK_GE(file_size, sizeof(FooterSizeType), Corruption, "Wrong file size");
+  SCHECK_GE(file_size, sizeof(FooterSizeType), Corruption, "Wrong file size");
   std::vector<std::byte> buffer(std::min<size_t>(1_KB, file_size));
   Slice footer_data;
   RETURN_NOT_OK(file_->Read(file_size - buffer.size(), buffer.size(), &footer_data, buffer.data()));
-  RSTATUS_DCHECK_GE(
-      footer_data.size(), sizeof(FooterSizeType), Corruption, "Wrong number of read bytes");
+  SCHECK_GE(footer_data.size(), sizeof(FooterSizeType), Corruption, "Wrong number of read bytes");
   auto footer_size = LittleEndian::Load64(footer_data.end() - sizeof(FooterSizeType));
-  RSTATUS_DCHECK_GE(file_size, footer_size, Corruption, "Footer size greater than file size");
+  SCHECK_GE(file_size, footer_size, Corruption, "Footer size greater than file size");
+  // SliceReader does not check bounds, so require the flags and the header without layers.
+  SCHECK_GE(
+      footer_size,
+      sizeof(uint8_t) + SerializedSize(Header()) + sizeof(uint32_t) + sizeof(FooterSizeType),
+      Corruption, "Footer size too small");
   if (footer_size > buffer.size()) {
     buffer.resize(footer_size);
     RETURN_NOT_OK(file_->Read(
         file_size - buffer.size(), buffer.size(), &footer_data, buffer.data()));
-    RSTATUS_DCHECK_EQ(
-        footer_data.size(), footer_size, Corruption, "Wrong number of read footer bytes");
+    SCHECK_EQ(footer_data.size(), footer_size, Corruption, "Wrong number of read footer bytes");
   }
   footer_data = footer_data.Suffix(footer_size)
                            .WithoutSuffix(sizeof(FooterSizeType) + sizeof(uint32_t));
   auto expected_crc = crc::Crc32c(footer_data.data(), footer_data.size());
   auto found_crc = LittleEndian::Load32(footer_data.end());
-  RSTATUS_DCHECK_EQ(expected_crc, found_crc, Corruption, "Wrong footer CRC");
+  SCHECK_EQ(expected_crc, found_crc, Corruption, "Wrong footer CRC");
   Header header;
   SliceReader reader(footer_data);
-  size_t version = reader.Read<uint8_t>();
-  Deserialize(version, header, reader);
+  size_t flags = reader.Read<uint8_t>();
+  SCHECK(
+      (flags & kFooterBase) && !(flags & ~kFooterKnownFlags), Corruption,
+      Format("Unsupported vector index file flags: $0", flags));
+  has_block_trailers_ = HasBlockTrailers(
+      (flags & kFooterBlockTrailers) && !FLAGS_TEST_yb_hnsw_ignore_block_trailers);
+  Deserialize(flags, header, reader);
   AllocateBlocks(reader.Left() / sizeof(uint64_t));
   size_t prev_end = 0;
   for (size_t i = 0; i < size_; i++) {
@@ -422,7 +507,7 @@ Result<Header> FileBlockCache::Load() {
 }
 
 Result<const std::byte*> FileBlockCache::Take(size_t index) {
-  return blocks_[index].Take(*file_);
+  return blocks_[index].Take(*file_, has_block_trailers_);
 }
 
 void FileBlockCache::Release(size_t index) {

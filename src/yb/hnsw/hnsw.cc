@@ -153,6 +153,7 @@ class YbHnswBuilder {
     RETURN_NOT_OK(BuildVectorDataBlocks());
     RETURN_NOT_OK(FlushBlock());
     RETURN_NOT_OK(WriteFooter());
+    RETURN_NOT_OK(out_->Sync());
     RETURN_NOT_OK(out_->Close());
     out_.reset();
     RETURN_NOT_OK(block_cache_.env().RenameFile(tmp_path, path_));
@@ -420,14 +421,18 @@ class YbHnswBuilder {
 
   Result<BlockWriter> StartNewBlock(size_t size) {
     RETURN_NOT_OK(FlushBlock());
-    current_block_.Allocate(size);
+    current_block_.Allocate(size + (builder_.has_block_trailers() ? kBlockTrailerSize : 0));
     ++num_blocks_;
-    return BlockWriter(current_block_);
+    auto* data = current_block_.data.get();
+    return BlockWriter(data, data + size);
   }
 
   Status FlushBlock() {
     if (num_blocks_ == 0) {
       return Status::OK();
+    }
+    if (builder_.has_block_trailers()) {
+      WriteBlockTrailer(current_block_);
     }
     RETURN_NOT_OK(out_->Append(Slice(current_block_.AsSlice())));
     if (!FLAGS_yb_hnsw_keep_new_blocks_in_cache) {
@@ -635,7 +640,7 @@ Status YbHnsw::Init(const std::string& path) {
   return Status::OK();
 }
 
-YbHnsw::SearchResult YbHnsw::Search(
+Result<YbHnsw::SearchResult> YbHnsw::Search(
     const std::byte* query_vector, const vector_index::SearchOptions& options,
     YbHnswSearchContext& context) const {
   SearchCacheScope scs(context.search_cache, *this);
@@ -644,7 +649,9 @@ YbHnsw::SearchResult YbHnsw::Search(
   auto [best_vector, best_dist] = SearchInNonBaseLayers(
       query_vector, context.search_cache);
   SearchInBaseLayer(query_vector, best_vector, best_dist, options, context);
-  return MakeResult(options.max_num_results, context);
+  auto result = MakeResult(options.max_num_results, context);
+  RETURN_NOT_OK(context.search_cache.status());
+  return result;
 }
 
 YbHnsw::SearchResult YbHnsw::MakeResult(size_t max_results, YbHnswSearchContext& context) const {
@@ -664,6 +671,9 @@ std::pair<VectorNo, YbHnsw::DistanceType> YbHnsw::SearchInNonBaseLayers(
   VLOG_WITH_FUNC(4) << "best_vector: " << best_vector << ", best_dist: " << best_dist;
 
   for (auto level = header_.max_level; level > 0;) {
+    if (!cache.status().ok()) {
+      break;
+    }
     auto updated = false;
     VLOG_WITH_FUNC(4)
         << "level: " << level << ", best_vector: " << best_vector << ", best_dist: " << best_dist;
@@ -705,13 +715,24 @@ void YbHnsw::SearchInBaseLayer(
   auto top_limit = options.max_num_results;
   auto extra_top_limit = std::max<size_t>(
       options.ef, options.max_num_results) - options.max_num_results;
+  // The filter must not see the Nil id that GetVectorIdAndPayload returns after a failed load.
+  auto accepted = [&options, &cache](VectorNo vector) {
+    if (!options.filter) {
+      return true;
+    }
+    auto [vector_id, payload] = cache.GetVectorIdAndPayload(vector);
+    return cache.status().ok() && options.filter(vector_id, payload);
+  };
   next.push({best_dist, best_vector});
-  if (!options.filter || std::apply(options.filter, cache.GetVectorIdAndPayload(best_vector))) {
+  if (accepted(best_vector)) {
     top.push({best_dist, best_vector});
   }
   visited.set(best_vector);
 
   while (!next.empty()) {
+    if (!cache.status().ok()) {
+      return;
+    }
     auto [dist, vector] = next.top();
     VLOG_WITH_FUNC(4) << "vector: " << vector << ", dist: " << dist << ", best_dist: " << best_dist;
     if (dist > best_dist && extra_top.size() == extra_top_limit && top.size() == top_limit) {
@@ -730,7 +751,7 @@ void YbHnsw::SearchInBaseLayer(
       if (top.size() < top_limit || extra_top.size() < extra_top_limit ||
           neighbor_dist < best_dist) {
         next.push({neighbor_dist, neighbor});
-        if (!options.filter || std::apply(options.filter, cache.GetVectorIdAndPayload(neighbor))) {
+        if (accepted(neighbor)) {
           if (top.size() == top_limit) {
             auto extra_push = top.top().first;
             if (neighbor_dist < extra_push) {
@@ -759,18 +780,11 @@ YbHnsw::DistanceType YbHnsw::Distance(const std::byte* lhs, const std::byte* rhs
 
 YbHnsw::DistanceType YbHnsw::Distance(
     const std::byte* lhs, size_t vector, SearchCache& cache) const {
-  return Distance(lhs, cache.CoordinatesPtr(vector));
-}
-
-boost::iterator_range<MisalignedPtr<const YbHnsw::CoordinateType>> YbHnsw::MakeCoordinates(
-    const std::byte* ptr) const {
-  auto start = MisalignedPtr<const CoordinateType>(ptr);
-  return boost::make_iterator_range(start, start + header_.dimensions);
-}
-
-boost::iterator_range<MisalignedPtr<const YbHnsw::CoordinateType>> YbHnsw::Coordinates(
-    size_t vector, SearchCache& cache) const {
-  return MakeCoordinates(cache.CoordinatesPtr(vector));
+  auto coordinates = cache.CoordinatesPtr(vector);
+  if (!coordinates) {
+    return std::numeric_limits<DistanceType>::max();
+  }
+  return Distance(lhs, coordinates);
 }
 
 const Header& YbHnsw::header() const {
@@ -782,9 +796,17 @@ const std::byte* SearchCache::Data(size_t index) {
   if (block) {
     return block;
   }
-  auto data = CHECK_RESULT(file_block_cache_->Take(index));
+  // The result of a failed search is discarded, so no point in loading more blocks.
+  if (!status_.ok()) {
+    return nullptr;
+  }
+  auto data = file_block_cache_->Take(index);
+  if (!data.ok()) {
+    status_ = data.status();
+    return nullptr;
+  }
   used_blocks_.push_back(index);
-  return block = data;
+  return block = *data;
 }
 
 void SearchCache::Bind(std::reference_wrapper<const Header> header, FileBlockCache& cache) {
@@ -800,12 +822,19 @@ void SearchCache::Release() {
     file_block_cache_->Release(block);
   }
   used_blocks_.clear();
+  status_ = Status::OK();
 }
 
 boost::iterator_range<MisalignedPtr<const VectorNo>> SearchCache::GetNeighborsInBaseLayer(
     size_t vector) {
   auto vector_data = VectorHeader(vector);
+  if (!vector_data.raw()) {
+    return {};
+  }
   auto base_ptr = Data(*YB_MISALIGNED_PTR(vector_data, VectorData, base_layer_neighbors_block));
+  if (!base_ptr) {
+    return {};
+  }
   auto begin = *YB_MISALIGNED_PTR(vector_data, VectorData, base_layer_neighbors_begin);
   auto end = *YB_MISALIGNED_PTR(vector_data, VectorData, base_layer_neighbors_end);
   return boost::make_iterator_range(
@@ -826,6 +855,9 @@ boost::iterator_range<MisalignedPtr<const VectorNo>> SearchCache::GetNeighborsIn
   vector %= max_vectors_per_block;
   auto& layer = header_->layers[level];
   auto base_ptr = Data(layer.block + block_index);
+  if (!base_ptr) {
+    return {};
+  }
   auto finish = Load<NeighborsRefType, HnswEndian>(base_ptr + vector * kNeighborsRefSize);
   auto start = vector > 0
       ? Load<NeighborsRefType, HnswEndian>(base_ptr + (vector - 1) * kNeighborsRefSize) : 0;
@@ -848,13 +880,20 @@ const std::byte* SearchCache::BlockPtr(
     size_t block, size_t entries_per_block, size_t entry, size_t entry_size) {
   block += entry / entries_per_block;
   entry %= entries_per_block;
-  return Data(block) + entry * entry_size;
+  auto data = Data(block);
+  return data ? data + entry * entry_size : nullptr;
 }
 
 Slice SearchCache::GetVectorDataSlice(size_t vector) {
   auto vector_data = VectorHeader(vector);
+  if (!vector_data.raw()) {
+    return Slice();
+  }
   auto base_ptr = Data(
       *YB_MISALIGNED_PTR(vector_data, VectorData, aux_data_block));
+  if (!base_ptr) {
+    return Slice();
+  }
   auto begin = *YB_MISALIGNED_PTR(vector_data, VectorData, aux_data_begin);
   auto end = *YB_MISALIGNED_PTR(vector_data, VectorData, aux_data_end);
   return Slice(base_ptr + begin, base_ptr + end);
@@ -862,13 +901,18 @@ Slice SearchCache::GetVectorDataSlice(size_t vector) {
 
 std::pair<vector_index::VectorId, Slice> SearchCache::GetVectorIdAndPayload(size_t vector) {
   auto data = GetVectorDataSlice(vector);
+  // Empty only when a block failed to load, see SearchCache::status().
+  if (data.empty()) {
+    return {vector_index::VectorId::Nil(), Slice()};
+  }
   return {
       vector_index::TryFullyDecodeVectorId(data.Prefix(sizeof(vector_index::VectorId))),
       data.WithoutPrefix(sizeof(vector_index::VectorId))};
 }
 
 const std::byte* SearchCache::CoordinatesPtr(size_t vector) {
-  return VectorHeader(vector).raw() + offsetof(VectorData, coordinates);
+  auto header = VectorHeader(vector).raw();
+  return header ? header + offsetof(VectorData, coordinates) : nullptr;
 }
 
 HnswDistanceType UsearchMetric::Distance(

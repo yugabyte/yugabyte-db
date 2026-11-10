@@ -33,6 +33,9 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 
 /*
  * Formerly, this code attempted to cache the function and type info
@@ -207,6 +210,9 @@ HandleFunctionRequest(StringInfo msgBuf)
 				(errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION),
 				 errmsg("current transaction is aborted, "
 						"commands ignored until end of transaction block")));
+
+	/* YB: same treatment while the catalog is unreadable as of yb_read_time */
+	YbCheckReadTimeTooOld(NULL /* parsetree */ );
 
 	/*
 	 * Now that we know we are in a valid transaction, set snapshot in case

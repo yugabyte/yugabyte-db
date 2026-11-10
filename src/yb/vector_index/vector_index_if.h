@@ -18,7 +18,7 @@
 #include "yb/rocksdb/cache.h"
 
 #include "yb/util/kv_util.h"
-#include "yb/util/polymorphic_iterator.h"
+#include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/tostring.h"
@@ -68,10 +68,56 @@ struct VectorIndexIteratorEntry {
   }
 };
 
+// Iterates over the vectors of an index. A failure ends the iteration and is returned by status(),
+// so status() must be checked once Valid() returns false.
+template <IndexableVectorType Vector>
+class VectorIndexIterator {
+ public:
+  using EntryType = VectorIndexIteratorEntry<Vector>;
+
+  virtual ~VectorIndexIterator() {
+    DCHECK(!status_check_required_) << "Iterator reached the end, but its status was not checked";
+  }
+
+  bool Valid() const {
+    if (DoValid()) {
+      return true;
+    }
+    status_check_required_ = true;
+    return false;
+  }
+
+  // Next and Entry require Valid().
+  virtual void Next() = 0;
+  virtual EntryType Entry() const = 0;
+
+  Status status() const {
+    status_check_required_ = false;
+    return DoStatus();
+  }
+
+ protected:
+  virtual bool DoValid() const = 0;
+
+  virtual Status DoStatus() const {
+    return Status::OK();
+  }
+
+ private:
+  mutable bool status_check_required_ = false;
+};
+
+// Returns the tenant of a vector from its payload. An index with a tenant extractor never links
+// vectors of different tenants, see SearchOptions::tenant.
+using VectorTenantExtractor = std::function<Result<Slice>(Slice payload)>;
+
 struct SearchOptions {
   size_t max_num_results;
   size_t ef;
   VectorFilter filter = [](const auto&, const auto&) { return true; };
+  // Restricts the search to vectors of the tenant, see VectorTenantExtractor. Empty searches all
+  // tenants. Only hnswlib indexes with a tenant extractor support a tenant, others reject it.
+  Slice tenant = Slice();
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(max_num_results, ef);
@@ -86,7 +132,7 @@ class VectorIndexReaderIf {
  public:
   using SearchResult  = std::vector<VectorWithDistance<DistanceResult>>;
   using IteratorValue = VectorIndexIteratorEntry<Vector>;
-  using Iterator      = PolymorphicIterator<IteratorValue>;
+  using Iterator      = VectorIndexIterator<Vector>;
 
   virtual ~VectorIndexReaderIf() = default;
   virtual DistanceResult Distance(const Vector& lhs, const Vector& rhs) const = 0;
@@ -96,12 +142,8 @@ class VectorIndexReaderIf {
   // Returns the vector with the given id or NotFound error when vector is not found.
   virtual Result<Vector> GetVector(VectorId vector_id) const = 0;
 
-  virtual std::unique_ptr<AbstractIterator<IteratorValue>> BeginImpl() const = 0;
-  virtual std::unique_ptr<AbstractIterator<IteratorValue>> EndImpl()   const = 0;
+  virtual std::unique_ptr<Iterator> CreateIterator() const = 0;
   virtual std::string IndexStatsStr() const { return "N/A"; }
-
-  Iterator begin() const { return Iterator(BeginImpl()); }
-  Iterator end()   const { return Iterator(EndImpl()); }
 };
 
 template<IndexableVectorType Vector>

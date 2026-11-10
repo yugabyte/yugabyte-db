@@ -74,6 +74,7 @@ set(MASTER_SRCS
   async_snapshot_tasks.cc
   async_snapshot_transfer_task.cc
   backfill_index.cc
+  online_schema_change.cc
   catalog_entity_base.cc
   catalog_entity_info.cc
   catalog_entity_tasks.cc
@@ -265,6 +266,7 @@ set(YB_TEST_LINK_LIBS master
   ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(async_rpc_tasks-test)
 ADD_YB_TEST(async_task_result_collector-test)
+ADD_YB_TEST(online_schema_change-test)
 ADD_YB_TEST(catalog_entity_info-test)
 ADD_YB_TEST(catalog_manager-test)
 ADD_YB_TEST(catalog_manager_mini_cluster_test)

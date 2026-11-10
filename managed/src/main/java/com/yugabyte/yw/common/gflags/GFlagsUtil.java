@@ -206,6 +206,7 @@ public class GFlagsUtil {
   public static final String YBC_DISK_READ_BYTES_PER_SECOND = "disk_read_bytes_per_sec";
   public static final String YBC_DISK_WRITE_BYTES_PER_SECOND = "disk_write_bytes_per_sec";
   public static final String YBC_DISK_IO_REQUEST_SIZE = "disk_io_request_size_bytes";
+  public static final String YBC_REQUIRE_CLIENT_CERTIFICATES = "require_client_certificates";
   public static final String YBC_LOG_FILENAME = "yb-controller-server";
   public static final String TMP_DIRECTORY = "tmp_dir";
   public static final String DEFAULT_TMP_DIRECTORY = "/tmp";

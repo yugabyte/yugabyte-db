@@ -46,11 +46,11 @@ namespace yb::pggate {
 
 using namespace std::literals;  // NOLINT
 
-namespace {
-
 CoarseTimePoint DdlDeadline() {
   return CoarseMonoClock::now() + (FLAGS_ysql_ddl_rpc_timeout_sec * 1s);
 }
+
+namespace {
 
 CoarseTimePoint CreateTableDeadline(
     const PgSessionPtr& pg_session, const tserver::PgCreateTableRequestPB& req) {

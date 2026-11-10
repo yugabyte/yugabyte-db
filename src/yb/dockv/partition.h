@@ -32,6 +32,7 @@
 #pragma once
 
 #include <algorithm>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -298,6 +299,30 @@ class PartitionSchema {
   // Returns partition's keys as inclusive min and max hash code for the partition.
   static Result<std::pair<uint16_t, uint16_t>> DecodePartitionAsHashBoundsInclusive(
       const Partition& partition);
+
+  // This function makes sure that the different representations of a hash partition key are
+  // treated as the same thing. The base representation of a partition key with hash code h is a
+  // three bytes sequence [kUInt16Hash, h], where kUInt16Hash is as defined in value_type.h and h
+  // is a 16-bit unsigned integer. Other representations are [kUInt16Hash, h, kLowest], also
+  // referenced as h+0 is used to represent the lower bound of the partition, and
+  // [kUInt16Hash, h-1, kHighest], also referenced as h-0 is used to represent the upper bound of
+  // the previous partition.
+  // All representations are binary comparable to each other and to the DocKeys. The
+  // representations are not valid DocKeys, and no valid DocKey can be between h-0 and h and h+0.
+  // The h-0 and h+0 can be parsed as special DocKeys.
+  // The function returns the value of h if the bound is h-0 or h or h+0, nullopt otherwise.
+  // The function is important for parallel query where the hash partition keys are used as
+  // parallel range bounds. The value is stored and handled as the base representation, but when it
+  // is sent down to DocDB, it has to be converted to either h-0 or h+0 as DocDB parses the bounds.
+  // While this function makes some functionally equivalent bounds equal, it does not make all
+  // functionally equivalent bounds equal. For example, partition key of the first partition is
+  // empty. Empty key is functionally equivalent to the [kUInt16Hash, 0] key, but they are not
+  // equal, moreover, empty key is not recognized as an encoded hash partition key by this function.
+  static std::optional<uint16_t> DecodeEncodedHashPartitionKeyBound(Slice bound);
+
+  // Returns h+0 if is_lower is true, h+1-0 otherwise, see DecodeEncodedHashPartitionKeyBound. So
+  // the lower bound is below all keys with hash code h, and the upper bound is above them.
+  static KeyBytes HashCodeToDocKeyBound(const Schema& schema, uint16_t hash_code, bool is_lower);
 
   // Returns true if partition_key is a valid hash partition.
   static bool IsValidHashPartitionKeyBound(Slice partition_key);

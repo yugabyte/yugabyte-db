@@ -528,18 +528,17 @@ When set to true, tables and indexes are hash-partitioned based on the first col
 
 {{% tags/wrap %}}
 
-{{<tags/feature/restart-needed>}}
-Default: `0` (disabled)
+Default: `1024`
 {{% /tags/wrap %}}
 
-Set the level of batching for [INSERT ... ON CONFLICT](../../../api/ysql/the-sql-language/statements/dml_insert/#on-conflict-clause). Set to 0 to disable batching. Batching is always disabled for the following:
+Maximum batch size for arbiter index reads during [INSERT ... ON CONFLICT](../../../api/ysql/the-sql-language/statements/dml_insert/#on-conflict-clause). Set to `0` to disable batching. Only a superuser can change this setting.
+
+Batching is always disabled for the following:
 
 - temporary relations
 - foreign relations
 - system relations
 - relations that have row triggers (excluding those created internally for FOREIGN KEY constraints)
-
-The higher the number, the more batching is done. 1024 is recommended.
 
 ##### yb_read_from_followers
 
@@ -549,7 +548,7 @@ The higher the number, the more batching is done. 1024 is recommended.
 Default: `false`
 {{% /tags/wrap %}}
 
-Controls whether or not reading from followers is enabled. For more information, refer to [Follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/).
+Controls whether or not reading from followers is enabled. For more information, refer to [Follower reads](../../../additional-features/follower-reads/).
 
 ##### yb_follower_read_staleness_ms
 
@@ -559,7 +558,11 @@ Controls whether or not reading from followers is enabled. For more information,
 Default: `30000` (30 seconds)
 {{% /tags/wrap %}}
 
-Sets the maximum allowable staleness. Although the default is recommended, you can set the staleness to a shorter value. The tradeoff is the shorter the staleness, the more likely some reads may be redirected to the leader if the follower isn't sufficiently caught up. You shouldn't set `yb_follower_read_staleness_ms` to less than 2x the `raft_heartbeat_interval_ms` (which by default is 500 ms).
+The staleness of YSQL follower reads, in milliseconds. A follower read runs at the current time minus this value. Although the default is recommended, you can set a shorter value. A shorter value makes it more likely that a follower has not caught up to the read time. Such a read is retried at the leader, or waits for the follower to catch up, depending on [--ysql_follower_reads_avoid_waiting_for_safe_time](#ysql-follower-reads-avoid-waiting-for-safe-time).
+
+YugabyteDB rejects a value less than twice [--max_clock_skew_usec](#max-clock-skew-usec) (500 ms by default, so the minimum is 1000 ms). Also keep it at least twice [raft_heartbeat_interval_ms](#raft-heartbeat-interval-ms) (500 ms by default).
+
+For more information, see [Follower reads](../../../additional-features/follower-reads/#when-a-follower-can-serve-the-read).
 
 ##### default_transaction_read_only
 
@@ -569,7 +572,7 @@ Sets the maximum allowable staleness. Although the default is recommended, you c
 Default: `false`
 {{% /tags/wrap %}}
 
-Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/#read-only-transaction).
+Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [follower reads](../../../additional-features/follower-reads/#read-only-transaction).
 
 ##### default_transaction_isolation
 
@@ -1741,10 +1744,10 @@ Leader lease duration should be longer than the heartbeat interval, and less tha
 {{% tags/wrap %}}
 
 
-Default: `10000` (10 seconds)
+Default: `60000` (60 seconds)
 {{% /tags/wrap %}}
 
-Specifies the maximum bounded staleness (duration), in milliseconds, before a follower forwards a read request to the leader.
+How far the follower's safe time may be behind now, in milliseconds, before the follower rejects the read and the client retries it at the leader.
 
 In a geo-distributed cluster, with followers located a long distance from the tablet leader, you can use this setting to increase the maximum bounded staleness.
 
@@ -2264,7 +2267,7 @@ Timeout, in milliseconds, for the node-level mutation reporting RPC to the Auto 
 
 ### Explicit row locking flags
 
-To learn about explicit row locking, see [Row-level locks](../../../explore/transactions/explicit-locking/#row-level-locks) and [Explicit row locking modes](../../../explore/transactions/explicit-locking/#explicit-row-locking-modes).
+To learn about explicit row locking, see [Row-level locks](../../../architecture/transactions/concurrency-control/#row-level-explicit-locking-clauses) and [Explicit row locking modes](../../../explore/transactions/explicit-locking/#explicit-row-locking-modes).
 
 ##### --ysql_yb_explicit_row_locking_batch_size
 
@@ -2735,7 +2738,7 @@ Specifies the default transaction isolation level.
 
 Valid values: `serializable`, `'repeatable read'`, `'read committed'`, and `'read uncommitted'`.
 
-[Read Committed isolation](../../../explore/transactions/isolation-levels/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot isolation (in which case Read Committed and Read Uncommitted of YSQL also in turn use Snapshot isolation).
+[Read Committed isolation](../../../architecture/transactions/read-committed/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot isolation (in which case Read Committed and Read Uncommitted of YSQL also in turn use Snapshot isolation).
 
 ##### --yb_enable_read_committed_isolation
 
@@ -2744,7 +2747,7 @@ Valid values: `serializable`, `'repeatable read'`, `'read committed'`, and `'rea
 Default: `false`
 {{% /tags/wrap %}}
 
-Enables Read Committed isolation. By default this flag is false and in this case Read Committed (and Read Uncommitted) isolation level of YSQL fall back to the stricter [Snapshot Isolation](../../../explore/transactions/isolation-levels/). See [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag for more details.
+Enables [Read Committed isolation](../../../architecture/transactions/read-committed/). By default this flag is false and in this case Read Committed (and Read Uncommitted) isolation level of YSQL fall back to the stricter Snapshot Isolation. See [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag for more details.
 
 ##### --pg_client_use_shared_memory
 

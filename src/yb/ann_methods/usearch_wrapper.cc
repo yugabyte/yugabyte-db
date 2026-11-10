@@ -14,6 +14,7 @@
 #include "yb/ann_methods/usearch_wrapper.h"
 
 #include <algorithm>
+#include <cstring>
 #include <memory>
 #include <semaphore>
 
@@ -80,19 +81,18 @@ index_dense_config_t CreateIndexDenseConfig(const HNSWOptions& options) {
 namespace {
 
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class UsearchVectorIterator
-    : public AbstractIterator<vector_index::VectorIndexIteratorEntry<Vector>> {
+class UsearchVectorIterator : public vector_index::VectorIndexIterator<Vector> {
  public:
   using IteratorEntry = vector_index::VectorIndexIteratorEntry<Vector>;
   using member_citerator_t = typename unum::usearch::index_dense_gt<VectorId>::member_citerator_t;
 
   UsearchVectorIterator(
-      size_t dimensions, member_citerator_t it, const index_dense_gt<VectorId>* index,
+      size_t dimensions, const index_dense_gt<VectorId>* index,
       const vector_index::VectorPayloadMap* payloads)
-      : dimensions_(dimensions), it_(it), index_(index), payloads_(payloads) {}
+      : dimensions_(dimensions), it_(index->cbegin()), end_(index->cend()), index_(index),
+        payloads_(payloads) {}
 
- protected:
-  IteratorEntry Dereference() const override {
+  IteratorEntry Entry() const override {
     // TODO(vector_index) do it in more efficient way
     auto member = *it_;
     IteratorEntry result;
@@ -109,15 +109,15 @@ class UsearchVectorIterator
     ++it_;
   }
 
-  bool NotEquals(const AbstractIterator<IteratorEntry>& other) const override {
-    const auto* other_iterator = down_cast<const UsearchVectorIterator*>(&other);
-    if (!other_iterator) return true;
-    return it_ != other_iterator->it_;
+ protected:
+  bool DoValid() const override {
+    return it_ != end_;
   }
 
  private:      // Reference to the Usearch index
   size_t dimensions_;              // Dimensionality of the vectors
   member_citerator_t it_; // Iterator over the internal Usearch entities
+  const member_citerator_t end_;
   const index_dense_gt<VectorId>* index_;
   const vector_index::VectorPayloadMap* payloads_;
 };
@@ -144,16 +144,9 @@ class UsearchIndex :
     consumption_.Init(mem_tracker);
   }
 
-  std::unique_ptr<AbstractIterator<vector_index::VectorIndexIteratorEntry<Vector>>> BeginImpl()
-      const override {
+  std::unique_ptr<vector_index::VectorIndexIterator<Vector>> CreateIterator() const override {
     return std::make_unique<UsearchVectorIterator<Vector, DistanceResult>>(
-        dimensions_, index_.cbegin(), &index_, this->payloads());
-  }
-
-  std::unique_ptr<AbstractIterator<vector_index::VectorIndexIteratorEntry<Vector>>> EndImpl()
-      const override {
-    return std::make_unique<UsearchVectorIterator<Vector, DistanceResult>>(
-        dimensions_, index_.cend(), &index_, this->payloads());
+        dimensions_, &index_, this->payloads());
   }
 
   Status DoReserve(
@@ -190,14 +183,24 @@ class UsearchIndex :
     return Status::OK();
   }
 
-  Result<size_t> DoInsertVector(VectorId vector_id, const Vector& v) {
+  Result<size_t> DoInsertVector(VectorId vector_id, const Vector& v, Slice /* payload */) {
     // addPoint grows the node and vector tape arenas; the per-thread search contexts buffer
     // does not change, so only the data tracker is updated.
     auto se = UpdateDataConsumptionOnExit();
     auto add_result = index_.add(vector_id, v.data());
-    RSTATUS_DCHECK(
-        add_result, RuntimeError, "Failed to add a vector $0: $1", vector_id,
-        add_result.error.release());
+    // Not a DCHECK: running out of memory for the node tape is a runtime condition. A failed vector
+    // tape allocation is not reported, usearch crashes copying the vector into it.
+    if (!add_result) {
+      // usearch tells running out of memory apart from other failures only by this message, see the
+      // index_gt::add() and update() failure sites in
+      // src/inline-thirdparty/usearch/usearch/index.hpp.
+      const char* error = add_result.error.release();
+      if (std::strcmp(error, "Out of memory!") == 0) {
+        return STATUS_FORMAT(
+            ServiceUnavailable, "Not enough memory to add vector $0 to usearch index", vector_id);
+      }
+      return STATUS_FORMAT(RuntimeError, "Failed to add a vector $0: $1", vector_id, error);
+    }
     return add_result.slot;
   }
 
@@ -235,6 +238,7 @@ class UsearchIndex :
 
   Result<std::vector<vector_index::VectorWithDistance<DistanceResult>>> DoSearch(
       const Vector& query_vector, const vector_index::SearchOptions& options) const {
+    SCHECK(options.tenant.empty(), NotSupported, "Usearch vector indexes have no tenants");
     std::vector<vector_index::VectorWithDistance<DistanceResult>> result_vec;
     if (index_.size() == 0) {
       return result_vec;

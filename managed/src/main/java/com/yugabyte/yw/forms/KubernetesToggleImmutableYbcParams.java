@@ -46,6 +46,17 @@ public class KubernetesToggleImmutableYbcParams extends UpgradeTaskParams {
               "Universe %s already has useYbdbInbuiltYbc set to %s",
               universe.getUniverseUUID(), this.isUseYbdbInbuiltYbc()));
     }
+    // In PreFinalize the version check below only sees the new version, but a rollback would
+    // render the previous image with inbuilt YBC on. Disabling stays allowed as the way out.
+    SoftwareUpgradeState softwareUpgradeState = universe.getUniverseDetails().softwareUpgradeState;
+    if (this.isUseYbdbInbuiltYbc() && softwareUpgradeState != SoftwareUpgradeState.Ready) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Cannot enable ybdb inbuilt ybc on universe %s in software upgrade state %s."
+                  + " Finalize or roll back the software upgrade first.",
+              universe.getUniverseUUID(), softwareUpgradeState));
+    }
     if (this.isUseYbdbInbuiltYbc()
         && !KubernetesUtil.isUseYbdbInbuiltYbcSupported(userIntent.ybSoftwareVersion)) {
       throw new PlatformServiceException(
