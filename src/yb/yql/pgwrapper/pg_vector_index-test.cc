@@ -4261,9 +4261,13 @@ TEST_F(PgVectorIndexPkRoutingTest, TextHashKey) {
     ASSERT_EQ(stats.ids, Ids(0, 3));
     ASSERT_EQ(stats.partitions, 1);
 
+    // PG filters these rows itself, but the vector prefetch is sized by the LIMIT,
+    // so a small LIMIT pages through several rounds. A LIMIT covering every row keeps it
+    // to one round.
     stats = ASSERT_RESULT(Query(
-        conn, KnnQuery("tt_icu", Format("tenant = '$0'", tenant), tenant, 3)));
-    ASSERT_EQ(stats.ids, Ids(0, 3));
+        conn, KnnQuery("tt_icu", Format("tenant = '$0'", tenant), tenant,
+                       kNumTenants * kRowsPerTenant)));
+    ASSERT_EQ(stats.ids, Ids(0, kRowsPerTenant));
     ASSERT_EQ(stats.partitions, kNumTablets);
   }
 
