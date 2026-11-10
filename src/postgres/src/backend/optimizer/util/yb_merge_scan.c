@@ -800,6 +800,8 @@ yb_finalize_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
  * So the merged rows keep the order of the pathkeys wherever those filters
  * run, even after the merge.  Each added column compares with its index
  * ordering operator, collation, and nulls order for scandir.
+ * TODO(#36000): record the gap columns on the path, so that this and
+ * yb_finalize_merge_scan_stream_cols read one list.
  */
 void
 yb_add_merge_gap_sort_cols(IndexOptInfo *index, ScanDirection scandir,
