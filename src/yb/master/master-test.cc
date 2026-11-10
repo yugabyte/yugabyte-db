@@ -3043,6 +3043,8 @@ class FakeTabletServerAdminService : public tserver::TabletServerAdminServiceIf 
                          tserver::GetPgSocketDirResponsePB)
   UNUSED_TS_ADMIN_METHOD(GetActiveRbsInfo, tserver::GetActiveRbsInfoRequestPB,
                          tserver::GetActiveRbsInfoResponsePB)
+  UNUSED_TS_ADMIN_METHOD(ClearRocksDBCache, tserver::ClearRocksDBCacheRequestPB,
+                         tserver::ClearRocksDBCacheResponsePB)
 #undef UNUSED_TS_ADMIN_METHOD
 
  private:

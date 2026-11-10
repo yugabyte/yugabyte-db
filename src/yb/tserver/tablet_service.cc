@@ -2414,6 +2414,22 @@ void TabletServiceAdminImpl::CountIntents(
   context.RespondSuccess();
 }
 
+void TabletServiceAdminImpl::ClearRocksDBCache(
+    const ClearRocksDBCacheRequestPB* req,
+    ClearRocksDBCacheResponsePB* resp,
+    rpc::RpcContext context) {
+  if (!CheckUuidMatchOrRespond(
+          server_->tablet_manager(), "ClearRocksDBCache", req, resp, &context)) {
+    return;
+  }
+  const auto result = server_->tablet_manager()->ClearRocksDBCache();
+  if (result.block_cache_evicted_bytes) {
+    resp->set_block_cache_evicted_bytes(*result.block_cache_evicted_bytes);
+  }
+  resp->set_table_readers_evicted(result.table_readers_evicted);
+  context.RespondSuccess();
+}
+
 void TabletServiceAdminImpl::AddTableToTablet(
     const AddTableToTabletRequestPB* req, AddTableToTabletResponsePB* resp,
     rpc::RpcContext context) {

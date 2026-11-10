@@ -812,6 +812,11 @@ class Tablet : public AbstractTablet,
 
   Status ForceManualRocksDBCompact(docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
 
+  // Closes the open table readers of the regular and intents DBs; see
+  // rocksdb::DB::EvictTableReaders.
+  // Returns the number of readers evicted.
+  Result<size_t> EvictTableReaders();
+
   Status ForceRocksDBCompact(
       rocksdb::CompactionReason compaction_reason,
       docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse,

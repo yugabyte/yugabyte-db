@@ -2904,6 +2904,19 @@ void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteQuery> que
   WriteQuery::Execute(std::move(query));
 }
 
+Result<size_t> Tablet::EvictTableReaders() {
+  auto scoped_read_operation = CreateScopedRWOperationBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_read_operation);
+
+  size_t evicted = 0;
+  for (auto* db : {regular_db_.get(), intents_db_.get()}) {
+    if (db) {
+      evicted += db->EvictTableReaders();
+    }
+  }
+  return evicted;
+}
+
 Status Tablet::Flush(
     FlushMode mode, FlushFlags flags, int64_t ignore_if_flushed_after_tick,
     rocksdb::FlushReason rocksdb_flush_reason) {
