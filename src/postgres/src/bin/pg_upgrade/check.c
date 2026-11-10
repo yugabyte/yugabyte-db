@@ -59,11 +59,6 @@ static void yb_check_stale_acl_grantors();
 #define YB_SUPERUSER  "yb_superuser"
 
 /*
- * YB_TODO_PG19MERGE: PG did some refactoring and added new checks. Might have to
- * change pg_fatals, fprintf to yb_fatals, yb_fprintf_and_log. Also see changes
- * in version.c.
- */
-/*
  * DataTypesUsageChecks - definitions of data type checks for the old cluster
  * in order to determine if an upgrade can be performed.  See the comment on
  * data_types_usage_checks below for a more detailed description.
@@ -459,13 +454,13 @@ process_data_type_check(DbInfo *dbinfo, PGresult *res, void *arg)
 	if ((script = fopen_priv(output_path, "a")) == NULL)
 		pg_fatal("could not open file \"%s\": %m", output_path);
 
-	fprintf(script, "In database: %s\n", dbinfo->db_name);
+	yb_fprintf_and_log(script, "In database: %s\n", dbinfo->db_name);
 
 	for (int rowno = 0; rowno < ntups; rowno++)
-		fprintf(script, "  %s.%s.%s\n",
-				PQgetvalue(res, rowno, i_nspname),
-				PQgetvalue(res, rowno, i_relname),
-				PQgetvalue(res, rowno, i_attname));
+		yb_fprintf_and_log(script, "  %s.%s.%s\n",
+						   PQgetvalue(res, rowno, i_nspname),
+						   PQgetvalue(res, rowno, i_relname),
+						   PQgetvalue(res, rowno, i_attname));
 
 	fclose(script);
 }
@@ -553,8 +548,13 @@ check_for_data_types_usage(ClusterInfo *cluster)
 
 	if (report)
 	{
-		pg_fatal("Data type checks failed: %s", report->data);
+		yb_fatal("Data type checks failed: %s", report->data);
 		destroyPQExpBuffer(report);
+	}
+	else
+	{
+		/* YB: yb_fatal() returns in --check mode, so report ok only here. */
+		check_ok();
 	}
 
 	for (int i = 0; i < n_data_types_usage_checks; i++)
@@ -564,8 +564,6 @@ check_for_data_types_usage(ClusterInfo *cluster)
 	}
 	pg_free(queries);
 	pg_free(states);
-
-	check_ok();
 }
 
 /*
@@ -1371,7 +1369,7 @@ check_for_unsupported_encodings(ClusterInfo *cluster)
 			if (script == NULL && (script = fopen_priv(output_path, "w")) == NULL)
 				pg_fatal("could not open file \"%s\": %m", output_path);
 
-			fprintf(script, "%s\n", datname);
+			yb_fprintf_and_log(script, "%s\n", datname);
 		}
 	}
 	PQclear(res);
@@ -1380,8 +1378,9 @@ check_for_unsupported_encodings(ClusterInfo *cluster)
 	if (script)
 	{
 		fclose(script);
-		pg_log(PG_REPORT, "fatal");
-		pg_fatal("Your installation contains databases using encodings that are\n"
+		if (!is_yugabyte_enabled())
+			pg_log(PG_REPORT, "fatal");
+		yb_fatal("Your installation contains databases using encodings that are\n"
 				 "no longer supported.  Consider dumping and restoring with UTF8.\n"
 				 "A list of databases with unsupported encodings is in the file:\n"
 				 "    %s", output_path);
@@ -1820,14 +1819,14 @@ process_inconsistent_notnull(DbInfo *dbinfo, PGresult *res, void *arg)
 		(report->file = fopen_priv(report->path, "w")) == NULL)
 		pg_fatal("could not open file \"%s\": %m", report->path);
 
-	fprintf(report->file, "In database: %s\n", dbinfo->db_name);
+	yb_fprintf_and_log(report->file, "In database: %s\n", dbinfo->db_name);
 
 	for (int rowno = 0; rowno < ntups; rowno++)
 	{
-		fprintf(report->file, "  %s.%s.%s\n",
-				PQgetvalue(res, rowno, i_nspname),
-				PQgetvalue(res, rowno, i_relname),
-				PQgetvalue(res, rowno, i_attname));
+		yb_fprintf_and_log(report->file, "  %s.%s.%s\n",
+						   PQgetvalue(res, rowno, i_nspname),
+						   PQgetvalue(res, rowno, i_relname),
+						   PQgetvalue(res, rowno, i_attname));
 	}
 }
 
@@ -1872,8 +1871,9 @@ check_for_not_null_inheritance(ClusterInfo *cluster)
 	if (report.file)
 	{
 		fclose(report.file);
-		pg_log(PG_REPORT, "fatal");
-		pg_fatal("Your installation contains inconsistent NOT NULL constraints.\n"
+		if (!is_yugabyte_enabled())
+			pg_log(PG_REPORT, "fatal");
+		yb_fatal("Your installation contains inconsistent NOT NULL constraints.\n"
 				 "If the parent column(s) are NOT NULL, then the child column must\n"
 				 "also be marked NOT NULL, or the upgrade will fail.\n"
 				 "You can fix this by running\n"
@@ -1905,12 +1905,12 @@ process_gist_inet_ops_check(DbInfo *dbinfo, PGresult *res, void *arg)
 		(report->file = fopen_priv(report->path, "w")) == NULL)
 		pg_fatal("could not open file \"%s\": %m", report->path);
 
-	fprintf(report->file, "In database: %s\n", dbinfo->db_name);
+	yb_fprintf_and_log(report->file, "In database: %s\n", dbinfo->db_name);
 
 	for (int rowno = 0; rowno < ntups; rowno++)
-		fprintf(report->file, "  %s.%s\n",
-				PQgetvalue(res, rowno, i_nspname),
-				PQgetvalue(res, rowno, i_relname));
+		yb_fprintf_and_log(report->file, "  %s.%s\n",
+						   PQgetvalue(res, rowno, i_nspname),
+						   PQgetvalue(res, rowno, i_relname));
 }
 
 /*
@@ -1947,8 +1947,9 @@ check_for_gist_inet_ops(ClusterInfo *cluster)
 	if (report.file)
 	{
 		fclose(report.file);
-		pg_log(PG_REPORT, "fatal");
-		pg_fatal("Your installation contains indexes that use btree_gist's\n"
+		if (!is_yugabyte_enabled())
+			pg_log(PG_REPORT, "fatal");
+		yb_fatal("Your installation contains indexes that use btree_gist's\n"
 				 "gist_inet_ops or gist_cidr_ops opclasses,\n"
 				 "which cannot be binary-upgraded.  Replace them with indexes\n"
 				 "that use the built-in GiST inet_ops opclass.\n"
@@ -2713,7 +2714,7 @@ check_old_cluster_global_names(ClusterInfo *cluster)
 			if (script == NULL && (script = fopen_priv(output_path, "w")) == NULL)
 				pg_fatal("could not open file \"%s\": %m", output_path);
 
-			fprintf(script, "%d : %s name = \"%s\"\n", ++count, objtype, objname);
+			yb_fprintf_and_log(script, "%d : %s name = \"%s\"\n", ++count, objtype, objname);
 		}
 	}
 
@@ -2723,8 +2724,9 @@ check_old_cluster_global_names(ClusterInfo *cluster)
 	if (script)
 	{
 		fclose(script);
-		pg_log(PG_REPORT, "fatal");
-		pg_fatal("All the database, role and tablespace names should have only valid characters. A newline or \n"
+		if (!is_yugabyte_enabled())
+			pg_log(PG_REPORT, "fatal");
+		yb_fatal("All the database, role and tablespace names should have only valid characters. A newline or \n"
 				 "carriage return character is not allowed in these object names.  To fix this, please \n"
 				 "rename these names with valid names. \n"
 				 "To see all %d invalid object names, refer db_role_tablespace_invalid_names.txt file. \n"
@@ -3368,188 +3370,113 @@ yb_check_stale_acl_grantors()
 	"  WHERE p.pronamespace = 'pg_catalog'::regnamespace\n" \
 	"  GROUP BY p.oid, p.proname)\n"
 
-/* PG11 objects gone in PG15 (#32356), keyed on the identity the source renders. */
+/* PG15 objects gone in PG19, keyed on the identity the source renders. */
 #define YB_REMOVED_FUNCTIONS \
-	/* PG12 removed the abstime, reltime and tinterval family entirely. */ \
-	"\"abstime(timestamptz)\"," \
-	"\"abstime(timestamp)\"," \
-	"\"abstimeeq(abstime, abstime)\"," \
-	"\"abstimege(abstime, abstime)\"," \
-	"\"abstimegt(abstime, abstime)\"," \
-	"\"abstimein(cstring)\"," \
-	"\"abstimele(abstime, abstime)\"," \
-	"\"abstimelt(abstime, abstime)\"," \
-	"\"abstimene(abstime, abstime)\"," \
-	"\"abstimeout(abstime)\"," \
-	"\"abstimerecv(internal)\"," \
-	"\"abstimesend(abstime)\"," \
-	"\"btabstimecmp(abstime, abstime)\"," \
-	"\"btreltimecmp(reltime, reltime)\"," \
-	"\"bttintervalcmp(tinterval, tinterval)\"," \
-	"\"date(abstime)\"," \
-	"\"date_part(text, abstime)\"," \
-	"\"date_part(text, reltime)\"," \
-	"\"interval(reltime)\"," \
-	"\"intinterval(abstime, tinterval)\"," \
-	"\"isfinite(abstime)\"," \
-	"\"max(abstime)\"," \
-	"\"min(abstime)\"," \
-	"\"mktinterval(abstime, abstime)\"," \
-	"\"reltime(interval)\"," \
-	"\"reltimeeq(reltime, reltime)\"," \
-	"\"reltimege(reltime, reltime)\"," \
-	"\"reltimegt(reltime, reltime)\"," \
-	"\"reltimein(cstring)\"," \
-	"\"reltimele(reltime, reltime)\"," \
-	"\"reltimelt(reltime, reltime)\"," \
-	"\"reltimene(reltime, reltime)\"," \
-	"\"reltimeout(reltime)\"," \
-	"\"reltimerecv(internal)\"," \
-	"\"reltimesend(reltime)\"," \
-	"\"time(abstime)\"," \
-	"\"timemi(abstime, reltime)\"," \
-	"\"timenow()\"," \
-	"\"timepl(abstime, reltime)\"," \
-	"\"timestamp(abstime)\"," \
-	"\"timestamptz(abstime)\"," \
-	"\"tinterval(abstime, abstime)\"," \
-	"\"tintervalct(tinterval, tinterval)\"," \
-	"\"tintervalend(tinterval)\"," \
-	"\"tintervaleq(tinterval, tinterval)\"," \
-	"\"tintervalge(tinterval, tinterval)\"," \
-	"\"tintervalgt(tinterval, tinterval)\"," \
-	"\"tintervalin(cstring)\"," \
-	"\"tintervalle(tinterval, tinterval)\"," \
-	"\"tintervalleneq(tinterval, reltime)\"," \
-	"\"tintervallenge(tinterval, reltime)\"," \
-	"\"tintervallengt(tinterval, reltime)\"," \
-	"\"tintervallenle(tinterval, reltime)\"," \
-	"\"tintervallenlt(tinterval, reltime)\"," \
-	"\"tintervallenne(tinterval, reltime)\"," \
-	"\"tintervallt(tinterval, tinterval)\"," \
-	"\"tintervalne(tinterval, tinterval)\"," \
-	"\"tintervalout(tinterval)\"," \
-	"\"tintervalov(tinterval, tinterval)\"," \
-	"\"tintervalrecv(internal)\"," \
-	"\"tintervalrel(tinterval)\"," \
-	"\"tintervalsame(tinterval, tinterval)\"," \
-	"\"tintervalsend(tinterval)\"," \
-	"\"tintervalstart(tinterval)\"," \
-	/* PG12: smgr and opaque internal pseudo-types */ \
-	"\"opaque_in(cstring)\"," \
-	"\"opaque_out(opaque)\"," \
-	"\"shell_out(opaque)\"," \
-	"\"smgreq(smgr, smgr)\"," \
-	"\"smgrin(cstring)\"," \
-	"\"smgrne(smgr, smgr)\"," \
-	"\"smgrout(smgr)\"," \
-	/* PG14: transform procs and the factorial operator's backing function */ \
-	"\"interval_transform(internal)\"," \
-	"\"numeric_fac(int8)\"," \
-	"\"numeric_transform(internal)\"," \
-	"\"time_transform(internal)\"," \
-	"\"timestamp_izone_transform(internal)\"," \
-	"\"timestamp_transform(internal)\"," \
-	"\"timestamp_zone_transform(internal)\"," \
-	"\"varbit_transform(internal)\"," \
-	"\"varchar_transform(internal)\"," \
-	/* PG14 changed these from anyarray and anyelement to anycompatible*. */ \
-	"\"array_append(anyarray, anyelement)\"," \
-	"\"array_cat(anyarray, anyarray)\"," \
-	"\"array_position(anyarray, anyelement)\"," \
-	"\"array_position(anyarray, anyelement, int4)\"," \
-	"\"array_positions(anyarray, anyelement)\"," \
-	"\"array_prepend(anyelement, anyarray)\"," \
-	"\"array_remove(anyarray, anyelement)\"," \
-	"\"array_replace(anyarray, anyelement, anyelement)\"," \
-	"\"lag(anyelement, int4, anyelement)\"," \
-	"\"lead(anyelement, int4, anyelement)\"," \
-	"\"width_bucket(anyelement, anyarray)\"," \
-	/* PG15: backup control functions renamed or dropped */ \
-	"\"pg_backup_start_time()\"," \
-	"\"pg_is_in_backup()\"," \
-	"\"pg_start_backup(text, bool, bool)\"," \
-	"\"pg_stop_backup()\"," \
-	"\"pg_stop_backup(bool, bool)\"," \
-	/* Geometric functions removed */ \
-	"\"close_lb(line, box)\"," \
-	"\"close_sl(lseg, line)\"," \
-	"\"dist_lb(line, box)\"," \
-	"\"path_center(path)\"," \
-	"\"point(path)\"," \
-	/* The input arguments changed. */ \
-	"\"get_bit(bytea, int4)\"," \
-	"\"pg_create_logical_replication_slot(name, name, bool, name)\"," \
-	/* The line above as rendered before ysql migration V59.2. */ \
-	"\"pg_create_logical_replication_slot(name, name, bool)\"," \
-	"\"pg_terminate_backend(int4)\"," \
-	"\"set_bit(bytea, int4, int4)\"," \
-	"\"yb_active_session_history()\"," \
-	/* Other pg_catalog objects removed in PG15 */ \
-	"\"binary_upgrade_set_next_toast_pg_type_oid(oid)\"," \
-	"\"currtid(oid, tid)\"," \
-	"\"yb_index_check(oid)\"" \
+	/* PG16 made pg_get_publication_tables VARIADIC text[]. */ \
+	"\"pg_get_publication_tables(text)\"," \
+	/* PG17 moved checkpoint and backend write counters out of pg_stat_bgwriter. */ \
+	"\"pg_stat_get_bgwriter_buf_written_checkpoints()\"," \
+	"\"pg_stat_get_bgwriter_requested_checkpoints()\"," \
+	"\"pg_stat_get_bgwriter_timed_checkpoints()\"," \
+	"\"pg_stat_get_buf_fsync_backend()\"," \
+	"\"pg_stat_get_buf_written_backend()\"," \
+	"\"pg_stat_get_checkpoint_sync_time()\"," \
+	"\"pg_stat_get_checkpoint_write_time()\"," \
+	/* PG17 changed the interval avg/sum transition state to internal. */ \
+	"\"interval_accum(_interval, interval)\"," \
+	"\"interval_accum_inv(_interval, interval)\"," \
+	"\"interval_avg(_interval)\"," \
+	"\"interval_combine(_interval, _interval)\"," \
+	/* PG17 added a flush argument to pg_logical_emit_message. */ \
+	"\"pg_logical_emit_message(bool, text, bytea)\"," \
+	"\"pg_logical_emit_message(bool, text, text)\"," \
+	/* PG17 removed adminpack and its compatibility functions. */ \
+	"\"pg_read_file_old(text, int8, int8)\"," \
+	"\"pg_rotate_logfile_old()\"," \
+	/* PG17 added a failover argument before the YB lsn type and ordering mode. */ \
+	"\"pg_create_logical_replication_slot(name, name, bool, bool, name, name)\"," \
+	/* PG18 added strip_in_arrays to json_strip_nulls and jsonb_strip_nulls. */ \
+	"\"json_strip_nulls(json)\"," \
+	"\"jsonb_strip_nulls(jsonb)\"," \
+	/* PG18 widened the pg_stat_have_stats objid argument to int8. */ \
+	"\"pg_stat_have_stats(text, oid, oid)\"," \
+	/* PG18 split pg_timezone_abbrevs() into _zone() and _abbrevs(). */ \
+	"\"pg_timezone_abbrevs()\"," \
+	/* PG19 removed the MULE_INTERNAL encoding and its conversion functions. */ \
+	"\"big5_to_mic(int4, int4, cstring, internal, int4, bool)\"," \
+	"\"euc_cn_to_mic(int4, int4, cstring, internal, int4, bool)\"," \
+	"\"euc_jp_to_mic(int4, int4, cstring, internal, int4, bool)\"," \
+	"\"euc_kr_to_mic(int4, int4, cstring, internal, int4, bool)\"," \
+	"\"euc_tw_to_mic(int4, int4, cstring, internal, int4, bool)\"," \
+	"\"iso_to_mic(int4, int4, cstring, internal, int4, bool)\"," \
+	"\"koi8r_to_mic(int4, int4, cstring, internal, int4, bool)\"," \
+	"\"latin1_to_mic(int4, int4, cstring, internal, int4, bool)\"," \
+	"\"latin2_to_mic(int4, int4, cstring, internal, int4, bool)\"," \
+	"\"latin3_to_mic(int4, int4, cstring, internal, int4, bool)\"," \
+	"\"latin4_to_mic(int4, int4, cstring, internal, int4, bool)\"," \
+	"\"mic_to_big5(int4, int4, cstring, internal, int4, bool)\"," \
+	"\"mic_to_euc_cn(int4, int4, cstring, internal, int4, bool)\"," \
+	"\"mic_to_euc_jp(int4, int4, cstring, internal, int4, bool)\"," \
+	"\"mic_to_euc_kr(int4, int4, cstring, internal, int4, bool)\"," \
+	"\"mic_to_euc_tw(int4, int4, cstring, internal, int4, bool)\"," \
+	"\"mic_to_iso(int4, int4, cstring, internal, int4, bool)\"," \
+	"\"mic_to_koi8r(int4, int4, cstring, internal, int4, bool)\"," \
+	"\"mic_to_latin1(int4, int4, cstring, internal, int4, bool)\"," \
+	"\"mic_to_latin2(int4, int4, cstring, internal, int4, bool)\"," \
+	"\"mic_to_latin3(int4, int4, cstring, internal, int4, bool)\"," \
+	"\"mic_to_latin4(int4, int4, cstring, internal, int4, bool)\"," \
+	"\"mic_to_sjis(int4, int4, cstring, internal, int4, bool)\"," \
+	"\"mic_to_win1250(int4, int4, cstring, internal, int4, bool)\"," \
+	"\"mic_to_win1251(int4, int4, cstring, internal, int4, bool)\"," \
+	"\"mic_to_win866(int4, int4, cstring, internal, int4, bool)\"," \
+	"\"sjis_to_mic(int4, int4, cstring, internal, int4, bool)\"," \
+	"\"win1250_to_mic(int4, int4, cstring, internal, int4, bool)\"," \
+	"\"win1251_to_mic(int4, int4, cstring, internal, int4, bool)\"," \
+	"\"win866_to_mic(int4, int4, cstring, internal, int4, bool)\"," \
+	/* PG19 added a pid argument to pg_replication_origin_session_setup. */ \
+	"\"pg_replication_origin_session_setup(text)\"" \
 
-/* pg_pltemplate went in PG13. yb_int_pg_stats_v11 is YB-internal. */
+/* No PG15 pg_catalog relation is gone in PG19. */
 #define YB_REMOVED_RELATIONS \
-	"\"pg_pltemplate\"," \
-	"\"pg_pltemplate_name_index\"," \
-	"\"yb_int_pg_stats_v11\"" \
+	/* empty: every PG15 relation also exists in PG19 */
 
-/* Array types and removed relations' rowtypes are inert, but kept for parity. */
+/* No PG15 pg_catalog type is gone in PG19, since no relation is gone. */
 #define YB_REMOVED_TYPES \
-	"\"_abstime\"," \
-	"\"_reltime\"," \
-	"\"_tinterval\"," \
-	"\"abstime\"," \
-	"\"opaque\"," \
-	"\"pg_pltemplate\"," \
-	"\"reltime\"," \
-	"\"smgr\"," \
-	"\"tinterval\"," \
-	"\"yb_int_pg_stats_v11\"" \
+	/* empty: every PG15 type also exists in PG19 */
 
 /* A column grant sets attacl only, so these are not covered by the relation entry. */
 #define YB_REMOVED_COLUMNS \
-	"\"pg_attrdef.adsrc\"," \
-	"\"pg_class.relhasoids\"," \
-	"\"pg_constraint.consrc\"," \
-	"\"pg_database.datlastsysoid\"," \
-	"\"pg_pltemplate.tmplacl\"," \
-	"\"pg_pltemplate.tmpldbacreate\"," \
-	"\"pg_pltemplate.tmplhandler\"," \
-	"\"pg_pltemplate.tmplinline\"," \
-	"\"pg_pltemplate.tmpllibrary\"," \
-	"\"pg_pltemplate.tmplname\"," \
-	"\"pg_pltemplate.tmpltrusted\"," \
-	"\"pg_pltemplate.tmplvalidator\"," \
-	"\"pg_pltemplate_name_index.tmplname\"," \
-	"\"pg_proc.protransform\"," \
-	"\"pg_stat_activity.rss_mem_bytes\"," \
-	"\"pg_stat_ssl.clientdn\"," \
-	"\"pg_stat_ssl.compression\"," \
-	"\"pg_stat_wal_receiver.received_lsn\"," \
-	"\"pg_statistic_ext.stxdependencies\"," \
-	"\"pg_statistic_ext.stxndistinct\"," \
-	"\"yb_int_pg_stats_v11.attname\"," \
-	"\"yb_int_pg_stats_v11.avg_width\"," \
-	"\"yb_int_pg_stats_v11.correlation\"," \
-	"\"yb_int_pg_stats_v11.elem_count_histogram\"," \
-	"\"yb_int_pg_stats_v11.histogram_bounds\"," \
-	"\"yb_int_pg_stats_v11.inherited\"," \
-	"\"yb_int_pg_stats_v11.most_common_elem_freqs\"," \
-	"\"yb_int_pg_stats_v11.most_common_elems\"," \
-	"\"yb_int_pg_stats_v11.most_common_freqs\"," \
-	"\"yb_int_pg_stats_v11.most_common_vals\"," \
-	"\"yb_int_pg_stats_v11.n_distinct\"," \
-	"\"yb_int_pg_stats_v11.null_frac\"," \
-	"\"yb_int_pg_stats_v11.range_bounds_histogram\"," \
-	"\"yb_int_pg_stats_v11.range_empty_frac\"," \
-	"\"yb_int_pg_stats_v11.range_length_histogram\"," \
-	"\"yb_int_pg_stats_v11.schemaname\"," \
-	"\"yb_int_pg_stats_v11.tablename\"" \
+	/* PG17 renamed the ICU locale columns to colllocale and datlocale. */ \
+	"\"pg_collation.colliculocale\"," \
+	"\"pg_database.daticulocale\"," \
+	/* PG17 moved checkpoint and backend write counters out of pg_stat_bgwriter. */ \
+	"\"pg_stat_bgwriter.buffers_backend\"," \
+	"\"pg_stat_bgwriter.buffers_backend_fsync\"," \
+	"\"pg_stat_bgwriter.buffers_checkpoint\"," \
+	"\"pg_stat_bgwriter.checkpoint_sync_time\"," \
+	"\"pg_stat_bgwriter.checkpoint_write_time\"," \
+	"\"pg_stat_bgwriter.checkpoints_req\"," \
+	"\"pg_stat_bgwriter.checkpoints_timed\"," \
+	/* PG17 renamed the dead tuple counters of pg_stat_progress_vacuum. */ \
+	"\"pg_stat_progress_vacuum.max_dead_tuples\"," \
+	"\"pg_stat_progress_vacuum.num_dead_tuples\"," \
+	/* PG18 removed pg_attribute.attcacheoff. */ \
+	"\"pg_attribute.attcacheoff\"," \
+	/* PG18 replaced pg_backend_memory_contexts.parent with path. */ \
+	"\"pg_backend_memory_contexts.parent\"," \
+	/* PG18 moved WAL write and sync counters from pg_stat_wal to pg_stat_io. */ \
+	"\"pg_stat_wal.wal_sync\"," \
+	"\"pg_stat_wal.wal_sync_time\"," \
+	"\"pg_stat_wal.wal_write\"," \
+	"\"pg_stat_wal.wal_write_time\"," \
+	/* PG19 renamed sync_error_count to sync_table_error_count. */ \
+	"\"pg_stat_subscription_stats.sync_error_count\"," \
+	/* pg_stat_statements 1.11 (PG17) renamed blk_*_time; YB global views copy those columns. */ \
+	"\"gv$pg_stat_statements.blk_read_time\"," \
+	"\"gv$pg_stat_statements.blk_write_time\"," \
+	"\"pg_stat_statements_with_server_uuid.blk_read_time\"," \
+	"\"pg_stat_statements_with_server_uuid.blk_write_time\"" \
 
-/* One entry per ACL-bearing catalog. Lists are printf args and must not contain %. */
 typedef struct YbRemovedAclKind
 {
 	const char *label;			/* printed for each affected object */
@@ -3633,7 +3560,7 @@ static const YbRemovedAclKind yb_removed_acl_kinds[] = {
 /*
  * yb_check_removed_renamed_catalog_acls()
  *
- * Check for modified ACLs on pg_catalog objects removed or renamed in PG15.
+ * Check for modified ACLs on pg_catalog objects removed or renamed in PG16 to PG19.
  */
 static void
 yb_check_removed_renamed_catalog_acls()
@@ -3733,7 +3660,7 @@ yb_check_removed_renamed_catalog_acls()
 	if (found)
 	{
 		yb_fatal("Your installation contains modified ACL entries on pg_catalog\n"
-				 "objects that are removed or renamed in PostgreSQL 15. This can\n"
+				 "objects that are removed or renamed in PostgreSQL 19. This can\n"
 				 "happen when privileges on those objects are changed (for example,\n"
 				 "REVOKE ALL ON ALL FUNCTIONS IN SCHEMA pg_catalog FROM <role>).\n"
 				 "These ACL entries cause major version upgrade to fail.\n"

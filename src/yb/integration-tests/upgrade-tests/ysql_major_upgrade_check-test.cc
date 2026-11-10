@@ -41,7 +41,7 @@ static const std::initializer_list<UpgradeIncompatibilityCheck> kCheckList{
      .setup_stmts = {"CREATE TABLE system_composite_test (id int primary key, authid pg_authid)"},
      .expected_errors =
          {"public.system_composite_test.authid",
-          "Your installation contains system-defined composite type(s) in user tables"},
+          "Your installation contains system-defined composite types in user tables"},
      .teardown_stmts = {"DROP TABLE system_composite_test"}},
 
     {// check_for_reg_data_type_usage
@@ -50,38 +50,6 @@ static const std::initializer_list<UpgradeIncompatibilityCheck> kCheckList{
          {"public.reg_check.b",
           "Your installation contains one of the reg* data types in user tables"},
      .teardown_stmts = {"DROP TABLE reg_check"}},
-
-    {// check_for_user_defined_postfix_ops
-     .setup_stmts =
-         {"CREATE FUNCTION ident(integer) "
-          "RETURNS integer "
-          "AS $$ "
-          "BEGIN "
-          "    RETURN $1; "
-          "END; "
-          "$$ LANGUAGE plpgsql",
-          "CREATE OPERATOR !!! (LEFTARG = integer, PROCEDURE = ident)"},
-     .expected_errors =
-         {"public.!!! (pg_catalog.int4, NONE)",
-          "Your installation contains user-defined postfix operators"},
-     .teardown_stmts = {"DROP FUNCTION ident(integer) CASCADE"}},
-
-    {// check_for_incompatible_polymorphics
-     .setup_stmts = {"CREATE AGGREGATE array_accum (ANYELEMENT)(sfunc = array_append, stype = "
-                     "ANYARRAY, initcond = '{}')"},
-     .expected_errors =
-         {"aggregate: public.array_accum(anyelement)",
-          "Your installation contains user-defined objects that refer to internal",
-          "polymorphic functions with arguments of type \"anyarray\" or \"anyelement\""},
-     .teardown_stmts = {"DROP AGGREGATE array_accum (ANYELEMENT);"}},
-
-    {// old_11_check_for_sql_identifier_data_type_usage
-     .setup_stmts = {"CREATE TABLE sql_identifier_test (id int primary key, d "
-                     "information_schema.sql_identifier)"},
-     .expected_errors =
-         {"public.sql_identifier_test.d",
-          "Your installation contains the \"sql_identifier\" data type"},
-     .teardown_stmts = {"DROP TABLE sql_identifier_test"}},
 
     {// yb_check_invalid_indexes
      .setup_stmts =
@@ -103,6 +71,10 @@ static const std::initializer_list<UpgradeIncompatibilityCheck> kCheckList{
          {"yb_test_role",
           "Your installation contains roles starting with \"yb_\"."},
      .teardown_stmts = {"DROP ROLE yb_test_role"}}};
+
+// The following checks only apply to PG13 or older sources, so a PG15 source skips them:
+// check_for_user_defined_postfix_ops, check_for_incompatible_polymorphics,
+// the sql_identifier check in data_types_usage_checks
 
 // The following checks are not used in YugabyteDB:
 // check_for_prepared_transactions
@@ -668,109 +640,59 @@ const std::string kFunctionMitigationSql =
     "      WHERE pip.objoid = pg_proc.oid\n"
     "        AND pip.classoid = 'pg_proc'::regclass\n"
     "        AND pip.objsubid = 0)\n"
-    "    WHERE pg_proc.oid IN (SELECT oid FROM idents WHERE obj = ANY('{\"abstime(timestamptz)\","
-    "\"abstime(timestamp)\","
-    "\"abstimeeq(abstime, abstime)\","
-    "\"abstimege(abstime, abstime)\","
-    "\"abstimegt(abstime, abstime)\","
-    "\"abstimein(cstring)\","
-    "\"abstimele(abstime, abstime)\","
-    "\"abstimelt(abstime, abstime)\","
-    "\"abstimene(abstime, abstime)\","
-    "\"abstimeout(abstime)\","
-    "\"abstimerecv(internal)\","
-    "\"abstimesend(abstime)\","
-    "\"btabstimecmp(abstime, abstime)\","
-    "\"btreltimecmp(reltime, reltime)\","
-    "\"bttintervalcmp(tinterval, tinterval)\","
-    "\"date(abstime)\",\"date_part(text, abstime)\","
-    "\"date_part(text, reltime)\","
-    "\"interval(reltime)\","
-    "\"intinterval(abstime, tinterval)\","
-    "\"isfinite(abstime)\","
-    "\"max(abstime)\",\"min(abstime)\","
-    "\"mktinterval(abstime, abstime)\","
-    "\"reltime(interval)\","
-    "\"reltimeeq(reltime, reltime)\","
-    "\"reltimege(reltime, reltime)\","
-    "\"reltimegt(reltime, reltime)\","
-    "\"reltimein(cstring)\","
-    "\"reltimele(reltime, reltime)\","
-    "\"reltimelt(reltime, reltime)\","
-    "\"reltimene(reltime, reltime)\","
-    "\"reltimeout(reltime)\","
-    "\"reltimerecv(internal)\","
-    "\"reltimesend(reltime)\","
-    "\"time(abstime)\",\"timemi(abstime, reltime)\","
-    "\"timenow()\",\"timepl(abstime, reltime)\","
-    "\"timestamp(abstime)\","
-    "\"timestamptz(abstime)\","
-    "\"tinterval(abstime, abstime)\","
-    "\"tintervalct(tinterval, tinterval)\","
-    "\"tintervalend(tinterval)\","
-    "\"tintervaleq(tinterval, tinterval)\","
-    "\"tintervalge(tinterval, tinterval)\","
-    "\"tintervalgt(tinterval, tinterval)\","
-    "\"tintervalin(cstring)\","
-    "\"tintervalle(tinterval, tinterval)\","
-    "\"tintervalleneq(tinterval, reltime)\","
-    "\"tintervallenge(tinterval, reltime)\","
-    "\"tintervallengt(tinterval, reltime)\","
-    "\"tintervallenle(tinterval, reltime)\","
-    "\"tintervallenlt(tinterval, reltime)\","
-    "\"tintervallenne(tinterval, reltime)\","
-    "\"tintervallt(tinterval, tinterval)\","
-    "\"tintervalne(tinterval, tinterval)\","
-    "\"tintervalout(tinterval)\","
-    "\"tintervalov(tinterval, tinterval)\","
-    "\"tintervalrecv(internal)\","
-    "\"tintervalrel(tinterval)\","
-    "\"tintervalsame(tinterval, tinterval)\","
-    "\"tintervalsend(tinterval)\","
-    "\"tintervalstart(tinterval)\","
-    "\"opaque_in(cstring)\","
-    "\"opaque_out(opaque)\","
-    "\"shell_out(opaque)\","
-    "\"smgreq(smgr, smgr)\","
-    "\"smgrin(cstring)\",\"smgrne(smgr, smgr)\","
-    "\"smgrout(smgr)\",\"interval_transform(internal)\","
-    "\"numeric_fac(int8)\","
-    "\"numeric_transform(internal)\","
-    "\"time_transform(internal)\","
-    "\"timestamp_izone_transform(internal)\","
-    "\"timestamp_transform(internal)\","
-    "\"timestamp_zone_transform(internal)\","
-    "\"varbit_transform(internal)\","
-    "\"varchar_transform(internal)\","
-    "\"array_append(anyarray, anyelement)\","
-    "\"array_cat(anyarray, anyarray)\","
-    "\"array_position(anyarray, anyelement)\","
-    "\"array_position(anyarray, anyelement, int4)\","
-    "\"array_positions(anyarray, anyelement)\","
-    "\"array_prepend(anyelement, anyarray)\","
-    "\"array_remove(anyarray, anyelement)\","
-    "\"array_replace(anyarray, anyelement, anyelement)\","
-    "\"lag(anyelement, int4, anyelement)\","
-    "\"lead(anyelement, int4, anyelement)\","
-    "\"width_bucket(anyelement, anyarray)\","
-    "\"pg_backup_start_time()\","
-    "\"pg_is_in_backup()\","
-    "\"pg_start_backup(text, bool, bool)\","
-    "\"pg_stop_backup()\","
-    "\"pg_stop_backup(bool, bool)\","
-    "\"close_lb(line, box)\","
-    "\"close_sl(lseg, line)\","
-    "\"dist_lb(line, box)\","
-    "\"path_center(path)\","
-    "\"point(path)\",\"get_bit(bytea, int4)\","
-    "\"pg_create_logical_replication_slot(name, name, bool, name)\","
-    "\"pg_create_logical_replication_slot(name, name, bool)\","
-    "\"pg_terminate_backend(int4)\","
-    "\"set_bit(bytea, int4, int4)\","
-    "\"yb_active_session_history()\","
-    "\"binary_upgrade_set_next_toast_pg_type_oid(oid)\","
-    "\"currtid(oid, tid)\","
-    "\"yb_index_check(oid)\"}'::text[]))\n"
+    "    WHERE pg_proc.oid IN (SELECT oid FROM idents WHERE obj = ANY('{"
+    "\"pg_get_publication_tables(text)\","
+    "\"pg_stat_get_bgwriter_buf_written_checkpoints()\","
+    "\"pg_stat_get_bgwriter_requested_checkpoints()\","
+    "\"pg_stat_get_bgwriter_timed_checkpoints()\","
+    "\"pg_stat_get_buf_fsync_backend()\","
+    "\"pg_stat_get_buf_written_backend()\","
+    "\"pg_stat_get_checkpoint_sync_time()\","
+    "\"pg_stat_get_checkpoint_write_time()\","
+    "\"interval_accum(_interval, interval)\","
+    "\"interval_accum_inv(_interval, interval)\","
+    "\"interval_avg(_interval)\","
+    "\"interval_combine(_interval, _interval)\","
+    "\"pg_logical_emit_message(bool, text, bytea)\","
+    "\"pg_logical_emit_message(bool, text, text)\","
+    "\"pg_read_file_old(text, int8, int8)\","
+    "\"pg_rotate_logfile_old()\","
+    "\"pg_create_logical_replication_slot(name, name, bool, bool, name, name)\","
+    "\"json_strip_nulls(json)\","
+    "\"jsonb_strip_nulls(jsonb)\","
+    "\"pg_stat_have_stats(text, oid, oid)\","
+    "\"pg_timezone_abbrevs()\","
+    "\"big5_to_mic(int4, int4, cstring, internal, int4, bool)\","
+    "\"euc_cn_to_mic(int4, int4, cstring, internal, int4, bool)\","
+    "\"euc_jp_to_mic(int4, int4, cstring, internal, int4, bool)\","
+    "\"euc_kr_to_mic(int4, int4, cstring, internal, int4, bool)\","
+    "\"euc_tw_to_mic(int4, int4, cstring, internal, int4, bool)\","
+    "\"iso_to_mic(int4, int4, cstring, internal, int4, bool)\","
+    "\"koi8r_to_mic(int4, int4, cstring, internal, int4, bool)\","
+    "\"latin1_to_mic(int4, int4, cstring, internal, int4, bool)\","
+    "\"latin2_to_mic(int4, int4, cstring, internal, int4, bool)\","
+    "\"latin3_to_mic(int4, int4, cstring, internal, int4, bool)\","
+    "\"latin4_to_mic(int4, int4, cstring, internal, int4, bool)\","
+    "\"mic_to_big5(int4, int4, cstring, internal, int4, bool)\","
+    "\"mic_to_euc_cn(int4, int4, cstring, internal, int4, bool)\","
+    "\"mic_to_euc_jp(int4, int4, cstring, internal, int4, bool)\","
+    "\"mic_to_euc_kr(int4, int4, cstring, internal, int4, bool)\","
+    "\"mic_to_euc_tw(int4, int4, cstring, internal, int4, bool)\","
+    "\"mic_to_iso(int4, int4, cstring, internal, int4, bool)\","
+    "\"mic_to_koi8r(int4, int4, cstring, internal, int4, bool)\","
+    "\"mic_to_latin1(int4, int4, cstring, internal, int4, bool)\","
+    "\"mic_to_latin2(int4, int4, cstring, internal, int4, bool)\","
+    "\"mic_to_latin3(int4, int4, cstring, internal, int4, bool)\","
+    "\"mic_to_latin4(int4, int4, cstring, internal, int4, bool)\","
+    "\"mic_to_sjis(int4, int4, cstring, internal, int4, bool)\","
+    "\"mic_to_win1250(int4, int4, cstring, internal, int4, bool)\","
+    "\"mic_to_win1251(int4, int4, cstring, internal, int4, bool)\","
+    "\"mic_to_win866(int4, int4, cstring, internal, int4, bool)\","
+    "\"sjis_to_mic(int4, int4, cstring, internal, int4, bool)\","
+    "\"win1250_to_mic(int4, int4, cstring, internal, int4, bool)\","
+    "\"win1251_to_mic(int4, int4, cstring, internal, int4, bool)\","
+    "\"win866_to_mic(int4, int4, cstring, internal, int4, bool)\","
+    "\"pg_replication_origin_session_setup(text)\"}'::text[]))\n"
     "  AND NOT EXISTS (\n      SELECT 1 FROM pg_depend d\n"
     "      WHERE d.classid = 'pg_proc'::regclass\n"
     "        AND d.objid = pg_proc.oid\n"
@@ -780,53 +702,6 @@ const std::string kFunctionMitigationSql =
     "      SELECT initprivs FROM pg_init_privs pip\n"
     "      WHERE pip.objoid = pg_proc.oid\n"
     "        AND pip.classoid = 'pg_proc'::regclass\n"
-    "        AND pip.objsubid = 0)\n"
-    "    ;\n";
-
-const std::string kRelationMitigationSql =
-    "    UPDATE pg_class SET relacl = (\n"
-    "      SELECT initprivs FROM pg_init_privs pip\n"
-    "      WHERE pip.objoid = pg_class.oid\n"
-    "        AND pip.classoid = 'pg_class'::regclass\n"
-    "        AND pip.objsubid = 0)\n"
-    "    WHERE relnamespace = 'pg_catalog'::regnamespace\n"
-    "      AND relname = ANY('{\"pg_pltemplate\","
-    "\"pg_pltemplate_name_index\","
-    "\"yb_int_pg_stats_v11\"}'::text[])\n"
-    "  AND NOT EXISTS (\n      SELECT 1 FROM pg_depend d\n"
-    "      WHERE d.classid = 'pg_class'::regclass\n"
-    "        AND d.objid = pg_class.oid\n"
-    "        AND d.objsubid = 0\n"
-    "        AND d.deptype = 'e')\n"
-    "  AND relacl IS DISTINCT FROM (\n"
-    "      SELECT initprivs FROM pg_init_privs pip\n"
-    "      WHERE pip.objoid = pg_class.oid\n"
-    "        AND pip.classoid = 'pg_class'::regclass\n"
-    "        AND pip.objsubid = 0)\n"
-    "    ;\n";
-
-const std::string kTypeMitigationSql =
-    "    UPDATE pg_type SET typacl = (\n"
-    "      SELECT initprivs FROM pg_init_privs pip\n"
-    "      WHERE pip.objoid = pg_type.oid\n"
-    "        AND pip.classoid = 'pg_type'::regclass\n"
-    "        AND pip.objsubid = 0)\n"
-    "    WHERE typnamespace = 'pg_catalog'::regnamespace\n"
-    "      AND typname = ANY('{\"_abstime\","
-    "\"_reltime\",\"_tinterval\","
-    "\"abstime\",\"opaque\","
-    "\"pg_pltemplate\",\"reltime\","
-    "\"smgr\",\"tinterval\","
-    "\"yb_int_pg_stats_v11\"}'::text[])\n"
-    "  AND NOT EXISTS (\n      SELECT 1 FROM pg_depend d\n"
-    "      WHERE d.classid = 'pg_type'::regclass\n"
-    "        AND d.objid = pg_type.oid\n"
-    "        AND d.objsubid = 0\n"
-    "        AND d.deptype = 'e')\n"
-    "  AND typacl IS DISTINCT FROM (\n"
-    "      SELECT initprivs FROM pg_init_privs pip\n"
-    "      WHERE pip.objoid = pg_type.oid\n"
-    "        AND pip.classoid = 'pg_type'::regclass\n"
     "        AND pip.objsubid = 0)\n"
     "    ;\n";
 
@@ -841,43 +716,29 @@ const std::string kColumnMitigationSql =
     "          WHERE c.relnamespace = 'pg_catalog'::regnamespace)\n"
     "      AND a.attnum > 0 AND NOT a.attisdropped\n"
     "      AND (SELECT c.relname FROM pg_class c WHERE c.oid = a.attrelid)\n"
-    "          || '.' || a.attname = ANY('{\"pg_attrdef.adsrc\","
-    "\"pg_class.relhasoids\","
-    "\"pg_constraint.consrc\","
-    "\"pg_database.datlastsysoid\","
-    "\"pg_pltemplate.tmplacl\","
-    "\"pg_pltemplate.tmpldbacreate\","
-    "\"pg_pltemplate.tmplhandler\","
-    "\"pg_pltemplate.tmplinline\","
-    "\"pg_pltemplate.tmpllibrary\","
-    "\"pg_pltemplate.tmplname\","
-    "\"pg_pltemplate.tmpltrusted\","
-    "\"pg_pltemplate.tmplvalidator\","
-    "\"pg_pltemplate_name_index.tmplname\","
-    "\"pg_proc.protransform\","
-    "\"pg_stat_activity.rss_mem_bytes\","
-    "\"pg_stat_ssl.clientdn\","
-    "\"pg_stat_ssl.compression\","
-    "\"pg_stat_wal_receiver.received_lsn\","
-    "\"pg_statistic_ext.stxdependencies\","
-    "\"pg_statistic_ext.stxndistinct\","
-    "\"yb_int_pg_stats_v11.attname\","
-    "\"yb_int_pg_stats_v11.avg_width\","
-    "\"yb_int_pg_stats_v11.correlation\","
-    "\"yb_int_pg_stats_v11.elem_count_histogram\","
-    "\"yb_int_pg_stats_v11.histogram_bounds\","
-    "\"yb_int_pg_stats_v11.inherited\","
-    "\"yb_int_pg_stats_v11.most_common_elem_freqs\","
-    "\"yb_int_pg_stats_v11.most_common_elems\","
-    "\"yb_int_pg_stats_v11.most_common_freqs\","
-    "\"yb_int_pg_stats_v11.most_common_vals\","
-    "\"yb_int_pg_stats_v11.n_distinct\","
-    "\"yb_int_pg_stats_v11.null_frac\","
-    "\"yb_int_pg_stats_v11.range_bounds_histogram\","
-    "\"yb_int_pg_stats_v11.range_empty_frac\","
-    "\"yb_int_pg_stats_v11.range_length_histogram\","
-    "\"yb_int_pg_stats_v11.schemaname\","
-    "\"yb_int_pg_stats_v11.tablename\"}'::text[])\n"
+    "          || '.' || a.attname = ANY('{"
+    "\"pg_collation.colliculocale\","
+    "\"pg_database.daticulocale\","
+    "\"pg_stat_bgwriter.buffers_backend\","
+    "\"pg_stat_bgwriter.buffers_backend_fsync\","
+    "\"pg_stat_bgwriter.buffers_checkpoint\","
+    "\"pg_stat_bgwriter.checkpoint_sync_time\","
+    "\"pg_stat_bgwriter.checkpoint_write_time\","
+    "\"pg_stat_bgwriter.checkpoints_req\","
+    "\"pg_stat_bgwriter.checkpoints_timed\","
+    "\"pg_stat_progress_vacuum.max_dead_tuples\","
+    "\"pg_stat_progress_vacuum.num_dead_tuples\","
+    "\"pg_attribute.attcacheoff\","
+    "\"pg_backend_memory_contexts.parent\","
+    "\"pg_stat_wal.wal_sync\","
+    "\"pg_stat_wal.wal_sync_time\","
+    "\"pg_stat_wal.wal_write\","
+    "\"pg_stat_wal.wal_write_time\","
+    "\"pg_stat_subscription_stats.sync_error_count\","
+    "\"gv$pg_stat_statements.blk_read_time\","
+    "\"gv$pg_stat_statements.blk_write_time\","
+    "\"pg_stat_statements_with_server_uuid.blk_read_time\","
+    "\"pg_stat_statements_with_server_uuid.blk_write_time\"}'::text[])\n"
     "  AND NOT EXISTS (\n      SELECT 1 FROM pg_depend d\n"
     "      WHERE d.classid = 'pg_class'::regclass\n"
     "        AND d.objid = a.attrelid\n"
@@ -911,27 +772,19 @@ TEST_F(YsqlMajorUpgradeCheckTest, RemovedCatalogAclsFunctions) {
       "Your installation contains modified ACL entries on pg_catalog",
       "In database: yugabyte",
       // Removed outright.
-      "Function: pg_catalog.abstimein(cstring)",
-      "Function: pg_catalog.tintervalin(cstring)",
-      "Function: pg_catalog.numeric_fac(int8)",
-      "Function: pg_catalog.pg_is_in_backup()",
-      "Function: pg_catalog.close_lb(line, box)",
-      "Function: pg_catalog.currtid(oid, tid)",
+      "Function: pg_catalog.pg_stat_get_checkpoint_write_time()",
+      "Function: pg_catalog.interval_accum(_interval, interval)",
+      "Function: pg_catalog.mic_to_latin1(int4, int4, cstring, internal, int4, bool)",
       // Name survives, arguments do not.
-      "Function: pg_catalog.array_append(anyarray, anyelement)",
-      "Function: pg_catalog.lag(anyelement, int4, anyelement)",
-      "Function: pg_catalog.pg_terminate_backend(int4)",
-      "Function: pg_catalog.get_bit(bytea, int4)",
-      // Removed overload of a name that keeps other overloads.
-      "Function: pg_catalog.date(abstime)",
-      // Input arguments changed on an identity that also carries OUT columns.
-      "Function: pg_catalog.pg_create_logical_replication_slot(",
-      "Function: pg_catalog.yb_active_session_history(",
+      "Function: pg_catalog.json_strip_nulls(json)",
+      "Function: pg_catalog.pg_logical_emit_message(bool, text, text)",
+      // Removed identity that also carries OUT columns.
+      "Function: pg_catalog.pg_timezone_abbrevs()",
       "    UPDATE pg_proc SET proacl = (",
   };
 
   // Sub-test 1: GRANT EXECUTE on every pg_catalog function to a named role. Every function drifts,
-  // so a regression to proname matching would additionally report the surviving overloads below.
+  // so the check must still skip the functions that survive into PG19, such as the two below.
   auto function_grant = [this, &conn, &expected_function_failure]() -> Status {
     RETURN_NOT_OK(
         conn.Execute("GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA pg_catalog TO test_role1"));
@@ -943,10 +796,10 @@ TEST_F(YsqlMajorUpgradeCheckTest, RemovedCatalogAclsFunctions) {
 
     SCHECK(
         !surviving_date.IsEventOccurred(), IllegalState,
-        "date(timestamp with time zone) survives PG15 and must not be reported");
+        "date(timestamp with time zone) survives PG19 and must not be reported");
     SCHECK(
         !surviving_point.IsEventOccurred(), IllegalState,
-        "point(box) survives PG15 and must not be reported");
+        "point(box) survives PG19 and must not be reported");
 
     RETURN_NOT_OK(ResetAcls(cluster_.get(), &conn, kFunctionMitigationSql));
     return ValidateUpgradeCompatibility();
@@ -965,11 +818,11 @@ TEST_F(YsqlMajorUpgradeCheckTest, RemovedCatalogAclsFunctions) {
   // Sub-test 3: a grant on one removed overload only.
   auto single_overload_grant = [this, &conn]() -> Status {
     RETURN_NOT_OK(conn.Execute(
-        "GRANT EXECUTE ON FUNCTION pg_catalog.array_append(anyarray, anyelement) TO test_role1"));
+        "GRANT EXECUTE ON FUNCTION pg_catalog.json_strip_nulls(json) TO test_role1"));
 
     RETURN_NOT_OK(ValidateUpgradeCompatibilityFailure(
         std::vector<std::string>{
-            "Function: pg_catalog.array_append(anyarray, anyelement)",
+            "Function: pg_catalog.json_strip_nulls(json)",
             "    UPDATE pg_proc SET proacl = ("}));
 
     // A function that survives unchanged must not trip the check at all.
@@ -986,12 +839,13 @@ TEST_F(YsqlMajorUpgradeCheckTest, RemovedCatalogAclsFunctions) {
     RETURN_NOT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed TO on"));
     RETURN_NOT_OK(conn.Execute(
         "UPDATE pg_proc SET proacl = '{}'::aclitem[] "
-        "WHERE proname = 'abstimein' AND pronamespace = 'pg_catalog'::regnamespace"));
+        "WHERE proname = 'pg_stat_get_checkpoint_write_time' "
+        "AND pronamespace = 'pg_catalog'::regnamespace"));
     RETURN_NOT_OK(conn.Execute("RESET yb_non_ddl_txn_for_sys_tables_allowed"));
 
     RETURN_NOT_OK(ValidateUpgradeCompatibilityFailure(
         std::vector<std::string>{
-            "Function: pg_catalog.abstimein(cstring)",
+            "Function: pg_catalog.pg_stat_get_checkpoint_write_time()",
             "    UPDATE pg_proc SET proacl = ("}));
 
     RETURN_NOT_OK(ResetAcls(cluster_.get(), &conn, kFunctionMitigationSql));
@@ -1004,84 +858,19 @@ TEST_F(YsqlMajorUpgradeCheckTest, RemovedCatalogAclsFunctions) {
   ASSERT_OK(empty_acl());
 }
 
-TEST_F(YsqlMajorUpgradeCheckTest, RemovedCatalogAclsRelations) {
-  auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
-  ASSERT_OK(conn.Execute("CREATE ROLE test_role1"));
-
-  const std::vector<std::string> expected_relation_failure = {
-      "Relation: pg_catalog.pg_pltemplate",
-      "Relation: pg_catalog.yb_int_pg_stats_v11",
-      "    UPDATE pg_class SET relacl = (",
-  };
-
-  // Sub-test 1: GRANT SELECT ON ALL TABLES is the shape the customer hit.
-  auto relation_grant = [this, &conn, &expected_relation_failure]() -> Status {
-    RETURN_NOT_OK(conn.Execute("GRANT SELECT ON ALL TABLES IN SCHEMA pg_catalog TO test_role1"));
-
-    RETURN_NOT_OK(ValidateUpgradeCompatibilityFailure(expected_relation_failure));
-
-    RETURN_NOT_OK(ResetAcls(cluster_.get(), &conn, kRelationMitigationSql));
-    return ValidateUpgradeCompatibility();
-  };
-
-  // Sub-test 2: the same drift from the other direction. ALL TABLES covers the view too.
-  auto relation_revoke = [this, &conn, &expected_relation_failure]() -> Status {
-    RETURN_NOT_OK(conn.Execute("REVOKE SELECT ON ALL TABLES IN SCHEMA pg_catalog FROM PUBLIC"));
-
-    RETURN_NOT_OK(ValidateUpgradeCompatibilityFailure(expected_relation_failure));
-
-    RETURN_NOT_OK(ResetAcls(cluster_.get(), &conn, kRelationMitigationSql));
-    return ValidateUpgradeCompatibility();
-  };
-
-  ASSERT_OK(relation_grant());
-  ASSERT_OK(relation_revoke());
-}
-
-TEST_F(YsqlMajorUpgradeCheckTest, RemovedCatalogAclsTypes) {
-  auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
-  ASSERT_OK(conn.Execute("CREATE ROLE test_role1"));
-
-  const std::vector<std::string> expected_type_failure = {
-      "Type: pg_catalog.abstime",
-      "    UPDATE pg_type SET typacl = (",
-  };
-
-  // Sub-test 1: abstime went away in PG12.
-  auto type_grant = [this, &conn, &expected_type_failure]() -> Status {
-    RETURN_NOT_OK(conn.Execute("GRANT USAGE ON TYPE pg_catalog.abstime TO test_role1"));
-
-    RETURN_NOT_OK(ValidateUpgradeCompatibilityFailure(expected_type_failure));
-
-    RETURN_NOT_OK(ResetAcls(cluster_.get(), &conn, kTypeMitigationSql));
-    return ValidateUpgradeCompatibility();
-  };
-
-  // Sub-test 2: typacl is NULL out of initdb. REVOKE materializes it, which is drift too.
-  auto type_revoke = [this, &conn, &expected_type_failure]() -> Status {
-    RETURN_NOT_OK(conn.Execute("REVOKE USAGE ON TYPE pg_catalog.abstime FROM PUBLIC"));
-
-    RETURN_NOT_OK(ValidateUpgradeCompatibilityFailure(expected_type_failure));
-
-    RETURN_NOT_OK(ResetAcls(cluster_.get(), &conn, kTypeMitigationSql));
-    return ValidateUpgradeCompatibility();
-  };
-
-  ASSERT_OK(type_grant());
-  ASSERT_OK(type_revoke());
-}
-
 TEST_F(YsqlMajorUpgradeCheckTest, RemovedCatalogAclsColumns) {
   auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
   ASSERT_OK(conn.Execute("CREATE ROLE test_role1"));
 
   // One dropped catalog column, one dropped view column. A REVOKE would be a no-op.
-  ASSERT_OK(conn.Execute("GRANT SELECT (adsrc) ON pg_catalog.pg_attrdef TO test_role1"));
-  ASSERT_OK(conn.Execute("GRANT SELECT (clientdn) ON pg_catalog.pg_stat_ssl TO test_role1"));
+  ASSERT_OK(conn.Execute("GRANT SELECT (colliculocale) ON pg_catalog.pg_collation TO test_role1"));
+  ASSERT_OK(conn.Execute(
+      "GRANT SELECT (checkpoints_timed) ON pg_catalog.pg_stat_bgwriter TO test_role1"));
 
   ASSERT_OK(ValidateUpgradeCompatibilityFailure(
       std::vector<std::string>{
-          "Column: pg_catalog.pg_attrdef.adsrc", "Column: pg_catalog.pg_stat_ssl.clientdn",
+          "Column: pg_catalog.pg_collation.colliculocale",
+          "Column: pg_catalog.pg_stat_bgwriter.checkpoints_timed",
           "    UPDATE pg_attribute a SET attacl = ("}));
 
   ASSERT_OK(ResetAcls(cluster_.get(), &conn, kColumnMitigationSql));
@@ -1096,16 +885,18 @@ TEST_F(YsqlMajorUpgradeCheckTest, RemovedCatalogAclsMultipleDatabases) {
   // One class broken in each of two databases.
   ASSERT_OK(
       conn_yugabyte.Execute("GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA pg_catalog TO test_role1"));
-  ASSERT_OK(conn_postgres.Execute("GRANT USAGE ON TYPE pg_catalog.abstime TO test_role1"));
+  ASSERT_OK(conn_postgres.Execute(
+      "GRANT SELECT (colliculocale) ON pg_catalog.pg_collation TO test_role1"));
 
   ASSERT_OK(ValidateUpgradeCompatibilityFailure(
       std::vector<std::string>{
           "In database: yugabyte", "In database: postgres",
-          "Function: pg_catalog.abstimein(cstring)", "    UPDATE pg_proc SET proacl = (",
-          "Type: pg_catalog.abstime", "    UPDATE pg_type SET typacl = ("}));
+          "Function: pg_catalog.json_strip_nulls(json)", "    UPDATE pg_proc SET proacl = (",
+          "Column: pg_catalog.pg_collation.colliculocale",
+          "    UPDATE pg_attribute a SET attacl = ("}));
 
   ASSERT_OK(ResetAcls(cluster_.get(), &conn_yugabyte, kFunctionMitigationSql));
-  ASSERT_OK(ResetAcls(cluster_.get(), &conn_postgres, kTypeMitigationSql, "postgres"));
+  ASSERT_OK(ResetAcls(cluster_.get(), &conn_postgres, kColumnMitigationSql, "postgres"));
   ASSERT_OK(ValidateUpgradeCompatibility());
 }
 
