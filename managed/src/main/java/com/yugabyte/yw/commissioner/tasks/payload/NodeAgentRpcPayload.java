@@ -450,6 +450,19 @@ public class NodeAgentRpcPayload {
     Integer num_cores_to_keep =
         confGetter.getConfForScope(universe, UniverseConfKeys.numCoresToKeep);
     configureServerInputBuilder.setNumCoresToKeep(num_cores_to_keep);
+
+    // Bake YBA clock-sync runtime config into clock-sync.sh.
+    // See NodeManager.getInlineWaitForClockSyncCommandArgs for more details.
+    boolean clockSkewWaitEnabled =
+        confGetter.getGlobalConf(GlobalConfKeys.acceptableClockSkewWaitEnabled);
+    configureServerInputBuilder.setAcceptableClockSkewWaitEnabled(clockSkewWaitEnabled);
+    if (clockSkewWaitEnabled) {
+      configureServerInputBuilder.setAcceptableClockSkewSec(
+          confGetter.getGlobalConf(GlobalConfKeys.waitForClockSyncMaxAcceptableClockSkew).toNanos()
+              / Math.pow(10, 9));
+      configureServerInputBuilder.setAcceptableClockSkewMaxTries(
+          (int) confGetter.getGlobalConf(GlobalConfKeys.waitForClockSyncTimeout).toSeconds());
+    }
     return configureServerInputBuilder.build();
   }
 

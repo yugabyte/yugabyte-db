@@ -100,7 +100,7 @@ func (h *ConfigureServerHandler) Handle(ctx context.Context) (*pb.DescribeTaskRe
 		util.FileLogger().Errorf(ctx, "Configure server failed in %v - %s", cmd, err.Error())
 		return nil, err
 	}
-	if cmdInfo.StdOut.String() != yb_metrics_dir {
+	if strings.TrimSpace(cmdInfo.StdOut.String()) != yb_metrics_dir {
 		yb_metrics_dir = filepath.Join(h.param.GetYbHomeDir(), "metrics")
 	}
 
@@ -236,6 +236,17 @@ func (h *ConfigureServerHandler) setupServerScript(
 		"yb_home_dir":       home,
 		"num_cores_to_keep": h.param.GetNumCoresToKeep(),
 		"yb_metrics_dir":    yb_metrics_dir,
+	}
+	if h.param.AcceptableClockSkewWaitEnabled != nil {
+		serverScriptContext["is_acceptable_clock_skew_wait_enabled"] =
+			h.param.GetAcceptableClockSkewWaitEnabled()
+	}
+	if h.param.AcceptableClockSkewSec != nil {
+		serverScriptContext["acceptable_clock_skew_sec"] = h.param.GetAcceptableClockSkewSec()
+	}
+	if h.param.AcceptableClockSkewMaxTries != nil {
+		serverScriptContext["acceptable_clock_skew_max_tries"] =
+			h.param.GetAcceptableClockSkewMaxTries()
 	}
 
 	for _, fileInfo := range ScriptFilesToCopy {

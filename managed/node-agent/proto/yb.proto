@@ -156,6 +156,9 @@ message ConfigureServerInput {
     repeated string processes = 3;
     repeated string mountPoints = 4;
     uint32 numCoresToKeep = 5;
+    optional bool acceptableClockSkewWaitEnabled = 6;
+    optional double acceptableClockSkewSec = 7;
+    optional uint32 acceptableClockSkewMaxTries = 8;
 }
 
 message ConfigureServerOutput {

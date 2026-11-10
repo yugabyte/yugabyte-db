@@ -14,11 +14,11 @@ import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -42,9 +42,9 @@ import com.yugabyte.yw.commissioner.ITask;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -765,8 +765,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     ArgumentCaptor<String> releaseName = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> overrideFile = ArgumentCaptor.forClass(String.class);
     verify(mockKubernetesManager, times(times))
-        .helmUpgrade(
-            any(), any(), any(), releaseName.capture(), any(), overrideFile.capture());
+        .helmUpgrade(any(), any(), any(), releaseName.capture(), any(), overrideFile.capture());
     Map<String, String> result = new HashMap<>();
     for (int i = 0; i < times; i++) {
       result.put(releaseName.getAllValues().get(i), overrideFile.getAllValues().get(i));
