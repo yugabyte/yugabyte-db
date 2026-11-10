@@ -1470,8 +1470,6 @@ void CDCSDKVirtualWAL::TrackAbortedSubtxnsOfMergedTxnIfRequired(const RowMessage
   tracked_aborted_subtxns_[row_message.transaction_id()] = row_message.aborted_subtxns();
 }
 
-// The record that triggers a publication refresh is not shipped, so for it the set goes on the
-// response passed in pub_refresh_resp.
 void CDCSDKVirtualWAL::MaybeAddTrackedAbortedSubtxns(
     RowMessage* row_message, GetConsistentChangesResponsePB* pub_refresh_resp) {
   if (tracked_aborted_subtxns_.empty() ||
