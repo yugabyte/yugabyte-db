@@ -75,7 +75,7 @@ Once **all** conflicts are resolved (and only then):
 
 2. `git cherry-pick --continue --no-edit` to land the resolved commit. Use `--no-edit` so the original commit message is preserved verbatim — the script re-derives the subject/body from `$commitid` on rerun, so anything you type here gets discarded anyway. If the resolved diff is empty, run `git cherry-pick --skip` instead.
 
-3. **Track every resolution, trivial or not.** Any conflict you touched by hand needs a paper trail in Step 4 so a reviewer can see what was changed vs. the original commit. Record each one as an entry for Step 4: `<path>:<line>`, a short reason code such as `adjacent-lines` (only the surrounding lines differ on the branch) or `missing-prerequisite` (something the change depends on is not on the branch), and a short summary of the resolution. For trivial cases a one-liner is fine ("accepted cherry-pick's added block; branch had no code at that location"); for non-trivial cases, expand to one line per hunk you reasoned about. May be multiple lines per file. Group the entries by step: the branch the cherry-pick came from and the branch it went to. The script's `Applying code change: git cherry-pick ...` line shows the source: the original commit means `master`, and a `backport-<id>-<branch>` task branch means that `<branch>`. Example:
+3. **Track every resolution, trivial or not.** Any conflict you touched by hand needs a paper trail in Step 4 so a reviewer can see what was changed vs. the original commit. Record each one as an entry for Step 4: `<path>:<line>`, a short reason code such as `adjacent-lines` (only the surrounding lines differ on the branch) or `missing-prerequisite` (something the change depends on is not on the branch), and a short summary of the resolution. For trivial cases a one-liner is fine ("accepted cherry-pick's added block; branch had no code at that location"); for non-trivial cases, expand to one line per hunk you reasoned about. May be multiple lines per file. Group the entries by step: the branch the cherry-pick came from (check the script output for the source) and the branch it went to. Example:
    ```
    ### master --> 2025.2
    - `src/yb/master/catalog_manager.cc:1843` — [missing-prerequisite] dropped the `epoch` argument, which 2025.2's `AddTask` signature lacks
@@ -104,7 +104,7 @@ Extract every `https://github.com/...` URL printed by `gh pr create` from the (p
 
 Annotate the PR of every branch where you ran `git cherry-pick --continue` (vs. it auto-applying cleanly), **regardless of whether the resolution was trivial or non-trivial**, and of every branch chained from another branch's backport. Reviewers shouldn't have to diff the backport against the original commit to discover there was a manual step. "Trivial" describes how easy the resolution was, not whether it warrants disclosure.
 
-A chained branch documents only its own step. Don't copy the entries of the backports it was chained from; the reviewer counts them as documented. If its step applied cleanly, say so in one line, so the reviewer knows the differences from `master` come from earlier in the chain.
+A chained branch lists every step from `master` to its own branch, newest first: its own step (`No conflicts.` if it applied cleanly), then the entries of the backports it was chained from. The script rebuilds each PR body from the original commit, so earlier steps' entries are not carried forward; copy them from the ones you recorded in Step 2 (substep 3).
 
 For each such PR:
 
@@ -112,23 +112,17 @@ For each such PR:
 gh pr view <pr-number> -R yugabyte/yugabyte-db --json body -q .body > /tmp/claude/pr-body-<pr-number>.md
 ```
 
-Append a `## Merge conflicts` section with the entries you recorded in Step 2 (substep 3) for that branch. For example, the 2025.2 PR:
-
-```
-## Merge conflicts
-
-### master --> 2025.2
-- `src/yb/master/catalog_manager.cc:1843` — [missing-prerequisite] dropped the `epoch` argument, which 2025.2's `AddTask` signature lacks
-- `src/yb/master/catalog_manager.h:412` — [adjacent-lines] placed the new method after 2025.2's extra private method
-```
-
-and a 2024.2 PR chained cleanly from it:
+Append a `## Merge conflicts` section with the entries you recorded in Step 2 (substep 3) for that branch and the branches it was chained from. For example, a 2024.2 PR chained cleanly from the 2025.2 backport, which needed resolution:
 
 ```
 ## Merge conflicts
 
 ### 2025.2 --> 2024.2
 No conflicts.
+
+### master --> 2025.2
+- `src/yb/master/catalog_manager.cc:1843` — [missing-prerequisite] dropped the `epoch` argument, which 2025.2's `AddTask` signature lacks
+- `src/yb/master/catalog_manager.h:412` — [adjacent-lines] placed the new method after 2025.2's extra private method
 ```
 
 Then push the new body via the REST API. **Do not use `gh pr edit --body-file`** — it errors with `GraphQL: Projects (classic) is being deprecated... (repository.pullRequest.projectCards)` on this repo:
