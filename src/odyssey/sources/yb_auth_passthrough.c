@@ -57,7 +57,8 @@ static int yb_forward_fatal_msg(od_client_t *client,
 	if (rc == -1)
 		goto errmsg;
 
-	od_frontend_fatal_forward(client, fatal_pkt.code, fatal_pkt.message);
+	od_frontend_fatal_forward(client, fatal_pkt.code, "%s",
+				  fatal_pkt.message);
 	return 0;
 
 errmsg:

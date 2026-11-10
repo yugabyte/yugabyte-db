@@ -61,7 +61,8 @@ enum {
  */
 static char ssl_empty_string[] = "";
 
-void yb_pg_tls_report_error(const char *fmt, ...);
+void yb_pg_tls_report_error(const char *fmt, ...)
+	__attribute__((format(printf, 1, 2)));
 
 static char *mm_tls_pg_str(char *s)
 {

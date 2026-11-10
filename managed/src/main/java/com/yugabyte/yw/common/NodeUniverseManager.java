@@ -70,6 +70,10 @@ public class NodeUniverseManager extends DevopsBase {
   public static final String K8S_CERTS_DIR = "/opt/certs/yugabyte";
   public static final String NODE_UTILS_SCRIPT = "bin/node_utils.sh";
 
+  /** Forces support bundle ysqlsh sessions read-only, independent of the statement allow list. */
+  static final String SUPPORT_BUNDLE_READ_ONLY_PGOPTIONS =
+      "export PGOPTIONS='-c default_transaction_read_only=on';";
+
   private final KeyLock<UUID> universeLock = new KeyLock<>();
 
   @Inject ImageBundleUtil imageBundleUtil;
@@ -659,6 +663,24 @@ public class NodeUniverseManager extends DevopsBase {
     return runCommand(node, universe, spec.command, spec.context, false /* useBash */);
   }
 
+  /**
+   * Runs support-bundle YSQL queries in one remote bash script. Each query is executed via a
+   * separate ysqlsh invocation so failures do not prevent later queries from running.
+   */
+  public ShellResponse runYsqlSupportBundleBatchCommands(
+      NodeDetails node,
+      Universe universe,
+      String dbName,
+      List<String> ysqlCommands,
+      long timeoutSec,
+      boolean authEnabled,
+      boolean cpEnabled) {
+    RemoteBashRunSpec spec =
+        buildYsqlSupportBundleBatchRunSpec(
+            node, universe, dbName, ysqlCommands, timeoutSec, authEnabled, cpEnabled);
+    return runCommand(node, universe, spec.command, spec.context, false /* useBash */);
+  }
+
   /** Builds the {@code bash -c} ysqlsh command and its context; run it with useBash=false. */
   public RemoteBashRunSpec buildYsqlBatchRunSpec(
       NodeDetails node,
@@ -684,6 +706,66 @@ public class NodeUniverseManager extends DevopsBase {
     command.add(bashCommandStr);
     return new RemoteBashRunSpec(
         command, buildYsqlShellContext(bashCommandStr, timeoutSec, logCmdOutput));
+  }
+
+  /**
+   * Builds a support-bundle batch script that prints {@code -- query:} headers, runs each query via
+   * ysqlsh, captures stderr, records per-query exit codes, and continues after failures.
+   */
+  public RemoteBashRunSpec buildYsqlSupportBundleBatchRunSpec(
+      NodeDetails node,
+      Universe universe,
+      String dbName,
+      List<String> ysqlCommands,
+      long timeoutSec,
+      boolean authEnabled,
+      boolean cpEnabled) {
+    List<String> command = new ArrayList<>();
+    command.add("bash");
+    command.add("-c");
+    command.add(
+        buildYsqlSupportBundleBatchBashScript(
+            node, universe, dbName, ysqlCommands, authEnabled, cpEnabled));
+    String bashCommandStr = command.get(2);
+    return new RemoteBashRunSpec(
+        command, buildYsqlShellContext(bashCommandStr, timeoutSec, true /* logCmdOutput */));
+  }
+
+  String buildYsqlSupportBundleBatchBashScript(
+      NodeDetails node,
+      Universe universe,
+      String dbName,
+      List<String> ysqlCommands,
+      boolean authEnabled,
+      boolean cpEnabled) {
+    Cluster cluster = universe.getUniverseDetails().getPrimaryCluster();
+    List<String> sslExport = new ArrayList<>();
+    appendYsqlSslExport(sslExport, cluster);
+    String sslExportPrefix = sslExport.isEmpty() ? "" : sslExport.get(0);
+    String ysqlshPrefix =
+        String.join(" ", buildYsqlshInvocationArgs(node, universe, dbName, authEnabled, cpEnabled));
+    StringBuilder script = new StringBuilder();
+    if (StringUtils.isNotEmpty(sslExportPrefix)) {
+      script.append(sslExportPrefix).append(' ');
+    }
+    // Support bundles only ever read. Setting this through PGOPTIONS rather than an extra -c keeps
+    // it out of the captured output, and it must stay scoped to this builder: the shared
+    // buildYsqlBatchRunSpec serves writers such as UpdateConsistencyCheck.
+    script.append(SUPPORT_BUNDLE_READ_ONLY_PGOPTIONS).append(' ');
+    for (String ysqlCommand : ysqlCommands) {
+      script
+          .append("printf '%s\\n' ")
+          .append(shellSingleQuote("-- query: " + ysqlCommand))
+          .append("; ")
+          .append(ysqlshPrefix)
+          .append(" -c \"")
+          .append(escapeYsqlQueryForShell(ysqlCommand))
+          .append(
+              "\" 2>&1; _ec=$?; if [ $_ec -ne 0 ]; then printf '%s\\n' \"(exit code $_ec)\"; fi;")
+          .append(" printf '\\n'; ");
+    }
+    script.append("exit 0");
+    return script.toString();
   }
 
   private void appendYsqlSslExport(List<String> bashCommand, Cluster cluster) {
@@ -731,6 +813,10 @@ public class NodeUniverseManager extends DevopsBase {
         .replace("$", "\\$");
   }
 
+  private static String shellSingleQuote(String value) {
+    return "'" + value.replace("'", "'\"'\"'") + "'";
+  }
+
   private ShellProcessContext buildYsqlShellContext(
       String bashCommandStr, long timeoutSec, boolean logCmdOutput) {
     Map<String, String> valsToRedact = new HashMap<>();
@@ -757,14 +843,96 @@ public class NodeUniverseManager extends DevopsBase {
     }
   }
 
-  // ysqlsh opens <dir>/.s.PGSQL.<port>, so ignore sockets a SIGKILLed postmaster left on another
-  // port. Postgres falls back to /tmp when tmp_dir is too long; the newest socket wins.
-  static String getYsqlSocketDirExpression(String tmpDirectory, String port) {
-    String sockets = tmpDirectory + "/.yb.*/.s.PGSQL." + port;
-    if (!"/tmp".equals(tmpDirectory)) {
-      sockets += " /tmp/.yb.*/.s.PGSQL." + port;
+  /**
+   * Runs support-bundle YCQL queries in one remote bash script. Each query is executed via a
+   * separate ycqlsh invocation so failures do not prevent later queries from running.
+   */
+  public ShellResponse runYcqlSupportBundleBatchCommands(
+      NodeDetails node,
+      Universe universe,
+      String keyspace,
+      List<String> ycqlCommands,
+      long timeoutSec) {
+    RemoteBashRunSpec spec =
+        buildYcqlSupportBundleBatchRunSpec(node, universe, keyspace, ycqlCommands, timeoutSec);
+    return runCommand(node, universe, spec.command, spec.context, false /* useBash */);
+  }
+
+  /**
+   * Builds a support-bundle batch script that prints {@code -- query:} headers, runs each query via
+   * ycqlsh, captures stderr, records per-query exit codes, and continues after failures. It passes
+   * no credentials: YBA has none for YCQL, so the caller skips universes with YCQL auth on.
+   */
+  public RemoteBashRunSpec buildYcqlSupportBundleBatchRunSpec(
+      NodeDetails node,
+      Universe universe,
+      String keyspace,
+      List<String> ycqlCommands,
+      long timeoutSec) {
+    List<String> command = new ArrayList<>();
+    command.add("bash");
+    command.add("-c");
+    command.add(buildYcqlSupportBundleBatchBashScript(node, universe, keyspace, ycqlCommands));
+    return new RemoteBashRunSpec(
+        command, ShellProcessContext.builder().logCmdOutput(true).timeoutSecs(timeoutSec).build());
+  }
+
+  String buildYcqlSupportBundleBatchBashScript(
+      NodeDetails node, Universe universe, String keyspace, List<String> ycqlCommands) {
+    String ycqlshPrefix = String.join(" ", buildYcqlshBaseArgs(node, universe, keyspace));
+    StringBuilder script = new StringBuilder();
+    for (String ycqlCommand : ycqlCommands) {
+      String escapedQuery = escapeYcqlQueryForShell(ensureYcqlSemicolon(ycqlCommand));
+      script
+          .append("printf '%s\\n' ")
+          .append(shellSingleQuote("-- query: " + ycqlCommand))
+          .append("; ")
+          .append(ycqlshPrefix)
+          .append(" -e \"")
+          .append(escapedQuery)
+          .append(
+              "\" 2>&1; _ec=$?; if [ $_ec -ne 0 ]; then printf '%s\\n' \"(exit code $_ec)\"; fi;")
+          .append(" printf '\\n'; ");
     }
-    return String.format("$(dirname \"$(ls -t %s 2>/dev/null | head -1)\")", sockets);
+    script.append("exit 0");
+    return script.toString();
+  }
+
+  private List<String> buildYcqlshBaseArgs(NodeDetails node, Universe universe, String keyspace) {
+    List<String> bashCommand = new ArrayList<>();
+    Cluster cluster = universe.getUniverseDetails().getPrimaryCluster();
+    bashCommand.add(getYbHomeDir(node, universe) + GFlagsUtil.YCQLSH_PATH);
+    if (cluster.userIntent.enableClientToNodeEncrypt) {
+      bashCommand.add("--ssl");
+    }
+    bashCommand.add(node.cloudInfo.private_ip);
+    bashCommand.add(String.valueOf(node.yqlServerRpcPort));
+    if (StringUtils.isNotEmpty(keyspace)) {
+      bashCommand.add("-k");
+      bashCommand.add(shellQuote(keyspace));
+    }
+    return bashCommand;
+  }
+
+  private static String ensureYcqlSemicolon(String ycqlCommand) {
+    String trimmed = ycqlCommand.trim();
+    if (trimmed.endsWith(";")) {
+      return trimmed;
+    }
+    return trimmed + ";";
+  }
+
+  /**
+   * Escapes a YCQL query for embedding in {@code ycqlsh -e "..."}. See {@link
+   * #escapeYsqlQueryForShell(String)} for why single quotes are not escaped.
+   */
+  private static String escapeYcqlQueryForShell(String ycqlCommand) {
+    // Backslash is escaped first so the backslashes added below are not escaped a second time.
+    return ycqlCommand
+        .replace("\\", "\\\\")
+        .replace("`", "\\`")
+        .replace("\"", "\\\"")
+        .replace("$", "\\$");
   }
 
   // ysqlsh opens <dir>/.s.PGSQL.<port>, so ignore sockets a SIGKILLed postmaster left on another

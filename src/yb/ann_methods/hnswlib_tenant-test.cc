@@ -20,8 +20,6 @@
 
 #include "yb/ann_methods/hnswlib_wrapper.h"
 
-#include "yb/gutil/endian.h"
-
 #include "yb/hnsw/hnsw_block_cache.h"
 #include "yb/hnsw/vector_index_test_base.h"
 
@@ -211,22 +209,14 @@ class HnswlibTenantTest : public hnsw::VectorIndexTestBase {
     ASSERT_TRUE(results.empty()) << tenant;
   }
 
-  // The first byte of the footer of a YbHnsw chunk file: the flags of the fields it holds.
-  static uint8_t FooterFlags(const std::string& path) {
-    faststring data;
-    CHECK_OK(ReadFileToString(Env::Default(), path, &data));
-    auto footer_size = LittleEndian::Load64(data.data() + data.size() - sizeof(uint64_t));
-    return data[data.size() - footer_size];
-  }
-
   // Checks the inserted index, the chunk it is saved to, and the chunk loaded from the file.
   void CheckIndexAndChunks() {
     ASSERT_NO_FATALS(CheckSearches(*index_));
     const auto path = GetTestPath("chunk");
     auto saved = ASSERT_RESULT(index_->SaveToFile(path));
     ASSERT_NE(saved, nullptr);
-    // Base fields and the tenant directory.
-    ASSERT_EQ(FooterFlags(path), 0x05);
+    // Base fields, block trailers and the tenant directory.
+    ASSERT_EQ(ASSERT_RESULT(YbHnswFooterFlags(path)), 0x07);
     {
       std::unique_ptr<RandomAccessFile> file;
       ASSERT_OK(block_cache_->env().NewRandomAccessFile(path, &file));
@@ -346,8 +336,8 @@ TEST_F(HnswlibTenantTest, ConcurrentTenantEntryPromotions) {
   }
 }
 
-// An index without tenants rejects tenant searches, and its chunks have the footer of older
-// releases, so they can still read them.
+// An index without tenants rejects tenant searches, and its chunks have no tenant directory flag,
+// so older releases can still read them.
 TEST_F(HnswlibTenantTest, NoTenants) {
   auto traits = ASSERT_RESULT((CreateHnswlibIndexTraits<FloatVector, float>(
       block_cache_, Options(), /* mem_tracker= */ nullptr, /* tenant_extractor= */ nullptr)));
@@ -361,7 +351,8 @@ TEST_F(HnswlibTenantTest, NoTenants) {
   const auto path = GetTestPath("chunk");
   auto saved = ASSERT_RESULT(index->SaveToFile(path));
   ASSERT_NE(saved, nullptr);
-  ASSERT_EQ(FooterFlags(path), 0x01);
+  // Base fields and block trailers.
+  ASSERT_EQ(ASSERT_RESULT(YbHnswFooterFlags(path)), 0x03);
   auto loaded = traits->Create(FactoryMode::kLoad, StoreVectorPayload::kTrue);
   ASSERT_OK(loaded->LoadFromFile(path, /* max_concurrent_reads= */ 1));
   for (const auto* chunk : {index.get(), saved.get(), loaded.get()}) {
@@ -374,6 +365,29 @@ TEST_F(HnswlibTenantTest, NoTenants) {
         entries_.front().vector, SearchOptions{.max_num_results = kMaxResults, .ef = kEf}));
     ASSERT_EQ(results.size(), kMaxResults);
     ASSERT_EQ(results.front().vector_id, entries_.front().id);
+  }
+}
+
+// Searches with and without a tenant read the tenant directory first, and fail when it is damaged.
+TEST_F(HnswlibTenantTest, DamagedTenantDirectory) {
+  for (const auto& entry : entries_) {
+    ASSERT_OK(Insert(entry));
+  }
+  const auto path = GetTestPath("chunk");
+  ASSERT_NE(ASSERT_RESULT(index_->SaveToFile(path)), nullptr);
+  // Smaller than the tenant directory block.
+  ASSERT_OK(DamageYbHnswBlocks(path, /* stride= */ 16));
+  auto loaded = traits_->Create(FactoryMode::kLoad, StoreVectorPayload::kTrue);
+  ASSERT_OK(loaded->LoadFromFile(path, /* max_concurrent_reads= */ 1));
+  for (const auto& tenant : {entries_.front().tenant, std::string()}) {
+    auto result = loaded->Search(entries_.front().vector, SearchOptions {
+      .max_num_results = kMaxResults,
+      .ef = kEf,
+      .tenant = Slice(tenant),
+    });
+    ASSERT_NOK(result);
+    ASSERT_TRUE(result.status().IsCorruption()) << result.status();
+    ASSERT_STR_CONTAINS(result.status().message().ToBuffer(), "Block checksum mismatch");
   }
 }
 

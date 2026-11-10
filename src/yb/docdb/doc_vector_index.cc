@@ -278,7 +278,9 @@ class DocVectorIndexViewImpl : public DocVectorIndexView {
   Status ForEachVector(const DocVectorIndexEntryCallback& callback) const override {
     ValueBuffer buffer;
     for (const auto& index : indexes_) {
-      for (const auto& entry : *index) {
+      auto it = index->CreateIterator();
+      for (; it->Valid(); it->Next()) {
+        const auto& entry = it->Entry();
         VectorToYSQL(entry.vector, &buffer);
         RETURN_NOT_OK(callback(DocVectorIndexEntry {
           .vector_id = entry.vector_id,
@@ -286,6 +288,7 @@ class DocVectorIndexViewImpl : public DocVectorIndexView {
           .payload = entry.payload,
         }));
       }
+      RETURN_NOT_OK(it->status());
     }
     return Status::OK();
   }

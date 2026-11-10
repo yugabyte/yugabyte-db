@@ -261,12 +261,16 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
        "Number of vectors to use for building the index. This is used if no input file is "
        "specified.")
       (OPTIONAL_ARG_FIELD(build_vecs_path),
-       "Input file containing vectors to build the index on, in the fvecs/bvecs/ivecs format.")
+       "Input file containing vectors to build the index on, in the fvecs/bvecs/ivecs/fbin "
+       "format.")
       (OPTIONAL_ARG_FIELD(query_vecs_path),
-       "Input file containing vectors to query the dataset with, in the fvecs/bvecs/ivecs format.")
+       "Input file containing vectors to query the dataset with, in the fvecs/bvecs/ivecs/fbin "
+       "format.")
       (OPTIONAL_ARG_FIELD(ground_truth_path),
        "Input file containing integer vectors of correct nearest neighbor vector identifiers "
-       "(0-based in the input dataset) for each query.")
+       "(0-based in the input dataset) for each query, in the ivecs format or the "
+       "big-ann-benchmarks ibin ground truth format (identifiers followed by distances). Needs a "
+       "record per query, or only per query used when --num_validation_queries limits them.")
       ("k", po::value(&args.k_values_comma_sep)->default_value(
           args.k_values_comma_sep),
        "A comma-separated list of the possible numbers of results k to retrieve with each "
@@ -274,7 +278,8 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
        "precomputed ground truth data, the maximum specified value of k can't be higher than "
        "the precomputed result set size.")
       (OPTIONAL_ARG_FIELD(num_validation_queries),
-       "Number of validation queries to execute")
+       "Number of validation queries to execute. With --query_vecs_path, 0 means all queries "
+       "in the file.")
       ("dimensions", po::value(&args.hnsw_options.dimensions),
        "Number of dimensions for automatically generated vectors. Required if no input file "
        "is specified.")
@@ -378,7 +383,7 @@ Result<CoordinateKind> DetermineCoordinateKind(BenchmarkArguments& args) {
   std::optional<CoordinateKind> coordinate_kind;
   for (const std::string& file_path : {args.build_vecs_path, args.query_vecs_path}) {
     if (!file_path.empty()) {
-      auto file_coordinate_kind = VERIFY_RESULT(GetCoordinateKindFromVecsFileName(file_path));
+      auto file_coordinate_kind = VERIFY_RESULT(GetVectorFileType(file_path)).coordinate_kind;
       if (coordinate_kind.has_value() &&
           *coordinate_kind != file_coordinate_kind) {
         return STATUS_FORMAT(
@@ -537,8 +542,7 @@ class BenchmarkTool {
       const std::string& description,
       size_t num_vectors_to_use) {
     if (!vectors_file_path.empty()) {
-      auto vec_reader = VERIFY_RESULT(OpenVecsFile<InputVector>(vectors_file_path, description));
-      RETURN_NOT_OK(vec_reader->Open());
+      auto vec_reader = VERIFY_RESULT(OpenVectorFile<InputVector>(vectors_file_path, description));
       RETURN_NOT_OK(SetDimensions(vec_reader->dimensions()));
       return vec_reader;
     }
@@ -556,6 +560,13 @@ class BenchmarkTool {
         "Could not determine $0", description);
   }
 
+  // A query file may have more queries than --num_validation_queries.
+  size_t num_queries() const {
+    const auto num_points = query_vector_source_->num_points();
+    return args_.num_validation_queries
+        ? std::min(num_points, args_.num_validation_queries) : num_points;
+  }
+
   Status LoadPrecomputedGroundTruth() {
     if (args_.ground_truth_path.empty()) {
       return Status::OK();
@@ -569,16 +580,19 @@ class BenchmarkTool {
     }
     // The ground truth file contains result sets composed of 0-based vector indexes in the
     // corresponding "base" input file. Convert them to our vertex ids.
-    auto ground_truth_by_index = VERIFY_RESULT(
-        LoadVecsFile<Int32Vector>(args_.ground_truth_path, "precomputed ground truth file"));
-    if (ground_truth_by_index.size() != query_vector_source_->num_points()) {
+    auto reader = VERIFY_RESULT(OpenVectorFile<Int32Vector>(
+        args_.ground_truth_path, "precomputed ground truth file"));
+    // One record per query, but only the queries used are needed when
+    // --num_validation_queries limits them.
+    const auto num_records = reader->num_points();
+    const bool queries_limited = num_queries() < query_vector_source_->num_points();
+    if (queries_limited ? num_records < num_queries() : num_records != num_queries()) {
       return STATUS_FORMAT(
           IllegalState,
-          "The number of provided ground truth records $0 does not match the number of provided "
-          "queries $1.",
-          ground_truth_by_index.size(),
-          query_vector_source_->num_points());
+          "The number of provided ground truth records $0 $1 the number of queries $2.",
+          num_records, queries_limited ? "is less than" : "does not match", num_queries());
     }
+    auto ground_truth_by_index = VERIFY_RESULT(reader->LoadVectors(num_queries()));
     loaded_ground_truth_.clear();
     loaded_ground_truth_.reserve(ground_truth_by_index.size());
     std::unordered_set<int32_t> used_indexes;
@@ -629,7 +643,7 @@ class BenchmarkTool {
 
   Status Validate() {
     LOG(INFO) << "Index stats:\n" << vector_index_->IndexStatsStr();
-    query_vectors_ = VERIFY_RESULT(query_vector_source_->LoadVectors());
+    query_vectors_ = VERIFY_RESULT(query_vector_source_->LoadVectors(num_queries()));
 
     auto distance_fn = GetDistanceFunction<InputVector, InputDistanceResult>(
         args_.hnsw_options.distance_kind);

@@ -19,12 +19,21 @@
 #include "yb/rocksdb/cache.h"
 
 #include "yb/util/crc.h"
+#include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/unique_lock.h"
 
 using namespace yb::size_literals;
+
+DEFINE_RUNTIME_AUTO_bool(yb_hnsw_write_block_checksums, kLocalPersisted, false, true,
+    "End every block of new YbHnsw vector index chunks with a checksum, footer flag 0x02. Older "
+    "releases ignore the checksums.");
+
+DEFINE_test_flag(bool, yb_hnsw_ignore_block_trailers, false,
+    "Read YbHnsw files like older releases, which ignore block trailers.");
 
 METRIC_DEFINE_counter(server, vector_index_cache_hit, "Vector index block cache hits",
                       yb::MetricUnit::kCacheHits,
@@ -137,15 +146,19 @@ void Convert(size_t flags, RefForConverter<Converter, Config> config, Converter&
 
 // The first byte of the footer is a set of flags for the fields it holds:
 //   0x01, always set: the fields of every release.
-//   0x04: the tenant directory, see Header::tenant_directory_block. 0x02 is left for the block
-//   checksums of #36048.
-// A chunk without tenants holds 0x01 alone, which older releases read as their version 1.
+//   0x02: every block ends with a CRC32C trailer, see kBlockTrailerSize.
+//   0x04: the tenant directory, see Header::tenant_directory_block.
+// A chunk without trailers and tenants holds 0x01 alone, which older releases read as their
+// version 1. They also read 0x03 like version 1: they find data inside a block by offsets from
+// other blocks and never read past them, so they ignore the trailers, keeping rollback possible.
 constexpr uint8_t kFooterBase = 0x01;
+constexpr uint8_t kFooterBlockTrailers = 0x02;
 constexpr uint8_t kFooterTenantDirectory = 0x04;
-constexpr uint8_t kFooterKnownFlags = kFooterBase | kFooterTenantDirectory;
+constexpr uint8_t kFooterKnownFlags = kFooterBase | kFooterBlockTrailers | kFooterTenantDirectory;
 
-uint8_t FooterFlags(const Header& header) {
-  return kFooterBase | (header.num_tenant_directory_blocks ? kFooterTenantDirectory : 0);
+uint8_t FooterFlags(const Header& header, HasBlockTrailers has_block_trailers) {
+  return kFooterBase | (has_block_trailers ? kFooterBlockTrailers : 0) |
+         (header.num_tenant_directory_blocks ? kFooterTenantDirectory : 0);
 }
 
 template <class Converter>
@@ -192,10 +205,6 @@ size_t SerializedSize(const Header& header, size_t flags) {
   return counter.value();
 }
 
-size_t SerializedSize(const Header& header) {
-  return SerializedSize(header, FooterFlags(header));
-}
-
 class SliceReader {
  public:
   explicit SliceReader(Slice input) : input_(input) {}
@@ -226,7 +235,29 @@ void Deserialize(size_t flags, Out& out, Args&&... args) {
   Convert(flags, out, std::forward<Args&&>(args)...);
 }
 
+Status VerifyBlockTrailer(const RandomAccessFile& file, size_t offset, Slice block) {
+  SCHECK_GE(
+      block.size(), kBlockTrailerSize, Corruption,
+      Format("Block at $0 in $1 is too small: $2", offset, file.filename(), block.size()));
+  auto contents_size = block.size() - kBlockTrailerSize;
+  auto expected = Load<uint32_t, HnswEndian>(block.data() + contents_size);
+  auto actual = crc::Crc32c(block.data(), contents_size);
+  if (actual != expected) {
+    return STATUS_FORMAT(
+        Corruption, "Block checksum mismatch at $0 in $1, size: $2, expected: $3, actual: $4",
+        offset, file.filename(), block.size(), expected, actual);
+  }
+  return Status::OK();
+}
+
 } // namespace
+
+void WriteBlockTrailer(DataBlock& block) {
+  DCHECK_GE(block.size, kBlockTrailerSize);
+  auto contents_size = block.size - kBlockTrailerSize;
+  Store<uint32_t, HnswEndian>(
+      block.data.get() + contents_size, crc::Crc32c(block.data.get(), contents_size));
+}
 
 BlockCacheMetrics::BlockCacheMetrics(const MetricEntityPtr& entity)
     : hit(METRIC_vector_index_cache_hit.Instantiate(entity)),
@@ -238,6 +269,8 @@ BlockCacheMetrics::BlockCacheMetrics(const MetricEntityPtr& entity)
       read_us(METRIC_vector_index_cache_read_us.Instantiate(entity)),
       take_wait_us(METRIC_vector_index_cache_read_us.Instantiate(entity)) {
 }
+
+YB_STRONGLY_TYPED_BOOL(FailedTake);
 
 struct CachedBlock {
   BlockCache* cache = nullptr;
@@ -275,7 +308,8 @@ struct CachedBlock {
     }
   }
 
-  Result<const std::byte*> Take(RandomAccessFile& file) {
+  // The caller should call Release only if this succeeds.
+  Result<const std::byte*> Take(RandomAccessFile& file, HasBlockTrailers has_trailer) {
     cache->metrics().query->Increment();
 
     UniqueLock lock(mutex);
@@ -299,7 +333,15 @@ struct CachedBlock {
       std::promise<Result<const std::byte*>> promise;
       load_future = promise.get_future();
       lock.unlock();
-      auto result = Load(file);
+      auto result = Load(file, has_trailer);
+      if (!result.ok()) {
+        // Before the error is published, so a Take that starts after it reads the block again
+        // instead of returning this error. Waiters hold their own copy of the future.
+        lock.lock();
+        load_future = {};
+        --use_count;
+        lock.unlock();
+      }
       promise.set_value(result);
       return result;
     }
@@ -307,27 +349,19 @@ struct CachedBlock {
     auto future = load_future;
     lock.unlock();
 
+    TEST_SYNC_POINT("CachedBlock::Take:WaitForLoad");
     auto start = MonoTime::Now();
     auto result = future.get();
     cache->metrics().take_wait_us->Increment((MonoTime::Now() - start).ToMicroseconds());
+    if (!result.ok()) {
+      // Another Take could have loaded the block since, so the handle could be ours to release.
+      DoRelease(FailedTake::kTrue);
+    }
     return result;
   }
 
   void Release() {
-    BlockCacheHandle release_handle;
-    {
-      std::lock_guard lock(mutex);
-      if (--use_count != 0) {
-        return;
-      }
-      release_handle = std::exchange(handle, {});
-    }
-    if (release_handle) {
-      cache->metrics().add->IncrementBy(size);
-      cache->Release(release_handle);
-    } else {
-      cache->metrics().evict->IncrementBy(size);
-    }
+    DoRelease(FailedTake::kFalse);
   }
 
   void Unload() {
@@ -348,7 +382,26 @@ struct CachedBlock {
   }
 
  private:
-  Result<const std::byte*> Load(RandomAccessFile& file) {
+  // A failed Take did not hold the block, so it does not count an eviction.
+  void DoRelease(FailedTake failed_take) {
+    BlockCacheHandle release_handle;
+    {
+      std::lock_guard lock(mutex);
+      if (--use_count != 0) {
+        return;
+      }
+      release_handle = std::exchange(handle, {});
+    }
+    if (release_handle) {
+      cache->metrics().add->IncrementBy(size);
+      cache->Release(release_handle);
+    } else if (!failed_take) {
+      cache->metrics().evict->IncrementBy(size);
+    }
+  }
+
+  Result<const std::byte*> Load(RandomAccessFile& file, HasBlockTrailers has_trailer) {
+    TEST_SYNC_POINT("CachedBlock::Load");
     auto start = MonoTime::Now();
     std::unique_ptr<std::byte[]> new_content(new std::byte[size]);
     Slice read_result;
@@ -356,6 +409,9 @@ struct CachedBlock {
     RSTATUS_DCHECK_EQ(
         read_result.size(), size, Corruption,
         Format("Wrong number of read bytes in block $0 - $1", end - size, size));
+    if (has_trailer) {
+      RETURN_NOT_OK(VerifyBlockTrailer(file, end - size, read_result));
+    }
 
     cache->metrics().read_us->Increment((MonoTime::Now() - start).ToMicroseconds());
     cache->metrics().read->IncrementBy(size);
@@ -371,14 +427,18 @@ struct CachedBlock {
   }
 };
 
+FileBlockCacheBuilder::FileBlockCacheBuilder()
+    : has_block_trailers_(FLAGS_yb_hnsw_write_block_checksums) {
+}
+
 DataBlock FileBlockCacheBuilder::MakeFooter(const Header& header) const {
+  const auto flags = FooterFlags(header, has_block_trailers_);
   DataBlock buffer(
     sizeof(uint8_t) +
-    SerializedSize(header) + sizeof(uint64_t) * blocks_.size() +
+    SerializedSize(header, flags) + sizeof(uint64_t) * blocks_.size() +
     sizeof(uint32_t) + // CRC32
     sizeof(uint64_t)); // Size
   BlockWriter writer(buffer);
-  const auto flags = FooterFlags(header);
   writer.Append<uint8_t>(flags);
   Convert(flags, header, writer);
   uint64_t sum = 0;
@@ -399,6 +459,8 @@ FileBlockCache::FileBlockCache(
   if (!builder) {
     return;
   }
+  has_block_trailers_ = HasBlockTrailers(
+      builder->has_block_trailers() && !FLAGS_TEST_yb_hnsw_ignore_block_trailers);
   auto& blocks = builder->blocks();
   size_t total_size = 0;
   size_t index = 0;
@@ -434,10 +496,11 @@ Result<Header> FileBlockCache::Load() {
   SCHECK_GE(footer_data.size(), sizeof(FooterSizeType), Corruption, "Wrong number of read bytes");
   auto footer_size = LittleEndian::Load64(footer_data.end() - sizeof(FooterSizeType));
   SCHECK_GE(file_size, footer_size, Corruption, "Footer size greater than file size");
-  // SliceReader does not check bounds, so require the version and the header without layers.
+  // SliceReader does not check bounds, so require the flags and the header without layers.
   SCHECK_GE(
       footer_size,
-      sizeof(uint8_t) + SerializedSize(Header()) + sizeof(uint32_t) + sizeof(FooterSizeType),
+      sizeof(uint8_t) + SerializedSize(Header(), kFooterBase) + sizeof(uint32_t) +
+          sizeof(FooterSizeType),
       Corruption, "Footer size too small");
   if (footer_size > buffer.size()) {
     buffer.resize(footer_size);
@@ -459,6 +522,8 @@ Result<Header> FileBlockCache::Load() {
   // The size check above covers only the fields of every release.
   SCHECK_GE(
       reader.Left(), SerializedSize(Header(), flags), Corruption, "Footer size too small");
+  has_block_trailers_ = HasBlockTrailers(
+      (flags & kFooterBlockTrailers) && !FLAGS_TEST_yb_hnsw_ignore_block_trailers);
   Deserialize(flags, header, reader);
   AllocateBlocks(reader.Left() / sizeof(uint64_t));
   size_t prev_end = 0;
@@ -471,7 +536,7 @@ Result<Header> FileBlockCache::Load() {
 }
 
 Result<const std::byte*> FileBlockCache::Take(size_t index) {
-  return blocks_[index].Take(*file_);
+  return blocks_[index].Take(*file_, has_block_trailers_);
 }
 
 void FileBlockCache::Release(size_t index) {

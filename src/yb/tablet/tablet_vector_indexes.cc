@@ -131,6 +131,10 @@ class IndexReverseMappingReader : public docdb::DocVectorIndexReverseMappingRead
     return key_bounds_->IsWithinBounds(decoded.ybctid) ? value : Slice{};
   }
 
+  Result<ReadRestartData> GetReadRestartData() const override {
+    return iter_holder_.iter->GetReadRestartData();
+  }
+
  private:
   ScopedRWOperation rocksdb_op_;
   docdb::IntentAwareIteratorWithBounds iter_holder_;

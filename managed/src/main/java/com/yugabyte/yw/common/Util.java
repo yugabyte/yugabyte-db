@@ -294,7 +294,14 @@ public class Util {
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
    */
   public static List<InetSocketAddress> getNodesAsInet(UUID universeUUID) {
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    return getNodesAsInet(Universe.getOrBadRequest(universeUUID));
+  }
+
+  /**
+   * Returns a list of Inet address objects in the proxy tier of the given universe snapshot. This
+   * is needed by Cassandra clients.
+   */
+  public static List<InetSocketAddress> getNodesAsInet(Universe universe) {
     List<InetSocketAddress> inetAddrs = new ArrayList<>();
     for (String address : universe.getYQLServerAddresses().split(",")) {
       String[] splitAddress = address.split(":");
@@ -954,6 +961,30 @@ public class Util {
         .collect(Collectors.toSet());
   }
 
+  /**
+   * Maps each node's {@code secondary_private_ip} to its {@code private_ip}. Dual-NIC servers
+   * advertise their secondary IP, while YBA reaches them by their private IP. Nodes without a
+   * secondary IP, or with the same IP for both, are skipped.
+   */
+  public static Map<String, String> getSecondaryToPrivateIps(Collection<NodeDetails> nodes) {
+    Map<String, String> result = new HashMap<>();
+    for (NodeDetails node : nodes) {
+      if (node == null || node.cloudInfo == null) {
+        continue;
+      }
+      String primaryIp = node.cloudInfo.private_ip;
+      String secondaryIp = node.cloudInfo.secondary_private_ip;
+      if (StringUtils.isNotBlank(primaryIp)
+          && !"null".equals(primaryIp)
+          && StringUtils.isNotBlank(secondaryIp)
+          && !"null".equals(secondaryIp)
+          && !secondaryIp.equals(primaryIp)) {
+        result.put(secondaryIp, primaryIp);
+      }
+    }
+    return result;
+  }
+
   // Generate a deterministic node UUID from the universe UUID and the node name.
   public static UUID generateNodeUUID(UUID universeUuid, String nodeName) {
     return UUID.nameUUIDFromBytes((universeUuid.toString() + nodeName).getBytes());
@@ -1415,241 +1446,6 @@ public class Util {
             }
           }
         }
-        applyPerProcessDetailsToNodeSpec(masterPerProcess, masterSpec);
-      }
-    }
-
-    HierarchicalNodesSpec.RootNodesSpec rootNodesSpec =
-        HierarchicalNodesSpec.RootNodesSpec.builder()
-            .tserverSpecification(tserverSpec)
-            .masterSpecification(masterSpec)
-            .build();
-    if (userIntent.getUserIntentOverrides() != null
-        && MapUtils.isNotEmpty(userIntent.getUserIntentOverrides().getAzOverrides())) {
-      for (Map.Entry<UUID, UniverseDefinitionTaskParams.AZOverrides> entry :
-          userIntent.getUserIntentOverrides().getAzOverrides().entrySet()) {
-        AvailabilityZone az = AvailabilityZone.getOrBadRequest(entry.getKey());
-        HierarchicalNodesSpec.RegionNodesSpec regionNodesSpec =
-            rootNodesSpec.getOrCreateDescendant(az.getRegion().getCode());
-        HierarchicalNodesSpec.AzNodesSpec azNodesSpec =
-            regionNodesSpec.getOrCreateDescendant(az.getCode());
-        applyAzOverridesToNodesSpec(entry.getValue(), azNodesSpec);
-      }
-    }
-    rootNodesSpec.clean();
-    rootNodesSpec.clearEmptyDescendants();
-    spec.setNodesSpecs(rootNodesSpec);
-    userIntent.providerSpecifications = new ArrayList<>();
-    userIntent.providerSpecifications.add(spec);
-    cleanOldProviderFields(userIntent);
-  }
-
-  private static void cleanOldProviderFields(UserIntent userIntent) {
-    userIntent.provider = null;
-    userIntent.providerType = null;
-    userIntent.accessKeyCode = null;
-    userIntent.awsArnString = null;
-    userIntent.imageBundleUUID = null;
-    userIntent.instanceTags = null;
-    userIntent.instanceType = null;
-    userIntent.masterInstanceType = null;
-    userIntent.deviceInfo = null;
-    userIntent.masterDeviceInfo = null;
-    userIntent.universeOverrides = null;
-    userIntent.azOverrides = null;
-    userIntent.masterK8SNodeResourceSpec = null;
-    userIntent.tserverK8SNodeResourceSpec = null;
-    userIntent.setUserIntentOverrides(null);
-  }
-
-  /**
-   * Applies {@link #convertOldSchemaToProviderSpecification} to every cluster in {@code params}.
-   */
-  public static void convertOldSchemaToProviderSpecifications(
-      RuntimeConfGetter confGetter, UniverseDefinitionTaskParams params) {
-    if (params == null || params.clusters == null) {
-      return;
-    }
-    for (Cluster cluster : params.clusters) {
-      if (cluster != null) {
-        convertOldSchemaToProviderSpecification(confGetter, cluster.userIntent);
-      }
-    }
-  }
-
-  /** Copies ProviderSpecification fields onto the legacy flat UserIntent fields. */
-  private static void fillOldSchemaFieldsFromProviderSpecification(
-      UserIntent userIntent, UniverseDefinitionTaskParams.ProviderSpecification spec) {
-    spec.validate(userIntent.dedicatedNodes, false);
-    UUID providerUUID = spec.getProviderUUID();
-    userIntent.provider = providerUUID.toString();
-    userIntent.providerType = spec.getProviderType();
-    userIntent.accessKeyCode = spec.getAccessKeyCode();
-    userIntent.imageBundleUUID = spec.getImageBundleUUID();
-    userIntent.instanceTags =
-        spec.getInstanceTags() == null ? new HashMap<>() : new HashMap<>(spec.getInstanceTags());
-    userIntent.awsArnString = spec.getAwsInstanceProfile();
-    userIntent.enableLB = spec.isEnableLoadBalancer();
-    userIntent.enableExposingService = spec.getExposingServiceState();
-    userIntent.universeOverrides = spec.getHelmOverrides();
-
-    userIntent.azOverrides =
-        spec.getAzHelmOverrides() == null ? null : new HashMap<>(spec.getAzHelmOverrides());
-
-    HierarchicalNodesSpec.RootNodesSpec nodesSpecs = spec.getNodesSpecs();
-    HierarchicalNodesSpec.NodeSpec tserverSpec =
-        nodesSpecs == null ? null : nodesSpecs.getTserverSpecification();
-    if (tserverSpec != null) {
-      userIntent.instanceType = tserverSpec.getInstanceType();
-      userIntent.deviceInfo =
-          tserverSpec.getDeviceInfo() == null ? null : tserverSpec.getDeviceInfo().clone();
-      userIntent.setCgroupSize(tserverSpec.getCgroupSize());
-      userIntent.setProxyConfig(
-          tserverSpec.getBackupProxyConfig() == null
-              ? null
-              : tserverSpec.getBackupProxyConfig().clone());
-      userIntent.tserverK8SNodeResourceSpec =
-          tserverSpec.getK8SNodeResourceSpec() == null
-              ? null
-              : tserverSpec.getK8SNodeResourceSpec().clone();
-    }
-    HierarchicalNodesSpec.NodeSpec masterSpec =
-        nodesSpecs == null ? null : nodesSpecs.getMasterSpecification();
-    if (masterSpec != null) {
-      userIntent.masterInstanceType = masterSpec.getInstanceType();
-      userIntent.masterDeviceInfo =
-          masterSpec.getDeviceInfo() == null ? null : masterSpec.getDeviceInfo().clone();
-
-      userIntent.masterK8SNodeResourceSpec =
-          masterSpec.getK8SNodeResourceSpec() == null
-              ? null
-              : masterSpec.getK8SNodeResourceSpec().clone();
-    }
-
-    if (nodesSpecs != null) {
-      UniverseDefinitionTaskParams.UserIntentOverrides overrides =
-          userIntent.getUserIntentOverrides() == null
-              ? new UniverseDefinitionTaskParams.UserIntentOverrides()
-              : userIntent.getUserIntentOverrides();
-      // Region-level specs expand onto all AZs in the region; AZ-level specs overwrite.
-      if (nodesSpecs.getRegionNodesSpecs() != null) {
-        Provider provider = Provider.getOrBadRequest(providerUUID);
-        for (HierarchicalNodesSpec.RegionNodesSpec regionNodesSpec :
-            nodesSpecs.getRegionNodesSpecs()) {
-          Region region = Region.getByCode(provider, regionNodesSpec.getRegionCode());
-          if (region == null) {
-            continue;
-          }
-          boolean hasRegionLevelNodeSpecs =
-              (regionNodesSpec.getTserverSpecification() != null
-                      && !regionNodesSpec.getTserverSpecification().isEmpty())
-                  || (regionNodesSpec.getMasterSpecification() != null
-                      && !regionNodesSpec.getMasterSpecification().isEmpty());
-          if (hasRegionLevelNodeSpecs) {
-            for (AvailabilityZone az : region.getAllZones()) {
-              applyNodesSpecToAzOverrides(overrides, az.getUuid(), regionNodesSpec);
-            }
-          }
-          if (regionNodesSpec.getAzNodesSpecs() != null) {
-            for (HierarchicalNodesSpec.AzNodesSpec azNodesSpec :
-                regionNodesSpec.getAzNodesSpecs()) {
-              AvailabilityZone.maybeGetByCode(provider, azNodesSpec.getAzCode())
-                  .ifPresent(
-                      zone -> {
-                        applyNodesSpecToAzOverrides(overrides, zone.getUuid(), azNodesSpec);
-                      });
-            }
-          }
-        }
-      }
-      if (overrides.allNull()) {
-        userIntent.setUserIntentOverrides(null);
-      } else {
-        userIntent.setUserIntentOverrides(overrides);
-      }
-    }
-  }
-
-  private static void applyNodesSpecToAzOverrides(
-      UniverseDefinitionTaskParams.UserIntentOverrides overrides,
-      UUID azUUID,
-      HierarchicalNodesSpec.NodesSpec nodesSpec) {
-    if (nodesSpec == null) {
-      return;
-    }
-    HierarchicalNodesSpec.NodeSpec tserver = nodesSpec.getTserverSpecification();
-    HierarchicalNodesSpec.NodeSpec master = nodesSpec.getMasterSpecification();
-    boolean tserverEmpty = tserver == null || tserver.isEmpty();
-    boolean masterEmpty = master == null || master.isEmpty();
-    if (tserverEmpty && masterEmpty) {
-      return;
-    }
-    overrides.updateAZOverride(
-        azUUID,
-        azOverrides -> {
-          if (!tserverEmpty) {
-            azOverrides.setInstanceType(tserver.getInstanceType());
-            azOverrides.setDeviceInfo(
-                tserver.getDeviceInfo() == null ? null : tserver.getDeviceInfo().clone());
-            azOverrides.setCgroupSize(tserver.getCgroupSize());
-            azOverrides.setProxyConfig(
-                tserver.getBackupProxyConfig() == null
-                    ? null
-                    : tserver.getBackupProxyConfig().clone());
-          }
-          if (!masterEmpty
-              && (master.getInstanceType() != null || master.getDeviceInfo() != null)) {
-            azOverrides.updatePerProcess(
-                UniverseTaskBase.ServerType.MASTER,
-                perProcess -> {
-                  perProcess.setInstanceType(master.getInstanceType());
-                  perProcess.setDeviceInfo(
-                      master.getDeviceInfo() == null ? null : master.getDeviceInfo().clone());
-                });
-          }
-        });
-  }
-
-  private static void applyPerProcessDetailsToNodeSpec(
-      UniverseDefinitionTaskParams.PerProcessDetails details,
-      HierarchicalNodesSpec.NodeSpec nodeSpec) {
-    if (details.getInstanceType() != null) {
-      nodeSpec.setInstanceType(details.getInstanceType());
-    }
-    if (details.getDeviceInfo() != null) {
-      nodeSpec.setDeviceInfo(details.getDeviceInfo().clone());
-    }
-  }
-
-  private static void applyAzOverridesToNodesSpec(
-      UniverseDefinitionTaskParams.AZOverrides azOverrides,
-      HierarchicalNodesSpec.AzNodesSpec azNodesSpec) {
-    if (azOverrides == null || azOverrides.allNull()) {
-      return;
-    }
-    HierarchicalNodesSpec.NodeSpec tserver = azNodesSpec.getOrCreateTserverSpec();
-    if (azOverrides.getInstanceType() != null) {
-      tserver.setInstanceType(azOverrides.getInstanceType());
-    }
-    if (azOverrides.getDeviceInfo() != null) {
-      tserver.setDeviceInfo(azOverrides.getDeviceInfo().clone());
-    }
-    if (azOverrides.getCgroupSize() != null) {
-      tserver.setCgroupSize(azOverrides.getCgroupSize());
-    }
-    if (azOverrides.getProxyConfig() != null) {
-      tserver.setBackupProxyConfig(azOverrides.getProxyConfig().clone());
-    }
-    if (MapUtils.isNotEmpty(azOverrides.getPerProcess())) {
-      UniverseDefinitionTaskParams.PerProcessDetails tserverPerProcess =
-          azOverrides.getPerProcess().get(UniverseTaskBase.ServerType.TSERVER);
-      if (tserverPerProcess != null) {
-        applyPerProcessDetailsToNodeSpec(tserverPerProcess, tserver);
-      }
-      UniverseDefinitionTaskParams.PerProcessDetails masterPerProcess =
-          azOverrides.getPerProcess().get(UniverseTaskBase.ServerType.MASTER);
-      if (masterPerProcess != null) {
-        applyPerProcessDetailsToNodeSpec(masterPerProcess, azNodesSpec.getOrCreateMasterSpec());
       }
       if (overrides.allNull()) {
         userIntent.setUserIntentOverrides(null);
