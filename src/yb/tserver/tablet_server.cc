@@ -1084,9 +1084,6 @@ void TabletServer::Shutdown() {
   }
   LOG(INFO) << "TabletServer shutting down...";
 
-  // Unblock RPCs waiting in AllocateShared, otherwise RPC server shutdown hangs joining them.
-  object_lock_shared_state_manager_->Shutdown();
-
   // Best effort to give up our ysql lease.
   // todo(zdrudi): there's lifetime issues trying to access the pg_supervisor here through
   // callbacks. Probably due to the way the MiniCluster sets up the PgSupervisor.
