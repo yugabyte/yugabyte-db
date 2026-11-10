@@ -180,7 +180,6 @@ DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
-DECLARE_bool(enable_object_locking_for_table_locks);
 
 namespace yb::tserver {
 namespace {
@@ -1570,10 +1569,6 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
       const std::vector<RemoteTabletServerPtr>& remote_tservers,
       PgGetLockStatusResponsePB* resp,
       std::unordered_map<ObjectLockContext, LockInfoWithCounter>* object_lock_info_map) {
-    if (!FLAGS_enable_object_locking_for_table_locks) {
-      return Status::OK();
-    }
-
     // Blocker (blocked_by) info is only present on the node(s) where the lock is waiting, and the
     // merge logic below Swaps whole ObjectLockInfoPBs (which would drop blockers). Accumulate the
     // union of blocking transactions per lock context here and stamp it onto the final entries.
