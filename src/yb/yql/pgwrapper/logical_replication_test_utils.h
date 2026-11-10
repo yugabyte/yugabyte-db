@@ -31,7 +31,7 @@ namespace yb::pgwrapper {
 Status StreamSlotAndAcknowledge(
     const std::string& conn_str, const std::string& slot_name, const std::string& publication_name,
     const std::string& needle, MonoDelta timeout,
-    std::vector<std::string>* inserted_rows = nullptr);
+    std::vector<std::string>* inserted_rows);
 
 // Returns the column values of a pgoutput insert message, joined by commas. A null value is NULL
 // and an unchanged TOAST value is UNCHANGED.

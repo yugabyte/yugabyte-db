@@ -917,7 +917,8 @@ message GetUniverseReplicationInfoResponsePB {
 }
 
 message PrepareCDCStreamsForTransactionalDDLRequestPB {
-  // The stream to prepare. If not set, then all implicit pub refresh streams are prepared.
+  // The stream to prepare. If not set, then all streams that detect publication changes
+  // implicitly are prepared.
   optional string stream_id = 1;
 }
 

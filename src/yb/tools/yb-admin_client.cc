@@ -4339,11 +4339,8 @@ Status ClusterAdminClient::PrepareCDCStreamsForTransactionalDDL(
     return Status::OK();
   }
   RETURN_NOT_OK(InvalidateCDCStreamMetadataCaches());
-  std::vector<std::string> stream_ids;
-  for (const auto& stream : resp.streams()) {
-    stream_ids.push_back(stream.stream_id());
-  }
-  cout << "Prepared CDC streams for transactional DDL: " << JoinStrings(stream_ids, ", ") << "\n";
+  cout << "Prepared CDC streams for transactional DDL: "
+       << CollectionToString(resp.streams(), [](const auto& s) { return s.stream_id(); }) << "\n";
   return Status::OK();
 }
 
@@ -4362,6 +4359,8 @@ Status ClusterAdminClient::InvalidateCDCStreamMetadataCaches() {
   }
   const auto num_masters = masters.masters_size();
 
+  // Only the masters serve the sys catalog tablet, and VWAL init reloads the stream on a tserver.
+  // The tservers' caches are invalidated as a precaution.
   RepeatedPtrField<ListTabletServersResponsePB::Entry> tservers;
   RETURN_NOT_OK(ListTabletServers(&tservers));
   for (const auto& tserver : tservers) {

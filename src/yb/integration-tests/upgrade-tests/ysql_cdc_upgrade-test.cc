@@ -19,12 +19,16 @@
 #include "yb/integration-tests/upgrade-tests/upgrade_test_base.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/string_util.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/logical_replication_test_utils.h"
 
 namespace yb {
+
+YB_STRONGLY_TYPED_BOOL(IgnoreReadTime);
+YB_STRONGLY_TYPED_BOOL(WithNewCol);
 
 // In 2024.x without ysql_enable_pg_export_snapshot flag:
 //   - Must use USE_SNAPSHOT (not EXPORT_SNAPSHOT)
@@ -163,7 +167,7 @@ class CdcUpgradeTest : public UpgradeTestBase {
     const auto stream_id = VERIFY_RESULT(GetSlotStream(slot_name)).first;
     auto output = VERIFY_RESULT(PrepareStreamForTxnDdl(stream_id));
     SCHECK_STR_CONTAINS(
-        output, Format("Prepared CDC streams for transactional DDL: $0", stream_id));
+        output, Format("Prepared CDC streams for transactional DDL: [$0]", stream_id));
     SCHECK(VERIFY_RESULT(HasTxnDdlCatalogTables(slot_name)), IllegalState,
            Format("$0 lacks the transactional DDL catalog tables", slot_name));
     return Status::OK();
@@ -193,19 +197,14 @@ class CdcUpgradeTest : public UpgradeTestBase {
 
   void TestImplicitSlotDecodesTxnDdlAfterUpgrade();
 
-  // 2024.2 only supports USE_SNAPSHOT, which 2026.1 only allows inside a transaction.
-  Status CreatePublicationAndSlots(
-      const std::vector<std::string>& slot_names, bool use_snapshot = true) {
+  // 2026.1 allows USE_SNAPSHOT only inside a transaction.
+  Status CreatePublicationAndSlots(const std::vector<std::string>& slot_names) {
     auto conn = VERIFY_RESULT(cluster_->ConnectToDB(kDbName));
     // pgoutput doesn't support YB's default replica identity, CHANGE.
     RETURN_NOT_OK(conn.ExecuteFormat("ALTER TABLE $0 REPLICA IDENTITY DEFAULT", kTableName));
     RETURN_NOT_OK(conn.ExecuteFormat("CREATE PUBLICATION $0 FOR ALL TABLES", kPubName));
     for (const auto& slot : slot_names) {
-      if (use_snapshot) {
-        RETURN_NOT_OK(CreateReplicationSlotWithUseSnapshot(slot));
-      } else {
-        RETURN_NOT_OK(CreateReplicationSlotWithExportSnapshot(slot));
-      }
+      RETURN_NOT_OK(CreateReplicationSlotWithExportSnapshot(slot));
     }
     return Status::OK();
   }
@@ -217,7 +216,7 @@ class CdcUpgradeTest : public UpgradeTestBase {
         last);
   }
 
-  static std::vector<std::string> ExpectedRows(int first, int last, bool with_new_col = false) {
+  static std::vector<std::string> ExpectedRows(int first, int last, WithNewCol with_new_col) {
     std::vector<std::string> rows;
     for (int i = first; i <= last; ++i) {
       rows.push_back(with_new_col ? Format("$0,value_$0,$0", i) : Format("$0,value_$0", i));
@@ -243,7 +242,7 @@ class CdcUpgradeTest : public UpgradeTestBase {
   }
 
   Result<std::vector<std::string>> StreamRows(
-      const std::string& slot_name, int last_id, bool ignore_read_time = true) {
+      const std::string& slot_name, int last_id, IgnoreReadTime ignore_read_time) {
     std::vector<std::string> rows;
     RETURN_NOT_OK(StreamAndAcknowledge(
         slot_name, Format("value_$0", last_id), 120s, ignore_read_time, &rows));
@@ -253,7 +252,7 @@ class CdcUpgradeTest : public UpgradeTestBase {
   // Streams the slot until a change contains needle, then acknowledges that transaction's commit.
   Status StreamAndAcknowledge(
       const std::string& slot_name, const std::string& needle, MonoDelta timeout,
-      bool ignore_read_time = true, std::vector<std::string>* inserted_rows = nullptr) {
+      IgnoreReadTime ignore_read_time, std::vector<std::string>* inserted_rows) {
     auto* ts = cluster_->tablet_server(0);
     auto conn_str = Format(
         "host=$0 port=$1 dbname=$2 user=postgres", ts->bind_host(), ts->ysql_port(), kDbName);
@@ -374,19 +373,21 @@ void CdcUpgradeTest::TestImplicitSlotDecodesTxnDdlAfterUpgrade() {
   ASSERT_OK(StartClusterInOldVersion());
   ASSERT_OK(PrepareTableWithData());
   constexpr auto kSlot = "implicit_slot";
-  ASSERT_OK(CreatePublicationAndSlots({kSlot}, /*use_snapshot=*/false));
+  ASSERT_OK(CreatePublicationAndSlots({kSlot}));
   ASSERT_TRUE(ASSERT_RESULT(GetSlotStream(kSlot)).second);
 
   ASSERT_OK(InsertRows(11, 20));
   ASSERT_OK(CheckNoRowsLost(
-      ASSERT_RESULT(StreamRows(kSlot, 20, /*ignore_read_time=*/false)), ExpectedRows(11, 20)));
+      ASSERT_RESULT(StreamRows(kSlot, 20, IgnoreReadTime::kFalse)),
+      ExpectedRows(11, 20, WithNewCol::kFalse)));
 
   EnableTxnDdlInCurrentVersion();
   ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes, /*auto_finalize=*/false));
 
   ASSERT_OK(InsertRows(21, 25));
   ASSERT_OK(CheckNoRowsLost(
-      ASSERT_RESULT(StreamRows(kSlot, 25, /*ignore_read_time=*/false)), ExpectedRows(21, 25)));
+      ASSERT_RESULT(StreamRows(kSlot, 25, IgnoreReadTime::kFalse)),
+      ExpectedRows(21, 25, WithNewCol::kFalse)));
   auto conn = ASSERT_RESULT(cluster_->ConnectToDB(kDbName));
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN new_col INT", kTableName));
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (26, 'value_26', 26)", kTableName));
@@ -394,7 +395,7 @@ void CdcUpgradeTest::TestImplicitSlotDecodesTxnDdlAfterUpgrade() {
   ASSERT_OK(FinalizeUpgrade());
   ASSERT_OK(EnableTxnDdlReplication());
   ASSERT_NOK_STR_CONTAINS(
-      StreamAndAcknowledge(kSlot, "value_26", 60s),
+      StreamAndAcknowledge(kSlot, "value_26", 60s, IgnoreReadTime::kTrue, nullptr),
       "prepare_cdc_streams_for_transactional_ddl");
   ASSERT_OK(PrepareSlotForTxnDdl(kSlot));
 
@@ -411,10 +412,11 @@ void CdcUpgradeTest::TestImplicitSlotDecodesTxnDdlAfterUpgrade() {
   ASSERT_OK(conn.Execute("ROLLBACK"));
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (28, 'value_28')", kTableName));
 
-  auto expected_rows = ExpectedRows(26, 26, /*with_new_col=*/true);
+  auto expected_rows = ExpectedRows(26, 26, WithNewCol::kTrue);
   expected_rows.push_back("27,value_27");
   expected_rows.push_back("28,value_28");
-  ASSERT_OK(CheckNoRowsLost(ASSERT_RESULT(StreamRows(kSlot, 28)), expected_rows));
+  ASSERT_OK(CheckNoRowsLost(
+      ASSERT_RESULT(StreamRows(kSlot, 28, IgnoreReadTime::kTrue)), expected_rows));
 }
 
 class CdcUpgradeFrom2026_1Test : public CdcUpgradeTest {
