@@ -16,6 +16,8 @@
 #include <algorithm>
 #include <unordered_set>
 
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -135,14 +137,14 @@ std::string ResultSetDifferenceStr(const VerticesWithDistances<DistanceResult>& 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 GroundTruth<Vector, DistanceResult>::GroundTruth(
     const VertexIdToVectorDistanceFunction<Vector, DistanceResult>& distance_fn,
-    size_t k,
+    size_t max_k,
     const std::vector<Vector>& queries,
     const PrecomputedGroundTruthMatrix& precomputed_ground_truth,
     bool validate_precomputed_ground_truth,
     const IndexReader& index_reader,
     const std::vector<VectorId>& vertex_ids)
     : distance_fn_(distance_fn),
-      k_(k),
+      max_k_(max_k),
       queries_(queries),
       precomputed_ground_truth_(precomputed_ground_truth),
       validate_precomputed_ground_truth_(validate_precomputed_ground_truth),
@@ -154,16 +156,43 @@ GroundTruth<Vector, DistanceResult>::GroundTruth(
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Status GroundTruth<Vector, DistanceResult>::Prepare(size_t num_threads) {
+  if (!precomputed_ground_truth_.empty() && !validate_precomputed_ground_truth_) {
+    return Status::OK();
+  }
+  LOG(INFO) << (precomputed_ground_truth_.empty() ? "Computing" : "Validating precomputed")
+            << " top " << max_k_ << " ground truth of " << queries_.size() << " queries using "
+            << num_threads << " threads";
+  auto start_time = MonoTime::Now();
+  if (precomputed_ground_truth_.empty()) {
+    computed_ground_truth_.resize(queries_.size());
+  }
+  RETURN_NOT_OK(ProcessInParallel(
+      num_threads,
+      /* start_index= */ static_cast<size_t>(0),
+      /* end_index_exclusive= */ queries_.size(),
+      [this](size_t query_index) -> Status {
+        return PrepareQuery(query_index);
+      }));
+  LOG(INFO) << "Ground truth finished in " << MonoTime::Now() - start_time;
+  return Status::OK();
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Result<FloatVector> GroundTruth<Vector, DistanceResult>::EvaluateRecall(
-    size_t num_threads, size_t ef) {
+    size_t num_threads, size_t k, size_t ef) {
   SCHECK_GE(num_threads, static_cast<size_t>(1),
             InvalidArgument, "Number of threads must be at least 1");
+  SCHECK_LE(k, max_k_, InvalidArgument, "k exceeds max_k");
+  const auto& ground_truth =
+      precomputed_ground_truth_.empty() ? computed_ground_truth_ : precomputed_ground_truth_;
+  SCHECK_EQ(ground_truth.size(), queries_.size(), IllegalState, "Ground truth is not prepared");
 
   // For each index i we maintain the total overlap (set intersection cardinality) between the
   // top (i + 1) ground truth results and the top (i + 1) ANN results, computed across all queries.
   // We apply denominators at the end.
-  AtomicUInt64Vector total_overlap(k_);
-  for (size_t i = 0; i < k_; ++i) {
+  AtomicUInt64Vector total_overlap(k);
+  for (size_t i = 0; i < k; ++i) {
     total_overlap[i].store(0);
   }
 
@@ -171,15 +200,16 @@ Result<FloatVector> GroundTruth<Vector, DistanceResult>::EvaluateRecall(
       num_threads,
       /* start_index= */ static_cast<size_t>(0),
       /* end_index_exclusive= */ queries_.size(),
-      [this, ef, &total_overlap](size_t query_index) -> Status {
-        return ProcessQuery(query_index, ef, total_overlap);
+      [this, k, ef, &ground_truth, &total_overlap](size_t query_index) -> Status {
+        return DoApproxSearchAndUpdateStats(
+            queries_[query_index], k, ef, ground_truth[query_index], total_overlap);
       }));
 
   // The result is always a vector of floats, regardless of the coordinate type.
   FloatVector result;
 
-  result.resize(k_);
-  for (size_t i = 1; i <= k_; ++i) {
+  result.resize(k);
+  for (size_t i = 1; i <= k; ++i) {
     // In the denominator below, we average across all queries. But we also need to divide by the
     // size of the result set of the precise top-i query, which would be i in most cases, except
     // in the degenerate case of a really small input dataset (should never occur in practice).
@@ -190,44 +220,31 @@ Result<FloatVector> GroundTruth<Vector, DistanceResult>::EvaluateRecall(
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-Status GroundTruth<Vector, DistanceResult>::ProcessQuery(
-    size_t query_index,
-    size_t ef,
-    AtomicUInt64Vector& total_overlap_counters) {
-  auto& query = queries_[query_index];
-  if (!precomputed_ground_truth_.empty() && !validate_precomputed_ground_truth_) {
-    // Fast path: no need to compute precise results at all. Just use the precomputed ground truth.
-    DoApproxSearchAndUpdateStats(
-        query, ef, precomputed_ground_truth_[query_index], total_overlap_counters);
+Status GroundTruth<Vector, DistanceResult>::PrepareQuery(size_t query_index) {
+  const auto& query = queries_[query_index];
+  auto our_correct_top_k = BruteForcePreciseNearestNeighbors<Vector, DistanceResult>(
+      query, vertex_ids_, distance_fn_, max_k_);
+
+  if (precomputed_ground_truth_.empty()) {
+    computed_ground_truth_[query_index] = VertexIdsOnly(our_correct_top_k);
     return Status::OK();
   }
 
-  // At this point, we need to compute precise results either because precomputed results are not
-  // available, or because we want to validate those precomputed results.
-  auto our_correct_top_k = BruteForcePreciseNearestNeighbors<Vector, DistanceResult>(
-      query, vertex_ids_, distance_fn_, k_);
-
-  if (!precomputed_ground_truth_.empty() && validate_precomputed_ground_truth_) {
-    // Compare the ground truth we've just computed to the the precomputed ground truth.
-    const auto& precomputed_correct_results = precomputed_ground_truth_[query_index];
-    SCHECK_GE(
-        precomputed_correct_results.size(), k_, IllegalState,
-        "Precomputed ground truth vector has too few elements.");
-    auto precomputed_top_k_with_distance =
-        AugmentWithDistancesAndTrimToK(precomputed_correct_results, query);
-    if (!ResultSetsEquivalent(our_correct_top_k, precomputed_top_k_with_distance)) {
-      return STATUS_FORMAT(
-          IllegalState,
-          "Precomputed ground truth does not match freshly computed ground truth for query "
-          "#$0. Differences (computed by us vs. precomputed):\n$1",
-          query_index,
-          ResultSetDifferenceStr(our_correct_top_k, precomputed_top_k_with_distance));
-    }
+  // Compare the ground truth we've just computed to the the precomputed ground truth.
+  const auto& precomputed_correct_results = precomputed_ground_truth_[query_index];
+  SCHECK_GE(
+      precomputed_correct_results.size(), max_k_, IllegalState,
+      "Precomputed ground truth vector has too few elements.");
+  auto precomputed_top_k_with_distance =
+      AugmentWithDistancesAndTrimToK(precomputed_correct_results, query);
+  if (!ResultSetsEquivalent(our_correct_top_k, precomputed_top_k_with_distance)) {
+    return STATUS_FORMAT(
+        IllegalState,
+        "Precomputed ground truth does not match freshly computed ground truth for query "
+        "#$0. Differences (computed by us vs. precomputed):\n$1",
+        query_index,
+        ResultSetDifferenceStr(our_correct_top_k, precomputed_top_k_with_distance));
   }
-
-  DoApproxSearchAndUpdateStats(
-      query, ef, VertexIdsOnly(our_correct_top_k), total_overlap_counters);
-
   return Status::OK();
 }
 
@@ -237,27 +254,28 @@ GroundTruth<Vector, DistanceResult>::AugmentWithDistancesAndTrimToK(
     const std::vector<VectorId>& precomputed_correct_results,
     const Vector& query) {
   VerticesWithDistances<DistanceResult> result;
-  result.reserve(k_);
+  result.reserve(max_k_);
   for (auto vertex_id : precomputed_correct_results) {
     result.push_back(VectorWithDistance<DistanceResult>(vertex_id, distance_fn_(vertex_id, query)));
-    if (result.size() == k_) {
+    if (result.size() == max_k_) {
       break;
     }
   }
   // This assumption should never be violated as long as result list size provided by the user of
-  // this class is k_ or more.
-  CHECK_EQ(result.size(), k_);
+  // this class is max_k_ or more.
+  CHECK_EQ(result.size(), max_k_);
   return result;
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-void GroundTruth<Vector, DistanceResult>::DoApproxSearchAndUpdateStats(
+Status GroundTruth<Vector, DistanceResult>::DoApproxSearchAndUpdateStats(
     const Vector& query,
+    size_t k,
     size_t ef,
     const std::vector<VectorId>& correct_result,
     AtomicUInt64Vector& total_overlap_counters) {
-  auto approx_result = CHECK_RESULT(index_reader_.Search(
-      vector_cast<Vector>(query), SearchOptions{.max_num_results = k_, .ef = ef}));
+  auto approx_result = VERIFY_RESULT(index_reader_.Search(
+      vector_cast<Vector>(query), SearchOptions{.max_num_results = k, .ef = ef}));
   std::unordered_set<VectorId> approx_set;
   for (const auto& approx_entry : approx_result) {
     approx_set.insert(approx_entry.vector_id);
@@ -266,7 +284,7 @@ void GroundTruth<Vector, DistanceResult>::DoApproxSearchAndUpdateStats(
   size_t overlap = 0;
   // The correct result might come from a precomputed ground truth dataset and contain more than k
   // elements, but we only use the first k.
-  auto n = std::min(correct_result.size(), k_);
+  auto n = std::min(correct_result.size(), k);
   for (size_t j = 1; j <= n; ++j) {
     if (approx_set.contains(correct_result[j - 1])) {
       overlap++;
@@ -276,6 +294,7 @@ void GroundTruth<Vector, DistanceResult>::DoApproxSearchAndUpdateStats(
     // denominators later.
     total_overlap_counters[j - 1].fetch_add(overlap, std::memory_order_acq_rel);
   }
+  return Status::OK();
 }
 
 template class GroundTruth<FloatVector, float>;

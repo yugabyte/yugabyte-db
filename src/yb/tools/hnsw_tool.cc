@@ -191,6 +191,15 @@ struct BenchmarkArguments {
       ef_values = VERIFY_RESULT((ParseCommaSeparatedListOfNumbers<size_t, std::set<size_t>>(
           ef_values_comma_sep, /* lower_bound= */ static_cast<size_t>(1))));
     }
+    if (ef_values.empty()) {
+      return STATUS(InvalidArgument, "No ef values specified");
+    }
+    if (ann_method == BenchmarkAnnMethod::kPgVector &&
+        *ef_values.rbegin() > kPgVectorMaxEfSearch) {
+      return STATUS_FORMAT(
+          InvalidArgument, "pgvector limits ef to $0, got $1", kPgVectorMaxEfSearch,
+          *ef_values.rbegin());
+    }
     if (!yb_hnsw_dir.empty() && num_index_shards != 1) {
       return STATUS(InvalidArgument, "yb_hnsw_dir is not supported with multiple index shards");
     }
@@ -308,10 +317,10 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
        "used for constructing the neighborhood of a newly added vertex. Higher values result in "
        "a higher quality graph at the cost of higher indexing time.")
       (HNSW_OPTION_ARG(ef),
-       "The expansion factor used during search. At least this many approximate nearest neighbors "
-       "are obtained regardless of the user-specified value of k, and the result list is truncated "
-       "to the user-specified length k if needed. Higher values of ef should result in higher "
-       "recall at the cost of slower retrieval.")
+       "The expansion factor used during search when --ef_values is not set. At least this many "
+       "approximate nearest neighbors are obtained regardless of the user-specified value of k, "
+       "and the result list is truncated to the user-specified length k if needed. Higher values "
+       "of ef should result in higher recall at the cost of slower retrieval.")
       (HNSW_OPTION_ARG(robust_prune_alpha),
        "The parameter inspired by DiskANN that controls the neighborhood pruning procedure. "
        "Higher values result in fewer candidates being pruned. Typically between 1.0 and 1.6.")
@@ -668,32 +677,30 @@ class BenchmarkTool {
       adapter.emplace(*vector_index_.get());
       reader = &adapter.value();
     }
-    for (auto k : args_.k_values) {
-      // The ground truth evaluation is always done in the input coordinate type.
-      GroundTruth<InputVector, InputDistanceResult> ground_truth(
-          vertex_id_to_query_distance_fn,
-          k,
-          query_vectors_,
-          loaded_ground_truth_,
-          args_.validate_ground_truth,
-          *reader,
-          // The set of vertex ids to recompute ground truth with.
-          //
-          // In case ground truth is specified as an input file, it must have been computed using
-          // all input vectors, so we must use all vectors to validate them. Otherwise, use the set
-          // of vectors we've inserted.
-          loaded_ground_truth_.empty() ? vertex_ids_to_insert_ : all_vertex_ids_);
+    // The ground truth evaluation is always done in the input coordinate type.
+    GroundTruth<InputVector, InputDistanceResult> ground_truth(
+        vertex_id_to_query_distance_fn,
+        args_.max_k,
+        query_vectors_,
+        loaded_ground_truth_,
+        args_.validate_ground_truth,
+        *reader,
+        // The set of vertex ids to recompute ground truth with.
+        //
+        // In case ground truth is specified as an input file, it must have been computed using
+        // all input vectors, so we must use all vectors to validate them. Otherwise, use the set
+        // of vectors we've inserted.
+        loaded_ground_truth_.empty() ? vertex_ids_to_insert_ : all_vertex_ids_);
+    RETURN_NOT_OK(ground_truth.Prepare(args_.num_query_threads));
 
+    for (auto k : args_.k_values) {
       for (auto ef : args_.ef_values) {
         LOG(INFO) << "Validating top k=" << k << " ef=" << ef << " results with "
                   << query_vectors_.size() << " queries using " << args_.num_query_threads
-                  << " threads "
-                  << (args_.validate_ground_truth ? "(also recomputing and validating provided"
-                                                    " ground truth)"
-                                                  : "");
+                  << " threads";
 
         auto start_time = MonoTime::Now();
-        auto result = VERIFY_RESULT(ground_truth.EvaluateRecall(args_.num_query_threads, ef));
+        auto result = VERIFY_RESULT(ground_truth.EvaluateRecall(args_.num_query_threads, k, ef));
         auto elapsed_time = MonoTime::Now() - start_time;
         LOG(INFO) << "Validation finished in " << elapsed_time;
         for (size_t j = 0; j < result.size(); ++j) {
