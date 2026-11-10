@@ -2014,9 +2014,8 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyDdlLeavesNoStaleCatalogEnt
 // Tests for turning table locks off on a running cluster (#37326).
 //
 // enable_object_locking_for_table_locks is not a runtime flag, so a rolling restart turns it off
-// one node at a time. A transaction that started in new mode on a node not yet restarted keeps
-// running there, while a restarted node runs DDLs without object locks. Such a DDL must not miss
-// the new mode transaction's write.
+// one node at a time. Nodes not yet restarted run in new mode; restarted nodes run in legacy mode.
+// A DDL on either kind of node must not miss a write from a transaction on the other kind.
 class PgObjectLocksTestNewTxnVsLegacyDdl : public PgObjectLocksTestMixModeDuringPromotion {
  protected:
   void PromoteAll() {
@@ -2122,6 +2121,98 @@ TEST_F(PgObjectLocksTestNewTxnVsLegacyDdl, NewModeWriteAfterLegacyCreateIndex) {
 
   auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
   ASSERT_NO_FATALS(CheckIndex(conn, 1));
+}
+
+// A new mode CREATE INDEX on a node not yet restarted, and a legacy transaction on the restarted
+// node that wrote before the CREATE INDEX started. The CREATE INDEX waits for lock holders, not for
+// backends to reach its catalog version, so it waits for the legacy transaction only through the
+// local lock that transaction holds on the table (#37355). Without that wait, backfill reads the
+// row before the update commits and the index keeps the old value.
+TEST_F(PgObjectLocksTestNewTxnVsLegacyDdl, NewModeCreateIndexWithLegacyWriter) {
+  ASSERT_NO_FATALS(PromoteAll());
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
+  }
+
+  ASSERT_NO_FATALS(RestartWithTableLocksOff(ts2));
+  auto legacy_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(legacy_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(legacy_conn.Execute("UPDATE test SET v = 42 WHERE k = 1"));
+  // The CREATE INDEX below can wait only on this lock, so pg_locks on ts2 must show it. Retry:
+  // for a few seconds after ts2's restart, pg_locks fails with "Couldn't fetch old transactions
+  // for the following status tablets".
+  {
+    auto observer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+    ASSERT_OK(observer.Execute("SET yb_locks_min_txn_age = '0s'"));
+    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+      auto rows = observer.FetchAllAsString(
+          "SELECT mode, granted FROM pg_locks WHERE relation = 'test'::regclass");
+      LOG(INFO) << "pg_locks on ts2: " << AsString(rows);
+      return rows.ok() && rows->find("RowExclusiveLock, 1") != std::string::npos;
+    }, 30s * kTimeMultiplier, "pg_locks on ts2 to show the legacy writer's lock"));
+  }
+
+  auto create_index_future = std::async(std::launch::async, [&]() -> Status {
+    auto ddl_conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    return ddl_conn.Execute("CREATE INDEX test_v_idx ON test(v)");
+  });
+  // Long enough for a CREATE INDEX that does not wait to finish, so that it backfills before the
+  // update commits.
+  const auto create_index_done =
+      create_index_future.wait_for(30s * kTimeMultiplier) == std::future_status::ready;
+  LOG(INFO) << "CREATE INDEX done before the legacy COMMIT: " << create_index_done;
+  ASSERT_OK(legacy_conn.Execute("COMMIT"));
+  ASSERT_OK(create_index_future.get());
+
+  auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_NO_FATALS(CheckIndex(conn, 1));
+}
+
+// The same pairing for a foreign key: a new mode ADD FOREIGN KEY on a node not yet restarted
+// validates the existing rows while a legacy transaction on the restarted node holds an
+// uncommitted row with no parent. If the constraint is added, that row must not exist once the
+// legacy transaction ends; otherwise the ADD FOREIGN KEY must fail on that row.
+TEST_F(PgObjectLocksTestNewTxnVsLegacyDdl, NewModeAddForeignKeyWithLegacyWriter) {
+  ASSERT_NO_FATALS(PromoteAll());
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE TABLE parent(k INT PRIMARY KEY)"));
+    ASSERT_OK(conn.Execute("CREATE TABLE child(k INT PRIMARY KEY, p INT)"));
+    ASSERT_OK(conn.Execute("INSERT INTO parent VALUES (1)"));
+  }
+
+  ASSERT_NO_FATALS(RestartWithTableLocksOff(ts2));
+  auto legacy_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(legacy_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(legacy_conn.Execute("INSERT INTO child VALUES (1, 2)"));
+
+  auto add_fk_future = std::async(std::launch::async, [&]() -> Status {
+    auto ddl_conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    return ddl_conn.Execute(
+        "ALTER TABLE child ADD CONSTRAINT child_p_fk FOREIGN KEY (p) REFERENCES parent(k)");
+  });
+  const auto add_fk_done =
+      add_fk_future.wait_for(30s * kTimeMultiplier) == std::future_status::ready;
+  LOG(INFO) << "ADD FOREIGN KEY done before the legacy COMMIT: " << add_fk_done;
+  const auto commit_status = legacy_conn.Execute("COMMIT");
+  LOG(INFO) << "Legacy COMMIT: " << commit_status;
+  const auto add_fk_status = add_fk_future.get();
+  LOG(INFO) << "ADD FOREIGN KEY: " << add_fk_status;
+
+  if (add_fk_status.ok()) {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+        "SELECT COUNT(*) FROM child c LEFT JOIN parent p ON c.p = p.k WHERE p.k IS NULL")), 0);
+  } else {
+    ASSERT_OK(commit_status);
+    ASSERT_STR_CONTAINS(add_fk_status.ToString(), "violates foreign key constraint");
+  }
 }
 
 TEST_F(PgObjectLocksTest, ExclusiveLockReleaseInvalidatesCatalogCache) {
