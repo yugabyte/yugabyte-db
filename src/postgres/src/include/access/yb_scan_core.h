@@ -16,13 +16,9 @@
  *	  methods, the AM code under src/backend/access/, and AM
  *	  extensions such as ybvector), plus guc.c for the GUC variables
  *	  declared here.  The cost model in yb_cost.c does not, although
- *	  it sits under src/backend/access/.  Code above the AM layer,
- *	  such as executor nodes, the optimizer, commands such as
- *	  ANALYZE, and catalog and cache code, uses the other headers
- *	  that src/backend/access/yb_scan/README groups, as that README
- *	  describes.  A function declared in one of those headers is
- *	  defined in the file that implements that header, not in
- *	  yb_scan_core.c.
+ *	  it sits under src/backend/access/.  Code above the AM layer
+ *	  finds the headers it may use in
+ *	  src/backend/access/yb_scan/README.
  *
  * Copyright (c) YugabyteDB, Inc.
  *
