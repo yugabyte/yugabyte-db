@@ -3032,6 +3032,10 @@ ClearPendingActionsAndNotifies(void)
  * to GC the tables, also perform a delete. This is fine because CDC logical
  * replication is used to stream the changes of this table (notifications) to
  * the tservers and CDC reads the records from WAL/intentsdb.
+ *
+ * The writes are transactional even outside a transaction block: a
+ * single-shard write commits at once, so a query layer retry of the statement
+ * would deliver its notifications again.
  */
 static void
 ybInsertPendingNotifiesToTable(void)
@@ -3041,10 +3045,6 @@ ybInsertPendingNotifiesToTable(void)
 	TupleDesc	desc = RelationGetDescr(rel);
 	TupleTableSlot *slot = MakeSingleTupleTableSlot(desc, &TTSOpsVirtual);
 	EState	   *estate = CreateExecutorState();
-
-	YbcPgTransactionSetting txn_setting = (IsTransactionBlock() ?
-										   YB_TRANSACTIONAL :
-										   YB_SINGLE_SHARD_TRANSACTION);
 
 	int			num_notifs = list_length(pendingNotifies->events);
 	Datum	   *uuids = (Datum *) palloc(num_notifs * sizeof(Datum));
@@ -3091,7 +3091,7 @@ ybInsertPendingNotifiesToTable(void)
 		ExecStoreVirtualTuple(slot);
 
 		YBCExecuteInsertForDb(dboid, rel, slot, ONCONFLICT_NONE, NULL,
-							  txn_setting);
+							  YB_TRANSACTIONAL);
 		i++;
 		nextNotify = lnext(pendingNotifies->events, nextNotify);
 	}
@@ -3100,8 +3100,6 @@ ybInsertPendingNotifiesToTable(void)
 	 * Phase 2: All DELETEs. Only notif_uuid (the PK) is needed for ybctid
 	 * computation.
 	 */
-	bool		can_buffer_deletes = (txn_setting == YB_TRANSACTIONAL);
-
 	for (i = 0; i < num_notifs; i++)
 	{
 		ExecClearTuple(slot);
@@ -3111,19 +3109,17 @@ ybInsertPendingNotifiesToTable(void)
 		slot->tts_values[yb_notif_uuid_att.attnum - 1] = uuids[i];
 		ExecStoreVirtualTuple(slot);
 
-		if (can_buffer_deletes)
-			TABLETUPLE_YBCTID(slot) = YBCComputeYBTupleIdFromSlot(rel, slot);
+		TABLETUPLE_YBCTID(slot) = YBCComputeYBTupleIdFromSlot(rel, slot);
 
 		/*
-		 * Buffering of DELETE requires target_tuple_fetched to be true. Hence,
-		 * pass can_buffer_deletes as the target_tuple_fetched argument, even
-		 * though no tuple is fetched irrespective of can_buffer_deletes.
+		 * Buffering of DELETE requires target_tuple_fetched to be true, even
+		 * though no tuple is fetched.
 		 *
 		 * This hack will not be required if we can relax DELETE's buffering
 		 * requirement along the lines of UPDATE's (GHI #31856).
 		 */
-		YBCExecuteDelete(rel, slot, NIL, can_buffer_deletes /* target_tuple_fetched */ ,
-						 txn_setting, false /* changingPart */ , estate);
+		YBCExecuteDelete(rel, slot, NIL, true /* target_tuple_fetched */ ,
+						 YB_TRANSACTIONAL, false /* changingPart */ , estate);
 	}
 
 	YBEndOperationsBuffering();
@@ -3889,6 +3885,46 @@ bool
 YbHasActiveOrPendingListen(void)
 {
 	return listenChannels != NIL || YbHasPendingListenAction();
+}
+
+/* Number of notifications pending at the top transaction level. */
+int
+YbNumPendingNotifies(void)
+{
+	NotificationList *notifies = pendingNotifies;
+
+	while (notifies != NULL && notifies->nestingLevel > 1)
+		notifies = notifies->upper;
+	return notifies != NULL ? list_length(notifies->events) : 0;
+}
+
+/*
+ * Keep only the first num_notifies top-level pending notifications. The query
+ * layer calls this when it retries a statement: the attempt it discards may
+ * have queued notifications that the retry queues again.
+ */
+void
+YbTruncatePendingNotifies(int num_notifies)
+{
+	NotificationList **notifies = &pendingNotifies;
+
+	while (*notifies != NULL && (*notifies)->nestingLevel > 1)
+		notifies = &(*notifies)->upper;
+	if (*notifies == NULL || list_length((*notifies)->events) <= num_notifies)
+		return;
+
+	if (num_notifies == 0)
+	{
+		*notifies = NULL;
+		return;
+	}
+
+	(*notifies)->events = list_truncate((*notifies)->events, num_notifies);
+	if ((*notifies)->hashtab != NULL)
+	{
+		hash_destroy((*notifies)->hashtab);
+		(*notifies)->hashtab = NULL;
+	}
 }
 
 static void

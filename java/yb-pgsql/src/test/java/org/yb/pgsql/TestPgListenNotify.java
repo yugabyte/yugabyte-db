@@ -764,6 +764,79 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
+   * A NOTIFY from a statement that reads a table, outside a transaction block, succeeds and is
+   * delivered once with both query protocols.
+   */
+  @Test
+  public void testNotifyAfterTableReadDeliveredOnce() throws Exception {
+    try (Connection listenerConn = getConnectionBuilder().connect();
+         Statement listenerStmt = listenerConn.createStatement()) {
+      listenerStmt.execute("CREATE TABLE notify_src (id INT PRIMARY KEY)");
+      listenerStmt.execute("INSERT INTO notify_src VALUES (1)");
+      listenerStmt.execute("LISTEN " + CHANNEL);
+
+      for (String queryMode : Arrays.asList("simple", "extended")) {
+        try (Connection notifierConn =
+                 getConnectionBuilder().withPreferQueryMode(queryMode).connect();
+             Statement stmt = notifierConn.createStatement()) {
+          stmt.execute("SELECT pg_notify('" + CHANNEL + "', '" + queryMode + "') FROM notify_src");
+          stmt.execute("NOTIFY " + CHANNEL + ", '" + queryMode + "_sentinel'");
+        }
+        assertEquals(Arrays.asList(queryMode, queryMode + "_sentinel"),
+            payloadsOf(waitForNotification(listenerConn, CHANNEL, queryMode + "_sentinel")));
+      }
+    }
+  }
+
+  /**
+   * A statement retried after a conflict delivers only its last attempt's notifications and keeps
+   * the ones queued earlier in its transaction.
+   */
+  @Test
+  public void testNotifyFromRetriedStatementDeliveredOnce() throws Exception {
+    try (Connection listenerConn = getConnectionBuilder().connect();
+         Statement listenerStmt = listenerConn.createStatement();
+         Connection holderConn = getConnectionBuilder().connect();
+         Statement holderStmt = holderConn.createStatement();
+         Connection notifierConn = getConnectionBuilder().connect();
+         Statement notifierStmt = notifierConn.createStatement()) {
+      listenerStmt.execute("CREATE TABLE notify_kv (k INT PRIMARY KEY, v INT)");
+      listenerStmt.execute("INSERT INTO notify_kv VALUES (1, 0)");
+      listenerStmt.execute("LISTEN " + CHANNEL);
+
+      holderStmt.execute("BEGIN");
+      holderStmt.execute("UPDATE notify_kv SET v = v + 1 WHERE k = 1");
+
+      // The UPDATE notifies, then blocks on the holder's row lock and is retried after it commits.
+      notifierStmt.addBatch("NOTIFY " + CHANNEL + ", 'kept'");
+      notifierStmt.addBatch("UPDATE notify_kv SET v = (SELECT v + 1 FROM notify_kv WHERE k = 1)"
+          + " WHERE k = 1 AND pg_notify('" + CHANNEL + "', 'attempt_' || clock_timestamp())"
+          + " IS NOT NULL");
+      AtomicReference<SQLException> batchError = new AtomicReference<>();
+      Thread notifier = new Thread(() -> {
+        try {
+          notifierStmt.executeBatch();
+        } catch (SQLException e) {
+          batchError.set(e);
+        }
+      });
+      notifier.start();
+      TestUtils.waitFor(() -> getSingleRow(listenerStmt,
+          "SELECT EXISTS (SELECT 1 FROM pg_locks"
+              + " WHERE NOT granted AND relation = 'notify_kv'::regclass)").getBoolean(0),
+          Timeouts.adjustTimeoutSecForBuildType(30_000));
+      holderStmt.execute("COMMIT");
+      notifier.join(Timeouts.adjustTimeoutSecForBuildType(60_000));
+      assertTrue("Batch failed: " + batchError.get(), batchError.get() == null);
+
+      notifierStmt.execute("NOTIFY " + CHANNEL + ", 'sentinel'");
+      List<String> payloads = payloadsOf(waitForNotification(listenerConn, CHANNEL, "sentinel"));
+      assertEquals("Notifications: " + payloads, 3, payloads.size());
+      assertTrue("Notifications: " + payloads, payloads.contains("kept"));
+    }
+  }
+
+  /**
    * Sends a large number of notifications in a single transaction and verifies
    * that all are delivered in order to the listener.
    */
