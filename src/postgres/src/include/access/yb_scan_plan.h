@@ -1,20 +1,20 @@
 /*-------------------------------------------------------------------------
  *
  * yb_scan_plan.h
- *	  Plan-time YB scan analysis.
+ *	  YB scan logic shared with the planner.
  *
- *	  Logic that YB scan execution applies and that the planner
- *	  needs too, kept here so that both call it instead of the
- *	  planner copying it.  One example is whether YB can bind a
- *	  given value to a key column of a given type
+ *	  Logic and types that YB scan execution uses and that the
+ *	  planner needs too, kept here so that both share them instead
+ *	  of the planner copying them.  One example is whether YB can
+ *	  bind a given value to a key column of a given type
  *	  (YbIsScanCompatible()): scan-key setup (yb_scan_core.c) binds
  *	  by it, and cost estimation in costsize.c calls it to predict
  *	  that binding without seeing execution state.  The other rules
  *	  for which conditions bind to key columns are in
  *	  yb_scan_core.c, and yb_cost.c counts bound key columns by its
  *	  own rules instead.  #37431 tracks how the planner should learn
- *	  what a scan binds.  Plan-time analysis only: no execution
- *	  state (YbOpaque, ScanKey) or pggate calls belong here.
+ *	  what a scan binds.  Nothing that depends on execution state
+ *	  belongs here: no YbOpaque, ScanKey, or pggate calls.
  *
  * Copyright (c) YugabyteDB, Inc.
  *

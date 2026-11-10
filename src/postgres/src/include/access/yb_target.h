@@ -11,8 +11,6 @@
  *	  Used by the access methods.  Some code above them also builds
  *	  its own pggate requests with it.  That should probably move
  *	  behind the access methods, though this is not yet settled.
- *	  Until it is settled, a new use above them outside the write
- *	  path needs a reason in a comment at the use.
  *	  ybc_get_attcollation() does not build requests at all, and
  *	  #37403 tracks moving it out, which also removes the planner's
  *	  use of this header.

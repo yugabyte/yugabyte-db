@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * yb_scan_plan.c
- *	  Plan-time YB scan analysis.
+ *	  YB scan logic shared with the planner.
  *
  *	  Implements the functions declared in yb_scan_plan.h.  See that
  *	  header for what belongs here.
