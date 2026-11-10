@@ -43,6 +43,7 @@
 #include "optimizer/planmain.h"
 #include "optimizer/tlist.h"
 #include "optimizer/yb_merge_scan.h"
+#include "optimizer/ybplan.h"
 #include "parser/parse_coerce.h"
 #include "parser/parsetree.h"
 #include "pg_yb_utils.h"
@@ -140,8 +141,10 @@ static Cost bitmap_scan_cost_est(PlannerInfo *root, RelOptInfo *rel,
 static Cost bitmap_and_cost_est(PlannerInfo *root, RelOptInfo *rel,
 								List *paths);
 static PathClauseUsage *classify_index_clause_usage(Path *path,
-													List **clauselist);
-static void find_indexpath_quals(Path *bitmapqual, List **quals, List **preds);
+													List **clauselist,
+													PlannerInfo *yb_root);
+static void find_indexpath_quals(Path *bitmapqual, List **quals, List **preds,
+								 PlannerInfo *yb_root);
 static int	find_list_position(Node *node, List **nodelist);
 static bool check_index_only(RelOptInfo *rel, IndexOptInfo *index);
 static double adjust_rowcount_for_semijoins(PlannerInfo *root,
@@ -217,6 +220,7 @@ static bool ec_member_matches_indexcol(PlannerInfo *root, RelOptInfo *rel,
 static bool is_hash_column_in_lsm_index(const IndexOptInfo *index, int columnIndex);
 static Cost yb_bitmap_scan_cost_est(PlannerInfo *root, RelOptInfo *rel,
 									Path *ipath);
+static List *yb_indexpath_filter_quals(PlannerInfo *root, IndexPath *ipath);
 static bool yb_can_pushdown_distinct(PlannerInfo *root, IndexOptInfo *index);
 static bool yb_can_pushdown_as_filter(PlannerInfo *root, IndexOptInfo *index, RestrictInfo *rinfo);
 static void yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel, IndexOptInfo *index,
@@ -2248,7 +2252,7 @@ choose_bitmap_and(PlannerInfo *root, RelOptInfo *rel, List *paths)
 		if (IsA(ipath, UpperUniquePath))
 			continue;
 
-		pathinfo = classify_index_clause_usage(ipath, &clauselist);
+		pathinfo = classify_index_clause_usage(ipath, &clauselist, root);
 
 		/* If it's unclassifiable, treat it as distinct from all others */
 		if (pathinfo->unclassifiable)
@@ -2543,7 +2547,7 @@ bitmap_and_cost_est(PlannerInfo *root, RelOptInfo *rel, List *paths)
  * before first call of a set.
  */
 static PathClauseUsage *
-classify_index_clause_usage(Path *path, List **clauselist)
+classify_index_clause_usage(Path *path, List **clauselist, PlannerInfo *yb_root)
 {
 	PathClauseUsage *result;
 	Bitmapset  *clauseids;
@@ -2555,7 +2559,7 @@ classify_index_clause_usage(Path *path, List **clauselist)
 	/* Recursively find the quals and preds used by the path */
 	result->quals = NIL;
 	result->preds = NIL;
-	find_indexpath_quals(path, &result->quals, &result->preds);
+	find_indexpath_quals(path, &result->quals, &result->preds, yb_root);
 
 	/*
 	 * Some machine-generated queries have outlandish numbers of qual clauses.
@@ -2611,7 +2615,8 @@ classify_index_clause_usage(Path *path, List **clauselist)
  * modify the lists (eg, by concat'ing with other lists).
  */
 static void
-find_indexpath_quals(Path *bitmapqual, List **quals, List **preds)
+find_indexpath_quals(Path *bitmapqual, List **quals, List **preds,
+					 PlannerInfo *yb_root)
 {
 	if (IsA(bitmapqual, BitmapAndPath))
 	{
@@ -2620,7 +2625,7 @@ find_indexpath_quals(Path *bitmapqual, List **quals, List **preds)
 
 		foreach(l, apath->bitmapquals)
 		{
-			find_indexpath_quals((Path *) lfirst(l), quals, preds);
+			find_indexpath_quals((Path *) lfirst(l), quals, preds, yb_root);
 		}
 	}
 	else if (IsA(bitmapqual, BitmapOrPath))
@@ -2630,7 +2635,7 @@ find_indexpath_quals(Path *bitmapqual, List **quals, List **preds)
 
 		foreach(l, opath->bitmapquals)
 		{
-			find_indexpath_quals((Path *) lfirst(l), quals, preds);
+			find_indexpath_quals((Path *) lfirst(l), quals, preds, yb_root);
 		}
 	}
 	else if (IsA(bitmapqual, IndexPath))
@@ -2644,6 +2649,13 @@ find_indexpath_quals(Path *bitmapqual, List **quals, List **preds)
 
 			*quals = lappend(*quals, iclause->rinfo->clause);
 		}
+
+		if (IsYugaByteEnabled() && yb_enable_base_scans_cost_model &&
+			ipath->path.parent->is_yb_relation)
+			*quals = list_concat_unique(*quals,
+										yb_indexpath_filter_quals(yb_root,
+																  ipath));
+
 		*preds = list_concat(*preds, ipath->indexinfo->indpred);
 	}
 	else
@@ -5668,4 +5680,47 @@ yb_finalize_merge_scan_path(PlannerInfo *root, RelOptInfo *rel,
 												  yb_distinct_prefixlen,
 												  yb_distinct_nkeys);
 	return useful_pathkeys;
+}
+
+/*
+ * Clauses a YB bitmap index path applies as storage index filters.  They are
+ * part of its indexselectivity, so choose_bitmap_and must count them as used.
+ */
+static List *
+yb_indexpath_filter_quals(PlannerInfo *root, IndexPath *ipath)
+{
+	IndexOptInfo *index = ipath->indexinfo;
+	List	   *filter_quals;
+	List	   *local_quals = NIL;
+	List	   *rel_remote_quals = NIL;
+	List	   *rel_colrefs = NIL;
+	List	   *idx_remote_quals = NIL;
+	List	   *idx_colrefs = NIL;
+	Bitmapset  *non_pushable_attnums = NULL;
+	Oid			relid = planner_rt_fetch(index->rel->relid, root)->relid;
+
+	if (ipath->yb_bitmap_idx_pushdowns)
+		filter_quals = ipath->yb_bitmap_idx_pushdowns;
+	else if (ipath->path.param_info)
+		filter_quals = list_concat_copy(index->indrestrictinfo,
+										ipath->path.param_info->ppi_clauses);
+	else
+		filter_quals = index->indrestrictinfo;
+
+	if (ipath->path.pathtype == T_IndexOnlyScan &&
+		index->yb_num_decoded_pk_cols > 0)
+	{
+		for (int i = index->ncolumns - index->yb_num_decoded_pk_cols;
+			 i < index->ncolumns; i++)
+			non_pushable_attnums = bms_add_member(non_pushable_attnums,
+												  index->indexkeys[i]);
+	}
+
+	yb_extract_pushdown_clauses(filter_quals, index, true /* bitmapindex */ ,
+								&local_quals, &rel_remote_quals, &rel_colrefs,
+								&idx_remote_quals, &idx_colrefs,
+								relid, non_pushable_attnums);
+
+	bms_free(non_pushable_attnums);
+	return idx_remote_quals;
 }
