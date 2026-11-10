@@ -11848,8 +11848,8 @@ Status CatalogManager::GetYsqlAllDBCatalogVersions(
 }
 
 Result<DbOidVersionToMessageListMap>
-CatalogManager::GetYsqlCatalogInvalationMessagesImpl() {
-  return sys_catalog_->ReadYsqlCatalogInvalationMessages();
+CatalogManager::GetYsqlCatalogInvalationMessagesImpl(const DbOidToCatalogVersionMap* versions) {
+  return sys_catalog_->ReadYsqlCatalogInvalationMessages(versions);
 }
 
 Result<DbOidVersionToMessageListMap> CatalogManager::GetYsqlCatalogInvalationMessages(
@@ -15161,7 +15161,7 @@ bool CatalogManager::RefreshPgCatalogVersionCache() {
     // the catalog versions. If we cannot read the messages successfully, it means
     // we will skip the optimization this time but it will not affect correctness
     // because PG backends will fall back to do catalog cache refreshes.
-    auto msg_res = GetYsqlCatalogInvalationMessagesImpl();
+    auto msg_res = GetYsqlCatalogInvalationMessagesImpl(&versions);
     if (!msg_res.ok()) {
       YB_LOG_EVERY_N_SECS(WARNING, 20)
           << "Catalog invalidation messages refresh failed: " << msg_res.status();

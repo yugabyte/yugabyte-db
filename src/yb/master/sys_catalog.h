@@ -271,7 +271,10 @@ class SysCatalogTable {
       HybridTime* out_read_ht = nullptr);
   // Read the ysql catalog cache invalidation messages info for all databases from the
   // pg_yb_invalidation_messages catalog table.
-  Result<DbOidVersionToMessageListMap> ReadYsqlCatalogInvalationMessages();
+  // With 'versions', each database is read from kMaxVersionsBehind below its current version
+  // instead of from the first key.
+  Result<DbOidVersionToMessageListMap> ReadYsqlCatalogInvalationMessages(
+      const DbOidToCatalogVersionMap* versions = nullptr);
 
   // Read the pg_class catalog table. There is a separate pg_class table in each
   // YSQL database, read the information in the pg_class table for the database
@@ -455,6 +458,7 @@ class SysCatalogTable {
   Status ReadYsqlCatalogInvalationMessagesImpl(
       const ReadHybridTime& read_time,
       HybridTime* read_restart_ht,
+      const DbOidToCatalogVersionMap* versions,
       DbOidVersionToMessageListMap& messages);
 
   // During a batch write operation, if the max batch bytes have been exceeded, performs a write and

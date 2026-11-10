@@ -3504,7 +3504,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status GetYsqlAllDBCatalogVersionsImpl(
       DbOidToCatalogVersionMap* versions, HybridTime* out_read_ht = nullptr);
-  Result<DbOidVersionToMessageListMap> GetYsqlCatalogInvalationMessagesImpl();
+  Result<DbOidVersionToMessageListMap> GetYsqlCatalogInvalationMessagesImpl(
+      const DbOidToCatalogVersionMap* versions = nullptr);
 
   // Create the global transaction status table if needed (i.e. if it does not exist already).
   Status CreateGlobalTransactionStatusTableIfNeededForNewTable(
