@@ -32,7 +32,7 @@ When you review a backport PR, **switch to backport mode**:
    - Hunks that diverge from the originating commit AND are *not* documented in the `## Merge conflicts` section. Either the backport author silently changed the behavior, or the conflicts section is incomplete.
    - Documented conflict resolutions that appear logically incorrect (e.g., the release branch lost a parameter and the backport elided a check that the original had).
    - Mismatched commit metadata (subject doesn't reference the right issue, or the `Original commit:` line is missing/wrong).
-6. **If the backport diff is byte-identical to the originating commit and its `## Merge conflicts` section is absent or says only `No conflicts.`, leave a single approval-style comment confirming the clean cherry-pick.** No further review is necessary — the repo's CI will validate that the build still passes on the release branch.
+6. **If the backport diff is byte-identical to the originating commit and its `## Merge conflicts` section is absent or every step in it says `No conflicts.`, leave a single approval-style comment confirming the clean cherry-pick.** No further review is necessary — the repo's CI will validate that the build still passes on the release branch.
 
 This mode exists because backports re-traverse code that was already reviewed; treating them as fresh PRs creates duplicate review work for changes that were already accepted upstream.
 

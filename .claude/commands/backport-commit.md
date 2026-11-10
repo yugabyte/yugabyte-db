@@ -104,7 +104,7 @@ Extract every `https://github.com/...` URL printed by `gh pr create` from the (p
 
 Annotate the PR of every branch where you ran `git cherry-pick --continue` (vs. it auto-applying cleanly), **regardless of whether the resolution was trivial or non-trivial**, and of every branch chained from another branch's backport. Reviewers shouldn't have to diff the backport against the original commit to discover there was a manual step. "Trivial" describes how easy the resolution was, not whether it warrants disclosure.
 
-A chained branch lists every cherry-pick step, starting with the one onto this branch (`No conflicts.` if it applied cleanly) and ending with the one from `master`. The script rebuilds each PR body from the original commit, so copy the earlier steps in yourself.
+A chained branch lists every cherry-pick step, starting with the one onto this branch and ending with the one from `master`; a step that applied cleanly gets `No conflicts.` The script rebuilds each PR body from the original commit, so copy the earlier steps in yourself.
 
 For each such PR:
 
@@ -112,7 +112,7 @@ For each such PR:
 gh pr view <pr-number> -R yugabyte/yugabyte-db --json body -q .body > /tmp/claude/pr-body-<pr-number>.md
 ```
 
-Append a `## Merge conflicts` section with the entries you recorded in Step 2 (substep 3) for that branch and the branches it was chained from. For example, a 2024.2 PR chained cleanly from the 2025.2 backport, which needed resolution:
+Append a `## Merge conflicts` section listing those steps. For example, a 2024.2 PR chained cleanly from the 2025.2 backport, which needed resolution:
 
 ```
 ## Merge conflicts

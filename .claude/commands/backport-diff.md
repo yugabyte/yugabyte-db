@@ -94,7 +94,7 @@ Once **all** conflicts are resolved (and only then):
    - src/yb/master/catalog_manager.h:412 — [adjacent-lines] placed the new method after 2025.2's extra private method
    ```
 
-   Annotate **every** branch where you ran `git cherry-pick --continue`, trivial or not. "Trivial" describes how easy the resolution was, not whether it warrants disclosure. A chained branch's block lists every cherry-pick step, starting with the one onto this branch and ending with the one from `master`. `backport.sh` carries the earlier steps' lines forward, so add only the lines for the step onto this branch, at the top. If that step applied cleanly, it gets no line.
+   Annotate **every** branch where you ran `git cherry-pick --continue`, trivial or not. "Trivial" describes how easy the resolution was, not whether it warrants disclosure. A chained branch's block lists the cherry-pick steps that needed resolution, starting with the one onto this branch and ending with the one from `master`. `backport.sh` carries the earlier steps' lines forward, so add any lines for the step onto this branch at the top. A step that applied cleanly gets no line, because `backport.sh` publishes it without stopping.
 
 5. **Run the linter** from the repo root and confirm it is clean before re-running:
    ```
