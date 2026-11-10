@@ -104,7 +104,7 @@ Extract every `https://github.com/...` URL printed by `gh pr create` from the (p
 
 Annotate the PR of every branch where you ran `git cherry-pick --continue` (vs. it auto-applying cleanly), **regardless of whether the resolution was trivial or non-trivial**, and of every branch chained from another branch's backport. Reviewers shouldn't have to diff the backport against the original commit to discover there was a manual step. "Trivial" describes how easy the resolution was, not whether it warrants disclosure.
 
-A chained branch lists every step from `master` to its own branch, newest first: its own step (`No conflicts.` if it applied cleanly), then the entries of the backports it was chained from. The script rebuilds each PR body from the original commit, so earlier steps' entries are not carried forward; copy them from the ones you recorded in Step 2 (substep 3).
+A chained branch lists every cherry-pick step, starting with the one onto this branch (`No conflicts.` if it applied cleanly) and ending with the one from `master`. The script rebuilds each PR body from the original commit, so copy the earlier steps in yourself.
 
 For each such PR:
 
