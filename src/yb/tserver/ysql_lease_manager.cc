@@ -204,7 +204,6 @@ void YSQLLeaseManager::Impl::Shutdown() {
   if (lock_manager) {
     lock_manager->Shutdown();
   }
-  // Unblock RPCs waiting in AllocateShared, otherwise RPC server shutdown hangs joining them.
   server_.object_lock_shared_state_manager()->Shutdown();
   lease_client_.Shutdown();
 }
