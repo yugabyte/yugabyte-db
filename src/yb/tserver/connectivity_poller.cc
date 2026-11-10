@@ -15,19 +15,24 @@
 
 #include "yb/common/wire_protocol.h"
 
-#include "yb/master/master_cluster.proxy.h"
-
 #include "yb/server/server_base.proxy.h"
 #include "yb/server/server_base.h"
 
-#include "yb/tserver/master_leader_poller.h"
+#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_service.pb.h"
 
+#include "yb/util/background_task.h"
+#include "yb/util/cgroups.h"
 #include "yb/util/physical_time.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
 DEFINE_RUNTIME_uint64(connectivity_check_interval_ms, 60000,
     "Milliseconds interval to check connectivity between cluster nodes");
+
+DECLARE_int32(heartbeat_interval_ms);
+
+using namespace std::literals;
 
 namespace yb::tserver {
 
@@ -106,97 +111,27 @@ class PingRequest : public std::enable_shared_from_this<PingRequest> {
 
 } // namespace
 
-class ConnectivityPoller::Impl : public MasterLeaderPollerInterface {
+class ConnectivityPoller::Impl {
  public:
-  Impl(server::RpcServerBase& server, const std::string& uuid)
-      : uuid_(uuid),
+  Impl(TabletServer& server, const std::string& uuid)
+      : server_(server),
+        uuid_(uuid),
         cloud_info_(server.MakeCloudInfoPB()),
-        log_prefix_(server::MakeServerLogPrefix(uuid)),
-        finder_(server.messenger(), server.proxy_cache(), nullptr),
-        poll_scheduler_(finder_, *this) {
+        log_prefix_(server::MakeServerLogPrefix(uuid)) {
   }
 
   Status Start(Cgroup* cgroup = nullptr) {
-    return poll_scheduler_.Start(cgroup);
+    cgroup_ = cgroup;
+    const auto interval = std::chrono::milliseconds(FLAGS_connectivity_check_interval_ms);
+    bg_task_ = std::make_unique<BackgroundTask>(
+        [this] { Run(); }, "tserver", "connectivity", std::min(interval, 5000ms));
+    return bg_task_->Init();
   }
 
   void Shutdown() {
-    poll_scheduler_.Shutdown();
-  }
-
-  void UpdateMasterAddresses(server::MasterAddressesPtr master_addresses) {
-    poll_scheduler_.UpdateMasterAddresses(std::move(master_addresses));
-  }
-
-  Status Poll() override {
-    auto timeout = IntervalToNextPoll(0);
-    if (!proxy_) {
-      proxy_ = VERIFY_RESULT(finder_.CreateProxy<master::MasterClusterProxy>(timeout));
+    if (bg_task_) {
+      bg_task_->Shutdown();
     }
-
-    master::ListTabletServersRequestPB req;
-    master::ListTabletServersResponsePB resp;
-    rpc::RpcController rpc_controller;
-    rpc_controller.set_timeout(timeout);
-
-    {
-      auto start_time = MonoTime::Now();
-      RETURN_NOT_OK(proxy_->ListTabletServers(req, &resp, &rpc_controller));
-      auto ping = MonoTime::Now() - start_time;
-
-      if (resp.has_error()) {
-        return StatusFromPB(resp.error().status());
-      }
-
-      ConnectivityEntryPB master_node_info;
-      master_node_info.set_server_type(ServerType::MASTER);
-      master_node_info.set_uuid(resp.master_uuid());
-      master_node_info.set_alive(true);
-      master_node_info.set_ping_us(ping.ToMicroseconds());
-      proxy_->proxy().remote().ToPB(master_node_info.mutable_endpoint());
-
-      cluster_state_->UpdateNode(master_node_info);
-    }
-
-    for (const auto& server : resp.servers()) {
-      if (server.instance_id().permanent_uuid() == uuid_) {
-        continue;
-      }
-      ConnectivityEntryPB node_info;
-      node_info.set_server_type(ServerType::TABLET_SERVER);
-      node_info.set_uuid(server.instance_id().permanent_uuid());
-      node_info.set_alive(server.alive());
-      *node_info.mutable_endpoint() = DesiredHostPort(server.registration().common(), cloud_info_);
-      auto request = std::make_shared<PingRequest>(
-          cluster_state_, finder_.get_proxy_cache(), node_info);
-      request->Start();
-    }
-
-    return Status::OK();
-  }
-
-  MonoDelta IntervalToNextPoll(int32_t consecutive_failures) override {
-    auto result = MonoDelta::FromMilliseconds(FLAGS_connectivity_check_interval_ms);
-    if (first_poll_) {
-      first_poll_ = false;
-      result = std::min(result, MonoDelta::FromSeconds(5));
-    }
-    return result;
-  }
-
-  void Init() override {
-  }
-
-  void ResetProxy() override {
-    proxy_.reset();
-  }
-
-  std::string name() override {
-    return "connectivity";
-  }
-
-  const std::string& LogPrefix() const override {
-    return log_prefix_;
   }
 
   ConnectivityStateResponsePB State() {
@@ -204,18 +139,76 @@ class ConnectivityPoller::Impl : public MasterLeaderPollerInterface {
   }
 
  private:
+  void Run() {
+#ifdef __linux__
+    if (cgroup_) {
+      WARN_NOT_OK(
+          cgroup_->MoveCurrentThreadToGroup(), "Failed to move connectivity thread to cgroup");
+      cgroup_ = nullptr;
+    }
+#endif
+    WARN_NOT_OK(Poll(), LogPrefix() + "Connectivity poll failed");
+    bg_task_->SetInterval(std::chrono::milliseconds(FLAGS_connectivity_check_interval_ms));
+  }
+
+  Status Poll() {
+    // Alive if a heartbeat succeeded within half the poll interval, at least a few heartbeats.
+    Status result;
+    const auto master = server_.GetMasterHeartbeatInfo();
+    if (!master.uuid.empty()) {
+      const auto since_heartbeat = MonoTime::Now() - master.time;
+      const auto alive_window = MonoDelta::FromMilliseconds(std::max<uint64_t>(
+          FLAGS_connectivity_check_interval_ms / 2, 3 * FLAGS_heartbeat_interval_ms));
+      ConnectivityEntryPB master_node_info;
+      master_node_info.set_server_type(ServerType::MASTER);
+      master_node_info.set_uuid(master.uuid);
+      master_node_info.set_alive(since_heartbeat < alive_window);
+      if (!master_node_info.alive()) {
+        master_node_info.set_last_failure(master.last_failure.ok()
+            ? Format("No successful heartbeat for $0", since_heartbeat)
+            : Format("$0; no successful heartbeat for $1", master.last_failure, since_heartbeat));
+        result = STATUS_FORMAT(
+            ServiceUnavailable, "Master heartbeats failing: $0", master_node_info.last_failure());
+      }
+      master_node_info.set_ping_us(master.rtt.ToMicroseconds());
+      HostPortToPB(master.host_port, master_node_info.mutable_endpoint());
+      cluster_state_->UpdateNode(master_node_info);
+    }
+
+    for (const auto& known : server_.GetKnownTServers()) {
+      const auto& instance = known.info.tserver_instance();
+      if (instance.permanent_uuid() == uuid_) {
+        continue;
+      }
+      ConnectivityEntryPB node_info;
+      node_info.set_server_type(ServerType::TABLET_SERVER);
+      node_info.set_uuid(instance.permanent_uuid());
+      node_info.set_alive(known.alive);
+      *node_info.mutable_endpoint() =
+          DesiredHostPort(known.info.registration().common(), cloud_info_);
+      auto request = std::make_shared<PingRequest>(
+          cluster_state_, server_.proxy_cache(), node_info);
+      request->Start();
+    }
+
+    return result;
+  }
+
+  const std::string& LogPrefix() const {
+    return log_prefix_;
+  }
+
+  TabletServer& server_;
   const std::string uuid_;
   const CloudInfoPB cloud_info_;
   const std::string log_prefix_;
 
-  bool first_poll_ = true;
+  [[maybe_unused]] Cgroup* cgroup_ = nullptr;
   ClusterStatePtr cluster_state_ = std::make_shared<ClusterState>();
-  MasterLeaderFinder finder_;
-  MasterLeaderPollScheduler poll_scheduler_;
-  std::optional<master::MasterClusterProxy> proxy_;
+  std::unique_ptr<BackgroundTask> bg_task_;
 };
 
-ConnectivityPoller::ConnectivityPoller(server::RpcServerBase& server, const std::string& uuid)
+ConnectivityPoller::ConnectivityPoller(TabletServer& server, const std::string& uuid)
     : impl_(new Impl(server, uuid)) {
 }
 
@@ -227,10 +220,6 @@ Status ConnectivityPoller::Start(Cgroup* cgroup) {
 
 void ConnectivityPoller::Shutdown() {
   impl_->Shutdown();
-}
-
-void ConnectivityPoller::UpdateMasterAddresses(server::MasterAddressesPtr master_addresses) {
-  impl_->UpdateMasterAddresses(std::move(master_addresses));
 }
 
 ConnectivityStateResponsePB ConnectivityPoller::State() {
