@@ -65,6 +65,7 @@ import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
 import com.yugabyte.yw.common.utils.FileUtils;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
@@ -628,7 +629,8 @@ public class NodeManager extends DevopsBase {
       AnsibleConfigureServers.Params taskParam,
       String nodeIP,
       String ybHomeDir,
-      Map<String, Integer> subjectAltName) {
+      Map<String, Integer> subjectAltName,
+      Map<String, Integer> loadBalancerNames) {
     return getCertificatePaths(
         config,
         userIntent,
@@ -637,7 +639,24 @@ public class NodeManager extends DevopsBase {
         EncryptionInTransitUtil.isClientRootCARequired(taskParam),
         nodeIP,
         ybHomeDir,
-        subjectAltName);
+        subjectAltName,
+        loadBalancerNames);
+  }
+
+  /**
+   * Client-to-server cert only: clients see no other once client TLS is on. Self-signed CA only: a
+   * Vault role's allowed_domains could reject the names. putIfAbsent keeps the node's own types.
+   */
+  private static Map<String, Integer> addLoadBalancerNames(
+      CertificateInfo caCert,
+      Map<String, Integer> subjectAltName,
+      Map<String, Integer> loadBalancerNames) {
+    if (caCert.getCertType() != CertConfigType.SelfSigned || loadBalancerNames.isEmpty()) {
+      return subjectAltName;
+    }
+    Map<String, Integer> names = new HashMap<>(subjectAltName);
+    loadBalancerNames.forEach(names::putIfAbsent);
+    return names;
   }
 
   // Return the List of Strings which gives the certificate paths for the specific taskParams
@@ -649,7 +668,8 @@ public class NodeManager extends DevopsBase {
       boolean isClientRootCARequired,
       String commonName,
       String ybHomeDir,
-      Map<String, Integer> subjectAltName) {
+      Map<String, Integer> subjectAltName,
+      Map<String, Integer> loadBalancerNames) {
     List<String> subcommandStrings = new ArrayList<>();
 
     String serverCertFile = String.format("node.%s.crt", commonName);
@@ -772,7 +792,7 @@ public class NodeManager extends DevopsBase {
                   null,
                   serverCertFile,
                   serverKeyFile,
-                  subjectAltName);
+                  addLoadBalancerNames(clientRootCert, subjectAltName, loadBalancerNames));
               rootCertPath = clientRootCert.getCertificate();
               serverCertPath = String.format("%s/%s", tempStorageDirectory, serverCertFile);
               serverKeyPath = String.format("%s/%s", tempStorageDirectory, serverKeyFile);
@@ -1008,6 +1028,8 @@ public class NodeManager extends DevopsBase {
       commonName = node.cloudInfo.secondary_private_ip;
       alternateNames.put(node.cloudInfo.secondary_private_ip, GeneralName.iPAddress);
     }
+    Map<String, Integer> loadBalancerNames =
+        ManagedLoadBalancerUtil.getCertNames(universe.getUniverseDetails(), node);
 
     switch (taskParam.type) {
       case Everything:
@@ -1052,7 +1074,8 @@ public class NodeManager extends DevopsBase {
                   taskParam,
                   commonName,
                   taskParam.getProvider().getYbHome(),
-                  alternateNames));
+                  alternateNames,
+                  loadBalancerNames));
         }
         break;
       case Software:
@@ -1106,7 +1129,8 @@ public class NodeManager extends DevopsBase {
                       taskParam,
                       commonName,
                       taskParam.getProvider().getYbHome(),
-                      alternateNames));
+                      alternateNames,
+                      loadBalancerNames));
             }
             Map<String, String> gflags = new TreeMap<>(taskParam.gflags);
             processGFlags(config, universe, node, taskParam, gflags, useHostname);
@@ -1264,7 +1288,8 @@ public class NodeManager extends DevopsBase {
                         taskParam.clientRootCARotationType != CertRotationType.None,
                         commonName,
                         ybHomeDir,
-                        alternateNames));
+                        alternateNames,
+                        loadBalancerNames));
               }
               break;
             case UPDATE_CERT_DIRS:
@@ -1325,7 +1350,13 @@ public class NodeManager extends DevopsBase {
             }
             subcommand.addAll(
                 getCertificatePaths(
-                    config, userIntent, taskParam, commonName, ybHomeDir, alternateNames));
+                    config,
+                    userIntent,
+                    taskParam,
+                    commonName,
+                    ybHomeDir,
+                    alternateNames,
+                    loadBalancerNames));
 
           } else if (UpgradeTaskParams.UpgradeTaskSubType.Round1GFlagsUpdate.name()
               .equals(subType)) {

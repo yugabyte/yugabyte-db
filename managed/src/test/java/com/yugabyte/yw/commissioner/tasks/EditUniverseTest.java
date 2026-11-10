@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.EDIT;
 import static com.yugabyte.yw.models.TaskInfo.State.Aborted;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
@@ -57,24 +58,29 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.DeltaEvaluator;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeDetailsArrayComparator;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
+import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.YbcThrottleParameters;
 import com.yugabyte.yw.forms.YbcThrottleTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Region;
@@ -1408,7 +1414,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
             any(), eq("region-1"), any(), any(), eq(List.of(5434, 9042)), any());
   }
 
-  private Universe givenUserLoadBalancer() {
+  private void allowManagedLoadBalancer() {
     factory
         .forUniverse(defaultUniverse)
         .setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
@@ -1417,6 +1423,10 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         .forProvider(defaultProvider)
         .setValue("yb.universe.managed_load_balancer_enabled", "true");
     when(cloudAPI.supportsManagedLoadBalancer()).thenReturn(true);
+  }
+
+  private Universe givenUserLoadBalancer() {
+    allowManagedLoadBalancer();
     return Universe.saveDetails(
         defaultUniverse.getUniverseUUID(),
         u -> {
@@ -1616,6 +1626,191 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
             .filter(p -> p.isLeaderBlacklist && p.removeNodes != null)
             .flatMap(p -> p.removeNodes.stream())
             .anyMatch(n -> n.cloudInfo.private_ip.equals(stuckIp.get())));
+  }
+
+  private Universe givenSelfSignedClientTls(Universe universe) throws Exception {
+    CertificateInfo ca =
+        ModelFactory.createCertificateInfo(
+            defaultCustomer.getUuid(),
+            createTempFile("edit_universe_test", "ca.crt", "test content"),
+            CertConfigType.SelfSigned);
+    when(mockClient.getLeaderBlacklistCompletion())
+        .thenReturn(new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null));
+    when(mockClient.isServerReady(any(HostAndPort.class), anyBoolean()))
+        .thenReturn(new IsServerReadyResponse(0, "", null, 0, 0));
+    return Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          details.rootCA = ca.getUuid();
+          details.rootAndClientRootCASame = true;
+          details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt = true;
+          details.getPrimaryCluster().userIntent.enableClientToNodeEncrypt = true;
+        });
+  }
+
+  // NodeTaskParams JSON reads back as the base class, so read the subtask params as JSON.
+  private static String param(TaskInfo subTask, String field) {
+    return subTask.getTaskParams().path(field).asText();
+  }
+
+  private static List<TaskInfo> loadBalancerCertCopies(TaskInfo taskInfo) {
+    return taskInfo.getSubTasks().stream()
+        .filter(t -> t.getTaskType() == TaskType.AnsibleConfigureServers)
+        .filter(t -> param(t, "type").equals(UpgradeTaskParams.UpgradeTaskType.Certs.name()))
+        .collect(Collectors.toList());
+  }
+
+  private static Set<String> nodeNames(List<TaskInfo> subTasks) {
+    return subTasks.stream().map(t -> param(t, "nodeName")).collect(Collectors.toSet());
+  }
+
+  /** Per node, in order: "<process> <command>". */
+  private static Map<String, List<String>> serverCommands(TaskInfo taskInfo) {
+    return taskInfo.getSubTasks().stream()
+        .filter(t -> t.getTaskType() == TaskType.AnsibleClusterServerCtl)
+        .filter(t -> t.getTaskState() == Success)
+        .sorted(Comparator.comparing(TaskInfo::getPosition))
+        .collect(
+            Collectors.groupingBy(
+                t -> param(t, "nodeName"),
+                Collectors.mapping(
+                    t -> param(t, "process") + " " + param(t, "command"), Collectors.toList())));
+  }
+
+  @Test
+  public void testTurningOnWithDnsNamesReissuesClientCertsThenRestartsEachTserverOnce()
+      throws Exception {
+    allowManagedLoadBalancer();
+    Universe universe = givenSelfSignedClientTls(defaultUniverse);
+    when(cloudAPI.ensureManagedLoadBalancer(any(), any(), any(), any(), any(), any()))
+        .thenReturn("lbi-0123.elb.us-west-2.amazonaws.com");
+    UniverseDefinitionTaskParams taskParams = flipManagedLoadBalancer(universe, true);
+    taskParams
+        .getPrimaryCluster()
+        .userIntent
+        .getManagedLoadBalancer()
+        .setDnsNames(List.of("*.db.example.com"));
+
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    assertEquals(Success, taskInfo.getTaskState());
+    Set<String> tservers =
+        universe.getTServers().stream().map(n -> n.nodeName).collect(Collectors.toSet());
+    List<TaskInfo> copies = loadBalancerCertCopies(taskInfo);
+    // Client-facing cert only, same CA.
+    for (TaskInfo copy : copies) {
+      assertEquals("ROTATE_CERTS", param(copy, "certRotateAction"));
+      assertEquals(CertRotationType.None.name(), param(copy, "rootCARotationType"));
+      assertEquals(CertRotationType.ServerCert.name(), param(copy, "clientRootCARotationType"));
+    }
+    assertEquals(tservers, nodeNames(copies));
+    // The copy needs the address that ensure saves; a tserver loads the new cert when it restarts.
+    List<TaskType> subTasks = subTaskTypes(taskInfo);
+    int firstCopy = copies.stream().mapToInt(TaskInfo::getPosition).min().getAsInt();
+    int lastCopy = copies.stream().mapToInt(TaskInfo::getPosition).max().getAsInt();
+    assertTrue(
+        subTasks.toString(), subTasks.indexOf(TaskType.EnsureManagedLoadBalancer) < firstCopy);
+    assertTrue(subTasks.toString(), lastCopy < subTasks.indexOf(TaskType.AnsibleClusterServerCtl));
+    // One tserver down at a time, each once, and no master: masters don't serve the clients.
+    Map<String, List<String>> commands = serverCommands(taskInfo);
+    assertEquals(tservers, commands.keySet());
+    commands.values().forEach(c -> assertEquals(List.of("tserver stop", "tserver start"), c));
+    assertEquals(tservers.size(), countRunSubTasks(taskInfo, TaskType.CheckFollowerLag));
+  }
+
+  @Test
+  public void testRetryOfAnEditThatChangesOnlyDnsNamesStillReissuesTheCerts() throws Exception {
+    allowManagedLoadBalancer();
+    UUID clusterUUID = defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid;
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig lbConfig = privateLb();
+          lbConfig.setDnsNames(List.of("db.example.com"));
+          details.getPrimaryCluster().userIntent.setManagedLoadBalancer(lbConfig);
+          ManagedLoadBalancerState state = new ManagedLoadBalancerState();
+          state.put(
+              new ManagedLoadBalancer(
+                  clusterUUID,
+                  Region.getByCode(defaultProvider, "region-1").getUuid(),
+                  ManagedLoadBalancer.Scheme.PRIVATE,
+                  ImmutableList.of(),
+                  ManagedLoadBalancerUtil.getPrivateName(clusterUUID),
+                  "lbi-0123.elb.us-west-2.amazonaws.com"));
+          details.setManagedLoadBalancerState(state);
+        });
+    Universe universe = givenSelfSignedClientTls(defaultUniverse);
+    when(cloudAPI.ensureManagedLoadBalancer(any(), any(), any(), any(), any(), any()))
+        .thenReturn("lbi-0123.elb.us-west-2.amazonaws.com");
+    // The first restarted tserver doesn't come back in time.
+    AtomicBoolean stuck = new AtomicBoolean();
+    when(mockClient.waitForServer(any(), anyLong()))
+        .thenAnswer(invocation -> !stuck.compareAndSet(false, true));
+    UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    taskParams.expectedUniverseVersion = -1;
+    taskParams
+        .getPrimaryCluster()
+        .userIntent
+        .getManagedLoadBalancer()
+        .setDnsNames(List.of("db.example.com", "*.db.example.com"));
+    // The names alone must count as an edit.
+    assertTrue(
+        UniverseCRUDHandler.getUpdateOptions(
+                taskParams,
+                EDIT,
+                taskParams.getPrimaryCluster(),
+                Universe.getOrBadRequest(universe.getUniverseUUID()))
+            .contains(UniverseDefinitionTaskParams.UpdateOptions.UPDATE));
+
+    TaskInfo failed = submitTask(taskParams);
+    assertEquals(List.of(TaskType.WaitForServer), failedSubTaskTypes(failed));
+    // The first attempt saved the new names, so a retry can no longer see that they changed.
+    TaskInfo retried = retry(failed);
+
+    assertEquals(Success, retried.getTaskState());
+    Set<String> tservers =
+        universe.getTServers().stream().map(n -> n.nodeName).collect(Collectors.toSet());
+    assertEquals(tservers, nodeNames(loadBalancerCertCopies(retried)));
+    assertEquals(tservers, serverCommands(retried).keySet());
+  }
+
+  @Test
+  public void testGcpTurnOnWithDnsNamesRestartsEachTserverOnceForTheRebindAndTheCert()
+      throws Exception {
+    createAccessKeyForProvider("default-key", gcpProvider);
+    Universe universe =
+        givenSelfSignedClientTls(createUniverseForProvider("GCP Universe", gcpProvider));
+    factory
+        .forUniverse(universe)
+        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    factory.forProvider(gcpProvider).setValue("yb.universe.managed_load_balancer_enabled", "true");
+    when(cloudAPI.supportsManagedLoadBalancer()).thenReturn(true);
+    when(cloudAPI.ensureManagedLoadBalancer(any(), any(), any(), any(), any(), any()))
+        .thenReturn("10.150.0.5");
+    // The proxies listen on the private IP, so every tserver needs the rebind too.
+    when(mockNodeUIApiHelper.getRequest(endsWith("/api/v1/varz")))
+        .thenReturn(proxyFlags("10.0.0.1"));
+    UniverseDefinitionTaskParams taskParams = flipManagedLoadBalancer(universe, true);
+    taskParams
+        .getPrimaryCluster()
+        .userIntent
+        .getManagedLoadBalancer()
+        .setDnsNames(List.of("*.db.example.com"));
+
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    assertEquals(Success, taskInfo.getTaskState());
+    Set<String> tservers =
+        universe.getTServers().stream().map(n -> n.nodeName).collect(Collectors.toSet());
+    assertEquals(tservers.size(), loadBalancerCertCopies(taskInfo).size());
+    Map<String, List<String>> commands = serverCommands(taskInfo);
+    assertEquals(tservers, commands.keySet());
+    commands.values().forEach(c -> assertEquals(List.of("tserver stop", "tserver start"), c));
   }
 
   private TaskInfo rollback(TaskInfo failed) throws InterruptedException {

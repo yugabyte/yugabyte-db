@@ -124,7 +124,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       Universe universe = getUniverse();
       for (Cluster cluster : taskParams().clusters) {
         Cluster current = universe.getCluster(cluster.uuid);
-        if (current != null && ManagedLoadBalancerUtil.isTurnedOnOrOff(current, cluster)) {
+        if (current != null && ManagedLoadBalancerUtil.isChanged(current, cluster)) {
           throw new PlatformServiceException(
               BAD_REQUEST, "Managed load balancers are not supported for Kubernetes universes");
         }

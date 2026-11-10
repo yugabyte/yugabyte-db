@@ -13112,6 +13112,13 @@
     "ManagedLoadBalancerConfig" : {
       "description" : "Load balancers that YBA creates and manages for a cluster",
       "properties" : {
+        "dnsNames" : {
+          "description" : "DNS names that clients use to reach the load balancers, for example db.example.com or *.db.example.com. YBA adds them, and the load balancer address, to the server certs that its self-signed CA signs for the nodes behind the load balancers. IP addresses are rejected. In an edit, leaving this out keeps the current names, and an empty list clears them. A setting with names must set enablePrivate to true.",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
         "enablePrivate" : {
           "description" : "Create a private L4 load balancer in each region of the cluster",
           "type" : "boolean"
