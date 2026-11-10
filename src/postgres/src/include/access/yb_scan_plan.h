@@ -8,10 +8,12 @@
  *	  planner copying it.  One example is the set of rules for which
  *	  scan conditions YB binds to key columns, evaluated against the
  *	  YbScanPlan type defined here: scan-key setup (yb_scan_core.c)
- *	  binds a scan by these rules, and cost estimation (yb_cost.c,
- *	  costsize.c) predicts that binding without seeing execution
- *	  state.  Plan-time analysis only: no execution state (YbOpaque,
- *	  ScanKey) or pggate calls belong here.
+ *	  binds a scan by these rules, and cost estimation in costsize.c
+ *	  applies them to predict that binding without seeing execution
+ *	  state.  yb_cost.c counts bound key columns by its own rules
+ *	  instead, and #37431 tracks how the planner should learn what a
+ *	  scan binds.  Plan-time analysis only: no execution state
+ *	  (YbOpaque, ScanKey) or pggate calls belong here.
  *
  * Copyright (c) YugabyteDB, Inc.
  *

@@ -5,7 +5,9 @@
  *
  *	  YbOpaque and the functions that build, bind, execute, and
  *	  fetch a scan: the scan engine that the YB access methods
- *	  share.  Only the scan engine belongs here.  A function that
+ *	  share.  Only the scan engine belongs here.  The ybc_heap_*
+ *	  functions, which are the YB table AM's scan callbacks, are an
+ *	  exception, and #37429 tracks moving them out.  A function that
  *	  code other than scans also needs goes in a header outside the
  *	  scan engine, so that its callers do not depend on the scan
  *	  engine to reach it.
