@@ -79,6 +79,7 @@ Infer as much as you can from context first, then **batch-confirm with the user 
    If you find a candidate, surface it to the user and ask them to confirm it's the one to use *before* asking them to supply a fresh one. Only prompt for a new reference if no candidate is found or the user rejects the candidate. Acceptable forms are:
    - A GitHub issue number (e.g., `#31151`)
    - A JIRA ticket (e.g., `PLAT-20518`)
+   - Several of either, all GitHub or all JIRA, for a PR that fixes more than one issue
    - Offer to **auto-create** a GitHub issue or JIRA ticket if the user doesn't have one yet. If they accept, invoke the **`/create-issue`** skill to file it (GitHub issue for core DB code, JIRA ticket for `managed/` platform work), then capture the issue number / JIRA key it reports back. Since the issue tracks this PR's work, tell `/create-issue` to assign it to the invoker (`@me`) rather than leaving it unassigned.
 
    - Don't reuse an issue across multiple in-flight master PRs — create a fresh issue (via `/create-issue`) when starting unrelated work, even if a related closed/merged PR used a similar issue.
@@ -137,7 +138,7 @@ a dirty tree.
 
 > **Confidentiality — final scrub before publishing.** The repo and every PR are public. Before invoking the script, re-read the description, test plan, upgrade-rollback notes, the commit messages on the branch, **the branch name itself** (it becomes the public PR head ref), **and the test code being added**, and confirm none of the following appear: customer names or identifiers (universe UUIDs, account IDs, support cases, environment names, region/zone names); PII (real names / emails / phone numbers / postal addresses / IP addresses — use RFC 5737/3849 documentation ranges in tests); unanonymized customer schemas (table / column / query text / query plans / sample rows from a real customer — reconstruct a synthetic reproducer); credentials, tokens, certificates, private keys, or license keys; internal-only hostnames, URLs, Grafana/Slack/Linear links, or vault paths; unreleased internal information (roadmap, SLAs, embargoed security findings, internal infra hostnames). See the top of this skill and `src/AGENTS.md` § Confidentiality for the full rule. If unsure whether a string is sensitive, don't write it down — ask the user.
 
-Once you have the issue (Step 3.1), title (Step 4), and reviewers (Step 3 if user-supplied), write the description and test plan to **separate** temp files and hand everything to the script.
+Once you have the issue or issues (Step 3.1), title (Step 4), and reviewers (Step 3 if user-supplied), write the description and test plan to **separate** temp files and hand everything to the script.
 
 Say **why**, always — a reviewer who has to reverse-engineer the motivation is the expensive case — then what changed, and whatever the reader must *act* on (new gflags, upgrade/rollback consequences, migration steps). Not a narration of the diff. Keep the test plan to what was actually run. See [`AGENTS.md` § Prose discipline](../../../AGENTS.md#prose-discipline--write-for-the-reader-not-for-volume).
 
