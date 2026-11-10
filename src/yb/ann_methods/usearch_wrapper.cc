@@ -81,19 +81,18 @@ index_dense_config_t CreateIndexDenseConfig(const HNSWOptions& options) {
 namespace {
 
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class UsearchVectorIterator
-    : public AbstractIterator<vector_index::VectorIndexIteratorEntry<Vector>> {
+class UsearchVectorIterator : public vector_index::VectorIndexIterator<Vector> {
  public:
   using IteratorEntry = vector_index::VectorIndexIteratorEntry<Vector>;
   using member_citerator_t = typename unum::usearch::index_dense_gt<VectorId>::member_citerator_t;
 
   UsearchVectorIterator(
-      size_t dimensions, member_citerator_t it, const index_dense_gt<VectorId>* index,
+      size_t dimensions, const index_dense_gt<VectorId>* index,
       const vector_index::VectorPayloadMap* payloads)
-      : dimensions_(dimensions), it_(it), index_(index), payloads_(payloads) {}
+      : dimensions_(dimensions), it_(index->cbegin()), end_(index->cend()), index_(index),
+        payloads_(payloads) {}
 
- protected:
-  IteratorEntry Dereference() const override {
+  IteratorEntry Entry() const override {
     // TODO(vector_index) do it in more efficient way
     auto member = *it_;
     IteratorEntry result;
@@ -110,15 +109,15 @@ class UsearchVectorIterator
     ++it_;
   }
 
-  bool NotEquals(const AbstractIterator<IteratorEntry>& other) const override {
-    const auto* other_iterator = down_cast<const UsearchVectorIterator*>(&other);
-    if (!other_iterator) return true;
-    return it_ != other_iterator->it_;
+ protected:
+  bool DoValid() const override {
+    return it_ != end_;
   }
 
  private:      // Reference to the Usearch index
   size_t dimensions_;              // Dimensionality of the vectors
   member_citerator_t it_; // Iterator over the internal Usearch entities
+  const member_citerator_t end_;
   const index_dense_gt<VectorId>* index_;
   const vector_index::VectorPayloadMap* payloads_;
 };
@@ -145,16 +144,9 @@ class UsearchIndex :
     consumption_.Init(mem_tracker);
   }
 
-  std::unique_ptr<AbstractIterator<vector_index::VectorIndexIteratorEntry<Vector>>> BeginImpl()
-      const override {
+  std::unique_ptr<vector_index::VectorIndexIterator<Vector>> CreateIterator() const override {
     return std::make_unique<UsearchVectorIterator<Vector, DistanceResult>>(
-        dimensions_, index_.cbegin(), &index_, this->payloads());
-  }
-
-  std::unique_ptr<AbstractIterator<vector_index::VectorIndexIteratorEntry<Vector>>> EndImpl()
-      const override {
-    return std::make_unique<UsearchVectorIterator<Vector, DistanceResult>>(
-        dimensions_, index_.cend(), &index_, this->payloads());
+        dimensions_, &index_, this->payloads());
   }
 
   Status DoReserve(
