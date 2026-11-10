@@ -3989,9 +3989,8 @@ ybcBuildScanPlanForIndexBuild(Relation relation, IndexInfo *indexInfo)
 }
 
 /*
- * TODO(#37429): move the ybc_heap_* functions to the YB table AM's own
- * directory, so that yb_scan_core.c does not depend on
- * yb_table_scan_options.h.
+ * TODO(#37429): move the ybc_heap_* functions out of this file, so that
+ * yb_scan_core.c does not depend on yb_table_scan_options.h.
  */
 TableScanDesc
 ybc_heap_beginscan(Relation relation,
