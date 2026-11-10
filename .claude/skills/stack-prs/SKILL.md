@@ -1,5 +1,5 @@
 ---
-name: stack
+name: stack-prs
 description: >-
   This repo's rules for stacked PRs (`feature-stack/<feature>/<change>` branches), on top of the
   upstream gh-stack skill.  Use for any stack operation -- creating layers, opening their PRs,
@@ -7,7 +7,7 @@ description: >-
   or landing a stack -- and whenever a `feature-stack/` branch is checked out.
 ---
 
-# Stack
+# Stack PRs
 
 A stack is for a feature that splits into several dependent changes.  Reach for one only when the
 user asks for it; a single PR is the default.
@@ -83,9 +83,10 @@ Only `gh stack` reads `gh-stack.remote`, so plain `git push` is unaffected.  A b
 
 Open each layer's PR with the `create-pr` skill (`create-pr.sh`), not `gh stack submit`, one layer
 at a time from the bottom up, because `submit`'s generated titles fail the pr-title check.  Don't
-pass `-b`; the script takes the base from `gh stack`.  It opens the PR as a draft, links it into the
-stack with `gh stack link`, and then marks it ready unless you passed `-D`.  The bottom layer's PR
-is linked when the next layer's PR opens, since `gh stack link` needs at least two PRs.
+pass `-b`; the script takes the base from `gh stack`.  A layer with a PR below it opens as a draft,
+is linked into the stack with `gh stack link`, and is then marked ready unless you passed `-D`.
+The bottom layer's PR opens ready (or as a draft with `-D`) and stays unlinked until the next
+layer's PR opens, since `gh stack link` needs at least two PRs.
 
 
 ## Updating a layer
@@ -183,4 +184,6 @@ itself block a merge; GitHub's merge box decides.
    Check with `gh api repos/yugabyte/yugabyte-db/pulls/<pr> --jq .stack`, which prints `null` for
    such a PR, and land it as an ordinary PR with `gh pr merge <pr> --squash`.
 
-3. **Clean up** with `gh stack sync --remote <upstream> --prune`.
+3. **Clean up.**  If every layer merged, run `gh stack sync --remote <upstream> --prune`.  If
+   layers remain, follow [Syncing](#syncing) instead, so their rebase is pushed through
+   `git-push.sh`, then report which PRs need Jenkins.

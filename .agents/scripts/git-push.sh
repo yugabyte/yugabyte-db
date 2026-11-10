@@ -25,7 +25,7 @@
 #   layer above a change is rewritten whatever its review state. This script
 #   lints the whole stack and hands the push to `gh stack push`, which
 #   force-pushes each layer with a lease. Rebasing and syncing are gh-stack's
-#   job; see the stack skill.
+#   job; see the stack-prs skill.
 #
 # usage: git-push [-b <base>] [-r <fork-remote>]
 #
@@ -199,7 +199,7 @@ run_lint() {
 if $is_stack_branch; then
   if ! gh stack --help >/dev/null 2>&1; then
     echo "error: stack branches are pushed with the gh-stack extension, which" >&2
-    echo "       is not installed. See the stack skill." >&2
+    echo "       is not installed. See the stack-prs skill." >&2
     exit 1
   fi
   if ! stack_json=$(gh stack view --json); then

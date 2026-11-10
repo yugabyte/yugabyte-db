@@ -208,7 +208,7 @@ The merge commit never reaches `master` (the repo squash-merges every PR), so it
 
 ## Stacked PRs
 
-A `feature-stack/<feature>/<change>` branch is a layer of a PR stack.  **Load the `stack` skill
+A `feature-stack/<feature>/<change>` branch is a layer of a PR stack.  **Load the `stack-prs` skill
 first**; it holds this repo's stack rules (naming, remote, pushing, opening PRs bottom-up, and
 the history-rewrite exception) on top of the upstream `gh-stack` skill.
 
