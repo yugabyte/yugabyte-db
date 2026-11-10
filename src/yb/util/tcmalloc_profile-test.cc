@@ -61,7 +61,7 @@ void SamplingProfilerTest::SetProfileSamplingRate(int64_t sample_period_bytes) {
     old_rate = 16_MB;
   }
 #else
-  old_rate = tcmalloc::MallocExtension::GetProfileSamplingRate();
+  old_rate = tcmalloc::MallocExtension::GetProfileSamplingInterval();
 #endif
   SetTCMallocSamplingPeriod(sample_period_bytes);
 
@@ -172,7 +172,7 @@ TEST_F(SamplingProfilerTest, HeapProfile) {
   // We do not expect to find this allocation in the profile since we have not started profiling.
   std::unique_ptr<char[]> big_alloc1 = TestAllocArrayOfSize(kAllocSizeExcluded);
 
-  token = tcmalloc::MallocExtension::StartLifetimeProfiling(/* seed_with_live_allocs= */ false);
+  token = tcmalloc::MallocExtension::StartLifetimeProfiling();
 
   // We expect to find this allocation in the profile since it is not deallocated before we stop
   // profiling.

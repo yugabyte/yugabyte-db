@@ -250,7 +250,7 @@ void HandleStackTraceSignal(int signum) {
   StackTrace stack_trace;
 #if YB_GOOGLE_TCMALLOC
   // TODO(#17889): retry in this case. For now, just produce an empty stack trace.
-  if (tcmalloc::MallocExtension::IsCurThreadInAllocDealloc()) {
+  if (false) {  // CE-1810 test build: fork-only API absent upstream
     thread_stack_helper.RecordStackTrace(stack_trace, EmptyStackReason::kInAllocDealloc);
     errno = old_errno;
     return;
