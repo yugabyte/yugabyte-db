@@ -53,12 +53,16 @@ class TransactionRpcBase : public rpc::Rpc, public internal::TabletRpc {
                  tablet,
                  /* table =*/ nullptr,
                  mutable_retrier(),
-                 trace_.get()) {
+                 trace_.get()),
+        wait_state_(ash::WaitStateInfo::CurrentWaitState()) {
   }
 
   virtual ~TransactionRpcBase() {}
 
   void SendRpc() override {
+    // Retries run on a reactor thread with no wait state; re-adopt the caller's so the retried
+    // RPC keeps its ASH metadata.
+    ADOPT_WAIT_STATE(wait_state_);
     invoker_.Execute(tablet_id());
   }
 
@@ -95,6 +99,7 @@ class TransactionRpcBase : public rpc::Rpc, public internal::TabletRpc {
                            rpc::ResponseCallback callback) = 0;
 
   internal::TabletInvoker invoker_;
+  const ash::WaitStateInfoPtr wait_state_;
 };
 
 // UpdateTransactionRpc is used to call UpdateTransaction remote method of appropriate tablet.

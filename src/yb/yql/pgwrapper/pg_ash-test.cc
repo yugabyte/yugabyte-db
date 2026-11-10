@@ -182,9 +182,17 @@ class PgAshWritePipeliningTest : public PgAshTest {
     // usually replicated before it even arrives.
     options->extra_tserver_flags.push_back(Format(
         "--TEST_delay_update_consensus_requests_ms=$0", 2 * kTimeMultiplier * kSamplingIntervalMs));
-    // Load balancer ChangeConfig ops carry no query_id and would show up as unattributed
-    // Raft_WaitingForReplication samples.
-    options->extra_master_flags.push_back("--enable_load_balancing=false");
+  }
+};
+
+// Reuses the delayed follower ack so the commit's replication wait gets sampled.
+class PgAshStatusTabletLeaderMoveTest : public PgAshWritePipeliningTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgAshWritePipeliningTest::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back("--transaction_table_num_tablets=1");
+    // A heartbeat retry would refresh the cached status tablet leader before COMMIT.
+    options->extra_tserver_flags.push_back("--transaction_heartbeat_usec=30000000");
   }
 };
 
@@ -1814,6 +1822,32 @@ TEST_F_EX(PgAshTest, WritePipeliningWaitAttributedToStatement, PgAshWritePipelin
   ASSERT_GT(drained, 0) << "No attributed YBClient_WaitingForPipelinedWrites samples; the commit "
                         << "was not deferred behind the async writes, or the drain is not "
                         << "instrumented.";
+}
+
+// A COMMIT sent to a stale status tablet leader is retried from a reactor thread. The retried
+// UpdateTransaction must keep the statement's ASH metadata, so its replication wait on the new
+// leader is not sampled with query_id 0.
+TEST_F_EX(PgAshTest, StatusTabletRetryKeepsQueryId, PgAshStatusTabletLeaderMoveTest) {
+  ASSERT_OK(conn_->Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+  // The balancer may still be adding status tablet replicas or moving its leader.
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  ASSERT_OK(cluster_->WaitForLoadBalancerToBecomeIdle(client, 60s * kTimeMultiplier));
+  const auto status_tablet = ASSERT_RESULT(conn_->FetchRow<std::string>(
+      "SELECT tablet_id FROM yb_local_tablets WHERE table_name = 'transactions'"));
+  const auto new_leader = (ASSERT_RESULT(cluster_->GetTabletLeaderIndex(status_tablet)) + 1) % 3;
+
+  ASSERT_OK(conn_->StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn_->Execute("INSERT INTO t VALUES (1)"));
+  ASSERT_OK(cluster_->MoveTabletLeader(status_tablet, new_leader));
+  const auto start = ASSERT_RESULT(conn_->FetchRow<std::string>("SELECT clock_timestamp()::text"));
+  ASSERT_OK(conn_->CommitTransaction());
+
+  auto conn = ASSERT_RESULT(ConnectToTs(*cluster_->tablet_server(new_leader)));
+  const auto [total, unattributed] = ASSERT_RESULT((conn.FetchRow<int64_t, int64_t>(Format(
+      "SELECT COUNT(*), COUNT(*) FILTER (WHERE query_id = 0) FROM yb_active_session_history('$0') "
+      "WHERE wait_event = 'Raft_WaitingForReplication'", start))));
+  ASSERT_EQ(unattributed, 0) << "Retried UpdateTransaction lost its ASH metadata.";
+  ASSERT_GT(total, 0) << "The commit's replication wait on the new leader was not sampled.";
 }
 
 } // namespace yb::pgwrapper
