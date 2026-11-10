@@ -1515,6 +1515,7 @@ public class GFlagsUtil {
         });
   }
 
+  // ldapbindpasswd= starting an option: at the start, or after whitespace, a comma or a quote.
   private static final Pattern LDAP_BIND_PASSWD_KEY =
       Pattern.compile("(?<![^\\s,\"])ldapbindpasswd=");
 
@@ -1528,9 +1529,10 @@ public class GFlagsUtil {
               + "|[^\\s,\"]*+(?=[\\s,]|$|\"(?=,|$))");
 
   /**
-   * Redaction ends an unquoted ldapbindpasswd at its first quote, so a value quoted only in part
-   * (pa",ss" for pa,ss) would keep the rest of the password in logs and audit entries. HBA values
-   * the universe already stores pass, so one saved before this check doesn't block other edits.
+   * Refuses an ldapbindpasswd quoted only in part, such as pa",ss" for pa,ss. Redaction can't tell
+   * where such a value ends, so it redacts to the end of its CSV field, and API responses would
+   * lose the HBA options after the password. HBA values the universe already stores pass, so one
+   * saved before this check doesn't block other edits.
    */
   public static void checkLdapBindPasswdQuoting(
       UniverseDefinitionTaskParams.UserIntent userIntent, @Nullable Universe universe) {
