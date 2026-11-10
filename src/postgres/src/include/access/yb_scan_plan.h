@@ -9,8 +9,8 @@
  *	  bind a given value to a key column of a given type
  *	  (YbIsScanCompatible()): scan-key setup (yb_scan_core.c) binds
  *	  by it, and cost estimation in costsize.c calls it to predict
- *	  that binding without seeing execution state.  The other rules
- *	  for which conditions bind to key columns are in
+ *	  that binding without seeing execution state.  Most of the
+ *	  other rules for which conditions bind to key columns are in
  *	  yb_scan_core.c, and yb_cost.c and parts of costsize.c predict
  *	  bound key columns by their own rules instead.  #37431 tracks
  *	  how the planner should learn what a scan binds.  Nothing that

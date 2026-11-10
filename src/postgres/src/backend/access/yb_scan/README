@@ -8,22 +8,21 @@ tables and the accessors that executor nodes still call on them, the low-level
 scan primitives that the YB table and index access methods share, the scan
 logic that the planner shares, the YB implementation of genam's systable
 scans, ANALYZE row sampling, and single-row fetch by ybctid.  The headers that
-the groups below list are all under src/include/access/.  Most of them are
-implemented in this directory, but four are implemented in
-src/backend/access/common/: yb_cost.h, yb_target.h, yb_lockrows.h, and
-yb_parallel_scan.h.  #37428 and #37429 track reorganizing this directory and
-those implementations by role.
+the groups below list are all under src/include/access/.  Some of them are
+implemented in src/backend/access/common/ rather than here, and #37428 and
+#37429 track reorganizing this directory and those files by role.
 
 Code above the access-method layer, such as executor nodes, the optimizer,
 commands, and catalog and cache code, should reach YB relations only through
 the interfaces upstream code uses for any table or index access method:
 tableam, the index AM interface, and genam's systable functions.  YB extends
-those interfaces where it needs to, as with table_beginscan_*_yb() and the
-yb_ammightrecheck index AM callback, rather than going around them.  The write
-path, which goes around tuple_insert, tuple_update, and tuple_delete, is not
-structured this way yet.  The groups below sort the headers by how they relate
-to that rule.  The comment at the top of each header says what belongs in it
-and, where only some code may include it, which code that is.
+those interfaces where it needs to, as with the table_beginscan_yb() wrappers
+and the yb_ammightrecheck index AM callback, rather than going around them.
+The write path, which goes around tuple_insert, tuple_update, and
+tuple_delete, is not structured this way yet.  The groups below sort the
+headers by how they relate to that rule.  The comment at the top of each
+header says what belongs in it and, where only some code may include it, which
+code that is.
 
 Headers
 -------
@@ -63,8 +62,8 @@ Bypasses of an AM interface still to be removed, tracked in #36168:
   yb_parallel_scan.h (the sequential scan side)
 
 Avoid adding a bypass, including a new entry point in one of the bypass
-headers above.  When one is unavoidable, declare it, as a function under
-src/backend/access/, in the header of the bypass it extends or in a new
-src/include/access/yb_*.h header if it is a new kind of bypass.  That header's
-comment should name the files that may include it.  It should also say why no
-AM interface fits or cite the issue that tracks removing the bypass.
+headers above.  When one is unavoidable, declare it as a function in the
+header of the bypass it extends or in a new src/include/access/yb_*.h header
+if it is a new kind of bypass.  That header's comment should name the files
+that may include it.  It should also say why no AM interface fits or cite the
+issue that tracks removing the bypass.

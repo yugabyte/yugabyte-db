@@ -105,7 +105,7 @@ extern int	ybFetchSample(YbSample ybSample, HeapTuple *rows);
  * heap_fetch() in heapam.c, keyed by ybctid in place of a heap TID, so
  * tableam's tuple_fetch_row_version() does not fit as it is.  #37232 tracks
  * adding a YB variant of that callback that takes a ybctid and routing the
- * callers through it.
+ * callers through it.  Called from genam.c and indexing.c.
  */
 extern bool YbFetchHeapTuple(Relation relation, Datum ybctid,
 							 HeapTuple *tuple);
