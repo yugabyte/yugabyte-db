@@ -56,7 +56,9 @@ class GroundTruth {
       const std::vector<VectorId>& vertex_ids);
 
   // Brute-force searches the top max_k results of every query, if the precomputed ground truth is
-  // missing or has to be validated. Must be called once before EvaluateRecall.
+  // missing or has to be validated. Recall is then scored against these results, because the
+  // validation does not check the order of the precomputed ones. Must be called once before
+  // EvaluateRecall.
   Status Prepare(size_t num_threads);
 
   // Returns a vector with i-recall@k stored at each element with index i - 1.
@@ -93,7 +95,7 @@ class GroundTruth {
   bool validate_precomputed_ground_truth_;
   const IndexReader& index_reader_;
   const std::vector<VectorId>& vertex_ids_;
-  // Brute-force results when there is no precomputed ground truth.
+  // Brute-force results, empty if Prepare did not compute them.
   PrecomputedGroundTruthMatrix computed_ground_truth_;
 };
 

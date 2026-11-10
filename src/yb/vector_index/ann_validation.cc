@@ -164,9 +164,7 @@ Status GroundTruth<Vector, DistanceResult>::Prepare(size_t num_threads) {
             << " top " << max_k_ << " ground truth of " << queries_.size() << " queries using "
             << num_threads << " threads";
   auto start_time = MonoTime::Now();
-  if (precomputed_ground_truth_.empty()) {
-    computed_ground_truth_.resize(queries_.size());
-  }
+  computed_ground_truth_.resize(queries_.size());
   RETURN_NOT_OK(ProcessInParallel(
       num_threads,
       /* start_index= */ static_cast<size_t>(0),
@@ -185,7 +183,7 @@ Result<FloatVector> GroundTruth<Vector, DistanceResult>::EvaluateRecall(
             InvalidArgument, "Number of threads must be at least 1");
   SCHECK_LE(k, max_k_, InvalidArgument, "k exceeds max_k");
   const auto& ground_truth =
-      precomputed_ground_truth_.empty() ? computed_ground_truth_ : precomputed_ground_truth_;
+      computed_ground_truth_.empty() ? precomputed_ground_truth_ : computed_ground_truth_;
   SCHECK_EQ(ground_truth.size(), queries_.size(), IllegalState, "Ground truth is not prepared");
 
   // For each index i we maintain the total overlap (set intersection cardinality) between the
@@ -225,8 +223,8 @@ Status GroundTruth<Vector, DistanceResult>::PrepareQuery(size_t query_index) {
   auto our_correct_top_k = BruteForcePreciseNearestNeighbors<Vector, DistanceResult>(
       query, vertex_ids_, distance_fn_, max_k_);
 
+  computed_ground_truth_[query_index] = VertexIdsOnly(our_correct_top_k);
   if (precomputed_ground_truth_.empty()) {
-    computed_ground_truth_[query_index] = VertexIdsOnly(our_correct_top_k);
     return Status::OK();
   }
 
