@@ -18,19 +18,38 @@ import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.common.idempotency.IdempotencyService;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 import play.mvc.Http;
+import play.mvc.Result;
 
 @Slf4j
 public class ApiControllerUtils {
   private final AuditService auditService;
 
+  // Field-injected so that the generated *ImpInterface constructors, and every controller
+  // implementation calling them, stay unchanged.
+  @Inject private IdempotencyService idempotencyService;
+
   @Inject
   public ApiControllerUtils(AuditService auditService) {
     this.auditService = auditService;
+  }
+
+  /**
+   * Runs an operation marked {@code x-yba-api-idempotent} in the spec, honouring the request's
+   * {@code Idempotency-Key} header. Called by the generated code.
+   */
+  protected Result idempotent(Http.Request request, IdempotencyService.ResultSupplier operation)
+      throws Exception {
+    if (idempotencyService == null) {
+      // A controller implementation built by hand in a unit test, outside Guice.
+      return operation.get();
+    }
+    return idempotencyService.execute(request, operation);
   }
 
   protected ObjectMapper mapper =

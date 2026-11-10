@@ -97,7 +97,8 @@ export const GraphTab: FC<MetricsData> = ({
       metricMeasure === MetricMeasure.OVERALL &&
       (type === MetricTypes.SERVER || type === MetricTypes.DISK_IO) &&
       selectedUniverse &&
-      getIsKubernetesUniverse(selectedUniverse)
+      getIsKubernetesUniverse(selectedUniverse) &&
+      !!selectedUniverse.nodeExporterSidecarScraped
     ) {
       metricsWithSettings.push(
         { metric: NODE_EXPORTER_CHECK_METRIC_KEY },

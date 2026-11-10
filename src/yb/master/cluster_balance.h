@@ -109,6 +109,8 @@ class ClusterLoadBalancer {
   Status IsIdle() const;
   ClusterBalancerActivityInfo GetLatestActivityInfo() const;
 
+  const ClusterBalancerActivityBuffer& TEST_activity_buffer() const { return activity_buffer_; }
+
   // Returns the TableInfo of all the tables for whom cluster balancing is being skipped.
   // As of today, this constitutes all the system tables, colocated user tables
   // and tables which have been marked as DELETING OR DELETED.

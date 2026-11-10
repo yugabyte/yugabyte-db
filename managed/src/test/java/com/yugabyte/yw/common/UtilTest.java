@@ -37,6 +37,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.provider.OnPremCloudInfo;
@@ -48,6 +49,7 @@ import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.util.Date;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -430,6 +432,25 @@ public class UtilTest extends FakeDBApplication {
   @Test
   public void testYsqlRedaction(String output, String input) {
     assertEquals(output, Util.redactYsqlQuery(input));
+  }
+
+  @Test
+  public void testYsqlRedactionOfUnterminatedQuotedAndLowercasePasswords() {
+    assertEquals(
+        "CREATE USER u PASSWORD REDACTED", Util.redactYsqlQuery("CREATE USER u PASSWORD 'p@ss'"));
+    assertEquals(
+        "ALTER USER u PASSWORD REDACTED; SELECT 1;",
+        Util.redactYsqlQuery("ALTER USER u PASSWORD 'a'';b'; SELECT 1;"));
+    assertEquals(
+        "create user u PASSWORD REDACTED", Util.redactYsqlQuery("create user u password 'x y'"));
+    // The shape NodeUniverseManager logs: the query inside ysqlsh -c "...", $ escaped for bash.
+    assertEquals(
+        "ysqlsh -d 'yugabyte' -c \"CREATE USER s PASSWORD REDACTED\"",
+        Util.redactYsqlQuery("ysqlsh -d 'yugabyte' -c \"CREATE USER s PASSWORD 'Up1\\$ ''q'\""));
+    // Older '"'"'-escaped form with a quote inside the password.
+    assertEquals(
+        "ALTER USER u PASSWORD REDACTED; SELECT 1;",
+        Util.redactYsqlQuery("ALTER USER u PASSWORD '\"'\"'a'\"'\"''\"'\"'b'\"'\"'; SELECT 1;"));
   }
 
   @Test
@@ -1128,5 +1149,31 @@ public class UtilTest extends FakeDBApplication {
     Provider provider = mock(Provider.class);
     when(provider.getUuid()).thenReturn(uuid);
     return provider;
+  }
+
+  private static NodeDetails nodeWithIps(String privateIp, String secondaryPrivateIp) {
+    NodeDetails node = new NodeDetails();
+    node.cloudInfo = new CloudSpecificInfo();
+    node.cloudInfo.private_ip = privateIp;
+    node.cloudInfo.secondary_private_ip = secondaryPrivateIp;
+    return node;
+  }
+
+  @Test
+  public void testGetSecondaryToPrivateIps() {
+    NodeDetails noCloudInfo = new NodeDetails();
+    Map<String, String> ips =
+        Util.getSecondaryToPrivateIps(
+            List.of(
+                nodeWithIps("10.0.0.1", "192.168.0.1"),
+                nodeWithIps("10.0.0.2", "192.168.0.2"),
+                nodeWithIps("10.0.0.3", null),
+                nodeWithIps("10.0.0.4", "null"),
+                nodeWithIps("10.0.0.5", "10.0.0.5"),
+                nodeWithIps(null, "192.168.0.6"),
+                nodeWithIps("null", "192.168.0.7"),
+                nodeWithIps("10.0.0.8", ""),
+                noCloudInfo));
+    assertEquals(Map.of("192.168.0.1", "10.0.0.1", "192.168.0.2", "10.0.0.2"), ips);
   }
 }

@@ -448,6 +448,9 @@ class PgApiImpl {
   Result<int> WaitForBackendsCatalogVersion(PgOid dboid, uint64_t version, pid_t pid);
 
   Status BackfillIndex(const PgObjectId& table_id, bool use_regular_transaction_block);
+  Status StartTableBackfill(
+      const PgObjectId& source_table_id, uint32_t target_table_oid,
+      uint32_t transform_fn_oid, uint64_t backfill_timestamp, int64_t pg_job_id);
   Status WaitVectorIndexReady(const PgObjectId& table_id);
 
   Status NewDropSequence(const YbcPgOid database_oid,

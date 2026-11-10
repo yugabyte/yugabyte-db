@@ -104,6 +104,35 @@ public class UniverseTest extends FakeDBApplication {
   }
 
   @Test
+  public void testGetSummaries() {
+    Customer otherCustomer = ModelFactory.testCustomer("tc2", "Customer 2");
+    Universe first = createUniverse("first", defaultCustomer.getId());
+    Universe second = createUniverse("second", otherCustomer.getId());
+    Universe unparsable = createUniverse("unparsable", defaultCustomer.getId());
+    Universe withoutCustomer = createUniverse("without-customer", otherCustomer.getId());
+    DB.sqlUpdate(
+            "update universe set universe_details_json = 'not json' where universe_uuid = :uuid")
+        .setParameter("uuid", unparsable.getUniverseUUID())
+        .execute();
+    DB.sqlUpdate("update universe set customer_id = null where universe_uuid = :uuid")
+        .setParameter("uuid", withoutCustomer.getUniverseUUID())
+        .execute();
+
+    // The details are not read, so a universe with details that don't parse is listed. A universe
+    // without a customer is not.
+    assertEquals(
+        Set.of(
+            new Universe.Summary(first.getUniverseUUID(), "first", defaultCustomer.getId()),
+            new Universe.Summary(second.getUniverseUUID(), "second", otherCustomer.getId()),
+            new Universe.Summary(
+                unparsable.getUniverseUUID(), "unparsable", defaultCustomer.getId())),
+        new HashSet<>(Universe.getSummaries()));
+    assertEquals(
+        List.of(new Universe.Summary(second.getUniverseUUID(), "second", otherCustomer.getId())),
+        Universe.getSummaries(otherCustomer));
+  }
+
+  @Test
   public void testShouldEnableNodeExporterHttps() {
     Universe u = createUniverse(defaultCustomer.getId());
     u = Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater());

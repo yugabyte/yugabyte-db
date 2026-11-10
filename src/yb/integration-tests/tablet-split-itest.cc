@@ -62,6 +62,7 @@
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_cluster_client.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_fwd.h"
@@ -2878,6 +2879,55 @@ TEST_F(AutomaticTabletSplitAddServerITest, SplitTabletWithReadReplica) {
   ASSERT_OK(WaitForTabletSplitCompletion(/* expected_non_split_tablets = */ 2,
                                          /* expected_split_tablets = */ 0,
                                          /* num_replicas_online = */ 4));
+}
+
+TEST_F(AutomaticTabletSplitAddServerITest, ReadReplicaTServerDoesNotLowerSplitPhase) {
+  // A read-replica tserver in the live placement's zone hosts no leaders, so it must not count
+  // toward the tablets-per-tserver ratio: 3 tablets on 3 primary tservers is past the low phase.
+  // MiniCluster gives every tserver its own region, so the live placement needs a block per
+  // primary tserver, and the read-replica tserver shares tserver 0's zone so that the zone filter
+  // alone would count it.
+  const auto& ts0_opts = *cluster_->mini_tablet_server(0)->options();
+  const std::string kReadReplicaPlacementUuid = "read_replica";
+  master::MasterClusterClient cluster_client(
+      ASSERT_RESULT(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>()));
+  auto config = ASSERT_RESULT(cluster_client.GetMasterClusterConfig());
+  auto* live_replicas = config.mutable_replication_info()->mutable_live_replicas();
+  live_replicas->set_num_replicas(3);
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    auto* live_block = live_replicas->add_placement_blocks();
+    *live_block->mutable_cloud_info() =
+        cluster_->mini_tablet_server(i)->options()->MakeCloudInfoPB();
+    live_block->set_min_num_replicas(1);
+  }
+  auto* read_replicas = config.mutable_replication_info()->add_read_replicas();
+  read_replicas->set_placement_uuid(kReadReplicaPlacementUuid);
+  read_replicas->set_num_replicas(1);
+  auto* read_replica_block = read_replicas->add_placement_blocks();
+  *read_replica_block->mutable_cloud_info() = ts0_opts.MakeCloudInfoPB();
+  read_replica_block->set_min_num_replicas(1);
+  ASSERT_OK(cluster_client.ChangeMasterClusterConfig(std::move(config)));
+
+  SetNumTablets(3);
+  CreateTable();
+  auto* const catalog_mgr = ASSERT_RESULT(catalog_manager());
+  const auto table_info = ASSERT_NOTNULL(catalog_mgr->GetTableInfo(table_->id()));
+  ASSERT_EQ(ASSERT_RESULT(catalog_mgr->GetTableSplitPhase(table_info)), master::SplitPhase::kHigh);
+
+  auto opts = ASSERT_RESULT(tserver::TabletServerOptions::CreateTabletServerOptions());
+  opts.SetPlacement(
+      ts0_opts.placement_cloud(), ts0_opts.placement_region(), ts0_opts.placement_zone());
+  opts.placement_uuid = kReadReplicaPlacementUuid;
+  ASSERT_OK(cluster_->AddTabletServer(opts));
+  ASSERT_OK(cluster_->WaitForTabletServerCount(4));
+  ASSERT_EQ(ASSERT_RESULT(catalog_mgr->GetTableSplitPhase(table_info)), master::SplitPhase::kHigh);
+
+  // The fixture sets the low phase threshold to 0, so any flushed tablet would split in the low
+  // phase; in the high phase none reaches tablet_split_high_phase_size_threshold_bytes.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
+  ASSERT_OK(WriteRowsAndFlush());
+  SleepForBgTaskIters(4);
+  ASSERT_EQ(table_info->TabletCount(), 3);
 }
 
 // Regression test for the race between ApplyTabletSplit and TSTabletManager::StartShutdown.

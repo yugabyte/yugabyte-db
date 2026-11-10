@@ -15,7 +15,10 @@ properties:
       against that directory. Any other path is rejected.
     type: string
   params:
-    description: Arguments appended after the script (entrypoint + flags).
+    description: |
+      Arguments appended after the script (entrypoint + flags).
+      YBA replaces them with the arguments its support bundle manifest
+      gives component_name.
     type: array
     items:
       type: string
@@ -33,6 +36,9 @@ properties:
       /var/log.
     type: string
   timeout_secs:
-    description: Script execution timeout in seconds.
+    description: |
+      Script execution timeout in seconds.
+      YBA uses the timeout its support bundle manifest gives
+      component_name instead.
     type: integer
     format: int64

@@ -1,19 +1,16 @@
 ---
-title: Alerts and monitoring in YugabyteDB Aeon
+title: Alerts and monitoring for distributed clusters in YugabyteDB Aeon
 headerTitle: Alerts and monitoring
 linkTitle: Alerts and monitoring
-description: Set alerts and monitor your YugabyteDB Aeon clusters.
-headcontent: Set alerts and monitor cluster performance and activity
+description: Set alerts and monitor your YugabyteDB Aeon distributed clusters.
+headcontent: Set alerts and monitor distributed cluster performance and activity
 aliases:
   - /stable/yugabyte-cloud/cloud-monitor/logging-export/
 menu:
   stable_yugabyte-cloud:
-    parent: yugabytedb-managed
+    parent: distributed-postgres
     identifier: cloud-monitor
-    weight: 150
-    params:
-      classes: separator
-      hideLink: true
+    weight: 60
 type: indexpage
 showRightNav: true
 ---

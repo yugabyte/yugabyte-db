@@ -20,10 +20,10 @@ from ybops.cloud.azure.utils import AzureCloudAdmin
 from ybops.common.exceptions import YBOpsRuntimeError
 
 
-def to_arm(vm_parameters):
-    """Serialize a VM body the way the SDK does, to check what actually reaches ARM."""
+def to_arm(parameters, model="VirtualMachine"):
+    """Serialize a request body the way the SDK does, to check what actually reaches ARM."""
     classes = {k: v for k, v in compute_models.__dict__.items() if isinstance(v, type)}
-    return Serializer(classes).body(vm_parameters, "VirtualMachine")
+    return Serializer(classes).body(parameters, model)
 
 
 def as_vm(data_disks):
@@ -139,10 +139,23 @@ class TestAzureCreateVm(TestCase):
 
         for disk_params in self.created_disks().values():
             self.assertEqual(5000, disk_params["disk_iops_read_write"])
-            self.assertEqual(200, disk_params["disk_mbps_read_write"])
+            self.assertEqual(200, disk_params["disk_m_bps_read_write"])
             self.assertEqual("UltraSSD_LRS", disk_params["sku"]["name"])
         self.assertEqual(
             {"ultraSSDEnabled": True}, self.vm_payloads[0]["additionalCapabilities"])
+
+    def test_iops_and_throughput_serialize_to_arm_disk_properties(self):
+        # The SDK drops dict keys that do not match a Disk attribute without any error, so a
+        # mistyped throughput key leaves Azure to apply its default (125 MB/s on Premium SSD v2).
+        for vol_type in ("premiumv2_lrs", "ultrassd_lrs"):
+            with self.subTest(vol_type=vol_type):
+                self.compute.disks.begin_create_or_update.reset_mock()
+                self.create_or_update_vm(vol_type=vol_type, disk_iops=5000, disk_throughput=375)
+
+                for disk_params in self.created_disks().values():
+                    properties = to_arm(disk_params, "Disk")["properties"]
+                    self.assertEqual(5000, properties["diskIOPSReadWrite"])
+                    self.assertEqual(375, properties["diskMBpsReadWrite"])
 
     def test_custom_disk_params_reach_the_disk_resource(self):
         # yb.azure.custom_params.disk targets the managed disk resource body.
