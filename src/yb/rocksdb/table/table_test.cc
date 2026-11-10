@@ -4183,7 +4183,9 @@ void TestCumulativeEntryCounts(int num_keys, bool write_counts, bool split) {
 
   std::unique_ptr<DataBlockAwareIndexInternalIterator> iter(
       table.reader->NewDataBlockAwareIndexIterator(ReadOptions()));
-  if (num_levels == 1 || !write_counts) {
+  // Without counts, only a multi-level index can't be read by position: in a single-level index, a
+  // position is a restart index of its only block.
+  if (num_levels > 1 && !write_counts) {
     const auto result = iter->SeekToPosition(0);
     ASSERT_TRUE(!result.ok() && result.status().IsNotSupported());
     const auto position = iter->PositionOf(table.kvs.begin()->first);
@@ -4369,6 +4371,96 @@ TEST_F(GeneralTableTest, CumulativeEntryCounts) {
         ASSERT_NO_FATALS(TestCumulativeEntryCounts(num_keys, write_counts, split));
       }
     }
+  }
+}
+
+// A single-level index supports positions without counts, as long as every entry is a restart
+// point.
+TEST_F(GeneralTableTest, SingleLevelIndexPositions) {
+  // Few enough keys for a single-level index, with more than one data block for most of them.
+  constexpr int kMaxNumKeys = 12;
+  constexpr int kRestartIntervals[] = {1, 2};
+  // Keyed by restart interval.
+  std::map<int, int> num_checked_tables;
+  for (int num_keys = 1; num_keys <= kMaxNumKeys; ++num_keys) {
+    for (int restart_interval : kRestartIntervals) {
+      SCOPED_TRACE(yb::Format("num_keys: $0, restart_interval: $1", num_keys, restart_interval));
+      TestTable table;
+      ASSERT_NO_FATALS(BuildAndOpenTestTable(
+          num_keys, /* write_counts */ false, /* split */ true, restart_interval, &table));
+      const auto props = table.reader->GetTableProperties();
+      const auto& user_props = props->user_collected_properties;
+      const auto levels_pos = user_props.find(BlockBasedTablePropertyNames::kNumIndexLevels);
+      ASSERT_NE(levels_pos, user_props.end());
+      // A single entry can't show whether entries share restart points.
+      if (DecodeFixed32(levels_pos->second.c_str()) != 1 ||
+          (restart_interval > 1 && props->num_data_blocks < 2)) {
+        continue;
+      }
+      ++num_checked_tables[restart_interval];
+
+      std::unique_ptr<DataBlockAwareIndexInternalIterator> iter(
+          table.reader->NewDataBlockAwareIndexIterator(ReadOptions()));
+      std::vector<std::string> keys;
+      for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+        keys.push_back(iter->key().ToBuffer());
+      }
+      ASSERT_OK(iter->status());
+      ASSERT_EQ(keys.size(), props->num_data_blocks);
+
+      if (restart_interval > 1) {
+        const auto result = iter->SeekToPosition(1);
+        ASSERT_TRUE(!result.ok() && result.status().IsNotSupported()) << result.status();
+        const auto position = iter->PositionOf(keys.back());
+        ASSERT_TRUE(!position.ok() && position.status().IsNotSupported()) << position.status();
+        // PositionOf leaves the iterator where Seek puts it.
+        ASSERT_TRUE(iter->Valid());
+        ASSERT_EQ(iter->key().ToBuffer(), keys.back());
+        ASSERT_OK(iter->status());
+        continue;
+      }
+
+      const KeyValueEntry& past_end = ASSERT_RESULT(iter->SeekToPosition(keys.size()));
+      ASSERT_FALSE(past_end.Valid());
+      for (size_t position = 0; position < keys.size(); ++position) {
+        const KeyValueEntry& entry = ASSERT_RESULT(iter->SeekToPosition(position));
+        ASSERT_TRUE(entry.Valid());
+        ASSERT_EQ(entry.key.ToBuffer(), keys[position]);
+        ASSERT_EQ(ASSERT_RESULT(iter->PositionOf(keys[position])), position);
+        ASSERT_EQ(iter->key().ToBuffer(), keys[position]);
+      }
+      // Past the last index key, which is a short successor of the last data key (e.g. "l" for
+      // "key100002"), so a key past the last data key alone may still be in the last block.
+      std::string past_last_key;
+      AppendInternalKey(
+          &past_last_key,
+          ParsedInternalKey(ExtractUserKey(keys.back()).ToBuffer() + "z", 1, kTypeValue));
+      ASSERT_EQ(ASSERT_RESULT(iter->PositionOf(past_last_key)), keys.size());
+      ASSERT_FALSE(iter->Valid());
+    }
+  }
+  // Key counts that don't give a single-level index with enough blocks are skipped, so a change to
+  // the block sizes could otherwise skip every table of an interval unnoticed.
+  for (int restart_interval : kRestartIntervals) {
+    ASSERT_GE(num_checked_tables[restart_interval], 1) << "restart_interval: " << restart_interval;
+  }
+
+  // An empty index block still has one restart point, which is not an entry.
+  for (int restart_interval : kRestartIntervals) {
+    SCOPED_TRACE(yb::Format("empty table, restart_interval: $0", restart_interval));
+    TestTable table;
+    ASSERT_NO_FATALS(BuildAndOpenTestTable(
+        /* num_keys */ 0, /* write_counts */ false, /* split */ true, restart_interval, &table));
+    ASSERT_EQ(table.reader->GetTableProperties()->num_data_blocks, 0);
+    std::unique_ptr<DataBlockAwareIndexInternalIterator> iter(
+        table.reader->NewDataBlockAwareIndexIterator(ReadOptions()));
+    const KeyValueEntry& past_end = ASSERT_RESULT(iter->SeekToPosition(0));
+    ASSERT_FALSE(past_end.Valid());
+    ASSERT_OK(iter->status());
+    std::string key;
+    AppendInternalKey(&key, ParsedInternalKey("key", 1, kTypeValue));
+    ASSERT_EQ(ASSERT_RESULT(iter->PositionOf(key)), 0);
+    ASSERT_FALSE(iter->Valid());
   }
 }
 

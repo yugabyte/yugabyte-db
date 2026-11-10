@@ -483,7 +483,7 @@ TEST_F(OptionsTest, GetBlockBasedTableOptionsFromString) {
             "block_cache=1M;block_cache_compressed=1k;block_size=1024;filter_block_size=4096;"
             "block_size_deviation=8;block_restart_interval=4;index_block_size=16384;"
             "min_keys_per_index_block=16;filter_policy=bloomfilter:4:true;whole_key_filtering=1;"
-            "skip_table_builder_flush=1",
+            "skip_table_builder_flush=1;write_cumulative_index_entry_counts=1",
             &new_opt));
   ASSERT_TRUE(new_opt.cache_index_and_filter_blocks);
   ASSERT_EQ(new_opt.index_type, IndexType::kHashSearch);
@@ -502,6 +502,7 @@ TEST_F(OptionsTest, GetBlockBasedTableOptionsFromString) {
   ASSERT_EQ(new_opt.min_keys_per_index_block, 16);
   ASSERT_TRUE(new_opt.filter_policy != nullptr);
   ASSERT_TRUE(new_opt.skip_table_builder_flush);
+  ASSERT_TRUE(new_opt.write_cumulative_index_entry_counts);
 
   // unknown option
   ASSERT_NOK(GetBlockBasedTableOptionsFromString(table_opt,

@@ -452,13 +452,27 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
 
   // Descends to the bottom-level entry at `position` using the counts in upper-level entries,
   // reading one index block per level. Each upper level is left on the entry whose child block is
-  // loaded below it, so Next/Prev and the Seek fast path work afterwards. Returns NotSupported for
-  // a single-level index, an upper-level entry without BlockHandle::cumulative_entry_count, or a
-  // bottom-level block whose entries share restart points (index_block_restart_interval > 1), and
-  // Corruption when an index block doesn't match its parent's count.
+  // loaded below it, so Next/Prev and the Seek fast path work afterwards. A single-level index
+  // needs no counts: `position` is a restart index of its only block. Returns NotSupported for an
+  // upper-level entry without BlockHandle::cumulative_entry_count, or a bottom-level block whose
+  // entries share restart points (index_block_restart_interval > 1), and Corruption when an index
+  // block doesn't match its parent's count.
   Result<const KeyValueEntry&> SeekToPosition(uint64_t position) override {
     if (num_levels_ == 1) {
-      return STATUS(NotSupported, "SeekToPosition() requires a multi-level index");
+      const auto num_entries = VERIFY_RESULT(SingleLevelNumEntries());
+      auto* iter = bottom_level_iter_;
+      bottommost_positioned_iter_ = iter;
+      if (position < num_entries) {
+        iter->SeekToRestart(static_cast<uint32_t>(position));
+      } else {
+        // Past the end: step off the last entry, if there is one, so the iterator is invalid.
+        iter->SeekToLast();
+        if (iter->Valid()) {
+          iter->Next();
+        }
+      }
+      RETURN_NOT_OK(iter->status());
+      return Entry();
     }
     // Past the end is only expected at the top level; below it, a block that doesn't match its
     // parent's count is corrupt.
@@ -518,18 +532,22 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
     return iter->Valid() ? Entry() : fail_count_mismatch();
   }
 
-  // The parent of the bottom-level block stores the count through the end of that block. The count
+  // For a single-level index, the position is the restart index Seek lands on. Otherwise, the
+  // parent of the bottom-level block stores the count through the end of that block. The count
   // before the block is stored on the entry just before the parent's, so this steps back one entry
   // at the lowest upper level that isn't on its block's first entry, reads it, and steps forward
   // again, leaving the iterator where Seek put it.
   Result<uint64_t> PositionOf(Slice target) override {
     Seek(target);
     // On a prefix miss Seek stops without reaching the entry the position would count up to.
-    if (num_levels_ == 1 || index_iterator_state_->check_prefix_may_match) {
-      return STATUS(
-          NotSupported, "PositionOf() requires a multi-level index without prefix checks");
+    if (index_iterator_state_->check_prefix_may_match) {
+      return STATUS(NotSupported, "PositionOf() requires an index without prefix checks");
     }
     RETURN_NOT_OK(status());
+    if (num_levels_ == 1) {
+      const auto num_entries = VERIFY_RESULT(SingleLevelNumEntries());
+      return Valid() ? bottom_level_iter_->iter()->GetCurrentRestart() : num_entries;
+    }
     if (!Valid()) {
       // Moving the top level doesn't make the iterator valid: only a positioned bottom level is,
       // and the next Seek starts from the top again.
@@ -730,6 +748,35 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
  private:
   void SaveError(const Status& s) {
     if (status_.ok() && !s.ok()) status_ = s;
+  }
+
+  // For a single-level index: the number of entries. NotSupported if entries share restart points
+  // (index_block_restart_interval > 1), so that a restart index isn't an entry's position. Uses its
+  // own iterator over the block, so the shared one stays where it is.
+  Result<uint64_t> SingleLevelNumEntries() {
+    DCHECK_EQ(num_levels_, 1);
+    BlockIter iter;
+    top_level_index_block_->NewIndexBlockIterator(comparator_, &iter);
+    iter.SeekToFirst();
+    const bool empty = !iter.Valid();
+    if (!empty) {
+      // The block builder uses one interval for the whole block, so it is enough to check that the
+      // second entry starts the second restart interval.
+      iter.Next();
+    }
+    if (!iter.status().ok()) {
+      // Like SeekToPosition's other errors, status() keeps reporting it.
+      SaveError(iter.status());
+      return iter.status();
+    }
+    if (empty) {
+      // An empty block still has one restart point.
+      return 0;
+    }
+    if (iter.Valid() && iter.GetCurrentRestart() != 1) {
+      return STATUS(NotSupported, "Positions require index_block_restart_interval = 1");
+    }
+    return iter.GetNumRestarts();
   }
 
   void SetSubIterator(BlockIterWrapper* iter_wrapper, BlockIter* iter) {
