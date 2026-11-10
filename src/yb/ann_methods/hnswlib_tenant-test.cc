@@ -86,18 +86,22 @@ class HnswlibTenantTest : public hnsw::VectorIndexTestBase {
         rocksdb::Cache::ReservationMode::kAlways));
 
     // All tenants share the same distribution, so their vectors are close to each other.
-    std::uniform_real_distribution<float> distribution(0, 1);
     for (size_t i = 0; i != kNumVectors; ++i) {
-      FloatVector vector(kDimensions);
-      for (auto& coordinate : vector) {
-        coordinate = distribution(ThreadLocalRandom());
-      }
       entries_.push_back(Entry {
         .id = VectorId::GenerateRandom(),
-        .vector = std::move(vector),
+        .vector = RandomVector(),
         .tenant = TenantName(i / kVectorsPerTenant),
       });
     }
+  }
+
+  static FloatVector RandomVector() {
+    std::uniform_real_distribution<float> distribution(0, 1);
+    FloatVector vector(kDimensions);
+    for (auto& coordinate : vector) {
+      coordinate = distribution(ThreadLocalRandom());
+    }
+    return vector;
   }
 
   std::string TenantName(size_t tenant_idx) const {
@@ -137,17 +141,12 @@ class HnswlibTenantTest : public hnsw::VectorIndexTestBase {
   // are reachable from their tenant entry points, and that a search without a tenant covers all
   // tenants.
   void CheckSearches(const vector_index::VectorIndexIf<FloatVector, float>& index) {
-    std::uniform_real_distribution<float> distribution(0, 1);
     size_t found = 0;
-    size_t found_all_tenants = 0;
     constexpr size_t kQueriesPerTenant = 10;
     for (size_t tenant_idx = 0; tenant_idx != kNumTenants; ++tenant_idx) {
       const auto tenant = TenantName(tenant_idx);
       for (size_t i = 0; i != kQueriesPerTenant; ++i) {
-        FloatVector query(kDimensions);
-        for (auto& coordinate : query) {
-          coordinate = distribution(ThreadLocalRandom());
-        }
+        auto query = RandomVector();
         auto results = ASSERT_RESULT(index.Search(query, SearchOptions {
           .max_num_results = kMaxResults,
           .ef = kEf,
@@ -159,23 +158,12 @@ class HnswlibTenantTest : public hnsw::VectorIndexTestBase {
           ASSERT_EQ(result.payload.AsSlice(), Slice(tenant));
           found += expected.contains(result.vector_id);
         }
-
-        results = ASSERT_RESULT(index.Search(query, SearchOptions {
-          .max_num_results = kMaxResults,
-          .ef = kEf,
-        }));
-        ASSERT_EQ(results.size(), kMaxResults);
-        expected = BruteForce(query, /* tenant= */ "");
-        for (const auto& result : results) {
-          found_all_tenants += expected.contains(result.vector_id);
-        }
       }
     }
     constexpr size_t kExpected = kNumTenants * kQueriesPerTenant * kMaxResults;
-    LOG(INFO) << "Recall: " << found * 1.0 / kExpected
-              << ", recall without tenant: " << found_all_tenants * 1.0 / kExpected;
+    LOG(INFO) << "Recall: " << found * 1.0 / kExpected;
     ASSERT_GE(found, kExpected * 0.95);
-    ASSERT_GE(found_all_tenants, kExpected * 0.95);
+    ASSERT_NO_FATALS(CheckSearchesWithoutTenant(index));
 
     // HNSW pruning could leave a few vectors without incoming edges, while a tenant cut off from
     // its entry point would leave many.
@@ -197,6 +185,27 @@ class HnswlibTenantTest : public hnsw::VectorIndexTestBase {
       ASSERT_NO_FATALS(CheckNoResults(index, TenantName(tenant_idx) + "!"));
     }
     ASSERT_NO_FATALS(CheckNoResults(index, "zzz"));
+  }
+
+  // Checks that a search without a tenant finds the nearest vectors among all vectors.
+  void CheckSearchesWithoutTenant(const vector_index::VectorIndexIf<FloatVector, float>& index) {
+    constexpr size_t kQueries = 80;
+    size_t found = 0;
+    for (size_t i = 0; i != kQueries; ++i) {
+      auto query = RandomVector();
+      auto results = ASSERT_RESULT(index.Search(query, SearchOptions {
+        .max_num_results = kMaxResults,
+        .ef = kEf,
+      }));
+      ASSERT_EQ(results.size(), kMaxResults);
+      auto expected = BruteForce(query, /* tenant= */ "");
+      for (const auto& result : results) {
+        found += expected.contains(result.vector_id);
+      }
+    }
+    constexpr size_t kExpected = kQueries * kMaxResults;
+    LOG(INFO) << "Recall without tenant: " << found * 1.0 / kExpected;
+    ASSERT_GE(found, kExpected * 0.95);
   }
 
   void CheckNoResults(
@@ -361,10 +370,7 @@ TEST_F(HnswlibTenantTest, NoTenants) {
       .ef = kEf,
       .tenant = Slice(entries_.front().tenant),
     }));
-    auto results = ASSERT_RESULT(chunk->Search(
-        entries_.front().vector, SearchOptions{.max_num_results = kMaxResults, .ef = kEf}));
-    ASSERT_EQ(results.size(), kMaxResults);
-    ASSERT_EQ(results.front().vector_id, entries_.front().id);
+    ASSERT_NO_FATALS(CheckSearchesWithoutTenant(*chunk));
   }
 }
 
