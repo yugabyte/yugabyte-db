@@ -329,11 +329,11 @@ class YbHnswBuilder {
     std::vector<std::pair<Slice, VectorNo>> entries;
     size_t block_size = 0;
     header_.tenant_directory_block = NextBlockId();
-    auto flush = [this, &entries]() -> Status {
+    auto flush = [this, &entries, &block_size]() -> Status {
       if (header_.num_tenant_directory_blocks++) {
         header_.tenant_directory_boundaries.push_back(entries.front().first.ToBuffer());
       }
-      RETURN_NOT_OK(WriteTenantDirectoryBlock(entries));
+      RETURN_NOT_OK(WriteTenantDirectoryBlock(entries, block_size));
       entries.clear();
       return Status::OK();
     };
@@ -355,11 +355,8 @@ class YbHnswBuilder {
     return sizeof(uint32_t) + tenant.size() + sizeof(VectorNo);
   }
 
-  Status WriteTenantDirectoryBlock(const std::vector<std::pair<Slice, VectorNo>>& entries) {
-    size_t size = sizeof(uint32_t);
-    for (const auto& [tenant, _] : entries) {
-      size += TenantDirectoryEntrySize(tenant);
-    }
+  Status WriteTenantDirectoryBlock(
+      const std::vector<std::pair<Slice, VectorNo>>& entries, size_t size) {
     auto ends_writer = VERIFY_RESULT(StartNewBlock(size));
     ends_writer.Append<uint32_t>(narrow_cast<uint32_t>(entries.size()));
     auto entries_writer = ends_writer.Split(entries.size() * sizeof(uint32_t));
@@ -777,11 +774,9 @@ YbHnsw::SearchResult YbHnsw::Search(
 std::optional<VectorNo> YbHnsw::FindTenantEntry(Slice tenant, SearchCache& cache) const {
   // Number of blocks after the first one that start with a tenant not greater than tenant.
   const auto& boundaries = header_.tenant_directory_boundaries;
-  auto block = boundaries.empty()
-      ? 0
-      : std::ranges::upper_bound(
-            boundaries, tenant, {}, [](const std::string& boundary) { return Slice(boundary); }) -
-        boundaries.begin();
+  auto block = std::ranges::upper_bound(
+      boundaries, tenant, {}, [](const std::string& boundary) { return Slice(boundary); }) -
+      boundaries.begin();
   return TenantDirectoryBlock(cache.Data(header_.tenant_directory_block + block)).Find(tenant);
 }
 

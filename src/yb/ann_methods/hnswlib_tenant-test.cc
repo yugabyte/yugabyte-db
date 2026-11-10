@@ -22,6 +22,7 @@
 
 #include "yb/gutil/endian.h"
 
+#include "yb/hnsw/hnsw_block_cache.h"
 #include "yb/hnsw/vector_index_test_base.h"
 
 #include "yb/util/env.h"
@@ -192,12 +193,22 @@ class HnswlibTenantTest : public hnsw::VectorIndexTestBase {
     }
     ASSERT_LE(num_unreachable, kNumVectors / 100);
 
+    // Missing tenants that sort before, between and after the tenants of the directory.
+    ASSERT_NO_FATALS(CheckNoResults(index, "missing_tenant"));
+    for (size_t tenant_idx = 0; tenant_idx != kNumTenants; ++tenant_idx) {
+      ASSERT_NO_FATALS(CheckNoResults(index, TenantName(tenant_idx) + "!"));
+    }
+    ASSERT_NO_FATALS(CheckNoResults(index, "zzz"));
+  }
+
+  void CheckNoResults(
+      const vector_index::VectorIndexIf<FloatVector, float>& index, const std::string& tenant) {
     auto results = ASSERT_RESULT(index.Search(entries_.front().vector, SearchOptions {
       .max_num_results = kMaxResults,
       .ef = kEf,
-      .tenant = Slice("missing_tenant"),
+      .tenant = Slice(tenant),
     }));
-    ASSERT_TRUE(results.empty());
+    ASSERT_TRUE(results.empty()) << tenant;
   }
 
   // The first byte of the footer of a YbHnsw chunk file: the flags of the fields it holds.
@@ -216,6 +227,12 @@ class HnswlibTenantTest : public hnsw::VectorIndexTestBase {
     ASSERT_NE(saved, nullptr);
     // Base fields and the tenant directory.
     ASSERT_EQ(FooterFlags(path), 0x05);
+    {
+      std::unique_ptr<RandomAccessFile> file;
+      ASSERT_OK(block_cache_->env().NewRandomAccessFile(path, &file));
+      num_tenant_directory_blocks_ = ASSERT_RESULT(
+          hnsw::FileBlockCache(*block_cache_, std::move(file)).Load()).num_tenant_directory_blocks;
+    }
     ASSERT_NO_FATALS(CheckSearches(*saved));
     auto loaded = traits_->Create(FactoryMode::kLoad, StoreVectorPayload::kTrue);
     ASSERT_OK(loaded->LoadFromFile(path, /* max_concurrent_reads= */ 1));
@@ -226,6 +243,8 @@ class HnswlibTenantTest : public hnsw::VectorIndexTestBase {
   VectorIndexIfPtr<FloatVector, float> index_;
   std::vector<Entry> entries_;
   std::string tenant_suffix_;
+  // Of the chunk saved by the last CheckIndexAndChunks.
+  size_t num_tenant_directory_blocks_ = 0;
 };
 
 // Vectors of a tenant are inserted back to back, as by a backfill of a table whose primary key
@@ -257,6 +276,7 @@ TEST_F(HnswlibTenantTest, ManyTenantDirectoryBlocks) {
     ASSERT_OK(Insert(entry));
   }
   ASSERT_NO_FATALS(CheckIndexAndChunks());
+  ASSERT_GT(num_tenant_directory_blocks_, 1U);
 }
 
 // Vectors of all tenants are inserted concurrently, round robin over the tenants.
