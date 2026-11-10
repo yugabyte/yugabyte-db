@@ -12,11 +12,10 @@
  *	  fetch by ybctid are bypasses to remove, like the accessors in
  *	  yb_table_scan.h.
  *
- *	  Each section below is the API of one implementation file and
- *	  says why no AM interface replaces it yet or cites the issue
- *	  that lists why.  A contract that belongs to the callers'
- *	  subsystem, such as the format of the rows ANALYZE samples,
- *	  goes in a header of that subsystem, not here.
+ *	  Each section below is the API of one implementation file.  A
+ *	  contract that belongs to the callers' subsystem, such as the
+ *	  format of the rows ANALYZE samples, goes in a header of that
+ *	  subsystem, not here.
  *
  * Copyright (c) YugabyteDB, Inc.
  *
