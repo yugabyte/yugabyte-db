@@ -365,6 +365,24 @@ TEST_F(PgAutoAnalyzeTest, TriggerAnalyzeSingleTable) {
   ASSERT_OK(WaitForTableReltuples(conn, table_name, 102));
 }
 
+TEST_F(PgAutoAnalyzeTest, TriggerAnalyzeQuotedIdentifiers) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0.01;
+  auto conn = ASSERT_RESULT(Connect());
+
+  const std::string schema_name = "s\"chema";
+  const std::string table_name = "t\"bl";
+  const auto qualified_table_name =
+      PqEscapeIdentifier(schema_name) + "." + PqEscapeIdentifier(table_name);
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE SCHEMA $0", PqEscapeIdentifier(schema_name)));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i INT)", qualified_table_name));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT generate_series(1, 10)",
+                               qualified_table_name));
+
+  ASSERT_OK(WaitForTableReltuples(conn, table_name, 10));
+}
+
 TEST_F(PgAutoAnalyzeTest, TriggerAnalyzeMultiTablesMultiDBs) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 10;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0.1;

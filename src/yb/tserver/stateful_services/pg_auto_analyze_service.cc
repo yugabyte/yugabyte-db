@@ -614,12 +614,11 @@ std::string PgAutoAnalyzeService::TableNamesForAnalyzeCmd(const std::vector<Tabl
   for (auto& table_id : table_ids) {
     if (table_names != "")
       table_names += ", ";
-    auto table_name =
-        Format("\"$0\".\"$1\"",
-               table_id_to_name_[table_id].has_pgschema_name() ?
-               table_id_to_name_[table_id].pgschema_name() : "pg_catalog",
-               table_id_to_name_[table_id].table_name());
-    table_names += table_name;
+    const auto& name = table_id_to_name_[table_id];
+    table_names += pgwrapper::PqEscapeIdentifier(
+        name.has_pgschema_name() ? name.pgschema_name() : "pg_catalog");
+    table_names += ".";
+    table_names += pgwrapper::PqEscapeIdentifier(name.table_name());
   }
 
   return table_names;
