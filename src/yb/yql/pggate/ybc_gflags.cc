@@ -102,10 +102,11 @@ DEFINE_NON_RUNTIME_uint64(ysql_catalog_prefetch_size_limit, 5 * 1024 * 1024,
 // Backs the yb_enable_stale_catalog_prefetch GUC: pg_wrapper writes this into postgresql.conf
 // under the name without the ysql_ prefix, and a runtime change reloads it.
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_stale_catalog_prefetch, true,
-    "Whether a connection starting while the master leader reports that it is shedding catalog "
-    "prefetches may read the catalog at a version this node already has cached, instead of "
-    "fetching the whole catalog from the leader. Also decides the admission priority of the read "
-    "a backend makes ahead of authentication: on, that read is admitted ahead of prefetches "
+    "Whether a connection starting may read the catalog at a version this node already has "
+    "cached, instead of fetching the whole catalog from the leader. It does so while the master "
+    "leader reports that it is shedding catalog prefetches, and when another connection is "
+    "already filling the catalog for its database. Also decides the admission priority of the "
+    "read a backend makes ahead of authentication: on, that read is admitted ahead of prefetches "
     "waiting to begin; off, it takes the ordinary priority.");
 
 DEFINE_RUNTIME_bool(ysql_preload_pg_authid_for_auth, true,
@@ -235,6 +236,14 @@ bool PreloadAdditionalCatalogListValidator(const char* flag_name, const std::str
   return true;
 }
 
+// Postgres compares this value with strcmp, so the synonym is mapped to the documented value here.
+const char* SequenceSupportMode() {
+  if (FLAGS_ysql_conn_mgr_sequence_support_mode == "pooled_with_currval_lastval") {
+    return "pooled_with_curval_lastval";
+  }
+  return FLAGS_ysql_conn_mgr_sequence_support_mode.c_str();
+}
+
 }  // namespace
 
 DEFINE_validator(ysql_catalog_preload_additional_table_list, PreloadAdditionalCatalogListValidator);
@@ -293,7 +302,7 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_TEST_ysql_log_perdb_allocated_new_objectid,
       .ysql_block_dangerous_roles = &FLAGS_ysql_block_dangerous_roles,
       .ysql_sequence_cache_method = FLAGS_ysql_sequence_cache_method.c_str(),
-      .ysql_conn_mgr_sequence_support_mode = FLAGS_ysql_conn_mgr_sequence_support_mode.c_str(),
+      .ysql_conn_mgr_sequence_support_mode = SequenceSupportMode(),
       .ysql_conn_mgr_max_query_size = &FLAGS_ysql_conn_mgr_max_query_size,
       .ysql_conn_mgr_wait_timeout_ms = &FLAGS_ysql_conn_mgr_wait_timeout_ms,
       .ysql_enable_neghit_full_inheritscache =

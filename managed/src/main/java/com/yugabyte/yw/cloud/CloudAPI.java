@@ -108,6 +108,13 @@ public interface CloudAPI {
         "Managed load balancers are not supported by this cloud provider");
   }
 
+  /**
+   * Throws if ensureManagedLoadBalancer would fail to forward the ports, so that a task can refuse
+   * a port change before it changes anything. A cloud that adds missing ports doesn't override it.
+   */
+  default void validateManagedLoadBalancerPorts(
+      Provider provider, String regionCode, String name, List<Integer> ports) {}
+
   /** Deletes the load balancer. A load balancer that does not exist counts as deleted. */
   default void deleteManagedLoadBalancer(Provider provider, String regionCode, String name) {
     throw new UnsupportedOperationException(

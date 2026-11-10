@@ -13,6 +13,10 @@
 
 #pragma once
 
+#include <functional>
+
+#include "yb/storage/storage_fwd.h"
+
 #include "yb/util/env.h"
 #include "yb/util/result.h"
 
@@ -50,5 +54,17 @@ Result<std::unique_ptr<WritableFile>> VectorLSMMetadataOpenFile(
 // The files update references must be in the directory of file, which is synced before the append.
 Status VectorLSMMetadataAppendUpdate(
     Env& env, WritableFile& file, const VectorLSMUpdatePB& update);
+
+// The counterpart of VectorLSM::ModifyChunkFrontiers for a vector LSM that is not open: calls
+// modify on the frontiers of every chunk of the LSM stored in dir, and adds a chunk without a file
+// carrying added_chunk_frontiers, as a single reset update in a new manifest file. The existing
+// manifest files are left as they are, so they can be hard links, e.g. to the files of a snapshot.
+// The new file is synced together with dir. Does nothing if dir does not exist.
+// Returns false, after logging why, if the manifest could not be loaded. Nothing is written then.
+Result<bool> VectorLSMMetadataModifyChunkFrontiers(
+    Env* env, const std::string& dir,
+    const std::function<storage::UserFrontiersPtr()>& frontiers_factory,
+    const std::function<void(storage::UserFrontiers&)>& modify,
+    const storage::UserFrontiers& added_chunk_frontiers);
 
 }  // namespace yb::vector_index

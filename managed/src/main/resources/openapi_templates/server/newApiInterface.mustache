@@ -62,12 +62,20 @@ public abstract class {{classname}}ControllerImpInterface extends ApiControllerU
 
 {{#operation}}
   public {{#supportAsync}}CompletionStage<{{/supportAsync}}Result{{#supportAsync}}>{{/supportAsync}} {{operationId}}Http(
-      Http.Request request{{#hasParams}}, {{/hasParams}}{{#allParams}}{{>pathParams}}{{>queryParams}}{{>bodyParams}}{{>formParams}}{{>headerParams}}{{^-last}}, {{/-last}}{{/allParams}})
+      Http.Request request{{#allParams}}{{^vendorExtensions.x-yba-api-idempotency-key}}, {{>pathParams}}{{>queryParams}}{{>bodyParams}}{{>formParams}}{{>headerParams}}{{/vendorExtensions.x-yba-api-idempotency-key}}{{/allParams}})
       {{#handleExceptions}}throws Exception{{/handleExceptions}} {
-{{>responseToResult}}  }
+{{#vendorExtensions.x-yba-api-idempotent}}
+    {{! Yugabyte modification: honour the Idempotency-Key header, see IdempotencyService }}
+    return idempotent(request, () -> {
+{{/vendorExtensions.x-yba-api-idempotent}}
+{{>responseToResult}}
+{{#vendorExtensions.x-yba-api-idempotent}}
+    });
+{{/vendorExtensions.x-yba-api-idempotent}}
+  }
 
   public abstract {{^returnType}}void{{/returnType}}{{#returnType}}{{#supportAsync}}CompletionStage<{{/supportAsync}}{{>returnTypesNoVoid}}{{#supportAsync}}>{{/supportAsync}}{{/returnType}} {{operationId}}(
-      Http.Request request{{#hasParams}}, {{/hasParams}}{{#allParams}}{{>pathParams}}{{>queryParams}}{{>bodyParams}}{{>formParams}}{{>headerParams}}{{^-last}}, {{/-last}}{{/allParams}})
+      Http.Request request{{#allParams}}{{^vendorExtensions.x-yba-api-idempotency-key}}, {{>pathParams}}{{>queryParams}}{{>bodyParams}}{{>formParams}}{{>headerParams}}{{/vendorExtensions.x-yba-api-idempotency-key}}{{/allParams}})
       {{#handleExceptions}}throws Exception{{/handleExceptions}};
 {{/operation}}
 }

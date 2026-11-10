@@ -381,7 +381,7 @@ struct PerformCountDescriber : public MetricWatcherDeltaDescriberTraits<PerformC
 };
 
 // Back-to-back Performs with local tablet calls should all go over the shared memory exchange,
-// i.e. the tserver should release the exchange before pggate gets the response. GH #36032.
+// i.e. the tserver should release the exchange before pggate gets the response. GH #36032, #36337.
 // SKIP LOCKED locks each row with a separate Perform.
 TEST_F_EX(PgSharedMemTest, BackToBackLocalPerforms, PgSharedMemSingleTServerTest) {
   constexpr int kNumRows = 50;
@@ -402,10 +402,8 @@ TEST_F_EX(PgSharedMemTest, BackToBackLocalPerforms, PgSharedMemSingleTServerTest
   }));
   LOG(INFO) << "Performs over RPC: " << delta.rpc
             << ", over shared memory: " << delta.shared_mem;
-  ASSERT_GE(delta.rpc + delta.shared_mem, kNumRows * kNumStatements);
-  // The exchange stays busy for a moment after the response, so a few Performs could still go
-  // over RPC.
-  ASSERT_LE(delta.rpc * 10, delta.shared_mem);
+  ASSERT_GE(delta.shared_mem, kNumRows * kNumStatements);
+  ASSERT_EQ(delta.rpc, 0);
 }
 
 class PgSharedMemBigTimeoutTest : public PgSharedMemTest {

@@ -39,7 +39,7 @@ CONFIG_EMBEDED_NAME:=$(CURDIR)/pkg/config/yba-ctl.yml
 VERSION_METADATA_JSON:=$(CURDIR)/version_metadata.json
 
 # get the perf advisor version to bundle
-PERF_ADVISOR_VERSION ?= 1.7.0-b2
+PERF_ADVISOR_VERSION ?= 1.8.0-b7
 PA_BINARY_NAME ?= perf_advisor-$(PERF_ADVISOR_VERSION).tar.gz
 PA_BINARY_URL := https://s3.us-west-2.amazonaws.com/releases.yugabyte.com/perf-advisor/$(PERF_ADVISOR_VERSION)/$(PA_BINARY_NAME)
 PA_BINARY_SHA_URL := $(PA_BINARY_URL).sha
@@ -51,7 +51,7 @@ SHA1SUM ?= $(shell command -v sha1sum >/dev/null 2>&1 && echo sha1sum || echo sh
 PREREQS_DIR := ${TOP_BUILDDIR}/prereqs
 
 # Prometheus Version
-PROMETHEUS_VERSION ?= 3.13.1
+PROMETHEUS_VERSION ?= 3.15.1
 
 # Node Exporter Version
 NODE_EXPORTER_VERSION ?= 1.12.1-fips
@@ -64,8 +64,8 @@ PG_BINARY_NAME ?= postgres-linux-${POSTGRES_VERSION}-openssl3.tar.gz
 PG_BINARY_URL := https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/yba-pg-build/${PG_BINARY_NAME}
 
 # https://adoptium.net/temurin/releases/
-JDK_BINARY_NAME ?= OpenJDK17U-jre_x64_linux_hotspot_17.0.7_7.tar.gz
-JDK_BINARY_URL ?= https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.7%2B7/OpenJDK17U-jre_x64_linux_hotspot_17.0.7_7.tar.gz
+JDK_BINARY_NAME ?= OpenJDK17U-jre_x64_linux_hotspot_17.0.21_9.tar.gz
+JDK_BINARY_URL ?= https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.21%2B9/OpenJDK17U-jre_x64_linux_hotspot_17.0.21_9.tar.gz
 # Package stable ybdb release in yba-installer.
 # Currently disabled.
 YBDB_BINARY_NAME ?= yugabyte-2.17.2.0-b216-linux-x86_64.tar.gz

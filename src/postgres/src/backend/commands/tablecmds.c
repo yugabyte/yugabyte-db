@@ -737,6 +737,8 @@ static ObjectAddress YbATExecAlterIndexAttributeType(AlteredTableInfo *tab,
 													 Relation rel,
 													 AlterTableCmd *cmd,
 													 LOCKMODE lockmode);
+static void YbCheckAlterTypeOfVectorIndexColumn(Oid indoid,
+												const char *colName);
 
 /* ----------------------------------------------------------------
  *		DefineRelation
@@ -14169,6 +14171,9 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation *yb_mutable_rel,
 						relKind == RELKIND_PARTITIONED_INDEX)
 					{
 						Assert(foundObject.objectSubId == 0);
+						if (IsYBRelation(rel))
+							YbCheckAlterTypeOfVectorIndexColumn(foundObject.objectId,
+																colName);
 						RememberIndexForRebuilding(foundObject.objectId, tab);
 					}
 					else if (relKind == RELKIND_SEQUENCE)
@@ -21267,6 +21272,9 @@ ATExecAttachPartitionIdx(List **wqueue, Relation parentIdx, RangeVar *name)
 								   RelationGetRelationName(partIdx))));
 		}
 
+		/* YB: xCluster source cannot attach an invalid index. */
+		YbCheckAttachedIndexIsValid(partIdx);
+
 		/* All good -- do it */
 		IndexSetParentIndex(partIdx, RelationGetRelid(parentIdx));
 		if (OidIsValid(constraintOid))
@@ -24062,7 +24070,13 @@ YbATExecAlterIndexAttributeType(AlteredTableInfo *tab, Relation rel,
 
 			heap_att = TupleDescAttr(heapTupDesc, AttrNumberGetAttrOffset(table_attnum));
 
-			/* Update attribute type-related fields. */
+			/*
+			 * Update attribute type-related fields, but not attcollation.
+			 * The index's collation can differ from the table's, so setting it
+			 * to the table's collation would be incorrect. Moreover, the index
+			 * collation does not change on reuse, so there is no need to update
+			 * it.
+			 */
 			do_replace[Anum_pg_attribute_atttypid - 1] = true;
 			new_values[Anum_pg_attribute_atttypid - 1] = ObjectIdGetDatum(heap_att->atttypid);
 			do_replace[Anum_pg_attribute_atttypmod - 1] = true;
@@ -24075,8 +24089,6 @@ YbATExecAlterIndexAttributeType(AlteredTableInfo *tab, Relation rel,
 			new_values[Anum_pg_attribute_attalign - 1] = CharGetDatum(heap_att->attalign);
 			do_replace[Anum_pg_attribute_attstorage - 1] = true;
 			new_values[Anum_pg_attribute_attstorage - 1] = CharGetDatum(heap_att->attstorage);
-			do_replace[Anum_pg_attribute_attcollation - 1] = true;
-			new_values[Anum_pg_attribute_attcollation - 1] = ObjectIdGetDatum(heap_att->attcollation);
 		}
 
 		newTuple = heap_modify_tuple(attrTup, RelationGetDescr(pg_attribute),
@@ -24131,4 +24143,37 @@ YbATExecAlterIndexAttributeType(AlteredTableInfo *tab, Relation rel,
 
 	ObjectAddressSet(address, RelationRelationId, index_oid);
 	return address;
+}
+
+/*
+ * Subroutine for ATExecAlterColumnType: reject the ALTER if the column is
+ * used by a vector index (e.g. ybhnsw).
+ *
+ * A vector index is built for a fixed number of dimensions, which DocDB keeps
+ * from CREATE INDEX.  Without a rewrite (e.g. vector(4) -> vector), the index
+ * would be kept while its column loses the dimensions.  Type changes that
+ * rewrite the table are refused too, to keep the rule simple: drop the index
+ * first.  See #36753.
+ */
+static void
+YbCheckAlterTypeOfVectorIndexColumn(Oid indoid, const char *colName)
+{
+	Relation	indexRel = index_open(indoid, AccessShareLock);
+	bool		is_vector_index = (indexRel->rd_indam &&
+								   indexRel->rd_indam->yb_amiscopartitioned);
+
+	index_close(indexRel, AccessShareLock);
+
+	if (is_vector_index)
+	{
+		ObjectAddress obj;
+
+		ObjectAddressSet(obj, RelationRelationId, indoid);
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot alter type of a column used by a vector index"),
+				 errdetail("%s depends on column \"%s\"",
+						   getObjectDescription(&obj, false), colName),
+				 errhint("Drop the index first, or add a new column with the new type.")));
+	}
 }
