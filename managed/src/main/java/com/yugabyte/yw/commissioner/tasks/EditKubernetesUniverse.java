@@ -41,6 +41,7 @@ import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
@@ -260,7 +261,32 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               : (CollectionUtils.isNotEmpty(universe.getUniverseDetails().getReadOnlyClusters())
                   ? universe.getUniverseDetails().getReadOnlyClusters().get(0)
                   : null);
-      if (taskParamsAsyncCluster != null || (asyncCluster != null && mastersAddrChanged)) {
+      ExposingServiceState exposingService =
+          taskParams().getPrimaryCluster().userIntent.enableExposingService;
+      boolean asyncExposingServiceChanged =
+          asyncCluster != null
+              && universeDetails.getClusterByUuid(asyncCluster.uuid)
+                      .userIntent
+                      .enableExposingService
+                  != exposingService;
+      if (taskParamsAsyncCluster != null
+          || (asyncCluster != null && (mastersAddrChanged || asyncExposingServiceChanged))) {
+        // The client does not have to pass the read cluster either, but the tasks that update
+        // its pods read it from taskParams.
+        Cluster taskAsyncCluster =
+            taskParamsAsyncCluster != null
+                ? taskParamsAsyncCluster
+                : taskParams()
+                    .upsertCluster(
+                        asyncCluster.userIntent,
+                        asyncCluster.getPartitions(),
+                        asyncCluster.placementInfo,
+                        asyncCluster.uuid,
+                        asyncCluster.clusterType);
+        if (asyncExposingServiceChanged) {
+          taskAsyncCluster.userIntent = taskAsyncCluster.userIntent.clone();
+          taskAsyncCluster.userIntent.enableExposingService = exposingService;
+        }
         // Use new master addresses for editing read cluster.
         editCluster(
             universe,
@@ -269,9 +295,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             masterAddresses,
             masterAddresses /* existingMasterAddresses */,
             mastersAddrChanged);
-        if (taskParamsAsyncCluster != null) {
+        if (taskParamsAsyncCluster != null || asyncExposingServiceChanged) {
           // Updating cluster in DB
-          createUpdateUniverseIntentTask(asyncCluster);
+          createUpdateUniverseIntentTask(taskAsyncCluster);
         }
       }
 
@@ -764,6 +790,25 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           fullMoveMasterAZs,
           fullMoveTserverAZs,
           true /* includeUniverseNodes */);
+    } else if (primaryCluster.userIntent.enableExposingService != curIntent.enableExposingService) {
+      // Every release renders the primary cluster's expose service setting. This creates or
+      // deletes the LoadBalancer services without restarting pods.
+      upgradePodsNonRestart(
+          universe.getName(),
+          newPlacement,
+          masterAddresses,
+          isReadOnlyCluster ? ServerType.TSERVER : ServerType.EITHER,
+          newIntent.ybSoftwareVersion,
+          universeOverrides,
+          azOverrides,
+          newNamingStyle,
+          isReadOnlyCluster,
+          universe.isYbcEnabled(),
+          ybcManager.getStableYbcVersion(),
+          null /* ysqlMajorVersionUpgradeState */,
+          null /* rootCAUUID */,
+          fullMoveMasterAZs,
+          fullMoveTserverAZs);
     }
 
     // If tservers have been removed, check if some deployments need to be completely
