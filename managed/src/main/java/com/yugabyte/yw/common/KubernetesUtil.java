@@ -1969,17 +1969,10 @@ public class KubernetesUtil {
       serverTypes.add(ServerType.MASTER);
     }
     for (ServerType serverType : serverTypes) {
-      UserIntent.K8SNodeResourceSpec current =
-          serverType == ServerType.TSERVER
-              ? userIntent.getTserverK8SNodeResourceSpec(providerUUID)
-              : userIntent.getMasterK8SNodeResourceSpec(providerUUID);
-
-      if (current == null) {
-        UserIntent.K8SNodeResourceSpec k8SNodeResourceSpec =
-            initK8sResourceSpec(userIntent, serverType);
-        if (k8SNodeResourceSpec != null) {
-          pi.setNodeResourceSpec(k8SNodeResourceSpec, serverType);
-        }
+      UserIntent.K8SNodeResourceSpec k8SNodeResourceSpec =
+          initK8sResourceSpec(userIntent, serverType);
+      if (k8SNodeResourceSpec != null) {
+        pi.setNodeResourceSpec(k8SNodeResourceSpec, serverType);
       }
     }
   }

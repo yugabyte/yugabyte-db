@@ -279,7 +279,8 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         UniverseDefinitionTaskParamsMapper.INSTANCE.toV1UniverseDefinitionTaskParamsFromCreateSpec(
             universeSpec);
     // Before we completely replace instance type with resourceSpec for k8s,
-    // initializing it from instanceType.
+    // initializing resource spec from instanceType.
+    // If instanceType is not provided, resources spec is left untouched.
     KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(v1DefnParams);
     UniverseConfigureTaskParams v1Params =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toUniverseConfigureTaskParams(
@@ -370,7 +371,8 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       clearNonDedicatedFields(cluster.userIntent);
     }
     // Before we completely replace instance type with resourceSpec for k8s,
-    // initializing it from instanceType.
+    // initializing resource spec from instanceType.
+    // If instanceType is not provided, resources spec is left untouched.
     KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(v1Params);
     log.debug("Edit Universe translated to v1 spec: {}", prettyPrint(v1Params));
 

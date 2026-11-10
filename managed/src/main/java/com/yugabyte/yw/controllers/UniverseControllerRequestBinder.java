@@ -106,6 +106,10 @@ public class UniverseControllerRequestBinder {
       taskParams.creatingUser = CommonUtils.getUserFromContext();
       taskParams.platformUrl = request.host();
 
+      // After PLAT-7020 the GlobalConfKeys.usek8sCustomResources gate is open.
+      // Before we completely replace instance type with resourceSpec for k8s,
+      // initializing resource spec from instanceType.
+      // If instanceType is not provided, resources spec is left untouched.
       KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(taskParams);
 
       return taskParams;
