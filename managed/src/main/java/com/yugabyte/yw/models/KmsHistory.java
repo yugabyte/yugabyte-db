@@ -15,6 +15,7 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.ebean.DB;
+import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.SqlUpdate;
@@ -93,18 +94,16 @@ public class KmsHistory extends Model {
 
   public static int getLatestReEncryptionCount(UUID targetUUID) {
     // If there is no universe with universe key, return 0.
-    int latestReEncryptionCount =
-        KmsHistory.find
-            .query()
-            .where()
-            .eq("target_uuid", targetUUID)
-            .eq("type", KmsHistoryId.TargetType.UNIVERSE_KEY)
-            .findList()
-            .stream()
-            .mapToInt(kmsHistory -> kmsHistory.uuid.getReEncryptionCount())
-            .max()
-            .orElse(0);
-    return latestReEncryptionCount;
+    // Computed in SQL: loading the rows would decrypt every key's encryption context.
+    Integer latestReEncryptionCount =
+        DB.sqlQuery(
+                "select max(re_encryption_count) as latest from kms_history"
+                    + " where target_uuid = :targetUuid and type = :type")
+            .setParameter("targetUuid", targetUUID)
+            .setParameter("type", KmsHistoryId.TargetType.UNIVERSE_KEY.name())
+            .findOne()
+            .getInteger("latest");
+    return latestReEncryptionCount == null ? 0 : latestReEncryptionCount;
   }
 
   public static KmsHistory createKmsHistory(
@@ -272,18 +271,24 @@ public class KmsHistory extends Model {
         .findList();
   }
 
-  public static List<KmsHistory> getAllUniverseKeysWithActiveMasterKey(UUID targetUUID) {
-    // Get the latest reEncryptionCount value. This represents the most active master key.
-    int latestReEncryptionCount = getLatestReEncryptionCount(targetUUID);
+  // Universe keys encrypted with the most active master key, the one with the latest
+  // reEncryptionCount.
+  private static ExpressionList<KmsHistory> universeKeysWithActiveMasterKey(UUID targetUUID) {
     return KmsHistory.find
         .query()
         .where()
         .eq("target_uuid", targetUUID)
         .eq("type", KmsHistoryId.TargetType.UNIVERSE_KEY)
-        .eq("re_encryption_count", latestReEncryptionCount)
-        .orderBy()
-        .desc("timestamp")
-        .findList();
+        .eq("re_encryption_count", getLatestReEncryptionCount(targetUUID));
+  }
+
+  public static List<KmsHistory> getAllUniverseKeysWithActiveMasterKey(UUID targetUUID) {
+    return universeKeysWithActiveMasterKey(targetUUID).orderBy().desc("timestamp").findList();
+  }
+
+  /** Same rows as {@link #getAllUniverseKeysWithActiveMasterKey}, counted without loading them. */
+  public static int countUniverseKeysWithActiveMasterKey(UUID targetUUID) {
+    return universeKeysWithActiveMasterKey(targetUUID).findCount();
   }
 
   public static KmsHistory getKeyRefConfig(
@@ -318,6 +323,21 @@ public class KmsHistory extends Model {
 
   public static List<KmsHistory> getAllActiveHistory(KmsHistoryId.TargetType type) {
     return KmsHistory.find.query().where().eq("type", type).eq("active", true).findList();
+  }
+
+  /**
+   * Active keys of the given type without their encryption context, which is decrypted in the
+   * database for every row that loads it.
+   */
+  public static List<KmsHistory> getAllActiveHistoryWithoutEncryptionContext(
+      KmsHistoryId.TargetType type) {
+    return KmsHistory.find
+        .query()
+        .select("timestamp, version, configUuid, active, dbKeyId")
+        .where()
+        .eq("type", type)
+        .eq("active", true)
+        .findList();
   }
 
   public static boolean entryExists(UUID targetUUID, String keyRef, KmsHistoryId.TargetType type) {

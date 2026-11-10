@@ -5,6 +5,7 @@ module.exports = {
   context: path.join(__dirname, 'src'),
   entry: {
     kapaAi: './kapa-ai.js',
+    scarfPixel: './scarf-pixel.js',
     search: './algolia-search.js',
     searchBanner: './search-banner.js',
     sidebarTree: './sidebar-tree.js',

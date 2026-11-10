@@ -3561,12 +3561,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultiStreamOnSameTableAndDrop
           }
           // stream-1 is associated with a single table, so as part of table drop, stream-1 should
           // be cleaned and wait until the background thread is done with cleanup.
-          if (idx == 1 && get_resp->table_info_size() > kNumberOfCatalogTablesBeingPolledByCDC) {
+          if (idx == 1 && get_resp->table_info_size() > NumberOfCatalogTablesBeingPolledByCDC()) {
             continue;
           }
           // stream-2 is associated with both tables, so dropping one table, should not clean the
           // stream from cache as well as from system catalog, except the dropped table metadata.
-          if (idx > 1 && get_resp->table_info_size() > 1 + kNumberOfCatalogTablesBeingPolledByCDC) {
+          if (idx > 1 &&
+              get_resp->table_info_size() > 1 + NumberOfCatalogTablesBeingPolledByCDC()) {
             continue;
           }
           idx += 1;
@@ -4044,6 +4045,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWhenAFollowerIsUna
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_metrics_interval_ms) = 500;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  // Leader balancing could move the leader onto the tserver this test shuts down as a follower.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   const int num_tservers = 5;
   ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
 
@@ -11093,8 +11096,8 @@ TEST_F(CDCSDKYsqlTest, TestDynamicTablesShouldBeEnabledForStreamsWithSlotName) {
   auto slot_stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
 
   auto stream_info = ASSERT_RESULT(GetDBStreamInfo(slot_stream_id));
-  // 2 user tables + 3 catalog tables.
-  ASSERT_EQ(stream_info.table_info_size(), 2 + kNumberOfCatalogTablesBeingPolledByCDC);
+  // 2 user tables + the catalog tables.
+  ASSERT_EQ(stream_info.table_info_size(), 2 + NumberOfCatalogTablesBeingPolledByCDC());
 
   // Create a dynamic table.
   auto table_3 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "table_3"));
@@ -11103,10 +11106,10 @@ TEST_F(CDCSDKYsqlTest, TestDynamicTablesShouldBeEnabledForStreamsWithSlotName) {
   SleepFor(MonoDelta::FromSeconds(10 * kTimeMultiplier));
 
   // Since dynamic table addition is always enabled in streams associated with slots, table_3 will
-  // get added to its stream metadata. We will have total 6 tables in stream metadata (3 user tables
-  // + 3 catalog tables).
+  // get added to its stream metadata. The stream metadata will have the 3 user tables and the
+  // catalog tables.
   stream_info = ASSERT_RESULT(GetDBStreamInfo(slot_stream_id));
-  ASSERT_EQ(stream_info.table_info_size(), 3 + kNumberOfCatalogTablesBeingPolledByCDC);
+  ASSERT_EQ(stream_info.table_info_size(), 3 + NumberOfCatalogTablesBeingPolledByCDC());
 }
 
 TEST_F(CDCSDKYsqlTest, TestWithMajorityReplicatedButNonCommittedSingleShardTxn) {
@@ -11264,7 +11267,7 @@ void CDCSDKYsqlTest::TestCleanupOfTableNotOfInterest(bool use_logical_replicatio
   ASSERT_EQ(tablets.size(), 1);
 
   auto num_qualified_table_ids =
-      use_logical_replication ? kNumberOfCatalogTablesBeingPolledByCDC + 1 : 1;
+      use_logical_replication ? NumberOfCatalogTablesBeingPolledByCDC() + 1 : 1;
   auto num_state_table_rows = use_logical_replication ? 3 : 2;
 
   auto stream_id = use_logical_replication
@@ -11282,7 +11285,7 @@ void CDCSDKYsqlTest::TestCleanupOfTableNotOfInterest(bool use_logical_replicatio
   // qualified tables list.
   auto expected_num_state_table_rows = use_logical_replication ? 2 : 1;
   auto expected_num_qualified_tables =
-      use_logical_replication ? kNumberOfCatalogTablesBeingPolledByCDC : 0;
+      use_logical_replication ? NumberOfCatalogTablesBeingPolledByCDC() : 0;
   ASSERT_OK(VerifyStateTableAndStreamMetadataEntriesCount(
       stream_id, expected_num_state_table_rows,
       /* qualified_table_ids_count */ expected_num_qualified_tables,
@@ -11313,7 +11316,7 @@ void CDCSDKYsqlTest::TestCleanupOfExpiredTable(bool use_logical_replication) {
   ASSERT_EQ(tablets.size(), 1);
 
   auto num_qualified_table_ids =
-      use_logical_replication ? kNumberOfCatalogTablesBeingPolledByCDC + 1 : 1;
+      use_logical_replication ? NumberOfCatalogTablesBeingPolledByCDC() + 1 : 1;
   auto num_state_table_rows = use_logical_replication ? 3 : 2;
 
   auto stream_id = use_logical_replication
@@ -12728,10 +12731,10 @@ TEST_F(CDCSDKYsqlTest, TestDropTableWithXcluster) {
   ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(slot_name));
   ASSERT_RESULT(cdc::CreateXClusterStream(*test_client(), table_1.table_id()));
 
-  // Verify that replica identity map contains five entries (2 user tables + 3 catalog tables).
+  // Verify that the replica identity map contains the 2 user tables and the catalog tables.
   std::unordered_map<uint32_t, PgReplicaIdentity> replica_identities;
   ASSERT_OK(test_client()->GetCDCStream(ReplicationSlotName(slot_name), &replica_identities));
-  ASSERT_EQ(replica_identities.size(), 2 + kNumberOfCatalogTablesBeingPolledByCDC);
+  ASSERT_EQ(replica_identities.size(), 2 + NumberOfCatalogTablesBeingPolledByCDC());
 
   // Drop the table under xcluster replication.
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
@@ -12744,7 +12747,7 @@ TEST_F(CDCSDKYsqlTest, TestDropTableWithXcluster) {
   // CDCSDK. This means there should be no change to replica identity map.
   replica_identities.clear();
   ASSERT_OK(test_client()->GetCDCStream(ReplicationSlotName(slot_name), &replica_identities));
-  ASSERT_EQ(replica_identities.size(), 2 + kNumberOfCatalogTablesBeingPolledByCDC);
+  ASSERT_EQ(replica_identities.size(), 2 + NumberOfCatalogTablesBeingPolledByCDC());
 }
 
 TEST_F(CDCSDKYsqlTest, TestYbRestartCommitTimeInPgReplicationSlots) {
@@ -12825,20 +12828,25 @@ TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTables) {
   // ALTER TABLE will give one update to pg_class in debug builds and one insert in release builds.
   // Creation of 2 replication origins gives 2 inserts to pg_replication_origin and dropping one
   // gives 1 delete.
-  // We will not receive any record corresponding to the addition of column in other catalog tables
-  // such as pg_attribute.
+  // With transactional DDL, pg_attribute and pg_publication_rel_prpubid_index are polled too. We
+  // receive a DDL for each, 10 inserts to pg_attribute per CREATE TABLE (2 columns and 7 system
+  // columns of the table, 1 column of its pk index) and 1 for ALTER TABLE, and an insert or delete
+  // to pg_publication_rel_prpubid_index along with each one to pg_publication_rel.
   const int expected_count_without_packed_row[] = {4, 12, 4, 2, 0, 0, 11, 11};
   const int expected_count_with_packed_row[] = {4, 16, 0, 2, 0, 0, 11, 11};
+  const int txn_ddl_extra_count[] = {2, 33, 0, 1, 0, 0, 0, 0};
 
   for (auto record : change_resp.cdc_sdk_proto_records()) {
     UpdateRecordCount(record, record_count);
   }
 
   for (int i = 0; i < 8; i++) {
+    const int extra_count =
+        FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? txn_ddl_extra_count[i] : 0;
     if (FLAGS_ysql_enable_packed_row) {
-      ASSERT_EQ(record_count[i], expected_count_with_packed_row[i]);
+      ASSERT_EQ(record_count[i], expected_count_with_packed_row[i] + extra_count);
     } else {
-      ASSERT_EQ(record_count[i], expected_count_without_packed_row[i]);
+      ASSERT_EQ(record_count[i], expected_count_without_packed_row[i] + extra_count);
     }
   }
 }
@@ -12879,10 +12887,14 @@ TEST_F(CDCSDKYsqlTest, TestStreamIndependenceWhilePollingCatalogTablet) {
   // Call GetChanges on sys catalog tablet using stream_1. We will get 11 records:
   // 1 DDL corresponding to the CHANGE_METADATA_OP performed during creation of stream_2, 6 recprds
   // corresponding to the CREATE TABLES (BEGIN, DDL, 2 INSERTS, 1 UPDATE, COMMIT) and 4 records
-  // corresponding to the ALTER PUB (BEGIN, DDL, INSERT, COMMIT).
+  // corresponding to the ALTER PUB (BEGIN, DDL, INSERT, COMMIT). With transactional DDL, we also
+  // get 12 records of pg_attribute and pg_publication_rel_prpubid_index: a DDL for each, 9 inserts
+  // to pg_attribute for the CREATE TABLE and 1 insert to pg_publication_rel_prpubid_index.
   auto change_resp = ASSERT_RESULT(GetChangesFromMaster(stream_id_1));
   ASSERT_FALSE(change_resp.has_error());
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 11);
+  ASSERT_EQ(
+      change_resp.cdc_sdk_proto_records_size(),
+      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 23 : 11);
 
   // Call GetChanges on sys catalog tablet using stream_2. We will not get any DMLs as sys catalog
   // tablet only has change records corresponding to the DB 1. These records will be filtered by CDC
@@ -12925,9 +12937,11 @@ TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTablesAfterLeaderStepDown) {
   // Without packed row wer will receive 1 Insert in pg_class for test_2 entry, 1 insert in pg_class
   // for pk index table and 1 Update to the originally added entry (first insert) regarding pk
   // addition. With packed row instead of the Update we will receive another Insert.
+  // With transactional DDL, we also receive a DDL and 10 inserts to pg_attribute for test_2.
   int record_count[] = {0, 0, 0, 0, 0, 0, 0, 0};
   const int expected_count_without_packed_row[] = {1, 2, 1, 0, 0, 0, 1, 1};
   const int expected_count_with_packed_row[] = {1, 3, 0, 0, 0, 0, 1, 1};
+  const int txn_ddl_extra_count[] = {1, 10, 0, 0, 0, 0, 0, 0};
 
   // None of the records should belong to the DDL which was performed before stream creation.
   for (auto record : change_resp.cdc_sdk_proto_records()) {
@@ -12940,10 +12954,12 @@ TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTablesAfterLeaderStepDown) {
   }
 
   for (int i = 0; i < 8; i++) {
+    const int extra_count =
+        FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? txn_ddl_extra_count[i] : 0;
     if (FLAGS_ysql_enable_packed_row) {
-      ASSERT_EQ(record_count[i], expected_count_with_packed_row[i]);
+      ASSERT_EQ(record_count[i], expected_count_with_packed_row[i] + extra_count);
     } else {
-      ASSERT_EQ(record_count[i], expected_count_without_packed_row[i]);
+      ASSERT_EQ(record_count[i], expected_count_without_packed_row[i] + extra_count);
     }
   }
 }
@@ -14600,7 +14616,7 @@ void CDCSDKYsqlTest::TestXClusterTablesNotAddedToStream(
   const size_t expected_state_table_entries =
       use_logical_replication_stream ? kNumberOfBaseCdcStateEntriesForLogicalStream : 1;
   const size_t expected_qualified_count =
-      use_logical_replication_stream ? kNumberOfCatalogTablesBeingPolledByCDC : 0;
+      use_logical_replication_stream ? NumberOfCatalogTablesBeingPolledByCDC() : 0;
 
   ASSERT_OK(VerifyStateTableAndStreamMetadataEntriesCount(
       stream_id, expected_state_table_entries, expected_qualified_count,

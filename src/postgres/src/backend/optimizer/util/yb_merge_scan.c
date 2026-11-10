@@ -789,6 +789,24 @@ yb_finalize_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
 }
 
 /*
+ * Number of streams the planner counts for a merge scan over stream_cols:
+ * the product of the number of elements in each stream column's SAOP, with
+ * a single-value equality column counting as one.  The cost model and
+ * EXPLAIN both use it.  The executor culls the arrays before it binds them,
+ * so the scan can run fewer streams (#36359).
+ */
+int
+yb_merge_scan_num_streams(List *stream_cols)
+{
+	int			num_streams = 1;
+	ListCell   *lc;
+
+	foreach(lc, stream_cols)
+		num_streams *= lfirst_node(YbMergeScanStreamColInfo, lc)->num_elems;
+	return num_streams;
+}
+
+/*
  * Add to sort_info, in index column order, every index column before its last
  * merge sort column that is not a merge stream key in stream_col_idxs, a merge
  * sort column, or a copy of an earlier index column.  These must be the gap

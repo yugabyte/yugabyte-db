@@ -1358,7 +1358,7 @@ public class GCPProjectApiClient {
   }
 
   /**
-   * Instance machine type, data disks ({@code index != 0}, same as ybops), and the latest
+   * Instance machine type, persistent data disks ({@link #persistentDataDisks}), and the latest
    * zone-operation start for an update/resize of those disks. The disk resource has no last-resize
    * field. Missing ops time is left null so the caller can fail closed.
    */
@@ -1373,10 +1373,7 @@ public class GCPProjectApiClient {
           BAD_REQUEST, "GCP instance " + instanceName + " has no disks");
     }
     List<CloudAPI.NodeDiskSpec> perDisk = new ArrayList<>();
-    for (AttachedDisk attached : instance.getDisks()) {
-      if (attached.getIndex() == null || attached.getIndex() == 0) {
-        continue;
-      }
+    for (AttachedDisk attached : persistentDataDisks(instance)) {
       String diskName = CloudAPI.getResourceNameFromResourceUrl(attached.getSource());
       if (StringUtils.isBlank(diskName)) {
         throw new PlatformServiceException(
@@ -1393,6 +1390,17 @@ public class GCPProjectApiClient {
     }
     return CloudAPI.NodeDiskSpec.mergeDataDisks(
         CloudAPI.getResourceNameFromResourceUrl(instance.getMachineType()), perDisk);
+  }
+
+  /**
+   * Attached disks other than the boot disk ({@code index != 0}, same as ybops), skipping local
+   * SSDs ({@code SCRATCH}), which have no disk resource to describe.
+   */
+  static List<AttachedDisk> persistentDataDisks(Instance instance) {
+    return instance.getDisks().stream()
+        .filter(d -> d.getIndex() != null && d.getIndex() != 0)
+        .filter(d -> !"SCRATCH".equals(d.getType()))
+        .collect(Collectors.toList());
   }
 
   private Instant latestDiskModifyStart(String zone, Disk disk) throws IOException {

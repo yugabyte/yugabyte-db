@@ -61,6 +61,8 @@ extern List *yb_finalize_merge_scan_stream_cols(IndexOptInfo *index,
 												int *yb_distinct_nkeys,
 												bool embedded);
 
+extern int yb_merge_scan_num_streams(List *stream_cols);
+
 extern void yb_add_merge_gap_sort_cols(IndexOptInfo *index,
 									   ScanDirection scandir,
 									   Bitmapset *stream_col_idxs,

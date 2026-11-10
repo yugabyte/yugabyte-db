@@ -6,7 +6,6 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -31,8 +30,10 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -46,9 +47,11 @@ import play.libs.Json;
  * <p>Resize-node rollback is gated behind {@code yb.task.allow_resize_node_rollback}. Overlays the
  * failed task params with the pre-freeze intent captured in {@code state_transition_details} so
  * cluster userIntent (instance type, cgroup, gflags, IOPS, throughput) points back to {@code
- * before}, but {@code volumeSize} is never decreased - cloud disk grow is not reversible. Size is
- * {@code max(before, current universe intent, cloud data-disk size)}; the failed-task target is not
- * treated as applied.
+ * before}, but {@code volumeSize} is never decreased - cloud disk grow is not reversible. The
+ * cluster-level size is {@code max(before, current universe intent)} and the {@code before} per-AZ
+ * overrides are kept, so each AZ gets its own size back; the failed-task target is not treated as
+ * applied. If that would set a node below its current-intent or cloud data-disk size, the rollback
+ * is refused.
  *
  * <p>Rejects at submit when a reverse {@code Disk_Update} for IOPS/throughput would hit the
  * provider and the cloud disk-modify cooldown is still active. The clock is the cloud modify time
@@ -112,7 +115,7 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
       throw new PlatformServiceException(
           BAD_REQUEST, "Rollback of Kubernetes resize node is not supported");
     }
-    rejectCloudWithoutSnapshot(universe.getUniverseDetails().clusters);
+    rejectCloudWithoutSnapshot(universe, failedParams.clusters);
     StateTransitionDetails details = universe.getStateTransitionDetails();
     if (details == null) {
       throw new PlatformServiceException(
@@ -123,14 +126,15 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
     details.requireRollbackable();
 
     UniverseDefinitionTaskParams beforeDetails = details.getBeforeUniverseDetails();
-    Map<String, CloudAPI.NodeDiskSpec> cloudByNode = describeCloudNodes(universe);
+    Map<String, CloudAPI.NodeDiskSpec> diskSpecByNode =
+        describeCloudNodes(universe, failedParams.clusters);
     ResizeNodeParams rollbackParams =
-        buildRollbackParams(failedParams, beforeDetails, universe, cloudByNode);
+        buildRollbackParams(failedParams, beforeDetails, universe, diskSpecByNode);
     // Azure cooldown starts at max(lastVolumeUpdateTime, failed task create time). Carried on the
     // params so the RollbackResizeNode precheck applies the same gate without the original task.
     rollbackParams.setFailedTaskCreateTime(context.getTaskInfo().getCreateTime());
     checkCooldownGate(
-        rollbackParams, universe, rollbackParams.getFailedTaskCreateTime(), cloudByNode);
+        rollbackParams, universe, rollbackParams.getFailedTaskCreateTime(), diskSpecByNode);
 
     // Skip optimistic version check for this programmatically-submitted task.
     rollbackParams.expectedUniverseVersion = -1;
@@ -146,15 +150,16 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
    * Overlay pre-freeze intent from {@code state_transition_details} on top of a copy of the failed
    * params. Reverts instance type, master instance type, cgroup, userIntent overrides, gflags /
    * {@code specificGFlags}, disk IOPS, and throughput. Keeps the larger {@code volumeSize} (never
-   * decreased) computed as {@code max(before, current universe intent, cloud data-disk size)} per
-   * cluster {@code deviceInfo}. The failed-task target is the intended size, not what the cloud
-   * applied.
+   * decreased): the cluster {@code deviceInfo} takes {@code max(before, current universe intent)},
+   * and the {@code before} per-AZ overrides are kept. A node whose current-intent or cloud data
+   * disk is larger than that refuses the rollback (see {@link #rejectShrinkingDisks}). The
+   * failed-task target is the intended size, not what the cloud applied.
    */
   private ResizeNodeParams buildRollbackParams(
       ResizeNodeParams failedParams,
       UniverseDefinitionTaskParams before,
       Universe universe,
-      Map<String, CloudAPI.NodeDiskSpec> cloudByNode) {
+      Map<String, CloudAPI.NodeDiskSpec> diskSpecByNode) {
     // Start from a JSON round-trip of the failed params so we inherit clusters shape (uuid,
     // clusterType, placement) without carrying transient runtime fields.
     ResizeNodeParams rollbackParams =
@@ -162,6 +167,7 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
     // Force is a forward "make it happen anyway" knob; it must not apply on the reverse path or
     // RollbackResizeNode would re-run ChangeInstanceType / Disk_Update on nodes already at before.
     rollbackParams.setForceResizeNode(false);
+    rollbackParams.setFailedResizeForced(failedParams.isForceResizeNode());
     // Roll top-level gflag maps back to before (used when specificGFlags is not present).
     Cluster beforePrimary = before.getPrimaryCluster();
     if (beforePrimary != null && beforePrimary.userIntent != null) {
@@ -179,27 +185,11 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
       UserIntent beforeIntent = beforeCluster.userIntent;
       UserIntent currentIntent = currentCluster.userIntent;
 
-      Integer cloudMaxTserverVolume =
-          maxCloudVolumeSize(
-              rollbackCluster.uuid,
-              current.getNodesInCluster(rollbackCluster.uuid),
-              cloudByNode,
-              false /* master */);
-      Integer cloudMaxMasterVolume =
-          maxCloudVolumeSize(
-              rollbackCluster.uuid,
-              current.getNodesInCluster(rollbackCluster.uuid),
-              cloudByNode,
-              true /* master */);
-      // Clone before so we can safely mutate volumeSize up to max(before, current, cloud).
+      // Clone before so we can safely mutate volumeSize up to max(before, current).
       UserIntent restored = beforeIntent.clone();
-      keepLargerVolumeSize(
-          rollbackCluster.uuid,
-          restored,
-          beforeIntent,
-          currentIntent,
-          cloudMaxTserverVolume,
-          cloudMaxMasterVolume);
+      keepLargerVolumeSize(rollbackCluster.uuid, restored, beforeIntent, currentIntent);
+      rejectShrinkingDisks(
+          restored, currentIntent, current.getNodesInCluster(rollbackCluster.uuid), diskSpecByNode);
       rollbackCluster.userIntent = restored;
     }
     return rollbackParams;
@@ -210,45 +200,32 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
   }
 
   /**
-   * For every {@code DeviceInfo} the rollback intent will apply to a node (top-level {@code
-   * deviceInfo} and {@code masterDeviceInfo}), replace its {@code volumeSize} with {@code
-   * max(before, current, cloud-for-that-role)}. Tserver and dedicated-master cloud sizes are kept
-   * separate so a grow on one role cannot inflate the other. The failed-task target is ignored: it
+   * For the cluster-level {@code DeviceInfo}s (top-level {@code deviceInfo} and {@code
+   * masterDeviceInfo}), replace {@code volumeSize} with {@code max(before, current)}. Per-AZ
+   * overrides are checked by {@link #rejectShrinkingDisks}. The failed-task target is ignored: it
    * is the requested size, and a failure before volume-size {@code Disk_Update} must not continue
    * the grow. IOPS and throughput are left at {@code before}.
    */
   private void keepLargerVolumeSize(
-      UUID clusterUuid,
-      UserIntent restored,
-      UserIntent before,
-      UserIntent current,
-      Integer cloudTserverVolumeSize,
-      Integer cloudMasterVolumeSize) {
+      UUID clusterUuid, UserIntent restored, UserIntent before, UserIntent current) {
     restored.deviceInfo =
         maxVolumeSizeDevice(
             clusterUuid,
             "tserver",
             restored.deviceInfo,
             before == null ? null : before.deviceInfo,
-            current == null ? null : current.deviceInfo,
-            cloudTserverVolumeSize);
+            current == null ? null : current.deviceInfo);
     restored.masterDeviceInfo =
         maxVolumeSizeDevice(
             clusterUuid,
             "master",
             restored.masterDeviceInfo,
             before == null ? null : before.masterDeviceInfo,
-            current == null ? null : current.masterDeviceInfo,
-            cloudMasterVolumeSize);
+            current == null ? null : current.masterDeviceInfo);
   }
 
   private static DeviceInfo maxVolumeSizeDevice(
-      UUID clusterUuid,
-      String role,
-      DeviceInfo restored,
-      DeviceInfo before,
-      DeviceInfo current,
-      Integer cloudVolumeSize) {
+      UUID clusterUuid, String role, DeviceInfo restored, DeviceInfo before, DeviceInfo current) {
     if (restored == null) {
       return null;
     }
@@ -257,17 +234,60 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
     Integer max = restored.volumeSize;
     max = maxNullable(max, beforeSize);
     max = maxNullable(max, currentSize);
-    max = maxNullable(max, cloudVolumeSize);
     restored.volumeSize = max;
     log.info(
-        "Selected rollback volumeSize {} for cluster {} {} (before={}, current={}, cloud={})",
+        "Selected rollback volumeSize {} for cluster {} {} (before={}, current={})",
         max,
         clusterUuid,
         role,
         beforeSize,
-        currentSize,
-        cloudVolumeSize);
+        currentSize);
     return restored;
+  }
+
+  /**
+   * The rollback must not shrink a disk, and must not grow one to cover another. A cluster-wide
+   * cloud maximum would grow every AZ that inherits the cluster default to the size of the largest
+   * per-AZ override. So, per node, if the size the rollback sets is below the node's current-intent
+   * size (an AZ override persisted larger than {@code before}) or its cloud data-disk size, refuse
+   * the rollback instead of picking a size. A forward size grow leaves the rollback-safe window
+   * before its first disk update, so neither should happen for a rollbackable resize.
+   */
+  private static void rejectShrinkingDisks(
+      UserIntent restored,
+      UserIntent current,
+      Collection<NodeDetails> nodes,
+      Map<String, CloudAPI.NodeDiskSpec> diskSpecByNode) {
+    for (NodeDetails node : nodes) {
+      DeviceInfo wanted = restored.evaluateDeviceInfoForNode(node);
+      if (wanted == null || wanted.volumeSize == null) {
+        continue;
+      }
+      DeviceInfo currentDevice = current == null ? null : current.evaluateDeviceInfoForNode(node);
+      if (currentDevice != null
+          && currentDevice.volumeSize != null
+          && currentDevice.volumeSize > wanted.volumeSize) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "Cannot roll back resize node: the universe records %d GB for node %s, larger than"
+                    + " the %d GB the rollback would set for it, so it can't be rolled back. Retry"
+                    + " the resize to drive it forward instead.",
+                currentDevice.volumeSize, node.nodeName, wanted.volumeSize));
+      }
+      CloudAPI.NodeDiskSpec diskSpec = diskSpecByNode.get(node.nodeName);
+      if (diskSpec != null
+          && diskSpec.getVolumeSizeGb() != null
+          && diskSpec.getVolumeSizeGb() > wanted.volumeSize) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "Cannot roll back resize node: the data disk of node %s is %d GB in the cloud,"
+                    + " larger than the %d GB the rollback would set for it, so it can't be rolled"
+                    + " back. Retry the resize to drive it forward instead.",
+                node.nodeName, diskSpec.getVolumeSizeGb(), wanted.volumeSize));
+      }
+    }
   }
 
   private static Integer maxNullable(Integer a, Integer b) {
@@ -278,35 +298,6 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
       return a;
     }
     return a > b ? a : b;
-  }
-
-  /**
-   * Max cloud data-disk size for nodes of one role. {@code master=true} uses dedicated masters
-   * ({@code dedicatedTo == MASTER}); {@code master=false} uses every other node (tservers and
-   * non-dedicated clusters where {@code dedicatedTo} is null).
-   */
-  private static Integer maxCloudVolumeSize(
-      UUID clusterUuid,
-      Iterable<NodeDetails> nodes,
-      Map<String, CloudAPI.NodeDiskSpec> cloudByNode,
-      boolean master) {
-    Integer max = null;
-    for (NodeDetails node : nodes) {
-      boolean isDedicatedMaster = node.dedicatedTo == ServerType.MASTER;
-      if (master != isDedicatedMaster) {
-        continue;
-      }
-      CloudAPI.NodeDiskSpec spec = cloudByNode.get(node.nodeName);
-      if (spec != null) {
-        max = maxNullable(max, spec.getVolumeSizeGb());
-      }
-    }
-    log.info(
-        "Rollback cloud max volumeSize {} for cluster {} {}",
-        max,
-        clusterUuid,
-        master ? "master" : "tserver");
-    return max;
   }
 
   /**
@@ -334,7 +325,7 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
       ResizeNodeParams rollbackParams,
       Universe universe,
       Date failedTaskCreateTime,
-      Map<String, CloudAPI.NodeDiskSpec> cloudByNode) {
+      Map<String, CloudAPI.NodeDiskSpec> diskSpecByNode) {
     if (confGetter.getGlobalConf(GlobalConfKeys.skipResizeNodeRollbackCooldown)) {
       log.warn(
           "Skipping resize-node rollback cooldown gate for universe {} because"
@@ -371,7 +362,11 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
         if (!cloudHasDiskResizeCooldown(cloud, cooldownDev)) {
           continue;
         }
-        CloudAPI.NodeDiskSpec perf = resolveCloudState(provider, node, cloudByNode);
+        CloudAPI.NodeDiskSpec perf = resolveCloudState(universe, provider, node, diskSpecByNode);
+        if (!perf.hasDataDisks()) {
+          // Ephemeral storage only: rollback never modifies these disks.
+          continue;
+        }
         if (cloudAlreadyAtDesired(perf, newDev)) {
           log.info(
               "Skipping disk-modify cooldown for node {}: cloud IOPS/throughput already match"
@@ -391,26 +386,33 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
   }
 
   /**
-   * Describe instance + data disks for every node on AWS/GCP/Azure. Empty Optional on those clouds
-   * fails closed. Onprem and other clouds are omitted (YBA-only classification).
+   * Describe instance + data disks for every node of {@code clusters} (the clusters being rolled
+   * back) on AWS/GCP/Azure. Empty Optional on those clouds fails closed. Onprem and other clouds
+   * are omitted (YBA-only classification).
    */
-  public Map<String, CloudAPI.NodeDiskSpec> describeCloudNodes(Universe universe) {
+  public Map<String, CloudAPI.NodeDiskSpec> describeCloudNodes(
+      Universe universe, Collection<Cluster> clusters) {
     Map<String, CloudAPI.NodeDiskSpec> result = new HashMap<>();
     Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(universe);
-    for (NodeDetails node : universe.getNodes()) {
-      Provider provider = providerGetter.apply(node);
-      if (provider == null || !supportsCloudSnapshot(provider.getCloudCode())) {
-        continue;
+    for (Cluster cluster : clusters) {
+      for (NodeDetails node : universe.getUniverseDetails().getNodesInCluster(cluster.uuid)) {
+        Provider provider = providerGetter.apply(node);
+        if (provider == null || !supportsCloudSnapshot(provider.getCloudCode())) {
+          continue;
+        }
+        result.put(node.nodeName, describeNodeCloudState(universe, provider, node));
       }
-      result.put(node.nodeName, describeNodeCloudState(provider, node));
     }
     return result;
   }
 
   /**
    * Public describe used by {@link com.yugabyte.yw.commissioner.tasks.upgrade.RollbackResizeNode}.
+   * A node the cloud reports with no persistent data disks is accepted only where YBA records
+   * ephemeral storage for it; otherwise the snapshot can't be trusted.
    */
-  public CloudAPI.NodeDiskSpec describeNodeCloudState(Provider provider, NodeDetails node) {
+  public CloudAPI.NodeDiskSpec describeNodeCloudState(
+      Universe universe, Provider provider, NodeDetails node) {
     CloudAPI cloudAPI = cloudAPIFactory.get(provider.getCode());
     if (cloudAPI == null) {
       throw couldNotVerify(node, "no cloud API for " + provider.getCode());
@@ -426,7 +428,29 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
     if (perf == null || perf.isEmpty()) {
       throw couldNotVerify(node, "cloud returned no node snapshot");
     }
+    if (!perf.get().hasDataDisks() && !expectsEphemeralStorage(universe, provider, node)) {
+      throw couldNotVerify(node, "cloud reports no data disks");
+    }
     return perf.get();
+  }
+
+  /**
+   * Whether YBA's own record says the node has only ephemeral storage. The cloud's view is what is
+   * being checked, so it can't decide this.
+   */
+  private static boolean expectsEphemeralStorage(
+      Universe universe, Provider provider, NodeDetails node) {
+    Cluster cluster = universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
+    DeviceInfo deviceInfo =
+        cluster == null ? null : cluster.userIntent.evaluateDeviceInfoForNode(node);
+    if (deviceInfo == null) {
+      return false;
+    }
+    Common.CloudType cloud = provider.getCloudCode();
+    // Validation forbids a remote storage type on ephemeral AWS shapes, so one here means EBS.
+    return UniverseDefinitionTaskParams.hasEphemeralStorage(
+            cloud, node.cloudInfo.instance_type, deviceInfo)
+        && (cloud != Common.CloudType.aws || deviceInfo.storageType == null);
   }
 
   public static boolean supportsCloudSnapshot(Common.CloudType cloud) {
@@ -446,11 +470,14 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
   }
 
   private CloudAPI.NodeDiskSpec resolveCloudState(
-      Provider provider, NodeDetails node, Map<String, CloudAPI.NodeDiskSpec> cloudByNode) {
-    if (cloudByNode != null && cloudByNode.containsKey(node.nodeName)) {
-      return cloudByNode.get(node.nodeName);
+      Universe universe,
+      Provider provider,
+      NodeDetails node,
+      Map<String, CloudAPI.NodeDiskSpec> diskSpecByNode) {
+    if (diskSpecByNode != null && diskSpecByNode.containsKey(node.nodeName)) {
+      return diskSpecByNode.get(node.nodeName);
     }
-    return describeNodeCloudState(provider, node);
+    return describeNodeCloudState(universe, provider, node);
   }
 
   /**
@@ -491,12 +518,19 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
   }
 
   /**
-   * Refuses rollback when a cluster runs on a public cloud with no cloud snapshot ({@link
-   * #supportsCloudSnapshot}), such as OCI. Rollback there would trust YBA's instance type, which a
-   * failed resize may not have saved yet.
+   * Refuses rollback when a cluster being rolled back runs on a public cloud with no cloud snapshot
+   * ({@link #supportsCloudSnapshot}), such as OCI. Rollback there would trust YBA's instance type,
+   * which a failed resize may not have saved yet. Reads the universe's copy of those clusters,
+   * whose cloud types are authoritative.
    */
-  public static void rejectCloudWithoutSnapshot(Collection<Cluster> clusters) {
-    Common.CloudType cloud = findCloudWithoutSnapshot(clusters);
+  public static void rejectCloudWithoutSnapshot(
+      Universe universe, Collection<Cluster> rolledBackClusters) {
+    Set<UUID> rolledBack = rolledBackClusters.stream().map(c -> c.uuid).collect(Collectors.toSet());
+    Common.CloudType cloud =
+        findCloudWithoutSnapshot(
+            universe.getUniverseDetails().clusters.stream()
+                .filter(c -> rolledBack.contains(c.uuid))
+                .collect(Collectors.toList()));
     if (cloud != null) {
       throw new PlatformServiceException(
           BAD_REQUEST,

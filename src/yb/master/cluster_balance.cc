@@ -315,6 +315,39 @@ size_t ClusterLoadBalancer::get_total_leader_blacklisted_servers() const {
   return global_state_->leader_blacklisted_servers_.size();
 }
 
+Result<size_t> ClusterLoadBalancer::EstimateTableLoadDifference() const {
+  // Calculate the current state and goal state and their difference (in terms of adds / removes).
+  // We currently only use this to provide an estimate of the time it will take to balance the
+  // cluster; it is not used in the algorithm.
+  //
+  // The estimate does not account for per-block max_num_replicas: the goal distribution may
+  // place slack replicas in a block beyond its maximum, so the estimated number of moves can be
+  // low when maximums are binding.
+  //
+  // The goal state also ignores disk space, so once a tserver is over
+  // FLAGS_load_balancer_min_free_disk_space_pct the difference can stay non-zero indefinitely:
+  // the cluster balancer will not make the adds that would close it and still reports itself
+  // idle.
+  //
+  // Split parents about to be deleted are left out, as they are in GetLoad, so the estimate
+  // follows what the balancer acts on. An add that under-replication handling makes for such a
+  // parent is not estimated.
+  TsTableLoadMap current_loads;
+  TSDescriptorVector valid_ts_descs;
+  for (const auto& ts_uuid : state_->sorted_load_) {
+    current_loads[ts_uuid] = state_->GetLoad(ts_uuid);
+    if (!global_state_->blacklisted_servers_.contains(ts_uuid)) {
+      valid_ts_descs.push_back(state_->per_ts_meta_.at(ts_uuid).descriptor);
+    }
+  }
+  const auto goal_loads = VERIFY_RESULT(CalculateOptimalLoadDistribution(
+      valid_ts_descs, state_->placement_, current_loads,
+      state_->num_running_tablets_ - state_->num_split_parents_));
+  VLOG(2) << "Table " << state_->table_id_ << " current_loads: " << AsString(current_loads);
+  VLOG(2) << "Table " << state_->table_id_ << " goal_loads:    " << AsString(goal_loads);
+  return CalculateTableLoadDifference(current_loads, goal_loads);
+}
+
 size_t ClusterLoadBalancer::get_total_over_replication() const {
   return state_->tablets_over_replicated_.size();
 }
@@ -522,38 +555,13 @@ void ClusterLoadBalancer::RunClusterBalancerWithOptions(
       continue;
     }
 
-    // Calculate the current state and goal state and their difference (in terms of adds / removes).
-    // We currently only use this to provide an estimate of the time it will take to balance the
-    // cluster; it is not used in the algorithm below.
-    //
-    // The estimate does not account for per-block max_num_replicas: the goal distribution may
-    // place slack replicas in a block beyond its maximum, so the estimated number of moves can be
-    // low when maximums are binding.
-    //
-    // The goal state also ignores disk space, so once a tserver is over
-    // FLAGS_load_balancer_min_free_disk_space_pct the difference can stay non-zero indefinitely:
-    // the cluster balancer will not make the adds that would close it and still reports itself
-    // idle.
-    TsTableLoadMap current_loads;
-    TSDescriptorVector valid_ts_descs;
-    for (auto& ts_uuid : state_->sorted_load_) {
-      auto& ts_meta = state_->per_ts_meta_.at(ts_uuid);
-      current_loads[ts_uuid] = ts_meta.running_tablets.size() + ts_meta.starting_tablets.size();
-      if (!global_state_->blacklisted_servers_.contains(ts_uuid)) {
-        valid_ts_descs.push_back(ts_meta.descriptor);
-      }
-    }
-    auto goal_loads = CalculateOptimalLoadDistribution(
-        valid_ts_descs, state_->placement_, current_loads, state_->num_running_tablets_);
-    if (goal_loads.ok()) {
-      auto num_adds = CalculateTableLoadDifference(current_loads, *goal_loads);
-      VLOG(2) << "Table " << table->id() << " current_loads: " << AsString(current_loads);
-      VLOG(2) << "Table " << table->id() << " goal_loads:    " << AsString(*goal_loads);
-      per_run_state_->total_table_load_difference_ += num_adds;
-      per_run_state_->estimated_data_to_balance_bytes_ += num_adds * state_->average_tablet_size_;
+    auto num_adds = EstimateTableLoadDifference();
+    if (num_adds.ok()) {
+      per_run_state_->total_table_load_difference_ += *num_adds;
+      per_run_state_->estimated_data_to_balance_bytes_ += *num_adds * state_->average_tablet_size_;
     } else {
       YB_LOG_EVERY_N_SECS_OR_VLOG(WARNING, 10, 1) << "No valid load distribution found for table "
-          << table->id() << ": " << StatusToString(goal_loads);
+          << table->id() << ": " << StatusToString(num_adds.status());
     }
     per_run_state_->tablets_in_wrong_placement_ += get_total_wrong_placement();
     per_run_state_->blacklisted_leaders_ += get_badly_placed_leaders();
@@ -871,6 +879,8 @@ Status ClusterLoadBalancer::AnalyzeTablets(const TableInfoPtr& table) {
       table->GetTabletsIncludeInactive(), "Skipping table " + table->id() + " due to error: ");
   state_->num_running_tablets_ = 0;
   size_t total_tablet_size = 0;
+  // Running split parents that are not hidden, with the ids of their children.
+  std::vector<std::pair<TabletId, std::vector<TabletId>>> split_parents;
 
   // Loop over tablet map to register the load that is already live in the cluster.
   for (const auto& tablet : tablets) {
@@ -883,6 +893,12 @@ Status ClusterLoadBalancer::AnalyzeTablets(const TableInfoPtr& table) {
         continue;
       }
       tablet_running = tablet_lock->is_running();
+      if (tablet_running && !tablet_lock->is_hidden() &&
+          tablet_lock->pb.split_tablet_ids_size() > 0) {
+        const auto& child_ids = tablet_lock->pb.split_tablet_ids();
+        split_parents.emplace_back(
+            tablet->id(), std::vector<TabletId>(child_ids.begin(), child_ids.end()));
+      }
     }
 
     // This is from the perspective of the CatalogManager and the on-disk, persisted
@@ -898,6 +914,16 @@ Status ClusterLoadBalancer::AnalyzeTablets(const TableInfoPtr& table) {
       state_->num_running_tablets_++;
       RETURN_NOT_OK(state_->UpdateTablet(tablet.get()));
       total_tablet_size += state_->per_tablet_meta_[tablet->id()].size;
+    }
+  }
+  // Flag only the parents with at least one running child (present in per_tablet_meta_).
+  for (const auto& [parent_id, child_ids] : split_parents) {
+    if (std::ranges::any_of(child_ids, [this](const auto& child_id) {
+          return state_->per_tablet_meta_.contains(child_id);
+        })) {
+      VLOG(3) << "Split parent " << parent_id
+              << " has a running child, excluding it from the load";
+      state_->MarkAsSplitParent(parent_id);
     }
   }
   state_->average_tablet_size_ =
@@ -1225,27 +1251,23 @@ Result<bool> ClusterLoadBalancer::GetLoadToMove(
   // the interval between left and right cannot have load > kMinLoadVarianceToBalance.
   ssize_t last_pos = state_->sorted_load_.size() - 1;
   for (ssize_t left = 0; left <= last_pos; ++left) {
-    // Blacklisted tservers cannot receive load. Using one as the destination could end the search
-    // early via the global load check below. last_pos is never skipped: its iteration
-    // (left == right, load_variance == 0) terminates the loop via return false instead of
-    // falling through to the IllegalState below.
-    if (left < last_pos &&
-        global_state_->blacklisted_servers_.contains(state_->sorted_load_[left])) {
+    // Loads are sorted ascending, so there is no tserver to move load from once left reaches
+    // last_pos: the scan is exhausted. Return rather than let the outer loop end, which would fall
+    // through to the IllegalState below.
+    if (left == last_pos) {
+      return false;
+    }
+    // Blacklisted tservers cannot receive load.
+    if (global_state_->blacklisted_servers_.contains(state_->sorted_load_[left])) {
       continue;
     }
-    for (auto right = last_pos; right >= 0; --right) {
+    for (auto right = last_pos; right > left; --right) {
       const TabletServerId& low_load_uuid = state_->sorted_load_[left];
       const TabletServerId& high_load_uuid = state_->sorted_load_[right];
       ssize_t load_variance = state_->GetLoad(high_load_uuid) - state_->GetLoad(low_load_uuid);
       bool is_global_balancing_move = false;
 
-      // Check for state change or end conditions.
-      if (left == right || load_variance < state_->options_->kMinLoadVarianceToBalance) {
-        if (right == last_pos && load_variance == 0) {
-          // Either both left and right are at the end, or there is no load_variance, which means
-          // there will be no load_variance for any TSs between left and right, so we can return.
-          return false;
-        }
+      if (load_variance < state_->options_->kMinLoadVarianceToBalance) {
         // If there is load variance, then there is a chance we can benefit from globally balancing.
         if (load_variance > 0 && CanBalanceGlobalLoad()) {
           int global_load_variance = global_state_->GetGlobalLoad(high_load_uuid) -
@@ -1261,8 +1283,9 @@ Result<bool> ClusterLoadBalancer::GetLoadToMove(
           // Mark this move as a global balancing move and try to find a tablet to move.
           is_global_balancing_move = true;
         } else {
-          // The load_variance is too low, which means we weren't able to find a load to move to
-          // the left tserver. Continue and try with the next left tserver.
+          // Loads are sorted ascending, so no tserver at or before right has enough extra load to
+          // move to left. If right is the most loaded tserver, the same holds for every later left
+          // tserver, so we are done. Otherwise, try the next left tserver.
           if (right == last_pos) {
             return false;
           } else {
@@ -1281,8 +1304,9 @@ Result<bool> ClusterLoadBalancer::GetLoadToMove(
           load_variance - state_->GetPossiblyTransientLoad(high_load_uuid) <
               state_->options_->kMinLoadVarianceToBalance) {
         VLOG(3) << Format(
-            "Skipping tserver pair $0 and $1 because load variance including "
-            "over-replicated tablets would be too low.", high_load_uuid, low_load_uuid);
+            "Skipping tserver pair $0 and $1 because the load variance would be too low after "
+            "excluding the over-replicated tablets on high load tserver $0.",
+            high_load_uuid, low_load_uuid);
         continue;
       }
 
@@ -1335,6 +1359,11 @@ Result<std::optional<TabletId>> ClusterLoadBalancer::GetTabletToMove(
       }
       // Don't move a replica right after split
       if (ContainsKey(from_ts_meta.disabled_by_ts_tablets, tablet_id)) {
+        continue;
+      }
+      // Don't move a split parent that is about to be deleted. It is not counted as load, so the
+      // move would not change the variance either.
+      if (state_->per_tablet_meta_[tablet_id].is_split_parent) {
         continue;
       }
 

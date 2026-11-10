@@ -886,7 +886,8 @@ std::string DocDbStatsToString(const DocDBStatistics* doc_db_stats) {
 }
 
 // Returns the keys of the rows with intents visible at the read time, in key order.
-Result<std::vector<std::string>> ReadIntentRowKeys(const PgsqlReadOperationData& data) {
+Result<std::vector<std::string>> ReadIntentRowKeys(
+    const PgsqlReadOperationData& data, ReadRestartData& read_restart_data) {
   std::unique_ptr<YQLRowwiseIteratorIf> iterator_holder;
   FilteringIterator iterator(&iterator_holder);
   auto projection = CreateProjection(data.doc_read_context.schema(), data.request);
@@ -900,6 +901,7 @@ Result<std::vector<std::string>> ReadIntentRowKeys(const PgsqlReadOperationData&
   while (VERIFY_RESULT(iterator_impl.PgFetchNext(&row))) {
     result.push_back(iterator_impl.GetTupleId().ToBuffer());
   }
+  read_restart_data.MakeAtLeast(VERIFY_RESULT(iterator_impl.GetReadRestartData()));
   return result;
 }
 
@@ -1057,8 +1059,8 @@ class PgsqlVectorFilter {
  public:
   PgsqlVectorFilter(
       std::reference_wrapper<const docdb::DocVectorIndexMetrics> metrics,
-      YQLRowwiseIteratorIf::UniPtr* table_iter, const std::vector<std::string>& intent_keys)
-      : metrics_(metrics), iter_(table_iter), intent_keys_(intent_keys) {
+      const std::vector<std::string>& intent_keys)
+      : metrics_(metrics), iter_(&iter_holder_), intent_keys_(intent_keys) {
   }
 
   ~PgsqlVectorFilter() {
@@ -1191,11 +1193,20 @@ class PgsqlVectorFilter {
     auto encoded_value = dockv::EncodedDocVectorValue::FromSlice(vector_value->binary_value());
     if (vector_id.AsSlice() != encoded_value.id) {
       // The row no longer references this vector, i.e. the vector was replaced by an update.
-      // Such a vector is filtered out above when the reverse mapping is used, so a mismatch
-      // here means the reverse mapping and the row disagree.
-      LOG_IF(DFATAL, resolved_via_reverse_mapping)
-          << "Referenced row with wrong vector id: " << encoded_value.DecodeId()
-          << ", expected: " << vector_id;
+      // Such a vector is filtered out above when the reverse mapping is used, unless the update
+      // is in the uncertainty window: the row then reads at a later version than the read time,
+      // e.g. from the intents of a transaction committed after ReadIntentRowKeys. The read is
+      // restarted in that case, otherwise the reverse mapping and the row disagree.
+      if (resolved_via_reverse_mapping) {
+        auto read_restart_data = GetReadRestartData();
+        if (!read_restart_data.ok()) {
+          status_ = std::move(read_restart_data.status());
+          return false;
+        }
+        LOG_IF(DFATAL, !read_restart_data->is_valid())
+            << "Referenced row with wrong vector id: " << encoded_value.DecodeId()
+            << ", expected: " << vector_id;
+      }
       ++num_removed_;
       return false;
     }
@@ -1213,8 +1224,25 @@ class PgsqlVectorFilter {
     return reverse_mapping_reader_.get();
   }
 
+  // The rows and reverse mapping entries the filter reads decide which vectors are search results,
+  // so the read has to be restarted when they are in the uncertainty window, even though
+  // ExecuteBatchKeys does not fetch the rows of the vectors left out.
+  Result<ReadRestartData> GetReadRestartData() const {
+    ReadRestartData result;
+    if (iter_holder_) {
+      result = VERIFY_RESULT(iter_holder_->GetReadRestartData());
+    }
+    if (reverse_mapping_reader_) {
+      result.MakeAtLeast(VERIFY_RESULT(reverse_mapping_reader_->GetReadRestartData()));
+    }
+    return result;
+  }
+
  private:
   const docdb::DocVectorIndexMetrics& metrics_;
+  // Not table_iter_ of the read operation: ExecuteBatchKeys replaces that one, discarding its read
+  // restart data.
+  YQLRowwiseIteratorIf::UniPtr iter_holder_;
   FilteringIterator iter_;
   // Keys of the rows with intents, in key order.
   const std::vector<std::string>& intent_keys_;
@@ -2437,6 +2465,7 @@ Result<size_t> PgsqlReadOperation::Execute() {
   if (index_iter_) {
     read_restart_data_->MakeAtLeast(VERIFY_RESULT(index_iter_->GetReadRestartData()));
   }
+  read_restart_data_->MakeAtLeast(std::move(vector_search_read_restart_data_));
   if (!read_restart_data_->is_valid()) {
     RETURN_NOT_OK(delayed_failure_);
   }
@@ -2877,9 +2906,8 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
   Slice vector_slice(options.vector().binary_value());
   size_t max_results = options.num_top_vectors_to_remove() + options.prefetch_size();
 
-  auto intent_keys = VERIFY_RESULT(ReadIntentRowKeys(data_));
-  table_iter_.reset();
-  PgsqlVectorFilter filter(data_.vector_index->metrics(), &table_iter_, intent_keys);
+  auto intent_keys = VERIFY_RESULT(ReadIntentRowKeys(data_, vector_search_read_restart_data_));
+  PgsqlVectorFilter filter(data_.vector_index->metrics(), intent_keys);
   auto could_have_missing_entries = !VERIFY_RESULT(filter.Init(data_));
   auto backfill_done = VERIFY_RESULT(data_.vector_index->BackfillDone());
   RSTATUS_DCHECK(
@@ -2909,6 +2937,10 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
   ));
   RETURN_NOT_OK(filter.status());
   VLOG_WITH_FUNC(2) << "Search results: " << result.ToString();
+  vector_search_read_restart_data_.MakeAtLeast(VERIFY_RESULT(filter.GetReadRestartData()));
+  if (owned_reader) {
+    vector_search_read_restart_data_.MakeAtLeast(VERIFY_RESULT(owned_reader->GetReadRestartData()));
+  }
 
   // TODO(vector_index) Order keys by ybctid for fetching.
   auto dump_stats = FLAGS_vector_index_dump_stats;

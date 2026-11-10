@@ -507,6 +507,34 @@ Result<std::pair<uint16_t, uint16_t>> PartitionSchema::DecodePartitionAsHashBoun
       partition.partition_key_start(), partition.partition_key_end());
 }
 
+std::optional<uint16_t> PartitionSchema::DecodeEncodedHashPartitionKeyBound(Slice bound) {
+  DocKeyDecoder decoder(bound);
+  uint16_t hash_code;
+  auto result = decoder.DecodeHashCode(&hash_code);
+  if (!result.ok() || !*result) {
+    return std::nullopt;
+  }
+  // The entry type is kInvalid if the left input is empty.
+  const auto next_key_entry_type = DecodeKeyEntryType(decoder.left_input());
+  if (next_key_entry_type == KeyEntryType::kInvalid ||
+      next_key_entry_type == KeyEntryType::kLowest) {
+    return hash_code;
+  }
+  if (hash_code < UINT16_MAX && next_key_entry_type == KeyEntryType::kHighest) {
+    return hash_code + 1;
+  }
+  return std::nullopt;
+}
+
+KeyBytes PartitionSchema::HashCodeToDocKeyBound(
+    const Schema& schema, uint16_t hash_code, bool is_lower) {
+  static const KeyEntryValues kLowest{KeyEntryValue{KeyEntryType::kLowest}};
+  static const KeyEntryValues kHighest{KeyEntryValue{KeyEntryType::kHighest}};
+
+  const auto& hash_range_components = is_lower ? kLowest : kHighest;
+  return DocKey(schema, hash_code, hash_range_components, hash_range_components).Encode();
+}
+
 namespace {
 
 Result<std::string> GetEncodedHashPartitionKey(const std::string& partition_key) {

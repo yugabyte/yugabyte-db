@@ -337,12 +337,12 @@ int od_instance_main(od_instance_t *instance, int argc, char **argv)
 	}
 	od_log(&instance->logger, "init", NULL, NULL, "odyssey (git: %s %s)",
 	       OD_VERSION_GIT, OD_VERSION_BUILD);
-	od_log(&instance->logger, "init", NULL, NULL, "");
+	od_log(&instance->logger, "init", NULL, NULL, "%s", "");
 
 	/* print configuration */
 	od_log(&instance->logger, "init", NULL, NULL,
 	       "using configuration file '%s'", instance->config_file);
-	od_log(&instance->logger, "init", NULL, NULL, "");
+	od_log(&instance->logger, "init", NULL, NULL, "%s", "");
 
 	if (instance->config.log_config) {
 		od_config_print(&instance->config, &instance->logger);

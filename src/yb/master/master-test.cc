@@ -3003,7 +3003,9 @@ class FakeTabletServerAdminService : public tserver::TabletServerAdminServiceIf 
                          tserver::GetSafeTimeResponsePB)
   UNUSED_TS_ADMIN_METHOD(BackfillIndex, tserver::BackfillIndexRequestPB,
                          tserver::BackfillIndexResponsePB)
-                         UNUSED_TS_ADMIN_METHOD(BackfillDone, tablet::ChangeMetadataRequestPB,
+  UNUSED_TS_ADMIN_METHOD(TableBackfillChunk, tserver::TableBackfillChunkRequestPB,
+                         tserver::TableBackfillChunkResponsePB)
+  UNUSED_TS_ADMIN_METHOD(BackfillDone, tablet::ChangeMetadataRequestPB,
                          tserver::ChangeMetadataResponsePB)
   UNUSED_TS_ADMIN_METHOD(FlushTablets, tserver::FlushTabletsRequestPB,
                          tserver::FlushTabletsResponsePB)

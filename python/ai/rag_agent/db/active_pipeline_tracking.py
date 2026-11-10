@@ -79,8 +79,9 @@ class PipelineTracking:
                     status,
                     metadata_snapshot,
                     chunks_processed,
-                    embeddings_persisted
-                ) VALUES (%s, %s, %s, %s, %s, %s)
+                    embeddings_persisted,
+                    last_started_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, NOW())
                 RETURNING pipeline_id
                 """,
                 (

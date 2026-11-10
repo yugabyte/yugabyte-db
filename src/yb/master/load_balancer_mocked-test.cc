@@ -807,6 +807,119 @@ TEST_F(LoadBalancerMockedTest, ExcludeOverreplicationInSourceLoad) {
   ASSERT_EQ(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)), false);
 }
 
+// A split parent whose children are running is deleted as soon as the tservers finish the split,
+// so its replicas are not counted in the load of their tservers.
+TEST_F(LoadBalancerMockedTest, ExcludeSplitParentFromLoad) {
+  PrepareTestStateSingleAz();
+  const auto& parent = tablets_[1];
+  ASSERT_RESULT(SplitTablet(parent));
+
+  // A new tserver takes one replica each of tablets 0, 2 and 3 from ts0, ts1 and ts2. Every
+  // original tserver now has 5 replicas, one of them the parent, and the new one has 3.
+  auto new_ts = ts_descs_.emplace_back(SetupTS("3333", "a"));
+  MoveReplica(tablets_[0].get(), ts_descs_[0], new_ts);
+  MoveReplica(tablets_[2].get(), ts_descs_[1], new_ts);
+  MoveReplica(tablets_[3].get(), ts_descs_[2], new_ts);
+
+  // Without the parent an original tserver has a load of 4, so the variance of 1 with the new
+  // tserver is below the minimum and nothing should move.
+  const auto& ts0_uuid = ts_descs_[0]->permanent_uuid();
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_TRUE(IsSplitParent(parent->id()));
+  ASSERT_EQ(GetLoad(ts0_uuid), 4);
+  ASSERT_EQ(GetGlobalLoad(ts0_uuid), 4);
+  // The parent is left out of the load itself, not discounted again as transient load.
+  ASSERT_EQ(GetPossiblyTransientLoad(ts0_uuid), 0);
+  // The load difference estimate follows the same view, so it reports nothing to do.
+  ASSERT_EQ(ASSERT_RESULT(EstimateTableLoadDifference()), 0);
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+
+  // A hidden parent is retained for PITR or CDC, so it is regular load again.
+  HideTablet(parent);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_FALSE(IsSplitParent(parent->id()));
+  ASSERT_EQ(GetLoad(ts0_uuid), 5);
+  ASSERT_EQ(GetGlobalLoad(ts0_uuid), 5);
+  ASSERT_EQ(ASSERT_RESULT(EstimateTableLoadDifference()), 1);
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(to_ts, new_ts->permanent_uuid());
+}
+
+// Until one of a split parent's children is running nothing is counted in the parent's place, so
+// the parent stays regular load rather than being excluded.
+TEST_F(LoadBalancerMockedTest, SplitParentCountsUntilAChildRuns) {
+  PrepareTestStateSingleAz();
+  const auto& parent = tablets_[1];
+  const auto children = ASSERT_RESULT(SplitTablet(parent));
+  const auto& ts_uuid = ts_descs_[0]->permanent_uuid();
+
+  // Neither child is running, so the parent is the only one of the three that is counted.
+  for (const auto& child : children) {
+    SetTabletState(child, SysTabletsEntryPB::CREATING);
+  }
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_FALSE(IsSplitParent(parent->id()));
+  ASSERT_EQ(GetLoad(ts_uuid), 4);
+
+  // One child is running and is counted in the parent's place, so the load is unchanged.
+  SetTabletState(children[1], SysTabletsEntryPB::RUNNING);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_TRUE(IsSplitParent(parent->id()));
+  ASSERT_EQ(GetLoad(ts_uuid), 4);
+}
+
+// A split parent that is about to be deleted is never the tablet chosen for a move.
+TEST_F(LoadBalancerMockedTest, DoNotMoveSplitParent) {
+  PrepareTestStateSingleAz();
+  // Candidates are tried in tablet id order and tablets_[0] sorts first, so it would be picked.
+  const auto& parent = tablets_[0];
+  ASSERT_RESULT(SplitTablet(parent));
+
+  // A new empty tserver has to get replicas, but not one of the parent.
+  auto new_ts = ts_descs_.emplace_back(SetupTS("3333", "a"));
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(to_ts, new_ts->permanent_uuid());
+  ASSERT_NE(tablet_id, parent->id());
+
+  // Once hidden the parent is regular load again, so as the first candidate in tablet id order it
+  // is the one chosen.
+  HideTablet(parent);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(tablet_id, parent->id());
+}
+
+// The exclusion follows the parent's replicas as the balancer adds and removes them within a run.
+TEST_F(LoadBalancerMockedTest, SplitParentStaysExcludedAcrossReplicaChanges) {
+  PrepareTestStateSingleAz();
+  const auto& parent = tablets_[1];
+  ASSERT_RESULT(SplitTablet(parent));
+  auto new_ts = ts_descs_.emplace_back(SetupTS("3333", "a"));
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  const auto& ts0_uuid = ts_descs_[0]->permanent_uuid();
+  const auto& new_ts_uuid = new_ts->permanent_uuid();
+  // ts0 hosts the 4 original tablets and the 2 children, which is a load of 5 without the parent.
+  ASSERT_EQ(GetLoad(ts0_uuid), 5);
+  ASSERT_EQ(GetLoad(new_ts_uuid), 0);
+
+  // A starting replica of the parent is not counted on its new tserver.
+  ASSERT_OK(AddReplicaInState(parent->id(), new_ts_uuid));
+  ASSERT_EQ(GetLoad(new_ts_uuid), 0);
+  ASSERT_EQ(GetGlobalLoad(new_ts_uuid), 0);
+  // The parent is now over-replicated, but it is already left out of the load, so it is not
+  // discounted again as transient load.
+  ASSERT_EQ(GetTotalOverreplication(), 1);
+  ASSERT_EQ(GetPossiblyTransientLoad(ts0_uuid), 0);
+
+  // Removing the parent's replica from a tserver does not change that tserver's load.
+  ASSERT_OK(RemoveReplicaInState(parent->id(), ts0_uuid));
+  ASSERT_EQ(GetLoad(ts0_uuid), 5);
+  ASSERT_EQ(GetGlobalLoad(ts0_uuid), 5);
+}
+
 TEST_F(LoadBalancerMockedTest, TestLeaderBlacklist) {
   LOG(INFO) << "Testing moving overloaded leaders";
   PrepareTestStateMultiAz();

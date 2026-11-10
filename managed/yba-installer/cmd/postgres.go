@@ -10,7 +10,6 @@ import (
 	"io/fs"
 	"os"
 	"path"
-	"strconv"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -22,6 +21,7 @@ import (
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/systemd"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/template"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/ybactlstate"
 )
 
 /*
@@ -73,44 +73,10 @@ func newPostgresDirectories(version string) postgresDirectories {
 // major version upgrades and keep the unversioned directory.
 func postgresDataDir(version string) string {
 	dataDir := common.GetBaseInstall() + "/data/postgres"
-	if major := pgMajorVersion(version); major != 14 {
+	if major := common.PostgresMajorVersion(version); major != 14 {
 		return fmt.Sprintf("%s-%d", dataDir, major)
 	}
 	return dataDir
-}
-
-func pgMajorVersion(version string) int {
-	major, _ := strconv.Atoi(strings.Split(version, ".")[0])
-	return major
-}
-
-// installedDataDir returns the data directory set in the active install's postgresql.conf.
-func installedDataDir() (string, error) {
-	confPath := filepath.Join(common.GetActiveSymlink(), "pgsql/conf/postgresql.conf")
-	contents, err := os.ReadFile(confPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to read %s: %w", confPath, err)
-	}
-	// The last setting wins, as it does for postgres.
-	dataDir := ""
-	for _, line := range strings.Split(string(contents), "\n") {
-		if value, found := strings.CutPrefix(line, "data_directory ="); found {
-			dataDir = strings.Trim(strings.TrimSpace(value), "'")
-		}
-	}
-	if dataDir == "" {
-		return "", fmt.Errorf("data_directory is not set in %s", confPath)
-	}
-	return dataDir, nil
-}
-
-// clusterMajorVersion returns the major version from the PG_VERSION file of the cluster in dataDir.
-func clusterMajorVersion(dataDir string) (int, error) {
-	contents, err := os.ReadFile(filepath.Join(dataDir, "PG_VERSION"))
-	if err != nil {
-		return 0, fmt.Errorf("failed to read the postgres version of %s: %w", dataDir, err)
-	}
-	return strconv.Atoi(strings.TrimSpace(string(contents)))
 }
 
 // Component 1: Postgres
@@ -406,18 +372,18 @@ func (pg Postgres) Upgrade() error {
 		pg.createTSDatabase()
 	}
 
-	oldDataDir, err := installedDataDir()
+	oldDataDir, err := common.InstalledPostgresDataDir()
 	if err != nil {
 		return err
 	}
-	oldMajorVersion, err := clusterMajorVersion(oldDataDir)
+	oldMajorVersion, err := common.PostgresClusterMajorVersion(oldDataDir)
 	if err != nil {
 		return err
 	}
-	if oldMajorVersion != pgMajorVersion(pg.version) {
+	if oldMajorVersion != common.PostgresMajorVersion(pg.version) {
 		if strings.Compare(oldDataDir, pg.dataDir) == 0 {
 			return fmt.Errorf("cannot upgrade postgres from %d to %d in existing data directory %s",
-				oldMajorVersion, pgMajorVersion(pg.version), pg.dataDir)
+				oldMajorVersion, common.PostgresMajorVersion(pg.version), pg.dataDir)
 		}
 		if err := pg.majorversionUpgradeDataDir(oldDataDir); err != nil {
 			return err
@@ -536,15 +502,15 @@ func (pg Postgres) removeOldDataDirs(activeDataDir string) error {
 
 // MaybeVacuumStats must be called before updating active symlink on upgrade
 func (pg Postgres) MaybeVacuumStats() error {
-	oldDataDir, err := installedDataDir()
+	oldDataDir, err := common.InstalledPostgresDataDir()
 	if err != nil {
 		return err
 	}
-	oldMajorVersion, err := clusterMajorVersion(oldDataDir)
+	oldMajorVersion, err := common.PostgresClusterMajorVersion(oldDataDir)
 	if err != nil {
 		return err
 	}
-	if oldMajorVersion == pgMajorVersion(pg.version) {
+	if oldMajorVersion == common.PostgresMajorVersion(pg.version) {
 		log.Debug("Skipping vacuumdb stats because major version did not change")
 		return nil
 	}
@@ -653,9 +619,16 @@ func (pg Postgres) runInitDB() error {
 		"--locale=" + viper.GetString("postgres.install.locale"),
 	}
 	// pg_upgrade requires matching data checksum settings, and initdb enables them by default from
-	// PostgreSQL 18. Keep them off to match clusters created by earlier versions.
-	if pgMajorVersion(pg.version) >= 18 {
-		initDbArgs = append(initDbArgs, "--no-data-checksums")
+	// PostgreSQL 18. An install whose first cluster predates 18 has them off, and every cluster
+	// pg_upgrade later moves it into has to keep them off.
+	if common.PostgresMajorVersion(pg.version) >= 18 {
+		state, err := ybactlstate.LoadState()
+		if err != nil {
+			return fmt.Errorf("failed to load state to choose data checksums: %w", err)
+		}
+		if state.Postgres.InitialMajorVersion < 18 {
+			initDbArgs = append(initDbArgs, "--no-data-checksums")
+		}
 	}
 	if common.HasSudoAccess() {
 		// Need to give the yugabyte user ownership of the entire postgres
