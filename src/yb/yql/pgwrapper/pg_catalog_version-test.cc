@@ -3203,12 +3203,17 @@ TEST_F(PgCatalogVersionTest, TestGrantSetOnParameterHasGlobalImpact) {
     return true;
   };
   ASSERT_TRUE(ASSERT_RESULT(set_denied()));
+  auto v1_db1 = ASSERT_RESULT(GetCatalogVersion(&conn_db1_user1));
 
   ASSERT_OK(conn.Execute("GRANT SET ON PARAMETER log_planner_stats TO user1"));
+  auto v2_db1 = ASSERT_RESULT(GetCatalogVersion(&conn_db1_user1));
+  ASSERT_EQ(v2_db1, v1_db1 + 1);
   ASSERT_OK(WaitFor([&]() -> Result<bool> { return !VERIFY_RESULT(set_denied()); },
                     60s * kTimeMultiplier, "GRANT to reach the db1 backend"));
 
   ASSERT_OK(conn.Execute("REVOKE SET ON PARAMETER log_planner_stats FROM user1"));
+  auto v3_db1 = ASSERT_RESULT(GetCatalogVersion(&conn_db1_user1));
+  ASSERT_EQ(v3_db1, v2_db1 + 1);
   ASSERT_OK(WaitFor(set_denied, 60s * kTimeMultiplier, "REVOKE to reach the db1 backend"));
 }
 
