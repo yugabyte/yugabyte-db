@@ -1812,10 +1812,14 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         serverGFlags.put(GFlagsUtil.USE_CLIENT_CERTIFICATES, "true");
         serverGFlags.remove(GFlagsUtil.NODE_TO_NODE_REQUIRED_UID);
         serverGFlags.remove(GFlagsUtil.VERIFY_CLIENT_ENDPOINT);
-      } else if (overrides.get("gflags") instanceof Map<?, ?> gflags
-          && gflags.get(server) instanceof Map<?, ?> serverGFlags
-          && serverGFlags.containsKey(GFlagsUtil.USE_CLIENT_CERTIFICATES)) {
-        ((Map<String, Object>) serverGFlags).put(GFlagsUtil.USE_CLIENT_CERTIFICATES, "false");
+      } else {
+        // No instanceof patterns: pr-lint runs google-java-format on Java 11.
+        Object gflags = overrides.get("gflags");
+        Object serverGFlags = gflags instanceof Map ? ((Map<?, ?>) gflags).get(server) : null;
+        if (serverGFlags instanceof Map
+            && ((Map<?, ?>) serverGFlags).containsKey(GFlagsUtil.USE_CLIENT_CERTIFICATES)) {
+          ((Map<String, Object>) serverGFlags).put(GFlagsUtil.USE_CLIENT_CERTIFICATES, "false");
+        }
       }
     }
     // Done after all overrides, so none can turn the sidecar on or off or move its port.
