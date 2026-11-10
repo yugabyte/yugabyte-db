@@ -10,7 +10,7 @@
  *	  estimators, and ANALYZE.  It sits under access/ for historical
  *	  reasons and belongs in the optimizer, which #37428 tracks.
  *	  The exception is YbIsScanningEmbeddedIdx(), which scan
- *	  execution also calls. It is a fact about how relations are
+ *	  execution also calls.  It is a fact about how relations are
  *	  stored, not cost logic, and #37095 tracks moving it out.
  *
  * Copyright (c) YugabyteDB, Inc.
