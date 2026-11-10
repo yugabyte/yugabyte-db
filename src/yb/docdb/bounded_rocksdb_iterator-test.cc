@@ -157,5 +157,43 @@ TEST_F(BoundedRocksDbIteratorTest, SeekToLastEmptyDatabase) {
   ASSERT_EQ(ASSERT_RESULT(SeekToLastKey(MakeBounds(/* lower= */ "k1", /* upper= */ "k9"))),
             std::nullopt);
 }
+// Matches only filter key "k2"; every other key is filtered out.
+class OnlyK2Filter : public rocksdb::IteratorFilter {
+ public:
+  bool Filter(
+      const rocksdb::QueryOptions& options, Slice user_key,
+      rocksdb::FilterKeyCache* filter_key_cache, rocksdb::FilterBlockCache* filter_cache,
+      void* context) const override {
+    return user_key == Slice("k2");
+  }
+};
 
+TEST_F(BoundedRocksDbIteratorTest, UpdateFilterKeyClampsSeekKeyToBounds) {
+  // Two SST files, so a merging iterator with VariableFilter is created.
+  PutKey("k1");
+  PutKey("k5");
+  ASSERT_OK(db_->Flush(rocksdb::FlushOptions()));
+  PutKey("k2");
+  PutKey("k7");
+  ASSERT_OK(db_->Flush(rocksdb::FlushOptions()));
+
+  OnlyK2Filter filter;
+  rocksdb::ReadOptions read_opts;
+  read_opts.query_id = rocksdb::kDefaultQueryId;
+  read_opts.iterator_filter = &filter;
+  read_opts.defer_iterator_filter = true;
+  const auto bounds = MakeBounds(/* lower= */ "k4", /* upper= */ "k8");
+  BoundedRocksDbIterator it(db_.get(), read_opts, &bounds);
+
+  // Filter key "k1": both files are filtered out.
+  it.UpdateFilterKey(Slice("k1"), Slice("k1"));
+  ASSERT_FALSE(it.Seek(Slice("k4")).Valid());
+
+  // Filter key "k2": both files match again and are re-seeked at seek_key. "k1" is below the
+  // lower bound "k4", so it must be clamped to "k4" and the iterator must land on "k5".
+  it.UpdateFilterKey(Slice("k2"), Slice("k1"));
+  const auto& entry = it.Entry();
+  ASSERT_TRUE(entry.Valid());
+  ASSERT_EQ(entry.key.ToBuffer(), "k5");
+}
 }  // namespace yb::docdb

@@ -96,7 +96,13 @@ void BoundedRocksDbIterator::UseFastNext(bool value) {
 }
 
 void BoundedRocksDbIterator::UpdateFilterKey(Slice user_key_for_filter, Slice seek_key) {
+  if (!key_bounds_->lower.empty() && seek_key.compare(key_bounds_->lower) < 0) {
+    seek_key = key_bounds_->lower;
+  }
+
+  if (!key_bounds_->upper.empty() && seek_key.compare(key_bounds_->upper) > 0) {
+    seek_key = key_bounds_->upper;
+  }
   iterator_->UpdateFilterKey(user_key_for_filter, seek_key);
 }
-
 }  // namespace yb::docdb
