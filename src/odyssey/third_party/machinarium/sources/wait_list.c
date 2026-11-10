@@ -120,9 +120,10 @@ void mm_wait_list_notify(mm_wait_list_t *wait_list)
 	release_sleepy(wait_list, sleepy);
 
 	/*
-	 * sleepy lives on the waiter's stack. Signal under the lock: a waiter
-	 * that timed out takes the lock in release_sleepy_with_lock() before
-	 * returning, so it cannot return while sleepy is still being signalled.
+	 * YB: sleepy lives on the waiter's stack. Signal under the lock: a
+	 * waiter that timed out takes the lock in release_sleepy_with_lock()
+	 * before returning, so it cannot return while sleepy is still being
+	 * signalled.
 	 */
 	int event_mgr_fd;
 	event_mgr_fd = mm_eventmgr_signal(&sleepy->event);
