@@ -170,7 +170,7 @@ libraryDependencies ++= Seq(
   "org.apache.httpcomponents.core5" % "httpcore5" % "5.2.4",
   "org.apache.httpcomponents.core5" % "httpcore5-h2" % "5.2.4",
   "org.apache.httpcomponents.client5" % "httpclient5" % "5.2.3",
-  "org.apache.mina" % "mina-core" % "2.2.4",
+  "org.apache.mina" % "mina-core" % "2.2.9",
   "org.flywaydb" %% "flyway-play" % "9.0.0",
   // https://github.com/YugaByte/cassandra-java-driver/releases
   "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-7",
@@ -192,7 +192,7 @@ libraryDependencies ++= Seq(
   // Used below azure versions from azure-sdk-bom:1.2.6
   "com.azure" % "azure-core" % "1.57.0",
   "com.azure" % "azure-identity" % "1.18.1",
-  "com.azure" % "azure-security-keyvault-keys" % "4.10.3",
+  "com.azure" % "azure-security-keyvault-keys" % "4.10.6",
   "com.azure" % "azure-storage-blob" % "12.31.3",
   "com.azure.resourcemanager" % "azure-resourcemanager" % "2.55.0",
   "com.azure.resourcemanager" % "azure-resourcemanager-marketplaceordering" % "1.0.0-beta.2",
@@ -999,13 +999,23 @@ libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
-  "io.netty" % "netty-codec-haproxy" % "4.1.89.Final",
+  "io.netty" % "netty-codec-haproxy" % "4.1.139.Final",
   "io.projectreactor.netty" % "reactor-netty-http" % "1.0.39",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
 )
 
 dependencyOverrides += "org.reflections" % "reflections" % "0.10.2"
-dependencyOverrides += "io.netty" % "netty-all" % "4.1.128.Final"
+dependencyOverrides += "io.netty" % "netty-all" % "4.1.139.Final"
+dependencyOverrides += "io.netty" % "netty-codec-http" % "4.1.139.Final"
+dependencyOverrides += "io.netty" % "netty-codec-http2" % "4.1.139.Final"
+// netty-all does not force the individual modules other libraries request, so pin the
+// ones on the classpath explicitly.
+dependencyOverrides += "io.netty" % "netty-buffer" % "4.1.139.Final"
+dependencyOverrides += "io.netty" % "netty-codec" % "4.1.139.Final"
+dependencyOverrides += "io.netty" % "netty-common" % "4.1.139.Final"
+dependencyOverrides += "io.netty" % "netty-handler" % "4.1.139.Final"
+dependencyOverrides += "io.netty" % "netty-transport" % "4.1.139.Final"
+dependencyOverrides += "io.netty" % "netty-transport-sctp" % "4.1.139.Final"
 
 // Following library versions for jersey, jakarta glassfish, jakarta ws.rs and
 // jackson-module-jaxb-annotations are needed by the openapi java client. The
