@@ -961,7 +961,10 @@ message PgPerformOptionsPB {
 
   uint32 xrepl_origin_id = 31;
 
-  bool is_using_table_locks = 32;
+  // The transaction runs in new object locking mode: DDLs order themselves against it through
+  // object locks, so the tablets skip their catalog version check for its requests and DDLs do not
+  // abort it. A legacy mode transaction keeps both fences, even though it takes local locks.
+  bool skip_legacy_ddl_fences = 32;
 
   ReadTimeOptionsPB read_time_options = 34;
 
@@ -998,7 +1001,7 @@ message PgPerformOptionsPB {
   // The transaction takes object locks, in either mode: a legacy mode transaction takes its local
   // DML locks too, so that new mode DDLs wait for it while ysql_yb_enable_object_locking_infra is
   // being promoted (#36572). Its fast path writes carry the lock owner for deadlock detection.
-  // is_using_table_locks stays false for a legacy mode transaction, so that tablets, including
+  // skip_legacy_ddl_fences stays false for a legacy mode transaction, so that tablets, including
   // those still on an older binary during the upgrade, keep checking its catalog version.
   bool is_using_local_table_locks = 42;
 }
@@ -1099,8 +1102,8 @@ message PgInsertSequenceTupleRequestPB {
   bool is_called = 6;
   reserved 8; // ASH metadata is now passed in RequestHeader PB
   fixed64 origination_ht = 9;
-  // See PgsqlWriteRequestPB::is_using_table_locks.
-  bool is_using_table_locks = 10;
+  // See PgsqlWriteRequestPB::skip_catalog_version_check.
+  bool skip_catalog_version_check = 10;
 }
 
 message PgInsertSequenceTupleResponsePB {
@@ -1120,8 +1123,8 @@ message PgUpdateSequenceTupleRequestPB {
   bool expected_is_called = 9;
   reserved 11; // ASH metadata is now passed in RequestHeader PB
   fixed64 origination_ht = 12;
-  // See PgsqlWriteRequestPB::is_using_table_locks.
-  bool is_using_table_locks = 13;
+  // See PgsqlWriteRequestPB::skip_catalog_version_check.
+  bool skip_catalog_version_check = 13;
 }
 
 message PgUpdateSequenceTupleResponsePB {
@@ -1146,8 +1149,8 @@ message PgFetchSequenceTupleRequestPB {
   bool cycle = 9;
   reserved 11; // ASH metadata is now passed in RequestHeader PB
   fixed64 origination_ht = 12;
-  // See PgsqlWriteRequestPB::is_using_table_locks.
-  bool is_using_table_locks = 13;
+  // See PgsqlWriteRequestPB::skip_catalog_version_check.
+  bool skip_catalog_version_check = 13;
 }
 
 message PgFetchSequenceTupleResponsePB {
@@ -1164,8 +1167,8 @@ message PgReadSequenceTupleRequestPB {
   uint64 ysql_db_catalog_version = 5;
   uint64 read_time = 6;
   reserved 7; // ASH metadata is now passed in RequestHeader PB
-  // See PgsqlWriteRequestPB::is_using_table_locks.
-  bool is_using_table_locks = 8;
+  // See PgsqlWriteRequestPB::skip_catalog_version_check.
+  bool skip_catalog_version_check = 8;
 }
 
 message PgReadSequenceTupleResponsePB {

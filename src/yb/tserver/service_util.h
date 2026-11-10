@@ -352,7 +352,7 @@ class CatalogVersionChecker {
      *    separately via per-table schema version checks.
      */
     if (!(request.has_ysql_db_catalog_version() || request.has_ysql_catalog_version()) ||
-        tablet_server_.SkipCatalogVersionChecks() || request.is_using_table_locks()) {
+        tablet_server_.SkipCatalogVersionChecks() || request.skip_catalog_version_check()) {
       VLOG(1) << "Skipping catalog version check for request: "
                 << request.ShortDebugString();
       return Status::OK();

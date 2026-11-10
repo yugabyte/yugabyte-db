@@ -961,8 +961,8 @@ char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len) {
 }
 
 // False until PG makes the first YBCSetObjectLockingInfraForCurrTxn() call of the backend from
-// StartTransaction. pggate only reads it inside a transaction, so the is_using_table_locks it sends
-// to the tserver never comes from the unset value: PgTxnManager reads it through
+// StartTransaction. pggate only reads it inside a transaction, so the skip_legacy_ddl_fences it
+// sends to the tserver never comes from the unset value: PgTxnManager reads it through
 // IsTableLockingEnabledForCurrentTxn() from BeginTransaction onwards, and the sequence RPCs are
 // only issued while a statement runs. The PG side does read it earlier, at least from
 // YBCIsLegacyModeForCatalogOps during sys table prefetching, where

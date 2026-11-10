@@ -357,9 +357,9 @@ message PgsqlWriteRequestPB {
   // ON CONFLICT resolution for a PGSQL_INSERT.
   optional PgsqlOnConflictAction on_conflict_action = 33 [default = PGSQL_ON_CONFLICT_NONE];
 
-  // Set when the transaction uses object locks. The tserver skips the catalog version check only
-  // for such requests.
-  optional bool is_using_table_locks = 34 [default = false];
+  // Set for a request of a new object locking mode transaction, which DDLs order themselves against
+  // through object locks.
+  optional bool skip_catalog_version_check = 34 [default = false];
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -671,8 +671,8 @@ message PgsqlReadRequestPB {
   // has not started, and could shed a connection that had already paid for the large read.
   optional bool catalog_prefetch_continuation = 49;
 
-  // See PgsqlWriteRequestPB::is_using_table_locks.
-  optional bool is_using_table_locks = 50 [default = false];
+  // See PgsqlWriteRequestPB::skip_catalog_version_check.
+  optional bool skip_catalog_version_check = 50 [default = false];
 }
 
 //--------------------------------------------------------------------------------------------------
