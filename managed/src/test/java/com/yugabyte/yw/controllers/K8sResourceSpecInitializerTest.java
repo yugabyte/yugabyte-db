@@ -71,6 +71,52 @@ public class K8sResourceSpecInitializerTest {
     assertResourceSpec(ui.getMasterK8SNodeResourceSpec(providerUUID), 3.0, 4.0);
   }
 
+  @Test
+  public void testInitializeOverwritesExistingSpecs() {
+    String instType = "inst.type";
+    UUID providerUUID = UUID.randomUUID();
+    UserIntent ui =
+        k8sIntent(providerUUID, instType, null, resourceSpec(7.0, 8.0), resourceSpec(5.0, 6.0));
+
+    try (MockedStatic<InstanceType> instanceTypes = mockStatic(InstanceType.class)) {
+      stubInstanceType(instanceTypes, providerUUID, instType, 1.0, 2.0);
+      KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(paramsWith(ui));
+    }
+    assertResourceSpec(ui.getTserverK8SNodeResourceSpec(providerUUID), 1.0, 2.0);
+    assertResourceSpec(ui.getMasterK8SNodeResourceSpec(providerUUID), 1.0, 2.0);
+  }
+
+  @Test
+  public void testFillMissingKeepsExistingSpecs() {
+    String instType = "inst.type";
+    UUID providerUUID = UUID.randomUUID();
+    K8SNodeResourceSpec tserverSpec = resourceSpec(7.0, 8.0);
+    UserIntent ui = k8sIntent(providerUUID, instType, null, tserverSpec, null);
+
+    try (MockedStatic<InstanceType> instanceTypes = mockStatic(InstanceType.class)) {
+      stubInstanceType(instanceTypes, providerUUID, instType, 1.0, 2.0);
+      KubernetesUtil.fillMissingK8sNodeResourceSpecsFromInstanceType(paramsWith(ui));
+    }
+    // Explicit tserver spec is kept, missing master spec is derived from the instance type.
+    assertSame(tserverSpec, ui.getTserverK8SNodeResourceSpec(providerUUID));
+    assertResourceSpec(ui.getTserverK8SNodeResourceSpec(providerUUID), 7.0, 8.0);
+    assertResourceSpec(ui.getMasterK8SNodeResourceSpec(providerUUID), 1.0, 2.0);
+  }
+
+  @Test
+  public void testFillMissingReadReplicaSkipsMaster() {
+    String instType = "inst.type";
+    UUID providerUUID = UUID.randomUUID();
+    UserIntent ui = k8sIntent(providerUUID, instType, null, null, null);
+
+    try (MockedStatic<InstanceType> instanceTypes = mockStatic(InstanceType.class)) {
+      stubInstanceType(instanceTypes, providerUUID, instType, 1.0, 2.0);
+      KubernetesUtil.fillMissingK8sNodeResourceSpecsFromInstanceType(ClusterType.ASYNC, ui);
+    }
+    assertResourceSpec(ui.getTserverK8SNodeResourceSpec(providerUUID), 1.0, 2.0);
+    assertNull(ui.getMasterK8SNodeResourceSpec(providerUUID));
+  }
+
   private static void stubInstanceType(
       MockedStatic<InstanceType> instanceTypes,
       UUID providerUUID,
