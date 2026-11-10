@@ -17,8 +17,9 @@
  *	  Only access-method code includes this header (the YB access
  *	  methods, the AM code under src/backend/access/, and AM
  *	  extensions such as ybvector), plus guc.c for the GUC variables
- *	  declared here.  Code above the AM layer finds the headers it
- *	  may use in src/backend/access/yb_scan/README.
+ *	  declared here.  Code above the AM layer uses the other headers
+ *	  that src/backend/access/yb_scan/README groups, as their
+ *	  comments allow.
  *
  * Copyright (c) YugabyteDB, Inc.
  *

@@ -5,14 +5,14 @@ YB Scan Layer
 
 This directory implements scans of YB relations: heap's scan functions for YB
 tables and the accessors that executor nodes still call on them, the low-level
-scan primitives that the YB table and index access methods share, the
-plan-time scan logic that the planner shares, the YB implementation of genam's
-systable scans, ANALYZE row sampling, and single-row fetch by ybctid.  The
-headers that the groups below list are all under src/include/access/.  Most of
-them are implemented in this directory, but four are implemented in
+scan primitives that the YB table and index access methods share, the scan
+logic that the planner shares, the YB implementation of genam's systable
+scans, ANALYZE row sampling, and single-row fetch by ybctid.  The headers that
+the groups below list are all under src/include/access/.  Most of them are
+implemented in this directory, but four are implemented in
 src/backend/access/common/: yb_cost.h, yb_target.h, yb_lockrows.h, and
-yb_parallel_scan.h.  #37429 and #37428 track moving the implementations of all
-but yb_target.h to directories that match their roles.
+yb_parallel_scan.h.  #37428 and #37429 track reorganizing this directory and
+those implementations by role.
 
 Code above the access-method layer, such as executor nodes, the optimizer,
 commands, and catalog and cache code, should reach YB relations only through
