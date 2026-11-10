@@ -76,11 +76,6 @@ YbFetchRowData(YbcPgStatement ybc_stmt, Relation relation, Datum ybctid,
 	return has_data;
 }
 
-/*
- * Fetch the row of relation with the given ybctid into *tuple and return true,
- * or leave *tuple unchanged and return false if there is no such row.  Unlike
- * heap_fetch(), it takes no snapshot and reads at pggate's current read point.
- */
 bool
 YbFetchHeapTuple(Relation relation, Datum ybctid, HeapTuple *tuple)
 {
