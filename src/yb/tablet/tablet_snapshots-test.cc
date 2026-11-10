@@ -36,6 +36,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/env.h"
 #include "yb/util/format.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
 #include "yb/util/scope_exit.h"
@@ -45,6 +46,7 @@
 
 DECLARE_bool(enable_async_snapshot_directory_cleanup);
 DECLARE_int32(TEST_snapshot_cleanup_retry_delay_ms);
+DECLARE_int32(tablet_snapshot_op_slow_log_threshold_ms);
 
 METRIC_DECLARE_counter(snapshot_cleanup_failures);
 METRIC_DECLARE_counter(snapshot_cleanup_retries);
@@ -343,6 +345,43 @@ TEST_F(TabletSnapshotsTest, DeletesSynchronouslyWhenAsyncCleanupDisabled) {
   ASSERT_FALSE(test_env_->FileExists(paths.tombstone));
   ASSERT_EQ(MetricValue<AtomicGauge<uint64_t>>(METRIC_snapshot_pending_logical_deletions), 0);
   ASSERT_EQ(MetricValue<AtomicGauge<uint64_t>>(METRIC_snapshot_pending_physical_deletions), 0);
+}
+
+TEST_F(TabletSnapshotsTest, LogsSlowStepsAtInfo) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_async_snapshot_directory_cleanup) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_snapshot_op_slow_log_threshold_ms) = 0;
+  StringWaiterLogSink flush_log("Snapshot flush done in");
+  StringWaiterLogSink checkpoint_log("Regular DB checkpoint done in");
+  StringWaiterLogSink rename_log("Snapshot dir rename done in");
+  StringWaiterLogSink delete_log("Snapshot dir delete done in");
+
+  ASSERT_OK(WriteRow(1));
+  ASSERT_OK(harness_->tablet()->snapshots().Create(CreateSnapshotData{
+      .snapshot_hybrid_time = HybridTime::kInvalid,
+      .hybrid_time = harness_->clock()->Now(),
+      .op_id = OpId(1, 1),
+      .snapshot_dir = JoinPathSegments(
+          harness_->tablet()->metadata()->snapshots_dir(), "snapshot.logged"),
+      .schedule_id = SnapshotScheduleId::Nil(),
+  }));
+  ASSERT_TRUE(flush_log.IsEventOccurred());
+  ASSERT_TRUE(checkpoint_log.IsEventOccurred());
+  ASSERT_TRUE(rename_log.IsEventOccurred());
+
+  ASSERT_OK(DeleteSnapshot("snapshot.logged", 2));
+  ASSERT_TRUE(delete_log.IsEventOccurred());
+
+  // Fast steps only go to VLOG(1), so pin the verbosity to keep them out of the log sink.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_snapshot_op_slow_log_threshold_ms) = 3600 * 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_v) = 0;
+  const auto old_vlog_level = google::SetVLOGLevel("tablet_snapshots", 0);
+  auto restore_vlog_level = ScopeExit([old_vlog_level] {
+    google::SetVLOGLevel("tablet_snapshots", old_vlog_level);
+  });
+  StringWaiterLogSink fast_delete_log("Snapshot dir delete done in");
+  CreateSnapshotDirectory("snapshot.fast", 3);
+  ASSERT_OK(DeleteSnapshot("snapshot.fast", 3));
+  ASSERT_FALSE(fast_delete_log.IsEventOccurred());
 }
 
 TEST_F(TabletSnapshotsTest, RetainsDeletionUntilCleanupPoolIsInstalled) {
