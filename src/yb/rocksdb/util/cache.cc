@@ -767,6 +767,14 @@ size_t LRUCache::Evict(size_t required) {
   LRUHandleDeleter evicted(metrics_.get());
   {
     absl::MutexLock l(&mutex_);
+    // Like Insert, evict multi touch entries above the multi touch share before single touch ones.
+    if (CanOverflow(MULTI_TOUCH)) {
+      while (evicted.TotalCharge() < required &&
+             multi_touch_sub_cache_.Usage() > multi_touch_share_ &&
+             !multi_touch_sub_cache_.IsLRUEmpty()) {
+        EvictLRUHead(&multi_touch_sub_cache_, &evicted);
+      }
+    }
     for (auto* sub_cache : {&single_touch_sub_cache_, &multi_touch_sub_cache_}) {
       while (evicted.TotalCharge() < required && !sub_cache->IsLRUEmpty()) {
         EvictLRUHead(sub_cache, &evicted);

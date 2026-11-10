@@ -977,6 +977,33 @@ TEST_F(CacheTest, EvictNotFull) {
   AssertCacheSizes(cache.get(), 0, 2);
 }
 
+TEST_F(CacheTest, EvictMultiTouchOverShare) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_single_touch_ratio) = 0.2;
+  std::shared_ptr<Cache> cache = NewLRUCache(10, 0);
+
+  for (int i = 0; i < 10; ++i) {
+    ASSERT_OK(InsertIntoCache(cache, i /* key */, i /* value */));
+  }
+  for (int i = 0; i < 9; ++i) {
+    Cache::Handle* h = cache->Lookup(ToString(i), 100 /* query_id */);
+    ASSERT_NE(h, nullptr);
+    cache->Release(h);
+  }
+  AssertCacheSizes(cache.get(), 1, 9);
+
+  // Like Insert, Evict takes the oldest multi-touch entries above the multi-touch share first.
+  ASSERT_EQ(cache->Evict(1), 1U);
+  AssertCacheSizes(cache.get(), 1, 8);
+  ASSERT_EQ(cache->Lookup(ToString(0), 100 /* query_id */), nullptr);
+
+  // Then single-touch entries, then the remaining multi-touch entries.
+  ASSERT_EQ(cache->Evict(2), 2U);
+  AssertCacheSizes(cache.get(), 0, 7);
+  ASSERT_EQ(cache->Lookup(ToString(9), 100 /* query_id */), nullptr);
+  ASSERT_EQ(cache->Lookup(ToString(1), 100 /* query_id */), nullptr);
+}
+
 }  // namespace rocksdb
 
 int main(int argc, char** argv) {
