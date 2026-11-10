@@ -356,7 +356,7 @@ TEST_F(PgBackendsTest, CreateIndexDoesNotWaitOnPointInTimeSession) {
   const auto start = CoarseMonoClock::Now();
   ASSERT_OK(conn_->Execute("CREATE INDEX ON t (v)"));
   ASSERT_LT(CoarseMonoClock::Now() - start, 60s);
-  // The block's next read of t sends t's old DocDB schema version and can't be retried in the block.
+  // The block's next read of t sends t's old DocDB schema version and can't be retried.
   ASSERT_NOK_STR_CONTAINS(pit_conn.Fetch("SELECT count(*) FROM t"), "schema version mismatch");
   ASSERT_OK(pit_conn.Execute("ROLLBACK"));
   // TODO(#37408): the mismatch invalidated pggate's table descriptor for t, so this read sends t's
