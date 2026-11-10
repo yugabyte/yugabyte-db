@@ -192,6 +192,11 @@ class ThinSession : public ClientSessionBase,
     SCHECK(
         !(has_write && has_staleness), InvalidArgument,
         "follower_read_staleness_ms is not allowed on a write batch");
+    // Without read_from_followers the leader would serve the batch at now - staleness, a
+    // historical snapshot the caller did not ask for.
+    SCHECK(
+        !has_staleness || read_time_options.read_from_followers(), InvalidArgument,
+        "follower_read_staleness_ms needs read_from_followers");
     // A zero staleness reads at now, which no follower can serve.
     SCHECK(
         !has_staleness || read_time_options.follower_read_staleness_ms().value() > 0,
@@ -224,11 +229,11 @@ class ThinSession : public ClientSessionBase,
       session->SetReadPoint(ReadHybridTime::FromPB(read_time_options.read_time()));
     } else if (has_read && has_staleness) {
       // The read time is computed here, not by the client, so the only clock skew that matters is
-      // the cluster's own (mirrors SetFollowerReadTime in pg_client_session.cc). Being explicit, a
-      // follower that has not reached it hands the read to another replica
-      // (ReadQuery::WaitForSafeTime) rather than waiting for its safe time to catch up.
-      session->SetReadPoint(ReadHybridTime::SingleTime(clock_->Now().AddMilliseconds(
-          -static_cast<int64_t>(read_time_options.follower_read_staleness_ms().value()))));
+      // the cluster's own, as for YSQL follower reads. Being explicit, a follower that has not
+      // reached it hands the read to another replica (ReadQuery::WaitForSafeTime) rather than
+      // waiting for its safe time to catch up.
+      SetFollowerReadTime(
+          *session->read_point(), read_time_options.follower_read_staleness_ms().value());
     } else {
       // No read time: leave it unset so the tablet serving the op reads at its own safe time,
       // instead of this node stamping its current time and leaving the read to wait for safe time
@@ -267,15 +272,18 @@ class ThinSession : public ClientSessionBase,
     session_ptr->FlushAsync(
         [shared_this = shared_from_this(), query, session = std::move(session)](
             client::FlushStatus* flush_status) {
-          shared_this->FlushDone(query, flush_status);
+          shared_this->FlushDone(query, flush_status, session->read_point()->GetReadTime());
         });
     return Status::OK();
   }
 
-  void FlushDone(const ThinPerformQueryPtr& query, client::FlushStatus* flush_status) {
+  // `read_time` is the batch's read point after the flush: empty when each tablet picked its own.
+  void FlushDone(
+      const ThinPerformQueryPtr& query, client::FlushStatus* flush_status,
+      const ReadHybridTime& read_time) {
     auto status = CombineErrorsToStatus(flush_status->errors, flush_status->status);
     if (status.ok()) {
-      status = ProcessResponse(query);
+      status = ProcessResponse(query, read_time);
     }
     VLOG_WITH_PREFIX_AND_FUNC(2) << "status: " << status;
     if (status.ok()) {
@@ -294,7 +302,7 @@ class ThinSession : public ClientSessionBase,
     query->RespondSuccess();
   }
 
-  Status ProcessResponse(const ThinPerformQueryPtr& query) {
+  Status ProcessResponse(const ThinPerformQueryPtr& query, const ReadHybridTime& read_time) {
     int idx = -1;
     for (const auto& op : query->ops) {
       ++idx;
@@ -318,8 +326,14 @@ class ThinSession : public ClientSessionBase,
       if (const auto sidecar_index = op->sidecar_index(); sidecar_index) {
         op_resp.set_rows_data_sidecar(narrow_cast<int>(*sidecar_index));
       }
-      // The paging state keeps its read time: that is how the client learns which snapshot its scan
-      // was served at, to echo back on continuations.
+      // The paging state's read time is how the client learns which snapshot its scan was served
+      // at, to echo back on continuations. DocDB binds it only when it stops inside a tablet
+      // (PgsqlReadOperation::SetPagingState): one that moves the scan to the next tablet carries
+      // none (Tablet::CreatePagingStateForRead), so stamp the batch's own. Without it, a follower
+      // scan whose first page ends at a tablet boundary would lose its snapshot.
+      if (read_time && op_resp.has_paging_state() && !op_resp.paging_state().has_read_time()) {
+        read_time.ToPB(op_resp.mutable_paging_state()->mutable_read_time());
+      }
       op_resp.set_partition_list_version(op->table()->GetPartitionListVersion());
     }
     return Status::OK();

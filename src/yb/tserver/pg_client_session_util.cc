@@ -239,6 +239,13 @@ Status CombineErrorsToStatus(const client::CollectedErrors& errors, const Status
   return errors.empty() ? status : CombineNonEmptyErrorsToStatus(errors, status);
 }
 
+void SetFollowerReadTime(ConsistentReadPoint& read_point, uint32_t staleness_ms) {
+  read_point.SetReadTime(
+      ReadHybridTime::SingleTime(
+          read_point.Now().AddMilliseconds(-static_cast<int64_t>(staleness_ms))),
+      {});
+}
+
 Status HandleOperationResponse(uint64_t session_id,
                                const client::YBPgsqlOp& op,
                                PgPerformResponseMsg* resp,

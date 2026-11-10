@@ -82,7 +82,7 @@ message ThinReadTimeOptionsPB {
   // With read_from_followers and no read_time: the tserver reads at its own clock minus this
   // staleness, so only the cluster's own clock skew bound applies, as for YSQL follower reads.
   // Must be positive. Ignored when read_time is set (a continuation keeps the scan's snapshot).
-  // Rejected on a write batch.
+  // Rejected on a write batch and without read_from_followers.
   OptionalUint32PB follower_read_staleness_ms = 3;
 }
 

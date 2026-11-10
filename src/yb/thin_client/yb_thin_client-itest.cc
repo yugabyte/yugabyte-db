@@ -81,6 +81,7 @@
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 
 DECLARE_bool(TEST_asyncrpc_finished_set_timedout);
+DECLARE_bool(enable_load_balancing);
 DECLARE_uint64(TEST_thin_client_perform_delay_ms);
 DECLARE_bool(TEST_thin_client_omit_session_lost_code);
 DECLARE_uint64(pg_client_heartbeat_interval_ms);
@@ -2216,6 +2217,58 @@ class PgThinClientFollowerReadTest : public PgThinClientFailoverTest {
     return counts;
   }
 
+  // The same per tserver, summed over every tablet of `table_name`.
+  Result<std::vector<uint64_t>> TableConsistentPrefixReads(const std::string& table_name) {
+    std::vector<uint64_t> counts(cluster_->num_tablet_servers());
+    const auto peers = VERIFY_RESULT(ListTabletPeersForTableName(cluster_.get(), table_name));
+    for (const auto& peer : peers) {
+      const auto ts_idx = VERIFY_RESULT(TServerIdx(peer->permanent_uuid()));
+      counts[ts_idx] += VERIFY_RESULT(peer->shared_tablet())->metrics()->Get(
+          tablet::TabletCounters::kConsistentPrefixReadRequests);
+    }
+    return counts;
+  }
+
+  Result<size_t> TServerIdx(const std::string& uuid) {
+    for (size_t ts_idx = 0; ts_idx < cluster_->num_tablet_servers(); ++ts_idx) {
+      if (cluster_->mini_tablet_server(ts_idx)->server()->permanent_uuid() == uuid) {
+        return ts_idx;
+      }
+    }
+    return STATUS_FORMAT(NotFound, "no tserver $0", uuid);
+  }
+
+  HybridTime NowOn(size_t ts_idx) {
+    return cluster_->mini_tablet_server(ts_idx)->server()->clock()->Now();
+  }
+
+  static Result<HybridTime> FollowerSafeTime(const tablet::TabletPeerPtr& peer) {
+    return VERIFY_RESULT(peer->shared_tablet())->SafeTime(tablet::RequireLease::kFalse);
+  }
+
+  // Waits until a follower read through tserver `ts_idx`, at its clock minus the staleness, is past
+  // `written_ht` and every one of `peers` can serve it. A follower's safe time follows the leader's
+  // heartbeats, so time passing is not enough. Half the staleness is left as slack, since the
+  // Perform derives its read time a moment later.
+  Status WaitUntilFollowersCanServe(
+      size_t ts_idx, const std::vector<tablet::TabletPeerPtr>& peers, HybridTime written_ht) {
+    return WaitFor(
+        [this, ts_idx, &peers, written_ht]() -> Result<bool> {
+          const auto now = NowOn(ts_idx);
+          if (now.AddMilliseconds(-static_cast<int64_t>(kStalenessMs)) <= written_ht) {
+            return false;
+          }
+          const auto with_slack = now.AddMilliseconds(-static_cast<int64_t>(kStalenessMs / 2));
+          for (const auto& peer : peers) {
+            if (VERIFY_RESULT(FollowerSafeTime(peer)) < with_slack) {
+              return false;
+            }
+          }
+          return true;
+        },
+        30s * kTimeMultiplier, "followers to reach a read time behind by the staleness");
+  }
+
   // A session on the service itself, for batches the shim never builds.
   Result<uint64_t> OpenRawSession(tserver::ThinClientServiceProxy* proxy) {
     tserver::ThinHeartbeatRequestPB req;
@@ -2252,8 +2305,8 @@ TEST_F(PgThinClientFollowerReadTest, StaleReadIsServedByAFollower) {
   const int32_t v_id = table.ColumnId(1);
 
   ASSERT_EQ(UpsertKeys(client.get(), table.get(), kHashKey, 0, kRows).code, YBTHIN_OK);
-  // Let the rows, and the followers' safe time, get older than the staleness.
-  SleepFor(MonoDelta::FromMilliseconds(2 * kStalenessMs));
+  ASSERT_OK(WaitUntilFollowersCanServe(
+      follower_idx, {ASSERT_RESULT(PeerOn(replicas, follower_idx))}, NowOn(follower_idx)));
 
   const auto before = ASSERT_RESULT(ConsistentPrefixReads(replicas));
   const auto options = FollowerOptions();
@@ -2283,6 +2336,7 @@ TEST_F(PgThinClientFollowerReadTest, LaggingFollowerHandsTheReadOver) {
   const int32_t v_id = table.ColumnId(1);
 
   ASSERT_EQ(UpsertKeys(client.get(), table.get(), kHashKey, 0, kRows).code, YBTHIN_OK);
+  const auto written_ht = NowOn(lagging_idx);
 
   // Freeze the follower the Perform lands on: with no more UpdateConsensus its safe time stops.
   auto lagging_peer = ASSERT_RESULT(PeerOn(replicas, lagging_idx));
@@ -2291,7 +2345,16 @@ TEST_F(PgThinClientFollowerReadTest, LaggingFollowerHandsTheReadOver) {
   auto resume = ScopeExit([&lagging_consensus] {
     lagging_consensus->TEST_PauseUpdateConsensus(false);
   });
-  SleepFor(MonoDelta::FromMilliseconds(3 * kStalenessMs));
+  // Until a read behind by the staleness is past the frozen safe time.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return NowOn(lagging_idx).AddMilliseconds(-static_cast<int64_t>(kStalenessMs)) >
+               VERIFY_RESULT(FollowerSafeTime(lagging_peer));
+      },
+      30s * kTimeMultiplier, "the frozen follower to fall behind the staleness"));
+  // The other follower keeps up, so the read is served by whichever replica takes it next.
+  ASSERT_OK(WaitUntilFollowersCanServe(
+      lagging_idx, {ASSERT_RESULT(PeerOn(replicas, replicas.follower_idxs[1]))}, written_ht));
 
   const auto before = ASSERT_RESULT(ConsistentPrefixReads(replicas));
   const auto options = FollowerOptions();
@@ -2330,7 +2393,8 @@ TEST_F(PgThinClientFollowerReadTest, PagedFollowerScanHoldsItsSnapshot) {
   const int32_t v_id = table.ColumnId(1);
 
   ASSERT_EQ(UpsertKeys(client.get(), table.get(), kHashKey, 0, kRows).code, YBTHIN_OK);
-  SleepFor(MonoDelta::FromMilliseconds(2 * kStalenessMs));
+  ASSERT_OK(WaitUntilFollowersCanServe(
+      follower_idx, {ASSERT_RESULT(PeerOn(replicas, follower_idx))}, NowOn(follower_idx)));
 
   const auto before = ASSERT_RESULT(ConsistentPrefixReads(replicas));
   const auto options = FollowerOptions();
@@ -2375,6 +2439,142 @@ TEST_F(PgThinClientFollowerReadTest, PagedFollowerScanHoldsItsSnapshot) {
   ASSERT_EQ(seen.back(), kRows - 1);
 }
 
+// A follower scan of a range-sharded table crosses tablet boundaries at one snapshot. DocDB's
+// paging state for the next tablet carries no read time, so the service stamps the batch's own:
+// the first page ends at the first tablet's end, and its continuation still has the snapshot to
+// pin.
+TEST_F(PgThinClientFollowerReadTest, PagedFollowerScanCrossesTablets) {
+  constexpr int kRows = 200;
+  constexpr int kRowsAfter = 10;
+  constexpr uint64_t kPageLimit = 32;  // above the first tablet's 10 rows
+  constexpr size_t kReaderIdx = 0;
+  // The leaders stay where the test puts them.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE rs (r int, v int, PRIMARY KEY(r ASC)) "
+      "SPLIT AT VALUES ((10), (100), (150))"));
+  const TableOids oids{
+      ASSERT_RESULT(FetchOid(&conn, kDbOidQuery)),
+      ASSERT_RESULT(FetchOid(&conn, "SELECT 'rs'::regclass::oid"))};
+
+  // The Perform's tserver follows every tablet, so every page is a follower read.
+  const auto& reader_uuid = cluster_->mini_tablet_server(kReaderIdx)->server()->permanent_uuid();
+  const auto& other_uuid = cluster_->mini_tablet_server(kReaderIdx + 1)->server()->permanent_uuid();
+  const auto initial_leaders =
+      ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "rs", ListPeersFilter::kLeaders));
+  for (const auto& leader : initial_leaders) {
+    if (leader->permanent_uuid() == reader_uuid) {
+      ASSERT_OK(StepDown(leader, other_uuid, ForceStepDown::kTrue));
+    }
+  }
+  auto reader_leads_none = [&]() -> Result<bool> {
+    const auto leaders = VERIFY_RESULT(
+        ListTabletPeersForTableName(cluster_.get(), "rs", ListPeersFilter::kLeaders));
+    return leaders.size() == 4u &&
+           std::none_of(leaders.begin(), leaders.end(), [&reader_uuid](const auto& leader) {
+             return leader->permanent_uuid() == reader_uuid;
+           });
+  };
+  ASSERT_OK(WaitFor(reader_leads_none, 30s * kTimeMultiplier, "leaders off the reader"));
+
+  auto client =
+      ASSERT_RESULT(CreateThinClient({TServerAddrOf(kReaderIdx)}, nullptr, kRpcTimeoutMs));
+  auto table = ASSERT_RESULT(ThinTable::Open(client.get(), oids));
+  const int32_t r_id = table.ColumnId(0);
+  const int32_t v_id = table.ColumnId(1);
+
+  auto upsert = [&](int from, int to) {
+    std::vector<ybthin_bind> keys;
+    std::vector<ybthin_bind> values;
+    for (int r = from; r < to; ++r) {
+      keys.push_back(I32(r));
+      values.push_back(I32(r));
+    }
+    std::vector<ybthin_upsert_row> rows;
+    for (size_t row_idx = 0; row_idx < keys.size(); ++row_idx) {
+      rows.push_back(ybthin_upsert_row{
+          table.get(), &keys[row_idx], 1, &v_id, &values[row_idx], 1,
+          /* ignore_after_hybrid_time= */ 0});
+    }
+    std::promise<WriteOutcome> promise;
+    auto future = promise.get_future();
+    ybthin_upsert_batch_async(client.get(), rows.data(), rows.size(), &OnWriteDone, &promise);
+    return future.get();
+  };
+  auto read_page = [&](const std::vector<uint8_t>& paging_state,
+                       const ybthin_read_options* options) {
+    int32_t target_ids[] = {r_id};
+    ybthin_read_op op = {};
+    op.table = table.get();
+    op.spec.target_ids = target_ids;
+    op.spec.n_targets = 1;
+    op.spec.limit = kPageLimit;
+    op.spec.is_forward_scan = 1;
+    op.paging_state_in = paging_state.empty() ? nullptr : paging_state.data();
+    op.paging_state_in_len = paging_state.size();
+    std::promise<ReadOutcome> promise;
+    auto future = promise.get_future();
+    ybthin_read_async2(client.get(), &op, 1, options, &OnReadDone, &promise);
+    return future.get();
+  };
+
+  auto written = upsert(0, kRows);
+  ASSERT_EQ(written.code, YBTHIN_OK) << written.message;
+  std::vector<tablet::TabletPeerPtr> reader_peers;
+  for (const auto& peer : ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "rs"))) {
+    if (peer->permanent_uuid() == reader_uuid) {
+      reader_peers.push_back(peer);
+    }
+  }
+  ASSERT_EQ(reader_peers.size(), 4u);
+  ASSERT_OK(WaitUntilFollowersCanServe(kReaderIdx, reader_peers, NowOn(kReaderIdx)));
+
+  const auto before = ASSERT_RESULT(TableConsistentPrefixReads("rs"));
+  const auto options = FollowerOptions();
+  auto page = read_page({}, &options);
+  ASSERT_EQ(page.code, YBTHIN_OK) << page.message;
+  ASSERT_EQ(page.n_rows, 10u) << "the first page should end at the first tablet's end";
+  ASSERT_FALSE(page.paging_state.empty());
+  const uint64_t snapshot_ht = page.used_read_time_ht;
+  ASSERT_NE(snapshot_ht, 0u) << "the tablet-boundary paging state carried no read time";
+
+  // Rows in the last tablet, which the scan reaches only after they are written.
+  written = upsert(kRows, kRows + kRowsAfter);
+  ASSERT_EQ(written.code, YBTHIN_OK) << written.message;
+
+  std::vector<int32_t> seen;
+  int pages = 1;
+  while (true) {
+    for (size_t row_idx = 0; row_idx < page.n_rows; ++row_idx) {
+      seen.push_back(static_cast<int32_t>(page.cells[row_idx * page.n_cols].int_value));
+    }
+    ASSERT_EQ(page.used_read_time_ht, snapshot_ht) << "page " << pages;
+    if (page.paging_state.empty()) {
+      break;
+    }
+    ASSERT_LT(++pages, 100) << "paging did not terminate";
+    page = read_page(page.paging_state, /* options= */ nullptr);
+    ASSERT_EQ(page.code, YBTHIN_OK) << "page " << pages << ": " << page.message;
+  }
+  // 10 | 32 32 26 | 32 18 | 32 18
+  ASSERT_EQ(pages, 8);
+  ASSERT_EQ(seen.size(), static_cast<size_t>(kRows))
+      << "rows written after the first page became visible mid-scan";
+  ASSERT_TRUE(std::is_sorted(seen.begin(), seen.end()));
+  ASSERT_EQ(seen.front(), 0);
+  ASSERT_EQ(seen.back(), kRows - 1);
+  // One consistent-prefix read per page, all on the reader's own replicas, which are followers.
+  const auto after = ASSERT_RESULT(TableConsistentPrefixReads("rs"));
+  for (size_t ts_idx = 0; ts_idx < after.size(); ++ts_idx) {
+    ASSERT_EQ(
+        after[ts_idx] - before[ts_idx], ts_idx == kReaderIdx ? static_cast<uint64_t>(pages) : 0)
+        << "tserver " << ts_idx;
+  }
+  ASSERT_TRUE(ASSERT_RESULT(reader_leads_none()));
+}
+
 // ybthin_read_async is unchanged: its batch is served by the leader, unpinned, so it sees rows
 // written a moment ago, which a follower read behind the staleness would not.
 TEST_F(PgThinClientFollowerReadTest, LegacyReadStaysOnTheLeader) {
@@ -2398,22 +2598,38 @@ TEST_F(PgThinClientFollowerReadTest, LegacyReadStaysOnTheLeader) {
       << "the Perform's own tserver served the read instead of the leader";
 }
 
-// The staleness only makes sense for reads; the server refuses it on a write batch. The shim never
-// sends that, so the batch is built on the proxy directly.
-TEST_F(PgThinClientFollowerReadTest, StalenessOnAWriteBatchIsRejected) {
+// The staleness only makes sense for follower reads; the server refuses it on a write batch, and on
+// a read batch without read_from_followers, which the leader would otherwise serve at a historical
+// snapshot. The shim sends neither, so the batches are built on the proxy directly.
+TEST_F(PgThinClientFollowerReadTest, StalenessOutsideAFollowerReadIsRejected) {
   const auto oids = ASSERT_RESULT(CreateSingleTabletKeyTable());
   tserver::ThinClientServiceProxy proxy(
       &client_->proxy_cache(),
       HostPort::FromBoundEndpoint(cluster_->mini_tablet_server(0)->bound_rpc_addr()));
-  tserver::ThinPerformRequestPB req;
-  req.set_session_id(ASSERT_RESULT(OpenRawSession(&proxy)));
-  req.mutable_read_time_options()->mutable_follower_read_staleness_ms()->set_value(kStalenessMs);
-  auto* write = req.add_ops()->mutable_write();
-  write->set_table_id(GetPgsqlTableId(oids.db_oid, oids.table_oid));
-  write->set_stmt_type(PgsqlWriteRequestPB::PGSQL_UPSERT);
-  const auto status = RawPerform(&proxy, req);
-  ASSERT_TRUE(status.IsInvalidArgument()) << status;
-  ASSERT_STR_CONTAINS(status.ToString(), "follower_read_staleness_ms");
+  const auto session_id = ASSERT_RESULT(OpenRawSession(&proxy));
+  const auto table_id = GetPgsqlTableId(oids.db_oid, oids.table_oid);
+  {
+    tserver::ThinPerformRequestPB req;
+    req.set_session_id(session_id);
+    req.mutable_read_time_options()->mutable_follower_read_staleness_ms()->set_value(
+        kStalenessMs);
+    auto* write = req.add_ops()->mutable_write();
+    write->set_table_id(table_id);
+    write->set_stmt_type(PgsqlWriteRequestPB::PGSQL_UPSERT);
+    const auto status = RawPerform(&proxy, req);
+    ASSERT_TRUE(status.IsInvalidArgument()) << status;
+    ASSERT_STR_CONTAINS(status.ToString(), "not allowed on a write batch");
+  }
+  {
+    tserver::ThinPerformRequestPB req;
+    req.set_session_id(session_id);
+    req.mutable_read_time_options()->mutable_follower_read_staleness_ms()->set_value(
+        kStalenessMs);
+    req.add_ops()->mutable_read()->set_table_id(table_id);
+    const auto status = RawPerform(&proxy, req);
+    ASSERT_TRUE(status.IsInvalidArgument()) << status;
+    ASSERT_STR_CONTAINS(status.ToString(), "needs read_from_followers");
+  }
 }
 
 // A zero staleness would read at now, which no follower can serve, so every such read would be
@@ -2439,12 +2655,14 @@ TEST_F(PgThinClientFollowerReadTest, ZeroStalenessIsInvalidAtTheShim) {
   constexpr uint64_t kPageLimit = kRows / 2;  // a second page, so the batch reports its read time
   const auto oids = ASSERT_RESULT(CreateSingleTabletKeyTable());
   const auto replicas = ASSERT_RESULT(FindReplicas());
-  auto client = ASSERT_RESULT(
-      CreateThinClient({TServerAddrOf(replicas.follower_idxs[0])}, nullptr, kRpcTimeoutMs));
+  const size_t follower_idx = replicas.follower_idxs[0];
+  auto client =
+      ASSERT_RESULT(CreateThinClient({TServerAddrOf(follower_idx)}, nullptr, kRpcTimeoutMs));
   auto table = ASSERT_RESULT(ThinTable::Open(client.get(), oids));
   const int32_t v_id = table.ColumnId(1);
   ASSERT_EQ(UpsertKeys(client.get(), table.get(), kHashKey, 0, kRows).code, YBTHIN_OK);
-  SleepFor(MonoDelta::FromMilliseconds(2 * kStalenessMs));
+  ASSERT_OK(WaitUntilFollowersCanServe(
+      follower_idx, {ASSERT_RESULT(PeerOn(replicas, follower_idx))}, NowOn(follower_idx)));
 
   ybthin_read_options zero_staleness = {};
   zero_staleness.read_from_followers = 1;
