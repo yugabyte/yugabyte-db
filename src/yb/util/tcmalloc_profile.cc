@@ -109,14 +109,14 @@ Result<tcmalloc::Profile> GetHeapProfile(int seconds, int64_t sample_freq_bytes)
     return STATUS_FORMAT(IllegalState, "A heap profile is already running.");
   }
 
-  auto prev_sample_rate = tcmalloc::MallocExtension::GetProfileSamplingRate();
-  tcmalloc::MallocExtension::SetProfileSamplingRate(sample_freq_bytes);
+  auto prev_sample_rate = tcmalloc::MallocExtension::GetProfileSamplingInterval();
+  tcmalloc::MallocExtension::SetProfileSamplingInterval(sample_freq_bytes);
   auto token =
-      tcmalloc::MallocExtension::StartLifetimeProfiling(/* seed_with_live_allocs= */ false);
+      tcmalloc::MallocExtension::StartLifetimeProfiling();
 
   LOG(INFO) << Format("Sleeping for $0 seconds while profile is collected.", seconds);
   SleepFor(MonoDelta::FromSeconds(seconds));
-  tcmalloc::MallocExtension::SetProfileSamplingRate(prev_sample_rate);
+  tcmalloc::MallocExtension::SetProfileSamplingInterval(prev_sample_rate);
   auto profile = std::move(token).Stop();
   heap_profile_running = false;
   return profile;
