@@ -12930,7 +12930,20 @@ TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTablesAfterLeaderStepDown) {
 
   ASSERT_OK(conn.Execute("CREATE TABLE test_2 (a int primary key, b text)"));
 
-  auto change_resp = ASSERT_RESULT(GetChangesFromMaster(stream_id));
+  // The DDL txn is applied to the sys catalog asynchronously after commit, so poll until its
+  // COMMIT record shows up. Polling without an explicit checkpoint does not advance it.
+  GetChangesResponsePB change_resp;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        change_resp = VERIFY_RESULT(GetChangesFromMaster(stream_id));
+        for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+          if (record.row_message().op() == RowMessage_Op_COMMIT) {
+            return true;
+          }
+        }
+        return false;
+      },
+      MonoDelta::FromSeconds(30) * kTimeMultiplier, "Waiting for test_2 DDL records"));
 
   // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
   // We will receive records only corresponding to the creation of test_2.
