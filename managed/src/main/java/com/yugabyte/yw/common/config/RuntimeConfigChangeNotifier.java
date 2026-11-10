@@ -40,7 +40,6 @@ public class RuntimeConfigChangeNotifier {
       UseNewRbacAuthzListener useNewRbacAuthzListener,
       BootstrapRequiredRpcPoolMaxThreadListener bootstrapRequiredRpcPoolMaxThreadListener,
       CpuUsageIntervalListener cpuUsageIntervalListener,
-      NodeMaintenanceServiceMaxAgeListener nodeMaintenanceServiceMaxAgeListener,
       MetricsScrapeIntervalStandbyListener metricsScrapeIntervalStandbyListener,
       NodeExporterEnabledListener nodeExporterEnabledListener,
       PaActiveTableMetricsListener paActiveTableMetricsListener) {
@@ -55,7 +54,6 @@ public class RuntimeConfigChangeNotifier {
     addListener(useNewRbacAuthzListener);
     addListener(bootstrapRequiredRpcPoolMaxThreadListener);
     addListener(cpuUsageIntervalListener);
-    addListener(nodeMaintenanceServiceMaxAgeListener);
     addListener(metricsScrapeIntervalStandbyListener);
     addListener(nodeExporterEnabledListener);
     addListener(paActiveTableMetricsListener);

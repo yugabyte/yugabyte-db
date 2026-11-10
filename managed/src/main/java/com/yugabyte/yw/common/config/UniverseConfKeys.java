@@ -1503,15 +1503,6 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "CPU usage alert aggregation interval in seconds.",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Integer> nodeMaintenanceServiceMaxAge =
-      new ConfKeyInfo<>(
-          "yb.alert.node_maintenance_service_max_age_secs",
-          ScopeType.UNIVERSE,
-          "Node maintenance service max age",
-          "Age in seconds of a node maintenance service's last run past which the"
-              + " 'Node maintenance service not running' alert reports it.",
-          ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> healthCheckTimeDrift =
       new ConfKeyInfo<>(
           "yb.health_checks.check_clock_time_drift",

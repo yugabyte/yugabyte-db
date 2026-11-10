@@ -12,8 +12,6 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.alerts.impl.AlertTemplateService;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.config.UniverseConfKeys;
-import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertConfiguration.Severity;
 import com.yugabyte.yw.models.AlertDefinition;
@@ -59,14 +57,6 @@ public class NodeMaintenanceServiceAlertTest extends FakeDBApplication {
     Map<String, Object> rule = renderRule();
     assertEquals(Set.of("1800"), windows(rule.get("expr")));
     assertEquals(Set.of("1800"), windows(nodeListLabel(rule)));
-
-    app.injector()
-        .instanceOf(SettableRuntimeConfigFactory.class)
-        .forUniverse(universe)
-        .setValue(UniverseConfKeys.nodeMaintenanceServiceMaxAge.getKey(), "3600");
-    rule = renderRule();
-    assertEquals(Set.of("3600"), windows(rule.get("expr")));
-    assertEquals(Set.of("3600"), windows(nodeListLabel(rule)));
   }
 
   @Test
