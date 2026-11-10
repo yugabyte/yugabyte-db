@@ -270,7 +270,8 @@ TEST_F(YsqlMajorExtensionUpgradeTest, Orafce) {
   ASSERT_NO_FATALS(check_query(kMixedModeTserverPg11, /*should_fail=*/ false));
 }
 
-TEST_F(YsqlMajorExtensionUpgradeTest, PgHintPlan) {
+// YB_TODO_PG19MERGE: no pg_hint_plan update path from 1.5.1-yb-1.0.
+TEST_F(YsqlMajorExtensionUpgradeTest, YB_DISABLE_TEST(PgHintPlan)) {
   ASSERT_OK(ExecuteStatement(Format("CREATE EXTENSION pg_hint_plan")));
   std::vector<std::string> tables = {"t_hint", "t_hint2", "t_hint3"};
   for (const auto& table : tables) {
@@ -328,7 +329,8 @@ TEST_F(YsqlMajorExtensionUpgradeTest, PgHintPlan) {
   }
 }
 
-TEST_F(YsqlMajorExtensionUpgradeTest, PgStatMonitor) {
+// YB_TODO_PG19MERGE: pg_stat_monitor is not built on pg19.
+TEST_F(YsqlMajorExtensionUpgradeTest, YB_DISABLE_TEST(PgStatMonitor)) {
   const std::vector<std::string> expected_error = {
       "In database: yugabyte",
       "  pg_stat_monitor",
@@ -344,7 +346,8 @@ TEST_F(YsqlMajorExtensionUpgradeTest, PgStatMonitor) {
   ASSERT_OK(ExecuteStatement(Format("CREATE EXTENSION pg_stat_monitor")));
 }
 
-TEST_F(YsqlMajorExtensionUpgradeTest, Anon) {
+// YB_TODO_PG19MERGE: postgresql_anonymizer is not built on pg19.
+TEST_F(YsqlMajorExtensionUpgradeTest, YB_DISABLE_TEST(Anon)) {
   ASSERT_OK(ExecuteStatement("CREATE EXTENSION anon"));
   auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));
   ASSERT_OK(conn.Execute("BEGIN"));

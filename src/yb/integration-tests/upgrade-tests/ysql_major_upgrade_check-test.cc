@@ -227,6 +227,7 @@ TEST_F(YsqlMajorUpgradeCheckTest, UsersAndRoles) {
   ASSERT_OK(conn.Execute("CREATE ROLE alice LOGIN"));
   ASSERT_OK(conn.Execute("CREATE ROLE bob LOGIN"));
   ASSERT_OK(conn.Execute("CREATE ROLE carol IN ROLE alice LOGIN"));
+  ASSERT_OK(conn.Execute("GRANT CREATE ON SCHEMA public TO alice"));
 
   ASSERT_OK(conn.Execute("SET ROLE alice"));
   ASSERT_OK(conn.Execute("CREATE TABLE t_alice (a int)"));

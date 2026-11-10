@@ -49,10 +49,10 @@ class YsqlMajorUpgradeStatsImportTest : public YsqlMajorUpgradeTestBase {
         kTableName));
   }
 
-  Result<std::string> GetAttrStats(
-      pgwrapper::PGConn& conn, const std::string& attr_name, bool is_pg11) {
+  // Reads the pg_stats columns that PG15 and PG19 share; PG19 adds attnum and tableid.
+  Result<std::string> GetAttrStats(pgwrapper::PGConn& conn, const std::string& attr_name) {
         // libpq does not support array or anyrange, so cast to TEXT.
-    const auto select_stmt = VERIFY_RESULT(conn.FetchRowAsString(Format(
+    const auto select_stmt = VERIFY_RESULT(conn.FetchRowAsString(
         R"(SELECT 'SELECT ' || string_agg(
         CASE
             WHEN data_type IN ('ARRAY', 'anyarray')
@@ -61,11 +61,11 @@ class YsqlMajorUpgradeStatsImportTest : public YsqlMajorUpgradeTestBase {
         END,
         ', ' ORDER BY column_name
     ) ||
-    ' FROM pg_catalog.$0'
+    ' FROM pg_catalog.pg_stats'
 FROM information_schema.columns
 WHERE table_schema = 'pg_catalog'
-  AND table_name = '$0')",
-        (is_pg11 ? "yb_int_pg_stats_v11" : "pg_stats"))));
+  AND table_name = 'pg_stats'
+  AND column_name NOT IN ('attnum', 'tableid'))"));
     return conn.FetchAllAsString(
         Format("$0 WHERE tablename = '$1' AND attname = '$2'", select_stmt, kTableName, attr_name));
   }
@@ -79,14 +79,13 @@ TEST_F(YsqlMajorUpgradeStatsImportTest, ValidateStatsImported) {
   LOG(INFO) << "Relation stats: " << initial_relation_stats;
   ASSERT_NE(initial_relation_stats, kDefaultRelationStats);
 
-  const auto initial_id_stats = ASSERT_RESULT(GetAttrStats(conn, "id", /*is_pg11=*/true));
+  const auto initial_id_stats = ASSERT_RESULT(GetAttrStats(conn, "id"));
   LOG(INFO) << "id stats: " << initial_id_stats;
   ASSERT_NE(initial_id_stats, "");
-  const auto initial_value_stats = ASSERT_RESULT(GetAttrStats(conn, "value", /*is_pg11=*/true));
+  const auto initial_value_stats = ASSERT_RESULT(GetAttrStats(conn, "value"));
   LOG(INFO) << "value stats: " << initial_value_stats;
   ASSERT_NE(initial_value_stats, "");
-  const auto initial_range_column_stats =
-      ASSERT_RESULT(GetAttrStats(conn, "range_column", /*is_pg11=*/true));
+  const auto initial_range_column_stats = ASSERT_RESULT(GetAttrStats(conn, "range_column"));
   LOG(INFO) << "range_column stats: " << initial_range_column_stats;
   ASSERT_NE(initial_range_column_stats, "");
 
@@ -94,14 +93,13 @@ TEST_F(YsqlMajorUpgradeStatsImportTest, ValidateStatsImported) {
     auto final_relation_stats = ASSERT_RESULT(GetRelationStats(conn));
     ASSERT_EQ(initial_relation_stats, final_relation_stats);
 
-    auto final_id_stats = ASSERT_RESULT(GetAttrStats(conn, "id", /*is_pg11=*/false));
+    auto final_id_stats = ASSERT_RESULT(GetAttrStats(conn, "id"));
     ASSERT_EQ(initial_id_stats, final_id_stats);
 
-    auto final_value_stats = ASSERT_RESULT(GetAttrStats(conn, "value", /*is_pg11=*/false));
+    auto final_value_stats = ASSERT_RESULT(GetAttrStats(conn, "value"));
     ASSERT_EQ(initial_value_stats, final_value_stats);
 
-    auto final_range_column_stats =
-        ASSERT_RESULT(GetAttrStats(conn, "range_column", /*is_pg11=*/false));
+    auto final_range_column_stats = ASSERT_RESULT(GetAttrStats(conn, "range_column"));
     ASSERT_EQ(initial_range_column_stats, final_range_column_stats);
   };
 
@@ -131,10 +129,10 @@ TEST_F_EX(
   LOG(INFO) << "Relation stats: " << initial_relation_stats;
   ASSERT_NE(initial_relation_stats, kDefaultRelationStats);
 
-  const auto initial_id_stats = ASSERT_RESULT(GetAttrStats(conn, "id", /*is_pg11=*/true));
+  const auto initial_id_stats = ASSERT_RESULT(GetAttrStats(conn, "id"));
   LOG(INFO) << "id stats: " << initial_id_stats;
   ASSERT_NE(initial_id_stats, "");
-  const auto initial_value_stats = ASSERT_RESULT(GetAttrStats(conn, "value", /*is_pg11=*/true));
+  const auto initial_value_stats = ASSERT_RESULT(GetAttrStats(conn, "value"));
   LOG(INFO) << "value stats: " << initial_value_stats;
   ASSERT_NE(initial_value_stats, "");
 
@@ -142,10 +140,10 @@ TEST_F_EX(
     auto final_relation_stats = ASSERT_RESULT(GetRelationStats(conn));
     ASSERT_EQ(final_relation_stats, kDefaultRelationStats);
 
-    auto final_id_stats = ASSERT_RESULT(GetAttrStats(conn, "id", /*is_pg11=*/false));
+    auto final_id_stats = ASSERT_RESULT(GetAttrStats(conn, "id"));
     ASSERT_EQ(final_id_stats, "");
 
-    auto final_value_stats = ASSERT_RESULT(GetAttrStats(conn, "value", /*is_pg11=*/false));
+    auto final_value_stats = ASSERT_RESULT(GetAttrStats(conn, "value"));
     ASSERT_EQ(final_value_stats, "");
   };
 

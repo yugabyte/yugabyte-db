@@ -327,8 +327,7 @@ TEST_F(YsqlMajorUpgradeDdlBlockingTest, KillInFlightDDLs) {
   ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
 
   // DDLs should be killed by the upgrade.
-  ASSERT_NOK_STR_CONTAINS(conn.Execute("COMMIT"),
-      "could not serialize access due to concurrent update");
+  ASSERT_NOK_STR_CONTAINS(conn.Execute("COMMIT"), "expired or aborted");
 
   // Validate rollback of the DDL.
   ASSERT_OK(check_comment("Hi"));

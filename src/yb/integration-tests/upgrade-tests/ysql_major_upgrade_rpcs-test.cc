@@ -212,9 +212,7 @@ class YsqlMajorUpgradeRpcsTest : public YsqlMajorUpgradeTestBase {
 
 // Start multiple ysql major upgrade RPCs simultaneously. Only one RPC should succeed.
 TEST_F(YsqlMajorUpgradeRpcsTest, SimultaneousUpgrades) {
-  ASSERT_NOK_STR_CONTAINS(
-      ValidateYsqlMajorCatalogUpgradeState(master::YSQL_MAJOR_CATALOG_UPGRADE_DONE),
-      "invalid method name");
+  ASSERT_OK(ValidateYsqlMajorCatalogUpgradeState(master::YSQL_MAJOR_CATALOG_UPGRADE_DONE));
 
   ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
 
@@ -309,9 +307,7 @@ TEST_F(YsqlMajorUpgradeRpcsTest, SimultaneousRollback) {
 
   ASSERT_OK(RestartAllMastersInOldVersion(kNoDelayBetweenNodes));
 
-  ASSERT_NOK_STR_CONTAINS(
-      ValidateYsqlMajorCatalogUpgradeState(master::YSQL_MAJOR_CATALOG_UPGRADE_DONE),
-      "invalid method name");
+  ASSERT_OK(ValidateYsqlMajorCatalogUpgradeState(master::YSQL_MAJOR_CATALOG_UPGRADE_DONE));
 
   ASSERT_OK(InsertRowInSimpleTableAndValidate());
 }
