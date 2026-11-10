@@ -22,7 +22,6 @@ import com.nimbusds.oauth2.sdk.util.MapUtils;
 import com.yugabyte.operator.OperatorConfig;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.PortType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.FileHelperService;
@@ -245,13 +244,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
     // Master addresses in multi-az case (to have control over different deployments).
     public String masterAddresses = null;
-    // Render the master Raft config read when the task runs instead of masterAddresses. Each
-    // master in it has a pod, unlike a planned list during an edit that moves masters.
-    public boolean masterAddrsFromRaft = false;
-    // Render the master Raft config read when the task runs as the tserver list only. With empty
-    // masterAddresses the chart writes the AZ's own masters into the tserver Secret too, which can
-    // leave out the leader, and a tserver must find the leader in its list to register.
-    public boolean tserverMasterAddrsFromRaft = false;
+    // Tserver master list when masterAddresses is empty. The chart then writes the AZ's own
+    // masters into the tserver Secret too, which can leave out the leader, and a tserver must find
+    // the leader in its list to register.
+    public String tserverMasterAddrs = null;
 
     // PlacementInfo to correctly set the placement details on the servers at start
     // as well as to control the replicas for each deployment.
@@ -1045,14 +1041,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             ? universeFromDBParams.getReadOnlyClusters().get(0).getOverallPlacement()
             : universeFromDBParams.getPrimaryCluster().getOverallPlacement();
 
-    String raftMasterAddrs =
-        taskParams().masterAddrsFromRaft || taskParams().tserverMasterAddrsFromRaft
-            ? universeFromDB.getHostPortsString(
-                getRemoteMasterNodes(universeFromDB), ServerType.MASTER, PortType.RPC)
-            : null;
-    if (taskParams().masterAddrsFromRaft) {
-      overrides.put("masterAddresses", raftMasterAddrs);
-    } else if (taskParams().masterAddresses != null && !taskParams().masterAddresses.isEmpty()) {
+    if (taskParams().masterAddresses != null && !taskParams().masterAddresses.isEmpty()) {
       overrides.put("masterAddresses", taskParams().masterAddresses);
     }
     int masterReplicas;
@@ -1598,9 +1587,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       overrides.put("otelCollector", otelOverrides);
     }
 
-    if (taskParams().tserverMasterAddrsFromRaft) {
+    if (StringUtils.isNotEmpty(taskParams().tserverMasterAddrs)) {
       // The chart writes these flags after its own tserver_master_addrs, and the last one wins.
-      tserverGFlags.put("tserver_master_addrs", raftMasterAddrs);
+      tserverGFlags.put("tserver_master_addrs", taskParams().tserverMasterAddrs);
     }
     if (!tserverGFlags.isEmpty()) {
       gflagOverrides.put("tserver", tserverGFlags);
