@@ -35,7 +35,8 @@ public class ManageOtelCollector extends NodeTaskBase {
   // Version of the YugabyteDB unified otel collector build consumed from ybm-package-store. This
   // feeds the artifact filename built in NodeAgentRpcPayload#getOtelCollectorPackagePath, so it
   // must stay in step with the URLs in support/thirdparty-dependencies.txt.
-  public static String OtelCollectorVersion = "0.145.0";
+  // The -1 is a rebuild of 0.145.0 with Go 1.27.3 and patched Go dependencies (PLAT-22934).
+  public static String OtelCollectorVersion = "0.145.0-1";
   public static String OtelCollectorPlatform = "linux";
 
   private final NodeAgentRpcPayload nodeAgentRpcPayload;
