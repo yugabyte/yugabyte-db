@@ -39,6 +39,7 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_vector_indexes.h"
+#include "yb/tablet/transaction_participant.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/debug-util.h"
@@ -70,6 +71,14 @@ TAG_FLAG(max_wait_for_aborting_transactions_during_restore_ms, advanced);
 DEFINE_NON_RUNTIME_int32(snapshot_cleanup_pool_size, 4,
     "Maximum number of concurrent tablet snapshot directory cleanup tasks per process.");
 TAG_FLAG(snapshot_cleanup_pool_size, advanced);
+
+// An AutoFlag because a follower postponing the operation relies on its leader not resending to it
+// immediately, which older leaders do, see PeerMessageQueue::ResponseFromPeer. Until it is promoted
+// nothing waits, since a follower waiting while applying the operation would block UpdateConsensus.
+DEFINE_RUNTIME_AUTO_bool(snapshot_wait_for_pending_applies, kLocalVolatile, false, true,
+    "Wait for transactions committed before a snapshot checkpoint to be written to regular DB "
+    "before creating the checkpoint. Followers postpone applying the operation that creates it "
+    "instead of waiting while applying it.");
 
 DEFINE_test_flag(int32, delay_tablet_split_metadata_restore_secs, 0,
     "How much time in secs to delay restoring tablet split metadata after restoring "
@@ -393,6 +402,15 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
 
   ScopedRWOperation scoped_read_operation(&pending_op_counter_blocking_rocksdb_shutdown_start());
   RETURN_NOT_OK(scoped_read_operation);
+
+  auto* participant = tablet().transaction_participant();
+  if (data.snapshot_hybrid_time && participant && FLAGS_snapshot_wait_for_pending_applies) {
+    // Restore drops intents, so transactions committed at or before the snapshot hybrid time must
+    // be fully written to regular DB. Their APPLY operations precede this one, but large ones are
+    // written by ApplyIntentsTask after it. Followers postpone this operation instead of waiting
+    // here, see TabletPeer::PostponeApply.
+    RETURN_NOT_OK(participant->WaitForPendingApplies(data.snapshot_hybrid_time));
+  }
 
   Status s;
   {

@@ -72,6 +72,10 @@ class TransactionLoader {
     return state_ != TransactionLoaderState::kNotStarted;
   }
 
+  bool Loading() const {
+    return state_ == TransactionLoaderState::kLoading;
+  }
+
   // Returns false when the loader thread did not complete successfully i.e. it is still running
   // or has encountered a failure. On seeing false, the caller should check for the failure case
   // explicitly and access the failure status in 'load_status_'.
@@ -96,6 +100,15 @@ class TransactionLoader {
   Status WaitAllLoaded();
 
   std::optional<docdb::ApplyStateWithCommitInfo> GetPendingApply(const TransactionId& id) const
+      EXCLUDES(pending_applies_mtx_);
+
+  // Like GetPendingApply, but also removes it, so LoadFinished does not start it.
+  std::optional<docdb::ApplyStateWithCommitInfo> TakePendingApply(const TransactionId& id)
+      EXCLUDES(pending_applies_mtx_);
+
+  // Adds an apply replayed from WAL, so LoadFinished starts it together with the loaded ones.
+  // Must be called before LoadFinished takes pending applies.
+  void AddPendingApply(const TransactionId& id, const docdb::ApplyStateWithCommitInfo& apply)
       EXCLUDES(pending_applies_mtx_);
 
   void StartShutdown() EXCLUDES(mutex_);

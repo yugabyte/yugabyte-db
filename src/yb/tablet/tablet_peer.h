@@ -146,6 +146,8 @@ YB_DEFINE_ENUM(TabletObjectState,
 // A tablet enters the quiescent mode after nothing was appended to its log for this time.
 CoarseDuration QuiescentTabletIdleTime();
 
+YB_STRONGLY_TYPED_BOOL(LockFreeRead);
+
 // A peer is a tablet consensus configuration, which coordinates writes to tablets.
 // Each time Write() is called this class appends a new entry to a replicated
 // state machine through a consensus algorithm, which makes sure that other
@@ -269,6 +271,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) override;
 
   Status GetLastReplicatedData(RemoveIntentsData* data) override;
+  Status GetLastReplicatedDataLockFree(RemoveIntentsData* data) override;
 
   void GetTabletStatusPB(TabletStatusPB* status_pb_out);
 
@@ -287,6 +290,10 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   bool ShouldApplyWrite() override;
 
   bool AreWritesStopped() override;
+
+  consensus::PostponedApplyPtr PostponeApply(
+      const consensus::LWReplicateMsg& replicate_msg,
+      consensus::PostponedApplyPtr postponed) override;
 
   // Returns valid shared pointer to the consensus. Returns a not OK status if the consensus is not
   // in a valid state or a peer is not running (shutting down or shut down).
@@ -679,6 +686,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   MonoTime cdc_sdk_safe_time_refresh_time_ = MonoTime::Min();
 
  private:
+  Status DoGetLastReplicatedData(RemoveIntentsData* data, LockFreeRead lock_free_read);
+
   // Checks whether the barrier last refreshed at refresh_time is stale.
   bool is_cdc_barrier_stale(const MonoTime& refresh_time, double* seconds_since_last_refresh_ptr)
       const REQUIRES(cdc_resource_refresh_time_lock_);

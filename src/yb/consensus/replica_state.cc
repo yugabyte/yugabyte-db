@@ -857,6 +857,7 @@ void ReplicaState::SetLastCommittedIndexUnlocked(const yb::OpId& committed_op_id
   DCHECK(IsLocked());
   CHECK_GE(last_received_op_id_.index, committed_op_id.index);
   last_committed_op_id_ = committed_op_id;
+  last_committed_op_id_copy_.store(committed_op_id, std::memory_order_release);
   const auto pending_config_op_id_from_rbs = cmeta_->pending_config_op_id_from_rbs();
   if (pending_config_op_id_from_rbs.is_valid_not_empty() &&
       last_committed_op_id_ >= pending_config_op_id_from_rbs) {
@@ -980,6 +981,8 @@ Status ReplicaState::ApplyPendingOperationsUnlocked(
             << prev_id << " of " << committed_op_id;
         break;
       }
+    } else if (could_stop && PostponeApplyUnlocked(*round)) {
+      break;
     } else if (current_id.index > max_allowed_op_id.index ||
                current_id.term > max_allowed_op_id.term) {
       max_allowed_op_id = safe_op_id_waiter_->WaitForSafeOpIdToApply(current_id);
@@ -1023,6 +1026,21 @@ Status ReplicaState::ApplyPendingOperationsUnlocked(
   applied_ops_tracker_(applied_op_ids);
 
   return status;
+}
+
+bool ReplicaState::PostponeApplyUnlocked(const ConsensusRound& round) {
+  const auto op_id = round.id();
+  auto postponed = op_id == postponed_op_id_ ? std::move(postponed_apply_) : nullptr;
+  postponed_apply_ = context_->PostponeApply(*round.replicate_msg(), std::move(postponed));
+  if (!postponed_apply_) {
+    return false;
+  }
+  if (op_id != postponed_op_id_) {
+    postponed_op_id_ = op_id;
+    LOG_WITH_PREFIX(INFO) << "Postpone applying "
+                          << OperationType_Name(round.replicate_msg()->op_type()) << " " << op_id;
+  }
+  return true;
 }
 
 void ReplicaState::ApplyConfigChangeUnlocked(const ConsensusRoundPtr& round) {

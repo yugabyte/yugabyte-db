@@ -32,10 +32,13 @@
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction_error.h"
 
+#include "yb/consensus/consensus_context.h"
 #include "yb/consensus/consensus_util.h"
 
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/transaction_dump.h"
+
+#include "yb/gutil/casts.h"
 
 #include "yb/rocksdb/options.h"
 
@@ -218,6 +221,29 @@ namespace {
 
 YB_STRONGLY_TYPED_BOOL(PostApplyCleanup);
 
+TransactionApplyData PendingApplyData(
+    const TransactionId& id, const docdb::ApplyStateWithCommitInfo& apply) {
+  return TransactionApplyData {
+    .transaction_id = id,
+    .op_id = apply.apply_op_id,
+    .commit_ht = apply.commit_ht,
+  };
+}
+
+bool IsApplyingAtOrBefore(const RunningTransaction& txn, HybridTime commit_ht) {
+  return txn.ProcessingApply() && txn.local_commit_time() <= commit_ht;
+}
+
+// Transactions committed at or before the snapshot hybrid time start applying while loaded, or in
+// APPLY operations preceding the snapshot operation, so they are collected once, and later checks
+// only drop the finished ones.
+class PostponedForPendingApplies : public consensus::PostponedApply {
+ public:
+  bool collected = false;
+  // Weak, so the state kept by consensus does not hold transactions after they are removed.
+  std::vector<std::weak_ptr<RunningTransaction>> transactions;
+};
+
 constexpr size_t kSIModeIdx = 0;
 constexpr size_t kRRRCModeIdx = 1;
 
@@ -398,23 +424,6 @@ class TransactionParticipant::Impl
     LOG_WITH_PREFIX(INFO) << "Start";
 
     std::lock_guard lock(mutex_);
-    for (auto& deferred : deferred_apply_intents_tasks_) {
-      auto it = transactions_.find(deferred.transaction_id);
-      if (it == transactions_.end()) {
-        LOG_WITH_PREFIX(DFATAL)
-            << "Unknown transaction for deferred apply: " << deferred.transaction_id;
-        continue;
-      }
-      ScopedRWOperation operation(pending_op_counter_blocking_rocksdb_shutdown_start_);
-      if (!operation.ok()) {
-        LOG_WITH_PREFIX(WARNING)
-            << "Deferred apply rejected for: " << deferred.transaction_id;
-        continue;
-      }
-      (**it).SetApplyData(deferred.apply_state, &deferred.apply_data, &operation);
-    }
-    deferred_apply_intents_tasks_.clear();
-
     started_ = true;
     start_latch_.CountDown();
   }
@@ -979,7 +988,8 @@ class TransactionParticipant::Impl
     }
 
     auto cleanup_aborts_task = std::make_shared<CleanupAbortsTask>(
-        &applier_, std::move(set), &participant_context_, status_manager, LogPrefix());
+        &applier_, std::move(set), &participant_context_, status_manager,
+        pending_op_counter_blocking_rocksdb_shutdown_start_, LogPrefix());
     cleanup_aborts_task->Prepare(cleanup_aborts_task);
     participant_context_.StrandEnqueue(cleanup_aborts_task.get());
     return Status::OK();
@@ -1082,17 +1092,18 @@ class TransactionParticipant::Impl
         RemoveUnlocked(
             lock_and_iterator.iterator, RemoveReason::kApplied, &min_running_notifier);
       } else if (started_) {
-        lock_and_iterator.transaction().SetApplyData(apply_state, &data, operation);
+        lock_and_iterator.transaction().SetApplyData(
+            apply_state, &data, operation, ApplyOnCallingThread::kFalse);
       } else {
         // During bootstrap, the strand/thread pool may not be ready yet, so we cannot
         // schedule the async ApplyIntentsTask. Record the apply state on the transaction
-        // and defer the task scheduling until Start() is called, similar to how the
-        // transaction loader defers pending applies.
+        // and let LoadFinished start it after Start(), together with applies loaded from
+        // regular DB.
         lock_and_iterator.transaction().SetApplyData(apply_state);
-        deferred_apply_intents_tasks_.push_back(DeferredApplyIntentsTask{
-          .transaction_id = data.transaction_id,
-          .apply_data = data,
-          .apply_state = apply_state,
+        loader_.AddPendingApply(data.transaction_id, docdb::ApplyStateWithCommitInfo {
+          .state = apply_state,
+          .commit_ht = data.commit_ht,
+          .apply_op_id = data.op_id,
         });
       }
     }
@@ -1463,6 +1474,83 @@ class TransactionParticipant::Impl
     }
 
     return Status::OK();
+  }
+
+  consensus::PostponedApplyPtr PostponeForPendingApplies(
+      HybridTime commit_ht, consensus::PostponedApplyPtr postponed) {
+    if (!postponed) {
+      postponed = std::make_unique<PostponedForPendingApplies>();
+    }
+    auto& pending = *down_cast<PostponedForPendingApplies*>(postponed.get());
+    if (loader_.Loading()) {
+      return postponed;
+    }
+    // After a failed load, pending applies are never started, and WaitForPendingApplies fails.
+    if (auto loaded = loader_.Completed(); !loaded.ok() || !*loaded) {
+      return nullptr;
+    }
+    if (!pending.collected) {
+      pending.collected = true;
+      std::lock_guard lock(mutex_);
+      for (const auto& txn : transactions_) {
+        if (IsApplyingAtOrBefore(*txn, commit_ht)) {
+          pending.transactions.push_back(txn);
+        }
+      }
+    }
+    std::erase_if(pending.transactions, [](const auto& weak_txn) {
+      auto txn = weak_txn.lock();
+      return !txn || !txn->ProcessingApply();
+    });
+    return pending.transactions.empty() ? nullptr : std::move(postponed);
+  }
+
+  Status WaitForPendingApplies(HybridTime commit_ht) {
+    // Applies interrupted by a restart are tracked only once the loader adds their transactions.
+    RETURN_NOT_OK(loader_.WaitAllLoaded());
+    // The apply is set during bootstrap, when its task is run here, because the strand is not used
+    // until Start.
+    std::vector<std::pair<RunningTransactionPtr, std::optional<docdb::ApplyStateWithCommitInfo>>>
+        pending;
+    {
+      std::lock_guard lock(mutex_);
+      for (const auto& txn : transactions_) {
+        if (!IsApplyingAtOrBefore(*txn, commit_ht)) {
+          continue;
+        }
+        std::optional<docdb::ApplyStateWithCommitInfo> apply;
+        if (!started_) {
+          apply = loader_.TakePendingApply(txn->id());
+          if (!apply) {
+            LOG_WITH_PREFIX(DFATAL) << "No pending apply for applying transaction " << txn->id();
+            continue;
+          }
+        }
+        pending.emplace_back(txn, std::move(apply));
+      }
+    }
+    for (auto& [txn, apply] : pending) {
+      if (!apply) {
+        continue;
+      }
+      ScopedRWOperation operation(pending_op_counter_blocking_rocksdb_shutdown_start_);
+      RETURN_NOT_OK(operation);
+      auto apply_data = PendingApplyData(txn->id(), *apply);
+      txn->SetApplyData(apply->state, &apply_data, &operation, ApplyOnCallingThread::kTrue);
+    }
+    for (;;) {
+      std::erase_if(pending, [](const auto& entry) { return !entry.first->ProcessingApply(); });
+      if (pending.empty()) {
+        return Status::OK();
+      }
+      // Apply tasks stop on shutdown, without finishing. Shutdown does not start while this waits,
+      // see the declaration, so this only avoids spinning forever if that changes.
+      RETURN_NOT_OK(CheckClosing());
+      YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 5)
+          << "Waiting for " << pending.size() << " transactions committed at or before "
+          << commit_ht << " to be applied";
+      std::this_thread::sleep_for(10ms);
+    }
   }
 
   size_t GetNumRunningTransactions() {
@@ -1925,12 +2013,9 @@ class TransactionParticipant::Impl
             continue;
           }
 
-          auto apply_data = TransactionApplyData {
-            .transaction_id = txn_id,
-            .op_id = pending_apply.apply_op_id,
-            .commit_ht = pending_apply.commit_ht,
-          };
-          (**it).SetApplyData(pending_apply.state, &apply_data, &operations[idx]);
+          auto apply_data = PendingApplyData(txn_id, pending_apply);
+          (**it).SetApplyData(
+              pending_apply.state, &apply_data, &operations[idx], ApplyOnCallingThread::kFalse);
           ++idx;
         }
       }
@@ -3047,13 +3132,7 @@ class TransactionParticipant::Impl
   std::vector<std::pair<TabletId, TransactionId>> pending_applies_
       GUARDED_BY(pending_applies_mutex_);
 
-  struct DeferredApplyIntentsTask {
-    TransactionId transaction_id;
-    TransactionApplyData apply_data;
-    docdb::ApplyTransactionState apply_state;
-  };
   bool started_ GUARDED_BY(mutex_) = false;
-  std::vector<DeferredApplyIntentsTask> deferred_apply_intents_tasks_ GUARDED_BY(mutex_);
 
   // Counters for fast mode transactions. The first counter tracks serializable transactions, and
   // the second tracks RR/RC transactions. Each counter is incremented by one for every running fast
@@ -3206,6 +3285,15 @@ void TransactionParticipant::WaitMinRunningHybridTime(HybridTime ht) {
 
 Status TransactionParticipant::ResolveIntents(HybridTime resolve_at, CoarseTimePoint deadline) {
   return impl_->ResolveIntents(resolve_at, deadline);
+}
+
+consensus::PostponedApplyPtr TransactionParticipant::PostponeForPendingApplies(
+    HybridTime commit_ht, consensus::PostponedApplyPtr postponed) {
+  return impl_->PostponeForPendingApplies(commit_ht, std::move(postponed));
+}
+
+Status TransactionParticipant::WaitForPendingApplies(HybridTime commit_ht) {
+  return impl_->WaitForPendingApplies(commit_ht);
 }
 
 size_t TransactionParticipant::GetNumRunningTransactions() const {

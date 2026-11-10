@@ -13,12 +13,15 @@
 
 #include "yb/tablet/cleanup_aborts_task.h"
 
+#include "yb/rpc/scheduler.h"
+
 #include "yb/tablet/transaction_intent_applier.h"
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/transaction_participant_context.h"
 
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/logging.h"
+#include "yb/util/operation_counter.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
 
@@ -28,14 +31,23 @@ DECLARE_uint64(aborted_intent_cleanup_ms);
 
 namespace yb::tablet {
 
+namespace {
+
+const MonoDelta kMaxTotalSleep = 10s;
+const auto kSafeTimeRetryDelay = 100ms;
+
+} // namespace
+
 CleanupAbortsTask::CleanupAbortsTask(TransactionIntentApplier* applier,
                                      TransactionIdSet&& transactions_to_cleanup,
                                      TransactionParticipantContext* participant_context,
                                      TransactionStatusManager* status_manager,
+                                     RWOperationCounter* pending_op_counter,
                                      const std::string& log_prefix)
     : applier_(applier), transactions_to_cleanup_(std::move(transactions_to_cleanup)),
       participant_context_(*participant_context),
       status_manager_(*status_manager),
+      pending_op_counter_(pending_op_counter),
       log_prefix_(log_prefix) {}
 
 void CleanupAbortsTask::Prepare(std::shared_ptr<CleanupAbortsTask> cleanup_task) {
@@ -43,31 +55,41 @@ void CleanupAbortsTask::Prepare(std::shared_ptr<CleanupAbortsTask> cleanup_task)
 }
 
 void CleanupAbortsTask::Run() {
-  VLOG_WITH_PREFIX(1) << "CleanupAbortsTask: starting";
-  size_t initial_number_of_transactions = transactions_to_cleanup_.size();
+  if (!wait_safe_time_) {
+    VLOG_WITH_PREFIX(1) << "CleanupAbortsTask: starting";
+    initial_number_of_transactions_ = transactions_to_cleanup_.size();
 
-  FilterTransactions();
+    FilterTransactions();
 
-  if (transactions_to_cleanup_.empty()) {
-    LOG_WITH_PREFIX(INFO)
-        << "Nothing to cleanup of " << initial_number_of_transactions << " transactions";
-    return;
+    if (transactions_to_cleanup_.empty()) {
+      LOG_WITH_PREFIX(INFO)
+          << "Nothing to cleanup of " << initial_number_of_transactions_ << " transactions";
+      return;
+    }
+
+    // Update now to reflect time on the coordinator
+    // The calls to RequestStatusAt would have updated the local clock of the participant.
+    // Wait for the propagated time to reach the current hybrid time.
+    wait_safe_time_ = participant_context_.Now();
+    wait_safe_time_deadline_ = CoarseMonoClock::now() + kMaxTotalSleep;
+    VLOG_WITH_PREFIX(1) << "CleanupAbortsTask waiting for applier safe time to reach "
+                        << wait_safe_time_;
   }
 
-  // Update now to reflect time on the coordinator
-  auto now = participant_context_.Now();
-
-  // The calls to RequestStatusAt would have updated the local clock of the participant.
-  // Wait for the propagated time to reach the current hybrid time.
-  const MonoDelta kMaxTotalSleep = 10s;
-  VLOG_WITH_PREFIX(1) << "CleanupAbortsTask waiting for applier safe time to reach " << now;
-  auto safetime = applier_->ApplierSafeTime(now, CoarseMonoClock::now() + kMaxTotalSleep);
+  // Do not wait on the strand: the safe time could wait for the tasks queued after this one, e.g.
+  // ApplyIntentsTask while TransactionParticipant::WaitForPendingApplies waits for it.
+  auto now = CoarseMonoClock::now();
+  auto safetime = applier_->ApplierSafeTime(wait_safe_time_, now);
   if (!safetime) {
+    if (now < wait_safe_time_deadline_) {
+      retry_ = true;
+      return;
+    }
     LOG_WITH_PREFIX(WARNING) << "Tablet application did not catch up in " << kMaxTotalSleep;
     return;
   }
   VLOG_WITH_PREFIX(1) << "CleanupAbortsTask: applier safe time reached " << safetime
-                      << " (was waiting for " << now << ")";
+                      << " (was waiting for " << wait_safe_time_ << ")";
 
   for (auto it = transactions_to_cleanup_.begin(); it != transactions_to_cleanup_.end();) {
     // If transaction is committed, no action required
@@ -82,7 +104,7 @@ void CleanupAbortsTask::Run() {
   }
 
   RemoveIntentsData data;
-  auto status = participant_context_.GetLastReplicatedData(&data);
+  auto status = participant_context_.GetLastReplicatedDataLockFree(&data);
   if (!status.ok()) {
     LOG_WITH_PREFIX(INFO) << "Failed to get last replicated data: " << status;
     return;
@@ -98,11 +120,26 @@ void CleanupAbortsTask::Run() {
   if (status.ok()) {
     LOG_WITH_PREFIX(INFO) << "Number of transactions cleaned up: "
                           << transactions_to_cleanup_.size() << " of "
-                          << initial_number_of_transactions << " candidates passed to this task";
+                          << initial_number_of_transactions_ << " candidates passed to this task";
   }
 }
 
 void CleanupAbortsTask::Done(const Status& status) {
+  if (std::exchange(retry_, false) && status.ok()) {
+    // Keeps the tablet, and so participant_context_, from shutting down until the task is enqueued.
+    auto operation = std::make_shared<ScopedRWOperation>(pending_op_counter_);
+    if (operation->ok()) {
+      participant_context_.scheduler().Schedule(
+          [self = retain_self_, operation](const Status& schedule_status) {
+        if (schedule_status.ok()) {
+          self->participant_context_.StrandEnqueue(self.get());
+        } else {
+          self->Done(schedule_status);
+        }
+      }, kSafeTimeRetryDelay);
+      return;
+    }
+  }
   transactions_to_cleanup_.clear();
   retain_self_ = nullptr;
 }

@@ -3907,6 +3907,10 @@ OpId RaftConsensus::GetLastCommittedOpId() {
   return state_->GetCommittedOpIdUnlocked();
 }
 
+OpId RaftConsensus::GetLastCommittedOpIdLockFree() const {
+  return state_->GetCommittedOpIdLockFree();
+}
+
 RaftConsensus::WalGcRetentionOpIdInfo RaftConsensus::GetWalGcRetentionOpIdInfo() {
   auto peer_retention = queue_->GetWalGcPeerRetentionInfo();
   WalGcRetentionOpIdInfo result;

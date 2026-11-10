@@ -133,6 +133,7 @@ DEFINE_RUNTIME_int32(quiescent_tablet_idle_sec, 0,
     "A tablet enters the quiescent mode after nothing was appended to its log for this many "
     "seconds. 0 disables entering the mode.");
 
+DECLARE_bool(snapshot_wait_for_pending_applies);
 DECLARE_int32(ysql_transaction_abort_timeout_ms);
 
 DECLARE_bool(cdc_immediate_transaction_cleanup);
@@ -851,6 +852,14 @@ Result<HybridTime> TabletPeer::WaitForSafeTime(HybridTime safe_time, CoarseTimeP
 }
 
 Status TabletPeer::GetLastReplicatedData(RemoveIntentsData* data) {
+  return DoGetLastReplicatedData(data, LockFreeRead::kFalse);
+}
+
+Status TabletPeer::GetLastReplicatedDataLockFree(RemoveIntentsData* data) {
+  return DoGetLastReplicatedData(data, LockFreeRead::kTrue);
+}
+
+Status TabletPeer::DoGetLastReplicatedData(RemoveIntentsData* data, LockFreeRead lock_free_read) {
   std::shared_ptr<consensus::RaftConsensus> consensus;
   TabletPtr tablet;
   {
@@ -865,7 +874,8 @@ Status TabletPeer::GetLastReplicatedData(RemoveIntentsData* data) {
     return STATUS(IllegalState, "Tablet destroyed");
   }
   // TODO(yyan) : we should use the last replicated op id instead of last committed op id.
-  data->op_id = consensus->GetLastCommittedOpId();
+  data->op_id = lock_free_read ? consensus->GetLastCommittedOpIdLockFree()
+                               : consensus->GetLastCommittedOpId();
   data->log_ht = tablet->mvcc_manager()->LastReplicatedHybridTime();
   return Status::OK();
 }
@@ -1835,6 +1845,40 @@ void TabletPeer::SetMvccPropagatedSafeTime(HybridTime ht) {
 
 bool TabletPeer::ShouldApplyWrite() {
   return tablet_->ShouldApplyWrite();
+}
+
+consensus::PostponedApplyPtr TabletPeer::PostponeApply(
+    const consensus::LWReplicateMsg& replicate_msg, consensus::PostponedApplyPtr postponed) {
+  if (!FLAGS_snapshot_wait_for_pending_applies) {
+    return nullptr;
+  }
+  // Operations that create a checkpoint with TabletSnapshots::Create, which would otherwise wait
+  // for these applies under ReplicaState's lock.
+  HybridTime snapshot_hybrid_time;
+  switch (replicate_msg.op_type()) {
+    case consensus::SNAPSHOT_OP: {
+      const auto& request = replicate_msg.snapshot_request();
+      // The master creates a checkpoint only for a snapshot of a schedule.
+      if (request.operation() == tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET ||
+          (request.operation() == tserver::TabletSnapshotOpRequestPB::CREATE_ON_MASTER &&
+           !request.schedule_id().empty())) {
+        snapshot_hybrid_time = HybridTime::FromPB(request.snapshot_hybrid_time());
+      }
+      break;
+    }
+    case consensus::CLONE_OP:
+      if (replicate_msg.clone_tablet().clone_from_active_rocksdb()) {
+        snapshot_hybrid_time = HybridTime::FromPB(replicate_msg.hybrid_time());
+      }
+      break;
+    default:
+      break;
+  }
+  auto* participant = tablet_->transaction_participant();
+  if (!snapshot_hybrid_time || !participant) {
+    return nullptr;
+  }
+  return participant->PostponeForPendingApplies(snapshot_hybrid_time, std::move(postponed));
 }
 
 bool TabletPeer::AreWritesStopped() {

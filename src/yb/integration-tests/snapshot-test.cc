@@ -16,8 +16,12 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/client/ql-dml-test-base.h"
+#include "yb/client/session.h"
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/transaction.h"
+#include "yb/client/transaction_manager.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/ql_value.h"
@@ -49,6 +53,8 @@
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
+
+#include "yb/server/hybrid_clock.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
@@ -1786,6 +1792,95 @@ TEST_F_EX(SnapshotTest, CrashAfterFlushedFrontierSaved, SnapshotExternalMiniClus
   }
 
   workload.StopAndJoin();
+}
+
+// Followers postpone the snapshot operation until a large transaction committed before the snapshot
+// hybrid time is written to regular DB. Both followers are killed meanwhile, so bootstrap replays
+// the snapshot operation before apply tasks are started, and has to finish the apply.
+// One follower is flushed before the kill, so its apply is loaded from regular DB, while the other
+// one replays it from WAL.
+TEST_F_EX(SnapshotTest, LargeTransactionApplyingOnKilledFollowers,
+          SnapshotExternalMiniClusterTest) {
+  constexpr int kNumKeys = 500;
+  constexpr auto kTimeout = 60s * kTimeMultiplier;
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("txn_max_apply_batch_records", "5"));
+
+  client::SnapshotTestUtil snapshot_util;
+  auto client = ASSERT_RESULT(snapshot_util.InitWithCluster(cluster_.get()));
+  ASSERT_OK(client->CreateNamespaceIfNotExists(
+      kTableName.namespace_name(), kTableName.namespace_type()));
+  client::TableHandle table;
+  ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
+      client::Transactional::kTrue, /* num_tablets= */ 1, client.get(), &table, kTableName));
+
+  TabletId tablet_id;
+  std::vector<ExternalTabletServer*> followers;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    followers.clear();
+    bool has_leader = false;
+    for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      auto* ts = cluster_->tablet_server(i);
+      for (const auto& entry : VERIFY_RESULT(cluster_->GetTablets(ts))) {
+        if (entry.table_name() != kTableName.table_name()) {
+          continue;
+        }
+        tablet_id = entry.tablet_id();
+        if (entry.is_leader()) {
+          has_leader = true;
+        } else {
+          followers.push_back(ts);
+        }
+      }
+    }
+    return has_leader && followers.size() == 2;
+  }, kTimeout, "Wait for tablet leader"));
+
+  // Keeps followers applying the transaction much longer than the test needs to kill them.
+  for (auto* ts : followers) {
+    ASSERT_OK(cluster_->SetFlag(ts, "TEST_inject_sleep_before_applying_intents_ms", "200"));
+  }
+
+  server::ClockPtr clock(new server::HybridClock());
+  ASSERT_OK(clock->Init());
+  client::TransactionManager txn_manager(client.get(), clock, client::LocalTabletFilter());
+  auto txn = std::make_shared<client::YBTransaction>(&txn_manager);
+  ASSERT_OK(txn->Init(IsolationLevel::SNAPSHOT_ISOLATION));
+  auto session = client->NewSession(kTimeout);
+  session->SetTransaction(txn);
+  for (int key = 0; key != kNumKeys; ++key) {
+    ASSERT_RESULT(client::kv_table_test::WriteRow(
+        &table, session, key, key, client::WriteOpType::INSERT, client::Flush::kFalse));
+  }
+  ASSERT_OK(session->TEST_Flush());
+  ASSERT_OK(txn->CommitFuture().get());
+
+  std::vector<std::unique_ptr<LogWaiter>> postponed;
+  for (auto* ts : followers) {
+    postponed.push_back(std::make_unique<LogWaiter>(ts, "Postpone applying SNAPSHOT_OP"));
+  }
+  auto snapshot_id = ASSERT_RESULT(snapshot_util.CreateSnapshot(table));
+  for (auto& waiter : postponed) {
+    ASSERT_OK(waiter->WaitFor(kTimeout));
+  }
+  ASSERT_OK(followers[0]->FlushTablets({tablet_id}));
+  for (auto* ts : followers) {
+    ts->Shutdown();
+  }
+  // Followers knew that the snapshot operation is committed, but their WAL might not record it.
+  for (auto* ts : followers) {
+    ASSERT_OK(ts->Restart(
+        ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+        {{"TEST_play_pending_uncommitted_entries", "true"}}));
+  }
+
+  ASSERT_OK(snapshot_util.RestoreSnapshot(snapshot_id));
+
+  // Each replica restores its own checkpoint, so replica checksums differ if one is incomplete.
+  ClusterVerifier cluster_verifier(cluster_.get());
+  cluster_verifier.SetVerificationTimeout(kTimeout);
+  ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(kTableName, ClusterVerifier::EXACTLY, kNumKeys));
 }
 
 } // namespace yb

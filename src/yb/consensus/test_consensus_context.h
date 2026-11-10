@@ -30,6 +30,11 @@ class TestConsensusContext : public ConsensusContext {
 
   bool AreWritesStopped() override { return false; }
 
+  PostponedApplyPtr PostponeApply(
+      const LWReplicateMsg& replicate_msg, PostponedApplyPtr postponed) override {
+    return nullptr;
+  }
+
   Result<HybridTime> PreparePeerRequest() override { return HybridTime(); }
 
   Status MajorityReplicated(const OpId& committed_op_id) override { return Status::OK(); }
