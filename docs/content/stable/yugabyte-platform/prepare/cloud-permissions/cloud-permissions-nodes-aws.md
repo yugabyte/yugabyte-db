@@ -133,8 +133,6 @@ If using a service account, record the following two pieces of information about
 
 If you are intending to back up to S3 or S3-compatible storage, the service account should also have sufficient permissions to access S3; refer to [Permissions to back up and restore](../cloud-permissions-storage/).
 
-To back up from these nodes to Google Cloud Storage, keep this role attached to the VM and grant the bucket to the role name through a workload identity binding. Refer to [Federated IAM backups](../../../back-up-restore-universes/federated-iam-backups/). The S3 permission list is only for an S3 bucket.
-
 | Save for later | To configure |
 | :--- | :--- |
 | Access key ID | [AWS provider configuration](../../../configure-yugabyte-platform/aws/) |
@@ -154,7 +152,7 @@ For more information, see [Configure the instance metadata service](https://docs
 
 If you are intending to back up to S3 or S3-compatible storage, the IAM role used should also have sufficient permissions to access S3; refer to [Permissions to back up and restore](../cloud-permissions-storage/).
 
-To back up from these nodes to Google Cloud Storage, keep this role attached to the VM and grant the bucket to the role name through a workload identity binding. Refer to [Federated IAM backups](../../../back-up-restore-universes/federated-iam-backups/). The S3 permission list is only for an S3 bucket.
+To back up from these nodes to Google Cloud Storage, keep the IAM role attached to the VM and grant the bucket to the role name through a workload identity binding. Refer to [Federated IAM backups](../../../back-up-restore-universes/federated-iam-backups/). The S3 permission list is only for an S3 bucket.
 
 For information on using IAM roles for EC2, refer to [IAM roles for Amazon EC2](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html).
 
