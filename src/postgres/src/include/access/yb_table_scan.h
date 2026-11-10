@@ -19,10 +19,10 @@
  *	  #32268 tracks that replacement for the accessors already here.
  *	  Besides yb_table_scan.c, only the executor nodes it covers
  *	  (nodeYbSeqscan.c, nodeTidscan.c, and nodeYbBitmapTablescan.c)
- *	  include this header.  A new YB-specific operation goes through
- *	  tableam, extending it if needed.  Add an accessor here only
- *	  when that is blocked on #32268 itself, and list it there.
- *	  yb_table_scan.c defines only the accessors declared here.
+ *	  include this header.  Add an accessor here only when going
+ *	  through tableam is blocked on #32268 itself, and list it
+ *	  there.  yb_table_scan.c defines only the accessors declared
+ *	  here.
  *
  * Copyright (c) YugabyteDB, Inc.
  *

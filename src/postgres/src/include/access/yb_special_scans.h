@@ -10,8 +10,7 @@
  *	  header.  ANALYZE row sampling stays until upstream adds a
  *	  table AM interface for sampling.  The catalog scans and the
  *	  fetch by ybctid are bypasses to remove, like the accessors in
- *	  yb_table_scan.h, and their sections cite the issues that track
- *	  routing them through the access methods.
+ *	  yb_table_scan.h.
  *
  *	  Each section below is the API of one implementation file and
  *	  says why no AM interface replaces it yet or cites the issue

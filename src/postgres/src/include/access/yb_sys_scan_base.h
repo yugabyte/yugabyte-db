@@ -7,7 +7,8 @@
  *	  whose vtable systable_getnext() and systable_endscan()
  *	  continue a scan of a YB relation.  relscan.h includes this
  *	  header only to declare that field.  Nothing above the access
- *	  methods uses the type.  #36174 tracks replacing this dispatch.
+ *	  methods uses the type.  #36174 investigates replacing this
+ *	  dispatch.
  *
  * Copyright (c) YugabyteDB, Inc.
  *

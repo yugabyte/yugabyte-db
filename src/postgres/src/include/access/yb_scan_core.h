@@ -168,9 +168,8 @@ extern bool ybc_heap_getnextslot(TableScanDesc scanDesc,
 extern void ybc_heap_endscan(TableScanDesc scanDesc);
 
 /*
- * Low-level scan setup: builds the PgGate statement, binds scan
- * keys, and configures targets/pushdowns.  Used by both table
- * scans (via ybc_heap_beginscan) and index scans (via yb_lsm).
+ * Low-level scan setup: builds the PgGate statement, binds scan keys, and
+ * configures targets/pushdowns.  Used by access-method code.
  */
 extern YbOpaque YbBeginScan(Relation table,
 							Relation index,
@@ -201,9 +200,8 @@ extern bool YbPredetermineNeedsRecheck(Scan *scan,
 									   int nkeys);
 
 /*
- * Low-level tuple fetch functions operating on YbOpaque directly.
- * Used by AM implementations (yb_lsm, ybgin) and catalog scans
- * (yb_catalog_scan) that manage their own scan state.
+ * Low-level tuple fetch functions operating on YbOpaque directly.  Used by
+ * access-method code.
  */
 extern HeapTuple ybc_getnext_heaptuple(YbOpaque ybScan, ScanDirection dir);
 extern IndexTuple ybc_getnext_indextuple(YbOpaque ybScan, ScanDirection dir);
