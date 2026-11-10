@@ -217,6 +217,8 @@ struct ApplyStateWithCommitInfo {
   ApplyTransactionState state;
   HybridTime commit_ht;
   OpId apply_op_id;
+  // Invalid for apply states written by versions that did not store it.
+  HybridTime log_ht;
 
   template <class PB>
   static Result<ApplyStateWithCommitInfo> FromPB(const PB& pb) {
@@ -224,11 +226,12 @@ struct ApplyStateWithCommitInfo {
       .state = VERIFY_RESULT(ApplyTransactionState::FromPB(pb)),
       .commit_ht = HybridTime(pb.commit_ht()),
       .apply_op_id = OpId::FromPB(pb.apply_op_id()),
+      .log_ht = pb.has_log_ht() ? HybridTime(pb.log_ht()) : HybridTime::kInvalid,
     };
   }
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(state, commit_ht, apply_op_id);
+    return YB_STRUCT_TO_STRING(state, commit_ht, apply_op_id, log_ht);
   }
 };
 

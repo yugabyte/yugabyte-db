@@ -563,12 +563,11 @@ std::string MakeTabletLogPrefix(
 void InitFrontiers(
     OpId op_id, HybridTime log_ht, HybridTime commit_ht, docdb::ConsensusFrontiers& frontiers) {
   set_op_id(op_id, &frontiers);
+  // log_ht is invalid for an apply resumed from a state stored by a version that did not store it.
   HybridTime min_ht = log_ht;
   HybridTime max_ht = log_ht;
-  if (commit_ht) {
-    min_ht = std::min(min_ht, commit_ht);
-    max_ht = std::max(max_ht, commit_ht);
-  }
+  min_ht.MakeAtMost(commit_ht);
+  max_ht.MakeAtLeast(commit_ht);
   frontiers.Smallest().set_hybrid_time(min_ht);
   frontiers.Largest().set_hybrid_time(max_ht);
 }
@@ -3141,14 +3140,16 @@ Status Tablet::WritePostApplyMetadata(std::span<const PostApplyTransactionMetada
 
   OpId min_op_id = OpId::Max();
   OpId max_op_id = OpId::Min();
-  HybridTime min_ht = HybridTime::kMax;
-  HybridTime max_ht = HybridTime::kMin;
+  HybridTime min_ht;
+  HybridTime max_ht;
 
   for (const auto& metadata : metadatas) {
     min_op_id = std::min(min_op_id, metadata.apply_op_id);
     max_op_id = std::max(max_op_id, metadata.apply_op_id);
-    min_ht = std::min({min_ht, metadata.commit_ht, metadata.log_ht});
-    max_ht = std::max({max_ht, metadata.commit_ht, metadata.log_ht});
+    for (auto ht : {metadata.commit_ht, metadata.log_ht}) {
+      min_ht.MakeAtMost(ht);
+      max_ht.MakeAtLeast(ht);
+    }
   }
 
   docdb::ConsensusFrontiers frontiers;

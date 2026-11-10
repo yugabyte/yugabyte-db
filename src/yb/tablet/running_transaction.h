@@ -134,18 +134,15 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
                     const TransactionApplyData* data = nullptr,
                     ScopedRWOperation* operation = nullptr);
 
-  void SetApplyOpId(const OpId& id);
+  // Sets op id and hybrid time of the APPLY raft operation.
+  void SetApplyOpId(const OpId& id, HybridTime log_ht);
 
   const OpId& GetApplyOpId() const {
     return apply_record_op_id_;
   }
 
-  HybridTime GetCommitHybridTime() {
-    return apply_data_.commit_ht;
-  }
-
-  HybridTime GetApplyHybridTime() {
-    return apply_data_.log_ht;
+  HybridTime GetApplyHybridTime() const {
+    return apply_record_log_ht_;
   }
 
   // Whether this transactions is currently applying intents.
@@ -230,6 +227,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   TransactionApplyData apply_data_;
   OpId apply_record_op_id_;
+  HybridTime apply_record_log_ht_;
   docdb::ApplyTransactionState apply_state_;
   // Atomic that reflects active state, required to provide concurrent access to ProcessingApply.
   std::atomic<bool> processing_apply_{false};

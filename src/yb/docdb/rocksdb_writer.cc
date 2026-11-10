@@ -848,6 +848,9 @@ Result<bool> ApplyIntentsContext::StoreApplyState(
   ApplyTransactionStatePB pb;
   apply_state().ToPB(&pb);
   pb.set_commit_ht(commit_ht_.ToUint64());
+  if (log_ht_) {
+    pb.set_log_ht(log_ht_.ToUint64());
+  }
   if (!FLAGS_TEST_store_apply_state_without_apply_op_id) {
     apply_op_id_.ToPB(pb.mutable_apply_op_id());
   }

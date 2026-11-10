@@ -188,6 +188,9 @@ message ApplyTransactionStatePB {
 
   // Set of aborted subtransactions.
   optional SubtxnSetPB aborted = 4;
+
+  // Hybrid time of the APPLY raft operation.
+  optional fixed64 log_ht = 6;
 }
 
 // This message is currently only being used for table level locks, which is protected under a
