@@ -18,6 +18,8 @@ Before you can deploy universes to private clouds using YugabyteDB Anywhere, you
 
 With on-premises providers, VMs are _not_ auto-created by YugabyteDB Anywhere; you must create your VMs, install the Linux operating system and additional software, provision them with YugabyteDB software, and then add them to the provider's free pool of nodes.
 
+If those VMs run on AWS or GCP and back up to the other cloud, turn on **Cross Cloud Federated Access** on the provider. Refer to [Federated IAM backups](../../back-up-restore-universes/federated-iam-backups/).
+
 ## Automatic provisioning
 
 Using the YugabyteDB Anywhere node agent package, you can provision VMs, create an on-premises provider, and add the VMs to the provider.

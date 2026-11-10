@@ -58,6 +58,8 @@ Because you are creating the VMs manually (on a private cloud, bare metal, or cl
 
 If you will be deploying on-premises universes in AWS, you can attach a service account or IAM role to nodes to be used to access storage in S3. The service account or IAM role used should be sufficient to access S3. For more information, refer to [Permissions to back up and restore](../cloud-permissions-storage/).
 
+To back up from these AWS nodes to Google Cloud Storage, keep the role attached and grant the bucket to the role name through a workload identity binding. Refer to [Federated IAM backups](../../../back-up-restore-universes/federated-iam-backups/). The S3 permission list is only for an S3 bucket.
+
 With an on-premises provider, permissions against your infrastructure are generally not needed to deploy VMs, modify VMs, and so on.
 
 Provisioning VMs requires root access, but after VMs have been provisioned with the operating system, required software, and node agent, root and sudo access is no longer required.

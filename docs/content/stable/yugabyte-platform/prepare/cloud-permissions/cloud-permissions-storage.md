@@ -14,6 +14,8 @@ type: docs
 
 When backing up to and/or restoring from external cloud storage, generally speaking, both YugabyteDB Anywhere (YBA) and database nodes require permissions to write to and read from the external storage.
 
+When YugabyteDB Anywhere or a database node is running on the same cloud as the bucket, grant the permissions in the tabs below. You can use static credentials, or an IAM identity attached to YugabyteDB Anywhere and to each database node. When YugabyteDB Anywhere or a database node is running on the other cloud, grant these same permissions by following [Federated IAM backups](../../../back-up-restore-universes/federated-iam-backups/).
+
 When backing up to an NFS storage target, only database nodes need access to the NFS storage.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
@@ -64,6 +66,8 @@ When backing up to and/or restoring from NFS storage, the NFS storage system mus
 
 (This guidance is intentionally repeated in [Prepare Servers for On-Premises provider](../../server-nodes-software/software-on-prem-manual/), where it may be more suitable for some readers.)
 
+For on-premises nodes that are AWS or GCP VMs, follow the guidance for AWS and GCP. Use [federated IAM](../../../back-up-restore-universes/federated-iam-backups/) when a VM runs on a different cloud from the bucket.
+
   </div>
 
   <div id="aws" class="tab-pane fade" role="tabpanel" aria-labelledby="aws-tab">
@@ -92,6 +96,10 @@ The Access key ID and Secret Access Key for the service account are used when cr
 | :--- | :--- |
 | Service account Access key ID and Secret Access Key | [Storage configuration](../../../back-up-restore-universes/configure-backup-storage/#amazon-s3) for S3 |
 
+##### Nodes or YugabyteDB Anywhere are running on GCP
+
+If the database nodes are running on GCP, or YugabyteDB Anywhere is running on GCP, create an IAM role with these S3 permissions and a trust policy for each GCP service account. Refer to [Federated IAM backups](../../../back-up-restore-universes/federated-iam-backups/).
+
   </div>
 
   <div id="gcp" class="tab-pane fade" role="tabpanel" aria-labelledby="gcp-tab">
@@ -114,6 +122,10 @@ The credentials for this account (in JSON format) are used when creating a backu
 | Save for later | To configure |
 | :--- | :--- |
 | Service account JSON credentials | [Storage configuration](../../../back-up-restore-universes/configure-backup-storage/#google-cloud-storage) for GCS |
+
+##### Nodes or YugabyteDB Anywhere are running on AWS
+
+If the database nodes are running on AWS, or YugabyteDB Anywhere is running on AWS, grant `roles/storage.admin` on the bucket to each AWS role through a workload identity pool. Refer to [Federated IAM backups](../../../back-up-restore-universes/federated-iam-backups/).
 
   </div>
 
