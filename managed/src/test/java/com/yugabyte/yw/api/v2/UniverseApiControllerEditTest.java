@@ -890,16 +890,35 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     UUID rrClusterUuid = addReadReplicaInDB(region).uuid;
     Map<String, String> primaryTags = Map.of("env", "primary");
     Map<String, String> rrTags = Map.of("env", "replica");
+    String primaryArn = "arn:aws:iam::123456789012:instance-profile/primary";
+    String rrArn = "arn:aws:iam::123456789012:instance-profile/replica";
+    // Give the replica values that differ from the primary for every field that is shared by
+    // ClusterSpec and ClusterEditSpec and was previously inherited.
     Universe.saveDetails(
         universeUuid,
         universe -> {
           UniverseDefinitionTaskParams details = universe.getUniverseDetails();
-          details.getPrimaryCluster().userIntent.instanceTags = new HashMap<>(primaryTags);
-          details.getReadOnlyClusters().get(0).userIntent.instanceTags = new HashMap<>(rrTags);
+          UserIntent primaryIntent = details.getPrimaryCluster().userIntent;
+          UserIntent rrIntent = details.getReadOnlyClusters().get(0).userIntent;
+          primaryIntent.instanceTags = new HashMap<>(primaryTags);
+          rrIntent.instanceTags = new HashMap<>(rrTags);
+          primaryIntent.awsArnString = primaryArn;
+          rrIntent.awsArnString = rrArn;
+          primaryIntent.enableExposingService =
+              UniverseDefinitionTaskParams.ExposingServiceState.EXPOSED;
+          rrIntent.enableExposingService =
+              UniverseDefinitionTaskParams.ExposingServiceState.UNEXPOSED;
           universe.setUniverseDetails(details);
         });
+    UserIntent rrIntentBefore =
+        Universe.getOrBadRequest(universeUuid)
+            .getUniverseDetails()
+            .getReadOnlyClusters()
+            .get(0)
+            .userIntent
+            .clone();
 
-    // only numNodes is specified; instanceTags is omitted
+    // only numNodes is specified; every other field is omitted
     ClusterEditSpec rrClusterEditSpec = new ClusterEditSpec().uuid(rrClusterUuid).numNodes(4);
     UniverseEditSpec universeEditSpec =
         new UniverseEditSpec().expectedUniverseVersion(-1).addClustersItem(rrClusterEditSpec);
@@ -912,9 +931,25 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
             .filter(c -> c.uuid.equals(rrClusterUuid))
             .findAny()
             .orElseThrow();
-    assertThat(v1Rr.userIntent.numNodes, is(4));
-    assertThat(v1Rr.userIntent.instanceTags, is(rrTags));
-    assertThat(v1Primary.userIntent.instanceTags, is(primaryTags));
+    UserIntent rrIntent = v1Rr.userIntent;
+    assertThat(rrIntent.numNodes, is(4));
+    assertThat(rrIntent.instanceTags, is(rrTags));
+    assertThat(rrIntent.awsArnString, is(rrArn));
+    assertThat(
+        rrIntent.enableExposingService,
+        is(UniverseDefinitionTaskParams.ExposingServiceState.UNEXPOSED));
+    // Other replica fields stay as they were.
+    assertThat(rrIntent.dedicatedNodes, is(rrIntentBefore.dedicatedNodes));
+    assertThat(rrIntent.imageBundleUUID, is(rrIntentBefore.imageBundleUUID));
+    assertThat(rrIntent.regionList, is(rrIntentBefore.regionList));
+
+    // The primary is untouched.
+    UserIntent primaryIntent = v1Primary.userIntent;
+    assertThat(primaryIntent.instanceTags, is(primaryTags));
+    assertThat(primaryIntent.awsArnString, is(primaryArn));
+    assertThat(
+        primaryIntent.enableExposingService,
+        is(UniverseDefinitionTaskParams.ExposingServiceState.EXPOSED));
   }
 
   @Test
