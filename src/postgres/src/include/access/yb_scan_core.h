@@ -5,9 +5,10 @@
  *
  *	  YbOpaque and the low-level scan primitives that the YB access
  *	  methods share: the functions that build, bind, execute, and
- *	  fetch a scan.  Only those belong here.  The YB table scan
- *	  descriptor (YbTableScanDescData) and the ybc_heap_* functions,
- *	  which implement heap's scan functions for YB tables, are an
+ *	  fetch a scan, and the GUC variables that control binding.
+ *	  Only those belong here.  The YB table scan descriptor
+ *	  (YbTableScanDescData) and the ybc_heap_* functions, which
+ *	  implement heap's scan functions for YB tables, are an
  *	  exception, and #37429 tracks moving them out.  A function that
  *	  code other than scans also needs goes in a header outside this
  *	  one, so that its callers do not depend on these internals to
@@ -189,8 +190,8 @@ extern YbOpaque YbBeginScan(Relation table,
 extern bool YbNeedsPgRecheck(YbOpaque ybScan);
 
 /*
- * Used by lsm's yb_ammightrecheck callback, which scan nodes call at init so
- * that an Agg above them can decide on pushdown.
+ * Used by lsm's yb_ammightrecheck callback, which scan nodes call at init to
+ * learn whether YB recheck or PG recheck may be needed.
  */
 extern bool YbPredetermineNeedsRecheck(Scan *scan,
 									   Relation relation,

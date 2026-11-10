@@ -14,10 +14,10 @@
  *	  routing them through the access methods.
  *
  *	  Each section below is the API of one implementation file and
- *	  says why no AM interface replaces it yet.  A contract that
- *	  belongs to the callers' subsystem, such as the format of the
- *	  rows ANALYZE samples, goes in a header of that subsystem, not
- *	  here.
+ *	  says why no AM interface replaces it yet or cites the issue
+ *	  that lists why.  A contract that belongs to the callers'
+ *	  subsystem, such as the format of the rows ANALYZE samples,
+ *	  goes in a header of that subsystem, not here.
  *
  * Copyright (c) YugabyteDB, Inc.
  *

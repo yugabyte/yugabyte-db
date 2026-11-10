@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * yb_table_scan.h
- *	  Public YB table scan interface.
+ *	  Interim accessors for YB table scans.
  *
  *	  Opaque accessor functions that let executor nodes interact
  *	  with a YB-backed TableScanDesc without depending on the
