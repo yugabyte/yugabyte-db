@@ -132,6 +132,11 @@ DEFINE_RUNTIME_bool(use_create_table_leader_hint, true,
     "Whether the Master should hint which replica for each tablet should "
     "be leader initially on tablet creation.");
 
+DEFINE_RUNTIME_bool(send_blacklisted_tservers_on_heartbeat, false,
+    "When set, the master will send the list of blacklisted tservers that host no tablets "
+    "on the heartbeat response, so tservers can stop routing to their stale cached replicas.");
+TAG_FLAG(send_blacklisted_tservers_on_heartbeat, advanced);
+
 DEFINE_RUNTIME_bool(send_leader_blacklisted_tservers_on_heartbeat, true,
     "When set, the master will send the list of leader-blacklisted tservers with no leaders "
     "on the heartbeat response.");
@@ -601,6 +606,13 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
             }
           }
           ts_desc->exchg_pending_leader_drain_notification(leader_drain_version, 0);
+        }
+      }
+
+      // Repeat until removal so lost responses and temporarily unavailable recipients can catch up.
+      if (FLAGS_send_blacklisted_tservers_on_heartbeat) {
+        for (const auto& uuid : catalog_manager_->GetDrainedBlacklistedTServers()) {
+          resp->add_blacklisted_tservers_with_no_tablets(uuid);
         }
       }
     } else {

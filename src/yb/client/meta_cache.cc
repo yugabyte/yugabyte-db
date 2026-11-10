@@ -506,14 +506,16 @@ bool RemoteTablet::is_split() const {
   return is_split_;
 }
 
-bool RemoteTablet::MarkReplicaFailed(RemoteTabletServer *ts, const Status& status) {
+bool RemoteTablet::MarkReplicaFailed(
+    RemoteTabletServer *ts, const Status& status, PermanentFailure permanent) {
   std::lock_guard lock(mutex_);
   VLOG_WITH_PREFIX(2) << "Current remote replicas in meta cache: "
                       << ReplicasAsStringUnlocked() << ". Replica " << ts->ToString()
-                      << " has failed: " << status.ToString();
+                      << " has failed" << (permanent ? " permanently: " : ": ")
+                      << status.ToString();
   for (auto& rep : replicas_) {
     if (rep->ts == ts) {
-      rep->MarkFailed();
+      rep->MarkFailed(permanent);
       return true;
     }
   }
@@ -657,8 +659,9 @@ void RemoteTablet::GetRemoteTabletServers(
                 // Should continue here because otherwise failed state will be cleared.
                 continue;
               }
-            } else if ((MonoTime::Now() - replica->last_failed_time) <
-                       FLAGS_retry_failed_replica_ms * 1ms) {
+            } else if (replica->permanent_failure ||
+                       (MonoTime::Now() - replica->last_failed_time) <
+                           FLAGS_retry_failed_replica_ms * 1ms) {
               continue;
             }
             break;
@@ -791,6 +794,8 @@ void RemoteTablet::AddReplicasAsJson(JsonWriter* writer) const {
       writer->String(PeerRole_Name(replica->role));
       writer->String("failure_status");
       writer->String(replica->Failed() ? "FAILED" : "OK");
+      writer->String("permanent_failure");
+      writer->Bool(replica->permanent_failure);
       writer->String("last_failed_time");
       writer->String(replica->last_failed_time.ToFormattedString());
       writer->String("last_failed_time_in_ns");
@@ -851,7 +856,9 @@ void MetaCache::UpdateTabletServerUnlocked(const master::TSInfoPB& pb) {
   }
 
   VLOG_WITH_PREFIX(1) << "Client caching new TabletServer from Master TSInfo " << permanent_uuid;
-  CHECK(ts_cache_.emplace(permanent_uuid, std::make_unique<RemoteTabletServer>(pb)).second);
+  auto ts = std::make_unique<RemoteTabletServer>(pb);
+  ts->set_drained(drained_tserver_uuids_.contains(permanent_uuid));
+  CHECK(ts_cache_.emplace(permanent_uuid, std::move(ts)).second);
 }
 
 template <class RaftPB>
@@ -868,9 +875,13 @@ template <class RaftPB>
 Status MetaCache::InsertMissingTabletServersFromRaftPeersUnlocked(const RaftPB& raft_config) {
   for (const auto& peer : raft_config.peers()) {
     std::string_view permanent_uuid(peer.permanent_uuid());
-    if (ts_cache_.emplace(permanent_uuid, std::make_unique<RemoteTabletServer>(peer)).second) {
-      VLOG_WITH_PREFIX(1) << "Client caching new TabletServer from Raft Peer " << permanent_uuid;
+    if (ts_cache_.contains(permanent_uuid)) {
+      continue;
     }
+    auto ts = std::make_unique<RemoteTabletServer>(peer);
+    ts->set_drained(drained_tserver_uuids_.contains(std::string(permanent_uuid)));
+    CHECK(ts_cache_.emplace(permanent_uuid, std::move(ts)).second);
+    VLOG_WITH_PREFIX(1) << "Client caching new TabletServer from Raft Peer " << permanent_uuid;
   }
   return Status::OK();
 }
@@ -2538,10 +2549,15 @@ void MetaCache::RefreshTablePartitions(
   });
 }
 
-void MetaCache::MarkTSFailed(RemoteTabletServer* ts,
-                             const Status& status) {
-  LOG_WITH_PREFIX(INFO) << "Marking tablet server " << ts->ToString() << " as failed.";
+void MetaCache::MarkTSFailed(
+    RemoteTabletServer* ts, const Status& status, PermanentFailure permanent) {
   SharedLock<decltype(mutex_)> lock(mutex_);
+  // A newer heartbeat may have released this UUID after the drain sweep was scheduled.
+  if (permanent && !ts->drained()) {
+    return;
+  }
+  LOG_WITH_PREFIX(INFO) << "Marking tablet server " << ts->ToString() << " as "
+                        << (permanent ? "permanently " : "") << "failed.";
 
   Status ts_status = status.CloneAndPrepend("TS failed");
 
@@ -2549,7 +2565,63 @@ void MetaCache::MarkTSFailed(RemoteTabletServer* ts,
   for (const auto& tablet : tablets_by_id_) {
     // We just loop on all tablets; if a tablet does not have a replica on this
     // TS, MarkReplicaFailed() returns false and we ignore the return value.
-    tablet.second->MarkReplicaFailed(ts, ts_status);
+    tablet.second->MarkReplicaFailed(ts, ts_status, permanent);
+  }
+}
+
+void MetaCache::UpdateDrainedTServers(
+    const std::vector<std::string>& drained, const std::vector<std::string>& live) {
+  std::unordered_set<std::string_view> drained_set;
+  auto no_longer_drained = [&](const std::string& uuid) REQUIRES_SHARED(mutex_) {
+    return drained_tserver_uuids_.contains(uuid) && !drained_set.contains(uuid);
+  };
+  {
+    SharedLock lock(mutex_);
+    if (drained.empty() && drained_tserver_uuids_.empty()) {
+      return;
+    }
+    drained_set.insert(drained.begin(), drained.end());
+    const bool has_new = std::any_of(drained.begin(), drained.end(), [&](const auto& uuid)
+        REQUIRES_SHARED(mutex_) {
+      return (!local_tserver_ || uuid != local_tserver_->permanent_uuid()) &&
+          !drained_tserver_uuids_.contains(uuid);
+    });
+    if (!has_new && (drained_tserver_uuids_.empty() ||
+                    std::none_of(live.begin(), live.end(), no_longer_drained))) {
+      return;
+    }
+  }
+  // Entries are never removed from ts_cache_, so these pointers stay valid after unlocking.
+  std::vector<RemoteTabletServer*> newly_drained;
+  {
+    std::lock_guard lock(mutex_);
+    for (const auto& uuid : drained) {
+      auto it = ts_cache_.find(uuid);
+      if (it != ts_cache_.end() && it->second.get() == local_tserver_) {
+        continue;
+      }
+      if (!drained_tserver_uuids_.insert(uuid).second) {
+        continue;
+      }
+      if (it != ts_cache_.end()) {
+        it->second->set_drained(true);
+        newly_drained.push_back(it->second.get());
+      }
+    }
+    for (const auto& uuid : live) {
+      if (!no_longer_drained(uuid)) {
+        continue;
+      }
+      drained_tserver_uuids_.erase(uuid);
+      if (auto it = ts_cache_.find(uuid); it != ts_cache_.end()) {
+        it->second->set_drained(false);
+      }
+    }
+  }
+  const auto status =
+      STATUS(ServiceUnavailable, "Tablet server is blacklisted and hosts no tablets");
+  for (auto* ts : newly_drained) {
+    MarkTSFailed(ts, status, PermanentFailure::kTrue);
   }
 }
 
@@ -2678,7 +2750,7 @@ std::string RemoteReplica::ToString() const {
   return Format("$0 ($1, $2)",
                 ts->permanent_uuid(),
                 PeerRole_Name(role),
-                Failed() ? "FAILED" : "OK");
+                Failed() ? (permanent_failure ? "PERMANENTLY_FAILED" : "FAILED") : "OK");
 }
 
 std::string LookupContext::ToString() const {

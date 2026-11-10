@@ -32,6 +32,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <future>
 #include <regex>
 #include <set>
 #include <thread>
@@ -131,6 +132,7 @@ DECLARE_int32(log_inject_latency_ms_mean);
 DECLARE_int32(log_inject_latency_ms_stddev);
 DECLARE_int32(master_inject_latency_on_tablet_lookups_ms);
 DECLARE_int32(max_create_tablets_per_ts);
+DECLARE_int32(retry_failed_replica_ms);
 DECLARE_int32(tablet_server_svc_queue_length);
 DECLARE_int32(replication_factor);
 
@@ -3025,6 +3027,125 @@ RefreshBurstResult ApplyConsensusInfoConcurrently(
 }
 
 }  // namespace
+
+// Late metadata must preserve drain marks; a live, unblacklisted server must be usable again.
+TEST_F(ClientTest, TestDrainedTServerReplicasStayFailedAcrossRefresh) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retry_failed_replica_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_metacache_partial_refresh) = true;
+  TableHandle table;
+  ASSERT_NO_FATALS(CreateTable(YBTableName(YQL_DATABASE_CQL, "drained"), kNumTablets, &table));
+  InsertTestRows(table, 1, 0);
+
+  scoped_refptr<internal::RemoteTablet> rt;
+  std::vector<internal::RemoteTabletServer*> tservers;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    rt = VERIFY_RESULT(LookupFirstTabletFuture(client_.get(), table.table()).get());
+    tservers.clear();
+    rt->GetRemoteTabletServers(&tservers);
+    if (tservers.size() == 3) {
+      return true;
+    }
+    rt->MarkStale();
+    return false;
+  }, 30s, "Wait for all replicas to be cached"));
+  const auto tablet_id = rt->tablet_id();
+
+  auto& meta_cache = *client_->data_->meta_cache_;
+  internal::RemoteTabletServer* transient = tservers[0];
+  internal::RemoteTabletServer* drained = tservers[1];
+  std::vector<std::string> all_uuids;
+  std::vector<std::string> live_without_drained;
+  for (const auto* ts : tservers) {
+    all_uuids.push_back(ts->permanent_uuid());
+    if (ts != drained) {
+      live_without_drained.push_back(ts->permanent_uuid());
+    }
+  }
+
+  // With retry_failed_replica_ms = 0 an ordinary failed mark is retried on the next selection.
+  meta_cache.MarkTSFailed(transient, STATUS(NetworkError, "test"));
+  tservers.clear();
+  rt->GetRemoteTabletServers(&tservers);
+  ASSERT_EQ(tservers.size(), 3);
+
+  // A drained mark is not.
+  meta_cache.UpdateDrainedTServers({drained->permanent_uuid()}, all_uuids);
+  ASSERT_TRUE(drained->drained());
+  auto assert_drained_excluded = [&]() {
+    for (int i = 0; i != 3; ++i) {
+      tservers.clear();
+      rt->GetRemoteTabletServers(&tservers);
+      ASSERT_EQ(tservers.size(), 2);
+      ASSERT_EQ(std::find(tservers.begin(), tservers.end(), drained), tservers.end());
+    }
+    ASSERT_EQ(rt->GetNumFailedReplicas(), 1);
+  };
+  ASSERT_NO_FATALS(assert_drained_excluded());
+
+  // Repeated heartbeats need no second sweep, and a cold cache must remember unseen UUIDs.
+  meta_cache.UpdateDrainedTServers(
+      {drained->permanent_uuid(), drained->permanent_uuid()}, all_uuids);
+  ASSERT_NO_FATALS(assert_drained_excluded());
+  auto cold_client = ASSERT_RESULT(cluster_->CreateClient());
+  cold_client->UpdateDrainedTServers({drained->permanent_uuid()}, all_uuids);
+  auto cold_tablet = ASSERT_RESULT(GetRemoteTablet(tablet_id, false, cold_client.get()));
+  ASSERT_EQ(cold_tablet->GetNumFailedReplicas(), 1);
+  ASSERT_EQ(cold_tablet->GetRemoteTabletServers().size(), 2);
+
+  // The deferred clear that an expired ordinary mark gets must not undo a permanent one that
+  // was applied in between.
+  {
+    internal::RemoteReplica replica(transient, PeerRole::FOLLOWER);
+    replica.MarkFailed();
+    replica.MarkFailed(internal::PermanentFailure::kTrue);
+    replica.ClearFailed();
+    ASSERT_TRUE(replica.Failed());
+    ASSERT_TRUE(replica.permanent_failure);
+    internal::RemoteReplica transient_replica(transient, PeerRole::FOLLOWER);
+    transient_replica.MarkFailed();
+    transient_replica.ClearFailed();
+    ASSERT_FALSE(transient_replica.Failed());
+  }
+
+  // The master still lists the drained tserver, as a response built before the drain finished
+  // would: the replica a full refresh rebuilds for it is born failed.
+  rt = ASSERT_RESULT(GetRemoteTablet(tablet_id, false, client_.get()));
+  ASSERT_NO_FATALS(assert_drained_excluded());
+
+  // Same for a replica rebuilt from a newer Raft config that still has the drained tserver, as a
+  // lagging peer's intermediate config would.
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(client_->GetTabletsFromTableId(table.table()->id(), 0, &tablets));
+  const auto locations = std::find_if(
+      tablets.begin(), tablets.end(),
+      [&tablet_id](const auto& location) { return location.tablet_id() == tablet_id; });
+  ASSERT_TRUE(locations != tablets.end());
+  ASSERT_TRUE(client_->RefreshTabletInfoWithConsensusInfo(MakeTabletConsensusInfo(
+      *locations, transient->permanent_uuid(), rt->raft_config_opid_index() + 1)));
+  ASSERT_NO_FATALS(assert_drained_excluded());
+
+  // Removal or an empty post-failover hint must not resurrect a dead server.
+  meta_cache.UpdateDrainedTServers({}, live_without_drained);
+  ASSERT_TRUE(drained->drained());
+  rt = ASSERT_RESULT(GetRemoteTablet(tablet_id, false, client_.get()));
+  ASSERT_NO_FATALS(assert_drained_excluded());
+
+  // Dropped from the hint and live again: the mark on the existing replica stays until the next
+  // refresh rebuilds it.
+  meta_cache.UpdateDrainedTServers({}, all_uuids);
+  ASSERT_FALSE(drained->drained());
+  ASSERT_EQ(rt->GetNumFailedReplicas(), 1);
+  rt = ASSERT_RESULT(GetRemoteTablet(tablet_id, false, client_.get()));
+  tservers.clear();
+  rt->GetRemoteTabletServers(&tservers);
+  ASSERT_EQ(tservers.size(), 3);
+  ASSERT_EQ(rt->GetNumFailedReplicas(), 0);
+
+  // An older heartbeat's deferred sweep must not undo the release and refresh above.
+  meta_cache.MarkTSFailed(
+      drained, STATUS(ServiceUnavailable, "drained"), internal::PermanentFailure::kTrue);
+  ASSERT_EQ(rt->GetNumFailedReplicas(), 0);
+}
 
 // A burst of identical consensus info refreshes should apply exactly once, with the rest
 // discarded without taking the exclusive lock.
