@@ -1189,7 +1189,11 @@ TEST_F(SnapshotTest, UnflushedDeleteReplayedOnRestart) {
 
   // Lose the memtables with the restart, so bootstrap has to replay the writes and the delete.
   // Nothing flushes during the first restart either, so the second one replays them again.
+  const auto flush_rocksdb_on_shutdown = FLAGS_flush_rocksdb_on_shutdown;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;
+  auto restore_flush_on_shutdown = ScopeExit([flush_rocksdb_on_shutdown] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = flush_rocksdb_on_shutdown;
+  });
   for (int restart = 0; restart < 2; ++restart) {
     ASSERT_OK(cluster_->RestartSync());
     ASSERT_OK(WaitAllReplicasReady(cluster_.get(), kTimeout));
@@ -1800,9 +1804,12 @@ TEST_F_EX(SnapshotTest, CrashAfterFlushedFrontierSaved, SnapshotExternalMiniClus
     workload.WaitInserted(rows_inserted + 100);
     workload.Stop();
 
-    // CREATE_ON_TABLET is the snapshot operation that records itself in the flushed frontier
-    // (DELETE_ON_TABLET no longer does), so it is where a crash right after the frontier is saved
-    // can hit.
+    // CREATE_ON_TABLET is the snapshot operation that still records itself in the flushed frontier
+    // (DELETE_ON_TABLET no longer does), so the crash is injected right after the create saves it.
+    // Create flushes before that update, so this no longer checks that ModifyFlushedFrontier
+    // flushes before stamping (#26910); TabletSnapshotsTest covers that directly. It still checks
+    // recovery from a crash between the frontier save and the reply to the master: bootstrap skips
+    // the create, the master retries it, and the rows written before it survive.
     LOG(INFO) << log_prefix << "paused workload, starting snapshot creation";
     constexpr auto kCrashProbabilityFlagName =
         "TEST_simulated_crash_after_modify_flushed_frontier_probability";

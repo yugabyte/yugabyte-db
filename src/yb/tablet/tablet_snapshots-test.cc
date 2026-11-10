@@ -661,5 +661,27 @@ TEST_F(TabletSnapshotsTest, DeleteDoesNotFlushOrUpdateFlushedFrontier) {
   ASSERT_EQ(RegularDbFlushedOpId(), OpId(1, kCreateOpIndex));
 }
 
+// The flushed frontier must never advance past data that is still in the memtables: bootstrap
+// skips every op at or below it, so a crash right after the frontier is saved would lose that data
+// (#26910). Tablet::ModifyFlushedFrontier therefore flushes before it stamps the frontier.
+// SnapshotTest.CrashAfterFlushedFrontierSaved covered this through the delete's frontier update,
+// which no longer exists; the create's update is always preceded by Create's own flush.
+TEST_F(TabletSnapshotsTest, ModifyFlushedFrontierFlushesBeforeStampingFrontier) {
+  constexpr int64_t kFrontierOpIndex = kSnapshotOpIndexBase + 1;
+
+  ASSERT_OK(WriteRow(1));
+  ASSERT_EQ(NumRegularDbSSTFiles(), 0);
+
+  docdb::ConsensusFrontier frontier;
+  frontier.set_op_id(OpId(1, kFrontierOpIndex));
+  frontier.set_hybrid_time(harness_->clock()->Now());
+  ASSERT_OK(harness_->tablet()->ModifyFlushedFrontier(
+      frontier, rocksdb::FrontierModificationMode::kUpdate));
+
+  // The row reached an SST file before the frontier was stamped, so not replaying it is safe.
+  ASSERT_EQ(NumRegularDbSSTFiles(), 1);
+  ASSERT_EQ(RegularDbFlushedOpId(), OpId(1, kFrontierOpIndex));
+}
+
 }  // namespace
 }  // namespace yb::tablet
