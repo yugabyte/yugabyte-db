@@ -17,9 +17,15 @@
 
 #include "yb/rocksdb/cache.h"
 
+#include "yb/util/countdown_latch.h"
+#include "yb/util/env.h"
+#include "yb/util/faststring.h"
 #include "yb/util/metrics.h"
 #include "yb/util/random_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/sync_point.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread_holder.h"
 #include "yb/util/tsan_util.h"
@@ -32,6 +38,10 @@
 
 using namespace std::chrono_literals;
 using namespace yb::size_literals;
+
+DECLARE_bool(TEST_enable_sync_points);
+DECLARE_bool(TEST_yb_hnsw_ignore_block_trailers);
+DECLARE_bool(yb_hnsw_write_block_checksums);
 
 METRIC_DEFINE_entity(table);
 
@@ -125,7 +135,7 @@ class YbHnswTest : public VectorIndexTestBase {
     HnswlibFilter hnswlib_filter(options.filter);
     auto hnswlib_results = index_->searchKnnCloserFirst(
         query_vector.data(), max_results, &hnswlib_filter, options.ef);
-    auto yb_hnsw_results = yb_hnsw_->Search(query_vector.data(), options, *context);
+    auto yb_hnsw_results = ASSERT_RESULT(yb_hnsw_->Search(query_vector.data(), options, *context));
     ASSERT_EQ(hnswlib_results.size(), yb_hnsw_results.size());
     for (size_t j = 0; j != hnswlib_results.size(); ++j) {
       const auto& [distance, vector_id] = hnswlib_results[j];
@@ -145,6 +155,14 @@ class YbHnswTest : public VectorIndexTestBase {
   std::vector<Vector> PrepareRandom(bool load, size_t num_vectors, size_t num_searches);
   Status InitYbHnsw(bool load);
 
+  // Saves num_vectors random vectors to a YbHnsw file, damages every block of it and opens it.
+  // Returns the file's original contents.
+  Result<std::string> InitDamagedYbHnsw(size_t num_vectors);
+
+  std::string YbHnswPath() {
+    return GetTestPath("0.yb_hnsw");
+  }
+
   void TestSimple(bool load);
   void TestRandom(bool load, size_t background_threads);
 
@@ -156,7 +174,7 @@ class YbHnswTest : public VectorIndexTestBase {
 };
 
 Status YbHnswTest::InitYbHnsw(bool load) {
-  auto path = GetTestPath("0.yb_hnsw");
+  auto path = YbHnswPath();
   if (load) {
     {
       YbHnsw temp(metric_, block_cache_);
@@ -190,6 +208,146 @@ TEST_F(YbHnswTest, Simple) {
 
 TEST_F(YbHnswTest, Persistence) {
   TestSimple(/* load= */ true);
+}
+
+// Files written by older releases, or while yb_hnsw_write_block_checksums is off.
+TEST_F(YbHnswTest, WithoutBlockTrailers) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_hnsw_write_block_checksums) = false;
+  TestSimple(/* load= */ true);
+  ASSERT_EQ(ASSERT_RESULT(YbHnswFooterFlags(YbHnswPath())), 0x01);
+}
+
+// Searches a file without trailers through the cache that Import returns, which does not read the
+// footer.
+TEST_F(YbHnswTest, WithoutBlockTrailersImported) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_hnsw_write_block_checksums) = false;
+  TestSimple(/* load= */ false);
+  ASSERT_EQ(ASSERT_RESULT(YbHnswFooterFlags(YbHnswPath())), 0x01);
+}
+
+// An older release, i.e. after a rollback, ignores block trailers.
+TEST_F(YbHnswTest, IgnoreBlockTrailers) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_yb_hnsw_ignore_block_trailers) = true;
+  TestSimple(/* load= */ true);
+  ASSERT_EQ(ASSERT_RESULT(YbHnswFooterFlags(YbHnswPath())), 0x03);
+}
+
+// A file with flags this build does not know, or without the base flag, fails to load instead of
+// being misread.
+TEST_F(YbHnswTest, UnknownFooterFlags) {
+  TestSimple(/* load= */ true);
+  const auto path = YbHnswPath();
+  for (uint8_t flags : {0x07, 0x02}) {
+    ASSERT_OK(SetYbHnswFooterFlags(path, flags));
+    YbHnsw yb_hnsw(metric_, block_cache_);
+    auto status = yb_hnsw.Init(path);
+    ASSERT_TRUE(status.IsCorruption()) << status;
+    ASSERT_STR_CONTAINS(status.ToString(), "Unsupported vector index file flags");
+  }
+}
+
+Result<std::string> YbHnswTest::InitDamagedYbHnsw(size_t num_vectors) {
+  // Smaller than the vector data block of the entry vector, which every search reads.
+  constexpr size_t kDamageStride = 512;
+
+  InsertRandomVectors(num_vectors);
+  const auto path = YbHnswPath();
+  {
+    YbHnsw temp(metric_, block_cache_);
+    RETURN_NOT_OK(temp.Import(*index_, path));
+  }
+  faststring original;
+  RETURN_NOT_OK(ReadFileToString(env_.get(), path, &original));
+  RETURN_NOT_OK(DamageYbHnswBlocks(path, kDamageStride));
+  RETURN_NOT_OK(yb_hnsw_->Init(path));
+  return original.ToString();
+}
+
+TEST_F(YbHnswTest, DamagedBlock) {
+  constexpr size_t kNumVectors = 1000;
+  constexpr size_t kNumSearches = 10;
+  constexpr size_t kMaxResults = 10;
+
+  ASSERT_RESULT(InitDamagedYbHnsw(kNumVectors));
+
+  Vector query_vector;
+  for (size_t i = 0; i != kNumSearches; ++i) {
+    RandomVector(query_vector);
+    auto result = yb_hnsw_->Search(query_vector.data(), MakeSearchOptions(kMaxResults), context_);
+    ASSERT_NOK(result);
+    ASSERT_TRUE(result.status().IsCorruption()) << result.status();
+    ASSERT_STR_CONTAINS(result.status().message().ToBuffer(), "Block checksum mismatch");
+  }
+}
+
+// A failed load is not kept: once the file is repaired, the next search reads the block again.
+TEST_F(YbHnswTest, DamagedBlockRepaired) {
+  constexpr size_t kNumVectors = 1000;
+  constexpr size_t kMaxResults = 10;
+
+  auto original = ASSERT_RESULT(InitDamagedYbHnsw(kNumVectors));
+  auto query_vector = RandomVector();
+  auto result = yb_hnsw_->Search(query_vector.data(), MakeSearchOptions(kMaxResults), context_);
+  ASSERT_NOK(result);
+  ASSERT_TRUE(result.status().IsCorruption()) << result.status();
+
+  // Rewrites the file in place, so the open file reads the repaired blocks.
+  ASSERT_OK(WriteStringToFile(env_.get(), original, YbHnswPath()));
+  ASSERT_NO_FATALS(VerifySearch(query_vector, kMaxResults));
+}
+
+// A search that waits for another search to load a block gets the error of that load and releases
+// the block, so the block is read again later and nothing stays pinned in the block cache.
+TEST_F(YbHnswTest, DamagedBlockConcurrentLoad) {
+  constexpr size_t kNumVectors = 1000;
+  constexpr size_t kMaxResults = 10;
+
+  auto original = ASSERT_RESULT(InitDamagedYbHnsw(kNumVectors));
+
+  // Holds the first load until the other search waits for it. Both searches start with the same
+  // block.
+  CountDownLatch loading(1);
+  CountDownLatch waiting(1);
+  std::atomic<bool> first_load{true};
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack("CachedBlock::Load", [&loading, &waiting, &first_load](void*) {
+    if (first_load.exchange(false)) {
+      loading.CountDown();
+      waiting.WaitFor(10s * kTimeMultiplier);
+    }
+  });
+  sync_point->SetCallBack("CachedBlock::Take:WaitForLoad", [&waiting](void*) {
+    waiting.CountDown();
+  });
+  sync_point->EnableProcessing();
+  auto cleanup = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  auto query_vector = RandomVector();
+  std::array<Status, 2> statuses;
+  TestThreadHolder threads;
+  for (auto& status : statuses) {
+    if (&status != &statuses.front()) {
+      ASSERT_TRUE(loading.WaitFor(10s * kTimeMultiplier));
+    }
+    threads.AddThreadFunctor([this, &query_vector, &status] {
+      YbHnswSearchContext context;
+      status = ResultToStatus(
+          yb_hnsw_->Search(query_vector.data(), MakeSearchOptions(kMaxResults), context));
+    });
+  }
+  threads.JoinAll();
+  ASSERT_EQ(waiting.count(), 0);
+  for (const auto& status : statuses) {
+    ASSERT_TRUE(status.IsCorruption()) << status;
+  }
+
+  ASSERT_OK(WriteStringToFile(env_.get(), original, YbHnswPath()));
+  ASSERT_NO_FATALS(VerifySearch(query_vector, kMaxResults));
+  ASSERT_EQ(rocksdb_cache_->GetPinnedUsage(), 0);
 }
 
 std::vector<Vector> YbHnswTest::PrepareRandom(

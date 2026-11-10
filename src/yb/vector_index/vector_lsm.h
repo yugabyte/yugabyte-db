@@ -325,10 +325,11 @@ class VectorLSM {
   // The suspender (may be null) lets the long-running merge yield its priority thread pool worker
   // to higher priority tasks (e.g. flushes) instead of holding it for the whole compaction.
   Result<ImmutableChunkPtrs> DoCompactChunks(
-      const ImmutableChunkPtrs& input_chunks, PriorityThreadPoolSuspender* suspender);
+      CompactionContext& context, const ImmutableChunkPtrs& input_chunks,
+      PriorityThreadPoolSuspender* suspender);
 
   Status DoCompact(
-      const CompactionContext& context, CompactionScope&& scope,
+      CompactionContext& context, CompactionScope&& scope,
       PriorityThreadPoolSuspender* suspender) EXCLUDES(mutex_);
 
   void ScheduleBackgroundCompaction(CompactionTask* task) EXCLUDES(mutex_);
