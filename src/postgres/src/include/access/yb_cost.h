@@ -3,8 +3,7 @@
  * yb_cost.h
  *	  YB cost estimation.
  *
- *	  Selectivity constants and cost functions used by the optimizer
- *	  to estimate costs.
+ *	  Selectivity constants and cost functions.
  *
  *	  Mostly planner code: used by the planner, access-method cost
  *	  estimators, and ANALYZE.  It sits under access/ for historical
