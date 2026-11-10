@@ -1996,6 +1996,11 @@ Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& c
     }
   }
 
+  // Before the chunk is on disk, so the wait does not hold the manifest.
+  if (options_.wait_frontier_durable && chunk->applied_frontiers) {
+    options_.wait_frontier_durable(chunk->applied_frontiers->Largest());
+  }
+
   TEST_SYNC_POINT("VectorLSM::DoSaveChunk:BeforeManifestCheck");
 
   WritableFile* manifest_file = nullptr;
@@ -2055,10 +2060,6 @@ Status VectorLSM<Vector, DistanceResult>::AddChunkToManifest(
     WritableFile& manifest_file, ImmutableChunk& chunk) {
   DCHECK_EQ(chunk.state, ImmutableChunkState::kOnDisk);
   DCHECK(ManifestAcquired());
-
-  if (options_.wait_frontier_durable && chunk.applied_frontiers) {
-    options_.wait_frontier_durable(chunk.applied_frontiers->Largest());
-  }
 
   VectorLSMUpdatePB update;
   chunk.AddToUpdate(update);

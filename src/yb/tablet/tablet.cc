@@ -1134,20 +1134,10 @@ Result<bool> Tablet::RegularDbFlushFilter(const rocksdb::MemTable& memtable) {
 }
 
 void Tablet::WaitWalDurable(const OpId& op_id) {
-  const auto start = CoarseMonoClock::now();
-  CoarseBackoffWaiter waiter(
-      CoarseTimePoint::max(), /* max_wait= */ 100ms, /* base_delay= */ 1ms,
-      /* max_jitter_ms= */ 0, /* init_exponent= */ 1);
-  for (;;) {
-    if (WalAllowsPersist(op_id, "vector index")) {
-      return;
-    }
-    if (CoarseMonoClock::now() - start > 10s) {
-      YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 10)
-          << "Vector index flush waits for op " << op_id << " to become durable in log";
-    }
-    waiter.Wait();
-  }
+  BusyWait(
+      make_lw_function([this, &op_id] { return WalAllowsPersist(op_id, "vector index"); }),
+      Format("$0op $1 to become durable in log", LogPrefix(), op_id),
+      /* poll_interval= */ 1ms, /* warn_after= */ 10s, /* max_poll_interval= */ 100ms);
 }
 
 Result<bool> Tablet::IntentsDbFlushFilter(
