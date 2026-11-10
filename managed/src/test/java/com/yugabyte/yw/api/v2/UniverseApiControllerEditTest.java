@@ -57,7 +57,6 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.ProviderInitializer;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
@@ -904,7 +903,7 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
             .getUniverseDetails()
             .getPrimaryCluster()
             .userIntent
-            .imageBundleUUID;
+            .getImageBundleUUIDForProvider(providerUuid);
     // Give the replica a value different from the primary's for each field that ClusterEditSpec
     // shares with ClusterSpec and that edit used to inherit from the primary: instance tags,
     // networking_spec exposing service, and provider_spec image bundle and AWS instance profile.
@@ -914,14 +913,14 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
           UniverseDefinitionTaskParams details = universe.getUniverseDetails();
           UserIntent primaryIntent = details.getPrimaryCluster().userIntent;
           UserIntent rrIntent = details.getReadOnlyClusters().get(0).userIntent;
-          TestUtils.existingProviderInitializer(
-                  rrIntent
-              ).setImageBundleUUID(rrImageBundle.getUuid())
+          TestUtils.existingProviderInitializer(rrIntent)
+              .setImageBundleUUID(rrImageBundle.getUuid())
               .setInstanceTags(rrTags)
               .setAwsProfile(rrArn);
           TestUtils.existingProviderInitializer(primaryIntent)
-              .setInstanceTags(new HashMap<>(primaryTags));
-          //TODO: will be migrated in PLAT-19849.
+              .setInstanceTags(primaryTags)
+              .setAwsProfile(primaryArn);
+          // TODO: will be migrated in PLAT-19849.
           primaryIntent.enableExposingService =
               UniverseDefinitionTaskParams.ExposingServiceState.EXPOSED;
           rrIntent.enableExposingService =
@@ -946,7 +945,7 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     assertThat(rrIntent.numNodes, is(4));
     assertThat(rrIntent.getInstanceTagsForProvider(providerUuid), is(rrTags));
     assertThat(rrIntent.getImageBundleUUIDForProvider(providerUuid), is(rrImageBundle.getUuid()));
-    assertThat(rrIntent.getAwsProfile(providerUuid), is(rrArn));
+    assertThat(rrIntent.getAwsProfileForProvider(providerUuid), is(rrArn));
     assertThat(
         rrIntent.enableExposingService,
         is(UniverseDefinitionTaskParams.ExposingServiceState.UNEXPOSED));
@@ -954,8 +953,9 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     // The primary is untouched.
     UserIntent primaryIntent = v1Primary.userIntent;
     assertThat(primaryIntent.getInstanceTagsForProvider(providerUuid), is(primaryTags));
-    assertThat(primaryIntent.getImageBundleUUIDForProvider(providerUuid), is(primaryImageBundleUuid));
-    assertThat(primaryIntent.getAwsProfile(providerUuid), is(primaryArn));
+    assertThat(
+        primaryIntent.getImageBundleUUIDForProvider(providerUuid), is(primaryImageBundleUuid));
+    assertThat(primaryIntent.getAwsProfileForProvider(providerUuid), is(primaryArn));
     assertThat(
         primaryIntent.enableExposingService,
         is(UniverseDefinitionTaskParams.ExposingServiceState.EXPOSED));

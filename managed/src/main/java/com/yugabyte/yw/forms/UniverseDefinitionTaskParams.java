@@ -1870,8 +1870,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           u -> u.tserverK8SNodeResourceSpec);
     }
 
-    public String getAwsProfile(UUID providerUUID) {
-      return getProviderSpecProperty(providerUUID, spec -> spec.awsInstanceProfile, u -> u.awsArnString);
+    public String getAwsProfileForProvider(UUID providerUUID) {
+      return getProviderSpecProperty(
+          providerUUID, spec -> spec.awsInstanceProfile, u -> u.awsArnString);
     }
 
     public void setProviderInstanceTags(UUID providerUUID, Map<String, String> instanceTags) {

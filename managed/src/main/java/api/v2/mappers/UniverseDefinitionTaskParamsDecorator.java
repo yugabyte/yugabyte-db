@@ -1,6 +1,8 @@
 // Copyright (c) YugabyteDB, Inc.
 package api.v2.mappers;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import api.v2.models.CloudSpecificInfo;
 import api.v2.models.ClusterInfo;
 import api.v2.models.ClusterSpec;
@@ -14,6 +16,7 @@ import api.v2.models.UniverseEditSpec;
 import api.v2.models.UniverseInfo;
 import api.v2.models.UniverseNetworkingSpec;
 import api.v2.models.UniverseSpec;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -156,7 +159,7 @@ public abstract class UniverseDefinitionTaskParamsDecorator
 
   private UniverseSpec inheritFromPrimaryBeforeMapping(UniverseCreateSpec universeCreateSpec) {
     if (universeCreateSpec == null) {
-      throw new IllegalArgumentException("Cannot inherit for null spec");
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot inherit for null spec");
     }
     UniverseSpec universeSpec = universeCreateSpec.getSpec();
     if (universeSpec == null || universeSpec.getClusters() == null) {
@@ -164,9 +167,12 @@ public abstract class UniverseDefinitionTaskParamsDecorator
     }
     ClusterSpec primaryClusterSpec =
         universeSpec.getClusters().stream()
-            .filter(c -> c.getClusterType().equals(ClusterTypeEnum.PRIMARY))
+            .filter(c -> ClusterTypeEnum.PRIMARY.equals(c.getClusterType()))
             .findAny()
-            .orElseThrow(() -> new IllegalArgumentException("Primary cluster should be provided"));
+            .orElseThrow(
+                () ->
+                    new PlatformServiceException(
+                        BAD_REQUEST, "Primary cluster should be provided"));
     List<ClusterSpec> clusters = new ArrayList<>();
     clusters.add(primaryClusterSpec);
     for (ClusterSpec otherCluster : universeSpec.getClusters()) {

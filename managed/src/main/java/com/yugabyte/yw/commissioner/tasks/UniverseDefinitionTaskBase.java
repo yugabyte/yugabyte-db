@@ -1472,7 +1472,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   protected void fillCreateParamsForNode(
-      AnsibleCreateServer.Params params, UserIntent userIntent, NodeDetails node) {
+      UUID providerUUID,
+      AnsibleCreateServer.Params params,
+      UserIntent userIntent,
+      NodeDetails node) {
     CloudSpecificInfo cloudInfo = node.cloudInfo;
     params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
     // Set the region code.
@@ -1493,13 +1496,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.assignPublicIP = cloudInfo.assignPublicIP;
     params.assignStaticPublicIP = userIntent.assignStaticPublicIP;
     params.setMachineImage(node.machineImage);
-    UUID providerUUID = Util.getProviderByAz(node.azUuid).getUuid();
-    params.imageBundleUUID =
-        userIntent.getImageBundleUUIDForProvider(providerUUID);
+    params.imageBundleUUID = userIntent.getImageBundleUUIDForProvider(providerUUID);
     params.sshUserOverride = node.sshUserOverride;
     params.sshPortOverride = node.sshPortOverride;
     params.setCmkArn(taskParams().getCmkArn());
-    params.ipArnString = userIntent.getAwsProfile(providerUUID);
+    params.ipArnString = userIntent.getAwsProfileForProvider(providerUUID);
     params.useSpotInstance = userIntent.useSpotInstance;
     params.spotPrice = userIntent.spotPrice;
   }
@@ -1549,7 +1550,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       UserIntent userIntent = cluster.userIntent;
       UUID providerUUID = cluster.getProviderUUIDForNode(node);
       AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();
-      fillCreateParamsForNode(params, userIntent, node);
+      fillCreateParamsForNode(providerUUID, params, userIntent, node);
       params.creatingUser = taskParams().creatingUser;
       params.platformUrl = taskParams().platformUrl;
       params.tags = userIntent.getInstanceTagsForProvider(providerUUID);

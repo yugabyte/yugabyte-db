@@ -321,9 +321,12 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     }
     ClusterSpec primaryV2Cluster =
         v2Universe.getClusters().stream()
-            .filter(c -> c.getClusterType().equals(ClusterTypeEnum.PRIMARY))
+            .filter(c -> ClusterTypeEnum.PRIMARY.equals(c.getClusterType()))
             .findAny()
-            .orElse(null);
+            .orElseThrow(
+                () ->
+                    new PlatformServiceException(
+                        INTERNAL_SERVER_ERROR, "Cannot find primary cluster in db"));
     boolean isRREdited =
         universeEditSpec.getClusters().stream()
             .filter(c -> !c.getUuid().equals(primaryV2Cluster.getUuid()))
