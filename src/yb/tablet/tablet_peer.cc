@@ -133,13 +133,7 @@ DEFINE_RUNTIME_int32(quiescent_tablet_idle_sec, 0,
     "A tablet enters the quiescent mode after nothing was appended to its log for this many "
     "seconds. 0 disables entering the mode.");
 
-// A postponing follower relies on its leader not resending to it immediately, see
-// PeerMessageQueue::ResponseFromPeer, which older leaders do.
-DEFINE_RUNTIME_AUTO_bool(postpone_snapshot_apply_on_followers, kLocalVolatile, false, true,
-    "Followers postpone applying an operation that creates a snapshot checkpoint until "
-    "transactions committed before it are written to regular DB, instead of waiting for them "
-    "while applying it.");
-
+DECLARE_bool(snapshot_wait_for_pending_applies);
 DECLARE_int32(ysql_transaction_abort_timeout_ms);
 
 DECLARE_bool(cdc_immediate_transaction_cleanup);
@@ -1855,7 +1849,7 @@ bool TabletPeer::ShouldApplyWrite() {
 
 consensus::PostponedApplyPtr TabletPeer::PostponeApply(
     const consensus::LWReplicateMsg& replicate_msg, consensus::PostponedApplyPtr postponed) {
-  if (!FLAGS_postpone_snapshot_apply_on_followers) {
+  if (!FLAGS_snapshot_wait_for_pending_applies) {
     return nullptr;
   }
   // Operations that create a checkpoint with TabletSnapshots::Create, which would otherwise wait
