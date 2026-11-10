@@ -358,7 +358,6 @@ DEFINE_test_flag(uint64, persistence_reject_stamped_before_ht, 0,
 DEFINE_test_flag(bool, persistence_dfatal_unstamped_pgsql_write, false,
     "DFATAL on a YSQL write without an origination stamp to a table outside template1.");
 
-DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_tiered_storage);
 DECLARE_bool(enable_active_table_metrics_filtering);
 DECLARE_uint32(max_active_table_metrics_table_count);
@@ -4145,11 +4144,6 @@ void TabletServiceImpl::AcquireObjectLocks(
     rpc::RpcContext context) {
   TRACE("Start AcquireObjectLocks");
   VLOG(2) << "Received AcquireObjectLocks RPC: " << req->DebugString();
-  if (!FLAGS_enable_object_locking_for_table_locks) {
-    LOG_WITH_FUNC(INFO)
-        << "Flag enable_object_locking_for_table_locks disabled. Ignoring acquire request.";
-    return context.RespondSuccess();
-  }
   if (auto s = CheckLocalLeaseEpoch(GetRecipientLeaseEpoch(*req)); !s.ok()) {
     return SetupErrorAndRespond(
         resp->mutable_error(), s, TabletServerErrorPB::INVALID_YSQL_LEASE, &context);
@@ -4171,11 +4165,6 @@ void TabletServiceImpl::ReleaseObjectLocks(
     rpc::RpcContext context) {
   TRACE("Start ReleaseObjectLocks");
   VLOG(2) << "Received ReleaseObjectLocks RPC: " << req->DebugString();
-  if (!FLAGS_enable_object_locking_for_table_locks) {
-    LOG_WITH_FUNC(INFO)
-        << "Flag enable_object_locking_for_table_locks disabled. Ignoring release request.";
-    return context.RespondSuccess();
-  }
 
   if (PREDICT_FALSE(FLAGS_TEST_fail_release_object_locks) &&
       FLAGS_TEST_fail_release_object_locks_on_tserver_uuid == server_->permanent_uuid()) {
@@ -4222,12 +4211,6 @@ void TabletServiceImpl::WaitForLockersMultiple(
   TEST_PAUSE_IF_FLAG(TEST_pause_wait_for_lockers);
   TRACE("Start WaitForLockersMultiple");
   VLOG(2) << "Received WaitForLockersMultiple RPC: " << req->DebugString();
-  if (!FLAGS_enable_object_locking_for_table_locks) {
-    LOG_WITH_FUNC(INFO)
-        << "Flag enable_object_locking_for_table_locks disabled. "
-        << "Ignoring wait_for_lockers request.";
-    return context.RespondSuccess();
-  }
   if (auto s = CheckLocalLeaseEpoch(GetRecipientLeaseEpoch(*req)); !s.ok()) {
     return SetupErrorAndRespond(
         resp->mutable_error(), s, TabletServerErrorPB::INVALID_YSQL_LEASE, &context);

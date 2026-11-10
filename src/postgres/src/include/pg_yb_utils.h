@@ -332,12 +332,13 @@ extern bool YBIsDBLogicalClientVersionMode();
 typedef enum YbObjectLockMode
 {
 	PG_OBJECT_LOCK_MODE,
-	YB_OBJECT_LOCK_DISABLED,
 	YB_OBJECT_LOCK_ENABLED
 } YbObjectLockMode;
 /*
- * Whether object locking is enabled for the cluster (via the TServer regular
- * gflag enable_object_locking_for_table_locks).
+ * Whether PG locks go through YB's object locks (YB transactions on) or PG's
+ * shared lock table. Not gated on enable_object_locking_for_table_locks: every
+ * YB transaction takes local DML locks (#37355); that gflag decides whether a
+ * transaction runs in new mode (YBCIsObjectLockingEnabled).
  */
 extern YbObjectLockMode YBGetObjectLockMode();
 

@@ -107,7 +107,6 @@ DECLARE_bool(use_node_hostname_for_local_tserver);
 DEFINE_RUNTIME_PREVIEW_bool(ysql_pack_inserted_value, false,
      "Enabled packing inserted columns into a single packed value in postgres layer.");
 
-DECLARE_bool(enable_object_locking_for_table_locks);
 
 namespace yb::pggate {
 namespace {
@@ -506,9 +505,12 @@ Result<bool> RetrieveYbctidsImpl(
       });
 }
 
+// Not gated on enable_object_locking_for_table_locks: a node restarted with table locks off still
+// takes local DML locks, because a new mode CREATE INDEX on a node not yet restarted waits for its
+// writers only through them (#37355). The gflag decides whether a transaction runs in new mode
+// (PgTxnManager::IsTableLockingEnabledForCurrentTxn).
 [[nodiscard]] bool ShouldEnableTableLocks() {
-  return FLAGS_enable_object_locking_for_table_locks && !YBCIsInitDbModeEnvVarSet() &&
-         !YBCIsBinaryUpgrade();
+  return !YBCIsInitDbModeEnvVarSet() && !YBCIsBinaryUpgrade();
 }
 
 tserver::TServerSharedData& GetTServerSharedData() {

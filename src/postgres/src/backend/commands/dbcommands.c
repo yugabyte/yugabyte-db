@@ -3143,7 +3143,7 @@ get_db_info(const char *name, LOCKMODE lockmode,
 			LockSharedObject(DatabaseRelationId, dbOid, 0, lockmode);
 
 		/*
-		 * YB: Without object locking, catalog cache invalidations may not
+		 * YB: In a legacy mode transaction, catalog cache invalidations may not
 		 * have propagated by the time we get here (e.g. the heartbeat catalog
 		 * versions cache on master lags after a breaking DDL like ALTER
 		 * DATABASE RENAME, suppressing the per-RPC catalog-version-mismatch
@@ -3154,12 +3154,12 @@ get_db_info(const char *name, LOCKMODE lockmode,
 		 * cache; forever. Force-invalidate the cache entry before the
 		 * re-fetch so SearchSysCache1 pulls fresh tuple data from master.
 		 *
-		 * When object locking is enabled, the lock acquisition above carries
+		 * In a new mode transaction, the lock acquisition above carries
 		 * fresh catalog-version data with it (via the release-locks RPC path),
 		 * so PG's local caches are already invalidated and a manual flush is
 		 * unnecessary.
 		 */
-		if (IsYugaByteEnabled() && YBGetObjectLockMode() != YB_OBJECT_LOCK_ENABLED)
+		if (IsYugaByteEnabled() && !YBCIsObjectLockingEnabled())
 			SysCacheInvalidate(DATABASEOID,
 							   GetSysCacheHashValue1(DATABASEOID,
 													 ObjectIdGetDatum(dbOid)));

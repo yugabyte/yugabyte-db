@@ -864,10 +864,6 @@ LockAcquireExtended(const LOCKTAG *locktag,
 	bool		log_lock = false;
 
 	YbObjectLockMode yb_object_lock_mode = YBGetObjectLockMode();
-	if (yb_object_lock_mode == YB_OBJECT_LOCK_DISABLED)
-	{
-		return LOCKACQUIRE_OK;
-	}
 
 	if (lockmethodid <= 0 || lockmethodid >= lengthof(LockMethods))
 		elog(ERROR, "unrecognized lock method: %d", lockmethodid);
@@ -1942,15 +1938,6 @@ GrantAwaitedLock(void)
 void
 MarkLockClear(LOCALLOCK *locallock)
 {
-	if (YBGetObjectLockMode() == YB_OBJECT_LOCK_DISABLED)
-	{
-		/*
-		 * When object locking is explicitly disabled, catalog cache refresh is
-		 * separately by YugaByte.
-		 */
-		return;
-	}
-
 	Assert(locallock->nLocks > 0);
 	locallock->lockCleared = true;
 }
@@ -2137,10 +2124,6 @@ LockRelease(const LOCKTAG *locktag, LOCKMODE lockmode, bool sessionLock)
 	bool		wakeupNeeded;
 
 	YbObjectLockMode yb_object_lock_mode = YBGetObjectLockMode();
-	if (yb_object_lock_mode == YB_OBJECT_LOCK_DISABLED)
-	{
-		return true;
-	}
 
 	if (lockmethodid <= 0 || lockmethodid >= lengthof(LockMethods))
 		elog(ERROR, "unrecognized lock method: %d", lockmethodid);
@@ -2373,10 +2356,6 @@ LockReleaseAll(LOCKMETHODID lockmethodid, bool allLocks)
 	bool		have_fast_path_lwlock = false;
 
 	YbObjectLockMode yb_object_lock_mode = YBGetObjectLockMode();
-	if (yb_object_lock_mode == YB_OBJECT_LOCK_DISABLED)
-	{
-		return;
-	}
 
 	if (lockmethodid <= 0 || lockmethodid >= lengthof(LockMethods))
 		elog(ERROR, "unrecognized lock method: %d", lockmethodid);
@@ -2730,9 +2709,6 @@ LockReleaseSession(LOCKMETHODID lockmethodid)
 void
 LockReleaseCurrentOwner(LOCALLOCK **locallocks, int nlocks)
 {
-	if (YBGetObjectLockMode() == YB_OBJECT_LOCK_DISABLED)
-		return;
-
 	if (locallocks == NULL)
 	{
 		HASH_SEQ_STATUS status;
@@ -2828,8 +2804,6 @@ ReleaseLockIfHeld(LOCALLOCK *locallock, bool sessionLock)
 void
 LockReassignCurrentOwner(LOCALLOCK **locallocks, int nlocks)
 {
-	if (YBGetObjectLockMode() == YB_OBJECT_LOCK_DISABLED)
-		return;
 	ResourceOwner parent = ResourceOwnerGetParent(CurrentResourceOwner);
 
 	Assert(parent != NULL);

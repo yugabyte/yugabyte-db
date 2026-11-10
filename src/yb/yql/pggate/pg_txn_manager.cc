@@ -257,12 +257,12 @@ PgTxnManager::PgTxnManager(
       enable_table_locking_(enable_table_locking) {}
 
 bool PgTxnManager::IsTableLockingEnabledForCurrentTxn() const {
-  // Computed rather than latched: enable_table_locking_ is fixed for the session and
+  // Computed rather than latched: enable_table_locking_ and the gflag are fixed for the session and
   // YBCIsObjectLockingInfraEnabled() is a snapshot PG takes once per transaction, so the result
   // cannot change under an open transaction.
   VLOG_WITH_FUNC(1) << "enable_table_locking_: " << enable_table_locking_
-                    << " object locking infra: " << YBCIsObjectLockingInfraEnabled();
-  return enable_table_locking_ && YBCIsObjectLockingInfraEnabled();
+                    << " object locking: " << YBCIsObjectLockingEnabled();
+  return enable_table_locking_ && YBCIsObjectLockingEnabled();
 }
 
 bool PgTxnManager::IsLocalTableLockingEnabledForCurrentTxn() const {

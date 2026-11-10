@@ -984,7 +984,7 @@ bool YBCIsObjectLockingEnabled() {
 }
 
 bool YBCIsLocalObjectLockingEnabled() {
-  return FLAGS_enable_object_locking_for_table_locks && local_object_locking_for_curr_txn;
+  return local_object_locking_for_curr_txn;
 }
 
 bool YBCIsAutoAnalyzeEnabled() {

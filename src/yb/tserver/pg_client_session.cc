@@ -4871,14 +4871,16 @@ class PgClientSession::Impl {
   }
 
   [[nodiscard]] bool IsObjectLockingEnabled() const {
-    return CanHoldPlainObjectLocks() && FLAGS_ysql_yb_enable_object_locking_infra;
+    return CanHoldPlainObjectLocks() && FLAGS_enable_object_locking_for_table_locks &&
+           FLAGS_ysql_yb_enable_object_locking_infra;
   }
 
-  // A legacy mode transaction takes local DML locks under the plain session whatever the value
-  // of ysql_yb_enable_object_locking_infra (#36572), which can also change while it runs. So its
-  // locks are released based on this rather than IsObjectLockingEnabled().
+  // A legacy mode transaction takes local DML locks under the plain session whatever the values
+  // of ysql_yb_enable_object_locking_infra (#36572), which can also change while it runs, and of
+  // enable_object_locking_for_table_locks (#37355). So its locks are released based on this rather
+  // than IsObjectLockingEnabled().
   [[nodiscard]] bool CanHoldPlainObjectLocks() const {
-    return ts_lock_manager() != nullptr && FLAGS_enable_object_locking_for_table_locks;
+    return ts_lock_manager() != nullptr;
   }
 
   Result<TransactionMetadata> NextObjectLockingTxnMeta(

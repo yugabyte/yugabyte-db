@@ -1057,11 +1057,6 @@ WaitForLockersMultiple(List *locktags, LOCKMODE lockmode, bool progress)
 	int			total = 0;
 	int			done = 0;
 
-	if (YBGetObjectLockMode() == YB_OBJECT_LOCK_DISABLED)
-	{
-		return;
-	}
-
 	/* Done if no locks to wait for */
 	if (list_length(locktags) == 0)
 		return;
