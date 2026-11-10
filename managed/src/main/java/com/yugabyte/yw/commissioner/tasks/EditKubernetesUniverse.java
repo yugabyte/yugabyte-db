@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
@@ -91,6 +92,17 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
   static final int DEFAULT_WAIT_TIME_MS = 10000;
   private final OperatorStatusUpdater kubernetesStatus;
   private final YbcManager ybcManager;
+
+  /** Task runtime info, inherited by a retry of this task. */
+  public static class RuntimeInfo {
+    /**
+     * Whether the primary cluster edit changes the master addresses. A retry that runs after the
+     * primary cluster is saved sees no placement change, but the read replica still needs the new
+     * addresses.
+     */
+    @JsonProperty("masterAddressesChanged")
+    boolean masterAddressesChanged = false;
+  }
 
   @Inject
   protected EditKubernetesUniverse(
@@ -264,6 +276,11 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               universeDetails.getPrimaryCluster(),
               masterAddresses,
               existingMasterAddresses);
+      if (mastersAddrChanged) {
+        updateRuntimeInfo(RuntimeInfo.class, info -> info.masterAddressesChanged = true);
+      } else {
+        mastersAddrChanged = getRuntimeInfo(RuntimeInfo.class).masterAddressesChanged;
+      }
       // Updating cluster in DB
       createUpdateUniverseIntentTask(taskParams().getPrimaryCluster());
 

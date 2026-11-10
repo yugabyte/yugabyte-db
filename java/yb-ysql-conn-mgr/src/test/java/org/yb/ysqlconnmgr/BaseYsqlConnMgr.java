@@ -720,6 +720,16 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     assertTrue(pids.size() > 1);
   }
 
+  protected void waitForStickyConnections(int expected) throws Exception {
+    TestUtils.waitFor(() -> {
+      JsonObject pool = getPool("yugabyte", "yugabyte");
+      if (pool == null) {
+        return false;
+      }
+      return pool.get("sticky_connections").getAsInt() == expected;
+    }, 30000);
+  }
+
   protected void restartClusterWithFlags(
       Map<String, String> additionalMasterFlags,
       Map<String, String> additionalTserverFlags) throws Exception {
