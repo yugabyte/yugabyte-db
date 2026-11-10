@@ -178,6 +178,13 @@ const isEmbeddedPerfAdvisorUiEnabled = (runtimeConfigs) =>
   runtimeConfigEnabled(runtimeConfigs, RuntimeConfigKey.ENABLE_PA_COLLECTOR) &&
   runtimeConfigEnabled(runtimeConfigs, RuntimeConfigKey.ENABLE_NEW_PERF_ADVISOR_UI);
 
+// Basic and advanced both store data locally. Online forwards everything elsewhere, so it has no
+// local data behind the Performance tab.
+const isPerformanceTabEnabled = (runtimeConfigs, paStatus) =>
+  isEmbeddedPerfAdvisorUiEnabled(runtimeConfigs) &&
+  !!paStatus?.data?.success &&
+  paStatus?.data?.mode !== PaRegistrationMode.ONLINE;
+
 class UniverseDetail extends Component {
   constructor(props) {
     super(props);
@@ -339,22 +346,16 @@ class UniverseDetail extends Component {
       this.props.getUniversePaRegistrationStatus(currentUniverse.data.universeUUID);
     }
 
-    // Redirect to Overview when the Performance tab should no longer be shown:
-    // not registered, the embedded UI is off, or the universe is in online mode.
-    // Basic registration stays on the tab. Wait until both requests settle so a
-    // loading flag does not bounce a local registration to Overview.
+    // Redirect to Overview when the Performance tab should no longer be shown. Wait until both
+    // requests settle so a loading flag does not bounce a local registration to Overview.
     const isOnPerfAdvisorTab = this.props.location?.pathname?.includes(PERF_ADVISOR_PATH);
     const { universePaRegistrationStatus: paStatus } = this.props.universe;
     const runtimeConfigs = this.props.customer?.runtimeConfigs;
     const paPromiseState = getPromiseState(paStatus);
     // Runtime configs arrive after the first universe update. getPromiseState reads `.data`.
     const runtimeConfigsState = runtimeConfigs ? getPromiseState(runtimeConfigs) : undefined;
-    const registration = paStatus?.data;
     const shouldShowPerformanceTab =
-      !!runtimeConfigsState?.isSuccess() &&
-      isEmbeddedPerfAdvisorUiEnabled(runtimeConfigs) &&
-      registration?.success &&
-      registration?.mode !== PaRegistrationMode.ONLINE;
+      !!runtimeConfigsState?.isSuccess() && isPerformanceTabEnabled(runtimeConfigs, paStatus);
     const paStatusResolved = paPromiseState.isError() || paPromiseState.isSuccess();
     const runtimeConfigsResolved =
       !!runtimeConfigsState?.isError() || !!runtimeConfigsState?.isSuccess();
@@ -608,27 +609,19 @@ class UniverseDetail extends Component {
     - Integrations -> Perf Advisor (to attach a customer to Perf Advisor service)
     - Under Universe Actions -> Show options to enable/disable Performance Monitoring for the universe (Perf Advisor Service)
     */
-    const isPACollectorEnabled =
-      runtimeConfigs?.data?.configEntries?.find(
-        (c) => c.key === RuntimeConfigKey.ENABLE_PA_COLLECTOR
-      )?.value === 'true';
+    const isPACollectorEnabled = runtimeConfigEnabled(
+      runtimeConfigs,
+      RuntimeConfigKey.ENABLE_PA_COLLECTOR
+    );
 
     const isEmbeddedPAEnabled = isEmbeddedPerfAdvisorUiEnabled(runtimeConfigs);
 
-    // Online mode is gated by its own flag. The Performance tab is for a universe
-    // that stores data locally. Online mode forwards everything elsewhere, so it
-    // has no local data behind that tab.
+    // Online mode is gated by its own flag, separate from enable_new_perf_advisor_ui.
     const isPaOnlineModeEnabled =
       isPACollectorEnabled &&
-      runtimeConfigs?.data?.configEntries?.find(
-        (c) => c.key === RuntimeConfigKey.ENABLE_PA_ONLINE_MODE
-      )?.value === 'true';
+      runtimeConfigEnabled(runtimeConfigs, RuntimeConfigKey.ENABLE_PA_ONLINE_MODE);
 
-    // Basic and advanced both store locally. Online does not, so it has no tab.
-    const isPATabEnabled =
-      isEmbeddedPAEnabled &&
-      universePaRegistrationStatus?.data?.success &&
-      universePaRegistrationStatus?.data?.mode !== PaRegistrationMode.ONLINE;
+    const isPATabEnabled = isPerformanceTabEnabled(runtimeConfigs, universePaRegistrationStatus);
 
     const isAuditLogEnabled =
       runtimeConfigs?.data?.configEntries?.find(
@@ -1017,6 +1010,7 @@ class UniverseDetail extends Component {
                 universeUuid={currentUniverse.data.universeUUID}
                 timezone={currentUser.data.timezone}
                 appName={AppName.YBA}
+                registrationMode={universePaRegistrationStatus?.data?.mode}
               />
             </Tab.Pane>
           )

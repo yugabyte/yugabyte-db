@@ -55,29 +55,46 @@ const PerfAdvisorTabsComponent = ({
 
   const perfAdvisorBasePath = `/universes/${universeUuid}/${PERF_ADVISOR_PATH}`;
   // Cluster Load and Metrics read Prometheus, which only advanced mode writes.
-  // Basic keeps the Databases catalog.
   const showClusterLoadAndMetrics = registrationMode === PaRegistrationMode.ADVANCED;
-  const defaultTabKey = showClusterLoadAndMetrics
-    ? ConfigTabKey.CLUSTER_LOAD
-    : ConfigTabKey.DATABASES;
-  const isTabShown = (key: ConfigTabKey | undefined): key is ConfigTabKey => {
-    if (key === ConfigTabKey.DATABASES) {
-      return !!runtimeConfigs.showDatabasesView;
-    }
-    return (
-      showClusterLoadAndMetrics &&
-      (key === ConfigTabKey.CLUSTER_LOAD || key === ConfigTabKey.METRICS)
-    );
-  };
+  const tabConfig: { key: ConfigTabKey; title: string }[] = [
+    ...(showClusterLoadAndMetrics
+      ? [
+          {
+            key: ConfigTabKey.CLUSTER_LOAD,
+            title: t('clusterDetail.troubleshoot.perfAdvisorClusterLoadTab')
+          },
+          {
+            key: ConfigTabKey.METRICS,
+            title: t('clusterDetail.troubleshoot.perfAdvisorMetricsTab')
+          }
+        ]
+      : []),
+    ...(runtimeConfigs.showDatabasesView
+      ? [
+          {
+            key: ConfigTabKey.DATABASES,
+            title: t('clusterDetail.troubleshoot.perfAdvisorDatabasesTab')
+          }
+        ]
+      : [])
+  ];
+  const defaultTabKey: ConfigTabKey | undefined = tabConfig[0]?.key;
+  const isTabShown = (key: ConfigTabKey | undefined): key is ConfigTabKey =>
+    tabConfig.some((tab) => tab.key === key);
   const pathTab = getTabFromPath(location?.pathname);
   const tabToDisplay = isTabShown(pathTab) ? pathTab : defaultTabKey;
 
-  // Put the tab in the path. Advanced defaults to Cluster Load. Basic defaults
-  // to Databases and moves Cluster Load / Metrics links there. A databases
-  // path keeps its `/databases/<db>/tables` suffix. Drilldowns are left alone.
+  // Put the tab in the path and send a link to a hidden tab (Cluster Load / Metrics
+  // in basic mode) to the first shown tab. A databases path keeps its
+  // `/databases/<db>/tables` suffix. Drilldowns are left alone.
   useEffect(() => {
     // The pane stays mounted while the universe tab fades out, so ignore paths outside PA.
-    if (!router || !location?.pathname?.startsWith(perfAdvisorBasePath) || isPaDrilldownUrl()) {
+    if (
+      !router ||
+      !defaultTabKey ||
+      !location?.pathname?.startsWith(perfAdvisorBasePath) ||
+      isPaDrilldownUrl()
+    ) {
       return;
     }
     const { tab, subTab, ...restQuery } = location.query ?? {};
@@ -96,37 +113,7 @@ const PerfAdvisorTabsComponent = ({
       return;
     }
     router.replace({ pathname, query: restQuery });
-  }, [
-    router,
-    location,
-    perfAdvisorBasePath,
-    registrationMode,
-    runtimeConfigs.showDatabasesView
-  ]);
-
-  const databasesTab = runtimeConfigs.showDatabasesView
-    ? [
-        {
-          key: ConfigTabKey.DATABASES,
-          title: t('clusterDetail.troubleshoot.perfAdvisorDatabasesTab')
-        }
-      ]
-    : [];
-  const tabConfig = [
-    ...(showClusterLoadAndMetrics
-      ? [
-          {
-            key: ConfigTabKey.CLUSTER_LOAD,
-            title: t('clusterDetail.troubleshoot.perfAdvisorClusterLoadTab')
-          },
-          {
-            key: ConfigTabKey.METRICS,
-            title: t('clusterDetail.troubleshoot.perfAdvisorMetricsTab')
-          }
-        ]
-      : []),
-    ...databasesTab
-  ];
+  }, [router, location, perfAdvisorBasePath, registrationMode, runtimeConfigs.showDatabasesView]);
 
   // In online mode this collector scrapes the universe but keeps nothing - every view below reads
   // local data, so they would all render empty. Say where the data went instead.

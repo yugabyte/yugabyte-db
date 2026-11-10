@@ -659,7 +659,7 @@
         "disableAdvancedObservabilitySubText": "Disable Advanced Observability for universe <strong>{{universeName}}</strong>? Cluster Load and Metrics are removed from the Performance tab. Databases stays available.",
         "disableAdvancedObservabilityFailure": "Failed to disable Advanced Observability for the universe",
         "modeLabel": "Collection mode",
-        "modeBasic": "Basic - shows the Databases catalog and exports performance data with Support Bundle",
+        "modeBasic": "Basic - shows the Databases view in the Performance tab and exports performance data with Support Bundle",
         "modeAdvanced": "Advanced observability - adds Cluster Load and Metrics to the Performance tab",
         "modeOnline": "Online - collect here and send everything to an external Perf Advisor",
         "onlineDestinationLabel": "Destination",

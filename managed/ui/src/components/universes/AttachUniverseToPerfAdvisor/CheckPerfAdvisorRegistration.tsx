@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { PerfAdvisorTabs } from '../PerfAdvisor/PerfAdvisorTabs';
 import {
+  PaRegistrationMode,
   PerfAdvisorAPI,
   QUERY_KEY as PERF_ADVISOR_QUERY_KEY
 } from '../../../redesign/features/PerfAdvisor/api';
@@ -16,6 +17,9 @@ interface CheckPerfAdvisorRegistrationProps {
   timezone: string;
   apiUrl: string;
   paUuid: string;
+  // From UniverseDetail's redux registration status, which is per universe and refetched when a
+  // PA task completes. The react-query entry below can hold another universe's or a pre-task mode.
+  registrationMode?: PaRegistrationMode;
 }
 
 export const CheckPerfAdvisorRegistration = ({
@@ -23,12 +27,13 @@ export const CheckPerfAdvisorRegistration = ({
   appName,
   timezone,
   apiUrl,
-  paUuid
+  paUuid,
+  registrationMode
 }: CheckPerfAdvisorRegistrationProps) => {
   const { t } = useTranslation();
   const [registrationStatus, setRegistrationStatus] = useState<boolean>(false);
   const getUniversePaRegistrationStatus = useQuery(
-    PERF_ADVISOR_QUERY_KEY.fetchUniverseRegistrationDetails,
+    [PERF_ADVISOR_QUERY_KEY.fetchUniverseRegistrationDetails, universeUuid],
     () => PerfAdvisorAPI.fetchUniverseRegistrationDetails(universeUuid),
     {
       onSuccess: (data) => {
@@ -63,7 +68,7 @@ export const CheckPerfAdvisorRegistration = ({
         timezone={timezone}
         apiUrl={apiUrl}
         registrationStatus={registrationStatus}
-        registrationMode={getUniversePaRegistrationStatus.data?.mode}
+        registrationMode={registrationMode}
       />
     )
   );
