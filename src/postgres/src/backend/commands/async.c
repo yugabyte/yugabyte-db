@@ -3887,15 +3887,21 @@ YbHasActiveOrPendingListen(void)
 	return listenChannels != NIL || YbHasPendingListenAction();
 }
 
-/* Number of notifications pending at the top transaction level. */
+/*
+ * Number of pending notifications, including those under open
+ * subtransactions: READ COMMITTED merges the previous statement's into the
+ * top level when the next statement starts, so a count taken before an
+ * attempt must include them or the retry's truncate would drop them.
+ */
 int
 YbNumPendingNotifies(void)
 {
-	NotificationList *notifies = pendingNotifies;
+	int			num_notifies = 0;
 
-	while (notifies != NULL && notifies->nestingLevel > 1)
-		notifies = notifies->upper;
-	return notifies != NULL ? list_length(notifies->events) : 0;
+	for (NotificationList *notifies = pendingNotifies; notifies != NULL;
+		 notifies = notifies->upper)
+		num_notifies += list_length(notifies->events);
+	return num_notifies;
 }
 
 /*
