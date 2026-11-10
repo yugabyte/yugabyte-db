@@ -12,9 +12,9 @@ menu:
 type: docs
 ---
 
-Available in v2026.2 and later. Database nodes on AWS or Google Cloud back up to a bucket in the other cloud using each node's own identity. YugabyteDB Anywhere and the nodes store no access keys or other secrets.
+Using federated IAM backups, you can back up from one cloud to a bucket on a different cloud. Database nodes on AWS or Google Cloud back up to a bucket in the other cloud using each node's own identity. YugabyteDB Anywhere and the nodes store no access keys or other secrets.
 
-For a bucket in the same cloud as the nodes, use the [YugabyteDB Anywhere instance role, the universe node role, or access keys](../configure-backup-storage/). Federated IAM applies only to the other cloud.
+For backing up to a bucket in the same cloud as the nodes, use the [YugabyteDB Anywhere instance role, the universe node role, or access keys](../configure-backup-storage/). Federated IAM applies only when backing up to the other cloud.
 
 | Node runs on | Bucket | Mechanism |
 | :--- | :--- | :--- |
@@ -196,7 +196,7 @@ If your network limits outbound traffic, allow the token service as well as the 
 
 ## Configure the provider
 
-The provider shows only the clouds its nodes are not running on. You can change these settings while universes use the provider.
+In YugabyteDB Anywhere, update your provider configuration. The provider shows only the clouds its nodes are not running on. You can change these settings while universes use the provider.
 
 ### AWS provider
 
@@ -212,18 +212,18 @@ To let nodes on this provider back up to Amazon S3, do the following:
 
 1. Navigate to **Integrations > Infrastructure** and edit the GCP provider.
 1. Under **Access to other clouds** and **Services**, turn on **Amazon S3**.
-1. In **IAM role ARN**, enter the role ARN from the trust-policy step.
-1. In **Audience**, enter the audience URI you chose.
+1. In **IAM role ARN**, enter the role ARN printed by [Create a role that trusts the service account](#create-a-role-that-trusts-the-service-account).
+1. In **Audience**, enter the URI from [Choose an audience](#choose-an-audience).
 
 ### On-premises provider
 
-An on-premises provider can include both clouds. Each node uses only the cloud it is not running on.
+An on-premises provider configuration can include both clouds. Each node uses only the cloud it is not running on.
 
-To configure an on-premises provider, do the following:
+To configure an on-premises provider configuration, do the following:
 
 1. Navigate to **Integrations > Infrastructure** and edit the on-premises provider.
 1. Under **Cross Cloud Federated Access** and **Services**, turn on **Google Cloud Storage**, **Amazon S3**, or both.
-1. Upload the credential configuration file for Google Cloud Storage, and enter the **IAM role ARN** and **Audience** for Amazon S3.
+1. Upload the credential configuration file for Google Cloud Storage. For Amazon S3, enter the **IAM role ARN** printed by [Create a role that trusts the service account](#create-a-role-that-trusts-the-service-account) and the **Audience** from [Choose an audience](#choose-an-audience).
 
 | Node | Other cloud it backs up to | Same-cloud access |
 | :--- | :--- | :--- |
@@ -289,8 +289,4 @@ To turn this on for a universe that already exists:
 
 The provider must already have **Google Cloud Storage** or **Amazon S3** turned on. Turning **Enable Federated Access for Backups** off stops backups and restores that use the other cloud, including scheduled backups. It does not remove the permissions you created in AWS or Google Cloud.
 
-You can make the same change with `POST /api/v2/customers/<cUUID>/universes/<uniUUID>/cross-cloud-federation` and `{"enabled": true}`.
-
 On the universe, open the **Backups** tab and select **Backup now**, using the storage configuration you created.
-
-To confirm a node is configured, list `/home/yugabyte/.yugabyte/federation/`. It contains `federation.env` and either `gcp-fed-creds.json` (an AWS node writing to Google Cloud Storage) or `aws_credential_process.sh` (a GCP node writing to S3).
