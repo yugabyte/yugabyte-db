@@ -258,7 +258,7 @@ TEST_F(YbHnswTest, UnknownFooterFlags) {
 }
 
 Result<std::string> YbHnswTest::InitDamagedYbHnsw(size_t num_vectors) {
-  // Smaller than any block, so every search hits a damaged block.
+  // Smaller than the vector data block of the entry vector, which every search reads.
   constexpr size_t kDamageStride = 512;
 
   InsertRandomVectors(num_vectors);

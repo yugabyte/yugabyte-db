@@ -1129,7 +1129,7 @@ template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 struct VectorLSM<Vector, DistanceResult>::CompactionContext {
   size_t task_no;
   CompactionType type;
-  // Merging the input chunks failed with Corruption, before the manifest was acquired.
+  // Reading an input chunk failed with Corruption, which happens before the manifest is acquired.
   bool damaged_input = false;
 
   ManifestUpdateType GetManifestUpdateType() const {
@@ -2930,6 +2930,11 @@ class VectorLSM<Vector, DistanceResult>::MergingIterator {
     return outer_it_ != chunks_.end();
   }
 
+  // Whether reading one of the input chunks failed.
+  bool input_failed() const {
+    return input_failed_;
+  }
+
   ValueType& operator*() {
     DCHECK(value_.has_value());
     return *value_;
@@ -3024,7 +3029,11 @@ class VectorLSM<Vector, DistanceResult>::MergingIterator {
       inner_it_->Next();
     }
 
-    RETURN_NOT_OK(inner_it_->status());
+    auto status = inner_it_->status();
+    if (!status.ok()) {
+      input_failed_ = true;
+      return status;
+    }
     return false;
   }
 
@@ -3049,6 +3058,7 @@ class VectorLSM<Vector, DistanceResult>::MergingIterator {
   storage::UserFrontiersPtr frontiers_;
   bool frontiers_updated_ = false;
   mutable std::optional<size_t> cached_num_vectors_ { std::nullopt };
+  bool input_failed_ = false;
 };
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -3194,8 +3204,8 @@ class VectorLSM<Vector, DistanceResult>::Merger {
         break;
       }
 
-      // After a failed insert the merged index is incomplete, so stop scheduling; the failure is
-      // returned once the scheduled tasks are drained.
+      // After a failed input read or insert the merged index is incomplete, so stop scheduling; the
+      // failure is returned once the scheduled tasks are drained.
       if (!failure.GetStatus().ok()) {
         break;
       }
@@ -3249,9 +3259,9 @@ class VectorLSM<Vector, DistanceResult>::Merger {
     // broken the loop above.
     RETURN_NOT_OK(lsm_.RUNNING_STATUS());
 
-    // The merged index is missing the vectors of the failed tasks, so it must not replace the
-    // compaction input.
-    RETURN_NOT_OK_PREPEND(failure.GetStatus(), "Merge into compaction output failed");
+    // The merged index is missing the vectors of a failed input read or of the failed tasks, so it
+    // must not replace the compaction input.
+    RETURN_NOT_OK_PREPEND(failure.GetStatus(), "Compaction merge failed");
 
     LOG_WITH_PREFIX(INFO) << "Chunks merge done via " << num_scheduled_tasks << " tasks";
     return Status::OK();
@@ -3275,7 +3285,8 @@ class VectorLSM<Vector, DistanceResult>::Merger {
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Result<typename VectorLSM<Vector, DistanceResult>::ImmutableChunkPtrs>
 VectorLSM<Vector, DistanceResult>::DoCompactChunks(
-    const ImmutableChunkPtrs& input_chunks, PriorityThreadPoolSuspender* suspender) {
+    CompactionContext& context, const ImmutableChunkPtrs& input_chunks,
+    PriorityThreadPoolSuspender* suspender) {
   // Input chunks collection must be sorted by order_no and each chunk must be in manifest.
   DCHECK(!input_chunks.empty());
 
@@ -3303,7 +3314,12 @@ VectorLSM<Vector, DistanceResult>::DoCompactChunks(
   MergingIterator merge_iterator(input_chunks, *merge_filter);
 
   Merger merger(*this, *this->merge_registry_, suspender);
-  auto merged_chunks = VERIFY_RESULT(merger.Merge(merge_iterator, max_vectors_per_output_chunk));
+  auto merge_result = merger.Merge(merge_iterator, max_vectors_per_output_chunk);
+  if (!merge_result.ok()) {
+    context.damaged_input = merge_iterator.input_failed() && merge_result.status().IsCorruption();
+    return merge_result.status();
+  }
+  auto merged_chunks = std::move(*merge_result);
 
   LOG_WITH_PREFIX(INFO) << "Compacted into " << merged_chunks.size() << " chunks";
 
@@ -3322,12 +3338,7 @@ Status VectorLSM<Vector, DistanceResult>::DoCompact(
   // writing the merged chunk to disk, updating the manifest, swapping the in-memory chunk
   // collection and triggering obsolete file cleanup.
   const auto compact_start = MonoTime::Now();
-  auto merge_result = DoCompactChunks(scope.chunks(), suspender);
-  if (!merge_result.ok()) {
-    context.damaged_input = merge_result.status().IsCorruption();
-    return merge_result.status();
-  }
-  auto merged_chunks = std::move(*merge_result);
+  auto merged_chunks = VERIFY_RESULT(DoCompactChunks(context, scope.chunks(), suspender));
 
   // Until the manifest references the output chunks, a failure below must delete their files.
   auto delete_merged_files = MarkChunkFilesObsoleteOnExit(merged_chunks);

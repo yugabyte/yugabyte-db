@@ -309,13 +309,15 @@ struct CachedBlock {
       load_future = promise.get_future();
       lock.unlock();
       auto result = Load(file, has_trailer);
-      promise.set_value(result);
       if (!result.ok()) {
+        // Before the error is published, so a Take that starts after it reads the block again
+        // instead of returning this error. Waiters hold their own copy of the future.
         lock.lock();
-        // So the next Take reads the block again instead of returning this error.
         load_future = {};
         --use_count;
+        lock.unlock();
       }
+      promise.set_value(result);
       return result;
     }
 
