@@ -2831,6 +2831,32 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     for (TaskInfo t : earlySecretUpdate) {
       assertEquals(allMasters, addressSet(helmMasterAddresses(t)));
     }
+    // POD_INFO rebuilds the cluster's nodes from the AZs it is given, so the full move's must keep
+    // az-4, whose master the master step created.
+    List<TaskInfo> podInfos =
+        subtasks(
+            plan,
+            TaskType.KubernetesCommandExecutor,
+            p -> POD_INFO.name().equals(p.path("commandType").asText()));
+    List<TaskInfo> fullMovePodInfos =
+        between(podInfos, adds.get(0).getPosition(), adds.get(1).getPosition());
+    assertFalse(fullMovePodInfos.isEmpty());
+    for (TaskInfo t : fullMovePodInfos) {
+      Set<String> azs = new java.util.HashSet<>();
+      t.getTaskParams()
+          .path("placementInfo")
+          .path("cloudList")
+          .get(0)
+          .path("regionList")
+          .get(0)
+          .path("azList")
+          .forEach(
+              az ->
+                  azs.add(
+                      AvailabilityZone.getOrBadRequest(UUID.fromString(az.path("uuid").asText()))
+                          .getCode()));
+      assertTrue(azs.toString(), azs.contains("az-4"));
+    }
   }
 
   @Test

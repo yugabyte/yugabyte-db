@@ -1999,6 +1999,14 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               for (UUID currAZs : curPlacement.configs.keySet()) {
                 PlacementInfoUtil.addPlacementZone(currAZs, activeZones);
               }
+              // POD_INFO rebuilds the cluster's nodes from these AZs only. AZs the edit adds with
+              // masters have their pods by now, so leaving them out would drop their nodes.
+              for (UUID az : newPlacement.configs.keySet()) {
+                if (!curPlacement.configs.containsKey(az)
+                    && newPlacement.masters.getOrDefault(az, 0) > 0) {
+                  PlacementInfoUtil.addPlacementZone(az, activeZones);
+                }
+              }
               createSingleKubernetesExecutorTask(
                   universeName,
                   KubernetesCommandExecutor.CommandType.POD_INFO,
