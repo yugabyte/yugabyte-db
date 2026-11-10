@@ -3062,6 +3062,7 @@ yb_check_installed_extensions()
  * yb_check_pgcrypto_schema()
  *
  * Check that pgcrypto is not installed in the pg_catalog schema.
+ * YB_TODO_PG19MERGE: remove once pg19 is master; PG15 sources cannot have it.
  */
 static void
 yb_check_pgcrypto_schema()

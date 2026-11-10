@@ -23,14 +23,14 @@ class YsqlMajorExtensionUpgradeTest : public YsqlMajorUpgradeTestBase {
   YsqlMajorExtensionUpgradeTest() = default;
 
   void SetUpOptions(ExternalMiniClusterOptions& opts) override {
-    // YB_TODO_PG19MERGE: pg_cron, pg_stat_monitor and postgresql_anonymizer are not built on
-    // pg19, see external_extension_subdirs in build_postgres.py. Preloading a library that does
-    // not exist stops the upgraded cluster's postmaster from starting, which failed every test in
-    // this file. Restore these once the extensions are ported.
+    // YB_TODO_PG19MERGE: pg_stat_monitor and postgresql_anonymizer are not built on pg19, see
+    // external_extension_subdirs in build_postgres.py. Preloading a library that does not exist
+    // stops the upgraded cluster's postmaster from starting, which failed every test in this file.
+    // Restore these once the extensions are ported.
     opts.extra_tserver_flags.push_back(Format(
         "--ysql_pg_conf_csv=\"shared_preload_libraries=passwordcheck\""));
-    // opts.extra_tserver_flags.push_back("--enable_pg_cron=true");
-    // opts.extra_master_flags.push_back("--enable_pg_cron=true");
+    opts.extra_tserver_flags.push_back("--enable_pg_cron=true");
+    opts.extra_master_flags.push_back("--enable_pg_cron=true");
     // TODO: Exclude passwordcheck for now, as upgrade fails with it enabled. Add separate test for
     // passwordcheck (see GH#26618).
     // opts.extra_master_flags.push_back(Format(
@@ -60,28 +60,21 @@ TEST_F(YsqlMajorExtensionUpgradeTest, Simple) {
 
 TEST_F(YsqlMajorExtensionUpgradeTest, HStore) {
   ASSERT_OK(ExecuteStatement(Format("CREATE EXTENSION hstore")));
-  auto check_query = [&](const std::optional<size_t> tserver_idx, bool should_fail) {
-    // Test a function that was added in a newer version of the extension.
+  auto check_query = [&](const std::optional<size_t> tserver_idx) {
     const auto query =
       "SELECT hstore_hash_extended('\"a key\" =>1'::hstore, 0),"
       "hstore_hash_extended('\"a key\" =>1'::hstore, 1)";
     auto conn = ASSERT_RESULT(CreateConnToTs(tserver_idx));
-    if (should_fail) {
-      ASSERT_NOK_STR_CONTAINS(conn.Execute(query),
-          "function hstore_hash_extended(hstore, integer) does not exist");
-    } else {
-      auto result = ASSERT_RESULT((conn.FetchRows<int64_t, int64_t>(query)));
-      ASSERT_FALSE(result.empty());
-    }
+    auto result = ASSERT_RESULT((conn.FetchRows<int64_t, int64_t>(query)));
+    ASSERT_FALSE(result.empty());
   };
 
-  ASSERT_NO_FATALS(check_query(kAnyTserver, /*should_fail=*/ true));
+  ASSERT_NO_FATALS(check_query(kAnyTserver));
   ASSERT_OK(UpgradeClusterToMixedMode());
-  ASSERT_NO_FATALS(check_query(kMixedModeTserverPg15, /*should_fail=*/ false));
-  // should fail as the new function still doesn't exist.
-  ASSERT_NO_FATALS(check_query(kMixedModeTserverPg11, /*should_fail=*/ true));
+  ASSERT_NO_FATALS(check_query(kMixedModeTserverPg15));
+  ASSERT_NO_FATALS(check_query(kMixedModeTserverPg11));
   ASSERT_OK(FinalizeUpgradeFromMixedMode());
-  ASSERT_NO_FATALS(check_query(kAnyTserver, /*should_fail=*/ false));
+  ASSERT_NO_FATALS(check_query(kAnyTserver));
 }
 
 TEST_F(YsqlMajorExtensionUpgradeTest, FileFdw) {
@@ -124,17 +117,26 @@ TEST_F(YsqlMajorExtensionUpgradeTest, FileFdw) {
 TEST_F(YsqlMajorExtensionUpgradeTest, FuzzyStrMatch) {
     ASSERT_OK(ExecuteStatement(Format("CREATE EXTENSION fuzzystrmatch")));
     auto query = "SELECT soundex('hello world!');";
-    auto check_query = [&](const std::optional<size_t> tserver_idx) {
+    // fuzzystrmatch 1.2 adds daitch_mokotoff().
+    const auto query_new = "SELECT daitch_mokotoff('Augsburg'::text)::text";
+    auto check_query = [&](const std::optional<size_t> tserver_idx, bool should_fail) {
         auto conn = ASSERT_RESULT(CreateConnToTs(tserver_idx));
         auto result = ASSERT_RESULT((conn.FetchRows<std::string>(query)));
         ASSERT_VECTORS_EQ(result, (decltype(result){{"H464"}}));
+        if (should_fail) {
+            ASSERT_NOK_STR_CONTAINS(conn.Execute(query_new),
+                "function daitch_mokotoff(text) does not exist");
+        } else {
+            auto result_new = ASSERT_RESULT(conn.FetchRows<std::string>(query_new));
+            ASSERT_VECTORS_EQ(result_new, (decltype(result_new){"{054795}"}));
+        }
     };
-    ASSERT_NO_FATALS(check_query(kAnyTserver));
+    ASSERT_NO_FATALS(check_query(kAnyTserver, /*should_fail=*/ true));
     ASSERT_OK(UpgradeClusterToMixedMode());
-    ASSERT_NO_FATALS(check_query(kMixedModeTserverPg15));
-    ASSERT_NO_FATALS(check_query(kMixedModeTserverPg11));
+    ASSERT_NO_FATALS(check_query(kMixedModeTserverPg15, /*should_fail=*/ false));
+    ASSERT_NO_FATALS(check_query(kMixedModeTserverPg11, /*should_fail=*/ true));
     ASSERT_OK(FinalizeUpgradeFromMixedMode());
-    ASSERT_NO_FATALS(check_query(kMixedModeTserverPg11));
+    ASSERT_NO_FATALS(check_query(kMixedModeTserverPg11, /*should_fail=*/ false));
 }
 
 
@@ -166,7 +168,7 @@ TEST_F(YsqlMajorExtensionUpgradeTest, PgCrypto) {
 TEST_F(YsqlMajorExtensionUpgradeTest, PgStatStatements) {
   const auto select_pg_stat_stmts =
       "SELECT query FROM pg_stat_statements WHERE query NOT LIKE 'SELECT%' ORDER BY query";
-  const auto select_pg_stat_stmts_info = "SELECT dealloc FROM pg_stat_statements_info";
+  const auto select_stats_since = "SELECT count(stats_since) FROM pg_stat_statements";
   const auto create_table_stmt = "CREATE TABLE test (t int)";
   auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg11));
   ASSERT_OK(conn.Execute("CREATE EXTENSION IF NOT EXISTS pg_stat_statements"));
@@ -186,11 +188,11 @@ TEST_F(YsqlMajorExtensionUpgradeTest, PgStatStatements) {
         ASSERT_VECTORS_EQ(result, (decltype(result){create_table_stmt}));
     }
     if (after_upgrade) {
-        auto result_new = ASSERT_RESULT(conn.FetchRows<int64_t>(select_pg_stat_stmts_info));
+        auto result_new = ASSERT_RESULT(conn.FetchRows<int64_t>(select_stats_since));
         ASSERT_FALSE(result.empty());
     } else {
-        ASSERT_NOK_STR_CONTAINS(conn.Execute(select_pg_stat_stmts_info),
-            "relation \"pg_stat_statements_info\" does not exist");
+        ASSERT_NOK_STR_CONTAINS(conn.Execute(select_stats_since),
+            "column \"stats_since\" does not exist");
     }
   };
   ASSERT_NO_FATALS(check_query(kMixedModeTserverPg11, /*after_upgrade=*/ false));
@@ -202,13 +204,14 @@ TEST_F(YsqlMajorExtensionUpgradeTest, PgStatStatements) {
 }
 
 TEST_F(YsqlMajorExtensionUpgradeTest, PostgresFdw) {
-  ASSERT_OK(ExecuteStatement(Format("CREATE EXTENSION postgres_fdw")));
+  // Global views already install postgres_fdw in pg_catalog.
+  ASSERT_OK(ExecuteStatement(Format("CREATE EXTENSION IF NOT EXISTS postgres_fdw")));
   auto check_query = [&](const std::optional<size_t> tserver_idx, bool should_fail) {
-    const auto query = "SELECT server_name FROM postgres_fdw_get_connections() ORDER BY 1;";
+    const auto query = "SELECT server_name FROM postgres_fdw_get_connections(true) ORDER BY 1;";
     auto conn = ASSERT_RESULT(CreateConnToTs(tserver_idx));
     if (should_fail) {
       ASSERT_NOK_STR_CONTAINS(conn.Execute(query),
-          "function postgres_fdw_get_connections() does not exist");
+          "function postgres_fdw_get_connections(boolean) does not exist");
     } else {
       auto result = ASSERT_RESULT((conn.FetchRows<std::string>(query)));
       ASSERT_VECTORS_EQ(result, (decltype(result){}));
@@ -225,40 +228,35 @@ TEST_F(YsqlMajorExtensionUpgradeTest, PostgresFdw) {
 
 TEST_F(YsqlMajorExtensionUpgradeTest, HypoPG) {
   ASSERT_OK(ExecuteStatement(Format("CREATE EXTENSION hypopg")));
-  auto check_query = [&](const std::optional<size_t> tserver_idx, bool should_fail) {
+  auto check_query = [&](const std::optional<size_t> tserver_idx) {
     const auto query = "SELECT COUNT(*) FROM hypopg_hidden_indexes();";
     auto conn = ASSERT_RESULT(CreateConnToTs(tserver_idx));
-    if (should_fail) {
-      ASSERT_NOK_STR_CONTAINS(conn.Execute(query),
-          "function hypopg_hidden_indexes() does not exist");
-    } else {
-      auto result = ASSERT_RESULT((conn.FetchRows<pgwrapper::PGUint64>(query)));
-      ASSERT_VECTORS_EQ(result, (decltype(result){0}));
-    }
+    auto result = ASSERT_RESULT((conn.FetchRows<pgwrapper::PGUint64>(query)));
+    ASSERT_VECTORS_EQ(result, (decltype(result){0}));
   };
-  ASSERT_NO_FATALS(check_query(kAnyTserver, /*should_fail=*/ true));
+  ASSERT_NO_FATALS(check_query(kAnyTserver));
   ASSERT_OK(UpgradeClusterToMixedMode());
-  ASSERT_NO_FATALS(check_query(kMixedModeTserverPg15, /*should_fail=*/ false));
-  // should fail as the new view still doesn't exist.
-  ASSERT_NO_FATALS(check_query(kMixedModeTserverPg11, /*should_fail=*/ true));
+  ASSERT_NO_FATALS(check_query(kMixedModeTserverPg15));
+  ASSERT_NO_FATALS(check_query(kMixedModeTserverPg11));
   ASSERT_OK(FinalizeUpgradeFromMixedMode());
-  ASSERT_NO_FATALS(check_query(kMixedModeTserverPg11, /*should_fail=*/ false));
+  ASSERT_NO_FATALS(check_query(kMixedModeTserverPg11));
 }
 
 TEST_F(YsqlMajorExtensionUpgradeTest, Orafce) {
   ASSERT_OK(ExecuteStatement(Format("CREATE EXTENSION orafce")));
   auto check_query = [&](const std::optional<size_t> tserver_idx, bool should_fail) {
     const auto query = "SELECT * FROM oracle.user_tables";
-    const auto query_new = "SELECT oracle.greatest(10, 20, 30) AS result";
+    const auto query_new =
+        "SELECT oracle.sys_extract_utc('2026-01-01 05:00:00+05'::timestamptz)::text AS result";
     auto conn = ASSERT_RESULT(CreateConnToTs(tserver_idx));
     auto res = ASSERT_RESULT(conn.FetchRows<std::string>(query));
     ASSERT_FALSE(res.empty());
     if (should_fail) {
         ASSERT_NOK_STR_CONTAINS(conn.Execute(query_new),
-            "function oracle.greatest(integer, integer, integer) does not exist");
+            "function oracle.sys_extract_utc(timestamp with time zone) does not exist");
     } else {
-        auto result_new = ASSERT_RESULT(conn.FetchRows<int>(query_new));
-        ASSERT_VECTORS_EQ(result_new, (decltype(result_new){30}));
+        auto result_new = ASSERT_RESULT(conn.FetchRows<std::string>(query_new));
+        ASSERT_VECTORS_EQ(result_new, (decltype(result_new){"2026-01-01 00:00:00"}));
     }
   };
   ASSERT_NO_FATALS(check_query(kAnyTserver, /*should_fail=*/ true));
@@ -381,7 +379,8 @@ TEST_F(YsqlMajorExtensionUpgradeTest, PlPgsql) {
     "DROP EXTENSION plpgsql CASCADE",
     "CREATE LANGUAGE plpgsql",
     "CREATE FUNCTION test() RETURNS INTEGER AS $$begin return 1; end$$ LANGUAGE plpgsql",
-    "DROP LANGUAGE plpgsql CASCADE",
+    // Since PG13, CREATE LANGUAGE creates the extension, which DROP LANGUAGE cannot drop.
+    "DROP EXTENSION plpgsql CASCADE",
     "CREATE EXTENSION plpgsql",
   }));
   ASSERT_OK(UpgradeClusterToMixedMode());
@@ -402,24 +401,6 @@ TEST_F(YsqlMajorExtensionUpgradeTest, YbYcqlUtils) {
   ASSERT_NO_FATALS(check_query(kMixedModeTserverPg11));
   ASSERT_OK(FinalizeUpgradeFromMixedMode());
   ASSERT_NO_FATALS(check_query(kAnyTserver));
-}
-
-TEST_F(YsqlMajorExtensionUpgradeTest, PgCryptoSchema) {
-  const std::vector<std::string> expected_error = {
-      "In database: yugabyte",
-      "  pgcrypto installed in pg_catalog schema",
-      "Your installation contains the 'pgcrypto' extension in the",
-      "conflicting 'pg_catalog' schema. To proceed with the upgrade, please",
-      "uninstall the extension using DROP EXTENSION, and reinstall it into",
-      "a different schema (e.g. public).",
-  };
-
-  // Seems like pg_catalog schema prohibutes alter extension, so we need to drop and recreate
-  ASSERT_OK(ExecuteStatement(Format("CREATE EXTENSION pgcrypto SCHEMA pg_catalog")));
-  ASSERT_OK(ValidateUpgradeCompatibilityFailure(expected_error));
-  ASSERT_OK(ExecuteStatement("DROP EXTENSION pgcrypto"));
-  ASSERT_OK(ExecuteStatement("CREATE EXTENSION pgcrypto SCHEMA public"));
-  ASSERT_OK(UpgradeClusterToCurrentVersion());
 }
 
 } // namespace yb
