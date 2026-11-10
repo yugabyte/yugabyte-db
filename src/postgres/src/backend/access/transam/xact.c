@@ -2648,6 +2648,8 @@ CommitTransaction(void)
 	AtEOXact_PgStat(true, is_parallel_worker);
 	AtEOXact_Snapshot(true, false);
 	AtEOXact_ApplyLauncher(true);
+	if (IsYugaByteEnabled())
+		YbAtEOXact_UpgradeNextOid();
 	pgstat_report_xact_timestamp(0);
 
 	CurrentResourceOwner = NULL;
@@ -2948,6 +2950,8 @@ PrepareTransaction(void)
 	AtEOXact_HashTables(true);
 	/* don't call AtEOXact_PgStat here; we fixed pgstat state above */
 	AtEOXact_Snapshot(true, true);
+	if (IsYugaByteEnabled())
+		YbAtEOXact_UpgradeNextOid();
 	pgstat_report_xact_timestamp(0);
 
 	CurrentResourceOwner = NULL;
@@ -3176,6 +3180,14 @@ AbortTransaction(void)
 		AtEOXact_ApplyLauncher(false);
 		pgstat_report_xact_timestamp(0);
 	}
+
+	/*
+	 * YB: This is done outside the block above, which is skipped when the
+	 * transaction fails before creating a resource owner.  A stale upgrade
+	 * OID counter has to be cleared on every exit.
+	 */
+	if (IsYugaByteEnabled())
+		YbAtEOXact_UpgradeNextOid();
 
 	YBCAbortTransaction();
 	YB_DIST_TRACE_END_SPAN();
