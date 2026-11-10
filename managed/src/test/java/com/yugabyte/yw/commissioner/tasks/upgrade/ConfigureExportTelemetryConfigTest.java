@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
+import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -137,14 +138,18 @@ public class ConfigureExportTelemetryConfigTest extends UpgradeTaskTest {
   }
 
   @Test
-  public void testNonRestartInMemoryFailureDoesNotFailTask() throws Exception {
+  public void testNonRestartInMemoryFailureFailsTask() throws Exception {
     // A hung process makes the RPC time out.
     when(mockClient.setFlag(any(), eq(GFlagsUtil.YSQL_PG_CONF_CSV), anyString(), anyBoolean()))
         .thenThrow(new RuntimeException(new TimeoutException("setFlag timed out")));
 
     TaskInfo taskInfo = submitQueryLogAndMetricsConfig(UpgradeOption.NON_RESTART_UPGRADE);
-    // The in-memory update is best effort: the next restart applies the gflags files.
-    assertEquals(Success, taskInfo.getTaskState());
+    // The task must fail if the running value was not updated.
+    assertEquals(Failure, taskInfo.getTaskState());
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .anyMatch(
+                t -> t.getTaskType() == TaskType.SetFlagInMemory && t.getTaskState() == Failure));
     verify(mockClient, atLeastOnce())
         .setFlag(any(), eq(GFlagsUtil.YSQL_PG_CONF_CSV), anyString(), anyBoolean());
   }

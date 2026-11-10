@@ -25,13 +25,11 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.concurrent.CancellationException;
 import java.util.function.Supplier;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.yb.client.YBClientApi;
 
 @Slf4j
@@ -59,8 +57,6 @@ public class SetFlagInMemory extends ServerSubTaskBase {
     // If ONLY the masters need to be updated.
     public boolean updateMasterAddrs = false;
 
-    // Log and skip a failed setFlag RPC instead of failing the task. An abort still fails it.
-    public boolean ignoreErrors = false;
     // Supplier for master addresses override which is invoked only when the subtask starts
     // execution.
     @Nullable public Supplier<String> masterAddrsOverride;
@@ -212,31 +208,15 @@ public class SetFlagInMemory extends ServerSubTaskBase {
   private void setFlag(YBClientApi client, String gflag, String value, HostAndPort hp)
       throws Exception {
     log.debug("Setting gflag {} to {} on node {} via non-restart rpc", gflag, value, hp);
-    try {
-      boolean setSuccess = client.setFlag(hp, gflag, value, taskParams().force);
-      if (!setSuccess) {
-        throw new RuntimeException(
-            "Could not set gflag "
-                + gflag
-                + " for "
-                + taskParams().serverType
-                + " on node "
-                + taskParams().nodeName);
-      }
-    } catch (Exception e) {
-      // Never swallow an abort. indexOfType walks the cause chain; hasCause does not.
-      if (!taskParams().ignoreErrors
-          || Thread.currentThread().isInterrupted()
-          || ExceptionUtils.indexOfType(e, InterruptedException.class) >= 0
-          || ExceptionUtils.indexOfType(e, CancellationException.class) >= 0) {
-        throw e;
-      }
-      log.warn(
-          "Ignoring the failure to set gflag {} in memory for {} on node {}",
-          gflag,
-          taskParams().serverType,
-          taskParams().nodeName,
-          e);
+    boolean setSuccess = client.setFlag(hp, gflag, value, taskParams().force);
+    if (!setSuccess) {
+      throw new RuntimeException(
+          "Could not set gflag "
+              + gflag
+              + " for "
+              + taskParams().serverType
+              + " on node "
+              + taskParams().nodeName);
     }
   }
 }

@@ -82,8 +82,7 @@ public class ConfigureExportTelemetryConfig extends UpgradeTaskBase {
           // Update the swamper target file.
           createSwamperTargetUpdateTask(false /* removeFile */);
 
-          // Non-restart: match the running ysql_pg_conf_csv to the new files and collector. Runs
-          // last, after the save, and is best effort; the next restart applies the files anyway.
+          // No restart, so set ysql_pg_conf_csv in memory to match the new config files.
           if (taskParams().upgradeOption == UpgradeTaskParams.UpgradeOption.NON_RESTART_UPGRADE) {
             createSetYsqlPgConfCsvInMemoryTasks(
                 universe, mastersAndTservers.mastersList, ServerType.MASTER);
@@ -119,7 +118,6 @@ public class ConfigureExportTelemetryConfig extends UpgradeTaskBase {
             serverType,
             (node, params) -> {
               params.force = true;
-              params.ignoreErrors = true;
               params.gflags = new HashMap<>();
               addUserYsqlPgConfCsv(params.gflags, universe, node, serverType);
             })
