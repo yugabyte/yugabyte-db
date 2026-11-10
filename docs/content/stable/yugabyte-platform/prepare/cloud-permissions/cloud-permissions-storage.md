@@ -16,7 +16,7 @@ When backing up to and/or restoring from external cloud storage, generally speak
 
 When YugabyteDB Anywhere or a database node is running on the same cloud as the bucket, grant the permissions as described below. You can use static credentials, or an IAM identity attached to YugabyteDB Anywhere and to each database node.
 
-When YugabyteDB Anywhere or a database node is running on another cloud, follow the instructions in [Federated IAM backups](../../../back-up-restore-universes/federated-iam-backups/). For Google Cloud Storage, grant `roles/storage.admin`. For Amazon S3, use the inline policy as described in Federated IAM backups.
+When YugabyteDB Anywhere or a database node is running on another cloud, follow the instructions in [Federated IAM backups](../../../back-up-restore-universes/federated-iam-backups/). For Google Cloud Storage, grant `roles/storage.objectAdmin` and `roles/storage.bucketViewer` on the bucket. For Amazon S3, use the inline policy as described in Federated IAM backups.
 
 When backing up to an NFS storage target, only database nodes need access to the NFS storage.
 
@@ -127,7 +127,7 @@ The credentials for this account (in JSON format) are used when creating a backu
 
 ##### Nodes or YugabyteDB Anywhere are running on AWS
 
-If the database nodes are running on AWS, or YugabyteDB Anywhere is running on AWS, grant `roles/storage.admin` on the bucket to each AWS role through a workload identity pool. Refer to [Federated IAM backups](../../../back-up-restore-universes/federated-iam-backups/).
+If the database nodes are running on AWS, or YugabyteDB Anywhere is running on AWS, grant `roles/storage.objectAdmin` and `roles/storage.bucketViewer` on the bucket to each AWS role through a workload identity pool. Refer to [Federated IAM backups](../../../back-up-restore-universes/federated-iam-backups/).
 
   </div>
 

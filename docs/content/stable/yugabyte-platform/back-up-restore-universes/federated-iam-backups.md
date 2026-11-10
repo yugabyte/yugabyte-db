@@ -30,19 +30,23 @@ The database nodes read and write the backup data in the bucket. YugabyteDB Anyw
 
 ## Limitations
 
-The provider and storage-configuration fields are not shown by default. To show them, set the **Enable Cross-Cloud Federated IAM** Global Runtime Configuration option (config key `yb.ui.feature_flags.enable_cross_cloud_federated_iam`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags. A provider or storage configuration that already has federation set keeps working if you turn the option off.
-
 - VM-based universes on AWS, Google Cloud, and on-premises providers. Kubernetes universes aren't supported.
 - One provider per universe. A universe whose nodes use more than one provider can't enable federated IAM.
 - On an on-premises provider, federated IAM is configured on the AWS and Google Cloud virtual machines. A bare-metal node is skipped, and the universe task continues.
 - A bucket in the same cloud as the nodes uses the credentials on the storage configuration. With **IAM Role**, a node running on AWS uses temporary credentials from the instance profile of the instance where YugabyteDB Anywhere is running, unless **Use S3 IAM roles attached to DB node for Backup/Restore** (config key `yb.backup.s3.use_db_nodes_iam_role_for_backup`) is true. A node running on GCP that backs up to S3 needs that option set to true when YugabyteDB Anywhere is running on AWS.
 - The AWS role must be a commercial `arn:aws:iam::` role. AWS China and AWS GovCloud aren't supported.
 
+## Enable the feature
+
+The Cross-Cloud Federated IAM feature is not available by default. To turn it on, set the **Enable Cross-Cloud Federated IAM** Global Runtime Configuration option (config key `yb.ui.feature_flags.enable_cross_cloud_federated_iam`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags. A provider or storage configuration that already has federation set keeps working if you turn the option off.
+
 ## Prepare Google Cloud Storage for AWS nodes
 
-Do this in the Google Cloud project that owns the bucket. Grant `roles/storage.admin` to the IAM role already attached to each database VM. In the binding, use the role name, such as `yb-node-role`, not the full ARN.
+Do this in the Google Cloud project that owns the bucket. On the bucket, grant `roles/storage.objectAdmin` and `roles/storage.bucketViewer` to the IAM role already attached to each database VM. In the binding, use the role name, such as `yb-node-role`, not the full ARN.
 
-If YugabyteDB Anywhere is also running on AWS, add the IAM role attached to that instance to the same binding. That role is separate from the role on the database nodes.
+`roles/storage.objectAdmin` lets the node create, read, list, and delete objects. `roles/storage.bucketViewer` is also required. Before a backup starts, the node reads the bucket metadata, and that call needs `storage.buckets.get`, which `roles/storage.objectAdmin` does not include.
+
+If YugabyteDB Anywhere is also running on AWS, grant both roles to the IAM role attached to that instance. That role is separate from the role on the database nodes.
 
 ### Create a bucket with uniform access
 
@@ -72,21 +76,24 @@ gcloud iam workload-identity-pools providers create-aws <PROVIDER_NAME> \
   --attribute-mapping="google.subject=assertion.arn,attribute.aws_role=assertion.arn.extract('assumed-role/{role}/')"
 ```
 
-`<GCP_PROJECT>` is the project ID. `<AWS_ACCOUNT_ID>` is the 12-digit account that owns the node role.
+`<GCP_PROJECT>` is the project ID. `<GCP_PROJECT_NUMBER>` is the numeric project number, which is different from the project ID. `<AWS_ACCOUNT_ID>` is the 12-digit account that owns the node role.
+
 
 In the Google Cloud console, open the workload identity pool and download the credential configuration file for the AWS provider you just created, `<PROVIDER_NAME>`. The file is JSON with `"type": "external_account"` and contains no key. Download it without service account impersonation. When you upload it in YugabyteDB Anywhere, the browser reads the audience and the file is not sent to YugabyteDB Anywhere. A file that impersonates a service account is rejected. The audience looks like `//iam.googleapis.com/projects/<GCP_PROJECT_NUMBER>/locations/global/workloadIdentityPools/<POOL_NAME>/providers/<PROVIDER_NAME>`.
 
 ### Grant the AWS role access to the bucket
 
-`<GCP_PROJECT_NUMBER>` is the numeric project number, which is different from the project ID.
-
 ```sh
 gcloud storage buckets add-iam-policy-binding gs://<GCS_BUCKET> \
   --member="principalSet://iam.googleapis.com/projects/<GCP_PROJECT_NUMBER>/locations/global/workloadIdentityPools/<POOL_NAME>/attribute.aws_role/<AWS_ROLE_NAME>" \
-  --role="roles/storage.admin"
+  --role="roles/storage.objectAdmin"
+
+gcloud storage buckets add-iam-policy-binding gs://<GCS_BUCKET> \
+  --member="principalSet://iam.googleapis.com/projects/<GCP_PROJECT_NUMBER>/locations/global/workloadIdentityPools/<POOL_NAME>/attribute.aws_role/<AWS_ROLE_NAME>" \
+  --role="roles/storage.bucketViewer"
 ```
 
-Repeat the binding for every database node role, and for the IAM role attached to the VM running YugabyteDB Anywhere if YugabyteDB Anywhere is running on AWS.
+Repeat both bindings for every database node role, and for the IAM role attached to the VM running YugabyteDB Anywhere if YugabyteDB Anywhere is running on AWS.
 
 ## Prepare Amazon S3 for GCP nodes
 
@@ -105,7 +112,7 @@ gcloud iam service-accounts describe <SA_EMAIL> \
 
 Use any URI you control. Enter the same value in **Audience** on the provider.
 
-```output
+```text
 https://example.com/yb-s3-federation
 ```
 
@@ -178,6 +185,14 @@ Grant that role permission to the one bucket. In the AWS console, open **IAM > R
 }
 ```
 
+To attach the policy from the CLI, save the JSON above as `policy.json` and run:
+
+```sh
+aws iam put-role-policy --role-name <ROLE_NAME> \
+  --policy-name yb-s3-backup \
+  --policy-document file://policy.json
+```
+
 ### Create the bucket
 
 For a region other than `us-east-1`:
@@ -234,7 +249,7 @@ To configure an on-premises provider configuration, do the following:
 | AWS VM | Google Cloud Storage, using its IAM role | The S3 storage configuration |
 | GCP VM | Amazon S3, using its service account | The Google Cloud Storage configuration |
 
-Complete both cloud setups. Each target is used by the nodes on the other cloud.
+Set up each cloud you turn on. Google Cloud Storage is used by the AWS nodes, and Amazon S3 is used by the GCP nodes.
 
 ## Configure backup storage
 
@@ -299,4 +314,10 @@ To turn this on for a universe that already exists:
 
 The provider must already have **Google Cloud Storage** or **Amazon S3** turned on. Turning **Enable Federated Access for Backups** off stops backups and restores that use the other cloud, including scheduled backups. For a GCP node and an S3 bucket, that is true when **Use S3 IAM roles attached to DB node for Backup/Restore** is true, or when **Federated IAM** is on. With **IAM Role** on, **Federated IAM** off, and that option false, the node keeps using temporary credentials from YugabyteDB Anywhere. Turning the universe setting off does not remove the permissions you created in AWS or Google Cloud.
 
-On the universe, open the **Backups** tab and select **Backup now**, using the storage configuration you created.
+## Back up and verify
+
+1. On the universe, open the **Backups** tab and select **Backup now**, using the storage configuration you created.
+1. Confirm the backup completes. A failure that looks like a credential error can come from blocked token-service access; refer to [Allow outbound access](#allow-outbound-access).
+
+Restores from a federated storage configuration use the same provider and universe settings. Turning off **Enable Federated Access for Backups** stops restores as well as backups.
+

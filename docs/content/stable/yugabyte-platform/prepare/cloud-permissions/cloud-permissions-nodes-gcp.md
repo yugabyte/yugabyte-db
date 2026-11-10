@@ -76,7 +76,7 @@ Then use one of the following methods:
 - Obtain a file containing a JSON that describes the service account credentials. You will need to provide this file later when creating the GCP provider configuration.
 - [Attach the service account](https://cloud.google.com/compute/docs/access/create-enable-service-accounts-for-instances#using) to the GCP VM that will run YBA.
 
-Attach a service account to each database VM as well. Grant `roles/storage.admin` on the bucket to that service account. An Amazon S3 bucket trusts the service account's numeric ID instead. Refer to [Federated IAM backups](../../../back-up-restore-universes/federated-iam-backups/).
+Attach a service account to each database VM as well. Grant `roles/storage.objectAdmin` and `roles/storage.bucketViewer` on the bucket to that service account. An Amazon S3 bucket trusts the service account's numeric ID instead. Refer to [Federated IAM backups](../../../back-up-restore-universes/federated-iam-backups/).
 
 | Save for later | To configure |
 | :--- | :--- |
