@@ -2099,11 +2099,17 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 										  mtstate->yb_skip_fetch_target_tuple);
 		Bitmapset  *yb_modifiedCols = NULL;
 
+		/*
+		 * ExecGetAllUpdatedCols includes recomputed stored generated columns,
+		 * whose new values are already in the slot. It returns a fresh set in
+		 * the per-tuple context, so bms_add_members can modify it in place.
+		 * Keep it as the first argument: the set from ExecGetInsertedCols
+		 * belongs to the range table and must not be modified.
+		 */
 		if (yb_skip_unmodified)
-			yb_modifiedCols = bms_union(ExecGetInsertedCols(resultRelInfo,
-															estate),
-										ExecGetUpdatedCols(resultRelInfo,
-														   estate));
+			yb_modifiedCols =
+				bms_add_members(ExecGetAllUpdatedCols(resultRelInfo, estate),
+								ExecGetInsertedCols(resultRelInfo, estate));
 
 		for (attrChk = 1; attrChk <= natts; attrChk++)
 		{
