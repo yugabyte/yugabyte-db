@@ -2034,10 +2034,20 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 		Bitmapset  *yb_modifiedCols = NULL;
 
 		if (yb_skip_unmodified)
+		{
 			yb_modifiedCols = bms_union(ExecGetInsertedCols(resultRelInfo,
 															estate),
 										ExecGetUpdatedCols(resultRelInfo,
 														   estate));
+			/*
+			 * A stored generated column cannot appear in the SET list, so it
+			 * is absent from ExecGetUpdatedCols. ExecComputeStoredGenerated
+			 * has already written its value into the slot. Include it, or a
+			 * NOT NULL generated column accepts a recomputed NULL.
+			 */
+			yb_modifiedCols = bms_add_members(yb_modifiedCols,
+											  ExecGetExtraUpdatedCols(resultRelInfo, estate));
+		}
 
 		for (attrChk = 1; attrChk <= natts; attrChk++)
 		{

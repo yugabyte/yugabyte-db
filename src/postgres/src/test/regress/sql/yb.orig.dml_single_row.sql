@@ -1114,6 +1114,99 @@ SELECT * FROM single_row_nullable_partitioned ORDER BY k;
 DELETE FROM single_row_nullable_partitioned WHERE k = 1;
 SET yb_enable_expression_pushdown TO off;
 
+-- GH-34653: NOT NULL on a stored generated column. The column is not in
+-- SET, but the single-row path has already recomputed it.
+CREATE TABLE single_row_not_null_generated (k int PRIMARY KEY, a int,
+	gen int GENERATED ALWAYS AS (a * 2) STORED NOT NULL);
+INSERT INTO single_row_not_null_generated (k, a) VALUES (1, 1);
+-- Setting the source to NULL recomputes gen to NULL and must fail.
+EXPLAIN (COSTS FALSE) UPDATE single_row_not_null_generated SET a = NULL WHERE k = 1;
+UPDATE single_row_not_null_generated SET a = NULL WHERE k = 1;
+SELECT * FROM single_row_not_null_generated;
+-- A non-null assignment stays on the fast path.
+EXPLAIN (COSTS FALSE) UPDATE single_row_not_null_generated SET a = 2 WHERE k = 1;
+UPDATE single_row_not_null_generated SET a = 2 WHERE k = 1;
+SELECT * FROM single_row_not_null_generated;
+
+-- Leaf attnums differ from the root. The check must use the leaf's attnum
+-- for the generated column.
+CREATE TABLE single_row_not_null_generated_part (k int, a int,
+	gen int GENERATED ALWAYS AS (a * 2) STORED NOT NULL, PRIMARY KEY (k))
+	PARTITION BY RANGE (k);
+CREATE TABLE single_row_not_null_generated_part1 (
+	gen int GENERATED ALWAYS AS (a * 2) STORED NOT NULL, a int, k int NOT NULL,
+	PRIMARY KEY (k));
+ALTER TABLE single_row_not_null_generated_part ATTACH PARTITION
+	single_row_not_null_generated_part1 FOR VALUES FROM (1) TO (100);
+INSERT INTO single_row_not_null_generated_part (k, a) VALUES (1, 1);
+EXPLAIN (COSTS FALSE) UPDATE single_row_not_null_generated_part SET a = NULL WHERE k = 1;
+UPDATE single_row_not_null_generated_part SET a = NULL WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_not_null_generated_part SET a = 4 WHERE k = 1;
+UPDATE single_row_not_null_generated_part SET a = 4 WHERE k = 1;
+SELECT * FROM single_row_not_null_generated_part ORDER BY k;
+
+-- GH-33967: a unique index on the generated column. The fast path is not
+-- used, because the index key changes with the source. An identity
+-- assignment must leave the row and the index alone. A value that
+-- recomputes to a key already in the index must fail.
+CREATE TABLE single_row_generated_index (k int PRIMARY KEY, a int,
+	gen int GENERATED ALWAYS AS (a * 2) STORED);
+CREATE UNIQUE INDEX single_row_generated_index_gen
+	ON single_row_generated_index (gen);
+INSERT INTO single_row_generated_index (k, a) VALUES (1, 1), (2, 2);
+EXPLAIN (COSTS FALSE) UPDATE single_row_generated_index SET a = a WHERE k = 1;
+UPDATE single_row_generated_index SET a = a WHERE k = 1;
+SELECT * FROM single_row_generated_index ORDER BY k;
+SELECT yb_index_check('single_row_generated_index_gen'::regclass);
+EXPLAIN (COSTS FALSE) UPDATE single_row_generated_index SET a = 2 WHERE k = 1;
+UPDATE single_row_generated_index SET a = 2 WHERE k = 1;
+SELECT * FROM single_row_generated_index ORDER BY k;
+SELECT yb_index_check('single_row_generated_index_gen'::regclass);
+UPDATE single_row_generated_index SET a = 3 WHERE k = 1;
+SELECT * FROM single_row_generated_index ORDER BY k;
+SELECT yb_index_check('single_row_generated_index_gen'::regclass);
+
+-- A CHECK on the generated column also refuses the fast path. The check
+-- sees the recomputed value.
+CREATE TABLE single_row_generated_check (k int PRIMARY KEY, a int,
+	gen int GENERATED ALWAYS AS (a * 2) STORED CHECK (gen > 0));
+INSERT INTO single_row_generated_check (k, a) VALUES (1, 1);
+EXPLAIN (COSTS FALSE) UPDATE single_row_generated_check SET a = 0 WHERE k = 1;
+UPDATE single_row_generated_check SET a = 0 WHERE k = 1;
+SELECT * FROM single_row_generated_check;
+EXPLAIN (COSTS FALSE) UPDATE single_row_generated_check SET a = 3 WHERE k = 1;
+UPDATE single_row_generated_check SET a = 3 WHERE k = 1;
+SELECT * FROM single_row_generated_check;
+
+-- An FK on a generated column may use NO ACTION, RESTRICT, and ON DELETE
+-- CASCADE. Updating the source changes the FK key, so the fast path is
+-- not used.
+CREATE TABLE single_row_generated_fk_pk (id int PRIMARY KEY);
+INSERT INTO single_row_generated_fk_pk VALUES (2), (4), (6);
+CREATE TABLE single_row_generated_fk (k int PRIMARY KEY, a int,
+	gen int GENERATED ALWAYS AS (a * 2) STORED
+	REFERENCES single_row_generated_fk_pk (id)
+	ON UPDATE NO ACTION ON DELETE RESTRICT);
+INSERT INTO single_row_generated_fk (k, a) VALUES (1, 1);
+EXPLAIN (COSTS FALSE) UPDATE single_row_generated_fk SET a = 2 WHERE k = 1;
+UPDATE single_row_generated_fk SET a = 2 WHERE k = 1;
+SELECT * FROM single_row_generated_fk;
+-- gen = 10 is not in the referenced table.
+UPDATE single_row_generated_fk SET a = 5 WHERE k = 1;
+SELECT * FROM single_row_generated_fk;
+-- The child still references id 4.
+UPDATE single_row_generated_fk_pk SET id = 8 WHERE id = 4;
+DELETE FROM single_row_generated_fk_pk WHERE id = 4;
+
+CREATE TABLE single_row_generated_fk_cascade (k int PRIMARY KEY, a int,
+	gen int GENERATED ALWAYS AS (a * 2) STORED
+	REFERENCES single_row_generated_fk_pk (id)
+	ON UPDATE RESTRICT ON DELETE CASCADE);
+INSERT INTO single_row_generated_fk_cascade (k, a) VALUES (1, 3);
+UPDATE single_row_generated_fk_pk SET id = 9 WHERE id = 6;
+DELETE FROM single_row_generated_fk_pk WHERE id = 6;
+SELECT * FROM single_row_generated_fk_cascade;
+
 -- Cleanup.
 DROP FUNCTION next_v3;
 DROP FUNCTION assign_one_plus_param_to_v1;
@@ -1128,6 +1221,13 @@ DROP TABLE single_row_range_asc_primary_key;
 DROP TABLE single_row_range_desc_primary_key;
 DROP TABLE single_row_not_null_constraints;
 DROP TABLE single_row_not_null_constraints_partitioned;
+DROP TABLE single_row_not_null_generated;
+DROP TABLE single_row_not_null_generated_part;
+DROP TABLE single_row_generated_index;
+DROP TABLE single_row_generated_check;
+DROP TABLE single_row_generated_fk;
+DROP TABLE single_row_generated_fk_cascade;
+DROP TABLE single_row_generated_fk_pk;
 DROP TABLE single_row_nullable_partitioned;
 DROP TABLE single_row_check_constraints;
 DROP TABLE single_row_check_constraints2;
