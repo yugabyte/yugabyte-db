@@ -8,9 +8,11 @@ for YB tables and the accessors that executor nodes still call on them, the
 scan primitives that the YB index access methods (yb_lsm, ybgin, and ybvector)
 share, the plan-time scan logic that the planner shares, the YB implementation
 of genam's systable scans, ANALYZE row sampling, and single-row fetch by
-ybctid.  Their headers are under src/include/access/.  Four of those headers
-are implemented in src/backend/access/common/ rather than here: yb_cost.h,
-yb_target.h, yb_lockrows.h, and yb_parallel_scan.h.
+ybctid.  The headers that the groups below list are all under
+src/include/access/.  Most of them are implemented in this directory, but four
+are implemented in src/backend/access/common/: yb_cost.h, yb_target.h,
+yb_lockrows.h, and yb_parallel_scan.h.  #37429 and #37428 track moving the
+implementations of all but yb_target.h to directories that match their roles.
 
 Code above the access-method layer, such as executor nodes, the optimizer,
 commands, and catalog and cache code, should reach YB relations only through
