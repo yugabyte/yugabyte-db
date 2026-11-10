@@ -70,6 +70,7 @@ void od_server_cancel_end(od_server_t *server)
 		 */
 
 		if (server->state == OD_SERVER_ACTIVE) {
+			/* YB: fork has no multi_pool, so no od_server_set_pool_state */
 			od_pg_server_pool_set(&((od_route_t *)server->route)->server_pool,
 					      server, OD_SERVER_IDLE);
 		}
@@ -99,6 +100,7 @@ void od_server_attach_client(od_server_t *server, od_client_t *client)
 	client->server = server;
 	server->key_client = client->key;
 	server->idle_time = 0;
+	/* YB: fork has no multi_pool, so no od_server_set_pool_state */
 	od_pg_server_pool_set(&((od_route_t *)server->route)->server_pool, server,
 			      OD_SERVER_ACTIVE);
 	od_server_ref(server);
@@ -122,6 +124,7 @@ void od_server_detach_client(od_server_t *server)
 		 * otherwise it will continue to be ACTIVE - no clients can
 		 * acquire this server
 		 */
+		/* YB: fork has no multi_pool, so no od_server_set_pool_state */
 		od_pg_server_pool_set(&((od_route_t *)server->route)->server_pool, server,
 				      OD_SERVER_IDLE);
 	}

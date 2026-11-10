@@ -519,6 +519,7 @@ static inline int od_router_gc_cb(od_route_t *route, void **argv)
 		goto done;
 
 clean:
+	/* YB: an in-flight cancel will still lock this route */
 	if (route->yb_cancels_in_flight > 0)
 		goto done;
 
@@ -1607,8 +1608,9 @@ static inline int od_router_cancel_cb(od_route_t *route, void **argv)
 			return -1;
 		}
 		cancel->server = server;
-		cancel->yb_route = route;
 		od_server_cancel_begin(server);
+		/* YB: keep the route alive until the cancel ends */
+		cancel->yb_route = route;
 		route->yb_cancels_in_flight++;
 		od_route_unlock(route);
 		return 1;

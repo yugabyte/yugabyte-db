@@ -2408,6 +2408,7 @@ static int od_config_reader_parse(od_config_reader_t *reader,
 			continue;
 		/* cancel_timeout_ms */
 		case OD_LCANCEL_TIMEOUT_MS: {
+			/* YB: First read int and then assign to _Atomic int */
 			int val;
 			if (!od_config_reader_number(reader, &val)) {
 				goto error;
