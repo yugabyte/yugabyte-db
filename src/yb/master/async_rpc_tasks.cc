@@ -1558,8 +1558,8 @@ void AsyncAlterTabletTier::HandleResponse(int attempt) {
       TransitionToCompleteState();
       return;
     case TabletServerErrorPB::STORAGE_TIER_NOT_AVAILABLE:
-      // The node has no disk on that tier: a placement problem, not a migration. Moving the
-      // replica to a node that has the tier is the balancer's job, not this task's.
+      // The node has no disk on that tier: a placement problem, not a migration. Nothing moves
+      // the replica to a node that has the tier yet; the balancer logs and skips it.
       LOG_WITH_PREFIX(WARNING) << "AlterTabletTier for tablet " << tablet_id() << " on TS "
                                << permanent_uuid_ << ": no data directory on tier '"
                                << target_tier_ << "', not retrying: " << status;

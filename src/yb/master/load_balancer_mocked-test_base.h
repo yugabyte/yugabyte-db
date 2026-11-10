@@ -184,6 +184,12 @@ class LoadBalancerMockedBase : public YBTest {
 
   bool TierMigrationRetriesEmpty() const { return cb_.tier_migration_retries_.empty(); }
 
+  // What RunClusterBalancer does around the per-table steps.
+  void BeginTierMigrationRun() { ++cb_.tier_migration_run_; }
+  void PruneTierMigrationRetries() { cb_.PruneTierMigrationRetries(); }
+
+  bool ActivityInfoIsIdle() const { return cb_.global_state_->activity_info_.IsIdle(); }
+
   Result<bool> HandleLeaderMoves(
       TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts)
       NO_THREAD_SAFETY_ANALYSIS /* disabling for controlled test */ {

@@ -68,6 +68,8 @@
 
 DECLARE_bool(enable_tiered_storage);
 
+DECLARE_bool(TEST_fail_tier_target_set_options);
+
 namespace yb::tablet {
 
 class TierMigrationTest : public YBTabletTest {
@@ -755,6 +757,34 @@ TEST_F(TierMigrationTest, TargetChangeDuringScanIsRefused) {
   ASSERT_EQ(SstCountOnPath(info, kTargetPathId), 0u);
   result = ASSERT_RESULT(tablet()->RunTierReconcilePass(TierReconcileOptions()));
   ASSERT_EQ(result.status.state, TierMigrationStatus::State::kDone);
+}
+
+// A target that reached the superblock but whose DB re-point failed is still reported: the
+// master, the next open and the reconciler act on the superblock, and the retry re-points the DB.
+// Without the report the master keeps the old target until something unrelated re-reports.
+TEST_F(TierMigrationTest, PersistedTargetIsReportedWhenRepointingDbFails) {
+  std::atomic<int> state_changes{0};
+  tablet()->TEST_SetTierMigrationHooks(std::make_shared<TierMigrationHooks>(TierMigrationHooks{
+      .files_moved = nullptr,
+      .files_failed = nullptr,
+      .wake_reconciler = {},
+      .tier_state_changed = [&state_changes](const TabletId&) { ++state_changes; },
+  }));
+  WriteFileWithKey(1);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tier_target_set_options) = true;
+  ASSERT_NOK(tablet()->SetTierMigrationTarget("hdd", kTargetPathId));
+  ASSERT_EQ(tablet()->metadata()->target_storage_tier(), "hdd");
+  ASSERT_EQ(state_changes.load(), 1);  // the persisted target, with the state still kNone
+  ASSERT_EQ(tablet()->tier_migration_status().state, TierMigrationStatus::State::kNone);
+
+  // The retry finds the same target persisted, re-points the DB and asserts the intent.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tier_target_set_options) = false;
+  ASSERT_OK(tablet()->SetTierMigrationTarget("hdd", kTargetPathId));
+  ASSERT_EQ(state_changes.load(), 2);  // kNone -> kInProgress
+  WriteFileWithKey(2);
+  auto info = ASSERT_RESULT(tablet()->GetTierInfo());
+  ASSERT_EQ(SstCountOnPath(info, kTargetPathId), 1u);  // the flush followed the re-pointed DB
 }
 
 // A same-target AlterTabletTier lands between a reconciler pass's scan and its verdict. The

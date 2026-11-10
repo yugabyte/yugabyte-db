@@ -209,6 +209,9 @@ class ClusterLoadBalancer {
   // whose re-send is due. Bounded by the in-flight caps. Returns true if one was sent.
   Result<bool> HandleTierMigrations(TabletId* out_tablet_id, TabletServerId* out_ts_uuid);
 
+  // Tiered storage: drops the retry entries no table's tier step visited this run.
+  void PruneTierMigrationRetries();
+
   // Processes any required replica removals, as part of having added an extra replica to a
   // tablet's set of peers, which caused its quorum to be larger than the configured number.
   //
@@ -450,14 +453,20 @@ class ClusterLoadBalancer {
   LeaderEpoch epoch_;
 
   // Tiered storage: re-send schedule for replicas whose migration the tserver gave up on
-  // (FAILED), keyed by tablet id and tserver uuid. An entry is dropped once the replica reports
-  // DONE or targets another tier; it survives the IN_PROGRESS each re-send causes, so the backoff
-  // grows across repeated failures. Only the balancer's own thread touches it.
+  // (FAILED), keyed by tablet id and tserver uuid. An entry is dropped when the replica reports
+  // DONE or targets another tier, and at the end of a run whose tier step did not visit it (the
+  // tablet or replica is gone, the table was skipped, its placement no longer names a tier), so
+  // a replica that comes back starts at the minimum wait. It survives the IN_PROGRESS each
+  // re-send causes, so the backoff grows across repeated failures. Only the balancer's own
+  // thread touches it.
   struct TierMigrationRetry {
     MonoTime next_attempt;
     MonoDelta backoff;
+    uint64_t seen_in_run = 0;
   };
   std::unordered_map<std::string, TierMigrationRetry> tier_migration_retries_;
+  // Counts full runs (live placement plus read replicas), for TierMigrationRetry::seen_in_run.
+  uint64_t tier_migration_run_ = 0;
 
   DISALLOW_COPY_AND_ASSIGN(ClusterLoadBalancer);
 };

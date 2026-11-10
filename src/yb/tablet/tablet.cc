@@ -251,6 +251,10 @@ DEFINE_test_flag(int32, slowdown_backfill_by_ms, 0,
 DEFINE_test_flag(uint64, backfill_paging_size, 0,
     "If set > 0, returns early after processing this number of rows.");
 
+DEFINE_test_flag(bool, fail_tier_target_set_options, false,
+    "Tiered storage: fail re-pointing the regular DB at a new target tier, after the target is "
+    "persisted in the superblock.");
+
 DEFINE_test_flag(bool, skip_write_stop_check_in_should_apply_write, false,
     "When true, ShouldApplyWrite() does not check AreWritesStopped(). "
     "Used to verify that the AreWritesStopped() check is necessary. See #30728.");
@@ -5444,18 +5448,20 @@ Result<ScopedRWOperation> Tablet::CheckTierTargetUsable(
 Status Tablet::SetTierMigrationTarget(const std::string& target_tier, uint32_t target_path_id) {
   auto scoped_operation = VERIFY_RESULT(CheckTierTargetUsable(target_tier, target_path_id));
   bool changed = false;
+  Status status;
   {
     std::lock_guard lock(tier_target_mutex_);
-    changed = VERIFY_RESULT(SetTierMigrationTargetUnlocked(target_tier, target_path_id));
+    status = SetTierMigrationTargetUnlocked(target_tier, target_path_id, &changed);
   }
   if (changed) {
     NotifyTierStateChanged();
   }
-  return Status::OK();
+  return status;
 }
 
-Result<bool> Tablet::SetTierMigrationTargetUnlocked(
-    const std::string& target_tier, uint32_t target_path_id) {
+Status Tablet::SetTierMigrationTargetUnlocked(
+    const std::string& target_tier, uint32_t target_path_id, bool* changed) {
+  *changed = false;
   const bool same_target = IsPersistedTierTarget(target_tier, target_path_id);
   {
     std::lock_guard lock(tier_migration_mutex_);
@@ -5471,14 +5477,19 @@ Result<bool> Tablet::SetTierMigrationTargetUnlocked(
   }
   if (!same_target) {
     RETURN_NOT_OK(metadata()->SetTargetTier(target_tier, target_path_id));
+    // Persisted, so reported whatever happens below.
+    *changed = true;
+  }
+  if (PREDICT_FALSE(FLAGS_TEST_fail_tier_target_set_options)) {
+    return STATUS(IOError, "Failing SetOptions due to FLAGS_TEST_fail_tier_target_set_options");
   }
   RETURN_NOT_OK_PREPEND(
       regular_db_->SetOptions({{"target_path_id", std::to_string(target_path_id)}}),
       "Failed to set target_path_id on regular DB");
 
   std::lock_guard lock(tier_migration_mutex_);
-  const bool state_changed = ReassertTierIntentUnlocked();
-  return state_changed || !same_target;
+  *changed = ReassertTierIntentUnlocked() || *changed;
+  return Status::OK();
 }
 
 bool Tablet::ReassertTierIntentUnlocked() {
@@ -5670,17 +5681,21 @@ Result<TierMigrationStatus> Tablet::AlterTabletTier(
 
   bool changed = false;
   std::optional<TierMigrationStatus> in_flight;
+  Status set_target_status;
   {
     std::lock_guard target_lock(tier_target_mutex_);
-    changed = VERIFY_RESULT(SetTierMigrationTargetUnlocked(target_tier, target_path_id));
-    std::lock_guard lock(tier_migration_mutex_);
-    if (tier_migration_status_.pass_in_flight) {
-      in_flight = tier_migration_status_;
+    set_target_status = SetTierMigrationTargetUnlocked(target_tier, target_path_id, &changed);
+    if (set_target_status.ok()) {
+      std::lock_guard lock(tier_migration_mutex_);
+      if (tier_migration_status_.pass_in_flight) {
+        in_flight = tier_migration_status_;
+      }
     }
   }
   if (changed) {
     NotifyTierStateChanged();
   }
+  RETURN_NOT_OK(set_target_status);
   if (in_flight) {
     // Only the same target gets past the write with a pass in flight: that pass already serves
     // this request, re-asserted just now like any accepted one, so report it.

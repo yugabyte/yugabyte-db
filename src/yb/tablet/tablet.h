@@ -1421,10 +1421,14 @@ class Tablet : public AbstractTablet,
   // Tiered storage: the one place an open tablet's target is written; creation, remote bootstrap
   // and OpenTablet's path_id repair write it before the Tablet exists. Refuses a different target
   // while a pass is in flight, so a pass always runs toward the current persisted target; the
-  // same target is a re-assert. Returns whether the target or the migration state changed, for
-  // the caller to report (NotifyTierStateChanged) once it has released the locks.
-  Result<bool> SetTierMigrationTargetUnlocked(
-      const std::string& target_tier, uint32_t target_path_id) REQUIRES(tier_target_mutex_);
+  // same target is a re-assert. Sets *changed when the target or the migration state changed,
+  // for the caller to report (NotifyTierStateChanged) once it has released the locks. Set on
+  // failure too once the superblock holds the new target: the master, the next open and the
+  // reconciler act on the superblock, so a target the DB could not be re-pointed at must still
+  // be reported (the retry re-points the DB).
+  Status SetTierMigrationTargetUnlocked(
+      const std::string& target_tier, uint32_t target_path_id, bool* changed)
+      REQUIRES(tier_target_mutex_);
 
   // Tiered storage: intent (re)asserted. Convergence is unproven again and earlier failures no
   // longer count toward kFailed. Returns whether the state changed.

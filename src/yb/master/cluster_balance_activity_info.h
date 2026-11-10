@@ -35,7 +35,8 @@ YB_DEFINE_ENUM(ClusterBalancerWarningType,
 class ClusterBalancerActivityInfo {
  public:
   bool IsIdle() const {
-    return warnings_.size() == 0 && tasks_.empty() && !has_ongoing_remote_bootstraps_;
+    return warnings_.size() == 0 && tasks_.empty() && !has_ongoing_remote_bootstraps_ &&
+           !has_ongoing_tier_migrations_;
   }
 
   // Aggregate the tasks by {type, state}, and store the count and an example message for each.
@@ -89,6 +90,10 @@ class ClusterBalancerActivityInfo {
   MonoTime run_end_time_ = MonoTime::Min();
 
   bool has_ongoing_remote_bootstraps_ = false;
+
+  // Tiered storage: a replica is still moving toward its target tier. Like an ongoing remote
+  // bootstrap, work the balancer waits on, so it is not idle even when it sends nothing.
+  bool has_ongoing_tier_migrations_ = false;
 
  private:
   // List of warnings that might prevent the cluster balancer from making progress.
