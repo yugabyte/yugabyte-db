@@ -47,14 +47,19 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver_types.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/metrics.h"
+#include "yb/util/storage_tier.h"
 #include "yb/util/tostring.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -71,6 +76,7 @@ DECLARE_string(TEST_master_universe_uuid);
 DECLARE_int32(TEST_mini_cluster_registration_wait_time_sec);
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_bool(persist_tserver_registry);
+DECLARE_bool(enable_tiered_storage);
 DECLARE_uint32(xcluster_guarded_lease_duration_ms);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
@@ -81,6 +87,8 @@ DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(tablet_report_limit);
 DECLARE_int32(replication_factor);
 DECLARE_uint64(TEST_inject_latency_during_tablet_report_ms);
+DECLARE_bool(enable_tiered_storage);
+DECLARE_int32(tier_migration_reconcile_interval_sec);
 
 METRIC_DECLARE_histogram(handler_latency_yb_master_MasterHeartbeat_TSHeartbeat);
 
@@ -720,6 +728,199 @@ TEST_F(MasterHeartbeatITest, TestRegistrationThroughRaftPersisted) {
       });
   ASSERT_TRUE(live_ts_it == live_tservers_resp.servers().end())
       << "TS registered through raft config should be unresponsive, not live";
+}
+
+class MasterHeartbeatITestPersistedRegistry : public MasterHeartbeatITest {
+ public:
+  void SetUp() override {
+    // Must be on before the tservers register, or their entries never reach the sys catalog.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_persist_tserver_registry) = true;
+    MasterHeartbeatITest::SetUp();
+  }
+
+  std::vector<std::string> TServerUuids() {
+    std::vector<std::string> uuids;
+    for (size_t i = 0; i < mini_cluster_->num_tablet_servers(); ++i) {
+      uuids.push_back(mini_cluster_->mini_tablet_server(i)->server()->permanent_uuid());
+    }
+    return uuids;
+  }
+};
+
+// With tiered storage off a tserver registers no tiers, so the master treats them as unknown and
+// persists none.
+TEST_F(MasterHeartbeatITestPersistedRegistry, RegistrationCarriesNoStorageTiersWhenDisabled) {
+  ASSERT_FALSE(FLAGS_enable_tiered_storage);
+  auto* ts_manager = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())->master()->ts_manager();
+  for (const auto& uuid : TServerUuids()) {
+    auto ts_desc = ASSERT_RESULT(ts_manager->LookupTSByUUID(uuid));
+    ASSERT_TRUE(ts_desc->GetRegistration().storage_tiers().empty()) << uuid;
+    ASSERT_TRUE(ts_desc->GetStorageTiers().empty()) << uuid;
+    ASSERT_FALSE(ts_desc->HasStorageTier(kDefaultStorageTier)) << uuid;
+  }
+}
+
+class MasterHeartbeatITestTieredStorage : public MasterHeartbeatITestPersistedRegistry {
+ public:
+  void SetUp() override {
+    // Must be on before the tservers register, or they register no tiers.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = true;
+    MasterHeartbeatITestPersistedRegistry::SetUp();
+  }
+
+  void TearDown() override {
+    MasterHeartbeatITestPersistedRegistry::TearDown();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = false;
+  }
+
+  // A default cluster has unlabeled data dirs, so each tserver registers kDefaultStorageTier alone
+  // and the master answers tier questions from that registration.
+  Status CheckRegisteredStorageTiers(const std::vector<std::string>& uuids) {
+    auto* ts_manager =
+        VERIFY_RESULT(mini_cluster_->GetLeaderMiniMaster())->master()->ts_manager();
+    for (const auto& uuid : uuids) {
+      auto ts_desc = VERIFY_RESULT(ts_manager->LookupTSByUUID(uuid));
+      const auto registration = ts_desc->GetRegistration();
+      const auto& registered = registration.storage_tiers();
+      SCHECK_EQ(registered.size(), 1, IllegalState, Format("Tiers registered by $0", uuid));
+      SCHECK_EQ(registered.Get(0), kDefaultStorageTier, IllegalState,
+                Format("Tier registered by $0", uuid));
+      SCHECK(ts_desc->HasStorageTier(kDefaultStorageTier), IllegalState,
+             Format("$0 should have the default tier", uuid));
+      SCHECK(!ts_desc->HasStorageTier("hdd"), IllegalState,
+             Format("$0 should not have an hdd tier", uuid));
+    }
+    return Status::OK();
+  }
+};
+
+TEST_F(MasterHeartbeatITestTieredStorage, RegistrationCarriesStorageTiers) {
+  const auto uuids = TServerUuids();
+  ASSERT_OK(CheckRegisteredStorageTiers(uuids));
+
+  // With no tserver running, a restarted master rebuilds the descriptors from the persisted
+  // registry, so the tiers are known before any heartbeat arrives.
+  ShutdownAllTServers(mini_cluster_.get());
+  ShutdownAllMasters(mini_cluster_.get());
+  ASSERT_OK(StartAllMasters(mini_cluster_.get()));
+  Status last_check;
+  auto waited = WaitFor(
+      [&]() -> Result<bool> {
+        last_check = CheckRegisteredStorageTiers(uuids);
+        return last_check.ok();
+      },
+      30s, "Waiting for the persisted tserver registry to load");
+  ASSERT_OK(last_check);
+  ASSERT_OK(waited);
+
+  ASSERT_OK(StartAllTServers(mini_cluster_.get()));
+}
+
+class TierStateHeartbeatTest : public MasterHeartbeatITest {
+ public:
+  void SetUp() override {
+    // Both are read when the tservers start: the tier fields are reported only with the preview
+    // flag on, and the reconciler's verdict is what moves a replica to DONE.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tier_migration_reconcile_interval_sec) = 1;
+    MasterHeartbeatITest::SetUp();
+  }
+};
+
+// A replica's tier, target and migration state reach the master through the tablet report: at
+// creation, when AlterTabletTier records a target, and when the reconciler's verdict follows.
+TEST_F(TierStateHeartbeatTest, TierStateReachesMaster) {
+  CreateTable();
+  auto& catalog_mgr = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto table_info = catalog_mgr.GetTableInfoFromNamespaceNameAndTableName(
+      table_name().namespace_type(), table_name().namespace_name(), table_name().table_name());
+  auto tablets = ASSERT_RESULT(table_info->GetTablets());
+  ASSERT_FALSE(tablets.empty());
+
+  // A default cluster has unlabeled data dirs, so every replica is born on kDefaultStorageTier
+  // with no target, and nothing has looked at it.
+  const auto num_replicas = mini_cluster_->num_tablet_servers();
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    for (const auto& tablet : tablets) {
+      auto replicas = tablet->GetReplicaLocations();
+      if (replicas->size() != num_replicas) {
+        return false;
+      }
+      for (const auto& [ts_uuid, replica] : *replicas) {
+        if (replica.current_storage_tier != kDefaultStorageTier ||
+            !replica.target_storage_tier.empty() ||
+            replica.tier_migration_state != tserver::TierMigrationStatusPB::NONE) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }, 30s, "every replica to report its tier"));
+
+  // Record a target on one replica. The only tier here is the home one, so the replica is on its
+  // target already and the reconciler declares it DONE on its next pass.
+  const auto& tablet = tablets.front();
+  auto* mini_ts = mini_cluster_->mini_tablet_server(0);
+  auto peer = ASSERT_RESULT(mini_ts->server()->tablet_manager()->GetTablet(tablet->tablet_id()));
+  auto ts_tablet = ASSERT_RESULT(peer->shared_tablet());
+  ASSERT_RESULT(ts_tablet->AlterTabletTier(kDefaultStorageTier, /* target_path_id= */ 0));
+  const auto ts_uuid = mini_ts->server()->permanent_uuid();
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto replicas = tablet->GetReplicaLocations();
+    auto it = replicas->find(ts_uuid);
+    if (it == replicas->end()) {
+      return false;
+    }
+    const auto& replica = it->second;
+    return replica.target_storage_tier == kDefaultStorageTier &&
+           replica.current_storage_tier == kDefaultStorageTier &&
+           replica.tier_migration_state == tserver::TierMigrationStatusPB::DONE;
+  }, 30s, "the master to see the target and the reconciler's verdict"));
+  for (const auto& [uuid, replica] : *tablet->GetReplicaLocations()) {
+    if (uuid != ts_uuid) {
+      ASSERT_TRUE(replica.target_storage_tier.empty()) << replica.ToString();
+    }
+  }
+
+  // A report with a new term, as a leader election produces, makes the master rebuild every
+  // replica's entry from that one report. Send one from the migrated replica: its tier fields
+  // describe that replica only, so the others must keep what they last reported.
+  auto* mini_master = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster());
+  auto ts_desc = ASSERT_RESULT(mini_master->ts_manager().LookupTSByUUID(ts_uuid));
+  master::MasterHeartbeatProxy master_proxy(proxy_cache_.get(), mini_master->bound_rpc_addr());
+  master::TSHeartbeatRequestPB req;
+  req.set_universe_uuid(ASSERT_RESULT(catalog_mgr.GetClusterConfig()).universe_uuid());
+  *req.mutable_common() = MakeTSToMasterCommonPB(*ts_desc, ts_desc->latest_seqno());
+  auto* report = req.mutable_tablet_report();
+  report->set_is_incremental(true);
+  report->set_sequence_number(ts_desc->latest_report_seqno() + 1);
+  auto* reported = report->add_updated_tablets();
+  reported->set_tablet_id(tablet->tablet_id());
+  reported->set_state(tablet::RaftGroupStatePB::RUNNING);
+  reported->set_tablet_data_state(tablet::TabletDataState::TABLET_DATA_READY);
+  auto* cstate = reported->mutable_committed_consensus_state();
+  *cstate = tablet->LockForRead()->pb.committed_consensus_state();
+  cstate->set_leader_uuid(ts_uuid);
+  cstate->set_current_term(cstate->current_term() + 1);
+  reported->set_current_storage_tier(kDefaultStorageTier);
+  reported->set_target_storage_tier(kDefaultStorageTier);
+  reported->set_tier_migration_state(tserver::TierMigrationStatusPB::DONE);
+  master::TSHeartbeatResponsePB resp;
+  rpc::RpcController rpc;
+  ASSERT_OK(master_proxy.TSHeartbeat(req, &resp, &rpc));
+  ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+  for (const auto& [uuid, replica] : *tablet->GetReplicaLocations()) {
+    if (uuid == ts_uuid) {
+      ASSERT_EQ(replica.target_storage_tier, kDefaultStorageTier) << replica.ToString();
+      ASSERT_EQ(replica.tier_migration_state, tserver::TierMigrationStatusPB::DONE)
+          << replica.ToString();
+      continue;
+    }
+    ASSERT_EQ(replica.current_storage_tier, kDefaultStorageTier) << replica.ToString();
+    ASSERT_TRUE(replica.target_storage_tier.empty()) << replica.ToString();
+    ASSERT_EQ(replica.tier_migration_state, tserver::TierMigrationStatusPB::NONE)
+        << replica.ToString();
+  }
 }
 
 class DriveInfoTest : public MasterHeartbeatITest {

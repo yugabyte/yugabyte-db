@@ -266,6 +266,7 @@ TAG_FLAG(catalog_manager_inject_latency_in_delete_table_ms, hidden);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 
 DECLARE_bool(enable_qos);
+DECLARE_bool(enable_tiered_storage);
 DEFINE_RUNTIME_int32(qos_max_db_count, 0,
     "Maximum number of YSQL databases allowed per cluster when QoS is enabled "
     "(enable_qos=true). CREATE DATABASE is rejected when the non-template database "
@@ -5618,35 +5619,8 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
 
     // Try allocating tservers for the replicas and see if we can place a quorum
     // number of replicas.
-    // Essentially, the logic is:
-    // 1. We satisfy whatever we can from the minimums.
-    // 2. We then satisfy whatever we can from the slack.
-    //    Slack replicas can go into any of the valid placement blocks, as long as the block
-    //    stays within its effective maximum number of replicas.
-    // Overall, if in this process we are able to place n/2 + 1 replicas
-    // then we succeed otherwise we fail.
-    size_t total_extra_replicas = num_replicas - minimum_sum;
-    size_t total_feasible_replicas = 0;
-    size_t total_extra_servers = 0;
-    for (const auto& pb : placement_info.placement_blocks()) {
-      auto allowed_ts = VERIFY_RESULT(FindTServersForPlacementBlock(pb, ts_descs));
-      size_t allowed_ts_size = allowed_ts.size();
-      size_t min_num_replicas = pb.min_num_replicas();
-      size_t max_num_replicas =
-          GetEffectiveMaxNumReplicas(pb, narrow_cast<int32_t>(num_replicas));
-      // For every placement block, we can only satisfy upto the number of
-      // tservers present in that particular placement block.
-      total_feasible_replicas += min(allowed_ts_size, min_num_replicas);
-      // Extra tablet servers beyond min_num_replicas will be used to place
-      // the extra replicas over and above the minimums.
-      size_t max_feasible_replicas = min(allowed_ts_size, max_num_replicas);
-      if (max_feasible_replicas > min_num_replicas) {
-        total_extra_servers += max_feasible_replicas - min_num_replicas;
-      }
-    }
-    // The total number of extra replicas that we can put cannot be more than
-    // the total tablet servers that are extra.
-    total_feasible_replicas += min(total_extra_replicas, total_extra_servers);
+    const size_t total_feasible_replicas =
+        VERIFY_RESULT(CountPlaceableReplicas(placement_info, ts_descs));
 
     // If we place the replicas in accordance with above, we should be able to place
     // at least replica_quorum_needed otherwise we fail.
@@ -5661,6 +5635,52 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
   }
 
   return Status::OK();
+}
+
+// Without placement blocks every tserver can take a replica. With them, replica selection
+// satisfies each block's minimum from the tservers in that block, then places the slack replicas
+// on the tservers left in any block that stays within its effective maximum, so a tserver outside
+// every block takes no replica. Blocks can overlap (a zone's block next to its region's; the
+// tablespace parser rejects duplicates only). Each block is counted from all of its tservers,
+// while selection gives a tserver to the first block that takes it, so the sum is capped at the
+// distinct tservers in some block; with overlapping blocks it stays an upper bound, since the
+// tservers an earlier block takes can leave a later one short.
+Result<size_t> CatalogManager::CountPlaceableReplicas(
+    const PlacementInfoPB& placement_info, const TSDescriptorVector& ts_descs) {
+  if (placement_info.placement_blocks().empty()) {
+    return ts_descs.size();
+  }
+  const size_t num_replicas = GetNumReplicasOrGlobalReplicationFactor(placement_info);
+  size_t minimum_sum = 0;
+  for (const auto& pb : placement_info.placement_blocks()) {
+    minimum_sum += pb.min_num_replicas();
+  }
+  // CheckValidPlacementInfo rejects minimums above num_replicas; there is no slack then.
+  const size_t total_extra_replicas = num_replicas > minimum_sum ? num_replicas - minimum_sum : 0;
+  size_t total_feasible_replicas = 0;
+  size_t total_extra_servers = 0;
+  for (const auto& pb : placement_info.placement_blocks()) {
+    const auto allowed_ts = VERIFY_RESULT(FindTServersForPlacementBlock(pb, ts_descs));
+    const size_t allowed_ts_size = allowed_ts.size();
+    const size_t min_num_replicas = pb.min_num_replicas();
+    const size_t max_num_replicas =
+        GetEffectiveMaxNumReplicas(pb, narrow_cast<int32_t>(num_replicas));
+    // For every placement block, we can only satisfy upto the number of
+    // tservers present in that particular placement block.
+    total_feasible_replicas += min(allowed_ts_size, min_num_replicas);
+    // Extra tablet servers beyond min_num_replicas will be used to place
+    // the extra replicas over and above the minimums.
+    const size_t max_feasible_replicas = min(allowed_ts_size, max_num_replicas);
+    if (max_feasible_replicas > min_num_replicas) {
+      total_extra_servers += max_feasible_replicas - min_num_replicas;
+    }
+  }
+  // The total number of extra replicas that we can put cannot be more than
+  // the total tablet servers that are extra.
+  const size_t total_placeable_replicas =
+      total_feasible_replicas + min(total_extra_replicas, total_extra_servers);
+  const auto in_some_block = VERIFY_RESULT(FindTServersForPlacementInfo(placement_info, ts_descs));
+  return min(total_placeable_replicas, in_some_block.size());
 }
 
 Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
@@ -12589,6 +12609,16 @@ Result<std::shared_ptr<AsyncAddServerTask>> CatalogManager::ScheduleAddServerTas
   return task;
 }
 
+Result<std::shared_ptr<RetryingRpcTask>> CatalogManager::ScheduleAlterTabletTierTask(
+    const TabletInfoPtr& tablet, const TabletServerId& ts_uuid, const std::string& target_tier,
+    const LeaderEpoch& epoch, const std::string& reason) {
+  auto task = std::make_shared<AsyncAlterTabletTier>(
+      master_, AsyncTaskPool(), tablet, ts_uuid, target_tier, epoch, reason);
+  tablet->table()->AddTask(task);
+  RETURN_NOT_OK(ScheduleTask(task));
+  return task;
+}
+
 void CatalogManager::ExtractTabletsToProcess(
     TabletInfos *tablets_to_delete,
     TableToTabletInfos *tablets_to_process) {
@@ -12996,6 +13026,13 @@ namespace {
 // A tserver belongs to the placement that names its placement uuid; a placement without one is
 // the live placement, whose tservers have an empty placement uuid.
 bool TsInPlacement(const PlacementInfoPB& placement_info, const TSDescriptor& ts_desc) {
+  // A placement that names a storage tier needs a tserver with a disk on it. With tiered storage
+  // off the tier is not acted on: the tablespace refresh already drops it, and a placement that
+  // still carries one (built by a client directly) is placed as untiered.
+  if (FLAGS_enable_tiered_storage && !placement_info.storage_tier().empty() &&
+      !ts_desc.HasStorageTier(placement_info.storage_tier())) {
+    return false;
+  }
   if (placement_info.has_placement_uuid()) {
     return ts_desc.placement_uuid() == placement_info.placement_uuid();
   }
@@ -13657,6 +13694,13 @@ Status CatalogManager::BuildLocationsForTablet(
       replica_pb->set_role(tablet_replica.role);
       replica_pb->set_member_type(tablet_replica.member_type);
       replica_pb->set_state(tablet_replica.state);
+      if (!tablet_replica.current_storage_tier.empty()) {
+        replica_pb->set_current_storage_tier(tablet_replica.current_storage_tier);
+      }
+      if (!tablet_replica.target_storage_tier.empty()) {
+        replica_pb->set_target_storage_tier(tablet_replica.target_storage_tier);
+        replica_pb->set_tier_migration_state(tablet_replica.tier_migration_state);
+      }
       TSInfoPB* out_ts_info = replica_pb->mutable_ts_info();
       out_ts_info->set_permanent_uuid(ts_uuid);
       auto strong_ts_desc_ptr = tablet_replica.ts_desc.lock();
@@ -14094,10 +14138,52 @@ Status CatalogManager::ValidateReplicationInfo(
   if (placement_info.placement_uuid().empty()) {
     placement_info.set_placement_uuid(VERIFY_RESULT(placement_uuid()));
   }
-  GetTsDescsFromPlacementInfo(placement_info, all_ts_descs, &ts_descs);
+  // Validate the placement without its tier first, so a placement that is short of tservers
+  // whatever their tiers keeps the count messages below and the tier is blamed only when it is
+  // the reason.
+  {
+    PlacementInfoPB untiered_placement_info = placement_info;
+    untiered_placement_info.clear_storage_tier();
+    GetTsDescsFromPlacementInfo(untiered_placement_info, all_ts_descs, &ts_descs);
+  }
   Status s = CheckValidPlacementInfo(placement_info, ts_descs, resp);
   if (!s.ok()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO, s);
+  }
+
+  // A tier is a hard constraint at creation. CheckValidPlacementInfo accepts a quorum of tservers,
+  // but a tablet created on fewer tservers than its replication factor starts under-replicated,
+  // and the load balancer, which does not consider tiers, would add the missing replicas on
+  // tservers without the tier. So every replica needs a live tserver that registered a data
+  // directory on the tier, within the placement blocks and under their maximums as
+  // CountPlaceableReplicas bounds it, exactly unless the blocks overlap. Gated on
+  // catalog_manager_check_ts_count_for_create_table like the live tablet server count.
+  // "Registered" also covers tservers whose tiers are unknown, which create-time placement does
+  // not use.
+  const auto& storage_tier = placement_info.storage_tier();
+  if (FLAGS_enable_tiered_storage && FLAGS_catalog_manager_check_ts_count_for_create_table &&
+      !storage_tier.empty()) {
+    GetTsDescsFromPlacementInfo(placement_info, all_ts_descs, &ts_descs);
+    if (ts_descs.empty()) {
+      return SetupError(
+          resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO,
+          STATUS_FORMAT(
+              InvalidArgument,
+              "No live tablet server has registered a data directory on storage tier $0",
+              storage_tier));
+    }
+    const size_t num_replicas = GetNumReplicasOrGlobalReplicationFactor(placement_info);
+    const size_t placeable_replicas =
+        VERIFY_RESULT(CountPlaceableReplicas(placement_info, ts_descs));
+    if (placeable_replicas < num_replicas) {
+      return SetupError(
+          resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO,
+          STATUS_FORMAT(
+              InvalidArgument,
+              "The placement needs $0 replicas on storage tier $1, but only $2 can be placed on "
+              "live tablet servers that have registered a data directory on it",
+              num_replicas, storage_tier, placeable_replicas));
+    }
   }
 
   s = CatalogManagerUtil::CheckValidLeaderAffinity(replication_info);

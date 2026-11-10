@@ -1011,6 +1011,16 @@ Status list_tablets_action(const ClusterAdminCli::CLIArguments& args, ClusterAdm
   return Status::OK();
 }
 
+const auto get_table_tier_info_args = "<table>";
+Status get_table_tier_info_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  const auto table_name = VERIFY_RESULT(ResolveSingleTableName(client, args.begin(), args.end()));
+  RETURN_NOT_OK_PREPEND(
+      client->GetTableTierInfo(table_name),
+      Format("Unable to get storage tier info of table $0", table_name));
+  return Status::OK();
+}
+
 const auto modify_table_placement_info_args =
     "<table> <placement_info> <replication_factor> [<placement_uuid>] "
     "(placement_info: cloud.region.zone[:min[:max]],...)";
@@ -3517,6 +3527,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(list_tables);
   REGISTER_COMMAND(list_tables_with_db_types);
   REGISTER_COMMAND(list_tablets);
+  REGISTER_COMMAND(get_table_tier_info);
   REGISTER_COMMAND(modify_table_placement_info);
   REGISTER_COMMAND(modify_placement_info);
   REGISTER_COMMAND(clear_placement_info);

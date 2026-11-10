@@ -38,6 +38,8 @@ DECLARE_int32(replication_factor);
 
 DECLARE_bool(allow_leader_balancing_dead_node);
 
+DECLARE_bool(enable_tiered_storage);
+
 namespace yb {
 namespace master {
 
@@ -238,26 +240,7 @@ size_t PerTableLoadState::GetLeaderLoad(const TabletServerId& ts_uuid) const {
 
 bool PerTableLoadState::ShouldSkipReplica(const TabletReplica& replica) {
   auto desc = replica.ts_desc.lock();
-  if (!desc) {
-    return true;
-  }
-  bool is_replica_live = IsTsInLivePlacement(desc);
-  // Ignore read replica when balancing live nodes.
-  if (options_->type == ReplicaType::kLive && !is_replica_live) {
-    return true;
-  }
-  // Ignore live replica when balancing read replicas.
-  if (options_->type == ReplicaType::kReadOnly && is_replica_live) {
-    return true;
-  }
-  // Ignore read replicas from other clusters.
-  if (options_->type == ReplicaType::kReadOnly && !is_replica_live) {
-    const string& placement_uuid = desc->placement_uuid();
-    if (placement_uuid != options_->placement_uuid) {
-      return true;
-    }
-  }
-  return false;
+  return !desc || !IsTsInRunPlacement(desc);
 }
 
 size_t PerTableLoadState::GetReplicaCount(std::shared_ptr<const TabletReplicaMap> replica_map) {
@@ -304,6 +287,22 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
         "list (replaced, or registered after this load-balancer run started)", ts_uuid, tablet_id);
     }
     auto& meta_ts = per_ts_meta_[ts_uuid];
+
+    // Tiered storage: a replica still moving toward its target counts against the migration
+    // caps until the tserver reports it on the target tier, converged (DONE) or gave up (FAILED).
+    // DONE with another current tier is a replica on a tserver with no disk on its target, which
+    // runs on its home disk and never moves; like a replica on a dead tserver, it must not hold
+    // a slot.
+    if (!replica.target_storage_tier.empty() &&
+        replica.current_storage_tier != replica.target_storage_tier &&
+        replica.tier_migration_state != tserver::TierMigrationStatusPB::FAILED &&
+        replica.tier_migration_state != tserver::TierMigrationStatusPB::DONE &&
+        meta_ts.descriptor->HasStorageTier(replica.target_storage_tier) &&
+        (!check_ts_liveness_ || meta_ts.descriptor->IsLiveAndHasReported())) {
+      ++global_state_->tier_migrations_in_flight_[ts_uuid];
+      ++global_state_->total_tier_migrations_in_flight_;
+      global_state_->activity_info_.has_ongoing_tier_migrations_ = true;
+    }
 
     // If the TS of this replica is deemed DEAD then perform LBing only if it is blacklisted.
     if (check_ts_liveness_ && !meta_ts.descriptor->IsLiveAndHasReported()) {
@@ -647,6 +646,21 @@ Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
     return false;
   }
 
+  // A placement that names a storage tier only gets load on servers with a disk on it, while
+  // another server that could take the replica has one (IsStorageTierEnforced, per block). Two
+  // exemptions keep repair and drains unblocked: a server whose tiers are unknown (registered
+  // none: an older binary, --enable_tiered_storage off, or not re-registered yet) is accepted,
+  // and so is any server when no eligible one in its block has the tier. Create-time placement
+  // stays strict in CatalogManager::GetTsDescsFromPlacementInfo.
+  if (IsStorageTierEnforced(to_placement)) {
+    const auto tiers = ts_meta.descriptor->GetStorageTiers();
+    if (!tiers.empty() && !tiers.contains(placement_.storage_tier())) {
+      VLOG(4) << "TS " << to_ts << " has no " << placement_.storage_tier()
+              << " disk, so cannot add tablet " << tablet_id;
+      return false;
+    }
+  }
+
   if (to_placement) {
     const auto& tablet_meta = per_tablet_meta_.at(tablet_id);
     auto projected_count =
@@ -724,6 +738,42 @@ size_t PerTableLoadState::PlacementBlockMaxReplicas(const CloudInfoPB& cloud_inf
   // own cloud info): only the replication factor bounds the placement.
   return FindWithDefault(
       placement_block_max_replicas_, cloud_info, implicit_cast<size_t>(placement_.num_replicas()));
+}
+
+bool PerTableLoadState::IsStorageTierEnforced(const std::optional<CloudInfoPB>& to_block) {
+  const auto& tier = placement_.storage_tier();
+  if (!FLAGS_enable_tiered_storage || tier.empty()) {
+    return false;
+  }
+  const bool by_block = !placement_.placement_blocks().empty();
+  if (by_block) {
+    if (!to_block) {
+      return false;  // Outside every block: CanAddTabletToTabletServer refuses it anyway.
+    }
+    auto it = storage_tier_enforced_by_block_.find(*to_block);
+    if (it != storage_tier_enforced_by_block_.end()) {
+      return it->second;
+    }
+  } else if (storage_tier_enforced_.has_value()) {
+    return *storage_tier_enforced_;
+  }
+  bool enforced = false;
+  for (const auto& [ts_uuid, ts_meta] : per_ts_meta_) {
+    if (!ts_meta.descriptor || global_state_->blacklisted_servers_.count(ts_uuid) ||
+        !IsTsInRunPlacement(ts_meta.descriptor) ||
+        (by_block && !ts_meta.descriptor->MatchesCloudInfo(*to_block)) ||
+        !ts_meta.descriptor->HasStorageTier(tier)) {
+      continue;
+    }
+    enforced = true;
+    break;
+  }
+  if (by_block) {
+    storage_tier_enforced_by_block_[*to_block] = enforced;
+  } else {
+    storage_tier_enforced_ = enforced;
+  }
+  return enforced;
 }
 
 std::optional<CloudInfoPB> PerTableLoadState::GetValidPlacement(const TabletServerId& ts_uuid) {

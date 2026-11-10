@@ -77,6 +77,7 @@ struct CreateSnapshotData;
 struct DocDbPersistentState;
 struct VectorIndexPersistentState;
 struct PgsqlReadRequestResult;
+struct TierMigrationStatus;
 struct QLReadRequestResult;
 struct RemoveIntentsData;
 struct TabletInitData;

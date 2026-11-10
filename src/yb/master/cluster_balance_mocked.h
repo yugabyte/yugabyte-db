@@ -84,10 +84,24 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
   void GetPendingTasks(const TableInfoPtr& table,
                        TabletToTabletServerMap* pending_add_replica_tasks,
                        TabletToTabletServerMap* pending_remove_replica_tasks,
-                       TabletToTabletServerMap* pending_stepdown_leader_tasks) override {
+                       TabletToTabletServerMap* pending_stepdown_leader_tasks,
+                       TabletToTabletServersMap* pending_tier_migration_tasks) override {
     *pending_add_replica_tasks = pending_add_replica_tasks_;
     *pending_remove_replica_tasks = pending_remove_replica_tasks_;
     *pending_stepdown_leader_tasks = pending_stepdown_leader_tasks_;
+    *pending_tier_migration_tasks = pending_tier_migration_tasks_;
+  }
+
+  struct TierMigrationSent {
+    TabletId tablet_id;
+    TabletServerId ts_uuid;
+    std::string target_tier;
+  };
+  Status SendAlterTabletTier(
+      const TabletInfoPtr& tablet, const TabletServerId& ts_uuid, const std::string& target_tier,
+      const std::string& reason) override {
+    tier_migrations_sent_.push_back({tablet->tablet_id(), ts_uuid, target_tier});
+    return Status::OK();
   }
 
   void ResetTableStatePtr(const TableId& table_id, Options* options) override {
@@ -124,6 +138,8 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
   TabletToTabletServerMap pending_add_replica_tasks_;
   TabletToTabletServerMap pending_remove_replica_tasks_;
   TabletToTabletServerMap pending_stepdown_leader_tasks_;
+  TabletToTabletServersMap pending_tier_migration_tasks_;
+  std::vector<TierMigrationSent> tier_migrations_sent_;
 
   friend class TestLoadBalancerEnterprise;
 };

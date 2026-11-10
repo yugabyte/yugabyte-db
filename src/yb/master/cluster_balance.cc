@@ -105,6 +105,26 @@ DEFINE_RUNTIME_int32(load_balancer_max_concurrent_moves, 100,
     "Maximum number of tablet leaders on tablet servers (across the cluster) to move in "
     "any one run of the cluster balancer.");
 
+DEFINE_RUNTIME_int32(load_balancer_max_concurrent_tier_migrations, 10,
+    "Tiered storage: tier migrations in flight at once within one placement (AlterTabletTier "
+    "tasks pending, plus replicas a tablet server is still moving). The live replicas and each "
+    "read replica placement are balanced in their own run, each with its own count. -1 for no "
+    "limit.");
+
+DEFINE_RUNTIME_int32(load_balancer_max_concurrent_tier_migrations_per_tserver, 4,
+    "Tiered storage: tier migrations in flight at once on one tablet server. -1 for no limit.");
+
+DEFINE_RUNTIME_int32(load_balancer_tier_migration_failed_retry_min_sec, 60,
+    "Tiered storage: how long after a replica reports its tier migration FAILED the balancer "
+    "re-sends AlterTabletTier. Doubles on every further failure, up to "
+    "load_balancer_tier_migration_failed_retry_max_sec.");
+
+DEFINE_RUNTIME_int32(load_balancer_tier_migration_failed_retry_max_sec, 1800,
+    "Tiered storage: the longest wait between re-sends of AlterTabletTier to a replica whose "
+    "migration keeps failing.");
+
+DECLARE_bool(enable_tiered_storage);
+
 DEFINE_RUNTIME_int32(load_balancer_max_concurrent_moves_per_table, -1,
     "Maximum number of tablet leaders per table to move in any one run of the cluster "
     "balancer. The maximum number of tablet leader moves across the cluster is still "
@@ -570,10 +590,18 @@ void ClusterLoadBalancer::RunClusterBalancerWithOptions(
   // Process under-replicated tablets before general tablet moves since these are highest priority.
   ProcessUnderReplicatedTablets(remaining_adds, task_added, out_tablet_id, out_to_ts);
 
+  // Tier migrations have their own caps, so a run out of add/remove/leader budget still visits
+  // every table for them.
+  auto tier_migrations_have_budget = [this, options] {
+    return FLAGS_enable_tiered_storage &&
+           global_state_->total_tier_migrations_in_flight_ < options->kMaxConcurrentTierMigrations;
+  };
+
   // Iterate over all the tables to take actions based on the data collected on the previous loop.
   for (const auto& table : tables) {
     state_ = nullptr;
-    if (remaining_adds == 0 && remaining_removals == 0 && remaining_leader_moves == 0) {
+    if (remaining_adds == 0 && remaining_removals == 0 && remaining_leader_moves == 0 &&
+        !tier_migrations_have_budget()) {
       break;
     }
     if (SkipLoadBalancing(*table)) {
@@ -646,6 +674,28 @@ void ClusterLoadBalancer::RunClusterBalancerWithOptions(
 
       VLOG(3) << "Sorted load after HandleAddReplicas: " << GetSortedLoad();
       task_added = true;
+    }
+
+    // Tiered storage: replicas whose placement asks for another tier than they target. After
+    // placement fixes, so a replica this run decided to remove is already pending removal and
+    // the step skips it instead of migrating it first. Transaction status tablets have no
+    // regular RocksDB, so there is nothing to migrate.
+    if (FLAGS_enable_tiered_storage && !state_->allow_only_leader_balancing_ &&
+        table->GetTableType() != TRANSACTION_STATUS_TABLE_TYPE) {
+      while (true) {
+        auto handle_tier = HandleTierMigrations(&out_tablet_id, &out_to_ts);
+        if (!handle_tier.ok()) {
+          LOG_AND_COUNT_WARNING(
+              2 /* vlog_level */, ClusterBalancerWarningType::kTableTierMigrations,
+              Format("Skipping tier migrations for table $0: $1", table->id(),
+                     StatusToString(handle_tier)));
+          break;
+        }
+        if (!*handle_tier) {
+          break;
+        }
+        task_added = true;
+      }
     }
 
     if (PREDICT_FALSE(FLAGS_TEST_load_balancer_handle_under_replicated_tablets_only)) {
@@ -771,6 +821,7 @@ void ClusterLoadBalancer::RunClusterBalancer(
     const LeaderEpoch& epoch, const std::vector<TableInfoPtr>& tables,
     const TabletInfoMap& tablet_map) {
   epoch_ = epoch;
+  ++tier_migration_run_;
   SysClusterConfigEntryPB config = CHECK_RESULT(catalog_manager_->GetClusterConfig());
 
   std::unique_ptr<Options> options_unique_ptr =
@@ -796,6 +847,9 @@ void ClusterLoadBalancer::RunClusterBalancer(
     RunClusterBalancerWithOptions(options_ent, tables, tablet_map);
   }
 
+  if (IsLoadBalancerEnabled()) {
+    PruneTierMigrationRetries();
+  }
   UpdatePerRunMetrics();
 }
 
@@ -2002,7 +2056,8 @@ Status ClusterLoadBalancer::CountPendingTasks(const TableInfoPtr& table,
   GetPendingTasks(table,
                   &state_->pending_add_replica_tasks_[table_uuid],
                   &state_->pending_remove_replica_tasks_[table_uuid],
-                  &state_->pending_stepdown_leader_tasks_[table_uuid]);
+                  &state_->pending_stepdown_leader_tasks_[table_uuid],
+                  &state_->pending_tier_migration_tasks_);
 
   *pending_add_replica_tasks += state_->pending_add_replica_tasks_[table_uuid].size();
   *pending_remove_replica_tasks += state_->pending_remove_replica_tasks_[table_uuid].size();
@@ -2010,20 +2065,34 @@ Status ClusterLoadBalancer::CountPendingTasks(const TableInfoPtr& table,
   for (const auto& [tablet_id, ts_uuid] : state_->pending_add_replica_tasks_[table_uuid]) {
     RETURN_NOT_OK(state_->AddStartingTablet(tablet_id, ts_uuid));
   }
+  // A pending AlterTabletTier is a migration in flight that no replica reports yet.
+  for (const auto& [tablet_id, ts_uuids] : state_->pending_tier_migration_tasks_) {
+    for (const auto& ts_uuid : ts_uuids) {
+      ++global_state_->tier_migrations_in_flight_[ts_uuid];
+      ++global_state_->total_tier_migrations_in_flight_;
+    }
+  }
   return Status::OK();
 }
 
 void ClusterLoadBalancer::GetPendingTasks(const TableInfoPtr& table,
                                           TabletToTabletServerMap* add_replica_tasks,
                                           TabletToTabletServerMap* remove_replica_tasks,
-                                          TabletToTabletServerMap* stepdown_leader_tasks) {
+                                          TabletToTabletServerMap* stepdown_leader_tasks,
+                                          TabletToTabletServersMap* tier_migration_tasks) {
   for (auto& task : table->GetTasks()) {
     if (!task->started_by_lb()) {
       continue;
     }
-    // The only tasks started by the cluster balancer are kAddServer, kRemoveServer, and
-    // kTryStepDown, so we can safely cast to RetryingRpcTask.
+    // The only tasks started by the cluster balancer are kAddServer, kRemoveServer, kTryStepDown
+    // and kAlterTabletTier, so we can safely cast to RetryingRpcTask.
     TrackTask(std::static_pointer_cast<RetryingRpcTask>(task));
+
+    if (task->type() == server::MonitoredTaskType::kAlterTabletTier) {
+      auto* tier_task = static_cast<AsyncAlterTabletTier*>(task.get());
+      (*tier_migration_tasks)[tier_task->tablet_id()].insert(tier_task->ts_uuid());
+      continue;
+    }
 
     TabletToTabletServerMap* output_map = nullptr;
     if (task->type() == server::MonitoredTaskType::kAddServer) {
@@ -2052,6 +2121,156 @@ Status ClusterLoadBalancer::SendAddReplica(
   TrackTask(VERIFY_RESULT(catalog_manager_->ScheduleAddServerTask(
       tablet, GetDefaultMemberType(), l->pb.committed_consensus_state(), ts_uuid, epoch_, reason)));
   return Status::OK();
+}
+
+Status ClusterLoadBalancer::SendAlterTabletTier(
+    const TabletInfoPtr& tablet, const TabletServerId& ts_uuid, const std::string& target_tier,
+    const std::string& reason) {
+  TrackTask(VERIFY_RESULT(catalog_manager_->ScheduleAlterTabletTierTask(
+      tablet, ts_uuid, target_tier, epoch_, reason)));
+  return Status::OK();
+}
+
+void ClusterLoadBalancer::TEST_ExpireTierMigrationRetries() {
+  for (auto& [_, retry] : tier_migration_retries_) {
+    retry.next_attempt = MonoTime::kMin;
+  }
+}
+
+Result<bool> ClusterLoadBalancer::HandleTierMigrations(
+    TabletId* out_tablet_id, TabletServerId* out_ts_uuid) {
+  const auto& desired_tier = state_->placement_.storage_tier();
+  if (desired_tier.empty()) {
+    return false;
+  }
+  const auto& options = *state_->options_;
+  // With the placement's cap full nothing is sent, but the replicas are still visited when there
+  // are retry entries to keep alive: PruneTierMigrationRetries drops the ones no run visits.
+  const bool cap_full =
+      global_state_->total_tier_migrations_in_flight_ >= options.kMaxConcurrentTierMigrations;
+  if (cap_full && tier_migration_retries_.empty()) {
+    return false;
+  }
+  const auto now = MonoTime::Now();
+  const auto min_backoff =
+      MonoDelta::FromSeconds(FLAGS_load_balancer_tier_migration_failed_retry_min_sec);
+  const auto& pending_removals = state_->pending_remove_replica_tasks_[state_->table_id_];
+  for (const auto& [tablet_id, tablet_meta] : state_->per_tablet_meta_) {
+    auto tablet_opt = GetTabletInfo(tablet_id);
+    if (!tablet_opt) {
+      continue;
+    }
+    const auto& tablet = tablet_opt->get();
+    const auto pending_it = state_->pending_tier_migration_tasks_.find(tablet_id);
+    for (const auto& [ts_uuid, replica] : *tablet->GetReplicaLocations()) {
+      if (replica.state != tablet::RaftGroupStatePB::RUNNING ||
+          state_->ShouldSkipReplica(replica)) {
+        continue;
+      }
+      const auto ts_meta_it = state_->per_ts_meta_.find(ts_uuid);
+      if (ts_meta_it == state_->per_ts_meta_.end() || !ts_meta_it->second.descriptor) {
+        continue;
+      }
+      const auto& ts_desc = ts_meta_it->second.descriptor;
+
+      const auto retry_key = Format("$0/$1", tablet_id, ts_uuid);
+      auto retry_it = tier_migration_retries_.find(retry_key);
+      if (retry_it != tier_migration_retries_.end()) {
+        retry_it->second.seen_in_run = tier_migration_run_;
+      }
+      if (cap_full) {
+        continue;
+      }
+      if ((state_->check_ts_liveness_ && !ts_desc->IsLiveAndHasReported()) ||
+          global_state_->blacklisted_servers_.count(ts_uuid)) {
+        continue;
+      }
+      if (pending_it != state_->pending_tier_migration_tasks_.end() &&
+          pending_it->second.count(ts_uuid)) {
+        continue;
+      }
+      if (global_state_->tier_migrations_in_flight_[ts_uuid] >=
+          options.kMaxConcurrentTierMigrationsPerTs) {
+        continue;
+      }
+      // A replica this or an earlier run decided to remove is deleted soon: do not rewrite its
+      // SSTs first. The source of a move that is so far only an add is not known here.
+      const auto pending_removal_it = pending_removals.find(tablet_id);
+      if (tablet_meta.removal_pending_tablet_servers.count(ts_uuid) ||
+          (pending_removal_it != pending_removals.end() && pending_removal_it->second == ts_uuid)) {
+        continue;
+      }
+
+      // Checked before the target: remote bootstrap carries the source's target to a node that
+      // may have no disk on it, where the replica runs on its home disk and still reports the
+      // target. Not a counted warning: it would hold the balancer non-idle for as long as the
+      // replica stays, and nothing moves it to a node that has the tier yet.
+      if (!ts_desc->HasStorageTier(desired_tier)) {
+        YB_LOG_EVERY_N_SECS_OR_VLOG(WARNING, 60, 1)
+            << "Replica of tablet " << tablet_id << " on TS " << ts_uuid
+            << " should be on storage tier '" << desired_tier
+            << "', but that tablet server has no data directory on it";
+        continue;
+      }
+
+      std::string reason;
+      TierMigrationRetry* retry = nullptr;
+      if (replica.target_storage_tier != desired_tier) {
+        if (retry_it != tier_migration_retries_.end()) {
+          tier_migration_retries_.erase(retry_it);
+        }
+        reason = Format(
+            "replica targets tier '$0', its placement asks for '$1'",
+            replica.target_storage_tier.empty() ? "none" : replica.target_storage_tier,
+            desired_tier);
+      } else if (replica.tier_migration_state == tserver::TierMigrationStatusPB::FAILED) {
+        if (retry_it == tier_migration_retries_.end()) {
+          // First seen FAILED: wait the minimum backoff before re-sending.
+          retry_it = tier_migration_retries_.emplace(retry_key, TierMigrationRetry{
+              .next_attempt = now + min_backoff,
+              .backoff = min_backoff,
+              .seen_in_run = tier_migration_run_}).first;
+        }
+        retry = &retry_it->second;
+        if (now < retry->next_attempt) {
+          continue;
+        }
+        reason = Format("tablet server gave up migrating to tier '$0', retrying", desired_tier);
+      } else {
+        // Already targeting the desired tier: moving, or there. The re-send schedule survives
+        // IN_PROGRESS, which every re-send reports before the passes can fail again; only
+        // converging (DONE) or a new target resets it.
+        if (replica.tier_migration_state == tserver::TierMigrationStatusPB::DONE &&
+            retry_it != tier_migration_retries_.end()) {
+          tier_migration_retries_.erase(retry_it);
+        }
+        continue;
+      }
+
+      RETURN_NOT_OK(SendAlterTabletTier(tablet, ts_uuid, desired_tier, reason));
+      if (retry) {
+        const auto max_backoff =
+            MonoDelta::FromSeconds(FLAGS_load_balancer_tier_migration_failed_retry_max_sec);
+        retry->backoff = std::min(retry->backoff * 2, max_backoff);
+        retry->next_attempt = now + retry->backoff;
+      }
+      ++global_state_->tier_migrations_in_flight_[ts_uuid];
+      ++global_state_->total_tier_migrations_in_flight_;
+      state_->pending_tier_migration_tasks_[tablet_id].insert(ts_uuid);
+      *out_tablet_id = tablet_id;
+      *out_ts_uuid = ts_uuid;
+      LOG(INFO) << "Tiered storage: migrating replica of tablet " << tablet_id << " on TS "
+                << ts_uuid << " to tier '" << desired_tier << "': " << reason;
+      return true;
+    }
+  }
+  return false;
+}
+
+void ClusterLoadBalancer::PruneTierMigrationRetries() {
+  std::erase_if(tier_migration_retries_, [this](const auto& entry) {
+    return entry.second.seen_in_run != tier_migration_run_;
+  });
 }
 
 Status ClusterLoadBalancer::SendRemoveReplica(

@@ -193,6 +193,10 @@ class ClusterAdminClient {
                      bool json,
                      bool followers);
 
+  // Tiered storage: where every replica of this table sits relative to its target tier, as the
+  // master last heard from the tablet servers.
+  Status GetTableTierInfo(const client::YBTableName& table_name);
+
   // Per Tablet list of all tablet servers
   Status ListPerTabletTabletServers(const PeerId& tablet_id);
 

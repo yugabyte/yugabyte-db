@@ -30,6 +30,9 @@
 // under the License.
 //
 
+#include <set>
+#include <string>
+
 #include "yb/common/constants.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager-test_base.h"
@@ -37,6 +40,7 @@
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/util/format.h"
+#include "yb/util/storage_tier.h"
 
 namespace yb {
 namespace master {
@@ -112,6 +116,37 @@ TEST(TestTSDescriptor, TestReplicaCreationsDecay) {
     SleepFor(MonoDelta::FromSeconds(10));
     ASSERT_NEAR(0.891, ts.RecentReplicaCreations(), 0.05);
   }
+}
+
+// The tier set comes from the persisted registration alone. A tserver that registered none (a
+// binary from before the field) has an unknown, empty set, and its path metrics do not fill it in:
+// they cover WAL roots too, and they are lost on master failover.
+TEST(TestTSDescriptor, StorageTiersComeFromRegistrationOnly) {
+  TSDescriptor ts("test", RegisteredThroughHeartbeat::kTrue, CloudInfoPB(), nullptr);
+  ASSERT_TRUE(ts.GetStorageTiers().empty());
+  ASSERT_FALSE(ts.HasStorageTier(kDefaultStorageTier));
+  ASSERT_FALSE(ts.HasStorageTier("hdd"));
+
+  TServerMetricsPB metrics;
+  auto* path_metric = metrics.add_path_metrics();
+  path_metric->set_path_id("/mnt/d0");
+  path_metric->set_storage_tier("hdd");
+  ts.UpdateMetrics(metrics);
+  ASSERT_TRUE(ts.GetStorageTiers().empty());
+  ASSERT_FALSE(ts.HasStorageTier("hdd"));
+
+  NodeInstancePB instance;
+  instance.set_permanent_uuid("test");
+  instance.set_instance_seqno(1);
+  TSRegistrationPB registration;
+  registration.mutable_common()->add_storage_tiers("ssd");
+  registration.mutable_common()->add_storage_tiers("hdd");
+  auto lock = ASSERT_RESULT(
+      ts.UpdateRegistration(instance, registration, RegisteredThroughHeartbeat::kTrue));
+  lock.Commit();
+  ASSERT_EQ(ts.GetStorageTiers(), (std::set<std::string>{"hdd", "ssd"}));
+  ASSERT_TRUE(ts.HasStorageTier("ssd"));
+  ASSERT_TRUE(ts.HasStorageTier("hdd"));
 }
 
 TEST(TestCatalogManager, TestLoadCountMultiAZ) {

@@ -43,6 +43,7 @@ DEFINE_test_flag(bool, fail_async_delete_replica_task, false,
 DEFINE_test_flag(string, skip_async_insert_packed_schema_for_tablet_id, "",
     "Tablet ID to skip AsyncInsertPackedSchemaForXClusterTarget requests for.");
 
+DECLARE_bool(enable_tiered_storage);
 DECLARE_int32(tablet_creation_timeout_ms);
 DECLARE_int32(TEST_slowdown_alter_table_rpcs_ms);
 
@@ -66,6 +67,48 @@ using tserver::TabletServerErrorPB;
 // ============================================================================
 //  Class AsyncCreateReplica.
 // ============================================================================
+namespace {
+
+// The tier a new replica of this table belongs on: that of the placement its peer type is part
+// of (live replicas for voters, for observers the read replica placement whose uuid is the
+// tserver's, as the balancer's read replica run picks it). Empty when the placement names no
+// tier, and for a transaction status table: its tablets have no regular RocksDB, so there is
+// nothing to place and a target would only make the reconciler complain.
+std::string TargetStorageTierForPeer(
+    Master* master, const TableInfoPtr& table, const consensus::RaftConfigPB& config,
+    const std::string& ts_uuid) {
+  if (table->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE) {
+    return std::string();
+  }
+  const auto replication_info =
+      master->catalog_manager()->GetTableReplicationInfoWithDefault(table);
+  for (const auto& peer : config.peers()) {
+    if (peer.permanent_uuid() != ts_uuid) {
+      continue;
+    }
+    if (peer.member_type() == consensus::PeerMemberType::OBSERVER ||
+        peer.member_type() == consensus::PeerMemberType::PRE_OBSERVER) {
+      auto ts_desc = master->ts_manager()->LookupTSByUUID(ts_uuid);
+      if (!ts_desc.ok()) {
+        return std::string();
+      }
+      const auto& placement_uuid = (*ts_desc)->placement_uuid();
+      for (const auto& read_replicas : replication_info.read_replicas()) {
+        if (read_replicas.placement_uuid() == placement_uuid) {
+          return read_replicas.storage_tier();
+        }
+      }
+      // The balancer falls back to the first read replica placement too.
+      return replication_info.read_replicas().empty()
+          ? std::string() : replication_info.read_replicas(0).storage_tier();
+    }
+    return replication_info.live_replicas().storage_tier();
+  }
+  return std::string();
+}
+
+}  // namespace
+
 AsyncCreateReplica::AsyncCreateReplica(Master *master,
                                        ThreadPool *callback_pool,
                                        const string& permanent_uuid,
@@ -99,6 +142,15 @@ AsyncCreateReplica::AsyncCreateReplica(Master *master,
   req_.mutable_partition_schema()->CopyFrom(table_pb.partition_schema());
   req_.mutable_config()->CopyFrom(tablet_pb.committed_consensus_state().config());
   req_.set_colocated(tablet_pb.colocated());
+  // Tiered storage: a replica of a table in a tiered tablespace is born on that tier, so it never
+  // needs a migration. Absent means the tserver's default tier, not "no preference".
+  if (FLAGS_enable_tiered_storage) {
+    const auto target_tier = TargetStorageTierForPeer(
+        master, tablet->table(), tablet_pb.committed_consensus_state().config(), permanent_uuid);
+    if (!target_tier.empty()) {
+      req_.set_target_storage_tier(target_tier);
+    }
+  }
   if (table_pb.has_index_info()) {
     req_.mutable_index_info()->CopyFrom(table_pb.index_info());
   }
@@ -1450,6 +1502,86 @@ bool AsyncApplyXClusterGuardedInfoIfNewer::SendRequest(int attempt) {
 }
 
 void AsyncApplyXClusterGuardedInfoIfNewer::Finished(const Status& status) { callback_(status); }
+
+////////////////////////////////////////////////////////////
+// AsyncAlterTabletTier
+////////////////////////////////////////////////////////////
+AsyncAlterTabletTier::AsyncAlterTabletTier(
+    Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
+    const TabletServerId& ts_uuid, std::string target_tier, LeaderEpoch epoch,
+    std::string reason)
+    : RetrySpecificTSRpcTaskWithTable(
+          master, callback_pool, ts_uuid, tablet->table(), std::move(epoch),
+          /* async_task_throttler */ nullptr),
+      tablet_(tablet),
+      target_tier_(std::move(target_tier)),
+      reason_(std::move(reason)) {
+  deadline_ = UnresponsiveDeadline();
+}
+
+TabletId AsyncAlterTabletTier::tablet_id() const {
+  return tablet_->tablet_id();
+}
+
+std::string AsyncAlterTabletTier::description() const {
+  return Format(
+      "AlterTabletTier RPC for tablet $0 ($1) on TS=$2 to tier $3: $4", tablet_id(), table_name(),
+      permanent_uuid_, target_tier_, reason_);
+}
+
+bool AsyncAlterTabletTier::SendRequest(int attempt) {
+  tserver::AlterTabletTierRequestPB req;
+  req.set_dest_uuid(permanent_uuid_);
+  req.set_tablet_id(tablet_id());
+  req.set_target_tier(target_tier_);
+  ts_admin_proxy_->AlterTabletTierAsync(req, &resp_, &rpc_, BindRpcCallback());
+  VLOG_WITH_PREFIX(1) << "Sent AlterTabletTier to " << permanent_uuid_ << " (attempt " << attempt
+                      << "): " << req.ShortDebugString();
+  return true;
+}
+
+void AsyncAlterTabletTier::HandleResponse(int attempt) {
+  if (!resp_.has_error()) {
+    LOG_WITH_PREFIX(INFO) << "Tiered storage: replica of tablet " << tablet_id() << " on TS "
+                          << permanent_uuid_ << " now targets tier '" << target_tier_
+                          << "': " << resp_.migration().ShortDebugString();
+    TransitionToCompleteState();
+    return;
+  }
+  const auto status = StatusFromPB(resp_.error().status());
+  switch (resp_.error().code()) {
+    case TabletServerErrorPB::TABLET_NOT_FOUND:
+      // The replica is gone; the balancer re-derives the replica set on its next run.
+      LOG_WITH_PREFIX(WARNING) << "AlterTabletTier for tablet " << tablet_id() << " on TS "
+                               << permanent_uuid_ << ": tablet not found, not retrying: "
+                               << status;
+      TransitionToCompleteState();
+      return;
+    case TabletServerErrorPB::STORAGE_TIER_NOT_AVAILABLE:
+      // The node has no disk on that tier: a placement problem, not a migration. Nothing moves
+      // the replica to a node that has the tier yet; the balancer logs and skips it.
+      LOG_WITH_PREFIX(WARNING) << "AlterTabletTier for tablet " << tablet_id() << " on TS "
+                               << permanent_uuid_ << ": no data directory on tier '"
+                               << target_tier_ << "', not retrying: " << status;
+      TransitionToCompleteState();
+      return;
+    default:
+      break;
+  }
+  if (status.IsNotSupported()) {
+    // Tiered storage is off on that tserver; retrying cannot change that.
+    LOG_WITH_PREFIX(WARNING) << "AlterTabletTier for tablet " << tablet_id() << " on TS "
+                             << permanent_uuid_ << " refused, not retrying: " << status;
+    TransitionToCompleteState();
+    return;
+  }
+  // IllegalState (still bootstrapping, no regular DB) and any other transient error: the base
+  // class retries with backoff until the unresponsive deadline. A pass already in flight is not
+  // one of them: the tserver reports its progress as success.
+  LOG_WITH_PREFIX(WARNING) << "AlterTabletTier for tablet " << tablet_id() << " on TS "
+                           << permanent_uuid_ << " failed (attempt " << attempt
+                           << "), will retry: " << status;
+}
 
 // ============================================================================
 //  Class AsyncTsTestRetry.

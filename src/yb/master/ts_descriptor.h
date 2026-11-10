@@ -35,6 +35,7 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 
 #include <gtest/gtest_prod.h>
@@ -202,6 +203,18 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   bool IsRunningOn(const HostPortPB& hp) const;
   bool IsBlacklisted(const BlacklistSet& blacklist) const;
+
+  // Storage tiers this tserver registered for its data directories (labels from
+  // ValidStorageTiers()). Persisted with the registration, so it is correct from the first
+  // heartbeat and right after a master failover. Empty until the tserver registers through a
+  // heartbeat on a binary that sends the field: a tserver on an older binary, or one the master
+  // so far knows only from a Raft config, has unknown tiers, and create-time placement does not
+  // choose it for a placement that names a tier. The balancer's tier step sends AlterTabletTier
+  // only to a tserver that registered the tier, and CanAddTabletToTabletServer refuses one that
+  // registered tiers without it while another eligible tserver in the block has it; unknown
+  // tiers are accepted there, so a tier never blocks repair.
+  std::set<std::string> GetStorageTiers() const EXCLUDES(mutex_);
+  bool HasStorageTier(const std::string& tier) const EXCLUDES(mutex_);
 
   // Should this ts have any leader load on it.
   bool IsAcceptingLeaderLoad(const ReplicationInfoPB& replication_info) const;

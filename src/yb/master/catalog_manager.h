@@ -1118,6 +1118,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                                  const TSDescriptorVector& ts_descs,
                                  ValidateReplicationInfoResponsePB* resp);
 
+  // How many replicas SelectReplicasForPlacement can put on ts_descs under placement_info:
+  // exact unless placement blocks overlap, then an upper bound.
+  Result<size_t> CountPlaceableReplicas(
+      const PlacementInfoPB& placement_info, const TSDescriptorVector& ts_descs);
+
   // The tservers allowed to host a table's replicas under one PlacementInfoPB (live or read
   // replica). Built once per table and reused for every tablet of that table; the bool vectors
   // are indexed like the ts_descs the candidates were built from.
@@ -2508,6 +2513,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Result<std::shared_ptr<AsyncAddServerTask>> ScheduleAddServerTask(
       const TabletInfoPtr& tablet, consensus::PeerMemberType member_type,
       const consensus::ConsensusStatePB& cstate, const std::string& change_config_ts_uuid,
+      const LeaderEpoch& epoch, const std::string& reason);
+
+  // Tiered storage: start a task that tells the replica of 'tablet' on 'ts_uuid' to move its
+  // SSTs to 'target_tier' (AlterTabletTier).
+  Result<std::shared_ptr<RetryingRpcTask>> ScheduleAlterTabletTierTask(
+      const TabletInfoPtr& tablet, const TabletServerId& ts_uuid, const std::string& target_tier,
       const LeaderEpoch& epoch, const std::string& reason);
 
   // Abort creation of 'table': abort all mutation for TabletInfo and

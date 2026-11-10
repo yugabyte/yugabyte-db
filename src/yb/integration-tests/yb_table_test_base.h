@@ -110,6 +110,7 @@ class YBTableTestBase : public YBTest {
   }
 
   virtual void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) {}
+  virtual void CustomizeMiniCluster(MiniClusterOptions* opts) {}
 
   std::vector<std::string> master_rpc_addresses_as_strings() {
     std::vector<std::string> host_ports;
