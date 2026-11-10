@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { PerfAdvisorTabs } from '../PerfAdvisor/PerfAdvisorTabs';
 import {
-  PaRegistrationMode,
   PerfAdvisorAPI,
   QUERY_KEY as PERF_ADVISOR_QUERY_KEY
 } from '../../../redesign/features/PerfAdvisor/api';
@@ -28,14 +27,12 @@ export const CheckPerfAdvisorRegistration = ({
 }: CheckPerfAdvisorRegistrationProps) => {
   const { t } = useTranslation();
   const [registrationStatus, setRegistrationStatus] = useState<boolean>(false);
-  const [registrationMode, setRegistrationMode] = useState<PaRegistrationMode | undefined>();
   const getUniversePaRegistrationStatus = useQuery(
     PERF_ADVISOR_QUERY_KEY.fetchUniverseRegistrationDetails,
     () => PerfAdvisorAPI.fetchUniverseRegistrationDetails(universeUuid),
     {
       onSuccess: (data) => {
         setRegistrationStatus(data.success);
-        setRegistrationMode(data.mode);
       },
       onError: (error: any) => {
         error.request.status === 404 && setRegistrationStatus(false);
@@ -66,7 +63,7 @@ export const CheckPerfAdvisorRegistration = ({
         timezone={timezone}
         apiUrl={apiUrl}
         registrationStatus={registrationStatus}
-        registrationMode={registrationMode}
+        registrationMode={getUniversePaRegistrationStatus.data?.mode}
       />
     )
   );

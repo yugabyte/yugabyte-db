@@ -54,45 +54,78 @@ const PerfAdvisorTabsComponent = ({
   const runtimeConfigs = usePerfAdvisorRuntimeConfigs();
 
   const perfAdvisorBasePath = `/universes/${universeUuid}/${PERF_ADVISOR_PATH}`;
-  const tabToDisplay = getTabFromPath(location?.pathname) ?? ConfigTabKey.CLUSTER_LOAD;
+  // Cluster Load and Metrics read Prometheus, which only advanced mode writes.
+  // Basic keeps the Databases catalog.
+  const showClusterLoadAndMetrics = registrationMode === PaRegistrationMode.ADVANCED;
+  const defaultTabKey = showClusterLoadAndMetrics
+    ? ConfigTabKey.CLUSTER_LOAD
+    : ConfigTabKey.DATABASES;
+  const isTabShown = (key: ConfigTabKey | undefined): key is ConfigTabKey => {
+    if (key === ConfigTabKey.DATABASES) {
+      return !!runtimeConfigs.showDatabasesView;
+    }
+    return (
+      showClusterLoadAndMetrics &&
+      (key === ConfigTabKey.CLUSTER_LOAD || key === ConfigTabKey.METRICS)
+    );
+  };
+  const pathTab = getTabFromPath(location?.pathname);
+  const tabToDisplay = isTabShown(pathTab) ? pathTab : defaultTabKey;
 
-  // Put the tab in the path: default `/perfAdvisor` to Cluster Load, and move a
-  // `?tab=<key>` link (and `subTab`) onto `/perfAdvisor/<key>`.
+  // Put the tab in the path. Advanced defaults to Cluster Load. Basic defaults
+  // to Databases and moves Cluster Load / Metrics links there. A databases
+  // path keeps its `/databases/<db>/tables` suffix. Drilldowns are left alone.
   useEffect(() => {
     // The pane stays mounted while the universe tab fades out, so ignore paths outside PA.
     if (!router || !location?.pathname?.startsWith(perfAdvisorBasePath) || isPaDrilldownUrl()) {
       return;
     }
     const { tab, subTab, ...restQuery } = location.query ?? {};
-    const pathTab = getTabFromPath(location.pathname);
+    const currentPathTab = getTabFromPath(location.pathname);
     const queryTab = asPathTabKey(tab);
-    if (pathTab && tab === undefined && subTab === undefined) {
+    const requested = queryTab ?? currentPathTab;
+    const nextTab = isTabShown(requested) ? requested : defaultTabKey;
+    if (currentPathTab === nextTab && tab === undefined && subTab === undefined) {
       return;
     }
     const pathname =
-      pathTab && (!queryTab || queryTab === pathTab)
+      currentPathTab === nextTab && (!queryTab || queryTab === currentPathTab)
         ? location.pathname
-        : `${perfAdvisorBasePath}/${queryTab ?? ConfigTabKey.CLUSTER_LOAD}`;
+        : `${perfAdvisorBasePath}/${nextTab}`;
+    if (pathname === location.pathname && tab === undefined && subTab === undefined) {
+      return;
+    }
     router.replace({ pathname, query: restQuery });
-  }, [router, location, perfAdvisorBasePath]);
+  }, [
+    router,
+    location,
+    perfAdvisorBasePath,
+    registrationMode,
+    runtimeConfigs.showDatabasesView
+  ]);
 
+  const databasesTab = runtimeConfigs.showDatabasesView
+    ? [
+        {
+          key: ConfigTabKey.DATABASES,
+          title: t('clusterDetail.troubleshoot.perfAdvisorDatabasesTab')
+        }
+      ]
+    : [];
   const tabConfig = [
-    {
-      key: ConfigTabKey.CLUSTER_LOAD,
-      title: t('clusterDetail.troubleshoot.perfAdvisorClusterLoadTab')
-    },
-    {
-      key: ConfigTabKey.METRICS,
-      title: t('clusterDetail.troubleshoot.perfAdvisorMetricsTab')
-    },
-    ...(runtimeConfigs.showDatabasesView
+    ...(showClusterLoadAndMetrics
       ? [
           {
-            key: ConfigTabKey.DATABASES,
-            title: t('clusterDetail.troubleshoot.perfAdvisorDatabasesTab')
+            key: ConfigTabKey.CLUSTER_LOAD,
+            title: t('clusterDetail.troubleshoot.perfAdvisorClusterLoadTab')
+          },
+          {
+            key: ConfigTabKey.METRICS,
+            title: t('clusterDetail.troubleshoot.perfAdvisorMetricsTab')
           }
         ]
-      : [])
+      : []),
+    ...databasesTab
   ];
 
   // In online mode this collector scrapes the universe but keeps nothing - every view below reads
@@ -120,6 +153,7 @@ const PerfAdvisorTabsComponent = ({
           timezone={timezone}
           universeUuid={universeUuid}
           registrationStatus={registrationStatus}
+          registrationMode={registrationMode}
         />
       </Box>
     );
@@ -140,6 +174,7 @@ const PerfAdvisorTabsComponent = ({
               timezone={timezone}
               apiUrl={apiUrl}
               registrationStatus={registrationStatus}
+              registrationMode={registrationMode}
             />
           </Tab>
         ))}
