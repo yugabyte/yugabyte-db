@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -179,8 +180,15 @@ public class RollbackEditUniverse extends EditUniverseTaskBase {
           before.clusters.stream()
               .flatMap(c -> ManagedLoadBalancerUtil.planLoadBalancers(c, lbState).stream())
               .collect(Collectors.toList());
+      // A removed read replica's load balancer, whose forced delete failed, is left for the
+      // universe destroy.
+      Set<UUID> clusterUuids =
+          before.clusters.stream().map(c -> c.uuid).collect(Collectors.toSet());
       createDeleteManagedLoadBalancerTasks(
-          lb -> plannedLbs.stream().noneMatch(lb::matches), false /* ignoreErrors */);
+          lb ->
+              clusterUuids.contains(lb.getClusterUuid())
+                  && plannedLbs.stream().noneMatch(lb::matches),
+          false /* ignoreErrors */);
 
       // Force-release before restore: DeleteCapacityReservation reads current details; restore
       // would drop failed-edit CapacityReservationState while cloud reservations may remain.

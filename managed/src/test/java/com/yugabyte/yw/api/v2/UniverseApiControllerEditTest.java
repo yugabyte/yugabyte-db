@@ -59,11 +59,13 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ProviderSpecification;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.ImageBundleDetails;
@@ -705,6 +707,37 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
             .findAny()
             .orElse(null);
     validateClusterAddSpec(clusterAddSpec, newV1Cluster, v2PrimaryCluster);
+  }
+
+  @Test
+  public void testEditUniverseV2AddReadReplicaInheritsManagedLoadBalancer() throws ApiException {
+    when(mockRuntimeConfig.getBoolean(ProviderConfKeys.managedLoadBalancerEnabled.getKey()))
+        .thenReturn(true);
+    Universe.saveDetails(
+        universeUuid,
+        u -> {
+          ManagedLoadBalancerConfig config = new ManagedLoadBalancerConfig();
+          config.setEnablePrivate(true);
+          u.getUniverseDetails().getPrimaryCluster().userIntent.setManagedLoadBalancer(config);
+        });
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseConfigureTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    YBATask addTask =
+        new UniverseApi()
+            .addCluster(customer.getUuid(), universeUuid, getReadReplicaClusterAddSpec());
+
+    ArgumentCaptor<UniverseConfigureTaskParams> v1AddClusterParamsCapture =
+        ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.ReadOnlyClusterCreate), v1AddClusterParamsCapture.capture());
+    assertTrue(
+        v1AddClusterParamsCapture
+            .getValue()
+            .getClusterByUuid(addTask.getResourceUuid())
+            .userIntent
+            .isManagedLoadBalancerEnabled());
   }
 
   @Test

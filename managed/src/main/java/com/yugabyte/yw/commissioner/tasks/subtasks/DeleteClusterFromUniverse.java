@@ -12,7 +12,9 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import java.util.UUID;
@@ -57,6 +59,17 @@ public class DeleteClusterFromUniverse extends UniverseTaskBase {
             @Override
             public void run(Universe universe) {
               UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+              Cluster cluster = universe.getCluster(taskParams().clusterUUID);
+              // Drop the user's load balancers (an unfinished takeover), which a universe destroy
+              // would delete once the cluster is gone. YBA's stay for the destroy to delete.
+              universeDetails.updateManagedLoadBalancerState(
+                  state ->
+                      state
+                          .getLoadBalancers()
+                          .removeIf(
+                              lb ->
+                                  lb.getClusterUuid().equals(taskParams().clusterUUID)
+                                      && ManagedLoadBalancerUtil.isNamedByZones(cluster, lb)));
               universeDetails.deleteCluster(taskParams().clusterUUID);
               universeDetails.nodeDetailsSet.removeIf(
                   n -> n.isInPlacement(taskParams().clusterUUID));

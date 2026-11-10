@@ -5964,12 +5964,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     saveUniverseDetails(
         u -> {
           UniverseDefinitionTaskParams details = u.getUniverseDetails();
-          ManagedLoadBalancerState state = details.getManagedLoadBalancerState();
-          if (state == null) {
-            state = new ManagedLoadBalancerState();
-          }
-          updater.accept(state);
-          details.setManagedLoadBalancerState(state.isEmpty() ? null : state);
+          details.updateManagedLoadBalancerState(updater);
           u.setUniverseDetails(details);
         });
   }
