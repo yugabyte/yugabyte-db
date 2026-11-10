@@ -16,6 +16,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -26,6 +27,7 @@ import static play.inject.Bindings.bind;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
 import com.yugabyte.operator.OperatorConfig;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
@@ -1977,7 +1979,50 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
             KubernetesCommandExecutor.CommandType.VOLUME_DELETE, /* set namespace */ true);
     kubernetesCommandExecutor.run();
     verify(kubernetesManager, times(1))
-        .deleteStorage(config, defaultUniverse.getUniverseDetails().nodePrefix, namespace);
+        .deleteStorage(
+            defaultUniverse.getUniverseUUID(),
+            config,
+            ImmutableSet.of(defaultUniverse.getUniverseDetails().nodePrefix),
+            namespace);
+  }
+
+  @Test
+  public void testVolumeDeleteForReleaseNames() {
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        createExecutor(
+            KubernetesCommandExecutor.CommandType.VOLUME_DELETE, /* set namespace */ true);
+    kubernetesCommandExecutor.taskParams().helmReleaseNames = ImmutableSet.of("rel-a", "rel-b");
+    kubernetesCommandExecutor.run();
+    verify(kubernetesManager, times(1))
+        .deleteStorage(
+            defaultUniverse.getUniverseUUID(),
+            config,
+            ImmutableSet.of("rel-a", "rel-b"),
+            namespace);
+  }
+
+  @Test
+  public void testVolumeDeleteErrorFailsTheStep() {
+    doThrow(new RuntimeException("Unable to delete PVCs"))
+        .when(kubernetesManager)
+        .deleteStorage(any(), any(), any(), any());
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        createExecutor(
+            KubernetesCommandExecutor.CommandType.VOLUME_DELETE, /* set namespace */ true);
+    assertThrows(RuntimeException.class, kubernetesCommandExecutor::run);
+  }
+
+  @Test
+  public void testVolumeDeleteErrorIgnoredOnForceDelete() {
+    doThrow(new RuntimeException("Unable to delete PVCs"))
+        .when(kubernetesManager)
+        .deleteStorage(any(), any(), any(), any());
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        createExecutor(
+            KubernetesCommandExecutor.CommandType.VOLUME_DELETE, /* set namespace */ true);
+    kubernetesCommandExecutor.taskParams().isForceDelete = true;
+    kubernetesCommandExecutor.run();
+    verify(kubernetesManager, times(1)).deleteStorage(any(), any(), any(), any());
   }
 
   @Test
