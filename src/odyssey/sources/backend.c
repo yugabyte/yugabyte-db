@@ -1635,6 +1635,7 @@ int od_backend_connect_cancel(od_server_t *server, od_rule_storage_t *storage,
 	 * the reader, leaking routing_clients counter and socket fds.
 	 * Configurable via cancel_timeout_ms (default 5000).
 	 * A value of 0 means no timeout (UINT32_MAX) - not recommended.
+	 * YB: "-" above replaces upstream's em-dashes
 	 */
 	uint32_t cancel_timeout =
 		instance->config.cancel_timeout_ms > 0 ?

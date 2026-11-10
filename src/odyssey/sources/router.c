@@ -519,7 +519,7 @@ static inline int od_router_gc_cb(od_route_t *route, void **argv)
 		goto done;
 
 clean:
-	/* YB: an in-flight cancel will still lock this route */
+	/* YB: an in-flight cancel will need the route, so not cleaning up */
 	if (route->yb_cancels_in_flight > 0)
 		goto done;
 
@@ -1349,6 +1349,7 @@ od_router_status_t od_router_attach(od_router_t *router,
 attach:
 	od_client_pool_set(&route->client_pool, client_for_router,
 			   OD_CLIENT_ACTIVE);
+	/* YB: client_for_router is upstream's client */
 	od_server_attach_client(server, client_for_router);
 
 	if (route->id.logical_rep) {

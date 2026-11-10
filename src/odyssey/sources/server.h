@@ -225,6 +225,7 @@ static inline od_server_t *od_server_allocate(int reserve_prep_stmts)
 void od_server_free(od_server_t *server);
 void od_server_cancel_begin(od_server_t *server);
 void od_server_cancel_end(od_server_t *server);
+/* YB: server.h is included before client.h */
 struct od_client;
 void od_server_attach_client(od_server_t *server, struct od_client *client);
 void od_server_detach_client(od_server_t *server);

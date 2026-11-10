@@ -10,6 +10,7 @@
 
 static inline void od_server_free_now(od_server_t *server)
 {
+	/* YB: fork's free path, moved from od_server_free in server.h */
 	if (server->is_allocated) {
 		od_relay_free(&server->relay);
 		od_io_free(&server->io);
@@ -84,6 +85,7 @@ void od_server_cancel_end(od_server_t *server)
 		 *  server was removed from pool
 		 *  while the cancel was performed
 		 *  ex: the connection failed and detached from client
+		 *  YB: "the" above replaces upstream's non-ASCII typo
 		 *
 		 *  cancel was the only one who used the server, and now
 		 *  this unref freed the server - nothing to be done now
