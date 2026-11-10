@@ -340,6 +340,26 @@ TEST_F(PgBackendsTest, IgnoreBackendPinnedToYbReadTime) {
   ASSERT_OK(pinned_conn.Execute("COMMIT"));
 }
 
+// A real DDL that waits for backends to catch up doesn't wait on a backend pinned to yb_read_time.
+TEST_F(PgBackendsTest, CreateIndexDoesNotWaitOnPointInTimeSession) {
+  ASSERT_OK(conn_->Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn_->Execute("INSERT INTO t SELECT g, g FROM generate_series(1, 100) g"));
+  const auto read_time = ASSERT_RESULT(conn_->FetchRow<int64_t>(
+      "SELECT (EXTRACT (EPOCH FROM clock_timestamp()) * 1000000)::bigint"));
+
+  auto pit_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(pit_conn.ExecuteFormat("SET yb_read_time TO $0", read_time));
+  ASSERT_OK(pit_conn.Fetch("SELECT 1"));
+  ASSERT_OK(pit_conn.Execute("BEGIN"));
+  ASSERT_EQ(ASSERT_RESULT(pit_conn.FetchRow<PGUint64>("SELECT count(*) FROM t")), 100);
+
+  const auto start = CoarseMonoClock::Now();
+  ASSERT_OK(conn_->Execute("CREATE INDEX ON t (v)"));
+  ASSERT_LT(CoarseMonoClock::Now() - start, 60s);
+  ASSERT_EQ(ASSERT_RESULT(pit_conn.FetchRow<PGUint64>("SELECT count(*) FROM t")), 100);
+  ASSERT_OK(pit_conn.Execute("COMMIT"));
+}
+
 // Test that multiple waiters immediately resolve.  This tests the condition variable broadcast in
 // the implementation.
 TEST_F(PgBackendsTest, MultipleWaiters) {

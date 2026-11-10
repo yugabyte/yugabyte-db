@@ -10105,6 +10105,11 @@ ResetAllOptions(void)
 				{
 					struct config_string *conf = (struct config_string *) gconf;
 
+					/* YB: the check hook isn't called for the reset value. */
+					if (IsYugaByteEnabled() &&
+						conf->variable == &yb_read_time_string)
+						(void) YbCanResetYbReadTime(conf->reset_val, ERROR);
+
 					if (conf->assign_hook)
 						conf->assign_hook(conf->reset_val,
 										  conf->reset_extra);
@@ -12495,6 +12500,12 @@ set_config_option_ext(const char *name, const char *value,
 					source = conf->gen.reset_source;
 					context = conf->gen.reset_scontext;
 					srole = conf->gen.reset_srole;
+
+					/* YB: the check hook isn't called for the reset value. */
+					if (IsYugaByteEnabled() &&
+						conf->variable == &yb_read_time_string &&
+						!YbCanResetYbReadTime(newval, elevel))
+						return 0;
 				}
 
 				if (prohibitValueChange)

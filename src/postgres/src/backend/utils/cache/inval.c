@@ -905,6 +905,11 @@ YbMaybeRefreshCache(void)
 	 * set of catalog tables just read. The refresh is deferred to the next
 	 * safe point (after prefetching stops). Note we must still run
 	 * ReceiveSharedInvalidMessages() below regardless.
+	 *
+	 * A transaction that started with yb_read_time set takes no object locks
+	 * and never gets here, but a block that started with object locks and
+	 * set yb_read_time later (SET LOCAL with yb_disable_catalog_version_check,
+	 * or the walsender) does, and its catalog stays pinned too.
 	 */
 	if (YBCIsSysTablePrefetchingStarted() || yb_refresh_cache_in_progress ||
 		local_catalog_version >= shared_catalog_version ||

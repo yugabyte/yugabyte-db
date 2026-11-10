@@ -420,8 +420,8 @@ YbSetObjectLockingForCurrTxn()
 {
 	yb_is_historical_catalog_read = (yb_read_time != 0 &&
 									 !yb_read_time_skip_catalog);
-	YBCSetObjectLockingInfraForCurrTxn(yb_enable_object_locking_infra &&
-									   !yb_is_historical_catalog_read);
+	YBCSetObjectLockingForCurrTxn(yb_enable_object_locking_infra &&
+								  !yb_is_historical_catalog_read);
 }
 
 bool
@@ -7578,6 +7578,44 @@ YbCanResetCatalogVersion(void)
 			!IsTransactionBlock());
 }
 
+#define YB_READ_TIME_FIXED_IN_TXN_ERRMSG \
+	"yb_read_time cannot be changed inside a transaction block that started " \
+	"with it set"
+
+/*
+ * A transaction that started with yb_read_time set took no object locks
+ * (YbSetObjectLockingForCurrTxn); the rest of it must not run as of now
+ * without them.
+ */
+static bool
+YbCanChangeYbReadTimeInTxn(unsigned long long value_ull, bool is_ht_unit)
+{
+	return !(YbIsHistoricalCatalogRead() && IsTransactionBlock() &&
+			 (value_ull != yb_read_time || is_ht_unit != yb_is_read_time_ht));
+}
+
+/*
+ * guc.c restores a GUC's reset value without calling its check hook (RESET,
+ * SET ... TO DEFAULT, set_config() with a NULL value, RESET ALL), so those
+ * paths call this for yb_read_time instead.
+ */
+bool
+YbCanResetYbReadTime(const char *reset_val, int elevel)
+{
+	unsigned long long value_ull;
+	bool		is_ht_unit;
+
+	if (reset_val == NULL ||
+		!parse_yb_read_time(reset_val, &value_ull, &is_ht_unit) ||
+		YbCanChangeYbReadTimeInTxn(value_ull, is_ht_unit))
+		return true;
+
+	ereport(elevel,
+			(errcode(ERRCODE_ACTIVE_SQL_TRANSACTION),
+			 errmsg(YB_READ_TIME_FIXED_IN_TXN_ERRMSG)));
+	return false;
+}
+
 bool
 check_yb_read_time(char **newval, void **extra, GucSource source)
 {
@@ -7634,17 +7672,10 @@ check_yb_read_time(char **newval, void **extra, GucSource source)
 		return false;
 	}
 
-	/*
-	 * A transaction that started with yb_read_time set took no object locks
-	 * (YbSetObjectLockingForCurrTxn); the rest of it must not run as of now
-	 * without them.
-	 */
-	if (YbIsHistoricalCatalogRead() && IsTransactionBlock() &&
-		(value_ull != yb_read_time || is_ht_unit != yb_is_read_time_ht))
+	if (!YbCanChangeYbReadTimeInTxn(value_ull, is_ht_unit))
 	{
 		GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
-		GUC_check_errmsg("yb_read_time cannot be changed inside a transaction "
-						 "block that started with it set");
+		GUC_check_errmsg(YB_READ_TIME_FIXED_IN_TXN_ERRMSG);
 		return false;
 	}
 
