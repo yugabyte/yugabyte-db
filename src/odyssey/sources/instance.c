@@ -21,6 +21,12 @@
 
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 
+#include <fcntl.h>
+#include <inttypes.h>
+#include <unistd.h>
+
+uint64_t yb_random_allot_seed = 0;
+
 void od_instance_init(od_instance_t *instance)
 {
 	od_pid_init(&instance->pid);
@@ -164,6 +170,22 @@ int od_instance_main(od_instance_t *instance, int argc, char **argv)
 
 	/* YB: seed rng for jitter-close of physical connections */
 	srand((unsigned int)time(NULL));
+
+	char *yb_seed_env = getenv("YB_YSQL_CONN_MGR_RANDOM_SEED");
+	if (yb_seed_env != NULL)
+		yb_random_allot_seed = strtoull(yb_seed_env, NULL, 10);
+	else {
+		int fd = open("/dev/urandom", O_RDONLY);
+		if (fd < 0 || read(fd, &yb_random_allot_seed,
+				   sizeof(yb_random_allot_seed)) !=
+				      sizeof(yb_random_allot_seed))
+			yb_random_allot_seed = (uint64_t)time(NULL);
+		if (fd >= 0)
+			close(fd);
+	}
+	od_log(&instance->logger, "startup", NULL, NULL,
+	       "random allotment seed: %" PRIu64 " (%s)", yb_random_allot_seed,
+	       yb_seed_env != NULL ? "from env" : "generated");
 
 	char *od_max_query_size = getenv("YB_YSQL_CONN_MGR_MAX_QUERY_SIZE");
 	if (od_max_query_size != NULL)

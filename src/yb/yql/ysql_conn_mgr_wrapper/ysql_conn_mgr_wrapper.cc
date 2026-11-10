@@ -250,6 +250,10 @@ DEFINE_test_flag(uint32, ysql_conn_mgr_shutdown_delay_ms, 0,
     "Time (in ms) that Ysql Connection Manager waits during SIGINT/SIGTERM shutdown before the "
     "process exits.");
 
+DEFINE_test_flag(uint64, ysql_conn_mgr_random_seed, 0,
+    "Seed for random allotment of server connections when "
+    "TEST_ysql_conn_mgr_dowarmup_all_pools_mode is random. 0 means generate one per tserver.");
+
 namespace {
 
 bool ValidateLogSettings(const char* flag_name, const std::string& value) {
@@ -354,6 +358,10 @@ Status YsqlConnMgrWrapper::Start() {
 
   proc_->SetEnv("YB_YSQL_CONN_MGR_DOWARMUP_ALL_POOLS_MODE",
                 FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_mode);
+
+  if (FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_mode == "random") {
+    proc_->SetEnv("YB_YSQL_CONN_MGR_RANDOM_SEED", std::to_string(conf_.random_seed()));
+  }
 
   proc_->SetEnv(
       "YB_YSQL_CONN_MGR_MAX_QUERY_SIZE", std::to_string(FLAGS_ysql_conn_mgr_max_query_size));

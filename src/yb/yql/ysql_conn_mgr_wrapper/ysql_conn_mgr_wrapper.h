@@ -37,6 +37,7 @@ class YsqlConnMgrConf : public ProcessWrapperCommonConfig {
   Result<std::string> CreateYsqlConnMgrConfigAndGetPath();
   void set_yb_tserver_key(uint64_t tserver_key);
   uint64_t yb_tserver_key();
+  uint64_t random_seed() const { return random_seed_; }
 
  private:
   const std::string conf_file_name_ = "ysql_conn_mgr.conf";
@@ -48,6 +49,7 @@ class YsqlConnMgrConf : public ProcessWrapperCommonConfig {
   std::string quantiles_ = "0.99,0.95,0.5";
   HostPort postgres_address_;
   uint64_t yb_tserver_key_;
+  uint64_t random_seed_;
   // Configuration set from flags and reading the pg conf file. Lazily initialized when
   // CreateYsqlConnMgrConfigAndGetPath is called the first time.
   struct CachedConf {
