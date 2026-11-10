@@ -12,7 +12,7 @@
  *	  that binding without seeing execution state.  The other rules
  *	  for which conditions bind to key columns are in
  *	  yb_scan_core.c, and yb_cost.c counts bound key columns by its
- *	  own copy of them.  #37431 tracks how the planner should learn
+ *	  own rules instead.  #37431 tracks how the planner should learn
  *	  what a scan binds.  Plan-time analysis only: no execution
  *	  state (YbOpaque, ScanKey) or pggate calls belong here.
  *

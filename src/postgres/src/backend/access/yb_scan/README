@@ -46,8 +46,8 @@ reasons:
 
   yb_cost.h
 
-Building pggate requests, used by the access methods and, for now, by some
-code above them:
+Building pggate requests, used by the access methods and by some code above
+them:
 
   yb_target.h
 
@@ -64,7 +64,7 @@ Bypasses of an AM interface still to be removed, tracked in #36168:
 
 Avoid adding a bypass, including a new entry point in one of the headers
 above.  When one is unavoidable, declare it in the header of the bypass it
-extends or in a new header under src/include/access/ if it is a new kind of
+extends or in a new src/include/access/yb_*.h header if it is a new kind of
 bypass.  That header's comment should name the files that may include it.  It
 should also say why no AM interface fits or cite the issue that tracks
 removing the bypass.

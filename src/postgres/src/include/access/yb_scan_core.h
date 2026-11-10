@@ -151,8 +151,8 @@ typedef struct YbTableScanDescData *YbTableScanDesc;
 extern void ybc_free_ybscan(YbOpaque ybscan);
 
 /*
- * YB implementations of the heap AM scan lifecycle, called from
- * heapam.c / heapam_handler.c when the relation is YB-backed.
+ * YB implementations of the heap AM scan lifecycle, called from heapam.c when
+ * the relation is YB-backed.
  */
 extern TableScanDesc ybc_heap_beginscan(Relation relation,
 										Snapshot snapshot,
