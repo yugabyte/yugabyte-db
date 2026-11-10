@@ -40,6 +40,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Iterables;
 import com.google.common.collect.Sets;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Common;
@@ -73,6 +74,7 @@ import com.yugabyte.yw.models.helpers.StateTransitionDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
+import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.storage.StorageClass;
 import io.fabric8.kubernetes.client.utils.Serialization;
 import java.io.File;
@@ -288,6 +290,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesCheckNumPod,
           TaskType.KubernetesCommandExecutor,
+          TaskType.KubernetesCommandExecutor,
           TaskType.WaitForDuration,
           TaskType.ModifyBlackList,
           TaskType.KubernetesCommandExecutor,
@@ -308,6 +311,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
         Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_PODS.name())),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of("serverType", "TSERVER")),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
@@ -1795,12 +1799,13 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         helm.stream()
             .filter(t -> "TSERVER".equals(t.getTaskParams().path("serverType").asText()))
             .collect(Collectors.toList());
-    // Master phase, per AZ: create new master pods, delete the old ones, final render.
-    assertEquals(9, masterHelm.size());
+    // Master phase, per AZ: create new master pods, render that again once they have joined,
+    // delete the old ones, final render.
+    assertEquals(12, masterHelm.size());
     List<TaskInfo> createNewMasters = between(masterHelm, 0, firstPosition(postRemove));
     List<TaskInfo> afterMastersJoined =
         between(masterHelm, lastPosition(postRemove), Integer.MAX_VALUE);
-    assertEquals(3, createNewMasters.size());
+    assertEquals(6, createNewMasters.size());
     assertEquals(6, afterMastersJoined.size());
     for (TaskInfo t : createNewMasters) {
       // New masters start in shell mode, and nothing in the release changes yet.
@@ -2214,33 +2219,6 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   }
 
   @Test
-  public void testZoneGainingMasterSkippedInEarlySecretUpdate() {
-    setupMasterMoveUniverse(FULL_MOVE_VERSION);
-    AvailabilityZone az3 = AvailabilityZone.getByCode(kubernetesProvider, "az-3");
-    PlacementInfo pi = currentPlacement();
-    pi.cloudList.get(0).regionList.get(0).azList.removeIf(az -> az.uuid.equals(az3.getUuid()));
-    pi.azStream()
-        .filter(az -> az.name.equals("PlacementAZ 1"))
-        .forEach(
-            az -> {
-              az.numNodesInAZ = 2;
-              az.replicationFactor = 2;
-            });
-    assertEquals(
-        ImmutableSet.of("yb-master-0", "yb-master-1"), masterHosts(expectedMasterAddresses(pi)));
-
-    List<TaskInfo> plan = planEdit(currentIntent(), pi);
-
-    List<TaskInfo> postRemove =
-        assertPushesAroundMasterChange(
-            plan,
-            ImmutableSet.of("yb-master-0_az-1", "yb-master-1_az-1", "yb-master-0_az-2"),
-            ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2", "yb-tserver-0_az-3"));
-    // az-1 already runs its second master, which a render at the current counts would delete.
-    assertEquals(ImmutableSet.of("az-2", "az-3"), azCodes(earlySecretUpdate(plan)));
-  }
-
-  @Test
   public void testPartialMasterFullMoveRendersOtherZones() {
     setupMasterMoveUniverse(FULL_MOVE_VERSION);
     UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
@@ -2292,11 +2270,11 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         .forEach(az -> az.masterStsIndex = 1);
 
     List<TaskInfo> plan = planEdit(newIntent, pi);
-    String newMasters = expectedMasterAddresses(pi);
     Set<String> tservers =
         ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2", "yb-tserver-0_az-3");
 
-    // The az-4 master moves in first, then az-1's masters are replaced.
+    // The az-4 master joins first, then az-1's masters are replaced. The az-3 master is removed
+    // with the old az-1 one, once every new master runs, so the quorum never drops below three.
     List<TaskInfo> adds = changeMasterConfigs(plan, "AddMaster");
     List<TaskInfo> removes = changeMasterConfigs(plan, "RemoveMaster");
     assertEquals(
@@ -2305,48 +2283,38 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             .map(t -> t.getTaskParams().path("nodeName").asText())
             .collect(Collectors.toList()));
     assertEquals(
-        ImmutableList.of("yb-master-0_az-3", "yb-master-0_az-1"),
+        ImmutableList.of("yb-master-0_az-1", "yb-master-0_az-3"),
         removes.stream()
             .map(t -> t.getTaskParams().path("nodeName").asText())
             .collect(Collectors.toList()));
-    List<TaskInfo> pushes = masterAddrPushes(plan);
+    assertTrue(firstPosition(removes) > lastPosition(adds));
 
-    // Around the az-3 remove, the live Raft config goes to the masters that run then. The old az-1
-    // master is still in it, and the new one is not yet.
-    List<TaskInfo> firstPreRemove =
-        between(pushes, adds.get(0).getPosition(), removes.get(0).getPosition());
-    List<TaskInfo> firstPostRemove =
-        between(pushes, removes.get(0).getPosition(), adds.get(1).getPosition());
-    for (List<TaskInfo> push : ImmutableList.of(firstPreRemove, firstPostRemove)) {
-      assertEquals(
-          ImmutableSet.of("yb-master-0_az-2", "yb-master-0_az-4"),
-          nodeNames(push, ServerType.MASTER));
-      assertEquals(tservers, nodeNames(push, ServerType.TSERVER));
-    }
-    List<TaskInfo> postRemove =
-        between(pushes, removes.get(1).getPosition(), Integer.MAX_VALUE).stream()
-            .filter(t -> t.getPosition() <= lastPosition(removes) + 4)
-            .collect(Collectors.toList());
+    List<TaskInfo> pushes = masterAddrPushes(plan);
     Set<String> masters =
         ImmutableSet.of("yb-master-1-0_az-1", "yb-master-0_az-2", "yb-master-0_az-4");
-    List<TaskInfo> secondPreRemove =
-        between(pushes, adds.get(1).getPosition(), removes.get(1).getPosition());
-    for (List<TaskInfo> push : ImmutableList.of(secondPreRemove, postRemove)) {
+    List<TaskInfo> preRemove = between(pushes, lastPosition(adds), firstPosition(removes));
+    List<TaskInfo> postRemove =
+        between(pushes, lastPosition(removes), Integer.MAX_VALUE).stream()
+            .filter(t -> t.getPosition() <= lastPosition(removes) + 4)
+            .collect(Collectors.toList());
+    for (List<TaskInfo> push : ImmutableList.of(preRemove, postRemove)) {
       assertEquals(masters, nodeNames(push, ServerType.MASTER));
       assertEquals(tservers, nodeNames(push, ServerType.TSERVER));
     }
 
-    // One early Secret update, before the old az-1 master is removed, once every new master runs.
-    // az-4 gained a master and az-1's release is rewritten by the full move.
+    // Before the removes, az-1 renders its full-move StatefulSets again and the AZs that run now
+    // render the Raft config. az-4 has no tserver yet.
+    List<TaskInfo> beforeRemoves =
+        between(helmUpgrades(plan), lastPosition(preRemove), firstPosition(removes));
+    List<TaskInfo> rerender = helmUpgradesInAZs(beforeRemoves, ImmutableSet.of("az-1"));
+    assertEquals(1, rerender.size());
+    assertTrue(rerender.get(0).getTaskParams().path("tserverMasterAddrsFromRaft").asBoolean());
     List<TaskInfo> earlySecretUpdate =
-        earlySecretUpdate(plan, lastPosition(secondPreRemove), removes.get(1).getPosition());
+        earlySecretUpdate(plan, lastPosition(preRemove), firstPosition(removes));
     assertEquals(ImmutableSet.of("az-2", "az-3"), azCodes(earlySecretUpdate));
     for (TaskInfo t : earlySecretUpdate) {
-      assertEquals(newMasters, helmMasterAddresses(t));
+      assertTrue(t.getTaskParams().path("masterAddrsFromRaft").asBoolean());
     }
-    // None in the az-4 master step.
-    assertTrue(
-        earlySecretUpdate(plan, adds.get(0).getPosition(), removes.get(0).getPosition()).isEmpty());
   }
 
   @Test
@@ -2451,6 +2419,181 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
       assertEquals("TSERVER", t.getTaskParams().path("serverType").asText());
       assertFalse(keepsGflagsChecksum(t));
     }
+  }
+
+  @Test
+  public void testMasterFullMoveRendersRaftConfigBeforeRemoves() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    TestUtils.updateDeviceInfo(newIntent, ServerType.MASTER, d -> d.storageClass = "fast");
+    PlacementInfo pi = currentPlacement();
+    pi.azStream().forEach(az -> az.masterStsIndex = 1);
+
+    List<TaskInfo> plan = planEdit(newIntent, pi);
+
+    // Creating the new masters gives each AZ's tservers the Raft config, not the AZ's own masters.
+    List<TaskInfo> adds = changeMasterConfigs(plan, "AddMaster");
+    List<TaskInfo> removes = changeMasterConfigs(plan, "RemoveMaster");
+    List<TaskInfo> create = between(helmUpgrades(plan), 0, firstPosition(adds));
+    assertEquals(ImmutableSet.of("az-1", "az-2", "az-3"), azCodes(create));
+    // Once they have joined, the same renders run again, so the list holds them before a remove
+    // can hand one of them the leadership.
+    List<TaskInfo> rerender =
+        between(helmUpgrades(plan), lastPosition(adds), firstPosition(removes));
+    assertEquals(ImmutableSet.of("az-1", "az-2", "az-3"), azCodes(rerender));
+    for (TaskInfo t : Iterables.concat(create, rerender)) {
+      assertEquals("", helmMasterAddresses(t));
+      assertTrue(t.getTaskParams().path("tserverMasterAddrsFromRaft").asBoolean());
+      assertEquals(1, helmAZ(t).path("numNodesInAZ").asInt());
+    }
+    for (TaskInfo t : rerender) {
+      TaskInfo created =
+          create.stream()
+              .filter(c -> azCodes(ImmutableList.of(c)).equals(azCodes(ImmutableList.of(t))))
+              .findFirst()
+              .get();
+      assertEquals(
+          created.getTaskParams().path("fullMoveParams"), t.getTaskParams().path("fullMoveParams"));
+    }
+  }
+
+  @Test
+  public void testZoneGainingMasterRendersRaftConfigBeforeRemove() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    AvailabilityZone az3 = AvailabilityZone.getByCode(kubernetesProvider, "az-3");
+    PlacementInfo pi = currentPlacement();
+    pi.cloudList.get(0).regionList.get(0).azList.removeIf(az -> az.uuid.equals(az3.getUuid()));
+    pi.azStream()
+        .filter(az -> az.name.equals("PlacementAZ 1"))
+        .forEach(
+            az -> {
+              az.numNodesInAZ = 2;
+              az.replicationFactor = 2;
+            });
+
+    List<TaskInfo> plan = planEdit(currentIntent(), pi);
+
+    // The render that creates az-1's second master gives its tservers the Raft config.
+    List<TaskInfo> adds = changeMasterConfigs(plan, "AddMaster");
+    List<TaskInfo> create = between(helmUpgrades(plan), 0, firstPosition(adds));
+    assertEquals(ImmutableSet.of("az-1"), azCodes(create));
+    for (TaskInfo t : create) {
+      assertEquals("", helmMasterAddresses(t));
+      assertTrue(t.getTaskParams().path("tserverMasterAddrsFromRaft").asBoolean());
+    }
+    // Before the remove, every AZ renders the Raft config, az-1 with its new master.
+    List<TaskInfo> earlySecretUpdate = earlySecretUpdate(plan);
+    assertEquals(ImmutableSet.of("az-1", "az-2", "az-3"), azCodes(earlySecretUpdate));
+    for (TaskInfo t : earlySecretUpdate) {
+      assertTrue(t.getTaskParams().path("masterAddrsFromRaft").asBoolean());
+      int masters = t.getTaskParams().path("azCode").asText().equals("az-1") ? 2 : 1;
+      assertEquals(masters, helmAZ(t).path("replicationFactor").asInt());
+      assertEquals(masters, t.getTaskParams().path("masterPartition").asInt());
+      assertEquals(1, helmAZ(t).path("numNodesInAZ").asInt());
+    }
+  }
+
+  @Test
+  public void testZoneRemoveWithMasterFullMoveRemovesItsMasterLast() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    TestUtils.updateDeviceInfo(newIntent, ServerType.MASTER, d -> d.storageClass = "fast");
+    AvailabilityZone az3 = AvailabilityZone.getByCode(kubernetesProvider, "az-3");
+    PlacementInfo pi = currentPlacement();
+    pi.cloudList.get(0).regionList.get(0).azList.removeIf(az -> az.uuid.equals(az3.getUuid()));
+    pi.azStream()
+        .forEach(
+            az -> {
+              az.masterStsIndex = 1;
+              if (az.name.equals("PlacementAZ 1")) {
+                az.numNodesInAZ = 2;
+                az.replicationFactor = 2;
+              }
+            });
+
+    List<TaskInfo> plan = planEdit(newIntent, pi);
+
+    // Every new master is in a full-move AZ. The az-3 master is removed once they have all joined.
+    List<TaskInfo> adds = changeMasterConfigs(plan, "AddMaster");
+    List<TaskInfo> removes = changeMasterConfigs(plan, "RemoveMaster");
+    assertEquals(
+        ImmutableSet.of("yb-master-1-0_az-1", "yb-master-1-1_az-1", "yb-master-1-0_az-2"),
+        adds.stream()
+            .map(t -> t.getTaskParams().path("nodeName").asText())
+            .collect(Collectors.toSet()));
+    assertEquals(
+        ImmutableSet.of("yb-master-0_az-1", "yb-master-0_az-2", "yb-master-0_az-3"),
+        removes.stream()
+            .map(t -> t.getTaskParams().path("nodeName").asText())
+            .collect(Collectors.toSet()));
+    assertTrue(firstPosition(removes) > lastPosition(adds));
+
+    // The new az-1 tserver comes up in its own step, with the masters' new storage class. The
+    // render after the full move keeps az-1 at its current tserver.
+    List<TaskInfo> az1Helm = helmUpgradesInAZs(helmUpgrades(plan), ImmutableSet.of("az-1"));
+    TaskInfo tserverAdd =
+        az1Helm.stream()
+            .filter(t -> helmAZ(t).path("numNodesInAZ").asInt() == 2)
+            .min(Comparator.comparingInt(TaskInfo::getPosition))
+            .get();
+    assertEquals("TSERVER", tserverAdd.getTaskParams().path("serverType").asText());
+    assertEquals(1, tserverAdd.getTaskParams().path("tserverPartition").asInt());
+    assertTrue(tserverAdd.getTaskParams().path("useNewMasterDeviceInfo").asBoolean());
+    assertTrue(tserverAdd.getPosition() > lastPosition(removes));
+  }
+
+  @Test
+  public void testZoneReplaceWithDiskResizeSkipsLeavingZone() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    int tserverSize = newIntent.deviceInfo.volumeSize;
+    TestUtils.updateDeviceInfo(newIntent, ServerType.TSERVER, d -> d.volumeSize = tserverSize + 10);
+    when(mockKubernetesManager.getPVCSizeList(any(), any(), any(), any(), anyBoolean()))
+        .thenReturn(ImmutableList.of(new Quantity(tserverSize + "Gi")));
+
+    List<TaskInfo> plan = planEdit(newIntent, zoneReplacePlacement());
+
+    // The resize renders whole releases with the edit's target spec, which K8s rejects for the
+    // other server type of the leaving az-3 when its storage class changes.
+    List<TaskInfo> resize =
+        helmUpgrades(plan).stream()
+            .filter(t -> t.getTaskParams().hasNonNull("newDiskSize"))
+            .collect(Collectors.toList());
+    assertEquals(ImmutableSet.of("az-1", "az-2"), azCodes(resize));
+  }
+
+  @Test
+  public void testZoneReplaceDeletesUnusedTserverVolumes() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    List<TaskInfo> plan = planEdit(currentIntent(), zoneReplacePlacement());
+    // az-1 and az-2 keep their releases. az-3's release and volumes are deleted with it.
+    assertEquals(ImmutableMap.of("az-1", 1, "az-2", 1), tserverVolumeDeletes(plan));
+  }
+
+  @Test
+  public void testTserverFullMoveDeletesUnusedTserverVolumes() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    TestUtils.updateDeviceInfo(newIntent, ServerType.TSERVER, d -> d.storageClass = "fast");
+    PlacementInfo pi = currentPlacement();
+    pi.azStream().forEach(az -> az.tsStsIndex = 1);
+    List<TaskInfo> plan = planEdit(newIntent, pi);
+    assertEquals(ImmutableMap.of("az-1", 1, "az-2", 1, "az-3", 1), tserverVolumeDeletes(plan));
+  }
+
+  /** Pod counts of the tserver PVC deletes, per AZ. */
+  private static Map<String, Integer> tserverVolumeDeletes(List<TaskInfo> plan) {
+    return subtasks(
+            plan,
+            TaskType.KubernetesCommandExecutor,
+            p ->
+                "VOLUME_DELETE_SHELL_MODE_MASTER".equals(p.path("commandType").asText())
+                    && "TSERVER".equals(p.path("serverType").asText()))
+        .stream()
+        .collect(
+            Collectors.toMap(
+                t -> t.getTaskParams().path("azCode").asText(),
+                t -> t.getTaskParams().path("newPlacementAzMasterCount").asInt()));
   }
 
   /** Adds a read replica with two tservers in az-1 and returns their node names. */

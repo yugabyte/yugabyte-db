@@ -558,14 +558,23 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             .flatMap(Set::stream)
             .map(n -> n.nodeName)
             .collect(Collectors.toSet());
-    // Before the last master step removes a master, rewrite the gflags Secrets with the new
-    // masters, without restarting pods, so a pod restarted from then on boots with a list that
-    // names a master that stays. AZs render at their current counts, which would drop the new
-    // master pods of AZs gaining masters, so those are skipped: creating the pods wrote the AZ's
-    // own masters, new ones included, into their Secrets. A resource change in the edit is safe to
-    // render: the partitions stay at the pod counts, so a pod deleted before its roll comes back at
-    // its old revision, and mounts the new Secret either way.
-    Set<UUID> secretSkipAZs = mastersToAddAzMap.keySet();
+    // Before the last master step removes a master, rewrite the gflags Secrets with the master
+    // Raft config, old and new masters, without restarting pods. A pod restarted from then on boots
+    // with a list that holds the leader whichever master leads, and only masters with pods, which
+    // a tserver must resolve to start. AZs render at their current counts, plus the new masters of
+    // AZs gaining them. AZs the edit adds have no tserver yet. Full-move master AZs render their
+    // full-move StatefulSets in the full move.
+    // A resource change in the edit is safe to render: the partitions stay at the pod counts, so a
+    // pod deleted before its roll comes back at its old revision, and mounts the new Secret either
+    // way.
+    Set<UUID> secretSkipAZs = fullMoveMasterAZs;
+    KubernetesPlacement secretPlacement =
+        new KubernetesPlacement(curPlacement.placementInfo, isReadOnlyCluster);
+    for (UUID az : Sets.difference(mastersToAddAzMap.keySet(), fullMoveMasterAZs)) {
+      if (curPlacement.configs.containsKey(az)) {
+        secretPlacement.masters.put(az, newPlacement.masters.getOrDefault(az, 0));
+      }
+    }
     // AZs the edit removes, and the old tserver StatefulSets of full-move tserver AZs, are neither
     // resized nor moved yet, so the edit's target disk spec would change their
     // volumeClaimTemplates, which K8s rejects. They keep the spec they run with, and their original
@@ -597,7 +606,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
                 createMasterAddressesUpdateTask(
                     universe.getUniverseUUID(),
                     newCluster,
-                    curPlacement,
+                    secretPlacement,
                     masterAddresses,
                     Collections.emptySet() /* mastersToAdd */,
                     Collections.emptySet() /* mastersToRemove */,
@@ -606,8 +615,13 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
                     secretSkipAZs /* skipMasterAZs */,
                     secretSkipAZs /* skipTserverAZs */,
                     false /* includeUniverseNodes */,
-                    keepDiskSpecAZs)
+                    keepDiskSpecAZs,
+                    true /* masterAddrsFromRaft */)
             : null;
+    // With a full move of masters, the masters this edit removes outside it are removed in its
+    // last batch, once all new masters have joined, so the quorum never shrinks below its size.
+    List<NodeDetails> mastersToRemoveLast =
+        fullMoveMasterAZs.isEmpty() ? Collections.emptyList() : new ArrayList<>(mastersToRemove);
     if (!mastersToAdd.isEmpty()) {
       // Bring up new masters and update the configs.
       // No need to check mastersToRemove as total number of masters is invariant.
@@ -638,11 +652,11 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       createMarkRollbackUnsafeTaskOnce();
       createMoveMasterTasks(
           new ArrayList<>(mastersToAdd),
-          new ArrayList<>(mastersToRemove),
+          fullMoveMasterAZs.isEmpty() ? new ArrayList<>(mastersToRemove) : Collections.emptyList(),
           mastersRunningWith.apply(mastersToAdd),
           leavingTservers,
           propagateMasterAddrs,
-          // The new list names the full-move masters, which do not exist yet.
+          // The full move renders the Secrets before its removes.
           fullMoveMasterAZs.isEmpty() ? updateMasterAddrSecrets : null);
     }
 
@@ -675,7 +689,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
                   .collect(Collectors.toList())),
           leavingTservers,
           propagateMasterAddrs,
-          updateMasterAddrSecrets);
+          updateMasterAddrSecrets,
+          mastersToRemoveLast);
     }
 
     if (!mastersToAdd.isEmpty() || CollectionUtils.isNotEmpty(fullMoveMasterAZs)) {
@@ -709,7 +724,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             Collections.emptyList() /* newMasterQuorum */,
             Collections.emptySet() /* bestEffortTservers */,
             false /* pushMasterAddrs */,
-            null /* beforeMasterRemoves */);
+            null /* beforeMasterRemoves */,
+            Collections.emptyList() /* mastersToRemoveLast */);
       }
       if (CollectionUtils.isNotEmpty(fullMoveMasterAZs) || !mastersToAdd.isEmpty()) {
         BiFunction<Map<UUID, Set<NodeDetails>>, Set<UUID>, Set<NodeDetails>>
@@ -731,11 +747,18 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             Sets.difference(newPlacement.placementInfo.getAllAZUUIDs(), fullMoveMasterAZs);
         Set<UUID> skipTserverAZs =
             Sets.difference(newPlacement.placementInfo.getAllAZUUIDs(), fullMoveTserverAZs);
+        // Tservers outside full moves are added and removed later, with their data moved, so this
+        // render keeps their current counts.
+        KubernetesPlacement fullMovePlacement =
+            new KubernetesPlacement(newPlacement.placementInfo, isReadOnlyCluster);
+        for (UUID az : skipTserverAZs) {
+          fullMovePlacement.tservers.put(az, curPlacement.tservers.getOrDefault(az, 0));
+        }
         // Create master address update task for all full move AZ pods.
         createMasterAddressesUpdateTask(
             universe.getUniverseUUID(),
             newCluster,
-            newPlacement,
+            fullMovePlacement,
             masterAddresses,
             fullMoveMastersToAdd,
             fullMoveMastersToRemove,
@@ -1133,7 +1156,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         skipMasterAZs,
         skipTserverAZs,
         includeUniverseNodes,
-        Collections.emptyMap() /* keepDiskSpecAZs */);
+        Collections.emptyMap() /* keepDiskSpecAZs */,
+        false /* masterAddrsFromRaft */);
   }
 
   public void createMasterAddressesUpdateTask(
@@ -1148,7 +1172,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       Set<UUID> skipMasterAZs,
       Set<UUID> skipTserverAZs,
       boolean includeUniverseNodes,
-      Map<UUID, Map<ServerType, Integer>> keepDiskSpecAZs) {
+      Map<UUID, Map<ServerType, Integer>> keepDiskSpecAZs,
+      boolean masterAddrsFromRaft) {
     Supplier<String> masterAddressesSupplier = () -> masterAddresses;
     Universe universe = Universe.getOrBadRequest(universeUUID);
     Cluster curPrimaryCluster = universe.getUniverseDetails().getPrimaryCluster();
@@ -1187,7 +1212,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           null /* rootCAUUID */,
           skipMasterAZs,
           skipTserverAZs,
-          keepDiskSpecAZs);
+          keepDiskSpecAZs,
+          masterAddrsFromRaft);
 
       Set<NodeDetails> mastersToModify =
           Stream.concat(
@@ -1333,8 +1359,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
    *
    * <ul>
    *   <li>Final Helm Upgrade - Applies new placement and device info to new StatefulSet
-   *   <li>Garbage Collect Master Volumes - Deletes unused master PVCs (MASTER only, primary cluster
-   *       only)
+   *   <li>Garbage Collect Volumes - Deletes the PVCs no pod of the server type uses (masters of the
+   *       primary cluster only)
    * </ul>
    *
    * @param universe The universe being edited
@@ -1350,6 +1376,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
    * @param masterAddresses Master addresses string
    * @param enableYbc Whether YBC is enabled
    * @param ybcSoftwareVersion YBC software version
+   * @param mastersToRemoveLast masters outside the full move removed in its last batch
    */
   protected void createFullMoveTasks(
       Universe universe,
@@ -1368,7 +1395,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       Collection<NodeDetails> newMasterQuorum,
       Set<String> bestEffortTservers,
       boolean pushMasterAddrs,
-      @Nullable Runnable beforeMasterRemoves) {
+      @Nullable Runnable beforeMasterRemoves,
+      List<NodeDetails> mastersToRemoveLast) {
     String universeName = universe.getName();
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster == null) {
@@ -1412,6 +1440,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     Map<Integer, List<String>> podNamesToAddPerSubtaskGroupMap = new HashMap<>();
     Map<Integer, List<String>> podNamesToRemovePerSubtaskGroupMap = new HashMap<>();
     Map<Integer, SubTaskGroup> fullMoveSubTaskGroupsMap = new HashMap<>();
+    // The batch's new-pod renders, run again once its masters have joined so the tserver Secrets
+    // name them before the removes.
+    Map<Integer, List<KubernetesCommandExecutor>> masterRerendersMap = new HashMap<>();
     Map<Integer, SubTaskGroup> podsDeleteSubTaskGroupsMap = new HashMap<>();
     Map<Integer, SubTaskGroup> waitForPodsPreDeleteSubTaskGroupsMap = new HashMap<>();
     Map<Integer, SubTaskGroup> waitForPodsPostDeleteSubTaskGroupsMap = new HashMap<>();
@@ -1592,6 +1623,13 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
                   useNewMasterDeviceInfo,
                   useNewTserverDeviceInfo,
                   moveParams);
+          if (serverType == ServerType.MASTER) {
+            KubernetesCommandExecutor rerender = createTask(KubernetesCommandExecutor.class);
+            rerender.initialize(
+                Json.fromJson(
+                    fullMoveSubTask.getTaskParams(), KubernetesCommandExecutor.Params.class));
+            masterRerendersMap.computeIfAbsent(index, k -> new ArrayList<>()).add(rerender);
+          }
           if (!fullMoveSubTaskGroupsMap.containsKey(index)) {
             fullMoveSubTaskGroupsMap.put(
                 index,
@@ -1778,7 +1816,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               useNewMasterDeviceInfo,
               useNewTserverDeviceInfo));
 
-      // Garbage collect master volumes for deleted pods
+      // Garbage collect volumes for deleted pods
       if (!isReadOnlyCluster && serverType == ServerType.MASTER) {
         pvcDeletes.addSubTask(
             garbageCollectMasterVolumes(
@@ -1787,6 +1825,18 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
                 azCode,
                 config,
                 newPlacementAZ.replicationFactor,
+                isReadOnlyCluster,
+                newNamingStyle,
+                universe.getUniverseUUID()));
+      } else if (serverType == ServerType.TSERVER) {
+        pvcDeletes.addSubTask(
+            garbageCollectVolumes(
+                universeName,
+                nodePrefix,
+                azCode,
+                config,
+                ServerType.TSERVER,
+                newPlacementAZ.numNodesInAZ,
                 isReadOnlyCluster,
                 newNamingStyle,
                 universe.getUniverseUUID()));
@@ -1847,16 +1897,36 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       if (serverType == ServerType.MASTER) {
         Set<NodeDetails> mastersToAdd = filterMastersToAdd(new HashSet<>(serversToAdd), universe);
         commonTasks.accept(new ArrayList<>(mastersToAdd));
+        List<NodeDetails> mastersToRemove = new ArrayList<>(serversToRemove);
+        if (i == startIndex + subTaskGroupsSize - 1) {
+          mastersToRemove.addAll(mastersToRemoveLast);
+        }
+        List<KubernetesCommandExecutor> rerenders =
+            pushMasterAddrs ? masterRerendersMap.get(i) : null;
+        Runnable beforeRemoves =
+            CollectionUtils.isEmpty(rerenders)
+                ? beforeMasterRemoves
+                : () -> {
+                  SubTaskGroup rerender =
+                      createSubTaskGroup(
+                          KubernetesCommandExecutor.CommandType.HELM_UPGRADE.getSubTaskGroupName(),
+                          SubTaskGroupType.ConfigureUniverse);
+                  rerenders.forEach(rerender::addSubTask);
+                  getRunnableTask().addSubTaskGroup(rerender);
+                  if (beforeMasterRemoves != null) {
+                    beforeMasterRemoves.run();
+                  }
+                };
         // For masters, add change config task
         if (CollectionUtils.isNotEmpty(serversToAdd)
-            || CollectionUtils.isNotEmpty(serversToRemove)) {
+            || CollectionUtils.isNotEmpty(mastersToRemove)) {
           createMoveMasterTasks(
               serversToAdd,
-              serversToRemove,
+              mastersToRemove,
               newMasterQuorum,
               bestEffortTservers,
               pushMasterAddrs,
-              beforeMasterRemoves);
+              beforeRemoves);
         }
       } else {
         // Tserver case
@@ -2040,6 +2110,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           ybcSoftwareVersion,
           usePreviousGflagsChecksum,
           ServerType.MASTER,
+          masterChangeAZs,
           skipMasterAZs,
           skipTserverAZs);
     }
@@ -2055,6 +2126,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           ybcSoftwareVersion,
           usePreviousGflagsChecksum,
           ServerType.TSERVER,
+          tserverChangeAZs,
           skipMasterAZs,
           skipTserverAZs);
     }
@@ -2078,6 +2150,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       String ybcSoftwareVersion,
       boolean usePreviousGflagsChecksum,
       ServerType serverType,
+      Set<UUID> resizeAZs,
       Set<UUID> masterFullMoveAZs,
       Set<UUID> tserverFullMoveAZs) {
     Cluster newCluster =
@@ -2104,6 +2177,11 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
     for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
       UUID azUUID = entry.getKey();
+      // The render would also give the AZs the edit removes the edit's target spec for the other
+      // server type, which K8s rejects for a storage class change.
+      if (!resizeAZs.contains(azUUID)) {
+        continue;
+      }
       Set<UUID> skipAZs = serverType == ServerType.TSERVER ? tserverFullMoveAZs : masterFullMoveAZs;
       if (CollectionUtils.isNotEmpty(skipAZs) && skipAZs.contains(azUUID)) {
         continue;
