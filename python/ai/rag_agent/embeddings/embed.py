@@ -8,6 +8,7 @@ import logging
 import psycopg
 import os
 import mimetypes
+import time
 
 from rag_pipeline.markdown_finetuning_chunker import is_markdown_finetuning_enabled
 from rag_pipeline.markdown_finetuning_chunker import chunk_markdown_whole_file
@@ -72,6 +73,24 @@ class EmbeddingsGenerator:
         self.html_processor = HTMLProcessor()
         self.pipeline_tracking = PipelineTracking()
 
+    def _embed_batch(self, texts):
+        """Embed one batch of chunks and log how long the provider took.
+
+        The time is logged per batch so ingestion logs show how much of a
+        document's run goes to the embedding provider and how much to the
+        database (see the insert timing in yugabytedb_vector_store).
+        """
+        started = time.perf_counter()
+        vectors = self.embedder.embed_documents(texts)
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        if texts:
+            logging.info(
+                f"Embedded batch of {len(texts)} chunks in {elapsed_ms:.0f} ms "
+                f"({elapsed_ms / len(texts):.1f} ms per chunk, "
+                f"model {self.embedding_model})"
+            )
+        return vectors
+
     def _build_embedder(self):
         """Construct the underlying LangChain embedder for the configured provider."""
         if self.ai_provider == AI_PROVIDER_OPENAI:
@@ -112,7 +131,7 @@ class EmbeddingsGenerator:
 
                 if len(batch_texts) >= self.batch_size:
                     try:
-                        vectors = self.embedder.embed_documents(batch_texts)
+                        vectors = self._embed_batch(batch_texts)
                     except Exception as e:
                         # Log with batch context for forensics, then re-raise so
                         # the surrounding pipeline marks the task as FAILED.
@@ -144,7 +163,7 @@ class EmbeddingsGenerator:
 
         if batch_texts:
             try:
-                vectors = self.embedder.embed_documents(batch_texts)
+                vectors = self._embed_batch(batch_texts)
             except Exception as e:
                 logging.error(
                     f"Failed to generate embeddings for final batch "
@@ -212,7 +231,7 @@ class EmbeddingsGenerator:
 
                 if len(batch_texts) >= self.batch_size:
                     try:
-                        vectors = self.embedder.embed_documents(batch_texts)
+                        vectors = self._embed_batch(batch_texts)
                     except Exception as e:
                         logging.error(
                             f"Failed to generate embeddings for batch "
@@ -230,7 +249,7 @@ class EmbeddingsGenerator:
 
         if batch_texts:
             try:
-                vectors = self.embedder.embed_documents(batch_texts)
+                vectors = self._embed_batch(batch_texts)
             except Exception as e:
                 logging.error(
                     f"Failed to generate embeddings for final batch "
@@ -307,7 +326,7 @@ class EmbeddingsGenerator:
             batch_texts.append(chunk_doc.page_content)
 
             if len(batch_texts) >= self.batch_size:
-                vectors = self.embedder.embed_documents(batch_texts)
+                vectors = self._embed_batch(batch_texts)
                 for text, vec in zip(batch_texts, vectors):
                     yielded_count += 1
                     yield text, vec
@@ -323,7 +342,7 @@ class EmbeddingsGenerator:
                     )
 
         if batch_texts:
-            vectors = self.embedder.embed_documents(batch_texts)
+            vectors = self._embed_batch(batch_texts)
             for text, vec in zip(batch_texts, vectors):
                 yielded_count += 1
                 yield text, vec
@@ -368,7 +387,7 @@ class EmbeddingsGenerator:
             batch_texts.append(chunk_doc.page_content)
 
             if len(batch_texts) >= self.batch_size:
-                vectors = self.embedder.embed_documents(batch_texts)
+                vectors = self._embed_batch(batch_texts)
                 for text, vec in zip(batch_texts, vectors):
                     yielded_count += 1
                     yield text, vec
@@ -384,7 +403,7 @@ class EmbeddingsGenerator:
                     )
 
         if batch_texts:
-            vectors = self.embedder.embed_documents(batch_texts)
+            vectors = self._embed_batch(batch_texts)
             for text, vec in zip(batch_texts, vectors):
                 yielded_count += 1
                 yield text, vec

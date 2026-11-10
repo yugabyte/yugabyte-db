@@ -522,3 +522,39 @@ class TestEmbeddingsGeneratorProviderDispatch:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestEmbedBatchTiming:
+    """EmbeddingsGenerator._embed_batch logs how long each provider call took."""
+
+    @patch('embeddings.embed.PipelineTracking')
+    @patch('embeddings.embed.PDFProcessor')
+    @patch('embeddings.embed.OpenAIEmbeddings')
+    def test_embed_batch_returns_vectors_and_logs_timing(
+        self, mock_oai_cls, mock_pdf, mock_pt, caplog
+    ):
+        gen, mock_embedder = _create_generator(mock_oai_cls)
+        mock_embedder.embed_documents.return_value = [[0.1], [0.2]]
+
+        with caplog.at_level("INFO"):
+            vectors = gen._embed_batch(["a", "b"])
+
+        assert vectors == [[0.1], [0.2]]
+        mock_embedder.embed_documents.assert_called_once_with(["a", "b"])
+        lines = [r.getMessage() for r in caplog.records
+                 if r.getMessage().startswith("Embedded batch of 2 chunks in ")]
+        assert len(lines) == 1
+        assert "ms per chunk" in lines[0]
+        assert "model text-embedding-ada-002" in lines[0]
+
+    @patch('embeddings.embed.PipelineTracking')
+    @patch('embeddings.embed.PDFProcessor')
+    @patch('embeddings.embed.OpenAIEmbeddings')
+    def test_embed_batch_propagates_provider_errors(
+        self, mock_oai_cls, mock_pdf, mock_pt
+    ):
+        gen, mock_embedder = _create_generator(mock_oai_cls)
+        mock_embedder.embed_documents.side_effect = RuntimeError("throttled")
+
+        with pytest.raises(RuntimeError, match="throttled"):
+            gen._embed_batch(["a"])
