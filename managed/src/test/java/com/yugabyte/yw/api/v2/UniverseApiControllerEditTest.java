@@ -57,6 +57,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.ProviderInitializer;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
@@ -892,31 +893,41 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     Map<String, String> rrTags = Map.of("env", "replica");
     String primaryArn = "arn:aws:iam::123456789012:instance-profile/primary";
     String rrArn = "arn:aws:iam::123456789012:instance-profile/replica";
-    // Give the replica values that differ from the primary for every field that is shared by
-    // ClusterSpec and ClusterEditSpec and was previously inherited.
+    ImageBundleDetails rrImageDetails = new ImageBundleDetails();
+    rrImageDetails.setArch(Architecture.aarch64);
+    rrImageDetails.setGlobalYbImage("yb-image-global-rr");
+    ImageBundle rrImageBundle =
+        ImageBundle.create(
+            Provider.getOrBadRequest(providerUuid), "rr-image", rrImageDetails, false);
+    UUID primaryImageBundleUuid =
+        Universe.getOrBadRequest(universeUuid)
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .imageBundleUUID;
+    // Give the replica a value different from the primary's for each field that ClusterEditSpec
+    // shares with ClusterSpec and that edit used to inherit from the primary: instance tags,
+    // networking_spec exposing service, and provider_spec image bundle and AWS instance profile.
     Universe.saveDetails(
         universeUuid,
         universe -> {
           UniverseDefinitionTaskParams details = universe.getUniverseDetails();
           UserIntent primaryIntent = details.getPrimaryCluster().userIntent;
           UserIntent rrIntent = details.getReadOnlyClusters().get(0).userIntent;
-          primaryIntent.instanceTags = new HashMap<>(primaryTags);
-          rrIntent.instanceTags = new HashMap<>(rrTags);
-          primaryIntent.awsArnString = primaryArn;
-          rrIntent.awsArnString = rrArn;
+          TestUtils.existingProviderInitializer(
+                  rrIntent
+              ).setImageBundleUUID(rrImageBundle.getUuid())
+              .setInstanceTags(rrTags)
+              .setAwsProfile(rrArn);
+          TestUtils.existingProviderInitializer(primaryIntent)
+              .setInstanceTags(new HashMap<>(primaryTags));
+          //TODO: will be migrated in PLAT-19849.
           primaryIntent.enableExposingService =
               UniverseDefinitionTaskParams.ExposingServiceState.EXPOSED;
           rrIntent.enableExposingService =
               UniverseDefinitionTaskParams.ExposingServiceState.UNEXPOSED;
           universe.setUniverseDetails(details);
         });
-    UserIntent rrIntentBefore =
-        Universe.getOrBadRequest(universeUuid)
-            .getUniverseDetails()
-            .getReadOnlyClusters()
-            .get(0)
-            .userIntent
-            .clone();
 
     // only numNodes is specified; every other field is omitted
     ClusterEditSpec rrClusterEditSpec = new ClusterEditSpec().uuid(rrClusterUuid).numNodes(4);
@@ -933,20 +944,18 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
             .orElseThrow();
     UserIntent rrIntent = v1Rr.userIntent;
     assertThat(rrIntent.numNodes, is(4));
-    assertThat(rrIntent.instanceTags, is(rrTags));
-    assertThat(rrIntent.awsArnString, is(rrArn));
+    assertThat(rrIntent.getInstanceTagsForProvider(providerUuid), is(rrTags));
+    assertThat(rrIntent.getImageBundleUUIDForProvider(providerUuid), is(rrImageBundle.getUuid()));
+    assertThat(rrIntent.getAwsProfile(providerUuid), is(rrArn));
     assertThat(
         rrIntent.enableExposingService,
         is(UniverseDefinitionTaskParams.ExposingServiceState.UNEXPOSED));
-    // Other replica fields stay as they were.
-    assertThat(rrIntent.dedicatedNodes, is(rrIntentBefore.dedicatedNodes));
-    assertThat(rrIntent.imageBundleUUID, is(rrIntentBefore.imageBundleUUID));
-    assertThat(rrIntent.regionList, is(rrIntentBefore.regionList));
 
     // The primary is untouched.
     UserIntent primaryIntent = v1Primary.userIntent;
-    assertThat(primaryIntent.instanceTags, is(primaryTags));
-    assertThat(primaryIntent.awsArnString, is(primaryArn));
+    assertThat(primaryIntent.getInstanceTagsForProvider(providerUuid), is(primaryTags));
+    assertThat(primaryIntent.getImageBundleUUIDForProvider(providerUuid), is(primaryImageBundleUuid));
+    assertThat(primaryIntent.getAwsProfile(providerUuid), is(primaryArn));
     assertThat(
         primaryIntent.enableExposingService,
         is(UniverseDefinitionTaskParams.ExposingServiceState.EXPOSED));

@@ -154,7 +154,11 @@ public abstract class UniverseDefinitionTaskParamsDecorator
     return params;
   }
 
-  private UniverseSpec inheritFromPrimaryBeforeMapping(UniverseSpec universeSpec) {
+  private UniverseSpec inheritFromPrimaryBeforeMapping(UniverseCreateSpec universeCreateSpec) {
+    if (universeCreateSpec == null) {
+      throw new IllegalArgumentException("Cannot inherit for null spec");
+    }
+    UniverseSpec universeSpec = universeCreateSpec.getSpec();
     if (universeSpec == null || universeSpec.getClusters() == null) {
       return universeSpec;
     }
@@ -162,7 +166,7 @@ public abstract class UniverseDefinitionTaskParamsDecorator
         universeSpec.getClusters().stream()
             .filter(c -> c.getClusterType().equals(ClusterTypeEnum.PRIMARY))
             .findAny()
-            .orElse(null);
+            .orElseThrow(() -> new IllegalArgumentException("Primary cluster should be provided"));
     List<ClusterSpec> clusters = new ArrayList<>();
     clusters.add(primaryClusterSpec);
     for (ClusterSpec otherCluster : universeSpec.getClusters()) {
@@ -181,7 +185,7 @@ public abstract class UniverseDefinitionTaskParamsDecorator
   public UniverseDefinitionTaskParams toV1UniverseDefinitionTaskParamsFromCreateSpec(
       UniverseCreateSpec universeCreateSpec) {
     // Copy unset RR/async properties from primary (excludes placement, partitions, nodeSpec).
-    UniverseSpec universeSpec = inheritFromPrimaryBeforeMapping(universeCreateSpec.getSpec());
+    UniverseSpec universeSpec = inheritFromPrimaryBeforeMapping(universeCreateSpec);
     UniverseDefinitionTaskParams params = toV1UniverseDefinitionTaskParams(universeSpec);
     // set Arch
     params.arch = toV1Arch(universeCreateSpec.getArch());

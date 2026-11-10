@@ -37,4 +37,6 @@ public interface ProviderInitializer {
   ProviderInitializer updateDeviceInfo(Consumer<DeviceInfo> mutator);
 
   ProviderInitializer updateMasterDeviceInfo(Consumer<DeviceInfo> mutator);
+
+  ProviderInitializer setAwsProfile(String awsProfile);
 }
