@@ -53,6 +53,8 @@ step "tt_rollback"	{ ROLLBACK; }
 step "tt_reset"		{ RESET yb_read_time; }
 step "tt_no_check"	{ SET yb_disable_catalog_version_check = on; }
 step "tt_role"		{ SET ROLE yb_tt_user; }
+# RESET ALL in the teardown doesn't reset the role.
+step "tt_reset_role"	{ RESET ROLE; }
 step "tt_parallel"	{ SET force_parallel_mode = on; }
 step "tt_explain"	{ EXPLAIN (COSTS OFF) SELECT * FROM t; }
 step "tt_explain_analyze"
@@ -60,14 +62,10 @@ step "tt_explain_analyze"
   EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM t;
 }
 # The connection is reused by the next permutation, whose tables don't exist as
-# of this permutation's read time.
-teardown
-{
-  RESET ROLE;
-  RESET yb_read_time;
-  RESET yb_disable_catalog_version_check;
-  RESET force_parallel_mode;
-}
+# of this permutation's read time. A single statement: several would run as an
+# implicit transaction block that started with yb_read_time set, which can't
+# reset it.
+teardown		{ RESET ALL; }
 
 session "ddl"
 step "ddl_read_time"
@@ -105,12 +103,12 @@ permutation "ddl_read_time" "ddl_add_col" "tt_set" "tt_sel" "tt_sel"
 
 # REVOKE is breaking, so the role can't read data as of yb_read_time with the
 # privileges it had then.
-permutation "ddl_read_time" "ddl_revoke" "tt_set" "tt_role" "tt_sel" "tt_sel"
+permutation "ddl_read_time" "ddl_revoke" "tt_set" "tt_role" "tt_sel" "tt_sel" "tt_reset_role"
 
 # TODO(#37408): privileges are evaluated from the catalog as of yb_read_time,
 # and ENABLE ROW LEVEL SECURITY is a non-breaking ALTER TABLE, so rows hidden
 # from the role now are still returned.
-permutation "ddl_read_time" "ddl_rls" "tt_set" "tt_role" "tt_sel"
+permutation "ddl_read_time" "ddl_rls" "tt_set" "tt_role" "tt_sel" "tt_reset_role"
 
 # Parallel workers: the worker reads the catalog version itself at startup.
 permutation "ddl_read_time" "ddl_add_col" "tt_set" "tt_parallel" "tt_explain_analyze" "tt_sel"

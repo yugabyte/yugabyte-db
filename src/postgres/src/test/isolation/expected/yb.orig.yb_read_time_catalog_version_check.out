@@ -168,7 +168,7 @@ k| v|  w
 (2 rows)
 
 
-starting permutation: ddl_read_time ddl_revoke tt_set tt_role tt_sel tt_sel
+starting permutation: ddl_read_time ddl_revoke tt_set tt_role tt_sel tt_sel tt_reset_role
 step ddl_read_time: 
   INSERT INTO read_time
     SELECT (extract(epoch FROM clock_timestamp()) * 1000000)::BIGINT;
@@ -188,8 +188,9 @@ step tt_sel: SELECT * FROM t ORDER BY k;
 ERROR:  The catalog snapshot used for this transaction has been invalidated: MISMATCHED_SCHEMA
 step tt_sel: SELECT * FROM t ORDER BY k;
 ERROR:  The catalog snapshot used for this transaction has been invalidated: MISMATCHED_SCHEMA
+step tt_reset_role: RESET ROLE;
 
-starting permutation: ddl_read_time ddl_rls tt_set tt_role tt_sel
+starting permutation: ddl_read_time ddl_rls tt_set tt_role tt_sel tt_reset_role
 step ddl_read_time: 
   INSERT INTO read_time
     SELECT (extract(epoch FROM clock_timestamp()) * 1000000)::BIGINT;
@@ -212,6 +213,7 @@ k| v|  w
 2|20|200
 (2 rows)
 
+step tt_reset_role: RESET ROLE;
 
 starting permutation: ddl_read_time ddl_add_col tt_set tt_parallel tt_explain_analyze tt_sel
 step ddl_read_time: 
