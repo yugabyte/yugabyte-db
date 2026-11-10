@@ -30,6 +30,7 @@
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_path.h"
 #include "yb/dockv/expiration.h"
+#include "yb/dockv/intent.h"
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/reader_projection.h"
 
@@ -81,13 +82,6 @@ Status StoreValue(
   const auto& column_schema = VERIFY_RESULT_REF(schema.column_by_id(column.id));
   key_entry_value.ToQLValuePB(column_schema.type(), &row->AllocColumn(column.id).value);
   return Status::OK();
-}
-
-// Whether key is the doc key without hash and range components of the table with the specified
-// key prefix, i.e. its top level key.
-bool IsTableRootKey(Slice key, Slice table_key_prefix) {
-  return key.size() == table_key_prefix.size() + 1 && key.starts_with(table_key_prefix) &&
-         key.end()[-1] == dockv::KeyEntryTypeAsChar::kGroupEnd;
 }
 
 } // namespace
@@ -868,10 +862,10 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
     }
 
     // Intents alone are not the whole row, e.g. a column set to NULL reads as not found. So this
-    // mode returns every row with intents. Except the table root key: in skip prefix locks mode a
-    // serializable transaction takes a strong intent on it, but it is not a row.
-    if (seek_filter_ == SeekFilter::kIntentsOnly &&
-        !IsTableRootKey(row_key_, doc_read_context_.table_key_prefix())) {
+    // mode returns every row with intents. Except the table's top level key: a transaction can
+    // take a strong intent on it, e.g. a serializable one in skip prefix locks mode, but it is not
+    // a row.
+    if (seek_filter_ == SeekFilter::kIntentsOnly && !dockv::IsTopLevelIntentKey(row_key_)) {
       RETURN_NOT_OK(FillRow(table_row));
       prev_doc_found_ = DocReaderResult::kFoundNotFinished;
       break;

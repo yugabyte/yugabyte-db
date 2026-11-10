@@ -894,6 +894,7 @@ class PgVectorIndexTest : public PgVectorIndexTestParamsDecorator<PgVectorIndexT
   void TestMetric(const std::string& expected);
   void TestRandom();
   void TestNullVectorsInIntents(bool commit);
+  void TestSearchAfterSerializableWrite(bool commit);
   void TestBootstrapAfterSchemaChange(
       NullVectorBeforeSchemaChange null_vector, NonTransactionalWrites non_transactional_writes);
   void TestPerformDeadlineWithStuckLocalWrite(UseSharedMemory use_shared_memory);
@@ -1904,33 +1905,46 @@ TEST_P(PgVectorIndexTest, NullVectorsInNotAppliedIntents) {
   TestNullVectorsInIntents(/* commit= */ true);
 }
 
-// In skip prefix locks mode a serializable write takes a strong intent on the table root key. The
-// search must not take it for a row with intents (GH#36749).
-TEST_P(PgVectorIndexTest, SearchAfterSerializableWrite) {
+// In skip prefix locks mode a serializable write takes a strong intent on the table's top level
+// key. The search must not take it for a row with intents, neither in the writing transaction nor
+// after the transaction committed but before it was applied (GH#36749).
+void PgVectorIndexTest::TestSearchAfterSerializableWrite(bool commit) {
   constexpr size_t kNumRows = 64;
   const std::string kCloseVector = "[0.125, 0.25, 0.375]";
+  const std::string kCloserVector = "[0.0625, 0.125, 0.1875]";
 
   auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+  // So the search finds the filled rows in the index, not in intents.
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kTrue, 30s * kTimeMultiplier));
+  if (commit) {
+    // Keep the committed rows in intents.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
+  }
 
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
-  ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES (1000, '$0')", kCloseVector));
-  ASSERT_NO_FATALS(VerifyRows(
-      conn, AddFilter::kFalse,
-      {BuildRow(1000, kCloseVector), ExpectedRow(1), ExpectedRow(2), ExpectedRow(3)}));
-  ASSERT_OK(conn.RollbackTransaction());
-
-  ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES (1000, '$0')", kCloserVector));
   ASSERT_OK(conn.ExecuteFormat("UPDATE test SET embedding = '$0' WHERE id = 10", kCloseVector));
-  ASSERT_NO_FATALS(VerifyRows(
-      conn, AddFilter::kFalse,
-      {BuildRow(10, kCloseVector), ExpectedRow(1), ExpectedRow(2), ExpectedRow(3)}));
-  ASSERT_OK(conn.RollbackTransaction());
-
-  ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
   ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 1"));
-  ASSERT_NO_FATALS(VerifyRows(
-      conn, AddFilter::kFalse, {ExpectedRow(2), ExpectedRow(3), ExpectedRow(4)}));
-  ASSERT_OK(conn.RollbackTransaction());
+  if (commit) {
+    ASSERT_OK(conn.CommitTransaction());
+  }
+
+  std::vector<std::string> expected = {
+    BuildRow(1000, kCloserVector),
+    BuildRow(10, kCloseVector),
+    ExpectedRow(2),
+    ExpectedRow(3),
+  };
+  ASSERT_NO_FATALS(VerifyRows(conn, AddFilter::kFalse, expected));
+  ASSERT_NO_FATALS(VerifyRows(conn, AddFilter::kTrue, {ExpectedRow(2)}));
+}
+
+TEST_P(PgVectorIndexTest, SearchAfterSerializableWrite) {
+  TestSearchAfterSerializableWrite(/* commit= */ false);
+}
+
+TEST_P(PgVectorIndexTest, SearchAfterCommittedNotAppliedSerializableWrite) {
+  TestSearchAfterSerializableWrite(/* commit= */ true);
 }
 
 TEST_P(PgVectorIndexTest, IndexCheck) {
