@@ -63,8 +63,8 @@ Bypasses of an AM interface still to be removed, tracked in #36168:
   yb_parallel_scan.h (the sequential scan side)
 
 Avoid adding a bypass, including a new entry point in one of the bypass
-headers above.  When one is unavoidable, declare it in the header of the
-bypass it extends or in a new src/include/access/yb_*.h header if it is a new
-kind of bypass.  That header's comment should name the files that may include
-it.  It should also say why no AM interface fits or cite the issue that tracks
-removing the bypass.
+headers above.  When one is unavoidable, declare it, as a function under
+src/backend/access/, in the header of the bypass it extends or in a new
+src/include/access/yb_*.h header if it is a new kind of bypass.  That header's
+comment should name the files that may include it.  It should also say why no
+AM interface fits or cite the issue that tracks removing the bypass.
