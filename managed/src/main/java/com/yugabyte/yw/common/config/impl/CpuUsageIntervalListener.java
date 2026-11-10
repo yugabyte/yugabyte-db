@@ -13,87 +13,21 @@ import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
-import com.yugabyte.yw.common.config.RuntimeConfigChangeListener;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
-import com.yugabyte.yw.models.AlertConfiguration;
-import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
-import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
-import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 
 @Singleton
-public class CpuUsageIntervalListener implements RuntimeConfigChangeListener {
-
-  private static final Set<AlertTemplate> CPU_USAGE_TEMPLATES =
-      ImmutableSet.of(AlertTemplate.NODE_CPU_USAGE, AlertTemplate.DB_K8S_CPU_USAGE);
-
-  private final AlertConfigurationService alertConfigurationService;
-
-  private final AlertDefinitionService alertDefinitionService;
+public class CpuUsageIntervalListener extends AlertTemplateParameterListener {
 
   @Inject
   public CpuUsageIntervalListener(
       AlertConfigurationService alertConfigurationService,
       AlertDefinitionService alertDefinitionService) {
-    this.alertConfigurationService = alertConfigurationService;
-    this.alertDefinitionService = alertDefinitionService;
-  }
-
-  public String getKeyPath() {
-    return UniverseConfKeys.cpuUsageAggregationInterval.getKey();
-  }
-
-  @Override
-  public void processGlobal() {
-    List<AlertConfiguration> affectedConfigs =
-        alertConfigurationService.list(
-            AlertConfigurationFilter.builder().templates(CPU_USAGE_TEMPLATES).build());
-    processConfigs(affectedConfigs);
-  }
-
-  @Override
-  public void processCustomer(Customer customer) {
-    List<AlertConfiguration> affectedConfigs =
-        alertConfigurationService.list(
-            AlertConfigurationFilter.builder()
-                .templates(CPU_USAGE_TEMPLATES)
-                .customerUuid(customer.getUuid())
-                .build());
-    processConfigs(affectedConfigs);
-  }
-
-  @Override
-  public void processUniverse(Universe universe) {
-    List<AlertConfiguration> affectedConfigs =
-        alertConfigurationService.list(
-            AlertConfigurationFilter.builder()
-                .templates(CPU_USAGE_TEMPLATES)
-                .customerUuid(Customer.get(universe.getCustomerId()).getUuid())
-                .build());
-    processConfigs(affectedConfigs);
-  }
-
-  private void processConfigs(List<AlertConfiguration> configs) {
-    if (configs.isEmpty()) {
-      return;
-    }
-    AlertDefinitionFilter definitionFilter =
-        AlertDefinitionFilter.builder()
-            .configurationUuids(
-                configs.stream().map(AlertConfiguration::getUuid).collect(Collectors.toSet()))
-            .build();
-
-    List<AlertDefinition> definitions = alertDefinitionService.list(definitionFilter);
-    if (definitions.isEmpty()) {
-      return;
-    }
-    definitions.forEach(d -> d.setConfigWritten(false));
-    alertDefinitionService.save(definitions);
+    super(
+        UniverseConfKeys.cpuUsageAggregationInterval.getKey(),
+        ImmutableSet.of(AlertTemplate.NODE_CPU_USAGE, AlertTemplate.DB_K8S_CPU_USAGE),
+        alertConfigurationService,
+        alertDefinitionService);
   }
 }

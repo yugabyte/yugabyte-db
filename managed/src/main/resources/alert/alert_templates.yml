@@ -2747,19 +2747,22 @@ templates:
 
   NODE_MAINTENANCE_SERVICE_NOT_RUN:
     name: Node maintenance service not running
-    description: A YB node maintenance systemd service (yb-zip_purge_yb_logs / yb-clean_cores) has not been executed recently or never ran
+    description: A YB node maintenance systemd service (yb-zip_purge_yb_logs / yb-clean_cores) has not been executed recently or never ran.
+      The window is set via yb.alert.node_maintenance_service_max_age_secs runtime property
     queryTemplate: count by (universe_uuid) (
       (yb_node_maintenance_service_status{universe_uuid="__universeUuid__"} != 2
       and ignoring(saved_name) yb_node_maintenance_service_last_run_seconds{universe_uuid="__universeUuid__"} == 0)
       or
       (yb_node_maintenance_service_last_run_seconds{universe_uuid="__universeUuid__"} > 0
-      and ignoring(saved_name) (time() - yb_node_maintenance_service_last_run_seconds{universe_uuid="__universeUuid__"}) > 300)
+      and ignoring(saved_name) (time() - yb_node_maintenance_service_last_run_seconds{universe_uuid="__universeUuid__"}) > {{ max_age }})
       ) {{ query_condition }} {{ query_threshold }}
     defaultDurationSec: 600
     createForNewCustomer: true
     defaultThresholdMap:
       SEVERE:
         threshold: 0.0
+    parameters:
+      max_age: yb.alert.node_maintenance_service_max_age_secs
     targetType: UNIVERSE
     defaultThresholdCondition: GREATER_THAN
     defaultThresholdUnit: COUNT
@@ -2771,7 +2774,7 @@ templates:
         and ignoring(saved_name) yb_node_maintenance_service_last_run_seconds{universe_uuid='{{ $labels.universe_uuid }}'} == 0)
         or
         (yb_node_maintenance_service_last_run_seconds{universe_uuid='{{ $labels.universe_uuid }}'} > 0
-        and ignoring(saved_name) (time() - yb_node_maintenance_service_last_run_seconds{universe_uuid='{{ $labels.universe_uuid }}'}) > 1800)
+        and ignoring(saved_name) (time() - yb_node_maintenance_service_last_run_seconds{universe_uuid='{{ $labels.universe_uuid }}'}) > {{ max_age }})
         ) > 0" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}({{ $element.Labels.service }}){{ end }}
     annotations:
       summary: >-
