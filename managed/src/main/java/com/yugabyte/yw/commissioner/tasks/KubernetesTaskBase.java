@@ -1636,8 +1636,6 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         null /* skipAZs */);
   }
 
-  // Pod deletion subtasks for non-full move edit oprations
-  // Note: Pods delete for K8s full move case is handled separately in its own set of subtasks
   public void deletePodsTask(
       String universeName,
       KubernetesPlacement currPlacement,
@@ -1651,6 +1649,42 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean enableYbc,
       boolean usePreviousGflagsChecksum,
       Set<UUID> skipAZs) {
+    deletePodsTask(
+        universeName,
+        currPlacement,
+        masterAddresses,
+        newPlacement,
+        instanceTypeChanged,
+        isMultiAz,
+        provider,
+        isReadOnlyCluster,
+        newNamingStyle,
+        enableYbc,
+        usePreviousGflagsChecksum,
+        skipAZs,
+        false /* useNewMasterDeviceInfo */);
+  }
+
+  // Pod deletion subtasks for non-full move edit oprations
+  // Note: Pods delete for K8s full move case is handled separately in its own set of subtasks
+  /**
+   * @param useNewMasterDeviceInfo render the task's master disk spec, which the master StatefulSets
+   *     have once every master step of an edit has run, instead of the saved one.
+   */
+  public void deletePodsTask(
+      String universeName,
+      KubernetesPlacement currPlacement,
+      String masterAddresses,
+      KubernetesPlacement newPlacement,
+      boolean instanceTypeChanged,
+      boolean isMultiAz,
+      Provider provider,
+      boolean isReadOnlyCluster,
+      boolean newNamingStyle,
+      boolean enableYbc,
+      boolean usePreviousGflagsChecksum,
+      Set<UUID> skipAZs,
+      boolean useNewMasterDeviceInfo) {
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     if (primaryCluster == null) {
@@ -1758,7 +1792,13 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 isReadOnlyCluster,
                 enableYbc,
                 usePreviousGflagsChecksum,
-                false /* namespacedServiceReleaseOwner */));
+                false /* namespacedServiceReleaseOwner */,
+                null /* ysqlMajorVersionUpgradeState */,
+                null /* moveParams */,
+                null /* oldMasterDiskSize */,
+                null /* oldTserverDiskSize */,
+                useNewMasterDeviceInfo,
+                false /* useNewTserverDeviceInfo */));
 
         podsWait.addSubTask(
             createKubernetesCheckPodNumTask(

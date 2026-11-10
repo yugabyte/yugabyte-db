@@ -971,7 +971,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           universe.isYbcEnabled(),
           /* Will use checksum after last modification, so safe to use */
           supportsNonRestartGflagsUpgrade /* usePreviousGflagsChecksum */,
-          fullMoveTserverAZs);
+          fullMoveTserverAZs,
+          // A master full move gave the master StatefulSets the target spec.
+          true /* useNewMasterDeviceInfo */);
     }
 
     // Clear blacklist

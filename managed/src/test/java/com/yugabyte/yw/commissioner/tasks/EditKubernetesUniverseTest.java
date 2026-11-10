@@ -2540,6 +2540,16 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     assertEquals(1, tserverAdd.getTaskParams().path("tserverPartition").asInt());
     assertTrue(tserverAdd.getTaskParams().path("useNewMasterDeviceInfo").asBoolean());
     assertTrue(tserverAdd.getPosition() > lastPosition(removes));
+    // So do the later renders, the scale-down at the end included.
+    List<TaskInfo> later =
+        between(
+            helmUpgradesInAZs(helmUpgrades(plan), ImmutableSet.of("az-1", "az-2")),
+            tserverAdd.getPosition(),
+            Integer.MAX_VALUE);
+    assertFalse(later.isEmpty());
+    for (TaskInfo t : later) {
+      assertTrue(t.getTaskParams().path("useNewMasterDeviceInfo").asBoolean());
+    }
   }
 
   @Test
