@@ -34,9 +34,8 @@ public class TestRandomModeSeed extends BaseYsqlConnMgr {
   private static final int NUM_QUERIES = 30;
   private static final String TEST_USER = "seed_user";
 
-  // Backend picks for one client as first-seen indexes, so runs with different pids compare.
-  // The client runs as its own role so that it is the only client on its route: other clients
-  // on a shared route (cluster start probes, role setup) would shift its route ordinal.
+  // Restarts the cluster with the seed and runs the queries as a new role, so this client is
+  // alone on its route. Returns each query's backend as the order that backend was first seen.
   private List<Integer> pickSequence(long seed) throws Exception {
     Map<String, String> flags = new HashMap<>();
     flags.put("TEST_ysql_conn_mgr_random_seed", Long.toUnsignedString(seed));
@@ -70,6 +69,8 @@ public class TestRandomModeSeed extends BaseYsqlConnMgr {
     return picks;
   }
 
+  // Runs with seed 12345 twice and seed 67890 once. Both 12345 runs pick backends in the same
+  // order. The 67890 run picks a different order.
   @Test
   public void testSameSeedSamePicks() throws Exception {
     List<Integer> first = pickSequence(12345);

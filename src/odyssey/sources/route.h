@@ -42,6 +42,7 @@ struct od_route {
 
 	od_route_status_t status;
 
+	/* YB */
 	uint64_t yb_client_seq;
 	uint64_t yb_server_seq;
 
@@ -74,6 +75,7 @@ static inline void od_route_init(od_route_t *route, bool extra_route_logging)
 	kiwi_params_lock_init(&route->params);
 	od_list_init(&route->link);
 	route->wait_bus = NULL;
+	/* YB */
 	route->yb_client_seq = 0;
 	route->yb_server_seq = 0;
 	pthread_mutex_init(&route->lock, NULL);

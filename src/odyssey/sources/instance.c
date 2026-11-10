@@ -21,10 +21,12 @@
 
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 
+/* YB */
 #include <fcntl.h>
 #include <inttypes.h>
 #include <unistd.h>
 
+/* YB */
 uint64_t yb_random_allot_seed = 0;
 
 void od_instance_init(od_instance_t *instance)
@@ -171,6 +173,7 @@ int od_instance_main(od_instance_t *instance, int argc, char **argv)
 	/* YB: seed rng for jitter-close of physical connections */
 	srand((unsigned int)time(NULL));
 
+	/* YB: seed for random allotment of server connections */
 	char *yb_seed_env = getenv("YB_YSQL_CONN_MGR_RANDOM_SEED");
 	if (yb_seed_env != NULL)
 		yb_random_allot_seed = strtoull(yb_seed_env, NULL, 10);

@@ -820,6 +820,7 @@ od_router_status_t od_router_route(od_router_t *router, od_client_t *client)
 	od_client_pool_set(&route->client_pool, client, OD_CLIENT_PENDING);
 	client->rule = rule;
 	client->route = route;
+	/* YB */
 	client->yb_route_ordinal = route->yb_client_seq++;
 
 	od_route_unlock(route);
@@ -1067,6 +1068,7 @@ od_router_status_t od_router_attach(od_router_t *router,
 	is_warmup_needed = is_warmup_needed_flag != NULL && strcmp(is_warmup_needed_flag, "none") != 0;
 	random_allot = is_warmup_needed && strcmp(is_warmup_needed_flag, "random") == 0;
 
+	/* YB */
 	uint64_t yb_attach_n = client_for_router->yb_attach_count++;
 	uint64_t yb_r = 0;
 	if (random_allot)
@@ -1352,9 +1354,11 @@ od_router_status_t od_router_attach(od_router_t *router,
 	yb_slot_claimed = false;
 
 	od_route_lock(route);
+	/* YB */
 	server->yb_route_seq = route->yb_server_seq++;
 
 attach:
+	/* YB */
 	if (random_allot)
 		od_log(&instance->logger, "router-attach", client_for_router,
 		       server,

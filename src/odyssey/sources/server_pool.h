@@ -150,9 +150,9 @@ static inline od_server_t *yb_od_server_pool_idle_last(od_server_pool_t *pool)
 	return server;
 }
 
+/* YB: splitmix64 finalizer for random allotment */
 extern uint64_t yb_random_allot_seed;
 
-/* splitmix64 finalizer */
 static inline uint64_t yb_od_mix64(uint64_t x)
 {
 	x ^= x >> 30;
@@ -172,6 +172,7 @@ static inline od_server_t *yb_od_server_pool_idle_random(od_server_pool_t *pool,
 	int len = pool->count_idle;
 	if (len == 0)
 		return NULL;
+	/* YB */
 	int idx = (int)(r % (uint64_t)len);
 	od_list_foreach_safe(target, i, n)
 	{
@@ -236,6 +237,7 @@ static inline od_server_t *yb_od_server_pool_idle_version_matching(
 		}
 		if (match_count == 0)
 			return NULL;
+		/* YB */
 		int idx = (int)(r % (uint64_t)match_count);
 		od_list_foreach(target, i)
 		{
