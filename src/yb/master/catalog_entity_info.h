@@ -339,8 +339,8 @@ class TabletInfo : public MetadataCowWrapper<PersistentTabletInfo> {
   // Replaces a replica in replica_locations_ map if it exists. Otherwise, it adds it to the map.
   void UpdateReplicaLocations(const std::string& ts_uuid, const TabletReplica& replica);
 
-  // Updates a replica in replica_locations_ map if it exists.
-  void UpdateReplicaInfo(const std::string& ts_uuid, const TabletReplicaDriveInfo& drive_info);
+  // Updates a replica in replica_locations_ map if it exists. Returns false if it does not.
+  bool UpdateReplicaInfo(const std::string& ts_uuid, const TabletReplicaDriveInfo& drive_info);
 
   // Applies a heartbeat leader_info entry under one lock: lease decision, valid-leader time, write.
   void ProcessLeaderInfo(
@@ -389,7 +389,8 @@ class TabletInfo : public MetadataCowWrapper<PersistentTabletInfo> {
     return initiated_election_.compare_exchange_strong(expected, true);
   }
 
-  void UpdateReplicaFullCompactionStatus(
+  // Returns false if the replica is not in replica_locations_ map.
+  bool UpdateReplicaFullCompactionStatus(
       const TabletServerId& ts_uuid, const FullCompactionStatus& full_compaction_status);
 
   // The next four methods are getters and setters for the transient, in memory list of table ids

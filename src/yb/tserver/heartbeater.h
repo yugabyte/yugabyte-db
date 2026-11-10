@@ -56,6 +56,10 @@ class HeartbeatDataProvider {
   virtual void AddData(
       const master::TSHeartbeatResponsePB& last_resp, master::TSHeartbeatRequestPB* req) = 0;
 
+  // Called with every successful heartbeat response, whether or not this provider added data to
+  // the request.
+  virtual void OnHeartbeatResponse(const master::TSHeartbeatResponsePB& resp) {}
+
   const std::string& LogPrefix() const;
 
   TabletServer& server() { return server_; }
@@ -83,6 +87,9 @@ class Heartbeater {
 
   void set_master_addresses(server::MasterAddressesPtr master_addresses);
   HostPort get_master_leader_hostport();
+
+  // tablet_metadata_processed from the last successful heartbeat response, if there was one.
+  std::optional<bool> TEST_last_tablet_metadata_processed() const;
 
   ~Heartbeater();
 
