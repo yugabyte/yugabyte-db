@@ -665,6 +665,18 @@ class YbAdminSnapshotScheduleTestWithYsqlAndPackedRow : public YbAdminSnapshotSc
     opts->extra_master_flags.emplace_back("--timestamp_history_retention_interval_sec=0");
   }
 
+  // CREATE TABLE can fail with "Snapshot too old" because of
+  // --timestamp_history_retention_interval_sec=0.
+  Status CreateTestTable(pgwrapper::PGConn* conn) {
+    for (;;) {
+      auto status = conn->Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)");
+      if (status.ok() ||
+          status.message().ToBuffer().find("Snapshot too old") == std::string::npos) {
+        return status;
+      }
+    }
+  }
+
   void TestCompactAfterRestoringDroppedColumn(YsqlColocationConfig colocation);
 };
 
@@ -2261,16 +2273,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlAddColumnCompactWithPackedRow,
           YbAdminSnapshotScheduleTestWithYsqlAndPackedRow) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
-  for (;;) {
-    auto status = conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)");
-    if (status.ok()) {
-      break;
-    }
-    if (status.message().ToBuffer().find("Snapshot too old") != std::string::npos) {
-      continue;
-    }
-    ASSERT_OK(status);
-  }
+  ASSERT_OK(CreateTestTable(&conn));
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'one')"));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN v2 TEXT"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 'two', 'dva')"));
@@ -2292,7 +2295,7 @@ void YbAdminSnapshotScheduleTestWithYsqlAndPackedRow::TestCompactAfterRestoringD
     YsqlColocationConfig colocation) {
   auto schedule_id = ASSERT_RESULT(PreparePg(colocation));
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
-  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
+  ASSERT_OK(CreateTestTable(&conn));
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'one'), (2, 'two')"));
   // A compaction discards a deleted column's values written outside packed rows, as an UPDATE
   // writes them.
@@ -2305,16 +2308,30 @@ void YbAdminSnapshotScheduleTestWithYsqlAndPackedRow::TestCompactAfterRestoringD
   ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN value"));
 
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
-  // A DDL fails on a catalog cache from before the restore.
+  // A DDL fails on a catalog cache from before the restore, and until the tserver sees the catalog
+  // version that the restore bumped.
   conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
   ASSERT_OK(WaitForSelectQueryToMatchExpectation(
       "SELECT value FROM test_table WHERE key = 1", "updated", &conn));
-  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN v3 TEXT"));
+  ASSERT_OK(WaitForInsertQueryToSucceed("ALTER TABLE test_table ADD COLUMN v3 TEXT", &conn));
   ASSERT_OK(conn.Execute("UPDATE test_table SET v3 = 'v3_' || key"));
 
-  // The history cutoff stops at the latest snapshot of the schedule, so a new one moves it past
-  // the drops.
-  ASSERT_OK(WaitNewSnapshot());
+  // A tablet's history cutoff stops at the latest snapshot of the schedule that the tablet has
+  // created. The schedule lists a snapshot while it is still being created, so wait for a new one
+  // to complete, which moves the cutoff past the drops.
+  ASSERT_OK(WaitNewSnapshot(schedule_id));
+  auto schedule = ASSERT_RESULT(GetSnapshotSchedule(schedule_id));
+  auto snapshots = ASSERT_RESULT(GetMemberAsArray(schedule, "snapshots"));
+  std::string snapshot_id{ASSERT_RESULT(GetMemberAsStr(snapshots[snapshots.Size() - 1], "id"))};
+  ASSERT_OK(WaitFor([this, &snapshot_id]() -> Result<bool> {
+    auto all_snapshots = VERIFY_RESULT(ListSnapshots());
+    for (const auto& snapshot : all_snapshots.GetArray()) {
+      if (VERIFY_RESULT(GetMemberAsStr(snapshot, "id")) == snapshot_id) {
+        return VERIFY_RESULT(GetMemberAsStr(snapshot, "state")) == "COMPLETE";
+      }
+    }
+    return false;
+  }, 60s * kTimeMultiplier, "Wait for the new snapshot to complete"));
   ASSERT_OK(CompactTablets(cluster_.get(), 300s * kTimeMultiplier));
   auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, std::string, std::string>(
       "SELECT key, value, v3 FROM test_table ORDER BY key")));
