@@ -314,6 +314,7 @@ select * from baseline_scan_nodes order by qid, nid;
  61001 |   1 | Parallel Index Scan               | rc_pkey      | (pk <= 1000)                                                                                           |                      |                             | 
 (76 rows)
 
+set yb_parallel_fetch_row_limit TO 0;
 update explain_query_options set with_analyze = true;
 -- should not return any row; columns surface per-field counts on failure.
 select qid, nid, "Node Type", "Index Name", scan_kind, is_colocated,
@@ -448,4 +449,5 @@ order by qid, nid;
 (0 rows)
 
 reset parallel_leader_participation;
+reset yb_parallel_fetch_row_limit;
 drop table baseline_scan_nodes;

@@ -1885,6 +1885,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
       Statement stmt = conn.createStatement();
       forceParallel(stmt);
       stmt.execute(LOG_RESTARTS_SQL);
+      stmt.execute("set yb_parallel_fetch_row_limit TO 0");
       return stmt;
     }
 

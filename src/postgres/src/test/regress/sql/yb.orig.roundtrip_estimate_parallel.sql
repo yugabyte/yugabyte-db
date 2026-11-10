@@ -168,6 +168,7 @@ select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
 from queries q full join check_roundtrip_estimates x on x.qid = q.qid;
 select * from baseline_scan_nodes order by qid, nid;
 
+set yb_parallel_fetch_row_limit TO 0;
 update explain_query_options set with_analyze = true;
 
 -- should not return any row; columns surface per-field counts on failure.
@@ -290,5 +291,6 @@ where "Total Estimates" <> 'passed' or "Field Layout" <> 'passed'
 order by qid, nid;
 
 reset parallel_leader_participation;
+reset yb_parallel_fetch_row_limit;
 
 drop table baseline_scan_nodes;
