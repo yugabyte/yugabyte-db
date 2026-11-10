@@ -3,15 +3,15 @@
  * yb_scan_core.h
  *	  Internal YB scan types and functions for the AM layer.
  *
- *	  YbOpaque and the functions that build, bind, execute, and
- *	  fetch a scan: the scan engine that the YB access methods
- *	  share.  Only the scan engine belongs here.  The YB table scan
+ *	  YbOpaque and the low-level scan primitives that the YB access
+ *	  methods share: the functions that build, bind, execute, and
+ *	  fetch a scan.  Only those belong here.  The YB table scan
  *	  descriptor (YbTableScanDescData) and the ybc_heap_* functions,
- *	  which implement the tableam scan callbacks for YB tables, are
- *	  an exception, and #37429 tracks moving them out.  A function
- *	  that code other than scans also needs goes in a header outside
- *	  the scan engine, so that its callers do not depend on the scan
- *	  engine to reach it.
+ *	  which implement heap's scan functions for YB tables, are an
+ *	  exception, and #37429 tracks moving them out.  A function that
+ *	  code other than scans also needs goes in a header outside this
+ *	  one, so that its callers do not depend on these internals to
+ *	  reach it.
  *
  *	  Only access-method code includes this header (the YB access
  *	  methods, the AM code under src/backend/access/, and AM
@@ -189,8 +189,8 @@ extern YbOpaque YbBeginScan(Relation table,
 extern bool YbNeedsPgRecheck(YbOpaque ybScan);
 
 /*
- * Used in Agg node init phase to determine whether YB recheck or PG recheck
- * may be needed.
+ * Used by lsm's yb_ammightrecheck callback, which scan nodes call at init so
+ * that an Agg above them can decide on pushdown.
  */
 extern bool YbPredetermineNeedsRecheck(Scan *scan,
 									   Relation relation,

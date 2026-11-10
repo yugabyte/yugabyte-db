@@ -3,9 +3,9 @@ src/backend/access/yb_scan/README
 YB Scan Layer
 =============
 
-This directory implements scans of YB relations: the tableam scan callbacks
-for YB tables and the accessors that executor nodes still call on them, the
-scan primitives that the YB index access methods (yb_lsm, ybgin, and ybvector)
+This directory implements scans of YB relations: heap's scan functions for YB
+tables and the accessors that executor nodes still call on them, the scan
+primitives that the YB index access methods (yb_lsm, ybgin, and ybvector)
 share, the plan-time scan logic that the planner shares, the YB implementation
 of genam's systable scans, ANALYZE row sampling, and single-row fetch by
 ybctid.  The headers that the groups below list are all under
@@ -62,9 +62,9 @@ Bypasses of an AM interface still to be removed, tracked in #36168:
   yb_lockrows.h
   yb_parallel_scan.h (the sequential scan side)
 
-Avoid adding a bypass, including a new entry point in one of the headers
-above.  When one is unavoidable, declare it in the header of the bypass it
-extends or in a new src/include/access/yb_*.h header if it is a new kind of
-bypass.  That header's comment should name the files that may include it.  It
-should also say why no AM interface fits or cite the issue that tracks
+Avoid adding a bypass, including a new entry point in one of the bypass
+headers above.  When one is unavoidable, declare it in the header of the
+bypass it extends or in a new src/include/access/yb_*.h header if it is a new
+kind of bypass.  That header's comment should name the files that may include
+it.  It should also say why no AM interface fits or cite the issue that tracks
 removing the bypass.
