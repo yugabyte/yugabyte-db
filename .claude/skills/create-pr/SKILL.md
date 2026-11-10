@@ -94,26 +94,29 @@ Infer as much as you can from context first, then **batch-confirm with the user 
    - `build-support/`, `cmake_modules/`, `.github/` → `Build`
    - mixed/cross-cutting → ask the user
 
-3. **Title** — a short description of the change. If the branch has a single commit, use its subject (minus the `[<issue>] <Component>:` prefix if present). Confirm with the user.
+3. **Title** — a short description of the change. If the branch has a single commit, use its subject (minus the `[<issue>,...] <Component>:` prefix if present). Confirm with the user.
 
 ### Step 4: Build the title
 
 Construct the title in the format:
 
 ```
-[<#GH issue> or <JIRA>] <Component>: <Title>
+[<issue>,...] <Component>: <Title>
 ```
+
+Each `<issue>` is a GitHub issue (`#NNNN`) or a JIRA key (`PROJECT-NNN`).  List every issue the change fixes, comma-separated with no spaces, all GitHub or all JIRA.
 
 Examples:
 - `[#31151] DocDB: Fix SamplingProfilerTest.EstimatedBytesAndCount in release`
+- `[#31151,#31152] DocDB: Fix two flakes in SamplingProfilerTest`
 - `[PLAT-20518] YBA: Fix full move edit universe to populate userIntentOverrides during configure call`
 
-**Pass only the `<Component>: <Title>` part to `create-pr.sh -t`** — the script prepends `[<issue>] ` from `-i` automatically. The script validates both inputs and rejects invalid ones with `exit 1`:
+**Pass only the `<Component>: <Title>` part to `create-pr.sh -t`** — the script prepends `[<issue>,...] ` from `-i` automatically. The script validates both inputs and rejects invalid ones with `exit 1`:
 
 - `-i`: must be a GH issue (`#NNNN` or bare `NNNN`) or a JIRA key (`PROJECT-NNN`, where `PROJECT` is uppercase letters only — no digits). A **comma-separated list** is also accepted for a change that closes several issues (e.g. `31151,#31152`) — the script joins the tokens with `,` and renders them as `[#a,#b] <Component>: <Title>`. The list must be **all GH or all JIRA**; mixing them, or putting a space after the comma, is rejected by `.github/workflows/pr-title.yml` (which gates every PR that touches code — it carries `paths-ignore` for `README.md` and `docs/**`). Anything else is rejected by the script.
 - `-t`: must match `^[A-Za-z][A-Za-z0-9]+:[[:space:]].+` — i.e. a Component prefix (letter-led, alphanumeric, ≥2 chars), then `: `, then a non-empty description. Known components: `DocDB`, `YSQL`, `YCQL`, `YBA`, `CDC`, `xCluster`, `yugabyted`, `Docs`, `Agents`, `Build`.
 
-If the user supplies a title that already includes `[<issue>] ` or doesn't match the format, fix it before calling the script — don't rely on the script's auto-strip (it only handles the leading `[*] ` case) and don't surprise the user with an `exit 1` after they confirmed the metadata.
+If the user supplies a title that already includes `[<issue>,...] ` or doesn't match the format, fix it before calling the script — don't rely on the script's auto-strip (it only handles the leading `[*] ` case) and don't surprise the user with an `exit 1` after they confirmed the metadata.
 
 ### Step 4b: Cut the prose the branch added
 
@@ -153,7 +156,7 @@ The script runs `lint.sh --rev <upstream>/master` and refuses to push if it isn'
 
 Inputs:
 - **`-i`**: bare GH number (`31151`), `#`-prefixed (`#31151`), or a JIRA key (`PLAT-20518`). Pass a **comma-separated list** to track multiple issues in one PR (e.g. `31151, #31152`); the script normalizes whitespace, prepends `#` to bare digits, and joins with `,` so the title renders as `[#31151,#31152] <Component>: <Title>`. The list must be all GH or all JIRA — see Step 4.
-- **`-t`**: title body **without** the `[<issue>] ` prefix but **with** the `Component: ` prefix (e.g. `DocDB: Fix flake`).
+- **`-t`**: title body **without** the `[<issue>,...] ` prefix but **with** the `Component: ` prefix (e.g. `DocDB: Fix flake`).
 - **`-d` (required)**: path to a markdown file with the PR description (the "what / why" prose derived from branch commits). The script makes this the `## Summary` section.
 - **`-U` (optional, sometimes required)**: path to a markdown file with upgrade/rollback notes. The script makes this the `## Upgrade/Rollback safety` section, inserted **between Summary and Test plan**. **Pass this whenever the branch makes an upgrade-relevant decision.** The script enforces it **mechanically when any `.proto` file changes** (`exit 1` if `-U` is missing and a `*.proto` diff exists) — wire-format changes have to spell out forward and backward behavior on a mixed-version cluster and what rollback looks like. **Also include for** (script can't detect, but the src/AGENTS.md rule expects it): gflag default flips that change observable behavior, catalog schema bumps, on-disk-format changes, RPC-versioning tweaks, migration scripts. When unsure, pass `-U` with a brief note rather than skipping.
 - **`-T` (required)**: path to a markdown file with the test plan (typically a checkbox list). **Always supply this** — the script errors out if `-T` is missing or the file is empty. If the change is trivial enough that you think no test plan applies, write an explicit one-line checkbox saying so (e.g., `No runtime behavior change; visually inspected diff`) and confirm with the user before proceeding.
@@ -215,7 +218,7 @@ the history-rewrite exception) on top of the upstream `gh-stack` skill.
 ## Notes
 
 - **Never push to `yugabyte/yugabyte-db`, or use `gh pr create`.** Always use the create-pr.sh script. (A `feature-stack/<feature>/<change>` branch does go to upstream, through `git-push.sh` and `gh stack`. That is the sanctioned stacked-PR path; see [Stacked PRs](#stacked-prs).)
-- The title format is strict: `[<issue>] <Component>: <Title>`. Don't deviate.
+- The title format is strict: `[<issue>,...] <Component>: <Title>`. Don't deviate.
 - **Never rewrite a PR's history once it is ready for review** (see [Pushing follow-up commits](#pushing-follow-up-commits)); `git-push.sh` refuses such a push. Stack branches are the exception; see [Stacked PRs](#stacked-prs).
 - Jenkins does not start on push: some `bld-*` run waits for approval in the `jenkins` environment, and merge needs a passing build on the latest commit. Don't trigger it automatically; when the user says the PR is ready for CI, run `.agents/scripts/trigger-jenkins.sh <pr-number>` (or they click "Review deployments" -> Approve on the PR).
 - `gh pr create --repo yugabyte/yugabyte-db` opens the PR in the upstream repo even when the branch lives on a fork — the `head:` field is inferred from the tracking branch.
