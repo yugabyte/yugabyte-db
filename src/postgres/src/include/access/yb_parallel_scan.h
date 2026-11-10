@@ -9,13 +9,11 @@
  *	  includes this header, for the bypass described below.
  *
  *	  Lifecycle: the index-scan side consumes this properly through
- *	  amapi.  The direct calls in nodeYbSeqscan's DSM functions are
- *	  an interim executor bypass of the tableam parallelscan_*
- *	  callbacks (parallelscan_estimate, parallelscan_initialize,
- *	  parallelscan_reinitialize), which upstream nodeSeqscan routes
- *	  through, and #36166 tracks routing it the same way.  Once
- *	  done, YBParallelPartitionKeysData's layout can retreat to an
- *	  AM-private header, and the executor keeps only an opaque
+ *	  amapi.  The direct calls in nodeYbSeqscan.c are an interim
+ *	  bypass of the tableam parallel scan interface that upstream
+ *	  nodeSeqscan uses, and #36166 tracks routing them through it.
+ *	  Once done, YBParallelPartitionKeysData's layout can retreat to
+ *	  an AM-private header, and the executor keeps only an opaque
  *	  pointer.
  *
  * Copyright (c) YugabyteDB, Inc.
@@ -134,7 +132,7 @@ typedef struct YBParallelPartitionKeysData
 
 typedef struct YBParallelPartitionKeysData *YBParallelPartitionKeys;
 
-/* tableam callback helpers: sizing, init, and rescan */
+/* Sizing, init, and rescan of the shared state */
 extern Size yb_estimate_parallel_size(void);
 extern void yb_init_partition_key_data(void *data);
 extern void yb_rescan_partition_key_data(void *data);

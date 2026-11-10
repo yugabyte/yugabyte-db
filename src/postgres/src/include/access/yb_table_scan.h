@@ -7,9 +7,9 @@
  *	  with a YB-backed TableScanDesc without depending on the
  *	  internal scan types defined in yb_scan_core.h.
  *
- *	  To start a scan, callers use the table_beginscan_*_yb()
- *	  variants in tableam.h together with yb_table_scan_options.h.
- *	  This header only covers post-beginscan operations.
+ *	  To start a scan, callers use the table_beginscan_yb() wrappers
+ *	  in tableam.h together with yb_table_scan_options.h.  This
+ *	  header only covers post-beginscan operations.
  *
  *	  Each accessor here is an interim workaround for a
  *	  YB-specific operation not yet routed through tableam.
