@@ -8,7 +8,12 @@ begin
   if pg_try_advisory_xact_lock(1) then
     for i in 1..1000 loop
       perform pg_sleep(0.1);
+      -- YB note: pg_locks fails transiently while txn status tablets settle.
+      begin
       c := (select count(*) from pg_locks where locktype = 'advisory' and objid = 1 and not granted);
+      exception when internal_error then -- YB
+        c := 0;
+      end;
       if c = 1 then
         return;
       end if;
