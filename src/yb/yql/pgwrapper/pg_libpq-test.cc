@@ -502,7 +502,13 @@ TEST_F(PgLibPqTest, ConcurrentInsertAndDeleteOnTablesWithForeignKey) {
 
     // Insert rows in t2 on a separate thread.
     std::thread insertion_thread([&conn2, &stop, &values_in_t1, &values_in_t2] {
-      while (!stop && values_in_t2 < values_in_t1 + 1) {
+      while (!stop) {
+        // Only reference keys already inserted in t1, i.e. 0 .. values_in_t1 - 1. Otherwise this
+        // thread fails the FK check whenever it gets ahead of the main thread.
+        if (values_in_t2 + 1 >= values_in_t1) {
+          std::this_thread::yield();
+          continue;
+        }
         ASSERT_OK(conn2.ExecuteFormat(
             "INSERT INTO t2 VALUES ($0, $1)", values_in_t2, values_in_t2 + 1));
         values_in_t2++;
@@ -6159,6 +6165,78 @@ TEST_F(PgLibPqTest, RelfilenodeOidCollision) {
   ASSERT_EQ(system(rm_cmd.c_str()), 0);
 }
 
+// pg_restore -d sends table definitions and the DATABASE PROPERTIES entry (ALTER DATABASE ... SET)
+// one statement at a time through the YB block in _printTocEntry, which leaked the SQL-splitting
+// buffer (#35009) and so failed pg_restore on ASAN builds.
+TEST_F(PgLibPqTest, RestoreToDb) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE restore_db"));
+  {
+    auto db_conn = ASSERT_RESULT(ConnectToDB("restore_db"));
+    ASSERT_OK(db_conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v TEXT)"));
+    ASSERT_OK(db_conn.Execute("INSERT INTO t VALUES (1, 'one')"));
+  }
+  ASSERT_OK(conn.Execute("ALTER DATABASE restore_db SET statement_timeout = '1min'"));
+
+  const auto dump_path = GetTestPath("restore_db.dump");
+  const auto hostport = cluster_->ysql_hostport(0);
+  const auto ysql_dump_cmd = Format(
+      "$0 -Fc -U yugabyte -h $1 -p $2 --dbname restore_db --file $3",
+      ASSERT_RESULT(path_utils::GetPgToolPath("ysql_dump")), hostport.host(), hostport.port(),
+      dump_path);
+  LOG(INFO) << "Executing " << ysql_dump_cmd;
+  ASSERT_EQ(system(ysql_dump_cmd.c_str()), 0);
+
+  ASSERT_OK(conn.Execute("DROP DATABASE restore_db"));
+
+  const auto pg_restore_cmd = Format(
+      "$0 -U yugabyte -h $1 -p $2 -d yugabyte -C $3",
+      ASSERT_RESULT(path_utils::GetPgToolPath("pg_restore")), hostport.host(), hostport.port(),
+      dump_path);
+  LOG(INFO) << "Executing " << pg_restore_cmd;
+  ASSERT_EQ(system(pg_restore_cmd.c_str()), 0);
+
+  auto db_conn = ASSERT_RESULT(ConnectToDB("restore_db"));
+  ASSERT_EQ(ASSERT_RESULT(db_conn.FetchRow<std::string>("SELECT v FROM t WHERE k = 1")), "one");
+  ASSERT_EQ(ASSERT_RESULT(db_conn.FetchRow<std::string>("SHOW statement_timeout")), "1min");
+}
+
+// Restoring an --inserts dump sends TABLE DATA through ExecuteSimpleCommands, which leaves the
+// SQL-splitting buffer allocated but empty.  The YB per-statement block in _printTocEntry must
+// still accept the INDEX entry that follows instead of aborting.
+TEST_F(PgLibPqTest, RestoreInsertsDumpWithIndex) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE inserts_src"));
+  ASSERT_OK(conn.Execute("CREATE DATABASE inserts_dst"));
+  {
+    auto src_conn = ASSERT_RESULT(ConnectToDB("inserts_src"));
+    ASSERT_OK(src_conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(src_conn.Execute("CREATE INDEX t_v ON t (v)"));
+    ASSERT_OK(src_conn.Execute("INSERT INTO t VALUES (1, 10), (2, 20)"));
+  }
+
+  const auto dump_path = GetTestPath("inserts_src.dump");
+  const auto hostport = cluster_->ysql_hostport(0);
+  const auto ysql_dump_cmd = Format(
+      "$0 -Fc --inserts -U yugabyte -h $1 -p $2 --dbname inserts_src --file $3",
+      ASSERT_RESULT(path_utils::GetPgToolPath("ysql_dump")), hostport.host(), hostport.port(),
+      dump_path);
+  LOG(INFO) << "Executing " << ysql_dump_cmd;
+  ASSERT_EQ(system(ysql_dump_cmd.c_str()), 0);
+
+  const auto pg_restore_cmd = Format(
+      "$0 -U yugabyte -h $1 -p $2 -d inserts_dst $3",
+      ASSERT_RESULT(path_utils::GetPgToolPath("pg_restore")), hostport.host(), hostport.port(),
+      dump_path);
+  LOG(INFO) << "Executing " << pg_restore_cmd;
+  ASSERT_EQ(system(pg_restore_cmd.c_str()), 0);
+
+  auto dst_conn = ASSERT_RESULT(ConnectToDB("inserts_dst"));
+  ASSERT_EQ(ASSERT_RESULT(dst_conn.FetchRow<PGUint64>("SELECT count(*) FROM t")), 2);
+  ASSERT_EQ(ASSERT_RESULT(dst_conn.FetchRow<PGUint64>(
+      "SELECT count(*) FROM pg_indexes WHERE indexname = 't_v'")), 1);
+}
+
 TEST_F(PgLibPqTest, TablePartitionByCollationTextColumn) {
   PGConn conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute(
@@ -6489,62 +6567,68 @@ TEST_F(PgLibPqTest, PgStatReplicationWithoutCdcStateTable) {
   ASSERT_EQ(ASSERT_RESULT(list_slot_entries_calls()), initial_calls + 1);
 }
 
-// YSQL upgrade re-runs a migration that fails with a serialization failure, which concurrent DDL
-// can cause (#32301).
-//
-// Flow:
-// 1. Create a database and enable yb_enable_extended_sql_codes on it, as a user could. The upgrade
-//    connection must override it, or the injected read restart (YB002) would not reach
-//    ysql_upgrade as 40001 and would not be retried.
-// 2. Make the database look one migration behind, so the UpgradeYsql RPC re-applies the newest
-//    migration to it and to no other database.
-// 3. Inject two failures with TEST_ysql_upgrade_fail_migration_attempts. Each failing attempt runs
-//    the whole script, whose statements commit, and then a new transaction block raises YB002 and
-//    is left aborted. So each retry needs a ROLLBACK and an idempotent re-run of a script whose
-//    changes are already in the catalog. With the default retry budget the upgrade succeeds and
-//    records the migration once.
-// 4. Lower ysql_upgrade_migration_max_retries to 1, so the two injected failures exhaust it. The
-//    upgrade then fails with the injected error and does not record the migration.
-//
-// Because the test re-applies whichever migration is newest, a new migration that errors when
-// re-run also fails here. TestYsqlUpgrade.upgradeIsIdempotent is what checks that a re-run leaves
-// the catalog, including OIDs, unchanged.
-TEST_F(PgLibPqTest, YsqlUpgradeRetriesSerializationFailure) {
-  constexpr auto kDbName = "upgrade_retry_db";
+// Tests that YSQL upgrade re-runs a migration that fails with an error that concurrent user
+// activity can cause: a serialization failure (#32301) or a deadlock (#33275).
+class PgLibPqYsqlUpgradeRetryTest : public PgLibPqTest {
+ protected:
+  static constexpr auto kDbName = "upgrade_retry_db";
 
-  // Step 1: the database setting applies to every new connection to it, including the one
-  // ysql_upgrade opens.
-  {
-    auto conn = ASSERT_RESULT(Connect());
-    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDbName));
-    ASSERT_OK(conn.ExecuteFormat(
-        "ALTER DATABASE $0 SET yb_enable_extended_sql_codes = true", kDbName));
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+    // Object locking is on by default only in release builds, and the deadlock test needs it. A
+    // deadlock victim that waits on a global object lock fails only when its wait times out, so
+    // shorten the wait from 30 s.
+    for (auto* flags : {&options->extra_master_flags, &options->extra_tserver_flags}) {
+      flags->insert(flags->end(), {
+          "--enable_object_locking_for_table_locks=true",
+          "--ysql_yb_ddl_transaction_block_enabled=true",
+          "--ysql_enable_concurrent_ddl=true",
+          "--ysql_yb_enable_invalidation_messages=true",
+          "--refresh_waiter_timeout_ms=5000",
+      });
+    }
   }
-  auto conn = ASSERT_RESULT(ConnectToDB(kDbName));
 
-  // ysql_upgrade takes a database's version from the highest row in its pg_yb_migration. A fresh
-  // database holds a single row, the newest migration.
-  const auto [major, minor] = ASSERT_RESULT((conn.FetchRow<int32_t, int32_t>(
-      "SELECT major, minor FROM pg_yb_migration ORDER BY major DESC, minor DESC LIMIT 1")));
+  // Creates kDbName with yb_enable_extended_sql_codes enabled, as a user could. The upgrade
+  // connection must override it, or a read restart (YB002) and a row-lock deadlock (YB004) would
+  // not reach ysql_upgrade as 40001 and 40P01 and would not be retried. The database setting
+  // applies to every new connection to it, including the one ysql_upgrade opens.
+  Status SetUpDatabase() {
+    {
+      auto conn = VERIFY_RESULT(Connect());
+      RETURN_NOT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDbName));
+      RETURN_NOT_OK(conn.ExecuteFormat(
+          "ALTER DATABASE $0 SET yb_enable_extended_sql_codes = true", kDbName));
+    }
+    conn_.emplace(VERIFY_RESULT(ConnectToDB(kDbName)));
+    // ysql_upgrade takes a database's version from the highest row in its pg_yb_migration. A
+    // fresh database holds a single row, the newest migration.
+    std::tie(major_, minor_) = VERIFY_RESULT((conn_->FetchRow<int32_t, int32_t>(
+        "SELECT major, minor FROM pg_yb_migration ORDER BY major DESC, minor DESC LIMIT 1")));
+    default_max_retries_ = VERIFY_RESULT(
+        cluster_->GetFlag(cluster_->tablet_server(0), "ysql_upgrade_migration_max_retries"));
+    return Status::OK();
+  }
 
-  // Step 2 helper: replace the newest version row with the previous version, so the database is
-  // one migration behind. Deleting the only row instead would leave pg_yb_migration empty, and
-  // ysql_upgrade would then re-derive the version from catalog state and re-run every migration.
-  const auto [prev_major, prev_minor] =
-      minor > 0 ? std::pair(major, minor - 1) : std::pair(major - 1, 0);
-  const auto forget_latest_migration = [&]() -> Status {
-    return conn.ExecuteFormat(
+  // Replaces the newest version row with the previous version, so the database is one migration
+  // behind and the UpgradeYsql RPC re-applies the newest migration to it and to no other database.
+  // Deleting the only row instead would leave pg_yb_migration empty, and ysql_upgrade would then
+  // re-derive the version from catalog state and re-run every migration.
+  Status ForgetLatestMigration() {
+    const auto [prev_major, prev_minor] =
+        minor_ > 0 ? std::pair(major_, minor_ - 1) : std::pair(major_ - 1, 0);
+    return conn_->ExecuteFormat(
         "BEGIN;\n"
         "SET LOCAL yb_non_ddl_txn_for_sys_tables_allowed TO true;\n"
         "INSERT INTO pg_yb_migration (major, minor, name) SELECT $2, $3, 'test' WHERE NOT EXISTS "
         "(SELECT 1 FROM pg_yb_migration WHERE major = $2 AND minor = $3);\n"
         "DELETE FROM pg_yb_migration WHERE major = $0 AND minor = $1;\n"
-        "COMMIT;", major, minor, prev_major, prev_minor);
-  };
+        "COMMIT;", major_, minor_, prev_major, prev_minor);
+  }
 
   // Runs YSQL upgrade the way YBA's RunYsqlUpgrade does: the UpgradeYsql RPC on a tserver, which
   // applies every pending migration to every database.
-  const auto run_upgrade = [this]() -> Status {
+  Status RunUpgrade() {
     tserver::UpgradeYsqlRequestPB req;
     tserver::UpgradeYsqlResponsePB resp;
     rpc::RpcController rpc;
@@ -6555,28 +6639,139 @@ TEST_F(PgLibPqTest, YsqlUpgradeRetriesSerializationFailure) {
       return StatusFromPB(resp.error().status());
     }
     return Status::OK();
-  };
+  }
 
   // ysql_upgrade inserts the version row only after the script succeeds, so the row is present
   // exactly when the migration was applied.
-  const auto latest_migration_count = [&conn, major, minor]() {
-    return conn.FetchRow<PGUint64>(Format(
-        "SELECT COUNT(*) FROM pg_yb_migration WHERE major = $0 AND minor = $1", major, minor));
+  Result<uint64_t> LatestMigrationCount() {
+    return conn_->FetchRow<PGUint64>(Format(
+        "SELECT COUNT(*) FROM pg_yb_migration WHERE major = $0 AND minor = $1", major_, minor_));
+  }
+
+  // Makes the first `attempts` attempts of each migration script run `sql` in a new transaction
+  // block after the script's own statements have committed.
+  Status FailMigrationAttempts(int attempts, const std::string& sql) {
+    RETURN_NOT_OK(cluster_->SetFlagOnTServers("TEST_ysql_upgrade_fail_migration_sql", sql));
+    return cluster_->SetFlagOnTServers(
+        "TEST_ysql_upgrade_fail_migration_attempts", std::to_string(attempts));
+  }
+
+  Status SetMaxRetries(const std::string& max_retries) {
+    return cluster_->SetFlagOnTServers("ysql_upgrade_migration_max_retries", max_retries);
+  }
+
+  std::optional<PGConn> conn_;
+  int32_t major_ = 0;
+  int32_t minor_ = 0;
+  std::string default_max_retries_;
+};
+
+// Retries of injected errors.
+//
+// For each retryable error, a read restart (YB002, seen as 40001) and a row-lock deadlock (YB004,
+// seen as 40P01):
+// 1. Inject two failures. Each failing attempt runs the whole script, whose statements commit, and
+//    then a new transaction block raises the error and is left aborted. So each retry needs a
+//    ROLLBACK and an idempotent re-run of a script whose changes are already in the catalog. With
+//    the default retry budget the upgrade succeeds and records the migration once.
+// 2. Lower ysql_upgrade_migration_max_retries to 1, so the two injected failures exhaust it. The
+//    upgrade then fails with the injected error and does not record the migration.
+// Finally:
+// 3. Inject a single failure that isn't retryable: XX000 without the deadlock message. The upgrade
+//    fails on it even with the default retry budget.
+//
+// Because the test re-applies whichever migration is newest, a new migration that errors when
+// re-run also fails here. TestYsqlUpgrade.upgradeIsIdempotent is what checks that a re-run leaves
+// the catalog, including OIDs, unchanged.
+TEST_F_EX(PgLibPqTest, YsqlUpgradeRetriesConcurrencyErrors, PgLibPqYsqlUpgradeRetryTest) {
+  constexpr auto kInjectedError = "Injected error";
+  const auto raise_sql = [kInjectedError](const char* errcode) {
+    return Format(
+        "DO $$$$ BEGIN RAISE EXCEPTION '$0' USING ERRCODE = '$1'; END $$$$;",
+        kInjectedError, errcode);
   };
 
-  // Step 3: attempts 1 and 2 fail and are retried, attempt 3 succeeds.
-  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_ysql_upgrade_fail_migration_attempts", "2"));
-  ASSERT_OK(forget_latest_migration());
-  ASSERT_OK(run_upgrade());
-  ASSERT_EQ(ASSERT_RESULT(latest_migration_count()), 1U);
+  ASSERT_OK(SetUpDatabase());
 
-  // Step 4: attempt 1 fails and is retried once, attempt 2 fails and the error is returned.
-  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_upgrade_migration_max_retries", "1"));
-  ASSERT_OK(forget_latest_migration());
-  auto status = run_upgrade();
+  for (const auto* errcode : {"YB002", "YB004"}) {
+    SCOPED_TRACE(errcode);
+    ASSERT_OK(SetMaxRetries(default_max_retries_));
+
+    // Step 1: attempts 1 and 2 fail and are retried, attempt 3 succeeds.
+    ASSERT_OK(FailMigrationAttempts(2, raise_sql(errcode)));
+    ASSERT_OK(ForgetLatestMigration());
+    ASSERT_OK(RunUpgrade());
+    ASSERT_EQ(ASSERT_RESULT(LatestMigrationCount()), 1U);
+
+    // Step 2: attempt 1 fails and is retried once, attempt 2 fails and the error is returned.
+    ASSERT_OK(SetMaxRetries("1"));
+    ASSERT_OK(ForgetLatestMigration());
+    auto status = RunUpgrade();
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(status.ToString(), kInjectedError);
+    ASSERT_EQ(ASSERT_RESULT(LatestMigrationCount()), 0U);
+  }
+
+  // Step 3: a non-retryable error fails the upgrade on its first occurrence. The previous
+  // iteration left the migration unrecorded, so the upgrade re-applies it.
+  ASSERT_OK(SetMaxRetries(default_max_retries_));
+  ASSERT_OK(FailMigrationAttempts(1, raise_sql("XX000")));
+  auto status = RunUpgrade();
   ASSERT_NOK(status);
-  ASSERT_STR_CONTAINS(status.ToString(), "Injected read restart");
-  ASSERT_EQ(ASSERT_RESULT(latest_migration_count()), 0U);
+  ASSERT_STR_CONTAINS(status.ToString(), kInjectedError);
+  ASSERT_EQ(ASSERT_RESULT(LatestMigrationCount()), 0U);
+}
+
+// Retries of a real deadlock on global object locks (#33275).
+//
+// The migration's first attempt locks t1 and then t2, while a user transaction locks t2 and then
+// t1. The user transaction starts first, and the deadlock detector aborts the newest transaction
+// in a cycle, so the migration is the victim. The error reaches ysql_upgrade as XX000 with the
+// deadlock detector's message rather than as 40P01, which is what ysql_upgrade matches on.
+// 1. With retries disabled, the upgrade fails with that message. This step fails if the message
+//    changes and ysql_upgrade would no longer recognize the deadlock.
+// 2. With the default retry budget, the upgrade succeeds and records the migration.
+TEST_F_EX(PgLibPqTest, YsqlUpgradeRetriesObjectLockDeadlock, PgLibPqYsqlUpgradeRetryTest) {
+  ASSERT_OK(SetUpDatabase());
+  ASSERT_OK(conn_->Execute("CREATE TABLE t1 (k INT)"));
+  ASSERT_OK(conn_->Execute("CREATE TABLE t2 (k INT)"));
+  ASSERT_OK(FailMigrationAttempts(
+      1, "LOCK TABLE t1 IN ACCESS EXCLUSIVE MODE; LOCK TABLE t2 IN ACCESS EXCLUSIVE MODE;"));
+  auto user_conn = ASSERT_RESULT(ConnectToDB(kDbName));
+
+  const auto run_deadlocked_upgrade = [this, &user_conn]() -> Status {
+    RETURN_NOT_OK(ForgetLatestMigration());
+    RETURN_NOT_OK(user_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    RETURN_NOT_OK(user_conn.Execute("LOCK TABLE t2 IN ACCESS EXCLUSIVE MODE"));
+    auto upgrade = std::async(std::launch::async, [this] { return RunUpgrade(); });
+    // The migration holds t1 once it waits for t2.
+    auto status = WaitFor([this]() -> Result<bool> {
+      return VERIFY_RESULT(conn_->FetchRow<PGUint64>(
+          "SELECT COUNT(*) FROM pg_locks WHERE NOT granted AND relation = 't2'::regclass")) > 0;
+    }, 60s * kTimeMultiplier, "Migration waits for t2");
+    if (status.ok()) {
+      // Closes the cycle. The migration is aborted, so this lock is then granted.
+      status = user_conn.Execute("LOCK TABLE t1 IN ACCESS EXCLUSIVE MODE");
+    }
+    // Ends the user transaction either way, so that the upgrade can finish.
+    const auto commit_status = user_conn.CommitTransaction();
+    const auto upgrade_status = upgrade.get();
+    RETURN_NOT_OK(status);
+    RETURN_NOT_OK(commit_status);
+    return upgrade_status;
+  };
+
+  // Step 1.
+  ASSERT_OK(SetMaxRetries("0"));
+  auto status = run_deadlocked_upgrade();
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "aborted due to a deadlock");
+  ASSERT_EQ(ASSERT_RESULT(LatestMigrationCount()), 0U);
+
+  // Step 2.
+  ASSERT_OK(SetMaxRetries(default_max_retries_));
+  ASSERT_OK(run_deadlocked_upgrade());
+  ASSERT_EQ(ASSERT_RESULT(LatestMigrationCount()), 1U);
 }
 
 // A retried UpgradeYsql RPC waits for the upgrade that an earlier, timed-out RPC started, instead

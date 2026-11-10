@@ -156,6 +156,19 @@ public class AuditService {
     createAuditEntry(request, target, targetID, action, params, taskUUID, additionalDetails);
   }
 
+  public void createAuditEntryWithReqBody(
+      Request request,
+      Audit.TargetType target,
+      String targetID,
+      Audit.ActionType action,
+      JsonNode params,
+      UUID taskUUID,
+      JsonNode additionalDetails,
+      JsonNode taskDiff) {
+    createAuditEntry(
+        request, target, targetID, action, params, taskUUID, additionalDetails, taskDiff);
+  }
+
   public void createAuditEntry(
       Http.Request request,
       Audit.TargetType target,
@@ -176,11 +189,26 @@ public class AuditService {
       JsonNode params,
       UUID taskUUID,
       JsonNode additionalDetails) {
+    createAuditEntry(request, target, targetID, action, params, taskUUID, additionalDetails, null);
+  }
+
+  // TODO make this internal method and use createAuditEntryWithReqBody
+  @Deprecated
+  public void createAuditEntry(
+      Http.Request request,
+      Audit.TargetType target,
+      String targetID,
+      Audit.ActionType action,
+      JsonNode params,
+      UUID taskUUID,
+      JsonNode additionalDetails,
+      JsonNode taskDiff) {
     UserWithFeatures user = RequestContext.get(TokenAuthenticator.USER);
     RequestContext.update(IS_AUDITED, val -> val.set(true));
     String method = request.method();
     String path = request.path();
     JsonNode redactedParams = RedactingService.filterSecretFields(params, RedactionTarget.LOGS);
+    JsonNode redactedTaskDiff = RedactingService.filterSecretFields(taskDiff, RedactionTarget.LOGS);
     String userAddress = request.remoteAddress();
     Audit entry =
         Audit.create(
@@ -193,7 +221,8 @@ public class AuditService {
             redactedParams,
             taskUUID,
             additionalDetails,
-            userAddress);
+            userAddress,
+            redactedTaskDiff);
     MDC.put("logType", "audit");
     LOG.info(Json.toJson(entry).toString());
     MDC.remove("logType");
@@ -202,7 +231,16 @@ public class AuditService {
   public void updateAdditionalDetails(UUID taskUUID, JsonNode additionalDetails) {
     Audit audit = Audit.getFromTaskUUID(taskUUID);
     if (audit != null) {
-      audit.setAdditionalDetails(additionalDetails);
+      audit.setAdditionalDetails(
+          RedactingService.filterSecretFields(additionalDetails, RedactionTarget.LOGS));
+      audit.save();
+    }
+  }
+
+  public void updateTaskDiff(UUID taskUUID, JsonNode taskDiff) {
+    Audit audit = Audit.getFromTaskUUID(taskUUID);
+    if (audit != null) {
+      audit.setTaskDiff(RedactingService.filterSecretFields(taskDiff, RedactionTarget.LOGS));
       audit.save();
     }
   }

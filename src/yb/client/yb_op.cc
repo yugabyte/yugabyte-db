@@ -872,7 +872,7 @@ Status YBNoOp::Execute(YBClient* client, const dockv::YBPartialRow& key) {
 }
 
 bool YBPgsqlReadOp::should_apply_intents(IsolationLevel isolation_level) {
-  return isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION ||
+  return (isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION && !force_snapshot_read_) ||
          IsValidRowMarkType(GetRowMarkTypeFromPB(*request_));
 }
 

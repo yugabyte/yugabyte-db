@@ -161,13 +161,8 @@ public class CustomerConfigValidator extends BaseBeanValidator {
 
   public void validateConfigRemoval(CustomerConfig customerConfig) {
     if (customerConfig.getType() == ConfigType.STORAGE) {
-      List<Backup> backupList = Backup.getInProgressAndCompleted(customerConfig.getCustomerUUID());
-      backupList =
-          backupList.stream()
-              .filter(
-                  b -> b.getBackupInfo().storageConfigUUID.equals(customerConfig.getConfigUUID()))
-              .collect(Collectors.toList());
-      if (!backupList.isEmpty()) {
+      if (Backup.existsInProgressOrCompletedWithStorageConfig(
+          customerConfig.getCustomerUUID(), customerConfig.getConfigUUID())) {
         beanValidator
             .error()
             .global(

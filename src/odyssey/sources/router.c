@@ -344,7 +344,8 @@ static inline int yb_od_router_expire_stale_lcv_server_cb(od_server_t *server,
 	od_instance_t *instance = server->global->instance;
 	od_debug(
 		&instance->logger, "lcv expire", NULL, server,
-		"now_us=%lu, ttl_us=%lu, new_logical_client_version=%ld, server_lcv=%d",
+		"now_us=%" PRIu64 ", ttl_us=%" PRIu64
+		", new_logical_client_version=%" PRId64 ", server_lcv=%" PRId64,
 		now_us, ttl_us, new_logical_client_version,
 		server->yb_logical_client_version);
 
@@ -361,7 +362,7 @@ static inline int yb_od_router_expire_stale_lcv_server_cb(od_server_t *server,
 	if (ttl_us == 0) {
 		server->yb_marked_for_close = true;
 		od_debug(&instance->logger, "lcv expire", NULL, server,
-			 "marking server for close, server lcv=%d, new lcv=%d",
+			 "marking server for close, server lcv=%" PRId64 ", new lcv=%" PRId64,
 			 server->yb_logical_client_version,
 			 new_logical_client_version);
 	} else if (server->yb_expiry_time_us == UINT64_MAX) {
@@ -372,7 +373,7 @@ static inline int yb_od_router_expire_stale_lcv_server_cb(od_server_t *server,
 		server->yb_expiry_time_us = now_us + machine_lrand48() % ttl_us;
 		od_debug(
 			&instance->logger, "lcv expire", NULL, server,
-			"setting expiry time for server, server lcv=%d, new lcv=%d, expiry_time_us=%lu",
+			"setting expiry time for server, server lcv=%" PRId64 ", new lcv=%" PRId64 ", expiry_time_us=%" PRIu64,
 			server->yb_logical_client_version,
 			new_logical_client_version, server->yb_expiry_time_us);
 	}
@@ -415,7 +416,8 @@ void yb_od_router_expire_stale_lcv_servers(od_router_t *router,
 
 		od_debug(
 			&instance->logger, "lcv check", NULL, NULL,
-			"Found logical client version %ld greater than current max version %ld",
+			"Found logical client version %" PRId64
+			" greater than current max version %" PRId64,
 			new_logical_client_version, max_logical_client_version);
 		break;
 	}
