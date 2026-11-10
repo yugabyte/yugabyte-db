@@ -7603,12 +7603,16 @@ TEST_F(PgVectorIndexUtilTest, SearchSkipsDeletedVectorsWithStoredYbctid) {
 
 // Master caps the tenant components of a new index below the hash group and range components of
 // its table, so a tenant never covers the whole primary key, and the vectors keep their tenant in
-// the payload.
+// the payload. A search without a tenant reaches every tenant in memory, in flushed chunks and in
+// the chunk compacted from them.
 TEST_F(PgVectorIndexUtilTest, TenantComponents) {
+  // Exact search scans all vectors, ignoring tenants.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_tenant_hash_group_and_range_components) = 3;
 
-  constexpr size_t kNumRows = 5;
+  constexpr int kNumTenants = 3;
+  constexpr int kRowsPerBatch = 6;
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
   ASSERT_OK(conn.Execute(
@@ -7629,11 +7633,26 @@ TEST_F(PgVectorIndexUtilTest, TenantComponents) {
   // Every row of a single component key would be its own tenant.
   ASSERT_EQ(ASSERT_RESULT(tenant_components("single_idx")), 0U);
 
-  ASSERT_OK(conn.ExecuteFormat(
-      "INSERT INTO test SELECT 1, i, ARRAY[i, 0, 0]::vector FROM generate_series(1, $0) i",
-      kNumRows));
-  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
-  ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, kNumRows)), "[1, 2, 3, 4, 5]");
+  // Consecutive ids belong to different tenants.
+  std::vector<int64_t> ids;
+  for (int batch = 0; batch != 2; ++batch) {
+    const auto first_id = batch * kRowsPerBatch + 1;
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO test SELECT i % $0, i, ARRAY[i, 0, 0]::vector FROM generate_series($1, $2) i",
+        kNumTenants, first_id, first_id + kRowsPerBatch - 1));
+    ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+    for (int i = 0; i != kRowsPerBatch; ++i) {
+      ids.push_back(first_id + i);
+    }
+    ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, ids.size())), AsString(ids));
+    ASSERT_OK(cluster_->FlushTablets());
+    ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, ids.size())), AsString(ids));
+  }
+  for (const auto& index : ListVectorIndexes(cluster_.get())) {
+    ASSERT_OK(index->Compact());
+    ASSERT_OK(index->WaitForCompaction());
+  }
+  ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, ids.size())), AsString(ids));
 }
 
 // A table which writes no reverse mapping still marks its tablets as having vector deletions when
