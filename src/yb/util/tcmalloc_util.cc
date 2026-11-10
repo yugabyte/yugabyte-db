@@ -277,7 +277,7 @@ void ConfigureTCMalloc(int64_t mem_limit) {
 
 int64_t GetTCMallocSamplingPeriod() {
 #if YB_GOOGLE_TCMALLOC
-  return tcmalloc::MallocExtension::GetProfileSamplingRate();
+  return tcmalloc::MallocExtension::GetProfileSamplingInterval();
 #elif YB_GPERFTOOLS_TCMALLOC
   return MallocExtension::instance()->GetProfileSamplingRate();
 #endif
@@ -289,7 +289,7 @@ void SetTCMallocSamplingPeriod(int64_t sample_period_bytes) {
   LOG(INFO) << Format("Setting TCMalloc profiler sampling period to $0 bytes", sample_period_bytes)
             << (disabled ? " (disabled)" : "");
 #if YB_GOOGLE_TCMALLOC
-  tcmalloc::MallocExtension::SetProfileSamplingRate(sample_period_bytes);
+  tcmalloc::MallocExtension::SetProfileSamplingInterval(sample_period_bytes);
 #elif YB_GPERFTOOLS_TCMALLOC
   MallocExtension::instance()->SetProfileSamplingRate(sample_period_bytes);
 #endif
