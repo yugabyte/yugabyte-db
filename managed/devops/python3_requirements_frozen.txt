@@ -19,7 +19,7 @@ certifi==2026.10.23
 cffi==2.1.0
 charset-normalizer==3.4.9
 click==8.4.2
-cryptography==50.0.0
+cryptography==50.0.2
 deepdiff==8.6.2
 distro==1.5.0
 fabric==2.2.1
