@@ -659,7 +659,8 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
                     + Util.base36hash(nodePrefix3)
                 : nodePrefix3,
             newNamingStyle ? NODE_PREFIX : ns3);
-    verify(mockSwamperHelper, times(1)).writeUniverseTargetJson(defaultUniverse.getUniverseUUID());
+    verify(mockSwamperHelper, times(1))
+        .writeUniverseTargetJson(defaultUniverse.getUniverseUUID(), false);
 
     if (newNamingStyle) {
       verify(mockKubernetesManager, times(1)).createPodDisruptionBudget(defaultUniverse);
@@ -722,7 +723,8 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
 
     verify(mockKubernetesManager, times(1)).getPodInfos(config, NODE_PREFIX, ns);
-    verify(mockSwamperHelper, times(1)).writeUniverseTargetJson(defaultUniverse.getUniverseUUID());
+    verify(mockSwamperHelper, times(1))
+        .writeUniverseTargetJson(defaultUniverse.getUniverseUUID(), false);
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =

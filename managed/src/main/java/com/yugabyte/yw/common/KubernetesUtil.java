@@ -12,6 +12,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase.KubernetesPlacement;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ConfigureNodeExporterTls;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.helm.HelmUtils;
@@ -39,6 +40,7 @@ import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import io.fabric8.kubernetes.api.model.Config;
 import io.fabric8.kubernetes.api.model.Context;
 import io.fabric8.kubernetes.api.model.Node;
+import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.client.internal.KubeConfigUtils;
 import java.io.File;
@@ -65,6 +67,7 @@ import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.ListUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -92,6 +95,12 @@ public class KubernetesUtil {
   public static String MIN_VERSION_NON_ROOT_DB_STABLE = "2026.1.2.0-b0";
   public static String MIN_VERSION_NODE_EXPORTER_SIDECAR_PREVIEW = "2.31.0.0-b615";
   public static String MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE = "2026.2.0.0-b1";
+  public static String MIN_VERSION_NODE_EXPORTER_TLS_PREVIEW = "2.31.0.0-b615";
+  public static String MIN_VERSION_NODE_EXPORTER_TLS_STABLE = "2026.2.0.0-b1";
+
+  private static final String NODE_EXPORTER_CONTAINER = "yb-node-exporter";
+  // Set on the node_exporter sidecar only when the chart renders it with TLS.
+  private static final String NODE_EXPORTER_TLS_CERT_ENV = "YB_NODE_EXPORTER_TLS_CERT";
 
   public static boolean isNonRestartGflagsUpgradeSupported(String universeSoftwareVersion) {
     return Util.compareYBVersions(
@@ -100,6 +109,16 @@ public class KubernetesUtil {
             MIN_VERSION_NON_RESTART_GFLAGS_UPGRADE_SUPPORT_PREVIEW,
             true)
         >= 0;
+  }
+
+  /** Whether the pods of this K8s universe, at its recorded DB version, get the sidecar. */
+  public static boolean isNodeExporterSidecarEnabled(
+      Universe universe, RuntimeConfGetter confGetter) {
+    return Util.isKubernetesBasedUniverse(universe)
+        && isNodeExporterSidecarEnabled(
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+            universe,
+            confGetter);
   }
 
   public static boolean isNodeExporterSidecarEnabled(
@@ -112,6 +131,44 @@ public class KubernetesUtil {
                 MIN_VERSION_NODE_EXPORTER_SIDECAR_PREVIEW,
                 true)
             >= 0;
+  }
+
+  /** Whether YBA renders the node_exporter sidecar with TLS for a pod running this DB version. */
+  public static boolean isNodeExporterSidecarTlsEnabled(
+      @Nullable String universeSoftwareVersion, Universe universe, RuntimeConfGetter confGetter) {
+    return isNodeExporterSidecarEnabled(universeSoftwareVersion, universe, confGetter)
+        && Util.compareYBVersions(
+                universeSoftwareVersion,
+                MIN_VERSION_NODE_EXPORTER_TLS_STABLE,
+                MIN_VERSION_NODE_EXPORTER_TLS_PREVIEW,
+                true)
+            >= 0
+        && universe.getUniverseDetails().getPrimaryCluster().userIntent.enableNodeToNodeEncrypt
+        && ConfigureNodeExporterTls.isNodeExporterTlsAllowed(
+            confGetter, Customer.get(universe.getCustomerId()), universe);
+  }
+
+  /** Whether YBA renders this K8s universe's sidecars with TLS at its recorded DB version. */
+  public static boolean isNodeExporterSidecarTlsEnabled(
+      Universe universe, RuntimeConfGetter confGetter) {
+    return Util.isKubernetesBasedUniverse(universe)
+        && isNodeExporterSidecarTlsEnabled(
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+            universe,
+            confGetter);
+  }
+
+  public static boolean hasNodeExporterSidecar(Pod pod) {
+    return pod.getSpec().getContainers().stream()
+        .anyMatch(container -> NODE_EXPORTER_CONTAINER.equals(container.getName()));
+  }
+
+  /** Whether the pod's node_exporter sidecar was rendered to serve HTTPS. */
+  public static boolean isNodeExporterSidecarTlsRendered(Pod pod) {
+    return pod.getSpec().getContainers().stream()
+        .filter(container -> NODE_EXPORTER_CONTAINER.equals(container.getName()))
+        .flatMap(container -> ListUtils.emptyIfNull(container.getEnv()).stream())
+        .anyMatch(env -> NODE_EXPORTER_TLS_CERT_ENV.equals(env.getName()));
   }
 
   public static boolean isNamespacedServiceSupported(String universeSoftwareVersion) {

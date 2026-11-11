@@ -657,9 +657,9 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "yb.node_exporter.tls.enabled",
           ScopeType.UNIVERSE,
           "Enable TLS on Node Exporter",
-          "Serve node_exporter over HTTPS on universes with node-to-node encryption once every"
-              + " node runs the user-level node_exporter unit. Read whenever YBA decides the"
-              + " exporter's scheme for the universe.",
+          "Serve node_exporter over HTTPS on universes with node-to-node encryption: on VMs once"
+              + " every node runs the user-level node_exporter unit, on Kubernetes through the"
+              + " node_exporter sidecar.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Long> helmTimeoutSecs =

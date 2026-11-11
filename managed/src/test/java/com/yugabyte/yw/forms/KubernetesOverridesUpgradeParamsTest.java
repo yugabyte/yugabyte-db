@@ -39,15 +39,16 @@ import org.junit.Before;
 import org.junit.Test;
 
 /**
- * A Kubernetes overrides upgrade with no override changed is accepted when it would install or
- * remove the node_exporter sidecar on a master or tserver pod, and rejected otherwise. Each test
- * universe has one master and one tserver node.
+ * A Kubernetes overrides upgrade with no override changed is accepted when it would install, remove
+ * or change the TLS of the node_exporter sidecar on a master or tserver pod, and rejected
+ * otherwise. Each test universe has one master and one tserver node.
  */
 public class KubernetesOverridesUpgradeParamsTest extends FakeDBApplication {
 
   private static final String KEY = UniverseConfKeys.k8sNodeExporterEnabled.getKey();
+  private static final String TLS_KEY = UniverseConfKeys.nodeExporterTlsEnabled.getKey();
   private static final String SUPPORTED_VERSION =
-      KubernetesUtil.MIN_VERSION_NODE_EXPORTER_SIDECAR_PREVIEW;
+      KubernetesUtil.MIN_VERSION_NODE_EXPORTER_TLS_PREVIEW;
   private static final String UNSUPPORTED_VERSION = "2.29.0.0-b1";
 
   private Customer customer;
@@ -160,6 +161,34 @@ public class KubernetesOverridesUpgradeParamsTest extends FakeDBApplication {
   }
 
   @Test
+  public void testNoChangeAcceptedWhenSidecarTlsDiffers() {
+    Universe u = k8sUniverseWithNodeToNode(SUPPORTED_VERSION);
+    RuntimeConfigEntry.upsert(u, KEY, "true");
+    RuntimeConfigEntry.upsert(u, TLS_KEY, "true");
+    mockServerPods(true /* sidecar */, false /* tls */);
+    noChangeParams().verifyParams(u, true);
+  }
+
+  @Test
+  public void testNoChangeRejectedWhenSidecarTlsMatches() {
+    Universe u = k8sUniverseWithNodeToNode(SUPPORTED_VERSION);
+    RuntimeConfigEntry.upsert(u, KEY, "true");
+    RuntimeConfigEntry.upsert(u, TLS_KEY, "true");
+    mockServerPods(true /* sidecar */, true /* tls */);
+    assertNoOverridesModified(u);
+  }
+
+  // The TLS marker is not compared while the sidecar is not wanted.
+  @Test
+  public void testNoChangeRejectedWhenSidecarOffAndNoPodHasIt() {
+    Universe u = k8sUniverseWithNodeToNode(SUPPORTED_VERSION);
+    RuntimeConfigEntry.upsert(u, KEY, "false");
+    RuntimeConfigEntry.upsert(u, TLS_KEY, "true");
+    mockServerPods(false /* sidecar */);
+    assertNoOverridesModified(u);
+  }
+
+  @Test
   public void testChangedOverrideAcceptedWithoutReadingPods() {
     Universe u = k8sUniverse(SUPPORTED_VERSION);
     KubernetesOverridesUpgradeParams params = noChangeParams();
@@ -181,17 +210,29 @@ public class KubernetesOverridesUpgradeParamsTest extends FakeDBApplication {
   }
 
   private void mockServerPods(boolean sidecar) {
+    mockServerPods(sidecar, false /* tls */);
+  }
+
+  private void mockServerPods(boolean sidecar, boolean tls) {
     when(mockKubernetesManager.getPodObject(any(), any(), eq("yb-master-0")))
-        .thenReturn(pod("yb-master", sidecar));
+        .thenReturn(pod("yb-master", sidecar, tls));
     when(mockKubernetesManager.getPodObject(any(), any(), eq("yb-tserver-0")))
-        .thenReturn(pod("yb-tserver", sidecar));
+        .thenReturn(pod("yb-tserver", sidecar, tls));
   }
 
   private static Pod pod(String server, boolean sidecar) {
+    return pod(server, sidecar, false /* tls */);
+  }
+
+  private static Pod pod(String server, boolean sidecar, boolean tls) {
     List<Container> containers = new ArrayList<>();
     containers.add(new ContainerBuilder().withName(server).build());
     if (sidecar) {
-      containers.add(new ContainerBuilder().withName("yb-node-exporter").build());
+      ContainerBuilder exporter = new ContainerBuilder().withName("yb-node-exporter");
+      if (tls) {
+        exporter.addNewEnv().withName("YB_NODE_EXPORTER_TLS_CERT").withValue("/c.crt").endEnv();
+      }
+      containers.add(exporter.build());
     }
     return new PodBuilder()
         .withNewMetadata()
@@ -216,6 +257,17 @@ public class KubernetesOverridesUpgradeParamsTest extends FakeDBApplication {
     node.cloudInfo.kubernetesNamespace = "ns-1";
     node.cloudInfo.kubernetesPodName = server + "-0";
     return node;
+  }
+
+  private Universe k8sUniverseWithNodeToNode(String version) {
+    Universe u = k8sUniverse(version);
+    return Universe.saveDetails(
+        u.getUniverseUUID(),
+        universe -> {
+          UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+          details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt = true;
+          universe.setUniverseDetails(details);
+        });
   }
 
   private Universe k8sUniverse(String version) {
