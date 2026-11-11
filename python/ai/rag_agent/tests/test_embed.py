@@ -558,3 +558,117 @@ class TestEmbedBatchTiming:
 
         with pytest.raises(RuntimeError, match="throttled"):
             gen._embed_batch(["a"])
+
+
+class TestEmbedConcurrency:
+    """EMBED_CONCURRENCY runs per-text Bedrock calls in parallel, in order."""
+
+    @staticmethod
+    def _bedrock_generator(mock_bedrock_cls, model="amazon.titan-embed-text-v1"):
+        mock_embedder = Mock()
+        mock_bedrock_cls.return_value = mock_embedder
+        gen = EmbeddingsGenerator(
+            embedding_model=model,
+            embedding_model_params={"dimensions": 3},
+            ai_provider="AWS_BEDROCK",
+        )
+        return gen, mock_embedder
+
+    @patch('embeddings.embed.PipelineTracking')
+    @patch('embeddings.embed.PDFProcessor')
+    @patch('embeddings.embed.BedrockEmbeddings')
+    def test_default_is_sequential_and_passes_no_config(
+        self, mock_bedrock_cls, mock_pdf, mock_pt, monkeypatch
+    ):
+        monkeypatch.delenv("EMBED_CONCURRENCY", raising=False)
+        gen, mock_embedder = self._bedrock_generator(mock_bedrock_cls)
+        mock_embedder.embed_documents.return_value = [[1.0], [2.0]]
+
+        assert gen.embed_concurrency == 1
+        assert gen._embed_batch(["a", "b"]) == [[1.0], [2.0]]
+        mock_embedder.embed_documents.assert_called_once_with(["a", "b"])
+        mock_embedder.embed_query.assert_not_called()
+        assert "config" not in mock_bedrock_cls.call_args.kwargs
+
+    @patch('embeddings.embed.PipelineTracking')
+    @patch('embeddings.embed.PDFProcessor')
+    @patch('embeddings.embed.BedrockEmbeddings')
+    def test_titan_runs_concurrently_and_keeps_input_order(
+        self, mock_bedrock_cls, mock_pdf, mock_pt, monkeypatch
+    ):
+        import threading
+        import time as _time
+        monkeypatch.setenv("EMBED_CONCURRENCY", "4")
+        gen, mock_embedder = self._bedrock_generator(mock_bedrock_cls)
+        texts = [f"t{i}" for i in range(12)]
+        active, peak, lock = [0], [0], threading.Lock()
+
+        def fake_query(text):
+            with lock:
+                active[0] += 1
+                peak[0] = max(peak[0], active[0])
+            # Earlier texts finish later, so completion order is reversed.
+            _time.sleep(0.002 * (12 - int(text[1:])))
+            with lock:
+                active[0] -= 1
+            return [float(text[1:])]
+
+        mock_embedder.embed_query.side_effect = fake_query
+        vectors = gen._embed_batch(texts)
+
+        assert vectors == [[float(i)] for i in range(12)]
+        assert 1 < peak[0] <= 4
+        mock_embedder.embed_documents.assert_not_called()
+        config = mock_bedrock_cls.call_args.kwargs["config"]
+        assert config.max_pool_connections >= 4
+        assert config.retries["mode"] == "adaptive"
+
+    @patch('embeddings.embed.PipelineTracking')
+    @patch('embeddings.embed.PDFProcessor')
+    @patch('embeddings.embed.BedrockEmbeddings')
+    def test_cohere_keeps_its_multi_text_call(
+        self, mock_bedrock_cls, mock_pdf, mock_pt, monkeypatch
+    ):
+        monkeypatch.setenv("EMBED_CONCURRENCY", "4")
+        gen, mock_embedder = self._bedrock_generator(
+            mock_bedrock_cls, model="cohere.embed-english-v3")
+        mock_embedder.embed_documents.return_value = [[1.0], [2.0]]
+
+        gen._embed_batch(["a", "b"])
+        mock_embedder.embed_documents.assert_called_once_with(["a", "b"])
+        mock_embedder.embed_query.assert_not_called()
+
+    @patch('embeddings.embed.PipelineTracking')
+    @patch('embeddings.embed.PDFProcessor')
+    @patch('embeddings.embed.OpenAIEmbeddings')
+    def test_openai_ignores_concurrency(
+        self, mock_oai_cls, mock_pdf, mock_pt, monkeypatch
+    ):
+        monkeypatch.setenv("EMBED_CONCURRENCY", "8")
+        gen, mock_embedder = _create_generator(mock_oai_cls)
+        mock_embedder.embed_documents.return_value = [[1.0], [2.0]]
+
+        gen._embed_batch(["a", "b"])
+        mock_embedder.embed_documents.assert_called_once_with(["a", "b"])
+        mock_embedder.embed_query.assert_not_called()
+
+    @patch('embeddings.embed.PipelineTracking')
+    @patch('embeddings.embed.PDFProcessor')
+    @patch('embeddings.embed.BedrockEmbeddings')
+    def test_provider_error_propagates(
+        self, mock_bedrock_cls, mock_pdf, mock_pt, monkeypatch
+    ):
+        monkeypatch.setenv("EMBED_CONCURRENCY", "4")
+        gen, mock_embedder = self._bedrock_generator(mock_bedrock_cls)
+        mock_embedder.embed_query.side_effect = RuntimeError("ThrottlingException")
+
+        with pytest.raises(RuntimeError, match="ThrottlingException"):
+            gen._embed_batch(["a", "b", "c"])
+
+    @pytest.mark.parametrize("raw,expected", [
+        ("", 1), ("abc", 1), ("0", 1), ("-3", 1), ("3", 3), ("500", 32),
+    ])
+    def test_env_value_is_clamped(self, raw, expected, monkeypatch):
+        from embeddings.embed import embed_concurrency_from_env
+        monkeypatch.setenv("EMBED_CONCURRENCY", raw)
+        assert embed_concurrency_from_env() == expected
