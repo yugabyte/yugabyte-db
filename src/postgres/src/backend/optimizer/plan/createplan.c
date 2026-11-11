@@ -4848,6 +4848,11 @@ create_indexscan_plan(PlannerInfo *root,
 	{
 		Assert(indexinfo->ybIndexName != NULL);
 		scan_plan->ybScannedObjectName = pstrdup(indexinfo->ybIndexName);
+
+		if (indexinfo->yb_options != NIL)
+		{
+			scan_plan->ybOptions = copyObject(indexinfo->yb_options);
+		}
 	}
 
 	return scan_plan;
