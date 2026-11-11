@@ -984,8 +984,9 @@ mod ysql {
     use yb_proto::pb::common::TransactionMetadataPB;
     use yb_proto::pb::common_types::{TableType, YQLDatabase};
     use yb_proto::pb::master_ddl::{
-        DeleteTableRequestPB, DeleteTableResponsePB, IsYsqlDdlVerificationDoneRequestPB,
-        IsYsqlDdlVerificationDoneResponsePB, ReportYsqlDdlTxnStatusRequestPB,
+        AlterTableRequestPB, AlterTableResponsePB, DeleteTableRequestPB, DeleteTableResponsePB,
+        IsYsqlDdlVerificationDoneRequestPB, IsYsqlDdlVerificationDoneResponsePB,
+        ReportYsqlDdlTxnStatusRequestPB,
     };
 
     const DB_ID: &[u8] = b"000033e8000030008000000000000000";
@@ -1118,6 +1119,43 @@ mod ysql {
         h.report(2, false).await;
         assert_eq!(h.table_row().state(), sys_tables_entry_pb::State::DELETING);
         assert!(h.verified(2));
+    }
+
+    /// An aborted ALTER restores the schema and name as they were, and the transaction is
+    /// verified once the tablets have that.
+    #[tokio::test]
+    async fn an_aborted_alter_is_rolled_back() {
+        let h = ysql_harness().await;
+        h.create_ysql(None).await.unwrap();
+        h.set_table_state(TABLE_ID, sys_tables_entry_pb::State::RUNNING)
+            .await;
+        let before = h.table_row();
+        let mut req = AlterTableRequestPB::new();
+        req.table
+            .mut_or_insert_default()
+            .set_table_id(TABLE_ID.to_vec());
+        req.set_new_table_name("renamed".into());
+        req.transaction = Some(txn(5)).into();
+        req.set_ysql_yb_ddl_rollback_enabled(true);
+        let mut resp = AlterTableResponsePB::new();
+        h.lifecycle
+            .alter_table(&h.token, Harness::deadline(), &req, &mut resp)
+            .await
+            .unwrap();
+        let altered = h.table_row();
+        assert_eq!(altered.name(), b"renamed");
+        assert!(altered.ysql_ddl_txn_verifier_state[0].contains_alter_table_op());
+        h.set_table_state(TABLE_ID, sys_tables_entry_pb::State::RUNNING)
+            .await;
+        h.report(5, false).await;
+        let rolled_back = h.table_row();
+        assert_eq!(rolled_back.name(), before.name());
+        assert_eq!(rolled_back.version(), before.version() + 2);
+        assert_eq!(rolled_back.state(), sys_tables_entry_pb::State::ALTERING);
+        assert!(!h.verified(5));
+        h.set_table_state(TABLE_ID, sys_tables_entry_pb::State::RUNNING)
+            .await;
+        assert!(h.verified(5));
     }
 
     /// A drop in a DDL transaction waits for the commit, and an abort undoes it.

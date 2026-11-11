@@ -67,6 +67,68 @@ fn ddl_txn_id(pb: &SysTablesEntryPB) -> Option<&[u8]> {
         .filter(|id| !id.is_empty())
 }
 
+/// The `TABLE_SCHEMA_CHANGE_IN_PROGRESS` refusal of a DDL on a table another DDL transaction
+/// is still changing.
+pub(crate) fn check_no_other_ddl_txn(
+    pb: &SysTablesEntryPB,
+    txn_id: &[u8],
+) -> Result<(), MasterErrorPB> {
+    match ddl_txn_id(pb) {
+        Some(other) if other != txn_id => Err(error(
+            Code::TABLE_SCHEMA_CHANGE_IN_PROGRESS,
+            StatusCode::TryAgain,
+            format!(
+                "DDL transaction {} cannot continue as table {} is undergoing DDL transaction \
+                 verification for {}",
+                hex(txn_id),
+                String::from_utf8_lossy(pb.name()),
+                hex(other)
+            ),
+        )),
+        _ => Ok(()),
+    }
+}
+
+/// `AlterTable`'s DDL state: an alter in a DDL transaction records the table as it was, so an
+/// abort can restore it; an alter outside one clears a stale state.
+pub(crate) fn record_alter_in_ddl_txn(
+    old: &SysTablesEntryPB,
+    new: &mut SysTablesEntryPB,
+    req: &yb_proto::pb::master_ddl::AlterTableRequestPB,
+    is_pg: bool,
+) {
+    if !req.ysql_yb_ddl_rollback_enabled() {
+        if !new.ysql_ddl_txn_verifier_state.is_empty() {
+            new.ysql_ddl_txn_verifier_state.clear();
+        }
+        return;
+    }
+    if req.transaction.is_none() || !is_pg {
+        return;
+    }
+    let sub = req.sub_transaction_id();
+    let needs_state = new.ysql_ddl_txn_verifier_state.is_empty()
+        || (req.has_sub_transaction_id()
+            && new
+                .ysql_ddl_txn_verifier_state
+                .last()
+                .is_some_and(|s| s.sub_transaction_id() != sub));
+    if needs_state {
+        new.transaction = req.transaction.clone();
+        let mut state = YsqlDdlTxnVerifierStatePB::new();
+        state.previous_schema = old.schema.clone();
+        state.set_previous_table_name(String::from_utf8_lossy(old.name()).into_owned());
+        if req.has_sub_transaction_id() {
+            state.set_sub_transaction_id(sub);
+        }
+        new.ysql_ddl_txn_verifier_state.push(state);
+    }
+    new.ysql_ddl_txn_verifier_state
+        .last_mut()
+        .expect("a verifier state")
+        .set_contains_alter_table_op(true);
+}
+
 impl TableLifecycle {
     /// `CreateTable` of a YSQL table that is not colocated, not an index, not a PG catalog table,
     /// and in the default tablespace.
@@ -274,19 +336,7 @@ impl TableLifecycle {
                     )
                 })?;
             let mut pb: SysTablesEntryPB = table.parse().map_err(corrupt)?;
-            if let Some(other) = ddl_txn_id(&pb).filter(|id| *id != txn_id) {
-                return Err(error(
-                    Code::TABLE_SCHEMA_CHANGE_IN_PROGRESS,
-                    StatusCode::TryAgain,
-                    format!(
-                        "DDL transaction {} cannot continue as table {} is undergoing DDL \
-                         transaction verification for {}",
-                        hex(&txn_id),
-                        String::from_utf8_lossy(pb.name()),
-                        hex(other)
-                    ),
-                ));
-            }
+            check_no_other_ddl_txn(&pb, &txn_id)?;
             let sub = req.sub_transaction_id();
             let needs_state = pb.ysql_ddl_txn_verifier_state.is_empty()
                 || (req.has_sub_transaction_id()
@@ -380,6 +430,7 @@ impl TableLifecycle {
         enum Outcome {
             Done,
             Delete,
+            Altered,
         }
         let outcome = self
             .write(token, deadline, |snapshot| {
@@ -412,8 +463,39 @@ impl TableLifecycle {
                 if (committed && dropped) || (!committed && created) {
                     return Ok((Mutation::new(), Outcome::Delete));
                 }
-                if altered && !committed {
-                    return Err(not_yet("Rolling back an ALTER of a YSQL table"));
+                // An abort restores the table as it was before the transaction's first change
+                // (RollbackYsqlTxnDdlStates); a commit drops the columns marked for deletion
+                // (HandleSuccessfulYsqlDdlTxn). Either is an alter of its own.
+                let mut alter = false;
+                if !committed {
+                    let first = pb.ysql_ddl_txn_verifier_state[0].clone();
+                    if first.contains_alter_table_op() {
+                        pb.schema = first.previous_schema.clone();
+                        pb.set_name(first.previous_table_name().as_bytes().to_vec());
+                        if first.has_previous_next_column_id() {
+                            pb.set_next_column_id(first.previous_next_column_id());
+                        }
+                        alter = true;
+                    }
+                } else if pb.schema.columns.iter().any(|c| c.marked_for_deletion()) {
+                    pb.schema
+                        .mut_or_insert_default()
+                        .columns
+                        .retain(|c| !c.marked_for_deletion());
+                    alter = true;
+                }
+                if alter {
+                    pb.set_version(pb.version() + 1);
+                    pb.set_updates_only_index_permissions(false);
+                    pb.state = Some(EnumOrUnknown::new(TableState::ALTERING));
+                    pb.set_state_msg(
+                        format!(
+                            "Alter table version={} ts={}",
+                            pb.version(),
+                            local_time_string()
+                        )
+                        .into_bytes(),
+                    );
                 }
                 pb.ysql_ddl_txn_verifier_state.clear();
                 pb.transaction = Default::default();
@@ -421,12 +503,29 @@ impl TableLifecycle {
                     .read(table)
                     .upsert_message(SysRowEntryType::TABLE, table_id, &pb)
                     .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
-                Ok((mutation, Outcome::Done))
+                Ok((
+                    mutation,
+                    if alter {
+                        Outcome::Altered
+                    } else {
+                        Outcome::Done
+                    },
+                ))
             })
             .await?;
         match outcome {
             Outcome::Done => Ok(()),
             Outcome::Delete => self.mark_deleting(token, deadline, table_id).await,
+            Outcome::Altered => {
+                // `AddDdlTxnWaitingForSchemaVersion`: verified once the tablets have it.
+                self.ddl_alters
+                    .lock()
+                    .unwrap()
+                    .entry(txn_id.to_vec())
+                    .or_default()
+                    .push(table_id.to_vec());
+                Ok(())
+            }
         }
     }
 
@@ -438,7 +537,22 @@ impl TableLifecycle {
         resp: &mut IsYsqlDdlVerificationDoneResponsePB,
     ) -> Result<(), MasterErrorPB> {
         let txn_id = req.transaction.transaction_id();
-        resp.set_done(tables_of_txn(snapshot, txn_id).is_empty());
+        let mut done = tables_of_txn(snapshot, txn_id).is_empty();
+        let mut alters = self.ddl_alters.lock().unwrap();
+        if let Some(tables) = alters.get_mut(txn_id) {
+            tables.retain(|id| {
+                snapshot
+                    .get(SysRowEntryType::TABLE, id)
+                    .and_then(|t| t.table())
+                    .is_some_and(|t| t.state == TableState::ALTERING as i32)
+            });
+            if tables.is_empty() {
+                alters.remove(txn_id);
+            } else {
+                done = false;
+            }
+        }
+        resp.set_done(done);
         Ok(())
     }
 }

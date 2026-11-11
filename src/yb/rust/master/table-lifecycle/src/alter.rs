@@ -69,7 +69,8 @@ impl TableLifecycle {
             .write(token, deadline, |snapshot| {
                 let table = find_table(snapshot, &req.table, false)?;
                 let pb: SysTablesEntryPB = table.parse().map_err(corrupt_error)?;
-                if pb.table_type() != TableType::YQL_TABLE_TYPE {
+                let is_pg = pb.table_type() == TableType::PGSQL_TABLE_TYPE;
+                if pb.table_type() != TableType::YQL_TABLE_TYPE && !is_pg {
                     return Err(error(
                         Code::INVALID_REQUEST,
                         StatusCode::NotSupported,
@@ -109,7 +110,8 @@ impl TableLifecycle {
                         ),
                     ));
                 }
-                if req.has_new_table_name() {
+                // YSQL names are pg_class's, not unique here.
+                if req.has_new_table_name() && !is_pg {
                     if let Some(other) =
                         snapshot.table_by_name(&namespace.key.id, req.new_table_name())
                     {
@@ -133,6 +135,16 @@ impl TableLifecycle {
                             "Table {} is not ready yet",
                             String::from_utf8_lossy(pb.name())
                         ),
+                    ));
+                }
+                if req.ysql_yb_ddl_rollback_enabled() {
+                    crate::ysql::check_no_other_ddl_txn(&pb, req.transaction.transaction_id())?;
+                }
+                if is_pg && req.replication_info.is_some() {
+                    return Err(error(
+                        Code::INVALID_REQUEST,
+                        StatusCode::InvalidArgument,
+                        "Placement policy cannot be altered for YSQL tables, use Tablespaces",
                     ));
                 }
                 let mut new = pb.clone();
@@ -178,6 +190,7 @@ impl TableLifecycle {
                 if !req.has_wal_retention_secs() {
                     new.set_version(pb.version() + 1);
                     new.set_updates_only_index_permissions(false);
+                    crate::ysql::record_alter_in_ddl_txn(&pb, &mut new, req, is_pg);
                 }
                 new.state = Some(EnumOrUnknown::new(TableState::ALTERING));
                 new.set_state_msg(
@@ -489,8 +502,10 @@ impl Controller for TableAlterer {
 /// stay ALTERING.
 fn single_stage_alter(pb: &SysTablesEntryPB) -> bool {
     let settled = |p: IndexPermissions| p == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE;
-    pb.table_type() == TableType::YQL_TABLE_TYPE
-        && pb.indexes.iter().all(|i| settled(i.index_permissions()))
+    matches!(
+        pb.table_type(),
+        TableType::YQL_TABLE_TYPE | TableType::PGSQL_TABLE_TYPE
+    ) && pb.indexes.iter().all(|i| settled(i.index_permissions()))
         && pb
             .index_info
             .as_ref()

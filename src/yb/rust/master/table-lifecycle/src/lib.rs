@@ -115,6 +115,9 @@ pub struct TableLifecycle {
     /// table names). The leader is the only writer, and a mutation cannot read the absence of a
     /// name, only of a row.
     pub(crate) names: tokio::sync::Mutex<()>,
+    /// The tables each DDL transaction's verification altered, until their tablets have the
+    /// alter (`AddDdlTxnWaitingForSchemaVersion`).
+    pub(crate) ddl_alters: std::sync::Mutex<std::collections::HashMap<Vec<u8>, Vec<Vec<u8>>>>,
 }
 
 impl TableLifecycle {
@@ -135,6 +138,7 @@ impl TableLifecycle {
             host,
             options,
             names: tokio::sync::Mutex::new(()),
+            ddl_alters: Default::default(),
         })
     }
 

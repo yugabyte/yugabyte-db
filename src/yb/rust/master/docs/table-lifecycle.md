@@ -36,9 +36,12 @@ subtransaction) until the transaction ends. A drop in a transaction only marks t
 statement may drop and create a table again. When PG reports the outcome
 (`ReportYsqlDdlTxnStatus`), each table carrying the transaction keeps or undoes the change: a
 committed drop and an aborted create become DELETING, anything else just loses the state.
-`IsYsqlDdlVerificationDone` is done once no table carries the transaction. Not done yet: rolling
-back an ALTER, and verifying a transaction whose outcome is never reported (C++ polls the
-transaction status and compares the PG catalog).
+An ALTER of a YSQL table in a DDL transaction records the table as it was (`previous_schema`,
+`previous_table_name`) with `contains_alter_table_op`. An abort restores that as an alter of its
+own; a commit drops the columns the transaction marked for deletion, also as an alter. Either way
+`IsYsqlDdlVerificationDone` waits until the tablets have the alter, as C++ waits for the schema
+version. Not done yet: rollback to a savepoint, and verifying a transaction whose outcome is never
+reported (C++ polls the transaction status and compares the PG catalog).
 
 Lookups follow `FindNamespace` and `FindTable`: by id, else by name (and database type, from
 `GetDatabaseType`). A name is unique per database type; uniqueness is checked and written under a
