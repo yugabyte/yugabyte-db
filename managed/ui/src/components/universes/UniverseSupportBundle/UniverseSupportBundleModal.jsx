@@ -101,7 +101,7 @@ const UniverseSupportBundleWizard = (props) => {
   } = props;
 
   const paRegistrationQuery = useQuery(
-    QUERY_KEY.fetchUniverseRegistrationDetails,
+    [QUERY_KEY.fetchUniverseRegistrationDetails, universeDetails.universeUUID],
     () => PerfAdvisorAPI.fetchUniverseRegistrationDetails(universeDetails.universeUUID),
     {
       refetchOnMount: 'always',

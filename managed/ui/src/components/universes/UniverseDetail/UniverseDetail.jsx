@@ -50,6 +50,7 @@ import { UniverseLevelBackup } from '../../backupv2/Universe/UniverseLevelBackup
 import { UniverseSupportBundleModal } from '../UniverseSupportBundle/UniverseSupportBundleModal';
 import { XClusterReplication } from '../../xcluster/XClusterReplication';
 import { EnablePerfAdvisorModal } from '../../../redesign/features/universe/universe-actions/enable-perf-advisor/EnablePerfAdvisorModal';
+import { PaRegistrationMode } from '../../../redesign/features/PerfAdvisor/api';
 import { EncryptionAtRest } from '../../../redesign/features/universe/universe-actions/encryption-at-rest/EncryptionAtRest';
 import { EncryptionInTransit } from '../../../redesign/features/universe/universe-actions/encryption-in-transit/EncryptionInTransit';
 import { EnableYSQLModal } from '../../../redesign/features/universe/universe-actions/edit-ysql-ycql/EnableYSQLModal';
@@ -169,6 +170,20 @@ const withDisabledActionTooltip = (title, children) =>
   ) : (
     children
   );
+
+const runtimeConfigEnabled = (runtimeConfigs, key) =>
+  runtimeConfigs?.data?.configEntries?.find((entry) => entry.key === key)?.value === 'true';
+
+const isEmbeddedPerfAdvisorUiEnabled = (runtimeConfigs) =>
+  runtimeConfigEnabled(runtimeConfigs, RuntimeConfigKey.ENABLE_PA_COLLECTOR) &&
+  runtimeConfigEnabled(runtimeConfigs, RuntimeConfigKey.ENABLE_NEW_PERF_ADVISOR_UI);
+
+// Basic and advanced both store data locally. Online forwards everything elsewhere, so it has no
+// local data behind the Performance tab.
+const isPerformanceTabEnabled = (runtimeConfigs, paStatus) =>
+  isEmbeddedPerfAdvisorUiEnabled(runtimeConfigs) &&
+  !!paStatus?.data?.success &&
+  paStatus?.data?.mode !== PaRegistrationMode.ONLINE;
 
 class UniverseDetail extends Component {
   constructor(props) {
@@ -331,18 +346,24 @@ class UniverseDetail extends Component {
       this.props.getUniversePaRegistrationStatus(currentUniverse.data.universeUUID);
     }
 
-    // Redirect to Overview when on Performance tab but it should no longer be shown
-    // (perf advisor collector or advanced observability disabled for the universe)
+    // Redirect to Overview when the Performance tab should no longer be shown. Wait until both
+    // requests settle so a loading flag does not bounce a local registration to Overview.
     const isOnPerfAdvisorTab = this.props.location?.pathname?.includes(PERF_ADVISOR_PATH);
     const { universePaRegistrationStatus: paStatus } = this.props.universe;
+    const runtimeConfigs = this.props.customer?.runtimeConfigs;
     const paPromiseState = getPromiseState(paStatus);
+    // Runtime configs arrive after the first universe update. getPromiseState reads `.data`.
+    const runtimeConfigsState = runtimeConfigs ? getPromiseState(runtimeConfigs) : undefined;
     const shouldShowPerformanceTab =
-      paStatus?.data?.success && paStatus?.data?.advancedObservability;
+      !!runtimeConfigsState?.isSuccess() && isPerformanceTabEnabled(runtimeConfigs, paStatus);
     const paStatusResolved = paPromiseState.isError() || paPromiseState.isSuccess();
+    const runtimeConfigsResolved =
+      !!runtimeConfigsState?.isError() || !!runtimeConfigsState?.isSuccess();
     if (
       isOnPerfAdvisorTab &&
       paStatusResolved &&
-      (paPromiseState.isError() || !shouldShowPerformanceTab)
+      runtimeConfigsResolved &&
+      !shouldShowPerformanceTab
     ) {
       this.props.router.push(`/universes/${this.props.params.uuid}/overview`);
     }
@@ -588,31 +609,19 @@ class UniverseDetail extends Component {
     - Integrations -> Perf Advisor (to attach a customer to Perf Advisor service)
     - Under Universe Actions -> Show options to enable/disable Performance Monitoring for the universe (Perf Advisor Service)
     */
-    const isPACollectorEnabled =
-      runtimeConfigs?.data?.configEntries?.find(
-        (c) => c.key === RuntimeConfigKey.ENABLE_PA_COLLECTOR
-      )?.value === 'true';
+    const isPACollectorEnabled = runtimeConfigEnabled(
+      runtimeConfigs,
+      RuntimeConfigKey.ENABLE_PA_COLLECTOR
+    );
 
-    const isEmbeddedPAEnabled =
-      isPACollectorEnabled &&
-      runtimeConfigs?.data?.configEntries?.find(
-        (c) => c.key === RuntimeConfigKey.ENABLE_NEW_PERF_ADVISOR_UI
-      )?.value === 'true';
+    const isEmbeddedPAEnabled = isEmbeddedPerfAdvisorUiEnabled(runtimeConfigs);
 
-    // Online mode is gated by its own flag. enable_new_perf_advisor_ui covers advanced
-    // observability and the Performance tab, which online mode is neither part of - a universe
-    // forwarding everything to an external Perf Advisor has no local data behind that tab.
+    // Online mode is gated by its own flag, separate from enable_new_perf_advisor_ui.
     const isPaOnlineModeEnabled =
       isPACollectorEnabled &&
-      runtimeConfigs?.data?.configEntries?.find(
-        (c) => c.key === RuntimeConfigKey.ENABLE_PA_ONLINE_MODE
-      )?.value === 'true';
+      runtimeConfigEnabled(runtimeConfigs, RuntimeConfigKey.ENABLE_PA_ONLINE_MODE);
 
-    // Performance Tab should be shown only if Perf Advisor is enabled for the universe with advanced observability
-    const isPATabEnabled =
-      isEmbeddedPAEnabled &&
-      universePaRegistrationStatus?.data?.success &&
-      universePaRegistrationStatus?.data?.advancedObservability;
+    const isPATabEnabled = isPerformanceTabEnabled(runtimeConfigs, universePaRegistrationStatus);
 
     const isAuditLogEnabled =
       runtimeConfigs?.data?.configEntries?.find(
@@ -1001,6 +1010,7 @@ class UniverseDetail extends Component {
                 universeUuid={currentUniverse.data.universeUUID}
                 timezone={currentUser.data.timezone}
                 appName={AppName.YBA}
+                registrationMode={universePaRegistrationStatus?.data?.mode}
               />
             </Tab.Pane>
           )
