@@ -10,13 +10,20 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import api.v2.handlers.UniverseManagementHandler;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yba.v2.client.ApiException;
 import com.yugabyte.yba.v2.client.api.UniverseApi;
 import com.yugabyte.yba.v2.client.models.AvailabilityZoneNodeSpec;
@@ -64,12 +71,14 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
+import org.slf4j.LoggerFactory;
 
 /** Tests for Create/Get/Delete of Universe using v2.UniverseApiControllerImp */
 @Slf4j
@@ -261,6 +270,53 @@ public class UniverseApiControllerTest extends UniverseTestBase {
     assertThat(
         api.getUniverse(customer.getUuid(), uuid).getSpec().getUniverseSettings().getExpertMode(),
         is(true));
+  }
+
+  @Test
+  public void testCreateUniverseV2LogsNoSecrets() throws ApiException, IOException {
+    UniverseCreateSpec universeCreateSpec = getUniverseCreateSpecV2();
+    universeCreateSpec
+        .getSpec()
+        .getClusters()
+        .get(0)
+        .getGflags()
+        .setTserver(
+            // Ordered so that a redaction fallback, which drops the text after the HBA password,
+            // would also drop tflag1. ldaptls=0 keeps the password off the end of the HBA line,
+            // which falls back until PLAT-23624.
+            ImmutableMap.of(
+                "ycql_ldap_bind_passwd",
+                "ycql-bind-secret-xyz",
+                "ysql_hba_conf_csv",
+                "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com"
+                    + " ldapbindpasswd=hba-bind-secret-xyz ldaptls=0",
+                "tflag1",
+                "tval1"));
+    Logger logger = (Logger) LoggerFactory.getLogger(UniverseManagementHandler.class);
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    logger.addAppender(appender);
+    try {
+      setupUniverse(universeCreateSpec, null);
+    } finally {
+      logger.detachAppender(appender);
+    }
+
+    List<String> logged =
+        appender.list.stream()
+            .map(ILoggingEvent::getFormattedMessage)
+            .filter(message -> message.startsWith("Create Universe"))
+            .collect(Collectors.toList());
+    assertEquals(2, logged.size());
+    for (String message : logged) {
+      for (String secret :
+          List.of(
+              "ysqlPassword#1", "ycqlPassword#1", "hba-bind-secret-xyz", "ycql-bind-secret-xyz")) {
+        assertFalse(secret + " in: " + message, message.contains(secret));
+      }
+      assertTrue(message, message.contains("tval1"));
+      assertFalse(message, message.contains("_redactionParseError"));
+    }
   }
 
   @Test
