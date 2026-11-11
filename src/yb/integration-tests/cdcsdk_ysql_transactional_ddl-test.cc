@@ -11,6 +11,9 @@
 // under the License.
 
 #include <map>
+#include <optional>
+#include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -18,11 +21,48 @@
 #include "yb/common/constants.h"
 #include "yb/common/ddl_mode-test-util.h"
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/tostring.h"
 
 namespace yb {
 namespace cdc {
+
+namespace {
+
+Status CheckRowColumnsAnnouncedByDDL(
+    const GetChangesResponsePB& resp, const std::string& table_name,
+    std::optional<std::unordered_set<std::string>>* ddl_columns) {
+  for (const auto& record : resp.cdc_sdk_proto_records()) {
+    const auto& row = record.row_message();
+    if (row.table() != table_name) {
+      continue;
+    }
+    if (row.op() == RowMessage::DDL) {
+      ddl_columns->emplace();
+      for (const auto& column : row.schema().column_info()) {
+        (*ddl_columns)->insert(column.name());
+      }
+      continue;
+    }
+    if (row.op() != RowMessage::INSERT && row.op() != RowMessage::UPDATE) {
+      continue;
+    }
+    SCHECK(ddl_columns->has_value(), IllegalState,
+           Format("Row streamed before any DDL record: $0", row.ShortDebugString()));
+    for (const auto& column : row.new_tuple()) {
+      if (column.datum_case() == DatumMessagePB::DATUM_NOT_SET || column.has_datum_missing()) {
+        continue;
+      }
+      SCHECK((*ddl_columns)->contains(column.column_name()), IllegalState,
+             Format("Column $0 is not in the latest DDL record $1, row: $2",
+                    column.column_name(), **ddl_columns, row.ShortDebugString()));
+    }
+  }
+  return Status::OK();
+}
+
+} // namespace
 
 // A restart after partially streaming a transactional DDL txn drops the in-memory
 // cached_schema_details. Unpacked intents carry no schema version, so the schema cached for the
@@ -89,10 +129,12 @@ TEST_F(CDCSDKYsqlTest, TestGrpcStreamTransactionalDdlGetChangesFailsAfterRestart
     }
   };
 
+  std::optional<std::unordered_set<std::string>> ddl_columns;
   auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
   ASSERT_FALSE(change_resp.cdc_sdk_checkpoint().key().empty());
   ASSERT_NE(change_resp.cdc_sdk_checkpoint().write_id(), 0);
   collect_inserts(change_resp);
+  ASSERT_OK(CheckRowColumnsAnnouncedByDDL(change_resp, "t1", &ddl_columns));
   // The intent batch is smaller than the txn, so the restart happens before every schema version
   // has been streamed.
   ASSERT_LT(inserts.size(), 120);
@@ -117,6 +159,7 @@ TEST_F(CDCSDKYsqlTest, TestGrpcStreamTransactionalDdlGetChangesFailsAfterRestart
         streamed_after_restart = true;
         change_resp = *resp;
         collect_inserts(change_resp);
+        RETURN_NOT_OK(CheckRowColumnsAnnouncedByDDL(change_resp, "t1", &ddl_columns));
         checkpoint = change_resp.cdc_sdk_checkpoint();
         LOG(INFO) << "Post-restart GetChanges records=" << change_resp.cdc_sdk_proto_records_size()
                   << " inserts_so_far=" << inserts.size()
@@ -263,6 +306,71 @@ TEST_F(CDCSDKYsqlTest, TestGrpcStreamTransactionalDdlAddAndDropColumn) {
   ASSERT_EQ(find_col(readded, "b")->datum_string(), "readded");
   ASSERT_TRUE(col_has_value(find_col(readded, "c")));
   ASSERT_EQ(find_col(readded, "c")->datum_string(), "text-c");
+}
+
+// A DROP COLUMN leaves the column marked for deletion until the transaction commits, so each later
+// ALTER in the transaction also writes a schema with a marked column. The ADD COLUMNs after it must
+// still be streamed as DDL records ahead of the rows that write the new columns.
+TEST_F(CDCSDKYsqlTest, TestGrpcStreamTransactionalDdlAddColumnAfterDropColumn) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
+  ToggleDDLMode(/* use_legacy = */ false);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1 (a int primary key, b text, c int) SPLIT INTO 1 TABLETS"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "t1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(
+      "pg_grpc_slot", CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT,
+      /* verify_snapshot_name */ false, test_namespace_name, kYbGrpcStreamIndicator));
+
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1, 'v1', 1)"));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t1 DROP COLUMN c"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t1 ADD COLUMN d text"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (2, 'v2', 'd2')"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t1 ADD COLUMN e int"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (3, 'v3', 'd3', 3)"));
+  ASSERT_OK(conn.Execute("UPDATE t1 SET e = 10 WHERE a = 1"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  std::optional<std::unordered_set<std::string>> ddl_columns;
+  int num_inserts = 0;
+  int num_updates = 0;
+  CDCSDKCheckpointPB checkpoint;
+  bool streamed = false;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto resp = streamed ? GetChangesFromCDCWithoutRetry(stream_id, tablets, &checkpoint)
+                             : GetChangesFromCDC(stream_id, tablets, &checkpoint);
+        if (!resp.ok()) {
+          if (!streamed &&
+              (resp.status().IsLeaderNotReadyToServe() || resp.status().IsNotFound())) {
+            return false;
+          }
+          return resp.status();
+        }
+        streamed = true;
+        RETURN_NOT_OK(CheckRowColumnsAnnouncedByDDL(*resp, "t1", &ddl_columns));
+        for (const auto& record : resp->cdc_sdk_proto_records()) {
+          if (record.row_message().table() != "t1") {
+            continue;
+          }
+          num_inserts += record.row_message().op() == RowMessage::INSERT;
+          num_updates += record.row_message().op() == RowMessage::UPDATE;
+        }
+        checkpoint = resp->cdc_sdk_checkpoint();
+        return num_inserts == 3 && num_updates == 1 && checkpoint.key().empty() &&
+               checkpoint.write_id() == 0;
+      },
+      MonoDelta::FromSeconds(60) * kTimeMultiplier,
+      "Waiting to stream the transactional DDL txn"));
 }
 
 // Packed rows with REPLICA IDENTITY FULL. A restart mid-APPLY must still decode each update in

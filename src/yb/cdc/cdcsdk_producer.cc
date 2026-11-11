@@ -796,8 +796,7 @@ Result<TableName> GetColocatedTableName(
 Result<SchemaDetails> GetOrPopulateRequiredSchemaDetails(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, uint64 read_hybrid_time,
     SchemaDetailsMap* cached_schema_details, client::YBClient* client, const TableId& req_table_id,
-    GetChangesResponsePB* resp, CDCThroughputMetrics* throughput_metrics,
-    bool emit_ddl_record = true) {
+    GetChangesResponsePB* resp, CDCThroughputMetrics* throughput_metrics) {
   auto iter = cached_schema_details->find(req_table_id);
   if (iter != cached_schema_details->end()) {
     return iter->second;
@@ -840,9 +839,7 @@ Result<SchemaDetails> GetOrPopulateRequiredSchemaDetails(
             << " tablet " << tablet->tablet_id();
 
     const auto& schema_details = (*cached_schema_details)[cur_table_id];
-    if (emit_ddl_record) {
-      FillDDLInfo(tablet_peer, schema_details, table_name, cur_table_id, resp, throughput_metrics);
-    }
+    FillDDLInfo(tablet_peer, schema_details, table_name, cur_table_id, resp, throughput_metrics);
 
     return schema_details;
   }
@@ -918,7 +915,7 @@ Result<std::pair<SchemaVersion, Schema>> GetSchemaAndVersion(
     uint64 read_hybrid_time, SchemaDetailsMap* cached_schema_details,
     SchemaPackingStorage* schema_packing_storage, bool is_packed_row, Slice packed_row,
     client::YBClient* client, GetChangesResponsePB* resp,
-    CDCThroughputMetrics* throughput_metrics, bool emit_ddl_record = true) {
+    CDCThroughputMetrics* throughput_metrics) {
   // A packed row embeds the schema version it was packed with. Its packing is tried to be resolved
   // from, in order:
   // - the schema_packing_storage cache,
@@ -950,7 +947,7 @@ Result<std::pair<SchemaVersion, Schema>> GetSchemaAndVersion(
 
   const auto& schema_details = VERIFY_RESULT(GetOrPopulateRequiredSchemaDetails(
       tablet_peer, read_hybrid_time, cached_schema_details, client, table_id, resp,
-      throughput_metrics, emit_ddl_record));
+      throughput_metrics));
   auto schema_version = schema_details.schema_version;
   auto schema = *schema_details.schema;
 
@@ -973,6 +970,39 @@ Result<std::pair<SchemaVersion, Schema>> GetSchemaAndVersion(
   return std::make_pair(schema_version, *schema_details.schema);
 }
 
+bool IsDuplicateDDLForColumnsMarkedForDeletion(
+    const Schema& schema, const Schema* previous_schema) {
+  if (!YsqlDdlRollbackEnabled()) {
+    return false;
+  }
+
+  const auto& columns = schema.columns();
+  if (std::none_of(columns.begin(), columns.end(), [](const ColumnSchema& column) {
+        return column.marked_for_deletion();
+      })) {
+    return false;
+  }
+
+  if (!previous_schema) {
+    // Nothing cached to compare against, e.g. after a restart. Without transactional DDL this op
+    // can only be the first half of a DROP COLUMN; with it, a possible duplicate is emitted rather
+    // than risk dropping a column the client needs.
+    return !FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl;
+  }
+  if (previous_schema->num_columns() != schema.num_columns()) {
+    return false;
+  }
+  for (size_t i = 0; i < schema.num_columns(); ++i) {
+    if (previous_schema->column_id(i) != schema.column_id(i) ||
+        previous_schema->column(i).name() != schema.column(i).name()) {
+      return false;
+    }
+  }
+
+  VLOG(1) << "Skipping DDL record for a CHANGE_METADATA_OP that only marks columns for deletion";
+  return true;
+}
+
 bool IsColumnIdNotFound(const Status& status) {
   return status.IsInvalidArgument() &&
          status.message().ToBuffer().find("Column id ") == 0;
@@ -988,7 +1018,7 @@ Result<std::pair<SchemaVersion, Schema>> ReloadSchemaAtIntentTime(
   return GetSchemaAndVersion(
       tablet_peer, table_id, read_hybrid_time, cached_schema_details,
       /*schema_packing_storage=*/nullptr, /*is_packed_row=*/false, Slice(), client, resp,
-      throughput_metrics, /*emit_ddl_record=*/false);
+      throughput_metrics);
 }
 
 Result<tablet::TableInfoPtr> WarnIfNotFoundOrReturn(
@@ -3256,11 +3286,13 @@ Status GetChangesForCDCSDK(
             // We cross-verify the scheam details from the replicated message with the schema
             // details from the SysCatalog table.
             auto previous_schema_version = std::numeric_limits<uint32_t>::max();
+            std::shared_ptr<Schema> previous_schema;
             uint32_t changed_schema_version;
             {
               auto iter = cached_schema_details->find(table_id);
               if (iter != cached_schema_details->end()) {
                 previous_schema_version = iter->second.schema_version;
+                previous_schema = iter->second.schema;
               }
             }
 
@@ -3287,20 +3319,8 @@ Status GetChangesForCDCSDK(
               schema_packing_storage->AddSchema(changed_schema_version, current_schema);
             }
 
-            bool has_columns_marked_for_deletion = false;
-            if (YsqlDdlRollbackEnabled()) {
-              for (auto column : current_schema.columns()) {
-                if (column.marked_for_deletion()) {
-                  has_columns_marked_for_deletion = true;
-                  LOG(INFO) << "The CHANGE_METADATA_OP contains a column marked for deletion. "
-                  << "Will NOT populate a DDL record corresponding to it.";
-                  break;
-                }
-              }
-            }
-
             if (previous_schema_version != changed_schema_version &&
-                !has_columns_marked_for_deletion &&
+                !IsDuplicateDDLForColumnsMarkedForDeletion(current_schema, previous_schema.get()) &&
                 !boost::ends_with(table_name, kTablegroupParentTableNameSuffix) &&
                 !boost::ends_with(table_name, kColocationParentTableNameSuffix)) {
               RETURN_NOT_OK(PopulateCDCSDKDDLRecord(
