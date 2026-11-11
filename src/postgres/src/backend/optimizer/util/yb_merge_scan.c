@@ -653,13 +653,7 @@ ybIsCopyOfEarlierIndexCol(IndexOptInfo *index, int indexcol)
  * walk picked.  build_index_paths calls this after truncate_useless_pathkeys,
  * with the path's index clauses, so that the path's costing and its plan see
  * the same stream keys.  The pathkeys are final only after this call, which
- * can truncate them on an embedded index.
- *
- * On an embedded index, pggate compares each merge sort value in the table
- * row, which has no value for an expression index column.  So when embedded,
- * *pathkeys is truncated before the first pathkey that resolves to an
- * expression column, and *yb_distinct_nkeys is set to -1 if the truncation
- * cuts into the pathkeys that span the distinct prefix.
+ * on an embedded index can truncate them and set *yb_distinct_nkeys to -1.
  *
  * Each index column before the last merge sort column is one of:
  *
@@ -681,18 +675,15 @@ ybIsCopyOfEarlierIndexCol(IndexOptInfo *index, int indexcol)
  *       - A constant, as in a broken EquivalenceClass.
  *       - An earlier merge sort column.
  *
- *     yb_add_merge_gap_sort_cols makes a range column without an equality
- *     index clause, other than a copy, a merge sort column of the plan.
- *     pggate cannot compare an expression column of an embedded index, so on
- *     an embedded index, such a column that is an expression makes the path
- *     not a merge scan.
+ *     The plan also merges on each of these columns except a copy (see
+ *     yb_add_merge_gap_sort_cols).
  *
  * No column at or after the last merge sort column is a stream key, since the
  * merge order does not depend on it.  That includes a SAOP column the pathkeys
  * walk picked there, whose streams the merge does not need.
  *
  * Returns a new list in index column order, which EXPLAIN shows, or NIL when
- * no stream key column remains, and the path is then not a merge scan.
+ * the path cannot be a merge scan.
  */
 List *
 yb_finalize_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
@@ -726,6 +717,11 @@ yb_finalize_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
 		/* Not an ordering the merge can compare on. */
 		if (!tle)
 			return NIL;
+
+		/*
+		 * For an embedded index scan, an expression column is not available
+		 * for sort (see also #36017).
+		 */
 		if (embedded && index->indexkeys[tle->resno - 1] == 0)
 		{
 			*pathkeys = list_truncate(*pathkeys, foreach_current_index(lc));
@@ -768,9 +764,8 @@ yb_finalize_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
 		{
 			/*
 			 * yb_add_merge_gap_sort_cols makes the plan merge on this column
-			 * unless it is a copy.  pggate compares an embedded index's merge
-			 * sort columns in the table row, which has no value for an
-			 * expression column.
+			 * unless it is a copy.  For an embedded index scan, an expression
+			 * column is not available for sort (see also #36017).
 			 */
 			if (embedded && index->indexkeys[indexcol] == 0 &&
 				!ybIsCopyOfEarlierIndexCol(index, indexcol))
@@ -813,11 +808,14 @@ yb_merge_scan_num_streams(List *stream_cols)
  * columns that yb_finalize_merge_scan_stream_cols checks when it decides
  * whether the path can merge.  Each stream returns its rows in index order, so
  * merging on these columns too keeps the merged rows in index order.  Such a
- * column is redundant for the pathkeys only because filters tie it to a
- * constant or to an earlier merge sort column, and filters only remove rows.
- * So the merged rows keep the order of the pathkeys wherever those filters
- * run, even after the merge.  Each added column compares with its index
- * ordering operator, collation, and nulls order for scandir.
+ * column is redundant for the pathkeys only because the index predicate holds
+ * it constant, or because filters tie it to a constant or to an earlier merge
+ * sort column, and filters only remove rows.  So the merged rows keep the
+ * order of the pathkeys wherever those filters run, even after the merge.
+ * Merging on such a column matters only when a filter that ties it runs after
+ * the merge, but merging on every one keeps the order without tracking where
+ * each filter runs.  Each added column compares with its index ordering
+ * operator, collation, and nulls order for scandir.
  * TODO(#36000): record the gap columns on the path, so that this and
  * yb_finalize_merge_scan_stream_cols read one list.
  */
