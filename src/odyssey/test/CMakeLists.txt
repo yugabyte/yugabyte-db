@@ -2,6 +2,7 @@
 set(od_test_binary odyssey_test)
 set(od_test_src
     odyssey_test.c
+    yb_od_regress.c # YB
     machinarium/test_init.c
     machinarium/test_create0.c
     machinarium/test_create1.c

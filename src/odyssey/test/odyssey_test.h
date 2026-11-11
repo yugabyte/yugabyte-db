@@ -14,18 +14,13 @@
 /* for hba tests */
 #include <arpa/inet.h>
 
-#define odyssey_test(function)                                                \
-	do {                                                                  \
-		struct timeval tv_start, tv_stop;                             \
-		fprintf(stdout, "%s: ", #function);                           \
-		fflush(stdout);                                               \
-		gettimeofday(&tv_start, NULL);                                \
-		(function)();                                                 \
-		gettimeofday(&tv_stop, NULL);                                 \
-		fprintf(stdout, "ok (%ld ms)\n",                              \
-			(tv_stop.tv_sec - tv_start.tv_sec) * 1000 +           \
-				(tv_stop.tv_usec - tv_start.tv_usec) / 1000); \
-	} while (0);
+/* YB: OdRegress runner, runs each test in a forked child */
+extern void yb_od_regress_init(int argc, char *argv[]);
+extern void yb_od_regress_suite(const char *suite);
+extern void yb_od_regress_run(const char *function,
+			      void (*test_function)(void));
+extern int yb_od_regress_finish(void);
+#define odyssey_test(function) yb_od_regress_run(#function, function);
 
 #define test(expression)                                                    \
 	do {                                                                \
