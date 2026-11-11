@@ -802,7 +802,6 @@ class PostgresBuilder(YbBuildToolBase):
         # - pgrx and the extensions built on it (documentdb, pg_parquet, postgresql_anonymizer) need
         #   pgrx 0.19.3 and pg_anon 3.3.2 (#37181).
         # - mage needs an upgrade to Apache AGE release/PG19/1.8.0 (#35023).
-        # - pg_stat_monitor is to be removed from the PG19-based release (#37186).
         # - wal2json is to be fixed on PG19 (#35025).
         external_extension_subdirs = [
             'yb-extensions',
@@ -814,7 +813,6 @@ class PostgresBuilder(YbBuildToolBase):
             'third-party-extensions/pg_hint_plan',
             # 'third-party-extensions/pg_parquet',  # #37181
             'third-party-extensions/pg_partman',
-            # 'third-party-extensions/pg_stat_monitor',  # #37186
             'third-party-extensions/pgaudit',
             # 'third-party-extensions/pgrx',  # #37181
             'third-party-extensions/pgtap',
