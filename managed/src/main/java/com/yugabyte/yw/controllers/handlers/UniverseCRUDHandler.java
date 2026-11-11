@@ -404,6 +404,10 @@ public class UniverseCRUDHandler {
     if (provider.getCloudCode() != Common.CloudType.aws) {
       return false;
     }
+    if (!currentCluster.userIntent.getAllProviderUUIDs().contains(provider.getUuid()) ||
+     !cluster.userIntent.getAllProviderUUIDs().contains(provider.getUuid())) {
+      return false;
+    }
 
     String curArnString = currentCluster.userIntent.getAwsProfileForProvider(provider.getUuid());
     String newArnString = cluster.userIntent.getAwsProfileForProvider(provider.getUuid());
