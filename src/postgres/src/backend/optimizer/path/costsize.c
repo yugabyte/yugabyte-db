@@ -8287,58 +8287,82 @@ yb_get_non_pushable_attnums(IndexOptInfo *index)
 	return non_pushable_attnums;
 }
 
-static Selectivity
-yb_bitmap_index_selectivity(IndexPath *path,
-							PlannerInfo *root,
-							List *qpquals,
-							Oid baserel_oid,
-							List *index_conds)
+static List *
+yb_get_index_qpquals(IndexPath *path)
+{
+	List	   *qpquals;
+
+	qpquals = extract_nonindex_conditions(path->indexinfo->indrestrictinfo,
+										  path->indexclauses);
+	if (path->path.param_info)
+		qpquals = list_concat(qpquals,
+							  extract_nonindex_conditions(path->path.param_info->ppi_clauses,
+														  path->indexclauses));
+	return qpquals;
+}
+
+/*
+ * yb_bitmap_index_filter_quals
+ *	  Returns the clauses a bitmap index path applies as storage index filters.
+ */
+List *
+yb_bitmap_index_filter_quals(PlannerInfo *root, IndexPath *path)
 {
 	IndexOptInfo *index = path->indexinfo;
+	Oid			baserel_oid = planner_rt_fetch(index->rel->relid, root)->relid;
+	bool		index_only = (path->path.pathtype == T_IndexOnlyScan);
 	List	   *filter_quals;
-	List	   *all_index_quals = NIL;
+	List	   *local_quals = NIL;
+	List	   *rel_remote_quals = NIL;
+	List	   *rel_colrefs = NIL;
 	List	   *index_remote_quals = NIL;
-	Selectivity	sel;
+	List	   *index_colrefs = NIL;
+	Bitmapset  *non_pushable_attnums = NULL;
 
 	if (path->yb_bitmap_idx_pushdowns)
 		filter_quals = path->yb_bitmap_idx_pushdowns;
 	else
-		filter_quals = qpquals;		/* single scan node bitmap plan */
+		filter_quals = yb_get_index_qpquals(path);
 
-	if (filter_quals)
-	{
-		bool		index_only = (path->path.pathtype == T_IndexOnlyScan);
-		List	   *local_quals = NIL;
-		List	   *rel_remote_quals = NIL;
-		List	   *rel_colrefs = NIL;
-		List	   *index_colrefs = NIL;
-		Bitmapset  *non_pushable_attnums = NULL;
+	if (filter_quals == NIL)
+		return NIL;
 
-		if (index_only && index->yb_num_decoded_pk_cols > 0)
-			non_pushable_attnums = yb_get_non_pushable_attnums(index);
+	if (index_only && index->yb_num_decoded_pk_cols > 0)
+		non_pushable_attnums = yb_get_non_pushable_attnums(index);
 
-		yb_extract_pushdown_clauses(filter_quals,
-									index,
-									true,	/* bitmapindex */
-									&local_quals,
-									&rel_remote_quals,
-									&rel_colrefs,
-									&index_remote_quals,
-									&index_colrefs,
-									baserel_oid,
-									non_pushable_attnums);
+	yb_extract_pushdown_clauses(filter_quals,
+								index,
+								true,	/* bitmapindex */
+								&local_quals,
+								&rel_remote_quals,
+								&rel_colrefs,
+								&index_remote_quals,
+								&index_colrefs,
+								baserel_oid,
+								non_pushable_attnums);
 
-		bms_free(non_pushable_attnums);
-		list_free(local_quals);
-		list_free(rel_remote_quals);
-		list_free(rel_colrefs);
-		list_free(index_colrefs);
-	}
+	bms_free(non_pushable_attnums);
+	list_free(local_quals);
+	list_free(rel_remote_quals);
+	list_free(rel_colrefs);
+	list_free(index_colrefs);
 
-	all_index_quals = list_concat(index_remote_quals, index_conds);
+	return index_remote_quals;
+}
+
+static Selectivity
+yb_bitmap_index_selectivity(IndexPath *path,
+							PlannerInfo *root,
+							List *index_conds)
+{
+	List	   *all_index_quals;
+	Selectivity	sel;
+
+	all_index_quals = list_concat(yb_bitmap_index_filter_quals(root, path),
+								  index_conds);
 
 	sel = clauselist_selectivity(root, all_index_quals,
-								 index->rel->relid, JOIN_INNER, NULL);
+								 path->indexinfo->rel->relid, JOIN_INNER, NULL);
 
 	list_free(all_index_quals);
 
@@ -9688,22 +9712,10 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	 * relevant restriction clauses for the rel.
 	 */
 	if (path->path.param_info)
-	{
 		path->path.rows = path->path.param_info->ppi_rows;
-		/* qpquals come from the rel's restriction clauses and ppi_clauses */
-		qpquals =
-			list_concat(extract_nonindex_conditions(path->indexinfo->indrestrictinfo,
-													path->indexclauses),
-						extract_nonindex_conditions(path->path.param_info->ppi_clauses,
-													path->indexclauses));
-	}
 	else
-	{
 		path->path.rows = baserel->rows;
-		/* qpquals come from just the rel's restriction clauses */
-		qpquals = extract_nonindex_conditions(path->indexinfo->indrestrictinfo,
-											  path->indexclauses);
-	}
+	qpquals = yb_get_index_qpquals(path);
 
 	/*
 	 * Sort the filters into `local_clauses`, `base_table_pushed_down_clauses`
@@ -10552,8 +10564,6 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	path->indextotalcost = bmscan_total_cost;
 	path->indexselectivity = yb_bitmap_index_selectivity(path,
 														 root,
-														 qpquals,
-														 baserel_oid,
 														 index_conditions);
 
 	/* base table access costs if this is a non-pk IndexScan path */

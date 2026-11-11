@@ -178,6 +178,7 @@ extern void cost_index(IndexPath *path, PlannerInfo *root,
 extern void cost_bitmap_heap_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 								  ParamPathInfo *param_info,
 								  Path *bitmapqual, double loop_count);
+extern List *yb_bitmap_index_filter_quals(PlannerInfo *root, IndexPath *path);
 extern void yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 									  ParamPathInfo *param_info,
 									  Path *bitmapqual, double loop_count);
