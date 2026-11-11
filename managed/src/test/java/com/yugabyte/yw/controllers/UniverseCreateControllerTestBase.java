@@ -293,6 +293,46 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     assertAuditEntry(1, customer.getUuid());
   }
 
+  // Two zones of a region that share a code are the same zone to the master, which would reject
+  // the placement; YBA must refuse it before submitting the task.
+  @Test
+  public void testUniverseCreateWithDuplicateZoneCodesFails() {
+    Provider p = ModelFactory.awsProvider(customer);
+    String accessKeyCode = "someKeyCode";
+    AccessKey.create(p.getUuid(), accessKeyCode, new AccessKey.KeyInfo());
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone az2 = AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
+    InstanceType i =
+        InstanceType.upsert(
+            p.getUuid(), "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+
+    ObjectNode bodyJson = Json.newObject();
+    ObjectNode userIntentJson =
+        Json.newObject()
+            .put("universeName", "DuplicateZoneUniverse")
+            .put("instanceType", i.getInstanceTypeCode())
+            .put("replicationFactor", 3)
+            .put("numNodes", 3)
+            .put("provider", p.getUuid().toString())
+            .put("enableYSQL", "false")
+            .put("accessKeyCode", accessKeyCode)
+            .put("ybSoftwareVersion", "0.0.0.1-b1");
+    userIntentJson.set("regionList", Json.newArray().add(r.getUuid().toString()));
+    userIntentJson.set("deviceInfo", createValidDeviceInfo(Common.CloudType.aws));
+    // placement() finds zones by code, so make the codes collide only afterwards.
+    setClustersAndNodeDetailsSet(
+        bodyJson, userIntentJson, placement(p, 2), i.getInstanceTypeCode());
+    az2.setCode("az-1");
+    az2.save();
+
+    Result result = assertPlatformException(() -> sendCreateRequest(bodyJson));
+
+    assertBadRequest(result, "Found duplicate zone: az-1 in region region-1 in cloud aws");
+    assertAuditEntry(0, customer.getUuid());
+    verify(mockCommissioner, times(0)).submit(any(TaskType.class), any());
+  }
+
   @Test
   public void testUniverseCreateWithYsqlEnabled() {
     UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
