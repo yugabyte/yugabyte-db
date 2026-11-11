@@ -262,7 +262,7 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
         "while the flag ysql_yb_enable_implicit_dynamic_tables_logical_replication is disabled.");
   }
 
-  if (detect_publication_changes_implicitly_ &&
+  if (detect_publication_changes_implicitly_ && !stream->IsNotificationSlot() &&
       FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
     const auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(stream->GetNamespaceId()));
     const auto stream_table_ids = stream->GetTableIds();

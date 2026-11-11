@@ -680,6 +680,8 @@ const char* SkipReason(PrepareSlotForTxnDdlResult result) {
       break;
     case PrepareSlotForTxnDdlResult::kNotLogicalReplication:
       return "it isn't a logical replication slot";
+    case PrepareSlotForTxnDdlResult::kNotificationSlot:
+      return "it is a LISTEN/NOTIFY slot";
     case PrepareSlotForTxnDdlResult::kDeleting:
       return "it is being deleted";
     case PrepareSlotForTxnDdlResult::kNotImplicit:
@@ -6235,7 +6237,8 @@ Status CatalogManager::PrepareReplicationSlotsForTransactionalDDL(
     } else {
       for (const auto& [slot_name, stream_id] : cdcsdk_replication_slots_to_stream_map_) {
         auto stream = FindPtrOrNull(cdc_stream_map_, stream_id);
-        if (stream && IsCdcLogicalReplicationStream(*stream)) {
+        if (stream && IsCdcLogicalReplicationStream(*stream) &&
+            !IsNotificationSlotStream(*stream)) {
           slots.emplace_back(slot_name, std::move(stream));
         }
       }
@@ -6263,6 +6266,9 @@ Result<PrepareSlotForTxnDdlResult> CatalogManager::AddTransactionalDdlCatalogTab
     SharedLock lock(mutex_);
     if (!IsCdcLogicalReplicationStream(*stream)) {
       return PrepareSlotForTxnDdlResult::kNotLogicalReplication;
+    }
+    if (IsNotificationSlotStream(*stream)) {
+      return PrepareSlotForTxnDdlResult::kNotificationSlot;
     }
   }
   const auto catalog_table_ids =

@@ -206,7 +206,7 @@ YB_DEFINE_ENUM(DeleteYsqlDBTablesType,
 YB_DEFINE_ENUM(CDCStreamType, (kNone)(kLogicalReplication)(kgRPC));
 
 YB_DEFINE_ENUM(PrepareSlotForTxnDdlResult,
-               (kPrepared)(kNotLogicalReplication)(kDeleting)(kNotImplicit));
+               (kPrepared)(kNotLogicalReplication)(kNotificationSlot)(kDeleting)(kNotImplicit));
 
 struct YsqlTableDdlTxnState;
 using google::protobuf::RepeatedPtrField;
