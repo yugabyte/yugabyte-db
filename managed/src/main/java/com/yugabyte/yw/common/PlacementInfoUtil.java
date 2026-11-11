@@ -15,6 +15,7 @@ import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
@@ -1575,23 +1576,21 @@ public class PlacementInfoUtil {
       return;
     }
     Set<String> allZones = new HashSet<>();
-    placementInfo
-        .azInfoStream()
-        .forEach(
-            azInfo -> {
-              // Placement uses AZ name, whereas generated placement uses AZ code, so need to query
-              // DB.
-              AvailabilityZone az = AvailabilityZone.getOrBadRequest(azInfo.placementAZ.uuid);
-              String zoneId =
-                  String.format("%s:%s:%s", azInfo.cloud.code, azInfo.region.code, az.getCode());
-              if (!allZones.add(zoneId)) {
-                throw new PlatformServiceException(
-                    BAD_REQUEST,
-                    String.format(
-                        "Found duplicate zone: %s in region %s in cloud %s",
-                        az.getCode(), azInfo.region.code, azInfo.cloud.code));
-              }
-            });
+    UpdatePlacementInfo.ModifyUniverseConfig.mapToCloudInfoPB(
+        placementInfo,
+        (az, block) -> {
+          String zoneId =
+              String.format(
+                  "%s:%s:%s",
+                  block.getPlacementCloud(), block.getPlacementRegion(), block.getPlacementZone());
+          if (!allZones.add(zoneId)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "Found duplicate zone: %s in region %s in cloud %s",
+                    az.getCode(), azInfo.region.code, azInfo.cloud.code));
+          }
+        });
   }
 
   @Data
