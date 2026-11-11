@@ -68,8 +68,8 @@ import play.libs.Json;
  * Converts between the v2 storage config resource and the v1 {@link CustomerConfig} of type
  * STORAGE, whose subtype is in {@code name} and whose settings are an untyped JSON {@code data}.
  *
- * <p>The v2 spec is a oneOf by storage type, with a oneOf of credentials per storage type, while
- * v1 data marks the kind of credentials with flags (IAM_INSTANCE_PROFILE, USE_GCP_IAM,
+ * <p>The v2 spec is a oneOf by storage type, with a oneOf of credentials per storage type, while v1
+ * data marks the kind of credentials with flags (IAM_INSTANCE_PROFILE, USE_GCP_IAM,
  * USE_CROSS_CLOUD_FEDERATION, USE_AZURE_IAM, USE_OCI_IAM). The default methods pick the variant;
  * MapStruct generates the field mappings of the region locations. Secrets go from v2 to v1 only:
  * the v1 to v2 direction never sets a secret, so responses don't carry them.
@@ -131,7 +131,9 @@ public interface StorageConfigMapper {
               .credentialType(S3CredentialType.S3CredentialCrossCloudFederation);
     } else if (data.isIAMInstanceProfile) {
       CustomerConfigStorageS3Data.IAMConfiguration iam =
-          data.iamConfig != null ? data.iamConfig : new CustomerConfigStorageS3Data.IAMConfiguration();
+          data.iamConfig != null
+              ? data.iamConfig
+              : new CustomerConfigStorageS3Data.IAMConfiguration();
       credentials =
           new S3IamCredentials()
               .credentialType(S3CredentialType.S3CredentialIam)
@@ -240,8 +242,7 @@ public interface StorageConfigMapper {
 
   // The regional SAS token is a secret: never returned.
   @Mapping(target = "sasToken", ignore = true)
-  AzureRegionLocation toAzureRegionLocation(
-      CustomerConfigStorageAzureData.RegionLocations source);
+  AzureRegionLocation toAzureRegionLocation(CustomerConfigStorageAzureData.RegionLocations source);
 
   List<AzureRegionLocation> toAzureRegionLocations(
       List<CustomerConfigStorageAzureData.RegionLocations> source);
@@ -262,8 +263,8 @@ public interface StorageConfigMapper {
   // ---- v2 to v1 ----
 
   /**
-   * Builds the v1 storage config of the customer from a v2 spec, without a UUID and not saved.
-   * The handler has checked that the spec carries the secrets its credentials need.
+   * Builds the v1 storage config of the customer from a v2 spec, without a UUID and not saved. The
+   * handler has checked that the spec carries the secrets its credentials need.
    */
   default CustomerConfig toV1CustomerConfig(UUID customerUUID, StorageConfigSpec spec) {
     StorageSpec storage = spec.getStorage();

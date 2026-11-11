@@ -192,7 +192,9 @@ public class StorageConfigMapperTest {
     assertNull("the key isn't returned", keyBack.getCredentialsJson());
 
     CustomerConfig iam =
-        toV1("gcs-iam", gcs(new GcsIamCredentials().credentialType(GcsCredentialType.GcsCredentialIam)));
+        toV1(
+            "gcs-iam",
+            gcs(new GcsIamCredentials().credentialType(GcsCredentialType.GcsCredentialIam)));
     CustomerConfigStorageGCSData iamData = (CustomerConfigStorageGCSData) iam.getDataObject();
     assertTrue(iamData.useGcpIam);
     assertFalse(iamData.useCrossCloudFederation);
@@ -324,7 +326,9 @@ public class StorageConfigMapperTest {
     assertNull(keysBack.getSecretAccessKey());
 
     CustomerConfig iam =
-        toV1("oci-iam", oci(new OciIamCredentials().credentialType(OciCredentialType.OciCredentialIam)));
+        toV1(
+            "oci-iam",
+            oci(new OciIamCredentials().credentialType(OciCredentialType.OciCredentialIam)));
     CustomerConfigStorageOCIData iamData = (CustomerConfigStorageOCIData) iam.getDataObject();
     assertTrue(iamData.useOciIam);
     assertEquals("ns", iamData.ociNamespace);

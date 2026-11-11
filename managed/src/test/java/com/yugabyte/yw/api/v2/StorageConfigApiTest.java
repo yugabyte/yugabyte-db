@@ -45,6 +45,7 @@ import com.yugabyte.yba.v2.client.models.StorageConfigSpec;
 import com.yugabyte.yba.v2.client.models.StorageConfigState;
 import com.yugabyte.yba.v2.client.models.StorageSpec;
 import com.yugabyte.yba.v2.client.models.StorageType;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -58,7 +59,6 @@ import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
-import com.yugabyte.yw.common.FakeDBApplication;
 import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
@@ -116,7 +116,9 @@ public class StorageConfigApiTest extends FakeDBApplication {
         .name(name)
         .storage(
             new StorageSpec(
-                new NfsStorageSpec().storageType(StorageType.StorageTypeNFS).backupLocation(location)));
+                new NfsStorageSpec()
+                    .storageType(StorageType.StorageTypeNFS)
+                    .backupLocation(location)));
   }
 
   private static JsonNode error(ApiException e) {
@@ -127,7 +129,8 @@ public class StorageConfigApiTest extends FakeDBApplication {
   public void createAndGetS3() throws ApiException {
     skipStorageValidation();
 
-    StorageConfig created = storageConfigApi.createStorageConfig(customer.getUuid(), s3Spec("s3-backups"), null);
+    StorageConfig created =
+        storageConfigApi.createStorageConfig(customer.getUuid(), s3Spec("s3-backups"), null);
 
     UUID uuid = created.getInfo().getUuid();
     assertEquals(StorageConfigState.StorageConfigActive, created.getInfo().getState());
@@ -180,7 +183,8 @@ public class StorageConfigApiTest extends FakeDBApplication {
                             .credentials(
                                 new GcsCredentials(
                                     new GcsServiceAccountKeyCredentials()
-                                        .credentialType(GcsCredentialType.GcsCredentialServiceAccountKey)
+                                        .credentialType(
+                                            GcsCredentialType.GcsCredentialServiceAccountKey)
                                         .credentialsJson("{\"type\": \"service_account\"}"))))),
             null);
     GcsServiceAccountKeyCredentials gcsKey =
@@ -204,7 +208,8 @@ public class StorageConfigApiTest extends FakeDBApplication {
                             .credentials(
                                 new AzureCredentials(
                                     new AzureManagedIdentityCredentials()
-                                        .credentialType(AzureCredentialType.AzureCredentialManagedIdentity)
+                                        .credentialType(
+                                            AzureCredentialType.AzureCredentialManagedIdentity)
                                         .clientId("client-id"))))),
             null);
     assertEquals(
@@ -235,16 +240,14 @@ public class StorageConfigApiTest extends FakeDBApplication {
                                     new OciIamCredentials()
                                         .credentialType(OciCredentialType.OciCredentialIam))))),
             null);
-    assertEquals(
-        "ns", oci.getSpec().getStorage().getOciStorageSpec().getNamespace());
-    assertEquals(
-        "OCI",
-        CustomerConfig.get(customer.getUuid(), oci.getInfo().getUuid()).getName());
+    assertEquals("ns", oci.getSpec().getStorage().getOciStorageSpec().getNamespace());
+    assertEquals("OCI", CustomerConfig.get(customer.getUuid(), oci.getInfo().getUuid()).getName());
   }
 
   @Test
   public void createNfsRunsTheStorageValidator() throws ApiException {
-    StorageConfig nfs = storageConfigApi.createStorageConfig(customer.getUuid(), nfsSpec("nfs", "/mnt/nfs"), null);
+    StorageConfig nfs =
+        storageConfigApi.createStorageConfig(customer.getUuid(), nfsSpec("nfs", "/mnt/nfs"), null);
     NfsStorageSpec spec = nfs.getSpec().getStorage().getNfsStorageSpec();
     assertEquals("/mnt/nfs", spec.getBackupLocation());
     assertEquals("yugabyte_backup", spec.getBucket());
@@ -266,12 +269,15 @@ public class StorageConfigApiTest extends FakeDBApplication {
 
   @Test
   public void nameConflict() throws ApiException {
-    StorageConfig existing = storageConfigApi.createStorageConfig(customer.getUuid(), nfsSpec("dup", "/mnt"), null);
+    StorageConfig existing =
+        storageConfigApi.createStorageConfig(customer.getUuid(), nfsSpec("dup", "/mnt"), null);
 
     ApiException e =
         assertThrows(
             ApiException.class,
-            () -> storageConfigApi.createStorageConfig(customer.getUuid(), nfsSpec("dup", "/mnt/other"), null));
+            () ->
+                storageConfigApi.createStorageConfig(
+                    customer.getUuid(), nfsSpec("dup", "/mnt/other"), null));
     assertEquals(409, e.getCode());
     JsonNode error = error(e);
     assertEquals(StorageConfigHandler.NAME_CONFLICT, error.get("code").asText());
@@ -286,7 +292,9 @@ public class StorageConfigApiTest extends FakeDBApplication {
     e =
         assertThrows(
             ApiException.class,
-            () -> storageConfigApi.createStorageConfig(customer.getUuid(), nfsSpec("dup", "/mnt/other"), null));
+            () ->
+                storageConfigApi.createStorageConfig(
+                    customer.getUuid(), nfsSpec("dup", "/mnt/other"), null));
     assertEquals("QUEUED_FOR_DELETION", error(e).get("storage_config_state").asText());
 
     // The name is unique among all configs of the customer, not only storage ones.
@@ -308,8 +316,10 @@ public class StorageConfigApiTest extends FakeDBApplication {
     skipStorageValidation();
     String key = UUID.randomUUID().toString();
 
-    StorageConfig first = storageConfigApi.createStorageConfig(customer.getUuid(), s3Spec("s3"), key);
-    StorageConfig retry = storageConfigApi.createStorageConfig(customer.getUuid(), s3Spec("s3"), key);
+    StorageConfig first =
+        storageConfigApi.createStorageConfig(customer.getUuid(), s3Spec("s3"), key);
+    StorageConfig retry =
+        storageConfigApi.createStorageConfig(customer.getUuid(), s3Spec("s3"), key);
 
     assertEquals(first.getInfo().getUuid(), retry.getInfo().getUuid());
     assertEquals(
@@ -371,7 +381,8 @@ public class StorageConfigApiTest extends FakeDBApplication {
                         .region("us-sanjose-1")
                         .credentials(
                             new OciCredentials(
-                                new OciIamCredentials().credentialType(OciCredentialType.OciCredentialIam)))));
+                                new OciIamCredentials()
+                                    .credentialType(OciCredentialType.OciCredentialIam)))));
     assertBadRequest(ociIamNoNamespace, "namespace");
 
     StorageConfigSpec noLocation = nfsSpec("no-location", null);
@@ -385,7 +396,8 @@ public class StorageConfigApiTest extends FakeDBApplication {
   private void assertBadRequest(StorageConfigSpec spec, String messagePart) {
     ApiException e =
         assertThrows(
-            ApiException.class, () -> storageConfigApi.createStorageConfig(customer.getUuid(), spec, null));
+            ApiException.class,
+            () -> storageConfigApi.createStorageConfig(customer.getUuid(), spec, null));
     assertEquals(e.getResponseBody(), 400, e.getCode());
     assertTrue(e.getResponseBody(), e.getResponseBody().contains(messagePart));
   }
@@ -398,14 +410,18 @@ public class StorageConfigApiTest extends FakeDBApplication {
     ApiException invalid =
         assertThrows(
             ApiException.class,
-            () -> storageConfigApi.validateStorageConfig(customer.getUuid(), nfsSpec("nfs", "relative")));
+            () ->
+                storageConfigApi.validateStorageConfig(
+                    customer.getUuid(), nfsSpec("nfs", "relative")));
     assertEquals(422, invalid.getCode());
 
     storageConfigApi.createStorageConfig(customer.getUuid(), nfsSpec("nfs", "/mnt/nfs"), null);
     ApiException conflict =
         assertThrows(
             ApiException.class,
-            () -> storageConfigApi.validateStorageConfig(customer.getUuid(), nfsSpec("nfs", "/mnt/nfs")));
+            () ->
+                storageConfigApi.validateStorageConfig(
+                    customer.getUuid(), nfsSpec("nfs", "/mnt/nfs")));
     assertEquals(409, conflict.getCode());
   }
 
@@ -430,13 +446,15 @@ public class StorageConfigApiTest extends FakeDBApplication {
 
   @Test
   public void getAnotherCustomersConfig() throws ApiException {
-    StorageConfig nfs = storageConfigApi.createStorageConfig(customer.getUuid(), nfsSpec("nfs", "/mnt"), null);
+    StorageConfig nfs =
+        storageConfigApi.createStorageConfig(customer.getUuid(), nfsSpec("nfs", "/mnt"), null);
     Customer other = ModelFactory.testCustomer("other-customer");
 
     // The caller isn't a user of the other customer.
     ApiException e =
         assertThrows(
-            ApiException.class, () -> storageConfigApi.getStorageConfig(other.getUuid(), nfs.getInfo().getUuid()));
+            ApiException.class,
+            () -> storageConfigApi.getStorageConfig(other.getUuid(), nfs.getInfo().getUuid()));
     assertEquals(401, e.getCode());
   }
 
@@ -454,7 +472,8 @@ public class StorageConfigApiTest extends FakeDBApplication {
     v1.save();
 
     S3StorageSpec s3 =
-        storageConfigApi.getStorageConfig(customer.getUuid(), v1.getConfigUUID())
+        storageConfigApi
+            .getStorageConfig(customer.getUuid(), v1.getConfigUUID())
             .getSpec()
             .getStorage()
             .getS3StorageSpec();
