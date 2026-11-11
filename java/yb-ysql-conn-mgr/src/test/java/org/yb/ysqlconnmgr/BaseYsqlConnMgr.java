@@ -68,7 +68,7 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   private static final long QUEUED_CLIENT_SERVED_TIMEOUT_MS = 30000;
   protected static final String EXCLUSIONS_FLAG =
       "ysql_yb_conn_mgr_reversible_stickiness_exclusions";
-  private static final String[] STICKY_SOURCES = {"replication_origin", "prepare"};
+  private static final String[] STICKY_SOURCES = {"replication_origin", "prepare", "listen"};
   private static final long WAIT_FOR_PG_AFTER_CLUSTER_START_TIMEOUT_MS =
       30000 * BuildTypeUtil.nonSanitizerVsSanitizer(1, 3);
   private boolean warmup_random_mode = true;

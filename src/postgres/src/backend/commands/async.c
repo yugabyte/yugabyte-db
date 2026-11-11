@@ -1597,16 +1597,8 @@ Exec_ListenCommit(const char *channel)
 	listenChannels = lappend(listenChannels, pstrdup(channel));
 	MemoryContextSwitchTo(oldcontext);
 
-	/*
-	 * If connection manager is used, mark the connection as sticky. Not doing
-	 * so can cause the listening client to miss notifications, while
-	 * non-listening clients receive spurious notifications.
-	 */
-	if (YbIsClientYsqlConnMgr())
-	{
-		elog(LOG, "Incrementing sticky object count for LISTEN %s", channel);
-		increment_sticky_object_count();
-	}
+	if (YbIsClientYsqlConnMgr() && yb_conn_mgr_listen_permanent_sticky)
+		yb_ysql_conn_mgr_sticky_listen = true;
 }
 
 /*
@@ -4172,6 +4164,12 @@ YbRollbackPendingNotifiesTo(int mark)
 		hash_destroy((*notifies)->hashtab);
 		(*notifies)->hashtab = NULL;
 	}
+}
+
+bool
+YbIsListening(void)
+{
+	return listenChannels != NIL;
 }
 
 static void

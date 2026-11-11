@@ -325,6 +325,7 @@ static void yb_assign_extra_commands_to_retry_in_proc(const char *newval,
 													  void *extra);
 static void yb_assign_conn_mgr_replication_origin_permanent_sticky(bool newval, void *extra);
 static void yb_assign_conn_mgr_prepare_permanent_sticky(bool newval, void *extra);
+static void yb_assign_conn_mgr_listen_permanent_sticky(bool newval, void *extra);
 static bool yb_disable_auto_analyze_check_hook(bool *newval, void **extra, GucSource source);
 static const char *show_tcmalloc_sample_period(void);
 static const char *yb_show_maxconnections(void);
@@ -4438,6 +4439,20 @@ static struct config_bool ConfigureNamesBool[] =
 		&yb_conn_mgr_prepare_permanent_sticky,
 		false,
 		NULL, yb_assign_conn_mgr_prepare_permanent_sticky, NULL
+	},
+
+	{
+		{"yb_conn_mgr_listen_permanent_sticky", PGC_SIGHUP, CUSTOM_OPTIONS,
+			gettext_noop("Keeps a Connection Manager connection that listens on a "
+						 "channel sticky until disconnect instead of unsticking it "
+						 "once it stops listening."),
+			gettext_noop("Set through the ysql_yb_conn_mgr_reversible_stickiness_exclusions "
+						 "gflag."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_conn_mgr_listen_permanent_sticky,
+		false,
+		NULL, yb_assign_conn_mgr_listen_permanent_sticky, NULL
 	},
 
 	{
@@ -18606,6 +18621,13 @@ yb_assign_conn_mgr_prepare_permanent_sticky(bool newval, void *extra)
 {
 	if (newval && YbHasSqlPreparedStatement())
 		yb_ysql_conn_mgr_sticky_prepare = true;
+}
+
+static void
+yb_assign_conn_mgr_listen_permanent_sticky(bool newval, void *extra)
+{
+	if (newval && YbIsListening())
+		yb_ysql_conn_mgr_sticky_listen = true;
 }
 
 static bool
