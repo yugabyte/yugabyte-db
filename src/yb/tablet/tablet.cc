@@ -7072,6 +7072,12 @@ docdb::CompactionHybridTimeConstraints Tablet::CompactionHybridTimeConstraints(
   if (transaction_participant_) {
     auto min_running_ht = transaction_participant_->MinRunningHybridTime();
     VLOG_WITH_PREFIX_AND_FUNC(4) << "min_running_ht: " << min_running_ht;
+    if (!min_running_ht.is_valid()) {
+      // Transactions are not loaded yet, so a committed transaction whose apply is still pending
+      // may be unknown here, and it can write at any hybrid time above its start. Assume the
+      // worst: keep all delete markers and do not repack.
+      min_running_ht = HybridTime::kMin;
+    }
     result.HandleOtherRange(min_running_ht, HybridTime::kMax);
   }
 

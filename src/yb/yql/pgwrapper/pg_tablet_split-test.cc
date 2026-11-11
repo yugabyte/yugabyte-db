@@ -52,6 +52,7 @@
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/transaction_participant.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -92,8 +93,10 @@ DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(intents_flush_max_delay_ms);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_int32(ysql_select_parallelism);
+DECLARE_int64(apply_intents_task_injected_delay_ms);
 DECLARE_int64(db_block_size_bytes);
 DECLARE_uint32(ddl_verification_timeout_multiplier);
 DECLARE_uint64(post_split_compaction_input_size_threshold_bytes);
@@ -2672,6 +2675,107 @@ TEST_F(PgTabletSplitTest, BootstrapStateLoadRaceFlush) {
   }
   LOG(INFO) << "target row k=5001 locally: " << (found ? "YES" : "NO");
   EXPECT_TRUE(found) << "DATA LOSS: target row missing";
+}
+
+// A full compaction that starts before a tablet has loaded its transactions must keep delete
+// markers. Until the load is done the tablet does not know its committed transactions whose apply
+// is still pending, and such a transaction can still write below a delete marker.
+//
+// A split child runs a full compaction as soon as it opens. Here it opens while its transaction
+// load is parked, with a committed transaction that is only partly applied and with newer deletes
+// of rows that transaction has not applied yet.
+TEST_F(PgTabletSplitTest, PostSplitCompactionBeforeTransactionsLoaded) {
+  constexpr int kNumRows = 3000;
+  constexpr int kFirstDeletedKey = 2991;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 1;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT, v INT, PRIMARY KEY (k ASC))"));
+  // Load the rows without a distributed transaction. Bootstrap always replays the APPLYING
+  // operation of a committed transaction, and that replay waits until the transaction load has
+  // passed the transaction's id. With the load parked below, such a replay could wait forever.
+  ASSERT_OK(conn.Execute("SET yb_disable_transactional_writes = true"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t SELECT g, 0 FROM generate_series(1, $0) g", kNumRows));
+  ASSERT_OK(conn.Execute("RESET yb_disable_transactional_writes"));
+  ASSERT_OK(cluster_->FlushTablets());
+  const auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
+
+  // A committed transaction that is applied in slow chunks, so that its apply is still pending
+  // when the tablet splits.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_apply_intents_task_injected_delay_ms) =
+      10000 * kTimeMultiplier;
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("UPDATE t SET v = 1"));
+  const auto pending_txn_id = ASSERT_RESULT(conn.FetchRow<Uuid>(
+      "SELECT yb_get_current_transaction()"));
+  ASSERT_OK(conn.CommitTransaction());
+
+  // Delete rows from the last chunk, which is not applied yet. Single-row deletes are single-shard
+  // writes, so they add no transaction for the children to load.
+  for (int k = kFirstDeletedKey; k <= kNumRows; ++k) {
+    ASSERT_OK(conn.ExecuteFormat("DELETE FROM t WHERE k = $0", k));
+  }
+  ASSERT_OK(cluster_->FlushTablets());
+  // Let the delete markers fall behind the history cutoff.
+  SleepFor(2s * kTimeMultiplier);
+
+  // Park each child's transaction load right after it has loaded the pending transaction. The
+  // child's bootstrap only waits for that transaction, so the child opens and compacts while its
+  // load is not finished.
+  std::atomic<bool> resume_load{false};
+  std::atomic<int> parked_loads{0};
+  SyncPoint::GetInstance()->SetCallBack(
+      "TransactionLoader::Executor::LoadedTransaction",
+      [&](void* arg) {
+        const auto* loaded_id = static_cast<const TransactionId*>(arg);
+        if (loaded_id && loaded_id->GetUuid() == pending_txn_id) {
+          ++parked_loads;
+          while (!resume_load.load()) {
+            std::this_thread::sleep_for(10ms);
+          }
+        }
+      });
+  SyncPoint::GetInstance()->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([&] {
+    resume_load.store(true);
+    SyncPoint::GetInstance()->DisableProcessing();
+    SyncPoint::GetInstance()->ClearAllCallBacks();
+  });
+
+  ASSERT_OK(SplitSingleTablet(table_id));
+  ASSERT_OK(WaitForSplitCompletion(table_id, 2));
+  const auto children = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  ASSERT_EQ(children.size(), 2);
+
+  for (const auto& child : children) {
+    ASSERT_OK(LoggedWaitFor(
+        [&child] { return child->tablet_metadata()->rocksdb_parent_data_compacted(); },
+        60s * kTimeMultiplier, "Post-split compaction of " + child->tablet_id()));
+    // The compaction ran while the load was still parked.
+    const auto tablet = ASSERT_RESULT(child->shared_tablet());
+    ASSERT_FALSE(tablet->transaction_participant()->MinRunningHybridTime().is_valid())
+        << "Child " << child->tablet_id() << " finished loading transactions before the "
+        << "post-split compaction was done";
+  }
+  ASSERT_EQ(parked_loads.load(), 2);
+
+  // Let the loads finish. The pending apply then resumes and writes the remaining rows.
+  resume_load.store(true);
+  for (const auto& child : children) {
+    const auto tablet = ASSERT_RESULT(child->shared_tablet());
+    ASSERT_OK(LoggedWaitFor(
+        [&tablet] {
+          return tablet->transaction_participant()->MinRunningHybridTime() == HybridTime::kMax;
+        },
+        120s * kTimeMultiplier, "Pending apply on " + child->tablet_id()));
+  }
+
+  const auto deleted_rows_visible = ASSERT_RESULT(conn.FetchRow<PGUint64>(Format(
+      "SELECT COUNT(*) FROM t WHERE k >= $0", kFirstDeletedKey)));
+  ASSERT_EQ(deleted_rows_visible, 0)
+      << "The compaction removed delete markers that a pending apply then wrote below";
 }
 
 // Regression tests for #34580: a hot key with many retained versions is one DocKey too large to
