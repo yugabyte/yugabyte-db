@@ -1255,7 +1255,9 @@ spec:
 
 ### Configure encryption at rest
 
-Starting from YugabyteDB Anywhere v2026.1.2, use the KMSConfig CRD to create a [KMS configuration](../../security/create-kms-config/aws-kms/), then set `encryptionAtRest` on the YBUniverse CR to [enable encryption at rest](../../security/enable-encryption-at-rest/).
+Available in v2026.1.2.0 and later.
+
+Use the KMSConfig CRD to create a [KMS configuration](../../security/create-kms-config/aws-kms/), then set `encryptionAtRest` on the YBUniverse CR to [enable encryption at rest](../../security/enable-encryption-at-rest/).
 
 Supported KMS providers are AWS, GCP, Azure (`AZU`), OCI, CipherTrust (`CIPHERTRUST`), and HashiCorp Vault (`HASHICORP`). Put credentials in Kubernetes Secrets and reference those Secrets from the CR; don't put secrets in plaintext. `spec.name` and `spec.provider` are immutable after you create the CR.
 
@@ -1376,7 +1378,7 @@ spec:
 
 ### Edit encryption in transit
 
-Available in YugabyteDB Anywhere v2026.1.3 and later.
+Available in YugabyteDB Anywhere v2026.1.3.0 and later.
 
 You can change [encryption in transit](../../security/enable-encryption-in-transit/) on an existing universe by editing the YBUniverse resource:
 
@@ -1443,8 +1445,6 @@ spec:
 ```
 
 ## Import universe
-
-Available in YugabyteDB Anywhere v2025.2.2 and later.
 
 Use the operator import universe feature to import existing YugabyteDB Anywhere Kubernetes universes that are managed via Helm charts to be managed by the Kubernetes Operator. After import, change storage class or volume count using the Operator CRD fields described in [Full move for Kubernetes universes](../../scale-deployments/kubernetes-full-move/#operator-universes).
 
@@ -1527,6 +1527,4 @@ Importing a universe to the operator creates or adopts the following in the targ
 ## Limitations
 
 - Currently, YugabyteDB Kubernetes Operator does not support software upgrade rollback.
-- [Encryption at rest](../../security/enable-encryption-at-rest/) is supported in v2026.1.2 and later.
-- [Encryption in transit](../../security/enable-encryption-in-transit/) configuration cannot be edited after it is initially configured in versions prior to v2026.1.3.
 - `replicationFactor` cannot be changed after the universe is created. To increase replication factor on a Kubernetes universe that YugabyteDB Anywhere manages directly, refer to [Scale universes](../../scale-deployments/edit-universe/#horizontal-scaling).
