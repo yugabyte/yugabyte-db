@@ -1033,6 +1033,7 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     Map<String, String> rrTags = Map.of("env", "replica");
     String primaryArn = "arn:aws:iam::123456789012:instance-profile/primary";
     String rrArn = "arn:aws:iam::123456789012:instance-profile/replica";
+    String rrAccessKeyCode = "rr-access-key";
     ImageBundleDetails rrImageDetails = new ImageBundleDetails();
     rrImageDetails.setArch(Architecture.aarch64);
     rrImageDetails.setGlobalYbImage("yb-image-global-rr");
@@ -1040,7 +1041,9 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
         ImageBundle.create(
             Provider.getOrBadRequest(providerUuid), "rr-image", rrImageDetails, false);
     // addReadReplicaInDB clones the primary's provider specifications; make each field that
-    // applyClusterPerProviderSpecToProviderSpecification would overwrite differ from the primary.
+    // applyClusterPerProviderSpecToProviderSpecification would overwrite differ from the primary:
+    // access key, image bundle, AWS instance profile, instance tags, nodes specs (tserver volume
+    // count) and networking (load balancer, exposing service).
     Universe.saveDetails(
         universeUuid,
         universe -> {
@@ -1056,9 +1059,12 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
                   .get(0)
                   .userIntent
                   .getProviderSpecification(providerUuid);
+          rrSpec.setAccessKeyCode(rrAccessKeyCode);
           rrSpec.setImageBundleUUID(rrImageBundle.getUuid());
           rrSpec.setInstanceTags(new HashMap<>(rrTags));
           rrSpec.setAwsInstanceProfile(rrArn);
+          rrSpec.getNodesSpecs().getTserverSpecification().getDeviceInfo().numVolumes = 1;
+          rrSpec.setEnableLoadBalancer(false);
           rrSpec.setExposingServiceState(
               UniverseDefinitionTaskParams.ExposingServiceState.UNEXPOSED);
           universe.setUniverseDetails(details);
@@ -1073,6 +1079,16 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     assertThat(
         primarySpecBefore.getExposingServiceState(),
         is(UniverseDefinitionTaskParams.ExposingServiceState.EXPOSED));
+    assertThat(primarySpecBefore.getAccessKeyCode(), is(ApiUtils.DEFAULT_ACCESS_KEY_CODE));
+    assertTrue(primarySpecBefore.isEnableLoadBalancer());
+    int primaryNumVolumes =
+        Universe.getOrBadRequest(universeUuid)
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .getBaseDeviceInfo(providerUuid, ServerType.TSERVER)
+            .numVolumes;
+    assertThat(primaryNumVolumes, is(2));
 
     // With the new UI enabled the node count follows the placement, so grow both together.
     PlacementCloud rrPlacementCloud =
@@ -1091,9 +1107,12 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     assertThat(rrIntent.numNodes, is(4));
     assertThat(rrIntent.providerSpecifications, hasSize(1));
     ProviderSpecification rrSpec = rrIntent.getProviderSpecification(providerUuid);
+    assertThat(rrSpec.getAccessKeyCode(), is(rrAccessKeyCode));
     assertThat(rrSpec.getImageBundleUUID(), is(rrImageBundle.getUuid()));
     assertThat(rrSpec.getInstanceTags(), is(rrTags));
     assertThat(rrSpec.getAwsInstanceProfile(), is(rrArn));
+    assertThat(rrIntent.getBaseDeviceInfo(providerUuid, ServerType.TSERVER).numVolumes, is(1));
+    assertFalse(rrSpec.isEnableLoadBalancer());
     assertThat(
         rrSpec.getExposingServiceState(),
         is(UniverseDefinitionTaskParams.ExposingServiceState.UNEXPOSED));
@@ -1101,9 +1120,18 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     // The primary is untouched.
     ProviderSpecification primarySpec =
         v1EditParams.getPrimaryCluster().userIntent.getProviderSpecification(providerUuid);
+    assertThat(primarySpec.getAccessKeyCode(), is(ApiUtils.DEFAULT_ACCESS_KEY_CODE));
     assertThat(primarySpec.getImageBundleUUID(), is(primarySpecBefore.getImageBundleUUID()));
     assertThat(primarySpec.getInstanceTags(), is(primarySpecBefore.getInstanceTags()));
     assertThat(primarySpec.getAwsInstanceProfile(), is(primaryArn));
+    assertThat(
+        v1EditParams
+            .getPrimaryCluster()
+            .userIntent
+            .getBaseDeviceInfo(providerUuid, ServerType.TSERVER)
+            .numVolumes,
+        is(primaryNumVolumes));
+    assertTrue(primarySpec.isEnableLoadBalancer());
     assertThat(
         primarySpec.getExposingServiceState(),
         is(UniverseDefinitionTaskParams.ExposingServiceState.EXPOSED));

@@ -404,8 +404,8 @@ public class UniverseCRUDHandler {
     if (provider.getCloudCode() != Common.CloudType.aws) {
       return false;
     }
-    if (!currentCluster.userIntent.getAllProviderUUIDs().contains(provider.getUuid()) ||
-     !cluster.userIntent.getAllProviderUUIDs().contains(provider.getUuid())) {
+    if (!currentCluster.userIntent.getAllProviderUUIDs().contains(provider.getUuid())
+        || !cluster.userIntent.getAllProviderUUIDs().contains(provider.getUuid())) {
       return false;
     }
 
