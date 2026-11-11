@@ -1364,19 +1364,37 @@ typedef struct YbMergeScanStreamColInfo
 } YbMergeScanStreamColInfo;
 
 /*
+ * YB: info used by YbIndexPathInfo and YbMergeScanInfo.
+ *
+ * The merge sort columns of a merge scan, in index column order (see
+ * yb_finalize_merge_scan_stream_cols).
+ */
+typedef struct YbSortInfo
+{
+	NodeTag		type;
+	int			numCols;		/* number of sort-key columns */
+	AttrNumber *sortColIdx;		/* their indexes in the target list */
+	Oid		   *sortOperators;	/* OIDs of operators to sort them by */
+	Oid		   *collations;		/* OIDs of collations */
+	bool	   *nullsFirst;		/* NULLS FIRST/LAST directions */
+} YbSortInfo;
+
+/*
  * Info propagated for YugabyteDB, for index scans.
  *
  * 'yb_lock_mechanism' indicates what kind of lock can or must be taken as part
  * of a scan.
  *
- * 'merge_scan_stream_cols' lists the merge stream keys in index column order
- * (see yb_finalize_merge_scan_stream_cols).
+ * 'merge_scan_stream_cols' lists the merge stream keys in index column order,
+ * and 'merge_scan_sort_info' holds the merge sort columns, or is NULL without
+ * stream keys (see yb_finalize_merge_scan_stream_cols).
  */
 typedef struct YbIndexPathInfo
 {
 	int			yb_distinct_prefixlen;
 	YbLockMechanism yb_lock_mechanism;	/* what lock as part of a scan */
 	List	   *merge_scan_stream_cols; /* List of YbMergeScanStreamColInfo */
+	YbSortInfo *merge_scan_sort_info;
 } YbIndexPathInfo;
 
 

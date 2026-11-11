@@ -4758,6 +4758,9 @@ create_indexscan_plan(PlannerInfo *root,
 			yb_merge_scan_info->stream_cols =
 				lappend(yb_merge_scan_info->stream_cols, yb_info);
 		}
+		Assert(best_path->yb_index_path_info.merge_scan_sort_info);
+		yb_merge_scan_info->sort_cols =
+			best_path->yb_index_path_info.merge_scan_sort_info;
 	}
 
 	/* Finally ready to build the plan node */
@@ -4812,36 +4815,6 @@ create_indexscan_plan(PlannerInfo *root,
 			index_scan_plan->yb_merge_scan_info = yb_merge_scan_info;
 
 		scan_plan = (Scan *) index_scan_plan;
-	}
-
-	if (yb_merge_scan_info)
-	{
-		Bitmapset  *yb_stream_col_idxs = NULL;
-		ListCell   *yb_lc;
-		YbSortInfo *yb_sort_info = yb_merge_scan_info->sort_cols =
-			makeNode(YbSortInfo);
-
-		foreach(yb_lc, yb_merge_scan_info->stream_cols)
-		{
-			YbMergeScanStreamColInfo *yb_stream_col_info =
-				lfirst_node(YbMergeScanStreamColInfo, yb_lc);
-
-			yb_stream_col_idxs = bms_add_member(yb_stream_col_idxs,
-												yb_stream_col_info->indexcol);
-		}
-
-		yb_sort_info->type = T_YbSortInfo;
-		yb_get_sort_info_from_pathkeys(indexinfo->indextlist,
-									   best_path->path.pathkeys,
-									   best_path->path.parent->relids,
-									   yb_stream_col_idxs,
-									   &yb_sort_info->numCols,
-									   &yb_sort_info->sortColIdx,
-									   &yb_sort_info->sortOperators,
-									   &yb_sort_info->collations,
-									   &yb_sort_info->nullsFirst);
-		yb_add_merge_gap_sort_cols(indexinfo, best_path->indexscandir,
-								   yb_stream_col_idxs, yb_sort_info);
 	}
 
 	copy_generic_path_info(&scan_plan->plan, &best_path->path);

@@ -29,19 +29,6 @@
 
 
 /*
- * YB: info used by YbMergeScanInfo.
- */
-typedef struct
-{
-	NodeTag		type;
-	int			numCols;		/* number of sort-key columns */
-	AttrNumber *sortColIdx;		/* their indexes in the target list */
-	Oid		   *sortOperators;	/* OIDs of operators to sort them by */
-	Oid		   *collations;		/* OIDs of collations */
-	bool	   *nullsFirst;		/* NULLS FIRST/LAST directions */
-} YbSortInfo;
-
-/*
  * YB: info used by IndexScan and IndexOnlyScan nodes.
  *
  * Holds info used for merge scans.  'stream_cols' lists the merge stream keys
