@@ -264,22 +264,20 @@ public final class LdapBindPasswdHbaFormat {
     if (decodedPassword == null) {
       return "";
     }
-    return switch (style) {
-      case UNQUOTED -> decodedPassword;
-      case ESCAPED_DOUBLED_CSV -> {
-        String body = decodedPassword.replace("\"", "\\\"\\\"");
-        yield "\\\"\\\"" + body + "\\\"\\\"";
-      }
-      case DEEP_ESCAPED_DOUBLED_CSV -> {
-        String body = decodedPassword.replace("\"", "\\\\\"\\\\\"");
-        yield "\\\\\"\\\\\"" + body + "\\\\\"\\\\\"";
-      }
-      case DOUBLED_CSV -> {
-        String body = decodedPassword.replace("\"", "\"\"");
-        yield "\"\"" + body + "\"\"";
-      }
-      case SINGLE_CSV -> "\"" + decodedPassword.replace("\"", "\"\"") + "\"";
-    };
+    switch (style) {
+      case UNQUOTED:
+        return decodedPassword;
+      case ESCAPED_DOUBLED_CSV:
+        return "\\\"\\\"" + decodedPassword.replace("\"", "\\\"\\\"") + "\\\"\\\"";
+      case DEEP_ESCAPED_DOUBLED_CSV:
+        return "\\\\\"\\\\\"" + decodedPassword.replace("\"", "\\\\\"\\\\\"") + "\\\\\"\\\\\"";
+      case DOUBLED_CSV:
+        return "\"\"" + decodedPassword.replace("\"", "\"\"") + "\"\"";
+      case SINGLE_CSV:
+        return "\"" + decodedPassword.replace("\"", "\"\"") + "\"";
+      default:
+        throw new IllegalArgumentException("Unknown quote style " + style);
+    }
   }
 
   /**
