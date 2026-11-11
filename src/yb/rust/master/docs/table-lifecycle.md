@@ -18,11 +18,21 @@ YCQL keyspaces and tables that are not indexes:
 | `AlterTable`, `IsAlterTableDone` | Below. |
 | `DeleteTable`, `IsDeleteTableDone` | Below. Dropping an index on its own, and a table a snapshot schedule covers (which C++ hides rather than deletes), are not served yet. |
 
-YSQL tables that are not colocated, not indexes and in the default tablespace (below). YSQL
-databases, indexes, colocated tables and tablespaces answer `NotSupported`. Roles, permissions and
+YSQL databases that are not colocated, and YSQL tables that are not colocated, not indexes and in
+the default tablespace (below). `AlterNamespace` renames a running namespace. Dropping a YSQL
+database, indexes, colocated tables and tablespaces answer `NotSupported`. Roles, permissions and
 UDTs are `master-ycql`'s.
 
 ## YSQL tables and DDL verification (`ysql.rs`)
+
+A YSQL `CreateNamespace` writes the database PREPARING (`next_normal_pg_oid` from the request, or
+16384 for a copy, as the per-database OID allocator has it) and answers; clients poll
+`IsCreateNamespaceDone`. A task then copies the template's PG catalog tables
+(`ProcessPendingNamespace`): the host builds each new table's row as `CreateYsqlSysTableData`
+does, adds them all to the sys catalog tablet in one `ChangeMetadata` and copies their rows
+(`CopyPgsqlSysTables`), and the leader writes the rows, the sys catalog tablet's table ids and the
+database RUNNING in one mutation, or FAILED. A database left PREPARING by a leader change is not
+resumed yet, and its creating transaction is not verified yet.
 
 A YSQL `CreateTable` names its table id (from the database and relation OIDs); it is unique by id,
 not by name, since names are pg_class's. The host builds the row (`PrepareTableSchema` with the

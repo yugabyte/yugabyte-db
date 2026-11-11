@@ -217,6 +217,31 @@ message YcqlVirtualTableInputPB {
   repeated SysRoleEntryPB roles = 7;
 }
 
+// A table row with its id.
+message TableRowPB {
+  optional bytes id = 1;
+  optional SysTablesEntryPB table = 2;
+}
+
+// CREATE DATABASE's copy of its template's PG catalog tables (MasterHost::HandleOnHost
+// "CopyPgsqlSysTables", CatalogManager::CopyPgsqlSysTables): the host adds the new database's
+// tables to the sys catalog tablet and copies their rows; the Rust leader writes the rows it
+// returns.
+message CopyPgsqlSysTablesRequestPB {
+  optional bytes namespace_id = 1;
+  optional bytes namespace_name = 2;
+  // The template database's PG catalog tables, in table id order.
+  repeated TableRowPB source_tables = 3;
+  optional int64 term = 4;
+  optional TransactionMetadataPB transaction = 5;
+}
+
+message CopyPgsqlSysTablesResponsePB {
+  optional MasterErrorPB error = 1;
+  // The new tables' rows, RUNNING.
+  repeated TableRowPB tables = 2;
+}
+
 service MasterRustPeer {
   rpc PushLocations(PushLocationsRequestPB) returns (PushLocationsResponsePB);
   rpc DumpCatalog(DumpCatalogRequestPB) returns (DumpCatalogResponsePB);

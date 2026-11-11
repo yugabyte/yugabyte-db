@@ -19,7 +19,7 @@ use master_catalog_state::{
 use master_leadership::{FakeLeaderState, LeaderToken, Leadership, Phase};
 use master_sys_catalog::{FakeSysCatalog, RowChange};
 use master_ts_manager::{TsManager, TsManagerOptions};
-use protobuf::{Enum, EnumOrUnknown, Message, MessageField};
+use protobuf::{EnumOrUnknown, Message, MessageField};
 use tokio::time::Instant;
 use yb_host_api::{Status, StatusCode};
 use yb_proto::pb::catalog_entity_info::{
@@ -329,21 +329,34 @@ async fn keyspaces_are_created_listed_and_dropped() {
     assert_eq!(e.code(), Code::NAMESPACE_ALREADY_PRESENT);
     assert_eq!(resp.id(), id);
 
-    // YSQL databases wait for YSQL DDL.
+    // A YSQL database without a template has no tables to copy: PREPARING, then RUNNING.
     req.set_name("db".into());
     req.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
-    let e = h
-        .lifecycle
+    req.set_namespace_id(b"00004000000030008000000000000000".to_vec());
+    h.lifecycle
         .create_namespace(&h.token, Harness::deadline(), &req, &mut resp)
         .await
-        .unwrap_err();
-    assert_eq!(e.status.code().value(), StatusCode::NotSupported as i32);
+        .unwrap();
+    let mut running = false;
+    for _ in 0..100 {
+        let ns = h.snapshot();
+        let ns = ns
+            .get(SysRowEntryType::NAMESPACE, resp.id())
+            .and_then(|n| n.namespace().map(|n| n.state));
+        if ns == Some(sys_namespace_entry_pb::State::RUNNING as i32) {
+            running = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(running);
+    req.clear_namespace_id();
 
     let mut list = ListNamespacesResponsePB::new();
     h.lifecycle
         .list_namespaces(&h.snapshot(), &ListNamespacesRequestPB::new(), &mut list);
-    assert_eq!(list.namespaces.len(), 1);
-    assert_eq!(list.namespaces[0].name(), "ks");
+    assert_eq!(list.namespaces.len(), 2);
+    assert!(list.namespaces.iter().any(|n| n.name() == "ks"));
 
     // Not while it holds a table.
     let (result, _) = h.create_table("ks", "t", Some(1)).await;

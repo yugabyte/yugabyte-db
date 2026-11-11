@@ -69,20 +69,20 @@ use yb_proto::pb::master_cluster::{
     SetPreferredZonesResponsePB,
 };
 use yb_proto::pb::master_ddl::{
-    AcquireObjectLocksGlobalRequestPB, AcquireObjectLocksGlobalResponsePB, AlterTableRequestPB,
-    AlterTableResponsePB, CreateNamespaceRequestPB, CreateNamespaceResponsePB,
-    CreateTableRequestPB, CreateTableResponsePB, DeleteNamespaceRequestPB,
-    DeleteNamespaceResponsePB, DeleteTableRequestPB, DeleteTableResponsePB,
-    GetNamespaceInfoRequestPB, GetNamespaceInfoResponsePB, GetTableSchemaRequestPB,
-    GetTableSchemaResponsePB, IsAlterTableDoneRequestPB, IsAlterTableDoneResponsePB,
-    IsCreateNamespaceDoneRequestPB, IsCreateNamespaceDoneResponsePB, IsCreateTableDoneRequestPB,
-    IsCreateTableDoneResponsePB, IsDeleteNamespaceDoneRequestPB, IsDeleteNamespaceDoneResponsePB,
-    IsDeleteTableDoneRequestPB, IsDeleteTableDoneResponsePB, IsYsqlDdlVerificationDoneRequestPB,
-    IsYsqlDdlVerificationDoneResponsePB, ListNamespacesRequestPB, ListNamespacesResponsePB,
-    ListTablesRequestPB, ListTablesResponsePB, ReleaseObjectLocksGlobalRequestPB,
-    ReleaseObjectLocksGlobalResponsePB, ReportYsqlDdlTxnStatusRequestPB,
-    ReportYsqlDdlTxnStatusResponsePB, WaitForLockersMultipleGlobalRequestPB,
-    WaitForLockersMultipleGlobalResponsePB,
+    AcquireObjectLocksGlobalRequestPB, AcquireObjectLocksGlobalResponsePB, AlterNamespaceRequestPB,
+    AlterNamespaceResponsePB, AlterTableRequestPB, AlterTableResponsePB, CreateNamespaceRequestPB,
+    CreateNamespaceResponsePB, CreateTableRequestPB, CreateTableResponsePB,
+    DeleteNamespaceRequestPB, DeleteNamespaceResponsePB, DeleteTableRequestPB,
+    DeleteTableResponsePB, GetNamespaceInfoRequestPB, GetNamespaceInfoResponsePB,
+    GetTableSchemaRequestPB, GetTableSchemaResponsePB, IsAlterTableDoneRequestPB,
+    IsAlterTableDoneResponsePB, IsCreateNamespaceDoneRequestPB, IsCreateNamespaceDoneResponsePB,
+    IsCreateTableDoneRequestPB, IsCreateTableDoneResponsePB, IsDeleteNamespaceDoneRequestPB,
+    IsDeleteNamespaceDoneResponsePB, IsDeleteTableDoneRequestPB, IsDeleteTableDoneResponsePB,
+    IsYsqlDdlVerificationDoneRequestPB, IsYsqlDdlVerificationDoneResponsePB,
+    ListNamespacesRequestPB, ListNamespacesResponsePB, ListTablesRequestPB, ListTablesResponsePB,
+    ReleaseObjectLocksGlobalRequestPB, ReleaseObjectLocksGlobalResponsePB,
+    ReportYsqlDdlTxnStatusRequestPB, ReportYsqlDdlTxnStatusResponsePB,
+    WaitForLockersMultipleGlobalRequestPB, WaitForLockersMultipleGlobalResponsePB,
 };
 use yb_proto::pb::master_heartbeat::{TSHeartbeatRequestPB, TSHeartbeatResponsePB};
 use yb_proto::pb::master_replication::{
@@ -665,6 +665,14 @@ impl Shared {
                 |req, resp| tables
                     .create_namespace(&token, deadline, &req, &mut resp)
                     .await
+            ),
+            "AlterNamespace" => serve_ddl!(
+                AlterNamespaceRequestPB,
+                AlterNamespaceResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    tables.alter_namespace(&token, deadline, &req).await
+                }
             ),
             "IsCreateNamespaceDone" => serve_ddl!(
                 IsCreateNamespaceDoneRequestPB,

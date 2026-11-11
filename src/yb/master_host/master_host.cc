@@ -42,6 +42,7 @@
 #include "yb/master/master-path-handlers.h"
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_auto_flags_manager.h"
+#include "yb/master/catalog_manager_util.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_defaults.h"
@@ -85,6 +86,7 @@
 #include "yb/dockv/reader_projection.h"
 
 #include "yb/tablet/maintenance_manager.h"
+#include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/write_query.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
@@ -1305,6 +1307,90 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
     return HandleRequest<master::GetAutoFlagsConfigRequestPB, master::GetAutoFlagsConfigResponsePB>(
         request, [this](const auto& req, auto* resp) {
           return auto_flags_manager_->GetAutoFlagsConfig(&req, resp);
+        });
+  }
+  if (name == "CopyPgsqlSysTables") {
+    // CatalogManager::CopyPgsqlSysTables with batching: CreateYsqlSysTableData::InitRequest and
+    // CompleteInit for each table, one ChangeMetadata adding them all, then the rows.
+    return HandleRequest<master::CopyPgsqlSysTablesRequestPB,
+                         master::CopyPgsqlSysTablesResponsePB>(
+        request, [this](const auto& req, auto* resp) -> Status {
+          const auto db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(req.namespace_id()));
+          tablet::ChangeMetadataRequestPB change;
+          change.set_tablet_id(master::kSysCatalogTabletId);
+          std::vector<TableId> source_ids;
+          std::vector<TableId> target_ids;
+          for (const auto& source : req.source_tables()) {
+            const auto& info = source.table();
+            if (info.is_pg_shared_table()) {
+              continue;
+            }
+            const auto table_oid = VERIFY_RESULT(GetPgsqlTableOid(source.id()));
+            const auto table_id = GetPgsqlTableId(db_oid, table_oid);
+            master::CreateTableRequestPB create;
+            create.set_name(info.name());
+            create.mutable_namespace_()->set_id(req.namespace_id());
+            create.set_table_type(PGSQL_TABLE_TYPE);
+            *create.mutable_schema() = info.schema();
+            create.set_is_pg_catalog_table(true);
+            create.set_table_id(table_id);
+            if (master::IsIndex(info)) {
+              const auto indexed_table_oid =
+                  VERIFY_RESULT(GetPgsqlTableOid(master::GetIndexedTableId(info)));
+              const auto indexed_table_id = GetPgsqlTableId(db_oid, indexed_table_oid);
+              if (info.has_index_info()) {
+                *create.mutable_index_info() = info.index_info();
+                create.mutable_index_info()->set_indexed_table_id(indexed_table_id);
+              }
+              create.set_indexed_table_id(indexed_table_id);
+              create.set_is_local_index(
+                  info.has_index_info() ? info.index_info().is_local() : info.is_local_index());
+              create.set_is_unique_index(
+                  info.has_index_info() ? info.index_info().is_unique()
+                                        : info.is_unique_index());
+            }
+            if (req.has_transaction()) {
+              *create.mutable_transaction() = req.transaction();
+            }
+            Schema schema;
+            RETURN_NOT_OK(SchemaFromPB(create.schema(), &schema));
+            RETURN_NOT_OK(master::ValidateCreateTableSchema(schema));
+            if (!schema.has_column_ids()) {
+              schema.InitColumnIdsByDefault();
+            }
+            schema.mutable_table_properties()->set_is_ysql_catalog_table(true);
+            dockv::PartitionSchema partition_schema;
+            std::vector<dockv::Partition> partitions;
+            RETURN_NOT_OK(partition_schema.CreatePartitions(1, &partitions));
+
+            auto* row = resp->add_tables();
+            row->set_id(table_id);
+            auto* table = row->mutable_table();
+            master::FillNewTableEntry(
+                create, schema, partition_schema, req.namespace_id(), req.namespace_name(),
+                /* colocated= */ false, table);
+            table->set_state(master::SysTablesEntryPB::RUNNING);
+            if (req.has_transaction()) {
+              *table->mutable_transaction() = req.transaction();
+            }
+            if (req.transaction().has_using_table_locks() &&
+                req.transaction().using_table_locks()) {
+              change.set_only_abort_txns_not_using_table_locks(true);
+            }
+            master::CatalogManagerUtil::FillTableInfoPB(
+                table_id, create.name(), PGSQL_TABLE_TYPE, schema, /* schema_version= */ 0,
+                partition_schema, change.add_add_multiple_tables());
+            source_ids.push_back(source.id());
+            target_ids.push_back(table_id);
+          }
+          if (target_ids.empty()) {
+            return Status::OK();
+          }
+          auto peer = sys_catalog_->tablet_peer();
+          SCHECK(peer, IllegalState, "The sys catalog tablet is not open");
+          RETURN_NOT_OK(
+              tablet::SyncReplicateChangeMetadataOperation(&change, peer.get(), req.term()));
+          return sys_catalog_->CopyPgsqlTables(source_ids, target_ids, req.term());
         });
   }
   if (name == "GetYsqlCatalogConfig") {

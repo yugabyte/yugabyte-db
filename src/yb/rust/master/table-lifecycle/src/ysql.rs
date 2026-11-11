@@ -579,3 +579,327 @@ fn tables_of_txn(snapshot: &CatalogSnapshot, txn_id: &[u8]) -> Vec<Vec<u8>> {
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
+
+/// `kPgFirstNormalObjectId`.
+const PG_FIRST_NORMAL_OID: u32 = 16384;
+
+/// `IsPgsqlId`: a 32-digit id whose UUID version is 3, which YSQL ids repurpose.
+pub(crate) fn is_pgsql_id(id: &[u8]) -> bool {
+    id.len() == 32
+        && std::str::from_utf8(&id[12..14])
+            .ok()
+            .and_then(|v| u8::from_str_radix(v, 16).ok())
+            .is_some_and(|v| v >> 4 == 3)
+}
+
+fn pg_oid(id: &[u8], offset: usize) -> Option<u32> {
+    if !is_pgsql_id(id) {
+        return None;
+    }
+    u32::from_str_radix(std::str::from_utf8(&id[offset..offset + 8]).ok()?, 16).ok()
+}
+
+/// `GetPgsqlDatabaseOid` of a namespace or table id.
+pub(crate) fn pg_database_oid(id: &[u8]) -> Option<u32> {
+    pg_oid(id, 0)
+}
+
+/// `GetPgsqlTableOid`.
+pub(crate) fn pg_table_oid(id: &[u8]) -> Option<u32> {
+    pg_oid(id, 24)
+}
+
+/// `IsPriorVersionYsqlCatalogTable`: a catalog table of the previous PG major version.
+fn is_prior_version_catalog_table(id: &[u8]) -> bool {
+    pg_table_oid(id).is_some_and(|oid| oid < PG_FIRST_NORMAL_OID)
+        && std::str::from_utf8(&id[18..20])
+            .ok()
+            .and_then(|v| u8::from_str_radix(v, 16).ok())
+            != Some(1)
+}
+
+impl TableLifecycle {
+    /// `CreateNamespace` of a YSQL database: the row is written PREPARING, the template's PG
+    /// catalog tables are copied (`ProcessPendingNamespace`), and then it is RUNNING, or FAILED.
+    /// Clients poll `IsCreateNamespaceDone`.
+    pub(crate) async fn create_ysql_namespace(
+        self: &std::sync::Arc<Self>,
+        token: &LeaderToken,
+        deadline: Instant,
+        req: &yb_proto::pb::master_ddl::CreateNamespaceRequestPB,
+        resp: &mut yb_proto::pb::master_ddl::CreateNamespaceResponsePB,
+    ) -> Result<(), MasterErrorPB> {
+        let _names = self.names.lock().await;
+        let pgsql = YQLDatabase::YQL_DATABASE_PGSQL;
+        let source_oid = if req.source_namespace_id().is_empty() {
+            None
+        } else {
+            Some(pg_database_oid(req.source_namespace_id()).ok_or_else(|| {
+                error(
+                    Code::NAMESPACE_NOT_FOUND,
+                    StatusCode::InvalidArgument,
+                    format!(
+                        "Invalid PostgreSQL namespace id: {}",
+                        String::from_utf8_lossy(req.source_namespace_id())
+                    ),
+                )
+            })?)
+        };
+        let created = self
+            .write(token, deadline, |snapshot| {
+                let existing = |id: &[u8], message: String| {
+                    let e = error(
+                        Code::NAMESPACE_ALREADY_PRESENT,
+                        StatusCode::AlreadyPresent,
+                        message,
+                    );
+                    Ok((Mutation::new(), Err((id.to_vec(), e))))
+                };
+                if !req.namespace_id().is_empty() {
+                    if let Some(found) = snapshot
+                        .get(SysRowEntryType::NAMESPACE, req.namespace_id())
+                        .filter(|e| {
+                            e.namespace().is_some_and(|n| {
+                                n.state != sys_namespace_entry_pb::State::DELETED as i32
+                            })
+                        })
+                    {
+                        return existing(
+                            &found.key.id,
+                            format!(
+                                "Keyspace with id '{}' already exists",
+                                String::from_utf8_lossy(req.namespace_id())
+                            ),
+                        );
+                    }
+                }
+                if let Some(found) =
+                    crate::lookup::find_namespace_by_name(snapshot, req.name(), pgsql as i32)
+                {
+                    return existing(
+                        &found.key.id,
+                        format!("Keyspace '{}' already exists", req.name()),
+                    );
+                }
+                let next_oid = match source_oid {
+                    None => req.next_pg_oid(),
+                    Some(_) => {
+                        if snapshot
+                            .get(SysRowEntryType::NAMESPACE, req.source_namespace_id())
+                            .is_none()
+                        {
+                            return Err(error(
+                                Code::NAMESPACE_NOT_FOUND,
+                                StatusCode::NotFound,
+                                format!(
+                                    "Source keyspace not found: {}",
+                                    String::from_utf8_lossy(req.source_namespace_id())
+                                ),
+                            ));
+                        }
+                        // ysql_enable_pg_per_database_oid_allocator.
+                        PG_FIRST_NORMAL_OID
+                    }
+                };
+                let id = if req.namespace_id().is_empty() {
+                    crate::namespaces::unused_id(snapshot, SysRowEntryType::NAMESPACE)
+                } else {
+                    req.namespace_id().to_vec()
+                };
+                let previous = snapshot
+                    .get(SysRowEntryType::NAMESPACE, &id)
+                    .and_then(|e| e.parse::<SysNamespaceEntryPB>().ok());
+                let mut ns = SysNamespaceEntryPB::new();
+                ns.set_name(req.name().as_bytes().to_vec());
+                ns.set_database_type(pgsql);
+                ns.set_colocated(req.colocated());
+                ns.set_state(sys_namespace_entry_pb::State::PREPARING);
+                ns.set_next_normal_pg_oid(
+                    next_oid.max(previous.as_ref().map_or(0, |p| p.next_normal_pg_oid())),
+                );
+                if req.transaction.is_some() {
+                    ns.transaction = req.transaction.clone();
+                }
+                let mutation = match snapshot.get(SysRowEntryType::NAMESPACE, &id) {
+                    Some(old) => Mutation::new().read(old),
+                    None => Mutation::new().read_absent(SysRowEntryType::NAMESPACE, &id),
+                }
+                .upsert_message(SysRowEntryType::NAMESPACE, &id, &ns)
+                .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+                Ok((mutation, Ok(id)))
+            })
+            .await?;
+        let id = match created {
+            Ok(id) => id,
+            Err((id, e)) => {
+                resp.set_id(id);
+                return Err(e);
+            }
+        };
+        resp.set_id(id.clone());
+        if req.colocated() {
+            tracing::warn!(
+                "Database {} is colocated; its parent table is not created by a Rust master yet",
+                req.name()
+            );
+        }
+        // The template's PG catalog tables, as the catalog has them now.
+        let mut sources: Vec<(Vec<u8>, SysTablesEntryPB)> = Vec::new();
+        if let Some(source_oid) = source_oid {
+            for table in self.catalog.snapshot().iter(SysRowEntryType::TABLE) {
+                let table_id = &table.key.id;
+                if !is_pgsql_id(table_id)
+                    || pg_database_oid(table_id) != Some(source_oid)
+                    || is_prior_version_catalog_table(table_id)
+                    || table.table().is_some_and(|t| {
+                        t.state == TableState::DELETED as i32
+                            || t.state == TableState::DELETING as i32
+                    })
+                {
+                    continue;
+                }
+                sources.push((table_id.to_vec(), table.parse().map_err(corrupt)?));
+            }
+            sources.sort_by(|a, b| a.0.cmp(&b.0));
+        }
+        let lifecycle = self.clone();
+        let token = *token;
+        let name = req.name().to_string();
+        let transaction = req.transaction.clone();
+        tokio::spawn(async move {
+            if let Err(e) = lifecycle
+                .finish_ysql_namespace(&token, &id, &name, sources, transaction)
+                .await
+            {
+                tracing::warn!(
+                    "Creating YSQL database {name} failed: {}",
+                    e.status.message()
+                );
+                let _ = lifecycle.set_namespace_state(&token, &id, false).await;
+            }
+        });
+        Ok(())
+    }
+
+    /// `ProcessPendingNamespace`: copies the PG catalog tables, then writes their rows, the sys
+    /// catalog tablet's table ids and the namespace RUNNING in one mutation.
+    async fn finish_ysql_namespace(
+        &self,
+        token: &LeaderToken,
+        id: &[u8],
+        name: &str,
+        sources: Vec<(Vec<u8>, SysTablesEntryPB)>,
+        transaction: protobuf::MessageField<yb_proto::pb::common::TransactionMetadataPB>,
+    ) -> Result<(), MasterErrorPB> {
+        use protobuf::Message;
+        use yb_proto::pb::master_rust_peer::{
+            CopyPgsqlSysTablesRequestPB, CopyPgsqlSysTablesResponsePB, TableRowPB,
+        };
+        if sources.is_empty() {
+            return self.set_namespace_state(token, id, true).await;
+        }
+        let mut copy = CopyPgsqlSysTablesRequestPB::new();
+        copy.set_namespace_id(id.to_vec());
+        copy.set_namespace_name(name.as_bytes().to_vec());
+        copy.set_term(token.term());
+        copy.transaction = transaction;
+        for (table_id, table) in sources {
+            let mut row = TableRowPB::new();
+            row.set_id(table_id);
+            row.table = Some(table).into();
+            copy.source_tables.push(row);
+        }
+        let bytes = copy.write_to_bytes().map_err(corrupt)?;
+        let host = self.host.clone();
+        tracing::info!(
+            "Copying {} PG catalog tables for database {name}",
+            copy.source_tables.len()
+        );
+        let response = tokio::task::spawn_blocking(move || host.call("CopyPgsqlSysTables", &bytes))
+            .await
+            .map_err(corrupt)?
+            .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+        let response =
+            CopyPgsqlSysTablesResponsePB::parse_from_bytes(&response).map_err(corrupt)?;
+        if let Some(e) = response.error.into_option() {
+            return Err(e);
+        }
+        let deadline = Instant::now() + std::time::Duration::from_secs(60);
+        self.write(token, deadline, |snapshot| {
+            let namespace = snapshot
+                .get(SysRowEntryType::NAMESPACE, id)
+                .ok_or_else(|| corrupt("The new database's row is gone"))?;
+            let mut ns: SysNamespaceEntryPB = namespace.parse().map_err(corrupt)?;
+            if ns.state() != sys_namespace_entry_pb::State::PREPARING {
+                return Err(corrupt(format!(
+                    "Bad keyspace state ({:?}), abandoning creation work",
+                    ns.state()
+                )));
+            }
+            ns.set_state(sys_namespace_entry_pb::State::RUNNING);
+            let mut mutation = Mutation::new()
+                .read(namespace)
+                .upsert_message(SysRowEntryType::NAMESPACE, id, &ns)
+                .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+            let sys_tablet = snapshot
+                .get(SysRowEntryType::TABLET, SYS_CATALOG_TABLET_ID)
+                .ok_or_else(|| corrupt("No sys catalog tablet row"))?;
+            let mut tablet: yb_proto::pb::catalog_entity_info::SysTabletsEntryPB =
+                sys_tablet.parse().map_err(corrupt)?;
+            for row in &response.tables {
+                mutation = match snapshot.get(SysRowEntryType::TABLE, row.id()) {
+                    Some(old) => mutation.read(old),
+                    None => mutation.read_absent(SysRowEntryType::TABLE, row.id()),
+                }
+                .upsert_message(SysRowEntryType::TABLE, row.id(), row.table.get_or_default())
+                .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+                if !tablet.hosted_tables_mapped_by_parent_id()
+                    && !tablet.table_ids.iter().any(|t| t.as_slice() == row.id())
+                {
+                    tablet.table_ids.push(row.id().to_vec());
+                }
+            }
+            mutation = mutation
+                .read(sys_tablet)
+                .upsert_message(SysRowEntryType::TABLET, SYS_CATALOG_TABLET_ID, &tablet)
+                .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+            Ok((mutation, ()))
+        })
+        .await?;
+        tracing::info!("Activated YSQL database {name}");
+        Ok(())
+    }
+
+    /// Marks a PREPARING namespace RUNNING or FAILED.
+    async fn set_namespace_state(
+        &self,
+        token: &LeaderToken,
+        id: &[u8],
+        running: bool,
+    ) -> Result<(), MasterErrorPB> {
+        let deadline = Instant::now() + std::time::Duration::from_secs(60);
+        self.write(token, deadline, |snapshot| {
+            let Some(namespace) = snapshot.get(SysRowEntryType::NAMESPACE, id) else {
+                return Ok((Mutation::new(), ()));
+            };
+            let mut ns: SysNamespaceEntryPB = namespace.parse().map_err(corrupt)?;
+            if ns.state() != sys_namespace_entry_pb::State::PREPARING {
+                return Ok((Mutation::new(), ()));
+            }
+            ns.set_state(if running {
+                sys_namespace_entry_pb::State::RUNNING
+            } else {
+                sys_namespace_entry_pb::State::FAILED
+            });
+            let mutation = Mutation::new()
+                .read(namespace)
+                .upsert_message(SysRowEntryType::NAMESPACE, id, &ns)
+                .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+            Ok((mutation, ()))
+        })
+        .await
+    }
+}
+
+/// `kSysCatalogTabletId`.
+const SYS_CATALOG_TABLET_ID: &[u8] = b"00000000000000000000000000000000";

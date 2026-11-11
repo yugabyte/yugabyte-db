@@ -13,6 +13,8 @@
 //! YCQL keyspaces: `CreateNamespace`, `DeleteNamespace` and their `Is*Done`, `ListNamespaces`,
 //! `GetNamespaceInfo`. YSQL databases are refused until YSQL DDL is served.
 
+use std::sync::Arc;
+
 use master_catalog_state::{CatalogSnapshot, Mutation};
 use master_leadership::LeaderToken;
 use protobuf::{Enum, EnumOrUnknown};
@@ -25,10 +27,11 @@ use yb_proto::pb::catalog_entity_info::{
 use yb_proto::pb::common_types::YQLDatabase;
 use yb_proto::pb::master_client::{ReservePgsqlOidsRequestPB, ReservePgsqlOidsResponsePB};
 use yb_proto::pb::master_ddl::{
-    CreateNamespaceRequestPB, CreateNamespaceResponsePB, DeleteNamespaceRequestPB,
-    GetNamespaceInfoRequestPB, GetNamespaceInfoResponsePB, IsCreateNamespaceDoneRequestPB,
-    IsCreateNamespaceDoneResponsePB, IsDeleteNamespaceDoneRequestPB,
-    IsDeleteNamespaceDoneResponsePB, ListNamespacesRequestPB, ListNamespacesResponsePB,
+    AlterNamespaceRequestPB, CreateNamespaceRequestPB, CreateNamespaceResponsePB,
+    DeleteNamespaceRequestPB, GetNamespaceInfoRequestPB, GetNamespaceInfoResponsePB,
+    IsCreateNamespaceDoneRequestPB, IsCreateNamespaceDoneResponsePB,
+    IsDeleteNamespaceDoneRequestPB, IsDeleteNamespaceDoneResponsePB, ListNamespacesRequestPB,
+    ListNamespacesResponsePB,
 };
 use yb_proto::pb::master_types::{
     master_error_pb::Code, MasterErrorPB, NamespaceIdentifierPB, SysRowEntryType,
@@ -66,7 +69,7 @@ impl TableLifecycle {
     /// `CreateNamespace` for a YCQL keyspace. C++ writes the row PREPARING and then RUNNING; for a
     /// keyspace nothing happens in between, so one write of the RUNNING row has the same effect.
     pub async fn create_namespace(
-        &self,
+        self: &Arc<Self>,
         token: &LeaderToken,
         deadline: Instant,
         req: &CreateNamespaceRequestPB,
@@ -80,6 +83,9 @@ impl TableLifecycle {
         } else {
             YQLDatabase::YQL_DATABASE_CQL
         };
+        if db_type == YQLDatabase::YQL_DATABASE_PGSQL {
+            return self.create_ysql_namespace(token, deadline, req, resp).await;
+        }
         if db_type != YQLDatabase::YQL_DATABASE_CQL {
             return Err(unsupported_database(db_type));
         }
@@ -480,6 +486,69 @@ impl TableLifecycle {
 const PG_UPPER_BOUND_NORMAL_OID: u32 = 2_199_999_999;
 const PG_FIRST_SECONDARY_SPACE_OID: u32 = PG_UPPER_BOUND_NORMAL_OID + 1;
 const PG_UPPER_BOUND_SECONDARY_SPACE_OID: u32 = 0xffff_ffff;
+
+impl TableLifecycle {
+    /// `AlterNamespace`: renames a running namespace.
+    pub async fn alter_namespace(
+        &self,
+        token: &LeaderToken,
+        deadline: Instant,
+        req: &AlterNamespaceRequestPB,
+    ) -> Result<(), MasterErrorPB> {
+        let _names = self.names.lock().await;
+        self.write(token, deadline, |snapshot| {
+            let namespace = find_namespace(snapshot, &req.namespace)?;
+            let mut pb: SysNamespaceEntryPB = namespace
+                .parse()
+                .map_err(|e| error(Code::UNKNOWN_ERROR, StatusCode::Corruption, e.to_string()))?;
+            if req.namespace.has_database_type()
+                && pb.database_type() != req.namespace.database_type()
+            {
+                return Err(error(
+                    Code::NAMESPACE_NOT_FOUND,
+                    StatusCode::NotFound,
+                    format!("Database not found: {}", String::from_utf8_lossy(pb.name())),
+                ));
+            }
+            if pb.state() != State::RUNNING {
+                return Err(error(
+                    match pb.state() {
+                        State::PREPARING | State::DELETING => Code::IN_TRANSITION_CAN_RETRY,
+                        _ => Code::INTERNAL_ERROR,
+                    },
+                    StatusCode::TryAgain,
+                    format!("Namespace not running.  State = {:?}", pb.state()),
+                ));
+            }
+            if !req.has_new_name() || req.new_name().as_bytes() == pb.name() {
+                return Ok((Mutation::new(), ()));
+            }
+            if req.namespace.has_database_type() {
+                if let Some(other) = find_namespace_by_name(
+                    snapshot,
+                    req.new_name(),
+                    req.namespace.database_type() as i32,
+                ) {
+                    return Err(error(
+                        Code::OBJECT_ALREADY_PRESENT,
+                        StatusCode::AlreadyPresent,
+                        format!(
+                            "Keyspace '{}' already exists",
+                            other.namespace().map_or("", |n| n.name.as_str())
+                        ),
+                    ));
+                }
+            }
+            pb.set_name(req.new_name().as_bytes().to_vec());
+            let mutation = Mutation::new()
+                .read(&namespace)
+                .upsert_message(SysRowEntryType::NAMESPACE, &namespace.key.id, &pb)
+                .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+            Ok((mutation, ()))
+        })
+        .await
+    }
+}
 
 /// A `NamespaceIdentifierPB` with id, name and type.
 pub(crate) fn identifier(id: &[u8], name: &str, database_type: i32) -> NamespaceIdentifierPB {
