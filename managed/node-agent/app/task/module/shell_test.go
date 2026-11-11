@@ -5,10 +5,12 @@ package module
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"node-agent/util"
 	"os"
 	"os/exec"
 	"os/user"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -131,6 +133,48 @@ func TestRedactOutput(t *testing.T) {
 		"ldapbindpasswd=REDACTED\r\n--placement_cloud=gcp\n"
 	if output != expected {
 		t.Fatalf("Expected %q, got %q", expected, output)
+	}
+}
+
+func TestRedactOutputMatchesRegexp(t *testing.T) {
+	reference := regexp.MustCompile(`((?:ycql_ldap_bind_passwd|ldapbindpasswd)\s*=)[^\r\n]*`)
+	tokens := []string{
+		"ldapbindpasswd", "ycql_ldap_bind_passwd", "passwd", "ldapbind", "ycql_ldap_bind_",
+		"LDAPBINDPASSWD", "=", " ", "\t", "\f", "\n", "\r", "\r\n", `"`, ",", "x", "--",
+	}
+	rnd := rand.New(rand.NewSource(1))
+	for i := 0; i < 20000; i++ {
+		var sb strings.Builder
+		for n := rnd.Intn(30); n > 0; n-- {
+			sb.WriteString(tokens[rnd.Intn(len(tokens))])
+		}
+		input := sb.String()
+		expected := reference.ReplaceAllString(input, "${1}REDACTED")
+		if output := RedactOutput(input); output != expected {
+			t.Fatalf("Input %q: expected %q, got %q", input, expected, output)
+		}
+	}
+}
+
+func BenchmarkRedactOutput(b *testing.B) {
+	inputs := map[string]string{
+		"no_ldap_options": strings.Repeat(
+			"drwxr-xr-x 2 yugabyte yugabyte 4096 data-000123.sst\n",
+			20000,
+		),
+		"secret_every_line": strings.Repeat(
+			"--ycql_ldap_bind_passwd=dummy\n"+
+				"--ysql_hba_conf_csv=\"host all all 0/0 ldap ldapbindpasswd=dummy\"\n",
+			10000,
+		),
+	}
+	for name, input := range inputs {
+		b.Run(name, func(b *testing.B) {
+			b.SetBytes(int64(len(input)))
+			for i := 0; i < b.N; i++ {
+				RedactOutput(input)
+			}
+		})
 	}
 }
 

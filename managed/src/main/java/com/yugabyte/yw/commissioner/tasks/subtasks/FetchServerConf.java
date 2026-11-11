@@ -61,10 +61,12 @@ public class FetchServerConf extends NodeTaskBase {
             .executeCommand(
                 nodeAgent, ImmutableList.of("bash", "-c", String.format("cat %s", confPath)))
             .processErrors();
-    log.debug(
-        "Got server conf file from node {}: {}",
-        taskParams().ip,
-        RedactingService.redactSensitiveInfoInString(response.message));
+    if (log.isDebugEnabled()) {
+      log.debug(
+          "Got server conf file from node {}: {}",
+          taskParams().ip,
+          RedactingService.redactSensitiveInfoInString(response.message));
+    }
     ImmutableMap.Builder<String, String> mapBuilder = ImmutableMap.builder();
     try (BufferedReader reader = new BufferedReader(new StringReader(response.message))) {
       String line;

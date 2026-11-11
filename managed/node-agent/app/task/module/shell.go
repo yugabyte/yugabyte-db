@@ -10,7 +10,6 @@ import (
 	"node-agent/util"
 	"os"
 	"os/exec"
-	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -31,10 +30,6 @@ var (
 		"api_token": true,
 		"password":  true,
 	}
-	// An HBA ldapbindpasswd value can be quoted and contain spaces or commas, so the rest of the
-	// line is redacted.
-	redactOutputPattern = regexp.MustCompile(
-		`(?i)((?:ycql_ldap_bind_passwd|ldapbindpasswd)\s*=)[^\r\n]*`)
 	userVariables = []string{"LOGNAME", "USER", "LNAME", "USERNAME"}
 	// Max wait time after SIGTERM before SIGKILL.
 	processGroupKillGracePeriod = 3 * time.Second
@@ -85,9 +80,50 @@ func (cmdInfo *CommandInfo) RedactCommandArgs() []string {
 	return redacted
 }
 
-// RedactOutput redacts LDAP bind passwords in command output such as a server.conf.
+// RedactOutput redacts LDAP bind passwords in command output such as a server.conf. An HBA
+// ldapbindpasswd value can be quoted and contain spaces or commas, so everything after the
+// option's '=' up to the end of the line is redacted. It runs on every command's output when
+// debug logging is on, so it scans with strings.Index instead of a regexp, which is ~1000x slower
+// on output that has no LDAP options.
 func RedactOutput(output string) string {
-	return redactOutputPattern.ReplaceAllString(output, "${1}REDACTED")
+	var sb strings.Builder
+	// output[:copied] is already in sb.
+	copied := 0
+	for pos := 0; ; {
+		i := strings.Index(output[pos:], "passwd")
+		if i < 0 {
+			break
+		}
+		nameEnd := pos + i + len("passwd")
+		pos = nameEnd
+		if !strings.HasSuffix(output[:nameEnd], "ldapbindpasswd") &&
+			!strings.HasSuffix(output[:nameEnd], "ycql_ldap_bind_passwd") {
+			continue
+		}
+		eq := nameEnd
+		for eq < len(output) && strings.IndexByte(" \t\n\f\r", output[eq]) >= 0 {
+			eq++
+		}
+		if eq == len(output) || output[eq] != '=' {
+			continue
+		}
+		valueEnd := len(output)
+		if j := strings.IndexAny(output[eq+1:], "\r\n"); j >= 0 {
+			valueEnd = eq + 1 + j
+		}
+		if sb.Len() == 0 {
+			sb.Grow(len(output))
+		}
+		sb.WriteString(output[copied : eq+1])
+		sb.WriteString("REDACTED")
+		copied = valueEnd
+		pos = valueEnd
+	}
+	if sb.Len() == 0 {
+		return output
+	}
+	sb.WriteString(output[copied:])
+	return sb.String()
 }
 
 // RunCmd runs the command in the command info.
