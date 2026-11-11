@@ -1052,7 +1052,7 @@ dependencyOverrides += "org.bouncycastle" % "bc-fips" % bouncyCastleFipsVersion
 dependencyOverrides += "org.bouncycastle" % "bcutil-fips" % bouncyCastleUtilFipsVersion
 
 libraryDependencies += "org.yb" % "yb-client" % "0.8.108.2-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.3-b22"
+libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.3-b23"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
 libraryDependencies ++= Seq(
