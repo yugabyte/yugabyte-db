@@ -15,6 +15,7 @@
 #include "yb/common/ddl_mode-test-util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/test_thread_holder.h"
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
@@ -1863,6 +1864,8 @@ TEST_F_EX(PgAshTest, WritePipeliningWaitAttributedToStatement, PgAshWritePipelin
                         << "instrumented.";
 }
 
+YB_STRONGLY_TYPED_BOOL(InTxnBlock);
+
 class PgAshObjectLockTest : public PgAshSingleNode {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
@@ -1876,28 +1879,46 @@ class PgAshObjectLockTest : public PgAshSingleNode {
           "--ysql_yb_enable_invalidation_messages=true",
           // Refresh lock waiters several times during the test. A refresh re-runs the local lock
           // acquire on a different thread, and re-sends the global lock request to the master.
-          "--refresh_waiter_timeout_ms=500",
+          Format("--refresh_waiter_timeout_ms=$0", ToMilliseconds(kRefreshWaiterTimeout)),
       });
     }
   }
 
  protected:
+  static constexpr auto kRefreshWaiterTimeout = 500ms;
+
   // Runs blocked_stmt on a new connection while a transaction that ran blocker_stmt holds a
-  // conflicting object lock, and returns the query id of blocked_stmt.
+  // conflicting object lock. Releases the lock once ASH has sampled each of the TServer
+  // wait_events and the YSQL wait on AcquireObjectLock, and returns the query id of blocked_stmt.
   Result<int64_t> RunBlockedStatement(
-      const std::string& blocker_stmt, const std::string& blocked_stmt) {
+      const std::string& blocker_stmt, const std::string& blocked_stmt,
+      const std::vector<std::string>& wait_events) {
     RETURN_NOT_OK(conn_->Execute("CREATE TABLE t (k INT)"));
     auto blocker = VERIFY_RESULT(Connect());
     RETURN_NOT_OK(blocker.Execute("BEGIN"));
-    RETURN_NOT_OK(RunStatement(blocker, blocker_stmt, /* in_txn_block= */ true));
+    RETURN_NOT_OK(RunStatement(blocker, blocker_stmt, InTxnBlock::kTrue));
 
     TestThreadHolder thread_holder;
     thread_holder.AddThreadFunctor([this, &blocked_stmt] {
       auto conn = ASSERT_RESULT(Connect());
-      ASSERT_OK(RunStatement(conn, blocked_stmt, /* in_txn_block= */ false));
+      ASSERT_OK(RunStatement(conn, blocked_stmt, InTxnBlock::kFalse));
     });
-    // Let ASH sample the lock wait many times.
-    SleepFor(3s * kTimeMultiplier);
+    RETURN_NOT_OK(WaitFor([this, &wait_events]() -> Result<bool> {
+      for (const auto& wait_event : wait_events) {
+        if (VERIFY_RESULT(conn_->FetchRow<int64_t>(Format(
+                "SELECT COUNT(*) FROM yb_active_session_history "
+                "WHERE wait_event_component = 'TServer' AND wait_event = '$0'",
+                wait_event))) == 0) {
+          return false;
+        }
+      }
+      return VERIFY_RESULT(conn_->FetchRow<int64_t>(
+          "SELECT COUNT(*) FROM yb_active_session_history WHERE wait_event_component = 'YSQL' "
+          "AND wait_event = 'WaitingOnTServer' AND wait_event_aux = 'AcquireObjectLock'")) > 0;
+    }, 30s * kTimeMultiplier, "Wait for ASH to sample the object lock wait"));
+    // Not synchronization: keep the lock held across several waiter refreshes, so that the test
+    // covers the resumed waiter and the global lock request re-sent to the master.
+    SleepFor(3 * kRefreshWaiterTimeout);
     RETURN_NOT_OK(blocker.CommitTransaction());
     thread_holder.JoinAll();
 
@@ -1911,7 +1932,7 @@ class PgAshObjectLockTest : public PgAshSingleNode {
     return query_id;
   }
 
-  static Status RunStatement(PGConn& conn, const std::string& stmt, bool in_txn_block) {
+  static Status RunStatement(PGConn& conn, const std::string& stmt, InTxnBlock in_txn_block) {
     if (stmt.starts_with("SELECT")) {
       return ResultToStatus(conn.Fetch(stmt));
     }
@@ -1951,13 +1972,14 @@ class PgAshObjectLockTest : public PgAshSingleNode {
 };
 
 // A local (ACCESS SHARE) lock waits in the tserver's object lock wait queue behind a granted
-// ACCESS EXCLUSIVE lock. Before #36622, this showed up only as OnCpu_Active in YSQL, and
-// OnCpu_Passive in the tserver.
+// ACCESS EXCLUSIVE lock. Before #36622, this showed up only as OnCpu_Active in YSQL, with no
+// sample of the wait in the tserver.
 // Uses LOCK TABLE rather than a DML: a DML takes its relation locks during parse analysis, before
 // YSQL computes the query id, so its lock wait is attributed to kQueryIdForUncomputedQueryId.
 TEST_F(PgAshObjectLockTest, LocalLockWait) {
   const auto query_id = ASSERT_RESULT(RunBlockedStatement(
-      "LOCK TABLE t IN ACCESS EXCLUSIVE MODE", "LOCK TABLE t IN ACCESS SHARE MODE"));
+      "LOCK TABLE t IN ACCESS EXCLUSIVE MODE", "LOCK TABLE t IN ACCESS SHARE MODE",
+      {"ObjectLock_WaitInQueue"}));
   ASSERT_GT(ASSERT_RESULT(CountSamples("ObjectLock_WaitInQueue", query_id)), 0);
   ASSERT_OK(VerifyYsqlWaitingOnTServer(query_id));
   ASSERT_OK(VerifyNoUnattributedObjectLockSamples());
@@ -1970,7 +1992,8 @@ TEST_F(PgAshObjectLockTest, LocalLockWait) {
 // waiter refreshes, which re-send the request to the master (#33303).
 TEST_F(PgAshObjectLockTest, GlobalLockWait) {
   const auto query_id = ASSERT_RESULT(RunBlockedStatement(
-      "SELECT * FROM t", "ALTER TABLE t ADD COLUMN v INT"));
+      "SELECT * FROM t", "ALTER TABLE t ADD COLUMN v INT",
+      {"ObjectLock_WaitOnMaster", "ObjectLock_WaitInQueue"}));
   ASSERT_GT(ASSERT_RESULT(CountSamples("ObjectLock_WaitOnMaster", query_id)), 0);
   ASSERT_GT(ASSERT_RESULT(CountSamples("ObjectLock_WaitInQueue", query_id)), 0);
   ASSERT_OK(VerifyYsqlWaitingOnTServer(query_id));
