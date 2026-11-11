@@ -77,17 +77,15 @@ index_dense_config_t CreateIndexDenseConfig(const HNSWOptions& options) {
 namespace {
 
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class UsearchVectorIterator : public AbstractIterator<std::pair<VectorId, Vector>> {
+class UsearchVectorIterator : public vector_index::VectorIndexIterator<Vector> {
  public:
   using IteratorPair = std::pair<VectorId, Vector>;
   using member_citerator_t = typename unum::usearch::index_dense_gt<VectorId>::member_citerator_t;
 
-  UsearchVectorIterator(
-      size_t dimensions, member_citerator_t it, const index_dense_gt<VectorId>* index)
-      : dimensions_(dimensions), it_(it), index_(index) {}
+  UsearchVectorIterator(size_t dimensions, const index_dense_gt<VectorId>* index)
+      : dimensions_(dimensions), it_(index->cbegin()), end_(index->cend()), index_(index) {}
 
- protected:
-  IteratorPair Dereference() const override {
+  IteratorPair Entry() const override {
     // TODO(vector_index) do it in more efficient way
     Vector result_vector(dimensions_);
     index_->get(it_.key(), result_vector.data());
@@ -99,15 +97,15 @@ class UsearchVectorIterator : public AbstractIterator<std::pair<VectorId, Vector
     ++it_;
   }
 
-  bool NotEquals(const AbstractIterator<IteratorPair>& other) const override {
-    const auto* other_iterator = down_cast<const UsearchVectorIterator*>(&other);
-    if (!other_iterator) return true;
-    return it_ != other_iterator->it_;
+ protected:
+  bool DoValid() const override {
+    return it_ != end_;
   }
 
  private:      // Reference to the Usearch index
   size_t dimensions_;              // Dimensionality of the vectors
   member_citerator_t it_; // Iterator over the internal Usearch entities
+  const member_citerator_t end_;
   const index_dense_gt<VectorId>* index_;
 };
 
@@ -130,14 +128,8 @@ class UsearchIndex :
     consumption_.Init(mem_tracker);
   }
 
-  std::unique_ptr<AbstractIterator<std::pair<VectorId, Vector>>> BeginImpl() const override {
-    return std::make_unique<UsearchVectorIterator<Vector, DistanceResult>>(
-        dimensions_, index_.cbegin(), &index_);
-  }
-
-  std::unique_ptr<AbstractIterator<std::pair<VectorId, Vector>>> EndImpl() const override {
-    return std::make_unique<UsearchVectorIterator<Vector, DistanceResult>>(
-        dimensions_, index_.cend(), &index_);
+  std::unique_ptr<vector_index::VectorIndexIterator<Vector>> CreateIterator() const override {
+    return std::make_unique<UsearchVectorIterator<Vector, DistanceResult>>(dimensions_, &index_);
   }
 
   Status Reserve(
