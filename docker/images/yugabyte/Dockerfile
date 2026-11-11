@@ -87,7 +87,10 @@ RUN set -x; \
   && rm -rf ~/.cache \
   && yum clean all && rm -rf /var/cache/yum
 
-# Install required packages that are universal across RHEL versions
+# Install required packages that are universal across RHEL versions.
+# python3.11-pip is only needed to bootstrap the upgraded pip in /usr/local; the package's own
+# pip 22.3.1 (with its bundled urllib3 and msgpack) is removed afterwards. rpm -e rather than
+# yum remove, so python3.11-setuptools stays installed.
 RUN $yum_install \
       bind-utils \
       diffutils \
@@ -116,6 +119,8 @@ RUN $yum_install \
     && python3 -m pip install --upgrade lxml \
     && python3 -m pip install --upgrade s3cmd \
     && python3 -m pip install --upgrade psutil \
+    && rpm -e python3.11-pip \
+    && python3 -m pip --version \
     && rm -rf /usr/share/python3-wheels/pip-9.0.3-py2.py3-none-any.whl \
     && rm -rf ~/.cache \
     && yum clean all && rm -rf /var/cache/yum
