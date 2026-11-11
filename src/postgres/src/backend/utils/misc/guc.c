@@ -12514,7 +12514,12 @@ set_config_option_ext(const char *name, const char *value,
 					context = conf->gen.reset_scontext;
 					srole = conf->gen.reset_srole;
 
-					/* YB: the check hook isn't called for the reset value. */
+					/*
+					 * YB: the check hook isn't called for the reset value.
+					 * TODO(PG16 merge): upstream 3853664265 adds GUC_NO_RESET,
+					 * checked on this path. It rejects every reset, so it can't
+					 * replace this conditional check, but move this next to it.
+					 */
 					if (IsYugaByteEnabled() &&
 						conf->variable == &yb_read_time_string &&
 						!YbCanResetYbReadTime(newval, elevel))
