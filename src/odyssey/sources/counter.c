@@ -33,6 +33,7 @@ od_bucket_t *od_bucket_create(void)
 		return b;
 	}
 
+	free(b);
 	return NULL;
 }
 
