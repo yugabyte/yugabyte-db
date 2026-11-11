@@ -982,7 +982,7 @@ class ShardedLRUCache : public Cache {
     int num_shards = 1 << num_shard_bits_;
     const size_t per_shard = (bytes + (num_shards - 1)) / num_shards;
     MutexLock l(&capacity_mutex_);
-    const bool within_capacity = bytes <= capacity_ - std::min(capacity_, space_consumed_);
+    const bool within_capacity = bytes <= SubtractOrZero(capacity_, space_consumed_);
     if (!within_capacity && mode == ReservationMode::kStrict) {
       return STATUS(TryAgain, "Block cache reservation would exceed capacity");
     }
