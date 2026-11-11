@@ -4707,7 +4707,6 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 					 * ProcessStartupPacket() does.
 					 */
 					if (MyProcPort && MyProcPort->yb_ycm_internal_end_seen &&
-						gucsource == PGC_S_CLIENT &&
 						YbIsConnMgrReservedStartupParameter(name))
 						ereport(FATAL,
 								(errcode(ERRCODE_PROTOCOL_VIOLATION),

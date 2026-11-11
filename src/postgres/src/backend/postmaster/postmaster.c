@@ -2156,7 +2156,7 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 	bool		yb_is_auth_via_conn_mgr = false;
 	bool		yb_is_control_conn = false;
 	bool		yb_ycm_internal_end_seen = false;
-	char	   *yb_reserved_parameter = NULL;
+	char	   *yb_ycm_reserved_startup_setting = NULL;
 
 retry:
 	pq_startmsgread();
@@ -2421,6 +2421,8 @@ retry1:
 			 * YB: The connection manager writes its reserved parameters,
 			 * then the end marker, then the logical client's parameters.
 			 * A reserved name after the marker came from the client.
+			 * IsYugaByteEnabled() is false here, as pggate isn't
+			 * initialized until after the startup packet is processed.
 			 */
 			if (YBIsEnabledInPostgresEnvVar() &&
 				YbIsConnMgrReservedStartupParameter(nameptr))
@@ -2428,8 +2430,8 @@ retry1:
 				if (yb_ycm_internal_end_seen)
 				{
 					/* Reported once the whole packet is read, see below. */
-					if (yb_reserved_parameter == NULL)
-						yb_reserved_parameter = pstrdup(nameptr);
+					if (yb_ycm_reserved_startup_setting == NULL)
+						yb_ycm_reserved_startup_setting = pstrdup(nameptr);
 					offset = valoffset + strlen(valptr) + 1;
 					continue;
 				}
@@ -2633,7 +2635,7 @@ retry1:
 	 * auth does, so the shared control backend stays up.  Reserved names in
 	 * "options" are checked when it's applied, in process_postgres_switches().
 	 */
-	if (yb_reserved_parameter != NULL)
+	if (yb_ycm_reserved_startup_setting != NULL)
 	{
 		bool		yb_auth_passthrough = YbIsAuthPassthroughInProgress(port);
 
@@ -2645,7 +2647,8 @@ retry1:
 		ereport(YbAuthFailedErrorLevel(yb_auth_passthrough),
 				(errcode(ERRCODE_PROTOCOL_VIOLATION),
 				 errmsg("startup parameter \"%s\" is reserved for the "
-						"connection manager", yb_reserved_parameter)));
+						"connection manager",
+						yb_ycm_reserved_startup_setting)));
 	}
 
 	/*

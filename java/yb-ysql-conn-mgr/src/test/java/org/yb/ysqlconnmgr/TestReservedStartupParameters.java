@@ -55,6 +55,9 @@ public class TestReservedStartupParameters extends BaseYsqlConnMgr {
     {"yb_ycm_internal_future_parameter", "1"},
     {"yb_ycm_internal_client_addr", "192.168.1.1"},
     {"yb_ycm_internal_client_port", "9432"},
+    // A second end marker, after the connection manager's own.
+    {"yb_ycm_internal_end", "1"},
+    {"yb_conn_mgr_client_hostname", "example.com"},
   };
   // Legacy names that guc.c still maps onto reserved parameters.
   private static final String[][] LEGACY_RESERVED_PARAMETERS = {
