@@ -46,8 +46,31 @@ the rule is C++'s exactly. A process older than the lease, or one that relinquis
 
 The `MasterYsqlLease` service runs on its own two-thread runtime, so refreshes never wait behind
 heartbeats or DDL. The `ysql-lease-expiry` controller marks leases past their deadline as not
-live (`object_lock_cleanup_interval_ms`). Releasing the DDL locks of expired epochs is not done
-yet: a Rust leader takes no DDL locks.
+live (`object_lock_cleanup_interval_ms`), then releases the DDL locks of the epochs that ended.
+
+## Global DDL object locks (K3)
+
+`locks.rs` is C++'s `ObjectLockInfoManager` less the leases. A DDL's lock
+(`AcquireObjectLocksGlobal`) is taken in three steps:
+
+1. In the master's own lock manager, the C++ `TSLocalLockManager` the host keeps
+   (`AcquireLocalObjectLocks`). It holds only DDL locks, so a conflicting DDL waits there.
+2. In the requesting tserver's OBJECT_LOCK_ENTRY row, under its lease epoch, transaction and
+   subtransaction, so a tserver granted a lease later bootstraps with it.
+3. On every tserver with a live lease (`AcquireObjectLocks`), with each one's
+   `recipient_lease_epoch` and every tserver's lease epoch floor. A tserver that loses its lease
+   meanwhile is skipped; INVALID_YSQL_LEASE and ShutdownInProgress are retried. If a lease
+   changed during the fan-out, the others still hold that tserver's old floor, so it is sent again
+   to all with fresh floors.
+
+A release (`ReleaseObjectLocksGlobal`) is persisted in the row as in progress and answered; it is
+then sent to every live lease and removed from the row and the master's lock manager. A new
+leader rebuilds its lock manager from every persisted lock (`ResetLocalObjectLocks`, before the
+term is ready) and relaunches the releases in progress. The locks of a lease epoch that ended are
+released by the master, with `ignore_lease_epochs_before` so tservers refuse that epoch's late
+acquires. `WaitForLockersMultipleGlobal` is sent to every live lease. A release does not carry
+catalog versions yet; tservers get them from the next heartbeat. DDL verification does not yet
+hold back a release of the transaction it verifies.
 
 ## YSQL on the sys catalog tablet
 

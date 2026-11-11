@@ -195,6 +195,24 @@ pub(crate) mod bridge {
             rows: &[RowChangeFfi],
             completion: Box<WriteCompletion>,
         );
+        /// The master's DDL lock manager (`TSLocalLockManager`): completes once the locks are
+        /// held or the timeout passes.
+        #[cxx_name = "AcquireLocalObjectLocks"]
+        fn acquire_local_object_locks(
+            self: &MasterInfoHandle,
+            request: &[u8],
+            timeout_ms: u64,
+            completion: Box<WriteCompletion>,
+        );
+        #[cxx_name = "ReleaseLocalObjectLocks"]
+        fn release_local_object_locks(
+            self: &MasterInfoHandle,
+            request: &[u8],
+            timeout_ms: u64,
+        ) -> Result<()>;
+        /// Replaces the lock manager with a new one holding the serialized `DdlLockEntriesPB`.
+        #[cxx_name = "ResetLocalObjectLocks"]
+        fn reset_local_object_locks(self: &MasterInfoHandle, entries: &[u8]) -> Result<()>;
         #[cxx_name = "SysCatalogLeaderState"]
         fn sys_catalog_leader_state(self: &MasterInfoHandle) -> RaftLeaderStateFfi;
         #[cxx_name = "SystemTableRows"]

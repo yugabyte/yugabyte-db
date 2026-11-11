@@ -79,6 +79,7 @@
 #include "yb/server/webserver.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"
+#include "yb/docdb/local_waiting_txn_registry.h"
 
 #include "yb/dockv/partition.h"
 #include "yb/dockv/reader_projection.h"
@@ -93,7 +94,10 @@
 #include "yb/tserver/remote_bootstrap_service.h"
 #include "yb/tserver/tablet_peer_lookup.h"
 #include "yb/tserver/tablet_service.h"
+#include "yb/tserver/ts_local_lock_manager.h"
 #include "yb/tserver/ts_tablet_manager.h"
+
+#include "yb/rpc/poller.h"
 
 #include "yb/util/crypt.h"
 #include "yb/util/flags.h"
@@ -127,6 +131,7 @@ DECLARE_int64(inbound_rpc_memory_limit);
 DECLARE_string(initial_sys_catalog_snapshot_path);
 DECLARE_int32(master_consensus_svc_queue_length);
 DECLARE_bool(master_join_existing_universe);
+DECLARE_int32(send_wait_for_report_interval_ms);
 DECLARE_int32(master_remote_bootstrap_svc_queue_length);
 DECLARE_int32(master_svc_queue_length);
 DECLARE_int32(master_tserver_svc_queue_length);
@@ -1131,6 +1136,23 @@ void MasterHost::ShutdownHost() {
     CHECK_OK(ThreadJoiner(total_mem_watcher_thread_.get()).Join());
   }
   maintenance_manager_->Shutdown();
+  if (waiting_txn_registry_poller_) {
+    waiting_txn_registry_poller_->Shutdown();
+  }
+  {
+    std::lock_guard lock(local_lock_manager_mutex_);
+    if (local_lock_manager_) {
+      local_lock_manager_->Shutdown();
+      local_lock_manager_.reset();
+    }
+  }
+  if (waiting_txn_registry_) {
+    waiting_txn_registry_->StartShutdown();
+    waiting_txn_registry_->CompleteShutdown();
+  }
+  if (lock_manager_thread_pool_) {
+    lock_manager_thread_pool_->Shutdown();
+  }
   if (async_client_init_) {
     async_client_init_->Shutdown();
   }
@@ -1651,6 +1673,78 @@ void MasterHost::WriteSysCatalogRows(
   if (!status.ok()) {
     complete(status);
   }
+}
+
+void MasterHost::AcquireLocalObjectLocks(
+    rust::Slice<const uint8_t> request, uint64_t timeout_ms,
+    rust::Box<WriteCompletion> completion) {
+  auto shared_completion =
+      std::make_shared<std::optional<rust::Box<WriteCompletion>>>(std::move(completion));
+  auto complete = [shared_completion](const Status& status) {
+    CompleteWrite(
+        std::move(**shared_completion), status.ok() ? 0 : static_cast<int32_t>(status.code()),
+        status.ok() ? rust::String() : rust::String::lossy(status.ToString()));
+  };
+  tserver::AcquireObjectLockRequestPB req;
+  if (!req.ParseFromArray(request.data(), narrow_cast<int>(request.size()))) {
+    return complete(STATUS(InvalidArgument, "Unparsable AcquireObjectLockRequestPB"));
+  }
+  std::shared_ptr<tserver::TSLocalLockManager> lock_manager;
+  {
+    std::lock_guard lock(local_lock_manager_mutex_);
+    lock_manager = local_lock_manager_;
+  }
+  if (!lock_manager) {
+    return complete(STATUS(IllegalState, "The DDL lock manager is not started"));
+  }
+  lock_manager->AcquireObjectLocksAsync(
+      req, CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(timeout_ms),
+      [complete](const Status& status) { complete(status); });
+}
+
+void MasterHost::ReleaseLocalObjectLocks(
+    rust::Slice<const uint8_t> request, uint64_t timeout_ms) {
+  tserver::ReleaseObjectLockRequestPB req;
+  if (!req.ParseFromArray(request.data(), narrow_cast<int>(request.size()))) {
+    ThrowIfNotOk(STATUS(InvalidArgument, "Unparsable ReleaseObjectLockRequestPB"));
+  }
+  std::shared_ptr<tserver::TSLocalLockManager> lock_manager;
+  {
+    std::lock_guard lock(local_lock_manager_mutex_);
+    lock_manager = local_lock_manager_;
+  }
+  if (!lock_manager) {
+    ThrowIfNotOk(STATUS(IllegalState, "The DDL lock manager is not started"));
+  }
+  ThrowIfNotOk(ResultToStatus(lock_manager->ReleaseObjectLocks(
+      req, CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(timeout_ms))));
+}
+
+// ObjectLockInfoManager::Impl::Clear and BootstrapLocksPostLoad.
+void MasterHost::ResetLocalObjectLocks(rust::Slice<const uint8_t> entries) {
+  tserver::DdlLockEntriesPB pb;
+  if (!pb.ParseFromArray(entries.data(), narrow_cast<int>(entries.size()))) {
+    ThrowIfNotOk(STATUS(InvalidArgument, "Unparsable DdlLockEntriesPB"));
+  }
+  std::lock_guard lock(local_lock_manager_mutex_);
+  if (!lock_manager_thread_pool_) {
+    ThrowIfNotOk(
+        ThreadPoolBuilder("object_lock_info_manager").Build(&lock_manager_thread_pool_));
+    waiting_txn_registry_ = std::make_unique<docdb::LocalWaitingTxnRegistry>(
+        client_future(), clock(), permanent_uuid(), lock_manager_thread_pool_.get());
+    waiting_txn_registry_poller_ = std::make_unique<rpc::Poller>(
+        permanent_uuid(), std::bind(&docdb::LocalWaitingTxnRegistry::SendWaitForGraph,
+                                    waiting_txn_registry_.get()));
+    waiting_txn_registry_poller_->Start(
+        &messenger()->scheduler(), FLAGS_send_wait_for_report_interval_ms * 1ms);
+  }
+  if (local_lock_manager_) {
+    local_lock_manager_->Shutdown();
+  }
+  local_lock_manager_ = std::make_shared<tserver::TSLocalLockManager>(
+      clock(), tablet_server_.get(), *this, lock_manager_thread_pool_.get(), metric_entity());
+  local_lock_manager_->Start(waiting_txn_registry_.get());
+  ThrowIfNotOk(local_lock_manager_->BootstrapDdlObjectLocks(pb));
 }
 
 RaftLeaderStateFfi MasterHost::SysCatalogLeaderState() const {

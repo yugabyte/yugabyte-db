@@ -60,9 +60,21 @@ class TerminationMonitor;
 class Thread;
 class ThreadPool;
 
+namespace docdb {
+class LocalWaitingTxnRegistry;
+}  // namespace docdb
+
+namespace rpc {
+class Poller;
+}  // namespace rpc
+
 namespace server {
 class TotalMemWatcher;
 }  // namespace server
+
+namespace tserver {
+class TSLocalLockManager;
+}  // namespace tserver
 
 namespace master {
 class EncryptionManager;
@@ -148,6 +160,14 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   void WriteSysCatalogRows(
       int64_t term, rust::Slice<const RowChangeFfi> rows,
       rust::Box<WriteCompletion> completion) const;
+  // The master's DDL lock manager (ObjectLockInfoManager's local_lock_manager_), for the Rust
+  // leader's global object locks. Acquire completes once the locks are held or the timeout
+  // passes; Reset replaces the manager with a new one holding a serialized DdlLockEntriesPB.
+  void AcquireLocalObjectLocks(
+      rust::Slice<const uint8_t> request, uint64_t timeout_ms,
+      rust::Box<WriteCompletion> completion);
+  void ReleaseLocalObjectLocks(rust::Slice<const uint8_t> request, uint64_t timeout_ms);
+  void ResetLocalObjectLocks(rust::Slice<const uint8_t> entries);
   RaftLeaderStateFfi SysCatalogLeaderState() const;
   // The heartbeat response fields the host owns (L7): universe key registry when
   // `send_universe_key_registry`, snapshots info, the AutoFlags config when the tserver's
@@ -299,6 +319,13 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   // The YCQL virtual tables: their input from Rust, and their tablets by id, created on the
   // first read of each.
   std::optional<rust::Box<VirtualTables>> virtual_tables_;
+  // The DDL lock manager, new in each leader term, and what it needs.
+  std::unique_ptr<ThreadPool> lock_manager_thread_pool_;
+  std::unique_ptr<docdb::LocalWaitingTxnRegistry> waiting_txn_registry_;
+  std::unique_ptr<rpc::Poller> waiting_txn_registry_poller_;
+  std::mutex local_lock_manager_mutex_;
+  std::shared_ptr<tserver::TSLocalLockManager> local_lock_manager_
+      GUARDED_BY(local_lock_manager_mutex_);
   std::mutex system_tablets_mutex_;
   std::unordered_map<TabletId, std::shared_ptr<tablet::AbstractTablet>> system_tablets_
       GUARDED_BY(system_tablets_mutex_);
@@ -332,6 +359,17 @@ class MasterInfoHandle {
       int64_t term, rust::Slice<const RowChangeFfi> rows,
       rust::Box<WriteCompletion> completion) const;
   RaftLeaderStateFfi SysCatalogLeaderState() const;
+  void AcquireLocalObjectLocks(
+      rust::Slice<const uint8_t> request, uint64_t timeout_ms,
+      rust::Box<WriteCompletion> completion) const {
+    host_.AcquireLocalObjectLocks(request, timeout_ms, std::move(completion));
+  }
+  void ReleaseLocalObjectLocks(rust::Slice<const uint8_t> request, uint64_t timeout_ms) const {
+    host_.ReleaseLocalObjectLocks(request, timeout_ms);
+  }
+  void ResetLocalObjectLocks(rust::Slice<const uint8_t> entries) const {
+    host_.ResetLocalObjectLocks(entries);
+  }
   rust::Vec<uint8_t> HeartbeatHostParts(
       rust::Slice<const uint8_t> encryption_info, bool send_universe_key_registry,
       int64_t auto_flags_config_version, bool has_catalog_versions_fingerprint,

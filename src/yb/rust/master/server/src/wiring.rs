@@ -42,6 +42,7 @@ use master_ts_manager::{
 };
 use master_ysql_manager::initdb;
 use master_ysql_manager::lease::{LeaseExpiryController, LeaseOptions, YsqlLeases};
+use master_ysql_manager::locks::{LockOptions, ObjectLocks};
 use protobuf::Message;
 use tokio::sync::watch;
 use yb_flags::{yb_flag, FlagRef, FlagTag};
@@ -345,6 +346,8 @@ pub(crate) struct HostParts {
     pub(crate) contributors: Vec<Arc<dyn HeartbeatContributor>>,
     /// The C++ schema steps of table DDL.
     pub(crate) schema: Arc<dyn SchemaHost>,
+    /// The master's DDL lock manager.
+    pub(crate) local_locks: Arc<dyn master_ysql_manager::locks::LocalLockManager>,
 }
 
 /// The core's components, built before the host starts so the apply tap has a sink.
@@ -373,6 +376,7 @@ impl Core {
             defaults,
             contributors,
             schema,
+            local_locks,
         } = host;
         let _guard = runtime.enter();
         runtime.spawn(run_materializer(catalog.clone(), store.clone(), events));
@@ -463,6 +467,17 @@ impl Core {
                 },
             },
         );
+        let locks = ObjectLocks::new(
+            catalog.clone(),
+            writer.clone(),
+            leadership.clone(),
+            ts_manager.clone(),
+            local_locks,
+            ts_rpc.clone(),
+            LockOptions {
+                rpc_timeout: || millis(MASTER_TS_RPC_TIMEOUT_MS.get()),
+            },
+        );
         let leader = Arc::new(LeaderServices {
             catalog: catalog.clone(),
             writer: writer.clone(),
@@ -478,6 +493,7 @@ impl Core {
             transaction_tables_use_preferred_zones: || TXN_TABLES_USE_PREFERRED_ZONES.get(),
             splits,
             leases,
+            locks: locks.clone(),
             blacklist_progress_initial_delay: || {
                 Duration::from_secs(BLACKLIST_PROGRESS_INITIAL_DELAY_SECS.get().max(0) as u64)
             },
@@ -494,8 +510,10 @@ impl Core {
         let hook_writer = writer.clone();
         let hook_leadership = Arc::downgrade(&leadership);
         let hook_schema = schema.clone();
+        let hook_locks = locks.clone();
         leadership.add_ready_hook(Box::new(move |term| {
             let schema = hook_schema.clone();
+            let locks = hook_locks.clone();
             let catalog = hook_catalog.clone();
             let ts_manager = hook_ts_manager.clone();
             let writer = hook_writer.clone();
@@ -515,6 +533,8 @@ impl Core {
                     initdb::restore_initial_snapshot_if_needed(&catalog, schema, term).await?;
                 write_default_rows(&writer, &token, &*defaults, &DEFAULTS_OPTIONS, restored)
                     .await?;
+                // The DDL locks persisted by earlier terms, before any lock request is served.
+                locks.on_term_start(&catalog.snapshot())?;
                 ts_manager.on_leader_ready(&catalog.snapshot());
                 Ok(())
             })
@@ -600,6 +620,7 @@ impl Core {
 
         let leader = self.leader.clone();
         leader.splits.set_rpc(rpc.clone());
+        leader.locks.set_rpc(rpc.clone());
         let ts_rpc = self.ts_rpc.clone();
         let host = self.host.clone();
         let mut phases = self.leadership.subscribe();
@@ -656,7 +677,7 @@ fn start_term(
     );
     run_controller(
         scope,
-        LeaseExpiryController::new(leader.leases.clone()),
+        LeaseExpiryController::new(leader.leases.clone(), leader.locks.clone()),
         watch::channel(0).1,
     );
     run_controller(

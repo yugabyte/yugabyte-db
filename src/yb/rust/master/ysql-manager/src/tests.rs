@@ -433,3 +433,326 @@ mod lease {
         assert!(lease_of(&h).live_lease());
     }
 }
+
+mod locks {
+    use std::time::Duration;
+
+    use master_catalog_state::{CatalogWriter, WriterOptions};
+    use master_leadership::{ready_for_tests, LeaderToken};
+    use master_task_runtime::{BoxFuture, TsRpcExecutor};
+    use master_ts_manager::{TsManager, TsManagerOptions};
+    use tokio::time::Instant;
+    use yb_host_api::rpc::FakeRpcClient;
+    use yb_host_api::StatusCode;
+    use yb_proto::pb::catalog_entity_info::{SysObjectLockEntryPB, SysTabletServerEntryPB};
+    use yb_proto::pb::common_net::HostPortPB;
+    use yb_proto::pb::docdb::ObjectLockPB;
+    use yb_proto::pb::master_ddl::{
+        AcquireObjectLocksGlobalRequestPB, ReleaseObjectLocksGlobalRequestPB,
+    };
+    use yb_proto::pb::tserver::{
+        AcquireObjectLockRequestPB, AcquireObjectLockResponsePB, DdlLockEntriesPB,
+        ReleaseObjectLockRequestPB, ReleaseObjectLockResponsePB,
+    };
+
+    use super::*;
+    use crate::lease::tests_txn_bytes;
+    use crate::locks::{export_for_master, LocalLockManager, LockOptions, ObjectLocks};
+
+    const TXN: &str = "01234567-89ab-cdef-0123-456789abcdef";
+
+    /// Records what the master's lock manager was asked.
+    #[derive(Default)]
+    struct FakeLocal {
+        acquired: Mutex<Vec<AcquireObjectLockRequestPB>>,
+        released: Mutex<Vec<ReleaseObjectLockRequestPB>>,
+        resets: Mutex<Vec<DdlLockEntriesPB>>,
+    }
+
+    impl LocalLockManager for FakeLocal {
+        fn acquire(
+            &self,
+            req: &AcquireObjectLockRequestPB,
+            _timeout: Duration,
+        ) -> BoxFuture<'static, Result<(), Status>> {
+            self.acquired.lock().unwrap().push(req.clone());
+            Box::pin(async { Ok(()) })
+        }
+        fn release(
+            &self,
+            req: &ReleaseObjectLockRequestPB,
+            _timeout: Duration,
+        ) -> Result<(), Status> {
+            self.released.lock().unwrap().push(req.clone());
+            Ok(())
+        }
+        fn reset(&self, entries: &DdlLockEntriesPB) -> Result<(), Status> {
+            self.resets.lock().unwrap().push(entries.clone());
+            Ok(())
+        }
+    }
+
+    type Sent = Arc<Mutex<Vec<(String, String, Vec<u8>)>>>;
+
+    struct Harness {
+        catalog: Arc<Catalog>,
+        locks: Arc<ObjectLocks>,
+        local: Arc<FakeLocal>,
+        sent: Sent,
+        token: LeaderToken,
+        _leadership: Arc<master_leadership::Leadership>,
+    }
+
+    fn tserver(uuid: &str) -> RowChange {
+        let mut ts = SysTabletServerEntryPB::new();
+        ts.set_instance_seqno(1);
+        let mut hp = HostPortPB::new();
+        hp.set_host(format!("{uuid}.host"));
+        hp.set_port(9100);
+        ts.registration
+            .mut_or_insert_default()
+            .private_rpc_addresses
+            .push(hp);
+        RowChange::Upsert {
+            entry_type: SysRowEntryType::TSERVER_REGISTRATION,
+            id: uuid.as_bytes().to_vec(),
+            data: ts.write_to_bytes().unwrap(),
+        }
+    }
+
+    /// A lock row with a lease (`live`, `epoch`) and the given locks of `TXN` at `epoch`.
+    fn lock_row(uuid: &str, live: bool, epoch: u64, held: &[u32]) -> RowChange {
+        let mut entry = SysObjectLockEntryPB::new();
+        let lease = entry.lease_info.mut_or_insert_default();
+        lease.set_live_lease(live);
+        lease.set_lease_epoch(epoch);
+        lease.set_instance_seqno(1);
+        if !held.is_empty() {
+            let subtxns = entry
+                .lease_epochs
+                .entry(epoch)
+                .or_default()
+                .transactions
+                .entry(TXN.to_string())
+                .or_default();
+            for subtxn in held {
+                let mut lock = ObjectLockPB::new();
+                lock.set_relation_oid(*subtxn);
+                subtxns.subtxns.entry(*subtxn).or_default().locks.push(lock);
+            }
+        }
+        RowChange::Upsert {
+            entry_type: SysRowEntryType::OBJECT_LOCK_ENTRY,
+            id: uuid.as_bytes().to_vec(),
+            data: entry.write_to_bytes().unwrap(),
+        }
+    }
+
+    async fn harness(rows: Vec<RowChange>) -> Harness {
+        let mut all = vec![tserver("ts1"), tserver("ts2")];
+        all.extend(rows);
+        let (fake, events) = FakeSysCatalog::new();
+        fake.apply(all);
+        let catalog = Catalog::new(fake.sender().clone());
+        tokio::spawn(run_materializer(catalog.clone(), fake.clone(), events));
+        catalog.barrier().await;
+        let (leadership, _source) = ready_for_tests(1).await;
+        let writer = CatalogWriter::start(
+            catalog.clone(),
+            fake.clone(),
+            leadership.clone(),
+            WriterOptions::default(),
+        );
+        let ts_manager = TsManager::new(
+            Arc::default(),
+            TsManagerOptions {
+                persist_registry: || true,
+                ..TsManagerOptions::default()
+            },
+        );
+        ts_manager.on_leader_ready(&catalog.snapshot());
+        let local = Arc::new(FakeLocal::default());
+        let locks = ObjectLocks::new(
+            catalog.clone(),
+            writer,
+            leadership.clone(),
+            ts_manager,
+            local.clone(),
+            TsRpcExecutor::new(|_| 100),
+            LockOptions::default(),
+        );
+        let sent: Sent = Arc::default();
+        let recorded = sent.clone();
+        locks.set_rpc(Arc::new(FakeRpcClient::new(
+            move |host, _port, service, method, request| {
+                assert_eq!(service, "yb.tserver.TabletServerService");
+                recorded.lock().unwrap().push((
+                    host.to_string(),
+                    method.to_string(),
+                    request.to_vec(),
+                ));
+                Ok(match method {
+                    "AcquireObjectLocks" => AcquireObjectLockResponsePB::new().write_to_bytes(),
+                    _ => ReleaseObjectLockResponsePB::new().write_to_bytes(),
+                }
+                .unwrap())
+            },
+        )));
+        locks.on_term_start(&catalog.snapshot()).unwrap();
+        Harness {
+            catalog,
+            locks,
+            local,
+            sent,
+            token: leadership.token().unwrap(),
+            _leadership: leadership,
+        }
+    }
+
+    fn entry_of(h: &Harness, uuid: &str) -> SysObjectLockEntryPB {
+        h.catalog
+            .snapshot()
+            .get(SysRowEntryType::OBJECT_LOCK_ENTRY, uuid.as_bytes())
+            .unwrap()
+            .parse()
+            .unwrap()
+    }
+
+    fn acquire_req(epoch: u64, subtxn: u32) -> AcquireObjectLocksGlobalRequestPB {
+        let mut req = AcquireObjectLocksGlobalRequestPB::new();
+        req.set_txn_id(tests_txn_bytes(TXN));
+        req.set_subtxn_id(subtxn);
+        req.set_session_host_uuid(b"ts1".to_vec());
+        req.set_lease_epoch(epoch);
+        req.set_status_tablet(b"status".to_vec());
+        let mut lock = ObjectLockPB::new();
+        lock.set_database_oid(16384);
+        lock.set_relation_oid(16385);
+        req.object_locks.push(lock);
+        req
+    }
+
+    fn deadline() -> Instant {
+        Instant::now() + Duration::from_secs(10)
+    }
+
+    /// A lock is taken on the master, persisted under the requester's lease epoch, and sent to
+    /// every tserver with a live lease, with each one's epoch and every tserver's floor.
+    #[tokio::test]
+    async fn a_lock_is_taken_persisted_and_sent_to_every_live_lease() {
+        let h = harness(vec![
+            lock_row("ts1", true, 3, &[]),
+            lock_row("ts2", true, 7, &[]),
+        ])
+        .await;
+        h.locks
+            .acquire_global(&h.token, &acquire_req(3, 1), deadline())
+            .await
+            .unwrap();
+        assert_eq!(h.local.acquired.lock().unwrap().len(), 1);
+        let entry = entry_of(&h, "ts1");
+        let txn = &entry.lease_epochs[&3].transactions[TXN];
+        assert_eq!(txn.status_tablet(), b"status");
+        assert_eq!(txn.subtxns[&1].locks.len(), 1);
+        let sent = h.sent.lock().unwrap().clone();
+        let mut recipients: Vec<_> = sent
+            .iter()
+            .map(|(host, method, request)| {
+                assert_eq!(method, "AcquireObjectLocks");
+                let req = AcquireObjectLockRequestPB::parse_from_bytes(request).unwrap();
+                assert_eq!(req.lease_epoch_floors.len(), 2);
+                (host.clone(), req.recipient_lease_epoch())
+            })
+            .collect();
+        recipients.sort();
+        assert_eq!(
+            recipients,
+            vec![("ts1.host".to_string(), 3), ("ts2.host".to_string(), 7)]
+        );
+    }
+
+    /// `ValidateLockRequest`: a subtransaction is required, and the requester's latest epoch.
+    #[tokio::test]
+    async fn a_lock_needs_a_subtxn_and_the_latest_lease_epoch() {
+        let h = harness(vec![lock_row("ts1", true, 3, &[])]).await;
+        let e = h
+            .locks
+            .acquire_global(&h.token, &acquire_req(3, 0), deadline())
+            .await
+            .unwrap_err();
+        assert_eq!(e.code, StatusCode::InvalidArgument);
+        let e = h
+            .locks
+            .acquire_global(&h.token, &acquire_req(2, 1), deadline())
+            .await
+            .unwrap_err();
+        assert_eq!(e.code, StatusCode::InvalidArgument);
+        assert!(h.local.acquired.lock().unwrap().is_empty());
+    }
+
+    /// A release is sent to every live lease, then removed from the row and the master.
+    #[tokio::test]
+    async fn a_release_is_sent_then_removed() {
+        let h = harness(vec![
+            lock_row("ts1", true, 3, &[1, 2]),
+            lock_row("ts2", true, 7, &[]),
+        ])
+        .await;
+        // The term start loaded the held locks into the master's lock manager.
+        assert_eq!(h.local.resets.lock().unwrap()[0].lock_entries.len(), 2);
+        let mut req = ReleaseObjectLocksGlobalRequestPB::new();
+        req.set_txn_id(tests_txn_bytes(TXN));
+        req.set_subtxn_id(2);
+        req.set_session_host_uuid(b"ts1".to_vec());
+        req.set_lease_epoch(3);
+        req.set_wait_for_completion(true);
+        h.locks
+            .release_global(&h.token, &req, deadline())
+            .await
+            .unwrap();
+        let entry = entry_of(&h, "ts1");
+        let subtxns = &entry.lease_epochs[&3].transactions[TXN].subtxns;
+        assert!(subtxns.contains_key(&1) && !subtxns.contains_key(&2));
+        assert!(entry.in_progress_release_request.is_empty());
+        assert_eq!(h.local.released.lock().unwrap().len(), 1);
+        assert_eq!(h.sent.lock().unwrap().len(), 2);
+
+        // The whole transaction, named by its id alone (yb-admin).
+        let mut req = ReleaseObjectLocksGlobalRequestPB::new();
+        req.set_txn_id(tests_txn_bytes(TXN));
+        req.set_wait_for_completion(true);
+        h.locks
+            .release_global(&h.token, &req, deadline())
+            .await
+            .unwrap();
+        assert!(entry_of(&h, "ts1").lease_epochs.is_empty());
+    }
+
+    /// The locks of a lease that ended are released by the master, and floors keep the old
+    /// epoch's requests out.
+    #[tokio::test]
+    async fn an_ended_leases_locks_are_released() {
+        let h = harness(vec![
+            lock_row("ts1", true, 3, &[]),
+            lock_row("ts2", false, 7, &[1]),
+        ])
+        .await;
+        h.locks.release_ended(&h.token).await.unwrap();
+        for _ in 0..100 {
+            if entry_of(&h, "ts2").lease_epochs.is_empty() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(entry_of(&h, "ts2").lease_epochs.is_empty());
+        let sent = h.sent.lock().unwrap().clone();
+        // Only ts1 has a live lease.
+        assert_eq!(sent.len(), 1);
+        let req = ReleaseObjectLockRequestPB::parse_from_bytes(&sent[0].2).unwrap();
+        assert_eq!(req.ignore_lease_epochs_before(), 8);
+        assert_eq!(req.session_host_uuid(), b"ts2");
+        // Every persisted lock, also an ended lease's, is the master's at a term start.
+        let exported = export_for_master(&h.catalog.snapshot()).unwrap();
+        assert!(exported.lock_entries.is_empty());
+    }
+}

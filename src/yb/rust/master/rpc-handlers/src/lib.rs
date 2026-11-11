@@ -69,7 +69,8 @@ use yb_proto::pb::master_cluster::{
     SetPreferredZonesResponsePB,
 };
 use yb_proto::pb::master_ddl::{
-    AlterTableRequestPB, AlterTableResponsePB, CreateNamespaceRequestPB, CreateNamespaceResponsePB,
+    AcquireObjectLocksGlobalRequestPB, AcquireObjectLocksGlobalResponsePB, AlterTableRequestPB,
+    AlterTableResponsePB, CreateNamespaceRequestPB, CreateNamespaceResponsePB,
     CreateTableRequestPB, CreateTableResponsePB, DeleteNamespaceRequestPB,
     DeleteNamespaceResponsePB, DeleteTableRequestPB, DeleteTableResponsePB,
     GetNamespaceInfoRequestPB, GetNamespaceInfoResponsePB, GetTableSchemaRequestPB,
@@ -78,6 +79,8 @@ use yb_proto::pb::master_ddl::{
     IsCreateTableDoneResponsePB, IsDeleteNamespaceDoneRequestPB, IsDeleteNamespaceDoneResponsePB,
     IsDeleteTableDoneRequestPB, IsDeleteTableDoneResponsePB, ListNamespacesRequestPB,
     ListNamespacesResponsePB, ListTablesRequestPB, ListTablesResponsePB,
+    ReleaseObjectLocksGlobalRequestPB, ReleaseObjectLocksGlobalResponsePB,
+    WaitForLockersMultipleGlobalRequestPB, WaitForLockersMultipleGlobalResponsePB,
 };
 use yb_proto::pb::master_heartbeat::{TSHeartbeatRequestPB, TSHeartbeatResponsePB};
 use yb_proto::pb::master_rust_peer::{
@@ -875,6 +878,33 @@ impl Shared {
                     leader.leases.relinquish(&token, &req).await
                 }
             ),
+            "AcquireObjectLocksGlobal" => serve!(
+                AcquireObjectLocksGlobalRequestPB,
+                AcquireObjectLocksGlobalResponsePB,
+                |req, resp| {
+                    let result = leader.locks.acquire_global(&token, &req, deadline).await;
+                    lock_error(result, &mut resp.error)
+                }
+            ),
+            "ReleaseObjectLocksGlobal" => serve!(
+                ReleaseObjectLocksGlobalRequestPB,
+                ReleaseObjectLocksGlobalResponsePB,
+                |req, resp| {
+                    let result = leader.locks.release_global(&token, &req, deadline).await;
+                    lock_error(result, &mut resp.error)
+                }
+            ),
+            "WaitForLockersMultipleGlobal" => serve!(
+                WaitForLockersMultipleGlobalRequestPB,
+                WaitForLockersMultipleGlobalResponsePB,
+                |req, resp| {
+                    let result = leader
+                        .locks
+                        .wait_for_lockers_global(&token, &req, deadline)
+                        .await;
+                    lock_error(result, &mut resp.error)
+                }
+            ),
             "IsInitDbDone" => serve!(
                 IsInitDbDoneRequestPB,
                 IsInitDbDoneResponsePB,
@@ -995,6 +1025,25 @@ impl Shared {
             }
         }
     }
+}
+
+/// `FillErrorIfRequired` of the object lock RPCs: a lost leadership is NOT_THE_LEADER, so the
+/// tserver retries on the new leader.
+fn lock_error(
+    result: Result<(), Status>,
+    error: &mut protobuf::MessageField<MasterErrorPB>,
+) -> Result<(), Status> {
+    if let Err(status) = &result {
+        let code = if status.code == StatusCode::IllegalState
+            && status.message == "Master is not the leader"
+        {
+            master_error_pb::Code::NOT_THE_LEADER
+        } else {
+            master_error_pb::Code::UNKNOWN_ERROR
+        };
+        *error = Some(master_error_from(code, status)).into();
+    }
+    result
 }
 
 /// Answers with only `error`, or fails the call when the response has required fields.

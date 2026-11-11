@@ -177,6 +177,10 @@ fn start(mut host: UniquePtr<MasterHost>) -> Result<RunningMaster, String> {
                 host.pin_mut().info_handle(),
                 gate.clone(),
             )),
+            local_locks: Arc::new(store::HostLocalLocks(
+                host.pin_mut().info_handle(),
+                gate.clone(),
+            )),
         },
     );
     host.pin_mut()

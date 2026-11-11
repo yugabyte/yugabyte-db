@@ -331,7 +331,7 @@ impl YsqlLeases {
     }
 
     /// The expiry half of `CleanupExpiredLeaseEpochs`: live leases past their deadline become
-    /// not live, in one write. Releasing the DDL locks of expired epochs is not done yet.
+    /// not live, in one write.
     pub async fn expire(&self, token: &LeaderToken) -> Result<Vec<Vec<u8>>, Status> {
         let term = token.term();
         let now = Instant::now();
@@ -381,13 +381,6 @@ impl YsqlLeases {
                         lease.lease_epoch()
                     );
                     lease.set_live_lease(false);
-                    if !entry.lease_epochs.is_empty() {
-                        tracing::warn!(
-                            "Tserver {} lost its ysql lease holding DDL locks; a Rust leader does \
-                             not release them yet",
-                            String::from_utf8_lossy(&row.key.id)
-                        );
-                    }
                     mutation = mutation.read(row).upsert(
                         SysRowEntryType::OBJECT_LOCK_ENTRY,
                         &row.key.id,
@@ -406,7 +399,7 @@ impl YsqlLeases {
 }
 
 /// A `TransactionId::ToString` (a UUID's hex digits and dashes) as its 16 bytes.
-fn txn_id_bytes(s: &str) -> Option<Vec<u8>> {
+pub(crate) fn txn_id_bytes(s: &str) -> Option<Vec<u8>> {
     let hex: Vec<u8> = s.bytes().filter(|b| *b != b'-').collect();
     if hex.len() != 32 {
         return None;
@@ -422,7 +415,7 @@ pub(crate) fn tests_txn_bytes(s: &str) -> Vec<u8> {
 }
 
 /// `AddLeaseEpochFloor`.
-fn lease_epoch_floor(uuid: &[u8], lease: &LeaseInfoPB) -> Option<LeaseEpochFloorPB> {
+pub(crate) fn lease_epoch_floor(uuid: &[u8], lease: &LeaseInfoPB) -> Option<LeaseEpochFloorPB> {
     if !lease.has_lease_epoch() {
         return None;
     }
@@ -508,15 +501,20 @@ pub fn export_for_tserver(snapshot: &CatalogSnapshot) -> Result<DdlLockEntriesPB
     Ok(entries)
 }
 
-/// The `ysql-lease-expiry` controller for one term.
+/// The `ysql-lease-expiry` controller for one term: expires leases, then releases the DDL locks
+/// of the lease epochs that ended (`CleanupExpiredLeaseEpochs`).
 pub struct LeaseExpiryController {
     leases: Arc<YsqlLeases>,
+    locks: Arc<crate::locks::ObjectLocks>,
 }
 
 impl LeaseExpiryController {
     /// A controller for the term that just began.
-    pub fn new(leases: Arc<YsqlLeases>) -> Arc<LeaseExpiryController> {
-        Arc::new(LeaseExpiryController { leases })
+    pub fn new(
+        leases: Arc<YsqlLeases>,
+        locks: Arc<crate::locks::ObjectLocks>,
+    ) -> Arc<LeaseExpiryController> {
+        Arc::new(LeaseExpiryController { leases, locks })
     }
 }
 
@@ -536,6 +534,10 @@ impl Controller for LeaseExpiryController {
             };
             if let Err(status) = self.leases.expire(&token).await {
                 tracing::warn!("Failed to mark expired ysql leases: {status}");
+                return;
+            }
+            if let Err(status) = self.locks.release_ended(&token).await {
+                tracing::warn!("Failed to release the object locks of ended leases: {status}");
             }
         })
     }

@@ -427,6 +427,29 @@ mod leader_tests {
         }
     }
 
+    /// The master's lock manager, unused by these tests.
+    struct NoLocalLocks;
+
+    impl master_ysql_manager::locks::LocalLockManager for NoLocalLocks {
+        fn acquire(
+            &self,
+            _req: &yb_proto::pb::tserver::AcquireObjectLockRequestPB,
+            _timeout: std::time::Duration,
+        ) -> master_task_runtime::BoxFuture<'static, Result<(), Status>> {
+            Box::pin(async { Ok(()) })
+        }
+        fn release(
+            &self,
+            _req: &yb_proto::pb::tserver::ReleaseObjectLockRequestPB,
+            _timeout: std::time::Duration,
+        ) -> Result<(), Status> {
+            Ok(())
+        }
+        fn reset(&self, _entries: &yb_proto::pb::tserver::DdlLockEntriesPB) -> Result<(), Status> {
+            Ok(())
+        }
+    }
+
     fn with_leader(lead: bool) -> (Harness, Arc<FakeLeaderState>) {
         let mut harness = Harness::new();
         harness
@@ -558,6 +581,15 @@ mod leader_tests {
                 ts_manager.clone(),
                 Default::default(),
             );
+            let locks = master_ysql_manager::locks::ObjectLocks::new(
+                catalog.clone(),
+                writer.clone(),
+                leadership.clone(),
+                ts_manager.clone(),
+                Arc::new(NoLocalLocks),
+                master_task_runtime::TsRpcExecutor::new(|_| 1),
+                Default::default(),
+            );
             Arc::new(LeaderServices {
                 catalog,
                 writer,
@@ -573,6 +605,7 @@ mod leader_tests {
                 transaction_tables_use_preferred_zones: || false,
                 splits,
                 leases,
+                locks,
                 blacklist_progress_initial_delay: || std::time::Duration::ZERO,
                 delay_leader_blacklist_completion: || false,
             })

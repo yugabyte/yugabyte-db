@@ -24,6 +24,7 @@ use master_sys_catalog::{
     WriteFuture,
 };
 use master_table_lifecycle::SchemaHost;
+use master_task_runtime::BoxFuture;
 use master_ts_manager::{ContributorContext, HeartbeatContributor};
 use protobuf::{Enum, Message};
 use tokio::sync::oneshot;
@@ -31,6 +32,9 @@ use yb_host_api::{Status, StatusCode};
 use yb_proto::pb::common_types::PeerRole;
 use yb_proto::pb::master_heartbeat::{TSHeartbeatRequestPB, TSHeartbeatResponsePB};
 use yb_proto::pb::master_types::SysRowEntryType;
+use yb_proto::pb::tserver::{
+    AcquireObjectLockRequestPB, DdlLockEntriesPB, ReleaseObjectLockRequestPB,
+};
 
 use crate::ffi::bridge::{MasterInfoHandle, RowChangeFfi, ScannedRow};
 
@@ -225,6 +229,67 @@ impl SysCatalogStore for HostStore {
                 ))
             })
         })
+    }
+}
+
+/// [`LocalLockManager`] over the host's `TSLocalLockManager`.
+pub(crate) struct HostLocalLocks(
+    pub(crate) UniquePtr<MasterInfoHandle>,
+    pub(crate) Arc<HostGate>,
+);
+
+impl master_ysql_manager::locks::LocalLockManager for HostLocalLocks {
+    fn acquire(
+        &self,
+        req: &AcquireObjectLockRequestPB,
+        timeout: Duration,
+    ) -> BoxFuture<'static, Result<(), Status>> {
+        let Some(_open) = self.1.enter() else {
+            return Box::pin(async { Err(shut_down()) });
+        };
+        let bytes = match req.write_to_bytes() {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                let status = Status::new(StatusCode::InternalError, e.to_string());
+                return Box::pin(async move { Err(status) });
+            }
+        };
+        let (sender, receiver) = oneshot::channel();
+        self.0.acquire_local_object_locks(
+            &bytes,
+            timeout.as_millis().min(u64::MAX as u128) as u64,
+            Box::new(WriteCompletion(sender)),
+        );
+        Box::pin(async move {
+            receiver.await.unwrap_or_else(|_| {
+                Err(Status::new(
+                    StatusCode::Aborted,
+                    "object lock acquire dropped without completing",
+                ))
+            })
+        })
+    }
+
+    fn release(&self, req: &ReleaseObjectLockRequestPB, timeout: Duration) -> Result<(), Status> {
+        let Some(_open) = self.1.enter() else {
+            return Err(shut_down());
+        };
+        let bytes = req
+            .write_to_bytes()
+            .map_err(|e| Status::new(StatusCode::InternalError, e.to_string()))?;
+        self.0
+            .release_local_object_locks(&bytes, timeout.as_millis().min(u64::MAX as u128) as u64)
+            .map_err(host_error)
+    }
+
+    fn reset(&self, entries: &DdlLockEntriesPB) -> Result<(), Status> {
+        let Some(_open) = self.1.enter() else {
+            return Err(shut_down());
+        };
+        let bytes = entries
+            .write_to_bytes()
+            .map_err(|e| Status::new(StatusCode::InternalError, e.to_string()))?;
+        self.0.reset_local_object_locks(&bytes).map_err(host_error)
     }
 }
 

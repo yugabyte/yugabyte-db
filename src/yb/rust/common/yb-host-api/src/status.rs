@@ -67,6 +67,8 @@ pub enum StatusCode {
     TryAgain = 25,
     /// `Status::kBusy`.
     Busy = 26,
+    /// `Status::kShutdownInProgress`.
+    ShutdownInProgress = 27,
     /// `Status::kDeleted`.
     Deleted = 35,
 }
@@ -75,7 +77,7 @@ impl StatusCode {
     /// Converts a C++ status code; unknown values become `InternalError`.
     pub fn from_i32(code: i32) -> StatusCode {
         use StatusCode::*;
-        const ALL: [StatusCode; 25] = [
+        const ALL: [StatusCode; 26] = [
             NotFound,
             Corruption,
             NotSupported,
@@ -100,6 +102,7 @@ impl StatusCode {
             LeaderHasNoLease,
             TryAgain,
             Busy,
+            ShutdownInProgress,
             Deleted,
         ];
         ALL.into_iter()

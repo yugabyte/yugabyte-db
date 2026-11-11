@@ -14,6 +14,7 @@
 
 pub mod initdb;
 pub mod lease;
+pub mod locks;
 
 #[cfg(test)]
 mod tests;

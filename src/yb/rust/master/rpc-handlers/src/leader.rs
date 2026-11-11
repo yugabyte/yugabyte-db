@@ -84,6 +84,8 @@ pub struct LeaderServices {
     pub splits: Arc<master_tablet_split_manager::TabletSplitManager>,
     /// YSQL operation leases.
     pub leases: Arc<master_ysql_manager::lease::YsqlLeases>,
+    /// Global DDL object locks.
+    pub locks: Arc<master_ysql_manager::locks::ObjectLocks>,
     /// `blacklist_progress_initial_delay_secs`.
     pub blacklist_progress_initial_delay: fn() -> std::time::Duration,
     /// `delay_leader_blacklist_completion_percent_until_tservers_heartbeat`.
