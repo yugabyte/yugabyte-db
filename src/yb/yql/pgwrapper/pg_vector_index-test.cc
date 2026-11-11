@@ -250,17 +250,19 @@ std::vector<tablet::TabletPeerPtr> ListTabletPeersWithVectorIndexes(
 // waits for every replica to apply all the ops its leader has committed.
 Status WaitAllReplicasAppliedLeaderCommitted(MiniCluster* cluster, CoarseDuration timeout) {
   std::unordered_map<TabletId, int64_t> leader_committed_idx;
+  std::vector<tablet::TabletPeerPtr> peers;
   const auto deadline = CoarseMonoClock::Now() + timeout;
-  // After a restart, some tablets may still be electing a leader.
+  // Tablets may still be electing a leader, e.g. right after a restart or tablet creation.
   RETURN_NOT_OK(Wait(
-      [cluster, &leader_committed_idx]() -> Result<bool> {
+      [cluster, &leader_committed_idx, &peers]() -> Result<bool> {
         leader_committed_idx.clear();
         for (const auto& peer : ListTabletPeers(cluster, ListPeersFilter::kLeaders)) {
           leader_committed_idx.emplace(
               peer->tablet_id(),
               VERIFY_RESULT(peer->GetConsensus())->GetLastCommittedOpId().index);
         }
-        for (const auto& peer : ListTabletPeers(cluster, ListPeersFilter::kAll)) {
+        peers = ListTabletPeers(cluster, ListPeersFilter::kAll);
+        for (const auto& peer : peers) {
           if (!leader_committed_idx.contains(peer->tablet_id())) {
             return false;
           }
@@ -268,10 +270,8 @@ Status WaitAllReplicasAppliedLeaderCommitted(MiniCluster* cluster, CoarseDuratio
         return true;
       },
       deadline, "Wait for all tablet leaders"));
-  for (const auto& peer : ListTabletPeers(cluster, ListPeersFilter::kAll)) {
+  for (const auto& peer : peers) {
     auto it = leader_committed_idx.find(peer->tablet_id());
-    SCHECK(it != leader_committed_idx.end(), IllegalState,
-           Format("No leader for tablet $0", peer->tablet_id()));
     RETURN_NOT_OK(Wait(
         [idx = it->second, &peer]() -> Result<bool> {
           return VERIFY_RESULT(peer->GetConsensus())->GetLastAppliedOpId().index >= idx;
