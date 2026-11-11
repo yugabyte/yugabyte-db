@@ -1517,11 +1517,11 @@ public class GFlagsUtil {
   }
 
   /**
-   * Refuses an ldapbindpasswd whose end redaction can't be sure of: one quoted only in part, such
-   * as pa",ss" for pa,ss, which is redacted to the end of its CSV field, so API responses lose the
-   * HBA options after it; or an unquoted one with a space or comma, such as Two Word Secret, which
-   * Postgres ends at the space or comma. HBA values the universe already stores pass, so one saved
-   * before this check doesn't block other edits.
+   * Refuses an ldapbindpasswd whose end redaction can't be sure of, such as pa",ss" (quoted only in
+   * part, for pa,ss) or Two Word Secret (unquoted, which Postgres ends at the space). Redaction
+   * hides the rest of its CSV field, so API responses would lose the HBA options after it. HBA
+   * values the universe already stores pass, so one saved before this check doesn't block other
+   * edits.
    */
   public static void checkLdapBindPasswdQuoting(
       UniverseDefinitionTaskParams.UserIntent userIntent, @Nullable Universe universe) {

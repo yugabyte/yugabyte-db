@@ -279,8 +279,9 @@ public class LdapBindPasswdHbaFormatTest {
   }
 
   @Test
-  public void redactAllValuesRedactsUnquotedPasswordWithSpaceOrCommaToNextOption() {
-    for (String password : List.of("Two Word Secret", "pa,ss", "a b,c")) {
+  public void redactAllValuesRedactsUnquotedPasswordWithSpaceOrCommaToFieldEnd() {
+    // key=abc looks like an option but is still password.
+    for (String password : List.of("Two Word Secret", "pa,ss", "a b,c", "my secret key=abc")) {
       String hba =
           "\"host all all 0.0.0.0/0 ldap ldapbindpasswd="
               + password
@@ -288,7 +289,7 @@ public class LdapBindPasswdHbaFormatTest {
       String expected =
           "\"host all all 0.0.0.0/0 ldap ldapbindpasswd="
               + SECRET_REPLACEMENT
-              + " ldaptls=0\",local all all trust";
+              + "\",local all all trust";
       assertEquals(
           password, expected, LdapBindPasswdHbaFormat.redactAllValues(hba, SECRET_REPLACEMENT));
       assertTrue(password, LdapBindPasswdHbaFormat.hasValueWithUnknownEnd(hba));

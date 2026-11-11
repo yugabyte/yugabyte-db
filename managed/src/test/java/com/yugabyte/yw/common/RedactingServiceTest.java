@@ -122,17 +122,13 @@ public class RedactingServiceTest {
     JsonNode out =
         RedactingService.filterSecretFields(root, RedactionTarget.APIS, null, null, true);
     assertEquals(
-        "host all all 0.0.0.0/0 ldap ldapbindpasswd="
-            + SECRET_REPLACEMENT
-            + " ldapbinddn=\"\"CN=x,DC=y\"\" ldapserver=ldap.example.com ldaptls=0",
+        "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + SECRET_REPLACEMENT,
         out.get("ysql_hba_conf_csv").asText());
     root.put(
         "ysql_hba_conf_csv",
         "host all all 0.0.0.0/0 ldap ldapbindpasswd=pa,ss ldaptls=0,local all all trust");
     assertEquals(
-        "host all all 0.0.0.0/0 ldap ldapbindpasswd="
-            + SECRET_REPLACEMENT
-            + " ldaptls=0,local all all trust",
+        "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + SECRET_REPLACEMENT,
         RedactingService.filterSecretFields(root, RedactionTarget.APIS, null, null, true)
             .get("ysql_hba_conf_csv")
             .asText());
@@ -500,22 +496,21 @@ public class RedactingServiceTest {
             + "ldapbindpasswd="
             + pwd
             + " ldapsearchattribute=\"\"all\"\" ldaptls=0";
-    String redacted = RedactingService.redactSensitiveInfoInString(hba);
-    assertFalse(redacted.contains(pwd));
-    assertTrue(redacted.contains("ldapbindpasswd=" + SECRET_REPLACEMENT));
-    assertTrue(redacted.contains("ldapsearchattribute"));
+    assertEquals(
+        "host all all 0.0.0.0/0 ldap ldapserver=server.server.com ldapbinddn=\"\"CN=u\"\" "
+            + "ldapbindpasswd="
+            + SECRET_REPLACEMENT,
+        RedactingService.redactSensitiveInfoInString(hba));
   }
 
-  /** Comma in unquoted password must not eat the next record (hostssl, hostnossl, ...). */
+  /** Text after a comma in an unquoted password may be password, so a later record is hidden. */
   @Test
-  public void testLdapBindPasswdUnquotedCommaThenHostsslRecordBoundary() {
-    String pwd = "a,b";
+  public void testLdapBindPasswdUnquotedCommaRedactsRestOfField() {
     String hba =
-        "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + pwd + ",hostssl all all 127.0.0.1/32 trust";
-    String redacted = RedactingService.redactSensitiveInfoInString(hba);
-    assertFalse(redacted.contains("a,b"));
-    assertTrue(redacted.contains("ldapbindpasswd=" + SECRET_REPLACEMENT));
-    assertTrue(redacted.contains("hostssl all all 127.0.0.1/32 trust"));
+        "host all all 0.0.0.0/0 ldap ldapbindpasswd=a,b,hostssl all all 127.0.0.1/32 trust";
+    assertEquals(
+        "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + SECRET_REPLACEMENT,
+        RedactingService.redactSensitiveInfoInString(hba));
   }
 
   @Test

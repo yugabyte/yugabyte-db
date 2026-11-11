@@ -14,11 +14,11 @@ import java.util.regex.Pattern;
  * it (see {@link QuoteStyle}), and the replacement is written back in that style. Text around the
  * value is kept as is, so redacted JSON still parses.
  *
- * <p>Some values have no end this parser can be sure of. One quoted only in part, such as {@code
- * "pa"ss}, or quoted in a way this parser doesn't read, such as an HBA line's {@code \"secret\"}
- * inside a JSON string, is redacted to the end of the CSV field or JSON string that holds it. An
- * unquoted one followed by more text that isn't an option, such as {@code Two Word Secret}, is
- * redacted up to the next option or record.
+ * <p>Some values have no end this parser can be sure of: one quoted only in part, such as {@code
+ * "pa"ss}; an unquoted one followed by more text that isn't an option, such as {@code Two Word
+ * Secret}; or one quoted in a way this parser doesn't read, such as an HBA line's {@code
+ * \"secret\"} inside a JSON string. Such a value is redacted to the end of the CSV field or JSON
+ * string that holds it.
  */
 public final class LdapBindPasswdHbaFormat {
 
@@ -87,14 +87,12 @@ public final class LdapBindPasswdHbaFormat {
       int eq = idx + LDAPBINDPASSWD_KEY.length();
       out.append(LDAPBINDPASSWD_KEY);
       ParsedValue parsed = tryParseValue(input, eq);
-      if (parsed != null && endsValue(input, parsed.endExclusive())) {
+      if (parsed != null
+          && endsValue(input, parsed.endExclusive())
+          && (parsed.style() != QuoteStyle.UNQUOTED
+              || unquotedValueEndsThere(input, parsed.endExclusive()))) {
         out.append(encode(parsed.style(), replacement));
         last = parsed.endExclusive();
-        if (parsed.style() == QuoteStyle.UNQUOTED
-            && !unquotedValueEndsThere(input, parsed.endExclusive())) {
-          last = unquotedRunEnd(input, parsed.endExclusive());
-          anyEndUnknown = true;
-        }
       } else if (endsValue(input, eq)) {
         last = eq;
       } else {
@@ -140,34 +138,6 @@ public final class LdapBindPasswdHbaFormat {
     }
     return isOptionAssignment(s, j)
         || (comma && HBA_RECORD_TYPE.matcher(s).region(j, s.length()).lookingAt());
-  }
-
-  /**
-   * Where to stop redacting an unquoted value that goes on past the whitespace or comma at s[i]:
-   * the next whitespace or comma that unquotedValueEndsThere ends it at, a line break, or a quote
-   * that closes the CSV field or JSON string holding the record.
-   */
-  private static int unquotedRunEnd(String s, int i) {
-    while (i < s.length()) {
-      char c = s.charAt(i);
-      if (c == '\n' || c == '\r' || isJsonEscapedLineBreak(s, i)) {
-        return i;
-      }
-      if ((c == ' ' || c == '\t' || c == ',') && unquotedValueEndsThere(s, i)) {
-        return i;
-      }
-      int quoteLength = quoteLengthAt(s, i);
-      if (quoteLength == 0) {
-        i++;
-      } else if (isDoubledQuote(s, i, quoteLength)) {
-        i += 2 * quoteLength;
-      } else if (isFieldEndAfterQuote(s, i + quoteLength)) {
-        return i;
-      } else {
-        i += quoteLength;
-      }
-    }
-    return s.length();
   }
 
   /**
@@ -281,11 +251,9 @@ public final class LdapBindPasswdHbaFormat {
 
   /** True if s[i] starts a JSON-escaped line break or tab. */
   private static boolean isJsonEscapedWhitespace(String s, int i) {
-    return isJsonEscapedLineBreak(s, i) || s.startsWith("\\t", i);
-  }
-
-  private static boolean isJsonEscapedLineBreak(String s, int i) {
-    return s.startsWith("\\n", i) || s.startsWith("\\r", i);
+    return s.charAt(i) == '\\'
+        && i + 1 < s.length()
+        && (s.charAt(i + 1) == 'n' || s.charAt(i + 1) == 'r' || s.charAt(i + 1) == 't');
   }
 
   /**
