@@ -754,7 +754,8 @@ YbIsIocPushdownCapableRel(ResultRelInfo *resultRelInfo, ModifyTable *node)
  * On that fallback path, batching and index-only reads are independent.
  */
 void
-YbInitIocStrategy(ResultRelInfo *resultRelInfo, ModifyTable *node)
+YbInitIocStrategy(ResultRelInfo *resultRelInfo, ModifyTable *node,
+				  int batch_size)
 {
 	Assert(node->operation == CMD_INSERT);
 
@@ -766,7 +767,7 @@ YbInitIocStrategy(ResultRelInfo *resultRelInfo, ModifyTable *node)
 		return;
 	}
 
-	if (YbIsInsertOnConflictReadBatchingPossible(resultRelInfo))
+	if (YbIsInsertOnConflictReadBatchingPossible(resultRelInfo, batch_size))
 		resultRelInfo->ri_ybIocBatchingPossible = true;
 
 	if (IsYBRelation(resultRelInfo->ri_RelationDesc) &&
@@ -775,12 +776,13 @@ YbInitIocStrategy(ResultRelInfo *resultRelInfo, ModifyTable *node)
 }
 
 bool
-YbIsInsertOnConflictReadBatchingPossible(ResultRelInfo *resultRelInfo)
+YbIsInsertOnConflictReadBatchingPossible(ResultRelInfo *resultRelInfo,
+										 int batch_size)
 {
 	/*
 	 * TODO(jason): figure out how to enable triggers.
 	 */
-	if (yb_insert_on_conflict_read_batch_size == 0 ||
+	if (batch_size == 0 ||
 		!IsYBRelation(resultRelInfo->ri_RelationDesc) ||
 		IsCatalogRelation(resultRelInfo->ri_RelationDesc) ||
 		(resultRelInfo->ri_TrigDesc &&
