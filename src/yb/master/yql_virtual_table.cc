@@ -32,6 +32,21 @@ namespace {
 static const char* const kBaseMetricDescription =
     "Time (microseconds) spent querying YCQL system table: ";
 static const char* const kMetricPrefixName = "ycql_queries_";
+
+scoped_refptr<Histogram> QueryHistogram(
+    const TableName& table_name, const NamespaceName& namespace_name,
+    const scoped_refptr<MetricEntity>& metric_entity) {
+  std::string metricDescription = kBaseMetricDescription + table_name;
+  std::string metricName = kMetricPrefixName + namespace_name + "_" + table_name;
+  EscapeMetricNameForPrometheus(&metricName);
+
+  std::unique_ptr<HistogramPrototype> prototype = std::make_unique<OwningHistogramPrototype>(
+              "server", metricName, metricDescription,
+              MetricUnit::kMicroseconds, metricDescription,
+              MetricLevel::kInfo, 0, 10000000, 2);
+  return metric_entity->FindOrCreateMetric<Histogram>(std::move(prototype));
+}
+
 }  // namespace
 
 YQLVirtualTable::YQLVirtualTable(const TableName& table_name,
@@ -40,16 +55,18 @@ YQLVirtualTable::YQLVirtualTable(const TableName& table_name,
                                  const Schema& schema)
     : master_(master),
       table_name_(table_name),
-      schema_(std::make_unique<Schema>(schema)) {
-    std::string metricDescription = kBaseMetricDescription + table_name_;
-    std::string metricName = kMetricPrefixName + namespace_name + "_" + table_name;
-    EscapeMetricNameForPrometheus(&metricName);
+      schema_(std::make_unique<Schema>(schema)),
+      histogram_(QueryHistogram(table_name, namespace_name, master->metric_entity())) {
+}
 
-    std::unique_ptr<HistogramPrototype> prototype = std::make_unique<OwningHistogramPrototype>(
-                "server", metricName, metricDescription,
-                MetricUnit::kMicroseconds, metricDescription,
-                MetricLevel::kInfo, 0, 10000000, 2);
-    histogram_ = master->metric_entity()->FindOrCreateMetric<Histogram>(std::move(prototype));
+YQLVirtualTable::YQLVirtualTable(const TableName& table_name,
+                                 const NamespaceName& namespace_name,
+                                 const scoped_refptr<MetricEntity>& metric_entity,
+                                 const Schema& schema)
+    : master_(nullptr),
+      table_name_(table_name),
+      schema_(std::make_unique<Schema>(schema)),
+      histogram_(QueryHistogram(table_name, namespace_name, metric_entity)) {
 }
 
 YQLVirtualTable::~YQLVirtualTable() = default;

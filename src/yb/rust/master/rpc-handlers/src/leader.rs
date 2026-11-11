@@ -96,10 +96,7 @@ pub fn owner(method: &str) -> &'static str {
         "PromoteAutoFlags"
         | "RollbackAutoFlags"
         | "PromoteSingleAutoFlag"
-        | "DemoteSingleAutoFlag"
-        | "GetYsqlYbSystemTableInfo"
-        | "GetYsqlCatalogConfig"
-        | "ReservePgsqlOids" => "YSQL and AutoFlags management (W9)",
+        | "DemoteSingleAutoFlag" => "AutoFlags management (W9)",
         "GetIndexBackfillProgress" => "DDL (W7)",
         "RedisConfigSet" | "RedisConfigGet" => "nobody: YEDIS is not supported (D16)",
         _ => "a later layer",
@@ -704,7 +701,7 @@ impl LeaderServices {
 
     /// `BuildLocationsForTablet`. `masters` is the master quorum's committed consensus state, the
     /// replicas of system tablets (`BuildLocationsForSystemTablet`).
-    fn tablet_locations(
+    pub(crate) fn tablet_locations(
         &self,
         snapshot: &CatalogSnapshot,
         masters: Option<&ConsensusStatePB>,
@@ -830,7 +827,7 @@ fn is_system_tablet(snapshot: &CatalogSnapshot, tablet: &Entity) -> bool {
 
 /// A tablet lookup failure, with the split children C++ attaches to a hidden or deleted tablet
 /// (`SplitChildTabletIdsData`): a client holding a parent finds its children through them.
-struct LocationError {
+pub(crate) struct LocationError {
     status: Status,
     split_children: Option<Vec<Vec<u8>>>,
 }

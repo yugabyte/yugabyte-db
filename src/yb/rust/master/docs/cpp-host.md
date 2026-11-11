@@ -73,12 +73,26 @@ they start (with `allow_encryption_at_rest`, the default).
 For table DDL the host runs the C++ steps that read or write engine formats, also through
 `HandleOnHost`, with request and response messages in `master_rust_peer.proto`:
 `PrepareTableSchema` (CREATE TABLE's schema, tablet count and partitions) and `AlterTableSchema`
-(`ApplyAlterSteps`), which share `src/yb/master/table_ddl_util.cc` with `CatalogManager`. The
+(`ApplyAlterSteps`), which share `src/yb/master/table_ddl_util.cc` with `CatalogManager`.
+For YSQL it serves `GetYsqlCatalogConfig` (the database's version in `pg_yb_catalog_version`; Rust
+resolves the namespace to its id first) and `GetYsqlYbSystemTableInfo` from the sys catalog. The
 schedules that cover a namespace or table are not asked of the host's snapshot coordinator: it
 collects a schedule's entries through `CatalogManager`, which is never leader on a Rust master,
 so the Rust leader derives them from the `SNAPSHOT_SCHEDULE` rows (`schedules.rs`).
 `EncodedPartitionKeys` gives a split the DocDB-encoded keys of its children's partition keys
 (`PartitionSchema::GetEncodedPartitionKey`).
+
+**YCQL virtual tables.** `system.local`, `system.peers`, `system.partitions`,
+`system_schema.*` and `system_auth.*` (`SystemTableDefs`) are read by tservers from the leader
+master's tablet service like any tablet. The host's `GetSystemTablet` serves them with a
+`SystemTablet` per tablet (`ycql_virtual_tables.cc`) whose rows are formatted as the C++
+`YQL*VTable` classes format them. What they show comes from Rust on every read
+(`VirtualTables::Input`, a `YcqlVirtualTableInputPB`): the live tservers in uuid order, the
+running YCQL keyspaces, the YCQL tables visible to clients with their tablets' locations, the
+UDTs and the roles. The split is where the formats are: the schemas, CQL type names, index
+targets, partition hashes and DNS lookups are C++'s, and the C++ classes read them through
+`CatalogManager`, which a Rust master's host does not have. `system.partitions` is rebuilt on
+every read rather than cached as C++ caches it.
 
 **Leading.** Only with `--TEST_rust_master_allow_leadership`
 ([leadership.md](leadership.md)): failure detection stays on and an election only nudges the

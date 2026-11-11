@@ -19,9 +19,11 @@ use protobuf::{Enum, EnumOrUnknown};
 use tokio::time::Instant;
 use yb_host_api::StatusCode;
 use yb_proto::pb::catalog_entity_info::{
-    sys_namespace_entry_pb, sys_tables_entry_pb, SysNamespaceEntryPB, SysUDTypeEntryPB,
+    sys_namespace_entry_pb, sys_tables_entry_pb, SysClusterConfigEntryPB, SysNamespaceEntryPB,
+    SysUDTypeEntryPB,
 };
 use yb_proto::pb::common_types::YQLDatabase;
+use yb_proto::pb::master_client::{ReservePgsqlOidsRequestPB, ReservePgsqlOidsResponsePB};
 use yb_proto::pb::master_ddl::{
     CreateNamespaceRequestPB, CreateNamespaceResponsePB, DeleteNamespaceRequestPB,
     GetNamespaceInfoRequestPB, GetNamespaceInfoResponsePB, IsCreateNamespaceDoneRequestPB,
@@ -382,6 +384,102 @@ impl TableLifecycle {
         Ok(())
     }
 }
+
+impl TableLifecycle {
+    /// `ReservePgsqlOids`: the next `count` OIDs of a YSQL database's normal or secondary space,
+    /// from the namespace row, which records where the next reservation starts.
+    pub async fn reserve_pgsql_oids(
+        &self,
+        token: &LeaderToken,
+        deadline: Instant,
+        req: &ReservePgsqlOidsRequestPB,
+        resp: &mut ReservePgsqlOidsResponsePB,
+    ) -> Result<(), MasterErrorPB> {
+        let (begin, end, invalidations) = self
+            .write(token, deadline, |snapshot| {
+                let config: SysClusterConfigEntryPB = snapshot
+                    .cluster_config()
+                    .ok_or_else(|| {
+                        error(
+                            Code::UNKNOWN_ERROR,
+                            StatusCode::IllegalState,
+                            "No cluster config",
+                        )
+                    })?
+                    .parse()
+                    .map_err(|e| {
+                        error(Code::UNKNOWN_ERROR, StatusCode::Corruption, e.to_string())
+                    })?;
+                let namespace = snapshot
+                    .get(SysRowEntryType::NAMESPACE, req.namespace_id())
+                    .ok_or_else(|| {
+                        error(
+                            Code::NAMESPACE_NOT_FOUND,
+                            StatusCode::NotFound,
+                            format!(
+                                "Namespace not found: {}",
+                                String::from_utf8_lossy(req.namespace_id())
+                            ),
+                        )
+                    })?;
+                let mut pb: SysNamespaceEntryPB = namespace.parse().map_err(|e| {
+                    error(Code::UNKNOWN_ERROR, StatusCode::Corruption, e.to_string())
+                })?;
+                let (next, upper) = if req.use_secondary_space() {
+                    (
+                        pb.next_secondary_pg_oid().max(PG_FIRST_SECONDARY_SPACE_OID),
+                        PG_UPPER_BOUND_SECONDARY_SPACE_OID,
+                    )
+                } else {
+                    (pb.next_normal_pg_oid(), PG_UPPER_BOUND_NORMAL_OID)
+                };
+                let begin = next.max(req.next_oid());
+                if begin >= upper {
+                    tracing::warn!(
+                        "No more {} object identifiers are available for Postgres database {} \
+                         ({})",
+                        if req.use_secondary_space() {
+                            "secondary"
+                        } else {
+                            "normal"
+                        },
+                        String::from_utf8_lossy(pb.name()),
+                        String::from_utf8_lossy(req.namespace_id())
+                    );
+                    return Err(error(
+                        Code::UNKNOWN_ERROR,
+                        StatusCode::InvalidArgument,
+                        "No more object identifiers are available",
+                    ));
+                }
+                let end = begin.saturating_add(req.count()).min(upper);
+                if req.use_secondary_space() {
+                    pb.set_next_secondary_pg_oid(end);
+                } else {
+                    pb.set_next_normal_pg_oid(end);
+                }
+                let mutation = Mutation::new()
+                    .read(namespace)
+                    .upsert_message(SysRowEntryType::NAMESPACE, &namespace.key.id, &pb)
+                    .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+                Ok((
+                    mutation,
+                    (begin, end, config.oid_cache_invalidations_count()),
+                ))
+            })
+            .await?;
+        resp.set_begin_oid(begin);
+        resp.set_end_oid(end);
+        resp.set_oid_cache_invalidations_count(invalidations);
+        Ok(())
+    }
+}
+
+/// `kPgUpperBoundNormalObjectId` and the secondary space after it (`entity_ids.h`); both upper
+/// bounds are exclusive.
+const PG_UPPER_BOUND_NORMAL_OID: u32 = 2_199_999_999;
+const PG_FIRST_SECONDARY_SPACE_OID: u32 = PG_UPPER_BOUND_NORMAL_OID + 1;
+const PG_UPPER_BOUND_SECONDARY_SPACE_OID: u32 = 0xffff_ffff;
 
 /// A `NamespaceIdentifierPB` with id, name and type.
 pub(crate) fn identifier(id: &[u8], name: &str, database_type: i32) -> NamespaceIdentifierPB {

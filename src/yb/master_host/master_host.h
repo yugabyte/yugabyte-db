@@ -24,6 +24,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <unordered_map>
 
 #include <boost/asio/ip/tcp.hpp>
 
@@ -35,6 +36,7 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_options.h"
+#include "yb/master/master_rust_peer.pb.h"
 #include "yb/master/master_tserver.h"
 
 #include "yb/rust_bridge/rpc_bridge.h"
@@ -78,6 +80,7 @@ struct ApplySink;
 struct RaftLeaderStateFfi;
 struct RowChangeFfi;
 struct ScannedRow;
+struct VirtualTables;
 struct WebMasterList;
 struct WriteCompletion;
 
@@ -103,6 +106,8 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   void ShutdownHost();
   // Where applied sys-catalog rows go. Must be called before StartHost().
   void SetApplySink(rust::Box<ApplySink> sink);
+  // What the YCQL virtual tables show. Must be called before the Rust services are registered.
+  void SetVirtualTables(rust::Box<VirtualTables> tables);
   // Access for Rust handlers, which run on other threads while the main thread owns the host.
   // Must not outlive it.
   std::unique_ptr<MasterInfoHandle> InfoHandle();
@@ -230,6 +235,9 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   Status ResetMemoryState(const consensus::RaftConfigPB& config);
   Status GetMasterRegistration(ServerRegistrationPB* reg) const;
   Status GoIntoShellMode();
+  // A YCQL virtual table's tablet, for MasterTabletServiceImpl.
+  Result<std::shared_ptr<tablet::AbstractTablet>> VirtualTableTablet(const TabletId& tablet_id);
+  Result<master::YcqlVirtualTableInputPB> VirtualTableInput(const TabletId& tablet_id);
   void RegisterWebPages();
   bool IsLeaderInList(const Result<std::vector<ServerEntryPB>>& masters) const;
   Result<std::vector<ServerEntryPB>> ListMastersForWeb() const;
@@ -288,6 +296,12 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   scoped_refptr<AtomicGauge<uint32_t>> blacklisted_leaders_metric_;
   scoped_refptr<AtomicGauge<uint32_t>> total_table_load_difference_metric_;
   scoped_refptr<AtomicGauge<uint64_t>> estimated_data_to_balance_bytes_metric_;
+  // The YCQL virtual tables: their input from Rust, and their tablets by id, created on the
+  // first read of each.
+  std::optional<rust::Box<VirtualTables>> virtual_tables_;
+  std::mutex system_tablets_mutex_;
+  std::unordered_map<TabletId, std::shared_ptr<tablet::AbstractTablet>> system_tablets_
+      GUARDED_BY(system_tablets_mutex_);
 };
 
 class MasterInfoHandle {

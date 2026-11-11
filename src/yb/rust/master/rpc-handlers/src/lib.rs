@@ -28,6 +28,7 @@
 mod balancer;
 pub mod leader;
 mod list_masters;
+mod vtables;
 
 pub use leader::LeaderServices;
 pub use list_masters::list_masters_response;
@@ -50,7 +51,8 @@ use yb_proto::pb::master_admin::{
 use yb_proto::pb::master_client::{
     GetTableLocationsRequestPB, GetTableLocationsResponsePB, GetTabletLocationsRequestPB,
     GetTabletLocationsResponsePB, GetTransactionStatusTabletsRequestPB,
-    GetTransactionStatusTabletsResponsePB,
+    GetTransactionStatusTabletsResponsePB, GetYsqlCatalogConfigRequestPB,
+    GetYsqlCatalogConfigResponsePB, ReservePgsqlOidsRequestPB, ReservePgsqlOidsResponsePB,
 };
 use yb_proto::pb::master_cluster::{
     AreLeadersOnPreferredOnlyRequestPB, AreLeadersOnPreferredOnlyResponsePB,
@@ -81,7 +83,7 @@ use yb_proto::pb::master_heartbeat::{TSHeartbeatRequestPB, TSHeartbeatResponsePB
 use yb_proto::pb::master_rust_peer::{
     dump_catalog_response_pb, DumpCatalogResponsePB, PushLocationsRequestPB,
 };
-use yb_proto::pb::master_types::{master_error_pb, MasterErrorPB};
+use yb_proto::pb::master_types::{master_error_pb, MasterErrorPB, NamespaceIdentifierPB};
 use yb_proto::pb::master_ysql_lease::{
     RefreshYsqlLeaseRequestPB, RefreshYsqlLeaseResponsePB, RelinquishYsqlLeaseRequestPB,
     RelinquishYsqlLeaseResponsePB,
@@ -905,7 +907,50 @@ impl Shared {
                     Ok(())
                 }
             ),
-            "GetAutoFlagsConfig" | "ValidateAutoFlagsConfig" => {
+            "ReservePgsqlOids" => serve_ddl!(
+                ReservePgsqlOidsRequestPB,
+                ReservePgsqlOidsResponsePB,
+                |req, resp| tables
+                    .reserve_pgsql_oids(&token, deadline, &req, &mut resp)
+                    .await
+            ),
+            // The host reads the database's version from pg_yb_catalog_version; it gets the
+            // request with the namespace resolved to its id, as `FindNamespace` resolves it.
+            "GetYsqlCatalogConfig" => {
+                let request = GetYsqlCatalogConfigRequestPB::parse_from_bytes(call.request())
+                    .map_err(|e| Status::new(StatusCode::InvalidArgument, e.to_string()))
+                    .and_then(|mut req| {
+                        if req.namespace.is_none() {
+                            return Ok(req);
+                        }
+                        let namespace = master_table_lifecycle::lookup::find_namespace(
+                            &snapshot,
+                            &req.namespace,
+                        )
+                        .map_err(|e| status_of(&e))?;
+                        let mut resolved = NamespaceIdentifierPB::new();
+                        resolved.set_id(namespace.key.id.to_vec());
+                        req.namespace = Some(resolved).into();
+                        Ok(req)
+                    })
+                    .and_then(|req| {
+                        req.write_to_bytes()
+                            .map_err(|e| Status::new(StatusCode::InternalError, e.to_string()))
+                    });
+                match request {
+                    Ok(request) => self.serve_on_host(call, method, request).await,
+                    Err(status) => {
+                        let mut resp = GetYsqlCatalogConfigResponsePB::new();
+                        resp.error = Some(master_error_from(
+                            master_error_pb::Code::NAMESPACE_NOT_FOUND,
+                            &status,
+                        ))
+                        .into();
+                        respond(call, &resp)
+                    }
+                }
+            }
+            "GetAutoFlagsConfig" | "ValidateAutoFlagsConfig" | "GetYsqlYbSystemTableInfo" => {
                 let request = call.request().to_vec();
                 self.serve_on_host(call, method, request).await
             }
@@ -997,7 +1042,7 @@ pub(crate) fn master_error_from(code: master_error_pb::Code, status: &Status) ->
     master_error(code, status.code, &status.message)
 }
 
-fn status_of(error: &MasterErrorPB) -> Status {
+pub(crate) fn status_of(error: &MasterErrorPB) -> Status {
     Status::new(
         StatusCode::from_i32(error.status.code().value()),
         error.status.message().to_string(),

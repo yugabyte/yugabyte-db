@@ -32,7 +32,7 @@ column checks, column ids, the default partition schema, the tablet count (`Requ
 from the live tservers of the table's placement) and the partitions. Rust does the rest in C++'s
 order: namespace type, user-defined types, `max_create_tablets_per_ts`, the partitioning error,
 the placement checks of `CheckValidPlacementInfo` (quorum of live tservers, block minimums and
-maximums), then, under the name lock, the duplicate name and the namespace state. The table and
+maximums, and whether a quorum fits within each block's tservers and effective maximum), then, under the name lock, the duplicate name and the namespace state. The table and
 all its tablets are written PREPARING in one mutation, with tablet ids sorted as C++ sorts them.
 
 A transactional table needs `system.transactions`: if it does not exist, it is created first, as
@@ -53,7 +53,9 @@ Runs every `catalog_manager_bg_task_wait_ms` and on every catalog change, in eac
   least loaded live, non-blacklisted tservers of the placement, by the table's then the cluster's
   replica count, then uuid, filling each placement block's minimum first, as
   `SelectReplicasForTablet` does. With fewer such tservers than replicas the tablet starts
-  under-replicated, as in C++.
+  under-replicated, as in C++. Each read replica placement then adds OBSERVER replicas on its own
+  tservers, counted in the same load (`BuildPlacementCandidates`); a read replica placement with
+  no live tservers gets none, and the balancer adds them later.
 - CREATING tablets get `CreateTablet` sent to each replica once per term (with the snapshot
   schedules that cover the table), through the paced
   executor (K2), retried until `tablet_creation_timeout_ms`. A new leader sends again, and so

@@ -18,6 +18,7 @@ yb_rust_cxxgen(MASTER_HOST_CXXGEN_SRCS
 add_library(yb_master_host_obj OBJECT
   master_host.cc
   sys_catalog_tap.cc
+  ycql_virtual_tables.cc
   ${MASTER_HOST_CXXGEN_SRCS})
 target_link_libraries(yb_master_host_obj PUBLIC yb_rust_bridge_obj)
 

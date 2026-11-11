@@ -172,6 +172,25 @@ pub(crate) fn check_placement(
              {allowed}"
         )));
     }
+    // Whether a quorum fits within the blocks' minimums and their effective maximums: first what
+    // the minimums can take, then the slack, spread over the tservers each block has room for.
+    let mut feasible = 0;
+    let mut extra_servers = 0;
+    for block in &placement.placement_blocks {
+        let in_this = tservers.iter().filter(|d| in_block(d, block)).count();
+        let min = block.min_num_replicas().max(0) as usize;
+        feasible += in_this.min(min);
+        extra_servers += in_this
+            .min(effective_max(block, num_replicas))
+            .saturating_sub(min);
+    }
+    feasible += (num_replicas - minimum_sum).min(extra_servers);
+    if feasible < quorum {
+        return Err(invalid(format!(
+            "Not enough tablet servers in the requested placements. Can only find {feasible} \
+             tablet servers for the replicas but need at least {quorum}."
+        )));
+    }
     Ok(())
 }
 

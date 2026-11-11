@@ -63,8 +63,6 @@ PG reads and writes its catalog on the leader's sys catalog tablet through
 - refuses the protobuf catalog version and initdb run by the master, and allows every catalog
   write, since a Rust master runs no YSQL major upgrade.
 
-The YCQL virtual tables are not served from it yet.
-
 Tablet locations of system tablets (the sys catalog tablet and the YCQL system keyspaces' virtual
 tables) are the masters, with the current leader, from the quorum's committed consensus state, as
 `BuildLocationsForSystemTablet` does.
@@ -73,6 +71,10 @@ Heartbeat responses carry the per-database catalog versions and invalidation mes
 the sys catalog on each heartbeat unless the tserver's fingerprint matches. C++ serves them from a
 cache refreshed in the background (`enable_heartbeat_pg_catalog_versions_cache`); the Rust leader
 does not keep one yet.
+
+`ReservePgsqlOids` reserves the next OIDs of a database's normal or secondary space from its
+namespace row (`next_normal_pg_oid`, `next_secondary_pg_oid`), as C++ does; the response carries
+the cluster config's `oid_cache_invalidations_count`.
 
 ## system.transactions
 

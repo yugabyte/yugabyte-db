@@ -179,6 +179,11 @@ fn start(mut host: UniquePtr<MasterHost>) -> Result<RunningMaster, String> {
             )),
         },
     );
+    host.pin_mut()
+        .set_virtual_tables(Box::new(store::VirtualTables {
+            leader: core.leader.clone(),
+            info: info.clone(),
+        }));
     let options = HandlerOptions {
         master_rpc_timeout: || Duration::from_millis(MASTER_RPC_TIMEOUT_MS.get().max(0) as u64),
         list_raft_peers_check_is_leader: || LIST_RAFT_PEERS_CHECK_IS_LEADER.get(),

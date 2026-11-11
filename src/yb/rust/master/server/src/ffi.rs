@@ -13,7 +13,7 @@
 //! The bridge to the master's C++ host (src/yb/master_host/master_host.h), and the entry points
 //! its `main()` calls.
 
-use crate::store::{complete_write, ApplySink, WriteCompletion};
+use crate::store::{complete_write, ApplySink, VirtualTables, WriteCompletion};
 use crate::web::WebMasterList;
 use crate::{register_flags, run_master, start_embedded, stop_embedded, EmbeddedRustMaster};
 
@@ -59,6 +59,13 @@ pub(crate) mod bridge {
         /// This peer was elected; re-read the Raft state now.
         #[cxx_name = "OnLeadershipChange"]
         fn on_leadership_change(self: &ApplySink);
+
+        /// What the host's YCQL virtual tables show (src/yb/master_host/ycql_virtual_tables.h).
+        type VirtualTables;
+        /// The serialized `YcqlVirtualTableInputPB` of the virtual table of `tablet_id`, empty
+        /// when the tablet is not one. Called on the host's RPC threads; does not block.
+        #[cxx_name = "Input"]
+        fn input(self: &VirtualTables, tablet_id: &[u8]) -> Result<Vec<u8>>;
 
         /// `bytes` as a Rust vector, in one copy.
         #[cxx_name = "CopyBytes"]
@@ -145,6 +152,8 @@ pub(crate) mod bridge {
         fn loopback_web_port(self: &MasterHost) -> Result<u16>;
         #[cxx_name = "SetApplySink"]
         fn set_apply_sink(self: Pin<&mut MasterHost>, sink: Box<ApplySink>);
+        #[cxx_name = "SetVirtualTables"]
+        fn set_virtual_tables(self: Pin<&mut MasterHost>, tables: Box<VirtualTables>);
 
         #[cxx_name = "InstancePB"]
         fn instance_pb(self: &MasterInfoHandle) -> Vec<u8>;

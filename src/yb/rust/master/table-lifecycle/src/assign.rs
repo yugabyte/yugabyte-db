@@ -180,6 +180,20 @@ impl TabletAssigner {
             &config,
             placement.placement_uuid(),
         );
+        // `BuildPlacementCandidates`: each read replica placement adds observers on its own
+        // tservers, after the live placement's voters, all counted in one load.
+        let read_replicas: Vec<_> = replication
+            .read_replicas
+            .iter()
+            .map(|placement| {
+                let tservers = live_tservers(
+                    &self.lifecycle.ts_manager,
+                    &config,
+                    placement.placement_uuid(),
+                );
+                (placement, tservers)
+            })
+            .collect();
         let mut load = self.load(snapshot, table_id);
         let replication_factor = (self.lifecycle.options.replication_factor)();
         let mut mutation = Mutation::new().read(table);
@@ -200,7 +214,24 @@ impl TabletAssigner {
             pb.set_state_msg(b"Sending initial creation of tablet".to_vec());
             let cstate = pb.committed_consensus_state.mut_or_insert_default();
             let raft_config = cstate.config.mut_or_insert_default();
-            raft_config.peers = peers.iter().map(raft_peer).collect();
+            raft_config.peers = peers
+                .iter()
+                .map(|d| raft_peer(d, PeerMemberType::VOTER))
+                .collect();
+            for (placement, tservers) in &read_replicas {
+                // A read replica placement without live tservers gets no observers yet; the
+                // balancer adds them later.
+                if tservers.is_empty() {
+                    continue;
+                }
+                let observers =
+                    select_replicas(placement, tservers, replication_factor, &mut load)?;
+                raft_config.peers.extend(
+                    observers
+                        .iter()
+                        .map(|d| raft_peer(d, PeerMemberType::OBSERVER)),
+                );
+            }
             mutation = mutation.read(tablet).upsert(
                 SysRowEntryType::TABLET,
                 &tablet.key.id,
@@ -638,11 +669,11 @@ fn all_tablets_running(snapshot: &CatalogSnapshot, table_id: &[u8]) -> bool {
 }
 
 /// The config peer for a chosen tserver, as `SelectReplica` fills it.
-fn raft_peer(descriptor: &TsDescriptor) -> RaftPeerPB {
+fn raft_peer(descriptor: &TsDescriptor, member_type: PeerMemberType) -> RaftPeerPB {
     let reg = &descriptor.pb.registration;
     let mut peer = RaftPeerPB::new();
     peer.set_permanent_uuid(descriptor.uuid.to_vec());
-    peer.member_type = Some(EnumOrUnknown::new(PeerMemberType::VOTER));
+    peer.member_type = Some(EnumOrUnknown::new(member_type));
     peer.last_known_private_addr = reg.private_rpc_addresses.clone();
     peer.last_known_broadcast_addr = reg.broadcast_addresses.clone();
     if reg.cloud_info.is_some() {

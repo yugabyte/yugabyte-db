@@ -34,6 +34,12 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
                            const NamespaceName &namespace_name,
                            const Master* const master,
                            const Schema& schema);
+  // For a table served without a Master (the Rust master's host), whose subclass reads nothing
+  // through master_.
+  YQLVirtualTable(const TableName& table_name,
+                  const NamespaceName& namespace_name,
+                  const scoped_refptr<MetricEntity>& metric_entity,
+                  const Schema& schema);
   ~YQLVirtualTable();
 
   // Access methods.

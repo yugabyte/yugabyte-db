@@ -24,6 +24,7 @@ import "yb/common/common_types.proto";
 import "yb/consensus/metadata.proto";
 import "yb/common/common.proto";
 import "yb/master/catalog_entity_info.proto";
+import "yb/master/master_client.proto";
 import "yb/master/master_ddl.proto";
 import "yb/master/master_heartbeat.proto";
 import "yb/master/master_types.proto";
@@ -179,6 +180,36 @@ message SetClusterMetricsRequestPB {
 
 message SetClusterMetricsResponsePB {
   optional MasterErrorPB error = 1;
+}
+
+// What a YCQL virtual table (SystemTableDefs) shows, from the Rust leader's catalog and tserver
+// registry; the host formats the rows (MasterHost's virtual tables, as the C++ YQL*VTable classes
+// format them). Only the fields the named table reads are set.
+message YcqlVirtualTableInputPB {
+  optional string namespace_name = 1;
+  optional string table_name = 2;
+  // Live tservers in uuid order (system.local, system.peers).
+  repeated TSInformationPB tservers = 3;
+  message Keyspace {
+    optional string name = 1;
+    optional uint32 replication_factor = 2;
+  }
+  repeated Keyspace keyspaces = 4;
+  // YCQL tables and indexes visible to clients (GetTables(kVisibleToClient) with IsYcqlTable),
+  // with the locations of their tablets for system.partitions and system.size_estimates.
+  message Table {
+    optional bytes id = 1;
+    optional string namespace_name = 2;
+    optional SysTablesEntryPB table = 3;
+    repeated TabletLocationsPB tablets = 4;
+  }
+  repeated Table tables = 5;
+  message Type {
+    optional string namespace_name = 1;
+    optional SysUDTypeEntryPB type = 2;
+  }
+  repeated Type types = 6;
+  repeated SysRoleEntryPB roles = 7;
 }
 
 service MasterRustPeer {

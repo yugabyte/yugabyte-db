@@ -42,6 +42,7 @@
 #include "yb/master/master-path-handlers.h"
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_auto_flags_manager.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_encryption.pb.h"
@@ -58,12 +59,14 @@
 #include "yb/master/sys_catalog_restore.h"
 #include "yb/master/sys_catalog_writer.h"
 #include "yb/master/system_tables.h"
+#include "yb/master/system_tablet.h"
 #include "yb/master/table_ddl_util.h"
 #include "yb/master/encryption_manager.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_rust_peer.pb.h"
 
 #include "yb/master_host/sys_catalog_tap.h"
+#include "yb/master_host/ycql_virtual_tables.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure.h"
@@ -247,9 +250,12 @@ class MasterHost::TabletServerContextImpl : public master::MasterTabletServerCon
     return peer;
   }
   Result<std::shared_ptr<tablet::AbstractTablet>> GetSystemTablet(TabletIdView id) override {
-    // The YCQL virtual tables (system.peers and the like) are not served yet.
-    auto peer = VERIFY_RESULT(GetServingTablet(Slice(id)));
-    return std::static_pointer_cast<tablet::AbstractTablet>(VERIFY_RESULT(peer->shared_tablet()));
+    if (id == master::kSysCatalogTabletId) {
+      auto peer = VERIFY_RESULT(GetServingTablet(Slice(id)));
+      return std::static_pointer_cast<tablet::AbstractTablet>(
+          VERIFY_RESULT(peer->shared_tablet()));
+    }
+    return host_.VirtualTableTablet(TabletId(id));
   }
 
   Status GetYsqlCatalogVersion(
@@ -1279,6 +1285,36 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
           return auto_flags_manager_->GetAutoFlagsConfig(&req, resp);
         });
   }
+  if (name == "GetYsqlCatalogConfig") {
+    // CatalogManager::GetYsqlCatalogConfig; the Rust leader resolved the namespace to its id.
+    return HandleRequest<master::GetYsqlCatalogConfigRequestPB,
+                         master::GetYsqlCatalogConfigResponsePB>(
+        request, [this](const auto& req, auto* resp) -> Status {
+          SCHECK(
+              req.has_namespace_(), IllegalState,
+              "GetYsqlCatalogConfig requires a namespace in per-database catalog version mode");
+          const auto db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(req.namespace_().id()));
+          uint64_t catalog_version = 0;
+          RETURN_NOT_OK(sys_catalog_->ReadYsqlDBCatalogVersion(
+              kPgYbCatalogVersionTableId, db_oid, &catalog_version,
+              nullptr /* last_breaking_version */));
+          resp->set_version(catalog_version);
+          return Status::OK();
+        });
+  }
+  if (name == "GetYsqlYbSystemTableInfo") {
+    return HandleRequest<master::GetYsqlYbSystemTableInfoRequestPB,
+                         master::GetYsqlYbSystemTableInfoResponsePB>(
+        request, [this](const auto& req, auto* resp) -> Status {
+          PgOid oid = kPgInvalidOid;
+          PgOid relfilenode = kPgInvalidOid;
+          RETURN_NOT_OK(sys_catalog_->GetYsqlYbSystemTableInfo(
+              req.namespace_oid(), req.table_name(), &oid, &relfilenode));
+          resp->set_table_oid(oid);
+          resp->set_relfilenode(relfilenode);
+          return Status::OK();
+        });
+  }
   if (name == "ValidateAutoFlagsConfig") {
     return HandleRequest<master::ValidateAutoFlagsConfigRequestPB,
                          master::ValidateAutoFlagsConfigResponsePB>(
@@ -1473,6 +1509,57 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
 
 void MasterHost::SetApplySink(rust::Box<ApplySink> sink) {
   tap_->SetSink(std::move(sink));
+}
+
+void MasterHost::SetVirtualTables(rust::Box<VirtualTables> tables) {
+  virtual_tables_.emplace(std::move(tables));
+}
+
+Result<master::YcqlVirtualTableInputPB> MasterHost::VirtualTableInput(const TabletId& tablet_id) {
+  SCHECK(virtual_tables_, IllegalState, "The YCQL virtual tables are not set up");
+  rust::Vec<uint8_t> bytes;
+  try {
+    bytes = (*virtual_tables_)->Input(rust::Slice<const uint8_t>(
+        reinterpret_cast<const uint8_t*>(tablet_id.data()), tablet_id.size()));
+  } catch (const rust::Error& e) {
+    return STATUS(ServiceUnavailable, e.what());
+  }
+  master::YcqlVirtualTableInputPB input;
+  if (bytes.empty()) {
+    // As CatalogManager::GetSystemTablet answers.
+    return STATUS_FORMAT(InvalidArgument, "$0 is not a valid system tablet id", tablet_id);
+  }
+  SCHECK(input.ParseFromArray(bytes.data(), narrow_cast<int>(bytes.size())), Corruption,
+         "Unparsable YcqlVirtualTableInputPB");
+  return input;
+}
+
+Result<std::shared_ptr<tablet::AbstractTablet>> MasterHost::VirtualTableTablet(
+    const TabletId& tablet_id) {
+  {
+    std::lock_guard lock(system_tablets_mutex_);
+    if (auto it = system_tablets_.find(tablet_id); it != system_tablets_.end()) {
+      return it->second;
+    }
+  }
+  const auto input = VERIFY_RESULT(VirtualTableInput(tablet_id));
+  const master::SystemTableDef* def = nullptr;
+  for (const auto& candidate : master::SystemTableDefs()) {
+    if (candidate.namespace_name == input.namespace_name() &&
+        candidate.table_name == input.table_name()) {
+      def = &candidate;
+      break;
+    }
+  }
+  SCHECK(def, InvalidArgument, Format("$0 is not a valid system tablet id", tablet_id));
+  auto tablet = std::make_shared<master::SystemTablet>(
+      def->create_schema(),
+      MakeHostVirtualTable(
+          *def, tablet_id, metric_entity(), &messenger()->resolver(),
+          [this](const TabletId& id) { return VirtualTableInput(id); }),
+      tablet_id);
+  std::lock_guard lock(system_tablets_mutex_);
+  return system_tablets_.emplace(tablet_id, std::move(tablet)).first->second;
 }
 
 bool MasterHost::SysCatalogIsOpen() const {

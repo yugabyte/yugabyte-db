@@ -403,6 +403,7 @@ mod leader_tests {
         sys_namespace_entry_pb, sys_tables_entry_pb, sys_tablets_entry_pb, SysClusterConfigEntryPB,
         SysNamespaceEntryPB, SysTablesEntryPB, SysTabletsEntryPB,
     };
+    use yb_proto::pb::common_types::{TableType, YQLDatabase};
     use yb_proto::pb::master_client::{
         GetTableLocationsRequestPB, GetTableLocationsResponsePB, GetTabletLocationsRequestPB,
         GetTabletLocationsResponsePB,
@@ -451,6 +452,39 @@ mod leader_tests {
                 upsert(SysRowEntryType::NAMESPACE, "ns1", &ns),
                 upsert(SysRowEntryType::TABLE, "table1", &table),
             ];
+            // A YCQL keyspace with a table, and the system_schema.tables virtual table.
+            for (id, name) in [
+                ("00000000000000000000000000000002", "system_schema"),
+                ("cqlns", "cqlks"),
+            ] {
+                let mut ns = SysNamespaceEntryPB::new();
+                ns.set_name(name.as_bytes().to_vec());
+                ns.set_database_type(YQLDatabase::YQL_DATABASE_CQL);
+                ns.set_state(sys_namespace_entry_pb::State::RUNNING);
+                changes.push(upsert(SysRowEntryType::NAMESPACE, id, &ns));
+            }
+            for (id, namespace_id, name, tablet_id) in [
+                (
+                    "vtable-tables",
+                    "00000000000000000000000000000002",
+                    "tables",
+                    "vtable-tablet",
+                ),
+                ("ycqltable", "cqlns", "ct", "ycql-tablet"),
+            ] {
+                let mut table = SysTablesEntryPB::new();
+                table.set_name(name.as_bytes().to_vec());
+                table.set_namespace_id(namespace_id.as_bytes().to_vec());
+                table.set_table_type(TableType::YQL_TABLE_TYPE);
+                table.set_version(0);
+                table.schema = Some(Default::default()).into();
+                table.set_state(sys_tables_entry_pb::State::RUNNING);
+                changes.push(upsert(SysRowEntryType::TABLE, id, &table));
+                let mut tablet = SysTabletsEntryPB::new();
+                tablet.set_table_id(id.as_bytes().to_vec());
+                tablet.set_state(sys_tablets_entry_pb::State::RUNNING);
+                changes.push(upsert(SysRowEntryType::TABLET, tablet_id, &tablet));
+            }
             for (id, start) in [("tablet-a", ""), ("tablet-b", "m")] {
                 let mut tablet = SysTabletsEntryPB::new();
                 tablet.set_table_id(b"table1".to_vec());
@@ -536,6 +570,39 @@ mod leader_tests {
         });
         harness.leader = Some(leader);
         (harness, source)
+    }
+
+    /// `system_schema.tables` lists the YCQL tables visible to clients, the virtual tables
+    /// among them, and a tablet of a real table is not a virtual table's.
+    #[test]
+    fn ycql_virtual_tables_list_the_catalog() {
+        let (harness, _source) = with_leader(true);
+        let leader = harness.leader.as_ref().unwrap();
+        let input = leader
+            .ycql_virtual_table_input(b"vtable-tablet", None)
+            .unwrap()
+            .unwrap();
+        assert_eq!(input.namespace_name(), "system_schema");
+        assert_eq!(input.table_name(), "tables");
+        let mut tables: Vec<_> = input
+            .tables
+            .iter()
+            .map(|t| (t.namespace_name().to_string(), t.table.name().to_vec()))
+            .collect();
+        tables.sort();
+        assert_eq!(
+            tables,
+            // `ks.t` has no table type, which is YCQL's (`DEFAULT_TABLE_TYPE`).
+            vec![
+                ("cqlks".to_string(), b"ct".to_vec()),
+                ("ks".to_string(), b"t".to_vec()),
+                ("system_schema".to_string(), b"tables".to_vec()),
+            ]
+        );
+        assert!(leader
+            .ycql_virtual_table_input(b"ycql-tablet", None)
+            .unwrap()
+            .is_none());
     }
 
     #[test]

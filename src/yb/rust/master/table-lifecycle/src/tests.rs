@@ -45,7 +45,7 @@ use yb_proto::pb::master_rust_peer::{
 use yb_proto::pb::master_types::{master_error_pb::Code, MasterErrorPB, SysRowEntryType};
 
 use crate::lookup::{database_type, is_colocation_parent_table_id};
-use crate::placement::{select_replicas, Load};
+use crate::placement::{check_placement, select_replicas, Load};
 use crate::{generate_object_id, LifecycleOptions, SchemaHost, TableLifecycle};
 
 /// The host's schema steps, simplified: the request's schema as is, and `num_tablets` (default
@@ -256,6 +256,43 @@ fn database_type_and_colocation_ids_follow_cpp() {
     assert!(!is_colocation_parent_table_id(b"x.tablegroup.parent.uuid"));
 }
 
+/// `ReservePgsqlOids`: consecutive reservations do not overlap, a client's `next_oid` moves the
+/// start forward, and the secondary space starts after the normal one.
+#[tokio::test]
+async fn pgsql_oids_are_reserved_in_order() {
+    let h = Harness::new(3).await;
+    let id = h.create_namespace("db").await.unwrap();
+    let reserve = |next_oid: u32, count: u32, secondary: bool| {
+        let mut req = yb_proto::pb::master_client::ReservePgsqlOidsRequestPB::new();
+        req.set_namespace_id(id.clone());
+        req.set_next_oid(next_oid);
+        req.set_count(count);
+        req.set_use_secondary_space(secondary);
+        let lifecycle = h.lifecycle.clone();
+        let token = h.token;
+        async move {
+            let mut resp = yb_proto::pb::master_client::ReservePgsqlOidsResponsePB::new();
+            lifecycle
+                .reserve_pgsql_oids(&token, Harness::deadline(), &req, &mut resp)
+                .await
+                .map(|()| (resp.begin_oid(), resp.end_oid()))
+        }
+    };
+    assert_eq!(reserve(16384, 256, false).await.unwrap(), (16384, 16640));
+    assert_eq!(reserve(16384, 256, false).await.unwrap(), (16640, 16896));
+    assert_eq!(reserve(20000, 10, false).await.unwrap(), (20000, 20010));
+    assert_eq!(
+        reserve(0, 5, true).await.unwrap(),
+        (2_200_000_000, 2_200_000_005)
+    );
+    // The normal space ends at kPgUpperBoundNormalObjectId.
+    assert_eq!(
+        reserve(2_199_999_990, 100, false).await.unwrap(),
+        (2_199_999_990, 2_199_999_999)
+    );
+    assert!(reserve(0, 1, false).await.is_err());
+}
+
 #[tokio::test]
 async fn keyspaces_are_created_listed_and_dropped() {
     let h = Harness::new(3).await;
@@ -461,6 +498,45 @@ fn replicas_go_to_the_least_loaded_tservers_and_fill_block_minimums() {
     let short = select_replicas(&placement, &tservers[..2], 3, &mut Load::default()).unwrap();
     assert_eq!(short.len(), 2);
     assert!(select_replicas(&placement, &[], 3, &mut Load::default()).is_err());
+}
+
+/// `MaxNumReplicasIsAHardCap`: z0 has three tservers but a maximum of two, and z3 and z4 have
+/// none, so no quorum of three fits until a tserver joins z3.
+#[test]
+fn block_maximums_cap_the_feasible_quorum() {
+    let ts_manager = TsManager::new(Arc::default(), TsManagerOptions::default());
+    let mut peers = vec![
+        (tserver("a", "z0"), true),
+        (tserver("b", "z0"), true),
+        (tserver("c", "z0"), true),
+        (tserver("d", "z1"), true),
+    ];
+    ts_manager.apply_peer_tservers(&peers, true);
+    let mut placement = PlacementInfoPB::new();
+    placement.set_num_replicas(5);
+    for zone in ["z0", "z3", "z4"] {
+        let mut block = PlacementBlockPB::new();
+        let mut ci = CloudInfoPB::new();
+        ci.set_placement_cloud("c".into());
+        ci.set_placement_region("r".into());
+        ci.set_placement_zone(zone.into());
+        block.cloud_info = MessageField::some(ci);
+        block.set_min_num_replicas(1);
+        block.set_max_num_replicas(2);
+        placement.placement_blocks.push(block);
+    }
+    let error = check_placement(&placement, &ts_manager.live(), 3, true).unwrap_err();
+    assert!(
+        error
+            .status
+            .message()
+            .contains("Can only find 2 tablet servers for the replicas but need at least 3"),
+        "{}",
+        error.status.message()
+    );
+    peers.push((tserver("e", "z3"), true));
+    ts_manager.apply_peer_tservers(&peers, true);
+    check_placement(&placement, &ts_manager.live(), 3, true).unwrap();
 }
 
 impl Harness {

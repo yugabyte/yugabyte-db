@@ -63,6 +63,29 @@ fn shut_down() -> Status {
     Status::new(StatusCode::Aborted, "The master host is shut down")
 }
 
+/// What the host's YCQL virtual tables show, from the leader's catalog (`VirtualTables` in
+/// master_host.h).
+pub(crate) struct VirtualTables {
+    pub(crate) leader: Arc<master_rpc_handlers::LeaderServices>,
+    pub(crate) info: Arc<dyn master_rpc_handlers::MasterInfo>,
+}
+
+impl VirtualTables {
+    /// The serialized `YcqlVirtualTableInputPB` of the virtual table whose tablet is `tablet_id`,
+    /// or nothing when it is not one. Fails when this master is not a ready leader.
+    pub(crate) fn input(&self, tablet_id: &[u8]) -> Result<Vec<u8>, String> {
+        let masters = self.info.committed_consensus_state().ok();
+        match self
+            .leader
+            .ycql_virtual_table_input(tablet_id, masters.as_ref())
+        {
+            Ok(Some(input)) => input.write_to_bytes().map_err(|e| e.to_string()),
+            Ok(None) => Ok(Vec::new()),
+            Err(status) => Err(format!("{:?}: {}", status.code, status.message)),
+        }
+    }
+}
+
 /// The bridge's apply sink: forwards the tap's events to the apply stream.
 pub(crate) struct ApplySink {
     pub(crate) sender: ApplySender,
