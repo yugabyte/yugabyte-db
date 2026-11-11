@@ -2594,6 +2594,67 @@ TEST_F(PgCatalogVersionTest, InvalMessageMasterReadSkipsOldVersions) {
   ASSERT_LT(after - before, kNumRows);
 }
 
+// When one database's version moves, the master's refresh must re-read only that database's rows,
+// not step over the tombstones inside another database's 4096-version window.
+TEST_F(PgCatalogVersionTest, InvalMessageMasterReadSkipsUnchangedDatabases) {
+  RestartClusterWithInvalMessageEnabled({ "--ysql_enable_auto_analyze=false" });
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE other_db"));
+  const auto db_oid = ASSERT_RESULT(conn.FetchRow<PGOid>(
+      "SELECT oid FROM pg_database WHERE datname = current_database()"));
+  const auto other_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn, "other_db"));
+
+  auto obsolete_keys_found = [this]() -> Result<int64_t> {
+    int64_t result = 0;
+    for (auto* master : cluster_->master_daemons()) {
+      result += VERIFY_RESULT(master->GetMetric<int64>(
+          &METRIC_ENTITY_tablet, master::kSysCatalogTabletId,
+          &METRIC_docdb_obsolete_keys_found, "value"));
+    }
+    return result;
+  };
+  // Lets the refresh run and returns how many obsolete keys the masters stepped over meanwhile.
+  auto obsolete_keys_found_during_refresh = [&]() -> Result<int64_t> {
+    const auto before = VERIFY_RESULT(obsolete_keys_found());
+    RETURN_NOT_OK(cluster_->SetFlagOnMasters(
+        "TEST_pause_pg_catalog_versions_cache_refresh", "false"));
+    SleepFor(2s);
+    RETURN_NOT_OK(cluster_->SetFlagOnMasters(
+        "TEST_pause_pg_catalog_versions_cache_refresh", "true"));
+    return VERIFY_RESULT(obsolete_keys_found()) - before;
+  };
+
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_pg_catalog_versions_cache_refresh", "true"));
+
+  // Leave 4000 tombstones in other_db, all within 4096 versions of its current version.
+  constexpr int kNumRows = 4000;
+  constexpr int kOtherDbVersion = 100000;
+  ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = 1"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE pg_yb_catalog_version SET current_version = $0 WHERE db_oid = $1",
+      kOtherDbVersion, other_db_oid));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO pg_yb_invalidation_messages "
+      "SELECT $0, g, extract(epoch from now())::bigint, NULL FROM generate_series($1, $2) g",
+      other_db_oid, kOtherDbVersion - kNumRows + 1, kOtherDbVersion));
+  ASSERT_OK(conn.ExecuteFormat(
+      "DELETE FROM pg_yb_invalidation_messages WHERE db_oid = $0", other_db_oid));
+
+  // other_db's version moved, so this refresh reads its rows and steps over the tombstones.
+  const auto other_db_moved = ASSERT_RESULT(obsolete_keys_found_during_refresh());
+  LOG(INFO) << "docdb_obsolete_keys_found after other_db moved: " << other_db_moved;
+  ASSERT_GE(other_db_moved, kNumRows);
+
+  // Now only the connected database's version moves.
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE pg_yb_catalog_version SET current_version = current_version + 1 WHERE db_oid = $0",
+      db_oid));
+  const auto connected_db_moved = ASSERT_RESULT(obsolete_keys_found_during_refresh());
+  LOG(INFO) << "docdb_obsolete_keys_found after the connected database moved: "
+            << connected_db_moved;
+  ASSERT_LT(connected_db_moved, kNumRows);
+}
+
 class PgCatalogVersionHasCatalogWriteTest
     : public PgCatalogVersionTest,
       public ::testing::WithParamInterface<bool> {

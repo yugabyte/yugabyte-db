@@ -1946,41 +1946,13 @@ Status SysCatalogTable::ReadYsqlCatalogInvalationMessagesImpl(
                                               messages_col_id});
   auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
 
-  // With 'versions': one iterator per database, bounded to db_oid = <oid> AND
-  // current_version > <that db's current version> - kMaxVersionsBehind, so the scan seeks past the
-  // expired rows and their tombstones. Without 'versions': one iterator over the whole table.
-  constexpr uint64_t kMaxVersionsBehind = 4096;
-  std::vector<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> iters;
-  if (versions) {
-    for (const auto& [db_oid, version] : *versions) {
-      PgsqlConditionPB cond;
-      cond.set_op(QL_OP_AND);
-      auto* db_cond = cond.add_operands()->mutable_condition();
-      db_cond->add_operands()->set_column_id(db_oid_col_id);
-      db_cond->set_op(QL_OP_EQUAL);
-      db_cond->add_operands()->mutable_value()->set_uint32_value(db_oid);
-      auto* version_cond = cond.add_operands()->mutable_condition();
-      version_cond->add_operands()->set_column_id(current_version_col_id);
-      version_cond->set_op(QL_OP_GREATER_THAN);
-      version_cond->add_operands()->mutable_value()->set_int64_value(
-          version.current_version > kMaxVersionsBehind
-              ? version.current_version - kMaxVersionsBehind : 0);
-      docdb::DocPgsqlScanSpec spec(schema, &cond);
-      auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
-      RETURN_NOT_OK(iter->Init(spec));
-      iters.push_back(std::move(iter));
-    }
-  } else {
-    iters.push_back(VERIFY_RESULT(read_data.NewIterator(projection)));
-  }
-
   qlexpr::QLTableRow source_row;
 
   // Loop through the pg_yb_invalidation_messages catalog table. Each row in this table represents
   // a list of invalidation messages associated with a pair of (db_oid, current_version).
   // Populate 'messages' with (db_oid, current_version, messages).
   *read_restart_ht = HybridTime::kInvalid;
-  for (auto& iter : iters) {
+  auto read_rows = [&](docdb::YQLRowwiseIteratorIf* iter) -> Status {
     while (VERIFY_RESULT(iter->FetchNext(&source_row))) {
       // Fetch the db_oid.
       const auto db_oid_col = source_row.GetValue(db_oid_col_id);
@@ -2015,6 +1987,35 @@ Status SysCatalogTable::ReadYsqlCatalogInvalationMessagesImpl(
         (!read_restart_ht->is_valid() || restart_time > *read_restart_ht)) {
       *read_restart_ht = restart_time;
     }
+    return Status::OK();
+  };
+
+  // With 'versions': one iterator per database, bounded to db_oid = <oid> AND
+  // current_version > <that db's current version> - kMaxVersionsBehind, so the scan seeks past the
+  // expired rows and their tombstones. Without 'versions': one iterator over the whole table.
+  constexpr uint64_t kMaxVersionsBehind = 4096;
+  if (versions) {
+    for (const auto& [db_oid, version] : *versions) {
+      PgsqlConditionPB cond;
+      cond.set_op(QL_OP_AND);
+      auto* db_cond = cond.add_operands()->mutable_condition();
+      db_cond->add_operands()->set_column_id(db_oid_col_id);
+      db_cond->set_op(QL_OP_EQUAL);
+      db_cond->add_operands()->mutable_value()->set_uint32_value(db_oid);
+      auto* version_cond = cond.add_operands()->mutable_condition();
+      version_cond->add_operands()->set_column_id(current_version_col_id);
+      version_cond->set_op(QL_OP_GREATER_THAN);
+      version_cond->add_operands()->mutable_value()->set_int64_value(
+          version.current_version > kMaxVersionsBehind
+              ? version.current_version - kMaxVersionsBehind : 0);
+      docdb::DocPgsqlScanSpec spec(schema, &cond);
+      auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
+      RETURN_NOT_OK(iter->Init(spec));
+      RETURN_NOT_OK(read_rows(iter.get()));
+    }
+  } else {
+    auto iter = VERIFY_RESULT(read_data.NewIterator(projection));
+    RETURN_NOT_OK(read_rows(iter.get()));
   }
   return Status::OK();
 }

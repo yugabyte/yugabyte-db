@@ -15156,12 +15156,14 @@ bool CatalogManager::RefreshPgCatalogVersionCache() {
 
   bool messages_refresh_failed = false;
   std::optional<DbOidVersionToMessageListMap> messages;
+  DbOidToCatalogVersionMap dbs_to_read;
   if (FLAGS_ysql_yb_enable_invalidation_messages && needs_messages_refresh) {
     // Cache invalidation messages are considered as an optimization extension of
     // the catalog versions. If we cannot read the messages successfully, it means
     // we will skip the optimization this time but it will not affect correctness
     // because PG backends will fall back to do catalog cache refreshes.
-    auto msg_res = GetYsqlCatalogInvalationMessagesImpl(&versions);
+    dbs_to_read = pg_catalog_versions_cache_.DbsNeedingMessagesRefresh(versions);
+    auto msg_res = GetYsqlCatalogInvalationMessagesImpl(&dbs_to_read);
     if (!msg_res.ok()) {
       YB_LOG_EVERY_N_SECS(WARNING, 20)
           << "Catalog invalidation messages refresh failed: " << msg_res.status();
@@ -15182,7 +15184,7 @@ bool CatalogManager::RefreshPgCatalogVersionCache() {
   }
   const bool installed = pg_catalog_versions_cache_.Install(
       generation, read_ht, std::move(versions), fingerprint, update_messages,
-      std::move(messages_to_install));
+      std::move(messages_to_install), &dbs_to_read);
   LOG_IF(INFO, PREDICT_FALSE(FLAGS_TEST_log_catalog_version_cache_events))
       << "RefreshPgCatalogVersionCache: cache refreshed, installed: " << installed;
 

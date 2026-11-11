@@ -70,6 +70,14 @@ uint64_t CurrentVersion(const PgCatalogVersionsCache& cache, uint32_t db_oid) {
   return version;
 }
 
+std::vector<uint32_t> DbOids(const DbOidToCatalogVersionMap& versions) {
+  std::vector<uint32_t> result;
+  for (const auto& [db_oid, version] : versions) {
+    result.push_back(db_oid);
+  }
+  return result;
+}
+
 }  // namespace
 
 class PgCatalogVersionsCacheTest : public YBTest {};
@@ -252,6 +260,82 @@ TEST_F(PgCatalogVersionsCacheTest, NeedsMessagesRefreshFollowsFingerprint) {
   ASSERT_FALSE(cache.NeedsMessagesRefresh(Fingerprint(v)));
   // A new fingerprint means the versions moved, so the messages have to be re-read.
   ASSERT_TRUE(cache.NeedsMessagesRefresh(Fingerprint(MakeVersions({{kDb1, 6}}))));
+}
+
+TEST_F(PgCatalogVersionsCacheTest, DbsNeedingMessagesRefresh) {
+  PgCatalogVersionsCache cache;
+  const auto v = MakeVersions({{kDb1, 5}, {kDb2, 7}});
+  // Nothing cached: every database.
+  ASSERT_EQ(DbOids(cache.DbsNeedingMessagesRefresh(v)), (std::vector{kDb1, kDb2}));
+
+  ASSERT_TRUE(cache.Install(
+      cache.Generation(), Ht(1000), v, Fingerprint(v), true /* update_messages */,
+      DbOidVersionToMessageListMap{}));
+  ASSERT_TRUE(cache.DbsNeedingMessagesRefresh(v).empty());
+  // Only the database whose version moved, and a database the cache has not seen.
+  constexpr uint32_t kDb3 = 16386;
+  ASSERT_EQ(
+      DbOids(cache.DbsNeedingMessagesRefresh(MakeVersions({{kDb1, 6}, {kDb2, 7}, {kDb3, 1}}))),
+      (std::vector{kDb1, kDb3}));
+
+  // Messages unavailable: every database again.
+  ASSERT_TRUE(cache.Install(
+      cache.Generation(), Ht(2000), v, Fingerprint(v), true /* update_messages */,
+      std::nullopt /* messages */));
+  ASSERT_EQ(DbOids(cache.DbsNeedingMessagesRefresh(v)), (std::vector{kDb1, kDb2}));
+}
+
+TEST_F(PgCatalogVersionsCacheTest, PartialMessagesInstall) {
+  PgCatalogVersionsCache cache;
+  const auto v1 = MakeVersions({{kDb1, 5}, {kDb2, 7}});
+  ASSERT_TRUE(cache.Install(
+      cache.Generation(), Ht(1000), v1, Fingerprint(v1), true /* update_messages */,
+      DbOidVersionToMessageListMap{
+          {{kDb1, 5}, std::string("a5")}, {{kDb2, 7}, std::string("b7")}}));
+
+  // kDb1 moved and was re-read: its rows are replaced, kDb2's stay.
+  const auto v2 = MakeVersions({{kDb1, 6}, {kDb2, 7}});
+  const auto refreshed = MakeVersions({{kDb1, 6}});
+  ASSERT_TRUE(cache.Install(
+      cache.Generation(), Ht(2000), v2, Fingerprint(v2), true /* update_messages */,
+      DbOidVersionToMessageListMap{{{kDb1, 6}, std::string("a6")}}, &refreshed));
+  ASSERT_EQ(
+      cache.GetInvalMessages(),
+      (DbOidVersionToMessageListMap{
+          {{kDb1, 6}, std::string("a6")}, {{kDb2, 7}, std::string("b7")}}));
+
+  // kDb2 was dropped: nothing is re-read, and its rows go away with it.
+  const auto v3 = MakeVersions({{kDb1, 6}});
+  const DbOidToCatalogVersionMap none;
+  ASSERT_TRUE(cache.Install(
+      cache.Generation(), Ht(3000), v3, Fingerprint(v3), true /* update_messages */,
+      DbOidVersionToMessageListMap{}, &none));
+  ASSERT_EQ(
+      cache.GetInvalMessages(),
+      (DbOidVersionToMessageListMap{{{kDb1, 6}, std::string("a6")}}));
+}
+
+// A partial set cannot make unavailable messages available; a set covering every database can.
+TEST_F(PgCatalogVersionsCacheTest, PartialMessagesInstallWhenUnavailable) {
+  PgCatalogVersionsCache cache;
+  const auto v1 = MakeVersions({{kDb1, 5}, {kDb2, 7}});
+  ASSERT_TRUE(cache.Install(
+      cache.Generation(), Ht(1000), v1, Fingerprint(v1), true /* update_messages */,
+      std::nullopt /* messages */));
+
+  const auto v2 = MakeVersions({{kDb1, 6}, {kDb2, 7}});
+  const auto refreshed = MakeVersions({{kDb1, 6}});
+  ASSERT_TRUE(cache.Install(
+      cache.Generation(), Ht(2000), v2, Fingerprint(v2), true /* update_messages */,
+      DbOidVersionToMessageListMap{{{kDb1, 6}, std::string("a6")}}, &refreshed));
+  ASSERT_TRUE(cache.GetInvalMessages().empty());
+  ASSERT_TRUE(cache.NeedsMessagesRefresh(Fingerprint(v2)));
+
+  ASSERT_TRUE(cache.Install(
+      cache.Generation(), Ht(3000), v2, Fingerprint(v2), true /* update_messages */,
+      DbOidVersionToMessageListMap{{{kDb1, 6}, std::string("a6")}}, &v2));
+  ASSERT_EQ(cache.GetInvalMessages().size(), 1);
+  ASSERT_FALSE(cache.NeedsMessagesRefresh(Fingerprint(v2)));
 }
 
 }  // namespace yb::master
