@@ -272,6 +272,9 @@ pub(crate) fn copy_to_fully_applied(pb: &mut SysTablesEntryPB) {
     }
 }
 
+/// A (table id, tablet id) pair.
+type TableTablet = (Vec<u8>, Vec<u8>);
+
 /// Sends `AlterSchema` for ALTERING tables and returns them to RUNNING.
 pub struct TableAlterer(Arc<Alterer>);
 
@@ -282,10 +285,11 @@ struct Alterer {
     retry: RetryPolicy,
     rpc_timeout: fn() -> Duration,
     interval: fn() -> Duration,
-    /// Per tablet: the version of the table row (`Entity::version`) an `AlterSchema` this term
-    /// was sent for, and whether the tablet acknowledged it. The row version, not the schema
-    /// version, since a `wal_retention_secs` alter keeps the schema version.
-    tablets: Mutex<HashMap<Vec<u8>, (u64, bool)>>,
+    /// Per (table, tablet): the version of the table row (`Entity::version`) an `AlterSchema`
+    /// this term was sent for, and whether the tablet acknowledged it. The row version, not the
+    /// schema version, since a `wal_retention_secs` alter keeps the schema version. Keyed by table
+    /// too, since colocated tables share their tablet.
+    tablets: Mutex<HashMap<TableTablet, (u64, bool)>>,
     /// Indexed tables whose backfill runs in this term.
     backfills: Mutex<std::collections::HashSet<Vec<u8>>>,
 }
@@ -335,10 +339,11 @@ impl Alterer {
                 continue;
             }
             let row_version = table.version;
-            let tablets = snapshot.active_tablets_of(&table.key.id);
+            let tablets = snapshot.hosting_tablets_of(&table.key.id);
             let mut all_done = !tablets.is_empty();
             for tablet in tablets {
-                let state = self.tablets.lock().unwrap().get(&*tablet.key.id).copied();
+                let key = (table.key.id.to_vec(), tablet.key.id.to_vec());
+                let state = self.tablets.lock().unwrap().get(&key).copied();
                 match state {
                     Some((v, true)) if v == row_version => {}
                     Some((v, false)) if v == row_version => all_done = false,
@@ -416,10 +421,11 @@ impl Alterer {
             req.set_wal_retention_secs(table.wal_retention_secs());
         }
         req.set_first_provisional_column_id(table.next_column_id());
+        let key = (table_id.to_vec(), tablet_id.to_vec());
         self.tablets
             .lock()
             .unwrap()
-            .insert(tablet_id.to_vec(), (row_version, false));
+            .insert(key.clone(), (row_version, false));
         let this = self.clone();
         let token = *token;
         let tablet_id = tablet_id.to_vec();
@@ -433,7 +439,7 @@ impl Alterer {
                 .get(&tablet_id)
                 .and_then(|r| r.leader().map(|l| l.ts_uuid.to_vec()))
             else {
-                this.tablets.lock().unwrap().remove(&tablet_id);
+                this.tablets.lock().unwrap().remove(&key);
                 return;
             };
             req.set_dest_uuid(leader.clone());
@@ -459,14 +465,14 @@ impl Alterer {
             let mut tablets = this.tablets.lock().unwrap();
             match result {
                 Ok(()) => {
-                    tablets.insert(tablet_id, (row_version, true));
+                    tablets.insert(key, (row_version, true));
                 }
                 Err(status) => {
                     tracing::warn!(
                         "AlterSchema of tablet {} failed: {status}",
                         String::from_utf8_lossy(&tablet_id)
                     );
-                    tablets.remove(&tablet_id);
+                    tablets.remove(&key);
                 }
             }
         });

@@ -152,6 +152,34 @@ impl CatalogSnapshot {
         result
     }
 
+    /// The serving tablets that hold the table's data: its own, or for a colocated table, which
+    /// owns none, its parent's (`TableInfo::GetTablets` of a colocated table).
+    pub fn hosting_tablets_of(&self, table_id: &[u8]) -> Vec<&Arc<Entity>> {
+        let own = self.active_tablets_of(table_id);
+        if !own.is_empty() {
+            return own;
+        }
+        match self
+            .get(SysRowEntryType::TABLE, table_id)
+            .and_then(|t| t.table())
+            .filter(|t| !t.parent_table_id.is_empty() && t.parent_table_id != table_id)
+        {
+            Some(table) => self.active_tablets_of(&table.parent_table_id),
+            None => own,
+        }
+    }
+
+    /// The tables not deleted that name `parent_table_id` as their parent (a colocation group's
+    /// tables).
+    pub fn children_of(&self, parent_table_id: &[u8]) -> Vec<&Arc<Entity>> {
+        self.child_tables
+            .get(parent_table_id)
+            .into_iter()
+            .flat_map(|set| set.iter())
+            .filter_map(|id| self.get(SysRowEntryType::TABLE, id))
+            .collect()
+    }
+
     /// The cluster config, whose entry id is empty.
     pub fn cluster_config(&self) -> Option<&Arc<Entity>> {
         self.get(SysRowEntryType::CLUSTER_CONFIG, b"")

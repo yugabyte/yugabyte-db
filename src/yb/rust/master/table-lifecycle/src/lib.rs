@@ -30,6 +30,7 @@ use yb_proto::pb::master_types::{master_error_pb::Code, MasterErrorPB};
 pub(crate) mod alter;
 mod assign;
 mod backfill;
+mod colocation;
 mod create;
 mod drop;
 pub mod lookup;
@@ -46,6 +47,7 @@ mod tests;
 
 pub use alter::TableAlterer;
 pub use assign::TabletAssigner;
+pub use colocation::{ColocatedTableAdder, TabletRpc};
 pub use create::TransactionTableController;
 pub use drop::TableDeleter;
 pub use placement::{replication_info_set, table_replication_info};

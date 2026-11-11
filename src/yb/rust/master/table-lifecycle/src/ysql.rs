@@ -130,14 +130,28 @@ pub(crate) fn record_alter_in_ddl_txn(
 }
 
 impl TableLifecycle {
-    /// `CreateTable` of a YSQL table that is not colocated, not an index, not a PG catalog table,
-    /// and in the default tablespace.
+    /// `CreateTable` of a YSQL table or index in the default tablespace, colocated in a
+    /// tablegroup or not.
     pub(crate) async fn create_ysql_table(
         &self,
         token: &LeaderToken,
         deadline: Instant,
         req: &CreateTableRequestPB,
         resp: &mut CreateTableResponsePB,
+    ) -> Result<(), MasterErrorPB> {
+        self.create_ysql_table_as(token, deadline, req, resp, false)
+            .await
+    }
+
+    /// `create_ysql_table`; `tablegroup_parent` has the host give the table the tablegroup parent
+    /// schema (`CreateTablegroup`).
+    pub(crate) async fn create_ysql_table_as(
+        &self,
+        token: &LeaderToken,
+        deadline: Instant,
+        req: &CreateTableRequestPB,
+        resp: &mut CreateTableResponsePB,
+        tablegroup_parent: bool,
     ) -> Result<(), MasterErrorPB> {
         if req.is_pg_catalog_table() {
             return Err(not_yet("Creating a PG catalog table (initdb)"));
@@ -152,9 +166,6 @@ impl TableLifecycle {
         };
         if req.index_info.vector_idx_options.is_some() {
             return Err(not_yet("A vector index"));
-        }
-        if req.has_tablegroup_id() {
-            return Err(not_yet("A YSQL table in a tablegroup"));
         }
         if !req.tablespace_id().is_empty() {
             return Err(not_yet("A YSQL table in a tablespace"));
@@ -186,11 +197,30 @@ impl TableLifecycle {
                 "Namespace not found",
             ));
         }
-        // `is_colocated_via_database` only opts a table out of its database's colocation.
+        // A database colocated before tablegroups existed has a parent table of its own, and its
+        // tables are colocated "via database" (`IsColocatedNamespace`). A database colocated since
+        // has a default tablegroup, which PG names in each colocated table's request.
         let opted_out = req.has_is_colocated_via_database() && !req.is_colocated_via_database();
-        if ns.colocated() && !opted_out {
-            return Err(not_yet("A colocated YSQL table"));
+        if is_colocated_db_parent_table_id(req.table_id())
+            || (ns.colocated()
+                && !opted_out
+                && !req.has_tablegroup_id()
+                && snapshot
+                    .get(
+                        SysRowEntryType::TABLE,
+                        &[&namespace.key.id[..], COLOCATED_DB_PARENT_SUFFIX].concat(),
+                    )
+                    .is_some())
+        {
+            return Err(not_yet("A table in a legacy colocated database"));
         }
+        let tablegroup_id = req
+            .has_tablegroup_id()
+            .then(|| req.tablegroup_id().to_vec());
+        let colocated = tablegroup_id.is_some();
+        let is_parent = colocated && is_tablegroup_parent_table_id(req.table_id());
+        // A colocated table that is not the parent joins its group's tablet.
+        let joining = colocated && !is_parent;
         let ns_name = String::from_utf8_lossy(ns.name()).into_owned();
 
         let config = cluster_config(&snapshot);
@@ -210,9 +240,11 @@ impl TableLifecycle {
             tservers.len(),
             max_tablets,
             Some((&namespace.key.id, &ns_name)),
+            colocated,
+            tablegroup_parent,
         )?;
         let num_tablets = prepared.num_tablets();
-        if max_tablets > 0 && num_tablets as i64 > max_tablets {
+        if !joining && max_tablets > 0 && num_tablets as i64 > max_tablets {
             return Err(error(
                 Code::TOO_MANY_TABLETS,
                 StatusCode::InvalidArgument,
@@ -311,6 +343,28 @@ impl TableLifecycle {
                         ),
                     ));
                 }
+                let mut table = table.clone();
+                if let Some(tablegroup_id) = &tablegroup_id {
+                    let parent = tablegroup_parent_of(snapshot, tablegroup_id);
+                    let tablegroup = String::from_utf8_lossy(tablegroup_id);
+                    if is_parent && parent.is_some() {
+                        return Err(error(
+                            Code::OBJECT_ALREADY_PRESENT,
+                            StatusCode::AlreadyPresent,
+                            format!("Tablegroup with ID {tablegroup} already exists"),
+                        ));
+                    }
+                    if joining {
+                        let parent = parent.ok_or_else(|| {
+                            error(
+                                Code::OBJECT_NOT_FOUND,
+                                StatusCode::InvalidArgument,
+                                format!("Tablegroup with ID {tablegroup} does not exist"),
+                            )
+                        })?;
+                        join_colocation_group(snapshot, req, parent, &mut table)?;
+                    }
+                }
                 let mut mutation = Mutation::new().read(&namespace);
                 // A dropped table's DELETED row with this id is replaced.
                 mutation = match snapshot.get(SysRowEntryType::TABLE, &table_id) {
@@ -323,13 +377,16 @@ impl TableLifecycle {
                 if let (Some(indexed_id), Some(info)) = (&indexed_table_id, &index_info) {
                     mutation = add_index_to_indexed_table(snapshot, mutation, indexed_id, info)?;
                 }
-                mutation = add_new_tablets(
-                    snapshot,
-                    mutation,
-                    &table_id,
-                    &prepared.partitions,
-                    use_parent_table_id,
-                )?;
+                if !joining {
+                    mutation = add_new_tablets(
+                        snapshot,
+                        mutation,
+                        &table_id,
+                        &prepared.partitions,
+                        use_parent_table_id,
+                        is_parent,
+                    )?;
+                }
                 Ok((mutation, Ok(())))
             })
             .await?;
@@ -662,9 +719,6 @@ fn add_index_to_indexed_table(
         })?;
     crate::lookup::check_visible(indexed, false)?;
     let mut pb: SysTablesEntryPB = indexed.parse().map_err(corrupt)?;
-    if pb.colocated() || !pb.parent_table_id().is_empty() {
-        return Err(not_yet("An index on a colocated YSQL table"));
-    }
     if pb.fully_applied_schema.is_none() {
         crate::alter::copy_to_fully_applied(&mut pb);
     }
@@ -1257,4 +1311,101 @@ impl TableLifecycle {
         })
         .await
     }
+}
+
+/// `kColocatedDbParentTableIdSuffix`: a legacy colocated database's parent table.
+const COLOCATED_DB_PARENT_SUFFIX: &[u8] = b".colocated.parent.uuid";
+/// `kTablegroupParentTableIdSuffix`, and `kColocationParentTableIdSuffix` for a colocated
+/// database's tablegroups.
+const TABLEGROUP_PARENT_SUFFIXES: [&[u8]; 2] =
+    [b".tablegroup.parent.uuid", b".colocation.parent.uuid"];
+/// `kFirstNormalColocationId`.
+const FIRST_NORMAL_COLOCATION_ID: u32 = 16384;
+
+/// `IsColocatedDbParentTableId`.
+fn is_colocated_db_parent_table_id(id: &[u8]) -> bool {
+    id.len() == 32 + COLOCATED_DB_PARENT_SUFFIX.len() && id.ends_with(COLOCATED_DB_PARENT_SUFFIX)
+}
+
+/// `IsTablegroupParentTableId`.
+pub(crate) fn is_tablegroup_parent_table_id(id: &[u8]) -> bool {
+    TABLEGROUP_PARENT_SUFFIXES
+        .iter()
+        .any(|suffix| id.len() == 32 + suffix.len() && id.ends_with(suffix))
+}
+
+/// The tablegroup's parent table, if the tablegroup exists: a parent row not being dropped.
+pub(crate) fn tablegroup_parent_of<'a>(
+    snapshot: &'a CatalogSnapshot,
+    tablegroup_id: &[u8],
+) -> Option<&'a std::sync::Arc<master_catalog_entity::Entity>> {
+    TABLEGROUP_PARENT_SUFFIXES.iter().find_map(|suffix| {
+        snapshot
+            .get(SysRowEntryType::TABLE, &[tablegroup_id, suffix].concat())
+            .filter(|t| {
+                t.table().is_some_and(|h| {
+                    h.state != TableState::DELETING as i32 && h.state != TableState::DELETED as i32
+                })
+            })
+    })
+}
+
+/// A colocated table joins its group: it names the parent table, whose tablet holds it, and gets
+/// a colocation id unique in the group (`ObtainColocationId`): the requested one, or a random one.
+fn join_colocation_group(
+    snapshot: &CatalogSnapshot,
+    req: &CreateTableRequestPB,
+    parent: &master_catalog_entity::Entity,
+    table: &mut SysTablesEntryPB,
+) -> Result<(), MasterErrorPB> {
+    use rand::Rng;
+    if snapshot
+        .active_tablets_of(&parent.key.id)
+        .iter()
+        .any(|t| t.tablet().is_some_and(|h| !h.mapped_by_parent_id))
+    {
+        return Err(not_yet(
+            "Joining a colocation tablet whose row lists its tables (before use_parent_table_id_field)",
+        ));
+    }
+    let used: std::collections::HashSet<u32> = snapshot
+        .children_of(&parent.key.id)
+        .iter()
+        .filter_map(|child| child.parse::<SysTablesEntryPB>().ok())
+        .map(|pb| pb.schema.colocated_table_id.colocation_id())
+        .collect();
+    let colocation_id = if req.has_colocation_id() {
+        let id = req.colocation_id();
+        if id < FIRST_NORMAL_COLOCATION_ID {
+            return Err(error(
+                Code::INTERNAL_ERROR,
+                StatusCode::InvalidArgument,
+                format!("Colocation ID cannot be less than {FIRST_NORMAL_COLOCATION_ID}"),
+            ));
+        }
+        if used.contains(&id) {
+            return Err(error(
+                Code::INTERNAL_ERROR,
+                StatusCode::InvalidArgument,
+                format!("Colocation group already contains a table with colocation ID {id}"),
+            ));
+        }
+        id
+    } else {
+        let mut rng = rand::rng();
+        loop {
+            let id = rng.random_range(FIRST_NORMAL_COLOCATION_ID..=u32::MAX);
+            if !used.contains(&id) {
+                break id;
+            }
+        }
+    };
+    table.set_parent_table_id(parent.key.id.to_vec());
+    table
+        .schema
+        .mut_or_insert_default()
+        .colocated_table_id
+        .mut_or_insert_default()
+        .set_colocation_id(colocation_id);
+    Ok(())
 }

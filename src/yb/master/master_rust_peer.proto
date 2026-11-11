@@ -103,6 +103,11 @@ message PrepareTableSchemaRequestPB {
   // When set, the response also has the new table's row (FillNewTableEntry), for a YSQL table.
   optional bytes namespace_id = 4;
   optional bytes namespace_name = 5;
+  // A colocated table (CreateTable's `colocated`): one partition, and no hash columns.
+  optional bool colocated = 6;
+  // A tablegroup's parent table: the request's schema is replaced by the parent's
+  // (CreateTablegroup's).
+  optional bool tablegroup_parent = 7;
 }
 
 message PrepareTableSchemaResponsePB {

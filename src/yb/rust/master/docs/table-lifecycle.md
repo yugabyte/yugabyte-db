@@ -20,7 +20,8 @@ YCQL keyspaces and tables that are not indexes:
 | `TruncateTable`, `IsTruncateTableDone` | `truncate.rs`. As C++: `Truncate` to each tablet's leader, and a YCQL table's indexes too (PG truncates each YSQL index itself). Not persisted, so a new leader reports an unfinished truncate as done, as C++ does. A table in a CDCSDK stream is refused until W11. |
 
 YSQL databases that are not colocated, and YSQL tables and indexes that are not colocated and in
-the default tablespace (below). `AlterNamespace` renames a running namespace. Colocated tables,
+the default tablespace (below), in a tablegroup or not. `AlterNamespace` renames a running
+namespace. Tables of a legacy colocated database (colocated "via database", before tablegroups),
 vector indexes and tablespaces answer `NotSupported`. Roles, permissions and
 UDTs are `master-ycql`'s.
 
@@ -151,6 +152,31 @@ and marks the table DELETED once no tablet is left. All of it is derived from th
 leader finishes a drop the last one started; a replica missed here gets its delete from report
 processing. C++ writes DELETING, then the tablets, then DELETED, with in-memory bookkeeping in
 between (#33349).
+
+## Colocation (`colocation.rs`)
+
+A tablegroup is its parent table (`<tablegroup id>.tablegroup.parent.uuid`, or
+`.colocation.parent.uuid` in a colocated database, whose tables PG puts in its default
+tablegroup). `CreateTablegroup` creates it as C++ does, with the parent schema from the host, and
+it owns one tablet marked colocated. It exists while its parent row is not being dropped; nothing
+else is kept, so C++'s `YsqlTablegroupManager` has no counterpart. `ListTablegroups` lists the
+parents; `DeleteTablegroup` drops the parent once the group holds no table that the same DDL
+transaction is not dropping.
+
+A table created with a `tablegroup_id` joins its group in its create mutation: it names the
+parent as `parent_table_id`, owns no tablet, and gets a colocation id unique in the group (the
+requested one, or random from 16384). It is created PREPARING; the `colocated-tables` controller
+has the group tablet's leader add it (`AddTableToTablet`) and then marks it RUNNING, so a new
+leader finishes an add the last one started (C++ keeps the task in memory only). A dropped
+colocated table leaves the tablet (`RemoveTableFromTablet`) before the table-deletes controller
+marks it DELETED, unless its parent is being dropped too. The alterer and the backfill reach a
+colocated table through its parent's tablet (`CatalogSnapshot::hosting_tablets_of`), and the
+alterer tracks acknowledgements per table and tablet, since colocated tables share one.
+`GetTableSchema` gives a colocated table's `tablegroup_id`, from which PG places its indexes in
+the same group.
+
+Joining a group tablet whose row lists its tables (made before `use_parent_table_id_field`) is
+refused for now.
 
 ## DROP DATABASE (`ysql.rs`, K1)
 

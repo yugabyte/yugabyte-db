@@ -28,8 +28,8 @@ use master_rpc_handlers::{LeaderServices, MasterInfo};
 use master_sys_catalog::{ApplyEvents, SysCatalogStore};
 use master_table_lifecycle::TransactionTableController;
 use master_table_lifecycle::{
-    LifecycleOptions, SchemaHost, TableAlterer, TableDeleter, TableLifecycle, TabletAssigner,
-    TruncateOptions, Truncates,
+    ColocatedTableAdder, LifecycleOptions, SchemaHost, TableAlterer, TableDeleter, TableLifecycle,
+    TabletAssigner, TabletRpc, TruncateOptions, Truncates,
 };
 use master_tablet_split_manager::{
     AutoSplitOptions, SplitController, SplitOptions, TabletSplitManager,
@@ -162,6 +162,8 @@ static YSQL_INDEX_BACKFILL_RPC_TIMEOUT_MS: FlagRef<i32> =
     FlagRef::new("ysql_index_backfill_rpc_timeout_ms");
 static YSQL_DISABLE_INDEX_BACKFILL: FlagRef<bool> = FlagRef::new("ysql_disable_index_backfill");
 static DISABLE_TRUNCATE_TABLE: FlagRef<bool> = FlagRef::new("disable_truncate_table");
+static YSQL_ENABLE_ALTER_TABLE_REWRITE: FlagRef<bool> =
+    FlagRef::new("ysql_yb_enable_alter_table_rewrite");
 static ENABLE_TRUNCATE_ON_PITR_TABLE: FlagRef<bool> = FlagRef::new("enable_truncate_on_pitr_table");
 static USE_CREATE_TABLE_LEADER_HINT: FlagRef<bool> = FlagRef::new("use_create_table_leader_hint");
 static YSQL_LEASE_TTL_MS: FlagRef<u64> = FlagRef::new("master_ysql_operation_lease_ttl_ms");
@@ -790,11 +792,29 @@ fn start_term(
         ),
         leader.catalog.subscribe(),
     );
+    let tablet_rpc = TabletRpc {
+        rpc: rpc.clone(),
+        executor: ts_rpc.clone(),
+        rpc_timeout: || millis(MASTER_TS_RPC_TIMEOUT_MS.get()),
+        retry: retry_policy(false),
+    };
     run_controller(
         scope,
-        TableDeleter::new(leader.tables.clone(), || {
-            millis(BG_TASK_WAIT_MS.get().max(1))
-        }),
+        TableDeleter::new(
+            leader.tables.clone(),
+            || millis(BG_TASK_WAIT_MS.get().max(1)),
+            Some(tablet_rpc.clone()),
+        ),
+        leader.catalog.subscribe(),
+    );
+    run_controller(
+        scope,
+        ColocatedTableAdder::new(
+            leader.tables.clone(),
+            tablet_rpc,
+            || YSQL_ENABLE_ALTER_TABLE_REWRITE.get(),
+            || millis(BG_TASK_WAIT_MS.get().max(1)),
+        ),
         leader.catalog.subscribe(),
     );
 

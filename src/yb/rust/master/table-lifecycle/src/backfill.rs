@@ -329,7 +329,7 @@ pub(crate) async fn run(
     };
     let snapshot = ctx.lifecycle.catalog.snapshot();
     let mut tablets = JoinSet::new();
-    for tablet in snapshot.active_tablets_of(table_id) {
+    for tablet in snapshot.hosting_tablets_of(table_id) {
         let tablet_id = tablet.key.id.to_vec();
         let pb: SysTabletsEntryPB = tablet.parse().map_err(corrupt)?;
         // The least far any of the indexes got on this tablet; absent is from the start.
@@ -540,7 +540,7 @@ async fn safe_time(
     let min_cutoff = hybrid_time_now(&ctx.lifecycle)?;
     let snapshot = ctx.lifecycle.catalog.snapshot();
     let mut read_time = 0u64;
-    for tablet in snapshot.active_tablets_of(table_id) {
+    for tablet in snapshot.hosting_tablets_of(table_id) {
         let tablet_id = tablet.key.id.to_vec();
         let time = call_leader(
             ctx,
@@ -813,7 +813,7 @@ async fn finish(
                 pb.write_to_bytes().map_err(corrupt)?,
             );
             // ClearCheckpointStateInTablets.
-            for tablet in snapshot.tablets_of(table_id) {
+            for tablet in snapshot.hosting_tablets_of(table_id) {
                 let mut tablet_pb: SysTabletsEntryPB = tablet.parse().map_err(corrupt)?;
                 let before = tablet_pb.backfilled_until.len();
                 for index in index_ids {
@@ -877,7 +877,7 @@ async fn allow_gc_of_delete_markers(
     .await?;
     let snapshot = ctx.lifecycle.catalog.snapshot();
     let mut calls = JoinSet::new();
-    for tablet in snapshot.active_tablets_of(index_id) {
+    for tablet in snapshot.hosting_tablets_of(index_id) {
         let tablet_id = tablet.key.id.to_vec();
         let index_id = index_id.to_vec();
         let ctx = BackfillContext {

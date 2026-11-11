@@ -19,6 +19,7 @@
 #include <unordered_set>
 
 #include "yb/client/client.h"
+#include "yb/client/schema.h"
 
 #include "yb/common/common_flags.h"
 #include "yb/common/entity_ids.h"
@@ -1453,19 +1454,33 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
         });
   }
   if (name == "PrepareTableSchema") {
-    // CatalogManager::CreateTable from "Validate schema" to CreatePartitions, for a table that is
-    // not colocated (the Rust leader serves no colocation yet).
+    // CatalogManager::CreateTable from "Validate schema" to CreatePartitions.
     return HandleRequest<master::PrepareTableSchemaRequestPB,
                          master::PrepareTableSchemaResponsePB>(
         request, [](const auto& prepare, auto* resp) -> Status {
           auto req = prepare.request();
+          const bool colocated = prepare.colocated();
+          if (prepare.tablegroup_parent()) {
+            // CatalogManager::CreateTablegroup's parent table schema.
+            client::YBSchemaBuilder schema_builder;
+            schema_builder.AddColumn("parent_column")->Type(DataType::BINARY)->PrimaryKey();
+            client::YBSchema ybschema;
+            RETURN_NOT_OK(schema_builder.Build(&ybschema));
+            SchemaToPB(client::internal::GetSchema(ybschema), req.mutable_schema());
+            req.mutable_schema()->mutable_table_properties()->set_is_transactional(true);
+          }
           Schema schema;
           RETURN_NOT_OK(SchemaFromPB(req.schema(), &schema));
           RETURN_NOT_OK(master::ValidateCreateTableSchema(schema));
           if (!schema.has_column_ids()) {
             schema.InitColumnIdsByDefault();
           }
-          if (!req.partition_schema().has_hash_schema() &&
+          if (colocated) {
+            if (schema.num_hash_key_columns() > 0) {
+              return STATUS(InvalidArgument, "Cannot colocate hash partitioned table",
+                            master::MasterError(master::MasterErrorPB::INVALID_SCHEMA));
+            }
+          } else if (!req.partition_schema().has_hash_schema() &&
               !req.partition_schema().has_range_schema()) {
             if (req.table_type() == REDIS_TABLE_TYPE) {
               req.mutable_partition_schema()->set_hash_schema(
@@ -1487,7 +1502,7 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
             return Status::OK();
           }
           auto partitions =
-              master::CreateTablePartitions(schema, num_tablets, /* colocated= */ false, &req);
+              master::CreateTablePartitions(schema, num_tablets, colocated, &req);
           if (!partitions.ok()) {
             std::ignore = master::SetupError(resp->mutable_partitions_error(), partitions.status());
             return Status::OK();
@@ -1499,7 +1514,7 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
           if (prepare.has_namespace_id()) {
             master::FillNewTableEntry(
                 req, schema, partitions->first, prepare.namespace_id(), prepare.namespace_name(),
-                /* colocated= */ false, resp->mutable_table());
+                colocated, resp->mutable_table());
           }
           return Status::OK();
         });

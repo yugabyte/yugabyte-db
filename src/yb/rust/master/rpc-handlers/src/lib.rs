@@ -75,16 +75,18 @@ use yb_proto::pb::master_ddl::{
     AcquireObjectLocksGlobalRequestPB, AcquireObjectLocksGlobalResponsePB, AlterNamespaceRequestPB,
     AlterNamespaceResponsePB, AlterTableRequestPB, AlterTableResponsePB, BackfillIndexRequestPB,
     BackfillIndexResponsePB, CreateNamespaceRequestPB, CreateNamespaceResponsePB,
-    CreateTableRequestPB, CreateTableResponsePB, DeleteNamespaceRequestPB,
-    DeleteNamespaceResponsePB, DeleteTableRequestPB, DeleteTableResponsePB,
-    GetBackfillStatusRequestPB, GetBackfillStatusResponsePB, GetNamespaceInfoRequestPB,
-    GetNamespaceInfoResponsePB, GetTableSchemaRequestPB, GetTableSchemaResponsePB,
-    IsAlterTableDoneRequestPB, IsAlterTableDoneResponsePB, IsCreateNamespaceDoneRequestPB,
-    IsCreateNamespaceDoneResponsePB, IsCreateTableDoneRequestPB, IsCreateTableDoneResponsePB,
-    IsDeleteNamespaceDoneRequestPB, IsDeleteNamespaceDoneResponsePB, IsDeleteTableDoneRequestPB,
-    IsDeleteTableDoneResponsePB, IsTruncateTableDoneRequestPB, IsTruncateTableDoneResponsePB,
-    IsYsqlDdlVerificationDoneRequestPB, IsYsqlDdlVerificationDoneResponsePB,
-    ListNamespacesRequestPB, ListNamespacesResponsePB, ListTablesRequestPB, ListTablesResponsePB,
+    CreateTableRequestPB, CreateTableResponsePB, CreateTablegroupRequestPB,
+    CreateTablegroupResponsePB, DeleteNamespaceRequestPB, DeleteNamespaceResponsePB,
+    DeleteTableRequestPB, DeleteTableResponsePB, DeleteTablegroupRequestPB,
+    DeleteTablegroupResponsePB, GetBackfillStatusRequestPB, GetBackfillStatusResponsePB,
+    GetNamespaceInfoRequestPB, GetNamespaceInfoResponsePB, GetTableSchemaRequestPB,
+    GetTableSchemaResponsePB, IsAlterTableDoneRequestPB, IsAlterTableDoneResponsePB,
+    IsCreateNamespaceDoneRequestPB, IsCreateNamespaceDoneResponsePB, IsCreateTableDoneRequestPB,
+    IsCreateTableDoneResponsePB, IsDeleteNamespaceDoneRequestPB, IsDeleteNamespaceDoneResponsePB,
+    IsDeleteTableDoneRequestPB, IsDeleteTableDoneResponsePB, IsTruncateTableDoneRequestPB,
+    IsTruncateTableDoneResponsePB, IsYsqlDdlVerificationDoneRequestPB,
+    IsYsqlDdlVerificationDoneResponsePB, ListNamespacesRequestPB, ListNamespacesResponsePB,
+    ListTablegroupsRequestPB, ListTablegroupsResponsePB, ListTablesRequestPB, ListTablesResponsePB,
     ReleaseObjectLocksGlobalRequestPB, ReleaseObjectLocksGlobalResponsePB,
     ReportYsqlDdlTxnStatusRequestPB, ReportYsqlDdlTxnStatusResponsePB, TruncateTableRequestPB,
     TruncateTableResponsePB, WaitForLockersMultipleGlobalRequestPB,
@@ -975,6 +977,25 @@ impl Shared {
                         Ok(())
                     }
                 }
+            ),
+            "CreateTablegroup" => serve_ddl!(
+                CreateTablegroupRequestPB,
+                CreateTablegroupResponsePB,
+                |req, resp| tables
+                    .create_tablegroup(&token, deadline, &req, &mut resp)
+                    .await
+            ),
+            "DeleteTablegroup" => serve_ddl!(
+                DeleteTablegroupRequestPB,
+                DeleteTablegroupResponsePB,
+                |req, resp| tables
+                    .delete_tablegroup(&token, deadline, &req, &mut resp)
+                    .await
+            ),
+            "ListTablegroups" => serve_ddl!(
+                ListTablegroupsRequestPB,
+                ListTablegroupsResponsePB,
+                |req, resp| tables.list_tablegroups(&snapshot, &req, &mut resp)
             ),
             "TruncateTable" => serve_ddl!(
                 TruncateTableRequestPB,

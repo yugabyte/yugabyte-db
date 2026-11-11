@@ -59,8 +59,14 @@ impl SchemaHost for FakeSchemaHost {
                 let req = PrepareTableSchemaRequestPB::parse_from_bytes(request).unwrap();
                 let mut resp = PrepareTableSchemaResponsePB::new();
                 resp.schema = req.request.schema.clone();
+                if req.tablegroup_parent() {
+                    // The host builds the parent's schema.
+                    resp.schema = MessageField::some(Default::default());
+                }
                 resp.set_next_column_id(req.request.schema.columns.len() as i32);
-                let n = if req.request.has_num_tablets() {
+                let n = if req.colocated() {
+                    1
+                } else if req.request.has_num_tablets() {
                     req.request.num_tablets()
                 } else {
                     req.num_live_tservers() as i32
@@ -93,6 +99,7 @@ impl SchemaHost for FakeSchemaHost {
                     table.set_version(0);
                     table.schema = resp.schema.clone();
                     table.set_state(sys_tables_entry_pb::State::PREPARING);
+                    table.set_colocated(req.colocated());
                     if req.request.index_info.is_some() {
                         table.index_info = req.request.index_info.clone();
                         table.set_indexed_table_id(
@@ -729,7 +736,7 @@ async fn drop_marks_the_table_deleting_and_the_deleter_finishes_it() {
         .unwrap();
     assert!(!done.done());
 
-    let deleter = crate::TableDeleter::new(h.lifecycle.clone(), || Duration::from_secs(1));
+    let deleter = crate::TableDeleter::new(h.lifecycle.clone(), || Duration::from_secs(1), None);
     deleter.pass().await;
     for tablet in h.snapshot().tablets_of(&table_id) {
         let pb: SysTabletsEntryPB = tablet.parse().unwrap();
@@ -1179,6 +1186,105 @@ mod ysql {
 
     const INDEX_ID: &[u8] = b"000033e8000030008000000000004001";
 
+    /// A tablegroup is its parent table, which owns one colocated tablet; a table in it owns
+    /// none, names the parent and gets a colocation id unique in the group. The group cannot be
+    /// dropped while it holds a table.
+    #[tokio::test]
+    async fn a_tablegroup_holds_colocated_tables() {
+        use yb_proto::pb::master_ddl::{
+            CreateTablegroupRequestPB, CreateTablegroupResponsePB, DeleteTablegroupRequestPB,
+            DeleteTablegroupResponsePB, ListTablegroupsRequestPB, ListTablegroupsResponsePB,
+        };
+        const TG: &[u8] = b"000033e800003000800000000000a000";
+        let h = ysql_harness().await;
+        let mut req = CreateTablegroupRequestPB::new();
+        req.set_id(TG.to_vec());
+        req.set_namespace_id(DB_ID.to_vec());
+        req.set_namespace_name("yugabyte".into());
+        let mut resp = CreateTablegroupResponsePB::new();
+        h.lifecycle
+            .create_tablegroup(&h.token, Harness::deadline(), &req, &mut resp)
+            .await
+            .unwrap();
+        let parent_id = [TG, b".tablegroup.parent.uuid"].concat();
+        assert_eq!(resp.parent_table_id(), parent_id.as_slice());
+        let tablets = h.snapshot().tablets_of(&parent_id).len();
+        assert_eq!(tablets, 1);
+        let tablet: SysTabletsEntryPB = h.snapshot().tablets_of(&parent_id)[0].parse().unwrap();
+        assert!(tablet.colocated());
+        // Again: the tablegroup exists.
+        let err = h
+            .lifecycle
+            .create_tablegroup(&h.token, Harness::deadline(), &req, &mut resp)
+            .await
+            .unwrap_err();
+        assert_eq!(err.code(), Code::OBJECT_ALREADY_PRESENT);
+
+        let create = |id: &[u8], colocation_id: Option<u32>| {
+            let mut req = CreateTableRequestPB::new();
+            req.set_name("c".into());
+            req.set_table_type(TableType::PGSQL_TABLE_TYPE);
+            req.set_table_id(id.to_vec());
+            req.schema = Some(Default::default()).into();
+            req.namespace.mut_or_insert_default().set_id(DB_ID.to_vec());
+            req.set_tablegroup_id(TG.to_vec());
+            if let Some(c) = colocation_id {
+                req.set_colocation_id(c);
+            }
+            req
+        };
+        let child = b"000033e8000030008000000000004010";
+        h.lifecycle
+            .create_table(
+                &h.token,
+                Harness::deadline(),
+                &create(child, Some(20000)),
+                &mut CreateTableResponsePB::new(),
+            )
+            .await
+            .unwrap();
+        assert!(h.snapshot().tablets_of(child).is_empty());
+        let pb = h.table(child);
+        assert_eq!(pb.parent_table_id(), parent_id.as_slice());
+        assert_eq!(pb.schema.colocated_table_id.colocation_id(), 20000);
+        assert_eq!(pb.state(), sys_tables_entry_pb::State::PREPARING);
+        assert_eq!(h.snapshot().hosting_tablets_of(child).len(), 1);
+        let err = h
+            .lifecycle
+            .create_table(
+                &h.token,
+                Harness::deadline(),
+                &create(b"000033e8000030008000000000004011", Some(20000)),
+                &mut CreateTableResponsePB::new(),
+            )
+            .await
+            .unwrap_err();
+        assert!(err.status.message().contains("already contains"), "{err:?}");
+
+        let mut list = ListTablegroupsResponsePB::new();
+        let mut list_req = ListTablegroupsRequestPB::new();
+        list_req.set_namespace_id(DB_ID.to_vec());
+        h.lifecycle
+            .list_tablegroups(&h.snapshot(), &list_req, &mut list)
+            .unwrap();
+        assert_eq!(list.tablegroups.len(), 1);
+        assert_eq!(list.tablegroups[0].id(), TG);
+
+        let mut drop = DeleteTablegroupRequestPB::new();
+        drop.set_id(TG.to_vec());
+        let err = h
+            .lifecycle
+            .delete_tablegroup(
+                &h.token,
+                Harness::deadline(),
+                &drop,
+                &mut DeleteTablegroupResponsePB::new(),
+            )
+            .await
+            .unwrap_err();
+        assert!(err.status.message().contains("still has tables"), "{err:?}");
+    }
+
     /// DROP DATABASE writes the database DELETING; the table-deletes controller then deletes its
     /// tables and marks it DELETED, after which it is no longer found.
     #[tokio::test]
@@ -1216,7 +1322,7 @@ mod ysql {
             .unwrap();
         assert!(!done.done());
 
-        crate::TableDeleter::new(h.lifecycle.clone(), || Duration::from_secs(1))
+        crate::TableDeleter::new(h.lifecycle.clone(), || Duration::from_secs(1), None)
             .pass()
             .await;
         assert_eq!(ns_state(&h), sys_namespace_entry_pb::State::DELETED);

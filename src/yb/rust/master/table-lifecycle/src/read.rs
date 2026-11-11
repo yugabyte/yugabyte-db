@@ -259,6 +259,13 @@ impl TableLifecycle {
         );
         resp.identifier = MessageField::some(ident);
         resp.set_colocated(pb.colocated());
+        // A colocated table's tablegroup, from its parent's id (`GetTablegroupIdFromParentTableId`).
+        if pb.colocated()
+            && !is_colocation_parent_table_id(&entity.key.id)
+            && crate::ysql::is_tablegroup_parent_table_id(pb.parent_table_id())
+        {
+            resp.set_tablegroup_id(pb.parent_table_id()[..32].to_vec());
+        }
         if !pb.pg_table_id().is_empty() {
             resp.set_pg_table_id(pb.pg_table_id().to_vec());
         }

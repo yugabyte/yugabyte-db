@@ -231,14 +231,21 @@ pub struct TableDeleter {
     lifecycle: Arc<TableLifecycle>,
     /// `catalog_manager_bg_task_wait_ms`.
     interval: fn() -> Duration,
+    /// For `RemoveTableFromTablet` of dropped colocated tables; without it they are only marked.
+    rpc: Option<crate::TabletRpc>,
 }
 
 impl TableDeleter {
     /// A deleter for one term.
-    pub fn new(lifecycle: Arc<TableLifecycle>, interval: fn() -> Duration) -> Arc<TableDeleter> {
+    pub fn new(
+        lifecycle: Arc<TableLifecycle>,
+        interval: fn() -> Duration,
+        rpc: Option<crate::TabletRpc>,
+    ) -> Arc<TableDeleter> {
         Arc::new(TableDeleter {
             lifecycle,
             interval,
+            rpc,
         })
     }
 
@@ -323,6 +330,12 @@ impl TableDeleter {
             self.queue_deletes(token, &marked);
             if marked.len() < TABLETS_PER_WRITE {
                 break;
+            }
+        }
+        if let Some(rpc) = &self.rpc {
+            if crate::colocation::is_colocated_child(&self.lifecycle.catalog.snapshot(), table_id) {
+                crate::colocation::remove_from_tablets(&self.lifecycle, rpc, token, table_id)
+                    .await?;
             }
         }
         self.lifecycle

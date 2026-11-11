@@ -252,6 +252,7 @@ impl TableLifecycle {
                     &table_id,
                     &prepared.partitions,
                     use_parent_table_id,
+                    false,
                 )?;
                 if req.table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE {
                     // `IncrementTransactionTablesVersion`, in the same write: tservers learn of
@@ -362,7 +363,7 @@ impl TableLifecycle {
         num_live_tservers: usize,
         max_num_tablets: i64,
     ) -> Result<PrepareTableSchemaResponsePB, MasterErrorPB> {
-        self.prepare_schema_in(req, num_live_tservers, max_num_tablets, None)
+        self.prepare_schema_in(req, num_live_tservers, max_num_tablets, None, false, false)
     }
 
     /// [`Self::prepare_schema`], also building the table's row in `namespace` (id, name).
@@ -372,8 +373,12 @@ impl TableLifecycle {
         num_live_tservers: usize,
         max_num_tablets: i64,
         namespace: Option<(&[u8], &str)>,
+        colocated: bool,
+        tablegroup_parent: bool,
     ) -> Result<PrepareTableSchemaResponsePB, MasterErrorPB> {
         let mut prepare = PrepareTableSchemaRequestPB::new();
+        prepare.set_colocated(colocated);
+        prepare.set_tablegroup_parent(tablegroup_parent);
         prepare.request = MessageField::some(req.clone());
         prepare.set_num_live_tservers(num_live_tservers as u64);
         prepare.set_max_num_tablets(max_num_tablets);
@@ -402,6 +407,7 @@ pub(crate) fn add_new_tablets(
     table_id: &[u8],
     partitions: &[yb_proto::pb::common::PartitionPB],
     use_parent_table_id: bool,
+    colocated: bool,
 ) -> Result<Mutation, MasterErrorPB> {
     let mut tablet_ids: Vec<Vec<u8>> = Vec::new();
     while tablet_ids.len() < partitions.len() {
@@ -416,6 +422,9 @@ pub(crate) fn add_new_tablets(
         tablet.set_table_id(table_id.to_vec());
         tablet.partition = MessageField::some(partition.clone());
         tablet.state = Some(EnumOrUnknown::new(sys_tablets_entry_pb::State::PREPARING));
+        if colocated {
+            tablet.set_colocated(true);
+        }
         if use_parent_table_id {
             tablet.set_hosted_tables_mapped_by_parent_id(true);
         } else {
