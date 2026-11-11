@@ -53,6 +53,7 @@ class EmbeddingsGenerator:
         embedding_model_params: dict = None,
         batch_size: int = 100,
         ai_provider: str = AI_PROVIDER_OPENAI,
+        embed_concurrency: int = 1,
     ):
         """
         Initialize the EmbeddingsGenerator.
@@ -79,15 +80,27 @@ class EmbeddingsGenerator:
                 Defaults to 100. Max supported by OpenAI is 2048.
             ai_provider (str): Embedding provider. One of "OPENAI" or
                 "AWS_BEDROCK". Defaults to "OPENAI".
+            embed_concurrency (int): Concurrent embedding calls per batch, for
+                Bedrock models that take one text per call. KB ingestion passes
+                embed_concurrency_from_env(). Other callers keep 1, so their
+                Bedrock clients keep botocore's default retries.
         """
         self.embedding_model = embedding_model
         self.embedding_model_params = embedding_model_params or {}
         self.embedding_dimensions = self.embedding_model_params.get('dimensions')
         self.batch_size = batch_size
-        self.embed_concurrency = embed_concurrency_from_env()
+        self.embed_concurrency = max(1, min(int(embed_concurrency or 1),
+                                            MAX_EMBED_CONCURRENCY))
         self.ai_provider = (ai_provider or AI_PROVIDER_OPENAI).upper()
         self.llm_api_key = llm_api_key or os.getenv("OPENAI_API_KEY")
         self.embedder = self._build_embedder()
+        # Cohere sends a whole batch in one request, so only other Bedrock
+        # models (Titan) fan out.
+        self.embeds_concurrently = (
+            self.embed_concurrency > 1
+            and self.ai_provider == AI_PROVIDER_AWS_BEDROCK
+            and self._bedrock_provider() != "cohere"
+        )
 
         # self.model = ChatOpenAI(temperature=0.6, model="gpt-4o-mini",
         #                         callbacks=[ConsoleCallbackHandler()])
@@ -105,13 +118,16 @@ class EmbeddingsGenerator:
         """
         started = time.perf_counter()
         workers = 1
-        if self._embeds_one_text_per_call() and len(texts) > 1:
+        if self.embeds_concurrently and len(texts) > 1:
             workers = min(self.embed_concurrency, len(texts))
-            # embed_query is the per-text call embed_documents loops over, so
-            # the vectors are the same. map() returns them in input order,
-            # which chunk ids depend on. The first error propagates.
+            # embed_documents on one text, not embed_query: newer langchain-aws
+            # embeds a Cohere query as input_type "search_query", so only
+            # embed_documents is sure to give the vectors the sequential path
+            # stores. map() returns them in input order, which chunk ids
+            # depend on. The first error propagates.
             with ThreadPoolExecutor(max_workers=workers) as pool:
-                vectors = list(pool.map(self.embedder.embed_query, texts))
+                vectors = list(pool.map(
+                    lambda text: self.embedder.embed_documents([text])[0], texts))
         else:
             vectors = self.embedder.embed_documents(texts)
         elapsed_ms = (time.perf_counter() - started) * 1000
@@ -123,15 +139,15 @@ class EmbeddingsGenerator:
             )
         return vectors
 
-    def _embeds_one_text_per_call(self) -> bool:
-        """True when concurrency applies: Bedrock, a model with no multi-text
-        call (Titan), and EMBED_CONCURRENCY above 1. OpenAI and Bedrock Cohere
-        already send a batch of texts in one request."""
-        return (
-            self.embed_concurrency > 1
-            and self.ai_provider == AI_PROVIDER_AWS_BEDROCK
-            and not str(self.embedding_model).startswith("cohere.")
-        )
+    def _bedrock_provider(self) -> str:
+        """The model provider as langchain-aws infers it. Newer releases strip
+        a cross-region prefix ("us.cohere..." is Cohere) in _inferred_provider;
+        0.2.15 exposes model_id.split(".")[0] as provider."""
+        for attr in ("_inferred_provider", "provider"):
+            value = getattr(self.embedder, attr, None)
+            if isinstance(value, str) and value:
+                return value
+        return str(self.embedding_model).split(".")[0]
 
     def _build_embedder(self):
         """Construct the underlying LangChain embedder for the configured provider."""
@@ -143,7 +159,7 @@ class EmbeddingsGenerator:
             )
         if self.ai_provider == AI_PROVIDER_AWS_BEDROCK:
             kwargs = {}
-            if self._embeds_one_text_per_call():
+            if self.embed_concurrency > 1:
                 # One client serves every thread. Size its connection pool to
                 # the thread count, and use adaptive retries: on a throttle
                 # they back off and slow the whole client, not one thread.

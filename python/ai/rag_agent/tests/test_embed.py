@@ -561,16 +561,18 @@ class TestEmbedBatchTiming:
 
 
 class TestEmbedConcurrency:
-    """EMBED_CONCURRENCY runs per-text Bedrock calls in parallel, in order."""
+    """embed_concurrency runs per-text Bedrock calls in parallel, in order."""
 
     @staticmethod
-    def _bedrock_generator(mock_bedrock_cls, model="amazon.titan-embed-text-v1"):
+    def _bedrock_generator(mock_bedrock_cls, model="amazon.titan-embed-text-v1",
+                           concurrency=1):
         mock_embedder = Mock()
         mock_bedrock_cls.return_value = mock_embedder
         gen = EmbeddingsGenerator(
             embedding_model=model,
             embedding_model_params={"dimensions": 3},
             ai_provider="AWS_BEDROCK",
+            embed_concurrency=concurrency,
         )
         return gen, mock_embedder
 
@@ -578,9 +580,8 @@ class TestEmbedConcurrency:
     @patch('embeddings.embed.PDFProcessor')
     @patch('embeddings.embed.BedrockEmbeddings')
     def test_default_is_sequential_and_passes_no_config(
-        self, mock_bedrock_cls, mock_pdf, mock_pt, monkeypatch
+        self, mock_bedrock_cls, mock_pdf, mock_pt
     ):
-        monkeypatch.delenv("EMBED_CONCURRENCY", raising=False)
         gen, mock_embedder = self._bedrock_generator(mock_bedrock_cls)
         mock_embedder.embed_documents.return_value = [[1.0], [2.0]]
 
@@ -593,17 +594,33 @@ class TestEmbedConcurrency:
     @patch('embeddings.embed.PipelineTracking')
     @patch('embeddings.embed.PDFProcessor')
     @patch('embeddings.embed.BedrockEmbeddings')
-    def test_titan_runs_concurrently_and_keeps_input_order(
+    def test_env_alone_does_not_change_a_generator(
         self, mock_bedrock_cls, mock_pdf, mock_pt, monkeypatch
+    ):
+        # Prompt and column embedding build generators without
+        # embed_concurrency; EMBED_CONCURRENCY must not give them the
+        # long adaptive-retry tail.
+        monkeypatch.setenv("EMBED_CONCURRENCY", "4")
+        gen, _ = self._bedrock_generator(mock_bedrock_cls)
+        assert gen.embed_concurrency == 1
+        assert not gen.embeds_concurrently
+        assert "config" not in mock_bedrock_cls.call_args.kwargs
+
+    @patch('embeddings.embed.PipelineTracking')
+    @patch('embeddings.embed.PDFProcessor')
+    @patch('embeddings.embed.BedrockEmbeddings')
+    def test_titan_runs_concurrently_and_keeps_input_order(
+        self, mock_bedrock_cls, mock_pdf, mock_pt
     ):
         import threading
         import time as _time
-        monkeypatch.setenv("EMBED_CONCURRENCY", "4")
-        gen, mock_embedder = self._bedrock_generator(mock_bedrock_cls)
+        gen, mock_embedder = self._bedrock_generator(mock_bedrock_cls, concurrency=4)
         texts = [f"t{i}" for i in range(12)]
         active, peak, lock = [0], [0], threading.Lock()
 
-        def fake_query(text):
+        def fake_documents(batch):
+            assert len(batch) == 1
+            text = batch[0]
             with lock:
                 active[0] += 1
                 peak[0] = max(peak[0], active[0])
@@ -611,29 +628,44 @@ class TestEmbedConcurrency:
             _time.sleep(0.002 * (12 - int(text[1:])))
             with lock:
                 active[0] -= 1
-            return [float(text[1:])]
+            return [[float(text[1:])]]
 
-        mock_embedder.embed_query.side_effect = fake_query
+        mock_embedder.embed_documents.side_effect = fake_documents
         vectors = gen._embed_batch(texts)
 
         assert vectors == [[float(i)] for i in range(12)]
         assert 1 < peak[0] <= 4
-        mock_embedder.embed_documents.assert_not_called()
+        # Never embed_query: for Cohere it uses a different input_type.
+        mock_embedder.embed_query.assert_not_called()
         config = mock_bedrock_cls.call_args.kwargs["config"]
         assert config.max_pool_connections >= 4
         assert config.retries["mode"] == "adaptive"
 
+    @pytest.mark.parametrize("model,inferred", [
+        ("cohere.embed-english-v3", None),
+        ("us.cohere.embed-v4:0", "cohere"),
+        ("global.cohere.embed-v4:0", "cohere"),
+    ])
     @patch('embeddings.embed.PipelineTracking')
     @patch('embeddings.embed.PDFProcessor')
     @patch('embeddings.embed.BedrockEmbeddings')
     def test_cohere_keeps_its_multi_text_call(
-        self, mock_bedrock_cls, mock_pdf, mock_pt, monkeypatch
+        self, mock_bedrock_cls, mock_pdf, mock_pt, model, inferred
     ):
-        monkeypatch.setenv("EMBED_CONCURRENCY", "4")
-        gen, mock_embedder = self._bedrock_generator(
-            mock_bedrock_cls, model="cohere.embed-english-v3")
+        mock_embedder = Mock()
+        if inferred:
+            # Newer langchain-aws strips the cross-region prefix here.
+            mock_embedder._inferred_provider = inferred
+        mock_bedrock_cls.return_value = mock_embedder
+        gen = EmbeddingsGenerator(
+            embedding_model=model,
+            embedding_model_params={"dimensions": 3},
+            ai_provider="AWS_BEDROCK",
+            embed_concurrency=4,
+        )
         mock_embedder.embed_documents.return_value = [[1.0], [2.0]]
 
+        assert not gen.embeds_concurrently
         gen._embed_batch(["a", "b"])
         mock_embedder.embed_documents.assert_called_once_with(["a", "b"])
         mock_embedder.embed_query.assert_not_called()
@@ -641,11 +673,14 @@ class TestEmbedConcurrency:
     @patch('embeddings.embed.PipelineTracking')
     @patch('embeddings.embed.PDFProcessor')
     @patch('embeddings.embed.OpenAIEmbeddings')
-    def test_openai_ignores_concurrency(
-        self, mock_oai_cls, mock_pdf, mock_pt, monkeypatch
-    ):
-        monkeypatch.setenv("EMBED_CONCURRENCY", "8")
-        gen, mock_embedder = _create_generator(mock_oai_cls)
+    def test_openai_ignores_concurrency(self, mock_oai_cls, mock_pdf, mock_pt):
+        mock_embedder = Mock()
+        mock_oai_cls.return_value = mock_embedder
+        gen = EmbeddingsGenerator(
+            embedding_model="text-embedding-ada-002",
+            embedding_model_params=DEFAULT_MODEL_PARAMS,
+            embed_concurrency=8,
+        )
         mock_embedder.embed_documents.return_value = [[1.0], [2.0]]
 
         gen._embed_batch(["a", "b"])
@@ -655,12 +690,9 @@ class TestEmbedConcurrency:
     @patch('embeddings.embed.PipelineTracking')
     @patch('embeddings.embed.PDFProcessor')
     @patch('embeddings.embed.BedrockEmbeddings')
-    def test_provider_error_propagates(
-        self, mock_bedrock_cls, mock_pdf, mock_pt, monkeypatch
-    ):
-        monkeypatch.setenv("EMBED_CONCURRENCY", "4")
-        gen, mock_embedder = self._bedrock_generator(mock_bedrock_cls)
-        mock_embedder.embed_query.side_effect = RuntimeError("ThrottlingException")
+    def test_provider_error_propagates(self, mock_bedrock_cls, mock_pdf, mock_pt):
+        gen, mock_embedder = self._bedrock_generator(mock_bedrock_cls, concurrency=4)
+        mock_embedder.embed_documents.side_effect = RuntimeError("ThrottlingException")
 
         with pytest.raises(RuntimeError, match="ThrottlingException"):
             gen._embed_batch(["a", "b", "c"])
@@ -673,7 +705,7 @@ class TestEmbedConcurrency:
         monkeypatch.setenv("EMBED_CONCURRENCY", raw)
         assert embed_concurrency_from_env() == expected
 
-    @pytest.mark.parametrize("concurrency,adaptive", [("1", False), ("4", True)])
+    @pytest.mark.parametrize("concurrency,adaptive", [(1, False), (4, True)])
     @patch('embeddings.embed.PipelineTracking')
     @patch('embeddings.embed.PDFProcessor')
     def test_real_bedrock_client_gets_the_retry_config(
@@ -682,7 +714,6 @@ class TestEmbedConcurrency:
         # Builds the real langchain-aws BedrockEmbeddings, which makes no
         # network call, so a langchain-aws release that stops passing
         # `config` to the boto client fails here rather than in prod.
-        monkeypatch.setenv("EMBED_CONCURRENCY", concurrency)
         monkeypatch.setenv("AWS_REGION", "us-east-1")
         monkeypatch.setenv("AWS_ACCESS_KEY_ID", "test")
         monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "test")
@@ -690,8 +721,10 @@ class TestEmbedConcurrency:
             embedding_model="amazon.titan-embed-text-v1",
             embedding_model_params={"dimensions": 1536},
             ai_provider="AWS_BEDROCK",
+            embed_concurrency=concurrency,
         )
         client_config = gen.embedder.client.meta.config
         assert (client_config.retries.get("mode") == "adaptive") is adaptive
+        assert gen.embeds_concurrently is adaptive
         if adaptive:
             assert client_config.max_pool_connections >= 4
