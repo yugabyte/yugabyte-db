@@ -243,14 +243,15 @@ if [[ "$platform_el_version" -ge 8 ]]; then
         echo "Waiting for user systemd service to stop..."
         sleep 2
     done
-    
+    # Enable linger unconditionally. An active user manager does not imply linger, as any open
+    # session of the user also starts it, so the loop below may never run its body.
+    if ! loginctl enable-linger {{ yb_user }}; then
+        echo "Failed to enable linger for user {{ yb_user }}"
+        exit 1
+    fi
     count=0
-    # Enable linger and start user systemd with retries
+    # Start user systemd with retries
     until su - {{ yb_user }} -c "$status_cmd"; do
-        if ! loginctl enable-linger {{ yb_user }}; then
-            echo "Failed to enable linger for user {{ yb_user }}"
-            exit 1
-        fi
         systemctl start user@${yb_user_id}.service
         count=$((count + 1))
         if [ $count -gt 10 ]; then
@@ -266,6 +267,11 @@ else
         echo "Failed to enable linger for user {{ yb_user }}"
         exit 1
     fi
+fi
+
+if [ ! -f "/var/lib/systemd/linger/{{ yb_user }}" ]; then
+    echo "Linger is not enabled for user {{ yb_user }} after setup"
+    exit 1
 fi
 
 {% endif %}
