@@ -242,21 +242,29 @@ TEST_F(YsqlMajorExtensionUpgradeTest, HypoPG) {
   ASSERT_NO_FATALS(check_query(kMixedModeTserverPg11));
 }
 
+// pg_upgrade updates orafce in each database, and the update creates a cluster-wide role.
 TEST_F(YsqlMajorExtensionUpgradeTest, Orafce) {
-  ASSERT_OK(ExecuteStatement(Format("CREATE EXTENSION orafce")));
+  const std::string kOtherDb = "orafce_db2";
+  ASSERT_OK(ExecuteStatement(Format("CREATE DATABASE $0", kOtherDb)));
+  for (const auto& db : {std::string("yugabyte"), kOtherDb}) {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB(db));
+    ASSERT_OK(conn.Execute("CREATE EXTENSION orafce"));
+  }
   auto check_query = [&](const std::optional<size_t> tserver_idx, bool should_fail) {
     const auto query = "SELECT * FROM oracle.user_tables";
     const auto query_new =
         "SELECT oracle.sys_extract_utc('2026-01-01 05:00:00+05'::timestamptz)::text AS result";
-    auto conn = ASSERT_RESULT(CreateConnToTs(tserver_idx));
-    auto res = ASSERT_RESULT(conn.FetchRows<std::string>(query));
-    ASSERT_FALSE(res.empty());
-    if (should_fail) {
-        ASSERT_NOK_STR_CONTAINS(conn.Execute(query_new),
-            "function oracle.sys_extract_utc(timestamp with time zone) does not exist");
-    } else {
-        auto result_new = ASSERT_RESULT(conn.FetchRows<std::string>(query_new));
-        ASSERT_VECTORS_EQ(result_new, (decltype(result_new){"2026-01-01 00:00:00"}));
+    for (const auto& db : {std::string("yugabyte"), kOtherDb}) {
+      auto conn = ASSERT_RESULT(cluster_->ConnectToDB(db, tserver_idx));
+      auto res = ASSERT_RESULT(conn.FetchRows<std::string>(query));
+      ASSERT_FALSE(res.empty());
+      if (should_fail) {
+          ASSERT_NOK_STR_CONTAINS(conn.Execute(query_new),
+              "function oracle.sys_extract_utc(timestamp with time zone) does not exist");
+      } else {
+          auto result_new = ASSERT_RESULT(conn.FetchRows<std::string>(query_new));
+          ASSERT_VECTORS_EQ(result_new, (decltype(result_new){"2026-01-01 00:00:00"}));
+      }
     }
   };
   ASSERT_NO_FATALS(check_query(kAnyTserver, /*should_fail=*/ true));
@@ -266,6 +274,10 @@ TEST_F(YsqlMajorExtensionUpgradeTest, Orafce) {
   ASSERT_NO_FATALS(check_query(kMixedModeTserverPg11, /*should_fail=*/ true));
   ASSERT_OK(FinalizeUpgradeFromMixedMode());
   ASSERT_NO_FATALS(check_query(kMixedModeTserverPg11, /*should_fail=*/ false));
+  auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));
+  auto role_count = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGUint64>(
+      "SELECT count(*) FROM pg_roles WHERE rolname = 'orafce_set_umask'"));
+  ASSERT_EQ(role_count, 1U);
 }
 
 // YB_TODO_PG19MERGE: no pg_hint_plan update path from 1.5.1-yb-1.0.
