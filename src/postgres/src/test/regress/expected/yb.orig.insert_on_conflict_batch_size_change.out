@@ -74,9 +74,10 @@ SELECT count(*) FROM ioc_target WHERE v = k;
   2000
 (1 row)
 
--- Partitioned table: a partition decides whether to batch when its first row
--- arrives.  The batch size is 0 for rows 1..10 (first partition, no
--- batching), 1024 when row 11 reaches the second partition, and 1 from row 12.
+-- Partitioned table: the statement starts with batch size 0, row 11 raises
+-- it to 1024 just before the first row of the second partition, and row 12
+-- lowers it to 1.  A partition decides whether to batch from the size saved
+-- at statement start, so neither partition batches.
 CREATE TABLE ioc_target_part (k int PRIMARY KEY) PARTITION BY RANGE (k);
 CREATE TABLE ioc_target_part_1 PARTITION OF ioc_target_part
   FOR VALUES FROM (1) TO (11);
