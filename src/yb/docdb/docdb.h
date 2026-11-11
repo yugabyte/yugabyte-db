@@ -217,7 +217,7 @@ struct ApplyStateWithCommitInfo {
   ApplyTransactionState state;
   HybridTime commit_ht;
   OpId apply_op_id;
-  // Invalid for apply states first written by a version that did not store it.
+  // Invalid when missing; older versions did not store it.
   HybridTime log_ht;
 
   template <class PB>
@@ -226,7 +226,7 @@ struct ApplyStateWithCommitInfo {
       .state = VERIFY_RESULT(ApplyTransactionState::FromPB(pb)),
       .commit_ht = HybridTime(pb.commit_ht()),
       .apply_op_id = OpId::FromPB(pb.apply_op_id()),
-      .log_ht = pb.has_log_ht() ? HybridTime(pb.log_ht()) : HybridTime::kInvalid,
+      .log_ht = HybridTime::FromPB(pb.log_ht()),
     };
   }
 

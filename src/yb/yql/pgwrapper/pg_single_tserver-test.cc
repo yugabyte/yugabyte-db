@@ -2382,7 +2382,8 @@ TEST_F(PgSingleTServerTest, ApplyLargeTransactionAfterRestartWithoutStoredApplyO
   // Make the finished apply durable, then restart without flushing: the later row must come back
   // from the WAL, and the loader must find no pending apply.
   ASSERT_OK(cluster_->FlushTablets());
-  // Without log hybrid time, the frontiers of the resumed apply must cover its commit hybrid time.
+  // Without log hybrid time, the resumed apply must still give the regular DB files a valid largest
+  // hybrid time.
   peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"));
   tablet = ASSERT_RESULT(peers.front()->shared_tablet());
   for (const auto& file : tablet->regular_db()->GetLiveFilesMetaData()) {

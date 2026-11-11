@@ -1077,7 +1077,7 @@ class TransactionParticipant::Impl
     auto lock_and_iterator = VERIFY_RESULT(LockAndFind(
         data.transaction_id, "apply"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist}));
     if (lock_and_iterator.found()) {
-      lock_and_iterator.transaction().SetApplyOpId(data.op_id, data.log_ht);
+      lock_and_iterator.transaction().SetApplyInfo(data.op_id, data.log_ht);
       if (!apply_state.active()) {
         RemoveUnlocked(
             lock_and_iterator.iterator, RemoveReason::kApplied, &min_running_notifier);
@@ -1171,7 +1171,7 @@ class TransactionParticipant::Impl
         UpdateHistoricalMaxOpId(&historical_max_op_id, data.op_id);
       }
       CHECK(transactions_.modify(it, [&data](auto& txn) {
-        txn->SetApplyOpId(data.op_id, data.log_ht);
+        txn->SetApplyInfo(data.op_id, data.log_ht);
       }));
 
       if ((**it).ProcessingApply()) {

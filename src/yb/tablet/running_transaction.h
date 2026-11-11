@@ -135,7 +135,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
                     ScopedRWOperation* operation = nullptr);
 
   // Sets op id and hybrid time of the APPLY raft operation.
-  void SetApplyOpId(const OpId& id, HybridTime log_ht);
+  void SetApplyInfo(const OpId& id, HybridTime log_ht);
 
   const OpId& GetApplyOpId() const {
     return apply_record_op_id_;
