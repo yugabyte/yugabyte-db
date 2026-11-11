@@ -28,11 +28,17 @@ od_bucket_t *od_bucket_create(void)
 		return NULL;
 
 	b->l = od_counter_llist_create();
+	if (b->l == NULL) {
+		free(b);
+		return NULL;
+	}
+
 	const int res = pthread_mutex_init(&b->mutex, NULL);
 	if (!res) {
 		return b;
 	}
 
+	od_counter_llist_free(b->l);
 	free(b);
 	return NULL;
 }
@@ -78,7 +84,8 @@ static size_t od_counter_required_buf_size(int sz)
 
 od_counter_t *od_counter_create(size_t sz)
 {
-	od_counter_t *t = malloc(od_counter_required_buf_size(sz));
+	/* Zeroed so the error path can tell created buckets from unset ones. */
+	od_counter_t *t = calloc(1, od_counter_required_buf_size(sz));
 	if (t == NULL) {
 		goto error;
 	}
