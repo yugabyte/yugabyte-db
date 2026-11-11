@@ -1179,6 +1179,52 @@ mod ysql {
 
     const INDEX_ID: &[u8] = b"000033e8000030008000000000004001";
 
+    #[tokio::test]
+    async fn truncate_is_refused_while_disabled_and_done_with_nothing_running() {
+        use crate::{TruncateOptions, Truncates};
+        use yb_proto::pb::master_ddl::{
+            IsTruncateTableDoneRequestPB, IsTruncateTableDoneResponsePB, TruncateTableRequestPB,
+            TruncateTableResponsePB,
+        };
+        let h = ysql_harness().await;
+        h.create_ysql(None).await.unwrap();
+        h.set_table_state(TABLE_ID, sys_tables_entry_pb::State::RUNNING)
+            .await;
+        let options = |disabled: fn() -> bool| TruncateOptions {
+            disable_truncate_table: disabled,
+            enable_truncate_on_pitr_table: || false,
+            rpc_timeout: || std::time::Duration::from_secs(1),
+            retry: Default::default,
+        };
+        let executor = master_task_runtime::TsRpcExecutor::new(|_| 1);
+        let mut req = TruncateTableRequestPB::new();
+        req.table_ids.push(TABLE_ID.to_vec());
+        let truncates = Truncates::new(h.lifecycle.clone(), executor.clone(), options(|| true));
+        let err = truncates
+            .truncate_table(&h.token, &req, &mut TruncateTableResponsePB::new())
+            .unwrap_err();
+        assert_eq!(err.code(), Code::INVALID_REQUEST);
+        assert!(err
+            .status
+            .message()
+            .contains("TRUNCATE table is disallowed"));
+
+        let mut done = IsTruncateTableDoneRequestPB::new();
+        done.set_table_id(TABLE_ID.to_vec());
+        let mut resp = IsTruncateTableDoneResponsePB::new();
+        truncates
+            .is_truncate_table_done(&h.catalog.snapshot(), &done, &mut resp)
+            .unwrap();
+        assert!(resp.done());
+
+        let mut missing = IsTruncateTableDoneRequestPB::new();
+        missing.set_table_id(b"0000000000000000000000000000dead".to_vec());
+        let err = truncates
+            .is_truncate_table_done(&h.catalog.snapshot(), &missing, &mut resp)
+            .unwrap_err();
+        assert_eq!(err.code(), Code::OBJECT_NOT_FOUND);
+    }
+
     /// An index joins its table at WRITE_AND_DELETE, keeping delete markers; `BackfillIndex`
     /// moves it to DO_BACKFILL; `GetBackfillStatus` reports success only once it is
     /// READ_WRITE_AND_DELETE; a drop takes it out of its table.

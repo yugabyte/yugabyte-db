@@ -394,7 +394,7 @@ fn corrupt(e: impl std::fmt::Display) -> Status {
 /// `XClusterManager::IsTableReplicated`: an xCluster stream out of the table that is not being
 /// deleted (a CDC stream with no namespace, whose first table is this one), or a stream into it in
 /// the cluster config's consumer registry.
-fn xcluster_replicated(snapshot: &CatalogSnapshot, table_id: &[u8]) -> bool {
+pub(crate) fn xcluster_replicated(snapshot: &CatalogSnapshot, table_id: &[u8]) -> bool {
     let outbound = snapshot.iter(SysRowEntryType::CDC_STREAM).any(|stream| {
         stream.parse::<SysCDCStreamEntryPB>().is_ok_and(|pb| {
             pb.namespace_id().is_empty()

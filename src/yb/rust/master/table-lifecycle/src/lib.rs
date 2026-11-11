@@ -38,6 +38,7 @@ mod placement;
 mod read;
 mod schedules;
 mod time;
+mod truncate;
 mod ysql;
 
 #[cfg(test)]
@@ -50,6 +51,7 @@ pub use drop::TableDeleter;
 pub use placement::{replication_info_set, table_replication_info};
 pub use schedules::covering_schedules;
 pub use time::local_time_string;
+pub use truncate::{TruncateOptions, Truncates};
 
 /// The C++ steps the host runs: schema normalization, partitioning and alter steps, which are
 /// engine formats Rust does not reimplement (K4). `method` is a `MasterHost::HandleOnHost` name.

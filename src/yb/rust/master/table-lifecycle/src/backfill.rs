@@ -60,11 +60,11 @@ use sys_tables_entry_pb::State as TableState;
 
 const ADMIN_SERVICE: &str = "yb.tserver.TabletServerAdminService";
 
-fn corrupt(e: impl std::fmt::Display) -> Status {
+pub(crate) fn corrupt(e: impl std::fmt::Display) -> Status {
     Status::new(StatusCode::Corruption, e.to_string())
 }
 
-fn ts_status(status: &AppStatusPB) -> Status {
+pub(crate) fn ts_status(status: &AppStatusPB) -> Status {
     Status::new(
         StatusCode::from_i32(status.code().value()),
         status.message().to_string(),
@@ -72,7 +72,7 @@ fn ts_status(status: &AppStatusPB) -> Status {
 }
 
 /// Tserver errors a backfill or safe-time request is not retried on.
-fn permanent(code: tablet_server_error_pb::Code) -> bool {
+pub(crate) fn permanent(code: tablet_server_error_pb::Code) -> bool {
     use tablet_server_error_pb::Code::*;
     matches!(
         code,
@@ -509,7 +509,7 @@ async fn persist(
         .map(|_| ())
 }
 
-fn hybrid_time_now(lifecycle: &TableLifecycle) -> Result<u64, Status> {
+pub(crate) fn hybrid_time_now(lifecycle: &TableLifecycle) -> Result<u64, Status> {
     let bytes = lifecycle.host.call(
         "HybridTimeNow",
         &HybridTimeNowRequestPB::new()
@@ -582,6 +582,32 @@ async fn call_leader<T>(
     response: impl Fn(&[u8]) -> Result<Result<T, (Status, bool)>, Status>,
     policy: RetryPolicy,
 ) -> Result<T, Status> {
+    call_tablet_leader(
+        ctx,
+        token,
+        tablet_id,
+        ADMIN_SERVICE,
+        method,
+        request,
+        response,
+        policy,
+    )
+    .await
+}
+
+/// Calls `service.method` on the tablet's leader, retrying as `policy` allows while this master
+/// leads. `response` gives the value, or the tserver's error and whether it is permanent.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn call_tablet_leader<T>(
+    ctx: &BackfillContext,
+    token: &LeaderToken,
+    tablet_id: &[u8],
+    service: &'static str,
+    method: &'static str,
+    request: impl Fn(&[u8]) -> Result<Vec<u8>, Status>,
+    response: impl Fn(&[u8]) -> Result<Result<T, (Status, bool)>, Status>,
+    policy: RetryPolicy,
+) -> Result<T, Status> {
     let lifecycle = &ctx.lifecycle;
     let leader_key = leader_of(lifecycle, tablet_id).unwrap_or_default();
     ctx.executor
@@ -605,7 +631,7 @@ async fn call_leader<T>(
                 })?;
                 let bytes = bytes.expect("a leader").map_err(Attempt::Fail)?;
                 let resp = rpc
-                    .call(&host, port, ADMIN_SERVICE, method, &bytes, timeout)
+                    .call(&host, port, service, method, &bytes, timeout)
                     .await
                     .map_err(Attempt::Retry)?;
                 match response(&resp).map_err(Attempt::Retry)? {

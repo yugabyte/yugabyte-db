@@ -29,6 +29,7 @@ use master_sys_catalog::{ApplyEvents, SysCatalogStore};
 use master_table_lifecycle::TransactionTableController;
 use master_table_lifecycle::{
     LifecycleOptions, SchemaHost, TableAlterer, TableDeleter, TableLifecycle, TabletAssigner,
+    TruncateOptions, Truncates,
 };
 use master_tablet_split_manager::{
     AutoSplitOptions, SplitController, SplitOptions, TabletSplitManager,
@@ -160,6 +161,8 @@ static BACKENDS_CLIENT_MARGIN_MS: FlagRef<u32> =
 static YSQL_INDEX_BACKFILL_RPC_TIMEOUT_MS: FlagRef<i32> =
     FlagRef::new("ysql_index_backfill_rpc_timeout_ms");
 static YSQL_DISABLE_INDEX_BACKFILL: FlagRef<bool> = FlagRef::new("ysql_disable_index_backfill");
+static DISABLE_TRUNCATE_TABLE: FlagRef<bool> = FlagRef::new("disable_truncate_table");
+static ENABLE_TRUNCATE_ON_PITR_TABLE: FlagRef<bool> = FlagRef::new("enable_truncate_on_pitr_table");
 static USE_CREATE_TABLE_LEADER_HINT: FlagRef<bool> = FlagRef::new("use_create_table_leader_hint");
 static YSQL_LEASE_TTL_MS: FlagRef<u64> = FlagRef::new("master_ysql_operation_lease_ttl_ms");
 static YSQL_LEASE_CLIENT_BUFFER_MS: FlagRef<u64> =
@@ -501,6 +504,16 @@ impl Core {
                 client_margin: || Duration::from_millis(BACKENDS_CLIENT_MARGIN_MS.get().into()),
             },
         );
+        let truncates = Truncates::new(
+            tables.clone(),
+            ts_rpc.clone(),
+            TruncateOptions {
+                disable_truncate_table: || DISABLE_TRUNCATE_TABLE.get(),
+                enable_truncate_on_pitr_table: || ENABLE_TRUNCATE_ON_PITR_TABLE.get(),
+                rpc_timeout: || millis(MASTER_TS_RPC_TIMEOUT_MS.get()),
+                retry: || retry_policy(false),
+            },
+        );
         let leader = Arc::new(LeaderServices {
             catalog: catalog.clone(),
             writer: writer.clone(),
@@ -518,6 +531,7 @@ impl Core {
             leases,
             locks: locks.clone(),
             backends,
+            truncates,
             blacklist_progress_initial_delay: || {
                 Duration::from_secs(BLACKLIST_PROGRESS_INITIAL_DELAY_SECS.get().max(0) as u64)
             },
@@ -646,6 +660,7 @@ impl Core {
         leader.splits.set_rpc(rpc.clone());
         leader.locks.set_rpc(rpc.clone());
         leader.backends.set_rpc(rpc.clone());
+        leader.truncates.set_rpc(rpc.clone());
         let ts_rpc = self.ts_rpc.clone();
         let host = self.host.clone();
         let mut phases = self.leadership.subscribe();

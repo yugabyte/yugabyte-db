@@ -82,11 +82,12 @@ use yb_proto::pb::master_ddl::{
     IsAlterTableDoneRequestPB, IsAlterTableDoneResponsePB, IsCreateNamespaceDoneRequestPB,
     IsCreateNamespaceDoneResponsePB, IsCreateTableDoneRequestPB, IsCreateTableDoneResponsePB,
     IsDeleteNamespaceDoneRequestPB, IsDeleteNamespaceDoneResponsePB, IsDeleteTableDoneRequestPB,
-    IsDeleteTableDoneResponsePB, IsYsqlDdlVerificationDoneRequestPB,
-    IsYsqlDdlVerificationDoneResponsePB, ListNamespacesRequestPB, ListNamespacesResponsePB,
-    ListTablesRequestPB, ListTablesResponsePB, ReleaseObjectLocksGlobalRequestPB,
-    ReleaseObjectLocksGlobalResponsePB, ReportYsqlDdlTxnStatusRequestPB,
-    ReportYsqlDdlTxnStatusResponsePB, WaitForLockersMultipleGlobalRequestPB,
+    IsDeleteTableDoneResponsePB, IsTruncateTableDoneRequestPB, IsTruncateTableDoneResponsePB,
+    IsYsqlDdlVerificationDoneRequestPB, IsYsqlDdlVerificationDoneResponsePB,
+    ListNamespacesRequestPB, ListNamespacesResponsePB, ListTablesRequestPB, ListTablesResponsePB,
+    ReleaseObjectLocksGlobalRequestPB, ReleaseObjectLocksGlobalResponsePB,
+    ReportYsqlDdlTxnStatusRequestPB, ReportYsqlDdlTxnStatusResponsePB, TruncateTableRequestPB,
+    TruncateTableResponsePB, WaitForLockersMultipleGlobalRequestPB,
     WaitForLockersMultipleGlobalResponsePB,
 };
 use yb_proto::pb::master_heartbeat::{TSHeartbeatRequestPB, TSHeartbeatResponsePB};
@@ -974,6 +975,18 @@ impl Shared {
                         Ok(())
                     }
                 }
+            ),
+            "TruncateTable" => serve_ddl!(
+                TruncateTableRequestPB,
+                TruncateTableResponsePB,
+                |req, resp| leader.truncates.truncate_table(&token, &req, &mut resp)
+            ),
+            "IsTruncateTableDone" => serve_ddl!(
+                IsTruncateTableDoneRequestPB,
+                IsTruncateTableDoneResponsePB,
+                |req, resp| leader
+                    .truncates
+                    .is_truncate_table_done(&snapshot, &req, &mut resp)
             ),
             "GetBackfillStatus" => serve_ddl!(
                 GetBackfillStatusRequestPB,

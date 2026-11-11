@@ -17,6 +17,7 @@ YCQL keyspaces and tables that are not indexes:
 | `CreateTable`, `IsCreateTableDone` | Below. |
 | `AlterTable`, `IsAlterTableDone` | Below. |
 | `DeleteTable`, `IsDeleteTableDone` | Below. Dropping an index on its own, and a table a snapshot schedule covers (which C++ hides rather than deletes), are not served yet. |
+| `TruncateTable`, `IsTruncateTableDone` | `truncate.rs`. As C++: `Truncate` to each tablet's leader, and a YCQL table's indexes too (PG truncates each YSQL index itself). Not persisted, so a new leader reports an unfinished truncate as done, as C++ does. A table in a CDCSDK stream is refused until W11. |
 
 YSQL databases that are not colocated, and YSQL tables and indexes that are not colocated and in
 the default tablespace (below). `AlterNamespace` renames a running namespace. Dropping a YSQL

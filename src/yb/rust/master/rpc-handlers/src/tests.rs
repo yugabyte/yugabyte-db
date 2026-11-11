@@ -598,6 +598,16 @@ mod leader_tests {
                 master_task_runtime::TsRpcExecutor::new(|_| 1),
                 Default::default(),
             );
+            let truncates = master_table_lifecycle::Truncates::new(
+                tables.clone(),
+                master_task_runtime::TsRpcExecutor::new(|_| 1),
+                master_table_lifecycle::TruncateOptions {
+                    disable_truncate_table: || false,
+                    enable_truncate_on_pitr_table: || false,
+                    rpc_timeout: || std::time::Duration::from_secs(1),
+                    retry: Default::default,
+                },
+            );
             Arc::new(LeaderServices {
                 catalog,
                 writer,
@@ -615,6 +625,7 @@ mod leader_tests {
                 leases,
                 locks,
                 backends,
+                truncates,
                 blacklist_progress_initial_delay: || std::time::Duration::ZERO,
                 delay_leader_blacklist_completion: || false,
             })
