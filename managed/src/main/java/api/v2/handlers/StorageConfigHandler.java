@@ -164,22 +164,31 @@ public class StorageConfigHandler {
    * schema, because responses leave them out), and region locations.
    */
   private static void checkSpec(StorageSpec storage) {
-    if (storage instanceof S3StorageSpec s3) {
-      if (s3.getCredentials() instanceof S3AccessKeyCredentials keys) {
+    if (storage instanceof S3StorageSpec) {
+      S3StorageSpec s3 = (S3StorageSpec) storage;
+      if (s3.getCredentials() instanceof S3AccessKeyCredentials) {
+        S3AccessKeyCredentials keys = (S3AccessKeyCredentials) s3.getCredentials();
         requireSecret(keys.getSecretAccessKey(), "storage.credentials.secret_access_key");
       }
       checkRegions(s3.getRegionLocations(), S3RegionLocation::getRegion);
-    } else if (storage instanceof GcsStorageSpec gcs) {
-      if (gcs.getCredentials() instanceof GcsServiceAccountKeyCredentials key) {
+    } else if (storage instanceof GcsStorageSpec) {
+      GcsStorageSpec gcs = (GcsStorageSpec) storage;
+      if (gcs.getCredentials() instanceof GcsServiceAccountKeyCredentials) {
+        GcsServiceAccountKeyCredentials key =
+            (GcsServiceAccountKeyCredentials) gcs.getCredentials();
         requireSecret(key.getCredentialsJson(), "storage.credentials.credentials_json");
       }
       checkRegions(gcs.getRegionLocations(), r -> r.getRegion());
-    } else if (storage instanceof AzureStorageSpec azure) {
+    } else if (storage instanceof AzureStorageSpec) {
+      AzureStorageSpec azure = (AzureStorageSpec) storage;
       checkAzure(azure);
-    } else if (storage instanceof NfsStorageSpec nfs) {
+    } else if (storage instanceof NfsStorageSpec) {
+      NfsStorageSpec nfs = (NfsStorageSpec) storage;
       checkRegions(nfs.getRegionLocations(), NfsRegionLocation::getRegion);
-    } else if (storage instanceof OciStorageSpec oci) {
-      if (oci.getCredentials() instanceof OciS3CompatibleCredentials keys) {
+    } else if (storage instanceof OciStorageSpec) {
+      OciStorageSpec oci = (OciStorageSpec) storage;
+      if (oci.getCredentials() instanceof OciS3CompatibleCredentials) {
+        OciS3CompatibleCredentials keys = (OciS3CompatibleCredentials) oci.getCredentials();
         requireSecret(keys.getSecretAccessKey(), "storage.credentials.secret_access_key");
       } else if (oci.getCredentials() instanceof OciIamCredentials
           && StringUtils.isBlank(oci.getNamespace())) {

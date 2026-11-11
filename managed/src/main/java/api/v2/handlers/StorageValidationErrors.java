@@ -92,7 +92,8 @@ final class StorageValidationErrors {
   record ProviderError(int status, String errorCode, boolean unavailable, String message) {}
 
   static PlatformServiceException toV2Error(Throwable failure) {
-    if (failure instanceof PlatformServiceException pse) {
+    if (failure instanceof PlatformServiceException) {
+      PlatformServiceException pse = (PlatformServiceException) failure;
       ProviderError provider = providerError(pse.getCause());
       ObjectNode errors = fieldErrors(pse);
       if (provider != null) {
@@ -121,21 +122,25 @@ final class StorageValidationErrors {
   static ProviderError providerError(Throwable failure) {
     Throwable t = failure;
     for (int depth = 0; t != null && depth < MAX_CAUSE_DEPTH; depth++, t = t.getCause()) {
-      if (t instanceof AwsServiceException aws) {
+      if (t instanceof AwsServiceException) {
+        AwsServiceException aws = (AwsServiceException) t;
         String code = aws.awsErrorDetails() != null ? aws.awsErrorDetails().errorCode() : null;
         return fromStatus(aws.statusCode(), code, aws.getMessage());
       }
-      if (t instanceof BaseServiceException gcp && gcp.getCode() > 0) {
+      if (t instanceof BaseServiceException && ((BaseServiceException) t).getCode() > 0) {
+        BaseServiceException gcp = (BaseServiceException) t;
         return fromStatus(gcp.getCode(), gcp.getReason(), gcp.getMessage());
       }
-      if (t instanceof HttpResponseException azure && azure.getResponse() != null) {
+      if (t instanceof HttpResponseException && ((HttpResponseException) t).getResponse() != null) {
+        HttpResponseException azure = (HttpResponseException) t;
         String code =
-            t instanceof BlobStorageException blob && blob.getErrorCode() != null
-                ? blob.getErrorCode().toString()
+            t instanceof BlobStorageException && ((BlobStorageException) t).getErrorCode() != null
+                ? ((BlobStorageException) t).getErrorCode().toString()
                 : null;
         return fromStatus(azure.getResponse().getStatusCode(), code, azure.getMessage());
       }
-      if (t instanceof BmcException oci && oci.getStatusCode() > 0) {
+      if (t instanceof BmcException && ((BmcException) t).getStatusCode() > 0) {
+        BmcException oci = (BmcException) t;
         return fromStatus(oci.getStatusCode(), oci.getServiceCode(), oci.getMessage());
       }
     }
@@ -170,7 +175,7 @@ final class StorageValidationErrors {
     if (t instanceof SocketTimeoutException || t instanceof HttpTimeoutException) {
       return true;
     }
-    if (t instanceof BmcException oci && oci.isTimeout()) {
+    if (t instanceof BmcException && ((BmcException) t).isTimeout()) {
       return true;
     }
     String message = StringUtils.defaultString(t.getMessage());

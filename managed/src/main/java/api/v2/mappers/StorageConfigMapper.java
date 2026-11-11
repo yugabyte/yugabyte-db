@@ -109,15 +109,20 @@ public interface StorageConfigMapper {
   }
 
   default StorageSpec toStorageSpec(CustomerConfigData data) {
-    if (data instanceof CustomerConfigStorageS3Data s3) {
+    if (data instanceof CustomerConfigStorageS3Data) {
+      CustomerConfigStorageS3Data s3 = (CustomerConfigStorageS3Data) data;
       return toS3StorageSpec(s3);
-    } else if (data instanceof CustomerConfigStorageGCSData gcs) {
+    } else if (data instanceof CustomerConfigStorageGCSData) {
+      CustomerConfigStorageGCSData gcs = (CustomerConfigStorageGCSData) data;
       return toGcsStorageSpec(gcs);
-    } else if (data instanceof CustomerConfigStorageAzureData azure) {
+    } else if (data instanceof CustomerConfigStorageAzureData) {
+      CustomerConfigStorageAzureData azure = (CustomerConfigStorageAzureData) data;
       return toAzureStorageSpec(azure);
-    } else if (data instanceof CustomerConfigStorageNFSData nfs) {
+    } else if (data instanceof CustomerConfigStorageNFSData) {
+      CustomerConfigStorageNFSData nfs = (CustomerConfigStorageNFSData) data;
       return toNfsStorageSpec(nfs);
-    } else if (data instanceof CustomerConfigStorageOCIData oci) {
+    } else if (data instanceof CustomerConfigStorageOCIData) {
+      CustomerConfigStorageOCIData oci = (CustomerConfigStorageOCIData) data;
       return toOciStorageSpec(oci);
     }
     throw new IllegalArgumentException("Not storage config data: " + data.getClass());
@@ -270,19 +275,24 @@ public interface StorageConfigMapper {
     StorageSpec storage = spec.getStorage();
     CustomerConfigData data;
     String subtype;
-    if (storage instanceof S3StorageSpec s3) {
+    if (storage instanceof S3StorageSpec) {
+      S3StorageSpec s3 = (S3StorageSpec) storage;
       data = toV1Data(s3);
       subtype = NAME_S3;
-    } else if (storage instanceof GcsStorageSpec gcs) {
+    } else if (storage instanceof GcsStorageSpec) {
+      GcsStorageSpec gcs = (GcsStorageSpec) storage;
       data = toV1Data(gcs);
       subtype = NAME_GCS;
-    } else if (storage instanceof AzureStorageSpec azure) {
+    } else if (storage instanceof AzureStorageSpec) {
+      AzureStorageSpec azure = (AzureStorageSpec) storage;
       data = toV1Data(azure);
       subtype = NAME_AZURE;
-    } else if (storage instanceof NfsStorageSpec nfs) {
+    } else if (storage instanceof NfsStorageSpec) {
+      NfsStorageSpec nfs = (NfsStorageSpec) storage;
       data = toV1Data(nfs);
       subtype = NAME_NFS;
-    } else if (storage instanceof OciStorageSpec oci) {
+    } else if (storage instanceof OciStorageSpec) {
+      OciStorageSpec oci = (OciStorageSpec) storage;
       data = toV1Data(oci);
       subtype = NAME_OCI;
     } else {
@@ -314,10 +324,12 @@ public interface StorageConfigMapper {
       data.globalBucketAccess = spec.getGlobalBucketAccess();
     }
     S3Credentials credentials = spec.getCredentials();
-    if (credentials instanceof S3AccessKeyCredentials keys) {
+    if (credentials instanceof S3AccessKeyCredentials) {
+      S3AccessKeyCredentials keys = (S3AccessKeyCredentials) credentials;
       data.awsAccessKeyId = keys.getAccessKeyId();
       data.awsSecretAccessKey = keys.getSecretAccessKey();
-    } else if (credentials instanceof S3IamCredentials iam) {
+    } else if (credentials instanceof S3IamCredentials) {
+      S3IamCredentials iam = (S3IamCredentials) credentials;
       data.isIAMInstanceProfile = true;
       if (iam.getCredentialSource() != null) {
         data.iamConfig.credentialSource =
@@ -350,7 +362,8 @@ public interface StorageConfigMapper {
       data.immutableStorage = spec.getImmutableStorage();
     }
     GcsCredentials credentials = spec.getCredentials();
-    if (credentials instanceof GcsServiceAccountKeyCredentials key) {
+    if (credentials instanceof GcsServiceAccountKeyCredentials) {
+      GcsServiceAccountKeyCredentials key = (GcsServiceAccountKeyCredentials) credentials;
       data.gcsCredentialsJson = key.getCredentialsJson();
     } else if (credentials instanceof GcsIamCredentials) {
       data.useGcpIam = true;
@@ -369,9 +382,11 @@ public interface StorageConfigMapper {
       data.immutableStorage = spec.getImmutableStorage();
     }
     AzureCredentials credentials = spec.getCredentials();
-    if (credentials instanceof AzureSasTokenCredentials sas) {
+    if (credentials instanceof AzureSasTokenCredentials) {
+      AzureSasTokenCredentials sas = (AzureSasTokenCredentials) credentials;
       data.azureSasToken = sas.getSasToken();
-    } else if (credentials instanceof AzureManagedIdentityCredentials identity) {
+    } else if (credentials instanceof AzureManagedIdentityCredentials) {
+      AzureManagedIdentityCredentials identity = (AzureManagedIdentityCredentials) credentials;
       data.useAzureIam = true;
       data.azureClientId = identity.getClientId();
     }
@@ -401,7 +416,8 @@ public interface StorageConfigMapper {
     OciCredentials credentials = spec.getCredentials();
     if (credentials instanceof OciIamCredentials) {
       data.useOciIam = true;
-    } else if (credentials instanceof OciS3CompatibleCredentials keys) {
+    } else if (credentials instanceof OciS3CompatibleCredentials) {
+      OciS3CompatibleCredentials keys = (OciS3CompatibleCredentials) credentials;
       data.ociS3AccessKeyId = keys.getAccessKeyId();
       data.ociS3SecretAccessKey = keys.getSecretAccessKey();
       data.ociS3HostBase = keys.getHostBase();
