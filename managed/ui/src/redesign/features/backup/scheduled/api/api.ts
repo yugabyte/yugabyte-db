@@ -22,7 +22,7 @@ export const createScheduledBackupPolicy = (payload: IBackupSchedule['backupInfo
   return axios.post(`${ROOT_URL}/customers/${customerUUID}/create_backup_schedule_async`, {
     ...payload,
     customerUUID,
-    // Cron expressions are always evaluated in UTC.
+    // New schedules evaluate cron in UTC; existing schedules keep their stored setting.
     useLocalTimezone: false
   });
 };
