@@ -648,18 +648,17 @@ ybIsCopyOfEarlierIndexCol(IndexOptInfo *index, int indexcol)
 }
 
 /*
- * Whether index column indexcol, before the last merge sort column, is a gap
+ * Whether index column indexcol, between two merge sort columns, is a gap
  * column: a range column without an equality index clause that is not a SAOP
- * stream column, a merge sort column, or a copy of an earlier index column.
- * The merge sorts on each gap column (see yb_add_merge_gap_sort_cols).
+ * stream column or a copy of an earlier index column.  The merge sorts on each
+ * gap column (see yb_add_merge_gap_sort_cols).
  */
 static bool
 ybIsMergeGapCol(IndexOptInfo *index, List *indexclauses, Bitmapset *saop_idxs,
-				Bitmapset *sort_idxs, int indexcol)
+				int indexcol)
 {
 	return (indexcol >= index->nhashcolumns &&
 			!bms_is_member(indexcol, saop_idxs) &&
-			!bms_is_member(indexcol, sort_idxs) &&
 			!ybEqualityIndexClause(index, indexclauses, indexcol) &&
 			!ybIsCopyOfEarlierIndexCol(index, indexcol));
 }
@@ -727,7 +726,10 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 		saop_idxs = bms_add_member(saop_idxs, info->indexcol);
 	}
 
-	/* Find the merge sort columns as yb_get_sort_info_from_pathkeys does. */
+	/*
+	 * Find the merge sort columns as yb_get_sort_info_from_pathkeys does, and
+	 * the gap columns between them.
+	 */
 	foreach(lc, *pathkeys)
 	{
 		PathKey    *pathkey = lfirst_node(PathKey, lc);
@@ -735,16 +737,30 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 		TargetEntry *tle = ybFindPathkeyTle(index->indextlist,
 											pathkey->pk_eclass, relids,
 											saop_idxs, &em);
+		Bitmapset  *new_gap_idxs = NULL;
+		bool		expression_gap = false;
 
 		/* Not an ordering the merge can compare on. */
 		if (!tle)
 			return NULL;
 
+		for (int indexcol = last_sort_indexcol + 1; indexcol < tle->resno - 1;
+			 indexcol++)
+		{
+			if (!ybIsMergeGapCol(index, indexclauses, saop_idxs, indexcol))
+				continue;
+			new_gap_idxs = bms_add_member(new_gap_idxs, indexcol);
+			expression_gap |= index->indexkeys[indexcol] == 0;
+		}
+
 		/*
 		 * For an embedded index scan, an expression column is not available
-		 * for sort (see also #36017).
+		 * for sort (see also #36017).  That holds for the column of this
+		 * pathkey and for a gap column before it, which the merge sorts on as
+		 * well.
 		 */
-		if (embedded && index->indexkeys[tle->resno - 1] == 0)
+		if (embedded &&
+			(index->indexkeys[tle->resno - 1] == 0 || expression_gap))
 		{
 			*pathkeys = list_truncate(*pathkeys, foreach_current_index(lc));
 
@@ -758,40 +774,9 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 				*yb_distinct_nkeys = -1;
 			break;
 		}
+		gap_idxs = bms_join(gap_idxs, new_gap_idxs);
 		sort_idxs = bms_add_member(sort_idxs, tle->resno - 1);
 		last_sort_indexcol = Max(last_sort_indexcol, tle->resno - 1);
-	}
-
-	/*
-	 * Find the gap columns.  For an embedded index scan, an expression gap
-	 * column is not available for sort either (see also #36017), so the
-	 * pathkeys are cut before the merge sort columns after it.
-	 */
-	for (int indexcol = 0; indexcol < last_sort_indexcol; indexcol++)
-	{
-		int			nsortcols = 0;
-		int			i = -1;
-
-		if (!ybIsMergeGapCol(index, indexclauses, saop_idxs, sort_idxs,
-							 indexcol))
-			continue;
-		if (!embedded || index->indexkeys[indexcol] != 0)
-		{
-			gap_idxs = bms_add_member(gap_idxs, indexcol);
-			continue;
-		}
-
-		last_sort_indexcol = -1;
-		while ((i = bms_next_member(sort_idxs, i)) >= 0 && i < indexcol)
-		{
-			nsortcols++;
-			last_sort_indexcol = i;
-		}
-		*pathkeys = list_truncate(*pathkeys, nsortcols);
-		/* As for a pathkey above. */
-		if (*yb_distinct_nkeys > list_length(*pathkeys))
-			*yb_distinct_nkeys = -1;
-		break;
 	}
 
 	/* Construct the result in index column order. */
