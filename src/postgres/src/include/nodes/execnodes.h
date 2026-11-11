@@ -1482,6 +1482,16 @@ typedef struct ModifyTableState
 	 * reused after the setting changes.
 	 */
 	bool		yb_use_upsert_mode;
+
+	/*
+	 * YB: INSERT ON CONFLICT read batch size for this statement, taken from
+	 * yb_insert_on_conflict_read_batch_size at executor startup; 0 means no
+	 * read batching.  The setting can change while the statement runs (for
+	 * example, set_config() in an expression), so the batch arrays, the
+	 * full-batch check, and each partition's batching decision use this saved
+	 * value.
+	 */
+	int			yb_ioc_batch_size;
 } ModifyTableState;
 
 /* ----------------
@@ -3156,7 +3166,7 @@ typedef struct LimitState
  *	 YbInsertOnConflictBatchState information
  *
  *		INSERT ... ON CONFLICT read batching state for Yugabyte relations.  The
- *		batch size is taken from GUC yb_insert_on_conflict_read_batch_size.
+ *		batch size is ModifyTableState.yb_ioc_batch_size.
  * ----------------
  */
 typedef struct YbInsertOnConflictBatchState
