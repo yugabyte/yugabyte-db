@@ -105,12 +105,11 @@ public class ManageCatalogUpgradeSuperUser extends UniverseTaskBase {
   private void createUser(Universe universe, NodeDetails node, String password) {
     String query =
         String.format(
-            """
-    DO $$DECLARE time TIMESTAMP := now() + INTERVAL '4 HOURS';
-    BEGIN
-    EXECUTE format('CREATE ROLE %s WITH SUPERUSER LOGIN PASSWORD ''%s'' VALID UNTIL ''%s'';', time);
-    END$$;
-    """,
+            "DO $$DECLARE time TIMESTAMP := now() + INTERVAL '4 HOURS';\n"
+                + "BEGIN\n"
+                + "EXECUTE format('CREATE ROLE %s WITH SUPERUSER LOGIN PASSWORD ''%s'' VALID UNTIL"
+                + " ''%s'';', time);\n"
+                + "END$$;\n",
             UPGRADE_SUPERUSER, password, "%s");
     ysqlQueryExecutor.runUserDbCommands(query, "template1", universe);
   }
