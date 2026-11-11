@@ -1009,6 +1009,7 @@ public class UniverseCRUDHandler {
       }
       PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c);
       PlacementInfoUtil.finalSanityCheckConfigure(c, taskParams.getNodesInCluster(c.uuid));
+      PlacementInfoUtil.validateNoZoneDuplicates(c.getOverallPlacement());
 
       if (c.userIntent.specificGFlags != null) {
         if (c.clusterType == ClusterType.ASYNC) {
@@ -1649,6 +1650,7 @@ public class UniverseCRUDHandler {
         taskParams.getNodesInCluster(primaryCluster.uuid), primaryCluster);
     PlacementInfoUtil.finalSanityCheckConfigure(
         primaryCluster, taskParams.getNodesInCluster(primaryCluster.uuid));
+    PlacementInfoUtil.validateNoZoneDuplicates(primaryCluster.getOverallPlacement());
     TaskType taskType = TaskType.EditUniverse;
     if (primaryCluster.userIntent.getAllCloudTypes().contains(Common.CloudType.kubernetes)) {
       taskType = TaskType.EditKubernetesUniverse;
@@ -1681,6 +1683,7 @@ public class UniverseCRUDHandler {
     PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(cluster.uuid), cluster);
     PlacementInfoUtil.finalSanityCheckConfigure(
         cluster, taskParams.getNodesInCluster(cluster.uuid));
+    PlacementInfoUtil.validateNoZoneDuplicates(cluster.getOverallPlacement());
     TaskType taskType = TaskType.EditUniverse;
     if (cluster.userIntent.getAllCloudTypes().contains(Common.CloudType.kubernetes)) {
       taskType = TaskType.EditKubernetesUniverse;
@@ -2159,6 +2162,7 @@ public class UniverseCRUDHandler {
         taskParams.getNodesInCluster(readOnlyCluster.uuid), readOnlyCluster);
     PlacementInfoUtil.finalSanityCheckConfigure(
         readOnlyCluster, taskParams.getNodesInCluster(readOnlyCluster.uuid));
+    PlacementInfoUtil.validateNoZoneDuplicates(readOnlyCluster.getOverallPlacement());
 
     // Submit the task to create the cluster.
     UUID taskUUID = commissioner.submit(taskType, taskParams);
