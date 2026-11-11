@@ -259,6 +259,10 @@ DEFINE_RUNTIME_PG_FLAG(string, yb_xcluster_consistency_level, "database",
     "Controls the consistency level of xCluster replicated databases. Valid values are "
     "\"database\" and \"tablet\".");
 
+DEFINE_RUNTIME_PG_FLAG(bool, yb_xcluster_invalid_index_ddl_check, true,
+    "On an xCluster automatic mode source, reject DDLs whose outcome depends on an invalid "
+    "index that the target does not have.");
+
 DEFINE_RUNTIME_PG_FLAG(string, yb_test_block_index_phase, "",
     "Block the given index phase from proceeding. Valid names are indisready, build,"
     " indisvalid and finish. For testing purposes.");

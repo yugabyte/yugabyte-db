@@ -651,7 +651,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                                       const SubTransactionId sub_txn_id,
                                       YsqlDdlSubTransactionRollbackState state);
 
-  bool HasDdlVerificationState(const TransactionId& txn) const EXCLUDES(ddl_txn_verifier_mutex_);
+  // Returns true if txn has a DDL verification entry, in which case the caller must not apply its
+  // release request yet. txn's locks are then released when the entry goes away: by the DDL
+  // verifier once txn finishes, or by txn's own release-all if the entry was erased while txn was
+  // running.
+  bool DeferObjectLockReleaseToDdlVerifier(const TransactionId& txn, bool release_all)
+      EXCLUDES(ddl_txn_verifier_mutex_);
   void RemoveDdlTransactionStateUnlocked(
       const TableId& table_id, const std::vector<TransactionId>& txn_ids)
       REQUIRES(ddl_txn_verifier_mutex_);
@@ -950,6 +955,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status GetYsqlAllDBCatalogVersions(
       bool use_cache, DbOidToCatalogVersionMap* versions, uint64_t* fingerprint,
       HybridTime* out_read_ht = nullptr) override;
+  // False until initdb creates pg_yb_catalog_version, or its prior-version copy during a YSQL major
+  // upgrade.
+  Result<bool> IsYsqlCatalogVersionTableCreated() const;
   Result<DbOidVersionToMessageListMap> GetYsqlCatalogInvalationMessages(bool use_cache) override;
 
   Status GetYsqlDBCatalogVersion(
@@ -3609,6 +3617,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
     std::unordered_set<TableId> processed_tables;
     // Set of tables whose DocDB schema do not change.
     std::unordered_set<TableId> nochange_tables;
+    // A release of all the txn's object locks was dropped while this entry existed.
+    bool release_all_deferred = false;
   };
 
   struct YsqlDdlSubTransactionRollbackMetadata {

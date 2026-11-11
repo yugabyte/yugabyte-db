@@ -331,6 +331,92 @@ class LoadBalancerMockedBase : public YBTest {
     }
   }
 
+  // Moves the tablet's replica from one tserver to another, keeping the replication factor.
+  void MoveReplica(
+      TabletInfo* tablet, const std::shared_ptr<TSDescriptor>& from_ts,
+      const std::shared_ptr<TSDescriptor>& to_ts) {
+    RemoveReplica(tablet, from_ts);
+    AddRunningReplica(tablet, to_ts);
+  }
+
+  // Fakes a completed split as the master sees it once the children report running: two running
+  // children with the parent's replicas, recorded on the parent, which stays running until the
+  // tservers request its deletion. Returns the children.
+  Result<std::vector<TabletInfoPtr>> SplitTablet(const TabletInfoPtr& parent) {
+    std::string start_key, end_key;
+    uint64_t split_depth;
+    {
+      auto parent_lock = parent->LockForRead();
+      const auto& partition = parent_lock->pb.partition();
+      start_key = partition.partition_key_start();
+      end_key = partition.partition_key_end();
+      split_depth = parent_lock->pb.split_depth();
+    }
+    // The balancer does not look at partition ranges, so any key splits the parent.
+    const auto split_key = start_key + "m";
+    const auto& table = tables_.FindTableOrNull(cur_table_uuid_);
+    std::vector<TabletInfoPtr> children;
+    for (int i = 0; i < 2; ++i) {
+      auto child = VERIFY_RESULT(CreateTablet(
+          table, Format("$0-child-$1", parent->id(), i), i == 0 ? start_key : split_key,
+          i == 0 ? split_key : end_key, split_depth + 1));
+      child->SetReplicaLocations(
+          std::make_shared<TabletReplicaMap>(*parent->GetReplicaLocations()));
+      tablet_map_[child->id()] = child;
+      children.push_back(child);
+    }
+    auto parent_lock = parent->LockForWrite();
+    for (const auto& child : children) {
+      parent_lock.mutable_data()->pb.add_split_tablet_ids(child->id());
+    }
+    parent_lock.Commit();
+    return children;
+  }
+
+  void SetTabletState(const TabletInfoPtr& tablet, SysTabletsEntryPB::State state) {
+    auto l = tablet->LockForWrite();
+    l.mutable_data()->pb.set_state(state);
+    l.Commit();
+  }
+
+  // Hides the tablet, which is what the master does instead of deleting it when a snapshot
+  // schedule or a CDC stream retains it.
+  void HideTablet(const TabletInfoPtr& tablet) {
+    auto l = tablet->LockForWrite();
+    l.mutable_data()->pb.set_hide_hybrid_time(HybridTime::FromMicros(1).ToUint64());
+    l.Commit();
+  }
+
+  size_t GetLoad(const TabletServerId& ts_uuid) {
+    return cb_.state_->GetLoad(ts_uuid);
+  }
+
+  int GetGlobalLoad(const TabletServerId& ts_uuid) {
+    return cb_.global_state_->GetGlobalLoad(ts_uuid);
+  }
+
+  size_t GetPossiblyTransientLoad(const TabletServerId& ts_uuid) {
+    return cb_.state_->GetPossiblyTransientLoad(ts_uuid);
+  }
+
+  bool IsSplitParent(const TabletId& tablet_id) {
+    return cb_.state_->per_tablet_meta_.at(tablet_id).is_split_parent;
+  }
+
+  Result<size_t> EstimateTableLoadDifference() {
+    return cb_.EstimateTableLoadDifference();
+  }
+
+  // Update the balancer's in-memory state as an add or a remove of a replica would, without
+  // going through the balancing decisions.
+  Status AddReplicaInState(const TabletId& tablet_id, const TabletServerId& to_ts) {
+    return cb_.AddOrMoveReplica(tablet_id, "" /* from_ts */, to_ts, "test add");
+  }
+
+  Status RemoveReplicaInState(const TabletId& tablet_id, const TabletServerId& from_ts) {
+    return cb_.RemoveReplica(tablet_id, from_ts, "test remove");
+  }
+
   void MoveTabletLeader(TabletInfo* tablet, std::shared_ptr<TSDescriptor> ts_desc) {
     std::shared_ptr<TabletReplicaMap> replicas =
       std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());

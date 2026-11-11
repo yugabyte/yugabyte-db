@@ -41,6 +41,7 @@
 #include "yb/common/jsonb.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_type.h"
+#include "yb/common/ql_value.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/date_time.h"
@@ -272,7 +273,7 @@ inline Result<BFRetValue> ListConstructor(const BFParams& params, BFFactory fact
 
 // Map::Frozen
 inline auto MapFromVector(const BFParams& params) {
-  std::map<BFCollectionEntry, BFCollectionEntry> ordered_values;
+  std::map<BFCollectionEntry, BFCollectionEntry, FrozenCollectionLess> ordered_values;
   for (size_t vidx = 0; vidx < params.size(); vidx++) {
     auto kidx = vidx++;
     ordered_values.emplace(std::ref(params[kidx]), std::ref(params[vidx]));
@@ -294,7 +295,7 @@ inline Result<BFRetValue> MapFrozen(const BFParams& params, BFFactory factory) {
 
 // Set::Frozen.
 inline auto SetFromVector(const BFParams& params) {
-  std::set<BFCollectionEntry> ordered_values;
+  std::set<BFCollectionEntry, FrozenCollectionLess> ordered_values;
   for (size_t i = 0; i < params.size(); i++) {
     ordered_values.insert(params[i]);
   }

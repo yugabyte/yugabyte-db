@@ -1005,7 +1005,11 @@ void RemoteBootstrapITest::RemoteBootstrapFollowerWithHigherTerm(YBTableType tab
   workload.WaitInserted(100);
   workload.StopAndJoin();
 
-  ASSERT_OK(WaitForServersToAgree(timeout, ts_map_, tablet_id, workload.batches_completed()));
+  // The leader is paused next, so every follower must already know the last batch is committed:
+  // the final CONSISTENT_PREFIX row count may be served by any of them.
+  ASSERT_OK(WaitForServersToAgree(
+      timeout, ts_map_, tablet_id, workload.batches_completed(), /* actual_index = */ nullptr,
+      itest::MustBeCommitted::kTrue));
 
   // Pause the leader and increment the term on the follower by starting an
   // election on the follower. The election will fail asynchronously but we
@@ -1041,7 +1045,9 @@ void RemoteBootstrapITest::RemoteBootstrapFollowerWithHigherTerm(YBTableType tab
                                                  tablet::TABLET_DATA_READY, timeout));
 
   // Wait for the follower to come back up.
-  ASSERT_OK(WaitForServersToAgree(timeout, ts_map_, tablet_id, workload.batches_completed()));
+  ASSERT_OK(WaitForServersToAgree(
+      timeout, ts_map_, tablet_id, workload.batches_completed(), /* actual_index = */ nullptr,
+      itest::MustBeCommitted::kTrue));
 
   ClusterVerifier cluster_verifier(cluster_.get());
   // During this test we disable leader failure detection.

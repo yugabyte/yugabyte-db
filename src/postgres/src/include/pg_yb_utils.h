@@ -1062,6 +1062,8 @@ extern bool yb_silence_advisory_locks_not_supported_error;
  */
 extern bool yb_xcluster_automatic_mode_target_ddl;
 
+extern bool yb_xcluster_invalid_index_ddl_check;
+
 extern bool yb_enable_xcluster_analyze_replication;
 
 extern bool yb_user_ddls_preempt_auto_analyze;
@@ -1438,6 +1440,8 @@ extern void assign_yb_read_time(const char *newval, void *extra);
 extern bool check_yb_read_time_skip_catalog(bool *newval, void **extra,
 											GucSource source);
 extern void assign_yb_read_time_skip_catalog(bool newval, void *extra);
+extern void YbHandleReadTimeSnapshotTooOld(void);
+extern void YbCheckReadTimeTooOld(Node *parsetree);
 
 extern uint64_t yb_origination_time;
 extern void YbRefreshOriginationTime(void);

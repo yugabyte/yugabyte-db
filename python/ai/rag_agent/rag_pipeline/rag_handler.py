@@ -166,13 +166,16 @@ class RagPipelineHandler:
             # it added a second HNSW index under a different name.
             self.logger.info(f"Processing of document: {document_uri} completed")
 
-            self.pipeline_tracking.update_pipeline_status(
-                pipeline_id=pipeline_id,
-                pipeline_status=PipelineStatus.COMPLETED.value)
+            # mark_pipeline_completed also sets completed_at, which the ingest
+            # duration (completed_at - last_started_at) and the "last indexed"
+            # time of a document are read from.
+            self.pipeline_tracking.mark_pipeline_completed(pipeline_id)
             return True
         except Exception as e:
             self.logger.error(f"Error during RAG pipeline processing: {str(e)}")
             if pipeline_id is not None:
+                # No completed_at on failure: readers take a non-NULL
+                # completed_at to mean the document was indexed then.
                 self.pipeline_tracking.update_pipeline_status(
                     pipeline_id=pipeline_id,
                     pipeline_status=PipelineStatus.FAILED.value)

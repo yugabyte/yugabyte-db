@@ -82,10 +82,14 @@ public class TestInactiveRouteCleanup extends BaseYsqlConnMgr {
 
   // A fresh backend on the connection manager's node has to see the DDL, otherwise the backend
   // spawned by the trigger query could succeed and the route would never be marked inactive.
+  // Probe postgres directly: a failed backend spawned via the connection manager would itself
+  // mark the routes inactive, so the trigger query would fail to attach with a different error.
   private void waitForDdlToBeVisible(String db, String user, String expectedErr)
       throws Exception {
     for (int retry = 1; retry <= NUM_RETRIES; ++retry) {
-      try (Connection conn = connectConnMgr(db, user)) {
+      try (Connection conn = getConnectionBuilder().withTServer(CONN_MGR_TSERVER_IDX)
+               .withConnectionEndpoint(ConnectionEndpoint.POSTGRES)
+               .withDatabase(db).withUser(user).connect()) {
         LOG.info("Backend for " + db + "." + user + " still starts, retrying");
       } catch (SQLException e) {
         if (e.getMessage().contains(expectedErr))

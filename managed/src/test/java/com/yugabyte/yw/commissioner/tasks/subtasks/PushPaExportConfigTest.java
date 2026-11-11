@@ -37,6 +37,9 @@ import org.junit.Test;
  */
 public class PushPaExportConfigTest extends FakeDBApplication {
 
+  private static final String YBM_ACCOUNT_ID = "6f4c7a0e-2b1d-4c3e-9a8f-1d2e3f4a5b6c";
+  private static final String YBM_PROJECT_ID = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d";
+
   private Customer customer;
   private PerfAdvisorService perfAdvisorService;
   private PerfAdvisorEndpointService endpointService;
@@ -61,18 +64,17 @@ public class PushPaExportConfigTest extends FakeDBApplication {
 
       RecordedRequest push = server.takeRequest();
       // A PUT rather than a POST: the collector's create handler assigns its own id, so only the
-      // upsert keeps YBA's uuid meaningful on both sides.
+      // PUT, which creates under the given id, keeps YBA's uuid meaningful on both sides.
       assertThat(push.getMethod(), equalTo("PUT"));
-      assertThat(push.getPath(), containsString("/api/export/config/" + endpoint.getUuid()));
+      assertThat(push.getPath(), containsString("/api/v2/export-configs/" + endpoint.getUuid()));
 
       String body = push.getBody().readUtf8();
-      assertThat(body, containsString(endpoint.getUuid().toString()));
       assertThat(body, containsString("byoc-prod"));
       // The destination always receives Perf Advisor's own universe-less metrics too.
-      assertThat(body, containsString("\"includeGlobalPaMetrics\" : true"));
+      assertThat(body, containsString("\"include_global_pa_metrics\":true"));
       // The YBM identifiers a BYOC gateway routes on have to survive the mapping.
-      assertThat(body, containsString("account-1"));
-      assertThat(body, containsString("project-1"));
+      assertThat(body, containsString(YBM_ACCOUNT_ID));
+      assertThat(body, containsString(YBM_PROJECT_ID));
     }
   }
 
@@ -153,8 +155,8 @@ public class PushPaExportConfigTest extends FakeDBApplication {
     endpoint.setMetricsType(ExportMetricsType.otlphttp);
     endpoint.setCollectionAuth(auth);
     endpoint.setMetricsAuth(auth);
-    endpoint.setYbmAccountId("account-1");
-    endpoint.setYbmProjectId("project-1");
+    endpoint.setYbmAccountId(YBM_ACCOUNT_ID);
+    endpoint.setYbmProjectId(YBM_PROJECT_ID);
     Date now = new Date();
     endpoint.setCreateTime(now);
     endpoint.setUpdateTime(now);

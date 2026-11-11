@@ -245,10 +245,7 @@ public class TestPreparedStatements extends BaseYsqlConnMgr {
 
       // PREPARE query
       stmt.execute("PREPARE testPlan (int) AS SELECT * FROM test_table WHERE id = $1");
-      assertTrue("Expected the connection to be sticky " +
-          "after executing PREPARE query",
-          verifySessionParameterValue(stmt,
-              "ysql_conn_mgr_sticky_object_count", "1"));
+      waitForStickyConnections(1);
 
       // EXECUTE query
       stmt.executeQuery("EXECUTE testPlan(1)");

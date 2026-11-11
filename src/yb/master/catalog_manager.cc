@@ -675,9 +675,10 @@ DEFINE_RUNTIME_uint32(vector_index_tenant_hash_group_and_range_components, 0,
     "0 means vectors have no tenant. Applies only to the yb_hnsw_hnswlib backend. The tenant never "
     "covers the full primary key: values greater than or equal to the number of components use all "
     "components but the last one, so a single-component primary key has no tenant. The value is "
-    "fixed when the index is created. Older releases cannot read payloads created with a nonzero "
-    "value and may write vectors without their tenant, so keep it 0 until the upgrade to this "
-    "release is finalized.");
+    "fixed when the index is created. Older releases cannot read payloads and vector index chunks "
+    "created with a nonzero value and may write vectors without their tenant, so keep it 0 until "
+    "the upgrade to this release is finalized.");
+TAG_FLAG(vector_index_tenant_hash_group_and_range_components, experimental);
 
 DEFINE_RUNTIME_AUTO_bool(enable_table_owned_vector_reverse_mapping, kExternal, false, true,
     "When true, newly created YSQL tables hold vector reverse mapping ownership. "
@@ -1058,7 +1059,7 @@ void RemoveTableIdsFromTabletInfo(
 // Helper function for CleanUpDeletedTables. Not intended for general use.
 Status PersistCleanUpOfDeletedTables(
     CatalogManager& cm, const LeaderEpoch& epoch, std::vector<TableInfo*>&& tables,
-    std::vector<std::pair<TableInfo::WriteLock, TransactionId>>&& table_locks,
+    std::vector<std::pair<TableInfo::WriteLock, TransactionId>> table_locks,
     const TabletInfoPtr& sys_catalog_tablet_info) {
   if (tables.empty()) {
     return Status::OK();
@@ -3220,7 +3221,31 @@ Result<SplitPhase> CatalogManager::GetTableSplitPhase(
 
 Result<SplitPhase> CatalogManager::GetTableSplitPhase(
     const TableInfo& table, const ReplicationInfoPB& table_replication_info) const {
-  TSDescriptorVector ts_descs = GetAllLiveNotBlacklistedTServers();
+  // The phase thresholds are per-node leader counts, so count only tservers in the live placement:
+  // read-replica tservers host observers, never leaders, even when they share a zone with it.
+  // A table-level placement may omit the uuid; fall back to the cluster's, as the load balancer
+  // does. Membership is the same as GetNumLiveTServersForPlacement, which sizes new tables.
+  auto live_placement_uuid = table_replication_info.live_replicas().placement_uuid();
+  if (live_placement_uuid.empty()) {
+    live_placement_uuid = VERIFY_RESULT(placement_uuid());
+  }
+  TSDescriptorVector ts_descs;
+  auto blacklist = BlacklistSetFromPB();
+  master_->ts_manager()->GetAllLiveDescriptorsInCluster(
+      &ts_descs, live_placement_uuid, blacklist.ok() ? *blacklist : BlacklistSet());
+  // No live tserver matches when the cluster config's live uuid disagrees with the tservers' (for
+  // example after yb-admin clear_placement_info, or a uuid set only on the tservers). Such a
+  // cluster can't place new replicas, but its existing tables should keep splitting, so count
+  // every live tserver as before and warn: nothing else surfaces the mismatch on this path.
+  if (ts_descs.empty()) {
+    ts_descs = GetAllLiveNotBlacklistedTServers();
+    if (!ts_descs.empty()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 60) << Format(
+          "None of the $0 live tservers is in the live placement '$1'; counting all of them, "
+          "including any read replicas, for the automatic tablet split phase",
+          ts_descs.size(), live_placement_uuid);
+    }
+  }
 
   size_t num_servers = 0;
   // If there is custom placement information present then
@@ -8344,6 +8369,7 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
   std::vector<TableInfo*> tables_to_remove_from_map;
   std::vector<std::map<TabletId, std::weak_ptr<TabletInfo>>> tablets_to_remove_from_map;
   std::vector<TableInfo*> newly_hidden_tables;
+  std::vector<TableInfoPtr> tables_to_prepare;
   for (const auto& table : tables) {
     if (table->is_deleted()) {
       tables_to_remove_from_map.push_back(table.get());
@@ -8371,6 +8397,12 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
         }
       }
     }
+    tables_to_prepare.push_back(table);
+  }
+  // Separate pass: mutex_ (GetTableInfo above, LockGuards below) must not be taken while holding
+  // the table write locks from PrepareTableDeletion. PersistCleanUpOfDeletedTables takes them by
+  // value, so they are released when it returns, even on failure.
+  for (const auto& table : tables_to_prepare) {
     auto lock_and_transaction_id = PrepareTableDeletion(table);
     if (lock_and_transaction_id.first.locked()) {
       if (lock_and_transaction_id.first.data().is_hidden()) {
@@ -8447,20 +8479,34 @@ void CatalogManager::RemoveDeletedTabletsFromTables(const TabletInfos& candidate
           tablet_lock->pb.split_tablet_ids().begin(), tablet_lock->pb.split_tablet_ids().end());
       split_parent.state_msg = tablet_lock->pb.state_msg();
     }
-    // Vector indexes share their indexed table's tablets and list them in their own tablets_ too.
-    // Every table listing the tablet must drop it before tablet_map_ can: their tablets_ hold only
-    // weak pointers, which would otherwise dangle.
-    std::vector<TableInfoPtr> tables{table};
-    for (const auto& index_id : table->GetVectorIndexIds()) {
-      if (auto index = GetTableInfo(index_id)) {
-        tables.push_back(std::move(index));
-      }
-    }
     // Tablets of a table that is going away are left alone, in tablets_ and tablet_map_. That keeps
     // AreAllTabletsDeleted / AreAllTabletsHidden meaningful, and snapshot, PITR and clone flows can
-    // still look the tablets up; CleanUpDeletedTables removes them with the table.
-    if (!table->LockForRead()->started_hiding_or_deleting() &&
-        std::ranges::all_of(tables, [&tablet](const auto& t) {
+    // still look the tablets up; CleanUpDeletedTables removes them with the table. This is checked
+    // only for the tablet's own table, see below for its vector indexes.
+    if (table->LockForRead()->started_hiding_or_deleting()) {
+      continue;
+    }
+    // Vector indexes share their indexed table's tablets and list them in their own tablets_ too.
+    // Every table listing the tablet must drop it before tablet_map_ can: their tablets_ hold only
+    // weak pointers, which would otherwise dangle. The tablet's hosted tables are used rather than
+    // the indexed table's index list, as they still include a dropped vector index that a snapshot
+    // schedule keeps hidden. Such an index is going away too, but unlike the indexed table it
+    // drops the tablet here: the tablet is already deleted, so the index has nothing left to
+    // retain on it, and AreAllTabletsDeleted on the index is unaffected.
+    // A vector index dropped before the split still has the parent as the owner of its partition,
+    // as SplitScope adds only live vector indexes to the children. RemoveInactiveTablet then
+    // refuses, and the parent stays in tablet_map_ until hidden table cleanup removes it from the
+    // index.
+    std::vector<TableInfoPtr> tables{table};
+    for (const auto& table_id : tablet->GetTableIds()) {
+      if (table_id == table->id()) {
+        continue;
+      }
+      if (auto hosted_table = GetTableInfo(table_id)) {
+        tables.push_back(std::move(hosted_table));
+      }
+    }
+    if (std::ranges::all_of(tables, [&tablet](const auto& t) {
           return t->RemoveInactiveTablet(tablet);
         })) {
       tablets_to_erase.emplace_back(tablet->tablet_id(), std::move(split_parent));
@@ -11730,10 +11776,7 @@ Status CatalogManager::GetYsqlDBCatalogVersion(
   }
   LOG_IF(INFO, PREDICT_FALSE(use_cache && FLAGS_TEST_log_catalog_version_cache_events))
       << "GetYsqlDBCatalogVersion: cache miss for db_oid " << db_oid;
-  auto table_id =
-      VERIFY_RESULT(ysql_manager_->GetVersionSpecificCatalogTableId(kPgYbCatalogVersionTableId));
-  auto table_info = GetTableInfo(table_id);
-  if (table_info != nullptr) {
+  if (VERIFY_RESULT(IsYsqlCatalogVersionTableCreated())) {
     RETURN_NOT_OK(sys_catalog_->ReadYsqlDBCatalogVersion(
         kPgYbCatalogVersionTableId, db_oid, catalog_version, last_breaking_version));
     // If the version is properly initialized, we're done.
@@ -11758,13 +11801,19 @@ Status CatalogManager::GetYsqlDBCatalogVersion(
   return Status::OK();
 }
 
+Result<bool> CatalogManager::IsYsqlCatalogVersionTableCreated() const {
+  auto table_id =
+      VERIFY_RESULT(ysql_manager_->GetVersionSpecificCatalogTableId(kPgYbCatalogVersionTableId));
+  return GetTableInfo(table_id) != nullptr;
+}
+
 Status CatalogManager::GetYsqlAllDBCatalogVersionsImpl(
     DbOidToCatalogVersionMap* versions, HybridTime* out_read_ht) {
   // pg_yb_catalog_version exists in every steady-state YSQL-enabled cluster (created during
-  // initdb). The only caller that may invoke this before the table exists is the initdb path
-  // (Master::get_ysql_db_oid_to_cat_version_info_map), which gates this call on a GetTableInfo
-  // check itself. Reading directly here avoids a SharedLock on the catalog manager's main
-  // mutex_ on every heartbeat-rate refresh.
+  // initdb). Callers that may run before the table exists (the initdb path in
+  // Master::get_ysql_db_oid_to_cat_version_info_map, and object lock releases) check
+  // IsYsqlCatalogVersionTableCreated first. Reading directly here avoids a SharedLock on the
+  // catalog manager's main mutex_ on every heartbeat-rate refresh.
   return sys_catalog_->ReadYsqlAllDBCatalogVersions(
       kPgYbCatalogVersionTableId, versions, out_read_ht);
 }
