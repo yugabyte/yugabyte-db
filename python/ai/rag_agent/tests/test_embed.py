@@ -672,3 +672,26 @@ class TestEmbedConcurrency:
         from embeddings.embed import embed_concurrency_from_env
         monkeypatch.setenv("EMBED_CONCURRENCY", raw)
         assert embed_concurrency_from_env() == expected
+
+    @pytest.mark.parametrize("concurrency,adaptive", [("1", False), ("4", True)])
+    @patch('embeddings.embed.PipelineTracking')
+    @patch('embeddings.embed.PDFProcessor')
+    def test_real_bedrock_client_gets_the_retry_config(
+        self, mock_pdf, mock_pt, concurrency, adaptive, monkeypatch
+    ):
+        # Builds the real langchain-aws BedrockEmbeddings, which makes no
+        # network call, so a langchain-aws release that stops passing
+        # `config` to the boto client fails here rather than in prod.
+        monkeypatch.setenv("EMBED_CONCURRENCY", concurrency)
+        monkeypatch.setenv("AWS_REGION", "us-east-1")
+        monkeypatch.setenv("AWS_ACCESS_KEY_ID", "test")
+        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "test")
+        gen = EmbeddingsGenerator(
+            embedding_model="amazon.titan-embed-text-v1",
+            embedding_model_params={"dimensions": 1536},
+            ai_provider="AWS_BEDROCK",
+        )
+        client_config = gen.embedder.client.meta.config
+        assert (client_config.retries.get("mode") == "adaptive") is adaptive
+        if adaptive:
+            assert client_config.max_pool_connections >= 4

@@ -53,6 +53,11 @@ export AWS_REGION=us-east-2
 export AWS_S3_BUCKET_NAME=
 ```
 
+`EMBED_CONCURRENCY` (default 1, max 32) sets how many embedding calls run at once for Bedrock
+models that take one text per call, such as Titan. OpenAI and Bedrock Cohere already send a
+batch per call and ignore it. Every worker in an AWS account shares one Bedrock
+requests-per-minute quota (2,000/min for Titan Text Embeddings v1), so 2-4 is the useful range.
+
 ### 3. Run the Server
 
 ```bash
