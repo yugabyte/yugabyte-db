@@ -489,14 +489,23 @@ YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record)
 {
 	const YbVirtualWalRecord *yb_record = record->yb_virtual_wal_record;
 	XLogRecPtr	commit_lsn = yb_record->lsn;
-	XLogRecPtr	end_lsn = yb_record->lsn + 1;
+
+	/*
+	 * end_lsn is the position the COMMIT message carries and the one clients
+	 * acknowledge. It must be the commit_lsn itself: on a HYBRID_TIME slot the
+	 * LSN space is not dense, so commit_lsn + 1 can be the commit_lsn of the
+	 * next transaction and acknowledging it would acknowledge that
+	 * transaction before it was sent.
+	 */
+	XLogRecPtr	end_lsn = commit_lsn;
 	XLogRecPtr	origin_lsn = yb_record->lsn;
 
 	/*
 	 * Skip the records which the client hasn't asked for. Simpler version of a
-	 * similar check done in DecodeCommit in decode.c
+	 * similar check done in DecodeCommit in decode.c. An acknowledged LSN
+	 * covers every transaction whose commit_lsn is at or below it.
 	 */
-	if (commit_lsn < ctx->yb_start_decoding_at)
+	if (commit_lsn <= ctx->yb_start_decoding_at)
 	{
 		/*
 		 * ReorderBufferForget handles the cleanup of subtransactions as well.

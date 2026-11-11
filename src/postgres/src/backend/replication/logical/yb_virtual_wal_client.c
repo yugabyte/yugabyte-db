@@ -1071,17 +1071,17 @@ CalculateRestartLSN(XLogRecPtr confirmed_flush)
 		/*
 		 * The previous transaction was fully flushed by the client but this
 		 * transaction hasn't been flushed or flushed partially. So if we were
-		 * to restart at this point, streaming should start from the begin of
-		 * this transaction which is logically equivalent to the end of the last
-		 * transaction.
+		 * to restart at this point, streaming should resume after the last
+		 * fully flushed transaction, which is identified by its commit_lsn.
 		 *
 		 * Example: 3 unacked transactions with begin and commit lsn as follows
 		 * T1: [3, 5]
 		 * T2: [7, 10]
 		 * T3: [11, 14]
-		 * Suppose confirmed_flush = 8, then:
-		 * The restart lsn could be 6 or 7 in this case. We choose 6 here as
-		 * the commit_lsn(T1) + 1.
+		 * Suppose confirmed_flush = 8, then the restart lsn is 5, the
+		 * commit_lsn of T1. It is never commit_lsn + 1: on a HYBRID_TIME slot
+		 * the LSN space is not dense, so 6 could be the commit_lsn of T2 and
+		 * the virtual wal would take it as acknowledged.
 		 */
 		if (confirmed_flush < txn->commit_lsn)
 			break;
@@ -1098,7 +1098,7 @@ CalculateRestartLSN(XLogRecPtr confirmed_flush)
 		 * 2. This is the last unacked transaction: The assignment of
 		 * restart_lsn below handles this case.
 		 */
-		restart_lsn = txn->commit_lsn + 1;
+		restart_lsn = txn->commit_lsn;
 	}
 
 	return restart_lsn;

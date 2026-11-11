@@ -431,7 +431,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               new PgOutputMessageTupleColumnValue("abcd"),
               new PgOutputMessageTupleColumnValue("t")))));
           add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
+            LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/4")));
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/7"), 3));
           add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
@@ -440,7 +440,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               new PgOutputMessageTupleColumnValue("defg"),
               new PgOutputMessageTupleColumnValue("t")))));
           add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/8")));
+            LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/7")));
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/A"), 4));
           add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
@@ -449,7 +449,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               new PgOutputMessageTupleColumnValue("hijk"),
               new PgOutputMessageTupleColumnValue("f")))));
           add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/B")));
+            LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/A")));
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/D"), 5));
           add(PgOutputRelationMessage.CreateForComparison("public", "t2", 'd' /* replicaIdentity */,
@@ -462,7 +462,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               new PgOutputMessageTupleColumnValue("abcd"),
               new PgOutputMessageTupleColumnValue("t")))));
           add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/D"), LogSequenceNumber.valueOf("0/E")));
+            LogSequenceNumber.valueOf("0/D"), LogSequenceNumber.valueOf("0/D")));
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/10"), 6));
           add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
@@ -471,7 +471,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               new PgOutputMessageTupleColumnValue("defg"),
               new PgOutputMessageTupleColumnValue("t")))));
           add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/10"), LogSequenceNumber.valueOf("0/11")));
+            LogSequenceNumber.valueOf("0/10"), LogSequenceNumber.valueOf("0/10")));
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/13"), 7));
           add(PgOutputRelationMessage.CreateForComparison("public", "t3", 'f' /* replicaIdentity */,
@@ -484,7 +484,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               new PgOutputMessageTupleColumnValue("abcd"),
               new PgOutputMessageTupleColumnValue("t")))));
           add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/13"), LogSequenceNumber.valueOf("0/14")));
+            LogSequenceNumber.valueOf("0/13"), LogSequenceNumber.valueOf("0/13")));
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/16"), 8));
           add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
@@ -493,7 +493,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               new PgOutputMessageTupleColumnValue("defg"),
               new PgOutputMessageTupleColumnValue("t")))));
           add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/16"), LogSequenceNumber.valueOf("0/17")));
+            LogSequenceNumber.valueOf("0/16"), LogSequenceNumber.valueOf("0/16")));
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/19"), 9));
           add(PgOutputUpdateMessage.CreateForComparison(
@@ -506,7 +506,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 // Column 'c' was not modified, so it is sent as untouched toasted.
                 new PgOutputMessageTupleColumnToasted()))));
           add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/19"), LogSequenceNumber.valueOf("0/1A")));
+            LogSequenceNumber.valueOf("0/19"), LogSequenceNumber.valueOf("0/19")));
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/1C"), 10));
           add(PgOutputUpdateMessage.CreateForComparison(
@@ -519,7 +519,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnNull(),
                 new PgOutputMessageTupleColumnValue("f")))));
           add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/1C"), LogSequenceNumber.valueOf("0/1D")));
+            LogSequenceNumber.valueOf("0/1C"), LogSequenceNumber.valueOf("0/1C")));
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/1F"), 11));
           add(PgOutputUpdateMessage.CreateForComparison(
@@ -532,7 +532,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 // Even though column 'c' was not modified, all columns are sent in DEFAULT.
                 new PgOutputMessageTupleColumnValue("t")))));
           add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/1F"), LogSequenceNumber.valueOf("0/20")));
+            LogSequenceNumber.valueOf("0/1F"), LogSequenceNumber.valueOf("0/1F")));
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/22"), 12));
           add(PgOutputUpdateMessage.CreateForComparison(
@@ -544,7 +544,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnNull(),
                 new PgOutputMessageTupleColumnValue("f")))));
           add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/22"), LogSequenceNumber.valueOf("0/23")));
+            LogSequenceNumber.valueOf("0/22"), LogSequenceNumber.valueOf("0/22")));
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/25"), 13));
           add(PgOutputUpdateMessage.CreateForComparison(
@@ -560,7 +560,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("updated_abcd"),
                 new PgOutputMessageTupleColumnValue("t")))));
           add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/25"), LogSequenceNumber.valueOf("0/26")));
+            LogSequenceNumber.valueOf("0/25"), LogSequenceNumber.valueOf("0/25")));
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/28"), 14));
           add(PgOutputUpdateMessage.CreateForComparison(
@@ -576,7 +576,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnNull(),
                 new PgOutputMessageTupleColumnValue("f")))));
           add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/28"), LogSequenceNumber.valueOf("0/29")));
+            LogSequenceNumber.valueOf("0/28"), LogSequenceNumber.valueOf("0/28")));
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/2B"), 15));
           add(PgOutputDeleteMessage.CreateForComparison(/* hasKey */ true,
@@ -586,7 +586,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnNull(),
                 new PgOutputMessageTupleColumnNull()))));
           add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/2B"), LogSequenceNumber.valueOf("0/2C")));
+            LogSequenceNumber.valueOf("0/2B"), LogSequenceNumber.valueOf("0/2B")));
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/2F"), 16));
           add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
@@ -603,7 +603,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("updated_ghij"),
                 new PgOutputMessageTupleColumnValue("f")))));
           add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/2F"), LogSequenceNumber.valueOf("0/30")));
+            LogSequenceNumber.valueOf("0/2F"), LogSequenceNumber.valueOf("0/2F")));
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/33"), 17));
           add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
@@ -618,7 +618,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnNull(),
                 new PgOutputMessageTupleColumnNull()))));
           add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/33"), LogSequenceNumber.valueOf("0/34")));
+            LogSequenceNumber.valueOf("0/33"), LogSequenceNumber.valueOf("0/33")));
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/37"), 18));
           add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
@@ -639,7 +639,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("updated_ghij"),
                 new PgOutputMessageTupleColumnValue("f")))));
           add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/37"), LogSequenceNumber.valueOf("0/38")));
+            LogSequenceNumber.valueOf("0/37"), LogSequenceNumber.valueOf("0/37")));
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/3B"), 19));
           add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
@@ -654,7 +654,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnNull(),
                 new PgOutputMessageTupleColumnNull()))));
           add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/3B"), LogSequenceNumber.valueOf("0/3C")));
+            LogSequenceNumber.valueOf("0/3B"), LogSequenceNumber.valueOf("0/3B")));
         }
       };
     } else {
@@ -671,7 +671,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               new PgOutputMessageTupleColumnValue("abcd"),
               new PgOutputMessageTupleColumnValue("t")))));
           add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
+            LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/4")));
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/7"), 3));
           add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
@@ -680,7 +680,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               new PgOutputMessageTupleColumnValue("defg"),
               new PgOutputMessageTupleColumnValue("t")))));
           add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/8")));
+            LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/7")));
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/A"), 4));
           add(PgOutputRelationMessage.CreateForComparison("public", "t3", 'f' /* replicaIdentity */,
@@ -693,7 +693,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               new PgOutputMessageTupleColumnValue("abcd"),
               new PgOutputMessageTupleColumnValue("t")))));
           add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/B")));
+            LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/A")));
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/D"), 5));
           add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
@@ -702,7 +702,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               new PgOutputMessageTupleColumnValue("defg"),
               new PgOutputMessageTupleColumnValue("t")))));
           add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/D"), LogSequenceNumber.valueOf("0/E")));
+            LogSequenceNumber.valueOf("0/D"), LogSequenceNumber.valueOf("0/D")));
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/10"), 6));
           add(PgOutputUpdateMessage.CreateForComparison(
@@ -715,7 +715,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 // Even though column 'c' was not modified, all columns are sent in DEFAULT.
                 new PgOutputMessageTupleColumnValue("t")))));
           add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/10"), LogSequenceNumber.valueOf("0/11")));
+            LogSequenceNumber.valueOf("0/10"), LogSequenceNumber.valueOf("0/10")));
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/13"), 7));
           add(PgOutputUpdateMessage.CreateForComparison(
@@ -727,7 +727,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnNull(),
                 new PgOutputMessageTupleColumnValue("f")))));
           add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/13"), LogSequenceNumber.valueOf("0/14")));
+            LogSequenceNumber.valueOf("0/13"), LogSequenceNumber.valueOf("0/13")));
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/16"), 8));
           add(PgOutputUpdateMessage.CreateForComparison(
@@ -743,7 +743,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("updated_abcd"),
                 new PgOutputMessageTupleColumnValue("t")))));
           add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/16"), LogSequenceNumber.valueOf("0/17")));
+            LogSequenceNumber.valueOf("0/16"), LogSequenceNumber.valueOf("0/16")));
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/19"), 9));
           add(PgOutputUpdateMessage.CreateForComparison(
@@ -759,7 +759,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnNull(),
                 new PgOutputMessageTupleColumnValue("f")))));
           add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/19"), LogSequenceNumber.valueOf("0/1A")));
+            LogSequenceNumber.valueOf("0/19"), LogSequenceNumber.valueOf("0/19")));
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/1D"), 10));
           add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
@@ -776,7 +776,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("updated_ghij"),
                 new PgOutputMessageTupleColumnValue("f")))));
           add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/1D"), LogSequenceNumber.valueOf("0/1E")));
+            LogSequenceNumber.valueOf("0/1D"), LogSequenceNumber.valueOf("0/1D")));
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/21"), 11));
           add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
@@ -791,7 +791,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnNull(),
                 new PgOutputMessageTupleColumnNull()))));
           add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/21"), LogSequenceNumber.valueOf("0/22")));
+            LogSequenceNumber.valueOf("0/21"), LogSequenceNumber.valueOf("0/21")));
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/25"), 12));
           add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
@@ -812,7 +812,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("updated_ghij"),
                 new PgOutputMessageTupleColumnValue("f")))));
           add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/25"), LogSequenceNumber.valueOf("0/26")));
+            LogSequenceNumber.valueOf("0/25"), LogSequenceNumber.valueOf("0/25")));
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/29"), 13));
           add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
@@ -827,7 +827,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnNull(),
                 new PgOutputMessageTupleColumnNull()))));
           add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/29"), LogSequenceNumber.valueOf("0/2A")));
+            LogSequenceNumber.valueOf("0/29"), LogSequenceNumber.valueOf("0/29")));
         }
       };
     }
@@ -997,7 +997,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             new PgOutputMessageTupleColumnValue("defg")))));
         // commit
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/6")));
+          LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/5")));
 
         // begin
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/B"), 3));
@@ -1029,7 +1029,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             new PgOutputMessageTupleColumnValue("wxyz")))));
         // commit
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/B"), LogSequenceNumber.valueOf("0/C")));
+          LogSequenceNumber.valueOf("0/B"), LogSequenceNumber.valueOf("0/B")));
       }
     };
 
@@ -1177,7 +1177,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         (short) 2, Arrays.asList(new PgOutputMessageTupleColumnValue("2"),
           new PgOutputMessageTupleColumnValue("defg")))));
     expectedResult.add(PgOutputCommitMessage.CreateForComparison(
-        LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/6")));
+        LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/5")));
 
     // Txn 2.
     expectedResult.add(
@@ -1203,7 +1203,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         (short) 2, Arrays.asList(new PgOutputMessageTupleColumnValue("6"),
           new PgOutputMessageTupleColumnValue("wxyz")))));
     expectedResult.add(PgOutputCommitMessage.CreateForComparison(
-        LogSequenceNumber.valueOf("0/B"), LogSequenceNumber.valueOf("0/C")));
+        LogSequenceNumber.valueOf("0/B"), LogSequenceNumber.valueOf("0/B")));
 
     // Txn 3.
     expectedResult.add(
@@ -1221,7 +1221,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         (short) 2, Arrays.asList(new PgOutputMessageTupleColumnValue("9"),
           new PgOutputMessageTupleColumnValue("rstu")))));
     expectedResult.add(PgOutputCommitMessage.CreateForComparison(
-        LogSequenceNumber.valueOf("0/F"), LogSequenceNumber.valueOf("0/10")));
+        LogSequenceNumber.valueOf("0/F"), LogSequenceNumber.valueOf("0/F")));
 
     assertEquals(expectedResult, result);
 
@@ -1317,7 +1317,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
                 new PgOutputMessageTupleColumnValue("abcd")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
+            LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/4")));
 
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/8"), 3));
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
@@ -1330,7 +1330,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             Arrays.asList(new PgOutputMessageTupleColumnValue("6"),
                 new PgOutputMessageTupleColumnValue("wxyz")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/8"), LogSequenceNumber.valueOf("0/9")));
+            LogSequenceNumber.valueOf("0/8"), LogSequenceNumber.valueOf("0/8")));
       }
     };
 
@@ -1832,7 +1832,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("FIXED"),
                 new PgOutputMessageTupleColumnValue("{FIXED,PERCENTAGE}")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
+            LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/4")));
       }
     };
     assertEquals(expectedResult, result);
@@ -1909,7 +1909,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("1"),
                 new PgOutputMessageTupleColumnValue("abc")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
+            LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/4")));
 
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/7"), 3));
         add(PgOutputRelationMessage.CreateForComparison("public", "t2", 'c',
@@ -1920,7 +1920,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("2"),
                 new PgOutputMessageTupleColumnValue("def")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/8")));
+            LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/7")));
 
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/F"), 5));
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
@@ -1932,7 +1932,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("5"),
                 new PgOutputMessageTupleColumnValue("nop")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/F"), LogSequenceNumber.valueOf("0/10")));
+            LogSequenceNumber.valueOf("0/F"), LogSequenceNumber.valueOf("0/F")));
       }
     };
     assertEquals(expectedResult, result);
@@ -2028,7 +2028,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("1"),
                 new PgOutputMessageTupleColumnValue("1")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
+            LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/4")));
       }
     };
     assertEquals(expectedResult, result);
@@ -2074,10 +2074,10 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     receiveMessage(stream, 1);
     assertEquals(LogSequenceNumber.valueOf(3L), stream.getLastReceiveLSN());
 
-    // The LSN of the COMMIT record is the end_lsn i.e. commit_lsn + 1. This points to the next
-    // record after the transaction.
+    // The LSN of the COMMIT record is the commit_lsn itself. Acknowledging it covers exactly the
+    // transactions with commit_lsn <= 4, never a later one.
     receiveMessage(stream, 1);
-    assertEquals(LogSequenceNumber.valueOf(5L), stream.getLastReceiveLSN());
+    assertEquals(LogSequenceNumber.valueOf(4L), stream.getLastReceiveLSN());
 
     stream.close();
   }
@@ -2351,7 +2351,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("3"),
                 new PgOutputMessageTupleColumnValue("xyz")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/8"), LogSequenceNumber.valueOf("0/9")));
+            LogSequenceNumber.valueOf("0/8"), LogSequenceNumber.valueOf("0/8")));
 
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/C"), 4));
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
@@ -2363,7 +2363,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("5"),
                 new PgOutputMessageTupleColumnValue("ijk")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/C"), LogSequenceNumber.valueOf("0/D")));
+            LogSequenceNumber.valueOf("0/C"), LogSequenceNumber.valueOf("0/C")));
 
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/10"), 5));
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
@@ -2375,7 +2375,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("7"),
                 new PgOutputMessageTupleColumnValue("opq")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/10"), LogSequenceNumber.valueOf("0/11")));
+            LogSequenceNumber.valueOf("0/10"), LogSequenceNumber.valueOf("0/10")));
       }
     };
     assertEquals(expectedResult, result);
@@ -2520,7 +2520,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("2"),
                 new PgOutputMessageTupleColumnValue("defg")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/6")));
+            LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/5")));
       }
     };
     assertEquals(expectedFirstPoll, firstPoll);
@@ -2536,7 +2536,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("3"),
                 new PgOutputMessageTupleColumnValue("xyz")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/8"), LogSequenceNumber.valueOf("0/9")));
+            LogSequenceNumber.valueOf("0/8"), LogSequenceNumber.valueOf("0/8")));
 
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/C"), 4));
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
@@ -2548,7 +2548,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("5"),
                 new PgOutputMessageTupleColumnValue("ijk")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/C"), LogSequenceNumber.valueOf("0/D")));
+            LogSequenceNumber.valueOf("0/C"), LogSequenceNumber.valueOf("0/C")));
       }
     };
     assertEquals(expectedSecondPoll, secondPoll);
@@ -2568,7 +2568,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("7"),
                 new PgOutputMessageTupleColumnValue("opq")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/10"), LogSequenceNumber.valueOf("0/11")));
+            LogSequenceNumber.valueOf("0/10"), LogSequenceNumber.valueOf("0/10")));
       }
     };
     assertEquals(expectedThirdPoll, thirdPoll);
@@ -2588,7 +2588,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("9"),
                 new PgOutputMessageTupleColumnValue("uvw")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/14"), LogSequenceNumber.valueOf("0/15")));
+            LogSequenceNumber.valueOf("0/14"), LogSequenceNumber.valueOf("0/14")));
       }
     };
     assertEquals(expectedFourthPoll, fourthPoll);
@@ -2714,7 +2714,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
                 new PgOutputMessageTupleColumnValue("t")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/6"), LogSequenceNumber.valueOf("0/7")));
+            LogSequenceNumber.valueOf("0/6"), LogSequenceNumber.valueOf("0/6")));
 
         // We get the RELATION for test because a DDL happened on it. We don't get it for test_2
         // because of no DDL.
@@ -2729,7 +2729,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("100"),
                 new PgOutputMessageTupleColumnValue("f")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/B")));
+            LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/A")));
 
         // We get a relation message of test_2 due to the DDL (DROP COLUMN b)
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/D"), 4));
@@ -2738,7 +2738,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 1,
             Arrays.asList(new PgOutputMessageTupleColumnValue("2")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/D"), LogSequenceNumber.valueOf("0/E")));
+            LogSequenceNumber.valueOf("0/D"), LogSequenceNumber.valueOf("0/D")));
 
         // We get a relation message of test due to the DDL (ADD COLUMN b int)
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/10"), 5));
@@ -2751,7 +2751,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("5"),
                 new PgOutputMessageTupleColumnValue("5")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/10"), LogSequenceNumber.valueOf("0/11")));
+            LogSequenceNumber.valueOf("0/10"), LogSequenceNumber.valueOf("0/10")));
 
         // No DDLs done, so no relation messages expected.
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/13"), 6));
@@ -2759,7 +2759,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             Arrays.asList(new PgOutputMessageTupleColumnValue("6"),
                 new PgOutputMessageTupleColumnValue("6")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/13"), LogSequenceNumber.valueOf("0/14")));
+            LogSequenceNumber.valueOf("0/13"), LogSequenceNumber.valueOf("0/13")));
 
         // We did two DDLs on test and one DDL on test_2. We get the RELATION message of test_2 here
         // since the transaction only touches test_2.
@@ -2775,7 +2775,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("3"),
                 new PgOutputMessageTupleColumnValue("3")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/16"), LogSequenceNumber.valueOf("0/17")));
+            LogSequenceNumber.valueOf("0/16"), LogSequenceNumber.valueOf("0/16")));
 
         // Transaction that has the first DML after the two DDL operations on table 'test'.
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/19"), 8));
@@ -2792,7 +2792,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("7"),
                 new PgOutputMessageTupleColumnValue("7")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/19"), LogSequenceNumber.valueOf("0/1A")));
+            LogSequenceNumber.valueOf("0/19"), LogSequenceNumber.valueOf("0/19")));
 
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/1C"), 9));
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 4,
@@ -2802,7 +2802,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("8"),
                 new PgOutputMessageTupleColumnValue("8")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/1C"), LogSequenceNumber.valueOf("0/1D")));
+            LogSequenceNumber.valueOf("0/1C"), LogSequenceNumber.valueOf("0/1C")));
       }
     };
     assertEquals(expectedResult, result);
@@ -2889,7 +2889,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                   new PgOutputMessageTupleColumnValue("UPDATED_text_1"),
                   new PgOutputMessageTupleColumnToasted()))));
       expectedResult.add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/138C"), LogSequenceNumber.valueOf("0/138D")));
+          LogSequenceNumber.valueOf("0/138C"), LogSequenceNumber.valueOf("0/138C")));
 
       assertEquals(expectedResult, result);
       try (Statement stmt = connection.createStatement();
@@ -3048,7 +3048,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("999999"),
                 new PgOutputMessageTupleColumnValue("999999")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
+            LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/4")));
 
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/138F"), 3));
         // Relation message gets sent again due to the restart.
@@ -3072,7 +3072,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("1"),
                 new PgOutputMessageTupleColumnValue("UPDATED_text_1")))));
     expectedResult.add(PgOutputCommitMessage.CreateForComparison(
-        LogSequenceNumber.valueOf("0/138F"), LogSequenceNumber.valueOf("0/1390")));
+        LogSequenceNumber.valueOf("0/138F"), LogSequenceNumber.valueOf("0/138F")));
 
     assertEquals(expectedResult, result);
     stream.close();
@@ -3156,7 +3156,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             Arrays.asList(new PgOutputMessageTupleColumnValue("2"),
                 new PgOutputMessageTupleColumnValue("defg")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/6")));
+            LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/5")));
       }
     };
     assertEquals(expectedResult, result);
@@ -3324,7 +3324,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("3"),
                 new PgOutputMessageTupleColumnValue("ijkl")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
+            LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/4")));
       }
     };
     assertEquals(expectedResult, result);
@@ -3398,7 +3398,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             new PgOutputMessageTupleColumnValue("1"),
             new PgOutputMessageTupleColumnValue("abcd")))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
+          LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/4")));
 
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/8"), 3));
         add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c',
@@ -3414,7 +3414,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             new PgOutputMessageTupleColumnValue("4"),
             new PgOutputMessageTupleColumnValue("qrst")))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/8"), LogSequenceNumber.valueOf("0/9")));
+          LogSequenceNumber.valueOf("0/8"), LogSequenceNumber.valueOf("0/8")));
 
 
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/C"), 4));
@@ -3431,7 +3431,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             new PgOutputMessageTupleColumnValue("uvwx"),
             new PgOutputMessageTupleColumnValue("10")))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/C"), LogSequenceNumber.valueOf("0/D")));
+          LogSequenceNumber.valueOf("0/C"), LogSequenceNumber.valueOf("0/C")));
       }
     };
     assertEquals(expectedResult, result);
@@ -3492,7 +3492,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("abcd"),
                 new PgOutputMessageTupleColumnValue("10")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
+            LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/4")));
       }
     };
 
@@ -3546,7 +3546,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                new PgOutputMessageTupleColumnValue("xyz"),
                new PgOutputMessageTupleColumnValue("20")))));
        add(PgOutputCommitMessage.CreateForComparison(
-           LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/8")));
+           LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/7")));
      }
    };
    assertEquals(expectedResult, result);
@@ -3803,7 +3803,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             Arrays.asList(new PgOutputMessageTupleColumnValue("2"),
                 new PgOutputMessageTupleColumnValue("defg")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/6")));
+            LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/5")));
       }
     };
     assertEquals(expectedResult, result);
@@ -3857,7 +3857,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
                 new PgOutputMessageTupleColumnValue("4")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/6")));
+            LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/5")));
       }
     };
     assertEquals(expectedResult, result);
@@ -3913,7 +3913,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             Arrays.asList(new PgOutputMessageTupleColumnValue("2"),
                 new PgOutputMessageTupleColumnValue("4")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/6")));
+            LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/5")));
       }
     };
     assertEquals(expectedResult, result);
@@ -3967,7 +3967,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
           Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
             new PgOutputMessageTupleColumnValue("1")))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
+          LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/4")));
       }
     };
     assertEquals(expectedResult, result);
@@ -4028,7 +4028,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             new PgOutputMessageTupleColumnNull(),
             new PgOutputMessageTupleColumnValue("abc")))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
+          LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/4")));
 
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/7"), 3));
         add(PgOutputRelationMessage.CreateForComparison("public", "test_2", 'd',
@@ -4040,7 +4040,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             new PgOutputMessageTupleColumnNull(),
             new PgOutputMessageTupleColumnValue("abc")))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/8")));
+          LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/7")));
 
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/A"), 4));
         add(PgOutputUpdateMessage.CreateForComparison(
@@ -4056,7 +4056,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               new PgOutputMessageTupleColumnNull(),
               new PgOutputMessageTupleColumnValue("abc")))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/B")));
+          LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/A")));
 
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/D"), 5));
         add(PgOutputUpdateMessage.CreateForComparison(
@@ -4067,7 +4067,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               new PgOutputMessageTupleColumnNull(),
               new PgOutputMessageTupleColumnValue("abc")))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/D"), LogSequenceNumber.valueOf("0/E")));
+          LogSequenceNumber.valueOf("0/D"), LogSequenceNumber.valueOf("0/D")));
 
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/10"), 6));
         add(PgOutputDeleteMessage.CreateForComparison(/* hasKey */ false,
@@ -4077,7 +4077,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               new PgOutputMessageTupleColumnNull(),
               new PgOutputMessageTupleColumnValue("abc")))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/10"), LogSequenceNumber.valueOf("0/11")));
+          LogSequenceNumber.valueOf("0/10"), LogSequenceNumber.valueOf("0/10")));
 
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/13"), 7));
         add(PgOutputDeleteMessage.CreateForComparison(/* hasKey */ true,
@@ -4087,7 +4087,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               new PgOutputMessageTupleColumnNull(),
               new PgOutputMessageTupleColumnNull()))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/13"), LogSequenceNumber.valueOf("0/14")));
+          LogSequenceNumber.valueOf("0/13"), LogSequenceNumber.valueOf("0/13")));
       }
     };
     assertEquals(expectedResult, result);
@@ -4167,7 +4167,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("5"),
                 new PgOutputMessageTupleColumnValue("mno")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/6")));
+            LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/5")));
       }
     };
     assertEquals(expectedResult, result);
@@ -4213,7 +4213,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("4"),
                 new PgOutputMessageTupleColumnValue("jkl")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/6"), LogSequenceNumber.valueOf("0/7")));
+            LogSequenceNumber.valueOf("0/6"), LogSequenceNumber.valueOf("0/6")));
       }
     };
     assertEquals(expectedResult2, result);
@@ -4846,7 +4846,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             new PgOutputMessageTupleColumnValue("abc"),
             new PgOutputMessageTupleColumnValue("[123,234,345,456,567,789]")))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
+          LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/4")));
 
         // Txn 2.
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/A"), 3));
@@ -4871,7 +4871,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             new PgOutputMessageTupleColumnValue("xyz"),
             new PgOutputMessageTupleColumnValue("[123,456]")))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/B")));
+          LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/A")));
 
         // Txn 3.
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/E"), 4));
@@ -4887,7 +4887,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             new PgOutputMessageTupleColumnValue("abc"),
             new PgOutputMessageTupleColumnValue("[123,234,345,456,567,789]")))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/E"), LogSequenceNumber.valueOf("0/F")));
+          LogSequenceNumber.valueOf("0/E"), LogSequenceNumber.valueOf("0/E")));
 
         // Txn 4.
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/11"), 5));
@@ -4898,7 +4898,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               new PgOutputMessageTupleColumnToasted(),
               new PgOutputMessageTupleColumnValue("[123,456,789]")))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/11"), LogSequenceNumber.valueOf("0/12")));
+          LogSequenceNumber.valueOf("0/11"), LogSequenceNumber.valueOf("0/11")));
 
         // Txn 5.
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/14"), 6));
@@ -4909,7 +4909,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               new PgOutputMessageTupleColumnValue("xyz"),
               new PgOutputMessageTupleColumnToasted()))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/14"), LogSequenceNumber.valueOf("0/15")));
+          LogSequenceNumber.valueOf("0/14"), LogSequenceNumber.valueOf("0/14")));
 
         // Txn 6.
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/1A"), 7));
@@ -4938,7 +4938,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               new PgOutputMessageTupleColumnToasted(),
               new PgOutputMessageTupleColumnValue("[0,0,0,0,0,0,0]")))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/1A"), LogSequenceNumber.valueOf("0/1B")));
+          LogSequenceNumber.valueOf("0/1A"), LogSequenceNumber.valueOf("0/1A")));
 
         // Txn 7.
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/1D"), 8));
@@ -4951,7 +4951,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               new PgOutputMessageTupleColumnValue("5"),
               new PgOutputMessageTupleColumnNull()))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/1D"), LogSequenceNumber.valueOf("0/1E")));
+          LogSequenceNumber.valueOf("0/1D"), LogSequenceNumber.valueOf("0/1D")));
 
         // Txn 8.
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/21"), 9));
@@ -4972,7 +4972,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               new PgOutputMessageTupleColumnNull(),
               new PgOutputMessageTupleColumnNull()))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/21"), LogSequenceNumber.valueOf("0/22")));
+          LogSequenceNumber.valueOf("0/21"), LogSequenceNumber.valueOf("0/21")));
       }
     };
 
@@ -5043,7 +5043,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             new PgOutputMessageTupleColumnValue("1"),
             new PgOutputMessageTupleColumnValue(vector2048Ones)))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
+          LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/4")));
 
         // Txn 2 - Update.
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/7"), 3));
@@ -5053,7 +5053,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               new PgOutputMessageTupleColumnValue("1"),
               new PgOutputMessageTupleColumnValue(vector2048Twos)))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/8")));
+          LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/7")));
 
         // Txn 3 - Delete.
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/A"), 4));
@@ -5063,7 +5063,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               new PgOutputMessageTupleColumnValue("1"),
               new PgOutputMessageTupleColumnNull()))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/B")));
+          LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/A")));
       }
     };
 
@@ -5119,7 +5119,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             new PgOutputMessageTupleColumnValue("1"),
             new PgOutputMessageTupleColumnValue("abc")))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
+          LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/4")));
 
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/7"), 3));
         add(PgOutputUpdateMessage.CreateForComparison(
@@ -5130,7 +5130,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               new PgOutputMessageTupleColumnValue("1"),
               new PgOutputMessageTupleColumnValue("def")))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/8")));
+          LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/7")));
 
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/A"), 4));
         add(PgOutputDeleteMessage.CreateForComparison(/* hasKey */ true,
@@ -5139,7 +5139,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               new PgOutputMessageTupleColumnValue("1"),
               new PgOutputMessageTupleColumnNull()))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/B")));
+          LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/A")));
       }
     };
     assertEquals(expectedResult, result);
@@ -5406,7 +5406,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             PgOutputRelationMessageColumn.Create("a", 23),
             PgOutputRelationMessageColumn.Create("b", 25)),
         PgOutputInsertMessage.Create("2", "b"),
-        PgOutputCommitMessage.Create("0/4", "0/5"),
+        PgOutputCommitMessage.Create("0/4", "0/4"),
 
         // Change 2: Single tablet non distributed insert from origin 1
         PgOutputBeginMessage.Create("0/7", 3),
@@ -5414,26 +5414,26 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         PgOutputRelationMessage.Create(
             "public", "tbl2", 'd', PgOutputRelationMessageColumn.Create("a", 25)),
         PgOutputInsertMessage.Create("row1"),
-        PgOutputCommitMessage.Create("0/7", "0/8"),
+        PgOutputCommitMessage.Create("0/7", "0/7"),
 
         // Change 3: Insert from origin 1
         PgOutputBeginMessage.Create("0/B", 4),
         PgOutputOriginMessage.Create(originId2),
         PgOutputUpdateMessage.Create(true, "1", "c"),
         PgOutputUpdateMessage.Create(true, "2", "d"),
-        PgOutputCommitMessage.Create("0/B", "0/C"),
+        PgOutputCommitMessage.Create("0/B", "0/B"),
 
         // Change 4: Transactional DML from origin 1
         PgOutputBeginMessage.Create("0/F", 5),
         PgOutputOriginMessage.Create(originId1),
         PgOutputInsertMessage.Create("row2"),
         PgOutputDeleteMessage.Create(true, "2", null),
-        PgOutputCommitMessage.Create("0/F", "0/10"),
+        PgOutputCommitMessage.Create("0/F", "0/F"),
 
         // // Change 5: Local delete
         PgOutputBeginMessage.Create("0/12", 6),
         PgOutputDeleteMessage.Create(true, "row2"),
-        PgOutputCommitMessage.Create("0/12", "0/13")
+        PgOutputCommitMessage.Create("0/12", "0/12")
       );
 
     List<PgOutputMessage> result = receiveMessage(stream, 22);
@@ -5639,7 +5639,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             PgOutputRelationMessageColumn.Create("a", 23),
             PgOutputRelationMessageColumn.Create("b", 25)),
         PgOutputInsertMessage.Create("2", "b"),
-        PgOutputCommitMessage.Create("0/4", "0/5"),
+        PgOutputCommitMessage.Create("0/4", "0/4"),
 
         // Change 2: Single tablet non distributed insert from origin 1 (pre-slot origin)
         PgOutputBeginMessage.Create("0/7", 3),
@@ -5647,26 +5647,26 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         PgOutputRelationMessage.Create(
             "public", "tbl2", 'c', PgOutputRelationMessageColumn.Create("a", 25)),
         PgOutputInsertMessage.Create("row1"),
-        PgOutputCommitMessage.Create("0/7", "0/8"),
+        PgOutputCommitMessage.Create("0/7", "0/7"),
 
         // Change 3: Batch update from origin 2.
         PgOutputBeginMessage.Create("0/B", 4),
         PgOutputOriginMessage.Create(originId2),
         PgOutputUpdateMessage.Create(true, "1", "c"),
         PgOutputUpdateMessage.Create(true, "2", "d"),
-        PgOutputCommitMessage.Create("0/B", "0/C"),
+        PgOutputCommitMessage.Create("0/B", "0/B"),
 
         // Change 4: Transactional DML from origin 1
         PgOutputBeginMessage.Create("0/F", 5),
         PgOutputOriginMessage.Create(originId1),
         PgOutputInsertMessage.Create("row2"),
         PgOutputDeleteMessage.Create(true, "2", null),
-        PgOutputCommitMessage.Create("0/F", "0/10"),
+        PgOutputCommitMessage.Create("0/F", "0/F"),
 
         // Change 5: Local delete
         PgOutputBeginMessage.Create("0/12", 6),
         PgOutputDeleteMessage.Create(true, "row2"),
-        PgOutputCommitMessage.Create("0/12", "0/13")
+        PgOutputCommitMessage.Create("0/12", "0/12")
       );
 
     long deadlineMs = System.currentTimeMillis() + 60_000;
@@ -5803,7 +5803,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             new PgOutputMessageTupleColumnValue("1"),
             new PgOutputMessageTupleColumnValue("1")))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/8"), LogSequenceNumber.valueOf("0/9")));
+          LogSequenceNumber.valueOf("0/8"), LogSequenceNumber.valueOf("0/8")));
 
         // DDL for t1 and the re-written row.
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/B"), 3));
@@ -5815,7 +5815,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             new PgOutputMessageTupleColumnValue("1"),
             new PgOutputMessageTupleColumnValue("1")))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/B"), LogSequenceNumber.valueOf("0/C")));
+          LogSequenceNumber.valueOf("0/B"), LogSequenceNumber.valueOf("0/B")));
 
         // DDL for t2 and the re-written row.
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/E"), 4));
@@ -5829,7 +5829,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             new PgOutputMessageTupleColumnValue("1"),
             new PgOutputMessageTupleColumnValue("1")))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/E"), LogSequenceNumber.valueOf("0/F")));
+          LogSequenceNumber.valueOf("0/E"), LogSequenceNumber.valueOf("0/E")));
 
         // Remaining txn.
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/13"), 5));
@@ -5847,7 +5847,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             new PgOutputMessageTupleColumnValue("1"),
             new PgOutputMessageTupleColumnValue("1")))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/13"), LogSequenceNumber.valueOf("0/14")));
+          LogSequenceNumber.valueOf("0/13"), LogSequenceNumber.valueOf("0/13")));
       }
     };
     assertEquals(expectedResult, result);
@@ -5976,7 +5976,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("1"),
                 new PgOutputMessageTupleColumnValue("1")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/8"), LogSequenceNumber.valueOf("0/9")));
+            LogSequenceNumber.valueOf("0/8"), LogSequenceNumber.valueOf("0/8")));
 
         // Relation message corresponding to DDL for t1, the re-written row (INSERT).
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/B"), 3));
@@ -5988,7 +5988,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("1"),
                 new PgOutputMessageTupleColumnValue("1")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/B"), LogSequenceNumber.valueOf("0/C")));
+            LogSequenceNumber.valueOf("0/B"), LogSequenceNumber.valueOf("0/B")));
 
         // Relation message corresponding to DDL for t2 and the re-written row (INSERT).
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/E"), 4));
@@ -6002,7 +6002,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("1"),
                 new PgOutputMessageTupleColumnValue("1")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/E"), LogSequenceNumber.valueOf("0/F")));
+            LogSequenceNumber.valueOf("0/E"), LogSequenceNumber.valueOf("0/E")));
 
         // Second txn.
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/15"), 6));
@@ -6020,7 +6020,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("1"),
                 new PgOutputMessageTupleColumnValue("1")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/15"), LogSequenceNumber.valueOf("0/16")));
+            LogSequenceNumber.valueOf("0/15"), LogSequenceNumber.valueOf("0/15")));
       }
     };
     assertEquals(expectedResult, result);
@@ -6104,7 +6104,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
                 new PgOutputMessageTupleColumnValue("1")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/6")));
+            LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/5")));
 
         // Add primary key DDL for t1 and the re-written row.
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/8"), 3));
@@ -6115,7 +6115,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
                 new PgOutputMessageTupleColumnValue("1")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/8"), LogSequenceNumber.valueOf("0/9")));
+            LogSequenceNumber.valueOf("0/8"), LogSequenceNumber.valueOf("0/8")));
 
         // Drop primary key DDL for t2 and the re-written row.
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/B"), 4));
@@ -6126,7 +6126,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
                 new PgOutputMessageTupleColumnValue("1")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/B"), LogSequenceNumber.valueOf("0/C")));
+            LogSequenceNumber.valueOf("0/B"), LogSequenceNumber.valueOf("0/B")));
 
         // Remaining txn.
         add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/F"), 5));
@@ -6137,7 +6137,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             Arrays.asList(new PgOutputMessageTupleColumnValue("2"),
                 new PgOutputMessageTupleColumnValue("2")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/F"), LogSequenceNumber.valueOf("0/10")));
+            LogSequenceNumber.valueOf("0/F"), LogSequenceNumber.valueOf("0/F")));
       }
     };
     assertEquals(expectedResult, result);
@@ -6661,7 +6661,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                   new PgOutputMessageTupleColumnValue("1"),
                   new PgOutputMessageTupleColumnValue("ins")))));
       expectedResult.add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
+          LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/4")));
     }
 
     if (expectUpdate) {
@@ -6683,7 +6683,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                   new PgOutputMessageTupleColumnValue("1"),
                   new PgOutputMessageTupleColumnValue("upd")))));
       expectedResult.add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/8")));
+          LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/7")));
     }
 
     if (expectDelete) {
@@ -6705,7 +6705,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       expectedResult.add(PgOutputDeleteMessage.CreateForComparison(
           isYbOutput, deleteOldTuple));
       expectedResult.add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/B")));
+          LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/A")));
     }
 
     assertEquals(expectedResult, result);
@@ -6796,7 +6796,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("1"),
                 new PgOutputMessageTupleColumnValue("row1")))));
     phase1Expected.add(PgOutputCommitMessage.CreateForComparison(
-        LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
+        LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/4")));
 
     phase1Expected.add(
         PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/7"), 3));
@@ -6807,7 +6807,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("1"),
                 new PgOutputMessageTupleColumnValue("upd1")))));
     phase1Expected.add(PgOutputCommitMessage.CreateForComparison(
-        LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/8")));
+        LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/7")));
 
     phase1Expected.add(
         PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/A"), 4));
@@ -6817,7 +6817,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("1"),
                 new PgOutputMessageTupleColumnNull()))));
     phase1Expected.add(PgOutputCommitMessage.CreateForComparison(
-        LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/B")));
+        LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/A")));
 
     assertEquals(phase1Expected, phase1Result);
 
@@ -6851,7 +6851,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("2"),
                 new PgOutputMessageTupleColumnValue("upd2")))));
     phase2Expected.add(PgOutputCommitMessage.CreateForComparison(
-        LogSequenceNumber.valueOf("0/10"), LogSequenceNumber.valueOf("0/11")));
+        LogSequenceNumber.valueOf("0/10"), LogSequenceNumber.valueOf("0/10")));
 
     phase2Expected.add(
         PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/13"), 7));
@@ -6861,7 +6861,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("2"),
                 new PgOutputMessageTupleColumnNull()))));
     phase2Expected.add(PgOutputCommitMessage.CreateForComparison(
-        LogSequenceNumber.valueOf("0/13"), LogSequenceNumber.valueOf("0/14")));
+        LogSequenceNumber.valueOf("0/13"), LogSequenceNumber.valueOf("0/13")));
 
     assertEquals(phase2Expected, phase2Result);
     stream.close();
@@ -6928,7 +6928,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("1"),
                 new PgOutputMessageTupleColumnValue("t1a")))));
     phase1Expected.add(PgOutputCommitMessage.CreateForComparison(
-        LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
+        LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/4")));
 
     assertEquals(phase1Expected, phase1Result);
 
@@ -6956,7 +6956,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("2"),
                 new PgOutputMessageTupleColumnValue("t2b")))));
     phase2Expected.add(PgOutputCommitMessage.CreateForComparison(
-        LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/8")));
+        LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/7")));
 
     assertEquals(phase2Expected, phase2Result);
     stream.close();
@@ -7074,7 +7074,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("1"),
                 new PgOutputMessageTupleColumnValue("b1_ins")))));
     expected.add(PgOutputCommitMessage.CreateForComparison(
-        LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
+        LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/4")));
 
     // UPDATE (txn 3)
     expected.add(
@@ -7086,7 +7086,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("1"),
                 new PgOutputMessageTupleColumnValue("b1_upd")))));
     expected.add(PgOutputCommitMessage.CreateForComparison(
-        LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/8")));
+        LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/7")));
 
     // DELETE (txn 4)
     expected.add(
@@ -7097,7 +7097,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("1"),
                 new PgOutputMessageTupleColumnNull()))));
     expected.add(PgOutputCommitMessage.CreateForComparison(
-        LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/B")));
+        LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/A")));
 
     // -- Batch 2: publish='update'; INSERT(txn 5) filtered, UPDATE(txn 6) streamed,
     //    DELETE(txn 7) filtered --
@@ -7111,7 +7111,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("2"),
                 new PgOutputMessageTupleColumnValue("b2_upd")))));
     expected.add(PgOutputCommitMessage.CreateForComparison(
-        LogSequenceNumber.valueOf("0/10"), LogSequenceNumber.valueOf("0/11")));
+        LogSequenceNumber.valueOf("0/10"), LogSequenceNumber.valueOf("0/10")));
 
     // -- Batch 3: publish='insert'; INSERT(txn 8) streamed, UPDATE(txn 9) filtered,
     //    DELETE(txn 10) filtered --
@@ -7124,7 +7124,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("3"),
                 new PgOutputMessageTupleColumnValue("b3_ins")))));
     expected.add(PgOutputCommitMessage.CreateForComparison(
-        LogSequenceNumber.valueOf("0/16"), LogSequenceNumber.valueOf("0/17")));
+        LogSequenceNumber.valueOf("0/16"), LogSequenceNumber.valueOf("0/16")));
 
     // -- Batch 4: publish='delete'; INSERT(txn 11) filtered, UPDATE(txn 12) filtered,
     //    DELETE(txn 13) streamed --
@@ -7137,7 +7137,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("4"),
                 new PgOutputMessageTupleColumnNull()))));
     expected.add(PgOutputCommitMessage.CreateForComparison(
-        LogSequenceNumber.valueOf("0/25"), LogSequenceNumber.valueOf("0/26")));
+        LogSequenceNumber.valueOf("0/25"), LogSequenceNumber.valueOf("0/25")));
 
     assertEquals(expected, result);
     stream.close();
@@ -7239,7 +7239,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("1"),
                 new PgOutputMessageTupleColumnValue("def")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/6"), LogSequenceNumber.valueOf("0/7")));
+            LogSequenceNumber.valueOf("0/6"), LogSequenceNumber.valueOf("0/6")));
 
         // Txn 2: only t1 insert streamed (t2 dropped from pub, t3 not yet added).
         // RELATION re-sent for t1 after ALTER PUBLICATION DROP TABLE t2.
@@ -7252,7 +7252,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("2"),
                 new PgOutputMessageTupleColumnValue("jkl")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/B"), LogSequenceNumber.valueOf("0/C")));
+            LogSequenceNumber.valueOf("0/B"), LogSequenceNumber.valueOf("0/B")));
 
         // Txn 3: t1 and t3 inserts streamed (t2 still not in pub, t3 added).
         // RELATION re-sent for t1 after ALTER PUBLICATION ADD TABLE t3.
@@ -7272,7 +7272,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("3"),
                 new PgOutputMessageTupleColumnValue("yza")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/10"), LogSequenceNumber.valueOf("0/11")));
+            LogSequenceNumber.valueOf("0/10"), LogSequenceNumber.valueOf("0/10")));
       }
     };
     assertEquals(expectedResult, result);
@@ -7561,19 +7561,27 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     s1.close();
     c1.close();
 
-    // txn2: Wait for the driver's auto flush, transmit it, then disconnect mid delivery.
+    // txn2: read part of it, so that keep alives sent while it is being decoded and delivered
+    // have reached the driver, then transmit the driver's auto flush and disconnect mid delivery.
+    // The keep alives are sent after every record and the driver auto flushes their position,
+    // so the flushed LSN must never move past txn1 while txn2 is undelivered.
     Connection c2 = getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationStream s2 = openStream(c2, "slot", "pub", 3000);
     long deadline = System.currentTimeMillis() + 60_000L * kMultiplier;
-    // A keep alive echoing the slot's confirmed_flush is harmless, only an
-    // auto flush past txn1 proves an undelivered transaction was acked.
-    while (s2.getLastFlushedLSN().asLong() <= afterTxn1.asLong()) {
-      assertTrue("timed out waiting for the keep alive auto flush past txn1",
+    int txn2InsertsRead = 0;
+    while (txn2InsertsRead < kLargeRows / 2) {
+      assertTrue("timed out waiting for the first half of txn2",
           System.currentTimeMillis() < deadline);
-      if (s2.readPending() == null) {
+      ByteBuffer buf = s2.readPending();
+      if (buf == null) {
         Thread.sleep(50);
+      } else if (buf.array()[buf.arrayOffset()] == 'I') {
+        txn2InsertsRead++;
       }
     }
+    assertTrue("a keep alive acked a position past txn1 while txn2 was still undelivered: "
+        + s2.getLastFlushedLSN() + " > " + afterTxn1,
+        s2.getLastFlushedLSN().asLong() <= afterTxn1.asLong());
     for (int i = 0; i < 15; i++) {
       s2.forceUpdateStatus();
       Thread.sleep(200);
@@ -7594,6 +7602,78 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
     assertEquals("txn2 must be re-streamed after the disconnect, losing it means the keep alive"
         + " auto flush acked an undelivered transaction", kLargeRows + kSmallRows, received);
+  }
+
+  private void waitForConfirmedFlushLSN(
+      Connection connection, String slotName, LogSequenceNumber expected) throws Exception {
+    TestUtils.waitFor(() -> {
+      LogSequenceNumber actual = getConfirmedFlushLSN(connection, slotName);
+      LOG.info("confirmed_flush_lsn of {} is {}, waiting for {}", slotName, actual, expected);
+      return actual.asLong() == expected.asLong();
+    }, 10000L * kMultiplier);
+  }
+
+  // Two transactions can commit at hybrid times X and X + 1, so on a HYBRID_TIME slot the LSN
+  // after txn1's commit LSN can be txn2's commit LSN. Acking txn1 must therefore ack exactly
+  // txn1: if the server advertised or persisted commit_lsn + 1 anywhere, txn2 would count as
+  // acked while still undelivered and would be skipped after a reconnect.
+  @Test
+  public void testHybridTimeAdjacentCommitLsnAckDoesNotSkipNextTransaction() throws Exception {
+    Map<String, String> tserverFlags = getTServerFlags();
+    tserverFlags.put("TEST_cdcsdk_force_adjacent_commit_lsn", "true");
+    restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
+
+    final int kRows = 10;
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS t");
+      stmt.execute("CREATE TABLE t (k int PRIMARY KEY, v int) SPLIT INTO 1 TABLETS");
+      stmt.execute("ALTER TABLE t REPLICA IDENTITY DEFAULT");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t");
+      stmt.execute("SELECT pg_create_logical_replication_slot("
+          + "'slot', 'pgoutput', false, false, 'HYBRID_TIME')");
+      // txn1 and txn2: with the test flag txn2's LSN is txn1's LSN + 1.
+      stmt.execute("INSERT INTO t SELECT i, i FROM generate_series(1, 10) i");
+      stmt.execute("INSERT INTO t SELECT i, i FROM generate_series(100, 109) i");
+    }
+
+    // Receive txn1 (BEGIN, RELATION, inserts, COMMIT), ack its COMMIT the way the driver does
+    // and disconnect without reading txn2.
+    Connection c1 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationStream s1 = openStream(c1, "slot", "pub", 0);
+    List<PgOutputMessage> txn1 = receiveMessage(s1, kRows + 3);
+    assertEquals(kRows,
+        (int) txn1.stream().filter(m -> m instanceof PgOutputInsertMessage).count());
+    assertTrue(txn1.get(txn1.size() - 1) instanceof PgOutputCommitMessage);
+    LogSequenceNumber afterTxn1 = s1.getLastReceiveLSN();
+    s1.setFlushedLSN(afterTxn1);
+    s1.forceUpdateStatus();
+    waitForConfirmedFlushLSN(connection, "slot", afterTxn1);
+    s1.close();
+    c1.close();
+
+    // txn3: committed after the disconnect, so the reconnect has something to deliver even if
+    // txn2 is skipped.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO t SELECT i, i FROM generate_series(5000, 5009) i");
+    }
+
+    Connection c2 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationStream s2 = openStream(c2, "slot", "pub", 0);
+    long deadline = System.currentTimeMillis() + 60_000L * kMultiplier;
+    int received = 0;
+    while (received < 2 * kRows && System.currentTimeMillis() < deadline) {
+      ByteBuffer buf = s2.readPending();
+      if (buf == null) {
+        Thread.sleep(50);
+      } else if (buf.array()[buf.arrayOffset()] == 'I') {
+        received++;
+      }
+    }
+    s2.close();
+    c2.close();
+
+    assertEquals("txn2 must be streamed after the reconnect, missing it means acking txn1 "
+        + "also acked txn2", 2 * kRows, received);
   }
 
   private void addConcurrentDdlFlags(Map<String, String> flags) {

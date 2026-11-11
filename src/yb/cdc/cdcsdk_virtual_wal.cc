@@ -105,6 +105,11 @@ TAG_FLAG(cdcsdk_update_restart_time_when_nothing_to_stream, advanced);
 DEFINE_test_flag(uint32, cdcsdk_vwal_getchanges_rpc_delay_ms, 0,
     "Delay in milliseconds to simulate a slow GetChanges RPC call.");
 
+DEFINE_test_flag(bool, cdcsdk_force_adjacent_commit_lsn, false,
+    "On a HYBRID_TIME slot, give every transaction after the first one the LSN of the previous "
+    "transaction plus one instead of its commit time, so that tests can reproduce two "
+    "transactions committing at adjacent hybrid times deterministically.");
+
 DEFINE_RUNTIME_bool(cdc_skip_unqualified_tables_for_polling, false,
     "When enabled, VWAL will skip adding expired / not-of-interest tables to the polling list.");
 
@@ -1412,7 +1417,10 @@ Status CDCSDKVirtualWAL::UpdateRestartTimeIfRequired() {
 
   last_restart_lsn_read_time_ = current_time;
 
-  if (last_received_restart_lsn >= last_seen_lsn_) {
+  // The restart lsn is the commit_lsn of the last acknowledged transaction, so it equals the last
+  // generated LSN exactly when nothing has been shipped after that commit. Only then may the
+  // restart time move forward to the virtual WAL safe time.
+  if (last_received_restart_lsn == last_seen_lsn_) {
     RETURN_NOT_OK(UpdateAndPersistLSNInternal(
         last_received_confirmed_flush_lsn_, last_received_restart_lsn,
         true /* use_vwal_safe_time */));
@@ -1433,7 +1441,20 @@ Result<uint64_t> CDCSDKVirtualWAL::GetRecordLSN(
         last_seen_lsn_ += 1;
         break;
       case ReplicationSlotLsnType_HYBRID_TIME:
-        last_seen_lsn_ = curr_unique_record_id->GetCommitTime();
+        if (!FLAGS_TEST_cdcsdk_force_adjacent_commit_lsn) {
+          last_seen_lsn_ = curr_unique_record_id->GetCommitTime();
+          break;
+        }
+        // Records of one transaction share a commit time and hence an LSN. The first transaction
+        // keeps its commit time, so that it stays above the slot's initial confirmed_flush_lsn;
+        // every later one gets the previous transaction's LSN + 1.
+        if (curr_unique_record_id->GetCommitTime() !=
+            last_seen_unique_record_id_->GetCommitTime()) {
+          last_seen_lsn_ = TEST_force_adjacent_commit_lsn_primed_
+                               ? last_seen_lsn_ + 1
+                               : curr_unique_record_id->GetCommitTime();
+          TEST_force_adjacent_commit_lsn_primed_ = true;
+        }
         break;
       default:
         return STATUS_FORMAT(
@@ -1542,23 +1563,21 @@ Status CDCSDKVirtualWAL::TruncateMetaMap(const uint64_t restart_lsn) {
   RSTATUS_DCHECK_LT(
       restart_lsn, last_shipped_commit.commit_lsn, InvalidArgument,
       "Restart lsn should be less than last shipped commit lsn");
-  // Get the first entry whose commit_lsn > restart_lsn.
+  // restart_lsn is the commit_lsn of the last transaction the client fully acknowledged, so the
+  // first entry with commit_lsn > restart_lsn is the one added at the BEGIN of the earliest
+  // unacknowledged transaction. It is never commit_lsn + 1: on a HYBRID_TIME slot the LSN space
+  // is not dense, so commit_lsn + 1 may itself be the commit_lsn of the next transaction.
   auto itr = commit_meta_and_last_req_map_.upper_bound(restart_lsn);
 
-  // There should definitely exist atleast one entry in the map whose commit_lsn < restart_lsn.
-  // Therefore itr should never point the begin entry of the map. Consider the following for
-  // correctness: Let T be the earliest unacked txn. Say T= txnid 100. This means that T=99 has been
-  // acked in the past. Otherwise, T=99 would have been the earliest unacked txn. The fact that T=99
-  // has been acked implies that last_received_restart_lsn >= c99 Therefore, now, we have c99 as the
-  // 1st entry (begin) of the map. Therefor, restart_lsn will always be >= c99 and
-  // Upper_bound(c99)will always return itr > map.begin().
+  // The entry right before it is keyed by the acknowledged commit_lsn itself and must exist: the
+  // map keeps the entry of the last acknowledged transaction, whose metadata is what gets
+  // persisted as the slot's restart point, and the walsender only acknowledges a commit_lsn it
+  // received from us. So itr never points at the first entry of the map.
   RSTATUS_DCHECK(
       itr != commit_meta_and_last_req_map_.begin(), NotFound,
-      "Couldn't find any entry whose commit_lsn < restart_lsn");
+      "Couldn't find any entry whose commit_lsn <= restart_lsn");
 
-  // Decrement by 1 to get the greatest entry whose commit_lsn is < restart_lsn. Invariant is <
-  // and not <= because the restart_lsn passed to this method will always be equal to some
-  // commit_lsn + 1.
+  // Keep the acknowledged transaction's entry and drop everything before it.
   --itr;
 
   // Erase all entries in the map starting from the [start, itr).
