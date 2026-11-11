@@ -1,0 +1,23 @@
+title: StorageConfigInfo
+description: |
+  StorageConfigInfo
+
+  The part of a storage configuration that YBA sets. Part of StorageConfig.
+type: object
+required:
+  - uuid
+  - state
+properties:
+  uuid:
+    description: UUID of the storage configuration
+    type: string
+    format: uuid
+    readOnly: true
+  state:
+    $ref: "./StorageConfigState.yaml"
+  kubernetes_operator_controlled:
+    description: Whether the YBA Kubernetes operator manages this configuration through a StorageConfig resource. Change such a configuration through its resource instead.
+    type: boolean
+    readOnly: true
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

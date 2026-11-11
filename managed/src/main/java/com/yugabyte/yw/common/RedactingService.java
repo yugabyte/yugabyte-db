@@ -130,6 +130,11 @@ public class RedactingService {
           // OCI S3-compatible storage credentials
           .add("$..OCI_S3_ACCESS_KEY_ID")
           .add("$..OCI_S3_SECRET_ACCESS_KEY")
+          // v2 storage config credentials (S3, GCS, Azure, OCI)
+          .add("$..access_key_id")
+          .add("$..secret_access_key")
+          .add("$..credentials_json")
+          .add("$..sas_token")
           // SmartKey API key
           .add("$..api_key")
           // SMTP password
