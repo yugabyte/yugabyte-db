@@ -56,15 +56,16 @@ _CONTENT_AWARE_FLAG = "ENABLE_CONTENT_AWARE_CHUNKING"
 STRATEGY_PARAGRAPH = "paragraph"
 STRATEGY_PROSE_MERGE = "prose_merge"
 STRATEGY_DUMP_OBJECTS = "dump_objects"
+_STRATEGIES = (STRATEGY_PARAGRAPH, STRATEGY_PROSE_MERGE, STRATEGY_DUMP_OBJECTS)
 
 
 def is_content_aware_chunking_enabled() -> bool:
-    """Off by default: turning it on changes the chunks of every new upload.
+    """Off by default. On, it changes the chunks of text/plain uploads that
+    name no splitter and profile as prose or a SQL dump.
 
-    Flip it only while no plain-text upload is mid-ingestion. A document whose
-    first attempt was chunked one way and whose retry is chunked the other
-    keeps the first attempt's partial chunks next to the full new set, because
-    the insert skips matching ids and never deletes stale ones.
+    It applies to a document's first attempt only. A retry reuses the strategy
+    the earlier attempt recorded (see stream_partition_and_chunk), so flipping
+    the flag mid-ingestion does not leave two chunk sets for one document.
     """
     return os.getenv(_CONTENT_AWARE_FLAG, "false").strip().lower() == "true"
 
@@ -266,6 +267,7 @@ def stream_partition_and_chunk(
     file_location: str,
     chunk_args: Optional[Dict[str, Any]] = None,
     on_plan: Optional[Callable[[Dict[str, Any]], None]] = None,
+    earlier_strategy: Optional[Callable[[], Optional[str]]] = None,
 ) -> Generator[str, None, None]:
     """
     Partitions a text file from s3 or nfs into logical paragraphs, and
@@ -278,6 +280,12 @@ def stream_partition_and_chunk(
     per paragraph as before.
     on_plan, if given, is called once with the strategy, the chunker version
     and the profile, before the first chunk is yielded.
+
+    earlier_strategy, if given, returns the strategy an earlier attempt at the
+    same document recorded, or None on a first attempt. A known one is reused
+    in place of the flag. Chunk ids hash position and text, and the insert
+    skips matching ids without deleting stale ones, so a retry chunked another
+    way would leave the first attempt's chunks next to its own.
 
     The file is read in one call before the first chunk is yielded. Reading it
     lazily held the S3 response open for the whole embedding run - minutes per
@@ -312,6 +320,7 @@ def stream_partition_and_chunk(
     )
 
     profile = None
+    earlier = None
     strategy = STRATEGY_PARAGRAPH
     file_type, _ = mimetypes.guess_type(file_location)
     # A caller that names a splitter has chosen its chunking; keep it.
@@ -322,10 +331,20 @@ def stream_partition_and_chunk(
                 strategy = STRATEGY_PROSE_MERGE
             elif profile.content_class == DUMP:
                 strategy = STRATEGY_DUMP_OBJECTS
+        earlier = earlier_strategy() if earlier_strategy is not None else None
+        if earlier in _STRATEGIES:
+            strategy = earlier
+        elif earlier is not None:
+            logging.warning(
+                f"Earlier attempt at {file_location} used unknown chunking "
+                f"strategy {earlier!r}; using {strategy!r}"
+            )
 
     plan = {"chunker_version": CHUNKER_VERSION, "strategy": strategy}
     if profile is not None:
         plan["profile"] = profile.to_metadata()
+    if earlier in _STRATEGIES:
+        plan["reused_from_earlier_attempt"] = True
     logging.info(f"Chunking plan for {file_location}: {plan}")
     if on_plan is not None:
         on_plan(plan)

@@ -1,6 +1,6 @@
 # !/usr/bin/env python3
 """
-Tests for content-aware chunking of plain-text uploads (MEKO-1236).
+Tests for content-aware chunking of plain-text uploads (MEKO-1256).
 
 Covers the profile and its classes, the two strategies, and how
 stream_partition_and_chunk and the embed path apply them behind
@@ -96,12 +96,13 @@ def flag_off(monkeypatch):
     monkeypatch.delenv(FLAG, raising=False)
 
 
-def _chunks(content, chunk_args=None, suffix=".txt"):
+def _chunks(content, chunk_args=None, suffix=".txt", earlier=None):
     path = _write(content, suffix)
     plans = []
     try:
         chunks = list(stream_partition_and_chunk(
-            PIPELINE_ID, path, chunk_args or {}, on_plan=plans.append
+            PIPELINE_ID, path, chunk_args or {}, on_plan=plans.append,
+            earlier_strategy=None if earlier is None else (lambda: earlier),
         ))
     finally:
         os.unlink(path)
@@ -279,6 +280,71 @@ class TestStreamPartitionAndChunk:
             os.unlink(path)
 
 
+class TestRetryReusesEarlierStrategy:
+    def test_flag_off_retry_keeps_prose_merge(self, flag_off):
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setenv(FLAG, "true")
+        first, _ = _chunks(PROSE_TEXT)
+        monkeypatch.undo()
+        retry, plan = _chunks(PROSE_TEXT, earlier="prose_merge")
+        assert plan["strategy"] == "prose_merge"
+        assert plan["reused_from_earlier_attempt"] is True
+        assert retry == first
+        assert len(retry) < 30
+
+    def test_flag_on_retry_keeps_paragraph(self, monkeypatch):
+        monkeypatch.delenv(FLAG, raising=False)
+        first, _ = _chunks(SCHEMA_DUMP)
+        monkeypatch.setenv(FLAG, "true")
+        retry, plan = _chunks(SCHEMA_DUMP, earlier="paragraph")
+        assert plan["strategy"] == "paragraph"
+        assert plan["profile"]["content_class"] == DUMP
+        assert retry == first
+
+    def test_unknown_earlier_strategy_falls_back(self, flag_on):
+        chunks, plan = _chunks(SCHEMA_DUMP, earlier="from_a_newer_build")
+        assert plan["strategy"] == "dump_objects"
+        assert "reused_from_earlier_attempt" not in plan
+
+    def test_first_attempt_uses_flag(self, flag_on):
+        _, plan = _chunks(SCHEMA_DUMP, earlier=None)
+        assert plan["strategy"] == "dump_objects"
+        assert "reused_from_earlier_attempt" not in plan
+
+
+def _tracking_with_cursor():
+    from db.active_pipeline_tracking import PipelineTracking
+
+    cursor = MagicMock()
+    conn = MagicMock()
+    conn.cursor.return_value = cursor
+    pool = MagicMock()
+    pool.get_connection.return_value = conn
+    with patch("db.active_pipeline_tracking.ConnectionPool", return_value=pool):
+        return PipelineTracking(), cursor, conn
+
+
+class TestGetEarlierChunkingStrategy:
+    def test_no_earlier_attempt(self):
+        tracking, cursor, _ = _tracking_with_cursor()
+        cursor.fetchone.return_value = None
+        assert tracking.get_earlier_chunking_strategy("p2") is None
+        sql = " ".join(cursor.execute.call_args[0][0].split())
+        assert "earlier.document_id = current.document_id" in sql
+        assert "earlier.pipeline_id <> current.pipeline_id" in sql
+        assert cursor.execute.call_args[0][1] == ("p2",)
+
+    def test_recorded_strategy(self):
+        tracking, cursor, _ = _tracking_with_cursor()
+        cursor.fetchone.return_value = ("dump_objects",)
+        assert tracking.get_earlier_chunking_strategy("p2") == "dump_objects"
+
+    def test_attempt_without_plan_reads_as_paragraph(self):
+        tracking, cursor, _ = _tracking_with_cursor()
+        cursor.fetchone.return_value = (None,)
+        assert tracking.get_earlier_chunking_strategy("p2") == "paragraph"
+
+
 class TestRecordChunkingPlan:
     def test_merges_into_metadata_snapshot(self):
         from db.active_pipeline_tracking import PipelineTracking
@@ -306,7 +372,7 @@ class TestEmbedRecordsPlan:
     @patch("embeddings.embed.PipelineTracking")
     @patch("embeddings.embed.PDFProcessor")
     @patch("embeddings.embed.OpenAIEmbeddings")
-    def test_plan_recorded_and_failure_ignored(
+    def test_plan_write_failure_fails_the_upload(
         self, mock_oai_cls, mock_pdf, mock_pt, flag_on
     ):
         from embeddings.embed import EmbeddingsGenerator
@@ -316,6 +382,7 @@ class TestEmbedRecordsPlan:
         mock_oai_cls.return_value = embedder
         tracking = mock_pt.return_value
         tracking.record_chunking_plan.side_effect = RuntimeError("db down")
+        tracking.get_earlier_chunking_strategy.return_value = None
 
         gen = EmbeddingsGenerator(
             embedding_model="text-embedding-ada-002",
@@ -323,11 +390,12 @@ class TestEmbedRecordsPlan:
         )
         path = _write(SCHEMA_DUMP)
         try:
-            results = list(gen.generate_embeddings(PIPELINE_ID, path))
+            with pytest.raises(RuntimeError, match="db down"):
+                list(gen.generate_embeddings(PIPELINE_ID, path))
         finally:
             os.unlink(path)
 
-        assert len(results) == 2
+        embedder.embed_documents.assert_not_called()
         tracking.record_chunking_plan.assert_called_once()
         pid, plan = tracking.record_chunking_plan.call_args[0]
         assert pid == PIPELINE_ID

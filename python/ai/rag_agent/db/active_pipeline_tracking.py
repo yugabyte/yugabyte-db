@@ -295,6 +295,45 @@ class PipelineTracking:
             if conn:
                 self._return_connection(conn)
 
+    @meko_observe(
+        name="Earlier Chunking Strategy / Active Pipeline Tracking", as_type="span"
+    )
+    def get_earlier_chunking_strategy(self, pipeline_id: str) -> Optional[str]:
+        """
+        Return the chunking strategy of the latest earlier attempt at this
+        pipeline's document, or None when there is no earlier attempt.
+
+        An earlier attempt with no plan recorded predates plan recording,
+        or failed before chunking, and reads as "paragraph": the only
+        strategy before plans were recorded.
+        """
+        conn = None
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT earlier.metadata_snapshot -> 'chunking' ->> 'strategy'
+                FROM dist_rag.pipeline_details AS current
+                JOIN dist_rag.pipeline_details AS earlier
+                  ON earlier.document_id = current.document_id
+                 AND earlier.pipeline_id <> current.pipeline_id
+                WHERE current.pipeline_id = %s
+                ORDER BY earlier.created_at DESC
+                LIMIT 1
+                """,
+                (pipeline_id,)
+            )
+            row = cur.fetchone()
+            cur.close()
+            if row is None:
+                return None
+            return row[0] or "paragraph"
+
+        finally:
+            if conn:
+                self._return_connection(conn)
+
     @meko_observe(name="Update Chunks Processed / Active Pipeline Tracking", as_type="span")
     def update_chunks_processed(self, pipeline_id: str, chunks_count: int) -> bool:
         """
