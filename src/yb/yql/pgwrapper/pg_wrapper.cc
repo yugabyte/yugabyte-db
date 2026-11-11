@@ -15,7 +15,6 @@
 #include <signal.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
-#include <unistd.h>
 
 #include <cstdio>
 #include <fstream>
@@ -994,12 +993,6 @@ Result<vector<string>> WritePgConfigFiles(const PgProcessConf& conf) {
   return args;
 }
 
-// See YBSetParentDeathSignal in pg_yb_common.c for how these are used.
-void SetParentDeathSignalEnv(Subprocess* proc, int signal) {
-  proc->SetEnv("YB_PG_PDEATHSIG", Format("$0", signal));
-  proc->SetEnv("YB_PG_PARENT_PID", Format("$0", getpid()));
-}
-
 }  // namespace
 
 // Basic gflag validators -- only CSV/newline validation.
@@ -1158,7 +1151,8 @@ Status PgWrapper::Start() {
   }
   proc_->SetEnv("FLAGS_tmp_dir", FLAGS_tmp_dir);
 
-  SetParentDeathSignalEnv(&*proc_, SIGINT);
+  // See YBSetParentDeathSignal in pg_yb_common.c for how this is used.
+  proc_->SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGINT));
   proc_->InheritNonstandardFd(address_negotiator_fd_);
   SetCommonEnv(&*proc_, /* yb_enabled */ true);
 
@@ -1234,7 +1228,8 @@ Status PgWrapper::InitDb(InitdbParams initdb_params) {
 
   Subprocess initdb_subprocess(initdb_program_path, initdb_args);
   initdb_subprocess.InheritNonstandardFd(address_negotiator_fd_);
-  SetParentDeathSignalEnv(&initdb_subprocess, SIGTERM);
+  // See YBSetParentDeathSignal in pg_yb_common.c for how this is used.
+  initdb_subprocess.SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGTERM));
   bool global_initdb = std::holds_alternative<GlobalInitdbParams>(initdb_params);
   SetCommonEnv(&initdb_subprocess, global_initdb);
 
@@ -1310,8 +1305,9 @@ Status PgWrapper::RunPgUpgrade(const PgUpgradeParams& param) {
   LOG(INFO) << "Launching pg_upgrade: " << AsString(args);
 
   Subprocess pg_upgrade(program_path, args);
+  // See YBSetParentDeathSignal in pg_yb_common.c for how this is used.
   // Keep SIGTERM: system() ignores SIGINT, so pg_upgrade's forwarding handler would miss it.
-  SetParentDeathSignalEnv(&pg_upgrade, SIGTERM);
+  pg_upgrade.SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGTERM));
   if (!FLAGS_TEST_ysql_pg_upgrade_dump_pid_dir.empty()) {
     pg_upgrade.SetEnv(
         "FLAGS_TEST_ysql_pg_upgrade_dump_pid_dir", FLAGS_TEST_ysql_pg_upgrade_dump_pid_dir);
