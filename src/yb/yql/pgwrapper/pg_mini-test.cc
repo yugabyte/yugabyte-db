@@ -1708,6 +1708,9 @@ TEST_F_EX(PgMiniTest, VerifyTombstoneTimeCache, PgMiniTestSingleNode) {
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated=true", kDbName));
   conn = ASSERT_RESULT(ConnectToDB(kDbName));
 
+  // Keeps the colocation tablet alive when kTableName is dropped.
+  ASSERT_OK(conn.Execute("CREATE TABLE keep_tablet (v int PRIMARY KEY)"));
+
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (v int PRIMARY KEY) WITH (colocation_id=$1)",
       kTableName, kColocationId));
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1), ($2), ($3)",
