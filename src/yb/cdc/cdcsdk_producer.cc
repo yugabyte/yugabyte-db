@@ -983,20 +983,11 @@ bool IsDuplicateDDLForColumnsMarkedForDeletion(
     return false;
   }
 
-  if (!previous_schema) {
-    // Nothing cached to compare against, e.g. after a restart. Without transactional DDL this op
-    // can only be the first half of a DROP COLUMN; with it, a possible duplicate is emitted rather
-    // than risk dropping a column the client needs.
-    return !FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl;
-  }
-  if (previous_schema->num_columns() != schema.num_columns()) {
+  // With nothing cached to compare against (e.g. after a restart), the record is emitted: a
+  // duplicate is harmless, while a missing one makes the client drop values of columns this op
+  // adds when it is inside a DDL transaction block.
+  if (!previous_schema || !schema.EquivalentForDataCopy(*previous_schema)) {
     return false;
-  }
-  for (size_t i = 0; i < schema.num_columns(); ++i) {
-    if (previous_schema->column_id(i) != schema.column_id(i) ||
-        previous_schema->column(i).name() != schema.column(i).name()) {
-      return false;
-    }
   }
 
   VLOG(1) << "Skipping DDL record for a CHANGE_METADATA_OP that only marks columns for deletion";
