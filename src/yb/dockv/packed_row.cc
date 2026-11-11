@@ -397,8 +397,7 @@ Status CompleteColumns(size_t packed_columns, Packer* packer) {
     const auto& packing_data = packing.column_packing_data(idx);
     const auto& missing_value = packing_data.missing_value;
     if (!IsNull(missing_value)) {
-      auto added = VERIFY_RESULT(packer->AddValue(
-          packing_data.id, missing_value, std::numeric_limits<ssize_t>::min()));
+      auto added = VERIFY_RESULT(packer->AddValue(packing_data.id, missing_value, kUnlimitedTail));
       RSTATUS_DCHECK(added, Corruption, "Unable to pack missing value for $0", packing_data);
     } else {
       RSTATUS_DCHECK(
