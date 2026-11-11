@@ -2165,7 +2165,8 @@ group_similar_or_args(PlannerInfo *root, RelOptInfo *rel, RestrictInfo *rinfo)
 			 * Ignore index if it doesn't support bitmap scans or SAOP
 			 * clauses.
 			 */
-			if (!index->amhasgetbitmap || !index->amsearcharray)
+			if (!(index->amhasgetbitmap || index->yb_amhasgetbitmap) ||
+				!index->amsearcharray)
 				continue;
 
 			for (colnum = 0; colnum < index->nkeycolumns; colnum++)

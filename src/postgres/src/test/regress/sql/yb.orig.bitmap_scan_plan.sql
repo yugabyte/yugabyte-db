@@ -124,7 +124,7 @@ analyze s;
 -- boundary, that saving tips the colocated plan from bitmap to a plain
 -- index scan.
 --
--- Bitmap shape coverage: Q1, Q3, Q6 exercise BitmapAnd; Q4, Q5, Q7
+-- Bitmap shape coverage: Q1, Q3, Q6 exercise BitmapAnd; Q4, Q5, Q8
 -- exercise BitmapOr.  Q2 sits on the cost crossover between an
 -- index-only scan on the wide covering index and a plain index scan
 -- on the narrow c index, where the colo/uncolo ybctid back-transfer
@@ -167,6 +167,12 @@ analyze s;
 --             single c-scan (same colocation flip as Q1).
 --
 --   Q7 (join, inner "b = x OR b = y"):
+--       the OR becomes "b = ANY (ARRAY[x, y])", which a plain index
+--       scan can take, so no bitmap is needed.
+--       [1] index-only via covering.
+--       [2,3] index scan on b per inner iteration.
+--
+--   Q8 (join, inner "b = x OR c = y"):
 --       bitmap-OR per inner iteration in any setting.
 create table queries (id serial, query text, expected text[], primary key (id asc));
 insert into queries values
@@ -209,6 +215,12 @@ insert into queries values
     (DEFAULT,
         '/*+ Leading((s r)) */'||
         'select b, c from r, s where b = x or b = y',
+        '{"index only", "index scan", "index scan"}'::text[]
+        ),
+    -- Q8: join with inner predicate "b = x OR c = y".
+    (DEFAULT,
+        '/*+ Leading((s r)) */'||
+        'select b, c from r, s where b = x or c = y',
         '{"bitmap", "bitmap", "bitmap"}'::text[]
         );
 

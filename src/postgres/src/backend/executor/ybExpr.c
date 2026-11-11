@@ -520,6 +520,11 @@ yb_pushdown_walker(Node *node, List **colrefs)
 			{
 				OpExpr	   *op_expr = castNode(OpExpr, node);
 
+				/*
+				 * The planner leaves opfuncid unset on clauses it builds late,
+				 * such as an index qual commuted to put the index column first.
+				 */
+				set_opfuncid(op_expr);
 				if (!yb_check_collation(op_expr->inputcollid))
 					return true;
 				if (!yb_can_pushdown_func(op_expr->opfuncid))
@@ -543,6 +548,7 @@ yb_pushdown_walker(Node *node, List **colrefs)
 					/* YB_UPGRADE: Handle this case for each new PG version. */
 					Assert(false);
 
+				set_sa_opfuncid(saop_expr);
 				if (!yb_check_collation(saop_expr->inputcollid))
 					return true;
 				if (!yb_can_pushdown_func(saop_expr->opfuncid))
