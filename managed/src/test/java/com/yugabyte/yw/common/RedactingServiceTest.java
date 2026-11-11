@@ -8,6 +8,7 @@ import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.LdapBindPasswdHbaFormat.QuoteStyle;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
@@ -658,6 +659,78 @@ public class RedactingServiceTest {
     assertEquals("ycql_ldap_bind_passwd", redactedFlag.get("name").asText());
     assertEquals(SECRET_REPLACEMENT, redactedFlag.get("old").asText());
     assertEquals(SECRET_REPLACEMENT, redactedFlag.get("new").asText());
+  }
+
+  @Test
+  public void testFilterSecretFieldsForLogsRedactsBareAuditGFlagChanges() {
+    ObjectNode details = Json.newObject();
+    ArrayNode tserver = details.putObject("gflags").putArray("tserver");
+    tserver
+        .addObject()
+        .put("name", "ycql_ldap_bind_passwd")
+        .put("old", "oldSecret")
+        .put("new", "newSecret")
+        .put("default", "defaultSecret");
+    tserver
+        .addObject()
+        .put("name", "ysql_hba_conf_csv")
+        .put("old", "host all all 0.0.0.0/0 ldap ldapbindpasswd=oldHba ldaptls=0")
+        .put("new", "host all all 0.0.0.0/0 ldap ldapbindpasswd=newHba ldaptls=0");
+    tserver.addObject().put("name", "webserver_port").put("old", "9000").put("new", "9100");
+    details
+        .putObject("readonly_cluster_gflags")
+        .putArray("master")
+        .addObject()
+        .put("name", "ycql_ldap_bind_passwd")
+        .putNull("old")
+        .put("new", "readReplicaSecret");
+    ObjectNode original = details.deepCopy();
+
+    JsonNode redacted =
+        RedactingService.filterSecretFields(details, RedactionTarget.LOGS, null, null, true);
+
+    assertEquals(original, details);
+    JsonNode ycql = redacted.get("gflags").get("tserver").get(0);
+    assertEquals(SECRET_REPLACEMENT, ycql.get("old").asText());
+    assertEquals(SECRET_REPLACEMENT, ycql.get("new").asText());
+    assertEquals(SECRET_REPLACEMENT, ycql.get("default").asText());
+    JsonNode hba = redacted.get("gflags").get("tserver").get(1);
+    assertEquals(
+        "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + SECRET_REPLACEMENT + " ldaptls=0",
+        hba.get("old").asText());
+    assertEquals(
+        "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + SECRET_REPLACEMENT + " ldaptls=0",
+        hba.get("new").asText());
+    assertEquals(
+        original.get("gflags").get("tserver").get(2), redacted.get("gflags").get("tserver").get(2));
+    JsonNode readReplicaYcql = redacted.get("readonly_cluster_gflags").get("master").get(0);
+    assertTrue(readReplicaYcql.get("old").isNull());
+    assertEquals(SECRET_REPLACEMENT, readReplicaYcql.get("new").asText());
+  }
+
+  @Test
+  public void testFilterSecretFieldsForLogsReplacesFallbackNamingLdapGFlag() {
+    for (String name : List.of("ycql_ldap_bind_passwd", "ysql_hba_conf_csv")) {
+      ObjectNode fallback =
+          Json.newObject()
+              .put("_redactionParseError", true)
+              .put(
+                  "_redactedPayload",
+                  "{\"gflags\":{\"tserver\":[{\"name\":\"" + name + "\",\"old\":\"secret\"");
+      assertEquals(
+          SECRET_REPLACEMENT,
+          RedactingService.filterSecretFields(fallback, RedactionTarget.LOGS, null, null, true)
+              .get("_redactedPayload")
+              .asText());
+    }
+
+    ObjectNode otherFallback =
+        Json.newObject()
+            .put("_redactionParseError", true)
+            .put("_redactedPayload", "{\"gflags\":{\"tserver\":[{\"name\":\"webserver_port\"");
+    assertEquals(
+        otherFallback,
+        RedactingService.filterSecretFields(otherFallback, RedactionTarget.LOGS, null, null, true));
   }
 
   /** Verifies ldapbindpasswd redaction for various password shapes and API JSON responses. */
