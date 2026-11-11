@@ -1286,9 +1286,10 @@ typedef struct YbCatalogMessageList
  * until AbortTransaction restores the caller's. The query layer never retries
  * an ANALYZE, but it does retry an enclosing statement, e.g. SELECT f() where
  * f runs ANALYZE, and yb_restart_transaction does not abort the PG
- * transaction. In legacy DDL mode, the PG_CATCH in YBTxnDdlProcessUtility
- * calls YBResetDdlState before the error reaches that retry, and restores the
- * context recorded here.
+ * transaction. In legacy DDL mode (!YBIsDdlTransactionBlockEnabled()), the
+ * PG_CATCH in YBTxnDdlProcessUtility calls YBResetDdlState before the error
+ * reaches that retry, and restores the context recorded here.
+ * TODO(#32073): Handle such retries with transactional DDL.
  */
 typedef struct YbUserIdAndSecContext
 {
