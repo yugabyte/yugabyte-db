@@ -62,6 +62,7 @@ import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
+import java.net.ConnectException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.time.Duration;
@@ -583,6 +584,14 @@ public class StorageConfigApiTest extends FakeDBApplication {
             .build();
     error = checkFailingWith(v1FieldError(400, unknownHost), 422);
     assertEquals(StorageConfigHandler.VALIDATION_FAILED, error.get("code").asText());
+
+    // The Azure SDK doesn't wrap network errors in an SDK type: the validator wraps its reactor
+    // exception for an unknown host, and rethrows any other one as is.
+    RuntimeException azureUnknownHost =
+        new RuntimeException("reactor", new UnknownHostException("account.example.invalid"));
+    error = checkFailingWith(v1FieldError(400, azureUnknownHost), 422);
+    assertEquals(StorageConfigHandler.VALIDATION_FAILED, error.get("code").asText());
+    checkFailingWith(new RuntimeException(new ConnectException("Connection refused")), 422);
   }
 
   @Test

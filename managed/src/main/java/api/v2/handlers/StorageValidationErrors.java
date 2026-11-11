@@ -16,11 +16,15 @@ import com.google.cloud.BaseServiceException;
 import com.google.common.collect.ImmutableMap;
 import com.oracle.bmc.model.BmcException;
 import com.yugabyte.yw.common.PlatformServiceException;
+import java.net.ConnectException;
+import java.net.NoRouteToHostException;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
 import java.net.http.HttpTimeoutException;
 import java.util.Iterator;
 import java.util.Map;
+import javax.net.ssl.SSLException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
@@ -135,7 +139,8 @@ final class StorageValidationErrors {
         return fromStatus(oci.getStatusCode(), oci.getServiceCode(), oci.getMessage());
       }
     }
-    // No HTTP answer: an SDK failure on the way to the provider.
+    // No HTTP answer: a failure on the way to the provider. The network exceptions count on their
+    // own, since the Azure SDK doesn't wrap them in an SDK type as the others do.
     boolean sdkFailure = false;
     t = failure;
     for (int depth = 0; t != null && depth < MAX_CAUSE_DEPTH; depth++, t = t.getCause()) {
@@ -143,7 +148,11 @@ final class StorageValidationErrors {
           t instanceof SdkClientException
               || t instanceof BaseServiceException
               || t instanceof HttpResponseException
-              || t instanceof BmcException;
+              || t instanceof BmcException
+              || t instanceof UnknownHostException
+              || t instanceof ConnectException
+              || t instanceof NoRouteToHostException
+              || t instanceof SSLException;
       if (isTransientNetworkFailure(t)) {
         return new ProviderError(0, null, true, failure.getMessage());
       }
