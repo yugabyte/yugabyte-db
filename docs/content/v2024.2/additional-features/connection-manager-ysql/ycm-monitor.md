@@ -90,9 +90,10 @@ Connection Manager provides the following log levels that you can set using the 
 
 - log_debug
 - log_query
-- log_config
 - log_session
 - log_stats
+
+Configuration logging (`log_config`) is always on in v2024.2.12.0 and later, so you don't need to set it. If you include `log_config` in the flag, it is accepted but has no effect.
 
 The structure of a log line is as follows:
 
