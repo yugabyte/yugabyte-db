@@ -145,6 +145,9 @@ METRIC_DEFINE_counter(
   yb::MetricUnit::kRequests,
   "Number of writes to disk handled by the system catalog.");
 
+THREAD_POOL_METRICS_DEFINE(server, sys_catalog_full_compaction_pool,
+    "Thread pool for scheduled and statistics-based full compactions of the sys catalog tablet.");
+
 DECLARE_bool(create_initial_sys_catalog_snapshot);
 DECLARE_int32(master_discovery_timeout_ms);
 DECLARE_int32(retryable_request_timeout_secs);
@@ -221,6 +224,8 @@ Status SysCatalogTable::Start(ElectedLeaderCallback leader_cb) {
   RETURN_NOT_OK(ThreadPoolBuilder("log-alloc").set_min_threads(1).Build(&allocation_pool_));
   RETURN_NOT_OK(ThreadPoolBuilder("full-compaction")
                     .set_max_threads(1)
+                    .set_metrics(THREAD_POOL_METRICS_INSTANCE(
+                        metric_entity_, sys_catalog_full_compaction_pool))
                     .Build(&full_compaction_pool_));
 
   setup_config_dns_stats_ = METRIC_dns_resolve_latency_during_sys_catalog_setup.Instantiate(
