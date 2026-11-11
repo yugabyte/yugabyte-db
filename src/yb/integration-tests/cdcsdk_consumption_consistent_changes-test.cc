@@ -7361,6 +7361,103 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALDetectAddDropColumnFromPg
   CheckRecordCount(resp, kExpectedDmlRecords);
 }
 
+// A stream created without TEST_ysql_yb_enable_replication_slot_transactional_ddl lacks the
+// catalog tables that transactional DDLs are decoded from. The master keeps serving the sys catalog
+// from the stream metadata it cached until prepare_replication_slots_for_transactional_ddl adds the
+// tables and invalidates it on every master.
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestPrepareSlotForTransactionalDdl) {
+  ToggleDDLMode(/* use_legacy = */ false);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+
+  ASSERT_OK(SetUpWithParams(3, 3, false, true));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName, 1));
+  constexpr auto kSlotName = "test_slot";
+  xrepl::StreamId stream_id =
+      ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(kSlotName));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 ($1, $2) VALUES (1, 10)", kTableName, kKeyColumnName, kValueColumnName));
+  // An implicit stream polls pg_class and pg_publication_rel on the sys catalog tablet, so this
+  // caches the stream metadata on the master leader.
+  ASSERT_OK(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, 1 /* expected_dml_records */, true /* init_virtual_wal */));
+  ASSERT_OK(DestroyVirtualWAL());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
+  // InitVirtualWAL retries this error until it times out.
+  InitVirtualWALForCDCRequestPB init_req;
+  init_req.set_stream_id(stream_id.ToString());
+  init_req.set_session_id(kVWALSessionId2);
+  init_req.add_table_id(table.table_id());
+  InitVirtualWALForCDCResponsePB init_resp;
+  RpcController init_rpc;
+  ASSERT_OK(cdc_proxy_->InitVirtualWALForCDC(init_req, &init_resp, &init_rpc));
+  ASSERT_TRUE(init_resp.has_error());
+  ASSERT_STR_CONTAINS(
+      StatusFromPB(init_resp.error().status()).ToString(),
+      "prepare_replication_slots_for_transactional_ddl");
+
+  // The command fails naming the stopped master. Rerunning it once the master is back finishes the
+  // invalidation.
+  auto* leader = ASSERT_RESULT(test_cluster()->GetLeaderMiniMaster());
+  auto* master = test_cluster()->mini_master(leader == test_cluster()->mini_master(0) ? 1 : 0);
+  const auto master_uuid = master->permanent_uuid();
+  const auto master_addresses = test_cluster()->GetMasterAddresses();
+  std::vector<uint16_t> master_ports;
+  for (size_t i = 0; i != test_cluster()->num_masters(); ++i) {
+    master_ports.push_back(test_cluster()->mini_master(i)->bound_rpc_addr().port());
+  }
+  master->Shutdown();
+  ASSERT_NOK_STR_CONTAINS(
+      PrepareReplicationSlotsForTransactionalDDL(master_addresses, kSlotName),
+      Format("master $0", master_uuid));
+  ASSERT_OK(master->StartDistributedMaster(master_ports));
+  ASSERT_OK(WaitFor(
+      [&]() {
+        return PrepareReplicationSlotsForTransactionalDDL(master_addresses, kSlotName).ok();
+      },
+      MonoDelta::FromSeconds(60) * kTimeMultiplier,
+      "Prepare the slot once every master is reachable"));
+  // Without a slot name, the command prepares every implicit slot.
+  ASSERT_STR_CONTAINS(
+      ASSERT_RESULT(PrepareReplicationSlotsForTransactionalDDL(master_addresses, "")),
+      Format("Prepared replication slots for transactional DDL: [$0]", kSlotName));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 ($1, $2) VALUES (2, 20)", kTableName, kKeyColumnName, kValueColumnName));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN value_2 text", kTableName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 ($1, $2, value_2) VALUES (3, 30, 'foo')", kTableName, kKeyColumnName,
+      kValueColumnName));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN value_2", kTableName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 ($1, $2) VALUES (4, 40)", kTableName, kKeyColumnName, kValueColumnName));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  constexpr int kExpectedDmlRecords = 3;
+  auto resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, kExpectedDmlRecords, true /* init_virtual_wal */,
+      kVWALSessionId2));
+  std::vector<uint64_t> insert_record_times;
+  std::vector<uint64_t> ddl_record_times;
+  for (const auto& record : resp.records) {
+    const auto& row_message = record.row_message();
+    if (row_message.op() == RowMessage_Op_INSERT) {
+      insert_record_times.push_back(row_message.record_time());
+    } else if (row_message.op() == RowMessage_Op_DDL) {
+      ddl_record_times.push_back(row_message.record_time());
+    }
+  }
+  ASSERT_EQ(insert_record_times.size(), kExpectedDmlRecords);
+  // DROP COLUMN changes pg_attribute but not pg_class, so its DDL record comes only from the
+  // catalog tables added to the stream.
+  ASSERT_TRUE(std::ranges::any_of(ddl_record_times, [&](uint64_t record_time) {
+    return record_time > insert_record_times[1] && record_time < insert_record_times[2];
+  }));
+}
+
 // The walsender reads the catalog within the transaction of each record. Intents of a
 // subtransaction rolled back to a savepoint are still in the intents DB, so the BEGIN record of
 // such a transaction carries the aborted subtransactions for the walsender to skip them (#36047).
