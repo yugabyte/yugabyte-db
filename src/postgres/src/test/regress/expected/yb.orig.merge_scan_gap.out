@@ -776,8 +776,10 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnl
 /*+IndexOnlyScan(gap_pk_tbl gap_pk_tbl_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT c1, c3, s, c2, k1 FROM gap_pk_tbl WHERE s IN (1, 2) AND c2 = k1 AND c1 = k1 ORDER BY c1, c3;
 (output identical to previous)
 DROP TABLE gap_pk_tbl;
--- The same expression gap column on a colocated index.  pggate cannot compare
--- an expression column of an embedded index, so the scan is not a merge scan.
+-- The same expression gap column on a colocated index.  For an embedded index
+-- scan, an expression column is not available for sort, so the merge stops
+-- before the column and sorts on c1 alone.  With expression pushdown off, the
+-- filter runs after the merge, and the rows stay in order.
 \set Q1 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_idx) Set(yb_max_merge_scan_streams 0)*/'
 \set Q2 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_idx) Set(yb_max_merge_scan_streams 64)*/'
 \set query ':P :Q SELECT c1, c3, s, c2 FROM gap_expr_tbl WHERE s IN (1, 2) AND c1 = c2 + 0 ORDER BY c1, c3;'
@@ -809,7 +811,27 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
 (12 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT c1, c3, s, c2 FROM gap_expr_tbl WHERE s IN (1, 2) AND c1 = c2 + 0 ORDER BY c1, c3;
-(output identical to previous)
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Incremental Sort (actual rows=4 loops=1)
+   Output: c1, c3, s, c2
+   Sort Key: gap_expr_tbl.c1, gap_expr_tbl.c3
+   Presorted Key: gap_expr_tbl.c1
+   Full-sort Groups: 1  Sort Method: quicksort
+   ->  Index Scan using gap_expr_tbl_idx on public.gap_expr_tbl (actual rows=4 loops=1)
+         Output: c1, c3, s, c2
+         Index Cond: (gap_expr_tbl.s = ANY ('{1,2}'::integer[]))
+         Merge Sort Key: gap_expr_tbl.c1
+         Merge Stream Key: gap_expr_tbl.s
+         Merge Streams: 2
+         Merge Cond: (gap_expr_tbl.s = ANY ('{1,2}'::integer[]))
+         Storage Filter: (gap_expr_tbl.c1 = (gap_expr_tbl.c2 + 0))
+         Storage Table Rows Scanned: 5
+         Storage Index Read Requests: 1
+         Storage Index Read Ops: 2
+         Storage Index Rows Scanned: 5
+(17 rows)
+
 /*+IndexScan(gap_expr_tbl gap_expr_tbl_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT c1, c3, s, c2 FROM gap_expr_tbl WHERE s IN (1, 2) AND c1 = c2 + 0 ORDER BY c1, c3;
  c1 | c3 | s | c2 
 ----+----+---+----
@@ -821,6 +843,63 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
 
 /*+IndexScan(gap_expr_tbl gap_expr_tbl_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT c1, c3, s, c2 FROM gap_expr_tbl WHERE s IN (1, 2) AND c1 = c2 + 0 ORDER BY c1, c3;
 (output identical to previous)
+SET yb_enable_expression_pushdown = off;
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT c1, c3, s, c2 FROM gap_expr_tbl WHERE s IN (1, 2) AND c1 = c2 + 0 ORDER BY c1, c3;
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Sort (actual rows=4 loops=1)
+   Output: c1, c3, s, c2
+   Sort Key: gap_expr_tbl.c1, gap_expr_tbl.c3
+   Sort Method: quicksort
+   ->  Index Scan using gap_expr_tbl_idx on public.gap_expr_tbl (actual rows=4 loops=1)
+         Output: c1, c3, s, c2
+         Index Cond: (gap_expr_tbl.s = ANY ('{1,2}'::integer[]))
+         Filter: (gap_expr_tbl.c1 = (gap_expr_tbl.c2 + 0))
+         Rows Removed by Filter: 1
+         Storage Table Rows Scanned: 5
+         Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
+         Storage Index Rows Scanned: 5
+(13 rows)
+
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT c1, c3, s, c2 FROM gap_expr_tbl WHERE s IN (1, 2) AND c1 = c2 + 0 ORDER BY c1, c3;
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Incremental Sort (actual rows=4 loops=1)
+   Output: c1, c3, s, c2
+   Sort Key: gap_expr_tbl.c1, gap_expr_tbl.c3
+   Presorted Key: gap_expr_tbl.c1
+   Full-sort Groups: 1  Sort Method: quicksort
+   ->  Index Scan using gap_expr_tbl_idx on public.gap_expr_tbl (actual rows=4 loops=1)
+         Output: c1, c3, s, c2
+         Index Cond: (gap_expr_tbl.s = ANY ('{1,2}'::integer[]))
+         Merge Sort Key: gap_expr_tbl.c1
+         Merge Stream Key: gap_expr_tbl.s
+         Merge Streams: 2
+         Merge Cond: (gap_expr_tbl.s = ANY ('{1,2}'::integer[]))
+         Filter: (gap_expr_tbl.c1 = (gap_expr_tbl.c2 + 0))
+         Rows Removed by Filter: 1
+         Storage Table Rows Scanned: 5
+         Storage Index Read Requests: 1
+         Storage Index Read Ops: 2
+         Storage Index Rows Scanned: 5
+(18 rows)
+
+/*+IndexScan(gap_expr_tbl gap_expr_tbl_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT c1, c3, s, c2 FROM gap_expr_tbl WHERE s IN (1, 2) AND c1 = c2 + 0 ORDER BY c1, c3;
+ c1 | c3 | s | c2 
+----+----+---+----
+  1 |  0 | 1 |  1
+  1 |  4 | 2 |  1
+  5 |  1 | 1 |  5
+  5 |  2 | 2 |  5
+(4 rows)
+
+/*+IndexScan(gap_expr_tbl gap_expr_tbl_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT c1, c3, s, c2 FROM gap_expr_tbl WHERE s IN (1, 2) AND c1 = c2 + 0 ORDER BY c1, c3;
+(output identical to previous)
+RESET yb_enable_expression_pushdown;
 DROP TABLE gap_expr_tbl;
 -- The same with the gap column c2::text, a relabeled varchar column, which is
 -- also an expression column of the index.
@@ -855,7 +934,27 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
 (12 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_relabel_tbl gap_relabel_tbl_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT c1, c3, s, c2 FROM gap_relabel_tbl WHERE s IN (1, 2) AND c1 = c2 ORDER BY c1, c3;
-(output identical to previous)
+                                          QUERY PLAN                                          
+----------------------------------------------------------------------------------------------
+ Incremental Sort (actual rows=4 loops=1)
+   Output: c1, c3, s, c2
+   Sort Key: gap_relabel_tbl.c1, gap_relabel_tbl.c3
+   Presorted Key: gap_relabel_tbl.c1
+   Full-sort Groups: 1  Sort Method: quicksort
+   ->  Index Scan using gap_relabel_tbl_idx on public.gap_relabel_tbl (actual rows=4 loops=1)
+         Output: c1, c3, s, c2
+         Index Cond: (gap_relabel_tbl.s = ANY ('{1,2}'::integer[]))
+         Merge Sort Key: gap_relabel_tbl.c1
+         Merge Stream Key: gap_relabel_tbl.s
+         Merge Streams: 2
+         Merge Cond: (gap_relabel_tbl.s = ANY ('{1,2}'::integer[]))
+         Storage Filter: (gap_relabel_tbl.c1 = (gap_relabel_tbl.c2)::text)
+         Storage Table Rows Scanned: 5
+         Storage Index Read Requests: 1
+         Storage Index Read Ops: 2
+         Storage Index Rows Scanned: 5
+(17 rows)
+
 /*+IndexScan(gap_relabel_tbl gap_relabel_tbl_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT c1, c3, s, c2 FROM gap_relabel_tbl WHERE s IN (1, 2) AND c1 = c2 ORDER BY c1, c3;
  c1 | c3 | s | c2 
 ----+----+---+----

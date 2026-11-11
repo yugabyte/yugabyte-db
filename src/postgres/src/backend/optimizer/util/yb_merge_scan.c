@@ -648,6 +648,30 @@ ybIsCopyOfEarlierIndexCol(IndexOptInfo *index, int indexcol)
 }
 
 /*
+ * Whether an index column from indexcol up to but not including end is an
+ * expression column that yb_add_merge_gap_sort_cols makes the plan merge on: a
+ * range column without an equality index clause that is not a SAOP stream
+ * column, a merge sort column, or a copy of an earlier index column.  The
+ * caller passes the columns between two merge sort columns.
+ */
+static bool
+ybHasExpressionGapCol(IndexOptInfo *index, List *indexclauses,
+					  Bitmapset *saop_idxs, int indexcol, int end)
+{
+	for (; indexcol < end; indexcol++)
+	{
+		if (indexcol < index->nhashcolumns ||
+			bms_is_member(indexcol, saop_idxs) ||
+			index->indexkeys[indexcol] != 0 ||
+			ybEqualityIndexClause(index, indexclauses, indexcol) ||
+			ybIsCopyOfEarlierIndexCol(index, indexcol))
+			continue;
+		return true;
+	}
+	return false;
+}
+
+/*
  * Settle the stream key columns of an index path, the columns each merge
  * stream binds to one value.  stream_cols holds the SAOP columns the pathkeys
  * walk picked.  build_index_paths calls this after truncate_useless_pathkeys,
@@ -720,9 +744,14 @@ yb_finalize_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
 
 		/*
 		 * For an embedded index scan, an expression column is not available
-		 * for sort (see also #36017).
+		 * for sort (see also #36017).  That holds for the column of this
+		 * pathkey and for a column before it that yb_add_merge_gap_sort_cols
+		 * would make the plan merge on.
 		 */
-		if (embedded && index->indexkeys[tle->resno - 1] == 0)
+		if (embedded &&
+			(index->indexkeys[tle->resno - 1] == 0 ||
+			 ybHasExpressionGapCol(index, indexclauses, saop_idxs,
+								   last_sort_indexcol + 1, tle->resno - 1)))
 		{
 			*pathkeys = list_truncate(*pathkeys, foreach_current_index(lc));
 
@@ -761,17 +790,7 @@ yb_finalize_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
 
 		clause = ybEqualityIndexClause(index, indexclauses, indexcol);
 		if (!clause && indexcol >= index->nhashcolumns)
-		{
-			/*
-			 * yb_add_merge_gap_sort_cols makes the plan merge on this column
-			 * unless it is a copy.  For an embedded index scan, an expression
-			 * column is not available for sort (see also #36017).
-			 */
-			if (embedded && index->indexkeys[indexcol] == 0 &&
-				!ybIsCopyOfEarlierIndexCol(index, indexcol))
-				return NIL;
 			continue;
-		}
 
 		info = makeNode(YbMergeScanStreamColInfo);
 		info->clause = clause;
@@ -805,11 +824,11 @@ yb_merge_scan_num_streams(List *stream_cols)
  * Add to sort_info, in index column order, every index column before its last
  * merge sort column that is not a merge stream key in stream_col_idxs, a merge
  * sort column, or a copy of an earlier index column.  These must be the gap
- * columns that yb_finalize_merge_scan_stream_cols checks when it decides
- * whether the path can merge.  Each stream returns its rows in index order, so
- * merging on these columns too keeps the merged rows in index order.  Such a
- * column is redundant for the pathkeys only because the index predicate holds
- * it constant, or because filters tie it to a constant or to an earlier merge
+ * columns that yb_finalize_merge_scan_stream_cols cuts the pathkeys before on
+ * an embedded index.  Each stream returns its rows in index order, so merging
+ * on these columns too keeps the merged rows in index order.  Such a column is
+ * redundant for the pathkeys only because the index predicate holds it
+ * constant, or because filters tie it to a constant or to an earlier merge
  * sort column, and filters only remove rows.  So the merged rows keep the
  * order of the pathkeys wherever those filters run, even after the merge.
  * Merging on such a column matters only when a filter that ties it runs after

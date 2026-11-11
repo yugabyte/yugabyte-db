@@ -205,8 +205,10 @@ ANALYZE gap_pk_tbl;
 \i :run_query
 DROP TABLE gap_pk_tbl;
 
--- The same expression gap column on a colocated index.  pggate cannot compare
--- an expression column of an embedded index, so the scan is not a merge scan.
+-- The same expression gap column on a colocated index.  For an embedded index
+-- scan, an expression column is not available for sort, so the merge stops
+-- before the column and sorts on c1 alone.  With expression pushdown off, the
+-- filter runs after the merge, and the rows stay in order.
 \set Q1 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_idx) Set(yb_max_merge_scan_streams 0)*/'
 \set Q2 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_idx) Set(yb_max_merge_scan_streams 64)*/'
 \set query ':P :Q SELECT c1, c3, s, c2 FROM gap_expr_tbl WHERE s IN (1, 2) AND c1 = c2 + 0 ORDER BY c1, c3;'
@@ -218,6 +220,9 @@ INSERT INTO gap_expr_tbl VALUES
     (5, 2, 5, 5, 2);
 ANALYZE gap_expr_tbl;
 \i :run_query
+SET yb_enable_expression_pushdown = off;
+\i :run_query
+RESET yb_enable_expression_pushdown;
 DROP TABLE gap_expr_tbl;
 
 -- The same with the gap column c2::text, a relabeled varchar column, which is
