@@ -717,6 +717,7 @@ get_memoize_path(PlannerInfo *root, RelOptInfo *innerrel,
 		double		yb_calls = outer_path->rows;
 
 		if (yb_enable_base_scans_cost_model &&
+			outer_path->parallel_workers == 0 &&
 			root->limit_tuples > 0 &&
 			yb_joinrel->rows > root->limit_tuples &&
 			bms_equal(yb_joinrel->relids, root->all_baserels) &&

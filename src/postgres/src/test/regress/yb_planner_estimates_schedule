@@ -32,3 +32,5 @@ test: yb.orig.bnl_cost_parity_partitioned
 test: yb.orig.join_cost_skip_rows_setup
 
 test: yb.orig.join_cost_skip_rows
+
+test: yb.orig.memoize_limit
