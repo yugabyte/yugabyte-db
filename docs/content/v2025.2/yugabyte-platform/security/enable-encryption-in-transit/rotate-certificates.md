@@ -137,7 +137,7 @@ To rotate root certificates for a universe, do the following:
 
 ### Node agent certificates
 
-By default, node agent uses a YugabyteDB Anywhere-generated self-signed root CA certificate to encrypt communication with YugabyteDB Anywhere. Node agent also supports (in v2025.2.6.1 and later) [self-signed](../add-certificate-self/) and, for on-premises providers only, [CA-signed](../add-certificate-ca/) certificates. (cert-manager and Hashicorp vault are not supported for node agent. This does not apply to Kubernetes.)
+By default, node agent uses a YugabyteDB Anywhere-generated self-signed root CA certificate to encrypt communication with YugabyteDB Anywhere. Node agent also supports (in v2025.2.7.0 and later) [self-signed](../add-certificate-self/) and, for on-premises providers only, [CA-signed](../add-certificate-ca/) certificates. (cert-manager and Hashicorp vault are not supported for node agent. This does not apply to Kubernetes.)
 
 To keep node agent on a custom certificate across reinstalls (for example, OS image upgrade or reprovision), [enable node-to-node encryption in transit](#enable-or-disable-encryption-in-transit) and set the **Use Universe Certificates in Node Agent Installation** Provider Runtime Configuration option (config key `yb.node_agent.use_universe_certificates_on_install`) to true. Refer to [Manage runtime configuration settings](../../../administer-yugabyte-platform/manage-runtime-config/). YugabyteDB Anywhere then uses the universe's node-to-node certificate for node agent installs it triggers.
 
