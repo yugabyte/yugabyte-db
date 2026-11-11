@@ -218,6 +218,7 @@ static bool MatchNamedCall(HeapTuple proctup, int nargs, List *argnames,
 						   bool include_out_arguments, int pronargs,
 						   int **argnumbers);
 static char *YbBuildTempNameSuffix(YbTempNamespaceSuffixBuffer *buf);
+static const char *YbSkipTempNameSuffix(const char *name);
 
 
 /*
@@ -3342,9 +3343,9 @@ GetTempNamespaceBackendId(Oid namespaceId)
 	if (!nspname)
 		return InvalidBackendId;	/* no such namespace? */
 	if (strncmp(nspname, "pg_temp_", 8) == 0)
-		result = atoi(nspname + 8);
+		result = atoi(YbSkipTempNameSuffix(nspname + 8));
 	else if (strncmp(nspname, "pg_toast_temp_", 14) == 0)
-		result = atoi(nspname + 14);
+		result = atoi(YbSkipTempNameSuffix(nspname + 14));
 	else
 		result = InvalidBackendId;
 	pfree(nspname);
@@ -4755,4 +4756,19 @@ YbBuildTempNameSuffix(YbTempNamespaceSuffixBuffer *buf)
 	*(tail++) = '_';
 	*tail = 0;
 	return buf->data;
+}
+
+/*
+ * Skip the "<tserver_uuid>_" suffix built by YbBuildTempNameSuffix, if
+ * present, so that the backend ID that follows it can be parsed.  The suffix
+ * may name another tserver: the backend ID then refers to a backend there.
+ */
+static const char *
+YbSkipTempNameSuffix(const char *name)
+{
+	const int	hex_len = UUID_LEN * 2;
+
+	if (strspn(name, "0123456789abcdef") == hex_len && name[hex_len] == '_')
+		return name + hex_len + 1;
+	return name;
 }

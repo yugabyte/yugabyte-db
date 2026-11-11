@@ -195,4 +195,7 @@ extern int	data_sync_elevel(int elevel);
 #define PG_TEMP_FILES_DIR "pgsql_tmp"
 #define PG_TEMP_FILE_PREFIX "pgsql_tmp"
 
+/* YB declarations */
+extern void YbRemovePgTempFilesOfKilledBackend(int pid, int backendId);
+
 #endif							/* FD_H */

@@ -4189,6 +4189,62 @@ TEST_F(PgLibPqTempTest, DiscardTempTable) {
   ASSERT_OK(TestRemoveTempTable(false));
 }
 
+// Test that another backend locates the physical storage of a temporary table,
+// as when it cleans out a temp namespace left behind by a killed backend.
+TEST_F(PgLibPqTempTest, DropTempTableOfOtherBackend) {
+  auto owner_conn = ASSERT_RESULT(Connect());
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(owner_conn.Execute("CREATE TEMP TABLE foo (k INT)"));
+  const auto relname = Format("$0.foo", ASSERT_RESULT(GetSchemaName("foo", &owner_conn)));
+  const auto pg_filepath = ASSERT_RESULT(
+      owner_conn.FetchRow<std::string>("SELECT pg_relation_filepath('foo')"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(
+                Format("SELECT pg_relation_filepath('$0')", relname))),
+            pg_filepath);
+
+  const auto filepath = JoinPathSegments(pg_ts->GetRootDir(), "pg_data", pg_filepath);
+  ASSERT_TRUE(Env::Default()->FileExists(filepath));
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", relname));
+  ASSERT_FALSE(Env::Default()->FileExists(filepath));
+}
+
+// Test that the physical storage for temporary tables and temporary files is
+// removed when a backend is killed, which the postmaster cleans up after
+// without restarting.
+TEST_F(PgLibPqTempTest, KillBackendWithTempFiles) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto other_conn = ASSERT_RESULT(Connect());
+  const auto pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+  ASSERT_OK(conn.Execute("CREATE TEMP TABLE foo AS SELECT generate_series(1, 1000) AS k"));
+  const auto pg_data = JoinPathSegments(pg_ts->GetRootDir(), "pg_data");
+  const auto filepath = JoinPathSegments(
+      pg_data, ASSERT_RESULT(conn.FetchRow<std::string>("SELECT pg_relation_filepath('foo')")));
+
+  // Spill a sort to temporary files, kept open by the cursor.
+  ASSERT_OK(conn.Execute("SET work_mem = '64kB'"));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute(
+      "DECLARE c CURSOR FOR SELECT k FROM generate_series(1, 100000) k ORDER BY k DESC"));
+  ASSERT_OK(conn.Fetch("FETCH 1 FROM c"));
+  const auto temp_dir = JoinPathSegments(pg_data, "base", "pgsql_tmp");
+  const auto has_temp_files = [&temp_dir, pid]() -> Result<bool> {
+    const auto prefix = Format("pgsql_tmp$0.", pid);
+    auto children = VERIFY_RESULT(Env::Default()->GetChildren(temp_dir, ExcludeDots::kTrue));
+    return std::ranges::any_of(
+        children, [&prefix](const std::string& name) { return name.starts_with(prefix); });
+  };
+
+  ASSERT_TRUE(Env::Default()->FileExists(filepath));
+  ASSERT_TRUE(ASSERT_RESULT(has_temp_files()));
+  ASSERT_EQ(kill(pid, SIGKILL), 0);
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return !Env::Default()->FileExists(filepath) && !VERIFY_RESULT(has_temp_files());
+  }, 30s * kTimeMultiplier, "Waiting for temporary files to be removed"));
+
+  // The postmaster did not restart.
+  ASSERT_OK(other_conn.Fetch("SELECT 1"));
+}
+
 // Drop Sequence test.
 TEST_F(PgLibPqTest, DropSequenceTest) {
   PGConn conn = ASSERT_RESULT(Connect());

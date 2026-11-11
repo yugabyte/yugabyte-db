@@ -354,6 +354,11 @@ static void unlink_if_exists_fname(const char *fname, bool isdir, int elevel);
 
 static int	fsync_parent_path(const char *fname, int elevel);
 
+/* YB declarations */
+static void YbRemoveTempFilesOfPid(const char *tsdirname, int pid);
+static void YbRemoveTempRelationFilesOfBackend(const char *tsdirname,
+											   int backendId);
+
 
 /*
  * pg_fsync --- do fsync with or without writethrough
@@ -3897,4 +3902,155 @@ pg_pwritev_with_retry(int fd, const struct iovec *iov, int iovcnt, off_t offset)
 	}
 
 	return sum;
+}
+
+/*
+ * YbRemovePgTempFilesOfKilledBackend
+ *
+ * Remove the temporary files and temporary relation files of a backend that
+ * was killed before it could remove them itself.  Without a crash-restart
+ * cycle, which YB avoids for such backends, RemovePgTempFiles does not run
+ * until the next postmaster start.
+ *
+ * The caller must ensure that no new backend can have been assigned
+ * backendId yet, or its files would be removed too.
+ */
+void
+YbRemovePgTempFilesOfKilledBackend(int pid, int backendId)
+{
+	char		temp_path[MAXPGPATH + 10 + sizeof(TABLESPACE_VERSION_DIRECTORY)];
+	DIR		   *spc_dir;
+	struct dirent *spc_de;
+
+	YbRemoveTempFilesOfPid("base", pid);
+	YbRemoveTempRelationFilesOfBackend("base", backendId);
+
+	spc_dir = AllocateDir("pg_tblspc");
+
+	while ((spc_de = ReadDirExtended(spc_dir, "pg_tblspc", LOG)) != NULL)
+	{
+		if (strcmp(spc_de->d_name, ".") == 0 ||
+			strcmp(spc_de->d_name, "..") == 0)
+			continue;
+
+		snprintf(temp_path, sizeof(temp_path), "pg_tblspc/%s/%s",
+				 spc_de->d_name, TABLESPACE_VERSION_DIRECTORY);
+		YbRemoveTempFilesOfPid(temp_path, pid);
+		YbRemoveTempRelationFilesOfBackend(temp_path, backendId);
+	}
+
+	FreeDir(spc_dir);
+}
+
+/*
+ * Remove the files and fileset directories that OpenTemporaryFile and
+ * FileSetInit created for pid in one tablespace's pgsql_tmp directory.
+ */
+static void
+YbRemoveTempFilesOfPid(const char *tsdirname, int pid)
+{
+	char		tmpdirname[MAXPGPATH * 2];
+	char		prefix[sizeof(PG_TEMP_FILE_PREFIX) + 16];
+	char		rm_path[MAXPGPATH * 3];
+	DIR		   *temp_dir;
+	struct dirent *temp_de;
+
+	snprintf(tmpdirname, sizeof(tmpdirname), "%s/%s",
+			 tsdirname, PG_TEMP_FILES_DIR);
+	snprintf(prefix, sizeof(prefix), "%s%d.", PG_TEMP_FILE_PREFIX, pid);
+
+	temp_dir = AllocateDir(tmpdirname);
+
+	if (temp_dir == NULL && errno == ENOENT)
+		return;
+
+	while ((temp_de = ReadDirExtended(temp_dir, tmpdirname, LOG)) != NULL)
+	{
+		struct stat statbuf;
+
+		if (strncmp(temp_de->d_name, prefix, strlen(prefix)) != 0)
+			continue;
+
+		snprintf(rm_path, sizeof(rm_path), "%s/%s",
+				 tmpdirname, temp_de->d_name);
+
+		if (lstat(rm_path, &statbuf) < 0)
+		{
+			ereport(LOG,
+					(errcode_for_file_access(),
+					 errmsg("could not stat file \"%s\": %m", rm_path)));
+			continue;
+		}
+
+		if (S_ISDIR(statbuf.st_mode))
+		{
+			RemovePgTempFilesInDir(rm_path, false, true);
+
+			if (rmdir(rm_path) < 0)
+				ereport(LOG,
+						(errcode_for_file_access(),
+						 errmsg("could not remove directory \"%s\": %m",
+								rm_path)));
+		}
+		else if (unlink(rm_path) < 0)
+			ereport(LOG,
+					(errcode_for_file_access(),
+					 errmsg("could not remove file \"%s\": %m", rm_path)));
+	}
+
+	FreeDir(temp_dir);
+}
+
+/*
+ * Remove the temporary relation files of backendId, which mdcreate names
+ * t<backendId>_<relfilenode>, from every database directory of one
+ * tablespace.
+ */
+static void
+YbRemoveTempRelationFilesOfBackend(const char *tsdirname, int backendId)
+{
+	char		dbspace_path[MAXPGPATH * 2];
+	char		prefix[16];
+	char		rm_path[MAXPGPATH * 3];
+	DIR		   *ts_dir;
+	struct dirent *ts_de;
+
+	snprintf(prefix, sizeof(prefix), "t%d_", backendId);
+
+	ts_dir = AllocateDir(tsdirname);
+
+	while ((ts_de = ReadDirExtended(ts_dir, tsdirname, LOG)) != NULL)
+	{
+		DIR		   *dbspace_dir;
+		struct dirent *de;
+
+		/* Per-database directories have numeric names. */
+		if (strspn(ts_de->d_name, "0123456789") != strlen(ts_de->d_name))
+			continue;
+
+		snprintf(dbspace_path, sizeof(dbspace_path), "%s/%s",
+				 tsdirname, ts_de->d_name);
+
+		dbspace_dir = AllocateDir(dbspace_path);
+
+		while ((de = ReadDirExtended(dbspace_dir, dbspace_path, LOG)) != NULL)
+		{
+			if (strncmp(de->d_name, prefix, strlen(prefix)) != 0 ||
+				!looks_like_temp_rel_name(de->d_name))
+				continue;
+
+			snprintf(rm_path, sizeof(rm_path), "%s/%s",
+					 dbspace_path, de->d_name);
+
+			if (unlink(rm_path) < 0)
+				ereport(LOG,
+						(errcode_for_file_access(),
+						 errmsg("could not remove file \"%s\": %m",
+								rm_path)));
+		}
+
+		FreeDir(dbspace_dir);
+	}
+
+	FreeDir(ts_dir);
 }
