@@ -28,8 +28,8 @@ use master_rpc_handlers::{LeaderServices, MasterInfo};
 use master_sys_catalog::{ApplyEvents, SysCatalogStore};
 use master_table_lifecycle::TransactionTableController;
 use master_table_lifecycle::{
-    ColocatedTableAdder, LifecycleOptions, SchemaHost, TableAlterer, TableDeleter, TableLifecycle,
-    TabletAssigner, TabletRpc, TruncateOptions, Truncates,
+    ColocatedTableAdder, FlushOptions, Flushes, LifecycleOptions, SchemaHost, TableAlterer,
+    TableDeleter, TableLifecycle, TabletAssigner, TabletRpc, TruncateOptions, Truncates,
 };
 use master_tablet_split_manager::{
     AutoSplitOptions, SplitController, SplitOptions, TabletSplitManager,
@@ -516,6 +516,14 @@ impl Core {
                 retry: || retry_policy(false),
             },
         );
+        let flushes = Flushes::new(
+            tables.clone(),
+            ts_rpc.clone(),
+            FlushOptions {
+                rpc_timeout: || millis(MASTER_TS_RPC_TIMEOUT_MS.get()),
+                retry: || retry_policy(false),
+            },
+        );
         let leader = Arc::new(LeaderServices {
             catalog: catalog.clone(),
             writer: writer.clone(),
@@ -534,6 +542,7 @@ impl Core {
             locks: locks.clone(),
             backends,
             truncates,
+            flushes,
             blacklist_progress_initial_delay: || {
                 Duration::from_secs(BLACKLIST_PROGRESS_INITIAL_DELAY_SECS.get().max(0) as u64)
             },
@@ -663,6 +672,7 @@ impl Core {
         leader.locks.set_rpc(rpc.clone());
         leader.backends.set_rpc(rpc.clone());
         leader.truncates.set_rpc(rpc.clone());
+        leader.flushes.set_rpc(rpc.clone());
         let ts_rpc = self.ts_rpc.clone();
         let host = self.host.clone();
         let mut phases = self.leadership.subscribe();

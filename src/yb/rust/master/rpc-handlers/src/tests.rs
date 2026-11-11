@@ -608,6 +608,14 @@ mod leader_tests {
                     retry: Default::default,
                 },
             );
+            let flushes = master_table_lifecycle::Flushes::new(
+                tables.clone(),
+                master_task_runtime::TsRpcExecutor::new(|_| 1),
+                master_table_lifecycle::FlushOptions {
+                    rpc_timeout: || std::time::Duration::from_secs(1),
+                    retry: Default::default,
+                },
+            );
             Arc::new(LeaderServices {
                 catalog,
                 writer,
@@ -626,6 +634,7 @@ mod leader_tests {
                 locks,
                 backends,
                 truncates,
+                flushes,
                 blacklist_progress_initial_delay: || std::time::Duration::ZERO,
                 delay_leader_blacklist_completion: || false,
             })

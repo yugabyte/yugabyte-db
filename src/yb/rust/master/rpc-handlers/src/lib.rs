@@ -49,7 +49,9 @@ use yb_proto::pb::master_admin::{
     IsTabletSplittingCompleteResponsePB, SplitTabletRequestPB, SplitTabletResponsePB,
 };
 use yb_proto::pb::master_admin::{
-    WaitForYsqlBackendsCatalogVersionRequestPB, WaitForYsqlBackendsCatalogVersionResponsePB,
+    FlushTablesRequestPB, FlushTablesResponsePB, IsFlushTablesDoneRequestPB,
+    IsFlushTablesDoneResponsePB, WaitForYsqlBackendsCatalogVersionRequestPB,
+    WaitForYsqlBackendsCatalogVersionResponsePB,
 };
 use yb_proto::pb::master_client::{
     GetTableLocationsRequestPB, GetTableLocationsResponsePB, GetTabletLocationsRequestPB,
@@ -996,6 +998,19 @@ impl Shared {
                 ListTablegroupsRequestPB,
                 ListTablegroupsResponsePB,
                 |req, resp| tables.list_tablegroups(&snapshot, &req, &mut resp)
+            ),
+            "FlushTables" => {
+                serve_ddl!(FlushTablesRequestPB, FlushTablesResponsePB, |req, resp| {
+                    leader
+                        .flushes
+                        .flush_tables(&token, deadline, &req, &mut resp)
+                        .await
+                })
+            }
+            "IsFlushTablesDone" => serve_ddl!(
+                IsFlushTablesDoneRequestPB,
+                IsFlushTablesDoneResponsePB,
+                |req, resp| leader.flushes.is_flush_tables_done(&req, &mut resp)
             ),
             "TruncateTable" => serve_ddl!(
                 TruncateTableRequestPB,

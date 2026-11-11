@@ -90,6 +90,8 @@ pub struct LeaderServices {
     pub backends: Arc<master_ysql_manager::backends::YsqlBackends>,
     /// `TruncateTable`.
     pub truncates: Arc<master_table_lifecycle::Truncates>,
+    /// `FlushTables`.
+    pub flushes: Arc<master_table_lifecycle::Flushes>,
     /// `blacklist_progress_initial_delay_secs`.
     pub blacklist_progress_initial_delay: fn() -> std::time::Duration,
     /// `delay_leader_blacklist_completion_percent_until_tservers_heartbeat`.
