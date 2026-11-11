@@ -1,6 +1,7 @@
 --
--- Rows deleted or updated by the running statement must stay deleted after
--- the statement prunes the pages they are on.
+-- Rows deleted or updated by the running transaction must stay deleted after
+-- bottom-up index deletion, pruning, or ANALYZE checks them against the
+-- vacuum horizon.
 --
 CREATE EXTENSION pageinspect;
 
@@ -31,5 +32,29 @@ UPDATE tu SET v = 'w' WHERE k > 800;
 SELECT count(*), count(DISTINCT k) FROM tu;
 COMMIT;
 SELECT count(*), count(DISTINCT k), count(*) FILTER (WHERE v = 'w') FROM tu;
+
+-- Pruning without an index: an earlier committed DELETE leaves a prune hint
+-- on the page, and the page fills up inside the transaction
+CREATE TEMP TABLE tp (k int, v text);
+INSERT INTO tp SELECT g, repeat('x', 200) FROM generate_series(1, 28) g;
+DELETE FROM tp WHERE k = 1;
+BEGIN;
+DELETE FROM tp WHERE k BETWEEN 2 AND 11;
+INSERT INTO tp SELECT g, repeat('x', 200) FROM generate_series(101, 106) g;
+SELECT count(*) FROM tp;
+-- The page was pruned: the row deleted by the earlier DELETE is LP_DEAD
+SELECT count(*) FROM heap_page_items(get_raw_page('tp', 0)) WHERE lp_flags = 3;
+COMMIT;
+SELECT count(*) FROM tp;
+
+-- ANALYZE inside the transaction, without an index
+CREATE TEMP TABLE ta (k int, v text);
+INSERT INTO ta SELECT g, repeat('x', 200) FROM generate_series(1, 1000) g;
+BEGIN;
+DELETE FROM ta WHERE k <= 500;
+ANALYZE ta;
+SELECT count(*) FROM ta;
+COMMIT;
+SELECT count(*) FROM ta;
 
 DROP EXTENSION pageinspect;
