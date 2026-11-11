@@ -883,8 +883,7 @@ TEST_F(VectorLSMHnswlibTest, ModifyChunkFrontiersOfClosedStorage) {
       test_dir, "vector_lsm_test_" + Uuid::Generate().ToString(), "vector_lsm");
   auto open = [this, &storage_dir](FloatVectorLSM& lsm) {
     return OpenVectorLSM(
-        lsm, kDimensions, kDefaultChunkSize, vector_index::DistanceKind::kL2Squared,
-        /* mem_tracker = */ {}, storage_dir);
+        lsm, kDimensions, kDefaultChunkSize, vector_index::DistanceKind::kL2Squared, storage_dir);
   };
   // Below any vertex id the inserts generate, so the flushed frontier has to move backwards.
   const auto kTarget = VectorId::Nil();
