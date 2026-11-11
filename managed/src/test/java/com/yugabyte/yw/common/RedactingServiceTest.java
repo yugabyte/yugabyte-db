@@ -9,8 +9,10 @@ import static org.junit.Assert.assertTrue;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.commissioner.tasks.LdapUnivSync;
 import com.yugabyte.yw.common.LdapBindPasswdHbaFormat.QuoteStyle;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
+import com.yugabyte.yw.forms.LdapUnivSyncFormData;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
@@ -151,6 +153,25 @@ public class RedactingServiceTest {
     JsonNode apiGFlags = api.at("/clusters/0/userIntent/tserverGFlags");
     assertEquals(SECRET_REPLACEMENT, apiGFlags.get("ycql_ldap_bind_passwd").asText());
     assertFalse(apiGFlags.get("ysql_hba_conf_csv").asText().contains("hba-secret"));
+  }
+
+  @Test
+  public void testStorageAndApiRedactionRedactLdapUnivSyncDbuserPassword() {
+    LdapUnivSyncFormData formData = new LdapUnivSyncFormData();
+    formData.setTargetApi(LdapUnivSyncFormData.TargetApi.ysql);
+    formData.setDbUser("yugabyte");
+    formData.setDbuserPassword("db-secret");
+    LdapUnivSync.Params params = new LdapUnivSync.Params();
+    params.ldapUnivSyncFormData = formData;
+    JsonNode paramsJson = Json.toJson(params);
+
+    JsonNode stored = RedactingService.filterSecretFieldsForStorage(paramsJson);
+    assertEquals(SECRET_REPLACEMENT, stored.at("/ldapUnivSyncFormData/dbuserPassword").asText());
+    assertEquals("yugabyte", stored.at("/ldapUnivSyncFormData/dbUser").asText());
+
+    JsonNode api =
+        RedactingService.filterSecretFields(paramsJson, RedactionTarget.APIS, null, null, false);
+    assertEquals(SECRET_REPLACEMENT, api.at("/ldapUnivSyncFormData/dbuserPassword").asText());
   }
 
   // Test for API responses YSQL HBA conf csv parsing and redaction through regexes

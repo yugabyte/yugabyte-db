@@ -61,7 +61,8 @@ public class RedactingService {
           "$..ysqlNewPassword",
           "$..ycqlCurrentPassword",
           "$..ysqlCurrentPassword",
-          "$..sshPrivateKeyContent");
+          "$..sshPrivateKeyContent",
+          "$..dbuserPassword");
 
   private static final String YCQL_LDAP_BIND_PASSWD_PATH = "$..ycql_ldap_bind_passwd";
 
@@ -147,7 +148,6 @@ public class RedactingService {
           .add("$..hook.hookText")
           .add("$..hook.runtimeArgs")
           // LDAP - DB Universe Sync
-          .add("$..dbuserPassword")
           .add("$..ldapBindPassword")
           // HA Config
           .add("$..cluster_key")
