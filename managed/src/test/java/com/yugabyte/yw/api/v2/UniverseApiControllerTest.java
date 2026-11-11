@@ -24,6 +24,7 @@ import api.v2.handlers.UniverseManagementHandler;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yba.v2.client.ApiException;
 import com.yugabyte.yba.v2.client.api.UniverseApi;
 import com.yugabyte.yba.v2.client.models.AvailabilityZoneNodeSpec;
@@ -418,14 +419,17 @@ public class UniverseApiControllerTest extends UniverseTestBase {
         .get(0)
         .getGflags()
         .setTserver(
-            Map.of(
-                "tflag1",
-                "tval1",
+            // Ordered so that a redaction fallback, which drops the text after the HBA password,
+            // would also drop tflag1. ldaptls=0 keeps the password off the end of the HBA line,
+            // which falls back until PLAT-23624.
+            ImmutableMap.of(
+                "ycql_ldap_bind_passwd",
+                "ycql-bind-secret-xyz",
                 "ysql_hba_conf_csv",
                 "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com"
-                    + " ldapbindpasswd=hba-bind-secret-xyz",
-                "ycql_ldap_bind_passwd",
-                "ycql-bind-secret-xyz"));
+                    + " ldapbindpasswd=hba-bind-secret-xyz ldaptls=0",
+                "tflag1",
+                "tval1"));
     Logger logger = (Logger) LoggerFactory.getLogger(UniverseManagementHandler.class);
     ListAppender<ILoggingEvent> appender = new ListAppender<>();
     appender.start();
@@ -449,6 +453,7 @@ public class UniverseApiControllerTest extends UniverseTestBase {
         assertFalse(secret + " in: " + message, message.contains(secret));
       }
       assertTrue(message, message.contains("tval1"));
+      assertFalse(message, message.contains("_redactionParseError"));
     }
   }
 
