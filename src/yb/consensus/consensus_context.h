@@ -82,6 +82,9 @@ class ConsensusContext {
   // Listener could be set only once and then reset.
   virtual void ListenNumSSTFilesChanged(std::function<void()> listener) = 0;
 
+  // Whether post-split compaction is still pending on this tablet.
+  virtual bool PendingPostSplitCompaction() = 0;
+
   // Checks whether operation with provided op id and type could be added to the log.
   virtual Status CheckOperationAllowed(
       const OpId& op_id, consensus::OperationType op_type) = 0;
