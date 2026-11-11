@@ -1,5 +1,5 @@
 
-set(od_test_binary odyssey_test)
+set(od_test_binary od_regress-test) # YB: was odyssey_test
 set(od_test_src
     odyssey_test.c
     yb_od_regress.c # YB
@@ -85,6 +85,11 @@ file(COPY machinarium/client.crt DESTINATION machinarium)
 file(COPY machinarium/client.key DESTINATION machinarium)
 file(COPY machinarium/server.crt DESTINATION machinarium)
 file(COPY machinarium/server.key DESTINATION machinarium)
+# YB: test workers only receive the tests-* directories
+set(yb_od_test_dir "${YB_BUILD_ROOT}/tests-odyssey")
+file(COPY machinarium/ca.crt machinarium/client.crt machinarium/client.key
+          machinarium/server.crt machinarium/server.key
+     DESTINATION "${yb_od_test_dir}/machinarium")
 
 include_directories("${PROJECT_SOURCE_DIR}/")
 include_directories("${PROJECT_SOURCE_DIR}/sources/")
@@ -94,6 +99,15 @@ include_directories("${PROJECT_BINARY_DIR}/test")
 
 add_executable(${od_test_binary} ${od_test_src})
 add_dependencies(${od_test_binary} build_libs ${od_binary})
+# YB: register with ctest the way ADD_YB_TEST does
+set_target_properties(${od_test_binary} PROPERTIES
+                      RUNTIME_OUTPUT_DIRECTORY "${yb_od_test_dir}")
+if(YB_BUILD_TESTS)
+    add_dependencies(${od_test_binary} run-with-timeout)
+    add_custom_target(odyssey_${od_test_binary} DEPENDS ${od_test_binary})
+    add_test(odyssey_${od_test_binary} "${BUILD_SUPPORT_DIR}/run-test.sh"
+             "${yb_od_test_dir}/${od_test_binary}")
+endif()
 
 if(THREADS_HAVE_PTHREAD_ARG)
     set_property(TARGET ${od_test_binary} PROPERTY COMPILE_OPTIONS "-pthread")

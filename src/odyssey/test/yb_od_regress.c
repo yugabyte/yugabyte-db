@@ -5,6 +5,7 @@
 
 #include <errno.h>
 #include <fnmatch.h>
+#include <limits.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,6 +19,7 @@
 #define YB_OD_REGRESS_MAX_TESTS 1024
 #define YB_OD_REGRESS_NAME_LEN 256
 #define YB_OD_REGRESS_TIMEOUT_MS (300 * 1000)
+#define YB_OD_REGRESS_DATA_DIR "machinarium"
 
 typedef struct {
 	char suite[YB_OD_REGRESS_NAME_LEN];
@@ -96,6 +98,30 @@ static const char *yb_short_name(const char *function)
 	return function;
 }
 
+/* Tests open ./machinarium/<cert>; the certs are installed next to the binary. */
+static void yb_link_test_data(void)
+{
+	char exe[PATH_MAX];
+	char target[PATH_MAX + 32];
+	ssize_t len;
+	char *slash;
+
+	if (access(YB_OD_REGRESS_DATA_DIR, F_OK) == 0)
+		return;
+	len = readlink("/proc/self/exe", exe, sizeof(exe) - 1);
+	if (len <= 0)
+		return;
+	exe[len] = '\0';
+	slash = strrchr(exe, '/');
+	if (slash == NULL)
+		return;
+	*slash = '\0';
+	snprintf(target, sizeof(target), "%s/%s", exe, YB_OD_REGRESS_DATA_DIR);
+	if (symlink(target, YB_OD_REGRESS_DATA_DIR) != 0)
+		printf("cannot link %s to %s: %s\n", YB_OD_REGRESS_DATA_DIR,
+		       target, strerror(errno));
+}
+
 void yb_od_regress_init(int argc, char *argv[])
 {
 	int i;
@@ -108,6 +134,9 @@ void yb_od_regress_init(int argc, char *argv[])
 		else if (strncmp(argv[i], "--gtest_output=xml:", 19) == 0)
 			yb_xml_path = argv[i] + 19;
 	}
+
+	if (!yb_list_only)
+		yb_link_test_data();
 }
 
 void yb_od_regress_suite(const char *suite)
