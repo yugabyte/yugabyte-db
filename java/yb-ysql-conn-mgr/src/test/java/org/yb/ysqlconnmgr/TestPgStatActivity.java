@@ -24,6 +24,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.junit.Test;
 import static org.yb.AssertionWrappers.assertEquals;
@@ -34,6 +35,7 @@ import static org.yb.AssertionWrappers.fail;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
 import org.yb.util.RequiresLinux;
+import org.yb.minicluster.LogErrorListener;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 import org.yb.util.ProcessUtil;
@@ -166,6 +168,10 @@ public class TestPgStatActivity extends BaseYsqlConnMgr {
         String ysqlConnMgrHost = ysqlConnMgrAddr.getHostName();
         int ysqlConnMgrPort = ysqlConnMgrAddr.getPort();
 
+        PgLogCollector pgLog = new PgLogCollector(SAVED_DEFAULT_WARNING, LOG_MARKER);
+        miniCluster.getTabletServers().values()
+            .forEach(ts -> ts.getLogPrinter().addErrorListener(pgLog));
+
         List<InetSocketAddress> before = getJvmConnectionsTo(ysqlConnMgrHost, ysqlConnMgrPort);
         try (Connection conn1 = connectViaConnMgr(tserverIndex)) {
             List<InetSocketAddress> afterConn1 =
@@ -182,6 +188,64 @@ public class TestPgStatActivity extends BaseYsqlConnMgr {
                     assertInetClientAddrPort(conn1, client1);
                     assertInetClientAddrPort(conn2, client2);
                 }
+
+                // The 'g' packet must restore the defaults the 'G' packet set
+                // for these PGC_BACKEND GUCs, or the next 'G' warns. Postgres
+                // logs in order, so once the marker is seen any such warning
+                // has been seen too.
+                conn2.createStatement().execute(
+                    "DO $$ BEGIN RAISE WARNING '" + LOG_MARKER + "'; END $$");
+                assertTrue("marker not found in postgres log",
+                    pgLog.waitFor(LOG_MARKER, 30_000));
+                assertEquals("unexpected postgres log lines",
+                    Collections.emptyList(), pgLog.linesWith(SAVED_DEFAULT_WARNING));
+            }
+        }
+    }
+
+    private static final String SAVED_DEFAULT_WARNING = "ysql_conn_mgr_saved_default already set";
+    private static final String LOG_MARKER = "TestPgStatActivity log marker";
+
+    /* Keeps the tserver log lines that contain one of the given substrings. */
+    private static class PgLogCollector implements LogErrorListener {
+        private final List<String> substrings;
+        private final List<String> lines = new ArrayList<>();
+
+        PgLogCollector(String... substrings) {
+            this.substrings = Arrays.asList(substrings);
+        }
+
+        @Override
+        public void handleLine(String line) {
+            if (substrings.stream().anyMatch(line::contains)) {
+                synchronized (lines) {
+                    lines.add(line);
+                    lines.notifyAll();
+                }
+            }
+        }
+
+        @Override
+        public void reportErrorsAtEnd() {}
+
+        List<String> linesWith(String substring) {
+            synchronized (lines) {
+                return lines.stream().filter(l -> l.contains(substring))
+                    .collect(Collectors.toList());
+            }
+        }
+
+        boolean waitFor(String substring, long timeoutMs) throws InterruptedException {
+            long deadline = System.currentTimeMillis() + timeoutMs;
+            synchronized (lines) {
+                while (linesWith(substring).isEmpty()) {
+                    long waitMs = deadline - System.currentTimeMillis();
+                    if (waitMs <= 0) {
+                        return false;
+                    }
+                    lines.wait(waitMs);
+                }
+                return true;
             }
         }
     }
@@ -209,6 +273,11 @@ public class TestPgStatActivity extends BaseYsqlConnMgr {
                 "SET yb_ycm_internal_client_port = 4242",
                 "SET yb_conn_mgr_client_hostname = 'example.com'",
                 "SELECT set_config('yb_ycm_internal_client_addr', '192.0.2.1', false)",
+                // Clearing them would make inet_client_addr() fall back to
+                // Ysql Conn Mgr's own socket.
+                "SET yb_ycm_internal_client_addr = ''",
+                "SET yb_ycm_internal_client_port = -1",
+                "RESET yb_ycm_internal_client_addr",
             };
             for (String stmt : statements) {
                 try {
@@ -219,6 +288,8 @@ public class TestPgStatActivity extends BaseYsqlConnMgr {
                         e.getMessage().contains("cannot be set after connection start"));
                 }
             }
+            // RESET ALL succeeds but must leave them alone.
+            conn.createStatement().execute("RESET ALL");
             assertInetClientAddrPort(conn, client);
         }
     }

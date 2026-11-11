@@ -1723,8 +1723,9 @@ inet_client_addr(PG_FUNCTION_ARGS)
 	int			ret;
 
 	/*
-	 * YB: With Ysql Connection Manager, MyProcPort is the Unix socket from the
-	 * connection manager. Report the logical client's address instead.
+	 * YB: With Ysql Connection Manager, MyProcPort is the connection manager's
+	 * socket (Unix, or TCP when ysql_conn_mgr_use_unix_conn=false), not the
+	 * logical client's. Report the logical client's address instead.
 	 */
 	if (YbIsClientYsqlConnMgr() && yb_ycm_internal_client_addr &&
 		yb_ycm_internal_client_addr[0] != '\0')
