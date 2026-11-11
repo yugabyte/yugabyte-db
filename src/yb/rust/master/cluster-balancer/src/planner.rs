@@ -15,7 +15,8 @@
 //! removals, the adds (wrong placement, then blocks above their maximum, then load) and the leader
 //! moves, within the global add, remove and leader-move budgets less the tasks in flight.
 
-use std::collections::BTreeSet;
+use std::borrow::Cow;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
 use yb_proto::pb::common_net::{CloudInfoPB, PlacementBlockPB, PlacementInfoPB, ReplicationInfoPB};
@@ -27,7 +28,7 @@ use crate::distribution::{
 use crate::state::{GlobalState, Result, RunMode, Tab, TableState, Ts, TsMeta, UNKNOWN_TS};
 use crate::{
     matches_cloud_info, placement_id, similarity, Action, Activity, ClusterBalancer, ClusterView,
-    FxHashMap, Options, RunMetrics, RunResult, Similarity, TableInfo, WarningType,
+    FxHashMap, Options, PendingTasks, RunMetrics, RunResult, Similarity, TableInfo, WarningType,
 };
 
 /// A leader move (`LeaderMoveDetails`).
@@ -59,6 +60,8 @@ pub(crate) struct Run<'a, 'b> {
     tables: Vec<(&'a TableInfo, TableState<'a>)>,
     /// By table index.
     pending: Vec<Pending>,
+    /// By table index: the leader stepdowns in flight, which take from the table's budget.
+    stepdowns_in_flight: Vec<usize>,
     actions: Vec<Action>,
     pending_tasks: usize,
     read_only: bool,
@@ -82,11 +85,62 @@ pub(crate) fn run(
             live_placement_uuid: view.live_placement_uuid.clone(),
         });
     }
+    // C++ registers each task on its table as it sends it, so a later placement's run counts the
+    // tasks an earlier one decided as in flight, against its budgets and as the tablet's task.
+    let mut decided: HashMap<String, PendingTasks> = HashMap::new();
     for mode in &modes {
-        let activity = run_placement(balancer, view, options, mode, &mut result);
+        let activity = run_placement(balancer, view, options, mode, &decided, &mut result);
+        for action in &activity.actions {
+            let (table_id, tablet_id, kind, ts) = match action {
+                Action::AddReplica {
+                    table_id,
+                    tablet_id,
+                    ts_uuid,
+                    ..
+                } => (table_id, tablet_id, 0, ts_uuid),
+                Action::RemoveReplica {
+                    table_id,
+                    tablet_id,
+                    ts_uuid,
+                    ..
+                } => (table_id, tablet_id, 1, ts_uuid),
+                Action::MoveLeader {
+                    table_id,
+                    tablet_id,
+                    to_ts,
+                    ..
+                } => (table_id, tablet_id, 2, to_ts),
+            };
+            let tasks = decided.entry(table_id.clone()).or_default();
+            let tasks = match kind {
+                0 => &mut tasks.adds,
+                1 => &mut tasks.removes,
+                _ => &mut tasks.stepdowns,
+            };
+            tasks.insert(tablet_id.clone(), ts.clone());
+        }
         result.activities.push(activity);
     }
     result
+}
+
+/// The table's tasks in flight: the view's, and those earlier placements decided in this run.
+fn pending_of<'p>(
+    table: &'p TableInfo,
+    decided: &HashMap<String, PendingTasks>,
+) -> Cow<'p, PendingTasks> {
+    let Some(more) = decided.get(&table.id) else {
+        return Cow::Borrowed(&table.pending);
+    };
+    let mut pending = table.pending.clone();
+    for (into, from) in [
+        (&mut pending.adds, &more.adds),
+        (&mut pending.removes, &more.removes),
+        (&mut pending.stepdowns, &more.stepdowns),
+    ] {
+        into.extend(from.iter().map(|(k, v)| (k.clone(), v.clone())));
+    }
+    Cow::Owned(pending)
 }
 
 impl<'a, 'b> Run<'a, 'b> {
@@ -102,6 +156,7 @@ impl<'a, 'b> Run<'a, 'b> {
             g: GlobalState::new(options, &view.tservers),
             tables: Vec::new(),
             pending: Vec::new(),
+            stepdowns_in_flight: Vec::new(),
             actions: Vec::new(),
             pending_tasks: 0,
             read_only: mode.read_only,
@@ -111,13 +166,18 @@ impl<'a, 'b> Run<'a, 'b> {
     /// `ResetTableStatePtr`, `PopulateReplicationInfo`, `InitializeTSDescriptors` and
     /// `CountPendingTasks` for a table. A task on a tablet no longer in the table is ignored; one
     /// naming an unknown tserver skips the table.
-    fn add_table(&mut self, table: &'a TableInfo, mode: &'a RunMode) -> Result<()> {
+    fn add_table(
+        &mut self,
+        table: &'a TableInfo,
+        tasks: &PendingTasks,
+        mode: &'a RunMode,
+    ) -> Result<()> {
         let mut state = TableState::new(table, self.options, mode, self.g.ts.len());
         populate_replication_info(&mut state, table, &table.replication_info, self.options);
         for ts in 0..self.g.ts.len() as Ts {
             state.update_tablet_server(ts, &mut self.g);
         }
-        self.pending_tasks += table.pending.len();
+        self.pending_tasks += tasks.len();
         let g = &self.g;
         let ts = |uuid: &str| {
             g.index(uuid).ok_or_else(|| {
@@ -128,17 +188,17 @@ impl<'a, 'b> Run<'a, 'b> {
             })
         };
         let mut pending = Pending::default();
-        for (tablet, uuid) in &table.pending.adds {
+        for (tablet, uuid) in &tasks.adds {
             if let Some(tablet) = state.tablet_index(tablet) {
                 pending.adds.insert(tablet, ts(uuid)?);
             }
         }
-        for (tablet, uuid) in &table.pending.removes {
+        for (tablet, uuid) in &tasks.removes {
             if let Some(tablet) = state.tablet_index(tablet) {
                 pending.removes.insert(tablet, ts(uuid)?);
             }
         }
-        for (tablet, uuid) in &table.pending.stepdowns {
+        for (tablet, uuid) in &tasks.stepdowns {
             if let Some(tablet) = state.tablet_index(tablet) {
                 let to = if uuid.is_empty() {
                     None
@@ -156,6 +216,7 @@ impl<'a, 'b> Run<'a, 'b> {
         }
         self.tables.push((table, state));
         self.pending.push(pending);
+        self.stepdowns_in_flight.push(tasks.stepdowns.len());
         Ok(())
     }
 }
@@ -166,6 +227,7 @@ fn run_placement(
     view: &ClusterView,
     options: &Options,
     mode: &RunMode,
+    decided: &HashMap<String, PendingTasks>,
     result: &mut RunResult,
 ) -> Activity {
     let mut run = Run::new(balancer, view, options, mode);
@@ -192,10 +254,11 @@ fn run_placement(
             );
             continue;
         }
-        pending_adds += table.pending.adds.len() as i32;
-        pending_removes += table.pending.removes.len() as i32;
-        pending_stepdowns += table.pending.stepdowns.len() as i32;
-        if let Err(e) = run.add_table(table, mode) {
+        let tasks = pending_of(table, decided);
+        pending_adds += tasks.adds.len() as i32;
+        pending_removes += tasks.removes.len() as i32;
+        pending_stepdowns += tasks.stepdowns.len() as i32;
+        if let Err(e) = run.add_table(table, &tasks, mode) {
             run.g.activity.count_warning(
                 WarningType::SkipTableLoadBalancing,
                 format!("Skipping cluster balancing for table {}: {e}", table.id),
@@ -278,7 +341,7 @@ fn run_placement(
         }
         let mut table_remaining_leader_moves = options.max_concurrent_leader_moves_per_table;
         set_remaining(
-            run.tables[index].0.pending.stepdowns.len() as i32,
+            run.stepdowns_in_flight[index] as i32,
             &mut table_remaining_leader_moves,
         );
         while remaining_leader_moves > 0 && table_remaining_leader_moves > 0 {
@@ -1294,7 +1357,7 @@ pub(crate) mod testing {
         mode: &'a RunMode,
     ) -> Result<Run<'a, 'b>> {
         let mut run = Run::new(balancer, view, options, mode);
-        run.add_table(&view.tables[0], mode)?;
+        run.add_table(&view.tables[0], &view.tables[0].pending, mode)?;
         run.analyze_tablets(0)?;
         Ok(run)
     }

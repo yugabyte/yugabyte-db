@@ -632,3 +632,54 @@ async fn leader_leases_from_heartbeats_feed_the_leaderless_check() {
     .unwrap();
     assert!(leaderless(later).is_empty());
 }
+
+#[tokio::test]
+async fn a_faulty_drive_is_kept_until_the_tserver_registers_again() {
+    let s = setup(false).await;
+    let mut req = request("ts1", 5, 1);
+    req.registration = Some(registration(9100)).into();
+    s.heartbeat(&req).await.unwrap();
+    assert!(!s.ts.get(b"ts1").unwrap().has_faulty_drive);
+    let mut req = request("ts1", 5, 1);
+    req.set_faulty_drive(true);
+    s.heartbeat(&req).await.unwrap();
+    assert!(s.ts.get(b"ts1").unwrap().has_faulty_drive);
+    // A heartbeat without the field does not clear it.
+    s.heartbeat(&request("ts1", 5, 1)).await.unwrap();
+    assert!(s.ts.get(b"ts1").unwrap().has_faulty_drive);
+    // A restarted tserver registers again with its drives.
+    let mut req = request("ts1", 6, 1);
+    req.registration = Some(registration(9100)).into();
+    s.heartbeat(&req).await.unwrap();
+    assert!(!s.ts.get(b"ts1").unwrap().has_faulty_drive);
+}
+
+#[tokio::test]
+async fn a_rebuilt_replica_map_keeps_each_peers_own_state() {
+    let s = setup(false).await;
+    let peers = ["ts1", "ts2", "ts3"];
+    s.set_tablet(
+        sys_tablets_entry_pb::State::RUNNING,
+        Some(cstate(1, 5, "ts1", &peers)),
+    )
+    .await;
+    s.register("ts1", 1, &[9100]).await;
+    s.register("ts2", 1, &[9101]).await;
+    s.report("ts1", vec![reported(Some(cstate(1, 5, "ts1", &peers)))])
+        .await;
+    // ts2 won an election and reports first: the map is rebuilt from its config, and ts1, which
+    // may not report the tablet again, keeps the state it reported.
+    s.report("ts2", vec![reported(Some(cstate(2, 5, "ts2", &peers)))])
+        .await;
+    let replicas = s.ts.locations.get(b"tablet").unwrap().replicas;
+    let state = |uuid: &str| {
+        replicas
+            .iter()
+            .find(|r| &*r.ts_uuid == uuid.as_bytes())
+            .unwrap()
+            .state
+    };
+    assert_eq!(state("ts1"), RaftGroupStatePB::RUNNING);
+    assert_eq!(state("ts2"), RaftGroupStatePB::RUNNING);
+    assert_eq!(state("ts3"), RaftGroupStatePB::UNKNOWN);
+}

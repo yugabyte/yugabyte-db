@@ -14,8 +14,9 @@ leader of a new YSQL universe restores the shipped initial sys catalog snapshot
    `MaybeRestoreInitialSysCatalogSnapshotAndReloadSysCatalog` checks (`enable_ysql`, the
    snapshot path, `create_initial_sys_catalog_snapshot`, the instance metadata's
    `initdb_done_set_after_sys_catalog_restore`, `master_join_existing_universe`), submits the
-   `RESTORE_ON_TABLET` operation, replays the snapshot's tablet metadata changes, and posts a
-   catalog reload, since the restore bypasses the apply tap.
+   `RESTORE_ON_TABLET` operation and replays the snapshot's tablet metadata changes. The restore
+   bypasses the apply tap, so the tap posts a catalog reload as it applies, on every master: a
+   follower that leads next must not write default rows over a catalog it has not reloaded.
 2. Once the catalog has reloaded, the default rows are written with `after_initial_snapshot`: the
    snapshot's cluster config, xCluster config and persistence block map belong to the universe
    that made it and are replaced, and `initdb_done` is set, all in the one default-rows write.

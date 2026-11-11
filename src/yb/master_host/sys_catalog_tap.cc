@@ -16,6 +16,8 @@
 #include "yb/dockv/value.h"
 #include "yb/dockv/value_type.h"
 
+#include "yb/tablet/operations/snapshot_operation.h"
+
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
 
@@ -124,6 +126,11 @@ Status SysCatalogTap::Decode(const Slice& key, const Slice& value) {
   pending_.emplace_back(
       range[0].GetInt32(), range[1].GetString(), decoded.primitive_value().GetString(), false);
   return Status::OK();
+}
+
+void SysCatalogTap::RestoredOnTablet(const tablet::SnapshotOperation& operation) {
+  inner_.RestoredOnTablet(operation);
+  PostReload("sys catalog restored on tablet", operation.hybrid_time());
 }
 
 void SysCatalogTap::AppliedWriteBatch(const OpId& op_id, HybridTime write_time) {

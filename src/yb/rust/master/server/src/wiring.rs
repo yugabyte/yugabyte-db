@@ -123,6 +123,8 @@ static ENABLE_DELETE_TRUNCATE_XCLUSTER_REPLICATED_TABLE: FlagRef<bool> =
     FlagRef::new("enable_delete_truncate_xcluster_replicated_table");
 static BLACKLIST_PROGRESS_INITIAL_DELAY_SECS: FlagRef<i32> =
     FlagRef::new("blacklist_progress_initial_delay_secs");
+static DELAY_LEADER_BLACKLIST_COMPLETION: FlagRef<bool> =
+    FlagRef::new("delay_leader_blacklist_completion_percent_until_tservers_heartbeat");
 static SEND_LEADER_BLACKLISTED_TSERVERS: FlagRef<bool> =
     FlagRef::new("send_leader_blacklisted_tservers_on_heartbeat");
 static ENABLE_MULTI_WAY_SPLIT: FlagRef<bool> = FlagRef::new("TEST_enable_multi_way_tablet_split");
@@ -393,7 +395,8 @@ impl Core {
             ts_manager.clone(),
             schema.clone(),
             ts_rpc.clone(),
-            retry_policy(false),
+            // `AsyncGetTabletSplitKey` and `AsyncSplitTablet` are limited in attempts.
+            retry_policy(true),
             SplitOptions {
                 use_parent_table_id_field: || USE_PARENT_TABLE_ID_FIELD.get(),
                 enable_multi_way_split: || ENABLE_MULTI_WAY_SPLIT.get(),
@@ -477,6 +480,7 @@ impl Core {
             blacklist_progress_initial_delay: || {
                 Duration::from_secs(BLACKLIST_PROGRESS_INITIAL_DELAY_SECS.get().max(0) as u64)
             },
+            delay_leader_blacklist_completion: || DELAY_LEADER_BLACKLIST_COMPLETION.get(),
         });
 
         // Ready only once the catalog reflects everything committed before the election: the
@@ -668,7 +672,8 @@ fn start_term(
             leader.ts_manager.clone(),
             rpc.clone(),
             ts_rpc.clone(),
-            retry_policy(false),
+            // `AsyncAddServerTask` and `AsyncRemoveServerTask` are limited in attempts.
+            retry_policy(true),
             BalancerFlags {
                 enabled: Arc::new(move || {
                     ENABLE_LOAD_BALANCING.get()

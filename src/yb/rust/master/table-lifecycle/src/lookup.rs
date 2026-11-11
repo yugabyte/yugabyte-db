@@ -14,8 +14,8 @@
 
 use std::sync::Arc;
 
-use master_catalog_entity::Entity;
-use master_catalog_state::defaults::SYSTEM_NAMESPACES;
+use master_catalog_entity::{Entity, TableHot};
+use master_catalog_state::defaults::YCQL_VIRTUAL_TABLES;
 use master_catalog_state::CatalogSnapshot;
 use protobuf::Enum;
 use yb_host_api::StatusCode;
@@ -191,19 +191,23 @@ pub fn is_colocation_parent_table_id(id: &[u8]) -> bool {
     .any(|suffix| id.len() == 32 + suffix.len() && id.ends_with(suffix))
 }
 
+/// One of the YCQL virtual tables (`SystemTableDefs`), whose tablets the masters host.
+pub fn is_ycql_virtual_table(table: &TableHot) -> bool {
+    table.table_type == TableType::YQL_TABLE_TYPE.value()
+        && YCQL_VIRTUAL_TABLES
+            .iter()
+            .any(|(namespace_id, name)| table.namespace_id == *namespace_id && table.name == *name)
+}
+
 /// `TableInfo::is_system`: a table hosted on the sys-catalog tablet (sys.catalog and the YSQL
-/// catalog), or a YCQL virtual table of a system keyspace. Tables C++ creates in the `system`
-/// keyspace through CreateTable, such as `system.transactions`, are not system tables: the
-/// balancer and splits treat them as any other. (The YCQL metrics snapshots table, a real table
-/// in `system`, counts here as system, unlike in C++.)
+/// catalog), or a YCQL virtual table. Tables C++ creates in the system keyspaces through
+/// CreateTable, such as `system.transactions` and `system.cdc_state`, are not system tables: the
+/// balancer, splits and tablet locations treat them as any other.
 pub fn is_system_table(snapshot: &CatalogSnapshot, table: &Entity) -> bool {
     let Some(hot) = table.table() else {
         return false;
     };
-    (hot.table_type == TableType::YQL_TABLE_TYPE.value()
-        && SYSTEM_NAMESPACES
-            .iter()
-            .any(|(id, _)| hot.namespace_id == *id))
+    is_ycql_virtual_table(hot)
         || snapshot
             .tablets_of(&table.key.id)
             .iter()

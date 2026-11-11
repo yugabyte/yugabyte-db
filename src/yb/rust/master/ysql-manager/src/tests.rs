@@ -168,6 +168,7 @@ mod lease {
 
     struct Harness {
         catalog: Arc<Catalog>,
+        fake: Arc<FakeSysCatalog>,
         leases: Arc<YsqlLeases>,
         token: LeaderToken,
         _leadership: Arc<master_leadership::Leadership>,
@@ -205,6 +206,7 @@ mod lease {
         let leases = YsqlLeases::new(writer, leadership.clone(), ts_manager, options);
         Harness {
             catalog,
+            fake,
             leases,
             token: leadership.token().unwrap(),
             _leadership: leadership,
@@ -382,5 +384,52 @@ mod lease {
             exported.lease_epoch_floors[0].ignore_lease_epochs_before(),
             3
         );
+    }
+
+    /// A refresh of a lease whose expiry is being written waits for the write, as C++'s write
+    /// lock on the tserver's entry makes it, and gets a new lease rather than an extension of the
+    /// one the master is marking dead.
+    #[tokio::test]
+    async fn a_refresh_waits_for_an_expiry_of_its_lease() {
+        let h = harness(
+            LeaseOptions {
+                ttl: || Duration::from_millis(100),
+                client_buffer: || Duration::ZERO,
+                ..LeaseOptions::default()
+            },
+            vec![],
+        )
+        .await;
+        let info = h
+            .leases
+            .refresh(&h.token, &refresh_req(5, None))
+            .await
+            .unwrap();
+        assert!(info.new_lease());
+        assert_eq!(info.lease_epoch(), 1);
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        h.fake.pause_writes();
+        let writes = h.fake.writes();
+        let expire = tokio::spawn({
+            let (leases, token) = (h.leases.clone(), h.token);
+            async move { leases.expire(&token).await }
+        });
+        while h.fake.writes() == writes {
+            tokio::task::yield_now().await;
+        }
+        let refresh = tokio::spawn({
+            let (leases, token) = (h.leases.clone(), h.token);
+            async move { leases.refresh(&token, &refresh_req(5, Some(1))).await }
+        });
+        for _ in 0..100 {
+            tokio::task::yield_now().await;
+        }
+        assert!(!refresh.is_finished());
+        h.fake.resume_writes();
+        assert_eq!(expire.await.unwrap().unwrap(), vec![b"ts1".to_vec()]);
+        let info = refresh.await.unwrap().unwrap();
+        assert!(info.new_lease());
+        assert_eq!(info.lease_epoch(), 2);
+        assert!(lease_of(&h).live_lease());
     }
 }

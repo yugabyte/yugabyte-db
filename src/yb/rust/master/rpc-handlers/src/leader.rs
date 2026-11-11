@@ -86,6 +86,8 @@ pub struct LeaderServices {
     pub leases: Arc<master_ysql_manager::lease::YsqlLeases>,
     /// `blacklist_progress_initial_delay_secs`.
     pub blacklist_progress_initial_delay: fn() -> std::time::Duration,
+    /// `delay_leader_blacklist_completion_percent_until_tservers_heartbeat`.
+    pub delay_leader_blacklist_completion: fn() -> bool,
 }
 
 /// Who serves a leader method a layer-2 Rust leader does not.
@@ -269,11 +271,16 @@ impl LeaderServices {
         resp: &mut ChangeMasterClusterConfigResponsePB,
     ) -> Result<(), Status> {
         let mut config = req.cluster_config.clone().unwrap_or_default();
+        let snapshot = self.catalog.snapshot();
+        let load = |blacklist: &yb_proto::pb::catalog_entity_info::BlacklistPB, leaders_only| {
+            i32::try_from(self.relevant_replicas(&snapshot, blacklist, leaders_only))
+                .unwrap_or(i32::MAX)
+        };
         if let Some(blacklist) = config.server_blacklist.as_mut() {
-            blacklist.set_initial_replica_load(self.replicas_on(blacklist, false));
+            blacklist.set_initial_replica_load(load(blacklist, false));
         }
         if let Some(blacklist) = config.leader_blacklist.as_mut() {
-            blacklist.set_initial_leader_load(self.replicas_on(blacklist, true));
+            blacklist.set_initial_leader_load(load(blacklist, true));
         }
         let error_code = Mutex::new(None);
         let result = self
@@ -462,31 +469,6 @@ impl LeaderServices {
             }
         }
         result.map(|_| ())
-    }
-
-    fn replicas_on(
-        &self,
-        blacklist: &yb_proto::pb::catalog_entity_info::BlacklistPB,
-        leaders_only: bool,
-    ) -> i32 {
-        let hosts: HashSet<(String, u32)> = blacklist
-            .hosts
-            .iter()
-            .map(|h| (h.host().to_string(), h.port()))
-            .collect();
-        self.ts_manager
-            .all()
-            .iter()
-            .filter(|d| is_blacklisted(d, &hosts))
-            .map(|d| {
-                let load = self.ts_manager.locations.load(&d.uuid);
-                if leaders_only {
-                    load.leaders as i32
-                } else {
-                    load.replicas as i32
-                }
-            })
-            .sum()
     }
 
     /// `GetTabletLocations`.
@@ -831,8 +813,8 @@ impl LeaderServices {
     }
 }
 
-/// `system_tablets_`: the sys catalog tablet, and the tablets of the YCQL system keyspaces'
-/// virtual tables, whose replicas are the masters.
+/// `system_tablets_`: the sys catalog tablet, and the tablets of the YCQL virtual tables, whose
+/// replicas are the masters.
 fn is_system_tablet(snapshot: &CatalogSnapshot, tablet: &Entity) -> bool {
     if &*tablet.key.id == master_table_lifecycle::lookup::SYS_CATALOG_TABLET_ID {
         return true;
@@ -843,12 +825,7 @@ fn is_system_tablet(snapshot: &CatalogSnapshot, tablet: &Entity) -> bool {
     snapshot
         .get(SysRowEntryType::TABLE, &hot.table_id)
         .and_then(|t| t.table())
-        .is_some_and(|t| {
-            t.table_type == yb_proto::pb::common_types::TableType::YQL_TABLE_TYPE.value()
-                && master_catalog_state::defaults::SYSTEM_NAMESPACES
-                    .iter()
-                    .any(|(id, _)| t.namespace_id == *id)
-        })
+        .is_some_and(master_table_lifecycle::lookup::is_ycql_virtual_table)
 }
 
 /// A tablet lookup failure, with the split children C++ attaches to a hidden or deleted tablet

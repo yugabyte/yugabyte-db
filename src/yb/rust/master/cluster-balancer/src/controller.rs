@@ -272,7 +272,8 @@ impl Inner {
                     placement_uuid: utf8(reg.placement_uuid()),
                     live_and_reported: live.contains(&*d.uuid) && d.has_tablet_report,
                     heartbeat_age: d.last_heartbeat.map_or(Duration::MAX, |t| t.elapsed()),
-                    blacklisted: is_blacklisted(&d, &blacklist),
+                    // `AddTSIfBlacklisted`: a faulty drive drains the tserver as a blacklist does.
+                    blacklisted: is_blacklisted(&d, &blacklist) || d.has_faulty_drive,
                     leader_blacklisted: is_blacklisted(&d, &leader_blacklist),
                     disk_used_bytes: used,
                     disk_capacity_bytes: capacity,
@@ -306,7 +307,18 @@ impl Inner {
                 });
                 continue;
             }
-            let Ok(pb) = pb else { continue };
+            // A row C++ wrote with a nested string that is not UTF-8 keeps its hot fields but does
+            // not parse: its replication info is unknown, so the table is not balanced, and the
+            // run says so (SkipTableLoadBalancing) rather than looking idle.
+            let Ok(pb) = pb else {
+                tracing::warn!("Cannot parse the row of table {id}: not balancing it");
+                tables.push(TableInfo {
+                    id,
+                    placement_unknown: true,
+                    ..TableInfo::default()
+                });
+                continue;
+            };
             let tablets = snapshot
                 .tablets_of(&table.key.id)
                 .into_iter()
@@ -418,13 +430,18 @@ impl Inner {
             } => {
                 self.track(&table_id, |t| &mut t.stepdowns, &tablet_id, &to_ts);
                 scope.entity().spawn("try-step-down", async move {
-                    this.step_down(token, &tablet_id, &from_ts, &to_ts).await;
-                    this.untrack(&table_id, |t| &mut t.stepdowns, &tablet_id);
-                    if also_remove_replica {
+                    let responded = this.step_down(token, &tablet_id, &from_ts, &to_ts).await;
+                    // As `AsyncTryStepDown`, the removal follows a stepdown the leader answered,
+                    // even with an error; it is tracked before the stepdown stops being, so no
+                    // planner run sees the tablet with nothing in flight.
+                    if also_remove_replica && responded {
                         this.track(&table_id, |t| &mut t.removes, &tablet_id, &from_ts);
+                        this.untrack(&table_id, |t| &mut t.stepdowns, &tablet_id);
                         let result = this.change_config(token, &tablet_id, &from_ts, None).await;
                         this.log_change_config("REMOVE_SERVER", &tablet_id, &from_ts, result);
                         this.untrack(&table_id, |t| &mut t.removes, &tablet_id);
+                    } else {
+                        this.untrack(&table_id, |t| &mut t.stepdowns, &tablet_id);
                     }
                 });
             }
@@ -473,6 +490,14 @@ impl Inner {
                 "Change config {kind} of tablet {tablet_id} for replica {ts_uuid} failed: {status}"
             ),
         }
+    }
+
+    /// The tablet's leader, as the observed locations name it now.
+    fn leader_of(&self, tablet_id: &str) -> Option<Vec<u8>> {
+        self.ts_manager
+            .locations
+            .get(tablet_id.as_bytes())
+            .and_then(|r| r.leader().map(|l| l.ts_uuid.to_vec()))
     }
 
     /// The tablet's committed config index and whether it is still RUNNING.
@@ -536,26 +561,32 @@ impl Inner {
         }));
         req.set_cas_config_opid_index(cas_index);
         req.server = Some(server).into();
-        let Some(leader) = self
-            .ts_manager
-            .locations
-            .get(tablet_id.as_bytes())
-            .and_then(|r| r.leader().map(|l| l.ts_uuid.to_vec()))
-        else {
+        // The lane is the leader when the task starts; each attempt goes to the leader the
+        // locations name then, as `PickLeaderReplica` picks it on every attempt.
+        let Some(lane) = self.leader_of(tablet_id) else {
             return Err(aborted("The tablet has no known leader".into()));
         };
-        req.set_dest_uuid(leader.clone());
         let rpc_timeout = (self.flags.rpc_timeout)();
         let this = self.clone();
         self.executor
-            .run(&leader, "ChangeConfig", &self.retry, |_| {
+            .run(&lane, "ChangeConfig", &self.retry, |_| {
                 let current = this.leadership.check(&token);
-                let address = this.ts_manager.rpc_address(&leader);
+                let leader = this.leader_of(tablet_id);
+                let address = leader.as_ref().and_then(|l| this.ts_manager.rpc_address(l));
                 // A newer committed config makes this change stale.
                 let index = this.committed_index(tablet_id.as_bytes());
-                let (rpc, req) = (this.rpc.clone(), req.clone());
+                let (rpc, mut req) = (this.rpc.clone(), req.clone());
+                if let Some(leader) = &leader {
+                    req.set_dest_uuid(leader.clone());
+                }
                 async move {
                     current.map_err(Attempt::Fail)?;
+                    if leader.is_none() {
+                        return Err(Attempt::Retry(Status::new(
+                            StatusCode::NotFound,
+                            "The tablet has no known leader",
+                        )));
+                    }
                     match index {
                         None => {
                             return Err(Attempt::Fail(Status::new(
@@ -620,13 +651,21 @@ impl Inner {
 
     /// `AsyncTryStepDown`: one `LeaderStepDown` to the leader; a failed stepdown keeps the
     /// planner from nominating the same new leader for `min_leader_stepdown_retry_interval_ms`.
+    /// Whether the leader answered: not when `from` no longer leads (C++ aborts the task before
+    /// sending) or the call failed.
     async fn step_down(
         self: &Arc<Self>,
         token: LeaderToken,
         tablet_id: &str,
         from: &str,
         to: &str,
-    ) {
+    ) -> bool {
+        if self.leader_of(tablet_id).as_deref() != Some(from.as_bytes()) {
+            tracing::warn!(
+                "Not stepping down {from} for tablet {tablet_id}: it is no longer the leader"
+            );
+            return false;
+        }
         let mut req = LeaderStepDownRequestPB::new();
         req.set_dest_uuid(from.as_bytes().to_vec());
         req.set_tablet_id(tablet_id.as_bytes().to_vec());
@@ -700,10 +739,14 @@ impl Inner {
                 tracing::info!(
                     "Leader step down of tablet {tablet_id} from {from} done, failed: {failed}"
                 );
+                true
             }
-            Err(status) => tracing::warn!(
-                "Leader step down of tablet {tablet_id} from {from} failed: {status}"
-            ),
+            Err(status) => {
+                tracing::warn!(
+                    "Leader step down of tablet {tablet_id} from {from} failed: {status}"
+                );
+                false
+            }
         }
     }
 }

@@ -89,6 +89,9 @@ pub struct YsqlLeases {
     ts_manager: Arc<TsManager>,
     options: LeaseOptions,
     deadlines: Mutex<Option<Deadlines>>,
+    /// Serializes a tserver's refresh with an expiry of its lease, as C++'s `ObjectLockInfo` write
+    /// lock does.
+    lease_locks: Mutex<HashMap<Vec<u8>, Arc<tokio::sync::Mutex<()>>>>,
 }
 
 /// A tserver's OBJECT_LOCK_ENTRY row, or an empty one.
@@ -119,6 +122,7 @@ impl YsqlLeases {
             ts_manager,
             options,
             deadlines: Mutex::new(None),
+            lease_locks: Mutex::default(),
         })
     }
 
@@ -143,6 +147,24 @@ impl YsqlLeases {
                 .copied()
                 .unwrap_or(d.term_start + ttl)
         })
+    }
+
+    fn lease_lock(&self, uuid: &[u8]) -> Arc<tokio::sync::Mutex<()>> {
+        self.lease_locks
+            .lock()
+            .unwrap()
+            .entry(uuid.to_vec())
+            .or_default()
+            .clone()
+    }
+
+    /// A response may be lost, so the deadline is only ever extended.
+    fn extend_deadline(&self, term: i64, uuid: &[u8], ttl: Duration) {
+        let extended = Instant::now() + ttl;
+        self.with_deadlines(term, |d| {
+            let deadline = d.by_tserver.entry(uuid.to_vec()).or_insert(extended);
+            *deadline = (*deadline).max(extended);
+        });
     }
 
     /// `TSManager::LookupTS(instance)`: registered, not replaced, the same process.
@@ -201,6 +223,8 @@ impl YsqlLeases {
         self.lookup_ts(&uuid, seqno)?;
         let term = token.term();
         let current_epoch = req.current_lease_epoch();
+        let lock = self.lease_lock(&uuid);
+        let _held = lock.lock().await;
         let (decision, snapshot) = self
             .writer
             .mutate_with(token, WriteOptions::default().priority(), |snapshot| {
@@ -220,6 +244,8 @@ impl YsqlLeases {
                         lease.instance_seqno()
                     )));
                 }
+                // As C++: before deciding, so an expiry that sees this decision sees the deadline.
+                self.extend_deadline(term, &uuid, ttl);
                 if lease.live_lease()
                     && lease.instance_seqno() == seqno
                     && current_epoch == lease.lease_epoch()
@@ -248,12 +274,6 @@ impl YsqlLeases {
                 Ok((mutation, Refresh::NewLease(epoch)))
             })
             .await?;
-        // A response may be lost, so the deadline is only ever extended.
-        let extended = Instant::now() + ttl;
-        self.with_deadlines(term, |d| {
-            let deadline = d.by_tserver.entry(uuid.clone()).or_insert(extended);
-            *deadline = (*deadline).max(extended);
-        });
         match decision {
             Refresh::Extend(epoch) => {
                 info.set_new_lease(false);
@@ -315,12 +335,39 @@ impl YsqlLeases {
     pub async fn expire(&self, token: &LeaderToken) -> Result<Vec<Vec<u8>>, Status> {
         let term = token.term();
         let now = Instant::now();
+        // The leases that look expired, as C++ finds them under read locks.
+        let (candidates, _) = self
+            .writer
+            .mutate_with(token, WriteOptions::default(), |snapshot| {
+                let mut ids = BTreeSet::new();
+                for row in snapshot.iter(SysRowEntryType::OBJECT_LOCK_ENTRY) {
+                    let entry: SysObjectLockEntryPB = row.parse().map_err(corrupt)?;
+                    if entry.lease_info.as_ref().is_some_and(|l| l.live_lease())
+                        && now > self.deadline(term, &row.key.id)
+                    {
+                        ids.insert(row.key.id.to_vec());
+                    }
+                }
+                Ok((Mutation::new(), ids))
+            })
+            .await?;
+        if candidates.is_empty() {
+            return Ok(Vec::new());
+        }
+        // Held across the re-check and the write, as C++ holds their write locks; in key order.
+        let mut held = Vec::with_capacity(candidates.len());
+        for id in &candidates {
+            held.push(self.lease_lock(id).lock_owned().await);
+        }
         let (expired, _) = self
             .writer
             .mutate_with(token, WriteOptions::default().priority(), |snapshot| {
                 let mut mutation = Mutation::new();
                 let mut expired = Vec::new();
                 for row in snapshot.iter(SysRowEntryType::OBJECT_LOCK_ENTRY) {
+                    if !candidates.contains(&row.key.id[..]) {
+                        continue;
+                    }
                     let mut entry: SysObjectLockEntryPB = row.parse().map_err(corrupt)?;
                     let lease = entry.lease_info.mut_or_insert_default();
                     if !lease.live_lease() || now <= self.deadline(term, &row.key.id) {
@@ -353,6 +400,7 @@ impl YsqlLeases {
                 Ok((mutation, expired))
             })
             .await?;
+        drop(held);
         Ok(expired)
     }
 }

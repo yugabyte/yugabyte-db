@@ -833,3 +833,58 @@ async fn a_keyspace_schedule_refuses_drops_until_it_is_deleted() {
         "{e:?}"
     );
 }
+
+#[tokio::test]
+async fn only_ycql_virtual_tables_and_sys_catalog_tables_are_system() {
+    use crate::lookup::{is_system_table, SYS_CATALOG_TABLET_ID};
+    const SYSTEM: &[u8] = b"00000000000000000000000000000001";
+    let table = |id: &[u8], name: &str, namespace_id: &[u8], table_type: TableType| {
+        let mut pb = SysTablesEntryPB::new();
+        pb.set_name(name.into());
+        pb.set_namespace_id(namespace_id.to_vec());
+        pb.table_type = Some(EnumOrUnknown::new(table_type));
+        pb.set_version(0);
+        pb.schema = MessageField::some(SchemaPB::new());
+        RowChange::Upsert {
+            entry_type: SysRowEntryType::TABLE,
+            id: id.to_vec(),
+            data: pb.write_to_bytes().unwrap(),
+        }
+    };
+    let tablet = |id: &[u8], table_id: &[u8]| {
+        let mut pb = SysTabletsEntryPB::new();
+        pb.set_table_id(table_id.to_vec());
+        pb.table_ids.push(table_id.to_vec());
+        pb.state = Some(EnumOrUnknown::new(sys_tablets_entry_pb::State::RUNNING));
+        RowChange::Upsert {
+            entry_type: SysRowEntryType::TABLET,
+            id: id.to_vec(),
+            data: pb.write_to_bytes().unwrap(),
+        }
+    };
+    let (fake, events) = FakeSysCatalog::new();
+    fake.apply(vec![
+        // A YCQL virtual table, on its own master-hosted tablet.
+        table(b"peers", "peers", SYSTEM, TableType::YQL_TABLE_TYPE),
+        tablet(b"peers-tablet", b"peers"),
+        // A real table C++ creates in `system` through CreateTable, on tservers.
+        table(b"cdc", "cdc_state", SYSTEM, TableType::YQL_TABLE_TYPE),
+        tablet(b"cdc-tablet", b"cdc"),
+        // A YSQL catalog table on the sys catalog tablet.
+        table(b"pg", "pg_class", b"db", TableType::PGSQL_TABLE_TYPE),
+        tablet(SYS_CATALOG_TABLET_ID, b"pg"),
+    ]);
+    let catalog = Catalog::new(fake.sender().clone());
+    tokio::spawn(run_materializer(catalog.clone(), fake.clone(), events));
+    catalog.barrier().await;
+    let snapshot = catalog.snapshot();
+    let is_system = |id: &[u8]| {
+        is_system_table(
+            &snapshot,
+            snapshot.get(SysRowEntryType::TABLE, id).expect("the table"),
+        )
+    };
+    assert!(is_system(b"peers"));
+    assert!(!is_system(b"cdc"));
+    assert!(is_system(b"pg"));
+}

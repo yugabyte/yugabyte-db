@@ -777,12 +777,15 @@ impl Shared {
                 GetLoadMovePercentRequestPB,
                 GetLoadMovePercentResponsePB,
                 |_req, resp| {
-                    leader.load_move_completion(
-                        &snapshot,
-                        method.name == "GetLeaderBlacklistCompletion",
-                        (leader.blacklist_progress_initial_delay)(),
-                        &mut resp,
-                    );
+                    leader
+                        .load_move_completion(
+                            &snapshot,
+                            method.name == "GetLeaderBlacklistCompletion",
+                            (leader.blacklist_progress_initial_delay)(),
+                            deadline,
+                            &mut resp,
+                        )
+                        .await;
                     Ok(())
                 }
             ),

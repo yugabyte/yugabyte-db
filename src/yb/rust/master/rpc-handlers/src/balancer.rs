@@ -13,13 +13,14 @@
 //! The cluster balancer's RPCs (`CatalogManager::IsLoadBalancerIdle`, `IsLoadBalanced` and
 //! `MasterClusterHandler::GetLoadMoveCompletionPercent`), from the balancer controller's status.
 
+use std::collections::HashSet;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use master_catalog_state::CatalogSnapshot;
+use master_catalog_state::{is_inactive_state, CatalogSnapshot};
 use master_ts_manager::placement::is_blacklisted;
 use yb_host_api::{Status, StatusCode};
-use yb_proto::pb::catalog_entity_info::{sys_tablets_entry_pb, SysClusterConfigEntryPB};
+use yb_proto::pb::catalog_entity_info::{BlacklistPB, SysClusterConfigEntryPB};
 use yb_proto::pb::common_types::PeerRole;
 use yb_proto::pb::master_cluster::{
     AreLeadersOnPreferredOnlyResponsePB, GetLoadMovePercentResponsePB, IsLoadBalancedRequestPB,
@@ -164,13 +165,61 @@ impl LeaderServices {
         }
     }
 
+    /// `CatalogManager::GetNumRelevantReplicas`: the replicas (or leaders) on the blacklist's
+    /// tservers, of tablets of existing tables that are neither deleted nor replaced. Both the
+    /// blacklist's initial load and the load still on it are counted this way.
+    pub(crate) fn relevant_replicas(
+        &self,
+        snapshot: &CatalogSnapshot,
+        blacklist: &BlacklistPB,
+        leaders_only: bool,
+    ) -> i64 {
+        let addresses = blacklist
+            .hosts
+            .iter()
+            .map(|h| (h.host().to_string(), h.port()))
+            .collect();
+        let blacklisted: HashSet<Vec<u8>> = self
+            .ts_manager
+            .all()
+            .into_iter()
+            .filter(|d| is_blacklisted(d, &addresses))
+            .map(|d| d.uuid.to_vec())
+            .collect();
+        if blacklisted.is_empty() {
+            return 0;
+        }
+        let mut count = 0;
+        for tablet in snapshot.iter(SysRowEntryType::TABLET) {
+            let Some(hot) = tablet.tablet() else { continue };
+            if is_inactive_state(hot.state)
+                || snapshot
+                    .get(SysRowEntryType::TABLE, &hot.table_id)
+                    .is_none()
+            {
+                continue;
+            }
+            let Some(replicas) = self.ts_manager.locations.get(&tablet.key.id) else {
+                continue;
+            };
+            count += replicas
+                .replicas
+                .iter()
+                .filter(|r| !leaders_only || r.role == PeerRole::LEADER)
+                .filter(|r| blacklisted.contains(&*r.ts_uuid))
+                .count() as i64;
+        }
+        count
+    }
+
     /// `GetLoadMoveCompletionPercent`: how much of the (leader) blacklisted tservers' initial
     /// replica (leader) load has moved off them.
-    pub fn load_move_completion(
+    pub async fn load_move_completion(
         &self,
         snapshot: &CatalogSnapshot,
         leaders_only: bool,
         initial_delay: Duration,
+        deadline: tokio::time::Instant,
         resp: &mut GetLoadMovePercentResponsePB,
     ) {
         let config: SysClusterConfigEntryPB = snapshot
@@ -182,41 +231,7 @@ impl LeaderServices {
         } else {
             &config.server_blacklist
         };
-        let addresses = blacklist
-            .hosts
-            .iter()
-            .map(|h| (h.host().to_string(), h.port()))
-            .collect();
-        let blacklisted: Vec<Vec<u8>> = self
-            .ts_manager
-            .all()
-            .into_iter()
-            .filter(|d| is_blacklisted(d, &addresses))
-            .map(|d| d.uuid.to_vec())
-            .collect();
-        // `GetNumRelevantReplicas`: replicas of tablets of existing tables, not deleted.
-        let mut remaining: i64 = 0;
-        if !blacklisted.is_empty() {
-            for tablet in snapshot.iter(SysRowEntryType::TABLET) {
-                let Some(hot) = tablet.tablet() else { continue };
-                if hot.state == sys_tablets_entry_pb::State::DELETED as i32
-                    || snapshot
-                        .get(SysRowEntryType::TABLE, &hot.table_id)
-                        .is_none()
-                {
-                    continue;
-                }
-                let Some(replicas) = self.ts_manager.locations.get(&tablet.key.id) else {
-                    continue;
-                };
-                remaining += replicas
-                    .replicas
-                    .iter()
-                    .filter(|r| !leaders_only || r.role == PeerRole::LEADER)
-                    .filter(|r| blacklisted.iter().any(|b| **b == *r.ts_uuid))
-                    .count() as i64;
-            }
-        }
+        let remaining = self.relevant_replicas(snapshot, blacklist, leaders_only);
         let mut initial = if leaders_only {
             blacklist.initial_leader_load()
         } else {
@@ -245,5 +260,30 @@ impl LeaderServices {
         resp.set_percent(100.0 - remaining as f64 * 100.0 / initial as f64);
         resp.set_remaining(remaining as u64);
         resp.set_total(initial as u64);
+        if leaders_only && remaining == 0 && (self.delay_leader_blacklist_completion)() {
+            self.wait_for_heartbeats(deadline).await;
+        }
+    }
+
+    /// Best effort, as C++: every live tserver heartbeats once more, so it has been told which
+    /// leader-blacklisted tservers hold no leaders before the caller stops them.
+    async fn wait_for_heartbeats(&self, deadline: tokio::time::Instant) {
+        let start = std::time::Instant::now();
+        let limit = deadline.min(tokio::time::Instant::now() + Duration::from_secs(10));
+        while !self
+            .ts_manager
+            .live()
+            .iter()
+            .all(|d| d.last_heartbeat.is_some_and(|t| t > start))
+        {
+            if tokio::time::Instant::now() >= limit {
+                tracing::warn!(
+                    "Timed out waiting for master to propagate leader blacklisted tserver info on \
+                     heartbeats."
+                );
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
     }
 }

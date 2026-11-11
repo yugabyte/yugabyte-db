@@ -43,6 +43,10 @@ class SnapshotCoordinator {
   // Called once after the ApplyWritePair calls of one applied write batch.
   virtual void AppliedWriteBatch(const OpId& op_id, HybridTime write_time) {}
 
+  // Called on every replica once a RESTORE_ON_TABLET op has replaced the tablet's rows, which do
+  // not pass through ApplyWritePair.
+  virtual void RestoredOnTablet(const SnapshotOperation& operation) {}
+
   virtual ~SnapshotCoordinator() = default;
 };
 

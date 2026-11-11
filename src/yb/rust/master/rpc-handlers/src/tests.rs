@@ -531,6 +531,7 @@ mod leader_tests {
                 splits,
                 leases,
                 blacklist_progress_initial_delay: || std::time::Duration::ZERO,
+                delay_leader_blacklist_completion: || false,
             })
         });
         harness.leader = Some(leader);

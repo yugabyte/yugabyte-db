@@ -142,7 +142,8 @@ pub struct TableInfo {
     /// `SkipLoadBalancing`: a system table, a colocated table other than the parent, or a table
     /// being dropped.
     pub skip: bool,
-    /// A YSQL table whose tablespace placement is not known yet.
+    /// A YSQL table whose tablespace placement is not known yet, or a table whose row does not
+    /// parse.
     pub placement_unknown: bool,
     /// The effective replication info: the table's, its tablespace's or the cluster's.
     pub replication_info: ReplicationInfoPB,

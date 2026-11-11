@@ -62,6 +62,8 @@ class SysCatalogTap : public tablet::SnapshotCoordinator {
   Status Load(tablet::Tablet* tablet) override;
   Status ApplyWritePair(const Slice& key, const Slice& value) override;
   void AppliedWriteBatch(const OpId& op_id, HybridTime write_time) override;
+  // The initial sys catalog snapshot restore, applied on every master: Rust scans again.
+  void RestoredOnTablet(const tablet::SnapshotOperation& operation) override;
 
  private:
   // (entry_type, entry_id, metadata, deleted).

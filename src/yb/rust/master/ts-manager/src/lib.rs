@@ -130,6 +130,8 @@ pub struct TsDescriptor {
     pub leader_count: i32,
     /// From the last heartbeat.
     pub metrics: Option<TServerMetricsPB>,
+    /// A heartbeat reported a faulty drive (`has_faulty_drive_`); kept until it registers again.
+    pub has_faulty_drive: bool,
     /// The row last written for it, to skip unchanged writes.
     persisted_row: Option<Vec<u8>>,
 }
@@ -147,6 +149,7 @@ impl TsDescriptor {
             num_live_replicas: 0,
             leader_count: 0,
             metrics: None,
+            has_faulty_drive: false,
             persisted_row: None,
         }
     }

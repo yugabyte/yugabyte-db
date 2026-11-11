@@ -52,6 +52,29 @@ pub const SYSTEM_NAMESPACES: [(&[u8], &str); 3] = [
     (b"00000000000000000000000000000003", "system_auth"),
 ];
 
+/// The YCQL virtual tables (`SystemTableDefs`) as (namespace id, name): the only tables of the
+/// system namespaces the masters host. C++ also creates ordinary tables there through CreateTable
+/// (`system.transactions`, `system.cdc_state`, `system.pg_advisory_locks`, `system.metrics`), whose
+/// tablets live on tservers.
+pub const YCQL_VIRTUAL_TABLES: [(&[u8], &str); 16] = [
+    (SYSTEM_NAMESPACES[0].0, "peers"),
+    (SYSTEM_NAMESPACES[0].0, "local"),
+    (SYSTEM_NAMESPACES[1].0, "keyspaces"),
+    (SYSTEM_NAMESPACES[1].0, "tables"),
+    (SYSTEM_NAMESPACES[1].0, "columns"),
+    (SYSTEM_NAMESPACES[0].0, "size_estimates"),
+    (SYSTEM_NAMESPACES[1].0, "aggregates"),
+    (SYSTEM_NAMESPACES[1].0, "functions"),
+    (SYSTEM_NAMESPACES[1].0, "indexes"),
+    (SYSTEM_NAMESPACES[1].0, "triggers"),
+    (SYSTEM_NAMESPACES[1].0, "views"),
+    (SYSTEM_NAMESPACES[1].0, "types"),
+    (SYSTEM_NAMESPACES[0].0, "partitions"),
+    (SYSTEM_NAMESPACES[2].0, "roles"),
+    (SYSTEM_NAMESPACES[2].0, "role_permissions"),
+    (SYSTEM_NAMESPACES[2].0, "resource_role_permissions_index"),
+];
+
 /// What only the host can build.
 pub trait DefaultsHost: Send + Sync {
     /// The system table rows missing from `tables` (TABLE rows of the system namespaces as

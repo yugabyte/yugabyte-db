@@ -385,12 +385,16 @@ impl TsManager {
             }
             let role = consensus_role(cstate, peer_uuid);
             // The report's state, directory and flag are the sender's own replica's; a peer keeps
-            // what its own reports said. (C++ gives every peer the sender's directory.)
+            // what its own reports said. (C++ gives every peer the sender's directory, and resets
+            // their state, which is safe there only because a tablet's reports are serialized:
+            // here a report checked against an older snapshot can rebuild the map after a newer
+            // one, and the peer that sent the newer one may not report again.)
             replicas.push(if peer_uuid == ctx.uuid {
                 reported_replica(peer_uuid, role, peer.member_type(), reported)
             } else {
                 let mut replica = Replica::new(peer_uuid.into(), role, peer.member_type());
                 if let Some(old) = existing.replicas.iter().find(|r| &*r.ts_uuid == peer_uuid) {
+                    replica.state = old.state;
                     replica.fs_data_dir = old.fs_data_dir.clone();
                     replica.should_disable_lb_move = old.should_disable_lb_move;
                 }

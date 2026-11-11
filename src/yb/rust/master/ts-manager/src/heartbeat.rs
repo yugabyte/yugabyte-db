@@ -359,6 +359,7 @@ impl TsManager {
         descriptor.set_state(state);
         descriptor.pb.xcluster_guarded_lease_state = Some(EnumOrUnknown::new(lease));
         descriptor.latest_report_seqno = i32::MIN;
+        descriptor.has_faulty_drive = false;
         tracing::info!(
             "Registered tablet server {} (instance seqno {seqno}){}",
             String::from_utf8_lossy(&uuid),
@@ -449,6 +450,9 @@ impl TsManager {
                 d.last_heartbeat = Some(Instant::now());
                 d.num_live_replicas = req.num_live_tablets();
                 d.leader_count = req.leader_count();
+                if req.has_faulty_drive() {
+                    d.has_faulty_drive = req.faulty_drive();
+                }
                 if let Some(metrics) = req.metrics.as_ref() {
                     d.metrics = Some(metrics.clone());
                 }

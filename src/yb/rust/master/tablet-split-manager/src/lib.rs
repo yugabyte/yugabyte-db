@@ -157,6 +157,17 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
+/// `ShouldRetrySplitTabletRPC`: a tserver's GetSplitKey or SplitTablet error a retry cannot fix.
+fn should_retry_split_rpc(code: StatusCode) -> bool {
+    !matches!(
+        code,
+        StatusCode::InvalidArgument
+            | StatusCode::NotFound
+            | StatusCode::NotSupported
+            | StatusCode::Incomplete
+    )
+}
+
 impl TabletSplitManager {
     /// The split manager of this master.
     #[allow(clippy::too_many_arguments)]
@@ -209,6 +220,17 @@ impl TabletSplitManager {
                 )
             })?;
         validate_split_candidate(&snapshot, tablet, true)?;
+        // `ValidateSplitCandidateTablet` needs the leader; the split key is asked of it.
+        if self.leader_of(&tablet_id).is_none() {
+            return Err(error(
+                Code::UNKNOWN_ERROR,
+                StatusCode::NotFound,
+                format!(
+                    "No leader found for tablet {}",
+                    String::from_utf8_lossy(&tablet_id)
+                ),
+            ));
+        }
         self.check_limits(&snapshot, &tablet.tablet().expect("tablet row").table_id)?;
         let split_factor = if req.has_split_factor() {
             req.split_factor()
@@ -476,9 +498,9 @@ impl TabletSplitManager {
         split_factor: i32,
         manual: bool,
     ) -> Result<Vec<Vec<u8>>, Status> {
-        let leader = self.leader_of(tablet_id).ok_or_else(|| {
-            Status::new(StatusCode::ServiceUnavailable, "No leader for the tablet")
-        })?;
+        // The lane is the leader when the split starts; each attempt goes to the leader the
+        // locations name then, as `AsyncTabletLeaderTask` picks it on every attempt.
+        let lane = self.leader_of(tablet_id).unwrap_or_default();
         let mut req = GetSplitKeyRequestPB::new();
         req.set_tablet_id(tablet_id.to_vec());
         req.set_is_manual_split(manual);
@@ -487,12 +509,19 @@ impl TabletSplitManager {
         let rpc = self.rpc()?;
         let resp: GetSplitKeyResponsePB = self
             .executor
-            .run(&leader, "GetSplitKey", &self.retry, |_| {
+            .run(&lane, "GetSplitKey", &self.retry, |_| {
                 let current = self.leadership.check(&token);
-                let address = self.ts_manager.rpc_address(&leader);
+                let leader = self.leader_of(tablet_id);
+                let address = leader.as_ref().and_then(|l| self.ts_manager.rpc_address(l));
                 let (rpc, req) = (rpc.clone(), req.clone());
                 async move {
                     current.map_err(Attempt::Fail)?;
+                    if leader.is_none() {
+                        return Err(Attempt::Retry(Status::new(
+                            StatusCode::ServiceUnavailable,
+                            "No leader for the tablet",
+                        )));
+                    }
                     let (host, port) = address.ok_or_else(|| {
                         Attempt::Retry(Status::new(
                             StatusCode::NotFound,
@@ -532,7 +561,9 @@ impl TabletSplitManager {
                     }
                     // An IllegalState other than NOT_THE_LEADER (not compacted yet after an
                     // earlier split, or all data under one key) is not retried.
-                    if status.code == StatusCode::IllegalState && e.code() != TsCode::NOT_THE_LEADER
+                    if !should_retry_split_rpc(status.code)
+                        || (status.code == StatusCode::IllegalState
+                            && e.code() != TsCode::NOT_THE_LEADER)
                     {
                         return Err(Attempt::Fail(status));
                     }
@@ -1006,16 +1037,7 @@ pub(crate) fn validate_table(
 
 /// A CDC stream on the table that is not being deleted, or an xCluster stream into it.
 fn streamed(snapshot: &CatalogSnapshot, table_id: &[u8]) -> bool {
-    let outbound = snapshot.iter(SysRowEntryType::CDC_STREAM).any(|stream| {
-        stream.parse::<SysCDCStreamEntryPB>().is_ok_and(|pb| {
-            pb.table_id.iter().any(|t| t.as_bytes() == table_id)
-                && !matches!(
-                    pb.state(),
-                    sys_cdcstream_entry_pb::State::DELETING
-                        | sys_cdcstream_entry_pb::State::DELETED
-                )
-        })
-    });
+    let outbound = outbound_streamed(snapshot, table_id);
     let config: SysClusterConfigEntryPB = snapshot
         .cluster_config()
         .and_then(|c| c.parse().ok())
@@ -1027,6 +1049,21 @@ fn streamed(snapshot: &CatalogSnapshot, table_id: &[u8]) -> bool {
             .values()
             .flat_map(|producer| producer.stream_map.values())
             .any(|stream| stream.consumer_table_id.as_bytes() == table_id)
+}
+
+/// The table is the source of a live xCluster or CDCSDK stream, whose pollers read its tablets'
+/// WAL, a split parent's up to its SPLIT_OP included.
+fn outbound_streamed(snapshot: &CatalogSnapshot, table_id: &[u8]) -> bool {
+    snapshot.iter(SysRowEntryType::CDC_STREAM).any(|stream| {
+        stream.parse::<SysCDCStreamEntryPB>().is_ok_and(|pb| {
+            pb.table_id.iter().any(|t| t.as_bytes() == table_id)
+                && !matches!(
+                    pb.state(),
+                    sys_cdcstream_entry_pb::State::DELETING
+                        | sys_cdcstream_entry_pb::State::DELETED
+                )
+        })
+    })
 }
 
 /// `ValidateSplitCandidateTablet`, without TTL and the tablets held off for a while.
@@ -1116,6 +1153,16 @@ fn check_can_delete(
             StatusCode::NotSupported,
             "Hiding a split parent of a table a snapshot schedule covers is not supported on a \
              Rust leader yet (W10)",
+        ));
+    }
+    // C++ retains such a parent until the streams have read it (`GetDeleteRetainerInfoForTabletDrop`).
+    // A Rust leader starts no split of a streamed table, but finishes one a C++ leader registered.
+    if outbound_streamed(snapshot, &hot.table_id) {
+        return Err(error(
+            Code::UNKNOWN_ERROR,
+            StatusCode::NotSupported,
+            "Retaining a split parent of a table in an xCluster or CDC stream is not supported on \
+             a Rust leader yet",
         ));
     }
     let gap = |from: &[u8], to: &[u8]| {
@@ -1216,6 +1263,19 @@ impl SplitController {
             if self.sent.lock().unwrap().get(&*tablet.key.id) == Some(&false) {
                 continue;
             }
+            // A C++ master older than #19954 registered the children one write at a time, so a
+            // crash could leave one; SplitTablet needs at least two.
+            if hot.split_tablet_ids.len() < 2 {
+                self.sent
+                    .lock()
+                    .unwrap()
+                    .insert(tablet.key.id.to_vec(), false);
+                tracing::warn!(
+                    "Split parent {} has a single registered child: not sending SplitTablet",
+                    String::from_utf8_lossy(&tablet.key.id)
+                );
+                continue;
+            }
             self.sent
                 .lock()
                 .unwrap()
@@ -1244,6 +1304,13 @@ async fn send_split(
     tablet: &Entity,
 ) -> Result<(), Status> {
     let hot = tablet.tablet().expect("tablet row");
+    let (Some(first), Some(second)) = (hot.split_tablet_ids.first(), hot.split_tablet_ids.get(1))
+    else {
+        return Err(Status::new(
+            StatusCode::IllegalState,
+            "A split needs at least two children",
+        ));
+    };
     let table = snapshot
         .get(SysRowEntryType::TABLE, &hot.table_id)
         .ok_or_else(|| Status::new(StatusCode::NotFound, "The tablet's table is gone"))?;
@@ -1257,12 +1324,22 @@ async fn send_split(
         partition_keys.push(c.partition_start.clone());
     }
     let encoded_keys = manager.encoded_keys(&table_pb.partition_schema, &partition_keys)?;
+    let (Some(encoded_key), Some(partition_key), true) = (
+        encoded_keys.first(),
+        partition_keys.first(),
+        encoded_keys.len() == partition_keys.len(),
+    ) else {
+        return Err(Status::new(
+            StatusCode::IllegalState,
+            "The host did not encode one key per split key",
+        ));
+    };
     let mut req = TsSplitTabletRequestPB::new();
     req.set_tablet_id(tablet.key.id.to_vec());
-    req.set_DEPRECATED_new_tablet1_id(hot.split_tablet_ids[0].clone());
-    req.set_DEPRECATED_new_tablet2_id(hot.split_tablet_ids[1].clone());
-    req.set_DEPRECATED_split_encoded_key(encoded_keys[0].clone());
-    req.set_DEPRECATED_split_partition_key(partition_keys[0].clone());
+    req.set_DEPRECATED_new_tablet1_id(first.clone());
+    req.set_DEPRECATED_new_tablet2_id(second.clone());
+    req.set_DEPRECATED_split_encoded_key(encoded_key.clone());
+    req.set_DEPRECATED_split_partition_key(partition_key.clone());
     req.new_tablet_ids = hot.split_tablet_ids.clone();
     req.split_encoded_keys = encoded_keys;
     req.split_partition_keys = partition_keys;
@@ -1321,6 +1398,9 @@ async fn send_split(
                 );
                 if status.code == StatusCode::AlreadyPresent {
                     return Ok(());
+                }
+                if !should_retry_split_rpc(status.code) {
+                    return Err(Attempt::Fail(status));
                 }
                 Err(Attempt::Retry(status))
             }

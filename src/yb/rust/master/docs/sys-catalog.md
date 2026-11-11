@@ -13,13 +13,16 @@ Every master, leader or follower, learns about catalog rows only from what its t
 - `Tablet::ApplyKeyValueRowOperations` already calls the coordinator's `ApplyWritePair` for every
   applied write pair. The tap decodes the key (`(entry_type, entry_id)`, co-table keys skipped)
   and the value (a string, or a tombstone for a delete), and forwards the call unchanged.
-- After the pairs of one op, the tablet calls `AppliedWriteBatch(op_id, write_time)`, the only
-  change to tablet code. The tap sends the batch to Rust as `ApplyEvent::Rows`.
+- After the pairs of one op, the tablet calls `AppliedWriteBatch(op_id, write_time)`. The tap
+  sends the batch to Rust as `ApplyEvent::Rows`.
 - Changes that do not pass through `ApplyKeyValueRowOperations` post `ApplyEvent::Reload`
-  instead: the tablet opening, a PITR restore (`RestoreSysCatalogOnApply`), a remote bootstrap,
-  and shell mode. A write pair the tap cannot decode also posts a Reload (and is `DFATAL`), and so
-  does a packed row (an `INSERT` through `WriteSysCatalogEntry` in emergency repair mode, where
-  packed rows are on).
+  instead: the tablet opening, a PITR restore (`RestoreSysCatalogOnApply`), the initial sys
+  catalog snapshot restore (`RESTORE_ON_TABLET`, which the tablet reports with `RestoredOnTablet`
+  on every master), a remote bootstrap, and shell mode. A write pair the tap cannot decode also
+  posts a Reload (and is `DFATAL`), and so does a packed row (an `INSERT` through
+  `WriteSysCatalogEntry` in emergency repair mode, where packed rows are on).
+
+`AppliedWriteBatch` and `RestoredOnTablet` are the only changes to tablet code.
 
 Apply must never block, so the stream is an unbounded queue; the sender logs a warning every
 10000 queued events. The consumer does no I/O per event.

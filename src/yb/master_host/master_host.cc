@@ -223,14 +223,7 @@ class MasterHost::TabletServerContextImpl : public master::MasterTabletServerCon
       guard.catalog_status = STATUS(ServiceUnavailable, "Catalog manager is not initialized");
       return guard;
     }
-    const auto state = host_.SysCatalogLeaderState();
-    const auto ready_term = host_.leader_ready_term_.load();
-    if (state.leader_status != static_cast<int32_t>(consensus::LeaderStatus::LEADER_AND_READY) ||
-        ready_term < 0 || state.term != ready_term) {
-      guard.leader_status = STATUS_FORMAT(
-          IllegalState, "Not the leader. Local UUID: $0, Raft term: $1, ready term: $2",
-          host_.permanent_uuid(), state.term, ready_term);
-    }
+    guard.leader_status = LeaderStatus();
     return guard;
   }
 
@@ -318,6 +311,23 @@ class MasterHost::TabletServerContextImpl : public master::MasterTabletServerCon
   }
 
  private:
+  // ScopedLeaderSharedLock::Lock's statuses: a leader not ready yet answers LeaderNotReadyToServe
+  // or LeaderHasNoLease, which clients retry on this master rather than failing over.
+  Status LeaderStatus() const {
+    auto peer = host_.sys_catalog_->tablet_peer();
+    SCHECK(peer, IllegalState, "The sys catalog tablet is not open");
+    auto leader_state = VERIFY_RESULT(peer->GetConsensus())->GetLeaderState();
+    RETURN_NOT_OK(leader_state.CreateStatus());
+    const auto ready_term = host_.leader_ready_term_.load();
+    if (ready_term != leader_state.term) {
+      return STATUS_FORMAT(
+          LeaderNotReadyToServe, "$0: leader_ready_term_ = $1; current_term = $2",
+          ready_term == -1 ? "yb-master leader is initializing" : "Leader term mismatch",
+          ready_term, leader_state.term);
+    }
+    return Status::OK();
+  }
+
   MasterHost& host_;
   std::atomic<bool> catalog_versions_readable_{false};
 };
@@ -1385,8 +1395,7 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
                   FLAGS_initial_sys_catalog_snapshot_path, sys_catalog_->tablet_peer().get(),
                   req.term()),
               "Failed restoring snapshot in sys catalog");
-          // The restore replaces the tablet's rows without going through the tap.
-          tap_->PostReload("initial sys catalog snapshot", clock()->Now());
+          // The tap posted a catalog reload as the restore applied, here and on every follower.
           resp->set_restored(true);
           return Status::OK();
         });

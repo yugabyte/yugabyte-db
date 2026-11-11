@@ -128,8 +128,14 @@ Status SnapshotOperation::Apply(int64_t leader_term, Status* complete_status) {
           leader_term, *this, complete_status);
     case TabletSnapshotOpRequestPB::CREATE_ON_TABLET:
       return VERIFY_RESULT(tablet_safe())->snapshots().Create(this);
-    case TabletSnapshotOpRequestPB::RESTORE_ON_TABLET:
-      return VERIFY_RESULT(tablet_safe())->snapshots().Restore(this);
+    case TabletSnapshotOpRequestPB::RESTORE_ON_TABLET: {
+      auto tablet = VERIFY_RESULT(tablet_safe());
+      RETURN_NOT_OK(tablet->snapshots().Restore(this));
+      if (auto* coordinator = tablet->snapshot_coordinator()) {
+        coordinator->RestoredOnTablet(*this);
+      }
+      return Status::OK();
+    }
     case TabletSnapshotOpRequestPB::DELETE_ON_TABLET:
       return VERIFY_RESULT(tablet_safe())->snapshots().Delete(*this);
     case TabletSnapshotOpRequestPB::RESTORE_FINISHED:

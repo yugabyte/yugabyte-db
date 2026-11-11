@@ -267,6 +267,91 @@ async fn the_parent_goes_once_its_children_cover_it() {
 }
 
 #[tokio::test]
+async fn the_parent_of_a_streamed_table_is_kept() {
+    let h = Harness::new().await;
+    let children = h
+        .splits
+        .do_split(h.token, b"parent", vec![vec![0x80, 0x00]], true)
+        .await
+        .unwrap();
+    h.set_running(&children[0]).await;
+    h.set_running(&children[1]).await;
+    // A C++ leader split a table with an outbound stream, whose pollers still read the parent.
+    let mut stream = yb_proto::pb::catalog_entity_info::SysCDCStreamEntryPB::new();
+    stream.table_id.push("t1".to_string());
+    h.writer
+        .submit(
+            &h.token,
+            Mutation::new().upsert(
+                SysRowEntryType::CDC_STREAM,
+                b"stream",
+                stream.write_to_bytes().unwrap(),
+            ),
+        )
+        .await
+        .unwrap();
+    let mut req = DeleteNotServingTabletRequestPB::new();
+    req.set_tablet_id(b"parent".to_vec());
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let e = h
+        .splits
+        .delete_not_serving_tablet(h.token, deadline, &req)
+        .await
+        .unwrap_err();
+    assert!(
+        e.status.message().contains("xCluster or CDC stream"),
+        "{e:?}"
+    );
+    assert_eq!(
+        h.tablet(b"parent").state(),
+        sys_tablets_entry_pb::State::RUNNING
+    );
+    assert!(h.ts_manager.deletes.pending().is_empty());
+}
+
+#[tokio::test]
+async fn a_parent_with_a_single_registered_child_is_not_sent() {
+    let h = Harness::new().await;
+    // As a C++ master older than #19954 could leave it: one child registered, CREATING.
+    let mut child = h.tablet(b"parent");
+    child.state = Some(EnumOrUnknown::new(sys_tablets_entry_pb::State::CREATING));
+    child.set_split_parent_tablet_id(b"parent".to_vec());
+    let mut parent = h.tablet(b"parent");
+    parent.split_tablet_ids.push(b"child".to_vec());
+    h.writer
+        .submit(
+            &h.token,
+            Mutation::new()
+                .upsert(
+                    SysRowEntryType::TABLET,
+                    b"child",
+                    child.write_to_bytes().unwrap(),
+                )
+                .upsert(
+                    SysRowEntryType::TABLET,
+                    b"parent",
+                    parent.write_to_bytes().unwrap(),
+                ),
+        )
+        .await
+        .unwrap();
+    let snapshot = h.snapshot();
+    let entity = snapshot.get(SysRowEntryType::TABLET, b"parent").unwrap();
+    let e = crate::send_split(&h.splits, h.token, &snapshot, entity)
+        .await
+        .unwrap_err();
+    assert_eq!(e.code, StatusCode::IllegalState, "{e:?}");
+    // A pass skips it rather than sending.
+    let scope = master_task_runtime::TermScope::new(3, Arc::default());
+    let controller = crate::SplitController::new(h.splits.clone());
+    controller.pass(&scope);
+    assert_eq!(
+        controller.sent.lock().unwrap().get(b"parent".as_slice()),
+        Some(&false)
+    );
+}
+
+#[tokio::test]
 async fn split_candidates_follow_cpp() {
     let h = Harness::new().await;
     // A transaction status table is never split.
@@ -536,5 +621,140 @@ mod automatic {
         // Held off even once the tserver no longer asks.
         let p = run(&h, &sizes, &cluster(), &mut disabled, &options());
         assert!(p.schedule.is_empty());
+    }
+}
+
+mod split_key {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use crate::{GetSplitKeyRequestPB, GetSplitKeyResponsePB};
+    use master_tablet_locations::Replica;
+    use yb_host_api::rpc::FakeRpcClient;
+    use yb_proto::pb::common_net::HostPortPB;
+    use yb_proto::pb::common_types::PeerRole;
+    use yb_proto::pb::consensus_metadata::PeerMemberType;
+    use yb_proto::pb::master_heartbeat::TSInformationPB;
+    use yb_proto::pb::tserver_types::tablet_server_error_pb::Code as TsCode;
+    use yb_proto::pb::wire_protocol::app_status_pb::ErrorCode;
+
+    use super::*;
+
+    fn tserver(uuid: &str) -> (TSInformationPB, bool) {
+        let mut info = TSInformationPB::new();
+        info.tserver_instance
+            .mut_or_insert_default()
+            .set_permanent_uuid(uuid.as_bytes().to_vec());
+        let mut hp = HostPortPB::new();
+        hp.set_host(uuid.to_string());
+        hp.set_port(9100);
+        info.registration
+            .mut_or_insert_default()
+            .common
+            .mut_or_insert_default()
+            .private_rpc_addresses
+            .push(hp);
+        (info, true)
+    }
+
+    fn lead(h: &Harness, uuid: &str) {
+        h.ts_manager.locations.update_replica(
+            b"parent",
+            Replica::new(
+                uuid.as_bytes().into(),
+                PeerRole::LEADER,
+                PeerMemberType::VOTER,
+            ),
+        );
+        for other in ["ts0", "ts1"].into_iter().filter(|o| *o != uuid) {
+            h.ts_manager.locations.update_replica(
+                b"parent",
+                Replica::new(
+                    other.as_bytes().into(),
+                    PeerRole::FOLLOWER,
+                    PeerMemberType::VOTER,
+                ),
+            );
+        }
+    }
+
+    fn error(code: TsCode, status: ErrorCode) -> Vec<u8> {
+        let mut resp = GetSplitKeyResponsePB::new();
+        let e = resp.error.mut_or_insert_default();
+        e.set_code(code);
+        e.status.mut_or_insert_default().set_code(status);
+        resp.write_to_bytes().unwrap()
+    }
+
+    async fn harness(
+        handler: impl Fn(&str) -> Vec<u8> + Send + Sync + 'static,
+    ) -> (Harness, Arc<AtomicUsize>) {
+        let h = Harness::new().await;
+        h.ts_manager
+            .apply_peer_tservers(&[tserver("ts0"), tserver("ts1")], true);
+        lead(&h, "ts0");
+        let calls = Arc::new(AtomicUsize::new(0));
+        let counter = calls.clone();
+        h.splits.set_rpc(Arc::new(FakeRpcClient::new(
+            move |host, _, _, method, req| {
+                assert_eq!(method, "GetSplitKey");
+                GetSplitKeyRequestPB::parse_from_bytes(req).unwrap();
+                counter.fetch_add(1, Ordering::SeqCst);
+                Ok(handler(host))
+            },
+        )));
+        (h, calls)
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_moved_leader_is_asked_next() {
+        let moved = Arc::new(std::sync::Mutex::new(None::<Arc<TsManager>>));
+        let to_move = moved.clone();
+        let (h, _) = harness(move |host| {
+            if host == "ts0" {
+                // ts0 lost leadership to ts1 since the split started.
+                if let Some(ts_manager) = to_move.lock().unwrap().as_ref() {
+                    ts_manager.locations.update_replica(
+                        b"parent",
+                        Replica::new(
+                            b"ts1".as_slice().into(),
+                            PeerRole::LEADER,
+                            PeerMemberType::VOTER,
+                        ),
+                    );
+                    ts_manager.locations.update_replica(
+                        b"parent",
+                        Replica::new(
+                            b"ts0".as_slice().into(),
+                            PeerRole::FOLLOWER,
+                            PeerMemberType::VOTER,
+                        ),
+                    );
+                }
+                return error(TsCode::NOT_THE_LEADER, ErrorCode::ILLEGAL_STATE);
+            }
+            let mut resp = GetSplitKeyResponsePB::new();
+            resp.split_partition_keys.push(vec![0x80, 0x00]);
+            resp.write_to_bytes().unwrap()
+        })
+        .await;
+        *moved.lock().unwrap() = Some(h.ts_manager.clone());
+        let keys = h
+            .splits
+            .split_key(h.token, b"parent", 2, true)
+            .await
+            .unwrap();
+        assert_eq!(keys, vec![vec![0x80, 0x00]]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_missing_tablet_is_not_retried() {
+        let (h, calls) = harness(|_| error(TsCode::TABLET_NOT_FOUND, ErrorCode::NOT_FOUND)).await;
+        let e = h
+            .splits
+            .split_key(h.token, b"parent", 2, true)
+            .await
+            .unwrap_err();
+        assert_eq!(e.code, StatusCode::NotFound, "{e:?}");
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 }

@@ -1527,3 +1527,49 @@ fn scale() {
         }
     }
 }
+
+#[test]
+fn a_read_replica_run_sees_the_live_runs_tasks() {
+    let mut h = Harness::new(1);
+    let mut tservers: Vec<TsInfo> = ["0000", "1111", "2222", "3333"]
+        .iter()
+        .map(|uuid| TsInfo {
+            placement_uuid: "live".into(),
+            ..ts(uuid, "a")
+        })
+        .collect();
+    tservers.push(TsInfo {
+        placement_uuid: "rr".into(),
+        ..ts("4444", "a")
+    });
+    h.prepare(tservers);
+    h.view.live_placement_uuid = "live".into();
+    h.view.read_replica_placement_uuids = vec!["rr".into()];
+    let mut info = ReplicationInfoPB::new();
+    let live = info.live_replicas.mut_or_insert_default();
+    live.set_num_replicas(3);
+    live.set_placement_uuid("live".into());
+    let mut rr = yb_proto::pb::common_net::PlacementInfoPB::new();
+    rr.set_num_replicas(1);
+    rr.set_placement_uuid("rr".into());
+    info.read_replicas.push(rr);
+    h.table().replication_info = info;
+    // The tablet lacks a live replica and its read replica.
+    h.keep_only_replicas_on(0, &["0000", "1111"]);
+    h.move_tablet_leader(0, "0000");
+    let options = Options {
+        max_concurrent_adds: 1,
+        ..h.options.clone()
+    };
+    let result = h.balancer.run(&h.view, &options);
+    let adds: Vec<_> = result
+        .actions()
+        .filter(|a| matches!(a, crate::Action::AddReplica { .. }))
+        .collect();
+    // As in C++, the live run's add is in flight for the read replica run: it uses up the budget
+    // and keeps that run from acting on the tablet too.
+    assert_eq!(adds.len(), 1, "{:?}", result.activities);
+    assert_eq!(result.activities.len(), 2);
+    assert_eq!(result.activities[1].pending_tasks, 1);
+    assert!(!result.activities[1].is_idle());
+}
