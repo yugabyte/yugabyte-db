@@ -282,6 +282,33 @@ else
           done < <(grep -n '' "$1" | sed -n "$line_ranges"p)
         done
 
+    # A YB includes block should come with a YB-added blank line; otherwise, it
+    # sits between adjacent upstream lines and can conflict on upstream merges.
+    # diff may put that blank line before the block, after it, or in a separate
+    # hunk, so look for it in the whole run of YB-added and blank lines around
+    # the block.
+    awk '
+      NR == FNR {
+        if (/^[0-9,]+[cd]/) {
+          sub(/[cd].*/, "")
+          n = split($0, range, ",")
+          for (i = range[1]; i <= range[n]; i++)
+            yb[i] = 1
+        }
+        next
+      }
+      yb[FNR] && $0 == "/* YB includes */" { block = FNR }
+      yb[FNR] && $0 == "" { blank = 1 }
+      !yb[FNR] && $0 != "" { check() }
+      END { check() }
+      function check() {
+        if (block && !blank)
+          print "error:yb_includes_block_without_yb_blank_line:" \
+                "YB includes block should have a YB-added blank line before" \
+                " or after it:" block ":/* YB includes */"
+        block = blank = 0
+      }' - "$1" <<<"$diff_result"
+
     # For kwlist.h, new keywords by YB should have "_YB_" prefix.
     #
     # TODO(jason): this does not belong in the "includes" section.  Should

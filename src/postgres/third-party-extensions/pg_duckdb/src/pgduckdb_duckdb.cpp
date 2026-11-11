@@ -37,6 +37,7 @@ extern "C" {
 #include "nodes/value.h"      // strVal
 #include "utils/fmgrprotos.h" // pg_sequence_last_value
 #include "utils/lsyscache.h"  // get_relname_relid
+
 /* YB includes */
 #include "fmgr.h"
 }

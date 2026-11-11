@@ -38,6 +38,7 @@
 #include "utils/fmgroids.h"
 #include "utils/syscache.h"
 #include "utils/timestamp.h"
+
 /* YB includes */
 #include "catalog/pg_yb_role_profile.h"
 #include "catalog/yb_password_history.h"

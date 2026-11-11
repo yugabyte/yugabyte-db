@@ -116,6 +116,7 @@
 #include "utils/catcache.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 
+
 /* entry for a hash table we use to map from xid to our transaction state */
 typedef struct ReorderBufferTXNByIdEnt
 {
