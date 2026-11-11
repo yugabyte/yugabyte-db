@@ -85,6 +85,9 @@ use yb_proto::pb::master_ddl::{
     WaitForLockersMultipleGlobalResponsePB,
 };
 use yb_proto::pb::master_heartbeat::{TSHeartbeatRequestPB, TSHeartbeatResponsePB};
+use yb_proto::pb::master_replication::{
+    IsNamespacePartOfCDCSDKRequestPB, IsNamespacePartOfCDCSDKResponsePB,
+};
 use yb_proto::pb::master_rust_peer::{
     dump_catalog_response_pb, DumpCatalogResponsePB, PushLocationsRequestPB,
 };
@@ -937,6 +940,26 @@ impl Shared {
                             .is_tablet_splitting_complete(req.wait_for_parent_deletion()),
                     );
                     Ok(())
+                }
+            ),
+            "IsNamespacePartOfCDCSDK" => serve!(
+                IsNamespacePartOfCDCSDKRequestPB,
+                IsNamespacePartOfCDCSDKResponsePB,
+                |req, resp| {
+                    if req.namespace_id().is_empty() {
+                        Err(Status::new(
+                            StatusCode::InvalidArgument,
+                            "namespace_id must not be empty",
+                        ))
+                    } else {
+                        resp.set_is_namespace_part_of_cdcsdk(
+                            LeaderServices::namespace_has_cdc_stream(
+                                &snapshot,
+                                req.namespace_id().as_bytes(),
+                            ),
+                        );
+                        Ok(())
+                    }
                 }
             ),
             "ReportYsqlDdlTxnStatus" => serve_ddl!(

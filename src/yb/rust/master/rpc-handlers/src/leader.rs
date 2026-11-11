@@ -125,6 +125,22 @@ impl LeaderServices {
         Ok((token, snapshot))
     }
 
+    /// `IsNamespacePartOfCDCSDK`: a CDC stream on the namespace that is not being deleted.
+    pub(crate) fn namespace_has_cdc_stream(
+        snapshot: &CatalogSnapshot,
+        namespace_id: &[u8],
+    ) -> bool {
+        snapshot.iter(SysRowEntryType::CDC_STREAM).any(|row| {
+            row.parse::<yb_proto::pb::catalog_entity_info::SysCDCStreamEntryPB>()
+                .is_ok_and(|pb| {
+                    pb.state()
+                        != yb_proto::pb::catalog_entity_info::sys_cdcstream_entry_pb::State::DELETING
+                        && !pb.namespace_id().is_empty()
+                        && pb.namespace_id().as_bytes() == namespace_id
+                })
+        })
+    }
+
     pub(crate) fn cluster_config(
         snapshot: &CatalogSnapshot,
     ) -> Result<SysClusterConfigEntryPB, Status> {
