@@ -508,7 +508,8 @@ public class UpgradeUniverseHandler {
     return false;
   }
 
-  // By now the sensitive gflags merge has put the stored real values back into these maps.
+  // These maps hold real values: the client's, or the stored ones the sensitive gflags merge put
+  // back for REDACTED.
   private static JsonNode redactForLog(Object gflags) {
     return gflags == null
         ? null
