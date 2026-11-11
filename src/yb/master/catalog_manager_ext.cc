@@ -3279,7 +3279,9 @@ Status CatalogManager::RestoreSysCatalogFastPitr(
     RETURN_NOT_OK(patcher.Load());
     RETURN_NOT_OK(patcher.SetHybridTimeFilter(restoration->db_oid, restoration->restore_at));
 
-    RETURN_NOT_OK(tablet->OpenKeyValueTablet());
+    // The intents DB is reopened as it was, so the participant keeps every in-flight transaction;
+    // RestoreSysCatalogReplicated then cuts those of the restored database.
+    RETURN_NOT_OK(tablet->OpenKeyValueTablet(tablet::KeepTransactions::kTrue));
     RETURN_NOT_OK(tablet->EnableCompactions(&op_pauses.blocking_rocksdb_shutdown_start));
 
     // Ensure that op_pauses stays in scope throughout this function.

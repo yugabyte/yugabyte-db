@@ -644,13 +644,15 @@ class MasterSnapshotCoordinator::Impl {
               restoration.get(), tablet.get(), leader_term >= 0, complete_status),
           "Restore sys catalog failed");
     }
-    // Fence transactions started at or before this restore so their remaining writes cannot
-    // recreate them with a reset write_id.
+    // A YSQL restoration rewinds one database of the shared sys catalog tablet, so only that
+    // database's transactions started at or before the restore are cut. The other databases'
+    // transactions, whose intents the restore leaves on disk, keep running and apply (GH #34074).
     auto* participant = tablet->transaction_participant();
-    if (participant && restoration->write_time) {
-      tablet->metadata()->SetRestorationHybridTime(restoration->write_time);
-      participant->IgnoreAllTransactionsStartedBefore(restoration->write_time);
+    if (participant && complete_status->ok() && restoration->write_time && restoration->db_oid) {
+      auto db_oid = static_cast<uint32_t>(*restoration->db_oid);
+      tablet->metadata()->SetDbRestorationHybridTime(db_oid, restoration->write_time);
       RETURN_NOT_OK(tablet->metadata()->Flush());
+      RETURN_NOT_OK(participant->CutDbTransactionsStartedBefore(db_oid, restoration->write_time));
     }
     return Status::OK();
   }

@@ -1469,6 +1469,9 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
     if (restoration_hybrid_time) {
       restoration_hybrid_time_ = restoration_hybrid_time;
     }
+    for (const auto& entry : superblock.db_restoration_hybrid_times()) {
+      db_restoration_hybrid_times_[entry.db_oid()] = HybridTime::FromPB(entry.hybrid_time());
+    }
 
     if (superblock.has_split_op_id()) {
       split_op_id_ = OpId::FromPB(superblock.split_op_id());
@@ -1649,6 +1652,11 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
   pb.set_hidden(hidden_);
   if (restoration_hybrid_time_) {
     pb.set_restoration_hybrid_time(restoration_hybrid_time_.ToUint64());
+  }
+  for (const auto& [db_oid, hybrid_time] : db_restoration_hybrid_times_) {
+    auto* entry = pb.add_db_restoration_hybrid_times();
+    entry->set_db_oid(db_oid);
+    entry->set_hybrid_time(hybrid_time.ToUint64());
   }
   pb.set_is_under_cdc_sdk_replication(is_under_cdc_sdk_replication_);
 
@@ -2250,6 +2258,18 @@ void RaftGroupMetadata::SetRestorationHybridTime(HybridTime value) {
 HybridTime RaftGroupMetadata::restoration_hybrid_time() const {
   std::lock_guard lock(data_mutex_);
   return restoration_hybrid_time_;
+}
+
+void RaftGroupMetadata::SetDbRestorationHybridTime(uint32_t db_oid, HybridTime value) {
+  std::lock_guard lock(data_mutex_);
+  auto& hybrid_time =
+      db_restoration_hybrid_times_.try_emplace(db_oid, HybridTime::kMin).first->second;
+  hybrid_time = std::max(hybrid_time, value);
+}
+
+std::map<uint32_t, HybridTime> RaftGroupMetadata::db_restoration_hybrid_times() const {
+  std::lock_guard lock(data_mutex_);
+  return db_restoration_hybrid_times_;
 }
 
 void RaftGroupMetadata::set_tablet_data_state(TabletDataState state) {

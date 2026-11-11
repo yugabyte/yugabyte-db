@@ -540,23 +540,17 @@ class HybridTimeFilteringIterator : public rocksdb::FilteringIterator {
       return true;
     }
     // Should only reach here in case of ysql catalog tables on the master.
-    bool cotable_uuid_present = user_key.TryConsumeByte(dockv::KeyEntryTypeAsChar::kTableId);
-    if (!cotable_uuid_present) {
+    auto key_db_oid = DecodeDbOidFromCotableKey(user_key);
+    if (!key_db_oid) {
       return true;
     }
-    Slice cotable_slice(user_key.cdata(), kUuidSize);
-    auto decoded_cotable_uuid_res = Uuid::FromComparable(cotable_slice);
-    if (!decoded_cotable_uuid_res.ok()) {
-      return true;
-    }
-    uint32_t key_db_oid = LittleEndian::Load32(decoded_cotable_uuid_res->data() + 12);
 
-    VLOG(5) << "DB Oid of key " << key_db_oid;
-    auto it = std::lower_bound(db_oid_ptr_, db_oid_ptr_ + num_filters_, key_db_oid);
-    if (it != db_oid_ptr_ + num_filters_ && *it == key_db_oid) {
+    VLOG(5) << "DB Oid of key " << *key_db_oid;
+    auto it = std::lower_bound(db_oid_ptr_, db_oid_ptr_ + num_filters_, *key_db_oid);
+    if (it != db_oid_ptr_ + num_filters_ && *it == *key_db_oid) {
       auto idx = it - db_oid_ptr_;
       HybridTime ht(cotables_ht_ptr_[idx]);
-      VLOG(5) << "Found db oid " << key_db_oid << " at index " << idx
+      VLOG(5) << "Found db oid " << *key_db_oid << " at index " << idx
               << " with hybrid time " << ht;
       return doc_ht->hybrid_time() <= ht;
     }
@@ -1099,6 +1093,19 @@ class RocksDBPatcher::Impl {
   rocksdb::ColumnFamilyOptions cf_options_;
   rocksdb::VersionSet version_set_;
 };
+
+std::optional<uint32_t> DecodeDbOidFromCotableKey(Slice key) {
+  if (!key.TryConsumeByte(dockv::KeyEntryTypeAsChar::kTableId) || key.size() < kUuidSize) {
+    return std::nullopt;
+  }
+  auto cotable_id = Uuid::FromComparable(key.Prefix(kUuidSize));
+  if (!cotable_id.ok()) {
+    return std::nullopt;
+  }
+  // GetPgsqlTableId puts the database oid in the first 4 bytes of the id's hex form, which
+  // Uuid::FromHexString reads in host byte order, so they end up as the last 4 bytes.
+  return LittleEndian::Load32(cotable_id->data() + 12);
+}
 
 RocksDBPatcher::RocksDBPatcher(const std::string& dbpath, const rocksdb::Options& options)
     : impl_(new Impl(dbpath, options)) {

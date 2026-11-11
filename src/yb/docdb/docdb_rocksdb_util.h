@@ -184,6 +184,10 @@ int32_t GetGlobalRocksDBPriorityThreadPoolSize();
 // Gets the configured priority thread pool instance.
 PriorityThreadPool* GetGlobalPriorityThreadPool();
 
+// The oid of the database a key of a YSQL catalog table on the sys catalog tablet belongs to,
+// read from the cotable id the key starts with. Empty for a key without a cotable id.
+std::optional<uint32_t> DecodeDbOidFromCotableKey(Slice key);
+
 // Class to edit RocksDB manifest w/o fully loading DB into memory.
 class RocksDBPatcher {
  public:

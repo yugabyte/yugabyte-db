@@ -937,6 +937,11 @@ Tablet::Tablet(const TabletInitData& data)
   if (restoration_hybrid_time && transaction_participant_) {
     transaction_participant_->IgnoreAllTransactionsStartedBefore(restoration_hybrid_time);
   }
+  if (transaction_participant_) {
+    for (const auto& [db_oid, hybrid_time] : metadata_->db_restoration_hybrid_times()) {
+      transaction_participant_->IgnoreDbTransactionsStartedBefore(db_oid, hybrid_time);
+    }
+  }
   SyncRestoringOperationFilter(ResetSplit::kFalse);
 
   if (is_sys_catalog_) {
@@ -1301,7 +1306,7 @@ std::string Tablet::LogPrefix(docdb::StorageDbType db_type) const {
   return MakeTabletLogPrefix(tablet_id(), log_prefix_suffix_, db_type);
 }
 
-Status Tablet::OpenKeyValueTablet() {
+Status Tablet::OpenKeyValueTablet(KeepTransactions keep_transactions) {
   auto common_options = VERIFY_RESULT(CommonRocksDBOptions());
 
   key_bounds_ = metadata()->MakeKeyBounds();
@@ -1309,7 +1314,7 @@ Status Tablet::OpenKeyValueTablet() {
 
   RETURN_NOT_OK(snapshots_->Open());
   RETURN_NOT_OK(OpenRegularDB(common_options));
-  RETURN_NOT_OK(OpenIntentsDB(common_options));
+  RETURN_NOT_OK(OpenIntentsDB(common_options, keep_transactions));
   rocksdb::AllowCompactionFailures allow_compaction_failures =
       rocksdb::AllowCompactionFailures::kFalse;
   {
@@ -1516,7 +1521,8 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
   return Status::OK();
 }
 
-Status Tablet::OpenIntentsDB(const rocksdb::Options& common_options) {
+Status Tablet::OpenIntentsDB(
+    const rocksdb::Options& common_options, KeepTransactions keep_transactions) {
   if (!transaction_participant_) {
     return Status::OK();
   }
@@ -1590,7 +1596,7 @@ Status Tablet::OpenIntentsDB(const rocksdb::Options& common_options) {
       MonoDelta::FromMilliseconds(FLAGS_cdc_intent_retention_ms),
       /* min_start_ht_cdc_unstreamed_txns */ HybridTime::kInvalid);
   RETURN_NOT_OK(transaction_participant_->SetDB(
-      doc_db(), &pending_op_counter_blocking_rocksdb_shutdown_start_));
+      doc_db(), &pending_op_counter_blocking_rocksdb_shutdown_start_, keep_transactions));
   if (FLAGS_cdc_immediate_transaction_cleanup) {
     CleanupIntentFiles();
   }
@@ -2321,7 +2327,7 @@ Status Tablet::WriteTransactionalBatch(
   if (put_batch.transaction().has_isolation()) {
     // Store transaction metadata (status tablet, isolation level etc.)
     auto metadata = VERIFY_RESULT(TransactionMetadata::FromPB(put_batch.transaction()));
-    auto add_result = transaction_participant()->Add(metadata, hybrid_time);
+    auto add_result = transaction_participant()->Add(metadata, hybrid_time, put_batch);
     if (!add_result.ok()) {
       return add_result.status();
     }
