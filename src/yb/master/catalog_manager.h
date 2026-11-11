@@ -205,8 +205,8 @@ YB_DEFINE_ENUM(DeleteYsqlDBTablesType,
 
 YB_DEFINE_ENUM(CDCStreamType, (kNone)(kLogicalReplication)(kgRPC));
 
-YB_DEFINE_ENUM(PrepareStreamForTxnDdlResult,
-               (kPrepared)(kNotCDCSDKStream)(kDeleting)(kNotImplicit));
+YB_DEFINE_ENUM(PrepareSlotForTxnDdlResult,
+               (kPrepared)(kNotLogicalReplication)(kDeleting)(kNotImplicit));
 
 struct YsqlTableDdlTxnState;
 using google::protobuf::RepeatedPtrField;
@@ -1655,9 +1655,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Adds the catalog tables used to decode transactional DDL to implicit streams created without
   // them.
-  Status PrepareCDCStreamsForTransactionalDDL(
-      const PrepareCDCStreamsForTransactionalDDLRequestPB* req,
-      PrepareCDCStreamsForTransactionalDDLResponsePB* resp, rpc::RpcContext* rpc)
+  Status PrepareReplicationSlotsForTransactionalDDL(
+      const PrepareReplicationSlotsForTransactionalDDLRequestPB* req,
+      PrepareReplicationSlotsForTransactionalDDLResponsePB* resp, rpc::RpcContext* rpc)
       EXCLUDES(mutex_);
 
   Status DisableDynamicTableAdditionOnCDCSDKStream(
@@ -1889,7 +1889,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Delete specified CDC streams metadata.
   Status CleanUpCDCSDKStreamsMetadata(const LeaderEpoch& epoch) EXCLUDES(mutex_);
 
-  Result<PrepareStreamForTxnDdlResult> AddTransactionalDdlCatalogTablesToStream(
+  Result<PrepareSlotForTxnDdlResult> AddTransactionalDdlCatalogTablesToStream(
       const CDCStreamInfoPtr& stream) EXCLUDES(mutex_);
 
   // Returns CDCSDK streams that need metadata cleanup. This includes streams with non-empty

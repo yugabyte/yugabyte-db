@@ -153,25 +153,18 @@ class CdcUpgradeTest : public UpgradeTestBase {
     return true;
   }
 
-  // Returns yb-admin's output, or its error output as the error.
-  Result<std::string> PrepareStreamForTxnDdl(const xrepl::StreamId& stream_id) {
+  Status PrepareSlotForTxnDdl(const std::string& slot_name) {
     auto command = ToStringVector(
         GetToolPath("yb-admin"), "--master_addresses", cluster_->GetMasterAddresses(),
-        "--timeout_ms", 60000, "prepare_cdc_streams_for_transactional_ddl", stream_id);
+        "--timeout_ms", 60000, "prepare_replication_slots_for_transactional_ddl", slot_name);
     std::string output, error;
     auto status = Subprocess::Call(command, &output, &error);
     LOG(INFO) << "yb-admin output: " << output << ", error output: " << error;
     if (!status.ok()) {
       return STATUS_FORMAT(RuntimeError, "$0: $1", status, error);
     }
-    return output;
-  }
-
-  Status PrepareSlotForTxnDdl(const std::string& slot_name) {
-    const auto stream_id = VERIFY_RESULT(GetSlotStream(slot_name)).first;
-    auto output = VERIFY_RESULT(PrepareStreamForTxnDdl(stream_id));
     SCHECK_STR_CONTAINS(
-        output, Format("Prepared CDC streams for transactional DDL: [$0]", stream_id));
+        output, Format("Prepared replication slots for transactional DDL: [$0]", slot_name));
     SCHECK(VERIFY_RESULT(HasTxnDdlCatalogTables(slot_name)), IllegalState,
            Format("$0 lacks the transactional DDL catalog tables", slot_name));
     return Status::OK();
@@ -400,7 +393,7 @@ void CdcUpgradeTest::TestImplicitSlotDecodesTxnDdlAfterUpgrade() {
   ASSERT_OK(EnableTxnDdlReplication());
   ASSERT_NOK_STR_CONTAINS(
       StreamAndAcknowledge(kSlot, "value_26", 60s, IgnoreReadTime::kTrue, nullptr),
-      "prepare_cdc_streams_for_transactional_ddl");
+      "prepare_replication_slots_for_transactional_ddl");
   ASSERT_OK(PrepareSlotForTxnDdl(kSlot));
 
   conn = ASSERT_RESULT(cluster_->ConnectToDB(kDbName));

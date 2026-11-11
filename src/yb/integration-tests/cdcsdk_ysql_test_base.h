@@ -939,8 +939,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   Status RemoveUserTableFromCDCSDKStream(const xrepl::StreamId& stream_id, const TableId& table_id);
 
-  Result<std::string> PrepareCDCStreamsForTransactionalDDL(
-      const std::string& master_addresses, const std::string& stream_id);
+  Result<std::string> PrepareReplicationSlotsForTransactionalDDL(
+      const std::string& master_addresses, const std::string& slot_name);
 
   void TestUserTableRemovalFromCDCStream(bool use_consistent_snapshot_stream);
 

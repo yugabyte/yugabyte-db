@@ -4318,36 +4318,39 @@ Status ClusterAdminClient::GetCDCDBStreamInfo(const std::string& db_stream_id) {
   return Status::OK();
 }
 
-Status ClusterAdminClient::PrepareCDCStreamsForTransactionalDDL(
-    const std::string& stream_id) {
-  master::PrepareCDCStreamsForTransactionalDDLRequestPB req;
-  master::PrepareCDCStreamsForTransactionalDDLResponsePB resp;
-  if (!stream_id.empty()) {
-    req.set_stream_id(stream_id);
+Status ClusterAdminClient::PrepareReplicationSlotsForTransactionalDDL(
+    const std::string& slot_name) {
+  master::PrepareReplicationSlotsForTransactionalDDLRequestPB req;
+  master::PrepareReplicationSlotsForTransactionalDDLResponsePB resp;
+  if (!slot_name.empty()) {
+    req.set_replication_slot_name(slot_name);
   }
 
   RpcController rpc;
   rpc.set_timeout(timeout_);
-  RETURN_NOT_OK(master_replication_proxy_->PrepareCDCStreamsForTransactionalDDL(
+  RETURN_NOT_OK(master_replication_proxy_->PrepareReplicationSlotsForTransactionalDDL(
       req, &resp, &rpc));
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
 
-  if (!resp.skipped_streams().empty()) {
-    cout << "Skipped CDC streams: "
+  if (!resp.skipped_slots().empty()) {
+    cout << "Skipped replication slots: "
          << CollectionToString(
-                resp.skipped_streams(),
-                [](const auto& s) { return Format("$0 ($1)", s.stream_id(), s.reason()); })
+                resp.skipped_slots(),
+                [](const auto& s) {
+                  return Format("$0 ($1)", s.replication_slot_name(), s.reason());
+                })
          << "\n";
   }
-  if (resp.streams().empty()) {
-    cout << "No CDC streams to prepare\n";
+  if (resp.slots().empty()) {
+    cout << "No replication slots to prepare\n";
     return Status::OK();
   }
   RETURN_NOT_OK(InvalidateCDCStreamMetadataCaches());
-  cout << "Prepared CDC streams for transactional DDL: "
-       << CollectionToString(resp.streams(), [](const auto& s) { return s.stream_id(); }) << "\n";
+  cout << "Prepared replication slots for transactional DDL: "
+       << CollectionToString(resp.slots(), [](const auto& s) { return s.replication_slot_name(); })
+       << "\n";
   return Status::OK();
 }
 

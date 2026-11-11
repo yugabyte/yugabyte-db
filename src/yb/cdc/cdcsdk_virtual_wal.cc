@@ -272,8 +272,8 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
               stream_table_ids.end(),
           IllegalState,
           "Replication slot $0 lacks the catalog tables used to decode transactional DDL. Stop "
-          "its consumer and run 'yb-admin prepare_cdc_streams_for_transactional_ddl $1'",
-          stream->GetReplicationSlotName().value_or(stream_id_.ToString()), stream_id_);
+          "its consumer and run 'yb-admin prepare_replication_slots_for_transactional_ddl $0'",
+          stream->GetReplicationSlotName().value_or(stream_id_.ToString()));
     }
   }
 

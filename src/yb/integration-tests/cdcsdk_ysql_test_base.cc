@@ -5088,14 +5088,14 @@ Status CDCSDKYsqlTest::RemoveUserTableFromCDCSDKStream(
   return Status::OK();
 }
 
-Result<std::string> CDCSDKYsqlTest::PrepareCDCStreamsForTransactionalDDL(
-    const std::string& master_addresses, const std::string& stream_id) {
+Result<std::string> CDCSDKYsqlTest::PrepareReplicationSlotsForTransactionalDDL(
+    const std::string& master_addresses, const std::string& slot_name) {
   vector<string> command_args;
-  if (!stream_id.empty()) {
-    command_args.push_back(stream_id);
+  if (!slot_name.empty()) {
+    command_args.push_back(slot_name);
   }
   return ExecuteYBAdminCommand(
-      master_addresses, "prepare_cdc_streams_for_transactional_ddl", command_args);
+      master_addresses, "prepare_replication_slots_for_transactional_ddl", command_args);
 }
 
 Status CDCSDKYsqlTest::ValidateAndSyncCDCStateEntriesForCDCSDKStream(

@@ -454,7 +454,7 @@ class ClusterAdminClient {
 
   Status GetCDCDBStreamInfo(const std::string& db_stream_id);
 
-  Status PrepareCDCStreamsForTransactionalDDL(const std::string& stream_id);
+  Status PrepareReplicationSlotsForTransactionalDDL(const std::string& slot_name);
 
   Status InvalidateCDCStreamMetadataCaches();
 

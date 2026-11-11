@@ -52,7 +52,7 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (ValidateAndSyncCDCStateEntriesForCDCSDKStream)
     (CleanupStaleCDCStreams)
     (RemoveTablesFromCDCSDKStream)
-    (PrepareCDCStreamsForTransactionalDDL)
+    (PrepareReplicationSlotsForTransactionalDDL)
   )
 
   MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(

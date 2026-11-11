@@ -7356,15 +7356,17 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALDetectAddDropColumnFromPg
 
 // A stream created without TEST_ysql_yb_enable_replication_slot_transactional_ddl lacks the
 // catalog tables that transactional DDLs are decoded from. The master keeps serving the sys catalog
-// from the stream metadata it cached until prepare_cdc_streams_for_transactional_ddl adds the
+// from the stream metadata it cached until prepare_replication_slots_for_transactional_ddl adds the
 // tables and invalidates it on every master.
-TEST_F(CDCSDKConsumptionConsistentChangesTest, TestPrepareStreamForTransactionalDdl) {
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestPrepareSlotForTransactionalDdl) {
   ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
 
   ASSERT_OK(SetUpWithParams(3, 3, false, true));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName, 1));
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  constexpr auto kSlotName = "test_slot";
+  xrepl::StreamId stream_id =
+      ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(kSlotName));
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.ExecuteFormat(
@@ -7387,7 +7389,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestPrepareStreamForTransactional
   ASSERT_TRUE(init_resp.has_error());
   ASSERT_STR_CONTAINS(
       StatusFromPB(init_resp.error().status()).ToString(),
-      "prepare_cdc_streams_for_transactional_ddl");
+      "prepare_replication_slots_for_transactional_ddl");
 
   // The command fails naming the stopped master. Rerunning it once the master is back finishes the
   // invalidation.
@@ -7401,19 +7403,19 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestPrepareStreamForTransactional
   }
   master->Shutdown();
   ASSERT_NOK_STR_CONTAINS(
-      PrepareCDCStreamsForTransactionalDDL(master_addresses, stream_id.ToString()),
+      PrepareReplicationSlotsForTransactionalDDL(master_addresses, kSlotName),
       Format("master $0", master_uuid));
   ASSERT_OK(master->StartDistributedMaster(master_ports));
   ASSERT_OK(WaitFor(
       [&]() {
-        return PrepareCDCStreamsForTransactionalDDL(master_addresses, stream_id.ToString()).ok();
+        return PrepareReplicationSlotsForTransactionalDDL(master_addresses, kSlotName).ok();
       },
       MonoDelta::FromSeconds(60) * kTimeMultiplier,
-      "Prepare the stream once every master is reachable"));
-  // Without a stream id, the command prepares every implicit stream.
+      "Prepare the slot once every master is reachable"));
+  // Without a slot name, the command prepares every implicit slot.
   ASSERT_STR_CONTAINS(
-      ASSERT_RESULT(PrepareCDCStreamsForTransactionalDDL(master_addresses, "")),
-      Format("Prepared CDC streams for transactional DDL: [$0]", stream_id));
+      ASSERT_RESULT(PrepareReplicationSlotsForTransactionalDDL(master_addresses, "")),
+      Format("Prepared replication slots for transactional DDL: [$0]", kSlotName));
 
   ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.ExecuteFormat(

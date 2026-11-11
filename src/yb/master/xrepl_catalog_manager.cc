@@ -674,18 +674,18 @@ bool IsCatalogTableEligibleForCDC(uint32_t table_oid) {
            table_oid == kPgPublicationRelPrpubidIndexOid));
 }
 
-const char* SkipReason(PrepareStreamForTxnDdlResult result) {
+const char* SkipReason(PrepareSlotForTxnDdlResult result) {
   switch (result) {
-    case PrepareStreamForTxnDdlResult::kPrepared:
+    case PrepareSlotForTxnDdlResult::kPrepared:
       break;
-    case PrepareStreamForTxnDdlResult::kNotCDCSDKStream:
-      return "it isn't a CDCSDK stream";
-    case PrepareStreamForTxnDdlResult::kDeleting:
+    case PrepareSlotForTxnDdlResult::kNotLogicalReplication:
+      return "it isn't a logical replication slot";
+    case PrepareSlotForTxnDdlResult::kDeleting:
       return "it is being deleted";
-    case PrepareStreamForTxnDdlResult::kNotImplicit:
+    case PrepareSlotForTxnDdlResult::kNotImplicit:
       return "it doesn't detect publication changes implicitly";
   }
-  FATAL_INVALID_ENUM_VALUE(PrepareStreamForTxnDdlResult, result);
+  FATAL_INVALID_ENUM_VALUE(PrepareSlotForTxnDdlResult, result);
 }
 
 Result<std::vector<TableId>> GetCatalogTableIdsPolledByLogicalReplication(
@@ -6207,10 +6207,10 @@ void CatalogManager::RunXReplBgTasks(const LeaderEpoch& epoch) {
   StartXReplParentTabletDeletionTaskIfStopped();
 }
 
-Status CatalogManager::PrepareCDCStreamsForTransactionalDDL(
-    const PrepareCDCStreamsForTransactionalDDLRequestPB* req,
-    PrepareCDCStreamsForTransactionalDDLResponsePB* resp, rpc::RpcContext* rpc) {
-  LOG(INFO) << "Servicing PrepareCDCStreamsForTransactionalDDL request from "
+Status CatalogManager::PrepareReplicationSlotsForTransactionalDDL(
+    const PrepareReplicationSlotsForTransactionalDDLRequestPB* req,
+    PrepareReplicationSlotsForTransactionalDDLResponsePB* resp, rpc::RpcContext* rpc) {
+  LOG(INFO) << "Servicing PrepareReplicationSlotsForTransactionalDDL request from "
             << RequestorString(rpc) << ": " << req->ShortDebugString();
 
   SCHECK(
@@ -6222,42 +6222,48 @@ Status CatalogManager::PrepareCDCStreamsForTransactionalDDL(
       IllegalState,
       "Replication slots can't detect publication changes implicitly on this universe");
 
-  std::vector<CDCStreamInfoPtr> streams;
+  std::vector<std::pair<ReplicationSlotName, CDCStreamInfoPtr>> slots;
   {
     SharedLock lock(mutex_);
-    if (req->has_stream_id()) {
-      auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(req->stream_id()));
-      auto stream = FindPtrOrNull(cdc_stream_map_, stream_id);
-      SCHECK_FORMAT(stream, NotFound, "CDC stream $0 not found", req->stream_id());
-      streams.push_back(std::move(stream));
+    if (req->has_replication_slot_name()) {
+      ReplicationSlotName slot_name(req->replication_slot_name());
+      auto* stream_id = FindOrNull(cdcsdk_replication_slots_to_stream_map_, slot_name);
+      auto stream = stream_id ? FindPtrOrNull(cdc_stream_map_, *stream_id) : nullptr;
+      SCHECK_FORMAT(
+          stream, NotFound, "Replication slot $0 not found", req->replication_slot_name());
+      slots.emplace_back(std::move(slot_name), std::move(stream));
     } else {
-      for (const auto& [_, stream] : cdc_stream_map_) {
-        streams.push_back(stream);
+      for (const auto& [slot_name, stream_id] : cdcsdk_replication_slots_to_stream_map_) {
+        auto stream = FindPtrOrNull(cdc_stream_map_, stream_id);
+        if (stream && IsCdcLogicalReplicationStream(*stream)) {
+          slots.emplace_back(slot_name, std::move(stream));
+        }
       }
     }
   }
 
-  for (const auto& stream : streams) {
+  for (const auto& [slot_name, stream] : slots) {
     auto result = VERIFY_RESULT(AddTransactionalDdlCatalogTablesToStream(stream));
-    if (result == PrepareStreamForTxnDdlResult::kPrepared) {
-      resp->add_streams()->set_stream_id(stream->id());
+    if (result == PrepareSlotForTxnDdlResult::kPrepared) {
+      resp->add_slots()->set_replication_slot_name(slot_name.ToString());
       continue;
     }
     const auto* skip_reason = SkipReason(result);
-    LOG_WITH_FUNC(INFO) << "Skipping CDC stream " << stream->id() << " because " << skip_reason;
-    if (req->has_stream_id() || result != PrepareStreamForTxnDdlResult::kNotCDCSDKStream) {
-      auto* skipped = resp->add_skipped_streams();
-      skipped->set_stream_id(stream->id());
-      skipped->set_reason(skip_reason);
-    }
+    LOG_WITH_FUNC(INFO) << "Skipping replication slot " << slot_name << " because " << skip_reason;
+    auto* skipped = resp->add_skipped_slots();
+    skipped->set_replication_slot_name(slot_name.ToString());
+    skipped->set_reason(skip_reason);
   }
   return Status::OK();
 }
 
-Result<PrepareStreamForTxnDdlResult> CatalogManager::AddTransactionalDdlCatalogTablesToStream(
+Result<PrepareSlotForTxnDdlResult> CatalogManager::AddTransactionalDdlCatalogTablesToStream(
     const CDCStreamInfoPtr& stream) {
-  if (!stream->IsCDCSDKStream()) {
-    return PrepareStreamForTxnDdlResult::kNotCDCSDKStream;
+  {
+    SharedLock lock(mutex_);
+    if (!IsCdcLogicalReplicationStream(*stream)) {
+      return PrepareSlotForTxnDdlResult::kNotLogicalReplication;
+    }
   }
   const auto catalog_table_ids =
       VERIFY_RESULT(GetCatalogTableIdsPolledByLogicalReplication(stream->namespace_id()));
@@ -6266,10 +6272,10 @@ Result<PrepareStreamForTxnDdlResult> CatalogManager::AddTransactionalDdlCatalogT
   {
     auto l = stream->LockForWrite();
     if (l->started_deleting() || l->is_deleting_metadata()) {
-      return PrepareStreamForTxnDdlResult::kDeleting;
+      return PrepareSlotForTxnDdlResult::kDeleting;
     }
     if (!l->pb.detect_publication_changes_implicitly()) {
-      return PrepareStreamForTxnDdlResult::kNotImplicit;
+      return PrepareSlotForTxnDdlResult::kNotImplicit;
     }
     auto& pb = l.mutable_data()->pb;
     for (const auto& table_id : catalog_table_ids) {
@@ -6285,7 +6291,7 @@ Result<PrepareStreamForTxnDdlResult> CatalogManager::AddTransactionalDdlCatalogT
     if (added_table_ids.empty()) {
       LOG_WITH_FUNC(INFO) << "Stream " << stream->id()
                           << " already contains all required PG catalog tables";
-      return PrepareStreamForTxnDdlResult::kPrepared;
+      return PrepareSlotForTxnDdlResult::kPrepared;
     }
     RETURN_ACTION_NOT_OK(
         sys_catalog_->Upsert(leader_ready_term(), stream), "Updating CDC stream in system catalog");
@@ -6303,7 +6309,7 @@ Result<PrepareStreamForTxnDdlResult> CatalogManager::AddTransactionalDdlCatalogT
   }
   LOG_WITH_FUNC(INFO) << "Added catalog tables " << AsString(added_table_ids) << " to stream "
                       << stream->id();
-  return PrepareStreamForTxnDdlResult::kPrepared;
+  return PrepareSlotForTxnDdlResult::kPrepared;
 }
 
 Status CatalogManager::ClearFailedUniverse(const LeaderEpoch& epoch) {

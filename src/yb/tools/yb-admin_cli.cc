@@ -2465,17 +2465,17 @@ Status get_change_data_stream_info_action(
   return Status::OK();
 }
 
-const auto prepare_cdc_streams_for_transactional_ddl_args = "[<stream_id>]";
-Status prepare_cdc_streams_for_transactional_ddl_action(
+const auto prepare_replication_slots_for_transactional_ddl_args = "[<replication_slot_name>]";
+Status prepare_replication_slots_for_transactional_ddl_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() > 1) {
     return ClusterAdminCli::kInvalidArguments;
   }
 
-  const string stream_id = args.empty() ? "" : args[0];
+  const string slot_name = args.empty() ? "" : args[0];
   RETURN_NOT_OK_PREPEND(
-      client->PrepareCDCStreamsForTransactionalDDL(stream_id),
-      "Failed to prepare CDC streams for transactional DDL");
+      client->PrepareReplicationSlotsForTransactionalDDL(slot_name),
+      "Failed to prepare replication slots for transactional DDL");
   return Status::OK();
 }
 
@@ -3620,7 +3620,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(delete_change_data_stream);
   REGISTER_COMMAND(list_change_data_streams);
   REGISTER_COMMAND(get_change_data_stream_info);
-  REGISTER_COMMAND(prepare_cdc_streams_for_transactional_ddl);
+  REGISTER_COMMAND(prepare_replication_slots_for_transactional_ddl);
   REGISTER_COMMAND(disable_dynamic_table_addition_on_change_data_stream);
   REGISTER_COMMAND(remove_user_table_from_change_data_stream);
   REGISTER_COMMAND(validate_and_sync_cdc_state_table_entries_on_change_data_stream);
