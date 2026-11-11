@@ -369,6 +369,10 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         // Update master addresses including xcluster with new master information.
         createMasterInfoUpdateTask(universe, currentNode, null /* stopped node */);
       }
+      // isMaster covers a retry, where addMaster is already false.
+      if (addMaster || currentNode.isMaster) {
+        queueOtelCollectorConfigRewrite(nodeSet, false /* ignoreErrors */);
+      }
 
       if (addTserver) {
         // Add node to load balancer. Only tservers are load balancer targets.

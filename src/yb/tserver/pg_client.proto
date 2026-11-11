@@ -40,6 +40,8 @@ service PgClientService {
   rpc AlterDatabase(PgAlterDatabaseRequestPB) returns (PgAlterDatabaseResponsePB);
   rpc AlterTable(PgAlterTableRequestPB) returns (PgAlterTableResponsePB);
   rpc BackfillIndex(PgBackfillIndexRequestPB) returns (PgBackfillIndexResponsePB);
+  rpc StartTableBackfill(PgStartTableBackfillRequestPB)
+      returns (PgStartTableBackfillResponsePB);
   rpc CreateDatabase(PgCreateDatabaseRequestPB) returns (PgCreateDatabaseResponsePB);
   rpc CreateReplicationSlot(PgCreateReplicationSlotRequestPB)
       returns (PgCreateReplicationSlotResponsePB);
@@ -279,6 +281,19 @@ message PgBackfillIndexRequestPB {
 }
 
 message PgBackfillIndexResponsePB {
+  AppStatusPB status = 1;
+}
+
+message PgStartTableBackfillRequestPB {
+  uint64 session_id = 1;
+  PgObjectIdPB source_table_id = 2;
+  uint32 target_table_oid = 3;
+  uint32 transform_fn_oid = 4;
+  uint64 backfill_timestamp = 5;
+  int64 pg_job_id = 6;
+}
+
+message PgStartTableBackfillResponsePB {
   AppStatusPB status = 1;
 }
 
@@ -873,6 +888,30 @@ message PgPerformOptionsPB {
     // relcache preload -- cost the leader little, so a version recorded from one of them would
     // advertise a saving that does not exist.
     bool completes_connection_prefetch = 6;
+
+    // If a fill is already under way -- another session's anywhere in this key group, or any
+    // session's on this very entry -- answer Incomplete rather than queueing this caller behind
+    // it. The caller then reads the older version this node holds and catches up from there.
+    // The wait it replaces is unbounded in the only case that matters: a fill reaching a loaded
+    // leader takes as long as the leader needs, and every connection that arrives meanwhile
+    // waits with it.
+    //
+    // Set only by a caller that has somewhere else to go, on the opening round of its prefetch
+    // and only on its first attempt. A later round is not sent away: being sent away discards
+    // everything the prefetch has fetched, which costs the caller more than the rounds it saves
+    // the leader. A caller that tried the older version and could not use it asks again
+    // without this and does what it would have done without the ask -- queueing behind the
+    // fill when it wants the entry being filled, starting one of its own when it does not --
+    // so a prefetch that keeps failing cannot bounce between the two.
+    bool send_away_if_fill_in_flight = 7;
+
+    // Every round of a connection start's prefetch carries this; completes_connection_prefetch
+    // marks the last request of it, every round of that one included, so the round that ends
+    // the prefetch is the one that also runs out of paging state. It makes the database count
+    // as busy for the whole prefetch rather than only while one of its requests is in flight,
+    // so a connection arriving while this one is building its relcache -- seconds of CPU with
+    // nothing outstanding -- finds that fill instead of starting a second whole-catalog read.
+    bool part_of_connection_prefetch = 8;
   }
 
   message ReadTimeOptionsPB {
@@ -948,6 +987,13 @@ message PgPerformOptionsPB {
   // Source commit time of the transaction being applied, as a HybridTime, travelling with
   // xrepl_origin_id.
   fixed64 xrepl_source_write_ht = 39;
+
+  // This op uses the read_time_serial_no of the CatalogSnapshot in Postgres.
+  bool uses_catalog_snapshot = 40;
+
+  // Subtransactions of historical_read_transaction_id rolled back to a savepoint.
+  // Only applicable when historical_read_transaction_id is set.
+  SubtxnSetPB historical_read_aborted_subtxns = 41;
 }
 
 message PgRequestSequenceNumPB {

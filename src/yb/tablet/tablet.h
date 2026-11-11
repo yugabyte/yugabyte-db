@@ -66,6 +66,7 @@
 #include "yb/tablet/mvcc.h"
 #include "yb/tablet/operations/operation.h"
 #include "yb/tablet/operation_filter.h"
+#include "yb/tablet/tablet_context.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/transaction_intent_applier.h"
@@ -147,6 +148,7 @@ struct ManualCompactionOptions {
 // Tiered storage: bookkeeping for one migration pass, from Tablet::StartTierMigrationPass to
 // Tablet::FinishTierMigrationPass.
 struct TierMigrationPass;
+struct TierPathInfo;
 
 // Where this replica stands relative to its persisted target tier
 // (RaftGroupMetadata::target_storage_tier() / target_tier_path_id()). In memory only: after a
@@ -176,9 +178,16 @@ struct TierMigrationStatus {
   uint32_t files_failed = 0;    // hit an unrecoverable error; see last_error
   uint32_t obsoleted = 0;       // gone before the move ran (rewritten by a compaction)
 
-  // Passes in a row that hit a hard error without moving a single file. Any progress resets it.
+  // Passes in a row that hit a hard error without moving a single file. Any progress resets it,
+  // as does any accepted AlterTabletTier or target write.
   uint32_t consecutive_failed_passes = 0;
   Status last_error;
+};
+
+// Tiered storage: a placement intent, (tier, path_id) as RaftGroupMetadata persists it.
+struct TierTarget {
+  std::string tier;
+  uint32_t path_id = 0;
 };
 
 // Policy for one reconciler pass (Tablet::RunTierReconcilePass). The values are tserver flags;
@@ -198,9 +207,6 @@ struct TierReconcileResult {
   size_t scheduled = 0;
   // status.state differs from what it was before the pass.
   bool state_changed = false;
-  // The target changed between the scan and the verdict on it, so the scan was discarded: nothing
-  // scheduled, nothing declared, candidates reported as 0. The next pass works on the new target.
-  bool target_changed = false;
   // A split child whose post-split compaction has not run yet: nothing scanned or scheduled.
   bool awaiting_post_split_compaction = false;
 };
@@ -656,6 +662,10 @@ class Tablet : public AbstractTablet,
   // Apply replicated remove table operation.
   Status RemoveTable(const std::string& table_id, const OpId& op_id);
 
+  // Writes the vector reverse mapping entries a colocated table owns for the rows that reached the
+  // tablet before the table did, with op_id as their frontier, see TabletVectorIndexes.
+  Status WriteMissingVectorReverseMappings(const TableInfo& table_info, const OpId& op_id);
+
   // Truncate this tablet by resetting the content of RocksDB.
   Status Truncate(TruncateOperation* operation);
 
@@ -801,7 +811,9 @@ class Tablet : public AbstractTablet,
   // compaction outputs of the regular DB at that disk. Re-asserting an unchanged intent skips
   // the superblock write but still re-points the DB and resets the migration status.
   // target_path_id must be a tier_paths slot the caller already resolved within target_tier
-  // (TSTabletManager::SelectPathIdForTier).
+  // (TSTabletManager::SelectPathIdForTier). A different target is refused with ServiceUnavailable
+  // while a migration pass is in flight: nothing changes the target under a running pass. The
+  // same target is accepted then too, as the re-assert above.
   Status SetTierMigrationTarget(const std::string& target_tier, uint32_t target_path_id);
 
   // Tiered storage. Starts one migration pass toward the persisted target: schedules a DB path
@@ -809,8 +821,11 @@ class Tablet : public AbstractTablet,
   // for them. The moves run on the compaction/flush thread pool and the pass ends in
   // FinishTierMigrationPass once the last one reports; whatever it leaves behind (files busy
   // with a compaction, hard errors, files a concurrent flush/compaction landed on the old disk)
-  // is for the next pass. Returns ServiceUnavailable while a pass is already in flight.
-  Result<TierMigrationStatus> StartTierMigrationPass();
+  // is for the next pass. Returns ServiceUnavailable while a pass is already in flight, or, with
+  // expected_target (AlterTabletTier passes the target it just wrote), when a concurrent request
+  // replaced the persisted target before this pass could claim the tablet.
+  Result<TierMigrationStatus> StartTierMigrationPass(
+      const std::optional<TierTarget>& expected_target = std::nullopt);
 
   // Tiered storage. The background reconciler's pass: StartTierMigrationPass plus the terminal
   // states. A scan that finds nothing outside the target directory marks the tablet kDone. A
@@ -822,8 +837,14 @@ class Tablet : public AbstractTablet,
   // Tiered storage. Snapshot of the migration status; no DB scan.
   TierMigrationStatus tier_migration_status() const;
 
-  // SetTierMigrationTarget followed by StartTierMigrationPass, except that a pass already in
-  // flight is not an error: the result then describes that pass. Backs the AlterTabletTier RPC.
+  // SetTierMigrationTarget followed by StartTierMigrationPass. Backs the AlterTabletTier RPC.
+  // While a pass is in flight, the same target is not an error (a re-delivered request, or an
+  // operator restarting a failing migration): the intent is re-asserted as for any accepted
+  // request, and the result describes that pass. A different target is refused with
+  // ServiceUnavailable and nothing is persisted: the moves cannot be cancelled, so accepting it
+  // would leave the pass copying to a disk that is no longer the target and booking its outcome
+  // against the new one. Also refused when a concurrent request replaced the target before this
+  // one's pass could start.
   Result<TierMigrationStatus> AlterTabletTier(
       const std::string& target_tier, uint32_t target_path_id);
 
@@ -924,11 +945,6 @@ class Tablet : public AbstractTablet,
 
   void SetHybridTimeLeaseProvider(HybridTimeLeaseProvider provider) {
     ht_lease_provider_ = std::move(provider);
-  }
-
-  void SetMemTableFlushFilterFactory(std::function<rocksdb::MemTableFilter()> factory) {
-    std::lock_guard lock(flush_filter_mutex_);
-    mem_table_flush_filter_factory_ = std::move(factory);
   }
 
   // When a compaction starts with a particular "history cutoff" timestamp, it calls this function
@@ -1382,16 +1398,44 @@ class Tablet : public AbstractTablet,
       const rocksdb::CompactRangeOptions& regular_options,
       const rocksdb::CompactRangeOptions& intents_options);
 
-  // Tiered storage: directory pinned for path_id in tier_paths.
+  // Tiered storage: the tier_paths entry for path_id, and just its directory.
+  Result<TierPathInfo> LookupTierPath(uint32_t path_id) const;
   Result<std::string> LookupTierDir(uint32_t path_id) const;
 
-  // Tiered storage: returns the set of files that should be migrated to target_dir.
-  // i.e. file numbers of live regular-DB SSTs not under target_dir.
-  std::vector<uint64_t> CollectTierMigrationCandidates(const std::string& target_dir) const;
+  // Tiered storage: file numbers of the live regular-DB SSTs not on target_path_id, i.e. what a
+  // migration pass still has to move.
+  std::vector<uint64_t> CollectTierMigrationCandidates(uint32_t target_path_id) const;
 
-  // Tiered storage: the pass behind StartTierMigrationPass and RunTierReconcilePass.
+  // Tiered storage: checks the regular DB is open and target_path_id is a disk of target_tier.
+  // The returned operation keeps the DB open for as long as the caller holds it.
+  Result<ScopedRWOperation> CheckTierTargetUsable(
+      const std::string& target_tier, uint32_t target_path_id);
+
+  // Tiered storage: the one place an open tablet's target is written; creation, remote bootstrap
+  // and OpenTablet's path_id repair write it before the Tablet exists. Refuses a different target
+  // while a pass is in flight, so a pass always runs toward the current persisted target; the
+  // same target is a re-assert.
+  Status SetTierMigrationTargetUnlocked(const std::string& target_tier, uint32_t target_path_id)
+      REQUIRES(tier_target_mutex_);
+
+  // Tiered storage: intent (re)asserted. Convergence is unproven again and earlier failures no
+  // longer count toward kFailed.
+  void ReassertTierIntentUnlocked() REQUIRES(tier_migration_mutex_);
+
+  // Tiered storage: the pass behind StartTierMigrationPass and RunTierReconcilePass. With
+  // expected_target, the claim also checks that the persisted target is still that one.
   Result<TierReconcileResult> RunTierMigrationPass(
-      const TierReconcileOptions& options, ReconcilerPass reconciler_pass);
+      const TierReconcileOptions& options, ReconcilerPass reconciler_pass,
+      const std::optional<TierTarget>& expected_target);
+
+  // Tiered storage: whether (target_tier, target_path_id) is the persisted target.
+  bool IsPersistedTierTarget(const std::string& target_tier, uint32_t target_path_id) const
+      REQUIRES(tier_target_mutex_);
+
+  // Tiered storage: OK while (target_tier, target_path_id) is still the persisted target,
+  // ServiceUnavailable naming the replacement otherwise.
+  Status CheckTierTargetStillPersisted(const std::string& target_tier, uint32_t target_path_id)
+      const REQUIRES(tier_target_mutex_);
 
   // Tiered storage: schedules one ScheduleDBPathMove call per candidate file. Each callback may
   // run inline, on this thread, if the pool rejects the task. Does not block.
@@ -1419,6 +1463,12 @@ class Tablet : public AbstractTablet,
     REQUIRES(operation_filters_mutex_);
 
   Status AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id, HybridTime ht);
+
+  // Whether a colocated table about to be added owns a vector reverse mapping with a vector column,
+  // and the tablet already has entries under its colocation id.
+  bool NeedsVectorReverseMappingRepair(
+      const Schema& schema,
+      const google::protobuf::RepeatedPtrField<dockv::SchemaPackingPB>& old_schema_packings);
 
   // Split/LB policy: true when this tablet still has parent data that should block a further
   // split (or, today, a load-balancer move). RocksDB leftover always counts; vector-index leftover
@@ -1654,6 +1704,8 @@ class Tablet : public AbstractTablet,
   Result<HybridTime> DoGetSafeTime(
       RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const override;
 
+  Result<bool> RegularDbFlushFilter(const rocksdb::MemTable& memtable);
+
   struct IntentsDbFlushFilterState;
   Result<bool> IntentsDbFlushFilter(
       const rocksdb::MemTable& memtable, bool write_blocked,
@@ -1699,14 +1751,12 @@ class Tablet : public AbstractTablet,
 
   docdb::HistoryCutoff AllowedHistoryCutoff();
 
-  mutable std::mutex flush_filter_mutex_;
-  std::function<rocksdb::MemTableFilter()> mem_table_flush_filter_factory_
-      GUARDED_BY(flush_filter_mutex_);
-
   client::LocalTabletFilter local_tablet_filter_;
 
   // This is typically "P <peer_id>", so we can get a log prefix "T <tablet_id> P <peer_id>: ".
   std::string log_prefix_suffix_;
+
+  TabletContext* const tablet_context_;
 
   IsSysCatalogTablet is_sys_catalog_;
   TransactionsEnabled txns_enabled_;
@@ -1773,10 +1823,13 @@ class Tablet : public AbstractTablet,
   TierMigrationStatus tier_migration_status_ GUARDED_BY(tier_migration_mutex_);
   std::shared_ptr<TierMigrationHooks> tier_migration_hooks_;
 
-  // Tiered storage: serializes SetTierMigrationTarget's check + superblock write + SetOptions so
-  // the persisted target and the regular DB's target_path_id cannot diverge. Deliberately not
-  // tier_migration_mutex_: that one is taken by every move callback and by GetTierInfo, and must
-  // not be held across a superblock flush or a SetOptions call.
+  // Tiered storage: serializes the target write (SetTierMigrationTargetUnlocked's in-flight check
+  // + superblock write + SetOptions, so the persisted target and the regular DB's target_path_id
+  // cannot diverge) against a pass claiming the tablet (RunTierMigrationPass's target read through
+  // pass_in_flight = true), so a pass always runs toward the current persisted target. Taken
+  // before tier_migration_mutex_, never inside it. Deliberately not tier_migration_mutex_: that
+  // one is taken by every move callback and by GetTierInfo, and must not be held across a
+  // superblock flush or a SetOptions call.
   std::mutex tier_target_mutex_;
 
   // Pointer to shared admin triggered thread pool in TsTabletManager.

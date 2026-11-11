@@ -14,6 +14,7 @@
 #include "yb/tablet/persistence_gate.h"
 
 #include "yb/common/common_flags.h"
+#include "yb/common/opid.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction.pb.h"
 
@@ -21,8 +22,13 @@
 
 #include "yb/tserver/tserver_error.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_format.h"
+
+DEFINE_test_flag(bool, disable_persistence_early_gate, false,
+    "Lets a transaction of a blocked database continue past its heartbeats, so tests that hold one "
+    "open across StopPersisting reach the gate at the Raft append instead.");
 
 // Cases where we refuse a write or commit because we cannot tell whether persisting is blocked for
 // its database (i.e., we lack an xCluster-guarded info lease) do not cause this counter to be
@@ -30,8 +36,8 @@
 METRIC_DEFINE_counter(
     server, persistence_violation_rejections, "Persistence Violation Rejections",
     yb::MetricUnit::kRequests,
-    "Number of YSQL writes and commits refused because xCluster had stopped persisting their "
-    "database (see StopPersisting and StartPersisting).");
+    "Number of YSQL writes, commits, and transactions refused because xCluster had stopped "
+    "persisting their database (see StopPersisting and StartPersisting).");
 
 namespace yb::tablet {
 
@@ -93,9 +99,8 @@ Status PersistenceGate::CheckPersistAllowed(const consensus::LWReplicateMsg& rep
   if (!origination_info) {
     return Status::OK();
   }
-  const auto database_oid = origination_info->database_oid();
-  const auto lookup_result = lookup_func_(replicate_msg.id().term(), database_oid);
-  if (!lookup_result.ok()) {
+  const auto blocked = IsBlocked(replicate_msg.id().term(), *origination_info);
+  if (!blocked.ok()) {
     // ServiceUnavailable means the TServer is missing a lease and thus cannot tell whether the
     // database is blocked, so the op is refused as possibly blocked and carries the
     // persisting-blocked codes, which rate-limit the logging of each refusal.  The client retries
@@ -104,18 +109,41 @@ Status PersistenceGate::CheckPersistAllowed(const consensus::LWReplicateMsg& rep
     // replace the status.  Other errors -- e.g., master's LeaderNotReadyToServe while its
     // catalog is not loaded for this term -- are unrelated to blocking and pass through
     // unchanged.  Neither is counted as a persistence violation refusal.
-    if (lookup_result.status().IsServiceUnavailable()) {
-      return AddPersistingBlockedErrorCodes(lookup_result.status());
+    if (blocked.status().IsServiceUnavailable()) {
+      return AddPersistingBlockedErrorCodes(blocked.status());
     }
-    return lookup_result.status();
+    return blocked.status();
   }
-
-  const auto& blocked_through = *lookup_result;
-  // Inclusive: the entry is the last blocked origination time.
-  if (!blocked_through || HybridTime(origination_info->origination_ht()) > *blocked_through) {
+  if (!*blocked) {
     return Status::OK();
   }
+  return Refuse(origination_info->database_oid());
+}
 
+Status PersistenceGate::CheckTransactionMayContinue(
+    const LWOriginationInfoPB& origination_info) const {
+  if (!IsPersistenceGateEnforced() || FLAGS_TEST_disable_persistence_early_gate) {
+    return Status::OK();
+  }
+  // The term only matters on master, whose lookup checks that its catalog is loaded for that
+  // term; this is called only on TServers (status tablets live only there), whose lookup ignores
+  // it.
+  const auto blocked = IsBlocked(OpId::kUnknownTerm, origination_info);
+  if (!blocked.ok() || !*blocked) {
+    return Status::OK();
+  }
+  return Refuse(origination_info.database_oid());
+}
+
+Result<bool> PersistenceGate::IsBlocked(
+    int64_t op_term, const LWOriginationInfoPB& origination_info) const {
+  const auto blocked_through =
+      VERIFY_RESULT(lookup_func_(op_term, origination_info.database_oid()));
+  // Inclusive: the entry is the last blocked origination time.
+  return blocked_through && HybridTime(origination_info.origination_ht()) <= *blocked_through;
+}
+
+Status PersistenceGate::Refuse(uint32_t database_oid) const {
   persistence_violation_rejections_->Increment();
   // This error is final: the client does not retry Expired, and, unlike TryAgain, it does not
   // trigger Postgres's transparent restart.

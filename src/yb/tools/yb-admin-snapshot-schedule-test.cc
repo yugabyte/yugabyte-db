@@ -11,8 +11,11 @@
 // under the License.
 //
 
+#include <signal.h>
+
 #include <algorithm>
 #include <atomic>
+#include <future>
 #include <optional>
 #include <memory>
 #include <string>
@@ -1395,6 +1398,12 @@ class YbAdminSnapshotScheduleTestWithYsqlParam
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     YbAdminSnapshotScheduleTestWithYsql::UpdateMiniClusterOptions(opts);
     opts->extra_tserver_flags.emplace_back("--ysql_beta_feature_tablegroup=true");
+    // None of the parameterized PITR/clone tests exercise master failover or follower-side sys
+    // catalog restore. The fixtures that do (YbAdminSnapshotScheduleFailoverTests,
+    // YbAdminSnapshotConsistentRestoreFailoverTest and the other non-parameterized ones) keep the
+    // num_masters = 3 set by YbAdminSnapshotScheduleTest. A single master roughly halves the
+    // per-case cost of cluster start, CREATE DATABASE and restore.
+    opts->num_masters = 1;
   }
 
   virtual std::vector<std::string> ExtraTSFlags() override {
@@ -2036,6 +2045,13 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, RestoreWithBac
   ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table "
       "SELECT generate_series(1, 100), md5(random()::text)"));
+
+  // The restore time below is the wall-clock midpoint of CREATE INDEX. Left alone, the backfill is
+  // a ~3 s slice of a DDL that spends most of its time waiting for backends to reach the new
+  // catalog version, so whether the midpoint lands inside it depends on cluster timing (on ASAN
+  // with a single master it missed by 0.2 s). Stretching the backfill well past that wait keeps
+  // the midpoint inside it.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_slowdown_backfill_by_ms", "20000"));
 
   // Clone to half way through the backfill.
   auto t1 = ASSERT_RESULT(GetCurrentTime());
@@ -4424,12 +4440,70 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, ConsistentRestoreFailover,
 
   ASSERT_OK(WaitRestorationDone(restoration_id, 40s));
 
+  // Tablets accept writes only after completion is persisted, so the new leader must not re-run
+  // the restoration and wipe this row.
+  ASSERT_OK(WaitFor([&conn, expr]() -> Result<bool> {
+    return conn.ExecuteQueryFormat(expr, 3).ok();
+  }, 30s, "Insert after restoration"));
+
   for (auto* master : cluster_->master_daemons()) {
     master->Shutdown();
     ASSERT_OK(master->Restart());
   }
 
-  ASSERT_OK(conn.ExecuteQueryFormat(expr, 3));
+  // A different key, so that losing row 3 is not hidden by re-inserting it.
+  ASSERT_OK(WaitFor([&conn, expr]() -> Result<bool> {
+    return conn.ExecuteQueryFormat(expr, 4).ok();
+  }, 30s, "Insert after master restart"));
+
+  auto rows = ASSERT_RESULT(conn.ExecuteAndRenderToString("SELECT * FROM test_table"));
+  // Rows come in hash order.
+  std::vector<std::string> keys = strings::Split(rows, ";");
+  std::sort(keys.begin(), keys.end());
+  ASSERT_EQ(keys, (std::vector<std::string>{"1", "3", "4"})) << rows;
+}
+
+// Masters are restarted after the restoration finished on all tablets, but before its completion
+// was written to sys catalog. The new leader re-runs the restoration, so tablets must not accept
+// writes before that.
+TEST_F(YbAdminSnapshotScheduleTest, ConsistentRestoreFailoverBeforeCompletionPersisted) {
+  auto schedule_id = ASSERT_RESULT(PrepareCql());
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.ExecuteQuery("CREATE TABLE test_table (k1 INT PRIMARY KEY)"));
+  auto expr = "INSERT INTO test_table (k1) VALUES ($0)";
+  ASSERT_OK(conn.ExecuteQueryFormat(expr, 1));
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+  ASSERT_OK(conn.ExecuteQueryFormat(expr, 2));
+
+  // Set at runtime, so restarted masters do not have it.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_skip_persisting_restore_complete", "true"));
+
+  auto restoration_id = ASSERT_RESULT(StartRestoreSnapshotSchedule(schedule_id, time));
+
+  ASSERT_OK(WaitRestorationDone(restoration_id, 40s));
+
+  // Give tservers a few heartbeats to learn about a completion that was not persisted.
+  SleepFor(5s * kTimeMultiplier);
+  ASSERT_NOK(conn.ExecuteQueryFormat(expr, 3));
+
+  for (auto* master : cluster_->master_daemons()) {
+    master->Shutdown();
+    ASSERT_OK(master->Restart());
+  }
+
+  // Tablets reject writes until the new leader re-runs the restoration and persists completion.
+  // The timeout covers master election, the re-run, and client retries of rejected inserts.
+  ASSERT_OK(WaitFor([&conn, expr]() -> Result<bool> {
+    auto status = conn.ExecuteQueryFormat(expr, 3);
+    if (!status.ok()) {
+      LOG(INFO) << "Insert failed: " << status;
+      return false;
+    }
+    return true;
+  }, 120s * kTimeMultiplier, "Insert after restoration"));
 
   auto rows = ASSERT_RESULT(conn.ExecuteAndRenderToString("SELECT * FROM test_table"));
   ASSERT_EQ(rows, "1;3");
@@ -6913,6 +6987,124 @@ TEST_F_EX(
     auto clone_count = ASSERT_RESULT(clone_conn.FetchRow<int64_t>("SELECT count(*) FROM t"));
     ASSERT_EQ(clone_count, kNumRowsPerTable);
   }
+}
+
+class YbAdminSnapshotScheduleTestWithYsqlObjectLocks : public YbAdminSnapshotScheduleTestWithYsql {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    YbAdminSnapshotScheduleTestWithYsql::UpdateMiniClusterOptions(opts);
+    for (auto* flags : {&opts->extra_master_flags, &opts->extra_tserver_flags}) {
+      flags->insert(flags->end(), {
+          "--ysql_yb_ddl_transaction_block_enabled=true",
+          "--enable_object_locking_for_table_locks=true",
+          "--ysql_enable_concurrent_ddl=true"});
+    }
+  }
+
+ protected:
+  static constexpr auto kPauseFlag = "TEST_pause_restore_after_ddl_verification_check";
+
+  Result<pgwrapper::PGConn> CreateReferencedTable() {
+    auto conn = VERIFY_RESULT(PgConnect(client::kTableName.namespace_name()));
+    RETURN_NOT_OK(conn.Execute("CREATE TABLE t (id INT PRIMARY KEY)"));
+    return conn;
+  }
+
+  // Restores to restore_at with CREATE TABLE t2 open on conn. t2 references t, so the DDL also
+  // locks t, which CheckDdlLocksReleased tests. The restore rejects a namespace with DDL
+  // verification in progress, so t2 is created after that check but before the restore starts.
+  // before_restore runs right before the restore starts.
+  Status RestoreDuringTableCreate(
+      const std::string& schedule_id, Timestamp restore_at, pgwrapper::PGConn& conn,
+      const std::function<Status()>& before_restore = {}) {
+    RETURN_NOT_OK(cluster_->SetFlagOnMasters(kPauseFlag, "true"));
+    auto paused = cluster_->GetMasterLogWaiter(Format("Pausing due to flag $0", kPauseFlag));
+    auto restoration_id_future = std::async(std::launch::async, [this, &schedule_id, restore_at] {
+      return StartRestoreSnapshotSchedule(schedule_id, restore_at);
+    });
+    // Runs before the future's destructor, which would otherwise block on the paused restore.
+    auto unpause = ScopeExit([this] {
+      WARN_NOT_OK(cluster_->SetFlagOnMasters(kPauseFlag, "false"), "Failed to unpause restore");
+    });
+    RETURN_NOT_OK(paused.WaitFor(60s * kTimeMultiplier));
+    RETURN_NOT_OK(conn.Execute("BEGIN"));
+    RETURN_NOT_OK(conn.Execute("CREATE TABLE t2 (k INT PRIMARY KEY, id INT REFERENCES t (id))"));
+    if (before_restore) {
+      RETURN_NOT_OK(before_restore());
+    }
+    RETURN_NOT_OK(cluster_->SetFlagOnMasters(kPauseFlag, "false"));
+    return WaitRestorationDone(VERIFY_RESULT(restoration_id_future.get()), 40s * kTimeMultiplier);
+  }
+
+  // Checks that the restore removed t2 and that CREATE TABLE t2 no longer holds its object locks.
+  Status CheckDdlLocksReleased(MonoTime start) {
+    // PITR may restart PG backends.
+    std::optional<pgwrapper::PGConn> conn;
+    RETURN_NOT_OK(WaitFor([this, &conn]() -> Result<bool> {
+      auto result = PgConnect(client::kTableName.namespace_name());
+      if (!result.ok()) {
+        return false;
+      }
+      conn.emplace(std::move(*result));
+      return true;
+    }, 60s * kTimeMultiplier, "Reconnect to PG after PITR restore"));
+    RETURN_NOT_OK(conn->ExecuteFormat("SET statement_timeout = $0", 60000 * kTimeMultiplier));
+    RETURN_NOT_OK(conn->Execute("CREATE TABLE after_pitr (k INT PRIMARY KEY)"));
+    // Conflicts with any lock CREATE TABLE t2 still holds on t.
+    RETURN_NOT_OK(conn->Execute("BEGIN"));
+    RETURN_NOT_OK(conn->Execute("LOCK TABLE t IN ACCESS EXCLUSIVE MODE"));
+    RETURN_NOT_OK(conn->Execute("COMMIT"));
+    SCHECK(MonoTime::Now() - start < 120s * kTimeMultiplier, IllegalState,
+           "DDL after the restore took too long");
+    auto num_tables = VERIFY_RESULT(conn->FetchRow<int64_t>(
+        "SELECT COUNT(*) FROM pg_class WHERE relname = 't2'"));
+    SCHECK_EQ(num_tables, 0, IllegalState, "Restore did not remove t2");
+    return Status::OK();
+  }
+};
+
+// Aborting a CREATE TABLE whose colocated table the restore removed must still complete its DDL
+// verification and release its object locks.
+TEST_F_EX(
+    YbAdminSnapshotScheduleTest, PgsqlPitrDuringColocatedTableCreate,
+    YbAdminSnapshotScheduleTestWithYsqlObjectLocks) {
+  auto schedule_id = ASSERT_RESULT(PreparePg(YsqlColocationConfig::kDBColocated));
+  auto conn = ASSERT_RESULT(CreateReferencedTable());
+  auto time = ASSERT_RESULT(GetCurrentTime());
+  ASSERT_OK(RestoreDuringTableCreate(schedule_id, time, conn));
+
+  // If the restore leaves the DDL unverified, its object locks stay held and the LOCK TABLE in
+  // CheckDdlLocksReleased times out.
+  const auto start = MonoTime::Now();
+  // PITR may have killed the backend, which also aborts the transaction.
+  WARN_NOT_OK(conn.Execute("ROLLBACK"), "ROLLBACK after PITR failed");
+  ASSERT_OK(CheckDdlLocksReleased(start));
+}
+
+// When a backend dies, the tserver releases its DDL's object locks without waiting for DDL
+// verification. The master ignores that release while the DDL is registered for verification, so
+// after a restore removes the DDL's table the master must release the locks itself.
+TEST_F_EX(
+    YbAdminSnapshotScheduleTest, PgsqlPitrDuringColocatedTableCreateReleaseIgnored,
+    YbAdminSnapshotScheduleTestWithYsqlObjectLocks) {
+  auto schedule_id = ASSERT_RESULT(PreparePg(YsqlColocationConfig::kDBColocated));
+  auto conn = ASSERT_RESULT(CreateReferencedTable());
+  auto time = ASSERT_RESULT(GetCurrentTime());
+  const auto backend_pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+
+  // Keep the master from verifying the DDL, and so releasing its locks, before the restore.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_disable_ysql_ddl_txn_verification", "true"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("vmodule", "object_lock_info_manager=1"));
+  ASSERT_OK(RestoreDuringTableCreate(schedule_id, time, conn, [this, backend_pid] {
+    // Created here because a daemon has one log listener, which the pause waiter would replace.
+    auto release_ignored = cluster_->GetMasterLogWaiter("Ignoring release request");
+    // SIGKILL, so the backend does not abort the transaction itself, which waits for verification.
+    SCHECK_EQ(kill(backend_pid, SIGKILL), 0, IllegalState, "Failed to kill backend");
+    return release_ignored.WaitFor(30s * kTimeMultiplier);
+  }));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_disable_ysql_ddl_txn_verification", "false"));
+
+  ASSERT_OK(CheckDdlLocksReleased(MonoTime::Now()));
 }
 
 }  // namespace yb::tools

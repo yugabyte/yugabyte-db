@@ -298,6 +298,46 @@ class TestRagPipelineHandler:
                 embedding_model_params=DEFAULT_EMBEDDING_PARAMS
             )
 
+    @patch('rag_pipeline.rag_handler.PipelineTracking')
+    @patch('rag_pipeline.rag_handler.YugabyteDBVectorStore')
+    def test_start_processing_success_records_completion_time(self, mock_vs_cls, mock_pt_cls):
+        """A finished pipeline goes through mark_pipeline_completed, which sets completed_at."""
+        handler, _, mock_pt = _create_handler(mock_vs_cls, mock_pt_cls)
+        mock_pt.insert_pipeline_details.return_value = PIPELINE_ID
+
+        with patch.object(handler, '_ingest_document', return_value=True):
+            assert handler.start_processing(
+                source_id=123,
+                document_id=456,
+                document_uri="test_document.txt",
+                table_name="test_table",
+            ) is True
+
+        mock_pt.mark_pipeline_completed.assert_called_once_with(PIPELINE_ID)
+        mock_pt.update_pipeline_status.assert_not_called()
+
+    @patch('rag_pipeline.rag_handler.PipelineTracking')
+    @patch('rag_pipeline.rag_handler.YugabyteDBVectorStore')
+    def test_start_processing_failure_does_not_mark_completed(self, mock_vs_cls, mock_pt_cls):
+        """A failed pipeline is FAILED with its error and gets no completed_at."""
+        handler, _, mock_pt = _create_handler(mock_vs_cls, mock_pt_cls)
+        mock_pt.insert_pipeline_details.return_value = PIPELINE_ID
+
+        with patch.object(handler, '_ingest_document', side_effect=Exception("Embedding error")):
+            with pytest.raises(Exception, match="Embedding error"):
+                handler.start_processing(
+                    source_id=123,
+                    document_id=456,
+                    document_uri="test_document.txt",
+                    table_name="test_table",
+                )
+
+        mock_pt.mark_pipeline_completed.assert_not_called()
+        mock_pt.update_pipeline_status.assert_called_once_with(
+            pipeline_id=PIPELINE_ID, pipeline_status="FAILED")
+        mock_pt.record_pipeline_error.assert_called_once_with(
+            pipeline_id=PIPELINE_ID, error_message="Embedding error")
+
 
 if __name__ == "__main__":
     pytest.main([__file__])

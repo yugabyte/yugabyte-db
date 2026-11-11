@@ -17,6 +17,21 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 
+  &.has-notes {
+    display: flex;
+    flex-direction: column;
+  }
+
+  // Plotly appends the graph after these children, so the notes are ordered below it.
+  .metrics-panel-notes {
+    order: 1;
+    margin: 0 12px 10px;
+    padding-left: 16px;
+    white-space: normal;
+    font-size: 12px;
+    color: colors.$YB_WARNING_ICON_COLOR;
+  }
+
   .prometheus-link {
     position: absolute;
     top: 15px;

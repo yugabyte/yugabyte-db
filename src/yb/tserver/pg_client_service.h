@@ -53,6 +53,7 @@ class TserverXClusterContextIf;
     (AlterDatabase) \
     (AlterTable) \
     (BackfillIndex) \
+    (StartTableBackfill) \
     (CancelTransaction) \
     (CheckIfPitrActive) \
     (CreateDatabase) \
@@ -68,7 +69,6 @@ class TserverXClusterContextIf;
     (GetActiveTransactionList) \
     (GetCatalogMasterVersion) \
     (GetDatabaseInfo) \
-    (IsDatabaseColocated) \
     (GetIndexBackfillProgress) \
     (GetLockStatus) \
     (GetReplicationSlot) \
@@ -132,6 +132,7 @@ class TserverXClusterContextIf;
 // PG_CLIENT_SESSION_ASYNC_METHODS).
 #define YB_PG_CLIENT_ASYNC_METHODS \
     (FinishTransaction) \
+    (IsDatabaseColocated) \
     (OpenTable) \
     (TriggerRelcacheInitConnection) \
     /**/

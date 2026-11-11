@@ -567,6 +567,9 @@ class YBPgsqlReadOp : public YBPgsqlOpSidecarBase {
     yb_consistency_level_ = yb_consistency_level;
   }
 
+  bool force_snapshot_read() const { return force_snapshot_read_; }
+  void set_force_snapshot_read() { force_snapshot_read_ = true; }
+
   std::vector<ColumnSchema> MakeColumnSchemasFromRequest() const;
 
   bool should_apply_intents(IsolationLevel isolation_level) override;
@@ -588,6 +591,7 @@ class YBPgsqlReadOp : public YBPgsqlOpSidecarBase {
   LWPgsqlReadRequestPB* request_;
   bool own_request_;
   YBConsistencyLevel yb_consistency_level_ = YBConsistencyLevel::STRONG;
+  bool force_snapshot_read_ = false;
   ReadHybridTime used_read_time_;
   // The tablet that served this operation.
   TabletId used_tablet_;

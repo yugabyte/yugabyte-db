@@ -53,7 +53,7 @@ func TestJavaBinaryUsesOnlyTheBundledJre(t *testing.T) {
 	Version = "9.9.9.9-b1"
 	viper.Set("installRoot", root)
 
-	bundledBin := filepath.Join(GetInstallerSoftwareDir(), "jdk-17.0.7+7-jre", "bin")
+	bundledBin := filepath.Join(GetInstallerSoftwareDir(), "jdk-17.0.21+9-jre", "bin")
 	if err := os.MkdirAll(bundledBin, 0o755); err != nil {
 		t.Fatal(err)
 	}

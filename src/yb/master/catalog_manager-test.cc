@@ -336,6 +336,23 @@ TEST(TestCatalogManager, CheckIfCanDeleteSingleTablet) {
   }
 }
 
+// Adding the same tablet to a table twice should succeed. This happens when the table_ids list of
+// a tablet lists the same table id twice, see github issue 34672.
+TEST(TableInfoTest, AddSameTabletTwice) {
+  scoped_refptr<TableInfo> table(new TableInfo(CURRENT_TEST_NAME(), /* colocated */ false));
+  auto tablet = ASSERT_RESULT(CreateTablet(table, "tablet", "" /* start_key */, "" /* end_key */));
+  {
+    // TabletLoader::Visit holds the tablet's write lock while adding it to its tables.
+    auto l = tablet->LockForWrite();
+    ASSERT_OK(table->AddTablet(tablet));
+  }
+  ASSERT_EQ(table->TabletCount(), 1);
+  ASSERT_EQ(table->NumPartitions(), 1);
+  auto tablets = ASSERT_RESULT(table->GetTablets());
+  ASSERT_EQ(tablets.size(), 1);
+  ASSERT_EQ(tablets[0], tablet);
+}
+
 TEST(TestCatalogManager, TestSetPreferredZones) {
   std::string z1 = "a", z2 = "b", z3 = "c";
   CloudInfoPB ci1;

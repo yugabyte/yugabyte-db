@@ -7,6 +7,7 @@
  * cooperative multitasking engine.
  */
 
+__attribute__((format(printf, 3, 0)))
 static inline int mm_vsnprintf(char *buf, int size, char *fmt, va_list args)
 {
 	int rc;
@@ -16,6 +17,7 @@ static inline int mm_vsnprintf(char *buf, int size, char *fmt, va_list args)
 	return rc;
 }
 
+__attribute__((format(printf, 3, 4)))
 static inline int mm_snprintf(char *buf, int size, char *fmt, ...)
 {
 	va_list args;

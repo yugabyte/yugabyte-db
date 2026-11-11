@@ -100,13 +100,14 @@ public class AddNodeToUniverseRollbackComputerTest extends FakeDBApplication {
 
   @Test
   public void isEnabledFollowsRuntimeFlag() {
-    assertFalse(computer.isEnabled());
-    enableFlag();
     assertTrue(computer.isEnabled());
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.task.allow_add_node_rollback", "false");
+    assertFalse(computer.isEnabled());
   }
 
   @Test
   public void testDisabledByRuntimeFlag() {
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.task.allow_add_node_rollback", "false");
     seedRollbackableDelta(true);
     PlatformServiceException ex =
         assertThrows(PlatformServiceException.class, () -> computer.compute(contextForFailedAdd()));

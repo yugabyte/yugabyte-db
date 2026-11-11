@@ -29,6 +29,7 @@
 #include "yb/dockv/partition.h"
 
 #include "yb/master/async_rpc_tasks_base.h"
+#include "yb/master/online_schema_change.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_manager_util.h"
@@ -292,6 +293,10 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
     const IgnoreVectorIndexesValidation ignore_vector_indexes_validation) {
   if (PREDICT_FALSE(FLAGS_TEST_validate_all_tablet_candidates)) {
     return Status::OK();
+  }
+  if (auto osc_job = CopyingOnlineSchemaChangeJobReading(*table)) {
+    return STATUS_EC_FORMAT(IllegalState, MasterError(MasterErrorPB::SPLIT_OR_BACKFILL_IN_PROGRESS),
+                            "Online schema change job $0 in progress, table: $1", *osc_job, *table);
   }
   auto table_lock = table->LockForRead();
   if (table_lock->started_deleting()) {
@@ -591,11 +596,9 @@ std::unordered_set<TabletServerId> GetReplicasWithOutstandingCompaction(
     const TabletReplicaMap& replicas) {
   std::unordered_set<TabletServerId> tservers_with_outstanding_compaction;
   for (const auto& [ts_uuid, replica] : replicas) {
-    // Don't count split child RBSing peers towards outstanding post-split compaction,
-    // because Cluster Balancer ideally schedules move on a split child only after the peer
-    // resets should_disable_lb_move as part of the tablet report (GH#12362).
-    //
-    // TODO(#33766): Prevent RBSing split child with pending post-split compaction.
+    // Don't count split child RBSing peers towards outstanding post-split compaction.
+    // Load-balancing moves skip a peer that hasn't reset should_disable_lb_move (GH#12362), and
+    // the leader prefers an RBS source that has finished compaction (GH#33766).
     if (replica.member_type != consensus::VOTER && replica.member_type != consensus::OBSERVER) {
       continue;
     }

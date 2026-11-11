@@ -72,6 +72,12 @@ extern bool yb_ysql_conn_mgr_sticky_guc;
 extern bool yb_ysql_conn_mgr_sticky_locks;
 
 /*
+ * `yb_ysql_conn_mgr_sticky_nontxn_object` denotes whether the session created
+ * state that a rollback does not undo. It is never cleared once set.
+ */
+extern bool yb_ysql_conn_mgr_sticky_nontxn_object;
+
+/*
  * The "local" component of Logical Client Version. It is only incremented
  * on SIGHUPs to handle changes to PGC_BACKEND GUC variables
  */

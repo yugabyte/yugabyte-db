@@ -46,4 +46,7 @@ extern XLogRecPtr YBCCalculatePersistAndGetRestartLSN(XLogRecPtr confirmed_flush
 
 extern void YBCTrackFilteredTransaction(XLogRecPtr commit_lsn);
 
+extern const uint32_t *YBCGetAbortedSubtxnSet(const char *docdb_txn_id,
+											  int *size);
+
 #endif
