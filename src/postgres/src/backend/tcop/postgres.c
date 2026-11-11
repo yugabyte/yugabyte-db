@@ -8794,3 +8794,13 @@ YbIncrementHintCacheMisses()
 {
 	YbNumHintCacheMisses++;
 }
+
+/*
+ * YB: True from the moment start_xact_command starts a statement's
+ * transaction until finish_xact_command or error recovery ends it.
+ */
+bool
+YbIsStatementTransactionStarted(void)
+{
+	return xact_started;
+}
