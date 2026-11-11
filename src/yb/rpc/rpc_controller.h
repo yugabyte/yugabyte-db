@@ -162,6 +162,9 @@ class RpcController {
   Result<CallResponsePtr> CheckedResponse() const;
 
   std::string CallStateDebugString() const;
+
+  // Whether the request of the current call was sent, i.e. the server may have received it.
+  bool WasSent() const;
   // When call is present, marks the call as Failed by passing Forced timeout status.
   void MarkCallAsFailed();
 

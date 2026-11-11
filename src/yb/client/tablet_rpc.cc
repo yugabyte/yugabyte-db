@@ -20,6 +20,7 @@
 #include "yb/client/client_error.h"
 #include "yb/client/meta_cache.h"
 
+#include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/rpc/network_error.h"
@@ -62,6 +63,10 @@ DEFINE_test_flag(bool, always_return_consensus_info_for_succeeded_rpc, yb::kIsDe
     "possible for the request. This is turned on in debug mode to test that our metacache "
     "will always be refreshed when a successful Write/Read/TransactionStatus/GetChanges RPC "
     "responds.");
+DEFINE_RUNTIME_bool(abort_txn_on_unknown_pipelined_write_outcome, true,
+    "Abort the transaction instead of resending a pipelined write when the write was sent and "
+    "then failed with a network error or timed out, since the old leader may still apply it.");
+
 DEFINE_RUNTIME_bool(enable_metacache_partial_refresh, true,
     "If set, we will attempt to refresh the tablet metadata cache with a TabletConsensusInfoPB in "
     "the tablet invoker.");
@@ -413,6 +418,23 @@ bool TabletInvoker::Done(Status* status) {
     consensus_info_refresh_succeeded = rpc_->RefreshMetaCacheWithResponse();
     TEST_SYNC_POINT_CALLBACK(
         "TabletInvoker::RefreshFinishedWithOkRPCResponse", &consensus_info_refresh_succeeded);
+  }
+
+  // A call can time out while its request is still being transferred, so WasSent() is only
+  // conclusive for network errors.
+  if (FLAGS_abort_txn_on_unknown_pipelined_write_outcome && rpc_->AppliedBeforeReplication() &&
+      (status->IsTimedOut() ||
+       (status->IsNetworkError() && retrier_->controller().WasSent()))) {
+    // The server may still apply this request after we give up on it, early-applying intents that
+    // end up in no log once it loses leadership. Resending it elsewhere, or letting the transaction
+    // go on past the failed statement, would let it commit with those intents.
+    if (tablet_ && current_ts_) {
+      tablet_->MarkReplicaFailed(current_ts_, *status);
+    }
+    *status = status->CloneAndAddErrorCode(TransactionError(TransactionErrorCode::kAborted))
+        .CloneAndAddErrorCode(ClientError(ClientErrorCode::kPipelinedWriteOutcomeUnknown));
+    rpc_->Failed(*status);
+    return true;
   }
 
   // Failover to a replica in the event of any network failure.

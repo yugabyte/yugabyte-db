@@ -87,6 +87,10 @@ class TabletRpc {
 
   virtual void SetRequestRaftConfigOpidIndex(int64_t opid_index) {}
 
+  // True when the server may apply the request before it is replicated (pipelined writes), so a
+  // request whose outcome is unknown must abort its transaction instead of being resent.
+  virtual bool AppliedBeforeReplication() const { return false; }
+
  protected:
   ~TabletRpc() {}
 };

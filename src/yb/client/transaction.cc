@@ -23,6 +23,7 @@
 
 #include "yb/client/batcher.h"
 #include "yb/client/client.h"
+#include "yb/client/client_error.h"
 #include "yb/client/in_flight_op.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/transaction_cleanup.h"
@@ -546,8 +547,13 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     bool schedule_status_moved = false;
 
     CommitCallback commit_callback;
-    if (!status.ok() &&
-        tserver::TabletServerError(status) == tserver::TabletServerErrorPB::ASYNC_WRITE_LOST) {
+    // Abort the whole transaction, even inside a subtransaction: intents left on the old leader
+    // fail the commit's write id check even when their subtransaction was rolled back.
+    const bool pipelined_write_outcome_unknown =
+        !status.ok() && ClientError(status) == ClientErrorCode::kPipelinedWriteOutcomeUnknown;
+    if (pipelined_write_outcome_unknown ||
+        (!status.ok() &&
+         tserver::TabletServerError(status) == tserver::TabletServerErrorPB::ASYNC_WRITE_LOST)) {
       write_pipelining_abort_ = true;
     }
     {
@@ -607,7 +613,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         // Do not abort pg session level transaction despite failure on flush path, i.e attempt to
         // obtain advisory locks. If it was indeed aborted at the coordinator, the heartbeat would
         // realize it and set the status accordingly, failing subsequent Prepare(s).
-        if (CanAbortTransaction(status, metadata_, subtransaction_pb) &&
+        if ((pipelined_write_outcome_unknown ||
+             CanAbortTransaction(status, metadata_, subtransaction_pb)) &&
             !pg_session_req_version_) {
           auto state = state_.load(std::memory_order_acquire);
           VLOG_WITH_PREFIX(4) << "Abort desired, state: " << AsString(state);
