@@ -86,6 +86,23 @@ public interface StorageConfigMapper {
   ObjectMapper DATA_MAPPER =
       Json.mapper().copy().setSerializationInclusion(JsonInclude.Include.NON_NULL);
 
+  /** The v1 subtype (the name column) of a storage type. */
+  static String toV1Subtype(StorageType type) {
+    return switch (type) {
+      case StorageTypeS3 -> NAME_S3;
+      case StorageTypeGCS -> NAME_GCS;
+      case StorageTypeAzure -> NAME_AZURE;
+      case StorageTypeNFS -> NAME_NFS;
+      case StorageTypeOCI -> NAME_OCI;
+    };
+  }
+
+  static ConfigState toV1State(StorageConfigState state) {
+    return state == StorageConfigState.StorageConfigQueuedForDeletion
+        ? ConfigState.QueuedForDeletion
+        : ConfigState.Active;
+  }
+
   // ---- v1 to v2 ----
 
   default StorageConfig toStorageConfig(CustomerConfig config) {

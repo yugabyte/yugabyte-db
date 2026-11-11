@@ -1,0 +1,14 @@
+title: StorageConfigPagedQuerySpec
+description: |
+  StorageConfigPagedQuerySpec
+
+  Paged list of the customer's storage configurations. Rows are ordered by name
+  (case-insensitive), then UUID. The order is ascending by default. Part of StorageConfigPagedReq.
+type: object
+allOf:
+  - $ref: "./PaginationSpec.yaml"
+properties:
+  filter:
+    $ref: "./StorageConfigApiFilter.yaml"
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

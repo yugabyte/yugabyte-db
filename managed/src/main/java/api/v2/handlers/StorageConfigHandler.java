@@ -26,8 +26,13 @@ import api.v2.models.S3AccessKeyCredentials;
 import api.v2.models.S3RegionLocation;
 import api.v2.models.S3StorageSpec;
 import api.v2.models.StorageConfig;
+import api.v2.models.StorageConfigApiFilter;
+import api.v2.models.StorageConfigPagedQuerySpec;
+import api.v2.models.StorageConfigPagedResp;
 import api.v2.models.StorageConfigSpec;
+import api.v2.models.StorageConfigUsage;
 import api.v2.models.StorageSpec;
+import api.v2.utils.NormalizedPaginationSpec;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
@@ -38,9 +43,12 @@ import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigType;
 import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
 import io.ebean.DuplicateKeyException;
+import io.ebean.ExpressionList;
+import io.ebean.PagedList;
 import java.time.Duration;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -51,6 +59,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -79,6 +88,9 @@ public class StorageConfigHandler {
   public static final String VALIDATION_BUSY = "STORAGE_VALIDATION_BUSY";
 
   private static final String POOL_NAME = "storage_config_validation";
+
+  // Matches no config, for an in_use filter that nothing satisfies.
+  private static final UUID NO_CONFIG = new UUID(0, 0);
 
   private final CustomerConfigValidator configValidator;
   private final RuntimeConfGetter confGetter;
@@ -121,7 +133,14 @@ public class StorageConfigHandler {
       // A concurrent request created a config with the same name after the check in validate.
       throw nameConflict(cUUID, config.getConfigName());
     }
-    return StorageConfigMapper.INSTANCE.toStorageConfig(config);
+    StorageConfig storageConfig = StorageConfigMapper.INSTANCE.toStorageConfig(config);
+    // Unused, but reported as getStorageConfig reports it.
+    storageConfig
+        .getInfo()
+        .usage(
+            StorageConfigUsages.of(cUUID, List.of(config.getConfigUUID()))
+                .get(config.getConfigUUID()));
+    return storageConfig;
   }
 
   public void validateStorageConfig(UUID cUUID, StorageConfigSpec spec) {
@@ -133,7 +152,72 @@ public class StorageConfigHandler {
     if (config == null || config.getType() != ConfigType.STORAGE) {
       throw new PlatformServiceException(NOT_FOUND, "No storage config with UUID " + scUUID);
     }
-    return StorageConfigMapper.INSTANCE.toStorageConfig(config);
+    StorageConfig storageConfig = StorageConfigMapper.INSTANCE.toStorageConfig(config);
+    storageConfig.getInfo().usage(StorageConfigUsages.of(cUUID, List.of(scUUID)).get(scUUID));
+    return storageConfig;
+  }
+
+  public StorageConfigPagedResp pageListStorageConfigs(
+      UUID cUUID, StorageConfigPagedQuerySpec query) {
+    NormalizedPaginationSpec paging = HandlerPagingSupport.normalize(query);
+    ExpressionList<CustomerConfig> where =
+        CustomerConfig.find
+            .query()
+            .where()
+            .eq("customer_uuid", cUUID)
+            .eq("type", ConfigType.STORAGE);
+    StorageConfigApiFilter filter = query.getFilter();
+    if (filter != null) {
+      if (filter.getStorageTypes() != null && !filter.getStorageTypes().isEmpty()) {
+        where.in(
+            "name",
+            filter.getStorageTypes().stream()
+                .map(StorageConfigMapper::toV1Subtype)
+                .collect(Collectors.toList()));
+      }
+      if (filter.getName() != null) {
+        where.eq("config_name", filter.getName().trim());
+      }
+      if (filter.getStates() != null && !filter.getStates().isEmpty()) {
+        where.in(
+            "state",
+            filter.getStates().stream()
+                .map(StorageConfigMapper::toV1State)
+                .collect(Collectors.toList()));
+      }
+      if (filter.getInUse() != null) {
+        // Configs are few per customer; what uses them is looked up by the indexed column.
+        List<UUID> candidates =
+            where.query().copy().select("configUUID").findIds().stream()
+                .map(UUID.class::cast)
+                .collect(Collectors.toList());
+        Set<UUID> inUse = StorageConfigUsages.inUse(cUUID, candidates);
+        if (filter.getInUse()) {
+          where.in("configUUID", inUse.isEmpty() ? Set.of(NO_CONFIG) : inUse);
+        } else if (!inUse.isEmpty()) {
+          where.notIn("configUUID", inUse);
+        }
+      }
+    }
+    PagedList<CustomerConfig> page =
+        HandlerPagingSupport.getPagedList(
+            where,
+            paging,
+            String.format("lower(config_name) %s, config_uuid %s", paging.order(), paging.order()));
+    Map<UUID, StorageConfigUsage> usages =
+        StorageConfigUsages.of(
+            cUUID,
+            page.getList().stream()
+                .map(CustomerConfig::getConfigUUID)
+                .collect(Collectors.toList()));
+    return HandlerPagingSupport.pagedResponse(
+        new StorageConfigPagedResp(),
+        page,
+        config -> {
+          StorageConfig storageConfig = StorageConfigMapper.INSTANCE.toStorageConfig(config);
+          storageConfig.getInfo().usage(usages.get(config.getConfigUUID()));
+          return storageConfig;
+        });
   }
 
   /** Runs every check of a create and returns the v1 config to save. */

@@ -1998,6 +1998,57 @@ paths:
       x-yba-api-visibility: preview
       parameters:
       - *id001
+  /customers/{cUUID}/storage-configs/page:
+    parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    post:
+      operationId: pageListStorageConfigs
+      summary: List storage configurations (paged)
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Returns the customer''s storage
+        configurations, without their secrets, with what uses each
+
+        one (info.usage). Rows are ordered by name (case-insensitive), then UUID.
+
+        '
+      tags:
+      - Storage Config
+      requestBody:
+        $ref: '#/components/requestBodies/StorageConfigPagedReq'
+      responses:
+        '200':
+          $ref: '#/components/responses/StorageConfigPagedResp'
+        '400':
+          description: Invalid input, such as a limit outside 1-500
+        '401':
+          description: The request has no valid API or session token, cUUID is not
+            the caller's customer, or the caller's role has no read permission on
+            the customer
+        '500':
+          description: Server error
+      security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+      x-yba-api-audit:
+        noAudit: true
+      x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
   /customers/{cUUID}/storage-configs/validate:
     parameters:
     - name: cUUID
@@ -2100,7 +2151,7 @@ paths:
       summary: Get a storage configuration
       description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
         version 2026.2.0.0 that could change.</b></p>Returns a storage configuration,
-        without its secrets.'
+        without its secrets, with what uses it (info.usage).'
       tags:
       - Storage Config
       responses:
@@ -8910,6 +8961,53 @@ components:
       - StorageConfigQueuedForDeletion
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
+    StorageConfigUsage:
+      title: StorageConfigUsage
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>StorageConfigUsage
+
+
+        What uses a storage configuration. A configuration in use can''t be deleted.
+        Part of
+
+        StorageConfigInfo.
+
+        '
+      type: object
+      readOnly: true
+      required:
+      - in_use
+      properties:
+        in_use:
+          description: Whether an in-progress or completed backup, an active backup
+            schedule or a DR config uses the configuration
+          type: boolean
+          readOnly: true
+        universe_uuids:
+          description: Existing universes whose in-progress or completed backups or
+            active backup schedules use the configuration, and the universes of DR
+            configs that use it
+          type: array
+          items:
+            type: string
+            format: uuid
+          readOnly: true
+        schedule_uuids:
+          description: Active backup schedules that use the configuration
+          type: array
+          items:
+            type: string
+            format: uuid
+          readOnly: true
+        dr_config_uuids:
+          description: DR configs that use the configuration
+          type: array
+          items:
+            type: string
+            format: uuid
+          readOnly: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
     StorageConfigInfo:
       title: StorageConfigInfo
       description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
@@ -8937,6 +9035,8 @@ components:
             its resource instead.
           type: boolean
           readOnly: true
+        usage:
+          $ref: '#/components/schemas/StorageConfigUsage'
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
     StorageConfig:
@@ -8962,6 +9062,80 @@ components:
           $ref: '#/components/schemas/StorageConfigInfo'
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
+    StorageConfigApiFilter:
+      title: StorageConfigApiFilter
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>StorageConfigApiFilter
+
+
+        Filters of the paged list of storage configurations. A storage configuration
+        is listed when
+
+        it matches every filter given. Part of StorageConfigPagedQuerySpec.
+
+        '
+      type: object
+      properties:
+        storage_types:
+          description: Only configurations of these storage types
+          type: array
+          items:
+            $ref: '#/components/schemas/StorageType'
+        name:
+          description: Only the configuration with this name
+          type: string
+          minLength: 1
+        states:
+          description: Only configurations in these states
+          type: array
+          items:
+            $ref: '#/components/schemas/StorageConfigState'
+        in_use:
+          description: Only configurations in use (true) or not in use (false), as
+            StorageConfigUsage.in_use reports it
+          type: boolean
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    StorageConfigPagedQuerySpec:
+      title: StorageConfigPagedQuerySpec
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>StorageConfigPagedQuerySpec
+
+
+        Paged list of the customer''s storage configurations. Rows are ordered by
+        name
+
+        (case-insensitive), then UUID. The order is ascending by default. Part of
+        StorageConfigPagedReq.
+
+        '
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/PaginationSpec'
+      properties:
+        filter:
+          $ref: '#/components/schemas/StorageConfigApiFilter'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    StorageConfigPagedResp:
+      title: StorageConfigPagedResp
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Paged list response for storage
+        configurations.'
+      type: object
+      x-data-container: PaginationResp
+      x-data-item: StorageConfig
+      x-data-entities-description: Storage configurations for this page.
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+      allOf:
+      - $ref: '#/components/schemas/PaginationResp'
+      properties:
+        entities:
+          type: array
+          items:
+            $ref: '#/components/schemas/StorageConfig'
+          description: Storage configurations for this page.
     SupportBundleComponentType:
       title: SupportBundleComponentType
       description: Support bundle component type (same values as V1 BundleDetails.ComponentType).
@@ -14110,6 +14284,14 @@ components:
             $ref: '#/components/schemas/StorageConfig'
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
+    StorageConfigPagedResp:
+      description: A page of storage configurations
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StorageConfigPagedResp'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
     SupportBundleComponentsResp:
       description: List of available support bundle component types
       content:
@@ -14364,6 +14546,14 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/StorageConfigSpec'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    StorageConfigPagedReq:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StorageConfigPagedQuerySpec'
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
     StorageConfigValidateReq:
