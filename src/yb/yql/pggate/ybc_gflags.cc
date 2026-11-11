@@ -188,7 +188,6 @@ DEFINE_test_flag(int64, delay_after_table_analyze_ms, 0,
 DEFINE_test_flag(
     bool, enable_obj_tuple_locks, false, "Enable object tuple locks in the lock manager.");
 
-DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
 DECLARE_bool(TEST_ysql_enable_db_logical_client_version_mode);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 
@@ -248,8 +247,6 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_disable_global_impact_ddl_statements =
           &FLAGS_ysql_disable_global_impact_ddl_statements,
       .ysql_minimal_catalog_caches_preload      = &FLAGS_ysql_minimal_catalog_caches_preload,
-      .ysql_enable_colocated_tables_with_tablespaces =
-          &FLAGS_ysql_enable_colocated_tables_with_tablespaces,
       .ysql_enable_create_database_oid_collision_retry =
           &FLAGS_ysql_enable_create_database_oid_collision_retry,
       .ysql_catalog_preload_additional_table_list =

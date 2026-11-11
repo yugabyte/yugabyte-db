@@ -2401,6 +2401,7 @@ bool		yb_alter_type_reuse_expr_and_partial_indexes = false;
 bool		yb_enable_inplace_index_update = true;
 bool		yb_ignore_freeze_with_copy = true;
 bool		yb_enable_docdb_vector_type = false;
+bool		yb_enable_colocated_tables_with_tablespaces = true;
 
 /* Deprecated; see pg_yb_utils.h. Value is not read for lock behavior. */
 bool		yb_silence_advisory_locks_not_supported_error = false;

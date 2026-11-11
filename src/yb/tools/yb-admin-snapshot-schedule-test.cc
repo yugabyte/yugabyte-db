@@ -6330,10 +6330,8 @@ TEST_F(YbAdminSnapshotScheduleTestWithYsql, PgsqlPitrDoesNotRewindOidCounter) {
       << secondary_after_restore.first;
 }
 
-// Fixture for the clone-with-multiple-colocation-parents repro. We need the
-// PG-side gflag `ysql_enable_colocated_tables_with_tablespaces` enabled (it
-// is NON_RUNTIME and defaults to false) on both master and tserver so that
-// `TABLESPACE ts_x` on a colocated table promotes the table into a distinct
+// Fixture for the clone-with-multiple-colocation-parents repro. It relies on
+// `TABLESPACE ts_x` on a colocated table promoting the table into a distinct
 // implicit `colocation_<ts_x_oid>` tablegroup -- and therefore its own
 // colocated parent table -- rather than being lumped into the database's
 // single default colocated parent.
@@ -6346,14 +6344,11 @@ class YbAdminCloneColocationTablespaceTest : public YbAdminSnapshotScheduleTestW
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     YbAdminSnapshotScheduleTestWithLBYsql::UpdateMiniClusterOptions(opts);
-    opts->extra_master_flags.emplace_back("--ysql_enable_colocated_tables_with_tablespaces=true");
     opts->extra_master_flags.emplace_back("--enable_db_clone=true");
-    opts->extra_tserver_flags.emplace_back("--ysql_enable_colocated_tables_with_tablespaces=true");
   }
 };
 
-// In a colocated YSQL database with
-// `ysql_enable_colocated_tables_with_tablespaces=true`, every distinct
+// In a colocated YSQL database, every distinct
 // tablespace that backs at least one colocated relation gets its own
 // implicit `colocation_<tablespace_oid>` tablegroup, and therefore its own
 // colocated parent table on the source side. This test ensures the import snapshot workflow can
@@ -6393,10 +6388,9 @@ TEST_F_EX(
       "'{\"num_replicas\": 3, \"placement_blocks\": $0}')",
       kPlacementBlocks));
 
-  // Partition `customer` and put each partition in a different tablespace. With
-  // ysql_enable_colocated_tables_with_tablespaces on, each `TABLESPACE ts_x` clause on a partition
-  // forces creation of a distinct implicit colocation_<ts_x_oid> tablegroup, so the source DB ends
-  // up with three colocated parent tables (default + ts_a + ts_b).
+  // Partition `customer` and put each partition in a different tablespace. Each `TABLESPACE ts_x`
+  // clause on a partition forces creation of a distinct implicit colocation_<ts_x_oid> tablegroup,
+  // so the source DB ends up with three colocated parent tables (default + ts_a + ts_b).
   ASSERT_OK(src_conn.Execute(
       "CREATE TABLE customer (id INT, region INT, value TEXT, "
       "PRIMARY KEY (id, region)) PARTITION BY LIST (region)"));

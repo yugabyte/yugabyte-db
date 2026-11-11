@@ -300,8 +300,9 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_pg_export_snapshot, kLocalPersisted,
     "Enables the support for synchronizing snapshots across transactions, using pg_export_snapshot "
     "and SET TRANSACTION SNAPSHOT");
 
-/* Deprecated flag */
+/* Deprecated flags */
 namespace deprecated_flag_do_not_use {
+  DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
   DECLARE_bool(ysql_enable_pg_export_snapshot);
 }
 
@@ -682,6 +683,12 @@ void AppendPgGFlags(vector<string>* lines) {
   // Special handling for deprecated ysql_enable_pg_export_snapshot flag.
   if (deprecated_flag_do_not_use::FLAGS_ysql_enable_pg_export_snapshot) {
     lines->push_back("yb_enable_pg_export_snapshot=true");
+  }
+
+  // Special handling for deprecated ysql_enable_colocated_tables_with_tablespaces flag. This line
+  // comes after the AutoFlag's own, so it also wins while the AutoFlag is not promoted yet.
+  if (deprecated_flag_do_not_use::FLAGS_ysql_enable_colocated_tables_with_tablespaces) {
+    lines->push_back("yb_enable_colocated_tables_with_tablespaces=true");
   }
 }
 

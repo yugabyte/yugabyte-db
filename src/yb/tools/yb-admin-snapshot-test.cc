@@ -1028,6 +1028,8 @@ TEST_F(YbAdminSnapshotTest, SnapshotHidesColocatedTables) {
   auto conn_demo = ASSERT_RESULT(PgConnect("demo"));
   // Create a table.
   ASSERT_OK(conn_demo.Execute("CREATE TABLE t1 (id INT PRIMARY KEY)"));
+  // Keeps the colocation tablet alive when t1 is dropped.
+  ASSERT_OK(conn_demo.Execute("CREATE TABLE keep_tablet (id INT PRIMARY KEY)"));
   // Create a snapshot.
   master::TableIdentifierPB ns_identifier;
   ns_identifier.mutable_namespace_()->set_database_type(YQL_DATABASE_PGSQL);
@@ -1046,7 +1048,7 @@ TEST_F(YbAdminSnapshotTest, SnapshotHidesColocatedTables) {
   for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     auto tablets = ASSERT_RESULT(GetTabletsOnTserver(i, "demo", "colocation.parent"));
     ASSERT_EQ(tablets.size(), 1);
-    ASSERT_EQ(tablets[0].tablet_status().colocated_table_ids_size(), 2);
+    ASSERT_EQ(tablets[0].tablet_status().colocated_table_ids_size(), 3);
   }
   // Now delete the snapshot, the cleanup of this table should get triggered that should remove
   // it from the parent tablet.
@@ -1063,7 +1065,7 @@ TEST_F(YbAdminSnapshotTest, SnapshotHidesColocatedTables) {
     // Thus next compaction will clear out the data for this table.
     for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
       auto tablets = VERIFY_RESULT(GetTabletsOnTserver(i, "demo", "colocation.parent"));
-      if (tablets.size() != 1 || tablets[0].tablet_status().colocated_table_ids_size() != 1) {
+      if (tablets.size() != 1 || tablets[0].tablet_status().colocated_table_ids_size() != 2) {
         return false;
       }
     }
