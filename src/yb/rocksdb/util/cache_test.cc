@@ -23,6 +23,7 @@
 
 #include <forward_list>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -30,8 +31,10 @@
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/util/coding.h"
 
+#include "yb/util/format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
+#include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 
 using std::shared_ptr;
@@ -1036,6 +1039,180 @@ TEST_F(CacheTest, StrictCapacityLimitRefusedPromotion) {
   for (auto* handle : handles) {
     cache->Release(handle);
   }
+}
+
+// Runs random operations on a cache with several shards. After each one, checks that the usage
+// matches the cache entries, that pinned entries stay in the cache, and that unpinned entries fit
+// in the capacity.
+void RunRandomOperations(bool strict_capacity_limit) {
+  constexpr size_t kShards = 4;
+  constexpr int kMaxCharge = 4;
+  // With cache_single_touch_ratio = 0.2, a shard with this much room fits an entry of kMaxCharge
+  // in both its single touch and multi touch shares.
+  constexpr int kRoomForEntryInEachShare = 20;
+  constexpr int kMaxShardCapacity = 48;
+  // The consumed space can exceed the capacity, which leaves no room at all.
+  constexpr int kMaxShardSpaceConsumed = 8;
+  constexpr int kMaxHandlesLog = 5;
+  constexpr int kRecentKeys = 64;
+  constexpr int kStepsPerPhase = 500;
+  constexpr int kSteps = 10000;
+
+  struct HeldHandle {
+    Cache::Handle* handle;
+    int key;
+    // Whether the entry was erased or replaced while pinned.
+    bool detached;
+  };
+
+  Random rnd(test::RandomSeed());
+  size_t shard_capacity = 32;
+  size_t shard_space_consumed = 0;
+  auto cache = NewLRUCache(
+      kShards * shard_capacity, 2 /* num_shard_bits */, strict_capacity_limit);
+  std::vector<HeldHandle> handles;
+  // The most entries to keep pinned during the current phase.
+  size_t max_handles = 0;
+  int next_key = 0;
+  int next_value = 1;
+
+  auto recent_key = [&] {
+    return next_key - 1 - static_cast<int>(rnd.Uniform(std::min(next_key, kRecentKeys)));
+  };
+  auto detach = [&handles](int key) {
+    for (auto& h : handles) {
+      if (h.key == key) {
+        h.detached = true;
+      }
+    }
+  };
+  auto check = [&] {
+    callback_state.clear();
+    cache->ApplyToAllCacheEntries(callback, true /* thread_safe */);
+    size_t usage = 0;
+    std::unordered_set<int> values;
+    for (const auto& [value, charge] : callback_state) {
+      usage += charge;
+      values.insert(value);
+    }
+    std::unordered_set<Cache::Handle*> detached;
+    for (const auto& h : handles) {
+      if (h.detached) {
+        detached.insert(h.handle);
+      } else {
+        ASSERT_TRUE(values.contains(DecodeValue(cache->Value(h.handle)))) << "key: " << h.key;
+      }
+    }
+    for (auto* handle : detached) {
+      usage += cache->GetUsage(handle);
+    }
+    ASSERT_EQ(cache->GetUsage(), usage);
+
+    const size_t shard_space =
+        shard_capacity > shard_space_consumed ? shard_capacity - shard_space_consumed : 0;
+    // An insertion keeps its entry even when there is no room for it. If both shares fit an
+    // entry, unpinned usage still stays within the capacity. Otherwise each share can keep one
+    // entry that does not fit.
+    const size_t max_unpinned = shard_space >= kRoomForEntryInEachShare
+        ? shard_space : shard_space + 2 * kMaxCharge;
+    ASSERT_LE(cache->GetUsage() - cache->GetPinnedUsage(), kShards * max_unpinned);
+    if (handles.empty()) {
+      for (const auto& [single_touch, multi_touch] : cache->TEST_GetIndividualUsages()) {
+        ASSERT_LE(single_touch + multi_touch, max_unpinned);
+      }
+    }
+  };
+
+  for (int step = 0; step < kSteps; ++step) {
+    if (step % kStepsPerPhase == 0) {
+      // Mostly a few pinned entries, so that unpinned entries fill the cache, and sometimes more
+      // than a shard can hold.
+      max_handles = rnd.Skewed(kMaxHandlesLog);
+    }
+    const auto op = rnd.Uniform(20);
+    if (op < 8 || next_key == 0) {
+      // Inserting a key that is already in the cache replaces its entry, and puts the new one in
+      // multi touch if the query id differs.
+      const int key = next_key > 0 && rnd.OneIn(4) ? recent_key() : next_key++;
+      const QueryId query_id = rnd.OneIn(8) ? kInMultiTouchId : 1 + rnd.Uniform(2);
+      Cache::Handle* handle = nullptr;
+      const bool pin = handles.size() < max_handles && rnd.OneIn(2);
+      auto s = cache->Insert(
+          EncodeKey(key), query_id, EncodeValue(next_value++), 1 + rnd.Uniform(kMaxCharge),
+          &dumbDeleter, pin ? &handle : nullptr);
+      if (s.ok()) {
+        detach(key);
+        if (handle != nullptr) {
+          handles.push_back({handle, key, false /* detached */});
+        }
+      } else {
+        ASSERT_TRUE(strict_capacity_limit && s.IsIncomplete()) << s;
+      }
+    } else if (op < 14) {
+      const int key = recent_key();
+      Cache::Handle* handle = cache->Lookup(EncodeKey(key), 1 + rnd.Uniform(3) /* query_id */);
+      if (handle != nullptr) {
+        if (handles.size() < max_handles) {
+          handles.push_back({handle, key, false /* detached */});
+        } else {
+          cache->Release(handle);
+        }
+      }
+    } else if (op < 17) {
+      if (!handles.empty() && (handles.size() > max_handles || rnd.OneIn(4))) {
+        const size_t i = rnd.Uniform(static_cast<int>(handles.size()));
+        cache->Release(handles[i].handle);
+        handles[i] = handles.back();
+        handles.pop_back();
+      }
+    } else if (op == 17) {
+      const int key = recent_key();
+      cache->Erase(EncodeKey(key));
+      detach(key);
+    } else if (op == 18) {
+      cache->Evict(1 + rnd.Uniform(4 * kMaxCharge));
+    } else if (rnd.OneIn(2)) {
+      // Usually leave room for an entry in each share after the consumed space, but not always.
+      constexpr int kMinLargeShardCapacity = kRoomForEntryInEachShare + kMaxShardSpaceConsumed;
+      shard_capacity = rnd.OneIn(4)
+          ? rnd.Uniform(kMinLargeShardCapacity)
+          : kMinLargeShardCapacity + rnd.Uniform(kMaxShardCapacity - kMinLargeShardCapacity + 1);
+      cache->SetCapacity(kShards * shard_capacity);
+    } else {
+      const size_t consumed = rnd.Uniform(kMaxShardSpaceConsumed + 1);
+      if (consumed > shard_space_consumed) {
+        ASSERT_RESULT(cache->ConsumeSpace(
+            kShards * (consumed - shard_space_consumed), Cache::ReservationMode::kAlways));
+      } else {
+        cache->ReleaseSpace(kShards * (shard_space_consumed - consumed));
+      }
+      shard_space_consumed = consumed;
+    }
+    ASSERT_NO_FATALS(check()) << "step: " << step;
+  }
+
+  for (const auto& h : handles) {
+    cache->Release(h.handle);
+  }
+  handles.clear();
+  ASSERT_NO_FATALS(check());
+}
+
+TEST_F(CacheTest, RandomOperations) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_single_touch_ratio) = 0.2;
+  for (const bool overflow_single_touch : {true, false}) {
+    for (const bool overflow_multi_touch : {true, false}) {
+      SCOPED_TRACE(yb::Format(
+          "overflow_single_touch: $0, overflow_multi_touch: $1",
+          overflow_single_touch, overflow_multi_touch));
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_overflow_single_touch) = overflow_single_touch;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_overflow_multi_touch) = overflow_multi_touch;
+      ASSERT_NO_FATALS(RunRandomOperations(false /* strict_capacity_limit */));
+    }
+  }
+  SCOPED_TRACE("strict_capacity_limit");
+  ASSERT_NO_FATALS(RunRandomOperations(true /* strict_capacity_limit */));
 }
 
 }  // namespace rocksdb
