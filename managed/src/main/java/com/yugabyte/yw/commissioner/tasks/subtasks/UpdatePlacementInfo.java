@@ -17,7 +17,6 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -150,11 +149,10 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
     public static void mapToCloudInfoPB(
         PlacementInfo placementInfo, BiConsumer<PlacementAZ, CloudInfoPB> callback) {
       for (PlacementCloud placementCloud : placementInfo.cloudList) {
-        Provider cloud = Provider.find.byId(placementCloud.uuid);
         for (PlacementRegion placementRegion : placementCloud.regionList) {
-          Region region = Region.get(placementRegion.uuid);
+          Region region = Region.getOrBadRequest(placementRegion.uuid);
           for (PlacementAZ placementAz : placementRegion.azList) {
-            AvailabilityZone az = AvailabilityZone.find.byId(placementAz.uuid);
+            AvailabilityZone az = AvailabilityZone.getOrBadRequest(placementAz.uuid);
             // Create the cloud info object.
             CloudInfoPB.Builder ccb = CloudInfoPB.newBuilder();
             ccb.setPlacementCloud(placementCloud.code)
