@@ -159,6 +159,7 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   protected void restartClusterWithAdditionalFlags(
       Map<String, String> additionalMasterFlags,
       Map<String, String> additionalTserverFlags) throws Exception {
+    markClusterNeedsRecreation();
     destroyMiniCluster();
     waitForProperShutdown();
     createMiniCluster(-1, -1, builder -> {
@@ -211,6 +212,7 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
 
   protected void disableWarmupModeAndRestartCluster() throws Exception {
     warmup_random_mode = false;
+    markClusterNeedsRecreation();
     destroyMiniCluster();
     waitForProperShutdown();
     createMiniCluster();
@@ -733,6 +735,7 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   protected void restartClusterWithFlags(
       Map<String, String> additionalMasterFlags,
       Map<String, String> additionalTserverFlags) throws Exception {
+    markClusterNeedsRecreation();
     destroyMiniCluster();
     waitForProperShutdown();
 
