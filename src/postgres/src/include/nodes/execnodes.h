@@ -3156,7 +3156,8 @@ typedef struct LimitState
  *	 YbInsertOnConflictBatchState information
  *
  *		INSERT ... ON CONFLICT read batching state for Yugabyte relations.  The
- *		batch size is taken from GUC yb_insert_on_conflict_read_batch_size.
+ *		batch size is taken from GUC yb_insert_on_conflict_read_batch_size when
+ *		the state is created.
  * ----------------
  */
 typedef struct YbInsertOnConflictBatchState
@@ -3165,6 +3166,7 @@ typedef struct YbInsertOnConflictBatchState
 	TupleTableSlot **planSlots; /* related slots */
 	List	   *pending_relids; /* all (partitioned) relations involved */
 	int			num_slots_initialized;	/* number of slots initialized */
+	int			batch_size;		/* number of entries in slots and planSlots */
 
 	/* batching mode fields */
 	int			num_slots;		/* index of next slot to add to batch */
