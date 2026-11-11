@@ -197,11 +197,20 @@ In PostgreSQL, if the administrator password is lost or changed to an unknown va
 
 The same is also true for YugabyteDB, although the implementation is slightly different. YugabyteDB has a `ysql_hba.conf` file similar to PostgreSQL. The file is generated from the [`--ysql_hba_conf_csv`](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv) flag. Starting from YugabyteDB v2025.1.1.1, you can update the flag while the cluster is running, and the change takes effect without restarting YB-TServer. In v2025.1.0.x, restart YB-TServer for the change to take effect, one server at a time.
 
-To allow the `yugabyte` user to connect without a password, set the following value on every YB-TServer. Also save it in each YB-TServer configuration file, or in YugabyteDB Anywhere, so the change survives a restart:
+To allow the `yugabyte` user to connect without a password, set the following value on every YB-TServer:
 
-```sh
---ysql_hba_conf_csv=host all yugabyte 0.0.0.0/0 trust,host all all 0.0.0.0/0 md5,host all yugabyte ::0/0 trust,host all all ::0/0 md5
-```
+- In v2025.1.1.1 and later, use [yb-ts-cli set_flag](../../../admin/yb-ts-cli/#set-flag) to set the value while the server is running. Do not save it in the configuration file or in YugabyteDB Anywhere, as this rule is temporary and a runtime-only change is reverted automatically when the server restarts.
+
+    ```sh
+    ./bin/yb-ts-cli --server_address=<tserver-host>:9100 set_flag ysql_hba_conf_csv \
+      "host all yugabyte 0.0.0.0/0 trust,host all all 0.0.0.0/0 md5,host all yugabyte ::0/0 trust,host all all ::0/0 md5"
+    ```
+
+- In v2025.1.0.x, the change requires a restart, so save the value in the YB-TServer configuration file (or in YugabyteDB Anywhere), and then restart each YB-TServer, one at a time:
+
+    ```sh
+    --ysql_hba_conf_csv=host all yugabyte 0.0.0.0/0 trust,host all all 0.0.0.0/0 md5,host all yugabyte ::0/0 trust,host all all ::0/0 md5
+    ```
 
 Password authentication is then enforced for all users except the `yugabyte` user. Connect without a password:
 
@@ -215,4 +224,7 @@ And update the password of the user to new desired password:
 ALTER ROLE yugabyte WITH PASSWORD 'new-password';
 ```
 
-Return `--ysql_hba_conf_csv` to its previous value on every YB-TServer, and save that value in the configuration file or in YugabyteDB Anywhere. Starting from YugabyteDB v2025.1.1.1, password authentication then applies to the `yugabyte` user again without a restart. In v2025.1.0.x, restart YB-TServer, one server at a time.
+Return `ysql_hba_conf_csv` to its previous value on every YB-TServer:
+
+- In v2025.1.1.1 and later, use `yb-ts-cli set_flag` to restore the previous value. Because the configuration file was not changed, you don't need to save anything. Password authentication then applies to the `yugabyte` user again, without a restart.
+- In v2025.1.0.x, remove the temporary rule from the configuration file (or from YugabyteDB Anywhere), and restart each YB-TServer, one at a time.

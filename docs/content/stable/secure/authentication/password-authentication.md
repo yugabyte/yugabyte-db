@@ -138,11 +138,14 @@ In PostgreSQL, if the administrator password is lost or changed to an unknown va
 
 The same is also true for YugabyteDB, although the implementation is slightly different. YugabyteDB has a `ysql_hba.conf` file similar to PostgreSQL. The file is generated from the [--ysql_hba_conf_csv](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv) flag. You can update the flag while the cluster is running, and the change takes effect without restarting YB-TServer.
 
-To allow the `yugabyte` user to connect without a password, set the following value on every YB-TServer. Also save it in each YB-TServer configuration file, or in YugabyteDB Anywhere, so the change survives a restart:
+To allow the `yugabyte` user to connect without a password, use [yb-ts-cli set_flag](../../../admin/yb-ts-cli/#set-flag) to set the following value on every YB-TServer while it is running:
 
 ```sh
---ysql_hba_conf_csv=host all yugabyte 0.0.0.0/0 trust,host all all 0.0.0.0/0 md5,host all yugabyte ::0/0 trust,host all all ::0/0 md5
+./bin/yb-ts-cli --server_address=<tserver-host>:9100 set_flag ysql_hba_conf_csv \
+  "host all yugabyte 0.0.0.0/0 trust,host all all 0.0.0.0/0 md5,host all yugabyte ::0/0 trust,host all all ::0/0 md5"
 ```
+
+Do not save this value in the YB-TServer configuration file or in YugabyteDB Anywhere. This rule is temporary, and a runtime-only change is reverted automatically when the server restarts.
 
 Password authentication is then enforced for all users except the `yugabyte` user. Connect without a password:
 
@@ -156,4 +159,4 @@ And update the password of the user to new desired password:
 ALTER ROLE yugabyte WITH PASSWORD 'new-password';
 ```
 
-Return `--ysql_hba_conf_csv` to its previous value on every YB-TServer, and save that value in the configuration file or in YugabyteDB Anywhere. Password authentication then applies to the `yugabyte` user again, without a restart.
+Use `yb-ts-cli set_flag` to return `ysql_hba_conf_csv` to its previous value on every YB-TServer. Because the configuration file was not changed, you don't need to save anything. Password authentication then applies to the `yugabyte` user again, without a restart.
