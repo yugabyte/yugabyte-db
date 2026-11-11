@@ -305,23 +305,35 @@ public class UpgradeUniverseHandler {
         continue;
       }
       String ybSoftwareVersion = universeCluster.userIntent.ybSoftwareVersion;
-      if (clusterParam.userIntent.masterGFlags != null) {
-        clusterParam.userIntent.masterGFlags =
-            GFlagsUtil.mergeSensitiveGFlags(
-                universeCluster.userIntent.masterGFlags,
-                clusterParam.userIntent.masterGFlags,
-                gFlagsValidation,
-                ybSoftwareVersion);
-      }
-      if (clusterParam.userIntent.tserverGFlags != null) {
-        clusterParam.userIntent.tserverGFlags =
-            GFlagsUtil.mergeSensitiveGFlags(
-                universeCluster.userIntent.tserverGFlags,
-                clusterParam.userIntent.tserverGFlags,
-                gFlagsValidation,
-                ybSoftwareVersion);
-      }
+      clusterParam.userIntent.masterGFlags =
+          mergeSensitiveLegacyGFlags(
+              universeCluster.userIntent.masterGFlags,
+              clusterParam.userIntent.masterGFlags,
+              ybSoftwareVersion);
+      clusterParam.userIntent.tserverGFlags =
+          mergeSensitiveLegacyGFlags(
+              universeCluster.userIntent.tserverGFlags,
+              clusterParam.userIntent.tserverGFlags,
+              ybSoftwareVersion);
     }
+  }
+
+  // UniverseControllerRequestBinder fills legacy maps the client omitted (the UI sends only
+  // specificGFlags) from the stored cluster, so an unchanged map is not client input. Checking it
+  // would block every edit once a stored value is REDACTED. When a stored or requested cluster has
+  // specificGFlags, the task applies those and UpdateAndPersistGFlags rebuilds these maps from
+  // them; checkGFlagsProvidedInOldSchema, which builds specificGFlags from these maps, checks the
+  // result itself. Otherwise the task applies and persists these maps as they are, so an unchanged
+  // map holding REDACTED passes unchecked. Universe creation and the V315 migration always set
+  // specificGFlags.
+  private Map<String, String> mergeSensitiveLegacyGFlags(
+      Map<String, String> stored, Map<String, String> requested, String ybSoftwareVersion) {
+    if (requested == null
+        || (stored != null
+            && GFlagsUtil.trimFlags(stored).equals(GFlagsUtil.trimFlags(requested)))) {
+      return requested;
+    }
+    return GFlagsUtil.mergeSensitiveGFlags(stored, requested, gFlagsValidation, ybSoftwareVersion);
   }
 
   private void mergeSensitiveSpecificGFlagsForRequestClusters(
@@ -362,11 +374,13 @@ public class UpgradeUniverseHandler {
       GFlagsUtil.trimFlags(userIntent.specificGFlags);
       userIntent.masterGFlags = GFlagsUtil.trimFlags(userIntent.masterGFlags);
       userIntent.tserverGFlags = GFlagsUtil.trimFlags(userIntent.tserverGFlags);
-      requestParams.masterGFlags = userIntent.masterGFlags;
-      requestParams.tserverGFlags = userIntent.tserverGFlags;
 
       mergeSensitiveMasterTserverGFlagsForRequestClusters(requestParams, universe);
       mergeSensitiveSpecificGFlagsForRequestClusters(requestParams, universe);
+      // The merges replace the cluster maps, so copy them only now:
+      // checkGFlagsProvidedInOldSchema rebuilds specificGFlags from these top-level maps.
+      requestParams.masterGFlags = userIntent.masterGFlags;
+      requestParams.tserverGFlags = userIntent.tserverGFlags;
     } else {
       userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
       GFlagsUtil.trimFlags(userIntent.specificGFlags);
@@ -502,6 +516,16 @@ public class UpgradeUniverseHandler {
             redactForLog(requestParams.tserverGFlags));
         requestParamsCluster.userIntent.specificGFlags =
             SpecificGFlags.construct(requestParams.masterGFlags, requestParams.tserverGFlags);
+        if (RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()) {
+          // Runs after the sensitive gflags merges; the legacy maps can still hold a stored
+          // REDACTED value that mergeSensitiveLegacyGFlags skipped as unchanged.
+          requestParamsCluster.userIntent.specificGFlags =
+              GFlagsUtil.mergeSensitiveSpecificGFlags(
+                  primarySpecificGFlags,
+                  requestParamsCluster.userIntent.specificGFlags,
+                  gFlagsValidation,
+                  primaryCluster.userIntent.ybSoftwareVersion);
+        }
         return true;
       }
     }
