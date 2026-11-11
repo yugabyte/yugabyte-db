@@ -1381,9 +1381,13 @@ Available in YugabyteDB Anywhere v2026.1.3 and later.
 You can change [encryption in transit](../../security/enable-encryption-in-transit/) on an existing universe by editing the YBUniverse resource:
 
 - Set `enableNodeToNodeEncrypt` and `enableClientToNodeEncrypt` to turn encryption in transit on or off.
-- Set `rootCA` to the name of a YBCertificate to use that certificate as the root CA. Changing `rootCA` on a universe that already has encryption in transit rotates the root certificate.
+- Set `rootCA` to the name of a YBCertificate to use that certificate as the root CA. Changing `rootCA` while leaving the encryption flags unchanged rotates the root certificate.
 
-Turning encryption in transit on or off restarts all nodes at the same time, resulting in downtime. The operator always performs this change as a non-rolling restart, regardless of the `upgradeOption` set on the universe. This does not apply to rotating the root certificate by changing `rootCA`, which does use the universe's `upgradeOption`.
+You can change the encryption flags while a root CA is already set. Keep `rootCA` set to that same certificate. The operator treats a flag change as a TLS toggle, and a toggle cannot replace the existing root CA. To switch to a different root CA, change `rootCA` in a separate edit that leaves the encryption flags unchanged. Combining both changes in one edit fails with `Cannot update root certificate, if already created`.
+
+Turning `enableNodeToNodeEncrypt` or `enableClientToNodeEncrypt` on or off restarts all nodes at the same time, resulting in downtime. The operator always performs either change as a non-rolling restart, regardless of the `upgradeOption` set on the universe.
+
+Rotating the root certificate by changing `rootCA` uses the universe's `upgradeOption`. When the node-to-node certificates have expired, set that option to `Non-Rolling` first. `Rolling` and `Non-Restart` are rejected, and the operator does not switch the rotation to non-rolling for you.
 
 If the task fails, the operator retries it.
 
@@ -1403,7 +1407,7 @@ spec:
   universe: operator-universe-demo
 ```
 
-`upgradeOption` (`Rolling`, `Non-Rolling`, or `Non-Restart`) controls how the new certificates are applied. When you omit it, the rotation uses the universe's `upgradeOption`.
+`upgradeOption` (`Rolling`, `Non-Rolling`, or `Non-Restart`) controls how the reissued certificates are applied. When you omit it, the rotation uses the universe's `upgradeOption`. When the node-to-node certificates have expired, only `Non-Rolling` is accepted, unless node-to-node encryption is off and this rotation reissues only the client certificate.
 
 ### Support bundle
 
@@ -1522,8 +1526,7 @@ Importing a universe to the operator creates or adopts the following in the targ
 
 ## Limitations
 
-- Currently, YugabyteDB Kubernetes Operator does not support the following features:
-  - Software upgrade rollback
-  - [Encryption at rest](../../security/enable-encryption-at-rest/) (prior to v2026.1.2; supported in v2026.1.2 and later)
-- [Encryption in transit](../../security/enable-encryption-in-transit/) configuration cannot be edited after it is initially configured (prior to v2026.1.3; supported in v2026.1.3 and later).
+- Currently, YugabyteDB Kubernetes Operator does not support software upgrade rollback.
+- [Encryption at rest](../../security/enable-encryption-at-rest/) is supported in v2026.1.2 and later.
+- [Encryption in transit](../../security/enable-encryption-in-transit/) configuration cannot be edited after it is initially configured in versions prior to v2026.1.3.
 - `replicationFactor` cannot be changed after the universe is created. To increase replication factor on a Kubernetes universe that YugabyteDB Anywhere manages directly, refer to [Scale universes](../../scale-deployments/edit-universe/#horizontal-scaling).
