@@ -1206,8 +1206,10 @@ TEST_F(PgMiniTestBase, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLDumpAsOfTime)) {
   ASSERT_STR_EQ(ground_truth, dump_as_of_time);
 }
 
-// ysql_dump --read-time takes no object locks, so it doesn't wait on a concurrent DDL's locks.
-TEST_F(PgMiniTestBase, YB_DISABLE_TEST_IN_SANITIZERS(YsqlDumpAsOfTimeDoesNotWaitOnDdl)) {
+// ysql_dump --read-time takes no object locks, so it doesn't wait on a concurrent DDL's locks, and
+// dumps the schema as of the read time.
+TEST_P(PgReadTimeCatalogModeTest,
+       YB_DISABLE_TEST_IN_SANITIZERS(YsqlDumpAsOfTimeDoesNotWaitOnDdl)) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
   const auto t1 = ASSERT_RESULT(conn.FetchRow<PGUint64>(
@@ -1215,7 +1217,7 @@ TEST_F(PgMiniTestBase, YB_DISABLE_TEST_IN_SANITIZERS(YsqlDumpAsOfTimeDoesNotWait
 
   auto ddl_conn = ASSERT_RESULT(Connect());
   ASSERT_OK(ddl_conn.Execute("BEGIN"));
-  ASSERT_OK(ddl_conn.Execute("LOCK TABLE t IN ACCESS EXCLUSIVE MODE"));
+  ASSERT_OK(ddl_conn.Execute("ALTER TABLE t ADD COLUMN c INT"));
 
   auto hostport = pg_host_port();
   std::vector<std::string> args = {
@@ -1229,6 +1231,7 @@ TEST_F(PgMiniTestBase, YB_DISABLE_TEST_IN_SANITIZERS(YsqlDumpAsOfTimeDoesNotWait
   std::string dump;
   ASSERT_OK(Subprocess::Call(args, &dump));
   ASSERT_STR_CONTAINS(dump, "CREATE TABLE public.t");
+  ASSERT_STR_NOT_CONTAINS(dump, "c integer");
 
   ASSERT_OK(ddl_conn.Execute("COMMIT"));
 }
