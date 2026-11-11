@@ -5049,19 +5049,23 @@ std::string CDCSDKYsqlTest::GetPubRefreshTimesString(vector<uint64_t> pub_refres
 
 Status CDCSDKYsqlTest::ExecuteYBAdminCommand(
     const std::string& command_name, const std::vector<string>& command_args) {
-  string tool_path = GetToolPath("../bin", "yb-admin");
-  vector<string> argv;
-  argv.push_back(tool_path);
-  argv.push_back("--master_addresses");
-  argv.push_back(AsString(test_cluster_.mini_cluster_->GetMasterAddresses()));
-  argv.push_back(command_name);
-  for (const auto& command_arg : command_args) {
-    argv.push_back(command_arg);
-  }
-
-  RETURN_NOT_OK(Subprocess::Call(argv));
-
+  RETURN_NOT_OK(ExecuteYBAdminCommand(
+      test_cluster_.mini_cluster_->GetMasterAddresses(), command_name, command_args));
   return Status::OK();
+}
+
+Result<std::string> CDCSDKYsqlTest::ExecuteYBAdminCommand(
+    const std::string& master_addresses, const std::string& command_name,
+    const std::vector<string>& command_args) {
+  vector<string> argv{
+      GetToolPath("../bin", "yb-admin"), "--master_addresses", master_addresses, command_name};
+  argv.insert(argv.end(), command_args.begin(), command_args.end());
+  std::string output, error;
+  auto status = Subprocess::Call(argv, &output, &error);
+  if (!status.ok()) {
+    return status.CloneAndAppend(error);
+  }
+  return output;
 }
 
 Status CDCSDKYsqlTest::DisableDynamicTableAdditionOnCDCSDKStream(
@@ -5086,18 +5090,12 @@ Status CDCSDKYsqlTest::RemoveUserTableFromCDCSDKStream(
 
 Result<std::string> CDCSDKYsqlTest::PrepareCDCStreamsForTransactionalDDL(
     const std::string& master_addresses, const std::string& stream_id) {
-  vector<string> argv{
-      GetToolPath("../bin", "yb-admin"), "--master_addresses", master_addresses,
-      "prepare_cdc_streams_for_transactional_ddl"};
+  vector<string> command_args;
   if (!stream_id.empty()) {
-    argv.push_back(stream_id);
+    command_args.push_back(stream_id);
   }
-  std::string output, error;
-  auto status = Subprocess::Call(argv, &output, &error);
-  if (!status.ok()) {
-    return status.CloneAndAppend(error);
-  }
-  return output;
+  return ExecuteYBAdminCommand(
+      master_addresses, "prepare_cdc_streams_for_transactional_ddl", command_args);
 }
 
 Status CDCSDKYsqlTest::ValidateAndSyncCDCStateEntriesForCDCSDKStream(

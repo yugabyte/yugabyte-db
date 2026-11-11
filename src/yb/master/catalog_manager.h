@@ -205,6 +205,9 @@ YB_DEFINE_ENUM(DeleteYsqlDBTablesType,
 
 YB_DEFINE_ENUM(CDCStreamType, (kNone)(kLogicalReplication)(kgRPC));
 
+YB_DEFINE_ENUM(PrepareStreamForTxnDdlResult,
+               (kPrepared)(kNotCDCSDKStream)(kDeleting)(kNotImplicit));
+
 struct YsqlTableDdlTxnState;
 using google::protobuf::RepeatedPtrField;
 using TabletIdWithEntry = std::pair<TabletId, SysTabletsEntryPB>;
@@ -1886,9 +1889,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Delete specified CDC streams metadata.
   Status CleanUpCDCSDKStreamsMetadata(const LeaderEpoch& epoch) EXCLUDES(mutex_);
 
-  // Returns why the stream is skipped, or nullptr if it is prepared.
-  Result<const char*> AddTransactionalDdlCatalogTablesToStream(const CDCStreamInfoPtr& stream)
-      EXCLUDES(mutex_);
+  Result<PrepareStreamForTxnDdlResult> AddTransactionalDdlCatalogTablesToStream(
+      const CDCStreamInfoPtr& stream) EXCLUDES(mutex_);
 
   // Returns CDCSDK streams that need metadata cleanup. This includes streams with non-empty
   // dropped_table_id list and, when FLAGS_cdcsdk_use_dropped_table_list_for_cleanup is false,
