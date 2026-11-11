@@ -154,11 +154,14 @@ Status Merge(
     const std::vector<VectorIndexIfPtr<Vector, DistanceResult>>& source,
     MergeFilter&& merge_filter) {
   for (const auto& index : source) {
-    for (const auto& [vector_id, vector] : *index) {
+    auto it = index->CreateIterator();
+    for (; it->Valid(); it->Next()) {
+      const auto& [vector_id, vector] = it->Entry();
       if (merge_filter(vector_id) == storage::FilterDecision::kKeep) {
         RETURN_NOT_OK(target->Insert(vector_id, vector));
       }
     }
+    RETURN_NOT_OK(it->status());
   }
   return Status::OK();
 }

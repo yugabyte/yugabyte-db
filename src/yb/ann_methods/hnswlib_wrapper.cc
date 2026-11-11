@@ -190,14 +190,9 @@ class HnswlibIndex :
     });
   }
 
-  std::unique_ptr<AbstractIterator<std::pair<VectorId, Vector>>> BeginImpl() const override {
+  std::unique_ptr<vector_index::VectorIndexIterator<Vector>> CreateIterator() const override {
     return std::make_unique<HnswlibVectorIterator<Vector, DistanceResult>>(
-        hnsw_->vectors_begin(), options_.dimensions);
-  }
-
-  std::unique_ptr<AbstractIterator<std::pair<VectorId, Vector>>> EndImpl() const override {
-    return std::make_unique<HnswlibVectorIterator<Vector, DistanceResult>>(
-        hnsw_->vectors_end(), options_.dimensions);
+        *hnsw_, options_.dimensions);
   }
 
   Status Reserve(
@@ -408,33 +403,33 @@ class HnswlibIndex :
 
 
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class HnswlibVectorIterator : public AbstractIterator<std::pair<VectorId, Vector>> {
+class HnswlibVectorIterator : public vector_index::VectorIndexIterator<Vector> {
  public:
-  using VectorIndex = HnswlibIndex<Vector, DistanceResult>;
-  using HNSWIterator = hnswlib::VectorIterator<DistanceResult, VectorId>;
+  using HNSWImpl = hnswlib::HierarchicalNSW<DistanceResult, VectorId>;
+  using IteratorEntry = std::pair<VectorId, Vector>;
 
-  HnswlibVectorIterator(HNSWIterator position, int dimensions)
-      : internal_iterator_(position), dimensions_(dimensions) {}
+  HnswlibVectorIterator(const HNSWImpl& hnsw, int dimensions)
+      : hnsw_(hnsw), size_(hnsw.getCurrentElementCount()), dimensions_(dimensions) {}
 
- protected:
-  std::pair<VectorId, Vector> Dereference() const override {
-    auto pair_data = *internal_iterator_;
+  IteratorEntry Entry() const override {
     Vector result_vector(dimensions_);
-    std::memcpy(result_vector.data(), pair_data.first,
+    std::memcpy(result_vector.data(), hnsw_.getDataByInternalId(internal_id_),
                 dimensions_ * sizeof(typename Vector::value_type));
-    return { pair_data.second, result_vector};
+    return { hnsw_.getExternalLabel(internal_id_), std::move(result_vector) };
   }
 
-  void Next() override { ++internal_iterator_; }
+  void Next() override { ++internal_id_; }
 
-  bool NotEquals(const AbstractIterator<std::pair<VectorId, Vector>>& other) const override {
-    const auto& other_casted = down_cast<const HnswlibVectorIterator&>(other);
-    return internal_iterator_ != other_casted.internal_iterator_;
+ protected:
+  bool DoValid() const override {
+    return internal_id_ < size_;
   }
 
  private:
-  HNSWIterator internal_iterator_;
-  int dimensions_;
+  const HNSWImpl& hnsw_;
+  const size_t size_;
+  const int dimensions_;
+  hnswlib::tableint internal_id_ = 0;
 };
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
