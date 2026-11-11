@@ -4743,13 +4743,14 @@ create_indexscan_plan(PlannerInfo *root,
 
 	YbMergeScanInfo *yb_merge_scan_info = NULL;
 
-	if (best_path->yb_index_path_info.merge_scan_stream_cols)
+	if (best_path->yb_index_path_info.merge_scan_info)
 	{
 		ListCell   *yb_lc;
 
 		yb_merge_scan_info = makeNode(YbMergeScanInfo);
 		/* setrefs.c repoints each entry's clause, so copy the entries. */
-		foreach(yb_lc, best_path->yb_index_path_info.merge_scan_stream_cols)
+		foreach(yb_lc,
+				best_path->yb_index_path_info.merge_scan_info->stream_cols)
 		{
 			YbMergeScanStreamColInfo *yb_info =
 				makeNode(YbMergeScanStreamColInfo);
@@ -4758,9 +4759,8 @@ create_indexscan_plan(PlannerInfo *root,
 			yb_merge_scan_info->stream_cols =
 				lappend(yb_merge_scan_info->stream_cols, yb_info);
 		}
-		Assert(best_path->yb_index_path_info.merge_scan_sort_info);
 		yb_merge_scan_info->sort_cols =
-			best_path->yb_index_path_info.merge_scan_sort_info;
+			best_path->yb_index_path_info.merge_scan_info->sort_cols;
 	}
 
 	/* Finally ready to build the plan node */
@@ -7370,6 +7370,8 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
 	List	   *stripped_indexquals;
 	List	   *fixed_indexquals;
 	ListCell   *lc;
+	YbMergeScanInfo *yb_merge_scan_info =
+		index_path->yb_index_path_info.merge_scan_info;
 
 	stripped_indexquals = fixed_indexquals = NIL;
 
@@ -7406,10 +7408,10 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
 
 	/*
 	 * YB: Besides indexclauses, there could be derived clauses in
-	 * yb_index_path_info.merge_scan_stream_cols.  Add these to ..._indexquals
+	 * yb_index_path_info.merge_scan_info.  Add these to ..._indexquals
 	 * as well.
 	 */
-	foreach(lc, index_path->yb_index_path_info.merge_scan_stream_cols)
+	foreach(lc, yb_merge_scan_info ? yb_merge_scan_info->stream_cols : NIL)
 	{
 		YbMergeScanStreamColInfo *info =
 			lfirst_node(YbMergeScanStreamColInfo, lc);

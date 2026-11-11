@@ -4683,7 +4683,7 @@ ANALYZE r5n;
 -- (#29078), which it does at two streams and not at four.  With larger
 -- response pages it is then within add_path's fuzz of the plain scan and
 -- wins on pathkeys.  Without the #36012 reset of yb_distinct_nkeys in
--- yb_finalize_merge_scan_stream_cols, the merge-on EXPLAIN fails an
+-- yb_finalize_merge_scan_info, the merge-on EXPLAIN fails an
 -- assertion.
 SET yb_fetch_row_limit = 1024;
 -- Index only scan is off, since only a plain index scan on a colocated index

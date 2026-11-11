@@ -337,7 +337,7 @@ yb_indexcol_can_merge_scan(PlannerInfo *root,
 
 	/*
 	 * If same expr already used in stream_cols, then redundant.  Every entry
-	 * here carries a SAOP, since yb_finalize_merge_scan_stream_cols adds the
+	 * here carries a SAOP, since yb_finalize_merge_scan_info adds the
 	 * single-value equality entries only after the pathkeys walk that calls
 	 * this function.
 	 */
@@ -700,16 +700,14 @@ ybIsMergeGapCol(IndexOptInfo *index, List *indexclauses, Bitmapset *saop_idxs,
  * merge order does not depend on it.  That includes a SAOP column the pathkeys
  * walk picked there, whose streams the merge does not need.
  *
- * Returns a new list in index column order, which EXPLAIN shows, or NIL when
- * the path cannot be a merge scan.  Sets *sort_info to the merge sort columns,
- * which the plan uses, or to NULL when it returns NIL.
+ * Returns the merge scan info, whose stream keys EXPLAIN shows, or NULL when
+ * the path cannot be a merge scan.
  */
-List *
-yb_finalize_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
-								   List *stream_cols, List *indexclauses,
-								   List **pathkeys, int *yb_distinct_nkeys,
-								   bool embedded, ScanDirection scandir,
-								   YbSortInfo **sort_info)
+YbMergeScanInfo *
+yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
+							List *stream_cols, List *indexclauses,
+							List **pathkeys, int *yb_distinct_nkeys,
+							bool embedded, ScanDirection scandir)
 {
 	List	   *result = NIL;
 	ListCell   *lc;
@@ -718,8 +716,8 @@ yb_finalize_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
 	Bitmapset  *gap_idxs = NULL;
 	Bitmapset  *stream_col_idxs = NULL;
 	int			last_sort_indexcol = -1;
-
-	*sort_info = NULL;
+	YbMergeScanInfo *merge_scan_info;
+	YbSortInfo *sort_info;
 
 	foreach(lc, stream_cols)
 	{
@@ -740,7 +738,7 @@ yb_finalize_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
 
 		/* Not an ordering the merge can compare on. */
 		if (!tle)
-			return NIL;
+			return NULL;
 
 		/*
 		 * For an embedded index scan, an expression column is not available
@@ -828,7 +826,7 @@ yb_finalize_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
 	}
 
 	if (result == NIL)
-		return NIL;
+		return NULL;
 
 	foreach(lc, result)
 	{
@@ -837,15 +835,19 @@ yb_finalize_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
 
 		stream_col_idxs = bms_add_member(stream_col_idxs, info->indexcol);
 	}
-	*sort_info = makeNode(YbSortInfo);
+	sort_info = makeNode(YbSortInfo);
 	yb_get_sort_info_from_pathkeys(index->indextlist, *pathkeys, relids,
-								   stream_col_idxs, &(*sort_info)->numCols,
-								   &(*sort_info)->sortColIdx,
-								   &(*sort_info)->sortOperators,
-								   &(*sort_info)->collations,
-								   &(*sort_info)->nullsFirst);
-	yb_add_merge_gap_sort_cols(index, scandir, gap_idxs, *sort_info);
-	return result;
+								   stream_col_idxs, &sort_info->numCols,
+								   &sort_info->sortColIdx,
+								   &sort_info->sortOperators,
+								   &sort_info->collations,
+								   &sort_info->nullsFirst);
+	yb_add_merge_gap_sort_cols(index, scandir, gap_idxs, sort_info);
+
+	merge_scan_info = makeNode(YbMergeScanInfo);
+	merge_scan_info->stream_cols = result;
+	merge_scan_info->sort_cols = sort_info;
+	return merge_scan_info;
 }
 
 /*
@@ -868,7 +870,7 @@ yb_merge_scan_num_streams(List *stream_cols)
 
 /*
  * Add to sort_info, in index column order, the gap columns in gap_idxs (see
- * yb_finalize_merge_scan_stream_cols).  Each stream returns its rows in index
+ * yb_finalize_merge_scan_info).  Each stream returns its rows in index
  * order, so merging on these columns too keeps the merged rows in index order.
  * A gap column is redundant for the pathkeys only because the index predicate
  * holds it constant, or because filters tie it to a constant or to an earlier

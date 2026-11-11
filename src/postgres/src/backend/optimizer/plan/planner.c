@@ -6489,8 +6489,7 @@ plan_cluster_use_sort(Oid tableOid, Oid indexOid)
 									  NIL, NIL, NIL, NIL, NIL,
 									  ForwardScanDirection, false,
 									  NULL, 1.0, false,
-									  NULL,	/* yb_merge_scan_stream_cols */
-									  NULL);	/* yb_merge_scan_sort_info */
+									  NULL);	/* yb_merge_scan_info */
 
 	return (seqScanAndSortPath.total_cost < indexScanPath->path.total_cost);
 }

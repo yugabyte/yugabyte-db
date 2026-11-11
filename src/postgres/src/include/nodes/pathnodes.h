@@ -1364,12 +1364,9 @@ typedef struct YbMergeScanStreamColInfo
 } YbMergeScanStreamColInfo;
 
 /*
- * YB: info used by YbIndexPathInfo and YbMergeScanInfo.
- *
- * The merge sort columns of a merge scan, in index column order (see
- * yb_finalize_merge_scan_stream_cols).
+ * YB: info used by YbMergeScanInfo.
  */
-typedef struct YbSortInfo
+typedef struct
 {
 	NodeTag		type;
 	int			numCols;		/* number of sort-key columns */
@@ -1380,21 +1377,37 @@ typedef struct YbSortInfo
 } YbSortInfo;
 
 /*
+ * YB: info used by index paths (YbIndexPathInfo) and the IndexScan and
+ * IndexOnlyScan nodes.
+ *
+ * Holds info used for merge scans.  'stream_cols' lists the merge stream keys
+ * in index column order (see yb_finalize_merge_scan_info).  The
+ * executor must bind each of them per stream, and ybValidateMergeScanBinds
+ * checks that it does.  pggate treats every key column before the last merge
+ * sort column as a stream key (PgDmlRead::IsMergeSortColumn), including the
+ * columns this list leaves out.
+ */
+typedef struct
+{
+	NodeTag		type;
+	List	   *stream_cols;	/* List of YbMergeScanStreamColInfo */
+	YbSortInfo *sort_cols;
+} YbMergeScanInfo;
+
+/*
  * Info propagated for YugabyteDB, for index scans.
  *
  * 'yb_lock_mechanism' indicates what kind of lock can or must be taken as part
  * of a scan.
  *
- * 'merge_scan_stream_cols' lists the merge stream keys in index column order,
- * and 'merge_scan_sort_info' holds the merge sort columns, or is NULL without
- * stream keys (see yb_finalize_merge_scan_stream_cols).
+ * 'merge_scan_info' holds the merge stream keys and merge sort columns of a
+ * merge scan path, or is NULL (see yb_finalize_merge_scan_info).
  */
 typedef struct YbIndexPathInfo
 {
 	int			yb_distinct_prefixlen;
 	YbLockMechanism yb_lock_mechanism;	/* what lock as part of a scan */
-	List	   *merge_scan_stream_cols; /* List of YbMergeScanStreamColInfo */
-	YbSortInfo *merge_scan_sort_info;
+	YbMergeScanInfo *merge_scan_info;
 } YbIndexPathInfo;
 
 

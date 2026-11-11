@@ -52,15 +52,14 @@ extern void yb_get_sort_info_from_pathkeys(List *tlist,
 										   Oid **p_collations,
 										   bool **p_nullsFirst);
 
-extern List *yb_finalize_merge_scan_stream_cols(IndexOptInfo *index,
-												Relids relids,
-												List *stream_cols,
-												List *indexclauses,
-												List **pathkeys,
-												int *yb_distinct_nkeys,
-												bool embedded,
-												ScanDirection scandir,
-												YbSortInfo **sort_info);
+extern YbMergeScanInfo *yb_finalize_merge_scan_info(IndexOptInfo *index,
+													Relids relids,
+													List *stream_cols,
+													List *indexclauses,
+													List **pathkeys,
+													int *yb_distinct_nkeys,
+													bool embedded,
+													ScanDirection scandir);
 
 extern int yb_merge_scan_num_streams(List *stream_cols);
 
