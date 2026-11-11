@@ -149,7 +149,11 @@ public class StorageConfigHandler {
   /** Runs every check of a create and returns the v1 config to save. */
   private CustomerConfig validate(UUID cUUID, StorageConfigSpec spec) {
     checkSpec(spec.getStorage());
+    // Stored trimmed, as v1 does; the schema's minLength applies before trimming.
     String name = spec.getName().trim();
+    if (name.isEmpty()) {
+      throw badRequest("name must not be blank");
+    }
     if (CustomerConfig.get(cUUID, name) != null) {
       throw nameConflict(cUUID, name);
     }

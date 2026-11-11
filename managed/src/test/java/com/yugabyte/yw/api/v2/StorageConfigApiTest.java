@@ -377,6 +377,8 @@ public class StorageConfigApiTest extends FakeDBApplication {
     StorageConfigSpec noLocation = nfsSpec("no-location", null);
     assertBadRequest(noLocation, "backupLocation");
 
+    assertBadRequest(nfsSpec("   ", "/mnt"), "name must not be blank");
+
     assertTrue(CustomerConfig.getAll(customer.getUuid()).isEmpty());
   }
 
