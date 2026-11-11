@@ -58,7 +58,7 @@ inline uint32_t Crc32c(Slice slice) {
 
 class Crc32Accumulator {
  public:
-  explicit Crc32Accumulator(uint64_t state = 0) : state_(state) {}
+  explicit Crc32Accumulator(uint32_t state = 0) : state_(state) {}
 
   void Feed(Slice slice) {
     Feed(slice.data(), slice.size());
@@ -67,12 +67,11 @@ class Crc32Accumulator {
   void Feed(const void* data, size_t length);
 
   uint32_t result() const {
-    return static_cast<uint32_t>(state_);
+    return state_;
   }
 
  private:
-  // CRC32C has 64 bits state, but top 32 bits are always zero.
-  uint64_t state_;
+  uint32_t state_;
 };
 
 } // namespace yb::crc

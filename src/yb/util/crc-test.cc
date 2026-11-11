@@ -30,20 +30,13 @@
 // under the License.
 //
 
-#include <zlib.h>
-
 #include <functional>
 #include <random>
 
 #include "yb/gutil/casts.h"
 
-#include "yb/rocksdb/util/xxhash.h"
-
 #include "yb/util/crc.h"
 #include "yb/util/crc32c_accelerated.h"
-#include "yb/util/format.h"
-#include "yb/util/status_fwd.h"
-#include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 
 using std::string;
@@ -52,23 +45,7 @@ namespace yb {
 namespace crc {
 
 
-class CrcTest : public YBTest {
- protected:
-
-  // Returns pointer to data which must be deleted by caller.
-  static void GenerateBenchmarkData(const uint8_t** bufptr, size_t* buflen) {
-    const uint32_t kNumNumbers = 1000000;
-    const uint32_t kBytesPerNumber = sizeof(uint32_t);
-    const uint32_t kLength = kNumNumbers * kBytesPerNumber;
-    auto buf = new uint8_t[kLength];
-    for (uint32_t i = 0; i < kNumNumbers; i++) {
-      memcpy(buf + (i * kBytesPerNumber), &i, kBytesPerNumber);
-    }
-    *bufptr = buf;
-    *buflen = kLength;
-  }
-
-};
+class CrcTest : public YBTest {};
 
 // Basic functionality test.
 TEST_F(CrcTest, TestCRC32C) {
@@ -87,7 +64,7 @@ TEST_F(CrcTest, TestCRC32C) {
 uint32_t CrcutilCrc32c(const void* data, size_t length) {
   uint64_t crc = 0;
   GetCrc32cInstance()->Compute(data, length, &crc);
-  return static_cast<uint32_t>(crc);
+  return narrow_cast<uint32_t>(crc);
 }
 
 using ExtendFunction = std::function<uint32_t(uint32_t crc, const void* data, size_t length)>;
@@ -128,8 +105,12 @@ TEST_F(CrcTest, ImplementationsMatchCrcutil) {
     LOG(INFO) << "CRC32C implementation: " << implementation.name;
   }
 #if defined(__x86_64__)
-  // Every x86_64 CPU that YugabyteDB runs on has SSE4.2, PCLMULQDQ and AVX.
-  ASSERT_GE(implementations.size(), 2);
+  // The Abseil engine needs these features. A VM may hide AVX.
+  __builtin_cpu_init();
+  if (__builtin_cpu_supports("sse4.2") && __builtin_cpu_supports("pclmul") &&
+      __builtin_cpu_supports("avx")) {
+    ASSERT_GE(implementations.size(), 2);
+  }
 #endif
 
   std::mt19937 rng(42);
@@ -160,54 +141,6 @@ TEST_F(CrcTest, ImplementationsMatchCrcutil) {
   accumulator.Feed(data.data(), 1000);
   accumulator.Feed(data.data() + 1000, data.size() - 1000);
   ASSERT_EQ(best(0, data.data(), data.size()), accumulator.result());
-}
-
-template <class F>
-void MeasureTime(const std::string_view& name, Slice buffer, const F& f) {
-  int kNumRuns = 1000;
-  if (AllowSlowTests()) {
-    kNumRuns = 40000;
-  }
-  const uint64_t kNumBytes = kNumRuns * buffer.size();
-  Stopwatch sw;
-  sw.start();
-  for (int i = 0; i < kNumRuns; i++) {
-    f(buffer);
-  }
-  sw.stop();
-  CpuTimes elapsed = sw.elapsed();
-  LOG(INFO) << Format("$0 runs of $6 on $1 bytes of data (total: $2 bytes)"
-                      " in $3 seconds; $4 bytes per millisecond, $5 bytes per nanosecond!",
-                      kNumRuns, buffer.size(), kNumBytes, elapsed.wall_seconds(),
-                      (kNumBytes / elapsed.wall_millis()),
-                      (kNumBytes / elapsed.wall),
-                      name);
-}
-
-// Simple benchmark of CRC32C throughput.
-// We should expect about 8 bytes per cycle in throughput on a single core.
-TEST_F(CrcTest, BenchmarkCRC32C) {
-  std::unique_ptr<const uint8_t[]> data;
-  const uint8_t* buf;
-  size_t buflen;
-  GenerateBenchmarkData(&buf, &buflen);
-  data.reset(buf);
-  Slice slice(buf, buflen);
-  MeasureTime("CRC32C", slice, [crc32c = GetCrc32cInstance()](Slice buffer) {
-    uint64_t cksum;
-    crc32c->Compute(buffer.data(), buffer.size(), &cksum);
-  });
-  for (const auto& implementation : Crc32cImplementations()) {
-    MeasureTime(implementation.name, slice, [extend = implementation.extend](Slice buffer) {
-      extend(0, buffer.data(), buffer.size());
-    });
-  }
-  MeasureTime("Adler32", slice, [](Slice buffer) {
-    adler32_z(0, buffer.data(), buffer.size());
-  });
-  MeasureTime("xxHash", slice, [](Slice buffer) {
-    rocksdb::XXH32(buffer.data(), narrow_cast<int>(buffer.size()), 0);
-  });
 }
 
 } // namespace crc

@@ -76,10 +76,8 @@ enum class CpuType {
 CpuType GetCpuType();
 
 // Returns whether the host CPU supports the CPU features needed for our
-// accelerated implementations. The CpuTypes enumerated above apart from
-// kUnknown support the required features. On unknown CPUs, we can use
-// this to see if it's safe to use hardware acceleration, though without any
-// tuning.
+// accelerated implementations. The engine factory checks it for every
+// CpuType, since PMULL is optional on all of them.
 bool SupportsArmCRC32PMULL();
 
 // Returns whether the host CPU supports BMI2 instructions.

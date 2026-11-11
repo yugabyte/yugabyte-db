@@ -33,6 +33,7 @@
 
 #include <crcutil/interface.h>
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/once.h"
 #include "yb/util/crc32c_accelerated.h"
 #include "yb/util/debug/leakcheck_disabler.h"
@@ -60,13 +61,14 @@ namespace {
 uint32_t CrcutilExtend(uint32_t crc, const void* data, size_t length) {
   uint64_t state = crc;
   GetCrc32cInstance()->Compute(data, length, &state);
-  return static_cast<uint32_t>(state);
+  return narrow_cast<uint32_t>(state);
 }
 
 // Set before AbseilExtend is listed as an implementation.
 const internal::Crc32cEngine* abseil_engine = nullptr;
 
 uint32_t AbseilExtend(uint32_t crc, const void* data, size_t length) {
+  // The engine extends the raw CRC register, which is the CRC32C value inverted.
   crc = ~crc;
   abseil_engine->Extend(&crc, data, length);
   return ~crc;
@@ -103,7 +105,7 @@ uint32_t Crc32cExtend(uint32_t crc, const void* data, size_t length) {
 }
 
 void Crc32Accumulator::Feed(const void* data, size_t length) {
-  state_ = BestExtend()(static_cast<uint32_t>(state_), data, length);
+  state_ = BestExtend()(state_, data, length);
 }
 
 } // namespace yb::crc

@@ -129,7 +129,7 @@ using absl::crc_internal::RoundUp;
 
 namespace {
 
-// Test hooks of the Abseil library, which the non-temporal copy reports to.
+// No-op stand-ins for the debug hooks that Abseil's non-temporal copy reports to.
 [[maybe_unused]] void DebugReportNonTemporalStore() {}
 [[maybe_unused]] void DebugReportStoreFence() {}
 // Constants for switching between algorithms.
@@ -226,10 +226,6 @@ V128 V128_Add64(const V128 l, const V128 r);
 
 // Performs a store fence on architectures that require it (x86) after
 // non-temporal stores.
-//
-// Debug builds track that this function is called after all tracked
-// non-temporal store functions, via the weak hooks
-// DebugReportNonTemporalStore() and DebugReportStoreFence() in crc.h.
 void NonTemporalStoreFence();
 
 #if (defined(__AVX__) || defined(ABSL_INTERNAL_CAN_FORCE_AVX)) && \
@@ -443,8 +439,6 @@ template <int imm>
 #if defined(ABSL_CRC_INTERNAL_HAVE_X86_SIMD)
   _mm_sfence();
 #endif
-  // Despite other architectures not needing an actual fence instruction, we
-  // note the fence in debug builds for consistency with x86.
   DebugReportStoreFence();
 }
 
@@ -490,8 +484,7 @@ template <typename T>
 template <typename T>
 [[maybe_unused]] inline void V256_StoreNonTemporal(void* dst, const T& data) {
   // This architecture has no streaming store, so the data goes through the
-  // cache and is already strongly ordered. It is still counted, so that the
-  // StoreFence() contract is checked identically on every architecture.
+  // cache and is already strongly ordered.
   std::memcpy(dst, &data, sizeof(T));
   DebugReportNonTemporalStore();
 }
@@ -1718,6 +1711,11 @@ CpuType AdjustForMissingFeatures(CpuType type) {
 Crc32cEngine* TryNewCRC32AcceleratedX86ARMCombined() {
 #if defined(__x86_64__)
   if (!SupportsX86Engine()) {
+    return nullptr;
+  }
+#elif defined(__aarch64__)
+  // PMULL is in the Cryptographic Extension, which is optional on every model below.
+  if (!SupportsArmCRC32PMULL()) {
     return nullptr;
   }
 #endif
