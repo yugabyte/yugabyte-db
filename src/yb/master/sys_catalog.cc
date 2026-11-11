@@ -156,6 +156,12 @@ DEFINE_UNKNOWN_uint64(copy_tables_batch_bytes, 500_KB,
     "Max bytes per batch for copy pg sql tables");
 DEFINE_RUNTIME_uint64(delete_systable_rows_batch_bytes, 500_KB,
     "Max bytes per batch for delete pg sql table rows");
+DEFINE_RUNTIME_uint64(ysql_invalidation_messages_master_read_window, 4096,
+    "How many catalog versions back from a database's current version the master reads from "
+    "pg_yb_invalidation_messages. Must be at least the tservers' "
+    "ysql_max_invalidation_message_queue_size, otherwise the master drops messages the tservers "
+    "would keep and backends fall back to a full catalog refresh. 0 turns the bound off: the "
+    "master reads the whole table.");
 
 DEFINE_test_flag(int32, sys_catalog_write_rejection_percentage, 0,
   "Reject specified percentage of sys catalog writes.");
@@ -1991,9 +1997,9 @@ Status SysCatalogTable::ReadYsqlCatalogInvalationMessagesImpl(
   };
 
   // With 'versions': one iterator per database, bounded to db_oid = <oid> AND
-  // current_version > <that db's current version> - kMaxVersionsBehind, so the scan seeks past the
-  // expired rows and their tombstones. Without 'versions': one iterator over the whole table.
-  constexpr uint64_t kMaxVersionsBehind = 4096;
+  // current_version > <that db's current version> - max_versions_behind, so the scan seeks past
+  // the expired rows and their tombstones. Without 'versions': one iterator over the whole table.
+  const uint64_t max_versions_behind = FLAGS_ysql_invalidation_messages_master_read_window;
   if (versions) {
     for (const auto& [db_oid, version] : *versions) {
       PgsqlConditionPB cond;
@@ -2006,8 +2012,8 @@ Status SysCatalogTable::ReadYsqlCatalogInvalationMessagesImpl(
       version_cond->add_operands()->set_column_id(current_version_col_id);
       version_cond->set_op(QL_OP_GREATER_THAN);
       version_cond->add_operands()->mutable_value()->set_int64_value(
-          version.current_version > kMaxVersionsBehind
-              ? version.current_version - kMaxVersionsBehind : 0);
+          max_versions_behind != 0 && version.current_version > max_versions_behind
+              ? version.current_version - max_versions_behind : 0);
       docdb::DocPgsqlScanSpec spec(schema, &cond);
       auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
       RETURN_NOT_OK(iter->Init(spec));

@@ -2592,6 +2592,20 @@ TEST_F(PgCatalogVersionTest, InvalMessageMasterReadSkipsOldVersions) {
   // An unbounded read steps over all kNumRows tombstones on every refresh.
   LOG(INFO) << "docdb_obsolete_keys_found before: " << before << ", after: " << after;
   ASSERT_LT(after - before, kNumRows);
+
+  // With the flag at 0 the read is not bounded: the next refresh steps over all the tombstones.
+  ASSERT_OK(cluster_->SetFlagOnMasters("ysql_invalidation_messages_master_read_window", "0"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE pg_yb_catalog_version SET current_version = current_version + 1 WHERE db_oid = $0",
+      db_oid));
+  const auto unbounded_before = ASSERT_RESULT(obsolete_keys_found());
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_pg_catalog_versions_cache_refresh", "false"));
+  SleepFor(2s);
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_pg_catalog_versions_cache_refresh", "true"));
+  const auto unbounded_after = ASSERT_RESULT(obsolete_keys_found());
+  LOG(INFO) << "docdb_obsolete_keys_found with the bound off, before: " << unbounded_before
+            << ", after: " << unbounded_after;
+  ASSERT_GE(unbounded_after - unbounded_before, kNumRows);
 }
 
 // When one database's version moves, the master's refresh must re-read only that database's rows,
