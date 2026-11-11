@@ -37,6 +37,7 @@ mod placement;
 mod read;
 mod schedules;
 mod time;
+mod ysql;
 
 #[cfg(test)]
 mod tests;

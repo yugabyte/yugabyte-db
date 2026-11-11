@@ -100,6 +100,9 @@ message PrepareTableSchemaRequestPB {
   // The TOO_MANY_TABLETS limit the leader checks after; above it the partitions are not built,
   // since building them allocates per tablet. 0 for none.
   optional int64 max_num_tablets = 3;
+  // When set, the response also has the new table's row (FillNewTableEntry), for a YSQL table.
+  optional bytes namespace_id = 4;
+  optional bytes namespace_name = 5;
 }
 
 message PrepareTableSchemaResponsePB {
@@ -113,6 +116,8 @@ message PrepareTableSchemaResponsePB {
   repeated PartitionPB partitions = 6;
   // A partitioning error, which C++ reports after the tablet limits.
   optional MasterErrorPB partitions_error = 7;
+  // The new table's row, PREPARING, when the request named the namespace.
+  optional SysTablesEntryPB table = 8;
 }
 
 // CatalogManager::AlterTable's schema step for a Rust leader ("AlterTableSchema").

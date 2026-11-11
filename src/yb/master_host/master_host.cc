@@ -1388,6 +1388,11 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
           for (const auto& partition : partitions->second) {
             partition.ToPB(resp->add_partitions());
           }
+          if (prepare.has_namespace_id()) {
+            master::FillNewTableEntry(
+                req, schema, partitions->first, prepare.namespace_id(), prepare.namespace_name(),
+                /* colocated= */ false, resp->mutable_table());
+          }
           return Status::OK();
         });
   }

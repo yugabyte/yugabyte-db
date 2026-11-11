@@ -18,7 +18,27 @@ YCQL keyspaces and tables that are not indexes:
 | `AlterTable`, `IsAlterTableDone` | Below. |
 | `DeleteTable`, `IsDeleteTableDone` | Below. Dropping an index on its own, and a table a snapshot schedule covers (which C++ hides rather than deletes), are not served yet. |
 
-YSQL databases and tables and indexes answer `NotSupported`. Roles, permissions and UDTs are `master-ycql`'s.
+YSQL tables that are not colocated, not indexes and in the default tablespace (below). YSQL
+databases, indexes, colocated tables and tablespaces answer `NotSupported`. Roles, permissions and
+UDTs are `master-ycql`'s.
+
+## YSQL tables and DDL verification (`ysql.rs`)
+
+A YSQL `CreateTable` names its table id (from the database and relation OIDs); it is unique by id,
+not by name, since names are pg_class's. The host builds the row (`PrepareTableSchema` with the
+namespace, `FillNewTableEntry`), so the YSQL-only fields (vector reverse mapping, matview,
+`pg_table_id`, shared tables) stay C++'s. A replication info is refused: YSQL places tables by
+tablespace.
+
+A table a DDL transaction creates or drops carries the transaction and a
+`ysql_ddl_txn_verifier_state` (`contains_create_table_op`, `contains_drop_table_op`, the
+subtransaction) until the transaction ends. A drop in a transaction only marks the table, since a
+statement may drop and create a table again. When PG reports the outcome
+(`ReportYsqlDdlTxnStatus`), each table carrying the transaction keeps or undoes the change: a
+committed drop and an aborted create become DELETING, anything else just loses the state.
+`IsYsqlDdlVerificationDone` is done once no table carries the transaction. Not done yet: rolling
+back an ALTER, and verifying a transaction whose outcome is never reported (C++ polls the
+transaction status and compares the PG catalog).
 
 Lookups follow `FindNamespace` and `FindTable`: by id, else by name (and database type, from
 `GetDatabaseType`). A name is unique per database type; uniqueness is checked and written under a

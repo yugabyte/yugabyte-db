@@ -74,6 +74,13 @@ impl TableLifecycle {
         let snapshot = self.catalog.snapshot();
         let table = find_table(&snapshot, &req.table, false)?;
         resp.set_table_id(table.key.id.to_vec());
+        if table
+            .table()
+            .is_some_and(|t| t.table_type == TableType::PGSQL_TABLE_TYPE.value())
+            && !is_hidden(&table)
+        {
+            return self.delete_ysql_table(token, deadline, req, resp).await;
+        }
         if is_hidden(&table) {
             // IgnoreHideRequest.
             return Ok(());

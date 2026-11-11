@@ -103,7 +103,9 @@ impl TableLifecycle {
             TableType::YQL_TABLE_TYPE
             | TableType::DEFAULT_TABLE_TYPE
             | TableType::TRANSACTION_STATUS_TABLE_TYPE => {}
-            TableType::PGSQL_TABLE_TYPE => return Err(not_yet("YSQL CREATE TABLE (W7)")),
+            TableType::PGSQL_TABLE_TYPE => {
+                return self.create_ysql_table(token, deadline, req, resp).await;
+            }
             TableType::REDIS_TABLE_TYPE => {
                 return Err(error(
                     Code::INVALID_REQUEST,
@@ -244,34 +246,13 @@ impl TableLifecycle {
                     .read(&namespace)
                     .read_absent(SysRowEntryType::TABLE, &table_id)
                     .upsert(SysRowEntryType::TABLE, &table_id, encode(&table)?);
-                let mut tablet_ids: Vec<Vec<u8>> = Vec::new();
-                while tablet_ids.len() < prepared.partitions.len() {
-                    let id = unused_id(snapshot, SysRowEntryType::TABLET);
-                    if !tablet_ids.contains(&id) {
-                        tablet_ids.push(id);
-                    }
-                }
-                tablet_ids.sort();
-                for (tablet_id, partition) in tablet_ids.iter().zip(&prepared.partitions) {
-                    let mut tablet = SysTabletsEntryPB::new();
-                    tablet.set_table_id(table_id.clone());
-                    tablet.partition = MessageField::some(partition.clone());
-                    tablet.state = Some(EnumOrUnknown::new(sys_tablets_entry_pb::State::PREPARING));
-                    if use_parent_table_id {
-                        tablet.set_hosted_tables_mapped_by_parent_id(true);
-                    } else {
-                        tablet.table_ids.push(table_id.clone());
-                    }
-                    let cstate = tablet.committed_consensus_state.mut_or_insert_default();
-                    cstate.set_current_term(0);
-                    cstate
-                        .config
-                        .mut_or_insert_default()
-                        .set_committed_op_index(-1);
-                    mutation = mutation
-                        .read_absent(SysRowEntryType::TABLET, tablet_id)
-                        .upsert(SysRowEntryType::TABLET, tablet_id, encode(&tablet)?);
-                }
+                mutation = add_new_tablets(
+                    snapshot,
+                    mutation,
+                    &table_id,
+                    &prepared.partitions,
+                    use_parent_table_id,
+                )?;
                 if req.table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE {
                     // `IncrementTransactionTablesVersion`, in the same write: tservers learn of
                     // the new status table from the version in their heartbeat response.
@@ -375,16 +356,31 @@ impl TableLifecycle {
     }
 
     /// The host's schema steps of `CreateTable`.
-    fn prepare_schema(
+    pub(crate) fn prepare_schema(
         &self,
         req: &CreateTableRequestPB,
         num_live_tservers: usize,
         max_num_tablets: i64,
     ) -> Result<PrepareTableSchemaResponsePB, MasterErrorPB> {
+        self.prepare_schema_in(req, num_live_tservers, max_num_tablets, None)
+    }
+
+    /// [`Self::prepare_schema`], also building the table's row in `namespace` (id, name).
+    pub(crate) fn prepare_schema_in(
+        &self,
+        req: &CreateTableRequestPB,
+        num_live_tservers: usize,
+        max_num_tablets: i64,
+        namespace: Option<(&[u8], &str)>,
+    ) -> Result<PrepareTableSchemaResponsePB, MasterErrorPB> {
         let mut prepare = PrepareTableSchemaRequestPB::new();
         prepare.request = MessageField::some(req.clone());
         prepare.set_num_live_tservers(num_live_tservers as u64);
         prepare.set_max_num_tablets(max_num_tablets);
+        if let Some((id, name)) = namespace {
+            prepare.set_namespace_id(id.to_vec());
+            prepare.set_namespace_name(name.as_bytes().to_vec());
+        }
         let bytes = encode(&prepare)?;
         let response = self
             .host
@@ -397,6 +393,45 @@ impl TableLifecycle {
         }
         Ok(response)
     }
+}
+
+/// The PREPARING tablet rows of a new table, one per partition, with ids sorted as C++ sorts them.
+pub(crate) fn add_new_tablets(
+    snapshot: &CatalogSnapshot,
+    mut mutation: Mutation,
+    table_id: &[u8],
+    partitions: &[yb_proto::pb::common::PartitionPB],
+    use_parent_table_id: bool,
+) -> Result<Mutation, MasterErrorPB> {
+    let mut tablet_ids: Vec<Vec<u8>> = Vec::new();
+    while tablet_ids.len() < partitions.len() {
+        let id = unused_id(snapshot, SysRowEntryType::TABLET);
+        if !tablet_ids.contains(&id) {
+            tablet_ids.push(id);
+        }
+    }
+    tablet_ids.sort();
+    for (tablet_id, partition) in tablet_ids.iter().zip(partitions) {
+        let mut tablet = SysTabletsEntryPB::new();
+        tablet.set_table_id(table_id.to_vec());
+        tablet.partition = MessageField::some(partition.clone());
+        tablet.state = Some(EnumOrUnknown::new(sys_tablets_entry_pb::State::PREPARING));
+        if use_parent_table_id {
+            tablet.set_hosted_tables_mapped_by_parent_id(true);
+        } else {
+            tablet.table_ids.push(table_id.to_vec());
+        }
+        let cstate = tablet.committed_consensus_state.mut_or_insert_default();
+        cstate.set_current_term(0);
+        cstate
+            .config
+            .mut_or_insert_default()
+            .set_committed_op_index(-1);
+        mutation = mutation
+            .read_absent(SysRowEntryType::TABLET, tablet_id)
+            .upsert(SysRowEntryType::TABLET, tablet_id, encode(&tablet)?);
+    }
+    Ok(mutation)
 }
 
 /// `FillNewTableEntry` for a YCQL table.

@@ -77,10 +77,12 @@ use yb_proto::pb::master_ddl::{
     GetTableSchemaResponsePB, IsAlterTableDoneRequestPB, IsAlterTableDoneResponsePB,
     IsCreateNamespaceDoneRequestPB, IsCreateNamespaceDoneResponsePB, IsCreateTableDoneRequestPB,
     IsCreateTableDoneResponsePB, IsDeleteNamespaceDoneRequestPB, IsDeleteNamespaceDoneResponsePB,
-    IsDeleteTableDoneRequestPB, IsDeleteTableDoneResponsePB, ListNamespacesRequestPB,
-    ListNamespacesResponsePB, ListTablesRequestPB, ListTablesResponsePB,
-    ReleaseObjectLocksGlobalRequestPB, ReleaseObjectLocksGlobalResponsePB,
-    WaitForLockersMultipleGlobalRequestPB, WaitForLockersMultipleGlobalResponsePB,
+    IsDeleteTableDoneRequestPB, IsDeleteTableDoneResponsePB, IsYsqlDdlVerificationDoneRequestPB,
+    IsYsqlDdlVerificationDoneResponsePB, ListNamespacesRequestPB, ListNamespacesResponsePB,
+    ListTablesRequestPB, ListTablesResponsePB, ReleaseObjectLocksGlobalRequestPB,
+    ReleaseObjectLocksGlobalResponsePB, ReportYsqlDdlTxnStatusRequestPB,
+    ReportYsqlDdlTxnStatusResponsePB, WaitForLockersMultipleGlobalRequestPB,
+    WaitForLockersMultipleGlobalResponsePB,
 };
 use yb_proto::pb::master_heartbeat::{TSHeartbeatRequestPB, TSHeartbeatResponsePB};
 use yb_proto::pb::master_rust_peer::{
@@ -936,6 +938,21 @@ impl Shared {
                     );
                     Ok(())
                 }
+            ),
+            "ReportYsqlDdlTxnStatus" => serve_ddl!(
+                ReportYsqlDdlTxnStatusRequestPB,
+                ReportYsqlDdlTxnStatusResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    tables
+                        .report_ysql_ddl_txn_status(&token, deadline, &req)
+                        .await
+                }
+            ),
+            "IsYsqlDdlVerificationDone" => serve_ddl!(
+                IsYsqlDdlVerificationDoneRequestPB,
+                IsYsqlDdlVerificationDoneResponsePB,
+                |req, resp| tables.is_ysql_ddl_verification_done(&snapshot, &req, &mut resp)
             ),
             "ReservePgsqlOids" => serve_ddl!(
                 ReservePgsqlOidsRequestPB,

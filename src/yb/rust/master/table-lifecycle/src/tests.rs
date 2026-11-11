@@ -83,6 +83,17 @@ impl SchemaHost for FakeSchemaHost {
                     }
                     resp.partitions.push(p);
                 }
+                if req.has_namespace_id() {
+                    // FillNewTableEntry.
+                    let table = resp.table.mut_or_insert_default();
+                    table.set_name(req.request.name().as_bytes().to_vec());
+                    table.table_type = req.request.table_type;
+                    table.set_namespace_id(req.namespace_id().to_vec());
+                    table.set_namespace_name(req.namespace_name().to_vec());
+                    table.set_version(0);
+                    table.schema = resp.schema.clone();
+                    table.set_state(sys_tables_entry_pb::State::PREPARING);
+                }
                 Ok(resp.write_to_bytes().unwrap())
             }
             "AlterTableSchema" => {
@@ -963,4 +974,174 @@ async fn only_ycql_virtual_tables_and_sys_catalog_tables_are_system() {
     assert!(is_system(b"peers"));
     assert!(!is_system(b"cdc"));
     assert!(is_system(b"pg"));
+}
+
+mod ysql {
+    use super::*;
+    use yb_proto::pb::catalog_entity_info::{
+        sys_namespace_entry_pb, SysNamespaceEntryPB, SysTablesEntryPB,
+    };
+    use yb_proto::pb::common::TransactionMetadataPB;
+    use yb_proto::pb::common_types::{TableType, YQLDatabase};
+    use yb_proto::pb::master_ddl::{
+        DeleteTableRequestPB, DeleteTableResponsePB, IsYsqlDdlVerificationDoneRequestPB,
+        IsYsqlDdlVerificationDoneResponsePB, ReportYsqlDdlTxnStatusRequestPB,
+    };
+
+    const DB_ID: &[u8] = b"000033e8000030008000000000000000";
+    const TABLE_ID: &[u8] = b"000033e8000030008000000000004000";
+
+    async fn ysql_harness() -> Harness {
+        let h = Harness::new(3).await;
+        let mut ns = SysNamespaceEntryPB::new();
+        ns.set_name(b"yugabyte".to_vec());
+        ns.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+        ns.set_state(sys_namespace_entry_pb::State::RUNNING);
+        h.lifecycle
+            .write(&h.token, Harness::deadline(), |_| {
+                Ok((
+                    master_catalog_state::Mutation::new()
+                        .upsert_message(SysRowEntryType::NAMESPACE, DB_ID, &ns)
+                        .unwrap(),
+                    (),
+                ))
+            })
+            .await
+            .unwrap();
+        h
+    }
+
+    fn txn(id: u8) -> TransactionMetadataPB {
+        let mut txn = TransactionMetadataPB::new();
+        txn.set_transaction_id(vec![id; 16]);
+        txn.set_status_tablet("status".into());
+        txn
+    }
+
+    impl Harness {
+        async fn create_ysql(
+            &self,
+            txn: Option<TransactionMetadataPB>,
+        ) -> Result<(), MasterErrorPB> {
+            let mut req = CreateTableRequestPB::new();
+            req.set_name("t".into());
+            req.set_table_type(TableType::PGSQL_TABLE_TYPE);
+            req.set_table_id(TABLE_ID.to_vec());
+            req.schema = Some(Default::default()).into();
+            req.namespace.mut_or_insert_default().set_id(DB_ID.to_vec());
+            req.set_num_tablets(2);
+            if let Some(txn) = txn {
+                req.transaction = Some(txn).into();
+                req.set_ysql_yb_ddl_rollback_enabled(true);
+            }
+            let mut resp = CreateTableResponsePB::new();
+            self.lifecycle
+                .create_table(&self.token, Self::deadline(), &req, &mut resp)
+                .await
+        }
+
+        async fn drop_ysql(&self, txn: Option<TransactionMetadataPB>) {
+            let mut req = DeleteTableRequestPB::new();
+            req.table
+                .mut_or_insert_default()
+                .set_table_id(TABLE_ID.to_vec());
+            if let Some(txn) = txn {
+                req.transaction = Some(txn).into();
+                req.set_ysql_yb_ddl_rollback_enabled(true);
+            }
+            let mut resp = DeleteTableResponsePB::new();
+            self.lifecycle
+                .delete_table(&self.token, Self::deadline(), &req, &mut resp)
+                .await
+                .unwrap();
+        }
+
+        async fn report(&self, id: u8, committed: bool) {
+            let mut req = ReportYsqlDdlTxnStatusRequestPB::new();
+            req.set_transaction_id(vec![id; 16]);
+            req.set_is_committed(committed);
+            self.lifecycle
+                .report_ysql_ddl_txn_status(&self.token, Self::deadline(), &req)
+                .await
+                .unwrap();
+        }
+
+        fn verified(&self, id: u8) -> bool {
+            let mut req = IsYsqlDdlVerificationDoneRequestPB::new();
+            req.transaction
+                .mut_or_insert_default()
+                .set_transaction_id(vec![id; 16]);
+            let mut resp = IsYsqlDdlVerificationDoneResponsePB::new();
+            self.lifecycle
+                .is_ysql_ddl_verification_done(&self.catalog.snapshot(), &req, &mut resp)
+                .unwrap();
+            resp.done()
+        }
+
+        fn table_row(&self) -> SysTablesEntryPB {
+            self.catalog
+                .snapshot()
+                .get(SysRowEntryType::TABLE, TABLE_ID)
+                .unwrap()
+                .parse()
+                .unwrap()
+        }
+    }
+
+    /// A table a committed DDL transaction created stays, without the transaction's state.
+    #[tokio::test]
+    async fn a_committed_create_stays() {
+        let h = ysql_harness().await;
+        h.create_ysql(Some(txn(1))).await.unwrap();
+        let row = h.table_row();
+        assert_eq!(row.table_type(), TableType::PGSQL_TABLE_TYPE);
+        assert!(row.ysql_ddl_txn_verifier_state[0].contains_create_table_op());
+        assert_eq!(h.catalog.snapshot().tablets_of(TABLE_ID).len(), 2);
+        assert!(!h.verified(1));
+        h.report(1, true).await;
+        assert!(h.verified(1));
+        let row = h.table_row();
+        assert!(row.ysql_ddl_txn_verifier_state.is_empty());
+        assert!(row.transaction.is_none());
+        // The same id again is a duplicate.
+        assert_eq!(
+            h.create_ysql(None).await.unwrap_err().code(),
+            Code::OBJECT_ALREADY_PRESENT
+        );
+    }
+
+    /// A table an aborted DDL transaction created is dropped.
+    #[tokio::test]
+    async fn an_aborted_create_is_dropped() {
+        let h = ysql_harness().await;
+        h.create_ysql(Some(txn(2))).await.unwrap();
+        h.report(2, false).await;
+        assert_eq!(h.table_row().state(), sys_tables_entry_pb::State::DELETING);
+        assert!(h.verified(2));
+    }
+
+    /// A drop in a DDL transaction waits for the commit, and an abort undoes it.
+    #[tokio::test]
+    async fn a_drop_waits_for_the_commit() {
+        let h = ysql_harness().await;
+        h.create_ysql(None).await.unwrap();
+        h.drop_ysql(Some(txn(3))).await;
+        let row = h.table_row();
+        assert_ne!(row.state(), sys_tables_entry_pb::State::DELETING);
+        assert!(row.ysql_ddl_txn_verifier_state[0].contains_drop_table_op());
+        h.report(3, false).await;
+        let row = h.table_row();
+        assert_ne!(row.state(), sys_tables_entry_pb::State::DELETING);
+        assert!(row.ysql_ddl_txn_verifier_state.is_empty());
+
+        h.drop_ysql(Some(txn(4))).await;
+        h.report(4, true).await;
+        assert_eq!(h.table_row().state(), sys_tables_entry_pb::State::DELETING);
+
+        // Without a transaction, a drop is at once.
+        let h = ysql_harness().await;
+        h.create_ysql(None).await.unwrap();
+        h.drop_ysql(None).await;
+        assert_eq!(h.table_row().state(), sys_tables_entry_pb::State::DELETING);
+    }
 }
