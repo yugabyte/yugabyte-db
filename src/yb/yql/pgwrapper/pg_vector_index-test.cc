@@ -894,7 +894,6 @@ class PgVectorIndexTest : public PgVectorIndexTestParamsDecorator<PgVectorIndexT
   void TestMetric(const std::string& expected);
   void TestRandom();
   void TestNullVectorsInIntents(bool commit);
-  void TestSearchAfterSerializableWrite(bool commit);
   void TestBootstrapAfterSchemaChange(
       NullVectorBeforeSchemaChange null_vector, NonTransactionalWrites non_transactional_writes);
   void TestPerformDeadlineWithStuckLocalWrite(UseSharedMemory use_shared_memory);
@@ -1907,8 +1906,27 @@ TEST_P(PgVectorIndexTest, NullVectorsInNotAppliedIntents) {
 
 // In skip prefix locks mode a serializable write takes a strong intent on the table's top level
 // key. The search must not take it for a row with intents, neither in the writing transaction nor
-// after the transaction committed but before it was applied (GH#36749).
-void PgVectorIndexTest::TestSearchAfterSerializableWrite(bool commit) {
+// after the transaction committed but before it was applied (GH#36749). Only a colocated table's
+// scan reaches this key, and skip prefix locks mode requires packed rows. The row packing version
+// and the vector index engine don't matter, so these tests run with the defaults only.
+class PgVectorIndexSkipPrefixLocksTest : public PgVectorIndexTestBase {
+ protected:
+  bool IsColocated() const override {
+    return true;
+  }
+
+  VectorIndexEngine Engine() const override {
+    return VectorIndexEngine::kYbHnswHnswlib;
+  }
+
+  PackingMode GetPackingMode() const override {
+    return PackingMode::kV2;
+  }
+
+  void TestSearchAfterSerializableWrite(bool commit);
+};
+
+void PgVectorIndexSkipPrefixLocksTest::TestSearchAfterSerializableWrite(bool commit) {
   constexpr size_t kNumRows = 64;
   const std::string kCloseVector = "[0.125, 0.25, 0.375]";
   const std::string kCloserVector = "[0.0625, 0.125, 0.1875]";
@@ -1939,11 +1957,11 @@ void PgVectorIndexTest::TestSearchAfterSerializableWrite(bool commit) {
   ASSERT_NO_FATALS(VerifyRows(conn, AddFilter::kTrue, {ExpectedRow(2)}));
 }
 
-TEST_P(PgVectorIndexTest, SearchAfterSerializableWrite) {
+TEST_F(PgVectorIndexSkipPrefixLocksTest, SearchAfterSerializableWrite) {
   TestSearchAfterSerializableWrite(/* commit= */ false);
 }
 
-TEST_P(PgVectorIndexTest, SearchAfterCommittedNotAppliedSerializableWrite) {
+TEST_F(PgVectorIndexSkipPrefixLocksTest, SearchAfterCommittedNotAppliedSerializableWrite) {
   TestSearchAfterSerializableWrite(/* commit= */ true);
 }
 
