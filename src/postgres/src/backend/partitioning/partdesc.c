@@ -33,6 +33,9 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 typedef struct PartitionDirectoryData
 {
 	MemoryContext pdir_mcxt;
@@ -94,6 +97,14 @@ RelationGetPartitionDesc(Relation rel, bool omit_detached)
 		rel->rd_partdesc_nodetached &&
 		ActiveSnapshotSet())
 	{
+		/*
+		 * YB does not maintain per-row xmin, so the XidInMVCCSnapshot
+		 * check is meaningless. Always treat a pending-detach
+		 * partition as already detached.
+		 */
+		if (IsYugaByteEnabled())
+			return rel->rd_partdesc_nodetached;
+
 		Snapshot	activesnap;
 
 		Assert(TransactionIdIsValid(rel->rd_partdesc_nodetached_xmin));
@@ -356,9 +367,13 @@ retry:
 	 * active snapshot (find_inheritance_children_extended will not have set
 	 * detached_xmin in that case), we consider there to be no "omittable"
 	 * detached partitions.
+	 *
+	 * YB Note: We always omit the detached partition if it is pending, even
+	 * if the xmin is not visible to the active snapshot as we don't maintain
+	 * per-row xmin, so the XidInMVCCSnapshot check is meaningless.
 	 */
 	is_omit = omit_detached && detached_exist && ActiveSnapshotSet() &&
-		TransactionIdIsValid(detached_xmin);
+		(IsYugaByteEnabled() || TransactionIdIsValid(detached_xmin));
 
 	/*
 	 * We have a fully valid partdesc.  Reparent it so that it has the right
@@ -391,8 +406,10 @@ retry:
 		 * such a cached partdesc to only use it after cross-checking that the
 		 * xmin is indeed visible to the snapshot it is going to be working
 		 * with.
+		 *
+		 * YB Note: Relax the assert when YB is enabled as we don't track xid.
 		 */
-		Assert(TransactionIdIsValid(detached_xmin));
+		Assert(IsYugaByteEnabled() || TransactionIdIsValid(detached_xmin));
 		rel->rd_partdesc_nodetached_xmin = detached_xmin;
 	}
 	else

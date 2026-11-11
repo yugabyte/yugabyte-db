@@ -98,7 +98,7 @@ bool CBTabletMetadata::CanAddTSToMissingPlacements(
 std::string CBTabletMetadata::ToString() const {
   return YB_STRUCT_TO_STRING(
       running, starting, is_under_replicated, under_replicated_placements,
-      is_over_replicated, over_replicated_tablet_servers, over_max_placements,
+      is_over_replicated, is_split_parent, over_replicated_tablet_servers, over_max_placements,
       wrong_placement_tablet_servers, removal_pending_tablet_servers, blacklisted_tablet_servers,
       leader_blacklisted_tablet_servers, leader_uuid, leader_stepdown_failures, size);
 }
@@ -107,7 +107,8 @@ PerRunState::PerRunState(const TabletInfoMap& tablet_map) : tablet_map_(tablet_m
 
 int GlobalLoadState::GetGlobalLoad(const TabletServerId& ts_uuid) const {
   const auto& ts_meta = per_ts_global_meta_.at(ts_uuid);
-  return ts_meta.starting_tablets_count + ts_meta.running_tablets_count;
+  return ts_meta.starting_tablets_count + ts_meta.running_tablets_count -
+         ts_meta.split_parents_count;
 }
 
 int GlobalLoadState::GetGlobalLeaderLoad(const TabletServerId& ts_uuid) const {
@@ -211,13 +212,18 @@ bool PerTableLoadState::CompareLoad(
 
 size_t PerTableLoadState::GetLoad(const TabletServerId& ts_uuid) const {
   const auto& ts_meta = per_ts_meta_.at(ts_uuid);
-  return ts_meta.starting_tablets.size() + ts_meta.running_tablets.size();
+  // split_parent_tablets is a subset of the other two sets, so this does not wrap.
+  return ts_meta.starting_tablets.size() + ts_meta.running_tablets.size() -
+         ts_meta.split_parent_tablets.size();
 }
 
 size_t PerTableLoadState::GetPossiblyTransientLoad(const TabletServerId& ts_uuid) const {
   return std::ranges::count_if(
-      per_ts_meta_.at(ts_uuid).running_tablets,
-      [this](const auto& tablet_id) { return per_tablet_meta_.at(tablet_id).is_over_replicated; });
+      per_ts_meta_.at(ts_uuid).running_tablets, [this](const auto& tablet_id) {
+        const auto& tablet_meta = per_tablet_meta_.at(tablet_id);
+        // A split parent is already left out of GetLoad, so it is not discounted again here.
+        return tablet_meta.is_over_replicated && !tablet_meta.is_split_parent;
+      });
 }
 
 size_t PerTableLoadState::GetTabletDriveLoad(
@@ -648,9 +654,12 @@ Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
   }
 
   if (to_placement) {
-    auto projected_count = FindWithDefault(
-        per_tablet_meta_.at(tablet_id).placement_replica_counts, *to_placement, 0uz);
-    if (!from_ts.empty()) {
+    const auto& tablet_meta = per_tablet_meta_.at(tablet_id);
+    auto projected_count =
+        FindWithDefault(tablet_meta.placement_replica_counts, *to_placement, 0uz);
+    // The source is only removed once the add makes the tablet over-replicated, which an
+    // under-replicated tablet never reaches.
+    if (!from_ts.empty() && !tablet_meta.is_under_replicated) {
       const auto from_placement = GetValidPlacement(from_ts);
       if (from_placement && cloud_equal_to()(*from_placement, *to_placement)) {
         DCHECK_GT(projected_count, 0);
@@ -804,9 +813,18 @@ Result<bool> PerTableLoadState::CanSelectWrongPlacementReplicaToMove(
       }
     }
     if (fallback_to_uuid.empty()) {
+      const auto from_placement = GetValidPlacement(from_uuid);
+      const bool blocked_by_max = tablet_meta.is_under_replicated && from_placement &&
+          FindWithDefault(tablet_meta.placement_replica_counts, *from_placement, 0uz) >=
+              PlacementBlockMaxReplicas(*from_placement);
       YB_LOG_EVERY_N_SECS(INFO, 10) << Format(
           "Cannot move tablet $0 from blacklisted tablet server $1: no eligible destination tablet "
-          "servers", tablet_id, from_uuid);
+          "servers$2", tablet_id, from_uuid,
+          blocked_by_max
+              ? Format(". Placement $0 is at its max_num_replicas and the tablet is "
+                       "under-replicated; add tservers where its missing replicas can go",
+                       from_placement->ShortDebugString())
+              : std::string());
     }
   }
 
@@ -1026,6 +1044,24 @@ int PerTableLoadState::AdjustLeaderBalanceThreshold(int zone_set_size) {
   return adjusted_leader_balance_threshold;
 }
 
+void PerTableLoadState::MarkAsSplitParent(const TabletId& tablet_id) {
+  auto& tablet_meta = per_tablet_meta_[tablet_id];
+  if (tablet_meta.is_split_parent) {
+    return;
+  }
+  tablet_meta.is_split_parent = true;
+  ++num_split_parents_;
+  for (auto& [ts_uuid, ts_meta] : per_ts_meta_) {
+    if (!ts_meta.running_tablets.contains(tablet_id) &&
+        !ts_meta.starting_tablets.contains(tablet_id)) {
+      continue;
+    }
+    if (ts_meta.split_parent_tablets.insert(tablet_id).second) {
+      ++global_state_->per_ts_global_meta_[ts_uuid].split_parents_count;
+    }
+  }
+}
+
 Status PerTableLoadState::AddRunningTablet(const TabletId& tablet_id,
                                            const TabletServerId& ts_uuid,
                                            const std::string& path) {
@@ -1069,6 +1105,9 @@ Status PerTableLoadState::RemoveRunningTablet(
   global_state_->per_ts_global_meta_[ts_uuid].running_tablets_count -= num_erased;
   total_running_ -= num_erased;
   per_tablet_meta_[tablet_id].running -= num_erased;
+  if (meta_ts.split_parent_tablets.erase(tablet_id) > 0) {
+    --global_state_->per_ts_global_meta_[ts_uuid].split_parents_count;
+  }
   bool found = false;
   for (auto &path : meta_ts.path_to_tablets) {
     if (path.second.erase(tablet_id) == 0) {
@@ -1092,6 +1131,10 @@ Status PerTableLoadState::AddStartingTablet(
     ++total_starting_;
     ++global_state_->total_starting_tablets_;
     ++per_tablet_meta_[tablet_id].starting;
+    if (per_tablet_meta_[tablet_id].is_split_parent &&
+        per_ts_meta_.at(ts_uuid).split_parent_tablets.insert(tablet_id).second) {
+      ++global_state_->per_ts_global_meta_[ts_uuid].split_parents_count;
+    }
     // If we are initializing, tablets_missing_replicas_ is not initialized yet, but
     // state_->UpdateTablet will add the tablet to the over-replicated map if required.
     // If we have already initialized and the tablet wasn't over replicated before the

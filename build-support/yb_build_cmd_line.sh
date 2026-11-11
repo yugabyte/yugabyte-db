@@ -176,6 +176,15 @@ Build options:
     https://llvm.org/docs/LinkTimeOptimization.html and https://clang.llvm.org/docs/ThinLTO.html).
     Can also be specified by setting environment variable YB_LINKING_TYPE to thin-lto or full-lto.
     Set YB_LINKING_TYPE to 'dynamic' to disable LTO.
+  --pgo-instrument-type <ir|csir>
+    With the prof_gen build type: instrument the build for profile-guided optimization (PGO) with
+    IR or context-sensitive IR profiles. A benchmark run with --cxx-benchmark in such a build
+    writes its profile to <build_root>/pgo-profiles/<instrumentation type>/.
+  --pgo-data-path <profdata_file>
+    Compile and link with the given merged llvm-profdata profile (-fprofile-use). Works with any
+    build type; the release pipeline uses it with --full-lto. The build root remembers the profile:
+    later builds without this flag keep using it, giving a different path re-runs CMake and
+    rebuilds, and building without a profile again needs a different build root or --clean.
   --no-initdb, --skip-initdb
     Skip the initdb step. The initdb build step is mostly single-threaded and can be executed on a
     low-CPU build machine even if the majority of the build is being executed on a high-CPU host.

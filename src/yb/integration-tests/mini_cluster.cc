@@ -642,6 +642,40 @@ Result<TabletServerId> MiniCluster::StepDownMasterLeader(const std::string& new_
   return actual_new_leader_uuid;
 }
 
+Status MiniCluster::StepDownMasterLeaderAndWaitForNewLeader(
+    const TabletServerId& new_leader_uuid, MonoDelta timeout) {
+  const auto old_leader_uuid = VERIFY_RESULT(GetLeaderMiniMaster())->permanent_uuid();
+  if (old_leader_uuid == new_leader_uuid) {
+    return Status::OK();
+  }
+  auto leader_moved = [&]() -> Result<bool> {
+    const auto leader_uuid = VERIFY_RESULT(GetLeaderMiniMaster())->permanent_uuid();
+    return new_leader_uuid.empty() ? leader_uuid != old_leader_uuid
+                                   : leader_uuid == new_leader_uuid;
+  };
+  return WaitFor([&]() -> Result<bool> {
+    if (VERIFY_RESULT(leader_moved())) {
+      return true;
+    }
+    const auto stepped_down_uuid = VERIFY_RESULT(GetLeaderMiniMaster())->permanent_uuid();
+    auto result = StepDownMasterLeader(new_leader_uuid);
+    if (!result.ok()) {
+      LOG(INFO) << "Master leader step down failed, retrying: " << result.status();
+      return false;
+    }
+    // Transfer is asynchronous; wait only until leadership leaves the stepped down master, the
+    // outer loop retries if another master won.
+    auto status = WaitFor([&]() -> Result<bool> {
+      return VERIFY_RESULT(GetLeaderMiniMaster())->permanent_uuid() != stepped_down_uuid;
+    }, 10s * kTimeMultiplier, "Wait for master leader to move");
+    if (!status.ok()) {
+      LOG(INFO) << status;
+      return false;
+    }
+    return leader_moved();
+  }, timeout, Format("Step down master leader to $0", new_leader_uuid));
+}
+
 
 void MiniCluster::StopSync() {
   if (!running_) {
@@ -1067,13 +1101,14 @@ std::vector<server::SkewedClockDeltaChanger> JumpClocks(
 }
 
 void StepDownAllTablets(MiniCluster* cluster) {
-  for (size_t i = 0; i != cluster->num_tablet_servers(); ++i) {
-    for (const auto& peer : cluster->GetTabletPeers(i)) {
-      consensus::LeaderStepDownRequestPB req;
-      req.set_tablet_id(peer->tablet_id());
-      consensus::LeaderStepDownResponsePB resp;
-      ASSERT_OK(ASSERT_RESULT(peer->GetConsensus())->StepDown(&req, &resp));
-    }
+  // Snapshot leaders first, so a leader elected by an earlier step down in this loop is not
+  // stepped down again before it acquires a lease.
+  auto leaders = ListTabletPeers(cluster, ListPeersFilter::kLeaders, UserTabletsOnly::kFalse);
+  for (const auto& peer : leaders) {
+    consensus::LeaderStepDownRequestPB req;
+    req.set_tablet_id(peer->tablet_id());
+    consensus::LeaderStepDownResponsePB resp;
+    ASSERT_OK(ASSERT_RESULT(peer->GetConsensus())->StepDown(&req, &resp));
   }
 }
 
@@ -1788,32 +1823,47 @@ Status InvokeSplitTabletRpcAndWaitForDataCompacted(
 }
 
 Status WaitAllReplicasSynchronizedWithLeader(
-    MiniCluster* cluster, CoarseTimePoint deadline) {
-  auto leaders = ListTabletPeers(cluster, ListPeersFilter::kLeaders);
-  std::unordered_map<TabletId, int64_t> last_committed_idx;
-  for (const auto& peer : leaders) {
-    auto idx = VERIFY_RESULT(peer->GetConsensus())->GetLastCommittedOpId().index;
-    last_committed_idx.emplace(peer->tablet_id(), idx);
-    LOG(INFO) << "Committed op id for " << peer->tablet_id() << ": " << idx;
+    MiniCluster* cluster, CoarseTimePoint deadline,
+    RequireLeaderIsReady require_leader_is_ready) {
+  std::unordered_map<TabletId, std::vector<tablet::TabletPeerPtr>> tablet_peers;
+  for (auto& peer : ListTabletPeers(cluster, ListPeersFilter::kAll)) {
+    tablet_peers[peer->tablet_id()].push_back(std::move(peer));
   }
-  auto non_leaders = ListTabletPeers(cluster, ListPeersFilter::kNonLeaders);
-  for (const auto& peer : non_leaders) {
-    auto it = last_committed_idx.find(peer->tablet_id());
-    if (it == last_committed_idx.end()) {
-      return STATUS_FORMAT(IllegalState, "Unknown committed op id for $0", peer->tablet_id());
-    }
+  for (const auto& [tablet_id, peers] : tablet_peers) {
+    int64_t committed_idx = -1;
     RETURN_NOT_OK(Wait(
-        [idx = it->second, peer]() -> Result<bool> {
-          return VERIFY_RESULT(peer->GetConsensus())->GetLastCommittedOpId().index >= idx;
+        [&peers, &committed_idx, require_leader_is_ready]() -> Result<bool> {
+          for (const auto& peer : peers) {
+            auto peer_consensus = VERIFY_RESULT(peer->GetConsensus());
+            const auto leader_status = peer_consensus->GetLeaderStatus();
+            if (require_leader_is_ready
+                    ? leader_status == consensus::LeaderStatus::LEADER_AND_READY
+                    : leader_status != consensus::LeaderStatus::NOT_LEADER) {
+              committed_idx = peer_consensus->GetLastCommittedOpId().index;
+              return true;
+            }
+          }
+          return false;
         },
-        deadline,
-        Format("Wait T $0 P $1 commit $2", peer->tablet_id(), peer->permanent_uuid(), it->second)));
+        deadline, Format("Wait leader of $0", tablet_id)));
+    LOG(INFO) << "Committed op id for " << tablet_id << ": " << committed_idx;
+    for (const auto& peer : peers) {
+      RETURN_NOT_OK(Wait(
+          [committed_idx, &peer]() -> Result<bool> {
+            return VERIFY_RESULT(peer->GetConsensus())->GetLastCommittedOpId().index >=
+                   committed_idx;
+          },
+          deadline,
+          Format("Wait T $0 P $1 commit $2", tablet_id, peer->permanent_uuid(), committed_idx)));
+    }
   }
   return Status::OK();
 }
 
-Status WaitAllReplicasSynchronizedWithLeader(MiniCluster* cluster, CoarseDuration timeout) {
-  return WaitAllReplicasSynchronizedWithLeader(cluster, CoarseMonoClock::Now() + timeout);
+Status WaitAllReplicasSynchronizedWithLeader(
+    MiniCluster* cluster, CoarseDuration timeout, RequireLeaderIsReady require_leader_is_ready) {
+  return WaitAllReplicasSynchronizedWithLeader(
+      cluster, CoarseMonoClock::Now() + timeout, require_leader_is_ready);
 }
 
 Status WaitForAnySstFiles(tablet::TabletPeerPtr peer, MonoDelta timeout) {

@@ -344,7 +344,8 @@ static inline int yb_od_router_expire_stale_lcv_server_cb(od_server_t *server,
 	od_instance_t *instance = server->global->instance;
 	od_debug(
 		&instance->logger, "lcv expire", NULL, server,
-		"now_us=%lu, ttl_us=%lu, new_logical_client_version=%ld, server_lcv=%d",
+		"now_us=%" PRIu64 ", ttl_us=%" PRIu64
+		", new_logical_client_version=%" PRId64 ", server_lcv=%" PRId64,
 		now_us, ttl_us, new_logical_client_version,
 		server->yb_logical_client_version);
 
@@ -361,7 +362,7 @@ static inline int yb_od_router_expire_stale_lcv_server_cb(od_server_t *server,
 	if (ttl_us == 0) {
 		server->yb_marked_for_close = true;
 		od_debug(&instance->logger, "lcv expire", NULL, server,
-			 "marking server for close, server lcv=%d, new lcv=%d",
+			 "marking server for close, server lcv=%" PRId64 ", new lcv=%" PRId64,
 			 server->yb_logical_client_version,
 			 new_logical_client_version);
 	} else if (server->yb_expiry_time_us == UINT64_MAX) {
@@ -372,7 +373,7 @@ static inline int yb_od_router_expire_stale_lcv_server_cb(od_server_t *server,
 		server->yb_expiry_time_us = now_us + machine_lrand48() % ttl_us;
 		od_debug(
 			&instance->logger, "lcv expire", NULL, server,
-			"setting expiry time for server, server lcv=%d, new lcv=%d, expiry_time_us=%lu",
+			"setting expiry time for server, server lcv=%" PRId64 ", new lcv=%" PRId64 ", expiry_time_us=%" PRIu64,
 			server->yb_logical_client_version,
 			new_logical_client_version, server->yb_expiry_time_us);
 	}
@@ -415,7 +416,8 @@ void yb_od_router_expire_stale_lcv_servers(od_router_t *router,
 
 		od_debug(
 			&instance->logger, "lcv check", NULL, NULL,
-			"Found logical client version %ld greater than current max version %ld",
+			"Found logical client version %" PRId64
+			" greater than current max version %" PRId64,
 			new_logical_client_version, max_logical_client_version);
 		break;
 	}
@@ -468,6 +470,19 @@ void yb_mark_routes_inactive(od_router_t *router, int db_oid, int user_oid)
 	od_router_foreach(router, yb_mark_route_inactive, argv);
 }
 
+static inline int yb_kill_idle_client_cb(od_client_t *client, void **argv)
+{
+	int *killed = argv[0];
+
+	/* Safety check since od_client_kill uses client->notify_io */
+	if (client->notify_io == NULL)
+		return 0;
+
+	od_client_kill(client);
+	(*killed)++;
+	return 0;
+}
+
 static inline int od_router_gc_cb(od_route_t *route, void **argv)
 {
 	od_route_pool_t *pool = argv[0];
@@ -475,9 +490,26 @@ static inline int od_router_gc_cb(od_route_t *route, void **argv)
 	int index = route->id.yb_stats_index;
 	od_route_lock(route);
 
-	if (route->status == YB_ROUTE_INACTIVE &&
-	    od_server_pool_active(&route->server_pool) == 0)
-		goto clean;
+	if (route->status == YB_ROUTE_INACTIVE) {
+		if (od_server_pool_active(&route->server_pool) == 0 &&
+		    od_client_pool_total(&route->client_pool) == 0)
+			goto clean;
+
+		int killed = 0;
+		void *kill_argv[] = { &killed };
+		od_client_pool_foreach(&route->client_pool, OD_CLIENT_PENDING,
+				       yb_kill_idle_client_cb, kill_argv);
+		int queued = yb_od_client_pool_queue(&route->client_pool);
+		for (int i = 0; i < queued; i++)
+			od_route_signal(route);
+		if (killed > 0 || queued > 0)
+			od_log(&instance->logger, "router-gc", NULL, NULL,
+			       "sent kill op to %d pending clients and woke %d"
+				   " queued clients on inactive route %s.%s",
+			       killed, queued, route->yb_database_name,
+			       route->yb_user_name);
+		goto done;
+	}
 
 	if (od_server_pool_total(&route->server_pool) > 0 ||
 	    od_client_pool_total(&route->client_pool) > 0)
@@ -1039,6 +1071,11 @@ od_router_status_t od_router_attach(od_router_t *router,
 		 client_for_router->yb_logical_client_version);
 
 	for (;;) {
+		if (route->status == YB_ROUTE_INACTIVE) {
+			od_route_unlock(route);
+			return OD_ROUTER_ERROR;
+		}
+
 		/*
 		 * YB: In YB_GUC_ADOPTION_CONNECTION_STATIC mode with an outdated client version,
 		 * we cannot spawn new connections (they would get the latest version). Instead,

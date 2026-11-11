@@ -36,6 +36,7 @@
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 
 #include "yb/dockv/doc_key.h"
+#include "yb/dockv/key_entry_value.h"
 #include "yb/dockv/partition.h"
 
 #include "yb/gutil/dynamic_annotations.h"
@@ -82,12 +83,15 @@
 DECLARE_bool(delete_intents_sst_files);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(enable_scan_choices_variable_bloom_filter);
 DECLARE_bool(rocksdb_disable_compactions);
+DECLARE_bool(use_cross_split_key_detection_algorithm);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_write_pipelining);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(intents_flush_max_delay_ms);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
+DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_int32(ysql_select_parallelism);
 DECLARE_int64(db_block_size_bytes);
@@ -680,6 +684,172 @@ TEST_F(PgTabletSplitTest, CommonResponseCheckFailureAfterOperationRetry) {
   yb::SyncPoint::GetInstance()->ClearAllCallBacks();
 }
 #endif // NDEBUG
+
+// Checks IN-list reads of a split child before post-split compaction, while its SST
+// files still hold the parent's data. The second child gets IN values from the first
+// child's key range in two cases: a connection that cached the partitions before
+// the split, and an ordered scan of a range-partitioned table. The test pauses
+// post-split compaction to keep the children in this state. Covers GH #36918.
+class PgTabletSplitInListTest : public PgTabletSplitTest {
+ protected:
+  void TestInListReadOfSplitChildBeforePostSplitCompaction(bool range_partitioned);
+};
+
+void PgTabletSplitInListTest::TestInListReadOfSplitChildBeforePostSplitCompaction(
+    bool range_partitioned) {
+  // Left keys have a hash below kLeftHashLimit and right keys above kRightHashLimit (1/8 and 7/8
+  // of the hash range), so the split near the middle puts them in different children.
+  constexpr int kLeftHashLimit = 8192;
+  constexpr int kRightHashLimit = 57344;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_scan_choices_variable_bloom_filter) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = true;
+  // Unpause compaction even if the test fails early, so the cluster can shut down.
+  auto resume_compaction = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = false;
+  });
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE t(h INT, r INT, v INT NOT NULL, s INT, $0",
+      range_partitioned ? "PRIMARY KEY(h ASC, r ASC))"
+                        : "PRIMARY KEY((h) HASH, r ASC)) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t(h, r, v) SELECT i, 1, i FROM generate_series(1, 1000) i"));
+  ASSERT_OK(WaitForIntentsAppliedAndFlush());
+
+  // Keys from both ends of the table, so they go to different children. The split point is
+  // checked below.
+  const auto left = ASSERT_RESULT(conn.FetchRows<int32_t>(range_partitioned
+      ? std::string("SELECT h FROM t ORDER BY h LIMIT 2")
+      : Format("SELECT h FROM t WHERE yb_hash_code(h) < $0 ORDER BY yb_hash_code(h), h LIMIT 2",
+               kLeftHashLimit)));
+  const auto right = ASSERT_RESULT(conn.FetchRows<int32_t>(range_partitioned
+      ? std::string("SELECT h FROM t ORDER BY h DESC LIMIT 5")
+      : Format("SELECT h FROM t WHERE yb_hash_code(h) > $0 ORDER BY yb_hash_code(h), h LIMIT 5",
+               kRightHashLimit)));
+  ASSERT_EQ(left.size(), 2U);
+  ASSERT_EQ(right.size(), 5U);
+  std::string in_list;
+  for (const auto& keys : {left, right}) {
+    for (auto key : keys) {
+      in_list += (in_list.empty() ? "" : ", ") + AsString(key);
+    }
+  }
+
+  // A second SST file with rows only for left[1] and right[0]. The scan skips it for left[0] and
+  // seeks it again at left[1]. Its right[0] row must still be returned.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t(h, r, v) VALUES ($0, 2, 0), ($1, 2, 0)", left[1], right[0]));
+  ASSERT_OK(WaitForIntentsAppliedAndFlush());
+  const auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
+  {
+    const auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+    ASSERT_EQ(peers.size(), 1U);
+    ASSERT_EQ(
+        ASSERT_RESULT(peers.front()->shared_tablet())->regular_db()->GetCurrentVersionNumSSTFiles(),
+        2U);
+  }
+  // 2 left keys, 5 right keys, and the rows with r = 2 for left[1] and right[0].
+  std::vector<int32_t> expected_rows = left;
+  expected_rows.insert(expected_rows.end(), right.begin(), right.end());
+  expected_rows.push_back(left[1]);
+  expected_rows.push_back(right[0]);
+  std::sort(expected_rows.begin(), expected_rows.end());
+  auto sorted = [](std::vector<int32_t> rows) {
+    std::sort(rows.begin(), rows.end());
+    return rows;
+  };
+
+  const auto select = Format("SELECT h FROM t WHERE h IN ($0)", in_list);
+  auto stale_conn = ASSERT_RESULT(Connect());
+  ASSERT_EQ(sorted(ASSERT_RESULT(stale_conn.FetchRows<int32_t>(select))), expected_rows);
+  // This connection caches the partitions before the split and reads again only after post-split
+  // compaction.
+  auto stale_after_compaction_conn = ASSERT_RESULT(Connect());
+  ASSERT_EQ(sorted(ASSERT_RESULT(stale_after_compaction_conn.FetchRows<int32_t>(select))),
+            expected_rows);
+  auto txn_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(txn_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(txn_conn.ExecuteFormat("UPDATE t SET s = 1 WHERE h IN ($0)", in_list));
+
+  ASSERT_OK(SplitSingleTabletAndWaitForActiveChildTablets(table_id));
+  std::string split_key;
+  for (const auto& peer : ListTableActiveTabletLeadersPeers(cluster_.get(), table_id)) {
+    const auto& meta = *peer->tablet_metadata();
+    ASSERT_FALSE(meta.rocksdb_parent_data_compacted()) << peer->tablet_id();
+    if (!meta.partition()->partition_key_start().empty()) {
+      split_key = meta.partition()->partition_key_start();
+    }
+  }
+  ASSERT_FALSE(split_key.empty());
+  // Check the split point from metadata, without reading the table.
+  if (range_partitioned) {
+    auto encode = [](int32_t h, int32_t r) {
+      return dockv::DocKey(dockv::KeyEntryValues{
+          dockv::KeyEntryValue::Int32(h), dockv::KeyEntryValue::Int32(r)}).Encode();
+    };
+    // The largest left row is (left[1], 2). right is in descending order, so its smallest row is
+    // (right.back(), 1).
+    ASSERT_LT(encode(left.back(), 2).AsSlice().compare(split_key), 0);
+    ASSERT_GE(encode(right.back(), 1).AsSlice().compare(split_key), 0);
+  } else {
+    const auto split_hash = dockv::PartitionSchema::DecodeMultiColumnHashValue(split_key);
+    ASSERT_GE(split_hash, kLeftHashLimit);
+    ASSERT_LE(split_hash, kRightHashLimit);
+  }
+
+  // Connects after the split. Usually the tserver has not refreshed its cached partitions yet, so
+  // this connection also gets the parent's partition. If the refresh happens first, this read
+  // passes even without the fix. The stale_conn read below always hits the bug.
+  auto fresh_conn = ASSERT_RESULT(Connect());
+  EXPECT_EQ(sorted(ASSERT_RESULT(fresh_conn.FetchRows<int32_t>(select))), expected_rows)
+      << "Loaded the table after the split";
+  EXPECT_EQ(sorted(ASSERT_RESULT(stale_conn.FetchRows<int32_t>(select))), expected_rows)
+      << "Stale partitions";
+  // Connects after the reads above refreshed the tserver's partitions. A plain IN read then sends
+  // each child only its own keys, so it passes even without the fix.
+  auto late_conn = ASSERT_RESULT(Connect());
+  EXPECT_EQ(sorted(ASSERT_RESULT(late_conn.FetchRows<int32_t>(select))), expected_rows)
+      << "Fresh partitions";
+  if (range_partitioned) {
+    // An ordered scan sends the whole IN list in one read, so the second child gets left keys even
+    // with fresh partitions.
+    EXPECT_EQ(ASSERT_RESULT(late_conn.FetchRows<int32_t>(select + " ORDER BY h")), expected_rows)
+        << "Ordered, fresh partitions";
+  }
+  // Without the fix, the second child finds no rows in the regular DB and builds them from this
+  // transaction's own changes only. Then v is NULL, and the UPDATE fails the NOT NULL constraint.
+  const auto updated = txn_conn.FetchRows<int32_t>(
+      Format("UPDATE t SET s = 2 WHERE h IN ($0) RETURNING h", in_list));
+  if (updated.ok()) {
+    EXPECT_EQ(sorted(*updated), expected_rows) << "Updated in the transaction";
+  } else {
+    ADD_FAILURE() << "Update in the transaction: " << updated.status();
+  }
+  ASSERT_OK(txn_conn.RollbackTransaction());
+
+  // After post-split compaction the child has only its own data, so even stale partitions read
+  // correctly.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = false;
+  std::vector<TabletId> child_ids;
+  for (const auto& peer : ListTableActiveTabletLeadersPeers(cluster_.get(), table_id)) {
+    child_ids.push_back(peer->tablet_id());
+  }
+  ASSERT_OK(WaitForPeersPostSplitCompacted(cluster_.get(), child_ids));
+  EXPECT_EQ(sorted(ASSERT_RESULT(stale_after_compaction_conn.FetchRows<int32_t>(select))),
+            expected_rows) << "Stale partitions after compaction";
+}
+
+TEST_F_EX(PgTabletSplitTest, InListReadOfHashSplitChildBeforePostSplitCompaction,
+          PgTabletSplitInListTest) {
+  ASSERT_NO_FATALS(TestInListReadOfSplitChildBeforePostSplitCompaction(
+      /* range_partitioned= */ false));
+}
+
+TEST_F_EX(PgTabletSplitTest, InListReadOfRangeSplitChildBeforePostSplitCompaction,
+          PgTabletSplitInListTest) {
+  ASSERT_NO_FATALS(TestInListReadOfSplitChildBeforePostSplitCompaction(
+      /* range_partitioned= */ true));
+}
 
 TEST_F(PgTabletSplitTest, SplitSequencesDataTable) {
   // Test that tablet splitting is blocked on system_postgres.sequences_data table
@@ -2015,7 +2185,8 @@ TEST_F(PgDelayedSplitAtFollower, TestDelayedSplitAtFollower) {
   // follower may flush an empty regular memtable (a no-op) and end up without any level-0 SST file.
   // If such a follower later becomes the leader, GetSplitKey fails with "No SST file at level 0",
   // which is not retried for a manual split, so the split never completes.
-  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(cluster_.get(), 30s * kTimeMultiplier));
+  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(
+      cluster_.get(), 30s * kTimeMultiplier, RequireLeaderIsReady::kTrue));
   ASSERT_OK(cluster_->FlushTablets());
 
   // Stop tserver C (index 2)
@@ -2302,7 +2473,7 @@ TEST_F(PgTabletSplitTest, AsyncWriteRaceWithSplit) {
       tablet::FlushMode::kSync, tablet::FlushFlags::kIntents, rocksdb::FlushReason::kTestOnly));
 
   const auto stored = ASSERT_RESULT(
-      source_tablet->MaxPersistentOpId(/* invalid_if_no_new_data = */ false));
+      source_tablet->GetPersistentState(/* invalid_if_no_new_data = */ false));
   LOG(INFO) << "After race+flush: split_op_id=" << split_op_id
             << " regular_flushed_op_id=" << stored.regular
             << " intents_flushed_op_id=" << stored.intents;
@@ -2501,6 +2672,147 @@ TEST_F(PgTabletSplitTest, BootstrapStateLoadRaceFlush) {
   }
   LOG(INFO) << "target row k=5001 locally: " << (found ? "YES" : "NO");
   EXPECT_TRUE(found) << "DATA LOSS: target row missing";
+}
+
+// Regression tests for #34580: a hot key with many retained versions is one DocKey too large to
+// split. The split must take the boundary after it when that is closer to the target.
+class PgTabletSplitHotKeyTest : public PgTabletSplitTest {
+ protected:
+  // Sizes only need to span several SST data blocks; the ratios between them are what matter.
+  static constexpr int kNumColdRows = 2000;   // ~1 KB each => ~2 MB spread over the key space.
+  static constexpr int kNumHotUpdates = 300;  // ~8 KB each => ~2.4 MB in a single DocKey.
+  static constexpr int kFlushEvery = 60;      // Several SST files, like the original failure.
+
+  struct HotKeySplitResult {
+    std::string partition_key;  // Split partition key chosen by GetSplitKeys.
+    double heavier_ratio = 0;   // Share of SST data in the larger child after the split.
+  };
+
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_cross_split_key_detection_algorithm) = true;
+    // Keep every version of the hot row (also through the post-split compaction).
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 86400;
+    PgTabletSplitTest::SetUp();
+  }
+
+  // Creates a single-tablet table (k INT, v TEXT) with the given primary key, fills it with ~1 KB
+  // cold rows k = 1..kNumColdRows (except hot_k) and one hot row k = hot_k that is updated
+  // kNumHotUpdates times with ~8 KB values. Then checks the 2-way split key and performs the split.
+  Result<HotKeySplitResult> SplitTableWithLargeHotKey(
+      const std::string& table, const std::string& primary_key, const std::string& split_clause,
+      int32_t hot_k) {
+    auto conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0(k INT, v TEXT, PRIMARY KEY ($1)) $2", table, primary_key, split_clause));
+    const auto table_id = VERIFY_RESULT(GetTableIDFromTableName(table));
+
+    // Referencing i re-evaluates the subquery per row; referencing g keeps string_agg in the
+    // subquery rather than the outer query.
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 SELECT i, "
+        "(SELECT string_agg(md5(random()::text || i::text || g::text), '') "
+        "FROM generate_series(1, 32) g) "
+        "FROM generate_series(1, $1) i WHERE i <> $2", table, kNumColdRows, hot_k));
+    RETURN_NOT_OK(cluster_->FlushTablets());
+
+    // Hot row: one key, many 8 KB versions.
+    RETURN_NOT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1, 'init')", table, hot_k));
+    for (int i = 1; i <= kNumHotUpdates; ++i) {
+      RETURN_NOT_OK(conn.ExecuteFormat(
+          "UPDATE $0 SET v = "
+          "(SELECT string_agg(md5(random()::text), '') FROM generate_series(1, 256)) "
+          "WHERE k = $1", table, hot_k));
+      if (i % kFlushEvery == 0) {
+        RETURN_NOT_OK(cluster_->FlushTablets());
+      }
+    }
+    RETURN_NOT_OK(cluster_->FlushTablets());
+
+    auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+    SCHECK_EQ(peers.size(), 1, IllegalState, "Expected a single tablet");
+    const auto parent_id = peers.front()->tablet_id();
+    RETURN_NOT_OK(WaitForAnySstFiles(cluster_.get(), parent_id));
+    auto parent = VERIFY_RESULT(peers.front()->shared_tablet());
+    LOG(INFO) << "Parent SST size: " << parent->GetCurrentVersionSstFilesSize();
+
+    // Direct check of the chosen split key.
+    const auto split_keys = VERIFY_RESULT(parent->GetSplitKeys(kDefaultNumSplitParts));
+    SCHECK_EQ(split_keys.partition_keys.size(), 1, IllegalState, "Expected one split key");
+    HotKeySplitResult result{.partition_key = split_keys.partition_keys[0]};
+    LOG(INFO) << "Split partition key: " << Slice(result.partition_key).ToDebugHexString();
+
+    // Actually split and measure the children after post-split compaction.
+    RETURN_NOT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(cluster_.get(), parent_id));
+    peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+    SCHECK_EQ(peers.size(), 2, IllegalState, "Expected two child tablets");
+    uint64_t total = 0, heavier = 0;
+    for (const auto& peer : peers) {
+      auto child = VERIFY_RESULT(peer->shared_tablet());
+      const auto size = child->GetCurrentVersionSstFilesSize();
+      const auto partition = child->metadata()->partition();
+      LOG(INFO) << "Child " << peer->tablet_id()
+                << " [" << Slice(partition->partition_key_start()).ToDebugHexString() << ", "
+                << Slice(partition->partition_key_end()).ToDebugHexString() << ")"
+                << " SST size: " << size;
+      total += size;
+      heavier = std::max(heavier, size);
+    }
+    result.heavier_ratio = static_cast<double>(heavier) / total;
+    LOG(INFO) << "Heavier child share: " << result.heavier_ratio;
+    return result;
+  }
+};
+
+// Hash partitioning: the split after the hot key is hash + 1.
+TEST_F(PgTabletSplitHotKeyTest, YB_DISABLE_TEST_IN_SANITIZERS(HashPartitioned)) {
+  // A hash ~10% into the hash space gives [cold ~0.2MB][hot ~2.4MB][cold ~1.8MB]: the midpoint
+  // is inside the hot key and the split after it (~2.6MB) is closer than the split before it
+  // (~0.2MB).
+  int32_t hot_k = kNumColdRows + 1;
+  uint16_t hot_hash = 0;
+  for (;; ++hot_k) {
+    std::string tmp;
+    QLValuePB value;
+    value.set_int32_value(hot_k);
+    AppendToKey(value, &tmp);
+    hot_hash = YBPartition::HashColumnCompoundValue(tmp);
+    if (hot_hash >= 0x1800 && hot_hash < 0x1A00) {
+      break;
+    }
+  }
+  LOG(INFO) << "Hot key k=" << hot_k << " hash=0x" << std::hex << hot_hash << std::dec;
+
+  const auto result = ASSERT_RESULT(SplitTableWithLargeHotKey(
+      "hot_key_hash", "k HASH", "SPLIT INTO 1 TABLETS", hot_k));
+  const auto split_hash = dockv::PartitionSchema::DecodeMultiColumnHashValue(result.partition_key);
+
+  // The hot key itself can't be split: splitting before it puts ~95% in one child, splitting
+  // after it (hash + 1) gives ~60%. The closer legal split must win.
+  EXPECT_EQ(split_hash, hot_hash + 1) << "Split was not placed after the hot key";
+  EXPECT_LT(result.heavier_ratio, 0.7) << "Split is lopsided";
+}
+
+// Range partitioning: the split after the hot key is the next existing DocKey, which
+// NextSplitBoundary finds by seeking past every record of the hot DocKey.
+TEST_F(PgTabletSplitHotKeyTest, YB_DISABLE_TEST_IN_SANITIZERS(RangePartitioned)) {
+  // Keys are ordered by value, so a hot key 10% of the way through the cold keys gives the same
+  // layout as the hash test: [cold ~0.2MB][hot ~2.4MB][cold ~1.8MB].
+  constexpr int32_t kHotK = kNumColdRows / 10;
+  LOG(INFO) << "Hot key k=" << kHotK;
+
+  // For range partitioning the partition key is the encoded DocKey.
+  const auto doc_key = [](int32_t k) {
+    return dockv::DocKey(dockv::KeyEntryValues{dockv::KeyEntryValue::Int32(k)})
+        .Encode().ToStringBuffer();
+  };
+  const auto result = ASSERT_RESULT(SplitTableWithLargeHotKey(
+      "hot_key_range", "k ASC", /* split_clause = */ "", kHotK));
+
+  // The DocKey right after the hot key is k = kHotK + 1.
+  EXPECT_EQ(Slice(result.partition_key).ToDebugHexString(),
+            Slice(doc_key(kHotK + 1)).ToDebugHexString())
+      << "Split was not placed after the hot key";
+  EXPECT_LT(result.heavier_ratio, 0.7) << "Split is lopsided";
 }
 
 } // namespace yb::pgwrapper

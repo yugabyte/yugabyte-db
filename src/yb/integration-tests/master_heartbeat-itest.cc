@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -62,6 +63,7 @@ using namespace std::literals;
 
 DECLARE_bool(enable_load_balancing);
 DECLARE_int32(heartbeat_interval_ms);
+DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_bool(TEST_pause_before_remote_bootstrap);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
 DECLARE_int32(committed_config_change_role_timeout_sec);
@@ -330,6 +332,64 @@ TEST_F(MasterHeartbeatITest, IgnoreEarlierHeartbeatFromSameTSProcess) {
     // Sanity check we didn't overwrite the TSDescriptor state with the data from the stale
     // heartbeat.
     ASSERT_EQ(ts->num_live_replicas(), 1);
+  }
+}
+
+// A report with a Raft config change rebuilds every replica of the tablet from the sender's report.
+// should_disable_lb_move must still only change for the sender's replica.
+TEST_F(MasterHeartbeatITest, ConfigChangePreservesOtherReplicasShouldDisableLbMove) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  CreateTable();
+  ASSERT_OK(mini_cluster_->AddTabletServer());
+  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(4));
+  // Stop all tservers so real heartbeats don't overwrite the replica map.
+  ShutdownAllTServers(mini_cluster_.get());
+
+  auto table = table_name();
+  auto& catalog_mgr = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto table_info = catalog_mgr.GetTableInfoFromNamespaceNameAndTableName(
+      table.namespace_type(), table.namespace_name(), table.table_name());
+  auto tablet = ASSERT_RESULT(table_info->GetTablets())[0];
+
+  // The existing replicas have finished post-split compaction.
+  auto replicas = std::make_shared<master::TabletReplicaMap>(*tablet->GetReplicaLocations());
+  for (auto& [ts_uuid, replica] : *replicas) {
+    replica.should_disable_lb_move = false;
+  }
+  tablet->SetReplicaLocations(replicas);
+
+  master::TSDescriptorVector ts_descs = catalog_mgr.GetAllLiveNotBlacklistedTServers();
+  auto extra_ts_it = std::find_if(
+      ts_descs.cbegin(), ts_descs.cend(), [&replicas](const master::TSDescriptorPtr& ts) {
+        return !replicas->contains(ts->permanent_uuid());
+      });
+  ASSERT_TRUE(extra_ts_it != ts_descs.cend());
+  auto ts = *extra_ts_it;
+
+  // The extra tserver reports a config change that adds it as leader, with compaction pending.
+  master::MasterHeartbeatProxy master_proxy(
+      proxy_cache_.get(), mini_cluster_->mini_master()->bound_rpc_addr());
+  auto cluster_config = ASSERT_RESULT(catalog_mgr.GetClusterConfig());
+  master::TSHeartbeatRequestPB req;
+  *req.mutable_common() = MakeTSToMasterCommonPB(*ts, ts->latest_seqno());
+  req.set_universe_uuid(cluster_config.universe_uuid());
+  *req.mutable_tablet_report() = MakeTabletReportPBWithNewLeader(
+      ts.get(), tablet.get(), true, ts->latest_report_seqno() + 1);
+  req.mutable_tablet_report()->mutable_updated_tablets(0)->set_should_disable_lb_move(true);
+  req.set_num_live_tablets(1);
+  master::TSHeartbeatResponsePB resp;
+  rpc::RpcController controller;
+  ASSERT_OK(master_proxy.TSHeartbeat(req, &resp, &controller));
+  ASSERT_FALSE(resp.has_error());
+
+  auto replica_locations = tablet->GetReplicaLocations();
+  ASSERT_TRUE(replica_locations->contains(ts->permanent_uuid()));
+  for (const auto& [ts_uuid, replica] : *replica_locations) {
+    if (ts_uuid == ts->permanent_uuid()) {
+      ASSERT_TRUE(replica.should_disable_lb_move);
+    } else {
+      ASSERT_FALSE(replica.should_disable_lb_move) << "Overwritten for replica on " << ts_uuid;
+    }
   }
 }
 
@@ -878,6 +938,9 @@ TEST_F(MasterHeartbeatITestWithUpgrade, ClearUniverseUuidToRecoverUniverse) {
 class MasterHeartbeatITestWithExternal : public MasterHeartbeatITest {
  public:
   bool use_external_mini_cluster() override { return true; }
+  // The tservers are killed moments after they register. With YSQL on, a kill that lands while
+  // postgres is still starting can orphan the postmaster, which stalls the next restart.
+  bool enable_ysql() override { return false; }
 
   Status RestartAndWipeWithFlags(
       std::vector<ExternalTabletServer*> tservers,
@@ -1125,6 +1188,74 @@ TEST_F_EX(MasterHeartbeatITest, MaybeHasXClusterGuardedLease, MasterHeartbeatITe
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> { return tserver_desc->MaybeHasXClusterGuardedLease(); },
       3s * kTimeMultiplier, "Wait for xCluster-guarded information lease to be re-acquired"));
+}
+
+class MasterHeartbeatITestMultiMaster : public MasterHeartbeatITest {
+ public:
+  void SetUp() override {
+    // A restarted replica reports no leader until the tablet leader's next raft heartbeat reaches
+    // it. Report to the master much more often than that, so the master sees that report.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 100;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_raft_heartbeat_interval_ms) = 2000 * kTimeMultiplier;
+    MasterHeartbeatITest::SetUp();
+  }
+
+  bool enable_ysql() override { return false; }
+  size_t num_masters() override { return 3; }
+  int num_tablets() override { return 1; }
+};
+
+// The hinted leader election is meant for the first election of a new tablet. A restarted follower
+// of a tablet with a live leader must not trigger one, even on a master leader that has not sent a
+// hint for the tablet yet (e.g. after a master leader change).
+TEST_F_EX(MasterHeartbeatITest, NoHintedElectionOnTServerRestart,
+          MasterHeartbeatITestMultiMaster) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  CreateTable();
+  const auto kTimeout = MonoDelta::FromSeconds(60 * kTimeMultiplier);
+
+  ASSERT_RESULT(mini_cluster_->StepDownMasterLeader());
+  auto& catalog_mgr = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto table = table_name();
+  auto table_info = catalog_mgr.GetTableInfoFromNamespaceNameAndTableName(
+      table.namespace_type(), table.namespace_name(), table.table_name());
+  ASSERT_NE(table_info, nullptr);
+  auto tablet = ASSERT_RESULT(table_info->GetTablets())[0];
+
+  // Wait for the new master leader to learn the tablet leader and all running replicas from tablet
+  // reports.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        if (!tablet->GetLeader().ok()) {
+          return false;
+        }
+        auto replicas = tablet->GetReplicaLocations();
+        return replicas->size() == num_tablet_servers() &&
+               std::ranges::all_of(*replicas, [](const auto& entry) {
+                 return entry.second.state == tablet::RaftGroupStatePB::RUNNING;
+               });
+      },
+      kTimeout, "New master leader learns tablet leader and replicas"));
+  const auto leader_uuid = ASSERT_RESULT(tablet->GetLeader())->permanent_uuid();
+
+  tserver::MiniTabletServer* follower = nullptr;
+  for (size_t i = 0; i < mini_cluster_->num_tablet_servers(); ++i) {
+    auto* ts = mini_cluster_->mini_tablet_server(i);
+    if (ts->server()->permanent_uuid() != leader_uuid) {
+      follower = ts;
+      break;
+    }
+  }
+  ASSERT_NE(follower, nullptr);
+
+  google::SetVLOGLevel("master_heartbeat_service*", 1);
+  StringWaiterLogSink hinted_election_log("Starting election at " + tablet->tablet_id());
+  StringWaiterLogSink skipped_election_log(Format(
+      "Skipping hinted leader election for existing tablet $0 reported by $1",
+      tablet->tablet_id(), follower->server()->permanent_uuid()));
+  ASSERT_OK(follower->Restart());
+  ASSERT_OK(skipped_election_log.WaitFor(kTimeout));
+  ASSERT_FALSE(hinted_election_log.IsEventOccurred());
 }
 
 }  // namespace yb::integration_tests

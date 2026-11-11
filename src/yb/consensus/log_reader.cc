@@ -61,9 +61,11 @@ DEFINE_UNKNOWN_int32(log_max_seconds_to_retain, 24 * 3600, "Log files that are o
              "ignored. This flag is ignored if a log segment contains entries that haven't been"
              "flushed to RocksDB.");
 
-DEFINE_UNKNOWN_int64(log_stop_retaining_min_disk_mb, 100, "Stop retaining logs if the space "
-             "available for the logs falls below this limit. This flag is ignored if a log segment "
-             "contains unflushed entries.");
+// Misnamed: the value is in KB, as in every stable release. Changing the unit rescales explicitly
+// set values on upgrade (#36232).
+DEFINE_UNKNOWN_int64(log_stop_retaining_min_disk_mb, 100 * 1024, "Stop retaining logs if the "
+             "space available for the logs falls below this limit, in KB. This flag is ignored if "
+             "a log segment contains unflushed entries.");
 
 METRIC_DEFINE_counter(tablet, log_reader_bytes_read, "Bytes Read From Log",
                       yb::MetricUnit::kBytes,
@@ -112,12 +114,13 @@ Result<LogReaderPtr> LogReader::Open(
     Env* env, const scoped_refptr<LogIndex>& index, std::string log_prefix,
     const std::string& tablet_wal_path, const scoped_refptr<MetricEntity>& table_metric_entity,
     const scoped_refptr<MetricEntity>& tablet_metric_entity,
-    std::shared_ptr<MemTracker> read_wal_mem_tracker) {
+    std::shared_ptr<MemTracker> read_wal_mem_tracker,
+    const std::vector<std::string>* wal_dir_files) {
   auto log_reader = std::make_shared<LogReader>(
       env, index, std::move(log_prefix), table_metric_entity, tablet_metric_entity,
       std::move(read_wal_mem_tracker), PrivateTag());
 
-  RETURN_NOT_OK(log_reader->Init(tablet_wal_path));
+  RETURN_NOT_OK(log_reader->Init(tablet_wal_path, wal_dir_files));
   return log_reader;
 }
 
@@ -151,27 +154,30 @@ LogReader::LogReader(Env* env,
 
 LogReader::~LogReader() = default;
 
-Status LogReader::Init(const string& tablet_wal_path) {
+Status LogReader::Init(
+    const string& tablet_wal_path, const std::vector<std::string>* wal_dir_files) {
   {
     std::lock_guard lock(lock_);
     CHECK_EQ(state_, kLogReaderInitialized) << "bad state for Init(): " << state_;
   }
   VLOG_WITH_PREFIX(1) << "Reading wal from path:" << tablet_wal_path;
 
-  if (!env_->FileExists(tablet_wal_path)) {
-    return STATUS(IllegalState, "Cannot find wal location at", tablet_wal_path);
+  std::vector<std::string> files_from_log_directory;
+  if (!wal_dir_files) {
+    if (!env_->FileExists(tablet_wal_path)) {
+      return STATUS(IllegalState, "Cannot find wal location at", tablet_wal_path);
+    }
+    RETURN_NOT_OK_PREPEND(env_->GetChildren(tablet_wal_path, &files_from_log_directory),
+                          "Unable to read children from path");
+    wal_dir_files = &files_from_log_directory;
   }
 
   VLOG_WITH_PREFIX(1) << "Parsing segments from path: " << tablet_wal_path;
 
-  std::vector<string> files_from_log_directory;
-  RETURN_NOT_OK_PREPEND(env_->GetChildren(tablet_wal_path, &files_from_log_directory),
-                        "Unable to read children from path");
-
   std::vector<ReadableLogSegmentPtr> read_segments;
 
   // Build a log segment from log files, ignoring non log files.
-  for (const string &potential_log_file : files_from_log_directory) {
+  for (const auto& potential_log_file : *wal_dir_files) {
     if (!IsLogFileName(potential_log_file)) {
       continue;
     }
@@ -275,11 +281,11 @@ bool LogReader::ViolatesMinSpacePolicy(const scoped_refptr<ReadableLogSegment>& 
   } else {
     uint64_t free_space = *free_space_result;
     if (free_space + *potential_reclaimed_space <
-            FLAGS_log_stop_retaining_min_disk_mb * 1_MB) {
+            FLAGS_log_stop_retaining_min_disk_mb * 1_KB) {
       YB_LOG_EVERY_N_SECS(WARNING, 300)
           << "Segment " << segment->path() << " violates minimum free space policy "
           << "specified by log_stop_retaining_min_disk_mb: "
-          << FLAGS_log_stop_retaining_min_disk_mb;
+          << FLAGS_log_stop_retaining_min_disk_mb << " KB";
       *potential_reclaimed_space += segment->file_size();
       if (PREDICT_FALSE(FLAGS_TEST_record_segments_violate_min_space_policy)) {
         TEST_segments_violate_min_space_policy_->push_back(segment);
@@ -604,9 +610,16 @@ Status LogReader::AppendUnclosedSegmentUnlocked(const scoped_refptr<ReadableLogS
 
 Status LogReader::AppendEmptySegment(const scoped_refptr<ReadableLogSegment>& segment) {
   DCHECK(segment->IsInitialized());
+  const auto sequence_number = segment->header().sequence_number();
   std::lock_guard lock(lock_);
   CHECK_EQ(state_, kLogReaderReading);
-  return segments_.push_back(segment->header().sequence_number(), segment);
+  RETURN_NOT_OK(segments_.push_back(sequence_number, segment));
+  // Appends index the new segment from its start. Set under lock_, which DoGetIndexEntry holds to
+  // pick the segments to load the index from.
+  if (log_index_) {
+    log_index_->SetMinIndexedSegmentNumberIfUnset(sequence_number);
+  }
+  return Status::OK();
 }
 
 size_t LogReader::num_segments() const {

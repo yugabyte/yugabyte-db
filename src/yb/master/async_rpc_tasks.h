@@ -150,6 +150,7 @@ class AsyncStartElection : public RetrySpecificTSRpcTaskWithTable {
   bool SendRequest(int attempt) override;
 
  private:
+  const TabletInfoPtr tablet_;
   const TabletId tablet_id_;
   consensus::RunLeaderElectionRequestPB req_;
   consensus::RunLeaderElectionResponsePB resp_;

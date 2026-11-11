@@ -2881,7 +2881,7 @@ YbRegisterCatalogPreloadCacheListTables(YbTablePrefetcherState *prefetcher)
 }
 
 static YbcStatus
-YbPrefetch(YbTablePrefetcherState *prefetcher)
+YbPrefetch(YbTablePrefetcherState *prefetcher, bool completes_connection_prefetch)
 {
 	bool		prefetched = false;
 
@@ -2893,7 +2893,8 @@ YbPrefetch(YbTablePrefetcherState *prefetcher)
 		{
 			if (!prefetched)
 			{
-				YbcStatus	status = YBCPrefetchRegisteredSysTables();
+				YbcStatus	status =
+					YBCPrefetchRegisteredSysTables(completes_connection_prefetch);
 
 				if (status)
 					return status;
@@ -2973,6 +2974,13 @@ typedef struct YbRunWithPrefetcherContext
 {
 	YbTablePrefetcherState prefetcher;
 	bool		is_using_response_cache;
+
+	/*
+	 * Whether this prefetch belongs to a connection starting up: the only kind that reads an
+	 * older version back, and the only kind whose own prefetch is worth recording a version for.
+	 * See the last YbPrefetch in YbPrefetchRequiredDataImpl.
+	 */
+	bool		completes_connection_prefetch;
 } YbRunWithPrefetcherContext;
 
 typedef struct YbPrefetcherStarterFunctor
@@ -2983,7 +2991,8 @@ typedef struct YbPrefetcherStarterFunctor
 static YbcStatus
 YbRunWithPrefetcherImpl(YbPrefetcherStarterFunctor *prefetcher_starter,
 						YbcStatus (*func) (YbRunWithPrefetcherContext *ctx),
-						bool keep_prefetcher)
+						bool keep_prefetcher,
+						bool completes_connection_prefetch)
 {
 	const bool	is_using_response_cache = prefetcher_starter->call(prefetcher_starter);
 	YbcStatus	result = NULL;
@@ -2993,6 +3002,7 @@ YbRunWithPrefetcherImpl(YbPrefetcherStarterFunctor *prefetcher_starter,
 		YbRunWithPrefetcherContext ctx = {};
 
 		ctx.is_using_response_cache = is_using_response_cache;
+		ctx.completes_connection_prefetch = completes_connection_prefetch;
 		result = func(&ctx);
 	}
 	PG_CATCH();
@@ -3020,6 +3030,9 @@ typedef struct YbPrefetcherStarterWithCache
 	const YbcPgLastKnownCatalogVersionInfo *version;
 	YbcPgSysTablePrefetcherCacheMode mode;
 	YbcPgSysTablePrefetchKind kind;
+	/* Cleared once this attempt has been sent away, so the next one runs without the ask. */
+	bool		send_away_if_fill_in_flight;
+	bool		part_of_connection_prefetch;
 } YbPrefetcherStarterWithCache;
 
 static bool
@@ -3027,14 +3040,17 @@ YbPrefetcherStarterWithCacheCall(YbPrefetcherStarterFunctor *functor)
 {
 	const YbPrefetcherStarterWithCache *this = (const YbPrefetcherStarterWithCache *) functor;
 
-	YBCStartSysTablePrefetching(MyDatabaseId, *this->version, this->mode, this->kind);
+	YBCStartSysTablePrefetching(MyDatabaseId, *this->version, this->mode, this->kind,
+								this->send_away_if_fill_in_flight,
+								this->part_of_connection_prefetch);
 	return true;
 }
 
 static YbPrefetcherStarterWithCache
 MakeStarterWithCache(YbcPgSysTablePrefetcherCacheMode mode,
 					 const YbcPgLastKnownCatalogVersionInfo *version,
-					 YbcPgSysTablePrefetchKind kind)
+					 YbcPgSysTablePrefetchKind kind,
+					 bool part_of_connection_prefetch)
 {
 	return (YbPrefetcherStarterWithCache)
 	{
@@ -3045,6 +3061,8 @@ MakeStarterWithCache(YbcPgSysTablePrefetcherCacheMode mode,
 			.version = version,
 			.mode = mode,
 			.kind = kind,
+			.send_away_if_fill_in_flight = false,
+			.part_of_connection_prefetch = part_of_connection_prefetch,
 	};
 }
 
@@ -3074,17 +3092,273 @@ YbPrefetcherStarterNoCacheCall(YbPrefetcherStarterFunctor *functor)
 static bool
 YbAuthBackendUsesTserverResponseCache(uint64_t shared_catalog_version)
 {
-	return (YbIsAuthBackend() || YbIsAuthPassthroughInProgress(MyProcPort)) &&
+	return YbIsPerformingConnMgrAuth() &&
 		YbUseTserverResponseCacheForAuth(shared_catalog_version);
+}
+
+/*
+ * A connection that read the catalog at a version this node already had cached, and the
+ * invalidation messages that carry it to the version it would otherwise have read at.
+ * YbTryPrepareStaleCatalogPrefetch collects them, which is what establishes that a complete run
+ * exists and that this release can apply it; applying is deferred to a point in startup where
+ * removing a relcache entry is safe. They outlive RelationCacheInitializePhase3, so they are
+ * allocated in TopMemoryContext.
+ */
+static bool YbStaleCatalogPrefetchPending = false;
+static uint64_t YbStaleCatalogPrefetchTargetVersion = 0;
+static YbcCatalogMessageLists YbStaleCatalogPrefetchMessages = {0};
+
+static void
+YbReleaseStaleCatalogPrefetchMessages(void)
+{
+	for (int i = 0; i < YbStaleCatalogPrefetchMessages.num_lists; ++i)
+		if (YbStaleCatalogPrefetchMessages.message_lists[i].message_list)
+			pfree(YbStaleCatalogPrefetchMessages.message_lists[i].message_list);
+	if (YbStaleCatalogPrefetchMessages.message_lists)
+		pfree(YbStaleCatalogPrefetchMessages.message_lists);
+	YbStaleCatalogPrefetchMessages.message_lists = NULL;
+	YbStaleCatalogPrefetchMessages.num_lists = 0;
+}
+
+void
+YbFinishStaleCatalogPrefetch(void)
+{
+	if (!YbStaleCatalogPrefetchPending)
+		return;
+	YbStaleCatalogPrefetchPending = false;
+
+	/*
+	 * Invalidation messages cannot take effect while the prefetcher is alive, since it still
+	 * answers catalog reads out of the rows they supersede. What startup reads after this point
+	 * is mostly served by the catalog caches the prefetch already filled; anything else is an
+	 * ordinary catalog read.
+	 */
+	if (YBCIsSysTablePrefetchingStarted())
+		YBCStopSysTablePrefetching();
+
+	/*
+	 * The messages are applied here rather than by calling the refresh a running backend uses.
+	 * That path does a full catalog cache refresh when the messages are missing or cannot be
+	 * applied, and YBRefreshCache refuses to run inside a transaction, since it would leak
+	 * cache references for the relations that transaction has open. Its check does not fire
+	 * here: it reads postgres.c's xact_started, which InitPostgres does not set, so it cannot
+	 * see the transaction InitPostgres holds open across startup.
+	 */
+	YbResetNeedInvalidateAllTableCache();
+
+	/*
+	 * Applying a message can rebuild a relcache entry, which takes a lock, which runs
+	 * AcceptInvalidationMessages and arrives in YbMaybeRefreshCache. Every reason that function
+	 * has to decline is absent right here: the prefetcher has just been stopped, and this backend
+	 * still reports the older version, so it would start a refresh on top of the apply already
+	 * running. The two other places that apply messages hold this same flag against the same
+	 * reentrancy.
+	 */
+	yb_refresh_cache_in_progress = true;
+	PG_TRY();
+	{
+		if (!YbApplyInvalidationMessages(&YbStaleCatalogPrefetchMessages))
+		{
+			/*
+			 * Cannot happen: this applies the messages YbTryPrepareStaleCatalogPrefetch checked,
+			 * and whether they can be applied depends only on their bytes, which nothing has
+			 * touched since. It is reported rather than asserted because there is no way back
+			 * from here if it ever does -- the caches hold the older version, and a full refresh
+			 * is not available inside the transaction InitPostgres has open. Startup has no error
+			 * handler of its own, so if we ever reach here, this terminates the connection.
+			 */
+			elog(ERROR,
+				 "could not apply the invalidation messages this connection was started with");
+		}
+	}
+	PG_FINALLY();
+	{
+		yb_refresh_cache_in_progress = false;
+	}
+	PG_END_TRY();
+
+	YbUpdateCatalogCacheVersion(YbStaleCatalogPrefetchTargetVersion);
+	YbUpdatePggateTableCacheAfterApply();
+
+	YbReleaseStaleCatalogPrefetchMessages();
+
+	/*
+	 * Applying messages instead of refetching the catalog is an incremental refresh, the same
+	 * thing YbRefreshCacheUsingInvalMsgs counts when a live backend does it. Every connection
+	 * counted here is counted there too.
+	 */
+	YbIncrementCatCacheDeltaRefreshes();
+	YbIncrementStaleCatalogPrefetches();
+
+	/*
+	 * The backend now reports the version it caught up to, and the shared version may already
+	 * have moved past it. Startup takes more locks after this -- process_settings reads
+	 * pg_db_role_setting -- so AcceptInvalidationMessages can reach YbMaybeRefreshCache with
+	 * neither the prefetcher nor the flag above suppressing it. It refreshes incrementally, or
+	 * fully where that newer gap has no usable run of messages, discarding the catalog this just
+	 * assembled. Slower, not wrong: the YBCStopSysTablePrefetching above dropped the prefetcher's
+	 * read time with it, so the reads that rebuild the caches are not pinned to the older one.
+	 */
+}
+
+/*
+ * The part of YbTryPrepareStaleCatalogPrefetch that reads nothing and waits for nothing: whether
+ * this node holds a version older than the one being read for, and whether the gap is narrow
+ * enough that a run of messages could cover it. Says only that the older read is worth trying,
+ * not that it will work.
+ *
+ * Separate because a connection start that is not taking the older read still has to decide
+ * whether to ask the tserver for one if it finds a fill already under way. That decision is paid
+ * on every connection start, so it cannot afford the wait and the message fetch the full check
+ * makes, and being wrong costs no more than the attempt that follows.
+ *
+ * Fills last_prefetched and num_catalog_versions, which the caller that goes on to prepare the
+ * read needs anyway.
+ */
+static bool
+YbStaleCatalogPrefetchLooksPossible(const YbcPgLastKnownCatalogVersionInfo version,
+									uint64_t *last_prefetched,
+									uint32_t *num_catalog_versions)
+{
+	YbcStatus	status;
+
+	if (!yb_enable_stale_catalog_prefetch)
+		return false;
+
+	if (!YbIsInvalidationMessageEnabled())
+		return false;
+
+	if (version.version == YB_CATCACHE_VERSION_UNINITIALIZED || !OidIsValid(MyDatabaseId))
+		return false;
+
+	status = YBCGetSharedDbLastPrefetchedCatalogVersion(MyDatabaseId, last_prefetched);
+	if (status)
+	{
+		YBCFreeStatus(status);
+		return false;
+	}
+
+	/* Nothing cached for this database, or nothing older than what we were going to read anyway. */
+	if (*last_prefetched == 0 || *last_prefetched >= version.version)
+		return false;
+
+	/*
+	 * The tserver keeps a bounded number of message lists per database, so a gap wider than that
+	 * cannot have a complete run behind it.
+	 */
+	*num_catalog_versions = version.version - *last_prefetched;
+	if (*num_catalog_versions >
+		*YBCGetGFlags()->ysql_max_invalidation_message_queue_size)
+		return false;
+
+	return true;
+}
+
+/*
+ * Decide whether this backend can read the catalog at an older version from the local tserver's
+ * response cache, rather than fetching the whole catalog from the master leader. The backend
+ * reads at that older version and YbFinishStaleCatalogPrefetch later applies the invalidation
+ * messages collected here, which leaves it where a connection that had fetched from the leader
+ * would have been.
+ *
+ * The messages that bridge the gap are collected here rather than when they are applied: doing
+ * it before any catalog is read is what lets a refusal cost nothing, and it means the apply
+ * cannot later find the run gone and be left with no way forward.
+ *
+ * Whether the master leader's load permits reading an older version at all is the caller's to
+ * decide; this function does not look at it. The two callers answer it differently, and each
+ * says why where it calls.
+ *
+ * On success fills stale_version with the older version to read at and returns true. Every check
+ * is made before any catalog is read, so a refusal leaves nothing loaded to undo. It is not free,
+ * though: the wait below runs before the checks that follow it and is paid whether or not they
+ * pass.
+ */
+static bool
+YbTryPrepareStaleCatalogPrefetch(const YbcPgLastKnownCatalogVersionInfo version,
+								 YbcPgLastKnownCatalogVersionInfo *stale_version)
+{
+	uint64_t	last_prefetched = 0;
+	uint32_t	num_catalog_versions;
+	YbcStatus	status;
+	MemoryContext oldcxt;
+
+	if (!YbStaleCatalogPrefetchLooksPossible(version, &last_prefetched,
+											 &num_catalog_versions))
+		return false;
+
+	/*
+	 * The tserver only has the messages once its own shared catalog version has reached the one
+	 * being read for, so wait for that rather than refuse a run that is about to become
+	 * available. The version arrives on a heartbeat, so that is normally the length of the wait.
+	 * YbWaitForSharedCatalogVersionToCatchup gives up after ten heartbeats or a minute,
+	 * whichever is longer, which a connection reaches only once heartbeats have stopped coming
+	 * back -- a worse problem than this path is for.
+	 */
+	YbWaitForSharedCatalogVersionToCatchup(version.version);
+
+	Assert(!YbStaleCatalogPrefetchPending);
+
+	/* The message lists outlive the prefetch that follows, so not the current context. */
+	oldcxt = MemoryContextSwitchTo(TopMemoryContext);
+	status = YBCGetTserverCatalogMessageLists(MyDatabaseId, last_prefetched,
+											  num_catalog_versions,
+											  &YbStaleCatalogPrefetchMessages);
+	MemoryContextSwitchTo(oldcxt);
+	if (status)
+	{
+		YBCFreeStatus(status);
+		return false;
+	}
+
+	/* No consecutive run of message lists covering the gap. */
+	if (YbStaleCatalogPrefetchMessages.num_lists == 0)
+		return false;
+
+	/* A message this release cannot apply leaves the gap no cheaper to close than a full fetch. */
+	if (yb_test_fail_stale_catalog_message_check ||
+		!YbCanApplyInvalidationMessages(&YbStaleCatalogPrefetchMessages))
+	{
+		YbReleaseStaleCatalogPrefetchMessages();
+		return false;
+	}
+
+	YbStaleCatalogPrefetchTargetVersion = version.version;
+	stale_version->version = last_prefetched;
+	stale_version->is_db_catalog_version_mode = version.is_db_catalog_version_mode;
+	elog(DEBUG1, "reading catalog at version %" PRIu64 ", %u versions behind %" PRIu64
+		 ", for database %u", last_prefetched, num_catalog_versions, version.version,
+		 MyDatabaseId);
+	return true;
 }
 
 static void
 YbRunWithPrefetcher(YbcStatus (*func) (YbRunWithPrefetcherContext *),
 					bool keep_prefetcher,
-					YbcPgSysTablePrefetchKind kind)
+					YbcPgSysTablePrefetchKind kind,
+					bool preload_rel_cache)
 {
 	YbcPgLastKnownCatalogVersionInfo catalog_version = {};
 	uint64_t	shared_catalog_version;
+
+	/*
+	 * A connection starting up that reads the whole catalog. Each condition rules out a
+	 * different prefetch:
+	 *
+	 * - the kind rules out a refresh on a live backend and the relcache-init backend, which
+	 *   both prefetch as YB_YQL_PREFETCH_KIND_HIGH_PRIORITY;
+	 * - the auth check rules out a backend authenticating for connection manager, which
+	 *   prefetches as a connection start and so is not caught by the kind;
+	 * - preload_rel_cache rules out a connection that reads only a few small tables, which was
+	 *   never going to make the large catalog read that this is all about.
+	 *
+	 * A connection of this kind either reads an older version out of the cache or goes to the
+	 * master leader and fills the cache itself, and the version it reads was filled by an earlier
+	 * connection of this kind.
+	 */
+	const bool	is_full_connection_start =
+		kind == YB_YQL_PREFETCH_KIND_CONNECTION_START && !YbIsPerformingConnMgrAuth() &&
+		preload_rel_cache;
 
 	HandleYBStatus(YBCGetSharedCatalogVersion(&shared_catalog_version));
 	/*
@@ -3101,11 +3375,13 @@ YbRunWithPrefetcher(YbcStatus (*func) (YbRunWithPrefetcherContext *),
 		use_tserver_cache_for_auth ? YB_YQL_PREFETCHER_TRUST_CACHE_AUTH
 		: YB_YQL_PREFETCHER_TRUST_CACHE;
 	YbPrefetcherStarterWithCache trust_cache =
-		MakeStarterWithCache(trust_mode, &catalog_version, kind);
+		MakeStarterWithCache(trust_mode, &catalog_version, kind, is_full_connection_start);
 	YbPrefetcherStarterWithCache renew_soft =
-		MakeStarterWithCache(YB_YQL_PREFETCHER_RENEW_CACHE_SOFT, &catalog_version, kind);
+		MakeStarterWithCache(YB_YQL_PREFETCHER_RENEW_CACHE_SOFT, &catalog_version, kind,
+							 is_full_connection_start);
 	YbPrefetcherStarterWithCache renew_hard =
-		MakeStarterWithCache(YB_YQL_PREFETCHER_RENEW_CACHE_HARD, &catalog_version, kind);
+		MakeStarterWithCache(YB_YQL_PREFETCHER_RENEW_CACHE_HARD, &catalog_version, kind,
+							 is_full_connection_start);
 	YbPrefetcherStarterNoCache no_cache = {
 		.functor =
 		{
@@ -3114,7 +3390,23 @@ YbRunWithPrefetcher(YbcStatus (*func) (YbRunWithPrefetcherContext *),
 			.kind = kind,
 	};
 
+	/*
+	 * Reading an older catalog version out of the local response cache instead of asking the
+	 * master leader for a fresh copy. Reached when the leader says it is loaded, or when the
+	 * tserver sends this connection away from a fill already under way, and in no other case: a
+	 * full prefetch is what advances the version the node has cached, and nothing would advance
+	 * it if every connection took this path.
+	 *
+	 * version_read_time is left unset. It only supplies a read time for rows a cache-trusting
+	 * prefetch still has to go and read, and a lookup-only prefetch reads nothing.
+	 */
+	YbcPgLastKnownCatalogVersionInfo stale_catalog_version = {};
+	YbPrefetcherStarterWithCache stale_cache =
+		MakeStarterWithCache(YB_YQL_PREFETCHER_TRUST_CACHE_LOOKUP_ONLY,
+							 &stale_catalog_version, kind, is_full_connection_start);
+
 	YbPrefetcherStarterFunctor *prefetcher_starters[] = {
+		&stale_cache.functor,
 		&trust_cache.functor,
 		&renew_soft.functor,
 		&renew_hard.functor,
@@ -3122,6 +3414,14 @@ YbRunWithPrefetcher(YbcStatus (*func) (YbRunWithPrefetcherContext *),
 	};
 
 	static const size_t kStartersCount = lengthof(prefetcher_starters);
+
+	/*
+	 * Positions in prefetcher_starters. The stale read is first in the array, followed by the
+	 * starters that read the catalog from the master leader. Which position a connection begins
+	 * at is decided below.
+	 */
+	static const size_t kStalePrefetchIdx = 0;
+	static const size_t kFirstFullPrefetchIdx = 1;
 
 	size_t		starter_idx = kStartersCount - 1;
 
@@ -3147,7 +3447,6 @@ YbRunWithPrefetcher(YbcStatus (*func) (YbRunWithPrefetcherContext *),
 		yb_read_time == 0 &&
 		*YBCGetGFlags()->ysql_enable_read_request_caching)
 	{
-		starter_idx = 0;
 		if (use_tserver_cache_for_auth)
 		{
 			/*
@@ -3163,23 +3462,166 @@ YbRunWithPrefetcher(YbcStatus (*func) (YbRunWithPrefetcherContext *),
 		}
 		else
 			catalog_version = YbGetCatalogCacheVersionForTablePrefetching();
+
+		starter_idx = kFirstFullPrefetchIdx;
+
+		if (is_full_connection_start)
+		{
+			/*
+			 * The older version is read unasked only while the master leader says it is turning
+			 * prefetches away. A full prefetch is what records a newer version for this node to
+			 * read back later, so a backend that always read the cached version instead would
+			 * stop anything recording one, and the gap would grow until the messages needed to
+			 * close it no longer exist.
+			 */
+			const bool	leader_is_shedding =
+				YBCGetSharedYsqlCatalogPrefetchLoad() >= YB_CATALOG_PREFETCH_LOAD_BUSY;
+
+			if (leader_is_shedding &&
+				YbTryPrepareStaleCatalogPrefetch(catalog_version, &stale_catalog_version))
+				starter_idx = kStalePrefetchIdx;
+			else if (!leader_is_shedding)
+			{
+				/*
+				 * The leader is not refusing prefetches, so read the current version as usual.
+				 * Ask the tserver not to queue this behind a fill another connection already has
+				 * under way, though: that wait is as long as the leader takes, and every
+				 * connection that arrives during it waits too. Being sent away costs an attempt
+				 * at the older read, which waits for this node's shared catalog version to reach
+				 * the one asked for -- normally a heartbeat, and bounded either way, against a
+				 * fill with no bound.
+				 *
+				 * Only the cheap checks here, since this is paid whether or not a fill turns out
+				 * to be under way. The wait and the message fetch come later, and only for a
+				 * connection that is actually sent away.
+				 *
+				 * Not asked for when the leader is shedding and the read above was refused: a
+				 * send-away does no more than try that read again, so it would end in the same
+				 * refusal a round trip later.
+				 */
+				uint64_t	last_prefetched;
+				uint32_t	num_catalog_versions;
+
+				trust_cache.send_away_if_fill_in_flight =
+					YbStaleCatalogPrefetchLooksPossible(catalog_version, &last_prefetched,
+														&num_catalog_versions);
+			}
+		}
 	}
 	for (;;)
 	{
+		const bool	is_stale_attempt = (starter_idx == kStalePrefetchIdx);
+
+		/* Both set by the send-away branch below, and read just after it. */
+		bool		sent_away = false;
+		bool		older_read_prepared = false;
 		YbcStatus	status = YbRunWithPrefetcherImpl(prefetcher_starters[starter_idx],
-													 func, keep_prefetcher);
+													 func, keep_prefetcher,
+													 is_full_connection_start);
 
 		if (!status)
-			break;
-		if (++starter_idx == kStartersCount ||
-			!YBCStatusIsSnapshotTooOld(status))
 		{
-			HandleYBStatus(status);
-			return;
+			if (is_stale_attempt)
+			{
+				/*
+				 * This backend holds the catalog as of the older version, so that is the version
+				 * it reports until YbFinishStaleCatalogPrefetch carries it the rest of the way.
+				 * That cannot happen here: the critical system indexes are loaded further down in
+				 * RelationCacheInitializePhase3, from relcache entries an invalidation message is
+				 * allowed to remove, and load_critical_index does not rebuild what it cannot
+				 * find.
+				 *
+				 * Without a relcache preload nothing else would set the version, leaving the
+				 * backend claiming a version newer than the rows it just read.
+				 */
+				YbUpdateCatalogCacheVersion(stale_catalog_version.version);
+				YbStaleCatalogPrefetchPending = true;
+			}
+			break;
+		}
+		/*
+		 * Any failure of the stale read falls through to a full prefetch. Reading an older version
+		 * is an optimization, so nothing it does should turn a connection that the full prefetch
+		 * would have served into one that fails. Finding nothing in the tserver response cache is
+		 * the expected case and is not worth reporting; anything else is logged, since it is
+		 * either a bug or a case worth knowing about.
+		 */
+		if (is_stale_attempt)
+		{
+			/* The full prefetch reads the current version, so there is nothing left to bridge. */
+			YbReleaseStaleCatalogPrefetchMessages();
+			if (!YBCStatusIsResponseCacheMiss(status))
+				elog(LOG, "stale catalog prefetch for database %u failed, falling back to a full "
+					 "prefetch: %s", MyDatabaseId, YBCMessageAsCString(status));
+		}
+
+		/*
+		 * Sent away from a fill already under way -- another connection's anywhere in this
+		 * database, or any session's on this very entry -- rather than queued behind it. Read
+		 * the version this node holds instead. The request is cleared first, so if that read
+		 * cannot be prepared or goes on to fail, the attempt after it runs as it would have
+		 * without the ask -- queueing behind the fill when it wants the entry being filled, and
+		 * starting one of its own when it does not -- so the two cannot send each other back and
+		 * forth.
+		 *
+		 * No leader check here, unlike the attempt above. What that check protects is that
+		 * something still records newer versions, and that is held instead by the gap: once a
+		 * node falls further behind than the message queue can bridge, no connection is sent
+		 * away and the next one reads the catalog in full. The fill this caller was sent away
+		 * from need not be the thing that records -- it may be a refresh on a live backend,
+		 * which records nothing.
+		 *
+		 * Only the cache miss means a fill was under way, and that test is load-bearing: any
+		 * other failure is a real one, and turning it into a stale read would hide it. No test
+		 * reaches it, since nothing makes the first attempt fail any other way.
+		 *
+		 * The starter test bounds this to the trust attempt: the flag it reads belongs to
+		 * trust_cache and survives into later starters.
+		 */
+		if (trust_cache.send_away_if_fill_in_flight &&
+			starter_idx == kFirstFullPrefetchIdx &&
+			YBCStatusIsResponseCacheMiss(status))
+		{
+			sent_away = true;
+			trust_cache.send_away_if_fill_in_flight = false;
+			older_read_prepared =
+				YbTryPrepareStaleCatalogPrefetch(catalog_version,
+												 &stale_catalog_version);
+		}
+
+		if (older_read_prepared)
+			starter_idx = kStalePrefetchIdx;
+		else if (!sent_away)
+		{
+			/*
+			 * A send-away leaves starter_idx alone, so the same starter runs again with the ask
+			 * cleared and this connection does what it would have without it. Advancing would raise
+			 * the Incomplete here, since it is neither a snapshot-too-old nor a stale attempt --
+			 * failing a connection the full prefetch would have served.
+			 */
+			if (++starter_idx == kStartersCount ||
+				!(YBCStatusIsSnapshotTooOld(status) || is_stale_attempt))
+			{
+				HandleYBStatus(status);
+				return;
+			}
 		}
 		YBCFreeStatus(status);
-		/* Reset catalog caches before next attempt */
+
+		/*
+		 * Reset the caches before the next attempt. The relcache has to go too: a prefetch that
+		 * failed partway may already have run YBLoadRelations, and that function expects to find
+		 * no alterable entry for a relation it is about to build.
+		 *
+		 * Only while starting up. This loop is also reached by a refresh on a live backend
+		 * retrying a read whose snapshot was too old, and that backend holds relations open:
+		 * YbResetRelationCacheAfterPreloadFailure asserts a reference count of at most one and
+		 * then destroys the entry, so it is kept to connection startup here for the same reason
+		 * the preload's own recovery keeps it there.
+		 */
 		ResetCatalogCaches();
+		if (IsInitProcessingMode())
+			YbResetRelationCacheAfterPreloadFailure();
 	}
 }
 
@@ -3381,7 +3823,7 @@ YbUpdateRelationCacheImpl(YbUpdateRelationCacheState *state,
 		YbRegisterTablesForPrefill(prefetcher, tables, lengthof(tables));
 	}
 
-	YbcStatus	status = YbPrefetch(prefetcher);
+	YbcStatus	status = YbPrefetch(prefetcher, false /* completes_connection_prefetch */ );
 
 	if (status)
 		return status;
@@ -3621,7 +4063,7 @@ YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 		YbRegisterTablesForPrefill(prefetcher, tables, lengthof(tables));
 	}
 
-	YbcStatus	status = YbPrefetch(prefetcher);
+	YbcStatus	status = YbPrefetch(prefetcher, false /* completes_connection_prefetch */ );
 
 	if (status)
 		return status;
@@ -3755,7 +4197,8 @@ YBPreloadRelCache()
 	 * starting up: this backend cannot run anything until it has the data.
 	 */
 	YbRunWithPrefetcher(&YbPreloadRelCacheImpl, false /* keep_prefetcher */ ,
-						YB_YQL_PREFETCH_KIND_CACHE_REFRESH);
+						YB_YQL_PREFETCH_KIND_HIGH_PRIORITY,
+						true /* preload_rel_cache */ );
 }
 
 static YbcStatus
@@ -3796,7 +4239,22 @@ YbPrefetchRequiredDataImpl(YbRunWithPrefetcherContext *ctx,
 	if (YbIsAuthPassthroughInProgress(MyProcPort))
 		YbTryRegisterLogicalClientVersionTableForPrefetching();
 
-	status = YbPrefetch(prefetcher);
+	/*
+	 * This YbPrefetch call is the last read of a connection start, so once it is cached this
+	 * node holds everything such a connection reads. That is what a recorded version promises,
+	 * and why only this call can record one: a connection reads every request back, so a
+	 * partial set would send it to the master leader anyway. Which prefetches are allowed to
+	 * record at all is decided by is_full_connection_start in YbRunWithPrefetcher.
+	 *
+	 * Beyond the core tables this round adds only pg_auth_members and pg_db_role_setting, and
+	 * both are names ysql_catalog_preload_additional_table_list accepts. An operator who lists
+	 * them leaves nothing registered here, YbPrefetch issues no request, and with no request
+	 * there is nothing to cache and no version recorded -- the stale read then stays unavailable
+	 * on that node, in the preload configuration it is meant for. Issuing the round regardless
+	 * would need pggate to accept a prefetch with no tables registered, which its Prefetch
+	 * DCHECKs against.
+	 */
+	status = YbPrefetch(prefetcher, ctx->completes_connection_prefetch);
 	if (status)
 		return status;
 	YbFillCaches(prefetcher);
@@ -3831,7 +4289,7 @@ YbPrefetchRequiredData(bool preload_rel_cache)
 	 * large preload on the connection itself, as a CONNECTION_START prefetch.
 	 */
 	if (MyBackendType == YB_RELCACHE_INIT_BACKEND)
-		kind = YB_YQL_PREFETCH_KIND_CACHE_REFRESH;
+		kind = YB_YQL_PREFETCH_KIND_HIGH_PRIORITY;
 	else
 		kind = YB_YQL_PREFETCH_KIND_CONNECTION_START;
 
@@ -3839,7 +4297,8 @@ YbPrefetchRequiredData(bool preload_rel_cache)
 						 &YbPrefetchRequiredDataWithRelCache :
 						 &YbPrefetchRequiredDataWithoutRelCache),
 						true /* keep_prefetcher */ ,
-						kind);
+						kind,
+						preload_rel_cache);
 }
 
 /*
@@ -7408,6 +7867,9 @@ RelationCacheInitializePhase3(void)
 		Assert(YBCIsSysTablePrefetchingStarted());
 		Assert(YbCheckCatalogCacheIndexNameTable());
 		Assert(YbCheckSysCacheNames());
+
+		if (YbStaleCatalogPrefetchPending)
+			needNewCacheFile = false;
 	}
 
 	/*
@@ -10564,4 +11026,66 @@ YbIndexAttHasOptionsProc(Relation indexrel, AttrNumber attnum)
 	return (indexrel->rd_indam->amoptsprocnum != 0 &&
 			OidIsValid(index_getprocid(indexrel, attnum,
 									   indexrel->rd_indam->amoptsprocnum)));
+}
+
+/*
+ * YbRelationGetUnConstifiedIndexExpressions -- RelationGetIndexExpressions,
+ * but without constant folding.
+ *
+ * The expression tree is returned exactly as stored in indexprs of pg_index.
+ * This form is not cached, since rd_indexprs holds the folded one.
+ */
+List *
+YbRelationGetUnConstifiedIndexExpressions(Relation relation)
+{
+	List	   *result;
+	Datum		exprsDatum;
+	bool		isnull;
+	char	   *exprsString;
+
+	if (relation->rd_indextuple == NULL ||
+		heap_attisnull(relation->rd_indextuple, Anum_pg_index_indexprs, NULL))
+		return NIL;
+
+	exprsDatum = heap_getattr(relation->rd_indextuple,
+							  Anum_pg_index_indexprs,
+							  GetPgIndexDescriptor(),
+							  &isnull);
+	Assert(!isnull);
+	exprsString = TextDatumGetCString(exprsDatum);
+	result = (List *) stringToNode(exprsString);
+	pfree(exprsString);
+
+	return result;
+}
+
+/*
+ * YbRelationGetUnConstifiedIndexPredicate -- RelationGetIndexPredicate, but
+ * without constant folding  and conversion to implicit-AND form.
+ *
+ * The expression tree is returned exactly as stored in indpred of pg_index.
+ * This form is not cached, since indpred holds the folded one.
+ */
+Node *
+YbRelationGetUnConstifiedIndexPredicate(Relation relation)
+{
+	Node	   *result;
+	Datum		predDatum;
+	bool		isnull;
+	char	   *predString;
+
+	if (relation->rd_indextuple == NULL ||
+		heap_attisnull(relation->rd_indextuple, Anum_pg_index_indpred, NULL))
+		return NULL;
+
+	predDatum = heap_getattr(relation->rd_indextuple,
+							 Anum_pg_index_indpred,
+							 GetPgIndexDescriptor(),
+							 &isnull);
+	Assert(!isnull);
+	predString = TextDatumGetCString(predDatum);
+	result = (Node *) stringToNode(predString);
+	pfree(predString);
+
+	return result;
 }

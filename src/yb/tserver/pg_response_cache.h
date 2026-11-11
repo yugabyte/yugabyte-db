@@ -47,8 +47,16 @@ class PgResponseCache {
  public:
   using KeyGroup = decltype(std::declval<PgPerformOptionsPB::CachingInfoPB>().key_group());
 
+  // Invoked once a connection start's prefetch is wholly cached: the request that carried
+  // completes_connection_prefetch succeeded and no operation in it was still paging. Not invoked
+  // for the rounds before it, for any other caller's fill, or when a cached response is served.
+  // The filter is here rather than in the observer so that a caller may read the callback as this
+  // node now holding a whole prefetch at the version it is given.
+  using FillObserver = std::function<void(KeyGroup, uint64_t)>;
+
   PgResponseCache(
-      const std::shared_ptr<MemTracker>& parent_mem_tracker, MetricEntity* metric_entity);
+      const std::shared_ptr<MemTracker>& parent_mem_tracker, MetricEntity* metric_entity,
+      FillObserver fill_observer = {});
   ~PgResponseCache();
 
   struct Response {
@@ -60,9 +68,24 @@ class PgResponseCache {
 
   using Setter = std::function<void(Response&&)>;
 
+  // One connection's claim on a database, held while it fills. Counting it is what sends other
+  // connections to the older version this node holds. A request that fills takes one for the
+  // length of that request; a connection start's prefetch instead keeps one across all of its
+  // requests, so the gaps between them -- the backend building its relcache, with nothing
+  // outstanding -- do not read as an idle database.
+  class FillToken;
+  using FillTokenPtr = std::shared_ptr<FillToken>;
+
+  // session_id is the only handle on "another connection" a Perform carries, and is what the
+  // in-flight count is kept under. See AnotherFillInFlight for what the session's own counts
+  // being skipped does and does not decide.
+  //
+  // token is the caller's slot for a connection start's claim, kept across that prefetch's
+  // requests and released on its last one. The claim ends when its last holder lets go, so a
+  // session that goes away cannot leave its database looking busy.
   Result<Setter> Get(
       LWPgPerformOptionsPB_LWCachingInfoPB* cache_info, CoarseTimePoint deadline,
-      const PgResponseCacheWaiterPtr& waiter);
+      const PgResponseCacheWaiterPtr& waiter, uint64_t session_id, FillTokenPtr* token);
 
   struct DisablerType;
   using Disabler = std::shared_ptr<DisablerType>;

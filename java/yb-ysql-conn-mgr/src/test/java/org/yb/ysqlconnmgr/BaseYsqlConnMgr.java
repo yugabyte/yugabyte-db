@@ -18,6 +18,7 @@ import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.assertNotNull;
+import static org.yb.AssertionWrappers.fail;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -66,7 +67,7 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   private static final long WAIT_FOR_PG_AFTER_CLUSTER_START_TIMEOUT_MS =
       30000 * BuildTypeUtil.nonSanitizerVsSanitizer(1, 3);
   private boolean warmup_random_mode = true;
-  private static boolean ysql_conn_mgr_superuser_sticky = false;
+  private boolean ysql_conn_mgr_superuser_sticky = false;
 
   protected static final String DISABLE_TEST_WITH_ASAN =
         "Test is not working correctly with asan build";
@@ -170,6 +171,7 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   protected void enableStickySuperuserConnsAndRestartCluster() throws Exception {
     ysql_conn_mgr_superuser_sticky = true;
     restartClusterWithAdditionalFlags(Collections.emptyMap(), Collections.emptyMap());
+    markClusterNeedsRecreation();
   }
 
   protected void reduceQuerySizePacketAndRestartCluster(int query_sz) throws Exception {
@@ -665,6 +667,20 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     return true;
   }
 
+  protected static Connection connectWithRetries(ConnectionBuilder builder, int numRetries)
+      throws Exception {
+    for (int retry = 1; retry <= numRetries; ++retry) {
+      try {
+        return builder.connect();
+      } catch (SQLException e) {
+        LOG.info("Connection attempt " + retry + " failed", e);
+        Thread.sleep(retry * 1000);
+      }
+    }
+    fail("Unable to connect after " + numRetries + " attempts");
+    return null;
+  }
+
   protected static void executeQuery(Connection conn, String query, boolean shouldSucceed) {
     try (Statement stmt = conn.createStatement()) {
       ResultSet rs = stmt.executeQuery(query);
@@ -702,6 +718,16 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     assertTrue(pids.size() == 1);
    else
     assertTrue(pids.size() > 1);
+  }
+
+  protected void waitForStickyConnections(int expected) throws Exception {
+    TestUtils.waitFor(() -> {
+      JsonObject pool = getPool("yugabyte", "yugabyte");
+      if (pool == null) {
+        return false;
+      }
+      return pool.get("sticky_connections").getAsInt() == expected;
+    }, 30000);
   }
 
   protected void restartClusterWithFlags(

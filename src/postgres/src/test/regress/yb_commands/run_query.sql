@@ -179,7 +179,7 @@
 \if :{?Qnext}
 \else
 \if :_use_r
-\set Qnext :abs_srcdir '/yb_commands/_iter_R' :_count_r '.sql'
+\set Qnext :yb_commands_dir '/_iter_R' :_count_r '.sql'
 \else
 \set Qnext :_iter_query
 \endif
@@ -187,9 +187,9 @@
 \if :{?Pnext}
 \else
 \if :_use_q
-\set Pnext :abs_srcdir '/yb_commands/_iter_Q' :_count_q '.sql'
+\set Pnext :yb_commands_dir '/_iter_Q' :_count_q '.sql'
 \elif :_use_r
-\set Pnext :abs_srcdir '/yb_commands/_iter_R' :_count_r '.sql'
+\set Pnext :yb_commands_dir '/_iter_R' :_count_r '.sql'
 \else
 \set Pnext :_iter_query
 \endif
@@ -197,11 +197,11 @@
 
 -- Enter at the outermost used dimension.
 \if :_use_p
-\set _entry_iter :abs_srcdir '/yb_commands/_iter_P' :_count_p '.sql'
+\set _entry_iter :yb_commands_dir '/_iter_P' :_count_p '.sql'
 \elif :_use_q
-\set _entry_iter :abs_srcdir '/yb_commands/_iter_Q' :_count_q '.sql'
+\set _entry_iter :yb_commands_dir '/_iter_Q' :_count_q '.sql'
 \elif :_use_r
-\set _entry_iter :abs_srcdir '/yb_commands/_iter_R' :_count_r '.sql'
+\set _entry_iter :yb_commands_dir '/_iter_R' :_count_r '.sql'
 \endif
 \if :_params_ok
 \i :_entry_iter

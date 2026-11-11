@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.certmgmt.RpcClientCert;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
@@ -485,6 +486,10 @@ public class CertsRotateParams extends UpgradeTaskParams {
     if (!rootAndClientRootCASame) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST, "rootAndClientRootCASame cannot be false for Kubernetes universes.");
+    }
+
+    if (userIntent.useNodeToNodeClientCerts && rootCA != null) {
+      RpcClientCert.validateRootCA(rootCA);
     }
 
     UUID currentRootCA = universe.getUniverseDetails().rootCA;

@@ -89,6 +89,13 @@ struct CBTabletMetadata {
   // If this tablet has more replicas than the configured number in the PlacementInfoPB.
   bool is_over_replicated;
 
+  // A split parent with at least one running child, so it is about to be deleted. Its replicas
+  // are not counted as load (see PerTableLoadState::GetLoad) and are never moved, but they are
+  // still tracked for under-replication, placement and blacklist handling. Not set for a hidden
+  // parent (PITR, xCluster or CDC retains it, so it is not about to be deleted) or before any
+  // child runs (nothing is counted in the parent's place yet).
+  bool is_split_parent = false;
+
   // Set of tablet server ids that can be candidates for removal, due to tablet being
   // over-replicated. For tablets with placement information, this will be all tablet servers
   // that are housing replicas of this tablet, in a placement with strictly more replicas than the
@@ -139,6 +146,7 @@ struct CBTabletServerMetadata {
     out << Format("Descriptor: $0, ", descriptor->ToString());
     out << Format("running_tablets: $0, ", running_tablets);
     out << Format("starting_tablets: $0, ", starting_tablets);
+    out << Format("split_parent_tablets: $0, ", split_parent_tablets);
     out << Format("leaders: $0, ", leaders);
     out << Format("disabled_by_ts_tablets: $0, ", disabled_by_ts_tablets);
     out << Format("sorted_path_load: $0, ", sorted_path_load_by_tablets_count);
@@ -168,6 +176,10 @@ struct CBTabletServerMetadata {
   // The set of tablet ids that this tablet server is currently starting.
   std::set<TabletId> starting_tablets;
 
+  // The subset of running_tablets and starting_tablets that are split parents about to be
+  // deleted (CBTabletMetadata::is_split_parent). Not counted in this tablet server's load.
+  std::set<TabletId> split_parent_tablets;
+
   // The set of tablet leader ids that this tablet server is currently running.
   std::set<TabletId> leaders;
 
@@ -182,13 +194,16 @@ struct CBTabletServerMetadata {
 struct CBTabletServerGlobalMetadata {
   std::string ToString() {
     return YB_STRUCT_TO_STRING(
-        running_tablets_count, starting_tablets_count, leaders_count, starting_tablets_size,
-        disk_used_bytes, disk_capacity_bytes);
+        running_tablets_count, starting_tablets_count, split_parents_count, leaders_count,
+        starting_tablets_size, disk_used_bytes, disk_capacity_bytes);
   }
   // Stores global load counts for a tablet server.
   // See definitions of these counts in CBTabletServerMetadata.
   int running_tablets_count = 0;
   int starting_tablets_count = 0;
+  // Replicas of split parents about to be deleted. Included in the two counts above but not in
+  // the global load.
+  int split_parents_count = 0;
   int leaders_count = 0;
   // Size of all starting tablets on this TS, in bytes.
   size_t starting_tablets_size = 0;
@@ -401,7 +416,8 @@ class PerTableLoadState {
     GlobalLoadState* global_state_;
   };
 
-  // Get the load for a certain TS.
+  // Get the load for a certain TS: its running and starting replicas, minus the split parents
+  // about to be deleted.
   size_t GetLoad(const TabletServerId& ts_uuid) const;
   size_t GetTabletDriveLoad(const TabletServerId& ts_uuid, const TabletId& tablet_id) const;
   size_t GetPossiblyTransientLoad(const TabletServerId& ts_uuid) const;
@@ -418,6 +434,10 @@ class PerTableLoadState {
   // updating the internal state.
   Status UpdateTablet(TabletInfo* tablet);
 
+  // Flags the tablet as a split parent about to be deleted (CBTabletMetadata::is_split_parent)
+  // and stops counting its replicas in the per tablet server and global load.
+  void MarkAsSplitParent(const TabletId& tablet_id);
+
   virtual void UpdateTabletServer(std::shared_ptr<TSDescriptor> ts_desc);
 
   void SetInitialized() {
@@ -430,6 +450,7 @@ class PerTableLoadState {
   // enforced here, with one exemption: if from_ts is in the same placement block as to_ts, the
   // move is allowed even if the block is at its maximum, since the remove that follows restores
   // the block to its cap (this keeps e.g. blacklist-driven same-block moves from deadlocking).
+  // The exemption does not apply to under-replicated tablets, as no remove follows the add.
   // Callers must pass from_ts explicitly (empty if none) to make that decision conscious.
   Result<bool> CanAddTabletToTabletServer(
       const TabletId& tablet_id, const TabletServerId& to_ts, const TabletServerId& from_ts);
@@ -531,6 +552,7 @@ class PerTableLoadState {
     }
     out << " ] }";
     out << ", num_running_tablets: " << num_running_tablets_;
+    out << ", num_split_parents: " << num_split_parents_;
     out << ", average_tablet_size: " << average_tablet_size_;
     return out.str();
   }
@@ -639,6 +661,10 @@ class PerTableLoadState {
   std::vector<AffinitizedZonesSet> affinitized_zones_;
 
   int num_running_tablets_ = 0;
+
+  // Running split parents about to be deleted, which are left out of the load (see
+  // MarkAsSplitParent). Included in num_running_tablets_.
+  int num_split_parents_ = 0;
 
   // Average size of a running tablet in the table.
   uint64_t average_tablet_size_ = 0;

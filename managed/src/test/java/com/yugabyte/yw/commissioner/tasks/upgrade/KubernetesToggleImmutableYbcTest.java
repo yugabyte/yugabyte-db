@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.times;
@@ -15,10 +16,12 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.KubernetesToggleImmutableYbcParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -311,5 +314,35 @@ public class KubernetesToggleImmutableYbcTest extends KubernetesUpgradeTaskTest 
         TaskType.KubernetesToggleImmutableYbc,
         taskParams);
     checkUniverseNodesStates(taskParams.getUniverseUUID());
+  }
+
+  @Test
+  public void testEnableRejectedDuringPreFinalize() {
+    setupUniverseSingleAZ(false, false);
+    setImmutableYbcUniverseState(false, "2025.2.0.0-b1", SoftwareUpgradeState.PreFinalize);
+    KubernetesToggleImmutableYbcParams taskParams = new KubernetesToggleImmutableYbcParams();
+    taskParams.setUseYbdbInbuiltYbc(true);
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class, () -> taskParams.verifyParams(defaultUniverse, true));
+    assertTrue(e.getMessage(), e.getMessage().contains("PreFinalize"));
+  }
+
+  @Test
+  public void testEnableAllowedWhenReady() {
+    setupUniverseSingleAZ(false, false);
+    setImmutableYbcUniverseState(false, "2025.2.0.0-b1", SoftwareUpgradeState.Ready);
+    KubernetesToggleImmutableYbcParams taskParams = new KubernetesToggleImmutableYbcParams();
+    taskParams.setUseYbdbInbuiltYbc(true);
+    taskParams.verifyParams(defaultUniverse, true);
+  }
+
+  @Test
+  public void testDisableAllowedDuringPreFinalize() {
+    setupUniverseSingleAZ(false, false);
+    setImmutableYbcUniverseState(true, "2025.2.0.0-b1", SoftwareUpgradeState.PreFinalize);
+    KubernetesToggleImmutableYbcParams taskParams = new KubernetesToggleImmutableYbcParams();
+    taskParams.setUseYbdbInbuiltYbc(false);
+    taskParams.verifyParams(defaultUniverse, true);
   }
 }

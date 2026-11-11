@@ -25,8 +25,11 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/mini_master.h"
+
 #include "yb/tablet/tablet_peer.h"
+
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/curl_util.h"
 
 DECLARE_int32(update_min_cdc_indices_interval_secs);
 DECLARE_uint32(cdc_wal_retention_time_secs);
@@ -257,6 +260,15 @@ INSTANTIATE_TEST_CASE_P(
 INSTANTIATE_TEST_CASE_P(
     SemiMode, XClusterOutboundReplicationGroupParameterized, ::testing::Values(false));
 
+// Automatic mode only, for tests where a semi-automatic run would add no coverage: the APIs they
+// check run the same code in both modes, and the parameterized tests in this file already create
+// and delete groups in semi-automatic mode.
+class XClusterOutboundReplicationGroupAutomaticModeTest
+    : public XClusterOutboundReplicationGroupTest {
+ public:
+  bool UseAutomaticMode() override { return true; }
+};
+
 TEST_P(XClusterOutboundReplicationGroupParameterized, TestMultipleTable) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_xcluster_streams_to_checkpoint_in_parallel) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 5;
@@ -433,6 +445,27 @@ TEST_F(XClusterOutboundReplicationGroupTest, IsBootstrapRequiredTableWithDeleted
   ASSERT_FALSE(ASSERT_RESULT(IsBootstrapRequired()));
 }
 
+// Tests that the master's /tasks page can be rendered soon after an outbound replication group is
+// deleted (i.e., while the group's checkpoint task is still tracked) and that it still lists that
+// task.
+TEST_F(XClusterOutboundReplicationGroupTest, TasksPageAfterDelete) {
+  ASSERT_OK(CreateYsqlTable(kNamespaceName, kTableName1));
+  ASSERT_OK(CreateOutboundReplicationGroupSync());
+  ASSERT_OK(XClusterClient().DeleteOutboundReplicationGroup(
+      kReplicationGroupId, /*target_master_addresses=*/{}));
+
+  // The deleted group is freed, but the tasks tracker keeps its checkpoint task for
+  // tasks_tracker_keep_time_multiplier * catalog_manager_bg_task_wait_ms (300 s by default), and
+  // rendering /tasks calls the task's description().  The tracker also holds at most
+  // tasks_tracker_num_tasks (100 by default) tasks, so this relies on fewer than that many tasks
+  // starting after the checkpoint task.
+  auto* master = ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster());
+  faststring content;
+  ASSERT_OK(EasyCurl().FetchURL(Format("http://$0/tasks", master->bound_http_addr()), &content));
+  ASSERT_STR_CONTAINS(
+      content.ToString(), Format("XClusterCheckpointNamespaceTask [$0]", kReplicationGroupId));
+}
+
 // Temporarily disabling this during semi-automatic mode due to a bug.
 // TODO(GitHub issue #24746): fix semi-automatic mode so it survives master restarts during a
 // checkpoint then reenable this test.
@@ -475,7 +508,7 @@ TEST_P(
   ASSERT_EQ(all_xcluster_streams_initial.size(), stream_count);
 }
 
-TEST_P(XClusterOutboundReplicationGroupParameterized, Repair) {
+TEST_F(XClusterOutboundReplicationGroupAutomaticModeTest, Repair) {
   auto table_id_1 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName1));
   auto table_id_2 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName2));
 
@@ -571,7 +604,7 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, Repair) {
   }
 }
 
-TEST_P(XClusterOutboundReplicationGroupParameterized, RepairWithYbAdmin) {
+TEST_F(XClusterOutboundReplicationGroupAutomaticModeTest, RepairWithYbAdmin) {
   auto table_id_1 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName1));
   auto table_id_2 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName2));
 
@@ -607,7 +640,7 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, RepairWithYbAdmin) {
 
 // Validate the GetXClusterOutboundReplicationGroupInfo, and
 // GetXClusterOutboundReplicationGroups RPCs.
-TEST_P(XClusterOutboundReplicationGroupParameterized, TestListAPIs) {
+TEST_F(XClusterOutboundReplicationGroupAutomaticModeTest, TestListAPIs) {
   // Create two DBs with different table counts.
   ASSERT_OK(CreateYsqlTable(kNamespaceName, kTableName1));
 

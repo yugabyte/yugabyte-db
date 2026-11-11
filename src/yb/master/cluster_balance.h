@@ -109,6 +109,8 @@ class ClusterLoadBalancer {
   Status IsIdle() const;
   ClusterBalancerActivityInfo GetLatestActivityInfo() const;
 
+  const ClusterBalancerActivityBuffer& TEST_activity_buffer() const { return activity_buffer_; }
+
   // Returns the TableInfo of all the tables for whom cluster balancing is being skipped.
   // As of today, this constitutes all the system tables, colocated user tables
   // and tables which have been marked as DELETING OR DELETED.
@@ -336,6 +338,11 @@ class ClusterLoadBalancer {
   size_t get_total_blacklisted_servers() const;
   size_t get_total_leader_blacklisted_servers() const;
 
+  // Estimates the number of replica adds that would take the current table from its load
+  // distribution to the goal one. Only reported through the total_table_load_difference and
+  // estimated_data_to_balance_bytes metrics; the algorithm does not use it.
+  Result<size_t> EstimateTableLoadDifference() const;
+
   std::unordered_map<TableId, std::unique_ptr<PerTableLoadState>> per_table_states_;
   // The state of the table load in the cluster, as far as this run of the algorithm is concerned.
   // It points to the appropriate object in per_table_states_.
@@ -393,7 +400,12 @@ class ClusterLoadBalancer {
   // Goes over all table states and returns a priority-sorted list of under-replicated tablets.
   std::vector<UnderReplicatedTabletInfo> CollectUnderReplicatedTablets();
 
-  // Checks if we are at our RBS or overreplicated tablets limit.
+  // Checks if we are at our RBS limit. Used by adds to tablets below RF, which skip the
+  // overreplicated tablets limit.
+  Status CheckRemoteBootstrapLimits();
+
+  // Checks if we are at our RBS or overreplicated tablets limit. Used by any add that
+  // over-replicates a tablet.
   Status CanAddReplicas();
 
   // Random number generator for picking items at random from sets, using ReservoirSample.

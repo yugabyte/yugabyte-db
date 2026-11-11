@@ -2440,11 +2440,11 @@ DROP TABLE tempTable2;
   // Concurrent CREATE INDEX produces one extra invalidation message with object locking
   // (post-backfill WaitForBackendsCatalogVersion).
   if (IsObjectLockingEnabled()) {
-    ASSERT_EQ(result.size(), 80986U);
-    ASSERT_EQ(fingerprint, 16473784601673178567UL);
+    ASSERT_EQ(result.size(), 80746U);
+    ASSERT_EQ(fingerprint, 15353702351801463433UL);
   } else {
-    ASSERT_EQ(result.size(), 80932U);
-    ASSERT_EQ(fingerprint, 148605032842492807UL);
+    ASSERT_EQ(result.size(), 80692U);
+    ASSERT_EQ(fingerprint, 4661495031371014786UL);
   }
 }
 
@@ -3183,6 +3183,38 @@ TEST_F(PgCatalogVersionTest, TestAlterRoleSetGUCHasGlobalImpact) {
   ASSERT_EQ(row4, "on");
   ASSERT_EQ(row5, "off");
   ASSERT_EQ(row6, "off");
+}
+
+// Make sure GRANT/REVOKE SET ON PARAMETER has global impact.
+TEST_F(PgCatalogVersionTest, TestGrantSetOnParameterHasGlobalImpact) {
+  auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
+  ASSERT_OK(conn.Execute("CREATE ROLE user1 WITH login"));
+  ASSERT_OK(conn.Execute("CREATE DATABASE db1"));
+
+  auto conn_db1_user1 = ASSERT_RESULT(ConnectToDBAsUser("db1" /* db_name */, "user1"));
+  auto set_denied = [&]() -> Result<bool> {
+    auto s = conn_db1_user1.Execute("SET log_planner_stats = on");
+    if (s.ok()) {
+      return false;
+    }
+    if (s.ToString().find("permission denied to set parameter") == std::string::npos) {
+      return s;
+    }
+    return true;
+  };
+  ASSERT_TRUE(ASSERT_RESULT(set_denied()));
+  auto v1_db1 = ASSERT_RESULT(GetCatalogVersion(&conn_db1_user1));
+
+  ASSERT_OK(conn.Execute("GRANT SET ON PARAMETER log_planner_stats TO user1"));
+  auto v2_db1 = ASSERT_RESULT(GetCatalogVersion(&conn_db1_user1));
+  ASSERT_EQ(v2_db1, v1_db1 + 1);
+  ASSERT_OK(WaitFor([&]() -> Result<bool> { return !VERIFY_RESULT(set_denied()); },
+                    60s * kTimeMultiplier, "GRANT to reach the db1 backend"));
+
+  ASSERT_OK(conn.Execute("REVOKE SET ON PARAMETER log_planner_stats FROM user1"));
+  auto v3_db1 = ASSERT_RESULT(GetCatalogVersion(&conn_db1_user1));
+  ASSERT_EQ(v3_db1, v2_db1 + 1);
+  ASSERT_OK(WaitFor(set_denied, 60s * kTimeMultiplier, "REVOKE to reach the db1 backend"));
 }
 
 TEST_F(PgCatalogVersionTest, InvalMessageDeltaTableLoad) {
@@ -4434,7 +4466,7 @@ TEST_F(PgCatalogVersionMasterFailoverTest,
   // overlap. The refresh waiter cannot fire early: the old leader stops refreshing at the reset
   // and only starts again once it is the leader.
   {
-    auto reset_waiter = LogWaiter(old_leader, "ResetCachedCatalogVersions: cache reset");
+    auto reset_waiter = LogWaiter(old_leader, "PgCatalogVersionsCache: reset");
     ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
     ASSERT_OK(reset_waiter.WaitFor(30s * kTimeMultiplier));
   }

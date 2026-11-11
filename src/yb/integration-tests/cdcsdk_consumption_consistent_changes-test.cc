@@ -22,6 +22,8 @@
 #include "yb/util/flags.h"
 #include "yb/util/test_macros.h"
 
+DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
+
 namespace yb {
 namespace cdc {
 
@@ -55,6 +57,7 @@ class CDCSDKConsumptionConsistentChangesTest : public CDCSDKYsqlTest {
   void TestSysCatalogRetentionBarriers(
       bool use_grpc_stream, bool use_logical_replication_stream, bool add_dummy_grpc_slot_entry);
   void TestFailureOnAddingUnqualifiedTableToVWAL(bool add_expired_table, bool use_colocated);
+  void TestVectorIndexAlterDoesNotLeakIndexSchema(bool colocated);
 };
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVirtualWAL) {
@@ -200,6 +203,10 @@ TEST_F(
   // 1.6 WRITE OP (aborted multi-shard txn)
   // 1.7 WRITE OP (aborted multi-shard txn)
   log::SegmentSequence segments;
+  // The committed index check below is a one-shot read on every replica, so followers must already
+  // know index 7 is committed.
+  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(
+      test_cluster(), 30s * kTimeMultiplier, RequireLeaderIsReady::kTrue));
   for (int i = 0; i < num_tservers; i++) {
     for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
       auto tablet_id = peer->tablet_id();
@@ -1607,6 +1614,73 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWithMultipleAl
   ASSERT_EQ(seen_ddl_records, expected_ddl_records);
   ASSERT_EQ(seen_dml_records, expected_dml_records);
   CheckRecordsConsistencyFromVWAL(consistent_change_resp_after_alter.records);
+}
+
+// A vector index shares the tablets of its indexed table, so altering the index writes a
+// CHANGE_METADATA_OP carrying the index schema into the indexed table's tablets. That schema must
+// not be streamed, neither as the indexed table's schema nor as a DDL record of its own (#33135).
+void CDCSDKConsumptionConsistentChangesTest::TestVectorIndexAlterDoesNotLeakIndexSchema(
+    bool colocated) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ASSERT_OK(SetUpWithParams(3, 1, colocated, true));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test_vec (id int PRIMARY KEY, embedding vector(3))$0",
+      colocated ? "" : " SPLIT INTO 1 TABLETS"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test_vec"));
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  ASSERT_OK(conn.Execute("INSERT INTO test_vec VALUES (1, '[1, 2, 3]')"));
+  ASSERT_OK(conn.Execute(
+      "CREATE INDEX test_vec_idx ON test_vec USING ybhnsw (embedding vector_l2_ops)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_vec VALUES (2, '[4, 5, 6]')"));
+  ASSERT_OK(conn.Execute("ALTER INDEX test_vec_idx RENAME TO test_vec_idx_renamed"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_vec VALUES (3, '[7, 8, 9]')"));
+  // The table's own schema changes must still be streamed.
+  ASSERT_OK(conn.Execute("ALTER TABLE test_vec ADD COLUMN c int"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_vec VALUES (4, '[1, 1, 1]', 4)"));
+  // Moves both the table and its vector index.
+  ASSERT_OK(conn.Execute("CREATE SCHEMA s"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_vec SET SCHEMA s"));
+  ASSERT_OK(conn.Execute("INSERT INTO s.test_vec VALUES (5, '[2, 2, 2]', 5)"));
+
+  auto resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, 5 /* expected_dml_records */, true /* init_virtual_wal */));
+
+  int seen_inserts = 0;
+  bool seen_ddl_with_c = false;
+  for (const auto& record : resp.records) {
+    const auto& row_message = record.row_message();
+    if (row_message.op() == RowMessage::DDL) {
+      ASSERT_EQ(row_message.table(), "test_vec") << row_message.ShortDebugString();
+      for (const auto& column : row_message.schema().column_info()) {
+        ASSERT_NE(column.name(), "ybidxbasectid") << row_message.ShortDebugString();
+        seen_ddl_with_c |= column.name() == "c";
+      }
+    } else if (row_message.op() == RowMessage::INSERT) {
+      ++seen_inserts;
+      // Rows written after ADD COLUMN have the new column.
+      const bool has_c = row_message.new_tuple(0).pg_ql_value().int32_value() >= 4;
+      ASSERT_EQ(row_message.new_tuple_size(), has_c ? 3 : 2) << row_message.ShortDebugString();
+      ASSERT_EQ(row_message.new_tuple(0).column_name(), "id");
+      ASSERT_EQ(row_message.new_tuple(1).column_name(), "embedding");
+      if (has_c) {
+        ASSERT_EQ(row_message.new_tuple(2).column_name(), "c");
+      }
+    }
+  }
+  ASSERT_EQ(seen_inserts, 5);
+  ASSERT_TRUE(seen_ddl_with_c);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVectorIndexAlterDoesNotLeakIndexSchema) {
+  TestVectorIndexAlterDoesNotLeakIndexSchema(false /* colocated */);
+}
+
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest, TestVectorIndexAlterDoesNotLeakIndexSchemaColocated) {
+  TestVectorIndexAlterDoesNotLeakIndexSchema(true /* colocated */);
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCSDKConsistentStreamWithTabletSplit) {
@@ -3726,6 +3800,10 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCreationOfSlotOnNewDBAfterUpg
       ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), dynamic_tablets_2.begin()->tablet_id()));
   ASSERT_NE(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Invalid());
   ASSERT_NE(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+
+  // Wait for dynamic table addition to complete on CDC bg thread.
+  SleepFor(MonoDelta::FromMilliseconds(
+      2 * FLAGS_catalog_manager_cdc_bg_task_wait_ms * kTimeMultiplier));
 
   set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id_1, dynamic_tablets_1, OpId::Min()));
   ASSERT_FALSE(set_resp.has_error());
@@ -7056,6 +7134,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCheckPointMovesForwardWithAbo
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestAbortedTxnDoesntMoveCheckpointWhenCantStream) {
   // Disabling the implicit dynamic table addition in this test to make the outcome of each
   // GetConsistentChanges call deterministic.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_resolve_intent_lag_threshold_ms) = 5 * 60 * 1000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
       false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
@@ -7276,6 +7355,87 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALDetectAddDropColumnFromPg
   // Streamed sequence must be BEGIN, then interleaved INSERT/DDL, then COMMIT.
   ASSERT_EQ(shipped_ops.front(), RowMessage_Op_BEGIN);
   ASSERT_EQ(shipped_ops.back(), RowMessage_Op_COMMIT);
+  CheckRecordCount(resp, kExpectedDmlRecords);
+}
+
+// The walsender reads the catalog within the transaction of each record. Intents of a
+// subtransaction rolled back to a savepoint are still in the intents DB, so the BEGIN record of
+// such a transaction carries the aborted subtransactions for the walsender to skip them (#36047).
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALShipsAbortedSubtxnsOfTransactionalDdl) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
+  ToggleDDLMode(/* use_legacy = */ false);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 100;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false, true));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName, 1));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 10)", kTableName));
+  ASSERT_OK(conn.Execute("SAVEPOINT s1"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN value_2 text", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (2, 20, 'rolled_back')", kTableName));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT s1"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (3, 30)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN value_3 int", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (4, 40, 4)", kTableName));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (5, 50, 5)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN value_4 int", kTableName));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  constexpr int kExpectedDmlRecords = 4;
+  auto resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, kExpectedDmlRecords, true /* init_virtual_wal */));
+
+  std::string savepoint_txn_id;
+  std::string other_txn_id;
+  std::vector<int32_t> inserted_keys;
+  for (const auto& record : resp.records) {
+    const auto& row_message = record.row_message();
+    if (row_message.op() != RowMessage_Op_INSERT) {
+      continue;
+    }
+    const auto key = row_message.new_tuple(0).pg_ql_value().int32_value();
+    inserted_keys.push_back(key);
+    auto& txn_id = key == 5 ? other_txn_id : savepoint_txn_id;
+    if (txn_id.empty()) {
+      txn_id = row_message.transaction_id();
+    }
+    ASSERT_EQ(row_message.transaction_id(), txn_id);
+  }
+  ASSERT_EQ(inserted_keys, (std::vector<int32_t>{1, 3, 4, 5}));
+  ASSERT_NE(savepoint_txn_id, other_txn_id);
+
+  // Only the BEGIN record of the transaction with the savepoint rollback carries the set.
+  int savepoint_txn_begin_records = 0;
+  int other_txn_begin_records = 0;
+  for (const auto& record : resp.records) {
+    const auto& row_message = record.row_message();
+    SCOPED_TRACE(record.ShortDebugString());
+    if (row_message.op() == RowMessage_Op_BEGIN &&
+        row_message.transaction_id() == savepoint_txn_id) {
+      ASSERT_TRUE(row_message.has_aborted_subtxns());
+      auto aborted = ASSERT_RESULT(SubtxnSet::FromPB(row_message.aborted_subtxns().set()));
+      ASSERT_FALSE(aborted.IsEmpty());
+      ++savepoint_txn_begin_records;
+      continue;
+    }
+    ASSERT_FALSE(row_message.has_aborted_subtxns());
+    if (row_message.op() == RowMessage_Op_BEGIN) {
+      ASSERT_EQ(row_message.transaction_id(), other_txn_id);
+      ++other_txn_begin_records;
+    }
+  }
+  ASSERT_EQ(savepoint_txn_begin_records, 1);
+  ASSERT_EQ(other_txn_begin_records, 1);
   CheckRecordCount(resp, kExpectedDmlRecords);
 }
 

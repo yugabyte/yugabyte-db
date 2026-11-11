@@ -31,8 +31,9 @@
 //
 #pragma once
 
-#include <condition_variable>
 #include <deque>
+#include <memory>
+#include <mutex>
 #include <vector>
 
 #include "yb/common/opid.h"
@@ -43,9 +44,13 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
+#include "yb/util/priority_queue.h"
 #include "yb/util/result.h"
 
 namespace yb {
+
+class Synchronizer;
+
 namespace tablet {
 
 // Allows us to keep track of how a particular value of safe time was obtained, for sanity
@@ -163,6 +168,38 @@ class MvccManager {
                            const FixedHybridTimeLease& ht_lease,
                            std::unique_lock<std::mutex>* lock) const REQUIRES(mutex_);
 
+  // A thread that waits for safe time to reach min_allowed. Shared ownership lets a waker signal a
+  // waiter after releasing mutex_, and lets a timed-out waiter leave its entry for the next waker
+  // or StartShutdown to take out.
+  struct SafeTimeWaiter {
+    HybridTime min_allowed;
+    std::shared_ptr<Synchronizer> synchronizer;
+  };
+
+  // Puts the waiter with the lowest min_allowed on top.
+  struct SafeTimeWaiterCompare {
+    bool operator()(const SafeTimeWaiter& lhs, const SafeTimeWaiter& rhs) const {
+      return lhs.min_allowed > rhs.min_allowed;
+    }
+  };
+
+  using SafeTimeWaiters =
+      PriorityQueue<SafeTimeWaiter, std::vector<SafeTimeWaiter>, SafeTimeWaiterCompare>;
+
+  // Waits until safe_time_func() reaches min_allowed and returns the safe time it reached.
+  template <class SafeTimeFunc>
+  Result<SafeTimeWithSource> WaitForSafeTime(
+      SafeTimeWaiters* waiters, HybridTime min_allowed, CoarseTimePoint deadline,
+      const SafeTimeFunc& safe_time_func, std::unique_lock<std::mutex>* lock) const
+      REQUIRES(mutex_);
+
+  // Takes out the waiters that the current safe time could let through. The caller wakes them
+  // after releasing mutex_.
+  [[nodiscard]] std::vector<std::shared_ptr<Synchronizer>> ExtractReachedWaiters()
+      REQUIRES(mutex_);
+
+  SafeTimeWithSource FollowerSafeTime() const REQUIRES(mutex_);
+
   const std::string& LogPrefix() const { return prefix_; }
 
   struct InvariantViolationLoggingHelper;
@@ -176,7 +213,10 @@ class MvccManager {
   std::string prefix_;
   server::ClockPtr clock_;
   mutable std::mutex mutex_;
-  mutable std::condition_variable cond_;
+
+  // Waiters in DoGetSafeTime and in SafeTimeForFollower.
+  mutable SafeTimeWaiters safe_time_waiters_ GUARDED_BY(mutex_);
+  mutable SafeTimeWaiters follower_safe_time_waiters_ GUARDED_BY(mutex_);
 
   struct QueueItem {
     HybridTime hybrid_time;

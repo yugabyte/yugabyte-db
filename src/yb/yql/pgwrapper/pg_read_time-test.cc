@@ -23,6 +23,9 @@
 
 #include "yb/common/common_flags.h"
 #include "yb/common/ddl_mode-test-util.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/mini_master.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
@@ -46,6 +49,8 @@ DECLARE_bool(ysql_enable_write_pipelining);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_bool(ysql_disable_index_backfill);
+DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 
 METRIC_DECLARE_counter(picked_read_time_on_docdb);
 
@@ -554,6 +559,94 @@ TEST_F(PgMiniTestBase, CheckReadingDataAsOfPastTime) {
   ASSERT_NOK(conn.ExecuteFormat("SET yb_read_time TO '$0 ms'", t2));
 }
 
+// yb_read_time_skip_catalog: yb_read_time only applies to table reads; the catalog is read as of
+// now.
+TEST_F(PgMiniTestBase, ReadDataAsOfPastTimeWithCurrentCatalog) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t_table (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t_table VALUES (1)"));
+  const auto t1 = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint"));
+  ASSERT_OK(conn.Execute("INSERT INTO t_table VALUES (2)"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t_table ADD COLUMN v INT"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t_after (k INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t_after VALUES (1)"));
+
+  // Without the skip, the catalog is read as of t1 too, so t_after isn't visible.
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", t1));
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Fetch("SELECT * FROM t_after"), "relation \"t_after\" does not exist");
+
+  // With the skip, we get the current catalog (column v, t_after) but rows still as of t1.
+  ASSERT_OK(conn.Execute("SET yb_read_time_skip_catalog = 1"));
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchAllAsString("SELECT k, v FROM t_table ORDER BY k")), "1, NULL");
+  // t_after's row was written after t1, so it reads as empty even though the catalog has it.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t_after")), 0);
+
+  // Turning the skip off again goes back to the catalog as of t1.
+  ASSERT_OK(conn.Execute("SET yb_read_time_skip_catalog = 0"));
+  ASSERT_NOK_STR_CONTAINS(conn.Fetch("SELECT k, v FROM t_table"), "column \"v\" does not exist");
+}
+
+// Like yb_read_time, yb_read_time_skip_catalog can't change inside a transaction block while
+// yb_read_time is set.
+TEST_F(PgMiniTestBase, DisallowChangingSkipCatalogInTransactionBlock) {
+  auto conn = ASSERT_RESULT(Connect());
+  const auto t1 = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint"));
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", t1));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute("SET yb_read_time_skip_catalog = 1"),
+      "cannot be changed inside a transaction block");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+}
+
+class PgReadTimeCatalogModeTest : public PgMiniTestBase,
+                                  public ::testing::WithParamInterface<bool> {
+ public:
+  void SetUp() override {
+    ToggleDDLMode(/*use_legacy=*/GetParam());
+    TEST_SETUP_SUPER(PgMiniTestBase);
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    , PgReadTimeCatalogModeTest, ::testing::Bool(),
+    [](const ::testing::TestParamInfo<bool>& info) {
+      return info.param ? "LegacyCatalog" : "TransactionalCatalog";
+    });
+
+// Tests that with yb_read_time_skip_catalog set, a catalog read still sees the current catalog
+// after a table read in the same transaction has set the read point to yb_read_time.  The
+// xCluster target reads ddl_queue this way, with yb_non_ddl_txn_for_sys_tables_allowed putting
+// catalog reads in the transaction.  The two catalog modes get this right in different ways, so
+// the test runs in both.
+TEST_P(PgReadTimeCatalogModeTest, ReadDataAsOfPastTimeWithCurrentCatalogInTxn) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t_table (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t_table VALUES (1)"));
+  const auto t1 = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t_after (k INT)"));
+
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", t1));
+  ASSERT_OK(conn.Execute("SET yb_read_time_skip_catalog = 1"));
+  ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = 1"));
+  // An explicit transaction, so the order of the two reads is not up to the planner.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  // The table read pins the transaction's read point to t1.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t_table")), 1);
+  // The catalog read after it must still see the current catalog, which has t_after.
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<PGUint64>(
+          "SELECT count(*) FROM pg_class WHERE relname = 't_after'")),
+      1);
+  ASSERT_OK(conn.Execute("COMMIT"));
+}
+
 // Test that write DMLs are disallowed in a pg session when yb_read_time is set to non-zero.
 TEST_F(PgMiniTestBase, DisallowWriteDMLsWithYbReadTime) {
   auto conn = ASSERT_RESULT(Connect());
@@ -758,6 +851,174 @@ TEST_F(PgMiniTestBase, DisallowYbReadTimeOnDatabaseAndRoleLevel) {
   ASSERT_NOK_STR_CONTAINS(
       conn.ExecuteFormat("ALTER ROLE test_role_yb_read_time SET yb_read_time = '$0'", t1),
       "yb_read_time can only be set at the session level");
+}
+
+// The sys catalog's history cutoff only moves forward, so once CompactSysCatalog() has run the
+// catalog can no longer be read as of any earlier yb_read_time.
+class PgYbReadTimeTooOldTest : public PgMiniTestBase {
+ protected:
+  static constexpr auto kTooOldError = "cannot read the system catalog as of yb_read_time";
+  static constexpr auto kNowMicros =
+      "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint";
+
+  // Compacts the sys catalog tablet with no history retention, which moves its history cutoff up
+  // to the current time. Retention is restored afterwards so that automatic compactions of the
+  // sys catalog or of user tables keep the history the rest of the test reads.
+  Status CompactSysCatalog() {
+    const auto retention_sec = FLAGS_timestamp_history_retention_interval_sec;
+    const auto syscatalog_retention_sec = FLAGS_timestamp_syscatalog_history_retention_interval_sec;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) = 0;
+    const auto status = [this]() -> Status {
+      auto& catalog_manager = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+      auto tablet = VERIFY_RESULT(catalog_manager.sys_catalog()->tablet_peer()->shared_tablet());
+      RETURN_NOT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
+      return tablet->ForceManualRocksDBCompact();
+    }();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = retention_sec;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) =
+        syscatalog_retention_sec;
+    RETURN_NOT_OK(status);
+    SleepFor(1s);
+    return Status::OK();
+  }
+
+  // PGConn does not expose PQfn, so the fastpath scenario runs over a raw libpq connection.
+  Result<PGConnPtr> RawConnect() const {
+    const auto settings = MakeConnSettings();
+    const auto conn_str = Format(
+        "host=$0 port=$1 user=$2", settings.host, settings.port, settings.user);
+    PGConnPtr conn(PQconnectdb(conn_str.c_str()));
+    if (PQstatus(conn.get()) != CONNECTION_OK) {
+      return STATUS_FORMAT(NetworkError, "Connect failed: $0", PQerrorMessage(conn.get()));
+    }
+    return conn;
+  }
+
+  static Status RawCheck(const PGResultPtr& res, const std::string& what) {
+    const auto status = PQresultStatus(res.get());
+    if (status != PGRES_COMMAND_OK && status != PGRES_TUPLES_OK) {
+      return STATUS_FORMAT(RuntimeError, "$0 failed: $1", what, PQresultErrorMessage(res.get()));
+    }
+    return Status::OK();
+  }
+
+  static Status RawExec(PGconn* conn, const std::string& sql) {
+    return RawCheck(PGResultPtr(PQexec(conn, sql.c_str())), Format("'$0'", sql));
+  }
+
+  static Status RawPrepare(PGconn* conn, const char* name, const std::string& sql) {
+    return RawCheck(
+        PGResultPtr(PQprepare(conn, name, sql.c_str(), 0 /* nParams */, nullptr /* paramTypes */)),
+        Format("Prepare of '$0'", sql));
+  }
+
+  // Returns the number of columns the server describes for the prepared statement.
+  static Result<int> RawDescribePrepared(PGconn* conn, const char* name) {
+    PGResultPtr res(PQdescribePrepared(conn, name));
+    RETURN_NOT_OK(RawCheck(res, Format("Describe of '$0'", name)));
+    return PQnfields(res.get());
+  }
+
+  // Calls int4pl(a, b) through the fastpath function-call protocol, which bypasses the parser.
+  static Result<int> FastpathInt4Pl(PGconn* conn, int a, int b) {
+    constexpr int kInt4PlOid = 177;
+    PQArgBlock args[2] = {};
+    args[0].len = args[1].len = sizeof(int);
+    args[0].isint = args[1].isint = 1;
+    args[0].u.integer = a;
+    args[1].u.integer = b;
+    int result = 0;
+    int result_len = 0;
+    PGResultPtr res(PQfn(
+        conn, kInt4PlOid, &result, &result_len, 1 /* result_is_int */, args, 2));
+    if (PQresultStatus(res.get()) != PGRES_COMMAND_OK) {
+      return STATUS_FORMAT(RuntimeError, "PQfn failed: $0", PQresultErrorMessage(res.get()));
+    }
+    return result;
+  }
+
+  // Returns a yb_read_time (unix micros) at which the catalog can no longer be read.
+  Result<uint64_t> PrepareTooOldReadTime(PGConn* conn) {
+    RETURN_NOT_OK(conn->Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+    RETURN_NOT_OK(conn->Execute("INSERT INTO t VALUES (1), (2)"));
+    const auto t1 = VERIFY_RESULT(conn->FetchRow<PGUint64>(kNowMicros));
+    // A catalog write after t1 gives the compaction history to garbage collect.
+    RETURN_NOT_OK(conn->Execute("CREATE TABLE t_after (k INT PRIMARY KEY)"));
+    RETURN_NOT_OK(CompactSysCatalog());
+    return t1;
+  }
+};
+
+// A yb_read_time older than the sys catalog's history cutoff makes the pre-statement catalog
+// cache refresh fail with "Snapshot too old". The session must stay usable enough for the user
+// to change yb_read_time (#30993).
+TEST_F(PgYbReadTimeTooOldTest, ResetAfterSnapshotTooOld) {
+  auto conn = ASSERT_RESULT(Connect());
+  const auto t1 = ASSERT_RESULT(PrepareTooOldReadTime(&conn));
+  const auto t2 = ASSERT_RESULT(conn.FetchRow<PGUint64>(kNowMicros));
+
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", t1));
+  auto res = conn.FetchRow<PGUint64>("SELECT count(*) FROM t");
+  ASSERT_NOK(res);
+  ASSERT_STR_CONTAINS(res.status().ToString(), kTooOldError);
+  ASSERT_STR_CONTAINS(res.status().ToString(), "Snapshot too old");
+
+  // Everything but changing yb_read_time keeps failing with the same guidance, over both the
+  // extended (FetchRow) and the simple (Execute) query protocol.
+  res = conn.FetchRow<PGUint64>("SELECT 1");
+  ASSERT_NOK(res);
+  ASSERT_STR_CONTAINS(res.status().ToString(), kTooOldError);
+  ASSERT_STR_CONTAINS(res.status().ToString(), "Set yb_read_time to 0");
+  ASSERT_NOK_STR_CONTAINS(conn.Execute("BEGIN"), kTooOldError);
+
+  // SHOW still reports the requested time, and RESET gets the session back to the current time.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>("SHOW yb_read_time")), std::to_string(t1));
+  ASSERT_OK(conn.Execute("RESET yb_read_time"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>("SHOW yb_read_time")), "0");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t")), 2);
+
+  // Moving directly to a time that is still readable works as well.
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", t1));
+  ASSERT_NOK_STR_CONTAINS(conn.FetchRow<PGUint64>("SELECT count(*) FROM t"), kTooOldError);
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", t2));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t")), 2);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t_after")), 0);
+  ASSERT_OK(conn.Execute("RESET yb_read_time"));
+}
+
+// The fastpath function-call protocol never goes through the parser, so it carries its own guard.
+TEST_F(PgYbReadTimeTooOldTest, FastpathCallAfterSnapshotTooOld) {
+  auto conn = ASSERT_RESULT(Connect());
+  const auto t1 = ASSERT_RESULT(PrepareTooOldReadTime(&conn));
+
+  auto raw = ASSERT_RESULT(RawConnect());
+  ASSERT_OK(RawExec(raw.get(), Format("SET yb_read_time TO $0", t1)));
+  ASSERT_NOK_STR_CONTAINS(RawExec(raw.get(), "SELECT 1"), kTooOldError);
+  ASSERT_NOK_STR_CONTAINS(FastpathInt4Pl(raw.get(), 1, 2), kTooOldError);
+
+  ASSERT_OK(RawExec(raw.get(), "RESET yb_read_time"));
+  ASSERT_EQ(ASSERT_RESULT(FastpathInt4Pl(raw.get(), 1, 2)), 3);
+}
+
+// Describe of a statement prepared earlier re-analyzes it when the catalog changed since, which in
+// this state would describe today's columns while SHOW yb_read_time reports the old time.
+TEST_F(PgYbReadTimeTooOldTest, DescribeStatementAfterSnapshotTooOld) {
+  auto conn = ASSERT_RESULT(Connect());
+  const auto t1 = ASSERT_RESULT(PrepareTooOldReadTime(&conn));
+
+  auto raw = ASSERT_RESULT(RawConnect());
+  ASSERT_OK(RawPrepare(raw.get(), "s", "SELECT * FROM t"));
+  ASSERT_EQ(ASSERT_RESULT(RawDescribePrepared(raw.get(), "s")), 1);
+  ASSERT_OK(conn.Execute("ALTER TABLE t ADD COLUMN v INT"));
+  ASSERT_OK(RawExec(raw.get(), Format("SET yb_read_time TO $0", t1)));
+  ASSERT_NOK_STR_CONTAINS(RawExec(raw.get(), "SELECT 1"), kTooOldError);
+  ASSERT_NOK_STR_CONTAINS(RawDescribePrepared(raw.get(), "s"), kTooOldError);
+
+  // Back at the current time, the Describe re-analyzes the statement and sees the added column.
+  ASSERT_OK(RawExec(raw.get(), "RESET yb_read_time"));
+  ASSERT_NOK_STR_CONTAINS(
+      RawDescribePrepared(raw.get(), "s"), "cached plan must not change result type");
 }
 
 // Test the read-time flag of ysql_dump to generate the schema of the database as of a timestamp t

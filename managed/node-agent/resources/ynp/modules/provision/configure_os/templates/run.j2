@@ -166,7 +166,7 @@ EOF
   fi
 
   # Check if the distribution is Ubuntu
-  if [[ "{{ os_distribution }}" == "Ubuntu" ]]; then
+  if [[ "{{ os_distribution }}" == "ubuntu" ]]; then
     # Check if /etc/apt/apt.conf.d/20auto-upgrades exists
     if [[ -f /etc/apt/apt.conf.d/20auto-upgrades ]]; then
       echo "Reenabling unattended upgrades in /etc/apt/apt.conf.d/20auto-upgrades..."

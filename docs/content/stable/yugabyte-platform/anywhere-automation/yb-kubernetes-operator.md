@@ -24,6 +24,22 @@ You can additionally convert Kubernetes universes that are managed via Helm char
 
 ![YugabyteDB Kubernetes Operator](/images/yb-platform/yb-kubernetes-operator.png)
 
+## Use the operator with an AI coding agent
+
+If an AI coding agent (such as Claude Code, Cursor, or Codex) generates operator custom resources for you, install the official [yb-k8s-operator skill](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yb-k8s-operator) first. The skill supplies the operator's resource rules, so the agent makes fewer errors and uses fewer tokens.
+
+To install the skill, run the following command:
+
+```sh
+npx skills add yugabyte/yugabytedb-skills -s yb-k8s-operator
+```
+
+For more information, see the [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository.
+
+{{< note title="YugabyteDB Anywhere operator only" >}}
+The skill targets the YugabyteDB Anywhere Kubernetes Operator. It does not fully apply to the [open source YugabyteDB Kubernetes Operator](../../../deploy/kubernetes/single-zone/oss/yugabyte-operator/).
+{{< /note >}}
+
 ## YugabyteDB Kubernetes Operator CRDs
 
 The Operator is built around the **YBUniverse CRD**, which defines and manages a YugabyteDB universe.
@@ -476,13 +492,17 @@ NAME                     STATE   SOFTWARE VERSION
 operator-universe-demo   Ready   {{< yb-version version="stable" format="build">}}
 ```
 
-To modify the universe, edit the CRD and use `kubectl apply/edit` operations.
+To modify the universe, edit the CRD and use `kubectl apply/edit` operations. Set `replicationFactor` when you create the universe; the Operator does not support changing it later. See [Limitations](#limitations).
 
 To change storage class or volume count on a running universe, use the `tserverVolume` and `masterVolume` fields (including optional `perAZ` overrides). Refer to [Full move for Kubernetes universes](../../scale-deployments/kubernetes-full-move/#operator-universes).
 
 ### Create a universe with placement information
 
-You can specify `placementInfo` in the YBUniverse CRD to control regional and zonal placement of nodes. Use `defaultRegion` and `regions` with zone-level `numNodes` and optional `preferred` to define where nodes are placed. You need a Kubernetes provider (for example, one created via [YBProvider](#create-a-provider)) and set `spec.providerName` to its name.
+You can specify `placementInfo` in the YBUniverse CRD to control regional and zonal placement of nodes. Use `defaultRegion` and `regions` with zone-level `numNodes` and optional `leaderPreference` to define where nodes are placed. You need a Kubernetes provider (for example, one created via [YBProvider](#create-a-provider)) and set `spec.providerName` to its name.
+
+In v2026.1.3.0 and later, set `leaderPreference` on each zone to rank where tablet leaders are placed. `0` means the zone is not preferred. A lower positive value is a higher priority, and `1` is the most preferred. Zones can share a value. The values you set must be contiguous non-negative integers, with no gaps. If you omit it, the zone defaults to `1`. See [Preferred region](../../create-deployments/create-universes-overview/#preferred-region).
+
+The boolean `preferred` field is deprecated. It applies only when `leaderPreference` is not set.
 
 `placementInfo` also supports multi-region universes that span multiple Kubernetes clusters. Configure per-zone kubeconfigs in your YBProvider via [kubeConfigSecret](#using-a-custom-kubeconfig). Multi-cluster deployments require proper network connectivity between clusters; see [Configure Kubernetes multi-cluster environment](../../configure-yugabyte-platform/kubernetes/#configure-kubernetes-multi-cluster-environment) and [Networking for Kubernetes](../../prepare/networking-kubernetes/).
 
@@ -504,10 +524,10 @@ spec:
       zones:
       - code: us-west1-a
         numNodes: 2
-        preferred: true
+        leaderPreference: 1
       - code: us-west1-b
         numNodes: 1
-        preferred: true
+        leaderPreference: 1
   providerName: test-provider
   numNodes: 3
   replicationFactor: 3
@@ -1506,3 +1526,4 @@ Importing a universe to the operator creates or adopts the following in the targ
   - Software upgrade rollback
   - [Encryption at rest](../../security/enable-encryption-at-rest/) (prior to v2026.1.2; supported in v2026.1.2 and later)
 - [Encryption in transit](../../security/enable-encryption-in-transit/) configuration cannot be edited after it is initially configured (prior to v2026.1.3; supported in v2026.1.3 and later).
+- `replicationFactor` cannot be changed after the universe is created. To increase replication factor on a Kubernetes universe that YugabyteDB Anywhere manages directly, refer to [Scale universes](../../scale-deployments/edit-universe/#horizontal-scaling).

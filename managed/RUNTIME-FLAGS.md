@@ -45,6 +45,7 @@
 | "Minimum Kubernetes Memory Size" | "yb.kubernetes.min_memory_size_gb" | "PROVIDER" | "Minimum Kubernetes Memory Size" | "Integer" |
 | "Maximum Kubernetes Memory Size" | "yb.kubernetes.max_memory_size_gb" | "PROVIDER" | "Maximum Kubernetes Memory Size" | "Integer" |
 | "Remote tmp directory" | "yb.filepaths.remoteTmpDirectory" | "PROVIDER" | "A remote temporary directory should be used for performing operations on nodes within the provider scope." | "String" |
+| "Skip tmp_dir gflag consistency check" | "yb.filepaths.skip_tmp_dir_gflag_consistency_check" | "PROVIDER" | "When true, skips the on-prem create-universe precheck that requires provider remoteTmpDirectory to match master/tserver tmp_dir gflags." | "Boolean" |
 | "Polling interval for GCP Opertion status" | "yb.gcp.operations.status_polling_interval" | "PROVIDER" | "Interval to poll the status of an ongoing GCP resource creation operation." | "Duration" |
 | "GCP Operation Timeout interval" | "yb.gcp.operations.timeout_interval" | "PROVIDER" | "Timeout interval to wait for GCP resource creation operations to complete sucessfully." | "Duration" |
 | "Make YBC listen on 0.0.0.0" | "yb.ybc_flags.listen_on_all_interfaces_k8s" | "PROVIDER" | "Makes YBC bind on all network interfaces" | "Boolean" |
@@ -78,6 +79,11 @@
 | "Enable On Prem Support Bundle" | "yb.support_bundle.onprem_enabled" | "GLOBAL" | "This config lets you enable support bundle creation for onprem universes." | "Boolean" |
 | "Allow collection of cores in Support Bundle" | "yb.support_bundle.allow_cores_collection" | "GLOBAL" | "This global config allows you to disable collection of cores in support bundle, even if it is passed as a component while creating." | "Boolean" |
 | "Enable Support Bundle V2 API in UI" | "yb.support_bundle.ui_v2_enabled" | "GLOBAL" | "When true, the YBA UI uses the v2 support bundle API (support_bundle_v2 table). When false, the UI continues to use the v1 support bundle API. V1 and v2 bundles are stored separately; toggling this flag switches which bundles appear in the UI list." | "Boolean" |
+| "Support bundle size estimate script timeout" | "yb.support_bundle.estimate_script_timeout" | "GLOBAL" | "Longest each support bundle size estimate script runs, on a node or the YBA host. A script still running then is stopped and its component counts as 0. Default: 2 minutes." | "Duration" |
+| "Apply resource limits to support bundle commands on DB nodes" | "yb.support_bundle.cgroup.enabled" | "GLOBAL" | "When true, support bundle commands on a VM DB node run under the CPU and memory limits below. Not applied on Kubernetes. Default: true." | "Boolean" |
+| "Support bundle CPU limit per node (percent of one core)" | "yb.support_bundle.cgroup.cpu_percent" | "GLOBAL" | "CPU cap shared by all support bundle commands on a node, in percent of one core (1-100). Default: 15." | "Integer" |
+| "Support bundle soft memory limit per node (percent of MemAvailable)" | "yb.support_bundle.cgroup.memory_soft_percent" | "GLOBAL" | "Soft memory limit (memory.high) shared by all support bundle commands on a node, in percent of its MemAvailable, at least 64 MiB; 0 disables it. Default: 3." | "Integer" |
+| "Support bundle hard memory limit per node (percent of MemAvailable)" | "yb.support_bundle.cgroup.memory_hard_percent" | "GLOBAL" | "Hard memory limit (memory.max) shared by all support bundle commands on a node, in percent of its MemAvailable, at least 128 MiB; 0 disables it. Default: 5." | "Integer" |
 | "Application Logs Regex Pattern" | "yb.support_bundle.application_logs_regex_pattern" | "GLOBAL" | "Regex pattern used to filter application log files when creating support bundles." | "Raw String" |
 | "Application Logs SDF Pattern" | "yb.support_bundle.application_logs_sdf_pattern" | "GLOBAL" | "SimpleDateFormat pattern used to parse dates from application log file names when creating support bundles." | "String" |
 | "Snapshot creation max attempts" | "yb.snapshot_creation.max_attempts" | "GLOBAL" | "Max attempts while waiting for AWS Snapshot Creation" | "Integer" |
@@ -234,6 +240,7 @@
 | "Task Executor Shutdown Max Wait Time" | "yb.task_executor.shutdown_max_wait_time" | "GLOBAL" | "Maximum time to wait for task executor to shutdown gracefully before forcefully terminating it" | "Duration" |
 | "Node Agent Health Checker Disabled" | "yb.node_agent.health_checker.disabled" | "GLOBAL" | "Node agent checker offloaded to run asynchronously on its own schedule" | "Boolean" |
 | "HTTP conditional GET (ETag / 304)" | "yb.api.conditional_get.enabled" | "GLOBAL" | "When enabled, eligible single-resource GET endpoints may return 304 Not Modified when the client sends a matching If-None-Match ETag, skipping heavy response construction. When disabled, those endpoints always return a full 200 body." | "Boolean" |
+| "Idempotency key retention" | "yb.api.idempotency.retention" | "GLOBAL" | "How long the response of a request sent with an Idempotency-Key header is kept for replay. A retry with the same key after this period runs the operation again." | "Duration" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |
 | "Node Checkout Time" | "yb.health.nodeCheckTimeoutSec" | "UNIVERSE" | "The timeout (in seconds) for node check operation as part of universe health check" | "Integer" |
@@ -297,7 +304,7 @@
 | "Performance Advisor hot shard interval mins" | "yb.perf_advisor.hot_shard_interval_mins" | "UNIVERSE" | "Defines time interval for hot hard recommendation check, in minutes" | "Integer" |
 | "Performance Advisor hot shard minimal writes" | "yb.perf_advisor.hot_shard_min_node_writes" | "UNIVERSE" | "Defines min writes for hot shard recommendation to be raised" | "Integer" |
 | "Performance Advisor hot shard minimal reads" | "yb.perf_advisor.hot_shard_min_node_reads" | "UNIVERSE" | "Defines min reads for hot shard recommendation to be raised" | "Integer" |
-| "Skip TLS Cert Validation" | "yb.tls.skip_cert_validation" | "UNIVERSE" | "Used to skip certificates validation for the configure phase.Possible values - ALL, HOSTNAME, NONE" | "SkipCertValidationType" |
+| "Skip TLS Cert Validation" | "yb.tls.skip_cert_validation" | "UNIVERSE" | "Used to skip certificates validation for the configure phase.Possible values - ALL, HOSTNAME, REQUIRE_SAN, NONE" | "SkipCertValidationType" |
 | "Clean Orphan snapshots" | "yb.snapshot_cleanup.delete_orphan_on_startup" | "UNIVERSE" | "Clean orphan(non-scheduled) snapshots on Yugaware startup/restart" | "Boolean" |
 | "Enable https on Master/TServer UI" | "yb.node_ui.https.enabled" | "UNIVERSE" | "Allow https on Master/TServer UI for a universe" | "Boolean" |
 | "Helm Timeout in Seconds" | "yb.helm.timeout_secs" | "UNIVERSE" | "Timeout used for internal universe-level helm operations like install/upgrade in secs" | "Long" |
@@ -401,6 +408,7 @@
 | "Whether to alert for unexpected masters/tservers in universe" | "yb.health_checks.unexpected_servers_check_enabled" | "UNIVERSE" | "Whether to alert for unexpected masters/tservers in universe" | "Boolean" |
 | "Enable NFS Backup precheck" | "yb.backup.enable_nfs_precheck" | "UNIVERSE" | "Enable/disable check which verifies free space on NFS mount before backup." | "Boolean" |
 | "NFS precheck buffer space" | "yb.backup.nfs_precheck_buffer_kb" | "UNIVERSE" | "Amount of space (in KB) we want as buffer for NFS precheck" | "Long" |
+| "Kubernetes master volume cleanup ready timeout" | "yb.kubernetes.master_pvc_gc_ready_timeout" | "UNIVERSE" | "How long removing unused master volumes after a Kubernetes edit waits for the master StatefulSet to have all its pods ready before failing the task" | "Duration" |
 | "Wait after each pod restart in rolling operations" | "yb.kubernetes.operator.rolling_ops_wait_after_each_pod_ms" | "UNIVERSE" | "Time to wait after each pod restart before restarting the next pod in rolling operations" | "Integer" |
 | "Backup and restore to use pre roles behaviour" | "ybc.revert_to_pre_roles_behaviour" | "UNIVERSE" | "Have YBC use the pre roles backup and restore behaviour" | "Boolean" |
 | "Enable backups during DDL" | "yb.backup.enable_backups_during_ddl" | "UNIVERSE" | "Have YBC ysql-dump use read-time as of snapshot time to support backups during DDL" | "Boolean" |
@@ -425,3 +433,4 @@
 | "Flush Tablets Timeout on Stop TServer" | "yb.task.flush_tablets_timeout_on_stop_tserver" | "UNIVERSE" | "Timeout for flushing tablets when stopping tserver" | "Duration" |
 | "Skip YCQL precheck when enabling multi-tenancy" | "yb.universe.multitenancy_skip_ycql_precheck" | "UNIVERSE" | "If this flag is enabled, the precheck that requires YCQL to be disabled is skipped" | "Boolean" |
 | "Node Agent Server Wait Timeout" | "yb.node_agent.server.wait_timeout" | "UNIVERSE" | "Timeout for waiting for node agent server to be ready" | "Duration" |
+| "Enable the node_exporter sidecar on Kubernetes universes" | "yb.kubernetes.node_exporter.enabled" | "UNIVERSE" | "Run a node_exporter sidecar in every Kubernetes pod for disk and network metrics. Pods change at their next Helm operation, for example a Kubernetes overrides edit" | "Boolean" |
