@@ -199,12 +199,12 @@ static void PprofHeapHandler(const Webserver::WebRequest& req,
 
   const string title = only_growth ? "In use profile" : "Allocation profile";
 
-  Result<tcmalloc::Profile> profile = GetHeapProfile(seconds, sample_freq_bytes);
+  Result<HeapProfile> profile = GetHeapProfile(seconds, sample_freq_bytes);
   if (!profile.ok()) {
     (*output) << profile.status().message();
     return;
   }
-  auto samples = AggregateAndSortProfile(*profile, filter, order);
+  auto samples = AggregateAndSortHeapProfile(*profile, filter, order);
   GenerateTable(output, samples, title, 1000 /* max_call_stacks */, order);
 #endif  // YB_GOOGLE_TCMALLOC
 
