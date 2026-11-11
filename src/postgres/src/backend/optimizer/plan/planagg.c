@@ -331,6 +331,8 @@ build_minmax_path(PlannerInfo *root, MinMaxAggInfo *mminfo,
 	Cost		path_cost;
 	double		path_fraction;
 
+	HTAB	   *saveYbHintAliasHash;
+
 	/*
 	 * We are going to construct what is effectively a sub-SELECT query, so
 	 * clone the current query level's state and adjust it to make it look
@@ -435,8 +437,7 @@ build_minmax_path(PlannerInfo *root, MinMaxAggInfo *mminfo,
 	List	   *saveYbPlanHintsAliasMapping = subroot->glob->ybPlanHintsAliasMapping;
 
 	subroot->glob->ybPlanHintsAliasMapping = NIL;
-	HTAB	   *saveYbHintAliasHash = subroot->glob->ybHintAliasHash;
-
+	saveYbHintAliasHash = subroot->glob->ybHintAliasHash;
 	subroot->glob->ybHintAliasHash = NULL;
 	int			saveYbBlockCnt = subroot->glob->ybBlockCnt;
 

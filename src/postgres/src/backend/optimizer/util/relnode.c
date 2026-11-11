@@ -244,6 +244,10 @@ ybFindHintAlias(List *ybPlanHintsAliasMapping, char *hintAlias)
 	return found;
 }
 
+/*
+ * Every "<alias>_<k>" with k below nextSuffix is taken.  This needs each alias
+ * added to ybPlanHintsAliasMapping to be added to the hash, and none removed.
+ */
 typedef struct YbHintAliasHashEntry
 {
 	char	   *alias;			/* hash key --- MUST BE FIRST */

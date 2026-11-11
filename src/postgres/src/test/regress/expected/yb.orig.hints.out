@@ -1167,6 +1167,109 @@ explain (hints on, costs off) SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t
  Generated hints: /*+ Leading((t1 t2)) HashJoin(t1 t2)  SeqScan(t1_1)  SeqScan(t1_2)  SeqScan(t1_3)  SeqScan(t2_1)  SeqScan(t2_2)  SeqScan(t2_3) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.22) Set(parallel_setup_cost 4080.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (17 rows)
 
+-- Partitions take the next free "<alias>_<n>" alias; hp_3 and hp_34 are taken by the query.
+create table hp (k int, v int, primary key (k asc)) partition by range (k);
+do $$ begin for i in 0..33 loop execute format('create table hp_p%s partition of hp for values from (%s) to (%s)', i, i * 10, (i + 1) * 10); end loop; end $$;
+create table hq (k int, v int, primary key (k asc));
+explain (hints on, costs off) select * from hp, hq hp_3, hq hp_34 where hp.k = hp_3.k and hp.k = hp_34.k;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Hash Join
+   Hash Cond: (hp.k = hp_3.k)
+   ->  Append
+         ->  Seq Scan on hp_p0 hp_1
+         ->  Seq Scan on hp_p1 hp_2
+         ->  Seq Scan on hp_p2 hp_4
+         ->  Seq Scan on hp_p3 hp_5
+         ->  Seq Scan on hp_p4 hp_6
+         ->  Seq Scan on hp_p5 hp_7
+         ->  Seq Scan on hp_p6 hp_8
+         ->  Seq Scan on hp_p7 hp_9
+         ->  Seq Scan on hp_p8 hp_10
+         ->  Seq Scan on hp_p9 hp_11
+         ->  Seq Scan on hp_p10 hp_12
+         ->  Seq Scan on hp_p11 hp_13
+         ->  Seq Scan on hp_p12 hp_14
+         ->  Seq Scan on hp_p13 hp_15
+         ->  Seq Scan on hp_p14 hp_16
+         ->  Seq Scan on hp_p15 hp_17
+         ->  Seq Scan on hp_p16 hp_18
+         ->  Seq Scan on hp_p17 hp_19
+         ->  Seq Scan on hp_p18 hp_20
+         ->  Seq Scan on hp_p19 hp_21
+         ->  Seq Scan on hp_p20 hp_22
+         ->  Seq Scan on hp_p21 hp_23
+         ->  Seq Scan on hp_p22 hp_24
+         ->  Seq Scan on hp_p23 hp_25
+         ->  Seq Scan on hp_p24 hp_26
+         ->  Seq Scan on hp_p25 hp_27
+         ->  Seq Scan on hp_p26 hp_28
+         ->  Seq Scan on hp_p27 hp_29
+         ->  Seq Scan on hp_p28 hp_30
+         ->  Seq Scan on hp_p29 hp_31
+         ->  Seq Scan on hp_p30 hp_32
+         ->  Seq Scan on hp_p31 hp_33
+         ->  Seq Scan on hp_p32 hp_35
+         ->  Seq Scan on hp_p33 hp_36
+   ->  Hash
+         ->  YB Batched Nested Loop Join
+               Join Filter: (hp_3.k = hp_34.k)
+               ->  Seq Scan on hq hp_3
+               ->  Index Scan using hq_pkey on hq hp_34
+                     Index Cond: (k = ANY (ARRAY[hp_3.k, $1, $2, ..., $1023]))
+ Generated hints: /*+ Leading((hp (hp_3 hp_34))) SeqScan(hp_3) IndexScan(hp_34 hq_pkey) YbBatchedNL(hp_3 hp_34) HashJoin(hp hp_3 hp_34)  SeqScan(hp_1)  SeqScan(hp_2)  SeqScan(hp_4)  SeqScan(hp_5)  SeqScan(hp_6)  SeqScan(hp_7)  SeqScan(hp_8)  SeqScan(hp_9)  SeqScan(hp_10)  SeqScan(hp_11)  SeqScan(hp_12)  SeqScan(hp_13)  SeqScan(hp_14)  SeqScan(hp_15)  SeqScan(hp_16)  SeqScan(hp_17)  SeqScan(hp_18)  SeqScan(hp_19)  SeqScan(hp_20)  SeqScan(hp_21)  SeqScan(hp_22)  SeqScan(hp_23)  SeqScan(hp_24)  SeqScan(hp_25)  SeqScan(hp_26)  SeqScan(hp_27)  SeqScan(hp_28)  SeqScan(hp_29)  SeqScan(hp_30)  SeqScan(hp_31)  SeqScan(hp_32)  SeqScan(hp_33)  SeqScan(hp_35)  SeqScan(hp_36) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.22) Set(parallel_setup_cost 4080.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+(44 rows)
+
+explain (hints on, costs off) select * from hq hp_3, hq hp_34, hp where hp.k = hp_3.k and hp.k = hp_34.k;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Hash Join
+   Hash Cond: (hp.k = hp_3.k)
+   ->  Append
+         ->  Seq Scan on hp_p0 hp_1
+         ->  Seq Scan on hp_p1 hp_2
+         ->  Seq Scan on hp_p2 hp_4
+         ->  Seq Scan on hp_p3 hp_5
+         ->  Seq Scan on hp_p4 hp_6
+         ->  Seq Scan on hp_p5 hp_7
+         ->  Seq Scan on hp_p6 hp_8
+         ->  Seq Scan on hp_p7 hp_9
+         ->  Seq Scan on hp_p8 hp_10
+         ->  Seq Scan on hp_p9 hp_11
+         ->  Seq Scan on hp_p10 hp_12
+         ->  Seq Scan on hp_p11 hp_13
+         ->  Seq Scan on hp_p12 hp_14
+         ->  Seq Scan on hp_p13 hp_15
+         ->  Seq Scan on hp_p14 hp_16
+         ->  Seq Scan on hp_p15 hp_17
+         ->  Seq Scan on hp_p16 hp_18
+         ->  Seq Scan on hp_p17 hp_19
+         ->  Seq Scan on hp_p18 hp_20
+         ->  Seq Scan on hp_p19 hp_21
+         ->  Seq Scan on hp_p20 hp_22
+         ->  Seq Scan on hp_p21 hp_23
+         ->  Seq Scan on hp_p22 hp_24
+         ->  Seq Scan on hp_p23 hp_25
+         ->  Seq Scan on hp_p24 hp_26
+         ->  Seq Scan on hp_p25 hp_27
+         ->  Seq Scan on hp_p26 hp_28
+         ->  Seq Scan on hp_p27 hp_29
+         ->  Seq Scan on hp_p28 hp_30
+         ->  Seq Scan on hp_p29 hp_31
+         ->  Seq Scan on hp_p30 hp_32
+         ->  Seq Scan on hp_p31 hp_33
+         ->  Seq Scan on hp_p32 hp_35
+         ->  Seq Scan on hp_p33 hp_36
+   ->  Hash
+         ->  YB Batched Nested Loop Join
+               Join Filter: (hp_3.k = hp_34.k)
+               ->  Seq Scan on hq hp_3
+               ->  Index Scan using hq_pkey on hq hp_34
+                     Index Cond: (k = ANY (ARRAY[hp_3.k, $1, $2, ..., $1023]))
+ Generated hints: /*+ Leading((hp (hp_3 hp_34))) SeqScan(hp_3) IndexScan(hp_34 hq_pkey) YbBatchedNL(hp_3 hp_34) HashJoin(hp hp_3 hp_34)  SeqScan(hp_1)  SeqScan(hp_2)  SeqScan(hp_4)  SeqScan(hp_5)  SeqScan(hp_6)  SeqScan(hp_7)  SeqScan(hp_8)  SeqScan(hp_9)  SeqScan(hp_10)  SeqScan(hp_11)  SeqScan(hp_12)  SeqScan(hp_13)  SeqScan(hp_14)  SeqScan(hp_15)  SeqScan(hp_16)  SeqScan(hp_17)  SeqScan(hp_18)  SeqScan(hp_19)  SeqScan(hp_20)  SeqScan(hp_21)  SeqScan(hp_22)  SeqScan(hp_23)  SeqScan(hp_24)  SeqScan(hp_25)  SeqScan(hp_26)  SeqScan(hp_27)  SeqScan(hp_28)  SeqScan(hp_29)  SeqScan(hp_30)  SeqScan(hp_31)  SeqScan(hp_32)  SeqScan(hp_33)  SeqScan(hp_35)  SeqScan(hp_36) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.22) Set(parallel_setup_cost 4080.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+(44 rows)
+
+drop table hp, hq;
 -- Test hint table using query id instead of query text.
 create extension if not exists pg_hint_plan;
 set pg_hint_plan.enable_hint_table to on;
