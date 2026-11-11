@@ -318,9 +318,12 @@ public class UpgradeUniverseHandler {
 
   // UniverseControllerRequestBinder fills legacy maps the client omitted (the UI sends only
   // specificGFlags) from the stored cluster, so an unchanged map is not client input. Checking it
-  // would block every edit once a stored value is REDACTED. The task applies specificGFlags, and
-  // UpdateAndPersistGFlags rebuilds these maps from them; checkGFlagsProvidedInOldSchema, which
-  // builds specificGFlags from these maps, checks the result itself.
+  // would block every edit once a stored value is REDACTED. When a stored or requested cluster has
+  // specificGFlags, the task applies those and UpdateAndPersistGFlags rebuilds these maps from
+  // them; checkGFlagsProvidedInOldSchema, which builds specificGFlags from these maps, checks the
+  // result itself. Otherwise the task applies and persists these maps as they are, so an unchanged
+  // map holding REDACTED passes unchecked. Universe creation and the V315 migration always set
+  // specificGFlags.
   private Map<String, String> mergeSensitiveLegacyGFlags(
       Map<String, String> stored, Map<String, String> requested, String ybSoftwareVersion) {
     if (requested == null
