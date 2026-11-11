@@ -111,6 +111,12 @@ extern int	yb_ycm_internal_client_port;
 extern bool YbIsClientYsqlConnMgr();
 
 /*
+ * Check whether Ysql Connection Manager has forwarded the logical client's
+ * address, i.e. whether yb_ycm_internal_client_addr/port replace MyProcPort.
+ */
+extern bool YbHasConnMgrLogicalClientAddr(void);
+
+/*
  * Add/update the changed session parameters in the shared memory.
  */
 extern void YbUpdateSharedMemory();

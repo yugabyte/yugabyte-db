@@ -1727,8 +1727,7 @@ inet_client_addr(PG_FUNCTION_ARGS)
 	 * socket (Unix, or TCP when ysql_conn_mgr_use_unix_conn=false), not the
 	 * logical client's. Report the logical client's address instead.
 	 */
-	if (YbIsClientYsqlConnMgr() && yb_ycm_internal_client_addr &&
-		yb_ycm_internal_client_addr[0] != '\0')
+	if (YbHasConnMgrLogicalClientAddr())
 		PG_RETURN_INET_P(network_in(yb_ycm_internal_client_addr, false));
 
 	if (port == NULL)
@@ -1771,8 +1770,7 @@ inet_client_port(PG_FUNCTION_ARGS)
 	int			ret;
 
 	/* YB: See inet_client_addr(). */
-	if (YbIsClientYsqlConnMgr() && yb_ycm_internal_client_addr &&
-		yb_ycm_internal_client_addr[0] != '\0')
+	if (YbHasConnMgrLogicalClientAddr())
 	{
 		if (yb_ycm_internal_client_port < 0)
 			PG_RETURN_NULL();
