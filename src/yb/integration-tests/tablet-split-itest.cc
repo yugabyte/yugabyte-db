@@ -1913,7 +1913,8 @@ TEST_F(AutomaticTabletSplitITest, PrioritizeLowPhaseTablets) {
            VERIFY_RESULT(has_candidate(low_phase_table)) &&
            VERIFY_RESULT(has_candidate(high_phase_table));
   }, 30s * kTimeMultiplier,
-     "Wait for the low phase tablet to be clearly smaller than the largest high phase tablet."));
+     "Wait for the low phase tablet to be clearly smaller than the largest high phase tablet "
+     "and for both tables to have a split candidate."));
 
   LOG(INFO) << Format("Low phase tablet size: $0. Largest high phase tablet size: $1.",
                       low_phase_size, largest_high_phase_size);
