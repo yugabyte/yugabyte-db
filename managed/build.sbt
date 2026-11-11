@@ -174,7 +174,7 @@ Global / onChangedBuildSource := ReloadOnSourceChanges
 // Flyway 10+ ships database support as separate modules; the postgresql one is required.
 val flywayVersion = "13.8.0"
 val bouncyCastleFipsVersion = "2.1.1"
-val bouncyCastleUtilFipsVersion = "2.1.7"
+val bouncyCastleUtilFipsVersion = "2.1.8"
 
 libraryDependencies ++= Seq(
   javaJdbc,
