@@ -22,9 +22,13 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.io.ByteArrayOutputStream;
 
+import com.google.common.net.HostAndPort;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -45,6 +49,7 @@ import org.yb.pgsql.ExplainAnalyzeUtils.PlanCheckerBuilder;
 import org.yb.pgsql.ExplainAnalyzeUtils.TopLevelCheckerBuilder;
 
 import org.yb.YBTestRunner;
+import org.yb.client.TestUtils;
 
 /**
  * Test RPC stats in pg_stat_statements.
@@ -53,9 +58,17 @@ import org.yb.YBTestRunner;
 public class TestPgStatStatements extends BasePgExplainAnalyzeTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgStatStatements.class);
   private static final String TABLE_NAME = "test_table";
+  private static final String BLOOM_TABLE_NAME = "bloom_pgss";
+  private static final String BLOOM_IN_LIST =
+      "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20";
   private static final String METRIC_NUM_DB_SEEK = "Metric rocksdb_number_db_seek";
   private static final String METRIC_NUM_DB_NEXT = "Metric rocksdb_number_db_next";
   private static final String METRIC_NUM_DB_PREV = "Metric rocksdb_number_db_prev";
+  private static final String METRIC_BLOOM_FILTER_USEFUL = "Metric rocksdb_bloom_filter_useful";
+  private static final String METRIC_BLOOM_FILTER_CHECKED = "Metric rocksdb_bloom_filter_checked";
+  // RegularDB only; the IntentsDB counterpart is prefixed with intentsdb_.
+  private static final String METRIC_NUM_SST_FILES = "rocksdb_current_version_num_sst_files";
+  private static final int BLOOM_TABLE_SST_FILES = 2;
 
   @Rule
   public TestName testName = new TestName();
@@ -106,6 +119,76 @@ public class TestPgStatStatements extends BasePgExplainAnalyzeTest {
     }
   }
 
+  // YBClient.flushTable is a compaction that merges every SST into one, so flush each
+  // tserver's tablets instead. flush_all_tablets returns once the flush completes.
+  private void flushAllTablets() throws Exception {
+    for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
+      runProcess(TestUtils.findBinary("yb-ts-cli"),
+                 "--server_address", hp.toString(), "flush_all_tablets");
+    }
+  }
+
+  // Two SST generations so a later point lookup can miss one file (useful > 0).
+  // Writes are non-transactional: a transactional write is applied to RegularDB
+  // asynchronously, and an IntentsDB flush blocked on that applied data forces an
+  // extra RegularDB flush after intents_flush_max_delay_ms, adding an SST.
+  private void populateBloomTable(Statement stmt, String table) throws Exception {
+    stmt.execute("SET yb_disable_transactional_writes = true");
+    stmt.execute("INSERT INTO " + table +
+        " (SELECT i * 4, i * 2 FROM GENERATE_SERIES(1, 5) AS i)");
+    flushAllTablets();
+    stmt.execute("INSERT INTO " + table +
+        " (SELECT i * 4 - 2, i * 2 - 1 FROM GENERATE_SERIES(1, 5) AS i)");
+    flushAllTablets();
+    stmt.execute("RESET yb_disable_transactional_writes");
+  }
+
+  // RegularDB SST file count of each replica of the table's tablets.
+  private List<Long> getSstFileCounts(String table) throws Exception {
+    List<Long> counts = new ArrayList<>();
+    for (JsonArray rawMetric : getRawTSMetric()) {
+      for (JsonElement elem : rawMetric) {
+        JsonObject obj = elem.getAsJsonObject();
+        if (!obj.get("type").getAsString().equals("tablet") ||
+            !obj.getAsJsonObject("attributes").get("table_name").getAsString().equals(table)) {
+          continue;
+        }
+        for (JsonElement metric : obj.getAsJsonArray("metrics")) {
+          if (metric.isJsonObject() &&
+              metric.getAsJsonObject().get("name").getAsString().equals(METRIC_NUM_SST_FILES)) {
+            counts.add(metric.getAsJsonObject().get("value").getAsLong());
+          }
+        }
+      }
+    }
+    return counts;
+  }
+
+  private boolean hasSstFileCount(String table, long expected) throws Exception {
+    List<Long> counts = getSstFileCounts(table);
+    LOG.info("{} SST file counts per replica: {}", table, counts);
+    return !counts.isEmpty() && counts.stream().allMatch(c -> c == expected);
+  }
+
+  // Bloom filter gauges EXPLAIN reports for one execution of query,
+  // as {useful, checked}.
+  private long[] explainBloomMetrics(Statement stmt, String query) throws Exception {
+    ResultSet rs = stmt.executeQuery(
+        "EXPLAIN (FORMAT json, ANALYZE true, DIST true, DEBUG true) " + query);
+    rs.next();
+    JsonObject root = JsonParser.parseString(rs.getString(1))
+        .getAsJsonArray().get(0).getAsJsonObject();
+    JsonObject readMetricsObj = root.has("Read Metrics") ?
+        root.getAsJsonObject("Read Metrics") : null;
+    JsonObject writeMetricsObj = root.has("Write Metrics") ?
+        root.getAsJsonObject("Write Metrics") : null;
+    DocDBMetrics readMetrics = extractDocdbMetrics(readMetricsObj);
+    DocDBMetrics writeMetrics = extractDocdbMetrics(writeMetricsObj);
+    return new long[] {
+        readMetrics.bloomFilterUseful + writeMetrics.bloomFilterUseful,
+        readMetrics.bloomFilterChecked + writeMetrics.bloomFilterChecked};
+  }
+
   private TopLevelCheckerBuilder makeTopLevelBuilder() {
     return JsonUtil.makeCheckerBuilder(TopLevelCheckerBuilder.class);
   }
@@ -127,11 +210,16 @@ public class TestPgStatStatements extends BasePgExplainAnalyzeTest {
     final long seeks;
     final long nexts;
     final long prevs;
+    final long bloomFilterUseful;
+    final long bloomFilterChecked;
 
-    DocDBMetrics(long seeks, long nexts, long prevs) {
+    DocDBMetrics(long seeks, long nexts, long prevs,
+                 long bloomFilterUseful, long bloomFilterChecked) {
       this.seeks = seeks;
       this.nexts = nexts;
       this.prevs = prevs;
+      this.bloomFilterUseful = bloomFilterUseful;
+      this.bloomFilterChecked = bloomFilterChecked;
     }
   }
 
@@ -151,12 +239,14 @@ public class TestPgStatStatements extends BasePgExplainAnalyzeTest {
    */
   private static DocDBMetrics extractDocdbMetrics(JsonObject metricsObj) {
     if (metricsObj == null) {
-      return new DocDBMetrics(0L, 0L, 0L);
+      return new DocDBMetrics(0L, 0L, 0L, 0L, 0L);
     }
     long seeks = getMetricValue(metricsObj, METRIC_NUM_DB_SEEK);
     long nexts = getMetricValue(metricsObj, METRIC_NUM_DB_NEXT);
     long prevs = getMetricValue(metricsObj, METRIC_NUM_DB_PREV);
-    return new DocDBMetrics(seeks, nexts, prevs);
+    long bloomFilterUseful = getMetricValue(metricsObj, METRIC_BLOOM_FILTER_USEFUL);
+    long bloomFilterChecked = getMetricValue(metricsObj, METRIC_BLOOM_FILTER_CHECKED);
+    return new DocDBMetrics(seeks, nexts, prevs, bloomFilterUseful, bloomFilterChecked);
   }
 
   /*
@@ -502,6 +592,52 @@ public class TestPgStatStatements extends BasePgExplainAnalyzeTest {
       }
 
       assertEquals("Expected exactly one row in pg_stat_statements", 1, rowCount);
+    }
+  }
+
+  // Range scans on memtable-only tables leave bloom gauges at 0. PK IN-list after
+  // SST flush is the path that actually consults RegularDB bloom filters.
+  @Test
+  public void testBloomFilterDocdbMetrics() throws Exception {
+    setUpConnMgrRoundRobinMode();
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(String.format(
+          "CREATE TABLE %s (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS",
+          BLOOM_TABLE_NAME));
+      populateBloomTable(stmt, BLOOM_TABLE_NAME);
+
+      String selectQuery = String.format(
+          "SELECT * FROM %s WHERE k IN (%s)", BLOOM_TABLE_NAME, BLOOM_IN_LIST);
+
+      // Two files stay below rocksdb_level0_file_num_compaction_trigger, so no
+      // background compaction rewrites the layout afterwards.
+      assertTrue("Unexpected SST layout after populating the table",
+          hasSstFileCount(BLOOM_TABLE_NAME, BLOOM_TABLE_SST_FILES));
+
+      // EXPLAIN runs on its own connection, per setUpConnMgrRoundRobinMode.
+      final long[] expectedBloom;
+      try (Connection explainConn = getConnectionBuilder().connect();
+           Statement explainStmt = explainConn.createStatement()) {
+        expectedBloom = explainBloomMetrics(explainStmt, selectQuery);
+      }
+      LOG.info("EXPLAIN bloom filter useful: {}, checked: {}",
+          expectedBloom[0], expectedBloom[1]);
+      assertGreaterThan(expectedBloom[0], 0L);
+      assertGreaterThan(expectedBloom[1], 0L);
+
+      // Same table and same key set, so PGSS must report exactly what EXPLAIN did.
+      stmt.execute("SELECT pg_stat_statements_reset()");
+      stmt.execute(selectQuery);
+      try (ResultSet rs = stmt.executeQuery(String.format(
+          "SELECT docdb_bloom_filter_useful, docdb_bloom_filter_checked " +
+          "FROM pg_stat_statements WHERE query LIKE 'SELECT * FROM %s%%'",
+          BLOOM_TABLE_NAME))) {
+        assertTrue("Expected a pg_stat_statements row for the bloom filter query", rs.next());
+        assertEquals(expectedBloom[0], rs.getLong("docdb_bloom_filter_useful"));
+        assertEquals(expectedBloom[1], rs.getLong("docdb_bloom_filter_checked"));
+      }
+      assertTrue("SST layout changed during the test",
+          hasSstFileCount(BLOOM_TABLE_NAME, BLOOM_TABLE_SST_FILES));
     }
   }
 

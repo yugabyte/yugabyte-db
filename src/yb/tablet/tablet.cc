@@ -123,6 +123,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/file_util.h"
 #include "yb/util/flag_validators.h"
@@ -4715,18 +4716,24 @@ Status Tablet::ModifyFlushedFrontier(
     const docdb::ConsensusFrontier& frontier,
     rocksdb::FrontierModificationMode mode,
     FlushFlags flags) {
+  LongOperationTracker long_operation_tracker("Modify flushed frontier", 5s);
+  // Snapshot operations modify the flushed frontier on the Raft apply path, so its steps are
+  // logged like theirs.
+  auto step_start = MonoTime::Now();
   // We should always flush RocksDBs before modifying their frontiers, otherwise if we crash between
   // frontier is modified and regular DB is flushed we can lose data because of skipping ops replay
   // during local bootstrap.
   RETURN_NOT_OK(Flush(
       FlushMode::kSync, flags | FlushFlags::kRegular | FlushFlags::kIntents,
       rocksdb::FlushOptions::kNeverIgnore, rocksdb::FlushReason::kFlushedFrontierModification));
+  step_start = LogSnapshotStepDone(LogPrefix(), "Flushed frontier flush", step_start);
   const Status s = regular_db_->ModifyFlushedFrontier(frontier.Clone(), mode);
   if (PREDICT_FALSE(!s.ok())) {
     auto status = STATUS(IllegalState, "Failed to set flushed frontier", s.ToString());
     LOG_WITH_PREFIX(WARNING) << status;
     return status;
   }
+  step_start = LogSnapshotStepDone(LogPrefix(), "Regular DB flushed frontier write", step_start);
   {
     auto flushed_frontier = regular_db_->GetFlushedFrontier();
     const auto& consensus_flushed_frontier = *down_cast<docdb::ConsensusFrontier*>(
@@ -4774,6 +4781,7 @@ Status Tablet::ModifyFlushedFrontier(
     // because it would wait for flush of regular DB if we have unflushed intents.
     // Otherwise it does not matter which flushed op id is stored.
     RETURN_NOT_OK(intents_db_->ModifyFlushedFrontier(frontier.Clone(), mode));
+    LogSnapshotStepDone(LogPrefix(), "Intents DB flushed frontier write", step_start);
   }
 
   return Status::OK();
@@ -7230,6 +7238,13 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
       while (intent_iter->Valid() && intent_iter->key().compare_prefix(reverse_key) == 0 &&
              (!max_txn_locks_per_tablet || txn_intents_count <= max_txn_locks_per_tablet)) {
         DCHECK_EQ(intent_iter->key()[0], KeyEntryTypeAsChar::kTransactionId);
+
+        // The delete-list record of a batch holds vector ids, not an intent key.
+        if (intent_iter->value().starts_with(dockv::ValueEntryTypeAsChar::kDeleteVectorIds)) {
+          intent_iter->Next();
+          continue;
+        }
+
         // We should only consider intents whose value is within the tablet's key bounds.
         // Else, we would observe duplicate results in case of tablet split.
         if (key_bounds_.IsWithinBounds(intent_iter->value())) {
@@ -7769,6 +7784,7 @@ docdb::HistoryCutoff Tablet::AllowedHistoryCutoff() {
     result.MakeAtMost(allowed_history_cutoff_provider_(metadata_.get()));
   }
   result.primary_cutoff_ht.MakeAtMost(snapshots_->AllowedHistoryCutoff());
+  result.primary_cutoff_ht.MakeAtMost(vector_indexes_->AllowedHistoryCutoff());
   return result;
 }
 

@@ -155,9 +155,16 @@ Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> HnswTraits(
     case HnswBackend::YB_HNSW_USEARCH:
       return ann_methods::CreateUsearchIndexTraits<Vector, DistanceResult>(
           block_cache, hnsw_options, mem_tracker);
-    case HnswBackend::YB_HNSW_HNSWLIB:
+    case HnswBackend::YB_HNSW_HNSWLIB: {
+      vector_index::VectorTenantExtractor tenant_extractor;
+      if (options.tenant_hash_group_and_range_components()) {
+        tenant_extractor = [](Slice payload) -> Result<Slice> {
+          return VERIFY_RESULT(dockv::DecodeDocVectorIndexPayload(payload)).tenant;
+        };
+      }
       return ann_methods::CreateHnswlibIndexTraits<Vector, DistanceResult>(
-          block_cache, hnsw_options, mem_tracker);
+          block_cache, hnsw_options, mem_tracker, std::move(tenant_extractor));
+    }
     case HnswBackend::DEPRECATED_USEARCH: [[fallthrough]];
     case HnswBackend::DEPRECATED_HNSWLIB:
       break;
@@ -271,7 +278,9 @@ class DocVectorIndexViewImpl : public DocVectorIndexView {
   Status ForEachVector(const DocVectorIndexEntryCallback& callback) const override {
     ValueBuffer buffer;
     for (const auto& index : indexes_) {
-      for (const auto& entry : *index) {
+      auto it = index->CreateIterator();
+      for (; it->Valid(); it->Next()) {
+        const auto& entry = it->Entry();
         VectorToYSQL(entry.vector, &buffer);
         RETURN_NOT_OK(callback(DocVectorIndexEntry {
           .vector_id = entry.vector_id,
@@ -279,6 +288,7 @@ class DocVectorIndexViewImpl : public DocVectorIndexView {
           .payload = entry.payload,
         }));
       }
+      RETURN_NOT_OK(it->status());
     }
     return Status::OK();
   }

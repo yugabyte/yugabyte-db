@@ -18,6 +18,7 @@ import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -79,6 +80,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
@@ -573,6 +575,39 @@ public class HealthCheckerTest extends FakeDBApplication {
     } catch (Exception ignored) {
     }
     verifyNodeUniverseManager(12, 6);
+  }
+
+  @Test
+  public void testScheduleRunner_ChecksAllUniversesAndLoadsCustomerDataOnce() {
+    setupUniverse("univ1");
+    setupUniverse("univ2");
+    setupAlertingData("test@example.com", false, false);
+    Customer customerWithoutUniverses = ModelFactory.testCustomer("tc2", "Customer 2");
+    when(mockEmailHelper.getDestinations(defaultCustomer.getUuid()))
+        .thenReturn(List.of("test@example.com"));
+
+    healthChecker.scheduleRunner();
+
+    // Both universes of the default customer are checked (3 nodes each).
+    verifyNodeUniverseManager(12, 6);
+    // The destinations are read once for the customer, not once per universe, and not at all for
+    // the customer without universes.
+    verify(mockEmailHelper, times(1)).getDestinations(defaultCustomer.getUuid());
+    verify(mockEmailHelper, never()).getDestinations(customerWithoutUniverses.getUuid());
+    // The maintenance windows are listed once per run.
+    verify(mockMaintenanceService, times(1)).listActiveWindows();
+  }
+
+  @Test
+  public void testCheckCustomer_SkipsUniverseWhoseCheckIsStillRunning() {
+    Universe u = setupUniverse("univ1");
+    CompletableFuture<Void> running = new CompletableFuture<>();
+    healthChecker.runningHealthChecks.put(u.getUniverseUUID(), running);
+
+    healthChecker.checkCustomer(defaultCustomer);
+
+    verifyNodeUniverseManager(0, 0);
+    assertEquals(running, healthChecker.runningHealthChecks.get(u.getUniverseUUID()));
   }
 
   @Test
@@ -1081,6 +1116,41 @@ public class HealthCheckerTest extends FakeDBApplication {
           details.updateInProgress = true;
           univ.setUniverseDetails(details);
         });
+    assertFalse(HealthChecker.canHealthCheckUniverse(u.getUniverseUUID()));
+  }
+
+  @Test
+  public void testCanHealthCheckUniverse_LockedByBackup() {
+    Universe u = setupUniverse("univ1");
+    Universe.saveDetails(
+        u.getUniverseUUID(),
+        univ -> {
+          UniverseDefinitionTaskParams details = univ.getUniverseDetails();
+          details.updateInProgress = true;
+          details.updatingTask = TaskType.CreateBackup;
+          univ.setUniverseDetails(details);
+        });
+    assertTrue(HealthChecker.canHealthCheckUniverse(u.getUniverseUUID()));
+  }
+
+  @Test
+  public void testCanHealthCheckUniverse_LockedByOtherTask() {
+    Universe u = setupUniverse("univ1");
+    Universe.saveDetails(
+        u.getUniverseUUID(),
+        univ -> {
+          UniverseDefinitionTaskParams details = univ.getUniverseDetails();
+          details.updateInProgress = true;
+          details.updatingTask = TaskType.EditUniverse;
+          univ.setUniverseDetails(details);
+        });
+    assertFalse(HealthChecker.canHealthCheckUniverse(u.getUniverseUUID()));
+  }
+
+  @Test
+  public void testCanHealthCheckUniverse_NullDetails() {
+    Universe u = setupUniverse("univ1");
+    Universe.saveDetails(u.getUniverseUUID(), univ -> univ.setUniverseDetails(null));
     assertFalse(HealthChecker.canHealthCheckUniverse(u.getUniverseUUID()));
   }
 

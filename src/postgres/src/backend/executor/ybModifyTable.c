@@ -38,6 +38,7 @@
 #include "catalog/pg_database.h"
 #include "catalog/pg_db_role_setting_d.h"
 #include "catalog/pg_namespace.h"
+#include "catalog/pg_parameter_acl_d.h"
 #include "catalog/pg_replication_origin_d.h"
 #include "catalog/pg_shseclabel_d.h"
 #include "catalog/pg_subscription_d.h"
@@ -324,6 +325,9 @@ YBCExecWriteStmt(YbcPgStatement ybc_stmt,
 				   relid == SubscriptionRelationId ||
 				   relid == SubscriptionObjectIndexId ||
 				   relid == SubscriptionNameIndexId ||
+				   relid == ParameterAclRelationId ||
+				   relid == ParameterAclParnameIndexId ||
+				   relid == ParameterAclOidIndexId ||
 
 				   relid == DatabaseNameIndexId ||
 				   relid == SharedSecLabelRelationId ||
@@ -718,7 +722,8 @@ YbIsIocPushdownCapableRel(ResultRelInfo *resultRelInfo, ModifyTable *node)
  * On that fallback path, batching and index-only reads are independent.
  */
 void
-YbInitIocStrategy(ResultRelInfo *resultRelInfo, ModifyTable *node)
+YbInitIocStrategy(ResultRelInfo *resultRelInfo, ModifyTable *node,
+				  int batch_size)
 {
 	Assert(node->operation == CMD_INSERT);
 
@@ -730,7 +735,7 @@ YbInitIocStrategy(ResultRelInfo *resultRelInfo, ModifyTable *node)
 		return;
 	}
 
-	if (YbIsInsertOnConflictReadBatchingPossible(resultRelInfo))
+	if (YbIsInsertOnConflictReadBatchingPossible(resultRelInfo, batch_size))
 		resultRelInfo->ri_ybIocBatchingPossible = true;
 
 	if (IsYBRelation(resultRelInfo->ri_RelationDesc) &&
@@ -739,12 +744,13 @@ YbInitIocStrategy(ResultRelInfo *resultRelInfo, ModifyTable *node)
 }
 
 bool
-YbIsInsertOnConflictReadBatchingPossible(ResultRelInfo *resultRelInfo)
+YbIsInsertOnConflictReadBatchingPossible(ResultRelInfo *resultRelInfo,
+										 int batch_size)
 {
 	/*
 	 * TODO(jason): figure out how to enable triggers.
 	 */
-	if (yb_insert_on_conflict_read_batch_size == 0 ||
+	if (batch_size == 0 ||
 		!IsYBRelation(resultRelInfo->ri_RelationDesc) ||
 		IsCatalogRelation(resultRelInfo->ri_RelationDesc) ||
 		(resultRelInfo->ri_TrigDesc &&
@@ -1674,6 +1680,58 @@ YBCRelInfoHasSecondaryIndices(ResultRelInfo *resultRelInfo)
 	return (resultRelInfo->ri_NumIndices > 1 ||
 			(resultRelInfo->ri_NumIndices == 1 &&
 			 !resultRelInfo->ri_IndexRelationDescs[0]->rd_index->indisprimary));
+}
+
+/*
+ * Returns whether inserts into this result relation may use upsert mode
+ * (blind writes).  Call it only for a statement that asked for upsert mode,
+ * because when the relation is unsafe it also warns or errors (see below).
+ *
+ * is_copy_replace says how the statement asked for it: true for COPY ...
+ * WITH (REPLACE), false for the yb_enable_upsert_mode setting (COPY or
+ * INSERT).  It decides what happens when the relation is unsafe, i.e. has
+ * secondary indexes, triggers, or rules (see YBIsUpsertUnsafeOnRel()): true
+ * raises an error; false emits a warning, and the caller falls back to a
+ * normal insert.
+ *
+ * A partitioned target routes each row to a leaf partition, which can have
+ * its own indexes or triggers, so callers must ask about each partition that
+ * rows are routed to, not only about the target.  The answer is cached in the
+ * ResultRelInfo, so each relation is checked, and warned about, once per
+ * statement.
+ */
+bool
+YbCanUseUpsertMode(ResultRelInfo *resultRelInfo, bool is_copy_replace)
+{
+	Relation	rel = resultRelInfo->ri_RelationDesc;
+
+	if (resultRelInfo->ri_ybUpsertModeChecked)
+		return resultRelInfo->ri_ybUpsertModeAllowed;
+
+	resultRelInfo->ri_ybUpsertModeChecked = true;
+	resultRelInfo->ri_ybUpsertModeAllowed = !YBIsUpsertUnsafeOnRel(rel);
+
+	if (!resultRelInfo->ri_ybUpsertModeAllowed)
+	{
+		if (is_copy_replace)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("COPY with REPLACE is not supported on "
+							"table \"%s\" because it has secondary "
+							"indexes, triggers, or foreign key "
+							"constraints", RelationGetRelationName(rel)),
+					 errhint("Consider using INSERT ... ON CONFLICT "
+							 "for true upsert semantics instead.")));
+		ereport(WARNING,
+				(errmsg("upsert mode disabled for table \"%s\" "
+						"because it has secondary indexes, "
+						"triggers, or foreign key constraints",
+						RelationGetRelationName(rel)),
+				 errhint("Consider using INSERT ... ON CONFLICT "
+						 "for true upsert semantics instead.")));
+	}
+
+	return resultRelInfo->ri_ybUpsertModeAllowed;
 }
 
 int

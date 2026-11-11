@@ -1,5 +1,6 @@
 package com.yugabyte.yw.common.operator;
 
+import static com.yugabyte.yw.common.RedactingService.SECRET_REPLACEMENT;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -28,6 +29,8 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.export.TelemetryConfig;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
@@ -737,6 +740,33 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     assertTrue(uDTCaptor.getValue().universeOverrides.contains("bar"));
     // Verify upgrade handler is not called
     Mockito.verifyNoInteractions(universeCRUDHandler);
+  }
+
+  @Test
+  public void testCreateTaskParamsReadReplicaInheritsGFlags() throws Exception {
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse("test-rr-gflags", defaultProvider);
+    io.yugabyte.operator.v1alpha1.ybuniversespec.GFlags specGFlags =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.GFlags();
+    specGFlags.setTserverGFlags(new HashMap<>(Map.of("log_min_seconds_to_retain", "3600")));
+    ybUniverse.getSpec().setGFlags(specGFlags);
+    io.yugabyte.operator.v1alpha1.ybuniversespec.ReadReplica readReplica =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.ReadReplica();
+    readReplica.setNumNodes(1L);
+    readReplica.setReplicationFactor(1L);
+    ybUniverse.getSpec().setReadReplica(readReplica);
+
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+
+    Cluster readReplicaCluster = taskParams.getReadOnlyClusters().get(0);
+    assertTrue(readReplicaCluster.userIntent.specificGFlags.isInheritFromPrimary());
+    // The operator's gflags upgrade replaces only the primary's flags.
+    taskParams.getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(Map.of(), Map.of("log_min_seconds_to_retain", "7200"));
+    assertEquals(
+        "7200",
+        GFlagsUtil.getBaseGFlags(ServerType.TSERVER, readReplicaCluster, taskParams.clusters)
+            .get("log_min_seconds_to_retain"));
   }
 
   @Test
@@ -3458,8 +3488,9 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     UserIntent storedIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     assertTrue("edit must not disable YSQL auth", storedIntent.enableYSQLAuth);
     assertTrue("edit must not disable YCQL auth", storedIntent.enableYCQLAuth);
-    assertEquals("stored-ysql-pass", storedIntent.ysqlPassword);
-    assertEquals("stored-ycql-pass", storedIntent.ycqlPassword);
+    // Stored details always hold the passwords redacted, and null ones are not serialized at all.
+    assertEquals(SECRET_REPLACEMENT, storedIntent.ysqlPassword);
+    assertEquals(SECRET_REPLACEMENT, storedIntent.ycqlPassword);
   }
 
   @Test

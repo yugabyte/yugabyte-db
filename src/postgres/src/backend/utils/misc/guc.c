@@ -2710,11 +2710,12 @@ static struct config_bool ConfigureNamesBool[] =
 			gettext_noop("Let a connection start from a catalog version this node already has "
 						 "cached."),
 			gettext_noop("A connection beginning while the master leader reports that it is "
-						 "shedding catalog prefetches reads the catalog at a version this node "
-						 "already holds, rather than fetching the whole catalog from the leader, "
-						 "and applies the invalidation messages in between before it runs "
-						 "anything. Turning this off makes every connection fetch from the "
-						 "leader as before, and returns the read a backend makes ahead of "
+						 "shedding catalog prefetches, or while another connection is already "
+						 "filling the catalog for its database, reads the catalog at a version "
+						 "this node already holds, rather than fetching the whole catalog from "
+						 "the leader, and applies the invalidation messages in between before "
+						 "it runs anything. Turning this off makes every connection fetch from "
+						 "the leader as before, and returns the read a backend makes ahead of "
 						 "authentication to the ordinary admission priority on the master."),
 			GUC_NOT_IN_SAMPLE
 		},
@@ -2991,6 +2992,18 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_test_fail_stale_catalog_message_check,
 		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_xcluster_invalid_index_ddl_check", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("On an xCluster automatic mode source, reject DDLs "
+						 "whose outcome depends on an invalid index."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_xcluster_invalid_index_ddl_check,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -4244,8 +4257,10 @@ static struct config_bool ConfigureNamesBool[] =
 			gettext_noop("If true, enable DocDB metrics collection for pg_stat_statements."),
 			gettext_noop("This enables collection of the following metrics: "
 									"docdb_seeks, docdb_nexts, docdb_prevs, "
-									"docdb_read_time, docdb_write_time and "
-									"docdb_obsolete_rows_scanned"),
+									"docdb_read_time, docdb_write_time, "
+									"docdb_obsolete_rows_scanned, "
+									"docdb_bloom_filter_useful and "
+									"docdb_bloom_filter_checked"),
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_pg_stat_statements_docdb_metrics,
@@ -4387,6 +4402,18 @@ static struct config_bool ConfigureNamesBool[] =
 		&yb_enable_new_relation_fastpath_write_in_txn_blocks,
 		kEnableDdlTransactionBlocks,
 		check_yb_enable_new_relation_fastpath_write_in_txn_blocks, NULL, NULL
+	},
+
+	{
+		{"yb_enable_colocated_tables_with_tablespaces", PGC_SIGHUP, CUSTOM_OPTIONS,
+			gettext_noop("Place a colocated table or index that is created with a tablespace "
+						 "in an implicit tablegroup of that tablespace."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_colocated_tables_with_tablespaces,
+		true,
+		NULL, NULL, NULL
 	},
 
 	/* End-of-list marker */

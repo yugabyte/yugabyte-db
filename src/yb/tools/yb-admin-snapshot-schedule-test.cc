@@ -4440,12 +4440,70 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, ConsistentRestoreFailover,
 
   ASSERT_OK(WaitRestorationDone(restoration_id, 40s));
 
+  // Tablets accept writes only after completion is persisted, so the new leader must not re-run
+  // the restoration and wipe this row.
+  ASSERT_OK(WaitFor([&conn, expr]() -> Result<bool> {
+    return conn.ExecuteQueryFormat(expr, 3).ok();
+  }, 30s, "Insert after restoration"));
+
   for (auto* master : cluster_->master_daemons()) {
     master->Shutdown();
     ASSERT_OK(master->Restart());
   }
 
-  ASSERT_OK(conn.ExecuteQueryFormat(expr, 3));
+  // A different key, so that losing row 3 is not hidden by re-inserting it.
+  ASSERT_OK(WaitFor([&conn, expr]() -> Result<bool> {
+    return conn.ExecuteQueryFormat(expr, 4).ok();
+  }, 30s, "Insert after master restart"));
+
+  auto rows = ASSERT_RESULT(conn.ExecuteAndRenderToString("SELECT * FROM test_table"));
+  // Rows come in hash order.
+  std::vector<std::string> keys = strings::Split(rows, ";");
+  std::sort(keys.begin(), keys.end());
+  ASSERT_EQ(keys, (std::vector<std::string>{"1", "3", "4"})) << rows;
+}
+
+// Masters are restarted after the restoration finished on all tablets, but before its completion
+// was written to sys catalog. The new leader re-runs the restoration, so tablets must not accept
+// writes before that.
+TEST_F(YbAdminSnapshotScheduleTest, ConsistentRestoreFailoverBeforeCompletionPersisted) {
+  auto schedule_id = ASSERT_RESULT(PrepareCql());
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.ExecuteQuery("CREATE TABLE test_table (k1 INT PRIMARY KEY)"));
+  auto expr = "INSERT INTO test_table (k1) VALUES ($0)";
+  ASSERT_OK(conn.ExecuteQueryFormat(expr, 1));
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+  ASSERT_OK(conn.ExecuteQueryFormat(expr, 2));
+
+  // Set at runtime, so restarted masters do not have it.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_skip_persisting_restore_complete", "true"));
+
+  auto restoration_id = ASSERT_RESULT(StartRestoreSnapshotSchedule(schedule_id, time));
+
+  ASSERT_OK(WaitRestorationDone(restoration_id, 40s));
+
+  // Give tservers a few heartbeats to learn about a completion that was not persisted.
+  SleepFor(5s * kTimeMultiplier);
+  ASSERT_NOK(conn.ExecuteQueryFormat(expr, 3));
+
+  for (auto* master : cluster_->master_daemons()) {
+    master->Shutdown();
+    ASSERT_OK(master->Restart());
+  }
+
+  // Tablets reject writes until the new leader re-runs the restoration and persists completion.
+  // The timeout covers master election, the re-run, and client retries of rejected inserts.
+  ASSERT_OK(WaitFor([&conn, expr]() -> Result<bool> {
+    auto status = conn.ExecuteQueryFormat(expr, 3);
+    if (!status.ok()) {
+      LOG(INFO) << "Insert failed: " << status;
+      return false;
+    }
+    return true;
+  }, 120s * kTimeMultiplier, "Insert after restoration"));
 
   auto rows = ASSERT_RESULT(conn.ExecuteAndRenderToString("SELECT * FROM test_table"));
   ASSERT_EQ(rows, "1;3");
@@ -6729,10 +6787,8 @@ TEST_F(YbAdminSnapshotScheduleTestWithYsql, PgsqlPitrDoesNotRewindOidCounter) {
       << secondary_after_restore.first;
 }
 
-// Fixture for the clone-with-multiple-colocation-parents repro. We need the
-// PG-side gflag `ysql_enable_colocated_tables_with_tablespaces` enabled (it
-// is NON_RUNTIME and defaults to false) on both master and tserver so that
-// `TABLESPACE ts_x` on a colocated table promotes the table into a distinct
+// Fixture for the clone-with-multiple-colocation-parents repro. It relies on
+// `TABLESPACE ts_x` on a colocated table promoting the table into a distinct
 // implicit `colocation_<ts_x_oid>` tablegroup -- and therefore its own
 // colocated parent table -- rather than being lumped into the database's
 // single default colocated parent.
@@ -6745,14 +6801,11 @@ class YbAdminCloneColocationTablespaceTest : public YbAdminSnapshotScheduleTestW
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     YbAdminSnapshotScheduleTestWithLBYsql::UpdateMiniClusterOptions(opts);
-    opts->extra_master_flags.emplace_back("--ysql_enable_colocated_tables_with_tablespaces=true");
     opts->extra_master_flags.emplace_back("--enable_db_clone=true");
-    opts->extra_tserver_flags.emplace_back("--ysql_enable_colocated_tables_with_tablespaces=true");
   }
 };
 
-// In a colocated YSQL database with
-// `ysql_enable_colocated_tables_with_tablespaces=true`, every distinct
+// In a colocated YSQL database, every distinct
 // tablespace that backs at least one colocated relation gets its own
 // implicit `colocation_<tablespace_oid>` tablegroup, and therefore its own
 // colocated parent table on the source side. This test ensures the import snapshot workflow can
@@ -6792,10 +6845,9 @@ TEST_F_EX(
       "'{\"num_replicas\": 3, \"placement_blocks\": $0}')",
       kPlacementBlocks));
 
-  // Partition `customer` and put each partition in a different tablespace. With
-  // ysql_enable_colocated_tables_with_tablespaces on, each `TABLESPACE ts_x` clause on a partition
-  // forces creation of a distinct implicit colocation_<ts_x_oid> tablegroup, so the source DB ends
-  // up with three colocated parent tables (default + ts_a + ts_b).
+  // Partition `customer` and put each partition in a different tablespace. Each `TABLESPACE ts_x`
+  // clause on a partition forces creation of a distinct implicit colocation_<ts_x_oid> tablegroup,
+  // so the source DB ends up with three colocated parent tables (default + ts_a + ts_b).
   ASSERT_OK(src_conn.Execute(
       "CREATE TABLE customer (id INT, region INT, value TEXT, "
       "PRIMARY KEY (id, region)) PARTITION BY LIST (region)"));

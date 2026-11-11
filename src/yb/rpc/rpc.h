@@ -144,6 +144,8 @@ class RpcRetrier {
 
   int attempt_num() const { return attempt_num_; }
 
+  const Status& last_error() const { return last_error_; }
+
   void Abort();
 
   std::string ToString() const;
@@ -295,6 +297,13 @@ class Rpcs {
   }
 
   Handle InvalidHandle() { return calls_.end(); }
+
+  // Number of calls currently registered. A non-zero count after every owner has been destroyed
+  // means some call was never unregistered or aborted.
+  size_t TEST_NumActiveCalls() {
+    std::lock_guard lock(*mutex_);
+    return calls_.size();
+  }
 
  private:
   Rpcs::Handle RegisterUnlocked(RpcCommandPtr call) REQUIRES(*mutex_);

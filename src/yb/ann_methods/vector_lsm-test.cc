@@ -64,6 +64,7 @@ DECLARE_uint32(vector_index_compaction_chunk_max_memstore_size_percentage);
 DECLARE_uint32(vector_index_num_compactions_limit);
 DECLARE_uint64(vector_index_initial_chunk_memstore_size_mb);
 DECLARE_uint64(vector_index_initial_chunk_size);
+DECLARE_uint64(vector_index_max_merge_tasks);
 DECLARE_uint64(vector_index_task_size);
 
 METRIC_DEFINE_entity(table);
@@ -291,6 +292,12 @@ class VectorLSMTestBase : public hnsw::VectorIndexTestBase {
 
   void TestMultipleChunksSimpleCompaction(vector_index::DistanceKind distance_kind);
 
+  // Saves num_chunks chunks and damages their blocks while the LSM is closed, so they are read
+  // from disk. Returns the storage directory.
+  Result<std::string> SaveDamagedChunks(size_t dimensions, size_t num_chunks);
+
+  void TestDamagedChunk(bool use_merge_tasks);
+
   MergeFilterPtr GetMergeFilter();
 
   void SetMergeFilter(MergeFilterPtr&& filter);
@@ -515,7 +522,7 @@ Status VectorLSMTestBase::OpenVectorLSM(
     .log_prefix = "Test: ",
     .storage_dir = dir,
     .vector_index_traits = VERIFY_RESULT((CreateHnswlibIndexTraits<std::vector<float>, float>(
-        block_cache_, hnsw_options, mem_tracker))),
+        block_cache_, hnsw_options, mem_tracker, /* tenant_extractor= */ nullptr))),
     .thread_pool = &thread_pool_,
     .insert_thread_pool = &thread_pool_,
     .compaction_token = std::make_shared<PriorityThreadPoolToken>(priority_thread_pool_),
@@ -2485,6 +2492,125 @@ TEST_P(VectorLSMTest, ConcurrentSearchWhileInsertingAcrossSegments) {
   }
   LOG(INFO) << "Found " << found << " of " << inserted_entries_.size() << " vectors by self-search";
   ASSERT_GE(found * 100, inserted_entries_.size() * 99);
+}
+
+Result<std::string> VectorLSMTestBase::SaveDamagedChunks(size_t dimensions, size_t num_chunks) {
+  // Damages every block larger than this.
+  constexpr size_t kDamageStride = 128;
+  const std::string kChunkFilePrefix = "vectorindex_";
+
+  const auto old_enable_compactions = FLAGS_vector_index_enable_compactions;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  std::string storage_dir;
+  {
+    FloatVectorLSM lsm;
+    RETURN_NOT_OK(OpenVectorLSM(lsm, dimensions, kDefaultChunkSize));
+    storage_dir = lsm.StorageDir();
+    for (size_t i = 0; i != num_chunks; ++i) {
+      RETURN_NOT_OK(InsertRandomAndFlush(lsm, dimensions, kDefaultChunkSize));
+    }
+    SCHECK_EQ(lsm.NumImmutableChunks(), num_chunks, IllegalState, "Wrong number of chunks");
+  }
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = old_enable_compactions;
+
+  auto files = VERIFY_RESULT(vector_index::ListVectorLSMFiles(env_.get(), storage_dir));
+  size_t num_damaged_chunks = 0;
+  for (const auto& file : files.manifest_and_chunk_files) {
+    if (file.starts_with(kChunkFilePrefix)) {
+      RETURN_NOT_OK(DamageYbHnswBlocks(JoinPathSegments(storage_dir, file), kDamageStride));
+      ++num_damaged_chunks;
+    }
+  }
+  SCHECK_EQ(num_damaged_chunks, num_chunks, IllegalState, "Wrong number of damaged chunks");
+  return storage_dir;
+}
+
+// Reading a damaged chunk fails searches and compactions, but not later writes.
+void VectorLSMTestBase::TestDamagedChunk(bool use_merge_tasks) {
+  constexpr size_t kDimensions = 8;
+  constexpr size_t kNumChunks = 2;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  if (!use_merge_tasks) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_max_merge_tasks) = 0;
+  }
+
+  auto storage_dir = ASSERT_RESULT(SaveDamagedChunks(kDimensions, kNumChunks));
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(
+      lsm, kDimensions, kDefaultChunkSize, vector_index::DistanceKind::kL2Squared,
+      /* mem_tracker = */ {}, storage_dir));
+
+  FloatVectorLSM::Vector query_vector(kDimensions);
+  auto search_result = lsm.Search(query_vector, vector_index::SearchOptions {
+    .max_num_results = 10,
+    .ef = 0,
+  });
+  ASSERT_NOK(search_result);
+  ASSERT_TRUE(search_result.status().IsCorruption()) << search_result.status();
+
+  auto status = lsm.Compact(/* wait= */ true);
+  ASSERT_TRUE(status.IsCorruption()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "Block checksum mismatch");
+  ASSERT_EQ(lsm.NumImmutableChunks(), kNumChunks);
+
+  ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, kDefaultChunkSize));
+  ASSERT_EQ(lsm.NumImmutableChunks(), kNumChunks + 1);
+}
+
+TEST_P(VectorLSMTest, DamagedChunk) {
+  TestDamagedChunk(/* use_merge_tasks= */ true);
+}
+
+TEST_P(VectorLSMTest, DamagedChunkWithoutMergeTasks) {
+  TestDamagedChunk(/* use_merge_tasks= */ false);
+}
+
+// A background compaction that reads a damaged chunk stops background compactions, while writes and
+// flushes go on. The next open runs one more compaction, which stops them again.
+TEST_P(VectorLSMTest, DamagedChunkBackgroundCompaction) {
+  constexpr size_t kDimensions = 8;
+  constexpr size_t kNumChunks = 4;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_files_number_compaction_trigger) = kNumChunks;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_size_ratio_min_merge_width) =
+      kNumChunks;
+  auto storage_dir = ASSERT_RESULT(SaveDamagedChunks(kDimensions, kNumChunks));
+
+  std::atomic<size_t> num_compactions{0};
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack("VectorLSM::CompactionTask::Run:Start", [&num_compactions](void*) {
+    ++num_compactions;
+  });
+  sync_point->EnableProcessing();
+  auto cleanup = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  for (size_t open = 1; open <= 2; ++open) {
+    LOG(INFO) << "Open " << open;
+    FloatVectorLSM lsm;
+    ASSERT_OK(OpenVectorLSM(
+        lsm, kDimensions, kDefaultChunkSize, vector_index::DistanceKind::kL2Squared,
+        /* mem_tracker = */ {}, storage_dir));
+    ASSERT_OK(LoggedWaitFor(
+        [&num_compactions, open] { return num_compactions.load() == open; },
+        MonoDelta::FromSeconds(30) * kTimeMultiplier, "Compaction started"));
+    ASSERT_OK(WaitForCompactionsDone(lsm));
+    // The failed compaction kept its inputs. Each open before this one added a chunk.
+    const auto num_chunks = kNumChunks + open - 1;
+    ASSERT_EQ(lsm.NumImmutableChunks(), num_chunks);
+
+    // Starts a compaction if background compactions are still on. Any range of kNumChunks chunks
+    // includes damaged ones, so it would fail again.
+    ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, kDefaultChunkSize));
+    ASSERT_OK(WaitForCompactionsDone(lsm));
+    ASSERT_EQ(num_compactions.load(), open);
+    ASSERT_EQ(lsm.NumImmutableChunks(), num_chunks + 1);
+  }
 }
 
 // A compaction that runs out of memory keeps its input chunks and leaves the LSM usable, so a later
