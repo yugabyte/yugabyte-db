@@ -32,7 +32,8 @@ class ObjectLockingPromotionUpgradeTest : public UpgradeTestBase {
 // After an upgrade, ysql_yb_enable_object_locking_infra stays off until the AutoFlags are promoted,
 // so transactions on the new binary run in legacy mode. A legacy writer that is still open when
 // the flag is promoted must hold a local object lock, or the first new mode CREATE INDEX does not
-// wait for it and builds an index without the writer's row.
+// wait for it and builds an index without the writer's row. Before the promotion, pg_locks on the
+// writer's node must already show that lock.
 TEST_F(ObjectLockingPromotionUpgradeTest, CreateIndexWaitsForLegacyWriterAcrossPromotion) {
 #ifndef NDEBUG
   // enable_object_locking_for_table_locks is off by default in debug builds, so the current
@@ -53,6 +54,28 @@ TEST_F(ObjectLockingPromotionUpgradeTest, CreateIndexWaitsForLegacyWriterAcrossP
       "SHOW yb_enable_object_locking_infra")), "off");
   ASSERT_OK(legacy_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
   ASSERT_OK(legacy_conn.Execute("UPDATE test SET v = 42 WHERE k = 1"));
+
+  // Before finalize, pg_locks on the writer's node shows its local RowExclusive lock. Right after
+  // the upgrade, pg_locks can fail for a few seconds with "Couldn't fetch old transactions" while
+  // the transaction status tablets settle, so retry on that error.
+  auto observer = ASSERT_RESULT(cluster_->ConnectToDB());
+  ASSERT_OK(observer.Execute("SET yb_locks_min_txn_age = '0s'"));
+  ASSERT_OK(LoggedWaitFor(
+      [&observer]() -> Result<bool> {
+        auto rows = observer.FetchAllAsString(
+            "SELECT locktype, mode, granted FROM pg_locks WHERE relation = 'test'::regclass"
+            " ORDER BY locktype, mode");
+        if (!rows.ok()) {
+          if (rows.status().ToString().find("Couldn't fetch old transactions") !=
+              std::string::npos) {
+            return false;
+          }
+          return rows.status();
+        }
+        LOG(INFO) << "pg_locks on test before finalize: " << *rows;
+        return rows->find("RowExclusiveLock, 1") != std::string::npos;
+      },
+      MonoDelta::FromSeconds(kTimeMultiplier * 30), "pg_locks to show the legacy writer's lock"));
 
   ASSERT_OK(PromoteAutoFlags(AutoFlagClass::kLocalPersisted));
   auto ddl_conn = ASSERT_RESULT(cluster_->ConnectToDB());
