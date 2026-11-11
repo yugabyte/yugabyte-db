@@ -210,7 +210,8 @@ export const InstanceSettingsForm = forwardRef<StepsRef, InstanceSettingsProps>(
         !!useDedicatedNodes,
         maxVolumeCount,
         viewMode,
-        editMode
+        editMode,
+        k8sOverrideEnabled
       )
     )
   });

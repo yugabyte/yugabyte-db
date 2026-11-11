@@ -79,13 +79,14 @@ describe('InstanceSettingsValidationSchema hidden fields', () => {
     await expect(validate(CloudType.aws, 'tserverOnly', false)).rejects.toBeDefined();
   });
 
-  // storageClass is only rendered by K8VolumeInfoField (K8s custom resources)
+  // storageClass is rendered only by K8VolumeInfoField with k8sOverrideEnabled (custom resources)
   it.each([
-    [true, true],
-    [false, false]
+    [true, true, true],
+    [true, false, false],
+    [false, false, false]
   ])(
-    'K8s with custom resources=%s: storageClass blocks submit=%s',
-    async (customResources, blocks) => {
+    'K8s custom resources=%s, override enabled=%s: storageClass blocks submit=%s',
+    async (customResources, overrideEnabled, blocks) => {
       const v = {
         ...values,
         keepMasterTserverSame: true,
@@ -99,7 +100,8 @@ describe('InstanceSettingsValidationSchema hidden fields', () => {
         false,
         32,
         'all',
-        true
+        true,
+        overrideEnabled
       ).validate(v, { abortEarly: false });
       if (blocks) await expect(result).rejects.toBeDefined();
       else await expect(result).resolves.toBeDefined();
