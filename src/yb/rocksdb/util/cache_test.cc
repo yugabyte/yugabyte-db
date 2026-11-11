@@ -1004,6 +1004,40 @@ TEST_F(CacheTest, EvictMultiTouchOverShare) {
   ASSERT_EQ(cache->Lookup(ToString(1), 100 /* query_id */), nullptr);
 }
 
+TEST_F(CacheTest, StrictCapacityLimitRefusedPromotion) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_single_touch_ratio) = 0.2;
+  std::shared_ptr<Cache> cache = NewLRUCache(10, 0, true /* strict_capacity_limit */);
+
+  // Fill the multi-touch share, with all entries but the last one pinned.
+  std::vector<Cache::Handle*> handles;
+  for (int i = 0; i < 8; ++i) {
+    ASSERT_OK(InsertIntoCache(cache, i /* key */, i /* value */));
+    handles.push_back(cache->Lookup(ToString(i), 100 /* query_id */));
+    ASSERT_NE(handles.back(), nullptr);
+  }
+  cache->Release(handles.back());
+  handles.pop_back();
+  AssertCacheSizes(cache.get(), 0, 8);
+
+  // The pinned multi-touch entries leave no room to promote this entry, so the promotion is
+  // refused, and it does not evict the unpinned multi-touch entry.
+  ASSERT_OK(InsertIntoCache(
+      cache, 8 /* key */, 8 /* value */, CacheTest::kTestQueryId, 2 /* charge */));
+  Cache::Handle* h = cache->Lookup(ToString(8), 100 /* query_id */);
+  ASSERT_NE(h, nullptr);
+  ASSERT_EQ(cache->GetSubCacheType(h), SINGLE_TOUCH);
+  cache->Release(h);
+  AssertCacheSizes(cache.get(), 2, 8);
+  h = cache->Lookup(ToString(7), 100 /* query_id */);
+  ASSERT_NE(h, nullptr);
+  cache->Release(h);
+
+  for (auto* handle : handles) {
+    cache->Release(handle);
+  }
+}
+
 }  // namespace rocksdb
 
 int main(int argc, char** argv) {
