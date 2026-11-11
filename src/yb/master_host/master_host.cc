@@ -1393,6 +1393,13 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
           return sys_catalog_->CopyPgsqlTables(source_ids, target_ids, req.term());
         });
   }
+  if (name == "HybridTimeNow") {
+    return HandleRequest<master::HybridTimeNowRequestPB, master::HybridTimeNowResponsePB>(
+        request, [this](const auto&, auto* resp) {
+          resp->set_hybrid_time(clock()->Now().ToUint64());
+          return Status::OK();
+        });
+  }
   if (name == "GetYsqlCatalogConfig") {
     // CatalogManager::GetYsqlCatalogConfig; the Rust leader resolved the namespace to its id.
     return HandleRequest<master::GetYsqlCatalogConfigRequestPB,

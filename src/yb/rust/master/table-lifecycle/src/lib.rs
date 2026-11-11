@@ -27,8 +27,9 @@ use rand::RngCore;
 use yb_host_api::{Status, StatusCode};
 use yb_proto::pb::master_types::{master_error_pb::Code, MasterErrorPB};
 
-mod alter;
+pub(crate) mod alter;
 mod assign;
+mod backfill;
 mod create;
 mod drop;
 pub mod lookup;
@@ -83,6 +84,10 @@ pub struct LifecycleOptions {
     /// `use_create_table_leader_hint`: start each new tablet's first election at a chosen
     /// replica, so new tables' leaders are balanced.
     pub use_create_table_leader_hint: fn() -> bool,
+    /// `ysql_disable_index_backfill`.
+    pub ysql_disable_index_backfill: fn() -> bool,
+    /// `ysql_index_backfill_rpc_timeout_ms`.
+    pub ysql_index_backfill_rpc_timeout: fn() -> std::time::Duration,
 }
 
 impl Default for LifecycleOptions {
@@ -99,6 +104,8 @@ impl Default for LifecycleOptions {
             enable_ysql: || false,
             txn_table_wait_min_ts_count: || 1,
             use_create_table_leader_hint: || true,
+            ysql_disable_index_backfill: || false,
+            ysql_index_backfill_rpc_timeout: || std::time::Duration::from_secs(300),
         }
     }
 }

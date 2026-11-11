@@ -48,6 +48,9 @@ use yb_proto::pb::master_admin::{
     IsInitDbDoneResponsePB, IsTabletSplittingCompleteRequestPB,
     IsTabletSplittingCompleteResponsePB, SplitTabletRequestPB, SplitTabletResponsePB,
 };
+use yb_proto::pb::master_admin::{
+    WaitForYsqlBackendsCatalogVersionRequestPB, WaitForYsqlBackendsCatalogVersionResponsePB,
+};
 use yb_proto::pb::master_client::{
     GetTableLocationsRequestPB, GetTableLocationsResponsePB, GetTabletLocationsRequestPB,
     GetTabletLocationsResponsePB, GetTransactionStatusTabletsRequestPB,
@@ -70,19 +73,21 @@ use yb_proto::pb::master_cluster::{
 };
 use yb_proto::pb::master_ddl::{
     AcquireObjectLocksGlobalRequestPB, AcquireObjectLocksGlobalResponsePB, AlterNamespaceRequestPB,
-    AlterNamespaceResponsePB, AlterTableRequestPB, AlterTableResponsePB, CreateNamespaceRequestPB,
-    CreateNamespaceResponsePB, CreateTableRequestPB, CreateTableResponsePB,
-    DeleteNamespaceRequestPB, DeleteNamespaceResponsePB, DeleteTableRequestPB,
-    DeleteTableResponsePB, GetNamespaceInfoRequestPB, GetNamespaceInfoResponsePB,
-    GetTableSchemaRequestPB, GetTableSchemaResponsePB, IsAlterTableDoneRequestPB,
-    IsAlterTableDoneResponsePB, IsCreateNamespaceDoneRequestPB, IsCreateNamespaceDoneResponsePB,
-    IsCreateTableDoneRequestPB, IsCreateTableDoneResponsePB, IsDeleteNamespaceDoneRequestPB,
-    IsDeleteNamespaceDoneResponsePB, IsDeleteTableDoneRequestPB, IsDeleteTableDoneResponsePB,
-    IsYsqlDdlVerificationDoneRequestPB, IsYsqlDdlVerificationDoneResponsePB,
-    ListNamespacesRequestPB, ListNamespacesResponsePB, ListTablesRequestPB, ListTablesResponsePB,
-    ReleaseObjectLocksGlobalRequestPB, ReleaseObjectLocksGlobalResponsePB,
-    ReportYsqlDdlTxnStatusRequestPB, ReportYsqlDdlTxnStatusResponsePB,
-    WaitForLockersMultipleGlobalRequestPB, WaitForLockersMultipleGlobalResponsePB,
+    AlterNamespaceResponsePB, AlterTableRequestPB, AlterTableResponsePB, BackfillIndexRequestPB,
+    BackfillIndexResponsePB, CreateNamespaceRequestPB, CreateNamespaceResponsePB,
+    CreateTableRequestPB, CreateTableResponsePB, DeleteNamespaceRequestPB,
+    DeleteNamespaceResponsePB, DeleteTableRequestPB, DeleteTableResponsePB,
+    GetBackfillStatusRequestPB, GetBackfillStatusResponsePB, GetNamespaceInfoRequestPB,
+    GetNamespaceInfoResponsePB, GetTableSchemaRequestPB, GetTableSchemaResponsePB,
+    IsAlterTableDoneRequestPB, IsAlterTableDoneResponsePB, IsCreateNamespaceDoneRequestPB,
+    IsCreateNamespaceDoneResponsePB, IsCreateTableDoneRequestPB, IsCreateTableDoneResponsePB,
+    IsDeleteNamespaceDoneRequestPB, IsDeleteNamespaceDoneResponsePB, IsDeleteTableDoneRequestPB,
+    IsDeleteTableDoneResponsePB, IsYsqlDdlVerificationDoneRequestPB,
+    IsYsqlDdlVerificationDoneResponsePB, ListNamespacesRequestPB, ListNamespacesResponsePB,
+    ListTablesRequestPB, ListTablesResponsePB, ReleaseObjectLocksGlobalRequestPB,
+    ReleaseObjectLocksGlobalResponsePB, ReportYsqlDdlTxnStatusRequestPB,
+    ReportYsqlDdlTxnStatusResponsePB, WaitForLockersMultipleGlobalRequestPB,
+    WaitForLockersMultipleGlobalResponsePB,
 };
 use yb_proto::pb::master_heartbeat::{TSHeartbeatRequestPB, TSHeartbeatResponsePB};
 use yb_proto::pb::master_replication::{
@@ -968,6 +973,28 @@ impl Shared {
                         );
                         Ok(())
                     }
+                }
+            ),
+            "GetBackfillStatus" => serve_ddl!(
+                GetBackfillStatusRequestPB,
+                GetBackfillStatusResponsePB,
+                |req, resp| tables.get_backfill_status(&snapshot, &req, &mut resp)
+            ),
+            "WaitForYsqlBackendsCatalogVersion" => serve!(
+                WaitForYsqlBackendsCatalogVersionRequestPB,
+                WaitForYsqlBackendsCatalogVersionResponsePB,
+                |req, resp| {
+                    let lagging = leader.backends.wait(&token, &req, deadline).await;
+                    lagging.map(|n| resp.set_num_lagging_backends(n))
+                }
+            ),
+            "BackfillIndex" => serve_ddl!(
+                BackfillIndexRequestPB,
+                BackfillIndexResponsePB,
+                |req, resp| {
+                    tables
+                        .backfill_index(&token, deadline, &req, &mut resp)
+                        .await
                 }
             ),
             "ReportYsqlDdlTxnStatus" => serve_ddl!(

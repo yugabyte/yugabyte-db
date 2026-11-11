@@ -93,6 +93,12 @@ impl SchemaHost for FakeSchemaHost {
                     table.set_version(0);
                     table.schema = resp.schema.clone();
                     table.set_state(sys_tables_entry_pb::State::PREPARING);
+                    if req.request.index_info.is_some() {
+                        table.index_info = req.request.index_info.clone();
+                        table.set_indexed_table_id(
+                            req.request.index_info.indexed_table_id().to_vec(),
+                        );
+                    }
                 }
                 Ok(resp.write_to_bytes().unwrap())
             }
@@ -1169,6 +1175,103 @@ mod ysql {
         h.set_table_state(TABLE_ID, sys_tables_entry_pb::State::RUNNING)
             .await;
         assert!(h.verified(5));
+    }
+
+    const INDEX_ID: &[u8] = b"000033e8000030008000000000004001";
+
+    /// An index joins its table at WRITE_AND_DELETE, keeping delete markers; `BackfillIndex`
+    /// moves it to DO_BACKFILL; `GetBackfillStatus` reports success only once it is
+    /// READ_WRITE_AND_DELETE; a drop takes it out of its table.
+    #[tokio::test]
+    async fn an_index_moves_through_its_backfill_states() {
+        let h = ysql_harness().await;
+        h.create_ysql(None).await.unwrap();
+        h.set_table_state(TABLE_ID, sys_tables_entry_pb::State::RUNNING)
+            .await;
+        let mut req = CreateTableRequestPB::new();
+        req.set_name("t_idx".into());
+        req.set_table_type(TableType::PGSQL_TABLE_TYPE);
+        req.set_table_id(INDEX_ID.to_vec());
+        req.schema = Some(Default::default()).into();
+        req.namespace.mut_or_insert_default().set_id(DB_ID.to_vec());
+        req.set_num_tablets(1);
+        req.index_info
+            .mut_or_insert_default()
+            .set_indexed_table_id(TABLE_ID.to_vec());
+        let mut resp = CreateTableResponsePB::new();
+        h.lifecycle
+            .create_table(&h.token, Harness::deadline(), &req, &mut resp)
+            .await
+            .unwrap();
+        let table = h.table_row();
+        assert_eq!(table.state(), sys_tables_entry_pb::State::ALTERING);
+        assert_eq!(table.indexes.len(), 1);
+        assert_eq!(table.indexes[0].table_id(), INDEX_ID);
+        assert_eq!(
+            table.indexes[0].index_permissions(),
+            yb_proto::pb::common_types::IndexPermissions::INDEX_PERM_WRITE_AND_DELETE
+        );
+        let index: SysTablesEntryPB = h
+            .catalog
+            .snapshot()
+            .get(SysRowEntryType::TABLE, INDEX_ID)
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert!(index.schema.table_properties.retain_delete_markers());
+
+        let mut status_req = yb_proto::pb::master_ddl::GetBackfillStatusRequestPB::new();
+        let mut ident = yb_proto::pb::master_types::TableIdentifierPB::new();
+        ident.set_table_id(INDEX_ID.to_vec());
+        status_req.index_tables.push(ident.clone());
+        let status = |h: &Harness| {
+            let mut resp = yb_proto::pb::master_ddl::GetBackfillStatusResponsePB::new();
+            h.lifecycle
+                .get_backfill_status(&h.catalog.snapshot(), &status_req, &mut resp)
+                .unwrap();
+            resp.index_status[0].backfill_status()
+        };
+        use yb_proto::pb::master_ddl::index_status_pb::BackfillStatus;
+        assert_eq!(status(&h), BackfillStatus::BACKFILL_UNKNOWN);
+
+        h.set_table_state(TABLE_ID, sys_tables_entry_pb::State::RUNNING)
+            .await;
+        let version = h.table_row().version();
+        let mut backfill = yb_proto::pb::master_ddl::BackfillIndexRequestPB::new();
+        backfill.index_identifier = Some(ident).into();
+        let mut backfill_resp = yb_proto::pb::master_ddl::BackfillIndexResponsePB::new();
+        h.lifecycle
+            .backfill_index(&h.token, Harness::deadline(), &backfill, &mut backfill_resp)
+            .await
+            .unwrap();
+        assert_eq!(backfill_resp.table_identifier.table_id(), TABLE_ID);
+        let table = h.table_row();
+        assert_eq!(table.version(), version + 1);
+        assert!(table.updates_only_index_permissions());
+        assert_eq!(
+            table.indexes[0].index_permissions(),
+            yb_proto::pb::common_types::IndexPermissions::INDEX_PERM_DO_BACKFILL
+        );
+        // Asked again: already done.
+        h.lifecycle
+            .backfill_index(&h.token, Harness::deadline(), &backfill, &mut backfill_resp)
+            .await
+            .unwrap();
+        assert_eq!(h.table_row().version(), version + 1);
+
+        // DROP INDEX outside a transaction: the index goes, and leaves its table.
+        let mut drop = DeleteTableRequestPB::new();
+        drop.table
+            .mut_or_insert_default()
+            .set_table_id(INDEX_ID.to_vec());
+        drop.set_is_index_table(true);
+        let mut drop_resp = DeleteTableResponsePB::new();
+        h.lifecycle
+            .delete_table(&h.token, Harness::deadline(), &drop, &mut drop_resp)
+            .await
+            .unwrap();
+        assert_eq!(drop_resp.indexed_table.table_id(), TABLE_ID);
+        assert!(h.table_row().indexes.is_empty());
     }
 
     /// A drop in a DDL transaction waits for the commit, and an abort undoes it.

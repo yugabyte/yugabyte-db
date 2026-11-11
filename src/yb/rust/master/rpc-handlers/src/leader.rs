@@ -86,6 +86,8 @@ pub struct LeaderServices {
     pub leases: Arc<master_ysql_manager::lease::YsqlLeases>,
     /// Global DDL object locks.
     pub locks: Arc<master_ysql_manager::locks::ObjectLocks>,
+    /// `WaitForYsqlBackendsCatalogVersion`.
+    pub backends: Arc<master_ysql_manager::backends::YsqlBackends>,
     /// `blacklist_progress_initial_delay_secs`.
     pub blacklist_progress_initial_delay: fn() -> std::time::Duration,
     /// `delay_leader_blacklist_completion_percent_until_tservers_heartbeat`.

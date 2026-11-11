@@ -263,7 +263,7 @@ impl TableLifecycle {
 
 /// `MultiStageAlterTable::CopySchemaDetailsToFullyApplied`: clients of non-YCQL tables keep seeing
 /// the old schema until every tablet has the new one.
-fn copy_to_fully_applied(pb: &mut SysTablesEntryPB) {
+pub(crate) fn copy_to_fully_applied(pb: &mut SysTablesEntryPB) {
     pb.fully_applied_schema = pb.schema.clone();
     pb.set_fully_applied_schema_version(pb.version());
     pb.fully_applied_indexes = pb.indexes.clone();
@@ -286,6 +286,8 @@ struct Alterer {
     /// was sent for, and whether the tablet acknowledged it. The row version, not the schema
     /// version, since a `wal_retention_secs` alter keeps the schema version.
     tablets: Mutex<HashMap<Vec<u8>, (u64, bool)>>,
+    /// Indexed tables whose backfill runs in this term.
+    backfills: Mutex<std::collections::HashSet<Vec<u8>>>,
 }
 
 impl TableAlterer {
@@ -306,6 +308,7 @@ impl TableAlterer {
             rpc_timeout,
             interval,
             tablets: Mutex::default(),
+            backfills: Mutex::default(),
         })))
     }
 }
@@ -352,6 +355,10 @@ impl Alterer {
                     }
                 }
             }
+            if all_done && awaits_backfill(&pb) {
+                self.start_backfill(scope, &token, &table.key.id);
+                continue;
+            }
             if all_done {
                 if let Err(status) = self.finish(&token, &table.key.id, row_version).await {
                     tracing::warn!(
@@ -361,6 +368,31 @@ impl Alterer {
                 }
             }
         }
+    }
+
+    /// Runs the table's backfill (`LaunchYsqlBackfill`) unless it already runs in this term.
+    fn start_backfill(self: &Arc<Self>, scope: &TermScope, token: &LeaderToken, table_id: &[u8]) {
+        if !self.backfills.lock().unwrap().insert(table_id.to_vec()) {
+            return;
+        }
+        let this = self.clone();
+        let token = *token;
+        let table_id = table_id.to_vec();
+        scope.entity().spawn("index-backfill", async move {
+            let ctx = crate::backfill::BackfillContext {
+                lifecycle: this.lifecycle.clone(),
+                rpc: this.rpc.clone(),
+                executor: this.executor.clone(),
+                rpc_timeout: (this.lifecycle.options.ysql_index_backfill_rpc_timeout)(),
+            };
+            if let Err(status) = crate::backfill::run(&ctx, token, &table_id).await {
+                tracing::warn!(
+                    "Backfill of table {} failed, will retry: {status}",
+                    String::from_utf8_lossy(&table_id)
+                );
+            }
+            this.backfills.lock().unwrap().remove(&table_id);
+        });
     }
 
     fn send(
@@ -502,14 +534,24 @@ impl Controller for TableAlterer {
 /// stay ALTERING.
 fn single_stage_alter(pb: &SysTablesEntryPB) -> bool {
     let settled = |p: IndexPermissions| p == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE;
-    matches!(
-        pb.table_type(),
-        TableType::YQL_TABLE_TYPE | TableType::PGSQL_TABLE_TYPE
-    ) && pb.indexes.iter().all(|i| settled(i.index_permissions()))
+    // A YSQL index's permissions move only on PG's request or at the end of its backfill, so
+    // every YSQL alter completes here (`ClassifyIndexes` for a YSQL table).
+    pb.table_type() == TableType::PGSQL_TABLE_TYPE
+        || pb.table_type() == TableType::YQL_TABLE_TYPE
+            && pb.indexes.iter().all(|i| settled(i.index_permissions()))
+            && pb
+                .index_info
+                .as_ref()
+                .is_none_or(|i| settled(i.index_permissions()))
+}
+
+/// A YSQL table with an index at DO_BACKFILL: its alter ends with the backfill, not RUNNING.
+fn awaits_backfill(pb: &SysTablesEntryPB) -> bool {
+    pb.table_type() == TableType::PGSQL_TABLE_TYPE
         && pb
-            .index_info
-            .as_ref()
-            .is_none_or(|i| settled(i.index_permissions()))
+            .indexes
+            .iter()
+            .any(|i| i.index_permissions() == IndexPermissions::INDEX_PERM_DO_BACKFILL)
 }
 
 /// One `AlterSchema` call. A tablet that already has this or a newer schema counts as done. A

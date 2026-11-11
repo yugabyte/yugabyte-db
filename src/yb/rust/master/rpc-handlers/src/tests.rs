@@ -590,6 +590,14 @@ mod leader_tests {
                 master_task_runtime::TsRpcExecutor::new(|_| 1),
                 Default::default(),
             );
+            let backends = master_ysql_manager::backends::YsqlBackends::new(
+                catalog.clone(),
+                leadership.clone(),
+                ts_manager.clone(),
+                Arc::new(NoSchemaHost),
+                master_task_runtime::TsRpcExecutor::new(|_| 1),
+                Default::default(),
+            );
             Arc::new(LeaderServices {
                 catalog,
                 writer,
@@ -606,6 +614,7 @@ mod leader_tests {
                 splits,
                 leases,
                 locks,
+                backends,
                 blacklist_progress_initial_delay: || std::time::Duration::ZERO,
                 delay_leader_blacklist_completion: || false,
             })

@@ -28,7 +28,7 @@ use yb_proto::pb::catalog_entity_info::YsqlDdlTxnVerifierStatePB;
 use yb_proto::pb::catalog_entity_info::{
     sys_namespace_entry_pb, sys_tables_entry_pb, SysNamespaceEntryPB, SysTablesEntryPB,
 };
-use yb_proto::pb::common_types::{TableType, YQLDatabase};
+use yb_proto::pb::common_types::{IndexPermissions, TableType, YQLDatabase};
 use yb_proto::pb::master_ddl::{
     CreateTableRequestPB, CreateTableResponsePB, DeleteTableRequestPB, DeleteTableResponsePB,
     IsYsqlDdlVerificationDoneRequestPB, IsYsqlDdlVerificationDoneResponsePB,
@@ -142,8 +142,16 @@ impl TableLifecycle {
         if req.is_pg_catalog_table() {
             return Err(not_yet("Creating a PG catalog table (initdb)"));
         }
-        if req.index_info.is_some() || req.has_indexed_table_id() {
-            return Err(not_yet("A YSQL index"));
+        // An index's indexed table: `index_info.indexed_table_id`, or the deprecated field.
+        let indexed_table_id: Option<Vec<u8>> = if req.index_info.is_some() {
+            Some(req.index_info.indexed_table_id().to_vec())
+        } else if req.has_indexed_table_id() {
+            Some(req.indexed_table_id().to_vec())
+        } else {
+            None
+        };
+        if req.index_info.vector_idx_options.is_some() {
+            return Err(not_yet("A vector index"));
         }
         if req.has_tablegroup_id() {
             return Err(not_yet("A YSQL table in a tablegroup"));
@@ -228,6 +236,28 @@ impl TableLifecycle {
             .clone()
             .into_option()
             .ok_or_else(|| corrupt("The host did not build the table's row"))?;
+        // An index starts at WRITE_AND_DELETE until PG asks for its backfill, and keeps delete
+        // markers until the backfill is done; without a backfill it is ready at once.
+        let backfill = indexed_table_id.is_some()
+            && !(self.options.ysql_disable_index_backfill)()
+            && !req.skip_index_backfill();
+        let index_info = indexed_table_id.as_ref().map(|_| {
+            let info = table.index_info.mut_or_insert_default();
+            info.set_table_id(req.table_id().to_vec());
+            let mut info = info.clone();
+            if backfill {
+                info.set_index_permissions(IndexPermissions::INDEX_PERM_WRITE_AND_DELETE);
+            }
+            info
+        });
+        if backfill {
+            table
+                .schema
+                .mut_or_insert_default()
+                .table_properties
+                .mut_or_insert_default()
+                .set_retain_delete_markers(true);
+        }
         // A DDL transaction's table is rolled back unless the transaction commits.
         if req.transaction.is_some() {
             table.transaction = req.transaction.clone();
@@ -290,6 +320,9 @@ impl TableLifecycle {
                 mutation = mutation
                     .upsert_message(SysRowEntryType::TABLE, &table_id, &table)
                     .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+                if let (Some(indexed_id), Some(info)) = (&indexed_table_id, &index_info) {
+                    mutation = add_index_to_indexed_table(snapshot, mutation, indexed_id, info)?;
+                }
                 mutation = add_new_tablets(
                     snapshot,
                     mutation,
@@ -314,12 +347,28 @@ impl TableLifecycle {
         req: &DeleteTableRequestPB,
         resp: &mut DeleteTableResponsePB,
     ) -> Result<(), MasterErrorPB> {
-        if req.is_index_table() {
-            return Err(not_yet("DROP INDEX of a YSQL index"));
-        }
         let snapshot = self.catalog.snapshot();
         let table = find_table(&snapshot, &req.table, false)?;
         resp.set_table_id(table.key.id.to_vec());
+        if req.is_index_table() {
+            // The client gets the indexed table at once, as C++ answers.
+            let pb: SysTablesEntryPB = table.parse().map_err(corrupt)?;
+            let indexed_id = indexed_table_of(&pb);
+            if let Some(indexed) = snapshot.get(SysRowEntryType::TABLE, &indexed_id) {
+                let indexed_pb: SysTablesEntryPB = indexed.parse().map_err(corrupt)?;
+                let out = resp.indexed_table.mut_or_insert_default();
+                out.set_table_id(indexed_id.clone());
+                out.set_table_name(String::from_utf8_lossy(indexed_pb.name()).into_owned());
+                let ns = out.namespace.mut_or_insert_default();
+                ns.set_id(indexed_pb.namespace_id().to_vec());
+                if let Some(n) = snapshot
+                    .get(SysRowEntryType::NAMESPACE, indexed_pb.namespace_id())
+                    .and_then(|n| n.namespace())
+                {
+                    ns.set_name(n.name.clone());
+                }
+            }
+        }
         if !(req.ysql_yb_ddl_rollback_enabled() && req.transaction.is_some()) {
             return self.mark_deleting(token, deadline, &table.key.id).await;
         }
@@ -385,10 +434,44 @@ impl TableLifecycle {
             pb.set_state_msg(format!("Started deleting at {}", local_time_string()).into_bytes());
             pb.ysql_ddl_txn_verifier_state.clear();
             pb.transaction = Default::default();
-            let mutation = Mutation::new()
+            let mut mutation = Mutation::new()
                 .read(table)
                 .upsert_message(SysRowEntryType::TABLE, table_id, &pb)
                 .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+            // DeleteIndexInfoFromTable: an index leaves its table's `indexes`, as an alter.
+            let indexed_id = indexed_table_of(&pb);
+            if !indexed_id.is_empty() {
+                if let Some(indexed) = snapshot.get(SysRowEntryType::TABLE, &indexed_id) {
+                    let mut indexed_pb: SysTablesEntryPB = indexed.parse().map_err(corrupt)?;
+                    let started_deleting = matches!(
+                        indexed_pb.state(),
+                        TableState::DELETING | TableState::DELETED
+                    );
+                    if !started_deleting
+                        && indexed_pb.indexes.iter().any(|i| i.table_id() == table_id)
+                    {
+                        if indexed_pb.fully_applied_schema.is_none() {
+                            crate::alter::copy_to_fully_applied(&mut indexed_pb);
+                        }
+                        indexed_pb.indexes.retain(|i| i.table_id() != table_id);
+                        indexed_pb.set_version(indexed_pb.version() + 1);
+                        indexed_pb.set_updates_only_index_permissions(false);
+                        indexed_pb.state = Some(EnumOrUnknown::new(TableState::ALTERING));
+                        indexed_pb.set_state_msg(
+                            format!(
+                                "Delete index info version={} ts={}",
+                                indexed_pb.version(),
+                                local_time_string()
+                            )
+                            .into_bytes(),
+                        );
+                        mutation = mutation
+                            .read(indexed)
+                            .upsert_message(SysRowEntryType::TABLE, &indexed_id, &indexed_pb)
+                            .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+                    }
+                }
+            }
             Ok((mutation, ()))
         })
         .await
@@ -554,6 +637,61 @@ impl TableLifecycle {
         }
         resp.set_done(done);
         Ok(())
+    }
+}
+
+/// `PrepareAddIndexInfoToTable`: the index joins its table's `indexes`, as an alter, in the
+/// index's create mutation, so an index is never persisted without the reference to it.
+fn add_index_to_indexed_table(
+    snapshot: &CatalogSnapshot,
+    mutation: Mutation,
+    indexed_table_id: &[u8],
+    info: &yb_proto::pb::common::IndexInfoPB,
+) -> Result<Mutation, MasterErrorPB> {
+    let indexed = snapshot
+        .get(SysRowEntryType::TABLE, indexed_table_id)
+        .ok_or_else(|| {
+            error(
+                Code::OBJECT_NOT_FOUND,
+                StatusCode::NotFound,
+                format!(
+                    "The indexed table {} does not exist",
+                    String::from_utf8_lossy(indexed_table_id)
+                ),
+            )
+        })?;
+    crate::lookup::check_visible(indexed, false)?;
+    let mut pb: SysTablesEntryPB = indexed.parse().map_err(corrupt)?;
+    if pb.colocated() || !pb.parent_table_id().is_empty() {
+        return Err(not_yet("An index on a colocated YSQL table"));
+    }
+    if pb.fully_applied_schema.is_none() {
+        crate::alter::copy_to_fully_applied(&mut pb);
+    }
+    pb.indexes.push(info.clone());
+    pb.set_version(pb.version() + 1);
+    pb.set_updates_only_index_permissions(false);
+    pb.state = Some(EnumOrUnknown::new(TableState::ALTERING));
+    pb.set_state_msg(
+        format!(
+            "Add index info version={} ts={}",
+            pb.version(),
+            local_time_string()
+        )
+        .into_bytes(),
+    );
+    mutation
+        .read(indexed)
+        .upsert_message(SysRowEntryType::TABLE, indexed_table_id, &pb)
+        .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))
+}
+
+/// `GetIndexedTableId`: empty for a table that is not an index.
+fn indexed_table_of(pb: &SysTablesEntryPB) -> Vec<u8> {
+    if pb.index_info.is_some() {
+        pb.index_info.indexed_table_id().to_vec()
+    } else {
+        pb.indexed_table_id().to_vec()
     }
 }
 

@@ -18,9 +18,9 @@ YCQL keyspaces and tables that are not indexes:
 | `AlterTable`, `IsAlterTableDone` | Below. |
 | `DeleteTable`, `IsDeleteTableDone` | Below. Dropping an index on its own, and a table a snapshot schedule covers (which C++ hides rather than deletes), are not served yet. |
 
-YSQL databases that are not colocated, and YSQL tables that are not colocated, not indexes and in
+YSQL databases that are not colocated, and YSQL tables and indexes that are not colocated and in
 the default tablespace (below). `AlterNamespace` renames a running namespace. Dropping a YSQL
-database, indexes, colocated tables and tablespaces answer `NotSupported`. Roles, permissions and
+database, colocated tables, vector indexes and tablespaces answer `NotSupported`. Roles, permissions and
 UDTs are `master-ycql`'s.
 
 ## YSQL tables and DDL verification (`ysql.rs`)
@@ -150,3 +150,27 @@ and marks the table DELETED once no tablet is left. All of it is derived from th
 leader finishes a drop the last one started; a replica missed here gets its delete from report
 processing. C++ writes DELETING, then the tablets, then DELETED, with in-memory bookkeeping in
 between (#33349).
+
+## YSQL indexes and backfill (`ysql.rs`, `backfill.rs`)
+
+An index is created in one mutation with its indexed table, which gets the index's `IndexInfoPB`
+as an alter (`PrepareAddIndexInfoToTable`). Unless backfill is off (`ysql_disable_index_backfill`)
+or the request skips it (a non-concurrent build), the index starts at WRITE_AND_DELETE and its
+table retains delete markers. PG's `BackfillIndex` moves it to DO_BACKFILL, another alter; once
+every tablet has that version the alterer runs the backfill instead of returning the table to
+RUNNING:
+
+1. A backfill job is recorded on the indexed table (one index at a time, as C++ does for YSQL).
+2. The read time is the latest `GetSafeTime` of the tablets, each at least the master's hybrid
+   time now, persisted in the job so a new leader reuses it.
+3. Each tablet's leader backfills in `BackfillIndex` chunks; each chunk's end is persisted in the
+   tablet's `backfilled_until`, so a new leader resumes there.
+4. On success each index stops retaining delete markers, records its birth time, and its tablets
+   get `BackfillDone`; the index moves to READ_WRITE_AND_DELETE. On failure the index gets
+   `backfill_error_message` and moves to WRITE_AND_DELETE_WHILE_REMOVING. Either way the job and
+   the tablets' progress are cleared.
+
+PG learns the outcome from the indexed table's schema or `GetBackfillStatus`. Dropping an index
+also takes it out of its table's `indexes`, as an alter (`DeleteIndexInfoFromTable`). Not done
+yet: the backfill's row counts and `GetIndexBackfillProgress`, the requester liveness check, and
+xCluster's replicated backfill.

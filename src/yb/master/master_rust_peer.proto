@@ -242,6 +242,15 @@ message CopyPgsqlSysTablesResponsePB {
   repeated TableRowPB tables = 2;
 }
 
+// The host's hybrid clock (MasterHost::HandleOnHost "HybridTimeNow").
+message HybridTimeNowRequestPB {
+}
+
+message HybridTimeNowResponsePB {
+  optional MasterErrorPB error = 1;
+  optional fixed64 hybrid_time = 2;
+}
+
 service MasterRustPeer {
   rpc PushLocations(PushLocationsRequestPB) returns (PushLocationsResponsePB);
   rpc DumpCatalog(DumpCatalogRequestPB) returns (DumpCatalogResponsePB);

@@ -756,3 +756,11 @@ mod locks {
         assert!(exported.lock_entries.is_empty());
     }
 }
+
+#[test]
+fn pg_namespace_ids_carry_the_database_oid() {
+    assert_eq!(
+        crate::backends::pg_namespace_id(13665),
+        b"00003561000030008000000000000000".to_vec()
+    );
+}

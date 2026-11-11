@@ -111,3 +111,15 @@ With YSQL on, the `transaction-table` controller creates `system.transactions` o
 does from its tserver count callback. The transaction tables version is bumped when the table is
 created and again when one of its tablets turns RUNNING from a report: tservers refresh their
 usable status tablets only on a version change, and the first bump comes before any tablet runs.
+
+## Backends catalog version (`backends.rs`)
+
+`WaitForYsqlBackendsCatalogVersion` answers how many PG backends in the cluster still run on a
+catalog version of a database older than the requested one; online DDL (CREATE INDEX between its
+steps) asks until the answer is 0. As C++'s `YsqlBackendsManager`: the requested version must not
+be past the master's (`pg_yb_catalog_version`, through the host); one job per (database, version)
+asks each tserver with a live YSQL lease (`WaitForYsqlBackendsCatalogVersion` on the tserver),
+again while it reports lagging backends; a tserver whose lease ends counts as caught up. A caller
+waits until the client's deadline less
+`wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms` and gets the total, or -1
+while a tserver has not answered. A version found reached is remembered for the term.

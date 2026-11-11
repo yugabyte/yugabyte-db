@@ -40,6 +40,7 @@ use master_task_runtime::{
 use master_ts_manager::{
     DeleteReplica, HeartbeatContributor, LocationStream, Peer, TsManager, TsManagerOptions,
 };
+use master_ysql_manager::backends::{BackendsOptions, YsqlBackends};
 use master_ysql_manager::initdb;
 use master_ysql_manager::lease::{LeaseExpiryController, LeaseOptions, YsqlLeases};
 use master_ysql_manager::locks::{LockOptions, ObjectLocks};
@@ -152,6 +153,13 @@ static PAUSE_BG_LOOP_START: FlagRef<bool> =
     FlagRef::new("TEST_pause_catalog_manager_bg_loop_start");
 static PAUSE_BG_LOOP_END: FlagRef<bool> = FlagRef::new("TEST_pause_catalog_manager_bg_loop_end");
 static TXN_TABLE_WAIT_MIN_TS_COUNT: FlagRef<i32> = FlagRef::new("txn_table_wait_min_ts_count");
+static BACKENDS_TS_RPC_TIMEOUT_MS: FlagRef<i32> =
+    FlagRef::new("wait_for_ysql_backends_catalog_version_master_tserver_rpc_timeout_ms");
+static BACKENDS_CLIENT_MARGIN_MS: FlagRef<u32> =
+    FlagRef::new("wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms");
+static YSQL_INDEX_BACKFILL_RPC_TIMEOUT_MS: FlagRef<i32> =
+    FlagRef::new("ysql_index_backfill_rpc_timeout_ms");
+static YSQL_DISABLE_INDEX_BACKFILL: FlagRef<bool> = FlagRef::new("ysql_disable_index_backfill");
 static USE_CREATE_TABLE_LEADER_HINT: FlagRef<bool> = FlagRef::new("use_create_table_leader_hint");
 static YSQL_LEASE_TTL_MS: FlagRef<u64> = FlagRef::new("master_ysql_operation_lease_ttl_ms");
 static YSQL_LEASE_CLIENT_BUFFER_MS: FlagRef<u64> =
@@ -444,6 +452,10 @@ impl Core {
                 enable_ysql: || ENABLE_YSQL.get(),
                 txn_table_wait_min_ts_count: || TXN_TABLE_WAIT_MIN_TS_COUNT.get(),
                 use_create_table_leader_hint: || USE_CREATE_TABLE_LEADER_HINT.get(),
+                ysql_disable_index_backfill: || YSQL_DISABLE_INDEX_BACKFILL.get(),
+                ysql_index_backfill_rpc_timeout: || {
+                    millis(YSQL_INDEX_BACKFILL_RPC_TIMEOUT_MS.get())
+                },
                 tablet_creation_timeout_ms: || TABLET_CREATION_TIMEOUT_MS.get() as i64,
                 use_parent_table_id_field: || USE_PARENT_TABLE_ID_FIELD.get(),
                 transaction_table_num_tablets: || TRANSACTION_TABLE_NUM_TABLETS.get(),
@@ -478,6 +490,17 @@ impl Core {
                 rpc_timeout: || millis(MASTER_TS_RPC_TIMEOUT_MS.get()),
             },
         );
+        let backends = YsqlBackends::new(
+            catalog.clone(),
+            leadership.clone(),
+            ts_manager.clone(),
+            schema.clone(),
+            ts_rpc.clone(),
+            BackendsOptions {
+                tserver_rpc_timeout: || millis(BACKENDS_TS_RPC_TIMEOUT_MS.get()),
+                client_margin: || Duration::from_millis(BACKENDS_CLIENT_MARGIN_MS.get().into()),
+            },
+        );
         let leader = Arc::new(LeaderServices {
             catalog: catalog.clone(),
             writer: writer.clone(),
@@ -494,6 +517,7 @@ impl Core {
             splits,
             leases,
             locks: locks.clone(),
+            backends,
             blacklist_progress_initial_delay: || {
                 Duration::from_secs(BLACKLIST_PROGRESS_INITIAL_DELAY_SECS.get().max(0) as u64)
             },
@@ -621,6 +645,7 @@ impl Core {
         let leader = self.leader.clone();
         leader.splits.set_rpc(rpc.clone());
         leader.locks.set_rpc(rpc.clone());
+        leader.backends.set_rpc(rpc.clone());
         let ts_rpc = self.ts_rpc.clone();
         let host = self.host.clone();
         let mut phases = self.leadership.subscribe();
