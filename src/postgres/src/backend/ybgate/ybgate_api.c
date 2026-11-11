@@ -169,7 +169,7 @@ struct YbgExprContextData
 	int32_t		max_attno;
 	Datum	   *attr_vals;
 	Bitmapset  *attr_nulls;
-	/* YbgSaopCache entries, allocated in the context that owns this struct */
+	/* YbgSaopState entries, allocated in the context that owns this struct */
 	List	   *saop_caches;
 };
 
@@ -181,10 +181,10 @@ typedef struct YbgSaopHashEntry
 } YbgSaopHashEntry;
 
 /*
- * State of a ScalarArrayOpExpr with a constant array, built on the first row
- * and reused for the rest of the scan.
+ * Evaluation state of a ScalarArrayOpExpr.  With a constant array it is built
+ * on the first row and reused for the rest of the scan.
  */
-typedef struct YbgSaopCache
+typedef struct YbgSaopState
 {
 	ScalarArrayOpExpr *saop;
 	FmgrInfo	finfo;
@@ -198,14 +198,14 @@ typedef struct YbgSaopCache
 	uint32		hashmask;
 	FmgrInfo	hash_finfo;
 	FunctionCallInfo hash_fcinfo;
-} YbgSaopCache;
+} YbgSaopState;
 
 static Datum evalExpr(YbgExprContext ctx, Expr *expr, bool *is_null);
 
 static uint32
-ybgSaopElementHash(YbgSaopCache *cache, Datum key)
+ybgSaopElementHash(YbgSaopState *state, Datum key)
 {
-	FunctionCallInfo fcinfo = cache->hash_fcinfo;
+	FunctionCallInfo fcinfo = state->hash_fcinfo;
 
 	fcinfo->args[0].value = key;
 	fcinfo->args[0].isnull = false;
@@ -219,41 +219,113 @@ ybgSaopElementHash(YbgSaopCache *cache, Datum key)
  * key belongs.
  */
 static YbgSaopHashEntry *
-ybgSaopHashProbe(YbgSaopCache *cache, Datum key, uint32 hash)
+ybgSaopHashProbe(YbgSaopState *state, Datum key, uint32 hash)
 {
-	FunctionCallInfo fcinfo = cache->fcinfo;
-	uint32		i = hash & cache->hashmask;
+	FunctionCallInfo fcinfo = state->fcinfo;
+	uint32		i = hash & state->hashmask;
 
-	for (; cache->hashtab[i].used; i = (i + 1) & cache->hashmask)
+	for (; state->hashtab[i].used; i = (i + 1) & state->hashmask)
 	{
-		if (cache->hashtab[i].hash != hash)
+		if (state->hashtab[i].hash != hash)
 			continue;
 		fcinfo->args[0].value = key;
 		fcinfo->args[0].isnull = false;
-		fcinfo->args[1].value = cache->hashtab[i].key;
+		fcinfo->args[1].value = state->hashtab[i].key;
 		fcinfo->args[1].isnull = false;
 		fcinfo->isnull = false;
 		if (DatumGetBool(FunctionCallInvoke(fcinfo)))
 			break;
 	}
-	return &cache->hashtab[i];
+	return &state->hashtab[i];
 }
 
-/* Returns NULL if the expression cannot be cached. */
-static YbgSaopCache *
-ybgGetSaopCache(YbgExprContext ctx, ScalarArrayOpExpr *saop)
+static void
+ybgInitSaopState(YbgSaopState *state, ScalarArrayOpExpr *saop, Datum array,
+				 bool allow_hash)
 {
-	Const	   *arrayconst;
-	ListCell   *lc;
-	YbgSaopCache *cache;
-	MemoryContext oldcontext;
-	ArrayType  *arr;
-	Oid			elemtype;
+	ArrayType  *arr = (ArrayType *) DatumGetPointer(array);
+	Oid			elemtype = ARR_ELEMTYPE(arr);
 	int16_t		elmlen;
 	bool		elmbyval;
 	char		elmalign;
 	bool		use_hash;
 	Oid			cmpfuncid;
+
+	MemSet(state, 0, sizeof(YbgSaopState));
+	state->saop = saop;
+
+	if (!YbTypeDetails(elemtype, &elmlen, &elmbyval, &elmalign))
+		elog(ERROR, "unsupported array element type %u", elemtype);
+	deconstruct_array(arr, elemtype, elmlen, elmbyval, elmalign,
+					  &state->elems, &state->nulls, &state->nitems);
+	for (int i = 0; i < state->nitems; i++)
+	{
+		if (state->nulls[i])
+			state->has_nulls = true;
+	}
+
+	use_hash = allow_hash &&
+		OidIsValid(saop->hashfuncid) &&
+		is_builtin_func(saop->hashfuncid) &&
+		(saop->useOr ||
+		 (OidIsValid(saop->negfuncid) && is_builtin_func(saop->negfuncid)));
+	cmpfuncid = (use_hash && !saop->useOr) ? saop->negfuncid : saop->opfuncid;
+	fmgr_info(cmpfuncid, &state->finfo);
+	if (use_hash && !state->finfo.fn_strict)
+	{
+		use_hash = false;
+		fmgr_info(saop->opfuncid, &state->finfo);
+	}
+	state->fcinfo = palloc0(SizeForFunctionCallInfo(2));
+	InitFunctionCallInfoData(*state->fcinfo,
+							 &state->finfo,
+							 2,
+							 saop->inputcollid,
+							 NULL,
+							 NULL);
+
+	if (use_hash && state->nitems > 0)
+	{
+		uint32		nbuckets = 16;
+
+		fmgr_info(saop->hashfuncid, &state->hash_finfo);
+		state->hash_fcinfo = palloc0(SizeForFunctionCallInfo(1));
+		InitFunctionCallInfoData(*state->hash_fcinfo,
+								 &state->hash_finfo,
+								 1,
+								 saop->inputcollid,
+								 NULL,
+								 NULL);
+		while (nbuckets < (uint32) state->nitems * 2)
+			nbuckets *= 2;
+		state->hashmask = nbuckets - 1;
+		state->hashtab = (YbgSaopHashEntry *)
+			MemoryContextAllocExtended(CurrentMemoryContext,
+									   nbuckets * sizeof(YbgSaopHashEntry),
+									   MCXT_ALLOC_HUGE | MCXT_ALLOC_ZERO);
+		for (int i = 0; i < state->nitems; i++)
+		{
+			YbgSaopHashEntry *entry;
+			uint32		hash;
+
+			if (state->nulls[i])
+				continue;
+			hash = ybgSaopElementHash(state, state->elems[i]);
+			entry = ybgSaopHashProbe(state, state->elems[i], hash);
+			entry->key = state->elems[i];
+			entry->hash = hash;
+			entry->used = true;
+		}
+	}
+}
+
+static YbgSaopState *
+ybgGetCachedSaopState(YbgExprContext ctx, ScalarArrayOpExpr *saop)
+{
+	Const	   *arrayconst;
+	ListCell   *lc;
+	YbgSaopState *state;
+	MemoryContext oldcontext;
 
 	if (ctx == NULL || !IsA(lsecond(saop->args), Const))
 		return NULL;
@@ -263,96 +335,29 @@ ybgGetSaopCache(YbgExprContext ctx, ScalarArrayOpExpr *saop)
 
 	foreach(lc, ctx->saop_caches)
 	{
-		cache = (YbgSaopCache *) lfirst(lc);
-		if (cache->saop == saop)
-			return cache;
+		state = (YbgSaopState *) lfirst(lc);
+		if (state->saop == saop)
+			return state;
 	}
 
 	oldcontext = MemoryContextSwitchTo(GetMemoryChunkContext(ctx));
-
-	cache = (YbgSaopCache *) palloc0(sizeof(YbgSaopCache));
-	cache->saop = saop;
-
-	arr = (ArrayType *) DatumGetPointer(arrayconst->constvalue);
-	elemtype = ARR_ELEMTYPE(arr);
-	if (!YbTypeDetails(elemtype, &elmlen, &elmbyval, &elmalign))
-		elog(ERROR, "unsupported array element type %u", elemtype);
-	deconstruct_array(arr, elemtype, elmlen, elmbyval, elmalign,
-					  &cache->elems, &cache->nulls, &cache->nitems);
-	for (int i = 0; i < cache->nitems; i++)
-	{
-		if (cache->nulls[i])
-			cache->has_nulls = true;
-	}
-
-	use_hash = OidIsValid(saop->hashfuncid) &&
-		is_builtin_func(saop->hashfuncid) &&
-		(saop->useOr ||
-		 (OidIsValid(saop->negfuncid) && is_builtin_func(saop->negfuncid)));
-	cmpfuncid = (use_hash && !saop->useOr) ? saop->negfuncid : saop->opfuncid;
-	fmgr_info(cmpfuncid, &cache->finfo);
-	if (use_hash && !cache->finfo.fn_strict)
-	{
-		use_hash = false;
-		fmgr_info(saop->opfuncid, &cache->finfo);
-	}
-	cache->fcinfo = palloc0(SizeForFunctionCallInfo(2));
-	InitFunctionCallInfoData(*cache->fcinfo,
-							 &cache->finfo,
-							 2,
-							 saop->inputcollid,
-							 NULL,
-							 NULL);
-
-	if (use_hash && cache->nitems > 0)
-	{
-		uint32		nbuckets = 16;
-
-		fmgr_info(saop->hashfuncid, &cache->hash_finfo);
-		cache->hash_fcinfo = palloc0(SizeForFunctionCallInfo(1));
-		InitFunctionCallInfoData(*cache->hash_fcinfo,
-								 &cache->hash_finfo,
-								 1,
-								 saop->inputcollid,
-								 NULL,
-								 NULL);
-		while (nbuckets < (uint32) cache->nitems * 2)
-			nbuckets *= 2;
-		cache->hashmask = nbuckets - 1;
-		cache->hashtab = (YbgSaopHashEntry *)
-			MemoryContextAllocExtended(CurrentMemoryContext,
-									   nbuckets * sizeof(YbgSaopHashEntry),
-									   MCXT_ALLOC_HUGE | MCXT_ALLOC_ZERO);
-		for (int i = 0; i < cache->nitems; i++)
-		{
-			YbgSaopHashEntry *entry;
-			uint32		hash;
-
-			if (cache->nulls[i])
-				continue;
-			hash = ybgSaopElementHash(cache, cache->elems[i]);
-			entry = ybgSaopHashProbe(cache, cache->elems[i], hash);
-			entry->key = cache->elems[i];
-			entry->hash = hash;
-			entry->used = true;
-		}
-	}
-
-	ctx->saop_caches = lappend(ctx->saop_caches, cache);
+	state = (YbgSaopState *) palloc(sizeof(YbgSaopState));
+	ybgInitSaopState(state, saop, arrayconst->constvalue, true);
+	ctx->saop_caches = lappend(ctx->saop_caches, state);
 	MemoryContextSwitchTo(oldcontext);
-	return cache;
+	return state;
 }
 
 static Datum
-ybgEvalCachedSaop(YbgExprContext ctx, YbgSaopCache *cache, bool *is_null)
+ybgEvalSaop(YbgExprContext ctx, YbgSaopState *state, bool *is_null)
 {
-	ScalarArrayOpExpr *saop = cache->saop;
-	FunctionCallInfo fcinfo = cache->fcinfo;
-	bool		strictfunc = cache->finfo.fn_strict;
+	ScalarArrayOpExpr *saop = state->saop;
+	FunctionCallInfo fcinfo = state->fcinfo;
+	bool		strictfunc = state->finfo.fn_strict;
 	Datum		scalar;
 	bool		scalar_isnull;
 
-	if (cache->nitems == 0)
+	if (state->nitems == 0)
 	{
 		*is_null = false;
 		return BoolGetDatum(!saop->useOr);
@@ -365,12 +370,12 @@ ybgEvalCachedSaop(YbgExprContext ctx, YbgSaopCache *cache, bool *is_null)
 		return (Datum) 0;
 	}
 
-	if (cache->hashtab)
+	if (state->hashtab)
 	{
-		uint32		hash = ybgSaopElementHash(cache, scalar);
-		bool		found = ybgSaopHashProbe(cache, scalar, hash)->used;
+		uint32		hash = ybgSaopElementHash(state, scalar);
+		bool		found = ybgSaopHashProbe(state, scalar, hash)->used;
 
-		if (found || !cache->has_nulls)
+		if (found || !state->has_nulls)
 		{
 			*is_null = false;
 			return BoolGetDatum(found == saop->useOr);
@@ -382,17 +387,17 @@ ybgEvalCachedSaop(YbgExprContext ctx, YbgSaopCache *cache, bool *is_null)
 	*is_null = false;
 	fcinfo->args[0].value = scalar;
 	fcinfo->args[0].isnull = scalar_isnull;
-	for (int i = 0; i < cache->nitems; i++)
+	for (int i = 0; i < state->nitems; i++)
 	{
 		Datum		result;
 
-		if (strictfunc && cache->nulls[i])
+		if (strictfunc && state->nulls[i])
 		{
 			*is_null = true;
 			continue;
 		}
-		fcinfo->args[1].value = cache->elems[i];
-		fcinfo->args[1].isnull = cache->nulls[i];
+		fcinfo->args[1].value = state->elems[i];
+		fcinfo->args[1].isnull = state->nulls[i];
 		fcinfo->isnull = false;
 		result = FunctionCallInvoke(fcinfo);
 		if (fcinfo->isnull)
@@ -485,102 +490,26 @@ evalExpr(YbgExprContext ctx, Expr *expr, bool *is_null)
 		case T_ScalarArrayOpExpr:
 			{
 				ScalarArrayOpExpr *saop_expr = castNode(ScalarArrayOpExpr, expr);
-				YbgSaopCache *saop_cache = ybgGetSaopCache(ctx, saop_expr);
-				bool		array_null;
+				YbgSaopState *saop_state = ybgGetCachedSaopState(ctx, saop_expr);
+				YbgSaopState uncached_state;
 
-				if (saop_cache)
-					return ybgEvalCachedSaop(ctx, saop_cache, is_null);
-
-				/*
-				 * Get the array first. Null or empty array produces quick
-				 * result
-				 */
-				Datum		array_arg = evalExpr(ctx, lsecond(saop_expr->args), &array_null);
-
-				if (array_null)
+				if (saop_state == NULL)
 				{
-					*is_null = true;
-					return (Datum) 0;
-				}
-				/* deconstruct_array inputs */
-				ArrayType  *arr = (ArrayType *) DatumGetPointer(array_arg);
-				Oid			elemtype = ARR_ELEMTYPE(arr);
-				int16_t		elmlen;
-				bool		elmbyval;
-				char		elmalign;
+					bool		array_null;
+					Datum		array_arg = evalExpr(ctx,
+													 lsecond(saop_expr->args),
+													 &array_null);
 
-				/* deconstruct_array outputs */
-				Datum	   *elems;
-				bool	   *nulls;
-				int			array_len;
-
-				/* planner must have checked that elemtype is supported */
-				if (!YbTypeDetails(elemtype, &elmlen, &elmbyval, &elmalign))
-					Assert(false);
-				deconstruct_array(arr, elemtype, elmlen, elmbyval, elmalign,
-								  &elems, &nulls, &array_len);
-				if (array_len == 0)
-				{
-					return (Datum) !saop_expr->useOr;
-				}
-				/* Now get the operation function */
-				FmgrInfo   *flinfo = palloc0(sizeof(FmgrInfo));
-				FunctionCallInfo fcinfo = palloc0(SizeForFunctionCallInfo(2));
-
-				fmgr_info(saop_expr->opfuncid, flinfo);
-				InitFunctionCallInfoData(*fcinfo,
-										 flinfo,
-										 2 /* list_length(saop_expr->args) */ ,
-										 saop_expr->inputcollid,
-										 NULL,
-										 NULL);
-				fcinfo->args[0].value =
-					evalExpr(ctx, linitial(saop_expr->args), &fcinfo->args[0].isnull);
-
-				/*
-				 * Strict function with null argument does not need to be
-				 * evaluated
-				 */
-				if (flinfo->fn_strict && fcinfo->args[0].isnull)
-				{
-					*is_null = true;
-					return (Datum) 0;
-				}
-				*is_null = false;
-				for (int i = 0; i < array_len; i++)
-				{
-					fcinfo->args[1].value = elems[i];
-					fcinfo->args[1].isnull = nulls[i];
-					if (flinfo->fn_strict && fcinfo->args[1].isnull)
+					if (array_null)
 					{
 						*is_null = true;
-						continue;
+						return (Datum) 0;
 					}
-					bool		result = (bool) FunctionCallInvoke(fcinfo);
-
-					if (fcinfo->isnull)
-					{
-						*is_null = true;
-						continue;
-					}
-					if (saop_expr->useOr)
-					{
-						if (result)
-						{
-							*is_null = false;
-							return (Datum) true;
-						}
-					}
-					else
-					{
-						if (!result)
-						{
-							*is_null = false;
-							return (Datum) false;
-						}
-					}
+					ybgInitSaopState(&uncached_state, saop_expr, array_arg,
+									 false /* allow_hash */ );
+					saop_state = &uncached_state;
 				}
-				return *is_null ? (Datum) 0 : (Datum) !saop_expr->useOr;
+				return ybgEvalSaop(ctx, saop_state, is_null);
 			}
 		case T_RelabelType:
 			{

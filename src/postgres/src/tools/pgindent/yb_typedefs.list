@@ -414,6 +414,8 @@ YbgExprContext
 YbgMemoryContext
 YbgPreparedExpr
 YbgReservoirState
+YbgSaopHashEntry
+YbgSaopState
 YbgStatus
 YbgStatusData
 YbgTypeDesc
