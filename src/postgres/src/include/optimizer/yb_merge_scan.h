@@ -25,6 +25,7 @@
 
 #include "postgres.h"
 
+#include "access/sdir.h"
 #include "nodes/pathnodes.h"
 #include "nodes/pg_list.h"
 #include "nodes/primnodes.h"
@@ -46,6 +47,7 @@ extern YbMergeScanInfo *yb_finalize_merge_scan_info(IndexOptInfo *index,
 													List *indexclauses,
 													List **pathkeys,
 													int *yb_distinct_nkeys,
-													bool embedded);
+													bool embedded,
+													ScanDirection scandir);
 
 extern int yb_merge_scan_num_streams(List *stream_cols);
