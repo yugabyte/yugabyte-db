@@ -113,6 +113,27 @@ func TestCommandEnv(t *testing.T) {
 	}
 }
 
+func TestRedactOutput(t *testing.T) {
+	input := "--max_log_size=256\n" +
+		"--ycql_ldap_bind_passwd=dummy-ycql-secret\n" +
+		`--ysql_hba_conf_csv="host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com ` +
+		`ldapbindpasswd=""dummy hba,secret"" ldapsearchattribute=uid",host all all ::0/0 md5` +
+		"\r\n--placement_cloud=gcp\n"
+	output := RedactOutput(input)
+	for _, secret := range []string{"dummy-ycql-secret", "dummy hba", "secret\"\""} {
+		if strings.Contains(output, secret) {
+			t.Fatalf("Output contains %q: %s", secret, output)
+		}
+	}
+	expected := "--max_log_size=256\n" +
+		"--ycql_ldap_bind_passwd=REDACTED\n" +
+		`--ysql_hba_conf_csv="host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com ` +
+		"ldapbindpasswd=REDACTED\r\n--placement_cloud=gcp\n"
+	if output != expected {
+		t.Fatalf("Expected %q, got %q", expected, output)
+	}
+}
+
 func TestChildProcessHasPath(t *testing.T) {
 	if os.Getenv("PATH") == "" {
 		t.Skip("PATH is not set in the test runner environment")

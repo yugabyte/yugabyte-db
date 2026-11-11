@@ -10,6 +10,7 @@ import (
 	"node-agent/util"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -30,6 +31,10 @@ var (
 		"api_token": true,
 		"password":  true,
 	}
+	// An HBA ldapbindpasswd value can be quoted and contain spaces or commas, so the rest of the
+	// line is redacted.
+	redactOutputPattern = regexp.MustCompile(
+		`(?i)((?:ycql_ldap_bind_passwd|ldapbindpasswd)\s*=)[^\r\n]*`)
 	userVariables = []string{"LOGNAME", "USER", "LNAME", "USERNAME"}
 	// Max wait time after SIGTERM before SIGKILL.
 	processGroupKillGracePeriod = 3 * time.Second
@@ -78,6 +83,11 @@ func (cmdInfo *CommandInfo) RedactCommandArgs() []string {
 		}
 	}
 	return redacted
+}
+
+// RedactOutput redacts LDAP bind passwords in command output such as a server.conf.
+func RedactOutput(output string) string {
+	return redactOutputPattern.ReplaceAllString(output, "${1}REDACTED")
 }
 
 // RunCmd runs the command in the command info.

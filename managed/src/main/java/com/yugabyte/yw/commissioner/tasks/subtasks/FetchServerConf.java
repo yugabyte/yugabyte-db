@@ -10,6 +10,7 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.NodeAgent;
 import java.io.BufferedReader;
@@ -46,7 +47,7 @@ public class FetchServerConf extends NodeTaskBase {
     public ServerType serverType;
     public String binaryPath;
     public String confPath;
-    public Map<String, String> gflags;
+    @ToString.Exclude public Map<String, String> gflags;
   }
 
   @Override
@@ -60,7 +61,10 @@ public class FetchServerConf extends NodeTaskBase {
             .executeCommand(
                 nodeAgent, ImmutableList.of("bash", "-c", String.format("cat %s", confPath)))
             .processErrors();
-    log.debug("Got server conf file from node {}: {}", taskParams().ip, response.message);
+    log.debug(
+        "Got server conf file from node {}: {}",
+        taskParams().ip,
+        RedactingService.redactSensitiveInfoInString(response.message));
     ImmutableMap.Builder<String, String> mapBuilder = ImmutableMap.builder();
     try (BufferedReader reader = new BufferedReader(new StringReader(response.message))) {
       String line;
