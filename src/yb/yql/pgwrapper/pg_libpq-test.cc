@@ -1021,21 +1021,21 @@ Status PgLibPqTest::TestEmbeddedIndexScanOptimization(bool is_colocated_with_tab
   return Status::OK();
 }
 
-TEST_F(PgLibPqTest, EmbeddedIndexScanOptimizationColocatedWithTablespacesFalse) {
-  ASSERT_OK(TestEmbeddedIndexScanOptimization(false));
-}
-
-class PgLibPqColocatedTablesWithTablespacesTest : public PgLibPqTest {
+class PgLibPqColocatedTablesWithTablespacesOffTest : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    const auto flag = "--ysql_enable_colocated_tables_with_tablespaces=true"s;
+    const auto flag = "--ysql_yb_enable_colocated_tables_with_tablespaces=false"s;
     options->extra_master_flags.push_back(flag);
     options->extra_tserver_flags.push_back(flag);
   }
 };
 
 TEST_F_EX(PgLibPqTest,
-          EmbeddedIndexScanOptimizationColocatedWithTablespacesTrue,
-          PgLibPqColocatedTablesWithTablespacesTest) {
+          EmbeddedIndexScanOptimizationColocatedWithTablespacesFalse,
+          PgLibPqColocatedTablesWithTablespacesOffTest) {
+  ASSERT_OK(TestEmbeddedIndexScanOptimization(false));
+}
+
+TEST_F(PgLibPqTest, EmbeddedIndexScanOptimizationColocatedWithTablespacesTrue) {
   ASSERT_OK(TestEmbeddedIndexScanOptimization(true));
 }
 
