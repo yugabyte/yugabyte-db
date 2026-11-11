@@ -24,7 +24,10 @@
 
 setup
 {
-  CREATE TABLE t (k INT PRIMARY KEY, v INT, w INT);
+  -- One tablet: a read that fans out to several tablets reports the error
+  -- with a different text when more than one of them rejects it, which depends
+  -- on timing.
+  CREATE TABLE t (k INT PRIMARY KEY, v INT, w INT) SPLIT INTO 1 TABLETS;
   INSERT INTO t VALUES (1, 10, 100), (2, 20, 200);
   CREATE SEQUENCE s;
   SELECT nextval('s');
