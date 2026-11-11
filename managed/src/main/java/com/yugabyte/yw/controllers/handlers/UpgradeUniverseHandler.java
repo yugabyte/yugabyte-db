@@ -318,8 +318,9 @@ public class UpgradeUniverseHandler {
 
   // UniverseControllerRequestBinder fills legacy maps the client omitted (the UI sends only
   // specificGFlags) from the stored cluster, so an unchanged map is not client input. Checking it
-  // would block every edit once a stored value is REDACTED; UpdateAndPersistGFlags rebuilds these
-  // maps from specificGFlags, whose values are still checked.
+  // would block every edit once a stored value is REDACTED. The task applies specificGFlags, and
+  // UpdateAndPersistGFlags rebuilds these maps from them; checkGFlagsProvidedInOldSchema, which
+  // builds specificGFlags from these maps, checks the result itself.
   private Map<String, String> mergeSensitiveLegacyGFlags(
       Map<String, String> stored, Map<String, String> requested, String ybSoftwareVersion) {
     if (requested == null
@@ -510,6 +511,16 @@ public class UpgradeUniverseHandler {
             requestParams.tserverGFlags);
         requestParamsCluster.userIntent.specificGFlags =
             SpecificGFlags.construct(requestParams.masterGFlags, requestParams.tserverGFlags);
+        if (RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()) {
+          // Runs after the sensitive gflags merges; the legacy maps can still hold a stored
+          // REDACTED value that mergeSensitiveLegacyGFlags skipped as unchanged.
+          requestParamsCluster.userIntent.specificGFlags =
+              GFlagsUtil.mergeSensitiveSpecificGFlags(
+                  primarySpecificGFlags,
+                  requestParamsCluster.userIntent.specificGFlags,
+                  gFlagsValidation,
+                  primaryCluster.userIntent.ybSoftwareVersion);
+        }
         return true;
       }
     }
