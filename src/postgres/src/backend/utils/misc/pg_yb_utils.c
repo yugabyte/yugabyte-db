@@ -90,6 +90,7 @@
 #include "commands/async.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
+#include "commands/prepare.h"
 #include "commands/trigger.h"
 #include "commands/variable.h"
 #include "commands/yb_cmds.h"
@@ -9058,9 +9059,13 @@ bool		yb_ysql_conn_mgr_sticky_locks = false;
  */
 bool		yb_ysql_conn_mgr_sticky_nontxn_object = false;
 
+bool		yb_ysql_conn_mgr_sticky_prepare = false;
+
 bool		yb_ysql_conn_mgr_sticky_replication_origin = false;
 
 bool		yb_conn_mgr_replication_origin_permanent_sticky = false;
+
+bool		yb_conn_mgr_prepare_permanent_sticky = false;
 
 bool		yb_enable_mage = false;
 
@@ -9112,7 +9117,9 @@ YbIsStickyConnection(int *change)
 		yb_ysql_conn_mgr_sticky_locks ||
 		yb_ysql_conn_mgr_sticky_nontxn_object ||
 		yb_ysql_conn_mgr_sticky_replication_origin ||
-		YbHasReplicationOriginSetup();
+		YbHasReplicationOriginSetup() ||
+		yb_ysql_conn_mgr_sticky_prepare ||
+		YbHasSqlPreparedStatement();
 }
 
 void	  **
