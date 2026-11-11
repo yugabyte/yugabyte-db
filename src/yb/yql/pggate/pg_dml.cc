@@ -31,6 +31,7 @@
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_select.h"
 #include "yb/yql/pggate/pg_select_index.h"
+#include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
 namespace yb::pggate {
@@ -188,12 +189,9 @@ Result<std::string> BuildVectorTenant(
       (hashed_components.empty() && range_components.empty())) {
     return std::string();
   }
-  if (!num_hash_key_columns) {
-    return EncodeKeyPrefix(dockv::DocKey(std::move(range_components)));
-  }
-  return EncodeKeyPrefix(dockv::DocKey(
-      VERIFY_RESULT(table.partition_schema().PgsqlHashColumnCompoundValue(hash_values)),
-      std::move(hashed_components), std::move(range_components)));
+  return EncodeKeyPrefix(VERIFY_RESULT(BuildDocKey(
+      table.partition_schema(), std::move(hashed_components), hash_values.data(),
+      std::move(range_components))));
 }
 
 } // namespace

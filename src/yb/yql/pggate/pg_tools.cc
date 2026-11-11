@@ -20,10 +20,14 @@
 
 #include <boost/container/small_vector.hpp>
 #include <boost/functional/hash/hash.hpp>
+#include <boost/range/iterator_range.hpp>
 
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/pgsql_utils.h"
+
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/partition.h"
 
 #include "yb/util/memory/arena.h"
 #include "yb/util/result.h"
@@ -153,6 +157,18 @@ Slice YbctidAsSlice(const PgTypeInfo& pg_types, uint64_t ybctid) {
   int64_t bytes = 0;
   pg_types.GetYbctid().datum_to_yb(ybctid, &value, &bytes);
   return Slice(value, bytes);
+}
+
+Result<dockv::DocKey> BuildDocKey(
+    const dockv::PartitionSchema& partition_schema, dockv::KeyEntryValues hashed_components,
+    const LWQLValuePB* const* hashed_values, dockv::KeyEntryValues range_components) {
+  if (!hashed_components.empty()) {
+    DCHECK(hashed_values);
+    auto hash = VERIFY_RESULT(partition_schema.PgsqlHashColumnCompoundValue(
+        boost::make_iterator_range(hashed_values, hashed_values + hashed_components.size())));
+    return dockv::DocKey(hash, std::move(hashed_components), std::move(range_components));
+  }
+  return dockv::DocKey(std::move(range_components));
 }
 
 TablespaceCache::TablespaceCache(size_t capacity) : impl_(capacity) {}
