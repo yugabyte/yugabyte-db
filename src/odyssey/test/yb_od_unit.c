@@ -1,5 +1,5 @@
 /*
- * YB: OdRegress runner. Runs each odyssey_test() in a forked child and
+ * YB: OdUnit runner. Runs each odyssey_test() in a forked child and
  * understands the gtest flags that the YugabyteDB test infrastructure uses.
  */
 
@@ -16,25 +16,25 @@
 
 #include <odyssey_test.h>
 
-#define YB_OD_REGRESS_MAX_TESTS 1024
-#define YB_OD_REGRESS_NAME_LEN 256
-#define YB_OD_REGRESS_TIMEOUT_MS (300 * 1000)
-#define YB_OD_REGRESS_DATA_DIR "machinarium"
+#define YB_OD_UNIT_MAX_TESTS 1024
+#define YB_OD_UNIT_NAME_LEN 256
+#define YB_OD_UNIT_TIMEOUT_MS (300 * 1000)
+#define YB_OD_UNIT_DATA_DIR "machinarium"
 
 typedef struct {
-	char suite[YB_OD_REGRESS_NAME_LEN];
-	char name[YB_OD_REGRESS_NAME_LEN];
-	char failure[YB_OD_REGRESS_NAME_LEN];
+	char suite[YB_OD_UNIT_NAME_LEN];
+	char name[YB_OD_UNIT_NAME_LEN];
+	char failure[YB_OD_UNIT_NAME_LEN];
 	long time_ms;
 	int failed;
-} yb_od_regress_result_t;
+} yb_od_unit_result_t;
 
-static yb_od_regress_result_t yb_results[YB_OD_REGRESS_MAX_TESTS];
+static yb_od_unit_result_t yb_results[YB_OD_UNIT_MAX_TESTS];
 static int yb_results_count = 0;
 static int yb_list_only = 0;
 static const char *yb_filter = "*";
 static const char *yb_xml_path = NULL;
-static const char *yb_suite = "OdRegress";
+static const char *yb_suite = "OdUnit";
 static const char *yb_listed_suite = NULL;
 
 static long yb_now_ms(void)
@@ -46,7 +46,7 @@ static long yb_now_ms(void)
 
 static int yb_match_any(const char *patterns, size_t len, const char *full_name)
 {
-	char pattern[YB_OD_REGRESS_NAME_LEN];
+	char pattern[YB_OD_UNIT_NAME_LEN];
 	const char *pos = patterns;
 	const char *end = patterns + len;
 
@@ -106,7 +106,7 @@ static void yb_link_test_data(void)
 	ssize_t len;
 	char *slash;
 
-	if (access(YB_OD_REGRESS_DATA_DIR, F_OK) == 0)
+	if (access(YB_OD_UNIT_DATA_DIR, F_OK) == 0)
 		return;
 	len = readlink("/proc/self/exe", exe, sizeof(exe) - 1);
 	if (len <= 0)
@@ -116,13 +116,13 @@ static void yb_link_test_data(void)
 	if (slash == NULL)
 		return;
 	*slash = '\0';
-	snprintf(target, sizeof(target), "%s/%s", exe, YB_OD_REGRESS_DATA_DIR);
-	if (symlink(target, YB_OD_REGRESS_DATA_DIR) != 0)
-		printf("cannot link %s to %s: %s\n", YB_OD_REGRESS_DATA_DIR,
+	snprintf(target, sizeof(target), "%s/%s", exe, YB_OD_UNIT_DATA_DIR);
+	if (symlink(target, YB_OD_UNIT_DATA_DIR) != 0)
+		printf("cannot link %s to %s: %s\n", YB_OD_UNIT_DATA_DIR,
 		       target, strerror(errno));
 }
 
-void yb_od_regress_init(int argc, char *argv[])
+void yb_od_unit_init(int argc, char *argv[])
 {
 	int i;
 
@@ -139,14 +139,14 @@ void yb_od_regress_init(int argc, char *argv[])
 		yb_link_test_data();
 }
 
-void yb_od_regress_suite(const char *suite)
+void yb_od_unit_suite(const char *suite)
 {
 	yb_suite = suite;
 }
 
-static void yb_wait_for_child(pid_t pid, yb_od_regress_result_t *result)
+static void yb_wait_for_child(pid_t pid, yb_od_unit_result_t *result)
 {
-	long deadline = yb_now_ms() + YB_OD_REGRESS_TIMEOUT_MS;
+	long deadline = yb_now_ms() + YB_OD_UNIT_TIMEOUT_MS;
 	int status;
 
 	for (;;) {
@@ -166,7 +166,7 @@ static void yb_wait_for_child(pid_t pid, yb_od_regress_result_t *result)
 			result->failed = 1;
 			snprintf(result->failure, sizeof(result->failure),
 				 "timed out after %d ms",
-				 YB_OD_REGRESS_TIMEOUT_MS);
+				 YB_OD_UNIT_TIMEOUT_MS);
 			return;
 		}
 		usleep(1000);
@@ -184,11 +184,11 @@ static void yb_wait_for_child(pid_t pid, yb_od_regress_result_t *result)
 	}
 }
 
-void yb_od_regress_run(const char *function, void (*test_function)(void))
+void yb_od_unit_run(const char *function, void (*test_function)(void))
 {
-	char full_name[2 * YB_OD_REGRESS_NAME_LEN];
+	char full_name[2 * YB_OD_UNIT_NAME_LEN];
 	const char *name = yb_short_name(function);
-	yb_od_regress_result_t *result;
+	yb_od_unit_result_t *result;
 	long start_ms;
 	pid_t pid;
 
@@ -206,8 +206,8 @@ void yb_od_regress_run(const char *function, void (*test_function)(void))
 		return;
 	}
 
-	if (yb_results_count == YB_OD_REGRESS_MAX_TESTS) {
-		printf("too many tests, increase YB_OD_REGRESS_MAX_TESTS\n");
+	if (yb_results_count == YB_OD_UNIT_MAX_TESTS) {
+		printf("too many tests, increase YB_OD_UNIT_MAX_TESTS\n");
 		exit(1);
 	}
 	result = &yb_results[yb_results_count++];
@@ -259,7 +259,7 @@ static void yb_write_xml(int failed_count, long total_ms)
 		"errors=\"0\" time=\"%.3f\" name=\"AllTests\">\n",
 		yb_results_count, failed_count, total_ms / 1000.0);
 	for (i = 0; i < yb_results_count; i++) {
-		yb_od_regress_result_t *result = &yb_results[i];
+		yb_od_unit_result_t *result = &yb_results[i];
 
 		fprintf(xml,
 			"  <testsuite name=\"%s\" tests=\"1\" failures=\"%d\" "
@@ -283,7 +283,7 @@ static void yb_write_xml(int failed_count, long total_ms)
 	fclose(xml);
 }
 
-int yb_od_regress_finish(void)
+int yb_od_unit_finish(void)
 {
 	int failed_count = 0;
 	long total_ms = 0;

@@ -1,8 +1,8 @@
 
-set(od_test_binary od_regress-test) # YB: was odyssey_test
+set(od_test_binary od_unit-test) # YB: was odyssey_test
 set(od_test_src
     odyssey_test.c
-    yb_od_regress.c # YB
+    yb_od_unit.c # YB
     machinarium/test_init.c
     machinarium/test_create0.c
     machinarium/test_create1.c
