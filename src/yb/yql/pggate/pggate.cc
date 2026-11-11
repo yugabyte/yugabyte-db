@@ -1460,6 +1460,20 @@ Status PgApiImpl::BackfillIndex(const PgObjectId& table_id, bool use_regular_tra
       &req, CoarseMonoClock::Now() + FLAGS_backfill_index_client_rpc_timeout_ms * 1ms);
 }
 
+Status PgApiImpl::StartTableBackfill(
+    const PgObjectId& source_table_id, uint32_t target_table_oid,
+    uint32_t transform_fn_oid, uint64_t backfill_timestamp, int64_t pg_job_id) {
+  tserver::PgStartTableBackfillRequestPB req;
+  source_table_id.ToPB(req.mutable_source_table_id());
+  req.set_target_table_oid(target_table_oid);
+  req.set_transform_fn_oid(transform_fn_oid);
+  req.set_backfill_timestamp(backfill_timestamp);
+  req.set_pg_job_id(pg_job_id);
+  // Unlike BackfillIndex, this RPC only starts the job and does not wait for the copy, so a DDL
+  // deadline is enough.
+  return pg_client_.StartTableBackfill(&req, DdlDeadline());
+}
+
 Status PgApiImpl::WaitVectorIndexReady(const PgObjectId& table_id) {
   while (!VERIFY_RESULT(pg_client_.PollVectorIndexReady(table_id))) {}
   return Status::OK();
@@ -2399,8 +2413,11 @@ void PgApiImpl::ResetCatalogReadTime() {
 }
 
 void PgApiImpl::SetHistoricalReadContext(
-    const ReadHybridTime& read_time, const char* transaction_id) {
-  pg_session_->SetHistoricalReadContext(read_time, transaction_id ? transaction_id : "");
+    const ReadHybridTime& read_time, const char* transaction_id,
+    std::span<const uint32_t> aborted_subtxn_set) {
+  pg_session_->SetHistoricalReadContext(
+      read_time, transaction_id ? transaction_id : "",
+      std::vector<uint32_t>(aborted_subtxn_set.begin(), aborted_subtxn_set.end()));
 }
 
 void PgApiImpl::ResetHistoricalReadContext() {
@@ -2622,11 +2639,14 @@ void PgApiImpl::RestoreSessionState(const YbcPgSessionState& session_data) {
 Status PgApiImpl::NewCreateReplicationSlot(
     const char* slot_name, const char* plugin_name, PgOid database_oid,
     YbcPgReplicationSlotSnapshotAction snapshot_action, YbcLsnType lsn_type,
-    YbcOrderingMode ordering_mode, PgStatement** handle) {
+    YbcOrderingMode ordering_mode, const char* yb_publication_name,
+    const PgOid* yb_publication_relfilenodes, size_t yb_num_publication_tables,
+    bool yb_publication_all_tables, PgStatement** handle) {
   return AddToCurrentPgMemctx(
       std::make_unique<PgCreateReplicationSlot>(
           pg_session_, slot_name, plugin_name, database_oid, snapshot_action, lsn_type,
-          ordering_mode),
+          ordering_mode, yb_publication_name, yb_publication_relfilenodes,
+          yb_num_publication_tables, yb_publication_all_tables),
       handle);
 }
 

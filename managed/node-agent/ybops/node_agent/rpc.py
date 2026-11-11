@@ -19,12 +19,15 @@ import uuid
 from google.protobuf.json_format import MessageToJson
 from google.protobuf.message import Message
 from grpc import secure_channel, ssl_channel_credentials, metadata_call_credentials, \
-    composite_channel_credentials, AuthMetadataPlugin, RpcError, StatusCode
+    composite_channel_credentials, local_channel_credentials, AuthMetadataPlugin, \
+    LocalConnectionType, RpcError, StatusCode
 from ybops.node_agent.common_pb2 import Error
 from ybops.node_agent.server_pb2 import DownloadFileRequest, ExecuteCommandRequest, FileInfo, \
     PingRequest, UploadFileRequest, SubmitTaskRequest, DescribeTaskRequest, AbortTaskRequest, \
     CommandInput
 from ybops.node_agent.server_pb2_grpc import NodeAgentStub
+from ybops.node_agent.tls_relay import TlsRelay, connect_tls, create_ssl_context, \
+    is_common_name_match
 from ybops.common.exceptions import YBOpsRuntimeError
 
 CORRELATION_ID = "correlation_id"
@@ -35,6 +38,7 @@ X_REQUEST_LOG_LEVEL = "x-request-log-level"
 SERVER_READY_RETRY_LIMIT = 60
 PING_TIMEOUT_SEC = 10
 RPC_TIMEOUT_SEC = 900
+TLS_PROBE_TIMEOUT_SEC = 5
 FILE_UPLOAD_CHUNK_BYTES = 524288
 
 # GRPC and Node Agent specific configurations.
@@ -103,6 +107,8 @@ class RpcClient(object):
         assert self.auth_token is not None, 'RPC api_token is required'
         with open(self.cert_path, mode='rb') as file:
             self.root_certs = file.read()
+        self.relay = None
+        self.connected = False
         claims = jwt.decode(self.auth_token, options={"verify_signature": False})
         # Use the token expiry (seconds) as the timeout for RPC calls.
         self.rpc_timeout_sec = int(claims.get('exp', 0)) - int(claims.get('iat', time.time()))
@@ -128,12 +134,25 @@ class RpcClient(object):
         Create GRPC connection to the node agent.
         :return: None
         """
-        cert_creds = ssl_channel_credentials(root_certificates=self.root_certs)
         auth_creds = metadata_call_credentials(
                 AuthTokenCallback(self.auth_token), name='auth_creds')
-        credentials = composite_channel_credentials(cert_creds, auth_creds)
-        self.channel = secure_channel(self.ip + ':' + str(self.port), credentials,
-                                      options=self.channel_options)
+        if self._is_common_name_cert():
+            # gRPC core accepts an IP target only from a SAN and Python cannot plug in a
+            # verifier, so TlsRelay does the TLS. Local credentials still allow call
+            # credentials, which keeps the token per call. This is for any calls leaked to
+            # the Python client. As we have moved almost all calls to Java, this situation
+            # should be rare.
+            logging.info("Node agent {} cert matches by CN only, connecting through a local relay"
+                         .format(self.ip))
+            self.relay = TlsRelay(self.ip, self.port, self.cert_path, TLS_PROBE_TIMEOUT_SEC)
+            credentials = composite_channel_credentials(
+                local_channel_credentials(LocalConnectionType.LOCAL_TCP), auth_creds)
+            target = self.relay.target
+        else:
+            cert_creds = ssl_channel_credentials(root_certificates=self.root_certs)
+            credentials = composite_channel_credentials(cert_creds, auth_creds)
+            target = self.ip + ':' + str(self.port)
+        self.channel = secure_channel(target, credentials, options=self.channel_options)
         self.stub = NodeAgentStub(self.channel)
         self.connected = True
 
@@ -146,6 +165,25 @@ class RpcClient(object):
         if self.connected:
             self.channel.close()
             self.connected = False
+        if self.relay is not None:
+            self.relay.close()
+            self.relay = None
+
+    def _is_common_name_cert(self):
+        """
+        Probes the server cert. Any failure here, including the agent not being up yet, falls
+        back to the direct channel, which reports the error as before.
+        """
+        try:
+            sock = connect_tls(create_ssl_context(self.cert_path), self.ip, self.port,
+                               TLS_PROBE_TIMEOUT_SEC)
+            try:
+                return is_common_name_match(sock.getpeercert(), self.ip)
+            finally:
+                sock.close()
+        except Exception as e:
+            logging.info("Failed to probe node agent {} cert: {}".format(self.ip, e))
+            return False
 
     def exec_command(self, cmd, **kwargs):
         """

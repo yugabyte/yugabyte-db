@@ -361,11 +361,11 @@ Default: `2000`
 
 ##### --max_stale_read_bound_time_ms
 
-Specifies the maximum bounded staleness (duration), in milliseconds, before a follower forwards a read request to the leader.
+How far the follower's safe time may be behind now, in milliseconds, before the follower rejects the read and the client retries it at the leader.
 
 In a geo-distributed cluster, with followers located a long distance from the tablet leader, you can use this setting to increase the maximum bounded staleness.
 
-Default: `10000` (10 seconds)
+Default: `60000` (60 seconds)
 
 ##### --raft_heartbeat_interval_ms
 
@@ -702,7 +702,7 @@ Default: `false`
 
 Specifies the TCP/IP bind addresses for the YSQL API. The default value of `0.0.0.0:5433` allows listening for all IPv4 addresses access to localhost on port `5433`. The `--pgsql_proxy_bind_address` value overwrites `listen_addresses` (default value of `127.0.0.1:5433`) that controls which interfaces accept connection attempts.
 
-To specify fine-grained access control over who can access the server, use [`--ysql_hba_conf`](#ysql-hba-conf).
+To specify fine-grained access control over who can access the server, use [`--ysql_hba_conf_csv`](#ysql-hba-conf-csv).
 
 Default: `0.0.0.0:5433`
 
@@ -724,7 +724,16 @@ For details on using `--ysql_hba_conf_csv` to specify client authentication, ref
 
 If a setting includes a comma (`,`) or double quotes (`"`), the setting should be enclosed in double quotes. In addition, double quotes inside the quoted text should be doubled (`""`).
 
-Suppose you have two fields: `host all all 127.0.0.1/0 password` and `host all all 0.0.0.0/0 ldap ldapserver=***** ldapsearchattribute=cn ldapport=3268 ldapbinddn=***** ldapbindpasswd="*****"`.
+Suppose you have two fields:
+
+```text
+host all all 127.0.0.1/0 password
+```
+and
+
+```text
+host all all 0.0.0.0/0 ldap ldapserver=***** ldapsearchattribute=cn ldapport=3268 ldapbinddn=***** ldapbindpasswd="*****"
+```
 
 Because the second field includes double quotes (`"`) around one of the settings, you need to double the quotes and enclose the entire field in quotes, as follows:
 
@@ -790,11 +799,11 @@ Valid values: `serializable`, `'repeatable read'`, `'read committed'`, and `'rea
 
 Default: `'read committed'`
 
-[Read Committed Isolation](../../../explore/transactions/isolation-levels/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot isolation (in which case Read Committed and Read Uncommitted of YSQL also in turn use Snapshot isolation).
+[Read Committed Isolation](../../../architecture/transactions/read-committed/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot isolation (in which case Read Committed and Read Uncommitted of YSQL also in turn use Snapshot isolation).
 
 ##### --yb_enable_read_committed_isolation
 
-Enables Read Committed isolation. By default this flag is false and in this case the Read Committed and Read Uncommitted isolation level of YSQL fall back to the stricter [Snapshot isolation](../../../explore/transactions/isolation-levels/). See [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag for more details.
+Enables [Read Committed isolation](../../../architecture/transactions/read-committed/). By default this flag is false and in this case the Read Committed and Read Uncommitted isolation level of YSQL fall back to the stricter Snapshot isolation. See [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag for more details.
 
 Default: `false`
 
@@ -1310,7 +1319,7 @@ Default: `86400`
 
 ##### --log_stop_retaining_min_disk_mb
 
-Stop retaining logs if the space available for the logs falls below this limit, specified in megabytes. As with `log_max_seconds_to_retain`, this flag is ignored if a log segment contains unflushed entries.
+Stop retaining logs if the space available for the logs falls below this limit, specified in kilobytes. As with `log_max_seconds_to_retain`, this flag is ignored if a log segment contains unflushed entries.
 
 Default: `102400`
 
@@ -1927,32 +1936,36 @@ Default: true
 
 ##### yb_insert_on_conflict_read_batch_size
 
-{{<tags/feature/ea idea="1455">}} Set the level of batching for [INSERT ... ON CONFLICT](../../../api/ysql/the-sql-language/statements/dml_insert/#on-conflict-clause). Set to 0 to disable batching. Batching is always disabled for the following:
+{{<tags/feature/ea idea="1455">}} Maximum batch size for arbiter index reads during [INSERT ... ON CONFLICT](../../../api/ysql/the-sql-language/statements/dml_insert/#on-conflict-clause). Only a superuser can change this setting. Batching is always disabled for the following:
 
 - temporary relations
 - foreign relations
 - system relations
 - relations that have row triggers (excluding those created internally for FOREIGN KEY constraints)
 
-The higher the number, the more batching is done. 1024 is recommended.
+A value of 1024 is recommended. In v2024.2.0.0, the default is 1, and setting the parameter to 1 disables batching. Starting in v2024.2.1.0, the default is 0, and setting it to 0 disables batching.
 
 Default: 0 (disabled)
 
 ##### yb_read_from_followers
 
-Controls whether or not reading from followers is enabled. For more information, refer to [Follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/).
+Controls whether or not reading from followers is enabled. For more information, refer to [Follower reads](../../../additional-features/follower-reads/).
 
 Default: false
 
 ##### yb_follower_read_staleness_ms
 
-Sets the maximum allowable staleness. Although the default is recommended, you can set the staleness to a shorter value. The tradeoff is the shorter the staleness, the more likely some reads may be redirected to the leader if the follower isn't sufficiently caught up. You shouldn't set `yb_follower_read_staleness_ms` to less than 2x the `raft_heartbeat_interval_ms` (which by default is 500 ms).
+The staleness of YSQL follower reads, in milliseconds. A follower read runs at the current time minus this value. Although the default is recommended, you can set a shorter value. A shorter value makes it more likely that a follower has not caught up to the read time. Such a read is retried at the leader, or waits for the follower to catch up, depending on [--ysql_follower_reads_avoid_waiting_for_safe_time](#ysql-follower-reads-avoid-waiting-for-safe-time).
+
+YugabyteDB rejects a value less than twice [--max_clock_skew_usec](#max-clock-skew-usec) (500 ms by default, so the minimum is 1000 ms). Also keep it at least twice [raft_heartbeat_interval_ms](#raft-heartbeat-interval-ms) (500 ms by default).
+
+For more information, see [Follower reads](../../../additional-features/follower-reads/#when-a-follower-can-serve-the-read).
 
 Default: 30000 (30 seconds)
 
 ##### default_transaction_read_only
 
-Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/#read-only-transaction).
+Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [follower reads](../../../additional-features/follower-reads/#read-only-transaction).
 
 Default: false
 

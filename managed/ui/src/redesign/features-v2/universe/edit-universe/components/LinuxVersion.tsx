@@ -12,7 +12,11 @@ import {
   ClusterSpec,
   ClusterSpecClusterType
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
-import { useEditUniverseContext, getClusterByType } from '../EditUniverseUtils';
+import {
+  useEditUniverseContext,
+  getClusterByType,
+  getClusterProviderSpec
+} from '../EditUniverseUtils';
 import { ImageBundleDefaultTag, ImageBundleYBActiveTag } from '../../create-universe/fields';
 import { AWSProvider } from '@app/components/configRedesign/providerRedesign/types';
 import { CircularProgress } from '@material-ui/core';
@@ -33,14 +37,13 @@ export const LinuxVersion = ({ cluster }: { cluster?: ClusterSpec }) => {
     { select: (data) => data.data }
   );
 
-  const currentProvider = providers?.find(
-    (provider) => provider.uuid === targetCluster?.provider_spec.provider
-  );
+  const providerSpec = getClusterProviderSpec(targetCluster);
+  const currentProvider = providers?.find((provider) => provider.uuid === providerSpec?.provider);
 
   const imageBundleUsed:
     | ImageBundle
     | undefined = ((currentProvider as AWSProvider)?.imageBundles?.find(
-    (imgBundle: any) => imgBundle?.uuid === targetCluster?.provider_spec?.image_bundle_uuid
+    (imgBundle: any) => imgBundle?.uuid === providerSpec?.image_bundle_uuid
   ) as unknown) as ImageBundle;
 
   return (

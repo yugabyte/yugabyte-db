@@ -80,10 +80,12 @@ extern int od_logger_reopen(od_logger_t *);
 extern int od_logger_open_syslog(od_logger_t *, char *, char *);
 extern void od_logger_close(od_logger_t *);
 extern void od_logger_write(od_logger_t *, od_logger_level_t, char *, void *,
-			    void *, char *, va_list);
+			    void *, char *, va_list)
+	__attribute__((format(printf, 6, 0)));
 extern void od_logger_write_plain(od_logger_t *, od_logger_level_t, char *,
 				  void *, void *, char *);
 
+__attribute__((format(printf, 5, 6)))
 static inline void od_log(od_logger_t *logger, char *context, void *client,
 			  void *server, char *fmt, ...)
 {
@@ -98,6 +100,7 @@ static inline void od_log(od_logger_t *logger, char *context, void *client,
  * call site (including the existing per-route rule fallback), so these
  * wrappers don't re-check any flag here.
  */
+__attribute__((format(printf, 5, 6)))
 static inline void yb_od_query(od_logger_t *logger, char *context, void *client,
 			    void *server, char *fmt, ...)
 {
@@ -112,6 +115,7 @@ static inline void yb_od_query(od_logger_t *logger, char *context, void *client,
  * call site (including the existing per-route rule fallback), so these
  * wrappers don't re-check any flag here.
  */
+__attribute__((format(printf, 5, 6)))
 static inline void yb_od_session(od_logger_t *logger, char *context, void *client,
 			      void *server, char *fmt, ...)
 {
@@ -121,6 +125,7 @@ static inline void yb_od_session(od_logger_t *logger, char *context, void *clien
 	va_end(args);
 }
 
+__attribute__((format(printf, 5, 6)))
 static inline void od_debug(od_logger_t *logger, char *context, void *client,
 			    void *server, char *fmt, ...)
 {
@@ -130,6 +135,7 @@ static inline void od_debug(od_logger_t *logger, char *context, void *client,
 	va_end(args);
 }
 
+__attribute__((format(printf, 5, 6)))
 static inline void od_error(od_logger_t *logger, char *context, void *client,
 			    void *server, char *fmt, ...)
 {
@@ -139,6 +145,7 @@ static inline void od_error(od_logger_t *logger, char *context, void *client,
 	va_end(args);
 }
 
+__attribute__((format(printf, 5, 6)))
 static inline void od_fatal(od_logger_t *logger, char *context, void *client,
 			    void *server, char *fmt, ...)
 {

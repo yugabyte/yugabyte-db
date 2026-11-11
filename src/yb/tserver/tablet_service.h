@@ -34,6 +34,7 @@
 #include <functional>
 #include <future>
 #include <memory>
+#include <mutex>
 #include <set>
 #include <string>
 #include <type_traits>
@@ -205,6 +206,10 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
                   GetMetricsResponsePB* resp,
                   rpc::RpcContext context) override;
 
+  void SetActiveTableIdsForMetrics(
+      const SetActiveTableIdsForMetricsRequestPB* req, SetActiveTableIdsForMetricsResponsePB* resp,
+      rpc::RpcContext context) override;
+
   void PgRemoteExec(const PgRemoteExecRequestPB* req,
                     PgRemoteExecResponsePB* resp,
                     rpc::RpcContext context) override;
@@ -353,6 +358,11 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
       const BackfillIndexRequestPB* req, BackfillIndexResponsePB* resp,
       rpc::RpcContext context) override;
 
+  // Copies one chunk of an online schema change's source tablet into the target.
+  void TableBackfillChunk(
+      const TableBackfillChunkRequestPB* req, TableBackfillChunkResponsePB* resp,
+      rpc::RpcContext context) override;
+
   // Called on the Index table(s) once the backfill is complete.
   void BackfillDone(
       const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
@@ -439,6 +449,9 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
   std::atomic<int32_t> num_tablets_backfilling_{0};
   std::atomic<int32_t> TEST_num_test_retry_calls_{0};
   scoped_refptr<yb::AtomicGauge<uint64_t>> ts_split_op_added_;
+
+  // Held while a YSQL upgrade runs, so that only one runs at a time.
+  std::timed_mutex ysql_upgrade_mutex_;
 };
 
 class ConsensusServiceImpl : public consensus::ConsensusServiceIf {

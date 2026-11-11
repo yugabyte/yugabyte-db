@@ -13,11 +13,11 @@ type: docs
 
 Before trying the code in this section, make sure that you have created the supporting infrastructure:
 
-- The _"actors"_, _"movies_", and _"cast_members"_ tables for representing IMDb data—see [`cr-actors-movies-cast-members-tables.sql`](../../bacon-numbers#cr-actors-movies-cast-members-tables-sql)
+- The _"actors"_, _"movies_", and _"cast_members"_ tables for representing IMDb data—see [`cr-actors-movies-cast-members-tables.sql`](../../bacon-numbers/#cr-actors-movies-cast-members-tables-sql)
 
-- The _"edges"_ table and the procedure to populate it from the _"cast_members"_ table—see [`cr-actors-movies-edges-table-and-proc-sql`](../../bacon-numbers#cr-actors-movies-edges-table-and-proc-sql)
+- The _"edges"_ table and the procedure to populate it from the _"cast_members"_ table—see [`cr-actors-movies-edges-table-and-proc-sql`](../../bacon-numbers/#cr-actors-movies-edges-table-and-proc-sql)
 
-- All the code shown in the section [Common code for traversing all kinds of graph](../../traversing-general-graphs/common-code/). Be sure to choose the [cr-raw-paths-with-tracing.sql](../../traversing-general-graphs/common-code#cr-raw-paths-with-tracing-sql) option.
+- All the code shown in the section [Common code for traversing all kinds of graph](../../traversing-general-graphs/common-code/). Be sure to choose the [cr-raw-paths-with-tracing.sql](../../traversing-general-graphs/common-code/#cr-raw-paths-with-tracing-sql) option.
 
 {{< tip title="Download a zip of scripts that include all the code examples that implement this case study" >}}
 

@@ -116,6 +116,15 @@ DEFINE_test_flag(int32, new_txn_status_initial_heartbeat_delay_ms, 0,
 DEFINE_test_flag(uint64, override_transaction_priority, 0,
                  "Override priority of transactions if nonzero.");
 
+DEFINE_test_flag(bool, simulate_failing_heartbeats_to_old_status_tablet, false,
+                 "Behave as if heartbeats to the old transaction status tablet are failing: skip "
+                 "the early abort of the old status tablet after promotion, and fail sub-txn "
+                 "rollback heartbeats to it with TimedOut without sending an rpc.");
+
+DEFINE_test_flag(int32, delay_rollback_heartbeat_response_ms, 0,
+                 "Inject delay before delivering a sub-txn rollback heartbeat response, keeping "
+                 "the rpc registered for that long.");
+
 DEFINE_RUNTIME_bool(disable_heartbeat_send_involved_tablets, false,
                     "If disabled, do not send involved tablets on heartbeats for pending "
                     "transactions. This behavior is needed to support fetching old transactions "
@@ -243,6 +252,10 @@ Status YBSubTransaction::RollbackToSubTransaction(SubTransactionId id) {
   return sub_txn_.aborted.SetRange(id, highest_subtransaction_id_);
 }
 
+void YBSubTransaction::SetAborted(SubtxnSet aborted) {
+  sub_txn_.aborted = std::move(aborted);
+}
+
 const SubTransactionMetadata& YBSubTransaction::get() const { return sub_txn_; }
 
 CoarseTimePoint AdjustDeadline(CoarseTimePoint deadline);
@@ -324,7 +337,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
     std::vector<rpc::Rpcs::Handle *> handles{
         &heartbeat_handle_, &new_heartbeat_handle_, &commit_handle_, &abort_handle_,
-        &old_abort_handle_};
+        &old_abort_handle_, &rollback_heartbeat_handle_, &old_rollback_heartbeat_handle_};
     handles.reserve(handles.size() + transaction_status_move_handles_.size());
     for (auto& entry : transaction_status_move_handles_) {
       handles.push_back(&entry.second);
@@ -1147,18 +1160,45 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   std::future<Status> SendHeartBeatOnRollback(
       const CoarseTimePoint& deadline, const internal::RemoteTabletPtr& status_tablet,
       rpc::Rpcs::Handle* handle,
-      const SubtxnSet& aborted_sub_txn_set) {
+      const SubtxnSet& aborted_sub_txn_set,
+      SendHeartbeatToNewTablet send_to_new_tablet) {
     DCHECK(status_tablet);
     if (auto s = CheckNotHistoricalReadTxn(); !s.ok()) {
       LOG_WITH_PREFIX(DFATAL) << s;
       return MakeFuture<Status>([s](auto callback) { callback(s); });
     }
 
-    return MakeFuture<Status>([&, handle](auto callback) {
+    if (PREDICT_FALSE(FLAGS_TEST_simulate_failing_heartbeats_to_old_status_tablet) &&
+        !send_to_new_tablet) {
+      return MakeFuture<Status>([](auto callback) {
+        callback(STATUS(TimedOut, "TEST: heartbeats to old status tablet are failing"));
+      });
+    }
+
+    // The response outlives this call, so it keeps the transaction alive until it arrives.
+    auto transaction = transaction_->shared_from_this();
+    return MakeFuture<Status>([&, handle, transaction = std::move(transaction)](auto callback) {
       manager_->rpcs().RegisterAndStart(
+          // Include no origination info on this heartbeat, unlike the normal PENDING heartbeats
+          // sent by SendHeartbeat.
+          //
+          // If we include origination info, then the coordinator might refuse the heartbeat with
+          // Expired and abort the transaction (see
+          // TransactionCoordinatorContext::CheckTransactionMayContinue).  However,
+          // RollbackToSubTransaction treats an Expired reply as a successful rollback, so that
+          // refusal would never be recorded on the transaction.  The next heartbeat would then find
+          // the transaction already aborted and record a generic "expired or aborted" error
+          // (SQLSTATE YB001), so the user would never learn that an xCluster operation was the
+          // cause.  Leaving this heartbeat unchecked lets the next normal heartbeat be refused
+          // instead, recording the persistence gate's error.
           PrepareHeartbeatRPC(
-              deadline, status_tablet, TransactionStatus::PENDING,
-              [&, callback, handle](const auto& status, const auto& req, const auto& resp) {
+              deadline, status_tablet, TransactionStatus::PENDING, OriginationInfo(),
+              [this, callback, handle, transaction](
+                  const auto& status, const auto& req, const auto& resp) {
+                if (PREDICT_FALSE(FLAGS_TEST_delay_rollback_heartbeat_response_ms > 0)) {
+                  std::this_thread::sleep_for(
+                      FLAGS_TEST_delay_rollback_heartbeat_response_ms * 1ms);
+                }
                 UpdateClock(resp, manager_);
                 manager_->rpcs().Unregister(handle);
                 callback(status);
@@ -1238,7 +1278,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         VLOG_WITH_PREFIX(2) << "Sending heartbeat to old status tablet for sub-txn rollback.";
         heartbeat_futures.push_back(SendHeartBeatOnRollback(
             deadline, old_status_tablet_, &old_rollback_heartbeat_handle_,
-            subtransaction_copy.get().aborted));
+            subtransaction_copy.get().aborted, SendHeartbeatToNewTablet::kFalse));
       }
 
       auto state = state_.load(std::memory_order_acquire);
@@ -1252,24 +1292,27 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         VLOG_WITH_PREFIX(2) << "Sending heartbeat to status tablet for sub-txn rollback.";
         heartbeat_futures.push_back(SendHeartBeatOnRollback(
             deadline, status_tablet_, &rollback_heartbeat_handle_,
-            subtransaction_copy.get().aborted));
+            subtransaction_copy.get().aborted, SendHeartbeatToNewTablet::kTrue));
       }
     }
 
-    // Wait for the heartbeat response
+    // Wait for all heartbeats, even after one fails, so that no heartbeat is in flight once this
+    // returns.
     bool heartbeat_aborted_or_expired = false;
+    Status first_error;
     for (auto& future : heartbeat_futures) {
       auto status = future.get();
-      if (status.IsAborted() || status.IsExpired()) {
-        heartbeat_aborted_or_expired = true;
-      }
 
       // If the transaction has been aborted or no longer exists, we don't have to do anything
       // further. The rollback heartbeat which tries to update the list of aborted sub-txns is as
       // good as successful.
-      if (!(status.IsAborted() || status.IsExpired()))
-        RETURN_NOT_OK(status);
+      if (status.IsAborted() || status.IsExpired()) {
+        heartbeat_aborted_or_expired = true;
+      } else if (!status.ok() && first_error.ok()) {
+        first_error = status;
+      }
     }
+    RETURN_NOT_OK(first_error);
 
     #ifndef NDEBUG
     DCHECK(subtransaction_copy_for_dcheck == subtransaction_);
@@ -1319,8 +1362,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     VLOG_WITH_PREFIX(2) << "Log prefix tag changed";
   }
 
-  void MarkHistoricalReadReady() EXCLUDES(mutex_) {
+  void MarkHistoricalReadReady(SubtxnSet aborted) EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
+    subtransaction_.SetAborted(std::move(aborted));
     ready_ = true;
   }
 
@@ -1551,8 +1595,12 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     // up intents before receiving the UpdateTransaction(PROMOTING) RPC, so we send one last
     // UpdateTransaction(PENDING) first, and abort instead if it fails.
     VLOG_WITH_PREFIX(1) << "Last heartbeat to old status tablet failed, resending before COMMIT";
+    // Include no origination info on this heartbeat, unlike the normal PENDING heartbeats sent by
+    // SendHeartbeat.  The commit meets the persistence gate at the new status tablet regardless,
+    // and the old status tablet's TServer, whose persistence block map may lag, should not fail a
+    // commit that gate would accept.
     return PrepareHeartbeatRPC(
-        deadline, old_status_tablet_, TransactionStatus::PENDING,
+        deadline, old_status_tablet_, TransactionStatus::PENDING, OriginationInfo(),
         [this, deadline, seal_only, transaction](
             const auto& status, const auto& req, const auto& resp) {
           UpdateClock(resp, manager_);
@@ -1577,7 +1625,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
   rpc::RpcCommandPtr PrepareHeartbeatRPC(
       CoarseTimePoint deadline, const internal::RemoteTabletPtr& status_tablet,
-      TransactionStatus status, UpdateTransactionCallback callback,
+      TransactionStatus status, const OriginationInfo& origination_info,
+      UpdateTransactionCallback callback,
       std::optional<SubtxnSet> aborted_set_for_rollback_heartbeat = std::nullopt,
       const TabletStates& tablets_with_locks = {},
       const std::optional<TransactionMetadata>& background_transaction = std::nullopt) {
@@ -1617,6 +1666,12 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     if (background_transaction) {
       background_transaction->ToPB(state.mutable_background_transaction_meta());
+    }
+
+    // Send origination info so the coordinator can abort a pending transaction whose database is
+    // blocked.
+    if (status == TransactionStatus::PENDING && origination_info.IsSet()) {
+      origination_info.ToPB(state.mutable_origination_info());
     }
 
     return UpdateTransaction(
@@ -2250,7 +2305,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         }
       }
       rpc = PrepareHeartbeatRPC(
-          CoarseMonoClock::now() + timeout, status_tablet, status,
+          CoarseMonoClock::now() + timeout, status_tablet, status, origination_info_,
           std::bind(
               &Impl::HeartbeatDone, this, _1, _2, _3, status, transaction, send_to_new_tablet),
           std::nullopt, tablets_, background_transaction);
@@ -2683,7 +2738,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         // the transaction prematurely, and we defer to the logic at commit time instead.
         if (!old_status_tablet) {
           VLOG_WITH_PREFIX(1) << "Initial status tablet lookup hasn't finished, not aborting yet";
-        } else if (last_old_heartbeat_failed_.load(std::memory_order_acquire)) {
+        } else if (last_old_heartbeat_failed_.load(std::memory_order_acquire) ||
+                   PREDICT_FALSE(FLAGS_TEST_simulate_failing_heartbeats_to_old_status_tablet)) {
           VLOG_WITH_PREFIX(1) << "Heartbeats to old status tablet are failing, not aborting early";
         } else {
           auto transaction_ptr = transaction_->shared_from_this();
@@ -2919,10 +2975,12 @@ YBTransaction::YBTransaction(TransactionManager* manager, ChildTransactionData d
 }
 
 YBTransactionPtr YBTransaction::Fabricate(
-    TransactionManager* manager, const TransactionMetadata& metadata) {
+    TransactionManager* manager, const TransactionMetadata& metadata, SubtxnSet aborted) {
   auto result = std::make_shared<YBTransaction>(manager, metadata, PrivateOnlyTag());
   if (metadata.is_read_only_historical_committed_txn) {
-    result->impl_->MarkHistoricalReadReady();
+    result->impl_->MarkHistoricalReadReady(std::move(aborted));
+  } else {
+    DCHECK(aborted.IsEmpty());
   }
   return result;
 }

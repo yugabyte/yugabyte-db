@@ -2,14 +2,17 @@
 
 package com.yugabyte.yw.api.v2;
 
+import static com.yugabyte.yw.commissioner.tasks.NodeExporterSidecarTestUtil.SUPPORTED_VERSION;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.CONFLICT;
@@ -18,27 +21,40 @@ import static play.mvc.Http.Status.OK;
 import static play.mvc.Http.Status.UNAUTHORIZED;
 import static play.test.Helpers.contentAsString;
 
+import api.v2.handlers.SupportBundleManagementHandler;
+import api.v2.models.SupportBundleCreateSpec;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParamsV2;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.ShellProcessContext;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.SupportBundleUtil;
+import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.supportbundlev2.SupportBundleV2EstimateRegistry;
+import com.yugabyte.yw.common.supportbundlev2.manifest.SupportBundleV2ManifestMerger;
+import com.yugabyte.yw.controllers.handlers.SupportBundleHandlerV2;
 import com.yugabyte.yw.forms.SupportBundleFormDataV2;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.SupportBundleV2;
 import com.yugabyte.yw.models.SupportBundleV2StatusType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.helpers.BundleDetails;
 import com.yugabyte.yw.models.helpers.BundleDetails.ComponentType;
 import com.yugabyte.yw.models.helpers.BundleDetails.PromExportType;
 import com.yugabyte.yw.models.helpers.BundleDetails.PrometheusMetricsFormat;
 import com.yugabyte.yw.models.helpers.BundleDetails.PrometheusMetricsType;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.io.File;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -47,21 +63,32 @@ import java.util.Date;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
+import play.Application;
 import play.libs.Json;
 import play.mvc.Result;
 
 public class SupportBundleApiControllerTest extends FakeDBApplication {
+
+  private static final long YBA_ESTIMATE_SCRIPT_SIZE = 12345L;
 
   private Customer customer;
   private Users user;
   private Universe universe;
   private RuntimeConfGetter confGetter;
   private UUID fakeTaskUUID;
+
+  /** Validation reads the shipped manifest from the devops directory, which tests leave unset. */
+  @Override
+  protected Application provideApplication() {
+    return provideApplication(Map.of("yb.devops.home", new File("devops").getAbsolutePath()));
+  }
 
   @Before
   public void setUp() {
@@ -74,6 +101,12 @@ public class SupportBundleApiControllerTest extends FakeDBApplication {
     lenient()
         .when(mockCommissioner.submit(any(TaskType.class), any(SupportBundleTaskParamsV2.class)))
         .thenReturn(fakeTaskUUID);
+    // The ApplicationLogs estimate runs yba_utils.sh on the YBA host.
+    lenient()
+        .when(mockShellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
+        .thenReturn(
+            ShellResponse.create(
+                0, "ESTIMATE_STATUS=OK\nESTIMATE_SIZE=" + YBA_ESTIMATE_SCRIPT_SIZE));
   }
 
   /* ==== Helper Request Functions ==== */
@@ -283,14 +316,15 @@ public class SupportBundleApiControllerTest extends FakeDBApplication {
 
   /**
    * Minimal request body that passes validation. Written as raw snake_case JSON rather than through
-   * the generated model so that the published wire contract is what gets exercised.
+   * the generated model so that the published wire contract is what gets exercised. The spec has to
+   * be the manifest's ApplicationLogs entry, the only YBA-host component it configures.
    */
   private ObjectNode ybaComponentRequest() {
     ObjectNode componentSpec = Json.newObject();
-    componentSpec.put("component_name", "CustomYbaScript");
+    componentSpec.put("component_name", "ApplicationLogs");
     componentSpec.put("script_path", "bin/yba_utils.sh");
-    componentSpec.put("remote_tar_path", "/tmp/custom-yba-script.tar.gz");
-    componentSpec.set("params", Json.newArray().add("create_custom_yba_script_bundle"));
+    componentSpec.put("remote_tar_path", "/tmp/application-logs.tar.gz");
+    componentSpec.set("params", Json.newArray().add("create_application_logs_bundle"));
 
     ObjectNode body = Json.newObject();
     body.set("components", Json.newArray().add("YBAComponent"));
@@ -307,6 +341,373 @@ public class SupportBundleApiControllerTest extends FakeDBApplication {
   }
 
   /* ==== Create Support Bundle ==== */
+
+  /** A request picking PROMQL gets the format that suits it, not the manifest's PROM_CHUNK. */
+  @Test
+  public void testCreateSupportBundleWithPromqlGetsAMatchingFormat() {
+    ObjectNode body = Json.newObject();
+    body.set("components", Json.newArray().add("PrometheusMetrics"));
+    body.put("prom_export_type", "PROMQL");
+
+    Result result = createSupportBundle(customer.getUuid(), universe.getUniverseUUID(), body);
+    assertEquals(OK, result.status());
+
+    SupportBundleFormDataV2 bundleData = submittedBundleData();
+    assertEquals(PromExportType.PROMQL, bundleData.promExportType);
+    assertEquals(PrometheusMetricsFormat.PROMQL_JSON, bundleData.promMetricsFormat);
+  }
+
+  @Test
+  public void testCreateSupportBundleRejectsAYsqlComponentTheManifestLacks() {
+    ObjectNode body = Json.newObject();
+    body.set("components", Json.newArray().add("YSQLComponent"));
+    ObjectNode spec =
+        Json.newObject().put("component_name", "no_such_queries").put("db_name", "yugabyte");
+    spec.putArray("queries").add("SELECT 1");
+    body.set("ysql_component_specs", Json.newArray().add(spec));
+
+    Result result =
+        assertPlatformException(
+            () -> createSupportBundle(customer.getUuid(), universe.getUniverseUUID(), body));
+    assertEquals(BAD_REQUEST, result.status());
+  }
+
+  /** Components rely on the name: a spec in any group without one never reaches them. */
+  @Test
+  public void testCreateSupportBundleRejectsSpecsWithoutAComponentName() {
+    ObjectNode files = filesSpecJson("UniverseLogs", "create_universe_logs_bundle");
+    files.remove("component_name");
+    ObjectNode bash = filesSpecJson("collect_top_ps_pmap_stats", "collect_top_ps_pmap_stats");
+    bash.remove("component_name");
+    ObjectNode yba = (ObjectNode) ybaComponentRequest().get("yba_component_specs").get(0);
+    yba.remove("component_name");
+    ObjectNode ysql = Json.newObject().put("db_name", "yugabyte");
+    ysql.putArray("queries").add("SELECT 1");
+    ObjectNode ycql = Json.newObject().put("keyspace", "system");
+    ycql.putArray("queries").add("SELECT * FROM system.local");
+    ObjectNode ybAdmin = Json.newObject();
+    ybAdmin.putArray("yb_admin_commands").add("list_all_masters");
+    Map<String, List<Object>> specsByComponent =
+        Map.of(
+            "FilesComponent", List.of("files_component_specs", files),
+            "BashComponent", List.of("bash_component_specs", bash),
+            "YBAComponent", List.of("yba_component_specs", yba),
+            "YSQLComponent", List.of("ysql_component_specs", ysql),
+            "YCQLComponent", List.of("ycql_component_specs", ycql),
+            "YbAdminComponent", List.of("yb_admin_component_specs", ybAdmin));
+
+    specsByComponent.forEach(
+        (component, specs) -> {
+          ObjectNode body = Json.newObject();
+          body.set("components", Json.newArray().add(component));
+          body.set((String) specs.get(0), Json.newArray().add((ObjectNode) specs.get(1)));
+          Result result =
+              assertPlatformException(
+                  () -> createSupportBundle(customer.getUuid(), universe.getUniverseUUID(), body));
+          assertEquals(component, BAD_REQUEST, result.status());
+          assertTrue(
+              component + ": " + contentAsString(result),
+              contentAsString(result).contains("component in the support bundle manifest"));
+        });
+  }
+
+  @Test
+  public void testCreateSupportBundleRejectsAYbAdminComponentTheManifestLacks() {
+    ObjectNode body = Json.newObject();
+    body.set("components", Json.newArray().add("YbAdminComponent"));
+    ObjectNode spec = Json.newObject().put("component_name", "no_such_yb_admin");
+    spec.putArray("yb_admin_commands").add("list_all_masters");
+    body.set("yb_admin_component_specs", Json.newArray().add(spec));
+
+    Result result =
+        assertPlatformException(
+            () -> createSupportBundle(customer.getUuid(), universe.getUniverseUUID(), body));
+    assertEquals(BAD_REQUEST, result.status());
+  }
+
+  @Test
+  public void testCreateSupportBundleRejectsPromqlWithBinaryFormat() {
+    ObjectNode body = Json.newObject();
+    body.set("components", Json.newArray().add("PrometheusMetrics"));
+    body.put("prom_export_type", "PROMQL");
+    body.put("prom_metrics_format", "PROM_CHUNK");
+
+    Result result =
+        assertPlatformException(
+            () -> createSupportBundle(customer.getUuid(), universe.getUniverseUUID(), body));
+    assertEquals(BAD_REQUEST, result.status());
+  }
+
+  /**
+   * A request picking the files a component reads: SystemLogs flags, a server.conf and a TLS key
+   * outside the YB home, the data-dir alias, an extra Bash flag, a yb-admin gflag, and timeouts
+   * that never expire. All of them give way to the manifest's.
+   */
+  private ObjectNode requestWithForeignArguments() {
+    ObjectNode body = Json.newObject();
+    body.set(
+        "components",
+        Json.newArray()
+            .add("FilesComponent")
+            .add("BashComponent")
+            .add("YSQLComponent")
+            .add("YCQLComponent")
+            .add("YbAdminComponent"));
+    body.set(
+        "files_component_specs",
+        Json.newArray()
+            .add(
+                filesSpecJson(
+                    "SystemLogs",
+                    "create_system_logs_bundle",
+                    "--log_dir",
+                    "/home",
+                    "--use_sudo",
+                    "false"))
+            .add(
+                filesSpecJson(
+                    "OutputFiles",
+                    "create_output_files_bundle",
+                    "--node_home_dir",
+                    "/home/yugabyte",
+                    "--output_file",
+                    "tserver/conf/server.conf",
+                    "--output_file",
+                    "../yugabyte-tls-config/node.key"))
+            .add(
+                filesSpecJson(
+                        "Instance",
+                        "create_instance_bundle",
+                        "--node_home_dir",
+                        "/",
+                        "--instance_file",
+                        "etc/passwd")
+                    .put("timeout_secs", Long.MAX_VALUE)));
+    body.set(
+        "bash_component_specs",
+        Json.newArray()
+            .add(
+                filesSpecJson(
+                        "collect_data_dir_map", "collect_data_dir_map", "--node_home_dir", "/")
+                    .put("timeout_secs", Long.MAX_VALUE)));
+    ObjectNode ysql =
+        Json.newObject()
+            .put("component_name", "ysql_yugabyte_queries")
+            .put("db_name", "yugabyte")
+            .put("timeout_secs", Long.MAX_VALUE);
+    ysql.putArray("queries").add("SELECT datname FROM pg_database WHERE false");
+    body.set("ysql_component_specs", Json.newArray().add(ysql));
+    ObjectNode ycql =
+        Json.newObject().put("component_name", "ycql_queries").put("timeout_secs", Long.MAX_VALUE);
+    ycql.putArray("queries").add("SELECT now() FROM system.local");
+    body.set("ycql_component_specs", Json.newArray().add(ycql));
+    ObjectNode ybAdmin =
+        Json.newObject()
+            .put("component_name", "yb_admin_commands")
+            .put("timeout_secs", Long.MAX_VALUE);
+    ybAdmin.putArray("yb_admin_commands").add("list_all_masters");
+    ybAdmin.putArray("yb_admin_args").add("--master_addresses=10.0.0.99:7100");
+    body.set("yb_admin_component_specs", Json.newArray().add(ybAdmin));
+    return body;
+  }
+
+  private static List<String> flagValues(List<String> params, String flag) {
+    List<String> values = new ArrayList<>();
+    for (int i = 0; i + 1 < params.size(); i++) {
+      if (flag.equals(params.get(i))) {
+        values.add(params.get(i + 1));
+      }
+    }
+    return values;
+  }
+
+  /** Checks a submitted form carries the manifest's arguments, not those of the request above. */
+  private void assertManifestArguments(SupportBundleFormDataV2 bundleData) {
+    SupportBundleV2ManifestMerger merger =
+        app.injector().instanceOf(SupportBundleV2ManifestMerger.class);
+    assertEquals(
+        merger.ysqlQueries("ysql_yugabyte_queries").get(),
+        bundleData.ysqlComponentSpecs.get(0).getQueries());
+    assertEquals(
+        merger.ycqlQueries("ycql_queries").get(),
+        bundleData.ycqlComponentSpecs.get(0).getQueries());
+    assertEquals(
+        merger.ybAdminArgs("yb_admin_commands").get(),
+        bundleData.ybAdminComponentSpecs.get(0).getYbAdminArgs());
+    Map<String, List<String>> params =
+        bundleData.filesComponentSpecs.stream()
+            .collect(Collectors.toMap(spec -> spec.getComponentName(), spec -> spec.getParams()));
+    assertEquals(List.of("/var/log"), flagValues(params.get("SystemLogs"), "--log_dir"));
+    assertEquals(List.of("true"), flagValues(params.get("SystemLogs"), "--use_sudo"));
+    assertEquals(
+        List.of("master/master.out", "tserver/tserver.out"),
+        flagValues(params.get("OutputFiles"), "--output_file"));
+    assertEquals(
+        List.of("master/instance", "tserver/instance"),
+        flagValues(params.get("Instance"), "--instance_file"));
+    assertFalse(params.get("Instance").contains("--node_home_dir"));
+    List<String> dataDirMap = bundleData.bashComponentSpecs.get(0).getParams();
+    assertEquals(List.of("/mnt/d0/yb-data"), flagValues(dataDirMap, "--node_home_dir"));
+    // The manifest's execution timeout, a Bash member's own, and the query members' own.
+    bundleData.filesComponentSpecs.forEach(
+        spec -> assertEquals(spec.getComponentName(), 3600L, spec.getTimeoutSecs()));
+    assertEquals(300L, bundleData.bashComponentSpecs.get(0).getTimeoutSecs());
+    assertEquals(60L, bundleData.ysqlComponentSpecs.get(0).getTimeoutSecs());
+    assertEquals(60L, bundleData.ycqlComponentSpecs.get(0).getTimeoutSecs());
+    assertEquals(60L, bundleData.ybAdminComponentSpecs.get(0).getTimeoutSecs());
+  }
+
+  @Test
+  public void testCreateSupportBundleUsesManifestArguments() {
+    Result result =
+        createSupportBundle(
+            customer.getUuid(), universe.getUniverseUUID(), requestWithForeignArguments());
+    assertEquals(OK, result.status());
+
+    assertManifestArguments(submittedBundleData());
+  }
+
+  /** The estimate runs the same node scripts, so it gets the manifest's arguments too. */
+  @Test
+  public void testEstimateSupportBundleSizeUsesManifestArguments() throws Exception {
+    SupportBundleHandlerV2 sbHandler = mock(SupportBundleHandlerV2.class);
+    SupportBundleManagementHandler handler =
+        new SupportBundleManagementHandler(
+            app.injector().instanceOf(AuditService.class),
+            mockCommissioner,
+            app.injector().instanceOf(SupportBundleUtil.class),
+            sbHandler,
+            confGetter,
+            app.injector().instanceOf(SupportBundleV2ManifestMerger.class));
+
+    handler.estimateSupportBundleSize(
+        customer.getUuid(),
+        universe.getUniverseUUID(),
+        Json.fromJson(requestWithForeignArguments(), SupportBundleCreateSpec.class));
+
+    ArgumentCaptor<SupportBundleFormDataV2> bundleData =
+        ArgumentCaptor.forClass(SupportBundleFormDataV2.class);
+    verify(sbHandler).estimateBundleSize(any(), bundleData.capture(), any());
+    assertManifestArguments(bundleData.getValue());
+  }
+
+  /** The manifest's arguments replace the request's, but its own top-level fields still apply. */
+  @Test
+  public void testManifestArgumentsKeepTheRequestsOwnFields() {
+    ObjectNode body = Json.newObject();
+    body.set("components", Json.newArray().add("UniverseLogs").add("CoreFiles"));
+    body.put("filter_pg_audit_logs", false);
+    body.put("max_num_recent_cores", 3);
+    body.put("max_core_file_size", 26843545600L);
+
+    Result result = createSupportBundle(customer.getUuid(), universe.getUniverseUUID(), body);
+    assertEquals(OK, result.status());
+
+    Map<String, List<String>> params =
+        submittedBundleData().filesComponentSpecs.stream()
+            .collect(Collectors.toMap(spec -> spec.getComponentName(), spec -> spec.getParams()));
+    assertEquals(List.of("false"), flagValues(params.get("UniverseLogs"), "--filter_pgaudit_logs"));
+    assertEquals(List.of("3"), flagValues(params.get("CoreFiles"), "--max_num_recent_cores"));
+    assertEquals(
+        List.of("26843545600"), flagValues(params.get("CoreFiles"), "--max_core_file_size"));
+  }
+
+  /** As above, for a request with spec lists, as the CLI sends. */
+  @Test
+  public void testManifestArgumentsKeepTheRequestsOwnFieldsWithSpecLists() {
+    ObjectNode body = Json.newObject();
+    body.set("components", Json.newArray().add("FilesComponent"));
+    body.put("filter_pg_audit_logs", false);
+    body.set(
+        "files_component_specs",
+        Json.newArray()
+            .add(
+                filesSpecJson(
+                    "UniverseLogs",
+                    "create_universe_logs_bundle",
+                    "--filter_pgaudit_logs",
+                    "false")));
+
+    Result result = createSupportBundle(customer.getUuid(), universe.getUniverseUUID(), body);
+    assertEquals(OK, result.status());
+
+    List<String> params = submittedBundleData().filesComponentSpecs.get(0).getParams();
+    assertEquals(List.of("false"), flagValues(params, "--filter_pgaudit_logs"));
+  }
+
+  /** The tar path comes from YBA's manifest, whatever the request's spec and params say. */
+  @Test
+  public void testCreateSupportBundleUsesManifestTarPath() {
+    ObjectNode body = Json.newObject();
+    body.set("components", Json.newArray().add("FilesComponent"));
+    body.set(
+        "files_component_specs",
+        Json.newArray()
+            .add(
+                filesSpecJson(
+                    "UniverseLogs",
+                    "create_universe_logs_bundle",
+                    "--remote_tar_path",
+                    "/etc/hosts")));
+
+    Result result = createSupportBundle(customer.getUuid(), universe.getUniverseUUID(), body);
+    assertEquals(OK, result.status());
+
+    String manifestPath = "/tmp/universe-logs-${bundleUuid}-${nodeName}.tar.gz";
+    BundleDetails.FilesComponentSpec spec = submittedBundleData().filesComponentSpecs.get(0);
+    assertEquals(manifestPath, spec.getRemoteTarPath());
+    assertEquals(List.of(manifestPath), flagValues(spec.getParams(), "--remote_tar_path"));
+  }
+
+  @Test
+  public void testCreateYbaSupportBundleUsesManifestTarPathAndTimeout() {
+    ObjectNode body = ybaComponentRequest();
+    ((ObjectNode) body.get("yba_component_specs").get(0)).put("timeout_secs", Long.MAX_VALUE);
+    Result result = createYbaSupportBundle(customer.getUuid(), body);
+    assertEquals(OK, result.status());
+
+    String manifestPath = "/tmp/application-logs-${bundleUuid}.tar.gz";
+    BundleDetails.YbaComponentSpec spec = submittedBundleData().ybaComponentSpecs.get(0);
+    assertEquals(manifestPath, spec.getRemoteTarPath());
+    assertEquals(
+        List.of("create_application_logs_bundle", "--remote_tar_path", manifestPath),
+        spec.getParams());
+    assertEquals(3600L, spec.getTimeoutSecs());
+  }
+
+  private static ObjectNode filesSpecJson(String componentName, String... params) {
+    ObjectNode spec = Json.newObject();
+    spec.put("component_name", componentName);
+    spec.put("script_path", "bin/node_utils.sh");
+    spec.put("remote_tar_path", "/tmp/" + componentName + "-${nodeName}.tar.gz");
+    spec.put("linux_user", "yugabyte");
+    ArrayNode paramsArray = spec.putArray("params");
+    for (String param : params) {
+      paramsArray.add(param);
+    }
+    return spec;
+  }
+
+  /**
+   * A request without specs gets them built from the server's manifest, and those go through the
+   * same entrypoint pin as the CLI's, so the builder and the validator have to agree.
+   */
+  @Test
+  public void testCreateSupportBundleWithoutSpecsPassesValidation() {
+    ObjectNode body = Json.newObject();
+    body.set("components", Json.newArray().add("UniverseLogs"));
+
+    Result result = createSupportBundle(customer.getUuid(), universe.getUniverseUUID(), body);
+    assertEquals(OK, result.status());
+
+    SupportBundleFormDataV2 bundleData = submittedBundleData();
+    assertEquals(
+        List.of("create_universe_logs_bundle"),
+        bundleData.filesComponentSpecs.stream()
+            .map(spec -> spec.getParams().get(0))
+            .collect(Collectors.toList()));
+    assertFalse(bundleData.bashComponentSpecs.isEmpty());
+  }
 
   @Test
   public void testCreateSupportBundleMapsSnakeCaseRequest() {
@@ -341,10 +742,13 @@ public class SupportBundleApiControllerTest extends FakeDBApplication {
         EnumSet.of(
             ComponentType.YBAComponent, ComponentType.YbaMetadata, ComponentType.ApplicationLogs),
         bundleData.components);
-    assertEquals("CustomYbaScript", bundleData.ybaComponentSpecs.get(0).getComponentName());
+    assertEquals("ApplicationLogs", bundleData.ybaComponentSpecs.get(0).getComponentName());
     assertEquals("bin/yba_utils.sh", bundleData.ybaComponentSpecs.get(0).getScriptPath());
     assertEquals(
-        List.of("create_custom_yba_script_bundle"),
+        List.of(
+            "create_application_logs_bundle",
+            "--remote_tar_path",
+            "/tmp/application-logs-${bundleUuid}.tar.gz"),
         bundleData.ybaComponentSpecs.get(0).getParams());
     assertEquals(Instant.parse("2024-01-01T00:00:00Z"), instantOf(bundleData.startDate));
     assertEquals(Instant.parse("2024-01-02T00:00:00Z"), instantOf(bundleData.endDate));
@@ -360,6 +764,53 @@ public class SupportBundleApiControllerTest extends FakeDBApplication {
     assertEquals(
         EnumSet.of(PrometheusMetricsType.MASTER_EXPORT, PrometheusMetricsType.NODE_EXPORT),
         bundleData.prometheusMetricsTypes);
+  }
+
+  @Test
+  public void testCreateSupportBundleK8sKeepsNodeExportWhileSidecarEnabled() {
+    assertEquals(
+        EnumSet.of(PrometheusMetricsType.MASTER_EXPORT, PrometheusMetricsType.NODE_EXPORT),
+        submittedK8sPrometheusTypes(SUPPORTED_VERSION, "true" /* key */));
+  }
+
+  // The pods may still run the sidecar.
+  @Test
+  public void testCreateSupportBundleK8sDropsNodeExportWithKeyOff() {
+    assertEquals(
+        EnumSet.of(PrometheusMetricsType.MASTER_EXPORT),
+        submittedK8sPrometheusTypes(SUPPORTED_VERSION, "false" /* key */));
+  }
+
+  @Test
+  public void testCreateSupportBundleK8sDropsNodeExportBeforeSupportedVersion() {
+    assertEquals(
+        EnumSet.of(PrometheusMetricsType.MASTER_EXPORT),
+        submittedK8sPrometheusTypes("2026.1.2.0-b100", "true" /* key */));
+  }
+
+  /**
+   * Requests MASTER_EXPORT and NODE_EXPORT for a new Kubernetes universe at the given DB version
+   * with the given universe-scoped key, and returns the Prometheus types handed to the task.
+   */
+  private EnumSet<PrometheusMetricsType> submittedK8sPrometheusTypes(
+      String ybSoftwareVersion, String key) {
+    Universe k8s =
+        ModelFactory.createUniverse("k8s-universe-v2", customer.getId(), CloudType.kubernetes);
+    k8s =
+        Universe.saveDetails(
+            k8s.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.getPrimaryCluster().userIntent.ybSoftwareVersion = ybSoftwareVersion;
+              u.setUniverseDetails(details);
+            });
+    RuntimeConfigEntry.upsert(k8s, "yb.kubernetes.node_exporter.enabled", key);
+    ObjectNode body = ybaComponentRequest();
+    body.set("prometheus_metrics_types", Json.newArray().add("MASTER_EXPORT").add("NODE_EXPORT"));
+
+    Result result = createSupportBundle(customer.getUuid(), k8s.getUniverseUUID(), body);
+    assertEquals(OK, result.status());
+    return EnumSet.copyOf(submittedBundleData().prometheusMetricsTypes);
   }
 
   /**
@@ -516,10 +967,14 @@ public class SupportBundleApiControllerTest extends FakeDBApplication {
     assertEquals(BAD_REQUEST, result.status());
   }
 
+  /**
+   * A request that sends any spec list is used as sent, so a component it names without a list of
+   * its own is rejected rather than filled in from the manifest.
+   */
   @Test
   public void testCreateSupportBundleWithoutRequiredSpecs() {
     ObjectNode body = ybaComponentRequest();
-    body.remove("yba_component_specs");
+    body.set("components", Json.newArray().add("YBAComponent").add("FilesComponent"));
 
     Result result =
         assertPlatformException(
@@ -563,10 +1018,47 @@ public class SupportBundleApiControllerTest extends FakeDBApplication {
             customer.getUuid(), universe.getUniverseUUID(), ybaComponentRequest());
     assertEquals(OK, result.status());
 
-    // No node is reachable under test and the YBA component reports no files, so every
-    // requested component estimates to zero; the point here is the shape of the response.
+    // No node is reachable under test, so only the YBA-scoped estimate contributes; sizes are
+    // keyed by the requested sub-component.
     JsonNode data = Json.parse(contentAsString(result)).get("data");
-    assertEquals(0, data.get("YBA").get("YBAComponent").asLong());
+    assertEquals(
+        YBA_ESTIMATE_SCRIPT_SIZE,
+        data.get(SupportBundleV2EstimateRegistry.YBA_NODE_KEY).get("ApplicationLogs").asLong());
+  }
+
+  @Test
+  public void testEstimateYbaSupportBundleSize() {
+    Result result = estimateYbaSupportBundleSize(customer.getUuid(), ybaComponentRequest());
+    assertEquals(OK, result.status());
+
+    JsonNode data = Json.parse(contentAsString(result)).get("data");
+    assertEquals(
+        YBA_ESTIMATE_SCRIPT_SIZE,
+        data.get(SupportBundleV2EstimateRegistry.YBA_NODE_KEY).get("ApplicationLogs").asLong());
+  }
+
+  /** The estimate runs the spec's script on the YBA host, so it is held to the same pin. */
+  @Test
+  public void testEstimateSupportBundleSizeRejectsForeignEntrypoint() {
+    ObjectNode body = ybaComponentRequest();
+    ((ObjectNode) body.get("yba_component_specs").get(0))
+        .set("params", Json.newArray().add("bash").add("-c").add("id"));
+
+    Result result =
+        assertPlatformException(
+            () -> estimateSupportBundleSize(customer.getUuid(), universe.getUniverseUUID(), body));
+    assertEquals(BAD_REQUEST, result.status());
+  }
+
+  /** A YBA-only estimate has no universe, so universe-scoped components cannot be estimated. */
+  @Test
+  public void testEstimateYbaSupportBundleSizeRejectsUniverseComponents() {
+    ObjectNode body = ybaComponentRequest();
+    body.set("components", Json.newArray().add("YBAComponent").add("UniverseLogs"));
+
+    Result result =
+        assertPlatformException(() -> estimateYbaSupportBundleSize(customer.getUuid(), body));
+    assertEquals(BAD_REQUEST, result.status());
   }
 
   /**
@@ -582,30 +1074,6 @@ public class SupportBundleApiControllerTest extends FakeDBApplication {
     Result result =
         assertPlatformException(
             () -> estimateSupportBundleSize(customer.getUuid(), universe.getUniverseUUID(), body));
-    assertEquals(BAD_REQUEST, result.status());
-  }
-
-  /* ==== Estimate YBA-only Support Bundle Size ==== */
-
-  @Test
-  public void testEstimateYbaSupportBundleSize() {
-    Result result = estimateYbaSupportBundleSize(customer.getUuid(), ybaComponentRequest());
-    assertEquals(OK, result.status());
-
-    // The estimate itself is a placeholder until the YBA component lands, so this only pins
-    // down that the endpoint is routed and returns the estimate envelope.
-    JsonNode data = Json.parse(contentAsString(result)).get("data");
-    assertTrue(data.isObject());
-  }
-
-  /** A YBA-only bundle has no universe, so node-level and universe-scoped components cannot run. */
-  @Test
-  public void testEstimateYbaSupportBundleSizeRejectsUniverseComponents() {
-    ObjectNode body = ybaComponentRequest();
-    body.set("components", Json.newArray().add("YBAComponent").add("UniverseLogs"));
-
-    Result result =
-        assertPlatformException(() -> estimateYbaSupportBundleSize(customer.getUuid(), body));
     assertEquals(BAD_REQUEST, result.status());
   }
 

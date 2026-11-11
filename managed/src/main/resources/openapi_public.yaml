@@ -26,6 +26,8 @@ tags:
   description: Authentication operations on YBA
 - name: Backup and Restore
   description: Operations related to universe backup and restore
+- name: Certificate
+  description: Certificate management
 - name: Continuous Backup
   description: CRUD operations for Continuous YBA Backups
 - name: Customer
@@ -60,6 +62,8 @@ tags:
   description: Operations for Telemetry Providers
 - name: Universe
   description: CRUD operations for a Universe
+- name: User
+  description: User management
 - name: YBA Instance
   description: YBA Instance operations
 paths:
@@ -327,6 +331,69 @@ paths:
           sourceType: endpoint
       x-yba-api-since: 2024.2.0.0
       x-yba-api-visibility: preview
+  /customers/{cUUID}/certificates:
+    parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    post:
+      operationId: createCertificate
+      summary: Add a certificate
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Adds a certificate to the customer,
+        such as the root CA for node-to-node and client-to-node encryption in transit.
+        A SelfSigned certificate is a CA certificate with its private key; YBA uses
+        it to sign node and client certificates. The caller either uploads the CA
+        and its key, or omits both and YBA generates them, so that the key never leaves
+        YBA.'
+      tags:
+      - Certificate
+      requestBody:
+        $ref: '#/components/requestBodies/CertificateCreateReq'
+      responses:
+        '200':
+          $ref: '#/components/responses/CertificateResp'
+        '400':
+          description: Invalid input, such as content that isn't PEM, only one of
+            cert_content and key_content, lifetime_years with an uploaded CA or outside
+            1-100, or (unless yb.tls.enable_config_validation is off) a certificate
+            that isn't a valid CA or a key that doesn't match it
+        '401':
+          description: The request has no valid API or session token, cUUID is not
+            the caller's customer (including a customer that doesn't exist), or the
+            caller's role has no create permission on the customer
+        '409':
+          description: The customer already has a certificate with this label. Also
+            returned while a request with the same Idempotency-Key is still in progress.
+        '500':
+          description: Server error
+        '422':
+          description: The Idempotency-Key was already used for a different request
+      security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+      x-yba-api-audit:
+        auditTargetType: Certificate
+        auditTargetId: obj.getUuid().toString()
+        auditActionType: Create
+      x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: create
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+      x-yba-api-idempotent: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
   /customers/{cUUID}/auto-yba-backups:
     parameters:
     - name: cUUID
@@ -609,6 +676,49 @@ paths:
         auditActionType: GenerateApiToken
       x-yba-api-authz:
         noAuthz: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+  /customers/{cUUID}/host-cloud-info:
+    parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    get:
+      operationId: getHostCloudInfo
+      summary: Get the YBA host's cloud info
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Returns the public cloud and
+        region that YBA runs on, and the instance metadata used to create a provider
+        in the host''s VPC. Replaces the v1 host_info.'
+      tags:
+      - Customer
+      responses:
+        '200':
+          $ref: '#/components/responses/HostCloudInfoResp'
+        '401':
+          description: The request has no valid API or session token, cUUID is not
+            the caller's customer (including a customer that doesn't exist), or the
+            caller's role has no read permission on the customer
+        '500':
+          description: Server error
+      security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+      x-yba-api-audit:
+        noAudit: true
+      x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
   /customers/{cUUID}/customer-configs/page:
@@ -2546,6 +2656,8 @@ paths:
           $ref: '#/components/responses/YBATaskResp'
         '400':
           description: Invalid input
+        '403':
+          description: The task cannot be rolled back, or the operator owns the resource
         '500':
           description: Server error
       security:
@@ -4569,6 +4681,59 @@ paths:
       x-yba-api-block-operator-resource: universe
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
+  /customers/{cUUID}/users:
+    parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    post:
+      operationId: createUser
+      summary: Add a user
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Adds a local user with a system
+        role to the customer. SuperAdmin users can''t be created this way. With generate_api_token,
+        the response also carries an API token for the new user.'
+      tags:
+      - User
+      requestBody:
+        $ref: '#/components/requestBodies/UserCreateReq'
+      responses:
+        '200':
+          $ref: '#/components/responses/UserCreationResp'
+        '400':
+          description: Invalid input, such as an invalid email, a missing role, the
+            SuperAdmin role, or a password that violates the password policy
+        '401':
+          description: The request has no valid API or session token, cUUID is not
+            the caller's customer (including a customer that doesn't exist), or the
+            caller's role has no create permission on users
+        '409':
+          description: A user with this email already exists, or OIDC SSO creates
+            users automatically on this YBA
+        '500':
+          description: Server error
+      security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+      x-yba-api-audit:
+        auditTargetType: User
+        auditTargetId: obj.getUser().getInfo().getUuid().toString()
+        auditActionType: Create
+      x-yba-api-authz:
+      - requiredPermission:
+          resourceType: user
+          action: create
+        resourceLocation:
+          path: users
+          sourceType: endpoint
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
 components:
   securitySchemes:
     apiKeyAuth:
@@ -5130,6 +5295,93 @@ components:
         type:
           description: The data type of the flag.
           type: string
+    CertificateType:
+      title: CertificateType
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Kind of certificate. SelfSigned:
+        a root CA whose certificate and private key YBA holds and uses to sign node
+        and client certificates.'
+      type: string
+      enum:
+      - SelfSigned
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    CertificateSpec:
+      title: CertificateSpec
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>A certificate to add to the customer.
+        Give cert_content and key_content to upload a CA, or omit both to have YBA
+        generate the CA and its key. Part of CertificateCreateReq.'
+      type: object
+      required:
+      - label
+      - cert_type
+      properties:
+        label:
+          description: Name of the certificate, unique within the customer. A generated
+            CA also uses it as its subject CN.
+          type: string
+          minLength: 1
+        cert_type:
+          $ref: '#/components/schemas/CertificateType'
+        cert_content:
+          description: PEM-encoded CA certificate, optionally followed by the rest
+            of its chain. Omit, together with key_content, to have YBA generate the
+            CA.
+          type: string
+          minLength: 1
+        key_content:
+          description: PEM-encoded private key of the CA certificate. Omit, together
+            with cert_content, to have YBA generate the CA.
+          type: string
+          minLength: 1
+          writeOnly: true
+        lifetime_years:
+          description: Validity of a CA that YBA generates, in years. Defaults to
+            yb.tlsCertificate.root.expiryInYears. Only for a generated CA.
+          type: integer
+          format: int32
+          maximum: 100
+          minimum: 1
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    Certificate:
+      title: Certificate
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>A customer''s certificate. Part
+        of CertificateResp.'
+      type: object
+      required:
+      - uuid
+      - label
+      - cert_type
+      - start_date
+      - expiry_date
+      properties:
+        uuid:
+          description: UUID of the certificate
+          type: string
+          format: uuid
+          readOnly: true
+        label:
+          description: Name of the certificate
+          type: string
+          readOnly: true
+        cert_type:
+          $ref: '#/components/schemas/CertificateType'
+          readOnly: true
+        start_date:
+          description: Start of the certificate's validity
+          type: string
+          format: date-time
+          readOnly: true
+        expiry_date:
+          description: End of the certificate's validity
+          type: string
+          format: date-time
+          readOnly: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
     ContinuousBackupInfo:
       title: ContinuousBackupInfo
       description: 'ContinuousBackupInfo
@@ -5409,6 +5661,127 @@ components:
           type: integer
           format: int64
           readOnly: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    HostCloud:
+      title: HostCloud
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Public cloud that YBA runs on.'
+      type: string
+      enum:
+      - aws
+      - gcp
+      - azu
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    AwsHostInfo:
+      title: AwsHostInfo
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>EC2 instance metadata of the
+        YBA host. Part of HostCloudInfo.'
+      type: object
+      properties:
+        instance_id:
+          description: EC2 instance ID
+          type: string
+          readOnly: true
+        vpc_id:
+          description: VPC of the instance's primary network interface
+          type: string
+          readOnly: true
+        private_ip:
+          description: Private IP address of the instance
+          type: string
+          readOnly: true
+        region:
+          description: AWS region
+          type: string
+          readOnly: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    GcpHostInfo:
+      title: GcpHostInfo
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>GCE instance metadata of the
+        YBA host. Part of HostCloudInfo.'
+      type: object
+      properties:
+        project:
+          description: ID of the project that the instance belongs to
+          type: string
+          readOnly: true
+        network:
+          description: Name of the VPC network of the instance's first network interface
+          type: string
+          readOnly: true
+        shared_vpc_project:
+          description: 'Number of the project that owns that network: the host project
+            for a Shared VPC, otherwise the instance''s own project'
+          type: string
+          readOnly: true
+        zone:
+          description: GCP zone
+          type: string
+          readOnly: true
+        region:
+          description: GCP region
+          type: string
+          readOnly: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    AzuHostInfo:
+      title: AzuHostInfo
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Azure VM metadata of the YBA
+        host. Part of HostCloudInfo.'
+      type: object
+      properties:
+        subscription_id:
+          description: Azure subscription of the VM
+          type: string
+          readOnly: true
+        resource_group:
+          description: Resource group of the VM
+          type: string
+          readOnly: true
+        vm_id:
+          description: Azure VM ID
+          type: string
+          readOnly: true
+        private_ip:
+          description: Private IP address of the VM's first network interface
+          type: string
+          readOnly: true
+        region:
+          description: Azure region (location) of the VM
+          type: string
+          readOnly: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    HostCloudInfo:
+      title: HostCloudInfo
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>The public cloud that YBA runs
+        on and its instance metadata. Part of HostCloudInfoResp. Only the object for
+        the host cloud is set.'
+      type: object
+      properties:
+        cloud:
+          description: Cloud that YBA runs on. Absent when YBA is not on AWS, GCP
+            or Azure.
+          $ref: '#/components/schemas/HostCloud'
+          readOnly: true
+        region:
+          description: Cloud region of the YBA host. Absent when the cloud is unknown
+            or its metadata service is unreachable.
+          type: string
+          readOnly: true
+        aws:
+          $ref: '#/components/schemas/AwsHostInfo'
+        gcp:
+          $ref: '#/components/schemas/GcpHostInfo'
+        azu:
+          $ref: '#/components/schemas/AzuHostInfo'
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
     CustomerConfigPagedQuerySpec:
@@ -7432,7 +7805,15 @@ components:
             '
           type: string
         params:
-          description: Arguments appended after the script (entrypoint + flags).
+          description: 'Arguments appended after the script (entrypoint + flags).
+
+            YBA replaces them with the arguments its support bundle manifest
+
+            gives component_name; the request''s collection window and options
+
+            such as filter_pg_audit_logs still apply.
+
+            '
           type: array
           items:
             type: string
@@ -7461,7 +7842,13 @@ components:
             '
           type: string
         timeout_secs:
-          description: Script execution timeout in seconds.
+          description: 'Script execution timeout in seconds.
+
+            YBA uses the timeout its support bundle manifest gives
+
+            component_name instead.
+
+            '
           type: integer
           format: int64
     BashComponentSpec:
@@ -7491,7 +7878,13 @@ components:
             '
           type: string
         params:
-          description: Arguments appended after the script (entrypoint + flags).
+          description: 'Arguments appended after the script (entrypoint + flags).
+
+            YBA replaces them with the arguments its support bundle manifest
+
+            gives component_name.
+
+            '
           type: array
           items:
             type: string
@@ -7520,7 +7913,13 @@ components:
             '
           type: string
         timeout_secs:
-          description: Script execution timeout in seconds.
+          description: 'Script execution timeout in seconds.
+
+            YBA uses the timeout its support bundle manifest gives
+
+            component_name instead.
+
+            '
           type: integer
           format: int64
     YSQLComponentSpec:
@@ -7555,6 +7954,12 @@ components:
 
             additionally runs with default_transaction_read_only=on.
 
+            After these checks YBA runs the queries its support bundle manifest
+
+            lists for component_name instead, and rejects a component_name the
+
+            manifest doesn''t list.
+
             '
           type: array
           items:
@@ -7568,7 +7973,13 @@ components:
             '
           type: string
         timeout_secs:
-          description: Command timeout in seconds.
+          description: 'Command timeout in seconds.
+
+            YBA uses the timeout its support bundle manifest gives
+
+            component_name instead.
+
+            '
           type: integer
           format: int64
     YCQLComponentSpec:
@@ -7597,6 +8008,12 @@ components:
 
             than one statement are rejected.
 
+            After these checks YBA runs the queries its support bundle manifest
+
+            lists for component_name instead, and rejects a component_name the
+
+            manifest doesn''t list.
+
             '
           type: array
           items:
@@ -7610,7 +8027,13 @@ components:
             '
           type: string
         timeout_secs:
-          description: Command timeout in seconds.
+          description: 'Command timeout in seconds.
+
+            YBA uses the timeout its support bundle manifest gives
+
+            component_name instead.
+
+            '
           type: integer
           format: int64
     YbAdminComponentSpec:
@@ -7642,7 +8065,15 @@ components:
             type: string
           minItems: 1
         yb_admin_args:
-          description: Additional arguments after the subcommand.
+          description: 'Additional arguments after the subcommand. YBA replaces
+
+            them with the arguments its support bundle manifest lists for
+
+            component_name, and rejects a component_name the manifest doesn''t
+
+            list.
+
+            '
           type: array
           items:
             type: string
@@ -7654,7 +8085,13 @@ components:
             '
           type: string
         timeout_secs:
-          description: Command timeout in seconds.
+          description: 'Command timeout in seconds.
+
+            YBA uses the timeout its support bundle manifest gives
+
+            component_name instead.
+
+            '
           type: integer
           format: int64
     YbaComponentSpec:
@@ -7708,7 +8145,13 @@ components:
             '
           type: string
         timeout_secs:
-          description: Script execution timeout in seconds.
+          description: 'Script execution timeout in seconds.
+
+            YBA uses the timeout its support bundle manifest gives
+
+            component_name instead.
+
+            '
           type: integer
           format: int64
     PrometheusMetricsFormat:
@@ -7756,6 +8199,39 @@ components:
         are resolved
 
         server side and not persisted with the bundle.
+
+
+        Leaving every `*_component_specs` list empty makes the server build
+
+        them from the support bundle manifest shipped with YBA, keeping the
+
+        entries named in `components`. Populating any one list turns the
+
+        fill off for all of them, and
+
+        each spec is then checked against the same manifest: a component it
+
+        doesn''t list, a different script or entrypoint, or a `linux_user` other
+
+        than yugabyte is rejected with 400. Either way, each spec runs with the
+
+        manifest''s Files and Bash arguments, YSQL and YCQL queries, yb-admin
+
+        arguments, timeout and tar path, whatever the request carries; the
+
+        request still chooses the components, `db_name` and `keyspace`, and the
+
+        yb-admin commands within the allowed set. Scalars the request does
+
+        send, such as `filter_pg_audit_logs`, `max_num_recent_cores`,
+
+        `max_core_file_size` and the `prom_*` fields, override what the manifest
+
+        carries. The fill applies to the universe create and estimate-size
+
+        endpoints; the YBA-only endpoints don''t fill, but check their specs and
+
+        set the tar path the same way.
 
         '
       type: object
@@ -7821,13 +8297,13 @@ components:
           description: 'Specs driving the generic node-level FilesComponent. Required
             when components contains
 
-            FilesComponent. On Kubernetes universes the SystemLogs and NodeAgent specs
-            are dropped, since
+            FilesComponent, unless the manifest fill applies. On Kubernetes universes
+            the SystemLogs and
 
-            a pod has neither the host''s /var/log nor a node agent, and the YbcLogs
-            spec is collected from
+            NodeAgent specs are dropped, since a pod has neither the host''s /var/log
+            nor a node agent, and
 
-            tserver pods only.
+            the YbcLogs spec is collected from tserver pods only.
 
             '
           type: array
@@ -7835,15 +8311,15 @@ components:
             $ref: '#/components/schemas/FilesComponentSpec'
         bash_component_specs:
           description: 'Specs driving the node-level BashComponent. Required when
-            components contains BashComponent.
+            components contains BashComponent,
 
-            On Kubernetes universes the collect_cdc_state and collect_threadz_memz_rpcz_stats
-            specs are
+            unless the manifest fill applies. On Kubernetes universes the collect_cdc_state
+            and
 
-            collected from tserver pods only, and collect_heap_snapshot skips its
-            tserver endpoints on a
+            collect_threadz_memz_rpcz_stats specs are collected from tserver pods
+            only, and
 
-            master pod.
+            collect_heap_snapshot skips its tserver endpoints on a master pod.
 
             '
           type: array
@@ -7851,9 +8327,10 @@ components:
             $ref: '#/components/schemas/BashComponentSpec'
         ysql_component_specs:
           description: 'Specs driving the node-level YSQLComponent. Required when
-            components contains YSQLComponent.
+            components contains YSQLComponent,
 
-            Collected from tserver pods only on Kubernetes universes.
+            unless the manifest fill applies. Collected from tserver pods only on
+            Kubernetes universes.
 
             '
           type: array
@@ -7861,9 +8338,10 @@ components:
             $ref: '#/components/schemas/YSQLComponentSpec'
         ycql_component_specs:
           description: 'Specs driving the node-level YCQLComponent. Required when
-            components contains YCQLComponent.
+            components contains YCQLComponent,
 
-            Collected from tserver pods only on Kubernetes universes.
+            unless the manifest fill applies. Collected from tserver pods only on
+            Kubernetes universes.
 
             '
           type: array
@@ -7871,13 +8349,13 @@ components:
             $ref: '#/components/schemas/YCQLComponentSpec'
         yb_admin_component_specs:
           description: Specs driving the node-level YbAdminComponent. Required when
-            components contains YbAdminComponent.
+            components contains YbAdminComponent, unless the manifest fill applies.
           type: array
           items:
             $ref: '#/components/schemas/YbAdminComponentSpec'
         yba_component_specs:
           description: Specs driving the global-level YBAComponent. Required when
-            components contains YBAComponent.
+            components contains YBAComponent, unless the manifest fill applies.
           type: array
           items:
             $ref: '#/components/schemas/YbaComponentSpec'
@@ -7931,10 +8409,11 @@ components:
           additionalProperties:
             type: string
         prometheus_metrics_types:
-          description: 'List of exports to be included in the prometheus dump. NODE_EXPORT
-            is dropped on Kubernetes
+          description: 'List of exports to be included in the prometheus dump. On
+            Kubernetes universes NODE_EXPORT is
 
-            universes, where node_exporter is not scraped.
+            collected only where the node_exporter sidecar is monitored, and dropped
+            otherwise.
 
             '
           type: array
@@ -9152,6 +9631,20 @@ components:
           description: Whether to enable encryption for client connection to DB nodes
           type: boolean
           example: false
+        use_node_to_node_client_certs:
+          description: '<b style="color:#FFA500">WARNING: This is a preview API in
+            YBA version 2026.2.0.0 that could change.</b></p>Whether DB nodes require
+            a client certificate on RPC (node_to_node_encryption_use_client_certificates).
+            Supported only on Kubernetes universes whose node-to-node encryption uses
+            a cert-manager (K8SCertManager) root CA; VM universes and Kubernetes universes
+            with other root CA types are not supported. Can only be set at universe
+            creation.
+
+            '
+          type: boolean
+          example: false
+          x-yba-api-since: 2026.2.0.0
+          x-yba-api-visibility: preview
         root_and_client_root_ca_same:
           description: In case certificates are generated, whether to use the same
             certificate
@@ -9655,10 +10148,11 @@ components:
       description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
         version 2.31.0.0 that could change.</b></p>Load balancers that YBA creates,
         manages and deletes for the cluster. Each enabled kind gives one L4 load balancer
-        in every region of the cluster, serving all zones of the region. When set,
+        in every region of the cluster, serving all zones of the region. At create,
         this object must enable at least one load balancer. ClusterInfo.load_balancers
-        lists them with their scheme and address. The settings are fixed when the
-        universe is created. Part of ClusterNetworkingSpec.'
+        lists them with their scheme and address. An edit of the universe can turn
+        them on or off; in an edit, an object that enables none turns them off. Part
+        of ClusterNetworkingSpec and ClusterNetworkingEditSpec.'
       type: object
       properties:
         enable_private:
@@ -9694,7 +10188,8 @@ components:
             - $ref: '#/components/schemas/ExposingServiceState'
           managed_load_balancer:
             description: Load balancers that YBA creates, manages and deletes. Set
-              when the universe is created. Do not combine with enable_lb.
+              it when the universe is created, or turn it on or off later with an
+              edit of the universe. Do not combine with enable_lb.
             $ref: '#/components/schemas/ManagedLoadBalancerSpec'
             x-yba-api-since: 2.31.0.0
             x-yba-api-visibility: preview
@@ -10298,9 +10793,9 @@ components:
       x-yba-api-since: 2.31.0.0
       title: ManagedLoadBalancerInfo
       description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
-        version 2.31.0.0 that could change.</b></p>A load balancer that YBA created
-        for the cluster. It serves a set of availability zones in one region. Part
-        of ClusterInfo.'
+        version 2.31.0.0 that could change.</b></p>A load balancer that YBA manages
+        for the cluster, because YBA created it or took it over. It serves a set of
+        availability zones in one region. Part of ClusterInfo.'
       type: object
       properties:
         scheme:
@@ -10348,7 +10843,7 @@ components:
         load_balancers:
           description: '<b style="color:#FFA500">WARNING: This is a preview API in
             YBA version 2.31.0.0 that could change.</b></p>The load balancers that
-            YBA created for this cluster.'
+            YBA manages for this cluster.'
           type: array
           items:
             $ref: '#/components/schemas/ManagedLoadBalancerInfo'
@@ -10809,6 +11304,15 @@ components:
         enable_exposing_service:
           description: Whether to create a load balancer service for this cluster.
           $ref: '#/components/schemas/ExposingServiceState'
+        managed_load_balancer:
+          description: '<b style="color:#FFA500">WARNING: This is a preview API in
+            YBA version 2.31.0.0 that could change.</b></p>Turns the load balancers
+            that YBA manages on or off. When turned on, YBA takes over the load balancer
+            that every zone of a region names in lb_name. Omit to leave the existing
+            value unchanged.'
+          $ref: '#/components/schemas/ManagedLoadBalancerSpec'
+          x-yba-api-since: 2.31.0.0
+          x-yba-api-visibility: preview
     ClusterProviderEditSpec:
       title: ClusterProviderEditSpec
       description: Edit Cloud Provider settings for the cluster. Part of ClusterAddSpec
@@ -12129,6 +12633,56 @@ components:
             description: The YugabyteDB software version to install during os upgrade.
             type: string
             example: 2024.2.0.0-b600
+    UserCreateSpec:
+      title: UserCreateSpec
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>A user to add to the customer.
+        Part of UserCreateReq.'
+      type: object
+      required:
+      - spec
+      - password
+      properties:
+        spec:
+          $ref: '#/components/schemas/UserSpec'
+        password:
+          description: Password of the user, which must satisfy the customer's password
+            policy. Ignored when OIDC SSO is enabled.
+          type: string
+          format: password
+          writeOnly: true
+        generate_api_token:
+          description: Also generate an API token for the new user and return it,
+            so that the caller doesn't have to log in as that user to get one. Refused
+            when OIDC SSO is enabled, because such users log in only through OIDC.
+          type: boolean
+          default: false
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    UserCreation:
+      title: UserCreation
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>A newly created user, with its
+        API token if one was requested. Part of UserCreationResp.'
+      type: object
+      required:
+      - user
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        api_token:
+          description: API token of the new user, to be sent in the X-AUTH-YW-API-TOKEN
+            header. Only set when generate_api_token was true.
+          type: string
+          readOnly: true
+        api_token_version:
+          description: Version of that API token. Only set when generate_api_token
+            was true.
+          type: integer
+          format: int64
+          readOnly: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
   responses:
     AuthGroupToRolesMappingResp:
       description: OK
@@ -12158,6 +12712,14 @@ components:
             type: array
             items:
               $ref: '#/components/schemas/GflagMetadata'
+    CertificateResp:
+      description: The added certificate
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Certificate'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
     ContinuousBackupResp:
       description: Continuous Backup Config
       content:
@@ -12184,6 +12746,14 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/UserApiToken'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    HostCloudInfoResp:
+      description: Cloud and instance metadata of the YBA host
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HostCloudInfo'
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
     CustomerConfigPagedResp:
@@ -12371,6 +12941,14 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/CheckResizeOptionsResp'
+    UserCreationResp:
+      description: The created user
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UserCreation'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
   requestBodies:
     AuthGroupToRolesMappingReq:
       required: true
@@ -12392,6 +12970,14 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/IncrementalBackupPagedQuerySpec'
+    CertificateCreateReq:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CertificateSpec'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
     ContinuousBackupCreateReq:
       required: true
       content:
@@ -12744,3 +13330,69 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/UniverseVMImageUpgradeSpec'
+    UserCreateReq:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UserCreateSpec'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      description: 'Makes the request safe to retry. A unique client-generated value,
+        such as a UUID, for this request.
+
+
+        The first request with a key runs the operation. If it succeeds, its response
+        is kept for 24 hours
+
+        (yb.api.idempotency.retention), and a retry with the same key and the same
+        request returns that
+
+        response with an X-IDEMPOTENT-REPLAYED: true header, without running the operation
+        again. A retry
+
+        while the first request is still running gets 409; the same key with a different
+        request gets 422.
+
+        A failed request does not keep the key, so it can be retried with the same
+        one.
+
+
+        Keys are scoped to the caller''s customer.
+
+
+        If the operation starts a task, that task''s UUID is derived from the key:
+        the version 5 UUID of
+
+        "<customer UUID>:<key>" in the namespace 3bf373dd-d374-4df5-bdea-c3cd942ae7f4.
+        A client can
+
+        follow the task even if it lost the response. If that task was started, for
+        example before YBA
+
+        restarted and lost the response, a retry gets 409 instead of starting the
+        operation again, with
+
+        the task''s UUID in error.task_uuid, and in error.latest_task_uuid the UUID
+        of its newest retry if
+
+        YBA retried it (a restart fails or aborts running tasks, and may retry them
+        under a new UUID).
+
+        If the task failed while being submitted, the retry runs the operation again
+        under a new task
+
+        UUID.
+
+        '
+      required: false
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 255
+      example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+      x-yba-api-idempotency-key: true

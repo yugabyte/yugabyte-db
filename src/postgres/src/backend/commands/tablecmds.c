@@ -139,6 +139,7 @@
 #include "commands/yb_tablegroup.h"
 #include "executor/ybModifyTable.h"
 #include "nodes/bitmapset.h"
+#include "optimizer/cost.h"
 #include "parser/analyze.h"
 #include "pg_yb_utils.h"
 #include "statistics/statistics.h"
@@ -736,6 +737,8 @@ static ObjectAddress YbATExecAlterIndexAttributeType(AlteredTableInfo *tab,
 													 Relation rel,
 													 AlterTableCmd *cmd,
 													 LOCKMODE lockmode);
+static void YbCheckAlterTypeOfVectorIndexColumn(Oid indoid,
+												const char *colName);
 
 /* ----------------------------------------------------------------
  *		DefineRelation
@@ -5496,10 +5499,13 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 		*yb_rollback_handles = lappend(*yb_rollback_handles, yb_rollback_handle);
 
 	/*
-	 * YB: If this is a partitioned table, prepare alter table handles for
-	 * all the partitions as well. Lock the descendants before reading them.
+	 * YB: If this is a partitioned table and a subcommand trickles down to
+	 * the partitions, prepare alter table handles for all the partitions as
+	 * well. Lock them before reading them.
 	 */
-	List	   *children = find_all_inheritors(main_relid, lockmode, NULL);
+	List	   *children = (YbATAltersPartitions(info->subcmds, AT_NUM_PASSES) ?
+							find_all_inheritors(main_relid, lockmode, NULL) :
+							NIL);
 	ListCell   *child;
 
 	foreach(child, children)
@@ -13039,13 +13045,19 @@ validateForeignKeyConstraint(char *conname,
 	/*
 	 * See if we can do it with a single LEFT JOIN query.  A false result
 	 * indicates we must proceed with the fire-the-trigger method.
-	 * YB Note: YB handles LEFT JOIN inefficiently. So skip this approach and
-	 * call trigger on each row instead. As triggers can buffer the FK check.
-	 * We skip this approach by adding the condition !IsYBRelation(rel).
-	 * The original condition in vanilla postgres is only
-	 *   if (RI_Initial_Check(&trig, rel, pkrel))
+	 *
+	 * YB: this query takes no row locks, so it is safe only if table locks
+	 * ensure that all new writes invisible to the scan apply FK triggers.
+	 * ADD FOREIGN KEY: its ShareRowExclusiveLock blocks writers during the
+	 * check. VALIDATE: the same lock, taken by ADD ... NOT VALID, waited
+	 * out every writer that started before the triggers existed. YB table
+	 * locks block writers only if object locking is enabled, i.e. the
+	 * non-legacy DDL mode. Without them, a DELETE could remove the parent
+	 * of a child row that the check passed and leave that child orphaned.
 	 */
-	if (!IsYBRelation(rel) && RI_Initial_Check(&trig, rel, pkrel))
+	if ((!IsYBRelation(rel) ||
+		 (!YBCIsLegacyModeForCatalogOps() && yb_enable_batchednl)) &&
+		RI_Initial_Check(&trig, rel, pkrel))
 		return;
 
 	/*
@@ -14159,6 +14171,9 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation *yb_mutable_rel,
 						relKind == RELKIND_PARTITIONED_INDEX)
 					{
 						Assert(foundObject.objectSubId == 0);
+						if (IsYBRelation(rel))
+							YbCheckAlterTypeOfVectorIndexColumn(foundObject.objectId,
+																colName);
 						RememberIndexForRebuilding(foundObject.objectId, tab);
 					}
 					else if (relKind == RELKIND_SEQUENCE)
@@ -15105,6 +15120,7 @@ ATPostAlterTypeParse(Oid oldId, Oid oldRelId, Oid refRelId, char *cmd,
 				newcmd = makeNode(AlterTableCmd);
 				newcmd->subtype = AT_YbAlterIndexAttributeType;
 				newcmd->yb_old_index_oid = oldId;
+				newcmd->def = (Node *) stmt;
 				tab->subcmds[AT_PASS_OLD_INDEX] =
 					lappend(tab->subcmds[AT_PASS_OLD_INDEX], newcmd);
 			}
@@ -15327,7 +15343,8 @@ TryReuseIndex(Oid oldId, IndexStmt *stmt, bool *yb_reuse_index)
 	if (CheckIndexCompatible(oldId,
 							 stmt->accessMethod,
 							 stmt->indexParams,
-							 stmt->excludeOpNames))
+							 stmt->excludeOpNames,
+							 stmt->whereClause /* yb_where_clause */ ))
 	{
 		if (yb_reuse_index != NULL)
 			*yb_reuse_index = true;
@@ -21255,6 +21272,9 @@ ATExecAttachPartitionIdx(List **wqueue, Relation parentIdx, RangeVar *name)
 								   RelationGetRelationName(partIdx))));
 		}
 
+		/* YB: xCluster source cannot attach an invalid index. */
+		YbCheckAttachedIndexIsValid(partIdx);
+
 		/* All good -- do it */
 		IndexSetParentIndex(partIdx, RelationGetRelid(parentIdx));
 		if (OidIsValid(constraintOid))
@@ -23937,17 +23957,23 @@ YbIsTablePartOfPublication(Oid relOid)
 }
 
 /*
- * YB: Update index's pg_attribute in place for ALTER COLUMN TYPE (no new OID).
- * Only the type-related fields for key columns that map to altered table
- * columns are updated.
+ * YB: Update an index's catalog entries in place for ALTER COLUMN TYPE (no new OID).
+ *
+ *  - pg_attribute: Index columns that map to altered table columns take the
+ *      table column's type fields. For an index with expressions or a predicate,
+ *      expression columns take the typmod of the reparsed expression.
+ *  - pg_index: For an index with expressions or a predicate, indexprs, indpred
+ *      are replaced by the reparsed trees in pg_index.
  */
 static ObjectAddress
 YbATExecAlterIndexAttributeType(AlteredTableInfo *tab, Relation rel,
 								AlterTableCmd *cmd, LOCKMODE lockmode)
 {
 	Oid			index_oid = cmd->yb_old_index_oid;
+	IndexStmt  *stmt = castNode(IndexStmt, cmd->def);
 	Bitmapset  *yb_altered_attnums = tab->yb_altered_column_attnums;
 	Relation	indexRel;
+	Relation	pg_index;
 	Relation	pg_attribute;
 	HeapTuple	idxTup;
 	HeapTuple	attrTup;
@@ -23955,15 +23981,24 @@ YbATExecAlterIndexAttributeType(AlteredTableInfo *tab, Relation rel,
 	SysScanDesc scan;
 	ScanKeyData key[1];
 	TupleDesc	heapTupDesc;
+	bool		has_exprs;
+	bool		has_pred;
+	List	   *new_exprs = NIL;
 	ObjectAddress address = InvalidObjectAddress;
 
 	indexRel = index_open(index_oid, AccessShareLock);
 	heapTupDesc = RelationGetDescr(rel);
 
+	pg_index = table_open(IndexRelationId, RowExclusiveLock);
 	idxTup = SearchSysCache1(INDEXRELID, ObjectIdGetDatum(index_oid));
 	if (!HeapTupleIsValid(idxTup))
 		elog(ERROR, "cache lookup failed for index %u", index_oid);
 	idxForm = (Form_pg_index) GETSTRUCT(idxTup);
+
+	has_exprs = !heap_attisnull(idxTup, Anum_pg_index_indexprs, NULL);
+	has_pred = !heap_attisnull(idxTup, Anum_pg_index_indpred, NULL);
+	if (has_exprs)
+		new_exprs = YbComputeIndexExpressions(RelationGetRelid(rel), stmt);
 
 	pg_attribute = table_open(AttributeRelationId, RowExclusiveLock);
 	ScanKeyInit(&key[0],
@@ -23994,35 +24029,67 @@ YbATExecAlterIndexAttributeType(AlteredTableInfo *tab, Relation rel,
 
 		table_attnum = idxForm->indkey.values[keypos];
 
-		/* Skip expression columns. Such indexes are always rebuilt. */
-		if (table_attnum == 0)
-			continue;
-
-		/* Check if the column is one of the altered columns. */
-		if (!bms_is_member(table_attnum, yb_altered_attnums))
-			continue;
-
-		heap_att = TupleDescAttr(heapTupDesc, AttrNumberGetAttrOffset(table_attnum));
-
 		memset(new_values, 0, sizeof(new_values));
 		memset(new_nulls, false, sizeof(new_nulls));
 		memset(do_replace, false, sizeof(do_replace));
 
-		/* Update attribute type-related fields. */
-		do_replace[Anum_pg_attribute_atttypid - 1] = true;
-		new_values[Anum_pg_attribute_atttypid - 1] = ObjectIdGetDatum(heap_att->atttypid);
-		do_replace[Anum_pg_attribute_atttypmod - 1] = true;
-		new_values[Anum_pg_attribute_atttypmod - 1] = Int32GetDatum(heap_att->atttypmod);
-		do_replace[Anum_pg_attribute_attlen - 1] = true;
-		new_values[Anum_pg_attribute_attlen - 1] = Int16GetDatum(heap_att->attlen);
-		do_replace[Anum_pg_attribute_attbyval - 1] = true;
-		new_values[Anum_pg_attribute_attbyval - 1] = BoolGetDatum(heap_att->attbyval);
-		do_replace[Anum_pg_attribute_attalign - 1] = true;
-		new_values[Anum_pg_attribute_attalign - 1] = CharGetDatum(heap_att->attalign);
-		do_replace[Anum_pg_attribute_attstorage - 1] = true;
-		new_values[Anum_pg_attribute_attstorage - 1] = CharGetDatum(heap_att->attstorage);
-		do_replace[Anum_pg_attribute_attcollation - 1] = true;
-		new_values[Anum_pg_attribute_attcollation - 1] = ObjectIdGetDatum(heap_att->attcollation);
+		if (table_attnum == 0)
+		{
+			Node	   *expr;
+			int			expr_pos = 0;
+			int			i;
+
+			/* The column's position among the index's expression columns. */
+			for (i = 0; i < keypos; i++)
+			{
+				if (idxForm->indkey.values[i] == 0)
+					expr_pos++;
+			}
+
+			Assert(expr_pos < list_length(new_exprs));
+			expr = (Node *) list_nth(new_exprs, expr_pos);
+
+			/*
+			 * An index column's type may differ from an expression's type when
+			 * the operator class declares a key type (such as ybgin's
+			 * tsvector_ops). The key type is the type that the operator class
+			 * actually stores in the index. The typmod of the index column does
+			 * not change in this case.
+			 */
+			if (exprType(expr) != att->atttypid)
+				continue;
+
+			do_replace[Anum_pg_attribute_atttypmod - 1] = true;
+			new_values[Anum_pg_attribute_atttypmod - 1] = Int32GetDatum(exprTypmod(expr));
+		}
+		else
+		{
+			/* Check if the column is one of the altered columns. */
+			if (!bms_is_member(table_attnum, yb_altered_attnums))
+				continue;
+
+			heap_att = TupleDescAttr(heapTupDesc, AttrNumberGetAttrOffset(table_attnum));
+
+			/*
+			 * Update attribute type-related fields, but not attcollation.
+			 * The index's collation can differ from the table's, so setting it
+			 * to the table's collation would be incorrect. Moreover, the index
+			 * collation does not change on reuse, so there is no need to update
+			 * it.
+			 */
+			do_replace[Anum_pg_attribute_atttypid - 1] = true;
+			new_values[Anum_pg_attribute_atttypid - 1] = ObjectIdGetDatum(heap_att->atttypid);
+			do_replace[Anum_pg_attribute_atttypmod - 1] = true;
+			new_values[Anum_pg_attribute_atttypmod - 1] = Int32GetDatum(heap_att->atttypmod);
+			do_replace[Anum_pg_attribute_attlen - 1] = true;
+			new_values[Anum_pg_attribute_attlen - 1] = Int16GetDatum(heap_att->attlen);
+			do_replace[Anum_pg_attribute_attbyval - 1] = true;
+			new_values[Anum_pg_attribute_attbyval - 1] = BoolGetDatum(heap_att->attbyval);
+			do_replace[Anum_pg_attribute_attalign - 1] = true;
+			new_values[Anum_pg_attribute_attalign - 1] = CharGetDatum(heap_att->attalign);
+			do_replace[Anum_pg_attribute_attstorage - 1] = true;
+			new_values[Anum_pg_attribute_attstorage - 1] = CharGetDatum(heap_att->attstorage);
+		}
 
 		newTuple = heap_modify_tuple(attrTup, RelationGetDescr(pg_attribute),
 									 new_values, new_nulls, do_replace);
@@ -24032,9 +24099,81 @@ YbATExecAlterIndexAttributeType(AlteredTableInfo *tab, Relation rel,
 
 	systable_endscan(scan);
 	table_close(pg_attribute, RowExclusiveLock);
+
+	/* Store the reparsed trees in pg_index. */
+	if (has_exprs || has_pred)
+	{
+		Datum		values[Natts_pg_index];
+		bool		nulls[Natts_pg_index];
+		bool		replaces[Natts_pg_index];
+		HeapTuple	newIdxTup;
+
+		memset(values, 0, sizeof(values));
+		memset(nulls, false, sizeof(nulls));
+		memset(replaces, false, sizeof(replaces));
+
+		if (has_exprs)
+		{
+			char	   *exprsString = nodeToString(new_exprs);
+
+			replaces[Anum_pg_index_indexprs - 1] = true;
+			values[Anum_pg_index_indexprs - 1] = CStringGetTextDatum(exprsString);
+			pfree(exprsString);
+		}
+		if (has_pred)
+		{
+			char	   *predString;
+
+			Assert(stmt->whereClause != NULL);
+			predString = nodeToString(stmt->whereClause);
+			replaces[Anum_pg_index_indpred - 1] = true;
+			values[Anum_pg_index_indpred - 1] = CStringGetTextDatum(predString);
+			pfree(predString);
+		}
+
+		newIdxTup = heap_modify_tuple(idxTup, RelationGetDescr(pg_index),
+									  values, nulls, replaces);
+		CatalogTupleUpdate(pg_index, &newIdxTup->t_self, newIdxTup);
+		heap_freetuple(newIdxTup);
+	}
+
 	ReleaseSysCache(idxTup);
+	table_close(pg_index, RowExclusiveLock);
 	index_close(indexRel, AccessShareLock);
 
 	ObjectAddressSet(address, RelationRelationId, index_oid);
 	return address;
+}
+
+/*
+ * Subroutine for ATExecAlterColumnType: reject the ALTER if the column is
+ * used by a vector index (e.g. ybhnsw).
+ *
+ * A vector index is built for a fixed number of dimensions, which DocDB keeps
+ * from CREATE INDEX.  Without a rewrite (e.g. vector(4) -> vector), the index
+ * would be kept while its column loses the dimensions.  Type changes that
+ * rewrite the table are refused too, to keep the rule simple: drop the index
+ * first.  See #36753.
+ */
+static void
+YbCheckAlterTypeOfVectorIndexColumn(Oid indoid, const char *colName)
+{
+	Relation	indexRel = index_open(indoid, AccessShareLock);
+	bool		is_vector_index = (indexRel->rd_indam &&
+								   indexRel->rd_indam->yb_amiscopartitioned);
+
+	index_close(indexRel, AccessShareLock);
+
+	if (is_vector_index)
+	{
+		ObjectAddress obj;
+
+		ObjectAddressSet(obj, RelationRelationId, indoid);
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot alter type of a column used by a vector index"),
+				 errdetail("%s depends on column \"%s\"",
+						   getObjectDescription(&obj, false), colName),
+				 errhint("Drop the index first, or add a new column with the new type.")));
+	}
 }

@@ -172,7 +172,7 @@ struct ExternalMiniClusterOptions {
   // The addressed used are 127.<A>.<B>.<C> where:
   // - <A,B> are the high and low bytes of the pid of the process running the minicluster (not the
   //   daemon itself).
-  // - <C> is the index of the server within this minicluster.
+  // - <C> is the index of the server within this minicluster plus 1.
   //
   // This requires that the system is set up such that processes may bind to any IP address in the
   // localhost netblock (127.0.0.0/8). This seems to be the case on common Linux distributions. You
@@ -594,8 +594,9 @@ class ExternalMiniCluster : public MiniClusterBase {
     return opts_.timeout;
   }
 
-  // Start a leader election on this master.
-  Status StartElection(ExternalMaster* master);
+  // Start a leader election on this master. An initial election is skipped if the sys catalog
+  // already left term 0.
+  Status StartElection(ExternalMaster* master, bool initial_election = false);
 
   bool running() const { return running_; }
 

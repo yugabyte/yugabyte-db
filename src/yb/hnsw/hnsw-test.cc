@@ -26,6 +26,7 @@
 
 #include "yb/vector_index/vector_index_fwd.h"
 #include "yb/vector_index/distance.h"
+#include "yb/vector_index/hnswlib_include.h"
 #include "yb/vector_index/usearch_include_wrapper_internal.h"
 #include "yb/vector_index/vector_index_if.h"
 #include "yb/vector_index/vector_payload_map.h"
@@ -37,21 +38,58 @@ METRIC_DEFINE_entity(table);
 
 namespace yb::hnsw {
 
-using IndexImpl = unum::usearch::index_dense_gt<vector_index::VectorId>;
+using IndexImpl = HnswlibIndex<YbHnsw::DistanceType>;
 
-unum::usearch::index_dense_config_t CreateIndexDenseConfig() {
-  unum::usearch::index_dense_config_t config;
-  config.connectivity = 64;
-  config.connectivity_base = 128;
-  config.expansion_add = 128;
-  config.expansion_search = 64;
-  return config;
-}
+constexpr size_t kConnectivity = 64;
+constexpr size_t kExpansionAdd = 128;
+constexpr size_t kExpansionSearch = 64;
 
 struct AcceptAllVectors {
   bool operator()(const vector_index::VectorId& id, Slice payload) const {
     return true;
   }
+};
+
+// Builds the reference graph with the metric product YbHnsw searches with (UsearchMetric), so
+// YbHnsw and hnswlib compute bitwise identical distances and their results can be compared exactly.
+class UsearchSpace : public hnswlib::SpaceInterface<YbHnsw::DistanceType> {
+ public:
+  explicit UsearchSpace(const UsearchMetric::Impl& metric)
+      : metric_(metric), data_size_(metric.bytes_per_vector()) {}
+
+  size_t get_data_size() override {
+    return data_size_;
+  }
+
+  hnswlib::DISTFUNC<YbHnsw::DistanceType> get_dist_func() override {
+    return &DistFunc;
+  }
+
+  void* get_dist_func_param() override {
+    return &metric_;
+  }
+
+ private:
+  static YbHnsw::DistanceType DistFunc(const void* lhs, const void* rhs, const void* arg) {
+    using unum::usearch::byte_t;
+    return (*static_cast<const UsearchMetric::Impl*>(arg))(
+        static_cast<const byte_t*>(lhs), static_cast<const byte_t*>(rhs));
+  }
+
+  UsearchMetric::Impl metric_;
+  size_t data_size_;
+};
+
+class HnswlibFilter : public hnswlib::BaseFilterFunctor<vector_index::VectorId> {
+ public:
+  explicit HnswlibFilter(const vector_index::VectorFilter& filter) : filter_(filter) {}
+
+  bool operator()(vector_index::VectorId id, size_t internal_id) override {
+    return filter_(id, Slice());
+  }
+
+ private:
+  const vector_index::VectorFilter& filter_;
 };
 
 class YbHnswTest : public VectorIndexTestBase {
@@ -65,20 +103,20 @@ class YbHnswTest : public VectorIndexTestBase {
   void InsertRandomVector(Vector& holder) {
     RandomVector(holder);
     auto vector_id = vector_index::VectorId::GenerateRandom();
-    auto add_result = index_.add(vector_id, holder.data());
-    ASSERT_TRUE(add_result);
-    payloads_.Insert(add_result.slot, PayloadForVector(vector_id));
+    auto slot = index_->addPoint(holder.data(), vector_id);
+    payloads_.Insert(slot, PayloadForVector(vector_id));
   }
 
   void InsertRandomVectors(size_t count) {
-    metric_ = unum::usearch::metric_punned_t(
+    metric_ = UsearchMetric::Impl(
         dimensions_, unum::usearch::metric_kind_t::l2sq_k, unum::usearch::scalar_kind_t::f32_k);
+    space_.emplace(metric_);
     yb_hnsw_.emplace(metric_, block_cache_);
 
-    index_ = IndexImpl::make(metric_, CreateIndexDenseConfig());
-    auto rounded_num_vectors = unum::usearch::ceil2(max_vectors_);
-    index_.reserve(unum::usearch::index_limits_t(rounded_num_vectors * 2 / 3, 16));
-    payloads_.Reserve(index_.limits().members);
+    index_.emplace(
+        &*space_, max_vectors_, kConnectivity, kExpansionAdd, /* random_seed= */ 100,
+        /* allow_replace_deleted= */ false, kExpansionSearch);
+    payloads_.Reserve(max_vectors_);
 
     Vector holder;
     for (size_t i = 0; i != count; ++i) {
@@ -92,17 +130,14 @@ class YbHnswTest : public VectorIndexTestBase {
       context = &context_;
     }
     auto options = MakeSearchOptions(max_results);
-    // Usearch invokes the predicate with the vector id and slot.
-    auto usearch_filter = [&options](const vector_index::VectorId& id, size_t slot) {
-      return options.filter(id, Slice());
-    };
-    auto usearch_results = index_.filtered_search(
-        query_vector.data(), max_results, usearch_filter);
+    HnswlibFilter hnswlib_filter(options.filter);
+    auto hnswlib_results = index_->searchKnnCloserFirst(
+        query_vector.data(), max_results, &hnswlib_filter, options.ef);
     auto yb_hnsw_results = yb_hnsw_->Search(query_vector.data(), options, *context);
-    ASSERT_EQ(usearch_results.count, yb_hnsw_results.size());
-    for (size_t j = 0; j != usearch_results.count; ++j) {
-      std::decay_t<decltype(yb_hnsw_results.front())> expected(
-          usearch_results[j].member.key, usearch_results[j].distance);
+    ASSERT_EQ(hnswlib_results.size(), yb_hnsw_results.size());
+    for (size_t j = 0; j != hnswlib_results.size(); ++j) {
+      const auto& [distance, vector_id, _] = hnswlib_results[j];
+      std::decay_t<decltype(yb_hnsw_results.front())> expected(vector_id, distance);
       ASSERT_EQ(AsString(expected), AsString(yb_hnsw_results[j]));
       ASSERT_EQ(yb_hnsw_results[j].payload.ToStringBuffer(),
                 PayloadForVector(yb_hnsw_results[j].vector_id));
@@ -112,7 +147,7 @@ class YbHnswTest : public VectorIndexTestBase {
   vector_index::SearchOptions MakeSearchOptions(size_t max_results) const {
     return vector_index::SearchOptions {
       .max_num_results = max_results,
-      .ef = index_.config().expansion_search,
+      .ef = kExpansionSearch,
       .filter = AcceptAllVectors(),
     };
   }
@@ -123,8 +158,9 @@ class YbHnswTest : public VectorIndexTestBase {
   void TestSimple(bool load);
   void TestRandom(bool load, size_t background_threads);
 
-  unum::usearch::metric_punned_t metric_;
-  IndexImpl index_;
+  UsearchMetric::Impl metric_;
+  std::optional<UsearchSpace> space_;
+  std::optional<IndexImpl> index_;
   vector_index::VectorPayloadMap payloads_;
   std::optional<YbHnsw> yb_hnsw_;
   YbHnswSearchContext context_;
@@ -135,11 +171,11 @@ Status YbHnswTest::InitYbHnsw(bool load) {
   if (load) {
     {
       YbHnsw temp(metric_, block_cache_);
-      RETURN_NOT_OK(temp.Import(index_, path, &payloads_));
+      RETURN_NOT_OK(temp.Import(*index_, path, &payloads_));
     }
     RETURN_NOT_OK(yb_hnsw_->Init(path));
   } else {
-    RETURN_NOT_OK(yb_hnsw_->Import(index_, path, &payloads_));
+    RETURN_NOT_OK(yb_hnsw_->Import(*index_, path, &payloads_));
   }
   return Status::OK();
 }

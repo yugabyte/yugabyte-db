@@ -9,9 +9,12 @@ Migrations are run in a special YSQL upgrade mode that changes some expectations
 executed and allows some new grammar - see the next section for details.
 
 Migration scripts should be designed idempotent - i.e. in such a way so that re-running them
-multiple times would be okay. In particular, re-running a migration must not change any catalog
-OIDs: when a migration touches an object that already exists, modify it in place rather than
-dropping and recreating it (see "Note on modifying an existing catalog object" below).
+multiple times would be okay. `upgrade_ysql` itself re-runs a whole script after an error caused by
+concurrent activity - a serialization failure (e.g. a read restart caused by concurrent DDL) or a
+deadlock - so any prefix of a script may already have been committed when it runs. In particular,
+re-running a migration must not change any catalog OIDs: when a migration touches an object that
+already exists, modify it in place rather than dropping and recreating it (see "Note on modifying
+an existing catalog object" below).
 
 The script will be run in the scope of a single transaction, unless you explicitly start a migration
 with `BEGIN`. Unfortunately, according to YugabyteDB limitations, DDLs are executed in their own
@@ -72,7 +75,11 @@ Postgres' SQL grammar was slightly extended to make writing migrations easier. I
 * `CREATE TABLE`:
     * Reloptions `table_oid=<OID>` and `row_type_oid=<OID>` are required.
     * Only PK and index constraints are allowed, they should have a name and `table_oid=<OID>`.
-    * Creating shared relations is allowed via `TABLESPACE pg_global`.
+    * Creating shared relations is allowed via `TABLESPACE pg_global`. The upgrade runner treats a
+      migration that contains the word `pg_global` as one that creates a shared relation. When it
+      applies such a migration to template1, it makes template1 assign OIDs above the system OIDs
+      of every database, because some catalog rows of a shared relation, such as its array type
+      and constraints, are inserted into every database. Afterwards, it waits for heartbeats.
 
 * `CREATE VIEW`:
     * Reloption `use_initdb_acl=<bool>`, if true, will set the ACL (permissions) as if the view was

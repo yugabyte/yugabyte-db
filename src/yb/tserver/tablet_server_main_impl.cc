@@ -37,7 +37,6 @@
 
 #include "yb/common/llvm_profile_dumper.h"
 #include "yb/common/termination_monitor.h"
-#include "yb/common/ysql_operation_lease.h"
 
 #include "yb/consensus/consensus_queue.h"
 #include "yb/consensus/log_util.h"
@@ -144,7 +143,7 @@ const auto kShutdownGraceTimeBeforeDumpingStackThreads = MonoDelta::FromSeconds(
 
 Result<std::unique_ptr<ysql_conn_mgr_wrapper::YsqlConnMgrSupervisor>> CreateYsqlConnMgrSupervisor(
     TabletServer& tablet_server, const TabletServerOptions& tablet_server_options,
-    PgSupervisor& pg_supervisor, bool ysql_lease_enabled) {
+    PgSupervisor& pg_supervisor, bool start_paused) {
   LOG(INFO) << "Starting Ysql Connection Manager on port " << FLAGS_ysql_conn_mgr_port;
   ysql_conn_mgr_wrapper::YsqlConnMgrConf ysql_conn_mgr_conf =
       ysql_conn_mgr_wrapper::YsqlConnMgrConf(tablet_server_options.fs_opts.data_paths.front());
@@ -168,7 +167,7 @@ Result<std::unique_ptr<ysql_conn_mgr_wrapper::YsqlConnMgrSupervisor>> CreateYsql
       ysql_conn_mgr_conf, conn_mgr_shmem_key, [pg_supervisor = &pg_supervisor](MonoDelta timeout) {
         return pg_supervisor->WaitForProcessStartAfterLastRestart(timeout);
       });
-  if (ysql_lease_enabled) {
+  if (start_paused) {
     RETURN_NOT_OK(ysql_conn_mgr_supervisor->InitPaused());
   } else {
     RETURN_NOT_OK(ysql_conn_mgr_supervisor->Start());
@@ -328,7 +327,7 @@ Status StartServices(Services& services) {
   services.call_home = std::make_unique<TserverCallHome>(services.tablet_server.get());
   services.call_home->ScheduleCallHome();
 
-  bool ysql_lease_enabled = false;
+  bool pg_starts_paused = false;
   bool ysql_enabled = FLAGS_start_pgsql_proxy || FLAGS_enable_ysql;
   if (ysql_enabled) {
     auto pg_process_conf_result = PgProcessConf::CreateValidateAndRunInitDb(
@@ -347,18 +346,23 @@ Status StartServices(Services& services) {
 
     services.pg_supervisor =
         std::make_unique<PgSupervisor>(pg_process_conf, services.tablet_server.get());
-    ysql_lease_enabled = IsYsqlLeaseEnabled();
-    if (ysql_lease_enabled) {
-      RETURN_NOT_OK(services.pg_supervisor->InitPaused());
-    } else {
-      RETURN_NOT_OK(services.pg_supervisor->Start());
-    }
+    pg_starts_paused = services.pg_supervisor->starts_paused();
   }
 
-  if (FLAGS_enable_ysql_conn_mgr) {
+  // A paused connection manager is started along with PG by TabletServer::RestartPG, so it must be
+  // registered before PG's first start.  An unpaused one waits, at startup, for PG to have started.
+  if (FLAGS_enable_ysql_conn_mgr && pg_starts_paused) {
     services.ysql_conn_mgr_supervisor = VERIFY_RESULT(CreateYsqlConnMgrSupervisor(
         *services.tablet_server, tablet_server_options, *services.pg_supervisor,
-        ysql_lease_enabled));
+        /*start_paused=*/true));
+  }
+  if (ysql_enabled) {
+    RETURN_NOT_OK(services.pg_supervisor->StartAndMaybePause());
+  }
+  if (FLAGS_enable_ysql_conn_mgr && !pg_starts_paused) {
+    services.ysql_conn_mgr_supervisor = VERIFY_RESULT(CreateYsqlConnMgrSupervisor(
+        *services.tablet_server, tablet_server_options, *services.pg_supervisor,
+        /*start_paused=*/false));
   }
   if (ysql_enabled) {
     RETURN_NOT_OK(services.tablet_server->StartYSQLLeaseRefresher());

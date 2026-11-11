@@ -50,6 +50,7 @@ DECLARE_bool(use_fast_backward_scan);
 DECLARE_bool(use_fast_next_for_iteration);
 DECLARE_int32(max_nexts_to_avoid_seek);
 DECLARE_int32(max_prevs_to_avoid_seek);
+DECLARE_bool(ysql_enable_cdr_metadata);
 
 namespace yb {
 namespace docdb {
@@ -186,6 +187,7 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
   void TestClusteredFilterRange();
   void TestClusteredFilterRangeWithTableTombstone();
   void TestClusteredFilterRangeWithTableTombstoneReverseScan();
+  void TestCdrStampedTombstoneReverseScan();
   void TestClusteredFilterHybridScan();
   void TestClusteredFilterSubsetCol();
   void TestClusteredFilterSubsetCol2();
@@ -673,6 +675,68 @@ void DocRowwiseIteratorTest::TestClusteredFilterRangeWithTableTombstoneReverseSc
         {int32:5,int32:6,int32:10}
       )#",
       HybridTime::FromMicros(1000));
+}
+
+// A tombstone written by a replication apply carries a CDR stamp, so its value no longer begins
+// with kTombstone. The fast backward scan path reads the row entry's value type directly, so it has
+// to look past the control fields - otherwise the delete goes unnoticed and the row still reads.
+void DocRowwiseIteratorTest::TestCdrStampedTombstoneReverseScan() {
+  ASSERT_TRUE(FLAGS_use_fast_backward_scan) << "this covers the fast backward scan path";
+
+  Schema test_schema(
+      {ColumnSchema("r1", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+       ColumnSchema("r2", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+       // Non-key columns
+       ColumnSchema("payload", DataType::INT32, ColumnKind::VALUE, Nullable::kTrue)},
+      {10_ColId, 11_ColId, 12_ColId});
+
+  const KeyEntryValues range_components{
+      KeyEntryValue::Int32(5), KeyEntryValue::Int32(6)};
+  const auto encoded_doc_key = DocKey(test_schema, range_components).Encode();
+
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(12_ColId)),
+      QLValue::Primitive(10), HybridTime::FromMicros(1000)));
+
+  {
+    google::FlagSaver flag_saver;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_cdr_metadata) = true;
+    auto dwb = MakeDocWriteBatch();
+    dwb.SetCdrMetadata({.source_origin = 42, .source_write_ht = HybridTime::FromMicros(1500)});
+    ASSERT_OK(dwb.DeleteSubDoc(DocPath(encoded_doc_key)));
+    ASSERT_OK(WriteToRocksDB(dwb, HybridTime::FromMicros(2000)));
+  }
+
+  PgsqlConditionPB cond;
+  auto ids = cond.add_operands()->mutable_tuple();
+  ids->add_elems()->set_column_id(12_ColId);
+  cond.set_op(QL_OP_LESS_THAN);
+  auto options = cond.add_operands()->mutable_value()->mutable_list_value();
+
+  auto option1 = options->add_elems()->mutable_tuple_value();
+  option1->add_elems()->set_int32_value(5);
+
+  const KeyEntryValues empty_key_components;
+  std::optional<int32_t> empty_hash_code;
+  static const DocKey default_doc_key;
+  DocPgsqlScanSpec spec(
+      test_schema, rocksdb::kDefaultQueryId, nullptr, {}, empty_key_components,
+      PgsqlConditionPBPtr(&cond), empty_hash_code, empty_hash_code, default_doc_key,
+      /* is_forward_scan */ false);
+
+  // Built directly rather than through CreateIteratorAndValidate, which turns fast backward scan
+  // off - the path under test here is exactly the one it disables.
+  auto doc_read_context = DocReadContext::TEST_Create(test_schema);
+  auto pending_op = ScopedRWOperation::TEST_Create();
+  auto iter = MakeIterator(
+      test_schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
+      ReadOperationData::FromReadTime(ReadHybridTime::FromMicros(3000)), pending_op);
+  ASSERT_OK(iter->Init(spec));
+  ASSERT_TRUE(iter->TEST_use_fast_backward_scan());
+
+  dockv::ReaderProjection reader_projection(test_schema);
+  dockv::PgTableRow row(reader_projection);
+  ASSERT_FALSE(ASSERT_RESULT(iter->PgFetchNext(&row))) << "deleted row was returned";
 }
 
 void DocRowwiseIteratorTest::TestClusteredFilterHybridScan() {
@@ -2473,6 +2537,10 @@ TEST_F(DocRowwiseIteratorTest, ClusteredFilterRangeWithTableTombstone) {
 
 TEST_F(DocRowwiseIteratorTest, ClusteredFilterRangeWithTableTombstoneReverseScan) {
   TestClusteredFilterRangeWithTableTombstoneReverseScan();
+}
+
+TEST_F(DocRowwiseIteratorTest, CdrStampedTombstoneReverseScan) {
+  TestCdrStampedTombstoneReverseScan();
 }
 
 TEST_F(DocRowwiseIteratorTest, ClusteredFilterHybridScanTest) {

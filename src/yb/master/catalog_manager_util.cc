@@ -597,17 +597,18 @@ size_t CatalogManagerUtil::GetReplicationFactor(const ReplicationInfoPB& replica
   return FLAGS_replication_factor;
 }
 
-Status CMPerTableLoadState::Init(const TSDescriptorVector& ts_descs) {
+Status CMPerTableLoadState::Init(
+    const TSDescriptorVector& ts_descs,
+    const std::unordered_map<TabletServerId, uint32_t>& table_load) {
   const size_t n = ts_descs.size();
   uuids_.reserve(n);
   table_load_.reserve(n);
   global_load_.reserve(n);
   for (const auto& ts : ts_descs) {
     const auto& uuid = ts->permanent_uuid();
-    auto it = per_ts_replica_load_.find(uuid);
-    SCHECK(it != per_ts_replica_load_.end(), IllegalState,
-           Format("per_ts_replica_load_ does not contain $0", uuid));
-    index_[uuid] = uuids_.size();
+    auto it = table_load.find(uuid);
+    SCHECK(it != table_load.end(), IllegalState,
+           Format("table_load does not contain $0", uuid));
     uuids_.push_back(uuid);
     table_load_.push_back(it->second);
     global_load_.push_back(VERIFY_RESULT(global_load_state_->GetGlobalReplicaLoad(uuid)));
@@ -633,16 +634,11 @@ bool CMPerTableLoadState::LessLoaded(size_t a, size_t b) const {
   return uuids_[a] < uuids_[b];
 }
 
-void CMPerTableLoadState::AddReplica(const TabletServerId& uuid) {
-  auto it = index_.find(uuid);
-  if (it == index_.end()) {
-    LOG(DFATAL) << "Unknown tablet server " << uuid;
-    return;
-  }
-  size_t idx = it->second;
+void CMPerTableLoadState::AddReplica(size_t idx) {
+  DCHECK_LT(idx, uuids_.size());
   ++table_load_[idx];
   ++global_load_[idx];
-  ++global_load_state_->per_ts_replica_load_[uuid];
+  ++global_load_state_->per_ts_replica_load_[uuids_[idx]];
   // The key only grew, so the entry can only move towards the loaded end.
   size_t p = pos_[idx];
   while (p + 1 < sorted_.size() && LessLoaded(sorted_[p + 1], idx)) {
@@ -708,9 +704,9 @@ bool UseRelfilenodeForTableMatch(const SnapshotInfoPB& snapshot_pb) {
   return snapshot_pb.format_version() == kUseRelfilenodeFormatVersion;
 }
 
-template <class LoadState>
 Status CatalogManagerUtil::FillTableLoadState(
-    const scoped_refptr<TableInfo>& table_info, LoadState* state) {
+    const scoped_refptr<TableInfo>& table_info,
+    std::unordered_map<TabletServerId, uint32_t>* per_ts_replica_load) {
   auto tablets = VERIFY_RESULT(table_info->GetTabletsIncludeInactive());
 
   for (const auto& tablet : tablets) {
@@ -725,20 +721,16 @@ Status CatalogManagerUtil::FillTableLoadState(
 
     for (const auto& loc : *replica_locs) {
       // Ignore replica if not present in the tserver list passed.
-      if (state->per_ts_replica_load_.count(loc.first) == 0) {
+      auto it = per_ts_replica_load->find(loc.first);
+      if (it == per_ts_replica_load->end()) {
         continue;
       }
       // Account for this load.
-      state->per_ts_replica_load_[loc.first]++;
+      ++it->second;
     }
   }
   return Status::OK();
 }
-
-template Status CatalogManagerUtil::FillTableLoadState(
-    const scoped_refptr<TableInfo>& table_info, CMPerTableLoadState* state);
-template Status CatalogManagerUtil::FillTableLoadState(
-    const scoped_refptr<TableInfo>& table_info, CMGlobalLoadState* state);
 
 Status ValidateVectorIndexBackend(const TableId& table_id, const SysTablesEntryPB& table) {
   if (!table.has_index_info() || !table.index_info().has_vector_idx_options() ||

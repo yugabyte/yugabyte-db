@@ -102,13 +102,9 @@ void DefineMethod(YBPrinter printer, const std::string& type_prefix, const std::
   );
 }
 
-// The .messages.h carries the lightweight message classes and the pb_ trace free functions. The
-// proxy needs it when any proxy method is lightweight, or when any request has trace-tagged fields
-// (so the pb_ stub can call the generated TracingAttributes(req) free function).
-bool ProxyNeedsMessages(const google::protobuf::FileDescriptor* file) {
-  if (HasLightweightMethod(file, rpc::RpcSides::PROXY)) {
-    return true;
-  }
+// True when some request carries trace-tagged fields, i.e. a pb_ stub will call the
+// TracingAttributes(req) free function from this file's .trace.h.
+bool ProxyNeedsTrace(const google::protobuf::FileDescriptor* file) {
   for (int s = 0; s < file->service_count(); ++s) {
     const auto* service = file->service(s);
     for (int m = 0; m < service->method_count(); ++m) {
@@ -133,7 +129,7 @@ void ProxyGenerator::Header(YBPrinter printer, const google::protobuf::FileDescr
       "#include \"$path_no_extension$.pb.h\"\n"
   );
 
-  if (need_messages_ && ProxyNeedsMessages(file)) {
+  if (need_messages_ && HasLightweightMethod(file, rpc::RpcSides::PROXY)) {
     printer("#include \"$path_no_extension$.messages.h\"\n");
   }
 
@@ -191,7 +187,13 @@ void ProxyGenerator::Source(YBPrinter printer, const google::protobuf::FileDescr
       "\n"
       "#include \"$path_no_extension$.proxy.h\"\n"
       "\n"
-      "#include \"$path_no_extension$.service.h\"\n\n"
+      "#include \"$path_no_extension$.service.h\"\n"
+  );
+  if (ProxyNeedsTrace(file)) {
+    printer("#include \"$path_no_extension$.trace.h\"\n");
+  }
+  printer(
+      "\n"
       "#include \"yb/rpc/proxy.h\"\n"
       "#include \"yb/rpc/outbound_call.h\"\n"
       "#include \"yb/util/dist_trace.h\"\n"
@@ -250,10 +252,8 @@ void ProxyGenerator::Source(YBPrinter printer, const google::protobuf::FileDescr
       const auto* method = service->method(method_idx);
       ScopedSubstituter method_subs(printer, method, rpc::RpcSides::PROXY);
 
-      // The pb_ drain calls a TracingAttributes() free function from the .messages.h, which only
-      // exists when this file generates messages; without it the pb_ path stays untraced.
       const bool trace = MessageHasTracingAttributes(method->input_type());
-      DefineMethod(printer, "pb_", need_messages_ && trace ? kPbTraceAttrs : "");
+      DefineMethod(printer, "pb_", trace ? kPbTraceAttrs : "");
       if (IsLightweightMethod(method, rpc::RpcSides::PROXY)) {
         DefineMethod(printer, "lw_", trace ? kTraceAttrs : "");
       }

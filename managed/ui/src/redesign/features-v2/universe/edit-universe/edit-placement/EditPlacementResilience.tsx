@@ -11,7 +11,11 @@ import { ResilienceAndRegions } from '../../create-universe/steps';
 import { UniverseActionButtons } from '../../create-universe/components/UniverseActionButtons';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { getExistingGeoPartitions } from '../../geo-partition/add/AddGeoPartitionUtils';
-import { getClusterByType, useEditUniverseContext } from '../EditUniverseUtils';
+import {
+  getClusterByType,
+  getClusterProviderSpec,
+  useEditUniverseContext
+} from '../EditUniverseUtils';
 import { ResilienceAndRegionsProps } from '../../create-universe/steps/resilence-regions/dtos';
 import {
   getNodesAvailabilityDefaultsForEditPlacement,
@@ -60,10 +64,12 @@ export const EditPlacementResilience = () => {
             nodesAvailabilitySettings: nodesAndAvailability,
             generalSettings: {
               cloud: primaryCluster?.placement_spec?.cloud_list?.[0]?.code,
-              providerConfiguration: {
-                uuid: primaryCluster?.provider_spec?.provider ?? '',
-                code: primaryCluster?.placement_spec?.cloud_list?.[0]?.code
-              }
+              providerConfigurations: [
+                {
+                  uuid: getClusterProviderSpec(primaryCluster)?.provider ?? '',
+                  code: primaryCluster?.placement_spec?.cloud_list?.[0]?.code
+                }
+              ]
             }
           },
           {

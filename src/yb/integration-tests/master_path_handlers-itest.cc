@@ -113,6 +113,7 @@ DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_int32(tablet_overhead_size_percentage);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_uint64(ysql_operation_lease_ttl_client_buffer_ms);
+DECLARE_uint64(object_lock_cleanup_interval_ms);
 DECLARE_bool(master_enable_deleted_tablet_cleanup);
 
 namespace yb::integration_tests {
@@ -2493,10 +2494,12 @@ TEST_F_EX(
 TEST_F(MasterPathHandlersItest, TestLeaseStatusColumn) {
   const MonoDelta kWaitTimeout = 10s;
   const MonoDelta kLeaseTimeoutWaitBufferTime = 2s;
+  // The master only notices an expired lease on its next cleanup pass.
   const auto lease_timeout =
       MonoDelta::FromMilliseconds(
           FLAGS_master_ysql_operation_lease_ttl_ms +
-          FLAGS_ysql_operation_lease_ttl_client_buffer_ms) +
+          FLAGS_ysql_operation_lease_ttl_client_buffer_ms +
+          FLAGS_object_lock_cleanup_interval_ms) +
       kLeaseTimeoutWaitBufferTime;
   for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     ASSERT_OK(cluster_->mini_tablet_server(i)->server()->StartYSQLLeaseRefresher());

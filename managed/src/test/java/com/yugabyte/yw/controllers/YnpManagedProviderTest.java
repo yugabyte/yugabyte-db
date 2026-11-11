@@ -22,6 +22,7 @@ import com.yugabyte.yw.commissioner.tasks.CloudProviderEdit;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.YnpProviderUtil;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -34,6 +35,7 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -52,7 +54,7 @@ import play.test.Helpers;
  * Covers the restrictions YBA puts on an on-prem provider created by YNP: the user cannot change
  * its configuration, add instance types to it or register node instances with it, while YNP itself
  * still can. Deleting a dangling instance type stays allowed and an instance type is dropped once
- * its last node instance is gone.
+ * its last node instance is gone. The block can be lifted per provider with a runtime config.
  */
 public class YnpManagedProviderTest extends FakeDBApplication {
 
@@ -394,6 +396,69 @@ public class YnpManagedProviderTest extends FakeDBApplication {
             + provider.getUuid()
             + "/instances/"
             + ip);
+  }
+
+  private void allowUserEdits(Provider provider) {
+    RuntimeConfigEntry.upsert(
+        provider, ProviderConfKeys.allowYnpManagedProviderEdit.getKey(), "true");
+  }
+
+  @Test
+  public void testUserEditsAllowedWhenOverrideIsSet() {
+    allowUserEdits(ynpProvider);
+
+    assertOk(
+        doRequestWithBody(
+            "PUT", editProviderUri(ynpProvider), editProviderBody(ynpProvider, true)));
+    assertOk(
+        doRequestWithBody(
+            "POST",
+            "/api/customers/"
+                + customer.getUuid()
+                + "/providers/"
+                + ynpProvider.getUuid()
+                + "/instance_types",
+            instanceTypeBody("new-instance-type")));
+    assertNotNull(InstanceType.get(ynpProvider.getUuid(), "new-instance-type"));
+    // The node instance check runs in the controller rather than in the action.
+    assertOk(
+        doRequestWithBody(
+            "POST",
+            "/api/customers/" + customer.getUuid() + "/zones/" + ynpZone.getUuid() + "/nodes",
+            nodeInstanceBody(ynpZone, "10.0.0.1", INSTANCE_TYPE_CODE)));
+    assertEquals(1, NodeInstance.listByZone(ynpZone.getUuid(), INSTANCE_TYPE_CODE).size());
+  }
+
+  @Test
+  public void testOverrideStillCannotClearYnpManagedFlag() {
+    allowUserEdits(ynpProvider);
+
+    assertOk(
+        doRequestWithBody(
+            "PUT", editProviderUri(ynpProvider), editProviderBody(ynpProvider, false)));
+
+    ArgumentCaptor<CloudProviderEdit.Params> paramsCaptor =
+        ArgumentCaptor.forClass(CloudProviderEdit.Params.class);
+    verify(mockCommissioner).submit(any(TaskType.class), paramsCaptor.capture());
+    OnPremCloudInfo onPremCloudInfo =
+        CloudInfoInterface.get(paramsCaptor.getValue().newProviderState);
+    assertTrue(onPremCloudInfo.ynpManaged);
+  }
+
+  @Test
+  public void testOverrideAppliesOnlyToTheProviderItIsSetOn() {
+    Provider otherYnpProvider = createOnPremProvider("other-ynp-provider", true /* ynpManaged */);
+    Region.create(otherYnpProvider, "region-1", "Region 1", "default-image");
+    otherYnpProvider.refresh();
+    allowUserEdits(ynpProvider);
+
+    Result result =
+        doRequestWithBody(
+            "PUT", editProviderUri(otherYnpProvider), editProviderBody(otherYnpProvider, true));
+    assertForbidden(
+        result,
+        "Editing the provider configuration is not allowed for provider other-ynp-provider because"
+            + " it is created and managed by YNP.");
   }
 
   @Test

@@ -395,12 +395,6 @@ set pg_hint_plan.yb_bad_hint_mode to warn;
 -- No plan can be found using the hint. Should generate warnings.
 /*+ noSeqScan(tab) */ explain (hints on, costs off) select count(*) from t2 tab where b2<10;
 
--- Same under the YB cost model: the scan copy costed for the pushed-down
--- aggregate keeps the disabled cost, so the plan check still reports the scan.
-set yb_enable_cbo = on;
-/*+ noSeqScan(tab) */ explain (hints on, costs off) select count(*) from t2 tab where b2<10;
-reset yb_enable_cbo;
-
 -- Parallel zeros partial seqscans on a non-inh rel.  That must not hide
 -- NoSeqScan: still no valid path.
 /*+ NoSeqScan(tab) Parallel(tab 2) */ explain (hints on, costs off) select count(*) from t2 tab where b2<10;

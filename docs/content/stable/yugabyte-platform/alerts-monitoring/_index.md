@@ -60,6 +60,12 @@ Integrate with third-party tools such as Datadog, Dynatrace, OTLP-compatible bac
     icon="fa-thin fa-user-robot">}}
 
   {{<index/item
+    title="Cluster Load"
+    body="See whether a universe was overloaded, and why."
+    href="cluster-load/"
+    icon="fa-thin fa-chart-column">}}
+
+  {{<index/item
     title="Latency histogram and P99 latencies"
     body="View latency histogram and P99 latency metrics."
     href="latency-histogram/"

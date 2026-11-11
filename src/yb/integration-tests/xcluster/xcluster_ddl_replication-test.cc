@@ -97,7 +97,7 @@ DECLARE_int32(xcluster_automatic_target_create_table_ddl_rpc_timeout_sec);
 DECLARE_uint32(xcluster_ddl_tables_retention_secs);
 DECLARE_uint32(xcluster_max_old_schema_versions);
 DECLARE_uint32(xcluster_poller_task_delay_considered_stuck_secs);
-DECLARE_bool(xcluster_enable_target_applied_filter);
+DECLARE_bool(xcluster_enable_index_backfill_replication);
 DECLARE_bool(enforce_xcluster_guarded_lease);
 DECLARE_uint32(xcluster_guarded_lease_duration_ms);
 DECLARE_bool(xcluster_target_manual_override);
@@ -119,11 +119,14 @@ DECLARE_bool(TEST_block_apply_intent);
 DECLARE_int32(TEST_delay_at_start_of_schedule_post_tablet_create_tasks_ms);
 DECLARE_bool(TEST_disable_tablet_deletion);
 DECLARE_bool(TEST_fail_vector_index_backfill);
+DECLARE_bool(TEST_fail_vector_reverse_mapping_repair);
 DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
 DECLARE_int32(TEST_pause_at_start_of_setup_replication_group_ms);
+DECLARE_bool(TEST_pause_vector_reverse_mapping_repair);
 DECLARE_string(TEST_skip_async_insert_packed_schema_for_tablet_id);
 DECLARE_bool(TEST_skip_oid_advance_on_restore);
 DECLARE_int32(TEST_sleep_before_vector_index_backfill_seconds);
+DECLARE_int32(TEST_slowdown_backfill_by_ms);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
 DECLARE_bool(TEST_vector_index_exact);
 DECLARE_bool(TEST_xcluster_block_first_poll);
@@ -136,6 +139,7 @@ DECLARE_string(TEST_xcluster_ddl_queue_handler_fail_ddl_matching);
 DECLARE_bool(TEST_xcluster_disable_delete_old_pollers);
 DECLARE_bool(TEST_xcluster_fail_table_stream_checkpoint);
 DECLARE_bool(TEST_xcluster_increment_logical_commit_time);
+DECLARE_bool(ysql_yb_xcluster_invalid_index_ddl_check);
 DECLARE_bool(TEST_xcluster_pause_wal_anchor_deletion);
 DECLARE_int32(TEST_xcluster_producer_modify_sent_apply_safe_time_ms);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
@@ -156,26 +160,33 @@ class XClusterDDLReplicationTest : public XClusterDDLReplicationTestBase {
     propagation_timeout_ *= 2;
   }
 
-  Status SetUpClustersAndCheckpointReplicationGroup(
-      const SetupParams& params = XClusterDDLReplicationTestBase::kDefaultParams) {
+  // Sets up RF1 clusters replicating table vec_test (id int, embedding vector(3)) of a single
+  // tablet with ybhnsw index vec_test_idx, and returns the id of the producer tablet.
+  Result<TabletId> SetUpSingleTabletVectorIndexTable() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
+    auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+    params.replication_factor = 1;
     RETURN_NOT_OK(SetUpClusters(params));
-    LOG(INFO) << "SetupClusters done";
-
+    RETURN_NOT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
+      auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+      return conn.Execute("CREATE EXTENSION vector");
+    }));
     RETURN_NOT_OK(
         CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
-    LOG(INFO) << "CheckpointReplicationGroup done";
-    // Bootstrap here would have no effect because the database is empty so we skip it for the test.
-    return Status::OK();
-  }
-
-  Status SetUpClustersAndReplication(
-      const SetupParams& params = XClusterDDLReplicationTestBase::kDefaultParams) {
-    RETURN_NOT_OK(SetUpClustersAndCheckpointReplicationGroup(params));
-    LOG(INFO) << "SetUpClustersAndCheckpointReplicationGroup done";
-
     RETURN_NOT_OK(CreateReplicationFromCheckpoint());
-    LOG(INFO) << "CreateReplicationFromCheckpoint done";
-    return Status::OK();
+    RETURN_NOT_OK(producer_conn_->Execute(
+        "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3)) SPLIT INTO 1 TABLETS"));
+    RETURN_NOT_OK(producer_conn_->Execute(
+        "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+    RETURN_NOT_OK(WaitForSafeTimeToAdvanceToNow());
+
+    auto producer_table = VERIFY_RESULT(
+        GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name=*/"", "vec_test"));
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+    RETURN_NOT_OK(
+        producer_client()->GetTabletsFromTableId(producer_table.table_id(), 0, &tablets));
+    SCHECK_EQ(tablets.size(), 1, IllegalState, "Unexpected number of producer tablets");
+    return tablets[0].tablet_id();
   }
 
   // Issues SetUniverseReplicationEnabled directly so that the pause deadline can be controlled;
@@ -227,11 +238,6 @@ class XClusterDDLReplicationTest : public XClusterDDLReplicationTestBase {
         bootstrap_required, IllegalState, "Bootstrap should always be required for Automatic mode");
 
     return AddNamespaceToXClusterReplication(source_db_id, target_db_id);
-  }
-
-  Result<HybridTime> GetXClusterSafeTime() {
-    return consumer_client()->GetXClusterSafeTimeForNamespace(
-        VERIFY_RESULT(GetNamespaceId(consumer_client())), master::XClusterSafeTimeFilter::NONE);
   }
 
   void CheckIndexRebuild(const std::string& table, const std::string& index,
@@ -705,6 +711,59 @@ TEST_F(XClusterDDLReplicationTest, YB_DISABLE_TEST(BootstrappingWithNoTables)) {
   ASSERT_OK(CreateReplicationFromCheckpoint());
 }
 
+// Sets up replication, from a backup and restore, of an index whose column was renamed on the
+// source before setup, so its column name differs from the target's, and checks that rows
+// replicate through the index, also after a column rename and an index rename on the source.
+TEST_F(XClusterDDLReplicationTest, RenameIndexedColumn) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "This test does not work with yb_backup.py";
+  }
+
+  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+  params.start_yb_controller_servers = true;
+  ASSERT_OK(SetUpClusters(params));
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE t (key int PRIMARY KEY, a int)"));
+  ASSERT_OK(producer_conn_->Execute("CREATE INDEX t_a_idx ON t (a)"));
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE t RENAME COLUMN a TO a2"));
+
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces({namespace_name}));
+  ASSERT_OK(BackupFromProducer());
+  ASSERT_OK(RestoreToConsumer());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  const auto kIndexColumnNameQuery =
+      "SELECT attname FROM pg_attribute WHERE attrelid = 't_a_idx'::regclass AND attnum = 1";
+  ASSERT_EQ(ASSERT_RESULT(producer_conn_->FetchRow<std::string>(kIndexColumnNameQuery)), "a");
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<std::string>(kIndexColumnNameQuery)), "a2");
+
+  auto count_on_target_through_index = [this](
+      const std::string& index, const std::string& column) -> Result<int64_t> {
+    const auto query = Format(
+        "/*+ IndexOnlyScan(t $0) */ SELECT count(*) FROM t WHERE $1 >= 0", index, column);
+    const auto plan = VERIFY_RESULT(consumer_conn_->FetchAllAsString("EXPLAIN " + query));
+    SCHECK_FORMAT(
+        plan.find(index) != std::string::npos, IllegalState, "Expected a scan of $0, got: $1",
+        index, plan);
+    return consumer_conn_->FetchRow<int64_t>(query);
+  };
+
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO t SELECT i, i FROM generate_series(1, 50) AS i"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(ASSERT_RESULT(count_on_target_through_index("t_a_idx", "a2")), 50);
+
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE t RENAME COLUMN a2 TO a3"));
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO t SELECT i, i FROM generate_series(51, 60) AS i"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(ASSERT_RESULT(count_on_target_through_index("t_a_idx", "a3")), 60);
+
+  // Renaming an index bumps its schema version, so the target has to map a new source index
+  // schema whose column names still differ from its own.
+  ASSERT_OK(producer_conn_->Execute("ALTER INDEX t_a_idx RENAME TO t_a_idx2"));
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO t SELECT i, i FROM generate_series(61, 70) AS i"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(ASSERT_RESULT(count_on_target_through_index("t_a_idx2", "a3")), 70);
+}
+
 TEST_F(XClusterDDLReplicationTest, CreateTable) {
   ASSERT_OK(SetUpClustersAndReplication());
 
@@ -933,6 +992,39 @@ TEST_F(XClusterDDLReplicationTest, CreateIndexWithPartitions) {
   // Allow extra time for the DDLs to replicate now.
   propagation_timeout_ += MonoDelta::FromSeconds(60 * kTimeMultiplier);
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow({namespace_name}));
+}
+
+// Tests that the target gets every index entry when a new index splits before the target replays
+// its CREATE INDEX.
+TEST_F(XClusterDDLReplicationTest, SplitIndexBeforeTargetCreatesIt) {
+  ASSERT_OK(SetUpClustersAndReplication());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
+
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO t SELECT i, i FROM generate_series(1, 500) i"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = true;
+  ASSERT_OK(producer_conn_->Execute("CREATE INDEX t_v_idx ON t (v ASC)"));
+  const auto index_name = ASSERT_RESULT(
+      GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name=*/"", "t_v_idx"));
+  std::shared_ptr<client::YBTable> index_table;
+  ASSERT_OK(producer_client()->OpenTable(index_name, &index_table));
+  // These index entries are only in the split parent's WAL, so they only reach the target if it
+  // starts from the parent.
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO t SELECT i, i FROM generate_series(501, 1000) i"));
+  ASSERT_OK(SplitTabletsOnce(producer_cluster_, index_table->id()));
+  ASSERT_OK(
+      producer_conn_->Execute("INSERT INTO t SELECT i, i FROM generate_series(1001, 1500) i"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = false;
+  propagation_timeout_ += MonoDelta::FromSeconds(60 * kTimeMultiplier);
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  ASSERT_OK(consumer_conn_->Execute("SET enable_seqscan = off"));
+  const auto query = "SELECT count(*) FROM t WHERE v > 0";
+  ASSERT_TRUE(ASSERT_RESULT(consumer_conn_->HasIndexScan(query)));
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(query)), 1500);
 }
 
 TEST_F(XClusterDDLReplicationTest, MultistatementQuery) {
@@ -1214,6 +1306,210 @@ TEST_F(XClusterDDLReplicationTest, DropInvalidIndexDoesNotHaltReplication) {
   ASSERT_OK(VerifyWrittenRecords({kBaseTableName}));
 }
 
+// Test that an unnamed CREATE INDEX whose default name collides with an invalid index fails on
+// the source.
+TEST_F(XClusterDDLReplicationTest, DefaultIndexNameHeldByInvalidIndex) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_xcluster_invalid_index_ddl_check) = true;
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  const std::string kTableName = "test_default_name";
+  const std::string kColumn2Name = "value";
+  const std::string kDefaultIndexName = kTableName + "_" + kColumn2Name + "_idx";
+  const std::string kExplicitIndexName = "explicit_idx";
+
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0($1 int PRIMARY KEY, $2 int);", kTableName, kKeyColumnName, kColumn2Name));
+  ASSERT_OK(producer_conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 10), (2, 10);", kTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // The duplicate values fail the backfill, leaving an invalid index holding the default name.
+  auto create_result =
+      producer_conn_->ExecuteFormat("CREATE UNIQUE INDEX ON $0($1)", kTableName, kColumn2Name);
+  ASSERT_NOK(create_result);
+  ASSERT_STR_CONTAINS(create_result.ToString(), "duplicate key");
+  ASSERT_FALSE(ASSERT_RESULT(IsIndexValid(*producer_conn_, kDefaultIndexName)));
+
+  // The source would pick <name>1 while the target would pick <name>.
+  auto result = producer_conn_->ExecuteFormat("CREATE INDEX ON $0($1)", kTableName, kColumn2Name);
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.ToString(), "already used by an invalid index");
+
+  // An explicit name does not go through name selection.
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE INDEX $0 ON $1($2)", kExplicitIndexName, kTableName, kColumn2Name));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_TRUE(ASSERT_RESULT(IsIndexValid(*consumer_conn_, kExplicitIndexName)));
+
+  // Dropping the invalid index frees the default name.
+  ASSERT_OK(producer_conn_->ExecuteFormat("DROP INDEX $0", kDefaultIndexName));
+  ASSERT_OK(producer_conn_->ExecuteFormat("CREATE INDEX ON $0($1)", kTableName, kColumn2Name));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_TRUE(ASSERT_RESULT(IsIndexValid(*consumer_conn_, kDefaultIndexName)));
+
+  // A default name held by a valid index is skipped as usual, and both sides agree on the suffix.
+  ASSERT_OK(producer_conn_->ExecuteFormat("CREATE INDEX ON $0($1)", kTableName, kColumn2Name));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_TRUE(ASSERT_RESULT(IsIndexValid(*consumer_conn_, kDefaultIndexName + "1")));
+}
+
+// Test that CREATE INDEX on a partitioned table fails on the source when it would adopt an
+// invalid partition index.
+TEST_F(XClusterDDLReplicationTest, ParentIndexCannotAdoptInvalidPartitionIndex) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_xcluster_invalid_index_ddl_check) = true;
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  const std::string kParentTableName = "p";
+  const std::string kPartitionTableName = "p0";
+  const std::string kPartitionIndexName = "p0_v";
+  const std::string kParentIndexName = "p_v";
+  const std::string kDefaultPartitionIndexName = "p0_v_idx";
+
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0 ($1 int, v int, PRIMARY KEY ($1, v)) PARTITION BY LIST (v);",
+      kParentTableName, kKeyColumnName));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0 PARTITION OF $1 FOR VALUES IN (7);", kPartitionTableName,
+      kParentTableName));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 VALUES (0, 7), (1, 7);", kParentTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // The duplicate values fail the backfill, leaving an invalid index on the source only.
+  auto create_result = producer_conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (v)", kPartitionIndexName, kPartitionTableName);
+  ASSERT_NOK(create_result);
+  ASSERT_STR_CONTAINS(create_result.ToString(), "duplicate key");
+  ASSERT_FALSE(ASSERT_RESULT(IsIndexValid(*producer_conn_, kPartitionIndexName)));
+  ASSERT_FALSE(ASSERT_RESULT(consumer_conn_->FetchRow<bool>(Format(
+      "SELECT EXISTS(SELECT 1 FROM pg_class WHERE relname = '$0')", kPartitionIndexName))));
+
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "DELETE FROM $0 WHERE $1 = 1;", kParentTableName, kKeyColumnName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // The parent index would adopt the invalid partition index, so the source rejects it.
+  auto result = producer_conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (v)", kParentIndexName, kParentTableName);
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.ToString(), "cannot attach invalid index");
+  ASSERT_FALSE(ASSERT_RESULT(producer_conn_->FetchRow<bool>(Format(
+      "SELECT EXISTS(SELECT 1 FROM pg_class WHERE relname = '$0')", kParentIndexName))));
+
+  // Replication keeps flowing.
+  ASSERT_OK(producer_conn_->ExecuteFormat("INSERT INTO $0 VALUES (2, 7);", kParentTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords({kParentTableName}));
+
+  // Dropping the invalid index lets both sides build the same child index.
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "DELETE FROM $0 WHERE $1 = 2;", kParentTableName, kKeyColumnName));
+  ASSERT_OK(producer_conn_->ExecuteFormat("DROP INDEX $0", kPartitionIndexName));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (v)", kParentIndexName, kParentTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_TRUE(ASSERT_RESULT(IsIndexValid(*consumer_conn_, kParentIndexName)));
+  ASSERT_TRUE(ASSERT_RESULT(IsIndexValid(*consumer_conn_, kDefaultPartitionIndexName)));
+}
+
+// Test that ALTER INDEX ... ATTACH PARTITION fails on the source when the partition index is
+// invalid.
+TEST_F(XClusterDDLReplicationTest, CannotAttachInvalidPartitionIndex) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_xcluster_invalid_index_ddl_check) = true;
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  const std::string kParentTableName = "p";
+  const std::string kPartitionTableName = "p0";
+  const std::string kPartitionIndexName = "p0_v";
+  const std::string kParentIndexName = "p_v";
+
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0 ($1 int, v int, PRIMARY KEY ($1, v)) PARTITION BY LIST (v);",
+      kParentTableName, kKeyColumnName));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0 PARTITION OF $1 FOR VALUES IN (7);", kPartitionTableName,
+      kParentTableName));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 VALUES (0, 7), (1, 7);", kParentTableName));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON ONLY $1 (v)", kParentIndexName, kParentTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // The duplicate values fail the backfill, leaving an invalid index on the source only.
+  auto create_result = producer_conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (v)", kPartitionIndexName, kPartitionTableName);
+  ASSERT_NOK(create_result);
+  ASSERT_STR_CONTAINS(create_result.ToString(), "duplicate key");
+  ASSERT_FALSE(ASSERT_RESULT(IsIndexValid(*producer_conn_, kPartitionIndexName)));
+  ASSERT_FALSE(ASSERT_RESULT(consumer_conn_->FetchRow<bool>(Format(
+      "SELECT EXISTS(SELECT 1 FROM pg_class WHERE relname = '$0')", kPartitionIndexName))));
+
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "DELETE FROM $0 WHERE $1 = 1;", kParentTableName, kKeyColumnName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // The target has no such index to attach, so the source rejects it.
+  // Without the fix, the test will fail.
+  auto result = producer_conn_->ExecuteFormat(
+      "ALTER INDEX $0 ATTACH PARTITION $1", kParentIndexName, kPartitionIndexName);
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.ToString(), "cannot attach invalid index");
+  ASSERT_FALSE(ASSERT_RESULT(producer_conn_->FetchRow<bool>(Format(
+      "SELECT EXISTS(SELECT 1 FROM pg_inherits WHERE inhrelid = '$0'::regclass)",
+      kPartitionIndexName))));
+
+  // Replication keeps flowing.
+  ASSERT_OK(producer_conn_->ExecuteFormat("INSERT INTO $0 VALUES (2, 7);", kParentTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords({kParentTableName}));
+
+  // Rebuilding the partition index lets both sides attach it and validate the parent.
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "DELETE FROM $0 WHERE $1 = 2;", kParentTableName, kKeyColumnName));
+  ASSERT_OK(producer_conn_->ExecuteFormat("DROP INDEX $0", kPartitionIndexName));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1 (v)", kPartitionIndexName, kPartitionTableName));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "ALTER INDEX $0 ATTACH PARTITION $1", kParentIndexName, kPartitionIndexName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_TRUE(ASSERT_RESULT(IsIndexValid(*consumer_conn_, kPartitionIndexName)));
+  ASSERT_TRUE(ASSERT_RESULT(IsIndexValid(*consumer_conn_, kParentIndexName)));
+}
+
+// Test that CREATE INDEX on a partitioned table can adopt an invalid ON ONLY index.
+TEST_F(XClusterDDLReplicationTest, ParentIndexAdoptsInvalidOnOnlyIndex) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_xcluster_invalid_index_ddl_check) = true;
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  const std::string kTopTableName = "top";
+  const std::string kSubTableName = "sub";
+  const std::string kSubIndexName = "sub_v";
+  const std::string kTopIndexName = "top_v";
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0 (k int, v int, PRIMARY KEY (k, v)) PARTITION BY LIST (v);",
+      kTopTableName));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0 PARTITION OF $1 FOR VALUES IN (7) PARTITION BY LIST (k);",
+      kSubTableName, kTopTableName));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0_0 PARTITION OF $0 FOR VALUES IN (0);", kSubTableName));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE INDEX $0 ON ONLY $1 (v)", kSubIndexName, kSubTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_FALSE(ASSERT_RESULT(IsIndexValid(*producer_conn_, kSubIndexName)));
+  ASSERT_FALSE(ASSERT_RESULT(IsIndexValid(*consumer_conn_, kSubIndexName)));
+
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE INDEX $0 ON $1 (v)", kTopIndexName, kTopTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  const auto kAttachedStmt = Format(
+      "SELECT EXISTS(SELECT 1 FROM pg_inherits WHERE inhrelid = '$0'::regclass "
+      "AND inhparent = '$1'::regclass)",
+      kSubIndexName, kTopIndexName);
+  ASSERT_TRUE(ASSERT_RESULT(producer_conn_->FetchRow<bool>(kAttachedStmt)));
+  ASSERT_TRUE(ASSERT_RESULT(consumer_conn_->FetchRow<bool>(kAttachedStmt)));
+  ASSERT_FALSE(ASSERT_RESULT(IsIndexValid(*producer_conn_, kTopIndexName)));
+  ASSERT_FALSE(ASSERT_RESULT(IsIndexValid(*consumer_conn_, kTopIndexName)));
+}
 
 TEST_F(XClusterDDLReplicationTest, DropPartitionedIndexOnOnlyReplicates) {
   ASSERT_OK(SetUpClustersAndReplication());
@@ -1399,12 +1695,18 @@ TEST_F(XClusterDDLReplicationTest, ExactlyOnceReplication) {
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_xcluster_consistent_wal_safe_time_frequency_ms));
   }
 
+  StringWaiterLogSink fail_at_end_log("Failing due to xcluster_ddl_queue_handler_fail_at_end");
+
   // Resume replication.
   ASSERT_OK(ToggleUniverseReplication(
       consumer_cluster(), consumer_client(), kReplicationGroupId, true /* is_enabled */));
 
+  // Wait for the first failure. It can take longer than the check below, and if the flag is
+  // cleared before it, the batch succeeds on the first try and the retry is never tested.
+  ASSERT_OK(fail_at_end_log.WaitFor(kTimeout));
+
   // Safe time should not advance.
-  ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifySafeTimeDoesNotAdvanceToNow());
 
   // Allow processing to continue.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_end) = false;
@@ -1543,7 +1845,7 @@ TEST_F(XClusterDDLReplicationTest, PauseTargetOnRepeatedFailures) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = false;
 
   // Replication should not resume until we recreate the ddl_queue poller.
-  ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifySafeTimeDoesNotAdvanceToNow());
 
   // Resume replication by pausing and unpausing, this will recreate the pollers.
   ASSERT_OK(ToggleUniverseReplication(
@@ -2195,6 +2497,8 @@ TEST_F(XClusterDDLReplicationTest, IncrementalSafeTimeBumpDropColumn) {
   // will still replicate the following DROP COLUMN on the target.
   ANNOTATE_UNPROTECTED_WRITE(
       FLAGS_TEST_xcluster_ddl_queue_handler_fail_before_incremental_safe_time_bump) = true;
+  StringWaiterLogSink fail_before_bump_log(
+      "Failing due to xcluster_ddl_queue_handler_fail_before_incremental_safe_time_bump");
 
   // Drop a column and insert more data.
   ASSERT_OK(producer_conn_->ExecuteFormat("ALTER TABLE $0 DROP COLUMN a", kTableName));
@@ -2202,7 +2506,9 @@ TEST_F(XClusterDDLReplicationTest, IncrementalSafeTimeBumpDropColumn) {
       producer_conn_->FetchAllAsString(Format("SELECT * FROM $0 ORDER BY key", kTableName)));
   ASSERT_OK(producer_conn_->ExecuteFormat(
       "INSERT INTO $0 SELECT i FROM generate_series(1001, 2000) as i", kTableName));
-  ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
+  // Wait for the DROP COLUMN to run on the target and hit the failure.
+  ASSERT_OK(fail_before_bump_log.WaitFor(kTimeout));
+  ASSERT_OK(VerifySafeTimeDoesNotAdvanceToNow());
   ASSERT_OK(WaitForSafeTimeToAdvanceToNowWithoutDDLQueue());
 
   // Selects at this point should still work, and should still see the old column.
@@ -2356,23 +2662,20 @@ TEST_F(XClusterDDLReplicationTest, SingleDDLQueueHandler) {
 
   // Regular replication should make progress, but ddl_queue should be stuck.
   ASSERT_OK(WaitForSafeTimeToAdvanceToNowWithoutDDLQueue());
-  auto original_propagation_timeout = propagation_timeout_;
-  propagation_timeout_ = 10s;
-  ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifySafeTimeDoesNotAdvanceToNow());
   ASSERT_EQ(sync_point_count.load(), 1);
 
   // Step down the ddl_queue tablet.
   ASSERT_OK(StepDownDdlQueueTablet(consumer_cluster_));
 
   // Replication should still be stuck, even with a new queue handler.
-  ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifySafeTimeDoesNotAdvanceToNow());
   ASSERT_EQ(sync_point_count.load(), 1);  // The new poller should not have tried to process queue.
 
   // Resume the ddl_queue handler.
   TEST_SYNC_POINT("XClusterDDLReplicationTest::ResumeDDLQueueHandler");
 
   // Replication should resume.
-  propagation_timeout_ = original_propagation_timeout;
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
   ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{kTableName}));
 }
@@ -2529,44 +2832,6 @@ TEST_F(XClusterDDLReplicationTest, HandleEarlierApplySafeTime) {
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
   ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{kTableName}));
 }
-
-class XClusterDDLReplicationSwitchoverTest : public XClusterDDLReplicationTest {
- public:
-  bool SetReplicationDirection(ReplicationDirection direction) override {
-    if (XClusterDDLReplicationTest::SetReplicationDirection(direction)) {
-      std::swap(cluster_A_, cluster_B_);
-      return true;
-    }
-    return false;
-  }
-
-  // Perform switchover from A->B to B->A.
-  Status Switchover() {
-    LOG(INFO) << "===== Beginning switchover: checkpoint B";
-    SetReplicationDirection(ReplicationDirection::BToA);
-    RETURN_NOT_OK(CheckpointReplicationGroup(
-        kBackwardsReplicationGroupId, /*require_no_bootstrap_needed=*/false));
-    LOG(INFO) << "===== Switchover: set up replication from B to A";
-    SetReplicationDirection(ReplicationDirection::BToA);
-    RETURN_NOT_OK(CreateReplicationFromCheckpoint(
-        cluster_A_->mini_cluster_->GetMasterAddresses(), kBackwardsReplicationGroupId));
-    LOG(INFO) << "===== Continuing switchover: drop replication from A to B";
-    SetReplicationDirection(ReplicationDirection::AToB);
-    RETURN_NOT_OK(DeleteOutboundReplicationGroup());
-    LOG(INFO) << "===== Finishing switchover: wait for B to no longer be in readonly mode";
-    SetReplicationDirection(ReplicationDirection::BToA);
-    RETURN_NOT_OK(WaitForReadOnlyModeOnAllTServers(
-        VERIFY_RESULT(GetNamespaceId(producer_client())), /*is_read_only=*/false, cluster_B_));
-    LOG(INFO) << "===== Switchover done";
-
-    return Status::OK();
-  }
-
-  Cluster* cluster_A_ = &producer_cluster_;
-  Cluster* cluster_B_ = &consumer_cluster_;
-  const xcluster::ReplicationGroupId kBackwardsReplicationGroupId =
-      xcluster::ReplicationGroupId("backwards_replication");
-};
 
 TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverWithWorkload) {
   // Set up replication from A to B.
@@ -2936,12 +3201,14 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, PgCron) {
     return conn.FetchRow<pgwrapper::PGUint64>(
         Format("SELECT COUNT(*) FROM cron_table WHERE a = '$0'", cluster_name));
   };
-  // A job in flight on A when switchover takes away its pg_cron leadership is expectedly marked
-  // failed with "pg_cron leader changed"; ignore that.
+  // A job in flight on A when switchover makes A a target is expectedly marked failed; ignore
+  // that.  Either pg_cron notices the role change first ("pg_cron leader changed"), or A refuses
+  // the job's write and/or the launcher's next write about the run, so B's pg_cron marks the run
+  // failed once it becomes leader ("server restarted").
   auto get_failed_runs = [&](pgwrapper::PGConn& conn) -> Result<uint64_t> {
     return conn.FetchRow<pgwrapper::PGUint64>(
         "SELECT COUNT(*) FROM cron.job_run_details WHERE status = 'failed' "
-        "AND return_message <> 'pg_cron leader changed'");
+        "AND return_message NOT IN ('pg_cron leader changed', 'server restarted')");
   };
 
   SleepFor(30s);
@@ -2968,8 +3235,9 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, PgCron) {
   failed_runs = ASSERT_RESULT(get_failed_runs(conn_A));
   ASSERT_EQ(failed_runs, 0);
 
-  // Make sure target did not attempt to perform any writes.
-  ASSERT_EQ(sync_point_instance_count, 0);
+  // A run in flight on A when it becomes a target may have its write and/or the launcher's next
+  // bookkeeping write refused (the launcher exits on that refusal), but A must not keep retrying.
+  ASSERT_LE(sync_point_instance_count, 2);
 }
 
 using XClusterDDLReplicationFailoverTest = XClusterDDLReplicationSwitchoverTest;
@@ -3519,10 +3787,7 @@ TEST_F(XClusterDDLReplicationTest, PackedSchemaLag) {
       "INSERT INTO tbl1 SELECT i,i,i,i FROM generate_series(301, 400) as i"));
 
   // Safe time should be stuck due to the lagging tablet.
-  auto original_propagation_timeout = propagation_timeout_;
-  propagation_timeout_ = 10s;
-  ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
-  propagation_timeout_ = original_propagation_timeout;
+  ASSERT_OK(VerifySafeTimeDoesNotAdvanceToNow());
 
   // Force the source to use the earlier checkpoint instead of using its in-memory checkpoints.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_force_get_checkpoint_from_cdc_state) = true;
@@ -4231,6 +4496,73 @@ TEST_F(XClusterDDLReplicationTest, AlterColumnCollation) {
                     producer_index_oid_before, consumer_index_oid_before);
 }
 
+// A typmod-only ALTER COLUMN TYPE reuses expression and partial indexes unless
+// yb_alter_type_reuse_expr_and_partial_indexes is off. The target must make the
+// same reuse/rebuild decision as the source session did.
+TEST_F(XClusterDDLReplicationTest, AlterColumnTypmodReuseExprAndPartialIndexes) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  const auto kTableName = "test_table";
+  // The table comes first, followed by its indexes.
+  const std::vector<std::string> kRelNames = {kTableName, "test_expr_index", "test_partial_index"};
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0 ($1 varchar(10))", kTableName, kKeyColumnName));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 ($1) SELECT 'row_' || i FROM generate_series(1, 50) as i",
+      kTableName, kKeyColumnName));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE INDEX $0 ON $1 (lower($2))", kRelNames[1], kTableName, kKeyColumnName));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE INDEX $0 ON $1 ($2) WHERE $2 IS NOT NULL",
+      kRelNames[2], kTableName, kKeyColumnName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // A table rewrite keeps the table's OID and changes only its relfilenode, so compare both.
+  auto get_rel_ids =
+      [&](pgwrapper::PGConn* conn) -> Result<std::vector<std::tuple<Oid, Oid>>> {
+    std::vector<std::tuple<Oid, Oid>> ids;
+    for (const auto& relname : kRelNames) {
+      ids.push_back(VERIFY_RESULT((conn->FetchRow<pgwrapper::PGOid, pgwrapper::PGOid>(
+          Format("SELECT oid, relfilenode FROM pg_class WHERE relname = '$0'", relname)))));
+    }
+    return ids;
+  };
+
+  auto alter_and_check = [&](const std::string& new_type, bool expect_reuse) {
+    auto producer_ids_before = ASSERT_RESULT(get_rel_ids(producer_conn_.get()));
+    auto consumer_ids_before = ASSERT_RESULT(get_rel_ids(consumer_conn_.get()));
+
+    ASSERT_OK(producer_conn_->ExecuteFormat(
+        "ALTER TABLE $0 ALTER COLUMN $1 TYPE $2", kTableName, kKeyColumnName, new_type));
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+    auto producer_ids_after = ASSERT_RESULT(get_rel_ids(producer_conn_.get()));
+    auto consumer_ids_after = ASSERT_RESULT(get_rel_ids(consumer_conn_.get()));
+    for (size_t i = 0; i < kRelNames.size(); ++i) {
+      SCOPED_TRACE(Format("relation: $0, new type: $1", kRelNames[i], new_type));
+      // A typmod-only change never rewrites the table, whatever the GUC says.
+      const bool expect_unchanged = i == 0 || expect_reuse;
+      ASSERT_EQ(expect_unchanged, producer_ids_before[i] == producer_ids_after[i]);
+      ASSERT_EQ(expect_unchanged, consumer_ids_before[i] == consumer_ids_after[i]);
+    }
+
+    auto producer_table = ASSERT_RESULT(GetProducerTable(ASSERT_RESULT(GetYsqlTable(
+        &producer_cluster_, namespace_name, /*schema_name=*/"", kTableName))));
+    auto consumer_table = ASSERT_RESULT(GetConsumerTable(ASSERT_RESULT(GetYsqlTable(
+        &consumer_cluster_, namespace_name, /*schema_name=*/"", kTableName))));
+    ASSERT_OK(VerifyWrittenRecords(producer_table, consumer_table));
+  };
+
+  ASSERT_OK(producer_conn_->Execute(
+      "SET yb_alter_type_reuse_expr_and_partial_indexes = on"));
+  ASSERT_NO_FATALS(alter_and_check("varchar(20)", /*expect_reuse=*/true));
+
+  // Only the source session turns the GUC off; the target keeps its default.
+  ASSERT_OK(producer_conn_->Execute(
+      "SET yb_alter_type_reuse_expr_and_partial_indexes = off"));
+  ASSERT_NO_FATALS(alter_and_check("varchar(30)", /*expect_reuse=*/false));
+}
+
 TEST_F(XClusterDDLReplicationTest, BackupRestorePreservesEnumSortValue) {
   if (!UseYbController()) {
     GTEST_SKIP() << "This test does not work with yb_backup.py";
@@ -4608,6 +4940,114 @@ TEST_F(XClusterDDLReplicationAutoAnalyzeDisabledTest, AnalyzeHintWhenAutoAnalyze
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = true;
   ASSERT_OK(WaitForTargetStats(
       stats_query, "Waiting for auto analyze on the target after enabling it"));
+}
+
+// Tests that ANALYZEs captured while xCluster setup is still in progress don't break the setup
+// and that none of their results go missing on the target.  In automatic mode the source starts
+// capturing ANALYZE in ddl_queue at checkpoint time, but the target database only gets created
+// later, by the restore, so the target has to read ddl_queue as of commit times from before its
+// own copy of ddl_queue existed.
+class XClusterDDLReplicationAnalyzeDuringSetupTest : public XClusterDDLReplicationAnalyzeTestBase {
+ public:
+  void SetUp() override {
+    // The tests run ANALYZE by hand and check the results, so keep auto analyze off.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
+    ToggleDDLMode(/*use_legacy=*/!transactional_ddl_);
+    TEST_SETUP_SUPER(XClusterDDLReplicationAnalyzeTestBase);
+  }
+
+ protected:
+  static constexpr auto kCreateTableStmt = "CREATE TABLE tbl1(id int PRIMARY KEY, col1 int)";
+  static constexpr int kNumAnalyzes = 2;
+
+  // Legacy DDL mode by default. The Txn subfixture sets this to true for transactional DDL.
+  bool transactional_ddl_ = false;
+
+  // Runs ANALYZEs on the source after the checkpoint, both before and after the backup, and checks
+  // that setup still completes.  The stats from before the backup must come over with the restore,
+  // and the target must process the ANALYZEs from after the backup.
+  void TestAnalyzeBeforeRestore() {
+    if (!UseYbController()) {
+      GTEST_SKIP() << "This test does not work with yb_backup.py";
+    }
+    auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+    params.start_yb_controller_servers = true;
+    ASSERT_OK(SetUpClusters(params));
+
+    ASSERT_OK(producer_conn_->Execute(kCreateTableStmt));
+    ASSERT_OK(
+        producer_conn_->Execute("INSERT INTO tbl1 SELECT g, g FROM generate_series(1, 10) g"));
+    ASSERT_OK(CheckpointReplicationGroupOnNamespaces({namespace_name}));
+    ASSERT_OK(AnalyzeOnSource(*producer_conn_, kNumAnalyzes));
+    // Make the stats stale so that the target would get different ones if it analyzed on its own.
+    ASSERT_OK(
+        producer_conn_->Execute("INSERT INTO tbl1 SELECT g, g FROM generate_series(11, 30) g"));
+    constexpr auto kStatsQuery =
+        "SELECT reltuples, attname, n_distinct, histogram_bounds::text FROM pg_class "
+        "JOIN pg_stats ON tablename = relname WHERE relname = 'tbl1' ORDER BY attname";
+    const auto source_stats = ASSERT_RESULT(producer_conn_->FetchAllAsString(kStatsQuery));
+    ASSERT_OK(BackupFromProducer());
+    ASSERT_OK(AnalyzeOnSource(*producer_conn_, kNumAnalyzes));
+    ASSERT_OK(RestoreToConsumer());
+    ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchAllAsString(kStatsQuery)), source_stats);
+
+    // This waits for the xCluster safe time, and the safe time can't move past a captured ANALYZE
+    // until the handler runs it.  So once this returns, all the ANALYZEs got handled.
+    ASSERT_OK(CreateReplicationFromCheckpoint());
+    // Only the ANALYZEs after the backup get processed.  The restore brings the source's
+    // replicated_ddls rows for the ones before it, so those are skipped.
+    ASSERT_EQ(ASSERT_RESULT(CountAnalyzesProcessedByTarget(*consumer_conn_)), kNumAnalyzes);
+    ASSERT_OK(CheckReplicationStillWorks());
+  }
+
+  // Runs num_analyzes ANALYZEs on the source that all get captured in ddl_queue.
+  static Status AnalyzeOnSource(pgwrapper::PGConn& conn, int num_analyzes) {
+    constexpr auto kCountQuery =
+        "SELECT count(*) FROM yb_xcluster_ddl_replication.ddl_queue "
+        "WHERE yb_data->>'command_tag' = 'ANALYZE'";
+    // Only count what this call captures, since ddl_queue can already have ANALYZEs from an
+    // earlier call.
+    const auto captured_before = VERIFY_RESULT(conn.FetchRow<int64_t>(kCountQuery));
+    // Each WaitFor attempt runs an ANALYZE and then checks if one got captured.  The first tries
+    // can fail or get skipped until the tserver learns the source role from heartbeats.
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          WARN_NOT_OK(conn.Execute("ANALYZE tbl1"), "ANALYZE on the source failed");
+          return VERIFY_RESULT(conn.FetchRow<int64_t>(kCountQuery)) > captured_before;
+        },
+        kTimeout, "Waiting for the source to capture ANALYZE"));
+    for (int i = 1; i < num_analyzes; ++i) {
+      RETURN_NOT_OK(conn.Execute("ANALYZE tbl1"));
+    }
+    return Status::OK();
+  }
+
+  // The handler writes the qualified table name, so the source's own rows that the restore brings
+  // over don't count.
+  static Result<int64_t> CountAnalyzesProcessedByTarget(pgwrapper::PGConn& conn) {
+    // The target writes replicated_ddls locally, at times that can be past the xCluster safe time,
+    // so read it at tablet level instead of at the safe time.
+    RETURN_NOT_OK(conn.Execute("SET yb_xcluster_consistency_level = tablet"));
+    return conn.FetchRow<int64_t>(
+        "SELECT count(*) FROM yb_xcluster_ddl_replication.replicated_ddls "
+        "WHERE yb_data->>'query' = 'ANALYZE public.tbl1'");
+  }
+};
+
+TEST_F(XClusterDDLReplicationAnalyzeDuringSetupTest, AnalyzeBeforeRestore) {
+  TestAnalyzeBeforeRestore();
+}
+
+// Runs TestAnalyzeBeforeRestore with transactional DDL, where pggate reads the catalog through a
+// different path.
+class XClusterDDLReplicationAnalyzeDuringSetupTxnTest
+    : public XClusterDDLReplicationAnalyzeDuringSetupTest {
+ public:
+  XClusterDDLReplicationAnalyzeDuringSetupTxnTest() { transactional_ddl_ = true; }
+};
+
+TEST_F(XClusterDDLReplicationAnalyzeDuringSetupTxnTest, AnalyzeBeforeRestore) {
+  TestAnalyzeBeforeRestore();
 }
 
 // Make sure we can run a variety of DDLs related to temp tables on both clusters.
@@ -6032,6 +6472,294 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexLateWriteAfterBackfillMissing) {
       << "Producer and consumer vector search should match (commit_ht < index ht case).";
 }
 
+// Rows of a new colocated table reach the consumer before the DDL queue creates the table there,
+// without the reverse mapping entries the table owns. The tablet has to write them once the table
+// is created, or search finds none of the rows (GH #34504).
+class XClusterDDLReplicationColocatedVectorTest : public XClusterDDLReplicationTest {
+ protected:
+  static constexpr auto kInsert =
+      "INSERT INTO $0 (id, embedding) SELECT id, ('[' || id || ', ' || id * 2 || ', 1]')::vector "
+      "FROM generate_series($1, $2) AS g(id)";
+
+  Status SetUpColocatedVectorReplication() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
+    auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+    params.is_colocated = true;
+    RETURN_NOT_OK(SetUpClusters(params));
+    RETURN_NOT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
+      auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+      return conn.Execute("CREATE EXTENSION vector");
+    }));
+    RETURN_NOT_OK(
+        CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+    return CreateReplicationFromCheckpoint();
+  }
+
+  // Holds the consumer's DDL queue, so the source's DDLs and rows reach the consumer in that
+  // order: the rows first.
+  void HoldConsumerDdls() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = true;
+  }
+
+  Status ReleaseConsumerDdls() {
+    RETURN_NOT_OK(WaitForSafeTimeToAdvanceToNowWithoutDDLQueue());
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = false;
+    return Status::OK();
+  }
+
+  Status WaitForConsumerIndexReady(const std::string& index_name) {
+    return WaitFor(
+        [this, &index_name]() -> Result<bool> {
+          return consumer_conn_->FetchRow<bool>(Format(
+              "SELECT EXISTS (SELECT 1 FROM pg_index i "
+              "JOIN pg_class c ON c.oid = i.indexrelid "
+              "WHERE c.relname = '$0' AND i.indisready AND i.indisvalid)", index_name));
+        },
+        kTimeout, Format("consumer vector index $0 ready", index_name));
+  }
+
+  void ExpectSameResults(std::initializer_list<std::string> queries) {
+    for (const auto& query : queries) {
+      auto p_result = ASSERT_RESULT(producer_conn_->FetchAllAsString(query));
+      auto c_result = ASSERT_RESULT(consumer_conn_->FetchAllAsString(query));
+      ASSERT_EQ(p_result, c_result) << query;
+    }
+  }
+
+  static std::string SearchQuery(const std::string& table, const std::string& vector, int limit) {
+    return Format("SELECT id FROM $0 ORDER BY embedding <-> '$1' LIMIT $2", table, vector, limit);
+  }
+};
+
+TEST_F(XClusterDDLReplicationColocatedVectorTest, RowsBeforeTargetCreateTable) {
+  ASSERT_OK(SetUpColocatedVectorReplication());
+  HoldConsumerDdls();
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3))"));
+  ASSERT_OK(producer_conn_->ExecuteFormat(kInsert, "vec_test", 1, 50));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+  ASSERT_OK(producer_conn_->ExecuteFormat(kInsert, "vec_test", 51, 100));
+  ASSERT_OK(ReleaseConsumerDdls());
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(WaitForConsumerIndexReady("vec_test_idx"));
+
+  auto explain = ASSERT_RESULT(consumer_conn_->FetchAllAsString(
+      "EXPLAIN (COSTS OFF) " + SearchQuery("vec_test", "[1, 2, 1]", 10)));
+  ASSERT_STR_CONTAINS(explain, "vec_test_idx");
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>("SELECT count(*) FROM vec_test")), 100);
+  // The search wider than the table goes first: with rows the index cannot resolve, it returns
+  // none of them, while the narrower searches never finish.
+  ASSERT_NO_FATALS(ExpectSameResults({
+      SearchQuery("vec_test", "[0, 0, 0]", 200),
+      SearchQuery("vec_test", "[1, 2, 1]", 10),
+      SearchQuery("vec_test", "[75, 150, 1]", 10)}));
+}
+
+// Rows packed with two schema versions before the consumer's CREATE TABLE, which then installs
+// more than one historical packing.
+TEST_F(XClusterDDLReplicationColocatedVectorTest, RowsBeforeTargetCreateTableWithAlter) {
+  ASSERT_OK(SetUpColocatedVectorReplication());
+  HoldConsumerDdls();
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3))"));
+  ASSERT_OK(producer_conn_->ExecuteFormat(kInsert, "vec_test", 1, 50));
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE vec_test ADD COLUMN extra int"));
+  ASSERT_OK(producer_conn_->ExecuteFormat(kInsert, "vec_test", 51, 100));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+  ASSERT_OK(producer_conn_->ExecuteFormat(kInsert, "vec_test", 101, 150));
+  ASSERT_OK(ReleaseConsumerDdls());
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(WaitForConsumerIndexReady("vec_test_idx"));
+
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>("SELECT count(*) FROM vec_test")), 150);
+  ASSERT_NO_FATALS(ExpectSameResults({
+      SearchQuery("vec_test", "[0, 0, 0]", 200),
+      SearchQuery("vec_test", "[25, 50, 1]", 10),
+      SearchQuery("vec_test", "[125, 250, 1]", 10),
+      "SELECT id, extra FROM vec_test ORDER BY id"}));
+}
+
+// The vector column is added by an ALTER before the consumer's CREATE TABLE, so the table is
+// created without it and only its old packings have it.
+TEST_F(XClusterDDLReplicationColocatedVectorTest, VectorColumnAddedBeforeTargetCreateTable) {
+  ASSERT_OK(SetUpColocatedVectorReplication());
+  HoldConsumerDdls();
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE vec_test (id int PRIMARY KEY)"));
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO vec_test SELECT generate_series(1, 20)"));
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE vec_test ADD COLUMN embedding vector(3)"));
+  ASSERT_OK(producer_conn_->ExecuteFormat(kInsert, "vec_test", 21, 100));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+  ASSERT_OK(ReleaseConsumerDdls());
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(WaitForConsumerIndexReady("vec_test_idx"));
+
+  ASSERT_NO_FATALS(ExpectSameResults({
+      SearchQuery("vec_test", "[0, 0, 0]", 200),
+      SearchQuery("vec_test", "[25, 50, 1]", 10)}));
+}
+
+// Rows updated and deleted before the consumer's CREATE TABLE: the repair writes the mappings of
+// every version at its own time, so the tombstones of replaced and deleted vectors still win.
+TEST_F(XClusterDDLReplicationColocatedVectorTest, UpdatesBeforeTargetCreateTable) {
+  ASSERT_OK(SetUpColocatedVectorReplication());
+  HoldConsumerDdls();
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3))"));
+  ASSERT_OK(producer_conn_->ExecuteFormat(kInsert, "vec_test", 1, 100));
+  // Moves rows 1..20 far away and removes rows 21..30.
+  ASSERT_OK(producer_conn_->Execute(
+      "UPDATE vec_test SET embedding = ('[' || id * 1000 || ', 0, 0]')::vector WHERE id <= 20"));
+  ASSERT_OK(producer_conn_->Execute("DELETE FROM vec_test WHERE id BETWEEN 21 AND 30"));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+  ASSERT_OK(producer_conn_->Execute(
+      "UPDATE vec_test SET embedding = '[-5, -5, -5]' WHERE id = 31"));
+  ASSERT_OK(ReleaseConsumerDdls());
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(WaitForConsumerIndexReady("vec_test_idx"));
+
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>("SELECT count(*) FROM vec_test")), 90);
+  // The old vectors of rows 1..20 and 31, and the vectors of the deleted rows, are near these
+  // query vectors; no row may be returned for them.
+  ASSERT_NO_FATALS(ExpectSameResults({
+      SearchQuery("vec_test", "[0, 0, 0]", 200),
+      SearchQuery("vec_test", "[1, 2, 1]", 10),
+      SearchQuery("vec_test", "[25, 50, 1]", 10)}));
+}
+
+// Two tables, each repaired and backfilled on the consumer.
+TEST_F(XClusterDDLReplicationColocatedVectorTest, TwoTablesBeforeTargetCreateTable) {
+  ASSERT_OK(SetUpColocatedVectorReplication());
+  HoldConsumerDdls();
+  for (const auto* table : {"vec_t0", "vec_t1"}) {
+    ASSERT_OK(producer_conn_->ExecuteFormat(
+        "CREATE TABLE $0 (id int PRIMARY KEY, embedding vector(3))", table));
+    ASSERT_OK(producer_conn_->ExecuteFormat(kInsert, table, 1, 1000));
+    ASSERT_OK(producer_conn_->ExecuteFormat(
+        "CREATE INDEX $0_idx ON $0 USING ybhnsw (embedding vector_l2_ops)", table));
+  }
+  ASSERT_OK(ReleaseConsumerDdls());
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  for (const std::string table : {"vec_t0", "vec_t1"}) {
+    ASSERT_OK(WaitForConsumerIndexReady(table + "_idx"));
+    ASSERT_NO_FATALS(ExpectSameResults({SearchQuery(table, "[0, 0, 0]", 1100)}));
+  }
+}
+
+// Enough rows before the consumer's CREATE TABLE for the repair to write its entries in several
+// batches.
+TEST_F(XClusterDDLReplicationColocatedVectorTest, ManyRowsBeforeTargetCreateTable) {
+  constexpr int kNumRows = 20000;
+  ASSERT_OK(SetUpColocatedVectorReplication());
+  HoldConsumerDdls();
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3))"));
+  ASSERT_OK(producer_conn_->ExecuteFormat(kInsert, "vec_test", 1, kNumRows));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+  ASSERT_OK(ReleaseConsumerDdls());
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(WaitForConsumerIndexReady("vec_test_idx"));
+
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(Format(
+      "SELECT count(*) FROM ($0) t", SearchQuery("vec_test", "[0, 0, 0]", kNumRows + 100)))),
+      kNumRows);
+}
+
+// The consumer creates the vector index while the repair of its table is held: the index must not
+// be backfilled until the repair is done.
+TEST_F(XClusterDDLReplicationColocatedVectorTest, CreateIndexDuringRepair) {
+  ASSERT_OK(SetUpColocatedVectorReplication());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_vector_reverse_mapping_repair) = true;
+  HoldConsumerDdls();
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3))"));
+  ASSERT_OK(producer_conn_->ExecuteFormat(kInsert, "vec_test", 1, 100));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+
+  StringWaiterLogSink held_back("Waiting for the reverse mapping repair of");
+  ASSERT_OK(ReleaseConsumerDdls());
+  ASSERT_OK(held_back.WaitFor(kTimeout));
+  for (const auto& index : ListVectorIndexes(consumer_cluster())) {
+    ASSERT_FALSE(ASSERT_RESULT(index->BackfillDone()));
+  }
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_vector_reverse_mapping_repair) = false;
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(WaitForConsumerIndexReady("vec_test_idx"));
+  ASSERT_NO_FATALS(ExpectSameResults({
+      SearchQuery("vec_test", "[0, 0, 0]", 200),
+      SearchQuery("vec_test", "[1, 2, 1]", 10)}));
+}
+
+// A failed repair fails the backfill of an index created on the table afterwards, rather than
+// holding it back forever.
+TEST_F(XClusterDDLReplicationColocatedVectorTest, RepairFailureFailsIndexBackfill) {
+  ASSERT_OK(SetUpColocatedVectorReplication());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_vector_reverse_mapping_repair) = true;
+  HoldConsumerDdls();
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3))"));
+  ASSERT_OK(producer_conn_->ExecuteFormat(kInsert, "vec_test", 1, 100));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+
+  // The replayed CREATE INDEX fails with the repair's error, which the DDL queue logs.
+  StringWaiterLogSink create_index_failed(
+      "Vector index backfill failed on tablet");
+  ASSERT_OK(ReleaseConsumerDdls());
+  ASSERT_OK(create_index_failed.WaitFor(kTimeout));
+}
+
+// The consumer tservers restart with the repair pending, which Start relaunches.
+TEST_F(XClusterDDLReplicationColocatedVectorTest, RestartDuringRepair) {
+  ASSERT_OK(SetUpColocatedVectorReplication());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_vector_reverse_mapping_repair) = true;
+  HoldConsumerDdls();
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3))"));
+  ASSERT_OK(producer_conn_->ExecuteFormat(kInsert, "vec_test", 1, 100));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+
+  StringWaiterLogSink held_back("Waiting for the reverse mapping repair of");
+  ASSERT_OK(ReleaseConsumerDdls());
+  ASSERT_OK(held_back.WaitFor(kTimeout));
+
+  for (size_t i = 0; i != consumer_cluster()->num_tablet_servers(); ++i) {
+    ASSERT_OK(consumer_cluster()->mini_tablet_server(i)->Restart());
+  }
+  consumer_conn_ = std::make_unique<pgwrapper::PGConn>(
+      ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name)));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_vector_reverse_mapping_repair) = false;
+
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(WaitForConsumerIndexReady("vec_test_idx"));
+  ASSERT_NO_FATALS(ExpectSameResults({
+      SearchQuery("vec_test", "[0, 0, 0]", 200),
+      SearchQuery("vec_test", "[1, 2, 1]", 10)}));
+}
+
+// A colocated table whose rows are written after it is created needs no repair.
+TEST_F(XClusterDDLReplicationColocatedVectorTest, NoRepairForTableCreatedFirst) {
+  ASSERT_OK(SetUpColocatedVectorReplication());
+  StringWaiterLogSink repaired("Reverse mapping repair of");
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3))"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(producer_conn_->ExecuteFormat(kInsert, "vec_test", 1, 100));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(WaitForConsumerIndexReady("vec_test_idx"));
+  ASSERT_FALSE(repaired.IsEventOccurred());
+  ASSERT_NO_FATALS(ExpectSameResults({SearchQuery("vec_test", "[0, 0, 0]", 200)}));
+}
+
 // The consumer applies every external transaction of a polled batch in one write op, and each
 // write of those transactions inserts its vectors into the vector index separately. So a single
 // op can fill and save several vector chunks before RocksDB publishes the op's rows and their
@@ -6047,34 +6775,13 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexMergeDuringMultiTransactionApply) 
   // Even with a single vector per insert, this many inserts roll several chunks of kChunkSize.
   constexpr int kParkAtInsert = 30;
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_initial_chunk_size) = kChunkSize;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
   // Merge on the compaction thread itself, so the merge does not hit the insert registry sync
   // point used to park the apply.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_max_merge_tasks) = 0;
 
-  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
-  params.replication_factor = 1;
-  ASSERT_OK(SetUpClusters(params));
-  ASSERT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
-    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
-    return conn.Execute("CREATE EXTENSION vector");
-  }));
-  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
-  ASSERT_OK(CreateReplicationFromCheckpoint());
-  ASSERT_OK(producer_conn_->Execute(
-      "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3)) SPLIT INTO 1 TABLETS"));
-  ASSERT_OK(producer_conn_->Execute(
-      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
-  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
-
-  auto producer_table = ASSERT_RESULT(
-      GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name=*/"", "vec_test"));
-  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  ASSERT_OK(producer_client()->GetTabletsFromTableId(producer_table.table_id(), 0, &tablets));
-  ASSERT_EQ(tablets.size(), 1);
-  const auto producer_tablet_id = tablets[0].tablet_id();
+  const auto producer_tablet_id = ASSERT_RESULT(SetUpSingleTabletVectorIndexTable());
 
   // Pause replication of the table, so the consumer later receives all transactions in one batch.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = producer_tablet_id;
@@ -6166,29 +6873,7 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexMergeDuringMultiTransactionApply) 
 // completes. Here the apply is parked between the two writes, and the vector index flush must
 // complete meanwhile (GH #34246).
 TEST_F(XClusterDDLReplicationTest, VectorIndexFlushBeforeIntentsWrite) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
-
-  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
-  params.replication_factor = 1;
-  ASSERT_OK(SetUpClusters(params));
-  ASSERT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
-    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
-    return conn.Execute("CREATE EXTENSION vector");
-  }));
-  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
-  ASSERT_OK(CreateReplicationFromCheckpoint());
-  ASSERT_OK(producer_conn_->Execute(
-      "CREATE TABLE vec_test (id int PRIMARY KEY, embedding vector(3)) SPLIT INTO 1 TABLETS"));
-  ASSERT_OK(producer_conn_->Execute(
-      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
-  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
-
-  auto producer_table = ASSERT_RESULT(
-      GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name=*/"", "vec_test"));
-  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  ASSERT_OK(producer_client()->GetTabletsFromTableId(producer_table.table_id(), 0, &tablets));
-  ASSERT_EQ(tablets.size(), 1);
-  const auto producer_tablet_id = tablets[0].tablet_id();
+  const auto producer_tablet_id = ASSERT_RESULT(SetUpSingleTabletVectorIndexTable());
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = producer_tablet_id;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
@@ -6261,6 +6946,80 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexFlushBeforeIntentsWrite) {
       "SELECT id FROM vec_test ORDER BY embedding <-> '[0, 0, 0]' LIMIT $0", kOpenTxnRowId);
   auto p_search = ASSERT_RESULT(producer_conn_->FetchAllAsString(query));
   auto c_search = ASSERT_RESULT(consumer_conn_->FetchAllAsString(query));
+  ASSERT_EQ(p_search, c_search);
+}
+
+// A regular DB flush must not advance the intents DB flushed OpId past vectors that an external
+// transaction apply left only in memory (GH #34699).
+TEST_F(XClusterDDLReplicationTest, VectorIndexBootstrapAfterRegularFlush) {
+  const auto producer_tablet_id = ASSERT_RESULT(SetUpSingleTabletVectorIndexTable());
+
+  // Commit while replication is paused, so the consumer gets the intents of the transaction
+  // together with its apply and never writes them to the intents DB. An intents DB write would
+  // disable advancing the intents DB flushed OpId for the tablet.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = producer_tablet_id;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
+  ASSERT_OK(WaitForConsumerPollersToSleep({producer_tablet_id}));
+
+  // A distributed transaction is replicated as an external transaction, a single row insert would
+  // take the fast path and reach the consumer as a plain write.
+  constexpr int kNumRows = 20;
+  ASSERT_OK(producer_conn_->StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  for (int id = 1; id <= kNumRows; ++id) {
+    ASSERT_OK(producer_conn_->ExecuteFormat(
+        "INSERT INTO vec_test VALUES ($0, '[$0, $0, $0]')", id));
+  }
+  ASSERT_OK(producer_conn_->CommitTransaction());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = "";
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(
+      ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>("SELECT count(*) FROM vec_test")), kNumRows);
+
+  {
+    // TotalEntries waits for the running vector inserts, and the count is the baseline for the
+    // check after the restart.
+    auto indexes = ListVectorIndexes(consumer_cluster());
+    ASSERT_EQ(indexes.size(), 1);
+    ASSERT_EQ(ASSERT_RESULT(indexes.front()->TotalEntries()), static_cast<size_t>(kNumRows));
+
+    const auto consumer_table = ASSERT_RESULT(
+        GetYsqlTable(&consumer_cluster_, namespace_name, /*schema_name=*/"", "vec_test"));
+    auto peers = ListTableActiveTabletPeers(consumer_cluster(), consumer_table.table_id());
+    ASSERT_EQ(peers.size(), 1);
+    auto consumer_tablet = ASSERT_RESULT(peers.front()->shared_tablet());
+
+    // The intents DB flushed OpId starts below the vector index one, so the wait below only
+    // succeeds if the flush advances it.
+    auto state = ASSERT_RESULT(consumer_tablet->GetPersistentState());
+    ASSERT_EQ(state.vector_indexes.size(), 1);
+    ASSERT_LT(state.intents, state.vector_indexes[0].op_id) << AsString(state);
+
+    ASSERT_OK(consumer_cluster()->FlushTablets(
+        tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
+    // The regular DB flush listener advances the intents DB flushed OpId, and may run after the
+    // flush returns. It must stop at the vector index flushed OpId.
+    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+      state = VERIFY_RESULT(consumer_tablet->GetPersistentState());
+      return state.intents == state.vector_indexes[0].op_id;
+    }, 10s * kTimeMultiplier, "Intents DB flushed OpId to match the vector index"));
+    ASSERT_LT(state.vector_indexes[0].op_id, state.regular) << AsString(state);
+  }
+
+  DisableFlushOnShutdown(*consumer_cluster(), true);
+  ASSERT_OK(consumer_cluster()->mini_tablet_server(0)->Restart(
+      tserver::WaitTabletsBootstrapped::kTrue));
+  auto indexes = ListVectorIndexes(consumer_cluster());
+  ASSERT_EQ(indexes.size(), 1);
+  ASSERT_EQ(ASSERT_RESULT(indexes.front()->TotalEntries()), static_cast<size_t>(kNumRows));
+
+  auto consumer_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  const auto query = Format(
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[0, 0, 0]' LIMIT $0", kNumRows);
+  ASSERT_TRUE(ASSERT_RESULT(consumer_conn.HasIndexScan(query)));
+  auto p_search = ASSERT_RESULT(producer_conn_->FetchAllAsString(query));
+  auto c_search = ASSERT_RESULT(consumer_conn.FetchAllAsString(query));
   ASSERT_EQ(p_search, c_search);
 }
 
@@ -6509,8 +7268,7 @@ TEST_F(XClusterDDLReplicationRetriedRewriteVectorIndexTest, RowsAppliedBeforeBac
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_before_vector_index_backfill_seconds) =
       15 * kTimeMultiplier;
   StringWaiterLogSink backfill_started_log("Backfill: vector_index:");
-  StringWaiterLogSink backfill_read_rows_log(Format("Backfill with chunk size $0 ", kNumRows));
-  StringWaiterLogSink backfill_done_log("Backfill: Backfilled ");
+  StringWaiterLogSink backfill_done_log(Format(": $0 entries in ", kNumRows));
   auto wait_for_both_replays = [](StringWaiterLogSink& log, const std::string& description) {
     return WaitFor(
         [&log] { return log.GetEventCount() >= 2; }, kTimeout,
@@ -6520,9 +7278,8 @@ TEST_F(XClusterDDLReplicationRetriedRewriteVectorIndexTest, RowsAppliedBeforeBac
 
   ASSERT_OK(wait_for_both_replays(backfill_started_log, "backfill started"));
   ReleaseRetryPoller();
-  // Confirms the rows were applied before the retry's backfill read the table.
-  ASSERT_OK(wait_for_both_replays(backfill_read_rows_log, "backfill read the rows"));
-  ASSERT_OK(wait_for_both_replays(backfill_done_log, "backfill done"));
+  // Backfilling all the rows confirms they were applied before the retry's backfill read the table.
+  ASSERT_OK(wait_for_both_replays(backfill_done_log, "backfill done with all the rows"));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_before_vector_index_backfill_seconds) = 0;
 
   ASSERT_OK(WaitForRetriedRewrite());
@@ -7033,6 +7790,52 @@ class XClusterDDLReplicationIndexBackfillTest : public XClusterDDLReplicationTes
     ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(index_count_stmt)), kNumRows);
     ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{kTableName}));
   }
+
+  // Runs an UPDATE inside the source's index backfill window, so the source writes an index
+  // tombstone at a time after the backfill read time. The target must end up with no index entry
+  // for the pre-UPDATE value.
+  void TestConcurrentUpdateDuringBackfill(bool colocated) {
+    auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+    params.is_colocated = colocated;
+    ASSERT_OK(SetUpClustersAndReplication(params));
+    ASSERT_OK(CreateBaseTable());
+
+    // One sleep at the top of BackfillIndexesForYsql, so this is the whole window for the UPDATE.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_slowdown_backfill_by_ms) = 3000 * kTimeMultiplier;
+    StringWaiterLogSink target_deferred_log("Skipping local index backfill for indexed_table");
+    // Logged before the slowdown sleep, so the read time is already chosen when this fires.
+    StringWaiterLogSink backfill_started_log("Begin BackfillIndexesForYsql");
+
+    TestThreadHolder thread_holder;
+    thread_holder.AddThreadFunctor([this]() {
+      auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+      ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1($2 ASC)", kIndexName, kTableName, kCol));
+    });
+    ASSERT_OK(backfill_started_log.WaitFor(kTimeout));
+    ASSERT_OK(producer_conn_->ExecuteFormat("UPDATE $0 SET $1 = -$1", kTableName, kCol));
+
+    thread_holder.JoinAll();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_slowdown_backfill_by_ms) = 0;
+    ASSERT_OK(target_deferred_log.WaitFor(kTimeout));
+
+    // Every value is negative now, so an index scan of the positive range must return nothing, and
+    // each cluster's index must agree with its own base table.
+    const auto scan_stmt = Format(
+        "/*+ IndexScan($0) */ SELECT COUNT(*) FROM $1 WHERE $2 > 0", kIndexName, kTableName, kCol);
+    const auto index_check =
+        Format("SELECT COUNT(*) FROM yb_index_check('$0'::regclass)", kIndexName);
+    ASSERT_OK(producer_conn_->Execute("SET enable_seqscan = off"));
+    ASSERT_OK(consumer_conn_->Execute("SET enable_seqscan = off"));
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+    ASSERT_OK(LoggedWaitFor(
+        [&]() -> Result<bool> { return consumer_conn_->HasIndexScan(scan_stmt); }, kTimeout,
+        "Replicated backfill index ready on consumer"));
+    ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{kTableName}));
+    ASSERT_EQ(ASSERT_RESULT(producer_conn_->FetchRow<int64_t>(scan_stmt)), 0);
+    ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(scan_stmt)), 0);
+    ASSERT_EQ(ASSERT_RESULT(producer_conn_->FetchRow<int64_t>(index_check)), 0);
+    ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(index_check)), 0);
+  }
 };
 
 // Base case, flag on, and index backfill replicated from source.
@@ -7073,7 +7876,7 @@ TEST_F(XClusterDDLReplicationIndexBackfillTest, ReplicatedFromSource) {
 // Flag off, so the target falls back to the legacy behavior of running its own local backfill.
 // Also verify changing the flag after the stream is created does not affect the backfill decision.
 TEST_F(XClusterDDLReplicationIndexBackfillTest, LegacyLocalBackfill) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_enable_target_applied_filter) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_enable_index_backfill_replication) = false;
   ASSERT_OK(SetUpClustersAndReplication());
   ASSERT_OK(CreateBaseTable());
 
@@ -7085,8 +7888,8 @@ TEST_F(XClusterDDLReplicationIndexBackfillTest, LegacyLocalBackfill) {
   ASSERT_OK(producer_conn_->ExecuteFormat(
       "CREATE INDEX $0 ON $1($2 ASC)", kIndexName, kTableName, kCol));
 
-  // Promote the flag after the stream already exists, which should not affect backfill decision.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_enable_target_applied_filter) = true;
+  // Turn the flag on after the stream already exists, which should not affect backfill decision.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_enable_index_backfill_replication) = true;
 
   // Unblock the replication to the target and the target takes the local backfill path.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
@@ -7151,6 +7954,15 @@ TEST_F(XClusterDDLReplicationIndexBackfillTest, TargetWaitsForReplicatedBackfill
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
   VerifyFilterTargetAppliedBit(/*expected=*/true);
   VerifyIndex("Replicated backfill index ready on consumer after backfill unblocked");
+}
+
+// An UPDATE during the source's index backfill must leave no stale index entry on the target.
+TEST_F(XClusterDDLReplicationIndexBackfillTest, ConcurrentUpdateDuringBackfill) {
+  TestConcurrentUpdateDuringBackfill(/*colocated=*/false);
+}
+
+TEST_F(XClusterDDLReplicationIndexBackfillTest, ConcurrentUpdateDuringBackfillColocated) {
+  TestConcurrentUpdateDuringBackfill(/*colocated=*/true);
 }
 
 TEST_F(XClusterDDLReplicationTest, CreatePartitionSkipsDefaultPartitionScanOnTarget) {
@@ -7442,6 +8254,31 @@ TEST_F(XClusterWalAnchorStreamTest, TableRewriteRollbackThenRetrySucceeds) {
             "ALTER TABLE $0 ADD PRIMARY KEY (key ASC)", kBaseTable);
       },
       /*table_name=*/kBaseTable, /*verify_tables=*/{kBaseTable});
+}
+
+// Tests that the target gets every row when the table splits while the target keeps rolling back
+// its CREATE TABLE.
+TEST_F(XClusterWalAnchorStreamTest, SplitBeforeRollbackRetrySucceeds) {
+  ASSERT_OK(SetUpClustersAndReplication());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_ddl_queue_max_retries_per_ddl) = 1000;
+
+  const auto kTableName = "anchor_split";
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0 (key int PRIMARY KEY, v int) SPLIT INTO 1 TABLETS", kTableName));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i * 2 FROM generate_series(1, 100) as i", kTableName));
+  ASSERT_OK(StringWaiterLogSink("Failed DDL operation as requested").WaitFor(kTimeout));
+
+  const auto source_table_id = ASSERT_RESULT(GetSourceTableId(kTableName));
+  ASSERT_OK(SplitTabletsOnce(producer_cluster_, source_table_id));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i * 2 FROM generate_series(101, 200) as i", kTableName));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = false;
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{kTableName}));
 }
 
 // The stream created for a reconnecting table is not usable until its checkpoint lands. Until then
