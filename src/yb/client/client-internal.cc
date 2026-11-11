@@ -2522,6 +2522,12 @@ class AcquireObjectLocksGlobalRpc
     return true;
   }
 
+  // The master acquires the lock on all tservers, which includes waiting for conflicting locks to
+  // be released. ASH has no visibility into the master, so attribute the whole wait to a lock wait.
+  void SetWaitingOnMasterWaitStatus() override {
+    SET_WAIT_STATUS(ObjectLock_WaitOnMaster);
+  }
+
   void CallRemoteMethod() override {
     VLOG(2) << "Calling AcquireObjectLocksGlobal with request: " << req_.DebugString();
     master_ddl_proxy()->AcquireObjectLocksGlobalAsync(

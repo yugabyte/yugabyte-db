@@ -52,9 +52,17 @@ void ClientMasterRpcBase::SendRpc() {
   mutable_retrier()->mutable_controller()->set_deadline(
       deadline != CoarseTimePoint::max() ? deadline : now + client_data_->default_rpc_timeout_);
 
+  // On retries, this runs on a reactor thread (via RpcRetrier::DoRetry) that carries no wait
+  // state. Re-adopt the wait state captured at construction, so that the wait is attributed to the
+  // originating request, and the outbound call carries its ASH metadata.
+  ADOPT_WAIT_STATE(wait_state_);
   ASH_ENABLE_CONCURRENT_UPDATES();
-  SET_WAIT_STATUS(YBClient_WaitingOnMaster);
+  SetWaitingOnMasterWaitStatus();
   CallRemoteMethod();
+}
+
+void ClientMasterRpcBase::SetWaitingOnMasterWaitStatus() {
+  SET_WAIT_STATUS(YBClient_WaitingOnMaster);
 }
 
 void ClientMasterRpcBase::ResetMasterLeader(Retry retry) {

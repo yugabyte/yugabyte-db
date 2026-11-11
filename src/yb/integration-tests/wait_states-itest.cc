@@ -57,6 +57,7 @@ DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_int32(cql_prepare_child_threshold_ms);
 DECLARE_bool(disable_index_backfill);
 DECLARE_bool(enable_flush_retryable_requests);
+DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_wait_queues);
 DECLARE_int32(rpc_slow_query_threshold_ms);
 DECLARE_int32(rpc_workers_limit);
@@ -90,6 +91,7 @@ DECLARE_bool(collect_end_to_end_traces);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_bool(ysql_catalog_preload_additional_tables);
 DECLARE_bool(ysql_enable_write_pipelining);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_string(ysql_catalog_preload_additional_table_list);
 
 DEFINE_test_flag(bool, verify_pull, false,
@@ -739,6 +741,12 @@ class AshTestVerifyOccurrenceBase : public AshTestWithCompactions {
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_write_pipelining) = true;
     }
 
+    if (code_to_look_for_ == ash::WaitStateCode::kObjectLock_WaitInQueue ||
+        code_to_look_for_ == ash::WaitStateCode::kObjectLock_WaitOnMaster) {
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    }
+
     const auto code_class =
         ash::Class(std::to_underlying(code_to_look_for_) >> YB_ASH_CLASS_POSITION);
     do_compactions_ = (code_class == ash::Class::kRocksDB);
@@ -844,6 +852,7 @@ class AshTestVerifyOccurrenceBase : public AshTestWithCompactions {
   void CreateIndexesUntilStopped(std::atomic<bool>& stop);
   void AddNodesUntilStopped(std::atomic<bool>& stop);
   void DoPgDeferrableReadsUntilStopped(std::atomic<bool>& stop);
+  void LaunchConflictingTableLockers(TestThreadHolder* thread_holder);
   void CreateAndRestoreSnapshot();
   void CreateWalSender(TestThreadHolder* thread_holder);
   std::atomic<size_t> num_indexes_created_{0};
@@ -904,6 +913,27 @@ void AshTestVerifyOccurrenceBase::DoPgDeferrableReadsUntilStopped(std::atomic<bo
     SleepFor(10ms * kTimeMultiplier);
   }
   ASSERT_OK(main_thread_connection_->CommitTransaction());
+}
+
+// One thread repeatedly holds an ACCESS SHARE lock, and another repeatedly takes a conflicting
+// ACCESS EXCLUSIVE lock. The global exclusive lock waits on the master, which waits for it in the
+// object lock wait queue. The next ACCESS SHARE lock waits in the queue behind the exclusive lock.
+void AshTestVerifyOccurrenceBase::LaunchConflictingTableLockers(TestThreadHolder* thread_holder) {
+  static constexpr auto kTableName = "lock_table";
+  ASSERT_OK(main_thread_connection_->ExecuteFormat("CREATE TABLE $0 (k INT)", kTableName));
+  for (const auto* lock_stmt : {"LOCK TABLE $0 IN ACCESS SHARE MODE",
+                                "LOCK TABLE $0 IN ACCESS EXCLUSIVE MODE"}) {
+    thread_holder->AddThreadFunctor(
+        [this, lock_stmt, &stop = thread_holder->stop_flag()] {
+      auto conn = ASSERT_RESULT(Connect());
+      while (!stop) {
+        ASSERT_OK(conn.Execute("BEGIN"));
+        ASSERT_OK(conn.ExecuteFormat(lock_stmt, kTableName));
+        SleepFor(50ms);
+        ASSERT_OK(conn.CommitTransaction());
+      }
+    });
+  }
 }
 
 void AshTestVerifyOccurrenceBase::CreateAndRestoreSnapshot() {
@@ -983,6 +1013,10 @@ void AshTestVerifyOccurrenceBase::LaunchWorkers(TestThreadHolder* thread_holder)
     case ash::WaitStateCode::kWAL_Read:
       CreateWalSender(thread_holder);
       break;
+    case ash::WaitStateCode::kObjectLock_WaitInQueue:
+    case ash::WaitStateCode::kObjectLock_WaitOnMaster:
+      LaunchConflictingTableLockers(thread_holder);
+      break;
     default: {
     }
   }
@@ -1012,6 +1046,8 @@ INSTANTIATE_TEST_SUITE_P(
       ash::WaitStateCode::kDumpRunningRpc_WaitOnReactor,
       ash::WaitStateCode::kConflictResolution_ResolveConflicts,
       ash::WaitStateCode::kConflictResolution_WaitOnConflictingTxns,
+      ash::WaitStateCode::kObjectLock_WaitInQueue,
+      ash::WaitStateCode::kObjectLock_WaitOnMaster,
       ash::WaitStateCode::kRaft_WaitingForReplication,
       ash::WaitStateCode::kRaft_WaitingForPipelinedReplication,
       ash::WaitStateCode::kRaft_ApplyingEdits,
