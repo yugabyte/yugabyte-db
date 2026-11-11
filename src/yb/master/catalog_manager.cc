@@ -1674,6 +1674,11 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   // Clear Ddl transaction state.
   {
     LockGuard l(ddl_txn_verifier_mutex_);
+    for (const auto& [txn_id, verifier_state] : ysql_ddl_txn_verfication_state_map_) {
+      if (verifier_state.release_all_deferred) {
+        ysql_ddl_txns_release_all_deferred_.insert(txn_id);
+      }
+    }
     ysql_ddl_txn_verfication_state_map_.clear();
     ysql_ddl_txn_undergoing_subtransaction_rollback_map_.clear();
   }
@@ -1713,6 +1718,9 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   RETURN_NOT_OK(master_->ts_manager()->RunLoader(
       master_->MakeCloudInfoPB(), &master_->proxy_cache(), *state));
   RETURN_NOT_OK(Load<ObjectLockLoader>("Object locks", state));
+  state->AddPostLoadTask(
+      std::bind(&CatalogManager::ReleaseObjectLocksOfDeferredTxnsPostLoad, this),
+      "Release object locks of DDL txns with deferred release and no verification state");
   RETURN_NOT_OK(RefreshYsqlHistoryRetentionPin());
 
   if (!transaction_tables_config_) {
