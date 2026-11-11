@@ -18,7 +18,7 @@
 
 #define YB_OD_UNIT_MAX_TESTS 1024
 #define YB_OD_UNIT_NAME_LEN 256
-#define YB_OD_UNIT_TIMEOUT_MS (300 * 1000)
+#define YB_OD_UNIT_TIMEOUT_MS (60 * 1000)
 #define YB_OD_UNIT_DATA_DIR "machinarium"
 
 typedef struct {
@@ -297,6 +297,8 @@ int yb_od_unit_finish(void)
 		total_ms += yb_results[i].time_ms;
 	}
 
+	if (yb_results_count == 0)
+		printf("[==========] Running 0 tests from 0 test cases.\n");
 	printf("[==========] %d tests ran. (%ld ms total)\n", yb_results_count,
 	       total_ms);
 	printf("[  PASSED  ] %d tests.\n", yb_results_count - failed_count);
