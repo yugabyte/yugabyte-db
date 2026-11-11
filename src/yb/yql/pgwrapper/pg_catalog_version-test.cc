@@ -2548,11 +2548,12 @@ TEST_F(PgCatalogVersionTest, InvalMessageDeleteRowLeavingWindow) {
       "SELECT current_version FROM pg_yb_catalog_version WHERE db_oid = $0", yugabyte_db_oid)));
   ASSERT_EQ(new_version, kVersion + 1);
   // The cutoff row and the expired row are gone, the unexpired row above the cutoff stays.
-  ASSERT_EQ(ASSERT_RESULT(conn.FetchAllAsString(seeded_rows_query)), std::to_string(kCutoff + 1));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRows<PGUint64>(seeded_rows_query)),
+            std::vector<uint64_t>{kCutoff + 1});
 
   // One more DDL moves the cutoff onto the remaining row.
   ASSERT_OK(conn.Execute("ALTER TABLE inval_window_test ADD COLUMN v2 TEXT"));
-  ASSERT_EQ(ASSERT_RESULT(conn.FetchAllAsString(seeded_rows_query)), "");
+  ASSERT_TRUE(ASSERT_RESULT(conn.FetchRows<PGUint64>(seeded_rows_query)).empty());
 }
 
 TEST_F(PgCatalogVersionTest, InvalMessageAlterTableRefreshTest) {
