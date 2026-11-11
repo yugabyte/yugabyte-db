@@ -62,6 +62,7 @@ DECLARE_bool(TEST_cdc_hit_deadline_on_wal_read);
 DECLARE_int32(min_segment_size_bytes_to_rollover_at_flush);
 DECLARE_uint64(initial_log_segment_size_bytes);
 DECLARE_bool(ysql_yb_cdcsdk_stream_tables_without_primary_key);
+DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
 
 namespace yb {
 using client::YBClient;
@@ -76,7 +77,6 @@ namespace cdc {
 
 constexpr int kRpcTimeout = 60 * kTimeMultiplier;
 constexpr int kFlushTimeoutSecs = 60 * kTimeMultiplier;
-constexpr int kNumberOfCatalogTablesBeingPolledByCDC = 4;
 // Number of cdc_state entries a logical replication stream creates by default when the database has
 // no user tables: one for the sys_catalog tablet-stream entry and one slot entry for the stream.
 constexpr int kNumberOfBaseCdcStateEntriesForLogicalStream = 2;
@@ -89,6 +89,10 @@ constexpr static const char* const kValueColumnName = "value_1";
 constexpr static const char* const kValue2ColumnName = "value_2";
 constexpr static const char* const kValue3ColumnName = "value_3";
 constexpr static const char* const kValue4ColumnName = "value_4";
+
+int NumberOfCatalogTablesBeingPolledByCDC();
+
+void AddCatalogTableIdsPolledByCDC(PgOid database_oid, std::unordered_set<TableId>* table_ids);
 
 struct CDCSDKTestParams {
   CDCSDKTestParams(int batch_size_, bool enable_replicate_intents_) :

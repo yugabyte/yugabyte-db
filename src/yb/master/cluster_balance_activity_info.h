@@ -18,6 +18,7 @@
 #include "yb/master/async_rpc_tasks.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/shared_lock.h"
 
 namespace yb::master {
 
@@ -53,6 +54,13 @@ class ClusterBalancerActivityInfo {
   using TasksSummaryMap = std::unordered_map<
       TaskTypeAndState, AggregatedTaskDetails, TaskTypeAndStateHash>;
   TasksSummaryMap GetTasksSummary();
+
+  // Returns true if this run has at least one task and all of its tasks are of the given type.
+  bool HasOnlyTasksOfType(server::MonitoredTaskType type) const {
+    return !tasks_.empty() && std::all_of(tasks_.begin(), tasks_.end(), [type](const auto& task) {
+      return task->type() == type;
+    });
+  }
 
   struct WarningMessageCount {
     // Example warning message for one instance of this warning type.
@@ -97,6 +105,17 @@ class ClusterBalancerActivityBuffer {
   ClusterBalancerActivityInfo GetLatestActivityInfo() const;
 
   bool IsIdle() const;
+
+  bool IsFull() const { SharedLock<rw_spinlock> l(mutex_); return activities_.full(); }
+
+  // Returns true if any recorded run has at least one task and all of its tasks are of the given
+  // type.
+  bool AnyRunHasOnlyTasksOfType(server::MonitoredTaskType type) const {
+    SharedLock<rw_spinlock> l(mutex_);
+    return std::any_of(activities_.begin(), activities_.end(), [type](const auto& activity) {
+      return activity.HasOnlyTasksOfType(type);
+    });
+  }
 
  private:
   mutable rw_spinlock mutex_;

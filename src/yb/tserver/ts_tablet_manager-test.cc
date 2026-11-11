@@ -1085,6 +1085,7 @@ TEST_F(TsTabletManagerTieredDriveTest, ResolveTargetTierPathIdRepairsStaleId) {
   }
   ASSERT_TRUE(found_ssd);
   ASSERT_OK(meta->SetTargetTier("hdd", ssd_pid));
+  ASSERT_FALSE(tablet_manager_->IsTargetTierPathIdValid(*meta));
 
   auto repaired_pid = ASSERT_RESULT(tablet_manager_->ResolveTargetTierPathId(meta));
   std::unordered_map<uint32_t, std::string> tier_by_path_id;
@@ -1097,6 +1098,52 @@ TEST_F(TsTabletManagerTieredDriveTest, ResolveTargetTierPathIdRepairsStaleId) {
   // The repair must be persisted, not just returned in-memory.
   ASSERT_EQ(meta->target_storage_tier(), "hdd");
   ASSERT_EQ(meta->target_tier_path_id(), repaired_pid);
+  ASSERT_TRUE(tablet_manager_->IsTargetTierPathIdValid(*meta));
+}
+
+// Tiered storage: a target whose tier has no disks on this node is left alone by
+// ResolveTargetTierPathId (it returns 0 but persists nothing, and OpenTablet uses only the
+// status, so the regular DB still opens with the stale path_id). IsTargetTierPathIdValid is the
+// read-only check for that, which the AlterTabletTier handler runs before reusing the persisted
+// path_id.
+TEST_F(TsTabletManagerTieredDriveTest, ResolveTargetTierPathIdKeepsStaleIdWhenTierHasNoDisks) {
+  std::shared_ptr<tablet::TabletPeer> peer;
+  ASSERT_OK(CreateNewTablet(kTableId, kTabletId, schema_, &peer));
+  auto meta = peer->tablet_metadata();
+
+  auto hdd_pid = ASSERT_RESULT(tablet_manager_->SelectPathIdForTier(*meta, kTableId, "hdd"));
+  ASSERT_OK(meta->SetTargetTier("hdd", hdd_pid));
+  ASSERT_TRUE(tablet_manager_->IsTargetTierPathIdValid(*meta));
+
+  // A tier_paths entry for a tier this node has no drive for, as left behind by a drive that was
+  // dropped from --fs_data_dirs or relabeled: tier_paths is persisted and not re-synced on load.
+  auto tier_paths = meta->tier_paths();
+  uint32_t nvme_pid = 0;
+  for (const auto& tp : tier_paths) {
+    nvme_pid = std::max(nvme_pid, tp.path_id + 1);
+  }
+  tier_paths.push_back(tablet::TierPathInfo{
+      .path_id = nvme_pid,
+      .tier = "nvme",
+      .path = JoinPathSegments(
+          GetTestPath("gone-nvme-drive"),
+          Format("rocksdb/table-$0/tablet-$1", kTableId, kTabletId)),
+  });
+  meta->TEST_SetTierPaths(std::move(tier_paths));
+  ASSERT_OK(meta->SetTargetTier("nvme", nvme_pid));
+  ASSERT_FALSE(tablet_manager_->IsTargetTierPathIdValid(*meta));
+
+  // Resolution returns 0 but keeps the intent, path_id included, for when the drive comes back.
+  auto pid = ASSERT_RESULT(tablet_manager_->ResolveTargetTierPathId(meta));
+  ASSERT_EQ(pid, 0u);
+  ASSERT_EQ(meta->target_storage_tier(), "nvme");
+  ASSERT_EQ(meta->target_tier_path_id(), nvme_pid);
+  ASSERT_FALSE(tablet_manager_->IsTargetTierPathIdValid(*meta));
+
+  // What the handler falls back to for that tablet: a fresh resolution for a tier with nothing.
+  auto fallback = tablet_manager_->SelectPathIdForTier(*meta, kTableId, "nvme");
+  ASSERT_NOK(fallback);
+  ASSERT_TRUE(fallback.status().IsNotFound()) << fallback.status();
 }
 
 // Tiered storage disabled: ResolveTargetTierPathId acts on no tier preference. It drops the

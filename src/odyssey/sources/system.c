@@ -546,7 +546,7 @@ static inline od_retcode_t od_system_server_start(od_system_t *system,
 			rc = chmod(saddr_un.sun_path, mode);
 			if (rc == -1) {
 				od_error(&instance->logger, "server", NULL,
-					 NULL, "chmod(%s, %d) failed",
+					 NULL, "chmod(%s, %s) failed",
 					 saddr_un.sun_path,
 					 instance->config.unix_socket_mode);
 			}

@@ -34,5 +34,24 @@ docker build -t "$DOCKER_PEX_IMAGE_NAME" .
 docker run -v "$yb_devops_home:/code" -u "$UID:$(id -g $UID)" \
 "$DOCKER_PEX_IMAGE_NAME" -c "-r" "/code/python3_requirements_frozen.txt"
 
+# Support bundle helper binaries are built here rather than committed. Cross-compiled for
+# every DB node arch, since the node's arch need not match this build host's.
+for module in logparse serverconfredact cdcstate; do
+  make -C "$yb_devops_home/supportbundle/$module" build-all
+done
+
+# yb_release.py packages manifest entries via glob, so a binary that failed to build is
+# silently omitted from the tarball instead of failing the release. Without them a node falls
+# back to Python log parsing, drops server.conf (no redactor) and can't collect cdc_state, so
+# fail loudly here.
+for base in yb-log-parse yb-redact-server-conf yb-dump-cdc-state; do
+  for arch in amd64 arm64; do
+    if [[ ! -f "$yb_devops_home/bin/$base-linux-$arch" ]]; then
+      echo "FATAL: $base-linux-$arch was not built; refusing to package devops." >&2
+      exit 1
+    fi
+  done
+done
+
 "$yb_devops_home"/yb_release.py "$@"
 rm -rf "$YB_PYTHON_MODULES_PACKAGE"

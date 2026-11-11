@@ -88,6 +88,7 @@ import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
@@ -740,14 +741,33 @@ public class OperatorUtils {
 
   public boolean checkIfDeviceInfoChanged(
       Cluster curCluster, UserIntent newIntent, YBUniverse ybUniverse) {
-    if (ybUniverse.getSpec().getTserverVolume() != null
-        || ybUniverse.getSpec().getMasterVolume() != null) {
+    // The read replica's volume comes from spec.readReplica.tserverVolume, which is independent of
+    // the primary's spec.tserverVolume / spec.masterVolume / spec.deviceInfo.
+    boolean usesVolumeFields;
+    boolean hasTserverPerAZ;
+    boolean hasMasterPerAZ;
+    if (curCluster.clusterType == ClusterType.ASYNC) {
+      ReadReplica readReplica = ybUniverse.getSpec().getReadReplica();
+      usesVolumeFields = readReplica.getTserverVolume() != null;
+      hasTserverPerAZ = usesVolumeFields && readReplica.getTserverVolume().getPerAZ() != null;
+      hasMasterPerAZ = false;
+    } else {
+      usesVolumeFields =
+          ybUniverse.getSpec().getTserverVolume() != null
+              || ybUniverse.getSpec().getMasterVolume() != null;
+      hasTserverPerAZ =
+          ybUniverse.getSpec().getTserverVolume() != null
+              && ybUniverse.getSpec().getTserverVolume().getPerAZ() != null;
+      hasMasterPerAZ =
+          ybUniverse.getSpec().getMasterVolume() != null
+              && ybUniverse.getSpec().getMasterVolume().getPerAZ() != null;
+    }
+    if (usesVolumeFields) {
       UserIntent newIntentClone = newIntent.clone();
       AtomicBoolean deviceInfoChanged = new AtomicBoolean(false);
       // If new userIntent does not contain perAZ overrides for tserver, first assign old
       // userIntentOverrides
-      if (!(ybUniverse.getSpec().getTserverVolume() != null
-          && ybUniverse.getSpec().getTserverVolume().getPerAZ() != null)) {
+      if (!hasTserverPerAZ) {
         newIntentClone.updateAZVolumeOverrides(
             curCluster.userIntent,
             curCluster.placementInfo.getAllAZUUIDs(),
@@ -756,9 +776,7 @@ public class OperatorUtils {
       }
       // If new userIntent does not contain perAZ overrides for master, first assign old
       // userIntentOverrides
-      if (curCluster.clusterType != ClusterType.ASYNC
-          && !(ybUniverse.getSpec().getMasterVolume() != null
-              && ybUniverse.getSpec().getMasterVolume().getPerAZ() != null)) {
+      if (curCluster.clusterType != ClusterType.ASYNC && !hasMasterPerAZ) {
         newIntentClone.updateAZVolumeOverrides(
             curCluster.userIntent,
             curCluster.placementInfo.getAllAZUUIDs(),
@@ -2671,6 +2689,7 @@ public class OperatorUtils {
         default:
           throw new Exception(String.format("Unsupported storage config type: %s", cfg.getName()));
       }
+      specData.setIMMUTABLE_STORAGE(((CustomerConfigStorageData) data).immutableStorage);
       spec.setData(specData);
       storageConfig.setSpec(spec);
       StorageConfigStatus status = new StorageConfigStatus();

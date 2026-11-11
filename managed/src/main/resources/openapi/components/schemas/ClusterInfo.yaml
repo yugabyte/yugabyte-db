@@ -19,7 +19,7 @@ properties:
     example: 12.3
     x-yba-api-visibility: internal
   load_balancers:
-    description: The load balancers that YBA created for this cluster.
+    description: The load balancers that YBA manages for this cluster.
     type: array
     items:
       $ref: "./ManagedLoadBalancerInfo.yaml"

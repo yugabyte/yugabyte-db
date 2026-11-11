@@ -74,11 +74,7 @@ Use the ysqlsh and ycqlsh shells to connect to and interact with YugabyteDB usin
 To connect using [psql](https://www.postgresql.org/docs/15/app-psql.html), first download the CA certificate for your cluster by clicking **Connect**, selecting **YugabyteDB Client Shell**, and clicking **Download CA Cert**. Then use the following connection string:
 
 ```sh
-psql --host=<HOST_ADDRESS> --port=5433 \
---username=<DB USER> \
---dbname=yugabyte \
---set=sslmode=verify-full \
---set=sslrootcert=<ROOT_CERT_PATH>
+psql "host=<HOST_ADDRESS> port=5433 user=<DB USER> dbname=yugabyte sslmode=verify-full sslrootcert=<ROOT_CERT_PATH>"
 ```
 
 Replace the following:

@@ -17,7 +17,7 @@ services:
       WorkingDirectory={{ .ActiveDir }}
 
       # Defaults; values in byoc-api-proxy.env override these when set.
-      Environment="JAVA_HOME={{ installVersionDir }}/jdk-17.0.7+7-jre/"
+      Environment="JAVA_HOME={{ installVersionDir }}/jdk-17.0.21+9-jre/"
       Environment="SPRING_CONFIG_ADDITIONAL_LOCATION=optional:file:{{ .AppConfigFile }}"
       EnvironmentFile=-{{ .EnvFile }}
 
