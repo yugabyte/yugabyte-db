@@ -3756,6 +3756,57 @@ SELECT * FROM sr_cross_two ORDER BY a, b;
 
 DEALLOCATE sr_cross_p2;
 RESET plan_cache_mode;
+-- A key of columns of different types, each with values of another type.
+-- 65537 and 65538 are 2^16 + 1 and 2^16 + 2, their low 16 bits are the keys 1
+-- and 2.
+CREATE TABLE sr_cross_mixed (a smallint, b bigint, c varchar, v int,
+	PRIMARY KEY (a, b, c));
+INSERT INTO sr_cross_mixed VALUES (1, 1, 'x', 0), (1, 2, 'x', 0), (2, 1, 'x', 0);
+UPDATE sr_cross_mixed SET v = 1 WHERE a = 65537 AND b = 1 AND c = 'x';
+EXPLAIN (COSTS OFF) UPDATE sr_cross_mixed SET v = 2
+	WHERE a = 1::bigint AND b = 2::int AND c = 'x'::text;
+         QUERY PLAN          
+-----------------------------
+ Update on sr_cross_mixed
+   ->  Result sr_cross_mixed
+(2 rows)
+
+UPDATE sr_cross_mixed SET v = 2 WHERE a = 1::bigint AND b = 2::int AND c = 'x'::text;
+SET plan_cache_mode = force_generic_plan;
+PREPARE sr_cross_pm(int, smallint, text) AS
+	UPDATE sr_cross_mixed SET v = 3 WHERE a = $1 AND b = $2 AND c = $3;
+EXPLAIN (COSTS OFF) EXECUTE sr_cross_pm(2, 1, 'x');
+         QUERY PLAN          
+-----------------------------
+ Update on sr_cross_mixed
+   ->  Result sr_cross_mixed
+(2 rows)
+
+EXECUTE sr_cross_pm(65538, 1, 'x');
+EXECUTE sr_cross_pm(2, 1, 'x');
+PREPARE sr_cross_dm(bigint, int, text) AS
+	DELETE FROM sr_cross_mixed WHERE a = $1 AND b = $2 AND c = $3 RETURNING *;
+EXECUTE sr_cross_dm(65537, 2, 'x');
+ a | b | c | v 
+---+---+---+---
+(0 rows)
+
+EXECUTE sr_cross_dm(1, 2, 'x');
+ a | b | c | v 
+---+---+---+---
+ 1 | 2 | x | 2
+(1 row)
+
+SELECT * FROM sr_cross_mixed ORDER BY a, b, c;
+ a | b | c | v 
+---+---+---+---
+ 1 | 1 | x | 0
+ 2 | 1 | x | 3
+(2 rows)
+
+DEALLOCATE sr_cross_pm;
+DEALLOCATE sr_cross_dm;
+RESET plan_cache_mode;
 -- An ascending (range) key.
 CREATE TABLE sr_cross_asc (k int, v int, PRIMARY KEY (k ASC));
 INSERT INTO sr_cross_asc VALUES (1, 0), (2, 0);
@@ -3935,6 +3986,7 @@ CALL check_fast_path_txn('UPDATE sr_cross_int8 SET v = 6 WHERE k = 2::int', true
 CALL check_fast_path_txn('UPDATE sr_cross_int8 SET v = 6 WHERE k = 2::smallint', true);
 CALL check_fast_path_txn('UPDATE sr_cross_part SET v = 6 WHERE k = 150::bigint', true);
 CALL check_fast_path_txn('UPDATE sr_cross_two SET v = 6 WHERE a = 1::bigint AND b = 1::bigint', true);
+CALL check_fast_path_txn('UPDATE sr_cross_mixed SET v = 6 WHERE a = 1::bigint AND b = 1::int AND c = ''x''::text', true);
 CALL check_fast_path_txn('UPDATE sr_cross_asc SET v = 6 WHERE k = 1::bigint', true);
 SET plan_cache_mode = force_generic_plan;
 PREPARE sr_cross_pf(bigint) AS UPDATE sr_cross_int4 SET v = 7 WHERE k = $1;
@@ -3950,6 +4002,6 @@ CALL check_fast_path_txn('UPDATE sr_cross_real SET v = 6 WHERE k = 1.5::float8',
 CALL check_fast_path_txn('UPDATE sr_cross_date SET v = 6 WHERE k = ''2000-01-02''::timestamp', false);
 CALL check_fast_path_txn('UPDATE sr_cross_name SET v = 6 WHERE k = ''abc''::text', false);
 DROP TABLE sr_cross_int4, sr_cross_int2, sr_cross_int8, sr_cross_part, sr_cross_two,
-	sr_cross_asc, sr_cross_varchar, sr_cross_domain, sr_cross_double, sr_cross_text,
-	sr_cross_real, sr_cross_date, sr_cross_name;
+	sr_cross_mixed, sr_cross_asc, sr_cross_varchar, sr_cross_domain, sr_cross_double,
+	sr_cross_text, sr_cross_real, sr_cross_date, sr_cross_name;
 DROP DOMAIN sr_cross_dom;

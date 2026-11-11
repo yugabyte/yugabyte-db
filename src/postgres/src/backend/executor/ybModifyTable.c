@@ -174,6 +174,9 @@ YBCGetYBTupleIdFromSlot(TupleTableSlot *slot)
  * Note that if the relation has a DocDB RowId attribute, this will generate a new RowId value
  * meaning the ybctid will be unique. Therefore you should only use this if the relation has
  * a primary key or you're doing an insert.
+ *
+ * Return 0 if a key value of a single row UPDATE or DELETE doesn't fit in its
+ * column's type: it matches no row, so the caller skips the write.
  */
 Datum
 YBCComputeYBTupleIdFromSlot(Relation rel, TupleTableSlot *slot)
@@ -215,7 +218,9 @@ YBCComputeYBTupleIdFromSlot(Relation rel, TupleTableSlot *slot)
 			 * (1) If the column's type can hold it, bind it with the column's
 			 *     type, as YbBindColumn does for scan keys: an integer has the
 			 *     same Datum at every width.
-			 * (2) Otherwise, bind it as NULL, which matches no row.
+			 * (2) Otherwise, it matches no row: return 0.
+			 * The planner checks YbIsScanCompatible too, but a value of another
+			 * type can still get here, such as through an expression index.
 			 */
 			if (type_id != col_type_id &&
 				YbIsScanCompatible(getBaseType(col_type_id), type_id,
@@ -224,7 +229,10 @@ YBCComputeYBTupleIdFromSlot(Relation rel, TupleTableSlot *slot)
 				if (!next_attr->is_null &&
 					YbIsValueOutOfRange(getBaseType(col_type_id), type_id,
 										next_attr->datum))
-					next_attr->is_null = true;
+				{
+					pfree(descr);
+					return (Datum) 0;
+				}
 				type_id = col_type_id;
 			}
 
@@ -1025,7 +1033,16 @@ YBCExecuteDelete(Relation rel,
 	if (target_tuple_fetched)
 		ybctid = YBCGetYBTupleIdFromSlot(planSlot);
 	else
+	{
 		ybctid = YBCComputeYBTupleIdFromSlot(rel, planSlot);
+
+		/* A key value too wide for its column matches no row. */
+		if (ybctid == 0)
+		{
+			YBCPgDeleteStatement(delete_stmt);
+			return false;
+		}
+	}
 
 	if (ybctid == 0)
 	{
@@ -1239,7 +1256,16 @@ YBCExecuteUpdate(ResultRelInfo *resultRelInfo,
 	if (target_tuple_fetched)
 		ybctid = YBCGetYBTupleIdFromSlot(planSlot);
 	else
+	{
 		ybctid = YBCComputeYBTupleIdFromSlot(rel, slot);
+
+		/* A key value too wide for its column matches no row. */
+		if (ybctid == 0)
+		{
+			YBCPgDeleteStatement(update_stmt);
+			return false;
+		}
+	}
 
 	if (ybctid == 0)
 		ereport(ERROR,

@@ -3519,8 +3519,11 @@ yb_single_row_key_value(Expr *expr, Oid coltype)
 
 	/*
 	 * Otherwise:
-	 * (1) An integer of another width than the column: keep it, and let
-	 *     YBCComputeYBTupleIdFromSlot bind it.
+	 * (1) A value that scan keys bind with the column's type
+	 *     (YbIsScanCompatible): an integer of another width, a text, varchar
+	 *     or bpchar value for a column of another of these types, or an OID
+	 *     type value for a column of another OID type.  Keep it, and let
+	 *     YBCComputeYBTupleIdFromSlot bind it with the column's type.
 	 * (2) Any other type, such as a double for a real column: use the scan.
 	 */
 	if (!YbIsScanCompatible(basetype, valtype, false /* is_value_scalar */ ,
