@@ -983,9 +983,8 @@ bool IsDuplicateDDLForColumnsMarkedForDeletion(
     return false;
   }
 
-  // With nothing cached to compare against (e.g. after a restart), the record is emitted: a
-  // duplicate is harmless, while a missing one makes the client drop values of columns this op
-  // adds when it is inside a DDL transaction block.
+  // If there is nothing cached to compare against (e.g. after a restart), then send it. This is just
+  // a duplicate DDL record.
   if (!previous_schema || !schema.EquivalentForDataCopy(*previous_schema)) {
     return false;
   }
