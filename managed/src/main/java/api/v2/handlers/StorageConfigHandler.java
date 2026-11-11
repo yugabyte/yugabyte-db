@@ -6,6 +6,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.CONFLICT;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.NOT_FOUND;
+import static play.mvc.Http.Status.SERVICE_UNAVAILABLE;
 import static play.mvc.Http.Status.UNPROCESSABLE_ENTITY;
 
 import api.v2.mappers.StorageConfigMapper;
@@ -27,11 +28,7 @@ import api.v2.models.S3StorageSpec;
 import api.v2.models.StorageConfig;
 import api.v2.models.StorageConfigSpec;
 import api.v2.models.StorageSpec;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.annotations.VisibleForTesting;
-import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -42,16 +39,15 @@ import com.yugabyte.yw.models.configs.CustomerConfig.ConfigType;
 import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
 import io.ebean.DuplicateKeyException;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
@@ -59,6 +55,8 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.pekko.Done;
+import org.apache.pekko.actor.CoordinatedShutdown;
 import play.libs.Json;
 
 /**
@@ -66,41 +64,21 @@ import play.libs.Json;
  *
  * <p>Status codes, unlike v1: 400 for an invalid spec, 409 with a code and the existing config's
  * UUID for a name conflict (also when the DB unique constraint catches a concurrent create), 422
- * with a code when the storage check fails or times out, and 404 for a missing config.
+ * with a code when the storage check fails or times out, 503 when the provider is unavailable or
+ * every storage check thread is busy, and 404 for a missing config.
  */
 @Slf4j
 @Singleton
 public class StorageConfigHandler {
 
   public static final String NAME_CONFLICT = "STORAGE_CONFIG_NAME_CONFLICT";
-  public static final String VALIDATION_FAILED = "STORAGE_VALIDATION_FAILED";
+  public static final String CONFIG_INVALID = StorageValidationErrors.CONFIG_INVALID;
+  public static final String VALIDATION_FAILED = StorageValidationErrors.VALIDATION_FAILED;
+  public static final String PROVIDER_UNAVAILABLE = StorageValidationErrors.PROVIDER_UNAVAILABLE;
   public static final String VALIDATION_TIMEOUT = "STORAGE_VALIDATION_TIMEOUT";
+  public static final String VALIDATION_BUSY = "STORAGE_VALIDATION_BUSY";
 
-  // Field names in the v1 validators' errors (keys of the v1 data, prefixed by "data.") and the
-  // v2 property they come from.
-  private static final Map<String, String> V2_FIELDS =
-      ImmutableMap.<String, String>builder()
-          .put("BACKUP_LOCATION", "storage.backup_location")
-          .put("REGION_LOCATIONS", "storage.region_locations")
-          .put("REGION", "storage.region_locations")
-          .put("LOCATION", "storage.region_locations")
-          .put("AWS_HOST_BASE", "storage.host_base")
-          .put("AWS_ACCESS_KEY_ID", "storage.credentials.access_key_id")
-          .put("AWS_SECRET_ACCESS_KEY", "storage.credentials.secret_access_key")
-          .put("IAM_INSTANCE_PROFILE", "storage.credentials")
-          .put("GCS_CREDENTIALS_JSON", "storage.credentials.credentials_json")
-          .put("USE_GCP_IAM", "storage.credentials")
-          .put("AZURE_STORAGE_SAS_TOKEN", "storage.credentials.sas_token")
-          .put("USE_AZURE_IAM", "storage.credentials")
-          .put("AZURE_CLIENT_ID", "storage.credentials.client_id")
-          .put("NFS_BUCKET", "storage.bucket")
-          .put("OCI_REGION", "storage.region")
-          .put("OCI_NAMESPACE", "storage.namespace")
-          .put("USE_OCI_IAM", "storage.credentials")
-          .put("OCI_S3_ACCESS_KEY_ID", "storage.credentials.access_key_id")
-          .put("OCI_S3_SECRET_ACCESS_KEY", "storage.credentials.secret_access_key")
-          .put("OCI_S3_HOST_BASE", "storage.credentials.host_base")
-          .build();
+  private static final String POOL_NAME = "storage_config_validation";
 
   private final CustomerConfigValidator configValidator;
   private final RuntimeConfGetter confGetter;
@@ -110,16 +88,28 @@ public class StorageConfigHandler {
   public StorageConfigHandler(
       CustomerConfigValidator configValidator,
       RuntimeConfGetter confGetter,
-      PlatformExecutorFactory executorFactory) {
+      PlatformExecutorFactory executorFactory,
+      CoordinatedShutdown coordinatedShutdown) {
     this.configValidator = configValidator;
     this.confGetter = confGetter;
     // The storage checks block on cloud SDK calls that have no overall deadline of their own, so
-    // they run here and the request waits for them only up to the validation timeout.
+    // they run here and the request waits for them only up to the validation timeout. The pool has
+    // no queue (yb.storage_config_validation): a check that timed out keeps its thread until the
+    // SDK call returns, and queued checks would time out behind it without reaching their storage.
     this.validationExecutor =
-        executorFactory.createFixedExecutor(
-            "storage_config_validation",
-            8,
-            new ThreadFactoryBuilder().setNameFormat("storage-config-validation-%d").build());
+        executorFactory.createNonBlockingExecutor(
+            POOL_NAME,
+            new ThreadFactoryBuilder()
+                .setNameFormat("storage-config-validation-%d")
+                .setDaemon(true)
+                .build());
+    coordinatedShutdown.addTask(
+        CoordinatedShutdown.PhaseServiceStop(),
+        "storage-config-validation-shutdown",
+        () -> {
+          validationExecutor.shutdown();
+          return CompletableFuture.completedFuture(Done.done());
+        });
   }
 
   public StorageConfig createStorageConfig(UUID cUUID, StorageConfigSpec spec) {
@@ -159,8 +149,12 @@ public class StorageConfigHandler {
     }
     CustomerConfig config = StorageConfigMapper.INSTANCE.toV1CustomerConfig(cUUID, spec);
     // Field constraints of the v1 data that the v2 schema doesn't express, such as the maximum
-    // length of a backup location: an invalid request, so 400 as thrown.
-    configValidator.validateConfigData(config);
+    // length of a backup location: 400.
+    try {
+      configValidator.validateConfigData(config);
+    } catch (PlatformServiceException e) {
+      throw StorageValidationErrors.toV2Error(e);
+    }
     checkStorage(config);
     return config;
   }
@@ -241,12 +235,22 @@ public class StorageConfigHandler {
 
   /**
    * Runs the storage validator, which checks the locations and reaches out to the storage, with a
-   * deadline. Its failures are answered with 422 and the v2 names of the fields.
+   * deadline. See {@link StorageValidationErrors} for how its failures are answered.
    */
   private void checkStorage(CustomerConfig config) {
     Duration timeout = confGetter.getGlobalConf(GlobalConfKeys.storageConfigValidationTimeout);
-    Future<?> check =
-        validationExecutor.submit(() -> configValidator.validateConfigDataWithValidator(config));
+    Future<?> check;
+    try {
+      check =
+          validationExecutor.submit(() -> configValidator.validateConfigDataWithValidator(config));
+    } catch (RejectedExecutionException e) {
+      ObjectNode error = Json.newObject();
+      error.put("code", VALIDATION_BUSY);
+      error.put(
+          "message",
+          String.format("All storage checks are busy (yb.%s.max_threads), retry later", POOL_NAME));
+      throw new PlatformServiceException(SERVICE_UNAVAILABLE, error);
+    }
     try {
       check.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
     } catch (TimeoutException e) {
@@ -265,65 +269,8 @@ public class StorageConfigHandler {
       Thread.currentThread().interrupt();
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Interrupted checking storage");
     } catch (ExecutionException e) {
-      if (e.getCause() instanceof PlatformServiceException pse) {
-        throw toValidationFailure(pse);
-      }
-      log.error("Storage config validation of {} failed", config.getConfigName(), e.getCause());
-      ObjectNode error = Json.newObject();
-      error.put("code", VALIDATION_FAILED);
-      error.put("message", String.valueOf(e.getCause().getMessage()));
-      throw new PlatformServiceException(UNPROCESSABLE_ENTITY, error);
+      throw StorageValidationErrors.toV2Error(e.getCause());
     }
-  }
-
-  /**
-   * Turns a v1 validator error, {"data.<V1_FIELD>": [messages], "errorSource": [...]} or a plain
-   * message, into a 422 with error.errors keyed by v2 field names.
-   */
-  @VisibleForTesting
-  static PlatformServiceException toValidationFailure(PlatformServiceException e) {
-    ObjectNode error = Json.newObject();
-    error.put("code", VALIDATION_FAILED);
-    ObjectNode errors = error.putObject("errors");
-    String firstMessage = null;
-    JsonNode v1Errors = e.getContentJson().get("error");
-    if (v1Errors != null && v1Errors.isObject()) {
-      Iterator<Map.Entry<String, JsonNode>> fields = v1Errors.fields();
-      while (fields.hasNext()) {
-        Map.Entry<String, JsonNode> field = fields.next();
-        if (field.getKey().equals("errorSource")) {
-          continue;
-        }
-        String v2Field = toV2Field(field.getKey());
-        ArrayNode messages =
-            errors.has(v2Field) ? (ArrayNode) errors.get(v2Field) : errors.putArray(v2Field);
-        List<JsonNode> fieldMessages = new ArrayList<>();
-        if (field.getValue().isArray()) {
-          field.getValue().forEach(fieldMessages::add);
-        } else {
-          fieldMessages.add(field.getValue());
-        }
-        for (JsonNode message : fieldMessages) {
-          messages.add(message.asText());
-          if (firstMessage == null) {
-            firstMessage = (v2Field.isEmpty() ? "" : v2Field + ": ") + message.asText();
-          }
-        }
-      }
-    } else if (v1Errors != null) {
-      firstMessage = v1Errors.asText();
-      errors.putArray("storage").add(firstMessage);
-    }
-    error.put("message", firstMessage != null ? firstMessage : e.getMessage());
-    return new PlatformServiceException(UNPROCESSABLE_ENTITY, error);
-  }
-
-  private static String toV2Field(String v1Field) {
-    if (v1Field.isEmpty()) {
-      return "";
-    }
-    String key = StringUtils.removeStart(v1Field, "data.");
-    return V2_FIELDS.getOrDefault(key, "storage");
   }
 
   private PlatformServiceException nameConflict(UUID cUUID, String name) {

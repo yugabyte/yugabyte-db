@@ -1729,8 +1729,8 @@
     summary: Create a storage configuration
     description: |
       Creates a backup storage configuration. Unless yb.storage_config.skip_validation is set,
-      YBA first checks that it can reach the storage with the given credentials, as
-      validateStorageConfig does, and creates nothing if it can't. Retry with the same
+      YBA first checks the locations and that it can reach the storage with the given
+      credentials, as validateStorageConfig does, and creates nothing if it can't. Retry with the same
       Idempotency-Key to get the configuration created by a request whose response was lost.
     tags:
       - Storage Config
@@ -1740,15 +1740,17 @@
       '200':
         $ref: "../components/responses/StorageConfigResp.yaml"
       '400':
-        description: 'Invalid input, such as a missing secret or a malformed backup location'
+        description: 'Invalid input, such as a missing secret, a blank name or a region listed twice. A malformed location or host found by the storage check has error.code STORAGE_CONFIG_INVALID, with error.errors listing the failures by field.'
       '401':
         description: 'The request has no valid API or session token, cUUID is not the caller''s customer, or the caller''s role has no create permission on the customer'
       '409':
         description: The customer already has a storage configuration with this name. error.code is STORAGE_CONFIG_NAME_CONFLICT and error.storage_config_uuid names the existing configuration.
       '422':
-        description: 'YBA can''t reach the storage with the given credentials. error.code is STORAGE_VALIDATION_FAILED, with error.errors listing the failures by field, or STORAGE_VALIDATION_TIMEOUT if the check took longer than yb.storage_config.validation_timeout.'
+        description: 'The storage check failed: YBA reached the storage, or tried to, and it refused the configuration, e.g. with access denied or no such bucket. error.code is STORAGE_VALIDATION_FAILED, with error.errors listing the failures by field and, when the provider answered, error.provider_status (its HTTP status) and error.provider_error_code. error.code is STORAGE_VALIDATION_TIMEOUT if the check took longer than yb.storage_config.validation_timeout. An error with no error.code means the Idempotency-Key was already used for a different request.'
       '500':
         description: Server error
+      '503':
+        description: 'Retry later: error.code is STORAGE_PROVIDER_UNAVAILABLE if the provider throttled or failed the check (HTTP 429 or 5xx, with error.provider_status) or a request to it timed out, or STORAGE_VALIDATION_BUSY if every storage check thread (yb.storage_config_validation.max_threads) is busy.'
     security:
       - apiKeyAuth: []
       - authTokenAuth: []
@@ -1794,15 +1796,17 @@
       '200':
         description: The storage configuration can be created
       '400':
-        description: 'Invalid input, such as a missing secret or a malformed backup location'
+        description: 'Invalid input, such as a missing secret, a blank name or a region listed twice. A malformed location or host found by the storage check has error.code STORAGE_CONFIG_INVALID, with error.errors listing the failures by field.'
       '401':
         description: 'The request has no valid API or session token, cUUID is not the caller''s customer, or the caller''s role has no create permission on the customer'
       '409':
         description: The customer already has a storage configuration with this name. error.code is STORAGE_CONFIG_NAME_CONFLICT and error.storage_config_uuid names the existing configuration.
       '422':
-        description: 'YBA can''t reach the storage with the given credentials. error.code is STORAGE_VALIDATION_FAILED, with error.errors listing the failures by field, or STORAGE_VALIDATION_TIMEOUT if the check took longer than yb.storage_config.validation_timeout.'
+        description: 'The storage check failed: YBA reached the storage, or tried to, and it refused the configuration, e.g. with access denied or no such bucket. error.code is STORAGE_VALIDATION_FAILED, with error.errors listing the failures by field and, when the provider answered, error.provider_status (its HTTP status) and error.provider_error_code. error.code is STORAGE_VALIDATION_TIMEOUT if the check took longer than yb.storage_config.validation_timeout.'
       '500':
         description: Server error
+      '503':
+        description: 'Retry later: error.code is STORAGE_PROVIDER_UNAVAILABLE if the provider throttled or failed the check (HTTP 429 or 5xx, with error.provider_status) or a request to it timed out, or STORAGE_VALIDATION_BUSY if every storage check thread (yb.storage_config_validation.max_threads) is busy.'
     security:
       - apiKeyAuth: []
       - authTokenAuth: []
