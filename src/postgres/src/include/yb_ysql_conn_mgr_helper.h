@@ -172,3 +172,5 @@ extern int YbAuthFailedErrorLevel(const bool auth_passthrough);
  *    progress)
  */
 extern bool YbIsAuthPassthroughInProgress(struct Port *port);
+
+extern bool YbIsConnMgrReservedStartupParameter(const char *name);

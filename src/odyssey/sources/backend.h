@@ -30,5 +30,6 @@ od_retcode_t od_backend_query(od_server_t *, char *, char *, char *, int,
 			      uint32_t, uint32_t);
 
 char *yb_encode_server_cert_hash(od_client_t *, int *encoded_cert_len);
+int yb_set_reserved_end_args(kiwi_fe_arg_t *, int argc, od_client_t *);
 
 #endif /* ODYSSEY_BACKEND_H */
