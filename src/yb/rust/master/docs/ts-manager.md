@@ -40,13 +40,18 @@ Each field has one owner:
 | Fields | Owner |
 |---|---|
 | `master_config`, readiness, `leader_master` | `master-rpc-handlers` |
-| `cluster_uuid`, universe check, `cluster_config_version`, `cluster_replication_info`, `consumer_registry`, `tablet_report_limit`, `tablet_report`, `needs_*`, `tservers`, `live_tservers_*`, `transaction_tables_version` | this crate |
-| `universe_key_registry`, `snapshots_info`, `auto_flags_config` | the host's C++ objects, through the `HostHeartbeatParts` contributor (`master-server`) |
+| `cluster_uuid`, universe check, `cluster_config_version`, `cluster_replication_info`, `consumer_registry`, `tablet_report_limit`, `tablet_report`, `needs_*`, `tservers`, `live_tservers_*`, `transaction_tables_version`, `leader_blacklisted_tservers_with_no_leaders`, `xcluster_guarded_info`, `xcluster_guarded_lease_duration_ms` | this crate |
+| `universe_key_registry`, `snapshots_info`, `auto_flags_config`, YSQL catalog versions and invalidation messages | the host's C++ objects, through the `HostHeartbeatParts` contributor (`master-server`) |
 
 `xcluster_enabled_on_producer` is set once CDC streams exist and stays set, as `cdc_enabled_` does
-in C++. Other components add `HeartbeatContributor`s. Not filled in layer 2: YSQL catalog versions,
-invalidation messages and history pins (W9), xCluster safe times and guarded info (W11), the
-leader-blacklist drain list (W8).
+in C++. Other components add `HeartbeatContributor`s.
+
+Every response grants an xCluster-guarded information lease of `xcluster_guarded_lease_duration_ms`
+with a numbered copy of that information (`FillXClusterGuardedInfo`): the xCluster config's
+per-namespace info, the cluster config's `oid_cache_invalidations_count` and the persistence block
+map. It is filled after the tserver's row records MAYBE_HAS_LEASE, and the heartbeat fails if the
+xCluster config or persistence block map row is missing, as in C++. A tserver without a current
+lease refuses to allocate PG OIDs. Not filled yet: history pins (W9), xCluster safe times (W11).
 
 ## Tablet reports (L6)
 

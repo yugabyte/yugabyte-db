@@ -81,11 +81,25 @@ async fn setup(persist: bool) -> Setup {
     let mut tablet = SysTabletsEntryPB::new();
     tablet.set_table_id(b"table".to_vec());
     tablet.set_state(sys_tablets_entry_pb::State::CREATING);
+    let mut xcluster = yb_proto::pb::catalog_entity_info::SysXClusterConfigEntryPB::new();
+    xcluster.set_version(1);
+    let mut persistence = yb_proto::pb::catalog_entity_info::SysPersistenceBlockMapEntryPB::new();
+    persistence.set_version(0);
     fake.apply(vec![
         upsert(
             SysRowEntryType::CLUSTER_CONFIG,
             "",
             config.write_to_bytes().unwrap(),
+        ),
+        upsert(
+            SysRowEntryType::XCLUSTER_CONFIG,
+            "",
+            xcluster.write_to_bytes().unwrap(),
+        ),
+        upsert(
+            SysRowEntryType::PERSISTENCE_BLOCK_MAP,
+            "",
+            persistence.write_to_bytes().unwrap(),
         ),
         upsert(
             SysRowEntryType::TABLE,

@@ -244,6 +244,7 @@ fn ts_manager_options() -> TsManagerOptions {
             Duration::from_millis(GUARDED_LEASE_MS.get().into())
                 + Duration::from_micros(MAX_CLOCK_SKEW_USEC.get().saturating_mul(2))
         },
+        guarded_lease_duration: || Duration::from_millis(GUARDED_LEASE_MS.get().into()),
         tombstone_evicted_replicas: || TOMBSTONE_EVICTED_REPLICAS.get(),
         use_pending_config_op_id: || USE_PENDING_CONFIG_OP_ID.get(),
         register_from_raft: || REGISTER_TS_FROM_RAFT.get(),

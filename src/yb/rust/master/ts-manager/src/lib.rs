@@ -68,6 +68,8 @@ pub struct TsManagerOptions {
     pub universe_uuid_check: fn() -> bool,
     /// `xcluster_guarded_lease_duration_ms` plus twice `max_clock_skew_usec`.
     pub guarded_lease_expiry: fn() -> Duration,
+    /// `xcluster_guarded_lease_duration_ms`, granted in every heartbeat response.
+    pub guarded_lease_duration: fn() -> Duration,
     /// `master_tombstone_evicted_tablet_replicas`.
     pub tombstone_evicted_replicas: fn() -> bool,
     /// The `use_tablet_report_pending_config_op_id` AutoFlag.
@@ -96,6 +98,7 @@ impl Default for TsManagerOptions {
             persist_registry: || false,
             universe_uuid_check: || false,
             guarded_lease_expiry: || Duration::from_secs(121),
+            guarded_lease_duration: || Duration::from_secs(120),
             tombstone_evicted_replicas: || true,
             use_pending_config_op_id: || true,
             register_from_raft: || true,
@@ -220,6 +223,8 @@ pub struct TsManager {
     pending_leader_drain: Mutex<HashSet<EntityId>>,
     /// CDC streams were seen: `CatalogManager::cdc_enabled_`, which stays set.
     cdc_enabled: AtomicBool,
+    /// Copies of the xCluster-guarded info handed out (`xcluster_guarded_info_copy_count_`).
+    guarded_info_copies: AtomicU64,
     heartbeat_order: order::HeartbeatOrder,
     options: TsManagerOptions,
     /// This master's placement, from its registration (not the gflags, which an embedded master
@@ -242,6 +247,7 @@ impl TsManager {
             unpersisted: Mutex::default(),
             pending_leader_drain: Mutex::default(),
             cdc_enabled: AtomicBool::new(false),
+            guarded_info_copies: AtomicU64::new(0),
             heartbeat_order: Default::default(),
             options,
             local_cloud_info: RwLock::default(),

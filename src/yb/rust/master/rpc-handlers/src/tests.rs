@@ -401,7 +401,8 @@ mod leader_tests {
     use protobuf::EnumOrUnknown;
     use yb_proto::pb::catalog_entity_info::{
         sys_namespace_entry_pb, sys_tables_entry_pb, sys_tablets_entry_pb, SysClusterConfigEntryPB,
-        SysNamespaceEntryPB, SysTablesEntryPB, SysTabletsEntryPB,
+        SysNamespaceEntryPB, SysPersistenceBlockMapEntryPB, SysTablesEntryPB, SysTabletsEntryPB,
+        SysXClusterConfigEntryPB,
     };
     use yb_proto::pb::common_types::{TableType, YQLDatabase};
     use yb_proto::pb::master_client::{
@@ -447,8 +448,16 @@ mod leader_tests {
             table.set_version(0);
             table.schema = Some(Default::default()).into();
             table.set_state(sys_tables_entry_pb::State::RUNNING);
+            let mut xcluster = SysXClusterConfigEntryPB::new();
+            xcluster.set_version(1);
+            let mut persistence = SysPersistenceBlockMapEntryPB::new();
+            persistence.set_version(0);
+            persistence.persistence_block_map = Some(Default::default()).into();
+            config.set_oid_cache_invalidations_count(4);
             let mut changes = vec![
                 upsert(SysRowEntryType::CLUSTER_CONFIG, "", &config),
+                upsert(SysRowEntryType::XCLUSTER_CONFIG, "", &xcluster),
+                upsert(SysRowEntryType::PERSISTENCE_BLOCK_MAP, "", &persistence),
                 upsert(SysRowEntryType::NAMESPACE, "ns1", &ns),
                 upsert(SysRowEntryType::TABLE, "table1", &table),
             ];
@@ -631,6 +640,18 @@ mod leader_tests {
         assert!(resp.leader_master(), "{resp:?}");
         assert!(resp.error.is_none());
         assert_eq!(resp.tservers.len(), 1);
+        // It holds an xCluster-guarded lease, which PG needs to allocate OIDs.
+        assert_eq!(
+            resp.xcluster_guarded_info.oid_cache_invalidations_count(),
+            4
+        );
+        assert_eq!(
+            resp.xcluster_guarded_info
+                .xcluster_guarded_info_version
+                .term(),
+            7
+        );
+        assert!(resp.xcluster_guarded_lease_duration_ms() > 0);
 
         // The registered tserver gets a YSQL lease.
         let mut lease_req = yb_proto::pb::master_ysql_lease::RefreshYsqlLeaseRequestPB::new();

@@ -15,6 +15,7 @@
 //! xCluster-guarded info, the leader-blacklist drain list).
 
 use std::collections::HashMap;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -24,7 +25,11 @@ use master_leadership::LeaderToken;
 use master_tablet_locations::{DriveInfo, LeaseReport};
 use protobuf::EnumOrUnknown;
 use yb_host_api::{Status, StatusCode};
-use yb_proto::pb::catalog_entity_info::{SysClusterConfigEntryPB, SysConfigEntryPB};
+use yb_proto::pb::catalog_entity_info::{
+    SysClusterConfigEntryPB, SysConfigEntryPB, SysPersistenceBlockMapEntryPB,
+    SysXClusterConfigEntryPB,
+};
+use yb_proto::pb::common_types::XClusterGuardedInfoPB;
 use yb_proto::pb::consensus_metadata::RaftPeerPB;
 use yb_proto::pb::consensus_types::LeaderLeaseStatus;
 use yb_proto::pb::master_heartbeat::{TSHeartbeatRequestPB, TSHeartbeatResponsePB};
@@ -148,6 +153,15 @@ impl TsManager {
         }
         self.persist(ctx.writer, &ctx.token, &changed).await?;
 
+        // After the row that records MAYBE_HAS_LEASE is written, as C++ fills it after
+        // UpdateAndReturnTSDescriptorOrRespond.
+        resp.xcluster_guarded_info =
+            Some(self.xcluster_guarded_info(&ctx, &cluster_config)?).into();
+        resp.set_xcluster_guarded_lease_duration_ms(
+            (self.options.guarded_lease_duration)()
+                .as_millis()
+                .min(u32::MAX as u128) as u32,
+        );
         resp.set_tablet_report_limit((self.options.tablet_report_limit)());
         let (updates, has_report) = self.process_report(&ctx, req, deadline).await?;
         if req.tablet_report.is_some() {
@@ -188,6 +202,48 @@ impl TsManager {
             }
         }
         Ok(resp)
+    }
+
+    /// `XClusterManager::FillXClusterGuardedInfo`: a numbered copy of what tservers may use only
+    /// while they hold the lease each heartbeat response grants.
+    fn xcluster_guarded_info(
+        &self,
+        ctx: &HeartbeatContext<'_>,
+        cluster_config: &SysClusterConfigEntryPB,
+    ) -> Result<XClusterGuardedInfoPB, Status> {
+        let corrupt = |e: master_catalog_entity::EntityError| {
+            Status::new(StatusCode::Corruption, e.to_string())
+        };
+        let mut info = XClusterGuardedInfoPB::new();
+        let version = info.xcluster_guarded_info_version.mut_or_insert_default();
+        version.set_term(ctx.token.term());
+        version.set_count(self.guarded_info_copies.fetch_add(1, Ordering::Relaxed) + 1);
+        let xcluster_config: SysXClusterConfigEntryPB = ctx
+            .snapshot
+            .get(SysRowEntryType::XCLUSTER_CONFIG, b"")
+            .ok_or_else(|| {
+                Status::new(
+                    StatusCode::IllegalState,
+                    "XCluster config is not initialized",
+                )
+            })?
+            .parse()
+            .map_err(corrupt)?;
+        info.xcluster_info_per_namespace = xcluster_config.xcluster_info_per_namespace;
+        info.set_oid_cache_invalidations_count(cluster_config.oid_cache_invalidations_count());
+        let map: SysPersistenceBlockMapEntryPB = ctx
+            .snapshot
+            .get(SysRowEntryType::PERSISTENCE_BLOCK_MAP, b"")
+            .ok_or_else(|| {
+                Status::new(
+                    StatusCode::IllegalState,
+                    "Persistence block map is not initialized",
+                )
+            })?
+            .parse()
+            .map_err(corrupt)?;
+        info.persistence_block_map = map.persistence_block_map;
+        Ok(info)
     }
 
     /// `ProcessTabletMetadata`: drive info for every tablet in `storage_metadata`, and leader leases
