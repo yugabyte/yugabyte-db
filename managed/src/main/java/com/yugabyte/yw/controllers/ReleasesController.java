@@ -299,12 +299,14 @@ public class ReleasesController extends AuthenticatedController {
       }
       if (reqRelease.state != null
           && !release.getState().equals(Release.ReleaseState.valueOf(reqRelease.state))) {
-        if (!release.getUniverses().isEmpty()) {
+        Release.ReleaseState newState = Release.ReleaseState.valueOf(reqRelease.state);
+        if (!isActiveDisabledToggle(release.getState(), newState)
+            && !release.getUniverses().isEmpty()) {
           throw new PlatformServiceException(
               BAD_REQUEST, "cannot change state of in-use release " + releaseUUID);
         }
         log.info("updating release state to {}", reqRelease.state);
-        release.saveState(Release.ReleaseState.valueOf(reqRelease.state));
+        release.saveState(newState);
       }
 
       // Now, check if any artifacts have changed, and update them as needed
@@ -390,6 +392,14 @@ public class ReleasesController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             request, Audit.TargetType.Release, reqRelease.toString(), Audit.ActionType.Update);
     return YBPSuccess.empty();
+  }
+
+  // Universes on a disabled release keep running and can still be upgraded off it, so disabling
+  // only blocks new selections of the version and is safe while the release is in use.
+  private static boolean isActiveDisabledToggle(
+      Release.ReleaseState from, Release.ReleaseState to) {
+    return (from == Release.ReleaseState.ACTIVE && to == Release.ReleaseState.DISABLED)
+        || (from == Release.ReleaseState.DISABLED && to == Release.ReleaseState.ACTIVE);
   }
 
   private ResponseRelease releaseToResponseRelease(

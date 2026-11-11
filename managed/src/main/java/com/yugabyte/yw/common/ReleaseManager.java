@@ -1206,6 +1206,19 @@ public class ReleaseManager {
     }
   }
 
+  /**
+   * Rejects choosing {@code version} for a new universe or a software upgrade when its release is
+   * not ACTIVE. Only call it where the request picks the version: operations on a universe already
+   * running that version (node ops, gflags, rollback) must keep working after it's disabled.
+   */
+  public static void checkActiveForNewUse(ReleaseContainer release, String version) {
+    if (release != null && !release.isActive()) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST,
+          "Release " + version + " is not ACTIVE and cannot be used for new universes or upgrades");
+    }
+  }
+
   public Map<String, ReleaseContainer> getAllReleaseContainersByVersion() {
     if (confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
       return Release.getAll().stream()

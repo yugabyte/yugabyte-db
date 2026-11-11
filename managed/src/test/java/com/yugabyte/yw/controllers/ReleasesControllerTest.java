@@ -22,6 +22,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.ReleaseArtifact;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -330,6 +331,54 @@ public class ReleasesControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testToggleInUseReleaseBetweenActiveAndDisabled() {
+    Release r1 = createInUseRelease();
+    String url = releaseUrl(r1);
+    // The UI sends the full release back; omitting artifacts would mean removing them.
+    ObjectNode artifact = Json.newObject();
+    artifact.put("platform", ReleaseArtifact.Platform.LINUX.toString());
+    artifact.put("architecture", Architecture.x86_64.toString());
+    ObjectNode jsonBody = Json.newObject();
+    jsonBody.set("artifacts", Json.newArray().add(artifact));
+    jsonBody.put("state", "DISABLED");
+    assertOk(doPutRequest(url, jsonBody));
+    assertEquals(1, Release.get(r1.getReleaseUUID()).getArtifacts().size());
+    assertEquals(Release.ReleaseState.DISABLED, Release.get(r1.getReleaseUUID()).getState());
+
+    jsonBody.put("state", "ACTIVE");
+    assertOk(doPutRequest(url, jsonBody));
+    assertEquals(Release.ReleaseState.ACTIVE, Release.get(r1.getReleaseUUID()).getState());
+  }
+
+  @Test
+  public void testInUseReleaseRejectsOtherStateChanges() {
+    Release r1 = createInUseRelease();
+    String url = releaseUrl(r1);
+    for (String state : new String[] {"DELETED", "INCOMPLETE"}) {
+      ObjectNode jsonBody = Json.newObject();
+      jsonBody.put("state", state);
+      Result result = assertPlatformException(() -> doPutRequest(url, jsonBody));
+      assertBadRequest(result, "cannot change state of in-use release");
+      assertEquals(Release.ReleaseState.ACTIVE, Release.get(r1.getReleaseUUID()).getState());
+    }
+  }
+
+  @Test
+  public void testDisabledInUseReleaseRejectsDelete() {
+    Release r1 = createInUseRelease();
+    r1.saveState(Release.ReleaseState.DISABLED);
+    String url = releaseUrl(r1);
+    ObjectNode jsonBody = Json.newObject();
+    jsonBody.put("state", "DELETED");
+    Result result = assertPlatformException(() -> doPutRequest(url, jsonBody));
+    assertBadRequest(result, "cannot change state of in-use release");
+
+    result = assertPlatformException(() -> doDeleteRequest(url));
+    assertBadRequest(result, "cannot delete in-use release");
+    assertNotNull(Release.get(r1.getReleaseUUID()));
+  }
+
+  @Test
   public void testIncompleteStateUpdate() {
     Release r1 = Release.create("2.21.0.1", "STS");
     r1.addArtifact(
@@ -562,6 +611,26 @@ public class ReleasesControllerTest extends FakeDBApplication {
     assertOk(result);
     assertNull(Release.get(r1.getReleaseUUID()));
     assertNull(ReleaseArtifact.get(ra1.getArtifactUUID()));
+  }
+
+  private Release createInUseRelease() {
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getId());
+    Release release =
+        Release.create(
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+            "STS");
+    release.addArtifact(
+        ReleaseArtifact.create(
+            "sha256", ReleaseArtifact.Platform.LINUX, Architecture.x86_64, "url"));
+    assertEquals(Release.ReleaseState.ACTIVE, release.getState());
+    assertTrue(!release.getUniverses().isEmpty());
+    return release;
+  }
+
+  private String releaseUrl(Release release) {
+    return String.format(
+        "/api/customers/%s/ybdb_release/%s",
+        defaultCustomer.getUuid(), release.getReleaseUUID().toString());
   }
 
   private Result doPostRequest(String url, ObjectNode jsonBody) {
