@@ -1178,6 +1178,14 @@ bool PgTxnManager::TryAcquireObjectLock(
     return false;
   }
 
+  // A pending transaction restart releases all object locks of the transaction when the tserver
+  // processes it, which happens with the next RPC. A lock taken in shared memory before that would
+  // be released by the restart while postgres still considers it held. Use the RPC path instead,
+  // which carries the restart, so the tserver restarts the transaction before acquiring the lock.
+  if (need_restart_) {
+    return false;
+  }
+
   if (!client_->TryAcquireObjectLockInSharedMemory(
         active_sub_transaction_id_, lock_id, lock_type)) {
     return false;

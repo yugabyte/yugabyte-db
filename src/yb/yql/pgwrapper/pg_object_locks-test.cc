@@ -46,6 +46,7 @@
 DECLARE_bool(auto_create_local_transaction_tables);
 DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
 DECLARE_bool(enable_object_lock_fastpath);
+DECLARE_double(TEST_inject_read_restart_with_probability);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_tablespace_based_transaction_placement);
 DECLARE_bool(force_global_transactions);
@@ -2621,6 +2622,34 @@ TEST_P(PgObjectLocksBothPathsTest, TestLocalLockTransactionPromotion) {
   }
   ASSERT_OK(WaitForLockManagerStatusTablet(txn_id, new_status_tablet));
   ASSERT_OK(conn.CommitTransaction());
+}
+
+// A read restart on the first statement of a transaction restarts the whole transaction. Postgres
+// releases its locks and re-acquires them in the retry, and the tserver releases all object locks
+// of the transaction when it restarts it. The locks re-acquired by the retry must survive the
+// restart.
+TEST_P(PgObjectLocksBothPathsTest, TestReadRestartRetryKeepsObjectLocks) {
+  auto conn = ASSERT_RESULT(Connect());
+  // A read spanning multiple tablets surfaces the restart to the query layer, which retries it.
+  ASSERT_OK(conn.Execute("CREATE TABLE test (k INT, PRIMARY KEY(k HASH)) SPLIT INTO 3 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10)"));
+  ASSERT_OK(conn.Fetch("SELECT COUNT(*) FROM test"));
+
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn2.Execute("SET lock_timeout = '1s'"));
+  for (int i = 0; i < 6; ++i) {
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    ASSERT_OK(SET_FLAG(TEST_inject_read_restart_with_probability, 0.5));
+    ASSERT_OK(conn.Fetch("SELECT COUNT(*) FROM test"));
+    ASSERT_OK(SET_FLAG(TEST_inject_read_restart_with_probability, 0.0));
+
+    // conn still holds ACCESS SHARE on test, so this must time out.
+    ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    ASSERT_NOK_STR_CONTAINS(
+        conn2.Execute("LOCK TABLE test IN ACCESS EXCLUSIVE MODE"), "lock timeout");
+    ASSERT_OK(conn2.RollbackTransaction());
+    ASSERT_OK(conn.CommitTransaction());
+  }
 }
 
 INSTANTIATE_TEST_CASE_P(
