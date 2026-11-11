@@ -168,6 +168,7 @@ DECLARE_uint32(vector_index_tenant_hash_group_and_range_components);
 DECLARE_uint64(vector_index_compaction_chunk_max_memstore_size_mb);
 DECLARE_uint64(vector_index_initial_chunk_memstore_size_mb);
 DECLARE_uint64(vector_index_initial_chunk_size);
+DECLARE_uint64(vector_index_max_extra_tied_results);
 DECLARE_uint64(vector_index_max_insert_tasks);
 DECLARE_uint64(vector_index_max_merge_tasks);
 DECLARE_uint64(vector_index_task_size);
@@ -6976,12 +6977,14 @@ TEST_F(PgVectorIndexUtilTest, NumTopVectorsToRemoveExceedsResultEntries) {
 }
 
 // Covers https://github.com/yugabyte/yugabyte-db/issues/37003.
-// The prefetch size is the scan's limit, so WITH TIES needs a page per extra row. Each page re-runs
-// the search, which may cut ties differently, so a page must not return a row sent before. Rows
-// tied with a row sent before may be left out.
+// The prefetch size is the scan's limit, so WITH TIES needs more than one page. A page returns the
+// whole tie at its end, so the next page, which skips rows by count, does not cut it. Ties past
+// vector_index_max_extra_tied_results are cut, then the rows of the tie after the cut are left out,
+// but no row is returned twice.
 TEST_F(PgVectorIndexUtilTest, PagedSearchWithTies) {
   constexpr int kNumGroups = 10;
   constexpr int kGroupSize = 8;
+  constexpr size_t kMaxExtraTiedResults = 2;
 
   num_pre_split_tablets_ = 1;
   auto conn = ASSERT_RESULT(MakeTable());
@@ -7009,6 +7012,7 @@ TEST_F(PgVectorIndexUtilTest, PagedSearchWithTies) {
   };
 
   auto check = [&](const std::string& stage) -> Status {
+    const auto max_extra_tied_results = FLAGS_vector_index_max_extra_tied_results;
     for (int g = 0; g != kNumGroups; ++g) {
       auto rounds_before = rounds();
       auto rows = VERIFY_RESULT(conn.FetchRows<int64_t>(Format(
@@ -7017,27 +7021,34 @@ TEST_F(PgVectorIndexUtilTest, PagedSearchWithTies) {
       auto context = Format("$0, group $1: $2", stage, g, AsString(rows));
       // The search must have paged for the test to cover the issue.
       SCHECK_GT(rounds() - rounds_before, 1U, IllegalState, context);
-      SCHECK(!rows.empty(), IllegalState, context);
       std::ranges::sort(rows);
       SCHECK(std::ranges::adjacent_find(rows) == rows.end(), IllegalState,
              "Duplicate rows, " + context);
       SCHECK(std::ranges::includes(groups[g], rows), IllegalState,
              "Rows of another group, " + context);
+      const size_t expected_size = std::min<size_t>(kGroupSize, 1 + max_extra_tied_results);
+      SCHECK_EQ(rows.size(), expected_size, IllegalState, context);
     }
     return Status::OK();
   };
 
   // Before the flush the mutable hnswlib chunk serves the search, after the compaction YbHnsw does.
   ASSERT_OK(check("Before flush"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_max_extra_tied_results) = kMaxExtraTiedResults;
+  ASSERT_OK(check("Before flush, ties cut"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_max_extra_tied_results) = 1024;
   ASSERT_OK(cluster_->CompactTablets());
   ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
   ASSERT_OK(check("After compaction"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_max_extra_tied_results) = kMaxExtraTiedResults;
+  ASSERT_OK(check("After compaction, ties cut"));
 }
 
 // Covers https://github.com/yugabyte/yugabyte-db/issues/37003.
-// The join rejects the rows at the query point, so each page drops the tied rows the re-run search
-// returns again. A tablet that is still dropping ties must not let another tablet's farther row out
-// before its own nearer one.
+// The join rejects the rows at the query point. With vector_index_max_extra_tied_results = 0 the
+// pages cut the tie there, so each page drops the tied rows the re-run search returns again. A
+// tablet that is still dropping ties must not let another tablet's farther row out before its own
+// nearer one.
 TEST_F(PgVectorIndexUtilTest, PagedSearchWithTiesAcrossTablets) {
   constexpr int kNumClusters = 20;
   constexpr int kNumTies = 20;
@@ -7077,15 +7088,19 @@ TEST_F(PgVectorIndexUtilTest, PagedSearchWithTiesAcrossTablets) {
         ->TotalCount();
   };
 
-  for (int c = 0; c != kNumClusters; ++c) {
-    auto query = Format(
-        "SELECT test.id FROM test INNER JOIN keep ON test.id = keep.id "
-        "ORDER BY test.embedding $0 '[$1, 0, 0]' LIMIT 1",
-        pgwrapper::DistanceOpName(distance_kind_), 100 * c);
-    auto rounds_before = rounds();
-    auto rows = ASSERT_RESULT(conn.FetchRows<int64_t>(query));
-    ASSERT_GT(rounds() - rounds_before, 1U) << "Cluster " << c;
-    ASSERT_EQ(rows, std::vector<int64_t>{nearest[c]}) << "Cluster " << c;
+  for (auto max_extra_tied_results : {uint64_t{1024}, uint64_t{0}}) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_max_extra_tied_results) = max_extra_tied_results;
+    for (int c = 0; c != kNumClusters; ++c) {
+      auto query = Format(
+          "SELECT test.id FROM test INNER JOIN keep ON test.id = keep.id "
+          "ORDER BY test.embedding $0 '[$1, 0, 0]' LIMIT 1",
+          pgwrapper::DistanceOpName(distance_kind_), 100 * c);
+      auto rounds_before = rounds();
+      auto rows = ASSERT_RESULT(conn.FetchRows<int64_t>(query));
+      auto context = Format("Cluster $0, max extra tied results $1", c, max_extra_tied_results);
+      ASSERT_GT(rounds() - rounds_before, 1U) << context;
+      ASSERT_EQ(rows, std::vector<int64_t>{nearest[c]}) << context;
+    }
   }
 }
 

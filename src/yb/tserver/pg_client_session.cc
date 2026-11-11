@@ -352,9 +352,7 @@ struct VectorIndexQueryPartitionData {
   size_t number_of_vectors_fetched_from_tablet = 0;
   // Fetched vectors that were dropped as not farther than max_fetched_distance.
   size_t number_of_vectors_dropped = 0;
-  // The largest distance fetched from the tablet.
   std::optional<uint64_t> max_fetched_distance;
-  // Whether the last fetch from the tablet dropped rows.
   bool last_fetch_dropped = false;
   bool whether_all_vectors_was_fetched = false;
 
@@ -482,8 +480,8 @@ class VectorIndexQuery {
     // Rows are merged in order only while each partition that could have more has prefetch_size_
     // rows buffered. A partition left short by dropped rows could have nearer rows than those
     // buffered, so return nothing and requery it, which moves past the dropped rows. Other short
-    // pages are returned: their requery may repeat itself and stall the query. Stale pages are held
-    // back too, the buffered rows may be out of order.
+    // pages are returned: their requery may repeat itself and stall the query. The gate applies to
+    // stale pages too: their buffered rows may be out of order as well.
     size_t response_size = std::min(prefetch_size_, vectors_.size());
     if (std::ranges::any_of(partitions_, [this](const auto& partition) {
       return partition.last_fetch_dropped && NeedsFetch(partition);
@@ -672,9 +670,10 @@ class VectorIndexQuery {
       auto& ends = op_resp.vector_index_ends();
       auto& partition_state = partitions_[op.partition_idx];
       // A later page re-runs the search and skips the rows fetched before by count. The new search
-      // may cut ties or order rows differently, so a skipped row may be returned again. Keep only
-      // the rows farther than all fetched before. Rows tied with the farthest fetched row are
-      // lost, as approximate search allows.
+      // may find rows the earlier one missed, so a skipped row may be returned again. Keep only
+      // the rows farther than all fetched before. Rows the re-run newly finds within that distance
+      // are lost, as approximate search allows, and so are ties past
+      // vector_index_max_extra_tied_results.
       const auto skip_distances_up_to = partition_state.max_fetched_distance;
       const auto dropped_before = partition_state.number_of_vectors_dropped;
       size_t sidecar_offset = 8;
