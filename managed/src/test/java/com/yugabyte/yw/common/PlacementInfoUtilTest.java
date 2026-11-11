@@ -30,6 +30,7 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.Mockito.when;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
@@ -3094,6 +3095,112 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       result = Region.create(provider, regionCode, regionCode, "yb-image-1");
     }
     return result;
+  }
+
+  private Provider newTestProvider() {
+    String customerCode = String.valueOf(customerIdx.nextInt(99999));
+    Customer customer =
+        ModelFactory.testCustomer(customerCode, String.format("Test Customer %s", customerCode));
+    return ModelFactory.newProvider(customer, CloudType.aws);
+  }
+
+  private void assertDuplicateZoneRejected(PlacementInfo pi, String zoneCode, String regionCode) {
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class, () -> PlacementInfoUtil.validateNoZoneDuplicates(pi));
+    assertEquals(BAD_REQUEST, e.getHttpStatus());
+    assertThat(
+        e.getMessage(),
+        RegexMatcher.matchesRegex(
+            ".*Found duplicate zone: " + zoneCode + " in region " + regionCode + " in cloud .*"));
+  }
+
+  @Test
+  public void testValidateNoZoneDuplicatesNullPlacement() {
+    PlacementInfoUtil.validateNoZoneDuplicates(null);
+  }
+
+  @Test
+  public void testValidateNoZoneDuplicatesEmptyPlacement() {
+    PlacementInfoUtil.validateNoZoneDuplicates(new PlacementInfo());
+  }
+
+  @Test
+  public void testValidateNoZoneDuplicatesDistinctZones() {
+    Provider provider = newTestProvider();
+    // Zones of the same region, plus a zone with the same code in another region: the master
+    // identifies a zone by cloud:region:zone, so those are different zones.
+    PlacementInfo pi = generatePlacementInfo(provider, 2, 2);
+    Region r2 = Region.getByCode(provider, "r2");
+    AvailabilityZone sameCodeInR2 =
+        AvailabilityZone.createOrThrow(r2, "r1z1", "Same code", "subnet-same");
+    PlacementInfoUtil.addPlacementZone(sameCodeInR2.getUuid(), pi);
+    assertEquals(5, pi.azStream().count());
+
+    PlacementInfoUtil.validateNoZoneDuplicates(pi);
+  }
+
+  @Test
+  public void testValidateNoZoneDuplicatesSameZoneTwiceInRegion() {
+    Provider provider = newTestProvider();
+    PlacementInfo pi = generatePlacementInfo(provider, 2);
+    PlacementRegion region = pi.cloudList.get(0).regionList.get(0);
+    PlacementAZ dup = new PlacementAZ();
+    dup.uuid = region.azList.get(0).uuid;
+    dup.name = region.azList.get(0).name;
+    region.azList.add(dup);
+
+    assertDuplicateZoneRejected(pi, "r1z1", "r1");
+  }
+
+  @Test
+  public void testValidateNoZoneDuplicatesDifferentZonesWithSameCode() {
+    Provider provider = newTestProvider();
+    PlacementInfo pi = generatePlacementInfo(provider, 2);
+    Region r1 = Region.getByCode(provider, "r1");
+    // Nothing in the DB forces zone codes to be unique within a region.
+    AvailabilityZone sameCode = AvailabilityZone.createOrThrow(r1, "r1z1", "Same code", "subnet-x");
+    PlacementInfoUtil.addPlacementZone(sameCode.getUuid(), pi);
+    assertEquals(3, pi.azStream().count());
+
+    assertDuplicateZoneRejected(pi, "r1z1", "r1");
+  }
+
+  @Test
+  public void testValidateNoZoneDuplicatesSameRegionTwice() {
+    Provider provider = newTestProvider();
+    PlacementInfo pi = generatePlacementInfo(provider, 2);
+    PlacementCloud cloud = pi.cloudList.get(0);
+    PlacementRegion region = cloud.regionList.get(0);
+    PlacementRegion dupRegion = new PlacementRegion();
+    dupRegion.uuid = region.uuid;
+    dupRegion.code = region.code;
+    dupRegion.name = region.name;
+    dupRegion.azList.add(region.azList.get(1));
+    cloud.regionList.add(dupRegion);
+
+    assertDuplicateZoneRejected(pi, "r1z2", "r1");
+  }
+
+  @Test
+  public void testValidateNoZoneDuplicatesSameCloudTwice() {
+    Provider provider = newTestProvider();
+    PlacementInfo pi = generatePlacementInfo(provider, 1);
+    pi.cloudList.add(pi.cloudList.get(0));
+
+    assertDuplicateZoneRejected(pi, "r1z1", "r1");
+  }
+
+  @Test
+  public void testValidateNoZoneDuplicatesUnknownZone() {
+    Provider provider = newTestProvider();
+    PlacementInfo pi = generatePlacementInfo(provider, 1);
+    pi.cloudList.get(0).regionList.get(0).azList.get(0).uuid = UUID.randomUUID();
+
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class, () -> PlacementInfoUtil.validateNoZoneDuplicates(pi));
+    assertEquals(BAD_REQUEST, e.getHttpStatus());
   }
 
   private PlacementAZ getPlacementAZ(PlacementInfo pi, UUID regionUUID, UUID azUUID) {

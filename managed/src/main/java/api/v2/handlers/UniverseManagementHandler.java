@@ -352,6 +352,9 @@ public class UniverseManagementHandler extends ApiControllerUtils {
             .filter(c -> !c.getUuid().equals(primaryV2Cluster.getUuid()))
             .findAny()
             .isPresent();
+    boolean isPrimaryEdited =
+        universeEditSpec.getClusters().stream()
+            .anyMatch(c -> c.getUuid().equals(primaryV2Cluster.getUuid()));
     // map universeEditSpec to v1 universe details
     UniverseDefinitionTaskParams v1DefnParams =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toV1UniverseDefinitionTaskParamsFromEditSpec(
@@ -383,6 +386,15 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     Cluster primaryCluster = v1Params.getPrimaryCluster();
     for (Cluster readOnlyCluster : dbUniverse.getUniverseDetails().getReadOnlyClusters()) {
       UniverseCRUDHandler.validateConsistency(primaryCluster, readOnlyCluster);
+    }
+    // This path doesn't go through UniverseCRUDHandler.update(), which validates the clusters of
+    // the request.
+    if (isPrimaryEdited) {
+      PlacementInfoUtil.validateNoZoneDuplicates(primaryCluster.getOverallPlacement());
+    }
+    if (isRREdited && !v1Params.getReadOnlyClusters().isEmpty()) {
+      PlacementInfoUtil.validateNoZoneDuplicates(
+          v1Params.getReadOnlyClusters().get(0).getOverallPlacement());
     }
 
     TaskType taskType = TaskType.EditUniverse;

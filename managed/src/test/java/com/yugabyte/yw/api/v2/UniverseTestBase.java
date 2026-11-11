@@ -7,6 +7,7 @@ import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.anyOf;
 import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.emptyCollectionOf;
 import static org.hamcrest.Matchers.emptyString;
 import static org.hamcrest.Matchers.hasEntry;
@@ -14,6 +15,7 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -381,6 +383,86 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     return placementAZ;
   }
 
+  /**
+   * Creates a second provider that is a copy of the current one: same cloud type (so same cloud
+   * code), regions and zone codes. A multiprovider placement using both has the same
+   * cloud:region:zone twice, which the master rejects.
+   */
+  protected Provider createDuplicateProvider() {
+    Provider original = Provider.getOrBadRequest(providerUuid);
+    Provider duplicate =
+        newProvider(customer, original.getCloudCode(), original.getName() + "-duplicate");
+    for (Region region : Region.getByProvider(providerUuid)) {
+      Region regionCopy =
+          Region.create(duplicate, region.getCode(), region.getName(), "yb-image-1");
+      for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(region.getUuid())) {
+        AvailabilityZone.createOrThrow(regionCopy, az.getCode(), az.getName(), az.getSubnet());
+      }
+    }
+    ImageBundleDetails imageDetails = new ImageBundleDetails();
+    imageDetails.setArch(Architecture.aarch64);
+    imageDetails.setGlobalYbImage("yb-image-global");
+    ImageBundle.create(duplicate, "centos-image-ami-duplicate", imageDetails, true);
+    return duplicate;
+  }
+
+  protected ClusterPerProviderSpec perProviderSpecFor(
+      ClusterPerProviderSpec template, Provider provider) {
+    return new ClusterPerProviderSpec()
+        .provider(provider.getUuid())
+        .imageBundleUuid(ImageBundle.getAll(provider.getUuid()).get(0).getUuid())
+        .accessKeyCode(template.getAccessKeyCode())
+        .networkingSpec(template.getNetworkingSpec())
+        .instanceTags(template.getInstanceTags())
+        .nodesSpecs(template.getNodesSpecs());
+  }
+
+  /**
+   * Geo partitions as in {@link #getUniverseCreateSpecV2Geo}, except that the second one is placed
+   * in the duplicate provider: in the same region as the first partition if {@code overlap} (so the
+   * zones are duplicated), otherwise in the next one.
+   */
+  protected List<ClusterPartitionSpec> geoPartitionsWithDuplicateProvider(
+      Provider duplicate, boolean overlap) {
+    List<ClusterPartitionSpec> partitions = new ArrayList<>();
+    for (int i = 0; i < 3; i++) {
+      UUID provider = i == 1 ? duplicate.getUuid() : providerUuid;
+      int regionIdx = i == 1 && overlap ? 0 : i;
+      int rf = i == 0 ? 5 : 3;
+      ClusterPartitionSpec partition = new ClusterPartitionSpec();
+      partition.setName("geo" + i);
+      partition.setDefaultPartition(i == 0);
+      partition.setTablespaceName("tablespace" + i);
+      partition.setReplicationFactor(rf);
+      partition.setPlacement(
+          new ClusterPlacementSpec()
+              .cloudList(List.of(placementFromProvider(provider, regionIdx, 5 + i, rf))));
+      partitions.add(partition);
+    }
+    return partitions;
+  }
+
+  /** A multiprovider create spec whose first and second geo partitions share cloud and zones. */
+  protected UniverseCreateSpec getUniverseCreateSpecV2DuplicateZones(Provider duplicate) {
+    UniverseCreateSpec universeCreateSpec = getUniverseCreateSpecV2Geo(true);
+    ClusterSpec clusterSpec = universeCreateSpec.getSpec().getClusters().get(0);
+    clusterSpec.addProviderSpecsItem(
+        perProviderSpecFor(clusterSpec.getProviderSpecs().get(0), duplicate));
+    clusterSpec.setPartitionsSpec(geoPartitionsWithDuplicateProvider(duplicate, true));
+    return universeCreateSpec;
+  }
+
+  protected void assertDuplicateZoneRejected(ApiException e) {
+    assertEquals(400, e.getCode());
+    Region region = Region.getByProvider(providerUuid).get(0);
+    assertThat(e.getResponseBody(), containsString("Found duplicate zone: "));
+    assertThat(
+        e.getResponseBody(),
+        containsString(
+            String.format(
+                "in region %s in cloud %s", region.getCode(), region.getProvider().getCode())));
+  }
+
   // Place nodes evenly across zones of first region
   protected PlacementCloud placementFromProvider(int numNodesToPlace, int rfTotal) {
     return placementFromProvider(0, numNodesToPlace, rfTotal);
@@ -388,6 +470,11 @@ public class UniverseTestBase extends UniverseControllerTestBase {
 
   // Place nodes evenly across zones of regionIdx region
   protected PlacementCloud placementFromProvider(int regionIdx, int numNodesToPlace, int rfTotal) {
+    return placementFromProvider(providerUuid, regionIdx, numNodesToPlace, rfTotal);
+  }
+
+  protected PlacementCloud placementFromProvider(
+      UUID providerUuid, int regionIdx, int numNodesToPlace, int rfTotal) {
     Provider provider = Provider.get(customer.getUuid(), providerUuid);
     PlacementCloud placementCloud =
         new PlacementCloud().uuid(providerUuid).code(provider.getCode());

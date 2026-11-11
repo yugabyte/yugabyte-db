@@ -1556,6 +1556,44 @@ public class PlacementInfoUtil {
         .collect(Collectors.toSet());
   }
 
+  /**
+   * Mirrors the duplicate check in {@code CatalogManagerUtil::IsPlacementInfoValid} (yb-master), so
+   * that a placement the master would reject is refused up front with a clear error instead of
+   * failing later in the universe task. Only the duplicate check is mirrored; the master's prefix
+   * and overlap checks are not.
+   *
+   * <p>A zone is identified the way the master does it: {@code cloud code:region code:zone code}.
+   * The zone code is read from the DB by the AZ uuid, because {@link PlacementAZ#name} is not the
+   * code the master sees.
+   *
+   * @param placementInfo placement to validate; {@code null} is accepted and not validated.
+   * @throws PlatformServiceException with {@code BAD_REQUEST} if the same cloud/region/zone appears
+   *     more than once, or if a zone in the placement does not exist.
+   */
+  public static void validateNoZoneDuplicates(PlacementInfo placementInfo) {
+    if (placementInfo == null) {
+      return;
+    }
+    Set<String> allZones = new HashSet<>();
+    placementInfo
+        .azInfoStream()
+        .forEach(
+            azInfo -> {
+              // Placement uses AZ name, whereas generated placement uses AZ code, so need to query
+              // DB.
+              AvailabilityZone az = AvailabilityZone.getOrBadRequest(azInfo.placementAZ.uuid);
+              String zoneId =
+                  String.format("%s:%s:%s", azInfo.cloud.code, azInfo.region.code, az.getCode());
+              if (!allZones.add(zoneId)) {
+                throw new PlatformServiceException(
+                    BAD_REQUEST,
+                    String.format(
+                        "Found duplicate zone: %s in region %s in cloud %s",
+                        az.getCode(), azInfo.region.code, azInfo.cloud.code));
+              }
+            });
+  }
+
   @Data
   @AllArgsConstructor
   private static class AZInfo {
