@@ -331,10 +331,14 @@ public class CommonUtils {
    * elements by an explicit key. E.g. {"REGION_LOCATIONS" -> "REGION"} means elements in
    * REGION_LOCATIONS are matched by REGION, so reordering the array does not swap tokens. Elements
    * with no match in the original (new elements) are kept as-is.
+   *
+   * @throws PlatformServiceException (BAD_REQUEST) if two elements of such an array share an
+   *     identity value, or if an element with no match in the original carries a masked value,
+   *     since neither can be resolved to a stored secret.
    */
   public static ObjectNode unmaskJsonObject(
       ObjectNode originalData, ObjectNode data, Map<String, String> arrayIdentityFields) {
-    if (originalData == null) return data;
+    if (originalData == null || data == null) return data;
     return unmaskObjectNode(originalData, data, arrayIdentityFields);
   }
 
@@ -359,6 +363,7 @@ public class CommonUtils {
         result.set(
             key,
             unmaskArrayNode(
+                key,
                 originalVal,
                 (ArrayNode) incomingVal,
                 arrayIdentityFields.get(key),
@@ -371,24 +376,64 @@ public class CommonUtils {
   }
 
   private static ArrayNode unmaskArrayNode(
+      String arrayField,
       JsonNode originalArray,
       ArrayNode incomingArray,
       String identityField,
       Map<String, String> arrayIdentityFields) {
-    ArrayNode processed = Json.newArray();
+    // Matching is first-match by identity value, so duplicates would let one element's stored
+    // secret be restored into another element.
+    Set<String> identities = new HashSet<>();
     for (JsonNode elem : incomingArray) {
-      if (elem.isObject()) {
-        ObjectNode matchingOriginal =
-            findMatchingArrayElement(originalArray, (ObjectNode) elem, identityField);
-        processed.add(
-            matchingOriginal != null
-                ? unmaskObjectNode(matchingOriginal, (ObjectNode) elem, arrayIdentityFields)
-                : elem);
-      } else {
-        processed.add(elem);
+      JsonNode identity = elem.get(identityField);
+      if (identity != null && identity.isTextual() && !identities.add(identity.asText())) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "Duplicate %s '%s' in %s.", identityField, identity.asText(), arrayField));
       }
     }
+
+    ArrayNode processed = Json.newArray();
+    for (int i = 0; i < incomingArray.size(); i++) {
+      JsonNode elem = incomingArray.get(i);
+      if (!elem.isObject()) {
+        processed.add(elem);
+        continue;
+      }
+      ObjectNode matchingOriginal =
+          findMatchingArrayElement(originalArray, (ObjectNode) elem, identityField);
+      if (matchingOriginal != null) {
+        processed.add(unmaskObjectNode(matchingOriginal, (ObjectNode) elem, arrayIdentityFields));
+        continue;
+      }
+      String maskedField = findMaskedSensitiveField((ObjectNode) elem);
+      if (maskedField != null) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "%s[%d].%s is masked, but no existing element has %s '%s'. Send the actual value.",
+                arrayField, i, maskedField, identityField, elem.path(identityField).asText()));
+      }
+      processed.add(elem);
+    }
     return processed;
+  }
+
+  private static String findMaskedSensitiveField(ObjectNode node) {
+    for (Iterator<Entry<String, JsonNode>> it = node.fields(); it.hasNext(); ) {
+      Entry<String, JsonNode> entry = it.next();
+      String key = entry.getKey();
+      JsonNode value = entry.getValue();
+      if (isSensitiveField(key) && value.isTextual() && isMaskedValue(key, value.asText())) {
+        return key;
+      }
+    }
+    return null;
+  }
+
+  private static boolean isMaskedValue(String key, String value) {
+    return StringUtils.equals(value, getMaskedValue(key, value));
   }
 
   // Returns the original array element whose identity field matches the incoming element,
@@ -415,14 +460,14 @@ public class CommonUtils {
 
   private static String unmaskSensitiveValue(
       String key, String incomingValue, JsonNode originalNode) {
-    if (!StringUtils.equals(incomingValue, getMaskedValue(key, incomingValue))) {
+    if (!isMaskedValue(key, incomingValue)) {
       return incomingValue; // Not a ****-mask placeholder; store as-is.
     }
     if (originalNode != null && originalNode.isTextual()) {
       String originalValue = originalNode.asText();
       // Don't restore if the original is also a ****-mask placeholder (e.g. previously clobbered
       // by a bug). In that case keep the incoming value so the user can supply a real token.
-      if (!StringUtils.equals(originalValue, getMaskedValue(key, originalValue))) {
+      if (!isMaskedValue(key, originalValue)) {
         return originalValue;
       }
     }
