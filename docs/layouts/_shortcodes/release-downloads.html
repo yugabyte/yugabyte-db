@@ -5,10 +5,12 @@
     version  - full 4-part version, e.g. "2026.1.0.0"
     build    - build tag without the "b" prefix, e.g. "115"
     type     - "ybdb" (default) or "yba"
+    mac      - "true" (default) or "false". Set to "false" to omit the macOS tabs from a ybdb release that has no macOS binaries.
   
   Usage:
     {{< release-downloads version="2026.1.0.0" build="115" >}}
     {{< release-downloads version="2026.1.0.0" build="115" type="yba" >}}
+    {{< release-downloads version="2024.2.12.0" build="48" mac="false" >}}
   */}}
   
   {{- .Page.Scratch.Add "releaseDownloadTabOrdinal" 1 -}}
@@ -17,6 +19,7 @@
   {{- $version  := .Get "version" -}}
   {{- $build    := .Get "build" -}}
   {{- $type     := default "ybdb" (.Get "type") -}}
+  {{- $mac      := ne (.Get "mac") "false" -}}
   {{- $bver     := printf "%s-b%s" $version $build -}}
   {{- $base     := printf "https://software.yugabyte.com/releases/%s" $version -}}
   {{- $ybaBase  := printf "https://downloads.yugabyte.com/releases/%s" $version -}}
@@ -40,6 +43,14 @@
   {{- $tabs = slice
     (dict "header" `<i class='fa-brands fa-linux' aria-hidden='true'></i> Linux x86` "body" (printf "wget %s/yba_installer_full-%s-linux-x86_64.tar.gz\necho \"$(curl -L %s/yba_installer_full-%s-linux-x86_64.tar.gz.sha) *yba_installer_full-%s-linux-x86_64.tar.gz\" | shasum --check" $ybaBase $bver $ybaBase $bver $bver))
   -}}
+  {{- end -}}
+
+  {{- if not $mac -}}
+  {{- $kept := slice -}}
+  {{- range $tabs -}}
+  {{- if not (strings.Contains .header "fa-apple") -}}{{- $kept = $kept | append . -}}{{- end -}}
+  {{- end -}}
+  {{- $tabs = $kept -}}
   {{- end -}}
   
   {{- if eq (len $tabs) 1 -}}
