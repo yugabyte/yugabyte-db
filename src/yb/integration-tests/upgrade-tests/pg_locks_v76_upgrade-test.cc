@@ -45,8 +45,8 @@ TEST_F(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
   // conn's backend. The read in the transaction below after finalize then shows whether that
   // transaction refreshes its catalog cache: without a cached copy, the read would load the new
   // row type either way. Read before BEGIN: since #36572, a transaction that starts before
-  // finalize takes object locks, so a read in that transaction locks the view across finalize,
-  // and V76 cannot replace the view.
+  // finalize takes local object locks, so a read in that transaction locks the view across
+  // finalize, and V76 cannot replace the view.
   ASSERT_OK(conn.Fetch(kPgLocksQuery));
   // Acquire advisory locks and a row lock, and hold them across the upgrade.
   ASSERT_OK(conn.Fetch("SELECT pg_advisory_lock(1);"));
