@@ -88,27 +88,30 @@ The following values apply to a Google service-account ID token:
 | Claim (`jwt_matching_claim_key`) | `email` |
 | Audience (`jwt_audiences`) | The audience you requested when the token was created |
 
-To use this provider on a new cluster:
+To try this provider on a new local cluster, without TLS:
 
-1. Start YugabyteDB with a password rule for `yugabyte` and a JWT rule for other roles.
+1. Start a local cluster, set a password for `yugabyte`, and create a role whose name is the service account email. Quote the role name because it includes characters such as `@`.
+
+    ```sh
+    ./bin/yugabyted start
+    ./bin/ysqlsh -c "ALTER ROLE yugabyte PASSWORD '<password>'"
+    ./bin/ysqlsh -c 'CREATE ROLE "app@example.iam.gserviceaccount.com" LOGIN'
+    ```
+
+1. Restart the node with a password rule for `yugabyte` and a JWT rule for other roles. This example uses `host` rules because a local cluster started without `--secure` does not have TLS enabled, and a `hostssl` rule only matches TLS connections. For a cluster with TLS enabled, use `hostssl` instead.
 
     When you pass a CSV flag through yugabyted, wrap the value in curly braces. See [Pass additional flags to YB-Master and YB-TServer](../../../reference/configuration/yugabyted/#pass-additional-flags-to-yb-master-and-yb-tserver).
 
     ```sh
+    ./bin/yugabyted stop
     ./bin/yugabyted start \
-      --tserver_flags="ysql_hba_conf_csv={hostssl all yugabyte all md5,hostssl all all all jwt jwt_jwks_url=https://www.googleapis.com/oauth2/v3/certs jwt_issuers=https://accounts.google.com jwt_audiences=<audience> jwt_matching_claim_key=email}"
+      --tserver_flags="ysql_hba_conf_csv={host all yugabyte all md5,host all all all jwt jwt_jwks_url=https://www.googleapis.com/oauth2/v3/certs jwt_issuers=https://accounts.google.com jwt_audiences=<audience> jwt_matching_claim_key=email}"
     ```
 
-1. Set a password for `yugabyte`, sign in as that role, and create a role whose name is the service account email. Quote the role name because it includes characters such as `@`.
-
-    ```plpgsql
-    CREATE ROLE "app@example.iam.gserviceaccount.com" LOGIN;
-    ```
-
-1. Connect with the JWT as the password. The client uses TLS because the rule is `hostssl`.
+1. Connect with the JWT as the password.
 
     ```sh
-    ./bin/ysqlsh -h <host> -U 'app@example.iam.gserviceaccount.com' -p '<jwt>' "sslmode=require"
+    PGPASSWORD='<jwt>' ./bin/ysqlsh -h <host> -U 'app@example.iam.gserviceaccount.com'
     ```
 
     The connection succeeds when the token signature, issuer, and audience match the rule, and the `email` claim equals the role name.
