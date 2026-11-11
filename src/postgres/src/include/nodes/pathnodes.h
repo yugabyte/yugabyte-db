@@ -1401,7 +1401,8 @@ typedef struct
  * of a scan.
  *
  * 'merge_scan_info' holds the merge stream keys and merge sort columns of a
- * merge scan path, or is NULL (see yb_finalize_merge_scan_info).
+ * merge scan path (see yb_finalize_merge_scan_info).  It is NULL for a path
+ * that is not a merge scan.
  */
 typedef struct YbIndexPathInfo
 {
