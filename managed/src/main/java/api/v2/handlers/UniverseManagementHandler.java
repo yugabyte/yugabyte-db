@@ -393,8 +393,8 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     for (Cluster readOnlyCluster : dbUniverse.getUniverseDetails().getReadOnlyClusters()) {
       UniverseCRUDHandler.validateConsistency(primaryCluster, readOnlyCluster);
     }
-    // This path doesn't go through UniverseCRUDHandler.update(), which validates the clusters of
-    // the request.
+    // Since we are starting edit task directly instead of calling UniverseCRUDHandler,
+    // have to validate it here.
     if (isPrimaryEdited) {
       PlacementInfoUtil.validateNoZoneDuplicates(primaryCluster.getOverallPlacement());
     }
