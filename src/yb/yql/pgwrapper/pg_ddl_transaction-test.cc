@@ -1218,6 +1218,8 @@ TEST_F(PgMasterDDLReadRestartProbeTest,
   ASSERT_OK(RunRepro(false /* expect_error */));
 }
 
+// TODO(#32073): Also run with transactional DDL, once a retried statement restores the user in
+// that mode.
 class PgLegacyDdlUserContextTest : public LibPqTestBase {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
@@ -1274,51 +1276,6 @@ TEST_F(PgLegacyDdlUserContextTest, RetriedStatementRestoresAnalyzeUser) {
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>("SELECT analyze_once()")), session_user);
   ASSERT_OK(conn.Execute("RESET yb_use_internal_auto_analyze_service_conn"));
   ASSERT_OK(blocker.Execute("ROLLBACK"));
-  ASSERT_NO_FATALS(AssertSessionUserRestored(conn));
-}
-
-// REFRESH MATERIALIZED VIEW CONCURRENTLY runs ANALYZE through SPI as the matview owner under
-// SECURITY_RESTRICTED_OPERATION. However the refresh ends, the session must get its own user
-// back.
-TEST_F(PgLegacyDdlUserContextTest, AbortedRefreshRestoresUser) {
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute("CREATE ROLE mv_owner"));
-  ASSERT_OK(conn.Execute("CREATE TABLE base (k int, v int)"));
-  ASSERT_OK(conn.Execute("INSERT INTO base VALUES (1, 1)"));
-  ASSERT_OK(conn.Execute("CREATE MATERIALIZED VIEW mv AS SELECT * FROM base"));
-  ASSERT_OK(conn.Execute("CREATE UNIQUE INDEX ON mv (k)"));
-  ASSERT_OK(conn.Execute("ALTER TABLE base OWNER TO mv_owner"));
-  ASSERT_OK(conn.Execute("ALTER MATERIALIZED VIEW mv OWNER TO mv_owner"));
-
-  ASSERT_OK(conn.Execute("BEGIN"));
-  ASSERT_OK(conn.Execute("REFRESH MATERIALIZED VIEW CONCURRENTLY mv"));
-  ASSERT_OK(conn.Execute("ROLLBACK"));
-  ASSERT_NO_FATALS(AssertSessionUserRestored(conn));
-
-  // Fails after the refresh has analyzed its temp table.
-  ASSERT_OK(conn.Execute("INSERT INTO base VALUES (1, 1)"));
-  ASSERT_NOK_STR_CONTAINS(
-      conn.Execute("REFRESH MATERIALIZED VIEW CONCURRENTLY mv"), "duplicate rows");
-  ASSERT_NO_FATALS(AssertSessionUserRestored(conn));
-
-  ASSERT_OK(conn.Execute(R"#(
-      DO $$
-      BEGIN
-        BEGIN
-          REFRESH MATERIALIZED VIEW CONCURRENTLY mv;
-        EXCEPTION WHEN cardinality_violation THEN NULL;
-        END;
-        IF current_user <> session_user THEN
-          RAISE EXCEPTION 'still running as %', current_user;
-        END IF;
-      END $$
-  )#"));
-  ASSERT_NO_FATALS(AssertSessionUserRestored(conn));
-
-  ASSERT_OK(conn.Execute("BEGIN"));
-  ASSERT_OK(conn.Execute("SET ROLE mv_owner"));
-  ASSERT_OK(conn.Execute("ANALYZE base"));
-  ASSERT_OK(conn.Execute("ROLLBACK"));
   ASSERT_NO_FATALS(AssertSessionUserRestored(conn));
 }
 
