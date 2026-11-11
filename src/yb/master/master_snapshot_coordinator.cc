@@ -58,6 +58,7 @@
 
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
@@ -85,6 +86,10 @@ DEFINE_RUNTIME_uint32(snapshot_coordinator_missing_creating_snapshot_grace_sec, 
 
 DEFINE_test_flag(bool, skip_sending_restore_finished, false,
                  "Whether we should skip sending RESTORE_FINISHED to tablets.");
+
+DEFINE_test_flag(bool, skip_persisting_restore_complete, false,
+                 "Do not persist or publish restoration completion, as if the master crashed "
+                 "right before writing it to sys catalog.");
 
 DEFINE_RUNTIME_bool(schedule_snapshot_rpcs_out_of_band, true,
     "Should tablet snapshot RPCs be scheduled out of band from the periodic"
@@ -139,6 +144,10 @@ DEFINE_RUNTIME_int64(max_concurrent_restoration_rpcs_per_tserver, 1,
 DEFINE_test_flag(int32, delay_sys_catalog_restore_on_followers_secs, 0,
                  "Sleep for these many seconds on followers during sys catalog restore");
 
+DEFINE_test_flag(bool, pause_restore_after_ddl_verification_check, false,
+                 "Pause between checking that no YSQL DDL verification is in progress and "
+                 "starting a snapshot schedule restore.");
+
 DEFINE_test_flag(bool, fatal_on_snapshot_verify, true,
                  "Whether to use DFATAL to log error messages when verifying a snapshot.");
 
@@ -156,13 +165,12 @@ YB_DEFINE_ENUM(Bound, (kFirst)(kLast));
 Status SubmitWrite(
     docdb::KeyValueWriteBatchPB&& write_batch, int64_t leader_term,
     SnapshotCoordinatorContext* context,
-    const std::shared_ptr<Synchronizer>& synchronizer = nullptr) {
+    tablet::OperationCompletionCallback callback = nullptr) {
   auto query = std::make_unique<tablet::WriteQuery>(
       leader_term, CoarseMonoClock::now() + FLAGS_sys_catalog_write_timeout_ms * 1ms,
       /* context */ nullptr, /* tablet= */ nullptr, /* rpc_context= */ nullptr);
-  if (synchronizer) {
-    query->set_callback(
-        tablet::MakeWeakSynchronizerOperationCompletionCallback(synchronizer));
+  if (callback) {
+    query->set_callback(std::move(callback));
   }
   *query->operation().AllocateRequest()->mutable_write_batch() = std::move(write_batch);
   return context->Submit(query.release()->PrepareSubmit(), leader_term);
@@ -172,7 +180,9 @@ Status SynchronizedWrite(
     docdb::KeyValueWriteBatchPB&& write_batch, int64_t leader_term, CoarseTimePoint deadline,
     SnapshotCoordinatorContext* context) {
   auto synchronizer = std::make_shared<Synchronizer>();
-  RETURN_NOT_OK(SubmitWrite(std::move(write_batch), leader_term, context, synchronizer));
+  RETURN_NOT_OK(SubmitWrite(
+      std::move(write_batch), leader_term, context,
+      tablet::MakeWeakSynchronizerOperationCompletionCallback(synchronizer)));
   return synchronizer->WaitUntil(ToSteady(deadline));
 }
 
@@ -625,7 +635,7 @@ class MasterSnapshotCoordinator::Impl {
     }
     // Disable concurrent RPCs to the master leader for the duration of sys catalog restore.
     if (leader_term >= 0) {
-      context_.PrepareRestore();
+      context_.PrepareRestore(restoration->restoration_id);
     }
     auto tablet = VERIFY_RESULT(operation.tablet_safe());
     LOG_SLOW_EXECUTION(INFO, 1000, "Restore sys catalog took") {
@@ -886,6 +896,8 @@ class MasterSnapshotCoordinator::Impl {
       RestoreSnapshotScheduleResponsePB* resp, int64_t leader_term, CoarseTimePoint deadline) {
     const auto snapshot_id = VERIFY_RESULT(
         GetSuitableSnapshotForRestore(schedule_id, restore_at, leader_term, deadline));
+    RETURN_NOT_OK(CheckNoYsqlDdlVerificationInProgressForSnapshot(snapshot_id));
+    TEST_PAUSE_IF_FLAG(TEST_pause_restore_after_ddl_verification_check);
     TxnSnapshotRestorationId restoration_id = VERIFY_RESULT(Restore(
         snapshot_id, restore_at, leader_term));
 
@@ -893,6 +905,16 @@ class MasterSnapshotCoordinator::Impl {
     resp->set_restoration_id(restoration_id.data(), restoration_id.size());
 
     return Status::OK();
+  }
+
+  Status CheckNoYsqlDdlVerificationInProgressForSnapshot(const TxnSnapshotId& snapshot_id) {
+    NamespaceId namespace_id;
+    {
+      std::lock_guard lock(mutex_);
+      const auto& snapshot = VERIFY_RESULT_REF(FindSnapshot(snapshot_id));
+      namespace_id = VERIFY_RESULT(snapshot.GetNamespaceId());
+    }
+    return context_.CheckNoYsqlDdlVerificationInProgress(namespace_id);
   }
 
   Status FillHeartbeatResponse(TSHeartbeatResponsePB* resp) {
@@ -1882,9 +1904,14 @@ class MasterSnapshotCoordinator::Impl {
     operation->set_completion_callback(
         tablet::MakeWeakSynchronizerOperationCompletionCallback(synchronizer));
 
-    RETURN_NOT_OK(context_.Submit(std::move(operation), leader_term));
-
-    return synchronizer->Wait();
+    cm_->FenceSysCatalogForRestore(restoration_id);
+    auto status = context_.Submit(std::move(operation), leader_term);
+    if (status.ok()) {
+      // Rejections such as a stale term are reported here, not by Submit.
+      status = synchronizer->Wait();
+    }
+    cm_->UnfenceSysCatalogForRestore(restoration_id);
+    return status;
   }
 
   void DeleteSnapshotAborted(
@@ -1980,17 +2007,14 @@ class MasterSnapshotCoordinator::Impl {
       }
     }
 
-    last_restorations_update_ht_ = context_.Clock()->Now();
-    restoration->set_complete_time(last_restorations_update_ht_);
-
-    LOG(INFO) << "Setting restore complete time to " << last_restorations_update_ht_;
+    auto complete_time = context_.Clock()->Now();
+    LOG(INFO) << "Setting restore complete time to " << complete_time;
 
     if (restoration->schedule_id()) {
       auto schedule = FindSnapshotSchedule(restoration->schedule_id());
       if (schedule.ok()) {
         docdb::KeyValueWriteBatchPB write_batch;
-        schedule->mutable_options().add_restoration_times(
-            last_restorations_update_ht_.ToUint64());
+        schedule->mutable_options().add_restoration_times(complete_time.ToUint64());
         Status store_to_write_batch_status = schedule->StoreToWriteBatch(&write_batch);
         if (store_to_write_batch_status.ok()) {
           Status submit_status = SubmitWrite(std::move(write_batch), leader_term, &context_);
@@ -2009,11 +2033,72 @@ class MasterSnapshotCoordinator::Impl {
       }
     }
 
-    if (FLAGS_TEST_skip_sending_restore_finished) {
+    PersistRestorationComplete(restoration, complete_time, leader_term);
+  }
+
+  // Tablets accept writes again as soon as they learn complete_time, so it is set in memory only
+  // when the write is applied (LoadEntry). Otherwise a new leader could re-run the restoration
+  // and wipe writes made after it.
+  void PersistRestorationComplete(
+      RestorationState* restoration, HybridTime complete_time, int64_t leader_term)
+      REQUIRES(mutex_) {
+    if (FLAGS_TEST_skip_persisting_restore_complete) {
+      LOG(INFO) << "Skip persisting completion of restoration " << restoration->restoration_id();
       return;
     }
+    LOG(INFO) << "Marking restoration " << restoration->restoration_id()
+              << " as complete in sys catalog";
+    docdb::KeyValueWriteBatchPB write_batch;
+    auto status = restoration->StoreCompletionToWriteBatch(complete_time, &write_batch);
+    if (!status.ok()) {
+      LOG(DFATAL) << "Failed to prepare write batch for snapshot: " << status;
+      return;
+    }
+    status = SubmitWrite(
+        std::move(write_batch), leader_term, &context_,
+        [this, restoration_id = restoration->restoration_id(), leader_term](
+            const Status& write_status) {
+          // Runs from Raft apply, or inline from SubmitWrite with mutex_ held.
+          context_.Scheduler().io_service().post(
+              [this, restoration_id, leader_term, write_status] {
+            RestorationCompletePersisted(restoration_id, leader_term, write_status);
+          });
+        });
+    if (!status.ok()) {
+      // TODO(submit_error): is this sufficient to handle this error?
+      LOG(DFATAL) << "Failed to submit snapshot operation: " << status;
+    }
+  }
 
-    std::vector<TabletId> tablet_ids = restoration->TabletIdsInState(SysSnapshotEntryPB::RESTORED);
+  void RestorationCompletePersisted(
+      const TxnSnapshotRestorationId& restoration_id, int64_t leader_term, const Status& status)
+      EXCLUDES(mutex_) {
+    if (!status.ok()) {
+      // Tablets keep rejecting writes until a new leader re-runs the restoration.
+      LOG(WARNING) << "Failed to persist completion of restoration " << restoration_id << ": "
+                   << status;
+      return;
+    }
+    std::lock_guard lock(mutex_);
+    if (context_.LeaderTerm() != leader_term) {
+      LOG(INFO) << "Leader term changed from " << leader_term << " after persisting completion of "
+                << "restoration " << restoration_id;
+      return;
+    }
+    // complete_time was loaded when the write was applied.
+    last_restorations_update_ht_ = context_.Clock()->Now();
+    auto restoration_result = FindRestoration(restoration_id);
+    if (!restoration_result.ok()) {
+      LOG(WARNING) << "Restoration " << restoration_id << " not found after persisting completion: "
+                   << restoration_result.status();
+      return;
+    }
+    auto* restoration = &*restoration_result;
+
+    std::vector<TabletId> tablet_ids;
+    if (!FLAGS_TEST_skip_sending_restore_finished) {
+      tablet_ids = restoration->TabletIdsInState(SysSnapshotEntryPB::RESTORED);
+    }
     auto tablets = context_.GetTabletInfos(tablet_ids);
     auto epoch = LeaderEpoch(leader_term, context_.pitr_count());
     int tablet_ids_counter = 0;
@@ -2029,21 +2114,6 @@ class MasterSnapshotCoordinator::Impl {
         LOG(DFATAL) << Format("Tablet info not found for $0", tablet_ids[tablet_ids_counter]);
       }
       tablet_ids_counter++;
-    }
-    // Update restoration entry to sys catalog.
-    LOG(INFO) << "Marking restoration " << restoration->restoration_id()
-              << " as complete in sys catalog";
-    docdb::KeyValueWriteBatchPB write_batch;
-    auto status = restoration->StoreToWriteBatch(&write_batch);
-    if (!status.ok()) {
-      LOG(DFATAL) << "Failed to prepare write batch for snapshot: " << status;
-      return;
-    }
-    status = SubmitWrite(std::move(write_batch), leader_term, &context_);
-    if (!status.ok()) {
-      // TODO(submit_error): is this sufficient to handle this error?
-      LOG(DFATAL) << "Failed to submit snapshot operation: " << status;
-      return;
     }
 
     // Resume index backfill for restored tables.

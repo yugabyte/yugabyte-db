@@ -80,6 +80,7 @@
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog_writer.h"
+#include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/ysql/ysql_manager_if.h"
 
 #include "yb/qlexpr/index.h"
@@ -88,6 +89,7 @@
 #include "yb/rpc/thread_pool.h"
 
 #include "yb/tablet/operations/change_metadata_operation.h"
+#include "yb/tablet/persistence_gate.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
@@ -485,7 +487,11 @@ void SysCatalogTable::SysCatalogStateChanged(
       (context->reason == StateChangeReason::NEW_LEADER_ELECTED ||
        (cstate.config().peers_size() == 1 &&
         context->reason == StateChangeReason::TABLET_PEER_STARTED))) {
-    CHECK_OK(leader_cb_.Run());
+    // A single master can win its first election before TABLET_PEER_STARTED is reported, so both
+    // notifications see it as leader of the same term. Load the sys catalog only once per term.
+    if (leader_cb_term_.exchange(cstate.current_term()) != cstate.current_term()) {
+      CHECK_OK(leader_cb_.Run());
+    }
   }
 
   if (context->reason == StateChangeReason::NEW_LEADER_ELECTED) {
@@ -594,14 +600,28 @@ void SysCatalogTable::SetupTabletPeer(const scoped_refptr<tablet::RaftGroupMetad
                                                                       &master_->proxy_cache(),
                                                                       local_peer_pb_.cloud_info());
 
+  if (!persistence_gate_) {
+    // With the op's term: a catalog write admitted while this master was ready in an earlier term
+    // can be appended in a later one before that term's catalog load has refreshed the map.  Such
+    // a write gets LeaderNotReadyToServe, which the client retries.
+    persistence_gate_ = std::make_unique<tablet::PersistenceGate>(
+        [xcluster_manager = master_->catalog_manager_impl()->GetXClusterManagerImpl()](
+            int64_t op_term, uint32_t database_oid) {
+          return xcluster_manager->GetPersistenceBlockedThrough(op_term, database_oid);
+        },
+        metric_entity_);
+  }
+
   // TODO: handle crash mid-creation of tablet? do we ever end up with a
   // partially created tablet here?
   auto tablet_peer = std::make_shared<tablet::TabletPeer>(
       metadata, local_peer_pb_, scoped_refptr<server::Clock>(master_->clock()),
       metadata->fs_manager()->uuid(),
       Bind(&SysCatalogTable::SysCatalogStateChanged, Unretained(this), metadata->raft_group_id()),
-      metric_registry_, nullptr /* tablet_splitter */, master_->client_future());
+      metric_registry_, /*tablet_splitter=*/nullptr, persistence_gate_.get(),
+      master_->client_future());
 
+  leader_cb_term_ = -1;
   std::atomic_store(&tablet_peer_, tablet_peer);
 }
 
@@ -654,6 +674,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       .tablet_options = tablet_options,
       .mutable_tablet_options = tablet::MutableTabletOptions{},
       .log_prefix_suffix = " P " + tablet_peer()->permanent_uuid(),
+      .tablet_context = tablet_peer().get(),
       .transaction_participant_context = tablet_peer().get(),
       .local_tablet_filter = client::LocalTabletFilter(),
       // This is only required if the sys catalog tablet is also acting as a transaction status
@@ -675,6 +696,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       // We won't be doing full compactions on the catalog tablet.
       .full_compaction_pool = nullptr,
       .admin_triggered_compaction_pool = nullptr,
+      .intent_cleanup_pool = raft_pool(),
       // We don't support splitting the catalog tablet, this field is unneeded.
       .post_split_compaction_added = nullptr,
       .tier_migration_hooks = nullptr,

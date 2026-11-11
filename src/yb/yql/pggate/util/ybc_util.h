@@ -41,8 +41,10 @@ bool YBCStatusIsSnapshotTooOld(YbcStatus s);
 bool YBCStatusIsResponseCacheMiss(YbcStatus s);
 bool YBCStatusIsTryAgain(YbcStatus s);
 bool YBCStatusIsTimedOut(YbcStatus s);
+bool YBCStatusIsRetryableRequestTooOld(YbcStatus s);
 bool YBCStatusIsAlreadyPresent(YbcStatus s);
 bool YBCStatusIsReplicationSlotLimitReached(YbcStatus s);
+bool YBCStatusIsNotSupported(YbcStatus s);
 uint32_t YBCStatusPgsqlError(YbcStatus s);
 void YBCFreeStatus(YbcStatus s);
 
@@ -181,7 +183,7 @@ uint16_t YBCDecodeMultiColumnHashRightBound(const char* partition_key, size_t ke
 char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len);
 
 /*
- * Latch the value of the enable_object_locking_infra auto flag for the transaction that is about
+ * Latch the value of the yb_enable_object_locking_infra auto flag for the transaction that is about
  * to start. The flag is PGC_SIGHUP, so without a per-transaction copy it can change between
  * two statements of the same transaction block and flip object locking on or off mid-transaction.
  * Must be called from PG's StartTransaction() before AtStart_Cache(), which already consults the

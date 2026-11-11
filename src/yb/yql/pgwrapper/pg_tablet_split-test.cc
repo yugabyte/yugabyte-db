@@ -83,6 +83,7 @@
 DECLARE_bool(delete_intents_sst_files);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(enable_scan_choices_variable_bloom_filter);
 DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_bool(use_cross_split_key_detection_algorithm);
 DECLARE_bool(ysql_enable_packed_row);
@@ -683,6 +684,172 @@ TEST_F(PgTabletSplitTest, CommonResponseCheckFailureAfterOperationRetry) {
   yb::SyncPoint::GetInstance()->ClearAllCallBacks();
 }
 #endif // NDEBUG
+
+// Checks IN-list reads of a split child before post-split compaction, while its SST
+// files still hold the parent's data. The second child gets IN values from the first
+// child's key range in two cases: a connection that cached the partitions before
+// the split, and an ordered scan of a range-partitioned table. The test pauses
+// post-split compaction to keep the children in this state. Covers GH #36918.
+class PgTabletSplitInListTest : public PgTabletSplitTest {
+ protected:
+  void TestInListReadOfSplitChildBeforePostSplitCompaction(bool range_partitioned);
+};
+
+void PgTabletSplitInListTest::TestInListReadOfSplitChildBeforePostSplitCompaction(
+    bool range_partitioned) {
+  // Left keys have a hash below kLeftHashLimit and right keys above kRightHashLimit (1/8 and 7/8
+  // of the hash range), so the split near the middle puts them in different children.
+  constexpr int kLeftHashLimit = 8192;
+  constexpr int kRightHashLimit = 57344;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_scan_choices_variable_bloom_filter) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = true;
+  // Unpause compaction even if the test fails early, so the cluster can shut down.
+  auto resume_compaction = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = false;
+  });
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE t(h INT, r INT, v INT NOT NULL, s INT, $0",
+      range_partitioned ? "PRIMARY KEY(h ASC, r ASC))"
+                        : "PRIMARY KEY((h) HASH, r ASC)) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t(h, r, v) SELECT i, 1, i FROM generate_series(1, 1000) i"));
+  ASSERT_OK(WaitForIntentsAppliedAndFlush());
+
+  // Keys from both ends of the table, so they go to different children. The split point is
+  // checked below.
+  const auto left = ASSERT_RESULT(conn.FetchRows<int32_t>(range_partitioned
+      ? std::string("SELECT h FROM t ORDER BY h LIMIT 2")
+      : Format("SELECT h FROM t WHERE yb_hash_code(h) < $0 ORDER BY yb_hash_code(h), h LIMIT 2",
+               kLeftHashLimit)));
+  const auto right = ASSERT_RESULT(conn.FetchRows<int32_t>(range_partitioned
+      ? std::string("SELECT h FROM t ORDER BY h DESC LIMIT 5")
+      : Format("SELECT h FROM t WHERE yb_hash_code(h) > $0 ORDER BY yb_hash_code(h), h LIMIT 5",
+               kRightHashLimit)));
+  ASSERT_EQ(left.size(), 2U);
+  ASSERT_EQ(right.size(), 5U);
+  std::string in_list;
+  for (const auto& keys : {left, right}) {
+    for (auto key : keys) {
+      in_list += (in_list.empty() ? "" : ", ") + AsString(key);
+    }
+  }
+
+  // A second SST file with rows only for left[1] and right[0]. The scan skips it for left[0] and
+  // seeks it again at left[1]. Its right[0] row must still be returned.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t(h, r, v) VALUES ($0, 2, 0), ($1, 2, 0)", left[1], right[0]));
+  ASSERT_OK(WaitForIntentsAppliedAndFlush());
+  const auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
+  {
+    const auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+    ASSERT_EQ(peers.size(), 1U);
+    ASSERT_EQ(
+        ASSERT_RESULT(peers.front()->shared_tablet())->regular_db()->GetCurrentVersionNumSSTFiles(),
+        2U);
+  }
+  // 2 left keys, 5 right keys, and the rows with r = 2 for left[1] and right[0].
+  std::vector<int32_t> expected_rows = left;
+  expected_rows.insert(expected_rows.end(), right.begin(), right.end());
+  expected_rows.push_back(left[1]);
+  expected_rows.push_back(right[0]);
+  std::sort(expected_rows.begin(), expected_rows.end());
+  auto sorted = [](std::vector<int32_t> rows) {
+    std::sort(rows.begin(), rows.end());
+    return rows;
+  };
+
+  const auto select = Format("SELECT h FROM t WHERE h IN ($0)", in_list);
+  auto stale_conn = ASSERT_RESULT(Connect());
+  ASSERT_EQ(sorted(ASSERT_RESULT(stale_conn.FetchRows<int32_t>(select))), expected_rows);
+  // This connection caches the partitions before the split and reads again only after post-split
+  // compaction.
+  auto stale_after_compaction_conn = ASSERT_RESULT(Connect());
+  ASSERT_EQ(sorted(ASSERT_RESULT(stale_after_compaction_conn.FetchRows<int32_t>(select))),
+            expected_rows);
+  auto txn_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(txn_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(txn_conn.ExecuteFormat("UPDATE t SET s = 1 WHERE h IN ($0)", in_list));
+
+  ASSERT_OK(SplitSingleTabletAndWaitForActiveChildTablets(table_id));
+  std::string split_key;
+  for (const auto& peer : ListTableActiveTabletLeadersPeers(cluster_.get(), table_id)) {
+    const auto& meta = *peer->tablet_metadata();
+    ASSERT_FALSE(meta.rocksdb_parent_data_compacted()) << peer->tablet_id();
+    if (!meta.partition()->partition_key_start().empty()) {
+      split_key = meta.partition()->partition_key_start();
+    }
+  }
+  ASSERT_FALSE(split_key.empty());
+  // Check the split point from metadata, without reading the table.
+  if (range_partitioned) {
+    auto encode = [](int32_t h, int32_t r) {
+      return dockv::DocKey(dockv::KeyEntryValues{
+          dockv::KeyEntryValue::Int32(h), dockv::KeyEntryValue::Int32(r)}).Encode();
+    };
+    // The largest left row is (left[1], 2). right is in descending order, so its smallest row is
+    // (right.back(), 1).
+    ASSERT_LT(encode(left.back(), 2).AsSlice().compare(split_key), 0);
+    ASSERT_GE(encode(right.back(), 1).AsSlice().compare(split_key), 0);
+  } else {
+    const auto split_hash = dockv::PartitionSchema::DecodeMultiColumnHashValue(split_key);
+    ASSERT_GE(split_hash, kLeftHashLimit);
+    ASSERT_LE(split_hash, kRightHashLimit);
+  }
+
+  // Connects after the split. Usually the tserver has not refreshed its cached partitions yet, so
+  // this connection also gets the parent's partition. If the refresh happens first, this read
+  // passes even without the fix. The stale_conn read below always hits the bug.
+  auto fresh_conn = ASSERT_RESULT(Connect());
+  EXPECT_EQ(sorted(ASSERT_RESULT(fresh_conn.FetchRows<int32_t>(select))), expected_rows)
+      << "Loaded the table after the split";
+  EXPECT_EQ(sorted(ASSERT_RESULT(stale_conn.FetchRows<int32_t>(select))), expected_rows)
+      << "Stale partitions";
+  // Connects after the reads above refreshed the tserver's partitions. A plain IN read then sends
+  // each child only its own keys, so it passes even without the fix.
+  auto late_conn = ASSERT_RESULT(Connect());
+  EXPECT_EQ(sorted(ASSERT_RESULT(late_conn.FetchRows<int32_t>(select))), expected_rows)
+      << "Fresh partitions";
+  if (range_partitioned) {
+    // An ordered scan sends the whole IN list in one read, so the second child gets left keys even
+    // with fresh partitions.
+    EXPECT_EQ(ASSERT_RESULT(late_conn.FetchRows<int32_t>(select + " ORDER BY h")), expected_rows)
+        << "Ordered, fresh partitions";
+  }
+  // Without the fix, the second child finds no rows in the regular DB and builds them from this
+  // transaction's own changes only. Then v is NULL, and the UPDATE fails the NOT NULL constraint.
+  const auto updated = txn_conn.FetchRows<int32_t>(
+      Format("UPDATE t SET s = 2 WHERE h IN ($0) RETURNING h", in_list));
+  if (updated.ok()) {
+    EXPECT_EQ(sorted(*updated), expected_rows) << "Updated in the transaction";
+  } else {
+    ADD_FAILURE() << "Update in the transaction: " << updated.status();
+  }
+  ASSERT_OK(txn_conn.RollbackTransaction());
+
+  // After post-split compaction the child has only its own data, so even stale partitions read
+  // correctly.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = false;
+  std::vector<TabletId> child_ids;
+  for (const auto& peer : ListTableActiveTabletLeadersPeers(cluster_.get(), table_id)) {
+    child_ids.push_back(peer->tablet_id());
+  }
+  ASSERT_OK(WaitForPeersPostSplitCompacted(cluster_.get(), child_ids));
+  EXPECT_EQ(sorted(ASSERT_RESULT(stale_after_compaction_conn.FetchRows<int32_t>(select))),
+            expected_rows) << "Stale partitions after compaction";
+}
+
+TEST_F_EX(PgTabletSplitTest, InListReadOfHashSplitChildBeforePostSplitCompaction,
+          PgTabletSplitInListTest) {
+  ASSERT_NO_FATALS(TestInListReadOfSplitChildBeforePostSplitCompaction(
+      /* range_partitioned= */ false));
+}
+
+TEST_F_EX(PgTabletSplitTest, InListReadOfRangeSplitChildBeforePostSplitCompaction,
+          PgTabletSplitInListTest) {
+  ASSERT_NO_FATALS(TestInListReadOfSplitChildBeforePostSplitCompaction(
+      /* range_partitioned= */ true));
+}
 
 TEST_F(PgTabletSplitTest, SplitSequencesDataTable) {
   // Test that tablet splitting is blocked on system_postgres.sequences_data table
@@ -2018,7 +2185,8 @@ TEST_F(PgDelayedSplitAtFollower, TestDelayedSplitAtFollower) {
   // follower may flush an empty regular memtable (a no-op) and end up without any level-0 SST file.
   // If such a follower later becomes the leader, GetSplitKey fails with "No SST file at level 0",
   // which is not retried for a manual split, so the split never completes.
-  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(cluster_.get(), 30s * kTimeMultiplier));
+  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(
+      cluster_.get(), 30s * kTimeMultiplier, RequireLeaderIsReady::kTrue));
   ASSERT_OK(cluster_->FlushTablets());
 
   // Stop tserver C (index 2)
@@ -2305,7 +2473,7 @@ TEST_F(PgTabletSplitTest, AsyncWriteRaceWithSplit) {
       tablet::FlushMode::kSync, tablet::FlushFlags::kIntents, rocksdb::FlushReason::kTestOnly));
 
   const auto stored = ASSERT_RESULT(
-      source_tablet->MaxPersistentOpId(/* invalid_if_no_new_data = */ false));
+      source_tablet->GetPersistentState(/* invalid_if_no_new_data = */ false));
   LOG(INFO) << "After race+flush: split_op_id=" << split_op_id
             << " regular_flushed_op_id=" << stored.regular
             << " intents_flushed_op_id=" << stored.intents;

@@ -56,6 +56,7 @@ def is_protobuf_generated_path(file_path: str) -> bool:
     return file_path.endswith((
         '.pb.cc',
         '.messages.cc',
+        '.trace.cc',
         '.service.cc',
         '.proxy.cc',
     ))

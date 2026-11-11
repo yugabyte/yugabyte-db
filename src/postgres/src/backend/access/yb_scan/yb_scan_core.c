@@ -3194,7 +3194,7 @@ ybcReplacePkReqWithBasectid(IndexOnlyScan *ios_plan,
 
 		while ((bms_idx = bms_next_member(result->bms, bms_idx)) >= 0)
 		{
-			bms_del_member(result->bms, bms_idx);
+			result->bms = bms_del_member(result->bms, bms_idx);
 			removed = true;
 		}
 		if (removed)

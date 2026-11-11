@@ -81,6 +81,11 @@ DEFINE_NON_RUNTIME_uint32(xcluster_guarded_lease_duration_ms, 2 * 60 * 1000,
     "Duration of xCluster-guarded information lease in milliseconds; not safe to lower.");
 TAG_FLAG(xcluster_guarded_lease_duration_ms, advanced);
 
+DEFINE_test_flag(bool, no_grant_xcluster_guarded_lease, false,
+    "When true, master leaves the xCluster-guarded information lease out of heartbeat "
+    "responses.  TServers then cannot acquire or extend the xCluster lease.  The rest of the "
+    "heartbeat, including the xCluster-guarded information itself, is unaffected.");
+
 DEFINE_RUNTIME_int32(catalog_manager_report_batch_size, 1,
     "The max number of tablets evaluated in the heartbeat as a single SysCatalog update.");
 TAG_FLAG(catalog_manager_report_batch_size, advanced);
@@ -131,6 +136,10 @@ DEFINE_RUNTIME_bool(send_leader_blacklisted_tservers_on_heartbeat, true,
     "When set, the master will send the list of leader-blacklisted tservers with no leaders "
     "on the heartbeat response.");
 TAG_FLAG(send_leader_blacklisted_tservers_on_heartbeat, advanced);
+
+DEFINE_test_flag(bool, hinted_leader_election_for_existing_tablets, false,
+    "Force hinted leader elections for existing tablets too. For tests that do restarts and "
+    "expect fast leader elections.");
 
 DEFINE_test_flag(uint64, inject_latency_during_tablet_report_ms, 0,
                  "Number of milliseconds to sleep during the processing of a tablet batch.");
@@ -504,7 +513,9 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
 
     resp->set_tablet_report_limit(FLAGS_tablet_report_limit);
 
-    resp->set_xcluster_guarded_lease_duration_ms(FLAGS_xcluster_guarded_lease_duration_ms);
+    if (!FLAGS_TEST_no_grant_xcluster_guarded_lease) {
+      resp->set_xcluster_guarded_lease_duration_ms(FLAGS_xcluster_guarded_lease_duration_ms);
+    }
 
     // Set the TServer metrics in TS Descriptor.
     if (req->has_metrics()) {
@@ -525,6 +536,12 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
       resp->set_needs_full_tablet_report(true);
     }
 
+    // The tserver marks this replication status as sent once we reply, so always process it.
+    for (const auto& consumer_replication_state : req->xcluster_consumer_replication_status()) {
+      catalog_manager_->GetXClusterManager()->StoreConsumerReplicationStatus(
+          consumer_replication_state);
+    }
+
     if (!req->has_tablet_report() || req->tablet_report().is_incremental()) {
       // Only process metadata if we have plenty of time to process the work (> 50% of
       // timeout).
@@ -543,11 +560,6 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
           }
           ProcessTabletMetadata(ts_desc->id(), metadata, leader_metrics);
         }
-      }
-
-      for (const auto& consumer_replication_state : req->xcluster_consumer_replication_status()) {
-        catalog_manager_->GetXClusterManager()->StoreConsumerReplicationStatus(
-            consumer_replication_state);
       }
 
       // Only process the full compaction statuses if we have plenty of time to process the work (>
@@ -1278,7 +1290,18 @@ bool MasterHeartbeatServiceImpl::ProcessCommittedConsensusState(
   }
 
   if (FLAGS_use_create_table_leader_hint && !cstate.has_leader_uuid()) {
-    catalog_manager_->StartElectionIfReady(cstate, epoch, tablet);
+    // Start hinted election only for new tablets (CREATE TABLE / split children).
+    if (tablet_lock->pb.state() == SysTabletsEntryPB::CREATING ||
+        PREDICT_FALSE(FLAGS_TEST_hinted_leader_election_for_existing_tablets)) {
+      catalog_manager_->StartElectionIfReady(cstate, epoch, tablet);
+    } else {
+      // prev_cstate aliases the dirty copy, which 6d(iv) may have overwritten.
+      VLOG(1) << "Skipping hinted leader election for existing tablet " << tablet->tablet_id()
+              << " reported by " << ts_desc->permanent_uuid() << ", tablet state: "
+              << SysTabletsEntryPB::State_Name(tablet_lock->pb.state()) << ", previous cstate: "
+              << tablet->metadata().state().pb.committed_consensus_state().ShortDebugString()
+              << ", reported cstate: " << cstate.ShortDebugString();
+    }
   }
 
   if (tablet_lock->pb.split_tablet_ids_size() > 0 && tablet_lock->is_hidden()) {
@@ -1435,6 +1458,11 @@ void MasterHeartbeatServiceImpl::UpdateTabletReplicasAfterConfigChange(
     if (existing_replica) {
       replica.UpdateDriveInfo(existing_replica->drive_info);
       replica.UpdateLeaderLeaseInfo(existing_replica->leader_lease_info);
+    }
+    // Like the state, the report's should_disable_lb_move only applies to the sender's replica.
+    if (ts_desc->permanent_uuid() != sender_uuid) {
+      replica.should_disable_lb_move =
+          existing_replica && existing_replica->should_disable_lb_move;
     }
     auto result = replica_locations.get()->insert({ts_desc->id(), replica});
     LOG_IF(FATAL, !result.second) << "duplicate uuid: " << ts_desc->id();

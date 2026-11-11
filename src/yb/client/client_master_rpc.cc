@@ -97,7 +97,10 @@ void ClientMasterRpcBase::Finished(const Status& status) {
 
   if (client_data_->Closing()) {
     auto retained_self = client_data_->rpcs_.Unregister(&retained_self_);
-    ProcessResponse(new_status);
+    // Returning here skips the code further down that replaces an OK new_status with resp_status.
+    // Make the same replacement now, so ProcessResponse sees what ResponseStatus() reports
+    // instead of an OK status; a new_status that already failed is reported unchanged.
+    ProcessResponse(new_status.ok() ? resp_status : new_status);
     return;
   }
 
@@ -151,13 +154,19 @@ void ClientMasterRpcBase::Finished(const Status& status) {
     // cluster shutdown, when the master is already down) would make us retry indefinitely,
     // ignoring the RPC deadline and hanging callers that wait for this RPC to complete.
     if (rpc_error != rpc::ErrorStatusPB::ERROR_NO_SUCH_METHOD &&
-        rpc_error != rpc::ErrorStatusPB::FATAL_SERVER_SHUTTING_DOWN &&
-        CoarseMonoClock::Now() < retrier().deadline()) {
-      LOG(WARNING) << ToString() << ": Encountered a network error from the Master("
-                   << client_data_->leader_master_hostport().ToString()
-                   << "): " << new_status.ToString() << ", retrying...";
-      ResetMasterLeader(Retry::kTrue);
-      return;
+        rpc_error != rpc::ErrorStatusPB::FATAL_SERVER_SHUTTING_DOWN) {
+      auto now = CoarseMonoClock::Now();
+      if (now < retrier().deadline()) {
+        LOG(WARNING) << ToString() << ": Encountered a network error from the Master("
+                     << client_data_->leader_master_hostport().ToString()
+                     << "): " << new_status.ToString() << ", retrying...";
+        ResetMasterLeader(Retry::kTrue);
+        return;
+      }
+      // Retries stopped because of the deadline, so report it as a timeout.
+      new_status = STATUS_FORMAT(
+          TimedOut, "$0 timed out after deadline expired, passed $1 of $2, last error: $3",
+          *this, now - retrier().start(), retrier().deadline() - retrier().start(), new_status);
     }
   }
 

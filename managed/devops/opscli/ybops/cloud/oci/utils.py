@@ -16,6 +16,7 @@ import requests
 
 from ybops.common.exceptions import YBOpsRuntimeError, YBOpsRecoverableError
 from ybops.cloud.common.utils import request_retry_decorator
+from ybops.cloud.oci.errors import format_oci_error
 from ybops.utils import DNS_RECORD_SET_TTL, MIN_MEM_SIZE_GB, MIN_NUM_CORES
 from ybops.utils.ssh import format_rsa_key, validated_key_file
 from threading import Thread
@@ -486,7 +487,7 @@ class OciCloudAdmin:
         except Exception as e:
             raise YBOpsRuntimeError(
                 "Failed to fetch OCI Instance Configuration {}: {}".format(
-                    instance_configuration_id, e))
+                    instance_configuration_id, format_oci_error(e) or e))
         instance_details = getattr(ic, "instance_details", None)
         launch_details = (
             getattr(instance_details, "launch_details", None) if instance_details else None)
@@ -756,7 +757,18 @@ class OciCloudAdmin:
             )
 
         logging.info("[app] Creating OCI instance {}".format(instance_name))
-        response = self.compute_client.launch_instance(launch_details)
+        try:
+            response = self.compute_client.launch_instance(launch_details)
+        except oci.exceptions.ServiceError as e:
+            if e.status != 404:
+                raise
+            # OCI rejects a launch from a Marketplace image version the compartment is not
+            # subscribed to with this generic error, which names neither the image nor the cause.
+            raise YBOpsRuntimeError(
+                "OCI could not launch instance {} from image {}: {}. If the image is from the OCI "
+                "Marketplace, subscribe the compartment to that image version first, for example "
+                "by accepting its terms in the OCI Console.".format(
+                    instance_name, image_id, e.message)) from e
 
         instance = response.data
         created_volume_ids = []

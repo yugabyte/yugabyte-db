@@ -32,6 +32,7 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/common/common_flags.h"
 #include "yb/common/version_info.h"
 #include "yb/common/ysql_operation_lease.h"
 
@@ -257,6 +258,10 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_explicit_row_locking_batch_size, 1024,
 DEFINE_RUNTIME_PG_FLAG(string, yb_xcluster_consistency_level, "database",
     "Controls the consistency level of xCluster replicated databases. Valid values are "
     "\"database\" and \"tablet\".");
+
+DEFINE_RUNTIME_PG_FLAG(bool, yb_xcluster_invalid_index_ddl_check, true,
+    "On an xCluster automatic mode source, reject DDLs whose outcome depends on an invalid "
+    "index that the target does not have.");
 
 DEFINE_RUNTIME_PG_FLAG(string, yb_test_block_index_phase, "",
     "Block the given index phase from proceeding. Valid names are indisready, build,"
@@ -486,6 +491,11 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_test_reset_retry_counts, -1,
 DEFINE_RUNTIME_PG_FLAG(bool, yb_test_fatal_after_notifs_queue_write, false,
     "When true, the notifications poller exits with FATAL after writing NOTIFY entries to the "
     "async queue but before persisting the CDC virtual-WAL ack. For testing purposes.");
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_test_notifs_poller_init_delay_ms, 0,
+    "Time in milliseconds for which the notifications poller waits before it initializes. "
+    "For testing purposes.");
+DEFINE_validator(ysql_yb_test_notifs_poller_init_delay_ms, FLAG_GE_VALUE_VALIDATOR(0));
 
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_object_locking_for_table_locks);
@@ -1652,7 +1662,10 @@ Status PgWrapper::CleanupLockFileAndKillHungPg(const std::string& lock_file) {
 // ------------------------------------------------------------------------------------------------
 
 PgSupervisor::PgSupervisor(PgProcessConf conf, PgWrapperContext* server)
-    : ProcessSupervisor(conf.cgroup), conf_(std::move(conf)), server_(server) {
+    : ProcessSupervisor(conf.cgroup),
+      conf_(std::move(conf)),
+      server_(server),
+      starts_paused_(IsYsqlLeaseEnabled() || (server && IsPersistenceGateEnforced())) {
   if (server_) {
     server_->RegisterCertificateReloader(std::bind(&PgSupervisor::ReloadConfig, this));
     server_->RegisterPgProcessRestarter(std::bind(&PgSupervisor::Restart, this));
@@ -1675,6 +1688,12 @@ PgSupervisor::~PgSupervisor() {
 }
 
 void PgSupervisor::Stop() {
+  if (server_) {
+    // The server may outlive this supervisor (e.g., a test harness recreating it), and its
+    // heartbeater and YSQL lease threads call these asynchronously.
+    server_->RegisterPgProcessRestarter(nullptr);
+    server_->RegisterPgProcessKiller(nullptr);
+  }
   ProcessSupervisor::Stop();
   if (server_) {
     CHECK_OK(server_->StopSharedMemoryNegotiation());
@@ -1683,11 +1702,16 @@ void PgSupervisor::Stop() {
 }
 
 Status PgSupervisor::StartAndMaybePause() {
-  if (IsYsqlLeaseEnabled()) {
-    return InitPaused();
-  } else {
+  if (!starts_paused_) {
     return Start();
   }
+  RETURN_NOT_OK(InitPaused());
+  if (IsYsqlLeaseEnabled()) {
+    // The first YSQL lease epoch starts PG.
+    return Status::OK();
+  }
+  // The server's RestartPG starts PG only once the xCluster-guarded information lease is held.
+  return server_->RestartPG();
 }
 
 Status PgSupervisor::ReloadConfig() {

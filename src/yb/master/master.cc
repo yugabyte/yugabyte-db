@@ -215,6 +215,10 @@ string Master::ToString() const {
   return Format("Master@$0", yb::ToString(first_rpc_address()));
 }
 
+Status Master::RestartPG() const {
+  return STATUS(NotSupported, "RestartPG not implemented for masters");
+}
+
 Status Master::Init() {
   CHECK_EQ(kStopped, state_.load());
 
@@ -705,9 +709,7 @@ Status Master::get_ysql_db_oid_to_cat_version_info_map(
   // Treat that as "no per-db versions yet" - empty response - instead of returning an
   // error to the caller. Steady-state callers of GetYsqlAllDBCatalogVersions assume the
   // table exists and read directly.
-  auto table_id =
-      VERIFY_RESULT(ysql_manager().GetVersionSpecificCatalogTableId(kPgYbCatalogVersionTableId));
-  if (catalog_manager_->GetTableInfo(table_id) != nullptr) {
+  if (VERIFY_RESULT(catalog_manager_->IsYsqlCatalogVersionTableCreated())) {
     RETURN_NOT_OK(catalog_manager_->GetYsqlAllDBCatalogVersions(
         FLAGS_enable_heartbeat_pg_catalog_versions_cache /* use_cache */, &versions,
         nullptr /* fingerprint */));

@@ -185,7 +185,7 @@ ysql_max_read_restart_attempts = 0
 ysql_max_write_restart_attempts = 0
 ```
 
-Turn off the [read-committed](../../../explore/transactions/isolation-levels/#read-committed-isolation) isolation level on the target YugabyteDB cluster during the migration.
+Turn off the [read-committed](../../../architecture/transactions/read-committed/) isolation level on the target YugabyteDB cluster during the migration.
 
 {{</note>}}
 
@@ -1072,5 +1072,6 @@ DROP USER ybvoyager;
 - Tables without primary key are not supported.
 - Truncating a table on the source database is not taken into account; you need to manually truncate tables on your YugabyteDB cluster.
 - Some PostgreSQL data types are unsupported - POINT, LINE, LSEG, BOX, PATH, POLYGON, CIRCLE, GEOMETRY, GEOGRAPHY, BOX2D, BOX3D, TOPOGEOMETRY, RASTER, PG_LSN, TXID_SNAPSHOT, LO, INT4MULTIRANGE, INT8MULTIRANGE, NUMMULTIRANGE, TSMULTIRANGE, TSTZMULTIRANGE, DATEMULTIRANGE, VECTOR, XML, TIMETZ.
+- Date and timestamp columns with BC dates or `infinity` / `-infinity` values are not supported in live migration.
 - Case-sensitive table names or column names are partially supported. YugabyteDB Voyager converts them to case-insensitive names.
 - Sequences that are not associated with any column or are attached to columns of non-integer types are not supported for resuming value generation. These sequences must be manually resumed during the cutover phase.

@@ -37,6 +37,7 @@ option java_package = "org.yb.tserver";
 
 import "yb/common/opid.proto";
 import "yb/common/wire_protocol.proto";
+import "yb/consensus/log.proto";
 import "yb/consensus/metadata.proto";
 import "yb/rpc/rpc_header.proto";
 import "yb/rpc/service.proto";
@@ -189,6 +190,9 @@ message BeginRemoteBootstrapSessionResponsePB {
 
   // If the tablet has a retryable requests file flushed to disk.
   optional bool retryable_requests_file_flushed = 7 [default = false];
+
+  // Quiescent marker of the source log. WAL segments with ops up to the marker may be absent.
+  optional log.QuiescentMarkerPB quiescent_marker = 8;
 }
 
 message BeginRemoteSnapshotTransferSessionRequestPB {

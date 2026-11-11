@@ -7,7 +7,6 @@ package readreplica
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -81,15 +80,9 @@ var DeleteReadReplicaUniverseCmd = &cobra.Command{
 					universeName + " (" + universeUUID + ") to delete")
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		var cluster ybaclient.Cluster
-		for _, c := range clusters {
-			if strings.EqualFold(c.GetClusterType(), util.ReadReplicaClusterType) {
-				cluster = c
-				break
-			}
-		}
+		cluster, rrIndex := util.FindClusterByType(clusters, util.ReadReplicaClusterType)
 
-		if len(cluster.GetUuid()) == 0 {
+		if rrIndex < 0 {
 			err := fmt.Errorf(
 				"No Read replica cluster found in universe " +
 					universeName + " (" + universeUUID + ") to delete")

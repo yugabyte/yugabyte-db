@@ -1240,7 +1240,6 @@ _copyAgg(const Agg *from)
 	COPY_BITMAPSET_FIELD(aggParams);
 	COPY_NODE_FIELD(groupingSets);
 	COPY_NODE_FIELD(chain);
-	COPY_SCALAR_FIELD(yb_pushdown_decision);
 
 	return newnode;
 }

@@ -146,6 +146,7 @@
 #include "utils/snapshot.h"
 #include "utils/spccache.h"
 #include "utils/syscache.h"
+#include "utils/timestamp.h"
 #include "utils/typcache.h"
 #include "utils/uuid.h"
 #include "yb/yql/pggate/util/ybc_util.h"
@@ -1047,6 +1048,58 @@ YbGetSessionReplicationOriginId(void)
 	return replorigin_session_origin;
 }
 
+/*
+ * Whether pg_partman uses transactional DDL and table level locks.  This
+ * requires all of:
+ * - ysql_yb_pg_partman_use_native_txn_ddl_and_locks.
+ * - YBIsDdlTransactionBlockEnabled(), which is true only when transactional
+ *   DDL is on and table level locks are enabled.
+ * - DDL savepoint support (ysql_yb_enable_ddl_savepoint_support and its infra
+ *   auto flag), because several pg_partman functions run DDL inside plpgsql
+ *   EXCEPTION blocks, which are savepoints.
+ * Advisory locks are not checked: ysql_yb_enable_advisory_locks is a tserver
+ * runtime flag whose current value postgres can't see, and with it off, the
+ * pg_partman functions that take advisory locks fail instead of falling back.
+ * A missing prerequisite returns false rather than raising, so pg_partman
+ * keeps working, without these features, where one of them is off.
+ */
+Datum
+yb_pg_partman_check_native_txn_ddl_and_locks(PG_FUNCTION_ARGS)
+{
+	const YbcPgGFlagsAccessor *gflags = YBCGetGFlags();
+
+	PG_RETURN_BOOL(*gflags->ysql_yb_pg_partman_use_native_txn_ddl_and_locks &&
+				   YBIsDdlTransactionBlockEnabled() &&
+				   *gflags->ysql_yb_enable_ddl_savepoint_support &&
+				   yb_enable_ddl_savepoint_infra);
+}
+
+/*
+ * Returns the commit timestamp on the source of the transaction currently being
+ * applied, set by the apply worker or directly by an application through
+ * pg_replication_origin_xact_setup().
+ *
+ * Returned in microseconds since the Unix epoch, the domain HybridTime uses,
+ * rather than as a TimestampTz. Zero means there is nothing usable to send,
+ * which the caller treats the same as a local write. Whether the value fits in
+ * a HybridTime is checked by pggate.
+ */
+static int64_t
+YbGetSessionReplicationOriginTimestamp(void)
+{
+	TimestampTz ts = replorigin_session_origin_timestamp;
+
+	const int64_t unix_epoch_offset = ((POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) *
+									   USECS_PER_DAY);
+
+	Assert(ts == 0 || IsTransactionOrTransactionBlock());
+
+	if (ts == 0 || TIMESTAMP_NOT_FINITE(ts) || ts > PG_INT64_MAX - unix_epoch_offset)
+		return 0;
+
+	return (int64_t) yb_timestamptz_to_micros_time_t(ts);
+}
+
 void
 YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *init_info)
 {
@@ -1075,6 +1128,7 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 			.PgstatReportWaitStart = &yb_pgstat_report_wait_start,
 			.GetCatalogSnapshotReadPoint = &YbGetCatalogSnapshotReadPoint,
 			.GetSessionReplicationOriginId = &YbGetSessionReplicationOriginId,
+			.GetSessionReplicationOriginTimestamp = &YbGetSessionReplicationOriginTimestamp,
 			.HasProcessableAbortInterrupt = &YBHasProcessableAbortInterrupt,
 			.IsInParallelMode = &IsInParallelMode,
 		};
@@ -2250,6 +2304,9 @@ bool		yb_prefer_bnl = false;
 bool		yb_explain_hide_non_deterministic_fields = false;
 bool		yb_enable_saop_pushdown = true;
 int			yb_toast_catcache_threshold = 2048; /* 2 KB */
+bool		yb_allow_prehashed_passwords = true;
+int			yb_password_reuse_history = 0;
+int			yb_password_reuse_interval = 0;
 int			yb_catcache_list_from_preloaded_limit = 100000;
 int			yb_parallel_range_size = 1024 * 1024;
 bool		yb_disable_parallel_query_in_ddl = true;
@@ -2257,6 +2314,7 @@ int			yb_insert_on_conflict_read_batch_size = 1024;
 bool		yb_enable_fkey_catcache = true;
 bool		yb_enable_fkey_batched_docdb_lookup_when_types_mismatch = true;
 bool		yb_enable_nop_alter_role_optimization = true;
+bool		yb_alter_type_reuse_expr_and_partial_indexes = true;
 bool		yb_enable_inplace_index_update = true;
 bool		yb_ignore_freeze_with_copy = true;
 bool		yb_enable_docdb_vector_type = false;
@@ -2366,6 +2424,7 @@ bool		yb_test_collation = false;
 bool		yb_test_inval_message_portability = false;
 int			yb_test_delay_after_applying_inval_message_ms = 0;
 int			yb_test_delay_set_local_tserver_inval_message_ms = 0;
+int			yb_test_delay_relation_grant_update_ms = 0;
 double		yb_test_delay_next_ddl = 0;
 int			yb_test_reset_retry_counts = -1;
 int			yb_test_force_parallel = YB_FORCE_PARALLEL_OFF;
@@ -2384,6 +2443,8 @@ bool		yb_enable_replication_origin_shared = true;
 bool		yb_use_hash_splitting_by_default = true;
 
 bool		yb_xcluster_automatic_mode_target_ddl = false;
+
+bool		yb_xcluster_invalid_index_ddl_check = true;
 
 bool		yb_enable_extended_sql_codes = false;
 
@@ -7203,7 +7264,13 @@ YbRegisterSysTableForPrefetching(int sys_table_id)
 			break;
 		case AuthIdRelationId:	/* pg_authid */
 			db_id = Template1DbOid;
-			index_id = AuthIdRolnameIndexId;
+			/*
+			 * Mandatory: a conn mgr auth passthrough control backend looks up
+			 * roles by name while prefetching is active, and with its relcache
+			 * built, an AUTHNAME catcache miss (e.g. a dropped role) is an
+			 * index-ordered scan of pg_authid_rolname_index.
+			 */
+			mandatory_index_id = AuthIdRolnameIndexId;
 			sys_only_filter_attr = InvalidAttrNumber;
 			break;
 		case DatabaseRelationId:	/* pg_database */
@@ -7455,6 +7522,18 @@ parse_yb_read_time(const char *value, unsigned long long *result, bool *is_ht_un
 	return true;
 }
 
+/*
+ * Whether the local catalog version can be reset right now.  Inside a
+ * transaction block it does not get refreshed (see check_yb_read_time).
+ */
+static bool
+YbCanResetCatalogVersion(void)
+{
+	return (yb_disable_catalog_version_check ||
+			am_walsender ||
+			!IsTransactionBlock());
+}
+
 bool
 check_yb_read_time(char **newval, void **extra, GucSource source)
 {
@@ -7491,9 +7570,7 @@ check_yb_read_time(char **newval, void **extra, GucSource source)
 	 *    SET LOCAL yb_read_time inside the snapshot transaction, and their
 	 *    reads do not send a catalog version anyway.
 	 */
-	if (!yb_disable_catalog_version_check &&
-		!am_walsender &&
-		IsTransactionBlock())
+	if (!YbCanResetCatalogVersion())
 	{
 		GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
 		GUC_check_errmsg("yb_read_time cannot be set inside a transaction block");
@@ -7616,6 +7693,38 @@ yb_assign_origination_time_override(const char *newval, void *extra)
 	yb_origination_time_override = *((uint64_t *) extra);
 }
 
+/*
+ * Non-NULL while the system catalog cannot be read as of yb_read_time because
+ * that time is older than the sys catalog's history cutoff; holds the
+ * "Snapshot too old" message of the failed read (in TopMemoryContext, as it
+ * must survive the error recovery of every rejected statement).
+ *
+ * Setting yb_read_time resets the local catalog version, so the check before
+ * the next message (YBCheckSharedCatalogCacheVersion) runs a full catalog
+ * cache refresh as of that time, and the refresh sets the local version only
+ * once it has succeeded.  When it fails with "Snapshot too old" because the
+ * time is older than the sys catalog's history cutoff, the version stays
+ * reset, and the check before every later message runs the same refresh and
+ * fails the same way before the statement is even parsed, RESET yb_read_time
+ * included: the session is stuck.  History only moves forward, so running
+ * the refresh again cannot help.  Instead, while in this state:
+ *  - the yb_read_time global is forced to 0 while the GUC keeps the requested
+ *    value, so the refresh and the statements which get the user out of it
+ *    (SET/RESET yb_read_time, whose PGC_SUSET check calls superuser()) read
+ *    the catalog at the current time; SHOW still reports the requested time
+ *    and assign_yb_read_time still sees a change when the user sets the same
+ *    time again.  The global is also what pggate, the nextval/setval and
+ *    LISTEN checks and the relcache response-cache check consult, but none
+ *    of them can run here: every statement that could reach them is rejected.
+ *  - every other message that would look at the catalog (a simple query,
+ *    Parse, Bind, Describe of a statement, a fastpath call) is rejected by
+ *    YbCheckReadTimeTooOld() first, since it would otherwise see current
+ *    data while yb_read_time says otherwise.  This mirrors the
+ *    aborted-transaction check done at the same points.
+ * assign_yb_read_time() leaves the state.
+ */
+static char *yb_read_time_too_old_detail = NULL;
+
 void
 assign_yb_read_time(const char *newval, void *extra)
 {
@@ -7633,6 +7742,12 @@ assign_yb_read_time(const char *newval, void *extra)
 	yb_read_time = value_ull;
 	yb_is_read_time_ht = is_ht_unit;
 
+	if (yb_read_time_too_old_detail)
+	{
+		pfree(yb_read_time_too_old_detail);
+		yb_read_time_too_old_detail = NULL;
+	}
+
 	/* Clear and reload system catalog caches, including all callbacks. */
 	if (needs_syscaches_refresh)
 		YbResetCatalogCacheVersion();
@@ -7645,6 +7760,134 @@ assign_yb_read_time(const char *newval, void *extra)
 						"Write-DML or DDL queries are not allowed when yb_read_time is "
 						"set.")));
 	}
+}
+
+bool
+check_yb_read_time_skip_catalog(bool *newval, void **extra, GucSource source)
+{
+	/*
+	 * Changing this while yb_read_time is set resets the local catalog
+	 * version, which check_yb_read_time does not allow inside a transaction
+	 * block either.
+	 */
+	if (yb_read_time != 0 &&
+		*newval != yb_read_time_skip_catalog &&
+		!YbCanResetCatalogVersion())
+	{
+		GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
+		GUC_check_errmsg("yb_read_time_skip_catalog cannot be changed inside a "
+						 "transaction block while yb_read_time is set");
+		return false;
+	}
+	return true;
+}
+
+void
+assign_yb_read_time_skip_catalog(bool newval, void *extra)
+{
+	/* Whatever catalog we have cached was read as of some other time. */
+	if (yb_read_time != 0 && newval != yb_read_time_skip_catalog)
+		YbResetCatalogCacheVersion();
+}
+
+static void
+YbRaiseReadTimeTooOldError(void)
+{
+	ereport(ERROR,
+			(errcode(ERRCODE_SNAPSHOT_TOO_OLD),
+			 errmsg("cannot read the system catalog as of yb_read_time %s",
+					GetConfigOption("yb_read_time", false, false)),
+			 errdetail("%s", yb_read_time_too_old_detail),
+			 errhint("Set yb_read_time to 0 or to a more recent time. Until "
+					 "then, only SET/RESET yb_read_time and SHOW are accepted.")));
+}
+
+/*
+ * To be called from the PG_CATCH block around a catalog cache refresh between
+ * statements, once the caller has switched out of ErrorContext.  Does not return
+ * if the caught error is a "Snapshot too old" read as of a non-zero
+ * yb_read_time (see yb_read_time_too_old_detail); otherwise leaves the error
+ * state untouched for the caller to re-throw.
+ */
+void
+YbHandleReadTimeSnapshotTooOld(void)
+{
+	ErrorData  *edata;
+
+	/*
+	 * The walsender pins its catalog reads through assign_yb_read_time()
+	 * directly (YbSetVirtualWalCatalogSnapshot), so the GUC does not hold its
+	 * time and nothing it runs later would clear the state; it re-pins on
+	 * error instead.
+	 */
+	if (yb_read_time == 0 || am_walsender)
+		return;
+
+	edata = CopyErrorData();
+	if (edata->sqlerrcode != ERRCODE_SNAPSHOT_TOO_OLD)
+	{
+		FreeErrorData(edata);
+		return;
+	}
+	FlushErrorState();
+
+	if (yb_read_time_too_old_detail)
+		pfree(yb_read_time_too_old_detail);
+	yb_read_time_too_old_detail = MemoryContextStrdup(TopMemoryContext,
+													  edata->message);
+	FreeErrorData(edata);
+	yb_read_time = 0;
+	yb_is_read_time_ht = false;
+
+	YbRaiseReadTimeTooOldError();
+}
+
+/*
+ * The statements still accepted while yb_read_time_too_old_detail is set:
+ * those that may change yb_read_time (RESET and RESET ALL do not when the
+ * value came from the client's startup options, hence the hint's SET TO 0),
+ * and SHOW, which does not touch the catalog.
+ * NULL stands for a request that carries no statement at all (a fastpath
+ * function call), which therefore cannot be one of them.
+ */
+static bool
+YbIsReadTimeControlStmt(Node *parsetree)
+{
+	if (parsetree == NULL)
+		return false;
+
+	if (IsA(parsetree, VariableShowStmt))
+		return true;
+
+	if (IsA(parsetree, VariableSetStmt))
+	{
+		VariableSetStmt *stmt = (VariableSetStmt *) parsetree;
+
+		switch (stmt->kind)
+		{
+			case VAR_SET_VALUE:
+			case VAR_SET_DEFAULT:
+			case VAR_RESET:
+				return pg_strcasecmp(stmt->name, "yb_read_time") == 0;
+			case VAR_RESET_ALL:
+				return true;
+			default:
+				break;
+		}
+	}
+	return false;
+}
+
+/*
+ * Reject a raw parse tree that cannot run while the catalog is unreadable as
+ * of yb_read_time.  Must run after raw parsing, which needs no catalog, and
+ * before parse analysis, which does.
+ */
+void
+YbCheckReadTimeTooOld(Node *parsetree)
+{
+	if (yb_read_time_too_old_detail && !YbIsReadTimeControlStmt(parsetree))
+		YbRaiseReadTimeTooOldError();
 }
 
 void
@@ -8625,6 +8868,12 @@ bool		yb_ysql_conn_mgr_superuser_existed = false;
  */
 bool		yb_ysql_conn_mgr_sticky_locks = false;
 
+/*
+ * `yb_ysql_conn_mgr_sticky_nontxn_object` denotes whether the session created
+ * state that a rollback does not undo. It is never cleared once set.
+ */
+bool		yb_ysql_conn_mgr_sticky_nontxn_object = false;
+
 bool		yb_enable_mage = false;
 
 bool
@@ -8672,7 +8921,8 @@ YbIsStickyConnection(int *change)
 	elog(DEBUG5, "Number of sticky objects: %d", ysql_conn_mgr_sticky_object_count);
 	return (ysql_conn_mgr_sticky_object_count > 0) ||
 		YbIsConnectionMadeStickyUsingGUC() ||
-		yb_ysql_conn_mgr_sticky_locks;
+		yb_ysql_conn_mgr_sticky_locks ||
+		yb_ysql_conn_mgr_sticky_nontxn_object;
 }
 
 void	  **
@@ -9143,12 +9393,15 @@ YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time_ht)
 void
 YBCSetHistoricalReadContext(uint64_t read_time_ht,
 							uint64_t in_txn_limit_ht,
-							const char *docdb_txn_id)
+							const char *docdb_txn_id,
+							const uint32_t *aborted_subtxn_set,
+							int aborted_subtxn_set_size)
 {
 	elog(DEBUG1,
 		 "Setting historical read context to read_time_ht: %" PRIu64
-		 ", in_txn_limit_ht: %" PRIu64 ", docdb_txn_id: %s",
-		 read_time_ht, in_txn_limit_ht, docdb_txn_id);
+		 ", in_txn_limit_ht: %" PRIu64 ", docdb_txn_id: %s"
+		 ", aborted_subtxn_set_size: %d",
+		 read_time_ht, in_txn_limit_ht, docdb_txn_id, aborted_subtxn_set_size);
 
 	YbcReadHybridTime read_time = {
 		.read = read_time_ht,
@@ -9158,7 +9411,8 @@ YBCSetHistoricalReadContext(uint64_t read_time_ht,
 		.serial_no = 0
 	};
 
-	YBCPgSetHistoricalReadContext(read_time, docdb_txn_id);
+	YBCPgSetHistoricalReadContext(read_time, docdb_txn_id, aborted_subtxn_set,
+								  aborted_subtxn_set_size);
 }
 
 void
@@ -9170,9 +9424,12 @@ YBCInvalidateCachesForHistoricalReadContext(void)
 void
 YBCSetHistoricalReadContextAndInvalidateCaches(uint64_t read_time_ht,
 											   uint64_t in_txn_limit_ht,
-											   const char *docdb_txn_id)
+											   const char *docdb_txn_id,
+											   const uint32_t *aborted_subtxn_set,
+											   int aborted_subtxn_set_size)
 {
-	YBCSetHistoricalReadContext(read_time_ht, in_txn_limit_ht, docdb_txn_id);
+	YBCSetHistoricalReadContext(read_time_ht, in_txn_limit_ht, docdb_txn_id,
+								aborted_subtxn_set, aborted_subtxn_set_size);
 	YBCInvalidateCachesForHistoricalReadContext();
 }
 

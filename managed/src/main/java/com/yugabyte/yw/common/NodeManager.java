@@ -1417,6 +1417,8 @@ public class NodeManager extends DevopsBase {
   public enum SkipCertValidationType {
     ALL,
     HOSTNAME,
+    // Nothing is skipped, but the hostname check accepts only a matching SAN, not the CN.
+    REQUIRE_SAN,
     NONE
   }
 
@@ -1769,6 +1771,9 @@ public class NodeManager extends DevopsBase {
           } else {
             throw new RuntimeException("ReplaceRootVolume for AWS requires root device name.");
           }
+        }
+        if (Common.CloudType.oci == provider.getCloudCode() && rrvParams.forceReplacement) {
+          commandArgs.add("--force_replacement");
         }
         if (!bootScript.isEmpty()) {
           bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);

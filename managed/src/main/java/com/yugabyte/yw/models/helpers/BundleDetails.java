@@ -125,8 +125,7 @@ public class BundleDetails {
     CQL_EXPORT,
     YSQL_EXPORT,
     // Everything scraped for this universe's pods and volume claims - cAdvisor, kubelet and
-    // kube-state-metrics. Kubernetes universes have no node_exporter, so this is the only
-    // source of resource usage for them.
+    // kube-state-metrics.
     KUBERNETES;
   }
 
@@ -196,7 +195,7 @@ public class BundleDetails {
     @ApiModelProperty(
         value =
             "Arguments appended after the script (entrypoint + flags), e.g."
-                + " [collect_top_stats, --remote_tar_path, /tmp/top.tar.gz, ...].")
+                + " [collect_top_ps_pmap_stats, --remote_tar_path, /tmp/top.tar.gz, ...].")
     private List<String> params;
 
     @ApiModelProperty(

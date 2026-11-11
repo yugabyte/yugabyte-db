@@ -77,7 +77,7 @@ It runs without error and produces these two values:
  false  | true
 ```
 
-The subsections [plain _timestamp_ to _time_](../typecasting-between-date-time-values#plain-timestamp-to-time) and [timestamptz to time](../typecasting-between-date-time-values#timestamptz-to-time), in the section [Typecasting between values of different date-time data types](../typecasting-between-date-time-values/), explain the semantics of these two typecasts. The outcomes here, _false_ and _true_, are consistent with those explanations.
+The subsections [plain _timestamp_ to _time_](../typecasting-between-date-time-values/#plain-timestamp-to-time) and [timestamptz to time](../typecasting-between-date-time-values/#timestamptz-to-time), in the section [Typecasting between values of different date-time data types](../typecasting-between-date-time-values/), explain the semantics of these two typecasts. The outcomes here, _false_ and _true_, are consistent with those explanations.
 
 In summary, comparison makes obvious sense only when the data types of the left and right operands are the same. These comparisons correspond to the on-diagonal cells. If you have worked out that it makes sense to use any of the comparison operations that the table above shows with _ok_ in an off-diagonal cell, then, for clarity, you should write the explicit typecast that you intend.
 

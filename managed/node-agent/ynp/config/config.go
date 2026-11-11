@@ -20,7 +20,8 @@ import (
 )
 
 const (
-	DefaultINISection = ini.DefaultSection
+	// Value of ini.DefaultSection, which is a var since ini v1.67.
+	DefaultINISection = "DEFAULT"
 )
 
 type Args struct {

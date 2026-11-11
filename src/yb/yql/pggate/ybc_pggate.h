@@ -508,6 +508,14 @@ YbcStatus YBCPgBackfillIndex(
     const YbcPgOid index_relfilenode_oid,
     bool use_regular_transaction_block);
 
+YbcStatus YBCPgStartTableBackfill(
+    const YbcPgOid database_oid,
+    const YbcPgOid source_table_oid,
+    const YbcPgOid target_table_oid,
+    const YbcPgOid transform_fn_oid,
+    uint64_t backfill_timestamp,
+    int64_t pg_job_id);
+
 YbcStatus YBCPgWaitVectorIndexReady(
     const YbcPgOid database_oid,
     const YbcPgOid index_relfilenode_oid);
@@ -664,6 +672,7 @@ YbcStatus YBCPgDecodePKColumnsFromBasectid(
 YbcStatus YBCPgStartOperationsBuffering();
 YbcStatus YBCPgStopOperationsBuffering();
 void YBCPgResetOperationsBuffering();
+void YBCPgClearSessionState();
 YbcStatus YBCPgFlushBufferedOperations(const YbcFlushDebugContext *debug_context);
 YbcStatus YBCPgAdjustOperationsBuffering(int multiple);
 
@@ -981,7 +990,9 @@ YbcPgThreadLocalRegexpCache* YBCPgInitThreadLocalRegexpCache(
 
 void YBCPgResetCatalogReadTime();
 
-void YBCPgSetHistoricalReadContext(YbcReadHybridTime read_time, const char* transaction_id);
+void YBCPgSetHistoricalReadContext(
+    YbcReadHybridTime read_time, const char* transaction_id, const uint32_t* aborted_subtxn_set,
+    size_t aborted_subtxn_set_size);
 
 void YBCPgResetHistoricalReadContext();
 
@@ -997,11 +1008,24 @@ YbcStatus YBCGetIndexBackfillProgress(YbcPgOid* index_oids, YbcPgOid* database_o
 
 void YBCStartSysTablePrefetchingNoCache(YbcPgSysTablePrefetchKind kind);
 
+// send_away_if_fill_in_flight asks the tserver to answer Incomplete rather than queue this
+// prefetch behind a fill already under way -- another connection's anywhere in the same database,
+// or any session's on the entry this round wants -- so the caller reads the older version this
+// node holds instead. The caller must have somewhere to try: whether that read will work is
+// settled by making it, not before. It must not set this on the attempt that follows one, or the
+// two would answer each other. It reaches the wire only on the prefetch's opening round; a round
+// after that has fetched data a send-away would throw away.
+//
+// part_of_connection_prefetch says this prefetch is a connection start's, which keeps the tserver
+// counting the database as busy for the whole of it rather than only while one of its requests is
+// in flight.
 void YBCStartSysTablePrefetching(
     YbcPgOid database_oid,
     YbcPgLastKnownCatalogVersionInfo catalog_version,
     YbcPgSysTablePrefetcherCacheMode cache_mode,
-    YbcPgSysTablePrefetchKind kind);
+    YbcPgSysTablePrefetchKind kind,
+    bool send_away_if_fill_in_flight,
+    bool part_of_connection_prefetch);
 
 void YBCStopSysTablePrefetching();
 
@@ -1047,6 +1071,10 @@ YbcStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
                                         YbcPgReplicationSlotSnapshotAction snapshot_action,
                                         YbcLsnType lsn_type,
                                         YbcOrderingMode ordering_mode,
+                                        const char *yb_publication_name,
+                                        const YbcPgOid *yb_publication_relfilenodes,
+                                        size_t yb_num_publication_tables,
+                                        bool yb_publication_all_tables,
                                         YbcPgStatement *handle);
 YbcStatus YBCPgExecCreateReplicationSlot(YbcPgStatement handle,
                                          uint64_t *consistent_snapshot_time);
