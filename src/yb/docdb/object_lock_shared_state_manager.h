@@ -135,6 +135,10 @@ class ObjectLockSharedStateManager {
   // guard object returned by AllocateShared).
   void Stop();
 
+  // Permanently fails pending and future AllocateShared calls with ShutdownInProgress. Used when
+  // the tserver shuts down, since nothing calls Start() after that.
+  void Shutdown();
+
   [[nodiscard]] ObjectLockOwnerRegistry& registry() { return registry_; }
 
   // If txn_id is set, consumes only lock requests for that transaction. Otherwise, consumes all
@@ -174,6 +178,7 @@ class ObjectLockSharedStateManager {
 
   mutable std::mutex mutex_;
   bool stopped_ GUARDED_BY(mutex_) = true;
+  bool shutdown_ GUARDED_BY(mutex_) = false;
   std::condition_variable start_cond_;
   std::map<ObjectLockPrefix, SharedWriteLockState> write_locks_ GUARDED_BY(mutex_);
   ObjectLockExclusiveIntents exclusive_intents_ GUARDED_BY(mutex_);
