@@ -172,9 +172,9 @@ When you edit the CMK configuration, YugabyteDB Aeon rotates the master key (you
 {{< warning title="Deleting your CMK" >}}
 Deleting the CMK that is currently configured makes YugabyteDB Aeon unable to unwrap the universe keys it stores for the cluster, including the copies recorded in backup metadata. As a result you will no longer be able to decrypt clusters or backups encrypted using the key.
 
-You can remove a previous CMK after every full and incremental backup taken before the key rotation has passed its retention period and been deleted.
+You can remove a previous CMK after every full and incremental backup taken before the key rotation has passed its retention period and been deleted. The cluster keeps a record that it used that CMK. Removing the key from your cloud KMS does not delete that record.
 
-For example, if you must be able to restore a backup for 30 days, keep the rotated CMK for those 30 days.
+For example, if your oldest backup from before the rotation expires 30 days from now, keep the previous CMK for 30 days. Keep it for at least as long as your backup retention period.
 {{< /warning >}}
 
 To rotate the CMK used for EAR, do the following:
@@ -199,5 +199,5 @@ To rotate the CMK used for EAR, do the following:
 
 YugabyteDB Aeon then does the following:
 
-- Every universe key that YugabyteDB Aeon stores for the cluster is re-wrapped with the new CMK immediately. No new universe key is generated. Backups taken after the rotation record those newly wrapped keys. The cluster's universe key registry and the data on disk stay as they are.
+- Every universe key that YugabyteDB Aeon stores for the cluster is re-wrapped with the new CMK immediately, including keys that still protect files compaction has not rewritten. No new universe key is generated. Backups taken after the rotation record those re-wrapped keys, so restoring them requires the new CMK. The cluster's universe key registry and the data on disk stay as they are.
 - The previous CMK is still required to restore backups taken before the rotation.
