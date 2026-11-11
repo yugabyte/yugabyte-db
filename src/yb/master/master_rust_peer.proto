@@ -242,6 +242,18 @@ message CopyPgsqlSysTablesResponsePB {
   repeated TableRowPB tables = 2;
 }
 
+// Removes PG catalog tables of a dropped database from the sys catalog tablet
+// (SysCatalogTable::DeleteYsqlSystemTable). A table the tablet no longer has is skipped, so a new
+// leader can repeat it.
+message DeleteYsqlSystemTablesRequestPB {
+  repeated bytes table_ids = 1;
+  optional int64 term = 2;
+}
+
+message DeleteYsqlSystemTablesResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 // The host's hybrid clock (MasterHost::HandleOnHost "HybridTimeNow").
 message HybridTimeNowRequestPB {
 }

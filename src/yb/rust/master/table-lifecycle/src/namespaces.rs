@@ -182,7 +182,8 @@ impl TableLifecycle {
         Ok(())
     }
 
-    /// `DeleteNamespace` for a YCQL keyspace: one write that removes the row, as C++ does.
+    /// `DeleteNamespace`. A YCQL keyspace: one write that removes the row, as C++ does. A YSQL
+    /// database: one write of its row DELETING; the table-deletes controller drops its tables.
     pub async fn delete_namespace(
         &self,
         token: &LeaderToken,
@@ -223,6 +224,10 @@ impl TableLifecycle {
             if let Some(db_type) = YQLDatabase::from_i32(ns.database_type)
                 .filter(|t| *t != YQLDatabase::YQL_DATABASE_CQL)
             {
+                if db_type == YQLDatabase::YQL_DATABASE_PGSQL {
+                    return crate::ysql::start_database_drop(snapshot, &namespace, req)
+                        .map(|m| (m, ()));
+                }
                 return Err(unsupported_database(db_type));
             }
             let mut mutation = Mutation::new().read(&namespace);

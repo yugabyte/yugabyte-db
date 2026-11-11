@@ -1179,6 +1179,57 @@ mod ysql {
 
     const INDEX_ID: &[u8] = b"000033e8000030008000000000004001";
 
+    /// DROP DATABASE writes the database DELETING; the table-deletes controller then deletes its
+    /// tables and marks it DELETED, after which it is no longer found.
+    #[tokio::test]
+    async fn a_dropped_database_takes_its_tables_with_it() {
+        use yb_proto::pb::master_ddl::{
+            IsDeleteNamespaceDoneRequestPB, IsDeleteNamespaceDoneResponsePB,
+        };
+        let h = ysql_harness().await;
+        h.create_ysql(None).await.unwrap();
+        h.set_table_state(TABLE_ID, sys_tables_entry_pb::State::RUNNING)
+            .await;
+        let mut req = DeleteNamespaceRequestPB::new();
+        req.namespace.mut_or_insert_default().set_id(DB_ID.to_vec());
+        req.namespace
+            .mut_or_insert_default()
+            .set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+        h.lifecycle
+            .delete_namespace(&h.token, Harness::deadline(), &req)
+            .await
+            .unwrap();
+        let ns_state = |h: &Harness| {
+            h.snapshot()
+                .get(SysRowEntryType::NAMESPACE, DB_ID)
+                .unwrap()
+                .parse::<SysNamespaceEntryPB>()
+                .unwrap()
+                .state()
+        };
+        assert_eq!(ns_state(&h), sys_namespace_entry_pb::State::DELETING);
+        let mut done_req = IsDeleteNamespaceDoneRequestPB::new();
+        done_req.namespace = req.namespace.clone();
+        let mut done = IsDeleteNamespaceDoneResponsePB::new();
+        h.lifecycle
+            .is_delete_namespace_done(&h.snapshot(), &done_req, &mut done)
+            .unwrap();
+        assert!(!done.done());
+
+        crate::TableDeleter::new(h.lifecycle.clone(), || Duration::from_secs(1))
+            .pass()
+            .await;
+        assert_eq!(ns_state(&h), sys_namespace_entry_pb::State::DELETED);
+        assert_eq!(
+            h.table(TABLE_ID).state(),
+            sys_tables_entry_pb::State::DELETED
+        );
+        h.lifecycle
+            .is_delete_namespace_done(&h.snapshot(), &done_req, &mut done)
+            .unwrap();
+        assert!(done.done());
+    }
+
     #[tokio::test]
     async fn truncate_is_refused_while_disabled_and_done_with_nothing_running() {
         use crate::{TruncateOptions, Truncates};

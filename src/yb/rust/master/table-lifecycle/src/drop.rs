@@ -29,11 +29,12 @@ use master_ts_manager::DeleteReplica;
 use protobuf::{Enum, EnumOrUnknown, Message};
 use tokio::time::Instant;
 use yb_host_api::{Status, StatusCode};
+use yb_proto::pb::catalog_entity_info::sys_namespace_entry_pb;
 use yb_proto::pb::catalog_entity_info::{
     sys_cdcstream_entry_pb, sys_tables_entry_pb, sys_tablets_entry_pb, SysCDCStreamEntryPB,
     SysTablesEntryPB, SysTabletsEntryPB,
 };
-use yb_proto::pb::common_types::TableType;
+use yb_proto::pb::common_types::{TableType, YQLDatabase};
 use yb_proto::pb::master_ddl::{
     DeleteTableRequestPB, DeleteTableResponsePB, IsDeleteTableDoneRequestPB,
     IsDeleteTableDoneResponsePB,
@@ -245,6 +246,28 @@ impl TableDeleter {
         let Ok(token) = self.lifecycle.leadership.token() else {
             return;
         };
+        let databases: Vec<Vec<u8>> = self
+            .lifecycle
+            .catalog
+            .snapshot()
+            .iter(SysRowEntryType::NAMESPACE)
+            .filter(|n| {
+                n.namespace().is_some_and(|h| {
+                    h.state == sys_namespace_entry_pb::State::DELETING as i32
+                        && h.database_type == YQLDatabase::YQL_DATABASE_PGSQL as i32
+                })
+            })
+            .map(|n| n.key.id.to_vec())
+            .collect();
+        for id in databases {
+            if let Err(e) = self.lifecycle.drop_ysql_database(&token, &id).await {
+                tracing::warn!(
+                    "Dropping YSQL database {} failed, will retry: {}",
+                    String::from_utf8_lossy(&id),
+                    e.status.message()
+                );
+            }
+        }
         let snapshot = self.lifecycle.catalog.snapshot();
         let deleting: Vec<Vec<u8>> = snapshot
             .iter(SysRowEntryType::TABLE)

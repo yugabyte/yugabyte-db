@@ -55,6 +55,8 @@ pub enum StatusCode {
     Incomplete = 17,
     /// `Status::kEndOfFile`.
     EndOfFile = 18,
+    /// `Status::kInvalidCommand`.
+    InvalidCommand = 19,
     /// `Status::kInternalError`.
     InternalError = 21,
     /// `Status::kExpired`.
@@ -77,7 +79,7 @@ impl StatusCode {
     /// Converts a C++ status code; unknown values become `InternalError`.
     pub fn from_i32(code: i32) -> StatusCode {
         use StatusCode::*;
-        const ALL: [StatusCode; 26] = [
+        const ALL: [StatusCode; 27] = [
             NotFound,
             Corruption,
             NotSupported,
@@ -96,6 +98,7 @@ impl StatusCode {
             ConfigurationError,
             Incomplete,
             EndOfFile,
+            InvalidCommand,
             InternalError,
             Expired,
             LeaderNotReadyToServe,
@@ -148,7 +151,9 @@ mod tests {
             assert_eq!(StatusCode::from_i32(code as i32), code);
         }
         assert_eq!(StatusCode::from_i32(0), StatusCode::InternalError);
-        assert_eq!(StatusCode::from_i32(19), StatusCode::InternalError);
+        assert_eq!(StatusCode::from_i32(19), StatusCode::InvalidCommand);
+        // `kQLError`, which `StatusCode` does not name.
+        assert_eq!(StatusCode::from_i32(20), StatusCode::InternalError);
         assert_eq!(StatusCode::TryAgain as i32, 25);
     }
 }

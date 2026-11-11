@@ -1041,3 +1041,220 @@ impl TableLifecycle {
 
 /// `kSysCatalogTabletId`.
 const SYS_CATALOG_TABLET_ID: &[u8] = b"00000000000000000000000000000000";
+
+/// `DeleteYsqlDatabase`'s checks and its first write: the namespace DELETING. Refused while a
+/// snapshot schedule covers the database or one of its tables is replicated by xCluster. C++
+/// drops the database's CDCSDK streams; that comes with the CDC service (W11), so a database with
+/// one is refused.
+pub(crate) fn start_database_drop(
+    snapshot: &CatalogSnapshot,
+    namespace: &std::sync::Arc<master_catalog_entity::Entity>,
+    req: &yb_proto::pb::master_ddl::DeleteNamespaceRequestPB,
+) -> Result<Mutation, MasterErrorPB> {
+    use yb_proto::pb::catalog_entity_info::{sys_cdcstream_entry_pb, SysCDCStreamEntryPB};
+    let id = &namespace.key.id;
+    let schedules = crate::schedules::covering_schedules(snapshot, SysRowEntryType::NAMESPACE, id);
+    if !schedules.is_empty() {
+        return Err(error(
+            Code::NAMESPACE_IS_NOT_EMPTY,
+            StatusCode::InvalidArgument,
+            format!(
+                "Cannot delete database which has schedule: {}, request: {}",
+                crate::schedules::schedule_list(&schedules),
+                crate::namespaces::short_debug(req)
+            ),
+        ));
+    }
+    for table in snapshot.iter(SysRowEntryType::TABLE) {
+        let Some(hot) = table.table() else { continue };
+        if hot.namespace_id != **id
+            || hot.state == TableState::DELETING as i32
+            || hot.state == TableState::DELETED as i32
+        {
+            continue;
+        }
+        if crate::drop::xcluster_replicated(snapshot, &table.key.id) {
+            return Err(error(
+                Code::UNKNOWN_ERROR,
+                StatusCode::InvalidCommand,
+                format!(
+                    "Table: {} is under replication. Cannot delete a database that contains \
+                     tables under replication.",
+                    String::from_utf8_lossy(&table.key.id)
+                ),
+            ));
+        }
+    }
+    let streamed = snapshot.iter(SysRowEntryType::CDC_STREAM).any(|stream| {
+        stream.parse::<SysCDCStreamEntryPB>().is_ok_and(|pb| {
+            pb.namespace_id().as_bytes() == &**id
+                && !matches!(
+                    pb.state(),
+                    sys_cdcstream_entry_pb::State::DELETING
+                        | sys_cdcstream_entry_pb::State::DELETED
+                )
+        })
+    });
+    if streamed {
+        return Err(error(
+            Code::INVALID_REQUEST,
+            StatusCode::NotSupported,
+            "Dropping a database with CDC streams is not served by a Rust master leader yet",
+        ));
+    }
+    let mut ns: SysNamespaceEntryPB = namespace.parse().map_err(corrupt)?;
+    ns.set_state(sys_namespace_entry_pb::State::DELETING);
+    Mutation::new()
+        .read(namespace)
+        .upsert_message(SysRowEntryType::NAMESPACE, id, &ns)
+        .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))
+}
+
+impl TableLifecycle {
+    /// `DeleteYsqlDatabaseAsync` and `DeleteYsqlDBTables` for a DELETING database, which the
+    /// table-deletes controller calls each pass, so a new leader finishes a drop the last one
+    /// started. Its PG catalog tables leave the sys-catalog tablet (through the host, skipping
+    /// any already gone), then one write sets every table DELETING, takes the catalog tables off
+    /// the sys-catalog tablet's row and sets the database DELETED. The controller then deletes the
+    /// tables' tablets as for DROP TABLE. A database with a shared table goes to FAILED, as C++'s
+    /// check fails it.
+    pub(crate) async fn drop_ysql_database(
+        &self,
+        token: &LeaderToken,
+        id: &[u8],
+    ) -> Result<(), MasterErrorPB> {
+        use protobuf::Message;
+        use std::collections::HashSet;
+        use yb_proto::pb::catalog_entity_info::SysTabletsEntryPB;
+        use yb_proto::pb::master_rust_peer::{
+            DeleteYsqlSystemTablesRequestPB, DeleteYsqlSystemTablesResponsePB,
+        };
+        let live_tables =
+            |snapshot: &CatalogSnapshot| -> Vec<std::sync::Arc<master_catalog_entity::Entity>> {
+                snapshot
+                    .iter(SysRowEntryType::TABLE)
+                    .filter(|t| {
+                        t.table().is_some_and(|h| {
+                            h.namespace_id == id
+                                && h.state != TableState::DELETING as i32
+                                && h.state != TableState::DELETED as i32
+                        })
+                    })
+                    .cloned()
+                    .collect()
+            };
+        let snapshot = self.catalog.snapshot();
+        let tables = live_tables(&snapshot);
+        let shared = tables.iter().any(|t| {
+            t.parse::<SysTablesEntryPB>()
+                .is_ok_and(|pb| pb.is_pg_shared_table())
+        });
+        if shared {
+            tracing::warn!(
+                "Database {} has a shared YSQL table; failing its drop",
+                String::from_utf8_lossy(id)
+            );
+            return self.set_dropped_namespace_state(token, id, false).await;
+        }
+        let system: Vec<Vec<u8>> = tables
+            .iter()
+            .filter(|t| crate::lookup::is_system_table(&snapshot, t))
+            .map(|t| t.key.id.to_vec())
+            .collect();
+        if !system.is_empty() {
+            let mut req = DeleteYsqlSystemTablesRequestPB::new();
+            req.table_ids = system.clone();
+            req.set_term(token.term());
+            let bytes = req.write_to_bytes().map_err(corrupt)?;
+            let host = self.host.clone();
+            let response =
+                tokio::task::spawn_blocking(move || host.call("DeleteYsqlSystemTables", &bytes))
+                    .await
+                    .map_err(corrupt)?
+                    .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+            let response =
+                DeleteYsqlSystemTablesResponsePB::parse_from_bytes(&response).map_err(corrupt)?;
+            if let Some(e) = response.error.into_option() {
+                return Err(e);
+            }
+        }
+        let system: HashSet<Vec<u8>> = system.into_iter().collect();
+        let deadline = Instant::now() + std::time::Duration::from_secs(60);
+        let dropped = self
+            .write(token, deadline, |snapshot| {
+                let Some(namespace) = snapshot.get(SysRowEntryType::NAMESPACE, id) else {
+                    return Ok((Mutation::new(), 0));
+                };
+                let mut ns: SysNamespaceEntryPB = namespace.parse().map_err(corrupt)?;
+                if ns.state() != sys_namespace_entry_pb::State::DELETING {
+                    return Ok((Mutation::new(), 0));
+                }
+                let message = format!("Started deleting at {}", local_time_string());
+                let mut mutation = Mutation::new().read(namespace);
+                let tables = live_tables(snapshot);
+                for table in &tables {
+                    let mut pb: SysTablesEntryPB = table.parse().map_err(corrupt)?;
+                    pb.state = Some(EnumOrUnknown::new(TableState::DELETING));
+                    pb.set_state_msg(message.clone().into_bytes());
+                    mutation = mutation
+                        .read(table)
+                        .upsert_message(SysRowEntryType::TABLE, &table.key.id, &pb)
+                        .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+                }
+                if let Some(sys_tablet) =
+                    snapshot.get(SysRowEntryType::TABLET, SYS_CATALOG_TABLET_ID)
+                {
+                    let mut tablet: SysTabletsEntryPB = sys_tablet.parse().map_err(corrupt)?;
+                    let before = tablet.table_ids.len();
+                    tablet.table_ids.retain(|t| !system.contains(t));
+                    if tablet.table_ids.len() != before {
+                        mutation = mutation
+                            .read(sys_tablet)
+                            .upsert_message(SysRowEntryType::TABLET, SYS_CATALOG_TABLET_ID, &tablet)
+                            .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+                    }
+                }
+                ns.set_state(sys_namespace_entry_pb::State::DELETED);
+                mutation = mutation
+                    .upsert_message(SysRowEntryType::NAMESPACE, id, &ns)
+                    .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+                Ok((mutation, tables.len()))
+            })
+            .await?;
+        tracing::info!(
+            "Dropped YSQL database {} ({dropped} tables to delete)",
+            String::from_utf8_lossy(id)
+        );
+        Ok(())
+    }
+
+    /// Marks a DELETING database DELETED or FAILED.
+    async fn set_dropped_namespace_state(
+        &self,
+        token: &LeaderToken,
+        id: &[u8],
+        deleted: bool,
+    ) -> Result<(), MasterErrorPB> {
+        let deadline = Instant::now() + std::time::Duration::from_secs(60);
+        self.write(token, deadline, |snapshot| {
+            let Some(namespace) = snapshot.get(SysRowEntryType::NAMESPACE, id) else {
+                return Ok((Mutation::new(), ()));
+            };
+            let mut ns: SysNamespaceEntryPB = namespace.parse().map_err(corrupt)?;
+            if ns.state() != sys_namespace_entry_pb::State::DELETING {
+                return Ok((Mutation::new(), ()));
+            }
+            ns.set_state(if deleted {
+                sys_namespace_entry_pb::State::DELETED
+            } else {
+                sys_namespace_entry_pb::State::FAILED
+            });
+            let mutation = Mutation::new()
+                .read(namespace)
+                .upsert_message(SysRowEntryType::NAMESPACE, id, &ns)
+                .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+            Ok((mutation, ()))
+        })
+        .await
+    }
+}

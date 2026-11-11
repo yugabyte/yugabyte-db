@@ -20,8 +20,8 @@ YCQL keyspaces and tables that are not indexes:
 | `TruncateTable`, `IsTruncateTableDone` | `truncate.rs`. As C++: `Truncate` to each tablet's leader, and a YCQL table's indexes too (PG truncates each YSQL index itself). Not persisted, so a new leader reports an unfinished truncate as done, as C++ does. A table in a CDCSDK stream is refused until W11. |
 
 YSQL databases that are not colocated, and YSQL tables and indexes that are not colocated and in
-the default tablespace (below). `AlterNamespace` renames a running namespace. Dropping a YSQL
-database, colocated tables, vector indexes and tablespaces answer `NotSupported`. Roles, permissions and
+the default tablespace (below). `AlterNamespace` renames a running namespace. Colocated tables,
+vector indexes and tablespaces answer `NotSupported`. Roles, permissions and
 UDTs are `master-ycql`'s.
 
 ## YSQL tables and DDL verification (`ysql.rs`)
@@ -151,6 +151,24 @@ and marks the table DELETED once no tablet is left. All of it is derived from th
 leader finishes a drop the last one started; a replica missed here gets its delete from report
 processing. C++ writes DELETING, then the tablets, then DELETED, with in-memory bookkeeping in
 between (#33349).
+
+## DROP DATABASE (`ysql.rs`, K1)
+
+`DeleteNamespace` of a YSQL database checks what `DeleteYsqlDatabase` does (no snapshot schedule
+covers it, no table in xCluster replication) and writes the database DELETING. The table-deletes
+controller finishes every DELETING database each pass, so a new leader finishes a drop the last
+one started:
+
+1. Its PG catalog tables leave the sys-catalog tablet's Raft metadata, through the host
+   (`DeleteYsqlSystemTables`, which skips a table already gone, so it can be repeated).
+2. One write sets every table of the database DELETING, removes the catalog tables from the
+   sys-catalog tablet's row and sets the database DELETED. C++ does these in two writes.
+3. The tables' tablets are deleted as for DROP TABLE.
+
+A database with a shared table goes to FAILED, as C++'s check fails it. Not done yet: dropping the
+database's CDCSDK streams (a database with one is refused until W11), erasing its xCluster
+persistence block, and removing the DELETED row on the next leader load (C++ keeps it as a
+tombstone until then).
 
 ## YSQL indexes and backfill (`ysql.rs`, `backfill.rs`)
 

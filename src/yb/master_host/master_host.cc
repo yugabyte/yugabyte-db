@@ -1393,6 +1393,21 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
           return sys_catalog_->CopyPgsqlTables(source_ids, target_ids, req.term());
         });
   }
+  if (name == "DeleteYsqlSystemTables") {
+    return HandleRequest<master::DeleteYsqlSystemTablesRequestPB,
+                         master::DeleteYsqlSystemTablesResponsePB>(
+        request, [this](const auto& req, auto*) -> Status {
+          auto peer = sys_catalog_->tablet_peer();
+          SCHECK(peer, IllegalState, "The sys catalog tablet is not open");
+          for (const auto& table_id : req.table_ids()) {
+            if (!peer->tablet_metadata()->GetTableInfo(table_id).ok()) {
+              continue;
+            }
+            RETURN_NOT_OK(sys_catalog_->DeleteYsqlSystemTable(table_id, req.term()));
+          }
+          return Status::OK();
+        });
+  }
   if (name == "HybridTimeNow") {
     return HandleRequest<master::HybridTimeNowRequestPB, master::HybridTimeNowResponsePB>(
         request, [this](const auto&, auto* resp) {
