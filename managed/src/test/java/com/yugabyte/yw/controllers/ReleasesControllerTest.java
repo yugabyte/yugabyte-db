@@ -617,8 +617,7 @@ public class ReleasesControllerTest extends FakeDBApplication {
     Universe universe = ModelFactory.createUniverse(defaultCustomer.getId());
     Release release =
         Release.create(
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
-            "STS");
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion, "STS");
     release.addArtifact(
         ReleaseArtifact.create(
             "sha256", ReleaseArtifact.Platform.LINUX, Architecture.x86_64, "url"));

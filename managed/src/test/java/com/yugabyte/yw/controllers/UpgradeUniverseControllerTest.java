@@ -671,14 +671,14 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
                     },
                     SoftwareUpgradeParams.class,
                     upgradePath));
-    assertTrue(
-        exception.getUserVisibleMessage().contains("Release 2.21.0.0-b1 is not ACTIVE"));
+    assertTrue(exception.getUserVisibleMessage().contains("Release 2.21.0.0-b1 is not ACTIVE"));
     verifyNoActions();
   }
 
   @Test
   public void testRollbackUpgradeAllowedWhenReleaseDisabled() {
-    TestHelper.updateUniverseSoftwareUpgradeState(defaultUniverse, SoftwareUpgradeState.PreFinalize);
+    TestHelper.updateUniverseSoftwareUpgradeState(
+        defaultUniverse, SoftwareUpgradeState.PreFinalize);
     TestHelper.updateUniverseIsRollbackAllowed(defaultUniverse, true);
     stubDisabledRelease();
     UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.RollbackUpgrade);
