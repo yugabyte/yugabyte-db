@@ -1,10 +1,21 @@
-from typing import Generator, Any, Dict, Optional
+from typing import Callable, Generator, Any, Dict, Optional
 import codecs
+import json
+import mimetypes
 import os
 import boto3
 import logging
 import requests
 from rag_pipeline.chunk import chunk, get_splitter_for_filetype
+from rag_pipeline.content_profile import (
+    CHUNKER_VERSION,
+    DUMP,
+    PROSE,
+    PROSE_MERGE_CHARS,
+    merge_paragraphs,
+    profile_text,
+    split_dump_objects,
+)
 from observability import meko_observe
 
 # Guard against one get_object exhausting the worker's memory, since the whole
@@ -39,6 +50,23 @@ from observability import meko_observe
 # memory limit above the densest table you expect to index, not above a
 # number quoted here, and do not quote a single multiplier for this path.
 DEFAULT_MAX_FILE_SIZE_BYTES = 64 * 1024 * 1024  # 64 MiB
+
+_CONTENT_AWARE_FLAG = "ENABLE_CONTENT_AWARE_CHUNKING"
+
+STRATEGY_PARAGRAPH = "paragraph"
+STRATEGY_PROSE_MERGE = "prose_merge"
+STRATEGY_DUMP_OBJECTS = "dump_objects"
+
+
+def is_content_aware_chunking_enabled() -> bool:
+    """Off by default: turning it on changes the chunks of every new upload.
+
+    Flip it only while no plain-text upload is mid-ingestion. A document whose
+    first attempt was chunked one way and whose retry is chunked the other
+    keeps the first attempt's partial chunks next to the full new set, because
+    the insert skips matching ids and never deletes stale ones.
+    """
+    return os.getenv(_CONTENT_AWARE_FLAG, "false").strip().lower() == "true"
 
 
 def _env_size_bytes(var_name: str, default: int) -> int:
@@ -236,11 +264,20 @@ def read_file_stream(
 def stream_partition_and_chunk(
     pipeline_id: int,  # pipeline id of the document being processed
     file_location: str,
-    chunk_args: Dict[str, Any] = {}
+    chunk_args: Optional[Dict[str, Any]] = None,
+    on_plan: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Generator[str, None, None]:
     """
     Partitions a text file from s3 or nfs into logical paragraphs, and
     further chunks paragraphs using chunk function from chunk.py.
+
+    A text/plain file is profiled (rag_pipeline.content_profile). With
+    ENABLE_CONTENT_AWARE_CHUNKING on, prose has its small paragraphs merged
+    and a SQL dump is packed one whole object at a time. Anything else, and
+    every file with the flag off or a splitter named in chunk_args, is chunked
+    per paragraph as before.
+    on_plan, if given, is called once with the strategy, the chunker version
+    and the profile, before the first chunk is yielded.
 
     The file is read in one call before the first chunk is yielded. Reading it
     lazily held the S3 response open for the whole embedding run - minutes per
@@ -258,6 +295,7 @@ def stream_partition_and_chunk(
         if paragraph:
             yield "\n".join(paragraph).strip()
 
+    chunk_args = chunk_args or {}
     # nikhil-todo: chunk args should be configured from the request chunk_embedding_kwargs.
     auto_splitter, auto_args = get_splitter_for_filetype(file_location)
     splitter = chunk_args.get('splitter', auto_splitter)
@@ -272,10 +310,42 @@ def stream_partition_and_chunk(
         max_size_bytes=max_file_size_bytes(),
         knob="MAX_FILE_SIZE_BYTES",
     )
-    lines_iter = _iter_lines(full_text)
-    logging.debug(f"generated lines_iter for file: {file_location}")
-    for paragraph in paragraph_stream(lines_iter):
-        for chunked_text in chunk(splitter, paragraph, args):
+
+    profile = None
+    strategy = STRATEGY_PARAGRAPH
+    file_type, _ = mimetypes.guess_type(file_location)
+    # A caller that names a splitter has chosen its chunking; keep it.
+    if file_type == "text/plain" and "splitter" not in chunk_args:
+        profile = profile_text(full_text)
+        if is_content_aware_chunking_enabled():
+            if profile.content_class == PROSE:
+                strategy = STRATEGY_PROSE_MERGE
+            elif profile.content_class == DUMP:
+                strategy = STRATEGY_DUMP_OBJECTS
+
+    plan = {"chunker_version": CHUNKER_VERSION, "strategy": strategy}
+    if profile is not None:
+        plan["profile"] = profile.to_metadata()
+    logging.info(f"Chunking plan for {file_location}: {plan}")
+    if on_plan is not None:
+        on_plan(plan)
+
+    if strategy == STRATEGY_PARAGRAPH:
+        pieces = paragraph_stream(_iter_lines(full_text))
+    else:
+        # Never merge past the splitter's own chunk size.
+        chunk_size = json.loads(args).get("chunk_size", 1000)
+        if strategy == STRATEGY_DUMP_OBJECTS:
+            pieces = merge_paragraphs(
+                split_dump_objects(full_text), chunk_size
+            )
+        else:
+            pieces = merge_paragraphs(
+                paragraph_stream(_iter_lines(full_text)),
+                min(PROSE_MERGE_CHARS, chunk_size),
+            )
+    for piece in pieces:
+        for chunked_text in chunk(splitter, piece, args):
             yield chunked_text
 
 def enforce_size_limit(

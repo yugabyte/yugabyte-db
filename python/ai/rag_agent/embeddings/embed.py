@@ -103,8 +103,15 @@ class EmbeddingsGenerator:
         empty_chunk_count = 0
         batch_texts = []
 
+        def record_plan(plan):
+            # Bookkeeping only: a failed write must not fail the upload.
+            try:
+                self.pipeline_tracking.record_chunking_plan(pipeline_id, plan)
+            except Exception as e:
+                logging.error(f"Failed to record chunking plan: {str(e)}")
+
         for chunk_text in stream_partition_and_chunk(
-            pipeline_id, file_location, chunk_args
+            pipeline_id, file_location, chunk_args, on_plan=record_plan
         ):
             chunk_count += 1
             if chunk_text.strip():

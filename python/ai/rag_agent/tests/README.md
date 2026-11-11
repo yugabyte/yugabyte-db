@@ -10,6 +10,7 @@ This directory contains comprehensive tests for the RAG preprocessor components.
 - `test_pipeline_simple.py` - Simplified pipeline tests for `read_file_stream` and `stream_partition_and_chunk`
 - `test_pipeline_final.py` - Extended pipeline tests including edge cases and performance
 - `test_pipeline_comprehensive.py` - Full pipeline tests including S3 mocking
+- `test_content_profile.py` - Content-aware chunking of plain text (`rag_pipeline.content_profile`) and the `ENABLE_CONTENT_AWARE_CHUNKING` flag
 - `test_yugabytedb_vector_store.py` - Tests for the `YugabyteDBVectorStore` (`db.yugabytedb_vector_store`)
 - `test_integration.py` - End-to-end integration tests across multiple components
 - `conftest.py` - Shared test fixtures and configuration

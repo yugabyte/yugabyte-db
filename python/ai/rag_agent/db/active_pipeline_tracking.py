@@ -261,6 +261,40 @@ class PipelineTracking:
             if conn:
                 self._return_connection(conn)
 
+    @meko_observe(name="Record Chunking Plan / Active Pipeline Tracking", as_type="span")
+    def record_chunking_plan(self, pipeline_id: str, plan: Dict[str, Any]) -> bool:
+        """
+        Store how a document was chunked under metadata_snapshot.chunking.
+
+        Merged into the snapshot rather than replacing it, so the config
+        insert_pipeline_details captured stays.
+        """
+        conn = None
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                """
+                UPDATE dist_rag.pipeline_details
+                SET metadata_snapshot = metadata_snapshot || %s::jsonb
+                WHERE pipeline_id = %s
+                """,
+                (json.dumps({"chunking": plan}), pipeline_id)
+            )
+            conn.commit()
+            cur.close()
+            return True
+
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            self.logger.error(f"Failed to record chunking plan: {str(e)}")
+            raise
+
+        finally:
+            if conn:
+                self._return_connection(conn)
+
     @meko_observe(name="Update Chunks Processed / Active Pipeline Tracking", as_type="span")
     def update_chunks_processed(self, pipeline_id: str, chunks_count: int) -> bool:
         """
