@@ -304,4 +304,9 @@ extern void YbPgMemResetStmtConsumption();
  */
 extern void YbPgGetCurRssPssMemUsage(int pid, int64_t *rss, int64_t *pss);
 
+/* YB declarations */
+extern bool YbMemoryContextDeleteIfNoLiveChunks(MemoryContext context);
+extern bool YbAllocSetHasNoLiveChunks(MemoryContext context);
+extern void YbAllocSetDisableRecycling(MemoryContext context);
+
 #endif							/* MEMUTILS_H */
