@@ -48,6 +48,8 @@
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 
+#include "yb/util/strongly_typed_bool.h"
+
 DEFINE_NON_RUNTIME_bool(ysql_enable_read_request_caching, true, "Enable read request caching");
 DEFINE_NON_RUNTIME_uint32(
     pg_cache_response_renew_soft_lifetime_limit_ms, 3 * 60 * 1000,
@@ -69,6 +71,10 @@ static_assert(static_cast<int>(YB_YQL_PREFETCH_KIND_HIGH_PRIORITY) ==
               static_cast<int>(YSQL_CATALOG_PREFETCH_HIGH_PRIORITY));
 
 namespace {
+
+// Whether this prefetch has already been served a request, which is what stops a
+// later round from asking to be sent away.
+YB_STRONGLY_TYPED_BOOL(PrefetchHasStarted);
 
 using ColumnIdsContainer = std::vector<int>;
 using DataHolder = std::shared_ptr<std::remove_const_t<PrefetchedDataHolder::element_type>>;
@@ -342,17 +348,24 @@ class VersionInfoWriter {
   FATAL_INVALID_ENUM_VALUE(PrefetchingCacheMode, mode);
 }
 
+// prefetch_has_started suppresses the ask once this prefetch has been served anything, so the
+// decision is taken once, on its opening round. Being sent away discards everything fetched so
+// far -- PgSysTablePrefetcher::Prefetch resets its state -- and the opening round is the one
+// round with nothing to discard.
 [[nodiscard]] PgSession::CacheOptions BuildCacheOptions(
     yb::ThreadSafeArena* arena, const ReadHybridTime& catalog_read_time,
     const std::vector<OperationInfo>& ops, const PrefetcherOptions::CachingInfo& caching_info,
-    bool completes_connection_prefetch) {
+    bool completes_connection_prefetch, PrefetchHasStarted prefetch_has_started) {
   return {
       .key_group = caching_info.db_oid,
       .key_value = BuildCacheKey(arena, catalog_read_time, ops, caching_info.version_info),
       .lifetime_threshold_ms = GetCacheLifetimeThreshold(caching_info.mode),
       .catalog_version = caching_info.version_info.version,
       .lookup_only = caching_info.mode == PrefetchingCacheMode::TRUST_CACHE_LOOKUP_ONLY,
-      .completes_connection_prefetch = completes_connection_prefetch
+      .completes_connection_prefetch = completes_connection_prefetch,
+      .send_away_if_fill_in_flight =
+          caching_info.send_away_if_fill_in_flight && !prefetch_has_started,
+      .part_of_connection_prefetch = caching_info.part_of_connection_prefetch
   };
 }
 
@@ -371,14 +384,15 @@ auto MakeGenerator(const std::vector<OperationInfo>& ops) {
 
 Result<rpc::CallResponsePtr> Run(
     yb::ThreadSafeArena* arena, PgSession* session, const std::vector<OperationInfo>& ops,
-    const PrefetcherOptions& options, bool completes_connection_prefetch) {
+    const PrefetcherOptions& options, bool completes_connection_prefetch,
+    PrefetchHasStarted prefetch_has_started) {
   PgDocResponse response(
       VERIFY_RESULT(session->RunAsync(
           make_lw_function(MakeGenerator(ops)),
           options.caching_info
               ? std::optional(BuildCacheOptions(
                   arena, session->catalog_read_time(), ops, *options.caching_info,
-                  completes_connection_prefetch))
+                  completes_connection_prefetch, prefetch_has_started))
               : std::nullopt)),
       {TableType::SYSTEM, IsForWritePgDoc::kFalse, IsOpBuffered::kFalse});
   return VERIFY_RESULT(response.Get(*session)).response;
@@ -482,6 +496,9 @@ class Loader {
   // Load data from all prepared operations and place the result into data_container
   Status Load(DataContainer* data_container) {
     VLOG(2) << "Loader::Load";
+    // continuation_ says this is a later request of the same connection prefetch; a round after
+    // the first is a later round of this request. Either one means the prefetch has started.
+    auto prefetch_has_started = PrefetchHasStarted(continuation_);
     while (!op_info_.empty()) {
       if (yb_debug_log_catcache_events) {
         std::set<std::string> table_names;
@@ -491,7 +508,9 @@ class Loader {
         LOG(INFO) << "Initiating prefetching for tables " << yb::ToString(table_names);
       }
       auto response = VERIFY_RESULT(
-          Run(arena_.get(), session_, op_info_, options_, completes_connection_prefetch_));
+          Run(arena_.get(), session_, op_info_, options_, completes_connection_prefetch_,
+              prefetch_has_started));
+      prefetch_has_started = PrefetchHasStarted::kTrue;
       Status remove_predicate_status;
       ResultFunctorAdapter<bool, OperationInfo&> remove_predicate(
           &remove_predicate_status,
