@@ -111,8 +111,8 @@ public class SpecificationProviderInitializer implements ProviderInitializer {
   }
 
   @Override
-  public ProviderInitializer setAwsProfile(String awsProfile) {
-    providerSpecification.setAwsInstanceProfile(awsProfile);
+  public ProviderInitializer setAwsInstanceProfile(String awsInstanceProfile) {
+    providerSpecification.setAwsInstanceProfile(awsInstanceProfile);
     return this;
   }
 

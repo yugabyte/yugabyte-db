@@ -409,8 +409,9 @@ public class UniverseCRUDHandler {
       return false;
     }
 
-    String curArnString = currentCluster.userIntent.getAwsProfileForProvider(provider.getUuid());
-    String newArnString = cluster.userIntent.getAwsProfileForProvider(provider.getUuid());
+    String curArnString =
+        currentCluster.userIntent.getAwsInstanceProfileForProvider(provider.getUuid());
+    String newArnString = cluster.userIntent.getAwsInstanceProfileForProvider(provider.getUuid());
 
     boolean result =
         (!StringUtils.isEmpty(curArnString) || !StringUtils.isEmpty(newArnString))

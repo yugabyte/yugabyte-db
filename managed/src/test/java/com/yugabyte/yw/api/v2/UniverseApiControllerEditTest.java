@@ -930,11 +930,11 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
           TestUtils.existingProviderInitializer(rrIntent)
               .setImageBundleUUID(rrImageBundle.getUuid())
               .setInstanceTags(rrTags)
-              .setAwsProfile(rrArn);
+              .setAwsInstanceProfile(rrArn);
           rrIntent.regionList = new ArrayList<>(List.of(region.getUuid()));
           TestUtils.existingProviderInitializer(primaryIntent)
               .setInstanceTags(primaryTags)
-              .setAwsProfile(primaryArn);
+              .setAwsInstanceProfile(primaryArn);
           // TODO: will be migrated in PLAT-19849.
           primaryIntent.enableExposingService =
               UniverseDefinitionTaskParams.ExposingServiceState.EXPOSED;
@@ -960,7 +960,7 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     assertThat(rrIntent.numNodes, is(4));
     assertThat(rrIntent.getInstanceTagsForProvider(providerUuid), is(rrTags));
     assertThat(rrIntent.getImageBundleUUIDForProvider(providerUuid), is(rrImageBundle.getUuid()));
-    assertThat(rrIntent.getAwsProfileForProvider(providerUuid), is(rrArn));
+    assertThat(rrIntent.getAwsInstanceProfileForProvider(providerUuid), is(rrArn));
     assertThat(rrIntent.regionList, is(List.of(region.getUuid())));
     assertThat(
         rrIntent.enableExposingService,
@@ -971,7 +971,7 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     assertThat(primaryIntent.getInstanceTagsForProvider(providerUuid), is(primaryTags));
     assertThat(
         primaryIntent.getImageBundleUUIDForProvider(providerUuid), is(primaryImageBundleUuid));
-    assertThat(primaryIntent.getAwsProfileForProvider(providerUuid), is(primaryArn));
+    assertThat(primaryIntent.getAwsInstanceProfileForProvider(providerUuid), is(primaryArn));
     assertThat(primaryIntent.regionList, is(primaryRegionList));
     assertThat(
         primaryIntent.enableExposingService,

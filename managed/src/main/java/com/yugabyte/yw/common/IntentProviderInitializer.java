@@ -95,8 +95,8 @@ public class IntentProviderInitializer implements ProviderInitializer {
   }
 
   @Override
-  public ProviderInitializer setAwsProfile(String awsProfile) {
-    userIntent.awsArnString = awsProfile;
+  public ProviderInitializer setAwsInstanceProfile(String awsInstanceProfile) {
+    userIntent.awsArnString = awsInstanceProfile;
     return this;
   }
 

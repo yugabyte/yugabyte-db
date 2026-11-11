@@ -1500,7 +1500,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.sshUserOverride = node.sshUserOverride;
     params.sshPortOverride = node.sshPortOverride;
     params.setCmkArn(taskParams().getCmkArn());
-    params.ipArnString = userIntent.getAwsProfileForProvider(providerUUID);
+    params.ipArnString = userIntent.getAwsInstanceProfileForProvider(providerUUID);
     params.useSpotInstance = userIntent.useSpotInstance;
     params.spotPrice = userIntent.spotPrice;
   }
