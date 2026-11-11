@@ -63,11 +63,24 @@ import {
   EBS_KMS_CONFIG_FIELD,
   CPU_ARCH_FIELD
 } from '@app/redesign/features-v2/universe/create-universe/fields/FieldNames';
+import { useYBToast } from '../../helpers/ToastUtils';
 import { getPrimaryProvider } from '../../helpers/providerConfigurations';
 import { getEffectiveRegions } from '../../helpers/placementsByProvider';
 import { ProviderType } from '../general-settings/dtos';
 
 const { Box, CircularProgress, Typography } = mui;
+
+const getFirstErrorMessage = (errors: unknown): string | undefined => {
+  if (!errors || typeof errors !== 'object') return undefined;
+  const { message, ...rest } = errors as Record<string, unknown>;
+  if (typeof message === 'string' && message) return message;
+  for (const [key, child] of Object.entries(rest)) {
+    if (key === 'ref' || key === 'type') continue;
+    const found = getFirstErrorMessage(child);
+    if (found) return found;
+  }
+  return undefined;
+};
 
 export const InstanceBox = ({ children }: { children: React.ReactNode }) => (
   <Box sx={{ width: 480, display: 'flex', flexDirection: 'column', gap: 2 }}>{children}</Box>
@@ -179,6 +192,7 @@ export const InstanceSettingsForm = forwardRef<StepsRef, InstanceSettingsProps>(
     keyPrefix: 'createUniverseV2.instanceSettings'
   });
 
+  const toast = useYBToast();
   const earKMSConfig = securitySettings?.kmsConfig ?? null;
 
   const methods = useForm<InstanceSettingProps>({
@@ -194,7 +208,9 @@ export const InstanceSettingsForm = forwardRef<StepsRef, InstanceSettingsProps>(
         useK8CustomResources,
         provider?.code,
         !!useDedicatedNodes,
-        maxVolumeCount
+        maxVolumeCount,
+        viewMode,
+        editMode
       )
     )
   });
@@ -292,13 +308,17 @@ export const InstanceSettingsForm = forwardRef<StepsRef, InstanceSettingsProps>(
     forwardRef,
     () => ({
       onNext: () =>
-        methods.handleSubmit((data) => {
-          if (embedded) {
-            onValidated?.(data);
-            return;
-          }
-          moveToNextPage();
-        })(),
+        methods.handleSubmit(
+          (data) => {
+            if (embedded) {
+              onValidated?.(data);
+              return;
+            }
+            moveToNextPage();
+          },
+          // never fail silently, even if the failing field isn't on screen
+          (errors) => toast.error(getFirstErrorMessage(errors) ?? t('validationFailed'))
+        )(),
       onPrev: () => {
         if (embedded) return;
         if (resilienceAndRegionsSettings?.resilienceType === ResilienceType.SINGLE_NODE) {
@@ -308,7 +328,7 @@ export const InstanceSettingsForm = forwardRef<StepsRef, InstanceSettingsProps>(
         }
       }
     }),
-    [embedded, onValidated, moveToNextPage, moveToPreviousPage, setActiveStep, resilienceAndRegionsSettings?.resilienceType, methods]
+    [embedded, onValidated, toast, t, moveToNextPage, moveToPreviousPage, setActiveStep, resilienceAndRegionsSettings?.resilienceType, methods]
   );
 
   const showDedicatedNodesSection = !!(
