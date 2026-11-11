@@ -3517,6 +3517,38 @@ TEST_F(PgCatalogVersionTest, TestAlterRoleSetGUCHasGlobalImpact) {
   ASSERT_EQ(row6, "off");
 }
 
+// Make sure GRANT/REVOKE SET ON PARAMETER has global impact.
+TEST_F(PgCatalogVersionTest, TestGrantSetOnParameterHasGlobalImpact) {
+  auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
+  ASSERT_OK(conn.Execute("CREATE ROLE user1 WITH login"));
+  ASSERT_OK(conn.Execute("CREATE DATABASE db1"));
+
+  auto conn_db1_user1 = ASSERT_RESULT(ConnectToDBAsUser("db1" /* db_name */, "user1"));
+  auto set_denied = [&]() -> Result<bool> {
+    auto s = conn_db1_user1.Execute("SET log_planner_stats = on");
+    if (s.ok()) {
+      return false;
+    }
+    if (s.ToString().find("permission denied to set parameter") == std::string::npos) {
+      return s;
+    }
+    return true;
+  };
+  ASSERT_TRUE(ASSERT_RESULT(set_denied()));
+  auto v1_db1 = ASSERT_RESULT(GetCatalogVersion(&conn_db1_user1));
+
+  ASSERT_OK(conn.Execute("GRANT SET ON PARAMETER log_planner_stats TO user1"));
+  auto v2_db1 = ASSERT_RESULT(GetCatalogVersion(&conn_db1_user1));
+  ASSERT_EQ(v2_db1, v1_db1 + 1);
+  ASSERT_OK(WaitFor([&]() -> Result<bool> { return !VERIFY_RESULT(set_denied()); },
+                    60s * kTimeMultiplier, "GRANT to reach the db1 backend"));
+
+  ASSERT_OK(conn.Execute("REVOKE SET ON PARAMETER log_planner_stats FROM user1"));
+  auto v3_db1 = ASSERT_RESULT(GetCatalogVersion(&conn_db1_user1));
+  ASSERT_EQ(v3_db1, v2_db1 + 1);
+  ASSERT_OK(WaitFor(set_denied, 60s * kTimeMultiplier, "REVOKE to reach the db1 backend"));
+}
+
 TEST_F(PgCatalogVersionTest, InvalMessageDeltaTableLoad) {
   for (int i = 0; i < 2; i++) {
     // Disable auto analyze in this test because it introduce flakiness of metrics.
