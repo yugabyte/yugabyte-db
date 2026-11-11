@@ -300,12 +300,14 @@ class PipelineTracking:
     )
     def get_earlier_chunking_strategy(self, pipeline_id: str) -> Optional[str]:
         """
-        Return the chunking strategy of the latest earlier attempt at this
-        pipeline's document, or None when there is no earlier attempt.
+        Return the strategy the latest earlier attempt at this pipeline's
+        document recorded, or None when there is no earlier attempt.
 
-        An earlier attempt with no plan recorded predates plan recording,
-        or failed before chunking, and reads as "paragraph": the only
-        strategy before plans were recorded.
+        Attempts with no plan are skipped: one that died before recording
+        a plan inserted no chunks, so an older attempt's recorded strategy
+        still describes the chunks stored. Only when no earlier attempt
+        recorded one does it read as "paragraph", the only strategy before
+        plans were recorded.
         """
         conn = None
         try:
@@ -313,20 +315,27 @@ class PipelineTracking:
             cur = conn.cursor()
             cur.execute(
                 """
-                SELECT earlier.metadata_snapshot -> 'chunking' ->> 'strategy'
-                FROM dist_rag.pipeline_details AS current
-                JOIN dist_rag.pipeline_details AS earlier
-                  ON earlier.document_id = current.document_id
-                 AND earlier.pipeline_id <> current.pipeline_id
-                WHERE current.pipeline_id = %s
-                ORDER BY earlier.created_at DESC
-                LIMIT 1
+                SELECT
+                    (SELECT earlier.metadata_snapshot -> 'chunking' ->> 'strategy'
+                     FROM dist_rag.pipeline_details AS earlier
+                     WHERE earlier.document_id = this.document_id
+                       AND earlier.pipeline_id <> this.pipeline_id
+                       AND earlier.metadata_snapshot -> 'chunking' ->> 'strategy'
+                           IS NOT NULL
+                     ORDER BY earlier.created_at DESC
+                     LIMIT 1),
+                    EXISTS (SELECT 1
+                            FROM dist_rag.pipeline_details AS earlier
+                            WHERE earlier.document_id = this.document_id
+                              AND earlier.pipeline_id <> this.pipeline_id)
+                FROM dist_rag.pipeline_details AS this
+                WHERE this.pipeline_id = %s
                 """,
                 (pipeline_id,)
             )
             row = cur.fetchone()
             cur.close()
-            if row is None:
+            if row is None or not row[1]:
                 return None
             return row[0] or "paragraph"
 

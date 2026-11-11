@@ -312,37 +312,107 @@ class TestRetryReusesEarlierStrategy:
         assert "reused_from_earlier_attempt" not in plan
 
 
-def _tracking_with_cursor():
+class _SqliteCursor:
+    """Runs the tracking SQL on SQLite, which shares Postgres's ->/->> operators."""
+
+    def __init__(self, conn):
+        self._cur = conn.cursor()
+
+    def execute(self, sql, params=()):
+        self._cur.execute(sql.replace("%s", "?"), params)
+
+    def fetchone(self):
+        return self._cur.fetchone()
+
+    def close(self):
+        self._cur.close()
+
+
+@pytest.fixture
+def sqlite_tracking():
+    """PipelineTracking over an in-memory dist_rag.pipeline_details.
+
+    Yields the tracking object and add(pipeline_id, created_at, strategy),
+    which inserts an attempt at document "doc" (strategy None: no plan).
+    """
+    import json
+    import sqlite3
+
     from db.active_pipeline_tracking import PipelineTracking
 
-    cursor = MagicMock()
+    db = sqlite3.connect(":memory:")
+    db.execute("ATTACH DATABASE ':memory:' AS dist_rag")
+    db.execute(
+        "CREATE TABLE dist_rag.pipeline_details (pipeline_id TEXT, "
+        "document_id TEXT, created_at INTEGER, metadata_snapshot TEXT)"
+    )
     conn = MagicMock()
-    conn.cursor.return_value = cursor
+    conn.cursor.side_effect = lambda: _SqliteCursor(db)
     pool = MagicMock()
     pool.get_connection.return_value = conn
     with patch("db.active_pipeline_tracking.ConnectionPool", return_value=pool):
-        return PipelineTracking(), cursor, conn
+        tracking = PipelineTracking()
+
+    def add(pipeline_id, created_at, strategy=None, document_id="doc"):
+        snapshot = {"document_id": document_id}
+        if strategy is not None:
+            snapshot["chunking"] = {"chunker_version": 1, "strategy": strategy}
+        db.execute(
+            "INSERT INTO dist_rag.pipeline_details VALUES (?, ?, ?, ?)",
+            (pipeline_id, document_id, created_at, json.dumps(snapshot)),
+        )
+
+    yield tracking, add
+    db.close()
 
 
 class TestGetEarlierChunkingStrategy:
-    def test_no_earlier_attempt(self):
-        tracking, cursor, _ = _tracking_with_cursor()
-        cursor.fetchone.return_value = None
-        assert tracking.get_earlier_chunking_strategy("p2") is None
-        sql = " ".join(cursor.execute.call_args[0][0].split())
-        assert "earlier.document_id = current.document_id" in sql
-        assert "earlier.pipeline_id <> current.pipeline_id" in sql
-        assert cursor.execute.call_args[0][1] == ("p2",)
+    def test_first_attempt(self, sqlite_tracking):
+        tracking, add = sqlite_tracking
+        add("a", 1)
+        add("other", 0, "dump_objects", document_id="another-doc")
+        assert tracking.get_earlier_chunking_strategy("a") is None
 
-    def test_recorded_strategy(self):
-        tracking, cursor, _ = _tracking_with_cursor()
-        cursor.fetchone.return_value = ("dump_objects",)
-        assert tracking.get_earlier_chunking_strategy("p2") == "dump_objects"
+    def test_latest_recorded_strategy(self, sqlite_tracking):
+        tracking, add = sqlite_tracking
+        add("a", 1, "paragraph")
+        add("b", 2, "dump_objects")
+        add("c", 3)
+        assert tracking.get_earlier_chunking_strategy("c") == "dump_objects"
 
-    def test_attempt_without_plan_reads_as_paragraph(self):
-        tracking, cursor, _ = _tracking_with_cursor()
-        cursor.fetchone.return_value = (None,)
-        assert tracking.get_earlier_chunking_strategy("p2") == "paragraph"
+    def test_attempt_without_plan_does_not_hide_a_recorded_one(
+        self, sqlite_tracking
+    ):
+        tracking, add = sqlite_tracking
+        add("a", 1, "prose_merge")
+        add("b", 2)  # died before recording a plan
+        add("c", 3)
+        assert tracking.get_earlier_chunking_strategy("c") == "prose_merge"
+
+    def test_only_plan_less_attempts_read_as_paragraph(self, sqlite_tracking):
+        tracking, add = sqlite_tracking
+        add("a", 1)  # predates plan recording
+        add("b", 2)
+        assert tracking.get_earlier_chunking_strategy("b") == "paragraph"
+
+    def test_three_attempts_keep_the_first_attempts_chunks(
+        self, sqlite_tracking, monkeypatch
+    ):
+        """A chunks with the flag on, B dies before its plan, C runs flag off."""
+        tracking, add = sqlite_tracking
+        monkeypatch.setenv(FLAG, "true")
+        first, plan_a = _chunks(PROSE_TEXT)
+        assert plan_a["strategy"] == "prose_merge"
+        add("a", 1, plan_a["strategy"])
+        add("b", 2)
+        add("c", 3)
+
+        monkeypatch.delenv(FLAG)
+        retry, plan_c = _chunks(
+            PROSE_TEXT, earlier=tracking.get_earlier_chunking_strategy("c")
+        )
+        assert plan_c["strategy"] == "prose_merge"
+        assert retry == first
 
 
 class TestRecordChunkingPlan:
