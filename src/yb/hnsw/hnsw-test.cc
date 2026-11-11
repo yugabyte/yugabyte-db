@@ -248,7 +248,7 @@ TEST_F(YbHnswTest, IgnoreBlockTrailers) {
 TEST_F(YbHnswTest, UnknownFooterFlags) {
   TestSimple(/* load= */ true);
   const auto path = YbHnswPath();
-  for (uint8_t flags : {0x07, 0x02}) {
+  for (uint8_t flags : {0x0f, 0x02}) {
     ASSERT_OK(SetYbHnswFooterFlags(path, flags));
     YbHnsw yb_hnsw(metric_, block_cache_);
     auto status = yb_hnsw.Init(path);
