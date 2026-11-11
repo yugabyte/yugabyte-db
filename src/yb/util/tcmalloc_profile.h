@@ -13,8 +13,11 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
+
+#include "absl/time/time.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/format.h"
@@ -57,14 +60,33 @@ Result<std::vector<Sample>> GetAggregateAndSortHeapSnapshot(
 
 #if YB_GOOGLE_TCMALLOC
 
-Result<tcmalloc::Profile> GetHeapProfile(int seconds, int64_t sample_freq_bytes);
+// The allocations made during a profiling window.
+struct HeapProfile {
+  // Sampled allocations made during the window, including those freed before it ended.
+  tcmalloc::Profile allocations;
+  // Heap snapshot taken when the window ended. It also holds allocations made before start_time.
+  tcmalloc::Profile heap_at_end;
+  absl::Time start_time;
+};
+
+// Profiles the allocations made while workload runs.
+Result<HeapProfile> CollectHeapProfile(
+    int64_t sample_freq_bytes, const std::function<void()>& workload);
+
+// Profiles the allocations made during the next `seconds` seconds.
+Result<HeapProfile> GetHeapProfile(int seconds, int64_t sample_freq_bytes);
+
+// kAllSamples: allocations made during the window. kGrowthOnly: those still in use when it ended.
+std::vector<Sample> AggregateAndSortHeapProfile(
+    const HeapProfile& profile, SampleFilter filter, SampleOrder order);
 
 // If peak_heap is set, gets the snapshot of the heap at peak memory usage.
 tcmalloc::Profile GetHeapSnapshot(HeapSnapshotType snapshot_type);
 
+// Skips samples of allocations made before allocated_since.
 std::vector<Sample> AggregateAndSortProfile(
-    const tcmalloc::Profile& profile, SampleFilter filter, SampleOrder order,
-    const std::string& separator = "\n");
+    const tcmalloc::Profile& profile, SampleOrder order, const std::string& separator = "\n",
+    absl::Time allocated_since = absl::InfinitePast());
 
 #endif // YB_GOOGLE_TCMALLOC
 
