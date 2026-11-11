@@ -75,6 +75,26 @@ describe('InstanceSettingsValidationSchema hidden fields', () => {
     });
   });
 
+  it('ignores hidden EBS KMS checks in the Master edit modal only', async () => {
+    const v = {
+      ...values,
+      instanceType: null,
+      deviceInfo: { ...filled, volumeSize: null },
+      masterInstanceType: 'c5.large',
+      masterDeviceInfo: filled,
+      enableEbsVolumeEncryption: true,
+      ebsKmsConfigUUID: null
+    };
+    await expect(validate(CloudType.aws, 'masterOnly', true, v)).resolves.toBeDefined();
+    await expect(
+      validate(CloudType.aws, 'tserverOnly', true, {
+        ...values,
+        enableEbsVolumeEncryption: true,
+        ebsKmsConfigUUID: null
+      })
+    ).rejects.toBeDefined();
+  });
+
   it('still requires arch outside edit mode', async () => {
     await expect(validate(CloudType.aws, 'tserverOnly', false)).rejects.toBeDefined();
   });

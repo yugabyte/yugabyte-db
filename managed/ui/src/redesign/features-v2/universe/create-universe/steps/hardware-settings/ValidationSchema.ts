@@ -131,7 +131,7 @@ export const InstanceSettingsValidationSchema = (
           const { parent } = this;
           const enableEbsVolumeEncryption = parent?.enableEbsVolumeEncryption;
 
-          if (enableEbsVolumeEncryption) {
+          if (validateTserver && enableEbsVolumeEncryption) {
             return value !== null && value !== undefined && value !== '';
           }
           return true;
@@ -140,7 +140,7 @@ export const InstanceSettingsValidationSchema = (
       .test('ebs-kms-config-duplicate', t('kmsValidationMsg'), function (value) {
         const earKmsConfig = (this.options.context as InstanceSettingsValidationContext | undefined)
           ?.earKmsConfig;
-        if (!value || !earKmsConfig) return true;
+        if (!validateTserver || !value || !earKmsConfig) return true;
         return value !== earKmsConfig;
       })
   });
