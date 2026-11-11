@@ -85,6 +85,7 @@ class MiniTabletServer;
 YB_DEFINE_ENUM(ListPeersFilter, (kAll)(kLeaders)(kNonLeaders));
 YB_STRONGLY_TYPED_BOOL(ForceStepDown);
 YB_STRONGLY_TYPED_BOOL(RequireLeaderIsReady)
+YB_STRONGLY_TYPED_BOOL(WaitForApplied);
 
 struct MiniClusterOptions {
   // Number of master servers.
@@ -554,16 +555,19 @@ Status InvokeSplitTabletRpcAndWaitForDataCompacted(
     MiniCluster* cluster, const TabletId& tablet_id,
     MonoDelta rpc_timeout = MonoDelta::FromSeconds(60) * kTimeMultiplier);
 
-// Waits until every replica of each tablet has committed (and so applied) the leader's committed
-// op id. A LEADER_NOT_READY leader's committed op id may not cover every write acknowledged to
-// clients, so pass require_leader_is_ready to wait for a LEADER_AND_READY leader instead.
+// Waits until every replica of each tablet has committed the leader's committed op id, or applied
+// it if wait_for_applied is set. A LEADER_NOT_READY leader's committed op id may not cover every
+// write acknowledged to clients, so pass require_leader_is_ready to wait for a LEADER_AND_READY
+// leader instead.
 Status WaitAllReplicasSynchronizedWithLeader(
     MiniCluster* cluster, CoarseTimePoint deadline,
-    RequireLeaderIsReady require_leader_is_ready);
+    RequireLeaderIsReady require_leader_is_ready,
+    WaitForApplied wait_for_applied = WaitForApplied::kFalse);
 
 Status WaitAllReplicasSynchronizedWithLeader(
     MiniCluster* cluster, CoarseDuration timeout,
-    RequireLeaderIsReady require_leader_is_ready);
+    RequireLeaderIsReady require_leader_is_ready,
+    WaitForApplied wait_for_applied = WaitForApplied::kFalse);
 
 Status WaitForAnySstFiles(
     tablet::TabletPeerPtr peer, MonoDelta timeout = MonoDelta::FromSeconds(5) * kTimeMultiplier);
