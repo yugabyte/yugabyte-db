@@ -14,13 +14,12 @@
 /* for hba tests */
 #include <arpa/inet.h>
 
-/* YB: OdRegress runner, runs each test in a forked child */
-extern void yb_od_regress_init(int argc, char *argv[]);
-extern void yb_od_regress_suite(const char *suite);
-extern void yb_od_regress_run(const char *function,
-			      void (*test_function)(void));
-extern int yb_od_regress_finish(void);
-#define odyssey_test(function) yb_od_regress_run(#function, function);
+/* YB: OdUnit runner, runs each test in a forked child */
+extern void yb_od_unit_init(int argc, char *argv[]);
+extern void yb_od_unit_suite(const char *suite);
+extern void yb_od_unit_run(const char *function, void (*test_function)(void));
+extern int yb_od_unit_finish(void);
+#define odyssey_test(function) yb_od_unit_run(#function, function);
 
 #define test(expression)                                                    \
 	do {                                                                \
