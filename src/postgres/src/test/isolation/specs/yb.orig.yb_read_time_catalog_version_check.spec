@@ -25,8 +25,7 @@
 setup
 {
   -- One tablet: a read that fans out to several tablets reports the error
-  -- with a different text when more than one of them rejects it, which depends
-  -- on timing.
+  -- with a different text when more than one of them rejects it.
   CREATE TABLE t (k INT PRIMARY KEY, v INT, w INT) SPLIT INTO 1 TABLETS;
   INSERT INTO t VALUES (1, 10, 100), (2, 20, 200);
   CREATE SEQUENCE s;
@@ -76,9 +75,20 @@ step "ddl_read_time"
   INSERT INTO read_time
     SELECT (extract(epoch FROM clock_timestamp()) * 1000000)::BIGINT;
 }
-step "ddl_rename"		{ ALTER TABLE t RENAME COLUMN v TO v2; }
+# Each tablet leader checks reads against its own tserver's copy of the breaking
+# catalog version, which arrives with the master heartbeat (1s by default), so
+# the breaking DDLs wait for every tserver to have it.
+step "ddl_rename"
+{
+  ALTER TABLE t RENAME COLUMN v TO v2;
+  SELECT pg_sleep(2);
+}
 step "ddl_add_col"		{ ALTER TABLE t ADD COLUMN c INT; }
-step "ddl_revoke"		{ REVOKE SELECT ON t FROM yb_tt_user; }
+step "ddl_revoke"
+{
+  REVOKE SELECT ON t FROM yb_tt_user;
+  SELECT pg_sleep(2);
+}
 step "ddl_rls"			{ ALTER TABLE t ENABLE ROW LEVEL SECURITY; }
 
 # A breaking DDL after the read time fails every read.

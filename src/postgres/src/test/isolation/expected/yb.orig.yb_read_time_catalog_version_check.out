@@ -5,7 +5,15 @@ step ddl_read_time:
   INSERT INTO read_time
     SELECT (extract(epoch FROM clock_timestamp()) * 1000000)::BIGINT;
 
-step ddl_rename: ALTER TABLE t RENAME COLUMN v TO v2;
+step ddl_rename: 
+  ALTER TABLE t RENAME COLUMN v TO v2;
+  SELECT pg_sleep(2);
+
+pg_sleep
+--------
+        
+(1 row)
+
 tt: NOTICE:  yb_read_time should only be set for read-only queries. Write-DML or DDL queries are not allowed when yb_read_time is set.
 step tt_set: 
   SELECT set_config('yb_read_time', t::text, false) IS NOT NULL AS set FROM read_time;
@@ -25,7 +33,15 @@ step ddl_read_time:
   INSERT INTO read_time
     SELECT (extract(epoch FROM clock_timestamp()) * 1000000)::BIGINT;
 
-step ddl_rename: ALTER TABLE t RENAME COLUMN v TO v2;
+step ddl_rename: 
+  ALTER TABLE t RENAME COLUMN v TO v2;
+  SELECT pg_sleep(2);
+
+pg_sleep
+--------
+        
+(1 row)
+
 tt: NOTICE:  yb_read_time should only be set for read-only queries. Write-DML or DDL queries are not allowed when yb_read_time is set.
 step tt_set: 
   SELECT set_config('yb_read_time', t::text, false) IS NOT NULL AS set FROM read_time;
@@ -65,7 +81,15 @@ k| v|  w
 2|20|200
 (2 rows)
 
-step ddl_rename: ALTER TABLE t RENAME COLUMN v TO v2;
+step ddl_rename: 
+  ALTER TABLE t RENAME COLUMN v TO v2;
+  SELECT pg_sleep(2);
+
+pg_sleep
+--------
+        
+(1 row)
+
 step tt_sel: SELECT * FROM t ORDER BY k;
 ERROR:  The catalog snapshot used for this transaction has been invalidated: MISMATCHED_SCHEMA
 
@@ -74,7 +98,15 @@ step ddl_read_time:
   INSERT INTO read_time
     SELECT (extract(epoch FROM clock_timestamp()) * 1000000)::BIGINT;
 
-step ddl_rename: ALTER TABLE t RENAME COLUMN v TO v2;
+step ddl_rename: 
+  ALTER TABLE t RENAME COLUMN v TO v2;
+  SELECT pg_sleep(2);
+
+pg_sleep
+--------
+        
+(1 row)
+
 tt: NOTICE:  yb_read_time should only be set for read-only queries. Write-DML or DDL queries are not allowed when yb_read_time is set.
 step tt_set: 
   SELECT set_config('yb_read_time', t::text, false) IS NOT NULL AS set FROM read_time;
@@ -94,7 +126,15 @@ step ddl_read_time:
   INSERT INTO read_time
     SELECT (extract(epoch FROM clock_timestamp()) * 1000000)::BIGINT;
 
-step ddl_rename: ALTER TABLE t RENAME COLUMN v TO v2;
+step ddl_rename: 
+  ALTER TABLE t RENAME COLUMN v TO v2;
+  SELECT pg_sleep(2);
+
+pg_sleep
+--------
+        
+(1 row)
+
 step tt_no_check: SET yb_disable_catalog_version_check = on;
 step tt_set: 
   SELECT set_config('yb_read_time', t::text, false) IS NOT NULL AS set FROM read_time;
@@ -117,7 +157,15 @@ step ddl_read_time:
   INSERT INTO read_time
     SELECT (extract(epoch FROM clock_timestamp()) * 1000000)::BIGINT;
 
-step ddl_rename: ALTER TABLE t RENAME COLUMN v TO v2;
+step ddl_rename: 
+  ALTER TABLE t RENAME COLUMN v TO v2;
+  SELECT pg_sleep(2);
+
+pg_sleep
+--------
+        
+(1 row)
+
 tt: NOTICE:  yb_read_time should only be set for read-only queries. Write-DML or DDL queries are not allowed when yb_read_time is set.
 step tt_set: 
   SELECT set_config('yb_read_time', t::text, false) IS NOT NULL AS set FROM read_time;
@@ -173,7 +221,15 @@ step ddl_read_time:
   INSERT INTO read_time
     SELECT (extract(epoch FROM clock_timestamp()) * 1000000)::BIGINT;
 
-step ddl_revoke: REVOKE SELECT ON t FROM yb_tt_user;
+step ddl_revoke: 
+  REVOKE SELECT ON t FROM yb_tt_user;
+  SELECT pg_sleep(2);
+
+pg_sleep
+--------
+        
+(1 row)
+
 tt: NOTICE:  yb_read_time should only be set for read-only queries. Write-DML or DDL queries are not allowed when yb_read_time is set.
 step tt_set: 
   SELECT set_config('yb_read_time', t::text, false) IS NOT NULL AS set FROM read_time;
@@ -258,7 +314,15 @@ step ddl_read_time:
   INSERT INTO read_time
     SELECT (extract(epoch FROM clock_timestamp()) * 1000000)::BIGINT;
 
-step ddl_rename: ALTER TABLE t RENAME COLUMN v TO v2;
+step ddl_rename: 
+  ALTER TABLE t RENAME COLUMN v TO v2;
+  SELECT pg_sleep(2);
+
+pg_sleep
+--------
+        
+(1 row)
+
 tt: NOTICE:  yb_read_time should only be set for read-only queries. Write-DML or DDL queries are not allowed when yb_read_time is set.
 step tt_set: 
   SELECT set_config('yb_read_time', t::text, false) IS NOT NULL AS set FROM read_time;
