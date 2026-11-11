@@ -115,8 +115,8 @@ struct SearchOptions {
   size_t max_num_results;
   size_t ef;
   VectorFilter filter = [](const auto&, const auto&) { return true; };
-  // Restricts the search to vectors of the tenant, see VectorTenantExtractor. Empty searches all
-  // tenants. Only indexes whose vectors belong to tenants support a tenant, others reject it.
+  // Restricts the search to vectors of the tenant, see VectorTenantExtractor. Required by indexes
+  // whose vectors belong to tenants, rejected by others.
   Slice tenant = Slice();
 
   std::string ToString() const {

@@ -4446,7 +4446,9 @@ void PgVectorIndexPkRoutingTest::TestTenants(
     }
 
     // Equalities on more key columns than the tenant has.
-    auto result = ASSERT_RESULT(query("tenant = 10 AND id IN (7, 8)", 0, 3));
+    auto result = ASSERT_RESULT(query("tenant = 10 AND id = 7", 0, 3));
+    ASSERT_EQ(result.ids, (std::vector<int32_t>{7}));
+    result = ASSERT_RESULT(query("tenant = 10 AND id IN (7, 8)", 0, 3));
     ASSERT_EQ(result.ids, (std::vector<int32_t>{7, 8}));
 
     for (const auto* where : {"id < 3", "tenant IN (3, 12)"}) {
@@ -8285,8 +8287,10 @@ TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterBackendAndPayloadFlagsChange) {
 
   auto conn = ASSERT_RESULT(ConnectToDB(kRestoredDb));
   ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
+  // A search of an index with tenants needs the tenant.
   auto rows = ASSERT_RESULT(conn.FetchRows<int32_t>(Format(
-      "SELECT id FROM $0 ORDER BY v <-> '[0, 0, 0]' LIMIT 3", kTable)));
+      "/*+IndexScan($0 $1)*/ SELECT id FROM $0 WHERE tenant = 1 ORDER BY v <-> '[0, 0, 0]' "
+      "LIMIT 3", kTable, kIndex)));
   ASSERT_EQ(rows, (std::vector<int32_t>{1, 2, 3}));
 }
 
