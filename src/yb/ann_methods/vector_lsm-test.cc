@@ -356,6 +356,8 @@ class VectorLSMTestBase : public hnsw::VectorIndexTestBase {
   InsertEntries inserted_entries_;
   simple_spinlock merge_filter_mutex_;
   MergeFilterPtr merge_filter_;
+  // Passed to the indexes opened by OpenVectorLSM.
+  vector_index::VectorTenantExtractor tenant_extractor_;
 
   MetricEntityPtr vector_index_metric_entity_ =
       METRIC_ENTITY_table.Instantiate(metric_registry_.get(), "test_table");
@@ -522,7 +524,7 @@ Status VectorLSMTestBase::OpenVectorLSM(
     .log_prefix = "Test: ",
     .storage_dir = dir,
     .vector_index_traits = VERIFY_RESULT((CreateHnswlibIndexTraits<std::vector<float>, float>(
-        block_cache_, hnsw_options, mem_tracker, /* tenant_extractor= */ nullptr))),
+        block_cache_, hnsw_options, mem_tracker, tenant_extractor_))),
     .thread_pool = &thread_pool_,
     .insert_thread_pool = &thread_pool_,
     .compaction_token = std::make_shared<PriorityThreadPoolToken>(priority_thread_pool_),
@@ -2556,6 +2558,91 @@ void VectorLSMTestBase::TestDamagedChunk(bool use_merge_tasks) {
 
   ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, kDefaultChunkSize));
   ASSERT_EQ(lsm.NumImmutableChunks(), kNumChunks + 1);
+}
+
+// A search with a tenant returns only the vectors of the tenant, whether they are in the insert
+// registry, the mutable chunk, a saved chunk or a merged chunk.
+TEST_P(VectorLSMTest, Tenants) {
+  if (!store_vector_payload()) {
+    GTEST_SKIP() << "Only indexes with payloads have tenants";
+  }
+  constexpr size_t kDimensions = 4;
+  constexpr size_t kNumTenants = 4;
+  constexpr size_t kVectorsPerTenant = 16;
+  // Exact search scans all vectors, ignoring tenants.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_task_size) = 1;
+  // Only the manual compaction below merges the chunks.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  // The payload is the tenant.
+  tenant_extractor_ = [](Slice payload) -> Result<Slice> { return payload; };
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, /* vectors_per_chunk= */ 1024));
+
+  auto tenant_name = [](size_t tenant) { return Format("tenant_$0", tenant); };
+  // Every tenant gets the same vectors.
+  auto insert = [&lsm, &tenant_name] {
+    FloatVectorLSM::InsertEntries entries;
+    for (size_t tenant = 0; tenant != kNumTenants; ++tenant) {
+      for (size_t i = 0; i != kVectorsPerTenant; ++i) {
+        entries.push_back(FloatVectorLSM::InsertEntry {
+          .vector_id = VectorId::GenerateRandom(),
+          .vector = {static_cast<float>(i), 0, 0, 0},
+          .payload = ValueBuffer(tenant_name(tenant)),
+        });
+      }
+    }
+    TestFrontiers frontiers(entries);
+    return lsm.Insert(entries, { .frontiers = &frontiers });
+  };
+  auto check = [&lsm, &tenant_name](size_t vectors_per_tenant) {
+    for (size_t tenant = 0; tenant != kNumTenants; ++tenant) {
+      auto tenant_str = tenant_name(tenant);
+      SCOPED_TRACE(tenant_str);
+      auto results = ASSERT_RESULT(lsm.Search(
+          {0, 0, 0, 0},
+          vector_index::SearchOptions {
+            .max_num_results = kNumTenants * vectors_per_tenant,
+            .ef = kNumTenants * vectors_per_tenant,
+            .tenant = tenant_str,
+          }));
+      ASSERT_EQ(results.size(), vectors_per_tenant);
+      for (const auto& result : results) {
+        ASSERT_EQ(result.payload.AsSlice(), tenant_str);
+      }
+    }
+  };
+
+  // Keeps the inserted vectors in the insert registry.
+  CountDownLatch release_inserts(1);
+  auto* sync = SyncPoint::GetInstance();
+  sync->SetCallBack(
+      "VectorLSMInsertTask::Run:Begin", [&release_inserts](void*) { release_inserts.Wait(); });
+  sync->EnableProcessing();
+  auto cleanup = ScopeExit([sync, &release_inserts] {
+    release_inserts.CountDown();
+    sync->DisableProcessing();
+    sync->ClearAllCallBacks();
+  });
+  ASSERT_OK(insert());
+  ASSERT_NO_FATALS(check(kVectorsPerTenant));
+
+  release_inserts.CountDown();
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+  ASSERT_NO_FATALS(check(kVectorsPerTenant));
+
+  ASSERT_OK(lsm.Flush(/* wait= */ true));
+  ASSERT_OK(insert());
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+  ASSERT_OK(lsm.Flush(/* wait= */ true));
+  ASSERT_EQ(lsm.NumSavedImmutableChunks(), 2);
+  ASSERT_NO_FATALS(check(2 * kVectorsPerTenant));
+
+  ASSERT_OK(lsm.Compact(/* wait= */ true));
+  ASSERT_EQ(lsm.NumSavedImmutableChunks(), 1);
+  ASSERT_NO_FATALS(check(2 * kVectorsPerTenant));
 }
 
 TEST_P(VectorLSMTest, DamagedChunk) {

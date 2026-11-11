@@ -2931,6 +2931,7 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
         .max_num_results = max_results,
         .ef = options.hnsw_options().ef_search(),
         .filter = std::ref(filter),
+        .tenant = options.tenant(),
       },
       could_have_missing_entries,
       *reverse_mapping_reader

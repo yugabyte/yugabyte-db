@@ -131,6 +131,7 @@ class PgDmlRead : public PgDml {
 
   Status HnswSetReadOptions(int ef_search);
   void ANNAddPartitionKeyPrefix(Slice prefix);
+  void ANNSetTenant(Slice tenant);
 
   void SetCatalogCacheVersion(std::optional<PgOid> db_oid, uint64_t version) override {
     DoSetCatalogCacheVersion(read_req_.get(), db_oid, version);

@@ -192,14 +192,6 @@ class YbHnsw {
       const std::byte* query_vector, VectorNo entry, const vector_index::SearchOptions& options,
       YbHnswSearchContext& context) const;
 
-  // Tenants are not linked to each other, so a search without a tenant searches from the entry
-  // vector of every tenant.
-  // TODO(#36087): DocDB passes no tenant yet, so a search of a chunk with tenants searches every
-  // tenant, one at a time.
-  SearchResult SearchAllTenants(
-      const std::byte* query_vector, const vector_index::SearchOptions& options,
-      YbHnswSearchContext& context) const;
-
   size_t VectorLevel(VectorNo vector) const;
 
   std::pair<VectorNo, DistanceType> SearchInNonBaseLayers(
