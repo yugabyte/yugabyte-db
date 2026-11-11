@@ -1649,14 +1649,17 @@ void CDCSDKConsumptionConsistentChangesTest::TestVectorIndexAlterDoesNotLeakInde
       stream_id, {table.table_id()}, 5 /* expected_dml_records */, true /* init_virtual_wal */));
 
   int seen_inserts = 0;
-  bool seen_ddl_with_c = false;
+  bool seen_table_ddl = false;
   for (const auto& record : resp.records) {
     const auto& row_message = record.row_message();
-    if (row_message.op() == RowMessage::DDL) {
+    if (row_message.op() == RowMessage::DDL && !row_message.has_schema()) {
+      ASSERT_EQ(row_message.table_id(), table.table_id()) << row_message.ShortDebugString();
+      seen_table_ddl = true;
+    } else if (row_message.op() == RowMessage::DDL) {
       ASSERT_EQ(row_message.table(), "test_vec") << row_message.ShortDebugString();
       for (const auto& column : row_message.schema().column_info()) {
         ASSERT_NE(column.name(), "ybidxbasectid") << row_message.ShortDebugString();
-        seen_ddl_with_c |= column.name() == "c";
+        seen_table_ddl |= column.name() == "c";
       }
     } else if (row_message.op() == RowMessage::INSERT) {
       ++seen_inserts;
@@ -1671,7 +1674,7 @@ void CDCSDKConsumptionConsistentChangesTest::TestVectorIndexAlterDoesNotLeakInde
     }
   }
   ASSERT_EQ(seen_inserts, 5);
-  ASSERT_TRUE(seen_ddl_with_c);
+  ASSERT_TRUE(seen_table_ddl);
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVectorIndexAlterDoesNotLeakIndexSchema) {
