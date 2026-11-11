@@ -768,7 +768,8 @@ ExecInitRoutingInfo(ModifyTableState *mtstate,
 		partRelInfo->ri_FdwRoutine->BeginForeignInsert(mtstate, partRelInfo);
 
 	/* YB: also handle YB insert on conflict read batching. */
-	if (YbIsInsertOnConflictReadBatchingPossible(partRelInfo))
+	if (YbIsInsertOnConflictReadBatchingPossible(partRelInfo,
+												 mtstate->yb_ioc_batch_size))
 		partRelInfo->ri_ybIocBatchingPossible = true;
 
 	MemoryContextSwitchTo(oldContext);
