@@ -34,7 +34,7 @@ public class ManageCatalogUpgradeSuperUser extends UniverseTaskBase {
 
   public static class Params extends UniverseTaskParams {
     public Action action;
-    public String password;
+    public String catalogUpgradePassword;
   }
 
   public Params taskParams() {
@@ -61,21 +61,29 @@ public class ManageCatalogUpgradeSuperUser extends UniverseTaskBase {
     if (taskParams().action == Action.CREATE_USER) {
       dropUser(universe, masterLeaderNode);
       deletePGPassFile(universe, masterLeaderNode, pgPassFilePath);
-      createUser(universe, masterLeaderNode, taskParams().password);
+      createUser(universe, masterLeaderNode, taskParams().catalogUpgradePassword);
     } else if (taskParams().action == Action.DELETE_USER) {
       dropUser(universe, masterLeaderNode);
       deletePGPassFile(universe, masterLeaderNode, pgPassFilePath);
     } else if (taskParams().action == Action.CREATE_USER_AND_PG_PASS_FILE) {
       dropUser(universe, masterLeaderNode);
       deletePGPassFile(universe, masterLeaderNode, pgPassFilePath);
-      createUser(universe, masterLeaderNode, taskParams().password);
+      createUser(universe, masterLeaderNode, taskParams().catalogUpgradePassword);
       createPGPassFile(
-          universe, masterLeaderNode, pgPassFileDir, pgPassFilePath, taskParams().password);
+          universe,
+          masterLeaderNode,
+          pgPassFileDir,
+          pgPassFilePath,
+          taskParams().catalogUpgradePassword);
     } else if (taskParams().action == Action.DELETE_PG_PASS_FILE) {
       deletePGPassFile(universe, masterLeaderNode, pgPassFilePath);
     } else if (taskParams().action == Action.CREATE_PG_PASS_FILE) {
       createPGPassFile(
-          universe, masterLeaderNode, pgPassFileDir, pgPassFilePath, taskParams().password);
+          universe,
+          masterLeaderNode,
+          pgPassFileDir,
+          pgPassFilePath,
+          taskParams().catalogUpgradePassword);
     }
   }
 

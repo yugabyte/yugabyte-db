@@ -61,7 +61,8 @@ public class RedactingService {
           "$..ysqlNewPassword",
           "$..ycqlCurrentPassword",
           "$..ysqlCurrentPassword",
-          "$..sshPrivateKeyContent");
+          "$..sshPrivateKeyContent",
+          "$..catalogUpgradePassword");
 
   private static final String YCQL_LDAP_BIND_PASSWD_PATH = "$..ycql_ldap_bind_passwd";
 
