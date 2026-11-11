@@ -123,6 +123,7 @@ DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_enable_cdr_metadata);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_use_packed_row_v2);
+DECLARE_bool(TEST_disable_apply_committed_transactions);
 DECLARE_bool(TEST_disable_wal_retention_time);
 DECLARE_bool(TEST_fail_vector_index_backfill);
 DECLARE_bool(TEST_skip_process_apply);
@@ -1766,6 +1767,66 @@ TEST_P(PgVectorIndexTest, BackfillLargeTransactionAppliedAfterCommit) {
   ASSERT_EQ(ASSERT_RESULT(VectorIndexInconsistencies()), "");
 }
 
+// A transaction committed before CREATE INDEX may be applied while a backfill batch is read.
+// That must not leave its rows out of the index. See #36909.
+TEST_P(PgVectorIndexTest, BackfillTransactionAppliedDuringRead) {
+  constexpr int64_t kNumRows = 100;
+
+  num_pre_split_tablets_ = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+
+  // The coordinator sends APPLY again after transaction_resend_applying_interval_usec.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_apply_committed_transactions) = true;
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(InsertBatch(conn, 1, kNumRows));
+  ASSERT_OK(conn.CommitTransaction());
+
+  // Park every backfill right after it opened the reader of its first batch.
+  std::atomic<size_t> num_parked{0};
+  CountDownLatch release_backfills{1};
+  TestThreadHolder threads;
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack("TabletVectorIndexes::Backfill:ReaderOpened", [&](void*) {
+    ++num_parked;
+    release_backfills.Wait();
+  });
+  sync_point->EnableProcessing();
+  // Declared after threads, so a failed assertion releases the backfills before joining them.
+  auto sync_point_cleanup = ScopeExit([sync_point, &release_backfills] {
+    release_backfills.CountDown();
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+  threads.AddThreadFunctor([this] {
+    auto index_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(CreateIndex(index_conn));
+  });
+  ASSERT_OK(WaitFor([this, &num_parked] {
+    return num_parked.load() >= cluster_->num_tablet_servers();
+  }, 30s * kTimeMultiplier, "Backfills parked"));
+
+  // The apply writes all rows at once. Their intents stay until the backfills release the reader.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_apply_committed_transactions) = false;
+  auto peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"));
+  ASSERT_EQ(peers.size(), cluster_->num_tablet_servers());
+  for (const auto& peer : peers) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    ASSERT_OK(WaitFor([&tablet]() -> Result<bool> {
+      return VERIFY_RESULT(tablet->TEST_CountDBRecords(docdb::StorageDbType::kRegular)) > 0;
+    }, 30s * kTimeMultiplier, "Transaction applied"));
+  }
+
+  release_backfills.CountDown();
+  threads.JoinAll();
+  ASSERT_OK(WaitForVectorIndexBackfills(cluster_->num_tablet_servers(), "Replica backfills"));
+  for (const auto& index : ListVectorIndexes(cluster_.get())) {
+    ASSERT_EQ(ASSERT_RESULT(index->TotalEntries()), kNumRows) << index->ToString();
+  }
+  ASSERT_EQ(ASSERT_RESULT(VectorIndexInconsistencies()), "");
+}
+
 // A vector index backfill must not keep the transactions that finish on its tablet in the
 // transaction participant until it ends: that holds back their cleanup and their intents.
 // See #36909.
@@ -1824,6 +1885,65 @@ TEST_P(PgVectorIndexTest, BackfillReleasesFinishedTransactionsBetweenBatches) {
     ASSERT_EQ(ASSERT_RESULT(index->TotalEntries()), kNumRows + 1) << index->ToString();
   }
   ASSERT_EQ(ASSERT_RESULT(VectorIndexInconsistencies()), "");
+}
+
+// A backfill reads at backfill_ht, so compactions must keep the history at backfill_ht from the
+// moment the index is added until its backfill is done, also before the backfill task starts.
+TEST_P(PgVectorIndexTest, CompactionRetainsHistoryForPendingBackfill) {
+  constexpr int64_t kNumRows = 64;
+
+  num_pre_split_tablets_ = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertBatch(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  // Park every backfill before it reads anything.
+  std::atomic<size_t> num_parked{0};
+  CountDownLatch release_backfills{1};
+  TestThreadHolder threads;
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack("TabletVectorIndexes::Backfill:Start", [&](void*) {
+    ++num_parked;
+    release_backfills.Wait();
+  });
+  sync_point->EnableProcessing();
+  // Declared after threads, so a failed assertion releases the backfills before joining them.
+  auto sync_point_cleanup = ScopeExit([sync_point, &release_backfills] {
+    release_backfills.CountDown();
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+  threads.AddThreadFunctor([this] {
+    auto index_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(CreateIndex(index_conn));
+  });
+  ASSERT_OK(WaitFor([this, &num_parked] {
+    return num_parked.load() >= cluster_->num_tablet_servers();
+  }, 30s * kTimeMultiplier, "Backfills parked"));
+
+  // Without the pending backfills, this compaction would move the history cutoff past backfill_ht.
+  // An intents DB flush would wait for the vector index.
+  const auto history_retention_sec = FLAGS_timestamp_history_retention_interval_sec;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
+  ASSERT_OK(cluster_->CompactTablets(docdb::SkipFlush::kTrue));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) =
+      history_retention_sec;
+
+  release_backfills.CountDown();
+  threads.JoinAll();
+  ASSERT_OK(WaitForVectorIndexBackfills(cluster_->num_tablet_servers(), "Replica backfills"));
+  for (const auto& index : ListVectorIndexes(cluster_.get())) {
+    ASSERT_EQ(ASSERT_RESULT(index->TotalEntries()), kNumRows) << index->ToString();
+  }
+
+  // Finished backfills no longer hold the history.
+  for (const auto& peer : ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"))) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    ASSERT_EQ(tablet->vector_indexes().AllowedHistoryCutoff(), HybridTime::kMax);
+  }
 }
 
 // A vector index storage the tablet does not list, as a restore leaves on a crash, is deleted at
@@ -9132,6 +9252,74 @@ TEST_P(PgVectorIndexTest, BackfillInterruptedByTruncate) {
   ASSERT_GT(num_indexes, 0);
 
   ASSERT_OK(WaitForVectorIndexBackfills(num_indexes, "Backfill done after truncate"));
+}
+
+// A backfill holds its blocking operation from batch to batch, so a truncate waits for it.
+// The truncate disables new blocking operations, so the next batch fails with TryAgain, which
+// releases the truncate, and the backfill is retried after it.
+TEST_P(PgVectorIndexTest, TruncateBetweenBackfillBatches) {
+  constexpr int64_t kNumRows = 100;
+  constexpr int64_t kBatchSize = 10;
+
+  if (IsColocated()) {
+    GTEST_SKIP() << "Truncate does not replace tablet storages of a colocated table";
+  }
+
+  num_pre_split_tablets_ = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_initial_chunk_size) = kBatchSize;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backfill_retry_delay_ms) = 10 * kTimeMultiplier;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertBatch(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  const auto table_id = ASSERT_RESULT(GetTableIDFromTableName("test"));
+  auto peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"));
+  ASSERT_EQ(peers.size(), cluster_->num_tablet_servers());
+
+  // Park every backfill between its first and second batch.
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_batch) = true;
+  TestThreadHolder threads;
+  // Declared after threads, so a failed assertion releases the backfills before joining them.
+  auto unblock_backfills = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_batch) =
+        false;
+  });
+  threads.AddThreadFunctor([this] {
+    auto index_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(CreateIndex(index_conn));
+  });
+  ASSERT_OK(WaitForVectorIndexBackfillsStarted(cluster_->num_tablet_servers()));
+
+  // See BackfillInterruptedByTruncate for why this does not truncate through YSQL.
+  threads.AddThreadFunctor([this, &table_id] {
+    ASSERT_OK(client_->TruncateTable(table_id));
+  });
+
+  // Tablet::StartShutdownStorages:BlockingPaused is reached only once the backfills released their
+  // blocking operations, so poll for the disabled ones instead.
+  ASSERT_OK(WaitFor([&peers]() -> Result<bool> {
+    for (const auto& peer : peers) {
+      auto tablet = VERIFY_RESULT(peer->shared_tablet());
+      auto op = tablet->CreateScopedRWOperationBlockingRocksDbShutdownStart(CoarseTimePoint::min());
+      if (op.ok()) {
+        return false;
+      }
+    }
+    return true;
+  }, 30s * kTimeMultiplier, "Truncate disabled blocking operations"));
+
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_batch) = false;
+  threads.JoinAll();
+  const auto num_indexes = ListVectorIndexes(cluster_.get()).size();
+  ASSERT_GT(num_indexes, 0);
+  ASSERT_OK(WaitForVectorIndexBackfills(num_indexes, "Backfill done after truncate"));
+  // Only the first batch was inserted: the rest of the rows were truncated before the backfill read
+  // them. That batch is gone with the rows.
+  for (const auto& index : ListVectorIndexes(cluster_.get())) {
+    ASSERT_EQ(index->metrics().backfill_inserted_entries->value(), kBatchSize) << index->ToString();
+    ASSERT_EQ(ASSERT_RESULT(index->TotalEntries()), 0) << index->ToString();
+  }
 }
 
 // When the backfill fails with something other than TryAgain/ShutdownInProgress, CREATE INDEX

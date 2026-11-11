@@ -7763,6 +7763,7 @@ docdb::HistoryCutoff Tablet::AllowedHistoryCutoff() {
     result.MakeAtMost(allowed_history_cutoff_provider_(metadata_.get()));
   }
   result.primary_cutoff_ht.MakeAtMost(snapshots_->AllowedHistoryCutoff());
+  result.primary_cutoff_ht.MakeAtMost(vector_indexes_->AllowedHistoryCutoff());
   return result;
 }
 
