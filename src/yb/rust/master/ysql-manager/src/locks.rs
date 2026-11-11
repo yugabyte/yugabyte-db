@@ -84,6 +84,9 @@ const RELEASE_TIMEOUT: Duration = Duration::from_secs(60);
 
 const NOT_THE_LEADER: &str = "Master is not the leader";
 
+/// `kTserverRpcsBufferForTimeoutDetection`.
+const RPC_TIMEOUT_DETECTION_BUFFER: Duration = Duration::from_secs(5);
+
 fn corrupt(e: impl std::fmt::Display) -> Status {
     Status::new(StatusCode::Corruption, e.to_string())
 }
@@ -390,7 +393,15 @@ impl ObjectLocks {
         self.check_leader(token)?;
 
         let timeout = deadline.saturating_duration_since(Instant::now());
+        tracing::debug!(
+            "acquire start txn {txn_str} subtxn {} host {} epoch {} timeout {:?}",
+            req.subtxn_id(),
+            String::from_utf8_lossy(req.session_host_uuid()),
+            req.lease_epoch(),
+            timeout
+        );
         self.local.acquire(&req, timeout).await?;
+        tracing::debug!("acquire local done txn {txn_str}");
 
         // PersistRequest.
         let host = req.session_host_uuid().to_vec();
@@ -436,7 +447,9 @@ impl ObjectLocks {
             }
             let mut fanned = req.clone();
             fanned.lease_epoch_floors = export_floors(&snapshot)?;
-            self.fan_out(token, fanned, &live, deadline).await?;
+            let result = self.fan_out(token, fanned, &live, deadline).await;
+            tracing::debug!("acquire fanout txn {txn_str} result {result:?}");
+            result?;
             self.check_leader(token)?;
             let tracked = tracked.get_or_insert_with(|| live.clone());
             let now_live = live_leases(&self.catalog.snapshot())?;
@@ -552,7 +565,19 @@ impl ObjectLocks {
     ) -> Result<(), Status> {
         let deadline = Instant::now() + RELEASE_TIMEOUT;
         let live = live_leases(&self.catalog.snapshot())?;
-        self.fan_out(token, req.clone(), &live, deadline).await?;
+        tracing::debug!(
+            "release start txn {} subtxn {:?} id {} locks {}",
+            txn_id_string(req.txn_id()).unwrap_or_default(),
+            req.has_subtxn_id().then(|| req.subtxn_id()),
+            req.request_id(),
+            req.object_locks.len()
+        );
+        let result = self.fan_out(token, req.clone(), &live, deadline).await;
+        tracing::debug!(
+            "release fanout txn {} result {result:?}",
+            txn_id_string(req.txn_id()).unwrap_or_default()
+        );
+        result?;
         self.check_leader(token)?;
         // PersistRequest for a release.
         let host = req.session_host_uuid().to_vec();
@@ -759,8 +784,14 @@ impl ObjectLocks {
                         let (rpc, bytes, host) = (rpc.clone(), bytes.clone(), host.clone());
                         let leader = leadership.check(&token);
                         let live = still_live(&catalog);
-                        let timeout =
-                            rpc_timeout.min(deadline.saturating_duration_since(Instant::now()));
+                        // `kTserverRpcsBufferForTimeoutDetection`: a tserver ends a lock wait at
+                        // the RPC's deadline, or after `refresh_waiter_timeout_ms` to recheck the
+                        // transaction, failing it if a deadlock aborted it. The extra time lets
+                        // that answer arrive instead of a timeout, which would be retried and keep
+                        // an aborted DDL holding the master's lock.
+                        let timeout = rpc_timeout
+                            .min(deadline.saturating_duration_since(Instant::now()))
+                            + RPC_TIMEOUT_DETECTION_BUFFER;
                         async move {
                             leader.map_err(|_| {
                                 Attempt::Fail(Status::new(StatusCode::IllegalState, NOT_THE_LEADER))

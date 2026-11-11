@@ -59,7 +59,12 @@ live (`object_lock_cleanup_interval_ms`), then releases the DDL locks of the epo
    subtransaction, so a tserver granted a lease later bootstraps with it.
 3. On every tserver with a live lease (`AcquireObjectLocks`), with each one's
    `recipient_lease_epoch` and every tserver's lease epoch floor. A tserver that loses its lease
-   meanwhile is skipped; INVALID_YSQL_LEASE and ShutdownInProgress are retried. If a lease
+   meanwhile is skipped; INVALID_YSQL_LEASE and ShutdownInProgress are retried. Each RPC gets
+   five seconds past its wait (`kTserverRpcsBufferForTimeoutDetection`): a tserver ends a lock
+   wait after `refresh_waiter_timeout_ms` to recheck the transaction, and answers with an error if
+   a deadlock aborted it. Without the buffer that answer is lost to the RPC timeout, the acquire
+   is retried until the client's deadline, and the aborted DDL keeps the master's lock, blocking
+   every conflicting DDL behind it. If a lease
    changed during the fan-out, the others still hold that tserver's old floor, so it is sent again
    to all with fresh floors.
 
