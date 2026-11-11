@@ -29,6 +29,7 @@
 
 #include "yb/tools/pgvector_wrapper.h"
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/strip.h"
 #include "yb/gutil/thread_annotations.h"
@@ -124,6 +125,7 @@ struct BenchmarkArguments {
   size_t num_index_shards = 1;
   std::string build_vecs_path;
   std::string ground_truth_path;
+  std::string save_ground_truth_path;
   std::string query_vecs_path;
   BenchmarkAnnMethod ann_method;
   std::string yb_hnsw_dir;
@@ -156,6 +158,7 @@ struct BenchmarkArguments {
         num_vectors_to_insert,
         query_vecs_path,
         report_num_keys,
+        save_ground_truth_path,
         validate_ground_truth,
         yb_hnsw_dir,
         yb_hnsw_variants,
@@ -199,6 +202,18 @@ struct BenchmarkArguments {
       return STATUS_FORMAT(
           InvalidArgument, "pgvector limits ef to $0, got $1", kPgVectorMaxEfSearch,
           *ef_values.rbegin());
+    }
+    if (!save_ground_truth_path.empty()) {
+      if (VERIFY_RESULT(GetVectorFileType(save_ground_truth_path)).coordinate_kind !=
+              CoordinateKind::kInt32) {
+        return STATUS_FORMAT(
+            InvalidArgument, "Ground truth can only be saved to an .ivecs or .ibin file: $0",
+            save_ground_truth_path);
+      }
+      if (save_ground_truth_path == ground_truth_path) {
+        return STATUS(
+            InvalidArgument, "--save_ground_truth_path must differ from --ground_truth_path");
+      }
     }
     if (!yb_hnsw_dir.empty() && num_index_shards != 1) {
       return STATUS(InvalidArgument, "yb_hnsw_dir is not supported with multiple index shards");
@@ -279,7 +294,14 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
        "Input file containing integer vectors of correct nearest neighbor vector identifiers "
        "(0-based in the input dataset) for each query, in the ivecs format or the "
        "big-ann-benchmarks ibin ground truth format (identifiers followed by distances). Needs a "
-       "record per query, or only per query used when --num_validation_queries limits them.")
+       "record per query, or only per query used when --num_validation_queries limits them. "
+       "Fewer records are allowed with --save_ground_truth_path.")
+      (OPTIONAL_ARG_FIELD(save_ground_truth_path),
+       "Output .ivecs or .ibin file to save the ground truth to, for --ground_truth_path in later "
+       "runs with the same base vectors and --distance_kind. It covers only the base vectors "
+       "used, which --num_vectors_to_insert may limit. With it, --ground_truth_path may refer "
+       "only to those vectors, and may have fewer records than queries; the missing records are "
+       "computed.")
       ("k", po::value(&args.k_values_comma_sep)->default_value(
           args.k_values_comma_sep),
        "A comma-separated list of the possible numbers of results k to retrieve with each "
@@ -593,10 +615,13 @@ class BenchmarkTool {
     auto reader = VERIFY_RESULT(OpenVectorFile<Int32Vector>(
         args_.ground_truth_path, "precomputed ground truth file"));
     // One record per query, but only the queries used are needed when
-    // --num_validation_queries limits them.
+    // --num_validation_queries limits them. With --save_ground_truth_path, the missing records are
+    // computed.
     const auto num_records = reader->num_points();
     const bool queries_limited = num_queries() < query_vector_source_->num_points();
-    if (queries_limited ? num_records < num_queries() : num_records != num_queries()) {
+    const bool partial = num_records < num_queries() && !args_.save_ground_truth_path.empty();
+    if (!partial &&
+        (queries_limited ? num_records < num_queries() : num_records != num_queries())) {
       return STATUS_FORMAT(
           IllegalState,
           "The number of provided ground truth records $0 $1 the number of queries $2.",
@@ -634,6 +659,15 @@ class BenchmarkTool {
         SCHECK_GE(idx, 0, IllegalState, kInvalidMsg);
         SCHECK_LT(idx, total_num_vectors, IllegalState, kInvalidMsg);
         if (correct_top_k_vertex_ids.size() < args_.max_k) {
+          // The saved ground truth covers only the base vectors used, so the loaded one must too.
+          if (!args_.save_ground_truth_path.empty() &&
+              static_cast<size_t>(idx) >= max_num_vectors_to_insert()) {
+            return STATUS_FORMAT(
+                InvalidArgument,
+                "With --save_ground_truth_path, the top $0 results in $1 must be among the first "
+                "$2 base vectors used, got $3",
+                args_.max_k, args_.ground_truth_path, max_num_vectors_to_insert(), idx);
+          }
           // Only keep the first k items of the provided list.
           correct_top_k_vertex_ids.push_back(InputVectorIndexToVectorId(idx));
         }
@@ -648,6 +682,45 @@ class BenchmarkTool {
       return STATUS(IllegalState, "Could not determine the number of provided top results");
     }
 
+    return Status::OK();
+  }
+
+  // Saves ground_truth_ as 0-based input vector indexes, in the format of the file extension.
+  Status SaveGroundTruth(
+      const VertexIdToVectorDistanceFunction<InputVector, InputDistanceResult>& distance_fn) {
+    const auto& path = args_.save_ground_truth_path;
+    const auto format = VERIFY_RESULT(GetVectorFileType(path)).format;
+    SCHECK(!ground_truth_.empty(), IllegalState, "No ground truth to save");
+    const auto k = narrow_cast<uint32_t>(ground_truth_.front().size());
+    std::string data;
+    auto append = [&data](auto value) {
+      data.append(reinterpret_cast<const char*>(&value), sizeof(value));
+    };
+    if (format == VectorFileFormat::kBinGroundTruth) {
+      append(narrow_cast<uint32_t>(ground_truth_.size()));
+      append(k);
+    }
+    for (const auto& record : ground_truth_) {
+      SCHECK_EQ(record.size(), k, IllegalState, "Ground truth records differ in size");
+      if (format == VectorFileFormat::kVecs) {
+        append(k);
+      }
+      for (auto vertex_id : record) {
+        append(narrow_cast<int32_t>(VertexIdToInputVectorIndex(vertex_id)));
+      }
+    }
+    if (format == VectorFileFormat::kBinGroundTruth) {
+      for (size_t i = 0; i != ground_truth_.size(); ++i) {
+        for (auto vertex_id : ground_truth_[i]) {
+          append(static_cast<float>(distance_fn(vertex_id, query_vectors_[i])));
+        }
+      }
+    }
+    // Written under a temporary name first, so that a later run never loads a partial file.
+    const auto tmp_path = path + ".tmp";
+    RETURN_NOT_OK(WriteStringToFileSync(Env::Default(), data, tmp_path));
+    RETURN_NOT_OK(Env::Default()->RenameFile(tmp_path, path));
+    LOG(INFO) << "Saved ground truth of " << ground_truth_.size() << " queries to " << path;
     return Status::OK();
   }
 
@@ -692,6 +765,10 @@ class BenchmarkTool {
         // of vectors we've inserted.
         loaded_ground_truth_.empty() ? vertex_ids_to_insert_ : all_vertex_ids_);
     RETURN_NOT_OK(ground_truth.Prepare(args_.num_query_threads));
+    ground_truth_ = ground_truth.ground_truth();
+    if (!args_.save_ground_truth_path.empty()) {
+      RETURN_NOT_OK(SaveGroundTruth(vertex_id_to_query_distance_fn));
+    }
 
     for (auto k : args_.k_values) {
       for (auto ef : args_.ef_values) {
@@ -858,17 +935,12 @@ class BenchmarkTool {
     size_t overlap = 0;
     for (size_t i = 0; i != queries_.size(); ++i) {
       auto result = VERIFY_RESULT(index.Search(queries_[i], options));
-      if (loaded_ground_truth_.empty()) {
-        continue;
-      }
-      const auto& expected = loaded_ground_truth_[i];
-      std::unordered_set<VectorId> expected_set(expected.begin(), expected.begin() + k);
+      const auto& expected = ground_truth_[i];
+      std::unordered_set<VectorId> expected_set(
+          expected.begin(), expected.begin() + std::min(k, expected.size()));
       for (const auto& entry : result) {
         overlap += expected_set.contains(entry.vector_id);
       }
-    }
-    if (loaded_ground_truth_.empty()) {
-      return "n/a";
     }
     return FixedPoint(overlap * 1.0 / (queries_.size() * k), 4);
   }
@@ -1111,6 +1183,9 @@ class BenchmarkTool {
 
   // Ground truth data loaded from a provided file, not computed on the fly.
   std::vector<std::vector<VectorId>> loaded_ground_truth_;
+
+  // Ground truth of all queries, loaded or computed by Validate.
+  PrecomputedGroundTruthMatrix ground_truth_;
 
   std::vector<VectorId> vertex_ids_to_insert_;
   std::vector<VectorId> all_vertex_ids_;

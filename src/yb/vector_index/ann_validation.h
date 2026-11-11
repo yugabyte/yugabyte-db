@@ -44,8 +44,8 @@ class GroundTruth {
  public:
   using IndexReader = VectorIndexReaderIf<Vector, DistanceResult>;
 
-  // precomputed_ground_truth is the ground truth loaded from a provided file, or it could be an
-  // empty vector, if not available.
+  // precomputed_ground_truth is the ground truth loaded from a provided file. It may cover only the
+  // first queries, or none.
   GroundTruth(
       const VertexIdToVectorDistanceFunction<Vector, DistanceResult>& distance_fn,
       size_t max_k,
@@ -55,11 +55,16 @@ class GroundTruth {
       const IndexReader& index_reader,
       const std::vector<VectorId>& vertex_ids);
 
-  // Brute-force searches the top max_k results of every query, if the precomputed ground truth is
-  // missing or has to be validated. Recall is then scored against these results, because the
-  // validation does not check the order of the precomputed ones. Must be called once before
-  // EvaluateRecall.
+  // Brute-force searches the top max_k results of the queries without precomputed ground truth, or
+  // of all queries if the precomputed ground truth has to be validated. Recall is then scored
+  // against these results, because the validation does not check the order of the precomputed
+  // ones. Must be called once before EvaluateRecall.
   Status Prepare(size_t num_threads);
+
+  // The correct top max_k results of every query, available after Prepare.
+  const PrecomputedGroundTruthMatrix& ground_truth() const {
+    return computed_ground_truth_.empty() ? precomputed_ground_truth_ : computed_ground_truth_;
+  }
 
   // Returns a vector with i-recall@k stored at each element with index i - 1.
   // i@k recall means we execute ANN search to get top k results and check what percentage of the
@@ -70,8 +75,8 @@ class GroundTruth {
   Result<FloatVector> EvaluateRecall(size_t num_threads, size_t k, size_t ef);
 
  private:
-  // Computes the correct results of a single query, or validates the precomputed ones against
-  // them.
+  // Copies or computes the correct results of a single query, and validates the precomputed ones
+  // if needed.
   Status PrepareQuery(size_t query_index);
 
   // Searches the index and increments stats of correct result vs. returned result overlap for
@@ -95,7 +100,7 @@ class GroundTruth {
   bool validate_precomputed_ground_truth_;
   const IndexReader& index_reader_;
   const std::vector<VectorId>& vertex_ids_;
-  // Brute-force results, empty if Prepare did not compute them.
+  // Precomputed and brute-force results of all queries, empty if Prepare did not compute any.
   PrecomputedGroundTruthMatrix computed_ground_truth_;
 };
 

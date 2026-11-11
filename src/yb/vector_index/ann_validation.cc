@@ -150,19 +150,21 @@ GroundTruth<Vector, DistanceResult>::GroundTruth(
       validate_precomputed_ground_truth_(validate_precomputed_ground_truth),
       index_reader_(index_reader),
       vertex_ids_(vertex_ids) {
-  if (!precomputed_ground_truth_.empty()) {
-    CHECK_EQ(precomputed_ground_truth_.size(), queries_.size());
-  }
+  CHECK_LE(precomputed_ground_truth_.size(), queries_.size());
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status GroundTruth<Vector, DistanceResult>::Prepare(size_t num_threads) {
-  if (!precomputed_ground_truth_.empty() && !validate_precomputed_ground_truth_) {
+  const auto num_precomputed = precomputed_ground_truth_.size();
+  const auto num_to_compute =
+      validate_precomputed_ground_truth_ ? queries_.size() : queries_.size() - num_precomputed;
+  if (num_to_compute == 0) {
     return Status::OK();
   }
-  LOG(INFO) << (precomputed_ground_truth_.empty() ? "Computing" : "Validating precomputed")
-            << " top " << max_k_ << " ground truth of " << queries_.size() << " queries using "
-            << num_threads << " threads";
+  LOG(INFO) << "Computing top " << max_k_ << " ground truth of " << num_to_compute
+            << " queries using " << num_threads << " threads"
+            << (validate_precomputed_ground_truth_ && num_precomputed
+                    ? Format(", validating $0 precomputed ones", num_precomputed) : "");
   auto start_time = MonoTime::Now();
   computed_ground_truth_.resize(queries_.size());
   RETURN_NOT_OK(ProcessInParallel(
@@ -182,8 +184,7 @@ Result<FloatVector> GroundTruth<Vector, DistanceResult>::EvaluateRecall(
   SCHECK_GE(num_threads, static_cast<size_t>(1),
             InvalidArgument, "Number of threads must be at least 1");
   SCHECK_LE(k, max_k_, InvalidArgument, "k exceeds max_k");
-  const auto& ground_truth =
-      computed_ground_truth_.empty() ? precomputed_ground_truth_ : computed_ground_truth_;
+  const auto& ground_truth = this->ground_truth();
   SCHECK_EQ(ground_truth.size(), queries_.size(), IllegalState, "Ground truth is not prepared");
 
   // For each index i we maintain the total overlap (set intersection cardinality) between the
@@ -219,12 +220,18 @@ Result<FloatVector> GroundTruth<Vector, DistanceResult>::EvaluateRecall(
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status GroundTruth<Vector, DistanceResult>::PrepareQuery(size_t query_index) {
+  const bool precomputed = query_index < precomputed_ground_truth_.size();
+  if (precomputed && !validate_precomputed_ground_truth_) {
+    computed_ground_truth_[query_index] = precomputed_ground_truth_[query_index];
+    return Status::OK();
+  }
+
   const auto& query = queries_[query_index];
   auto our_correct_top_k = BruteForcePreciseNearestNeighbors<Vector, DistanceResult>(
       query, vertex_ids_, distance_fn_, max_k_);
 
   computed_ground_truth_[query_index] = VertexIdsOnly(our_correct_top_k);
-  if (precomputed_ground_truth_.empty()) {
+  if (!precomputed) {
     return Status::OK();
   }
 
