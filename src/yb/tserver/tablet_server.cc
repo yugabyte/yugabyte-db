@@ -648,7 +648,6 @@ void TabletServer::DoUpdateMasterAddresses() {
   auto new_master_addresses = opts_.GetMasterAddresses();
   heartbeater_->set_master_addresses(new_master_addresses);
   ysql_lease_manager_->UpdateMasterAddresses(new_master_addresses);
-  connectivity_poller_->UpdateMasterAddresses(new_master_addresses);
 }
 
 Status TabletServer::Init() {
@@ -1290,6 +1289,21 @@ std::vector<TabletServer::KnownTServer> TabletServer::GetKnownTServers() const {
     result.push_back(known);
   }
   return result;
+}
+
+void TabletServer::SetMasterHeartbeatInfo(MasterHeartbeatInfo info) {
+  std::lock_guard l(lock_);
+  master_heartbeat_info_ = std::move(info);
+}
+
+void TabletServer::SetMasterHeartbeatFailure(Status status) {
+  std::lock_guard l(lock_);
+  master_heartbeat_info_.last_failure = std::move(status);
+}
+
+TabletServer::MasterHeartbeatInfo TabletServer::GetMasterHeartbeatInfo() const {
+  SharedLock l(lock_);
+  return master_heartbeat_info_;
 }
 
 Status TabletServer::GetLiveTServers(std::vector<master::TSInformationPB> *live_tservers) const {
