@@ -927,9 +927,16 @@ message PrepareCDCStreamsForTransactionalDDLResponsePB {
     optional string stream_id = 1;
   }
 
+  message SkippedStreamPB {
+    optional string stream_id = 1;
+    optional string reason = 2;
+  }
+
   optional MasterErrorPB error = 1;
   // The prepared streams.
   repeated StreamPB streams = 2;
+  // The CDCSDK streams that weren't prepared, and the given stream if it wasn't prepared.
+  repeated SkippedStreamPB skipped_streams = 3;
 }
 
 message DisableDynamicTableAdditionOnCDCSDKStreamRequestPB {

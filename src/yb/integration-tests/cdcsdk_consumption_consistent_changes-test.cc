@@ -7357,19 +7357,20 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALDetectAddDropColumnFromPg
 // A stream created without TEST_ysql_yb_enable_replication_slot_transactional_ddl lacks the
 // catalog tables that transactional DDLs are decoded from. The master keeps serving the sys catalog
 // from the stream metadata it cached until prepare_cdc_streams_for_transactional_ddl adds the
-// tables and invalidates it on every master and tserver.
+// tables and invalidates it on every master.
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestPrepareStreamForTransactionalDdl) {
   ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
 
-  ASSERT_OK(SetUpWithParams(3, 1, false, true));
+  ASSERT_OK(SetUpWithParams(3, 3, false, true));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName, 1));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.ExecuteFormat(
       "INSERT INTO $0 ($1, $2) VALUES (1, 10)", kTableName, kKeyColumnName, kValueColumnName));
-  // Caches the stream metadata on the master.
+  // An implicit stream polls pg_class and pg_publication_rel on the sys catalog tablet, so this
+  // caches the stream metadata on the master leader.
   ASSERT_OK(GetAllPendingTxnsFromVirtualWAL(
       stream_id, {table.table_id()}, 1 /* expected_dml_records */, true /* init_virtual_wal */));
   ASSERT_OK(DestroyVirtualWAL());
@@ -7388,22 +7389,31 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestPrepareStreamForTransactional
       StatusFromPB(init_resp.error().status()).ToString(),
       "prepare_cdc_streams_for_transactional_ddl");
 
-  // The master still considers the stopped tserver live, so the command fails naming it.
-  // Rerunning it once the tserver is back finishes the invalidation.
-  StartYbAdminClient();
-  // Neither the tserver cdc_proxy_ calls, 0, nor the one running postgres.
-  auto* ts = test_cluster()->mini_tablet_server(test_cluster_.pg_ts_idx_ == 1 ? 2 : 1);
-  const auto ts_uuid = ts->server()->permanent_uuid();
-  ts->Shutdown();
+  // The command fails naming the stopped master. Rerunning it once the master is back finishes the
+  // invalidation.
+  auto* leader = ASSERT_RESULT(test_cluster()->GetLeaderMiniMaster());
+  auto* master = test_cluster()->mini_master(leader == test_cluster()->mini_master(0) ? 1 : 0);
+  const auto master_uuid = master->permanent_uuid();
+  const auto master_addresses = test_cluster()->GetMasterAddresses();
+  std::vector<uint16_t> master_ports;
+  for (size_t i = 0; i != test_cluster()->num_masters(); ++i) {
+    master_ports.push_back(test_cluster()->mini_master(i)->bound_rpc_addr().port());
+  }
+  master->Shutdown();
   ASSERT_NOK_STR_CONTAINS(
-      yb_admin_client_->PrepareCDCStreamsForTransactionalDDL(stream_id.ToString()),
-      Format("tserver $0", ts_uuid));
-  ASSERT_OK(ts->Start());
+      PrepareCDCStreamsForTransactionalDDL(master_addresses, stream_id.ToString()),
+      Format("master $0", master_uuid));
+  ASSERT_OK(master->StartDistributedMaster(master_ports));
   ASSERT_OK(WaitFor(
-      [&]() { return yb_admin_client_->PrepareCDCStreamsForTransactionalDDL("").ok(); },
+      [&]() {
+        return PrepareCDCStreamsForTransactionalDDL(master_addresses, stream_id.ToString()).ok();
+      },
       MonoDelta::FromSeconds(60) * kTimeMultiplier,
-      "Prepare the streams once every tserver is reachable"));
-  ASSERT_OK(yb_admin_client_->PrepareCDCStreamsForTransactionalDDL(stream_id.ToString()));
+      "Prepare the stream once every master is reachable"));
+  // Without a stream id, the command prepares every implicit stream.
+  ASSERT_STR_CONTAINS(
+      ASSERT_RESULT(PrepareCDCStreamsForTransactionalDDL(master_addresses, "")),
+      Format("Prepared CDC streams for transactional DDL: [$0]", stream_id));
 
   ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.ExecuteFormat(

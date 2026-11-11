@@ -5084,6 +5084,22 @@ Status CDCSDKYsqlTest::RemoveUserTableFromCDCSDKStream(
   return Status::OK();
 }
 
+Result<std::string> CDCSDKYsqlTest::PrepareCDCStreamsForTransactionalDDL(
+    const std::string& master_addresses, const std::string& stream_id) {
+  vector<string> argv{
+      GetToolPath("../bin", "yb-admin"), "--master_addresses", master_addresses,
+      "prepare_cdc_streams_for_transactional_ddl"};
+  if (!stream_id.empty()) {
+    argv.push_back(stream_id);
+  }
+  std::string output, error;
+  auto status = Subprocess::Call(argv, &output, &error);
+  if (!status.ok()) {
+    return status.CloneAndAppend(error);
+  }
+  return output;
+}
+
 Status CDCSDKYsqlTest::ValidateAndSyncCDCStateEntriesForCDCSDKStream(
     const xrepl::StreamId& stream_id) {
   std::string yb_admin_command =

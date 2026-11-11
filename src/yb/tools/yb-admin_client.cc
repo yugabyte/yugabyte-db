@@ -4334,6 +4334,13 @@ Status ClusterAdminClient::PrepareCDCStreamsForTransactionalDDL(
     return StatusFromPB(resp.error().status());
   }
 
+  if (!resp.skipped_streams().empty()) {
+    cout << "Skipped CDC streams: "
+         << CollectionToString(
+                resp.skipped_streams(),
+                [](const auto& s) { return Format("$0 ($1)", s.stream_id(), s.reason()); })
+         << "\n";
+  }
   if (resp.streams().empty()) {
     cout << "No CDC streams to prepare\n";
     return Status::OK();
@@ -4345,6 +4352,8 @@ Status ClusterAdminClient::PrepareCDCStreamsForTransactionalDDL(
 }
 
 Status ClusterAdminClient::InvalidateCDCStreamMetadataCaches() {
+  // The added tables are all on the sys catalog tablet, which only the masters serve. A tserver
+  // reloads the stream from the master leader at VWAL init.
   std::vector<std::pair<std::string, HostPort>> servers;
   std::vector<std::string> failures;
   const auto masters = VERIFY_RESULT(GetAllMasters());
@@ -4357,21 +4366,6 @@ Status ClusterAdminClient::InvalidateCDCStreamMetadataCaches() {
     auto host_port = HostPortFromPB(SelectServerAddress(master.registration()));
     servers.emplace_back(Format("master $0 at $1", uuid, host_port), host_port);
   }
-  const auto num_masters = masters.masters_size();
-
-  // Only the masters serve the sys catalog tablet, and VWAL init reloads the stream on a tserver.
-  // The tservers' caches are invalidated as a precaution.
-  RepeatedPtrField<ListTabletServersResponsePB::Entry> tservers;
-  RETURN_NOT_OK(ListTabletServers(&tservers));
-  for (const auto& tserver : tservers) {
-    if (!tserver.alive()) {
-      continue;
-    }
-    auto host_port = HostPortFromPB(SelectServerAddress(tserver.registration().common()));
-    servers.emplace_back(
-        Format("tserver $0 at $1", tserver.instance_id().permanent_uuid(), host_port), host_port);
-  }
-
   cdc::InvalidateStreamMetadataCacheRequestPB req;
   std::vector<std::unique_ptr<cdc::CDCServiceProxy>> proxies;
   std::vector<cdc::InvalidateStreamMetadataCacheResponsePB> resps(servers.size());
@@ -4397,8 +4391,7 @@ Status ClusterAdminClient::InvalidateCDCStreamMetadataCaches() {
   }
   SCHECK_FORMAT(failures.empty(), ServiceUnavailable, "$0", JoinStrings(failures, "; "));
 
-  cout << "Invalidated the CDC stream metadata caches on " << num_masters << " masters and "
-       << servers.size() - num_masters << " live tservers\n";
+  cout << "Invalidated the CDC stream metadata caches on " << servers.size() << " masters\n";
   return Status::OK();
 }
 

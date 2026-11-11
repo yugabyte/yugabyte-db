@@ -1886,7 +1886,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Delete specified CDC streams metadata.
   Status CleanUpCDCSDKStreamsMetadata(const LeaderEpoch& epoch) EXCLUDES(mutex_);
 
-  Status AddTransactionalDdlCatalogTablesToStream(const CDCStreamInfoPtr& stream)
+  // Returns why the stream is skipped, or nullptr if it is prepared.
+  Result<const char*> AddTransactionalDdlCatalogTablesToStream(const CDCStreamInfoPtr& stream)
       EXCLUDES(mutex_);
 
   // Returns CDCSDK streams that need metadata cleanup. This includes streams with non-empty

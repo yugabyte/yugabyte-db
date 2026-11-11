@@ -935,6 +935,12 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   Status RemoveUserTableFromCDCSDKStream(const xrepl::StreamId& stream_id, const TableId& table_id);
 
+  // Returns yb-admin's output, or its error output as the error. An empty stream_id prepares all
+  // streams. The master addresses are passed in because MiniCluster can't list them while a master
+  // is stopped.
+  Result<std::string> PrepareCDCStreamsForTransactionalDDL(
+      const std::string& master_addresses, const std::string& stream_id);
+
   void TestUserTableRemovalFromCDCStream(bool use_consistent_snapshot_stream);
 
   Status ValidateAndSyncCDCStateEntriesForCDCSDKStream(const xrepl::StreamId& stream_id);

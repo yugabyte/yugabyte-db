@@ -674,6 +674,8 @@ bool IsCatalogTableEligibleForCDC(uint32_t table_oid) {
            table_oid == kPgPublicationRelPrpubidIndexOid));
 }
 
+constexpr const char* kNotCDCSDKStream = "it isn't a CDCSDK stream";
+
 Result<std::vector<TableId>> GetCatalogTableIdsPolledByLogicalReplication(
     const NamespaceId& namespace_id) {
   auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
@@ -6224,50 +6226,45 @@ Status CatalogManager::PrepareCDCStreamsForTransactionalDDL(
   }
 
   for (const auto& stream : streams) {
-    {
-      auto l = stream->LockForRead();
-      const char* skip_reason = nullptr;
-      if (l->is_deleting()) {
-        skip_reason = "it is being deleted";
-      } else if (l->pb.namespace_id().empty()) {
-        skip_reason = "it isn't a CDCSDK stream";
-      } else if (!l->pb.detect_publication_changes_implicitly()) {
-        skip_reason = "it doesn't detect publication changes implicitly";
-      }
-      if (skip_reason) {
-        LOG_WITH_FUNC(INFO) << "Skipping CDC stream " << stream->id() << " because "
-                            << skip_reason;
-        continue;
-      }
+    auto skip_reason = VERIFY_RESULT(AddTransactionalDdlCatalogTablesToStream(stream));
+    if (!skip_reason) {
+      resp->add_streams()->set_stream_id(stream->id());
+      continue;
     }
-    RETURN_NOT_OK(AddTransactionalDdlCatalogTablesToStream(stream));
-    resp->add_streams()->set_stream_id(stream->id());
+    LOG_WITH_FUNC(INFO) << "Skipping CDC stream " << stream->id() << " because " << skip_reason;
+    // Listing every xCluster stream would bury the CDCSDK streams the user cares about.
+    if (req->has_stream_id() || skip_reason != kNotCDCSDKStream) {
+      auto* skipped = resp->add_skipped_streams();
+      skipped->set_stream_id(stream->id());
+      skipped->set_reason(skip_reason);
+    }
   }
   return Status::OK();
 }
 
-Status CatalogManager::AddTransactionalDdlCatalogTablesToStream(
+Result<const char*> CatalogManager::AddTransactionalDdlCatalogTablesToStream(
     const CDCStreamInfoPtr& stream) {
-  std::vector<TableId> missing_table_ids;
-  {
-    auto l = stream->LockForRead();
-    auto catalog_table_ids =
-        VERIFY_RESULT(GetCatalogTableIdsPolledByLogicalReplication(l->namespace_id()));
-    for (const auto& table_id : catalog_table_ids) {
-      if (std::ranges::find(l->pb.table_id(), table_id) == l->pb.table_id().end()) {
-        missing_table_ids.push_back(table_id);
-      }
-    }
+  // The namespace of a stream never changes.
+  const auto namespace_id = stream->LockForRead()->namespace_id();
+  if (namespace_id.empty()) {
+    return kNotCDCSDKStream;
   }
-  if (missing_table_ids.empty()) {
-    return Status::OK();
-  }
+  const auto catalog_table_ids =
+      VERIFY_RESULT(GetCatalogTableIdsPolledByLogicalReplication(namespace_id));
 
+  // The checks and the update are under one write lock, so that a concurrent deletion either
+  // skips the stream here or runs after the update.
+  std::vector<TableId> added_table_ids;
   {
     auto l = stream->LockForWrite();
-    SCHECK_FORMAT(!l->is_deleting(), NotFound, "Stream $0 is being deleted", stream->id());
+    if (l->started_deleting() || l->is_deleting_metadata()) {
+      return "it is being deleted";
+    }
+    if (!l->pb.detect_publication_changes_implicitly()) {
+      return "it doesn't detect publication changes implicitly";
+    }
     auto& pb = l.mutable_data()->pb;
-    for (const auto& table_id : missing_table_ids) {
+    for (const auto& table_id : catalog_table_ids) {
       if (std::ranges::find(pb.table_id(), table_id) != pb.table_id().end()) {
         continue;
       }
@@ -6275,6 +6272,10 @@ Status CatalogManager::AddTransactionalDdlCatalogTablesToStream(
       if (pb.replica_identity_map_size() > 0) {
         pb.mutable_replica_identity_map()->insert({table_id, PgReplicaIdentity::CHANGE});
       }
+      added_table_ids.push_back(table_id);
+    }
+    if (added_table_ids.empty()) {
+      return nullptr;
     }
     RETURN_ACTION_NOT_OK(
         sys_catalog_->Upsert(leader_ready_term(), stream), "Updating CDC stream in system catalog");
@@ -6282,13 +6283,16 @@ Status CatalogManager::AddTransactionalDdlCatalogTablesToStream(
   }
   {
     LockGuard lock(mutex_);
-    for (const auto& table_id : missing_table_ids) {
-      cdcsdk_tables_to_stream_map_[table_id].insert(stream->StreamId());
+    // If a deletion already removed the stream from the maps, don't add its tables back.
+    if (cdc_stream_map_.contains(stream->StreamId())) {
+      for (const auto& table_id : added_table_ids) {
+        cdcsdk_tables_to_stream_map_[table_id].insert(stream->StreamId());
+      }
     }
   }
-  LOG_WITH_FUNC(INFO) << "Added catalog tables " << AsString(missing_table_ids) << " to stream "
+  LOG_WITH_FUNC(INFO) << "Added catalog tables " << AsString(added_table_ids) << " to stream "
                       << stream->id();
-  return Status::OK();
+  return nullptr;
 }
 
 Status CatalogManager::ClearFailedUniverse(const LeaderEpoch& epoch) {
