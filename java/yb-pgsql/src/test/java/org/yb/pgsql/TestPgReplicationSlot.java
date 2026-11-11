@@ -6888,7 +6888,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
     List<PgOutputMessage> phase2Expected = new ArrayList<>();
 
-    // The filtered INSERT consumed txn_id 5 (LSNs 0/B-0/D), so UPDATE starts at txn_id 6.
+    // The filtered INSERT consumed txn_id 5 (LSNs 0/B-0/D), so UPDATE starts at txn_id 6. With
+    // transactional DDL, the ALTER PUBLICATION also takes a txn_id and 2 LSNs.
     phase2Expected.add(
         PgOutputBeginMessage.CreateForComparison(
             LogSequenceNumber.valueOf(txnDdl ? "0/12" : "0/10"), txnDdl ? 7 : 6));
@@ -7095,7 +7096,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             PgOutputRelationMessageColumn.CreateForComparison("b", 25)));
 
     /*
-     * Expected messages (ALTER does not consume LSN/txn_id space):
+     * Expected messages (without transactional DDL, ALTER does not consume LSN/txn_id space; with
+     * it, each ALTER takes a txn_id and 2 LSNs, so the txn ids below shift by one per earlier
+     * ALTER):
      *
      * Batch 1 (ALL): txns 2,3,4 -- INSERT + UPDATE + DELETE.
      *   begin, relation, insert, commit,
