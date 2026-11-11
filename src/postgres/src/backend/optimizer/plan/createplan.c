@@ -54,7 +54,6 @@
 #include "catalog/pg_type.h"
 #include "catalog/pg_yb_catalog_version.h"
 #include "executor/ybExpr.h"
-#include "optimizer/yb_merge_scan.h"
 #include "optimizer/ybplan.h"
 #include "pg_yb_utils.h"
 #include "utils/fmgroids.h"
@@ -7370,6 +7369,7 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
 	List	   *stripped_indexquals;
 	List	   *fixed_indexquals;
 	ListCell   *lc;
+
 	YbMergeScanInfo *yb_merge_scan_info =
 		index_path->yb_index_path_info.merge_scan_info;
 

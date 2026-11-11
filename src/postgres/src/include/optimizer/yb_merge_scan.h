@@ -25,8 +25,6 @@
 
 #include "postgres.h"
 
-#include "access/attnum.h"
-#include "access/sdir.h"
 #include "nodes/pathnodes.h"
 #include "nodes/pg_list.h"
 #include "nodes/primnodes.h"
@@ -42,28 +40,12 @@ extern bool yb_indexcol_can_merge_scan(PlannerInfo *root,
 									   int *merge_scan_cardinality,
 									   List **merge_scan_stream_cols);
 
-extern void yb_get_sort_info_from_pathkeys(List *tlist,
-										   List *pathkeys,
-										   Relids relids,
-										   Bitmapset *stream_col_idxs,
-										   int *p_numsortkeys,
-										   AttrNumber **p_sortColIdx,
-										   Oid **p_sortOperators,
-										   Oid **p_collations,
-										   bool **p_nullsFirst);
-
 extern YbMergeScanInfo *yb_finalize_merge_scan_info(IndexOptInfo *index,
 													Relids relids,
 													List *stream_cols,
 													List *indexclauses,
 													List **pathkeys,
 													int *yb_distinct_nkeys,
-													bool embedded,
-													ScanDirection scandir);
+													bool embedded);
 
 extern int yb_merge_scan_num_streams(List *stream_cols);
-
-extern void yb_add_merge_gap_sort_cols(IndexOptInfo *index,
-									   ScanDirection scandir,
-									   Bitmapset *gap_idxs,
-									   YbSortInfo *sort_info);

@@ -5644,7 +5644,7 @@ yb_useful_pathkeys_without_merge_scan(PlannerInfo *root, RelOptInfo *rel,
 /*
  * YB: Settle a merge scan path once truncate_useless_pathkeys has trimmed its
  * pathkeys.  Returns the path's useful pathkeys and sets
- * *yb_merge_scan_info to its merge scan info, or to NULL.  With no stream key
+ * *yb_merge_scan_info to its merge scan info.  With no stream key
  * columns left, the path is not a merge scan and takes the pathkeys the index
  * gives without merge scan.
  */
@@ -5662,16 +5662,13 @@ yb_finalize_merge_scan_path(PlannerInfo *root, RelOptInfo *rel,
 	if (yb_merge_scan_stream_cols == NIL)
 		return useful_pathkeys;
 
-	/*
-	 * TODO(#36017): an index only scan compares the index row, so embedded
-	 * should be false for it.
-	 */
+	/* TODO(#36017): an index only scan needs no embedded truncation. */
 	embedded = yb_is_embedded_index(root, rel, index);
 	*yb_merge_scan_info =
 		yb_finalize_merge_scan_info(index, rel->relids,
 									yb_merge_scan_stream_cols, index_clauses,
 									&useful_pathkeys, yb_distinct_nkeys,
-									embedded, scandir);
+									embedded);
 	if (*yb_merge_scan_info == NULL)
 		useful_pathkeys =
 			yb_useful_pathkeys_without_merge_scan(root, rel, index, scandir,
