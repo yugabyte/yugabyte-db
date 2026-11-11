@@ -152,7 +152,7 @@ int main(int argc, char *argv[])
 	odyssey_test(machinarium_test_read_timeout);
 	odyssey_test(machinarium_test_read_cancel);
 	odyssey_test(machinarium_test_read_var);
-	/* YB: TODO: the TLS tests fail, enable them once fixed */
+	/* YB: TODO(#37511): the TLS tests fail, enable them once fixed */
 #if 0
 	yb_od_unit_suite("OdUnitMmTls"); /* YB */
 	odyssey_test(machinarium_test_tls0);
