@@ -1374,16 +1374,24 @@ public class GFlagsUtilTest extends FakeDBApplication {
   public void testCheckLdapBindPasswdQuoting() {
     String record =
         "\"host all all 0.0.0.0/0 ldap ldapserver=x ldapbindpasswd=%s\",local all all trust";
-    // HBA reads these as se,cret, pa,ss, pass and secret.
+    // HBA reads these as se,cret, pa,ss, pass and secret. The last two are passwords with a space
+    // or a comma typed without quotes, which HBA ends at the space or comma.
     for (String password :
-        List.of("se\"\",cret\"\"", "pa\"\",\"\"ss", "\"\"pa\"\"ss", "se\"\"cret")) {
+        List.of(
+            "se\"\",cret\"\"",
+            "pa\"\",\"\"ss",
+            "\"\"pa\"\"ss",
+            "se\"\"cret",
+            "Two Word Secret",
+            "pa,ss")) {
       UserIntent userIntent = hbaUserIntent(String.format(record, password));
       PlatformServiceException exception =
           assertThrows(
               PlatformServiceException.class,
               () -> GFlagsUtil.checkLdapBindPasswdQuoting(userIntent, null));
       assertEquals(
-          "GFlag ysql_hba_conf_csv: quote the whole ldapbindpasswd value or use no quotes in it",
+          "GFlag ysql_hba_conf_csv: quote the whole ldapbindpasswd value if it has quotes,"
+              + " spaces or commas",
           exception.getLocalizedMessage());
     }
 
@@ -1394,15 +1402,23 @@ public class GFlagsUtilTest extends FakeDBApplication {
     assertThrows(
         PlatformServiceException.class,
         () -> GFlagsUtil.checkLdapBindPasswdQuoting(overrides, null));
+    assertThrows(
+        PlatformServiceException.class,
+        () ->
+            GFlagsUtil.checkLdapBindPasswdQuoting(
+                Map.of(),
+                Map.of(GFlagsUtil.YSQL_HBA_CONF_CSV, String.format(record, "pa\"\"ss")),
+                null));
 
     for (String hba :
         List.of(
             String.format(record, "secret"),
+            String.format(record, "secret ldaptls=0"),
             String.format(record, "\"\"pa,ss\"\""),
             String.format(record, "\"\"pa\"\"\"\"ss\"\""),
             String.format(record, "\"\"\"\""),
-            // Quoted in an unquoted CSV field.
-            "host all all 0.0.0.0/0 ldap ldapbindpasswd=\"\"secret\"\"")) {
+            String.format(record, "\"\"a ldapbindpasswd=b\"\""),
+            "host all all 0.0.0.0/0 ldap ldapbindpasswd=secret,local all all trust")) {
       GFlagsUtil.checkLdapBindPasswdQuoting(hbaUserIntent(hba), null);
     }
 

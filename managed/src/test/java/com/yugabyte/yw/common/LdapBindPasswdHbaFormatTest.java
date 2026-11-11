@@ -9,6 +9,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import com.yugabyte.yw.common.LdapBindPasswdHbaFormat.QuoteStyle;
+import java.util.List;
 import org.junit.Test;
 import play.libs.Json;
 
@@ -274,6 +275,51 @@ public class LdapBindPasswdHbaFormatTest {
       String out = LdapBindPasswdHbaFormat.redactAllValues(in, SECRET_REPLACEMENT);
       assertEquals(password, partlyRedacted, Json.parse(out).get("new").asText());
       assertEquals(password, quotedRedacted, Json.parse(out).get("old").asText());
+    }
+  }
+
+  @Test
+  public void redactAllValuesRedactsUnquotedPasswordWithSpaceOrCommaToNextOption() {
+    for (String password : List.of("Two Word Secret", "pa,ss", "a b,c")) {
+      String hba =
+          "\"host all all 0.0.0.0/0 ldap ldapbindpasswd="
+              + password
+              + " ldaptls=0\",local all all trust";
+      String expected =
+          "\"host all all 0.0.0.0/0 ldap ldapbindpasswd="
+              + SECRET_REPLACEMENT
+              + " ldaptls=0\",local all all trust";
+      assertEquals(
+          password, expected, LdapBindPasswdHbaFormat.redactAllValues(hba, SECRET_REPLACEMENT));
+      assertTrue(password, LdapBindPasswdHbaFormat.hasValueWithUnknownEnd(hba));
+      String in = Json.newObject().put("ysql_hba_conf_csv", hba).toString();
+      String out = LdapBindPasswdHbaFormat.redactAllValues(in, SECRET_REPLACEMENT);
+      assertEquals(password, expected, Json.parse(out).get("ysql_hba_conf_csv").asText());
+    }
+    String lastInField =
+        "\"host all all 0.0.0.0/0 ldap ldapbindpasswd=Two Word\",local all all trust";
+    assertEquals(
+        "\"host all all 0.0.0.0/0 ldap ldapbindpasswd="
+            + SECRET_REPLACEMENT
+            + "\",local all all trust",
+        LdapBindPasswdHbaFormat.redactAllValues(lastInField, SECRET_REPLACEMENT));
+  }
+
+  @Test
+  public void redactAllValuesEndsUnquotedPasswordBeforeOptionRecordOrComment() {
+    for (String hba :
+        List.of(
+            "host all all 0.0.0.0/0 ldap ldapbindpasswd=secret ldaptls=0",
+            "host all all 0.0.0.0/0 ldap ldapbindpasswd=secret,local all all trust",
+            "host all all 0.0.0.0/0 ldap ldapbindpasswd=secret ,local all all trust",
+            "host all all 0.0.0.0/0 ldap ldapbindpasswd=secret,\"local all all trust\"",
+            "host all all 0.0.0.0/0 ldap ldapbindpasswd=secret # bind account",
+            "\"host all all 0.0.0.0/0 ldap ldapbindpasswd=secret \",local all all trust")) {
+      assertEquals(
+          hba,
+          hba.replace("secret", SECRET_REPLACEMENT),
+          LdapBindPasswdHbaFormat.redactAllValues(hba, SECRET_REPLACEMENT));
+      assertFalse(hba, LdapBindPasswdHbaFormat.hasValueWithUnknownEnd(hba));
     }
   }
 

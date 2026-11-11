@@ -14,8 +14,11 @@ import java.util.regex.Pattern;
  * it (see {@link QuoteStyle}), and the replacement is written back in that style. Text around the
  * value is kept as is, so redacted JSON still parses.
  *
- * <p>A value quoted only in part, such as {@code "pa"ss}, has no end this parser can find, so it is
- * redacted to the end of the CSV field or JSON string that holds it.
+ * <p>Some values have no end this parser can be sure of. One quoted only in part, such as {@code
+ * "pa"ss}, or quoted in a way this parser doesn't read, such as an HBA line's {@code \"secret\"}
+ * inside a JSON string, is redacted to the end of the CSV field or JSON string that holds it. An
+ * unquoted one followed by more text that isn't an option, such as {@code Two Word Secret}, is
+ * redacted up to the next option or record.
  */
 public final class LdapBindPasswdHbaFormat {
 
@@ -30,7 +33,8 @@ public final class LdapBindPasswdHbaFormat {
     /** DOUBLED_CSV with two backslashes before each quote: {@code \\"\\"secret\\"\\"}. */
     DEEP_ESCAPED_DOUBLED_CSV,
     /**
-     * A Postgres-quoted value as written in an HBA line or an unquoted CSV field: {@code "secret"}.
+     * A Postgres-quoted value as written in an HBA line, as in ysql_hba.conf: {@code "secret"}. In
+     * ysql_hba_conf_csv it is always inside a quoted CSV field, as DOUBLED_CSV.
      */
     SINGLE_CSV,
     /** No quotes: {@code secret}. */
@@ -49,15 +53,33 @@ public final class LdapBindPasswdHbaFormat {
 
   private record ParsedValue(int endExclusive, String decoded, QuoteStyle style) {}
 
+  private record Redaction(String text, boolean anyEndUnknown) {}
+
   /**
    * Replaces every ldapbindpasswd value in {@code input} with {@code replacement}, quoted the way
-   * the value was. An empty value is left alone.
+   * the value was. An unquoted empty value is left alone.
    */
   public static String redactAllValues(String input, String replacement) {
     if (input == null || input.isEmpty()) {
       return input;
     }
+    return redact(input, replacement).text();
+  }
+
+  /**
+   * True if some ldapbindpasswd value in {@code input} has no end redactAllValues can be sure of
+   * (see the class comment).
+   */
+  public static boolean hasValueWithUnknownEnd(String input) {
+    return input != null && redact(input, "").anyEndUnknown();
+  }
+
+  private static Redaction redact(String input, String replacement) {
     StringBuilder out = new StringBuilder();
+    // Set for a value with no sure end (see the class comment). checkLdapBindPasswdQuoting in
+    // GFlagsUtil refuses new values like this, but a refused request is still logged, and a
+    // universe may have stored one before that check existed.
+    boolean anyEndUnknown = false;
     int last = 0;
     int idx;
     while ((idx = input.indexOf(LDAPBINDPASSWD_KEY, last)) >= 0) {
@@ -68,18 +90,84 @@ public final class LdapBindPasswdHbaFormat {
       if (parsed != null && endsValue(input, parsed.endExclusive())) {
         out.append(encode(parsed.style(), replacement));
         last = parsed.endExclusive();
+        if (parsed.style() == QuoteStyle.UNQUOTED
+            && !unquotedValueEndsThere(input, parsed.endExclusive())) {
+          last = unquotedRunEnd(input, parsed.endExclusive());
+          anyEndUnknown = true;
+        }
       } else if (endsValue(input, eq)) {
         last = eq;
       } else {
-        // A value quoted only in part, such as "pa"ss. GFlagsUtil.checkLdapBindPasswdQuoting
-        // refuses new ones, but a refused request is still logged, and a universe may have stored
-        // one before that check existed.
         out.append(replacement);
-        last = partlyQuotedValueEnd(input, eq);
+        last = enclosingFieldEnd(input, eq);
+        anyEndUnknown = true;
       }
     }
     out.append(input, last, input.length());
-    return out.toString();
+    return new Redaction(out.toString(), anyEndUnknown);
+  }
+
+  /**
+   * True if an unquoted value that stops at s[i] ends there. Postgres ends one at any whitespace or
+   * comma, but unless the next option, record, comment or the end of the field follows, the text
+   * after it is most likely more of the password, typed without the quotes it needs.
+   */
+  private static boolean unquotedValueEndsThere(String s, int i) {
+    if (i >= s.length()) {
+      return true;
+    }
+    boolean comma = s.charAt(i) == ',';
+    if (!comma && s.charAt(i) != ' ' && s.charAt(i) != '\t') {
+      return true;
+    }
+    int j = i + 1;
+    while (j < s.length() && (s.charAt(j) == ' ' || s.charAt(j) == '\t')) {
+      j++;
+    }
+    if (j >= s.length()
+        || s.charAt(j) == '\n'
+        || s.charAt(j) == '\r'
+        || s.charAt(j) == '#'
+        || isJsonEscapedWhitespace(s, j)) {
+      return true;
+    }
+    if (!comma && s.charAt(j) == ',') {
+      return unquotedValueEndsThere(s, j);
+    }
+    if (quoteLengthAt(s, j) > 0) {
+      // After a comma, a quote opens the next CSV field; after whitespace, it must close this one.
+      return comma || endsValue(s, j);
+    }
+    return isOptionAssignment(s, j)
+        || (comma && HBA_RECORD_TYPE.matcher(s).region(j, s.length()).lookingAt());
+  }
+
+  /**
+   * Where to stop redacting an unquoted value that goes on past the whitespace or comma at s[i]:
+   * the next whitespace or comma that unquotedValueEndsThere ends it at, a line break, or a quote
+   * that closes the CSV field or JSON string holding the record.
+   */
+  private static int unquotedRunEnd(String s, int i) {
+    while (i < s.length()) {
+      char c = s.charAt(i);
+      if (c == '\n' || c == '\r' || isJsonEscapedLineBreak(s, i)) {
+        return i;
+      }
+      if ((c == ' ' || c == '\t' || c == ',') && unquotedValueEndsThere(s, i)) {
+        return i;
+      }
+      int quoteLength = quoteLengthAt(s, i);
+      if (quoteLength == 0) {
+        i++;
+      } else if (isDoubledQuote(s, i, quoteLength)) {
+        i += 2 * quoteLength;
+      } else if (isFieldEndAfterQuote(s, i + quoteLength)) {
+        return i;
+      } else {
+        i += quoteLength;
+      }
+    }
+    return s.length();
   }
 
   /**
@@ -110,11 +198,11 @@ public final class LdapBindPasswdHbaFormat {
   }
 
   /**
-   * Where to stop redacting a value quoted only in part. Its real end is unknown, so anything up to
-   * the end of its field may be password: stop at a line break, or at the first quote (at any
-   * escape depth) that isn't doubled and closes the CSV field or JSON string holding the record.
+   * Where to stop redacting a value with no known end. Anything up to the end of its field may be
+   * password: stop at a line break, or at the first quote (at any escape depth) that isn't doubled
+   * and closes the CSV field or JSON string holding the record.
    */
-  private static int partlyQuotedValueEnd(String s, int i) {
+  private static int enclosingFieldEnd(String s, int i) {
     while (i < s.length()) {
       char c = s.charAt(i);
       if (c == '\n' || c == '\r') {
@@ -193,9 +281,11 @@ public final class LdapBindPasswdHbaFormat {
 
   /** True if s[i] starts a JSON-escaped line break or tab. */
   private static boolean isJsonEscapedWhitespace(String s, int i) {
-    return s.charAt(i) == '\\'
-        && i + 1 < s.length()
-        && (s.charAt(i + 1) == 'n' || s.charAt(i + 1) == 'r' || s.charAt(i + 1) == 't');
+    return isJsonEscapedLineBreak(s, i) || s.startsWith("\\t", i);
+  }
+
+  private static boolean isJsonEscapedLineBreak(String s, int i) {
+    return s.startsWith("\\n", i) || s.startsWith("\\r", i);
   }
 
   /**
@@ -364,7 +454,7 @@ public final class LdapBindPasswdHbaFormat {
 
   /**
    * Reads the value that starts at s[eqIndex], right after ldapbindpasswd=, by the quote that opens
-   * it. Returns null for an empty value, or one that doesn't close in its style.
+   * it. Returns null for an unquoted empty value, or one that doesn't close in its style.
    */
   private static ParsedValue tryParseValue(String s, int eqIndex) {
     if (eqIndex > s.length()) {
@@ -450,7 +540,9 @@ public final class LdapBindPasswdHbaFormat {
    * password abc\ in a raw CSV field, but abc inside a JSON string, where the quote is escaped. The
    * quote that opens the record (a CSV-quoted record, or the JSON string it starts) is escaped like
    * the closing one, so its backslashes decide. With no quote there, an even count is all password
-   * and an odd count leaves one for the quote.
+   * and an odd count leaves one for the quote. This takes the quote to close the record; when it
+   * doesn't, as with an HBA line's \"secret\" inside a JSON string, the value has no end
+   * redactAllValues can find.
    */
   private static int closingQuoteEscapes(String s, int valueStart, int backslashes) {
     Matcher record = HBA_RECORD_TYPE.matcher(s).useTransparentBounds(true);

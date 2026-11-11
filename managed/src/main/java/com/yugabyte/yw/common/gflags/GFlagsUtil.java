@@ -22,6 +22,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.common.CallHomeManager;
+import com.yugabyte.yw.common.LdapBindPasswdHbaFormat;
 import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -1515,24 +1516,12 @@ public class GFlagsUtil {
         });
   }
 
-  // ldapbindpasswd= starting an option: at the start, or after whitespace, a comma or a quote.
-  private static final Pattern LDAP_BIND_PASSWD_KEY =
-      Pattern.compile("(?<![^\\s,\"])ldapbindpasswd=");
-
-  // The ldapbindpasswd values LdapBindPasswdHbaFormat reads in full, as written in the CSV: quoted
-  // in a quoted CSV field, quoted in an unquoted one, or unquoted up to whitespace, a comma, the
-  // end, or the quote closing its CSV field.
-  private static final Pattern REDACTABLE_LDAP_BIND_PASSWD =
-      Pattern.compile(
-          "\"\"(?:[^\"]|\"\"\"\")*+\"\"(?=[\\s,\"]|$)"
-              + "|\"(?:[^\"]|\"\")*+\"(?=[\\s,]|$)"
-              + "|[^\\s,\"]*+(?=[\\s,]|$|\"(?=,|$))");
-
   /**
-   * Refuses an ldapbindpasswd quoted only in part, such as pa",ss" for pa,ss. Redaction can't tell
-   * where such a value ends, so it redacts to the end of its CSV field, and API responses would
-   * lose the HBA options after the password. HBA values the universe already stores pass, so one
-   * saved before this check doesn't block other edits.
+   * Refuses an ldapbindpasswd whose end redaction can't be sure of: one quoted only in part, such
+   * as pa",ss" for pa,ss, which is redacted to the end of its CSV field, so API responses lose the
+   * HBA options after it; or an unquoted one with a space or comma, such as Two Word Secret, which
+   * Postgres ends at the space or comma. HBA values the universe already stores pass, so one saved
+   * before this check doesn't block other edits.
    */
   public static void checkLdapBindPasswdQuoting(
       UniverseDefinitionTaskParams.UserIntent userIntent, @Nullable Universe universe) {
@@ -1549,6 +1538,20 @@ public class GFlagsUtil {
     checkLdapBindPasswdQuoting(hbaConfs, universe);
   }
 
+  /** The same check on the deprecated top-level gflag maps of a gflags upgrade. */
+  public static void checkLdapBindPasswdQuoting(
+      @Nullable Map<String, String> masterGFlags,
+      @Nullable Map<String, String> tserverGFlags,
+      Universe universe) {
+    Set<String> hbaConfs = new HashSet<>();
+    for (Map<String, String> gflags : Arrays.asList(masterGFlags, tserverGFlags)) {
+      if (gflags != null && gflags.get(YSQL_HBA_CONF_CSV) != null) {
+        hbaConfs.add(gflags.get(YSQL_HBA_CONF_CSV));
+      }
+    }
+    checkLdapBindPasswdQuoting(hbaConfs, universe);
+  }
+
   private static void checkLdapBindPasswdQuoting(
       Set<String> hbaConfs, @Nullable Universe universe) {
     hbaConfs.removeIf(hbaConf -> !hbaConf.contains("ldapbindpasswd="));
@@ -1562,16 +1565,13 @@ public class GFlagsUtil {
           .forEach(cluster -> hbaConfs.removeAll(getYsqlHbaConfCsvs(cluster.userIntent)));
     }
     for (String hbaConf : hbaConfs) {
-      Matcher key = LDAP_BIND_PASSWD_KEY.matcher(hbaConf);
-      Matcher value = REDACTABLE_LDAP_BIND_PASSWD.matcher(hbaConf);
-      while (key.find()) {
-        if (!value.region(key.end(), hbaConf.length()).lookingAt()) {
-          throw new PlatformServiceException(
-              BAD_REQUEST,
-              String.format(
-                  "GFlag %s: quote the whole ldapbindpasswd value or use no quotes in it",
-                  YSQL_HBA_CONF_CSV));
-        }
+      if (LdapBindPasswdHbaFormat.hasValueWithUnknownEnd(hbaConf)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "GFlag %s: quote the whole ldapbindpasswd value if it has quotes, spaces or"
+                    + " commas",
+                YSQL_HBA_CONF_CSV));
       }
     }
   }

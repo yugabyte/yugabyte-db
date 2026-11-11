@@ -121,11 +121,21 @@ public class RedactingServiceTest {
     root.put("ysql_hba_conf_csv", hbaEarlyPasswd);
     JsonNode out =
         RedactingService.filterSecretFields(root, RedactionTarget.APIS, null, null, true);
-    String redacted = out.get("ysql_hba_conf_csv").asText();
-    assertFalse(redacted.contains("Two Word Secret"));
-    assertTrue(redacted.contains("ldapbinddn"));
-    assertTrue(redacted.contains("CN=x"));
-    assertTrue(redacted.contains("ldapserver=ldap.example.com"));
+    assertEquals(
+        "host all all 0.0.0.0/0 ldap ldapbindpasswd="
+            + SECRET_REPLACEMENT
+            + " ldapbinddn=\"\"CN=x,DC=y\"\" ldapserver=ldap.example.com ldaptls=0",
+        out.get("ysql_hba_conf_csv").asText());
+    root.put(
+        "ysql_hba_conf_csv",
+        "host all all 0.0.0.0/0 ldap ldapbindpasswd=pa,ss ldaptls=0,local all all trust");
+    assertEquals(
+        "host all all 0.0.0.0/0 ldap ldapbindpasswd="
+            + SECRET_REPLACEMENT
+            + " ldaptls=0,local all all trust",
+        RedactingService.filterSecretFields(root, RedactionTarget.APIS, null, null, true)
+            .get("ysql_hba_conf_csv")
+            .asText());
 
     // Password last on the line (still under ysql_hba_conf_csv)
     ObjectNode root2 = mapper.createObjectNode();

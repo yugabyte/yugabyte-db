@@ -1497,6 +1497,44 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
   }
 
   @Test
+  public void testGFlagsUpgradeOfLegacyGFlagsWithPartlyQuotedLdapBindPasswd() {
+    when(mockConfig.getBoolean(GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey()))
+        .thenReturn(true);
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    UUID universeUUID = createUniverse(customer.getId()).getUniverseUUID();
+    Universe universe =
+        Universe.saveDetails(
+            universeUUID,
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.getPrimaryCluster().userIntent.enableYSQLAuth = true;
+              u.setUniverseDetails(details);
+            });
+    // A universe without specificGFlags, so the upgrade checks the legacy gflag maps.
+    assertNull(universe.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags);
+
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/gflags";
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.set("masterGFlags", Json.parse("{ \"master-flag\": \"123\"}"));
+    bodyJson.set(
+        "tserverGFlags",
+        Json.newObject()
+            .put(
+                "ysql_hba_conf_csv",
+                "\"host all all 0.0.0.0/0 ldap ldapserver=x ldapbindpasswd=pa\"\",ss\"\"\""));
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    assertBadRequest(
+        result,
+        "GFlag ysql_hba_conf_csv: quote the whole ldapbindpasswd value if it has quotes, spaces"
+            + " or commas");
+    verify(mockCommissioner, never()).submit(any(), any());
+  }
+
+  @Test
   public void testGFlagsUpgradeCannotDisableFipsOnFipsUniverse() {
     UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);

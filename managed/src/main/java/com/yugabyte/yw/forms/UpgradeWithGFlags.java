@@ -190,6 +190,7 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
     GFlagsUtil.checkConsistency(masterGFlags, tserverGFlags);
     GFlagsUtil.checkNoLineBreaks(masterGFlags);
     GFlagsUtil.checkNoLineBreaks(tserverGFlags);
+    GFlagsUtil.checkLdapBindPasswdQuoting(masterGFlags, tserverGFlags, universe);
     if (universe.getUniverseDetails().fipsEnabled) {
       GFlagsUtil.checkFipsGFlagNotDisabled("master gflags", masterGFlags);
       GFlagsUtil.checkFipsGFlagNotDisabled("tserver gflags", tserverGFlags);
