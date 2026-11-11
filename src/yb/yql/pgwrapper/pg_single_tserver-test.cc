@@ -18,7 +18,11 @@
 
 #include "yb/consensus/log.h"
 
+#include "yb/docdb/consensus_frontier.h"
+
 #include "yb/gutil/strings/split.h"
+
+#include "yb/rocksdb/db.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
@@ -55,7 +59,7 @@ DECLARE_bool(never_fsync);
 DECLARE_bool(rocksdb_use_logging_iterator);
 DECLARE_bool(TEST_disable_flush_on_shutdown);
 DECLARE_bool(TEST_skip_applying_truncate);
-DECLARE_bool(TEST_store_apply_state_without_apply_op_id);
+DECLARE_bool(TEST_store_apply_state_in_old_format);
 DECLARE_bool(use_fast_backward_scan);
 DECLARE_bool(ysql_catalog_preload_additional_tables);
 DECLARE_bool(ysql_enable_auto_analyze);
@@ -2334,8 +2338,8 @@ TEST_F(PgSingleTServerTest, ApplyLargeTransactionAfterRestartWithoutFlush) {
   ASSERT_EQ(sum, -kNumRows * (kNumRows + 1) / 2);
 }
 
-// Older releases stored the apply state of a large transaction without its apply op id. A tserver
-// that finds such a state on restart must resume and complete the apply.
+// Older releases stored the apply state of a large transaction without its apply op id and log
+// hybrid time. A tserver that finds such a state on restart must resume and complete the apply.
 TEST_F(PgSingleTServerTest, ApplyLargeTransactionAfterRestartWithoutStoredApplyOpId) {
   constexpr int kApplyBatchRecords = 10;
   constexpr int kNumRows = 50;
@@ -2348,7 +2352,7 @@ TEST_F(PgSingleTServerTest, ApplyLargeTransactionAfterRestartWithoutStoredApplyO
   auto tablet = ASSERT_RESULT(peers.front()->shared_tablet());
 
   // Apply only the first batch, and store the apply state for the rest the way older releases did.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_store_apply_state_without_apply_op_id) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_store_apply_state_in_old_format) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_and_skip_apply_intents_task_loop_ms) = 10;
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_OK(conn.ExecuteFormat(
@@ -2359,7 +2363,7 @@ TEST_F(PgSingleTServerTest, ApplyLargeTransactionAfterRestartWithoutStoredApplyO
     return VERIFY_RESULT(tablet->TEST_CountDBRecords(docdb::StorageDbType::kRegular)) >
            static_cast<size_t>(kApplyBatchRecords);
   }, 10s * kTimeMultiplier, "First apply batch"));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_store_apply_state_without_apply_op_id) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_store_apply_state_in_old_format) = false;
   const auto tablet_id = tablet->tablet_id();
   peers.clear();
   tablet.reset();
@@ -2378,6 +2382,16 @@ TEST_F(PgSingleTServerTest, ApplyLargeTransactionAfterRestartWithoutStoredApplyO
   // Make the finished apply durable, then restart without flushing: the later row must come back
   // from the WAL, and the loader must find no pending apply.
   ASSERT_OK(cluster_->FlushTablets());
+  // Without log hybrid time, the frontiers of the resumed apply must cover its commit hybrid time.
+  peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"));
+  tablet = ASSERT_RESULT(peers.front()->shared_tablet());
+  for (const auto& file : tablet->regular_db()->GetLiveFilesMetaData()) {
+    ASSERT_TRUE(file.largest.user_frontier) << file.ToString();
+    auto ht = down_cast<docdb::ConsensusFrontier&>(*file.largest.user_frontier).hybrid_time();
+    ASSERT_TRUE(ht.is_valid()) << file.ToString();
+  }
+  peers.clear();
+  tablet.reset();
   conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES ($0, $1)", kNumRows + 2, -(kNumRows + 2)));
   StringWaiterLogSink pending_applies_sink("pending applies");
