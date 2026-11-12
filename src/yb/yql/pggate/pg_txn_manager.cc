@@ -13,6 +13,12 @@
 
 #include "yb/yql/pggate/pg_txn_manager.h"
 
+#include <boost/functional/hash/hash.hpp>
+#include <boost/multi_index/hashed_index.hpp>
+#include <boost/multi_index/member.hpp>
+#include <boost/multi_index/ordered_index.hpp>
+#include <boost/multi_index_container.hpp>
+
 #include "yb/common/common.pb.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction_priority.h"
@@ -248,13 +254,104 @@ void PgTxnManager::DEBUG_CheckOptionsForPerform(
 }
 #endif
 
+// Object locks acquired by the current transaction, so that a repeated request for a lock that is
+// already held can skip both the shared memory fastpath and the RPC. Postgres re-requests a lock
+// each time it re-opens a relation, since LockRelease drops postgres' local lock entry while DocDB
+// holds the lock until the transaction ends or the subtransaction is rolled back.
+//
+// Only weak (fastpath eligible) locks of the regular transaction are tracked. Each lock maps to the
+// first subtransaction that acquired it, which DocDB holds the lock under. DocDB only releases it
+// when that exact subtransaction is rolled back or the transaction ends. Rolling back a subtxn
+// erases the locks of all subtransactions with a greater or equal id, and all locks are cleared
+// when the transaction ends or the tserver is asked to restart it.
+//
+// The locks are only valid for the shared state epoch they were recorded under, which changes if
+// the transaction is aborted on the DocDB side and a new one registered.
+class PgTxnManager::HeldObjectLocks {
+ public:
+  struct Lock {
+    YbcObjectLockId lock_id;
+    docdb::ObjectLockFastpathLockType lock_type;
+
+    bool operator==(const Lock& rhs) const {
+      return lock_id.db_oid == rhs.lock_id.db_oid &&
+             lock_id.relation_oid == rhs.lock_id.relation_oid &&
+             lock_id.object_oid == rhs.lock_id.object_oid &&
+             lock_id.object_sub_oid == rhs.lock_id.object_sub_oid &&
+             lock_type == rhs.lock_type;
+    }
+  };
+
+  [[nodiscard]] bool empty() const { return entries_.empty(); }
+  [[nodiscard]] size_t size() const { return entries_.size(); }
+  [[nodiscard]] uint64_t epoch() const { return epoch_; }
+  void set_epoch(uint64_t epoch) { epoch_ = epoch; }
+
+  [[nodiscard]] bool Contains(const Lock& lock) const {
+    const auto& by_lock = entries_.get<ByLockTag>();
+    return by_lock.find(lock) != by_lock.end();
+  }
+
+  // Keeps the existing entry if the lock is already recorded.
+  void Add(const Lock& lock, SubTransactionId subtxn_id) {
+    entries_.insert(Entry{lock, subtxn_id});
+  }
+
+  // Subtransaction ids only increase within a transaction, and every subtransaction created after
+  // `id` is nested in it, so this rollback releases the locks of all subtransactions >= `id`.
+  void EraseFromSubTransaction(SubTransactionId subtxn_id) {
+    auto& by_subtxn = entries_.get<BySubTransactionTag>();
+    by_subtxn.erase(by_subtxn.lower_bound(subtxn_id), by_subtxn.end());
+  }
+
+  void Clear() {
+    entries_.clear();
+    epoch_ = 0;
+  }
+
+ private:
+  struct LockHash {
+    size_t operator()(const Lock& lock) const {
+      size_t hash = 0;
+      boost::hash_combine(hash, lock.lock_id.db_oid);
+      boost::hash_combine(hash, lock.lock_id.relation_oid);
+      boost::hash_combine(hash, lock.lock_id.object_oid);
+      boost::hash_combine(hash, lock.lock_id.object_sub_oid);
+      boost::hash_combine(hash, std::to_underlying(lock.lock_type));
+      return hash;
+    }
+  };
+
+  struct Entry {
+    Lock lock;
+    SubTransactionId subtxn_id;
+  };
+
+  struct ByLockTag;
+  struct BySubTransactionTag;
+
+  boost::multi_index_container<
+      Entry,
+      boost::multi_index::indexed_by<
+          boost::multi_index::hashed_unique<
+              boost::multi_index::tag<ByLockTag>,
+              boost::multi_index::member<Entry, Lock, &Entry::lock>,
+              LockHash>,
+          boost::multi_index::ordered_non_unique<
+              boost::multi_index::tag<BySubTransactionTag>,
+              boost::multi_index::member<Entry, SubTransactionId, &Entry::subtxn_id>>>>
+      entries_;
+  uint64_t epoch_ = 0;
+};
+
 PgTxnManager::PgTxnManager(
     PgClient* client, YbcPgCallbacks pg_callbacks, bool enable_table_locking,
     std::atomic<uint64_t>& next_read_time_serial_no)
     : client_(client),
       serial_no_(next_read_time_serial_no),
       pg_callbacks_(pg_callbacks),
-      enable_table_locking_(enable_table_locking) {}
+      enable_table_locking_(enable_table_locking),
+      held_object_locks_(std::make_unique<HeldObjectLocks>()) {}
 
 bool PgTxnManager::IsTableLockingEnabledForCurrentTxn() const {
   // Computed rather than latched: enable_table_locking_ is fixed for the session and
@@ -470,6 +567,8 @@ Status PgTxnManager::CalculateIsolation(
 
 Status PgTxnManager::RestartTransaction() {
   need_restart_ = true;
+  // The tserver releases all object locks of the transaction when it restarts it.
+  ClearHeldObjectLocks();
   return Status::OK();
 }
 
@@ -551,6 +650,7 @@ Status PgTxnManager::FinishPlainTransaction(
     LOG(WARNING) << "Received DML txn commit with DDL txn state active";
   }
 
+  ClearHeldObjectLocks();
   if (!txn_in_progress_) {
     VLOG_TXN_STATE(2) << "No transaction in progress, nothing to commit.";
     return Status::OK();
@@ -591,6 +691,7 @@ Status PgTxnManager::FinishPlainTransaction(
 }
 
 void PgTxnManager::ResetTxnAndSession() {
+  ClearHeldObjectLocks();
   txn_in_progress_ = false;
   isolation_level_ = IsolationLevel::NON_TRANSACTIONAL;
   priority_ = std::nullopt;
@@ -1155,6 +1256,7 @@ void PgTxnManager::ClearExportedTxnSnapshots() {
 
 Status PgTxnManager::RollbackToSubTransaction(
     SetupPerformOptionsAccessorTag tag, SubTransactionId id) {
+  held_object_locks_->EraseFromSubTransaction(id);
   if (!txn_in_progress_) {
     VLOG_TXN_STATE(2) << "No transaction in progress, nothing to rollback.";
     return Status::OK();
@@ -1178,10 +1280,16 @@ bool PgTxnManager::TryAcquireObjectLock(
     return false;
   }
 
+  if (IsObjectLockHeld(lock_id, lock_type)) {
+    DEBUG_ONLY(DEBUG_UpdateLastObjectLockingInfo());
+    return true;
+  }
+
   if (!client_->TryAcquireObjectLockInSharedMemory(
         active_sub_transaction_id_, lock_id, lock_type)) {
     return false;
   }
+  RecordObjectLockHeld(lock_id, lock_type);
   DEBUG_ONLY(DEBUG_UpdateLastObjectLockingInfo());
   return true;
 }
@@ -1201,8 +1309,52 @@ Status PgTxnManager::AcquireObjectLock(
       SkipReadTimeOptions::kTrue));
   RETURN_NOT_OK(client_->AcquireObjectLock(
       &options, lock_id, mode, is_session_lock, tablespace_oid));
+  // Session locks are released individually, and locks of a separate DDL transaction are released
+  // when that transaction ends, so only track transaction locks of the regular transaction.
+  if (!is_session_lock && !(IsDdlMode() && !IsDdlModeWithRegularTransactionBlock())) {
+    if (auto lock_type = docdb::MakeObjectLockFastpathLockType(TableLockType(mode))) {
+      RecordObjectLockHeld(lock_id, *lock_type);
+    }
+  }
   DEBUG_ONLY(DEBUG_UpdateLastObjectLockingInfo());
   return Status::OK();
+}
+
+bool PgTxnManager::IsObjectLockHeld(
+    const YbcObjectLockId& lock_id, docdb::ObjectLockFastpathLockType lock_type) {
+  if (held_object_locks_->empty()) {
+    return false;
+  }
+  // If the transaction was aborted on the DocDB side, the shared state is disabled or registered
+  // for another transaction, and the locks recorded so far are no longer held.
+  const auto epoch = client_->ObjectLockSharedStateActiveEpoch();
+  if (epoch == 0 || epoch != held_object_locks_->epoch()) {
+    VLOG_WITH_FUNC(2) << "Object lock shared state epoch changed from "
+                      << held_object_locks_->epoch() << " to " << epoch << ", dropping "
+                      << held_object_locks_->size() << " held locks";
+    ClearHeldObjectLocks();
+    return false;
+  }
+  return held_object_locks_->Contains({lock_id, lock_type});
+}
+
+void PgTxnManager::RecordObjectLockHeld(
+    const YbcObjectLockId& lock_id, docdb::ObjectLockFastpathLockType lock_type) {
+  const auto epoch = client_->ObjectLockSharedStateActiveEpoch();
+  if (epoch == 0) {
+    return;
+  }
+  if (epoch != held_object_locks_->epoch()) {
+    ClearHeldObjectLocks();
+    held_object_locks_->set_epoch(epoch);
+  }
+  held_object_locks_->Add({lock_id, lock_type}, active_sub_transaction_id_);
+}
+
+void PgTxnManager::ClearHeldObjectLocks() {
+  VLOG_IF_WITH_FUNC(2, !held_object_locks_->empty())
+      << "Clearing " << held_object_locks_->size() << " held object locks";
+  held_object_locks_->Clear();
 }
 
 void PgTxnManager::SetTransactionHasWrites() {

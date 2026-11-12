@@ -30,14 +30,6 @@ DEFINE_RUNTIME_uint64(object_lock_fastpath_buffer_size, 256,
     "sending an RPC to TServer. Changes to this flag will only apply to postgres sessions "
     "created after changing the flag.");
 
-DEFINE_RUNTIME_bool(object_lock_fastpath_skip_duplicate_requests, true,
-    "When true, a shared memory fastpath object lock request is not added to the session's "
-    "fastpath buffer if a request for the same object, lock type and subtransaction is already "
-    "pending. Postgres re-requests a lock each time it re-opens a relation within a transaction, "
-    "so without this, catalog heavy statements can exhaust object_lock_fastpath_buffer_size with "
-    "duplicates. Changes to this flag will only apply to postgres sessions created after changing "
-    "the flag.");
-
 namespace yb::docdb {
 
 namespace {
@@ -48,29 +40,18 @@ struct FastpathLockRequestEntry {
   ObjectLockFastpathRequest request;
 };
 
-YB_DEFINE_ENUM(FastpathLockResult, (kAdded)(kDuplicate)(kBufferFull)(kFastpathUnusable));
-
 class PendingLockRequests {
  public:
   explicit PendingLockRequests(SharedMemoryBackingAllocator& allocator)
-      : PendingLockRequests(
-            allocator, FLAGS_object_lock_fastpath_buffer_size,
-            FLAGS_object_lock_fastpath_skip_duplicate_requests) {}
+      : PendingLockRequests(allocator, FLAGS_object_lock_fastpath_buffer_size) {}
 
   // `accounting_lock_count` is the number of postgres-side acquired locks to count this request as.
   // One fastpath request can correspond to multiple actual locks, and we use this count for metrics
   // accounting to match ObjectLockManager metrics.
-  FastpathLockResult AddLockRequest(
-      const ObjectLockFastpathRequest& request, size_t accounting_lock_count) {
+  bool AddLockRequest(const ObjectLockFastpathRequest& request, size_t accounting_lock_count) {
     size_t index = SHARED_MEMORY_LOAD(next_);
-    if (skip_duplicates_ && HasPendingRequest(request, index)) {
-      // A pending request for the same lock and subtransaction is released together with the new
-      // one, so the new one adds nothing. Redundant acquires are not counted by ObjectLockManager
-      // either, so skip metrics accounting too.
-      return FastpathLockResult::kDuplicate;
-    }
     if (index >= buffer_size_) {
-      return FastpathLockResult::kBufferFull;
+      return false;
     }
 
     auto& r = requests_[index];
@@ -87,7 +68,7 @@ class PendingLockRequests {
     // is acceptable, and we don't force update at same instruction as next_ for simplicity.
     SHARED_MEMORY_STORE(pg_requests_, SHARED_MEMORY_LOAD(pg_requests_) + accounting_lock_count);
 
-    return FastpathLockResult::kAdded;
+    return true;
   }
 
   bool Reset(bool accounted) {
@@ -125,25 +106,12 @@ class PendingLockRequests {
   }
 
  private:
-  PendingLockRequests(
-      SharedMemoryBackingAllocator& allocator, size_t buffer_size, bool skip_duplicates)
+  PendingLockRequests(SharedMemoryBackingAllocator& allocator, size_t buffer_size)
       : requests_{CHECK_RESULT(allocator.MakeUnique<FastpathLockRequestEntry[]>(buffer_size))},
-        buffer_size_{buffer_size},
-        skip_duplicates_{skip_duplicates} {}
-
-  bool HasPendingRequest(const ObjectLockFastpathRequest& request, size_t end) const {
-    // Scan backwards since repeated requests for the same lock tend to be close together.
-    for (size_t i = end; i > 0; --i) {
-      if (requests_[i - 1].request == request) {
-        return true;
-      }
-    }
-    return false;
-  }
+        buffer_size_{buffer_size} {}
 
   SharedMemoryUniquePtr<FastpathLockRequestEntry[]> requests_;
   const size_t buffer_size_;
-  const bool skip_duplicates_;
   ChildProcessRW<size_t> next_ = 0;
 
   // Counters for metrics. These may not be completely accurate in event of crash.
@@ -310,7 +278,7 @@ class ObjectLockSharedState::Impl {
 
   [[nodiscard]] bool Lock(const ObjectLockFastpathRequest& request) EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
-    return IsFastpathLockSuccess(DoLock(request, /*account_to_pg=*/true));
+    return DoLock(request, /*account_to_pg=*/true);
   }
 
   [[nodiscard]] bool UnlockAll() EXCLUDES(mutex_) {
@@ -321,11 +289,11 @@ class ObjectLockSharedState::Impl {
   [[nodiscard]] bool TServerLock(const ObjectLockFastpathRequest& request)
       PARENT_PROCESS_ONLY EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
-    auto result = DoLock(request, /*account_to_pg=*/false);
-    if (result == FastpathLockResult::kAdded) {
-      tserver_lock_requests_.Get() += GetEntriesForFastpathLockType(request.lock_type).size();
+    if (auto num_locks = DoLock(request, /*account_to_pg=*/false)) {
+      tserver_lock_requests_.Get() += num_locks;
+      return true;
     }
-    return IsFastpathLockSuccess(result);
+    return false;
   }
 
   [[nodiscard]] bool TServerUnlockAll() PARENT_PROCESS_ONLY EXCLUDES(mutex_) {
@@ -356,6 +324,7 @@ class ObjectLockSharedState::Impl {
     std::lock_guard lock(mutex_);
     if (SHARED_MEMORY_LOAD(enabled_) == ActiveState::kDisabled) {
       SHARED_MEMORY_STORE(enabled_, ActiveState::kEnabled);
+      ++enabled_epoch_.Get();
       VLOG_WITH_FUNC(1) << "done";
     }
   }
@@ -399,6 +368,12 @@ class ObjectLockSharedState::Impl {
     VLOG_WITH_FUNC(1) << "set to " << CollectionToString(exclusive_intents.SharedMemorySpan());
   }
 
+  uint64_t ActiveEpoch() const EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    return SHARED_MEMORY_LOAD(enabled_) == ActiveState::kEnabled
+        ? SHARED_MEMORY_LOAD(enabled_epoch_) : 0;
+  }
+
   uint64_t PgLockRequestCount() const {
     std::lock_guard lock(mutex_);
     return shared_requests_.PgLockRequestCount();
@@ -425,41 +400,28 @@ class ObjectLockSharedState::Impl {
   }
 
  private:
-  static bool IsFastpathLockSuccess(FastpathLockResult result) {
-    return result == FastpathLockResult::kAdded || result == FastpathLockResult::kDuplicate;
-  }
-
-  [[nodiscard]] FastpathLockResult DoLock(
+  [[nodiscard]] size_t DoLock(
       const ObjectLockFastpathRequest& request, bool account_to_pg) REQUIRES(mutex_) {
     if (SHARED_MEMORY_LOAD(enabled_) != ActiveState::kEnabled) {
       VLOG_WITH_FUNC(1) << AsString(request) << ": Shared state disabled, cannot use fastpath";
-      return FastpathLockResult::kFastpathUnusable;
+      return 0;
     }
 
     auto entries = GetEntriesForFastpathLockType(request.lock_type);
     if (!CheckExclusiveLockIntents(request, entries)) {
-      return FastpathLockResult::kFastpathUnusable;
+      return 0;
     }
 
-    auto result = shared_requests_.AddLockRequest(request, account_to_pg ? entries.size() : 0);
-    switch (result) {
-      case FastpathLockResult::kAdded:
-        VLOG_WITH_FUNC(1) << AsString(request) << ": added request";
-        break;
-      case FastpathLockResult::kDuplicate:
-        VLOG_WITH_FUNC(1) << AsString(request) << ": skipped duplicate request";
-        break;
-      case FastpathLockResult::kBufferFull:
-        YB_LOG_EVERY_N_SECS(WARNING, 60)
-            << AsString(request) << ": too many active fastpath requests, consider increasing "
-            << "object_lock_fastpath_buffer_size (current value: "
-            << FLAGS_object_lock_fastpath_buffer_size << ")";
-        break;
-      case FastpathLockResult::kFastpathUnusable:
-        LOG(DFATAL) << "Unexpected result from AddLockRequest: " << AsString(result);
-        break;
+    if (!shared_requests_.AddLockRequest(request, account_to_pg ? entries.size() : 0)) {
+      YB_LOG_EVERY_N_SECS(WARNING, 60)
+          << AsString(request) << ": too many active fastpath requests, consider increasing "
+          << "object_lock_fastpath_buffer_size (current value: "
+          << FLAGS_object_lock_fastpath_buffer_size << ")";
+      return 0;
     }
-    return result;
+
+    VLOG_WITH_FUNC(1) << AsString(request) << ": added request";
+    return entries.size();
   }
 
   [[nodiscard]] bool CheckExclusiveLockIntents(
@@ -522,6 +484,8 @@ class ObjectLockSharedState::Impl {
   PendingLockRequests shared_requests_ GUARDED_BY(mutex_);
   ChildProcessRO<std::span<const ObjectLockExclusiveIntent>> exclusive_intents_;
   ChildProcessRO<ActiveState> enabled_ GUARDED_BY(mutex_) = ActiveState::kDisabled;
+  // Incremented each time the state is enabled, i.e. each time a transaction is registered for it.
+  ChildProcessRO<uint64_t> enabled_epoch_ GUARDED_BY(mutex_) = 0;
 
   // Keep track of whether this session/transaction is registered with ObjectLockManager. If it is,
   // we need to release via ObjectLockManager to release that state, and cannot use fastpath
@@ -586,6 +550,10 @@ void ObjectLockSharedState::ResetExclusiveLockIntentsTo(
 
 void ObjectLockSharedState::ConsumePendingLockRequests(const FastLockRequestConsumer& consume) {
   impl_->ConsumePendingLockRequests(consume);
+}
+
+uint64_t ObjectLockSharedState::ActiveEpoch() const {
+  return impl_->ActiveEpoch();
 }
 
 uint64_t ObjectLockSharedState::PgLockRequestCount() const {

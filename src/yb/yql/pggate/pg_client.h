@@ -324,6 +324,9 @@ class PgClient {
 
   bool TryReleaseAllObjectLocksInSharedMemory();
 
+  // Returns the active epoch of the session's object lock shared state.
+  uint64_t ObjectLockSharedStateActiveEpoch();
+
   Status AcquireObjectLock(
       tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
       bool is_session_lock, std::optional<PgTablespaceOid> tablespace_oid);

@@ -1274,6 +1274,13 @@ class PgClient::Impl : public BigDataFetcher {
     return false;
   }
 
+  uint64_t ObjectLockSharedStateActiveEpoch() {
+    if (auto lock_shared = GetObjectLockSharedState()) {
+      return (*lock_shared)->ActiveEpoch();
+    }
+    return 0;
+  }
+
   void FetchBigData(uint64_t data_id, FetchBigDataCallback* callback) override {
     struct FetchBigDataInfo {
       FetchBigDataCallback* callback;
@@ -2463,6 +2470,10 @@ bool PgClient::TryAcquireObjectLockInSharedMemory(
 
 bool PgClient::TryReleaseAllObjectLocksInSharedMemory() {
   return impl_->TryReleaseAllObjectLocksInSharedMemory();
+}
+
+uint64_t PgClient::ObjectLockSharedStateActiveEpoch() {
+  return impl_->ObjectLockSharedStateActiveEpoch();
 }
 
 Status PgClient::AcquireObjectLock(

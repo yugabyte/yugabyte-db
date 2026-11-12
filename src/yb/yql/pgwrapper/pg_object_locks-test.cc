@@ -2589,6 +2589,78 @@ TEST_F(PgObjectLocksFastpathTest, TestTServerLockManagerRelease) {
   }
 }
 
+// pg_relation_size opens the relation with AccessShareLock and releases it when done, so postgres
+// re-requests the lock on every call. A lock already held by the transaction should not be
+// requested again, until the transaction ends or the subtransaction holding it is rolled back.
+TEST_F(PgObjectLocksFastpathTest, TestRepeatedLockRequestSkipped) {
+  constexpr auto kRelationSizeQuery = "SELECT pg_relation_size('test'::regclass)";
+  auto conn = ASSERT_RESULT(Connect());
+  // Get catalog reads out of the way since they acquire a bunch of unrelated locks.
+  ASSERT_OK(conn.Fetch(kRelationSizeQuery));
+
+  auto expect_fastpath_acquires = [this](uint64_t delta) {
+    return ExpectMetricIncrease<FunctionGauge<uint64_t>>(
+        METRIC_object_locking_fastpath_pg_acquires, delta);
+  };
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  {
+    auto g = expect_fastpath_acquires(1);
+    ASSERT_OK(conn.Fetch(kRelationSizeQuery));
+  }
+  {
+    auto g1 = expect_fastpath_acquires(0);
+    auto g2 = ExpectMetricIncrease<FunctionGauge<uint64_t>>(
+        METRIC_object_locking_fastpath_tserver_acquires, /*delta=*/0);
+    auto g3 = ExpectMetricIncrease<Counter>(METRIC_object_locking_lock_acquires, /*delta=*/0);
+    for (int i = 0; i < 3; ++i) {
+      ASSERT_OK(conn.Fetch(kRelationSizeQuery));
+    }
+  }
+  ASSERT_OK(conn.CommitTransaction());
+
+  // A new transaction acquires the lock again. A lock acquired in a savepoint that is then released
+  // stays held, so the parent, whose subtransaction id is lower, doesn't request it again. Rolling
+  // back the outer savepoint forgets it.
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("SAVEPOINT outer_sp"));
+  ASSERT_OK(conn.Execute("SAVEPOINT inner_sp"));
+  {
+    auto g = expect_fastpath_acquires(1);
+    ASSERT_OK(conn.Fetch(kRelationSizeQuery));
+  }
+  ASSERT_OK(conn.Execute("RELEASE SAVEPOINT inner_sp"));
+  {
+    auto g = expect_fastpath_acquires(0);
+    ASSERT_OK(conn.Fetch(kRelationSizeQuery));
+  }
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT outer_sp"));
+  {
+    auto g = expect_fastpath_acquires(1);
+    ASSERT_OK(conn.Fetch(kRelationSizeQuery));
+  }
+  ASSERT_OK(conn.CommitTransaction());
+
+  // A lock served without a request after releasing the savepoint that acquired it is really held.
+  // This is checked last, since the conflicting exclusive request leaves exclusive intents behind
+  // that disable the fastpath for a while.
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("SAVEPOINT inner_sp"));
+  ASSERT_OK(conn.Fetch(kRelationSizeQuery));
+  ASSERT_OK(conn.Execute("RELEASE SAVEPOINT inner_sp"));
+  {
+    auto g = expect_fastpath_acquires(0);
+    ASSERT_OK(conn.Fetch(kRelationSizeQuery));
+  }
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn2.Execute("SET lock_timeout = '2s'"));
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_NOK_STR_CONTAINS(
+      conn2.Execute("LOCK TABLE test IN ACCESS EXCLUSIVE MODE"), "lock timeout");
+  ASSERT_OK(conn2.RollbackTransaction());
+  ASSERT_OK(conn.CommitTransaction());
+}
+
 class PgObjectLocksWithConcurrentDdl : public PgObjectLocksTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {

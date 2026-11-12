@@ -50,7 +50,6 @@ DECLARE_bool(TEST_olm_skip_scheduling_waiter_resumption);
 DECLARE_bool(TEST_olm_skip_sending_wait_for_probes);
 DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_bool(enable_ysql);
-DECLARE_bool(object_lock_fastpath_skip_duplicate_requests);
 
 DECLARE_uint64(object_lock_fastpath_buffer_size);
 
@@ -1386,6 +1385,17 @@ TEST_F(TSLocalLockManagerTest, TestFastpathOverflow) {
   ASSERT_TRUE(LockRelationTServerFastpath(
       kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject3,
       ObjectLockFastpathLockType::kRowShare));
+  ASSERT_FALSE(LockRelationTServerFastpath(
+      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject4,
+      ObjectLockFastpathLockType::kRowShare));
+
+  // kObject1 is already held in the lock manager, so this acquire is redundant. It should still
+  // consume the buffer for txn1.
+  ASSERT_OK(LockRelation(
+      kTxn1, kDatabase1, kObject1, TableLockType::ROW_SHARE, /*deadline=*/{}));
+  ASSERT_TRUE(LockRelationTServerFastpath(
+      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject4,
+      ObjectLockFastpathLockType::kRowShare));
 
   // Locks were consumed for txn1, fastpath release blocked.
   ASSERT_FALSE(ReleaseLocksPgFastpath(kTxn1.txn_id));
@@ -1395,73 +1405,26 @@ TEST_F(TSLocalLockManagerTest, TestFastpathOverflow) {
   ASSERT_OK(ReleaseLocksForOwner(kTxn1));
 }
 
-// A fastpath request for a lock already pending for the same subtransaction is skipped, so it
-// doesn't use up the buffer.
-TEST_F(TSLocalLockManagerTest, TestFastpathSkipsDuplicateRequests) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_object_lock_fastpath_buffer_size) = 1;
+// The active epoch is non-zero only while a transaction is registered, and changes with each
+// registration, so that locks known to be held for one transaction are not assumed held for the
+// next one.
+TEST_F(TSLocalLockManagerTest, TestFastpathActiveEpoch) {
+  ParentProcessGuard g;
+  auto shared_state = ASSERT_RESULT(shared_manager_->AllocateShared());
+  auto& state = *shared_state.get();
+  ASSERT_EQ(state.ActiveEpoch(), 0);
 
-  auto txn1 = ASSERT_RESULT(RegisterTransaction(kTxn1.txn_id));
-  ASSERT_TRUE(LockRelationPgFastpath(
-      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject1,
-      ObjectLockFastpathLockType::kAccessShare));
-  // Duplicates of the pending request succeed even though the buffer is full.
-  for (int i = 0; i < 3; ++i) {
-    ASSERT_TRUE(LockRelationPgFastpath(
-        kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject1,
-        ObjectLockFastpathLockType::kAccessShare));
+  uint64_t first_epoch;
+  {
+    auto registration = lock_owner_registry_->Register(state, kTxn1.txn_id, TabletId());
+    first_epoch = state.ActiveEpoch();
+    ASSERT_NE(first_epoch, 0);
   }
-  // A different lock type, or the same lock from another subtransaction, needs its own entry.
-  ASSERT_FALSE(LockRelationPgFastpath(
-      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject1,
-      ObjectLockFastpathLockType::kRowExclusive));
-  ASSERT_FALSE(LockRelationPgFastpath(
-      kTxn1.txn_id, kTxn1.subtxn_id + 1, kDatabase1, kObject1,
-      ObjectLockFastpathLockType::kAccessShare));
-  ASSERT_TRUE(ReleaseLocksPgFastpath(kTxn1.txn_id));
+  ASSERT_EQ(state.ActiveEpoch(), 0);
 
-  // With the flag off, every request takes a slot.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_object_lock_fastpath_skip_duplicate_requests) = false;
-  auto txn2 = ASSERT_RESULT(RegisterTransaction(kTxn2.txn_id));
-  ASSERT_TRUE(LockRelationPgFastpath(
-      kTxn2.txn_id, kTxn2.subtxn_id, kDatabase1, kObject1,
-      ObjectLockFastpathLockType::kAccessShare));
-  ASSERT_FALSE(LockRelationPgFastpath(
-      kTxn2.txn_id, kTxn2.subtxn_id, kDatabase1, kObject1,
-      ObjectLockFastpathLockType::kAccessShare));
-  ASSERT_TRUE(ReleaseLocksPgFastpath(kTxn2.txn_id));
-}
-
-// A redundant slow path acquire, as sent by a session whose fastpath buffer is full, drains the
-// buffer so that later requests can use the fastpath again.
-TEST_F(TSLocalLockManagerTest, TestRedundantLockDrainsFastpathBuffer) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_object_lock_fastpath_buffer_size) = 1;
-
-  auto txn1 = ASSERT_RESULT(RegisterTransaction(kTxn1.txn_id));
-  ASSERT_TRUE(LockRelationTServerFastpath(
-      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject1,
-      ObjectLockFastpathLockType::kRowShare));
-  // A non-redundant slow path acquire drains kObject1 into the lock manager.
-  ASSERT_OK(LockRelation(
-      kTxn1, kDatabase1, kObject2, TableLockType::ROW_SHARE, /*deadline=*/{}));
-
-  // Fill the buffer again.
-  ASSERT_TRUE(LockRelationTServerFastpath(
-      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject3,
-      ObjectLockFastpathLockType::kRowShare));
-  ASSERT_FALSE(LockRelationTServerFastpath(
-      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject4,
-      ObjectLockFastpathLockType::kRowShare));
-
-  // kObject1 is already held in the lock manager, so this acquire is redundant.
-  ASSERT_OK(LockRelation(
-      kTxn1, kDatabase1, kObject1, TableLockType::ROW_SHARE, /*deadline=*/{}));
-
-  // The redundant acquire drained the buffer.
-  ASSERT_TRUE(LockRelationTServerFastpath(
-      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject4,
-      ObjectLockFastpathLockType::kRowShare));
-
-  ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+  auto registration = lock_owner_registry_->Register(state, kTxn2.txn_id, TabletId());
+  ASSERT_NE(state.ActiveEpoch(), 0);
+  ASSERT_NE(state.ActiveEpoch(), first_epoch);
 }
 
 // A release naming specific objects leaves the subtxn's other locks held, so it must keep the

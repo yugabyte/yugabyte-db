@@ -60,8 +60,6 @@ struct ObjectLockFastpathRequest {
   uint32_t object_sub_oid;
   ObjectLockFastpathLockType lock_type;
 
-  bool operator==(const ObjectLockFastpathRequest&) const = default;
-
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
         subtxn_id, database_oid, relation_oid, object_oid, object_sub_oid, lock_type);
@@ -141,6 +139,11 @@ class ObjectLockSharedState {
 
   void ResetExclusiveLockIntentsTo(const ObjectLockExclusiveIntents& exclusive_intents)
       PARENT_PROCESS_ONLY;
+
+  // Returns a non-zero value identifying the current period during which the state is enabled for a
+  // registered transaction, or 0 if the state is disabled. The value changes whenever the
+  // registration changes, e.g. after the transaction is aborted and a new one registered.
+  uint64_t ActiveEpoch() const;
 
   uint64_t PgLockRequestCount() const;
   uint64_t PgLockReleaseCount() const;
