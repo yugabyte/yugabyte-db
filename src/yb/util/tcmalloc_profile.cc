@@ -99,7 +99,7 @@ Result<std::vector<Sample>> GetAggregateAndSortHeapSnapshot(
     return STATUS(NotSupported, "growth-only filter is only supported for heap profiles");
   }
   auto current_profile = GetHeapSnapshot(snapshot_type);
-  return AggregateAndSortProfile(current_profile, order, separator);
+  return AggregateAndSortProfile(current_profile, order, separator, absl::InfinitePast());
 #else
   return STATUS(NotSupported, "Heap snapshot is only available if tcmalloc is enabled.");
 #endif
@@ -142,7 +142,7 @@ std::vector<Sample> AggregateAndSortHeapProfile(
     const HeapProfile& profile, SampleFilter filter, SampleOrder order) {
   switch (filter) {
     case SampleFilter::kAllSamples:
-      return AggregateAndSortProfile(profile.allocations, order);
+      return AggregateAndSortProfile(profile.allocations, order, "\n", absl::InfinitePast());
     case SampleFilter::kGrowthOnly:
       return AggregateAndSortProfile(profile.heap_at_end, order, "\n", profile.start_time);
   }
