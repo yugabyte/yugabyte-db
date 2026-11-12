@@ -2820,6 +2820,35 @@ TEST_F(PgObjectLocksFastpathTest, TestTServerLockManagerRelease) {
   }
 }
 
+// A read restart on the first statement of a transaction that already has a distributed transaction
+// replaces the distributed transaction with a restarted one. The restarted transaction should be
+// registered as the object lock owner, so that later locks can still use the fastpath.
+TEST_F(PgObjectLocksFastpathTest, TestFastpathUsableAfterTransactionRestart) {
+  auto conn = ASSERT_RESULT(Connect());
+  // A read spanning multiple tablets surfaces the restart to the query layer, which retries it.
+  ASSERT_OK(conn.Execute("CREATE TABLE multi (k INT, PRIMARY KEY(k HASH)) SPLIT INTO 3 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO multi SELECT generate_series(1, 10)"));
+  // Get catalog reads out of the way since they acquire a bunch of unrelated locks.
+  ASSERT_OK(conn.Fetch("SELECT * FROM multi FOR UPDATE"));
+  ASSERT_OK(conn.Fetch("SELECT pg_relation_size('test'::regclass)"));
+
+  for (int i = 0; i < 6; ++i) {
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    // Row locks start a distributed transaction. A lower probability than for a plain read, since
+    // each attempt of a multi-tablet FOR UPDATE does several reads that can restart.
+    ASSERT_OK(SET_FLAG(TEST_inject_read_restart_with_probability, 0.2));
+    ASSERT_OK(conn.Fetch("SELECT * FROM multi FOR UPDATE"));
+    ASSERT_OK(SET_FLAG(TEST_inject_read_restart_with_probability, 0.0));
+    {
+      auto g1 = ExpectMetricIncrease<FunctionGauge<uint64_t>>(
+          METRIC_object_locking_fastpath_pg_acquires, /*delta=*/1);
+      auto g2 = ExpectMetricIncrease<Counter>(METRIC_object_locking_lock_acquires, /*delta=*/0);
+      ASSERT_OK(conn.Fetch("SELECT pg_relation_size('test'::regclass)"));
+    }
+    ASSERT_OK(conn.CommitTransaction());
+  }
+}
+
 class PgObjectLocksWithConcurrentDdl : public PgObjectLocksTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {

@@ -1316,6 +1316,7 @@ class TransactionProvider {
   void ResetObjectLockRegistration() {
     std::lock_guard lock(object_lock_registration_->mutex);
     object_lock_registration_->guard.reset();
+    pending_object_lock_owner_.reset();
   }
 
   Result<TransactionMetadata> NextTxnMetaForPlain(
@@ -1344,44 +1345,8 @@ class TransactionProvider {
     next_plain_->SetStartTimeIfNecessary();
 
     if (new_txn) {
-      std::lock_guard lock(object_lock_registration_->mutex);
-      if (object_lock_shared_state_ &&
-          (!object_lock_registration_->guard ||
-           object_lock_registration_->guard->txn_id() != metadata.transaction_id)) {
-        object_lock_registration_->guard.reset();
-        object_lock_registration_->guard.emplace(DCHECK_NOTNULL(lock_owner_registry_)->Register(
-            *object_lock_shared_state_, metadata.transaction_id, metadata.status_tablet));
-
-        next_plain_->RemoteAbortCallback([
-            registration_ptr = std::weak_ptr{object_lock_registration_},
-            transaction_id = metadata.transaction_id] {
-          if (auto registration = registration_ptr.lock()) {
-            std::lock_guard lock(registration->mutex);
-            if (registration->guard && registration->guard->txn_id() == transaction_id) {
-              VLOG_WITH_FUNC(1) << "Clearing lock owner registration for remote aborted txn "
-                                << transaction_id;
-              registration->guard.reset();
-            }
-          }
-        });
-      }
-
-      next_plain_->PromotionCallback([
-          ts_lock_manager = ts_lock_manager_,
-          lock_owner_registry = lock_owner_registry_,
-          registration_ptr = std::weak_ptr{object_lock_registration_},
-          transaction_id = metadata.transaction_id](TabletId status_tablet) {
-        if (auto registration = registration_ptr.lock()) {
-          std::lock_guard lock(registration->mutex);
-          if (registration->guard && registration->guard->txn_id() == transaction_id) {
-            lock_owner_registry->UpdateRegistrationStatusTablet(
-                *registration->guard, status_tablet);
-          }
-        }
-        if (ts_lock_manager) {
-          ts_lock_manager->UpdateStatusTablet(transaction_id, std::move(status_tablet));
-        }
-      });
+      RegisterObjectLockOwner(metadata);
+      SetupCallbacksForTxn(next_plain_);
     }
     DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK(
         "TransactionProvider::NextTxnMetaForPlain", &metadata.transaction_id);
@@ -1390,6 +1355,41 @@ class TransactionProvider {
 
   bool HasNextTxnForPlain() const {
     return next_plain_ != nullptr;
+  }
+
+  [[nodiscard]] bool IsObjectLockingEnabled() const {
+    return ts_lock_manager_ != nullptr &&
+           FLAGS_enable_object_locking_for_table_locks &&
+           FLAGS_ysql_yb_enable_object_locking_infra;
+  }
+
+  // Tracks a plain transaction that was not created through NextTxnMetaForPlain. Such a txn is not
+  // registered as the object lock owner, so the shared memory fastpath stays disabled. Set up the
+  // callbacks now, and register it once its metadata, including the status tablet, is available.
+  void TrackUnregisteredPlainTxn(const client::YBTransactionPtr& txn) {
+    SetupCallbacksForTxn(txn);
+    pending_object_lock_owner_ = txn;
+  }
+
+  // Registers the session's plain transaction as the object lock owner if a transaction is pending
+  // registration, see TrackUnregisteredPlainTxn. Must be called before the transaction acquires an
+  // object lock, so that locks acquired via the lock manager mark the shared state as loaded by the
+  // tserver.
+  void MaybeRegisterPendingObjectLockOwner(
+      const client::YBTransactionPtr& txn, const TransactionMetadata& metadata) {
+    if (pending_object_lock_owner_.expired()) {
+      return;
+    }
+    auto pending = pending_object_lock_owner_.lock();
+    pending_object_lock_owner_.reset();
+    // The pending transaction is cleared when the session's plain transaction releases its locks,
+    // so it is either the session's transaction or nothing. On a mismatch, register the session's
+    // transaction anyway. This is still before the acquire, so locks it takes through the lock
+    // manager mark the shared state as loaded by the tserver.
+    LOG_IF(DFATAL, pending != txn)
+        << "Pending object lock owner " << (pending ? AsString(pending->id()) : "<null>")
+        << " is not the session's transaction " << metadata.transaction_id;
+    RegisterObjectLockOwner(metadata);
   }
 
  private:
@@ -1422,7 +1422,78 @@ class TransactionProvider {
 
   client::YBTransactionPtr TakeForPlain(
       TransactionFullLocality locality, CoarseTimePoint deadline) {
-    return next_plain_ ? std::exchange(next_plain_, {}) : Build(locality, deadline, {});
+    if (next_plain_) {
+      return std::exchange(next_plain_, {});
+    }
+    auto txn = Build(locality, deadline, {});
+    if (IsObjectLockingEnabled()) {
+      TrackUnregisteredPlainTxn(txn);
+    }
+    return txn;
+  }
+
+  // Registers the transaction as the owner of the session's object lock shared state, which
+  // enables the shared memory fastpath for it. The registration of the session's previous plain
+  // transaction is reset when that transaction releases its locks, so there must not be another
+  // registration at this point. If there is, replace it anyway: fastpath requests made while it is
+  // registered are attributed to that transaction rather than the session's current one.
+  void RegisterObjectLockOwner(const TransactionMetadata& metadata) {
+    std::lock_guard lock(object_lock_registration_->mutex);
+    auto& guard = object_lock_registration_->guard;
+    if (!object_lock_shared_state_ || (guard && guard->txn_id() == metadata.transaction_id)) {
+      return;
+    }
+    if (guard) {
+      LOG(DFATAL) << "Registering " << metadata.transaction_id << " as object lock owner while "
+                  << guard->txn_id() << " is registered";
+      guard.reset();
+    }
+    guard.emplace(DCHECK_NOTNULL(lock_owner_registry_)->Register(
+        *object_lock_shared_state_, metadata.transaction_id, metadata.status_tablet));
+  }
+
+  // Keeps the object lock owner registration and the lock manager in sync with the transaction:
+  // clears the registration if the transaction is aborted remotely, and updates the status tablet
+  // when the transaction is promoted.
+  void SetupCallbacksForTxn(const client::YBTransactionPtr& txn) {
+    txn->RemoteAbortCallback([
+        registration_ptr = std::weak_ptr{object_lock_registration_},
+        weak_txn = std::weak_ptr{txn}] {
+      auto txn = weak_txn.lock();
+      if (!txn) {
+        return;
+      }
+      const auto& transaction_id = txn->id();
+      if (auto registration = registration_ptr.lock()) {
+        std::lock_guard lock(registration->mutex);
+        if (registration->guard && registration->guard->txn_id() == transaction_id) {
+          VLOG_WITH_FUNC(1) << "Clearing lock owner registration for remote aborted txn "
+                            << transaction_id;
+          registration->guard.reset();
+        }
+      }
+    });
+
+    txn->PromotionCallback([
+        ts_lock_manager = ts_lock_manager_,
+        lock_owner_registry = lock_owner_registry_,
+        registration_ptr = std::weak_ptr{object_lock_registration_},
+        weak_txn = std::weak_ptr{txn}](TabletId status_tablet) {
+      auto txn = weak_txn.lock();
+      if (!txn) {
+        return;
+      }
+      const auto& transaction_id = txn->id();
+      if (auto registration = registration_ptr.lock()) {
+        std::lock_guard lock(registration->mutex);
+        if (registration->guard && registration->guard->txn_id() == transaction_id) {
+          lock_owner_registry->UpdateRegistrationStatusTablet(*registration->guard, status_tablet);
+        }
+      }
+      if (ts_lock_manager) {
+        ts_lock_manager->UpdateStatusTablet(transaction_id, std::move(status_tablet));
+      }
+    });
   }
 
   const PgClientSession::TransactionBuilder builder_;
@@ -1431,6 +1502,7 @@ class TransactionProvider {
   docdb::ObjectLockSharedState* object_lock_shared_state_;
   std::shared_ptr<ObjectLockRegistration> object_lock_registration_;
   client::YBTransactionPtr next_plain_;
+  std::weak_ptr<client::YBTransaction> pending_object_lock_owner_;
 };
 
 YB_STRONGLY_TYPED_BOOL(IsTxnUsingTableLocks);
@@ -3101,6 +3173,11 @@ class PgClientSession::Impl {
         ? primary_session_data->transaction->GetMetadata(deadline).get()
         : NextObjectLockingTxnMeta(locality, deadline);
     RETURN_NOT_OK(txn_meta_res);
+    if (primary_session_kind == PgClientSessionKind::kPlain &&
+        primary_session_data->transaction) {
+      transaction_provider_.MaybeRegisterPendingObjectLockOwner(
+          primary_session_data->transaction, *txn_meta_res);
+    }
     VLOG_WITH_PREFIX_AND_FUNC(4) << "txn_id " << txn_meta_res->transaction_id << " subtxn_id "
                                  << active_subtxn_id
                                  << " lock_type: " << AsString(lock_type)
@@ -4454,6 +4531,9 @@ class PgClientSession::Impl {
     RETURN_NOT_OK(ReleaseObjectLocksIfNecessary(txn, kind, deadline));
     txn = VERIFY_RESULT(txn->CreateRestartedTransaction());
     session.SetTransaction(txn);
+    if (kind == PgClientSessionKind::kPlain && IsObjectLockingEnabled()) {
+      transaction_provider_.TrackUnregisteredPlainTxn(txn);
+    }
     VLOG_WITH_PREFIX(3) << "Restarted transaction";
     return Status::OK();
   }
@@ -4869,9 +4949,7 @@ class PgClientSession::Impl {
   }
 
   [[nodiscard]] bool IsObjectLockingEnabled() const {
-    return ts_lock_manager() != nullptr &&
-           FLAGS_enable_object_locking_for_table_locks &&
-           FLAGS_ysql_yb_enable_object_locking_infra;
+    return transaction_provider_.IsObjectLockingEnabled();
   }
 
   Result<TransactionMetadata> NextObjectLockingTxnMeta(
