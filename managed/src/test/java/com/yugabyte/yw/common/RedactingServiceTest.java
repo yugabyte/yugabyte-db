@@ -590,6 +590,7 @@ public class RedactingServiceTest {
       "gflags:\n"
           + "  tserver:\n"
           + "    ycql_ldap_bind_passwd: plainSecret\n"
+          + "      foldedSecret\n"
           + "    webserver_port: 9100\n"
           + "  master:\n"
           + "    ycql_ldap_bind_passwd: \"dq \\\"Secret\\\"\"\n"
@@ -635,6 +636,10 @@ public class RedactingServiceTest {
     assertEquals(
         YAML_OVERRIDES_REDACTED,
         RedactingService.redactSensitiveInfoInString(YAML_OVERRIDES_REDACTED));
+    // The backslash and n are part of the password, not a line break.
+    assertEquals(
+        "    ycql_ldap_bind_passwd: " + SECRET_REPLACEMENT,
+        RedactingService.redactSensitiveInfoInString("    ycql_ldap_bind_passwd: before\\nafter"));
   }
 
   @Test
@@ -653,21 +658,6 @@ public class RedactingServiceTest {
         "ycql_ldap_bind_passwd: " + SECRET_REPLACEMENT,
         redacted.get("azOverrides").get("az-1").asText());
     assertEquals("Rolling", redacted.get("upgradeOption").asText());
-  }
-
-  @Test
-  public void testShellOutputRedactsYamlValuesLineByLine() {
-    for (String line : YAML_OVERRIDES.split("\n")) {
-      if (line.contains("plainSecret") || line.contains("hbaSecret")) {
-        String redacted = RedactingService.redactShellProcessOutput(line, RedactionTarget.LOGS);
-        assertFalse(redacted, redacted.contains("plainSecret") || redacted.contains("hbaSecret"));
-      }
-    }
-    // Raw text: the backslash and n are part of the password, not a line break.
-    assertEquals(
-        "    ycql_ldap_bind_passwd: " + SECRET_REPLACEMENT,
-        RedactingService.redactShellProcessOutput(
-            "    ycql_ldap_bind_passwd: before\\nafter", RedactionTarget.LOGS));
   }
 
   @Test

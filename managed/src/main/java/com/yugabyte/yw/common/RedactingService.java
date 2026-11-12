@@ -4,7 +4,9 @@ package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.core.io.JsonStringEncoder;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.TextNode;
 import com.google.common.collect.ImmutableList;
 import com.jayway.jsonpath.DocumentContext;
 import com.jayway.jsonpath.JsonPath;
@@ -289,18 +291,22 @@ public class RedactingService {
       }
       input = redactAuditAdditionalDetails(input, null, gFlagsValidation);
       String jsonString = input.toString();
-      String redactedString =
-          redactSensitiveInfoInString(jsonString, ybSoftwareVersion, gFlagsValidation);
+      Set<String> patterns = getPatternsToRedact(ybSoftwareVersion, gFlagsValidation);
+      String redactedString = redactSensitiveInfoInString(jsonString, patterns, false);
 
+      JsonNode redacted;
       try {
-        return Json.parse(redactedString);
+        redacted = Json.parse(redactedString);
       } catch (Exception parseException) {
         log.warn(
             "Failed to parse JSON after sensitive gflag redaction; returning fallback wrapper"
                 + " with string-redacted payload. Error: ",
             parseException);
-        return redactionParseErrorFallback(redactedString);
+        return redactionParseErrorFallback(
+            redactSensitiveInfoInString(redactedString, patterns, true));
       }
+      redactYamlInStrings(redacted, patterns);
+      return redacted;
 
     } catch (Exception e) {
       log.warn(
@@ -327,11 +333,28 @@ public class RedactingService {
 
   public static String redactSensitiveInfoInString(
       String input, String ybSoftwareVersion, GFlagsValidation gFlagsValidation) {
-    String output = input;
     if (input == null) {
-      return output;
+      return input;
     }
+    return redactSensitiveInfoInString(
+        input, getPatternsToRedact(ybSoftwareVersion, gFlagsValidation), true);
+  }
 
+  /**
+   * @param yaml whether to also redact YAML field: values. Pass false for serialized JSON: the YAML
+   *     in its strings has escaped line breaks, so it's redacted on the parsed strings instead.
+   */
+  private static String redactSensitiveInfoInString(
+      String input, Set<String> patterns, boolean yaml) {
+    String output = input;
+    for (String pattern : patterns) {
+      output = redactPatternOccurrences(pattern, output);
+    }
+    return yaml ? redactYaml(output, patterns) : output;
+  }
+
+  private static Set<String> getPatternsToRedact(
+      String ybSoftwareVersion, GFlagsValidation gFlagsValidation) {
     Set<String> allPatternsToRedact = new HashSet<>();
     allPatternsToRedact.add("ldapbindpasswd");
     allPatternsToRedact.add("ldapBindPassword");
@@ -354,11 +377,7 @@ public class RedactingService {
         log.warn("Exception in sensitive gflags processing: ", e);
       }
     }
-    for (String pattern : allPatternsToRedact) {
-      output = redactPatternOccurrences(pattern, output);
-    }
-
-    return output;
+    return allPatternsToRedact;
   }
 
   /**
@@ -387,7 +406,6 @@ public class RedactingService {
     output = redactKeyEqualsValue(output, pattern, SECRET_REPLACEMENT);
     output = redactCliFlagValue(output, pattern, SECRET_REPLACEMENT);
     output = redactPythonDictValue(output, pattern, SECRET_REPLACEMENT);
-    output = redactYamlKeyValue(output, pattern, SECRET_REPLACEMENT);
     return output;
   }
 
@@ -995,9 +1013,10 @@ public class RedactingService {
 
   /**
    * Redacts the YAML form field: value, as in Kubernetes overrides and Helm --debug output. The
-   * YAML may be raw or inside a JSON string, where its line breaks and double quotes are escaped. A
-   * value that is not quoted runs to the end of its line plus any following lines indented past the
-   * key, which covers block scalars and plain scalars folded over several lines.
+   * YAML must be raw: in JSON its line breaks are escaped, so redactSensitiveGFlagFields redacts it
+   * on the parsed strings. A value that is not quoted runs to the end of its line plus any
+   * following lines indented past the key, which covers block scalars, values on the next line and
+   * plain scalars folded over several lines.
    */
   private static String redactYamlKeyValue(String input, String field, String replacement) {
     String needle = field + ":";
@@ -1014,21 +1033,14 @@ public class RedactingService {
         pos = input.indexOf(needle, next);
         continue;
       }
-      int lineStart = yamlLineStart(input, pos);
-      // In raw text \n is a backslash and an n, which a password may hold. Only YAML inside a JSON
-      // string, whose lines start after an escaped line break or the opening quote, escapes them.
-      boolean escaped =
-          lineStart > 0
-              && input.charAt(lineStart - 1) != '\n'
-              && input.charAt(lineStart - 1) != '\r';
-      int column = pos - lineStart;
+      int column = pos - yamlLineStart(input, pos);
       int vs = next;
       while (vs < n && (input.charAt(vs) == ' ' || input.charAt(vs) == '\t')) {
         vs++;
       }
-      if (yamlLineEnd(input, vs, escaped) == vs) {
+      if (yamlLineEnd(input, vs) == vs) {
         // Nothing follows on this line, so the value (if any) is on the lines indented below it.
-        int end = yamlIndentedLinesEnd(input, vs, column, escaped);
+        int end = yamlIndentedLinesEnd(input, vs, column);
         if (end > vs) {
           out.append(input, from, next).append(' ').append(replacement);
           from = end;
@@ -1046,21 +1058,15 @@ public class RedactingService {
           end = close + 1;
           quote = "\"";
         }
-      } else if (escaped && c == '\\' && vs + 1 < n && input.charAt(vs + 1) == '"') {
-        int close = escapedYamlDoubleQuoteClose(input, vs + 2);
-        if (close >= 0) {
-          end = close + 2;
-          quote = "\\\"";
-        }
       } else if (c == '\'') {
-        int close = yamlSingleQuoteClose(input, vs + 1, escaped);
+        int close = yamlSingleQuoteClose(input, vs + 1);
         if (close >= 0) {
           end = close + 1;
           quote = "'";
         }
       }
       if (end < 0) {
-        end = yamlIndentedLinesEnd(input, vs, column, escaped);
+        end = yamlIndentedLinesEnd(input, vs, column);
       }
       out.append(input, from, vs).append(quote).append(replacement).append(quote);
       from = end;
@@ -1070,137 +1076,46 @@ public class RedactingService {
     return out.toString();
   }
 
-  /**
-   * Start of pos's line: after a line break, raw or escaped, or after a JSON string's opening
-   * quote.
-   */
   private static int yamlLineStart(String s, int pos) {
     int i = pos;
-    while (i > 0) {
-      char c = s.charAt(i - 1);
-      boolean afterBackslash = backslashesBefore(s, i - 1) % 2 == 1;
-      if (c == '\n'
-          || c == '\r'
-          || ((c == 'n' || c == 'r') && afterBackslash)
-          || (c == '"' && !afterBackslash)) {
-        return i;
-      }
+    while (i > 0 && s.charAt(i - 1) != '\n' && s.charAt(i - 1) != '\r') {
       i--;
     }
-    return 0;
+    return i;
   }
 
-  private static int backslashesBefore(String s, int i) {
-    int count = 0;
-    while (i - count - 1 >= 0 && s.charAt(i - count - 1) == '\\') {
-      count++;
-    }
-    return count;
-  }
-
-  /** End of the line at i; in escaped YAML also an escaped line break or the JSON string end. */
-  private static int yamlLineEnd(String s, int i, boolean escaped) {
-    int n = s.length();
-    while (i < n) {
-      char c = s.charAt(i);
-      if (c == '\n' || c == '\r' || (escaped && isJsonStringEnd(s, i))) {
-        return i;
-      }
-      if (escaped && c == '\\') {
-        int run = backslashRunLength(s, i);
-        if ((run & 1) == 1
-            && i + run < n
-            && (s.charAt(i + run) == 'n' || s.charAt(i + run) == 'r')) {
-          return i + run - 1;
-        }
-        i += run;
-        continue;
-      }
+  private static int yamlLineEnd(String s, int i) {
+    while (i < s.length() && s.charAt(i) != '\n' && s.charAt(i) != '\r') {
       i++;
     }
-    return n;
-  }
-
-  /** Start of the next line after the line end at i (see yamlLineEnd), or -1 if there is none. */
-  private static int afterYamlLineBreak(String s, int i) {
-    int n = s.length();
-    if (i >= n) {
-      return -1;
-    }
-    char c = s.charAt(i);
-    if (c == '\r') {
-      return i + 1 < n && s.charAt(i + 1) == '\n' ? i + 2 : i + 1;
-    }
-    if (c == '\n') {
-      return i + 1;
-    }
-    if (c == '\\' && i + 1 < n && s.charAt(i + 1) == 'r') {
-      return s.startsWith("\\n", i + 2) ? i + 4 : i + 2;
-    }
-    if (c == '\\' && i + 1 < n && s.charAt(i + 1) == 'n') {
-      return i + 2;
-    }
-    return -1;
+    return i;
   }
 
   /** End of the line at start and of any following lines indented more than column. */
-  private static int yamlIndentedLinesEnd(String s, int start, int column, boolean escaped) {
-    int end = yamlLineEnd(s, start, escaped);
-    int lineStart = afterYamlLineBreak(s, end);
-    while (lineStart >= 0) {
+  private static int yamlIndentedLinesEnd(String s, int start, int column) {
+    int n = s.length();
+    int end = yamlLineEnd(s, start);
+    int lineEnd = end;
+    while (lineEnd < n) {
+      int lineStart = s.startsWith("\r\n", lineEnd) ? lineEnd + 2 : lineEnd + 1;
       int content = lineStart;
-      while (content < s.length() && s.charAt(content) == ' ') {
+      while (content < n && s.charAt(content) == ' ') {
         content++;
       }
-      int lineEnd = yamlLineEnd(s, content, escaped);
+      lineEnd = yamlLineEnd(s, content);
       if (lineEnd > content) {
         if (content - lineStart <= column) {
           break;
         }
         end = lineEnd;
       }
-      lineStart = afterYamlLineBreak(s, lineEnd);
     }
     return end;
   }
 
-  /**
-   * Closing \" of a YAML double-quoted value inside a JSON string, or -1 if the string ends first.
-   */
-  private static int escapedYamlDoubleQuoteClose(String s, int start) {
-    int n = s.length();
-    int i = start;
-    while (i < n) {
-      char c = s.charAt(i);
-      if (c == '"') {
-        return -1;
-      }
-      if (c == '\\') {
-        int run = backslashRunLength(s, i);
-        if (i + run < n && s.charAt(i + run) == '"') {
-          if (run == 1) {
-            return i;
-          }
-          if ((run & 1) == 0) {
-            return -1;
-          }
-          i += run + 1;
-          continue;
-        }
-        i += run;
-        continue;
-      }
-      i++;
-    }
-    return -1;
-  }
-
   /** Closing quote of a YAML single-quoted value, where '' is a literal quote. */
-  private static int yamlSingleQuoteClose(String s, int start, boolean escaped) {
+  private static int yamlSingleQuoteClose(String s, int start) {
     for (int i = start; i < s.length(); i++) {
-      if (escaped && isJsonStringEnd(s, i)) {
-        return -1;
-      }
       if (s.charAt(i) == '\'') {
         if (i + 1 < s.length() && s.charAt(i + 1) == '\'') {
           i++;
@@ -1212,24 +1127,45 @@ public class RedactingService {
     return -1;
   }
 
-  /** True if the double quote at i ends a JSON string: unescaped, then , } ] : or the end. */
-  private static boolean isJsonStringEnd(String s, int i) {
-    if (s.charAt(i) != '"' || isBackslashEscapedDoubleQuote(s, i)) {
-      return false;
+  private static String redactYaml(String input, Set<String> patterns) {
+    String output = input;
+    for (String pattern : patterns) {
+      output = redactYamlKeyValue(output, pattern, SECRET_REPLACEMENT);
     }
-    int j = i + 1;
-    while (j < s.length() && Character.isWhitespace(s.charAt(j))) {
-      j++;
-    }
-    return j >= s.length() || ",}]:".indexOf(s.charAt(j)) >= 0;
+    return output;
   }
 
-  private static int backslashRunLength(String s, int i) {
-    int j = i;
-    while (j < s.length() && s.charAt(j) == '\\') {
-      j++;
+  /** Runs redactYaml on the string values in a parsed JSON tree, where line breaks are real. */
+  private static void redactYamlInStrings(JsonNode node, Set<String> patterns) {
+    if (node.isObject()) {
+      ObjectNode objNode = (ObjectNode) node;
+      node.fieldNames()
+          .forEachRemaining(
+              fieldName -> {
+                JsonNode fieldValue = objNode.get(fieldName);
+                if (fieldValue.isTextual()) {
+                  String redacted = redactYaml(fieldValue.asText(), patterns);
+                  if (!redacted.equals(fieldValue.asText())) {
+                    objNode.put(fieldName, redacted);
+                  }
+                } else {
+                  redactYamlInStrings(fieldValue, patterns);
+                }
+              });
+    } else if (node.isArray()) {
+      ArrayNode arrayNode = (ArrayNode) node;
+      for (int i = 0; i < arrayNode.size(); i++) {
+        JsonNode element = arrayNode.get(i);
+        if (element.isTextual()) {
+          String redacted = redactYaml(element.asText(), patterns);
+          if (!redacted.equals(element.asText())) {
+            arrayNode.set(i, TextNode.valueOf(redacted));
+          }
+        } else {
+          redactYamlInStrings(element, patterns);
+        }
+      }
     }
-    return j - i;
   }
 
   /** Redacts sensitive gflags in the additionalDetails section of audit entries. */
