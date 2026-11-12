@@ -779,6 +779,21 @@ void FillDDLInfo(
   throughput_metrics->bytes_sent += proto_record->ByteSizeLong();
 }
 
+// Whether the table's latest DDL record in the response already has this schema version. A cache
+// entry can be dropped and reloaded with the same version for each row, e.g. when the sys catalog
+// at the row's hybrid time is ahead of the row's packing.
+bool IsLastDDLRecordInResponse(
+    const GetChangesResponsePB& resp, const TableId& table_id, SchemaVersion schema_version) {
+  const auto& records = resp.cdc_sdk_proto_records();
+  for (auto it = records.rbegin(); it != records.rend(); ++it) {
+    const auto& row_message = it->row_message();
+    if (row_message.op() == RowMessage_Op_DDL && row_message.table_id() == table_id) {
+      return row_message.schema_version() == schema_version;
+    }
+  }
+  return false;
+}
+
 Result<TableName> GetColocatedTableName(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const TableId& req_table_id) {
   for (auto const& cur_table_id : tablet_peer->tablet_metadata()->GetAllColocatedTables()) {
@@ -840,7 +855,8 @@ Result<SchemaDetails> GetOrPopulateRequiredSchemaDetails(
             << " tablet " << tablet->tablet_id();
 
     const auto& schema_details = (*cached_schema_details)[cur_table_id];
-    if (emit_ddl_record) {
+    if (emit_ddl_record &&
+        !IsLastDDLRecordInResponse(*resp, cur_table_id, schema_details.schema_version)) {
       FillDDLInfo(tablet_peer, schema_details, table_name, cur_table_id, resp, throughput_metrics);
     }
 
