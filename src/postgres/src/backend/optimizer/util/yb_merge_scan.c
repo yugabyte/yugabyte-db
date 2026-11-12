@@ -540,7 +540,7 @@ ybIsCopyOfEarlierIndexCol(IndexOptInfo *index, int indexcol)
  * Whether index column indexcol, before the last merge sort column, is a gap
  * column: a range column without an equality index clause that is neither a
  * SAOP stream column nor a copy of an earlier index column.  The merge sorts
- * on each gap column (see ybAppendMergeGapSortCol).
+ * on each gap column (see ybAppendMergeGapCol).
  */
 static bool
 ybIsMergeGapCol(IndexOptInfo *index, List *indexclauses, Bitmapset *saop_idxs,
@@ -566,8 +566,8 @@ ybIsMergeGapCol(IndexOptInfo *index, List *indexclauses, Bitmapset *saop_idxs,
  * collation, and nulls order for scandir.
  */
 static void
-ybAppendMergeGapSortCol(YbSortInfo *sort_info, IndexOptInfo *index,
-						int indexcol, ScanDirection scandir)
+ybAppendMergeGapCol(YbSortInfo *sort_info, IndexOptInfo *index,
+					int indexcol, ScanDirection scandir)
 {
 	/* The same ordering build_index_pathkeys gives the column. */
 	bool		reverse_sort = index->reverse_sort[indexcol];
@@ -620,7 +620,7 @@ ybAppendMergeGapSortCol(YbSortInfo *sort_info, IndexOptInfo *index,
  *       - An earlier merge sort column.
  *
  *     The plan also merges on each of these columns except a copy (see
- *     ybAppendMergeGapSortCol).
+ *     ybAppendMergeGapCol).
  *
  * No column at or after the last merge sort column is a stream key, since the
  * merge order does not depend on it.  That includes a SAOP column the pathkeys
@@ -738,7 +738,7 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 		}
 		gap_indexcol = -1;
 		while ((gap_indexcol = bms_next_member(gap_idxs, gap_indexcol)) >= 0)
-			ybAppendMergeGapSortCol(sort_info, index, gap_indexcol, scandir);
+			ybAppendMergeGapCol(sort_info, index, gap_indexcol, scandir);
 
 		/*
 		 * Look up the correct sort operator from the PathKey's slightly
