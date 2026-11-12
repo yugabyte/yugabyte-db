@@ -4735,16 +4735,6 @@ IndexInfoPB::BirthTimeState InitialIndexBirthTimeState(
   return IndexInfoPB::BIRTH_TIME_FINAL;
 }
 
-// Sets the initial birth_time_state of a new YSQL index (see InitialIndexBirthTimeState).
-void SetInitialIndexBirthTimeState(
-    const CreateTableRequestPB& req, bool index_backfill_enabled, IndexInfoPB* index_info) {
-  const auto birth_time_state =
-      InitialIndexBirthTimeState(req, *index_info, index_backfill_enabled);
-  if (birth_time_state != IndexInfoPB::BIRTH_TIME_FINAL) {
-    index_info->set_birth_time_state(birth_time_state);
-  }
-}
-
 } // namespace
 
 Status CatalogManager::PersistNewTable(
@@ -5060,7 +5050,11 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   if (req.has_index_info() && is_pg_table) {
-    SetInitialIndexBirthTimeState(req, index_backfill_enabled, &index_info);
+    const auto birth_time_state =
+        InitialIndexBirthTimeState(req, index_info, index_backfill_enabled);
+    if (birth_time_state != IndexInfoPB::BIRTH_TIME_FINAL) {
+      index_info.set_birth_time_state(birth_time_state);
+    }
   }
 
   if ((req.has_index_info() || req.has_indexed_table_id()) &&
