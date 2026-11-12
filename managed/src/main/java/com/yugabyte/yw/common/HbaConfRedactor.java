@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common;
 
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -20,9 +21,10 @@ import java.util.Set;
  * is replaced, and every other character is kept.
  *
  * <p>Where the password may extend past what Postgres reads as its value (a later token that isn't
- * a known option, a comment, or ldapbindpasswd text that isn't an option name), the line is
- * redacted from there to its end, along with the lines after it that don't start a rule. Postgres
- * rejects or ignores such lines, so nothing it uses is hidden.
+ * a known option, or ldapbindpasswd text that isn't an option name), the line is redacted from
+ * there to its end, along with the lines after it that don't start a rule. A comment on a line with
+ * a password is redacted too. Postgres rejects or ignores all of these, so nothing it uses is
+ * hidden.
  */
 public final class HbaConfRedactor {
 
@@ -31,7 +33,7 @@ public final class HbaConfRedactor {
   private static final String KEY = "ldapbindpasswd";
   private static final String OPTION_PREFIX = KEY + "=";
   private static final String REPLACEMENT = RedactingService.SECRET_REPLACEMENT;
-  private static final String GFLAG_LINE_PREFIX = "--ysql_hba_conf_csv=";
+  private static final String GFLAG_LINE_PREFIX = "--" + GFlagsUtil.YSQL_HBA_CONF_CSV + "=";
 
   /** Connection types parse_hba_line in hba.c accepts. */
   private static final Set<String> CONNECTION_TYPES =
@@ -87,14 +89,15 @@ public final class HbaConfRedactor {
 
   /** Redacts every ldapbindpasswd value in a ysql_hba_conf_csv value. */
   public static String redact(String value) {
-    if (value == null || indexOfKey(value, 0, false) < 0) {
+    // Matched loosely: lines are not joined yet, and a continuation may split the name.
+    if (value == null || indexOfKey(value, 0, true) < 0) {
       return value;
     }
     List<CsvField> fields =
         value.indexOf('\n') < 0 && value.indexOf('\r') < 0 ? splitCsv(value) : null;
     if (fields == null) {
       // The DB rejects the whole value, and there are no fields to stop at.
-      return redactToEnd(value, false);
+      return redactToEnd(value, true);
     }
     List<List<Edit>> fieldEdits = new ArrayList<>();
     fields.forEach(f -> fieldEdits.add(new ArrayList<>()));
@@ -336,11 +339,15 @@ public final class HbaConfRedactor {
       }
       options.add(token);
       int valueStart = token.pos()[KEY.length()] + 1;
-      if (tokens.commentStart() < 0 && onlyOptionsFollow(list, k)) {
+      if (onlyOptionsFollow(list, k)) {
         exact.add(new Edit(valueStart, token.end(), replacement(line, token, valueStart)));
       } else {
         toEnd = Math.min(toEnd, valueStart);
       }
+    }
+    // The comment may be the rest of a password with an unquoted '#'.
+    if (!options.isEmpty() && tokens.commentStart() >= 0) {
+      toEnd = Math.min(toEnd, tokens.commentStart() + 1);
     }
     for (int from = indexOfKey(line, 0, false); from >= 0; ) {
       int[] match = matchKey(line, from, false);
@@ -422,8 +429,8 @@ public final class HbaConfRedactor {
   }
 
   /**
-   * Index of the next ldapbindpasswd at or after from, ignoring case and any quotes inside it (and
-   * backslashes, for free text, where it may be escaped), or -1.
+   * Index of the next ldapbindpasswd at or after from, ignoring case and any quotes inside it (and,
+   * for free text, the backslashes and commas that escaping or a continuation adds), or -1.
    */
   private static int indexOfKey(String s, int from, boolean freeText) {
     for (int i = from; i < s.length(); i++) {
@@ -450,7 +457,7 @@ public final class HbaConfRedactor {
   }
 
   private static boolean isSkipped(char c, boolean freeText) {
-    return c == '"' || (freeText && c == '\\');
+    return c == '"' || (freeText && (c == '\\' || c == ','));
   }
 
   /** Blank as in pg_isblank. */

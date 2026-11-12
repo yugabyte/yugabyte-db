@@ -5,6 +5,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -17,6 +18,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
 import org.junit.Test;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 import play.libs.Json;
 
 public class RedactingServiceTest {
@@ -822,6 +825,25 @@ public class RedactingServiceTest {
     assertEquals(
         otherFallback,
         RedactingService.filterSecretFields(otherFallback, RedactionTarget.LOGS, null, null, true));
+  }
+
+  @Test
+  public void testFilterSecretFieldsForLogsKeepsStringRedactedCopyOnFailure() {
+    ObjectNode payload =
+        Json.newObject()
+            .put("note", "keep")
+            .put(
+                "ysql_hba_conf_csv", "host all all 0.0.0.0/0 ldap ldapbindpasswd=secret ldaptls=1");
+    try (MockedStatic<HbaConfRedactor> redactor =
+        Mockito.mockStatic(HbaConfRedactor.class, Mockito.CALLS_REAL_METHODS)) {
+      redactor.when(() -> HbaConfRedactor.redact(anyString())).thenThrow(new RuntimeException());
+      assertEquals(
+          "{\"note\":\"keep\",\"ysql_hba_conf_csv\":\"host all all 0.0.0.0/0 ldap ldapbindpasswd="
+              + SECRET_REPLACEMENT,
+          RedactingService.filterSecretFields(payload, RedactionTarget.LOGS, null, null, true)
+              .get("_redactedPayload")
+              .asText());
+    }
   }
 
   /** Verifies ldapbindpasswd redaction for various password shapes and API JSON responses. */

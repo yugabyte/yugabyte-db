@@ -148,8 +148,12 @@ public class HbaConfRedactorTest {
 
   @Test
   public void testCommentAfterPassword() {
-    assertRedacted(LDAP + "ldapbindpasswd=REDACTED", LDAP + "ldapbindpasswd=pa#ss");
-    assertRedacted(LDAP + "ldapbindpasswd=REDACTED", LDAP + "ldapbindpasswd=pa ldaptls=1 # x");
+    assertRedacted(LDAP + "ldapbindpasswd=REDACTED#REDACTED", LDAP + "ldapbindpasswd=pa#ss");
+    assertRedacted(
+        LDAP + "ldapbindpasswd=REDACTED ldaptls=1 #REDACTED",
+        LDAP + "ldapbindpasswd=pa ldaptls=1 # x");
+    assertRedacted(
+        LDAP + "ldapbindpasswd=REDACTED#REDACTED,REDACTED", LDAP + "ldapbindpasswd=p#a,ss");
     assertRedacted(
         "local all all trust # ldapbindpasswd=REDACTED,local all all md5",
         "local all all trust # ldapbindpasswd=secret,local all all md5");
@@ -183,6 +187,9 @@ public class HbaConfRedactorTest {
     assertRedacted(
         LDAP + "ldapbindpasswd=REDACTED\\, ldaptls=1", LDAP + "ldapbindpasswd=sec\\,ret ldaptls=1");
     assertRedacted(LDAP + "ldapbindpasswd=REDACTED\\,", LDAP + "ldapbindpasswd=sec\\,ret junk");
+    assertRedacted(LDAP + "ldapbind\\,passwd=REDACTED", LDAP + "ldapbind\\,passwd=secret");
+    assertRedacted(
+        "\"" + LDAP + "ldap\\\",bindpasswd=REDACTED", "\"" + LDAP + "ldap\\\",bindpasswd=secret");
     // The DB joins the last field with the lines it generates.
     assertRedacted(LDAP + "ldapbindpasswd=REDACTED", LDAP + "ldapbindpasswd=abc\\");
   }
@@ -200,6 +207,8 @@ public class HbaConfRedactorTest {
     assertEquals(
         "ldap\\\"bind\\\"passwd=REDACTED",
         HbaConfRedactor.redactFreeText("ldap\\\"bind\\\"passwd=x"));
+    assertEquals(
+        "ldapbind\\,passwd=REDACTED", HbaConfRedactor.redactFreeText("ldapbind\\,passwd=x"));
     assertEquals(
         "--ysql_hba_conf_csv="
             + LDAP
@@ -316,20 +325,18 @@ public class HbaConfRedactorTest {
         }
       }
       assertEquals(line, passwd, last);
-      if (tokens.commentStart() < 0) {
-        List<String> expected =
-            tokens.tokens().stream()
-                .map(
-                    t ->
-                        t.text().startsWith("ldapbindpasswd=")
-                            ? "ldapbindpasswd=REDACTED"
-                            : t.text())
-                .toList();
-        List<String> actual =
-            HbaConfRedactor.tokenize(redacted).tokens().stream().map(Token::text).toList();
-        assertEquals(line, expected, actual);
-        return;
+      List<String> expected =
+          tokens.tokens().stream()
+              .map(
+                  t ->
+                      t.text().startsWith("ldapbindpasswd=") ? "ldapbindpasswd=REDACTED" : t.text())
+              .toList();
+      Tokens actual = HbaConfRedactor.tokenize(redacted);
+      assertEquals(line, expected, actual.tokens().stream().map(Token::text).toList());
+      if (tokens.commentStart() >= 0) {
+        assertEquals(line, "#REDACTED", redacted.substring(actual.commentStart()));
       }
+      return;
     }
     Matcher m = KEPT_KEY.matcher(line);
     assertTrue(line, m.find());

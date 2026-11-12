@@ -690,12 +690,13 @@ public class GFlagsUtilTest extends FakeDBApplication {
       assertEquals(BAD_REQUEST, ex3.getHttpStatus());
 
       // Test case 4: Double-quote CSV format with special characters (real user case). The # is
-      // outside quotes, so Postgres reads a comment and the line is redacted to its end.
+      // outside quotes, so Postgres reads a comment, which is redacted too.
       String originalYsqlHbaConf4 =
           "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com "
               + "ldapbindpasswd=\"\"My$ecret!With@Special#Chars\"\"";
       String newYsqlHbaConf4 =
-          "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com ldapbindpasswd=REDACTED";
+          "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com"
+              + " ldapbindpasswd=\"REDACTED\"#REDACTED";
 
       Map<String, String> existingGFlags4 = new HashMap<>();
       existingGFlags4.put("ysql_hba_conf_csv", originalYsqlHbaConf4);

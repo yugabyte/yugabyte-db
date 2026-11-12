@@ -325,8 +325,19 @@ public class RedactingService {
       redactAuditAdditionalDetails(input, null, gFlagsValidation);
       return redactTree(input, sensitiveNames(ybSoftwareVersion, gFlagsValidation));
     } catch (Exception e) {
-      log.warn("Failed to apply sensitive gflag redaction; returning a placeholder. Error: ", e);
-      return redactionParseErrorFallback(SECRET_REPLACEMENT);
+      log.warn("Failed to apply sensitive gflag redaction; returning a string-redacted copy: ", e);
+      try {
+        // The audit job saves this, so keep what the string scan can redact. Gflag change values
+        // are out of its reach; the additionalDetails rule replaces a copy that names LDAP gflags.
+        return redactAuditAdditionalDetails(
+            redactionParseErrorFallback(
+                redactSensitiveInfoInString(input.toString(), ybSoftwareVersion, gFlagsValidation)),
+            null,
+            gFlagsValidation);
+      } catch (Exception e2) {
+        log.warn("String redaction after sensitive gflag redaction failure also failed: ", e2);
+        return redactionParseErrorFallback(SECRET_REPLACEMENT);
+      }
     }
   }
 
