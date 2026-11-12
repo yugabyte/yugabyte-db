@@ -340,6 +340,10 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
                     CountIntentsResponsePB* resp,
                     rpc::RpcContext context) override;
 
+  void ClearRocksDBCache(const ClearRocksDBCacheRequestPB* req,
+                         ClearRocksDBCacheResponsePB* resp,
+                         rpc::RpcContext context) override;
+
   void AddTableToTablet(const AddTableToTabletRequestPB* req,
                         AddTableToTabletResponsePB* resp,
                         rpc::RpcContext context) override;
@@ -356,6 +360,11 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
   // Called on the Indexed table to backfill the index table(s).
   void BackfillIndex(
       const BackfillIndexRequestPB* req, BackfillIndexResponsePB* resp,
+      rpc::RpcContext context) override;
+
+  // Copies one chunk of an online schema change's source tablet into the target.
+  void TableBackfillChunk(
+      const TableBackfillChunkRequestPB* req, TableBackfillChunkResponsePB* resp,
       rpc::RpcContext context) override;
 
   // Called on the Index table(s) once the backfill is complete.

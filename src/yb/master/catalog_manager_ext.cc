@@ -379,7 +379,6 @@ Status CatalogManager::AddTableAndTabletEntriesToPB(
 Result<SysRowEntries> CatalogManager::CollectEntriesFromActiveSysCatalog(
     const google::protobuf::RepeatedPtrField<TableIdentifierPB>& table_identifiers,
     CollectFlags flags) {
-  RETURN_NOT_OK(CheckIsLeaderAndReady());
   std::unordered_set<NamespaceId> namespaces;
   auto tables = VERIFY_RESULT(CollectTables(table_identifiers, flags, &namespaces));
   return CollectEntriesInternal(flags, tables, &namespaces);
@@ -388,7 +387,6 @@ Result<SysRowEntries> CatalogManager::CollectEntriesFromActiveSysCatalog(
 Result<SysRowEntries> CatalogManager::CollectEntriesAsOfTime(
     const NamespaceId& namespace_id, CollectFlags flags, HybridTime read_time,
     CoarseTimePoint deadline) {
-  RETURN_NOT_OK(CheckIsLeaderAndReady());
   std::unordered_set<NamespaceId> namespaces;
 
   // CollectTables (used in CollectEntriesFromActiveSysCatalog) gets the set of tables from the
@@ -2231,6 +2229,7 @@ Status CatalogManager::RepartitionTable(const TableInfoPtr& table,
 
   // Finally, now that everything is committed, send the delete tablet requests.
   for (auto& old_tablet : old_tablets) {
+    old_tablet->StopCountingReplicaLoad();
     DeleteTabletReplicas(
         old_tablet, deletion_msg, HideOnly::kFalse, KeepData::kFalse,
         TransactionId::Nil() /* exclude_aborting_transaction_id */, epoch);

@@ -664,6 +664,20 @@ class YbAdminSnapshotScheduleTestWithYsqlAndPackedRow : public YbAdminSnapshotSc
     opts->extra_master_flags.emplace_back("--ysql_enable_packed_row=true");
     opts->extra_master_flags.emplace_back("--timestamp_history_retention_interval_sec=0");
   }
+
+  // CREATE TABLE can fail with "Snapshot too old" because of
+  // --timestamp_history_retention_interval_sec=0.
+  Status CreateTestTable(pgwrapper::PGConn* conn) {
+    for (;;) {
+      auto status = conn->Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)");
+      if (status.ok() ||
+          status.message().ToBuffer().find("Snapshot too old") == std::string::npos) {
+        return status;
+      }
+    }
+  }
+
+  void TestCompactAfterRestoringDroppedColumn(YsqlColocationConfig colocation);
 };
 
 TEST_F(YbAdminSnapshotScheduleTest, BadArguments) {
@@ -1398,6 +1412,12 @@ class YbAdminSnapshotScheduleTestWithYsqlParam
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     YbAdminSnapshotScheduleTestWithYsql::UpdateMiniClusterOptions(opts);
     opts->extra_tserver_flags.emplace_back("--ysql_beta_feature_tablegroup=true");
+    // None of the parameterized PITR/clone tests exercise master failover or follower-side sys
+    // catalog restore. The fixtures that do (YbAdminSnapshotScheduleFailoverTests,
+    // YbAdminSnapshotConsistentRestoreFailoverTest and the other non-parameterized ones) keep the
+    // num_masters = 3 set by YbAdminSnapshotScheduleTest. A single master roughly halves the
+    // per-case cost of cluster start, CREATE DATABASE and restore.
+    opts->num_masters = 1;
   }
 
   virtual std::vector<std::string> ExtraTSFlags() override {
@@ -2040,6 +2060,13 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, RestoreWithBac
   ASSERT_OK(conn.Execute("INSERT INTO test_table "
       "SELECT generate_series(1, 100), md5(random()::text)"));
 
+  // The restore time below is the wall-clock midpoint of CREATE INDEX. Left alone, the backfill is
+  // a ~3 s slice of a DDL that spends most of its time waiting for backends to reach the new
+  // catalog version, so whether the midpoint lands inside it depends on cluster timing (on ASAN
+  // with a single master it missed by 0.2 s). Stretching the backfill well past that wait keeps
+  // the midpoint inside it.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_slowdown_backfill_by_ms", "20000"));
+
   // Clone to half way through the backfill.
   auto t1 = ASSERT_RESULT(GetCurrentTime());
   ASSERT_OK(conn.Execute("CREATE INDEX test_table_idx ON test_table (value)"));
@@ -2246,16 +2273,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlAddColumnCompactWithPackedRow,
           YbAdminSnapshotScheduleTestWithYsqlAndPackedRow) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
-  for (;;) {
-    auto status = conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)");
-    if (status.ok()) {
-      break;
-    }
-    if (status.message().ToBuffer().find("Snapshot too old") != std::string::npos) {
-      continue;
-    }
-    ASSERT_OK(status);
-  }
+  ASSERT_OK(CreateTestTable(&conn));
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'one')"));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN v2 TEXT"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 'two', 'dva')"));
@@ -2271,6 +2289,63 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlAddColumnCompactWithPackedRow,
   auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, std::string, std::optional<std::string>>(
       "SELECT * FROM test_table ORDER BY key")));
   ASSERT_EQ(rows, (decltype(rows){{1, "one", std::nullopt}, {2, "two", "dva"}}));
+}
+
+void YbAdminSnapshotScheduleTestWithYsqlAndPackedRow::TestCompactAfterRestoringDroppedColumn(
+    YsqlColocationConfig colocation) {
+  auto schedule_id = ASSERT_RESULT(PreparePg(colocation));
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  ASSERT_OK(CreateTestTable(&conn));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'one'), (2, 'two')"));
+  // A compaction discards a deleted column's values written outside packed rows, as an UPDATE
+  // writes them.
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value = 'updated' WHERE key = 1"));
+  auto time = ASSERT_RESULT(GetCurrentTime());
+
+  // The restore rolls back the table's next column id, so v3 below gets the id of extra.
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN extra TEXT"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN extra"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN value"));
+
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+  // A DDL fails on a catalog cache from before the restore, and until the tserver sees the catalog
+  // version that the restore bumped.
+  conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  ASSERT_OK(WaitForSelectQueryToMatchExpectation(
+      "SELECT value FROM test_table WHERE key = 1", "updated", &conn));
+  ASSERT_OK(WaitForInsertQueryToSucceed("ALTER TABLE test_table ADD COLUMN v3 TEXT", &conn));
+  ASSERT_OK(conn.Execute("UPDATE test_table SET v3 = 'v3_' || key"));
+
+  // A tablet's history cutoff stops at the latest snapshot of the schedule that the tablet has
+  // created. The schedule lists a snapshot while it is still being created, so wait for a new one
+  // to complete, which moves the cutoff past the drops.
+  ASSERT_OK(WaitNewSnapshot(schedule_id));
+  auto schedule = ASSERT_RESULT(GetSnapshotSchedule(schedule_id));
+  auto snapshots = ASSERT_RESULT(GetMemberAsArray(schedule, "snapshots"));
+  std::string snapshot_id{ASSERT_RESULT(GetMemberAsStr(snapshots[snapshots.Size() - 1], "id"))};
+  ASSERT_OK(WaitFor([this, &snapshot_id]() -> Result<bool> {
+    auto all_snapshots = VERIFY_RESULT(ListSnapshots());
+    for (const auto& snapshot : all_snapshots.GetArray()) {
+      if (VERIFY_RESULT(GetMemberAsStr(snapshot, "id")) == snapshot_id) {
+        return VERIFY_RESULT(GetMemberAsStr(snapshot, "state")) == "COMPLETE";
+      }
+    }
+    return false;
+  }, 60s * kTimeMultiplier, "Wait for the new snapshot to complete"));
+  ASSERT_OK(CompactTablets(cluster_.get(), 300s * kTimeMultiplier));
+  auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, std::string, std::string>(
+      "SELECT key, value, v3 FROM test_table ORDER BY key")));
+  ASSERT_EQ(rows, (decltype(rows){{1, "updated", "v3_1"}, {2, "two", "v3_2"}}));
+}
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlCompactAfterRestoringDroppedColumn,
+          YbAdminSnapshotScheduleTestWithYsqlAndPackedRow) {
+  TestCompactAfterRestoringDroppedColumn(YsqlColocationConfig::kNotColocated);
+}
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlCompactAfterRestoringDroppedColumnColocated,
+          YbAdminSnapshotScheduleTestWithYsqlAndPackedRow) {
+  TestCompactAfterRestoringDroppedColumn(YsqlColocationConfig::kDBColocated);
 }
 
 TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlSingleColumnUpdate,
@@ -4427,12 +4502,70 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, ConsistentRestoreFailover,
 
   ASSERT_OK(WaitRestorationDone(restoration_id, 40s));
 
+  // Tablets accept writes only after completion is persisted, so the new leader must not re-run
+  // the restoration and wipe this row.
+  ASSERT_OK(WaitFor([&conn, expr]() -> Result<bool> {
+    return conn.ExecuteQueryFormat(expr, 3).ok();
+  }, 30s, "Insert after restoration"));
+
   for (auto* master : cluster_->master_daemons()) {
     master->Shutdown();
     ASSERT_OK(master->Restart());
   }
 
-  ASSERT_OK(conn.ExecuteQueryFormat(expr, 3));
+  // A different key, so that losing row 3 is not hidden by re-inserting it.
+  ASSERT_OK(WaitFor([&conn, expr]() -> Result<bool> {
+    return conn.ExecuteQueryFormat(expr, 4).ok();
+  }, 30s, "Insert after master restart"));
+
+  auto rows = ASSERT_RESULT(conn.ExecuteAndRenderToString("SELECT * FROM test_table"));
+  // Rows come in hash order.
+  std::vector<std::string> keys = strings::Split(rows, ";");
+  std::sort(keys.begin(), keys.end());
+  ASSERT_EQ(keys, (std::vector<std::string>{"1", "3", "4"})) << rows;
+}
+
+// Masters are restarted after the restoration finished on all tablets, but before its completion
+// was written to sys catalog. The new leader re-runs the restoration, so tablets must not accept
+// writes before that.
+TEST_F(YbAdminSnapshotScheduleTest, ConsistentRestoreFailoverBeforeCompletionPersisted) {
+  auto schedule_id = ASSERT_RESULT(PrepareCql());
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.ExecuteQuery("CREATE TABLE test_table (k1 INT PRIMARY KEY)"));
+  auto expr = "INSERT INTO test_table (k1) VALUES ($0)";
+  ASSERT_OK(conn.ExecuteQueryFormat(expr, 1));
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+  ASSERT_OK(conn.ExecuteQueryFormat(expr, 2));
+
+  // Set at runtime, so restarted masters do not have it.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_skip_persisting_restore_complete", "true"));
+
+  auto restoration_id = ASSERT_RESULT(StartRestoreSnapshotSchedule(schedule_id, time));
+
+  ASSERT_OK(WaitRestorationDone(restoration_id, 40s));
+
+  // Give tservers a few heartbeats to learn about a completion that was not persisted.
+  SleepFor(5s * kTimeMultiplier);
+  ASSERT_NOK(conn.ExecuteQueryFormat(expr, 3));
+
+  for (auto* master : cluster_->master_daemons()) {
+    master->Shutdown();
+    ASSERT_OK(master->Restart());
+  }
+
+  // Tablets reject writes until the new leader re-runs the restoration and persists completion.
+  // The timeout covers master election, the re-run, and client retries of rejected inserts.
+  ASSERT_OK(WaitFor([&conn, expr]() -> Result<bool> {
+    auto status = conn.ExecuteQueryFormat(expr, 3);
+    if (!status.ok()) {
+      LOG(INFO) << "Insert failed: " << status;
+      return false;
+    }
+    return true;
+  }, 120s * kTimeMultiplier, "Insert after restoration"));
 
   auto rows = ASSERT_RESULT(conn.ExecuteAndRenderToString("SELECT * FROM test_table"));
   ASSERT_EQ(rows, "1;3");
@@ -6716,10 +6849,8 @@ TEST_F(YbAdminSnapshotScheduleTestWithYsql, PgsqlPitrDoesNotRewindOidCounter) {
       << secondary_after_restore.first;
 }
 
-// Fixture for the clone-with-multiple-colocation-parents repro. We need the
-// PG-side gflag `ysql_enable_colocated_tables_with_tablespaces` enabled (it
-// is NON_RUNTIME and defaults to false) on both master and tserver so that
-// `TABLESPACE ts_x` on a colocated table promotes the table into a distinct
+// Fixture for the clone-with-multiple-colocation-parents repro. It relies on
+// `TABLESPACE ts_x` on a colocated table promoting the table into a distinct
 // implicit `colocation_<ts_x_oid>` tablegroup -- and therefore its own
 // colocated parent table -- rather than being lumped into the database's
 // single default colocated parent.
@@ -6732,14 +6863,11 @@ class YbAdminCloneColocationTablespaceTest : public YbAdminSnapshotScheduleTestW
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     YbAdminSnapshotScheduleTestWithLBYsql::UpdateMiniClusterOptions(opts);
-    opts->extra_master_flags.emplace_back("--ysql_enable_colocated_tables_with_tablespaces=true");
     opts->extra_master_flags.emplace_back("--enable_db_clone=true");
-    opts->extra_tserver_flags.emplace_back("--ysql_enable_colocated_tables_with_tablespaces=true");
   }
 };
 
-// In a colocated YSQL database with
-// `ysql_enable_colocated_tables_with_tablespaces=true`, every distinct
+// In a colocated YSQL database, every distinct
 // tablespace that backs at least one colocated relation gets its own
 // implicit `colocation_<tablespace_oid>` tablegroup, and therefore its own
 // colocated parent table on the source side. This test ensures the import snapshot workflow can
@@ -6779,10 +6907,9 @@ TEST_F_EX(
       "'{\"num_replicas\": 3, \"placement_blocks\": $0}')",
       kPlacementBlocks));
 
-  // Partition `customer` and put each partition in a different tablespace. With
-  // ysql_enable_colocated_tables_with_tablespaces on, each `TABLESPACE ts_x` clause on a partition
-  // forces creation of a distinct implicit colocation_<ts_x_oid> tablegroup, so the source DB ends
-  // up with three colocated parent tables (default + ts_a + ts_b).
+  // Partition `customer` and put each partition in a different tablespace. Each `TABLESPACE ts_x`
+  // clause on a partition forces creation of a distinct implicit colocation_<ts_x_oid> tablegroup,
+  // so the source DB ends up with three colocated parent tables (default + ts_a + ts_b).
   ASSERT_OK(src_conn.Execute(
       "CREATE TABLE customer (id INT, region INT, value TEXT, "
       "PRIMARY KEY (id, region)) PARTITION BY LIST (region)"));

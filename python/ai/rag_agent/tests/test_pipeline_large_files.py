@@ -19,12 +19,10 @@ from rag_pipeline import partition_chunk_pipeline
 from rag_pipeline.chunk import chunk, get_splitter_for_filetype
 from rag_pipeline.partition_chunk_pipeline import (
     DEFAULT_MAX_FILE_SIZE_BYTES,
-    DEFAULT_MAX_MARKDOWN_FILE_SIZE_BYTES,
     _iter_lines,
     api_upload_cap_bytes,
     enforce_size_limit,
     max_file_size_bytes,
-    max_markdown_file_size_bytes,
     read_file_stream,
     stream_partition_and_chunk,
 )
@@ -224,7 +222,13 @@ class TestSingleRead:
 
 
 class TestSizeLimit:
-    """Nothing over the api-server's upload cap should be chunked."""
+    """The worker's out-of-memory guard on a whole-file read.
+
+    Not a product limit, and deliberately not the api-server's upload cap:
+    these tests require it to sit *above* every tier cap, so a file the
+    api-server accepted is never rejected here instead of indexing. What it
+    bounds is how much one task reads into memory.
+    """
 
     # Meko api-server per-file KB upload caps, from
     # meko/api_server/internal/service/free_tier.go: free 5 MB, standard
@@ -448,33 +452,90 @@ class TestCapDrift:
             enforce_size_limit("s3://b/big.txt", 4096, 1024)
 
 
-class TestMarkdownCap:
-    """Markdown keeps a lower cap, because parse_markdown costs ~23x input."""
+class TestMarkdownSharesTheTextCap:
+    """MEKO-1128: Markdown reads under the same cap as the text path.
 
-    def test_markdown_default_is_lower_than_the_text_default(self):
-        assert (DEFAULT_MAX_MARKDOWN_FILE_SIZE_BYTES
-                < DEFAULT_MAX_FILE_SIZE_BYTES)
+    It used to carry its own 5 MiB cap, below every paid tier's upload limit,
+    because the Markdown parser held the whole document's AST. It now parses
+    one heading section at a time, so peak memory tracks the source instead of
+    the AST, and one cap covers both paths. See TestSectionedMemory in
+    tests/test_md_streaming.py.
+    """
 
-    def test_markdown_default_is_unchanged_from_master(self):
-        # Raising it is MEKO-1128 and needs worker memory sized first.
-        assert DEFAULT_MAX_MARKDOWN_FILE_SIZE_BYTES == 5 * 1024 * 1024
+    def test_markdown_chunker_reads_under_the_shared_cap(self):
+        import rag_pipeline.markdown_finetuning_chunker as mod
 
-    def test_markdown_cap_is_independently_configurable(self, monkeypatch):
-        monkeypatch.setenv("MAX_MARKDOWN_FILE_SIZE_BYTES", "16777216")
-        monkeypatch.setenv("MAX_FILE_SIZE_BYTES", "33554432")
-        assert max_markdown_file_size_bytes() == 16777216
-        assert max_file_size_bytes() == 33554432
+        # The separate markdown cap is gone, not merely unused.
+        from rag_pipeline import partition_chunk_pipeline as pcp
+        assert not hasattr(pcp, "max_markdown_file_size_bytes")
+        assert not hasattr(pcp, "DEFAULT_MAX_MARKDOWN_FILE_SIZE_BYTES")
+        assert mod.max_file_size_bytes is max_file_size_bytes
 
-    def test_markdown_cap_falls_back_on_junk(self, monkeypatch):
-        monkeypatch.setenv("MAX_MARKDOWN_FILE_SIZE_BYTES", "not-a-number")
-        assert (max_markdown_file_size_bytes()
-                == DEFAULT_MAX_MARKDOWN_FILE_SIZE_BYTES)
+    def test_the_shared_cap_clears_every_tier(self):
+        # free 5 MB, standard 50 MB, pro 60 MB, from LimitsFor(account_type)
+        # in the api-server's internal/service/free_tier.go. The worker guard
+        # must never fire before the api-server's own per-file check.
+        for tier_cap in (5 * 1000 * 1000, 50 * 1000 * 1000, 60 * 1000 * 1000):
+            assert DEFAULT_MAX_FILE_SIZE_BYTES > tier_cap
 
-    def test_the_text_cap_does_not_move_the_markdown_cap(self, monkeypatch):
-        monkeypatch.setenv("MAX_FILE_SIZE_BYTES", "67108864")
-        monkeypatch.delenv("MAX_MARKDOWN_FILE_SIZE_BYTES", raising=False)
-        assert (max_markdown_file_size_bytes()
-                == DEFAULT_MAX_MARKDOWN_FILE_SIZE_BYTES)
+    @patch("rag_pipeline.partition_chunk_pipeline.boto3")
+    def test_a_six_mb_markdown_file_is_chunked(self, mock_boto3):
+        # The MEKO-1128 report: a 6 MB .md that the api-server accepted on a
+        # standard account, then failed indexing on the old 5 MiB cap.
+        from rag_pipeline.markdown_finetuning_chunker import (
+            chunk_markdown_whole_file,
+        )
+
+        section = "## Section\n\n" + ("word " * 200 + "\n\n")
+        text = "# Title\n\n" + section * (6 * 1000 * 1000 // len(section))
+        assert len(text.encode()) > 5 * 1024 * 1024
+        make_s3_object(mock_boto3, text)
+
+        chunks = list(
+            chunk_markdown_whole_file("s3://test-bucket/doc.md", {})
+        )
+
+        assert chunks, "a 6 MB Markdown file should produce chunks"
+
+    @patch("rag_pipeline.partition_chunk_pipeline.boto3")
+    def test_over_the_shared_cap_still_raises(self, mock_boto3):
+        from rag_pipeline.markdown_finetuning_chunker import (
+            chunk_markdown_whole_file,
+        )
+
+        make_s3_object(mock_boto3, "# T\n\nbody\n",
+                       content_length=DEFAULT_MAX_FILE_SIZE_BYTES + 1)
+
+        with pytest.raises(ValueError, match="exceeds"):
+            list(chunk_markdown_whole_file("s3://test-bucket/doc.md", {}))
+
+    @patch("rag_pipeline.partition_chunk_pipeline.boto3")
+    def test_the_cap_override_applies_to_markdown(self, mock_boto3,
+                                                  monkeypatch):
+        from rag_pipeline.markdown_finetuning_chunker import (
+            chunk_markdown_whole_file,
+        )
+
+        monkeypatch.setenv("MAX_FILE_SIZE_BYTES", "1024")
+        make_s3_object(mock_boto3, "# T\n\nbody\n", content_length=2048)
+
+        with pytest.raises(ValueError, match="1024-byte"):
+            list(chunk_markdown_whole_file("s3://test-bucket/doc.md", {}))
+
+    @patch("rag_pipeline.partition_chunk_pipeline.boto3")
+    def test_a_markdown_rejection_names_the_knob_to_raise(self, mock_boto3):
+        # Markdown used to name MAX_MARKDOWN_FILE_SIZE_BYTES here. Now that it
+        # shares the text path's cap, the message has to name that one, or an
+        # operator is pointed at a setting that no longer exists.
+        from rag_pipeline.markdown_finetuning_chunker import (
+            chunk_markdown_whole_file,
+        )
+
+        make_s3_object(mock_boto3, "# T\n\nbody\n",
+                       content_length=DEFAULT_MAX_FILE_SIZE_BYTES + 1)
+
+        with pytest.raises(ValueError, match="Raise MAX_FILE_SIZE_BYTES"):
+            list(chunk_markdown_whole_file("s3://test-bucket/doc.md", {}))
 
 
 class TestLineSplitting:

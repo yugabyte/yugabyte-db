@@ -807,6 +807,141 @@ TEST_F(LoadBalancerMockedTest, ExcludeOverreplicationInSourceLoad) {
   ASSERT_EQ(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)), false);
 }
 
+// Like ExcludeOverreplicationInSourceLoad, but the source has more over-replicated tablets than
+// its load variance to the destination, so the difference is negative.
+TEST_F(LoadBalancerMockedTest, ExcludeOverreplicationLargerThanLoadVariance) {
+  PrepareTestStateSingleAz();
+  // Over-replicate tablets 0 and 1 onto ts3, and tablet 2 onto ts4. ts0-ts2 each have 4 tablets,
+  // 3 of them over-replicated. ts3 has 2 and ts4 has 1, and neither has tablet 3.
+  ts_descs_.push_back(SetupTS("3333", "a"));
+  ts_descs_.push_back(SetupTS("4444", "a"));
+  AddRunningReplica(tablets_[0].get(), ts_descs_[3]);
+  AddRunningReplica(tablets_[1].get(), ts_descs_[3]);
+  AddRunningReplica(tablets_[2].get(), ts_descs_[4]);
+
+  // Should not find a replica to move. The check assumes a source could lose all its
+  // over-replicated replicas, which would leave ts0, ts1 or ts2 with only tablet 3: fewer tablets
+  // than ts3 and as many as ts4. For ts3 the load variance (2) minus the over-replicated tablets
+  // (3) is negative.
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)))
+      << Format("Moved tablet $0 from $1 to $2", tablet_id, from_ts, to_ts);
+}
+
+// A split parent whose children are running is deleted as soon as the tservers finish the split,
+// so its replicas are not counted in the load of their tservers.
+TEST_F(LoadBalancerMockedTest, ExcludeSplitParentFromLoad) {
+  PrepareTestStateSingleAz();
+  const auto& parent = tablets_[1];
+  ASSERT_RESULT(SplitTablet(parent));
+
+  // A new tserver takes one replica each of tablets 0, 2 and 3 from ts0, ts1 and ts2. Every
+  // original tserver now has 5 replicas, one of them the parent, and the new one has 3.
+  auto new_ts = ts_descs_.emplace_back(SetupTS("3333", "a"));
+  MoveReplica(tablets_[0].get(), ts_descs_[0], new_ts);
+  MoveReplica(tablets_[2].get(), ts_descs_[1], new_ts);
+  MoveReplica(tablets_[3].get(), ts_descs_[2], new_ts);
+
+  // Without the parent an original tserver has a load of 4, so the variance of 1 with the new
+  // tserver is below the minimum and nothing should move.
+  const auto& ts0_uuid = ts_descs_[0]->permanent_uuid();
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_TRUE(IsSplitParent(parent->id()));
+  ASSERT_EQ(GetLoad(ts0_uuid), 4);
+  ASSERT_EQ(GetGlobalLoad(ts0_uuid), 4);
+  // The parent is left out of the load itself, not discounted again as transient load.
+  ASSERT_EQ(GetPossiblyTransientLoad(ts0_uuid), 0);
+  // The load difference estimate follows the same view, so it reports nothing to do.
+  ASSERT_EQ(ASSERT_RESULT(EstimateTableLoadDifference()), 0);
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+
+  // A hidden parent is retained for PITR or CDC, so it is regular load again.
+  HideTablet(parent);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_FALSE(IsSplitParent(parent->id()));
+  ASSERT_EQ(GetLoad(ts0_uuid), 5);
+  ASSERT_EQ(GetGlobalLoad(ts0_uuid), 5);
+  ASSERT_EQ(ASSERT_RESULT(EstimateTableLoadDifference()), 1);
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(to_ts, new_ts->permanent_uuid());
+}
+
+// Until one of a split parent's children is running nothing is counted in the parent's place, so
+// the parent stays regular load rather than being excluded.
+TEST_F(LoadBalancerMockedTest, SplitParentCountsUntilAChildRuns) {
+  PrepareTestStateSingleAz();
+  const auto& parent = tablets_[1];
+  const auto children = ASSERT_RESULT(SplitTablet(parent));
+  const auto& ts_uuid = ts_descs_[0]->permanent_uuid();
+
+  // Neither child is running, so the parent is the only one of the three that is counted.
+  for (const auto& child : children) {
+    SetTabletState(child, SysTabletsEntryPB::CREATING);
+  }
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_FALSE(IsSplitParent(parent->id()));
+  ASSERT_EQ(GetLoad(ts_uuid), 4);
+
+  // One child is running and is counted in the parent's place, so the load is unchanged.
+  SetTabletState(children[1], SysTabletsEntryPB::RUNNING);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_TRUE(IsSplitParent(parent->id()));
+  ASSERT_EQ(GetLoad(ts_uuid), 4);
+}
+
+// A split parent that is about to be deleted is never the tablet chosen for a move.
+TEST_F(LoadBalancerMockedTest, DoNotMoveSplitParent) {
+  PrepareTestStateSingleAz();
+  // Candidates are tried in tablet id order and tablets_[0] sorts first, so it would be picked.
+  const auto& parent = tablets_[0];
+  ASSERT_RESULT(SplitTablet(parent));
+
+  // A new empty tserver has to get replicas, but not one of the parent.
+  auto new_ts = ts_descs_.emplace_back(SetupTS("3333", "a"));
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(to_ts, new_ts->permanent_uuid());
+  ASSERT_NE(tablet_id, parent->id());
+
+  // Once hidden the parent is regular load again, so as the first candidate in tablet id order it
+  // is the one chosen.
+  HideTablet(parent);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(tablet_id, parent->id());
+}
+
+// The exclusion follows the parent's replicas as the balancer adds and removes them within a run.
+TEST_F(LoadBalancerMockedTest, SplitParentStaysExcludedAcrossReplicaChanges) {
+  PrepareTestStateSingleAz();
+  const auto& parent = tablets_[1];
+  ASSERT_RESULT(SplitTablet(parent));
+  auto new_ts = ts_descs_.emplace_back(SetupTS("3333", "a"));
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  const auto& ts0_uuid = ts_descs_[0]->permanent_uuid();
+  const auto& new_ts_uuid = new_ts->permanent_uuid();
+  // ts0 hosts the 4 original tablets and the 2 children, which is a load of 5 without the parent.
+  ASSERT_EQ(GetLoad(ts0_uuid), 5);
+  ASSERT_EQ(GetLoad(new_ts_uuid), 0);
+
+  // A starting replica of the parent is not counted on its new tserver.
+  ASSERT_OK(AddReplicaInState(parent->id(), new_ts_uuid));
+  ASSERT_EQ(GetLoad(new_ts_uuid), 0);
+  ASSERT_EQ(GetGlobalLoad(new_ts_uuid), 0);
+  // The parent is now over-replicated, but it is already left out of the load, so it is not
+  // discounted again as transient load.
+  ASSERT_EQ(GetTotalOverreplication(), 1);
+  ASSERT_EQ(GetPossiblyTransientLoad(ts0_uuid), 0);
+
+  // Removing the parent's replica from a tserver does not change that tserver's load.
+  ASSERT_OK(RemoveReplicaInState(parent->id(), ts0_uuid));
+  ASSERT_EQ(GetLoad(ts0_uuid), 5);
+  ASSERT_EQ(GetGlobalLoad(ts0_uuid), 5);
+}
+
 TEST_F(LoadBalancerMockedTest, TestLeaderBlacklist) {
   LOG(INFO) << "Testing moving overloaded leaders";
   PrepareTestStateMultiAz();
@@ -860,6 +995,87 @@ TEST_F(LoadBalancerMockedTest, TestLeaderBlacklist) {
     }
   }
   LOG(INFO) << "Leader distribution: 2 1 1 -OR- 1 2 1";
+}
+
+// Global leader balancing moves a leader when the per-table leader variance is below the minimum
+// but the global one is not. Tablets of tables the run skipped are missing from the global counts,
+// but unlike for tablet moves they do not widen the global minimum, as a leader move is cheap to
+// reverse.
+TEST_F(LoadBalancerMockedTest, GlobalLeaderBalancingNotWidenedBySkippedTablets) {
+  PrepareTestStateMultiAz();
+  // The main table's leaders are on ts0, ts1, ts2, ts0: per-table leader loads 2 1 1.
+  // The extra table's 4 leaders are all on ts0: global leader loads 6 1 1.
+  const auto extra = ASSERT_RESULT(CreateExtraTable("extra_table", 4, ts_descs_[0]));
+  const auto analyze = [&]() -> Status {
+    RETURN_NOT_OK(ResetLoadBalancerAndAnalyzeTablets());
+    return AnalyzeAdditionalTable(extra.table);
+  };
+  const auto& ts0 = ts_descs_[0]->permanent_uuid();
+  std::string tablet_id, from_ts, to_ts;
+
+  // The per-table variance of 1 is below the minimum, and global balancing is not allowed yet.
+  ASSERT_OK(analyze());
+  ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&tablet_id, &from_ts, &to_ts)));
+
+  // Once allowed, the global variance of 5 moves a leader off ts0.
+  SetCanPerformGlobalOperations(true);
+  TestMoveLeader(&tablet_id, ts0, "" /* expected_to_ts */);
+
+  // Skipped tablets do not widen the minimum: a widened bar of 2 + 4 = 6 would exceed the
+  // variance, but the leader still moves.
+  ASSERT_OK(analyze());
+  SetNumTabletsInSkippedTables(4);
+  TestMoveLeader(&tablet_id, ts0, "" /* expected_to_ts */);
+}
+
+class LoadBalancerMockedTestFiveTablets : public LoadBalancerMockedTest {
+ protected:
+  int NumTablets() const override { return 5; }
+};
+
+// The same for tablet moves. With 5 tablets at RF3 on 4 tservers the per-table load is 3 4 4 4,
+// so no per-table move is possible. An extra table that avoids ts0 makes the global load 3 6 6 6.
+TEST_F(LoadBalancerMockedTestFiveTablets, GlobalLoadBalancingWidenedBySkippedTablets) {
+  std::vector<std::shared_ptr<TSDescriptor>> ts_descs;
+  for (int i = 0; i < 4; ++i) {
+    ts_descs.push_back(SetupTS(std::string(4, '0' + i), "a"));
+  }
+  PrepareTestState(ts_descs);
+  replication_info_.mutable_live_replicas()->set_num_replicas(kDefaultNumReplicas);
+  // PrepareTestState put a replica of every tablet on every tserver and the leader of tablet i on
+  // ts i % 4. Drop that replica, so tablets 0 and 4 avoid ts0 and tablets 1, 2, 3 avoid ts1, ts2,
+  // ts3, and lead each tablet from a tserver it is still on.
+  for (size_t i = 0; i < tablets_.size(); ++i) {
+    RemoveReplica(tablets_[i].get(), ts_descs_[i % 4]);
+    MoveTabletLeader(tablets_[i].get(), ts_descs_[(i + 1) % 4]);
+  }
+  const auto extra = ASSERT_RESULT(CreateExtraTable("extra_table", 2, ts_descs_[1]));
+  for (const auto& tablet : extra.tablets) {
+    RemoveReplica(tablet.get(), ts_descs_[0]);
+  }
+  const auto analyze = [&]() -> Status {
+    RETURN_NOT_OK(ResetLoadBalancerAndAnalyzeTablets());
+    return AnalyzeAdditionalTable(extra.table);
+  };
+  const auto& ts0 = ts_descs_[0]->permanent_uuid();
+  std::string tablet_id, from_ts, to_ts;
+
+  // The per-table variance of 1 is below the minimum, and global balancing is not allowed yet.
+  ASSERT_OK(analyze());
+  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+
+  // Once allowed, the global variance of 3 moves a tablet to ts0.
+  SetCanPerformGlobalOperations(true);
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(to_ts, ts0);
+
+  // Skipped tablets widen the minimum: 2 + 2 = 4 exceeds the variance, 2 + 1 = 3 does not.
+  ASSERT_OK(analyze());
+  SetNumTabletsInSkippedTables(2);
+  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  SetNumTabletsInSkippedTables(1);
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(to_ts, ts0);
 }
 
 class LoadBalancerMockedTestManyTablets : public LoadBalancerMockedTest {
@@ -1092,11 +1308,6 @@ TEST_F(LoadBalancerMockedTest, DiskCheckSkipsOversizedTabletOnSameSource) {
   }
   ASSERT_GE(moves, 1);
 }
-
-class LoadBalancerMockedTestFiveTablets : public LoadBalancerMockedTest {
- protected:
-  int NumTablets() const override { return 5; }
-};
 
 TEST_F(LoadBalancerMockedTestFiveTablets, DiskCheckTriesNextSourceForSameDestination) {
   // Tablet layout, with tserver 0000 holding every big tablet and nothing else:

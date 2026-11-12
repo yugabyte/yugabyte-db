@@ -376,15 +376,15 @@ public class YbcUpgradeTest extends FakeDBApplication {
     when(mockYbcClient.UpgradeResult(any())).thenReturn(upgradeResultResponse);
     List<NodeDetails> nodes = new ArrayList<>(defaultUniverse.getNodes());
     when(mockYbcClientService.getNewClient(
-            nodes.get(0).cloudInfo.private_ip,
-            defaultUniverse.getUniverseDetails().communicationPorts.ybControllerrRpcPort,
-            defaultUniverse.getCertificateNodetoNode()))
+            eq(nodes.get(0).cloudInfo.private_ip),
+            eq(defaultUniverse.getUniverseDetails().communicationPorts.ybControllerrRpcPort),
+            any()))
         .thenReturn(mockYbcClient);
     when(mockYbcClient2.UpgradeResult(any())).thenReturn(upgradeResultResponseFail);
     when(mockYbcClientService.getNewClient(
-            nodes.get(1).cloudInfo.private_ip,
-            defaultUniverse.getUniverseDetails().communicationPorts.ybControllerrRpcPort,
-            defaultUniverse.getCertificateNodetoNode()))
+            eq(nodes.get(1).cloudInfo.private_ip),
+            eq(defaultUniverse.getUniverseDetails().communicationPorts.ybControllerrRpcPort),
+            any()))
         .thenReturn(mockYbcClient2);
     String oldYbcVersion = defaultUniverse.getUniverseDetails().getYbcSoftwareVersion();
     ybcUpgrade.scheduleRunner();
@@ -395,9 +395,9 @@ public class YbcUpgradeTest extends FakeDBApplication {
             .getYbcSoftwareVersion());
     when(mockYbcClient2.UpgradeResult(any())).thenReturn(upgradeResultResponse);
     when(mockYbcClientService.getNewClient(
-            nodes.get(1).cloudInfo.private_ip,
-            defaultUniverse.getUniverseDetails().communicationPorts.ybControllerrRpcPort,
-            defaultUniverse.getCertificateNodetoNode()))
+            eq(nodes.get(1).cloudInfo.private_ip),
+            eq(defaultUniverse.getUniverseDetails().communicationPorts.ybControllerrRpcPort),
+            any()))
         .thenReturn(mockYbcClient2);
     ybcUpgrade.scheduleRunner();
     ybcUpgrade.scheduleRunner();

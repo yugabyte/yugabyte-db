@@ -2,9 +2,9 @@ import logging
 import os
 from typing import Any, Dict, Generator, Optional
 
-from rag_pipeline.md_parser import parse_markdown, split_embed_text
+from rag_pipeline.md_parser import split_embed_text, stream_markdown
 from rag_pipeline.partition_chunk_pipeline import (
-    max_markdown_file_size_bytes,
+    max_file_size_bytes,
     read_whole_file,
 )
 from observability import meko_observe
@@ -28,16 +28,31 @@ def chunk_markdown_whole_file(
 
     full_text = read_whole_file(
         file_location,
-        max_size_bytes=max_markdown_file_size_bytes(),
-        knob="MAX_MARKDOWN_FILE_SIZE_BYTES",
+        max_size_bytes=max_file_size_bytes(),
+        knob="MAX_FILE_SIZE_BYTES",
     )
+    text_length = len(full_text)
 
-    doc = parse_markdown(full_text, source_file=file_location)
+    doc, chunks = stream_markdown(full_text, source_file=file_location)
+    # stream_markdown holds the body it needs; dropping this reference frees
+    # the other copy of the file while the chunks are still being produced.
+    del full_text
+
+    # Logged before the walk as well as after it. The summary below needs the
+    # chunk count, which is only known at the end, so on its own it would go
+    # missing for exactly the documents that failed part way through.
     logging.info(
         f"Markdown fine-tuning chunker: file={file_location}, "
-        f"length={len(full_text)} chars, "
-        f"title={doc.title!r}, chunks={doc.total_chunks}"
+        f"length={text_length} chars, title={doc.title!r}, starting"
     )
 
-    for chunk in doc.chunks:
+    chunk_count = 0
+    for chunk in chunks:
+        chunk_count += 1
         yield from split_embed_text(chunk.to_embed_text(doc.title))
+
+    logging.info(
+        f"Markdown fine-tuning chunker: file={file_location}, "
+        f"length={text_length} chars, "
+        f"title={doc.title!r}, chunks={chunk_count}"
+    )

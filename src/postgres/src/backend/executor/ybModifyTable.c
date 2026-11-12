@@ -28,6 +28,7 @@
 #include "access/htup_details.h"
 #include "access/sysattr.h"
 #include "access/xact.h"
+#include "access/yb_scan_plan.h"
 #include "access/yb_target.h"
 #include "catalog/catalog.h"
 #include "catalog/heap.h"
@@ -38,6 +39,7 @@
 #include "catalog/pg_database.h"
 #include "catalog/pg_db_role_setting_d.h"
 #include "catalog/pg_namespace.h"
+#include "catalog/pg_parameter_acl_d.h"
 #include "catalog/pg_replication_origin_d.h"
 #include "catalog/pg_shseclabel_d.h"
 #include "catalog/pg_subscription_d.h"
@@ -173,6 +175,9 @@ YBCGetYBTupleIdFromSlot(TupleTableSlot *slot)
  * Note that if the relation has a DocDB RowId attribute, this will generate a new RowId value
  * meaning the ybctid will be unique. Therefore you should only use this if the relation has
  * a primary key or you're doing an insert.
+ *
+ * Return 0 if a key value of a single row UPDATE or DELETE doesn't fit in its
+ * column's type: it matches no row, so the caller skips the write.
  */
 Datum
 YBCComputeYBTupleIdFromSlot(Relation rel, TupleTableSlot *slot)
@@ -202,10 +207,38 @@ YBCComputeYBTupleIdFromSlot(Relation rel, TupleTableSlot *slot)
 		{
 			Oid			type_id = TupleDescAttr(slot->tts_tupleDescriptor,
 												attnum - 1)->atttypid;
+			Oid			col_type_id = TupleDescAttr(RelationGetDescr(rel),
+													attnum - 1)->atttypid;
+
+			next_attr->datum = slot_getattr(slot, attnum, &next_attr->is_null);
+
+			/*
+			 * A key value of a single row UPDATE or DELETE can be an integer
+			 * of another width than its column (yb_single_row_key_value in
+			 * createplan.c):
+			 * (1) If the column's type can hold it, bind it with the column's
+			 *     type, as YbBindColumn does for scan keys: an integer has the
+			 *     same Datum at every width.
+			 * (2) Otherwise, it matches no row: return 0.
+			 * The planner checks YbIsScanCompatible too, but a value of another
+			 * type can still get here, such as through an expression index.
+			 */
+			if (type_id != col_type_id &&
+				YbIsScanCompatible(getBaseType(col_type_id), type_id,
+								   false /* is_value_scalar */ , (Datum) 0))
+			{
+				if (!next_attr->is_null &&
+					YbIsValueOutOfRange(getBaseType(col_type_id), type_id,
+										next_attr->datum))
+				{
+					pfree(descr);
+					return (Datum) 0;
+				}
+				type_id = col_type_id;
+			}
 
 			next_attr->type_entity = YbDataTypeFromOidMod(attnum, type_id);
 			next_attr->collation_id = ybc_get_attcollation(RelationGetDescr(rel), attnum);
-			next_attr->datum = slot_getattr(slot, attnum, &next_attr->is_null);
 		}
 		else if (attnum == YBRowIdAttributeNumber)
 		{
@@ -324,6 +357,9 @@ YBCExecWriteStmt(YbcPgStatement ybc_stmt,
 				   relid == SubscriptionRelationId ||
 				   relid == SubscriptionObjectIndexId ||
 				   relid == SubscriptionNameIndexId ||
+				   relid == ParameterAclRelationId ||
+				   relid == ParameterAclParnameIndexId ||
+				   relid == ParameterAclOidIndexId ||
 
 				   relid == DatabaseNameIndexId ||
 				   relid == SharedSecLabelRelationId ||
@@ -449,10 +485,22 @@ YBCExecuteInsertInternal(Oid dboid,
 						 Datum *ybctid,
 						 YbcPgTransactionSetting transaction_setting)
 {
+	uint64_t backfill_time = yb_backfill_timestamp;
+
+	if (backfill_time != 0)
+		transaction_setting = YB_NON_TRANSACTIONAL;
+
 	YbcPgStatement insert_stmt = YbNewInsertForDb(dboid, rel, transaction_setting);
 
 	YBCApplyInsertRow(insert_stmt, rel, slot, onConflictAction, ybctid,
 					  transaction_setting, true /* add_fk_reference_cache */ );
+
+	if (backfill_time != 0)
+	{
+		HandleYBStatus(YBCPgInsertStmtSetIsBackfill(insert_stmt,
+													true /* is_backfill */ ));
+		HandleYBStatus(YBCPgInsertStmtSetWriteTime(insert_stmt, backfill_time));
+	}
 	/* Execute the insert */
 	YBCApplyWriteStmt(insert_stmt, rel);
 }
@@ -718,7 +766,8 @@ YbIsIocPushdownCapableRel(ResultRelInfo *resultRelInfo, ModifyTable *node)
  * On that fallback path, batching and index-only reads are independent.
  */
 void
-YbInitIocStrategy(ResultRelInfo *resultRelInfo, ModifyTable *node)
+YbInitIocStrategy(ResultRelInfo *resultRelInfo, ModifyTable *node,
+				  int batch_size)
 {
 	Assert(node->operation == CMD_INSERT);
 
@@ -730,7 +779,7 @@ YbInitIocStrategy(ResultRelInfo *resultRelInfo, ModifyTable *node)
 		return;
 	}
 
-	if (YbIsInsertOnConflictReadBatchingPossible(resultRelInfo))
+	if (YbIsInsertOnConflictReadBatchingPossible(resultRelInfo, batch_size))
 		resultRelInfo->ri_ybIocBatchingPossible = true;
 
 	if (IsYBRelation(resultRelInfo->ri_RelationDesc) &&
@@ -739,12 +788,13 @@ YbInitIocStrategy(ResultRelInfo *resultRelInfo, ModifyTable *node)
 }
 
 bool
-YbIsInsertOnConflictReadBatchingPossible(ResultRelInfo *resultRelInfo)
+YbIsInsertOnConflictReadBatchingPossible(ResultRelInfo *resultRelInfo,
+										 int batch_size)
 {
 	/*
 	 * TODO(jason): figure out how to enable triggers.
 	 */
-	if (yb_insert_on_conflict_read_batch_size == 0 ||
+	if (batch_size == 0 ||
 		!IsYBRelation(resultRelInfo->ri_RelationDesc) ||
 		IsCatalogRelation(resultRelInfo->ri_RelationDesc) ||
 		(resultRelInfo->ri_TrigDesc &&
@@ -938,6 +988,18 @@ YBCExecuteInsertIndexForDb(Oid dboid,
 	Assert(index->rd_rel->relkind == RELKIND_INDEX);
 	Assert(ybctid != 0);
 
+	/*
+	 * YB: During an online schema change backfill, an insert into a user index
+	 * must be a backfill write at the backfill time like the base-table
+	 * insert: one batch cannot mix transactional and non-transactional
+	 * ops.  This covers every index access method that reaches here.
+	 */
+	uint64_t	osc_backfill_time = yb_backfill_timestamp;
+
+	if (backfill_write_time == NULL && osc_backfill_time != 0 &&
+		!IsSystemRelation(index))
+		backfill_write_time = &osc_backfill_time;
+
 	const bool	is_backfill = (backfill_write_time != NULL);
 	const bool	is_non_distributed_txn_write = (is_backfill ||
 												(!IsSystemRelation(index) &&
@@ -1001,7 +1063,16 @@ YBCExecuteDelete(Relation rel,
 	if (target_tuple_fetched)
 		ybctid = YBCGetYBTupleIdFromSlot(planSlot);
 	else
+	{
 		ybctid = YBCComputeYBTupleIdFromSlot(rel, planSlot);
+
+		/* A key value too wide for its column matches no row. */
+		if (ybctid == 0)
+		{
+			YBCPgDeleteStatement(delete_stmt);
+			return false;
+		}
+	}
 
 	if (ybctid == 0)
 	{
@@ -1215,7 +1286,16 @@ YBCExecuteUpdate(ResultRelInfo *resultRelInfo,
 	if (target_tuple_fetched)
 		ybctid = YBCGetYBTupleIdFromSlot(planSlot);
 	else
+	{
 		ybctid = YBCComputeYBTupleIdFromSlot(rel, slot);
+
+		/* A key value too wide for its column matches no row. */
+		if (ybctid == 0)
+		{
+			YBCPgDeleteStatement(update_stmt);
+			return false;
+		}
+	}
 
 	if (ybctid == 0)
 		ereport(ERROR,
@@ -1674,6 +1754,58 @@ YBCRelInfoHasSecondaryIndices(ResultRelInfo *resultRelInfo)
 	return (resultRelInfo->ri_NumIndices > 1 ||
 			(resultRelInfo->ri_NumIndices == 1 &&
 			 !resultRelInfo->ri_IndexRelationDescs[0]->rd_index->indisprimary));
+}
+
+/*
+ * Returns whether inserts into this result relation may use upsert mode
+ * (blind writes).  Call it only for a statement that asked for upsert mode,
+ * because when the relation is unsafe it also warns or errors (see below).
+ *
+ * is_copy_replace says how the statement asked for it: true for COPY ...
+ * WITH (REPLACE), false for the yb_enable_upsert_mode setting (COPY or
+ * INSERT).  It decides what happens when the relation is unsafe, i.e. has
+ * secondary indexes, triggers, or rules (see YBIsUpsertUnsafeOnRel()): true
+ * raises an error; false emits a warning, and the caller falls back to a
+ * normal insert.
+ *
+ * A partitioned target routes each row to a leaf partition, which can have
+ * its own indexes or triggers, so callers must ask about each partition that
+ * rows are routed to, not only about the target.  The answer is cached in the
+ * ResultRelInfo, so each relation is checked, and warned about, once per
+ * statement.
+ */
+bool
+YbCanUseUpsertMode(ResultRelInfo *resultRelInfo, bool is_copy_replace)
+{
+	Relation	rel = resultRelInfo->ri_RelationDesc;
+
+	if (resultRelInfo->ri_ybUpsertModeChecked)
+		return resultRelInfo->ri_ybUpsertModeAllowed;
+
+	resultRelInfo->ri_ybUpsertModeChecked = true;
+	resultRelInfo->ri_ybUpsertModeAllowed = !YBIsUpsertUnsafeOnRel(rel);
+
+	if (!resultRelInfo->ri_ybUpsertModeAllowed)
+	{
+		if (is_copy_replace)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("COPY with REPLACE is not supported on "
+							"table \"%s\" because it has secondary "
+							"indexes, triggers, or foreign key "
+							"constraints", RelationGetRelationName(rel)),
+					 errhint("Consider using INSERT ... ON CONFLICT "
+							 "for true upsert semantics instead.")));
+		ereport(WARNING,
+				(errmsg("upsert mode disabled for table \"%s\" "
+						"because it has secondary indexes, "
+						"triggers, or foreign key constraints",
+						RelationGetRelationName(rel)),
+				 errhint("Consider using INSERT ... ON CONFLICT "
+						 "for true upsert semantics instead.")));
+	}
+
+	return resultRelInfo->ri_ybUpsertModeAllowed;
 }
 
 int

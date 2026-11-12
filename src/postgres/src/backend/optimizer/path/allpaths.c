@@ -72,6 +72,7 @@
 #include "executor/ybExpr.h"
 #include "miscadmin.h"
 #include "nodes/pg_list.h"
+#include "nodes/print.h"
 #include "pg_yb_utils.h"
 #include <utils/rel.h>
 
@@ -3723,7 +3724,8 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 
 				/*
 				 * Assuming that only join paths exist in the space
-				 * of enumerated joins.
+				 * of enumerated joins, except for joins proven empty,
+				 * whose only path is a dummy AppendPath.
 				 */
 				switch (ybRel->cheapest_total_path->type)
 				{
@@ -3732,6 +3734,8 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 					case T_HashPath:
 						break;
 					default:
+						if (IS_DUMMY_REL(ybRel))
+							break;
 						ereport(ERROR,
 								(errmsg("expected a join path (%u)",
 										ybRel->cheapest_total_path->ybUniqueId)));
@@ -5368,6 +5372,14 @@ ybTracePath(PlannerInfo *root, Path *path, char *msg)
 
 		appendStringInfoSpaces(&buf, 4);
 		appendStringInfo(&buf, "index name : %s\n", indexName);
+
+		if (indexPath->yb_index_path_info.merge_scan_stream_cols != NULL)
+		{
+			char *dump = nodeToString(indexPath->yb_index_path_info.merge_scan_stream_cols);
+			char *pretty = pretty_format_node_dump(dump);
+			appendStringInfoSpaces(&buf, 4);
+			appendStringInfo(&buf, "YbMergeScanInfo: merge_scan_stream_cols=%s\n", pretty);
+		}
 	}
 
 	appendStringInfoSpaces(&buf, 4);

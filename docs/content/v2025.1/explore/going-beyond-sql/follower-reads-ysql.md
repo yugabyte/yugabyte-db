@@ -1,8 +1,10 @@
 ---
-title: Explore follower reads - YSQL
+title: Explore follower reads
 headerTitle: Follower reads
 linkTitle: Follower reads
-description: Learn how to use follower reads to lower read latencies in local YugabyteDB clusters in YSQL.
+description: Learn how to use follower reads to lower read latencies, including reads served by a read replica.
+aliases:
+  - /v2025.1/explore/going-beyond-sql/follower-reads-ycql/
 menu:
   v2025.1:
     identifier: follower-reads-ysql
@@ -11,17 +13,17 @@ menu:
 type: docs
 ---
 
-{{<api-tabs>}}
+YugabyteDB requires reading from the [leader](../../../architecture/key-concepts/#tablet-leader) to read the latest data. However, for applications that do not require the latest data or are working with unchanging data, the cost of contacting a potentially remote leader to fetch the data may be wasteful. Your application may benefit from better latency by reading from a replica that is closer to the client. The same applies to a [read replica](../../../deploy/multi-dc/read-replica-clusters/): an asynchronous copy of the data placed near the client in another region that can serve reads when follower reads are on.
 
-YugabyteDB requires reading from the leader to read the latest data. However, for applications that do not require the latest data or are working with unchanging data, the cost of contacting a potentially remote leader to fetch the data may be wasteful. Your application may benefit from better latency by reading from a replica that is closer to the client.
+Follower reads are applicable for applications that can tolerate staleness. Replicas may not be completely up-to-date with all updates, so this design may respond with stale data. Consider the following use cases:
 
-## Use cases
+1. Rarely changing data. Suppose a storefront in one region serves a product catalog whose leader is in another. Descriptions and prices change occasionally, and a page a few seconds behind is fine for the shopper. The closest replica can serve those reads, so each page view avoids a round trip to the remote leader.
 
-1. Time-critical. Suppose the end-user starts a donation page to raise money for a personal cause and the target amount must be met by the end of the day. In a time-critical scenario, the end-user benefits from accessing the most recent donation made on the page and can keep track of the progress. Such real-time applications require the latest information as soon as it is available. But in the case of an application where fetching slightly stale data is acceptable, follower reads can be helpful.
+1. Latency-tolerant (staleness). Suppose a social media post gets a million likes and more continuously. For a post with massive likes, slightly stale reads are acceptable, and immediate updates are not necessary because the absolute number may not really matter to someone reading the post. Such applications don't need to always make requests directly to the leader. Instead, a slightly older value from the closest replica can achieve improved performance with lower latency.
 
-1. Latency-tolerant (staleness). Suppose a social media post gets a million likes and more continuously. For a post with massive likes such as this one, slightly stale reads are acceptable, and immediate updates are not necessary because the absolute number may not really matter to the end-user reading the post. Such applications do not need to always make requests directly to the leader. Instead, a slightly older value from the closest replica can achieve improved performance with lower latency.
+You can specify how much staleness the application can tolerate. When enabled, read-only operations may be handled by the closest replica, instead of having to go to the leader.
 
-Follower reads are applicable for applications that can tolerate staleness. Replicas may not be completely up-to-date with all updates, so this design may respond with stale data. You can specify how much staleness the application can tolerate. When enabled, read-only operations may be handled by the closest replica, instead of having to go to the leader.
+For information on how a read chooses a replica, how stale the result is, and how to turn follower reads on, see [Follower reads](../../../additional-features/follower-reads/).
 
 ## Leaders and leader leases
 
@@ -31,56 +33,11 @@ The leader lease mechanism guarantees to serve strongly consistent reads where a
 
 For an illustration of the performance improvements using leader leases, see [Low Latency Reads in Geo-Distributed SQL with Raft Leader Leases](https://www.yugabyte.com/blog/low-latency-reads-in-geo-distributed-sql-with-raft-leader-leases/).
 
-## Configuration parameters
+## Example
 
-The following YSQL configuration parameters control the behavior of follower reads:
+{{< tabpane text=true >}}
 
-- `yb_read_from_followers` controls whether or not reading from followers is enabled. The default value is false.
-
-- `yb_follower_read_staleness_ms` sets the exact staleness to read at (the read executes at hybrid time ~`now - yb_follower_read_staleness_ms`). The default value is 30000 (30 seconds). Unlike YCQL follower reads, which support a [looser consistency model](../follower-reads-ycql/#consistency-level), YSQL follower reads do not return data newer than this staleness interval, even if available at a local replica, in order to ensure consistency.
-
-  Although the default is recommended, you can set the staleness to a shorter value. The tradeoff is the shorter the staleness, the more likely some reads may be redirected to the leader if the follower isn't sufficiently caught up. You shouldn't set `yb_follower_read_staleness_ms` to less than 2x the [raft_heartbeat_interval_ms](../../../reference/configuration/yb-tserver/#raft-heartbeat-interval-ms) (which by default is 500 ms).
-
-  Note that even if the tablet leader is on the closest node, you would still read from `Now()-yb_follower_read_staleness_ms`. Therefore, when follower reads are used, the read is always stale, even if you are reading from a tablet leader.
-
-  To monitor whether any reads are being redirected from a node to the leader, use the metric `consistent_prefix_failed_reads`. This shows the number of these requests that are redirected.
-
-In addition, the `ysql_follower_reads_avoid_waiting_for_safe_time` flag governs whether a stale read will wait at the follower, or be redirected to the leader immediately.
-
-## Expected behavior
-
-The following table describes the expected behavior when a read happens from a follower.
-
-| Conditions | Expected behavior |
-| :--------- | :---------------- |
-| `yb_read_from_followers` is true AND transaction is marked read only | Read happens from the closest replica of the tablet, which could be leader or follower. |
-| `yb_read_from_followers` is false OR transaction or statement is not read only | Read happens from the leader. |
-
-## Read-only transaction
-
-You can mark a transaction as read only by applying any of the following:
-
-- SET TRANSACTION READ ONLY
-
-    Applies only to the current transaction block.
-
-- SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY
-
-    Applies the read-only setting to all statements and transaction blocks that follow.
-
-- SET default_transaction_read_only = TRUE
-
-    Applies the read-only setting to all statements and transaction blocks that follow.
-
-Note: The use of `pg_hint_plan` to mark a statement as read only is not recommended. It may work in some cases, but relies on side effects and has known issues (see [GH17024](https://github.com/yugabyte/yugabyte-db/issues/17024) and  [GH17135](https://github.com/yugabyte/yugabyte-db/issues/17135)).
-
-## Caveats
-
-- If the follower's safe-time is at least `<current_time> - <staleness>`, the follower may serve the read without any delay.
-
-- If the follower is not yet caught up to `<current_time> - <staleness>`, the read is redirected to a different replica transparently from the end-user. The end-user may see a slight increase in latency depending on the location of the replica which satisfies the read.
-
-## Examples
+  {{% tab header="YSQL" lang="YSQL" %}}
 
 This example uses follower reads because the transaction is marked read-only:
 
@@ -247,3 +204,97 @@ SELECT * FROM t WHERE k = 'k1';
 ```
 
 Note that your results may differ slightly depending on how quickly you run the queries.
+
+  {{% /tab %}}
+
+  {{% tab header="YCQL" lang="YCQL" %}}
+
+You configure follower reads by setting the consistency level to `ONE`, and how stale a follower read may be using [--max_stale_read_bound_time_ms](../../../reference/configuration/yb-tserver/#max-stale-read-bound-time-ms).
+
+In this tutorial, you update a single key-value over and over and read it from the tablet leader. You then stop that workload and run it again so the reads come from a follower.
+
+### Create a cluster
+
+{{<setup/local numnodes="4" collapse="no" locations="aws.us-east-2.us-east-2a,aws.us-east-2.us-east-2b,aws.us-east-2.us-east-2c,aws.us-east-2.us-east-2d">}}
+
+### Write some data
+
+Download the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) JAR file (`yb-sample-apps.jar`) by running the following command:
+
+{{% yb-sample-apps-path %}}
+
+By default, the YugabyteDB workload generator runs with strong read consistency, where all data is read from the tablet leader. You populate exactly one key with a `10KB` value. Because the replication factor is `3`, this key is replicated to only three of the four nodes in the cluster.
+
+Run the `CassandraKeyValue` workload application to constantly update this key-value, as well as perform reads with strong consistency against the local cluster, as follows:
+
+```sh
+$ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
+                                    --nodes 127.0.0.1:9042 \
+                                    --nouuid \
+                                    --num_unique_keys 1 \
+                                    --num_threads_write 1 \
+                                    --num_threads_read 1 \
+                                    --value_size 10240
+```
+
+In the preceding command, the value of `num_unique_keys` is set to `1`, which means a single key `key:0` was overwritten. You can verify this using ycqlsh as follows:
+
+```sh
+$ ./bin/ycqlsh 127.0.0.1
+```
+
+```output
+Connected to local cluster at 127.0.0.1:9042.
+[ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
+Use HELP for help.
+```
+
+Run a query as follows:
+
+```sql
+ycqlsh> SELECT k FROM ybdemo_keyspace.cassandrakeyvalue;
+```
+
+```output
+ k
+-------
+ key:0
+
+(1 rows)
+```
+
+When performing strongly consistent reads, all reads are served by the tablet leader of the tablet that contains the key `key:0`. Browse to the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page, where you can see that all the requests are indeed being served by one YB-TServer, as shown in the following illustration:
+
+![Reads from the tablet leader](/images/ce/tunable-reads-leader.png)
+
+### Follower reads from tablet replicas
+
+Stop the workload application, and then run it as follows:
+
+```sh
+$ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
+                                    --nodes 127.0.0.1:9042 \
+                                    --nouuid \
+                                    --num_unique_keys 1 \
+                                    --num_threads_write 1 \
+                                    --num_threads_read 1 \
+                                    --value_size 10240 \
+                                    --local_reads
+```
+
+Adding `--local_reads` sets the [consistency](../../../api/ycqlsh/#consistency) level to `ONE` for reads, so a follower can serve them. Updates to the same key `key:0` still go through the tablet leader.
+
+You can see this by refreshing the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page. The writes are served by a single YB-TServer that is the leader of the tablet for the key `key:0`, while multiple YB-TServer replicas serve the reads.
+
+![Reads from the tablet follower](/images/ce/tunable-reads-followers.png)
+
+  {{% /tab %}}
+
+{{< /tabpane >}}
+
+{{% explore-cleanup-local %}}
+
+## Read more
+
+- [Read replica deployment](../../../deploy/multi-dc/read-replica-clusters/)
+- [Read replicas](../../multi-region-deployments/read-replicas-ycql/)

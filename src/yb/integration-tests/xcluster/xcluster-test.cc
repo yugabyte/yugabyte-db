@@ -130,6 +130,7 @@ DECLARE_uint64(log_segment_size_bytes);
 DECLARE_int64(log_stop_retaining_min_disk_mb);
 DECLARE_uint32(replication_failure_delay_exponent);
 DECLARE_int64(rpc_throttle_threshold_bytes);
+DECLARE_int32(tablet_report_limit);
 DECLARE_int32(transaction_table_num_tablets);
 DECLARE_int32(transaction_table_num_tablets);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
@@ -3912,6 +3913,48 @@ TEST_F_EX(XClusterTest, ReplicationErrorAfterMasterFailover, XClusterTestNoParam
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) =
       short_metric_report_interval_ms;
   ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
+}
+
+// A new master leader must learn the status of every healthy poller even when the tserver's
+// one-time status report arrives on a full tablet report heartbeat.
+TEST_F_EX(XClusterTest, ReplicationErrorLostDuringFullTabletReport, XClusterTestNoParam) {
+  constexpr uint32_t kNumTablets = 32;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 1;
+
+  ASSERT_OK(SetUpWithParams(
+      {kNumTablets}, {kNumTablets}, /* replication_factor */ 1, /* num_masters */ 3,
+      /* num_tservers */ 1));
+  ASSERT_OK(SetupReplication());
+  ASSERT_OK(CorrectlyPollingAllTablets(kNumTablets));
+  const auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table_->id()));
+  ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
+
+  // One tablet per full-report chunk, so the report spans many heartbeats.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_report_limit) = 1;
+
+  auto xcluster_consumer =
+      consumer_cluster()->mini_tablet_server(0)->server()->GetXClusterConsumer();
+  const auto errors_before = xcluster_consumer->TEST_metric_replication_error_count()->value();
+
+  auto* old_leader = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster());
+  ASSERT_OK(consumer_cluster()->StepDownMasterLeader());
+  // Step down can be delayed until the protege catches up, and the old leader still has every
+  // status, so the checks below must not reach it.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster()) != old_leader;
+      },
+      30s * kTimeMultiplier, "Master leader changes"));
+  // Returns only after the new leader has the tserver's complete full tablet report.
+  ASSERT_OK(consumer_cluster()->WaitForAllTabletServers());
+
+  // The new leader must still learn every poller's status.
+  ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt, 20));
+
+  // No poller changed state, so the new leader got the statuses from the one-time report.
+  ASSERT_EQ(errors_before, xcluster_consumer->TEST_metric_replication_error_count()->value());
+  ASSERT_EQ(kNumTablets, xcluster_consumer->TEST_ListPollers().size());
 }
 
 // Make sure we get SOURCE_UNREACHABLE when the source universe is not reachable.

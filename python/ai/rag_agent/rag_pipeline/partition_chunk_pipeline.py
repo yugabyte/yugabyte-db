@@ -1,10 +1,21 @@
-from typing import Generator, Any, Dict, Optional
+from typing import Callable, Generator, Any, Dict, Optional
 import codecs
+import json
+import mimetypes
 import os
 import boto3
 import logging
 import requests
 from rag_pipeline.chunk import chunk, get_splitter_for_filetype
+from rag_pipeline.content_profile import (
+    CHUNKER_VERSION,
+    DUMP,
+    PROSE,
+    PROSE_MERGE_CHARS,
+    merge_paragraphs,
+    profile_text,
+    split_dump_objects,
+)
 from observability import meko_observe
 
 # Guard against one get_object exhausting the worker's memory, since the whole
@@ -15,16 +26,48 @@ from observability import meko_observe
 # registered through dist_rag.create_source has no size check at all, because
 # CreateSourceProcessorForAWS_S3 queues every object of a supported type. Keep
 # this above 60 MB, or raise MAX_FILE_SIZE_BYTES per deployment.
+#
+# The Markdown fine-tuning path shares this cap. It costs more per byte than
+# the plain-text path, because md_parser also holds the block tokens for the
+# piece it is parsing and the chunk it is assembling. Peak RSS measured at this
+# 64 MiB default, by document shape: 194 MB for 20-byte paragraphs, 228 MB for
+# prose, 242 MB for fenced code, 250 MB for table-heavy, 303 MB for a single
+# section of prose.
+#
+# The expensive shape is a table-heavy document with no column-0 ATX heading,
+# which is one chunk holding every table in the file. What dominates there is
+# the chunk under construction, not the parser: md_parser._table_to_block
+# keeps one str per cell, so the cost scales with cells per source byte, and
+# the TableBlock rows for the whole document are live at once. That is a
+# property of one-chunk-per-heading-section, not of the read cap, and it has
+# no fixed ceiling. Measured at 64 MiB: 1,211 MB with 3-column tables of
+# 6-byte cells ("| r1 | v1 | w1 |"), 1,887 MB with 8-column tables of 2-byte
+# cells ("|a1|b1|...|h1|"). A denser table costs more again.
+#
+# Those figures are per task. A worker claims one task at a time, so they are
+# also per pod; concurrency is how many rag-agent replicas run, set in the
+# agentic-cloud helm chart rather than by anything here. Size the text pod's
+# memory limit above the densest table you expect to index, not above a
+# number quoted here, and do not quote a single multiplier for this path.
 DEFAULT_MAX_FILE_SIZE_BYTES = 64 * 1024 * 1024  # 64 MiB
 
+_CONTENT_AWARE_FLAG = "ENABLE_CONTENT_AWARE_CHUNKING"
 
-# The Markdown fine-tuning path keeps its own, much lower cap. parse_markdown
-# peaks at about 23.4x the input, measured linearly at 1, 5 and 16 MiB (24.6 MB,
-# 122.8 MB and 392.9 MB), against roughly 2x for the plain-text path. At 64 MiB
-# that is about 1.5 GiB for one task, times WORKER_CONCURRENCY, so the two paths
-# cannot share one number. Raising this is MEKO-1128, which needs the worker
-# memory sized for it first.
-DEFAULT_MAX_MARKDOWN_FILE_SIZE_BYTES = 5 * 1024 * 1024  # 5 MiB
+STRATEGY_PARAGRAPH = "paragraph"
+STRATEGY_PROSE_MERGE = "prose_merge"
+STRATEGY_DUMP_OBJECTS = "dump_objects"
+_STRATEGIES = (STRATEGY_PARAGRAPH, STRATEGY_PROSE_MERGE, STRATEGY_DUMP_OBJECTS)
+
+
+def is_content_aware_chunking_enabled() -> bool:
+    """Off by default. On, it changes the chunks of text/plain uploads that
+    name no splitter and profile as prose or a SQL dump.
+
+    It applies to a document's first attempt only. A retry reuses the strategy
+    the earlier attempt recorded (see stream_partition_and_chunk), so flipping
+    the flag mid-ingestion does not leave two chunk sets for one document.
+    """
+    return os.getenv(_CONTENT_AWARE_FLAG, "false").strip().lower() == "true"
 
 
 def _env_size_bytes(var_name: str, default: int) -> int:
@@ -100,13 +143,6 @@ def max_file_size_bytes() -> int:
     )
     _warn_on_cap_drift(value)
     return value
-
-
-def max_markdown_file_size_bytes() -> int:
-    """Size cap for the Markdown fine-tuning read, overridable per deployment."""
-    return _env_size_bytes(
-        "MAX_MARKDOWN_FILE_SIZE_BYTES", DEFAULT_MAX_MARKDOWN_FILE_SIZE_BYTES
-    )
 
 
 def _iter_lines(text: str) -> Generator[str, None, None]:
@@ -229,11 +265,27 @@ def read_file_stream(
 def stream_partition_and_chunk(
     pipeline_id: int,  # pipeline id of the document being processed
     file_location: str,
-    chunk_args: Dict[str, Any] = {}
+    chunk_args: Optional[Dict[str, Any]] = None,
+    on_plan: Optional[Callable[[Dict[str, Any]], None]] = None,
+    earlier_strategy: Optional[Callable[[], Optional[str]]] = None,
 ) -> Generator[str, None, None]:
     """
     Partitions a text file from s3 or nfs into logical paragraphs, and
     further chunks paragraphs using chunk function from chunk.py.
+
+    A text/plain file is profiled (rag_pipeline.content_profile). With
+    ENABLE_CONTENT_AWARE_CHUNKING on, prose has its small paragraphs merged
+    and a SQL dump is packed one whole object at a time. Anything else, and
+    every file with the flag off or a splitter named in chunk_args, is chunked
+    per paragraph as before.
+    on_plan, if given, is called once with the strategy, the chunker version
+    and the profile, before the first chunk is yielded.
+
+    earlier_strategy, if given, returns the strategy an earlier attempt at the
+    same document recorded, or None on a first attempt. A known one is reused
+    in place of the flag. Chunk ids hash position and text, and the insert
+    skips matching ids without deleting stale ones, so a retry chunked another
+    way would leave the first attempt's chunks next to its own.
 
     The file is read in one call before the first chunk is yielded. Reading it
     lazily held the S3 response open for the whole embedding run - minutes per
@@ -251,6 +303,7 @@ def stream_partition_and_chunk(
         if paragraph:
             yield "\n".join(paragraph).strip()
 
+    chunk_args = chunk_args or {}
     # nikhil-todo: chunk args should be configured from the request chunk_embedding_kwargs.
     auto_splitter, auto_args = get_splitter_for_filetype(file_location)
     splitter = chunk_args.get('splitter', auto_splitter)
@@ -265,10 +318,53 @@ def stream_partition_and_chunk(
         max_size_bytes=max_file_size_bytes(),
         knob="MAX_FILE_SIZE_BYTES",
     )
-    lines_iter = _iter_lines(full_text)
-    logging.debug(f"generated lines_iter for file: {file_location}")
-    for paragraph in paragraph_stream(lines_iter):
-        for chunked_text in chunk(splitter, paragraph, args):
+
+    profile = None
+    earlier = None
+    strategy = STRATEGY_PARAGRAPH
+    file_type, _ = mimetypes.guess_type(file_location)
+    # A caller that names a splitter has chosen its chunking; keep it.
+    if file_type == "text/plain" and "splitter" not in chunk_args:
+        profile = profile_text(full_text)
+        if is_content_aware_chunking_enabled():
+            if profile.content_class == PROSE:
+                strategy = STRATEGY_PROSE_MERGE
+            elif profile.content_class == DUMP:
+                strategy = STRATEGY_DUMP_OBJECTS
+        earlier = earlier_strategy() if earlier_strategy is not None else None
+        if earlier in _STRATEGIES:
+            strategy = earlier
+        elif earlier is not None:
+            logging.warning(
+                f"Earlier attempt at {file_location} used unknown chunking "
+                f"strategy {earlier!r}; using {strategy!r}"
+            )
+
+    plan = {"chunker_version": CHUNKER_VERSION, "strategy": strategy}
+    if profile is not None:
+        plan["profile"] = profile.to_metadata()
+    if earlier in _STRATEGIES:
+        plan["reused_from_earlier_attempt"] = True
+    logging.info(f"Chunking plan for {file_location}: {plan}")
+    if on_plan is not None:
+        on_plan(plan)
+
+    if strategy == STRATEGY_PARAGRAPH:
+        pieces = paragraph_stream(_iter_lines(full_text))
+    else:
+        # Never merge past the splitter's own chunk size.
+        chunk_size = json.loads(args).get("chunk_size", 1000)
+        if strategy == STRATEGY_DUMP_OBJECTS:
+            pieces = merge_paragraphs(
+                split_dump_objects(full_text), chunk_size
+            )
+        else:
+            pieces = merge_paragraphs(
+                paragraph_stream(_iter_lines(full_text)),
+                min(PROSE_MERGE_CHARS, chunk_size),
+            )
+    for piece in pieces:
+        for chunked_text in chunk(splitter, piece, args):
             yield chunked_text
 
 def enforce_size_limit(

@@ -695,6 +695,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   void ChangeConfigReplicated(const consensus::RaftConfigPB& config) override;
   uint64_t NumSSTFiles() override;
   void ListenNumSSTFilesChanged(std::function<void()> listener) override;
+  bool PendingPostSplitCompaction() override;
   rpc::Scheduler& scheduler() const override;
   Status CheckOperationAllowed(
       const OpId& op_id, consensus::OperationType op_type) override;
