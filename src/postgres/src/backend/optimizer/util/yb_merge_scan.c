@@ -581,8 +581,9 @@ ybIsMergeGapCol(IndexOptInfo *index, List *indexclauses, Bitmapset *saop_idxs,
  * is not embedded, does not, so merge on the gap column as well.  Only that
  * case needs it, but where each filter runs is not known here (see #37497), so
  * merge on every gap column.  That includes a gap column the index predicate
- * holds constant, which needs no merge, but merging on it costs only
- * comparisons that always tie.
+ * holds constant, which needs no merge, but merging on it costs comparisons
+ * that always tie, and for an expression column of an embedded index scan, the
+ * cut in yb_finalize_merge_scan_info.
  */
 static void
 ybAppendMergeGapCol(YbSortInfo *sort_info, IndexOptInfo *index,
@@ -738,8 +739,9 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 		 * For an embedded index scan, an expression column is not available
 		 * for sort (see also #36017).  That holds for the merge sort column of
 		 * this pathkey and for a gap column before it, which the merge sorts
-		 * on as well, even when the filters that tie the gap column run before
-		 * the merge (see also #37497).
+		 * on as well, even when the gap column needs no merge: the filters
+		 * that tie it run before the merge (see also #37497), or the index
+		 * predicate holds it constant.
 		 */
 		if (embedded &&
 			(index->indexkeys[tle->resno - 1] == 0 || expression_gap))
