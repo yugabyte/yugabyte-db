@@ -203,6 +203,77 @@ public class TestPgStatActivity extends BaseYsqlConnMgr {
         }
     }
 
+    private static final int ASH_PG_SLEEP_SECONDS = 3;
+
+    private String clockTimestamp(Connection conn) throws Exception {
+        ResultSet rs = conn.createStatement().executeQuery("SELECT clock_timestamp()::text");
+        assertTrue(rs.next());
+        return rs.getString(1);
+    }
+
+    /*
+     * Runs pg_sleep on conn and checks that the ASH samples taken meanwhile
+     * report the expected logical client.
+     */
+    private void assertAshClientNodeIp(Connection conn, InetSocketAddress expected)
+            throws Exception {
+        String start = clockTimestamp(conn);
+        conn.createStatement().execute("SELECT pg_sleep(" + ASH_PG_SLEEP_SECONDS + ")");
+        String end = clockTimestamp(conn);
+
+        ResultSet rs = conn.createStatement().executeQuery(String.format(
+            "SELECT client_node_ip FROM yb_active_session_history" +
+            " WHERE wait_event = 'PgSleep' AND sample_time BETWEEN '%s' AND '%s'",
+            start, end));
+        int samples = 0;
+        while (rs.next()) {
+            String clientNodeIp = rs.getString(1);
+            LOG.info("client_node_ip={}", clientNodeIp);
+            assertNotNull("client_node_ip should be populated", clientNodeIp);
+            // ip:port for IPv4, [ip]:port for IPv6.
+            int lastColon = clientNodeIp.lastIndexOf(':');
+            String addr = clientNodeIp.substring(0, lastColon).replaceAll("[\\[\\]]", "");
+            int port = Integer.parseInt(clientNodeIp.substring(lastColon + 1));
+            assertEquals("client_node_ip should match the logical client",
+                expected, new InetSocketAddress(addr, port));
+            ++samples;
+        }
+        assertTrue("expected PgSleep samples in yb_active_session_history", samples > 0);
+    }
+
+    /*
+     * Verifies that yb_active_session_history reports the address and port of
+     * the logical client, not of Ysql Conn Mgr, and follows the logical client
+     * when the backend is reused by another one.
+     */
+    @Test
+    public void testAshClientNodeIp() throws Exception {
+        final int tserverIndex = 0;
+        InetSocketAddress ysqlConnMgrAddr =
+            miniCluster.getYsqlConnMgrContactPoints().get(tserverIndex);
+        String ysqlConnMgrHost = ysqlConnMgrAddr.getHostName();
+        int ysqlConnMgrPort = ysqlConnMgrAddr.getPort();
+
+        List<InetSocketAddress> before = getJvmConnectionsTo(ysqlConnMgrHost, ysqlConnMgrPort);
+        try (Connection conn1 = connectViaConnMgr(tserverIndex)) {
+            List<InetSocketAddress> afterConn1 =
+                getJvmConnectionsTo(ysqlConnMgrHost, ysqlConnMgrPort);
+            InetSocketAddress client1 = newConnection(before, afterConn1);
+
+            try (Connection conn2 = connectViaConnMgr(tserverIndex)) {
+                InetSocketAddress client2 = newConnection(afterConn1,
+                    getJvmConnectionsTo(ysqlConnMgrHost, ysqlConnMgrPort));
+
+                // Alternate between the clients so that a shared backend is
+                // re-attached to a different logical client each time.
+                for (int i = 0; i < 2; ++i) {
+                    assertAshClientNodeIp(conn1, client1);
+                    assertAshClientNodeIp(conn2, client2);
+                }
+            }
+        }
+    }
+
     private static final String SAVED_DEFAULT_WARNING = "ysql_conn_mgr_saved_default already set";
     private static final String LOG_MARKER = "TestPgStatActivity log marker";
 

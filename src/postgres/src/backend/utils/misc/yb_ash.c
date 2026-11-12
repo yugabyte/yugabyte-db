@@ -58,6 +58,7 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb_ash.h"
 #include "yb_query_diagnostics.h"
+#include "yb_ysql_conn_mgr_helper.h"
 
 /* The number of columns in different versions of the view */
 #define ACTIVE_SESSION_HISTORY_COLS_V1 12
@@ -174,6 +175,7 @@ static int	yb_ash_cb_max_entries(void);
 static void YbAshSetQueryPlanPair(YbcAshQueryPlanPair qp_pair);
 static void YbAshResetQueryPlanPair(YbcAshQueryPlanPair qp_pair);
 static void YbAshFlushDeferredPop(void);
+static void YbAshSetClientAddr(void);
 static uint64 yb_ash_utility_query_id(const char *query, int query_len,
 									  int query_location,
 									  bool is_sensitive_stmt);
@@ -708,6 +710,13 @@ YbAshSetMetadata(void)
 
 	/* Populate current effective user id into ASH metadata */
 	MyProc->yb_ash_metadata.user_id = GetUserId();
+
+	/*
+	 * With Ysql Connection Manager, the backend may serve a different logical
+	 * client from one request to the next.
+	 */
+	if (YbIsClientYsqlConnMgr())
+		YbAshSetClientAddr();
 }
 
 /*
@@ -825,11 +834,6 @@ YbAshResetQueryPlanPairForMessage(uint64 query_id)
 
 /*
  * Sets the client address, port and pid for ASH metadata.
- * If the address family is not AF_INET or AF_INET6, then the PGPPROC ASH metadata
- * fields for client address and port don't mean anything. Otherwise, if
- * pg_getnameinfo_all returns non-zero value, a warning is printed with the error
- * code and ASH keeps working without client address and port for the current PG
- * backend.
  *
  * Until MyProc->yb_is_ash_metadata_set is set to true, the backend won't be sampled,
  * that means there will be no readers or writers of the fields proctected by the lock,
@@ -840,11 +844,48 @@ YbAshSetOneTimeMetadata()
 {
 	Assert(MyProc->yb_is_ash_metadata_set == false);
 
-	/* Set the address family, pid and null the client_addr and client_port */
 	MyProc->yb_ash_metadata.pid = MyProcPid;
+	YbAshSetClientAddr();
+}
+
+/*
+ * Sets the client address and port for ASH metadata. With Ysql Connection
+ * Manager, MyProcPort is the connection manager's socket, so the logical
+ * client's address and port are used instead.
+ *
+ * If the address family is not AF_INET or AF_INET6, then the PGPPROC ASH metadata
+ * fields for client address and port don't mean anything. Otherwise, if
+ * pg_getnameinfo_all returns non-zero value, a warning is printed with the error
+ * code and ASH keeps working without client address and port for the current PG
+ * backend.
+ *
+ * Safe without locks for the same reason as YbAshSetOneTimeMetadata.
+ */
+static void
+YbAshSetClientAddr(void)
+{
+	Assert(MyProc->yb_is_ash_metadata_set == false);
+
+	/* Null the address family, client_addr and client_port */
 	MyProc->yb_ash_metadata.addr_family = AF_UNSPEC;
 	MemSet(MyProc->yb_ash_metadata.client_addr, 0, 16);
 	MyProc->yb_ash_metadata.client_port = 0;
+
+	if (YbHasConnMgrLogicalClientAddr())
+	{
+		if (inet_pton(AF_INET, yb_ycm_internal_client_addr,
+					  MyProc->yb_ash_metadata.client_addr) == 1)
+			MyProc->yb_ash_metadata.addr_family = AF_INET;
+#ifdef HAVE_IPV6
+		else if (inet_pton(AF_INET6, yb_ycm_internal_client_addr,
+						   MyProc->yb_ash_metadata.client_addr) == 1)
+			MyProc->yb_ash_metadata.addr_family = AF_INET6;
+#endif
+
+		if (yb_ycm_internal_client_port >= 0)
+			MyProc->yb_ash_metadata.client_port = yb_ycm_internal_client_port;
+		return;
+	}
 
 	/* Background workers and bootstrap processing may have null MyProcPort */
 	if (MyProcPort == NULL)
