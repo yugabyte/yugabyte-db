@@ -399,14 +399,18 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   }
 
   /**
-   * @param skipAZs AZs this scale-up must not render. An edit passes the AZs it fully moves for
-   *     serverType: the full move creates their new StatefulSets itself, and rendering the old ones
-   *     at the new count would add pods with the old disk spec.
-   * @param tserverMasterAddrs tserver_master_addrs for the tserver Secrets of the AZs this render
-   *     touches. It matters when serverType is MASTER: masterAddresses is then empty, and the chart
-   *     writes only the AZ's own masters into the tserver Secret. For example, when an edit adds a
-   *     master to az-2 while the leader is in az-1, an az-2 tserver that restarts would list only
-   *     az-2's master, find no leader and never register. Null keeps the chart's list.
+   * @param skipAZs AZs this call does not touch.
+   *     <p>Used by an edit that fully moves serverType in those AZs. The full move builds their new
+   *     pods itself, so this call must not add pods to their old StatefulSets.
+   *     <p>Example: an edit changes the tserver storage class, which K8s cannot change on an
+   *     existing StatefulSet. The AZs are fully moved for tservers and passed here.
+   * @param tserverMasterAddrs the master list to write into the tserver Secrets. Null keeps the
+   *     list the chart writes.
+   *     <p>Used when serverType is MASTER. masterAddresses is then empty, and the chart writes only
+   *     the AZ's own masters into the tserver Secret. A tserver must find the master leader in its
+   *     list to register.
+   *     <p>Example: an edit adds a master to az-2 while the leader is in az-1. Without this list,
+   *     an az-2 tserver that restarts lists only the az-2 master and never registers.
    */
   public void createPodsTask(
       String universeName,
@@ -1084,17 +1088,20 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   }
 
   /**
-   * @param skipMasterAZs AZs not rendered when serverType is MASTER or EITHER, for both server
-   *     types. An edit skips the AZs a full move of masters replaces: K8s would reject the target
-   *     disk spec on their old StatefulSets, and their new ones get the master list when the full
-   *     move creates them.
-   * @param skipTserverAZs AZs not rendered when serverType is TSERVER, as for a read replica.
-   * @param keepDiskSpecAZs AZs rendered with the disk spec their StatefulSets have now instead of
-   *     the edit's target one, mapped to the disk size per server type to keep, if a disk resize
-   *     already saved the new size to the universe. Used for StatefulSets the edit has not resized
-   *     or replaced yet, whose volumeClaimTemplates K8s would refuse to change. For example, when
-   *     an edit replaces az-3 with az-4 and changes the storage class, the Secret render before the
-   *     master removes still touches az-3, which must keep its current storage class.
+   * @param skipMasterAZs AZs this call does not touch when serverType is MASTER or EITHER. Both
+   *     server types of those AZs are skipped.
+   *     <p>Used by an edit that fully moves masters. Their old master StatefulSets cannot take the
+   *     edit's new disk spec, and the full move gives the new ones the master list.
+   * @param skipTserverAZs AZs this call does not touch when serverType is TSERVER, which is how a
+   *     read replica is rendered.
+   * @param keepDiskSpecAZs AZs to render with the disk spec their StatefulSets have now, instead of
+   *     the edit's new one. Each AZ maps to the disk size to keep per server type. A size is there
+   *     only when a disk resize earlier in the edit has already saved the new size to the universe.
+   *     <p>Used for StatefulSets the edit has not resized or replaced yet: K8s rejects a change to
+   *     their volumeClaimTemplates.
+   *     <p>Example: an edit replaces az-3 with az-4 and changes the storage class. The Secret
+   *     render before the master removes still updates az-3, which must keep its current storage
+   *     class.
    */
   public void upgradePodsNonRestart(
       String universeName,
@@ -1705,13 +1712,14 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   // Pod deletion subtasks for non-full move edit oprations
   // Note: Pods delete for K8s full move case is handled separately in its own set of subtasks
   /**
-   * @param skipAZs AZs this scale-down must not render. An edit passes the AZs it fully moves
-   *     tservers in: the full move deletes their old StatefulSets itself.
-   * @param useNewMasterDeviceInfo render the task's master disk spec, which the master StatefulSets
-   *     have once every master step of an edit has run, instead of the saved one. Pass true when
-   *     the scale-down runs after a full move of masters, such as an edit that changes the master
-   *     storage class and removes tservers: the saved spec would change the new master
-   *     StatefulSets' volumeClaimTemplates back, which K8s rejects.
+   * @param skipAZs AZs this call does not touch.
+   *     <p>Used by an edit that fully moves tservers in those AZs. The full move deletes their old
+   *     StatefulSets itself.
+   * @param useNewMasterDeviceInfo true to render the master disk spec from the edit, false to
+   *     render the saved one.
+   *     <p>Pass true when this runs after a full move of masters. The new master StatefulSets
+   *     already have the edit's spec, and K8s rejects changing it back.
+   *     <p>Example: an edit changes the master storage class and removes tservers.
    */
   public void deletePodsTask(
       String universeName,
@@ -2313,14 +2321,15 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   }
 
   /**
-   * Deletes the PVCs of the server type that none of its podCount pods in the AZ uses.
+   * Deletes the PVCs of serverType in the AZ that no running pod uses.
    *
-   * @param serverType whose PVCs to delete. TSERVER is for scale-downs and tserver full moves: K8s
-   *     keeps a removed pod's PVC, so a later scale-up from 2 to 3 tservers would reattach the PVC
-   *     of the removed third tserver, with its data and UUID.
-   * @param podCount the AZ's pod count of serverType after the edit. The task waits for that many
-   *     pods, so a pod not yet up cannot make its PVC look unused, then deletes the PVCs none of
-   *     them mounts.
+   * @param serverType the server type whose PVCs to delete.
+   *     <p>TSERVER is used after tservers are removed. K8s keeps a removed pod's PVC, and a later
+   *     scale-up reuses it.
+   *     <p>Example: az-1 goes from 3 tservers to 2. If az-1 later goes back to 3, the new pod
+   *     mounts the removed tserver's PVC and comes up with its old data and UUID.
+   * @param podCount how many pods of serverType the AZ has after the edit. The task first waits for
+   *     that many pods, so a pod that is still starting cannot make its PVC look unused.
    */
   public KubernetesCommandExecutor garbageCollectVolumes(
       String universeName,
@@ -2511,10 +2520,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   }
 
   /**
-   * @param tserverMasterAddrs tserver_master_addrs for this AZ's tserver Secret, for a render whose
-   *     masterAddresses is empty, such as the one that adds masters in an edit. The chart would
-   *     otherwise list only the AZ's own masters, which may not hold the leader. Null keeps the
-   *     chart's list.
+   * @param tserverMasterAddrs the master list to write into this AZ's tserver Secret. Null keeps
+   *     the list the chart writes.
+   *     <p>Used when masterAddresses is empty, as when an edit adds masters. The chart then lists
+   *     only the AZ's own masters, which may not include the leader. See createPodsTask.
    */
   public KubernetesCommandExecutor createKubernetesExecutorTaskForServerType(
       String universeName,
@@ -2636,10 +2645,13 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   }
 
   /**
-   * @param tserverMasterAddrs tserver_master_addrs for this AZ's tserver Secret. A full move of
-   *     masters creates the new master StatefulSets with an empty masterAddresses, so without it
-   *     the chart lists only the AZ's new masters, which have not joined the quorum yet. A tserver
-   *     of the AZ that restarts during the move would find no leader. Null keeps the chart's list.
+   * @param tserverMasterAddrs the master list to write into this AZ's tserver Secret. Null keeps
+   *     the list the chart writes.
+   *     <p>Used by a full move of masters, which creates the new master StatefulSets with an empty
+   *     masterAddresses. The chart would then list only the AZ's new masters, which have not joined
+   *     the quorum yet.
+   *     <p>Example: an edit changes the master storage class. An az-1 tserver that restarts during
+   *     the move must still find the current leader.
    */
   protected KubernetesCommandExecutor createFullMoveSubTask(
       boolean isReadOnlyCluster,
@@ -3441,11 +3453,12 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   }
 
   /**
-   * @param keptDiskSizes non-null to render the disk spec the StatefulSets have now: the saved
-   *     storage class and volume count, and these sizes per server type when present. For an AZ an
-   *     edit has not resized or replaced yet, whose volumeClaimTemplates K8s would refuse to
-   *     change. A size is present when a disk resize earlier in the edit already saved the new size
-   *     to the universe. Null renders the edit's target spec.
+   * @param keptDiskSizes null to render the edit's new disk spec. Non-null to render the spec the
+   *     StatefulSets have now: the saved storage class and volume count, with the sizes in this map
+   *     per server type.
+   *     <p>Used for AZs the edit has not resized or replaced yet, since K8s rejects a change to
+   *     their volumeClaimTemplates. A size is in the map only when a disk resize earlier in the
+   *     edit has already saved the new size to the universe. See upgradePodsNonRestart.
    */
   public KubernetesCommandExecutor getSingleNonRestartKubernetesExecutorTaskForServerTypeTask(
       String universeName,

@@ -1193,22 +1193,24 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
   }
 
   /**
-   * Sends the RPC to update the master addresses in the config.
+   * Adds and removes masters through Raft config changes.
    *
-   * @param masterPushTargets masters that get the new list in memory: the ones running once the
-   *     move is done. When an edit replaces az-3 with az-4, az-4's new master is a target and
-   *     az-3's leaving master is not.
-   * @param bestEffortTservers names of tservers whose push may fail without failing the edit: the
-   *     ones the edit removes. An edit that replaces az-3 because its node is down must still move
-   *     the masters. The Secret render covers those tservers if they restart.
-   * @param pushMasterAddrs whether to push the live master list to masterPushTargets and every
-   *     tserver after the adds and after the removes. False when an earlier attempt already pushed
-   *     it, or the params come from a YBA build that never did: the pods it would push to may be
-   *     gone.
-   * @param beforeRemoves runs after the push and before the first remove, to rewrite the gflags
-   *     Secrets with the old and new masters. A tserver that restarts after a remove then still
-   *     boots with the leader in its list. Null when nothing is to be rendered here, such as when a
-   *     full move of masters renders it.
+   * @param masterPushTargets masters that get the new master list in memory: the ones that run
+   *     after the move.
+   *     <p>Example: an edit replaces az-3 with az-4. The new az-4 master is a target. The az-3
+   *     master, which is being removed, is not.
+   * @param bestEffortTservers names of the tservers whose push may fail without failing the edit.
+   *     <p>Used for the tservers the edit removes, which may be down.
+   *     <p>Example: an edit replaces az-3 because its node is down. The push to the az-3 tserver
+   *     fails, and the edit goes on.
+   * @param pushMasterAddrs true to push the live master list to masterPushTargets and every
+   *     tserver, after the adds and again after the removes.
+   *     <p>False on a retry after an earlier attempt pushed it, or when the params come from a YBA
+   *     build without this push. The pods it would push to may be gone by then.
+   * @param beforeRemoves runs after the adds and before the first remove. Null to run nothing.
+   *     <p>Used to rewrite the gflags Secrets with the old and new masters, so a tserver that
+   *     restarts during the removes still finds the leader. Null when a full move of masters does
+   *     this itself.
    */
   public void createMoveMasterTasks(
       List<NodeDetails> mastersToAdd,
@@ -1326,12 +1328,13 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
   }
 
   /**
-   * @param skipMasterAZs AZs whose Secrets this render leaves alone, for both server types of the
-   *     primary cluster. The render before the master removes skips the AZs a full move of masters
-   *     replaces, since the full move gives their new pods the list. The render after a full move
-   *     skips every AZ outside it, which the edit's later steps render.
-   * @param skipTserverAZs the same, for a read replica's render.
-   * @param keepDiskSpecAZs AZs rendered with the disk spec their StatefulSets have now. See
+   * @param skipMasterAZs AZs this call does not touch, for both server types of the primary
+   *     cluster.
+   *     <p>Before the master removes, these are the AZs a full move of masters replaces: the full
+   *     move gives their new pods the master list. After a full move, these are the AZs outside it,
+   *     which the edit updates separately.
+   * @param skipTserverAZs the same, for a read replica.
+   * @param keepDiskSpecAZs AZs to render with the disk spec their StatefulSets have now. See
    *     upgradePodsNonRestart.
    */
   public void createMasterAddressesUpdateTask(
@@ -1482,9 +1485,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
   }
 
   /**
-   * @param skipAZs AZs a full move of serverType creates the new pods in. See createPodsTask.
-   * @param tserverMasterAddrs tserver_master_addrs for the tserver Secrets when adding masters. See
-   *     createPodsTask.
+   * @param skipAZs AZs this call does not touch, because a full move of serverType builds their
+   *     pods. See createPodsTask.
+   * @param tserverMasterAddrs the master list to write into the tserver Secrets when adding
+   *     masters. See createPodsTask.
    */
   public void startNewPods(
       String universeName,
@@ -1583,22 +1587,22 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
    * @param masterAddresses Master addresses string
    * @param enableYbc Whether YBC is enabled
    * @param ybcSoftwareVersion YBC software version
-   * @param newMasterQuorum masters that get the new list in memory: the ones running once the move
-   *     is done. Empty for a tserver full move.
-   * @param bestEffortTservers names of tservers whose push may fail without failing the edit: the
-   *     ones the edit removes, which may be down.
-   * @param pushMasterAddrs whether each batch pushes the live master list to newMasterQuorum and
-   *     every tserver. See createMoveMasterTasks.
-   * @param beforeMasterRemoves runs before each batch's master removes, to rewrite the gflags
-   *     Secrets of the AZs outside the full move with the old and new masters. Null for a tserver
+   * @param newMasterQuorum masters that get the new master list in memory: the ones that run after
+   *     the move. Empty for a tserver full move.
+   * @param bestEffortTservers names of the tservers whose push may fail without failing the edit:
+   *     the ones the edit removes, which may be down.
+   * @param pushMasterAddrs true to push the live master list during the move. See
+   *     createMoveMasterTasks.
+   * @param beforeMasterRemoves runs before the master removes. Null to run nothing, as in a tserver
    *     full move.
-   * @param mastersToRemoveLast masters outside the full move removed in its last batch, once all
-   *     new masters have joined. For example, an edit that removes az-3 and changes the master
-   *     storage class of az-1 and az-2 removes az-3's master last, so the quorum never shrinks
-   *     below its size mid-move.
-   * @param tserverMasterAddrs tserver_master_addrs for the renders that create the new master pods,
-   *     which otherwise list only the AZ's new masters. See createFullMoveSubTask. Null for a
-   *     tserver full move.
+   *     <p>Used to rewrite the Secrets outside the full move with the old and new masters, so a
+   *     tserver there that restarts during the removes still finds the leader.
+   * @param mastersToRemoveLast masters outside the full move that are removed at its end, after
+   *     every new master has joined. This keeps the quorum at full size during the move.
+   *     <p>Example: an edit removes az-3 and changes the master storage class of az-1 and az-2. The
+   *     az-3 master is removed together with the old az-1 and az-2 masters, not before them.
+   * @param tserverMasterAddrs the master list to write into the tserver Secrets of the AZs whose
+   *     new master pods the move creates. Null for a tserver full move. See createFullMoveSubTask.
    */
   protected void createFullMoveTasks(
       Universe universe,
@@ -2345,14 +2349,15 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
    * Add disk resize tasks for each AZ in given cluster placement. Call this for each cluster of the
    * universe.
    *
-   * @param resizeAZs AZs whose serverType disks change. Others are not rendered: the render would
-   *     also give them the edit's target spec for the other server type. For example, when an edit
-   *     replaces az-3 with az-4, resizes the master disks and changes the tserver storage class,
-   *     rendering az-3 for the master resize would change its tserver storage class, which K8s
-   *     rejects.
-   * @param masterFullMoveAZs AZs skipped for a master resize: the full move creates their new
+   * @param resizeAZs AZs whose serverType disks the edit changes. Other AZs are not touched. The
+   *     render would also give those AZs the edit's new spec for the other server type, which K8s
+   *     rejects on StatefulSets the edit has not resized.
+   *     <p>Example: an edit replaces az-3 with az-4, resizes the master disks and changes the
+   *     tserver storage class. az-3 is not in resizeAZs, so its tserver StatefulSet keeps its
+   *     storage class.
+   * @param masterFullMoveAZs AZs skipped for a master resize. The full move creates their new
    *     master StatefulSets with the new disk spec.
-   * @param tserverFullMoveAZs the same for a tserver resize.
+   * @param tserverFullMoveAZs AZs skipped for a tserver resize, for the same reason.
    */
   protected void createResizeDiskTask(
       String universeName,
