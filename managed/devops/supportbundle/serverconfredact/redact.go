@@ -12,8 +12,8 @@ import (
 	"strings"
 )
 
-// SecretReplacement is the token every redactor substitutes for a secret. node_utils.sh also
-// greps for it to confirm redaction actually happened.
+// SecretReplacement is the token every redactor substitutes for a secret. support_bundle_utils.sh
+// also greps for it to confirm redaction actually happened.
 const SecretReplacement = "REDACTED"
 
 // Field names always redacted, regardless of the caller's gflag list.

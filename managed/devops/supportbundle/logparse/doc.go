@@ -8,7 +8,7 @@
 // (?!.*WARNING), which RE2 rejects. Backtracking is acceptable because the patterns come from YBA
 // configuration, not from the node.
 //
-// Contract with node_utils.sh, which reads stdout with $(...) and falls back to inline Python on
-// a non-zero exit: output has no trailing newline (match-batch prints one line per input), and the
-// pre-flight probe `add-days 20260101 0` must print exactly "20260101".
+// Contract with support_bundle_utils.sh, which reads stdout with $(...) and falls back to inline
+// Python on a non-zero exit: output has no trailing newline (match-batch prints one line per
+// input), and the pre-flight probe `add-days 20260101 0` must print exactly "20260101".
 package logparse

@@ -27,8 +27,8 @@ var logFileDateLayouts = []string{
 //
 // Fullmatch is enforced by hand — regexp2 has no fullmatch entry point, so a match is rejected
 // unless it starts at 0 and spans the whole name. This mirrors Python's re.fullmatch, which the
-// inline-Python fallback in node_utils.sh uses; a partial match here would classify files that
-// the fallback rejects, making collection depend on whether the binary was deployed.
+// inline-Python fallback in support_bundle_utils.sh uses; a partial match here would classify
+// files that the fallback rejects, making collection depend on whether the binary was deployed.
 func ParseFileTypeAndDateFromRegexes(fileName string, patterns []string) (fileType string, sortable string, err error) {
 	if len(patterns) == 0 {
 		return "", "", fmt.Errorf("no regex patterns provided")

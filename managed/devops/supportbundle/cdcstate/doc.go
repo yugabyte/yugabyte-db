@@ -13,7 +13,8 @@
 // {string:"xmin" -> string:"42"}, and <NULL> means absent. So smartSplit tracks quotes and brace
 // depth by hand; the output side uses encoding/csv.
 //
-// Contract with collect_cdc_state in node_utils.sh: the CSV goes to --output, progress and errors
-// to stderr (YBA logs only stderr on failure). `smoke` prints exactly "ok". Exit 0 success, 1
-// runtime failure, 2 missing argument. There is no fallback: a failure fails cdc_state on that node.
+// Contract with collect_cdc_state in support_bundle_utils.sh: the CSV goes to --output, progress
+// and errors to stderr (YBA logs only stderr on failure). `smoke` prints exactly "ok". Exit 0
+// success, 1 runtime failure, 2 missing argument. There is no fallback: a failure fails cdc_state
+// on that node.
 package cdcstate
