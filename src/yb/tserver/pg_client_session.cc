@@ -196,7 +196,6 @@ DECLARE_bool(ysql_yb_allow_replication_slot_ordering_modes);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_yb_enable_object_locking_infra);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 
 DECLARE_string(ysql_sequence_cache_method);
@@ -1835,7 +1834,7 @@ class PgClientSession::Impl {
         req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
     const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
         req.use_transaction(), req.use_regular_transaction_block(), context->GetClientDeadline(),
-        IsTxnUsingTableLocks(req.options().skip_legacy_ddl_fences()), GetDeferReadPoint(req),
+        IsTxnUsingTableLocks(req.options().is_using_table_locks()), GetDeferReadPoint(req),
         req.options().origination_ht()));
     RETURN_NOT_OK(helper.Exec(
         &client_, metadata, req.options().active_sub_transaction_id(),
@@ -1875,7 +1874,7 @@ class PgClientSession::Impl {
         VERIFY_RESULT(GetDdlTransactionMetadata(
             req.use_transaction(), req.use_regular_transaction_block(),
             context->GetClientDeadline(),
-            IsTxnUsingTableLocks(req.options().skip_legacy_ddl_fences()), GetDeferReadPoint(req),
+            IsTxnUsingTableLocks(req.options().is_using_table_locks()), GetDeferReadPoint(req),
             req.options().origination_ht())),
         req.colocated(), context->GetClientDeadline(), yb_clone_info);
   }
@@ -1897,7 +1896,7 @@ class PgClientSession::Impl {
       req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
     const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
         true /* use_transaction */, req.use_regular_transaction_block(),
-        context->GetClientDeadline(), IsTxnUsingTableLocks(req.options().skip_legacy_ddl_fences()),
+        context->GetClientDeadline(), IsTxnUsingTableLocks(req.options().is_using_table_locks()),
         GetDeferReadPoint(req),
         req.options().origination_ht()));
     // If ddl rollback is enabled, the table will not be deleted now, so we cannot wait for the
@@ -1940,7 +1939,7 @@ class PgClientSession::Impl {
       req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
     const auto txn = VERIFY_RESULT(GetDdlTransactionMetadata(
         req.use_transaction(), req.use_regular_transaction_block(), context->GetClientDeadline(),
-        IsTxnUsingTableLocks(req.options().skip_legacy_ddl_fences()), GetDeferReadPoint(req),
+        IsTxnUsingTableLocks(req.options().is_using_table_locks()), GetDeferReadPoint(req),
         req.options().origination_ht()));
     if (txn) {
       alterer->part_of_transaction(txn);
@@ -2183,7 +2182,7 @@ class PgClientSession::Impl {
       req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
     const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
         true /* use_transaction */, req.use_regular_transaction_block(),
-        context->GetClientDeadline(), IsTxnUsingTableLocks(req.options().skip_legacy_ddl_fences()),
+        context->GetClientDeadline(), IsTxnUsingTableLocks(req.options().is_using_table_locks()),
         GetDeferReadPoint(req),
         req.options().origination_ht()));
     const auto s = client_.CreateTablegroup(
@@ -2210,7 +2209,7 @@ class PgClientSession::Impl {
       req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
     const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
         true /* use_transaction */, req.use_regular_transaction_block(),
-        context->GetClientDeadline(), IsTxnUsingTableLocks(req.options().skip_legacy_ddl_fences()),
+        context->GetClientDeadline(), IsTxnUsingTableLocks(req.options().is_using_table_locks()),
         GetDeferReadPoint(req),
         req.options().origination_ht()));
     const auto status =
@@ -3791,7 +3790,7 @@ class PgClientSession::Impl {
         make_lw_function([this, locality, deadline] {
           return NextObjectLockingTxnMeta(locality, deadline);
         }),
-        IsTxnUsingTableLocks(options.skip_legacy_ddl_fences()),
+        IsTxnUsingTableLocks(options.is_using_table_locks()),
         context_.metrics,
         MakeOriginationInfo(options.origination_ht())));
     // PrepareOperations has already applied the ops to the session. Failing out before the flush
@@ -4033,7 +4032,7 @@ class PgClientSession::Impl {
       EnsureSession(kind, deadline, arena);
       RETURN_NOT_OK(GetDdlTransactionMetadata(
           true /* use_transaction */, false /* use_regular_transaction_block */, deadline,
-          IsTxnUsingTableLocks(options.skip_legacy_ddl_fences()),
+          IsTxnUsingTableLocks(options.is_using_table_locks()),
           DeferReadPoint(options.read_time_options().defer_read_point()),
           options.origination_ht(), arena, options.priority(), options.pg_txn_start_us()));
     } else {
@@ -4315,7 +4314,7 @@ class PgClientSession::Impl {
     txn = transaction_provider_.Take<kSessionKind>(locality, deadline);
     txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
     RETURN_NOT_OK(txn->SetPgTxnStart(
-        options.pg_txn_start_us(), IsTxnUsingTableLocks(options.skip_legacy_ddl_fences())));
+        options.pg_txn_start_us(), IsTxnUsingTableLocks(options.is_using_table_locks())));
     StampTransaction(*txn, options.origination_ht());
     auto* read_point = session->read_point();
     if ((isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
@@ -4650,7 +4649,7 @@ class PgClientSession::Impl {
     if (!txn) {
       VLOG_WITH_PREFIX_AND_FUNC(2)
           << FinishTxnLogPrefix(req) << (is_commit ? "commit" : "abort");
-      if (is_commit || is_ddl_mode || !CanHoldPlainObjectLocks()) {
+      if (is_commit || is_ddl_mode || !IsObjectLockingEnabled()) {
         return ReleaseObjectLocksIfNecessary(
             txn, kind, deadline, is_ddl_mode, GlobalObjectLocksReleaseMode::kSync);
       }
@@ -4773,12 +4772,11 @@ class PgClientSession::Impl {
       bool is_ddl = false,
       GlobalObjectLocksReleaseMode release_mode = GlobalObjectLocksReleaseMode::kAsync,
       std::optional<SubTransactionId> subtxn_id = std::nullopt) {
-    if (!IsObjectLockingEnabled() &&
-        !(CanHoldPlainObjectLocks() && kind == PgClientSessionKind::kPlain && !is_ddl)) {
+    // An autonomous DDL takes no object locks, so its separate DDL transaction has none to release.
+    if (!IsObjectLockingEnabled() || kind == PgClientSessionKind::kAutonomousDdl) {
       return Status::OK();
     }
     if (!txn && kind != PgClientSessionKind::kPlain) {
-      // kAutonomousDdl might not have a txn when this function is invoked on Shutdown.
       return Status::OK();
     }
 
@@ -4787,9 +4785,8 @@ class PgClientSession::Impl {
         ? MakeOptionalScopeExit([this] { transaction_provider_.ResetObjectLockRegistration(); })
         : std::nullopt;
 
-    const auto ddl_mode_used = kind == PgClientSessionKind::kAutonomousDdl || is_ddl;
     const auto use_global_release_path =
-        ddl_mode_used || plain_session_has_exclusive_object_locks_.load();
+        is_ddl || plain_session_has_exclusive_object_locks_.load();
     if (plain_session_has_exclusive_object_locks_.load() && !subtxn_id) {
       plain_session_has_exclusive_object_locks_.store(false);
       DEBUG_ONLY_TEST_SYNC_POINT("PlainTxnStateReset");
@@ -4867,17 +4864,11 @@ class PgClientSession::Impl {
         SharedField(SharedSessionFromThis(), &used_read_time), RenewSignature(used_read_time));
   }
 
+  // A transaction without global object locks takes local DML locks whatever the value of
+  // ysql_yb_enable_object_locking_infra (#36572), which can also change while it runs. So locks are
+  // released based on this alone.
   [[nodiscard]] bool IsObjectLockingEnabled() const {
-    return CanHoldPlainObjectLocks() && FLAGS_enable_object_locking_for_table_locks &&
-           FLAGS_ysql_yb_enable_object_locking_infra;
-  }
-
-  // A transaction using the legacy mode of catalog operations takes local DML locks under the plain
-  // session whatever the values of ysql_yb_enable_object_locking_infra (#36572), which can also
-  // change while it runs, and of enable_object_locking_for_table_locks (#37355). So its locks are
-  // released based on this rather than IsObjectLockingEnabled().
-  [[nodiscard]] bool CanHoldPlainObjectLocks() const {
-    return ts_lock_manager() != nullptr;
+    return ts_lock_manager() != nullptr && FLAGS_enable_object_locking_for_table_locks;
   }
 
   Result<TransactionMetadata> NextObjectLockingTxnMeta(

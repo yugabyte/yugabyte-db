@@ -53,7 +53,6 @@
 using std::string;
 DEFINE_test_flag(string, process_info_dir, string(),
                  "Directory where all postgres process will writes their PIDs and executable name");
-DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_bool(ysql_enable_auto_analyze);
 
@@ -961,30 +960,20 @@ char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len) {
 }
 
 // False until PG makes the first YBCSetObjectLockingInfraForCurrTxn() call of the backend from
-// StartTransaction. pggate only reads it inside a transaction, so the skip_legacy_ddl_fences it
-// sends to the tserver never comes from the unset value: PgTxnManager reads it through
-// IsTableLockingEnabledForCurrentTxn() from BeginTransaction onwards, and the sequence RPCs are
-// only issued while a statement runs. The PG side does read it earlier, at least from
+// StartTransaction. pggate only reads it inside a transaction, so the is_using_table_locks it sends
+// to the tserver never comes from the unset value: PgTxnManager reads it through
+// IsGlobalObjectLockingEnabledForCurrentTxn() from BeginTransaction onwards, and the sequence RPCs
+// are only issued while a statement runs. The PG side does read it earlier, at least from
 // YBCIsLegacyModeForCatalogOps during sys table prefetching, where
 // YBCIsSysTablePrefetchingStarted() forces legacy mode anyway.
 static bool object_locking_infra_for_curr_txn = false;
-static bool local_object_locking_for_curr_txn = false;
 
 void YBCSetObjectLockingInfraForCurrTxn() {
   object_locking_infra_for_curr_txn = yb_enable_object_locking_infra;
-  local_object_locking_for_curr_txn = true;
 }
 
 bool YBCIsObjectLockingInfraEnabled() {
   return object_locking_infra_for_curr_txn;
-}
-
-bool YBCIsObjectLockingEnabled() {
-  return FLAGS_enable_object_locking_for_table_locks && YBCIsObjectLockingInfraEnabled();
-}
-
-bool YBCIsLocalObjectLockingEnabled() {
-  return local_object_locking_for_curr_txn;
 }
 
 bool YBCIsAutoAnalyzeEnabled() {

@@ -195,20 +195,6 @@ void YBCSetObjectLockingInfraForCurrTxn();
 /* The value latched by YBCSetObjectLockingInfraForCurrTxn(). */
 bool YBCIsObjectLockingInfraEnabled();
 
-bool YBCIsObjectLockingEnabled();
-
-/*
- * Whether the current transaction takes local object locks. Local locks are the modes DMLs take
- * (ACCESS SHARE, ROW SHARE, ROW EXCLUSIVE): they do not conflict with each other, so the tserver
- * grants them in its own lock manager. Every stronger mode is global: the master acquires it on
- * every tserver, where it conflicts with the local locks held there. A transaction using the new
- * mode of catalog operations takes both kinds. A transaction using the legacy mode of catalog
- * operations takes only local ones, for its DMLs, so that new mode DDLs wait for it (#36572). On a
- * node with enable_object_locking_for_table_locks off, yb_disable_legacy_mode_local_object_locks
- * turns them off. Latched by YBCSetObjectLockingInfraForCurrTxn().
- */
-bool YBCIsLocalObjectLockingEnabled();
-
 void YBCPgSetClampUncertaintyWindow(bool clamp);
 
 bool YBCIsAutoAnalyzeEnabled();

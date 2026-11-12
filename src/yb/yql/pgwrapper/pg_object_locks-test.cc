@@ -975,10 +975,10 @@ class PgObjectLocksTestMixModeDuringPromotion : public PgObjectLocksTest {
   // Runs `query` on ts1 so that the infra auto flag is promoted between its Parse and its Execute,
   // and returns the error message, empty on success.
   //
-  // Probe for the object locking mode, unless `locked_table` is empty: a transaction using the new
-  // mode of catalog operations on ts2 holds an ACCESS EXCLUSIVE lock on `locked_table`
-  // (HoldLockInNewMode). A transaction of the statement that takes SHARE or stronger on it waits on
-  // that lock until statement_timeout in new mode, and goes on in legacy mode.
+  // Probe for global object locks, unless `locked_table` is empty: a transaction with global object
+  // locks on ts2 holds an ACCESS EXCLUSIVE lock on `locked_table` (HoldLockInNewMode). A
+  // transaction of the statement that takes SHARE or stronger on it waits on that lock until
+  // statement_timeout with global object locks, and goes on without them.
   //
   // Pipeline mode keeps Parse and Execute in separate protocol messages of one open transaction:
   // Parse starts the transaction and latches the flag, and the backend applies the promotion in
@@ -1132,12 +1132,13 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestConcurrentTxnsMayNotTakeTabl
   ASSERT_OK(conn2.Execute("INSERT INTO test SELECT generate_series(1,11), 0"));
 }
 
-// The object locking infra auto flag is latched once per transaction. A transaction that began
-// before the promotion must not switch to the object locking catalog op mode partway through:
-// catalog reads would move from the legacy catalog session to the transactional session with a
-// catalog snapshot read time, changing catalog visibility under an open transaction.
+// A transaction must not change how it reads the catalog partway through: catalog reads would move
+// between the legacy catalog session and the transactional session with a catalog snapshot read
+// time, changing catalog visibility under an open transaction. A transaction that takes object
+// locks reads the catalog the transactional way from its first statement, whether or not it
+// latched the object locking infra auto flag, so promoting the flag under it changes nothing.
 //
-// The switch is observed through the read point that PgSession::UpdateReadPointForCatalogOps()
+// The read path is observed through the read point that PgSession::UpdateReadPointForCatalogOps()
 // logs under yb_debug_log_snapshot_mgmt, which runs only on the non-legacy path.
 TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestCatalogOpModeStableAcrossPromotion) {
   const std::string kCatalogSnapshotLogLine = "Using catalog snapshot read time serial number";
@@ -1153,29 +1154,32 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestCatalogOpModeStableAcrossPro
   auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTsForDB(*ts1, "testdb"));
   ASSERT_OK(conn.Execute("SET yb_debug_log_snapshot_mgmt = true"));
 
+  // Each read below is of a relation this backend has never seen, so the lookup cannot be served
+  // from its caches and has to issue a catalog read.
+  ASSERT_OK(admin.Execute("CREATE TABLE cold0(k INT PRIMARY KEY, v INT)"));
   {
-    LogWaiter log_waiter(ts1, kCatalogSnapshotLogLine);
-
     // This transaction latches the pre-promotion value of the auto flag.
     ASSERT_OK(conn.Execute("BEGIN TRANSACTION"));
-    ASSERT_OK(conn.FetchAllAsString("SELECT * FROM test"));
+    {
+      LogWaiter log_waiter(ts1, kCatalogSnapshotLogLine);
+      ASSERT_OK(conn.FetchAllAsString("SELECT * FROM cold0"));
+      ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 30)));
+    }
 
     ASSERT_OK(cluster_->SetFlag(ts1, "ysql_yb_enable_object_locking_infra", "true"));
 
-    // Catalog work after the promotion, including a relation this backend has never seen, so the
-    // lookup cannot be served from its caches and has to issue a catalog read.
     ASSERT_OK(admin.Execute("CREATE TABLE cold(k INT PRIMARY KEY, v INT)"));
-    ASSERT_OK(conn.FetchAllAsString("SELECT * FROM cold"));
+    {
+      LogWaiter log_waiter(ts1, kCatalogSnapshotLogLine);
+      ASSERT_OK(conn.FetchAllAsString("SELECT * FROM cold"));
+      ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 30)));
+    }
     ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 1)"));
     ASSERT_OK(conn.Execute("COMMIT"));
-
-    ASSERT_FALSE(log_waiter.IsEventOccurred())
-        << "Transaction switched to the object locking catalog op mode after it had already "
-        << "started: " << log_waiter.matched_log_line();
   }
 
-  // The next transaction latches the promoted value and does use the new catalog op mode. It needs
-  // a catalog read of its own, so read another relation this backend has not seen before.
+  // The next transaction latches the promoted value and reads the catalog the same way. It needs a
+  // catalog read of its own, so read another relation this backend has not seen before.
   {
     ASSERT_OK(admin.Execute("CREATE TABLE cold2(k INT PRIMARY KEY, v INT)"));
     LogWaiter log_waiter(ts1, kCatalogSnapshotLogLine);
@@ -1377,10 +1381,10 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestChainedTxnKeepsMode) {
 // Test for #32224 and #36572.
 //
 // A transaction that started before the object locking infra auto flag was promoted keeps running
-// in the legacy mode, and must not use a catalog cache that a breaking DDL (REVOKE here)
+// without global object locks, and must not use a catalog cache that a breaking DDL (REVOKE here)
 // invalidated. Its next new object lock refreshes its catalog cache, and PG's own privilege check
-// stops it. The tserver catalog version check must be skipped based on the mode of the request's
-// transaction, not on the tserver's flags.
+// stops it. The tserver catalog version check must be skipped based on whether the request's
+// transaction takes global object locks, not on the tserver's flags.
 TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyTxnKeepsCatalogVersionCheck) {
   const auto* expected_legacy_error = "permission denied";
   auto* ts1 = cluster_->tablet_server(0);
@@ -1405,8 +1409,8 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyTxnKeepsCatalogVersionChec
         cluster_->tablet_server(i), "ysql_yb_enable_object_locking_infra", "true"));
   }
 
-  // A transaction using the new mode of catalog operations open across a breaking DDL must not be
-  // subjected to the check.
+  // A transaction with global object locks open across a breaking DDL must not be subjected to the
+  // check.
   auto new_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
   ASSERT_OK(new_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
   ASSERT_EQ(ASSERT_RESULT(new_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
@@ -1433,11 +1437,11 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyTxnKeepsCatalogVersionChec
 
 // Tests for #36572.
 //
-// A new mode DDL relies on object locks to wait for, or block, concurrent DMLs. A transaction that
-// started in the legacy mode, before the object locking infra auto flag was promoted, must still
-// take local DML object locks so that the DDL sees it, and its first lock on a table after the
-// DDL must refresh its catalog cache. Otherwise its stale writes skip a new index entry or a new
-// foreign key check.
+// A DDL with global object locks relies on object locks to wait for, or block, concurrent DMLs. A
+// transaction that started without global object locks, before the object locking infra auto flag
+// was promoted, must still take local DML object locks so that the DDL sees it, and its first lock
+// on a table after the DDL must refresh its catalog cache. Otherwise its stale writes skip a new
+// index entry or a new foreign key check.
 //
 // The parameter says whether the legacy transaction's node is promoted before the DDL. The DDL
 // always runs on a promoted node.
@@ -1494,11 +1498,11 @@ class PgObjectLocksTestLegacyTxnVsNewDdl : public PgObjectLocksTestMixModeDuring
   }
 };
 
-// The transactions using the legacy mode of catalog operations only read the table before the
-// CREATE INDEX, so the CREATE INDEX does not wait for them. Their INSERTs after the build must
-// succeed and add the index entries. Before the fix, the INSERTs failed with a schema version
-// mismatch. One transaction per isolation level: in READ COMMITTED each statement takes a new
-// snapshot, but the catalog cache still lives for the whole transaction.
+// The transactions without global object locks only read the table before the CREATE INDEX, so the
+// CREATE INDEX does not wait for them. Their INSERTs after the build must succeed and add the index
+// entries. Before the fix, the INSERTs failed with a schema version mismatch. One transaction per
+// isolation level: in READ COMMITTED each statement takes a new snapshot, but the catalog cache
+// still lives for the whole transaction.
 TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyWriteMaintainsNewIndex) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
@@ -1613,8 +1617,9 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyDeleteChecksNewForeignKey) {
   ASSERT_NO_FATALS(CheckNoOrphans(ddl_conn));
 }
 
-// A read-only legacy transaction holds local locks too, so its commit must release them, or a later
-// new mode DDL that needs a conflicting lock waits for the next transaction of that session.
+// A read-only transaction without global object locks holds local locks too, so its commit must
+// release them, or a later DDL with global object locks that needs a conflicting lock waits for the
+// next transaction of that session.
 TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyReadOnlyTxnReleasesLocksAtCommit) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
@@ -1635,8 +1640,9 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyReadOnlyTxnReleasesLocksAtCommi
   ASSERT_OK(ddl_conn.Execute("ALTER TABLE test ADD COLUMN v2 INT"));
 }
 
-// ROLLBACK TO SAVEPOINT in a read-only legacy transaction must release the locks taken after the
-// savepoint, as it does in new mode, or a new mode DDL waits for the rest of the transaction.
+// ROLLBACK TO SAVEPOINT in a read-only transaction without global object locks must release the
+// locks taken after the savepoint, as it does with them, or a DDL with global object locks waits
+// for the rest of the transaction.
 TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyReadOnlyTxnReleasesLocksAtRollbackToSavepoint) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
@@ -1704,8 +1710,8 @@ INSTANTIATE_TEST_SUITE_P(
     PromoteLegacyTxnNode, PgObjectLocksTestLegacyTxnVsNewDdl, ::testing::Bool(),
     ::testing::PrintToStringParamName());
 
-// A legacy writer that rolls back must release its locks, as one that commits does. Otherwise a new
-// mode DDL keeps waiting for a transaction that has ended.
+// A writer without global object locks that rolls back must release its locks, as one that commits
+// does. Otherwise a DDL with global object locks keeps waiting for a transaction that has ended.
 TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyWriterReleasesLocksAtRollback) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
@@ -1732,10 +1738,10 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyWriterReleasesLocksAtRollback) 
 }
 
 // A table rewrite bumps the catalog version as a non-breaking change, so no catalog version check
-// stops a transaction using the legacy mode of catalog operations that read the table before it.
-// Only that reader's local lock makes a rewrite using the new mode wait. Without the wait, the
-// reader's next new lock refreshes its catalog cache, and it reads the rewritten table at its old
-// snapshot, where the table is empty.
+// stops a transaction without global object locks that read the table before it. Only that reader's
+// local lock makes a rewrite with global object locks wait. Without the wait, the reader's next new
+// lock refreshes its catalog cache, and it reads the rewritten table at its old snapshot, where the
+// table is empty.
 TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, TableRewriteWaitsForLegacyReader) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
@@ -1771,10 +1777,43 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, TableRewriteWaitsForLegacyReader) {
   ASSERT_OK(alter_future.get());
 }
 
+// An autonomous DDL takes no object locks, so nothing makes it wait for a reader without global
+// object locks, which reads the latest catalog after its next new lock. A table rewrite then leaves
+// the reader's snapshot older than the new table. The reader must get an error or the rows it saw
+// before, never the empty new table.
+TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyRewriteNeverEmptiesLegacyReader) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
+    ASSERT_OK(conn.Execute("CREATE TABLE other(k INT PRIMARY KEY)"));
+  }
+
+  auto legacy_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(legacy_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
+
+  auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_EQ(ASSERT_RESULT(ddl_conn.FetchRow<std::string>(
+      "SHOW yb_enable_object_locking_infra")), "off");
+  ASSERT_OK(ddl_conn.Execute("ALTER TABLE test ALTER COLUMN v TYPE BIGINT"));
+
+  // A new lock refreshes the reader's catalog cache.
+  ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM other")), 0);
+  auto count = legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test");
+  LOG(INFO) << "Legacy reader after the rewrite: " << AsString(count);
+  if (count.ok()) {
+    ASSERT_EQ(*count, 10);
+  }
+  ASSERT_OK(legacy_conn.Execute("ROLLBACK"));
+}
+
 // A CREATE INDEX takes a session lock on the table, then runs each phase in its own transaction,
-// and releases the lock in the last one. Started in legacy mode, it does not send the session lock.
-// If the infra flag is promoted between phases, the release runs in a transaction using the new
-// mode of catalog operations. PG must not send it: the tserver rejects the release of a session
+// and releases the lock in the last one. Started without global object locks, it does not send the
+// session lock. If the infra flag is promoted between phases, the release runs in a transaction
+// with global object locks. PG must not send it: the tserver rejects the release of a session
 // lock it never got, and the backend FATALs.
 TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyCreateIndexAcrossPromotion) {
   auto* ts1 = cluster_->tablet_server(0);

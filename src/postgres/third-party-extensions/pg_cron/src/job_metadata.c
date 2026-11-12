@@ -1614,6 +1614,6 @@ YbEnsureFreshCatalog(void)
 
 	if (YBCIsLegacyModeForCatalogOps())
 		YbInvalidateCatalogSnapshot();
-	if (!YBCIsObjectLockingEnabled() || !YbIsInvalidationMessageEnabled())
+	if (!YbIsObjectLockingEnabledForCurrentTxn() || !YbIsInvalidationMessageEnabled())
 		YbMaybeRefreshCache();
 }

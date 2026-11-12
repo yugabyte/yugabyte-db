@@ -69,7 +69,7 @@ struct TxnReadPoint {
 class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
  public:
   PgTxnManager(
-      PgClient* pg_client, YbcPgCallbacks pg_callbacks, bool should_enable_table_locking,
+      PgClient* pg_client, YbcPgCallbacks pg_callbacks, bool backend_can_take_object_locks,
       std::atomic<uint64_t>& next_read_time_serial_no);
 
   ~PgTxnManager();
@@ -196,9 +196,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
         [this, original_value] { is_read_time_history_cutoff_disabled_ = original_value; });
   }
 
-  bool IsTableLockingEnabledForCurrentTxn() const;
-  bool IsLocalTableLockingEnabledForCurrentTxn() const;
-  bool IsTakingObjectLocks() const;
+  bool IsGlobalObjectLockingEnabledForCurrentTxn() const;
+  bool IsObjectLockingEnabledForCurrentTxn() const;
 
   void SetClampUncertaintyWindow(bool clamp) { clamp_uncertainty_window_ = clamp; }
 
@@ -341,7 +340,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   //                 This flag does not include writes made for object locking.
   bool has_writes_ = false;
 
-  const bool should_enable_table_locking_;
+  const bool backend_can_take_object_locks_;
 
   std::unordered_map<YbcReadPointHandle, uint64_t> crosstxn_explicit_snapshot_read_time_;
   bool is_read_time_history_cutoff_disabled_{false};

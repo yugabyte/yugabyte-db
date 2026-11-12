@@ -3097,7 +3097,8 @@ index_update_stats(Relation rel,
 	  * avoid updating statistics if we don't really need to. If auto analyze is enabled, it will keep reltuples
 	  * on the (indexed) main table reasonably accurate, so we can skip updating statistics here.
 	  */
-	update_stats = update_stats && (YBCIsLegacyModeForCatalogOps() || !YBCIsAutoAnalyzeEnabled());
+	update_stats = update_stats &&
+		(!YBCIsGlobalObjectLockingEnabledForCurrentTxn() || !YBCIsAutoAnalyzeEnabled());
 	if (update_stats)
 	{
 		if (rd_rel->relpages != (int32) relpages)

@@ -842,7 +842,13 @@ YBGetObjectLockMode()
 {
 	if (!YBTransactionsEnabled())
 		return PG_OBJECT_LOCK_MODE;
-	return YB_OBJECT_LOCK_ENABLED;
+
+	static int	cached_value = -1;
+	if (cached_value == -1)
+	{
+		cached_value = *YBCGetGFlags()->enable_object_locking_for_table_locks;
+	}
+	return cached_value ? YB_OBJECT_LOCK_ENABLED : YB_OBJECT_LOCK_DISABLED;
 }
 
 /*
@@ -2755,9 +2761,9 @@ YBGetDdlUseRegularTransactionBlock()
  * new catalog version with entries from before it.
  */
 bool
-YbIsTakingObjectLocks(void)
+YbIsObjectLockingEnabledForCurrentTxn(void)
 {
-	return YBCPgIsTakingObjectLocks();
+	return YBCPgIsObjectLockingEnabledForCurrentTxn();
 }
 
 void
@@ -4493,7 +4499,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 				}
 				is_breaking_change = false;
 				should_run_in_autonomous_transaction = !IsInTransactionBlock(is_top_level) &&
-						YBCIsLegacyModeForCatalogOps();
+						!YBCIsGlobalObjectLockingEnabledForCurrentTxn();
 				break;
 			}
 

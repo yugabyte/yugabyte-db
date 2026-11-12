@@ -31,14 +31,14 @@ class ObjectLockingPromotionUpgradeTest : public UpgradeTestBase {
 // Test for #36572 on the upgrade path itself.
 //
 // After an upgrade, ysql_yb_enable_object_locking_infra stays off until the AutoFlags are promoted,
-// so transactions on the new binary run in legacy mode. A legacy writer that is still open when
-// the flag is promoted must hold a local object lock, or the first new mode CREATE INDEX does not
-// wait for it and builds an index without the writer's row. Before the promotion, pg_locks on the
-// writer's node must already show that lock.
+// so transactions on the new binary run without global object locks. Such a writer that is still
+// open when the flag is promoted must hold a local object lock, or the first CREATE INDEX with
+// global object locks does not wait for it and builds an index without the writer's row. Before the
+// promotion, pg_locks on the writer's node must already show that lock.
 TEST_F(ObjectLockingPromotionUpgradeTest, CreateIndexWaitsForLegacyWriterAcrossPromotion) {
 #ifndef NDEBUG
   // enable_object_locking_for_table_locks is off by default in debug builds, so the current
-  // version has no new mode to promote to.
+  // version has no global object locks to promote to.
   GTEST_SKIP() << "Object locking is off by default in debug builds";
 #endif
   ASSERT_OK(StartClusterInOldVersion());

@@ -357,8 +357,8 @@ message PgsqlWriteRequestPB {
   // ON CONFLICT resolution for a PGSQL_INSERT.
   optional PgsqlOnConflictAction on_conflict_action = 33 [default = PGSQL_ON_CONFLICT_NONE];
 
-  // Set for a request of a new object locking mode transaction, which DDLs order themselves against
-  // through object locks.
+  // Set for a request of a transaction with global object locks, which DDLs order themselves
+  // against through object locks.
   optional bool skip_catalog_version_check = 34 [default = false];
 }
 

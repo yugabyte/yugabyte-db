@@ -777,15 +777,9 @@ PgApiImpl::PgApiImpl(
       // For parallel query, multiple PgTxnManager(s) make parallel requests to pg_client_session
       // projecting as a single ysql backend. When object locking is enabled, only the leader worker
       // should acquire object locks and issue finish transaction rpcs to ensure correctness.
-      //
-      // Not gated on enable_object_locking_for_table_locks: a node restarted with table locks off
-      // still takes local DML locks, because a CREATE INDEX using the new mode of catalog
-      // operations on a node not yet restarted waits for its writers only through them (#37355).
-      // The gflag decides which mode of catalog operations a transaction uses
-      // (PgTxnManager::IsTableLockingEnabledForCurrentTxn).
       pg_txn_manager_(new PgTxnManager(
           &pg_client_, pg_callbacks_,
-          /* should_enable_table_locking= */
+          /* backend_can_take_object_locks= */
           !YBCIsInitDbModeEnvVarSet() && !YBCIsBinaryUpgrade() && !is_parallel_worker_,
           pg_shared_data_->next_read_time_serial_no)),
       pg_session_(PgSession::Make(
@@ -916,7 +910,7 @@ Status PgApiImpl::InsertSequenceTuple(
     int64_t last_val, bool is_called) {
   return pg_client_.InsertSequenceTuple(
       db_oid, seq_oid, ysql_catalog_version,
-      pg_txn_manager_->IsTableLockingEnabledForCurrentTxn(), last_val, is_called);
+      pg_txn_manager_->IsGlobalObjectLockingEnabledForCurrentTxn(), last_val, is_called);
 }
 
 Status PgApiImpl::UpdateSequenceTupleConditionally(
@@ -925,7 +919,7 @@ Status PgApiImpl::UpdateSequenceTupleConditionally(
     bool *skipped) {
   *skipped = VERIFY_RESULT(pg_client_.UpdateSequenceTuple(
       db_oid, seq_oid, ysql_catalog_version,
-      pg_txn_manager_->IsTableLockingEnabledForCurrentTxn(), last_val, is_called,
+      pg_txn_manager_->IsGlobalObjectLockingEnabledForCurrentTxn(), last_val, is_called,
       expected_last_val, expected_is_called));
   return Status::OK();
 }
@@ -935,7 +929,7 @@ Status PgApiImpl::UpdateSequenceTuple(
     int64_t last_val, bool is_called, bool* skipped) {
   auto result = VERIFY_RESULT(pg_client_.UpdateSequenceTuple(
       db_oid, seq_oid, ysql_catalog_version,
-      pg_txn_manager_->IsTableLockingEnabledForCurrentTxn(), last_val,
+      pg_txn_manager_->IsGlobalObjectLockingEnabledForCurrentTxn(), last_val,
       is_called, std::nullopt, std::nullopt));
   if (skipped) {
     *skipped = result;
@@ -949,7 +943,7 @@ Status PgApiImpl::FetchSequenceTuple(
     int64_t *first_value, int64_t *last_value) {
   auto res = VERIFY_RESULT(pg_client_.FetchSequenceTuple(
       db_oid, seq_oid, ysql_catalog_version,
-      pg_txn_manager_->IsTableLockingEnabledForCurrentTxn(), fetch_count, inc_by,
+      pg_txn_manager_->IsGlobalObjectLockingEnabledForCurrentTxn(), fetch_count, inc_by,
       min_value, max_value, cycle));
   *first_value = res.first;
   *last_value = res.second;
@@ -964,7 +958,7 @@ Status PgApiImpl::ReadSequenceTuple(
   const auto actual_yb_read_time = yb_read_time ? std::optional(yb_read_time) : std::nullopt;
   const auto res = VERIFY_RESULT(pg_client_.ReadSequenceTuple(
       db_oid, seq_oid, actual_ysql_catalog_version,
-      pg_txn_manager_->IsTableLockingEnabledForCurrentTxn(), actual_yb_read_time));
+      pg_txn_manager_->IsGlobalObjectLockingEnabledForCurrentTxn(), actual_yb_read_time));
   if (last_val) {
     *last_val = res.first;
   }
@@ -2402,12 +2396,12 @@ bool PgApiImpl::IsDdlModeWithRegularTransactionBlock() const {
   return pg_txn_manager_->IsDdlModeWithRegularTransactionBlock();
 }
 
-bool PgApiImpl::IsTakingObjectLocks() const {
-  return pg_txn_manager_->IsTakingObjectLocks();
+bool PgApiImpl::IsObjectLockingEnabledForCurrentTxn() const {
+  return pg_txn_manager_->IsObjectLockingEnabledForCurrentTxn();
 }
 
-bool PgApiImpl::IsTableLockingEnabledForCurrentTxn() const {
-  return pg_txn_manager_->IsTableLockingEnabledForCurrentTxn();
+bool PgApiImpl::IsGlobalObjectLockingEnabledForCurrentTxn() const {
+  return pg_txn_manager_->IsGlobalObjectLockingEnabledForCurrentTxn();
 }
 
 Result<bool> PgApiImpl::CurrentTransactionUsesFastPath() const {

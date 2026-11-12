@@ -148,7 +148,7 @@ LockRelationOid(Oid relid, LOCKMODE lockmode)
 	 * Clamp uncertainty window.
 	 */
 	if (res == LOCKACQUIRE_OK && lockmode >= ShareUpdateExclusiveLock
-		&& !YBCIsLegacyModeForCatalogOps())
+		&& YBCIsGlobalObjectLockingEnabledForCurrentTxn())
 		YBCPgSetClampUncertaintyWindow(true);
 }
 
@@ -190,7 +190,7 @@ ConditionalLockRelationOid(Oid relid, LOCKMODE lockmode)
 	 * Clamp uncertainty window.
 	 */
 	if (res == LOCKACQUIRE_OK && lockmode >= ShareUpdateExclusiveLock
-		&& !YBCIsLegacyModeForCatalogOps())
+		&& YBCIsGlobalObjectLockingEnabledForCurrentTxn())
 		YBCPgSetClampUncertaintyWindow(true);
 
 	return true;
@@ -228,7 +228,7 @@ LockRelationId(LockRelId *relid, LOCKMODE lockmode)
 	 * Clamp uncertainty window.
 	 */
 	if (res == LOCKACQUIRE_OK && lockmode >= ShareUpdateExclusiveLock
-		&& !YBCIsLegacyModeForCatalogOps())
+		&& YBCIsGlobalObjectLockingEnabledForCurrentTxn())
 		YBCPgSetClampUncertaintyWindow(true);
 }
 
@@ -1056,6 +1056,11 @@ WaitForLockersMultiple(List *locktags, LOCKMODE lockmode, bool progress)
 	ListCell   *lc;
 	int			total = 0;
 	int			done = 0;
+
+	if (YBGetObjectLockMode() == YB_OBJECT_LOCK_DISABLED)
+	{
+		return;
+	}
 
 	/* Done if no locks to wait for */
 	if (list_length(locktags) == 0)

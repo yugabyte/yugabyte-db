@@ -43,6 +43,7 @@ DEFINE_test_flag(bool, pause_ysql_lease_refresh_after_epoch_update, false,
 DEFINE_test_flag(uint64, delay_ysql_lease_expiry_pg_kill_ms, 0,
     "Delay between a tserver detecting YSQL lease expiry and killing hosted PG sessions.");
 
+DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_ysql);
 
 namespace yb::tserver {
@@ -235,7 +236,8 @@ tserver::TSLocalLockManagerPtr YSQLLeaseManager::Impl::ResetAndGetTSLocalLockMan
 }
 
 void YSQLLeaseManager::Impl::StartTSLocalLockManagerUnlocked() {
-  if (server_.options().server_type != TabletServerOptions::kServerType || !FLAGS_enable_ysql) {
+  if (server_.options().server_type != TabletServerOptions::kServerType ||
+      !FLAGS_enable_object_locking_for_table_locks || !FLAGS_enable_ysql) {
     return;
   }
 

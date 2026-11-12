@@ -2155,9 +2155,9 @@ bool YBCPgIsDdlModeWithRegularTransactionBlock() {
   return pgapi->IsDdlModeWithRegularTransactionBlock();
 }
 
-bool YBCPgIsTakingObjectLocks() {
+bool YBCPgIsObjectLockingEnabledForCurrentTxn() {
   // pgapi is null when YB is not enabled, as in a tserver's local initdb.
-  return pgapi && pgapi->IsTakingObjectLocks();
+  return pgapi && pgapi->IsObjectLockingEnabledForCurrentTxn();
 }
 
 bool YBCCurrentTransactionUsesFastPath() {
@@ -2171,7 +2171,7 @@ bool YBCCurrentTransactionUsesFastPath() {
 
 bool YBCIsLegacyModeForCatalogOps() {
   //
-  // If object locking is enabled:
+  // If the transaction takes object locks:
   //
   // (1) Catalog writes will use the CatalogSnapshot's read time serial number instead of the
   //     TransactionSnapshot's read time serial number (which is the legacy pre-object locking
@@ -2183,7 +2183,7 @@ bool YBCIsLegacyModeForCatalogOps() {
   // (2) Catalog reads will always use the kTransactional session type. This is done so that they
   //     can also use the CatalogSnapshot's read time serial number to read the latest data (and)
   //     see the catalog data modified by the current active transaction (this is required because
-  //     transactional DDL is enabled if object locking is enabled).
+  //     transactional DDL is enabled with global object locks).
   //
   //     In the pre-object locking mode, catalog reads for DML transactions go via the kCatalog
   //     session type which has a single catalog_read_time_ (see pg_session.h). Catalog reads
@@ -2191,14 +2191,24 @@ bool YBCIsLegacyModeForCatalogOps() {
   //     (i.e., with transactional DDL enabled) go via the kTransactional session type and would use
   //     the TransactionSnapshot's read time serial number.
   //
-  return !pgapi || !pgapi->IsTableLockingEnabledForCurrentTxn() ||
-      !FLAGS_ysql_enable_concurrent_ddl || YBCIsInitDbModeEnvVarSet() ||
+  // A transaction without global object locks takes local DML locks too, so it reads the catalog
+  // the same way: a DDL with global object locks that changes an object the transaction reads
+  // either committed before the transaction's lock on that object, or waits for it. Only a
+  // transaction that takes no object locks, such as an autonomous DDL in its separate DDL
+  // transaction, reads the legacy way. Against such a DDL a reader still has the old fences: the
+  // tablets' catalog version and table schema version checks.
+  //
+  return !pgapi || !pgapi->IsObjectLockingEnabledForCurrentTxn() || YBCIsInitDbModeEnvVarSet() ||
       YBCIsSysTablePrefetchingStarted() || pgapi->IsParallelWorker();
+}
+
+bool YBCIsGlobalObjectLockingEnabledForCurrentTxn() {
+  return pgapi && pgapi->IsGlobalObjectLockingEnabledForCurrentTxn();
 }
 
 bool YBCIsDdlTransactionBlockEnabled() {
   return pgapi && yb_ddl_transaction_block_enabled &&
-      pgapi->IsTableLockingEnabledForCurrentTxn();
+      pgapi->IsGlobalObjectLockingEnabledForCurrentTxn();
 }
 
 //------------------------------------------------------------------------------------------------
