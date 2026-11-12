@@ -8005,14 +8005,14 @@ components:
       type: object
       required:
       - credential_type
-      - access_key_id
       properties:
         credential_type:
           $ref: '#/components/schemas/S3CredentialType'
         access_key_id:
-          description: Access key ID
+          description: Access key ID. Required on create; never returned.
           type: string
           minLength: 1
+          writeOnly: true
         secret_access_key:
           description: Secret access key. Required on create; never returned.
           type: string
@@ -8708,15 +8708,16 @@ components:
       type: object
       required:
       - credential_type
-      - access_key_id
       - host_base
       properties:
         credential_type:
           $ref: '#/components/schemas/OciCredentialType'
         access_key_id:
-          description: Access key of the customer secret key
+          description: Access key of the customer secret key. Required on create;
+            never returned.
           type: string
           minLength: 1
+          writeOnly: true
         secret_access_key:
           description: Secret of the customer secret key. Required on create; never
             returned.
@@ -8930,7 +8931,7 @@ components:
           readOnly: true
         state:
           $ref: '#/components/schemas/StorageConfigState'
-        kubernetes_operator_controlled:
+        is_kubernetes_operator_controlled:
           description: Whether the YBA Kubernetes operator manages this configuration
             through a StorageConfig resource. Change such a configuration through
             its resource instead.

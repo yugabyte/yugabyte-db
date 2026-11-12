@@ -168,6 +168,7 @@ public class StorageConfigHandler {
       S3StorageSpec s3 = (S3StorageSpec) storage;
       if (s3.getCredentials() instanceof S3AccessKeyCredentials) {
         S3AccessKeyCredentials keys = (S3AccessKeyCredentials) s3.getCredentials();
+        requireSecret(keys.getAccessKeyId(), "storage.credentials.access_key_id");
         requireSecret(keys.getSecretAccessKey(), "storage.credentials.secret_access_key");
       }
       checkRegions(s3.getRegionLocations(), S3RegionLocation::getRegion);
@@ -189,6 +190,7 @@ public class StorageConfigHandler {
       OciStorageSpec oci = (OciStorageSpec) storage;
       if (oci.getCredentials() instanceof OciS3CompatibleCredentials) {
         OciS3CompatibleCredentials keys = (OciS3CompatibleCredentials) oci.getCredentials();
+        requireSecret(keys.getAccessKeyId(), "storage.credentials.access_key_id");
         requireSecret(keys.getSecretAccessKey(), "storage.credentials.secret_access_key");
       } else if (oci.getCredentials() instanceof OciIamCredentials
           && StringUtils.isBlank(oci.getNamespace())) {

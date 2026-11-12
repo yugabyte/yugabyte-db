@@ -145,12 +145,12 @@ public class StorageConfigApiTest extends FakeDBApplication {
 
     UUID uuid = created.getInfo().getUuid();
     assertEquals(StorageConfigState.StorageConfigActive, created.getInfo().getState());
-    assertFalse(created.getInfo().getKubernetesOperatorControlled());
+    assertFalse(created.getInfo().getIsKubernetesOperatorControlled());
     assertEquals("s3-backups", created.getSpec().getName());
     S3StorageSpec s3 = created.getSpec().getStorage().getS3StorageSpec();
     assertEquals("s3://bucket/yba", s3.getBackupLocation());
     S3AccessKeyCredentials keys = s3.getCredentials().getS3AccessKeyCredentials();
-    assertEquals("AKIAEXAMPLE", keys.getAccessKeyId());
+    assertNull("the key ID isn't returned", keys.getAccessKeyId());
     assertNull("the secret isn't returned", keys.getSecretAccessKey());
     assertEquals("us-west-2", s3.getRegionLocations().get(0).getRegion());
 
@@ -353,6 +353,15 @@ public class StorageConfigApiTest extends FakeDBApplication {
         .getS3AccessKeyCredentials()
         .secretAccessKey(null);
     assertBadRequest(noSecret, "secret_access_key");
+
+    StorageConfigSpec noKeyId = s3Spec("no-key-id");
+    noKeyId
+        .getStorage()
+        .getS3StorageSpec()
+        .getCredentials()
+        .getS3AccessKeyCredentials()
+        .accessKeyId(null);
+    assertBadRequest(noKeyId, "access_key_id");
 
     StorageConfigSpec duplicateRegion = s3Spec("dup-region");
     S3StorageSpec s3 = duplicateRegion.getStorage().getS3StorageSpec();
@@ -584,6 +593,26 @@ public class StorageConfigApiTest extends FakeDBApplication {
             .build();
     error = checkFailingWith(v1FieldError(400, unknownHost), 422);
     assertEquals(StorageConfigHandler.VALIDATION_FAILED, error.get("code").asText());
+
+    // A failed read of the test object is a plain message with a stack trace: the provider's
+    // message is reported instead.
+    PlatformServiceException readFailed =
+        new PlatformServiceException(
+            417, "Error reading test object x, exception occurred: at a.b.C.d(C.java:1)");
+    readFailed.initCause(slowDown);
+    error = checkFailingWith(readFailed, 503);
+    assertEquals(StorageConfigHandler.PROVIDER_UNAVAILABLE, error.get("code").asText());
+    assertEquals(503, error.get("provider_status").asInt());
+    assertTrue(error.get("errors").get("storage").get(0).asText().startsWith("Slow Down"));
+    assertFalse(error.toString().contains("C.java"));
+
+    // Azure's blob read fails with an IOException around the SDK's error.
+    PlatformServiceException azureReadFailed =
+        new PlatformServiceException(417, "Error reading test blob x");
+    azureReadFailed.initCause(
+        new java.io.IOException(new SocketTimeoutException("Read timed out")));
+    error = checkFailingWith(azureReadFailed, 503);
+    assertEquals(StorageConfigHandler.PROVIDER_UNAVAILABLE, error.get("code").asText());
 
     // The Azure SDK doesn't wrap network errors in an SDK type: the validator wraps its reactor
     // exception for an unknown host, and rethrows any other one as is.

@@ -71,8 +71,8 @@ import play.libs.Json;
  * <p>The v2 spec is a oneOf by storage type, with a oneOf of credentials per storage type, while v1
  * data marks the kind of credentials with flags (IAM_INSTANCE_PROFILE, USE_GCP_IAM,
  * USE_CROSS_CLOUD_FEDERATION, USE_AZURE_IAM, USE_OCI_IAM). The default methods pick the variant;
- * MapStruct generates the field mappings of the region locations. Secrets go from v2 to v1 only:
- * the v1 to v2 direction never sets a secret, so responses don't carry them.
+ * MapStruct generates the field mappings of the region locations. Secrets and access key IDs go
+ * from v2 to v1 only: the v1 to v2 direction never sets them, so responses don't carry them.
  *
  * <p>Null checks keep the defaults of the v1 data classes (such as NFS_BUCKET and
  * GLOBAL_BUCKET_ACCESS) for properties the client omits.
@@ -105,7 +105,7 @@ public interface StorageConfigMapper {
             config.getState() == ConfigState.QueuedForDeletion
                 ? StorageConfigState.StorageConfigQueuedForDeletion
                 : StorageConfigState.StorageConfigActive)
-        .kubernetesOperatorControlled(config.isKubernetesOperatorControlled());
+        .isKubernetesOperatorControlled(config.isKubernetesOperatorControlled());
   }
 
   default StorageSpec toStorageSpec(CustomerConfigData data) {
@@ -152,9 +152,7 @@ public interface StorageConfigMapper {
               .stsRegion(iam.stsRegion);
     } else {
       credentials =
-          new S3AccessKeyCredentials()
-              .credentialType(S3CredentialType.S3CredentialAccessKey)
-              .accessKeyId(data.awsAccessKeyId);
+          new S3AccessKeyCredentials().credentialType(S3CredentialType.S3CredentialAccessKey);
     }
     return new S3StorageSpec()
         .storageType(StorageType.StorageTypeS3)
@@ -221,7 +219,6 @@ public interface StorageConfigMapper {
             ? new OciIamCredentials().credentialType(OciCredentialType.OciCredentialIam)
             : new OciS3CompatibleCredentials()
                 .credentialType(OciCredentialType.OciCredentialS3Compatible)
-                .accessKeyId(data.ociS3AccessKeyId)
                 .hostBase(data.ociS3HostBase);
     return new OciStorageSpec()
         .storageType(StorageType.StorageTypeOCI)

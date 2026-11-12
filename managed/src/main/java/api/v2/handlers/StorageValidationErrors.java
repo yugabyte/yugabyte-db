@@ -97,6 +97,13 @@ final class StorageValidationErrors {
       ProviderError provider = providerError(pse.getCause());
       ObjectNode errors = fieldErrors(pse);
       if (provider != null) {
+        JsonNode v1Error = pse.getContentJson().get("error");
+        if (v1Error == null || !v1Error.isObject()) {
+          // A plain message rather than field errors, such as a failed read of the test object,
+          // whose message carries a stack trace: report the provider's message instead.
+          errors = Json.newObject();
+          errors.putArray("storage").add(provider.message());
+        }
         return providerFailure(provider, errors);
       }
       if (pse.getHttpStatus() == BAD_REQUEST) {

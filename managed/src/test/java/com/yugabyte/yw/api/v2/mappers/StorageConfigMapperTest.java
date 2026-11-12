@@ -113,7 +113,7 @@ public class StorageConfigMapperTest {
 
     S3StorageSpec back = (S3StorageSpec) roundTrip(v1);
     S3AccessKeyCredentials keys = (S3AccessKeyCredentials) back.getCredentials();
-    assertEquals("AKIA", keys.getAccessKeyId());
+    assertNull("the key ID isn't returned", keys.getAccessKeyId());
     assertNull("the secret isn't returned", keys.getSecretAccessKey());
     assertEquals(spec.getBackupLocation(), back.getBackupLocation());
     assertEquals(spec.getHostBase(), back.getHostBase());
@@ -321,7 +321,7 @@ public class StorageConfigMapperTest {
     assertEquals("secret", keysData.ociS3SecretAccessKey);
     OciS3CompatibleCredentials keysBack =
         (OciS3CompatibleCredentials) ((OciStorageSpec) roundTrip(keys)).getCredentials();
-    assertEquals("key", keysBack.getAccessKeyId());
+    assertNull(keysBack.getAccessKeyId());
     assertEquals("ns.compat.objectstorage.us-sanjose-1.oraclecloud.com", keysBack.getHostBase());
     assertNull(keysBack.getSecretAccessKey());
 
@@ -356,6 +356,6 @@ public class StorageConfigMapperTest {
     api.v2.models.StorageConfigInfo info = MAPPER.toStorageConfigInfo(v1);
     assertEquals(v1.getConfigUUID(), info.getUuid());
     assertEquals(StorageConfigState.StorageConfigQueuedForDeletion, info.getState());
-    assertFalse(info.getKubernetesOperatorControlled());
+    assertFalse(info.getIsKubernetesOperatorControlled());
   }
 }

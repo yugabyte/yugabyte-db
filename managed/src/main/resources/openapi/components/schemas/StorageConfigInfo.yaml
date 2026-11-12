@@ -15,7 +15,7 @@ properties:
     readOnly: true
   state:
     $ref: "./StorageConfigState.yaml"
-  kubernetes_operator_controlled:
+  is_kubernetes_operator_controlled:
     description: Whether the YBA Kubernetes operator manages this configuration through a StorageConfig resource. Change such a configuration through its resource instead.
     type: boolean
     readOnly: true
