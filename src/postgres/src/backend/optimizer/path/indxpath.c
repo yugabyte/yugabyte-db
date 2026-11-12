@@ -5700,12 +5700,7 @@ yb_try_derive_equal_from_clauses(PlannerInfo *root, Index relid,
 	if (derived_clause == NULL)
 		return NULL;
 
-	/*
-	 * Only a Const is substituted for the Var, so the derived clause references
-	 * just this relation: it is single-rel with no nullable relids.
-	 */
-	return yb_make_derived_restrictinfo(root, derived_clause,
-										NULL);	/* nullable_relids */
+	return yb_make_derived_restrictinfo(root, derived_clause);
 }
 
 /*
