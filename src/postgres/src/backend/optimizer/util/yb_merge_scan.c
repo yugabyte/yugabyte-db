@@ -593,9 +593,9 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 		ListCell   *j;
 
 		/*
-		 * Take the first tlist item found in the EC, skipping the SAOP stream
-		 * key columns, which can belong to a sort EquivalenceClass when they
-		 * equal a sort column.
+		 * Take the first tlist item found in the EC, skipping the SAOP columns
+		 * in stream_cols.  A SAOP column can belong to a sort EquivalenceClass
+		 * when a clause equates it to a sort column.
 		 */
 		foreach(j, index->indextlist)
 		{
