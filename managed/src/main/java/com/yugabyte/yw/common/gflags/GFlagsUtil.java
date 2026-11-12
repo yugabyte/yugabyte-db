@@ -1517,8 +1517,9 @@ public class GFlagsUtil {
 
   /**
    * A new universe has no stored value to put back in place of REDACTED, so a gflag copied from an
-   * API response would otherwise be applied and stored as the literal token. Only gflags that API
-   * responses redact are checked; any other gflag may contain the word.
+   * API response would otherwise be applied and stored as the literal token. Checks the same gflags
+   * as mergeSensitiveGFlags: the version's sensitive gflags, which must not contain REDACTED, and
+   * ysql_hba_conf_csv, which must not contain it anywhere. Other gflags may contain the word.
    */
   public static void checkNoRedactedGFlagsOnCreate(
       UniverseDefinitionTaskParams.UserIntent userIntent,
@@ -2862,7 +2863,8 @@ public class GFlagsUtil {
                 sensitiveFlag
                     + " cannot be submitted as "
                     + RedactingService.SECRET_REPLACEMENT
-                    + ": no prior universe value exists to restore it from."
+                    + ": the universe stores no value for it in the same place (server type,"
+                    + " and AZ for an AZ override) to restore it from."
                     + " Provide the actual value in the request.");
           }
           if (existingValue.equals(RedactingService.SECRET_REPLACEMENT)) {

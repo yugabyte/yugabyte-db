@@ -881,7 +881,7 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     PlatformServiceException e =
         assertThrows(
             PlatformServiceException.class, () -> handler.upgradeGFlags(params, c, universe));
-    assertTrue(e.getMessage(), e.getMessage().contains("no prior universe value"));
+    assertTrue(e.getMessage(), e.getMessage().contains("stores no value for it"));
   }
 
   @Test

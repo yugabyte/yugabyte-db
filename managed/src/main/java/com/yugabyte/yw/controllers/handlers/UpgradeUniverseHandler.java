@@ -76,7 +76,6 @@ import com.yugabyte.yw.models.helpers.telemetry.ExportType;
 import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -358,11 +357,12 @@ public class UpgradeUniverseHandler {
       UserIntent stored = universeCluster.userIntent;
       SpecificGFlags storedGFlags = stored.specificGFlags;
       if (storedGFlags == null) {
-        // An older universe may keep its gflags only in the deprecated maps.
+        // Defensive: create and the V315 migration always set specificGFlags. Without this, a
+        // cluster stored without them would get a 400 for a value its deprecated maps hold.
         storedGFlags =
             SpecificGFlags.construct(
-                stored.masterGFlags == null ? new HashMap<>() : stored.masterGFlags,
-                stored.tserverGFlags == null ? new HashMap<>() : stored.tserverGFlags);
+                MapUtils.emptyIfNull(stored.masterGFlags),
+                MapUtils.emptyIfNull(stored.tserverGFlags));
       }
       clusterParam.userIntent.specificGFlags =
           GFlagsUtil.mergeSensitiveSpecificGFlags(
