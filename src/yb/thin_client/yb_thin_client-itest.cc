@@ -2594,6 +2594,51 @@ TEST_F(PgThinClientFollowerReadTest, ReadWithoutOptionsStaysOnTheLeader) {
       << "the Perform's own tserver served the read instead of the leader";
 }
 
+// A scan keeps the replica choice of its first page. Follower options on the continuation of a
+// scan that started at the leader are ignored: the page succeeds and no replica takes a
+// consistent-prefix read.
+TEST_F(PgThinClientFollowerReadTest, ContinuationKeepsTheScansReplicaChoice) {
+  constexpr int kRows = 30;
+  constexpr uint64_t kPageLimit = 10;
+  const auto oids = ASSERT_RESULT(CreateSingleTabletKeyTable());
+  const auto replicas = ASSERT_RESULT(FindReplicas());
+  const size_t follower_idx = replicas.follower_idxs[0];
+  auto client =
+      ASSERT_RESULT(CreateThinClient({TServerAddrOf(follower_idx)}, nullptr, kRpcTimeoutMs));
+  auto table = ASSERT_RESULT(ThinTable::Open(client.get(), oids));
+  const int32_t v_id = table.ColumnId(1);
+
+  ASSERT_EQ(UpsertKeys(client.get(), table.get(), kHashKey, 0, kRows).code, YBTHIN_OK);
+  // A follower read of these rows would succeed, so the counters below are what tells the two
+  // apart.
+  ASSERT_OK(WaitUntilFollowersCanServe(
+      follower_idx, {ASSERT_RESULT(PeerOn(replicas, follower_idx))}, NowOn(follower_idx)));
+
+  auto page = ReadKeys(
+      client.get(), table.get(), kHashKey, v_id, kPageLimit, {}, true, /* options= */ nullptr);
+  ASSERT_EQ(page.code, YBTHIN_OK) << page.message;
+  ASSERT_FALSE(page.paging_state.empty());
+
+  const auto before = ASSERT_RESULT(ConsistentPrefixReads(replicas));
+  const auto options = FollowerOptions();
+  size_t rows = page.n_rows;
+  int pages = 0;
+  while (!page.paging_state.empty()) {
+    ASSERT_LT(++pages, 100) << "paging did not terminate";
+    page = ReadKeys(
+        client.get(), table.get(), kHashKey, v_id, kPageLimit, page.paging_state, true, &options);
+    ASSERT_EQ(page.code, YBTHIN_OK) << page.message;
+    rows += page.n_rows;
+  }
+  ASSERT_GT(pages, 1);
+  ASSERT_EQ(rows, static_cast<size_t>(kRows));
+  const auto after = ASSERT_RESULT(ConsistentPrefixReads(replicas));
+  for (size_t ts_idx = 0; ts_idx < after.size(); ++ts_idx) {
+    ASSERT_EQ(after[ts_idx], before[ts_idx])
+        << "tserver " << ts_idx << " served a continuation of a leader scan as a follower read";
+  }
+}
+
 // The staleness only makes sense for follower reads; the server refuses it on a write batch, and on
 // a read batch without read_from_followers, which the leader would otherwise serve at a historical
 // snapshot. The shim sends neither, so the batches are built on the proxy directly.
@@ -2607,8 +2652,7 @@ TEST_F(PgThinClientFollowerReadTest, StalenessOutsideAFollowerReadIsRejected) {
   {
     tserver::ThinPerformRequestPB req;
     req.set_session_id(session_id);
-    req.mutable_read_time_options()->mutable_follower_read_staleness_ms()->set_value(
-        kStalenessMs);
+    req.mutable_read_time_options()->set_follower_read_staleness_ms(kStalenessMs);
     auto* write = req.add_ops()->mutable_write();
     write->set_table_id(table_id);
     write->set_stmt_type(PgsqlWriteRequestPB::PGSQL_UPSERT);
@@ -2619,8 +2663,7 @@ TEST_F(PgThinClientFollowerReadTest, StalenessOutsideAFollowerReadIsRejected) {
   {
     tserver::ThinPerformRequestPB req;
     req.set_session_id(session_id);
-    req.mutable_read_time_options()->mutable_follower_read_staleness_ms()->set_value(
-        kStalenessMs);
+    req.mutable_read_time_options()->set_follower_read_staleness_ms(kStalenessMs);
     req.add_ops()->mutable_read()->set_table_id(table_id);
     const auto status = RawPerform(&proxy, req);
     ASSERT_TRUE(status.IsInvalidArgument()) << status;
@@ -2638,7 +2681,7 @@ TEST_F(PgThinClientFollowerReadTest, ZeroStalenessIsRejectedByTheService) {
   tserver::ThinPerformRequestPB req;
   req.set_session_id(ASSERT_RESULT(OpenRawSession(&proxy)));
   req.mutable_read_time_options()->set_read_from_followers(true);
-  req.mutable_read_time_options()->mutable_follower_read_staleness_ms()->set_value(0);
+  req.mutable_read_time_options()->set_follower_read_staleness_ms(0);
   req.add_ops()->mutable_read()->set_table_id(GetPgsqlTableId(oids.db_oid, oids.table_oid));
   const auto status = RawPerform(&proxy, req);
   ASSERT_TRUE(status.IsInvalidArgument()) << status;

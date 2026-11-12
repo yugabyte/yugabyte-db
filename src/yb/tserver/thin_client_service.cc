@@ -195,11 +195,11 @@ class ThinSession : public ClientSessionBase,
     // Without read_from_followers the leader would serve the batch at now - staleness, a
     // historical snapshot the caller did not ask for.
     SCHECK(
-        !has_staleness || read_time_options.read_from_followers(), InvalidArgument,
+        !(has_staleness && !read_time_options.read_from_followers()), InvalidArgument,
         "follower_read_staleness_ms needs read_from_followers");
     // A zero staleness reads at now, which no follower can serve.
     SCHECK(
-        !has_staleness || read_time_options.follower_read_staleness_ms().value() > 0,
+        !(has_staleness && read_time_options.follower_read_staleness_ms() == 0),
         InvalidArgument, "follower_read_staleness_ms must be positive");
     // A follower read needs a read time it can judge against its safe time: the pinned one of a
     // continuation, or one derived from the staleness. Without either, a follower would serve
@@ -233,7 +233,7 @@ class ThinSession : public ClientSessionBase,
       // reached it hands the read to another replica (ReadQuery::WaitForSafeTime) rather than
       // waiting for its safe time to catch up.
       SetFollowerReadTime(
-          *session->read_point(), read_time_options.follower_read_staleness_ms().value());
+          *session->read_point(), read_time_options.follower_read_staleness_ms());
     } else {
       // No read time: leave it unset so the tablet serving the op reads at its own safe time,
       // instead of this node stamping its current time and leaving the read to wait for safe time

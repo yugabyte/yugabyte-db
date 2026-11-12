@@ -80,6 +80,7 @@
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/tsan_util.h"
 
 DECLARE_bool(use_libunwind_for_stack_trace_collection);
@@ -532,9 +533,11 @@ uint64_t ReadU64LE(const uint8_t** cursor) {
   return value;
 }
 
+YB_STRONGLY_TYPED_BOOL(ReadFromFollowers);
+
 std::string WrapPagingState(
-    uint32_t session_index, uint32_t generation, uint64_t read_ht, bool read_from_followers,
-    const std::string& server_paging_state) {
+    uint32_t session_index, uint32_t generation, uint64_t read_ht,
+    ReadFromFollowers read_from_followers, const std::string& server_paging_state) {
   std::string out;
   out.reserve(kPagingHeaderLen + server_paging_state.size());
   out.push_back(static_cast<char>(kPagingMagic));
@@ -553,7 +556,7 @@ struct PinInfo {
   // Replayed by a continuation so the server restores the scan's read point.
   uint64_t read_ht;
   // Replayed alongside it, so the continuation is served by a follower like its first page.
-  bool read_from_followers;
+  ReadFromFollowers read_from_followers = ReadFromFollowers::kFalse;
   Slice server_paging_state;
 };
 
@@ -566,7 +569,7 @@ Result<PinInfo> UnwrapPagingState(const uint8_t* data, size_t len) {
   pin.session_index = ReadU32LE(&cursor);
   pin.generation = ReadU32LE(&cursor);
   pin.read_ht = ReadU64LE(&cursor);
-  pin.read_from_followers = (*cursor++ & kPagingFlagReadFromFollowers) != 0;
+  pin.read_from_followers = ReadFromFollowers((*cursor++ & kPagingFlagReadFromFollowers) != 0);
   pin.server_paging_state = Slice(cursor, data + len);
   return pin;
 }
@@ -671,9 +674,9 @@ struct ReadCall : SessionCall {
   // The read time this batch was pinned to, either by the caller or, for a continuation, by the
   // scan. 0 means the server picked one, which FinishRead reads out of the response paging state.
   uint64_t read_ht;
-  // Whether the batch asked for followers, by the caller or by the scan it continues. Wrapped into
-  // the response paging state so the next page asks again.
-  bool read_from_followers;
+  // Whether the batch asks for followers: the caller's choice for a fresh batch, the scan's own
+  // for a continuation. Wrapped into the response paging state so the next page asks again.
+  ReadFromFollowers read_from_followers = ReadFromFollowers::kFalse;
   tserver::ThinPerformRequestPB req;
   tserver::ThinPerformResponsePB resp;
   rpc::RpcController controller;
@@ -1245,7 +1248,7 @@ void ybthin_read_async(
   call->cb = cb;
   call->ctx = ctx;
   call->read_ht = read_time_ht;
-  call->read_from_followers = options->read_from_followers != 0;
+  call->read_from_followers = ReadFromFollowers(options->read_from_followers != 0);
 
   // A continuation must return to the session that issued it, so every one in a batch has to pin
   // the same session. A batch with no continuations round-robins the read pool.
@@ -1253,7 +1256,7 @@ void ybthin_read_async(
   size_t session_index = 0;
   uint32_t pinned_generation = 0;
   uint64_t pinned_read_ht = 0;
-  bool pinned_read_from_followers = false;
+  ReadFromFollowers pinned_read_from_followers = ReadFromFollowers::kFalse;
   std::vector<Slice> server_paging_states(n_ops);  // empty entry => fresh op
   for (size_t op_idx = 0; op_idx < n_ops; ++op_idx) {
     const auto& op = ops[op_idx];
@@ -1295,9 +1298,12 @@ void ybthin_read_async(
   call->has_continuation = have_pinned;
   call->pinned_generation = pinned_generation;
   call->pinned_read_ht = pinned_read_ht;
-  // The scan's choice outlives the first page's options: a continuation asks for a follower again.
-  if (have_pinned && pinned_read_from_followers) {
-    call->read_from_followers = true;
+  // A scan keeps the replica choice of its first page, whatever the options of a later page say:
+  // a follower scan asks for a follower again, and a leader scan stays at the leader. Letting a
+  // continuation switch a leader scan to followers would send read_from_followers with no read
+  // time whenever the scan's paging state carries none, which the server refuses.
+  if (have_pinned) {
+    call->read_from_followers = pinned_read_from_followers;
   }
   // A fresh follower batch reads at now - staleness, so a zero staleness would read at now, which
   // no follower can serve: refuse it here rather than hand every such read to the leader.
@@ -1474,11 +1480,13 @@ void ybthin_read_async(
   }
   if (call->read_from_followers) {
     rto->set_read_from_followers(true);
-    // The staleness only applies to a fresh, unpinned batch: a pinned one, and a continuation
-    // (pinned below), read at their snapshot. Sending both would leave the server to pick, so the
-    // request carries at most one.
+    // The staleness only applies to a fresh, unpinned batch. A pinned one reads at its snapshot,
+    // and a continuation at the one in its paging state, set below when it holds one: a follower
+    // scan's always does, unless its first page came from a tserver too old to know
+    // read_from_followers, which ignores the flag here as well. Sending both a read time and a
+    // staleness would leave the server to pick, so the request carries at most one.
     if (read_time_ht == 0 && !call->has_continuation) {
-      rto->mutable_follower_read_staleness_ms()->set_value(options->follower_read_staleness_ms);
+      rto->set_follower_read_staleness_ms(options->follower_read_staleness_ms);
     }
   }
 
