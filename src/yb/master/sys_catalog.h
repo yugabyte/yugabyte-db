@@ -75,6 +75,8 @@ class WriteResponsePB;
 namespace master {
 class Master;
 class MasterOptions;
+class YsqlInitdbSeedTablePB;
+class YsqlMajorUpgradeInitdbSeedPB;
 
 // Forward declaration from internal header file.
 class VisitorBase;
@@ -348,6 +350,12 @@ class SysCatalogTable {
                          int64_t leader_term);
 
   Status DeleteAllYsqlCatalogTableRows(const std::vector<TableId>& table_ids, int64_t leader_term);
+
+  // Appends every row of the co-located table table_id to seed_table.
+  Status ExportPgsqlTableRows(const TableId& table_id, YsqlInitdbSeedTablePB* seed_table);
+
+  // Writes the rows of every seed table, which must already exist, as a batch.
+  Status ImportPgsqlTableRows(const YsqlMajorUpgradeInitdbSeedPB& seed, int64_t leader_term);
 
   // Drop YSQL table by removing the table metadata in sys-catalog.
   Status DeleteYsqlSystemTable(const std::string& table_id, int64_t term);

@@ -722,6 +722,7 @@ DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 DECLARE_string(initial_sys_catalog_snapshot_path);
+DECLARE_bool(create_ysql_major_upgrade_initdb_seed);
 DECLARE_bool(cdc_enable_dynamic_schema_changes);
 DECLARE_bool(TEST_cdc_add_dynamic_index_to_state_table);
 
@@ -1418,7 +1419,7 @@ Status CatalogManager::GetTableDiskSize(const GetTableDiskSizeRequestPB* req,
 Status CatalogManager::MaybeRestoreInitialSysCatalogSnapshotAndReloadSysCatalog(
     SysCatalogLoadingState* state) {
   if (!FLAGS_enable_ysql || FLAGS_initial_sys_catalog_snapshot_path.empty() ||
-      FLAGS_create_initial_sys_catalog_snapshot) {
+      FLAGS_create_initial_sys_catalog_snapshot || FLAGS_create_ysql_major_upgrade_initdb_seed) {
     return Status::OK();
   }
   if (!master_->fs_manager()->initdb_done_set_after_sys_catalog_restore()) {
@@ -4577,6 +4578,75 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceInfo& ns,
   RETURN_NOT_OK(
       sys_catalog_->CopyPgsqlTables(source_table_ids, target_table_ids, epoch.leader_term));
   return Status::OK();
+}
+
+Status CatalogManager::LoadYsqlTemplate1FromInitdbSeed(
+    const YsqlMajorUpgradeInitdbSeedPB& seed, const LeaderEpoch& epoch) {
+  CreateNamespaceRequestPB ns_req;
+  ns_req.set_name(seed.template1().name());
+  ns_req.set_database_type(YQL_DATABASE_PGSQL);
+  ns_req.set_namespace_id(GetPgsqlNamespaceId(kTemplate1Oid));
+  ns_req.set_next_pg_oid(seed.template1().next_normal_pg_oid());
+  CreateNamespaceResponsePB ns_resp;
+  RETURN_NOT_OK(CreateNamespace(&ns_req, &ns_resp, /* rpc */ nullptr, epoch));
+
+  IsCreateNamespaceDoneRequestPB done_req;
+  done_req.mutable_namespace_()->set_id(ns_req.namespace_id());
+  RETURN_NOT_OK(WaitFor(
+      [this, &done_req]() -> Result<bool> {
+        IsCreateNamespaceDoneResponsePB done_resp;
+        RETURN_NOT_OK(IsCreateNamespaceDone(&done_req, &done_resp));
+        return done_resp.done();
+      },
+      60s, "Waiting for template1 to be created from the initdb seed"));
+  auto ns = VERIFY_RESULT(FindNamespaceById(ns_req.namespace_id()));
+
+  // Unlike CopyPgsqlSysTables, template1 owns the shared tables, so they are created too.
+  std::vector<CreateYsqlSysTableData> table_datas(seed.tables_size());
+  for (int i = 0; i < seed.tables_size(); ++i) {
+    const auto& seed_table = seed.tables(i);
+    PersistentTableInfo info;
+    info.pb = seed_table.table();
+    auto& data = table_datas[i];
+    auto status = data.InitRequest(kTemplate1Oid, seed_table.table_id(), info);
+    if (!status.ok()) {
+      return status.CloneAndPrepend(Format(
+          "Failure when creating PGSQL System Tables: $0",
+          data.resp.error().ShortDebugString()));
+    }
+    data.req.set_is_pg_shared_table(info.pb.is_pg_shared_table());
+  }
+
+  tablet::ChangeMetadataRequestPB change_meta_req;
+  auto writer = sys_catalog_->NewWriter(epoch.leader_term);
+  TabletInfoPtr sys_catalog_tablet;
+  {
+    LockGuard lock(mutex_);
+    for (auto& data : table_datas) {
+      RETURN_NOT_OK(CreateYsqlSysTableInMemory(*ns, data));
+    }
+    sys_catalog_tablet = tablet_map_->find(kSysCatalogTabletId)->second;
+  }
+  {
+    auto tablet_lock = sys_catalog_tablet->LockForWrite();
+    for (auto& data : table_datas) {
+      RETURN_NOT_OK(AddYsqlSysTableToSystemTablet(sys_catalog_tablet, data, tablet_lock));
+    }
+    RETURN_NOT_OK(writer->Mutate<false>(QLWriteRequestPB::QL_STMT_UPDATE, sys_catalog_tablet));
+
+    tablet_lock.Commit();
+  }
+
+  for (auto& data : table_datas) {
+    RETURN_NOT_OK(CompleteCreateYsqlSysTable(data, epoch, &change_meta_req, writer.get()));
+  }
+
+  RETURN_NOT_OK(tablet::SyncReplicateChangeMetadataOperation(
+      &change_meta_req, sys_catalog_->tablet_peer().get(), epoch.leader_term));
+  RETURN_NOT_OK(sys_catalog_->SyncWrite(writer.get()));
+
+  LOG(INFO) << "Created " << table_datas.size() << " template1 catalog tables from the initdb seed";
+  return sys_catalog_->ImportPgsqlTableRows(seed, epoch.leader_term);
 }
 
 size_t CatalogManager::GetNumLiveTServersForPlacement(const PlacementId& placement_id) {

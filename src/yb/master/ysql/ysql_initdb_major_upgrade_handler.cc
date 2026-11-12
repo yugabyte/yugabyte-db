@@ -16,8 +16,13 @@
 #include <signal.h>
 #include <unistd.h>
 
-#include "yb/common/version_info.h"
+#include <algorithm>
 
+#include "yb/common/entity_ids.h"
+#include "yb/common/version_info.h"
+#include "yb/common/version_info.pb.h"
+
+#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master.h"
@@ -33,9 +38,13 @@
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/crc.h"
 #include "yb/util/env_util.h"
+#include "yb/util/faststring.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/path_util.h"
+#include "yb/util/pb_util.h"
 #include "yb/util/pg_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
@@ -89,6 +98,20 @@ DEFINE_test_flag(bool, kill_master_before_ysql_pg_upgrade, false,
 DEFINE_test_flag(bool, fail_ysql_pg_upgrade, false,
     "Fail PerformPgUpgrade immediately before running the pg_upgrade binary");
 
+DEFINE_RUNTIME_bool(ysql_major_upgrade_use_initdb_seed, true,
+    "Load template1 from the initdb seed during a YSQL major upgrade instead of building it with "
+    "initdb. The full initdb runs when the seed is missing or was written by another build.");
+
+DEFINE_NON_RUNTIME_string(ysql_major_upgrade_initdb_seed_path, "",
+    "Directory of the initdb seed. Empty means share/ysql_major_upgrade_initdb_seed.");
+
+DEFINE_NON_RUNTIME_bool(create_ysql_major_upgrade_initdb_seed, false,
+    "On a new cluster, run initdb for template1 only and write the result to "
+    "ysql_major_upgrade_initdb_seed_path. Used by the build.");
+
+DEFINE_test_flag(bool, ysql_major_upgrade_require_initdb_seed, false,
+    "Fail the YSQL major upgrade instead of running the full initdb when the seed is not usable.");
+
 DECLARE_bool(create_initial_sys_catalog_snapshot);
 DECLARE_string(initial_sys_catalog_snapshot_path);
 
@@ -139,6 +162,83 @@ Result<std::string> GetPgUpgradeBindAddress() {
       !bind_address.empty(), IllegalState,
       "No bind address found. Either pgsql_proxy_bind_address or rpc_bind_addresses must be set.");
   return bind_address;
+}
+
+constexpr auto kInitdbSeedDirName = "ysql_major_upgrade_initdb_seed";
+constexpr auto kInitdbSeedFileName = "template1_catalog";
+// Postgres FirstUnpinnedObjectId: initdb OIDs below it are pinned system objects.
+constexpr uint32_t kFirstUnpinnedObjectId = 12000;
+
+std::string InitdbSeedFilePath() {
+  if (!FLAGS_ysql_major_upgrade_initdb_seed_path.empty()) {
+    return JoinPathSegments(FLAGS_ysql_major_upgrade_initdb_seed_path, kInitdbSeedFileName);
+  }
+  const auto sub_dir = JoinPathSegments("share", kInitdbSeedDirName);
+  return JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir, kInitdbSeedFileName);
+}
+
+// initdb reads its scripts and the bki file from the top level of the postgres share directory.
+Result<uint32_t> InitdbInputsCrc() {
+  auto* env = Env::Default();
+  const auto share_dir = JoinPathSegments(pgwrapper::GetPostgresInstallRoot(), "share");
+  auto names = VERIFY_RESULT(env->GetChildren(share_dir, ExcludeDots::kTrue));
+  std::sort(names.begin(), names.end());
+  crc::Crc32Accumulator crc;
+  for (const auto& name : names) {
+    const auto path = JoinPathSegments(share_dir, name);
+    if (VERIFY_RESULT(env->IsDirectory(path))) {
+      continue;
+    }
+    faststring contents;
+    RETURN_NOT_OK(ReadFileToString(env, path, &contents));
+    crc.Feed(Slice(name));
+    crc.Feed(contents.data(), contents.size());
+  }
+  return crc.result();
+}
+
+uint32_t MaxInitdbSeedOid(const YsqlMajorUpgradeInitdbSeedPB& seed) {
+  uint32_t max_oid = 0;
+  for (const auto& table : seed.tables()) {
+    const auto& columns = table.table().schema().columns();
+    for (int i = 0; i < columns.size(); ++i) {
+      if (columns[i].name() != "oid") {
+        continue;
+      }
+      for (const auto& row : table.rows()) {
+        max_oid = std::max(max_oid, row.values(i).uint32_value());
+      }
+    }
+  }
+  return max_oid;
+}
+
+Status SetInitdbSeedBuild(YsqlMajorUpgradeInitdbSeedPB* seed) {
+  VersionInfoPB version_info;
+  VersionInfo::GetVersionInfoPB(&version_info);
+  seed->set_git_hash(version_info.git_hash());
+  seed->set_build_type(version_info.build_type());
+  seed->set_initdb_inputs_crc(VERIFY_RESULT(InitdbInputsCrc()));
+  return Status::OK();
+}
+
+Result<YsqlMajorUpgradeInitdbSeedPB> ReadInitdbSeed() {
+  const auto path = InitdbSeedFilePath();
+  YsqlMajorUpgradeInitdbSeedPB seed;
+  RETURN_NOT_OK(pb_util::ReadPBContainerFromPath(Env::Default(), path, &seed));
+
+  YsqlMajorUpgradeInitdbSeedPB build;
+  RETURN_NOT_OK(SetInitdbSeedBuild(&build));
+  SCHECK(
+      seed.git_hash() == build.git_hash() && seed.build_type() == build.build_type(),
+      IllegalState, Format("$0 was written by another build", path));
+  SCHECK_EQ(
+      seed.initdb_inputs_crc(), build.initdb_inputs_crc(), IllegalState,
+      Format("initdb inputs changed after $0 was written", path));
+  SCHECK_GE(
+      seed.next_object_id(), kFirstUnpinnedObjectId, IllegalState,
+      Format("$0 has no valid next OID", path));
+  return seed;
 }
 
 }  // namespace
@@ -416,14 +516,67 @@ void YsqlInitDBAndMajorUpgradeHandler::RunNewClusterGlobalInitDB(const LeaderEpo
   WaitForTServersBeforeInitDb();
 
   auto status =
-      InitDBAndSnapshotSysCatalog(/*db_name_to_oid_list=*/{}, /*is_major_upgrade=*/false, epoch);
+      FLAGS_create_ysql_major_upgrade_initdb_seed
+          ? CreateInitdbSeed()
+          : InitDBAndSnapshotSysCatalog(
+                /*db_name_to_oid_list=*/{}, /*is_major_upgrade=*/false, epoch);
   ERROR_NOT_OK(
       ysql_catalog_config_.SetInitDbDone(status, epoch),
       "Failed to set global initdb as finished in sys catalog");
 }
 
+Status YsqlInitDBAndMajorUpgradeHandler::CreateInitdbSeed() {
+  RETURN_NOT_OK(PgWrapper::InitDbForYSQL(
+      &master_, master_.options(), *master_.fs_manager(), FLAGS_tmp_dir,
+      /*db_to_oid=*/{}, /*is_major_upgrade=*/true, PgWrapper::GlobalInitdbScope::kTemplate1Only));
+
+  YsqlMajorUpgradeInitdbSeedPB seed;
+  RETURN_NOT_OK(SetInitdbSeedBuild(&seed));
+  const auto template1_id = GetPgsqlNamespaceId(kTemplate1Oid);
+  auto template1 = VERIFY_RESULT(catalog_manager_.FindNamespaceById(template1_id));
+  *seed.mutable_template1() = template1->LockForRead()->pb;
+  for (const auto& table : catalog_manager_.GetTables(GetTablesMode::kRunning)) {
+    if (table->namespace_id() != template1_id ||
+        !IsCurrentVersionYsqlCatalogTable(table->id())) {
+      continue;
+    }
+    auto* seed_table = seed.add_tables();
+    seed_table->set_table_id(table->id());
+    *seed_table->mutable_table() = table->LockForRead()->pb;
+    RETURN_NOT_OK(sys_catalog_.ExportPgsqlTableRows(table->id(), seed_table));
+  }
+  seed.set_next_object_id(MaxInitdbSeedOid(seed) + 1);
+
+  const auto path = InitdbSeedFilePath();
+  RETURN_NOT_OK(Env::Default()->CreateDirs(DirName(path)));
+  RETURN_NOT_OK(pb_util::WritePBContainerToPath(
+      Env::Default(), path, seed, pb_util::CreateMode::OVERWRITE, pb_util::SyncMode::SYNC));
+  LOG(INFO) << "Wrote " << seed.tables_size() << " template1 tables to the initdb seed " << path;
+  return Status::OK();
+}
+
+Result<std::optional<uint32_t>> YsqlInitDBAndMajorUpgradeHandler::MaybeLoadTemplate1FromInitdbSeed(
+    const LeaderEpoch& epoch) {
+  if (!FLAGS_ysql_major_upgrade_use_initdb_seed) {
+    return std::nullopt;
+  }
+  auto seed = ReadInitdbSeed();
+  if (!seed.ok()) {
+    SCHECK(
+        !FLAGS_TEST_ysql_major_upgrade_require_initdb_seed, IllegalState,
+        Format("The initdb seed is required but not usable: $0", seed.status()));
+    LOG(INFO) << "Running the full initdb; the initdb seed is not usable: " << seed.status();
+    return std::nullopt;
+  }
+  RETURN_NOT_OK_PREPEND(
+      catalog_manager_.LoadYsqlTemplate1FromInitdbSeed(*seed, epoch),
+      "Failed to load template1 from the initdb seed");
+  return seed->next_object_id();
+}
+
 Status YsqlInitDBAndMajorUpgradeHandler::InitDBAndSnapshotSysCatalog(
-    const DbNameToOidList& db_name_to_oid_list, bool is_major_upgrade, const LeaderEpoch& epoch) {
+    const DbNameToOidList& db_name_to_oid_list, bool is_major_upgrade, const LeaderEpoch& epoch,
+    std::optional<uint32_t> template1_next_object_id) {
   InitialSysCatalogSnapshotWriter* snapshot_writer = nullptr;
   if (FLAGS_create_initial_sys_catalog_snapshot) {
     snapshot_writer = &catalog_manager_.AllocateAndGetInitialSysCatalogSnapshotWriter();
@@ -431,7 +584,10 @@ Status YsqlInitDBAndMajorUpgradeHandler::InitDBAndSnapshotSysCatalog(
 
   RETURN_NOT_OK(PgWrapper::InitDbForYSQL(
       &master_, master_.options(), *master_.fs_manager(), FLAGS_tmp_dir,
-      db_name_to_oid_list, is_major_upgrade));
+      db_name_to_oid_list, is_major_upgrade,
+      template1_next_object_id ? PgWrapper::GlobalInitdbScope::kTemplate1Skip
+                               : PgWrapper::GlobalInitdbScope::kFull,
+      template1_next_object_id.value_or(0)));
 
   if (!snapshot_writer) {
     return Status::OK();
@@ -496,8 +652,10 @@ Status YsqlInitDBAndMajorUpgradeHandler::UpdateCatalogVersions(const LeaderEpoch
 
 Status YsqlInitDBAndMajorUpgradeHandler::RunMajorVersionCatalogUpgrade(const LeaderEpoch& epoch) {
   auto db_name_to_oid_list = VERIFY_RESULT(GetDbNameToOidListForMajorUpgrade());
+  const auto template1_next_object_id = VERIFY_RESULT(MaybeLoadTemplate1FromInitdbSeed(epoch));
   RETURN_NOT_OK_PREPEND(
-      InitDBAndSnapshotSysCatalog(db_name_to_oid_list, /*is_major_upgrade=*/true, epoch),
+      InitDBAndSnapshotSysCatalog(
+          db_name_to_oid_list, /*is_major_upgrade=*/true, epoch, template1_next_object_id),
       "Failed to run initdb");
 
   RETURN_NOT_OK(TransitionMajorCatalogUpgradeState(

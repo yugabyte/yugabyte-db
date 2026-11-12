@@ -51,6 +51,7 @@
 
 #include "yb/common/ql_protocol.fwd.h"
 
+#include "yb/master/catalog_entity_info.fwd.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_admin.fwd.h"
 #include "yb/master/master_dcl.fwd.h"
@@ -323,6 +324,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status CopyPgsqlSysTables(
       const NamespaceInfo& ns, const std::vector<TableInfoPtr>& tables,
       const LeaderEpoch& epoch);
+
+  // Create template1's current-version catalog tables and rows from an initdb seed, as initdb does.
+  Status LoadYsqlTemplate1FromInitdbSeed(
+      const YsqlMajorUpgradeInitdbSeedPB& seed, const LeaderEpoch& epoch);
 
   // Create a new Table with the specified attributes.
   //

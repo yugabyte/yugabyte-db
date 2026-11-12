@@ -1299,6 +1299,20 @@ Status PgWrapper::InitDb(InitdbParams initdb_params) {
       initdb_subprocess.SetEnv("YB_PG_MAJOR_UPGRADE_INITDB", "true");
     }
 
+    switch (global_initdb_params.scope) {
+      case GlobalInitdbScope::kFull:
+        break;
+      case GlobalInitdbScope::kTemplate1Only:
+        initdb_subprocess.SetEnv("YB_PG_INITDB_TEMPLATE1_ONLY", "1");
+        break;
+      case GlobalInitdbScope::kTemplate1Skip:
+        initdb_subprocess.SetEnv("YB_PG_INITDB_TEMPLATE1_SKIP", "1");
+        initdb_subprocess.SetEnv(
+            "YB_PG_INITDB_TEMPLATE1_NEXT_OID",
+            std::to_string(global_initdb_params.template1_next_object_id));
+        break;
+    }
+
     for (const auto& [db_name, db_oid] : global_initdb_params.db_to_oid) {
       initdb_subprocess.SetEnv("YB_DATABASE_OID_" + db_name, std::to_string(db_oid));
     }
@@ -1472,7 +1486,7 @@ Status PgWrapper::CleanupPgData(const std::string& data_dir) {
 Status PgWrapper::InitDbForYSQL(
     PgWrapperContext* server, const server::ServerBaseOptions& options, FsManager& fs_manager,
     const string& tmp_dir_base, std::vector<std::pair<string, YbcPgOid>> db_to_oid,
-    bool is_major_upgrade) {
+    bool is_major_upgrade, GlobalInitdbScope scope, uint32_t template1_next_object_id) {
   const auto master_addresses = server::MasterAddressesToString(*options.GetMasterAddresses());
 
   LOG(INFO) << "Running initdb to initialize YSQL cluster with master addresses "
@@ -1502,7 +1516,8 @@ Status PgWrapper::InitDbForYSQL(
   PgWrapper pg_wrapper(conf);
   pg_wrapper.PrepareSharedMemoryNegotiation(server);
   auto start_time = std::chrono::steady_clock::now();
-  Status initdb_status = pg_wrapper.InitDb(GlobalInitdbParams{db_to_oid, is_major_upgrade});
+  Status initdb_status = pg_wrapper.InitDb(
+      GlobalInitdbParams{db_to_oid, is_major_upgrade, scope, template1_next_object_id});
   auto elapsed_time = std::chrono::steady_clock::now() - start_time;
   LOG(INFO)
       << "initdb took "

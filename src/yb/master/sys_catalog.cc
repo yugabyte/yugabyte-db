@@ -72,6 +72,7 @@
 
 #include "yb/gutil/bind.h"
 
+#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
@@ -2063,6 +2064,68 @@ Status SysCatalogTable::CopyPgsqlTables(
   RETURN_NOT_OK(FinishWrite(writer, total_bytes, batch_count));
 
   LOG(INFO) << "CopyPgsqlTables: Copied total " << rows_so_far << " rows, total "
+            << HumanizeBytes(total_bytes) << " bytes in " << batch_count << " batches";
+  return Status::OK();
+}
+
+Status SysCatalogTable::ExportPgsqlTableRows(
+    const TableId& table_id, YsqlInitdbSeedTablePB* seed_table) {
+  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet());
+  const std::shared_ptr<tablet::TableInfo> table_info =
+      VERIFY_RESULT(tablet->metadata()->GetTableInfo(table_id));
+  const auto& schema = table_info->schema();
+  dockv::ReaderProjection projection(schema);
+  std::unique_ptr<docdb::YQLRowwiseIteratorIf> iter =
+      VERIFY_RESULT(tablet->NewRowIterator(projection, {}, table_id));
+  qlexpr::QLTableRow row;
+
+  while (VERIFY_RESULT(iter->FetchNext(&row))) {
+    auto* seed_row = seed_table->add_rows();
+    for (size_t i = 0; i < schema.num_columns(); ++i) {
+      auto* seed_value = seed_row->add_values();
+      const auto value = row.GetValue(schema.column_id(i));
+      if (value) {
+        seed_value->CopyFrom(value->get());
+      }
+    }
+  }
+  return Status::OK();
+}
+
+Status SysCatalogTable::ImportPgsqlTableRows(
+    const YsqlMajorUpgradeInitdbSeedPB& seed, int64_t leader_term) {
+  TRACE_EVENT0("master", "ImportPgsqlTableRows");
+
+  std::unique_ptr<SysCatalogWriter> writer = NewWriter(leader_term);
+
+  size_t batch_count = 0, rows_so_far = 0, total_bytes = 0;
+  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet());
+  const auto* meta = tablet->metadata();
+  for (const auto& seed_table : seed.tables()) {
+    const std::shared_ptr<tablet::TableInfo> table_info =
+        VERIFY_RESULT(meta->GetTableInfo(seed_table.table_id()));
+    const auto& schema = table_info->schema();
+
+    for (const auto& seed_row : seed_table.rows()) {
+      SCHECK_EQ(
+          static_cast<size_t>(seed_row.values_size()), schema.num_columns(), Corruption,
+          Format("Seed row does not match the schema of $0", seed_table.table_id()));
+      qlexpr::QLTableRow row;
+      for (size_t i = 0; i < schema.num_columns(); ++i) {
+        row.AllocColumn(schema.column_id(i), seed_row.values(static_cast<int>(i)));
+      }
+      RETURN_NOT_OK(writer->InsertPgsqlTableRow(
+          schema, row, seed_table.table_id(), schema, table_info->schema_version,
+          true /* is_upsert */));
+
+      ++rows_so_far;
+      RETURN_NOT_OK(WriteBatchIfNeeded(FLAGS_copy_tables_batch_bytes, rows_so_far, leader_term,
+                                       writer, total_bytes, batch_count));
+    }
+  }
+  RETURN_NOT_OK(FinishWrite(writer, total_bytes, batch_count));
+
+  LOG(INFO) << "ImportPgsqlTableRows: Imported total " << rows_so_far << " rows, total "
             << HumanizeBytes(total_bytes) << " bytes in " << batch_count << " batches";
   return Status::OK();
 }

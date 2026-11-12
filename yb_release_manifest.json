@@ -88,6 +88,7 @@
       "$BUILD_ROOT/share/initial_sys_catalog_snapshot",
       "$BUILD_ROOT/share/ysql_conn_mgr.template.conf",
       "$BUILD_ROOT/share/ysql_migrations",
+      "$BUILD_ROOT/share/ysql_major_upgrade_initdb_seed",
       "sample/*.sql",
       "Linux-only:https://downloads.yugabyte.com/ybc/${YBC_VERSION}/ybc-${YBC_VERSION}-${YBCOS}-${ARCH}.tar.gz"
     ],

@@ -20,6 +20,8 @@
 
 DEFINE_UNKNOWN_string(initial_sys_catalog_snapshot_dest_path, "",
               "Destination path to write the initial sys catalog snapshot to");
+DEFINE_NON_RUNTIME_string(ysql_major_upgrade_initdb_seed_dest_path, "",
+    "If set, write the YSQL major upgrade initdb seed to this directory instead of the snapshot");
 
 namespace yb {
 namespace pgwrapper {
@@ -31,6 +33,19 @@ class CreateInitialSysCatalogSnapshotTest : public PgWrapperTestBase {
   }
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    if (!FLAGS_ysql_major_upgrade_initdb_seed_dest_path.empty()) {
+      LOG(INFO) << "Creating YSQL major upgrade initdb seed at: "
+                << FLAGS_ysql_major_upgrade_initdb_seed_dest_path;
+      options->extra_master_flags.emplace_back("--create_ysql_major_upgrade_initdb_seed");
+      options->extra_master_flags.emplace_back("--net_address_filter=ipv4_external,ipv4_all");
+      options->extra_master_flags.emplace_back(
+          "--ysql_major_upgrade_initdb_seed_path=" +
+          FLAGS_ysql_major_upgrade_initdb_seed_dest_path);
+      options->extra_master_flags.emplace_back("--master_auto_run_initdb");
+      // Upgrade-mode initdb creates the transaction status table, which needs a tserver.
+      options->replication_factor = 1;
+      return;
+    }
     if (FLAGS_initial_sys_catalog_snapshot_dest_path.empty()) {
       // Allow running this test without an argument.
       std::string test_tmpdir;
@@ -49,8 +64,8 @@ class CreateInitialSysCatalogSnapshotTest : public PgWrapperTestBase {
   }
 
   int GetNumTabletServers() const override {
-    // No tablet servers necessary to run initdb.
-    return 0;
+    // Only the seed's upgrade-mode initdb needs a tablet server.
+    return FLAGS_ysql_major_upgrade_initdb_seed_dest_path.empty() ? 0 : 1;
   }
 };
 
