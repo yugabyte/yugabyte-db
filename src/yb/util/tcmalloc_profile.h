@@ -85,8 +85,8 @@ tcmalloc::Profile GetHeapSnapshot(HeapSnapshotType snapshot_type);
 
 // Skips samples of allocations made before allocated_since.
 std::vector<Sample> AggregateAndSortProfile(
-    const tcmalloc::Profile& profile, SampleOrder order, const std::string& separator = "\n",
-    absl::Time allocated_since = absl::InfinitePast());
+    const tcmalloc::Profile& profile, SampleOrder order, const std::string& separator,
+    absl::Time allocated_since);
 
 #endif // YB_GOOGLE_TCMALLOC
 
