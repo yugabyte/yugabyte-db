@@ -556,14 +556,16 @@ ybIsMergeGapCol(IndexOptInfo *index, List *indexclauses, Bitmapset *saop_idxs,
  * Append gap column indexcol (see ybIsMergeGapCol) to the merge sort columns
  * in sort_info.  Each stream returns its rows in index order, so merging on
  * these columns too keeps the merged rows in index order.  A gap column is
- * redundant for the pathkeys only because the index predicate holds it
- * constant, or because filters tie it to a constant or to an earlier merge
- * sort column, and filters only remove rows.  So the merged rows keep the
- * order of the pathkeys wherever those filters run, even after the merge.
- * Merging on a gap column matters only when a filter that ties it runs after
- * the merge, but merging on every one keeps the order without tracking where
- * each filter runs.  The column compares with its index ordering operator,
- * collation, and nulls order for scandir.
+ * redundant for the pathkeys only because either
+ * - the index predicate holds it constant, or
+ * - filters tie it to a constant or to an earlier merge sort column.
+ *
+ * Filters only remove rows, so a filter that runs within each stream, before
+ * the merge, keeps the order of the pathkeys.  A filter that runs after the
+ * merge, such as a local filter or the storage table filter of a secondary
+ * index scan that is not embedded, does not, so merge on the gap column as
+ * well.  Only that case needs it, but where each filter runs is not known here
+ * (see #37497), so merge on every gap column.
  */
 static void
 ybAppendMergeGapCol(YbSortInfo *sort_info, IndexOptInfo *index,
