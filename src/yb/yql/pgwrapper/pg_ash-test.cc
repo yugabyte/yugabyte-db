@@ -1894,11 +1894,13 @@ class PgAshObjectLockTest : public PgAshSingleNode {
       const std::string& blocker_stmt, const std::string& blocked_stmt,
       const std::vector<std::string>& wait_events) {
     RETURN_NOT_OK(conn_->Execute("CREATE TABLE t (k INT)"));
+    // Declared before blocker: on an early return, blocker's connection closes, releasing its lock,
+    // before the thread holder joins the blocked thread.
+    TestThreadHolder thread_holder;
     auto blocker = VERIFY_RESULT(Connect());
     RETURN_NOT_OK(blocker.Execute("BEGIN"));
     RETURN_NOT_OK(RunStatement(blocker, blocker_stmt, InTxnBlock::kTrue));
 
-    TestThreadHolder thread_holder;
     thread_holder.AddThreadFunctor([this, &blocked_stmt] {
       auto conn = ASSERT_RESULT(Connect());
       ASSERT_OK(RunStatement(conn, blocked_stmt, InTxnBlock::kFalse));
