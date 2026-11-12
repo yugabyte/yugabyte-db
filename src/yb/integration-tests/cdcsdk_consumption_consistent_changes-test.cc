@@ -1458,8 +1458,8 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWitDDLStatemen
   t4.join();
 
   int expected_dml_records = 4 * num_batches * inserts_per_batch;
-  // With transactional DDL, the ADD and DROP ship 2 and 1 synthetic DDL records instead of 1 per
-  // tablet each.
+  // Without transactional DDL, 2 DDL / tablet. With it, the ADD and DROP ship 2 and 1 synthetic
+  // DDL records.
   int expected_ddl_records =
       FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 3 : 2 * 3;
   auto get_all_pending_changes_resp = ASSERT_RESULT(
@@ -1595,7 +1595,8 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWithMultipleAl
   }
   LOG(INFO) << "Added columns and pushed required records";
 
-  // With transactional DDL, each ADD COLUMN ships 2 synthetic DDL records instead of 1 per tablet.
+  // Without transactional DDL, 13 DDL / tablet. With it, each ADD COLUMN ships 2 synthetic DDL
+  // records.
   int expected_ddl_records =
       FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 13 * 2 : 13 * 3;
   expected_dml_records = 13 * 10;     /* number of add columns 'times' insert per batch */
