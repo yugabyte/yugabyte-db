@@ -217,7 +217,7 @@ yb-admin \
 
 Displays a list of all YB-Master servers in a table listing the master UUID, RPC host and port, state (`ALIVE` or `DEAD`), role (`LEADER`, `FOLLOWER`, or `UNKNOWN_ROLE`), broadcast host and port, and lag.
 
-The `Lag(ms)` column (v2025.2.9.0 and later) shows the time, in milliseconds, since the Raft leader last successfully exchanged a heartbeat with that YB-Master. A small value indicates a healthy follower; a large or steadily growing value indicates that the follower is stalled, unreachable, or not catching up. The value is `N/A` for the leader's own row, because the leader does not track itself, and for all rows if the command is served by a non-leader. A follower that has never been reached reports a small value that then grows, not a distinct "never reached" value.
+The `Lag(ms)` column (v2025.2.9.0 and later) shows the time, in milliseconds, since the Raft leader last successfully exchanged a heartbeat with that YB-Master. It measures only leader-to-follower reachability: a large or steadily growing value indicates that the leader has not recently been able to communicate with that follower. A small value does not by itself mean the follower is caught up, because a follower can respond to heartbeats and still be behind on replicating the sys catalog. The value is `N/A` for the leader's own row, because the leader does not track itself, and for all rows if the command is served by a non-leader. A follower that has never been reached starts with a small value that then grows, so it is not reported as a distinct "never reached" value.
 
 **Syntax**
 
