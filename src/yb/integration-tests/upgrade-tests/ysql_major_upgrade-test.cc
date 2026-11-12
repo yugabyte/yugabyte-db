@@ -2514,4 +2514,21 @@ TEST_F(
   ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
 }
 
+TEST_F(YsqlMajorUpgradeTest, PresplitReloptions) {
+  ASSERT_OK(ExecuteStatements(
+      {"CREATE TABLE presplit_hash (k INT PRIMARY KEY, v INT) SPLIT INTO 3 TABLETS",
+       "CREATE INDEX presplit_hash_v ON presplit_hash (v HASH) SPLIT INTO 2 TABLETS",
+       "CREATE TABLE presplit_range (k INT, PRIMARY KEY (k ASC)) SPLIT AT VALUES ((100))"}));
+  const auto query =
+      "SELECT relname, COALESCE(array_to_string(reloptions, ','), '') FROM pg_class "
+      "WHERE relname LIKE 'presplit%' ORDER BY relname";
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+  const auto before = ASSERT_RESULT((conn.FetchRows<std::string, std::string>(query)));
+
+  ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
+
+  conn = ASSERT_RESULT(cluster_->ConnectToDB());
+  ASSERT_VECTORS_EQ(ASSERT_RESULT((conn.FetchRows<std::string, std::string>(query))), before);
+}
+
 }  // namespace yb

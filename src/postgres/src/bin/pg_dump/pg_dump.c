@@ -22498,6 +22498,10 @@ ybDumpPresplitInCreate(Archive *fout)
 {
 	static int	cached = -1;	/* -1 unknown, 0 false, 1 true */
 
+	/* Only this version restores a binary-upgrade dump */
+	if (fout->dopt->binary_upgrade)
+		return true;
+
 	if (cached < 0)
 	{
 		PGresult   *res = ExecuteSqlQueryForSingleRow(fout,
