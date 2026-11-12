@@ -537,7 +537,7 @@ ybIsCopyOfEarlierIndexCol(IndexOptInfo *index, int indexcol)
 }
 
 /*
- * Whether index column indexcol, between two merge sort columns, is a gap
+ * Whether index column indexcol, before the last merge sort column, is a gap
  * column: a range column without an equality index clause that is not a SAOP
  * stream column or a copy of an earlier index column.  The merge sorts on each
  * gap column (see ybAppendMergeGapSortCol).
@@ -719,7 +719,8 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 		 * For an embedded index scan, an expression column is not available
 		 * for sort (see also #36017).  That holds for the column of this
 		 * pathkey and for a gap column before it, which the merge sorts on as
-		 * well.
+		 * well, even when the filters that tie the gap column run before the
+		 * merge (see also #37497).
 		 */
 		if (embedded &&
 			(index->indexkeys[tle->resno - 1] == 0 || expression_gap))
