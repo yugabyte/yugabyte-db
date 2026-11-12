@@ -20,6 +20,7 @@
 
 #include "yb/client/client.h"
 #include "yb/client/table.h"
+#include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_table_name.h"
 
@@ -35,6 +36,7 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/master-test-util.h"
 #include "yb/master/master.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
@@ -81,6 +83,9 @@ DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(tablet_report_limit);
 DECLARE_int32(replication_factor);
 DECLARE_uint64(TEST_inject_latency_during_tablet_report_ms);
+DECLARE_bool(master_enable_deleted_tablet_cleanup);
+DECLARE_int32(tablet_creation_timeout_ms);
+DECLARE_bool(TEST_do_not_start_election_test_only);
 
 METRIC_DECLARE_histogram(handler_latency_yb_master_MasterHeartbeat_TSHeartbeat);
 
@@ -332,6 +337,64 @@ TEST_F(MasterHeartbeatITest, IgnoreEarlierHeartbeatFromSameTSProcess) {
     // Sanity check we didn't overwrite the TSDescriptor state with the data from the stale
     // heartbeat.
     ASSERT_EQ(ts->num_live_replicas(), 1);
+  }
+}
+
+// A report with a Raft config change rebuilds every replica of the tablet from the sender's report.
+// should_disable_lb_move must still only change for the sender's replica.
+TEST_F(MasterHeartbeatITest, ConfigChangePreservesOtherReplicasShouldDisableLbMove) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  CreateTable();
+  ASSERT_OK(mini_cluster_->AddTabletServer());
+  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(4));
+  // Stop all tservers so real heartbeats don't overwrite the replica map.
+  ShutdownAllTServers(mini_cluster_.get());
+
+  auto table = table_name();
+  auto& catalog_mgr = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto table_info = catalog_mgr.GetTableInfoFromNamespaceNameAndTableName(
+      table.namespace_type(), table.namespace_name(), table.table_name());
+  auto tablet = ASSERT_RESULT(table_info->GetTablets())[0];
+
+  // The existing replicas have finished post-split compaction.
+  auto replicas = std::make_shared<master::TabletReplicaMap>(*tablet->GetReplicaLocations());
+  for (auto& [ts_uuid, replica] : *replicas) {
+    replica.should_disable_lb_move = false;
+  }
+  tablet->SetReplicaLocations(replicas);
+
+  master::TSDescriptorVector ts_descs = catalog_mgr.GetAllLiveNotBlacklistedTServers();
+  auto extra_ts_it = std::find_if(
+      ts_descs.cbegin(), ts_descs.cend(), [&replicas](const master::TSDescriptorPtr& ts) {
+        return !replicas->contains(ts->permanent_uuid());
+      });
+  ASSERT_TRUE(extra_ts_it != ts_descs.cend());
+  auto ts = *extra_ts_it;
+
+  // The extra tserver reports a config change that adds it as leader, with compaction pending.
+  master::MasterHeartbeatProxy master_proxy(
+      proxy_cache_.get(), mini_cluster_->mini_master()->bound_rpc_addr());
+  auto cluster_config = ASSERT_RESULT(catalog_mgr.GetClusterConfig());
+  master::TSHeartbeatRequestPB req;
+  *req.mutable_common() = MakeTSToMasterCommonPB(*ts, ts->latest_seqno());
+  req.set_universe_uuid(cluster_config.universe_uuid());
+  *req.mutable_tablet_report() = MakeTabletReportPBWithNewLeader(
+      ts.get(), tablet.get(), true, ts->latest_report_seqno() + 1);
+  req.mutable_tablet_report()->mutable_updated_tablets(0)->set_should_disable_lb_move(true);
+  req.set_num_live_tablets(1);
+  master::TSHeartbeatResponsePB resp;
+  rpc::RpcController controller;
+  ASSERT_OK(master_proxy.TSHeartbeat(req, &resp, &controller));
+  ASSERT_FALSE(resp.has_error());
+
+  auto replica_locations = tablet->GetReplicaLocations();
+  ASSERT_TRUE(replica_locations->contains(ts->permanent_uuid()));
+  for (const auto& [ts_uuid, replica] : *replica_locations) {
+    if (ts_uuid == ts->permanent_uuid()) {
+      ASSERT_TRUE(replica.should_disable_lb_move);
+    } else {
+      ASSERT_FALSE(replica.should_disable_lb_move) << "Overwritten for replica on " << ts_uuid;
+    }
   }
 }
 
@@ -1198,6 +1261,137 @@ TEST_F_EX(MasterHeartbeatITest, NoHintedElectionOnTServerRestart,
   ASSERT_OK(follower->Restart());
   ASSERT_OK(skipped_election_log.WaitFor(kTimeout));
   ASSERT_FALSE(hinted_election_log.IsEventOccurred());
+}
+
+int64_t TotalReplicaLoad(master::MiniMaster* master) {
+  int64_t total = 0;
+  for (const auto& desc : master->ts_manager().GetAllDescriptors()) {
+    total += desc->replica_load();
+  }
+  return total;
+}
+
+class ReplicaLoadITest : public MasterHeartbeatITest {
+ public:
+  bool enable_ysql() override { return false; }
+  size_t num_masters() override { return 3; }
+  size_t num_tablet_servers() override { return 4; }
+
+ protected:
+  static constexpr auto kTimeout = 120s * kTimeMultiplier;
+
+  int64_t TableReplicaLoad(master::MiniMaster* master) {
+    const auto& name = table_name();
+    auto table = master->catalog_manager().GetTableInfoFromNamespaceNameAndTableName(
+        name.namespace_type(), name.namespace_name(), name.table_name());
+    CHECK_NOTNULL(table.get());
+    int64_t total = 0;
+    for (const auto& tablet : CHECK_RESULT(table->GetTablets())) {
+      total += tablet->GetReplicaLocations()->size();
+    }
+    return total;
+  }
+
+  static Status WaitForTotal(master::MiniMaster* master, int64_t total, const std::string& what) {
+    return WaitFor(
+        [master, total]() -> Result<bool> {
+          return TotalReplicaLoad(master) == total && master::ReplicaLoadMatchesReplicaMaps(master);
+        },
+        kTimeout, what);
+  }
+};
+
+TEST_F_EX(MasterHeartbeatITest, ReplicaLoadFollowsReplicaMaps, ReplicaLoadITest) {
+  auto* master = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster());
+  ASSERT_OK(WaitFor(
+      [master]() -> Result<bool> { return master::ReplicaLoadMatchesReplicaMaps(master); },
+      kTimeout, "Counters match the maps after table creation"));
+  const int64_t table_load = TableReplicaLoad(master);
+  ASSERT_GT(table_load, 0);
+  const int64_t total = TotalReplicaLoad(master);
+  ASSERT_GE(total, table_load);
+
+  // Draining a blacklisted tserver changes the maps through tablet reports only.
+  ASSERT_OK(mini_cluster_->AddTServerToBlacklist(0));
+  const auto blacklisted_uuid = mini_cluster_->mini_tablet_server(0)->server()->permanent_uuid();
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        for (const auto& desc : master->ts_manager().GetAllDescriptors()) {
+          if (desc->permanent_uuid() == blacklisted_uuid && desc->replica_load() != 0) {
+            return false;
+          }
+        }
+        return TotalReplicaLoad(master) == total && master::ReplicaLoadMatchesReplicaMaps(master);
+      },
+      kTimeout, "Blacklisted tserver drained"));
+
+  DeleteTable();
+  ASSERT_OK(WaitForTotal(master, total - table_load, "Deleted table left the count"));
+  CreateTable();
+  ASSERT_OK(WaitForTotal(master, total, "Re-created table entered the count"));
+
+  // A new master leader builds the counters from scratch out of the tablet reports it receives.
+  ASSERT_RESULT(mini_cluster_->StepDownMasterLeader());
+  auto* new_master = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster());
+  ASSERT_NE(new_master, master);
+  ASSERT_OK(WaitForTotal(new_master, total, "New master leader counts the same replicas"));
+}
+
+// Deleted tablets normally leave the maps on the next background pass and their destructor
+// corrects the count; with the cleanup off, a tablet that was not stopped keeps counting for good.
+class ReplacedTabletReplicaLoadITest : public ReplicaLoadITest {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_enable_deleted_tablet_cleanup) = false;
+    ReplicaLoadITest::SetUp();
+  }
+};
+
+TEST_F_EX(MasterHeartbeatITest, ReplacedTabletLeavesReplicaLoad, ReplacedTabletReplicaLoadITest) {
+  auto* master = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster());
+  ASSERT_OK(WaitFor(
+      [master]() -> Result<bool> { return master::ReplicaLoadMatchesReplicaMaps(master); },
+      kTimeout, "Counters match the maps after table creation"));
+
+  // Without a leader the tablet stays CREATING while its reported replicas fill the map.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_do_not_start_election_test_only) = true;
+  const client::YBTableName name(
+      YQL_DATABASE_CQL, table_name().namespace_name(), "replaced_tablet_table");
+  ASSERT_OK(NewTableCreator()->table_name(name).schema(&schema_).num_tablets(1).wait(false)
+                .Create());
+  master::TabletInfoPtr tablet;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto table = master->catalog_manager().GetTableInfoFromNamespaceNameAndTableName(
+            name.namespace_type(), name.namespace_name(), name.table_name());
+        if (!table) {
+          return false;
+        }
+        auto tablets = VERIFY_RESULT(table->GetTablets());
+        if (tablets.size() != 1) {
+          return false;
+        }
+        tablet = tablets.front();
+        return tablet->GetReplicaLocations()->size() ==
+               static_cast<size_t>(FLAGS_replication_factor);
+      },
+      kTimeout, "Replicas of the creating tablet reported"));
+  ASSERT_EQ(tablet->LockForRead()->pb.state(), master::SysTabletsEntryPB::CREATING);
+
+  const auto creation_timeout_ms = FLAGS_tablet_creation_timeout_ms;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_creation_timeout_ms) = 1000;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return tablet->LockForRead()->pb.state() == master::SysTabletsEntryPB::REPLACED;
+      },
+      kTimeout, "Tablet replaced"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_creation_timeout_ms) = creation_timeout_ms;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_do_not_start_election_test_only) = false;
+
+  ASSERT_FALSE(tablet->GetReplicaLocations()->empty());
+  ASSERT_OK(WaitFor(
+      [master]() -> Result<bool> { return master::ReplicaLoadMatchesReplicaMaps(master); },
+      kTimeout, "Replaced tablet left the count"));
 }
 
 }  // namespace yb::integration_tests

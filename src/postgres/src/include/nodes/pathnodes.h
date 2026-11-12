@@ -1014,6 +1014,7 @@ struct IndexOptInfo
 	int32_t		yb_cached_ybctid_size;
 	char	   *ybIndexName;
 	int			yb_num_decoded_pk_cols;	/* number of decoded pk columns in index */
+	List	   *yb_options;
 };
 
 /*

@@ -61,20 +61,6 @@ public class TestPgRegressColocatedTablesWithTablespaces extends BasePgRegressTe
   }
 
   @Override
-  protected Map<String, String> getTServerFlags() {
-    Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("ysql_enable_colocated_tables_with_tablespaces", "true");
-    return flagMap;
-  }
-
-  @Override
-  protected Map<String, String> getMasterFlags() {
-    Map<String, String> flagMap = super.getMasterFlags();
-    flagMap.put("ysql_enable_colocated_tables_with_tablespaces", "true");
-    return flagMap;
-  }
-
-  @Override
   public int getTestMethodTimeoutSec() {
     return 5000;
   }
