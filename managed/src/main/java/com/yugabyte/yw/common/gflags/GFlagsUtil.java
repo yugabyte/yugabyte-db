@@ -1516,6 +1516,43 @@ public class GFlagsUtil {
   }
 
   /**
+   * A new universe has no stored value to put back in place of REDACTED, so a gflag copied from an
+   * API response would otherwise be applied and stored as the literal token. Only gflags that API
+   * responses redact are checked; any other gflag may contain the word.
+   */
+  public static void checkNoRedactedGFlagsOnCreate(
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      String ybSoftwareVersion,
+      GFlagsValidation gFlagsValidation) {
+    if (!RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()) {
+      return;
+    }
+    Set<String> redactedGFlags =
+        new HashSet<>(
+            RedactingService.getSensitiveGflagsForRedaction(ybSoftwareVersion, gFlagsValidation));
+    redactedGFlags.add(YSQL_HBA_CONF_CSV);
+    Map<String, Map<String, String>> gflagMaps = new LinkedHashMap<>(getUserGFlagMaps(userIntent));
+    gflagMaps.put("masterGFlags", userIntent.masterGFlags);
+    gflagMaps.put("tserverGFlags", userIntent.tserverGFlags);
+    for (Map.Entry<String, Map<String, String>> gflags : gflagMaps.entrySet()) {
+      if (gflags.getValue() == null) {
+        continue;
+      }
+      for (Map.Entry<String, String> gflag : gflags.getValue().entrySet()) {
+        if (redactedGFlags.contains(gflag.getKey())
+            && RedactingService.isGFlagRedacted(gflag.getValue())) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "GFlag %s in %s contains %s: a new universe has no stored value to restore it"
+                      + " from. Submit the actual value.",
+                  gflag.getKey(), gflags.getKey(), RedactingService.SECRET_REPLACEMENT));
+        }
+      }
+    }
+  }
+
+  /**
    * Kubernetes helm overrides carry gflags too (gflags.master and gflags.tserver in the values) and
    * are merged over the gflags YBA generates, so they could inject gflag lines or, on a FIPS
    * universe, turn the FIPS gflag off where the gflags API refuses to.
@@ -2798,8 +2835,11 @@ public class GFlagsUtil {
       Map<String, String> newGFlags,
       GFlagsValidation gFlagsValidation,
       String ybSoftwareVersion) {
-    if (existingGFlags == null || newGFlags == null) {
-      return newGFlags;
+    if (newGFlags == null) {
+      return null;
+    }
+    if (existingGFlags == null) {
+      existingGFlags = Collections.emptyMap();
     }
 
     Map<String, String> mergedGFlags = new HashMap<>(newGFlags);
@@ -2809,11 +2849,23 @@ public class GFlagsUtil {
           RedactingService.getSensitiveGflagsForRedaction(ybSoftwareVersion, gFlagsValidation);
 
       for (String sensitiveFlag : sensitiveGFlagFields) {
+        if (sensitiveFlag.equals(YSQL_HBA_CONF_CSV)) {
+          continue;
+        }
         String newValue = newGFlags.get(sensitiveFlag);
         String existingValue = existingGFlags.get(sensitiveFlag);
 
         if (RedactingService.isGFlagRedacted(newValue)) {
-          if (existingValue != null && existingValue.equals(RedactingService.SECRET_REPLACEMENT)) {
+          if (existingValue == null) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                sensitiveFlag
+                    + " cannot be submitted as "
+                    + RedactingService.SECRET_REPLACEMENT
+                    + ": no prior universe value exists to restore it from."
+                    + " Provide the actual value in the request.");
+          }
+          if (existingValue.equals(RedactingService.SECRET_REPLACEMENT)) {
             throw new PlatformServiceException(
                 BAD_REQUEST,
                 "The stored value of "
@@ -2823,11 +2875,9 @@ public class GFlagsUtil {
                     + "; the real value cannot be recovered."
                     + " Provide the actual value in the request.");
           }
-          if (existingValue != null) {
-            mergedGFlags.put(sensitiveFlag, existingValue);
-            LOG.debug(
-                "Merged sensitive gflag {}: REDACTED -> preserved existing value", sensitiveFlag);
-          }
+          mergedGFlags.put(sensitiveFlag, existingValue);
+          LOG.debug(
+              "Merged sensitive gflag {}: REDACTED -> preserved existing value", sensitiveFlag);
         }
       }
 
@@ -2905,8 +2955,11 @@ public class GFlagsUtil {
       SpecificGFlags newSpecificGFlags,
       GFlagsValidation gFlagsValidation,
       String ybSoftwareVersion) {
-    if (existingSpecificGFlags == null || newSpecificGFlags == null) {
-      return newSpecificGFlags;
+    if (newSpecificGFlags == null) {
+      return null;
+    }
+    if (existingSpecificGFlags == null) {
+      existingSpecificGFlags = new SpecificGFlags();
     }
 
     // Merge per-process flags

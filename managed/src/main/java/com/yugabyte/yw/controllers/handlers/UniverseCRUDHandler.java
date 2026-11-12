@@ -948,6 +948,10 @@ public class UniverseCRUDHandler {
           taskParams.fipsEnabled,
           taskParams.getPrimaryCluster().userIntent.useNodeToNodeClientCerts,
           taskParams.nodeDetailsSet);
+      GFlagsUtil.checkNoRedactedGFlagsOnCreate(
+          c.userIntent,
+          taskParams.getPrimaryCluster().userIntent.ybSoftwareVersion,
+          gFlagsValidation);
       ManagedLoadBalancerUtil.validateNewCluster(
           c, taskParams.getPrimaryCluster(), confGetter, cloudAPIFactory);
       // Enforce user tags.

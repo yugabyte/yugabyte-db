@@ -76,6 +76,7 @@ import com.yugabyte.yw.models.helpers.telemetry.ExportType;
 import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -354,12 +355,21 @@ public class UpgradeUniverseHandler {
       if (universeCluster == null || universeCluster.userIntent == null) {
         continue;
       }
+      UserIntent stored = universeCluster.userIntent;
+      SpecificGFlags storedGFlags = stored.specificGFlags;
+      if (storedGFlags == null) {
+        // An older universe may keep its gflags only in the deprecated maps.
+        storedGFlags =
+            SpecificGFlags.construct(
+                stored.masterGFlags == null ? new HashMap<>() : stored.masterGFlags,
+                stored.tserverGFlags == null ? new HashMap<>() : stored.tserverGFlags);
+      }
       clusterParam.userIntent.specificGFlags =
           GFlagsUtil.mergeSensitiveSpecificGFlags(
-              universeCluster.userIntent.specificGFlags,
+              storedGFlags,
               clusterParam.userIntent.specificGFlags,
               gFlagsValidation,
-              universeCluster.userIntent.ybSoftwareVersion);
+              stored.ybSoftwareVersion);
     }
   }
 

@@ -738,6 +738,101 @@ public class GFlagsUtilTest extends FakeDBApplication {
   }
 
   @Test
+  public void testMergeSensitiveGFlagsRedactedWithNoStoredValueThrowsBadRequest() {
+    try (var mockedRedactingService =
+        Mockito.mockStatic(RedactingService.class, Mockito.CALLS_REAL_METHODS)) {
+      mockedRedactingService
+          .when(() -> RedactingService.getSensitiveGflagsForRedaction(any(), any()))
+          .thenReturn(Set.of("ycql_ldap_bind_passwd", "ysql_hba_conf_csv"));
+      Map<String, String> newFlags = Map.of("ycql_ldap_bind_passwd", SECRET_REPLACEMENT);
+      String hba = "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + SECRET_REPLACEMENT;
+
+      for (Map<String, String> existing : Arrays.asList(null, Map.of("webserver_port", "9000"))) {
+        PlatformServiceException ex =
+            assertThrows(
+                PlatformServiceException.class,
+                () ->
+                    GFlagsUtil.mergeSensitiveGFlags(existing, newFlags, gFlagsValidation, "2.18"));
+        assertEquals(BAD_REQUEST, ex.getHttpStatus());
+        assertTrue(ex.getMessage(), ex.getMessage().contains("ycql_ldap_bind_passwd"));
+      }
+      PlatformServiceException ex =
+          assertThrows(
+              PlatformServiceException.class,
+              () ->
+                  GFlagsUtil.mergeSensitiveGFlags(
+                      null, Map.of(YSQL_HBA_CONF_CSV, hba), gFlagsValidation, "2.18"));
+      assertEquals(BAD_REQUEST, ex.getHttpStatus());
+      assertTrue(ex.getMessage(), ex.getMessage().contains(YSQL_HBA_CONF_CSV));
+
+      Map<String, String> plain = Map.of("webserver_port", "9100");
+      assertEquals(plain, GFlagsUtil.mergeSensitiveGFlags(null, plain, gFlagsValidation, "2.18"));
+    }
+  }
+
+  @Test
+  public void testMergeSensitiveSpecificGFlagsRedactedWithNoStoredGFlagsThrowsBadRequest() {
+    try (var mockedRedactingService =
+        Mockito.mockStatic(RedactingService.class, Mockito.CALLS_REAL_METHODS)) {
+      mockedRedactingService
+          .when(() -> RedactingService.getSensitiveGflagsForRedaction(any(), any()))
+          .thenReturn(Set.of("ycql_ldap_bind_passwd"));
+      SpecificGFlags newSpecificGFlags =
+          SpecificGFlags.construct(
+              new HashMap<>(), new HashMap<>(Map.of("ycql_ldap_bind_passwd", SECRET_REPLACEMENT)));
+
+      PlatformServiceException ex =
+          assertThrows(
+              PlatformServiceException.class,
+              () ->
+                  GFlagsUtil.mergeSensitiveSpecificGFlags(
+                      null, newSpecificGFlags, gFlagsValidation, "2.18"));
+      assertEquals(BAD_REQUEST, ex.getHttpStatus());
+    }
+  }
+
+  @Test
+  public void testCheckNoRedactedGFlagsOnCreate() {
+    try (var mockedRedactingService =
+        Mockito.mockStatic(RedactingService.class, Mockito.CALLS_REAL_METHODS)) {
+      mockedRedactingService
+          .when(RedactingService::isGFlagsSensitiveDataApiRedactionEnabled)
+          .thenReturn(true);
+      mockedRedactingService
+          .when(() -> RedactingService.getSensitiveGflagsForRedaction(any(), any()))
+          .thenReturn(Set.of("ycql_ldap_bind_passwd"));
+      UserIntent legacy = new UserIntent();
+      legacy.tserverGFlags = new HashMap<>(Map.of("ycql_ldap_bind_passwd", SECRET_REPLACEMENT));
+      UserIntent specific = new UserIntent();
+      specific.specificGFlags =
+          SpecificGFlags.construct(
+              new HashMap<>(
+                  Map.of(
+                      YSQL_HBA_CONF_CSV,
+                      "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + SECRET_REPLACEMENT)),
+              new HashMap<>());
+
+      for (UserIntent userIntent : List.of(legacy, specific)) {
+        PlatformServiceException ex =
+            assertThrows(
+                PlatformServiceException.class,
+                () -> GFlagsUtil.checkNoRedactedGFlagsOnCreate(userIntent, "2.25.0.0", null));
+        assertEquals(BAD_REQUEST, ex.getHttpStatus());
+      }
+
+      UserIntent real = new UserIntent();
+      real.tserverGFlags =
+          new HashMap<>(
+              Map.of(
+                  "ycql_ldap_bind_passwd",
+                  "ycql-bind-secret-xyz",
+                  "ysql_pg_conf_csv",
+                  "application_name=" + SECRET_REPLACEMENT));
+      GFlagsUtil.checkNoRedactedGFlagsOnCreate(real, "2.25.0.0", null);
+    }
+  }
+
+  @Test
   public void testMergeSensitiveGFlagsYsqlHbaFirstTimeWithRedactedThrowsBadRequest() {
     try (var mockedRedactingService = Mockito.mockStatic(RedactingService.class)) {
       mockedRedactingService
