@@ -2576,4 +2576,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " construction. When disabled, those endpoints always return a full 200 body.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC, ConfKeyTags.FEATURE_FLAG));
+  public static final ConfKeyInfo<Duration> idempotencyKeyRetention =
+      new ConfKeyInfo<>(
+          "yb.api.idempotency.retention",
+          ScopeType.GLOBAL,
+          "Idempotency key retention",
+          "How long the response of a request sent with an Idempotency-Key header is kept for"
+              + " replay. A retry with the same key after this period runs the operation again.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

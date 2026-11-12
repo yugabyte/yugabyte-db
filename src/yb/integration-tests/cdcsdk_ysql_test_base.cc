@@ -4464,7 +4464,14 @@ void CDCSDKYsqlTest::CheckRecordsConsistencyFromVWAL(
       prev_primary_key = record.row_message().primary_key();
     }
 
-    if (record.row_message().op() == RowMessage::DDL) {
+    if (record.row_message().op() == RowMessage::DDL &&
+        FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl && in_transaction) {
+      ASSERT_EQ(record.row_message().commit_time(), prev_commit_time);
+      ASSERT_EQ(record.row_message().pg_transaction_id(), prev_txn_id);
+      ASSERT_TRUE(record.row_message().has_pg_lsn());
+      ASSERT_GT(record.row_message().pg_lsn(), prev_lsn);
+      prev_lsn = record.row_message().pg_lsn();
+    } else if (record.row_message().op() == RowMessage::DDL) {
       if (prev_op == RowMessage::DDL) {
         // There can be two DDLs received back to back with the same commit_time.
         ASSERT_GE(record.row_message().commit_time(), prev_commit_time);
@@ -5049,19 +5056,23 @@ std::string CDCSDKYsqlTest::GetPubRefreshTimesString(vector<uint64_t> pub_refres
 
 Status CDCSDKYsqlTest::ExecuteYBAdminCommand(
     const std::string& command_name, const std::vector<string>& command_args) {
-  string tool_path = GetToolPath("../bin", "yb-admin");
-  vector<string> argv;
-  argv.push_back(tool_path);
-  argv.push_back("--master_addresses");
-  argv.push_back(AsString(test_cluster_.mini_cluster_->GetMasterAddresses()));
-  argv.push_back(command_name);
-  for (const auto& command_arg : command_args) {
-    argv.push_back(command_arg);
-  }
-
-  RETURN_NOT_OK(Subprocess::Call(argv));
-
+  RETURN_NOT_OK(ExecuteYBAdminCommand(
+      test_cluster_.mini_cluster_->GetMasterAddresses(), command_name, command_args));
   return Status::OK();
+}
+
+Result<std::string> CDCSDKYsqlTest::ExecuteYBAdminCommand(
+    const std::string& master_addresses, const std::string& command_name,
+    const std::vector<string>& command_args) {
+  vector<string> argv{
+      GetToolPath("../bin", "yb-admin"), "--master_addresses", master_addresses, command_name};
+  argv.insert(argv.end(), command_args.begin(), command_args.end());
+  std::string output, error;
+  auto status = Subprocess::Call(argv, &output, &error);
+  if (!status.ok()) {
+    return status.CloneAndAppend(error);
+  }
+  return output;
 }
 
 Status CDCSDKYsqlTest::DisableDynamicTableAdditionOnCDCSDKStream(
@@ -5082,6 +5093,16 @@ Status CDCSDKYsqlTest::RemoveUserTableFromCDCSDKStream(
   RETURN_NOT_OK(ExecuteYBAdminCommand(yb_admin_command, command_args));
 
   return Status::OK();
+}
+
+Result<std::string> CDCSDKYsqlTest::PrepareReplicationSlotsForTransactionalDDL(
+    const std::string& master_addresses, const std::string& slot_name) {
+  vector<string> command_args;
+  if (!slot_name.empty()) {
+    command_args.push_back(slot_name);
+  }
+  return ExecuteYBAdminCommand(
+      master_addresses, "prepare_replication_slots_for_transactional_ddl", command_args);
 }
 
 Status CDCSDKYsqlTest::ValidateAndSyncCDCStateEntriesForCDCSDKStream(

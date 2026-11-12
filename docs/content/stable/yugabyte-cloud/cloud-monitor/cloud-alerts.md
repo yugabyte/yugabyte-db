@@ -92,7 +92,7 @@ You can view metrics on the cluster **Performance** tab. Refer to [Performance M
 
 {{< note title="Note" >}}
 
-If you get frequent cluster alerts on a [Sandbox cluster](../../cloud-basics/create-clusters/create-clusters-free/#limitations), you may have reached the performance limits for Sandbox clusters. Consider upgrading to a Dedicated cluster.
+If you get frequent cluster alerts on a [Sandbox cluster](../../cloud-basics/create-clusters/#sandbox-clusters), you may have reached the performance limits for Sandbox clusters. Consider upgrading to a Dedicated cluster.
 
 {{< /note >}}
 

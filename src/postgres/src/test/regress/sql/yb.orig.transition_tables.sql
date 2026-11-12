@@ -653,6 +653,54 @@ DROP TABLE tt_ioc_root;
 DROP FUNCTION tt_ioc_cap();
 
 ----------------------------------------------------------------------
+-- Section 14: Single-row (primary key) UPDATE/DELETE on a partitioned table
+----------------------------------------------------------------------
+
+-- The transition-table triggers are on the root, not on the leaf that the
+-- single-row modify path would target, so that path must not be used.
+CREATE TABLE tt_sr (id int PRIMARY KEY, val text) PARTITION BY RANGE (id);
+CREATE TABLE tt_sr_mid PARTITION OF tt_sr FOR VALUES FROM (1) TO (100)
+  PARTITION BY RANGE (id);
+CREATE TABLE tt_sr_leaf PARTITION OF tt_sr_mid FOR VALUES FROM (1) TO (100);
+INSERT INTO tt_sr VALUES (1, 'a'), (2, 'b'), (3, 'c'), (4, 'd');
+
+CREATE TRIGGER tt_sr_upd AFTER UPDATE ON tt_sr
+  REFERENCING OLD TABLE AS old_table NEW TABLE AS new_table
+  FOR EACH STATEMENT EXECUTE FUNCTION tt_log_update();
+CREATE TRIGGER tt_sr_del AFTER DELETE ON tt_sr
+  REFERENCING OLD TABLE AS old_table
+  FOR EACH STATEMENT EXECUTE FUNCTION tt_log_delete();
+CREATE TRIGGER tt_sr_mid_del AFTER DELETE ON tt_sr_mid
+  REFERENCING OLD TABLE AS old_table
+  FOR EACH STATEMENT EXECUTE FUNCTION tt_log_delete();
+
+EXPLAIN (COSTS OFF) UPDATE tt_sr SET val = 'x' WHERE id = 1;
+UPDATE tt_sr SET val = 'x' WHERE id = 1;
+
+-- Not single-row, but planned after the single-row path was considered
+UPDATE tt_sr SET val = val || 'x' WHERE val = 'x';
+
+EXPLAIN (COSTS OFF) DELETE FROM tt_sr WHERE id = 1;
+DELETE FROM tt_sr WHERE id = 1;
+
+-- Intermediate partitioned table named in the query
+DELETE FROM tt_sr_mid WHERE id = 2;
+
+-- Only an UPDATE trigger on the root: single-row DELETE is still allowed
+DROP TRIGGER tt_sr_del ON tt_sr;
+EXPLAIN (COSTS OFF) DELETE FROM tt_sr WHERE id = 3;
+DELETE FROM tt_sr WHERE id = 3;
+
+-- The leaf has no transition-table triggers: single-row path is used and no
+-- trigger fires
+EXPLAIN (COSTS OFF) UPDATE tt_sr_leaf SET val = 'y' WHERE id = 4;
+UPDATE tt_sr_leaf SET val = 'y' WHERE id = 4;
+
+SELECT * FROM tt_sr ORDER BY id;
+
+DROP TABLE tt_sr;
+
+----------------------------------------------------------------------
 -- Cleanup
 ----------------------------------------------------------------------
 

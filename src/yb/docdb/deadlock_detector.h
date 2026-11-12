@@ -59,7 +59,9 @@ struct BlockerTransactionInfo {
 
 struct WaitingRequestsInfo {
   // Map of waiter rpc retryable request id and the time at which it was registered at the
-  // local waiting txn registry.
+  // local waiting txn registry. Informational only. Ids aren't unique per txn (-1 for read-
+  // generated writes; retryable ids are unique per client id, see client_request_id_allocator),
+  // so requests of a txn blocked on the same blocker may share an entry.
   std::unordered_map<int64_t, HybridTime> waiting_requests;
 
   std::string ToString() const {

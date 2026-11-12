@@ -1,0 +1,28 @@
+name: Idempotency-Key
+in: header
+description: |
+  Makes the request safe to retry. A unique client-generated value, such as a UUID, for this request.
+
+  The first request with a key runs the operation. If it succeeds, its response is kept for 24 hours
+  (yb.api.idempotency.retention), and a retry with the same key and the same request returns that
+  response with an X-IDEMPOTENT-REPLAYED: true header, without running the operation again. A retry
+  while the first request is still running gets 409; the same key with a different request gets 422.
+  A failed request does not keep the key, so it can be retried with the same one.
+
+  Keys are scoped to the caller's customer.
+
+  If the operation starts a task, that task's UUID is derived from the key: the version 5 UUID of
+  "<customer UUID>:<key>" in the namespace 3bf373dd-d374-4df5-bdea-c3cd942ae7f4. A client can
+  follow the task even if it lost the response. If that task was started, for example before YBA
+  restarted and lost the response, a retry gets 409 instead of starting the operation again, with
+  the task's UUID in error.task_uuid, and in error.latest_task_uuid the UUID of its newest retry if
+  YBA retried it (a restart fails or aborts running tasks, and may retry them under a new UUID).
+  If the task failed while being submitted, the retry runs the operation again under a new task
+  UUID.
+required: false
+schema:
+  type: string
+  minLength: 1
+  maxLength: 255
+example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+x-yba-api-idempotency-key: true
