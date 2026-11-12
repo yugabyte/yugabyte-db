@@ -4464,7 +4464,14 @@ void CDCSDKYsqlTest::CheckRecordsConsistencyFromVWAL(
       prev_primary_key = record.row_message().primary_key();
     }
 
-    if (record.row_message().op() == RowMessage::DDL) {
+    if (record.row_message().op() == RowMessage::DDL &&
+        FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl && in_transaction) {
+      ASSERT_EQ(record.row_message().commit_time(), prev_commit_time);
+      ASSERT_EQ(record.row_message().pg_transaction_id(), prev_txn_id);
+      ASSERT_TRUE(record.row_message().has_pg_lsn());
+      ASSERT_GT(record.row_message().pg_lsn(), prev_lsn);
+      prev_lsn = record.row_message().pg_lsn();
+    } else if (record.row_message().op() == RowMessage::DDL) {
       if (prev_op == RowMessage::DDL) {
         // There can be two DDLs received back to back with the same commit_time.
         ASSERT_GE(record.row_message().commit_time(), prev_commit_time);

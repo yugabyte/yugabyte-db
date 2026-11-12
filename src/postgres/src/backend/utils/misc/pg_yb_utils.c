@@ -462,6 +462,12 @@ bool		yb_follower_reads_behavior_before_fixing_20482 = false;
 int32_t		yb_follower_read_staleness_ms = 0;
 bool		yb_default_collation_resolved = false;
 
+uint64_t	yb_backfill_timestamp = 0;
+char	   *yb_osc_backfill_partition_key = NULL;
+char	   *yb_osc_backfill_bfinstr = NULL;
+struct YbPgExecOutParam *yb_osc_backfill_out_param = NULL;
+bool		yb_osc_backfill_outer_started = false;
+
 bool
 IsYugaByteEnabled()
 {
@@ -8023,7 +8029,8 @@ yb_assign_max_replication_slots(int newval, void *extra)
 {
 	ereport(NOTICE,
 			(errmsg("max_replication_slots should be controlled using the Gflag"
-					" \"max_replication_slots\" on the YB-Master process"),
+					" \"max_replication_slots\" on the YB-Master and YB-TServer"
+					" processes"),
 			 errdetail("In Yugabyte clusters, the replication slots are managed by"
 					   " the YB-Master globally. Hence limits on the number of"
 					   " replication slots should be controlled using Gflags and"

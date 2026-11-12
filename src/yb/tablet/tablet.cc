@@ -193,6 +193,17 @@ DEFINE_RUNTIME_int32(verify_index_rate_rows_per_sec, 0,
     "processing more than this.");
 TAG_FLAG(verify_index_rate_rows_per_sec, advanced);
 
+DEFINE_RUNTIME_uint64(online_schema_change_backfill_rows_per_chunk, 10000000,
+    "How many source rows one online schema change backfill chunk RPC copies before returning to "
+    "the master. The master persists the chunk's resume key and refreshes progress on every "
+    "response, and applies an operator cancel between chunks, so this bounds how much work a crash "
+    "repeats, how stale pg_yb_online_schema_change's counters can be, and how long a cancel takes "
+    "to be honored -- against one master sys_catalog write and one new postgres backend per chunk. "
+    "The chunk is also bounded by the RPC deadline, which at the default usually ends it first. "
+    "Rounded up to a whole prefetch page (yb_fetch_row_limit), since the chunk only stops between "
+    "pages. 0 leaves the chunk bounded only by the RPC deadline.");
+TAG_FLAG(online_schema_change_backfill_rows_per_chunk, advanced);
+
 DEFINE_RUNTIME_int32(backfill_index_timeout_grace_margin_ms, -1,
              "The time we give the backfill process to wrap up the current set "
              "of writes and return successfully the RPC with the information about "
@@ -3865,40 +3876,45 @@ constexpr auto kBackfillReadSnapshotTooOldRemedy =
     "Consider increasing tserver timestamp_history_retention_interval_sec above the expected "
     "CREATE INDEX duration and retrying";
 
+// Maps the error of a YSQL backfill query to the status the backfill reports. Returns one of
+// - TryAgain: for retryable errors
+// - IllegalState: for nonretryable errors
+Status BackfillChunkQueryError(const Status& query_status, const string& query) {
+  const auto libpq_error_msg = AuxilaryMessage(query_status).value();
+  LOG(WARNING) << "libpq query \"" << query << "\" returned " << query_status << ": "
+               << libpq_error_msg;
+  const auto pg_error_code = PgsqlError::ValueFromStatus(query_status);
+  // Keep the SQLSTATE so that an error which reaches the CREATE INDEX backend is raised with
+  // the PostgreSQL error code it failed with.
+  const auto keep_pg_error_code = [&pg_error_code](Status status) {
+    return pg_error_code ? status.CloneAndAddErrorCode(PgsqlError(*pg_error_code)) : status;
+  };
+  // The 2 spaces after ERROR: is necessary to match the error message.
+  constexpr auto kSchemaMismatchSubstring = "ERROR:  schema version mismatch";
+  if (libpq_error_msg.starts_with(kSchemaMismatchSubstring)) {
+    return STATUS(TryAgain, libpq_error_msg, query_status.ErrorCodesSlice(), size_t(0));
+  }
+  // Attach the remedy hint to SnapshotTooOld errors.  The SQLSTATE does not say which read was
+  // rejected, so the hint may also land on a SnapshotTooOld arising from something other than
+  // the indexed-table scan, such as the syscatalog snapshot.  That is acceptable: such cases are
+  // practically unreachable from a fresh per-chunk backend, and the hint is merely advisory.
+  if (pg_error_code && *pg_error_code == YBPgErrorCode::YB_PG_SNAPSHOT_TOO_OLD) {
+    return keep_pg_error_code(STATUS(IllegalState, Format(
+        "$0. $1", libpq_error_msg, kBackfillReadSnapshotTooOldRemedy)));
+  }
+  return keep_pg_error_code(STATUS(IllegalState, libpq_error_msg));
+}
+
 // On success, returns
 // - backfilled_until
 // - num rows processed in table
 // - num rows backfilled to index
-// On failure, returns one of
-// - TryAgain: for retryable errors
-// - IllegalState: for nonretryable errors
+// On failure, returns what BackfillChunkQueryError does.
 Result<std::tuple<std::string, uint64_t, double>> QueryPostgresToDoBackfill(
     pgwrapper::PGConn* conn, const string& query) {
   auto result = conn->FetchRow<std::string, double, double>(query);
   if (!result.ok()) {
-    const auto libpq_error_msg = AuxilaryMessage(result.status()).value();
-    LOG(WARNING) << "libpq query \"" << query << "\" returned " << result.status() << ": "
-                 << libpq_error_msg;
-    const auto pg_error_code = PgsqlError::ValueFromStatus(result.status());
-    // Keep the SQLSTATE so that an error which reaches the CREATE INDEX backend is raised with
-    // the PostgreSQL error code it failed with.
-    const auto keep_pg_error_code = [&pg_error_code](Status status) {
-      return pg_error_code ? status.CloneAndAddErrorCode(PgsqlError(*pg_error_code)) : status;
-    };
-    // The 2 spaces after ERROR: is necessary to match the error message.
-    constexpr auto kSchemaMismatchSubstring = "ERROR:  schema version mismatch";
-    if (libpq_error_msg.starts_with(kSchemaMismatchSubstring)) {
-      return STATUS(TryAgain, libpq_error_msg, result.status().ErrorCodesSlice(), size_t(0));
-    }
-    // Attach the remedy hint to SnapshotTooOld errors.  The SQLSTATE does not say which read was
-    // rejected, so the hint may also land on a SnapshotTooOld arising from something other than
-    // the indexed-table scan, such as the syscatalog snapshot.  That is acceptable: such cases are
-    // practically unreachable from a fresh per-chunk backend, and the hint is merely advisory.
-    if (pg_error_code && *pg_error_code == YBPgErrorCode::YB_PG_SNAPSHOT_TOO_OLD) {
-      return keep_pg_error_code(STATUS(IllegalState, Format(
-          "$0. $1", libpq_error_msg, kBackfillReadSnapshotTooOldRemedy)));
-    }
-    return keep_pg_error_code(STATUS(IllegalState, libpq_error_msg));
+    return BackfillChunkQueryError(result.status(), query);
   }
   const auto [returned_spec, num_rows_backfilled_in_index, num_rows_scanned] = *result;
   PgsqlBackfillSpecPB spec;
@@ -3911,6 +3927,42 @@ Result<std::tuple<std::string, uint64_t, double>> QueryPostgresToDoBackfill(
   // scanned separately, which is the number of base table rows that were processed.
   return std::make_tuple(
       spec.next_row_key(), static_cast<uint64_t>(num_rows_scanned), num_rows_backfilled_in_index);
+}
+
+struct BackfillChunkResult {
+  PgsqlBackfillSpecPB spec;
+  double num_rows;
+};
+
+// On failure, returns what BackfillChunkQueryError does.
+Result<BackfillChunkResult> QueryPostgresBackfillChunk(
+    pgwrapper::PGConn* conn, const string& query) {
+  auto result = conn->FetchRow<std::string, double>(query);
+  if (!result.ok()) {
+    return BackfillChunkQueryError(result.status(), query);
+  }
+  const auto& [returned_spec, num_rows] = *result;
+  BackfillChunkResult chunk;
+  chunk.spec.ParseFromString(a2b_hex(returned_spec));
+  chunk.num_rows = num_rows;
+  VLOG(3) << "Returned backfill spec: { " << chunk.spec.ShortDebugString() << " }";
+  VLOG(4) << "Returned backfill spec (raw): " << returned_spec;
+  return chunk;
+}
+
+// Opens an internal PG connection for a YSQL backfill. It uses snapshot isolation because the
+// backfill reads at a fixed read time, which SERIALIZABLE does not allow.
+Result<pgwrapper::PGConn> CreateBackfillPGConn(
+    const HostPort& pgsql_proxy_bind_address, const std::string& database_name,
+    uint64_t postgres_auth_key, CoarseTimePoint deadline,
+    std::string_view yb_internal_conn_kind = {}) {
+  auto conn_result = pgwrapper::CreateInternalPGConnBuilder(
+                         pgsql_proxy_bind_address, database_name,
+                         pgwrapper::PGConnSettings::kDefaultUser, postgres_auth_key, deadline,
+                         yb_internal_conn_kind)
+                         .Connect();
+  return pgwrapper::SetDefaultTransactionIsolation(
+      std::move(conn_result), IsolationLevel::SNAPSHOT_ISOLATION);
 }
 
 struct BackfillParams {
@@ -3996,6 +4048,37 @@ void SlowdownBackfillForTests() {
   }
 }
 
+struct YsqlBackfillPage {
+  std::string backfilled_until;
+  uint64_t num_rows;
+};
+
+// Runs YSQL backfill pages over one PG connection until the tablet is done, the deadline is near,
+// or max_rows rows are processed (0 means no row limit). run_page runs the page described by a
+// serialized backfill spec.
+template <class RunPage>
+Status RunYsqlBackfillPages(
+    const BackfillParams& backfill_params, uint64_t max_rows, const RunPage& run_page,
+    uint64_t* number_of_rows_processed, std::string* backfilled_until) {
+  do {
+    // Rebuild the spec from the resume key rather than reuse the returned one: the returned
+    // spec's `count` accumulates across pages, so reusing it would put `count` past `limit` from
+    // the second page on.
+    const auto page = VERIFY_RESULT(run_page(
+        GenerateSerializedBackfillSpec(backfill_params.batch_size, *backfilled_until)));
+    *backfilled_until = page.backfilled_until;
+    *number_of_rows_processed += page.num_rows;
+
+    VLOG(2) << "Processed " << *number_of_rows_processed << " rows so far in this chunk. "
+            << "Setting backfilled_until to \"" << b2a_hex(*backfilled_until) << "\"";
+
+    MaybeSleepToThrottleBackfill(backfill_params.start_time, *number_of_rows_processed);
+  } while (CanProceedToBackfillMoreRows(
+               backfill_params, *backfilled_until, *number_of_rows_processed) &&
+           (max_rows == 0 || *number_of_rows_processed < max_rows));
+  return Status::OK();
+}
+
 }  // namespace
 
 // Assume that we are already in the Backfilling mode.
@@ -4004,6 +4087,7 @@ Status Tablet::BackfillIndexesForYsql(
     const std::string& backfill_from,
     const CoarseTimePoint deadline,
     const HybridTime read_time,
+    const HybridTime origination_ht,
     const HostPort& pgsql_proxy_bind_address,
     const std::string& database_name,
     const uint64_t postgres_auth_key,
@@ -4017,14 +4101,9 @@ Status Tablet::BackfillIndexesForYsql(
   SlowdownBackfillForTests();
   *backfilled_until = backfill_from;
   BackfillParams backfill_params(deadline, true /* is_ysql */);
-  auto conn_result  = pgwrapper::CreateInternalPGConnBuilder(
-                          pgsql_proxy_bind_address, database_name,
-                          pgwrapper::PGConnSettings::kDefaultUser, postgres_auth_key,
-                          backfill_params.modified_deadline)
-                          .Connect();
-  // BACKFILL passes a read time and SERIALIZABLE is incompatible with fixed read time.
-  auto conn = VERIFY_RESULT(pgwrapper::SetDefaultTransactionIsolation(
-      std::move(conn_result), IsolationLevel::SNAPSHOT_ISOLATION));
+  auto conn = VERIFY_RESULT(CreateBackfillPGConn(
+      pgsql_proxy_bind_address, database_name, postgres_auth_key,
+      backfill_params.modified_deadline));
 
   if (is_xcluster_target) {
     // For xCluster targets, we don't need to use the xCluster safe time as we are reading at
@@ -4032,6 +4111,15 @@ Status Tablet::BackfillIndexesForYsql(
     // For automatic mode colocated indexes, this is necessary since the ddl_queue table would
     // hold up the xCluster safe time, and thus backfill would get stuck.
     RETURN_NOT_OK(conn.Execute("SET yb_xcluster_consistency_level = tablet;"));
+  }
+
+  // The backfill's writes are made on behalf of a CREATE INDEX DDL, so they need to carry its
+  // origination time, not that of the BACKFILL INDEX statements.
+  if (origination_ht) {
+    VLOG(1) << "Backfilling index " << index.table_id() << " with origination time "
+            << origination_ht.GetPhysicalValueMicros();
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "SET yb_origination_time_override = $0;", origination_ht.GetPhysicalValueMicros()));
   }
 
   // Cannot use Oid type because for large OID such as 2147500041, it overflows Postgres
@@ -4044,34 +4132,85 @@ Status Tablet::BackfillIndexesForYsql(
   DCHECK_EQ(*num_rows_backfilled_in_index, 0.0);
 
   SCOPED_WAIT_STATUS(BackfillIndex_WaitToBackfillTablet);
-  do {
-    std::string serialized_backfill_spec =
-        GenerateSerializedBackfillSpec(backfill_params.batch_size, *backfilled_until);
+  RETURN_NOT_OK(RunYsqlBackfillPages(
+      backfill_params, 0 /* max_rows */,
+      [&](const std::string& serialized_backfill_spec) -> Result<YsqlBackfillPage> {
+        // This should be safe from injection attacks because the parameters only consist of
+        // characters [-,0-9a-f].
+        std::string query_str = Format(
+            "BACKFILL INDEX $0 WITH x'$1' READ TIME $2 PARTITION x'$3';",
+            index_oid_int,
+            b2a_hex(serialized_backfill_spec),
+            read_time.ToUint64(),
+            b2a_hex(partition_key));
+        VLOG(1) << "BackfillIndexesForYsql: libpq query string: " << query_str;
 
-    // This should be safe from injection attacks because the parameters only consist of characters
-    // [-,0-9a-f].
-    std::string query_str = Format(
-        "BACKFILL INDEX $0 WITH x'$1' READ TIME $2 PARTITION x'$3';",
-        index_oid_int,
-        b2a_hex(serialized_backfill_spec),
-        read_time.ToUint64(),
-        b2a_hex(partition_key));
-    VLOG(1) << __func__ << ": libpq query string: " << query_str;
-
-    const auto tup = VERIFY_RESULT(QueryPostgresToDoBackfill(&conn, query_str));
-    *backfilled_until = std::get<0>(tup);
-    *number_of_rows_processed += std::get<1>(tup);
-    *num_rows_backfilled_in_index += std::get<2>(tup);
-
-    VLOG(2) << "Processed " << *number_of_rows_processed << " base table rows so far in this "
-            << "chunk. Setting backfilled_until to \"" << b2a_hex(*backfilled_until) << "\"";
-
-    MaybeSleepToThrottleBackfill(backfill_params.start_time, *number_of_rows_processed);
-  } while (CanProceedToBackfillMoreRows(
-      backfill_params, *backfilled_until, *number_of_rows_processed));
+        const auto tup = VERIFY_RESULT(QueryPostgresToDoBackfill(&conn, query_str));
+        *num_rows_backfilled_in_index += std::get<2>(tup);
+        return YsqlBackfillPage{std::get<0>(tup), std::get<1>(tup)};
+      },
+      number_of_rows_processed, backfilled_until));
 
   VLOG(1) << "Processed " << *number_of_rows_processed << " base table rows in this chunk. "
           << "Set backfilled_until to \"" << b2a_hex(*backfilled_until) << "\"";
+  return Status::OK();
+}
+
+Status Tablet::BackfillTableForYsql(
+    uint32_t src_oid, uint32_t dst_oid, uint32_t transform_oid,
+    const std::string& backfill_from,
+    const CoarseTimePoint deadline,
+    const HybridTime read_time,
+    const HostPort& pgsql_proxy_bind_address,
+    const std::string& database_name,
+    const uint64_t postgres_auth_key,
+    uint64_t* number_of_rows_processed,
+    std::string* backfilled_until) {
+  LOG(INFO) << "Begin " << __func__ << " of tablet " << tablet_id() << " at " << read_time
+            << " from row \"" << strings::b2a_hex(backfill_from)
+            << "\" for online schema change src_oid=" << src_oid << " dst_oid=" << dst_oid;
+  SlowdownBackfillForTests();
+
+  BackfillParams backfill_params(deadline, true /* is_ysql */);
+  auto conn = VERIFY_RESULT(CreateBackfillPGConn(
+      pgsql_proxy_bind_address, database_name, postgres_auth_key,
+      backfill_params.modified_deadline,
+      pgwrapper::YbInternalConnKindWireName::kOnlineSchemaChangeBackfill));
+
+  const std::string partition_key = metadata_->partition()->partition_key_start();
+
+  // backfill_from is the DocDB key to resume at; empty means the start of the tablet.
+  *number_of_rows_processed = 0;
+  *backfilled_until = backfill_from;
+
+  // Also bound the chunk by rows, so the master gets resume points, progress and a chance to
+  // cancel at a tunable interval.
+  RETURN_NOT_OK(RunYsqlBackfillPages(
+      backfill_params, FLAGS_online_schema_change_backfill_rows_per_chunk,
+      [&](const std::string& bfinstr) -> Result<YsqlBackfillPage> {
+        // A NULL next_bfinstr becomes an empty spec, which has no next_row_key and so also means
+        // done.
+        std::string query_str = Format(
+            "SELECT COALESCE(encode(next_bfinstr, 'hex'), ''), rows_processed::float8 "
+            "FROM pg_catalog.yb_backfill_online_schema_change_chunk("
+            "$0, $1, $2, $3, decode('$4', 'hex'), decode('$5', 'hex'))",
+            src_oid, dst_oid, transform_oid,
+            read_time.ToUint64(),
+            b2a_hex(partition_key),
+            b2a_hex(bfinstr));
+        VLOG(1) << "BackfillTableForYsql: libpq query: " << query_str;
+
+        const auto chunk = VERIFY_RESULT(QueryPostgresBackfillChunk(&conn, query_str));
+        // next_row_key is empty only when the scan reached the end of the tablet.
+        return YsqlBackfillPage{
+            chunk.spec.next_row_key(), static_cast<uint64_t>(chunk.num_rows)};
+      },
+      number_of_rows_processed, backfilled_until));
+
+  VLOG(1) << "Done " << __func__ << " of tablet " << tablet_id()
+          << " processed " << *number_of_rows_processed << " rows"
+          << " backfilled_until: \""
+          << (backfilled_until->empty() ? "<end>" : b2a_hex(*backfilled_until)) << "\"";
   return Status::OK();
 }
 

@@ -1388,6 +1388,12 @@ Status PgsqlWriteOperation::Init(PgsqlResponseMsg* response) {
 }
 
 bool PgsqlWriteOperation::RequireReadSnapshot() const {
+  // A base-table backfill insert (online schema change) reads nothing. Its read time is the
+  // backfill time, so taking a snapshot would fail it with SnapshotTooOld once the job outlives
+  // history retention. Unique index backfill inserts do read, and still need one.
+  if (request_.is_backfill() && !doc_read_context_->is_index) {
+    return false;
+  }
   // For YSQL the the standard operations (INSERT/UPDATE/DELETE) will read/check the primary key.
   // We use UPSERT stmt type for specific requests when we can guarantee we can skip the read.
   return request_.stmt_type() != PgsqlWriteRequestPB::PGSQL_UPSERT;
@@ -1652,7 +1658,15 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
                         << ", read_time: " << data.read_time()
                         << ", doc_key: " << doc_key_
                         << ", request: " << AsString(request_);
-      if (VERIFY_RESULT(HasDuplicateUniqueIndexValue(data))) {
+      // A base-table backfill insert (online schema change) writes blindly: an existing row at the
+      // same doc key is the same logical row, usually a newer version from the change-capture
+      // trigger, and MVCC keeps the newer one. This relies on distinct source rows never mapping to
+      // the same target key, which the job's key witness (YbOscGetKeyWitnessAttnums) ensures as
+      // long as the transform passes the witness columns through unchanged, which the job checks
+      // in the transform's body when it begins. Secondary unique indexes are checked by their own
+      // inserts; a witness on the target is such an index.
+      if (doc_read_context_->is_index &&
+          VERIFY_RESULT(HasDuplicateUniqueIndexValue(data))) {
         // Unique index value conflict found.
         response_->set_status(PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR);
         response_->ref_error_message("Duplicate key found in unique index");
