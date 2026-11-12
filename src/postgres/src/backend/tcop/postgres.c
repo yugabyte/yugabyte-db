@@ -4700,7 +4700,7 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 					 * it must not set a parameter reserved for the
 					 * connection manager.
 					 *
-					 * TODO(#29818): This runs after authentication, so in
+					 * TODO(#29744): This runs after authentication, so in
 					 * auth passthrough the FATAL ends the shared control
 					 * backend.  Send a FatalForLogicalConnection packet
 					 * instead, as the top-level check in

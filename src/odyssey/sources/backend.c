@@ -609,7 +609,7 @@ int yb_set_reserved_end_args(kiwi_fe_arg_t *argv, int argc,
 				   strlen(client->yb_ycm_client_port) + 1);
 	}
 	yb_kiwi_set_fe_arg(&argv[argc++], YB_NAME_AND_SIZEOF(YB_YCM_INTERNAL_END));
-	yb_kiwi_set_fe_arg(&argv[argc++], "1", 2);
+	yb_kiwi_set_fe_arg(&argv[argc++], "", 1);
 	return argc;
 }
 
