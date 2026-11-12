@@ -215,7 +215,9 @@ yb-admin \
 
 #### list_all_masters
 
-Displays a list of all YB-Master servers in a table listing the master UUID, RPC host and port, state (`ALIVE` or `DEAD`), and role (`LEADER`, `FOLLOWER`, or `UNKNOWN_ROLE`).
+Displays a list of all YB-Master servers in a table listing the master UUID, RPC host and port, state (`ALIVE` or `DEAD`), role (`LEADER`, `FOLLOWER`, or `UNKNOWN_ROLE`), broadcast host and port, and lag.
+
+The `Lag(ms)` column (v2025.2.9.0 and later) shows the time, in milliseconds, since the Raft leader last successfully exchanged a heartbeat with that YB-Master. A small value indicates a healthy follower; a large or steadily growing value indicates that the follower is stalled, unreachable, or not catching up. The value is `N/A` for the leader's own row, because the leader does not track itself, and for all rows if the command is served by a non-leader. A follower that has never been reached reports a small value that then grows, not a distinct "never reached" value.
 
 **Syntax**
 
@@ -236,10 +238,10 @@ yb-admin \
 ```
 
 ```output
-Master UUID         RPC Host/Port          State      Role
-...                   node8:7100           ALIVE     FOLLOWER
-...                   node9:7100           ALIVE     FOLLOWER
-...                   node7:7100           ALIVE     LEADER
+Master UUID         RPC Host/Port          State      Role       Broadcast Host/Port    Lag(ms)
+...                   node8:7100           ALIVE     FOLLOWER   node8:7100             120
+...                   node9:7100           ALIVE     FOLLOWER   node9:7100             95
+...                   node7:7100           ALIVE     LEADER     node7:7100             N/A
 ```
 
 #### list_replica_type_counts
