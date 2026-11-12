@@ -16,11 +16,21 @@
 
 #include "yb/common/transaction.pb.h"
 
+#include "yb/integration-tests/mini_cluster.h"
+
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_peer.h"
+
+#include "yb/tserver/tserver.messages.h"
+
 #include "yb/util/countdown_latch.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/monotime.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/sync_point.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
@@ -33,6 +43,7 @@ DECLARE_int32(ysql_log_min_duration_statement);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(ysql_colocate_database_by_default);
+DECLARE_uint64(max_clock_skew_usec);
 
 namespace yb::pgwrapper {
 
@@ -196,6 +207,35 @@ class PgLocalLimitOptimizationTest : public PgMiniTestBase {
     if (is_read_time_picked_before_table_scan_) {
       PickReadTime(read_conn);
     }
+    // The row goes into the last tablet. The insert must commit after the scan reached the node
+    // but before the scan's first read of that tablet, or that tablet's own local limit already
+    // covers the insert and the test passes with or without the per-node limit. The insert must
+    // also commit before the scan's global limit; a slow build can take longer than the default
+    // 500ms skew between the pause and the commit. Raised only after every connection is open,
+    // since a connection opened under a large skew crashes Postgres (see NoRestartSecondRead).
+    CountDownLatch scan_reached_last_tablet(1);
+    CountDownLatch insert_done(1);
+    std::atomic<bool> held{false};
+    if (row_is_inserted_into_a_new_tablet_) {
+      auto last_tablet_id = ASSERT_RESULT(LastTabletId("keys"));
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 10000000;
+      auto& sync_point = *SyncPoint::GetInstance();
+      sync_point.SetCallBack(
+          "ReadRpc::CallRemoteMethod",
+          [last_tablet_id, &held, &scan_reached_last_tablet, &insert_done](void* arg) {
+            const auto& req = *static_cast<tserver::ReadRequestMsg*>(arg);
+            if (req.tablet_id() != last_tablet_id || held.exchange(true)) {
+              return;
+            }
+            scan_reached_last_tablet.CountDown();
+            insert_done.Wait();
+          });
+      sync_point.EnableProcessing();
+    }
+    auto clear_sync_point = ScopeExit([] {
+      SyncPoint::GetInstance()->DisableProcessing();
+      SyncPoint::GetInstance()->ClearAllCallBacks();
+    });
     // Wait for read query to pick read time.
     // Telegraphed by Read time: in the log.
     // Requires vmodule=read_query=1
@@ -225,10 +265,18 @@ class PgLocalLimitOptimizationTest : public PgMiniTestBase {
       stopwatch.stop();
     });
 
+    // Declared after table_scan so that it runs first on an early return, and the scan is not
+    // left paused while the future's destructor waits for it.
+    auto release_scan = ScopeExit([&insert_done] { insert_done.CountDown(); });
     read_thread_started.Wait();
-    ASSERT_OK(wait_for_read_time.WaitFor(10s));
+    if (row_is_inserted_into_a_new_tablet_) {
+      ASSERT_TRUE(scan_reached_last_tablet.WaitFor(10s));
+    } else {
+      ASSERT_OK(wait_for_read_time.WaitFor(10s));
+    }
     ASSERT_OK(insert_conn.Execute(Format(
       "INSERT INTO keys(k) VALUES ($0)", 3 * kNumInitialRows)));
+    insert_done.CountDown();
 
     table_scan.get();
 
@@ -242,6 +290,18 @@ class PgLocalLimitOptimizationTest : public PgMiniTestBase {
     auto is_colocated = ASSERT_RESULT(read_conn.FetchRow<bool>(
       "SELECT is_colocated FROM yb_table_properties('keys'::regclass)"));
     ASSERT_FALSE(is_colocated);
+  }
+
+  // The tablet holding the highest keys of a range-split table.
+  Result<TabletId> LastTabletId(const std::string& table_name) {
+    auto table_id = VERIFY_RESULT(GetTableIDFromTableName(table_name));
+    auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+    SCHECK(!peers.empty(), IllegalState, Format("No tablets for $0", table_name));
+    auto last = std::max_element(peers.begin(), peers.end(), [](const auto& a, const auto& b) {
+      return a->tablet_metadata()->partition()->partition_key_start() <
+             b->tablet_metadata()->partition()->partition_key_start();
+    });
+    return (*last)->tablet_id();
   }
 
   // Populate the catalog cache based on what command is run in RunScanCmd.
@@ -407,9 +467,12 @@ TEST_F(PgLocalLimitOptimizationTest, ReadTimePickedBeforeTableScan) {
   InsertRowConcurrentlyWithTableScan();
 }
 
-// Verifies per node local limit mechanism.
-// Fails without #23077
-TEST_F(PgLocalLimitOptimizationTest, InsertRowIntoANewTablet) {
+// A scan reads tablets 1 and 2 of a node, then pauses before its first read of tablet 3. A row
+// committed into tablet 3 during the pause is newer than the scan's visit to the node, so it must
+// not cause a read restart. Tablet 3's safe time is past the insert by the time the scan reads it;
+// only the node limit learned from tablets 1 and 2 keeps the insert out of the uncertainty window.
+// Debug only: the pause uses the ReadRpc::CallRemoteMethod sync point, which release builds omit.
+TEST_F(PgLocalLimitOptimizationTest, YB_DEBUG_ONLY_TEST(InsertRowIntoANewTablet)) {
   // Test Config
   is_single_tablet_ = false;
   row_is_inserted_into_a_new_tablet_ = true;
