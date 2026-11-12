@@ -525,6 +525,11 @@ class YBPgsqlWriteOp : public YBPgsqlOpSidecarBase {
   static YBPgsqlWriteOpPtr NewFetchSequence(
       const YBTablePtr& table, const ThreadSafeArenaPtr& arena, rpc::Sidecars* sidecars);
 
+  // A SERIALIZABLE write that carries the read point's read time, so that DocDB checks it for
+  // conflicts with writes committed after that time, as for snapshot isolation.
+  bool force_read_time() const { return force_read_time_; }
+  void set_force_read_time() { force_read_time_ = true; }
+
  protected:
   Type type() const override { return PGSQL_WRITE; }
 
@@ -534,6 +539,7 @@ class YBPgsqlWriteOp : public YBPgsqlOpSidecarBase {
   // Whether this operation should be run as a single row txn.
   // Else could be distributed transaction (or non-transactional) depending on target table type.
   bool is_single_row_txn_ = false;
+  bool force_read_time_ = false;
   HybridTime write_time_;
   CdrMetadata cdr_metadata_;
   OriginationInfo origination_info_;

@@ -237,6 +237,12 @@ extern bool yb_disable_catalog_version_check;
 extern bool yb_read_time_skip_catalog;
 
 /*
+ * In non-legacy catalog mode, catalog scans read at the snapshot they were opened with (e.g. the
+ * transaction snapshot for user queries) instead of always at the catalog snapshot.
+ */
+extern bool yb_catalog_scans_use_scan_snapshot;
+
+/*
  * Allows for customizing the number of rows to be prefetched.
  */
 extern int yb_fetch_row_limit;

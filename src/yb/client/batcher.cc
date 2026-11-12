@@ -165,8 +165,14 @@ bool OpReadAtInTxnLimit(const YBOperation& op) {
 }
 
 bool OpForceSnapshotRead(const YBOperation& op) {
-  return op.type() == YBOperation::Type::PGSQL_READ &&
-         down_cast<const YBPgsqlReadOp&>(op).force_snapshot_read();
+  switch (op.type()) {
+    case YBOperation::Type::PGSQL_READ:
+      return down_cast<const YBPgsqlReadOp&>(op).force_snapshot_read();
+    case YBOperation::Type::PGSQL_WRITE:
+      return down_cast<const YBPgsqlWriteOp&>(op).force_read_time();
+    default:
+      return false;
+  }
 }
 
 // For per-RPC flags. Unlike skip_intents, which decides Batcher::transaction() and so must agree

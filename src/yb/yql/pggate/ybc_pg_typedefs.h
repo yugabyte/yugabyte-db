@@ -991,6 +991,8 @@ typedef struct {
   int rowmark;
   int pg_wait_policy;
   int docdb_wait_policy;
+  // See YBCPgDmlSetCatalogReadPoint. YbcInvalidReadPointHandle means the current read point.
+  YbcReadPointHandle catalog_read_point;
 } YbcPgExplicitRowLockParams;
 
 typedef struct {

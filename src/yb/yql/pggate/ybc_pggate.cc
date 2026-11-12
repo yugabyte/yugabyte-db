@@ -1841,6 +1841,10 @@ YbcStatus YBCPgSetDistinctPrefixLength(YbcPgStatement handle, int distinct_prefi
   return ToYBCStatus(pgapi->SetDistinctPrefixLength(handle, distinct_prefix_length));
 }
 
+YbcStatus YBCPgDmlSetCatalogReadPoint(YbcPgStatement handle, YbcReadPointHandle read_point) {
+  return ToYBCStatus(pgapi->DmlSetCatalogReadPoint(handle, read_point));
+}
+
 YbcStatus YBCPgExecSelect(YbcPgStatement handle, const YbcPgExecParameters *exec_params) {
   return ToYBCStatus(pgapi->ExecSelect(handle, exec_params));
 }

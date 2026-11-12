@@ -184,7 +184,8 @@ extern YbOpaque YbBeginScan(Relation table,
 							int distinct_prefixlen,
 							YbcPgExecParameters *exec_params,
 							bool is_internal_scan,
-							bool fetch_ybctids_only);
+							bool fetch_ybctids_only,
+							Snapshot snapshot);
 
 /* Returns whether the given populated ybScan needs PG recheck. */
 extern bool YbNeedsPgRecheck(YbOpaque ybScan);

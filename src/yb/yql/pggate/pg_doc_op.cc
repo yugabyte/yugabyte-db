@@ -402,7 +402,10 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
   VLOG(1) << "Number of " << table_type << " operations to send: " << send_count;
   response_ = VERIFY_RESULT(sender_(
       pg_session_.get(), {pgsql_ops_.begin(), send_count}, *table_,
-      {HybridTime::FromPB(GetInTxnLimitHt()), force_non_bufferable}, is_write));
+      {.in_txn_limit = HybridTime::FromPB(GetInTxnLimitHt()),
+       .force_non_bufferable = force_non_bufferable,
+       .catalog_read_point = catalog_read_point_},
+      is_write));
   if (!result_stream_) {
     // Default PgDocOpFetchStream
     result_stream_ = std::make_unique<ParallelPgDocOpFetchStream>(

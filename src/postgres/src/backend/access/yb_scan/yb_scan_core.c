@@ -3546,7 +3546,8 @@ YbBeginScan(Relation table,
 			int distinct_prefixlen,
 			YbcPgExecParameters *exec_params,
 			bool is_internal_scan,
-			bool fetch_ybctids_only)
+			bool fetch_ybctids_only,
+			Snapshot snapshot)
 {
 	/* Set up Yugabyte scan description */
 	YbOpaque	ybScan = (YbOpaque) palloc0(sizeof(YbOpaqueData));
@@ -3582,6 +3583,7 @@ YbBeginScan(Relation table,
 	ybcSetupScanKeys(ybScan, &scan_plan);
 
 	ybScan->handle = YbNewSelect(table, &ybScan->prepare_params);
+	YbSetCatalogReadPoint(ybScan->handle, table, snapshot);
 
 	/* Set up binds */
 	if (!ybBindScanKeys(ybScan, &scan_plan, pg_scan_plan,
@@ -4050,7 +4052,8 @@ ybc_heap_beginscan(Relation relation,
 								 yb_options->distinct_prefixlen,
 								 yb_options->exec_params,
 								 yb_options->is_internal_scan,
-								 yb_options->fetch_ybctids_only);
+								 yb_options->fetch_ybctids_only,
+								 snapshot);
 
 	Assert(!YbNeedsPgRecheck(ybDesc->ybscan));
 

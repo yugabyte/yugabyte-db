@@ -104,7 +104,9 @@ ybBeginSample(Relation rel, int targrows, int *width_caps)
 
 	reservoir_init_selection_state(&rstate, targrows);
 	/*
-	 * Create new sampler command
+	 * Create new sampler command.  It sets no catalog read point
+	 * (YbSetCatalogReadPoint): ANALYZE of a catalog samples at the current
+	 * read point, i.e. its own statement snapshot, not the catalog snapshot.
 	 */
 	ybSample->handle = YbNewSample(rel, targrows, rstate.W, rstate.randstate.s0, rstate.randstate.s1);
 	for (AttrNumber attnum = 1; attnum <= tupdesc->natts; attnum++)

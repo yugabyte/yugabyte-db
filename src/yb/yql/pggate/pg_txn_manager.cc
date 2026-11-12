@@ -805,7 +805,8 @@ Status PgTxnManager::SetupReadTimeOptions(
     std::optional<ReadTimeAction> read_time_action,
     NonTransactionalWrites ops_has_non_transactional_writes,
     SkipReadTimeOptions skip_read_time_options,
-    IsCatalogSnapshot is_catalog_snapshot) {
+    IsCatalogSnapshot is_catalog_snapshot,
+    HasCatalogOps has_catalog_ops) {
   if (need_restart_) {
     read_time_options.set_restart_transaction(true);
     need_restart_ = false;
@@ -868,6 +869,13 @@ Status PgTxnManager::SetupReadTimeOptions(
   }
 
   if (IsSerializableIsolation()) {
+    // Catalog reads at the txn snapshot are snapshot reads too (PG doesn't apply serializable
+    // isolation to catalogs). The first one fixes the txn read point's read time, which later
+    // catalog reads reuse and non-catalog ops ignore.
+    if (has_catalog_ops && !IsDdlModeWithSeparateTransaction()) {
+      read_time_options.set_read_time_manipulation(
+          tserver::ReadTimeManipulation::ENSURE_READ_TIME_IS_SET);
+    }
     return Status::OK();
   }
 
@@ -880,7 +888,7 @@ Status PgTxnManager::SetupReadTimeOptions(
     }
   }
 
-  if (UsesFollowerReads()) {
+  if (UsesFollowerReads() && !has_catalog_ops) {
     read_time_options.mutable_follower_read_staleness_ms()->set_value(
         static_cast<uint32_t>(*follower_read_staleness_ms_));
     return Status::OK();
@@ -927,7 +935,8 @@ Status PgTxnManager::SetupPerformOptions(
     SetupPerformOptionsAccessorTag, tserver::PgPerformOptionsPB& options,
     NonTransactionalWrites ops_has_non_transactional_writes,
     std::optional<ReadTimeAction> read_time_action,
-    SkipReadTimeOptions skip_read_time_options, IsCatalogSnapshot is_catalog_snapshot) {
+    SkipReadTimeOptions skip_read_time_options, IsCatalogSnapshot is_catalog_snapshot,
+    HasCatalogOps has_catalog_ops) {
   if (!IsDdlModeWithSeparateTransaction() && !txn_in_progress_) {
     IncTxnSerialNo();
   }
@@ -944,8 +953,10 @@ Status PgTxnManager::SetupPerformOptions(
   options.set_origination_ht(GetOriginationHt());
   options.set_is_using_table_locks(IsTableLockingEnabledForCurrentTxn());
   options.set_uses_catalog_snapshot(is_catalog_snapshot);
-  // Follower reads are applicable on user tables and as such catalog ops bypass it.
-  options.set_read_from_followers(UsesFollowerReads() && !is_catalog_snapshot);
+  // Follower reads are applicable on user tables and as such catalog ops bypass it, including
+  // catalog reads at the txn snapshot.
+  options.set_read_from_followers(
+      UsesFollowerReads() && !is_catalog_snapshot && !has_catalog_ops);
 
   if (use_saved_priority_) {
     options.set_use_existing_priority(true);
@@ -955,7 +966,7 @@ Status PgTxnManager::SetupPerformOptions(
 
   RETURN_NOT_OK(SetupReadTimeOptions(
       *options.mutable_read_time_options(), read_time_action, ops_has_non_transactional_writes,
-      skip_read_time_options, is_catalog_snapshot));
+      skip_read_time_options, is_catalog_snapshot, has_catalog_ops));
 
   options.set_force_global_transaction(yb_force_global_transaction);
   options.set_force_tablespace_locality(yb_force_tablespace_locality);

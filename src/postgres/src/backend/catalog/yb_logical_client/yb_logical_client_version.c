@@ -89,6 +89,8 @@ YbGetMasterLogicalClientVersionFromTable(Oid db_oid, uint64_t *version)
 								  YbBuildSystemTableLocalityInfo(YBLogicalClientVersionRelationId),
 								  YB_SKIP_INTENTS_OPTIMIZATION_INFO_NONE,
 								  &ybc_stmt));
+	HandleYBStatus(YBCPgDmlSetCatalogReadPoint(ybc_stmt,
+											   YbcInvalidReadPointHandle));
 
 	Datum		oid_datum = Int32GetDatum(db_oid);
 	YbcPgExpr	pkey_expr = YBCNewConstant(ybc_stmt,

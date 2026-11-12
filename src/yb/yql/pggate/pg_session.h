@@ -54,11 +54,13 @@ struct PgSessionRunOptions {
   HybridTime in_txn_limit{};
   ForceNonBufferable force_non_bufferable{ForceNonBufferable::kFalse};
   std::optional<PgSessionRunOperationMarker> marker{};
+  // See YBCPgDmlSetCatalogReadPoint.
+  std::optional<YbcReadPointHandle> catalog_read_point{};
 
   friend bool operator==(const PgSessionRunOptions&, const PgSessionRunOptions&) = default;
 
   std::string ToString() const {
-      return YB_STRUCT_TO_STRING(in_txn_limit, force_non_bufferable, marker);
+      return YB_STRUCT_TO_STRING(in_txn_limit, force_non_bufferable, marker, catalog_read_point);
   }
 };
 
@@ -248,13 +250,20 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
   std::string FlushReasonToString(const PgFlushDebugContext& debug_context) const;
 
   std::string LogPrefix() const;
-  Result<TxnReadPoint> UpdateReadPointForCatalogOps(PgOid catalog_table_oid);
+  Result<TxnReadPoint> UpdateReadPointForCatalogOps(
+      PgOid catalog_table_oid, bool is_row_lock_flush);
+  Result<TxnReadPoint> SwitchReadPoint(
+      YbcReadPointHandle read_point, const PgFlushDebugContext& dbg_ctx,
+      bool is_row_lock_flush);
+  Status FlushBeforeReadPointSwitch(const PgFlushDebugContext& dbg_ctx, bool is_row_lock_flush);
+  bool CatalogOpsUseCatalogSnapshot(const PgsqlOp& first_op, const RunOptions& options) const;
 
   class RunHelper;
 
   struct PerformOptions {
     UseLegacyCatalogSession use_legacy_catalog_session = UseLegacyCatalogSession::kFalse;
     bool has_catalog_ops = false;
+    bool uses_catalog_snapshot = false;
     std::optional<ReadTimeAction> read_time_action = {};
     std::optional<CacheOptions> cache_options = std::nullopt;
     HybridTime in_txn_limit = {};

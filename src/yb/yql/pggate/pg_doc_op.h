@@ -364,6 +364,8 @@ class PgDocOp {
 
   const PgTable& table() const { return table_; }
 
+  void SetCatalogReadPoint(YbcReadPointHandle read_point) { catalog_read_point_ = read_point; }
+
   static Result<PgDocResponse> DefaultSender(
       PgSession* session, std::span<const PgsqlOpPtr> ops, const PgTableDesc& table,
       const PgSession::RunOptions& options, IsForWritePgDoc is_write);
@@ -482,6 +484,8 @@ class PgDocOp {
 
   // See ReadHybridTimePB for more details about in_txn_limit.
   uint64_t in_txn_limit_ht_ = 0;
+
+  std::optional<YbcReadPointHandle> catalog_read_point_;
 
   DISALLOW_COPY_AND_ASSIGN(PgDocOp);
 };

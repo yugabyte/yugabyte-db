@@ -25,10 +25,12 @@
 
 #include "access/sysattr.h"
 #include "access/yb_lockrows.h"
+#include "catalog/catalog.h"
 #include "executor/executor.h"
 #include "pg_yb_utils.h"
 #include "utils/rel.h"
 #include "utils/relcache.h"
+#include "utils/snapmgr.h"
 
 /*
  * The return value of this function depends on whether we are batching or not.
@@ -43,10 +45,19 @@ YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
 			 LockWaitPolicy pg_wait_policy, EState *estate,
 			 YbcIsExplicitlyLockedRowSkippedCheckHandleOptional *handle)
 {
+	/*
+	 * Lock catalog rows at the snapshot the scan read them at, which can
+	 * differ from the read point current when the lock buffer is flushed.
+	 */
+	const bool	is_catalog = (IsCatalogRelation(relation) &&
+							  !YBCIsLegacyModeForCatalogOps());
 	const YbcPgExplicitRowLockParams lock_params = {
 		.rowmark = mode,
 		.pg_wait_policy = pg_wait_policy,
-		.docdb_wait_policy = YBGetDocDBWaitPolicy(pg_wait_policy)
+		.docdb_wait_policy = YBGetDocDBWaitPolicy(pg_wait_policy),
+		.catalog_read_point = (is_catalog ?
+							   YbGetCatalogReadPoint(estate->es_snapshot) :
+							   YbcInvalidReadPointHandle)
 	};
 
 	const Oid	relfile_oid = YbGetRelfileNodeId(relation);
@@ -69,6 +80,10 @@ YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
 	YbcPgExpr	ybctid_expr = YBCNewConstant(ybc_stmt, BYTEAOID, InvalidOid, ybctid, false);
 
 	HandleYBStatus(YBCPgDmlBindColumn(ybc_stmt, YBTupleIdAttributeNumber, ybctid_expr));
+
+	if (lock_params.catalog_read_point != YbcInvalidReadPointHandle)
+		HandleYBStatus(YBCPgDmlSetCatalogReadPoint(ybc_stmt,
+												   lock_params.catalog_read_point));
 
 	YbcPgExecParameters exec_params = {0};
 

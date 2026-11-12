@@ -109,7 +109,9 @@ class RequestCollector {
     return PgDocResponse{std::make_unique<ResponseProvider>(provider_state_)};
   }
 
-  Status Flush(PgSession& session, std::optional<PgSessionRunOperationMarker> marker) {
+  Status Flush(
+      PgSession& session, std::optional<PgSessionRunOperationMarker> marker,
+      std::optional<YbcReadPointHandle> catalog_read_point) {
     auto i = ops_.begin();
     PgDocResponse response(
         VERIFY_RESULT(session.RunAsync(make_lw_function(
@@ -120,7 +122,7 @@ class RequestCollector {
               }
               auto& info = *i++;
               return TO{.operation = &info.operation, .table = info.table};
-            }), {.marker = marker})),
+            }), {.marker = marker, .catalog_read_point = catalog_read_point})),
         {TableType::USER, IsForWritePgDoc::kFalse, IsOpBuffered::kFalse, single_relation_oid_});
     *provider_state_ = VERIFY_RESULT(response.Get(session));
     return Status::OK();
@@ -142,8 +144,10 @@ class RequestCollector {
 
 class Sender {
  public:
-  Sender(std::optional<PgSessionRunOperationMarker> marker, bool skip_collecting)
-      : marker_(marker) {
+  Sender(
+      std::optional<PgSessionRunOperationMarker> marker,
+      std::optional<YbcReadPointHandle> catalog_read_point, bool skip_collecting)
+      : marker_(marker), catalog_read_point_(catalog_read_point) {
     if (!skip_collecting) {
       collector_.emplace();
     }
@@ -168,12 +172,13 @@ class Sender {
     DCHECK(!options.marker);
     auto actual_options = options;
     actual_options.marker = marker_;
+    actual_options.catalog_read_point = catalog_read_point_;
     return PgDocOp::DefaultSender(session, ops, table, actual_options, IsForWritePgDoc::kFalse);
   }
 
   Status Flush(PgSession& session) {
     if (collector_) {
-      RETURN_NOT_OK(collector_->Flush(session, marker_));
+      RETURN_NOT_OK(collector_->Flush(session, marker_, catalog_read_point_));
     }
     collector_.reset();
     return Status::OK();
@@ -182,6 +187,7 @@ class Sender {
  private:
   std::optional<RequestCollector> collector_;
   const std::optional<PgSessionRunOperationMarker> marker_;
+  const std::optional<YbcReadPointHandle> catalog_read_point_;
 };
 
 } // namespace
@@ -202,7 +208,8 @@ class YbctidReader::Impl {
     }
 
     auto arena = std::make_shared<ThreadSafeArena>();
-    Sender sender(options.run_marker, /* skip_collecting = */ is_skip_locked);
+    Sender sender(
+        options.run_marker, options.catalog_read_point, /* skip_collecting = */ is_skip_locked);
     auto request_sender = std::bind_front(&Sender::operator(), &sender);
 
     // Start all the doc_ops to read from docdb in parallel, one doc_op per table ID.
