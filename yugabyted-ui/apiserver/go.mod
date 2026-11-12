@@ -4,7 +4,7 @@ go 1.27.3
 
 require (
 	github.com/jackc/pgx/v5 v5.10.0
-	github.com/labstack/echo/v4 v4.16.1
+	github.com/labstack/echo/v4 v4.16.3
 	github.com/yugabyte/gocql v0.0.0-20220204171058-0bd8e6cb12d0
 	go.uber.org/zap v1.28.0
 )

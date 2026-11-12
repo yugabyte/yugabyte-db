@@ -103,8 +103,17 @@ class EmbeddingsGenerator:
         empty_chunk_count = 0
         batch_texts = []
 
+        def record_plan(plan):
+            # Not optional: a retry reads this back to chunk the same way, so
+            # an attempt must not insert chunks without its strategy recorded.
+            self.pipeline_tracking.record_chunking_plan(pipeline_id, plan)
+
+        def earlier_strategy():
+            return self.pipeline_tracking.get_earlier_chunking_strategy(pipeline_id)
+
         for chunk_text in stream_partition_and_chunk(
-            pipeline_id, file_location, chunk_args
+            pipeline_id, file_location, chunk_args,
+            on_plan=record_plan, earlier_strategy=earlier_strategy,
         ):
             chunk_count += 1
             if chunk_text.strip():

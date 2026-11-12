@@ -115,7 +115,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
   public YBATask editGFlags(
       Request request, UUID cUUID, UUID uniUUID, UniverseEditGFlags editGFlags)
       throws JsonProcessingException {
-    log.info("Starting v2 edit GFlags with {}", editGFlags);
+    log.info("Starting v2 edit GFlags with {}", prettyPrint(editGFlags));
 
     // get universe from db
     Customer customer = Customer.getOrNotFound(cUUID);

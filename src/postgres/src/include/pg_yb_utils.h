@@ -968,6 +968,8 @@ extern bool yb_enable_inplace_index_update;
  */
 extern bool yb_enable_advisory_locks;
 
+extern bool yb_enable_colocated_tables_with_tablespaces;
+
 /*
  * Enable invalidation messages.
  */
@@ -1132,6 +1134,7 @@ typedef struct YbDdlOriginalStmtState
 {
 	NodeTag		node_tag;
 	CommandTag	command_tag;
+	bool		is_analyze;
 	bool		is_top_level_ddl_active;
 } YbDdlOriginalStmtState;
 
@@ -1642,6 +1645,8 @@ extern void decrement_sticky_object_count();
  * Check if there exists a database object that requires a sticky connection.
  */
 extern bool YbIsStickyConnection(int *change);
+
+extern bool YbHasReplicationOriginSetup(void);
 
 /*
  * Creates a shallow copy of the pointer list.

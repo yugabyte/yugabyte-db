@@ -5167,8 +5167,12 @@ YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 
 		/* Refresh cache now so that the retry uses latest version. */
 		if (need_global_cache_refresh)
+		{
 			YBStopAuthPrefetcherAndRefreshCache(catalog_master_version,
 												true /* is_retry */ );
+			/* The refresh may have moved past the catalog read time. */
+			YbInvalidateCatalogSnapshot();
+		}
 
 		*need_retry = true;
 	}
@@ -8789,4 +8793,14 @@ void
 YbIncrementHintCacheMisses()
 {
 	YbNumHintCacheMisses++;
+}
+
+/*
+ * YB: True from the moment start_xact_command starts a statement's
+ * transaction until finish_xact_command or error recovery ends it.
+ */
+bool
+YbIsStatementTransactionStarted(void)
+{
+	return xact_started;
 }

@@ -61,7 +61,8 @@ public class RedactingService {
           "$..ysqlNewPassword",
           "$..ycqlCurrentPassword",
           "$..ysqlCurrentPassword",
-          "$..sshPrivateKeyContent");
+          "$..sshPrivateKeyContent",
+          "$..dbuserPassword");
 
   private static final String YCQL_LDAP_BIND_PASSWD_PATH = "$..ycql_ldap_bind_passwd";
 
@@ -147,7 +148,6 @@ public class RedactingService {
           .add("$..hook.hookText")
           .add("$..hook.runtimeArgs")
           // LDAP - DB Universe Sync
-          .add("$..dbuserPassword")
           .add("$..ldapBindPassword")
           // HA Config
           .add("$..cluster_key")
@@ -170,11 +170,13 @@ public class RedactingService {
       new CopyOnWriteArraySet<>(
           SECRET_PATHS_FOR_LOGS.stream().map(JsonPath::compile).collect(Collectors.toList()));
 
+  private static final String REDACTED_PAYLOAD_KEY = "_redactedPayload";
+
   /** Returns a safe fallback ObjectNode when JSON reparsing after redaction fails. */
   private static ObjectNode redactionParseErrorFallback(String redactedPayload) {
     ObjectNode fallback = Json.mapper().createObjectNode();
     fallback.put("_redactionParseError", true);
-    fallback.put("_redactedPayload", redactedPayload);
+    fallback.put(REDACTED_PAYLOAD_KEY, redactedPayload);
     return fallback;
   }
 
@@ -198,6 +200,21 @@ public class RedactingService {
         ybSoftwareVersion,
         gFlagsValidation,
         isGFlagsSensitiveDataApiRedactionEnabled());
+  }
+
+  /**
+   * Redacts JSON that YBA persists and reads back to act on: universe details and task params.
+   * Stored gflags are what gets written to server.conf, and what a task retry re-applies, so only
+   * {@link #SECRET_PATHS_FOR_APIS} apply here and the gflags-sensitive-data API redaction never
+   * does, whatever its runtime config says.
+   */
+  public static JsonNode filterSecretFieldsForStorage(JsonNode input) {
+    return filterSecretFields(
+        input,
+        RedactionTarget.APIS,
+        /* ybSoftwareVersion */ null,
+        /* gFlagsValidation */ null,
+        /* enableGFlagsSensitiveDataApiRedaction */ false);
   }
 
   public static boolean isGFlagsSensitiveDataApiRedactionEnabled() {
@@ -1015,17 +1032,26 @@ public class RedactingService {
     if (auditEntry == null || !auditEntry.isObject()) {
       return;
     }
-    if (auditEntry.has("additionalDetails")) {
-      JsonNode additionalDetails = auditEntry.get("additionalDetails");
-      if (additionalDetails != null && !additionalDetails.isNull()) {
-        if (additionalDetails.has("gflags")) {
-          redactGflagsSection(additionalDetails.get("gflags"), universe, gFlagsValidation);
-        }
-        if (additionalDetails.has("readonly_cluster_gflags")) {
-          redactGflagsSection(
-              additionalDetails.get("readonly_cluster_gflags"), universe, gFlagsValidation);
-        }
-      }
+    // Audit API responses wrap the details in the audit entry; audit writes and the audit job pass
+    // them bare.
+    JsonNode additionalDetails =
+        auditEntry.has("additionalDetails") ? auditEntry.get("additionalDetails") : auditEntry;
+    if (additionalDetails == null || !additionalDetails.isObject()) {
+      return;
+    }
+    if (additionalDetails.has("gflags")) {
+      redactGflagsSection(additionalDetails.get("gflags"), universe, gFlagsValidation);
+    }
+    if (additionalDetails.has("readonly_cluster_gflags")) {
+      redactGflagsSection(
+          additionalDetails.get("readonly_cluster_gflags"), universe, gFlagsValidation);
+    }
+    // A parse-error fallback holds the gflag changes only as text, where neither the redaction
+    // above nor the string scan reliably finds their values.
+    String fallbackPayload = additionalDetails.path(REDACTED_PAYLOAD_KEY).asText();
+    if (fallbackPayload.contains("\"name\":\"ycql_ldap_bind_passwd\"")
+        || fallbackPayload.contains("\"name\":\"ysql_hba_conf_csv\"")) {
+      ((ObjectNode) additionalDetails).put(REDACTED_PAYLOAD_KEY, SECRET_REPLACEMENT);
     }
   }
 
