@@ -7222,7 +7222,7 @@ class PgVectorIndexUtilTest : public PgVectorIndexSingleServerDumpTestBase {
   }
 
   void TestFastPathVectorDeletion(const std::string& statement);
-  void TestRestoreToTimeWithinFile(bool store_payload);
+  void TestRestoreToTime(bool store_payload, bool separate_file);
   void TestUnappliedVectorUpdates();
   void TestBackfillBatches(uint64_t single_chunk_size_bytes);
 };
@@ -8239,10 +8239,11 @@ TEST_F(PgVectorIndexUtilTest, StoredPayloadRestoreToTime) {
   ASSERT_TRUE(ASSERT_RESULT(HasVectorDeletion()));
 }
 
-// A restore to a time between the writes of one SST file keeps the file behind a hybrid time
-// filter. An index candidate check must not step over the file's rolled back entries past the
-// candidate's key, or search time grows with the square of the rolled back vectors.
-void PgVectorIndexUtilTest::TestRestoreToTimeWithinFile(bool store_payload) {
+// A restore to a time keeps the SST files written after it behind a hybrid time filter, whether
+// the rolled back rows have files of their own or share one with restored rows. An index
+// candidate check must not step over a file's rolled back entries past the candidate's key, or
+// search time grows with the square of the rolled back vectors.
+void PgVectorIndexUtilTest::TestRestoreToTime(bool store_payload, bool separate_file) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = store_payload;
   client::SnapshotTestUtil snapshot_util;
   snapshot_util.SetProxy(&client_->proxy_cache());
@@ -8258,6 +8259,9 @@ void PgVectorIndexUtilTest::TestRestoreToTimeWithinFile(bool store_payload) {
   auto schedule_id = ASSERT_RESULT(snapshot_util.CreateSchedule(
       nullptr, YQL_DATABASE_PGSQL, DbName(),
       client::WaitSnapshot::kTrue, 1s * kTimeMultiplier, 60s * kTimeMultiplier));
+  if (separate_file) {
+    ASSERT_OK(cluster_->FlushTablets());
+  }
   auto restore_at = cluster_->mini_master(0)->Now();
   // Closer to the query vector than any of the restored rows, so a search goes through all of them.
   ASSERT_OK(conn.ExecuteFormat(
@@ -8265,7 +8269,6 @@ void PgVectorIndexUtilTest::TestRestoreToTimeWithinFile(bool store_payload) {
       "FROM generate_series($0, $1) i, LATERAL (SELECT i * 0.0001 AS v) t",
       kNumRows + 1, kNumRows + num_rolled_back_rows));
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
-  // The restored and the rolled back rows land in the same file.
   ASSERT_OK(cluster_->FlushTablets());
   ASSERT_OK(snapshot_util.WaitScheduleSnapshot(schedule_id, cluster_->mini_master(0)->Now()));
   ASSERT_OK(snapshot_util.RestoreSnapshotSchedule(schedule_id, restore_at));
@@ -8312,11 +8315,19 @@ void PgVectorIndexUtilTest::TestRestoreToTimeWithinFile(bool store_payload) {
 }
 
 TEST_F(PgVectorIndexUtilTest, RestoreToTimeWithinFile) {
-  TestRestoreToTimeWithinFile(/* store_payload= */ false);
+  TestRestoreToTime(/* store_payload= */ false, /* separate_file= */ false);
 }
 
 TEST_F(PgVectorIndexUtilTest, StoredPayloadRestoreToTimeWithinFile) {
-  TestRestoreToTimeWithinFile(/* store_payload= */ true);
+  TestRestoreToTime(/* store_payload= */ true, /* separate_file= */ false);
+}
+
+TEST_F(PgVectorIndexUtilTest, RestoreToTimeSeparateFile) {
+  TestRestoreToTime(/* store_payload= */ false, /* separate_file= */ true);
+}
+
+TEST_F(PgVectorIndexUtilTest, StoredPayloadRestoreToTimeSeparateFile) {
+  TestRestoreToTime(/* store_payload= */ true, /* separate_file= */ true);
 }
 
 // A committed transaction is visible through its intents until it is applied, while the index
