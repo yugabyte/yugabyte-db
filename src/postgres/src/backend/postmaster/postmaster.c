@@ -2435,7 +2435,7 @@ retry1:
 					offset = valoffset + strlen(valptr) + 1;
 					continue;
 				}
-				if (strcmp(nameptr, YB_YCM_INTERNAL_END) == 0)
+				else if (strcmp(nameptr, YB_YCM_INTERNAL_END) == 0)
 				{
 					yb_ycm_internal_end_seen = true;
 					offset = valoffset + strlen(valptr) + 1;

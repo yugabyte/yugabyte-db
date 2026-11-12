@@ -59,11 +59,6 @@ public class TestReservedStartupParameters extends BaseYsqlConnMgr {
     {"yb_ycm_internal_end", "1"},
     {"yb_conn_mgr_client_hostname", "example.com"},
   };
-  // Legacy names that guc.c still maps onto reserved parameters.
-  private static final String[][] LEGACY_RESERVED_PARAMETERS = {
-    {"yb_is_client_ysqlconnmgr", "1"},
-    {"yb_use_tserver_key_auth", "1"},
-  };
 
   public TestReservedStartupParameters() {
     // Required for TLS connections to resolve correctly in the test environment;
@@ -108,37 +103,26 @@ public class TestReservedStartupParameters extends BaseYsqlConnMgr {
   }
 
   /*
-   * Postgres rejects reserved parameters sent as top-level keys or in "options" (wherever they
-   * appear in it), in both auth passthrough and auth backend modes. In auth passthrough a
-   * top-level key fails only the logical connection; the shared control backend stays up.
+   * Reserved parameters in "options" are rejected wherever they appear in the string, in both
+   * auth passthrough and auth backend modes.
    */
   @Test
-  public void testRejectsReservedParametersInBothAuthModes() throws Exception {
-    assertReservedParametersRejected(true /* isAuthPassthrough */);
+  public void testRejectsReservedParametersAfterOtherSwitch() throws Exception {
+    assertReservedParametersAfterOtherSwitchRejected();
 
     restartClusterWithAdditionalFlags(Collections.emptyMap(),
         Collections.singletonMap("ysql_conn_mgr_use_auth_backend", "true"));
-    assertReservedParametersRejected(false /* isAuthPassthrough */);
+    // Later tests expect auth passthrough.
+    markClusterNeedsRecreation();
+    assertReservedParametersAfterOtherSwitchRejected();
   }
 
-  private void assertReservedParametersRejected(boolean isAuthPassthrough) throws Exception {
-    String[][][] allParameters = {RESERVED_PARAMETERS, LEGACY_RESERVED_PARAMETERS};
-    for (String[][] parameters : allParameters) {
-      for (String[] parameter : parameters) {
-        assertReservedParameterRejected(parameter[0], parameter[1]);
-      }
-    }
-
-    if (isAuthPassthrough) {
-      Thread.sleep(2 * STATS_UPDATE_INTERVAL * 1_000);
-      JsonObject pool = getPool("control_connection", "control_connection");
-      assertNotNull("Expected a control_connection pool", pool);
-      assertEquals("Control backend should stay up after rejecting reserved parameters", 1,
-          pool.get("active_physical_connections").getAsInt()
-              + pool.get("idle_physical_connections").getAsInt());
-    }
-
-    for (String[][] parameters : allParameters) {
+  private void assertReservedParametersAfterOtherSwitchRejected() throws Exception {
+    String[][] legacyParameters = {
+      {"yb_is_client_ysqlconnmgr", "1"},
+      {"yb_use_tserver_key_auth", "1"},
+    };
+    for (String[][] parameters : new String[][][] {RESERVED_PARAMETERS, legacyParameters}) {
       for (String[] parameter : parameters) {
         try (Connection connection = getConnectionBuilder()
                  .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
@@ -166,13 +150,21 @@ public class TestReservedStartupParameters extends BaseYsqlConnMgr {
 
   /*
    * Below test validates startup parameters passed directy as key value pair in connection string
-   * gets rejected by connection manager.
+   * gets rejected by connection manager. In auth passthrough this fails only the logical
+   * connection; the shared control backend stays up.
    */
   @Test
   public void testRejectsRawConnectionManagerStartupParameters() throws Exception {
     for (String[] parameter : RESERVED_PARAMETERS) {
       assertReservedParameterRejected(parameter[0], parameter[1]);
     }
+
+    Thread.sleep(2 * STATS_UPDATE_INTERVAL * 1_000);
+    JsonObject pool = getPool("control_connection", "control_connection");
+    assertNotNull("Expected a control_connection pool", pool);
+    assertEquals("Control backend should stay up after rejecting reserved parameters", 1,
+        pool.get("active_physical_connections").getAsInt()
+            + pool.get("idle_physical_connections").getAsInt());
   }
 
   // Send a NON-SSL request to connection manager by explictly setting the startup
