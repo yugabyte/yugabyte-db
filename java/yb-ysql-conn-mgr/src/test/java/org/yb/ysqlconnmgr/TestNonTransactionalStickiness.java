@@ -77,6 +77,13 @@ public class TestNonTransactionalStickiness extends BaseYsqlConnMgr {
         return intResult(stmt, "SELECT hll_set_max_sparse(-1)") != -1;
       }
     },
+    HLL_DEFAULTS("SELECT hll_set_defaults(10, 4, -1, 1)",
+        "PERFORM hll_set_defaults(10, 4, -1, 1)") {
+      @Override
+      boolean hasState(Statement stmt) throws Exception {
+        return intResult(stmt, "SELECT hll_log2m(hll_empty())") == 10;
+      }
+    },
     SESSION_SEQUENCE("SELECT nextval('" + SEQUENCE + "')",
         "PERFORM nextval('" + SEQUENCE + "')") {
       @Override
