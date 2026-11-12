@@ -146,26 +146,28 @@ static inline char *mm_tls_strerror(int error)
 	return "SSL_ERROR unknown";
 }
 
+/*
+ * YB: When a socket read or write fails, OpenSSL returns SSL_ERROR_SYSCALL
+ * with an empty error queue and leaves the reason (e.g. ECONNRESET) only in
+ * errno. The SSL I/O callers below save that errno with mm_errno_set() before
+ * calling this. Other callers leave mm_errno at 0 and get the queue's text.
+ * See https://docs.openssl.org/3.0/man3/SSL_get_error/#return-values
+ */
 __attribute__((format(printf, 3, 4)))
 static inline void mm_tls_error(mm_io_t *io, int ssl_rc, char *fmt, ...)
 {
 	/* get error description */
 	unsigned int error;
 	error = SSL_get_error(io->tls_ssl, ssl_rc);
-	switch (error) {
-	case SSL_ERROR_NONE:
-	case SSL_ERROR_ZERO_RETURN:
-		/* basically this means connection reset */
-		break;
-	}
 	unsigned int error_peek;
 	char *error_str;
 	error_str = "unknown error";
 	error_peek = ERR_get_error();
+	int errno_ = mm_errno_get();
 	if (error_peek != 0) {
 		error_str = ERR_error_string(error_peek, NULL);
-	} else if (ssl_rc <= 0) {
-		error_str = strerror(mm_errno_get());
+	} else if (errno_ != 0) {
+		error_str = strerror(errno_);
 	}
 
 	/* error message */
@@ -636,19 +638,23 @@ static void mm_tls_handshake_cb(mm_fd_t *handle)
 	if (mm_call_is_aborted(call))
 		return;
 	int rc = -1;
+	errno = 0;
 	if (io->accepted)
 		rc = SSL_accept(io->tls_ssl);
 	else if (io->connected)
 		rc = SSL_connect(io->tls_ssl);
 	if (rc <= 0) {
+		int errno_ = errno;
 		int error = SSL_get_error(io->tls_ssl, rc);
 		if (error == SSL_ERROR_WANT_READ ||
 		    error == SSL_ERROR_WANT_WRITE)
 			return;
-		if (io->connected)
-			mm_tls_error(io, rc, "SSL_connect()");
-		else
+		mm_errno_set(errno_);
+		/* YB: An accepted io has connected set too. */
+		if (io->accepted)
 			mm_tls_error(io, rc, "SSL_accept()");
+		else
+			mm_tls_error(io, rc, "SSL_connect()");
 		call->status = -1;
 		goto done;
 	}
@@ -875,14 +881,17 @@ int mm_tls_write(mm_io_t *io, char *buf, int size)
 {
 	mm_tls_error_reset(io);
 	int rc;
+	errno = 0;
 	rc = SSL_write(io->tls_ssl, buf, size);
 	if (rc > 0)
 		return rc;
+	int errno_ = errno;
 	int error = SSL_get_error(io->tls_ssl, rc);
 	if (error == SSL_ERROR_WANT_READ || error == SSL_ERROR_WANT_WRITE) {
 		errno = EAGAIN;
 		return -1;
 	}
+	mm_errno_set(errno_);
 	mm_tls_error(io, rc, "SSL_write()");
 	return -1;
 }
@@ -900,7 +909,9 @@ int mm_tls_writev(mm_io_t *io, struct iovec *iov, int n)
 	mm_iovcpy(buffer, iov, n);
 
 	int rc;
+	errno = 0;
 	rc = SSL_write(io->tls_ssl, buffer, size);
+	int errno_ = errno;
 	free(buffer);
 	if (rc > 0)
 		return rc;
@@ -909,6 +920,7 @@ int mm_tls_writev(mm_io_t *io, struct iovec *iov, int n)
 		errno = EAGAIN;
 		return -1;
 	}
+	mm_errno_set(errno_);
 	mm_tls_error(io, rc, "SSL_write()");
 	return -1;
 }
@@ -922,6 +934,7 @@ int mm_tls_read(mm_io_t *io, char *buf, int size)
 {
 	mm_tls_error_reset(io);
 	int rc;
+	errno = 0;
 	rc = SSL_read(io->tls_ssl, buf, size);
 	if (rc > 0) {
 		if (io->on_read != NULL && mm_tls_read_pending(io)) {
@@ -930,6 +943,7 @@ int mm_tls_read(mm_io_t *io, char *buf, int size)
 		}
 		return rc;
 	}
+	int errno_ = errno;
 	int error = SSL_get_error(io->tls_ssl, rc);
 	if (error == SSL_ERROR_WANT_READ || error == SSL_ERROR_WANT_WRITE) {
 		errno = EAGAIN;
@@ -937,6 +951,7 @@ int mm_tls_read(mm_io_t *io, char *buf, int size)
 	}
 	if (error == SSL_ERROR_ZERO_RETURN)
 		return 0;
+	mm_errno_set(errno_);
 	mm_tls_error(io, rc, "SSL_read()");
 	return -1;
 }
