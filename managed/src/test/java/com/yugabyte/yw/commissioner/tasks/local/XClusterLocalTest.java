@@ -14,6 +14,7 @@ import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeUniverseYsqlContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.TableInfoForm;
@@ -100,18 +101,18 @@ public class XClusterLocalTest extends XClusterLocalTestBase {
     NodeDetails details = source.getUniverseDetails().nodeDetailsSet.iterator().next();
     ShellResponse ysqlResponse =
         localNodeUniverseManager.runYsqlCommand(
-            details,
-            source,
+            NodeUniverseYsqlContext.of(source, details).withTimeout(10),
             YUGABYTE_DB,
-            "insert into some_table values (4, 'xcluster1', 200), (5, 'xCluster2', 180)",
-            10);
+            "insert into some_table values (4, 'xcluster1', 200), (5, 'xCluster2', 180)");
     assertTrue(ysqlResponse.isSuccess());
 
     Thread.sleep(2000);
     details = target.getUniverseDetails().nodeDetailsSet.iterator().next();
     ysqlResponse =
         localNodeUniverseManager.runYsqlCommand(
-            details, target, YUGABYTE_DB, "select count(*) from some_table", 10);
+            NodeUniverseYsqlContext.of(target, details).withTimeout(10),
+            YUGABYTE_DB,
+            "select count(*) from some_table");
     assertTrue(ysqlResponse.isSuccess());
     assertEquals("5", CommonUtils.extractJsonisedSqlResponse(ysqlResponse).trim());
     verifyPayload();
@@ -167,21 +168,17 @@ public class XClusterLocalTest extends XClusterLocalTestBase {
     NodeDetails sourceNodeDetails = source.getUniverseDetails().nodeDetailsSet.iterator().next();
     ShellResponse ysqlResponse =
         localNodeUniverseManager.runYsqlCommand(
-            sourceNodeDetails,
-            source,
+            NodeUniverseYsqlContext.of(source, sourceNodeDetails).withTimeout(10),
             YUGABYTE_DB,
-            "CREATE TABLE x_cluster (id int, name text, age int, PRIMARY KEY(id, name))",
-            10);
+            "CREATE TABLE x_cluster (id int, name text, age int, PRIMARY KEY(id, name))");
     assertTrue(ysqlResponse.isSuccess());
 
     NodeDetails targetNodeDetails = target.getUniverseDetails().nodeDetailsSet.iterator().next();
     ysqlResponse =
         localNodeUniverseManager.runYsqlCommand(
-            targetNodeDetails,
-            target,
+            NodeUniverseYsqlContext.of(source, targetNodeDetails).withTimeout(10),
             YUGABYTE_DB,
-            "CREATE TABLE x_cluster (id int, name text, age int, PRIMARY KEY(id, name))",
-            10);
+            "CREATE TABLE x_cluster (id int, name text, age int, PRIMARY KEY(id, name))");
     assertTrue(ysqlResponse.isSuccess());
 
     // Get the table info for the source universe.
@@ -203,17 +200,17 @@ public class XClusterLocalTest extends XClusterLocalTestBase {
     verifyUniverseState(Universe.getOrBadRequest(target.getUniverseUUID()));
     ysqlResponse =
         localNodeUniverseManager.runYsqlCommand(
-            sourceNodeDetails,
-            source,
+            NodeUniverseYsqlContext.of(source, sourceNodeDetails).withTimeout(10),
             YUGABYTE_DB,
-            "insert into x_cluster values (4, 'xcluster1', 200), (5, 'xCluster2', 180)",
-            10);
+            "insert into x_cluster values (4, 'xcluster1', 200), (5, 'xCluster2', 180)");
 
     assertTrue(ysqlResponse.isSuccess());
     Thread.sleep(2000);
     ysqlResponse =
         localNodeUniverseManager.runYsqlCommand(
-            targetNodeDetails, target, YUGABYTE_DB, "select count(*) from x_cluster", 10);
+            NodeUniverseYsqlContext.of(target, targetNodeDetails).withTimeout(10),
+            YUGABYTE_DB,
+            "select count(*) from x_cluster");
     assertTrue(ysqlResponse.isSuccess());
     assertEquals("2", CommonUtils.extractJsonisedSqlResponse(ysqlResponse).trim());
     verifyPayload();
@@ -772,11 +769,9 @@ public class XClusterLocalTest extends XClusterLocalTestBase {
     String tableToDropId = formData.tables.iterator().next(); // Pick the first table to drop.
     ShellResponse ysqlResponse =
         localNodeUniverseManager.runYsqlCommand(
-            sourceNodeDetails,
-            source,
+            NodeUniverseYsqlContext.of(source, sourceNodeDetails).withTimeout(10),
             YUGABYTE_DB,
-            String.format("DROP TABLE %s", tableIdToName.get(tableToDropId)),
-            10);
+            String.format("DROP TABLE %s", tableIdToName.get(tableToDropId)));
     assertTrue(ysqlResponse.isSuccess());
 
     // Verify that the table shows as "Dropped From Source" in the xCluster configuration.
@@ -791,13 +786,11 @@ public class XClusterLocalTest extends XClusterLocalTestBase {
     // Step 3: Re-add the table to the source universe (it will have a new table ID).
     ysqlResponse =
         localNodeUniverseManager.runYsqlCommand(
-            sourceNodeDetails,
-            source,
+            NodeUniverseYsqlContext.of(source, sourceNodeDetails).withTimeout(10),
             YUGABYTE_DB,
             String.format(
                 "CREATE TABLE %s (id int, name text, age int, PRIMARY KEY(id, name))",
-                tableIdToName.get(tableToDropId)),
-            10);
+                tableIdToName.get(tableToDropId)));
     assertTrue(ysqlResponse.isSuccess());
     log.debug(
         "tableToDropId: {}, tableToDropName: {}", tableToDropId, tableIdToName.get(tableToDropId));

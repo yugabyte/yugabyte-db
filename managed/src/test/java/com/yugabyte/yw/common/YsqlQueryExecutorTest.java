@@ -4,8 +4,6 @@ import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -110,6 +108,8 @@ public class YsqlQueryExecutorTest extends PlatformGuiceApplicationBaseTest {
         new Cluster(
             UniverseDefinitionTaskParams.ClusterType.PRIMARY,
             new UniverseDefinitionTaskParams.UserIntent());
+    // The YSQL context resolves its defaults from the node's cluster.
+    when(universe.getCluster(any())).thenReturn(cluster);
     when(details.getPrimaryCluster())
         .thenReturn(
             new Cluster(
@@ -138,8 +138,7 @@ public class YsqlQueryExecutorTest extends PlatformGuiceApplicationBaseTest {
   @Parameters({"false, 200", "true, 500", "true, 400"})
   public void createUser(boolean failure, int errorCode) {
     when(universe.getMasterLeaderNode()).thenReturn(errorCode == 500 ? null : node);
-    when(mockNodeUniverseManager.runYsqlCommand(
-            any(), any(), any(), any(), anyLong(), anyBoolean(), anyBoolean(), anyBoolean()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any()))
         .thenReturn(errorCode == 400 ? failureResponse : new ShellResponse());
     if (failure) {
       PlatformServiceException exception =
@@ -155,8 +154,7 @@ public class YsqlQueryExecutorTest extends PlatformGuiceApplicationBaseTest {
   @Parameters({"false, 200", "true, 500", "true, 400"})
   public void createRestrictedUser(boolean failure, int errorCode) {
     when(universe.getMasterLeaderNode()).thenReturn(errorCode == 500 ? null : node);
-    when(mockNodeUniverseManager.runYsqlCommand(
-            any(), any(), any(), any(), anyLong(), anyBoolean(), anyBoolean(), anyBoolean()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any()))
         .thenReturn(errorCode == 400 ? failureResponse : new ShellResponse());
     if (failure) {
       PlatformServiceException exception =
@@ -177,8 +175,7 @@ public class YsqlQueryExecutorTest extends PlatformGuiceApplicationBaseTest {
     dropForm.dbName = "yugabyte";
 
     when(universe.getMasterLeaderNode()).thenReturn(errorCode == 500 ? null : node);
-    when(mockNodeUniverseManager.runYsqlCommand(
-            any(), any(), any(), any(), anyLong(), anyBoolean(), anyBoolean(), anyBoolean()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any()))
         .thenReturn(errorCode == 400 ? failureResponse : new ShellResponse());
     if (failure) {
       PlatformServiceException exception =
@@ -197,28 +194,16 @@ public class YsqlQueryExecutorTest extends PlatformGuiceApplicationBaseTest {
     queryParams.setQuery("SELECT query, calls FROM pg_stat_statements");
 
     when(mockNodeUniverseManager.runYsqlCommand(
-            eq(node),
-            eq(universe),
-            eq("postgres"),
-            anyString(),
-            eq(180L),
-            anyBoolean(),
-            anyBoolean(),
-            eq(false)))
+            NodeUniverseContextMatchers.ysqlContext(node, universe), eq("postgres"), anyString()))
         .thenReturn(new ShellResponse());
 
     ysqlQueryExecutor.executeQueryInNodeShell(universe, queryParams, node, false);
 
     verify(mockNodeUniverseManager)
         .runYsqlCommand(
-            eq(node),
-            eq(universe),
+            NodeUniverseContextMatchers.ysqlContext(node, universe, false, false, 180L, false),
             eq("postgres"),
-            anyString(),
-            eq(180L),
-            anyBoolean(),
-            anyBoolean(),
-            eq(false));
+            anyString());
   }
 
   @Test
@@ -228,28 +213,18 @@ public class YsqlQueryExecutorTest extends PlatformGuiceApplicationBaseTest {
     queryParams.setQuery("SELECT 1");
 
     when(mockNodeUniverseManager.runYsqlCommand(
-            eq(node),
-            eq(universe),
+            NodeUniverseContextMatchers.ysqlContext(node, universe, false, false, 180L, true),
             eq("postgres"),
-            anyString(),
-            eq(180L),
-            anyBoolean(),
-            anyBoolean(),
-            eq(true)))
+            anyString()))
         .thenReturn(new ShellResponse());
 
     ysqlQueryExecutor.executeQueryInNodeShell(universe, queryParams, node);
 
     verify(mockNodeUniverseManager)
         .runYsqlCommand(
-            eq(node),
-            eq(universe),
+            NodeUniverseContextMatchers.ysqlContext(node, universe, false, false, 180L, true),
             eq("postgres"),
-            anyString(),
-            eq(180L),
-            anyBoolean(),
-            anyBoolean(),
-            eq(true));
+            anyString());
   }
 
   @Test
@@ -257,29 +232,21 @@ public class YsqlQueryExecutorTest extends PlatformGuiceApplicationBaseTest {
     List<String> queries = List.of("INSERT INTO slow_queries_data VALUES ('secret query')");
 
     when(mockNodeUniverseManager.runYsqlBatchCommands(
-            eq(node),
-            eq(universe),
+            NodeUniverseContextMatchers.ysqlContext(node, universe, false, false, 180L, false),
             eq(Util.SYSTEM_PLATFORM_DB),
-            eq(queries),
-            eq(180L),
-            anyBoolean(),
-            anyBoolean(),
-            eq(false)))
+            eq(queries)))
         .thenReturn(new ShellResponse());
 
     ysqlQueryExecutor.executeQueryBatchInNodeShell(
-        universe, Util.SYSTEM_PLATFORM_DB, queries, node, false);
+        NodeUniverseYsqlContext.of(universe, node).withLogCmdOutput(false).withTimeout(180L),
+        Util.SYSTEM_PLATFORM_DB,
+        queries);
 
     verify(mockNodeUniverseManager)
         .runYsqlBatchCommands(
-            eq(node),
-            eq(universe),
+            NodeUniverseContextMatchers.ysqlContext(node, universe, false, false, 180L, false),
             eq(Util.SYSTEM_PLATFORM_DB),
-            eq(queries),
-            eq(180L),
-            anyBoolean(),
-            anyBoolean(),
-            eq(false));
+            eq(queries));
   }
 
   @Test

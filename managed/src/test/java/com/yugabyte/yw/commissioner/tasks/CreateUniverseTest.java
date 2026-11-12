@@ -212,8 +212,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
         .validateAdminPassword(any(), any());
     ShellResponse successResponse = new ShellResponse();
     successResponse.message = "Command output:\nCREATE TABLE";
-    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), (any()), anyBoolean()))
-        .thenReturn(successResponse);
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any())).thenReturn(successResponse);
   }
 
   private TaskInfo submitTask(UniverseDefinitionTaskParams taskParams) {

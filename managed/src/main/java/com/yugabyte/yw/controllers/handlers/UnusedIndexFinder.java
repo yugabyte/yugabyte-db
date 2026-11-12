@@ -16,6 +16,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.common.NodeUniverseManager;
+import com.yugabyte.yw.common.NodeUniverseYsqlContext;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
@@ -93,7 +94,9 @@ public class UnusedIndexFinder {
 
     ShellResponse getDB =
         nodeUniverseManager.runYsqlCommand(
-            randomTServer, universe, DEFAULT_DB_NAME, GET_DB_LIST_STATEMENT);
+            NodeUniverseYsqlContext.of(universe, randomTServer),
+            DEFAULT_DB_NAME,
+            GET_DB_LIST_STATEMENT);
 
     String getDBList = CommonUtils.extractJsonisedSqlResponse(getDB);
 
@@ -137,7 +140,9 @@ public class UnusedIndexFinder {
                 () -> {
                   ShellResponse response =
                       nodeUniverseManager.runYsqlCommand(
-                          liveNode, universe, dbname.datname, GET_UNUSED_INDEXES_STATEMENT);
+                          NodeUniverseYsqlContext.of(universe, liveNode),
+                          dbname.datname,
+                          GET_UNUSED_INDEXES_STATEMENT);
                   String responseJSON = CommonUtils.extractJsonisedSqlResponse(response);
 
                   // responseJSON unfortunately seems to return a length 1 empty string rather than

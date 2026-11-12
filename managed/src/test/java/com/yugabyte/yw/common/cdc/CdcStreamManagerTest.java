@@ -11,6 +11,7 @@ import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
 
 import com.google.protobuf.ByteString;
+import com.yugabyte.yw.common.NodeUniverseContextMatchers;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -171,7 +172,9 @@ public class CdcStreamManagerTest {
 
     ShellResponse mockShellResponse = mock(ShellResponse.class);
     when(mockNodeUniverseManager.runYsqlCommand(
-            eq(randomTserver), eq(universe), eq("yugabyte"), anyString()))
+            NodeUniverseContextMatchers.ysqlContext(randomTserver, universe),
+            eq("yugabyte"),
+            anyString()))
         .thenReturn(mockShellResponse);
     when(mockShellResponse.extractRunCommandOutput())
         .thenReturn("wal_status\n----------------\nreserved\n(1 row))");

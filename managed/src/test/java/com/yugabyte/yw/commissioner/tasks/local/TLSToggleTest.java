@@ -68,18 +68,16 @@ public class TLSToggleTest extends LocalProviderUniverseTestBase {
     NodeDetails details = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
     ShellResponse ysqlResponse =
         localNodeUniverseManager.runYsqlCommand(
-            details,
-            universe,
+            ysqlContext(universe, details, 10),
             YUGABYTE_DB,
-            "insert into some_table values (4, 'tls1', 200), (5, 'tls2', 180)",
-            10);
+            "insert into some_table values (4, 'tls1', 200), (5, 'tls2', 180)");
     assertTrue(ysqlResponse.isSuccess());
 
     Thread.sleep(2000);
     details = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
     ysqlResponse =
         localNodeUniverseManager.runYsqlCommand(
-            details, universe, YUGABYTE_DB, "select count(*) from some_table", 10);
+            ysqlContext(universe, details, 10), YUGABYTE_DB, "select count(*) from some_table");
     assertTrue(ysqlResponse.isSuccess());
     assertEquals("5", CommonUtils.extractJsonisedSqlResponse(ysqlResponse).trim());
   }
@@ -114,18 +112,16 @@ public class TLSToggleTest extends LocalProviderUniverseTestBase {
     NodeDetails details = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
     ShellResponse ysqlResponse =
         localNodeUniverseManager.runYsqlCommand(
-            details,
-            universe,
+            ysqlContext(universe, details, 10),
             YUGABYTE_DB,
-            "insert into some_table values (4, 'tls1', 200), (5, 'tls2', 180)",
-            10);
+            "insert into some_table values (4, 'tls1', 200), (5, 'tls2', 180)");
     assertTrue(ysqlResponse.isSuccess());
 
     Thread.sleep(2000);
     details = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
     ysqlResponse =
         localNodeUniverseManager.runYsqlCommand(
-            details, universe, YUGABYTE_DB, "select count(*) from some_table", 10);
+            ysqlContext(universe, details, 10), YUGABYTE_DB, "select count(*) from some_table");
     assertTrue(ysqlResponse.isSuccess());
     assertEquals("5", CommonUtils.extractJsonisedSqlResponse(ysqlResponse).trim());
   }

@@ -92,7 +92,8 @@ public class ManageCatalogUpgradeSuperUser extends UniverseTaskBase {
   }
 
   private void deletePGPassFile(Universe universe, NodeDetails node, String pgPassFilePath) {
-    nodeUniverseManager.runCommand(node, universe, ImmutableList.of("rm", "-f", pgPassFilePath));
+    nodeUniverseManager.runCommand(
+        NodeUniverseContext.of(universe, node), ImmutableList.of("rm", "-f", pgPassFilePath));
   }
 
   private void createUser(Universe universe, NodeDetails node, String password) {

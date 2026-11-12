@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.NodeUniverseManager;
+import com.yugabyte.yw.common.NodeUniverseYsqlContext;
 import com.yugabyte.yw.common.TableSpaceStructures;
 import com.yugabyte.yw.common.TableSpaceUtil;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -56,7 +57,8 @@ public class DropTablespacesTask extends BaseTablespacesTask {
         for (String tablespace : tablespaces) {
           String query = String.format(SQL, tablespace);
           nodeUniverseManager
-              .runYsqlCommand(randomTserver, universe, TableSpaceUtil.DB, query)
+              .runYsqlCommand(
+                  NodeUniverseYsqlContext.of(universe, randomTserver), TableSpaceUtil.DB, query)
               .processErrors();
           processed.add(tablespace);
           log.debug("Dropped tablespace {}", tablespace);

@@ -10,7 +10,6 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -33,6 +32,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.NodeUniverseManager.RemoteBashRunSpec;
+import com.yugabyte.yw.common.NodeUniverseYsqlContext;
 import com.yugabyte.yw.common.RemoteTransportSimulator;
 import com.yugabyte.yw.common.RemoteTransportSimulator.Transport;
 import com.yugabyte.yw.common.ShellProcessContext;
@@ -611,14 +611,13 @@ public class SupportBundleCgroupExecutorTest extends FakeDBApplication {
                 .logCmdOutput(true)
                 .redactedVals(Map.of("secret", "REDACTED"))
                 .build());
-    when(mockNodeUniverseManager.buildYsqlSupportBundleBatchRunSpec(
-            any(), any(), any(), anyList(), anyLong(), anyBoolean(), anyBoolean()))
+    when(mockNodeUniverseManager.buildYsqlSupportBundleBatchRunSpec(any(), any(), any()))
         .thenReturn(spec);
     stubRunCommand();
 
     ShellResponse response =
         commandExecutor.runYsqlQueries(
-            bundleUuid, node, universe, "yugabyte", List.of("select 1"), 30L, false, false, "q");
+            bundleUuid, node, universe, "yugabyte", List.of("select 1"), 30L, "q");
 
     List<String> argv = commandsRun.get(0);
     assertEquals(stagedLimitsScript(), argv.get(1));
@@ -638,13 +637,12 @@ public class SupportBundleCgroupExecutorTest extends FakeDBApplication {
   @Test
   public void testYsqlBatchRunsDirectlyWhenLimitsAreOff() {
     setLimitsEnabled(false);
-    when(mockNodeUniverseManager.runYsqlSupportBundleBatchCommands(
-            any(), any(), any(), anyList(), anyLong(), anyBoolean(), anyBoolean()))
+    when(mockNodeUniverseManager.runYsqlSupportBundleBatchCommands(any(), any(), anyList()))
         .thenReturn(ok("rows"));
 
     ShellResponse response =
         commandExecutor.runYsqlQueries(
-            bundleUuid, node, universe, "yugabyte", List.of("select 1"), 30L, false, false, "q");
+            bundleUuid, node, universe, "yugabyte", List.of("select 1"), 30L, "q");
 
     assertEquals("rows", response.getMessage());
     verify(mockNodeUniverseManager, never())
@@ -654,8 +652,7 @@ public class SupportBundleCgroupExecutorTest extends FakeDBApplication {
   @Test
   public void testYcqlBatchesShareOneStagedLimitsScript() {
     setLimitsEnabled(true);
-    when(mockNodeUniverseManager.buildYcqlSupportBundleBatchRunSpec(
-            any(), any(), any(), anyList(), anyLong()))
+    when(mockNodeUniverseManager.buildYcqlSupportBundleBatchRunSpec(any(), any(), anyList()))
         .thenReturn(
             new RemoteBashRunSpec(
                 List.of("bash", "-c", "ycqlsh"), ShellProcessContext.builder().build()));
@@ -675,8 +672,7 @@ public class SupportBundleCgroupExecutorTest extends FakeDBApplication {
   @Test
   public void testCommandFallsBackWhenTheLimitsScriptCantBeStaged() {
     when(mockConfGetter.getGlobalConf(GlobalConfKeys.supportBundleCgroupEnabled)).thenReturn(true);
-    when(mockNodeUniverseManager.buildYsqlSupportBundleBatchRunSpec(
-            any(), any(), any(), anyList(), anyLong(), anyBoolean(), anyBoolean()))
+    when(mockNodeUniverseManager.buildYsqlSupportBundleBatchRunSpec(any(), any(), anyList()))
         .thenReturn(
             new RemoteBashRunSpec(
                 List.of("bash", "-c", "ysqlsh"), ShellProcessContext.builder().build()));
@@ -685,13 +681,12 @@ public class SupportBundleCgroupExecutorTest extends FakeDBApplication {
     doThrow(new RuntimeException("upload failed"))
         .when(mockNodeUniverseManager)
         .uploadFileToNode(any(NodeUniverseContext.class), anyString(), anyString(), anyString());
-    when(mockNodeUniverseManager.runYsqlSupportBundleBatchCommands(
-            any(), any(), any(), anyList(), anyLong(), anyBoolean(), anyBoolean()))
+    when(mockNodeUniverseManager.runYsqlSupportBundleBatchCommands(any(), any(), anyList()))
         .thenReturn(ok("rows"));
 
     ShellResponse response =
         commandExecutor.runYsqlQueries(
-            bundleUuid, node, universe, "yugabyte", List.of("select 1"), 30L, false, false, "q");
+            bundleUuid, node, universe, "yugabyte", List.of("select 1"), 30L, "q");
 
     assertEquals("rows", response.getMessage());
   }
@@ -699,8 +694,7 @@ public class SupportBundleCgroupExecutorTest extends FakeDBApplication {
   @Test
   public void testCancelledLimitsStagingSkipsTheUnlimitedCommand() {
     when(mockConfGetter.getGlobalConf(GlobalConfKeys.supportBundleCgroupEnabled)).thenReturn(true);
-    when(mockNodeUniverseManager.buildYsqlSupportBundleBatchRunSpec(
-            any(), any(), any(), anyList(), anyLong(), anyBoolean(), anyBoolean()))
+    when(mockNodeUniverseManager.buildYsqlSupportBundleBatchRunSpec(any(), any(), anyList()))
         .thenReturn(
             new RemoteBashRunSpec(
                 List.of("bash", "-c", "ysqlsh"), ShellProcessContext.builder().build()));
@@ -711,42 +705,24 @@ public class SupportBundleCgroupExecutorTest extends FakeDBApplication {
         CancellationException.class,
         () ->
             commandExecutor.runYsqlQueries(
-                bundleUuid,
-                node,
-                universe,
-                "yugabyte",
-                List.of("select 1"),
-                30L,
-                false,
-                false,
-                "q"));
+                bundleUuid, node, universe, "yugabyte", List.of("select 1"), 30L, "q"));
 
     assertTrue(Thread.interrupted());
     verify(mockNodeUniverseManager, never())
-        .runYsqlSupportBundleBatchCommands(
-            any(), any(), any(), anyList(), anyLong(), anyBoolean(), anyBoolean());
+        .runYsqlSupportBundleBatchCommands(any(), any(), anyList());
   }
 
   @Test
   public void testCancelledCommandBecomesACancellationException() {
     setLimitsEnabled(false);
-    when(mockNodeUniverseManager.runYsqlSupportBundleBatchCommands(
-            any(), any(), any(), anyList(), anyLong(), anyBoolean(), anyBoolean()))
+    when(mockNodeUniverseManager.runYsqlSupportBundleBatchCommands(any(), any(), anyList()))
         .thenReturn(cancelledResponse());
 
     assertThrows(
         CancellationException.class,
         () ->
             commandExecutor.runYsqlQueries(
-                bundleUuid,
-                node,
-                universe,
-                "yugabyte",
-                List.of("select 1"),
-                30L,
-                false,
-                false,
-                "q"));
+                bundleUuid, node, universe, "yugabyte", List.of("select 1"), 30L, "q"));
   }
 
   @Test
@@ -848,15 +824,11 @@ public class SupportBundleCgroupExecutorTest extends FakeDBApplication {
   public void testYsqlCommandSurvivesEveryTransport() {
     RemoteBashRunSpec spec =
         nodeUniverseManager.buildYsqlSupportBundleBatchRunSpec(
-            node,
-            universe,
+            NodeUniverseYsqlContext.of(universe, node).withTimeout(300L),
             "yugabyte",
             List.of(
                 "SELECT datname FROM pg_database;",
-                "SELECT * FROM pg_stat_activity WHERE state = 'active';"),
-            300L,
-            false,
-            false);
+                "SELECT * FROM pg_stat_activity WHERE state = 'active';"));
     assertSurvivesEveryTransport(spec.command, CpuFallback.NONE);
   }
 
@@ -864,13 +836,11 @@ public class SupportBundleCgroupExecutorTest extends FakeDBApplication {
   public void testYcqlCommandSurvivesEveryTransport() {
     RemoteBashRunSpec spec =
         nodeUniverseManager.buildYcqlSupportBundleBatchRunSpec(
-            node,
-            universe,
+            NodeUniverseYsqlContext.of(universe, node).withTimeout(300L),
             "",
             List.of(
                 "SELECT keyspace_name FROM system_schema.keyspaces;",
-                "SELECT * FROM system.local WHERE key = 'local';"),
-            300L);
+                "SELECT * FROM system.local WHERE key = 'local';"));
     assertSurvivesEveryTransport(spec.command, CpuFallback.NONE);
   }
 

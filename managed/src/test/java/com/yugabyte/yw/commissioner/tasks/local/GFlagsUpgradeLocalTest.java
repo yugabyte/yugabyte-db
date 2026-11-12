@@ -739,34 +739,24 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
 
     ShellResponse response =
         localNodeUniverseManager.runYsqlCommand(
-            nodeDetails,
-            universe,
+            ysqlContext(universe, nodeDetails, 20, userIntent.isYSQLAuthEnabled(), false),
             YUGABYTE_DB,
-            createTblSpace,
-            20,
-            userIntent.isYSQLAuthEnabled(),
-            false);
+            createTblSpace);
     assertTrue("Message is " + response.getMessage(), response.isSuccess());
 
     response =
         localNodeUniverseManager.runYsqlCommand(
-            nodeDetails,
-            universe,
+            ysqlContext(universe, nodeDetails, 20, userIntent.isYSQLAuthEnabled()),
             YUGABYTE_DB,
             "CREATE TABLE two_zone_table (id INTEGER, field text)\n"
-                + "  TABLESPACE two_zone_tablespace",
-            20,
-            userIntent.isYSQLAuthEnabled());
+                + "  TABLESPACE two_zone_tablespace");
     assertTrue(response.isSuccess());
 
     response =
         localNodeUniverseManager.runYsqlCommand(
-            nodeDetails,
-            universe,
+            ysqlContext(universe, nodeDetails, 20, userIntent.isYSQLAuthEnabled()),
             YUGABYTE_DB,
-            "INSERT INTO two_zone_table \n" + " values (1, 'some_value')",
-            20,
-            userIntent.isYSQLAuthEnabled());
+            "INSERT INTO two_zone_table \n" + " values (1, 'some_value')");
     assertTrue(response.isSuccess());
 
     settableRuntimeConfigFactory

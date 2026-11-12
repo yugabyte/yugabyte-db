@@ -1061,7 +1061,7 @@ public class TablesControllerTest extends FakeDBApplication {
         .thenReturn(HostAndPort.fromParts("1.1.1.1", 7000));
     ShellResponse shellResponse1 =
         ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, shellResponseString);
-    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), anyString(), any()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), anyString(), any()))
         .thenReturn(shellResponse1);
 
     Result r = tablesController.listTableSpaces(customer.getUuid(), u1.getUniverseUUID());
@@ -1259,9 +1259,9 @@ public class TablesControllerTest extends FakeDBApplication {
             ShellResponse.ERROR_CODE_SUCCESS,
             TestUtils.readResource(
                 "com/yugabyte/yw/controllers/table_partitions_shell_response.txt"));
-    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), eq("$$$Default"), any()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), eq("$$$Default"), any()))
         .thenReturn(shellResponse);
-    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), eq("system"), any()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), eq("system"), any()))
         .thenReturn(ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, ""));
 
     LOG.info("Created customer " + customer.getUuid() + " with universe " + u1.getUniverseUUID());
@@ -1400,13 +1400,13 @@ public class TablesControllerTest extends FakeDBApplication {
             ShellResponse.ERROR_CODE_SUCCESS,
             TestUtils.readResource(
                 "com/yugabyte/yw/controllers/table_partitions_db2_shell_response.txt"));
-    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), eq("db1"), any()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), eq("db1"), any()))
         .thenReturn(shellResponse1);
-    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), eq("db2"), any()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), eq("db2"), any()))
         .thenReturn(shellResponse2);
-    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), eq("db3"), any()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), eq("db3"), any()))
         .thenReturn(ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, ""));
-    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), eq("system"), any()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), eq("system"), any()))
         .thenReturn(ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, ""));
 
     LOG.info("Created customer " + customer.getUuid() + " with universe " + u1.getUniverseUUID());

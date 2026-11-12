@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -68,7 +69,7 @@ public class SlowQueriesAggregatorTest extends FakeDBApplication {
     slowQueriesAggregator.scheduleRunner();
 
     verify(mockYsqlQueryExecutor, times(2)).executeQueryInNodeShell(any(), any(), any(), eq(false));
-    verify(mockYsqlQueryExecutor, never()).executeQueryBatchInNodeShell(any(), any(), any(), any());
+    verify(mockYsqlQueryExecutor, never()).executeQueryBatchInNodeShell(any(), any(), any());
   }
 
   @Test
@@ -112,6 +113,6 @@ public class SlowQueriesAggregatorTest extends FakeDBApplication {
     slowQueriesAggregator.scheduleRunner();
 
     verify(mockYsqlQueryExecutor)
-        .executeQueryBatchInNodeShell(any(), any(), any(), any(), eq(false));
+        .executeQueryBatchInNodeShell(argThat(n -> n.isLogCmdOutput() == false), any(), any());
   }
 }

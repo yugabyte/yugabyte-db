@@ -11,6 +11,7 @@ package com.yugabyte.yw.common.cdc;
 
 import com.cronutils.utils.VisibleForTesting;
 import com.yugabyte.yw.common.NodeUniverseManager;
+import com.yugabyte.yw.common.NodeUniverseYsqlContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.CDCReplicationSlotResponse;
@@ -194,7 +195,8 @@ public class CdcStreamManager {
                 + details.streamID
                 + "';";
         ShellResponse shellResponse =
-            nodeUniverseManager.runYsqlCommand(randomTServer, universe, "yugabyte", query);
+            nodeUniverseManager.runYsqlCommand(
+                NodeUniverseYsqlContext.of(universe, randomTServer), "yugabyte", query);
 
         try {
           String commandOutput = shellResponse.extractRunCommandOutput();

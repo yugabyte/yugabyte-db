@@ -50,6 +50,7 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.DeltaEvaluator;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeDetailsArrayComparator;
+import com.yugabyte.yw.common.NodeUniverseYsqlContext;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ProviderInitializer;
@@ -156,8 +157,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     }
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     // WaitForServer(YSQLSERVER) calls ysqlQueryExecutor.executeQueryInNodeShell; stub success.
-    when(mockYsqlQueryExecutor.executeQueryInNodeShell(
-            any(), any(), any(), anyBoolean(), anyBoolean()))
+    when(mockYsqlQueryExecutor.executeQueryInNodeShell(any(NodeUniverseYsqlContext.class), any()))
         .thenReturn(Json.newObject());
     when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);

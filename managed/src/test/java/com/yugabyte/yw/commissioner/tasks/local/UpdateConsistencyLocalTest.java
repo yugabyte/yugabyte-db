@@ -31,11 +31,9 @@ public class UpdateConsistencyLocalTest extends LocalProviderUniverseTestBase {
     NodeDetails details = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
     ShellResponse ysqlResponse =
         localNodeUniverseManager.runYsqlCommand(
-            details,
-            universe,
+            ysqlContext(universe, details, 10),
             SYSTEM_PLATFORM_DB,
-            String.format("update %s set seq_num = 10", CONSISTENCY_CHECK_TABLE_NAME),
-            10);
+            String.format("update %s set seq_num = 10", CONSISTENCY_CHECK_TABLE_NAME));
     assertTrue(ysqlResponse.isSuccess());
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getPrimaryCluster();

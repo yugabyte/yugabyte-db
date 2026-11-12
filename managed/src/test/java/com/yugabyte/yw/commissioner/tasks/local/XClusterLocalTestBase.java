@@ -140,7 +140,7 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
 
     ShellResponse ysqlResponse =
         localNodeUniverseManager.runYsqlCommand(
-            getLiveNode(universe), universe, table.db.name, query, 10);
+            ysqlContext(universe, getLiveNode(universe), 10), table.db.name, query);
     assertTrue(ysqlResponse.isSuccess());
   }
 
@@ -149,7 +149,7 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
     log.debug("Universe: {}, database: {}, Query: {}", universe.getName(), table.db.name, query);
     ShellResponse ysqlResponse =
         localNodeUniverseManager.runYsqlCommand(
-            getLiveNode(universe), universe, table.db.name, query, 10);
+            ysqlContext(universe, getLiveNode(universe), 10), table.db.name, query);
     if (!ysqlResponse.isSuccess()) {
       throw new RuntimeException(
           String.format(
@@ -220,7 +220,8 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
     String query = String.format("create database %s with colocation = %b", db.name, db.colocation);
     log.debug("Universe: {}, Query: {}", universe.getName(), query);
     ShellResponse ysqlResponse =
-        localNodeUniverseManager.runYsqlCommand(node, universe, YUGABYTE_DB, query, 20);
+        localNodeUniverseManager.runYsqlCommand(
+            ysqlContext(universe, node, 20), YUGABYTE_DB, query);
     assertTrue(ysqlResponse.isSuccess());
   }
 
@@ -254,7 +255,8 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
     }
     log.debug("Universe: {}, database: {}, Query: {}", universe.getName(), table.db.name, query);
     ShellResponse ysqlResponse =
-        localNodeUniverseManager.runYsqlCommand(node, universe, table.db.name, query, 10);
+        localNodeUniverseManager.runYsqlCommand(
+            ysqlContext(universe, node, 10), table.db.name, query);
     assertTrue(ysqlResponse.isSuccess());
   }
 
@@ -302,7 +304,8 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
 
     log.debug("Universe: {}, database: {}, Query: {}", universe.getName(), index.db.name, query);
     ShellResponse ysqlResponse =
-        localNodeUniverseManager.runYsqlCommand(node, universe, index.db.name, query, 10);
+        localNodeUniverseManager.runYsqlCommand(
+            ysqlContext(universe, node, 10), index.db.name, query);
     assertTrue(ysqlResponse.isSuccess());
   }
 
@@ -339,7 +342,8 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
     String query = String.format("drop database %s", db.name);
     log.debug("Universe: {}, Query: {}", universe.getName(), query);
     ShellResponse ysqlResponse =
-        localNodeUniverseManager.runYsqlCommand(node, universe, YUGABYTE_DB, query, 20);
+        localNodeUniverseManager.runYsqlCommand(
+            ysqlContext(universe, node, 20), YUGABYTE_DB, query);
     assertTrue(ysqlResponse.isSuccess());
   }
 
@@ -348,7 +352,8 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
     String query = String.format("drop table %s", table.name);
     log.debug("Universe: {}, database: {}, Query: {}", universe.getName(), table.db.name, query);
     ShellResponse ysqlResponse =
-        localNodeUniverseManager.runYsqlCommand(node, universe, table.db.name, query, 10);
+        localNodeUniverseManager.runYsqlCommand(
+            ysqlContext(universe, node, 10), table.db.name, query);
     assertTrue(ysqlResponse.isSuccess());
   }
 
@@ -394,7 +399,7 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
         () -> {
           ShellResponse targetYsqlResponse =
               localNodeUniverseManager.runYsqlCommand(
-                  targetNodeDetails, universe, YUGABYTE_DB, ysqlCommand, 10);
+                  ysqlContext(universe, targetNodeDetails, 10), YUGABYTE_DB, ysqlCommand);
           if (!targetYsqlResponse.isSuccess()) {
             throw new RuntimeException("Failed to run ysql command");
           }

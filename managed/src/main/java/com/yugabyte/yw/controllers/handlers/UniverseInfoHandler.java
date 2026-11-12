@@ -28,6 +28,7 @@ import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.AZUtil;
 import com.yugabyte.yw.common.DeltaEvaluator;
 import com.yugabyte.yw.common.GCPUtil;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.UniverseInterruptionResult;
@@ -265,7 +266,8 @@ public class UniverseInfoHandler {
 
   public Path downloadNodeLogs(
       Customer customer, Universe universe, NodeDetails node, Path targetFile) {
-    nodeUniverseManager.downloadNodeLogs(node, universe, targetFile.toString());
+    nodeUniverseManager.downloadNodeLogs(
+        NodeUniverseContext.of(universe, node), targetFile.toString());
     return targetFile;
   }
 

@@ -7,7 +7,6 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -112,8 +111,7 @@ public class YSQLComponentTest extends FakeDBApplication {
             taskParams, customer, universe, bundlePath, new Date(), new Date(), node);
 
     verify(mockCgroupCommandExecutor, never())
-        .runYsqlQueries(
-            any(), any(), any(), any(), anyList(), anyLong(), anyBoolean(), anyBoolean(), any());
+        .runYsqlQueries(any(), any(), any(), any(), anyList(), anyLong(), any());
     assertFalse(Files.exists(bundlePath.resolve("ysql_master_only.txt")));
   }
 
@@ -154,8 +152,6 @@ public class YSQLComponentTest extends FakeDBApplication {
             eq("yugabyte"),
             eq(Collections.singletonList("SELECT datname FROM pg_database;")),
             anyLong(),
-            anyBoolean(),
-            anyBoolean(),
             eq("list_databases")))
         .thenReturn(response);
 
@@ -174,8 +170,7 @@ public class YSQLComponentTest extends FakeDBApplication {
     assertEquals(0, output.indexOf("node=u-n1"));
     // The spec gives no timeout, so the query default applies.
     verify(mockCgroupCommandExecutor)
-        .runYsqlQueries(
-            any(), any(), any(), any(), any(), eq(300L), anyBoolean(), anyBoolean(), any());
+        .runYsqlQueries(any(), any(), any(), any(), any(), eq(300L), any());
   }
 
   /** The pooling flag is what routes the queries past Connection Manager to Postgres. */
@@ -211,7 +206,7 @@ public class YSQLComponentTest extends FakeDBApplication {
     ShellResponse response = new ShellResponse();
     response.message = "";
     when(mockCgroupCommandExecutor.runYsqlQueries(
-            any(), any(), any(), any(), anyList(), anyLong(), anyBoolean(), anyBoolean(), any()))
+            any(), any(), any(), any(), anyList(), anyLong(), any()))
         .thenReturn(response);
 
     new YSQLComponent(mockCgroupCommandExecutor, clusterScope)
@@ -225,8 +220,7 @@ public class YSQLComponentTest extends FakeDBApplication {
             node);
 
     verify(mockCgroupCommandExecutor)
-        .runYsqlQueries(
-            any(), any(), any(), any(), anyList(), anyLong(), anyBoolean(), eq(true), any());
+        .runYsqlQueries(any(), any(), any(), any(), anyList(), anyLong(), any());
   }
 
   @Test
@@ -271,8 +265,6 @@ public class YSQLComponentTest extends FakeDBApplication {
             eq("yugabyte"),
             eq(spec.getQueries()),
             anyLong(),
-            anyBoolean(),
-            anyBoolean(),
             eq("multi_query")))
         .thenReturn(response);
 
@@ -319,15 +311,7 @@ public class YSQLComponentTest extends FakeDBApplication {
             bundleDetails,
             SupportBundleStatusType.Running);
     when(mockCgroupCommandExecutor.runYsqlQueries(
-            any(),
-            any(),
-            any(),
-            any(),
-            anyList(),
-            anyLong(),
-            anyBoolean(),
-            anyBoolean(),
-            eq("first")))
+            any(), any(), any(), any(), anyList(), anyLong(), eq("first")))
         .thenThrow(new CancellationException("aborted"));
 
     YSQLComponent component = new YSQLComponent(mockCgroupCommandExecutor, clusterScope);
@@ -343,16 +327,7 @@ public class YSQLComponentTest extends FakeDBApplication {
                 new Date(),
                 node));
     verify(mockCgroupCommandExecutor, never())
-        .runYsqlQueries(
-            any(),
-            any(),
-            any(),
-            any(),
-            anyList(),
-            anyLong(),
-            anyBoolean(),
-            anyBoolean(),
-            eq("second"));
+        .runYsqlQueries(any(), any(), any(), any(), anyList(), anyLong(), eq("second"));
     assertTrue(Thread.interrupted());
   }
 }

@@ -230,7 +230,8 @@ public class TableSpaceUtil {
       NodeDetails nodeToQuery, Universe universe, NodeUniverseManager nodeUniverseManager) {
     ShellResponse shellResponse =
         nodeUniverseManager
-            .runYsqlCommand(nodeToQuery, universe, DB, FETCH_TABLESPACES_QUERY)
+            .runYsqlCommand(
+                NodeUniverseYsqlContext.of(universe, nodeToQuery), DB, FETCH_TABLESPACES_QUERY)
             .processErrors();
 
     Map<String, TableSpaceInfo> existingTablespaces = new HashMap<>();

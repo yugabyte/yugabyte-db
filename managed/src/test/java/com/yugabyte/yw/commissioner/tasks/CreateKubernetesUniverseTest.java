@@ -33,6 +33,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.NodeUniverseYsqlContext;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
@@ -373,7 +374,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
           .thenReturn(mockServerReadyResponse);
     } catch (Exception e) {
     }
-    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any(), anyBoolean()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any()))
         .thenReturn(
             ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, "Command output: CREATE TABLE"));
     doAnswer(
@@ -383,7 +384,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
               return res;
             })
         .when(mockYsqlQueryExecutor)
-        .executeQueryInNodeShell(any(), any(), any(), anyBoolean(), anyBoolean());
+        .executeQueryInNodeShell(any(NodeUniverseYsqlContext.class), any());
     // WaitForServer mock.
     mockWaits(mockClient);
   }

@@ -2,7 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import static org.mockito.ArgumentMatchers.any;
+import static com.yugabyte.yw.common.NodeUniverseContextMatchers.nodeContext;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -13,7 +13,6 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
 import com.yugabyte.yw.forms.SupportBundleFormData;
@@ -69,17 +68,13 @@ public class SupportBundleComponentDownloadTest extends FakeDBApplication {
 
     verify(mockNodeUniverseManager, never())
         .runCommand(
-            eq(node),
-            eq(universe),
+            nodeContext(node, universe),
             argThat(cmd -> cmd != null && cmd.contains("rm") && cmd.contains("-rf")),
-            any(ShellProcessContext.class),
             eq(false));
     verify(mockNodeUniverseManager, never())
         .runCommand(
-            eq(node),
-            eq(universe),
+            nodeContext(node, universe),
             argThat(cmd -> cmd != null && String.join(" ", cmd).contains("systemctl")),
-            any(ShellProcessContext.class),
             eq(false));
   }
 

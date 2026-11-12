@@ -26,6 +26,7 @@ import com.yugabyte.yw.commissioner.MockUpgrade;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -611,7 +612,7 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
         Double.valueOf(0),
         InstanceTypeDetails.createGCPDefault());
     updatePrevYbSoftwareConfig(baseVersion, targetVersion);
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList()))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
         .thenReturn(ShellResponse.create(0, StringUtils.EMPTY));
     when(mockSoftwareUpgradeHelper.isYsqlMajorVersionUpgradeRequired(
             any(), anyString(), anyString()))

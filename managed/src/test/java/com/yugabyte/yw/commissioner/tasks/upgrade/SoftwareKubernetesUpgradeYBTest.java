@@ -27,6 +27,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.common.NodeUniverseYsqlContext;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.TestHelper;
@@ -612,7 +613,7 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
     lenient()
         .when(
             mockYsqlQueryExecutor.executeQueryInNodeShell(
-                any(), any(), any(), anyBoolean(), anyBoolean()))
+                any(NodeUniverseYsqlContext.class), any()))
         .thenReturn(Json.newObject());
     lenient().when(mockNodeUniverseManager.getRemoteTmpDir(any(), any())).thenReturn("/tmp");
     lenient()
@@ -689,8 +690,7 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
         .thenReturn(Json.newObject());
     // WaitForServer(YSQLSERVER) after each rolling pod uses executeQueryInNodeShell; without a
     // success stub it polls until serverWaitTimeoutMs (multi-minute hang in unit tests).
-    when(mockYsqlQueryExecutor.executeQueryInNodeShell(
-            any(), any(), any(), anyBoolean(), anyBoolean()))
+    when(mockYsqlQueryExecutor.executeQueryInNodeShell(any(NodeUniverseYsqlContext.class), any()))
         .thenReturn(Json.newObject());
     when(mockNodeUniverseManager.getRemoteTmpDir(any(), any())).thenReturn("/tmp");
     when(mockKubernetesManager.executeCommandInPodContainer(
@@ -801,8 +801,7 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
         .thenReturn(new StartYsqlMajorCatalogUpgradeResponse(0L, null, null));
     when(mockYsqlQueryExecutor.runUserDbCommands(anyString(), anyString(), any()))
         .thenReturn(Json.newObject());
-    when(mockYsqlQueryExecutor.executeQueryInNodeShell(
-            any(), any(), any(), anyBoolean(), anyBoolean()))
+    when(mockYsqlQueryExecutor.executeQueryInNodeShell(any(NodeUniverseYsqlContext.class), any()))
         .thenReturn(Json.newObject());
     when(mockNodeUniverseManager.getRemoteTmpDir(any(), any())).thenReturn("/tmp");
     when(mockKubernetesManager.executeCommandInPodContainer(

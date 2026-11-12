@@ -104,11 +104,9 @@ public class DRLocalTest extends DRLocalTestBase {
     NodeDetails details = source.getUniverseDetails().nodeDetailsSet.iterator().next();
     ShellResponse ysqlResponse =
         localNodeUniverseManager.runYsqlCommand(
-            details,
-            source,
+            ysqlContext(source, details, 10),
             YUGABYTE_DB,
-            "insert into some_table values (4, 'dr1', 200), (5, 'dr2', 180)",
-            10);
+            "insert into some_table values (4, 'dr1', 200), (5, 'dr2', 180)");
     assertTrue(ysqlResponse.isSuccess());
 
     assertYsqlOutputEqualsWithRetry(target, "select count(*) from some_table", "5");
@@ -127,18 +125,16 @@ public class DRLocalTest extends DRLocalTestBase {
     details = source.getUniverseDetails().nodeDetailsSet.iterator().next();
     ysqlResponse =
         localNodeUniverseManager.runYsqlCommand(
-            details,
-            source,
+            ysqlContext(source, details, 10),
             YUGABYTE_DB,
-            "insert into some_table values (6, 'dr3', 200), (7, 'dr4', 180)",
-            10);
+            "insert into some_table values (6, 'dr3', 200), (7, 'dr4', 180)");
     assertTrue(ysqlResponse.isSuccess());
 
     Thread.sleep(2000);
     details = target.getUniverseDetails().nodeDetailsSet.iterator().next();
     ysqlResponse =
         localNodeUniverseManager.runYsqlCommand(
-            details, target, YUGABYTE_DB, "select count(*) from some_table", 10);
+            ysqlContext(target, details, 10), YUGABYTE_DB, "select count(*) from some_table");
     assertTrue(ysqlResponse.isSuccess());
     assertEquals("5", CommonUtils.extractJsonisedSqlResponse(ysqlResponse).trim());
   }

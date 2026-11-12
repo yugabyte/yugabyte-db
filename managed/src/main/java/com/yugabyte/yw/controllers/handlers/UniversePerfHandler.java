@@ -17,6 +17,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.NodeUniverseManager;
+import com.yugabyte.yw.common.NodeUniverseYsqlContext;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableSpaceStructures;
@@ -99,7 +100,8 @@ public class UniversePerfHandler {
       int numSelect = 0;
       int numDelete = 0;
       ShellResponse shellResponse =
-          nodeUniverseManager.runYsqlCommand(liveNode, universe, DEFAULT_DATABASE, query);
+          nodeUniverseManager.runYsqlCommand(
+              NodeUniverseYsqlContext.of(universe, liveNode), DEFAULT_DATABASE, query);
       String jsonData = CommonUtils.extractJsonisedSqlResponse(shellResponse);
 
       if (jsonData == null || jsonData.isEmpty()) {

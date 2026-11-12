@@ -49,7 +49,9 @@ public class RunNodeCommand extends UniverseTaskBase {
     }
     ShellResponse response = null;
     if (taskParams().shellContext == null) {
-      response = nodeUniverseManager.runCommand(node, universe, taskParams().command);
+      response =
+          nodeUniverseManager.runCommand(
+              NodeUniverseContext.of(universe, node), taskParams().command);
     } else {
       response =
           nodeUniverseManager.runCommand(

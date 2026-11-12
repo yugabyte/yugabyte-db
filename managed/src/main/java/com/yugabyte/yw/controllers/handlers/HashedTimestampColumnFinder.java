@@ -16,6 +16,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.common.NodeUniverseManager;
+import com.yugabyte.yw.common.NodeUniverseYsqlContext;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.Universe;
@@ -71,7 +72,7 @@ public class HashedTimestampColumnFinder {
 
     ShellResponse getDB =
         nodeUniverseManager.runYsqlCommand(
-            randomTServer, universe, DEFAULT_DB_NAME, DBLIST_STATEMENT);
+            NodeUniverseYsqlContext.of(universe, randomTServer), DEFAULT_DB_NAME, DBLIST_STATEMENT);
 
     String getDBList = CommonUtils.extractJsonisedSqlResponse(getDB);
 
@@ -102,7 +103,9 @@ public class HashedTimestampColumnFinder {
 
         ShellResponse response =
             nodeUniverseManager.runYsqlCommand(
-                randomTServer, universe, dbname.datname, HASHED_TIMESTAMP_COLUMN_STATEMENT);
+                NodeUniverseYsqlContext.of(universe, randomTServer),
+                dbname.datname,
+                HASHED_TIMESTAMP_COLUMN_STATEMENT);
 
         String responseJSON = CommonUtils.extractJsonisedSqlResponse(response);
         // responseJSON unfortunately seems to return a length 1 empty string rather than null when

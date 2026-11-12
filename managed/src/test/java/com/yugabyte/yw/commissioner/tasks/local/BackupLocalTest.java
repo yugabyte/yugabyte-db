@@ -10,6 +10,7 @@ import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeUniverseYsqlContext;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
@@ -202,7 +203,14 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
     psqlCmds.add("SET SESSION AUTHORIZATION role1;");
     ShellResponse resp =
         localNodeUniverseManager.runYsqlCommand(
-            nd, source, YUGABYTE_DB, String.join(" ", psqlCmds), 10, authEnabled);
+            NodeUniverseYsqlContext.builder()
+                .node(nd)
+                .universe(source)
+                .authEnabled(authEnabled)
+                .build()
+                .withTimeout(10),
+            YUGABYTE_DB,
+            String.join(" ", psqlCmds));
     if (!resp.isSuccess()) {
       log.error("Failed to run psql commands: {}", resp.message);
     }
@@ -231,7 +239,15 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
     psqlCmds.add("CREATE ROLE role2;");
     assertTrue(
         localNodeUniverseManager
-            .runYsqlCommand(nd, target, YUGABYTE_DB, String.join(" ", psqlCmds), 10, authEnabled)
+            .runYsqlCommand(
+                NodeUniverseYsqlContext.builder()
+                    .node(nd)
+                    .universe(target)
+                    .authEnabled(authEnabled)
+                    .build()
+                    .withTimeout(10),
+                YUGABYTE_DB,
+                String.join(" ", psqlCmds))
             .isSuccess());
     String db2Name = YUGABYTE_DB + "_2";
     RestoreBackupParams rParams = getRestoreParams(target, backup, customerConfig, db2Name);
@@ -251,7 +267,14 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
             + " AND table_name = 't1';");
     resp =
         localNodeUniverseManager.runYsqlCommand(
-            nd, target, db2Name, String.join(" ", psqlCmds), 10, authEnabled);
+            NodeUniverseYsqlContext.builder()
+                .node(nd)
+                .universe(target)
+                .authEnabled(authEnabled)
+                .build()
+                .withTimeout(10),
+            db2Name,
+            String.join(" ", psqlCmds));
     assertTrue(resp.isSuccess());
     String result = resp.message;
     assertFalse(result.contains("INSERT"));
@@ -263,7 +286,14 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
             + " AND table_name = 't2';");
     resp =
         localNodeUniverseManager.runYsqlCommand(
-            nd, target, db2Name, String.join(" ", psqlCmds), 10, authEnabled);
+            NodeUniverseYsqlContext.builder()
+                .node(nd)
+                .universe(target)
+                .authEnabled(authEnabled)
+                .build()
+                .withTimeout(10),
+            db2Name,
+            String.join(" ", psqlCmds));
     assertTrue(resp.isSuccess());
     result = resp.message;
     assertTrue(result.contains("INSERT"));
@@ -273,7 +303,14 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
     psqlCmds.add("SELECT tableowner FROM pg_tables WHERE tablename = 't3';");
     resp =
         localNodeUniverseManager.runYsqlCommand(
-            nd, target, db2Name, String.join(" ", psqlCmds), 10, authEnabled);
+            NodeUniverseYsqlContext.builder()
+                .node(nd)
+                .universe(target)
+                .authEnabled(authEnabled)
+                .build()
+                .withTimeout(10),
+            db2Name,
+            String.join(" ", psqlCmds));
     assertTrue(resp.isSuccess());
     result = resp.message;
     assertFalse(result.contains("role1")); // role 1 was not created
@@ -283,7 +320,14 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
     psqlCmds.add("SELECT tableowner FROM pg_tables WHERE tablename = 't1';");
     resp =
         localNodeUniverseManager.runYsqlCommand(
-            nd, target, db2Name, String.join(" ", psqlCmds), 10, authEnabled);
+            NodeUniverseYsqlContext.builder()
+                .node(nd)
+                .universe(target)
+                .authEnabled(authEnabled)
+                .build()
+                .withTimeout(10),
+            db2Name,
+            String.join(" ", psqlCmds));
     assertTrue(resp.isSuccess());
     result = resp.message;
     assertTrue(result.contains("role2"));
@@ -362,9 +406,23 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
       boolean authEnabled =
           target.getUniverseDetails().getPrimaryCluster().userIntent.isYSQLAuthEnabled();
       localNodeUniverseManager.runYsqlCommand(
-          nd, target, params.targetDbName, "CREATE ROLE role1;", 10, authEnabled);
+          NodeUniverseYsqlContext.builder()
+              .node(nd)
+              .universe(target)
+              .authEnabled(authEnabled)
+              .build()
+              .withTimeout(10),
+          params.targetDbName,
+          "CREATE ROLE role1;");
       localNodeUniverseManager.runYsqlCommand(
-          nd, target, params.targetDbName, "CREATE ROLE role2;", 10, authEnabled);
+          NodeUniverseYsqlContext.builder()
+              .node(nd)
+              .universe(target)
+              .authEnabled(authEnabled)
+              .build()
+              .withTimeout(10),
+          params.targetDbName,
+          "CREATE ROLE role2;");
       RuntimeException exception =
           assertThrows(RuntimeException.class, () -> runYbcBackupTest(source, target, params));
       assertTrue(exception.getMessage().contains("restore failed"));
@@ -426,7 +484,14 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
     psqlCmds.add("INSERT INTO t2 VALUES (2);");
     ShellResponse resp =
         localNodeUniverseManager.runYsqlCommand(
-            nd, source, params.srcDbName, String.join(" ", psqlCmds), 10, authEnabled);
+            NodeUniverseYsqlContext.builder()
+                .node(nd)
+                .universe(source)
+                .authEnabled(authEnabled)
+                .build()
+                .withTimeout(10),
+            params.srcDbName,
+            String.join(" ", psqlCmds));
     assertTrue(resp.isSuccess());
 
     // Take and restore the backup
@@ -447,7 +512,14 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
     psqlCmds.add("SELECT * FROM t1;");
     resp =
         localNodeUniverseManager.runYsqlCommand(
-            nd, target, params.targetDbName, String.join(" ", psqlCmds), 10, authEnabled);
+            NodeUniverseYsqlContext.builder()
+                .node(nd)
+                .universe(target)
+                .authEnabled(authEnabled)
+                .build()
+                .withTimeout(10),
+            params.targetDbName,
+            String.join(" ", psqlCmds));
     assertTrue(resp.isSuccess());
     String result = resp.message;
     assertTrue(result.contains("1"));
@@ -456,7 +528,14 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
     psqlCmds.add("SELECT * FROM t2;");
     resp =
         localNodeUniverseManager.runYsqlCommand(
-            nd, target, params.targetDbName, String.join(" ", psqlCmds), 10, authEnabled);
+            NodeUniverseYsqlContext.builder()
+                .node(nd)
+                .universe(target)
+                .authEnabled(authEnabled)
+                .build()
+                .withTimeout(10),
+            params.targetDbName,
+            String.join(" ", psqlCmds));
     assertTrue(resp.isSuccess());
     result = resp.message;
     assertTrue(result.contains("2"));
@@ -467,7 +546,14 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
       psqlCmds.add("SELECT rolname FROM pg_roles;");
       resp =
           localNodeUniverseManager.runYsqlCommand(
-              nd, target, params.targetDbName, String.join(" ", psqlCmds), 10, authEnabled);
+              NodeUniverseYsqlContext.builder()
+                  .node(nd)
+                  .universe(target)
+                  .authEnabled(authEnabled)
+                  .build()
+                  .withTimeout(10),
+              params.targetDbName,
+              String.join(" ", psqlCmds));
       assertTrue(resp.isSuccess());
       result = resp.message;
       assertTrue(result.contains("role1"));
@@ -478,7 +564,14 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
     psqlCmds.add("SELECT tableowner FROM pg_tables WHERE tablename = 't1';");
     resp =
         localNodeUniverseManager.runYsqlCommand(
-            nd, target, params.targetDbName, String.join(" ", psqlCmds), 10, authEnabled);
+            NodeUniverseYsqlContext.builder()
+                .node(nd)
+                .universe(target)
+                .authEnabled(authEnabled)
+                .build()
+                .withTimeout(10),
+            params.targetDbName,
+            String.join(" ", psqlCmds));
     assertTrue(resp.isSuccess());
     result = resp.message;
     if (params.privilegesShouldExist) {
@@ -492,7 +585,14 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
     psqlCmds.add("SELECT tableowner FROM pg_tables WHERE tablename = 't2';");
     resp =
         localNodeUniverseManager.runYsqlCommand(
-            nd, target, params.targetDbName, String.join(" ", psqlCmds), 10, authEnabled);
+            NodeUniverseYsqlContext.builder()
+                .node(nd)
+                .universe(target)
+                .authEnabled(authEnabled)
+                .build()
+                .withTimeout(10),
+            params.targetDbName,
+            String.join(" ", psqlCmds));
     assertTrue(resp.isSuccess());
     result = resp.message;
     if (params.privilegesShouldExist) {
@@ -509,7 +609,14 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
             + " 'role1' AND table_name = 't1';");
     resp =
         localNodeUniverseManager.runYsqlCommand(
-            nd, target, params.targetDbName, String.join(" ", psqlCmds), 10, authEnabled);
+            NodeUniverseYsqlContext.builder()
+                .node(nd)
+                .universe(target)
+                .authEnabled(authEnabled)
+                .build()
+                .withTimeout(10),
+            params.targetDbName,
+            String.join(" ", psqlCmds));
     assertTrue(resp.isSuccess());
     result = resp.message;
     if (params.privilegesShouldExist) {
@@ -523,7 +630,14 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
             + " 'role2' AND table_name = 't2';");
     resp =
         localNodeUniverseManager.runYsqlCommand(
-            nd, target, params.targetDbName, String.join(" ", psqlCmds), 10, authEnabled);
+            NodeUniverseYsqlContext.builder()
+                .node(nd)
+                .universe(target)
+                .authEnabled(authEnabled)
+                .build()
+                .withTimeout(10),
+            params.targetDbName,
+            String.join(" ", psqlCmds));
     assertTrue(resp.isSuccess());
     result = resp.message;
     if (params.privilegesShouldExist) {
@@ -556,7 +670,14 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
             try {
               ShellResponse resp =
                   localNodeUniverseManager.runYsqlCommand(
-                      nodeDetails, universe, params.srcDbName, createTableCommand, 10, authEnabled);
+                      NodeUniverseYsqlContext.builder()
+                          .node(nodeDetails)
+                          .universe(universe)
+                          .authEnabled(authEnabled)
+                          .build()
+                          .withTimeout(10),
+                      params.srcDbName,
+                      createTableCommand);
               if (!resp.isSuccess()) {
                 log.warn("Failed to create table during DDL test: {}", resp.message);
               }

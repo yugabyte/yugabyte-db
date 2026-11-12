@@ -2989,7 +2989,7 @@ public class UniverseCRUDHandler {
     for (Cluster newCluster : taskParams.clusters) {
       // enforce user tags for cloud instances.
       validateUserTags(customer, newCluster.userIntent);
-      GFlagsUtil.validateGFlagValues(cluster.userIntent);
+      GFlagsUtil.validateGFlagValues(newCluster.userIntent);
 
       Cluster curCluster = universe.getCluster(newCluster.uuid);
       if (isK8s

@@ -438,10 +438,10 @@ public class HealthCheckerTest extends FakeDBApplication {
   // The "Node exporter" entry reporting node_exporter as not running, first, then a check carrying
   // one node metric.
   private void mockHealthResponseWithNodeMetrics() {
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
         .thenAnswer(
             i -> {
-              NodeDetails nodeDetails = i.getArgument(0);
+              NodeDetails nodeDetails = ((NodeUniverseContext) i.getArgument(0)).getNode();
               String node =
                   "''node'':''"
                       + nodeDetails.cloudInfo.private_ip

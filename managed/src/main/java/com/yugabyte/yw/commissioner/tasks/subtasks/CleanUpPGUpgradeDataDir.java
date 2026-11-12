@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Universe;
@@ -51,7 +52,9 @@ public class CleanUpPGUpgradeDataDir extends ServerSubTaskBase {
     String pgUpgradeDataDir = Util.getDataDirectoryPath(universe, node, config) + PG_UPGRADE_DIR;
     List<String> command = ImmutableList.of("rm", "-rf", pgUpgradeDataDir);
     ShellResponse response =
-        nodeUniverseManager.runCommand(node, universe, command).processErrors();
+        nodeUniverseManager
+            .runCommand(NodeUniverseContext.of(universe, node), command)
+            .processErrors();
     if (response.code != 0) {
       log.error(
           "Failed to clean up pg_upgrade_data directory on node {}, response: {}",

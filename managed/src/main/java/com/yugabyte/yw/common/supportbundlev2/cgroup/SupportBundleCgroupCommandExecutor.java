@@ -7,6 +7,7 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.NodeUniverseManager.RemoteBashRunSpec;
+import com.yugabyte.yw.common.NodeUniverseYsqlContext;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.supportbundlev2.SupportBundleCancellation;
@@ -56,18 +57,16 @@ public class SupportBundleCgroupCommandExecutor {
       String dbName,
       List<String> queries,
       long timeoutSec,
-      boolean authEnabled,
-      boolean cpEnabled,
       String componentLabel) {
+    NodeUniverseYsqlContext context =
+        NodeUniverseYsqlContext.of(universe, node).withTimeout(timeoutSec);
     if (!cgroupSupport.shouldUseCgroup(universe, node)) {
       return SupportBundleCancellation.throwIfCancelled(
-          nodeUniverseManager.runYsqlSupportBundleBatchCommands(
-              node, universe, dbName, queries, timeoutSec, authEnabled, cpEnabled));
+          nodeUniverseManager.runYsqlSupportBundleBatchCommands(context, dbName, queries));
     }
 
     RemoteBashRunSpec spec =
-        nodeUniverseManager.buildYsqlSupportBundleBatchRunSpec(
-            node, universe, dbName, queries, timeoutSec, authEnabled, cpEnabled);
+        nodeUniverseManager.buildYsqlSupportBundleBatchRunSpec(context, dbName, queries);
 
     return executeWithCgroup(
         bundleUuid,
@@ -77,9 +76,7 @@ public class SupportBundleCgroupCommandExecutor {
         componentLabel,
         "db=" + dbName,
         spec,
-        () ->
-            nodeUniverseManager.runYsqlSupportBundleBatchCommands(
-                node, universe, dbName, queries, timeoutSec, authEnabled, cpEnabled));
+        () -> nodeUniverseManager.runYsqlSupportBundleBatchCommands(context, dbName, queries));
   }
 
   public ShellResponse runYcqlQueries(
@@ -90,15 +87,15 @@ public class SupportBundleCgroupCommandExecutor {
       List<String> queries,
       long timeoutSecs,
       String componentLabel) {
+    NodeUniverseContext context = NodeUniverseContext.of(universe, node).withTimeout(timeoutSecs);
+
     if (!cgroupSupport.shouldUseCgroup(universe, node)) {
       return SupportBundleCancellation.throwIfCancelled(
-          nodeUniverseManager.runYcqlSupportBundleBatchCommands(
-              node, universe, keyspace, queries, timeoutSecs));
+          nodeUniverseManager.runYcqlSupportBundleBatchCommands(context, keyspace, queries));
     }
 
     RemoteBashRunSpec spec =
-        nodeUniverseManager.buildYcqlSupportBundleBatchRunSpec(
-            node, universe, keyspace, queries, timeoutSecs);
+        nodeUniverseManager.buildYcqlSupportBundleBatchRunSpec(context, keyspace, queries);
 
     String contextDescription =
         StringUtils.isNotBlank(keyspace) ? "keyspace=" + keyspace : "keyspace=unset";
@@ -110,9 +107,7 @@ public class SupportBundleCgroupCommandExecutor {
         componentLabel,
         contextDescription,
         spec,
-        () ->
-            nodeUniverseManager.runYcqlSupportBundleBatchCommands(
-                node, universe, keyspace, queries, timeoutSecs));
+        () -> nodeUniverseManager.runYcqlSupportBundleBatchCommands(context, keyspace, queries));
   }
 
   public ShellResponse runYbAdminCommands(

@@ -8,7 +8,6 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -20,6 +19,7 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
+import com.yugabyte.yw.common.NodeUniverseYsqlContext;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
@@ -273,8 +273,7 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     setupUniverseSingleAZ(false, false);
     addReadReplicaCluster();
     // The read replica node is a YSQL server: WaitForServer(YSQLSERVER) queries it.
-    when(mockYsqlQueryExecutor.executeQueryInNodeShell(
-            any(), any(), any(), anyBoolean(), anyBoolean()))
+    when(mockYsqlQueryExecutor.executeQueryInNodeShell(any(NodeUniverseYsqlContext.class), any()))
         .thenReturn(Json.newObject());
     defaultUniverse =
         Universe.saveDetails(
@@ -434,8 +433,7 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     gFlagsKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
 
     // WaitForServer(YSQLSERVER) calls ysqlQueryExecutor.executeQueryInNodeShell; stub success.
-    when(mockYsqlQueryExecutor.executeQueryInNodeShell(
-            any(), any(), any(), anyBoolean(), anyBoolean()))
+    when(mockYsqlQueryExecutor.executeQueryInNodeShell(any(NodeUniverseYsqlContext.class), any()))
         .thenReturn(Json.newObject());
 
     KubernetesGFlagsUpgradeParams taskParams = new KubernetesGFlagsUpgradeParams();

@@ -16,12 +16,12 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
+import com.yugabyte.yw.common.NodeUniverseYsqlContext;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.RunQueryFormData;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -110,15 +110,9 @@ public class WaitForServer extends ServerSubTaskBase {
     runQueryFormData.setQuery("SELECT version()");
     runQueryFormData.setDbName("system_platform");
     NodeDetails node = universe.getNode(taskParams().nodeName);
-    UniverseDefinitionTaskParams.UserIntent userIntent =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent;
     JsonNode ysqlResponse =
         ysqlQueryExecutor.executeQueryInNodeShell(
-            universe,
-            runQueryFormData,
-            node,
-            userIntent.isYSQLAuthEnabled(),
-            userIntent.enableConnectionPooling);
+            NodeUniverseYsqlContext.of(universe, node), runQueryFormData);
     return ysqlResponse != null && !ysqlResponse.has("error");
   }
 

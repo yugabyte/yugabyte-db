@@ -168,7 +168,7 @@ public class UniverseArchitectureResolverTest extends FakeDBApplication {
     universe.setUniverseDetails(params);
     universe.update();
 
-    when(nodeUniverseManager.runCommand(any(), any(), anyList()))
+    when(nodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
         .thenReturn(ShellResponse.create(ShellResponse.ERROR_CODE_GENERIC_ERROR, "probe failed"))
         .thenReturn(
             ShellResponse.create(
@@ -180,7 +180,7 @@ public class UniverseArchitectureResolverTest extends FakeDBApplication {
 
     assertTrue(arch.isPresent());
     assertEquals(Architecture.aarch64, arch.get());
-    verify(nodeUniverseManager, times(2)).runCommand(any(), any(), anyList());
+    verify(nodeUniverseManager, times(2)).runCommand(any(NodeUniverseContext.class), anyList());
   }
 
   @Test

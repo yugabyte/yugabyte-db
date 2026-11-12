@@ -92,13 +92,9 @@ public class NodeUniverseManagerSupportBundleTest extends FakeDBApplication {
     // query with printf '%s\n' '-- query: ...'.
     RemoteBashRunSpec spec =
         nodeUniverseManager.buildYsqlSupportBundleBatchRunSpec(
-            node,
-            universe,
+            NodeUniverseYsqlContext.of(universe, node).withTimeout(300L),
             "yugabyte",
-            List.of("SELECT datname FROM pg_database;", QUERY_WITH_QUOTED_UUID),
-            300L,
-            false,
-            false);
+            List.of("SELECT datname FROM pg_database;", QUERY_WITH_QUOTED_UUID));
 
     assertSurvivesAllTransports(spec.command, false);
   }
@@ -107,11 +103,9 @@ public class NodeUniverseManagerSupportBundleTest extends FakeDBApplication {
   public void testYcqlSupportBundleQuotedLiteralSurvivesAllTransports() {
     RemoteBashRunSpec spec =
         nodeUniverseManager.buildYcqlSupportBundleBatchRunSpec(
-            node,
-            universe,
+            NodeUniverseYsqlContext.of(universe, node).withTimeout(300L),
             "system_schema",
-            List.of("SELECT * FROM system_schema.tables WHERE keyspace_name = 'system';"),
-            300L);
+            List.of("SELECT * FROM system_schema.tables WHERE keyspace_name = 'system';"));
 
     assertSurvivesAllTransports(spec.command, false);
   }
@@ -120,13 +114,11 @@ public class NodeUniverseManagerSupportBundleTest extends FakeDBApplication {
   public void testYcqlSupportBundleMultiQuerySurvivesAllTransports() {
     RemoteBashRunSpec spec =
         nodeUniverseManager.buildYcqlSupportBundleBatchRunSpec(
-            node,
-            universe,
+            NodeUniverseYsqlContext.of(universe, node).withTimeout(300L),
             "",
             List.of(
                 "SELECT keyspace_name FROM system_schema.keyspaces",
-                "SELECT * FROM system.local WHERE key = 'local'"),
-            300L);
+                "SELECT * FROM system.local WHERE key = 'local'"));
 
     assertSurvivesAllTransports(spec.command, false);
   }
@@ -135,11 +127,9 @@ public class NodeUniverseManagerSupportBundleTest extends FakeDBApplication {
   public void testYcqlSupportBundleBatchSurvivesAllTransports() {
     RemoteBashRunSpec spec =
         nodeUniverseManager.buildYcqlSupportBundleBatchRunSpec(
-            node,
-            universe,
+            NodeUniverseYsqlContext.of(universe, node).withTimeout(300L),
             "",
-            List.of("SELECT keyspace_name FROM system_schema.keyspaces;"),
-            300L);
+            List.of("SELECT keyspace_name FROM system_schema.keyspaces;"));
 
     assertSurvivesAllTransports(spec.command, false);
   }
@@ -148,11 +138,9 @@ public class NodeUniverseManagerSupportBundleTest extends FakeDBApplication {
   public void testBuildYcqlSupportBundleBatchRunSpecSingleQuery() {
     RemoteBashRunSpec spec =
         nodeUniverseManager.buildYcqlSupportBundleBatchRunSpec(
-            node,
-            universe,
+            NodeUniverseYsqlContext.of(universe, node).withTimeout(300L),
             null,
-            List.of("SELECT keyspace_name FROM system_schema.keyspaces;"),
-            300L);
+            List.of("SELECT keyspace_name FROM system_schema.keyspaces;"));
 
     String bashCommand = spec.command.get(2);
     assertEquals("bash", spec.command.get(0));
@@ -174,14 +162,12 @@ public class NodeUniverseManagerSupportBundleTest extends FakeDBApplication {
   public void testBuildYcqlSupportBundleBatchRunSpecMultipleQueriesContinueOnFailure() {
     RemoteBashRunSpec spec =
         nodeUniverseManager.buildYcqlSupportBundleBatchRunSpec(
-            node,
-            universe,
+            NodeUniverseYsqlContext.of(universe, node).withTimeout(300L),
             "my_ks",
             List.of(
                 "SELECT * FROM system.local;",
                 "SELECT invalid cql;",
-                "SELECT keyspace_name FROM system_schema.keyspaces;"),
-            300L);
+                "SELECT keyspace_name FROM system_schema.keyspaces;"));
 
     String bashCommand = spec.command.get(2);
     assertTrue(bashCommand.contains("-- query: SELECT * FROM system.local;"));
@@ -199,7 +185,9 @@ public class NodeUniverseManagerSupportBundleTest extends FakeDBApplication {
     String keyspace = "ks; touch /tmp/pwned";
     RemoteBashRunSpec spec =
         nodeUniverseManager.buildYcqlSupportBundleBatchRunSpec(
-            node, universe, keyspace, List.of("SELECT * FROM system.local;"), 300L);
+            NodeUniverseYsqlContext.of(universe, node).withTimeout(300L),
+            keyspace,
+            List.of("SELECT * FROM system.local;"));
 
     List<String> words = RemoteTransportSimulator.shellSplit(spec.command.get(2));
     assertEquals(keyspace, words.get(words.indexOf("-k") + 1));
@@ -222,7 +210,9 @@ public class NodeUniverseManagerSupportBundleTest extends FakeDBApplication {
 
     RemoteBashRunSpec spec =
         nodeUniverseManager.buildYcqlSupportBundleBatchRunSpec(
-            node, universe, null, List.of("SELECT * FROM system.local;"), 300L);
+            NodeUniverseContext.of(universe, node).withTimeout(300L),
+            null,
+            List.of("SELECT * FROM system.local;"));
 
     String bashCommand = spec.command.get(2);
     assertFalse(bashCommand.contains("-u "));
@@ -235,7 +225,9 @@ public class NodeUniverseManagerSupportBundleTest extends FakeDBApplication {
   public void testBuildYcqlSupportBundleBatchBashScriptEscapesQuotes() {
     String script =
         nodeUniverseManager.buildYcqlSupportBundleBatchBashScript(
-            node, universe, null, List.of("SELECT \"$col\" FROM t WHERE v = '$val';"));
+            NodeUniverseContext.of(universe, node),
+            null,
+            List.of("SELECT \"$col\" FROM t WHERE v = '$val';"));
 
     assertTrue(script.contains("printf '%s\\n'"));
     assertTrue(script.contains("-- query: SELECT"));
@@ -251,7 +243,9 @@ public class NodeUniverseManagerSupportBundleTest extends FakeDBApplication {
     // both have to survive as literals rather than reaching the node's shell.
     String script =
         nodeUniverseManager.buildYcqlSupportBundleBatchBashScript(
-            node, universe, null, List.of("SELECT `id` FROM t WHERE v = 'a\\b';"));
+            NodeUniverseContext.of(universe, node),
+            null,
+            List.of("SELECT `id` FROM t WHERE v = 'a\\b';"));
 
     assertTrue(script.contains("-e \"SELECT \\`id\\` FROM t WHERE v = 'a\\\\b';\""));
     assertFalse(script.contains("-e \"SELECT `id`"));
@@ -270,7 +264,9 @@ public class NodeUniverseManagerSupportBundleTest extends FakeDBApplication {
 
     RemoteBashRunSpec spec =
         nodeUniverseManager.buildYcqlSupportBundleBatchRunSpec(
-            node, universe, null, List.of("SELECT * FROM system.local;"), 300L);
+            NodeUniverseContext.of(universe, node).withTimeout(300L),
+            null,
+            List.of("SELECT * FROM system.local;"));
 
     assertTrue(spec.command.get(2).contains("--ssl"));
   }
@@ -279,11 +275,9 @@ public class NodeUniverseManagerSupportBundleTest extends FakeDBApplication {
   public void testBuildYcqlSupportBundleBatchRunSpecEscapesQuotesAndDollar() {
     RemoteBashRunSpec spec =
         nodeUniverseManager.buildYcqlSupportBundleBatchRunSpec(
-            node,
-            universe,
+            NodeUniverseContext.of(universe, node).withTimeout(300L),
             null,
-            List.of("SELECT \"$col\" FROM t WHERE v = '$val' AND x = $1;"),
-            300L);
+            List.of("SELECT \"$col\" FROM t WHERE v = '$val' AND x = $1;"));
 
     String bashCommand = spec.command.get(2);
     // Single quotes stay literal; the '"'"' idiom would corrupt CQL string literals here.
@@ -295,13 +289,9 @@ public class NodeUniverseManagerSupportBundleTest extends FakeDBApplication {
   public void testBuildYsqlSupportBundleBatchRunSpecSingleQuery() {
     RemoteBashRunSpec spec =
         nodeUniverseManager.buildYsqlSupportBundleBatchRunSpec(
-            node,
-            universe,
+            NodeUniverseYsqlContext.of(universe, node).withTimeout(300L),
             "yugabyte",
-            List.of("SELECT datname FROM pg_database;"),
-            300L,
-            false,
-            false);
+            List.of("SELECT datname FROM pg_database;"));
 
     String bashCommand = spec.command.get(2);
     assertEquals("bash", spec.command.get(0));
@@ -320,13 +310,9 @@ public class NodeUniverseManagerSupportBundleTest extends FakeDBApplication {
   public void testBuildYsqlSupportBundleBatchRunSpecMultipleQueriesContinueOnFailure() {
     RemoteBashRunSpec spec =
         nodeUniverseManager.buildYsqlSupportBundleBatchRunSpec(
-            node,
-            universe,
+            NodeUniverseYsqlContext.of(universe, node).withTimeout(300L),
             "yugabyte",
-            List.of("SELECT 1;", "SELECT bad_syntax;", "SELECT 3;"),
-            300L,
-            false,
-            false);
+            List.of("SELECT 1;", "SELECT bad_syntax;", "SELECT 3;"));
 
     String bashCommand = spec.command.get(2);
     assertTrue(bashCommand.contains("-- query: SELECT 1;"));
@@ -340,12 +326,9 @@ public class NodeUniverseManagerSupportBundleTest extends FakeDBApplication {
   public void testBuildYsqlSupportBundleBatchBashScriptEscapesQuotes() {
     String script =
         nodeUniverseManager.buildYsqlSupportBundleBatchBashScript(
-            node,
-            universe,
+            ysqlContext(false, false),
             "yugabyte",
-            List.of("SELECT 'value' FROM t WHERE col = \"x\";"),
-            false,
-            false);
+            List.of("SELECT 'value' FROM t WHERE col = \"x\";"));
 
     assertTrue(script.contains("printf '%s\\n'"));
     assertTrue(script.contains("-- query: SELECT"));
@@ -359,7 +342,7 @@ public class NodeUniverseManagerSupportBundleTest extends FakeDBApplication {
   public void testBuildYsqlSupportBundleBatchBashScriptNeutralizesCommandSubstitution() {
     String script =
         nodeUniverseManager.buildYsqlSupportBundleBatchBashScript(
-            node, universe, "yugabyte", List.of("SELECT `id`;"), false, false);
+            ysqlContext(false, false), "yugabyte", List.of("SELECT `id`;"));
 
     assertTrue(script.contains("-c \"SELECT \\`id\\`;\""));
     assertFalse(script.contains("-c \"SELECT `id`;\""));
@@ -369,9 +352,19 @@ public class NodeUniverseManagerSupportBundleTest extends FakeDBApplication {
   public void testBuildYsqlSupportBundleBatchBashScriptForcesReadOnlySession() {
     String script =
         nodeUniverseManager.buildYsqlSupportBundleBatchBashScript(
-            node, universe, "yugabyte", List.of("SELECT 1;"), false, false);
+            ysqlContext(false, false), "yugabyte", List.of("SELECT 1;"));
 
     assertTrue(script.contains("export PGOPTIONS='-c default_transaction_read_only=on';"));
+  }
+
+  private NodeUniverseYsqlContext ysqlContext(boolean authEnabled, boolean cpEnabled) {
+    return NodeUniverseYsqlContext.builder()
+        .universe(universe)
+        .node(node)
+        .authEnabled(authEnabled)
+        .cpEnabled(cpEnabled)
+        .build()
+        .withTimeout(300L);
   }
 
   /** With pooling on, Connection Manager owns the YSQL port, so PGOPTIONS must go to Postgres. */
@@ -380,7 +373,7 @@ public class NodeUniverseManagerSupportBundleTest extends FakeDBApplication {
     node.internalYsqlServerRpcPort = 6433;
     String script =
         nodeUniverseManager.buildYsqlSupportBundleBatchBashScript(
-            node, universe, "yugabyte", List.of("SELECT 1;"), false, true);
+            ysqlContext(false, true), "yugabyte", List.of("SELECT 1;"));
 
     assertTrue(script.contains(" -p 6433 "));
     assertFalse(script.contains(" -p 5433 "));
@@ -392,7 +385,9 @@ public class NodeUniverseManagerSupportBundleTest extends FakeDBApplication {
     // The shared builder also serves writers such as UpdateConsistencyCheck.
     RemoteBashRunSpec spec =
         nodeUniverseManager.buildYsqlBatchRunSpec(
-            node, universe, "yugabyte", List.of("SELECT 1;"), 300L, false, false, true);
+            NodeUniverseYsqlContext.of(universe, node).withTimeout(300L),
+            "yugabyte",
+            List.of("SELECT 1;"));
 
     assertFalse(spec.command.get(2).contains("default_transaction_read_only"));
   }
@@ -407,13 +402,9 @@ public class NodeUniverseManagerSupportBundleTest extends FakeDBApplication {
 
     ShellResponse response =
         nodeUniverseManager.runYsqlSupportBundleBatchCommands(
-            node,
-            universe,
+            NodeUniverseYsqlContext.of(universe, node).withTimeout(300L),
             "yugabyte",
-            List.of("SELECT datname FROM pg_database;"),
-            300L,
-            false,
-            false);
+            List.of("SELECT datname FROM pg_database;"));
 
     assertEquals(expected, response);
     verify(nodeUniverseManager)

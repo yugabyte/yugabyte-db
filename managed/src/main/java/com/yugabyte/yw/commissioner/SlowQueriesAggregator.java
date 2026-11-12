@@ -3,6 +3,7 @@ package com.yugabyte.yw.commissioner;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.NodeUniverseYsqlContext;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
@@ -132,11 +133,10 @@ public class SlowQueriesAggregator {
                     data.get("mean_time").asText()));
           }
           queryExecutor.executeQueryBatchInNodeShell(
-              universe,
+              NodeUniverseYsqlContext.of(universe, node)
+                  .withLogCmdOutput(!slowQueryDisableCommandLogging),
               Util.SYSTEM_PLATFORM_DB,
-              insertQueries,
-              node,
-              !slowQueryDisableCommandLogging);
+              insertQueries);
         }
       } catch (Exception e) {
         log.error(

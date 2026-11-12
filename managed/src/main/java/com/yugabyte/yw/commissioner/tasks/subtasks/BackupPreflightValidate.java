@@ -5,6 +5,7 @@ import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_NFS;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.common.NodeUniverseYsqlContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
@@ -209,7 +210,8 @@ public class BackupPreflightValidate extends AbstractTaskBase {
     ShellResponse resp =
         nodeUniverseManager
             .runCommand(
-                tserver, universe, List.of("bash", "-c", String.format(FREE_SPACE_CMD, location)))
+                NodeUniverseYsqlContext.of(universe, tserver),
+                List.of("bash", "-c", String.format(FREE_SPACE_CMD, location)))
             .processErrors("Error while finding free space on " + tserver.nodeName);
     log.debug("Response for free space cmd on node {} = {}", tserver.nodeName, resp.toString());
     // Resp.message looks like: "Command output:/dev/sda1  47227284 16333704 30877196 35%"

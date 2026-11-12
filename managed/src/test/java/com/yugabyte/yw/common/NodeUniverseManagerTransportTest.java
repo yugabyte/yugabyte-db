@@ -78,8 +78,16 @@ public class NodeUniverseManagerTransportTest extends FakeDBApplication {
   }
 
   private RemoteBashRunSpec ysqlSpec(String dbName, String query, boolean authEnabled) {
-    return nodeUniverseManager.buildYsqlBatchRunSpec(
-        node, universe, dbName, List.of(query), 300L, authEnabled, false, true);
+    NodeUniverseYsqlContext context =
+        NodeUniverseYsqlContext.builder()
+            .node(node)
+            .universe(universe)
+            .authEnabled(authEnabled)
+            .build()
+            .withTimeout(300L)
+            .withLogCmdOutput(true);
+
+    return nodeUniverseManager.buildYsqlBatchRunSpec(context, dbName, List.of(query));
   }
 
   /** Asserts the argv arrives unchanged on every transport that carries this command. */
@@ -386,7 +394,9 @@ public class NodeUniverseManagerTransportTest extends FakeDBApplication {
 
     ShellResponse response =
         nodeUniverseManager.runYsqlBatchCommands(
-            node, universe, "yugabyte", List.of("SELECT 1;"), 300L, false, false);
+            NodeUniverseYsqlContext.of(universe, node).withTimeout(300L),
+            "yugabyte",
+            List.of("SELECT 1;"));
 
     assertEquals(expected, response);
     verify(nodeUniverseManager)

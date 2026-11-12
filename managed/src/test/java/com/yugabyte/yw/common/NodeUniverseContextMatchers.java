@@ -36,4 +36,25 @@ public final class NodeUniverseContextMatchers {
   public static NodeUniverseContext forNode(NodeDetails node, Universe universe) {
     return argThat(c -> c.getNode() == node && c.getUniverse() == universe);
   }
+
+  public static NodeUniverseYsqlContext ysqlContext(NodeDetails node, Universe universe) {
+    return argThat(c -> c.getNode() == node && c.getUniverse() == universe);
+  }
+
+  public static NodeUniverseYsqlContext ysqlContext(
+      NodeDetails node,
+      Universe universe,
+      boolean authEnabled,
+      boolean cpEnabled,
+      long timeOutSec,
+      boolean logCmdOutput) {
+    return argThat(
+        c ->
+            c.getNode() == node
+                && c.getUniverse() == universe
+                && c.isCpEnabled() == cpEnabled
+                && c.isAuthEnabled() == authEnabled
+                && c.getShellProcessContext().getTimeoutSecs() == timeOutSec
+                && c.getShellProcessContext().isLogCmdOutput() == logCmdOutput);
+  }
 }

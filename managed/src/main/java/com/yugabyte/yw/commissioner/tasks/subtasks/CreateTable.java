@@ -14,6 +14,7 @@ import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.CqlSessionBuilder;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.common.NodeUniverseYsqlContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.YcqlSessionBuilder;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -79,9 +80,6 @@ public class CreateTable extends AbstractTaskBase {
     TableDetails tableDetails = taskParams().tableDetails;
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
 
-    boolean enableConnectionPooling =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling;
-
     String createTableStatement = tableDetails.getPgSqlCreateTableString(taskParams().ifNotExist);
 
     boolean tableCreated = false;
@@ -91,11 +89,9 @@ public class CreateTable extends AbstractTaskBase {
       NodeDetails randomTServer = CommonUtils.getARandomLiveTServer(universe);
       ShellResponse response =
           nodeUniverseManager.runYsqlCommand(
-              randomTServer,
-              universe,
+              NodeUniverseYsqlContext.of(universe, randomTServer),
               tableDetails.keyspace,
-              createTableStatement,
-              enableConnectionPooling);
+              createTableStatement);
       if (!response.isSuccess()
           || !YSQLSH_CREATE_TABLE_SUCCESS.matcher(response.getMessage()).find()) {
         log.warn(

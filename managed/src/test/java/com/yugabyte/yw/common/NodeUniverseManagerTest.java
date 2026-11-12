@@ -77,7 +77,9 @@ public class NodeUniverseManagerTest extends FakeDBApplication {
         .thenReturn(ShellResponse.create(0, "ok"));
 
     nodeUniverseManager.runYsqlBatchCommands(
-        node, universe, "postgres", List.of(sensitiveQuery), 180L, false, false, false);
+        NodeUniverseYsqlContext.of(universe, node).withLogCmdOutput(false).withTimeout(180L),
+        "postgres",
+        List.of(sensitiveQuery));
 
     verify(shellProcessHandler).run(commandCaptor.capture(), shellProcessContextCaptor.capture());
     ShellProcessContext context = shellProcessContextCaptor.getValue();
@@ -99,7 +101,7 @@ public class NodeUniverseManagerTest extends FakeDBApplication {
         .thenReturn(ShellResponse.create(0, "ok"));
 
     nodeUniverseManager.runYsqlBatchCommands(
-        node, universe, "postgres", List.of(query), 180L, false, false, true);
+        NodeUniverseYsqlContext.of(universe, node).withTimeout(180L), "postgres", List.of(query));
 
     verify(shellProcessHandler).run(commandCaptor.capture(), shellProcessContextCaptor.capture());
     ShellProcessContext context = shellProcessContextCaptor.getValue();
@@ -132,9 +134,25 @@ public class NodeUniverseManagerTest extends FakeDBApplication {
 
     // With connection pooling, postgres listens on the internal port.
     nodeUniverseManager.runYsqlBatchCommands(
-        node, universe, "postgres", List.of("SELECT 1"), 180L, true, true);
+        NodeUniverseYsqlContext.builder()
+            .node(node)
+            .universe(universe)
+            .cpEnabled(true)
+            .authEnabled(true)
+            .build()
+            .withTimeout(180L),
+        "postgres",
+        List.of("SELECT 1"));
     nodeUniverseManager.runYsqlBatchCommands(
-        node, universe, "postgres", List.of("SELECT 1"), 180L, true, false);
+        NodeUniverseYsqlContext.builder()
+            .node(node)
+            .universe(universe)
+            .cpEnabled(false)
+            .authEnabled(true)
+            .build()
+            .withTimeout(180L),
+        "postgres",
+        List.of("SELECT 1"));
 
     verify(shellProcessHandler, times(2))
         .run(commandCaptor.capture(), any(ShellProcessContext.class));
@@ -232,7 +250,9 @@ public class NodeUniverseManagerTest extends FakeDBApplication {
         .thenReturn(ShellResponse.create(0, "ok"));
 
     nodeUniverseManager.runScript(
-        node, universe, "/tmp/script.sh", List.of("collect_files", "postgres .* log", "it's"));
+        NodeUniverseContext.of(universe, node),
+        "/tmp/script.sh",
+        List.of("collect_files", "postgres .* log", "it's"));
 
     verify(shellProcessHandler).run(commandCaptor.capture(), any(ShellProcessContext.class));
     List<String> argv = commandCaptor.getValue();
@@ -249,7 +269,9 @@ public class NodeUniverseManagerTest extends FakeDBApplication {
         .thenReturn(ShellResponse.create(0, "ok"));
 
     nodeUniverseManager.runYsqlBatchCommands(
-        node, universe, "yugabyte", List.of(query), 180L, false, false, logCmdOutput);
+        NodeUniverseYsqlContext.of(universe, node).withLogCmdOutput(logCmdOutput).withTimeout(180L),
+        "yugabyte",
+        List.of(query));
 
     verify(shellProcessHandler).run(commandCaptor.capture(), shellProcessContextCaptor.capture());
     List<String> sent = commandCaptor.getValue();

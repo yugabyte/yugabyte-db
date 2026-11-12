@@ -159,7 +159,8 @@ public class UniverseArchitectureResolver {
 
   private Optional<Architecture> resolveFromVmNode(Universe universe, NodeDetails node) {
     List<String> cmd = Arrays.asList("uname", "-m");
-    ShellResponse response = nodeUniverseManager.runCommand(node, universe, cmd);
+    ShellResponse response =
+        nodeUniverseManager.runCommand(NodeUniverseContext.of(universe, node), cmd);
     if (response.isSuccess()) {
       String output = response.extractRunCommandOutput();
       if (StringUtils.isNotBlank(output)) {

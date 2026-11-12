@@ -80,6 +80,7 @@ import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -851,7 +852,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         ensureRunning,
         node.nodeName,
         command);
-    ShellResponse response = nodeUniverseManager.runCommand(node, universe, command);
+    ShellResponse response =
+        nodeUniverseManager.runCommand(NodeUniverseContext.of(universe, node), command);
     String message = response.processErrors().getMessage();
     log.debug("Output of command {} for node {}: {}", command, node.nodeName, message);
     boolean isProcessRunningOrEnabled =

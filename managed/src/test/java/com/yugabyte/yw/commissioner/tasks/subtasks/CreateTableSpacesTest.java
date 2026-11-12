@@ -105,7 +105,7 @@ public class CreateTableSpacesTest extends CommissionerBaseTest {
     ShellResponse shellResponse =
         ShellResponse.create(ShellResponse.ERROR_CODE_GENERIC_ERROR, "Error");
     when(mockNodeUniverseManager.runYsqlCommand(
-            any(), any(), any(), eq(TableSpaceUtil.FETCH_TABLESPACES_QUERY)))
+            any(), any(), eq(TableSpaceUtil.FETCH_TABLESPACES_QUERY)))
         .thenReturn(shellResponse);
 
     CreateTablespaceParams params =
@@ -153,8 +153,7 @@ public class CreateTableSpacesTest extends CommissionerBaseTest {
         generateTablespaceParams(universeUUID, defaultProvider.getCode(), numReplicas, config);
     TaskInfo taskInfo = submitTask(universeUUID, 1, params.tablespaceInfos);
     assertEquals(state, taskInfo.getTaskState());
-    verify(mockNodeUniverseManager, times(invocations))
-        .runYsqlCommand(any(), any(), any(), anyString());
+    verify(mockNodeUniverseManager, times(invocations)).runYsqlCommand(any(), any(), anyString());
     return params;
   }
 
@@ -182,17 +181,14 @@ public class CreateTableSpacesTest extends CommissionerBaseTest {
     ShellResponse shellResponse =
         ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, shellResponseString);
     when(mockNodeUniverseManager.runYsqlCommand(
-            any(), any(), any(), eq(TableSpaceUtil.FETCH_TABLESPACES_QUERY)))
+            any(), any(), eq(TableSpaceUtil.FETCH_TABLESPACES_QUERY)))
         .thenReturn(shellResponse);
   }
 
   private void mockCreateTablespaceAnswer(int responseCode, String msg) {
     ShellResponse shellResponse = ShellResponse.create(responseCode, msg);
     when(mockNodeUniverseManager.runYsqlCommand(
-            any(),
-            any(),
-            any(),
-            AdditionalMatchers.not(eq(TableSpaceUtil.FETCH_TABLESPACES_QUERY))))
+            any(), any(), AdditionalMatchers.not(eq(TableSpaceUtil.FETCH_TABLESPACES_QUERY))))
         .thenReturn(shellResponse);
   }
 

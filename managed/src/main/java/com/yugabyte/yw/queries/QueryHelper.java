@@ -13,6 +13,7 @@ import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.CustomWsClientFactory;
+import com.yugabyte.yw.common.NodeUniverseYsqlContext;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
@@ -21,7 +22,6 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.forms.RunQueryFormData;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -197,10 +197,6 @@ public class QueryHelper {
     }
     Boolean supportsLatencyHistogram = supportsLatencyHistogram(universe);
     boolean usePG15Fields = isPgVersionHigherThan11(universe);
-    UniverseDefinitionTaskParams.UserIntent userIntent =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent;
-    boolean ysqlAuthEnabled = userIntent.isYSQLAuthEnabled();
-    boolean cpEnabled = userIntent.enableConnectionPooling;
     int ysqlErrorCount = 0;
     int ycqlErrorCount = 0;
     boolean fetchResetTimeSubmitted = false;
@@ -247,14 +243,12 @@ public class QueryHelper {
                       ysqlQuery.setQuery(STAT_RESET_TIME_SQL);
                       ysqlQuery.setDbName("postgres");
                       return ysqlQueryExecutor.executeQueryInNodeShell(
-                          universe,
-                          ysqlQuery,
-                          node,
-                          confGetter.getConfForScope(
-                              universe, UniverseConfKeys.slowQueryTimeoutSecs),
-                          ysqlAuthEnabled,
-                          cpEnabled,
-                          !slowQueryDisableCommandLogging);
+                          NodeUniverseYsqlContext.of(universe, node)
+                              .withTimeout(
+                                  confGetter.getConfForScope(
+                                      universe, UniverseConfKeys.slowQueryTimeoutSecs))
+                              .withLogCmdOutput(!slowQueryDisableCommandLogging),
+                          ysqlQuery);
                     };
                 Future<JsonNode> future = threadPool.submit(callable);
                 futures.add(future);
@@ -267,13 +261,12 @@ public class QueryHelper {
                             config, universe, supportsLatencyHistogram, usePG15Fields));
                     ysqlQuery.setDbName("postgres");
                     return ysqlQueryExecutor.executeQueryInNodeShell(
-                        universe,
-                        ysqlQuery,
-                        node,
-                        confGetter.getConfForScope(universe, UniverseConfKeys.slowQueryTimeoutSecs),
-                        ysqlAuthEnabled,
-                        cpEnabled,
-                        !slowQueryDisableCommandLogging);
+                        NodeUniverseYsqlContext.of(universe, node)
+                            .withTimeout(
+                                confGetter.getConfForScope(
+                                    universe, UniverseConfKeys.slowQueryTimeoutSecs))
+                            .withLogCmdOutput(!slowQueryDisableCommandLogging),
+                        ysqlQuery);
                   };
 
               Future<JsonNode> future = threadPool.submit(callable);

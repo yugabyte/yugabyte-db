@@ -198,8 +198,7 @@ public class TransferXClusterCerts extends NodeTaskBase {
 
       // Copy the certificate file to the node.
       nodeUniverseManager.uploadFileToNode(
-          node,
-          destinationUniverse,
+          NodeUniverseContext.of(destinationUniverse, node),
           taskParams().rootCertPath.toString(),
           destinationCertPath,
           "600");
@@ -213,18 +212,19 @@ public class TransferXClusterCerts extends NodeTaskBase {
       // Remove the certificate file.
       verifyRmCommandShellResponse(
           nodeUniverseManager.runCommand(
-              node, destinationUniverse, ImmutableList.of("rm", destinationCertPath)));
+              NodeUniverseContext.of(destinationUniverse, node),
+              ImmutableList.of("rm", destinationCertPath)));
 
       // Remove the directory only if it is empty.
       verifyRmCommandShellResponse(
           nodeUniverseManager.runCommand(
-              node, destinationUniverse, ImmutableList.of("rm", "-d", destinationCertsDirPath)));
+              NodeUniverseContext.of(destinationUniverse, node),
+              ImmutableList.of("rm", "-d", destinationCertsDirPath)));
 
       // Remove the directory only if it is empty. No need to check whether it succeeded because
       // this directory should be deleted only if there are no other xCluster configs.
       nodeUniverseManager.runCommand(
-          node,
-          destinationUniverse,
+          NodeUniverseContext.of(destinationUniverse, node),
           ImmutableList.of("rm", "-d", taskParams().destinationCertsDir.toString()));
     } else {
       throw new IllegalArgumentException(String.format("Action %s not found", taskParams().action));

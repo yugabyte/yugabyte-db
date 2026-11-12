@@ -86,28 +86,29 @@ public class NodeUniverseManager extends DevopsBase {
     return "node";
   }
 
-  public void downloadNodeLogs(NodeDetails node, Universe universe, String targetLocalFile) {
-    universeLock.acquireLock(universe.getUniverseUUID());
+  public void downloadNodeLogs(NodeUniverseContext context, String targetLocalFile) {
+    UUID universeUUID = context.getUniverse().getUniverseUUID();
+    universeLock.acquireLock(universeUUID);
     try {
-      Optional<NodeAgent> optional = maybeUpgradeAndGetNodeAgent(universe, node);
-      NodeUniverseContext context = NodeUniverseContext.of(universe, node);
+      Optional<NodeAgent> optional =
+          maybeUpgradeAndGetNodeAgent(context.getUniverse(), context.getNode());
       if (optional.isPresent()) {
         nodeActionRunner.downloadLogs(
             optional.get(),
-            node,
-            getYbHomeDir(node, universe),
+            context.getNode(),
+            getYbHomeDir(context.getNode(), context.getUniverse()),
             targetLocalFile,
             context.getShellProcessContext());
       } else {
         List<String> actionArgs = new ArrayList<>();
         actionArgs.add("--yb_home_dir");
-        actionArgs.add(getYbHomeDir(node, universe));
+        actionArgs.add(getYbHomeDir(context.getNode(), context.getUniverse()));
         actionArgs.add("--target_local_file");
         actionArgs.add(targetLocalFile);
         executeNodeAction(UniverseNodeAction.DOWNLOAD_LOGS, context, actionArgs).processErrors();
       }
     } finally {
-      universeLock.releaseLock(universe.getUniverseUUID());
+      universeLock.releaseLock(universeUUID);
     }
   }
 
@@ -263,7 +264,8 @@ public class NodeUniverseManager extends DevopsBase {
             ? Optional.empty()
             : maybeUpgradeAndGetNodeAgent(universe, node);
     if (optional.isPresent()) {
-      nodeActionRunner.copyFile(optional.get(), remoteFile, localFile, DEFAULT_CONTEXT);
+      nodeActionRunner.copyFile(
+          optional.get(), remoteFile, localFile, context.getShellProcessContext());
     } else {
       List<String> actionArgs = new ArrayList<>();
       actionArgs.add("--remote_file");
@@ -299,15 +301,6 @@ public class NodeUniverseManager extends DevopsBase {
   }
 
   public void uploadFileToNode(
-      NodeDetails node,
-      Universe universe,
-      String sourceFile,
-      String targetFile,
-      String permissions) {
-    uploadFileToNode(NodeUniverseContext.of(universe, node), sourceFile, targetFile, permissions);
-  }
-
-  public void uploadFileToNode(
       NodeUniverseContext context, String sourceFile, String targetFile, String permissions) {
     Universe universe = context.getUniverse();
     NodeDetails node = context.getNode();
@@ -333,10 +326,6 @@ public class NodeUniverseManager extends DevopsBase {
 
   public ShellResponse runCommand(NodeUniverseContext context, String command) {
     return runCommand(context, Collections.singletonList(command));
-  }
-
-  public ShellResponse runCommand(NodeDetails node, Universe universe, List<String> command) {
-    return runCommand(NodeUniverseContext.of(universe, node), command);
   }
 
   public ShellResponse runCommand(NodeUniverseContext context, List<String> command) {
@@ -446,20 +435,6 @@ public class NodeUniverseManager extends DevopsBase {
   /**
    * Runs a local script with parameters passed in a list
    *
-   * @param node
-   * @param universe
-   * @param localScriptPath
-   * @param params
-   * @return the ShellResponse object
-   */
-  public ShellResponse runScript(
-      NodeDetails node, Universe universe, String localScriptPath, List<String> params) {
-    return runScript(NodeUniverseContext.of(universe, node), localScriptPath, params);
-  }
-
-  /**
-   * Runs a local script with parameters passed in a list
-   *
    * @param context node, universe, and shell settings for the run
    * @param localScriptPath
    * @param params
@@ -501,19 +476,15 @@ public class NodeUniverseManager extends DevopsBase {
   }
 
   public ShellResponse runYbAdminCommand(
-      NodeDetails node,
-      Universe universe,
-      String ybAdminCommand,
-      List<String> args,
-      long timeoutSec) {
+      NodeUniverseContext context, String ybAdminCommand, List<String> args, long timeoutSec) {
     List<String> command = new ArrayList<>();
-    command.add(getYbHomeDir(node, universe) + "/master/bin/yb-admin");
+    command.add(getYbHomeDir(context.getNode(), context.getUniverse()) + "/master/bin/yb-admin");
     command.add("--master_addresses");
-    command.add(universe.getMasterAddresses());
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    command.add(context.getUniverse().getMasterAddresses());
+    UserIntent userIntent = context.getUserIntent();
     if (userIntent.enableNodeToNodeEncrypt) {
       command.add("-certs_dir_name");
-      command.add(getCertsDir(universe, node));
+      command.add(getCertsDir(context.getUniverse(), context.getNode()));
     }
     command.add("-timeout_ms");
     command.add(String.valueOf(TimeUnit.SECONDS.toMillis(timeoutSec)));
@@ -521,124 +492,19 @@ public class NodeUniverseManager extends DevopsBase {
     command.addAll(args);
     ShellProcessContext shellProcessContext =
         ShellProcessContext.builder().logCmdOutput(true).timeoutSecs(timeoutSec).build();
-    return runCommand(NodeUniverseContext.of(universe, node, shellProcessContext), command);
+    return runCommand(
+        NodeUniverseContext.of(context.getUniverse(), context.getNode(), shellProcessContext),
+        command);
   }
 
   public ShellResponse runYsqlCommand(
-      NodeDetails node, Universe universe, String dbName, String ysqlCommand) {
-    return runYsqlCommand(
-        node,
-        universe,
-        dbName,
-        ysqlCommand,
-        confGetter.getConfForScope(universe, UniverseConfKeys.ysqlTimeoutSecs));
-  }
-
-  public ShellResponse runYsqlCommand(
-      NodeDetails node, Universe universe, String dbName, String ysqlCommand, long timeoutSec) {
-    boolean authEnabled =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.isYSQLAuthEnabled();
-    return runYsqlCommand(
-        node,
-        universe,
-        dbName,
-        ysqlCommand,
-        confGetter.getConfForScope(universe, UniverseConfKeys.ysqlTimeoutSecs),
-        authEnabled);
-  }
-
-  public ShellResponse runYsqlCommand(
-      NodeDetails node,
-      Universe universe,
-      String dbName,
-      String ysqlCommand,
-      long timeoutSec,
-      boolean authEnabled) {
-    return runYsqlCommand(
-        node,
-        universe,
-        dbName,
-        ysqlCommand,
-        timeoutSec,
-        authEnabled,
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling);
-  }
-
-  public ShellResponse runYsqlCommand(
-      NodeDetails node, Universe universe, String dbName, String ysqlCommand, boolean cpEnabled) {
-    boolean authEnabled =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.isYSQLAuthEnabled();
-    return runYsqlCommand(
-        node,
-        universe,
-        dbName,
-        ysqlCommand,
-        confGetter.getConfForScope(universe, UniverseConfKeys.ysqlTimeoutSecs),
-        authEnabled,
-        cpEnabled);
-  }
-
-  /**
-   * Runs a YSQL command on the given node Note: Ensure, this function is in sync with {@link
-   * #localNodeUniverseManager.runYsqlCommand}
-   *
-   * @param node Node on which to run the command
-   * @param universe Universe in which the node exists
-   * @param dbName Database name to run the command on
-   * @param ysqlCommand Command to run
-   * @param timeoutSec Timeout in seconds
-   * @param authEnabled Whether to use authentication
-   * @param cpEnabled Whether to use connection pooling
-   * @return ShellResponse object
-   */
-  public ShellResponse runYsqlCommand(
-      NodeDetails node,
-      Universe universe,
-      String dbName,
-      String ysqlCommand,
-      long timeoutSec,
-      boolean authEnabled,
-      boolean cpEnabled) {
-    return runYsqlCommand(
-        node, universe, dbName, ysqlCommand, timeoutSec, authEnabled, cpEnabled, true);
-  }
-
-  public ShellResponse runYsqlCommand(
-      NodeDetails node,
-      Universe universe,
-      String dbName,
-      String ysqlCommand,
-      long timeoutSec,
-      boolean authEnabled,
-      boolean cpEnabled,
-      boolean logCmdOutput) {
-    Cluster curCluster = universe.getCluster(node.placementUuid);
-    Provider provider = Util.getProviderForNode(node, universe);
+      NodeUniverseYsqlContext context, String dbName, String ysqlCommand) {
+    Provider provider = Util.getProviderForNode(context.getNode(), context.getUniverse());
     if (provider.getCloudCode() == CloudType.local) {
       return localNodeUniverseManager.runYsqlCommand(
-          node, universe, dbName, ysqlCommand, timeoutSec, authEnabled, cpEnabled, logCmdOutput);
+          withDefaultYsqlTimeout(context), dbName, ysqlCommand);
     }
-    return runYsqlBatchCommands(
-        node,
-        universe,
-        dbName,
-        List.of(ysqlCommand),
-        timeoutSec,
-        authEnabled,
-        cpEnabled,
-        logCmdOutput);
-  }
-
-  public ShellResponse runYsqlBatchCommands(
-      NodeDetails node,
-      Universe universe,
-      String dbName,
-      List<String> ysqlCommands,
-      long timeoutSec,
-      boolean authEnabled,
-      boolean cpEnabled) {
-    return runYsqlBatchCommands(
-        node, universe, dbName, ysqlCommands, timeoutSec, authEnabled, cpEnabled, true);
+    return runYsqlBatchCommands(context, dbName, List.of(ysqlCommand));
   }
 
   /**
@@ -646,65 +512,39 @@ public class NodeUniverseManager extends DevopsBase {
    * SQL literals such as the UUIDs in UpdateConsistencyCheck's INSERT.
    */
   public ShellResponse runYsqlBatchCommands(
-      NodeDetails node,
-      Universe universe,
-      String dbName,
-      List<String> ysqlCommands,
-      long timeoutSec,
-      boolean authEnabled,
-      boolean cpEnabled,
-      boolean logCmdOutput) {
-    RemoteBashRunSpec spec =
-        buildYsqlBatchRunSpec(
-            node, universe, dbName, ysqlCommands, timeoutSec, authEnabled, cpEnabled, logCmdOutput);
+      NodeUniverseYsqlContext context, String dbName, List<String> ysqlCommands) {
+    RemoteBashRunSpec spec = buildYsqlBatchRunSpec(context, dbName, ysqlCommands);
     return runCommand(
-        NodeUniverseContext.of(universe, node, spec.context), spec.command, false /* useBash */);
+        context.toBuilder().shellProcessContext(spec.context).build(),
+        spec.command,
+        false /* useBash */);
   }
 
-  /**
-   * Runs support-bundle YSQL queries in one remote bash script. Each query is executed via a
-   * separate ysqlsh invocation so failures do not prevent later queries from running.
-   */
   public ShellResponse runYsqlSupportBundleBatchCommands(
-      NodeDetails node,
-      Universe universe,
-      String dbName,
-      List<String> ysqlCommands,
-      long timeoutSec,
-      boolean authEnabled,
-      boolean cpEnabled) {
-    RemoteBashRunSpec spec =
-        buildYsqlSupportBundleBatchRunSpec(
-            node, universe, dbName, ysqlCommands, timeoutSec, authEnabled, cpEnabled);
+      NodeUniverseYsqlContext context, String dbName, List<String> ysqlCommands) {
+    RemoteBashRunSpec spec = buildYsqlSupportBundleBatchRunSpec(context, dbName, ysqlCommands);
     return runCommand(
-        NodeUniverseContext.of(universe, node, spec.context), spec.command, false /* useBash */);
+        context.toBuilder().shellProcessContext(spec.context).build(),
+        spec.command,
+        false /* useBash */);
   }
 
   /** Builds the {@code bash -c} ysqlsh command and its context; run it with useBash=false. */
   public RemoteBashRunSpec buildYsqlBatchRunSpec(
-      NodeDetails node,
-      Universe universe,
-      String dbName,
-      List<String> ysqlCommands,
-      long timeoutSec,
-      boolean authEnabled,
-      boolean cpEnabled,
-      boolean logCmdOutput) {
+      NodeUniverseYsqlContext context, String dbName, List<String> ysqlCommands) {
     List<String> command = new ArrayList<>();
     command.add("bash");
     command.add("-c");
     List<String> bashCommand = new ArrayList<>();
-    Cluster cluster = universe.getUniverseDetails().getPrimaryCluster();
-    appendYsqlSslExport(bashCommand, cluster);
-    bashCommand.addAll(buildYsqlshInvocationArgs(node, universe, dbName, authEnabled, cpEnabled));
+    appendYsqlSslExport(bashCommand, context.getUserIntent());
+    bashCommand.addAll(buildYsqlshInvocationArgs(context, dbName));
     for (var ysqlCommand : ysqlCommands) {
       bashCommand.add("-c");
       bashCommand.add("\"" + escapeYsqlQueryForShell(ysqlCommand) + "\"");
     }
     String bashCommandStr = String.join(" ", bashCommand);
     command.add(bashCommandStr);
-    return new RemoteBashRunSpec(
-        command, buildYsqlShellContext(bashCommandStr, timeoutSec, logCmdOutput));
+    return new RemoteBashRunSpec(command, buildYsqlShellContext(bashCommandStr, context));
   }
 
   /**
@@ -712,37 +552,21 @@ public class NodeUniverseManager extends DevopsBase {
    * ysqlsh, captures stderr, records per-query exit codes, and continues after failures.
    */
   public RemoteBashRunSpec buildYsqlSupportBundleBatchRunSpec(
-      NodeDetails node,
-      Universe universe,
-      String dbName,
-      List<String> ysqlCommands,
-      long timeoutSec,
-      boolean authEnabled,
-      boolean cpEnabled) {
+      NodeUniverseYsqlContext context, String dbName, List<String> ysqlCommands) {
     List<String> command = new ArrayList<>();
     command.add("bash");
     command.add("-c");
-    command.add(
-        buildYsqlSupportBundleBatchBashScript(
-            node, universe, dbName, ysqlCommands, authEnabled, cpEnabled));
+    command.add(buildYsqlSupportBundleBatchBashScript(context, dbName, ysqlCommands));
     String bashCommandStr = command.get(2);
-    return new RemoteBashRunSpec(
-        command, buildYsqlShellContext(bashCommandStr, timeoutSec, true /* logCmdOutput */));
+    return new RemoteBashRunSpec(command, buildYsqlShellContext(bashCommandStr, context));
   }
 
   String buildYsqlSupportBundleBatchBashScript(
-      NodeDetails node,
-      Universe universe,
-      String dbName,
-      List<String> ysqlCommands,
-      boolean authEnabled,
-      boolean cpEnabled) {
-    Cluster cluster = universe.getUniverseDetails().getPrimaryCluster();
+      NodeUniverseYsqlContext context, String dbName, List<String> ysqlCommands) {
     List<String> sslExport = new ArrayList<>();
-    appendYsqlSslExport(sslExport, cluster);
+    appendYsqlSslExport(sslExport, context.getUserIntent());
     String sslExportPrefix = sslExport.isEmpty() ? "" : sslExport.get(0);
-    String ysqlshPrefix =
-        String.join(" ", buildYsqlshInvocationArgs(node, universe, dbName, authEnabled, cpEnabled));
+    String ysqlshPrefix = String.join(" ", buildYsqlshInvocationArgs(context, dbName));
     StringBuilder script = new StringBuilder();
     if (StringUtils.isNotEmpty(sslExportPrefix)) {
       script.append(sslExportPrefix).append(' ');
@@ -767,21 +591,23 @@ public class NodeUniverseManager extends DevopsBase {
     return script.toString();
   }
 
-  private void appendYsqlSslExport(List<String> bashCommand, Cluster cluster) {
-    if (cluster.userIntent.enableClientToNodeEncrypt && !cluster.userIntent.enableYSQLAuth) {
+  private void appendYsqlSslExport(List<String> bashCommand, UserIntent userIntent) {
+    if (userIntent.enableClientToNodeEncrypt && !userIntent.enableYSQLAuth) {
       bashCommand.add("export sslmode=\"require\";");
     }
   }
 
-  private List<String> buildYsqlshInvocationArgs(
-      NodeDetails node, Universe universe, String dbName, boolean authEnabled, boolean cpEnabled) {
+  private List<String> buildYsqlshInvocationArgs(NodeUniverseYsqlContext context, String dbName) {
+    NodeDetails node = context.getNode();
+    Universe universe = context.getUniverse();
     List<String> bashCommand = new ArrayList<>();
     String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(confGetter, node, universe);
     String port =
-        String.valueOf(cpEnabled ? node.internalYsqlServerRpcPort : node.ysqlServerRpcPort);
+        String.valueOf(
+            context.isCpEnabled() ? node.internalYsqlServerRpcPort : node.ysqlServerRpcPort);
     bashCommand.add(getYbHomeDir(node, universe) + "/tserver/bin/ysqlsh");
     bashCommand.add("-h");
-    if (authEnabled) {
+    if (context.isAuthEnabled()) {
       bashCommand.add(getYsqlSocketDirExpression(customTmpDirectory, port));
     } else {
       bashCommand.add(node.cloudInfo.private_ip);
@@ -817,18 +643,27 @@ public class NodeUniverseManager extends DevopsBase {
   }
 
   private ShellProcessContext buildYsqlShellContext(
-      String bashCommandStr, long timeoutSec, boolean logCmdOutput) {
+      String bashCommandStr, NodeUniverseYsqlContext context) {
+    boolean logCmdOutput = context.isLogCmdOutput();
     Map<String, String> valsToRedact = new HashMap<>();
     if (!logCmdOutput) {
       valsToRedact.put(bashCommandStr, Util.REDACTED_YSQL_QUERY);
     } else if (StringUtils.containsIgnoreCase(bashCommandStr, Util.YSQL_PASSWORD_KEYWORD)) {
       valsToRedact.put(bashCommandStr, Util.redactYsqlQuery(bashCommandStr));
     }
-    return ShellProcessContext.builder()
+    return withDefaultYsqlTimeout(context).getShellProcessContext().toBuilder()
         .logCmdOutput(logCmdOutput && valsToRedact.isEmpty())
-        .timeoutSecs(timeoutSec)
         .redactedVals(valsToRedact)
         .build();
+  }
+
+  /** A context without a timeout gets the universe's YSQL timeout, as the local path needs one. */
+  private NodeUniverseYsqlContext withDefaultYsqlTimeout(NodeUniverseYsqlContext context) {
+    if (context.getShellProcessContext().getTimeoutSecs() > 0) {
+      return context;
+    }
+    return context.withTimeout(
+        confGetter.getConfForScope(context.getUniverse(), UniverseConfKeys.ysqlTimeoutSecs));
   }
 
   /** A {@code bash -c} command and its shell context, to be run with useBash=false. */
@@ -847,15 +682,12 @@ public class NodeUniverseManager extends DevopsBase {
    * separate ycqlsh invocation so failures do not prevent later queries from running.
    */
   public ShellResponse runYcqlSupportBundleBatchCommands(
-      NodeDetails node,
-      Universe universe,
-      String keyspace,
-      List<String> ycqlCommands,
-      long timeoutSec) {
-    RemoteBashRunSpec spec =
-        buildYcqlSupportBundleBatchRunSpec(node, universe, keyspace, ycqlCommands, timeoutSec);
+      NodeUniverseContext context, String keyspace, List<String> ycqlCommands) {
+    RemoteBashRunSpec spec = buildYcqlSupportBundleBatchRunSpec(context, keyspace, ycqlCommands);
     return runCommand(
-        NodeUniverseContext.of(universe, node, spec.context), spec.command, false /* useBash */);
+        NodeUniverseContext.of(context.getUniverse(), context.getNode(), spec.context),
+        spec.command,
+        false /* useBash */);
   }
 
   /**
@@ -864,22 +696,19 @@ public class NodeUniverseManager extends DevopsBase {
    * no credentials: YBA has none for YCQL, so the caller skips universes with YCQL auth on.
    */
   public RemoteBashRunSpec buildYcqlSupportBundleBatchRunSpec(
-      NodeDetails node,
-      Universe universe,
-      String keyspace,
-      List<String> ycqlCommands,
-      long timeoutSec) {
+      NodeUniverseContext context, String keyspace, List<String> ycqlCommands) {
     List<String> command = new ArrayList<>();
     command.add("bash");
     command.add("-c");
-    command.add(buildYcqlSupportBundleBatchBashScript(node, universe, keyspace, ycqlCommands));
+    command.add(buildYcqlSupportBundleBatchBashScript(context, keyspace, ycqlCommands));
+
     return new RemoteBashRunSpec(
-        command, ShellProcessContext.builder().logCmdOutput(true).timeoutSecs(timeoutSec).build());
+        command, context.getShellProcessContext().toBuilder().logCmdOutput(true).build());
   }
 
   String buildYcqlSupportBundleBatchBashScript(
-      NodeDetails node, Universe universe, String keyspace, List<String> ycqlCommands) {
-    String ycqlshPrefix = String.join(" ", buildYcqlshBaseArgs(node, universe, keyspace));
+      NodeUniverseContext context, String keyspace, List<String> ycqlCommands) {
+    String ycqlshPrefix = String.join(" ", buildYcqlshBaseArgs(context, keyspace));
     StringBuilder script = new StringBuilder();
     for (String ycqlCommand : ycqlCommands) {
       String escapedQuery = escapeYcqlQueryForShell(ensureYcqlSemicolon(ycqlCommand));
@@ -898,15 +727,15 @@ public class NodeUniverseManager extends DevopsBase {
     return script.toString();
   }
 
-  private List<String> buildYcqlshBaseArgs(NodeDetails node, Universe universe, String keyspace) {
+  private List<String> buildYcqlshBaseArgs(NodeUniverseContext context, String keyspace) {
     List<String> bashCommand = new ArrayList<>();
-    Cluster cluster = universe.getUniverseDetails().getPrimaryCluster();
-    bashCommand.add(getYbHomeDir(node, universe) + GFlagsUtil.YCQLSH_PATH);
-    if (cluster.userIntent.enableClientToNodeEncrypt) {
+    bashCommand.add(
+        getYbHomeDir(context.getNode(), context.getUniverse()) + GFlagsUtil.YCQLSH_PATH);
+    if (context.getUserIntent().enableClientToNodeEncrypt) {
       bashCommand.add("--ssl");
     }
-    bashCommand.add(node.cloudInfo.private_ip);
-    bashCommand.add(String.valueOf(node.yqlServerRpcPort));
+    bashCommand.add(context.getNode().cloudInfo.private_ip);
+    bashCommand.add(String.valueOf(context.getNode().yqlServerRpcPort));
     if (StringUtils.isNotEmpty(keyspace)) {
       bashCommand.add("-k");
       bashCommand.add(shellQuote(keyspace));
@@ -985,9 +814,6 @@ public class NodeUniverseManager extends DevopsBase {
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
     UserIntent userIntent = context.getUserIntent();
-    if (userIntent == null) {
-      userIntent = cluster.userIntent;
-    }
     CloudType cloudType = universe.getNodeDeploymentMode(node);
     UUID providerUUID = cluster.getProviderUUIDForNode(node);
     String accessKeyCode = userIntent.getAccessKeyCodeForProvider(providerUUID);
@@ -1156,11 +982,8 @@ public class NodeUniverseManager extends DevopsBase {
     command.add("echo");
     command.add("'test'");
 
-    ShellProcessContext shellProcessContext =
-        ShellProcessContext.builder().logCmdOutput(true).timeoutSecs(timeoutSecs).build();
-
     ShellResponse response =
-        runCommand(NodeUniverseContext.of(universe, node, shellProcessContext), command);
+        runCommand(NodeUniverseContext.of(universe, node).withTimeout(timeoutSecs), command);
 
     if (response.isSuccess()) {
       return true;
@@ -1256,18 +1079,22 @@ public class NodeUniverseManager extends DevopsBase {
    * from remote to local. Then reads and processes this info from the local temp file. This is done
    * so that this operation is scalable for large number of files present on the node.
    *
-   * @param node
-   * @param universe
+   * @param nodeUniverseContext
    * @param remoteDirPath
+   * @param startDate
+   * @param endDate
    * @return a map of filenames to filesizes
    */
   public Map<String, Long> getNodeFilePathsAndSizeWithinDates(
-      NodeDetails node, Universe universe, String remoteDirPath, Date startDate, Date endDate) {
+      NodeUniverseContext nodeUniverseContext, String remoteDirPath, Date startDate, Date endDate) {
     String randomUUIDStr = UUID.randomUUID().toString();
     String localTempFilePath =
         getLocalTmpDir() + "/" + randomUUIDStr + "-source-files-and-sizes.txt";
     String remoteTempFilePath =
-        getRemoteTmpDir(node, universe) + "/" + randomUUIDStr + "-source-files-and-sizes.txt";
+        getRemoteTmpDir(nodeUniverseContext.getNode(), nodeUniverseContext.getUniverse())
+            + "/"
+            + randomUUIDStr
+            + "-source-files-and-sizes.txt";
 
     SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd");
     List<String> findCommandParams = new ArrayList<>();
@@ -1277,15 +1104,19 @@ public class NodeUniverseManager extends DevopsBase {
     findCommandParams.add(formatter.format(startDate));
     findCommandParams.add(formatter.format(DateUtils.addDays(endDate, 1)));
 
-    runScript(node, universe, NODE_UTILS_SCRIPT, findCommandParams).processErrors();
+    runScript(nodeUniverseContext, NODE_UTILS_SCRIPT, findCommandParams).processErrors();
     // Download the files list.
-    copyFileFromNode(node, universe, remoteTempFilePath, localTempFilePath);
+    copyFileFromNode(
+        nodeUniverseContext.getNode(),
+        nodeUniverseContext.getUniverse(),
+        remoteTempFilePath,
+        localTempFilePath);
 
     // Delete file from remote server after copying to local.
     List<String> removeCommand = new ArrayList<>();
     removeCommand.add("rm");
     removeCommand.add(remoteTempFilePath);
-    runCommand(node, universe, removeCommand);
+    runCommand(nodeUniverseContext, removeCommand);
 
     // Populate the text file into array.
     List<String> nodeFilePathStrings = Arrays.asList();
@@ -1294,7 +1125,10 @@ public class NodeUniverseManager extends DevopsBase {
     Map<String, Long> nodeFilePathSizeMap = new LinkedHashMap<>();
     try {
       nodeFilePathStrings = Files.readAllLines(Paths.get(localTempFilePath));
-      log.debug("List of files found on the node '{}': '{}'", node.nodeName, nodeFilePathStrings);
+      log.debug(
+          "List of files found on the node '{}': '{}'",
+          nodeUniverseContext.getNode().nodeName,
+          nodeFilePathStrings);
       for (String outputLine : nodeFilePathStrings) {
         String[] outputLineSplit = outputLine.split("\\s+", 2);
         if (!StringUtils.isBlank(outputLine) && outputLineSplit.length == 2) {

@@ -41,6 +41,7 @@ import com.yugabyte.yw.common.LocalNodeManager;
 import com.yugabyte.yw.common.LocalNodeUniverseManager;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeUIApiHelper;
+import com.yugabyte.yw.common.NodeUniverseYsqlContext;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.RetryTaskUntilCondition;
@@ -1089,6 +1090,37 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
         universe.getUniverseDetails().getPrimaryCluster().userIntent.isYSQLAuthEnabled());
   }
 
+  /** YSQL context without auth, as the former local-manager overload without a flag assumed. */
+  protected static NodeUniverseYsqlContext ysqlContext(
+      Universe universe, NodeDetails node, long timeoutSec) {
+    return ysqlContext(universe, node, timeoutSec, false);
+  }
+
+  protected static NodeUniverseYsqlContext ysqlContext(
+      Universe universe, NodeDetails node, long timeoutSec, boolean authEnabled) {
+    return NodeUniverseYsqlContext.builder()
+        .universe(universe)
+        .node(node)
+        .authEnabled(authEnabled)
+        .build()
+        .withTimeout(timeoutSec);
+  }
+
+  protected static NodeUniverseYsqlContext ysqlContext(
+      Universe universe,
+      NodeDetails node,
+      long timeoutSec,
+      boolean authEnabled,
+      boolean cpEnabled) {
+    return NodeUniverseYsqlContext.builder()
+        .universe(universe)
+        .node(node)
+        .authEnabled(authEnabled)
+        .cpEnabled(cpEnabled)
+        .build()
+        .withTimeout(timeoutSec);
+  }
+
   protected void initYSQL(
       Universe universe, String tableName, String tablespace, boolean authEnabled) {
     NodeDetails nodeDetails =
@@ -1118,22 +1150,19 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
         () -> {
           ShellResponse createResponse =
               localNodeUniverseManager.runYsqlCommand(
-                  nodeDetails, universe, YUGABYTE_DB, createCommand, 10, authEnabled);
+                  ysqlContext(universe, nodeDetails, 10, authEnabled), YUGABYTE_DB, createCommand);
           if (!createResponse.isSuccess()) {
             throw new RuntimeException(createResponse.getMessage());
           }
         });
     ShellResponse response =
         localNodeUniverseManager.runYsqlCommand(
-            nodeDetails,
-            universe,
+            ysqlContext(universe, nodeDetails, 10, authEnabled),
             YUGABYTE_DB,
             String.format(
                 "insert into %s values (1, 'John', 20), "
                     + "(2, 'Mary', 18), (10000, 'Stephen', 50)",
-                tableName),
-            10,
-            authEnabled);
+                tableName));
     assertTrue(response.isSuccess());
   }
 
@@ -1189,13 +1218,9 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
             .get();
     ShellResponse response =
         localNodeUniverseManager.runYsqlCommand(
-            nodeDetails,
-            universe,
+            ysqlContext(universe, nodeDetails, 10, authEnabled, cpEnabled),
             dbName,
-            String.format("select count(*) from %s", tableName),
-            10,
-            authEnabled,
-            cpEnabled);
+            String.format("select count(*) from %s", tableName));
     assertTrue(response.isSuccess());
     assertEquals("3", CommonUtils.extractJsonisedSqlResponse(response).trim());
     // Check universe sequence and DB sequence number

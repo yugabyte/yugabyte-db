@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTableSpaces;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
 import com.yugabyte.yw.common.NodeUniverseManager;
+import com.yugabyte.yw.common.NodeUniverseYsqlContext;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableSpaceStructures;
@@ -539,7 +540,8 @@ public class UniverseTableHandler {
     final String fetchTablespaceQuery =
         "select jsonb_agg(t) from (select spcname, spcoptions from pg_catalog.pg_tablespace) as t";
     ShellResponse shellResponse =
-        nodeUniverseManager.runYsqlCommand(nodeToUse, universe, "postgres", fetchTablespaceQuery);
+        nodeUniverseManager.runYsqlCommand(
+            NodeUniverseYsqlContext.of(universe, nodeToUse), "postgres", fetchTablespaceQuery);
     if (!shellResponse.isSuccess()) {
       LOG.warn(
           "Attempt to fetch tablespace info via node {} failed, response {}:{}",
@@ -754,7 +756,7 @@ public class UniverseTableHandler {
     NodeDetails randomTServer = CommonUtils.getARandomLiveTServer(universe);
     ShellResponse shellResponse =
         nodeUniverseManager.runYsqlCommand(
-            randomTServer, universe, dbName, fetchPartitionDataQuery);
+            NodeUniverseYsqlContext.of(universe, randomTServer), dbName, fetchPartitionDataQuery);
     if (!shellResponse.isSuccess()) {
       LOG.warn(
           "Attempt to fetch table partition info for db {} via node {} failed, response {}:{}",

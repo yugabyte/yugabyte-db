@@ -44,54 +44,15 @@ public class LocalNodeUniverseManager {
   @Inject YcqlQueryExecutor ycqlQueryExecutor;
 
   public ShellResponse runYsqlCommand(
-      NodeDetails node, Universe universe, String dbName, String ysqlCommand, long timeoutSec) {
-    return runYsqlCommand(node, universe, dbName, ysqlCommand, timeoutSec, false);
-  }
-
-  public ShellResponse runYsqlCommand(
-      NodeDetails node,
-      Universe universe,
-      String dbName,
-      String ysqlCommand,
-      long timeoutSec,
-      boolean authEnabled) {
-    return runYsqlCommand(
-        node,
-        universe,
-        dbName,
-        ysqlCommand,
-        timeoutSec,
-        authEnabled,
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling);
-  }
-
-  public ShellResponse runYsqlCommand(
-      NodeDetails node,
-      Universe universe,
-      String dbName,
-      String ysqlCommand,
-      long timeoutSec,
-      boolean authEnabled,
-      boolean cpEnabled) {
-    return runYsqlCommand(
-        node, universe, dbName, ysqlCommand, timeoutSec, authEnabled, cpEnabled, true);
-  }
-
-  public ShellResponse runYsqlCommand(
-      NodeDetails node,
-      Universe universe,
-      String dbName,
-      String ysqlCommand,
-      long timeoutSec,
-      boolean authEnabled,
-      boolean cpEnabled,
-      boolean logCmdOutput) {
+      NodeUniverseYsqlContext context, String dbName, String ysqlCommand) {
+    Universe universe = context.getUniverse();
+    NodeDetails node = context.getNode();
     UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
     LocalCloudInfo cloudInfo = LocalNodeManager.getCloudInfo(node, universe);
     List<String> bashCommand = new ArrayList<>();
     bashCommand.add(cloudInfo.getYugabyteBinDir() + "/ysqlsh");
     bashCommand.add("-h");
-    if (authEnabled) {
+    if (context.isAuthEnabled()) {
       String customTmpDirectory = getTmpDir(node, universe);
       log.debug("customTmpDirectory {}", customTmpDirectory);
       bashCommand.add(
@@ -99,12 +60,12 @@ public class LocalNodeUniverseManager {
               "%s/.yb.%s:%s",
               customTmpDirectory,
               node.cloudInfo.private_ip,
-              cpEnabled ? node.internalYsqlServerRpcPort : node.ysqlServerRpcPort));
+              context.isCpEnabled() ? node.internalYsqlServerRpcPort : node.ysqlServerRpcPort));
     } else {
       bashCommand.add(node.cloudInfo.private_ip);
     }
     bashCommand.add("-p");
-    if (cpEnabled) {
+    if (context.isCpEnabled()) {
       bashCommand.add(String.valueOf(node.internalYsqlServerRpcPort));
     } else {
       bashCommand.add(String.valueOf(node.ysqlServerRpcPort));
@@ -129,13 +90,13 @@ public class LocalNodeUniverseManager {
       processBuilder.environment().put("sslmode", "require");
     }
     try {
-      if (logCmdOutput) {
+      if (context.isLogCmdOutput()) {
         log.debug("Running command {}", String.join(" ", bashCommand));
       } else {
         log.debug("Running YSQL command on node {}", node.nodeName);
       }
       Process process = processBuilder.start();
-      long timeOut = timeoutSec * 1000;
+      long timeOut = context.getShellProcessContext().getTimeoutSecs() * 1000;
       while (process.isAlive() && timeOut > 0) {
         Thread.sleep(50);
         timeOut -= 50;

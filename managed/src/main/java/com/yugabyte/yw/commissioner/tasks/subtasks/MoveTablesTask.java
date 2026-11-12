@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.google.api.client.util.Throwables;
 import com.google.common.collect.ArrayListMultimap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.common.NodeUniverseYsqlContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableSpaceStructures;
 import com.yugabyte.yw.common.TableSpaceUtil;
@@ -159,7 +160,8 @@ public class MoveTablesTask extends BaseTablespacesTask {
 
             String query = String.format(DropTablespacesTask.SQL, names.getFirst());
             nodeUniverseManager
-                .runYsqlCommand(randomTserver, universe, TableSpaceUtil.DB, query)
+                .runYsqlCommand(
+                    NodeUniverseYsqlContext.of(universe, randomTserver), TableSpaceUtil.DB, query)
                 .processErrors();
 
             stepsForPartition.remove(step);
@@ -237,7 +239,8 @@ public class MoveTablesTask extends BaseTablespacesTask {
       String query = String.format(SQL_ALL, from, to);
 
       nodeUniverseManager
-          .runYsqlCommand(randomTserver, universe, Util.YUGABYTE_DB, query)
+          .runYsqlCommand(
+              NodeUniverseYsqlContext.of(universe, randomTserver), Util.YUGABYTE_DB, query)
           .processErrors();
     } else {
       Set<String> tables =
@@ -251,7 +254,8 @@ public class MoveTablesTask extends BaseTablespacesTask {
         String query = String.format(SQL, table, to);
 
         nodeUniverseManager
-            .runYsqlCommand(randomTserver, universe, Util.YUGABYTE_DB, query)
+            .runYsqlCommand(
+                NodeUniverseYsqlContext.of(universe, randomTserver), Util.YUGABYTE_DB, query)
             .processErrors();
       }
     }
@@ -283,7 +287,10 @@ public class MoveTablesTask extends BaseTablespacesTask {
     String createTablespaceQuery = CreateTableSpaces.getTablespaceCreationQuery(tableSpaceInfo);
     ShellResponse response =
         nodeUniverseManager
-            .runYsqlCommand(nodeDetails, universe, TableSpaceUtil.DB, createTablespaceQuery)
+            .runYsqlCommand(
+                NodeUniverseYsqlContext.of(universe, nodeDetails),
+                TableSpaceUtil.DB,
+                createTablespaceQuery)
             .processErrors();
     log.debug("Tablespace creation response is {}", response.message);
   }

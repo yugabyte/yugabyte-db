@@ -276,13 +276,9 @@ public class NodeOperationsLocalTest extends LocalProviderUniverseTestBase {
 
     ShellResponse response =
         localNodeUniverseManager.runYsqlCommand(
-            nodeDetails,
-            universe,
+            ysqlContext(universe, nodeDetails, 20, userIntent.isYSQLAuthEnabled(), false),
             YUGABYTE_DB,
-            createTblSpace,
-            20,
-            userIntent.isYSQLAuthEnabled(),
-            false);
+            createTblSpace);
     assertTrue("Message is " + response.getMessage(), response.isSuccess());
     initYSQL(universe, "table_in_az_geo", "az1_tablespace");
 

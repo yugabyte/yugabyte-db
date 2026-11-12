@@ -9,6 +9,7 @@ import com.google.common.collect.Multimap;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.common.NodeUniverseYsqlContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableSpaceStructures;
 import com.yugabyte.yw.common.TableSpaceUtil;
@@ -131,8 +132,7 @@ public abstract class BaseTablespacesTask extends UniverseTaskBase {
             ShellResponse shellResponse =
                 nodeUniverseManager
                     .runYsqlCommand(
-                        randomTserver,
-                        universe,
+                        NodeUniverseYsqlContext.of(universe, randomTserver),
                         "yugabyte",
                         TableSpaceUtil.FETCH_TABLES_WITH_TABLESPACES_QUERY)
                     .processErrors();

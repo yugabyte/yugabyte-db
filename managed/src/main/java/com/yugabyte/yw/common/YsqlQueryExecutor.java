@@ -17,7 +17,6 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.forms.DatabaseSecurityFormData;
 import com.yugabyte.yw.forms.DatabaseUserDropFormData;
@@ -206,76 +205,21 @@ public class YsqlQueryExecutor {
 
   public JsonNode executeQueryInNodeShell(
       Universe universe, RunQueryFormData queryParams, NodeDetails node, long timeoutSec) {
-
     return executeQueryInNodeShell(
-        universe,
-        queryParams,
-        node,
-        timeoutSec,
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.isYSQLAuthEnabled());
-  }
-
-  public JsonNode executeQueryInNodeShell(
-      Universe universe,
-      RunQueryFormData queryParams,
-      NodeDetails node,
-      long timeoutSec,
-      boolean authEnabled) {
-    return executeQueryInNodeShell(
-        universe,
-        queryParams,
-        node,
-        timeoutSec,
-        authEnabled,
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling);
-  }
-
-  public JsonNode executeQueryInNodeShell(
-      Universe universe,
-      RunQueryFormData queryParams,
-      NodeDetails node,
-      boolean authEnabled,
-      boolean cpEnabled) {
-    return executeQueryInNodeShell(
-        universe,
-        queryParams,
-        node,
-        runtimeConfigFactory.forUniverse(universe).getLong("yb.ysql_timeout_secs"),
-        authEnabled,
-        cpEnabled);
-  }
-
-  public JsonNode executeQueryInNodeShell(
-      Universe universe,
-      RunQueryFormData queryParams,
-      NodeDetails node,
-      long timeoutSec,
-      boolean authEnabled,
-      boolean cpEnabled) {
-    return executeQueryInNodeShell(
-        universe, queryParams, node, timeoutSec, authEnabled, cpEnabled, true);
+        NodeUniverseYsqlContext.of(universe, node).withTimeout(timeoutSec), queryParams);
   }
 
   public JsonNode executeQueryInNodeShell(
       Universe universe, RunQueryFormData queryParams, NodeDetails node, boolean logCmdOutput) {
     return executeQueryInNodeShell(
-        universe,
-        queryParams,
-        node,
-        runtimeConfigFactory.forUniverse(universe).getLong("yb.ysql_timeout_secs"),
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.isYSQLAuthEnabled(),
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling,
-        logCmdOutput);
+        NodeUniverseYsqlContext.of(universe, node)
+            .withTimeout(runtimeConfigFactory.forUniverse(universe).getLong("yb.ysql_timeout_secs"))
+            .withLogCmdOutput(logCmdOutput),
+        queryParams);
   }
 
   public JsonNode executeQueryInNodeShell(
-      Universe universe,
-      RunQueryFormData queryParams,
-      NodeDetails node,
-      long timeoutSec,
-      boolean authEnabled,
-      boolean cpEnabled,
-      boolean logCmdOutput) {
+      NodeUniverseYsqlContext context, RunQueryFormData queryParams) {
     ObjectNode response = newObject();
     response.put("type", "ysql");
     String queryType = getQueryType(queryParams.getQuery());
@@ -285,15 +229,7 @@ public class YsqlQueryExecutor {
     try {
       shellResponse =
           nodeUniverseManager
-              .runYsqlCommand(
-                  node,
-                  universe,
-                  queryParams.getDbName(),
-                  queryString,
-                  timeoutSec,
-                  authEnabled,
-                  cpEnabled,
-                  logCmdOutput)
+              .runYsqlCommand(context, queryParams.getDbName(), queryString)
               .processErrors("Ysql Query Execution Error");
     } catch (RuntimeException e) {
       response.put("error", ShellResponse.cleanedUpErrorMessage(e.getMessage()));
@@ -318,57 +254,7 @@ public class YsqlQueryExecutor {
   }
 
   public JsonNode executeQueryBatchInNodeShell(
-      Universe universe, String dbName, List<String> queries, NodeDetails node) {
-    var intent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-    return executeQueryBatchInNodeShell(
-        universe,
-        dbName,
-        queries,
-        node,
-        confGetter.getConfForScope(universe, UniverseConfKeys.ysqlTimeoutSecs),
-        intent.isYSQLAuthEnabled(),
-        intent.enableConnectionPooling);
-  }
-
-  public JsonNode executeQueryBatchInNodeShell(
-      Universe universe,
-      String dbName,
-      List<String> queries,
-      NodeDetails node,
-      boolean logCmdOutput) {
-    var intent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-    return executeQueryBatchInNodeShell(
-        universe,
-        dbName,
-        queries,
-        node,
-        confGetter.getConfForScope(universe, UniverseConfKeys.ysqlTimeoutSecs),
-        intent.isYSQLAuthEnabled(),
-        intent.enableConnectionPooling,
-        logCmdOutput);
-  }
-
-  public JsonNode executeQueryBatchInNodeShell(
-      Universe universe,
-      String dbName,
-      List<String> queries,
-      NodeDetails node,
-      long timeoutSec,
-      boolean authEnabled,
-      boolean cpEnabled) {
-    return executeQueryBatchInNodeShell(
-        universe, dbName, queries, node, timeoutSec, authEnabled, cpEnabled, true);
-  }
-
-  public JsonNode executeQueryBatchInNodeShell(
-      Universe universe,
-      String dbName,
-      List<String> queries,
-      NodeDetails node,
-      long timeoutSec,
-      boolean authEnabled,
-      boolean cpEnabled,
-      boolean logCmdOutput) {
+      NodeUniverseYsqlContext context, String dbName, List<String> queries) {
 
     ObjectNode response = newObject();
     response.put("type", "ysql");
@@ -380,8 +266,7 @@ public class YsqlQueryExecutor {
     try {
       shellResponse =
           nodeUniverseManager
-              .runYsqlBatchCommands(
-                  node, universe, dbName, queries, timeoutSec, authEnabled, cpEnabled, logCmdOutput)
+              .runYsqlBatchCommands(context, dbName, queries)
               .processErrors("YSQL query batch execution error");
       response.put("result", shellResponse.message);
     } catch (RuntimeException e) {

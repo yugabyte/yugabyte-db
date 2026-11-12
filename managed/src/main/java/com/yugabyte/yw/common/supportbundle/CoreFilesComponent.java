@@ -5,6 +5,7 @@ package com.yugabyte.yw.common.supportbundle;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
@@ -120,7 +121,7 @@ class CoreFilesComponent implements SupportBundleComponent {
     // Get and filter the core files list based on the 2 params given in the request body.
     Map<String, Long> fileNameSizeMap =
         nodeUniverseManager.getNodeFilePathsAndSizeWithinDates(
-            node, universe, coresDir, startDate, endDate);
+            NodeUniverseContext.of(universe, node), coresDir, startDate, endDate);
     fileNameSizeMap =
         filterFirstNEntries(
             fileNameSizeMap, bundleData.maxNumRecentCores, bundleData.maxCoreFileSize);

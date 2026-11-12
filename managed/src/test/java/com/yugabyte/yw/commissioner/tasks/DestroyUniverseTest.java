@@ -182,11 +182,10 @@ public class DestroyUniverseTest extends UniverseModifyBaseTest {
       mockLocaleCheckResponse(mockNodeUniverseManager);
       doAnswer(inv -> Json.newObject())
           .when(mockYsqlQueryExecutor)
-          .executeQueryInNodeShell(any(), any(), any(), anyBoolean(), anyBoolean());
+          .executeQueryInNodeShell(any(), any(), any());
       ShellResponse successResponse = new ShellResponse();
       successResponse.message = "Command output:\nCREATE TABLE";
-      when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), (any()), anyBoolean()))
-          .thenReturn(successResponse);
+      when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any())).thenReturn(successResponse);
       when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
       when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
       IsServerReadyResponse mockServerReadyResponse = mock(IsServerReadyResponse.class);

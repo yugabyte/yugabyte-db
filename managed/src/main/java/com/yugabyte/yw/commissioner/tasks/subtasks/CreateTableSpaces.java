@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.common.NodeUniverseYsqlContext;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableSpaceStructures.PlacementBlock;
@@ -124,7 +125,10 @@ public class CreateTableSpaces extends BaseTablespacesTask {
           String createTablespaceQuery = getTablespaceCreationQuery(tsi);
           ShellResponse response =
               nodeUniverseManager
-                  .runYsqlCommand(randomTServer, universe, TableSpaceUtil.DB, createTablespaceQuery)
+                  .runYsqlCommand(
+                      NodeUniverseYsqlContext.of(universe, randomTServer),
+                      TableSpaceUtil.DB,
+                      createTablespaceQuery)
                   .processErrors();
 
           if (!response.isSuccess()

@@ -32,6 +32,7 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUniverseContext;
+import com.yugabyte.yw.common.NodeUniverseYsqlContext;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
@@ -284,7 +285,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
                 return res;
               })
           .when(mockYsqlQueryExecutor)
-          .executeQueryInNodeShell(any(), any(), any(), anyBoolean(), anyBoolean());
+          .executeQueryInNodeShell(any(NodeUniverseYsqlContext.class), any());
       // Mock for CheckNodeCommandExecution - specific command only
       lenient()
           .when(

@@ -127,10 +127,6 @@ public class YSQLComponent implements SupportBundleComponent {
         spec.getTimeoutSecs() > 0
             ? spec.getTimeoutSecs()
             : SupportBundleV2ManifestSpecBuilder.DEFAULT_QUERY_TIMEOUT_SECS;
-    boolean authEnabled =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.isYSQLAuthEnabled();
-    boolean cpEnabled =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling;
 
     StringBuilder output = new StringBuilder();
     output.append("node=").append(node.getNodeName()).append('\n');
@@ -139,15 +135,7 @@ public class YSQLComponent implements SupportBundleComponent {
 
     ShellResponse response =
         cgroupCommandExecutor.runYsqlQueries(
-            bundleUuid,
-            node,
-            universe,
-            dbName,
-            spec.getQueries(),
-            timeoutSecs,
-            authEnabled,
-            cpEnabled,
-            componentLabel);
+            bundleUuid, node, universe, dbName, spec.getQueries(), timeoutSecs, componentLabel);
     output.append(response.getMessage()).append('\n');
 
     String outputFileName =
