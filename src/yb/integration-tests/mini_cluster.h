@@ -423,6 +423,12 @@ Result<std::vector<tablet::TabletPeerPtr>> ListTabletPeersForTableName(
     MiniCluster* cluster, const std::string& table_name,
     ListPeersFilter filter = ListPeersFilter::kAll);
 
+// Waits until ListTabletPeersForTableName returns num_peers peers and returns them.
+// A replica is listed only after it applies the table's creation, so followers may lag.
+Result<std::vector<tablet::TabletPeerPtr>> WaitForTableNumPeers(
+    MiniCluster* cluster, const std::string& table_name, size_t num_peers, MonoDelta timeout,
+    ListPeersFilter filter = ListPeersFilter::kAll);
+
 Result<std::vector<tablet::TabletPtr>> ListTabletsForTableName(
     MiniCluster* cluster, const std::string& table_name,
     ListPeersFilter filter = ListPeersFilter::kAll);
