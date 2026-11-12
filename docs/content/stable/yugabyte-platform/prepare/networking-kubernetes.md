@@ -48,15 +48,7 @@ To enable MCS on your GKE clusters, see [Configuring multi-cluster Services](htt
 
 ### Prepare OpenShift clusters for MCS
 
-Red Hat OpenShift Container Platform uses the Advanced Cluster Management for Kubernetes (RHACM) and its Submariner add-on to enable MCS. At a very high level this involves following steps:
-
-Create a management cluster and install RHACM on it. For details, see [Installing Red Hat Advanced Cluster Management for Kubernetes](https://access.redhat.com/documentation/en-us/red_hat_advanced_cluster_management_for_kubernetes/2.1/html/install/installing) in the Red Hat documentation.
-
-Provision the OpenShift clusters which will be connected together. Ensure that the CIDRs mentioned in the cluster configuration file at networking.clusterNetwork, networking.serviceNetwork, and networking.machineNetwork are non-overlapping across the multiple clusters. You can find more details about these options in provider-specific sections under the OpenShift Container Platform installation overview (look for sections named "Installing a cluster on [provider name] with customizations").
-
-Import the clusters into RHACM as a cluster set, and install the Submariner add-on on them. For more information, see [Configuring Submariner](https://access.redhat.com/documentation/en-us/red_hat_advanced_cluster_management_for_kubernetes/2.7/html/add-ons/add-ons-overview#configuring-submariner).
-
-Note down the cluster names from the cluster set, as these will be used during the cloud provider setup in YBA.
+To prepare OpenShift clusters for MCS, follow [Prepare OpenShift clusters for MCS](../configure-yugabyte-platform/openshift/#prepare-openshift-clusters-for-mcs).
 
 ### Prepare Istio service mesh-based clusters for MCS
 

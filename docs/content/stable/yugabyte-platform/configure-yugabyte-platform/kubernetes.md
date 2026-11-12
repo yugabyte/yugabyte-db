@@ -457,13 +457,7 @@ To enable MCS on your GKE clusters, see [Configuring multi-cluster Services](htt
 
 ### Prepare OpenShift clusters for MCS
 
-Red Hat OpenShift Container Platform uses the Advanced Cluster Management for Kubernetes (RHACM) and its Submariner add-on to enable MCS. At a very high level this involves following steps:
-
-1. Create a management cluster and install RHACM on it. For details, see [Installing Red Hat Advanced Cluster Management for Kubernetes](https://access.redhat.com/documentation/en-us/red_hat_advanced_cluster_management_for_kubernetes/2.7/html/install/installing) in the Red Hat documentation.
-1. Provision the OpenShift clusters which will be connected together.
-   Ensure that the CIDRs mentioned in the cluster configuration file at `networking.clusterNetwork`, `networking.serviceNetwork`, and `networking.machineNetwork` are non-overlapping across the multiple clusters. You can find more details about these options in provider-specific sections under the [OpenShift Container Platform installation overview](https://docs.openshift.com/container-platform/4.11/installing/index.html) (look for sections named "Installing a cluster on [provider name] with customizations").
-1. Import the clusters into RHACM as a cluster set, and install the Submariner add-on on them. For more information, see [Configuring Submariner](https://access.redhat.com/documentation/en-us/red_hat_advanced_cluster_management_for_kubernetes/2.7/html/add-ons/add-ons-overview#configuring-submariner).
-1. Note down the cluster names from the cluster set, as these will be used during the cloud provider setup in YBA.
+To prepare OpenShift clusters for MCS, follow [Prepare OpenShift clusters for MCS](../openshift/#prepare-openshift-clusters-for-mcs).
 
 ### Prepare Kubernetes clusters for Istio multicluster
 
@@ -514,31 +508,7 @@ For example, if your cluster membership name is `yb-asia-south1`, then the **Add
 
 #### Configure region and zones for OpenShift MCS
 
-Follow the instructions in [Create OpenShift provider configuration](../openshift/) and [Create a provider](#create-a-provider). For all the zones from your OpenShift clusters connected via MCS (Submariner), add a region as follows:
-
-1. Specify fields such as Region, Zone, and so on as you would normally.
-1. Set the **Cluster DNS Domain** to `clusterset.local`.
-1. Upload the correct **Kube Config** of the cluster.
-1. Set the **Pod Address Template** to `{pod_name}.<cluster name>.{service_name}.{namespace}.svc.{cluster_domain}`, where the `<cluster name>` is the name of the OpenShift cluster set during the cluster set creation.
-1. Set the **Overrides** as follows:
-
-   ```yaml
-   multicluster:
-     createServiceExports: true
-     kubernetesClusterId: "<cluster name>"
-   ```
-
-For example, if your cluster name is `yb-asia-south1`, then the values will be as follows:
-
-- **Pod Address Template**
-  `{pod_name}.yb-asia-south1.{service_name}.{namespace}.svc.{cluster_domain}`
-- **Overrides**
-
-  ```yaml
-  multicluster:
-    createServiceExports: true
-    kubernetesClusterId: "yb-asia-south1"
-  ```
+To configure regions and zones for OpenShift clusters connected via MCS, follow [Configure region and zones for OpenShift MCS](../openshift/#configure-region-and-zones-for-openshift-mcs).
 
 #### Configure region and zones for Istio
 
