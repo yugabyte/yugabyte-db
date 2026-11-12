@@ -21,6 +21,7 @@
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 #include "yb/master/master.h"
 #include "yb/master/master_tserver.h"
+#include "yb/master/sys_catalog_constants.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/flags.h"
 #include "yb/util/test_macros.h"
@@ -7636,6 +7637,43 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestReleaseAndExpirePausedPubRefr
       Format("$0 (it wasn't paused", kSlotName));
   ASSERT_NOK_STR_CONTAINS(
       InitVirtualWALOnce(stream_id, table.table_id(), kVWALSessionId1), "is unusable");
+}
+
+// A converted slot whose consumer resumes after cdc_intent_retention_ms fails VWAL init, on the
+// user tablets idle since the pause and on the sys catalog tablet idle since prepare.
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConvertedSlotExpiresIfConsumerResumesLate) {
+  ToggleDDLMode(/* use_legacy = */ false);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_cleanup_of_expired_table_entries) = false;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false, true));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName, 1));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  constexpr auto kSlotName = "paused_slot";
+  const auto stream_id = ASSERT_RESULT(CreatePubRefreshSlot(kSlotName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+
+  ASSERT_OK(SetBarrierAndPause(kSlotName, stream_id, table.table_id(), &conn, 1));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
+  ASSERT_STR_CONTAINS(
+      ASSERT_RESULT(PrepareReplicationSlotsForTransactionalDDL(
+          test_cluster()->GetMasterAddresses(), kSlotName)),
+      Format("Prepared replication slots for transactional DDL: [$0]", kSlotName));
+
+  const auto retention = MonoDelta::FromSeconds(5) * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = retention.ToMilliseconds();
+  SleepFor(retention + 1s);
+  ASSERT_NOK_STR_CONTAINS(
+      InitVirtualWALOnce(stream_id, table.table_id(), kVWALSessionId1), "has been unqualified");
+
+  cdc::CDCStateTableEntry entry(tablets[0].tablet_id(), stream_id);
+  entry.active_time = GetCurrentTimeMicros();
+  ASSERT_OK(MakeCDCStateTable(test_client()).UpdateEntries({entry}));
+  ASSERT_NOK_STR_CONTAINS(
+      InitVirtualWALOnce(stream_id, table.table_id(), kVWALSessionId1),
+      Format("Cannot add tablet: $0", master::kSysCatalogTabletId));
 }
 
 // The walsender reads the catalog within the transaction of each record. Intents of a
