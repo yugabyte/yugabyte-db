@@ -898,6 +898,10 @@ impl TableLifecycle {
                 } else {
                     req.namespace_id().to_vec()
                 };
+                self.creating_databases
+                    .lock()
+                    .unwrap()
+                    .insert((token.term(), id.clone()));
                 let previous = snapshot
                     .get(SysRowEntryType::NAMESPACE, &id)
                     .and_then(|e| e.parse::<SysNamespaceEntryPB>().ok());
@@ -969,6 +973,11 @@ impl TableLifecycle {
                 );
                 let _ = lifecycle.set_namespace_state(&token, &id, false).await;
             }
+            lifecycle
+                .creating_databases
+                .lock()
+                .unwrap()
+                .remove(&(token.term(), id));
         });
         Ok(())
     }
@@ -1060,6 +1069,60 @@ impl TableLifecycle {
         .await?;
         tracing::info!("Activated YSQL database {name}");
         Ok(())
+    }
+
+    /// What C++'s namespace loader does with a YSQL database whose creation a leader change
+    /// interrupted (PREPARING) or that failed: DELETING, so the drop pass removes what was made of
+    /// it. PG never committed it, so no client can see or drop it. A database whose next major
+    /// version catalog was being made (`NEXT_VER_PREPARING`) is left to the major upgrade.
+    pub(crate) async fn fail_interrupted_ysql_databases(
+        &self,
+        token: &LeaderToken,
+    ) -> Result<(), MasterErrorPB> {
+        let deadline = Instant::now() + std::time::Duration::from_secs(60);
+        let creating: std::collections::HashSet<Vec<u8>> = self
+            .creating_databases
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(term, _)| *term == token.term())
+            .map(|(_, id)| id.clone())
+            .collect();
+        self.write(token, deadline, |snapshot| {
+            let mut mutation = Mutation::new();
+            for namespace in snapshot.iter(SysRowEntryType::NAMESPACE) {
+                let Some(hot) = namespace.namespace() else {
+                    continue;
+                };
+                if hot.database_type != YQLDatabase::YQL_DATABASE_PGSQL as i32 {
+                    continue;
+                }
+                let interrupted = hot.state == sys_namespace_entry_pb::State::FAILED as i32
+                    || (hot.state == sys_namespace_entry_pb::State::PREPARING as i32
+                        && !creating.contains(&*namespace.key.id));
+                if !interrupted {
+                    continue;
+                }
+                let mut ns: SysNamespaceEntryPB = namespace.parse().map_err(corrupt)?;
+                if ns.ysql_next_major_version_state()
+                    == sys_namespace_entry_pb::YsqlNextMajorVersionState::NEXT_VER_PREPARING
+                {
+                    continue;
+                }
+                tracing::info!(
+                    "Transitioning failed YSQL database {} (state {:?}) to DELETING",
+                    String::from_utf8_lossy(&namespace.key.id),
+                    ns.state()
+                );
+                ns.set_state(sys_namespace_entry_pb::State::DELETING);
+                mutation = mutation
+                    .read(namespace)
+                    .upsert_message(SysRowEntryType::NAMESPACE, &namespace.key.id, &ns)
+                    .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+            }
+            Ok((mutation, ()))
+        })
+        .await
     }
 
     /// Marks a PREPARING namespace RUNNING or FAILED.

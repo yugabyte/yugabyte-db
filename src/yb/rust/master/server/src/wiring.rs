@@ -26,10 +26,12 @@ use master_cluster_balancer::Options as BalancerOptions;
 use master_leadership::{Leadership, Phase};
 use master_rpc_handlers::{LeaderServices, MasterInfo};
 use master_sys_catalog::{ApplyEvents, SysCatalogStore};
-use master_table_lifecycle::TransactionTableController;
 use master_table_lifecycle::{
     ColocatedTableAdder, FlushOptions, Flushes, LifecycleOptions, SchemaHost, TableAlterer,
     TableDeleter, TableLifecycle, TabletAssigner, TabletRpc, TruncateOptions, Truncates,
+};
+use master_table_lifecycle::{
+    TransactionTableController, YsqlSystemTablesController, YsqlSystemTablesOptions,
 };
 use master_tablet_split_manager::{
     AutoSplitOptions, SplitController, SplitOptions, TabletSplitManager,
@@ -42,6 +44,7 @@ use master_ts_manager::{
     DeleteReplica, HeartbeatContributor, LocationStream, Peer, TsManager, TsManagerOptions,
 };
 use master_ysql_manager::backends::{BackendsOptions, YsqlBackends};
+use master_ysql_manager::catalog_versions::{CatalogVersionsController, CatalogVersionsOptions};
 use master_ysql_manager::initdb;
 use master_ysql_manager::lease::{LeaseExpiryController, LeaseOptions, YsqlLeases};
 use master_ysql_manager::locks::{LockOptions, ObjectLocks};
@@ -150,6 +153,14 @@ static LB_MIN_INBOUND_RBS: FlagRef<i32> =
 static RBS_RATE_LIMIT: FlagRef<i64> = FlagRef::new("remote_bootstrap_rate_limit_bytes_per_sec");
 static AUTO_SPLIT: FlagRef<bool> = FlagRef::new("enable_automatic_tablet_splitting");
 static ENABLE_YSQL: FlagRef<bool> = FlagRef::new("enable_ysql");
+static ENABLE_HEARTBEAT_PG_CATALOG_VERSIONS_CACHE: FlagRef<bool> =
+    FlagRef::new("enable_heartbeat_pg_catalog_versions_cache");
+static NUM_ADVISORY_LOCKS_TABLETS: FlagRef<u32> = FlagRef::new("num_advisory_locks_tablets");
+static YSQL_ENABLE_AUTO_ANALYZE_INFRA: FlagRef<bool> =
+    FlagRef::new("ysql_enable_auto_analyze_infra");
+static HEARTBEAT_INTERVAL_MS: FlagRef<i32> = FlagRef::new("heartbeat_interval_ms");
+static PG_CATALOG_VERSIONS_CACHE_RETRY_MS: FlagRef<i32> =
+    FlagRef::new("pg_catalog_versions_cache_retry_ms");
 static PAUSE_BG_LOOP_START: FlagRef<bool> =
     FlagRef::new("TEST_pause_catalog_manager_bg_loop_start");
 static PAUSE_BG_LOOP_END: FlagRef<bool> = FlagRef::new("TEST_pause_catalog_manager_bg_loop_end");
@@ -547,6 +558,7 @@ impl Core {
                 Duration::from_secs(BLACKLIST_PROGRESS_INITIAL_DELAY_SECS.get().max(0) as u64)
             },
             delay_leader_blacklist_completion: || DELAY_LEADER_BLACKLIST_COMPLETION.get(),
+            ysql_major_version: ENABLE_YSQL.get().then(|| defaults.ysql_major_version()),
         });
 
         // Ready only once the catalog reflects everything committed before the election: the
@@ -732,9 +744,42 @@ fn start_term(
         LeaseExpiryController::new(leader.leases.clone(), leader.locks.clone()),
         watch::channel(0).1,
     );
+    if ENABLE_YSQL.get() {
+        run_controller(
+            scope,
+            CatalogVersionsController::new(
+                host.clone(),
+                leader.leadership.clone(),
+                CatalogVersionsOptions {
+                    enabled: || ENABLE_HEARTBEAT_PG_CATALOG_VERSIONS_CACHE.get(),
+                    interval: || millis((HEARTBEAT_INTERVAL_MS.get() / 2).max(1)),
+                    retry: || millis(PG_CATALOG_VERSIONS_CACHE_RETRY_MS.get().max(1)),
+                },
+            ),
+            watch::channel(0).1,
+        );
+    }
     run_controller(
         scope,
         TransactionTableController::new(leader.tables.clone()),
+        leader.ts_manager.subscribe(),
+    );
+    let ysql_major_version = leader.ysql_major_version;
+    run_controller(
+        scope,
+        YsqlSystemTablesController::new(
+            leader.tables.clone(),
+            YsqlSystemTablesOptions {
+                num_advisory_locks_tablets: || NUM_ADVISORY_LOCKS_TABLETS.get(),
+                auto_analyze: || YSQL_ENABLE_AUTO_ANALYZE_INFRA.get(),
+            },
+            Arc::new(move |snapshot| {
+                master_ysql_manager::upgrade::major_upgrade_in_progress(
+                    snapshot,
+                    ysql_major_version,
+                )
+            }),
+        ),
         leader.ts_manager.subscribe(),
     );
     let enabled_leader = leader.clone();

@@ -103,11 +103,14 @@
 #include "yb/rpc/poller.h"
 
 #include "yb/util/crypt.h"
+#include "yb/util/enum_parse.h"
 #include "yb/util/flags.h"
+#include "yb/util/flags/auto_flags.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/oid_generator.h"
+#include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
@@ -132,6 +135,8 @@ DECLARE_bool(enable_db_history_retention_pins);
 DECLARE_bool(enable_leader_failure_detection);
 DECLARE_int64(inbound_rpc_memory_limit);
 DECLARE_string(initial_sys_catalog_snapshot_path);
+DECLARE_bool(skip_tserver_version_checks);
+DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
 DECLARE_int32(master_consensus_svc_queue_length);
 DECLARE_bool(master_join_existing_universe);
 DECLARE_int32(send_wait_for_report_interval_ms);
@@ -219,6 +224,50 @@ rust::Vec<uint8_t> HandleRequest(rust::Slice<const uint8_t> request, const F& f)
   return ToRustBytes(resp.SerializeAsString());
 }
 
+// The checks MasterAutoFlagsManager::PromoteAutoFlags makes against the C++ Master
+// (YsqlManager::IsMajorUpgradeInProgress, TSManager::ValidateAllTserverVersions), from what the
+// Rust leader sends.
+Status CheckAutoFlagsPromotion(
+    const master::AutoFlagsChangeRequestPB& req, AutoFlagClass max_flag_class) {
+  SCHECK(
+      max_flag_class == AutoFlagClass::kLocalVolatile || !req.ysql_major_upgrade_in_progress(),
+      InvalidArgument,
+      "Cannot promote non-volatile AutoFlags before YSQL major catalog upgrade is complete");
+  if (FLAGS_skip_tserver_version_checks) {
+    return Status::OK();
+  }
+  std::vector<std::string> invalid_tservers;
+  for (const auto& ts : req.live_tservers()) {
+    auto version_info =
+        ts.has_version_info() ? std::optional(std::cref(ts.version_info())) : std::nullopt;
+    if (!VersionInfo::ValidateVersion(version_info, ValidateVersionInfoOp::kVersionEQ)) {
+      invalid_tservers.push_back(Format(
+          "[TS $0; Version $1]", ts.uuid(),
+          version_info ? version_info->get().ShortDebugString() : "<NA>"));
+    }
+  }
+  if (!invalid_tservers.empty()) {
+    return STATUS_FORMAT(
+        IllegalState,
+        "Cannot promote AutoFlags before all yb-tservers have been upgraded to the current "
+        "version: yb-tserver(s) not on the correct version: $0",
+        yb::ToString(invalid_tservers));
+  }
+  return Status::OK();
+}
+
+template <class Req, class Resp, class F>
+rust::Vec<uint8_t> HandleAutoFlagsChange(rust::Slice<const uint8_t> request, const F& f) {
+  return HandleRequest<master::AutoFlagsChangeRequestPB, Resp>(
+      request, [&f](const auto& change, Resp* resp) -> Status {
+        Req req;
+        SCHECK(
+            req.ParseFromString(change.request()), InvalidArgument, "Unparsable $0",
+            req.GetTypeName());
+        return f(change, req, resp);
+      });
+}
+
 }  // namespace
 
 // What MasterTabletServer and MasterTabletServiceImpl use of the master: the sys catalog tablet,
@@ -267,13 +316,17 @@ class MasterHost::TabletServerContextImpl : public master::MasterTabletServerCon
   }
 
   Status GetYsqlCatalogVersion(
-      uint64_t* catalog_version, uint64_t* last_breaking_version, bool) override {
-    return host_.sys_catalog_->ReadYsqlCatalogVersion(
-        kPgYbCatalogVersionTableId, catalog_version, last_breaking_version);
+      uint64_t* catalog_version, uint64_t* last_breaking_version, bool use_cache) override {
+    return GetYsqlDBCatalogVersion(
+        kTemplate1Oid, catalog_version, last_breaking_version, use_cache);
   }
   Status GetYsqlDBCatalogVersion(
       uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version,
-      bool) override {
+      bool use_cache) override {
+    if (use_cache &&
+        host_.CachedDBCatalogVersion(db_oid, catalog_version, last_breaking_version)) {
+      return Status::OK();
+    }
     return host_.sys_catalog_->ReadYsqlDBCatalogVersion(
         kPgYbCatalogVersionTableId, db_oid, catalog_version, last_breaking_version);
   }
@@ -825,6 +878,17 @@ Status MasterHost::InitFlags(rpc::Messenger* messenger) {
   // the leader once it is added to the quorum.
   const bool is_shell_mode_if_new =
       FLAGS_master_join_existing_universe || !opts_.AreMasterAddressesProvided();
+  // CatalogManager::SubmitToSysCatalog, in the term the Rust leader is ready in.
+  auto_flags_manager_->SetSysCatalogSubmitter(
+      [this](std::unique_ptr<tablet::Operation> operation) -> Status {
+        const auto term = leader_ready_term_.load();
+        SCHECK_GE(term, 0, IllegalState, "Not the leader");
+        auto peer = sys_catalog_->tablet_peer();
+        SCHECK(peer, IllegalState, "The sys catalog tablet is not open");
+        operation->SetTablet(VERIFY_RESULT(peer->shared_tablet()));
+        peer->Submit(std::move(operation), term);
+        return Status::OK();
+      });
   RETURN_NOT_OK(auto_flags_manager_->Init(
       messenger,
       [this] { return fs_manager_->LookupTablet(master::kSysCatalogTabletId); },
@@ -1310,6 +1374,38 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
           return auto_flags_manager_->GetAutoFlagsConfig(&req, resp);
         });
   }
+  if (name == "PromoteAutoFlags") {
+    return HandleAutoFlagsChange<master::PromoteAutoFlagsRequestPB,
+                                 master::PromoteAutoFlagsResponsePB>(
+        request, [this](const auto& change, const auto& req, auto* resp) -> Status {
+          const auto max_class = VERIFY_RESULT_PREPEND(
+              ParseEnumInsensitive<AutoFlagClass>(req.max_flag_class()),
+              "Invalid value provided for flag class");
+          RETURN_NOT_OK(CheckAutoFlagsPromotion(change, max_class));
+          return auto_flags_manager_->PromoteAutoFlags(&req, resp);
+        });
+  }
+  if (name == "RollbackAutoFlags") {
+    return HandleAutoFlagsChange<master::RollbackAutoFlagsRequestPB,
+                                 master::RollbackAutoFlagsResponsePB>(
+        request, [this](const auto&, const auto& req, auto* resp) {
+          return auto_flags_manager_->RollbackAutoFlags(&req, resp);
+        });
+  }
+  if (name == "PromoteSingleAutoFlag") {
+    return HandleAutoFlagsChange<master::PromoteSingleAutoFlagRequestPB,
+                                 master::PromoteSingleAutoFlagResponsePB>(
+        request, [this](const auto&, const auto& req, auto* resp) {
+          return auto_flags_manager_->PromoteSingleAutoFlag(&req, resp);
+        });
+  }
+  if (name == "DemoteSingleAutoFlag") {
+    return HandleAutoFlagsChange<master::DemoteSingleAutoFlagRequestPB,
+                                 master::DemoteSingleAutoFlagResponsePB>(
+        request, [this](const auto&, const auto& req, auto* resp) {
+          return auto_flags_manager_->DemoteSingleAutoFlag(&req, resp);
+        });
+  }
   if (name == "CopyPgsqlSysTables") {
     // CatalogManager::CopyPgsqlSysTables with batching: CreateYsqlSysTableData::InitRequest and
     // CompleteInit for each table, one ChangeMetadata adding them all, then the rows.
@@ -1546,7 +1642,22 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
     return HandleRequest<master::SetLeaderReadyTermRequestPB,
                          master::SetLeaderReadyTermResponsePB>(
         request, [this](const auto& req, auto*) {
-          leader_ready_term_.store(req.term());
+          if (leader_ready_term_.exchange(req.term()) != req.term()) {
+            // CatalogManager resets it when the catalog versions task stops on a lost leadership.
+            ResetPgCatalogVersionCache();
+          }
+          return Status::OK();
+        });
+  }
+  if (name == "RefreshPgCatalogVersionCache") {
+    return HandleRequest<master::RefreshPgCatalogVersionCacheRequestPB,
+                         master::RefreshPgCatalogVersionCacheResponsePB>(
+        request, [this](const auto& req, auto* resp) {
+          // Only in the ready term: a refresh of an old term would refill a reset cache.
+          if (FLAGS_enable_heartbeat_pg_catalog_versions_cache &&
+              req.term() == leader_ready_term_.load()) {
+            resp->set_refreshed(RefreshPgCatalogVersionCache());
+          }
           return Status::OK();
         });
   }
@@ -1925,24 +2036,42 @@ rust::Vec<uint8_t> MasterHost::HeartbeatHostParts(
 
 void MasterHost::FillYsqlCatalogVersions(
     bool has_fingerprint, uint64_t fingerprint, master::TSHeartbeatResponsePB* resp) const {
-  // Read from the sys catalog on every heartbeat: the C++ leader's cache
-  // (enable_heartbeat_pg_catalog_versions_cache) is not kept here. Without YSQL there is nothing
-  // to send; C++ falls back to the legacy protobuf version for old tservers.
+  // Without YSQL there is nothing to send; C++ falls back to the legacy protobuf version for old
+  // tservers.
   if (!FLAGS_enable_ysql || !SysCatalogIsOpen()) {
     return;
   }
   master::DbOidToCatalogVersionMap versions;
   HybridTime read_ht;
-  auto s = sys_catalog_->ReadYsqlAllDBCatalogVersions(
-      kPgYbCatalogVersionTableId, &versions, &read_ht);
-  if (!s.ok() || versions.empty()) {
-    YB_LOG_EVERY_N_SECS(WARNING, 60)
-        << "Could not get YSQL db catalog versions for heartbeat response: "
-        << s.ToUserMessage();
+  uint64_t versions_fingerprint = 0;
+  std::optional<master::DbOidVersionToMessageListMap> cached_messages;
+  bool cached = false;
+  if (FLAGS_enable_heartbeat_pg_catalog_versions_cache) {
+    // An empty cache (reset, not refreshed yet) sends no versions, as in C++.
+    SharedLock lock(pg_versions_mutex_);
+    if (pg_versions_) {
+      cached = true;
+      versions = *pg_versions_;
+      versions_fingerprint = pg_versions_fingerprint_;
+      read_ht = pg_versions_read_ht_;
+      cached_messages = pg_messages_;
+    }
+  }
+  if (!cached) {
+    auto s = sys_catalog_->ReadYsqlAllDBCatalogVersions(
+        kPgYbCatalogVersionTableId, &versions, &read_ht);
+    if (!s.ok()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 60)
+          << "Could not get YSQL db catalog versions for heartbeat response: "
+          << s.ToUserMessage();
+      return;
+    }
+    versions_fingerprint = FingerprintCatalogVersions<master::DbOidToCatalogVersionMap>(versions);
+  }
+  if (versions.empty()) {
     return;
   }
-  if (has_fingerprint &&
-      fingerprint == FingerprintCatalogVersions<master::DbOidToCatalogVersionMap>(versions)) {
+  if (has_fingerprint && fingerprint == versions_fingerprint) {
     return;
   }
   auto* const version_data = resp->mutable_db_catalog_version_data();
@@ -1958,7 +2087,11 @@ void MasterHost::FillYsqlCatalogVersions(
   if (!FLAGS_ysql_yb_enable_invalidation_messages) {
     return;
   }
-  auto messages = sys_catalog_->ReadYsqlCatalogInvalationMessages();
+  // CatalogManager::GetYsqlCatalogInvalationMessages: the cached messages unless their last read
+  // failed.
+  auto messages = cached_messages ? Result<master::DbOidVersionToMessageListMap>(
+                                        std::move(*cached_messages))
+                                  : sys_catalog_->ReadYsqlCatalogInvalationMessages();
   if (!messages.ok()) {
     YB_LOG_EVERY_N_SECS(WARNING, 60)
         << "Could not get YSQL invalidation messages for heartbeat response: "
@@ -1974,6 +2107,90 @@ void MasterHost::FillYsqlCatalogVersions(
       inval_messages->set_message_list(std::move(*message_list));
     }
   }
+}
+
+void MasterHost::ResetPgCatalogVersionCache() {
+  // All of it at once: a fingerprint left behind once suppressed the next re-read of the
+  // invalidation messages (#33596), and a read time left behind rejects the next install.
+  std::lock_guard lock(pg_versions_mutex_);
+  if (pg_versions_) {
+    pg_versions_->clear();
+  }
+  pg_versions_fingerprint_ = 0;
+  pg_messages_ = master::DbOidVersionToMessageListMap();
+  pg_versions_read_ht_ = HybridTime::kInvalid;
+  ++pg_versions_generation_;
+}
+
+bool MasterHost::RefreshPgCatalogVersionCache() {
+  uint64_t generation;
+  bool messages_unavailable;
+  uint64_t old_fingerprint;
+  {
+    SharedLock lock(pg_versions_mutex_);
+    generation = pg_versions_generation_;
+    messages_unavailable = !pg_messages_.has_value();
+    old_fingerprint = pg_versions_fingerprint_;
+  }
+  master::DbOidToCatalogVersionMap versions;
+  HybridTime read_ht;
+  auto s =
+      sys_catalog_->ReadYsqlAllDBCatalogVersions(kPgYbCatalogVersionTableId, &versions, &read_ht);
+  if (!s.ok() || !read_ht.is_valid()) {
+    // The cache is kept: stale versions are better than every read going to disk.
+    YB_LOG_EVERY_N_SECS(WARNING, 20) << "Catalog versions refresh failed: " << s;
+    return false;
+  }
+  const auto fingerprint = FingerprintCatalogVersions<master::DbOidToCatalogVersionMap>(versions);
+  const bool update_messages = FLAGS_ysql_yb_enable_invalidation_messages &&
+                               (fingerprint != old_fingerprint || messages_unavailable);
+  std::optional<master::DbOidVersionToMessageListMap> messages;
+  bool messages_failed = false;
+  if (update_messages) {
+    auto read = sys_catalog_->ReadYsqlCatalogInvalationMessages();
+    if (read.ok()) {
+      messages = std::move(*read);
+    } else {
+      YB_LOG_EVERY_N_SECS(WARNING, 20)
+          << "Catalog invalidation messages refresh failed: " << read.status();
+      messages_failed = true;
+    }
+  }
+  std::lock_guard lock(pg_versions_mutex_);
+  // A reset since the read (the term changed) or a newer install wins.
+  if (generation != pg_versions_generation_ ||
+      (pg_versions_read_ht_.is_valid() && read_ht <= pg_versions_read_ht_)) {
+    return !messages_failed;
+  }
+  pg_versions_ = std::move(versions);
+  pg_versions_fingerprint_ = fingerprint;
+  pg_versions_read_ht_ = read_ht;
+  if (update_messages) {
+    pg_messages_ = std::move(messages);
+  }
+  return !messages_failed;
+}
+
+bool MasterHost::CachedDBCatalogVersion(
+    uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version) const {
+  if (!FLAGS_enable_heartbeat_pg_catalog_versions_cache) {
+    return false;
+  }
+  SharedLock lock(pg_versions_mutex_);
+  if (!pg_versions_) {
+    return false;
+  }
+  auto it = pg_versions_->find(db_oid);
+  if (it == pg_versions_->end()) {
+    return false;
+  }
+  if (catalog_version) {
+    *catalog_version = it->second.current_version;
+  }
+  if (last_breaking_version) {
+    *last_breaking_version = it->second.last_breaking_version;
+  }
+  return true;
 }
 
 rust::Vec<ScannedRow> MasterInfoHandle::ScanSysCatalog(

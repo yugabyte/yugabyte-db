@@ -30,7 +30,7 @@ use yb_proto::pb::catalog_entity_info::{
     SysTabletsEntryPB,
 };
 use yb_proto::pb::common::{ColumnSchemaPB, QLTypePB};
-use yb_proto::pb::common_types::{TableType, YQLDatabase};
+use yb_proto::pb::common_types::{StatefulServiceKind, TableType, YQLDatabase};
 use yb_proto::pb::master_ddl::{
     CreateTableRequestPB, CreateTableResponsePB, IsCreateTableDoneRequestPB,
     IsCreateTableDoneResponsePB,
@@ -541,6 +541,163 @@ impl Controller for TransactionTableController {
             let deadline = Instant::now() + std::time::Duration::from_secs(60);
             if let Err(error) = self.tables.ensure_transaction_table(&token, deadline).await {
                 tracing::warn!("Failed creating transaction status table, waiting: {error:?}");
+            }
+        })
+    }
+}
+
+/// Flags of the YSQL system tables.
+#[derive(Clone, Copy, Debug)]
+pub struct YsqlSystemTablesOptions {
+    /// `num_advisory_locks_tablets`.
+    pub num_advisory_locks_tablets: fn() -> u32,
+    /// `ysql_enable_auto_analyze_infra`.
+    pub auto_analyze: fn() -> bool,
+}
+
+/// `GetStatefulServiceTableName`: the table of a stateful service, in the system namespace.
+pub fn stateful_service_table_name(kind: StatefulServiceKind) -> String {
+    format!("{}_table", format!("{kind:?}").to_lowercase())
+}
+
+/// `pg_advisory_locks` (`tserver::kPgAdvisoryLocksTableName`), in the system namespace.
+pub const ADVISORY_LOCKS_TABLE: &str = "pg_advisory_locks";
+
+/// The `ysql-system-tables` controller for one term: the tables `YsqlManager::RunBgTasks` creates
+/// with YSQL on, except during a YSQL major upgrade: `system.pg_advisory_locks`
+/// (`CreateYbAdvisoryLocksTableIfNeeded`) and the auto analyze service's table
+/// (`CreatePgAutoAnalyzeService`).
+pub struct YsqlSystemTablesController {
+    tables: Arc<TableLifecycle>,
+    options: YsqlSystemTablesOptions,
+    major_upgrade_in_progress: Arc<dyn Fn(&CatalogSnapshot) -> bool + Send + Sync>,
+}
+
+impl YsqlSystemTablesController {
+    /// A controller for the term that just began.
+    pub fn new(
+        tables: Arc<TableLifecycle>,
+        options: YsqlSystemTablesOptions,
+        major_upgrade_in_progress: Arc<dyn Fn(&CatalogSnapshot) -> bool + Send + Sync>,
+    ) -> Arc<YsqlSystemTablesController> {
+        Arc::new(YsqlSystemTablesController {
+            tables,
+            options,
+            major_upgrade_in_progress,
+        })
+    }
+
+    fn column(name: &str, data_type: PersistentDataType, hash_key: bool) -> ColumnSchemaPB {
+        let mut column = ColumnSchemaPB::new();
+        column.set_name(name.into());
+        column.type_.mut_or_insert_default().set_main(data_type);
+        column.set_is_key(hash_key);
+        column.set_is_hash_key(hash_key);
+        column.set_is_nullable(!hash_key);
+        column
+    }
+
+    fn system_table(name: &str, num_tablets: i32) -> CreateTableRequestPB {
+        let mut req = CreateTableRequestPB::new();
+        req.set_name(name.into());
+        req.namespace
+            .mut_or_insert_default()
+            .set_name("system".into());
+        req.table_type = Some(EnumOrUnknown::new(TableType::YQL_TABLE_TYPE));
+        req.set_num_tablets(num_tablets);
+        req.schema
+            .mut_or_insert_default()
+            .table_properties
+            .mut_or_insert_default()
+            .set_num_tablets(num_tablets);
+        req
+    }
+
+    fn advisory_locks(&self) -> CreateTableRequestPB {
+        let num_tablets = (self.options.num_advisory_locks_tablets)().max(1) as i32;
+        let mut req = Self::system_table(ADVISORY_LOCKS_TABLE, num_tablets);
+        let schema = req.schema.mut_or_insert_default();
+        schema
+            .table_properties
+            .mut_or_insert_default()
+            .set_is_transactional(true);
+        // All columns hash: advisory locks scale out with `num_advisory_locks_tablets`.
+        for name in ["dbid", "classid", "objid", "objsubid"] {
+            schema
+                .columns
+                .push(Self::column(name, PersistentDataType::UINT32, true));
+        }
+        req
+    }
+
+    fn auto_analyze(&self) -> CreateTableRequestPB {
+        let kind = StatefulServiceKind::PG_AUTO_ANALYZE;
+        let mut req = Self::system_table(&stateful_service_table_name(kind), 1);
+        req.hosted_stateful_services.push(EnumOrUnknown::new(kind));
+        let schema = req.schema.mut_or_insert_default();
+        schema
+            .columns
+            .push(Self::column("table_id", PersistentDataType::STRING, true));
+        schema.columns.push(Self::column(
+            "mutations_since_last_analyze",
+            PersistentDataType::INT64,
+            false,
+        ));
+        for name in ["last_analyze_info", "current_analyze_info"] {
+            schema
+                .columns
+                .push(Self::column(name, PersistentDataType::JSONB, false));
+        }
+        req
+    }
+}
+
+impl Controller for YsqlSystemTablesController {
+    fn name(&self) -> &'static str {
+        "ysql-system-tables"
+    }
+
+    fn interval(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(1)
+    }
+
+    fn reconcile<'a>(&'a self, _scope: &'a TermScope) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            if !(self.tables.options.enable_ysql)() {
+                return;
+            }
+            let snapshot = self.tables.catalog.snapshot();
+            if (self.major_upgrade_in_progress)(&snapshot) {
+                return;
+            }
+            let mut wanted = vec![self.advisory_locks()];
+            if (self.options.auto_analyze)() {
+                wanted.push(self.auto_analyze());
+            }
+            wanted.retain(|req| {
+                snapshot
+                    .table_by_name(SYSTEM_NAMESPACE_ID, req.name())
+                    .is_none()
+            });
+            if wanted.is_empty() {
+                return;
+            }
+            let Ok(token) = self.tables.leadership.token() else {
+                return;
+            };
+            for req in wanted {
+                let deadline = Instant::now() + std::time::Duration::from_secs(60);
+                let mut resp = CreateTableResponsePB::new();
+                tracing::info!("Creating YSQL system table system.{}", req.name());
+                match Box::pin(self.tables.create_table(&token, deadline, &req, &mut resp)).await {
+                    Ok(()) => {}
+                    Err(e) if e.code() == Code::OBJECT_ALREADY_PRESENT => {}
+                    Err(e) => tracing::warn!(
+                        "Failed to create system.{}, will retry: {}",
+                        req.name(),
+                        e.status.message()
+                    ),
+                }
             }
         })
     }

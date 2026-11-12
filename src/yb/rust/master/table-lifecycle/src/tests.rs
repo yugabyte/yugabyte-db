@@ -1337,6 +1337,64 @@ mod ysql {
     }
 
     #[tokio::test]
+    async fn a_new_leader_drops_a_database_whose_creation_it_did_not_start() {
+        let h = ysql_harness().await;
+        let state = |h: &Harness, id: &[u8]| {
+            h.snapshot()
+                .get(SysRowEntryType::NAMESPACE, id)
+                .unwrap()
+                .parse::<SysNamespaceEntryPB>()
+                .unwrap()
+                .state()
+        };
+        let creating: &[u8] = b"000033e9000030008000000000000000";
+        let interrupted: &[u8] = b"000033ea000030008000000000000000";
+        let upgrading: &[u8] = b"000033eb000030008000000000000000";
+        h.lifecycle
+            .write(&h.token, Harness::deadline(), |_| {
+                let mut mutation = master_catalog_state::Mutation::new();
+                for id in [creating, interrupted, upgrading] {
+                    let mut ns = SysNamespaceEntryPB::new();
+                    ns.set_name(id.to_vec());
+                    ns.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+                    ns.set_state(sys_namespace_entry_pb::State::PREPARING);
+                    if id == upgrading {
+                        ns.set_ysql_next_major_version_state(
+                            sys_namespace_entry_pb::YsqlNextMajorVersionState::NEXT_VER_PREPARING,
+                        );
+                    }
+                    mutation = mutation
+                        .upsert_message(SysRowEntryType::NAMESPACE, id, &ns)
+                        .unwrap();
+                }
+                Ok((mutation, ()))
+            })
+            .await
+            .unwrap();
+        h.lifecycle
+            .creating_databases
+            .lock()
+            .unwrap()
+            .insert((h.token.term(), creating.to_vec()));
+        crate::TableDeleter::new(h.lifecycle.clone(), || Duration::from_secs(1), None)
+            .pass()
+            .await;
+        assert_eq!(
+            state(&h, creating),
+            sys_namespace_entry_pb::State::PREPARING
+        );
+        assert_eq!(
+            state(&h, interrupted),
+            sys_namespace_entry_pb::State::DELETED
+        );
+        assert_eq!(
+            state(&h, upgrading),
+            sys_namespace_entry_pb::State::PREPARING
+        );
+        assert_eq!(state(&h, DB_ID), sys_namespace_entry_pb::State::RUNNING);
+    }
+
+    #[tokio::test]
     async fn truncate_is_refused_while_disabled_and_done_with_nothing_running() {
         use crate::{TruncateOptions, Truncates};
         use yb_proto::pb::master_ddl::{

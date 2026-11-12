@@ -13,9 +13,11 @@
 //! YSQL on the leader (W9): what C++'s `YsqlManager` and `YsqlCatalogConfig` do.
 
 pub mod backends;
+pub mod catalog_versions;
 pub mod initdb;
 pub mod lease;
 pub mod locks;
+pub mod upgrade;
 
 #[cfg(test)]
 mod tests;

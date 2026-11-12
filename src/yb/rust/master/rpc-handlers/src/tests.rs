@@ -637,6 +637,7 @@ mod leader_tests {
                 flushes,
                 blacklist_progress_initial_delay: || std::time::Duration::ZERO,
                 delay_leader_blacklist_completion: || false,
+                ysql_major_version: Some(15),
             })
         });
         harness.leader = Some(leader);

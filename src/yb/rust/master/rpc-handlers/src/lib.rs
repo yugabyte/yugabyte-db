@@ -54,6 +54,7 @@ use yb_proto::pb::master_admin::{
     WaitForYsqlBackendsCatalogVersionResponsePB,
 };
 use yb_proto::pb::master_client::{
+    GetStatefulServiceLocationRequestPB, GetStatefulServiceLocationResponsePB,
     GetTableLocationsRequestPB, GetTableLocationsResponsePB, GetTabletLocationsRequestPB,
     GetTabletLocationsResponsePB, GetTransactionStatusTabletsRequestPB,
     GetTransactionStatusTabletsResponsePB, GetYsqlCatalogConfigRequestPB,
@@ -99,7 +100,8 @@ use yb_proto::pb::master_replication::{
     IsNamespacePartOfCDCSDKRequestPB, IsNamespacePartOfCDCSDKResponsePB,
 };
 use yb_proto::pb::master_rust_peer::{
-    dump_catalog_response_pb, DumpCatalogResponsePB, PushLocationsRequestPB,
+    auto_flags_change_request_pb, dump_catalog_response_pb, AutoFlagsChangeRequestPB,
+    DumpCatalogResponsePB, PushLocationsRequestPB, RefreshPgCatalogVersionCacheRequestPB,
 };
 use yb_proto::pb::master_types::{master_error_pb, MasterErrorPB, NamespaceIdentifierPB};
 use yb_proto::pb::master_ysql_lease::{
@@ -854,6 +856,11 @@ impl Shared {
                     leader.get_table_locations(&snapshot, masters.as_ref(), &req, &mut resp)
                 }
             ),
+            "GetStatefulServiceLocation" => serve!(
+                GetStatefulServiceLocationRequestPB,
+                GetStatefulServiceLocationResponsePB,
+                |req, resp| leader.get_stateful_service_location(&snapshot, &req, &mut resp)
+            ),
             "GetTransactionStatusTablets" => serve!(
                 GetTransactionStatusTabletsRequestPB,
                 GetTransactionStatusTabletsResponsePB,
@@ -1051,9 +1058,23 @@ impl Shared {
                 ReportYsqlDdlTxnStatusResponsePB,
                 |req, resp| {
                     let _ = &mut resp;
-                    tables
+                    let reported = tables
                         .report_ysql_ddl_txn_status(&token, deadline, &req)
-                        .await
+                        .await;
+                    if reported.is_ok() {
+                        // Best effort, as C++: the DDL's new catalog version reaches tservers by the
+                        // next heartbeat rather than after the next periodic refresh.
+                        let mut refresh = RefreshPgCatalogVersionCacheRequestPB::new();
+                        refresh.set_term(token.term());
+                        if let Ok(bytes) = refresh.write_to_bytes() {
+                            let info = self.info.clone();
+                            let _ = tokio::task::spawn_blocking(move || {
+                                info.handle_on_host("RefreshPgCatalogVersionCache", &bytes)
+                            })
+                            .await;
+                        }
+                    }
+                    reported
                 }
             ),
             "IsYsqlDdlVerificationDone" => serve_ddl!(
@@ -1101,6 +1122,32 @@ impl Shared {
                         ))
                         .into();
                         respond(call, &resp)
+                    }
+                }
+            }
+            // MasterAutoFlagsManager on the host, with what it reads from the C++ Master.
+            "PromoteAutoFlags"
+            | "RollbackAutoFlags"
+            | "PromoteSingleAutoFlag"
+            | "DemoteSingleAutoFlag" => {
+                let mut change = AutoFlagsChangeRequestPB::new();
+                change.set_request(call.request().to_vec());
+                change.set_ysql_major_upgrade_in_progress(
+                    master_ysql_manager::upgrade::major_upgrade_in_progress(
+                        &snapshot,
+                        leader.ysql_major_version,
+                    ),
+                );
+                for descriptor in leader.ts_manager.live() {
+                    let mut ts = auto_flags_change_request_pb::TserverVersion::new();
+                    ts.set_uuid(String::from_utf8_lossy(&descriptor.uuid).into_owned());
+                    ts.version_info = descriptor.pb.version_info.clone();
+                    change.live_tservers.push(ts);
+                }
+                match change.write_to_bytes() {
+                    Ok(request) => self.serve_on_host(call, method, request).await,
+                    Err(e) => {
+                        call.respond_error(Status::new(StatusCode::InternalError, e.to_string()))
                     }
                 }
             }

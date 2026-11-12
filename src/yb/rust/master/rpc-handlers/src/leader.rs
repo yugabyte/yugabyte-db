@@ -96,15 +96,13 @@ pub struct LeaderServices {
     pub blacklist_progress_initial_delay: fn() -> std::time::Duration,
     /// `delay_leader_blacklist_completion_percent_until_tservers_heartbeat`.
     pub delay_leader_blacklist_completion: fn() -> bool,
+    /// This build's YSQL major version; None with YSQL off.
+    pub ysql_major_version: Option<u32>,
 }
 
 /// Who serves a leader method a layer-2 Rust leader does not.
 pub fn owner(method: &str) -> &'static str {
     match method {
-        "PromoteAutoFlags"
-        | "RollbackAutoFlags"
-        | "PromoteSingleAutoFlag"
-        | "DemoteSingleAutoFlag" => "AutoFlags management (W9)",
         "GetIndexBackfillProgress" => "DDL (W7)",
         "RedisConfigSet" | "RedisConfigGet" => "nobody: YEDIS is not supported (D16)",
         _ => "a later layer",
@@ -666,6 +664,85 @@ impl LeaderServices {
                 Err(_) => {}
             }
         }
+        Ok(())
+    }
+
+    /// `GetStatefulServiceLocation`: the tserver leading the one tablet of the service's table.
+    pub fn get_stateful_service_location(
+        &self,
+        snapshot: &CatalogSnapshot,
+        req: &yb_proto::pb::master_client::GetStatefulServiceLocationRequestPB,
+        resp: &mut yb_proto::pb::master_client::GetStatefulServiceLocationResponsePB,
+    ) -> Result<(), Status> {
+        if req.service_kind.is_none() {
+            return Err(Status::new(
+                StatusCode::InvalidArgument,
+                "Service kind is not specified",
+            ));
+        }
+        let kind = req.service_kind();
+        let not_found =
+            |resp: &mut yb_proto::pb::master_client::GetStatefulServiceLocationResponsePB,
+             code: StatusCode,
+             message: String| {
+                resp.error = Some(master_error(
+                    master_error_pb::Code::OBJECT_NOT_FOUND,
+                    code,
+                    &message,
+                ))
+                .into();
+                Ok(())
+            };
+        let table = snapshot
+            .table_by_name(
+                b"00000000000000000000000000000001",
+                &master_table_lifecycle::stateful_service_table_name(kind),
+            )
+            .filter(|t| {
+                t.table().is_some_and(|h| {
+                    h.state == sys_tables_entry_pb::State::RUNNING as i32
+                        || h.state == sys_tables_entry_pb::State::ALTERING as i32
+                })
+            });
+        let Some(table) = table else {
+            return not_found(
+                resp,
+                StatusCode::NotFound,
+                format!("Stateful Service of kind {kind:?} does not exist"),
+            );
+        };
+        let tablets = snapshot.tablets_of(&table.key.id);
+        let [tablet] = tablets.as_slice() else {
+            return not_found(
+                resp,
+                StatusCode::NotFound,
+                format!(
+                    "Stateful Service of kind {kind:?} expected to have one tablet, but {} were \
+                     found",
+                    tablets.len()
+                ),
+            );
+        };
+        let leader = self
+            .ts_manager
+            .locations
+            .get(&tablet.key.id)
+            .and_then(|replicas| replicas.leader().map(|r| r.ts_uuid.clone()))
+            .and_then(|uuid| self.ts_manager.get(&uuid));
+        let Some(leader) = leader else {
+            return not_found(
+                resp,
+                StatusCode::TryAgain,
+                format!("Leader not found for Stateful Service of kind {kind:?}"),
+            );
+        };
+        let info = resp.service_info.mut_or_insert_default();
+        info.set_permanent_uuid(leader.uuid.to_vec());
+        let registration = leader.registration();
+        let common = registration.common.get_or_default();
+        info.private_rpc_addresses = common.private_rpc_addresses.clone();
+        info.broadcast_addresses = common.broadcast_addresses.clone();
+        info.cloud_info = common.cloud_info.clone();
         Ok(())
     }
 

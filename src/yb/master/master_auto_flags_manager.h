@@ -13,9 +13,14 @@
 
 #pragma once
 
+#include <functional>
+#include <memory>
+
 #include "yb/server/auto_flags_manager_base.h"
 
 #include "yb/master/master_cluster.pb.h"
+
+#include "yb/tablet/tablet_fwd.h"
 
 #include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/unique_lock.h"
@@ -46,11 +51,15 @@ YB_DEFINE_ENUM(PromoteAutoFlagsOutcome, (kNoFlagsPromoted)(kNewFlagsPromoted));
 // ProcessAutoFlagsConfigOperation on all master (including leader).
 class MasterAutoFlagsManager : public AutoFlagsManagerBase {
  public:
-  // `master` is null in the Rust master's host (src/yb/master_host), which uses only the parts
-  // every master runs: Init, LoadFromMasterLeader and ProcessAutoFlagsConfigOperation on Raft
-  // apply. Promotion and config changes need the C++ master leader and return NotSupported without
-  // it.
+  // `master` is null in the Rust master's host (src/yb/master_host). Config changes there are
+  // written through `SetSysCatalogSubmitter`, and the host makes the checks PromoteAutoFlags
+  // makes against Master (tserver versions, YSQL major upgrade) before calling it.
   MasterAutoFlagsManager(server::Clock* clock, FsManager* fs_manager, Master* master);
+
+  using SysCatalogSubmitter = std::function<Status(std::unique_ptr<tablet::Operation>)>;
+  void SetSysCatalogSubmitter(SysCatalogSubmitter submitter) {
+    sys_catalog_submitter_ = std::move(submitter);
+  }
 
   virtual ~MasterAutoFlagsManager() {}
 
@@ -116,6 +125,7 @@ class MasterAutoFlagsManager : public AutoFlagsManagerBase {
 
   Master* const master_;
   CatalogManager* catalog_manager_;
+  SysCatalogSubmitter sys_catalog_submitter_;
   UniqueLock<std::shared_mutex> update_lock_;
 };
 

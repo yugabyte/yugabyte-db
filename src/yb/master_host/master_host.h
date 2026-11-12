@@ -24,6 +24,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <shared_mutex>
 #include <unordered_map>
 
 #include <boost/asio/ip/tcp.hpp>
@@ -263,9 +264,16 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   Result<std::vector<ServerEntryPB>> ListMastersForWeb() const;
   docdb::HistoryCutoff AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata);
   void RefreshHistoryRetentionPinLoop();
-  // PopulatePgCatalogVersionInfo of the C++ heartbeat service, read from the sys catalog.
+  // PopulatePgCatalogVersionInfo of the C++ heartbeat service, from the cache or the sys catalog.
   void FillYsqlCatalogVersions(
       bool has_fingerprint, uint64_t fingerprint, master::TSHeartbeatResponsePB* resp) const;
+  // CatalogManager::RefreshPgCatalogVersionCache and ResetCachedCatalogVersions.
+  bool RefreshPgCatalogVersionCache();
+  void ResetPgCatalogVersionCache();
+  // The cached version of one database (GetYsqlDBCatalogVersion with use_cache); false when the
+  // cache is off, empty or lacks it.
+  bool CachedDBCatalogVersion(
+      uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version) const;
   Status StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req);
 
   master::MasterOptions opts_;
@@ -306,6 +314,17 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   // The term in which the Rust leader became ready, -1 when it is not ready
   // ("SetLeaderReadyTerm"): CatalogManager's leader_ready_term_, for the tablet service.
   std::atomic<int64_t> leader_ready_term_{-1};
+  // CatalogManager's heartbeat_pg_catalog_versions_cache_ and the state reset with it
+  // (enable_heartbeat_pg_catalog_versions_cache). The Rust leader refreshes it
+  // ("RefreshPgCatalogVersionCache"); it is reset whenever the ready term changes.
+  mutable std::shared_mutex pg_versions_mutex_;
+  std::optional<master::DbOidToCatalogVersionMap> pg_versions_ GUARDED_BY(pg_versions_mutex_);
+  uint64_t pg_versions_fingerprint_ GUARDED_BY(pg_versions_mutex_) = 0;
+  HybridTime pg_versions_read_ht_ GUARDED_BY(pg_versions_mutex_);
+  // nullopt after a failed read of the messages, so the next refresh reads them again.
+  std::optional<master::DbOidVersionToMessageListMap> pg_messages_
+      GUARDED_BY(pg_versions_mutex_) = master::DbOidVersionToMessageListMap();
+  uint64_t pg_versions_generation_ GUARDED_BY(pg_versions_mutex_) = 0;
   // The sys catalog tablet served to YSQL (MasterTabletServiceImpl).
   std::unique_ptr<TabletServerContextImpl> tablet_server_context_;
   std::unique_ptr<master::MasterTabletServer> tablet_server_;

@@ -233,6 +233,8 @@ pub struct TableDeleter {
     interval: fn() -> Duration,
     /// For `RemoveTableFromTablet` of dropped colocated tables; without it they are only marked.
     rpc: Option<crate::TabletRpc>,
+    /// The term's interrupted YSQL database creations were failed.
+    failed_interrupted: std::sync::atomic::AtomicBool,
 }
 
 impl TableDeleter {
@@ -246,6 +248,7 @@ impl TableDeleter {
             lifecycle,
             interval,
             rpc,
+            failed_interrupted: Default::default(),
         })
     }
 
@@ -253,6 +256,20 @@ impl TableDeleter {
         let Ok(token) = self.lifecycle.leadership.token() else {
             return;
         };
+        if !self
+            .failed_interrupted
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
+            match self.lifecycle.fail_interrupted_ysql_databases(&token).await {
+                Ok(()) => self
+                    .failed_interrupted
+                    .store(true, std::sync::atomic::Ordering::Relaxed),
+                Err(e) => tracing::warn!(
+                    "Failing interrupted YSQL database creations failed, will retry: {}",
+                    e.status.message()
+                ),
+            }
+        }
         let databases: Vec<Vec<u8>> = self
             .lifecycle
             .catalog

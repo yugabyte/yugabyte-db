@@ -314,7 +314,9 @@ Status MasterAutoFlagsManager::CreateConfigForNewCluster() {
 }
 
 Status MasterAutoFlagsManager::PersistConfigInSysCatalog(AutoFlagsConfigPB& new_config) {
-  SCHECK(catalog_manager_, NotSupported, "AutoFlags config changes need a C++ master leader");
+  SCHECK(
+      catalog_manager_ || sys_catalog_submitter_, NotSupported,
+      "AutoFlags config changes need a master leader");
   consensus::ChangeAutoFlagsConfigOpResponsePB operation_res;
   // SubmitToSysCatalog will set the correct tablet
   auto operation = std::make_unique<tablet::ChangeAutoFlagsConfigOperation>(nullptr /* tablet */);
@@ -324,7 +326,8 @@ Status MasterAutoFlagsManager::PersistConfigInSysCatalog(AutoFlagsConfigPB& new_
       tablet::MakeLatchOperationCompletionCallback(&latch, &operation_res));
 
   RETURN_NOT_OK_PREPEND(
-      catalog_manager_->SubmitToSysCatalog(std::move(operation)),
+      catalog_manager_ ? catalog_manager_->SubmitToSysCatalog(std::move(operation))
+                       : sys_catalog_submitter_(std::move(operation)),
       "Failed to store AutoFlags config");
 
   latch.Wait();
@@ -334,7 +337,9 @@ Status MasterAutoFlagsManager::PersistConfigInSysCatalog(AutoFlagsConfigPB& new_
     LOG(WARNING) << "Failed to apply new AutoFlags config: " << status.ToString();
     return status;
   }
-  catalog_manager_->GetXClusterManager()->NotifyAutoFlagsConfigChanged();
+  if (catalog_manager_) {
+    catalog_manager_->GetXClusterManager()->NotifyAutoFlagsConfigChanged();
+  }
 
   return Status::OK();
 }
@@ -396,17 +401,19 @@ Status MasterAutoFlagsManager::ProcessAutoFlagsConfigOperation(const AutoFlagsCo
 Result<std::pair<uint32_t, PromoteAutoFlagsOutcome>> MasterAutoFlagsManager::PromoteAutoFlags(
     const AutoFlagClass max_flag_class, const bool force_version_change) {
   SCHECK(!FLAGS_disable_auto_flags_management, NotSupported, "AutoFlags management is disabled.");
-  SCHECK(master_, NotSupported, "AutoFlags promotion needs a C++ master leader");
+  // Without a C++ Master, the caller has made these checks (the Rust master's host).
+  if (master_) {
+    SCHECK(
+        max_flag_class == AutoFlagClass::kLocalVolatile ||
+            !master_->ysql_manager().IsMajorUpgradeInProgress(),
+        InvalidArgument,
+        "Cannot promote non-volatile AutoFlags before YSQL major catalog upgrade is complete");
 
-  SCHECK(
-      max_flag_class == AutoFlagClass::kLocalVolatile ||
-          !master_->ysql_manager().IsMajorUpgradeInProgress(),
-      InvalidArgument,
-      "Cannot promote non-volatile AutoFlags before YSQL major catalog upgrade is complete");
-
-  RETURN_NOT_OK_PREPEND(
-      master_->ts_manager()->ValidateAllTserverVersions(ValidateVersionInfoOp::kVersionEQ),
-      "Cannot promote AutoFlags before all yb-tservers have been upgraded to the current version");
+    RETURN_NOT_OK_PREPEND(
+        master_->ts_manager()->ValidateAllTserverVersions(ValidateVersionInfoOp::kVersionEQ),
+        "Cannot promote AutoFlags before all yb-tservers have been upgraded to the current "
+        "version");
+  }
 
   LOG(INFO) << "Promoting AutoFlags. max_flag_class: " << ToString(max_flag_class)
             << ", force: " << force_version_change;

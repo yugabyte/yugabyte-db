@@ -23,6 +23,7 @@ option java_package = "org.yb.master";
 import "yb/common/common_types.proto";
 import "yb/consensus/metadata.proto";
 import "yb/common/common.proto";
+import "yb/common/version_info.proto";
 import "yb/master/catalog_entity_info.proto";
 import "yb/master/master_client.proto";
 import "yb/master/master_ddl.proto";
@@ -175,6 +176,33 @@ message SetLeaderReadyTermRequestPB {
 
 message SetLeaderReadyTermResponsePB {
   optional MasterErrorPB error = 1;
+}
+
+// The Rust leader's AutoFlags config changes (MasterHost::HandleOnHost with the method's name:
+// PromoteAutoFlags, RollbackAutoFlags, PromoteSingleAutoFlag or DemoteSingleAutoFlag), with what
+// MasterAutoFlagsManager reads from the C++ Master on a C++ leader. The response is the method's.
+message AutoFlagsChangeRequestPB {
+  // The method's request, serialized.
+  optional bytes request = 1;
+  optional bool ysql_major_upgrade_in_progress = 2;
+  message TserverVersion {
+    optional string uuid = 1;
+    optional VersionInfoPB version_info = 2;
+  }
+  // The live tservers, for TSManager::ValidateAllTserverVersions.
+  repeated TserverVersion live_tservers = 3;
+}
+
+// The Rust leader's refresh of the host's heartbeat catalog versions cache
+// (CatalogManager::RefreshPgCatalogVersionCache), ignored unless `term` is the ready term.
+message RefreshPgCatalogVersionCacheRequestPB {
+  optional int64 term = 1;
+}
+
+message RefreshPgCatalogVersionCacheResponsePB {
+  optional MasterErrorPB error = 1;
+  // False when the read failed; the leader retries sooner.
+  optional bool refreshed = 2;
 }
 
 // The cluster balancer's metrics, which C++ keeps in the "cluster" metric entity

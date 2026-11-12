@@ -34,8 +34,11 @@ A YSQL `CreateNamespace` writes the database PREPARING (`next_normal_pg_oid` fro
 (`ProcessPendingNamespace`): the host builds each new table's row as `CreateYsqlSysTableData`
 does, adds them all to the sys catalog tablet in one `ChangeMetadata` and copies their rows
 (`CopyPgsqlSysTables`), and the leader writes the rows, the sys catalog tablet's table ids and the
-database RUNNING in one mutation, or FAILED. A database left PREPARING by a leader change is not
-resumed yet, and its creating transaction is not verified yet.
+database RUNNING in one mutation, or FAILED. A new leader marks a YSQL database DELETING if it is
+FAILED, or PREPARING and not being created in its term (a creation a leader change interrupted),
+as C++'s namespace loader does, so the drop pass removes it; PG never committed it, so no client
+can see it. A database whose next major version catalog was being made
+(`NEXT_VER_PREPARING`) is left alone. The creating transaction is not verified yet.
 
 A YSQL `CreateTable` names its table id (from the database and relation OIDs); it is unique by id,
 not by name, since names are pg_class's. The host builds the row (`PrepareTableSchema` with the

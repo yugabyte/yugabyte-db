@@ -95,10 +95,23 @@ Tablet locations of system tablets (the sys catalog tablet and the YCQL system k
 tables) are the masters, with the current leader, from the quorum's committed consensus state, as
 `BuildLocationsForSystemTablet` does.
 
-Heartbeat responses carry the per-database catalog versions and invalidation messages, read from
-the sys catalog on each heartbeat unless the tserver's fingerprint matches. C++ serves them from a
-cache refreshed in the background (`enable_heartbeat_pg_catalog_versions_cache`); the Rust leader
-does not keep one yet.
+Heartbeat responses carry the per-database catalog versions and invalidation messages, unless the
+tserver's fingerprint matches. With `enable_heartbeat_pg_catalog_versions_cache` (the default)
+they come from a cache in the host, as C++ keeps one in `CatalogManager`: the `pg-catalog-versions`
+controller refreshes it every half heartbeat interval (`pg_catalog_versions_cache_retry_ms` after a
+failed read), and so does each `ReportYsqlDdlTxnStatus`, so a DDL's new version goes out with the
+next heartbeat. The invalidation messages are re-read only when the versions changed. The host
+resets the cache whenever the ready term changes, and drops a refresh read before the reset or
+older than what it holds. The tablet service's version reads that allow the cache use it too.
+
+## YSQL system tables
+
+The `ysql-system-tables` controller creates what `YsqlManager::RunBgTasks` does, except during a
+YSQL major upgrade: `system.pg_advisory_locks` (`num_advisory_locks_tablets` tablets, all four
+columns hashed) and, with `ysql_enable_auto_analyze_infra`, the auto analyze service's
+`system.pg_auto_analyze_table`, a one-tablet table that hosts the `PG_AUTO_ANALYZE` stateful
+service. `GetStatefulServiceLocation` answers with the tserver leading that tablet. The LISTEN/NOTIFY
+objects (`ysql_yb_enable_listen_notify`, off by default) are not created.
 
 `ReservePgsqlOids` reserves the next OIDs of a database's normal or secondary space from its
 namespace row (`next_normal_pg_oid`, `next_secondary_pg_oid`), as C++ does; the response carries

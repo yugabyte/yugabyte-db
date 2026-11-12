@@ -65,7 +65,12 @@ For the Rust catalog the host offers scans at a read time, the tablet's safe tim
 Raft writes in a term (`WriteSysCatalogRows`, the `SysCatalogTable::SyncWrite` request without
 the wait), the Raft leader state, and the heartbeat fields its C++ objects own
 (`HeartbeatHostParts`: universe key registry, snapshots info, AutoFlags config). On a leader it
-also serves `GetAutoFlagsConfig` and `ValidateAutoFlagsConfig` through `HandleOnHost`, and
+also serves `GetAutoFlagsConfig` and `ValidateAutoFlagsConfig` through `HandleOnHost`, and the
+AutoFlags changes (`PromoteAutoFlags`, `RollbackAutoFlags`, `PromoteSingleAutoFlag`,
+`DemoteSingleAutoFlag`): `MasterAutoFlagsManager` submits the new config to the sys catalog
+tablet in the Rust leader's ready term, and the Rust leader sends what C++ reads from `Master` for
+the promotion checks (the live tservers' versions, whether a YSQL major upgrade is in progress).
+It also serves
 `GetFullUniverseKeyRegistry` and `IsEncryptionEnabled`, for which Rust passes the cluster config's
 `EncryptionInfoPB` instead of the request. Tservers wait for `GetFullUniverseKeyRegistry` before
 they start (with `allow_encryption_at_rest`, the default).
@@ -103,8 +108,8 @@ reports FOLLOWER meanwhile, as a C++ leader that is not ready does.
 
 A Rust leader leaves these C++ leader duties undone, so leading stays test-only: snapshot
 schedules do not take snapshots and restores are not served (the coordinator's `LeaderTerm()` is
--1), AutoFlags are not promoted, a removed master is not told (`InformRemovedMaster`), and the
-YSQL history retention pin is not published.
+-1), a removed master is not told (`InformRemovedMaster`), and the YSQL history retention pin is
+not published.
 
 ## Embedded in a test process
 

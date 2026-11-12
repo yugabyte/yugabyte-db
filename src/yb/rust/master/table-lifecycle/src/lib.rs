@@ -49,7 +49,10 @@ mod tests;
 pub use alter::TableAlterer;
 pub use assign::TabletAssigner;
 pub use colocation::{ColocatedTableAdder, TabletRpc};
-pub use create::TransactionTableController;
+pub use create::{
+    stateful_service_table_name, TransactionTableController, YsqlSystemTablesController,
+    YsqlSystemTablesOptions,
+};
 pub use drop::TableDeleter;
 pub use flush::{FlushOptions, Flushes};
 pub use placement::{replication_info_set, table_replication_info};
@@ -131,6 +134,9 @@ pub struct TableLifecycle {
     /// The tables each DDL transaction's verification altered, until their tablets have the
     /// alter (`AddDdlTxnWaitingForSchemaVersion`).
     pub(crate) ddl_alters: std::sync::Mutex<std::collections::HashMap<Vec<u8>, Vec<Vec<u8>>>>,
+    /// The YSQL databases being created, by term and id: the rest of the PREPARING ones were
+    /// interrupted by a leader change.
+    pub(crate) creating_databases: std::sync::Mutex<std::collections::HashSet<(i64, Vec<u8>)>>,
 }
 
 impl TableLifecycle {
@@ -152,6 +158,7 @@ impl TableLifecycle {
             options,
             names: tokio::sync::Mutex::new(()),
             ddl_alters: Default::default(),
+            creating_databases: Default::default(),
         })
     }
 
