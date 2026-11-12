@@ -403,17 +403,6 @@ ExecEndYbBitmapTableScan(YbBitmapTableScanState *node)
 	tsdesc = node->ss.ss_currentScanDesc;
 
 	/*
-	 * YB_TODO_PG19MERGE: PG commit d060e921ea5aa47b6265174c32e1128cebdbc3df
-	 * removed ExecFreeExprContext
-	 */
-	/*
-	 * clear out tuple table slots
-	 */
-	if (node->ss.ps.ps_ResultTupleSlot)
-		ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
-	ExecClearTuple(node->ss.ss_ScanTupleSlot);
-
-	/*
 	 * close down subplans
 	 */
 	ExecEndNode(outerPlanState(node));
