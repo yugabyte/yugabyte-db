@@ -3461,7 +3461,9 @@ class PgClientSession::Impl {
           // If we failed to report the status of this DDL transaction, we can just log and ignore
           // it, as the poller in the YB-Master will figure out the status of this transaction using
           // the transaction status tablet and PG catalog.
-          WARN_NOT_OK(client_.ReportYsqlDdlTxnStatus(*metadata, *commit),
+          // This tserver's clock was updated from the commit response, so it is past the commit
+          // time; propagate it to the master.
+          WARN_NOT_OK(client_.ReportYsqlDdlTxnStatus(*metadata, *commit, clock()->Now()),
                       Format("Sending ReportYsqlDdlTxnStatus call of $0 failed", *commit));
         }
 

@@ -28,6 +28,8 @@
 #include "yb/master/master_defaults.h"
 #include "yb/master/sys_catalog.h"
 
+#include "yb/server/clock.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tserver/tserver_service.pb.h"
 
@@ -578,14 +580,20 @@ Status ReadPgAttributeWithReadTime(
   *read_restart_ht = VERIFY_RESULT(iter->GetReadRestartData()).restart_time;
   return Status::OK();
 }
+
+// The master's clock: CatalogManager::Clock() is only public through SnapshotCoordinatorContext.
+server::Clock* MasterClock(CatalogManager& catalog_manager) {
+  return static_cast<SnapshotCoordinatorContext&>(catalog_manager).Clock();
+}
 } // namespace
 
 PollTransactionStatusBase::PollTransactionStatusBase(
     const TransactionMetadata& transaction, std::shared_future<client::YBClient*> client_future,
-    const std::string& description)
+    const std::string& description, server::Clock* clock)
     : transaction_(transaction),
       description_(description),
-      client_future_(std::move(client_future)) {
+      client_future_(std::move(client_future)),
+      clock_(clock) {
   sync_.StatusCB(Status::OK());
 }
 
@@ -678,6 +686,9 @@ void PollTransactionStatusBase::TransactionReceived(
     TransactionPending();
     return;
   }
+  if (clock_ && resp.has_propagated_hybrid_time()) {
+    clock_->Update(HybridTime(resp.propagated_hybrid_time()));
+  }
   if (resp.has_error()) {
     const Status s = StatusFromPB(resp.error().status());
     LOG_WITH_PREFIX(WARNING) << "Transaction Status attempt failed with error code "
@@ -716,7 +727,8 @@ NamespaceVerificationTask::NamespaceVerificationTask(
     rpc::Messenger& messenger, const LeaderEpoch& epoch)
     : MultiStepNamespaceTaskBase(
           catalog_manager, *catalog_manager.AsyncTaskPool(), messenger, *ns, epoch),
-      PollTransactionStatusBase(transaction, std::move(client_future), ns->ToString()),
+      PollTransactionStatusBase(
+          transaction, std::move(client_future), ns->ToString(), MasterClock(catalog_manager)),
       sys_catalog_(*sys_catalog) {
   completion_callback_ = [this,
                           complete_callback = std::move(complete_callback)](const Status& status) {
@@ -809,7 +821,9 @@ TableSchemaVerificationTask::TableSchemaVerificationTask(
     rpc::Messenger& messenger, const LeaderEpoch& epoch, bool ddl_atomicity_enabled)
     : MultiStepTableTaskBase(
           catalog_manager, *catalog_manager.AsyncTaskPool(), messenger, std::move(table), epoch),
-      PollTransactionStatusBase(transaction, std::move(client_future), table_info_->ToString()),
+      PollTransactionStatusBase(
+          transaction, std::move(client_future), table_info_->ToString(),
+          MasterClock(catalog_manager)),
       sys_catalog_(*sys_catalog),
       ddl_atomicity_enabled_(ddl_atomicity_enabled) {
   completion_callback_ = [this,
@@ -940,7 +954,9 @@ DdlRequesterLivenessTask::DdlRequesterLivenessTask(
     const LeaderEpoch& epoch)
     : MultiStepTableTaskBase(
           catalog_manager, *catalog_manager.AsyncTaskPool(), messenger, std::move(table), epoch),
-      PollTransactionStatusBase(transaction, std::move(client_future), table_info_->ToString()),
+      PollTransactionStatusBase(
+          transaction, std::move(client_future), table_info_->ToString(),
+          MasterClock(catalog_manager)),
       callbacks_(std::move(callbacks)) {}
 
 std::shared_ptr<DdlRequesterLivenessTask> DdlRequesterLivenessTask::CreateAndStartTask(

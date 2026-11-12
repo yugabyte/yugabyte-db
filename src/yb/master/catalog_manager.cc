@@ -695,6 +695,9 @@ DEFINE_RUNTIME_AUTO_bool(enable_tablespace_based_transaction_placement, kLocalPe
     false, true,
     "Enable support for tablespace-based transaction locality.");
 
+// AutoFlag so that no index is left pending forever: (1) an old master that becomes leader before
+// the CREATE INDEX transaction is verified does not finalize the index, and (2) after a rollback,
+// indexes that were still pending stay pending, and nothing finalizes them on re-upgrade.
 DEFINE_RUNTIME_AUTO_bool(enable_ysql_index_birth_time_state, kLocalPersisted, false, true,
     "Track state for a YSQL index whether birth_time is set or pending "
     "(IndexInfoPB.birth_time_state). This is required to decide if reads should throw a retryable "
@@ -1503,6 +1506,10 @@ void CatalogManager::ValidateIndexTablesPostLoad(
           auto index_table_wlock = index_table->LockForWrite();
           BackfillTable::UnsetIndexTableRetainsDeleteMarkers(index_table_wlock.mutable_data());
           // Backfill is done, so the birth_time is final too (it is 0 if it was not persisted).
+          // TODO: if the master crashed before AllowCompactionsToGCDeleteMarkers persisted
+          // birth_time, this marks the index final with birth_time 0, which disables the read
+          // guard for it. An index should not become final before its birth_time is set: recover
+          // it from the backfill job's backfilling_timestamp instead.
           auto& index_pb = index_table_wlock.mutable_data()->pb;
           if (index_pb.has_index_info() && index_pb.index_info().birth_time_state() ==
                                                IndexInfoPB::BIRTH_TIME_PENDING_BACKFILL) {
@@ -4728,6 +4735,16 @@ IndexInfoPB::BirthTimeState InitialIndexBirthTimeState(
   return IndexInfoPB::BIRTH_TIME_FINAL;
 }
 
+// Sets the initial birth_time_state of a new YSQL index (see InitialIndexBirthTimeState).
+void SetInitialIndexBirthTimeState(
+    const CreateTableRequestPB& req, bool index_backfill_enabled, IndexInfoPB* index_info) {
+  const auto birth_time_state =
+      InitialIndexBirthTimeState(req, *index_info, index_backfill_enabled);
+  if (birth_time_state != IndexInfoPB::BIRTH_TIME_FINAL) {
+    index_info->set_birth_time_state(birth_time_state);
+  }
+}
+
 } // namespace
 
 Status CatalogManager::PersistNewTable(
@@ -5043,11 +5060,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   if (req.has_index_info() && is_pg_table) {
-    const auto birth_time_state =
-        InitialIndexBirthTimeState(req, index_info, index_backfill_enabled);
-    if (birth_time_state != IndexInfoPB::BIRTH_TIME_FINAL) {
-      index_info.set_birth_time_state(birth_time_state);
-    }
+    SetInitialIndexBirthTimeState(req, index_backfill_enabled, &index_info);
   }
 
   if ((req.has_index_info() || req.has_indexed_table_id()) &&

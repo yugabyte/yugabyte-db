@@ -3279,12 +3279,16 @@ Result<TableSizeInfo> YBClient::Data::GetTableDiskSize(
 }
 
 Status YBClient::Data::ReportYsqlDdlTxnStatus(
-    const TransactionMetadata& txn, bool is_committed, const CoarseTimePoint& deadline) {
+    const TransactionMetadata& txn, bool is_committed, HybridTime propagated_hybrid_time,
+    const CoarseTimePoint& deadline) {
   master::ReportYsqlDdlTxnStatusRequestPB req;
   master::ReportYsqlDdlTxnStatusResponsePB resp;
 
   req.set_transaction_id(txn.transaction_id.data(), txn.transaction_id.size());
   req.set_is_committed(is_committed);
+  if (propagated_hybrid_time.is_valid()) {
+    req.set_propagated_hybrid_time(propagated_hybrid_time.ToUint64());
+  }
   RETURN_NOT_OK(SyncLeaderMasterRpc(
       deadline, req, &resp, "ReportYsqlDdlTxnStatus",
       &master::MasterDdlProxy::ReportYsqlDdlTxnStatusAsync));

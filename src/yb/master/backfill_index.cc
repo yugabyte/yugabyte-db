@@ -1521,6 +1521,7 @@ Status BackfillTable::AllowCompactionsToGCDeleteMarkers(
   }
   VLOG_WITH_FUNC(2) << "Unlocked index table for Read";
   VLOG(1) << "Sending backfill done requests to the Index table";
+  // TODO(#37622): nothing re-sends this if a tablet misses it (e.g. on master failover).
   RETURN_NOT_OK(SendRpcToAllowCompactionsToGCDeleteMarkers(index_table_info));
   VLOG(1) << "DONE Sending backfill done requests to the Index table";
   return Status::OK();

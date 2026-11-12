@@ -375,6 +375,10 @@ TAG_FLAG(ysql_debug_log_write_requests, unsafe);
 DEFINE_test_flag(bool, cdc_fail_before_setting_barrier, false,
   "Fail CreateTablet before setting CDC retention barriers");
 
+DEFINE_test_flag(int32, mark_non_concurrent_index_done_delay_ms, 0,
+    "Delay handling a MarkNonConcurrentIndexDone RPC by this many milliseconds before submitting "
+    "it.");
+
 double TEST_delay_create_transaction_probability = 0;
 
 namespace yb::tserver {
@@ -765,6 +769,9 @@ void TabletServiceAdminImpl::MarkNonConcurrentIndexDone(
         resp->mutable_error(), STATUS(InvalidArgument, "mark_non_concurrent_index_done is not set"),
         &context);
     return;
+  }
+  if (FLAGS_TEST_mark_non_concurrent_index_done_delay_ms > 0) {
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_mark_non_concurrent_index_done_delay_ms));
   }
   SubmitChangeMetadataOnLeader("MarkNonConcurrentIndexDone", req, resp, &context);
 }

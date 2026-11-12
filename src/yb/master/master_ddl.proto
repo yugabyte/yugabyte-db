@@ -383,8 +383,9 @@ message IndexStatusPB {
   // read time < birth time that might hit the index.
   optional fixed64 birth_time = 4;
 
-  // The index's IndexInfoPB.birth_time_state on the master. Always set when error is not set, so
-  // that a tserver can tell a final state apart from a master that does not report it.
+  // The index's IndexInfoPB.birth_time_state on the master. Set when error is not set, except for a
+  // pinned online schema change target (not an index). A tserver treats a missing value as not
+  // final, which is also what it gets from a master that does not report it.
   optional IndexInfoPB.BirthTimeState birth_time_state = 5;
 }
 
@@ -807,6 +808,11 @@ message ReportYsqlDdlTxnStatusRequestPB {
 
   // Whether the above transaction is committed or aborted.
   optional bool is_committed = 2;
+
+  // The sender's hybrid time, which is >= the transaction's commit time, as the sender's clock was
+  // updated from the commit response. The master updates its clock with it before handling the
+  // DDL, so that hybrid times it picks then (e.g. an index birth_time) are >= the commit time.
+  optional fixed64 propagated_hybrid_time = 3;
 }
 
 message ReportYsqlDdlTxnStatusResponsePB {

@@ -52,10 +52,12 @@
 #include "yb/util/tostring.h"
 
 DEFINE_RUNTIME_uint32(tablet_validator_retain_delete_markers_validation_period_sec, 60,
-    "The time period in seconds for validation of retain delete markers property for index tables. "
-    "The value is not updated immediately, it is posponed till the nearest run of the periodic "
-    "validation task. The value of 0 is used to disable verification. In this case, the validation "
-    "task wakes up every minute to get a new flag value.");
+    "The time period in seconds for validation of retain delete markers property for index tables, "
+    "and of a pending birth time of index tables (e.g. a nonconcurrently built index whose "
+    "finalize from the master was lost). The value is not updated immediately, it is posponed "
+    "till the nearest run of the periodic validation task. The value of 0 is used to disable "
+    "verification. In this case, the validation task wakes up every minute to get a new flag "
+    "value.");
 TAG_FLAG(tablet_validator_retain_delete_markers_validation_period_sec, advanced);
 
 DEFINE_test_flag(uint32, tablet_validator_cache_retention_interval_sec, 3600,
@@ -337,6 +339,8 @@ bool TabletMetadataValidator::Impl::HandleMasterResponse(
     }
 
     // Third step, clean index tables from future synchronization.
+    // TODO(#37622): an index that is still pending on the master is dropped here too, so if the
+    // master's finalize RPC is later lost, it is only rechecked when the tablet is reopened.
     index_tablets_to_sync_.get<IndexTableIdTag>().erase(index_table_id);
   }
 

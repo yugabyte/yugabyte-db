@@ -2952,6 +2952,25 @@ Status RaftGroupMetadata::SetVectorReverseMappingRepairPending(
   return SetTableInfoUnlocked(it, new_info);
 }
 
+namespace {
+
+// Sets the index's birth_time (unless 0) and, if the index is in pending_state, marks its
+// birth_time_state final. Each finalize path only clears its own pending state.
+void FinalizeIndexBirthTime(
+    TableInfo* table_info, uint64_t birth_time, IndexInfoPB::BirthTimeState pending_state) {
+  IndexInfoPB index_info_pb;
+  table_info->index_info->ToPB(&index_info_pb);
+  if (birth_time != 0) {
+    index_info_pb.set_birth_time(birth_time);
+  }
+  if (index_info_pb.birth_time_state() == pending_state) {
+    index_info_pb.clear_birth_time_state();
+  }
+  table_info->index_info.reset(new qlexpr::IndexInfo(index_info_pb));
+}
+
+} // namespace
+
 Status RaftGroupMetadata::OnBackfillDone(
     const TableId& table_id, uint64_t birth_time) {
   std::lock_guard lock(data_mutex_);
@@ -2985,13 +3004,10 @@ Status RaftGroupMetadata::OnBackfillDoneUnlocked(
   TableInfoPtr new_table_info = std::make_shared<TableInfo>(*it->second, new_schema);
 
   if (new_table_info->index_info) {
-    IndexInfoPB index_info_pb;
-    new_table_info->index_info->ToPB(&index_info_pb);
-    if (birth_time != 0) {
-      index_info_pb.set_birth_time(birth_time);
-    }
-    index_info_pb.clear_birth_time_state();
-    new_table_info->index_info.reset(new qlexpr::IndexInfo(index_info_pb));
+    // BackfillDone is also sent to nonconcurrently built indexes (e.g. when an online schema change
+    // releases its delete-marker pin), so leave BIRTH_TIME_PENDING_DDL_COMMIT alone.
+    FinalizeIndexBirthTime(
+        new_table_info.get(), birth_time, IndexInfoPB::BIRTH_TIME_PENDING_BACKFILL);
   }
   VLOG_WITH_PREFIX(1) << raft_group_id_ << " Updating table " << target_table_id
                       << " to Schema version " << new_table_info->schema_version
@@ -3036,13 +3052,8 @@ Status RaftGroupMetadata::OnNonConcurrentIndexDoneUnlocked(
   // Unlike OnBackfillDoneUnlocked, this does not touch retain_delete_markers: the index was built
   // inline, not backfilled.
   TableInfoPtr new_table_info = std::make_shared<TableInfo>(*it->second, it->second->schema());
-  IndexInfoPB index_info_pb;
-  new_table_info->index_info->ToPB(&index_info_pb);
-  if (birth_time != 0) {
-    index_info_pb.set_birth_time(birth_time);
-  }
-  index_info_pb.clear_birth_time_state();
-  new_table_info->index_info.reset(new qlexpr::IndexInfo(index_info_pb));
+  FinalizeIndexBirthTime(
+      new_table_info.get(), birth_time, IndexInfoPB::BIRTH_TIME_PENDING_DDL_COMMIT);
   VLOG_WITH_PREFIX(1) << raft_group_id_ << " Finalizing birth time of index " << target_table_id
                       << ": " << AsString(new_table_info);
   return SetTableInfoUnlocked(it, std::move(new_table_info));
