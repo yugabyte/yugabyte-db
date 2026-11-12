@@ -314,7 +314,6 @@ TEST_F(CDCSDKYsqlTest, TestGrpcStreamTransactionalDdlAddAndDropColumn) {
 TEST_F(CDCSDKYsqlTest, TestGrpcStreamTransactionalDdlAddColumnAfterDropColumn) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
   ToggleDDLMode(/* use_legacy = */ false);
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
 
   ASSERT_OK(SetUpWithParams(1, 1, false));
 

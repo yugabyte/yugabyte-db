@@ -983,8 +983,8 @@ bool IsDuplicateDDLForColumnsMarkedForDeletion(
     return false;
   }
 
-  // If there is nothing cached to compare against (e.g. after a restart), then send it. This is just
-  // a duplicate DDL record.
+  // If there is nothing cached to compare against (e.g. after a restart), then send it. This is
+  // just a duplicate DDL record.
   if (!previous_schema || !schema.EquivalentForDataCopy(*previous_schema)) {
     return false;
   }
