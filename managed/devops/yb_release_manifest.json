@@ -22,6 +22,7 @@
     "bin/edit_universe_details.py",
     "bin/filtered_logs.sh",
     "bin/node_utils.sh",
+    "bin/support_bundle_utils.sh",
     "bin/support_bundlev2_manifest.yaml",
     "bin/yba_utils.sh",
     "bin/yb-dump-cdc-state-linux-amd64",

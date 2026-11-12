@@ -757,7 +757,7 @@ lazy val javagen = project.in(file("client/java"))
     openApiGenerateApiTests := SettingDisabled,
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/java/openapi-java-config.json",
-    version := "1.0.3",
+    version := "1.0.4",
     openApiHttpUserAgent := s"yba-java-client/${version.value}",
     target := file("client/java/target/v1"),
   )
