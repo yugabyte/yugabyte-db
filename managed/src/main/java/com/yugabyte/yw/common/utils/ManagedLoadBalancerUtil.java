@@ -376,8 +376,9 @@ public class ManagedLoadBalancerUtil {
   /**
    * Missing keeps the setting (older clients omit it); one that enables nothing turns it off.
    * Missing dnsNames keep the names, so a client that sends only enablePrivate doesn't wipe them
-   * and restart the tservers. Names with nothing enabled are rejected: v1 can't tell a missing
-   * enablePrivate from false, and the edit would delete the load balancers.
+   * and restart the tservers. A turn-off may repeat the current names (a client that read the
+   * setting) but not change them: v1 can't tell a missing enablePrivate from false, so new names
+   * there may mean "add a name", and the edit would delete the load balancers.
    */
   @Nullable
   public static ManagedLoadBalancerConfig getEditedSetting(
@@ -386,11 +387,15 @@ public class ManagedLoadBalancerUtil {
       return current;
     }
     if (!requested.isEnablePrivate() && !requested.isEnablePublic()) {
-      if (requested.getDnsNames() != null && !requested.getDnsNames().isEmpty()) {
+      List<String> names = requested.getDnsNames();
+      if (names != null
+          && !names.isEmpty()
+          && !sameDnsNames(names, current == null ? null : current.getDnsNames())) {
         throw new PlatformServiceException(
             BAD_REQUEST,
-            "managedLoadBalancer sets dnsNames but enables no load balancer. Set enablePrivate"
-                + " to true to keep the load balancer, or leave dnsNames out to turn it off.");
+            "managedLoadBalancer changes dnsNames but enables no load balancer. Set enablePrivate"
+                + " to true to change the names. To turn the load balancer off, leave dnsNames"
+                + " out or send the current names.");
       }
       return null;
     }
@@ -406,16 +411,18 @@ public class ManagedLoadBalancerUtil {
   public static boolean isChanged(Cluster current, Cluster updated) {
     return isPrivateEnabled(current) != isPrivateEnabled(updated)
         || isPublicEnabled(current) != isPublicEnabled(updated)
-        || !hasSameDnsNames(current, updated);
+        || !sameDnsNames(getDnsNames(current), getDnsNames(updated));
   }
 
   // DNS names are case-insensitive; a case change alone must not restart tservers.
-  private static boolean hasSameDnsNames(Cluster current, Cluster updated) {
-    return lowerCaseSet(getDnsNames(current)).equals(lowerCaseSet(getDnsNames(updated)));
+  private static boolean sameDnsNames(@Nullable List<String> a, @Nullable List<String> b) {
+    return lowerCaseSet(a).equals(lowerCaseSet(b));
   }
 
-  private static Set<String> lowerCaseSet(List<String> names) {
-    return names.stream().map(name -> name.toLowerCase(Locale.ROOT)).collect(Collectors.toSet());
+  private static Set<String> lowerCaseSet(@Nullable List<String> names) {
+    return names == null
+        ? Collections.emptySet()
+        : names.stream().map(name -> name.toLowerCase(Locale.ROOT)).collect(Collectors.toSet());
   }
 
   /**

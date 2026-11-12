@@ -7,6 +7,7 @@ import static com.yugabyte.yw.commissioner.UpgradeTaskBase.isBatchRollEnabled;
 import static com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType.RotatingCert;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -163,6 +164,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
@@ -4753,6 +4755,16 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         Collections.emptySet());
   }
 
+  public static class LoadBalancerCertRuntimeInfo {
+    // Tservers running the reissued cert. Runtime info survives a retry, which skips them.
+    @JsonProperty("lbCertRestartedNodes")
+    Set<String> restartedNodes = ConcurrentHashMap.newKeySet();
+  }
+
+  protected Set<String> getLoadBalancerCertRestartedNodes() {
+    return getRuntimeInfo(LoadBalancerCertRuntimeInfo.class).restartedNodes;
+  }
+
   /**
    * Restarts live tservers one at a time: rebind nodes of clusterUuids (gflags rewritten) and
    * certNodeNames (to load a copied cert). A node in both restarts once.
@@ -4763,8 +4775,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         confGetter.getConfForScope(
             Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled);
     Set<ServerType> tserver = EnumSet.of(ServerType.TSERVER);
-    boolean followerLagCheck =
-        confGetter.getConfForScope(universe, UniverseConfKeys.followerLagCheckEnabled);
+    Set<String> certRestarted = getLoadBalancerCertRestartedNodes();
     boolean restarts = !certNodeNames.isEmpty();
     for (Cluster cluster : universe.getUniverseDetails().clusters) {
       boolean rebindCluster =
@@ -4775,7 +4786,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           continue;
         }
         boolean rebind = rebindCluster && needsProxyRebind(universe, cluster, node, cloudEnabled);
-        if (!rebind && !certNodeNames.contains(node.nodeName)) {
+        boolean certRestart =
+            certNodeNames.contains(node.nodeName) && !certRestarted.contains(node.nodeName);
+        if (!rebind && !certRestart) {
           continue;
         }
         // A rollback can't undo a restart: it would leave proxies on 0.0.0.0, and a tserver whose
@@ -4793,57 +4806,35 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         if (rebind) {
           createGFlagsOverrideTasks(nodes, ServerType.TSERVER);
         }
-        startProcessesOnNode(
-            node,
-            tserver,
-            SubTaskGroupType.StartingNodeProcesses,
-            false /* addMasterToQuorum */,
-            true /* wasStopped */,
-            true /* waitForServerReady */);
+        // startProcessesOnNode, inlined: the progress record needs the restart's last group.
+        createServerControlTask(node, ServerType.TSERVER, "start")
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+        createWaitForServersTasks(nodes, ServerType.TSERVER)
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+        SubTaskGroup restarted =
+            createWaitForServerReady(node, ServerType.TSERVER)
+                .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+        removeFromLeaderBlackListIfAvailable(nodes, SubTaskGroupType.StartingNodeProcesses);
         // Followers catch up before the next stop, so no tablet loses its majority.
-        if (followerLagCheck) {
-          createCheckFollowerLagTask(node, ServerType.TSERVER)
-              .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+        if (isFollowerLagCheckEnabled()) {
+          restarted =
+              createCheckFollowerLagTask(node, ServerType.TSERVER)
+                  .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+        }
+        if (certRestart) {
+          restarted.setAfterGroupRunListener(
+              g ->
+                  updateRuntimeInfo(
+                      LoadBalancerCertRuntimeInfo.class,
+                      info -> info.restartedNodes.add(node.nodeName)));
         }
       }
     }
     // A restart that failed after its stop left the tserver leader-blacklisted, and a retry skips
-    // it once its proxies match.
+    // it once its proxies match or its cert restart is recorded.
     if (restarts && !isFirstTry()) {
       clearLeaderBlacklistIfAvailable(SubTaskGroupType.StartingNodeProcesses);
     }
-  }
-
-  /**
-   * Processes keep the old cert until restart; same CA, so TLS works in between. Not
-   * createCertUpdateTasks: it takes CAs from task params, which an edit may not carry.
-   */
-  protected void createLoadBalancerCertCopyTasks(Collection<NodeDetails> nodes) {
-    if (nodes.isEmpty()) {
-      return;
-    }
-    SubTaskGroup subTaskGroup =
-        createSubTaskGroup(
-            "AnsibleConfigureServers (LoadBalancerCerts)", SubTaskGroupType.RotatingCert);
-    for (NodeDetails node : nodes) {
-      AnsibleConfigureServers.Params params =
-          getAnsibleConfigureServerParams(
-              node,
-              ServerType.TSERVER,
-              UpgradeTaskParams.UpgradeTaskType.Certs,
-              UpgradeTaskParams.UpgradeTaskSubType.None);
-      UserIntent userIntent = getUniverse().getCluster(node.placementUuid).userIntent;
-      params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
-      params.enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
-      params.rootCARotationType = CertsRotateParams.CertRotationType.None;
-      params.clientRootCARotationType = CertsRotateParams.CertRotationType.ServerCert;
-      params.certRotateAction = NodeManager.CertRotateAction.ROTATE_CERTS;
-      AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
-      task.initialize(params);
-      task.setUserTaskUUID(getUserTaskUUID());
-      subTaskGroup.addSubTask(task);
-    }
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   private boolean needsProxyRebind(

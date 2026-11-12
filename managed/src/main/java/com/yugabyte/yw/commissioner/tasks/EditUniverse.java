@@ -19,11 +19,13 @@ import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageLoadBalancerGroup;
+import com.yugabyte.yw.common.NodeManager.CertRotateAction;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
+import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -191,10 +193,16 @@ public class EditUniverse extends EditUniverseTaskBase {
       if (!lbCertNodes.isEmpty()) {
         // Rollback would restore the old names but not the certs on the nodes.
         createMarkRollbackUnsafeTaskOnce();
-        createLoadBalancerCertCopyTasks(
+        Set<String> restarted = getLoadBalancerCertRestartedNodes();
+        // Processes keep the old cert until they restart; same CA, so TLS works in between.
+        createCertUpdateTasks(
             universe.getNodes().stream()
-                .filter(n -> lbCertNodes.contains(n.nodeName))
-                .collect(Collectors.toList()));
+                .filter(n -> lbCertNodes.contains(n.nodeName) && !restarted.contains(n.nodeName))
+                .collect(Collectors.toList()),
+            CertRotateAction.ROTATE_CERTS,
+            SubTaskGroupType.RotatingCert,
+            CertRotationType.None,
+            CertRotationType.ServerCert);
       }
       // GCP proxies need 0.0.0.0 once the LB is on. A retry rechecks every node: the last attempt
       // may have saved the state and stopped mid-rebind.

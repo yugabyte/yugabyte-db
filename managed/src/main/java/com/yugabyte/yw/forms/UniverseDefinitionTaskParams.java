@@ -1637,8 +1637,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
                   + " db.example.com or *.db.example.com. YBA adds them, and the load balancer"
                   + " address, to the server certs that its self-signed CA signs for the nodes"
                   + " behind the load balancers. IP addresses are rejected. In an edit, leaving"
-                  + " this out keeps the current names, and an empty list clears them. A"
-                  + " setting with names must set enablePrivate to true.")
+                  + " this out keeps the current names, and an empty list clears them. To"
+                  + " change the names, the setting must also set enablePrivate to true.")
       @Nullable
       private List<String> dnsNames;
 

@@ -1720,7 +1720,8 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   }
 
   @Test
-  public void testRetryOfAnEditThatChangesOnlyDnsNamesStillReissuesTheCerts() throws Exception {
+  public void testRetryOfAnEditThatChangesOnlyDnsNamesReissuesTheCertsOfTserversNotYetRestarted()
+      throws Exception {
     allowManagedLoadBalancer();
     UUID clusterUUID = defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid;
     Universe.saveDetails(
@@ -1744,10 +1745,10 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     Universe universe = givenSelfSignedClientTls(defaultUniverse);
     when(cloudAPI.ensureManagedLoadBalancer(any(), any(), any(), any(), any(), any()))
         .thenReturn("lbi-0123.elb.us-west-2.amazonaws.com");
-    // The first restarted tserver doesn't come back in time.
-    AtomicBoolean stuck = new AtomicBoolean();
+    // The second restarted tserver doesn't come back in time.
+    AtomicInteger waits = new AtomicInteger();
     when(mockClient.waitForServer(any(), anyLong()))
-        .thenAnswer(invocation -> !stuck.compareAndSet(false, true));
+        .thenAnswer(invocation -> waits.incrementAndGet() != 2);
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
     taskParams.setUniverseUUID(universe.getUniverseUUID());
     taskParams.expectedUniverseVersion = -1;
@@ -1767,14 +1768,24 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
 
     TaskInfo failed = submitTask(taskParams);
     assertEquals(List.of(TaskType.WaitForServer), failedSubTaskTypes(failed));
+    Set<String> restarted =
+        failed.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.WaitForServer)
+            .filter(t -> t.getTaskState() == Success)
+            .map(t -> param(t, "nodeName"))
+            .collect(Collectors.toSet());
+    assertEquals(1, restarted.size());
     // The first attempt saved the new names, so a retry can no longer see that they changed.
     TaskInfo retried = retry(failed);
 
     assertEquals(Success, retried.getTaskState());
-    Set<String> tservers =
-        universe.getTServers().stream().map(n -> n.nodeName).collect(Collectors.toSet());
-    assertEquals(tservers, nodeNames(loadBalancerCertCopies(retried)));
-    assertEquals(tservers, serverCommands(retried).keySet());
+    Set<String> notRestarted =
+        universe.getTServers().stream()
+            .map(n -> n.nodeName)
+            .filter(name -> !restarted.contains(name))
+            .collect(Collectors.toSet());
+    assertEquals(notRestarted, nodeNames(loadBalancerCertCopies(retried)));
+    assertEquals(notRestarted, serverCommands(retried).keySet());
   }
 
   @Test

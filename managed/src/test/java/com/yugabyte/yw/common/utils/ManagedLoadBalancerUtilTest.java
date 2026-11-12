@@ -186,6 +186,24 @@ public class ManagedLoadBalancerUtilTest extends FakeDBApplication {
   }
 
   @Test
+  public void testTurnOffMayRepeatTheSavedDnsNamesButNotChangeThem() {
+    ManagedLoadBalancerConfig named =
+        cluster(ClusterType.PRIMARY, true, null).userIntent.getManagedLoadBalancer();
+    named.setDnsNames(List.of("db.example.com"));
+    // A client that read the setting and cleared enablePrivate.
+    ManagedLoadBalancerConfig readThenTurnedOff = named.clone();
+    readThenTurnedOff.setEnablePrivate(false);
+    // v1 reads a missing enablePrivate as false, so this may mean "add a name", not "turn off".
+    ManagedLoadBalancerConfig onlyNewNames = new ManagedLoadBalancerConfig();
+    onlyNewNames.setDnsNames(List.of("db.example.com", "new.example.com"));
+
+    assertEquals(null, ManagedLoadBalancerUtil.getEditedSetting(named, readThenTurnedOff));
+    assertThrows(
+        PlatformServiceException.class,
+        () -> ManagedLoadBalancerUtil.getEditedSetting(named, onlyNewNames));
+  }
+
+  @Test
   public void testDnsNamesAcceptDnsNamesAndWildcardsButNotIpAddresses() {
     Cluster on = cluster(ClusterType.PRIMARY, true, null);
     for (String good : List.of("db.example.com", "*.db.example.com", "db.lbtest.internal")) {
