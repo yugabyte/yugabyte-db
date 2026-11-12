@@ -11,20 +11,23 @@
 # or implied.  See the License for the specific language governing permissions and limitations
 # under the License.
 #
-# Removes the versions in a thirdparty cache that the local branches and worktrees of this
-# repository are not expected to need. Each of them is attributed to the origin branch it is based
-# on: origin/master or a release branch such as origin/2026.1, whichever shares the newest commit
-# with it, or a hotfix branch of that release branch, such as origin/2026.1.2, that shares a newer
-# one. The versions pinned by the --keep most recent versions of the thirdparty_archives*.yml files
-# in build-support on those origin branches are kept. So are the versions that worktree HEADs pin,
-# since they are being built, those of local commits that change the pins themselves, and the
-# versions that the build/latest of each worktree was built with. All other versions are removed,
-# so a stale local branch keeps only its base branch's current pins, and deleting the last local
-# branch based on a release branch lets that branch's versions go. Other build roots, e.g. old
-# sanitizer builds, lose their version once it is no longer pinned.
+# Removes the thirdparty directories, one per installed thirdparty version, that the local branches
+# and worktrees of this repository are not expected to need from their parent directory,
+# /opt/yb-build/thirdparty by default. Each local branch and worktree is attributed to the origin
+# branch it is based on: origin/master or a release branch such as origin/2026.1, whichever shares
+# the newest commit with it, or a hotfix branch of that release branch, such as origin/2026.1.2,
+# that shares a newer one. The versions pinned by the --keep most recent versions of the
+# thirdparty_archives*.yml files in build-support on those origin branches are kept. So are the
+# versions that worktree HEADs pin, since they are being built, those of local commits that change
+# the pins themselves, and the versions that the latest build root of each worktree was built with.
+# All other versions are removed, so a stale local branch keeps only its base branch's current pins,
+# and deleting the last local branch based on a release branch lets that branch's versions go. Other
+# build roots, e.g. old sanitizer builds, lose their version once it is no longer pinned.
 #
-# The cache is shared by all checkouts on the machine, but only this repository's branches and
-# worktrees count, so the versions that only a separate clone uses are removed too.
+# The parent directory is shared by all checkouts on the machine, but only this repository's
+# branches and worktrees count, so the versions that only a separate clone uses are removed too.
+# Directories of versions that no branch has ever pinned, e.g. copies renamed by hand, and the
+# downloaded archives in /opt/yb-build/download_cache are not touched.
 #
 # A removed version is downloaded again by the next build that needs it, so do not run this while
 # builds use the versions it removes. Symbolic links, e.g. those of thirdparty installed from a PR
@@ -34,7 +37,7 @@
 #   build-support/clean_old_thirdparty.sh [--dir DIR] [--keep N] [--apply]
 #
 # Options:
-#   --dir DIR    Thirdparty cache directory. Default: /opt/yb-build/thirdparty
+#   --dir DIR    Parent of the thirdparty directories. Default: /opt/yb-build/thirdparty
 #   --keep N     Keep the versions of the N most recent pins of each base branch (default: 1).
 #   --apply      Actually delete. Without this flag the script only prints what it would delete
 #                (dry-run is the default for safety).
@@ -68,7 +71,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ ! -d "$target_dir" ]]; then
-  echo "Directory not found: $target_dir" >&2
+  echo "Thirdparty directory parent not found: $target_dir" >&2
   exit 1
 fi
 
@@ -85,21 +88,20 @@ git_repo() {
   git -C "$repo_dir" "$@"
 }
 
+# Prints the tags of the pins file lines on stdin, which may also be lines of a diff. The manual
+# file is edited by hand, so tag may come first in an entry, and its value may be quoted.
+tag_values() {
+  sed -n -E "s/^[+ -]?[[:space:]]*(-[[:space:]]+)?tag:[[:space:]]*['\"]?([^'\"[:space:]]+).*/\2/p"
+}
+
 # Prints the sorted tags that a commit pins.
 pins_at() {
   local file
   for file in "${pins_files[@]}"; do
-    git_repo show "$1:$file" 2>/dev/null | sed -n 's/^ *tag: *//p' || true
+    git_repo show "$1:$file" 2>/dev/null | tag_values || true
   done | sort
 }
 
-# Prints the commit time of the merge base of two commits, if they have one.
-merge_base_time() {
-  local merge_base
-  if merge_base=$(git_repo merge-base "$1" "$2" 2>/dev/null); then
-    git_repo show -s --format=%ct "$merge_base"
-  fi
-}
 
 release_branches=$(git_repo for-each-ref --format='%(refname:short)' refs/remotes/origin \
   | grep -E '^origin/(master|[0-9]+\.[0-9]+)$' || true)
@@ -109,28 +111,39 @@ if ! grep -qx origin/master <<< "$release_branches"; then
   exit 1
 fi
 
+# Prints the candidate that shares the newest commit with the commit. On a tie, a candidate whose
+# tip is that commit wins, since the commit descends from it, and otherwise master.
+best_base() {
+  local commit=$1 base= base_time=-1 base_rank=-1 candidate merge_base time rank
+  shift
+  for candidate in "$@"; do
+    merge_base=$(git_repo merge-base "$commit" "$candidate" 2>/dev/null) || continue
+    time=$(git_repo show -s --format=%ct "$merge_base")
+    if [[ $merge_base == $(git_repo rev-parse "$candidate") ]]; then
+      rank=2
+    elif [[ $candidate == origin/master ]]; then
+      rank=1
+    else
+      rank=0
+    fi
+    if (( time > base_time || (time == base_time && rank > base_rank) )); then
+      base=$candidate
+      base_time=$time
+      base_rank=$rank
+    fi
+  done
+  echo "$base"
+}
+
 # Prints the origin branch that a commit is based on, if any. Hotfix branches are compared only
 # with their own release branch, to keep the number of merge-base calls small.
 base_of() {
-  local commit=$1 base= base_time=-1 candidate time
-  for candidate in $release_branches; do
-    time=$(merge_base_time "$commit" "$candidate")
-    # On a tie the commit predates the cut of the release branch, so it is based on master.
-    if [[ -n $time ]] &&
-       { (( time > base_time )) ||
-         { (( time == base_time )) && [[ $candidate == origin/master ]]; }; }; then
-      base=$candidate
-      base_time=$time
-    fi
-  done
+  local base
+  base=$(best_base "$1" $release_branches)
   if [[ -n $base && $base != origin/master ]]; then
-    for candidate in $(git_repo for-each-ref --format='%(refname:short)' "refs/remotes/$base.*"); do
-      time=$(merge_base_time "$commit" "$candidate")
-      if [[ -n $time ]] && (( time > base_time )); then
-        base=$candidate
-        base_time=$time
-      fi
-    done
+    # shellcheck disable=SC2046
+    base=$(best_base "$1" "$base" $(git_repo for-each-ref --format='%(refname:short)' \
+                                      "refs/remotes/$base.*"))
   fi
   echo "$base"
 }
@@ -183,10 +196,13 @@ pinned_tags=$(
     done
     # A build root links its binaries to the version in its thirdparty_path.txt, which differs from
     # the pins after a pull until the next build.
+    # YB_USE_EXTERNAL_BUILD_ROOT puts the build roots into <worktree>__build.
     git_repo worktree list --porcelain | sed -n 's/^worktree //p' | while IFS= read -r worktree; do
-      if [[ -f $worktree/build/latest/thirdparty_path.txt ]]; then
-        basename "$(< "$worktree/build/latest/thirdparty_path.txt")"
-      fi
+      for latest in "$worktree/build/latest" "${worktree}__build/latest"; do
+        if [[ -f $latest/thirdparty_path.txt ]]; then
+          basename "$(< "$latest/thirdparty_path.txt")"
+        fi
+      done
     done | sed -n 's/^yugabyte-db-thirdparty-//p'
   } | sort -u | grep . || true
 )
@@ -197,21 +213,28 @@ if [[ -z $pinned_tags ]]; then
   exit 1
 fi
 
+# Only directories of versions that some branch has pinned are removed.
+known_tags=$(git_repo log -p --all --format= -- "${pins_files[@]}" | tag_values | sort -u)
+
 cd "$target_dir"
 
 shopt -s nullglob
 keepers=()
 victims=()
 leftovers=()
+unknown=()
 for entry in yugabyte-db-thirdparty-v*; do
+  tag=${entry#yugabyte-db-thirdparty-}
   if [[ -L $entry || ! -d $entry || $entry == *.tmp.* ]]; then
     continue
   elif [[ $entry == *.removing ]]; then
     leftovers+=("$entry")
-  elif grep -Fxq -- "${entry#yugabyte-db-thirdparty-}" <<< "$pinned_tags"; then
+  elif grep -Fxq -- "$tag" <<< "$pinned_tags"; then
     keepers+=("$entry")
-  else
+  elif grep -Fxq -- "$tag" <<< "$known_tags"; then
     victims+=("$entry")
+  else
+    unknown+=("$entry")
   fi
 done
 
@@ -231,9 +254,10 @@ echo "Base branches, with the number of commits based on each:"
 echo
 echo "Scanning $target_dir, keeping the versions of the $keep most recent pins of each, the pins" \
      "of $(grep -c . <<< "$own_pins_commits" || true) worktree HEADs and commits that change the" \
-     "pins, and the versions of the worktrees' build/latest..."
+     "pins, and the versions of the worktrees' latest build roots..."
 echo
 # ${a[@]+"${a[@]}"} expands an empty array under set -u in bash 3.2 too.
+print_list "Leaving alone versions that no branch has pinned:" ${unknown[@]+"${unknown[@]}"}
 print_list "Will keep:" ${keepers[@]+"${keepers[@]}"}
 print_list "Will remove leftovers of interrupted removals:" ${leftovers[@]+"${leftovers[@]}"}
 print_list "Will remove:" ${victims[@]+"${victims[@]}"}
