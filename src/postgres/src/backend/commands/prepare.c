@@ -155,8 +155,8 @@ PrepareQuery(ParseState *pstate, PrepareStmt *stmt,
 		 * which PREPARE statement is executed, therefore the connection should be
 		 * made sticky.
 		 */
-		increment_sticky_object_count();
-		elog(LOG, "Incrementing sticky object count for prepared statement %s", stmt->name);
+		yb_ysql_conn_mgr_sticky_nontxn_object = true;
+		elog(LOG, "Making connection sticky for prepared statement %s", stmt->name);
 	}
 }
 

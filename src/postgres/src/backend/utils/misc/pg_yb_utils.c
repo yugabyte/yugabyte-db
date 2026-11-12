@@ -7973,6 +7973,12 @@ bool		yb_ysql_conn_mgr_superuser_existed = false;
  */
 bool		yb_ysql_conn_mgr_sticky_locks = false;
 
+/*
+ * `yb_ysql_conn_mgr_sticky_nontxn_object` denotes whether the session created
+ * state that a rollback does not undo. It is never cleared once set.
+ */
+bool		yb_ysql_conn_mgr_sticky_nontxn_object = false;
+
 bool		yb_enable_mage = false;
 
 bool
@@ -8020,7 +8026,8 @@ YbIsStickyConnection(int *change)
 	elog(DEBUG5, "Number of sticky objects: %d", ysql_conn_mgr_sticky_object_count);
 	return (ysql_conn_mgr_sticky_object_count > 0) ||
 		YbIsConnectionMadeStickyUsingGUC() ||
-		yb_ysql_conn_mgr_sticky_locks;
+		yb_ysql_conn_mgr_sticky_locks ||
+		yb_ysql_conn_mgr_sticky_nontxn_object;
 }
 
 void	  **
