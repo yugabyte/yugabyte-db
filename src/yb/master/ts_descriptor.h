@@ -246,6 +246,9 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
     return leader_count_;
   }
 
+  void AddReplicaLoad(int64_t delta) { replica_load_.fetch_add(delta, std::memory_order_relaxed); }
+  int64_t replica_load() const { return replica_load_.load(std::memory_order_relaxed); }
+
   void inc_pending_leader_drain_notification() {
     pending_leader_drain_notification_++;
   }
@@ -485,6 +488,10 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   // The number of tablets for which this ts is a leader.
   int leader_count_ GUARDED_BY(mutex_);
+
+  // Replicas of this tserver across the master's tablet replica maps, maintained by TabletInfo as
+  // the maps change. Unlike num_live_replicas_ it does not depend on heartbeat timing.
+  std::atomic<int64_t> replica_load_{0};
 
   // State reflecting that the tserver might be unaware of the leader rebalancing
   // due to leader blacklist.

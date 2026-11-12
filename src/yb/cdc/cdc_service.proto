@@ -79,6 +79,8 @@ service CDCService {
   rpc UpdateAndPersistLSN (UpdateAndPersistLSNRequestPB) returns (UpdateAndPersistLSNResponsePB);
   rpc UpdatePublicationTableList (UpdatePublicationTableListRequestPB)
       returns (UpdatePublicationTableListResponsePB);
+  rpc InvalidateStreamMetadataCache (InvalidateStreamMetadataCacheRequestPB)
+      returns (InvalidateStreamMetadataCacheResponsePB);
 }
 
 message CDCErrorPB {
@@ -271,6 +273,13 @@ message UpdatePublicationTableListRequestPB {
 }
 
 message UpdatePublicationTableListResponsePB {
+  optional CDCErrorPB error = 1;
+}
+
+message InvalidateStreamMetadataCacheRequestPB {
+}
+
+message InvalidateStreamMetadataCacheResponsePB {
   optional CDCErrorPB error = 1;
 }
 
