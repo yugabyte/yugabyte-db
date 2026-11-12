@@ -5811,8 +5811,8 @@ Status CatalogManager::PauseReplicationSlot(
   const HybridTime restart_ht(*slot_entry->record_id_commit_time);
   SCHECK_FORMAT(
       restart_ht > barrier_ht, TryAgain,
-      "The restart time $0 of replication slot $1 isn't past its catalog barrier $2. Let its "
-      "consumer acknowledge a change committed after the barrier, then retry",
+      "The restart time $0 of replication slot $1 is still below its catalog barrier time $2. Its "
+      "consumer has to acknowledge a change committed after the barrier",
       restart_ht, slot_name, barrier_ht);
 
   {

@@ -97,16 +97,7 @@ class CDCSDKConsumptionConsistentChangesTest : public CDCSDKYsqlTest {
     RETURN_NOT_OK(GetAllPendingTxnsFromVirtualWAL(
         stream_id, {table_id}, 1 /* expected_dml_records */, true /* init_virtual_wal */));
     RETURN_NOT_OK(DestroyVirtualWAL());
-    return WaitFor(
-        [&]() -> Result<bool> {
-          auto s = ExecuteYBAdminCommand("pause_replication_slot", {slot_name});
-          if (!s.ok() && s.ToString().find("isn't past its catalog barrier") != std::string::npos) {
-            return false;
-          }
-          RETURN_NOT_OK(s);
-          return true;
-        },
-        MonoDelta::FromSeconds(30) * kTimeMultiplier, "Pause the stream");
+    return ExecuteYBAdminCommand("pause_replication_slot", {slot_name});
   }
   void TestExplcictCheckpointMovementAfterDDL(bool no_activity_post_ddl);
   void TestSysCatalogRetentionBarriers(

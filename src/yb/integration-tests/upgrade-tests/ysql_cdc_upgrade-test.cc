@@ -467,9 +467,7 @@ void CdcUpgradeTest::TestPausedPubRefreshSlotConvertedToImplicit() {
   ASSERT_OK(CheckNoRowsLost(
       ASSERT_RESULT(StreamRows(kSlot, 25, IgnoreReadTime::kTrue)),
       ExpectedRows(21, 25, WithNewCol::kFalse)));
-  ASSERT_OK(WaitFor(
-      [this]() { return RunYbAdmin("pause_replication_slot", kSlot).ok(); }, 60s,
-      "Pause the slot once its restart time is past the barrier"));
+  ASSERT_OK(RunYbAdmin("pause_replication_slot", kSlot));
 
   auto conn = ASSERT_RESULT(cluster_->ConnectToDB(kDbName));
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN new_col INT", kTableName));
