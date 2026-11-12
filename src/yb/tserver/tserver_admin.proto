@@ -432,6 +432,18 @@ message CountIntentsResponsePB {
   optional int64 num_intents = 2;
 }
 
+message ClearRocksDBCacheRequestPB {
+  optional bytes dest_uuid = 1;
+}
+
+message ClearRocksDBCacheResponsePB {
+  optional TabletServerErrorPB error = 1;
+  // Unset when the block cache is disabled on this tablet server.
+  optional uint64 block_cache_evicted_bytes = 2;
+  // Open SST table readers closed across every tablet's regular and intents RocksDB.
+  optional uint64 table_readers_evicted = 3;
+}
+
 message AddTableToTabletRequestPB {
   required bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   required tablet.TableInfoPB add_table = 2;
@@ -615,6 +627,8 @@ service TabletServerAdminService {
   rpc GetTabletTierInfo(GetTabletTierInfoRequestPB) returns (GetTabletTierInfoResponsePB);
 
   rpc CountIntents(CountIntentsRequestPB) returns (CountIntentsResponsePB);
+
+  rpc ClearRocksDBCache(ClearRocksDBCacheRequestPB) returns (ClearRocksDBCacheResponsePB);
 
   rpc AddTableToTablet(AddTableToTabletRequestPB) returns (AddTableToTabletResponsePB);
 

@@ -40,6 +40,8 @@ import org.junit.Test;
  */
 public class PACollectorSyncTest extends FakeDBApplication {
 
+  private static final String EMPTY_LIST = "{\"entities\":[],\"has_next\":false}";
+
   private Customer customer;
   private PACollectorSync sync;
   private PerfAdvisorService perfAdvisorService;
@@ -66,19 +68,18 @@ public class PACollectorSyncTest extends FakeDBApplication {
 
       // The push, then the reconciliation listing.
       server.enqueue(new MockResponse().setBody("{}"));
-      server.enqueue(new MockResponse().setBody("[]"));
+      server.enqueue(new MockResponse().setBody(EMPTY_LIST));
       sync.initialize(customer);
 
       RecordedRequest push = server.takeRequest();
       assertThat(push.getMethod(), equalTo("PUT"));
-      assertThat(push.getPath(), containsString("/api/export/config/" + endpoint.getUuid()));
+      assertThat(push.getPath(), containsString("/api/v2/export-configs/" + endpoint.getUuid()));
       // The endpoint's own uuid is the collector's export config id, so the two sides never
       // need reconciling by name.
-      assertThat(push.getBody().readUtf8(), containsString(endpoint.getUuid().toString()));
 
       RecordedRequest reconcile = server.takeRequest();
       assertThat(reconcile.getMethod(), equalTo("GET"));
-      assertThat(reconcile.getPath(), containsString("/api/export/config"));
+      assertThat(reconcile.getPath(), containsString("/api/v2/export-configs"));
 
       // Second tick with nothing changed: no export config traffic at all. Every push makes the
       // collector dial the destination, so a quiet tick has to stay quiet.
@@ -96,7 +97,7 @@ public class PACollectorSyncTest extends FakeDBApplication {
       registerUniverse(collector, endpoint);
 
       server.enqueue(new MockResponse().setBody("{}"));
-      server.enqueue(new MockResponse().setBody("[]"));
+      server.enqueue(new MockResponse().setBody(EMPTY_LIST));
       sync.initialize(customer);
       server.takeRequest();
       server.takeRequest();
@@ -111,7 +112,7 @@ public class PACollectorSyncTest extends FakeDBApplication {
 
       RecordedRequest rePush = server.takeRequest();
       assertThat(rePush.getMethod(), equalTo("PUT"));
-      assertThat(rePush.getPath(), containsString("/api/export/config/" + endpoint.getUuid()));
+      assertThat(rePush.getPath(), containsString("/api/v2/export-configs/" + endpoint.getUuid()));
     }
   }
 
@@ -125,7 +126,7 @@ public class PACollectorSyncTest extends FakeDBApplication {
 
       // Push rejected, so it must not be recorded as synced.
       server.enqueue(new MockResponse().setResponseCode(502).setBody("{}"));
-      server.enqueue(new MockResponse().setBody("[]"));
+      server.enqueue(new MockResponse().setBody(EMPTY_LIST));
       sync.initialize(customer);
       server.takeRequest();
       server.takeRequest();
@@ -135,7 +136,7 @@ public class PACollectorSyncTest extends FakeDBApplication {
 
       RecordedRequest retry = server.takeRequest();
       assertThat(retry.getMethod(), equalTo("PUT"));
-      assertThat(retry.getPath(), containsString("/api/export/config/" + endpoint.getUuid()));
+      assertThat(retry.getPath(), containsString("/api/v2/export-configs/" + endpoint.getUuid()));
     }
   }
 
@@ -153,7 +154,11 @@ public class PACollectorSyncTest extends FakeDBApplication {
       UUID foreign = UUID.randomUUID();
       server.enqueue(new MockResponse().setBody("{}"));
       server.enqueue(
-          new MockResponse().setBody("[{\"id\":\"" + foreign + "\",\"name\":\"hand-made\"}]"));
+          new MockResponse()
+              .setBody(
+                  "{\"entities\":[{\"info\":{\"export_config_uuid\":\""
+                      + foreign
+                      + "\"},\"spec\":{\"name\":\"hand-made\"}}],\"has_next\":false}"));
       sync.initialize(customer);
 
       server.takeRequest();
@@ -193,7 +198,7 @@ public class PACollectorSyncTest extends FakeDBApplication {
       PerfAdvisorEndpoint endpoint = createEndpoint("unused");
       assertThat(endpoint.getUuid(), notNullValue());
 
-      server.enqueue(new MockResponse().setBody("[]"));
+      server.enqueue(new MockResponse().setBody(EMPTY_LIST));
       sync.initialize(customer);
 
       // Only the reconciliation listing: an endpoint reaches a collector when a universe on it
@@ -222,7 +227,8 @@ public class PACollectorSyncTest extends FakeDBApplication {
             public MockResponse dispatch(RecordedRequest request) throws InterruptedException {
               requestArrived.countDown();
               release.await(30, TimeUnit.SECONDS);
-              return new MockResponse().setBody("GET".equals(request.getMethod()) ? "[]" : "{}");
+              return new MockResponse()
+                  .setBody("GET".equals(request.getMethod()) ? EMPTY_LIST : "{}");
             }
           });
 

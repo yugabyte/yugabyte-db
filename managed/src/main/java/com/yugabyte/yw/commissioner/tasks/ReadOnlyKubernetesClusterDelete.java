@@ -78,141 +78,42 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
   }
 
   @Override
+  protected void createPrecheckTasks(Universe universe) {
+    super.createPrecheckTasks(universe);
+    // A retry finds no read replica once an earlier attempt got past
+    // DeleteClusterFromUniverse; run() then adds only the steps after it.
+    if (isFirstTry()
+        && CollectionUtils.isEmpty(universe.getUniverseDetails().getReadOnlyClusters())) {
+      String msg =
+          String.format(
+              "Unable to delete ReadOnly cluster from universe %s as "
+                  + "it doesn't have any ReadOnly clusters.",
+              universe.getName());
+      log.error(msg);
+      throw new RuntimeException(msg);
+    }
+    addBasicPrecheckTasks();
+  }
+
+  @Override
   public void run() {
-    Universe universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
     Throwable th = null;
     try {
+      Universe universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
       kubernetesStatus.startYBUniverseEventStatus(
           universe,
           taskParams().getKubernetesResourceDetails(),
           TaskType.ReadOnlyKubernetesClusterDelete.name(),
           getUserTaskUUID(),
           UniverseState.EDITING);
-      List<Cluster> roClusters = universe.getUniverseDetails().getReadOnlyClusters();
-      if (CollectionUtils.isEmpty(roClusters)) {
-        String msg =
-            String.format(
-                "Unable to delete ReadOnly cluster from universe %s as "
-                    + "it doesn't have any ReadOnly clusters.",
-                universe.getName());
-        log.error(msg);
-        throw new RuntimeException(msg);
-      }
 
       preTaskActions();
-      addBasicPrecheckTasks();
 
-      // We support only one readonly cluster, so using the first one in the list.
-      Cluster cluster = roClusters.get(0);
-      UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
-      UUID providerUUID = Util.getSingleProviderUUID(cluster);
-
-      Map<String, String> universeConfig = universe.getConfig();
-      // True for all the new and v2 to v3 migrated universes
-      // i.e. everything which is using 2.1.8+.
-      boolean runHelmDelete = universeConfig.containsKey(Universe.HELM2_LEGACY);
-
-      PlacementInfo pi = cluster.placementInfo;
-
-      Provider provider = Provider.get(providerUUID);
-
-      Map<UUID, Map<String, String>> azToConfig = KubernetesUtil.getConfigPerAZ(pi);
-
-      boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
-
-      SubTaskGroup helmDeletes =
-          createSubTaskGroup(
-              KubernetesCommandExecutor.CommandType.HELM_DELETE.getSubTaskGroupName());
-      helmDeletes.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
-
-      SubTaskGroup volumeDeletes =
-          createSubTaskGroup(
-              KubernetesCommandExecutor.CommandType.VOLUME_DELETE.getSubTaskGroupName());
-      volumeDeletes.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
-
-      SubTaskGroup namespaceDeletes =
-          createSubTaskGroup(
-              KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE.getSubTaskGroupName());
-      namespaceDeletes.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
-
-      // Handle Namespaced services ownership change/delete
-      addHandleKubernetesNamespacedServices(
-              true /* readReplicaDelete */,
-              null /* universeParams */,
-              universe.getUniverseUUID(),
-              false /* handleOwnershipChanges */)
-          .setSubTaskGroupType(SubTaskGroupType.KubernetesHandleNamespacedService);
-
-      // This value cannot be changed once set during the Universe
-      // creation, so we don't allow users to modify it later during
-      // edit, upgrade, etc.
-      boolean newNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
-
-      for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
-        UUID azUUID = entry.getKey();
-        String azName = isMultiAz ? AvailabilityZone.get(azUUID).getCode() : null;
-
-        Map<String, String> config = entry.getValue();
-
-        String namespace = config.get("KUBENAMESPACE");
-
-        if (runHelmDelete || namespace != null) {
-          // Delete the helm deployments.
-          helmDeletes.addSubTask(
-              createDestroyKubernetesTask(
-                  universe.getName(),
-                  universe.getUniverseDetails().nodePrefix,
-                  azName,
-                  config,
-                  KubernetesCommandExecutor.CommandType.HELM_DELETE,
-                  providerUUID,
-                  newNamingStyle,
-                  /*isReadOnlyCluster*/ true));
-        }
-
-        // Delete the PVCs created for this AZ.
-        volumeDeletes.addSubTask(
-            createDestroyKubernetesTask(
-                universe.getName(),
-                universe.getUniverseDetails().nodePrefix,
-                azName,
-                config,
-                KubernetesCommandExecutor.CommandType.VOLUME_DELETE,
-                providerUUID,
-                newNamingStyle,
-                /*isReadOnlyCluster*/ true));
-
-        // Delete the namespaces of the deployments only if those were
-        // created by us.
-        // We don't delete the namespace in case of new naming style,
-        // as it is shared by primary cluster deployments (Helm
-        // releases) and read replica deployments.
-        if (namespace == null && !newNamingStyle) {
-          namespaceDeletes.addSubTask(
-              createDestroyKubernetesTask(
-                  universe.getName(),
-                  universe.getUniverseDetails().nodePrefix,
-                  azName,
-                  config,
-                  KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE,
-                  providerUUID,
-                  newNamingStyle,
-                  /*isReadOnlyCluster*/ true));
-        }
+      List<Cluster> roClusters = universe.getUniverseDetails().getReadOnlyClusters();
+      if (CollectionUtils.isNotEmpty(roClusters)) {
+        // We support only one readonly cluster, so using the first one in the list.
+        createReadOnlyClusterDeleteTasks(universe, roClusters.get(0));
       }
-
-      getRunnableTask().addSubTaskGroup(helmDeletes);
-      getRunnableTask().addSubTaskGroup(volumeDeletes);
-      getRunnableTask().addSubTaskGroup(namespaceDeletes);
-
-      // Delete old PDB policy for the universe.
-      if (universe.getUniverseDetails().useNewHelmNamingStyle) {
-        createPodDisruptionBudgetPolicyTask(true /* deletePDB */);
-      }
-
-      // Remove the cluster entry from the universe db entry.
-      createDeleteClusterFromUniverseTask(params().clusterUUID)
-          .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
       // Remove the async_replicas in the cluster config on master leader.
       createPlacementInfoTask(null /* blacklistNodes */)
@@ -249,6 +150,120 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
       unlockUniverseForUpdate();
     }
     log.info("Finished {} task.", getName());
+  }
+
+  /**
+   * Adds the subtasks that tear down the read replica's K8s resources and end by removing the
+   * cluster from the universe.
+   */
+  private void createReadOnlyClusterDeleteTasks(Universe universe, Cluster cluster) {
+    UUID providerUUID = Util.getSingleProviderUUID(cluster);
+
+    Map<String, String> universeConfig = universe.getConfig();
+    // True for all the new and v2 to v3 migrated universes
+    // i.e. everything which is using 2.1.8+.
+    boolean runHelmDelete = universeConfig.containsKey(Universe.HELM2_LEGACY);
+
+    PlacementInfo pi = cluster.placementInfo;
+
+    Provider provider = Provider.get(providerUUID);
+
+    Map<UUID, Map<String, String>> azToConfig = KubernetesUtil.getConfigPerAZ(pi);
+
+    boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
+
+    SubTaskGroup helmDeletes =
+        createSubTaskGroup(KubernetesCommandExecutor.CommandType.HELM_DELETE.getSubTaskGroupName());
+    helmDeletes.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
+
+    SubTaskGroup volumeDeletes =
+        createSubTaskGroup(
+            KubernetesCommandExecutor.CommandType.VOLUME_DELETE.getSubTaskGroupName());
+    volumeDeletes.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
+
+    SubTaskGroup namespaceDeletes =
+        createSubTaskGroup(
+            KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE.getSubTaskGroupName());
+    namespaceDeletes.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
+
+    // Handle Namespaced services ownership change/delete
+    addHandleKubernetesNamespacedServices(
+            true /* readReplicaDelete */,
+            null /* universeParams */,
+            universe.getUniverseUUID(),
+            false /* handleOwnershipChanges */)
+        .setSubTaskGroupType(SubTaskGroupType.KubernetesHandleNamespacedService);
+
+    // This value cannot be changed once set during the Universe
+    // creation, so we don't allow users to modify it later during
+    // edit, upgrade, etc.
+    boolean newNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
+
+    for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
+      UUID azUUID = entry.getKey();
+      String azName = isMultiAz ? AvailabilityZone.get(azUUID).getCode() : null;
+
+      Map<String, String> config = entry.getValue();
+
+      String namespace = config.get("KUBENAMESPACE");
+
+      if (runHelmDelete || namespace != null) {
+        // Delete the helm deployments.
+        helmDeletes.addSubTask(
+            createDestroyKubernetesTask(
+                universe.getName(),
+                universe.getUniverseDetails().nodePrefix,
+                azName,
+                config,
+                KubernetesCommandExecutor.CommandType.HELM_DELETE,
+                providerUUID,
+                newNamingStyle,
+                /*isReadOnlyCluster*/ true));
+      }
+
+      // Delete the PVCs created for this AZ.
+      volumeDeletes.addSubTask(
+          createDestroyKubernetesTask(
+              universe.getName(),
+              universe.getUniverseDetails().nodePrefix,
+              azName,
+              config,
+              KubernetesCommandExecutor.CommandType.VOLUME_DELETE,
+              providerUUID,
+              newNamingStyle,
+              /*isReadOnlyCluster*/ true));
+
+      // Delete the namespaces of the deployments only if those were
+      // created by us.
+      // We don't delete the namespace in case of new naming style,
+      // as it is shared by primary cluster deployments (Helm
+      // releases) and read replica deployments.
+      if (namespace == null && !newNamingStyle) {
+        namespaceDeletes.addSubTask(
+            createDestroyKubernetesTask(
+                universe.getName(),
+                universe.getUniverseDetails().nodePrefix,
+                azName,
+                config,
+                KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE,
+                providerUUID,
+                newNamingStyle,
+                /*isReadOnlyCluster*/ true));
+      }
+    }
+
+    getRunnableTask().addSubTaskGroup(helmDeletes);
+    getRunnableTask().addSubTaskGroup(volumeDeletes);
+    getRunnableTask().addSubTaskGroup(namespaceDeletes);
+
+    // Delete old PDB policy for the universe.
+    if (newNamingStyle) {
+      createPodDisruptionBudgetPolicyTask(true /* deletePDB */);
+    }
+
+    // Remove the cluster entry from the universe db entry.
+    createDeleteClusterFromUniverseTask(params().clusterUUID)
+        .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
   }
 
   // TODO this method is present in DestroyKubernetesUniverse.java also

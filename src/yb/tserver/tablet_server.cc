@@ -3215,7 +3215,8 @@ TabletServer::AllocateObjectLockSharedState() const {
     if (result.ok()) {
       return std::move(*result);
     }
-    LOG(DFATAL) << "Failed to allocate new object lock shared state: " << result.status();
+    LOG_IF(DFATAL, !result.status().IsShutdownInProgress())
+        << "Failed to allocate new object lock shared state: " << result.status();
   }
   return std::nullopt;
 }

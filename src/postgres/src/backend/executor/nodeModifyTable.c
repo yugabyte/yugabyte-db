@@ -216,7 +216,8 @@ static void ExecMergeNotMatched(ModifyTableContext *context,
 static void YbPostProcessDml(CmdType cmd_type,
 							 Relation rel,
 							 TupleTableSlot *newslot);
-static void YbInitInsertOnConflictBatchState(YbInsertOnConflictBatchState **state);
+static void YbInitInsertOnConflictBatchState(YbInsertOnConflictBatchState **state,
+											 int batch_size);
 static void YbAddSlotToBatch(ModifyTableContext *context,
 							 ResultRelInfo *resultRelInfo,
 							 TupleTableSlot *planSlot,
@@ -981,7 +982,7 @@ ExecInsert(ModifyTableContext *context,
 						 blockInsertStmt);
 		/* When we've reached the desired batch size, enter flushing mode. */
 		if (mtstate->yb_ioc_state->num_slots ==
-			yb_insert_on_conflict_read_batch_size)
+			mtstate->yb_ioc_batch_size)
 		{
 			returnSlot = YbFlushSlotsFromBatch(context, blockInsertStmt);
 		}
@@ -1364,6 +1365,18 @@ YbExecInsertAct(ModifyTableContext *context,
 			if (IsYBRelation(resultRelationDesc))
 			{
 				MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
+
+				/*
+				 * If this INSERT uses upsert mode, use it for this row only
+				 * when the relation the row goes into is safe for it.  That
+				 * is the target itself, or, for a partitioned target, the
+				 * leaf partition the row was routed to, which can be unsafe
+				 * even when the target is not.
+				 */
+				if (mtstate->yb_use_upsert_mode &&
+					YbCanUseUpsertMode(resultRelInfo,
+									   false /* is_copy_replace */ ))
+					onconflict = ONCONFLICT_YB_REPLACE;
 
 				YBCHeapInsert(resultRelInfo, slot, blockInsertStmt, estate,
 							  onconflict);
@@ -4849,34 +4862,22 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 
 	/*
 	 * YB: If the user requested upsert mode via the yb_enable_upsert_mode
-	 * GUC for a plain INSERT, either promote the plan's onConflictAction to
-	 * ONCONFLICT_YB_REPLACE (so the per-row insert path enables DocDB upsert
-	 * mode like COPY REPLACE) or, if the target relation is unsafe (has
+	 * GUC for a plain INSERT, the per-row insert path enables DocDB upsert
+	 * mode like COPY REPLACE, unless the target relation is unsafe (has
 	 * secondary indexes, triggers, or rewrite rules / foreign key
-	 * constraints), leave onConflictAction alone and emit a WARNING so the
-	 * statement silently falls back to a normal insert. COPY has its own
+	 * constraints): then YbCanUseUpsertMode emits a WARNING and the statement
+	 * falls back to a normal insert.  A partitioned target is checked here,
+	 * and each partition again on its first row in YbExecInsertAct.  The
+	 * decision is kept in mtstate, not written into the plan, because a
+	 * cached plan is reused after the setting changes.  COPY has its own
 	 * equivalent handling before the row loop in copyfrom.c.
 	 */
-	if (operation == CMD_INSERT &&
-		yb_enable_upsert_mode &&
-		node->onConflictAction == ONCONFLICT_NONE)
-	{
-		if (YBIsUpsertUnsafeOnRel(mtstate->resultRelInfo[0].ri_RelationDesc))
-		{
-			const char *relname =
-				RelationGetRelationName(mtstate->resultRelInfo[0].ri_RelationDesc);
-
-			ereport(WARNING,
-					(errmsg("upsert mode disabled for table \"%s\" "
-							"because it has secondary indexes, "
-							"triggers, or foreign key constraints",
-							relname),
-					 errhint("Consider using INSERT ... ON CONFLICT "
-							 "for true upsert semantics instead.")));
-		}
-		else
-			node->onConflictAction = ONCONFLICT_YB_REPLACE;
-	}
+	mtstate->yb_use_upsert_mode =
+		(operation == CMD_INSERT &&
+		 yb_enable_upsert_mode &&
+		 node->onConflictAction == ONCONFLICT_NONE &&
+		 YbCanUseUpsertMode(mtstate->resultRelInfo,
+							false /* is_copy_replace */ ));
 
 	/* set up epqstate with dummy subplan data for the moment */
 	EvalPlanQualInitExt(&mtstate->mt_epqstate, estate, NULL, NIL,
@@ -5360,7 +5361,9 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 		else
 			resultRelInfo->ri_BatchSize = 1;
 
-		YbInitIocStrategy(resultRelInfo, node);
+		/* YB: see ModifyTableState.yb_ioc_batch_size. */
+		mtstate->yb_ioc_batch_size = yb_insert_on_conflict_read_batch_size;
+		YbInitIocStrategy(resultRelInfo, node, mtstate->yb_ioc_batch_size);
 	}
 
 	/*
@@ -5486,13 +5489,13 @@ YbPostProcessDml(CmdType cmd_type,
 }
 
 static void
-YbInitInsertOnConflictBatchState(YbInsertOnConflictBatchState **state)
+YbInitInsertOnConflictBatchState(YbInsertOnConflictBatchState **state,
+								 int batch_size)
 {
+	Assert(batch_size > 0);
 	*state = palloc0(sizeof(YbInsertOnConflictBatchState));
-	(*state)->slots = palloc(sizeof(TupleTableSlot *) *
-							 yb_insert_on_conflict_read_batch_size);
-	(*state)->planSlots = palloc(sizeof(TupleTableSlot *) *
-								 yb_insert_on_conflict_read_batch_size);
+	(*state)->slots = palloc(sizeof(TupleTableSlot *) * batch_size);
+	(*state)->planSlots = palloc(sizeof(TupleTableSlot *) * batch_size);
 }
 
 static void
@@ -5570,7 +5573,8 @@ YbAddSlotToBatch(ModifyTableContext *context,
 
 	Assert(resultRelInfo->ri_ybIocBatchingPossible);
 	if (!context->mtstate->yb_ioc_state)
-		YbInitInsertOnConflictBatchState(&context->mtstate->yb_ioc_state);
+		YbInitInsertOnConflictBatchState(&context->mtstate->yb_ioc_state,
+										 context->mtstate->yb_ioc_batch_size);
 	YbInsertOnConflictBatchState *state = context->mtstate->yb_ioc_state;
 
 	/*
@@ -5585,6 +5589,8 @@ YbAddSlotToBatch(ModifyTableContext *context,
 	TupleDesc	tdesc = CreateTupleDescCopy(slot->tts_tupleDescriptor);
 	TupleDesc	plan_tdesc = CreateTupleDescCopy(planSlot->tts_tupleDescriptor);
 	int			slot_idx = state->num_slots;
+
+	Assert(slot_idx < context->mtstate->yb_ioc_batch_size);
 
 	state->slots[slot_idx] = MakeSingleTupleTableSlot(tdesc, slot->tts_ops);
 	/*
@@ -6009,11 +6015,11 @@ YbFetchColumnsMarkedForUpdate(ModifyTableContext *context,
  *    are single row).
  *
  * Transition-table capture does not need to be checked here: the single-row
- * UPDATE/DELETE path in createplan.c is only taken when no row triggers
- * apply (see has_applicable_triggers()), and that helper consults
- * YBRelHasOldRowTriggers() which already rejects any relation carrying an
- * AFTER UPDATE/DELETE trigger with REFERENCING OLD/NEW TABLE.  So a Result
- * outer plan implies no transition_capture.
+ * UPDATE/DELETE path in createplan.c is not taken when the target leaf
+ * (has_applicable_triggers()) or the relation named in the query
+ * (yb_target_has_transition_tables()) has an AFTER UPDATE/DELETE trigger
+ * with REFERENCING OLD/NEW TABLE.  So a Result outer plan implies no
+ * transition_capture.
  */
 static bool
 ybCanSkipFetchingTargetTuple(ModifyTable *modifyTable, Relation targetRel)

@@ -321,12 +321,24 @@ class Tablet : public AbstractTablet,
       const std::string& backfill_from,
       const CoarseTimePoint deadline,
       const HybridTime read_time,
+      const HybridTime origination_ht,
       const HostPort& pgsql_proxy_bind_address,
       const std::string& database_name,
       const uint64_t postgres_auth_key,
       bool is_xcluster_target,
       uint64_t* number_of_rows_processed,
       double* num_rows_backfilled_in_index,
+      std::string* backfilled_until);
+
+  Status BackfillTableForYsql(
+      uint32_t src_oid, uint32_t dst_oid, uint32_t transform_oid,
+      const std::string& backfill_from,
+      const CoarseTimePoint deadline,
+      const HybridTime read_time,
+      const HostPort& pgsql_proxy_bind_address,
+      const std::string& database_name,
+      const uint64_t postgres_auth_key,
+      uint64_t* number_of_rows_processed,
       std::string* backfilled_until);
 
   Status VerifyIndexTableConsistencyForCQL(
@@ -806,6 +818,11 @@ class Tablet : public AbstractTablet,
   bool ShouldDisableLbMove();
 
   Status ForceManualRocksDBCompact(docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
+
+  // Closes the open table readers of the regular and intents DBs; see
+  // rocksdb::DB::EvictTableReaders.
+  // Returns the number of readers evicted.
+  Result<size_t> EvictTableReaders();
 
   Status ForceRocksDBCompact(
       rocksdb::CompactionReason compaction_reason,

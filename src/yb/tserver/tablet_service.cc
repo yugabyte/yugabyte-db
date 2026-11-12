@@ -1078,11 +1078,19 @@ void TabletServiceAdminImpl::BackfillIndex(
     DCHECK_EQ(indexes_to_backfill.size(), 1)
         << "We don't support batching index backfill in YSQL yet";
     const qlexpr::IndexInfo& index_to_backfill = indexes_to_backfill[0];
+    // The backfill's writes carry the origination time recorded on the index by the CREATE INDEX
+    // that created it.  One BACKFILL INDEX runs with one origination time override, so batching
+    // indexes with different origination times into it would need a different way to stamp their
+    // writes; whoever adds batching must decide how.  qlexpr::IndexInfo does not keep this field,
+    // so read it from the request.
+    DCHECK_EQ(req->indexes_size(), 1) << "We don't support batching index backfill in YSQL yet";
+    const auto origination_ht = HybridTime::FromPB(req->indexes(0).backfill_origination_ht());
     backfill_status = tablet.tablet->BackfillIndexesForYsql(
         index_to_backfill,
         req->start_key(),
         deadline,
         read_at,
+        origination_ht,
         server_->pgsql_proxy_bind_address(),
         req->namespace_name(),
         server_->GetSharedMemoryPostgresAuthKey(),
@@ -1144,9 +1152,96 @@ void TabletServiceAdminImpl::TableBackfillChunk(
     const TableBackfillChunkRequestPB* req,
     TableBackfillChunkResponsePB* resp,
     rpc::RpcContext context) {
-  SetupErrorAndRespond(
-      resp->mutable_error(), STATUS(NotSupported, "TableBackfillChunk is not implemented yet"),
-      &context);
+  if (!CheckUuidMatchOrRespond(
+          server_->tablet_manager(), "TableBackfillChunk", req, resp, &context)) {
+    return;
+  }
+  DVLOG(3) << "Received TableBackfillChunk RPC: " << req->DebugString();
+
+  server::UpdateClock(*req, server_->Clock());
+
+  auto tablet =
+      LookupLeaderTabletOrRespond(server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
+  if (!tablet) {
+    return;
+  }
+
+  const CoarseTimePoint& deadline = context.GetClientDeadline();
+  const auto coarse_start = CoarseMonoClock::Now();
+  {
+    std::unique_lock<std::mutex> l(backfill_lock_);
+    while (num_tablets_backfilling_ >= FLAGS_num_concurrent_backfills_allowed) {
+      if (backfill_cond_.wait_until(l, deadline) == std::cv_status::timeout) {
+        SetupErrorAndRespond(
+            resp->mutable_error(),
+            STATUS_FORMAT(ServiceUnavailable,
+                          "Already running $0 backfill requests", num_tablets_backfilling_),
+            &context);
+        return;
+      }
+    }
+    num_tablets_backfilling_++;
+  }
+  auto se = ScopeExit([this] {
+    std::unique_lock<std::mutex> l(this->backfill_lock_);
+    this->num_tablets_backfilling_--;
+    YB_PROFILE(this->backfill_cond_.notify_all());
+  });
+
+  const HybridTime read_at(req->read_at_hybrid_time());
+  const auto safe_time =
+      tablet.tablet->SafeTime(tablet::RequireLease::kFalse, read_at, deadline);
+  if (!safe_time.ok()) {
+    LOG(WARNING) << "Could not get safe time for online schema change backfill: "
+                 << safe_time.ToString();
+    SetupErrorAndRespond(resp->mutable_error(), safe_time.status(), &context);
+    return;
+  }
+
+  const auto coarse_now = CoarseMonoClock::Now();
+  if (deadline - coarse_now < coarse_now - coarse_start) {
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS_FORMAT(ServiceUnavailable, "Not enough time left $0", deadline - coarse_now),
+        &context);
+    return;
+  }
+
+  if (!req->has_namespace_name()) {
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS(InvalidArgument, "Online schema change backfill requires database name"),
+        TabletServerErrorPB::OPERATION_NOT_SUPPORTED,
+        &context);
+    return;
+  }
+
+  std::string backfilled_until;
+  uint64_t num_rows_processed = 0;
+
+  auto backfill_status = tablet.tablet->BackfillTableForYsql(
+      req->source_table_oid(),
+      req->target_table_oid(),
+      req->transform_fn_oid(),
+      req->start_key(),
+      deadline,
+      read_at,
+      server_->pgsql_proxy_bind_address(),
+      req->namespace_name(),
+      server_->GetSharedMemoryPostgresAuthKey(),
+      &num_rows_processed,
+      &backfilled_until);
+
+  if (!backfill_status.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), backfill_status, &context);
+    return;
+  }
+
+  resp->set_backfilled_until(backfilled_until);
+  resp->set_num_rows_processed(num_rows_processed);
+
+  resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
+  context.RespondSuccess();
 }
 
 void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* req,
@@ -2291,6 +2386,22 @@ void TabletServiceAdminImpl::CountIntents(
   context.RespondSuccess();
 }
 
+void TabletServiceAdminImpl::ClearRocksDBCache(
+    const ClearRocksDBCacheRequestPB* req,
+    ClearRocksDBCacheResponsePB* resp,
+    rpc::RpcContext context) {
+  if (!CheckUuidMatchOrRespond(
+          server_->tablet_manager(), "ClearRocksDBCache", req, resp, &context)) {
+    return;
+  }
+  const auto result = server_->tablet_manager()->ClearRocksDBCache();
+  if (result.block_cache_evicted_bytes) {
+    resp->set_block_cache_evicted_bytes(*result.block_cache_evicted_bytes);
+  }
+  resp->set_table_readers_evicted(result.table_readers_evicted);
+  context.RespondSuccess();
+}
+
 void TabletServiceAdminImpl::AddTableToTablet(
     const AddTableToTabletRequestPB* req, AddTableToTabletResponsePB* resp,
     rpc::RpcContext context) {
@@ -2935,6 +3046,9 @@ void ConsensusServiceImpl::CompleteUpdateConsensusResponse(
   auto tablet = tablet_peer->shared_tablet_maybe_null();
   if (tablet) {
     resp->set_num_sst_files(tablet->GetCurrentVersionNumSSTFiles());
+    if (tablet->ShouldDisableLbMove()) {
+      resp->set_pending_post_split_compaction(true);
+    }
   }
   resp->set_propagated_hybrid_time(tablet_peer->clock().Now().ToUint64());
 }

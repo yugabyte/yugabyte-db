@@ -1326,9 +1326,7 @@ class MasterPathHandlersUnderReplicationColocatedItest :
  public:
   void SetUp() override {
     opts_.enable_ysql = true;
-    opts_.extra_master_flags.push_back("--ysql_enable_colocated_tables_with_tablespaces=true");
     opts_.extra_master_flags.push_back("--ysql_tablespace_info_refresh_secs=1");
-    opts_.extra_tserver_flags.push_back("--ysql_enable_colocated_tables_with_tablespaces=true");
     MasterPathHandlersUnderReplicationItest::SetUp();
   }
 };

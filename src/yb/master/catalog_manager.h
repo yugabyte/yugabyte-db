@@ -205,6 +205,9 @@ YB_DEFINE_ENUM(DeleteYsqlDBTablesType,
 
 YB_DEFINE_ENUM(CDCStreamType, (kNone)(kLogicalReplication)(kgRPC));
 
+YB_DEFINE_ENUM(PrepareSlotForTxnDdlResult,
+               (kPrepared)(kNotLogicalReplication)(kNotificationSlot)(kDeleting)(kNotImplicit));
+
 struct YsqlTableDdlTxnState;
 using google::protobuf::RepeatedPtrField;
 using TabletIdWithEntry = std::pair<TabletId, SysTabletsEntryPB>;
@@ -955,6 +958,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status GetYsqlAllDBCatalogVersions(
       bool use_cache, DbOidToCatalogVersionMap* versions, uint64_t* fingerprint,
       HybridTime* out_read_ht = nullptr) override;
+  // False until initdb creates pg_yb_catalog_version, or its prior-version copy during a YSQL major
+  // upgrade.
+  Result<bool> IsYsqlCatalogVersionTableCreated() const;
   Result<DbOidVersionToMessageListMap> GetYsqlCatalogInvalationMessages(bool use_cache) override;
 
   Status GetYsqlDBCatalogVersion(
@@ -1660,6 +1666,13 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // were created with an empty plugin name.
   Status BackfillNotificationsStreamsPluginName(const LeaderEpoch& epoch);
 
+  // Adds the catalog tables used to decode transactional DDL to implicit streams created without
+  // them.
+  Status PrepareReplicationSlotsForTransactionalDDL(
+      const PrepareReplicationSlotsForTransactionalDDLRequestPB* req,
+      PrepareReplicationSlotsForTransactionalDDLResponsePB* resp, rpc::RpcContext* rpc)
+      EXCLUDES(mutex_);
+
   Status DisableDynamicTableAdditionOnCDCSDKStream(
       const DisableDynamicTableAdditionOnCDCSDKStreamRequestPB* req,
       DisableDynamicTableAdditionOnCDCSDKStreamResponsePB* resp, rpc::RpcContext* rpc);
@@ -1888,6 +1901,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Delete specified CDC streams metadata.
   Status CleanUpCDCSDKStreamsMetadata(const LeaderEpoch& epoch) EXCLUDES(mutex_);
+
+  Result<PrepareSlotForTxnDdlResult> AddTransactionalDdlCatalogTablesToStream(
+      const CDCStreamInfoPtr& stream) EXCLUDES(mutex_);
 
   // Returns CDCSDK streams that need metadata cleanup. This includes streams with non-empty
   // dropped_table_id list and, when FLAGS_cdcsdk_use_dropped_table_list_for_cleanup is false,

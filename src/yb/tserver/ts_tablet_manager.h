@@ -35,6 +35,7 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <queue>
 #include <string>
 #include <unordered_map>
@@ -514,6 +515,16 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   const std::shared_future<client::YBClient*>& client_future();
 
   tablet::TabletOptions* TEST_tablet_options() { return &tablet_options_; }
+
+  struct ClearRocksDBCacheResult {
+    // Unset when the block cache is disabled.
+    std::optional<size_t> block_cache_evicted_bytes;
+    size_t table_readers_evicted = 0;
+  };
+
+  // Closes every tablet's open table readers, then evicts every unreferenced entry from the shared
+  // RocksDB block cache.
+  ClearRocksDBCacheResult ClearRocksDBCache();
 
   // Trigger admin full compactions concurrently on the provided tablets.
   // should_wait determines whether this function is asynchronous or not.

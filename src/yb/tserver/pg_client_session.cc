@@ -3658,11 +3658,43 @@ class PgClientSession::Impl {
       WARN_NOT_OK(MoveSessionToDatabaseCgroup(*database_oid), "Setting cgroup of PgClientSession");
     }
 
+    // A request that is not part of a connection start's prefetch drops the session's
+    // reference to the claim here rather than leaving it for the session to go away. A round
+    // still in flight holds the same token, so the database stays counted until that round
+    // lands. Such a request usually means the prefetch is over, having finished or given up.
+    //
+    // The exception is a read of a sys table the prefetch did not register, which carries no
+    // caching info either: it drops the claim while the prefetch is still running, so the gaps
+    // between its remaining requests go uncounted until its next fill takes a fresh token.
+    // What is lost is the gap cover, not the protection while a round is filling. pggate logs
+    // such a read as not prefetched, and the answer to it is to register the table.
+    //
+    // TODO(#34309): a connection start whose last YbPrefetch has nothing registered issues no
+    // request at all -- the preload note beside that call in relcache.c -- so no completing
+    // round reaches the cache and no round ends its claim. A pooled backend idle after startup
+    // sends nothing outside a prefetch either, so its database stays counted until the session
+    // exits. In that configuration nothing records a version either, so nothing asks and the
+    // held claim costs nothing; it bites only on a node that recorded one before the preload
+    // list grew to cover that round.
+    //
+    // TODO(#34309): the no-cache starter is the wider case. It runs a connection start's
+    // rounds with no caching info at all -- YBCStartSysTablePrefetchingNoCache passes none --
+    // so its first round ends the claim and the whole uncached catalog read runs uncounted,
+    // not just the gaps. Reaching it needs the earlier starters to fail on a snapshot too old
+    // in turn, which is why this is a note rather than a fix: carrying
+    // part_of_connection_prefetch there means giving a prefetch that wants no cache something
+    // to put it in.
+    if (!options.has_caching_info() ||
+        !options.caching_info().part_of_connection_prefetch()) {
+      prefetch_fill_token_.reset();
+    }
+
     if (options.has_caching_info()) {
       VLOG_WITH_PREFIX(3)
           << "Executing read from response cache for session " << data->req.session_id();
       data->cache_setter = VERIFY_RESULT(response_cache().Get(
-          options.mutable_caching_info(), deadline, data));
+          options.mutable_caching_info(), deadline, data, data->req.session_id(),
+          &prefetch_fill_token_));
       if (!data->cache_setter) {
         return Status::OK();
       }
@@ -5030,6 +5062,18 @@ class PgClientSession::Impl {
   // Whether a Perform has moved this session's thread into the database's cgroup; see DoPerform.
   // Only accessed under the session lock.
   bool moved_to_database_cgroup_ = false;
+
+  // This session's claim on its database while a connection start's prefetch runs. Held here
+  // rather than by the request that took it, so the gaps between that prefetch's requests do
+  // not read as an idle database. Three things end it: the request that completes the prefetch,
+  // the next request that is not part of one, which DoPerform resets it on, and the session.
+  //
+  // The pointer is only touched under the session lock, but the token it names is not: the
+  // setter releases it from FlushDone with the lock already dropped. That is one thread; a
+  // second arrives only where parallel workers run a connection start of their own, which
+  // needs preload_rel_cache, since they share their leader's session and so this slot.
+  // FillToken::Release carries both.
+  PgResponseCache::FillTokenPtr prefetch_fill_token_;
 
   std::optional<SubTransactionId> subtxn_with_session_object_locks_;
 

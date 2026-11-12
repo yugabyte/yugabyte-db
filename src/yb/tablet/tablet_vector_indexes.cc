@@ -14,6 +14,7 @@
 #include "yb/tablet/tablet_vector_indexes.h"
 
 #include <algorithm>
+#include <functional>
 
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/wire_protocol.h"
@@ -43,6 +44,7 @@
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_retention_policy.h"
 #include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/vector_index_checker.h"
 
 #include "yb/util/operation_counter.h"
@@ -88,6 +90,7 @@ DEFINE_RUNTIME_uint32(vector_index_backfill_retry_delay_ms, 5000,
     "Delay before retrying vector index backfills that were aborted because the tablet storages "
     "were being replaced, e.g. by a truncate or a restore.");
 
+DECLARE_bool(backfill_index_check_snapshot_too_old);
 DECLARE_bool(vector_index_include_into_post_split_compaction);
 
 namespace yb::tablet {
@@ -131,6 +134,10 @@ class IndexReverseMappingReader : public docdb::DocVectorIndexReverseMappingRead
     return key_bounds_->IsWithinBounds(decoded.ybctid) ? value : Slice{};
   }
 
+  Result<ReadRestartData> GetReadRestartData() const override {
+    return iter_holder_.iter->GetReadRestartData();
+  }
+
  private:
   ScopedRWOperation rocksdb_op_;
   docdb::IntentAwareIteratorWithBounds iter_holder_;
@@ -156,6 +163,10 @@ class IndexContext : public docdb::DocVectorIndexContext {
     return tablet_.key_bounds();
   }
 
+  Result<RequestScope> CreateRequestScope() const {
+    return tablet_.CreateRequestScope();
+  }
+
   Result<docdb::DocRowwiseIteratorPtr> CreateVectorColumnIterator(
       HybridTime read_ht, std::optional<Slice> start_key) const {
     auto result = VERIFY_RESULT(tablet_.NewUninitializedDocRowIterator(
@@ -178,25 +189,30 @@ class IndexContext : public docdb::DocVectorIndexContext {
 
 class IndexedTableReader {
  public:
-  explicit IndexedTableReader(const docdb::DocVectorIndex& vector_index)
-      : context_(down_cast<const IndexContext&>(vector_index.context())),
+  explicit IndexedTableReader(std::reference_wrapper<const docdb::DocVectorIndex> vector_index)
+      : context_(down_cast<const IndexContext&>(vector_index.get().context())),
         row_(context_.vector_column_projection()) {
   }
 
+  // Can be called again after Close.
   Status Init(HybridTime read_ht, Slice start_key) {
+    DCHECK(!iter_);
     // The projection is empty when the vector column is missing from the indexed table schema
     // (see DoCreateIndex); reading through it would access rows out of bounds.
     SCHECK_EQ(context_.vector_column_projection().num_value_columns(), 1, IllegalState,
               "Vector column is missing in the projection");
+    request_scope_ = VERIFY_RESULT(context_.CreateRequestScope());
     iter_ = VERIFY_RESULT(context_.CreateVectorColumnIterator(read_ht, start_key));
     return Status::OK();
   }
 
-  void Restart(Slice start_key) {
-    iter_->Refresh(docdb::SeekFilter::kAll);
-    // SeekTuple prepends the cotable / colocation prefix to the key, while Seek would use it as
-    // is and miss the whole colocated table region.
-    iter_->SeekTuple(start_key, docdb::UpdateFilterKey::kFalse);
+  void Close() {
+    iter_.reset();
+    request_scope_ = RequestScope();
+  }
+
+  explicit operator bool() const {
+    return iter_ != nullptr;
   }
 
   Result<bool> FetchNext() {
@@ -224,6 +240,11 @@ class IndexedTableReader {
  private:
   const IndexContext& context_;
   dockv::PgTableRow row_;
+  // Registered before iter_ takes its snapshot, and released after iter_, by Close and by the
+  // member order.
+  // Otherwise the participant forgets a transaction applied meanwhile, while the snapshot still has
+  // only its intents, so its rows are skipped.
+  RequestScope request_scope_;
   docdb::DocRowwiseIteratorPtr iter_;
 };
 
@@ -632,12 +653,33 @@ Status TabletVectorIndexes::Backfill(
 
   // The backfill task holds only a non-blocking ScopedRWOperation here (not the tablet metadata
   // apply lock), so a test may park it until the tablet starts shutting down without wedging the
-  // tserver. On release, reader.Init below resolves intents and, if the tablet is shutting down,
-  // fails fast via the aborted MvccManager safe time wait instead of hanging.
+  // tserver. On release, the backfill fails fast if the tablet is shutting down.
   TEST_SYNC_POINT("TabletVectorIndexes::Backfill:Start");
 
+  // Held for the whole backfill, so StartShutdownStorages, which pauses blocking operations before
+  // it stops the vector index, does not stop it while a batch is inserted.
+  // The pause also disables new blocking operations, so the next batch fails with TryAgain, which
+  // ScheduleBackfill retries: waiting here would block the drain of this task's non-blocking
+  // operation.
+  auto blocking_op = tablet().CreateScopedRWOperationBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(blocking_op);
+
+  // AllowedHistoryCutoff retains the history at backfill_ht until the backfill is done.
+  // Fail with SnapshotTooOld if it is gone anyway: reading at backfill_ht then could build an
+  // incorrect index, and a retry reads at the same backfill_ht.
+  if (PREDICT_TRUE(FLAGS_backfill_index_check_snapshot_too_old)) {
+    auto backfill_read_op = ScopedReadOperation::Create(
+        &tablet(), RequireLease::kFalse, ReadHybridTime::SingleTime(backfill_ht));
+    if (!backfill_read_op.ok()) {
+      if (backfill_read_op.status().IsSnapshotTooOld() && tablet().metrics()) {
+        tablet().metrics()->Increment(TabletCounters::kBackfillReadsRejectedBelowHistoryCutoff);
+      }
+      return backfill_read_op.status();
+    }
+  }
+
+  // Closed after each batch, so its request scope holds back transaction cleanup for one batch.
   IndexedTableReader reader(*vector_index);
-  RETURN_NOT_OK(reader.Init(backfill_ht, from_key));
 
   // The per-index decision keeps the ybctid in the entries, the reverse mapping backfill and
   // the payload mode of the chunks consistent with each other.
@@ -663,10 +705,11 @@ Status TabletVectorIndexes::Backfill(
   const size_t limit = bytes_limit ? vector_index->EstimateNumVectorsForBytes(bytes_limit) : 0;
   size_t chunk_size = 0;
   if (limit != 0) {
+    RETURN_NOT_OK(reader.Init(backfill_ht, from_key));
     while (VERIFY_RESULT(reader.FetchNext()) && chunk_size < limit) {
       ++chunk_size;
     }
-    reader.Restart(from_key);
+    reader.Close();
   }
   TEST_SYNC_POINT_CALLBACK("TabletVectorIndexes::Backfill:ChunkSize", &chunk_size);
   helper.SetChunkSize(chunk_size);
@@ -681,6 +724,7 @@ Status TabletVectorIndexes::Backfill(
       << "Backfill with chunk size " << chunk_size << " (batch size: " << max_batch_size
       << ", memory budget: " << bytes_limit << " bytes, vector limit: " << limit << ")";
 
+  auto next_key = from_key.ToBuffer();
   for (;;) {
     if (tablet().IsShutdownRequested()) {
       LOG_WITH_FUNC(INFO) << "Exit: " << AsString(*vector_index);
@@ -689,7 +733,7 @@ Status TabletVectorIndexes::Backfill(
     if (!shutdown_controller_.IsRunning()) {
       // Reachable only on tablet shutdown, which the check above already covers: the controller is
       // stopped by StartShutdownStorages after the blocking operation pause, and that pause waits
-      // for the operation the reader's iterator holds for this whole loop. So a truncate or a
+      // for blocking_op, which this backfill holds for its whole loop. So a truncate or a
       // restore cannot stop it from under a running backfill, and no retry has to be asked for.
       LOG_WITH_FUNC(INFO) << "Vector index shutdown: " << AsString(*vector_index);
       return Status::OK();
@@ -698,32 +742,36 @@ Status TabletVectorIndexes::Backfill(
       std::this_thread::sleep_for(10ms);
       continue;
     }
+    if (!reader) {
+      RETURN_NOT_OK(reader.Init(backfill_ht, next_key));
+      TEST_SYNC_POINT("TabletVectorIndexes::Backfill:ReaderOpened");
+    }
     if (!VERIFY_RESULT(reader.FetchNext())) {
       break;
     }
     auto ybctid = reader.current_ybctid();
     if (helper.NeedFlush()) {
       RETURN_NOT_OK(helper.Flush(tablet(), *vector_index, ybctid));
+      // The next batch reads this row again, through a new iterator.
+      next_key = ybctid.ToBuffer();
+      reader.Close();
       if (FLAGS_TEST_sleep_after_vector_index_backfill_chunk_ms) {
         std::this_thread::sleep_for(FLAGS_TEST_sleep_after_vector_index_backfill_chunk_ms * 1ms);
       }
+      continue;
     }
     helper.Add(ybctid, reader.current_vector_slice());
   }
 
   RETURN_NOT_OK(helper.Flush(tablet(), *vector_index, Slice()));
+  reader.Close();
 
   LOG_WITH_PREFIX_AND_FUNC(INFO)
       << "Backfilled " << AsString(*vector_index) << ": " << helper.num_entries() << " entries in "
       << helper.num_batches() << " batches";
 
-  // Hold a blocking operation across both flushes below. Tablet::Flush releases its own one before
-  // the vector index flush, so acquire it here and pass kNoScopedOperation. Only
-  // StartShutdownStorages disables blocking operations, and it holds the pause while draining the
-  // non-blocking operation this task holds, so waiting here would block that drain: abort the
-  // backfill instead, ScheduleBackfill treats the resulting TryAgain as expected.
-  auto flush_op = tablet().CreateScopedRWOperationBlockingRocksDbShutdownStart();
-  RETURN_NOT_OK(flush_op);
+  // blocking_op covers both flushes below: Tablet::Flush releases its own one before the vector
+  // index flush, so it is passed kNoScopedOperation.
   // TODO(vector_index) Need to handle scenario when regular db was not flushed before restart.
   RETURN_NOT_OK_PREPEND(
       Flush(FlushMode::kSync, FlushFlags::kRegular | FlushFlags::kNoScopedOperation,
@@ -1146,6 +1194,31 @@ bool TabletVectorIndexes::HasActiveBackfill() const {
     }
   }
   return false;
+}
+
+HybridTime TabletVectorIndexes::AllowedHistoryCutoff() const {
+  auto result = HybridTime::kMax;
+  auto list = List();
+  if (!list) {
+    return result;
+  }
+  for (const auto& index : *list) {
+    if (index->IsDeactivated()) {
+      continue;
+    }
+    auto done = index->BackfillDone();
+    if (done.ok() && *done) {
+      continue;
+    }
+    // That history is already gone, and a relaunch reads at the same backfill time.
+    if (!done.ok() && done.status().IsSnapshotTooOld()) {
+      continue;
+    }
+    // Other failed backfills hold the history too: LaunchBackfillsIfNecessary, e.g. on restart,
+    // relaunches them at the same backfill time.
+    result.MakeAtMost(index->hybrid_time());
+  }
+  return result;
 }
 
 void TabletVectorIndexes::RefreshDeactivation() {
