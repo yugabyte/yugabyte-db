@@ -114,8 +114,8 @@ Result<HeapProfile> CollectHeapProfile(
     return STATUS_FORMAT(IllegalState, "A heap profile is already running.");
   }
 
-  auto prev_sample_rate = tcmalloc::MallocExtension::GetProfileSamplingRate();
-  tcmalloc::MallocExtension::SetProfileSamplingRate(sample_freq_bytes);
+  auto prev_sample_rate = tcmalloc::MallocExtension::GetProfileSamplingInterval();
+  tcmalloc::MallocExtension::SetProfileSamplingInterval(sample_freq_bytes);
   HeapProfile profile;
   // tcmalloc timestamps sampled allocations with absl::Now().
   profile.start_time = absl::Now();
@@ -124,7 +124,7 @@ Result<HeapProfile> CollectHeapProfile(
 
   workload();
 
-  tcmalloc::MallocExtension::SetProfileSamplingRate(prev_sample_rate);
+  tcmalloc::MallocExtension::SetProfileSamplingInterval(prev_sample_rate);
   profile.allocations = std::move(token).Stop();
   profile.heap_at_end = GetHeapSnapshot(HeapSnapshotType::kCurrentHeap);
   heap_profile_running = false;

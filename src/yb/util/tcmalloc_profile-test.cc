@@ -61,7 +61,7 @@ void SamplingProfilerTest::SetProfileSamplingRate(int64_t sample_period_bytes) {
     old_rate = 16_MB;
   }
 #else
-  old_rate = tcmalloc::MallocExtension::GetProfileSamplingRate();
+  old_rate = tcmalloc::MallocExtension::GetProfileSamplingInterval();
 #endif
   SetTCMallocSamplingPeriod(sample_period_bytes);
 

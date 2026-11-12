@@ -152,8 +152,6 @@ class StackTrace {
 };
 
 // Messages of the statuses ThreadStacks returns when a thread's stack could not be collected.
-inline constexpr std::string_view kThreadStackInAllocDeallocMsg =
-    "Thread did not respond: it was inside tcmalloc alloc/dealloc";
 inline constexpr std::string_view kThreadStackCollectingMsg =
     "Thread did not respond: it was in the middle of a stack trace collection";
 inline constexpr std::string_view kThreadStackUnknownReasonMsg =

@@ -99,7 +99,7 @@ char *getTCMallocStats()
 
 void setTCMallocSamplePeriod(uint64_t sample_period_bytes)
 {
-  tcmalloc::MallocExtension::SetProfileSamplingRate(sample_period_bytes);
+  tcmalloc::MallocExtension::SetProfileSamplingInterval(sample_period_bytes);
 }
 
 /*
