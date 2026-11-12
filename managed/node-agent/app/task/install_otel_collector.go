@@ -20,6 +20,9 @@ const OtelCollectorService = "otel-collector.service"
 
 const otelCollectorRootUnitName = "otel-collector"
 
+// A crash-looping collector can live well under 1 s in each RestartSec cycle, so poll often.
+const otelCollectorRunningPollInterval = 200 * time.Millisecond
+
 const (
 	// Name of the executable inside the published archive. The YugabyteDB unified collector is a
 	// custom ocb distribution rather than the upstream contrib one, so it does not ship under the
@@ -453,14 +456,15 @@ func (h *InstallOtelCollector) disableUserOtelCollectorWithoutManager(
 	running, err := otelCollectorRunsWithin(
 		ctx,
 		module.SystemdSettleInterval,
-		module.SystemdReadyPollInterval,
+		otelCollectorRunningPollInterval,
 		func() (bool, error) {
+			// No task output: the poll runs about 75 times and would crowd it out.
 			cmdInfo, err := module.RunShellCmd(
 				ctx,
 				h.username,
 				"CheckOtelCollectorProcess",
 				fmt.Sprintf("pgrep -f '^%s( |$)' || true", binary),
-				h.logOut,
+				nil,
 			)
 			if err != nil {
 				return false, err

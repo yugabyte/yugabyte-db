@@ -166,3 +166,21 @@ func TestRemoveOtelCollectorWantsLink(t *testing.T) {
 		t.Fatalf("unit file should stay: %v", err)
 	}
 }
+
+// A collector that dies within a few hundred ms of each start is missed by a slow poll.
+func TestOtelCollectorRunningPollIntervalFindsShortLivedCollector(t *testing.T) {
+	start := time.Now()
+	running, err := otelCollectorRunsWithin(
+		context.Background(),
+		1500*time.Millisecond,
+		otelCollectorRunningPollInterval,
+		func() (bool, error) {
+			elapsed := time.Since(start)
+			return elapsed > 900*time.Millisecond && elapsed < 1150*time.Millisecond, nil
+		},
+	)
+	if err != nil || !running {
+		t.Fatalf("collector alive for 250 ms not found with poll interval %v: running=%v, err=%v",
+			otelCollectorRunningPollInterval, running, err)
+	}
+}
