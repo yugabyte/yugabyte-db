@@ -55,6 +55,7 @@ static void yb_check_pgcrypto_schema();
 static void yb_check_yb_role_prefix();
 static void yb_check_removed_renamed_catalog_acls();
 static void yb_check_stale_acl_grantors();
+static void yb_check_pg_stat_monitor(void);
 
 #define YB_SUPERUSER  "yb_superuser"
 
@@ -783,6 +784,7 @@ check_and_dump_old_cluster(void)
 		check_for_pg_role_prefix(&old_cluster);
 
 	yb_check_invalid_indexes();
+	yb_check_pg_stat_monitor();
 	yb_check_installed_extensions();
 	yb_check_pgcrypto_schema();
 	yb_check_yb_role_prefix();
@@ -3019,7 +3021,8 @@ yb_check_installed_extensions()
 								"'anon',"
 								"'cube',"
 								"'earthdistance',"
-								"'yb_ycql_utils')");
+								"'yb_ycql_utils') "
+								"AND extname != 'pg_stat_monitor'");
 		ntups = PQntuples(res);
 		i_name = PQfnumber(res, "extname");
 
@@ -3669,6 +3672,169 @@ yb_check_removed_renamed_catalog_acls()
 				 "printed for each affected database.\n"
 				 "A list of affected objects and fix commands is printed above and in\n"
 				 "the file:\n"
+				 "    %s\n\n", output_path);
+	}
+	else
+		check_ok();
+}
+
+/*
+ * yb_check_pg_stat_monitor()
+ *
+ * YugabyteDB releases based on PG19 or later do not include pg_stat_monitor.
+ * Refuse to upgrade if the old cluster uses it in any of three ways:
+ *  1. Installed in a database (pg_extension, checked in each database).
+ *  2. Named in shared_preload_libraries or session_preload_libraries in the
+ *     server settings, which the YB-TServer writes from its ysql_pg_conf_csv
+ *     flag.  If we upgrade anyway, that YB-TServer's postgres does not start
+ *     (shared_preload_libraries) or refuses every login
+ *     (session_preload_libraries).
+ *  3. Named in session_preload_libraries set with ALTER ROLE or ALTER
+ *     DATABASE (pg_db_role_setting).  If we upgrade anyway, every login the
+ *     setting applies to fails, and the catalog upgrade fails if its own
+ *     connections are among them.
+ */
+static void
+yb_check_pg_stat_monitor(void)
+{
+	int			dbnum;
+	int			ntups;
+	int			rowno;
+	bool		found = false;
+	char		output_path[MAXPGPATH];
+	FILE	   *script = NULL;
+	PGconn	   *conn;
+	PGresult   *res;
+
+	snprintf(output_path, sizeof(output_path), "%s/%s",
+			 log_opts.basedir,
+			 "pg_stat_monitor.txt");
+
+	prep_status("Checking for pg_stat_monitor");
+
+	/*
+	 * 1. Find the database(s) where pg_stat_monitor is installed.  Each
+	 * database has its own pg_extension catalog, so connect to each one and
+	 * ask there.
+	 */
+	for (dbnum = 0; dbnum < old_cluster.dbarr.ndbs; dbnum++)
+	{
+		DbInfo	   *active_db = &old_cluster.dbarr.dbs[dbnum];
+
+		conn = connectToServer(&old_cluster, active_db->db_name);
+		res = executeQueryOrDie(conn,
+								"SELECT 1 FROM pg_catalog.pg_extension "
+								"WHERE extname = 'pg_stat_monitor'");
+		if (PQntuples(res) > 0)
+		{
+			found = true;
+			if (script == NULL && (script = fopen_priv(output_path, "w")) == NULL)
+				pg_fatal("could not open file \"%s\": %s", output_path,
+						 strerror(errno));
+			yb_fprintf_and_log(script, "Installed in database: %s\n",
+							   active_db->db_name);
+		}
+		PQclear(res);
+		PQfinish(conn);
+	}
+
+	conn = connectToServer(&old_cluster, "template1");
+
+	/*
+	 * 2. Find pg_stat_monitor in shared_preload_libraries or
+	 * session_preload_libraries in the server settings.  DROP EXTENSION does
+	 * not remove it from these settings, so check them too:
+	 *  - ysql_pg.conf (pg_file_settings), which the YB-TServer writes from its
+	 *    ysql_pg_conf_csv flag;
+	 *  - the shared_preload_libraries that postgres loaded when it started
+	 *    (current_setting), which can differ from ysql_pg.conf after a flag
+	 *    change at runtime.
+	 */
+	res = executeQueryOrDie(conn,
+							"SELECT lower(name), setting "
+							"FROM pg_catalog.pg_file_settings "
+							"WHERE lower(name) IN ('shared_preload_libraries', "
+							"'session_preload_libraries') "
+							"AND setting LIKE '%%pg_stat_monitor%%' "
+							"UNION "
+							"SELECT 'shared_preload_libraries', "
+							"current_setting('shared_preload_libraries') "
+							"WHERE current_setting('shared_preload_libraries') "
+							"LIKE '%%pg_stat_monitor%%' "
+							"ORDER BY 1");
+	ntups = PQntuples(res);
+	for (rowno = 0; rowno < ntups; rowno++)
+	{
+		found = true;
+		if (script == NULL && (script = fopen_priv(output_path, "w")) == NULL)
+			pg_fatal("could not open file \"%s\": %s", output_path,
+					 strerror(errno));
+		yb_fprintf_and_log(script, "Server setting: %s = '%s'\n",
+						   PQgetvalue(res, rowno, 0),
+						   PQgetvalue(res, rowno, 1));
+	}
+	PQclear(res);
+
+	/*
+	 * 3. Find pg_stat_monitor in session_preload_libraries set for a role or
+	 * a database.  For example,
+	 *     ALTER ROLE alice SET session_preload_libraries = 'pg_stat_monitor';
+	 * makes every login of alice load pg_stat_monitor, and ALTER DATABASE
+	 * does the same for every connection to one database.
+	 */
+	res = executeQueryOrDie(conn,
+							"SELECT CASE "
+							"WHEN s.setrole = 0 AND s.setdatabase = 0 THEN 'all roles' "
+							"WHEN s.setrole = 0 THEN 'database ' || quote_ident(d.datname) "
+							"WHEN s.setdatabase = 0 THEN 'role ' || quote_ident(r.rolname) "
+							"ELSE 'role ' || quote_ident(r.rolname) || "
+							"' in database ' || quote_ident(d.datname) END, "
+							"substr(c.cfg, strpos(c.cfg, '=') + 1) "
+							"FROM pg_catalog.pg_db_role_setting s "
+							"LEFT JOIN pg_catalog.pg_roles r ON r.oid = s.setrole "
+							"LEFT JOIN pg_catalog.pg_database d ON d.oid = s.setdatabase, "
+							"unnest(s.setconfig) AS c(cfg) "
+							"WHERE lower(split_part(c.cfg, '=', 1)) = 'session_preload_libraries' "
+							"AND c.cfg LIKE '%%pg_stat_monitor%%' "
+							"ORDER BY 1");
+	ntups = PQntuples(res);
+	for (rowno = 0; rowno < ntups; rowno++)
+	{
+		found = true;
+		if (script == NULL && (script = fopen_priv(output_path, "w")) == NULL)
+			pg_fatal("could not open file \"%s\": %s", output_path,
+					 strerror(errno));
+		yb_fprintf_and_log(script,
+						   "Setting for %s: session_preload_libraries = '%s'\n",
+						   PQgetvalue(res, rowno, 0),
+						   PQgetvalue(res, rowno, 1));
+	}
+	PQclear(res);
+	PQfinish(conn);
+
+	if (script)
+		fclose(script);
+
+	if (found)
+	{
+		yb_fatal("Your installation uses the pg_stat_monitor extension, which the new\n"
+				 "version does not include, so it cannot be reinstalled after the\n"
+				 "upgrade. Before upgrading, remove every use listed above:\n"
+				 "  - Installed in database: run DROP EXTENSION pg_stat_monitor in that\n"
+				 "    database.\n"
+				 "  - Server setting: in the ysql_pg_conf_csv flag (or the deprecated\n"
+				 "    ysql_pg_conf flag) of all YB-TServers and YB-Masters:\n"
+				 "      - remove pg_stat_monitor from that setting, or the whole setting\n"
+				 "        if pg_stat_monitor is its only library;\n"
+				 "      - change the flag where it is stored: the universe's flags in\n"
+				 "        YugabyteDB Anywhere, or else, for example, the flagfile. A\n"
+				 "        change made only at runtime, or only on the nodes of a\n"
+				 "        YugabyteDB Anywhere universe, is lost during the upgrade;\n"
+				 "      - restart them.\n"
+				 "  - Setting for a role or database: remove pg_stat_monitor from it with\n"
+				 "    ALTER ROLE or ALTER DATABASE. If pg_stat_monitor is its only\n"
+				 "    library, use RESET: an empty value makes logins fail.\n"
+				 "The list is printed above and in the file:\n"
 				 "    %s\n\n", output_path);
 	}
 	else

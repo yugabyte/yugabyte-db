@@ -14,6 +14,7 @@
 #include "yb/integration-tests/upgrade-tests/ysql_major_upgrade_test_base.h"
 
 #include "yb/util/env_util.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 namespace yb {
@@ -327,21 +328,133 @@ TEST_F(YsqlMajorExtensionUpgradeTest, YB_DISABLE_TEST(PgHintPlan)) {
   }
 }
 
-// YB_TODO_PG19MERGE: pg_stat_monitor is not built on pg19.
-TEST_F(YsqlMajorExtensionUpgradeTest, YB_DISABLE_TEST(PgStatMonitor)) {
-  const std::vector<std::string> expected_error = {
-      "In database: yugabyte",
-      "  pg_stat_monitor",
-      "Your installation contains extensions that are not compatible",
-      "with YSQL major version upgrade. Please uninstall the extensions",
-      "using DROP EXTENSION, and reinstall them after the upgrade. A list of",
-      "extensions with problems is printed above and in the file:",
+// YugabyteDB releases based on PG19 or later do not include pg_stat_monitor, so the upgrade check
+// refuses the upgrade while the old cluster still uses it: installed in a database, or named in
+// shared_preload_libraries or session_preload_libraries, in the server configuration or in a role
+// or database setting.
+TEST_F(YsqlMajorExtensionUpgradeTest, PgStatMonitor) {
+  const std::vector<std::string> fix_message = {
+      "Your installation uses the pg_stat_monitor extension, which the new",
+      "version does not include, so it cannot be reinstalled after the",
+      "upgrade. Before upgrading, remove every use listed above:",
+      "  - Installed in database: run DROP EXTENSION pg_stat_monitor in that",
+      "  - Server setting: in the ysql_pg_conf_csv flag (or the deprecated",
+      "    ysql_pg_conf flag) of all YB-TServers and YB-Masters:",
+      "      - remove pg_stat_monitor from that setting, or the whole setting",
+      "  - Setting for a role or database: remove pg_stat_monitor from it with",
   };
-  ASSERT_OK(ExecuteStatement(Format("CREATE EXTENSION pg_stat_monitor")));
-  ASSERT_OK(ValidateUpgradeCompatibilityFailure(expected_error));
+  // Runs the upgrade check, which must refuse the upgrade, print the given lines and the fix, and
+  // print none of the absent lines.
+  const auto check_refused = [this, &fix_message](
+      std::vector<std::string> lines, const std::vector<std::string>& absent) -> Status {
+    std::vector<std::unique_ptr<StringWaiterLogSink>> absent_sinks;
+    for (const auto& line : absent) {
+      absent_sinks.push_back(std::make_unique<StringWaiterLogSink>(line));
+    }
+    lines.insert(lines.end(), fix_message.begin(), fix_message.end());
+    RETURN_NOT_OK(ValidateUpgradeCompatibilityFailure(lines));
+    for (size_t i = 0; i < absent.size(); ++i) {
+      SCHECK_FORMAT(
+          !absent_sinks[i]->IsEventOccurred(), IllegalState, "The check printed $0", absent[i]);
+    }
+    return Status::OK();
+  };
+  constexpr auto kSharedPreloadLine = "Server setting: shared_preload_libraries = '";
+  // The flag below spells this setting's name in mixed case; the check prints it in lowercase.
+  constexpr auto kSessionPreloadLine =
+      "Server setting: session_preload_libraries = 'pg_stat_monitor'";
+  // Each role or database setting as the check prints it, and the command that removes it.
+  // The values cover quoted entries, a $libdir/ path, a .so suffix and a list with another library.
+  const std::vector<std::pair<std::string, std::string>> role_settings = {
+      {"Setting for all roles: session_preload_libraries = 'pg_stat_monitor'",
+       "ALTER ROLE ALL RESET session_preload_libraries"},
+      {"Setting for database yugabyte: session_preload_libraries = 'pg_stat_monitor'",
+       "ALTER DATABASE yugabyte RESET session_preload_libraries"},
+      {"Setting for role pgsm_user: session_preload_libraries = "
+       "'\"$libdir/pg_stat_monitor.so\", auto_explain'",
+       "ALTER ROLE pgsm_user SET session_preload_libraries = 'auto_explain'"},
+      {"Setting for role pgsm_user in database yugabyte: session_preload_libraries = "
+       "'\"pg_stat_monitor.so\"'",
+       "ALTER ROLE pgsm_user IN DATABASE yugabyte RESET session_preload_libraries"},
+  };
+
+  // This flag comes after the one from SetUpOptions, so it replaces it. The tab before the library
+  // and the trailing slash do not stop postgres from loading it, so the check must still find it.
+  cluster_->AddExtraFlagOnTServers(
+      "ysql_pg_conf_csv",
+      "\"shared_preload_libraries=\t$libdir/pg_stat_monitor/\","
+      "\"Session_Preload_Libraries=pg_stat_monitor\"");
+  ASSERT_OK(RestartAllTServersInOldVersion(kNoDelayBetweenNodes));
+
+  ASSERT_OK(ExecuteStatement("CREATE EXTENSION pg_stat_monitor"));
+  // The generic extension check refuses isn, and must leave pg_stat_monitor to this check.
+  ASSERT_OK(ExecuteStatement("CREATE EXTENSION isn"));
+  ASSERT_OK(ExecuteStatement("CREATE ROLE pgsm_user"));
+  ASSERT_OK(ExecuteStatement("ALTER ROLE ALL SET session_preload_libraries = 'pg_stat_monitor'"));
+  ASSERT_OK(ExecuteStatement(
+      "ALTER DATABASE yugabyte SET session_preload_libraries = 'pg_stat_monitor'"));
+  ASSERT_OK(ExecuteStatement(
+      "ALTER ROLE pgsm_user SET session_preload_libraries = "
+      "'$libdir/pg_stat_monitor.so', 'auto_explain'"));
+  ASSERT_OK(ExecuteStatement(
+      "ALTER ROLE pgsm_user IN DATABASE yugabyte SET session_preload_libraries = "
+      "'pg_stat_monitor.so'"));
+
+  std::vector<std::string> expected = {
+      "Installed in database: yugabyte",
+      kSharedPreloadLine,
+      kSessionPreloadLine,
+      "Your installation contains extensions that are not compatible",
+      "  isn",
+  };
+  for (const auto& [setting, command] : role_settings) {
+    expected.push_back(setting);
+  }
+  // The generic extension check lists each extension as "  <name>"; it must not list
+  // pg_stat_monitor.
+  ASSERT_OK(check_refused(expected, {"  pg_stat_monitor"}));
+
+  // Remove the uses as the message says: first the extensions and the role and database settings.
+  // Only the server settings remain.
   ASSERT_OK(ExecuteStatement("DROP EXTENSION pg_stat_monitor"));
+  ASSERT_OK(ExecuteStatement("DROP EXTENSION isn"));
+  for (const auto& [setting, command] : role_settings) {
+    ASSERT_OK(ExecuteStatement(command));
+  }
+  ASSERT_OK(check_refused(
+      {kSharedPreloadLine, kSessionPreloadLine},
+      {"Installed in database: yugabyte", "  isn", "Setting for all roles",
+       "Setting for database yugabyte", "Setting for role pgsm_user"}));
+
+  // Clear the flag at runtime only, like yb-ts-cli set_flag. ysql_pg.conf no longer names
+  // pg_stat_monitor, but postgres has not restarted, so the shared_preload_libraries it loaded
+  // still does, and the check must still refuse.
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_pg_conf_csv", ""));
+  ASSERT_OK(check_refused({kSharedPreloadLine}, {kSessionPreloadLine}));
+
+  // Then the server settings. This also drops the preload from SetUpOptions.
+  cluster_->RemoveExtraFlagOnTServers("ysql_pg_conf_csv");
+  ASSERT_OK(RestartAllTServersInOldVersion(kNoDelayBetweenNodes));
+
+  // Each other kind of use alone must refuse the upgrade too: a role setting,
+  ASSERT_OK(ExecuteStatement(
+      "ALTER ROLE pgsm_user SET session_preload_libraries = 'pg_stat_monitor'"));
+  ASSERT_OK(check_refused(
+      {"Setting for role pgsm_user: session_preload_libraries = 'pg_stat_monitor'"},
+      {kSharedPreloadLine, kSessionPreloadLine, "Installed in database: yugabyte"}));
+  ASSERT_OK(ExecuteStatement("ALTER ROLE pgsm_user RESET session_preload_libraries"));
+
+  // and the extension, which can be installed without the preload.
+  ASSERT_OK(ExecuteStatement("CREATE EXTENSION pg_stat_monitor"));
+  ASSERT_OK(check_refused(
+      {"Installed in database: yugabyte"},
+      {kSharedPreloadLine, kSessionPreloadLine, "Setting for role pgsm_user"}));
+  ASSERT_OK(ExecuteStatement("DROP EXTENSION pg_stat_monitor"));
+
   ASSERT_OK(UpgradeClusterToCurrentVersion());
-  ASSERT_OK(ExecuteStatement(Format("CREATE EXTENSION pg_stat_monitor")));
+  ASSERT_NOK_STR_CONTAINS(
+      ExecuteStatement("CREATE EXTENSION pg_stat_monitor"),
+      "extension \"pg_stat_monitor\" is not available");
 }
 
 // YB_TODO_PG19MERGE: postgresql_anonymizer is not built on pg19.
