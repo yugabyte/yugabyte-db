@@ -324,7 +324,7 @@ InternalIterator* TableCache::DoNewIterator(
   }
 
   if (ioptions_.iterator_replacer) {
-    result = (*ioptions_.iterator_replacer)(result, arena, filter);
+    result = (*ioptions_.iterator_replacer)(result, arena, filter, options.iterate_upper_bound);
   }
 
   trwh->Release();

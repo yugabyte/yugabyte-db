@@ -179,8 +179,11 @@ class HistoryRetentionPolicy {
 class DocVectorMetadataIteratorProvider {
  public:
   virtual ~DocVectorMetadataIteratorProvider() = default;
+  // iterate_upper_bound, when set, is passed to the regular DB iterator: see
+  // ReadOptions::iterate_upper_bound.
   virtual Result<docdb::IntentAwareIteratorWithBounds> CreateVectorMetadataIterator(
-      const ReadHybridTime& read_ht, docdb::DocDBStatistics* statistics) const = 0;
+      const ReadHybridTime& read_ht, docdb::DocDBStatistics* statistics,
+      const Slice* iterate_upper_bound = nullptr) const = 0;
 };
 
 struct CompactionHybridTimeConstraints {

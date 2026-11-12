@@ -109,13 +109,22 @@ class IndexReverseMappingReader : public docdb::DocVectorIndexReverseMappingRead
     rocksdb_op_ = tablet.CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
     RETURN_NOT_OK(rocksdb_op_);
 
-    iter_holder_ = VERIFY_RESULT(
-        tablet.vector_indexes().CreateVectorMetadataIterator(read_ht, statistics));
+    upper_bound_buffer_ = {dockv::KeyEntryTypeAsChar::kVectorIndexMetadata,
+                           dockv::KeyEntryTypeAsChar::kMaxByte};
+    upper_bound_ = upper_bound_buffer_;
+    iter_holder_ = VERIFY_RESULT(tablet.vector_indexes().CreateVectorMetadataIterator(
+        read_ht, statistics, &upper_bound_));
     key_bounds_ = &tablet.key_bounds();
     return Status::OK();
   }
 
   Result<Slice> Fetch(Slice key) override {
+    // A restore leaves the entries written after its time in their SST files, filtered out by
+    // hybrid time. Bounding the read to the versions of the key stops the regular DB iterator from
+    // walking those entries past it, which a search would do for every candidate.
+    upper_bound_buffer_.assign(key.cdata(), key.size());
+    upper_bound_buffer_.push_back(dockv::KeyEntryTypeAsChar::kMaxByte);
+    upper_bound_ = upper_bound_buffer_;
     auto value = VERIFY_RESULT(iter_holder_.iter->FetchValue(key));
     if (value.empty() || !key_bounds_->IsInitialized()) {
       return value;
@@ -140,6 +149,9 @@ class IndexReverseMappingReader : public docdb::DocVectorIndexReverseMappingRead
 
  private:
   ScopedRWOperation rocksdb_op_;
+  // The regular DB iterator of iter_holder_ reads the upper bound through this pointer.
+  std::string upper_bound_buffer_;
+  Slice upper_bound_;
   docdb::IntentAwareIteratorWithBounds iter_holder_;
   const docdb::KeyBounds* key_bounds_ = &docdb::KeyBounds::kNoBounds;
 };
@@ -1474,7 +1486,8 @@ Result<VectorIndexCheckResultPB> TabletVectorIndexes::Check(
 }
 
 Result<docdb::IntentAwareIteratorWithBounds> TabletVectorIndexes::CreateVectorMetadataIterator(
-    const ReadHybridTime& read_ht, docdb::DocDBStatistics* statistics) const {
+    const ReadHybridTime& read_ht, docdb::DocDBStatistics* statistics,
+    const Slice* iterate_upper_bound) const {
   static std::array<char, 2> upper_bound {
       dockv::KeyEntryTypeAsChar::kVectorIndexMetadata,
       dockv::KeyEntryTypeAsChar::kMaxByte
@@ -1494,7 +1507,7 @@ Result<docdb::IntentAwareIteratorWithBounds> TabletVectorIndexes::CreateVectorMe
   auto iter = docdb::CreateIntentAwareIterator(
       tablet().doc_db().FromRegularUnbounded(), docdb::BloomFilterOptions::Inactive(),
       rocksdb::kDefaultQueryId, TransactionOperationContext{}, read_operation_data,
-      /* file_filter = */ nullptr, /* iterate_upper_bound = */ nullptr,
+      /* file_filter = */ nullptr, iterate_upper_bound,
       docdb::IntentAwareIteratorFlag::kNoFastNext);
   auto bounds = std::make_unique<docdb::IntentAwareIteratorBoundsScope>(
       Slice{&dockv::KeyEntryTypeAsChar::kVectorIndexMetadata, 1}, Slice{upper_bound}, iter.get()

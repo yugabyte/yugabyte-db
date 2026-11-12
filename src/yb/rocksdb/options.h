@@ -849,8 +849,9 @@ struct ColumnFamilyOptions {
 // False defers a memtable; an error fails the flush without persisting any selected memtables.
 using MemTableFilter = std::function<yb::Result<bool>(const MemTable&, bool)>;
 
+// Receives the file's filter and the read's ReadOptions::iterate_upper_bound.
 using IteratorReplacer =
-    std::function<InternalIterator*(InternalIterator*, Arena*, Slice)>;
+    std::function<InternalIterator*(InternalIterator*, Arena*, Slice, const Slice*)>;
 
 using CompactionContextFactory = std::function<CompactionContextPtr(
     CompactionFeed* feed, const CompactionContextOptions& options)>;

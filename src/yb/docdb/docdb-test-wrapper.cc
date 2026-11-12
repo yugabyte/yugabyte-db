@@ -1927,6 +1927,87 @@ TEST_P(DocDBTestWrapper, SetHybridTimeFilterSingleFile) {
   )#");
 }
 
+// A read with an upper bound stops skipping the entries filtered out by a restore at the bound.
+// The file stays positioned on a filtered out entry then, which must not show up when the bound
+// is raised without a seek.
+TEST_P(DocDBTestWrapper, SetHybridTimeFilterStopsAtUpperBound) {
+  for (int i = 1; i <= 6; ++i) {
+    ASSERT_OK(WriteSimple(i));
+  }
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+  ASSERT_OK(SetHybridTimeFilter(std::nullopt, HybridTime::FromMicros(2000)));
+  // Written after the restore, to a file without a filter. "row25" sorts between "row2" and
+  // "row3".
+  ASSERT_OK(WriteSimple(25));
+  ASSERT_OK(WriteSimple(7));
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+
+  auto row_key = [](int index) {
+    return dockv::MakeDocKey(Format("row$0", index), 11111 * index).Encode().ToStringBuffer();
+  };
+  auto bound_after = [&row_key](int index) {
+    return row_key(index) + dockv::KeyEntryTypeAsChar::kMaxByte;
+  };
+  auto at_row = [&row_key](rocksdb::Iterator& iter, int index) -> Result<bool> {
+    return VERIFY_RESULT(iter.CheckedValid()) && iter.key().starts_with(row_key(index));
+  };
+  const std::string max_bound(1, dockv::KeyEntryTypeAsChar::kMaxByte);
+  const auto bound_after_row25 = bound_after(25);
+  const auto bound_after_row3 = bound_after(3);
+
+  const auto bound_after_row2 = bound_after(2);
+
+  enum class Step { kRaiseBound, kBackward, kNextToBound };
+  for (bool fast_next : {false, true}) {
+    for (auto step : {Step::kRaiseBound, Step::kBackward, Step::kNextToBound}) {
+      SCOPED_TRACE(Format("fast_next: $0, step: $1", fast_next, std::to_underlying(step)));
+      Slice upper_bound = step == Step::kNextToBound ? bound_after_row2 : bound_after_row25;
+      rocksdb::ReadOptions read_opts;
+      read_opts.query_id = rocksdb::kDefaultQueryId;
+      read_opts.iterate_upper_bound = &upper_bound;
+      std::unique_ptr<rocksdb::Iterator> iter(doc_db().regular->NewIterator(read_opts));
+      iter->UseFastNext(fast_next);
+
+      switch (step) {
+        case Step::kRaiseBound:
+          // The filtered file stops at row3, past the bound, while the newer file is on row25.
+          iter->Seek(row_key(25));
+          ASSERT_TRUE(ASSERT_RESULT(at_row(*iter, 25)));
+          upper_bound = max_bound;
+          iter->Next();
+          ASSERT_TRUE(ASSERT_RESULT(at_row(*iter, 7)));
+          iter->Next();
+          ASSERT_FALSE(ASSERT_RESULT(iter->CheckedValid()));
+          break;
+        case Step::kBackward:
+          iter->Seek(row_key(25));
+          ASSERT_TRUE(ASSERT_RESULT(at_row(*iter, 25)));
+          iter->Prev();
+          ASSERT_TRUE(ASSERT_RESULT(at_row(*iter, 2)));
+          break;
+        case Step::kNextToBound:
+          // Neither row25 of the newer file nor the stop of the filtered file at row3 is returned.
+          iter->Seek(row_key(1));
+          ASSERT_TRUE(ASSERT_RESULT(at_row(*iter, 1)));
+          iter->Next();
+          ASSERT_TRUE(ASSERT_RESULT(at_row(*iter, 2)));
+          iter->Next();
+          ASSERT_FALSE(ASSERT_RESULT(iter->CheckedValid()));
+          break;
+      }
+    }
+  }
+
+  // A seek to a filtered out row finds nothing within the bound.
+  Slice upper_bound = bound_after_row3;
+  rocksdb::ReadOptions read_opts;
+  read_opts.query_id = rocksdb::kDefaultQueryId;
+  read_opts.iterate_upper_bound = &upper_bound;
+  std::unique_ptr<rocksdb::Iterator> iter(doc_db().regular->NewIterator(read_opts));
+  iter->Seek(row_key(3));
+  ASSERT_FALSE(ASSERT_RESULT(iter->CheckedValid()));
+}
+
 TEST_P(DocDBTestWrapper, SetHybridTimeFilter) {
   auto dwb = MakeDocWriteBatch();
   for (int i = 1; i <= 4; ++i) {

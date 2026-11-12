@@ -519,6 +519,15 @@ const KeyValueEntry& DBIter::FastNext() {
     return entry_;
   }
 
+  // A FilteringIterator stopped at the upper bound presents a filtered out entry as a deletion.
+  // The full search handles it, and the bound.
+  if (PREDICT_FALSE(ExtractValueType(entry.key) != kTypeValue) ||
+      (iterate_upper_bound_ != nullptr &&
+       user_comparator_->Compare(ExtractUserKey(entry.key), *iterate_upper_bound_) >= 0)) {
+    FindNextUserEntry(true /* skipping the current user key */);
+    return entry_;
+  }
+
   entry_.key = ExtractUserKey(entry.key);
   SetValid(entry.value);
 
