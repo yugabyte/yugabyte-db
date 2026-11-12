@@ -14,6 +14,7 @@
 #pragma once
 
 #include <chrono>
+#include <memory>
 #include <optional>
 
 #include "yb/common/read_hybrid_time.h"
@@ -25,6 +26,8 @@
 #include "yb/rpc/scheduler.h"
 
 namespace yb {
+
+class ThreadPool;
 
 namespace rpc {
 class RpcContext;
@@ -38,7 +41,7 @@ class YsqlManager : public YsqlManagerIf {
  public:
   YsqlManager(Master& master, CatalogManager& catalog_manager, SysCatalogTable& sys_catalog);
 
-  ~YsqlManager() override = default;
+  ~YsqlManager() override;
 
   void StartShutdown();
   void CompleteShutdown();
@@ -188,8 +191,8 @@ class YsqlManager : public YsqlManagerIf {
 
   // Runs one iteration of the pg catalog versions refresh. Returns the delay to the next
   // iteration, or std::nullopt if the loop should stop (e.g. leadership lost). Used by the
-  // bg-pool body inside ScheduleRefreshPgCatalogVersionsTask to decide whether and when to
-  // reschedule itself.
+  // body that ScheduleRefreshPgCatalogVersionsTask submits to pg_catalog_versions_refresh_pool_
+  // to decide whether and when to reschedule itself.
   std::optional<std::chrono::milliseconds> RefreshPgCatalogVersionCacheOnce();
 
   // Background task (and its helper functions) related to LISTEN/NOTIFY.
@@ -225,6 +228,14 @@ class YsqlManager : public YsqlManagerIf {
 
   std::atomic<bool> pg_catalog_versions_bg_task_running_ = {false};
   rpc::ScheduledTaskTracker refresh_ysql_pg_catalog_versions_task_;
+  // Runs the body of each pg catalog versions refresh. The refresh is short and time-sensitive:
+  // tserver heartbeats and the catalog version check on master Read RPCs are served from the
+  // cache it fills. The catalog manager's shared background pool is sized to the CPU count and
+  // carries bulk work, some of which blocks for a long time, so a refresh queued there can run
+  // well past its cadence. One worker suffices: each run is short, and the next is scheduled
+  // only after the current one finishes. The timer itself stays on the messenger's scheduler,
+  // whose thread must not run the sys catalog read the refresh does.
+  std::unique_ptr<ThreadPool> pg_catalog_versions_refresh_pool_;
 
   std::atomic<bool> yb_system_db_created_ = {false};
   std::atomic<bool> creating_listen_notify_objects_ = {false};

@@ -36,6 +36,7 @@
 #include "yb/util/flag_validators.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/status_log.h"
+#include "yb/util/threadpool.h"
 
 // TODO (mbautin, 2019-12): switch the default to true after updating all external callers
 // (yb-ctl, YugaWare) and unit tests.
@@ -112,7 +113,12 @@ YsqlManager::YsqlManager(
       tablespace_bg_task_running_(false) {
   ysql_initdb_and_major_upgrade_helper_ = std::make_unique<YsqlInitDBAndMajorUpgradeHandler>(
       master, ysql_catalog_config_, catalog_manager, sys_catalog, *catalog_manager.AsyncTaskPool());
+  CHECK_OK(ThreadPoolBuilder("PgCatalogVersionsRefresh")
+               .set_max_threads(1)
+               .Build(&pg_catalog_versions_refresh_pool_));
 }
+
+YsqlManager::~YsqlManager() = default;
 
 void YsqlManager::StartShutdown() {
   refresh_ysql_pg_catalog_versions_task_.StartShutdown();
@@ -122,6 +128,10 @@ void YsqlManager::StartShutdown() {
 
 void YsqlManager::CompleteShutdown() {
   refresh_ysql_pg_catalog_versions_task_.CompleteShutdown();
+  // Shut down after the timer above, so the timer never submits a refresh to a stopped pool.
+  // Shutdown() drops a refresh that is queued but not yet started, and waits for one that is
+  // already running to finish.
+  pg_catalog_versions_refresh_pool_->Shutdown();
   refresh_ysql_tablespace_info_task_.CompleteShutdown();
   refresh_ysql_ddl_post_processing_failed_verification_task_.CompleteShutdown();
 }
@@ -531,12 +541,14 @@ void YsqlManager::ScheduleRefreshPgCatalogVersionsTask(std::chrono::milliseconds
   // The bg task body (RefreshPgCatalogVersionCacheOnce) decides the next delay based on
   // its result: regular cadence on success, faster retry on refresh failure, or
   // std::nullopt to stop the loop entirely.
-  // If we fail to submit to the bg pool, the chain dies (running_=false) and is
-  // restarted by StartPgCatalogVersionsBgTaskIfStopped on the next outer bg loop tick.
+  // The body runs on pg_catalog_versions_refresh_pool_ rather than the catalog manager's shared
+  // background pool; see that member for why. Submitting fails only once that pool is shut down,
+  // and then the chain dies (running_=false) and is restarted by
+  // StartPgCatalogVersionsBgTaskIfStopped on the next outer bg loop tick.
   refresh_ysql_pg_catalog_versions_task_.Bind(&master_.messenger()->scheduler());
   refresh_ysql_pg_catalog_versions_task_.Schedule(
       [this](const Status& status) {
-        Status s = catalog_manager_.SubmitBackgroundTask([this] {
+        Status s = pg_catalog_versions_refresh_pool_->SubmitFunc([this] {
           auto next_delay = RefreshPgCatalogVersionCacheOnce();
           if (next_delay.has_value()) {
             ScheduleRefreshPgCatalogVersionsTask(*next_delay);
@@ -554,7 +566,7 @@ void YsqlManager::ScheduleRefreshPgCatalogVersionsTask(std::chrono::milliseconds
 // std::nullopt if the loop should stop (e.g. leadership lost).
 std::optional<std::chrono::milliseconds> YsqlManager::RefreshPgCatalogVersionCacheOnce() {
   DCHECK(FLAGS_enable_heartbeat_pg_catalog_versions_cache);
-  // running_ may be false if this iteration was submitted to the bg pool concurrently
+  // running_ may be false if this iteration was submitted to the refresh pool concurrently
   // with a leadership loss that set running_ = false. Skip this iteration; the loop
   // will be restarted by StartPgCatalogVersionsBgTaskIfStopped when leadership is reacquired.
   if (!pg_catalog_versions_bg_task_running_.load()) {
