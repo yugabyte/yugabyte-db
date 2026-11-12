@@ -563,7 +563,9 @@ ybIsMergeGapCol(IndexOptInfo *index, List *indexclauses, Bitmapset *saop_idxs,
  * as a local filter or the storage table filter of a secondary index scan that
  * is not embedded, does not, so merge on the gap column as well.  Only that
  * case needs it, but where each filter runs is not known here (see #37497), so
- * merge on every gap column.
+ * merge on every gap column.  That includes a gap column the index predicate
+ * holds constant, which needs no merge, but merging on it costs only
+ * comparisons that always tie.
  */
 static void
 ybAppendMergeGapCol(YbSortInfo *sort_info, IndexOptInfo *index,
