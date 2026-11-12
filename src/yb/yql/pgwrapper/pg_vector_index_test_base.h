@@ -74,8 +74,8 @@ YB_DEFINE_ENUM(PackingMode, (kNone)(kV1)(kV2));
 std::vector<tablet::TabletPeerPtr> ListTabletPeersWithVectorIndexes(
     MiniCluster* cluster, ListPeersFilter filter = ListPeersFilter::kAll);
 
-// Unlike WaitAllReplicasSynchronizedWithLeader, which only waits for the followers to commit,
-// waits for every replica to apply all the ops its leader has committed.
+// Waits for every replica to apply all the ops its leader has committed. The leader must be
+// LEADER_AND_READY, since a new leader's committed op id may lag writes already acknowledged.
 Status WaitAllReplicasAppliedLeaderCommitted(MiniCluster* cluster, CoarseDuration timeout);
 
 uint64_t SumHistograms(const std::vector<const HdrHistogram*>& histograms);

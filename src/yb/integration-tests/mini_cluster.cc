@@ -1835,7 +1835,7 @@ Status InvokeSplitTabletRpcAndWaitForDataCompacted(
 
 Status WaitAllReplicasSynchronizedWithLeader(
     MiniCluster* cluster, CoarseTimePoint deadline,
-    RequireLeaderIsReady require_leader_is_ready) {
+    RequireLeaderIsReady require_leader_is_ready, WaitForApplied wait_for_applied) {
   std::unordered_map<TabletId, std::vector<tablet::TabletPeerPtr>> tablet_peers;
   for (auto& peer : ListTabletPeers(cluster, ListPeersFilter::kAll)) {
     tablet_peers[peer->tablet_id()].push_back(std::move(peer));
@@ -1844,37 +1844,43 @@ Status WaitAllReplicasSynchronizedWithLeader(
     int64_t committed_idx = -1;
     RETURN_NOT_OK(Wait(
         [&peers, &committed_idx, require_leader_is_ready]() -> Result<bool> {
+          // Two peers may match during a leader change; take the higher index.
           for (const auto& peer : peers) {
             auto peer_consensus = VERIFY_RESULT(peer->GetConsensus());
             const auto leader_status = peer_consensus->GetLeaderStatus();
             if (require_leader_is_ready
                     ? leader_status == consensus::LeaderStatus::LEADER_AND_READY
                     : leader_status != consensus::LeaderStatus::NOT_LEADER) {
-              committed_idx = peer_consensus->GetLastCommittedOpId().index;
-              return true;
+              committed_idx =
+                  std::max(committed_idx, peer_consensus->GetLastCommittedOpId().index);
             }
           }
-          return false;
+          return committed_idx >= 0;
         },
         deadline, Format("Wait leader of $0", tablet_id)));
     LOG(INFO) << "Committed op id for " << tablet_id << ": " << committed_idx;
+    const char* const action = wait_for_applied ? "apply" : "commit";
     for (const auto& peer : peers) {
       RETURN_NOT_OK(Wait(
-          [committed_idx, &peer]() -> Result<bool> {
-            return VERIFY_RESULT(peer->GetConsensus())->GetLastCommittedOpId().index >=
-                   committed_idx;
+          [committed_idx, &peer, wait_for_applied]() -> Result<bool> {
+            auto peer_consensus = VERIFY_RESULT(peer->GetConsensus());
+            const auto idx = wait_for_applied ? peer_consensus->GetLastAppliedOpId().index
+                                              : peer_consensus->GetLastCommittedOpId().index;
+            return idx >= committed_idx;
           },
           deadline,
-          Format("Wait T $0 P $1 commit $2", tablet_id, peer->permanent_uuid(), committed_idx)));
+          Format("Wait T $0 P $1 $2 $3", tablet_id, peer->permanent_uuid(), action,
+                 committed_idx)));
     }
   }
   return Status::OK();
 }
 
 Status WaitAllReplicasSynchronizedWithLeader(
-    MiniCluster* cluster, CoarseDuration timeout, RequireLeaderIsReady require_leader_is_ready) {
+    MiniCluster* cluster, CoarseDuration timeout, RequireLeaderIsReady require_leader_is_ready,
+    WaitForApplied wait_for_applied) {
   return WaitAllReplicasSynchronizedWithLeader(
-      cluster, CoarseMonoClock::Now() + timeout, require_leader_is_ready);
+      cluster, CoarseMonoClock::Now() + timeout, require_leader_is_ready, wait_for_applied);
 }
 
 Status WaitForAnySstFiles(tablet::TabletPeerPtr peer, MonoDelta timeout) {
