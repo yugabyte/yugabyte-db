@@ -3413,6 +3413,12 @@ void TSTabletManager::MarkTabletDirty(const TabletId& tablet_id,
   NotifyConfigChangeToStatefulServices(tablet_id);
 }
 
+void TSTabletManager::MarkTabletReportDirty(
+    const TabletId& tablet_id, std::shared_ptr<consensus::StateChangeContext> context) {
+  std::lock_guard lock(mutex_);
+  MarkDirtyUnlocked(tablet_id, context);
+}
+
 void TSTabletManager::NotifyConfigChangeToStatefulServices(const TabletId& tablet_id) {
   auto tablet_peer = GetServingTablet(tablet_id);
   if (!tablet_peer.ok()) {
@@ -3540,6 +3546,42 @@ void TSTabletManager::InitLocalRaftPeerPB() {
   TakeRegistration(&reg, &local_peer_pb_);
 }
 
+namespace {
+
+// Tiered storage: the three fields the master's placement logic reads back. A replica with no
+// target tier has every SST on its home disk, so its tier comes from the superblock alone; one
+// with a target may straddle two disks, which only a scan of the live SSTs (GetTierInfo) can
+// tell. Runs outside the tablet manager's lock, like the rest of the report.
+void FillReportedStorageTier(
+    const tablet::RaftGroupMetadata& meta, const tablet::TabletPtr& tablet,
+    ReportedTabletPB* reported_tablet) {
+  const auto target_tier = meta.target_storage_tier();
+  if (target_tier.empty()) {
+    for (const auto& tier_path : meta.tier_paths()) {
+      if (tier_path.path_id == 0) {
+        reported_tablet->set_current_storage_tier(tier_path.tier);
+        break;
+      }
+    }
+    return;
+  }
+  reported_tablet->set_target_storage_tier(target_tier);
+  if (!tablet) {
+    // Not open yet. Opening marks the tablet dirty, so that report carries the rest.
+    return;
+  }
+  auto info = tablet->GetTierInfo();
+  if (!info.ok()) {
+    return;  // Shutting down.
+  }
+  if (!info->current_tier.empty()) {
+    reported_tablet->set_current_storage_tier(info->current_tier);
+  }
+  reported_tablet->set_tier_migration_state(ToTierMigrationStatePB(info->migration));
+}
+
+}  // namespace
+
 void TSTabletManager::CreateReportedTabletPB(const TabletPeerPtr& tablet_peer,
                                              ReportedTabletPB* reported_tablet) {
   reported_tablet->set_tablet_id(tablet_peer->tablet_id());
@@ -3555,13 +3597,14 @@ void TSTabletManager::CreateReportedTabletPB(const TabletPeerPtr& tablet_peer,
   tablet_peer->tablet_metadata()->GetTableIdToSchemaVersionMap(
       reported_tablet->mutable_table_to_version());
 
-  {
-    auto tablet_ptr = tablet_peer->shared_tablet_maybe_null();
-    if (tablet_ptr != nullptr) {
-      reported_tablet->set_should_disable_lb_move(tablet_ptr->ShouldDisableLbMove());
-    }
+  auto tablet_ptr = tablet_peer->shared_tablet_maybe_null();
+  if (tablet_ptr != nullptr) {
+    reported_tablet->set_should_disable_lb_move(tablet_ptr->ShouldDisableLbMove());
   }
   reported_tablet->set_fs_data_dir(tablet_peer->tablet_metadata()->data_root_dir());
+  if (FLAGS_enable_tiered_storage) {
+    FillReportedStorageTier(*tablet_peer->tablet_metadata(), tablet_ptr, reported_tablet);
+  }
 
   // We cannot get consensus state information unless the TabletPeer is running.
   auto consensus_result = tablet_peer->GetConsensus();

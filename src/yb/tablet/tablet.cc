@@ -5609,11 +5609,18 @@ Result<ScopedRWOperation> Tablet::CheckTierTargetUsable(
 
 Status Tablet::SetTierMigrationTarget(const std::string& target_tier, uint32_t target_path_id) {
   auto scoped_operation = VERIFY_RESULT(CheckTierTargetUsable(target_tier, target_path_id));
-  std::lock_guard lock(tier_target_mutex_);
-  return SetTierMigrationTargetUnlocked(target_tier, target_path_id);
+  bool changed = false;
+  {
+    std::lock_guard lock(tier_target_mutex_);
+    changed = VERIFY_RESULT(SetTierMigrationTargetUnlocked(target_tier, target_path_id));
+  }
+  if (changed) {
+    NotifyTierStateChanged();
+  }
+  return Status::OK();
 }
 
-Status Tablet::SetTierMigrationTargetUnlocked(
+Result<bool> Tablet::SetTierMigrationTargetUnlocked(
     const std::string& target_tier, uint32_t target_path_id) {
   const bool same_target = IsPersistedTierTarget(target_tier, target_path_id);
   {
@@ -5636,14 +5643,16 @@ Status Tablet::SetTierMigrationTargetUnlocked(
       "Failed to set target_path_id on regular DB");
 
   std::lock_guard lock(tier_migration_mutex_);
-  ReassertTierIntentUnlocked();
-  return Status::OK();
+  const bool state_changed = ReassertTierIntentUnlocked();
+  return state_changed || !same_target;
 }
 
-void Tablet::ReassertTierIntentUnlocked() {
+bool Tablet::ReassertTierIntentUnlocked() {
+  const bool changed = tier_migration_status_.state != TierMigrationStatus::State::kInProgress;
   tier_migration_status_.state = TierMigrationStatus::State::kInProgress;
   tier_migration_status_.consecutive_failed_passes = 0;
   tier_migration_status_.last_error = Status::OK();
+  return changed;
 }
 
 bool Tablet::IsPersistedTierTarget(
@@ -5667,6 +5676,16 @@ Status Tablet::CheckTierTargetStillPersisted(
 Result<TierReconcileResult> Tablet::RunTierMigrationPass(
     const TierReconcileOptions& options, ReconcilerPass reconciler_pass,
     const std::optional<TierTarget>& expected_target) {
+  auto result = DoRunTierMigrationPass(options, reconciler_pass, expected_target);
+  if (result.ok() && result->state_changed) {
+    NotifyTierStateChanged();
+  }
+  return result;
+}
+
+Result<TierReconcileResult> Tablet::DoRunTierMigrationPass(
+    const TierReconcileOptions& options, ReconcilerPass reconciler_pass,
+    const std::optional<TierTarget>& expected_target) {
   using State = TierMigrationStatus::State;
 
   auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
@@ -5678,7 +5697,6 @@ Result<TierReconcileResult> Tablet::RunTierMigrationPass(
   TierReconcileResult result;
   uint32_t target_path_id = 0;
   std::string target_dir;
-  auto state_before = State::kNone;
   {
     // Held from reading the target to claiming the pass, so the pass is toward the persisted
     // target and AlterTabletTier cannot swap it for another until the pass ends. Not held across
@@ -5715,7 +5733,6 @@ Result<TierReconcileResult> Tablet::RunTierMigrationPass(
       return result;
     }
     status.pass_in_flight = true;
-    state_before = status.state;
   }
 
   auto candidates = CollectTierMigrationCandidates(target_path_id);
@@ -5726,6 +5743,10 @@ Result<TierReconcileResult> Tablet::RunTierMigrationPass(
   {
     std::lock_guard lock(tier_migration_mutex_);
     auto& status = tier_migration_status_;
+    // state_changed is measured against the state the verdict replaces, not the one the pass
+    // started from: a same-target AlterTabletTier during the scan sets kInProgress and reports
+    // it, and the verdict that restores kDone has to be reported too.
+    const auto state_before = status.state;
     if (candidates.empty()) {
       status.pass_in_flight = false;
       status.files_total = 0;
@@ -5813,15 +5834,23 @@ Result<TierMigrationStatus> Tablet::AlterTabletTier(
     const std::string& target_tier, uint32_t target_path_id) {
   auto scoped_operation = VERIFY_RESULT(CheckTierTargetUsable(target_tier, target_path_id));
 
+  bool changed = false;
+  std::optional<TierMigrationStatus> in_flight;
   {
     std::lock_guard target_lock(tier_target_mutex_);
-    RETURN_NOT_OK(SetTierMigrationTargetUnlocked(target_tier, target_path_id));
+    changed = VERIFY_RESULT(SetTierMigrationTargetUnlocked(target_tier, target_path_id));
     std::lock_guard lock(tier_migration_mutex_);
     if (tier_migration_status_.pass_in_flight) {
-      // Only the same target gets past the write with a pass in flight: that pass already serves
-      // this request, re-asserted just now like any accepted one, so report it.
-      return tier_migration_status_;
+      in_flight = tier_migration_status_;
     }
+  }
+  if (changed) {
+    NotifyTierStateChanged();
+  }
+  if (in_flight) {
+    // Only the same target gets past the write with a pass in flight: that pass already serves
+    // this request, re-asserted just now like any accepted one, so report it.
+    return *in_flight;
   }
 
   // Lets a test slip another target in after the write, before the pass starts.
@@ -5955,6 +5984,12 @@ void Tablet::WakeTierMigrationReconciler() {
   }
 }
 
+void Tablet::NotifyTierStateChanged() {
+  if (tier_migration_hooks_ && tier_migration_hooks_->tier_state_changed) {
+    tier_migration_hooks_->tier_state_changed(tablet_id());
+  }
+}
+
 Result<TabletTierInfo> Tablet::GetTierInfo() const {
   // Keeps regular_db_ alive for the GetLiveFilesMetaData scan below: a concurrent tablet
   // shutdown/delete waits for this to be released before destroying the DB.
@@ -5980,12 +6015,14 @@ Result<TabletTierInfo> Tablet::GetTierInfo() const {
     info.tier_paths.push_back(stats);
   }
 
-  // Home tier (path_id 0) is where the first flush will land absent any migration, so an empty
-  // tablet (no live SSTs yet, e.g. still bootstrapping or just created and never flushed) is
-  // trivially "on" its home tier rather than "none". Overwritten below once there is at
-  // least one live SST to derive current_tier from directly.
+  // An empty tablet (no live SSTs yet: still bootstrapping, or never flushed) is trivially "on"
+  // the tier its next flush lands on rather than "none": the target's disk when a target is set,
+  // the home disk (path_id 0) otherwise. This agrees with the reconciler, which declares such a
+  // tablet converged. Overwritten below once there is at least one live SST to derive
+  // current_tier from directly.
+  const uint32_t next_flush_path_id = info.target_tier.empty() ? 0 : info.target_tier_path_id;
   for (const auto& stats : info.tier_paths) {
-    if (stats.is_home) {
+    if (stats.path_id == next_flush_path_id) {
       info.current_tier = stats.tier;
       break;
     }

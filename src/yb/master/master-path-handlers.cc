@@ -4124,6 +4124,23 @@ string MasterPathHandlers::ReplicaInfoToHtml(
         HumanizeBytes(replica.drive_info.sst_files_size));
     html << Format(
         "WALs size: $0\n", HumanizeBytes(replica.drive_info.wal_files_size));
+    // Tiered storage; reported only by tservers running with --enable_tiered_storage.
+    if (!replica.current_storage_tier.empty() || !replica.target_storage_tier.empty()) {
+      std::string tier = replica.current_storage_tier;
+      if (tier.empty()) {
+        // No single tier to name: nothing has looked at the tablet yet (not open, NONE), or a
+        // migration straddles two.
+        tier = replica.tier_migration_state == tserver::TierMigrationStatusPB::NONE
+            ? "unknown" : "migrating";
+      }
+      html << Format("<br/>Storage tier: $0", tier);
+      if (!replica.target_storage_tier.empty()) {
+        html << Format(
+            " (target $0, $1)", replica.target_storage_tier,
+            tserver::TierMigrationStatusPB::State_Name(replica.tier_migration_state));
+      }
+      html << "\n";
+    }
   }
   html << "</ul>\n";
   return html.str();

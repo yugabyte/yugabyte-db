@@ -205,3 +205,44 @@ message YsqlDbHistoryRetentionPinsPB {
   // Map[db_oid] -> oldest read HybridTime that any live transaction in the cluster may still need.
   map<uint32, fixed64> db_oldest_pinned_read_times = 1;
 }
+
+// Where a tablet replica stands relative to its persisted target tier (target_tier /
+// target_tier_path_id in GetTabletTierInfoResponsePB). Not persisted: after a tserver restart the
+// next migration pass rebuilds it. Defined here rather than next to the admin RPCs because the
+// tablet report (master_heartbeat.proto) carries State too.
+message TierMigrationStatusPB {
+  // Nested so the enumerators can stay unprefixed: protobuf scopes enum values to the enclosing
+  // namespace rather than to the enum, and a package-level NONE already exists in yb.tserver.
+  enum State {
+    // Nothing has looked at this tablet since the tserver started.
+    NONE = 0;
+    // A target is set. AlterTabletTier and every migration pass leave the tablet here; only the
+    // background reconciler moves it to DONE or FAILED.
+    IN_PROGRESS = 1;
+    // A reconciler scan found every live SST under the target directory.
+    DONE = 2;
+    // Passes kept hitting hard errors without moving anything, so automatic retries stopped
+    // until the next AlterTabletTier.
+    FAILED = 3;
+  }
+
+  optional State state = 1 [ default = NONE ];
+
+  // Counters of the most recent pass.
+  // Live SSTs its scan found outside the target directory.
+  optional uint32 files_total = 2;
+  // Now under the target directory (moved, or already there).
+  optional uint32 files_moved = 3;
+  // Hit an unrecoverable error; see last_error.
+  optional uint32 files_failed = 4;
+  // Busy with a compaction at the time; the next pass retries them.
+  optional uint32 files_deferred = 5;
+  optional string last_error = 6;
+  // Gone before the move ran (rewritten by a compaction). They no longer need moving.
+  optional uint32 obsoleted = 7;
+
+  // True while the most recent pass still has moves outstanding.
+  optional bool pass_in_flight = 8;
+  // Passes in a row that hit a hard error without moving a single file.
+  optional uint32 consecutive_failed_passes = 9;
+}
