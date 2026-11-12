@@ -273,12 +273,11 @@ EXPLAIN (COSTS OFF) /*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u LEFT
  Sort
    Sort Key: o.order_id
    ->  Nested Loop Left Join
-         Join Filter: (o.user_id = u.id)
          ->  Seq Scan on users u
                Storage Filter: (id = 80)
          ->  Index Scan using orders_gen_pkey on orders_gen o
                Index Cond: ((bucket_id = (yb_hash_code(80) % 5)) AND (user_id = 80))
-(8 rows)
+(7 rows)
 
 /*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u LEFT JOIN orders_gen o ON o.user_id = u.id WHERE u.id = 80 ORDER BY u.id, o.order_id;
  id |      email      | order_id | user_id | bucket_id 
@@ -349,12 +348,11 @@ EXPLAIN (COSTS OFF) /*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u LEFT
  Sort
    Sort Key: o.order_id
    ->  Nested Loop Left Join
-         Join Filter: (o.user_id = u.id)
          ->  Seq Scan on users u
                Storage Filter: (id = 50)
          ->  Index Scan using orders_expr_idx on orders_expr o
                Index Cond: (((yb_hash_code(user_id) % 3) = (yb_hash_code(50) % 3)) AND (user_id = 50))
-(8 rows)
+(7 rows)
 
 /*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u LEFT JOIN orders_expr o ON o.user_id = u.id WHERE u.id = 50 ORDER BY u.id, o.order_id;
  id |      email      | order_id | user_id 
@@ -374,12 +372,11 @@ EXPLAIN (COSTS OFF) /*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u FULL
  Sort
    Sort Key: o.order_id
    ->  Nested Loop Left Join
-         Join Filter: (o.user_id = u.id)
          ->  Seq Scan on users u
                Storage Filter: (id = 50)
          ->  Index Scan using orders_gen_pkey on orders_gen o
                Index Cond: ((bucket_id = (yb_hash_code(50) % 5)) AND (user_id = 50))
-(8 rows)
+(7 rows)
 
 /*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u FULL JOIN orders_gen o ON o.user_id = u.id WHERE u.id = 50 ORDER BY u.id, o.order_id;
  id |      email      | order_id | user_id | bucket_id 
@@ -398,12 +395,11 @@ EXPLAIN (COSTS OFF) /*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u FULL
  Sort
    Sort Key: u.id, o.order_id
    ->  Nested Loop Left Join
-         Join Filter: (o.user_id = u.id)
          ->  Index Scan using orders_gen_pkey on orders_gen o
                Index Cond: ((bucket_id = (yb_hash_code(60) % 5)) AND (user_id = 60))
          ->  Seq Scan on users u
                Storage Filter: (id = 60)
-(8 rows)
+(7 rows)
 
 /*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u FULL JOIN orders_gen o ON o.user_id = u.id WHERE o.user_id = 60 ORDER BY u.id, o.order_id;
  id |      email      | order_id | user_id | bucket_id 
@@ -446,12 +442,11 @@ EXPLAIN (COSTS OFF) /*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u FULL
  Sort
    Sort Key: o.order_id
    ->  Nested Loop Left Join
-         Join Filter: (o.user_id = u.id)
          ->  Seq Scan on users u
                Storage Filter: (id = 50)
          ->  Index Scan using orders_expr_idx on orders_expr o
                Index Cond: (((yb_hash_code(user_id) % 3) = (yb_hash_code(50) % 3)) AND (user_id = 50))
-(8 rows)
+(7 rows)
 
 /*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u FULL JOIN orders_expr o ON o.user_id = u.id WHERE u.id = 50 ORDER BY u.id, o.order_id;
  id |      email      | order_id | user_id 
@@ -465,6 +460,11 @@ EXPLAIN (COSTS OFF) /*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u FULL
 -- derived equality must be inferred independently inside each arm; then an arm
 -- that constrains user_id can still drive an index whose leading column is the
 -- generated/expression bucket computed from user_id.
+-- An OR whose arms are all "column = constant" on the same index column is
+-- merged into one "column = ANY (...)" condition before any per-arm index path
+-- is built, so those arms never reach the per-arm derivation.  The ORs below
+-- therefore have at most one bare equality arm; each other arm also constrains
+-- a second column.
 -- TODO(#31354 or #31355): Recheck Cond should be removed.
 SET yb_enable_bitmapscan = true;
 SET enable_bitmapscan = true;
@@ -474,42 +474,49 @@ SET enable_bitmapscan = true;
 \set R2 'orders_gen'
 \set R3 'orders_expr'
 -- Three-way OR
-\set query ':P :hint SELECT * FROM :R WHERE user_id = 50 OR user_id = 60 OR user_id = 70 ORDER BY user_id, order_id;'
+\set query ':P :hint SELECT * FROM :R WHERE user_id = 50 OR (user_id = 60 AND order_id = 3) OR (user_id = 70 AND order_id = 4) ORDER BY user_id, order_id;'
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (COSTS OFF) /*+BitmapScan(orders_no_bucket)*/ SELECT * FROM orders_no_bucket WHERE user_id = 50 OR user_id = 60 OR user_id = 70 ORDER BY user_id, order_id;
-                                        QUERY PLAN                                        
-------------------------------------------------------------------------------------------
+EXPLAIN (COSTS OFF) /*+BitmapScan(orders_no_bucket)*/ SELECT * FROM orders_no_bucket WHERE user_id = 50 OR (user_id = 60 AND order_id = 3) OR (user_id = 70 AND order_id = 4) ORDER BY user_id, order_id;
+                                                       QUERY PLAN                                                       
+------------------------------------------------------------------------------------------------------------------------
  Sort
    Sort Key: user_id, order_id
    ->  YB Bitmap Table Scan on orders_no_bucket
-         ->  Bitmap Index Scan on orders_no_bucket_user_id_idx
-               Storage Index Filter: ((user_id = 50) OR (user_id = 60) OR (user_id = 70))
-(5 rows)
+         Storage Filter: ((user_id = 50) OR ((user_id = 60) AND (order_id = 3)) OR ((user_id = 70) AND (order_id = 4)))
+         ->  BitmapOr
+               ->  Bitmap Index Scan on orders_no_bucket_user_id_idx
+                     Index Cond: (user_id = 50)
+               ->  Bitmap Index Scan on orders_no_bucket_user_id_idx
+                     Index Cond: (user_id = 60)
+               ->  Bitmap Index Scan on orders_no_bucket_user_id_idx
+                     Index Cond: (user_id = 70)
+(11 rows)
 
-EXPLAIN (COSTS OFF) /*+BitmapScan(orders_gen)*/ SELECT * FROM orders_gen WHERE user_id = 50 OR user_id = 60 OR user_id = 70 ORDER BY user_id, order_id;
-                                                                                                 QUERY PLAN                                                                                                  
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+EXPLAIN (COSTS OFF) /*+BitmapScan(orders_gen)*/ SELECT * FROM orders_gen WHERE user_id = 50 OR (user_id = 60 AND order_id = 3) OR (user_id = 70 AND order_id = 4) ORDER BY user_id, order_id;
+                                                                                                                    QUERY PLAN                                                                                                                     
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
    Sort Key: user_id, order_id
    ->  YB Bitmap Table Scan on orders_gen
-         Recheck Cond: (((bucket_id = (yb_hash_code(50) % 5)) AND (user_id = 50)) OR ((bucket_id = (yb_hash_code(60) % 5)) AND (user_id = 60)) OR ((bucket_id = (yb_hash_code(70) % 5)) AND (user_id = 70)))
+         Recheck Cond: (((bucket_id = (yb_hash_code(50) % 5)) AND (user_id = 50)) OR ((bucket_id = (yb_hash_code(60) % 5)) AND (user_id = 60) AND (order_id = 3)) OR ((bucket_id = (yb_hash_code(70) % 5)) AND (user_id = 70) AND (order_id = 4)))
          ->  BitmapOr
                ->  Bitmap Index Scan on orders_gen_pkey
                      Index Cond: ((bucket_id = (yb_hash_code(50) % 5)) AND (user_id = 50))
                ->  Bitmap Index Scan on orders_gen_pkey
-                     Index Cond: ((bucket_id = (yb_hash_code(60) % 5)) AND (user_id = 60))
+                     Index Cond: ((bucket_id = (yb_hash_code(60) % 5)) AND (user_id = 60) AND (order_id = 3))
                ->  Bitmap Index Scan on orders_gen_pkey
-                     Index Cond: ((bucket_id = (yb_hash_code(70) % 5)) AND (user_id = 70))
+                     Index Cond: ((bucket_id = (yb_hash_code(70) % 5)) AND (user_id = 70) AND (order_id = 4))
 (11 rows)
 
-EXPLAIN (COSTS OFF) /*+BitmapScan(orders_expr)*/ SELECT * FROM orders_expr WHERE user_id = 50 OR user_id = 60 OR user_id = 70 ORDER BY user_id, order_id;
+EXPLAIN (COSTS OFF) /*+BitmapScan(orders_expr)*/ SELECT * FROM orders_expr WHERE user_id = 50 OR (user_id = 60 AND order_id = 3) OR (user_id = 70 AND order_id = 4) ORDER BY user_id, order_id;
                                                                                                                             QUERY PLAN                                                                                                                             
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
    Sort Key: user_id, order_id
    ->  YB Bitmap Table Scan on orders_expr
+         Storage Filter: ((user_id = 50) OR ((user_id = 60) AND (order_id = 3)) OR ((user_id = 70) AND (order_id = 4)))
          Recheck Cond: ((((yb_hash_code(user_id) % 3) = (yb_hash_code(50) % 3)) AND (user_id = 50)) OR (((yb_hash_code(user_id) % 3) = (yb_hash_code(60) % 3)) AND (user_id = 60)) OR (((yb_hash_code(user_id) % 3) = (yb_hash_code(70) % 3)) AND (user_id = 70)))
          ->  BitmapOr
                ->  Bitmap Index Scan on orders_expr_idx
@@ -518,9 +525,9 @@ EXPLAIN (COSTS OFF) /*+BitmapScan(orders_expr)*/ SELECT * FROM orders_expr WHERE
                      Index Cond: (((yb_hash_code(user_id) % 3) = (yb_hash_code(60) % 3)) AND (user_id = 60))
                ->  Bitmap Index Scan on orders_expr_idx
                      Index Cond: (((yb_hash_code(user_id) % 3) = (yb_hash_code(70) % 3)) AND (user_id = 70))
-(11 rows)
+(12 rows)
 
-/*+BitmapScan(orders_no_bucket)*/ SELECT * FROM orders_no_bucket WHERE user_id = 50 OR user_id = 60 OR user_id = 70 ORDER BY user_id, order_id;
+/*+BitmapScan(orders_no_bucket)*/ SELECT * FROM orders_no_bucket WHERE user_id = 50 OR (user_id = 60 AND order_id = 3) OR (user_id = 70 AND order_id = 4) ORDER BY user_id, order_id;
  order_id | user_id 
 ----------+---------
         1 |      50
@@ -529,7 +536,7 @@ EXPLAIN (COSTS OFF) /*+BitmapScan(orders_expr)*/ SELECT * FROM orders_expr WHERE
         4 |      70
 (4 rows)
 
-/*+BitmapScan(orders_gen)*/ SELECT * FROM orders_gen WHERE user_id = 50 OR user_id = 60 OR user_id = 70 ORDER BY user_id, order_id;
+/*+BitmapScan(orders_gen)*/ SELECT * FROM orders_gen WHERE user_id = 50 OR (user_id = 60 AND order_id = 3) OR (user_id = 70 AND order_id = 4) ORDER BY user_id, order_id;
  order_id | user_id | bucket_id 
 ----------+---------+-----------
         1 |      50 |         0
@@ -538,7 +545,7 @@ EXPLAIN (COSTS OFF) /*+BitmapScan(orders_expr)*/ SELECT * FROM orders_expr WHERE
         4 |      70 |         0
 (4 rows)
 
-/*+BitmapScan(orders_expr)*/ SELECT * FROM orders_expr WHERE user_id = 50 OR user_id = 60 OR user_id = 70 ORDER BY user_id, order_id;
+/*+BitmapScan(orders_expr)*/ SELECT * FROM orders_expr WHERE user_id = 50 OR (user_id = 60 AND order_id = 3) OR (user_id = 70 AND order_id = 4) ORDER BY user_id, order_id;
  order_id | user_id 
 ----------+---------
         1 |      50
@@ -622,14 +629,14 @@ EXPLAIN (COSTS OFF) /*+BitmapScan(orders_expr)*/ SELECT * FROM orders_expr WHERE
 -- still apply within each arm so the bitmap scan on orders_gen uses the bucket.
 \set hint '/*+ NestLoop(u o) BitmapScan(o) */'
 SELECT $$
-:P :hint SELECT * FROM users u JOIN orders_gen o ON o.user_id = u.id WHERE o.user_id = 50 OR o.user_id = 60 ORDER BY u.id, o.order_id;
+:P :hint SELECT * FROM users u JOIN orders_gen o ON o.user_id = u.id WHERE o.user_id = 50 OR (o.user_id = 60 AND o.order_id = 3) ORDER BY u.id, o.order_id;
 $$ AS query \gset
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (COSTS OFF) /*+ NestLoop(u o) BitmapScan(o) */ SELECT * FROM users u JOIN orders_gen o ON o.user_id = u.id WHERE o.user_id = 50 OR o.user_id = 60 ORDER BY u.id, o.order_id;
-                                                                         QUERY PLAN                                                                         
-------------------------------------------------------------------------------------------------------------------------------------------------------------
+EXPLAIN (COSTS OFF) /*+ NestLoop(u o) BitmapScan(o) */ SELECT * FROM users u JOIN orders_gen o ON o.user_id = u.id WHERE o.user_id = 50 OR (o.user_id = 60 AND o.order_id = 3) ORDER BY u.id, o.order_id;
+                                                                                  QUERY PLAN                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
    Sort Key: u.id, o.order_id
    ->  Nested Loop
@@ -637,15 +644,15 @@ EXPLAIN (COSTS OFF) /*+ NestLoop(u o) BitmapScan(o) */ SELECT * FROM users u JOI
          ->  Seq Scan on users u
          ->  Materialize
                ->  YB Bitmap Table Scan on orders_gen o
-                     Recheck Cond: (((bucket_id = (yb_hash_code(50) % 5)) AND (user_id = 50)) OR ((bucket_id = (yb_hash_code(60) % 5)) AND (user_id = 60)))
+                     Recheck Cond: (((bucket_id = (yb_hash_code(50) % 5)) AND (user_id = 50)) OR ((bucket_id = (yb_hash_code(60) % 5)) AND (user_id = 60) AND (order_id = 3)))
                      ->  BitmapOr
                            ->  Bitmap Index Scan on orders_gen_pkey
                                  Index Cond: ((bucket_id = (yb_hash_code(50) % 5)) AND (user_id = 50))
                            ->  Bitmap Index Scan on orders_gen_pkey
-                                 Index Cond: ((bucket_id = (yb_hash_code(60) % 5)) AND (user_id = 60))
+                                 Index Cond: ((bucket_id = (yb_hash_code(60) % 5)) AND (user_id = 60) AND (order_id = 3))
 (13 rows)
 
-/*+ NestLoop(u o) BitmapScan(o) */ SELECT * FROM users u JOIN orders_gen o ON o.user_id = u.id WHERE o.user_id = 50 OR o.user_id = 60 ORDER BY u.id, o.order_id;
+/*+ NestLoop(u o) BitmapScan(o) */ SELECT * FROM users u JOIN orders_gen o ON o.user_id = u.id WHERE o.user_id = 50 OR (o.user_id = 60 AND o.order_id = 3) ORDER BY u.id, o.order_id;
  id |      email      | order_id | user_id | bucket_id 
 ----+-----------------+----------+---------+-----------
  50 | user50@test.com |        1 |      50 |         0
@@ -803,65 +810,68 @@ DROP TABLE guard_type_gen, guard_type_expr;
 -- substituting the constant is safe and the derivation SHOULD still happen --
 -- confirming the type requirement above does not over-reject compatible types.
 CREATE TABLE guard_coerce_gen (
+    id int,
     c varchar,
     bucket_id int GENERATED ALWAYS AS (yb_hash_code(c) % 5) STORED,
     PRIMARY KEY (bucket_id ASC, c ASC)
 );
-CREATE TABLE guard_coerce_expr (c varchar);
+CREATE TABLE guard_coerce_expr (id int, c varchar);
 CREATE INDEX NONCONCURRENTLY ON guard_coerce_expr ((yb_hash_code(c) % 5) ASC, c ASC);
 \set R1 'guard_coerce_gen'
 \set R2 'guard_coerce_expr'
 SELECT $$
-INSERT INTO :R(c) VALUES ('a'), ('b'), ('c');
+INSERT INTO :R(id, c) VALUES (1, 'a'), (2, 'b'), (3, 'c');
 $$ AS query \gset
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-INSERT INTO guard_coerce_gen(c) VALUES ('a'), ('b'), ('c');
-INSERT INTO guard_coerce_expr(c) VALUES ('a'), ('b'), ('c');
+INSERT INTO guard_coerce_gen(id, c) VALUES (1, 'a'), (2, 'b'), (3, 'c');
+INSERT INTO guard_coerce_expr(id, c) VALUES (1, 'a'), (2, 'b'), (3, 'c');
 \set Rnext :abs_srcdir '/yb_commands/bitmap_hint_from_R.sql'
 SELECT $$
-:P :hint SELECT c FROM :R WHERE c = 'a'::text OR c = 'b' ORDER BY c;
+:P :hint SELECT c FROM :R WHERE c = 'a'::text OR (c = 'b' AND id = 2) ORDER BY c;
 $$ AS query \gset
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (COSTS OFF) /*+BitmapScan(guard_coerce_gen)*/ SELECT c FROM guard_coerce_gen WHERE c = 'a'::text OR c = 'b' ORDER BY c;
+EXPLAIN (COSTS OFF) /*+BitmapScan(guard_coerce_gen)*/ SELECT c FROM guard_coerce_gen WHERE c = 'a'::text OR (c = 'b' AND id = 2) ORDER BY c;
                                                                                    QUERY PLAN                                                                                   
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
    Sort Key: c
    ->  YB Bitmap Table Scan on guard_coerce_gen
+         Storage Filter: (((c)::text = 'a'::text) OR (((c)::text = 'b'::text) AND (id = 2)))
          Recheck Cond: (((bucket_id = (yb_hash_code('a'::text) % 5)) AND ((c)::text = 'a'::text)) OR ((bucket_id = (yb_hash_code('b'::text) % 5)) AND ((c)::text = 'b'::text)))
          ->  BitmapOr
                ->  Bitmap Index Scan on guard_coerce_gen_pkey
                      Index Cond: ((bucket_id = (yb_hash_code('a'::text) % 5)) AND ((c)::text = 'a'::text))
                ->  Bitmap Index Scan on guard_coerce_gen_pkey
                      Index Cond: ((bucket_id = (yb_hash_code('b'::text) % 5)) AND ((c)::text = 'b'::text))
-(9 rows)
+(10 rows)
 
-EXPLAIN (COSTS OFF) /*+BitmapScan(guard_coerce_expr)*/ SELECT c FROM guard_coerce_expr WHERE c = 'a'::text OR c = 'b' ORDER BY c;
+EXPLAIN (COSTS OFF) /*+BitmapScan(guard_coerce_expr)*/ SELECT c FROM guard_coerce_expr WHERE c = 'a'::text OR (c = 'b' AND id = 2) ORDER BY c;
                                                                                                QUERY PLAN                                                                                               
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
    Sort Key: c
    ->  YB Bitmap Table Scan on guard_coerce_expr
+         Storage Filter: (((c)::text = 'a'::text) OR (((c)::text = 'b'::text) AND (id = 2)))
          Recheck Cond: ((((yb_hash_code(c) % 5) = (yb_hash_code('a'::text) % 5)) AND ((c)::text = 'a'::text)) OR (((yb_hash_code(c) % 5) = (yb_hash_code('b'::text) % 5)) AND ((c)::text = 'b'::text)))
          ->  BitmapOr
                ->  Bitmap Index Scan on guard_coerce_expr_expr_c_idx
                      Index Cond: (((yb_hash_code(c) % 5) = (yb_hash_code('a'::text) % 5)) AND ((c)::text = 'a'::text))
                ->  Bitmap Index Scan on guard_coerce_expr_expr_c_idx
                      Index Cond: (((yb_hash_code(c) % 5) = (yb_hash_code('b'::text) % 5)) AND ((c)::text = 'b'::text))
-(9 rows)
+(10 rows)
 
-/*+BitmapScan(guard_coerce_gen)*/ SELECT c FROM guard_coerce_gen WHERE c = 'a'::text OR c = 'b' ORDER BY c;
+/*+BitmapScan(guard_coerce_gen)*/ SELECT c FROM guard_coerce_gen WHERE c = 'a'::text OR (c = 'b' AND id = 2) ORDER BY c;
  c 
 ---
  a
  b
 (2 rows)
 
-/*+BitmapScan(guard_coerce_expr)*/ SELECT c FROM guard_coerce_expr WHERE c = 'a'::text OR c = 'b' ORDER BY c;
+/*+BitmapScan(guard_coerce_expr)*/ SELECT c FROM guard_coerce_expr WHERE c = 'a'::text OR (c = 'b' AND id = 2) ORDER BY c;
 (output identical to previous)
 DROP TABLE guard_coerce_gen, guard_coerce_expr;
 -- Operator guard.  The operator must be a real equality, not just one the
@@ -1031,7 +1041,8 @@ EXPLAIN (COSTS OFF) /*+ IndexScan(t_const_expr t_const_expr_idx) */ SELECT * FRO
  Sort
    Sort Key: a
    ->  Seq Scan on t_const_expr
-(3 rows)
+         Disabled: true
+(4 rows)
 
 /*+ IndexScan(t_const_expr t_const_expr_idx) */ SELECT * FROM t_const_expr ORDER BY a;
  a  
@@ -1091,9 +1102,10 @@ EXPLAIN (COSTS OFF) /*+ IndexScan(demo_a demo_a_nullif_idx) */ SELECT count(*) F
 ---------------------------------
  Finalize Aggregate
    ->  Seq Scan on demo_a
+         Disabled: true
          Storage Filter: (x = 0)
          Partial Aggregate: true
-(4 rows)
+(5 rows)
 
 /*+ IndexScan(demo_a demo_a_nullif_idx) */ SELECT count(*) FROM demo_a WHERE x = 0;
  count 
@@ -1137,7 +1149,8 @@ EXPLAIN (COSTS OFF) /*+ NestLoop(a b) IndexScan(b demo_b_nullif_idx) */ SELECT c
          ->  Seq Scan on demo_a a
          ->  Materialize
                ->  Seq Scan on demo_b b
-(6 rows)
+                     Disabled: true
+(7 rows)
 
 /*+ NestLoop(a b) IndexScan(b demo_b_nullif_idx) */ SELECT count(*) FROM demo_a a JOIN demo_b b ON a.x = b.x;
  count 
@@ -1220,8 +1233,9 @@ EXPLAIN (COSTS OFF) /*+ BitmapScan(demo_or) */ SELECT count(*) FROM demo_or WHER
 -----------------------------------------------------------------
  Aggregate
    ->  Seq Scan on demo_or
+         Disabled: true
          Filter: ((id = 1) OR (arr = '{}'::character varying[]))
-(3 rows)
+(4 rows)
 
 /*+ BitmapScan(demo_or) */ SELECT count(*) FROM demo_or WHERE id = 1 OR arr = '{}';
  count 

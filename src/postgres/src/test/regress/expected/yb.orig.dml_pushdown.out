@@ -533,7 +533,7 @@ EXPLAIN (COSTS FALSE) WITH temp AS (UPDATE single_row SET v1 = v1 + 1 WHERE k = 
      ->  Update on single_row single_row_1
            ->  Result single_row_1
    ->  YB Batched Nested Loop Join
-         Join Filter: (single_row.k = temp.k)
+         Join Filter: (temp.k = single_row.k)
          ->  CTE Scan on temp
          ->  Index Scan using single_row_pkey on single_row
                Index Cond: (k = ANY (ARRAY[temp.k, $4, $5, ..., $1026]))
@@ -592,7 +592,7 @@ EXPLAIN (COSTS FALSE) WITH temp AS (UPDATE single_row SET v1 = v1 + 1 WHERE k = 
      ->  Update on single_row single_row_1
            ->  Result single_row_1
    ->  YB Batched Nested Loop Join
-         Join Filter: (single_row.k = temp.k)
+         Join Filter: (temp.k = single_row.k)
          ->  CTE Scan on temp
          ->  Index Scan using single_row_pkey on single_row
                Index Cond: (k = ANY (ARRAY[temp.k, $4, $5, ..., $1026]))
@@ -1272,7 +1272,7 @@ EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE 
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Update on single_row_complex_returning
-   InitPlan 1 (returns $0)
+   InitPlan expr_1
      ->  Finalize Aggregate
            ->  Seq Scan on single_row_complex_returning single_row_complex_returning_1
                  Partial Aggregate: true
