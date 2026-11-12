@@ -4806,6 +4806,269 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   }
 
   @Test
+  public void testStartReplicationWhenLocalSlotArrayIsFull() throws Exception {
+    Map<String, String> tserverFlags = getTServerFlags();
+    tserverFlags.put("max_replication_slots", "2");
+    restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t (id int PRIMARY KEY)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection createConn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection =
+        createConn.unwrap(PGConnection.class).getReplicationAPI();
+    for (int i = 1; i <= 4; i++) {
+      createSlot(replConnection, "slot_" + i, YB_OUTPUT_PLUGIN_NAME);
+    }
+    createConn.close();
+
+    streamOnceOnTServer(0, "slot_1");
+    streamOnceOnTServer(0, "slot_2");
+
+    assertStartReplicationRefused(0, "slot_3");
+
+    // Drop slot_1 via tserver 1. Only the dropping node releases its own entry, so tserver 0
+    // keeps a stale entry for slot_1.
+    try (Connection conn = getConnectionBuilder().withTServer(1).connect();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("SELECT pg_drop_replication_slot('slot_1')");
+    }
+    TestUtils.waitFor(() -> {
+      try (Statement stmt = connection.createStatement()) {
+        ResultSet rs = stmt.executeQuery(
+            "SELECT count(*) FROM pg_replication_slots WHERE slot_name = 'slot_1'");
+        return rs.next() && rs.getInt(1) == 0;
+      }
+    }, 10000);
+
+    streamOnceOnTServer(0, "slot_3");
+
+    assertStartReplicationRefused(0, "slot_4");
+
+    streamOnceOnTServer(1, "slot_4");
+
+    // An exclusive-lock drop takes no local entry, so it works through tserver 0 too.
+    try (Connection conn = getConnectionBuilder().withTServer(0).connect();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("SET yb_enable_replication_slot_exclusive_lock = on");
+      stmt.execute("SELECT pg_drop_replication_slot('slot_4')");
+    }
+  }
+
+  @Test
+  public void testConcurrentStartReplicationWhenLocalSlotArrayIsFull() throws Exception {
+    Map<String, String> tserverFlags = getTServerFlags();
+    tserverFlags.put("max_replication_slots", "4");
+    restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t (id int PRIMARY KEY)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection createConn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection =
+        createConn.unwrap(PGConnection.class).getReplicationAPI();
+    for (int i = 1; i <= 9; i++) {
+      createSlot(replConnection, "slot_" + i, YB_OUTPUT_PLUGIN_NAME);
+    }
+    createConn.close();
+
+    for (int i = 1; i <= 4; i++) {
+      streamOnceOnTServer(0, "slot_" + i);
+    }
+
+    // Leaves stale entries on tserver 0.
+    try (Connection conn = getConnectionBuilder().withTServer(1).connect();
+         Statement stmt = conn.createStatement()) {
+      for (int i = 1; i <= 4; i++) {
+        stmt.execute("SELECT pg_drop_replication_slot('slot_" + i + "')");
+      }
+    }
+    TestUtils.waitFor(() -> {
+      try (Statement stmt = connection.createStatement()) {
+        ResultSet rs = stmt.executeQuery("SELECT count(*) FROM pg_replication_slots"
+            + " WHERE slot_name IN ('slot_1', 'slot_2', 'slot_3', 'slot_4')");
+        return rs.next() && rs.getInt(1) == 0;
+      }
+    }, 10000);
+
+    AtomicReference<Exception> error = new AtomicReference<>();
+    List<Thread> threads = new ArrayList<>();
+    for (int i = 5; i <= 8; i++) {
+      Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+      String slotName = "slot_" + i;
+      threads.add(new Thread(() -> {
+        try (Connection c = conn) {
+          openStream(c, slotName, "pub", 0).close();
+        } catch (Exception e) {
+          error.compareAndSet(null, e);
+        }
+      }));
+    }
+    threads.forEach(Thread::start);
+    for (Thread t : threads) {
+      t.join(60000);
+      assertFalse(t.isAlive());
+    }
+    if (error.get() != null) {
+      throw new AssertionError("Concurrent START_REPLICATION failed", error.get());
+    }
+
+    assertStartReplicationRefused(0, "slot_9");
+  }
+
+  @Test
+  public void testMaxReplicationSlotsGucFollowsTServerFlag() throws Exception {
+    Map<String, String> masterFlags = getMasterFlags();
+    masterFlags.put("max_replication_slots", "11");
+    Map<String, String> tserverFlags = getTServerFlags();
+    tserverFlags.put("max_replication_slots", "11");
+    // Overridden by the tserver flag.
+    appendToYsqlPgConf(tserverFlags, "max_replication_slots=5");
+    restartClusterWithFlags(masterFlags, tserverFlags);
+
+    try (Statement stmt = connection.createStatement()) {
+      assertEquals("11", getSingleRow(stmt, "SHOW max_replication_slots").getString(0));
+      stmt.execute("CREATE TABLE t (id int PRIMARY KEY)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection createConn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection =
+        createConn.unwrap(PGConnection.class).getReplicationAPI();
+    for (int i = 1; i <= 11; i++) {
+      createSlot(replConnection, "slot_" + i, YB_OUTPUT_PLUGIN_NAME);
+    }
+    createConn.close();
+
+    // More slots than the GUC default (10) fit in one node's array.
+    for (int i = 1; i <= 11; i++) {
+      streamOnceOnTServer(0, "slot_" + i);
+    }
+  }
+
+  @Test
+  public void testExclusiveDropReleasesLockOnError() throws Exception {
+    try (Connection conn1 = getConnectionBuilder().withTServer(0).connect();
+         Connection conn2 = getConnectionBuilder().withTServer(1).connect();
+         Statement stmt1 = conn1.createStatement();
+         Statement stmt2 = conn2.createStatement()) {
+      stmt1.execute("SET yb_enable_replication_slot_exclusive_lock = on");
+      stmt2.execute("SET yb_enable_replication_slot_exclusive_lock = on");
+
+      // This drop fails after it takes the slot's lock. If the lock stayed held until conn1
+      // closes, the drop on conn2 would fail to acquire it.
+      runInvalidQuery(stmt1, "SELECT pg_drop_replication_slot('test_slot')", "does not exist");
+
+      stmt2.execute("SELECT pg_create_logical_replication_slot('test_slot', 'pgoutput')");
+      stmt2.execute("SELECT pg_drop_replication_slot('test_slot')");
+    }
+  }
+
+  @Test
+  public void testExclusiveAcquireReleasesLockOnError() throws Exception {
+    try (Connection conn1 = getConnectionBuilder().withTServer(0).connect();
+         Connection conn2 = getConnectionBuilder().withTServer(1).connect();
+         Statement stmt1 = conn1.createStatement();
+         Statement stmt2 = conn2.createStatement()) {
+      stmt1.execute("SET yb_enable_replication_slot_exclusive_lock = on");
+      stmt2.execute("SET yb_enable_replication_slot_exclusive_lock = on");
+
+      // Acquire (the same code START_REPLICATION runs) fails after it takes the slot's lock.
+      // If the lock stayed held until conn1 closes, the drop on conn2 would fail to acquire it.
+      runInvalidQuery(stmt1, "SELECT pg_replication_slot_advance('test_slot', '0/1')",
+          "does not exist");
+
+      stmt2.execute("SELECT pg_create_logical_replication_slot('test_slot', 'pgoutput')");
+      stmt2.execute("SELECT pg_drop_replication_slot('test_slot')");
+    }
+  }
+
+  @Test
+  public void testSqlAcquireWhenLocalSlotArrayIsFull() throws Exception {
+    Map<String, String> tserverFlags = getTServerFlags();
+    tserverFlags.put("max_replication_slots", "1");
+    restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t (id int PRIMARY KEY)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection createConn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection =
+        createConn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "slot_1", YB_OUTPUT_PLUGIN_NAME);
+    createSlot(replConnection, "slot_2", YB_OUTPUT_PLUGIN_NAME);
+    createConn.close();
+
+    streamOnceOnTServer(0, "slot_1");
+
+    try (Connection conn = getConnectionBuilder().withTServer(0).connect();
+         Statement stmt = conn.createStatement()) {
+      runInvalidQuery(stmt, "SELECT pg_replication_slot_advance('slot_2', '0/1')",
+          "all replication slots are in use");
+      // The error cleanup releases the acquired slot; the session must survive it.
+      stmt.execute("SELECT 1");
+    }
+  }
+
+  @Test
+  public void testExclusiveDropFreesLocalEntry() throws Exception {
+    Map<String, String> tserverFlags = getTServerFlags();
+    tserverFlags.put("max_replication_slots", "1");
+    restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t (id int PRIMARY KEY)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection createConn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection =
+        createConn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "slot_1", YB_OUTPUT_PLUGIN_NAME);
+    createSlot(replConnection, "slot_2", YB_OUTPUT_PLUGIN_NAME);
+
+    streamOnceOnTServer(0, "slot_1");
+
+    try (Connection conn = getConnectionBuilder().withTServer(0).connect();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("SET yb_enable_replication_slot_exclusive_lock = on");
+      stmt.execute("SELECT pg_drop_replication_slot('slot_1')");
+    }
+
+    // slot_1 exists again, so only the drop can have freed its entry for slot_2.
+    createSlot(replConnection, "slot_1", YB_OUTPUT_PLUGIN_NAME);
+    createConn.close();
+
+    streamOnceOnTServer(0, "slot_2");
+  }
+
+  private void streamOnceOnTServer(int tserver, String slotName) throws Exception {
+    Connection conn = getConnectionBuilder().withTServer(tserver).replicationConnect();
+    PGReplicationStream stream = openStream(conn, slotName, "pub", 0);
+    stream.close();
+    conn.close();
+  }
+
+  private void assertStartReplicationRefused(int tserver, String slotName) throws Exception {
+    Connection conn = getConnectionBuilder().withTServer(tserver).replicationConnect();
+    try {
+      openStream(conn, slotName, "pub", 0);
+      fail("START_REPLICATION should fail when the local slot array is full");
+    } catch (PSQLException e) {
+      assertTrue("Unexpected error: " + e.getMessage(),
+          e.getMessage().contains("all replication slots are in use"));
+    } finally {
+      conn.close();
+    }
+  }
+
+  @Test
   public void testPgVectorWithLogicalReplication() throws Exception {
     final boolean txnDdl = isTransactionalDdlEnabled();
     final String slotName = "test_pgvector_cdc_slot";

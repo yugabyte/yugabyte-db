@@ -8023,7 +8023,8 @@ yb_assign_max_replication_slots(int newval, void *extra)
 {
 	ereport(NOTICE,
 			(errmsg("max_replication_slots should be controlled using the Gflag"
-					" \"max_replication_slots\" on the YB-Master process"),
+					" \"max_replication_slots\" on the YB-Master and YB-TServer"
+					" processes"),
 			 errdetail("In Yugabyte clusters, the replication slots are managed by"
 					   " the YB-Master globally. Hence limits on the number of"
 					   " replication slots should be controlled using Gflags and"

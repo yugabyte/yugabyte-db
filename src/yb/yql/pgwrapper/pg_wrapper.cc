@@ -531,6 +531,7 @@ DEFINE_validator(ysql_yb_test_notifs_poller_init_delay_ms, FLAG_GE_VALUE_VALIDAT
 
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_uint32(max_replication_slots);
 
 DEFINE_RUNTIME_PG_FLAG(bool, yb_query_diagnostics_disable_database_connection_bgworker, false,
     "Disables the background worker that establishes a database connection for query diagnostics. "
@@ -827,6 +828,9 @@ void AppendPgGFlags(vector<string>* lines) {
   if (deprecated_flag_do_not_use::FLAGS_ysql_enable_colocated_tables_with_tablespaces) {
     lines->push_back("yb_enable_colocated_tables_with_tablespaces=true");
   }
+
+  // The max_replication_slots GUC sizes the local slot array. Derive it from the gflag.
+  lines->push_back(Format("max_replication_slots=$0", FLAGS_max_replication_slots));
 }
 
 HostPort GetPgHostPort(const PgProcessConf& conf) {
