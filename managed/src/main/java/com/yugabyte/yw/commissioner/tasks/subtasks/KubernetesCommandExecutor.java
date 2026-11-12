@@ -110,7 +110,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     HELM_INSTALL,
     HELM_UPGRADE,
     // TODO(bhavin192): should we just deprecate this? It is not used
-    // anywhere in this code, and we use Helm operations to modify the
+    // anywhere in the code, and we use Helm operations to modify the
     // number of TServer nodes. The code which was using it has been
     // removed 3 years back in
     // 6c757362e4ba55921963e34c01e382f48843d959.
