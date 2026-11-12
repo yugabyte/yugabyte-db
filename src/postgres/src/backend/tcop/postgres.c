@@ -8261,6 +8261,7 @@ PostgresMain(const char *dbname, const char *username)
 					start_xact_command();
 					YbResetYsqlConnMgrGucDefaults();
 					finish_xact_command();
+					YbRemoveUnsetGucPlaceholders();
 					send_ready_for_query = true;
 				}
 				else

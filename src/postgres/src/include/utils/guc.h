@@ -524,6 +524,7 @@ extern void assign_recovery_prefetch(int new_value, void *extra);
 extern void YbValidateConfigFile(const char *config_file);
 extern void YbSetYsqlConnMgrGucDefaults(const char *data, int len);
 extern void YbResetYsqlConnMgrGucDefaults(void);
+extern void YbRemoveUnsetGucPlaceholders(void);
 extern void YbSetParallelWorker();
 extern char *YbResolveGucValue(const char *name, const char *value);
 extern bool YbIsValidConfigFileName(const char *name);
