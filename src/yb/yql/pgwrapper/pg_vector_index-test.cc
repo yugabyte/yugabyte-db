@@ -4429,18 +4429,46 @@ class PgVectorIndexPkRoutingTest : public PgVectorIndexTestBase {
 
   // Embedding of row (tenant, id) is [tenant, id, 0], so the rows of a tenant ordered by distance
   // to [tenant, 0, 0] are ordered by id.
+  // With backfill the rows are inserted before the index is created.
   Status CreateAndFill(PGConn& conn, const std::string& table, const std::string& key_columns,
-                       const std::string& primary_key, const std::string& split) {
+                       const std::string& primary_key, const std::string& split,
+                       Backfill backfill = Backfill::kFalse) {
     RETURN_NOT_OK(conn.ExecuteFormat(
         "CREATE TABLE $0 ($1, embedding vector(3), PRIMARY KEY ($2)) $3",
         table, key_columns, primary_key, split));
+    const auto create_index = Format(
+        "CREATE INDEX ON $0 USING ybhnsw (embedding vector_l2_ops)", table);
+    if (!backfill) {
+      RETURN_NOT_OK(conn.Execute(create_index));
+    }
     RETURN_NOT_OK(conn.ExecuteFormat(
-        "CREATE INDEX ON $0 USING ybhnsw (embedding vector_l2_ops)", table));
-    return conn.ExecuteFormat(
         "INSERT INTO $0 SELECT t, i, vector('[' || t || ', ' || i || ', 0]') "
         "FROM generate_series(0, $1) t, generate_series(0, $2) i",
-        table, kNumTenants - 1, kRowsPerTenant - 1);
+        table, kNumTenants - 1, kRowsPerTenant - 1));
+    return backfill ? conn.Execute(create_index) : Status::OK();
   }
+
+  // Vectors checked and accepted by the filter of vector index searches, over all tablets.
+  std::pair<uint64_t, uint64_t> FilterStats() {
+    // Tablets of a table on the same tserver share its metrics.
+    std::unordered_set<EventStats*> checked;
+    std::unordered_set<EventStats*> accepted;
+    for (const auto& index : ListVectorIndexes(cluster_.get())) {
+      checked.insert(index->metrics().filter_checked.get());
+      accepted.insert(index->metrics().filter_accepted.get());
+    }
+    auto sum = [](const std::unordered_set<EventStats*>& stats) {
+      uint64_t result = 0;
+      for (auto* entry : stats) {
+        result += entry->TotalSum();
+      }
+      return result;
+    };
+    return {sum(checked), sum(accepted)};
+  }
+
+  void TestTenants(
+      const std::string& primary_key, const std::string& split, Backfill backfill);
 
   static std::string KnnQuery(
       const std::string& table, const std::string& where, int tenant, int limit) {
@@ -4707,6 +4735,97 @@ TEST_F(PgVectorIndexPkRoutingTest, RangeKey) {
   // No equality on the leading range column: every partition is searched.
   stats = ASSERT_RESULT(Query(conn, KnnQuery("tr", "id = 7", 10, 3)));
   ASSERT_EQ(stats.partitions, kNumTablets);
+}
+
+// With vector_index_tenant_hash_group_and_range_components the vectors of each tenant are linked
+// only to each other. A search visits only the tenant its key equalities select, so the filter
+// accepts every vector it checks, and a query that selects no tenant fails.
+void PgVectorIndexPkRoutingTest::TestTenants(
+    const std::string& primary_key, const std::string& split, Backfill backfill) {
+  // Exact search scans all vectors, ignoring tenants.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_tenant_hash_group_and_range_components) = 1;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  constexpr auto kTable = "tt";
+  ASSERT_OK(CreateAndFill(conn, kTable, "tenant INT, id INT", primary_key, split, backfill));
+
+  struct QueryResult {
+    std::vector<int32_t> ids;
+    // Whether the filter rejected some of the vectors it checked.
+    bool rejected;
+  };
+  auto query = [this, &conn](const std::string& where, int tenant, int limit)
+      -> Result<QueryResult> {
+    auto [checked_before, accepted_before] = FilterStats();
+    QueryResult result {
+      .ids = VERIFY_RESULT(conn.FetchRows<int32_t>(KnnQuery(kTable, where, tenant, limit))),
+      .rejected = false,
+    };
+    auto [checked_after, accepted_after] = FilterStats();
+    SCHECK_GT(checked_after, checked_before, IllegalState, "Filter checked no vectors");
+    result.rejected = checked_after - checked_before != accepted_after - accepted_before;
+    return result;
+  };
+  auto check = [this, &conn, &query](int rows_per_tenant) {
+    // The filter does not accept rows with intents, see VectorIndexKeyProvider::Prefetch.
+    ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+    // The query vector is closest to the vectors of tenant 0, so other tenants are found only
+    // through their own entry points.
+    for (int tenant = 0; tenant != kNumTenants; ++tenant) {
+      SCOPED_TRACE(Format("tenant: $0", tenant));
+      auto result = ASSERT_RESULT(
+          query(Format("tenant = $0", tenant), /* tenant= */ 0, rows_per_tenant));
+      ASSERT_EQ(result.ids, Ids(0, rows_per_tenant));
+      ASSERT_FALSE(result.rejected);
+    }
+
+    // Equalities on more key columns than the tenant has.
+    auto result = ASSERT_RESULT(query("tenant = 10 AND id = 7", 0, 3));
+    ASSERT_EQ(result.ids, (std::vector<int32_t>{7}));
+    result = ASSERT_RESULT(query("tenant = 10 AND id IN (7, 8)", 0, 3));
+    ASSERT_EQ(result.ids, (std::vector<int32_t>{7, 8}));
+
+    for (const auto* where : {"id < 3", "tenant IN (3, 12)"}) {
+      SCOPED_TRACE(where);
+      ASSERT_NOK_STR_CONTAINS(
+          conn.FetchRows<int32_t>(KnnQuery(kTable, where, 0, 3)),
+          "equality conditions with a single value");
+    }
+  };
+
+  ASSERT_NO_FATALS(check(kRowsPerTenant));
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_NO_FATALS(check(kRowsPerTenant));
+
+  // A second chunk, then both chunks merged.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT t, i, vector('[' || t || ', ' || i || ', 0]') "
+      "FROM generate_series(0, $1) t, generate_series($2, $3) i",
+      kTable, kNumTenants - 1, kRowsPerTenant, 2 * kRowsPerTenant - 1));
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_NO_FATALS(check(2 * kRowsPerTenant));
+  for (const auto& index : ListVectorIndexes(cluster_.get())) {
+    ASSERT_OK(index->Compact());
+    ASSERT_OK(index->WaitForCompaction());
+  }
+  ASSERT_NO_FATALS(check(2 * kRowsPerTenant));
+}
+
+TEST_F(PgVectorIndexPkRoutingTest, TenantsHashKey) {
+  TestTenants(
+      "(tenant) HASH, id", Format("SPLIT INTO $0 TABLETS", kNumTablets), Backfill::kFalse);
+}
+
+TEST_F(PgVectorIndexPkRoutingTest, TenantsRangeKey) {
+  TestTenants("tenant ASC, id ASC", "SPLIT AT VALUES ((5), (10, 5), (15))", Backfill::kFalse);
+}
+
+// Backfill inserts the vectors of each tenant back to back.
+TEST_F(PgVectorIndexPkRoutingTest, TenantsBackfill) {
+  TestTenants(
+      "(tenant) HASH, id", Format("SPLIT INTO $0 TABLETS", kNumTablets), Backfill::kTrue);
 }
 
 // A vector index only takes intent applies committed after its hybrid time. The clone used to
@@ -7939,16 +8058,14 @@ TEST_F(PgVectorIndexUtilTest, SearchSkipsDeletedVectorsWithStoredYbctid) {
 
 // Master caps the tenant components of a new index below the hash group and range components of
 // its table, so a tenant never covers the whole primary key, and the vectors keep their tenant in
-// the payload. A search without a tenant reaches every tenant in memory, in flushed chunks and in
-// the chunk compacted from them.
+// the payload. A search of an index with tenants needs the tenant.
 TEST_F(PgVectorIndexUtilTest, TenantComponents) {
   // Exact search scans all vectors, ignoring tenants.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_tenant_hash_group_and_range_components) = 3;
 
-  constexpr int kNumTenants = 3;
-  constexpr int kRowsPerBatch = 6;
+  constexpr size_t kNumRows = 5;
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
   ASSERT_OK(conn.Execute(
@@ -7969,26 +8086,16 @@ TEST_F(PgVectorIndexUtilTest, TenantComponents) {
   // Every row of a single component key would be its own tenant.
   ASSERT_EQ(ASSERT_RESULT(tenant_components("single_idx")), 0U);
 
-  // Consecutive ids belong to different tenants.
-  std::vector<int64_t> ids;
-  for (int batch = 0; batch != 2; ++batch) {
-    const auto first_id = batch * kRowsPerBatch + 1;
-    ASSERT_OK(conn.ExecuteFormat(
-        "INSERT INTO test SELECT i % $0, i, ARRAY[i, 0, 0]::vector FROM generate_series($1, $2) i",
-        kNumTenants, first_id, first_id + kRowsPerBatch - 1));
-    ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
-    for (int i = 0; i != kRowsPerBatch; ++i) {
-      ids.push_back(first_id + i);
-    }
-    ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, ids.size())), AsString(ids));
-    ASSERT_OK(cluster_->FlushTablets());
-    ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, ids.size())), AsString(ids));
-  }
-  for (const auto& index : ListVectorIndexes(cluster_.get())) {
-    ASSERT_OK(index->Compact());
-    ASSERT_OK(index->WaitForCompaction());
-  }
-  ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, ids.size())), AsString(ids));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test SELECT 1, i, ARRAY[i, 0, 0]::vector FROM generate_series(1, $0) i",
+      kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  auto ids = ASSERT_RESULT(conn.FetchRows<int64_t>(Format(
+      "/*+IndexScan(test test_idx)*/ SELECT id FROM test WHERE tenant = 1 "
+      "ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1",
+      pgwrapper::DistanceOpName(distance_kind_), kNumRows)));
+  ASSERT_EQ(AsString(ids), "[1, 2, 3, 4, 5]");
+  ASSERT_NOK_STR_CONTAINS(NearestIds(conn, kNumRows), "equality conditions with a single value");
 }
 
 // A table which writes no reverse mapping still marks its tablets as having vector deletions when
@@ -8516,8 +8623,10 @@ TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterBackendAndPayloadFlagsChange) {
 
   auto conn = ASSERT_RESULT(ConnectToDB(kRestoredDb));
   ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
+  // A search of an index with tenants needs the tenant.
   auto rows = ASSERT_RESULT(conn.FetchRows<int32_t>(Format(
-      "SELECT id FROM $0 ORDER BY v <-> '[0, 0, 0]' LIMIT 3", kTable)));
+      "/*+IndexScan($0 $1)*/ SELECT id FROM $0 WHERE tenant = 1 ORDER BY v <-> '[0, 0, 0]' "
+      "LIMIT 3", kTable, kIndex)));
   ASSERT_EQ(rows, (std::vector<int32_t>{1, 2, 3}));
 }
 

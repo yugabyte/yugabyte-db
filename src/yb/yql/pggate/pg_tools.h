@@ -35,6 +35,8 @@
 
 #include "yb/common/transaction.pb.h"
 
+#include "yb/dockv/dockv_fwd.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
@@ -186,6 +188,12 @@ struct YbctidBatch {
 };
 
 Slice YbctidAsSlice(const PgTypeInfo& pg_types, uint64_t ybctid);
+
+// Builds the DocKey of the rows whose key columns have the given values. hashed_values are the
+// values of hashed_components, the hash code is computed from them.
+Result<dockv::DocKey> BuildDocKey(
+    const dockv::PartitionSchema& partition_schema, dockv::KeyEntryValues hashed_components,
+    const LWQLValuePB* const* hashed_values, dockv::KeyEntryValues range_components);
 
 struct BufferingSettings {
   size_t max_batch_size;

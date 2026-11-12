@@ -138,8 +138,7 @@ class HnswlibTenantTest : public hnsw::VectorIndexTestBase {
   }
 
   // Checks that a tenant search returns only vectors of the tenant with high recall, that vectors
-  // are reachable from their tenant entry points, and that a search without a tenant covers all
-  // tenants.
+  // are reachable from their tenant entry points, and that a search without a tenant fails.
   void CheckSearches(const vector_index::VectorIndexIf<FloatVector, float>& index) {
     size_t found = 0;
     constexpr size_t kQueriesPerTenant = 10;
@@ -163,7 +162,8 @@ class HnswlibTenantTest : public hnsw::VectorIndexTestBase {
     constexpr size_t kExpected = kNumTenants * kQueriesPerTenant * kMaxResults;
     LOG(INFO) << "Recall: " << found * 1.0 / kExpected;
     ASSERT_GE(found, kExpected * 0.95);
-    ASSERT_NO_FATALS(CheckSearchesWithoutTenant(index));
+    ASSERT_NOK(index.Search(
+        RandomVector(), SearchOptions{.max_num_results = kMaxResults, .ef = kEf}));
 
     // HNSW pruning could leave a few vectors without incoming edges, while a tenant cut off from
     // its entry point would leave many.
@@ -374,7 +374,7 @@ TEST_F(HnswlibTenantTest, NoTenants) {
   }
 }
 
-// Searches with and without a tenant read the tenant directory first, and fail when it is damaged.
+// A tenant search reads the tenant directory first, and fails when it is damaged.
 TEST_F(HnswlibTenantTest, DamagedTenantDirectory) {
   for (const auto& entry : entries_) {
     ASSERT_OK(Insert(entry));
@@ -385,16 +385,14 @@ TEST_F(HnswlibTenantTest, DamagedTenantDirectory) {
   ASSERT_OK(DamageYbHnswBlocks(path, /* stride= */ 16));
   auto loaded = traits_->Create(FactoryMode::kLoad, StoreVectorPayload::kTrue);
   ASSERT_OK(loaded->LoadFromFile(path, /* max_concurrent_reads= */ 1));
-  for (const auto& tenant : {entries_.front().tenant, std::string()}) {
-    auto result = loaded->Search(entries_.front().vector, SearchOptions {
-      .max_num_results = kMaxResults,
-      .ef = kEf,
-      .tenant = Slice(tenant),
-    });
-    ASSERT_NOK(result);
-    ASSERT_TRUE(result.status().IsCorruption()) << result.status();
-    ASSERT_STR_CONTAINS(result.status().message().ToBuffer(), "Block checksum mismatch");
-  }
+  auto result = loaded->Search(entries_.front().vector, SearchOptions {
+    .max_num_results = kMaxResults,
+    .ef = kEf,
+    .tenant = Slice(entries_.front().tenant),
+  });
+  ASSERT_NOK(result);
+  ASSERT_TRUE(result.status().IsCorruption()) << result.status();
+  ASSERT_STR_CONTAINS(result.status().message().ToBuffer(), "Block checksum mismatch");
 }
 
 } // namespace yb::ann_methods

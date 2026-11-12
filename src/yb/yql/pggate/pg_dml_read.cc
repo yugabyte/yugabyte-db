@@ -45,25 +45,11 @@
 #include "yb/yql/pggate/pg_select_index.h"
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
+#include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb::pggate {
 namespace {
-
-Result<dockv::DocKey> BuildDocKey(
-    const dockv::PartitionSchema& partition_schema,
-    dockv::KeyEntryValues hashed_components,
-    const LWQLValuePB*const* hashed_values,
-    dockv::KeyEntryValues range_components = {}) {
-
-  if (!hashed_components.empty()) {
-    DCHECK(hashed_values);
-    auto hash = VERIFY_RESULT(partition_schema.PgsqlHashColumnCompoundValue(
-        boost::make_iterator_range(hashed_values, hashed_values + hashed_components.size())));
-    return dockv::DocKey(hash, std::move(hashed_components), std::move(range_components));
-  }
-  return dockv::DocKey(std::move(range_components));
-}
 
 [[nodiscard]] inline bool IsForInOperator(const LWPgsqlExpressionPB& expr) {
   // For IN operator expr->has_condition() returns 'true'.
@@ -447,6 +433,10 @@ void PgDmlRead::ANNAddPartitionKeyPrefix(Slice prefix) {
   read_req_->mutable_vector_idx_options()->add_dup_partition_key_prefixes(prefix);
 }
 
+void PgDmlRead::ANNSetTenant(Slice tenant) {
+  read_req_->mutable_vector_idx_options()->dup_tenant(tenant);
+}
+
 InPermutationGenerator PgDmlRead::MergeStreamPermutations() {
   DCHECK(merge_sort_keys_);
   DCHECK(bind_);
@@ -810,7 +800,8 @@ Result<std::unique_ptr<YbctidProvider>> PgDmlRead::BuildYbctidsFromKeyBinds() {
   }
 
   auto doc_key = VERIFY_RESULT(BuildDocKey(
-      bind_->partition_schema(), std::move(hashed_components), hashed_values.data()));
+      bind_->partition_schema(), std::move(hashed_components), hashed_values.data(),
+      /* range_components= */ {}));
   auto& range_components = doc_key.range_group();
   range_components.reserve(bind_->num_key_columns() - num_hash_key_columns);
   struct InOperatorInfo {

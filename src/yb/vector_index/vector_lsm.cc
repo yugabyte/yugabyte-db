@@ -493,9 +493,16 @@ class VectorLSMInsertTask :
     registry->TaskDone(this);
   }
 
-  void Search(SearchHeap& heap, const Vector& query_vector, const SearchOptions& options) const {
+  // tenant_extractor is null when vectors have no tenants.
+  Status Search(
+      SearchHeap& heap, const Vector& query_vector, const SearchOptions& options,
+      const VectorTenantExtractor& tenant_extractor) const {
     SharedLock lock(mutex_);
     for (const auto& entry : entries_) {
+      if (tenant_extractor &&
+          VERIFY_RESULT(tenant_extractor(entry.payload.AsSlice())) != options.tenant) {
+        continue;
+      }
       if (!options.filter(entry.vector_id, entry.payload.AsSlice())) {
         continue;
       }
@@ -507,6 +514,7 @@ class VectorLSMInsertTask :
         heap.emplace(entry, distance);
       }
     }
+    return Status::OK();
   }
 
  protected:
@@ -738,12 +746,14 @@ class VectorLSMInsertRegistry : public VectorLSMInsertRegistryBase<Vector, Dista
     allocated_tasks_cond_.notify_all();
   }
 
-  SearchResults Search(const Vector& query_vector, const SearchOptions& options) {
+  Result<SearchResults> Search(
+      const Vector& query_vector, const SearchOptions& options,
+      const VectorTenantExtractor& tenant_extractor) {
     typename InsertTask::SearchHeap heap;
     {
       SharedLock lock(mutex_);
       for (const auto& task : active_tasks_) {
-        task.Search(heap, query_vector, options);
+        RETURN_NOT_OK(task.Search(heap, query_vector, options, tenant_extractor));
       }
     }
     return ReverseHeapToVector(heap);
@@ -1804,7 +1814,8 @@ auto VectorLSM<Vector, DistanceResult>::Search(
   bool dump_stats = FLAGS_vector_index_dump_stats;
 
   auto start_registry_search = MonoTime::Now();
-  auto intermediate_results = insert_registry_->Search(query_vector, options);
+  auto intermediate_results = VERIFY_RESULT(insert_registry_->Search(
+      query_vector, options, options_.vector_index_traits->tenant_extractor()));
   VLOG_WITH_PREFIX_AND_FUNC(4) << "Results from registry: " << AsString(intermediate_results);
   size_t num_results_from_insert_registry = intermediate_results.size();
 

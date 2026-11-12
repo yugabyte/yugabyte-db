@@ -531,7 +531,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
       Slice vector, const vector_index::SearchOptions& options, bool could_have_missing_entries,
       DocVectorIndexReverseMappingReader& reverse_mapping_reader) override {
     auto entries = VERIFY_RESULT(SearchWithinKeyBounds(
-        VERIFY_RESULT(VectorFromYSQL<Vector>(vector)), options));
+        VERIFY_RESULT(VectorFromYSQL<Vector>(vector)), VERIFY_RESULT(LsmSearchOptions(options))));
 
     auto dump_stats = FLAGS_vector_index_dump_stats;
     auto start_time = MonoTime::Now();
@@ -697,6 +697,29 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
   const std::string& LogPrefix() const {
     return lsm_.LogPrefix();
+  }
+
+  // Replaces the tenant of the query with the tenant of the index it selects, see
+  // PgVectorReadOptionsPB::tenant.
+  Result<vector_index::SearchOptions> LsmSearchOptions(vector_index::SearchOptions options) const {
+    const auto num_components = options_.tenant_hash_group_and_range_components();
+    if (!num_components) {
+      options.tenant = Slice();
+      return options;
+    }
+    // The tenant of the query could have more components than the tenants of the index.
+    std::optional<size_t> tenant_size;
+    if (!options.tenant.empty()) {
+      tenant_size = VERIFY_RESULT(dockv::DocKey::EncodedHashGroupAndRangeComponentsSize(
+          options.tenant, num_components));
+    }
+    SCHECK(
+        tenant_size, InvalidArgument,
+        Format("Search of a vector index with tenants needs equality conditions with a single "
+               "value on the first $0 primary key components, all hash columns counting as one",
+               num_components));
+    options.tenant = options.tenant.Prefix(*tenant_size);
+    return options;
   }
 
   Result<typename LSM::SearchResults> SearchWithinKeyBounds(
@@ -951,8 +974,8 @@ Result<DocVectorIndexPtr> CreateDocVectorIndex(
 DocVectorIndexMetrics::DocVectorIndexMetrics(const MetricEntityPtr& metric_entity)
     : convert_us(METRIC_vector_index_convert_us.Instantiate(metric_entity)),
       filter_checked(METRIC_vector_index_filter_checked.Instantiate(metric_entity)),
-      filter_accepted(METRIC_vector_index_filter_checked.Instantiate(metric_entity)),
-      filter_removed(METRIC_vector_index_filter_checked.Instantiate(metric_entity)),
+      filter_accepted(METRIC_vector_index_filter_accepted.Instantiate(metric_entity)),
+      filter_removed(METRIC_vector_index_filter_removed.Instantiate(metric_entity)),
       read_data_us(METRIC_vector_index_read_data_us.Instantiate(metric_entity)),
       read_intents_us(METRIC_vector_index_read_intents_us.Instantiate(metric_entity)),
       merge_us(METRIC_vector_index_merge_us.Instantiate(metric_entity)),

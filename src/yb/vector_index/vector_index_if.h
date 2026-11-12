@@ -115,8 +115,8 @@ struct SearchOptions {
   size_t max_num_results;
   size_t ef;
   VectorFilter filter = [](const auto&, const auto&) { return true; };
-  // Restricts the search to vectors of the tenant, see VectorTenantExtractor. Empty searches all
-  // tenants. Only indexes whose vectors belong to tenants support a tenant, others reject it.
+  // Restricts the search to vectors of the tenant, see VectorTenantExtractor. Required by indexes
+  // whose vectors belong to tenants, rejected by others.
   Slice tenant = Slice();
 
   std::string ToString() const {
@@ -246,6 +246,12 @@ class VectorIndexTraitsIf {
   // to the index file, because its own format cannot store them. See VectorPayloadMap.
   virtual bool StoresPayloadInSeparateFile() const {
     return false;
+  }
+
+  // Returns the tenant extractor of the created indexes, null when vectors have no tenants.
+  virtual const VectorTenantExtractor& tenant_extractor() const {
+    static const VectorTenantExtractor kNoTenants;
+    return kNoTenants;
   }
 };
 
