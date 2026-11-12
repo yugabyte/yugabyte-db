@@ -8105,7 +8105,8 @@ PostgresMain(const char *dbname, const char *username)
 
 						/*
 						 * YB: The startup packet may already have failed this
-						 * logical connection (a reserved top-level parameter).
+						 * logical connection (a reserved top-level parameter
+						 * or a missing end marker).
 						 */
 						if (!MyProcPort->yb_has_auth_passthrough_finished)
 							ClientAuthentication(MyProcPort);
