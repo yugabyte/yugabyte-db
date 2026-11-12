@@ -321,13 +321,11 @@ export const PerfAdvisor: FC = () => {
 
   if (isLoading) {
     return (
-      <YBPanelItem
-        header={
-          <div className="perfAdvisor__containerTitleGrid">
-            <YBLoading text="Scanning" />
-          </div>
-        }
-      />
+      <div className="parentPerfAdvisor">
+        <div className="perfAdvisor__loading">
+          <YBLoading text="Scanning" />
+        </div>
+      </div>
     );
   }
 
@@ -513,16 +511,14 @@ export const PerfAdvisor: FC = () => {
               </YBSelect>
             </div>
             {displayedRecomendations.map((rec) => (
-              <>
-                <RecommendationBox
-                  key={rec.key}
-                  idKey={rec.key}
-                  type={rec.data.type}
-                  data={rec.data}
-                  resolved={!!rec.isResolved}
-                  onResolve={handleResolve}
-                />
-              </>
+              <RecommendationBox
+                key={rec.key}
+                idKey={rec.key}
+                type={rec.data.type}
+                data={rec.data}
+                resolved={!!rec.isResolved}
+                onResolve={handleResolve}
+              />
             ))}
           </div>
         )}

@@ -653,14 +653,14 @@
         "disablePaUniverseFailure": "Failed to disable Performance Monitoring for the universe",
         "subText": "Are you sure you want to {{action}} Performance Monitoring for the universe <strong>{{universeName}}</strong>?",
         "enableAdvancedObservability": "Enable Advanced Observability",
-        "enableAdvancedObservabilitySubText": "Enable Advanced Observability for universe <strong>{{universeName}}</strong>? This adds Cluster Load and Metrics to the Performance tab.",
+        "enableAdvancedObservabilitySubText": "Enable Advanced Observability for universe <strong>{{universeName}}</strong>? This adds Cluster Load and Advanced Metrics to the Monitoring tab.",
         "enableAdvancedObservabilityFailure": "Failed to enable Advanced Observability for the universe",
         "disableAdvancedObservabilityTitle": "Disable Advanced Observability",
-        "disableAdvancedObservabilitySubText": "Disable Advanced Observability for universe <strong>{{universeName}}</strong>? Cluster Load and Metrics are removed from the Performance tab. Databases stays available.",
+        "disableAdvancedObservabilitySubText": "Disable Advanced Observability for universe <strong>{{universeName}}</strong>? Cluster Load and Advanced Metrics are removed from the Monitoring tab. Databases stays available.",
         "disableAdvancedObservabilityFailure": "Failed to disable Advanced Observability for the universe",
         "modeLabel": "Collection mode",
-        "modeBasic": "Basic - shows the Databases view in the Performance tab and exports performance data with Support Bundle",
-        "modeAdvanced": "Advanced observability - adds Cluster Load and Metrics to the Performance tab",
+        "modeBasic": "Basic - shows Databases in the Monitoring tab and exports performance data with Support Bundle",
+        "modeAdvanced": "Advanced observability - adds Cluster Load and Advanced Metrics to the Monitoring tab",
         "modeOnline": "Online - collect here and send everything to an external Perf Advisor",
         "onlineDestinationLabel": "Destination",
         "onlinePrerequisite": "The universe must already be registered on the destination Perf Advisor before online mode can be enabled.",
@@ -1145,6 +1145,42 @@
       }
     },
     "clusterDetail": {
+      "monitoring": {
+        "metrics": "Metrics",
+        "queries": "Queries",
+        "clusterLoad": "Cluster Load",
+        "databases": "Databases",
+        "metricsShort": "Metrics",
+        "queriesShort": "Query",
+        "clusterLoadShort": "Load",
+        "databasesShort": "DBs",
+        "classicMetrics": "Metrics",
+        "advancedMetrics": "Advanced Metrics",
+        "new": "New",
+        "metricsHeader": {
+          "currentTimestamp": "Current Timestamp:",
+          "allRegions": "All Regions and Clusters",
+          "allZones": "All Zones and Nodes",
+          "outlierDisabled": "Clear node selection to see outliers for each cluster, region, or availability zone (AZ).",
+          "unitNodes": "nodes",
+          "unitPods": "pods",
+          "unitTables": "tables",
+          "unitDatabases": "databases",
+          "seeQueries": "See Queries",
+          "compare": "Compare",
+          "autoRefresh": "Auto Refresh: {{interval}}",
+          "refresh": "Refresh",
+          "settings": "Settings",
+          "enablePrometheusQuery": "Enable Prometheus query",
+          "disablePrometheusQuery": "Disable Prometheus query",
+          "downloadGrafanaJson": "Download Grafana JSON",
+          "exportMetrics": "Export Metrics",
+          "downloadMetrics": "Download Metrics",
+          "invalidRange": "Start must be before end",
+          "apply": "Apply",
+          "singleRegion": "This universe has a single cluster and region."
+        }
+      },
       "troubleshoot": {
         "onlineModeTitle": "This universe is collected in online mode",
         "onlineModeSubText": "Performance data for this universe is collected here and sent to an external Perf Advisor. Open that Perf Advisor to analyze it.",
@@ -1160,12 +1196,9 @@
             "SQLIssue ": "SQL ISSUE"
           }
         },
-        "perfAdvisorClusterLoadTab": "Cluster Load",
         "perfAdvisorAnomaliesTab": "Anomalies",
         "perfAdvisorInsightsTab": "Insights",
         "perfAdvisorQueriesTab": "Queries",
-        "perfAdvisorMetricsTab": "Metrics",
-        "perfAdvisorDatabasesTab": "Databases",
         "tpServiceUrlHelperText": "Please do not append '/' at the end of the URL",
         "registrationSuccess": "Registered to Perf Advisor service successfully",
         "registrationFailed": "Failed to register to Perf Advisor service",
@@ -5384,6 +5417,28 @@
       },
       "whereThingsMovedTip": {
         "label": "Can't find a setting?"
+      },
+      "monitoringMovedModal": {
+        "title": "Where Things Moved",
+        "description": "Metrics, Queries and Performance are now together in the Monitoring tab. Here's where to find them.",
+        "then": "Then",
+        "now": "Now",
+        "metrics": "Metrics",
+        "queries": "Queries",
+        "performanceClusterLoad": "Performance / Cluster Load",
+        "performanceMetrics": "Performance / Metrics",
+        "performanceDatabases": "Performance / Databases",
+        "monitoring": "Monitoring",
+        "nowClassicMetrics": "Metrics / Metrics",
+        "nowQueries": "Queries",
+        "nowClusterLoad": "Cluster Load",
+        "nowAdvancedMetrics": "Metrics / Advanced Metrics",
+        "nowDatabases": "Databases",
+        "close": "Close",
+        "findOutMore": "Find Out More"
+      },
+      "monitoringMovedTip": {
+        "label": "Looking for Metrics or Queries?"
       },
       "whatNewInPlacement": {
         "title": "What's New",

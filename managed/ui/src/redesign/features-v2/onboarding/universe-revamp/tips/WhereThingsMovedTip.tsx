@@ -1,7 +1,7 @@
 import { FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { mui } from '@yugabyte-ui-library/core';
-import { WhereThingsMovedModal } from '../modals/WhereThingsMovedModal';
+import { WhereThingsMovedModal, WhereThingsMovedModalProps } from '../modals/WhereThingsMovedModal';
 import LifeBuoyIcon from '@app/redesign/assets/where-things-moved/life-buoy.svg';
 
 const { Box, styled } = mui;
@@ -37,13 +37,20 @@ const TipPill = styled('button')(() => ({
   }
 }));
 
+interface WhereThingsMovedTipProps {
+  // The defaults are the Settings tab's; another tab passes its own label and modal copy.
+  i18nKeyPrefix?: string;
+  modalProps?: Omit<WhereThingsMovedModalProps, 'open' | 'onClose'>;
+}
+
 /**
- * Pill CTA under Settings tabs that opens the "Where Things Moved" modal.
+ * Pill that opens the "Where Things Moved" modal (Settings copy by default).
  */
-export const WhereThingsMovedTip: FC = () => {
-  const { t } = useTranslation('translation', {
-    keyPrefix: 'onBoarding.whereThingsMovedTip'
-  });
+export const WhereThingsMovedTip: FC<WhereThingsMovedTipProps> = ({
+  i18nKeyPrefix = 'onBoarding.whereThingsMovedTip',
+  modalProps
+}) => {
+  const { t } = useTranslation('translation', { keyPrefix: i18nKeyPrefix });
   const [open, setOpen] = useState(false);
 
   return (
@@ -70,7 +77,7 @@ export const WhereThingsMovedTip: FC = () => {
         </Box>
         {t('label')}
       </TipPill>
-      <WhereThingsMovedModal open={open} onClose={() => setOpen(false)} />
+      <WhereThingsMovedModal {...modalProps} open={open} onClose={() => setOpen(false)} />
     </>
   );
 };

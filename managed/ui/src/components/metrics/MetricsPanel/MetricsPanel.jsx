@@ -26,6 +26,7 @@ const MIN_OUTLIER_BUTTONS_WIDTH = 290;
 const WIDTH_OFFSET = 23;
 const CONTAINER_PADDING = 60;
 const MAX_GRAPH_WIDTH_PX = 600;
+const MAX_GRAPH_COLUMNS = 2;
 const GRAPH_GUTTER_WIDTH_PX = 0;
 const MAX_NAME_LENGTH = 15;
 
@@ -252,33 +253,36 @@ export default class MetricsPanel extends Component {
       });
     }
 
-    if (
+    // Comparing deep comparison of x-axis and y-axis arrays
+    // to avoid re-plotting graph if equal
+    const prevData = prevProps.metric.data;
+    const currData = this.props.metric.data;
+    const prevTimezone = prevProps.metricsTimezone;
+    const currTimezone = this.props.metricsTimezone;
+    if ((prevData && currData && !_.isEqual(prevData, currData)) || prevTimezone !== currTimezone) {
+      // When user is on a specific tab and when they switch from Overall
+      // to Outlier, we need to ensure offsetWidth is maintained
+      if (!this.state.outlierButtonsWidth) {
+        this.setState({
+          outlierButtonsWidth: this.outlierButtonsRef.current?.offsetWidth
+        });
+      }
+      // Re-plot graph
+      this.plotGraph();
+    } else if (
       this.props.containerWidth !== prevProps.containerWidth ||
       this.props.width !== prevProps.width
     ) {
-      Plotly.relayout(prevProps.newMetricKey, {
-        width: this.props.width || this.getGraphWidth(this.props.containerWidth)
-      });
-    } else {
-      // Comparing deep comparison of x-axis and y-axis arrays
-      // to avoid re-plotting graph if equal
-      const prevData = prevProps.metric.data;
-      const currData = this.props.metric.data;
-      const prevTimezone = prevProps.metricsTimezone;
-      const currTimezone = this.props.metricsTimezone;
-      if (
-        (prevData && currData && !_.isEqual(prevData, currData)) ||
-        prevTimezone !== currTimezone
-      ) {
-        // When user is on a specific tab and when they switch from Overall
-        // to Outlier, we need to ensure offsetWidth is maintained
-        if (!this.state.outlierButtonsWidth) {
-          this.setState({
-            outlierButtonsWidth: this.outlierButtonsRef.current?.offsetWidth
-          });
-        }
-        // Re-plot graph
-        this.plotGraph();
+      // The plot's element, as plotGraph names it; resize it only once it has been plotted.
+      const plotElement = document.getElementById(
+        this.props.printMode ? `${this.props.metricKey}-printMode` : this.props.metricKey
+      );
+      if (plotElement?._fullLayout) {
+        Plotly.relayout(plotElement, {
+          width:
+            this.props.width ||
+            this.getGraphWidth(this.props.containerWidth || DEFAULT_CONTAINER_WIDTH)
+        });
       }
     }
   }
@@ -297,7 +301,7 @@ export default class MetricsPanel extends Component {
 
   getGraphWidth(containerWidth) {
     const width = containerWidth - CONTAINER_PADDING - WIDTH_OFFSET;
-    const columnCount = Math.ceil(width / MAX_GRAPH_WIDTH_PX);
+    const columnCount = Math.min(Math.ceil(width / MAX_GRAPH_WIDTH_PX), MAX_GRAPH_COLUMNS);
     return Math.floor(width / columnCount) - GRAPH_GUTTER_WIDTH_PX;
   }
 

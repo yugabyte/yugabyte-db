@@ -17,6 +17,7 @@ import {
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { MenuItemsContainer } from '../UniverseDetail/compounds/MenuItemsContainer';
 import { YBMenuItem } from '../UniverseDetail/compounds/YBMenuItem';
+import { MonitoringItem, getMonitoringItemPath } from '../Monitoring/monitoringUrlHelpers';
 
 const PRECHECK_ACTIONS = ['START', 'STOP', 'ADD', 'DECOMMISSION', 'REPLACE'];
 
@@ -170,26 +171,19 @@ export default class NodeAction extends Component {
   };
 
   handleLiveQueryClick() {
-    const { currentRow } = this.props;
-    const path = browserHistory.getCurrentLocation().pathname;
-    let universeUrl = '';
-    if (path[path.length - 1] === '/') {
-      universeUrl = path.substring(0, path.lastIndexOf('/', path.length - 2));
-    } else {
-      universeUrl = path.substring(0, path.lastIndexOf('/'));
-    }
-    browserHistory.push(`${universeUrl}/queries?nodeName=${currentRow.name}`);
+    const { currentRow, universeUUID } = this.props;
+    browserHistory.push({
+      pathname: getMonitoringItemPath(universeUUID, MonitoringItem.QUERIES),
+      query: { tab: 'live-queries', nodeName: currentRow.name }
+    });
   }
 
   handleSlowQueryClick() {
-    const path = browserHistory.getCurrentLocation().pathname;
-    let universeUrl = '';
-    if (path[path.length - 1] === '/') {
-      universeUrl = path.substring(0, path.lastIndexOf('/', path.length - 2));
-    } else {
-      universeUrl = path.substring(0, path.lastIndexOf('/'));
-    }
-    browserHistory.push(`${universeUrl}/queries?tab=slow-queries`);
+    const { universeUUID } = this.props;
+    browserHistory.push({
+      pathname: getMonitoringItemPath(universeUUID, MonitoringItem.QUERIES),
+      query: { tab: 'slow-queries' }
+    });
   }
 
   render() {
