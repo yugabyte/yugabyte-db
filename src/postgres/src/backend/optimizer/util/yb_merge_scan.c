@@ -555,9 +555,24 @@ ybIsCopyOfEarlierIndexCol(IndexOptInfo *index, int indexcol)
 
 /*
  * Whether index column indexcol, before the last merge sort column, is a gap
- * column: a range column without an equality index clause that is neither a
- * SAOP stream column nor a copy of an earlier index column.  The merge sorts
- * on each gap column (see ybAppendMergeGapCol).
+ * column, one the merge sorts on beyond the pathkeys: a range column without
+ * an equality index clause that is neither a SAOP stream column nor a copy of
+ * an earlier index column.  Such a column is one of three kinds (see
+ * yb_finalize_merge_scan_info):
+ * - a column a partial index predicate implies
+ * - a column tied by a filter that runs before the merge
+ * - a column tied by a filter that runs after the merge, such as a local
+ *   filter or the storage table filter of a secondary index scan that is not
+ *   embedded
+ * Only the last kind needs the merge to sort on it, or the merged rows can
+ * come out of order.  A copy needs no merge either, and is easy to tell apart.
+ * Telling the first two kinds apart takes a proof that the predicate implies
+ * the column or knowing where each filter runs (see #37497), so all three are
+ * gap columns.  That costs the first two kinds:
+ * - extra comparisons that always tie
+ * - for an expression column of an embedded index scan, the pathkey cut in
+ *   yb_finalize_merge_scan_info, which in the worst case leaves the index path
+ *   without a merge
  */
 static bool
 ybIsMergeGapCol(IndexOptInfo *index, List *indexclauses, Bitmapset *saop_idxs,
@@ -573,21 +588,6 @@ ybIsMergeGapCol(IndexOptInfo *index, List *indexclauses, Bitmapset *saop_idxs,
  * Append gap column indexcol (see ybIsMergeGapCol) to the merge sort columns
  * in sort_info.  Each stream returns its rows in index order, so merging on
  * these columns too keeps the merged rows in index order.
- *
- * There are three kinds of gap columns (see yb_finalize_merge_scan_info):
- * - a column a partial index predicate implies
- * - a column tied by a filter that runs before the merge
- * - a column tied by a filter that runs after the merge, such as a local
- *   filter or the storage table filter of a secondary index scan that is not
- *   embedded
- * Only the last kind needs the merge to sort on the gap column, or the merged
- * rows can come out of order.  Telling the kinds apart takes a proof that the
- * predicate implies the column or knowing where each filter runs (see #37497),
- * so merge on every gap column.  That costs the first two kinds:
- * - extra comparisons that always tie
- * - for an expression column of an embedded index scan, the pathkey cut in
- *   yb_finalize_merge_scan_info, which in the worst case leaves the index path
- *   without a merge
  */
 static void
 ybAppendMergeGapCol(YbSortInfo *sort_info, IndexOptInfo *index,
