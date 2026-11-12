@@ -96,6 +96,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -3221,6 +3222,90 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         Sets.union(
             ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2", "yb-tserver-0_az-3"),
             rrTservers));
+  }
+
+  /** Non-restart renders of the read replica's releases. */
+  private static List<TaskInfo> readReplicaSecretRenders(List<TaskInfo> plan) {
+    return helmUpgrades(plan).stream()
+        .filter(t -> t.getTaskParams().path("isReadOnlyCluster").asBoolean())
+        .filter(EditKubernetesUniverseTest::keepsGflagsChecksum)
+        .collect(Collectors.toList());
+  }
+
+  /**
+   * The read replica's own pass runs after the whole primary edit, so its Secrets get the old and
+   * new masters before the remove, and the new masters before the old master pod is deleted.
+   */
+  @Test
+  public void testZoneReplaceRendersReadReplicaSecrets() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    addTwoTserverReadReplica();
+    String oldMasters = expectedMasterAddresses(currentPlacement());
+    PlacementInfo pi = zoneReplacePlacement();
+    String newMasters = expectedMasterAddresses(pi);
+
+    // The request carries only the primary.
+    List<TaskInfo> plan = planEdit(currentIntent(), pi);
+    List<TaskInfo> removes = changeMasterConfigs(plan, "RemoveMaster");
+    List<TaskInfo> rrRenders = readReplicaSecretRenders(plan);
+
+    List<TaskInfo> beforeRemove = between(rrRenders, 0, firstPosition(removes));
+    assertEquals(1, beforeRemove.size());
+    TaskInfo early = beforeRemove.get(0);
+    assertEquals(addressSet(oldMasters, newMasters), addressSet(helmMasterAddresses(early)));
+    assertEquals(2, helmAZ(early).path("numNodesInAZ").asInt());
+    assertEquals(2, early.getTaskParams().path("tserverPartition").asInt());
+    assertFalse(early.getTaskParams().path("useNewTserverDeviceInfo").asBoolean());
+    // The executor reads the read replica from the details it is given.
+    assertEquals(2, early.getTaskParams().path("universeDetails").path("clusters").size());
+
+    int az3Delete =
+        firstPosition(
+            subtasks(
+                plan,
+                TaskType.KubernetesCommandExecutor,
+                p ->
+                    "HELM_DELETE".equals(p.path("commandType").asText())
+                        && "az-3".equals(p.path("azCode").asText())));
+    List<TaskInfo> beforeDelete = between(rrRenders, lastPosition(removes), az3Delete);
+    assertEquals(1, beforeDelete.size());
+    assertEquals(addressSet(newMasters), addressSet(helmMasterAddresses(beforeDelete.get(0))));
+  }
+
+  /**
+   * A master full move deletes the old master pods in its batch, so the read replica's Secrets get
+   * the new masters right after it instead of in the read replica's own pass.
+   */
+  @Test
+  public void testMasterFullMoveRendersReadReplicaSecrets() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    addTwoTserverReadReplica();
+    String oldMasters = expectedMasterAddresses(currentPlacement());
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    TestUtils.updateDeviceInfo(newIntent, ServerType.MASTER, d -> d.storageClass = "fast");
+    PlacementInfo pi = currentPlacement();
+    pi.azStream().forEach(az -> az.masterStsIndex = 1);
+    String newMasters = expectedMasterAddresses(pi);
+
+    List<TaskInfo> plan = planEdit(newIntent, pi);
+    List<TaskInfo> removes = changeMasterConfigs(plan, "RemoveMaster");
+    List<TaskInfo> rrRenders = readReplicaSecretRenders(plan);
+
+    List<TaskInfo> beforeRemove = between(rrRenders, 0, firstPosition(removes));
+    assertEquals(1, beforeRemove.size());
+    assertEquals(
+        addressSet(oldMasters, newMasters), addressSet(helmMasterAddresses(beforeRemove.get(0))));
+
+    // Right after the full move, and again in the read replica's own pass.
+    List<TaskInfo> afterRemoves = between(rrRenders, lastPosition(removes), Integer.MAX_VALUE);
+    Map<Integer, List<TaskInfo>> afterRemovesByGroup =
+        afterRemoves.stream()
+            .collect(
+                Collectors.groupingBy(TaskInfo::getPosition, TreeMap::new, Collectors.toList()));
+    assertEquals(afterRemovesByGroup.toString(), 2, afterRemovesByGroup.size());
+    for (TaskInfo t : afterRemoves) {
+      assertEquals(addressSet(newMasters), addressSet(helmMasterAddresses(t)));
+    }
   }
 
   @Test

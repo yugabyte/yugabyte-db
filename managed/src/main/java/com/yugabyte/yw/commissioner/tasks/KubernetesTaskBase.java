@@ -3480,6 +3480,20 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.azOverrides = azOverrides;
     params.universeName = universeName;
     params.universeDetails = taskParams();
+    if (isReadOnlyCluster && taskParams().getReadOnlyClusters().isEmpty()) {
+      // The executor reads the read replica from these details. An edit of the primary alone
+      // renders the read replica's Secrets too, and its params lack the read replica.
+      UniverseDefinitionTaskParams details =
+          Json.fromJson(Json.toJson(taskParams()), UniverseDefinitionTaskParams.class);
+      Cluster readReplica = readonlyClusters.get(0);
+      details.upsertCluster(
+          readReplica.userIntent,
+          readReplica.getPartitions(),
+          readReplica.placementInfo,
+          readReplica.uuid,
+          readReplica.clusterType);
+      params.universeDetails = details;
+    }
     params.universeConfig = universe.getConfig();
     params.telemetryConfig = getDesiredTelemetryConfig();
     if (masterAddresses != null) {

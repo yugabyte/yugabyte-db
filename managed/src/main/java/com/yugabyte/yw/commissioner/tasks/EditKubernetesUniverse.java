@@ -677,24 +677,49 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               ? Collections.emptyMap()
               : Collections.singletonMap(ServerType.TSERVER, tserverSize));
     }
+    // The read replica's own pass in run() renders its Secrets only after the whole primary edit,
+    // so its tservers get the same lists here. Its StatefulSets keep the disk spec they run with.
+    List<Cluster> readReplicas =
+        isReadOnlyCluster
+            ? Collections.emptyList()
+            : universe.getUniverseDetails().getReadOnlyClusters();
+    Consumer<String> renderMasterAddrSecretsWith =
+        addrs -> {
+          if (!secretSkipAZs.containsAll(curPlacement.placementInfo.getAllAZUUIDs())) {
+            createMasterAddressesUpdateTask(
+                universe.getUniverseUUID(),
+                newCluster,
+                secretPlacement,
+                addrs,
+                Collections.emptySet() /* mastersToAdd */,
+                Collections.emptySet() /* mastersToRemove */,
+                Collections.emptySet() /* tserversToAdd */,
+                Collections.emptySet() /* tserversToRemove */,
+                secretSkipAZs /* skipMasterAZs */,
+                secretSkipAZs /* skipTserverAZs */,
+                false /* includeUniverseNodes */,
+                keepDiskSpecAZs);
+          }
+          for (Cluster readReplica : readReplicas) {
+            createMasterAddressesUpdateTask(
+                universe.getUniverseUUID(),
+                readReplica,
+                new KubernetesPlacement(readReplica.placementInfo, true /* isReadOnlyCluster */),
+                addrs,
+                Collections.emptySet() /* mastersToAdd */,
+                Collections.emptySet() /* mastersToRemove */,
+                Collections.emptySet() /* tserversToAdd */,
+                Collections.emptySet() /* tserversToRemove */,
+                Collections.emptySet() /* skipMasterAZs */,
+                Collections.emptySet() /* skipTserverAZs */,
+                false /* includeUniverseNodes */,
+                keepCurrentDiskSpec(readReplica));
+          }
+        };
+    boolean renderMasterAddrSecrets = propagateMasterAddrs && supportsNonRestartGflagsUpgrade;
     Runnable updateMasterAddrSecrets =
-        propagateMasterAddrs
-                && supportsNonRestartGflagsUpgrade
-                && !secretSkipAZs.containsAll(curPlacement.placementInfo.getAllAZUUIDs())
-            ? () ->
-                createMasterAddressesUpdateTask(
-                    universe.getUniverseUUID(),
-                    newCluster,
-                    secretPlacement,
-                    movingMasterAddrs,
-                    Collections.emptySet() /* mastersToAdd */,
-                    Collections.emptySet() /* mastersToRemove */,
-                    Collections.emptySet() /* tserversToAdd */,
-                    Collections.emptySet() /* tserversToRemove */,
-                    secretSkipAZs /* skipMasterAZs */,
-                    secretSkipAZs /* skipTserverAZs */,
-                    false /* includeUniverseNodes */,
-                    keepDiskSpecAZs)
+        renderMasterAddrSecrets
+            ? () -> renderMasterAddrSecretsWith.accept(movingMasterAddrs)
             : null;
     // With a full move of masters, the masters this edit removes outside it are removed in its
     // last batch, once all new masters have joined, so the quorum never shrinks below its size.
@@ -771,6 +796,12 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           updateMasterAddrSecrets,
           mastersToRemoveLast,
           movingMasterAddrs /* tserverMasterAddrs */);
+      // The full move has deleted the old master pods, so the other Secrets list addresses that no
+      // longer resolve, and a tserver does not start with one. The masters running now are the
+      // final ones.
+      if (renderMasterAddrSecrets) {
+        renderMasterAddrSecretsWith.accept(masterAddresses);
+      }
     }
 
     if (!mastersToAdd.isEmpty() || CollectionUtils.isNotEmpty(fullMoveMasterAZs)) {
@@ -1052,6 +1083,26 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           fullMoveTserverAZs);
     }
 
+    // The pod deletes below remove the old master pods. The primary's Secrets got the final list
+    // above, but the read replica's still list the old masters until its own pass.
+    if (renderMasterAddrSecrets && fullMoveMasterAZs.isEmpty() && !mastersToAdd.isEmpty()) {
+      for (Cluster readReplica : readReplicas) {
+        createMasterAddressesUpdateTask(
+            universe.getUniverseUUID(),
+            readReplica,
+            new KubernetesPlacement(readReplica.placementInfo, true /* isReadOnlyCluster */),
+            masterAddresses,
+            Collections.emptySet() /* mastersToAdd */,
+            Collections.emptySet() /* mastersToRemove */,
+            Collections.emptySet() /* tserversToAdd */,
+            Collections.emptySet() /* tserversToRemove */,
+            Collections.emptySet() /* skipMasterAZs */,
+            Collections.emptySet() /* skipTserverAZs */,
+            false /* includeUniverseNodes */,
+            keepCurrentDiskSpec(readReplica));
+      }
+    }
+
     // If tservers have been removed, check if some deployments need to be completely
     // removed or scaled down. Also modify the blacklist to untrack deleted pods.
     if (!tserversToRemove.isEmpty()) {
@@ -1102,6 +1153,12 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     }
 
     return masterAddressesChanged;
+  }
+
+  /** Renders every AZ of the cluster with the disk spec its StatefulSets have now. */
+  private static Map<UUID, Map<ServerType, Integer>> keepCurrentDiskSpec(Cluster cluster) {
+    return cluster.placementInfo.getAllAZUUIDs().stream()
+        .collect(Collectors.toMap(Function.identity(), az -> Collections.emptyMap()));
   }
 
   /** Joins comma-separated master address lists, without repeats. */
@@ -1382,7 +1439,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           null /* ysqlMajorVersionUpgradeState */,
           null /* rootCAUUID */,
           skipMasterAZs,
-          skipTserverAZs);
+          skipTserverAZs,
+          keepDiskSpecAZs);
 
       // Set flag in memory for tserver
       if (CollectionUtils.isNotEmpty(tserversToModify)) {
