@@ -630,12 +630,11 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     // A resource change in the edit is safe to render: the partitions stay at the pod counts, so a
     // pod deleted before its roll comes back at its old revision, and mounts the new Secret either
     // way.
-    Set<UUID> secretSkipAZs = fullMoveMasterAZs;
-    KubernetesPlacement secretPlacement =
+    KubernetesPlacement masterAddrRenderPlacement =
         new KubernetesPlacement(curPlacement.placementInfo, isReadOnlyCluster);
     for (UUID az : Sets.difference(mastersToAddAzMap.keySet(), fullMoveMasterAZs)) {
       if (curPlacement.configs.containsKey(az)) {
-        secretPlacement.masters.put(az, newPlacement.masters.getOrDefault(az, 0));
+        masterAddrRenderPlacement.masters.put(az, newPlacement.masters.getOrDefault(az, 0));
       }
     }
     // AZs the edit removes, and the old tserver StatefulSets of full-move tserver AZs, are neither
@@ -652,7 +651,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     }
     // A full-move tserver AZ's master is resized like any other AZ's, so only the tserver size is
     // kept.
-    for (UUID az : Sets.difference(fullMoveTserverAZs, secretSkipAZs)) {
+    for (UUID az : Sets.difference(fullMoveTserverAZs, fullMoveMasterAZs)) {
       Integer tserverSize =
           originalDiskSizes.getOrDefault(az, Collections.emptyMap()).get(ServerType.TSERVER);
       keepDiskSpecAZs.put(
@@ -669,18 +668,18 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             : universe.getUniverseDetails().getReadOnlyClusters();
     Consumer<String> renderMasterAddrSecretsWith =
         addrs -> {
-          if (!secretSkipAZs.containsAll(curPlacement.placementInfo.getAllAZUUIDs())) {
+          if (!fullMoveMasterAZs.containsAll(curPlacement.placementInfo.getAllAZUUIDs())) {
             createMasterAddressesUpdateTask(
                 universe.getUniverseUUID(),
                 newCluster,
-                secretPlacement,
+                masterAddrRenderPlacement,
                 addrs,
                 Collections.emptySet() /* mastersToAdd */,
                 Collections.emptySet() /* mastersToRemove */,
                 Collections.emptySet() /* tserversToAdd */,
                 Collections.emptySet() /* tserversToRemove */,
-                secretSkipAZs /* skipMasterAZs */,
-                secretSkipAZs /* skipTserverAZs */,
+                fullMoveMasterAZs /* skipMasterAZs */,
+                fullMoveMasterAZs /* skipTserverAZs */,
                 false /* includeUniverseNodes */,
                 keepDiskSpecAZs);
           }
