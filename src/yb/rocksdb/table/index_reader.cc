@@ -235,8 +235,11 @@ using BlockBoundaryRestarts = std::pair<uint32_t, uint32_t>;
 // returned restarts are the ones holding the boundary entries, so with a restart interval greater
 // than 1 the first restart can start below lower_bound_key. Empty range (no key >= lower_bound_key,
 // or no key <= upper_bound_key) is signaled by second < first.
+// Index entries are upper separators of their child blocks, so for an index block the entry Seek()
+// lands on for upper_bound_key leads to the child holding that key and qualifies; only a data
+// block (is_data_block) excludes an entry above upper_bound_key.
 Result<BlockBoundaryRestarts> GetBlockBoundaryRestarts(
-    BlockIter* block_iter, Slice lower_bound_key, Slice upper_bound_key = Slice{}) {
+    BlockIter* block_iter, Slice lower_bound_key, Slice upper_bound_key, bool is_data_block) {
   if (DCHECK_NOTNULL(block_iter)->GetNumRestarts() == 0) {
     // Not possible to have less than 1 restart at all, refer to the BlockBuilder's constructor.
     return STATUS(Corruption, "Restarts number cannot be zero, this might be a data corruption!");
@@ -280,7 +283,7 @@ Result<BlockBoundaryRestarts> GetBlockBoundaryRestarts(
   // whole block qualifies.
   block_iter->Seek(upper_bound_key);
   RETURN_NOT_OK_PREPEND(block_iter->status(), "Failed to seek to upper bound entry");
-  if (block_iter->Valid() && block_iter->key().compare(upper_bound_key) != 0) {
+  if (is_data_block && block_iter->Valid() && block_iter->key().compare(upper_bound_key) != 0) {
     block_iter->Prev();
     RETURN_NOT_OK_PREPEND(block_iter->status(), "Failed to step back from upper bound entry");
     if (!block_iter->Valid()) {
@@ -470,7 +473,8 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
       // bound (the index routed us here); if it does not qualify under the upper bound either
       // (second < first), there is no midpoint in this range.
       const auto main_bounds = VERIFY_RESULT(
-          GetBlockBoundaryRestarts(main_block_iter, lower_bound_key, upper_bound_key));
+          GetBlockBoundaryRestarts(
+              main_block_iter, lower_bound_key, upper_bound_key, cur_level == num_levels_));
       if (main_bounds.second < main_bounds.first) {
         return STATUS(Incomplete, "No qualifying entries in range for middle key");
       }
@@ -485,7 +489,8 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
         // construction but the upper bound is not -- counting the whole block would inflate
         // num_total_entries and let the midpoint land above upper_bound_key.
         aux_bounds =
-            VERIFY_RESULT(GetBlockBoundaryRestarts(aux_block_iter, Slice{}, upper_bound_key));
+            VERIFY_RESULT(GetBlockBoundaryRestarts(
+                aux_block_iter, Slice{}, upper_bound_key, cur_level == num_levels_));
         if (aux_bounds.second < aux_bounds.first) {
           // Nothing in the aux block qualifies. Drop it so the midpoint selection and the descent
           // below behave as if there were no aux block at all.
