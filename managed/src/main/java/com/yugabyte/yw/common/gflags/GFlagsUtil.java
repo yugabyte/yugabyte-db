@@ -1532,10 +1532,7 @@ public class GFlagsUtil {
         new HashSet<>(
             RedactingService.getSensitiveGflagsForRedaction(ybSoftwareVersion, gFlagsValidation));
     redactedGFlags.add(YSQL_HBA_CONF_CSV);
-    Map<String, Map<String, String>> gflagMaps = new LinkedHashMap<>(getUserGFlagMaps(userIntent));
-    gflagMaps.put("masterGFlags", userIntent.masterGFlags);
-    gflagMaps.put("tserverGFlags", userIntent.tserverGFlags);
-    for (Map.Entry<String, Map<String, String>> gflags : gflagMaps.entrySet()) {
+    for (Map.Entry<String, Map<String, String>> gflags : getUserGFlagMaps(userIntent).entrySet()) {
       if (gflags.getValue() == null) {
         continue;
       }
@@ -2892,8 +2889,9 @@ public class GFlagsUtil {
               BAD_REQUEST,
               "ysql_hba_conf_csv cannot be submitted with "
                   + RedactingService.SECRET_REPLACEMENT
-                  + " in ldapbindpasswd: no prior universe value exists to restore the password"
-                  + " from. Submit the full ysql_hba_conf_csv with the actual ldapbindpasswd.");
+                  + " in ldapbindpasswd: the universe stores no value for it in the same place"
+                  + " (server type, and AZ for an AZ override) to restore the password from."
+                  + " Submit the full ysql_hba_conf_csv with the actual ldapbindpasswd.");
         }
         if (existingYsqlHbaConf.contains(RedactingService.SECRET_REPLACEMENT)) {
           throw new PlatformServiceException(

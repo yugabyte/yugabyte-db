@@ -355,6 +355,11 @@ public class UpgradeUniverseHandler {
         continue;
       }
       UserIntent stored = universeCluster.userIntent;
+      if (stored.specificGFlags != null && stored.specificGFlags.isInheritFromPrimary()) {
+        // The read replica runs with the primary's gflags, and the UI sends the primary's
+        // (redacted) gflags as the read replica's own when it stops inheriting.
+        stored = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+      }
       SpecificGFlags storedGFlags = stored.specificGFlags;
       if (storedGFlags == null) {
         // Defensive: create and the V315 migration always set specificGFlags. Without this, a

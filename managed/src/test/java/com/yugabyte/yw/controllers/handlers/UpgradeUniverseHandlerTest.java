@@ -938,6 +938,75 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     assertEquals(secret, submittedTserver.get("ycql_ldap_bind_passwd"));
   }
 
+  @Test
+  public void testUpgradeGFlagsRestoresRedactedValuesFromPrimaryWhenRrStopsInheriting()
+      throws IOException {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    when(runtimeConfGetter.getConfForScope(any(Customer.class), any())).thenReturn(false);
+    initGflagDefaults();
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    String secret = "ycql-bind-secret-xyz";
+    String hbaWithSecret = "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + secret;
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              details.getPrimaryCluster().userIntent.specificGFlags =
+                  SpecificGFlags.construct(
+                      ImmutableMap.of("m", "1"),
+                      ImmutableMap.of(
+                          "ycql_ldap_bind_passwd", secret, "ysql_hba_conf_csv", hbaWithSecret));
+              universe.setUniverseDetails(details);
+            });
+    UniverseDefinitionTaskParams.UserIntent rrUserIntent =
+        u.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+    rrUserIntent.specificGFlags = SpecificGFlags.constructInherited();
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(), ApiUtils.mockUniverseUpdaterWithReadReplica(rrUserIntent, null));
+    // EditGflags.tsx sends the primary's redacted TSERVER gflags as the read replica's own.
+    List<UniverseDefinitionTaskParams.Cluster> requestClusters = copyStoredClusters(u);
+    UniverseDefinitionTaskParams.Cluster rrInRequest =
+        requestClusters.stream()
+            .filter(cl -> cl.clusterType == UniverseDefinitionTaskParams.ClusterType.ASYNC)
+            .findFirst()
+            .orElseThrow(AssertionError::new);
+    rrInRequest.userIntent.specificGFlags =
+        SpecificGFlags.construct(
+            new HashMap<>(),
+            new HashMap<>(
+                ImmutableMap.of(
+                    "ycql_ldap_bind_passwd",
+                    RedactingService.SECRET_REPLACEMENT,
+                    "ysql_hba_conf_csv",
+                    RedactingService.redactAllLdapBindPasswdHbaFormattedValues(hbaWithSecret))));
+    GFlagsUpgradeParams params = new GFlagsUpgradeParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = requestClusters;
+
+    handler.upgradeGFlags(params, c, Universe.getOrBadRequest(u.getUniverseUUID()));
+
+    ArgumentCaptor<UpgradeTaskParams> paramsArgumentCaptor =
+        ArgumentCaptor.forClass(UpgradeTaskParams.class);
+    verify(mockCommissioner).submit(any(), paramsArgumentCaptor.capture());
+    GFlagsUpgradeParams submitted = (GFlagsUpgradeParams) paramsArgumentCaptor.getValue();
+    Map<String, String> submittedRrTserver =
+        submitted
+            .getReadOnlyClusters()
+            .get(0)
+            .userIntent
+            .specificGFlags
+            .getPerProcessFlags()
+            .value
+            .get(ServerType.TSERVER);
+    assertEquals(secret, submittedRrTserver.get("ycql_ldap_bind_passwd"));
+    assertEquals(hbaWithSecret, submittedRrTserver.get("ysql_hba_conf_csv"));
+  }
+
   // Legacy maps copied from the stored cluster, as UniverseControllerRequestBinder does when the
   // request omits them.
   private List<UniverseDefinitionTaskParams.Cluster> copyStoredClusters(Universe u)

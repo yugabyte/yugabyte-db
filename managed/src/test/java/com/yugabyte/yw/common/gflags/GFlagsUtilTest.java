@@ -829,6 +829,16 @@ public class GFlagsUtilTest extends FakeDBApplication {
                   "ysql_pg_conf_csv",
                   "application_name=" + SECRET_REPLACEMENT));
       GFlagsUtil.checkNoRedactedGFlagsOnCreate(real, "2.25.0.0", null);
+
+      // Create rebuilds the deprecated maps from specificGFlags, so a REDACTED there is unused.
+      UserIntent copiedFromGet = new UserIntent();
+      copiedFromGet.specificGFlags =
+          SpecificGFlags.construct(
+              new HashMap<>(),
+              new HashMap<>(Map.of("ycql_ldap_bind_passwd", "ycql-bind-secret-xyz")));
+      copiedFromGet.tserverGFlags =
+          new HashMap<>(Map.of("ycql_ldap_bind_passwd", SECRET_REPLACEMENT));
+      GFlagsUtil.checkNoRedactedGFlagsOnCreate(copiedFromGet, "2.25.0.0", null);
     }
   }
 
