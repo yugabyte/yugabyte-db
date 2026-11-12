@@ -684,9 +684,10 @@ const char* SkipReason(PrepareSlotForTxnDdlResult result) {
       return "it is a LISTEN/NOTIFY slot";
     case PrepareSlotForTxnDdlResult::kDeleting:
       return "it is being deleted";
-    case PrepareSlotForTxnDdlResult::kUnusable:
-      return "it is unusable with transactional DDL";
-    case PrepareSlotForTxnDdlResult::kMarkedUnusable:
+    case PrepareSlotForTxnDdlResult::kAlreadyUnusable:
+      return "an earlier run marked it unusable with transactional DDL. Create a new replication "
+             "slot";
+    case PrepareSlotForTxnDdlResult::kNotReadyForConversion:
       return "it wasn't paused for conversion to an implicit slot with its catalog barrier in "
              "place, so it is now unusable with transactional DDL. Create a new replication slot";
   }
@@ -5684,8 +5685,6 @@ Result<CDCStreamInfoPtr> CatalogManager::GetPubRefreshStream(const std::string& 
   return stream;
 }
 
-// The barrier is gone once its cdc_state entry expires, as the stream doesn't poll the sys catalog
-// to keep the entry active.
 Result<bool> CatalogManager::HasSysCatalogRetentionBarrier(const xrepl::StreamId& stream_id) {
   auto entry = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
       {kSysCatalogTabletId, stream_id},
@@ -5696,8 +5695,6 @@ Result<bool> CatalogManager::HasSysCatalogRetentionBarrier(const xrepl::StreamId
              *entry->active_time + 1000 * FLAGS_cdc_intent_retention_ms;
 }
 
-// Sets retention barriers on the sys catalog tablet for a pub-refresh stream, so that once
-// converted to an implicit stream it can read the catalog changes committed after its restart time.
 Status CatalogManager::SetReplicationSlotCatalogBarrier(
     const SetReplicationSlotCatalogBarrierRequestPB* req,
     SetReplicationSlotCatalogBarrierResponsePB* resp, rpc::RpcContext* rpc) {
@@ -6492,7 +6489,7 @@ Result<PrepareSlotForTxnDdlResult> CatalogManager::PrepareStreamForTransactional
       return PrepareSlotForTxnDdlResult::kDeleting;
     }
     if (l->pb.cdcsdk_unusable_with_transactional_ddl()) {
-      return PrepareSlotForTxnDdlResult::kUnusable;
+      return PrepareSlotForTxnDdlResult::kAlreadyUnusable;
     }
     auto& pb = l.mutable_data()->pb;
     if (!pb.detect_publication_changes_implicitly()) {
@@ -6543,7 +6540,7 @@ Result<PrepareSlotForTxnDdlResult> CatalogManager::PrepareStreamForTransactional
         Format("Failed to delete the sys catalog entry of CDC stream $0", stream->id()));
     LOG_WITH_FUNC(WARNING) << "Marked CDC stream " << stream->id()
                            << " unusable with transactional DDL";
-    return PrepareSlotForTxnDdlResult::kMarkedUnusable;
+    return PrepareSlotForTxnDdlResult::kNotReadyForConversion;
   }
 
   {
