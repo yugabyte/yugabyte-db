@@ -29,6 +29,7 @@
 #include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
 #include "pg_yb_utils.h"
+#include "utils/guc_hooks.h"
 #include "utils/portal.h"
 #include "yb_dist_trace.h"
 

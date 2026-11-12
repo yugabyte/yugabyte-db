@@ -48,6 +48,7 @@
 #include "utils/acl.h"
 #include "utils/backend_status.h"
 #include "utils/guc.h"
+#include "utils/guc_hooks.h"
 #include "utils/syscache.h"
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 #include "yb_ysql_conn_mgr_helper.h"
