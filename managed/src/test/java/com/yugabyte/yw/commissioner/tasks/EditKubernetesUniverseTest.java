@@ -3309,6 +3309,45 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   }
 
   @Test
+  public void testScaleDownWithResourceChangeDeletesUnusedTserverVolumes() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    // az-1 runs a second tserver.
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              NodeDetails second = u.getNode("yb-tserver-0_az-1").clone();
+              second.nodeName = "yb-tserver-1_az-1";
+              second.nodeUuid = UUID.randomUUID();
+              second.isMaster = false;
+              second.isTserver = true;
+              second.cloudInfo.private_ip = "yb-tserver-1_az-1.svc.cluster.local";
+              u.getUniverseDetails().nodeDetailsSet.add(second);
+              Cluster primary = u.getUniverseDetails().getPrimaryCluster();
+              primary.userIntent.numNodes = 4;
+              primary
+                  .placementInfo
+                  .azStream()
+                  .filter(az -> az.name.equals("PlacementAZ 1"))
+                  .forEach(az -> az.numNodesInAZ = 2);
+            });
+    InstanceType.upsert(
+        kubernetesProvider.getUuid(), "c5.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    newIntent.numNodes = 3;
+    TestUtils.updateInstanceType(newIntent, "c5.xlarge");
+    newIntent.tserverK8SNodeResourceSpec = new K8SNodeResourceSpec();
+    newIntent.tserverK8SNodeResourceSpec.cpuCoreCount = 4.0;
+    newIntent.masterK8SNodeResourceSpec = new K8SNodeResourceSpec();
+    PlacementInfo pi = currentPlacement();
+    pi.azStream().filter(az -> az.name.equals("PlacementAZ 1")).forEach(az -> az.numNodesInAZ = 1);
+
+    List<TaskInfo> plan = planEdit(newIntent, pi);
+    // The upgrade scales az-1 down, and the removed tserver's PVC is deleted after it.
+    assertEquals(Integer.valueOf(1), tserverVolumeDeletes(plan).get("az-1"));
+  }
+
+  @Test
   public void testZoneReplaceSkipsServersNotYetCreated() {
     setupMasterMoveUniverse(FULL_MOVE_VERSION);
     // The universe already lists a pod this edit has not created: it has its DNS address but no

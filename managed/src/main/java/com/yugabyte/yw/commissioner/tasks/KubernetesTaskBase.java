@@ -1790,6 +1790,18 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       if (edit) {
         keepDeployment = newPlacement.configs.containsKey(azUUID);
         if (keepDeployment && instanceTypeChanged) {
+          // The upgrade already scaled the AZ down, and keeps its PVCs like any scale-down.
+          tserverPvcDeletes.addSubTask(
+              garbageCollectVolumes(
+                  universeName,
+                  taskParams().nodePrefix,
+                  azCode,
+                  config,
+                  ServerType.TSERVER,
+                  newPlacement.tservers.getOrDefault(azUUID, 0),
+                  isReadOnlyCluster,
+                  taskParams().useNewHelmNamingStyle,
+                  taskParams().getUniverseUUID()));
           continue;
         }
       }
