@@ -21,6 +21,7 @@ import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collection;
 import java.util.Collections;
@@ -30,6 +31,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.UnaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -341,8 +343,11 @@ public class RedactingService {
   }
 
   /**
-   * @param yaml whether to also redact YAML field: values. Pass false for serialized JSON: the YAML
-   *     in its strings has escaped line breaks, so it's redacted on the parsed strings instead.
+   * @param yaml whether to also redact YAML field: values. Pass false for serialized JSON that is
+   *     parsed afterwards: the YAML in its strings has escaped line breaks, so it's redacted on the
+   *     parsed strings instead. redactSensitiveGFlagFields' fallbacks, which can't parse, pass
+   *     true: an unquoted YAML value in JSON text is then redacted to the end of the input, which
+   *     hides more than it should but not less.
    */
   private static String redactSensitiveInfoInString(
       String input, Set<String> patterns, boolean yaml) {
@@ -1491,10 +1496,10 @@ public class RedactingService {
       // Redact based on target
       switch (target) {
         case QUERY_PARAMS:
-          output = redactQueryParams(output);
+          output = redactEachLine(output, RedactingService::redactQueryParams);
           break;
         case HELM_VALUES:
-          output = redactrootCAKeys(output);
+          output = redactEachLine(output, RedactingService::redactrootCAKeys);
           output = redactTelemetryCredentials(output);
           break;
         default:
@@ -1506,6 +1511,14 @@ public class RedactingService {
       log.error("Error redacting shell process output", e);
       return input;
     }
+  }
+
+  /**
+   * redactrootCAKeys checks only its first match, and both its regex and redactQueryParams' run
+   * past line ends, so they take one line at a time. The YAML pass needs the whole output.
+   */
+  private static String redactEachLine(String input, UnaryOperator<String> redact) {
+    return Arrays.stream(input.split("\n", -1)).map(redact).collect(Collectors.joining("\n"));
   }
 
   private static boolean isBase64Encoded(String str) {
