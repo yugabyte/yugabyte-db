@@ -38,6 +38,7 @@
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/partition.h"
 #include "yb/dockv/value_type.h"
+#include "yb/fs/fs_manager.h"
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/master/catalog_entity_info.pb.h"
@@ -128,6 +129,7 @@ DECLARE_bool(TEST_disable_apply_committed_transactions);
 DECLARE_bool(TEST_disable_wal_retention_time);
 DECLARE_bool(TEST_fail_vector_index_backfill);
 DECLARE_bool(TEST_skip_process_apply);
+DECLARE_bool(TEST_simulate_abrupt_server_restart);
 DECLARE_bool(TEST_skip_vector_index_stamp_after_restore_reopen);
 DECLARE_bool(TEST_use_custom_varz);
 DECLARE_bool(TEST_vector_index_corrupt_inserted_payloads);
@@ -139,7 +141,9 @@ DECLARE_bool(TEST_vector_index_skip_reverse_mapping_write);
 DECLARE_bool(vector_index_require_parent_data_compacted_before_split);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
+DECLARE_int32(bytes_durable_wal_write_mb);
 DECLARE_int32(heartbeat_interval_ms);
+DECLARE_int32(interval_durable_wal_write_ms);
 DECLARE_int32(max_nexts_to_avoid_seek);
 DECLARE_int32(log_min_segments_to_retain);
 DECLARE_int32(priority_thread_pool_size);
@@ -5812,11 +5816,52 @@ TEST_P(PgVectorIndexPowerLossTest, FlushedChunkSurvives) {
   DisableFlushOnShutdown(*cluster_, true);
   auto* ts = cluster_->mini_tablet_server(0);
   ts->Shutdown();
-  // Drop only the chunk data: a vector index flush can persist ops past the fsynced WAL, #36244.
+  // Drop only the chunk data, FlushAheadOfUnsyncedWal covers the WAL.
   ASSERT_OK(power_loss_env_.DropUnsyncedData(is_chunk_file));
 
   ASSERT_OK(ts->Start());
   conn = ASSERT_RESULT(Connect());
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
+}
+
+// A power loss drops the WAL tail that was not fsynced, along with the unflushed regular DB rows
+// written by it.
+// A vector index flush done before the power loss must not have persisted vectors of those rows.
+// See issue #36244.
+TEST_P(PgVectorIndexPowerLossTest, FlushAheadOfUnsyncedWal) {
+  constexpr size_t kNumRows = 64;
+  constexpr size_t kQueryLimit = 5;
+  auto is_wal_segment = [](const std::string& path) {
+    return FsManager::IsWalSegmentFileName(BaseName(path));
+  };
+
+  // Fsync WAL only when forced to: segment allocation, rollover or close.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_interval_durable_wal_write_ms) = 3600 * 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_bytes_durable_wal_write_mb) = 1024;
+
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(
+      conn, 1, kNumRows, /* keep_vectors= */ false, NonTransactionalWrites::kTrue));
+  // Otherwise the WAL tail is already durable and the scenario is not exercised.
+  ASSERT_GT(power_loss_env_.UnsyncedBytes(is_wal_segment), 0U);
+
+  // A regular DB flush would fsync the WAL itself, so flush the vector indexes only.
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kVectorIndexes));
+
+  // Crash: neither the shutdown flush nor the WAL close syncs the WAL.
+  DisableFlushOnShutdown(*cluster_, true);
+  auto* ts = cluster_->mini_tablet_server(0);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_abrupt_server_restart) = true;
+  ts->Shutdown();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_abrupt_server_restart) = false;
+  ASSERT_OK(power_loss_env_.DropUnsyncedData(is_wal_segment));
+
+  ASSERT_OK(ts->Start());
+  conn = ASSERT_RESULT(Connect());
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
+  auto num_rows = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test"));
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = true;
+  ASSERT_EQ(num_rows, static_cast<int64_t>(kNumRows));
   ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
 }
 

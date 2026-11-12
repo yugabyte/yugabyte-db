@@ -463,6 +463,11 @@ class Tablet : public AbstractTablet,
     return shutdown_requested_.load(std::memory_order::acquire);
   }
 
+  // Blocks until the WAL entry with op_id is durable, or WAL fsync failed, see WalAllowsPersist.
+  // Returns at once while the log is not open yet, e.g. during bootstrap.
+  // Log::Close appends the queued entries and fsyncs them, so the wait ends at shutdown too.
+  void WaitWalDurable(const OpId& op_id);
+
   // Complete the shutdown of this tablet. This includes shutdown of internal structures such as:
   // - transaction coordinator
   // - transaction participant
@@ -1720,6 +1725,12 @@ class Tablet : public AbstractTablet,
 
   Result<HybridTime> DoGetSafeTime(
       RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const override;
+
+  // Queries the WAL state of op_id, which starts its fsync if needed.
+  // Returns whether data with ops up to op_id may be persisted, i.e. the ops are durable in WAL,
+  // or WAL fsync failed.
+  // what names that data in the log message for the latter case.
+  bool WalAllowsPersist(const OpId& op_id, const char* what);
 
   Result<bool> RegularDbFlushFilter(const rocksdb::MemTable& memtable);
 
