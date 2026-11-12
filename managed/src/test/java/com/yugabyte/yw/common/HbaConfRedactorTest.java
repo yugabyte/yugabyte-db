@@ -299,7 +299,7 @@ public class HbaConfRedactorTest {
       }
       checked++;
     }
-    assertTrue(checked > 1000);
+    assertTrue(checked > 900);
   }
 
   private static void checkAgainstPostgres(

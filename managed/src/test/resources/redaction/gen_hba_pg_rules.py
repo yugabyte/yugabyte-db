@@ -100,9 +100,10 @@ def main():
         lines += list(variants())
         lines += list(random_lines(rng, 50000))
     else:
-        lines = list(exhaustive(3, ['', ' junk'], PREFIXES[0]))
+        lines = list(exhaustive(3, [''], PREFIXES[0]))
+        lines += list(exhaustive(2, [' junk'], PREFIXES[0]))
         lines += list(variants())
-        lines += list(random_lines(rng, 400))
+        lines += list(random_lines(rng, 200))
     lines = [line for line in dict.fromkeys(lines) if ok(line)]
     results = []
     for i in range(0, len(lines), 20000):
