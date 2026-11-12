@@ -18,8 +18,6 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.LdapBindPasswdHbaFormat;
-import com.yugabyte.yw.common.LdapBindPasswdHbaFormat.QuoteStyle;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
@@ -691,13 +689,13 @@ public class GFlagsUtilTest extends FakeDBApplication {
                       existingGFlags3, newGFlags3, gFlagsValidation, "2.18"));
       assertEquals(BAD_REQUEST, ex3.getHttpStatus());
 
-      // Test case 4: Double-quote CSV format with special characters (real user case)
+      // Test case 4: Double-quote CSV format with special characters (real user case). The # is
+      // outside quotes, so Postgres reads a comment and the line is redacted to its end.
       String originalYsqlHbaConf4 =
           "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com "
               + "ldapbindpasswd=\"\"My$ecret!With@Special#Chars\"\"";
       String newYsqlHbaConf4 =
-          "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com "
-              + "ldapbindpasswd=\"\"REDACTED\"\"";
+          "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com ldapbindpasswd=REDACTED";
 
       Map<String, String> existingGFlags4 = new HashMap<>();
       existingGFlags4.put("ysql_hba_conf_csv", originalYsqlHbaConf4);
@@ -898,7 +896,7 @@ public class GFlagsUtilTest extends FakeDBApplication {
       };
 
       for (String password : passwords) {
-        String encoded = LdapBindPasswdHbaFormat.encode(QuoteStyle.DOUBLED_CSV, password);
+        String encoded = "\"\"" + password.replace("\"", "\"\"") + "\"\"";
         String hbaOriginal =
             "host all all 0.0.0.0/0 ldap ldapserver="
                 + ldapHost
