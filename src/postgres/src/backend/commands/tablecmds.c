@@ -24606,7 +24606,6 @@ createPartitionTable(List **wqueue, RangeVar *newPartName,
 					   RelationGetRelationName(parent_rel)));
 
 	/* Create the relation. */
-	/* YB_TODO_PG19MERGE verify YB args */
 	newRelId = heap_create_with_catalog(newPartName->relname,
 										namespaceId,
 										parent_relform->reltablespace,
