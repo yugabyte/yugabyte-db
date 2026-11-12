@@ -20,6 +20,8 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.RestoreManagerYb;
 import com.yugabyte.yw.common.ShellResponse;
@@ -152,7 +154,9 @@ public abstract class AbstractTaskBase implements ITask {
 
   @Override
   public String toString() {
-    return getName() + " : params=" + getTaskParams();
+    return getName()
+        + " : params="
+        + RedactingService.filterSecretFields(getTaskParams(), RedactionTarget.LOGS);
   }
 
   @Override
