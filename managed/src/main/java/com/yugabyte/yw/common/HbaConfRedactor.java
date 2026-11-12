@@ -72,11 +72,7 @@ public final class HbaConfRedactor {
           "jwt_matching_claim_key");
 
   /** A CSV field: its decoded text, and where each character starts in the raw value. */
-  record CsvField(String text, boolean quoted, int[] rawIndex) {
-    int rawEnd(int i) {
-      return rawIndex[i] + (quoted && text.charAt(i) == '"' ? 2 : 1);
-    }
-  }
+  record CsvField(String text, boolean quoted, int[] rawIndex) {}
 
   /** An hba.conf line, with the field and field offset each character came from. */
   record Line(String text, int[] field, int[] offset) {}
@@ -494,8 +490,8 @@ public final class HbaConfRedactor {
         int rawStart =
             edit.start() < field.text().length()
                 ? field.rawIndex()[edit.start()]
-                : field.rawEnd(edit.start() - 1);
-        int rawEnd = edit.end() > edit.start() ? field.rawEnd(edit.end() - 1) : rawStart;
+                : rawEnd(field, edit.start() - 1);
+        int rawEnd = edit.end() > edit.start() ? rawEnd(field, edit.end() - 1) : rawStart;
         String replacement =
             field.quoted() ? edit.replacement().replace("\"", "\"\"") : edit.replacement();
         rawEdits.add(new Edit(rawStart, rawEnd, replacement));
@@ -512,5 +508,10 @@ public final class HbaConfRedactor {
       last = edit.end();
     }
     return out.append(value, last, value.length()).toString();
+  }
+
+  /** Where character i of a field ends in the raw value; a quote in a quoted field is doubled. */
+  private static int rawEnd(CsvField field, int i) {
+    return field.rawIndex()[i] + (field.quoted() && field.text().charAt(i) == '"' ? 2 : 1);
   }
 }
