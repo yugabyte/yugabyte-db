@@ -21,10 +21,11 @@ import java.util.Set;
  * is replaced, and every other character is kept.
  *
  * <p>Where the password may extend past what Postgres reads as its value (a later token that isn't
- * a known option, or ldapbindpasswd text that isn't an option name), the line is redacted from
- * there to its end, along with the lines after it that don't start a rule. A comment on a line with
- * a password is redacted too. Postgres rejects or ignores all of these, so nothing it uses is
- * hidden.
+ * a known option), the line is redacted from there to its end, along with the lines after it that
+ * don't start a rule. A comment on a line with a password is redacted too. Postgres rejects or
+ * ignores these, so nothing it uses is hidden. ldapbindpasswd text that isn't an option name is
+ * also redacted to the end of the line, even inside a value Postgres uses: it may be a password
+ * quoted into another option, as in "ldapsearchfilter=(x) ldapbindpasswd=secret".
  */
 public final class HbaConfRedactor {
 

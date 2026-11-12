@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.io.JsonStringEncoder;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -403,8 +404,10 @@ public class RedactingService {
         if (parsed != null && parsed.isContainerNode()) {
           return redactTree(parsed, names).toString();
         }
-      } catch (Exception e) {
+      } catch (JsonProcessingException e) {
         log.trace("Text value is not JSON; redacting it as text");
+      } catch (RuntimeException e) {
+        log.warn("Failed to redact the JSON in a text value; redacting it as text: ", e);
       }
     }
     return redactSensitiveInfoInString(text, names);

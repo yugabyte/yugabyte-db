@@ -169,6 +169,10 @@ public class HbaConfRedactorTest {
     assertRedacted(
         LDAP + "ldapsearchfilter=\"(cn=ldapbindpasswd=REDACTED",
         LDAP + "ldapsearchfilter=\"(cn=ldapbindpasswd=x)\" ldapbindpasswd=secret");
+    // Postgres reads one valid filter here, so the password would otherwise show.
+    assertRedacted(
+        LDAP + "\"ldapsearchfilter=(x) ldapbindpasswd=REDACTED",
+        LDAP + "\"ldapsearchfilter=(x) ldapbindpasswd=secret\"");
   }
 
   @Test
