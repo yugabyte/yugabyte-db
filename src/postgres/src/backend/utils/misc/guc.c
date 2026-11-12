@@ -6843,6 +6843,18 @@ static struct config_real ConfigureNamesReal[] =
 		NULL, NULL, NULL
 	},
 	{
+		{"yb_parallel_setup_cost_per_relation", PGC_USERSET, QUERY_TUNING_COST,
+			gettext_noop("Sets the planner's estimate of the cost a parallel "
+						 "worker pays to open each relation in its plan, "
+						 "charged on top of parallel_setup_cost."),
+			NULL,
+			GUC_EXPLAIN
+		},
+		&yb_parallel_setup_cost_per_relation,
+		YB_DEFAULT_PARALLEL_SETUP_COST_PER_RELATION, 0, DBL_MAX,
+		NULL, NULL, NULL
+	},
+	{
 		{"yb_network_fetch_cost", PGC_USERSET, QUERY_TUNING_COST,
 			gettext_noop("Sets the planner's estimate of the fixed cost of "
 						 "fetching a batch of rows from a YB relation"),
