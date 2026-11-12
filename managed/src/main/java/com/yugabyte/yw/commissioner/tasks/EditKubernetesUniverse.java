@@ -461,7 +461,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     Map<UUID, Pair<Boolean, Boolean>> azToDiskSizeChangeMap =
         canResizeDisk(
             curPlacement, newPlacement, newIntent, curIntent, taskParams().nodeDetailsSet);
-    // AZs the edit removes are not resized, but the resize saves the new size for them too.
+    // The disk resize saves the new size for every AZ, including AZs it skips. Some AZs render
+    // later with the size they run with: AZs the edit removes, and tserver full-move AZs (see
+    // keepDiskSpecAZs). Save the original sizes first so those renders can still read them.
     Set<UUID> leavingAZs =
         Sets.difference(
             curPlacement.placementInfo.getAllAZUUIDs(), newPlacement.placementInfo.getAllAZUUIDs());
@@ -580,11 +582,15 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         masterAddressesChanged
             || CollectionUtils.isNotEmpty(mastersToAdd)
             || CollectionUtils.isNotEmpty(fullMoveMasterAZs);
-    // Once an attempt has propagated the new masters, a retry must not: the pods it would push to
-    // and render may already be gone or rescaled. Until then, no tserver pod has changed. The first
-    // attempt records false, so a retry with no value runs params saved by a YBA build that never
-    // propagated, which may already have changed tserver pods. Only the primary cluster has
-    // masters, and a read replica edited along with it may not be in the task params at all.
+    // propagateMasterAddrs: whether this attempt pushes the master list to running servers and
+    // renders movingMasterAddrs into the Secrets. masterAddrsPropagated in the task params says:
+    //   - false: set by the first attempt, and kept on retries until the master steps finish.
+    //     Until then no tserver pod has been added or removed, so every push target exists.
+    //   - true: an earlier attempt finished the master steps. Old master pods may be deleted by
+    //     now, so the moving list would name addresses that do not resolve. Skip.
+    //   - null: the params were saved by a YBA build without this flag, which may have finished
+    //     the master steps already. Skip.
+    // Only the primary cluster has masters. Its pass also renders the read replica's Secrets.
     Cluster paramsCluster =
         isReadOnlyCluster ? null : taskParams().getClusterByUuid(newCluster.uuid);
     if (paramsCluster != null && isFirstTry()) {
@@ -593,7 +599,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     }
     boolean propagateMasterAddrs =
         paramsCluster != null && Boolean.FALSE.equals(paramsCluster.getMasterAddrsPropagated());
-    // Masters that run once the given ones are added, without the ones this edit removes.
+    // The masters to push the list to: the current masters plus the given added ones, minus the
+    // ones this edit removes.
     Universe current = Universe.getOrBadRequest(universe.getUniverseUUID());
     Set<String> leavingMasters =
         mastersToRemoveAzMap.values().stream()
@@ -608,28 +615,37 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               .forEach(n -> masters.putIfAbsent(n.nodeName, n));
           return masters.values();
         };
-    // Tservers the edit removes may be down, often the reason for the edit, so the pushes to them
-    // are best effort. The Secret render covers them if they restart.
+    // Tservers this edit removes. A failed push to one of them does not fail the edit: they may be
+    // down, which is often why they are removed. If one restarts, it reads the rendered Secret.
     Set<String> leavingTservers =
         tserversToRemoveAzMap.values().stream()
             .flatMap(Set::stream)
             .map(n -> n.nodeName)
             .collect(Collectors.toSet());
-    // A tserver that restarts does not start if an address in its list does not resolve, and
-    // registers once one listed master in the Raft config answers its heartbeat: the reply carries
-    // the config, which leads it to the leader. While masters move, the Secrets list the old and
-    // the new masters: the old master pods run until the end of the edit, or of their full-move
-    // batch, and the new ones are in the config once the removes start. Only an attempt that has
-    // not propagated the masters renders this list: on a later retry a full move may have deleted
-    // the old master pods.
+    // The master list the Secrets carry while masters move: the old and the new masters.
+    // A tserver reads its master list only at startup, so a tserver that restarts mid-edit boots
+    // with this list. It starts only if:
+    //   - every address resolves, or startup fails after about two minutes. The old master pods
+    //     run until the end of the edit (or of their full-move batch); the new ones run once added.
+    //   - the list includes the master leader. With encryption at rest, startup fetches the
+    //     universe key registry from the leader and retries until it gets it. The leader is always
+    //     an old or a new master.
+    // Null when propagateMasterAddrs is false: the old master pods may be deleted by then.
     String movingMasterAddrs =
         propagateMasterAddrs ? joinMasterAddresses(existingMasterAddresses, masterAddresses) : null;
-    // Before the last master step removes a master, rewrite the gflags Secrets with that list,
-    // without restarting pods. AZs render at their current counts, plus the new masters of AZs
-    // gaining them. AZs the edit adds have no tserver yet. The full move renders the AZs it moves.
-    // A resource change in the edit is safe to render: the partitions stay at the pod counts, so a
-    // pod deleted before its roll comes back at its old revision, and mounts the new Secret either
-    // way.
+    // The placement updateMasterAddrSecrets renders movingMasterAddrs with. That render rewrites
+    // the gflags Secrets without restarting pods, after the master adds and before the first
+    // master remove.
+    //   - Every AZ the cluster has now, at its current master and tserver counts.
+    //   - An AZ gaining masters outside a master full move gets its new master count, so the new
+    //     master pods' Secrets carry the list too.
+    //   - AZs the edit adds are not in it: they have no pods yet, and get the final list when
+    //     created.
+    //   - Master full-move AZs are in it but skipped (skipMasterAZs below): their full move writes
+    //     their Secrets.
+    // A resource change in the same edit is safe to render: the partitions stay at the pod counts,
+    // so no pod rolls, and a pod deleted before its roll comes back at its old revision and mounts
+    // the new Secret either way.
     KubernetesPlacement masterAddrRenderPlacement =
         new KubernetesPlacement(curPlacement.placementInfo, isReadOnlyCluster);
     for (UUID az : Sets.difference(mastersToAddAzMap.keySet(), fullMoveMasterAZs)) {
@@ -637,10 +653,11 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         masterAddrRenderPlacement.masters.put(az, newPlacement.masters.getOrDefault(az, 0));
       }
     }
-    // AZs the edit removes, and the old tserver StatefulSets of full-move tserver AZs, are neither
-    // resized nor moved yet, so the edit's target disk spec would change their
-    // volumeClaimTemplates, which K8s rejects. They keep the spec they run with, and their original
-    // size once the resize has saved a new one.
+    // AZs whose StatefulSets the edit has not resized or replaced when updateMasterAddrSecrets
+    // runs. Rendering them with the edit's new disk spec would change their volumeClaimTemplates,
+    // which K8s rejects, so they render with the spec they run with now. The value is the original
+    // size per server type, saved before the resize wrote the new one; empty when none was saved.
+    //   - AZs the edit removes: they are never resized or moved.
     Cluster clusterInParams = taskParams().getClusterByUuid(newCluster.uuid);
     Map<UUID, Map<ServerType, Integer>> originalDiskSizes =
         MapUtils.emptyIfNull(
@@ -649,8 +666,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     for (UUID az : leavingAZs) {
       keepDiskSpecAZs.put(az, originalDiskSizes.getOrDefault(az, Collections.emptyMap()));
     }
-    // A full-move tserver AZ's master is resized like any other AZ's, so only the tserver size is
-    // kept.
+    //   - Tserver full-move AZs outside the master full move: the old tserver StatefulSet runs
+    //     until the full move replaces it. Their master is resized like in any other AZ, so only
+    //     the tserver size is kept.
     for (UUID az : Sets.difference(fullMoveTserverAZs, fullMoveMasterAZs)) {
       Integer tserverSize =
           originalDiskSizes.getOrDefault(az, Collections.emptyMap()).get(ServerType.TSERVER);
@@ -660,12 +678,16 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               ? Collections.emptyMap()
               : Collections.singletonMap(ServerType.TSERVER, tserverSize));
     }
-    // The read replica's own pass in run() renders its Secrets only after the whole primary edit,
-    // so its tservers get the same lists here. Its StatefulSets keep the disk spec they run with.
+    // Read replica tservers need the same master lists as the primary's. The read replica's own
+    // pass in run() comes after the whole primary edit, too late for that, so the primary's
+    // renders include it. Any read replica resize runs in that later pass, so its StatefulSets
+    // keep the disk spec they run with.
     List<Cluster> readReplicas =
         isReadOnlyCluster
             ? Collections.emptyList()
             : universe.getUniverseDetails().getReadOnlyClusters();
+    // Renders the given master list into the primary's Secrets, except master full-move AZs, and
+    // into every read replica's Secrets.
     Consumer<String> renderMasterAddrSecretsWith =
         addrs -> {
           if (!fullMoveMasterAZs.containsAll(curPlacement.placementInfo.getAllAZUUIDs())) {
@@ -699,13 +721,17 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
                 keepCurrentDiskSpec(readReplica));
           }
         };
+    // Rendering without restarting pods needs supportsNonRestartGflagsUpgrade.
     boolean renderMasterAddrSecrets = propagateMasterAddrs && supportsNonRestartGflagsUpgrade;
     Runnable updateMasterAddrSecrets =
         renderMasterAddrSecrets
             ? () -> renderMasterAddrSecretsWith.accept(movingMasterAddrs)
             : null;
-    // With a full move of masters, the masters this edit removes outside it are removed in its
-    // last batch, once all new masters have joined, so the quorum never shrinks below its size.
+    // With a master full move, the masters this edit removes outside it are not removed in the
+    // step below but in the full move's last batch, after every new master has joined. Removing
+    // them earlier would shrink the quorum below RF before the full move adds its masters.
+    // Example: an edit removes az-3 and changes the master storage class of az-1 and az-2. The
+    // az-3 master is removed together with the old az-1 and az-2 masters.
     List<NodeDetails> mastersToRemoveLast =
         fullMoveMasterAZs.isEmpty() ? Collections.emptyList() : new ArrayList<>(mastersToRemove);
     if (!mastersToAdd.isEmpty()) {
@@ -742,7 +768,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           mastersRunningWith.apply(mastersToAdd),
           leavingTservers,
           propagateMasterAddrs,
-          // The full move renders the Secrets before its removes.
+          // With a master full move this step removes no master (see mastersToRemoveLast), so the
+          // render runs before the full move's removes instead.
           fullMoveMasterAZs.isEmpty() ? updateMasterAddrSecrets : null);
     }
 
@@ -777,15 +804,17 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           propagateMasterAddrs,
           updateMasterAddrSecrets,
           mastersToRemoveLast);
-      // The full move has deleted the old master pods, so the other Secrets list addresses that no
-      // longer resolve, and a tserver does not start with one. The masters running now are the
-      // final ones.
+      // The full move has deleted the old master pods. The Secrets outside it still carry
+      // movingMasterAddrs, whose old addresses no longer resolve, and a tserver that restarts with
+      // them does not start. Render the final list, which the running masters now match.
       if (renderMasterAddrSecrets) {
         renderMasterAddrSecretsWith.accept(masterAddresses);
       }
     }
 
     if (!mastersToAdd.isEmpty() || CollectionUtils.isNotEmpty(fullMoveMasterAZs)) {
+      // The master steps are done: retries from here on skip the pushes and the moving-list
+      // renders (see propagateMasterAddrs).
       if (propagateMasterAddrs) {
         getRunnableTask()
             .addSubTaskGroup(
@@ -1063,8 +1092,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           fullMoveTserverAZs);
     }
 
-    // The pod deletes below remove the old master pods. The primary's Secrets got the final list
-    // above, but the read replica's still list the old masters until its own pass.
+    // Without a master full move, deletePodsTask below deletes the old master pods. The primary's
+    // Secrets already have the final list from the master address update above. The read
+    // replica's still carry movingMasterAddrs until its own pass, so render the final list first.
     if (renderMasterAddrSecrets && fullMoveMasterAZs.isEmpty() && !mastersToAdd.isEmpty()) {
       for (Cluster readReplica : readReplicas) {
         createMasterAddressesUpdateTask(
@@ -1135,7 +1165,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     return masterAddressesChanged;
   }
 
-  /** Renders every AZ of the cluster with the disk spec its StatefulSets have now. */
+  /**
+   * keepDiskSpecAZs value that renders every AZ of the cluster with the disk spec its StatefulSets
+   * have now. No original sizes, since nothing has resized them yet.
+   */
   private static Map<UUID, Map<ServerType, Integer>> keepCurrentDiskSpec(Cluster cluster) {
     return cluster.placementInfo.getAllAZUUIDs().stream()
         .collect(Collectors.toMap(Function.identity(), az -> Collections.emptyMap()));
@@ -1188,9 +1221,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
    *     <p>False on a retry after an earlier attempt pushed it, or when the params come from a YBA
    *     build without this push. The pods it would push to may be gone by then.
    * @param beforeRemoves runs after the adds and before the first remove. Null to run nothing.
-   *     <p>Used to rewrite the gflags Secrets with the old and new masters, so a tserver that
-   *     restarts after the removes lists masters still in the Raft config. Null when a full move of
-   *     masters does this itself.
+   *     <p>Used to render the old and new masters into the gflags Secrets while both run, so a
+   *     tserver that restarts during the edit boots with a list that resolves and includes the
+   *     master leader. Null when a master full move runs it before its own removes.
    */
   public void createMoveMasterTasks(
       List<NodeDetails> mastersToAdd,
@@ -1215,8 +1248,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     for (int idx = 0; idx < mastersToAdd.size(); idx++) {
       createChangeConfigTasks(mastersToAdd.get(idx), true, subTask);
     }
-    // Servers read the master list only at startup, so this push changes only what they report in
-    // /varz. It keeps that in line with the Secrets the removes are about to make current.
+    // A server reads its master list only at startup, so this push changes only the flag value it
+    // reports in /varz. Pushed before the removes so that value matches the Secrets rendered next.
     if (pushMasterAddrs && !mastersToRemove.isEmpty()) {
       createMasterAddrsInMemoryUpdateTasks(
           universe, masterPushTargets, bestEffortTservers, raftConfig);
@@ -1241,7 +1274,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     }
     // Wait for master leader.
     createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-    // Reports the master Raft config the removes left.
+    // Push again so the reported list drops the removed masters.
     if (pushMasterAddrs) {
       createMasterAddrsInMemoryUpdateTasks(
           universe, masterPushTargets, bestEffortTservers, raftConfig);
@@ -1308,10 +1341,14 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
   }
 
   /**
-   * @param skipMasterAZs AZs this call does not render, for the primary cluster. See
-   *     upgradePodsNonRestart. The in-memory pushes do not depend on it.
-   * @param skipTserverAZs AZs this call does not render, for a read replica.
-   * @param keepDiskSpecAZs AZs to render with the disk spec their StatefulSets run with now. See
+   * Renders masterAddresses into the cluster's gflags Secrets without restarting pods, and sets it
+   * in memory on the given masters and tservers.
+   *
+   * @param skipMasterAZs AZs of the primary cluster not to render. The in-memory updates still
+   *     reach their pods. See upgradePodsNonRestart.
+   * @param skipTserverAZs AZs of a read replica not to render.
+   * @param keepDiskSpecAZs AZs to render with the disk spec their StatefulSets run with now, mapped
+   *     to the original disk size per server type (empty when none was saved). See
    *     upgradePodsNonRestart.
    */
   public void createMasterAddressesUpdateTask(
@@ -1537,8 +1574,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
    *     createMoveMasterTasks.
    * @param beforeMasterRemoves runs before the master removes. Null to run nothing, as in a tserver
    *     full move.
-   *     <p>Used to rewrite the Secrets outside the full move with the old and new masters, so a
-   *     tserver there that restarts after the removes lists masters still in the Raft config.
+   *     <p>Used to render the old and new masters into the Secrets outside the full move, so a
+   *     tserver there that restarts during the edit boots with a list that resolves and includes
+   *     the master leader.
    * @param mastersToRemoveLast masters outside the full move that are removed at its end, after
    *     every new master has joined. This keeps the quorum at full size during the move.
    *     <p>Example: an edit removes az-3 and changes the master storage class of az-1 and az-2. The
@@ -1832,9 +1870,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           tserverPartition =
               serverType == ServerType.TSERVER ? replicas.oldReplicas : currNumTservers;
 
-          // The new masters have joined by now, so this render can carry the full new list. It
-          // rewrites every gflags Secret in the release, tservers included, so a pod restarted from
-          // here on boots with the new masters. Keeping the gflags checksum rolls no pod for it.
+          // The new masters have joined by now. This render writes the final master list into
+          // every gflags Secret of the AZ's release, tservers included; until here they carry the
+          // AZ-local list the full move subtask wrote. Keeping the masters' gflags checksum stops
+          // this from rolling the masters.
           KubernetesCommandExecutor podDeleteSubtask =
               createKubernetesExecutorTaskForServerType(
                   universeName,

@@ -1096,7 +1096,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
               .getUniverseDetails()
               .getPrimaryCluster();
     }
-    // An edit of the primary alone still updates the read replica, which its params lack.
+    // An edit of the primary alone also renders the read replica's Secrets, and its task params
+    // have no read replica cluster.
     List<Cluster> readOnlyClusters = taskParams().getReadOnlyClusters();
     if (readOnlyClusters.isEmpty()) {
       readOnlyClusters =
@@ -1767,7 +1768,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       if (edit) {
         keepDeployment = newPlacement.configs.containsKey(azUUID);
         if (keepDeployment && instanceTypeChanged) {
-          // The upgrade already scaled the AZ down, and keeps its PVCs like any scale-down.
+          // With a resource change, the rolling upgrade has already scaled this AZ down. Only the
+          // PVC cleanup is left: K8s keeps the PVCs of the pods a scale-down removes (see below).
           tserverPvcDeletes.addSubTask(
               garbageCollectVolumes(
                   universeName,
