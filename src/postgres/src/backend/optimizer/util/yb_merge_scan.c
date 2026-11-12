@@ -621,7 +621,8 @@ ybAppendMergeGapCol(YbSortInfo *sort_info, IndexOptInfo *index,
  *       - A constant, as in a broken EquivalenceClass.
  *       - An earlier merge sort column.
  *
- *     The plan also merges on each of these columns except a copy (see
+ *     Each of these columns except a copy is a gap column (see
+ *     ybIsMergeGapCol), which the merge also sorts on (see
  *     ybAppendMergeGapCol).
  *
  * No column at or after the last merge sort column is a stream key, since the
