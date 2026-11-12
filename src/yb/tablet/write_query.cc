@@ -1093,6 +1093,7 @@ void WriteQuery::CompleteExecute() {
 
 Status WriteQuery::DoCompleteExecute() {
   auto tablet = VERIFY_RESULT(tablet_safe());
+  auto node_limit_ht = tablet->clock()->Now().ToUint64();
   if (prepare_result_.need_read_snapshot && !read_time_) {
     // A read_time will be picked by the below ScopedReadOperation::Create() call.
     metrics_->Increment(tablet::TabletCounters::kPickReadTimeOnDocDB);
@@ -1204,6 +1205,10 @@ Status WriteQuery::DoCompleteExecute() {
 
   if (allow_immediate_read_restart_ && response_) {
     read_operation_data.read_time.ToPB(response_->mutable_used_read_time());
+  }
+
+  if (response_) {
+    response_->set_node_limit_ht(node_limit_ht);
   }
 
   // SERIALIZABLE operations already add the row to read_pairs for UPDATE operations

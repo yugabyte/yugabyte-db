@@ -701,9 +701,13 @@ OpGroup YBPgsqlReadOp::group() const {
       ? OpGroup::kConsistentPrefixRead : OpGroup::kLeaderRead;
 }
 
-void YBPgsqlReadOp::SetUsedReadTime(const ReadHybridTime& used_time, const TabletId& tablet) {
+void YBPgsqlReadOp::SetUsedReadTime(
+    const ReadHybridTime& used_time, const TabletId& tablet,
+    const HybridTime& node_limit, const TabletServerId& node_uuid) {
   used_read_time_ = used_time;
   used_tablet_ = tablet;
+  used_node_limit_ = node_limit;
+  used_node_uuid_ = node_uuid;
 }
 
 void GetPartitionKeyForBackwardScan(

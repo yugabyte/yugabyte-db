@@ -37,6 +37,8 @@ void ConsistentReadPoint::SetReadTimeUnlocked(
     local_limits_.clear();
   }
   restarts_.clear();
+  node_limits_.clear();
+  node_limits_for_restart_.clear();
 }
 
 void ConsistentReadPoint::SetCurrentReadTimeUnlocked(ClampUncertaintyWindow clamp) {
@@ -92,6 +94,12 @@ ReadHybridTime ConsistentReadPoint::GetReadTime(TabletIdView tablet) const {
   return read_time;
 }
 
+HybridTime ConsistentReadPoint::GetNodeLimit(const TabletServerId &node) const {
+  std::lock_guard lock(mutex_);
+  const auto it = node_limits_.find(node);
+  return it != node_limits_.end() ? it->second : read_time_.global_limit;
+}
+
 void ConsistentReadPoint::RestartRequired(TabletIdView tablet,
                                           const ReadHybridTime& restart_time) {
   std::lock_guard lock(mutex_);
@@ -107,11 +115,20 @@ void ConsistentReadPoint::RestartRequiredUnlocked(
     restarts_ = local_limits_;
   }
   UpdateLimitsMapUnlocked(tablet, restart_time.local_limit, &restarts_);
+  // Additionally, inherit per-node restart time limits before restart.
+  if (node_limits_for_restart_.empty()) {
+    node_limits_for_restart_ = node_limits_;
+  }
 }
 
 void ConsistentReadPoint::UpdateLocalLimit(TabletIdView tablet, HybridTime local_limit) {
   std::lock_guard lock(mutex_);
   UpdateLimitsMapUnlocked(tablet, local_limit, &local_limits_);
+}
+
+void ConsistentReadPoint::UpdateNodeLimit(const TabletServerId &node, HybridTime node_limit) {
+  std::lock_guard lock(mutex_);
+  UpdateNodeLimitsMapUnlocked(node, node_limit);
 }
 
 void ConsistentReadPoint::UpdateLimitsMapUnlocked(
@@ -121,6 +138,19 @@ void ConsistentReadPoint::UpdateLimitsMapUnlocked(
   if (!inserted) {
     auto& existing_local_limit = emplace_result.first->second;
     existing_local_limit = std::min(existing_local_limit, local_limit);
+  }
+}
+
+void ConsistentReadPoint::UpdateNodeLimitsMapUnlocked(
+    const TabletServerId& node, const HybridTime& node_limit) {
+  if (node.empty()) {
+    return;
+  }
+  auto emplace_result = node_limits_.emplace(node, node_limit);
+  bool inserted = emplace_result.second;
+  if (!inserted) {
+    auto& existing_node_limit = emplace_result.first->second;
+    existing_node_limit = std::min(existing_node_limit, node_limit);
   }
 }
 
@@ -137,6 +167,8 @@ void ConsistentReadPoint::Restart() {
   std::lock_guard lock(mutex_);
   local_limits_.swap(restarts_);
   restarts_.clear();
+  node_limits_.swap(node_limits_for_restart_);
+  node_limits_for_restart_.clear();
   read_time_.read = restart_read_ht_;
 }
 
@@ -236,11 +268,14 @@ void ConsistentReadPoint::MoveFrom(ConsistentReadPoint* rhs) NO_THREAD_SAFETY_AN
   restart_read_ht_ = rhs->restart_read_ht_;
   local_limits_ = std::move(rhs->local_limits_);
   restarts_ = std::move(rhs->restarts_);
+  node_limits_ = std::move(rhs->node_limits_);
+  node_limits_for_restart_ = std::move(rhs->node_limits_for_restart_);
 }
 
 ConsistentReadPoint::Momento ConsistentReadPoint::GetMomento() const {
   std::lock_guard lock(mutex_);
-  return {read_time_, restart_read_ht_, local_limits_, restarts_};
+  return {read_time_, restart_read_ht_, local_limits_, restarts_, node_limits_,
+          node_limits_for_restart_};
 }
 
 void ConsistentReadPoint::SetMomento(const ConsistentReadPoint::Momento& momento) {
@@ -249,6 +284,8 @@ void ConsistentReadPoint::SetMomento(const ConsistentReadPoint::Momento& momento
   restart_read_ht_ = momento.restart_read_ht_;
   local_limits_ = momento.local_limits_;
   restarts_ = momento.restarts_;
+  node_limits_ = momento.node_limits_;
+  node_limits_for_restart_ = momento.node_limits_for_restart_;
 }
 
 } // namespace yb

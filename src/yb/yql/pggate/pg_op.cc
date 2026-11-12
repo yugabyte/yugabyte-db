@@ -103,12 +103,6 @@ bool PgsqlReadOp::PrepareNextRequest(std::optional<uint64_t> row_limit) {
   req->clear_ysql_catalog_version();
   req->clear_backfill_spec();
 
-  if (paging_state.has_read_time()) {
-    auto paging_read_hybrid_time = ReadHybridTime::FromPB(paging_state.read_time());
-    VLOG(4) << "Setting read time for next request: " << paging_read_hybrid_time;
-    set_read_time(paging_read_hybrid_time);
-  }
-
   // Setup backfill_spec for the next request.
   if (res.has_backfill_spec()) {
     req->dup_backfill_spec(res.backfill_spec());

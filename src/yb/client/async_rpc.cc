@@ -509,6 +509,17 @@ void AsyncRpc::SendRpcToTserver(int attempt_num) {
     }
 
     ts_proxy_ = tablet_invoker_.proxy();
+    // The leader tablet server is determined by this point. This information is necessary to
+    // retrieve the node's node_limit.
+    // Use the node limit from previous RPCs to the same node to update the local limit for this
+    // RPC.
+    auto read_point = batcher_->read_point();
+    if (read_point && read_point->GetReadTime() && tablet_invoker_.tablet()) {
+      auto node_uuid = tablet_invoker_.tablet()->current_leader_uuid();
+      if (!node_uuid.empty()) {
+        UpdateLocalLimit(read_point->GetNodeLimit(node_uuid));
+      }
+    }
     CallRemoteMethod();
   };
 
@@ -632,6 +643,14 @@ bool AsyncRpcBase<Req, Resp>::CommonResponseCheck(const Status& status) {
     Failed(StatusFromPB(resp_.error().status()));
     return false;
   }
+  if (resp_.has_node_limit_ht()) {
+    auto read_point = batcher_->read_point();
+    if (read_point && tablet_invoker_.tablet()) {
+      auto node_uuid = tablet_invoker_.tablet()->current_leader_uuid();
+      read_point->UpdateNodeLimit(
+          node_uuid, HybridTime(resp_.node_limit_ht()));
+    }
+  }
   auto restart_read_time = ReadHybridTime::FromRestartReadTimePB(resp_);
   if (restart_read_time) {
     auto read_point = batcher_->read_point();
@@ -670,6 +689,17 @@ template <class Req, class Resp>
 void AsyncRpcBase<Req, Resp>::SendRpcToTserver(int attempt_num) {
   req_.set_rejection_score(batcher_->RejectionScore(attempt_num));
   AsyncRpc::SendRpcToTserver(attempt_num);
+}
+
+template <class Req, class Resp>
+void AsyncRpcBase<Req, Resp>::UpdateLocalLimit(HybridTime node_limit) {
+  if (req_.has_read_time()) {
+    auto local_limit_ht = req_.read_time().local_limit_ht();
+    auto node_limit_ht = node_limit.ToUint64();
+    if (node_limit_ht < local_limit_ht) {
+      req_.mutable_read_time()->set_local_limit_ht(node_limit_ht);
+    }
+  }
 }
 
 template <class Req, class Resp>
@@ -1093,7 +1123,10 @@ Status ReadRpc::SwapResponses(RefCntBuffer data_holder) {
           // Single operation in a group required used read time.
           used_read_time_set = true;
           pgsql_op->SetUsedReadTime(
-              ReadHybridTime::FromPB(resp_.used_read_time()), tablet().tablet_id());
+              ReadHybridTime::FromPB(resp_.used_read_time()),
+              tablet().tablet_id(),
+              resp_.has_node_limit_ht() ? HybridTime(resp_.node_limit_ht()) : HybridTime(),
+              tablet().current_leader_uuid());
         }
         pgsql_op->set_response(data_holder, &*pgsql_it++);
         const auto& pgsql_response = pgsql_op->response();

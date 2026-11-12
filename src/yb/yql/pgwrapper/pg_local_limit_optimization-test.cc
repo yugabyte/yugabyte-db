@@ -122,6 +122,10 @@ class PgLocalLimitOptimizationTest : public PgMiniTestBase {
               // on the PgClientSession proxy.
   };
 
+  size_t NumTabletServers() override {
+    return 1;
+  }
+
   // Subroutine to execute a scan concurrently with an insert.
   //
   // This is to simulate read restart scenarios
@@ -160,8 +164,11 @@ class PgLocalLimitOptimizationTest : public PgMiniTestBase {
       ASSERT_OK(setup_conn.Execute("CREATE TABLE IF NOT EXISTS dummy()"));
     }
     ASSERT_OK(setup_conn.Execute(Format(
-      "CREATE TABLE keys (k INT, PRIMARY KEY(k ASC))$0",
-      is_single_tablet_ ? "" : " SPLIT AT VALUES ((1))")));
+        "CREATE TABLE keys (k INT, PRIMARY KEY(k ASC))$0",
+        is_single_tablet_ ? "" : Format(
+            " SPLIT AT VALUES ((1)$0)",
+            row_is_inserted_into_a_new_tablet_
+                ? Format(", ($0)", 2 * kNumInitialRows) : ""))));
     ASSERT_OK(setup_conn.Execute(Format(
       "INSERT INTO keys(k) SELECT GENERATE_SERIES(1, $0)", kNumInitialRows)));
 
@@ -228,7 +235,9 @@ class PgLocalLimitOptimizationTest : public PgMiniTestBase {
     // Ensure that there is only a single tablet.
     auto num_tablets = ASSERT_RESULT(read_conn.FetchRow<int64_t>(
       "SELECT num_tablets FROM yb_table_properties('keys'::regclass)"));
-    ASSERT_EQ(num_tablets, is_single_tablet_ ? 1 : 2);
+    ASSERT_EQ(
+        num_tablets,
+        is_single_tablet_ ? 1 : row_is_inserted_into_a_new_tablet_ ? 3 : 2);
     // Ensure that keys table is not colocated with any other table.
     auto is_colocated = ASSERT_RESULT(read_conn.FetchRow<bool>(
       "SELECT is_colocated FROM yb_table_properties('keys'::regclass)"));
@@ -281,6 +290,7 @@ class PgLocalLimitOptimizationTest : public PgMiniTestBase {
   }
 
   bool is_single_tablet_ = true;
+  bool row_is_inserted_into_a_new_tablet_ = false;
   bool is_single_page_scan_ = true;
   ScanCmd scan_cmd_ = ScanCmd::kOrdered;
   bool is_read_time_picked_before_table_scan_ = false;
@@ -392,6 +402,18 @@ TEST_F(PgLocalLimitOptimizationTest, ReadTimePickedBeforeTableScan) {
   is_single_page_scan_ = true;
   scan_cmd_ = ScanCmd::kOrdered;
   is_read_time_picked_before_table_scan_ = true;
+
+  // Run Test
+  InsertRowConcurrentlyWithTableScan();
+}
+
+// Verifies per node local limit mechanism.
+// Fails without #23077
+TEST_F(PgLocalLimitOptimizationTest, InsertRowIntoANewTablet) {
+  // Test Config
+  is_single_tablet_ = false;
+  row_is_inserted_into_a_new_tablet_ = true;
+  scan_cmd_ = ScanCmd::kOrdered;
 
   // Run Test
   InsertRowConcurrentlyWithTableScan();

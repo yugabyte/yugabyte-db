@@ -573,9 +573,13 @@ class YBPgsqlReadOp : public YBPgsqlOpSidecarBase {
   std::vector<ColumnSchema> MakeColumnSchemasFromRequest() const;
 
   bool should_apply_intents(IsolationLevel isolation_level) override;
-  void SetUsedReadTime(const ReadHybridTime& used_time, const TabletId& tablet);
+  void SetUsedReadTime(
+      const ReadHybridTime& used_time, const TabletId& tablet,
+      const HybridTime& node_limit, const TabletServerId& node_uuid);
   const ReadHybridTime& used_read_time() const { return used_read_time_; }
   const TabletId& used_tablet() const { return used_tablet_; }
+  const HybridTime& used_node_limit() const { return used_node_limit_; }
+  const TabletServerId& used_node_uuid() const { return used_node_uuid_; }
 
   Status GetPartitionKey(std::string* partition_key) const override;
 
@@ -596,6 +600,8 @@ class YBPgsqlReadOp : public YBPgsqlOpSidecarBase {
   // The tablet that served this operation.
   TabletId used_tablet_;
   YBTablePtr index_table_;
+  HybridTime used_node_limit_;
+  TabletServerId used_node_uuid_;
 };
 
 class YBPgsqlLockOp : public YBPgsqlOp {

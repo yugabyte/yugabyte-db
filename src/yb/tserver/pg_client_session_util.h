@@ -103,9 +103,11 @@ class PrefixLogger {
 struct TabletReadTime {
   TabletId tablet_id;
   ReadHybridTime value;
+  HybridTime node_limit;
+  TabletServerId node_uuid;
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(tablet_id, value);
+    return YB_STRUCT_TO_STRING(tablet_id, value, node_limit, node_uuid);
   }
 };
 

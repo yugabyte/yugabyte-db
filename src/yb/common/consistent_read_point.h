@@ -36,6 +36,7 @@ class ConsistentReadPoint {
  public:
   // A map of tablet id to local limits.
   using HybridTimeMap = UnorderedStringMap<TabletId, HybridTime>;
+  using NodeLimitMap = UnorderedStringMap<TabletServerId, HybridTime>;
 
   explicit ConsistentReadPoint(const scoped_refptr<ClockBase>& clock);
 
@@ -58,10 +59,16 @@ class ConsistentReadPoint {
   // Get the read time of this read point for a tablet.
   [[nodiscard]] ReadHybridTime GetReadTime(TabletIdView tablet) const EXCLUDES(mutex_);
 
+  // Node limit if found, global limit otherwise.
+  [[nodiscard]] HybridTime GetNodeLimit(const TabletServerId& node) const EXCLUDES(mutex_);
+
   // Notify that a tablet requires restart. This method is thread-safe.
   void RestartRequired(TabletIdView tablet, const ReadHybridTime& restart_time) EXCLUDES(mutex_);
 
   void UpdateLocalLimit(TabletIdView tablet, HybridTime local_limit) EXCLUDES(mutex_);
+
+  // Update the local limit for the node.
+  void UpdateNodeLimit(const TabletServerId& node, HybridTime node_limit) EXCLUDES(mutex_);
 
   // Does the current read require restart?
   [[nodiscard]] bool IsRestartRequired() const EXCLUDES(mutex_);
@@ -100,16 +107,22 @@ class ConsistentReadPoint {
     Momento(const ReadHybridTime& read_time,
           HybridTime restart_read_ht,
           const HybridTimeMap& local_limits,
-          const HybridTimeMap& restarts) :
+          const HybridTimeMap& restarts,
+          const NodeLimitMap& node_limits,
+          const NodeLimitMap& node_limits_for_restart) :
         read_time_(read_time),
         restart_read_ht_(restart_read_ht),
         local_limits_(local_limits),
-        restarts_(restarts) {}
+        restarts_(restarts),
+        node_limits_(node_limits),
+        node_limits_for_restart_(node_limits_for_restart) {}
 
     ReadHybridTime read_time_;
     HybridTime restart_read_ht_;
     HybridTimeMap local_limits_;
     HybridTimeMap restarts_;
+    NodeLimitMap node_limits_;
+    NodeLimitMap node_limits_for_restart_;
 
     friend class ConsistentReadPoint;
   };
@@ -124,6 +137,8 @@ class ConsistentReadPoint {
       ClampUncertaintyWindow clamp = ClampUncertaintyWindow::kFalse) REQUIRES(mutex_);
   void UpdateLimitsMapUnlocked(
       TabletIdView tablet, const HybridTime& local_limit, HybridTimeMap* map) REQUIRES(mutex_);
+  void UpdateNodeLimitsMapUnlocked(
+      const TabletServerId& node, const HybridTime& node_limit) REQUIRES(mutex_);
   void RestartRequiredUnlocked(TabletIdView tablet, const ReadHybridTime& restart_time)
       REQUIRES(mutex_);
   [[nodiscard]] bool IsRestartRequiredUnlocked() const REQUIRES(mutex_);
@@ -145,6 +160,12 @@ class ConsistentReadPoint {
   // Restarts that happen during a consistent read. Used to initialise local_limits for restarted
   // read.
   HybridTimeMap restarts_ GUARDED_BY(mutex_);
+
+  // Local limit but computed per node instead of per tablet.
+  NodeLimitMap node_limits_ GUARDED_BY(mutex_);
+
+  // Used to init node_limits_ for a restarted read.
+  NodeLimitMap node_limits_for_restart_ GUARDED_BY(mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(ConsistentReadPoint);
 };

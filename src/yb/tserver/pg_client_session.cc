@@ -4553,6 +4553,9 @@ class PgClientSession::Impl {
       VLOG_WITH_PREFIX(3) << "Applying non empty used read time: " << read_time_data.value
           << " to read time serial no: " << read_time_serial_no_;
       session.SetReadPoint(read_time_data.value, read_time_data.tablet_id);
+      if (read_time_data.node_limit) {
+        session.read_point()->UpdateNodeLimit(read_time_data.node_uuid, read_time_data.node_limit);
+      }
     }
     return Status::OK();
   }
