@@ -11,6 +11,7 @@
 // under the License.
 
 #include <algorithm>
+#include <optional>
 
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.pb.h"
@@ -18,14 +19,18 @@
 #include "yb/common/common_flags.h"
 #include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/entity_ids.h"
+#include "yb/docdb/consensus_frontier.h"
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 #include "yb/master/master.h"
 #include "yb/master/master_tserver.h"
 #include "yb/master/sys_catalog_constants.h"
+#include "yb/rocksdb/db.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/flags.h"
 #include "yb/util/test_macros.h"
 
+DECLARE_bool(TEST_disable_wal_retention_time);
+DECLARE_int32(log_min_segments_to_retain);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 
 namespace yb {
@@ -99,6 +104,7 @@ class CDCSDKConsumptionConsistentChangesTest : public CDCSDKYsqlTest {
     RETURN_NOT_OK(DestroyVirtualWAL());
     return ExecuteYBAdminCommand("pause_replication_slot", {slot_name});
   }
+  void TestStoppedSlotRetainsWalIntentsAndHistory(bool pub_refresh);
   void TestExplcictCheckpointMovementAfterDDL(bool no_activity_post_ddl);
   void TestSysCatalogRetentionBarriers(
       bool use_grpc_stream, bool use_logical_replication_stream, bool add_dummy_grpc_slot_entry);
@@ -7669,6 +7675,143 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConvertedSlotExpiresIfConsume
   ASSERT_NOK_STR_CONTAINS(
       InitVirtualWALOnce(stream_id, table.table_id(), kVWALSessionId1),
       Format("Cannot add tablet: $0", master::kSysCatalogTabletId));
+}
+
+// While the consumer is stopped across the upgrade, only the CDC retention barriers keep the WAL,
+// intents and history the slot needs, on its user tablet and on the sys catalog tablet:
+// time-based WAL and history retention are off, and the stop outlasts the cdc_intent_retention_ms
+// the slot was created with. The raised cdc_intent_retention_ms is what keeps the barriers alive.
+void CDCSDKConsumptionConsistentChangesTest::TestStoppedSlotRetainsWalIntentsAndHistory(
+    bool pub_refresh) {
+  ToggleDDLMode(/* use_legacy = */ false);
+  const auto initial_retention = MonoDelta::FromSeconds(10) * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = initial_retention.ToMilliseconds();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_master_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_wal_retention_time) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) = 1;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false, true));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName, 1));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  // FULL makes each UPDATE carry a before image, read from the table's history.
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 REPLICA IDENTITY FULL", kTableName));
+  constexpr auto kSlotName = "test_slot";
+  const auto stream_id = pub_refresh
+      ? ASSERT_RESULT(CreatePubRefreshSlot(kSlotName))
+      : ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(kSlotName));
+
+  const auto raised_retention = initial_retention * 12;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = raised_retention.ToMilliseconds();
+  if (pub_refresh) {
+    ASSERT_OK(SetBarrierAndPause(kSlotName, stream_id, table.table_id(), &conn, 1));
+  } else {
+    ASSERT_OK(InsertRow(&conn, 1));
+    ASSERT_OK(GetAllPendingTxnsFromVirtualWAL(
+        stream_id, {table.table_id()}, 1 /* expected_dml_records */, true /* init_virtual_wal */));
+    ASSERT_OK(DestroyVirtualWAL());
+  }
+
+  for (int value : {11, 12}) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "UPDATE $0 SET $1 = $2 WHERE $3 = 1", kTableName, kValueColumnName, value,
+        kKeyColumnName));
+  }
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(InsertRow(&conn, 2));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN value_2 text", kTableName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 ($1, $2, value_2) VALUES (3, 30, 'foo')", kTableName, kKeyColumnName,
+      kValueColumnName));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN value_2", kTableName));
+  ASSERT_OK(InsertRow(&conn, 4));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  auto user_tablet_peer =
+      ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets[0].tablet_id()));
+  auto sys_catalog_peer =
+      ASSERT_RESULT(test_cluster_.mini_cluster_->GetLeaderMiniMaster())->tablet_peer();
+  std::vector<HybridTime> history_cutoffs;
+  auto collect_garbage = [&]() -> Status {
+    for (const auto& peer : {user_tablet_peer, sys_catalog_peer}) {
+      auto tablet = VERIFY_RESULT(peer->shared_tablet());
+      RETURN_NOT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
+      RETURN_NOT_OK(tablet->ForceManualRocksDBCompact());
+      auto frontier = tablet->regular_db()->GetFlushedFrontier();
+      SCHECK(frontier, IllegalState, Format("$0 has no flushed frontier", peer->LogPrefix()));
+      history_cutoffs.push_back(
+          down_cast<docdb::ConsensusFrontier&>(*frontier).history_cutoff().primary_cutoff_ht);
+      SCHECK_GT(
+          VERIFY_RESULT(tablet->CountIntents()), 0, IllegalState,
+          Format("$0 has no intents left", peer->LogPrefix()));
+      RETURN_NOT_OK(peer->log()->AllocateSegmentAndRollOver());
+      RETURN_NOT_OK(peer->RunLogGC());
+    }
+    return Status::OK();
+  };
+  SleepFor(initial_retention + 2s * kTimeMultiplier);
+  ASSERT_OK(collect_garbage());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
+  ASSERT_STR_CONTAINS(
+      ASSERT_RESULT(PrepareReplicationSlotsForTransactionalDDL(
+          test_cluster()->GetMasterAddresses(), kSlotName)),
+      Format("Prepared replication slots for transactional DDL: [$0]", kSlotName));
+  ASSERT_OK(collect_garbage());
+
+  constexpr int kExpectedDmlRecords = 5;
+  auto resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, kExpectedDmlRecords, true /* init_virtual_wal */));
+  std::vector<int32_t> before_images;
+  std::optional<uint64_t> first_update_commit_time;
+  std::vector<uint64_t> insert_record_times;
+  std::vector<uint64_t> ddl_record_times;
+  for (const auto& record : resp.records) {
+    const auto& row_message = record.row_message();
+    if (row_message.op() == RowMessage_Op_UPDATE) {
+      if (!first_update_commit_time) {
+        first_update_commit_time = row_message.commit_time();
+      }
+      for (const auto& datum : row_message.old_tuple()) {
+        if (datum.column_name() == kValueColumnName) {
+          before_images.push_back(datum.pg_ql_value().int32_value());
+        }
+      }
+    } else if (row_message.op() == RowMessage_Op_INSERT) {
+      insert_record_times.push_back(row_message.record_time());
+    } else if (row_message.op() == RowMessage_Op_DDL) {
+      ddl_record_times.push_back(row_message.record_time());
+    }
+  }
+  ASSERT_EQ(before_images, (std::vector<int32_t>{10, 11}));
+  // Without the CDC barriers, both cutoffs would be within a second of the compaction, past the
+  // first UPDATE by more than the original cdc_intent_retention_ms.
+  ASSERT_TRUE(first_update_commit_time);
+  ASSERT_EQ(history_cutoffs.size(), 4);
+  for (const auto& cutoff : history_cutoffs) {
+    ASSERT_TRUE(cutoff.is_valid());
+    ASSERT_LT(cutoff, HybridTime(*first_update_commit_time));
+  }
+  ASSERT_EQ(insert_record_times.size(), 3);
+  // Only the sys catalog shows the DROP COLUMN, as a change to pg_attribute.
+  ASSERT_TRUE(std::ranges::any_of(ddl_record_times, [&](uint64_t record_time) {
+    return record_time > insert_record_times[1] && record_time < insert_record_times[2];
+  }));
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestPausedPubRefreshSlotRetention) {
+  TestStoppedSlotRetainsWalIntentsAndHistory(/* pub_refresh = */ true);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestStoppedImplicitSlotRetention) {
+  TestStoppedSlotRetainsWalIntentsAndHistory(/* pub_refresh = */ false);
 }
 
 // The walsender reads the catalog within the transaction of each record. Intents of a
