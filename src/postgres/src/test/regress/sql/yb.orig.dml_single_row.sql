@@ -1364,3 +1364,61 @@ DROP TABLE sr_cross_int4, sr_cross_int2, sr_cross_int8, sr_cross_part, sr_cross_
 	sr_cross_mixed, sr_cross_asc, sr_cross_varchar, sr_cross_domain, sr_cross_double,
 	sr_cross_text, sr_cross_real, sr_cross_date, sr_cross_name;
 DROP DOMAIN sr_cross_dom;
+
+--
+-- RLS WITH CHECK is evaluated on the new-row slot. On the single-row path that
+-- slot holds only the key and the constant SET values, so a policy that reads
+-- anything else must force the scan (DB-25003).
+--
+CREATE TABLE sr_rls (k int PRIMARY KEY, a int, b int);
+CREATE TABLE sr_rls_int8 (k bigint PRIMARY KEY, a int);
+INSERT INTO sr_rls VALUES (1, 1, 5);
+INSERT INTO sr_rls_int8 VALUES (1, 1);
+CREATE ROLE sr_rls_user;
+GRANT ALL ON sr_rls, sr_rls_int8 TO sr_rls_user;
+ALTER TABLE sr_rls ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sr_rls_int8 ENABLE ROW LEVEL SECURITY;
+-- Policy reads only the key: single-row.
+CREATE POLICY p ON sr_rls FOR ALL USING (true) WITH CHECK (k > 0);
+SET ROLE sr_rls_user;
+EXPLAIN (COSTS OFF) UPDATE sr_rls SET a = 2 WHERE k = 1;
+UPDATE sr_rls SET a = 2 WHERE k = 1;
+RESET ROLE;
+DROP POLICY p ON sr_rls;
+-- Policy reads only a constant SET column: single-row.
+CREATE POLICY p ON sr_rls FOR ALL USING (true) WITH CHECK (a < 100);
+SET ROLE sr_rls_user;
+EXPLAIN (COSTS OFF) UPDATE sr_rls SET a = 3 WHERE k = 1;
+UPDATE sr_rls SET a = 3 WHERE k = 1;
+UPDATE sr_rls SET a = 300 WHERE k = 1;
+RESET ROLE;
+-- Same policy, SET expression pushed down to DocDB: the slot has no value, no single-row.
+SET yb_enable_expression_pushdown TO on;
+SET ROLE sr_rls_user;
+EXPLAIN (COSTS OFF) UPDATE sr_rls SET a = a + 1 WHERE k = 1;
+UPDATE sr_rls SET a = a + 1 WHERE k = 1;
+RESET ROLE;
+SET yb_enable_expression_pushdown TO off;
+DROP POLICY p ON sr_rls;
+-- Policy reads a column that is not SET: no single-row, the stored b is checked.
+CREATE POLICY p ON sr_rls FOR ALL USING (true) WITH CHECK (b > 0);
+SET ROLE sr_rls_user;
+EXPLAIN (COSTS OFF) UPDATE sr_rls SET a = 5 WHERE k = 1;
+UPDATE sr_rls SET a = 5 WHERE k = 1;
+RESET ROLE;
+UPDATE sr_rls SET b = -1 WHERE k = 1;
+SET ROLE sr_rls_user;
+UPDATE sr_rls SET a = 6 WHERE k = 1;
+RESET ROLE;
+SELECT * FROM sr_rls;
+-- Policy reads the key, but the WHERE literal is not of the key's type: no single-row.
+CREATE POLICY p ON sr_rls_int8 FOR ALL USING (true) WITH CHECK (k > 0);
+SET ROLE sr_rls_user;
+EXPLAIN (COSTS OFF) UPDATE sr_rls_int8 SET a = 2 WHERE k = 1;
+UPDATE sr_rls_int8 SET a = 2 WHERE k = 1;
+EXPLAIN (COSTS OFF) UPDATE sr_rls_int8 SET a = 3 WHERE k = 1::bigint;
+UPDATE sr_rls_int8 SET a = 3 WHERE k = 1::bigint;
+RESET ROLE;
+SELECT * FROM sr_rls_int8;
+DROP TABLE sr_rls, sr_rls_int8;
+DROP ROLE sr_rls_user;
