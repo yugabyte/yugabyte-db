@@ -41,6 +41,7 @@ import org.yb.util.RequiresLinux;
 import org.yb.client.TestUtils;
 import org.yb.util.ProcessUtil;
 import org.yb.minicluster.MiniYBClusterBuilder;
+import org.yb.pgsql.ConnectionBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 import com.google.common.base.Strings;
 import com.google.common.net.HostAndPort;
@@ -1182,61 +1183,70 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
 
   @Test
   public void testTextSearchConfigMakesConnectionSticky() throws Exception {
-    try (Connection conn = getConnectionBuilder()
-            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
-            .connect();
-         Statement stmt = conn.createStatement()) {
-      stmt.execute("CREATE TEXT SEARCH CONFIGURATION public.cm_ts_cfg (COPY = english)");
-    }
-
-    try (Connection conn = getConnectionBuilder()
-            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
-            .connect();
-         Statement stmt = conn.createStatement()) {
-      stmt.execute("SET default_text_search_config = 'public.cm_ts_cfg'");
-      assertConnectionStickyState(stmt, true);
-    }
-
-    try (Connection conn = getConnectionBuilder()
-            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
-            .withOptions("-c default_text_search_config=public.cm_ts_cfg")
-            .connect();
-         Statement stmt = conn.createStatement()) {
-      assertConnectionStickyState(stmt, true);
-
-      try (Connection other = getConnectionBuilder()
-              .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
-              .connect();
-           Statement otherStmt = other.createStatement()) {
-        otherStmt.execute("DROP TEXT SEARCH CONFIGURATION public.cm_ts_cfg");
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
+    for (boolean startupPacket : new boolean[] {false, true}) {
+      for (boolean rename : new boolean[] {false, true}) {
+        String cfg = "cm_ts_cfg_" + (startupPacket ? "startup" : "set") +
+            (rename ? "_rename" : "_drop");
+        checkStickyAfterObjectChange("default_text_search_config", "public." + cfg,
+            startupPacket,
+            "CREATE TEXT SEARCH CONFIGURATION public." + cfg + " (COPY = english)",
+            rename ?
+                "ALTER TEXT SEARCH CONFIGURATION public." + cfg + " RENAME TO " + cfg + "_new" :
+                "DROP TEXT SEARCH CONFIGURATION public." + cfg,
+            "DROP TEXT SEARCH CONFIGURATION IF EXISTS public." + cfg,
+            "DROP TEXT SEARCH CONFIGURATION IF EXISTS public." + cfg + "_new");
       }
-
-      ResultSet rs = stmt.executeQuery("SHOW default_text_search_config");
-      assertTrue(rs.next());
-      assertEquals("public.cm_ts_cfg", rs.getString(1));
     }
   }
 
   @Test
   public void testTableAccessMethodMakesConnectionSticky() throws Exception {
-    try (Connection conn = getConnectionBuilder()
-            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
-            .connect();
-         Statement stmt = conn.createStatement()) {
-      stmt.execute("CREATE ACCESS METHOD cm_am TYPE TABLE HANDLER heap_tableam_handler");
-      stmt.execute("SET default_table_access_method = cm_am");
-      assertConnectionStickyState(stmt, true);
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
+    checkStickyAfterObjectChange("default_table_access_method", "cm_am_set",
+        false /* startupPacket */,
+        "CREATE ACCESS METHOD cm_am_set TYPE TABLE HANDLER heap_tableam_handler",
+        "DROP ACCESS METHOD cm_am_set",
+        "DROP ACCESS METHOD IF EXISTS cm_am_set");
+  }
 
-      try (Connection other = getConnectionBuilder()
-              .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
-              .connect();
-           Statement otherStmt = other.createStatement()) {
-        otherStmt.execute("DROP ACCESS METHOD cm_am");
+  // The client sets guc to value, then another session changes the object it names. With a single
+  // backend, a second client is queued behind the client. If the client were not sticky, the
+  // second client would take the backend, and the client's next query would replay value on it
+  // and fail, since the name no longer resolves.
+  private void checkStickyAfterObjectChange(String guc, String value, boolean startupPacket,
+      String createSql, String changeSql, String... cleanupSqls) throws Exception {
+    try (Connection pg = connectToPostgres();
+         Statement pgStmt = pg.createStatement()) {
+      pgStmt.execute(createSql);
+      try {
+        ConnectionBuilder builder = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR);
+        if (startupPacket) {
+          builder = builder.withOptions("-c " + guc + "=" + value);
+        }
+        QueuedClient queued;
+        try (Connection conn = builder.connect();
+             Statement stmt = conn.createStatement()) {
+          if (!startupPacket) {
+            stmt.execute("SET " + guc + " = '" + value + "'");
+          }
+          int pid = queryInt(stmt, "SELECT pg_backend_pid()");
+          pgStmt.execute(changeSql);
+
+          queued = startQueuedClient();
+          queued.assertBlocked();
+          assertEquals(pid, queryInt(stmt, "SELECT pg_backend_pid()"));
+          ResultSet rs = stmt.executeQuery("SHOW " + guc);
+          assertTrue(rs.next());
+          assertEquals(value, rs.getString(1));
+        }
+        queued.assertServed();
+      } finally {
+        for (String sql : cleanupSqls) {
+          pgStmt.execute(sql);
+        }
       }
-
-      ResultSet rs = stmt.executeQuery("SHOW default_table_access_method");
-      assertTrue(rs.next());
-      assertEquals("cm_am", rs.getString(1));
     }
   }
 
