@@ -1309,13 +1309,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
   }
 
   /**
-   * @param skipMasterAZs AZs this call does not touch, for both server types of the primary
-   *     cluster.
-   *     <p>Before the master removes, these are the AZs a full move of masters replaces: the full
-   *     move gives their new pods the master list. After a full move, these are the AZs outside it,
-   *     which the edit updates separately.
-   * @param skipTserverAZs the same, for a read replica.
-   * @param keepDiskSpecAZs AZs to render with the disk spec their StatefulSets have now. See
+   * @param skipMasterAZs AZs this call does not render, for the primary cluster. See
+   *     upgradePodsNonRestart. The in-memory pushes do not depend on it.
+   * @param skipTserverAZs AZs this call does not render, for a read replica.
+   * @param keepDiskSpecAZs AZs to render with the disk spec their StatefulSets run with now. See
    *     upgradePodsNonRestart.
    */
   public void createMasterAddressesUpdateTask(

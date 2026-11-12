@@ -1054,20 +1054,23 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   }
 
   /**
-   * @param skipMasterAZs AZs this call does not touch when serverType is MASTER or EITHER. Both
-   *     server types of those AZs are skipped.
-   *     <p>Used by an edit that fully moves masters. Their old master StatefulSets cannot take the
-   *     edit's new disk spec, and the full move gives the new ones the master list.
-   * @param skipTserverAZs AZs this call does not touch when serverType is TSERVER, which is how a
-   *     read replica is rendered.
-   * @param keepDiskSpecAZs AZs to render with the disk spec their StatefulSets have now, instead of
-   *     the edit's new one. Each AZ maps to the disk size to keep per server type. A size is there
-   *     only when a disk resize earlier in the edit has already saved the new size to the universe.
-   *     <p>Used for StatefulSets the edit has not resized or replaced yet: K8s rejects a change to
-   *     their volumeClaimTemplates.
-   *     <p>Example: an edit replaces az-3 with az-4 and changes the storage class. The Secret
-   *     render before the master removes still updates az-3, which must keep its current storage
-   *     class.
+   * @param skipMasterAZs AZs this call does not render. Read when serverType is MASTER or EITHER.
+   *     Each AZ is one helm release holding both its master and tserver StatefulSets, so a skipped
+   *     AZ is not rendered at all.
+   *     <p>Callers pass the AZs that another step of the edit renders. Example: in an edit that
+   *     changes the master storage class, the full move renders the AZs it moves, so the other
+   *     renders of that edit skip them.
+   * @param skipTserverAZs AZs this call does not render. Read instead of skipMasterAZs when
+   *     serverType is TSERVER, as for a read replica.
+   * @param keepDiskSpecAZs AZs to render with the disk spec their StatefulSets run with now, not
+   *     the edit's new spec. Pass the AZs whose StatefulSets the edit has not resized or replaced
+   *     yet when this render runs: K8s rejects a render that changes their volumeClaimTemplates.
+   *     <p>Storage class and volume count then come from the universe, and so does disk size by
+   *     default. If a disk resize earlier in the edit has already saved the new size there, the map
+   *     value holds the original size per server type; otherwise it is empty.
+   *     <p>Example: an edit replaces az-3 with az-4 and changes the storage class. The render
+   *     before the master removes still updates az-3, which the edit never moves, so az-3 is passed
+   *     here and keeps its current storage class.
    */
   public void upgradePodsNonRestart(
       String universeName,
@@ -3352,11 +3355,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
   /**
    * @param keptDiskSizes null to render the edit's new disk spec. Non-null to render the spec the
-   *     StatefulSets have now: the saved storage class and volume count, with the sizes in this map
-   *     per server type.
-   *     <p>Used for AZs the edit has not resized or replaced yet, since K8s rejects a change to
-   *     their volumeClaimTemplates. A size is in the map only when a disk resize earlier in the
-   *     edit has already saved the new size to the universe. See upgradePodsNonRestart.
+   *     StatefulSets run with now: storage class and volume count from the universe, and disk size
+   *     from this map per server type, or from the universe when the map has none. See
+   *     keepDiskSpecAZs in upgradePodsNonRestart.
    */
   public KubernetesCommandExecutor getSingleNonRestartKubernetesExecutorTaskForServerTypeTask(
       String universeName,
