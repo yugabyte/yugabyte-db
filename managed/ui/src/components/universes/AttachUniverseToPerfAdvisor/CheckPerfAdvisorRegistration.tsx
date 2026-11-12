@@ -49,7 +49,6 @@ export const CheckPerfAdvisorRegistration = ({
     }
   );
   const registrationStatus = !!getUniversePaRegistrationStatus.data?.success;
-  const mode = registrationMode ?? getUniversePaRegistrationStatus.data?.mode;
 
   if (
     getUniversePaRegistrationStatus.isLoading ||
@@ -73,7 +72,7 @@ export const CheckPerfAdvisorRegistration = ({
         timezone={timezone}
         apiUrl={apiUrl}
         registrationStatus={registrationStatus}
-        registrationMode={mode}
+        registrationMode={registrationMode}
       />
     )
   );

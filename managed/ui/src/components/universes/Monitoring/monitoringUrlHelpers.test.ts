@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { URL_TAB_PATH } from '@yugabytedb/perf-advisor-ui';
+import { PaRegistrationMode } from '@app/redesign/features/PerfAdvisor/api';
 import {
   MetricsSubTab,
   MonitoringItem,
   getLegacyMonitoringRedirect,
   getMonitoringNav,
   getMonitoringRedirect,
+  getPerfAdvisorDefaultItem,
   isMonitoringPath
 } from './monitoringUrlHelpers';
 
@@ -188,6 +190,16 @@ describe('Perf Advisor path segments', () => {
     expect(MonitoringItem.CLUSTER_LOAD).toBe(URL_TAB_PATH.CLUSTER_LOAD);
     expect(MonitoringItem.DATABASES).toBe(URL_TAB_PATH.DATABASES);
     expect(MetricsSubTab.ADVANCED).toBe(URL_TAB_PATH.METRICS);
+  });
+});
+
+describe('getPerfAdvisorDefaultItem', () => {
+  it('opens Cluster Load in advanced mode and Databases otherwise', () => {
+    expect(getPerfAdvisorDefaultItem(PaRegistrationMode.ADVANCED)).toBe(
+      MonitoringItem.CLUSTER_LOAD
+    );
+    expect(getPerfAdvisorDefaultItem(PaRegistrationMode.BASIC)).toBe(MonitoringItem.DATABASES);
+    expect(getPerfAdvisorDefaultItem(undefined)).toBe(MonitoringItem.DATABASES);
   });
 });
 

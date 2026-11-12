@@ -625,9 +625,7 @@ class UniverseDetail extends Component {
 
     const isPATabEnabled = isPerformanceTabEnabled(runtimeConfigs, universePaRegistrationStatus);
 
-    const isFeatureShown = (feature) =>
-      isNotHidden(currentCustomer.data.features, feature) &&
-      !isDisabled(currentCustomer.data.features, feature);
+    const isFeatureShown = (feature) => !isNonAvailable(currentCustomer.data.features, feature);
     const showClassicMetrics = isFeatureShown('universes.details.metrics');
     const showQueries = isFeatureShown('universes.details.queries');
     const showPerfAdvisor =

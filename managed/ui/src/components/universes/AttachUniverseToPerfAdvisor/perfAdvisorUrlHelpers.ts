@@ -8,7 +8,7 @@ import { MONITORING_PATH } from '@app/redesign/helpers/constants';
 const anomalyUuidPattern = new RegExp(`/${URL_TAB_PATH.ANOMALIES}/([^/]+)`);
 const perfAdvisorDrilldownPattern = new RegExp(`/${MONITORING_PATH}/([^/?#]+)`);
 
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** queryId from the search string — set when a query drilldown is opened. */
 export const getQueryIdFromUrl = (): string | null =>

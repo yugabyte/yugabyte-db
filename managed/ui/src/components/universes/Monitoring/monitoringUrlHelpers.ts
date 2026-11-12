@@ -1,5 +1,7 @@
 import { URL_TAB_PATH } from '@yugabytedb/perf-advisor-ui';
 import { MONITORING_PATH, PERF_ADVISOR_PATH } from '@app/redesign/helpers/constants';
+import { PaRegistrationMode } from '@app/redesign/features/PerfAdvisor/api';
+import { uuidPattern } from '../AttachUniverseToPerfAdvisor/perfAdvisorUrlHelpers';
 
 /**
  * URLs of the universe Monitoring tab, and redirects from the Metrics, Queries and Performance
@@ -45,8 +47,6 @@ export interface MonitoringNav {
   metricsSubTab: MetricsSubTab | null;
 }
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 export const getMonitoringBasePath = (universeUuid: string) =>
   `/universes/${universeUuid}/${MONITORING_PATH}`;
 
@@ -81,7 +81,7 @@ export const getMonitoringNav = (pathname: string | undefined): MonitoringNav =>
   if (first === URL_TAB_PATH.DATABASES) {
     return { item: MonitoringItem.DATABASES, metricsSubTab: null };
   }
-  if (first === URL_TAB_PATH.CLUSTER_LOAD || (first !== undefined && UUID_PATTERN.test(first))) {
+  if (first === URL_TAB_PATH.CLUSTER_LOAD || (first !== undefined && uuidPattern.test(first))) {
     return { item: MonitoringItem.CLUSTER_LOAD, metricsSubTab: null };
   }
   return { item: null, metricsSubTab: null };
@@ -94,6 +94,10 @@ export const PERF_ADVISOR_ITEMS: MonitoringItem[] = [
 
 const isPerfAdvisorItem = (item: MonitoringItem | null): item is MonitoringItem =>
   item !== null && PERF_ADVISOR_ITEMS.includes(item);
+
+// Cluster Load needs advanced mode; basic mode has only Databases.
+export const getPerfAdvisorDefaultItem = (mode: PaRegistrationMode | undefined): MonitoringItem =>
+  mode === PaRegistrationMode.ADVANCED ? MonitoringItem.CLUSTER_LOAD : MonitoringItem.DATABASES;
 
 /** Whether this universe has the view a Monitoring path shows. */
 export const isMonitoringNavShown = (

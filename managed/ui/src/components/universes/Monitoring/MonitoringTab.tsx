@@ -119,9 +119,10 @@ const MonitoringTabComponent: FC<MonitoringTabProps & WithRouterProps> = ({
     universeUuid: string;
     showClusterLoad: boolean;
     showDatabases: boolean;
+    registrationMode?: PaRegistrationMode;
   } | null>(null);
   if (!isPerfAdvisorPending) {
-    settledPerfAdvisor.current = { universeUuid, showClusterLoad, showDatabases };
+    settledPerfAdvisor.current = { universeUuid, showClusterLoad, showDatabases, registrationMode };
   }
   const settled =
     settledPerfAdvisor.current?.universeUuid === universeUuid ? settledPerfAdvisor.current : null;
@@ -130,6 +131,7 @@ const MonitoringTabComponent: FC<MonitoringTabProps & WithRouterProps> = ({
   const showPaClusterLoad = useSettled ? settled.showClusterLoad : showClusterLoad;
   const showPaDatabases =
     (useSettled ? settled.showDatabases : showDatabases) && !!showDatabasesView;
+  const paRegistrationMode = useSettled ? settled.registrationMode : registrationMode;
 
   const metricsSubTabs: MetricsSubTab[] = [
     ...(showClassicMetrics ? [MetricsSubTab.CLASSIC] : []),
@@ -197,7 +199,7 @@ const MonitoringTabComponent: FC<MonitoringTabProps & WithRouterProps> = ({
       universeUuid={universeUuid}
       timezone={timezone}
       appName={AppName.YBA}
-      registrationMode={registrationMode}
+      registrationMode={paRegistrationMode}
     />
   );
 

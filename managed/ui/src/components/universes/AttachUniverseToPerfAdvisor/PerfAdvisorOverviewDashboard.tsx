@@ -19,9 +19,9 @@ import { YBPanelItem } from '../../panels';
 import { usePerfAdvisorRuntimeConfigs } from './usePerfAdvisorRuntimeConfigs';
 import { getQueryIdFromUrl, getTroubleshootUuidFromUrl } from './perfAdvisorUrlHelpers';
 import {
-  MonitoringItem,
   getMonitoringBasePath,
-  getMonitoringItemPath
+  getMonitoringItemPath,
+  getPerfAdvisorDefaultItem
 } from '../Monitoring/monitoringUrlHelpers';
 
 interface PerfAdvisorOverviewDashboardProps {
@@ -57,10 +57,7 @@ export const PerfAdvisorOverviewDashboard = ({
   // In-app (SPA) navigation without a full page reload.
   const onNavigateToUrl = (url: string) => {
     const [path, search] = url.split('?');
-    const perfAdvisorItem =
-      registrationMode === PaRegistrationMode.ADVANCED
-        ? MonitoringItem.CLUSTER_LOAD
-        : MonitoringItem.DATABASES;
+    const perfAdvisorItem = getPerfAdvisorDefaultItem(registrationMode);
     browserHistory.push(
       path.replace(/\/+$/, '') === getMonitoringBasePath(universeUuid)
         ? `${getMonitoringItemPath(universeUuid, perfAdvisorItem)}${search ? `?${search}` : ''}`

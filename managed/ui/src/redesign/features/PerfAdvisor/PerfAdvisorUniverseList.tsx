@@ -8,8 +8,8 @@ import { YBTable } from '../../../components/common/YBTable/YBTable';
 import { PaRegistrationMode, QUERY_KEY, PerfAdvisorAPI } from './api';
 import { toast } from 'react-toastify';
 import {
-  MonitoringItem,
-  getMonitoringItemPath
+  getMonitoringItemPath,
+  getPerfAdvisorDefaultItem
 } from '../../../components/universes/Monitoring/monitoringUrlHelpers';
 
 interface PerfAdvisorUniverseListProps {
@@ -127,12 +127,7 @@ export const PerfAdvisorUniverseList = ({
     // universe itself.
     const path =
       isEmbeddedPAEnabled && row.mode !== PaRegistrationMode.ONLINE
-        ? getMonitoringItemPath(
-            row.universeUuid,
-            row.mode === PaRegistrationMode.ADVANCED
-              ? MonitoringItem.CLUSTER_LOAD
-              : MonitoringItem.DATABASES
-          )
+        ? getMonitoringItemPath(row.universeUuid, getPerfAdvisorDefaultItem(row.mode))
         : `/universes/${row.universeUuid}`;
     return <Link to={path}>{displayName}</Link>;
   };
