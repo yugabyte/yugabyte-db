@@ -46,6 +46,14 @@
 
 int			yb_log_heap_snapshot_on_exit_threshold = -1;
 int			yb_startup_free_memory_release_threshold = 0;
+int			yb_tcmalloc_skip_subrelease_short_interval = 0;
+int			yb_tcmalloc_skip_subrelease_long_interval = 0;
+bool		yb_tcmalloc_release_after_statement = true;
+bool		yb_tcmalloc_drain_cpu_caches_after_statement = false;
+bool		yb_enable_tcmalloc_background_thread = false;
+int			yb_tcmalloc_background_release_rate = 10 * 1024 * 1024;
+
+static bool yb_tcmalloc_background_thread_started = false;
 
 static void YbLogHeapSnapshotProcExit(int status, Datum arg);
 
@@ -355,4 +363,74 @@ YbReleaseFreeMemoryAfterStartup(void)
 	if (stats.pageheap_free_bytes >=
 		(int64) yb_startup_free_memory_release_threshold * 1024)
 		YBCTCMallocReleaseFreeMemory(PG_INT64_MAX);
+}
+
+/*
+ * Called once the reply to a statement has been flushed, so the client does
+ * not wait for it.  Without the release, a backend can keep the pages that a
+ * large statement freed for the rest of its lifetime.
+ *
+ * The lookback GUCs apply to this release and to the background thread while
+ * idle (YbSetTCMallocBackgroundReleaseIdle).  The TCMalloc GC that runs
+ * during statements keeps TCMalloc's own lookbacks, which hold on to the free
+ * pages that cover the statement's recent peak instead of subreleasing them.
+ *
+ * The drain must come first: it returns the objects held in the per-CPU
+ * caches to the central free lists, which can free whole spans for the
+ * release to return.  It visits every size class on every CPU that the
+ * backend ran on, which costs tens of microseconds per statement.
+ */
+void
+YbReleaseTCMallocMemoryAfterStatement(void)
+{
+	if (yb_tcmalloc_drain_cpu_caches_after_statement)
+		YBCTCMallocDrainCpuCaches();
+	if (yb_tcmalloc_release_after_statement)
+		YBCTCMallocReleaseMemoryToSystemWithLookbacks(PG_INT64_MAX,
+													  yb_tcmalloc_skip_subrelease_short_interval,
+													  yb_tcmalloc_skip_subrelease_long_interval);
+}
+
+/*
+ * Start a thread that runs TCMalloc's background actions for the rest of the
+ * backend's lifetime.  Besides releasing page heap memory, it drains the
+ * per-CPU and transfer caches that the backend has not used for a while,
+ * which no other TCMalloc API reaches.
+ */
+void
+YbMaybeStartTCMallocBackgroundThread(void)
+{
+	if (!yb_enable_tcmalloc_background_thread)
+		return;
+	HandleYBStatus(YBCStartTCMallocBackgroundThread());
+	yb_tcmalloc_background_thread_started = true;
+}
+
+/*
+ * Return free memory to the OS only while the backend waits for the client.
+ * Releasing during a statement subreleases pages that the statement then
+ * reuses, which splits transparent huge pages and makes the statement fault
+ * them back in as 4 KB pages.
+ *
+ * The thread's release uses TCMalloc's process-wide lookbacks, so those are
+ * set to the lookback GUCs while idle.  While a statement runs they are back
+ * at TCMalloc's own values, which the TCMalloc GC that runs during statements
+ * uses.  Each switch changes the lookbacks while the release rate is 0.
+ */
+void
+YbSetTCMallocBackgroundReleaseIdle(bool idle)
+{
+	if (!yb_tcmalloc_background_thread_started)
+		return;
+	if (idle)
+	{
+		YBCSetTCMallocSkipSubreleaseIntervals(yb_tcmalloc_skip_subrelease_short_interval,
+											  yb_tcmalloc_skip_subrelease_long_interval);
+		YBCSetTCMallocBackgroundReleaseRate(yb_tcmalloc_background_release_rate);
+	}
+	else
+	{
+		YBCSetTCMallocBackgroundReleaseRate(0);
+		YBCRestoreTCMallocSkipSubreleaseIntervals();
+	}
 }
