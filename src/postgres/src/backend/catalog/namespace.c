@@ -3341,16 +3341,19 @@ GetTempNamespaceBackendId(Oid namespaceId)
 	nspname = get_namespace_name(namespaceId);
 	if (!nspname)
 		return InvalidBackendId;	/* no such namespace? */
-	/*
-	 * YB: the name may be pg_temp_<tserver_uuid>_<backend_id>, in which case
-	 * the backend ID refers to a backend on that tserver.
-	 */
 	if (strncmp(nspname, "pg_temp_", 8) == 0)
-		result = atoi(strrchr(nspname, '_') + 1);
+		result = atoi(nspname + 8);
 	else if (strncmp(nspname, "pg_toast_temp_", 14) == 0)
-		result = atoi(strrchr(nspname, '_') + 1);
+		result = atoi(nspname + 14);
 	else
 		result = InvalidBackendId;
+	/*
+	 * YB: the name may be pg_temp_<tserver_uuid>_<backend_id>, so take the
+	 * backend ID after the last underscore.  It may refer to a backend on
+	 * another tserver.
+	 */
+	if (result != InvalidBackendId)
+		result = atoi(strrchr(nspname, '_') + 1);
 	pfree(nspname);
 	return result;
 }
