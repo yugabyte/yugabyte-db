@@ -112,6 +112,50 @@ public class TestMessageSizeLimits extends BaseYsqlConnMgr {
     });
   }
 
+  // A SCRAM client sends a 1100-byte SASLInitialResponse, over PG's 1024-byte SASL limit, in auth
+  // passthrough mode with a single control connection. PG rejects it, and the next logins through
+  // that same control connection still succeed.
+  @Test
+  public void testOversizedSaslResponseInAuthPassthrough() throws Exception {
+    markClusterNeedsRecreation();
+    Map<String, String> flags = new HashMap<>();
+    flags.put("ysql_enable_auth", "true");
+    flags.put("ysql_conn_mgr_use_auth_backend", "false");
+    flags.put("ysql_conn_mgr_control_connection_pool_size", "1");
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), flags);
+
+    try (Connection conn = connectBystander();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("SET password_encryption = 'scram-sha-256'");
+      stmt.execute("CREATE ROLE scram_user LOGIN PASSWORD 'scram_pw'");
+    }
+
+    try (Socket socket = openSocket()) {
+      DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+      DataInputStream in = new DataInputStream(socket.getInputStream());
+      out.write(PgWireProtocol.buildStartupMessage("scram_user", "yugabyte", null));
+      out.flush();
+      PgMessage authRequest = PgWireProtocol.readMessage(in);
+      assertEquals("Expected an authentication request, got " + authRequest,
+          PgWireProtocol.BE_AUTHENTICATION, authRequest.type);
+      assertEquals("Expected AuthenticationSASL", 10,
+          ByteBuffer.wrap(authRequest.body).getInt());
+      out.write(passwordMessage(1100));
+      out.flush();
+      expectDropped(in);
+    }
+
+    for (int i = 0; i < 5; i++) {
+      try (Connection conn = getConnectionBuilder()
+               .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+               .withUser("scram_user")
+               .withPassword("scram_pw")
+               .connect()) {
+        assertAlive(conn);
+      }
+    }
+  }
+
   // Sends the probe in place of the client's password/SASL response, in both auth modes; the
   // mode is not runtime settable.
   private void forEachAuthMode(byte[] probe, ResponseCheck check) throws Exception {
