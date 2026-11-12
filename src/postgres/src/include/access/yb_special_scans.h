@@ -5,12 +5,10 @@
  *
  *	  Scan APIs for consumers outside the executor scan nodes:
  *	  catalog scans (systable lookups), ANALYZE row sampling, and
- *	  single-row fetch by ybctid.  Above the access methods, only
- *	  analyze.c, indexing.c, and yb_inheritscache.c include this
- *	  header.  ANALYZE row sampling stays until upstream adds a
- *	  table AM interface for sampling.  The catalog scans and the
- *	  fetch by ybctid are bypasses to remove, like the accessors in
- *	  yb_table_scan.h.
+ *	  single-row fetch by ybctid.  ANALYZE row sampling stays until
+ *	  upstream adds a table AM interface for sampling.  The catalog
+ *	  scans and the fetch by ybctid are bypasses to remove, like the
+ *	  accessors in yb_table_scan.h.
  *
  *	  Each section below is the API of one implementation file.  A
  *	  contract that belongs to the callers' subsystem, such as the
