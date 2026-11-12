@@ -272,6 +272,9 @@ set yb_fetch_row_limit = 128;
 
 update explain_query_options set with_analyze = false;
 
+-- enable_sort is off for the measured queries; the EXCEPT ALL below needs it
+-- back on, or the planner picks a hash set op sized from the CTE estimates.
+set enable_sort = on;
 (table baseline_scan_nodes
  except all
  select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
@@ -285,6 +288,7 @@ union all
  from queries q full join check_roundtrip_estimates x on x.qid = q.qid
  except all
  table baseline_scan_nodes);
+set enable_sort = off;
 
 update explain_query_options set with_analyze = true;
 
@@ -306,6 +310,9 @@ set yb_fetch_row_limit = 0;
 
 update explain_query_options set with_analyze = false;
 
+-- enable_sort is off for the measured queries; the EXCEPT ALL below needs it
+-- back on, or the planner picks a hash set op sized from the CTE estimates.
+set enable_sort = on;
 (table baseline_scan_nodes
  except all
  select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
@@ -319,6 +326,7 @@ union all
  from queries q full join check_roundtrip_estimates x on x.qid = q.qid
  except all
  table baseline_scan_nodes);
+set enable_sort = off;
 
 update explain_query_options set with_analyze = true;
 
@@ -340,6 +348,9 @@ set yb_fetch_row_limit = 0;
 
 update explain_query_options set with_analyze = false;
 
+-- enable_sort is off for the measured queries; the EXCEPT ALL below needs it
+-- back on, or the planner picks a hash set op sized from the CTE estimates.
+set enable_sort = on;
 (table baseline_scan_nodes
  except all
  select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
@@ -353,6 +364,7 @@ union all
  from queries q full join check_roundtrip_estimates x on x.qid = q.qid
  except all
  table baseline_scan_nodes);
+set enable_sort = off;
 
 update explain_query_options set with_analyze = true;
 

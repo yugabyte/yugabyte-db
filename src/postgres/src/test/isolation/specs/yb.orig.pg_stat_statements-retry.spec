@@ -15,7 +15,7 @@ step "s1_update" { UPDATE test SET v=20 WHERE k=1; }
 step "s1_commit" { COMMIT; }
 step "s1_pgss_filter_retries" { SELECT query, calls, rows FROM pg_stat_statements WHERE total_retries > 0; }
 step "s1_select_in_nonexistent_table" { SELECT * from nonexistent_table; }
-step "s1_pgss_reset" { SELECT pg_stat_statements_reset(); }
+step "s1_pgss_reset" { SELECT pg_stat_statements_reset() IS NOT NULL AS t; }
 
 session "s2"
 setup { BEGIN; }

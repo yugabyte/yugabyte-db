@@ -2342,6 +2342,7 @@ int			yb_insert_on_conflict_read_batch_size = 1024;
 bool		yb_enable_fkey_catcache = true;
 bool		yb_enable_fkey_batched_docdb_lookup_when_types_mismatch = true;
 bool		yb_enable_nop_alter_role_optimization = true;
+bool		yb_alter_type_reuse_expr_and_partial_indexes = true;
 bool		yb_enable_inplace_index_update = true;
 bool		yb_ignore_freeze_with_copy = true;
 bool		yb_enable_docdb_vector_type = false;
@@ -2376,11 +2377,7 @@ YBUpdateOptimizationOptions yb_update_optimization_options = {
 };
 
 YbQpmConfiguration yb_qpm_configuration = {
-	/*
-	 * YB_TODO_PG19MERGE: default flipped from YB_QPM_TRACK_ALL to YB_QPM_TRACK_NONE
-	 * due to various crashes on pg19. Restore once fixed.
-	 */
-	.track = YB_QPM_TRACK_NONE,
+	.track = YB_QPM_TRACK_ALL,
 	.cache_replacement_algorithm = YB_QPM_SIMPLE_CLOCK_LRU,
 	.max_cache_size = 5000,
 	.track_catalog_queries = true,
@@ -2455,6 +2452,7 @@ bool		yb_test_collation = false;
 bool		yb_test_inval_message_portability = false;
 int			yb_test_delay_after_applying_inval_message_ms = 0;
 int			yb_test_delay_set_local_tserver_inval_message_ms = 0;
+int			yb_test_delay_relation_grant_update_ms = 0;
 double		yb_test_delay_next_ddl = 0;
 int			yb_test_reset_retry_counts = -1;
 int			yb_test_force_parallel = YB_FORCE_PARALLEL_OFF;
@@ -7086,13 +7084,15 @@ YBRequiresCacheToCheckLocale(Oid collation)
 {
 	/*
 	 * pg_newlocale_from_collation has fast-paths for C_COLLATION_OID and
-	 * DEFAULT_COLLATION_OID, but for any other valid collation OID, it checks
-	 * the catalog cache. In DocDB, we cannot use the catalog cache - so we
-	 * should not push down collations where DocDB would need to access the
-	 * cache to get information about the locale.
+	 * DEFAULT_COLLATION_OID, and in DocDB also for YB_POSIX_COLLATION_OID, but
+	 * for any other valid collation OID, it checks the catalog cache. In
+	 * DocDB, we cannot use the catalog cache - so we should not push down
+	 * collations where DocDB would need to access the cache to get
+	 * information about the locale.
 	 */
 	return OidIsValid(collation) && collation != DEFAULT_COLLATION_OID
-		&& collation != C_COLLATION_OID;
+		&& collation != C_COLLATION_OID
+		&& collation != YB_POSIX_COLLATION_OID;
 }
 
 bool
@@ -7227,7 +7227,13 @@ YbRegisterSysTableForPrefetching(int sys_table_id)
 			break;
 		case AuthIdRelationId:	/* pg_authid */
 			db_id = Template1DbOid;
-			index_id = AuthIdRolnameIndexId;
+			/*
+			 * Mandatory: a conn mgr auth passthrough control backend looks up
+			 * roles by name while prefetching is active, and with its relcache
+			 * built, an AUTHNAME catcache miss (e.g. a dropped role) is an
+			 * index-ordered scan of pg_authid_rolname_index.
+			 */
+			mandatory_index_id = AuthIdRolnameIndexId;
 			sys_only_filter_attr = InvalidAttrNumber;
 			break;
 		case DatabaseRelationId:	/* pg_database */

@@ -93,8 +93,9 @@ import {
 } from '../../types';
 import { CloudType } from '../../../../../redesign/helpers/dtos';
 import {
-  buildFederationTargets,
+  buildFederationPayload,
   federationFormValuesFromProvider,
+  CloudAccessHeading,
   CrossCloudFederatedIamFields,
   FEDERATED_IAM_VALIDATION
 } from '../components/CrossCloudFederatedIamFields';
@@ -129,7 +130,7 @@ export interface GCPProviderEditFormFieldValues {
   version: number;
   vpcSetupType: VPCSetupType;
   ybFirewallTags: string;
-  enableFederatedIam?: boolean;
+  federationGcsCredentialFile?: File;
   federationGcsEnabled?: boolean;
   federationGcsAudience?: string;
   federationS3Enabled?: boolean;
@@ -437,6 +438,12 @@ export const GCPProviderEditForm = ({
           </FormField>
           <Box width="100%" display="flex" flexDirection="column" gridGap="32px">
             <FieldGroup heading="Cloud Info">
+              <CloudAccessHeading
+                infoTitle="Access to Google Cloud"
+                infoContent="Choose how YugabyteDB Anywhere authenticates to this Google Cloud project to create and manage universe nodes."
+              >
+                Access to Google Cloud
+              </CloudAccessHeading>
               <FormField>
                 <FieldLabel>Current Service Account</FieldLabel>
                 <YBInput value={serviceAccountIdentifer} disabled={true} fullWidth />
@@ -528,12 +535,6 @@ export const GCPProviderEditForm = ({
                   </FormField>
                 </>
               )}
-              <CrossCloudFederatedIamFields
-                control={formMethods.control}
-                isFormDisabled={isFormDisabled}
-                providerCloud="gcp"
-              />
-
               <FormField>
                 <FieldLabel>VPC Setup</FieldLabel>
                 <YBRadioGroupField
@@ -575,6 +576,11 @@ export const GCPProviderEditForm = ({
                   />
                 </FormField>
               )}
+              <CrossCloudFederatedIamFields
+                control={formMethods.control}
+                isFormDisabled={isFormDisabled}
+                providerCloud="gcp"
+              />
             </FieldGroup>
             <FieldGroup
               heading="Regions"
@@ -1023,10 +1029,7 @@ const constructProviderPayload = async (
                 })
               }),
           ...(formValues.ybFirewallTags && { ybFirewallTags: formValues.ybFirewallTags }),
-          enableFederatedIam: formValues.enableFederatedIam,
-          ...(formValues.enableFederatedIam && {
-            crossCloudFederationTargets: buildFederationTargets(formValues)
-          })
+          ...buildFederationPayload(formValues)
         }
       },
       ntpServers: formValues.ntpServers,

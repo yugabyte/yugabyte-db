@@ -90,6 +90,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   public static final String UPDATING_TASK_UUID_FIELD = "updatingTaskUUID";
   public static final String PLACEMENT_MODIFICATION_TASK_UUID_FIELD =
       "placementModificationTaskUuid";
+  public static final String IS_KUBERNETES_OPERATOR_CONTROLLED_FIELD =
+      "isKubernetesOperatorControlled";
 
   public static final Set<SoftwareUpgradeState> IN_PROGRESS_UNIV_SOFTWARE_UPGRADE_STATES =
       ImmutableSet.of(
@@ -596,9 +598,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (!userIntent.isMulticloudSupport()) {
         return userIntent.providerType;
       }
-      UUID providerUUID = getProviderUUIDForNode(nodeDetails);
-      return userIntent.getProviderSpecProperty(
-          providerUUID, spec -> spec.providerType, u -> u.providerType);
+      Optional<ProviderSpecification> providerOpt =
+          searchProviderUUIDByAz(nodeDetails.azUuid)
+              .map(uuid -> userIntent.getProviderSpecification(uuid));
+      if (!providerOpt.isPresent()) {
+        return Util.getProviderByAz(nodeDetails.azUuid).getCloudCode();
+      } else {
+        return providerOpt.get().providerType;
+      }
     }
 
     /**
@@ -678,6 +685,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         boolean validateGFlagsConsistency,
         boolean isAuthEnforced,
         boolean isFipsEnabled,
+        boolean useNodeToNodeClientCerts,
         Set<NodeDetails> nodes) {
       if (uuid == null) {
         throw new IllegalStateException("Cluster uuid should not be null");
@@ -697,10 +705,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         throw new PlatformServiceException(
             BAD_REQUEST, "Cannot enable YCQL Authentication if YCQL endpoint is disabled.");
       }
+      // Callers pass the universe node set. Storage, AZ, and proxy checks are per cluster.
+      Set<NodeDetails> clusterNodes =
+          CollectionUtils.isEmpty(nodes)
+              ? Collections.emptySet()
+              : nodes.stream().filter(n -> n.isInPlacement(uuid)).collect(Collectors.toSet());
       if (userIntent.isMulticloudSupport()) {
-        Util.validateSpecificationsIfPresent(userIntent.providerSpecifications, false);
+        Util.validateSpecificationsIfPresent(
+            userIntent.dedicatedNodes, userIntent.providerSpecifications, false);
         Map<UUID, List<NodeDetails>> byAzUUID =
-            nodes.stream().collect(Collectors.groupingBy(n -> n.getAzUuid()));
+            clusterNodes.stream().collect(Collectors.groupingBy(n -> n.getAzUuid()));
         byAzUUID.forEach(
             (azUUID, nds) -> {
               UUID providerUUID = searchProviderUUIDByAz(azUUID).orElseThrow();
@@ -736,13 +750,18 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
                 + "master and tserver are selected.");
       } else {
         validateDeviceInfo(
-            userIntent.providerType, userIntent.deviceInfo, userIntent.masterDeviceInfo, nodes);
+            userIntent.providerType,
+            userIntent.deviceInfo,
+            userIntent.masterDeviceInfo,
+            clusterNodes);
       }
       validateAuth(isAuthEnforced);
       if (validateGFlagsConsistency) {
         GFlagsUtil.checkGflagsAndIntentConsistency(userIntent);
       }
+      GFlagsUtil.validateGFlagValues(userIntent);
       GFlagsUtil.validateFipsCompliancy(userIntent, isFipsEnabled);
+      GFlagsUtil.validateNodeToNodeClientCerts(userIntent, useNodeToNodeClientCerts);
       if (userIntent.specificGFlags != null) {
         if (clusterType == ClusterType.PRIMARY
             && userIntent.specificGFlags.isInheritFromPrimary()) {
@@ -750,7 +769,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         }
         userIntent.specificGFlags.validateConsistency();
       }
-      validateProxyConfig(userIntent, nodes);
+      validateProxyConfig(userIntent, clusterNodes);
     }
 
     public void validateProxyConfig(UserIntent userIntent, Collection<NodeDetails> nodeDetails) {
@@ -1225,9 +1244,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     /**
      * Validates all the required fields for ProviderSpecification.
      *
+     * @param isDedicated Whether it is dedicated masters mode.
      * @param isPartialUpdate Whether that state would be used to partially update basic state.
      */
-    public void validate(boolean isPartialUpdate) {
+    public void validate(boolean isDedicated, boolean isPartialUpdate) {
       if (providerUUID == null) {
         throw new PlatformServiceException(BAD_REQUEST, "providerUUID must be set");
       }
@@ -1237,10 +1257,41 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (nodesSpecs == null) {
         throw new PlatformServiceException(BAD_REQUEST, "nodesSpecs must be set");
       }
+      HierarchicalNodesSpec.NodeSpec tserverSpecification = nodesSpecs.getTserverSpecification();
+      HierarchicalNodesSpec.NodeSpec masterSpecification = nodesSpecs.getMasterSpecification();
+
       if (!isPartialUpdate) {
-        if (nodesSpecs.getTserverSpecification() == null) {
+        if (tserverSpecification == null) {
           throw new PlatformServiceException(
               BAD_REQUEST, "nodesSpecs.tserverSpecification must be set");
+        }
+        if (tserverSpecification.getInstanceType() == null) {
+          throw new PlatformServiceException(BAD_REQUEST, "Specify base instance type for tserver");
+        }
+        if (tserverSpecification.getDeviceInfo() == null) {
+          throw new PlatformServiceException(BAD_REQUEST, "Specify base device info for tserver");
+        }
+        if (isDedicated) {
+          if (masterSpecification == null) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                "nodesSpecs.masterSpecification must be set for dedicated masters mode");
+          }
+          if (masterSpecification.getInstanceType() == null) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Specify base instance type for master");
+          }
+          if (masterSpecification.getDeviceInfo() == null) {
+            throw new PlatformServiceException(BAD_REQUEST, "Specify base device info for master");
+          }
+        }
+      }
+
+      if (!isDedicated) {
+        if (masterSpecification != null && !masterSpecification.isEmpty()) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "nodesSpecs.masterSpecification cannot be set for non-dedicated masters mode");
         }
       }
       nodesSpecs.validate();
@@ -1370,6 +1421,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty() public boolean enableNodeToNodeEncrypt = false;
 
     @ApiModelProperty() public boolean enableClientToNodeEncrypt = false;
+
+    @ApiModelProperty(
+        value =
+            "WARNING: This is a preview API that could change. Servers require a client cert on"
+                + " RPC (node_to_node_encryption_use_client_certificates). Supported only on"
+                + " Kubernetes universes whose node-to-node encryption uses a cert-manager"
+                + " (K8SCertManager) root CA; VM universes and Kubernetes universes with other root"
+                + " CA types are not supported. Can only be set at universe creation.")
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.2.0.0")
+    public boolean useNodeToNodeClientCerts = false;
 
     @Deprecated
     @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2025.1")
@@ -1696,6 +1757,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.enableYEDIS = enableYEDIS;
       newUserIntent.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
       newUserIntent.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
+      newUserIntent.useNodeToNodeClientCerts = useNodeToNodeClientCerts;
       newUserIntent.instanceTags = new HashMap<>(instanceTags);
       newUserIntent.enableLB = enableLB;
       if (deviceInfo != null) {
@@ -2558,6 +2620,19 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
 
     return Iterables.getOnlyElement(foundClusters, null);
+  }
+
+  /**
+   * Sets each cluster's {@code ybcFlags} to those of the cluster with the same uuid in {@code
+   * source}. A cluster with no match keeps its own.
+   */
+  public void copyYbcFlagsFrom(UniverseDefinitionTaskParams source) {
+    for (Cluster cluster : clusters) {
+      Cluster sourceCluster = source.getClusterByUuid(cluster.uuid);
+      if (sourceCluster != null) {
+        cluster.userIntent.ybcFlags = sourceCluster.userIntent.ybcFlags;
+      }
+    }
   }
 
   public UUID searchProviderUUIDByAz(UUID azUUID) {

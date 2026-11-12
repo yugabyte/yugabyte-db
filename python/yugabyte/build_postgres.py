@@ -797,25 +797,29 @@ class PostgresBuilder(YbBuildToolBase):
 
         pg_compile_commands_paths = []
 
-        # YB_TODO_PG19MERGE: skip third party extensions for now
+        # Third-party extensions commented out below are not built on PG19 yet. Each has a GitHub
+        # issue that tracks re-enabling or removing it:
+        # - pgrx and the extensions built on it (documentdb, pg_parquet, postgresql_anonymizer) need
+        #   pgrx 0.19.3 and pg_anon 3.3.2 (#37181).
+        # - mage needs an upgrade to Apache AGE release/PG19/1.8.0 (#35023).
+        # - wal2json is to be fixed on PG19 (#35025).
         external_extension_subdirs = [
             'yb-extensions',
-            # 'third-party-extensions/age',
-            # 'third-party-extensions/documentdb',
+            # 'third-party-extensions/documentdb',  # #37181
             'third-party-extensions/hypopg',
+            # 'third-party-extensions/mage',  # #35023
             'third-party-extensions/orafce',
             'third-party-extensions/pg_cron',
             'third-party-extensions/pg_hint_plan',
-            # 'third-party-extensions/pg_parquet',
+            # 'third-party-extensions/pg_parquet',  # #37181
             'third-party-extensions/pg_partman',
-            # 'third-party-extensions/pg_stat_monitor',
             'third-party-extensions/pgaudit',
-            # 'third-party-extensions/pgrx',
+            # 'third-party-extensions/pgrx',  # #37181
             'third-party-extensions/pgtap',
             'third-party-extensions/pgvector',
             'third-party-extensions/postgresql-hll',
-            # 'third-party-extensions/postgresql_anonymizer',
-            # 'third-party-extensions/wal2json'
+            # 'third-party-extensions/postgresql_anonymizer',  # #37181
+            # 'third-party-extensions/wal2json'  # #35025
         ]
         external_extension_dirs = [os.path.join(self.pg_build_root, d)
                                    for d in external_extension_subdirs]

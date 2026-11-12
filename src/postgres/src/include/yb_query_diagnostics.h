@@ -107,8 +107,10 @@ typedef struct YbPgssCounters
 	int64		local_blks_written; /* # of local disk blocks written */
 	int64		temp_blks_read; /* # of temp blocks read */
 	int64		temp_blks_written;	/* # of temp blocks written */
-	double		blk_read_time;	/* time spent reading blocks, in msec */
-	double		blk_write_time; /* time spent writing blocks, in msec */
+	double		shared_blk_read_time; /* time spent reading shared blocks, in msec */
+	double		shared_blk_write_time; /* time spent writing shared blocks, in msec */
+	double		local_blk_read_time; /* time spent reading local blocks, in msec */
+	double		local_blk_write_time; /* time spent writing local blocks, in msec */
 	double		temp_blk_read_time; /* time spent reading temp blocks, in msec */
 	double		temp_blk_write_time;	/* time spent writing temp blocks, in
 										 * msec */

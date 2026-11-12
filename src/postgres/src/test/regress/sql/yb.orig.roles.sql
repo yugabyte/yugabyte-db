@@ -171,20 +171,20 @@ GRANT regress_yb_role TO regress_yb_member GRANTED BY yugabyte;
 REVOKE regress_yb_role FROM regress_yb_member GRANTED BY yugabyte;
 SELECT pg_has_role('regress_yb_member', 'regress_yb_role', 'MEMBER');
 -- a non-superuser that grants through ADMIN inherited from yugabyte records
--- the grant under yugabyte, and the grant depends on that ADMIN
+-- the grant under postgres, as through ADMIN inherited from postgres
 CREATE ROLE regress_yb_inheritor;
 GRANT regress_yb_role TO yugabyte WITH ADMIN OPTION;
 GRANT yugabyte TO regress_yb_inheritor;
 SET ROLE regress_yb_inheritor;
 GRANT regress_yb_role TO regress_yb_member;
 RESET ROLE;
-GRANT regress_yb_role TO regress_yb_member;
-SELECT member::regrole, grantor::regrole FROM pg_auth_members
+-- so a superuser's GRANT with new options changes that same grant
+GRANT regress_yb_role TO regress_yb_member WITH INHERIT FALSE, SET FALSE;
+SELECT member::regrole, grantor::regrole, inherit_option, set_option
+  FROM pg_auth_members
   WHERE roleid = 'regress_yb_role'::regrole
-    AND member = 'regress_yb_member'::regrole
-  ORDER BY grantor::regrole::text;
-REVOKE ADMIN OPTION FOR regress_yb_role FROM yugabyte; -- error
--- a superuser's REVOKE removes the grants under both postgres and yugabyte
+    AND member = 'regress_yb_member'::regrole;
+-- and a superuser's REVOKE removes it
 REVOKE regress_yb_role FROM regress_yb_member;
 SELECT pg_has_role('regress_yb_member', 'regress_yb_role', 'MEMBER');
 SET ROLE regress_yb_inheritor;

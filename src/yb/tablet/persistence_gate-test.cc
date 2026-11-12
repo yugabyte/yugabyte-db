@@ -13,6 +13,7 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/common/common.messages.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction.pb.h"
 
@@ -100,6 +101,13 @@ class PersistenceGateTest : public YBTest {
 
   Status CheckPersistAllowed(const std::shared_ptr<consensus::LWReplicateMsg>& msg) {
     return gate_->CheckPersistAllowed(*msg);
+  }
+
+  Status CheckTransactionMayContinue(uint32_t database_oid, HybridTime origination_ht) {
+    auto origination_info = rpc::MakeSharedMessage<LWOriginationInfoPB>();
+    origination_info->set_database_oid(database_oid);
+    origination_info->set_origination_ht(origination_ht.ToUint64());
+    return gate_->CheckTransactionMayContinue(*origination_info);
   }
 
   // Expects status to be a refusal of a blocked op: final, and reported to Postgres as a read-only
@@ -216,15 +224,43 @@ TEST_F(PersistenceGateTest, LookupErrorRefusesUncounted) {
   ASSERT_EQ(GetRefusals(), 0);
 }
 
-// Checks that with either flag off nothing is refused and the lookup is not called.
+// Checks that with either flag off nothing is refused, neither writes nor transactions, and the
+// lookup is not called.
 TEST_F(PersistenceGateTest, NotEnforcedWithEitherFlagOff) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_persistence_gate) = false;
   ASSERT_OK(CheckPersistAllowed(MakeStampedWrite(kDatabaseOid, kBlockedThroughHt)));
+  ASSERT_OK(CheckTransactionMayContinue(kDatabaseOid, kBlockedThroughHt));
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_persistence_gate) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enforce_xcluster_guarded_lease) = false;
   ASSERT_OK(CheckPersistAllowed(MakeStampedWrite(kDatabaseOid, kBlockedThroughHt)));
+  ASSERT_OK(CheckTransactionMayContinue(kDatabaseOid, kBlockedThroughHt));
   ASSERT_EQ(lookups_, 0);
+}
+
+// Checks that a transaction is judged like a write: one that originated at or before its database's
+// entry is refused and counted, and one that originated after it, or whose database has no entry,
+// continues uncounted.
+TEST_F(PersistenceGateTest, RefusesBlockedTransaction) {
+  ASSERT_NO_FATALS(ExpectBlocked(CheckTransactionMayContinue(kDatabaseOid, kBlockedThroughHt)));
+  ASSERT_NO_FATALS(
+      ExpectBlocked(CheckTransactionMayContinue(kDatabaseOid, kBlockedThroughHt.Decremented())));
+  ASSERT_EQ(GetRefusals(), 2);
+
+  ASSERT_OK(CheckTransactionMayContinue(kDatabaseOid, kBlockedThroughHt.Incremented()));
+  ASSERT_OK(CheckTransactionMayContinue(kOtherDatabaseOid, kBlockedThroughHt));
+  ASSERT_EQ(GetRefusals(), 2);
+}
+
+// Checks that, unlike a write or commit, a transaction continues uncounted when the lookup fails,
+// whether for lack of a lease or otherwise.
+TEST_F(PersistenceGateTest, TransactionContinuesOnLookupError) {
+  lookup_status_ = STATUS(ServiceUnavailable, "No lease");
+  ASSERT_OK(CheckTransactionMayContinue(kDatabaseOid, kBlockedThroughHt));
+  lookup_status_ = STATUS(LeaderNotReadyToServe, "Catalog not loaded");
+  ASSERT_OK(CheckTransactionMayContinue(kDatabaseOid, kBlockedThroughHt));
+  ASSERT_EQ(lookups_, 2);
+  ASSERT_EQ(GetRefusals(), 0);
 }
 
 }  // namespace yb::tablet

@@ -1,0 +1,6 @@
+# src/test/regress/yb_subscription_schedule
+#
+####################################################################################################
+# Postgres Testsuites: This suite includes YB tests on subscription statements.
+####################################################################################################
+test: yb.orig.subscription

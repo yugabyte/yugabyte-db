@@ -47,6 +47,7 @@
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_context.h"
 #include "yb/tablet/tablet_metadata.h"
 
 #include "yb/util/logging.h"
@@ -237,6 +238,7 @@ class BootstrapTest : public LogTestBase {
       .tablet_options = tablet_options,
       .mutable_tablet_options = MutableTabletOptions{},
       .log_prefix_suffix = std::string(),
+      .tablet_context = &StandaloneTabletContext::Instance(),
       .transaction_participant_context = nullptr,
       .local_tablet_filter = client::LocalTabletFilter(),
       .transaction_coordinator_context = nullptr,

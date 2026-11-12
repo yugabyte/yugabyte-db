@@ -13,7 +13,15 @@ import {
 import { getTabContent } from '../../../utils/GraphUtils';
 import { isNonEmptyArray, isNonEmptyString } from '../../../utils/ObjectUtils';
 import { GraphFilter, MetricsQueryParams } from '../../../redesign/helpers/dtos';
-import { MetricMeasure, MetricConsts, MetricTypes, NodeType } from '../../metrics/constants';
+import {
+  MetricMeasure,
+  MetricConsts,
+  MetricTypes,
+  NodeType,
+  NODE_EXPORTER_CHECK_METRIC_KEY,
+  NODE_EXPORTER_COLLECTOR_METRIC_KEY
+} from '../../metrics/constants';
+import { getIsKubernetesUniverse } from '../../../utils/UniverseUtils';
 import { SplitType, NodeAggregation } from '../dtos';
 
 interface MetricsData {
@@ -84,6 +92,18 @@ export const GraphTab: FC<MetricsData> = ({
       }
       return settings;
     });
+    // The node_exporter sidecar's check results explain gaps in the panels it feeds.
+    if (
+      metricMeasure === MetricMeasure.OVERALL &&
+      (type === MetricTypes.SERVER || type === MetricTypes.DISK_IO) &&
+      selectedUniverse &&
+      getIsKubernetesUniverse(selectedUniverse)
+    ) {
+      metricsWithSettings.push(
+        { metric: NODE_EXPORTER_CHECK_METRIC_KEY },
+        { metric: NODE_EXPORTER_COLLECTOR_METRIC_KEY }
+      );
+    }
 
     const params: any = {
       metricsWithSettings: metricsWithSettings,
@@ -163,6 +183,7 @@ export const GraphTab: FC<MetricsData> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     nodeName,
+    currentSelectedNodeType,
     nodePrefix,
     startTimestamp,
     endTimestamp,

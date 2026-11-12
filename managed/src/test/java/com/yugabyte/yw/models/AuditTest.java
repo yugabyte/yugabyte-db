@@ -20,6 +20,7 @@ import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -215,8 +216,35 @@ public class AuditTest extends FakeDBApplication {
     assertEquals(entries.get(0).getTaskUUID(), taskUUID);
     assertEquals(entries.get(0).getPayload(), testPayload);
     assertEquals(entries.get(0).getAdditionalDetails(), testAdditionalDetails);
+    assertNull(entries.get(0).getTaskDiff());
     assertNotNull(entries.get(0).getTimestamp());
     assertEquals(entries.get(0).getUserAddress(), request.remoteAddress());
+  }
+
+  @Test
+  public void testCreateAndUpdateTaskDiff() {
+    UUID taskUUID = UUID.randomUUID();
+    ObjectNode taskDiff =
+        Json.newObject().put("field", "numNodes").put("before", "3").put("after", "6");
+    ObjectNode secretDiff = taskDiff.deepCopy().put("password", "qwerty");
+    ObjectNode expectedDiff = taskDiff.deepCopy().put("password", SECRET_REPLACEMENT);
+
+    auditService.createAuditEntry(
+        request,
+        Audit.TargetType.Universe,
+        "Test TargetID",
+        Audit.ActionType.Edit,
+        null,
+        taskUUID,
+        null,
+        secretDiff);
+    Audit created = Audit.getFromTaskUUID(taskUUID);
+    assertEquals(expectedDiff, created.getTaskDiff());
+
+    ObjectNode updatedDiff =
+        Json.newObject().put("field", "numNodes").put("before", "6").put("after", "9");
+    auditService.updateTaskDiff(taskUUID, updatedDiff);
+    assertEquals(updatedDiff, Audit.getFromTaskUUID(taskUUID).getTaskDiff());
   }
 
   @Test
@@ -271,5 +299,44 @@ public class AuditTest extends FakeDBApplication {
     List<Audit> entries1 = Audit.getAllUserEntries(user.getUuid());
     assertEquals(entries.size(), 2);
     assertEquals(entries1.size(), 1);
+  }
+
+  @Test
+  public void testMergeAdditionalDetailsKeepsExistingFields() {
+    UUID taskUUID = UUID.randomUUID();
+    createEntry(taskUUID, user);
+
+    auditService.mergeAdditionalDetails(taskUUID, Json.newObject().put("finalizeRequired", "true"));
+    auditService.mergeAdditionalDetails(taskUUID, Json.newObject().put("overallStatus", "ok"));
+
+    JsonNode details = Audit.getFromTaskUUID(taskUUID).getAdditionalDetails();
+    assertEquals("true", details.get("finalizeRequired").asText());
+    assertEquals("ok", details.get("overallStatus").asText());
+  }
+
+  @Test
+  public void testMergeAdditionalDetailsFromParallelSubtasks() {
+    UUID taskUUID = UUID.randomUUID();
+    createEntry(taskUUID, user);
+
+    int writers = 8;
+    CompletableFuture<?>[] futures = new CompletableFuture<?>[writers];
+    for (int i = 0; i < writers; i++) {
+      String key = "field" + i;
+      futures[i] =
+          CompletableFuture.runAsync(
+              () -> auditService.mergeAdditionalDetails(taskUUID, Json.newObject().put(key, key)));
+    }
+    CompletableFuture.allOf(futures).join();
+
+    JsonNode details = Audit.getFromTaskUUID(taskUUID).getAdditionalDetails();
+    for (int i = 0; i < writers; i++) {
+      assertEquals("field" + i, details.get("field" + i).asText());
+    }
+  }
+
+  @Test
+  public void testMergeAdditionalDetailsWithoutAudit() {
+    auditService.mergeAdditionalDetails(UUID.randomUUID(), Json.newObject().put("foo", "bar"));
   }
 }

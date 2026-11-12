@@ -671,6 +671,21 @@ Status RaftConsensus::DoStartElection(const LeaderElectionData& data, PreElected
           election_name, state_->GetActiveConfigUnlocked());
     }
 
+    if (state_->context()->ShouldRelinquishLeadership()) {
+      // Handled as a lost election so that a replica that keeps failing to elect itself backs off
+      // as it would after losing, and the originator of a leader transfer to it learns that it
+      // lost.  A queued transfer is dropped so that it does not retrigger on every update.
+      state_->ClearPendingElectionOpIdUnlocked();
+      failed_elections_since_stable_leader_.fetch_add(1, std::memory_order_acq_rel);
+      SnoozeFailureDetector(DO_NOT_LOG, LeaderElectionExpBackoffDeltaUnlocked());
+      lock.unlock();
+      YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 30)
+          << "Not starting " << election_name << ": this replica must not seek leadership "
+          << "(no xCluster-guarded information lease)";
+      NotifyOriginatorAboutLostElection(data.originator_uuid);
+      return Status::OK();
+    }
+
     // Default is to start the election now. But if we are starting a pending election, see if
     // there is an op id pending upon indeed and if it has been committed to the log. The op id
     // could have been cleared if the pending election has already been started or another peer
@@ -872,6 +887,12 @@ void RaftConsensus::CheckDelayedStepDown(const Status& status) {
 }
 
 Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDownResponsePB* resp) {
+  return StepDown(req, resp, IgnorePeersInTransition::kFalse);
+}
+
+Status RaftConsensus::StepDown(
+    const LeaderStepDownRequestPB* req, LeaderStepDownResponsePB* resp,
+    IgnorePeersInTransition ignore_peers_in_transition) {
   TRACE_EVENT0("consensus", "RaftConsensus::StepDown");
   ReplicaState::UniqueLock lock;
   RETURN_NOT_OK(state_->LockForConfigChange(&lock));
@@ -900,10 +921,13 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
   // the WAL anchors, and a successor may have GCed those segments. A lost transitioning peer does
   // not block; promotion is leader-driven (#29795).
   if (auto s = CheckNoLiveServersInTransitionUnlocked(); !s.ok()) {
-    LOG_WITH_PREFIX(INFO) << s;
-    resp->mutable_error()->set_code(TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN);
-    StatusToPB(s, resp->mutable_error()->mutable_status());
-    return Status::OK();
+    if (!ignore_peers_in_transition) {
+      LOG_WITH_PREFIX(INFO) << s;
+      resp->mutable_error()->set_code(TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN);
+      StatusToPB(s, resp->mutable_error()->mutable_status());
+      return Status::OK();
+    }
+    LOG_WITH_PREFIX(INFO) << "Stepping down anyway since ignore_peers_in_transition is set: " << s;
   }
 
   std::string new_leader_uuid;
@@ -2193,6 +2217,11 @@ Result<RaftConsensus::UpdateReplicaResult> RaftConsensus::UpdateReplica(
 
   // 4 - Mark operations as committed
   RETURN_NOT_OK(MarkOperationsAsCommittedUnlocked(request, deduped_req, last_from_leader));
+
+  if (request.has_all_replicated_op_id()) {
+    all_replicated_index_from_leader_.store(
+        request.all_replicated_op_id().index(), std::memory_order_release);
+  }
 
   // Fill the response with the current state. We will not mutate anymore state until
   // we actually reply to the leader, we'll just wait for the messages to be durable.
@@ -3788,6 +3817,12 @@ OpId RaftConsensus::GetLastAppliedOpId() {
 
 OpId RaftConsensus::GetAllAppliedOpId() {
   return queue_->GetAllAppliedOpId();
+}
+
+int64_t RaftConsensus::GetAllReplicatedIndex() const {
+  return std::max(
+      queue_->GetAllReplicatedOpId().index,
+      all_replicated_index_from_leader_.load(std::memory_order_acquire));
 }
 
 Status RaftConsensus::CheckReadyAsRbsSource() {
