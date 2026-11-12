@@ -1230,14 +1230,6 @@ void ybthin_columns_free(ybthin_column* columns, size_t /* n */) {
 }
 
 void ybthin_read_async(
-    ybthin_client* client, const ybthin_read_op* ops, size_t n_ops, uint64_t read_time_ht,
-    ybthin_read_cb cb, void* ctx) {
-  ybthin_read_options options = {};
-  options.read_time_ht = read_time_ht;
-  ybthin_read_async2(client, ops, n_ops, &options, cb, ctx);
-}
-
-void ybthin_read_async2(
     ybthin_client* client, const ybthin_read_op* ops, size_t n_ops,
     const ybthin_read_options* options, ybthin_read_cb cb, void* ctx) {
   if (n_ops == 0) {

@@ -21,9 +21,13 @@
 // VERSIONING: this library is built OUTSIDE the YugabyteDB tree and upgraded BEFORE the tserver, so
 // a given build must keep working against an OLDER one. On the wire, only rely on request fields,
 // RPCs and semantics the OLDEST supported tserver understands, and tolerate responses missing
-// fields a newer server would set. The ABI below is likewise stable -- changes must be ADDITIVE
-// (new functions; fields appended to the END of structs; enum values appended at the END). Never
-// renumber an enum value, reorder or remove a struct field, or change a signature in place.
+// fields a newer server would set.
+//
+// The ABI below carries no such promise: it may change between shim releases, a signature
+// included. The library and its header are released together, and the one caller pins a release
+// and ships this library in the same image as the binaries built against it, so the two never
+// differ at run time. A caller that declares these functions by hand (an FFI binding) must update
+// its declarations with the header: a stale declaration of a changed signature still links.
 //
 // Ownership: every out-pointer the library fills is owned by it and freed with the matching _free
 // or _destroy call below. Input arrays and strings are borrowed for the duration of the call only.
@@ -193,7 +197,7 @@ typedef struct {
 
 // One read op in a batch; a batch may mix tables. `paging_state_in`==NULL (len 0) starts this op's
 // scan, a prior page's paging_state continues it. The read snapshot is a batch property
-// (ybthin_read_async's read_time_ht), NOT part of the spec.
+// (ybthin_read_options.read_time_ht), NOT part of the spec.
 typedef struct {
   ybthin_table* table;
   ybthin_read_spec spec;
@@ -247,24 +251,11 @@ typedef void (*ybthin_read_cb)(void* ctx, ybthin_status status,
                                ybthin_read_result* result);
 typedef void (*ybthin_write_cb)(void* ctx, ybthin_status status);
 
-// Run a batch of read ops as the ops of ONE Perform: one RPC, one read session, one snapshot.
-// `read_time_ht` pins the batch snapshot (0 => the server picks one); pass a prior batch's
-// `used_read_time_ht` only to force a NEW batch onto an existing snapshot. An op with
-// `paging_state_in` set continues that op's scan and stays on the scan's original snapshot
-// automatically -- the time the first page was served at travels inside `paging_state`, so the
-// server keeps no read state -- and paging with `read_time_ht` left 0 throughout is still
-// consistent: no rows are dropped mid-scan.
-// Continuation ops in one batch must all share the paging session that issued
-// them; if that session was dropped or reopened, e.g. on another endpoint, the batch fails with
-// YBTHIN_READ_RESTART. Status is batch-level: any op failure fails the whole call with no partial
-// results; on YBTHIN_READ_RESTART re-issue the scan from a fresh page.
-void ybthin_read_async(ybthin_client*, const ybthin_read_op* ops, size_t n_ops,
-                       uint64_t read_time_ht, ybthin_read_cb cb, void* ctx);
-
-// Batch-level read options for ybthin_read_async2. A zeroed struct (or NULL) is exactly
-// ybthin_read_async: leader reads, unpinned.
+// Batch-level options for ybthin_read_async. A zeroed struct (or NULL) is a leader read at a
+// snapshot the server picks.
 typedef struct {
-  // As ybthin_read_async's read_time_ht: pins the batch snapshot; 0 => the server picks one.
+  // Pins the batch snapshot; 0 => the server picks one. Pass a prior batch's `used_read_time_ht`
+  // only to force a NEW batch onto an existing snapshot.
   uint64_t read_time_ht;
   // bool. Serve the batch's reads from the closest replica, a follower included, at a snapshot
   // the tserver computes as its own clock minus `follower_read_staleness_ms` (which must then be
@@ -283,9 +274,17 @@ typedef struct {
   uint32_t follower_read_staleness_ms;
 } ybthin_read_options;
 
-// ybthin_read_async with batch options; `options` NULL means all zero.
-void ybthin_read_async2(ybthin_client*, const ybthin_read_op* ops, size_t n_ops,
-                        const ybthin_read_options* options, ybthin_read_cb cb, void* ctx);
+// Run a batch of read ops as the ops of ONE Perform: one RPC, one read session, one snapshot.
+// `options` is batch-level; NULL means all zero. An op with `paging_state_in` set continues that
+// op's scan and stays on the scan's original snapshot automatically -- the time the first page
+// was served at travels inside `paging_state`, so the server keeps no read state -- and paging
+// with `read_time_ht` left 0 throughout is still consistent: no rows are dropped mid-scan.
+// Continuation ops in one batch must all share the paging session that issued
+// them; if that session was dropped or reopened, e.g. on another endpoint, the batch fails with
+// YBTHIN_READ_RESTART. Status is batch-level: any op failure fails the whole call with no partial
+// results; on YBTHIN_READ_RESTART re-issue the scan from a fresh page.
+void ybthin_read_async(ybthin_client*, const ybthin_read_op* ops, size_t n_ops,
+                       const ybthin_read_options* options, ybthin_read_cb cb, void* ctx);
 
 // Apply N upserts as the ops of ONE Perform, on one write session. Each row names its own table, so
 // the batch may span tables. Every per-row response status is verified; any failure surfaces via

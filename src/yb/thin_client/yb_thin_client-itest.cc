@@ -392,7 +392,7 @@ TEST_F(PgThinClientTest, OpenUpsertReadPaged) {
     op.spec = spec;
     op.paging_state_in = paging_state.empty() ? nullptr : paging_state.data();
     op.paging_state_in_len = paging_state.size();
-    ybthin_read_async(client, &op, 1, /* read_time_ht= */ 0, &OnReadDone, &promise);
+    ybthin_read_async(client, &op, 1, /* options= */ nullptr, &OnReadDone, &promise);
     auto out = future.get();
     ASSERT_EQ(out.code, YBTHIN_OK) << out.message;
     // The shim decoded the sidecar into typed cells: 2 targets (v INT4, payload BYTEA).
@@ -476,7 +476,7 @@ TEST_F(PgThinClientTest, OidColumnRoundTrip) {
     ybthin_read_op op = {};
     op.table = table;
     op.spec = spec;
-    ybthin_read_async(client, &op, 1, /* read_time_ht= */ 0, &OnReadDone, &promise);
+    ybthin_read_async(client, &op, 1, /* options= */ nullptr, &OnReadDone, &promise);
     return future.get();
   };
 
@@ -595,7 +595,7 @@ TEST_F(PgThinClientTest, PagedReadHoldsSnapshotAcrossPages) {
     op.paging_state_in_len = paging_state.size();
     // Continue the scan with just the paging_state (read_time_ht == 0): the scan must stay on its
     // original snapshot on its own, not silently jump to a newer one on each page.
-    ybthin_read_async(client, &op, 1, /* read_time_ht= */ 0, &OnReadDone, &promise);
+    ybthin_read_async(client, &op, 1, /* options= */ nullptr, &OnReadDone, &promise);
     auto out = future.get();
     ASSERT_EQ(out.code, YBTHIN_OK) << out.message;
     for (size_t row_idx = 0; row_idx < out.n_rows; ++row_idx) {
@@ -711,7 +711,7 @@ TEST_F(PgThinClientTest, RangeShardedTable) {
     ybthin_read_op op = {};
     op.table = table;
     op.spec = spec;
-    ybthin_read_async(client, &op, 1, /* read_time_ht= */ 0, &OnReadDone, &promise);
+    ybthin_read_async(client, &op, 1, /* options= */ nullptr, &OnReadDone, &promise);
     auto out = future.get();
     ASSERT_EQ(out.code, YBTHIN_OK) << out.message;
     ASSERT_EQ(out.n_rows, 1u);
@@ -739,7 +739,7 @@ TEST_F(PgThinClientTest, RangeShardedTable) {
       op.spec = spec;
       op.paging_state_in = paging_state.empty() ? nullptr : paging_state.data();
       op.paging_state_in_len = paging_state.size();
-      ybthin_read_async(client, &op, 1, /* read_time_ht= */ 0, &OnReadDone, &promise);
+      ybthin_read_async(client, &op, 1, /* options= */ nullptr, &OnReadDone, &promise);
       auto out = future.get();
       ASSERT_EQ(out.code, YBTHIN_OK) << out.message;
       for (size_t row_idx = 0; row_idx < out.n_rows; ++row_idx) {
@@ -782,7 +782,7 @@ TEST_F(PgThinClientTest, RangeShardedTable) {
       op.spec = spec;
       op.paging_state_in = paging_state.empty() ? nullptr : paging_state.data();
       op.paging_state_in_len = paging_state.size();
-      ybthin_read_async(client, &op, 1, /* read_time_ht= */ 0, &OnReadDone, &promise);
+      ybthin_read_async(client, &op, 1, /* options= */ nullptr, &OnReadDone, &promise);
       auto out = future.get();
       ASSERT_EQ(out.code, YBTHIN_OK) << out.message;
       for (size_t row_idx = 0; row_idx < out.n_rows; ++row_idx) {
@@ -820,7 +820,7 @@ TEST_F(PgThinClientTest, RangeShardedTable) {
     ybthin_read_op op = {};
     op.table = table;
     op.spec = spec;
-    ybthin_read_async(client, &op, 1, /* read_time_ht= */ 0, &OnReadDone, &promise);
+    ybthin_read_async(client, &op, 1, /* options= */ nullptr, &OnReadDone, &promise);
     auto out = future.get();
     ASSERT_EQ(out.code, YBTHIN_INVALID) << "expected hash_values on a range table to be rejected";
   }
@@ -910,7 +910,7 @@ TEST_F(PgThinClientTest, RangeKeyPrefixesAndKeyColumnConditions) {
       op.spec = spec;
       op.paging_state_in = paging_state.empty() ? nullptr : paging_state.data();
       op.paging_state_in_len = paging_state.size();
-      ybthin_read_async(client, &op, 1, /* read_time_ht= */ 0, &OnReadDone, &promise);
+      ybthin_read_async(client, &op, 1, /* options= */ nullptr, &OnReadDone, &promise);
       auto out = future.get();
       SCHECK_EQ(out.code, YBTHIN_OK, IllegalState, out.message);
       for (size_t row_idx = 0; row_idx < out.n_rows; ++row_idx) {
@@ -1044,7 +1044,7 @@ TEST_F(PgThinClientTest, RangeShardedDescendingPrefixSinglePage) {
     ybthin_read_op op = {};
     op.table = table;
     op.spec = spec;
-    ybthin_read_async(client, &op, 1, /* read_time_ht= */ 0, &OnReadDone, &promise);
+    ybthin_read_async(client, &op, 1, /* options= */ nullptr, &OnReadDone, &promise);
     auto out = future.get();
     SCHECK_EQ(out.code, YBTHIN_OK, IllegalState, out.message);
     std::vector<std::pair<int64_t, int64_t>> rows;
@@ -1142,7 +1142,7 @@ TEST_F(PgThinClientTest, RangeShardedDescendingPrefixSinglePage) {
       op.spec = spec;
       op.paging_state_in = ps.empty() ? nullptr : ps.data();
       op.paging_state_in_len = ps.size();
-      ybthin_read_async(client, &op, 1, /* read_time_ht= */ 0, &OnReadDone, &promise);
+      ybthin_read_async(client, &op, 1, /* options= */ nullptr, &OnReadDone, &promise);
       auto out = future.get();
       ASSERT_EQ(out.code, YBTHIN_OK) << out.message;
       for (size_t row_idx = 0; row_idx < out.n_rows; ++row_idx) {
@@ -1234,7 +1234,7 @@ TEST_F(PgThinClientTest, DeepRangeKeyPrefixes) {
     ybthin_read_op op = {};
     op.table = table;
     op.spec = spec;
-    ybthin_read_async(client, &op, 1, 0, &OnReadDone, &promise);
+    ybthin_read_async(client, &op, 1, /* options= */ nullptr, &OnReadDone, &promise);
     auto out = future.get();
     SCHECK_EQ(out.code, YBTHIN_OK, IllegalState, out.message);
     return out.n_rows;
@@ -1263,7 +1263,7 @@ TEST_F(PgThinClientTest, DeepRangeKeyPrefixes) {
     ybthin_read_op op = {};
     op.table = table;
     op.spec = spec;
-    ybthin_read_async(client, &op, 1, 0, &OnReadDone, &promise);
+    ybthin_read_async(client, &op, 1, /* options= */ nullptr, &OnReadDone, &promise);
     auto out = future.get();
     ASSERT_EQ(out.code, YBTHIN_INVALID) << "a null range key value must be rejected";
   }
@@ -1365,7 +1365,7 @@ TEST_F(PgThinClientTest, RangeScanStopsAtTheEndOfItsKeyRange) {
         op.spec = spec;
         op.paging_state_in = ps.empty() ? nullptr : ps.data();
         op.paging_state_in_len = ps.size();
-        ybthin_read_async(client, &op, 1, /* read_time_ht= */ 0, &OnReadDone, &promise);
+        ybthin_read_async(client, &op, 1, /* options= */ nullptr, &OnReadDone, &promise);
         auto out = future.get();
         SCHECK_EQ(out.code, YBTHIN_OK, IllegalState, out.message);
         out_counts.rows += out.n_rows;
@@ -1741,8 +1741,8 @@ Status UpsertKeysWithRetries(
 }
 
 // Starts one page of the scan over `hash_key`, returning column `v_id`. The callback owns the
-// promise, so the read may outlive the caller. With `options` the page goes through
-// ybthin_read_async2, otherwise through ybthin_read_async.
+// promise, so the read may outlive the caller. A null `options` is a leader read at a snapshot
+// the server picks.
 std::future<ReadOutcome> StartReadKeys(
     ybthin_client* client, ybthin_table* table, int hash_key, int32_t v_id, uint64_t limit,
     const std::vector<uint8_t>& paging_state, bool forward_scan = true,
@@ -1766,11 +1766,7 @@ std::future<ReadOutcome> StartReadKeys(
         static_cast<std::promise<ReadOutcome>*>(ctx));
     OnReadDone(owned.get(), status, result);
   };
-  if (options) {
-    ybthin_read_async2(client, &op, 1, options, cb, promise);
-  } else {
-    ybthin_read_async(client, &op, 1, /* read_time_ht= */ 0, cb, promise);
-  }
+  ybthin_read_async(client, &op, 1, options, cb, promise);
   return future;
 }
 
@@ -2516,7 +2512,7 @@ TEST_F(PgThinClientFollowerReadTest, PagedFollowerScanCrossesTablets) {
     op.paging_state_in_len = paging_state.size();
     std::promise<ReadOutcome> promise;
     auto future = promise.get_future();
-    ybthin_read_async2(client.get(), &op, 1, options, &OnReadDone, &promise);
+    ybthin_read_async(client.get(), &op, 1, options, &OnReadDone, &promise);
     return future.get();
   };
 
@@ -2575,9 +2571,9 @@ TEST_F(PgThinClientFollowerReadTest, PagedFollowerScanCrossesTablets) {
   ASSERT_TRUE(ASSERT_RESULT(reader_leads_none()));
 }
 
-// ybthin_read_async is unchanged: its batch is served by the leader, unpinned, so it sees rows
-// written a moment ago, which a follower read behind the staleness would not.
-TEST_F(PgThinClientFollowerReadTest, LegacyReadStaysOnTheLeader) {
+// A read with no options is served by the leader, unpinned, so it sees rows written a moment
+// ago, which a follower read behind the staleness would not.
+TEST_F(PgThinClientFollowerReadTest, ReadWithoutOptionsStaysOnTheLeader) {
   constexpr int kRows = 20;
   const auto oids = ASSERT_RESULT(CreateSingleTabletKeyTable());
   const auto replicas = ASSERT_RESULT(FindReplicas());

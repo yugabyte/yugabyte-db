@@ -40,7 +40,8 @@ hot read/write paths without embedding a full client.
   hash, then range, then value). Also the startup health check.
 - `ybthin_read_async` -- one page of each of N read ops, in one Perform; delivers
   each op's decoded rows + opaque `paging_state`, and the batch's
-  `used_read_time_ht`.
+  `used_read_time_ht`. `ybthin_read_options` pins the snapshot or asks for a
+  follower read at a server-computed staleness.
 - `ybthin_upsert_batch_async` -- N `PGSQL_UPSERT` rows as the ops of one Perform.
 - `ybthin_read_result_free` / `ybthin_string_free` -- free shim-owned buffers.
 
@@ -54,8 +55,14 @@ This library is **upgraded before the tserver**, so a given build must keep
 working against an **older** tserver than it was compiled against. Keep the wire
 usage backward-compatible: only send request fields / rely on RPCs and semantics
 the oldest supported tserver understands, and tolerate responses that lack fields
-a newer server would set. The C ABI is additive-only (new functions; new struct
-fields / enum values appended at the end; never renumber, reorder, or remove).
+a newer server would set.
+
+The C ABI carries no such promise and may change between shim releases, a
+signature included. The library and its header are released together, and the one
+caller pins a release and ships the library in the same image as the binaries
+built against it. A caller that declares the functions by hand must update its
+declarations with the header: a stale declaration of a changed signature still
+links.
 
 ## Build
 
