@@ -9,8 +9,10 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -22,6 +24,9 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -34,6 +39,7 @@ import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
+import com.yugabyte.yw.commissioner.tasks.subtasks.SetFlagInMemory;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeManager.NodeCommandType;
@@ -79,6 +85,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import org.slf4j.LoggerFactory;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
@@ -1076,6 +1083,38 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
         .applyToCluster(defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0).uuid)
         .addTasks(TaskType.UpdateAndPersistGFlags)
         .verifyTasks(taskInfo.getSubTasks());
+  }
+
+  @Test
+  public void testGFlagsUpgradeNonRestartLogsNoGFlagValues() {
+    String ycqlSecret = "dummy-ycql-bind-secret";
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(
+            ImmutableMap.of("master-flag", "m1111"),
+            ImmutableMap.of("ycql_ldap_bind_passwd", ycqlSecret));
+    taskParams.upgradeOption = UpgradeOption.NON_RESTART_UPGRADE;
+
+    Logger setFlagLogger = (Logger) LoggerFactory.getLogger(SetFlagInMemory.class);
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    setFlagLogger.addAppender(appender);
+    TaskInfo taskInfo;
+    try {
+      taskInfo = submitTask(taskParams);
+    } finally {
+      setFlagLogger.detachAppender(appender);
+    }
+
+    assertEquals(Success, taskInfo.getTaskState());
+    List<String> setFlagLogs =
+        appender.list.stream()
+            .map(ILoggingEvent::getFormattedMessage)
+            .filter(m -> m.contains("via non-restart rpc"))
+            .toList();
+    assertTrue(setFlagLogs.stream().anyMatch(m -> m.contains("ycql_ldap_bind_passwd")));
+    setFlagLogs.forEach(m -> assertFalse(m, m.contains(ycqlSecret)));
   }
 
   @Test
