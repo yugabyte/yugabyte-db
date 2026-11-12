@@ -158,7 +158,7 @@ public class CustomerConfigStorageOCIValidator extends CustomerConfigStorageVali
       }
     } catch (S3Exception e) {
       throwBeanConfigDataValidatorError(
-          CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, e.getMessage());
+          CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, e.getMessage(), e);
     }
   }
 
@@ -217,9 +217,9 @@ public class CustomerConfigStorageOCIValidator extends CustomerConfigStorageVali
           && (exceptionMsg.contains("Denied") || exceptionMsg.contains("bucket"))) {
         exceptionMsg += " " + s3UriPath;
       }
-      throwBeanConfigDataValidatorError(fieldName, exceptionMsg);
+      throwBeanConfigDataValidatorError(fieldName, exceptionMsg, s3Exception);
     } catch (SdkClientException e) {
-      throwBeanConfigDataValidatorError(fieldName, e.getMessage());
+      throwBeanConfigDataValidatorError(fieldName, e.getMessage(), e);
     }
   }
 }
