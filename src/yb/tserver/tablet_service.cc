@@ -2963,6 +2963,9 @@ void ConsensusServiceImpl::CompleteUpdateConsensusResponse(
   auto tablet = tablet_peer->shared_tablet_maybe_null();
   if (tablet) {
     resp->set_num_sst_files(tablet->GetCurrentVersionNumSSTFiles());
+    if (tablet->ShouldDisableLbMove()) {
+      resp->set_pending_post_split_compaction(true);
+    }
   }
   resp->set_propagated_hybrid_time(tablet_peer->clock().Now().ToUint64());
 }

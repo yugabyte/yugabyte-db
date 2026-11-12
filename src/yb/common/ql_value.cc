@@ -56,8 +56,14 @@ static int GenericCompare(const T1& lhs, const T2& rhs) {
   return OrderingToInt(lhs <=> rhs);
 }
 
-template <class PB1, class PB2>
+// kLegacyUuidOrder: compare UUIDs, at any nesting level, with CompareInLegacyOrder. Frozen set
+// elements and frozen map keys are stored sorted, so their order is part of the key and its hash,
+// and must stay the order from before #28566, or rows written earlier can no longer be found.
+template <bool kLegacyUuidOrder = false, class PB1, class PB2>
 int TupleCompare(const PB1& lhs, const PB2& rhs);
+
+template <bool kLegacyUuidOrder = false, class PB1, class PB2>
+int DoCompare(const PB1& lhs, const PB2& rhs);
 
 //------------------------- instance methods for abstract QLValue class -----------------------
 
@@ -462,7 +468,7 @@ Status QLValue::Deserialize(
       const auto& type = ql_type->param_type(0);
       switch (type->main()) {
         case DataType::MAP: {
-          std::map<QLValue, QLValue> map_values;
+          std::map<QLValue, QLValue, FrozenCollectionLess> map_values;
           const shared_ptr<QLType> &keys_type = type->param_type(0);
           const shared_ptr<QLType> &values_type = type->param_type(1);
           int32_t nr_elems = 0;
@@ -488,7 +494,7 @@ Status QLValue::Deserialize(
           const shared_ptr<QLType> &elems_type = type->param_type(0);
           int32_t nr_elems = 0;
 
-          std::set<QLValue> set_values;
+          std::set<QLValue, FrozenCollectionLess> set_values;
           RETURN_NOT_OK(CQLDecodeNum(sizeof(nr_elems), NetworkByteOrder::Load32, data, &nr_elems));
           for (int i = 0; i < nr_elems; i++) {
             QLValue elem;
@@ -934,7 +940,10 @@ bool Comparable(const QLValuePB& lhs, const QLValue& rhs) {
           EitherIsVirtual(lhs, rhs));
 }
 
-template <class Seq1, class Seq2>
+// kLegacyUuidOrder: compare UUIDs, at any nesting level, with CompareInLegacyOrder. Frozen set
+// elements and frozen map keys are stored sorted, so their order is part of the key and its hash,
+// and must stay the order from before #28566, or rows written earlier can no longer be found.
+template <bool kLegacyUuidOrder = false, class Seq1, class Seq2>
 int SeqCompare(const Seq1& lhs, const Seq2& rhs) {
   // Compare elements one by one.
   auto min_size = std::min<size_t>(lhs.elems().size(), rhs.elems().size());
@@ -949,7 +958,7 @@ int SeqCompare(const Seq1& lhs, const Seq2& rhs) {
       if (IsNull(*ri)) {
         return 1;
       }
-      int result = DoCompare(*li, *ri);
+      int result = DoCompare<kLegacyUuidOrder>(*li, *ri);
       if (result != 0) {
         return result;
       }
@@ -961,17 +970,42 @@ int SeqCompare(const Seq1& lhs, const Seq2& rhs) {
       static_cast<size_t>(lhs.elems().size()), static_cast<size_t>(rhs.elems().size()));
 }
 
-template <class PB1, class PB2>
+template <bool kLegacyUuidOrder, class PB1, class PB2>
 int TupleCompare(const PB1& lhs_tuple, const PB2& rhs_tuple) {
   DCHECK_EQ(lhs_tuple.elems().size(), rhs_tuple.elems().size());
-  return SeqCompare(lhs_tuple, rhs_tuple);
+  return SeqCompare<kLegacyUuidOrder>(lhs_tuple, rhs_tuple);
 }
 
-template <class PB1, class PB2>
+namespace {
+
+// The UUID order before #28566, which compared boost's version(): versions 0 and 6+ were all
+// version_unknown (-1), so such UUIDs sort before v1..v5 and, whatever their version, by raw bytes
+// among themselves. The version is taken from the raw nibble, not from boost's version(), since
+// newer boost reports versions 6..8.
+int CompareInLegacyOrder(const Uuid& lhs, const Uuid& rhs) {
+  auto legacy_version = [](const Uuid& uuid) {
+    const auto version = static_cast<int>(uuid.version_raw());
+    return version >= 1 && version <= 5 ? version : -1;
+  };
+  const auto lhs_version = legacy_version(lhs);
+  const auto rhs_version = legacy_version(rhs);
+  if (lhs_version != rhs_version) {
+    return lhs_version < rhs_version ? -1 : 1;
+  }
+  if (lhs_version != -1) {
+    return GenericCompare(lhs, rhs);
+  }
+  const auto result = memcmp(lhs.data(), rhs.data(), kUuidSize);
+  return (result > 0) - (result < 0);
+}
+
+} // namespace
+
+template <bool kLegacyUuidOrder, class PB1, class PB2>
 int DoCompare(const PB1& lhs, const PB2& rhs) {
   if (rhs.value_case() == QLValuePB::kVirtualValue &&
       lhs.value_case() != QLValuePB::kVirtualValue) {
-    return -DoCompare(rhs, lhs);
+    return -DoCompare<kLegacyUuidOrder>(rhs, lhs);
   }
   CHECK(DoComparable(lhs, rhs));
   CHECK(BothNotNull(lhs, rhs));
@@ -1013,13 +1047,16 @@ int DoCompare(const PB1& lhs, const PB2& rhs) {
     case QLValuePB::kJsonbValue:
       return GenericCompare(lhs.jsonb_value(), rhs.jsonb_value());
     case QLValuePB::kUuidValue:
+      if constexpr (kLegacyUuidOrder) {
+        return CompareInLegacyOrder(QLValue::uuid_value(lhs), QLValue::uuid_value(rhs));
+      }
       return GenericCompare(QLValue::uuid_value(lhs), QLValue::uuid_value(rhs));
     case QLValuePB::kTimeuuidValue:
       return GenericCompare(QLValue::timeuuid_value(lhs), QLValue::timeuuid_value(rhs));
     case QLValuePB::kFrozenValue:
-      return SeqCompare(lhs.frozen_value(), rhs.frozen_value());
+      return SeqCompare<kLegacyUuidOrder>(lhs.frozen_value(), rhs.frozen_value());
     case QLValuePB::kTupleValue:
-      return TupleCompare(lhs.tuple_value(), rhs.tuple_value());
+      return TupleCompare<kLegacyUuidOrder>(lhs.tuple_value(), rhs.tuple_value());
     case QLValuePB::kMapValue: FALLTHROUGH_INTENDED;
     case QLValuePB::kSetValue: FALLTHROUGH_INTENDED;
     case QLValuePB::kListValue:
@@ -1227,6 +1264,18 @@ bool operator ==(const LWQLValuePB& lhs, const QLValuePB& rhs) {
 
 bool operator !=(const LWQLValuePB& lhs, const LWQLValuePB& rhs) {
   return !(lhs == rhs);
+}
+
+bool FrozenCollectionLess::operator()(const QLValuePB& lhs, const QLValuePB& rhs) const {
+  return BothNotNull(lhs, rhs) && DoCompare</* kLegacyUuidOrder= */ true>(lhs, rhs) < 0;
+}
+
+bool FrozenCollectionLess::operator()(const LWQLValuePB& lhs, const LWQLValuePB& rhs) const {
+  return BothNotNull(lhs, rhs) && DoCompare</* kLegacyUuidOrder= */ true>(lhs, rhs) < 0;
+}
+
+bool FrozenCollectionLess::operator()(const QLValue& lhs, const QLValue& rhs) const {
+  return (*this)(lhs.value(), rhs.value());
 }
 
 void ConcatStrings(const std::string& lhs, const std::string& rhs, QLValuePB* result) {

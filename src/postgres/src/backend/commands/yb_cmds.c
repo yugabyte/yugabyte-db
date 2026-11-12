@@ -604,7 +604,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 									/* belongs_to_yb_system_db= */ false);
 	bool		is_matview = relkind == RELKIND_MATVIEW;
 	bool		is_colocated_tables_with_tablespace_enabled =
-		*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
+		yb_enable_colocated_tables_with_tablespaces;
 
 	char	   *db_name = get_database_name(databaseId);
 	char	   *schema_name = stmt->relation->schemaname;

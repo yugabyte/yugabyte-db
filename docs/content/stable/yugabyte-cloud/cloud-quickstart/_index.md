@@ -70,7 +70,7 @@ Connect to your cluster's endpoint using psql:
 
 1. Click **Copy** to copy the connection string. The host and port are the endpoint's address. In the copied string, do the following:
 
-    - Replace `<DB USER>` with your database username (`cloud_admin` unless you created another role).
+    - Replace `<DB USER>` with your database username (`admin` unless you created another role).
     - Replace `postgres` if you're connecting to a database other than the default.
     - Replace `<ROOT_CERT_PATH>` with the path to the CA certificate you downloaded. If the endpoint doesn't require the CA certificate, the string has no `sslmode` or `sslrootcert`.
 

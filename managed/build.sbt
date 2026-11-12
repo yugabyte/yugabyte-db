@@ -174,7 +174,7 @@ Global / onChangedBuildSource := ReloadOnSourceChanges
 // Flyway 10+ ships database support as separate modules; the postgresql one is required.
 val flywayVersion = "13.8.0"
 val bouncyCastleFipsVersion = "2.1.1"
-val bouncyCastleUtilFipsVersion = "2.1.7"
+val bouncyCastleUtilFipsVersion = "2.1.8"
 
 libraryDependencies ++= Seq(
   javaJdbc,
@@ -1099,6 +1099,7 @@ dependencyOverrides += "org.bouncycastle" % "bcutil-fips" % bouncyCastleUtilFips
 libraryDependencies += "org.yb" % "yb-client" % "0.8.125-SNAPSHOT"
 libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b13"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
+libraryDependencies += "com.yugabyte.troubleshoot" % "perf-advisor-client" % "0.2.0"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",

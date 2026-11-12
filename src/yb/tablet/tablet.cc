@@ -122,6 +122,7 @@
 #include "yb/tserver/ysql_advisory_lock_table.h"
 
 #include "yb/util/debug-util.h"
+#include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/file_util.h"
 #include "yb/util/flag_validators.h"
@@ -4709,18 +4710,24 @@ Status Tablet::ModifyFlushedFrontier(
     const docdb::ConsensusFrontier& frontier,
     rocksdb::FrontierModificationMode mode,
     FlushFlags flags) {
+  LongOperationTracker long_operation_tracker("Modify flushed frontier", 5s);
+  // Snapshot operations modify the flushed frontier on the Raft apply path, so its steps are
+  // logged like theirs.
+  auto step_start = MonoTime::Now();
   // We should always flush RocksDBs before modifying their frontiers, otherwise if we crash between
   // frontier is modified and regular DB is flushed we can lose data because of skipping ops replay
   // during local bootstrap.
   RETURN_NOT_OK(Flush(
       FlushMode::kSync, flags | FlushFlags::kRegular | FlushFlags::kIntents,
       rocksdb::FlushOptions::kNeverIgnore, rocksdb::FlushReason::kFlushedFrontierModification));
+  step_start = LogSnapshotStepDone(LogPrefix(), "Flushed frontier flush", step_start);
   const Status s = regular_db_->ModifyFlushedFrontier(frontier.Clone(), mode);
   if (PREDICT_FALSE(!s.ok())) {
     auto status = STATUS(IllegalState, "Failed to set flushed frontier", s.ToString());
     LOG_WITH_PREFIX(WARNING) << status;
     return status;
   }
+  step_start = LogSnapshotStepDone(LogPrefix(), "Regular DB flushed frontier write", step_start);
   {
     auto flushed_frontier = regular_db_->GetFlushedFrontier();
     const auto& consensus_flushed_frontier = *down_cast<docdb::ConsensusFrontier*>(
@@ -4768,6 +4775,7 @@ Status Tablet::ModifyFlushedFrontier(
     // because it would wait for flush of regular DB if we have unflushed intents.
     // Otherwise it does not matter which flushed op id is stored.
     RETURN_NOT_OK(intents_db_->ModifyFlushedFrontier(frontier.Clone(), mode));
+    LogSnapshotStepDone(LogPrefix(), "Intents DB flushed frontier write", step_start);
   }
 
   return Status::OK();
@@ -7770,6 +7778,7 @@ docdb::HistoryCutoff Tablet::AllowedHistoryCutoff() {
     result.MakeAtMost(allowed_history_cutoff_provider_(metadata_.get()));
   }
   result.primary_cutoff_ht.MakeAtMost(snapshots_->AllowedHistoryCutoff());
+  result.primary_cutoff_ht.MakeAtMost(vector_indexes_->AllowedHistoryCutoff());
   return result;
 }
 
