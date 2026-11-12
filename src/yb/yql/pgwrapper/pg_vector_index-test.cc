@@ -1745,8 +1745,12 @@ TEST_P(PgVectorIndexTest, BackfillLargeTransactionAppliedAfterCommit) {
   ASSERT_OK(InsertBatch(conn, 1, kNumRows));
   ASSERT_OK(conn.CommitTransaction());
 
-  auto peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"));
-  ASSERT_EQ(peers.size(), cluster_->num_tablet_servers());
+  // A colocated follower lists the table only after it applies the table's creation.
+  std::vector<tablet::TabletPeerPtr> peers;
+  ASSERT_OK(WaitFor([this, &peers]() -> Result<bool> {
+    peers = VERIFY_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"));
+    return peers.size() == cluster_->num_tablet_servers();
+  }, 30s * kTimeMultiplier, "All replicas have the table"));
   for (const auto& peer : peers) {
     auto tablet = ASSERT_RESULT(peer->shared_tablet());
     ASSERT_OK(WaitFor([&tablet]() -> Result<bool> {
