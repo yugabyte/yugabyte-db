@@ -11,8 +11,8 @@
 package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.common.utils.FileUtils.writeFile;
-import static com.yugabyte.yw.common.utils.FileUtils.writeFileAtomically;
 import static com.yugabyte.yw.common.utils.FileUtils.writeJsonFile;
+import static com.yugabyte.yw.common.utils.FileUtils.writeJsonFileAtomically;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -43,6 +43,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -59,6 +60,9 @@ import play.libs.Json;
 @Singleton
 public class SwamperHelper {
   public static final Logger LOG = LoggerFactory.getLogger(SwamperHelper.class);
+
+  // One lock per universe for its node file.
+  private final Map<UUID, Object> nodeFileLocks = new ConcurrentHashMap<>();
 
   private static final String UUID_PATTERN =
       "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
@@ -319,22 +323,19 @@ public class SwamperHelper {
               }
               nodeExporterNodes.add(node);
             });
-    Map<String, String> schemes = getNodeExporterSchemes(universe, nodeExporterNodes, readPods);
-    for (NodeDetails node : nodeExporterNodes) {
-      ObjectNode target = getIndividualConfig(universe, TargetType.NODE_EXPORT, node);
-      String scheme = schemes.get(node.nodeName);
-      if (scheme != null) {
-        ((ObjectNode) target.get("labels")).put(SCHEME_LABEL, scheme);
+    // The schemes carry over from the previous file, so a universe's read and write run alone.
+    synchronized (nodeFileLocks.computeIfAbsent(universe.getUniverseUUID(), k -> new Object())) {
+      Map<String, String> schemes = getNodeExporterSchemes(universe, nodeExporterNodes, readPods);
+      for (NodeDetails node : nodeExporterNodes) {
+        ObjectNode target = getIndividualConfig(universe, TargetType.NODE_EXPORT, node);
+        String scheme = schemes.get(node.nodeName);
+        if (scheme != null) {
+          ((ObjectNode) target.get("labels")).put(SCHEME_LABEL, scheme);
+        }
+        nodeTargets.add(target);
       }
-      nodeTargets.add(target);
-    }
-    // Atomic, as Prometheus may re-read the file at any time.
-    try {
-      writeFileAtomically(swamperFile, Json.prettyPrint(nodeTargets), "rw-r--r--");
-      LOG.info("Written: {}", swamperFile);
-    } catch (IOException e) {
-      LOG.error("Unable to write: {}", swamperFile);
-      throw new RuntimeException(e.getMessage());
+      // Atomic, as Prometheus may re-read the file at any time.
+      writeJsonFileAtomically(swamperFile, nodeTargets, "rw-r--r--");
     }
 
     // Write out the otel specific file.

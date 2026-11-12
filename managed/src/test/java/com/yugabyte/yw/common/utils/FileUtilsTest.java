@@ -7,6 +7,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -24,6 +25,7 @@ import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
+import play.libs.Json;
 
 public class FileUtilsTest {
 
@@ -85,6 +87,19 @@ public class FileUtilsTest {
     assertEquals(
         "rw-r-----", PosixFilePermissions.toString(Files.getPosixFilePermissions(file.toPath())));
     assertArrayEquals(new String[] {"targets.json"}, dir.list());
+  }
+
+  @Test
+  public void testWriteJsonFileAtomicallyWritesPrettyJson() throws Exception {
+    File file = new File(tmp.newFolder("atomic-json"), "targets.json");
+    ArrayNode json = Json.newArray();
+    json.addObject().put("a", 1);
+
+    FileUtils.writeJsonFileAtomically(file.getPath(), json, "rw-r--r--");
+
+    assertEquals(Json.prettyPrint(json), Files.readString(file.toPath()));
+    assertEquals(
+        "rw-r--r--", PosixFilePermissions.toString(Files.getPosixFilePermissions(file.toPath())));
   }
 
   /** A null value is a directory entry. Absolute names are kept as written. */

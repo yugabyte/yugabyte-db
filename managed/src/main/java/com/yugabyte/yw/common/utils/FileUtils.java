@@ -164,6 +164,17 @@ public class FileUtils {
     }
   }
 
+  /** Writes the JSON with writeFileAtomically, logging as writeFile does. */
+  public static void writeJsonFileAtomically(String filePath, JsonNode json, String permissions) {
+    try {
+      writeFileAtomically(filePath, Json.prettyPrint(json), permissions);
+      LOG.info("Written: {}", filePath);
+    } catch (IOException e) {
+      LOG.error("Unable to write: {}", filePath);
+      throw new RuntimeException(e.getMessage());
+    }
+  }
+
   /** deleteDirectory deletes entire directory recursively. */
   public static boolean deleteDirectory(File directoryToBeDeleted) {
     File[] allContents = directoryToBeDeleted.listFiles();

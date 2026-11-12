@@ -21,6 +21,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.TestHelper;
@@ -409,10 +410,16 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
   }
 
   private static final String SIDECAR_VERSION = "2026.2.0.0-b5";
-  private static final String BELOW_NODE_EXPORTER_TLS_VERSION = "2026.1.2.0-b100";
+  private static final String BELOW_SIDECAR_VERSION = "2026.1.2.0-b100";
 
-  // Rolls a node-to-node universe with the node_exporter TLS key on back from SIDECAR_VERSION.
   private TaskInfo rollBackFromSidecarVersion(boolean sidecarKey) throws Exception {
+    return rollBack(sidecarKey, SIDECAR_VERSION, BELOW_SIDECAR_VERSION);
+  }
+
+  // Rolls a node-to-node universe with the node_exporter TLS key on back from one version to
+  // another.
+  private TaskInfo rollBack(boolean sidecarKey, String fromVersion, String toVersion)
+      throws Exception {
     setupUniverseSingleAZ(false, true);
     UUID rootCA = UUID.randomUUID();
     CertificateInfo.create(
@@ -445,12 +452,12 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     UniverseDefinitionTaskParams.PrevYBSoftwareConfig ybSoftwareConfig =
         new UniverseDefinitionTaskParams.PrevYBSoftwareConfig();
     ybSoftwareConfig.setAutoFlagConfigVersion(1);
-    ybSoftwareConfig.setSoftwareVersion(BELOW_NODE_EXPORTER_TLS_VERSION);
+    ybSoftwareConfig.setSoftwareVersion(toVersion);
     TestHelper.updateUniversePrevSoftwareConfig(defaultUniverse, ybSoftwareConfig);
     TestHelper.updateUniverseIsRollbackAllowed(defaultUniverse, true);
-    TestHelper.updateUniverseVersion(defaultUniverse, SIDECAR_VERSION);
+    TestHelper.updateUniverseVersion(defaultUniverse, fromVersion);
     when(mockYBClient.getServerVersion(any(), anyString(), anyInt()))
-        .thenReturn(Optional.of(BELOW_NODE_EXPORTER_TLS_VERSION));
+        .thenReturn(Optional.of(toVersion));
     RollbackUpgradeParams taskParams = new RollbackUpgradeParams();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
@@ -468,7 +475,14 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
 
   @Test
   public void testRollbackBelowNodeExporterTlsVersionRendersTlsOff() throws Exception {
-    rollBackFromSidecarVersion(true /* sidecarKey */);
+    String tlsStable = KubernetesUtil.MIN_VERSION_NODE_EXPORTER_TLS_STABLE;
+    try {
+      // A TLS gate above the sidecar's: TLS is on at the recorded version, off at the target.
+      KubernetesUtil.MIN_VERSION_NODE_EXPORTER_TLS_STABLE = "2026.2.0.0-b20";
+      rollBack(true /* sidecarKey */, "2026.2.0.0-b30", "2026.2.0.0-b10");
+    } finally {
+      KubernetesUtil.MIN_VERSION_NODE_EXPORTER_TLS_STABLE = tlsStable;
+    }
 
     ArgumentCaptor<String> overrideFiles = ArgumentCaptor.forClass(String.class);
     verify(mockKubernetesManager, atLeastOnce())
@@ -477,6 +491,7 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
       try (InputStream is = new FileInputStream(overrideFile)) {
         Map<String, Object> nodeExporter =
             (Map<String, Object>) new Yaml().loadAs(is, Map.class).get("nodeExporter");
+        assertEquals(true, nodeExporter.get("enabled"));
         assertEquals(Map.of("enabled", false), nodeExporter.get("tls"));
       }
     }
