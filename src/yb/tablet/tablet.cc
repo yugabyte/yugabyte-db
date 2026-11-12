@@ -2366,7 +2366,8 @@ Status Tablet::WriteTransactionalBatch(
 
   last_batch_data.hybrid_time = hybrid_time;
   last_batch_data.next_write_id = writer.intra_txn_write_id();
-  transaction_participant()->BatchReplicated(transaction_id, last_batch_data);
+  transaction_participant()->BatchReplicated(
+      transaction_id, last_batch_data, docdb::MaxIntraTxnWriteIdsForBatch(put_batch));
 
   return Status::OK();
 }
