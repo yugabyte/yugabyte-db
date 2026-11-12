@@ -18,13 +18,8 @@
 \i :run_query
 
 -- Basic join with order
--- TODO(pg16): PG commit b592422095655a64d638f541df784b19b8ecf8ad enables
--- incremental sort over MergeJoin.
--- The sort key spans both inputs (a.n, b.n), so the join output needs a full
--- sort whatever either scan returns, and the merge ordering buys nothing
--- against merge scan's 2% cost penalty.  The single-relation sorts elsewhere
--- in the suite keep it, because there the merge supplies the leading columns.
--- TODO(#29078): this likely should use merge scan.
+-- Merge scan supplies the leading sort columns (a.r3, a.r4) through the merge
+-- join, so an incremental sort finishes the rest (a.n, b.n).
 \set query ':P :Q SELECT DISTINCT ON (a.r3, a.r4) * FROM r5n a JOIN r5n b ON a.r3 = b.r1 WHERE a.r1 = 9 AND a.r2 IN (3, 4, 5) ORDER BY a.r3, a.r4, a.n, b.n LIMIT 5;'
 \i :run_query
 \unset Q3
@@ -66,12 +61,17 @@
 \i :run_query
 
 -- Multi-hop =-const equivalence
+-- Parallel append is off because a Parallel Append over the one remaining
+-- partition runs it in either the leader or the worker, so the plan's row
+-- counts vary between runs.
 -- Third hint is to show that when a JOIN doesn't care about the ordering of
 -- the index scan, Merge scan is not used.
-\set query ':P :Q SELECT DISTINCT ON (r5n.r3, r5n.r4) r5n.r1, h3r2n.r1, parent.p1, r5n.r3, r5n.r4, r5n.r5, r5n.r2 FROM r5n JOIN h3r2n ON r5n.r1 = h3r2n.r1 JOIN parent ON h3r2n.h1 = parent.p1 WHERE parent.p1 = 6 AND h3r2n.h1 = h3r2n.r1 AND r5n.r2 IN (3, 4, 5) ORDER BY r5n.r3, r5n.r4, r5n.r5 LIMIT 5;'
+SET enable_parallel_append = off;
+\set query ':P :Q SELECT DISTINCT ON (r5n.r3, r5n.r4) r5n.r1, h3r2n.r1, parent.p1, r5n.r3, r5n.r4, r5n.r5 FROM r5n JOIN h3r2n ON r5n.r1 = h3r2n.r1 JOIN parent ON h3r2n.h1 = parent.p1 WHERE parent.p1 = 6 AND h3r2n.h1 = h3r2n.r1 AND r5n.r2 IN (3, 4, 5) ORDER BY r5n.r3, r5n.r4, r5n.r5 LIMIT 5;'
 \set Q3 '/*+Leading(((h3r2n r5n) parent)) Set(yb_max_merge_scan_streams 64)*/'
 \i :run_query
 \unset Q3
+RESET enable_parallel_append;
 
 -- 2-hop IN-const equivalence
 -- TODO(#29030): this should use merge scan; may want to use :run3.

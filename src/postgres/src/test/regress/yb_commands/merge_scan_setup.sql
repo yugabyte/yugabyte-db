@@ -2,7 +2,7 @@
 \set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
 
-\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)'
 \set off '/*+Set(yb_max_merge_scan_streams 0)*/'
 \set on '/*+Set(yb_max_merge_scan_streams 64)*/'
 \set P1 ':explain'

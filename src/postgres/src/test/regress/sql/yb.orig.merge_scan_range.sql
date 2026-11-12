@@ -372,7 +372,7 @@ DROP INDEX r5n_r1_r4_r3_r2_idx;
 \i :run_query
 \unset Q3
 \unset Q4
-\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)'
 
 --
 -- Secondary index
@@ -398,7 +398,7 @@ SPLIT AT VALUES (
 
 -- Following queries send various numbers of requests/scan various number of rows
 -- due to non-deterministic order of equal rows in merge sort, hide their DIST
-\set explain 'EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+\set explain 'EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)'
 
 -- Forward scan
 \set query ':P :Q SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3, r4, n LIMIT 5;'
@@ -413,7 +413,7 @@ SPLIT AT VALUES (
 \i :run_query
 
 -- (Reset the explain change)
-\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)'
 
 -- Only duplicates in IN
 \set query ':P :Q SELECT r3, r4, r5, n, r2 FROM r5n WHERE r2 IN (1, 1) ORDER BY r3, r4, r5, n LIMIT 5;'
@@ -444,8 +444,7 @@ CREATE OPERATOR =#= (
     leftarg = int8,
     rightarg = int8,
     procedure = int8eq,
-    commutator = =#=,
-    negator = <>
+    commutator = =#=
 );
 CREATE FUNCTION my_int8_sort(int8,int8) RETURNS int LANGUAGE sql AS $$
     SELECT CASE WHEN $1 = $2 THEN 0 WHEN $1 > $2 THEN 1 ELSE -1 END;
@@ -503,8 +502,7 @@ CREATE OPERATOR #=# (
     leftarg = numeric,
     rightarg = numeric,
     procedure = numeric_eq,
-    commutator = #=#,
-    negator = <>
+    commutator = #=#
 );
 CREATE OPERATOR #>=# (
     leftarg = numeric,
@@ -579,7 +577,7 @@ SPLIT AT VALUES (
 
 -- Following queries send various numbers of requests/scan various number of rows
 -- due to non-deterministic order of equal rows in merge sort, hide their DIST
-\set explain 'EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+\set explain 'EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)'
 
 -- Forward scan
 \set query ':P :Q SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3, r4, n LIMIT 5;'
@@ -594,7 +592,7 @@ SPLIT AT VALUES (
 \i :run_query
 
 -- (Reset the explain change)
-\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)'
 
 -- Secondary index only scan VS merge PK scan
 -- Expected secondary index-only scan; merge PK scan is expected to be fixed by #29078.
@@ -670,13 +668,10 @@ ANALYZE r5n;
 
 -- DISTINCT
 -- TODO(#36013): merge scan errors.
--- With larger response pages, merge scan is the cheaper plan for this query.
-SET yb_fetch_row_limit = 1024;
 SET enable_indexonlyscan = off;
 \set query ':P :Q SELECT DISTINCT r3, r4 + 0, r5, r4 FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3, r4 + 0, r5, r4 LIMIT 5;'
 \i :run_query
 RESET enable_indexonlyscan;
-SET yb_fetch_row_limit = 16;
 
 -- (Drop this index)
 DROP INDEX r5n_r2_r3_expr_r5_r4_idx;
@@ -729,7 +724,7 @@ ANALYZE r5n;
 
 -- Following queries send various numbers of requests/scan various number of rows
 -- due to non-deterministic order of equal rows in merge sort, hide their DIST
-\set explain 'EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+\set explain 'EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)'
 
 -- Forward scan
 \set query ':P :Q SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) AND (r3 + r4) IN (4, 5) ORDER BY r5, n LIMIT 5;'
@@ -767,7 +762,7 @@ ANALYZE r5n;
 \unset Q3
 
 -- (Reset the explain change)
-\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)'
 
 -- (Drop this index)
 DROP INDEX r5n_r2_expr_r21_expr1_r22_r5_idx;
@@ -786,14 +781,14 @@ ANALYZE r5n;
 
 -- Following queries send various numbers of requests/scan various number of rows
 -- due to non-deterministic order of equal rows in merge sort, hide their DIST
-\set explain 'EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+\set explain 'EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)'
 
 -- Order by the cast expression
 \set query ':P :Q SELECT r3, r2, n FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3::oid, n LIMIT 5;'
 \i :run_query
 
 -- (Reset the explain change)
-\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)'
 
 -- (Drop this index)
 DROP INDEX r5n_r2_r3_r4_idx;
