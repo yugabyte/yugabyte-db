@@ -13,16 +13,33 @@
 
 package org.yb.ysqlconnmgr;
 
+import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.fail;
 import static org.yb.AssertionWrappers.assertTrue;
 
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.net.SocketTimeoutException;
+import java.security.cert.X509Certificate;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 import org.hamcrest.CoreMatchers;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -30,6 +47,7 @@ import org.yb.YBTestRunner;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 import org.yb.util.RequiresLinux;
+import org.yb.ysqlconnmgr.PgWireProtocol.PgMessage;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 
@@ -43,6 +61,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 @RequiresLinux
 @RunWith(value = YBTestRunner.class)
 public class TestConnMgrNonSslConnection extends BaseYsqlConnMgr {
+  private static final int SSL_PIPELINE_REPLY_TIMEOUT_MS = 15000;
 
   public TestConnMgrNonSslConnection() {
     // Required for TLS connections to resolve correctly in the test environment;
@@ -127,6 +146,94 @@ public class TestConnMgrNonSslConnection extends BaseYsqlConnMgr {
           Statement stmt = conn.createStatement()) {
         ResultSet rs = stmt.executeQuery("SELECT 1");
         assertTrue(rs.next());
+      }
+    }
+  }
+
+  /**
+   * A TLS client sends Parse/Bind/Execute/Sync and a Query in one write, with a 64-byte readahead.
+   * Conn mgr pauses the client after the Sync with the readahead full and the rest of the Query
+   * buffered by OpenSSL, which does not wake the poller. After the Sync's ReadyForQuery, conn mgr
+   * must still read the rest of the Query and reply to it.
+   */
+  @Test
+  public void testSslPipelinedQueryAfterSyncWithSmallReadahead() throws Exception {
+    Map<String, String> tserverFlags = new HashMap<>();
+    tserverFlags.put("ysql_conn_mgr_readahead_buffer_size", "64");
+    tserverFlags.put("ysql_hba_conf_csv", "hostssl all all all trust");
+    restartClusterWithAdditionalFlags(new HashMap<>(), tserverFlags);
+
+    String literal = String.join("", Collections.nCopies(200, "a"));
+    ByteArrayOutputStream pipelined = new ByteArrayOutputStream();
+    pipelined.write(PgWireProtocol.buildParse("SELECT 1"));
+    pipelined.write(PgWireProtocol.buildBind());
+    pipelined.write(PgWireProtocol.buildExecute());
+    pipelined.write(PgWireProtocol.buildSync());
+    pipelined.write(PgWireProtocol.buildQuery("SELECT '" + literal + "'"));
+
+    try (SSLSocket socket = openSslSocket()) {
+      DataInputStream in = new DataInputStream(socket.getInputStream());
+      OutputStream out = socket.getOutputStream();
+      out.write(PgWireProtocol.buildStartupMessage("yugabyte", "yugabyte", null));
+      PgWireProtocol.readUntilReady(in);
+
+      // One write, so the client sends it in a single TLS record.
+      out.write(pipelined.toByteArray());
+      out.flush();
+      assertEquals(Collections.singletonList("1"), readRowsUntilReady(in));
+      try {
+        assertEquals(Collections.singletonList(literal), readRowsUntilReady(in));
+      } catch (SocketTimeoutException e) {
+        fail("No reply to the Query pipelined after the Sync");
+      }
+    }
+  }
+
+  private SSLSocket openSslSocket() throws Exception {
+    InetSocketAddress target = miniCluster.getYsqlConnMgrContactPoints().get(0);
+    Socket plain = new Socket();
+    plain.setSoTimeout(SSL_PIPELINE_REPLY_TIMEOUT_MS);
+    plain.connect(target);
+    DataOutputStream plainOut = new DataOutputStream(plain.getOutputStream());
+    plainOut.writeInt(8);
+    plainOut.writeInt(80877103); // SSLRequest
+    plainOut.flush();
+    assertEquals("Server refused SSL", 'S', plain.getInputStream().read());
+
+    SSLContext context = SSLContext.getInstance("TLS");
+    context.init(null, new TrustManager[] {new X509TrustManager() {
+      @Override
+      public void checkClientTrusted(X509Certificate[] chain, String authType) {}
+
+      @Override
+      public void checkServerTrusted(X509Certificate[] chain, String authType) {}
+
+      @Override
+      public X509Certificate[] getAcceptedIssuers() {
+        return new X509Certificate[0];
+      }
+    }}, null);
+    SSLSocket socket = (SSLSocket) context.getSocketFactory().createSocket(
+        plain, target.getHostString(), target.getPort(), true);
+    socket.startHandshake();
+    return socket;
+  }
+
+  private static List<String> readRowsUntilReady(DataInputStream in) throws IOException {
+    List<String> rows = new ArrayList<>();
+    for (;;) {
+      PgMessage msg = PgWireProtocol.readMessage(in);
+      switch (msg.type) {
+        case PgWireProtocol.BE_DATA_ROW:
+          rows.add(PgWireProtocol.parseDataRow(msg.body).get(0));
+          break;
+        case PgWireProtocol.BE_ERROR_RESPONSE:
+          fail("Unexpected error: " + PgWireProtocol.parseErrorResponse(msg.body));
+          break;
+        case PgWireProtocol.BE_READY_FOR_QUERY:
+          return rows;
+        default:
+          break;
       }
     }
   }

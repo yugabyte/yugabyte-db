@@ -82,6 +82,20 @@ MACHINE_API int machine_read_stop(machine_io_t *obj)
 	return mm_read_stop(io);
 }
 
+/*
+ * YB: Same check as mm_read_start(): bytes already read off the socket and
+ * buffered by TLS or compression, which generate no poller event.
+ */
+MACHINE_API int yb_machine_read_pending(machine_io_t *obj)
+{
+	mm_io_t *io = mm_cast(mm_io_t *, obj);
+	if (mm_tls_is_active(io) && mm_tls_read_pending(io))
+		return 1;
+	if (mm_compression_is_active(io) && mm_compression_read_pending(io))
+		return 1;
+	return 0;
+}
+
 MACHINE_API ssize_t machine_read_raw(machine_io_t *obj, void *buf, size_t size)
 {
 	mm_io_t *io = mm_cast(mm_io_t *, obj);
