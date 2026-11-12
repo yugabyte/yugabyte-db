@@ -3143,23 +3143,24 @@ get_db_info(const char *name, LOCKMODE lockmode,
 			LockSharedObject(DatabaseRelationId, dbOid, 0, lockmode);
 
 		/*
-		 * YB: In a legacy mode transaction, catalog cache invalidations may not
-		 * have propagated by the time we get here (e.g. the heartbeat catalog
-		 * versions cache on master lags after a breaking DDL like ALTER
-		 * DATABASE RENAME, suppressing the per-RPC catalog-version-mismatch
-		 * signal that normally drives PG to refresh its caches). Without a
-		 * refresh, DATABASEOID still has the old name from this backend's
-		 * local cache; the scan above reads the new name from pg_database via
-		 * master; the names disagree; we loop again with the same stale local
-		 * cache; forever. Force-invalidate the cache entry before the
-		 * re-fetch so SearchSysCache1 pulls fresh tuple data from master.
+		 * YB: In a transaction using the legacy mode of catalog operations,
+		 * catalog cache invalidations may not have propagated by the time we
+		 * get here (e.g. the heartbeat catalog versions cache on master lags
+		 * after a breaking DDL like ALTER DATABASE RENAME, suppressing the
+		 * per-RPC catalog-version-mismatch signal that normally drives PG to
+		 * refresh its caches). Without a refresh, DATABASEOID still has the
+		 * old name from this backend's local cache; the scan above reads the
+		 * new name from pg_database via master; the names disagree; we loop
+		 * again with the same stale local cache; forever. Force-invalidate the
+		 * cache entry before the re-fetch so SearchSysCache1 pulls fresh tuple
+		 * data from master.
 		 *
-		 * In a new mode transaction, the lock acquisition above carries
-		 * fresh catalog-version data with it (via the release-locks RPC path),
-		 * so PG's local caches are already invalidated and a manual flush is
-		 * unnecessary.
+		 * In a transaction using the new mode of catalog operations, the lock
+		 * acquisition above carries fresh catalog-version data with it (via
+		 * the release-locks RPC path), so PG's local caches are already
+		 * invalidated and a manual flush is unnecessary.
 		 */
-		if (IsYugaByteEnabled() && !YBCIsObjectLockingEnabled())
+		if (IsYugaByteEnabled() && YBCIsLegacyModeForCatalogOps())
 			SysCacheInvalidate(DATABASEOID,
 							   GetSysCacheHashValue1(DATABASEOID,
 													 ObjectIdGetDatum(dbOid)));

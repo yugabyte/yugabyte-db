@@ -963,7 +963,8 @@ message PgPerformOptionsPB {
 
   // The transaction runs in new object locking mode: DDLs order themselves against it through
   // object locks, so the tablets skip their catalog version check for its requests and DDLs do not
-  // abort it. A legacy mode transaction keeps both fences, even though it takes local locks.
+  // abort it. A transaction using the legacy mode of catalog operations keeps both fences, even
+  // though it takes local locks.
   bool skip_legacy_ddl_fences = 32;
 
   ReadTimeOptionsPB read_time_options = 34;
@@ -998,11 +999,12 @@ message PgPerformOptionsPB {
   // Only applicable when historical_read_transaction_id is set.
   SubtxnSetPB historical_read_aborted_subtxns = 41;
 
-  // The transaction takes object locks, in either mode: a legacy mode transaction takes its local
-  // DML locks too, so that new mode DDLs wait for it while ysql_yb_enable_object_locking_infra is
-  // being promoted (#36572). Its fast path writes carry the lock owner for deadlock detection.
-  // skip_legacy_ddl_fences stays false for a legacy mode transaction, so that tablets, including
-  // those still on an older binary during the upgrade, keep checking its catalog version.
+  // The transaction takes object locks, in either mode: a transaction using the legacy mode of
+  // catalog operations takes its local DML locks too, so that new mode DDLs wait for it while
+  // ysql_yb_enable_object_locking_infra is being promoted (#36572). Its fast path writes carry the
+  // lock owner for deadlock detection. skip_legacy_ddl_fences stays false for a transaction using
+  // the legacy mode of catalog operations, so that tablets, including those still on an older
+  // binary during the upgrade, keep checking its catalog version.
   bool is_using_local_table_locks = 42;
 }
 

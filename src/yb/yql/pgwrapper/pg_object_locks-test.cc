@@ -975,10 +975,10 @@ class PgObjectLocksTestMixModeDuringPromotion : public PgObjectLocksTest {
   // Runs `query` on ts1 so that the infra auto flag is promoted between its Parse and its Execute,
   // and returns the error message, empty on success.
   //
-  // Probe for the object locking mode, unless `locked_table` is empty: a new mode transaction on
-  // ts2 holds an ACCESS EXCLUSIVE lock on `locked_table` (HoldLockInNewMode). A transaction of the
-  // statement that takes SHARE or stronger on it waits on that lock until statement_timeout in new
-  // mode, and goes on in legacy mode.
+  // Probe for the object locking mode, unless `locked_table` is empty: a transaction using the new
+  // mode of catalog operations on ts2 holds an ACCESS EXCLUSIVE lock on `locked_table`
+  // (HoldLockInNewMode). A transaction of the statement that takes SHARE or stronger on it waits on
+  // that lock until statement_timeout in new mode, and goes on in legacy mode.
   //
   // Pipeline mode keeps Parse and Execute in separate protocol messages of one open transaction:
   // Parse starts the transaction and latches the flag, and the backend applies the promotion in
@@ -1405,7 +1405,8 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyTxnKeepsCatalogVersionChec
         cluster_->tablet_server(i), "ysql_yb_enable_object_locking_infra", "true"));
   }
 
-  // A new mode transaction open across a breaking DDL must not be subjected to the check.
+  // A transaction using the new mode of catalog operations open across a breaking DDL must not be
+  // subjected to the check.
   auto new_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
   ASSERT_OK(new_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
   ASSERT_EQ(ASSERT_RESULT(new_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
@@ -1443,6 +1444,12 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyTxnKeepsCatalogVersionChec
 class PgObjectLocksTestLegacyTxnVsNewDdl : public PgObjectLocksTestMixModeDuringPromotion,
                                            public ::testing::WithParamInterface<bool> {
  protected:
+  // READ COMMITTED is off by default in debug builds, where it runs as REPEATABLE READ.
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    PgObjectLocksTestMixModeDuringPromotion::UpdateMiniClusterOptions(opts);
+    opts->extra_tserver_flags.emplace_back("--yb_enable_read_committed_isolation=true");
+  }
+
   void PromoteForDdl() {
     ASSERT_OK(cluster_->SetFlag(
         cluster_->tablet_server(1), "ysql_yb_enable_object_locking_infra", "true"));
@@ -1487,49 +1494,11 @@ class PgObjectLocksTestLegacyTxnVsNewDdl : public PgObjectLocksTestMixModeDuring
   }
 };
 
-// READ COMMITTED is off by default in debug builds, where it runs as REPEATABLE READ.
-class PgObjectLocksTestLegacyRcTxnVsNewDdl : public PgObjectLocksTestLegacyTxnVsNewDdl {
- protected:
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
-    PgObjectLocksTestLegacyTxnVsNewDdl::UpdateMiniClusterOptions(opts);
-    opts->extra_tserver_flags.emplace_back("--yb_enable_read_committed_isolation=true");
-  }
-};
-
-// The same as LegacyWriteMaintainsNewIndex, in READ COMMITTED. Each statement takes a new
+// The transactions using the legacy mode of catalog operations only read the table before the
+// CREATE INDEX, so the CREATE INDEX does not wait for them. Their INSERTs after the build must
+// succeed and add the index entries. Before the fix, the INSERTs failed with a schema version
+// mismatch. One transaction per isolation level: in READ COMMITTED each statement takes a new
 // snapshot, but the catalog cache still lives for the whole transaction.
-TEST_P(PgObjectLocksTestLegacyRcTxnVsNewDdl, LegacyWriteMaintainsNewIndex) {
-  auto* ts1 = cluster_->tablet_server(0);
-  auto* ts2 = cluster_->tablet_server(1);
-  {
-    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
-    ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
-    ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
-  }
-
-  auto legacy_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
-  ASSERT_OK(legacy_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED"));
-  ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<std::string>(
-      "SHOW yb_effective_transaction_isolation_level")), "read committed");
-  ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
-
-  ASSERT_NO_FATALS(PromoteForDdl());
-  auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
-  ASSERT_OK(ddl_conn.Execute("CREATE INDEX test_v_idx ON test(v)"));
-
-  ASSERT_OK(legacy_conn.Execute("INSERT INTO test VALUES (100, 42)"));
-  ASSERT_OK(legacy_conn.Execute("COMMIT"));
-
-  ASSERT_NO_FATALS(CheckIndex(ddl_conn, 1));
-}
-
-INSTANTIATE_TEST_SUITE_P(
-    PromoteLegacyTxnNode, PgObjectLocksTestLegacyRcTxnVsNewDdl, ::testing::Bool(),
-    ::testing::PrintToStringParamName());
-
-// The legacy transaction only reads the table before the CREATE INDEX, so the CREATE INDEX does
-// not wait for it. Its INSERT after the build must succeed and add the index entry. Before the
-// fix, the INSERT failed with a schema version mismatch.
 TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyWriteMaintainsNewIndex) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
@@ -1539,18 +1508,27 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyWriteMaintainsNewIndex) {
     ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
   }
 
-  auto legacy_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
-  ASSERT_OK(legacy_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
-  ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
+  const std::vector<std::string> isolation_levels = {"repeatable read", "read committed"};
+  std::vector<PGConn> legacy_conns;
+  for (const auto& isolation_level : isolation_levels) {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.ExecuteFormat("BEGIN TRANSACTION ISOLATION LEVEL $0", isolation_level));
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(
+        "SHOW yb_effective_transaction_isolation_level")), isolation_level);
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
+    legacy_conns.push_back(std::move(conn));
+  }
 
   ASSERT_NO_FATALS(PromoteForDdl());
   auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
   ASSERT_OK(ddl_conn.Execute("CREATE INDEX test_v_idx ON test(v)"));
 
-  ASSERT_OK(legacy_conn.Execute("INSERT INTO test VALUES (100, 42)"));
-  ASSERT_OK(legacy_conn.Execute("COMMIT"));
+  for (size_t i = 0; i < legacy_conns.size(); ++i) {
+    ASSERT_OK(legacy_conns[i].ExecuteFormat("INSERT INTO test VALUES ($0, 42)", 100 + i));
+    ASSERT_OK(legacy_conns[i].Execute("COMMIT"));
+  }
 
-  ASSERT_NO_FATALS(CheckIndex(ddl_conn, 1));
+  ASSERT_NO_FATALS(CheckIndex(ddl_conn, legacy_conns.size()));
 }
 
 // The legacy transaction writes the table before the CREATE INDEX, so the CREATE INDEX must wait
@@ -1753,11 +1731,11 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyWriterReleasesLocksAtRollback) 
   ASSERT_OK(ddl_conn.Execute("ALTER TABLE test ADD COLUMN v2 INT"));
 }
 
-// A legacy transaction refreshes its catalog cache when PG takes a new lock, and its requests then
-// carry the new catalog version, so the tablets' breaking catalog version check no longer stops
-// it. A new mode table rewrite must therefore wait for a legacy reader through the reader's local
-// lock. Otherwise the reader, after the refresh, would read the rewritten table at its old
-// snapshot.
+// A table rewrite bumps the catalog version as a non-breaking change, so no catalog version check
+// stops a transaction using the legacy mode of catalog operations that read the table before it.
+// Only that reader's local lock makes a rewrite using the new mode wait. Without the wait, the
+// reader's next new lock refreshes its catalog cache, and it reads the rewritten table at its old
+// snapshot, where the table is empty.
 TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, TableRewriteWaitsForLegacyReader) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
@@ -1795,9 +1773,9 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, TableRewriteWaitsForLegacyReader) {
 
 // A CREATE INDEX takes a session lock on the table, then runs each phase in its own transaction,
 // and releases the lock in the last one. Started in legacy mode, it does not send the session lock.
-// If the infra flag is promoted between phases, the release runs in a new mode transaction. PG must
-// not send it: the tserver rejects the release of a session lock it never got, and the backend
-// FATALs.
+// If the infra flag is promoted between phases, the release runs in a transaction using the new
+// mode of catalog operations. PG must not send it: the tserver rejects the release of a session
+// lock it never got, and the backend FATALs.
 TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyCreateIndexAcrossPromotion) {
   auto* ts1 = cluster_->tablet_server(0);
   {

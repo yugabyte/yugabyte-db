@@ -1055,7 +1055,6 @@ class PgApiImpl {
 
   scoped_refptr<server::HybridClock> clock_;
 
-  const bool enable_table_locking_;
   scoped_refptr<PgTxnManager> pg_txn_manager_;
   std::optional<PgSysTablePrefetcher> pg_sys_table_prefetcher_;
   std::unordered_set<std::unique_ptr<PgMemctx>, PgMemctxHasher, PgMemctxComparator> mem_contexts_;

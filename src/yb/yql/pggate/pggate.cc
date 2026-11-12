@@ -505,14 +505,6 @@ Result<bool> RetrieveYbctidsImpl(
       });
 }
 
-// Not gated on enable_object_locking_for_table_locks: a node restarted with table locks off still
-// takes local DML locks, because a new mode CREATE INDEX on a node not yet restarted waits for its
-// writers only through them (#37355). The gflag decides whether a transaction runs in new mode
-// (PgTxnManager::IsTableLockingEnabledForCurrentTxn).
-[[nodiscard]] bool ShouldEnableTableLocks() {
-  return !YBCIsInitDbModeEnvVarSet() && !YBCIsBinaryUpgrade();
-}
-
 tserver::TServerSharedData& GetTServerSharedData() {
   PgBackendSetupSharedMemory();
   // This is an RCU object, but there are no concurrent updates on PG side, only on tserver, so
@@ -785,8 +777,16 @@ PgApiImpl::PgApiImpl(
       // For parallel query, multiple PgTxnManager(s) make parallel requests to pg_client_session
       // projecting as a single ysql backend. When object locking is enabled, only the leader worker
       // should acquire object locks and issue finish transaction rpcs to ensure correctness.
-      enable_table_locking_(ShouldEnableTableLocks() && !is_parallel_worker_),
-      pg_txn_manager_(new PgTxnManager(&pg_client_, pg_callbacks_, enable_table_locking_,
+      //
+      // Not gated on enable_object_locking_for_table_locks: a node restarted with table locks off
+      // still takes local DML locks, because a CREATE INDEX using the new mode of catalog
+      // operations on a node not yet restarted waits for its writers only through them (#37355).
+      // The gflag decides which mode of catalog operations a transaction uses
+      // (PgTxnManager::IsTableLockingEnabledForCurrentTxn).
+      pg_txn_manager_(new PgTxnManager(
+          &pg_client_, pg_callbacks_,
+          /* should_enable_table_locking= */
+          !YBCIsInitDbModeEnvVarSet() && !YBCIsBinaryUpgrade() && !is_parallel_worker_,
           pg_shared_data_->next_read_time_serial_no)),
       pg_session_(PgSession::Make(
           pg_client_, pg_txn_manager_, pg_callbacks_, session_stats, is_binary_upgrade,

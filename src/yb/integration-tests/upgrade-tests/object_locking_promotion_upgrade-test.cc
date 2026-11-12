@@ -16,6 +16,7 @@
 #include "yb/integration-tests/upgrade-tests/upgrade_test_base.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/test_macros.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 using namespace std::chrono_literals;
@@ -94,8 +95,10 @@ TEST_F(ObjectLockingPromotionUpgradeTest, CreateIndexWaitsForLegacyWriterAcrossP
   ASSERT_OK(create_index_future.get());
 
   ASSERT_OK(ddl_conn.Execute("SET enable_seqscan = off"));
-  ASSERT_EQ(ASSERT_RESULT(ddl_conn.FetchRow<int64_t>(
-      "SELECT COUNT(*) FROM test WHERE v = 42")), 1);
+  constexpr auto kCountV42 = "SELECT COUNT(*) FROM test WHERE v = 42";
+  ASSERT_STR_CONTAINS(
+      ASSERT_RESULT(ddl_conn.FetchAllAsString(Format("EXPLAIN $0", kCountV42))), "test_v_idx");
+  ASSERT_EQ(ASSERT_RESULT(ddl_conn.FetchRow<int64_t>(kCountV42)), 1);
 
   // yb_index_check has the old release's catalog definition until the YSQL upgrade in finalize.
   ASSERT_OK(FinalizeUpgrade());

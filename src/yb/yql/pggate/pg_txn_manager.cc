@@ -249,24 +249,24 @@ void PgTxnManager::DEBUG_CheckOptionsForPerform(
 #endif
 
 PgTxnManager::PgTxnManager(
-    PgClient* client, YbcPgCallbacks pg_callbacks, bool enable_table_locking,
+    PgClient* client, YbcPgCallbacks pg_callbacks, bool should_enable_table_locking,
     std::atomic<uint64_t>& next_read_time_serial_no)
     : client_(client),
       serial_no_(next_read_time_serial_no),
       pg_callbacks_(pg_callbacks),
-      enable_table_locking_(enable_table_locking) {}
+      should_enable_table_locking_(should_enable_table_locking) {}
 
 bool PgTxnManager::IsTableLockingEnabledForCurrentTxn() const {
-  // Computed rather than latched: enable_table_locking_ and the gflag are fixed for the session and
-  // YBCIsObjectLockingInfraEnabled() is a snapshot PG takes once per transaction, so the result
-  // cannot change under an open transaction.
-  VLOG_WITH_FUNC(1) << "enable_table_locking_: " << enable_table_locking_
+  // Computed rather than latched: should_enable_table_locking_ and the gflag are fixed for the
+  // session and YBCIsObjectLockingInfraEnabled() is a snapshot PG takes once per transaction, so
+  // the result cannot change under an open transaction.
+  VLOG_WITH_FUNC(1) << "should_enable_table_locking_: " << should_enable_table_locking_
                     << " object locking: " << YBCIsObjectLockingEnabled();
-  return enable_table_locking_ && YBCIsObjectLockingEnabled();
+  return should_enable_table_locking_ && YBCIsObjectLockingEnabled();
 }
 
 bool PgTxnManager::IsLocalTableLockingEnabledForCurrentTxn() const {
-  return enable_table_locking_ && YBCIsLocalObjectLockingEnabled();
+  return should_enable_table_locking_ && YBCIsLocalObjectLockingEnabled();
 }
 
 // A DDL in a separate (autonomous) DDL transaction takes no object locks: every legacy mode DDL

@@ -2156,9 +2156,8 @@ bool YBCPgIsDdlModeWithRegularTransactionBlock() {
 }
 
 bool YBCPgIsTakingObjectLocks() {
-  // Before YB starts a transaction, pgapi's transaction manager may not exist yet (initdb), and
-  // YBCIsLocalObjectLockingEnabled() is false.
-  return YBCIsLocalObjectLockingEnabled() && pgapi->IsTakingObjectLocks();
+  // pgapi is null when YB is not enabled, as in a tserver's local initdb.
+  return pgapi && pgapi->IsTakingObjectLocks();
 }
 
 bool YBCCurrentTransactionUsesFastPath() {

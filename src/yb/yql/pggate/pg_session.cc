@@ -1462,12 +1462,13 @@ Status PgSession::AcquireObjectLock(
     return Status::OK();
   }
   // While yb_enable_object_locking_infra is being promoted, a new mode CREATE INDEX waits for
-  // writers only through object locks. If a legacy mode transaction (one that latched the flag as
-  // off) sent no locks, the CREATE INDEX would backfill under its uncommitted UPDATE, and the index
-  // would miss the update once it commits (#36572). So a legacy mode transaction sends the locks a
-  // writer takes. It sends nothing stronger, so its LOCK TABLE and DDLs keep their pre-promotion
-  // behavior: LOCK TABLE t IN ACCESS EXCLUSIVE MODE still takes no object lock. PG records every
-  // lock in its own lock table either way.
+  // writers only through object locks. If a transaction using the legacy mode of catalog operations
+  // (one that latched the flag as off) sent no locks, the CREATE INDEX would backfill under its
+  // uncommitted UPDATE, and the index would miss the update once it commits (#36572). So a
+  // transaction using the legacy mode of catalog operations sends the locks a writer takes. It
+  // sends nothing stronger, so its LOCK TABLE and DDLs keep their pre-promotion behavior: LOCK
+  // TABLE t IN ACCESS EXCLUSIVE MODE still takes no object lock. PG records every lock in its own
+  // lock table either way.
   if (!pg_txn_manager_->IsTableLockingEnabledForCurrentTxn() &&
       (is_session_lock || mode > YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK)) {
     return Status::OK();
@@ -1485,7 +1486,8 @@ Status PgSession::AcquireObjectLock(
 }
 
 Status PgSession::ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool release_all) {
-  // A legacy mode transaction sends no session locks, so PG sends no releases for them.
+  // A transaction using the legacy mode of catalog operations sends no session locks, so PG sends
+  // no releases for them.
   if (!pg_txn_manager_->IsTableLockingEnabledForCurrentTxn()) {
     return Status::OK();
   }

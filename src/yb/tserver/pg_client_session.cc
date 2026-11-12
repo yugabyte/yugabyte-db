@@ -3056,9 +3056,6 @@ class PgClientSession::Impl {
         << " with lock type " << AsString(lock_type);
 
     RSTATUS_DCHECK(
-        options.is_using_local_table_locks(), IllegalState,
-        "Table Locking feature not enabled.");
-    RSTATUS_DCHECK(
         options.read_time_options().read_time_serial_no() == kInvalidReadTimeSerialNo,
         IllegalState, "Object lock RPCs must not carry a read time serial no");
 
@@ -4875,10 +4872,10 @@ class PgClientSession::Impl {
            FLAGS_ysql_yb_enable_object_locking_infra;
   }
 
-  // A legacy mode transaction takes local DML locks under the plain session whatever the values
-  // of ysql_yb_enable_object_locking_infra (#36572), which can also change while it runs, and of
-  // enable_object_locking_for_table_locks (#37355). So its locks are released based on this rather
-  // than IsObjectLockingEnabled().
+  // A transaction using the legacy mode of catalog operations takes local DML locks under the plain
+  // session whatever the values of ysql_yb_enable_object_locking_infra (#36572), which can also
+  // change while it runs, and of enable_object_locking_for_table_locks (#37355). So its locks are
+  // released based on this rather than IsObjectLockingEnabled().
   [[nodiscard]] bool CanHoldPlainObjectLocks() const {
     return ts_lock_manager() != nullptr;
   }

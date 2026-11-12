@@ -235,8 +235,6 @@ tserver::TSLocalLockManagerPtr YSQLLeaseManager::Impl::ResetAndGetTSLocalLockMan
 }
 
 void YSQLLeaseManager::Impl::StartTSLocalLockManagerUnlocked() {
-  // Started whatever enable_object_locking_for_table_locks says: every YSQL transaction takes local
-  // DML locks, so that new mode DDLs on other nodes wait for it (#37355).
   if (server_.options().server_type != TabletServerOptions::kServerType || !FLAGS_enable_ysql) {
     return;
   }
