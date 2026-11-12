@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include <optional>
+
 #include "yb/master/master_admin.pb.h"
 
 #include "yb/master/master_fwd.h"
@@ -108,12 +110,19 @@ class YsqlInitDBAndMajorUpgradeHandler {
 
   Status RunMajorVersionCatalogUpgrade(const LeaderEpoch& epoch);
 
+  // On a new cluster, runs initdb for template1 only and writes template1 as the initdb seed.
+  Status CreateInitdbSeed();
+
+  // Returns the next OID if template1 was loaded from the initdb seed, nullopt if initdb builds it.
+  Result<std::optional<uint32_t>> MaybeLoadTemplate1FromInitdbSeed(const LeaderEpoch& epoch);
+
   // Runs the initdb process to create the initial ysql sys catalog and snapshot the sys_catalog if
   // needed.
   // ysql major catalog upgrade provides db_name_to_oid_list. The clean install initdb process will
   // choose new OIDs.
   Status InitDBAndSnapshotSysCatalog(
-      const DbNameToOidList& db_name_to_oid_list, bool is_major_upgrade, const LeaderEpoch& epoch);
+      const DbNameToOidList& db_name_to_oid_list, bool is_major_upgrade, const LeaderEpoch& epoch,
+      std::optional<uint32_t> template1_next_object_id = std::nullopt);
 
   // Starts a new postgres process to run pg_upgrade to migrate the old catalog to the new version
   // catalog.

@@ -167,6 +167,8 @@ TEST_F(YsqlMajorUpgradeDdlBlockingTest, TestDdlsDuringUpgrade) {
 
   upgrade_state_ = UpgradeState::kDuringUpgrade;
   ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
+  // Run the DDLs below while the real initdb writes the catalog.
+  ASSERT_OK(cluster_->SetFlagOnMasters("ysql_major_upgrade_use_initdb_seed", "false"));
 
   ASSERT_OK(RunDdlFunctions(std::nullopt));
 

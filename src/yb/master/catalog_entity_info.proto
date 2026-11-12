@@ -21,6 +21,7 @@ import "yb/cdc/xcluster_producer.proto";
 import "yb/common/common.proto";
 import "yb/common/common_net.proto";
 import "yb/common/common_types.proto";
+import "yb/common/value.proto";
 import "yb/common/version_info.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
@@ -1237,4 +1238,28 @@ message SysTabletServerEntryPB {
   optional uint64 start_time_us = 10;
 
   optional XClusterGuardedLeaseState xcluster_guarded_lease_state = 11;
+}
+
+// template1's catalog as initdb leaves it before template0; YSQL major upgrades load it.
+message YsqlInitdbSeedRowPB {
+  // One value per schema column, in schema order; unset = NULL.
+  repeated QLValuePB values = 1;
+}
+
+message YsqlInitdbSeedTablePB {
+  optional bytes table_id = 1;
+  optional SysTablesEntryPB table = 2;
+  repeated YsqlInitdbSeedRowPB rows = 3;
+}
+
+message YsqlMajorUpgradeInitdbSeedPB {
+  // The seed is used only by the build that wrote it.
+  optional string git_hash = 1;
+  optional string build_type = 2;
+  // CRC32C of every file under the postgres share directory, which holds initdb's inputs.
+  optional uint32 initdb_inputs_crc = 3;
+  optional SysNamespaceEntryPB template1 = 4;
+  repeated YsqlInitdbSeedTablePB tables = 5;
+  // The OID initdb assigns next after template1: the largest template1 OID plus one.
+  optional uint32 next_object_id = 6;
 }

@@ -351,6 +351,36 @@ IsYugaByteLocalNodeInitdb()
 	return IsEnvSet("YB_PG_LOCAL_NODE_INITDB");
 }
 
+/* Global initdb that stops after template1; yb-master saves it as the seed. */
+static bool
+YbIsInitdbTemplate1Only()
+{
+	return IsEnvSet("YB_PG_INITDB_TEMPLATE1_ONLY");
+}
+
+/* Global initdb whose template1 yb-master already loaded from the seed. */
+static bool
+YbIsInitdbTemplate1Skip()
+{
+	return IsEnvSet("YB_PG_INITDB_TEMPLATE1_SKIP");
+}
+
+/* Continue OID assignment where the seed's template1 initdb stopped. */
+static void
+YbSetInitdbTemplate1NextOid()
+{
+	const char *next_oid = getenv("YB_PG_INITDB_TEMPLATE1_NEXT_OID");
+	char		cmd[MAXPGPATH * 3];
+
+	if (next_oid == NULL)
+		pg_fatal("missing YB_PG_INITDB_TEMPLATE1_NEXT_OID");
+
+	snprintf(cmd, sizeof(cmd), "\"%s/pg_resetwal\" -o %s -D \"%s\" >%s 2>&1",
+			 bin_path, next_oid, pg_data, DEVNULL);
+	if (system(cmd) != 0)
+		pg_fatal("could not set the next OID: %s", cmd);
+}
+
 bool
 YBIsMajorUpgradeInitDb()
 {
@@ -3080,7 +3110,18 @@ initialize_data_directory(void)
 	setup_config();
 
 	/* Bootstrap template1 */
-	bootstrap_template1();
+	if (YbIsInitdbTemplate1Skip())
+	{
+		/* YB: template1 is already in the sys catalog; make only local files. */
+		unsetenv("YB_ENABLED_IN_POSTGRES");
+		setenv("YB_PG_LOCAL_NODE_INITDB", "1", 1);
+		bootstrap_template1();
+		unsetenv("YB_PG_LOCAL_NODE_INITDB");
+		setenv("YB_ENABLED_IN_POSTGRES", "1", 1);
+		YbSetInitdbTemplate1NextOid();
+	}
+	else
+		bootstrap_template1();
 
 	if (IsYugaByteLocalNodeInitdb())
 		return;
@@ -3104,58 +3145,68 @@ initialize_data_directory(void)
 
 	PG_CMD_OPEN;
 
-	setup_auth(cmdfd);
-
-	setup_run_file(cmdfd, system_constraints_file);
-
-	setup_run_file(cmdfd, system_functions_file);
-
-	setup_depend(cmdfd);
-
-	/*
-	 * Note that no objects created after setup_depend() will be "pinned".
-	 * They are all droppable at the whim of the DBA.
-	 */
-
-	setup_run_file(cmdfd, system_views_file);
-
-	if (IsYugaByteGlobalClusterInitdb())
+	if (!YbIsInitdbTemplate1Skip())
 	{
-		setup_run_file(cmdfd, yb_system_functions_file);
-		setup_run_file(cmdfd, yb_system_views_file);
+		setup_auth(cmdfd);
+
+		setup_run_file(cmdfd, system_constraints_file);
+
+		setup_run_file(cmdfd, system_functions_file);
+
+		setup_depend(cmdfd);
+
+		/*
+		 * Note that no objects created after setup_depend() will be "pinned".
+		 * They are all droppable at the whim of the DBA.
+		 */
+
+		setup_run_file(cmdfd, system_views_file);
+
+		if (IsYugaByteGlobalClusterInitdb())
+		{
+			setup_run_file(cmdfd, yb_system_functions_file);
+			setup_run_file(cmdfd, yb_system_views_file);
+		}
+
+		/* Do not support copy in YB yet */
+		if (!IsYugaByteGlobalClusterInitdb())
+			setup_description(cmdfd);
+
+		setup_collation(cmdfd);
+
+		setup_run_file(cmdfd, dictionary_file);
+
+		setup_privileges(cmdfd);
+
+		setup_schema(cmdfd);
+
+		load_plpgsql(cmdfd);
+
+		enable_pg_stat_statements(cmdfd);
+
+		if (IsYugaByteGlobalClusterInitdb())
+			setup_run_file(cmdfd, yb_global_views_file);
+
+		/*
+		 * YB: we used to skip the call of vacuum_db() because we don't need
+		 * to vacuum in YB. As of 04/30/2024, we want to ANALYZE catalog tables
+		 * to get initial stats.
+		 * vacuum_db() runs both ANALYZE and VACUUM. Since VACUUM is a no-op in
+		 * YB. It is safe to just call vacuum_db().
+		 * All other databases: template0, postgres, yugabyte use template1 as the
+		 * template database. The initial stats of their catalog tables is copied
+		 * from template1 stats, so we don't need to do extra work to run ANALYZE
+		 * for each of them.
+		 */
+		vacuum_db(cmdfd);
 	}
 
-	/* Do not support copy in YB yet */
-	if (!IsYugaByteGlobalClusterInitdb())
-		setup_description(cmdfd);
-
-	setup_collation(cmdfd);
-
-	setup_run_file(cmdfd, dictionary_file);
-
-	setup_privileges(cmdfd);
-
-	setup_schema(cmdfd);
-
-	load_plpgsql(cmdfd);
-
-	enable_pg_stat_statements(cmdfd);
-
-	if (IsYugaByteGlobalClusterInitdb())
-		setup_run_file(cmdfd, yb_global_views_file);
-
-	/*
-	 * YB: we used to skip the call of vacuum_db() because we don't need
-	 * to vacuum in YB. As of 04/30/2024, we want to ANALYZE catalog tables
-	 * to get initial stats.
-	 * vacuum_db() runs both ANALYZE and VACUUM. Since VACUUM is a no-op in
-	 * YB. It is safe to just call vacuum_db().
-	 * All other databases: template0, postgres, yugabyte use template1 as the
-	 * template database. The initial stats of their catalog tables is copied
-	 * from template1 stats, so we don't need to do extra work to run ANALYZE
-	 * for each of them.
-	 */
-	vacuum_db(cmdfd);
+	if (YbIsInitdbTemplate1Only())
+	{
+		PG_CMD_CLOSE;
+		check_ok();
+		return;
+	}
 
 	make_template0(cmdfd);
 

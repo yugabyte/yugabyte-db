@@ -86,13 +86,17 @@ class PgWrapper : public ProcessWrapper {
   // Cleanup the data directory, and any associated symlinks.
   static Status CleanupPgData(const std::string& data_dir);
 
+  // Which part of global initdb to run: everything, only template1, or everything but template1.
+  enum class GlobalInitdbScope { kFull, kTemplate1Only, kTemplate1Skip };
+
   // Run initdb in a mode that sets up the required metadata in the YB cluster. This is done
   // only once after the cluster has started up. tmp_dir_base is used as a base directory to
   // create a temporary PostgreSQL directory that is later deleted.
   static Status InitDbForYSQL(
       PgWrapperContext* server, const server::ServerBaseOptions& options, FsManager& fs_manager,
       const std::string& tmp_dir_base, std::vector<std::pair<std::string, YbcPgOid>> db_to_oid,
-      bool is_major_upgrade);
+      bool is_major_upgrade, GlobalInitdbScope scope = GlobalInitdbScope::kFull,
+      uint32_t template1_next_object_id = 0);
 
   void PrepareSharedMemoryNegotiation(PgWrapperContext* server);
 
@@ -122,6 +126,9 @@ class PgWrapper : public ProcessWrapper {
   struct GlobalInitdbParams {
     std::vector<std::pair<std::string, YbcPgOid>> db_to_oid;
     bool is_major_upgrade = false;
+    GlobalInitdbScope scope = GlobalInitdbScope::kFull;
+    // Used by kTemplate1Skip: the OID initdb assigns first.
+    uint32_t template1_next_object_id = 0;
   };
   using InitdbParams = std::variant<LocalInitdbParams, GlobalInitdbParams>;
 
