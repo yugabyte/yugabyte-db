@@ -281,6 +281,8 @@ SET hnsw.ef_search = 100;
 - Vector indexes are not supported for [point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/) (PITR).
 - Vector indexes are not supported for [instant database cloning](../../../manage/backup-restore/point-in-time-recovery/clone/).
 - [Inspect at PIT](../../../manage/backup-restore/point-in-time-recovery/inspect/) (time travel queries) is not currently supported.
+- Restoring a backup onto a cluster with tablet splitting enabled can omit rows from a vector index. ANN queries on the restored index can then return incomplete results without an error. After the restore, drop and rebuild the vector indexes, or disable tablet splitting before the restore. {{<issue 20500>}}
+- Backup restore across major versions is not supported for a database that contains vector indexes.
 
 ### Notes
 
@@ -373,6 +375,12 @@ Use this option to keep the tables available during the upgrade. Nothing is requ
 1. Recreate the views and foreign keys that you dropped in step 5, and any grants or triggers that weren't part of the DDL you used in step 2.
 
 Alternatively, you can create and populate the new table in one step using `CREATE TABLE items_new AS TABLE items;`. This form doesn't copy constraints, defaults, grants, or other indexes, so you must add them before swapping the tables.
+
+### Vector index backend flag
+
+The flags `vector_index_use_yb_hnsw` and `vector_index_use_hnswlib` were replaced by `vector_index_backend` in v2026.1. Valid values are `yb_hnsw_hnswlib` (the default) and `yb_hnsw_usearch`.
+
+If either old flag is set, change the configuration to `vector_index_backend` before upgrading to v2026.1. The old flags are deprecated: they no longer select the backend, and the process logs a deprecation warning when they are set.
 
 ### Colocated databases
 

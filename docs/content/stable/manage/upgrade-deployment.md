@@ -91,7 +91,11 @@ For some xCluster setups, before upgrading, you should run a verification script
   - YugabyteDB bitmap scan (yb_enable_bitmapscan=true)
   - Parallel append (yb_enable_parallel_append=true, yb_parallel_range_rows=10000)
 
-- If your database uses the [pgvector](../../additional-features/pg-extensions/extension-pgvector/) `vector` extension, follow the steps in [Upgrade vector indexes](../../additional-features/pg-extensions/extension-pgvector/#upgrade-vector-indexes) before you upgrade. Upgrading from v2024.2 requires dropping the `vector` extension first. Upgrading from the v2025.1 series fails if a vector index exists, and tables with vector indexes created on earlier releases must be recreated after the upgrade is finalized.
+- If your database uses the [pgvector](../../additional-features/pg-extensions/extension-pgvector/) `vector` extension, follow the steps in [Upgrade vector indexes](../../additional-features/pg-extensions/extension-pgvector/#upgrade-vector-indexes) before you upgrade.
+
+    - Upgrading from v2024.2 requires dropping every table that uses the `vector` extension, then dropping the extension. The `vector` type OID in v2024.2 is assigned when the extension is created and does not match the fixed OID in v2025.1 and later, and the PostgreSQL 11 to 15 upgrade fails while the extension is installed. Recreate the tables after the upgrade is finalized. Rows written in v2024.2 cannot be used for vector indexes.
+    - Upgrading from the v2025.1 series fails if a vector index exists. Tables with vector indexes created on earlier releases must be recreated after the upgrade is finalized.
+    - If `vector_index_use_yb_hnsw` or `vector_index_use_hnswlib` is set, replace it with [vector_index_backend](../../additional-features/pg-extensions/extension-pgvector/#vector-index-backend-flag) before upgrading to v2026.1. Valid values are `yb_hnsw_hnswlib` and `yb_hnsw_usearch`. The old flags are deprecated and no longer select the backend.
 
 ## Upgrade YugabyteDB cluster
 

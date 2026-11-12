@@ -263,7 +263,23 @@ A higher `ef_construction` value provides faster recall at the cost of index bui
 - Partial indexes on vector columns are not supported yet. {{<issue 31441>}}
 - Vector indexes are not supported for [xCluster replication](../../../architecture/docdb-replication/async-replication/).
 - [Inspect at PIT](../../../manage/backup-restore/point-in-time-recovery/inspect/) (time travel queries) is not currently supported. {{<issue 20829>}}
-- Currently, database upgrades do not support vector indexes. To perform an upgrade, first drop the indexes and then re-add them after the upgrade is finalized.
+- Restoring a backup onto a cluster with tablet splitting enabled can omit rows from a vector index. ANN queries on the restored index can then return incomplete results without an error. After the restore, drop and rebuild the vector indexes, or disable tablet splitting before the restore. {{<issue 20500>}}
+- Backup restore across major versions is not supported for a database that contains vector indexes.
+
+## Upgrading
+
+An upgrade from v2025.1 fails if a vector index exists. Dropping the indexes and recreating them after the upgrade is not enough. Export the data, drop the indexes and the tables, and recreate the tables on the new release.
+
+1. Before upgrading, save the DDL of each vector table and its indexes, and export the table data.
+1. Drop the vector indexes, then drop the tables.
+1. Upgrade and finalize.
+1. Recreate each table from its DDL, create the vector indexes, and then load the exported data.
+
+### Vector index backend flag
+
+The flags `vector_index_use_yb_hnsw` and `vector_index_use_hnswlib` are replaced by `vector_index_backend` in v2026.1. Valid values are `yb_hnsw_hnswlib` (the default) and `yb_hnsw_usearch`.
+
+If either old flag is set, change the configuration to `vector_index_backend` before upgrading to v2026.1. The old flags are deprecated: they no longer select the backend, and the process logs a deprecation warning when they are set.
 
 ## Learn more
 

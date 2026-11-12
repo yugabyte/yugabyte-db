@@ -15,7 +15,11 @@ type: docs
 
 The [pgvector](https://github.com/pgvector/pgvector) PostgreSQL extension allows you to store and query vectors, for use in performing similarity searches.
 
-Note that YugabyteDB support for pgvector does not currently include [indexing](https://github.com/pgvector/pgvector#indexing).
+{{< note title="pgvector in YugabyteDB v2024.2" >}}
+YugabyteDB v2024.2 supports the pgvector extension for storing and querying vectors using exact (sequential scan) similarity search only. Vector indexing is not available in this release.
+
+CDC, backup/restore, and xCluster behavior with vector columns has not been formally QA-tested in this release.
+{{< /note >}}
 
 To enable the extension:
 
@@ -153,6 +157,25 @@ Average groups of vectors belonging to the same category:
 ```sql
 SELECT category_id, AVG(embedding) FROM items GROUP BY category_id;
 ```
+
+## Upgrade considerations
+
+A database with the `vector` extension installed cannot be upgraded in place to v2025.1 or later. Export the data before dropping anything.
+
+### OID conflict
+
+In v2024.2 the `vector` type receives its object identifier (OID) when the extension is created, and that OID differs by cluster. v2025.1 and later use a fixed OID. pgvector also changes from 0.4.4 to 0.8.0 with no update path, and the PostgreSQL 11 to 15 upgrade fails while the extension is installed.
+
+To upgrade, do the following:
+
+1. Save the DDL of every table that uses the `vector` type (for example, with `ysql_dump --schema-only`) and export the data (for example, with `\copy <table> TO '<table>.csv' WITH (FORMAT csv)`).
+1. Drop those tables, then run `DROP EXTENSION vector;` in each database where the extension is installed.
+1. Upgrade and finalize.
+1. Run `CREATE EXTENSION vector;`, recreate the tables, and load the exported data.
+
+### Vector indexes after the upgrade
+
+v2024.2 has no vector indexes. v2025.1 stores a per-row identifier that vector indexes require, and rows written in v2024.2 do not have it. A table kept across the upgrade cannot be indexed. Recreating the tables and loading the data, as in the preceding steps, writes the rows in the new format.
 
 ## Read more
 
