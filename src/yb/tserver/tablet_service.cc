@@ -2248,7 +2248,7 @@ TierMigrationStatusPB::State ToTierMigrationStatePB(tablet::TierMigrationStatus:
 void FillTierMigrationStatusPB(
     const tablet::TierMigrationStatus& status, TierMigrationStatusPB* pb) {
   pb->set_state(ToTierMigrationStatePB(status.state));
-  pb->set_pass_in_flight(status.pass_in_flight);
+  pb->set_migration_pass_in_flight(status.migration_pass_in_flight);
   pb->set_files_total(status.files_total);
   pb->set_files_moved(status.files_moved);
   pb->set_files_failed(status.files_failed);

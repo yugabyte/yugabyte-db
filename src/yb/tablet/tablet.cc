@@ -5618,7 +5618,7 @@ Status Tablet::SetTierMigrationTargetUnlocked(
   const bool same_target = IsPersistedTierTarget(target_tier, target_path_id);
   {
     std::lock_guard lock(tier_migration_mutex_);
-    if (tier_migration_status_.pass_in_flight && !same_target) {
+    if (tier_migration_status_.migration_pass_in_flight && !same_target) {
       // ScheduleDBPathMove has no cancel: the pass would keep copying to the old disk, and
       // FinishTierMigrationPass would book its outcome against the new target. The same target
       // re-asserts what the pass is already doing, so it goes through as usual.
@@ -5705,7 +5705,7 @@ Result<TierReconcileResult> Tablet::RunTierMigrationPass(
 
     std::lock_guard lock(tier_migration_mutex_);
     auto& status = tier_migration_status_;
-    if (status.pass_in_flight) {
+    if (status.migration_pass_in_flight) {
       return STATUS(
           ServiceUnavailable, "A tier migration pass is already in flight for this tablet");
     }
@@ -5714,7 +5714,7 @@ Result<TierReconcileResult> Tablet::RunTierMigrationPass(
       result.status = status;
       return result;
     }
-    status.pass_in_flight = true;
+    status.migration_pass_in_flight = true;
     state_before = status.state;
   }
 
@@ -5727,7 +5727,7 @@ Result<TierReconcileResult> Tablet::RunTierMigrationPass(
     std::lock_guard lock(tier_migration_mutex_);
     auto& status = tier_migration_status_;
     if (candidates.empty()) {
-      status.pass_in_flight = false;
+      status.migration_pass_in_flight = false;
       status.files_total = 0;
       status.files_moved = 0;
       status.files_deferred = 0;
@@ -5750,7 +5750,7 @@ Result<TierReconcileResult> Tablet::RunTierMigrationPass(
     if (reconciler_pass && options.failed_pass_threshold > 0 &&
         status.consecutive_failed_passes >= options.failed_pass_threshold) {
       // The counters of the last failed pass stay as they were, for GetTierInfo.
-      status.pass_in_flight = false;
+      status.migration_pass_in_flight = false;
       status.state = State::kFailed;
       result.state_changed = status.state != state_before;
       result.status = status;
@@ -5817,7 +5817,7 @@ Result<TierMigrationStatus> Tablet::AlterTabletTier(
     std::lock_guard target_lock(tier_target_mutex_);
     RETURN_NOT_OK(SetTierMigrationTargetUnlocked(target_tier, target_path_id));
     std::lock_guard lock(tier_migration_mutex_);
-    if (tier_migration_status_.pass_in_flight) {
+    if (tier_migration_status_.migration_pass_in_flight) {
       // Only the same target gets past the write with a pass in flight: that pass already serves
       // this request, re-asserted just now like any accepted one, so report it.
       return tier_migration_status_;
@@ -5915,7 +5915,7 @@ void Tablet::FinishTierMigrationPass(const std::shared_ptr<TierMigrationPass>& p
   {
     std::lock_guard lock(tier_migration_mutex_);
     auto& status = tier_migration_status_;
-    status.pass_in_flight = false;
+    status.migration_pass_in_flight = false;
     status.files_moved = moved;
     status.files_deferred = deferred;
     status.files_failed = hard_failed;
