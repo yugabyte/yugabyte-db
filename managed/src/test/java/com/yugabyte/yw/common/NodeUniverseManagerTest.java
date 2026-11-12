@@ -206,6 +206,21 @@ public class NodeUniverseManagerTest extends FakeDBApplication {
     assertFalse(logged.contains("S3cr3t"));
   }
 
+  /** ManageCatalogUpgradeSuperUser's query: the password is doubled inside a format() string. */
+  @Test
+  public void testRunYsqlBatchCommandsRedactsFormatStringPasswordOverSsh() {
+    String logged =
+        runYsqlBatchOverSsh(
+            "format-password-test",
+            "DO $$DECLARE time TIMESTAMP := now() + INTERVAL '4 HOURS';\nBEGIN\n"
+                + "EXECUTE format('CREATE ROLE yugabyte_upgrade WITH SUPERUSER LOGIN PASSWORD"
+                + " ''Ab1!@^*zQ9'' VALID UNTIL ''%s'';', time);\nEND$$;\n",
+            true);
+
+    assertTrue(logged, logged.contains("PASSWORD REDACTED VALID UNTIL ''%s''"));
+    assertFalse(logged, logged.contains("Ab1!@^*zQ9"));
+  }
+
   /** run_node_action.py joins params with spaces for the node's shell, so each is quoted. */
   @Test
   public void testRunScriptQuotesParamsOverSsh() {

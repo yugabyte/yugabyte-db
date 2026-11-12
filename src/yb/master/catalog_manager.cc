@@ -596,7 +596,10 @@ DEFINE_test_flag(bool, create_table_with_empty_namespace_name, false,
 DEFINE_test_flag(int32, delay_split_registration_secs, 0,
     "Delay creating child tablets and upserting them to sys catalog");
 
+DECLARE_bool(ysql_yb_enable_colocated_tables_with_tablespaces);
+namespace deprecated_flag_do_not_use {
 DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
+}
 
 DEFINE_test_flag(bool, pause_pg_catalog_versions_cache_refresh, false,
     "When true, RefreshPgCatalogVersionCache() returns without doing anything, for both its "
@@ -4883,14 +4886,16 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       !colocated || req.has_table_id(), InvalidArgument,
       "Colocated table should specify a table ID");
 
-  // If ysql_enable_colocated_tables_with_tablespaces is not enabled then tablespaces cannot be
-  // specified for indexes on colocated tables. Vector indexes are exempt: they are copartitioned
-  // with (and stored on) the indexed table's tablets, so a tablespace recorded for them only
-  // mirrors the indexed table's tablespace for catalog consistency and is never used for the
-  // vector index's (shared) placement.
+  // If colocated tables with tablespaces are not enabled then tablespaces cannot be specified for
+  // indexes on colocated tables. The deprecated flag counts as well, because postgres honors it
+  // too (see AppendPgGFlags). Vector indexes are exempt: they are copartitioned with (and stored
+  // on) the indexed table's tablets, so a tablespace recorded for them only mirrors the indexed
+  // table's tablespace for catalog consistency and is never used for the vector index's (shared)
+  // placement.
   SCHECK(
-      FLAGS_ysql_enable_colocated_tables_with_tablespaces || !colocated || !IsIndex(req) ||
-          is_vector_index || !req.has_tablespace_id(),
+      FLAGS_ysql_yb_enable_colocated_tables_with_tablespaces ||
+          deprecated_flag_do_not_use::FLAGS_ysql_enable_colocated_tables_with_tablespaces ||
+          !colocated || !IsIndex(req) || is_vector_index || !req.has_tablespace_id(),
       InvalidArgument, "TABLESPACE is not supported for indexes on colocated tables.");
 
   // TODO: If this is a colocated index table, convert any hash partition columns into
@@ -12448,6 +12453,9 @@ Status CatalogManager::DeleteOrHideTabletsAndSendRequests(
   for (auto& tablet_data : tablets_data) {
     LOG(INFO) << (hide_only ? "Hid" : "Deleted") << " tablet " << tablet_data.tablet->tablet_id();
     tablet_data.lock.Commit();
+    if (!hide_only) {
+      tablet_data.tablet->StopCountingReplicaLoad();
+    }
   }
 
   TEST_SYNC_POINT("CatalogManager::DeleteOrHideTabletsAndSendRequests::AddToMaps");
@@ -12938,6 +12946,7 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
 
   // Send DeleteTablet requests to tablet servers serving deleted tablets.
   // This is asynchronous / non-blocking.
+  std::vector<TabletInfoPtr> deleted_tablets;
   for (const TabletInfoPtr& tablet : deferred.modified_tablets) {
     if (tablet->metadata().dirty().is_deleted()) {
       // Actual delete, because we delete tablet replica.
@@ -12946,10 +12955,17 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
       DeleteTabletReplicas(tablet, tablet->metadata().dirty().pb.state_msg(), HideOnly::kFalse,
                            KeepData::kFalse,
                            TransactionId::Nil() /* exclude_aborting_transaction_id */, epoch);
+      deleted_tablets.push_back(tablet);
     }
   }
   // Send the CreateTablet() requests to the servers. This is asynchronous / non-blocking.
   unlocker.Commit();
+
+  // A replaced tablet is only dropped from the maps by the next background pass; its replicas
+  // leave the load count now rather than then.
+  for (const TabletInfoPtr& tablet : deleted_tablets) {
+    tablet->StopCountingReplicaLoad();
+  }
 
   {
     LockGuard lock(mutex_);
@@ -14652,24 +14668,9 @@ Result<CMGlobalLoadState> CatalogManager::InitializeGlobalLoadState(
     const TSDescriptorVector& ts_descs) {
   CMGlobalLoadState state;
   for (const auto& ts : ts_descs) {
-    // Touch every tserver with 0 load.
-    state.per_ts_replica_load_[ts->permanent_uuid()];
+    state.per_ts_replica_load_[ts->permanent_uuid()] =
+        narrow_cast<uint32_t>(std::max<int64_t>(ts->replica_load(), 0));
     state.per_ts_protege_load_[ts->permanent_uuid()];
-  }
-
-  SharedLock l(mutex_);
-  // todo(zdrudi): replace this with a better index
-  for (const auto& info : tables_->GetAllTables()) {
-    // Ignore system, colocated and deleting/deleted tables.
-    {
-      auto l = info->LockForRead();
-      if (info->is_system() ||
-          info->IsSecondaryTable() ||
-          l->started_deleting()) {
-        continue;
-      }
-    }
-    RETURN_NOT_OK(CatalogManagerUtil::FillTableLoadState(info, &state.per_ts_replica_load_));
   }
   return state;
 }

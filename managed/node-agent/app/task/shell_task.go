@@ -95,7 +95,7 @@ func (s *ShellTask) Process(ctx context.Context) (*TaskStatus, error) {
 		taskStatus.ExitStatus.Code = 0
 		if util.FileLogger().IsDebugEnabled(ctx) {
 			util.FileLogger().
-				Debugf(ctx, "Command %s executed successfully - %s", s.cmdInfo.Desc, s.cmdInfo.StdOut.String())
+				Debugf(ctx, "Command %s executed successfully - %s", s.cmdInfo.Desc, module.RedactOutput(s.cmdInfo.StdOut.String()))
 		}
 	} else {
 		taskStatus.ExitStatus.Error = s.cmdInfo.StdErr
@@ -106,7 +106,7 @@ func (s *ShellTask) Process(ctx context.Context) (*TaskStatus, error) {
 		err = util.NewStatusError(taskStatus.ExitStatus.Code, err)
 		if util.FileLogger().IsDebugEnabled(ctx) && s.cmdInfo.StdOut.Len() > 0 {
 			util.FileLogger().
-				Debugf(ctx, "Output for failed command %s - %s", s.cmdInfo.Desc, s.cmdInfo.StdOut.String())
+				Debugf(ctx, "Output for failed command %s - %s", s.cmdInfo.Desc, module.RedactOutput(s.cmdInfo.StdOut.String()))
 		}
 		errMsg := fmt.Sprintf("%s: %s", err.Error(), s.cmdInfo.StdErr.String())
 		util.FileLogger().Errorf(ctx, "Command %s execution failed - %s", s.cmdInfo.Desc, errMsg)

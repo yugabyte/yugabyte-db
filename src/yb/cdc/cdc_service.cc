@@ -5890,6 +5890,23 @@ void CDCServiceImpl::UpdateAndPersistLSN(
   context.RespondSuccess();
 }
 
+void CDCServiceImpl::InvalidateStreamMetadataCache(
+    const InvalidateStreamMetadataCacheRequestPB* req,
+    InvalidateStreamMetadataCacheResponsePB* resp, rpc::RpcContext context) {
+  if (!CheckOnline(req, resp, &context)) {
+    return;
+  }
+
+  LOG_WITH_FUNC(INFO) << "Received InvalidateStreamMetadataCache request";
+  // Destroys the metadata outside the spinlock.
+  decltype(stream_metadata_) stream_metadata;
+  {
+    std::lock_guard l(mutex_);
+    stream_metadata.swap(stream_metadata_);
+  }
+  context.RespondSuccess();
+}
+
 void CDCServiceImpl::UpdatePublicationTableList(
     const UpdatePublicationTableListRequestPB* req, UpdatePublicationTableListResponsePB* resp,
     rpc::RpcContext context) {
