@@ -8,3 +8,4 @@ test: yb_create_function
 test: yb_insert_on_conflict
 test: yb_insert_on_conflict_with
 test: yb_insert_on_conflict_with_spi
+test: yb_insert_on_conflict_batch_size_change

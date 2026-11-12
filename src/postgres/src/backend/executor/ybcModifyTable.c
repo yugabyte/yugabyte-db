@@ -502,14 +502,15 @@ Oid YBCHeapInsert(TupleTableSlot *slot,
 }
 
 bool
-YbIsInsertOnConflictReadBatchingPossible(ResultRelInfo *resultRelInfo)
+YbIsInsertOnConflictReadBatchingPossible(ResultRelInfo *resultRelInfo,
+										 int batch_size)
 {
 	/*
 	 * TODO(jason): figure out how to enable triggers.
 	 * TODO(jason): disable (or handle) NULLS NOT DISTINCT indexes once that is
 	 * officially allowed.
 	 */
-	if (yb_insert_on_conflict_read_batch_size == 0 ||
+	if (batch_size == 0 ||
 		!IsYBRelation(resultRelInfo->ri_RelationDesc) ||
 		IsCatalogRelation(resultRelInfo->ri_RelationDesc) ||
 		(resultRelInfo->ri_TrigDesc &&
