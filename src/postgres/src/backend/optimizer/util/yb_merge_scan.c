@@ -574,16 +574,20 @@ ybIsMergeGapCol(IndexOptInfo *index, List *indexclauses, Bitmapset *saop_idxs,
  * in sort_info.  Each stream returns its rows in index order, so merging on
  * these columns too keeps the merged rows in index order.
  *
- * Filters only remove rows, so a filter that ties a gap column (see
- * yb_finalize_merge_scan_info) and runs within each stream, before the merge,
- * keeps the order of the pathkeys.  A filter that runs after the merge, such
- * as a local filter or the storage table filter of a secondary index scan that
- * is not embedded, does not, so merge on the gap column as well.  Only that
- * case needs it, but where each filter runs is not known here (see #37497), so
- * merge on every gap column.  That includes a gap column the index predicate
- * holds constant, which needs no merge, but merging on it costs comparisons
- * that always tie, and for an expression column of an embedded index scan, the
- * cut in yb_finalize_merge_scan_info.
+ * There are three kinds of gap columns (see yb_finalize_merge_scan_info):
+ * - a column a partial index predicate implies
+ * - a column tied by a filter that runs before the merge
+ * - a column tied by a filter that runs after the merge, such as a local
+ *   filter or the storage table filter of a secondary index scan that is not
+ *   embedded
+ * Only the last kind needs the merge to sort on the gap column, or the merged
+ * rows can come out of order.  Telling the kinds apart takes a proof that the
+ * predicate implies the column or knowing where each filter runs (see #37497),
+ * so merge on every gap column.  That costs the first two kinds:
+ * - extra comparisons that always tie
+ * - for an expression column of an embedded index scan, the pathkey cut in
+ *   yb_finalize_merge_scan_info, which in the worst case leaves the index path
+ *   without a merge
  */
 static void
 ybAppendMergeGapCol(YbSortInfo *sort_info, IndexOptInfo *index,
@@ -741,7 +745,7 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 		 * this pathkey and for a gap column before it, which the merge sorts
 		 * on as well, even when the gap column needs no merge: the filters
 		 * that tie it run before the merge (see also #37497), or the index
-		 * predicate holds it constant.
+		 * predicate implies it.
 		 */
 		if (embedded &&
 			(index->indexkeys[tle->resno - 1] == 0 || expression_gap))
