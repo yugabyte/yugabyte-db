@@ -1389,7 +1389,7 @@ class TransactionProvider {
     LOG_IF(DFATAL, pending != txn)
         << "Pending object lock owner " << (pending ? AsString(pending->id()) : "<null>")
         << " is not the session's transaction " << metadata.transaction_id;
-    RegisterObjectLockOwner(metadata);
+    RegisterObjectLockOwner(metadata, txn.get());
   }
 
  private:
@@ -1437,11 +1437,22 @@ class TransactionProvider {
   // transaction is reset when that transaction releases its locks, so there must not be another
   // registration at this point. If there is, replace it anyway: fastpath requests made while it is
   // registered are attributed to that transaction rather than the session's current one.
-  void RegisterObjectLockOwner(const TransactionMetadata& metadata) {
+  //
+  // txn is provided when it wasn't registered right after being ready, so it could have failed.
+  // Hence check, and don't register if so.
+  void RegisterObjectLockOwner(
+      const TransactionMetadata& metadata, client::YBTransaction* txn = nullptr) {
     std::lock_guard lock(object_lock_registration_->mutex);
     auto& guard = object_lock_registration_->guard;
     if (!object_lock_shared_state_ || (guard && guard->txn_id() == metadata.transaction_id)) {
       return;
+    }
+    if (txn) {
+      if (auto txn_status = ResultToStatus(txn->metadata()); !txn_status.ok()) {
+        VLOG_WITH_FUNC(1) << "Not registering " << metadata.transaction_id
+                          << " as object lock owner: " << txn_status;
+        return;
+      }
     }
     if (guard) {
       LOG(DFATAL) << "Registering " << metadata.transaction_id << " as object lock owner while "
