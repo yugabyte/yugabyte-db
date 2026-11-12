@@ -4512,12 +4512,12 @@ Status ClusterAdminClient::SetReplicationSlotCatalogBarrier(const std::string& s
   return Status::OK();
 }
 
-Status ClusterAdminClient::PauseReplicationSlot(const std::string& slot_name) {
-  constexpr auto kTimeout = 30min;
+Status ClusterAdminClient::PauseReplicationSlot(
+    const std::string& slot_name, MonoDelta timeout) {
   master::PauseReplicationSlotRequestPB req;
   req.set_replication_slot_name(slot_name);
 
-  const auto deadline = CoarseMonoClock::Now() + kTimeout;
+  const auto deadline = CoarseMonoClock::Now() + timeout;
   for (bool waiting = false;; waiting = true) {
     master::PauseReplicationSlotResponsePB resp;
     RpcController rpc;
@@ -4531,11 +4531,13 @@ Status ClusterAdminClient::PauseReplicationSlot(const std::string& slot_name) {
       return status;
     }
     if (CoarseMonoClock::Now() >= deadline) {
-      return status.CloneAndPrepend("Waited 30 minutes");
+      return STATUS_FORMAT(
+          TimedOut, "$0. Waited $1 seconds; rerun the command until it succeeds",
+          status.message().ToBuffer(), timeout.ToSeconds());
     }
     if (!waiting) {
-      cout << "Waiting up to 30 minutes for the restart time of replication slot " << slot_name
-           << " to pass its catalog barrier time" << endl;
+      cout << "Waiting up to " << timeout.ToSeconds() << " seconds for the restart time of "
+           << "replication slot " << slot_name << " to pass its catalog barrier time" << endl;
     }
     SleepFor(1s);
   }

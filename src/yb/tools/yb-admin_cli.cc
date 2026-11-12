@@ -2512,14 +2512,20 @@ Status set_replication_slot_catalog_barrier_action(
   return Status::OK();
 }
 
-const auto pause_replication_slot_args = "<replication_slot_name>";
+const auto pause_replication_slot_args = "<replication_slot_name> [<timeout_secs> (default 1800)]";
 Status pause_replication_slot_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  if (args.size() != 1) {
+  if (args.size() != 1 && args.size() != 2) {
     return ClusterAdminCli::kInvalidArguments;
   }
+  auto timeout = MonoDelta::FromMinutes(30);
+  if (args.size() == 2) {
+    const auto timeout_secs = VERIFY_RESULT(CheckedStoi(args[1]));
+    SCHECK_GT(timeout_secs, 0, InvalidArgument, "Timeout must be positive");
+    timeout = MonoDelta::FromSeconds(timeout_secs);
+  }
   RETURN_NOT_OK_PREPEND(
-      client->PauseReplicationSlot(args[0]),
+      client->PauseReplicationSlot(args[0], timeout),
       Format("Failed to pause replication slot $0", args[0]));
   return Status::OK();
 }

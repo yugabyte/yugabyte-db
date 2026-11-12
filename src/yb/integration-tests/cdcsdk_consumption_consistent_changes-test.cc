@@ -7555,6 +7555,10 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConvertPausedPubRefreshSlotTo
   ASSERT_OK(SetBarrierAndPause(kSlotName, stream_id, table.table_id(), &conn, 1));
   ASSERT_NOK_STR_CONTAINS(
       InitVirtualWALOnce(stream_id, table.table_id(), kVWALSessionId1), "is paused");
+  ASSERT_OK(ExecuteYBAdminCommand("set_replication_slot_catalog_barrier", {kUnpausedSlotName}));
+  ASSERT_NOK_STR_CONTAINS(
+      ExecuteYBAdminCommand("pause_replication_slot", {kUnpausedSlotName, "1"}),
+      "rerun the command until it succeeds");
 
   ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(InsertRow(&conn, 2));

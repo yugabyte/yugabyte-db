@@ -469,7 +469,7 @@ class ClusterAdminClient {
 
   Status SetReplicationSlotCatalogBarrier(const std::string& slot_name);
 
-  Status PauseReplicationSlot(const std::string& slot_name);
+  Status PauseReplicationSlot(const std::string& slot_name, MonoDelta timeout);
 
   Status ReleaseReplicationSlot(const std::string& slot_name);
 

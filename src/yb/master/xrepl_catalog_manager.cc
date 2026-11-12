@@ -6504,9 +6504,10 @@ Result<PrepareSlotForTxnDdlResult> CatalogManager::PrepareStreamForTransactional
         pb.set_detect_publication_changes_implicitly(true);
         converted = true;
       }
-      pb.clear_implicit_conversion_barrier_ht();
       pb.clear_implicit_conversion_paused();
       if (marked_unusable) {
+        // The sys catalog entry holding the barrier is deleted below.
+        pb.clear_implicit_conversion_barrier_ht();
         pb.set_unusable_with_transactional_ddl(true);
       }
     }
