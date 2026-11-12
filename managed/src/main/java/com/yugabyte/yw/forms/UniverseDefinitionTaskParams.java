@@ -466,6 +466,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
   }
 
+  /** How far a K8s edit's master move got, in order. A retry reads it to pick master lists. */
+  public enum MasterMoveStage {
+    STARTED,
+    NEW_MASTERS_JOINED,
+    OLD_MASTERS_REMOVED,
+    DONE
+  }
+
   /** A wrapper for all the clusters that will make up the universe. */
   @JsonInclude(value = JsonInclude.Include.NON_NULL)
   @Slf4j
@@ -540,10 +548,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @Setter
     @Getter
-    @ApiModelProperty(
-        hidden = true,
-        value = "YbaApi Internal. New master addresses pushed to servers in a K8s master move")
-    private Boolean masterAddrsPropagated;
+    @ApiModelProperty(hidden = true, value = "YbaApi Internal. How far a K8s master move got")
+    private MasterMoveStage masterMoveStage;
 
     @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.27.0.0")
     @Getter

@@ -604,7 +604,11 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 KubernetesCommandExecutor.CommandType.HELM_INSTALL,
                 tempPI,
                 azCode,
-                masterAddresses,
+                // A helm install with a master list starts masters that create a new universe
+                // (master_join_existing_universe=false). The masters an edit adds must join the
+                // existing one. The new AZ has no tservers yet, so the chart's own list reaches
+                // none.
+                edit && serverType == ServerType.MASTER ? "" : masterAddresses,
                 ybSoftwareVersion,
                 config,
                 universeOverrides,
