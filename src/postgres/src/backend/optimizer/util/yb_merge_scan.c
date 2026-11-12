@@ -653,8 +653,8 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 	}
 
 	/*
-	 * Find the merge sort columns, and the gap columns between them.  (Parts
-	 * copied from prepare_sort_from_pathkeys.)
+	 * Find the merge sort columns and the gap columns.  (Parts copied from
+	 * prepare_sort_from_pathkeys.)
 	 *
 	 * No check here keeps two pathkeys from resolving to the same index
 	 * column, so count one merge sort column for each pathkey, as
@@ -716,10 +716,10 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 
 		/*
 		 * For an embedded index scan, an expression column is not available
-		 * for sort (see also #36017).  That holds for the column of this
-		 * pathkey and for a gap column before it, which the merge sorts on as
-		 * well, even when the filters that tie the gap column run before the
-		 * merge (see also #37497).
+		 * for sort (see also #36017).  That holds for the merge sort column of
+		 * this pathkey and for a gap column before it, which the merge sorts
+		 * on as well, even when the filters that tie the gap column run before
+		 * the merge (see also #37497).
 		 */
 		if (embedded &&
 			(index->indexkeys[tle->resno - 1] == 0 || expression_gap))
