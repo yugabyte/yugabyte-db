@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common;
 
+import com.yugabyte.yw.common.CsvFieldSplitter.CsvField;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -13,12 +14,12 @@ import java.util.Set;
  * Redacts ldapbindpasswd in ysql_hba_conf_csv by reading the value the way the DB does, rather than
  * guessing where the password ends from the characters around it.
  *
- * <p>The value is CSV, and each field becomes one line of ysql_hba.conf. Fields are split by
- * Commons CSV's default rules: {@code GFlagsUtil.mergeCSVs} re-encodes the value with them before
- * it reaches server.conf, and they split every value the DB's own reader ({@code ReadCSVValues})
- * accepts the same way. Lines are joined at a trailing backslash and tokenized as {@code
- * tokenize_auth_file} and {@code next_token} in hba.c do. The value of each ldapbindpasswd option
- * is replaced, and every other character is kept.
+ * <p>The value is CSV, and each field becomes one line of ysql_hba.conf. {@link CsvFieldSplitter}
+ * splits fields by Commons CSV's default rules: {@code GFlagsUtil.mergeCSVs} re-encodes the value
+ * with them before it reaches server.conf, and they split every value the DB's own reader ({@code
+ * ReadCSVValues}) accepts the same way. Lines are joined at a trailing backslash and tokenized as
+ * {@code tokenize_auth_file} and {@code next_token} in hba.c do. The value of each ldapbindpasswd
+ * option is replaced, and every other character is kept.
  *
  * <p>Where the password may extend past what Postgres reads as its value (a later token that isn't
  * a known option), the line is redacted from there to its end, along with the lines after it that
@@ -74,9 +75,6 @@ public final class HbaConfRedactor {
           "jwt_issuers",
           "jwt_matching_claim_key");
 
-  /** A CSV field: its decoded text, and where each character starts in the raw value. */
-  record CsvField(String text, boolean quoted, int[] rawIndex) {}
-
   /** An hba.conf line, with the field and field offset each character came from. */
   record Line(String text, int[] field, int[] offset) {}
 
@@ -95,7 +93,7 @@ public final class HbaConfRedactor {
       return value;
     }
     List<CsvField> fields =
-        value.indexOf('\n') < 0 && value.indexOf('\r') < 0 ? splitCsv(value) : null;
+        value.indexOf('\n') < 0 && value.indexOf('\r') < 0 ? CsvFieldSplitter.split(value) : null;
     if (fields == null) {
       // The DB rejects the whole value, and there are no fields to stop at.
       return redactToEnd(value, true);
@@ -180,59 +178,6 @@ public final class HbaConfRedactor {
       p = next;
     }
     return out.toString();
-  }
-
-  /**
-   * Splits a value without line breaks into fields as Commons CSV's DEFAULT format does, or returns
-   * null where that format rejects it.
-   */
-  static List<CsvField> splitCsv(String value) {
-    List<CsvField> fields = new ArrayList<>();
-    int n = value.length();
-    int[] raw = new int[n];
-    StringBuilder text = new StringBuilder();
-    int p = 0;
-    while (true) {
-      text.setLength(0);
-      boolean quoted = p < n && value.charAt(p) == '"';
-      int i = quoted ? p + 1 : p;
-      while (true) {
-        if (i >= n) {
-          if (quoted) {
-            return null;
-          }
-          break;
-        }
-        char c = value.charAt(i);
-        if (!quoted && c == ',') {
-          break;
-        }
-        if (quoted && c == '"') {
-          if (i + 1 < n && value.charAt(i + 1) == '"') {
-            raw[text.length()] = i;
-            text.append('"');
-            i += 2;
-            continue;
-          }
-          i++;
-          while (i < n && value.charAt(i) != ',' && Character.isWhitespace(value.charAt(i))) {
-            i++;
-          }
-          if (i < n && value.charAt(i) != ',') {
-            return null;
-          }
-          break;
-        }
-        raw[text.length()] = i;
-        text.append(c);
-        i++;
-      }
-      fields.add(new CsvField(text.toString(), quoted, Arrays.copyOf(raw, text.length())));
-      if (i >= n) {
-        return fields;
-      }
-      p = i + 1;
-    }
   }
 
   /** Joins fields into lines the way tokenize_auth_file joins lines ending in a backslash. */
@@ -498,8 +443,9 @@ public final class HbaConfRedactor {
         int rawStart =
             edit.start() < field.text().length()
                 ? field.rawIndex()[edit.start()]
-                : rawEnd(field, edit.start() - 1);
-        int rawEnd = edit.end() > edit.start() ? rawEnd(field, edit.end() - 1) : rawStart;
+                : CsvFieldSplitter.rawEnd(field, edit.start() - 1);
+        int rawEnd =
+            edit.end() > edit.start() ? CsvFieldSplitter.rawEnd(field, edit.end() - 1) : rawStart;
         String replacement =
             field.quoted() ? edit.replacement().replace("\"", "\"\"") : edit.replacement();
         rawEdits.add(new Edit(rawStart, rawEnd, replacement));
@@ -516,10 +462,5 @@ public final class HbaConfRedactor {
       last = edit.end();
     }
     return out.append(value, last, value.length()).toString();
-  }
-
-  /** Where character i of a field ends in the raw value; a quote in a quoted field is doubled. */
-  private static int rawEnd(CsvField field, int i) {
-    return field.rawIndex()[i] + (field.quoted() && field.text().charAt(i) == '"' ? 2 : 1);
   }
 }

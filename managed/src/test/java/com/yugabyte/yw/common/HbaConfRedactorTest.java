@@ -8,17 +8,12 @@ import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.common.HbaConfRedactor.CsvField;
+import com.yugabyte.yw.common.CsvFieldSplitter.CsvField;
 import com.yugabyte.yw.common.HbaConfRedactor.Token;
 import com.yugabyte.yw.common.HbaConfRedactor.Tokens;
-import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import org.apache.commons.csv.CSVFormat;
-import org.apache.commons.csv.CSVParser;
-import org.apache.commons.csv.CSVRecord;
 import org.junit.Test;
 import play.libs.Json;
 
@@ -248,50 +243,6 @@ public class HbaConfRedactorTest {
         HbaConfRedactor.redactFreeText("error: ldapbindpasswd=x\n\tat com.yugabyte.Foo"));
   }
 
-  @Test
-  public void testSplitCsvMatchesCommonsCsv() {
-    CSVFormat format = CSVFormat.DEFAULT.builder().setRecordSeparator("").build();
-    char[] alphabet = {'a', ',', '"', ' ', '\t'};
-    int checked = 0;
-    for (int len = 1; len <= 7; len++) {
-      int[] digits = new int[len];
-      while (true) {
-        StringBuilder sb = new StringBuilder();
-        for (int d : digits) {
-          sb.append(alphabet[d]);
-        }
-        String value = sb.toString();
-        List<String> expected;
-        try (CSVParser parser = CSVParser.parse(value, format)) {
-          List<CSVRecord> records = parser.getRecords();
-          assertEquals(value, 1, records.size());
-          expected = records.get(0).toList();
-        } catch (IOException | UncheckedIOException e) {
-          expected = null;
-        }
-        List<CsvField> fields = HbaConfRedactor.splitCsv(value);
-        assertEquals(
-            value, expected, fields == null ? null : fields.stream().map(CsvField::text).toList());
-        if (fields != null) {
-          for (CsvField field : fields) {
-            for (int i = 0; i < field.text().length(); i++) {
-              assertEquals(value, field.text().charAt(i), value.charAt(field.rawIndex()[i]));
-            }
-          }
-        }
-        checked++;
-        int k = len - 1;
-        while (k >= 0 && ++digits[k] == alphabet.length) {
-          digits[k--] = 0;
-        }
-        if (k < 0) {
-          break;
-        }
-      }
-    }
-    assertTrue(checked > 90_000);
-  }
-
   /**
    * Checks the redactor against how YB's Postgres parses each line of hba_pg_rules.jsonl: [line,
    * "valid" | "invalid" | "none" (no rule, e.g. a comment), the ldapbindpasswd Postgres read]. The
@@ -317,7 +268,7 @@ public class HbaConfRedactorTest {
 
   private static void checkAgainstPostgres(
       String line, String status, String passwd, String value) {
-    List<CsvField> fields = HbaConfRedactor.splitCsv(HbaConfRedactor.redact(value));
+    List<CsvField> fields = CsvFieldSplitter.split(HbaConfRedactor.redact(value));
     assertEquals(line, 1, fields.size());
     String redacted = fields.get(0).text();
     Tokens tokens = HbaConfRedactor.tokenize(line);
