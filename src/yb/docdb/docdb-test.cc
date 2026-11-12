@@ -19,6 +19,7 @@
 
 #include "yb/util/minmax.h"
 
+DECLARE_uint32(docdb_colocated_missing_schema_rows_retention_sec);
 DECLARE_bool(ysql_enable_cdr_metadata);
 
 namespace yb::docdb {
@@ -742,6 +743,8 @@ TEST_F(DocDBMissingSchemaTest, CotableRowLevelTombstoneRetainedDuringPartialComp
 }
 
 TEST_F(DocDBMissingSchemaTest, ColocationRowLevelTombstoneRetainedDuringPartialCompaction) {
+  // The default retention would keep these rows, but this test expects them dropped.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_docdb_colocated_missing_schema_rows_retention_sec) = 0;
   const auto id = RandomUniformInt<ColocationId>(
       kFirstNormalColocationId, std::numeric_limits<ColocationId>::max());
   TestRowLevelTombstoneRetainedDuringPartialCompaction(id);
@@ -767,9 +770,82 @@ TEST_F(DocDBMissingSchemaTest, CotableNonTombstoneDroppedDuringPartialCompaction
 }
 
 TEST_F(DocDBMissingSchemaTest, ColocationNonTombstoneDroppedDuringPartialCompaction) {
+  // The default retention would keep these rows, but this test expects them dropped.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_docdb_colocated_missing_schema_rows_retention_sec) = 0;
   const auto id = RandomUniformInt<ColocationId>(
       kFirstNormalColocationId, std::numeric_limits<ColocationId>::max() - 1);
   TestNonTombstoneDroppedDuringPartialCompaction(id, id + 1);
+}
+
+// The tests below use a retention of 1s and a history cutoff of 3s, so rows newer than 2s are
+// within the retention.
+
+// Rows within the retention are kept; older rows are dropped.
+TEST_F(DocDBMissingSchemaTest, ColocationRowsKeptWithinRetention) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_docdb_colocated_missing_schema_rows_retention_sec) = 1;
+  const auto id = RandomUniformInt<ColocationId>(
+      kFirstNormalColocationId, std::numeric_limits<ColocationId>::max());
+
+  ASSERT_OK(InsertLivenessColumnRecords(id, 1, 2, HybridTime::FromMicros(1000000)));
+  ASSERT_OK(InsertLivenessColumnRecords(id, 3, 4, HybridTime::FromMicros(2500000)));
+  ASSERT_OK(InsertTombstoneRecords(id, 3, 3, HybridTime::FromMicros(2600000)));
+  ASSERT_OK(InsertLivenessColumnRecord(id, 5, HybridTime::FromMicros(3500000)));
+  MarkMissing(id);
+
+  FullyCompactHistoryBefore(HybridTime::FromMicros(3000000));
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
+      SubDocKey(DocKey($0, [], ["r3"]), [HT{ physical: 2600000 }]) -> DEL
+      SubDocKey(DocKey($0, [], ["r3"]), [SystemColumnId(0); HT{ physical: 2500000 }]) -> null
+      SubDocKey(DocKey($0, [], ["r4"]), [SystemColumnId(0); HT{ physical: 2500000 }]) -> null
+      SubDocKey(DocKey($0, [], ["r5"]), [SystemColumnId(0); HT{ physical: 3500000 }]) -> null
+      )#",
+      IdToString(id)));
+}
+
+// A table tombstone below the cutoff drops rows under it in the window, but not the next table's.
+TEST_F(DocDBMissingSchemaTest, ColocationTableTombstoneCoversRowsWithinRetention) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_docdb_colocated_missing_schema_rows_retention_sec) = 1;
+  const auto id = RandomUniformInt<ColocationId>(
+      kFirstNormalColocationId, std::numeric_limits<ColocationId>::max() - 1);
+
+  ASSERT_OK(InsertLivenessColumnRecords(id, 1, 2, HybridTime::FromMicros(2200000)));
+  ASSERT_OK(InsertTombstoneRecords(id, 1, 1, HybridTime::FromMicros(2400000)));
+  ASSERT_OK(InsertTableTombstoneRecord(id, HybridTime::FromMicros(2500000)));
+  ASSERT_OK(InsertLivenessColumnRecord(id, 3, HybridTime::FromMicros(2700000)));
+  ASSERT_OK(InsertLivenessColumnRecord(id + 1, 1, HybridTime::FromMicros(2200000)));
+  MarkMissing(id);
+  MarkMissing(id + 1);
+
+  FullyCompactHistoryBefore(HybridTime::FromMicros(3000000));
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
+      SubDocKey(DocKey($0, [], []), [HT{ physical: 2500000 }]) -> DEL
+      SubDocKey(DocKey($0, [], ["r3"]), [SystemColumnId(0); HT{ physical: 2700000 }]) -> null
+      SubDocKey(DocKey($1, [], ["r1"]), [SystemColumnId(0); HT{ physical: 2200000 }]) -> null
+      )#",
+      IdToString(id), IdToString(id + 1)));
+}
+
+// A table tombstone above the history cutoff covers nothing yet: a read between the cutoff and the
+// tombstone still sees the rows in the window.
+TEST_F(DocDBMissingSchemaTest, ColocationTableTombstoneAboveCutoffKeepsRows) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_docdb_colocated_missing_schema_rows_retention_sec) = 1;
+  const auto id = RandomUniformInt<ColocationId>(
+      kFirstNormalColocationId, std::numeric_limits<ColocationId>::max());
+
+  ASSERT_OK(InsertLivenessColumnRecord(id, 1, HybridTime::FromMicros(2500000)));
+  ASSERT_OK(InsertLivenessColumnRecord(id, 2, HybridTime::FromMicros(1000000)));
+  ASSERT_OK(InsertTableTombstoneRecord(id, HybridTime::FromMicros(3500000)));
+  MarkMissing(id);
+
+  FullyCompactHistoryBefore(HybridTime::FromMicros(3000000));
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
+      SubDocKey(DocKey($0, [], []), [HT{ physical: 3500000 }]) -> DEL
+      SubDocKey(DocKey($0, [], ["r1"]), [SystemColumnId(0); HT{ physical: 2500000 }]) -> null
+      )#",
+      IdToString(id)));
 }
 
 }  // namespace yb::docdb

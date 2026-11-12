@@ -4394,6 +4394,11 @@ reindex_relation(Oid relid, int flags, ReindexParams *params, bool is_yb_table_r
 
 		if (IsYBRelation(iRel))
 		{
+			/*
+			 * TODO(#37647): for a colocated index, a rewrite should also write
+			 * the table tombstone that YBCDropIndex writes. Without it,
+			 * the old index rows stay in the colocated tablet.
+			 */
 			if (!is_yb_table_rewrite && !iRel->rd_index->indisprimary)
 				/*
 				* Drop the old DocDB table associated with this index.

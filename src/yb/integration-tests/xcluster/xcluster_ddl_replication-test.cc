@@ -114,6 +114,7 @@ DECLARE_string(ysql_pg_conf_csv);
 DECLARE_int32(ysql_sequence_cache_minval);
 DECLARE_bool(ysql_yb_enable_update_reltuples_after_create_index);
 DECLARE_int32(ysql_yb_major_version_upgrade_compatibility);
+DECLARE_string(ysql_yb_test_block_index_phase);
 
 DECLARE_bool(TEST_block_apply_intent);
 DECLARE_int32(TEST_delay_at_start_of_schedule_post_tablet_create_tasks_ms);
@@ -7836,6 +7837,30 @@ class XClusterDDLReplicationIndexBackfillTest : public XClusterDDLReplicationTes
     ASSERT_EQ(ASSERT_RESULT(producer_conn_->FetchRow<int64_t>(index_check)), 0);
     ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(index_check)), 0);
   }
+
+  Result<ColocationId> GetSourceColocationId(const std::string& table_name) {
+    auto table = VERIFY_RESULT(GetProducerTable(VERIFY_RESULT(
+        GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name=*/"", table_name))));
+    return table->schema().colocation_id();
+  }
+
+  Result<tablet::TabletPeerPtr> GetConsumerColocatedTabletPeer() {
+    auto peers = ListTableActiveTabletPeers(
+        consumer_cluster(), VERIFY_RESULT(GetColocatedDatabaseParentTableId(&consumer_cluster_)));
+    SCHECK_EQ(peers.size(), 1U, IllegalState, "Expected one colocated tablet peer");
+    return peers[0];
+  }
+
+  // Retention 0 puts the cutoff at the xCluster safe time. CompactTablets() would also compact
+  // replicated_ddls and hit #28124.
+  Status CompactConsumerTablet(const TabletId& tablet_id) {
+    const auto saved_retention_sec = FLAGS_timestamp_history_retention_interval_sec;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+    auto status = consumer_cluster()->CompactTablet(tablet_id);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) =
+        saved_retention_sec;
+    return status;
+  }
 };
 
 // Base case, flag on, and index backfill replicated from source.
@@ -7963,6 +7988,56 @@ TEST_F(XClusterDDLReplicationIndexBackfillTest, ConcurrentUpdateDuringBackfill) 
 
 TEST_F(XClusterDDLReplicationIndexBackfillTest, ConcurrentUpdateDuringBackfillColocated) {
   TestConcurrentUpdateDuringBackfill(/*colocated=*/true);
+}
+
+// A colocated index's backfilled rows are older than its CREATE INDEX commit, which is where the
+// ddl_queue holds the target's history cutoff. So the cutoff can pass backfill writes before the
+// target has the index. Target compactions must keep them.
+TEST_F(XClusterDDLReplicationIndexBackfillTest, TargetCompactionKeepsUpcomingColocatedIndex) {
+  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+  params.is_colocated = true;
+  ASSERT_OK(SetUpClustersAndReplication(params));
+  ASSERT_OK(CreateBaseTable());
+  auto peer = ASSERT_RESULT(GetConsumerColocatedTabletPeer());
+
+  // Let the backfill writes replicate, then let the source commit.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = true;
+  ASSERT_OK(SET_FLAG(ysql_yb_test_block_index_phase, "postbackfill"));
+  StringWaiterLogSink backfill_done_log("Completed backfilling the index table");
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this]() {
+    auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+    ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1($2 ASC)", kIndexName, kTableName, kCol));
+  });
+  ASSERT_OK(backfill_done_log.WaitFor(kTimeout));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(SET_FLAG(ysql_yb_test_block_index_phase, "none"));
+  thread_holder.JoinAll();
+
+  // This compaction shouldn't remove the index's backfill writes.
+  const auto colocation_id = ASSERT_RESULT(GetSourceColocationId(kIndexName));
+  ASSERT_NOK(peer->tablet_metadata()->GetTableInfo(colocation_id));
+  ASSERT_OK(CompactConsumerTablet(peer->tablet_id()));
+
+  // Simulate a rollback of the index's CREATE INDEX. Between the rollback and next retry,
+  // run another compaction, which also shouldn't remove the index's backfill writes.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_ddl_queue_max_retries_per_ddl) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = true;
+  StringWaiterLogSink paused_log("DDL replication is paused due to repeated failures");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = false;
+  ASSERT_OK(paused_log.WaitFor(kTimeout));
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        return !peer->tablet_metadata()->GetTableInfo(colocation_id).ok();
+      },
+      kTimeout, "Rollback removes the index from the target tablet"));
+  ASSERT_OK(CompactConsumerTablet(peer->tablet_id()));
+
+  // Allow the next retry to succeed, and verify the backfill writes are still present.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_ddl_queue_max_retries_per_ddl) = 1000;
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  VerifyIndex("Replicated backfill index ready on consumer");
 }
 
 TEST_F(XClusterDDLReplicationTest, CreatePartitionSkipsDefaultPartitionScanOnTarget) {
