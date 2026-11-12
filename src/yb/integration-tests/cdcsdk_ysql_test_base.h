@@ -567,7 +567,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       bool include_oid_to_relfilenode = false,
       int timeout = kRpcTimeout,
       const std::vector<uint32_t>& publication_oids = {},
-      bool pub_all_tables = false);
+      bool pub_all_tables = false,
+      bool retry = true);
 
   Status DestroyVirtualWAL(const uint64_t session_id = kVWALSessionId1);
 

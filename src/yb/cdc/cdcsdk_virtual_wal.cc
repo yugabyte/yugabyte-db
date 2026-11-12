@@ -253,7 +253,7 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
   auto stream = VERIFY_RESULT(cdc_service_->GetStream(stream_id_));
   const auto slot_name = stream->GetReplicationSlotName().value_or(stream_id_.ToString());
   SCHECK_FORMAT(
-      !stream->IsImplicitConversionPaused(), IllegalState,
+      !stream->IsPausedForUpgrade(), IllegalState,
       "Replication slot $0 is paused for conversion to an implicit slot", slot_name);
   SCHECK_FORMAT(
       !stream->IsUnusableWithTransactionalDdl(), IllegalState,

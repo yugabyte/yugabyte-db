@@ -4262,13 +4262,13 @@ Status CatalogManager::GetCDCStream(
 
   stream_info->set_is_notification_slot(is_notification_slot);
 
-  if (stream_lock->pb.has_implicit_conversion_barrier_ht()) {
-    stream_info->set_implicit_conversion_barrier_ht(
-        stream_lock->pb.implicit_conversion_barrier_ht());
+  if (stream_lock->pb.has_cdcsdk_implicit_conversion_barrier_ht()) {
+    stream_info->set_cdcsdk_implicit_conversion_barrier_ht(
+        stream_lock->pb.cdcsdk_implicit_conversion_barrier_ht());
   }
-  stream_info->set_implicit_conversion_paused(stream_lock->pb.implicit_conversion_paused());
-  stream_info->set_unusable_with_transactional_ddl(
-      stream_lock->pb.unusable_with_transactional_ddl());
+  stream_info->set_cdcsdk_paused_for_upgrade(stream_lock->pb.cdcsdk_paused_for_upgrade());
+  stream_info->set_cdcsdk_unusable_with_transactional_ddl(
+      stream_lock->pb.cdcsdk_unusable_with_transactional_ddl());
 
   stream_info->set_xcluster_use_target_applied_filter(
       stream_lock->pb.xcluster_use_target_applied_filter());
@@ -5713,14 +5713,13 @@ Status CatalogManager::SetReplicationSlotCatalogBarrier(
       "Replication slots can't be prepared for conversion once transactional DDL replication is "
       "enabled");
 
-  std::lock_guard conversion_lock(implicit_conversion_mutex_);
   auto stream = VERIFY_RESULT(GetPubRefreshStream(req->replication_slot_name()));
   NamespaceId namespace_id;
   std::optional<uint64_t> existing_barrier_ht;
   {
     auto l = stream->LockForRead();
-    if (l->pb.has_implicit_conversion_barrier_ht()) {
-      existing_barrier_ht = l->pb.implicit_conversion_barrier_ht();
+    if (l->pb.has_cdcsdk_implicit_conversion_barrier_ht()) {
+      existing_barrier_ht = l->pb.cdcsdk_implicit_conversion_barrier_ht();
     }
     namespace_id = l->namespace_id();
   }
@@ -5729,6 +5728,9 @@ Status CatalogManager::SetReplicationSlotCatalogBarrier(
         VERIFY_RESULT(HasSysCatalogRetentionBarrier(stream->StreamId())), IllegalState,
         "The catalog barrier of replication slot $0 expired. Release the slot and set the barrier "
         "again", req->replication_slot_name());
+    LOG_WITH_FUNC(INFO) << "Replication slot " << req->replication_slot_name() << " (stream "
+                        << stream->StreamId() << ") already has a catalog barrier at "
+                        << HybridTime(*existing_barrier_ht);
     resp->set_barrier_ht(*existing_barrier_ht);
     return Status::OK();
   }
@@ -5762,14 +5764,15 @@ Status CatalogManager::SetReplicationSlotCatalogBarrier(
     SCHECK_FORMAT(
         !l->is_deleting(), NotFound, "Replication slot $0 is being deleted",
         req->replication_slot_name());
-    l.mutable_data()->pb.set_implicit_conversion_barrier_ht(barrier_ht.ToUint64());
+    l.mutable_data()->pb.set_cdcsdk_implicit_conversion_barrier_ht(barrier_ht.ToUint64());
     RETURN_ACTION_NOT_OK(
         sys_catalog_->Upsert(leader_ready_term(), stream), "Updating CDC stream in system catalog");
     l.Commit();
   }
   resp->set_barrier_ht(barrier_ht.ToUint64());
   LOG_WITH_FUNC(INFO) << "Set the sys catalog retention barrier at " << barrier_ht
-                      << " for replication slot " << req->replication_slot_name();
+                      << " for replication slot " << req->replication_slot_name() << " (stream "
+                      << stream->StreamId() << ")";
   return Status::OK();
 }
 
@@ -5784,18 +5787,17 @@ Status CatalogManager::PauseReplicationSlot(
       "Replication slots can't be paused for conversion once transactional DDL replication is "
       "enabled");
 
-  std::lock_guard conversion_lock(implicit_conversion_mutex_);
   auto stream = VERIFY_RESULT(GetPubRefreshStream(slot_name));
   HybridTime barrier_ht;
   {
     auto l = stream->LockForRead();
-    if (l->pb.implicit_conversion_paused()) {
+    if (l->pb.cdcsdk_paused_for_upgrade()) {
       return Status::OK();
     }
     SCHECK_FORMAT(
-        l->pb.has_implicit_conversion_barrier_ht(), IllegalState,
+        l->pb.has_cdcsdk_implicit_conversion_barrier_ht(), IllegalState,
         "Set the catalog barrier on replication slot $0 first", slot_name);
-    barrier_ht = HybridTime(l->pb.implicit_conversion_barrier_ht());
+    barrier_ht = HybridTime(l->pb.cdcsdk_implicit_conversion_barrier_ht());
   }
   SCHECK_FORMAT(
       VERIFY_RESULT(HasSysCatalogRetentionBarrier(stream->StreamId())), IllegalState,
@@ -5817,12 +5819,13 @@ Status CatalogManager::PauseReplicationSlot(
 
   {
     auto l = stream->LockForWrite();
-    l.mutable_data()->pb.set_implicit_conversion_paused(true);
+    l.mutable_data()->pb.set_cdcsdk_paused_for_upgrade(true);
     RETURN_ACTION_NOT_OK(
         sys_catalog_->Upsert(leader_ready_term(), stream), "Updating CDC stream in system catalog");
     l.Commit();
   }
-  LOG_WITH_FUNC(INFO) << "Paused replication slot " << slot_name;
+  LOG_WITH_FUNC(INFO) << "Paused replication slot " << slot_name << " (stream "
+                      << stream->StreamId() << ")";
   return Status::OK();
 }
 
@@ -5831,10 +5834,10 @@ Status CatalogManager::ReleaseReplicationSlot(
     rpc::RpcContext* rpc) {
   LOG(INFO) << "Servicing ReleaseReplicationSlot request from " << RequestorString(rpc) << ": "
             << req->ShortDebugString();
-  std::lock_guard conversion_lock(implicit_conversion_mutex_);
   auto stream = VERIFY_RESULT(GetPubRefreshStream(req->replication_slot_name()));
   RETURN_NOT_OK(ClearImplicitConversionState(stream));
-  LOG_WITH_FUNC(INFO) << "Released replication slot " << req->replication_slot_name();
+  LOG_WITH_FUNC(INFO) << "Released replication slot " << req->replication_slot_name()
+                      << " (stream " << stream->StreamId() << ")";
   return Status::OK();
 }
 
@@ -5842,11 +5845,11 @@ Status CatalogManager::ClearImplicitConversionState(const CDCStreamInfoPtr& stre
   {
     auto l = stream->LockForWrite();
     auto& pb = l.mutable_data()->pb;
-    if (!pb.has_implicit_conversion_barrier_ht() && !pb.implicit_conversion_paused()) {
+    if (!pb.has_cdcsdk_implicit_conversion_barrier_ht() && !pb.cdcsdk_paused_for_upgrade()) {
       return Status::OK();
     }
-    pb.clear_implicit_conversion_barrier_ht();
-    pb.clear_implicit_conversion_paused();
+    pb.clear_cdcsdk_implicit_conversion_barrier_ht();
+    pb.clear_cdcsdk_paused_for_upgrade();
     RETURN_ACTION_NOT_OK(
         sys_catalog_->Upsert(leader_ready_term(), stream), "Updating CDC stream in system catalog");
     l.Commit();
@@ -6450,7 +6453,6 @@ Status CatalogManager::PrepareReplicationSlotsForTransactionalDDL(
     }
   }
 
-  std::lock_guard conversion_lock(implicit_conversion_mutex_);
   for (const auto& [slot_name, stream] : slots) {
     auto result = VERIFY_RESULT(PrepareStreamForTransactionalDDL(stream));
     if (result == PrepareSlotForTxnDdlResult::kPrepared) {
@@ -6458,7 +6460,8 @@ Status CatalogManager::PrepareReplicationSlotsForTransactionalDDL(
       continue;
     }
     const auto* skip_reason = SkipReason(result);
-    LOG_WITH_FUNC(INFO) << "Skipping replication slot " << slot_name << " because " << skip_reason;
+    LOG_WITH_FUNC(INFO) << "Skipping replication slot " << slot_name << " (stream "
+                        << stream->StreamId() << ") because " << skip_reason;
     auto* skipped = resp->add_skipped_slots();
     skipped->set_replication_slot_name(slot_name.ToString());
     skipped->set_reason(skip_reason);
@@ -6488,12 +6491,12 @@ Result<PrepareSlotForTxnDdlResult> CatalogManager::PrepareStreamForTransactional
     if (l->started_deleting() || l->is_deleting_metadata()) {
       return PrepareSlotForTxnDdlResult::kDeleting;
     }
-    if (l->pb.unusable_with_transactional_ddl()) {
+    if (l->pb.cdcsdk_unusable_with_transactional_ddl()) {
       return PrepareSlotForTxnDdlResult::kUnusable;
     }
     auto& pb = l.mutable_data()->pb;
     if (!pb.detect_publication_changes_implicitly()) {
-      marked_unusable = !pb.implicit_conversion_paused() ||
+      marked_unusable = !pb.cdcsdk_paused_for_upgrade() ||
                         !VERIFY_RESULT(HasSysCatalogRetentionBarrier(stream->StreamId()));
       if (!marked_unusable) {
         // The sys catalog entry was last active when the barrier was set. The converted slot's
@@ -6504,11 +6507,11 @@ Result<PrepareSlotForTxnDdlResult> CatalogManager::PrepareStreamForTransactional
         pb.set_detect_publication_changes_implicitly(true);
         converted = true;
       }
-      pb.clear_implicit_conversion_paused();
+      pb.clear_cdcsdk_paused_for_upgrade();
       if (marked_unusable) {
         // The sys catalog entry holding the barrier is deleted below.
-        pb.clear_implicit_conversion_barrier_ht();
-        pb.set_unusable_with_transactional_ddl(true);
+        pb.clear_cdcsdk_implicit_conversion_barrier_ht();
+        pb.set_cdcsdk_unusable_with_transactional_ddl(true);
       }
     }
     if (!marked_unusable) {

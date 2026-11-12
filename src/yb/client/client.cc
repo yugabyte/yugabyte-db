@@ -1720,7 +1720,7 @@ Status YBClient::GetCDCStream(
     std::optional<std::string>* replication_slot_plugin_name,
     bool* is_notification_slot,
     std::optional<bool>* xcluster_use_target_applied_filter,
-    bool* implicit_conversion_paused,
+    bool* paused_for_upgrade,
     bool* unusable_with_transactional_ddl) {
 
   // Setting up request.
@@ -1810,12 +1810,12 @@ Status YBClient::GetCDCStream(
     *xcluster_use_target_applied_filter = resp.stream().xcluster_use_target_applied_filter();
   }
 
-  if (implicit_conversion_paused) {
-    *implicit_conversion_paused = resp.stream().implicit_conversion_paused();
+  if (paused_for_upgrade) {
+    *paused_for_upgrade = resp.stream().cdcsdk_paused_for_upgrade();
   }
 
   if (unusable_with_transactional_ddl) {
-    *unusable_with_transactional_ddl = resp.stream().unusable_with_transactional_ddl();
+    *unusable_with_transactional_ddl = resp.stream().cdcsdk_unusable_with_transactional_ddl();
   }
 
   return Status::OK();

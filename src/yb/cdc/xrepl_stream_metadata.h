@@ -158,10 +158,10 @@ class StreamMetadata {
     DCHECK(loaded_);
     return is_notification_slot_;
   }
-  bool IsImplicitConversionPaused() const {
+  bool IsPausedForUpgrade() const {
     std::lock_guard l_table(mutex_);
     DCHECK(loaded_);
-    return implicit_conversion_paused_;
+    return paused_for_upgrade_;
   }
   bool IsUnusableWithTransactionalDdl() const {
     std::lock_guard l_table(mutex_);
@@ -219,7 +219,7 @@ class StreamMetadata {
   std::optional<std::string> replication_slot_plugin_name_ GUARDED_BY(mutex_);
   std::optional<bool> detect_publication_changes_implicitly_ GUARDED_BY(mutex_);
   bool is_notification_slot_ GUARDED_BY(mutex_) = false;
-  bool implicit_conversion_paused_ GUARDED_BY(mutex_) = false;
+  bool paused_for_upgrade_ GUARDED_BY(mutex_) = false;
   bool unusable_with_transactional_ddl_ GUARDED_BY(mutex_) = false;
   // xCluster: if we are a sequences_data stream, then this holds the OID of the DB we are supposed
   // to be getting sequences for.

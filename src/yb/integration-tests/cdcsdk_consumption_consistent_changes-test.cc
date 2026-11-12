@@ -63,19 +63,6 @@ class CDCSDKConsumptionConsistentChangesTest : public CDCSDKYsqlTest {
   void TestColocatedUpdateWithIndex(bool use_pk_as_index);
   void TestColocatedUpdateAffectingNoRows(bool use_multi_shard);
 
-  // Unlike InitVirtualWAL, doesn't retry the errors of InitVirtualWALForCDC.
-  Status InitVirtualWALOnce(
-      const xrepl::StreamId& stream_id, const TableId& table_id, uint64_t session_id) {
-    InitVirtualWALForCDCRequestPB req;
-    req.set_stream_id(stream_id.ToString());
-    req.set_session_id(session_id);
-    req.add_table_id(table_id);
-    InitVirtualWALForCDCResponsePB resp;
-    RpcController rpc;
-    RETURN_NOT_OK(cdc_proxy_->InitVirtualWALForCDC(req, &resp, &rpc));
-    return resp.has_error() ? StatusFromPB(resp.error().status()) : Status::OK();
-  }
-
   Status InsertRow(pgwrapper::PGConn* conn, int key) {
     return conn->ExecuteFormat(
         "INSERT INTO $0 ($1, $2) VALUES ($3, $4)", kTableName, kKeyColumnName, kValueColumnName,
@@ -104,6 +91,7 @@ class CDCSDKConsumptionConsistentChangesTest : public CDCSDKYsqlTest {
     RETURN_NOT_OK(DestroyVirtualWAL());
     return ExecuteYBAdminCommand("pause_replication_slot", {slot_name});
   }
+
   void TestStoppedSlotRetainsWalIntentsAndHistory(bool pub_refresh);
   void TestExplcictCheckpointMovementAfterDDL(bool no_activity_post_ddl);
   void TestSysCatalogRetentionBarriers(
@@ -7479,7 +7467,10 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestPrepareSlotForTransactionalDd
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
   ASSERT_NOK_STR_CONTAINS(
-      InitVirtualWALOnce(stream_id, table.table_id(), kVWALSessionId2),
+      InitVirtualWAL(
+          stream_id, {table.table_id()}, kVWALSessionId2, nullptr /* slot_hash_range */,
+          false /* include_oid_to_relfilenode */, kRpcTimeout, {} /* publication_oids */,
+          false /* pub_all_tables */, false /* retry */),
       "prepare_replication_slots_for_transactional_ddl");
 
   // The command fails naming the stopped master. Rerunning it once the master is back finishes the
@@ -7560,7 +7551,10 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConvertPausedPubRefreshSlotTo
       ExecuteYBAdminCommand("pause_replication_slot", {kSlotName}), "Set the catalog barrier");
   ASSERT_OK(SetBarrierAndPause(kSlotName, stream_id, table.table_id(), &conn, 1));
   ASSERT_NOK_STR_CONTAINS(
-      InitVirtualWALOnce(stream_id, table.table_id(), kVWALSessionId1), "is paused");
+      InitVirtualWAL(
+          stream_id, {table.table_id()}, kVWALSessionId1, nullptr /* slot_hash_range */,
+          false /* include_oid_to_relfilenode */, kRpcTimeout, {} /* publication_oids */,
+          false /* pub_all_tables */, false /* retry */), "is paused");
   ASSERT_OK(ExecuteYBAdminCommand("set_replication_slot_catalog_barrier", {kUnpausedSlotName}));
   ASSERT_NOK_STR_CONTAINS(
       ExecuteYBAdminCommand("pause_replication_slot", {kUnpausedSlotName, "1"}),
@@ -7586,7 +7580,10 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConvertPausedPubRefreshSlotTo
       output, Format("Prepared replication slots for transactional DDL: [$0]", kSlotName));
   ASSERT_STR_CONTAINS(output, Format("$0 (it wasn't paused", kUnpausedSlotName));
   ASSERT_NOK_STR_CONTAINS(
-      InitVirtualWALOnce(unpaused_stream_id, table.table_id(), kVWALSessionId1), "is unusable");
+      InitVirtualWAL(
+          unpaused_stream_id, {table.table_id()}, kVWALSessionId1, nullptr /* slot_hash_range */,
+          false /* include_oid_to_relfilenode */, kRpcTimeout, {} /* publication_oids */,
+          false /* pub_all_tables */, false /* retry */), "is unusable");
 
   constexpr int kExpectedDmlRecords = 3;
   auto resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
@@ -7637,7 +7634,10 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestReleaseAndExpirePausedPubRefr
           test_cluster()->GetMasterAddresses(), kSlotName)),
       Format("$0 (it wasn't paused", kSlotName));
   ASSERT_NOK_STR_CONTAINS(
-      InitVirtualWALOnce(stream_id, table.table_id(), kVWALSessionId1), "is unusable");
+      InitVirtualWAL(
+          stream_id, {table.table_id()}, kVWALSessionId1, nullptr /* slot_hash_range */,
+          false /* include_oid_to_relfilenode */, kRpcTimeout, {} /* publication_oids */,
+          false /* pub_all_tables */, false /* retry */), "is unusable");
 }
 
 // A converted slot whose consumer resumes after cdc_intent_retention_ms fails VWAL init, on the
@@ -7667,13 +7667,19 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConvertedSlotExpiresIfConsume
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = retention.ToMilliseconds();
   SleepFor(retention + 1s);
   ASSERT_NOK_STR_CONTAINS(
-      InitVirtualWALOnce(stream_id, table.table_id(), kVWALSessionId1), "has been unqualified");
+      InitVirtualWAL(
+          stream_id, {table.table_id()}, kVWALSessionId1, nullptr /* slot_hash_range */,
+          false /* include_oid_to_relfilenode */, kRpcTimeout, {} /* publication_oids */,
+          false /* pub_all_tables */, false /* retry */), "has been unqualified");
 
   cdc::CDCStateTableEntry entry(tablets[0].tablet_id(), stream_id);
   entry.active_time = GetCurrentTimeMicros();
   ASSERT_OK(MakeCDCStateTable(test_client()).UpdateEntries({entry}));
   ASSERT_NOK_STR_CONTAINS(
-      InitVirtualWALOnce(stream_id, table.table_id(), kVWALSessionId1),
+      InitVirtualWAL(
+          stream_id, {table.table_id()}, kVWALSessionId1, nullptr /* slot_hash_range */,
+          false /* include_oid_to_relfilenode */, kRpcTimeout, {} /* publication_oids */,
+          false /* pub_all_tables */, false /* retry */),
       Format("Cannot add tablet: $0", master::kSysCatalogTabletId));
 }
 

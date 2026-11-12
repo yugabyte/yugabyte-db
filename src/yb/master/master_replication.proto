@@ -91,14 +91,14 @@ message CDCStreamInfoPB {
   // See SysCDCStreamEntryPB.xcluster_bootstrap_info.
   optional XClusterStreamBootstrapInfoPB xcluster_bootstrap_info = 22;
 
-  // See SysCDCStreamEntryPB.implicit_conversion_barrier_ht.
-  optional fixed64 implicit_conversion_barrier_ht = 23;
+  // See SysCDCStreamEntryPB.cdcsdk_implicit_conversion_barrier_ht.
+  optional fixed64 cdcsdk_implicit_conversion_barrier_ht = 23;
 
-  // See SysCDCStreamEntryPB.implicit_conversion_paused.
-  optional bool implicit_conversion_paused = 24 [default = false];
+  // See SysCDCStreamEntryPB.cdcsdk_paused_for_upgrade.
+  optional bool cdcsdk_paused_for_upgrade = 24 [default = false];
 
-  // See SysCDCStreamEntryPB.unusable_with_transactional_ddl.
-  optional bool unusable_with_transactional_ddl = 25 [default = false];
+  // See SysCDCStreamEntryPB.cdcsdk_unusable_with_transactional_ddl.
+  optional bool cdcsdk_unusable_with_transactional_ddl = 25 [default = false];
 }
 
 message ValidateReplicationInfoRequestPB {

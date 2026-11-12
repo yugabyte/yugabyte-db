@@ -1921,7 +1921,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Result<CDCStreamInfoPtr> GetPubRefreshStream(const std::string& slot_name) EXCLUDES(mutex_);
   Result<bool> HasSysCatalogRetentionBarrier(const xrepl::StreamId& stream_id);
-  // Clears the barrier and the paused marker, and deletes the stream's sys catalog cdc_state entry.
   Status ClearImplicitConversionState(const CDCStreamInfoPtr& stream);
 
   // Returns CDCSDK streams that need metadata cleanup. This includes streams with non-empty
@@ -3753,9 +3752,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   std::unordered_map<TableId, std::unordered_set<xrepl::StreamId>> cdcsdk_tables_to_stream_map_
       GUARDED_BY(mutex_);
-
-  // Serializes the commands that prepare pub-refresh streams for conversion to implicit streams.
-  std::mutex implicit_conversion_mutex_;
 
   // Maps a ReplicationSlotName to the xrepl::StreamId of the stream it belongs to. Present for
   // CDCSDK streams created from the YSQL syntax.
