@@ -538,9 +538,9 @@ ybIsCopyOfEarlierIndexCol(IndexOptInfo *index, int indexcol)
 
 /*
  * Whether index column indexcol, before the last merge sort column, is a gap
- * column: a range column without an equality index clause that is not a SAOP
- * stream column or a copy of an earlier index column.  The merge sorts on each
- * gap column (see ybAppendMergeGapSortCol).
+ * column: a range column without an equality index clause that is neither a
+ * SAOP stream column nor a copy of an earlier index column.  The merge sorts
+ * on each gap column (see ybAppendMergeGapSortCol).
  */
 static bool
 ybIsMergeGapCol(IndexOptInfo *index, List *indexclauses, Bitmapset *saop_idxs,
@@ -597,8 +597,7 @@ ybAppendMergeGapSortCol(YbSortInfo *sort_info, IndexOptInfo *index,
  * walk picked.  build_index_paths calls this after truncate_useless_pathkeys,
  * with the path's index clauses, so that the path's costing and its plan see
  * the same stream keys and merge sort columns.  The pathkeys are final only
- * after this call, which on an embedded index can truncate them and set
- * *yb_distinct_nkeys to -1.
+ * after this call, which can truncate them on an embedded index.
  *
  * Each index column before the last merge sort column is one of:
  *
