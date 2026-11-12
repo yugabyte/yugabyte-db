@@ -332,6 +332,10 @@ extern bool YbPredetermineNeedsRecheck(Scan *scan,
 									   ScanKey keys,
 									   int nkeys);
 
+extern bool YbIsValueOutOfRange(Oid col_typid, Oid val_typid, Datum val);
+extern bool YbIsScanCompatible(Oid column_typid, Oid value_typid,
+							   bool is_value_scalar, Datum value);
+
 extern HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, ScanDirection dir,
 									   bool *recheck);
 extern IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, ScanDirection dir,
