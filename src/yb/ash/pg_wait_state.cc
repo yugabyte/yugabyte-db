@@ -88,7 +88,7 @@ AshMetadata PgWaitStateInfo::metadata() {
   cached_metadata_.user_id = config_.metadata->user_id;
   // With Ysql Connection Manager, the backend serves a different logical client from one request
   // to the next, so the client address can change.
-  if (config_.metadata->addr_family != client_addr_family_ ||
+  if (config_.metadata->addr_family != cached_metadata_.addr_family ||
       config_.metadata->client_port != client_port_ ||
       std::memcmp(config_.metadata->client_addr, client_addr_, sizeof(client_addr_)) != 0) {
     UpdateClientAddress();
@@ -103,7 +103,6 @@ AshMetadata PgWaitStateInfo::metadata() {
 
 void PgWaitStateInfo::UpdateClientAddress() {
   const auto& metadata = *config_.metadata;
-  client_addr_family_ = metadata.addr_family;
   client_port_ = metadata.client_port;
   std::memcpy(client_addr_, metadata.client_addr, sizeof(client_addr_));
   cached_metadata_.client_host_port = GetHostPort(metadata);

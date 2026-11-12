@@ -35,7 +35,6 @@ class PgWaitStateInfo : public WaitStateInfo {
   // Raw client address that cached_metadata_.client_host_port was built from.
   unsigned char client_addr_[16];
   uint16_t client_port_;
-  uint8_t client_addr_family_;
 };
 
 } // namespace yb::ash

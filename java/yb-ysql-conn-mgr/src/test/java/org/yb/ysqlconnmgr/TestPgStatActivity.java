@@ -18,6 +18,7 @@ import java.net.InetSocketAddress;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -34,11 +35,14 @@ import static org.yb.AssertionWrappers.assertNotNull;
 import static org.yb.AssertionWrappers.fail;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
+import org.yb.client.TestUtils;
 import org.yb.util.RequiresLinux;
 import org.yb.minicluster.LogErrorListener;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 import org.yb.util.ProcessUtil;
+
+import com.google.common.net.HostAndPort;
 
 @RequiresLinux
 @RunWith(value = YBTestRunner.class)
@@ -203,54 +207,94 @@ public class TestPgStatActivity extends BaseYsqlConnMgr {
         }
     }
 
-    private static final int ASH_PG_SLEEP_SECONDS = 3;
+    private static final String ASH_READ_DELAY_FLAG = "TEST_transactional_read_delay_ms";
+    private static final int ASH_READ_DELAY_MS = 3000;
 
-    /*
-     * Runs a write, which makes tserver RPCs, and a pg_sleep, which is always
-     * sampled, on the client's own table so that the queries have the client's
-     * own query ids.
-     */
-    private void runAshWorkload(Connection conn, String table) throws Exception {
-        conn.createStatement().execute(
-            "INSERT INTO " + table + " SELECT i FROM generate_series(1, 1000) i");
-        conn.createStatement().execute(
-            "SELECT pg_sleep(" + ASH_PG_SLEEP_SECONDS + ") FROM " + table + " LIMIT 1");
+    private void setTServerTestFlag(String flag, String value) throws Exception {
+        for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
+            ProcessUtil.runProcess(Arrays.asList(
+                TestUtils.findBinary("yb-ts-cli"), "--server_address", tserver.toString(),
+                "set_flag", "-force", flag, value), 60 /* timeoutSeconds */);
+        }
     }
 
     /*
-     * Checks that every ASH sample of the queries on table, from postgres and
-     * from the tserver RPCs they made, reports the expected logical client.
+     * Runs a write and then a read in the same transaction on the client's own
+     * table, so that the queries have the client's own query ids. The read is
+     * transactional, so ASH_READ_DELAY_FLAG holds its tserver RPC long enough
+     * to be sampled both in postgres and in the tserver.
+     */
+    private void runAshWorkload(Connection conn, String table) throws Exception {
+        conn.setAutoCommit(false);
+        try (Statement stmt = conn.createStatement()) {
+            stmt.execute("INSERT INTO " + table + " SELECT i FROM generate_series(1, 100) i");
+            stmt.execute("SELECT count(*) FROM " + table);
+            conn.commit();
+        } finally {
+            conn.setAutoCommit(true);
+        }
+    }
+
+    /*
+     * Checks that the ASH samples of the queries on table report the expected
+     * logical client. The samples of the tserver RPCs are on the node that
+     * served them, so every node's view is checked. A tserver sample may lack
+     * a client address, but each postgres sample must have it, and both kinds
+     * must have samples with it.
      */
     private void assertAshClientNodeIp(Connection conn, String table,
             InetSocketAddress expected) throws Exception {
-        ResultSet rs = conn.createStatement().executeQuery(
-            "SELECT wait_event_component, wait_event, client_node_ip" +
-            " FROM yb_active_session_history WHERE query_id IN" +
-            " (SELECT queryid FROM pg_stat_statements WHERE query LIKE '%" + table + "%')");
-        int pgSleepSamples = 0;
-        while (rs.next()) {
-            String clientNodeIp = rs.getString("client_node_ip");
-            LOG.info("{} {} client_node_ip={}", rs.getString("wait_event_component"),
-                rs.getString("wait_event"), clientNodeIp);
-            assertNotNull("client_node_ip should be populated", clientNodeIp);
-            // ip:port for IPv4, [ip]:port for IPv6.
-            int lastColon = clientNodeIp.lastIndexOf(':');
-            String addr = clientNodeIp.substring(0, lastColon).replaceAll("[\\[\\]]", "");
-            int port = Integer.parseInt(clientNodeIp.substring(lastColon + 1));
-            assertEquals("client_node_ip should match the logical client",
-                expected, new InetSocketAddress(addr, port));
-            if ("PgSleep".equals(rs.getString("wait_event"))) {
-                ++pgSleepSamples;
+        List<String> queryIds = new ArrayList<>();
+        try (ResultSet rs = conn.createStatement().executeQuery(
+                "SELECT queryid FROM pg_stat_statements WHERE query LIKE '%" + table + "%'")) {
+            while (rs.next()) {
+                queryIds.add(rs.getString(1));
             }
         }
-        assertTrue("expected PgSleep samples in yb_active_session_history",
-            pgSleepSamples > 0);
+        assertFalse("expected queries on " + table + " in pg_stat_statements",
+            queryIds.isEmpty());
+
+        Map<String, Integer> samplesByComponent = new HashMap<>();
+        for (int i = 0; i < NUM_TSERVER; ++i) {
+            try (Connection nodeConn = getConnectionBuilder()
+                    .withTServer(i)
+                    .withConnectionEndpoint(ConnectionEndpoint.POSTGRES)
+                    .connect();
+                 ResultSet rs = nodeConn.createStatement().executeQuery(
+                    "SELECT wait_event_component, wait_event, client_node_ip" +
+                    " FROM yb_active_session_history WHERE query_id IN (" +
+                    String.join(", ", queryIds) + ")")) {
+                while (rs.next()) {
+                    String component = rs.getString("wait_event_component");
+                    String clientNodeIp = rs.getString("client_node_ip");
+                    LOG.info("node {} {} {} client_node_ip={}", i, component,
+                        rs.getString("wait_event"), clientNodeIp);
+                    if (clientNodeIp == null) {
+                        assertFalse("postgres samples should have client_node_ip",
+                            "YSQL".equals(component));
+                        continue;
+                    }
+                    // ip:port for IPv4, [ip]:port for IPv6.
+                    int lastColon = clientNodeIp.lastIndexOf(':');
+                    String addr = clientNodeIp.substring(0, lastColon).replaceAll("[\\[\\]]", "");
+                    int port = Integer.parseInt(clientNodeIp.substring(lastColon + 1));
+                    assertEquals("client_node_ip should match the logical client",
+                        expected, new InetSocketAddress(addr, port));
+                    samplesByComponent.merge(component, 1, Integer::sum);
+                }
+            }
+        }
+        assertTrue("expected YSQL samples with client_node_ip, got " + samplesByComponent,
+            samplesByComponent.getOrDefault("YSQL", 0) > 0);
+        assertTrue("expected TServer samples with client_node_ip, got " + samplesByComponent,
+            samplesByComponent.getOrDefault("TServer", 0) > 0);
     }
 
     /*
      * Verifies that yb_active_session_history reports the address and port of
-     * the logical client, not of Ysql Conn Mgr, and follows the logical client
-     * when the backend is reused by another one.
+     * the logical client, not of Ysql Conn Mgr, both in postgres and in the
+     * tserver, and follows the logical client when the backend is reused by
+     * another one.
      */
     @Test
     public void testAshClientNodeIp() throws Exception {
@@ -259,6 +303,10 @@ public class TestPgStatActivity extends BaseYsqlConnMgr {
             miniCluster.getYsqlConnMgrContactPoints().get(tserverIndex);
         String ysqlConnMgrHost = ysqlConnMgrAddr.getHostName();
         int ysqlConnMgrPort = ysqlConnMgrAddr.getPort();
+        // Unique table names, so that the query ids match only this run's samples.
+        String suffix = Long.toString(System.currentTimeMillis());
+        String table1 = "ash_t1_" + suffix;
+        String table2 = "ash_t2_" + suffix;
 
         List<InetSocketAddress> before = getJvmConnectionsTo(ysqlConnMgrHost, ysqlConnMgrPort);
         try (Connection conn1 = connectViaConnMgr(tserverIndex)) {
@@ -270,17 +318,22 @@ public class TestPgStatActivity extends BaseYsqlConnMgr {
                 InetSocketAddress client2 = newConnection(afterConn1,
                     getJvmConnectionsTo(ysqlConnMgrHost, ysqlConnMgrPort));
 
-                conn1.createStatement().execute("CREATE TABLE ash_t1 (k INT)");
-                conn2.createStatement().execute("CREATE TABLE ash_t2 (k INT)");
+                conn1.createStatement().execute("CREATE TABLE " + table1 + " (k INT)");
+                conn2.createStatement().execute("CREATE TABLE " + table2 + " (k INT)");
 
-                // Alternate between the clients so that a shared backend is
-                // re-attached to a different logical client each time.
-                for (int i = 0; i < 2; ++i) {
-                    runAshWorkload(conn1, "ash_t1");
-                    runAshWorkload(conn2, "ash_t2");
+                setTServerTestFlag(ASH_READ_DELAY_FLAG, String.valueOf(ASH_READ_DELAY_MS));
+                try {
+                    // Alternate between the clients so that a shared backend is
+                    // re-attached to a different logical client each time.
+                    for (int i = 0; i < 2; ++i) {
+                        runAshWorkload(conn1, table1);
+                        runAshWorkload(conn2, table2);
+                    }
+                } finally {
+                    setTServerTestFlag(ASH_READ_DELAY_FLAG, "0");
                 }
-                assertAshClientNodeIp(conn1, "ash_t1", client1);
-                assertAshClientNodeIp(conn2, "ash_t2", client2);
+                assertAshClientNodeIp(conn1, table1, client1);
+                assertAshClientNodeIp(conn2, table2, client2);
             }
         }
     }

@@ -106,6 +106,14 @@ typedef struct
 	YbcAshQueryPlanPair qp_pairs[MAX_NESTED_QUERY_LEVEL];
 } YbAshQueryPlanPairStack;
 
+/* The client address fields of YbcAshMetadata */
+typedef struct
+{
+	uint8_t		addr_family;
+	unsigned char client_addr[16];
+	uint16_t	client_port;
+} YbAshClientAddr;
+
 static YbAsh *yb_ash = NULL;
 static YbAshQueryPlanPairStack qp_pair_stack;
 static int	nested_level = 0;
@@ -176,6 +184,7 @@ static void YbAshSetQueryPlanPair(YbcAshQueryPlanPair qp_pair);
 static void YbAshResetQueryPlanPair(YbcAshQueryPlanPair qp_pair);
 static void YbAshFlushDeferredPop(void);
 static void YbAshSetClientAddr(void);
+static void YbAshGetProcPortClientAddr(YbAshClientAddr *addr);
 static uint64 yb_ash_utility_query_id(const char *query, int query_len,
 									  int query_location,
 									  bool is_sensitive_stmt);
@@ -859,34 +868,65 @@ YbAshSetOneTimeMetadata()
  * code and ASH keeps working without client address and port for the current PG
  * backend.
  *
- * Safe without locks for the same reason as YbAshSetOneTimeMetadata.
+ * With Ysql Connection Manager, this runs at the start of every request. A
+ * sampler that saw the previous request may still be about to copy the
+ * metadata, so the fields are written under the lock, and only when they
+ * change.
  */
 static void
 YbAshSetClientAddr(void)
 {
-	Assert(MyProc->yb_is_ash_metadata_set == false);
-
-	/* Null the address family, client_addr and client_port */
-	MyProc->yb_ash_metadata.addr_family = AF_UNSPEC;
-	MemSet(MyProc->yb_ash_metadata.client_addr, 0, 16);
-	MyProc->yb_ash_metadata.client_port = 0;
+	static YbAshClientAddr proc_port_addr;
+	static bool proc_port_addr_set = false;
+	YbAshClientAddr addr = {0};
+	YbcAshMetadata *metadata = &MyProc->yb_ash_metadata;
 
 	if (YbHasConnMgrLogicalClientAddr())
 	{
 		if (inet_pton(AF_INET, yb_ycm_internal_client_addr,
-					  MyProc->yb_ash_metadata.client_addr) == 1)
-			MyProc->yb_ash_metadata.addr_family = AF_INET;
+					  addr.client_addr) == 1)
+			addr.addr_family = AF_INET;
 #ifdef HAVE_IPV6
 		else if (inet_pton(AF_INET6, yb_ycm_internal_client_addr,
-						   MyProc->yb_ash_metadata.client_addr) == 1)
-			MyProc->yb_ash_metadata.addr_family = AF_INET6;
+						   addr.client_addr) == 1)
+			addr.addr_family = AF_INET6;
 #endif
 
 		if (yb_ycm_internal_client_port >= 0)
-			MyProc->yb_ash_metadata.client_port = yb_ycm_internal_client_port;
-		return;
+			addr.client_port = yb_ycm_internal_client_port;
+	}
+	else
+	{
+		/* MyProcPort doesn't change, so look up its address only once. */
+		if (!proc_port_addr_set)
+		{
+			YbAshGetProcPortClientAddr(&proc_port_addr);
+			proc_port_addr_set = true;
+		}
+		addr = proc_port_addr;
 	}
 
+	/* Only this backend writes its metadata, so reading it needs no lock. */
+	if (metadata->addr_family == addr.addr_family &&
+		metadata->client_port == addr.client_port &&
+		memcmp(metadata->client_addr, addr.client_addr,
+			   sizeof(addr.client_addr)) == 0)
+		return;
+
+	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
+	metadata->addr_family = addr.addr_family;
+	memcpy(metadata->client_addr, addr.client_addr, sizeof(addr.client_addr));
+	metadata->client_port = addr.client_port;
+	LWLockRelease(&MyProc->yb_ash_metadata_lock);
+}
+
+/*
+ * Gets the client address and port of MyProcPort. They are left nulled out if
+ * there is no MyProcPort or its address can't be looked up.
+ */
+static void
+YbAshGetProcPortClientAddr(YbAshClientAddr *addr)
+{
 	/* Background workers and bootstrap processing may have null MyProcPort */
 	if (MyProcPort == NULL)
 	{
@@ -894,7 +934,7 @@ YbAshSetClientAddr(void)
 		return;
 	}
 
-	MyProc->yb_ash_metadata.addr_family = MyProcPort->raddr.addr.ss_family;
+	addr->addr_family = MyProcPort->raddr.addr.ss_family;
 
 	switch (MyProcPort->raddr.addr.ss_family)
 	{
@@ -929,10 +969,10 @@ YbAshSetClientAddr(void)
 
 	/* Setting ip address */
 	inet_pton(MyProcPort->raddr.addr.ss_family, remote_host,
-			  MyProc->yb_ash_metadata.client_addr);
+			  addr->client_addr);
 
 	/* Setting port */
-	MyProc->yb_ash_metadata.client_port = atoi(MyProcPort->remote_port);
+	addr->client_port = atoi(MyProcPort->remote_port);
 }
 
 void
