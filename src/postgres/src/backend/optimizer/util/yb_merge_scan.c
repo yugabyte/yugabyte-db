@@ -567,11 +567,10 @@ ybIsCopyOfEarlierIndexCol(IndexOptInfo *index, int indexcol)
  *   filter or the storage table filter of a secondary index scan that is not
  *   embedded
  * Only the last kind needs the merge to sort on it, or the merged rows can
- * come out of order.  A copy needs no merge either, and is easy to tell apart.
- * Telling the first two kinds apart takes a proof that the predicate implies
- * the column or knowing where each filter runs (see #37497), so err on the
- * side of correct order and make all three gap columns, at a cost to the first
- * two kinds:
+ * come out of order.  Telling the first two kinds apart takes a proof that the
+ * predicate implies the column or knowing where each filter runs (see #37497),
+ * so err on the side of correct order and make all three gap columns, at a
+ * cost to the first two kinds:
  * - extra comparisons that always tie
  * - for an expression column of an embedded index scan, the pathkey cut in
  *   yb_finalize_merge_scan_info, which in the worst case leaves the index path
