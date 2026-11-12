@@ -1458,13 +1458,16 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWitDDLStatemen
   t4.join();
 
   int expected_dml_records = 4 * num_batches * inserts_per_batch;
+  // With transactional DDL, the ADD and DROP ship 2 and 1 synthetic DDL records instead of 1 per
+  // tablet each.
+  int expected_ddl_records =
+      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 3 : 2 * 3;
   auto get_all_pending_changes_resp = ASSERT_RESULT(
       GetAllPendingTxnsFromVirtualWAL(stream_id, {table.table_id()}, expected_dml_records, true));
 
   CheckRecordsConsistencyFromVWAL(get_all_pending_changes_resp.records);
   LOG(INFO) << "Got " << get_all_pending_changes_resp.records.size() << " records.";
-  CheckRecordCount(get_all_pending_changes_resp, expected_dml_records);
-  ASSERT_EQ(NumDDLStatements(get_all_pending_changes_resp.records, tablets.size()), 2);
+  CheckRecordCount(get_all_pending_changes_resp, expected_dml_records, expected_ddl_records);
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWitDDLStatementsAndRestart) {
@@ -1592,14 +1595,20 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWithMultipleAl
   }
   LOG(INFO) << "Added columns and pushed required records";
 
+  // With transactional DDL, each ADD COLUMN ships 2 synthetic DDL records instead of 1 per tablet.
+  int expected_ddl_records =
+      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 13 * 2 : 13 * 3;
   expected_dml_records = 13 * 10;     /* number of add columns 'times' insert per batch */
   auto consistent_change_resp_after_alter = ASSERT_RESULT(
       GetAllPendingTxnsFromVirtualWAL(stream_id, {table.table_id()}, expected_dml_records, false));
   LOG(INFO) << "Got " << consistent_change_resp_after_alter.records.size() << " records.";
 
+  int seen_ddl_records = 0;
   int seen_dml_records = 0;
   for (const auto& record : consistent_change_resp_after_alter.records) {
-    if (record.row_message().op() == RowMessage::INSERT) {
+    if (record.row_message().op() == RowMessage::DDL) {
+      seen_ddl_records += 1;
+    } else if (record.row_message().op() == RowMessage::INSERT) {
       seen_dml_records += 1;
       auto key_value = record.row_message().new_tuple(0).pg_ql_value().int32_value();
       auto expected_column_count = std::ceil(key_value / 10.0);
@@ -1607,7 +1616,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWithMultipleAl
     }
   }
 
-  ASSERT_EQ(NumDDLStatements(consistent_change_resp_after_alter.records, num_tablets), 13);
+  ASSERT_EQ(seen_ddl_records, expected_ddl_records);
   ASSERT_EQ(seen_dml_records, expected_dml_records);
   CheckRecordsConsistencyFromVWAL(consistent_change_resp_after_alter.records);
 }
