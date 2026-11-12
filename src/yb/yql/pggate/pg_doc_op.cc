@@ -916,7 +916,8 @@ Status PgDocReadOp::DoPopulateByYbctidOps(const YbctidGenerator& generator, Keep
       /* is_lower= */ false);
   // This batch's operators, by partition. Operators left in pgsql_ops_ by a previous batch are
   // never assigned ybctids, as they may still be active.
-  std::vector<PgsqlReadOp*> partition_ops(table_->GetPartitionListSize());
+  std::vector<PgsqlOpPtr> partition_ops(table_->GetPartitionListSize());
+  const auto first_batch_op = pgsql_ops_.size();
   while (true) {
     const auto ybctid = generator.next();
     if (ybctid.empty()) {
@@ -931,20 +932,21 @@ Status PgDocReadOp::DoPopulateByYbctidOps(const YbctidGenerator& generator, Keep
     // - For range partitioning, we pass partition key to seek the index.
     const auto partition = VERIFY_RESULT(table_->FindPartitionIndex(ybctid));
     // Assign ybctids to operators.
-    auto*& partition_op = partition_ops[partition];
+    auto& partition_op = partition_ops[partition];
     if (!partition_op) {
-      partition_op = &CloneOnePgsqlOp();
+      CloneOnePgsqlOp();
+      partition_op = pgsql_ops_.back();
       // For every read operation set partition boundary. In case a tablet is split between
       // preparing requests and executing them, DocDB will return a paging state for pggate to
       // continue till the end of current tablet is reached.
       // The ybctid is within both the request and the partition bounds, so they intersect.
       const auto range_non_empty =
-          VERIFY_RESULT(SetLowerUpperBound(&partition_op->read_request(), partition));
+          VERIFY_RESULT(SetLowerUpperBound(&AsReadReq(partition_op), partition));
       RSTATUS_DCHECK(
           range_non_empty, IllegalState, "Empty read range for partition $0", partition);
       partition_op->set_active(true);
     }
-    auto& read_req = partition_op->read_request();
+    auto& read_req = AsReadReq(partition_op);
 
     // Append ybctid and its order to batch_arguments.
     // The "ybctid" values are returned in the same order as the row in the IndexTable. To keep
@@ -965,6 +967,16 @@ Status PgDocReadOp::DoPopulateByYbctidOps(const YbctidGenerator& generator, Keep
           ->ref_binary_value(arg_value->binary_value());
     }
   }
+
+  // Lay out this batch's operators as when one was cloned per partition up front and
+  // MoveInactiveOpsOutside() then moved the active ones to the front. That partition is not
+  // stable, so repeat it over the per-partition slots to keep the order in which unordered reads
+  // return rows.
+  const auto used_ops = std::ranges::subrange(
+      partition_ops.begin(),
+      std::ranges::partition(partition_ops, [](const auto& op) { return op != nullptr; }).begin());
+  pgsql_ops_.erase(pgsql_ops_.begin() + first_batch_op, pgsql_ops_.end());
+  std::ranges::move(used_ops, std::back_inserter(pgsql_ops_));
 
   parallelism_level_ = pgsql_ops_.size();
   if (keep_order && !result_stream_) {
