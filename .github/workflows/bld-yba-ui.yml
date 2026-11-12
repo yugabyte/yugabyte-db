@@ -15,7 +15,6 @@ concurrency:
 
 jobs:
   bld-yba-ui:
-    environment: jenkins
     runs-on: ybdbghr
     steps:
       - name: Build Trigger
