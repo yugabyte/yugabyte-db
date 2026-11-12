@@ -309,12 +309,14 @@ public class ReleasesController extends AuthenticatedController {
         release.saveState(newState);
       }
 
-      // Now, check if any artifacts have changed, and update them as needed
-      List<UUID> removeArtifacts =
-          release.getArtifacts().stream()
-              .map(a -> a.getArtifactUUID())
-              .collect(Collectors.toList());
+      // Now, check if any artifacts have changed, and update them as needed. A request without
+      // artifacts leaves them unchanged; send an empty list to remove them all.
+      List<UUID> removeArtifacts = new ArrayList<>();
       if (reqRelease.artifacts != null) {
+        removeArtifacts =
+            release.getArtifacts().stream()
+                .map(a -> a.getArtifactUUID())
+                .collect(Collectors.toList());
         for (UpdateRelease.Artifact reqArtifact : reqRelease.artifacts) {
           boolean found = false;
           for (ReleaseArtifact artifact : release.getArtifacts()) {

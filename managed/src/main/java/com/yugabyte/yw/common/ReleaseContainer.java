@@ -553,6 +553,16 @@ public class ReleaseContainer {
     }
   }
 
+  public boolean isDisabledOrDeleted() {
+    if (isLegacy()) {
+      return this.metadata.state == ReleaseManager.ReleaseState.DISABLED
+          || this.metadata.state == ReleaseManager.ReleaseState.DELETED;
+    } else {
+      return this.release.getState() == Release.ReleaseState.DISABLED
+          || this.release.getState() == Release.ReleaseState.DELETED;
+    }
+  }
+
   public static class ImportExportRelease {
     public ReleaseMetadata releaseMetadata;
     public Release release;

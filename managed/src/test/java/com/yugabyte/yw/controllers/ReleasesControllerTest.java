@@ -334,7 +334,7 @@ public class ReleasesControllerTest extends FakeDBApplication {
   public void testToggleInUseReleaseBetweenActiveAndDisabled() {
     Release r1 = createInUseRelease();
     String url = releaseUrl(r1);
-    // The UI sends the full release back; omitting artifacts would mean removing them.
+    // The UI sends the full release back, artifacts included.
     ObjectNode artifact = Json.newObject();
     artifact.put("platform", ReleaseArtifact.Platform.LINUX.toString());
     artifact.put("architecture", Architecture.x86_64.toString());
@@ -348,6 +348,50 @@ public class ReleasesControllerTest extends FakeDBApplication {
     jsonBody.put("state", "ACTIVE");
     assertOk(doPutRequest(url, jsonBody));
     assertEquals(Release.ReleaseState.ACTIVE, Release.get(r1.getReleaseUUID()).getState());
+  }
+
+  @Test
+  public void testStateOnlyUpdateTogglesInUseRelease() {
+    Release r1 = createInUseRelease();
+    String url = releaseUrl(r1);
+    ObjectNode jsonBody = Json.newObject();
+    jsonBody.put("state", "DISABLED");
+    assertOk(doPutRequest(url, jsonBody));
+    Release found = Release.get(r1.getReleaseUUID());
+    assertEquals(Release.ReleaseState.DISABLED, found.getState());
+    assertEquals(1, found.getArtifacts().size());
+
+    jsonBody.put("state", "ACTIVE");
+    assertOk(doPutRequest(url, jsonBody));
+    found = Release.get(r1.getReleaseUUID());
+    assertEquals(Release.ReleaseState.ACTIVE, found.getState());
+    assertEquals(1, found.getArtifacts().size());
+  }
+
+  @Test
+  public void testUpdateWithoutArtifactsKeepsArtifacts() {
+    Release r1 = Release.create("2.21.0.1", "STS");
+    r1.addArtifact(
+        ReleaseArtifact.create(
+            "sha256", ReleaseArtifact.Platform.LINUX, Architecture.x86_64, "url"));
+    ObjectNode jsonBody = Json.newObject();
+    jsonBody.put("release_notes", "new notes");
+    assertOk(doPutRequest(releaseUrl(r1), jsonBody));
+    Release found = Release.get(r1.getReleaseUUID());
+    assertEquals("new notes", found.getReleaseNotes());
+    assertEquals(1, found.getArtifacts().size());
+  }
+
+  @Test
+  public void testUpdateWithEmptyArtifactsRemovesArtifacts() {
+    Release r1 = Release.create("2.21.0.1", "STS");
+    r1.addArtifact(
+        ReleaseArtifact.create(
+            "sha256", ReleaseArtifact.Platform.LINUX, Architecture.x86_64, "url"));
+    ObjectNode jsonBody = Json.newObject();
+    jsonBody.set("artifacts", Json.newArray());
+    assertOk(doPutRequest(releaseUrl(r1), jsonBody));
+    assertTrue(Release.get(r1.getReleaseUUID()).getArtifacts().isEmpty());
   }
 
   @Test

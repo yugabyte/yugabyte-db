@@ -468,10 +468,7 @@ export const NewReleaseList = () => {
         renderedItems.push(<Divider />);
       }
 
-      if (
-        row.universes?.length > 0 &&
-        (value === OTHER_ACTONS.DISABLE_RELEASE || value === OTHER_ACTONS.DELETE_RELEASE)
-      ) {
+      if (row.universes?.length > 0 && value === OTHER_ACTONS.DELETE_RELEASE) {
         disabled = true;
       }
 

@@ -70,7 +70,9 @@ var updateReleaseCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if !util.IsEmptyString(state) {
-			if strings.Compare(strings.ToUpper(state), requestedRelease.GetState()) != 0 {
+			state = strings.ToUpper(state)
+			currentState := requestedRelease.GetState()
+			if state != currentState && !isActiveDisabledToggle(currentState, state) {
 				logrus.Fatal(
 					formatter.Colorize(
 						fmt.Sprintf(
@@ -82,7 +84,7 @@ var updateReleaseCmd = &cobra.Command{
 					))
 			}
 			logrus.Debug("Updating state")
-			requestedRelease.SetState(strings.ToUpper(state))
+			requestedRelease.SetState(state)
 		}
 
 		tag, err := cmd.Flags().GetString("tag")
@@ -157,6 +159,10 @@ var updateReleaseCmd = &cobra.Command{
 		release.Write(releaseCtx, r)
 
 	},
+}
+
+func isActiveDisabledToggle(from, to string) bool {
+	return (from == "ACTIVE" && to == "DISABLED") || (from == "DISABLED" && to == "ACTIVE")
 }
 
 func init() {

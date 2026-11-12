@@ -1077,4 +1077,36 @@ public class ReleaseManagerTest extends FakeDBApplication {
         new ReleaseContainer(release5, mockCloudUtilFactory, appConfig, mockReleasesUtils);
     assertFalse(UniverseTaskBase.validateLocalFilepath(universeNullArch, container5));
   }
+
+  @Test
+  public void testCheckActiveForNewUse() {
+    Release helmOnly = Release.create("2.21.0.1", "STS");
+    helmOnly.addArtifact(
+        ReleaseArtifact.create("sha256", ReleaseArtifact.Platform.KUBERNETES, null, "helm_url"));
+    assertEquals(Release.ReleaseState.INCOMPLETE, helmOnly.getState());
+    ReleaseManager.checkActiveForNewUse(
+        new ReleaseContainer(helmOnly, mockCloudUtilFactory, appConfig, mockReleasesUtils),
+        "2.21.0.1");
+
+    Release release = Release.create("2.22.0.0", "STS");
+    release.addArtifact(
+        ReleaseArtifact.create(
+            "sha256", ReleaseArtifact.Platform.LINUX, Architecture.x86_64, "url"));
+    ReleaseContainer container =
+        new ReleaseContainer(release, mockCloudUtilFactory, appConfig, mockReleasesUtils);
+    ReleaseManager.checkActiveForNewUse(container, "2.22.0.0");
+    for (Release.ReleaseState state :
+        new Release.ReleaseState[] {Release.ReleaseState.DISABLED, Release.ReleaseState.DELETED}) {
+      release.setState(state);
+      assertPlatformException(() -> ReleaseManager.checkActiveForNewUse(container, "2.22.0.0"));
+    }
+
+    ReleaseMetadata legacy = ReleaseMetadata.create("2.23.0.0");
+    legacy.state = ReleaseManager.ReleaseState.DISABLED;
+    assertPlatformException(
+        () ->
+            ReleaseManager.checkActiveForNewUse(
+                new ReleaseContainer(legacy, mockCloudUtilFactory, appConfig, mockReleasesUtils),
+                "2.23.0.0"));
+  }
 }
