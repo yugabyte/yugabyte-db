@@ -1047,8 +1047,8 @@ nextval_internal(Oid relid, bool check_permissions)
 		if (YbIsClientYsqlConnMgr() &&
 			(strcmp((YBCGetGFlags()->ysql_conn_mgr_sequence_support_mode), "session") == 0))
 		{
-			increment_sticky_object_count();
-			elog(LOG_SERVER_ONLY, "Incremented sticky object count for sequence %s",
+			yb_ysql_conn_mgr_sticky_nontxn_object = true;
+			elog(LOG_SERVER_ONLY, "Making connection sticky for sequence %s",
 				 RelationGetRelationName(seqrel));
 		}
 		return first_val;
