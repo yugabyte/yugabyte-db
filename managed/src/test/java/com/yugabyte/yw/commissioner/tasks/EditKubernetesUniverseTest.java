@@ -3515,7 +3515,10 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             .getMasterAddrsPropagated());
   }
 
-  /** A tserver that stays must get the new masters, so the edit stops before any remove. */
+  /**
+   * A failed push to a tserver that stays fails the edit before any remove, like the end-of-edit
+   * push. This is a strictness choice: the push changes only what the tserver reports.
+   */
   @Test
   public void testZoneReplaceWithStayingTserverDownFailsBeforeRemove() throws Exception {
     setupMasterMoveUniverse(FULL_MOVE_VERSION);

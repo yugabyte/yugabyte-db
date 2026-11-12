@@ -1233,7 +1233,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     for (int idx = 0; idx < mastersToAdd.size(); idx++) {
       createChangeConfigTasks(mastersToAdd.get(idx), true, subTask);
     }
-    // Live servers must know the new masters before a remove can move leadership to one of them.
+    // Servers read the master list only at startup, so this push changes only what they report in
+    // /varz. It keeps that in line with the Secrets the removes are about to make current.
     if (pushMasterAddrs && !mastersToRemove.isEmpty()) {
       createMasterAddrsInMemoryUpdateTasks(
           universe, masterPushTargets, bestEffortTservers, raftConfig);
@@ -1258,7 +1259,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     }
     // Wait for master leader.
     createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-    // Must land before anything deletes the old master pods.
+    // Reports the master Raft config the removes left.
     if (pushMasterAddrs) {
       createMasterAddrsInMemoryUpdateTasks(
           universe, masterPushTargets, bestEffortTservers, raftConfig);
@@ -1269,7 +1270,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
    * Sets master_addresses / tserver_master_addrs in memory on the given masters and every tserver,
    * read replicas included. Callers plan this only while no tserver pod has been added or removed,
    * so every tserver in the universe exists. A failed push to one of bestEffortTservers does not
-   * fail the edit.
+   * fail the edit. A failed push to any other server does, like the end-of-edit push: a strictness
+   * choice, since the servers read the list only at startup and the push changes what they report.
    */
   private void createMasterAddrsInMemoryUpdateTasks(
       Universe universe,
@@ -1287,15 +1289,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
     if (!tservers.get(true).isEmpty()) {
-      createSetFlagInMemoryTasks(
-              tservers.get(true),
-              ServerType.TSERVER,
-              (node, params) -> {
-                params.force = true;
-                params.updateMasterAddrs = true;
-                params.masterAddrsOverride = masterAddresses;
-                params.ignoreErrors = true;
-              })
+      createUpdateMasterAddrsInMemoryTasks(
+              tservers.get(true), ServerType.TSERVER, masterAddresses, true /* ignoreErrors */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
   }
