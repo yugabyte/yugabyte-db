@@ -13,7 +13,6 @@
 
 #include "yb/tserver/pg_response_cache.h"
 
-#include <algorithm>
 #include <atomic>
 #include <future>
 #include <mutex>
@@ -558,46 +557,16 @@ class PgResponseCache::Impl : private GarbageCollector {
     return key_group_buckets_[group % sz];
   }
 
-  // Whether a connection other than this one is filling an entry of this key group. The session
-  // id is the only handle on "another connection" a Perform carries, so a session's own counts
-  // are skipped.
+  // Whether any connection is filling an entry of this key group, the asking connection
+  // included. Parallel workers adopt their leader's session id, so counting the asker's own
+  // fills is what sends a sibling to the entry another sibling already stored, rather than
+  // queueing it behind the fills that sibling still has in flight. A backend running a prefetch
+  // of its own has nothing counted here yet: pggate asks on the opening round and on no rerun.
   //
-  // Within one backend the skip decides nothing: pggate asks only on a prefetch's opening round
-  // and clears the ask before any rerun, and at that round the session has filled nothing yet,
-  // so there is no count of its own to find. What it decides is the parallel-worker case below,
-  // where siblings share a session id -- there the skip is why they do not send each other away.
-  //
-  // Counted per session rather than per entry because a connection start wants a different entry
-  // from the fill it is sent away from -- it pinned a version of its own -- so there is no entry
-  // the two have in common to count.
-  //
-  // Parallel workers adopt their leader's session id, so this check does not separate siblings
-  // of one query. The entry-level check in RegisterWaiter separates them only while the first
-  // is still filling the entry the second wants: RegisterWaiter answers kReady before it looks
-  // at the ask, so once that entry is stored the second sibling is served it and its later
-  // rounds, which carry no ask of their own, queue behind the fills the first still has in
-  // flight. Sending a sibling away from an entry already stored would need this check to run
-  // on the session's own counts, which is the one thing it is built not to do.
-  //
-  // What that costs is catalog work the node need not have done -- a sibling served or queued
-  // gets the same bytes any other caller would, and one that is sent away reads the older
-  // version through the same checks as anyone else. Siblings share the session's token, so two
-  // of their fills are counted once and released once, which cannot underflow the count or
-  // leave it held.
-  //
-  // TODO(#34309): separate siblings by counting the session's own fills here, so the second is
-  // sent away from an entry the first has already stored rather than queueing behind the fills
-  // it still has in flight. The check then fires before RegisterWaiter, so answering kReady
-  // ahead of the ask stops mattering. It inverts what AConnectionIsNotSentAwayFromAFillOfItsOwn
-  // and AGroupStaysBusyAcrossOverlappingRounds pin: both ask on a later round of one session,
-  // which pggate does not send, so both want revisiting with the change rather than before it.
-  [[nodiscard]] bool AnotherFillInFlight(KeyGroup group, uint64_t session_id) REQUIRES(mutex_) {
-    auto it = fills_in_flight_.find(group);
-    if (it == fills_in_flight_.end()) {
-      return false;
-    }
-    return std::ranges::any_of(
-        it->second, [session_id](const auto& e) { return e.first != session_id; });
+  // Counted per key group rather than per entry because a connection start wants a different
+  // entry from the fill it is sent away from -- it pinned a version of its own.
+  [[nodiscard]] bool FillInFlight(KeyGroup group) REQUIRES(mutex_) {
+    return fills_in_flight_.contains(group);
   }
 
   // A connection start's prefetch reuses the session's token; every other caching read takes one
@@ -748,7 +717,7 @@ class PgResponseCache::Impl : private GarbageCollector {
     // entry invalid, so the next caller rebuilds it and starts a second whole-catalog read --
     // the very thing this check exists to prevent, at exactly the times it matters.
     //
-    // While another session is filling this database, send the asking connection away. A
+    // While a fill for this database is under way, send the asking connection away. A
     // connection starting during a run of DDLs pins a version of its own, so the entry it wants
     // is nobody else's and the per-entry check below would not see that fill at all. A
     // connection whose opening round would have hit the cache is not spared the wait either:
@@ -788,8 +757,7 @@ class PgResponseCache::Impl : private GarbageCollector {
         // Closing it means remembering, per key group, the bucket version its recorded catalog
         // version was filled under, which is a map under this lock written from the publish
         // path -- more than the wasted attempt it saves is worth here.
-        send_away = !GetKeyGroupBucket(group).disabler.lock() &&
-                    AnotherFillInFlight(group, session_id);
+        send_away = !GetKeyGroupBucket(group).disabler.lock() && FillInFlight(group);
       }
       if (send_away) {
         send_aways_->Increment();
@@ -834,10 +802,8 @@ class PgResponseCache::Impl : private GarbageCollector {
         // and catches up from there, and asks again without send_away_if_fill_in_flight if it
         // cannot, so this cannot be answered the same way twice.
         //
-        // The group check above covers another session's fill, but only once that fill is
-        // counted, which its setter does a moment after the entry is marked as filling. This
-        // arm covers that gap, and the case of a session asking for an entry it is filling
-        // itself, which parallel workers sharing a session can reach.
+        // The group check above sees a fill only once it is counted, which its setter does a
+        // moment after the entry is marked as filling. This arm covers that gap.
         send_aways_->Increment();
         return STATUS(Incomplete, "A fill for this key is already under way");
       case Data::JoinState::kFill:

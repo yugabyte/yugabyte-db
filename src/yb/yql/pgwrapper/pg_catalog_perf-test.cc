@@ -1685,6 +1685,15 @@ class PgStaleCatalogPrefetchTest : public PgCatalogPerfTestBase {
     return SetSharedPrefetchLoad(*cluster_, load);
   }
 
+  // A connection that reports its first attempt. PGConn::Connect otherwise retries until its
+  // deadline, which hides a startup that failed and came up on a rerun -- the very thing a test
+  // of a connection's own startup is looking for.
+  Result<PGConn> ConnectOnce() const {
+    auto settings = MakeConnSettings();
+    settings.should_stop = [] { return true; };
+    return PGConnBuilder(settings).Connect();
+  }
+
   // Whether the tserver has learned this database's catalog version and so has a slot to
   // record a prefetch into. Keyed by oid rather than by connection, because what this answers
   // is whether it is yet worth connecting at all.
@@ -2260,12 +2269,6 @@ TEST_F(PgUnbridgeableCatalogPrefetchTest, FallsBackWhenTheMessagesCannotBeApplie
          "the read that had just been refused";
 }
 
-// TODO(#34309): this cannot tell a connection that never failed from one whose first attempt
-// failed and whose retry succeeded, because PGConn::Connect retries until its deadline. Dropping
-// the !sent_away guard in YbRunWithPrefetcher makes the first attempt raise the Incomplete this
-// test exists to rule out, and the test still passes. Strengthening it needs a signal a retry
-// moves: send_aways does not, since the pause is released once the first send-away is counted.
-//
 // A connection sent away from a fill cannot always use the older version it is sent to: this
 // fixture makes the messages that would carry it forward unusable. It has to come up anyway, by
 // queueing behind the fill as it would have without the ask. The tserver answers Incomplete to
@@ -2307,9 +2310,11 @@ TEST_F(PgUnbridgeableCatalogPrefetchTest, ComesUpWhenSentAwayWithNoUsableOlderVe
     ASSERT_OK(sent_away);
   });
 
+  // ConnectOnce, so a first attempt that raised the send-away as an error is reported here
+  // rather than repaired by a retry.
   Status connect_status;
   const auto delta = ASSERT_RESULT(metrics_->Delta([this, &connect_status]() -> Status {
-    connect_status = ResultToStatus(Connect());
+    connect_status = ResultToStatus(ConnectOnce());
     return static_cast<Status>(Status::OK());
   }));
 

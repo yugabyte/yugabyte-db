@@ -182,29 +182,29 @@ TEST_F(PgResponseCacheTest, AFillOutlivingItsDeadlineStillServesItsWaiters) {
       << "unserved; the setter holds that entry, so the fill must still reach its waiters";
 }
 
-// The group check skips the asking session's own counts, so it never sends a session away on a
-// fill of its own on another key. The entry check still can, where the session asks for the very
-// entry it is filling -- ACallerOnTheEntryBeingFilledIsSentAway covers that. Round 2 asks here
-// only to reach the skip directly; a backend asks on its opening round alone, and parallel
-// workers sharing a session id are what exercise this in production.
-TEST_F(PgResponseCacheTest, AConnectionIsNotSentAwayFromAFillOfItsOwn) {
+// Parallel workers adopt their leader's session id and each run a connection start of its own.
+// The group check counts the asking session's own fills, so the second worker is sent to the
+// version this node already holds rather than queueing behind the fills the first still has in
+// flight. The keys differ, so only the group check can turn this caller away.
+TEST_F(PgResponseCacheTest, ASiblingIsSentAwayFromAFillOfTheSameSession) {
   ThreadSafeArena arena;
-  auto& round1 = MakeCachingInfo(arena, "round-1"sv, SendAway::kTrue,
-                                 PartOfConnectionPrefetch::kFalse);
-  auto& round2 = MakeCachingInfo(arena, "round-2"sv, SendAway::kTrue,
-                                 PartOfConnectionPrefetch::kFalse);
+  auto& filling = MakeCachingInfo(arena, "round-1"sv, SendAway::kTrue,
+                                  PartOfConnectionPrefetch::kFalse);
+  auto& sibling = MakeCachingInfo(arena, "sibling-key"sv, SendAway::kTrue,
+                                  PartOfConnectionPrefetch::kFalse);
   const auto deadline = CoarseMonoClock::Now() + 60s;
 
   auto first_waiter = std::make_shared<CountingWaiter>();
-  auto first = ASSERT_RESULT(cache_->Get(&round1, deadline, first_waiter, kSessionId, nullptr));
+  auto first = ASSERT_RESULT(cache_->Get(&filling, deadline, first_waiter, kSessionId, nullptr));
   ASSERT_TRUE(first) << "the first round must be asked to fill";
 
-  // first is still held, so round 1 is still recorded as being filled.
-  auto second_waiter = std::make_shared<CountingWaiter>();
-  auto second = ASSERT_RESULT(cache_->Get(&round2, deadline, second_waiter, kSessionId, nullptr));
-  ASSERT_TRUE(second)
-      << "the group check sent a connection away on a fill of its own, so nothing finishes its "
-      << "prefetch";
+  // first is still held, so the session's fill is still counted.
+  auto sibling_waiter = std::make_shared<CountingWaiter>();
+  auto sibling_result = cache_->Get(&sibling, deadline, sibling_waiter, kSessionId, nullptr);
+  ASSERT_NOK(sibling_result);
+  ASSERT_TRUE(sibling_result.status().IsIncomplete()) << sibling_result.status();
+  ASSERT_EQ(sibling_waiter->applied(), 0)
+      << "a caller sent away must not be queued behind the fill as well";
 }
 
 // The same fill seen by a different connection, which is what the check is for.
@@ -505,7 +505,9 @@ TEST_F(PgResponseCacheTest, AGroupStaysBusyAcrossOverlappingRounds) {
   ThreadSafeArena arena;
   auto& round1 = MakeCachingInfo(arena, "round-1"sv, SendAway::kTrue,
                                  PartOfConnectionPrefetch::kFalse);
-  auto& round2 = MakeCachingInfo(arena, "round-2"sv, SendAway::kTrue,
+  // Round 2 does not ask, as pggate's later rounds do not; asking would send it away from the
+  // fill round 1 still has in flight.
+  auto& round2 = MakeCachingInfo(arena, "round-2"sv, SendAway::kFalse,
                                  PartOfConnectionPrefetch::kFalse);
   auto& theirs = MakeCachingInfo(arena, "their-key"sv, SendAway::kTrue,
                                  PartOfConnectionPrefetch::kFalse);
@@ -674,30 +676,52 @@ TEST_F(PgResponseCacheTest, AClaimOutlivesTheSessionsHalfWhileARoundIsStillFilli
   ASSERT_TRUE(later) << "the claim outlived every owner of the token";
 }
 
-// The other half of the send-away: the caller wants the very entry being filled, so the group
-// check passes it -- that check skips the asking session's own fills -- and the entry check
-// turns it away instead. Parallel workers reach this, since they share their leader's session
-// and start at the same catalog version, so they want the same keys.
+// The other half of the send-away: an entry still filling for a session the group no longer
+// counts. Siblings share one token, so one sibling's completing round releases it while
+// another's round is still filling, and the entry check is all that stands between an arriving
+// connection and that entry.
 TEST_F(PgResponseCacheTest, ACallerOnTheEntryBeingFilledIsSentAway) {
   ThreadSafeArena arena;
-  auto& filling = MakeCachingInfo(arena, "round-1"sv, SendAway::kTrue,
-                                  PartOfConnectionPrefetch::kFalse);
-  auto& sibling = MakeCachingInfo(arena, "round-1"sv, SendAway::kTrue,
-                                  PartOfConnectionPrefetch::kFalse);
   const auto deadline = CoarseMonoClock::Now() + 60s;
 
-  auto filler_waiter = std::make_shared<CountingWaiter>();
-  auto filler = ASSERT_RESULT(
-      cache_->Get(&filling, deadline, filler_waiter, kSessionId, nullptr));
-  ASSERT_TRUE(filler);
+  // Another connection has already cached the entry this one's last round will want.
+  auto& cached = MakeCachingInfo(arena, "final-round"sv, SendAway::kFalse,
+                                 PartOfConnectionPrefetch::kFalse);
+  auto cached_waiter = std::make_shared<CountingWaiter>();
+  auto cached_setter = ASSERT_RESULT(
+      cache_->Get(&cached, deadline, cached_waiter, kOtherSessionId, nullptr));
+  ASSERT_TRUE(cached_setter);
+  cached_setter(MakeResponse());
+  cached_setter = {};
 
-  // Same session, so the group check finds no fill but its own and lets this through to the
-  // entry, which is being filled.
-  auto sibling_waiter = std::make_shared<CountingWaiter>();
-  auto sibling_result = cache_->Get(&sibling, deadline, sibling_waiter, kSessionId, nullptr);
-  ASSERT_NOK(sibling_result);
-  ASSERT_TRUE(sibling_result.status().IsIncomplete()) << sibling_result.status();
-  ASSERT_EQ(sibling_waiter->applied(), 0)
+  // A sibling's round, left filling. Siblings share a session id, and a round's response
+  // is stored after the session lock is dropped, so a sibling can be served while this
+  // one still fills.
+  auto& round1 = MakeCachingInfo(arena, "round-1"sv, SendAway::kFalse,
+                                 PartOfConnectionPrefetch::kTrue);
+  PgResponseCache::FillTokenPtr token;
+  auto my_waiter = std::make_shared<CountingWaiter>();
+  auto mine = ASSERT_RESULT(cache_->Get(&round1, deadline, my_waiter, kSessionId, &token));
+  ASSERT_TRUE(mine);
+
+  // Another sibling's last round hits that cached entry, which ends the claim they share.
+  auto& final_round = MakeCachingInfo(arena, "final-round"sv, SendAway::kFalse,
+                                      PartOfConnectionPrefetch::kTrue);
+  final_round.set_completes_connection_prefetch(true);
+  auto final_waiter = std::make_shared<CountingWaiter>();
+  auto final_setter = ASSERT_RESULT(
+      cache_->Get(&final_round, deadline, final_waiter, kSessionId, &token));
+  ASSERT_FALSE(final_setter) << "the final round was expected to be served from the cache";
+
+  // Nothing is counted for the group now, so the entry round 1 is still filling is what turns
+  // this caller away.
+  auto& theirs = MakeCachingInfo(arena, "round-1"sv, SendAway::kTrue,
+                                 PartOfConnectionPrefetch::kFalse);
+  auto their_waiter = std::make_shared<CountingWaiter>();
+  auto theirs_result = cache_->Get(&theirs, deadline, their_waiter, kOtherSessionId, nullptr);
+  ASSERT_NOK(theirs_result);
+  ASSERT_TRUE(theirs_result.status().IsIncomplete()) << theirs_result.status();
+  ASSERT_EQ(their_waiter->applied(), 0)
       << "a caller sent away from an entry must not be queued on it as well";
 }
 
