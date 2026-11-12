@@ -15,6 +15,7 @@ package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertGreaterThan;
+import static org.yb.AssertionWrappers.assertGreaterThanOrEqualTo;
 import static org.yb.AssertionWrappers.assertNotEquals;
 import static org.yb.AssertionWrappers.assertTrue;
 
@@ -129,7 +130,14 @@ public class TestYbPgStatActivity extends BasePgSQLTest {
       Row yb_heap_stats = getSingleRow(stmt, "SELECT * FROM yb_heap_stats()");
       for (int i = 0; i < N_YB_HEAP_STATS_COLUMNS; i++)
       {
-        if (shouldBeValid)
+        // yb_tcmalloc_release_after_statement returns free memory to the OS after every
+        // statement, so cached_free_memory can legitimately be 0.
+        if (shouldBeValid && yb_heap_stats.getColumnName(i).equals("cached_free_memory"))
+          assertGreaterThanOrEqualTo(String.format("Field %s of yb_heap_stats %s",
+                                                   yb_heap_stats.getColumnName(i),
+                                                   RETURNED_INVALID_VALUE),
+                                     yb_heap_stats.getLong(i).longValue(), 0L);
+        else if (shouldBeValid)
           assertGreaterThan(String.format("Field %s of yb_heap_stats %s",
                                         yb_heap_stats.getColumnName(i), RETURNED_INVALID_VALUE),
                             yb_heap_stats.getLong(i).longValue(), 0L);
