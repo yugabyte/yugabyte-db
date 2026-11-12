@@ -2200,10 +2200,6 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     return helmTask.getTaskParams().path("masterAddresses").asText();
   }
 
-  private static String tserverMasterAddrs(TaskInfo helmTask) {
-    return helmTask.getTaskParams().path("tserverMasterAddrs").asText();
-  }
-
   private static Set<String> addressSet(String... lists) {
     return Arrays.stream(lists)
         .flatMap(l -> Arrays.stream(l.split(",")))
@@ -2373,7 +2369,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
     // Between the pre-remove push and the remove, a non-restart render rewrites the Secrets of
     // every AZ but the one gaining a master, at their current counts, with the old and the new
-    // masters. Nothing scales. The list holds the leader before and after the remove.
+    // masters. Nothing scales. The list names quorum members before and after the remove.
     List<TaskInfo> removes = changeMasterConfigs(plan, "RemoveMaster");
     List<TaskInfo> preRemove = between(masterAddrPushes(plan), 0, firstPosition(removes));
     List<TaskInfo> earlySecretUpdate = earlySecretUpdate(plan);
@@ -2816,16 +2812,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
       assertEquals(tservers, nodeNames(push, ServerType.TSERVER));
     }
 
-    // While masters move, tservers get the old and the new masters. Creating az-4's master, before
-    // the full move, leaves out az-1's new one, which does not exist yet. az-4 has no tserver.
+    // Before the removes, the AZs that run now render the old and the new masters.
     Set<String> allMasters = addressSet(oldMasters, expectedMasterAddresses(pi));
-    List<TaskInfo> createAz1 =
-        helmUpgradesInAZs(
-            between(helmUpgrades(plan), adds.get(0).getPosition(), adds.get(1).getPosition()),
-            ImmutableSet.of("az-1"));
-    assertEquals(1, createAz1.size());
-    assertEquals(allMasters, addressSet(tserverMasterAddrs(createAz1.get(0))));
-    // Before the removes, the AZs that run now render the same list.
     List<TaskInfo> earlySecretUpdate =
         earlySecretUpdate(plan, lastPosition(preRemove), firstPosition(removes));
     assertEquals(ImmutableSet.of("az-2", "az-3"), azCodes(earlySecretUpdate));
@@ -2965,33 +2953,6 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   }
 
   @Test
-  public void testMasterFullMoveGivesTserversOldAndNewMasters() {
-    setupMasterMoveUniverse(FULL_MOVE_VERSION);
-    String oldMasters = expectedMasterAddresses(currentPlacement());
-    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
-    TestUtils.updateDeviceInfo(newIntent, ServerType.MASTER, d -> d.storageClass = "fast");
-    PlacementInfo pi = currentPlacement();
-    pi.azStream().forEach(az -> az.masterStsIndex = 1);
-
-    List<TaskInfo> plan = planEdit(newIntent, pi);
-
-    // Creating the new masters gives each AZ's tservers the old and the new masters, not the AZ's
-    // own masters, so the list holds the leader before and after a remove.
-    List<TaskInfo> adds = changeMasterConfigs(plan, "AddMaster");
-    List<TaskInfo> removes = changeMasterConfigs(plan, "RemoveMaster");
-    List<TaskInfo> create = between(helmUpgrades(plan), 0, firstPosition(adds));
-    assertEquals(ImmutableSet.of("az-1", "az-2", "az-3"), azCodes(create));
-    Set<String> allMasters = addressSet(oldMasters, expectedMasterAddresses(pi));
-    assertEquals(6, allMasters.size());
-    for (TaskInfo t : create) {
-      assertEquals("", helmMasterAddresses(t));
-      assertEquals(allMasters, addressSet(tserverMasterAddrs(t)));
-      assertEquals(1, helmAZ(t).path("numNodesInAZ").asInt());
-    }
-    assertTrue(between(helmUpgrades(plan), lastPosition(adds), firstPosition(removes)).isEmpty());
-  }
-
-  @Test
   public void testZoneGainingMasterGetsOldAndNewMastersBeforeRemove() {
     setupMasterMoveUniverse(FULL_MOVE_VERSION);
     String oldMasters = expectedMasterAddresses(currentPlacement());
@@ -3010,15 +2971,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     Set<String> allMasters = addressSet(oldMasters, expectedMasterAddresses(pi));
     assertEquals(4, allMasters.size());
 
-    // The render that creates az-1's second master gives its tservers the old and new masters.
-    List<TaskInfo> adds = changeMasterConfigs(plan, "AddMaster");
-    List<TaskInfo> create = between(helmUpgrades(plan), 0, firstPosition(adds));
-    assertEquals(ImmutableSet.of("az-1"), azCodes(create));
-    for (TaskInfo t : create) {
-      assertEquals("", helmMasterAddresses(t));
-      assertEquals(allMasters, addressSet(tserverMasterAddrs(t)));
-    }
-    // Before the remove, every AZ renders that list, az-1 with its new master.
+    // Before the remove, every AZ renders the old and new masters, az-1 with its new master.
     List<TaskInfo> earlySecretUpdate = earlySecretUpdate(plan);
     assertEquals(ImmutableSet.of("az-1", "az-2", "az-3"), azCodes(earlySecretUpdate));
     for (TaskInfo t : earlySecretUpdate) {

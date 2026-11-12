@@ -373,44 +373,12 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         });
   }
 
-  public void createPodsTask(
-      String universeName,
-      KubernetesPlacement newPlacement,
-      String masterAddresses,
-      KubernetesPlacement currPlacement,
-      ServerType serverType,
-      PlacementInfo activeZones,
-      boolean isReadOnlyCluster,
-      boolean enableYbc,
-      boolean usePreviousGflagsChecksum,
-      @Nullable Set<UUID> skipAZs) {
-    createPodsTask(
-        universeName,
-        newPlacement,
-        masterAddresses,
-        currPlacement,
-        serverType,
-        activeZones,
-        isReadOnlyCluster,
-        enableYbc,
-        usePreviousGflagsChecksum,
-        skipAZs,
-        null /* tserverMasterAddrs */);
-  }
-
   /**
    * @param skipAZs AZs this call does not touch.
    *     <p>Used by an edit that fully moves serverType in those AZs. The full move builds their new
    *     pods itself, so this call must not add pods to their old StatefulSets.
    *     <p>Example: an edit changes the tserver storage class, which K8s cannot change on an
    *     existing StatefulSet. The AZs are fully moved for tservers and passed here.
-   * @param tserverMasterAddrs the master list to write into the tserver Secrets. Null keeps the
-   *     list the chart writes.
-   *     <p>Used when serverType is MASTER. masterAddresses is then empty, and the chart writes only
-   *     the AZ's own masters into the tserver Secret. A tserver must find the master leader in its
-   *     list to register.
-   *     <p>Example: an edit adds a master to az-2 while the leader is in az-1. Without this list,
-   *     an az-2 tserver that restarts lists only the az-2 master and never registers.
    */
   public void createPodsTask(
       String universeName,
@@ -422,8 +390,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean isReadOnlyCluster,
       boolean enableYbc,
       boolean usePreviousGflagsChecksum,
-      @Nullable Set<UUID> skipAZs,
-      @Nullable String tserverMasterAddrs) {
+      @Nullable Set<UUID> skipAZs) {
     String ybSoftwareVersion;
     Cluster primaryCluster;
 
@@ -590,8 +557,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 null /* oldMasterDiskSize */,
                 null /* oldTserverDiskSize */,
                 serverType == ServerType.TSERVER /* useNewMasterDeviceInfo */,
-                false /* useNewTserverDeviceInfo */,
-                tserverMasterAddrs));
+                false /* useNewTserverDeviceInfo */));
 
         // When adding masters, the number of tservers will be still the same as before.
         // They get added later.
@@ -2493,62 +2459,6 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       @Nullable Integer oldTserverDiskSize,
       boolean useNewMasterDeviceInfo,
       boolean useNewTserverDeviceInfo) {
-    return createKubernetesExecutorTaskForServerType(
-        universeName,
-        commandType,
-        pi,
-        az,
-        masterAddresses,
-        ybSoftwareVersion,
-        serverType,
-        config,
-        masterPartition,
-        tserverPartition,
-        universeOverrides,
-        azOverrides,
-        isReadOnlyCluster,
-        enableYbc,
-        usePreviousGflagsChecksum,
-        namespacedServiceReleaseOwner,
-        ysqlMajorVersionUpgradeState,
-        moveParams,
-        oldMasterDiskSize,
-        oldTserverDiskSize,
-        useNewMasterDeviceInfo,
-        useNewTserverDeviceInfo,
-        null /* tserverMasterAddrs */);
-  }
-
-  /**
-   * @param tserverMasterAddrs the master list to write into this AZ's tserver Secret. Null keeps
-   *     the list the chart writes.
-   *     <p>Used when masterAddresses is empty, as when an edit adds masters. The chart then lists
-   *     only the AZ's own masters, which may not include the leader. See createPodsTask.
-   */
-  public KubernetesCommandExecutor createKubernetesExecutorTaskForServerType(
-      String universeName,
-      KubernetesCommandExecutor.CommandType commandType,
-      PlacementInfo pi,
-      String az,
-      String masterAddresses,
-      String ybSoftwareVersion,
-      ServerType serverType,
-      Map<String, String> config,
-      int masterPartition,
-      int tserverPartition,
-      Map<String, Object> universeOverrides,
-      Map<String, Object> azOverrides,
-      boolean isReadOnlyCluster,
-      boolean enableYbc,
-      boolean usePreviousGflagsChecksum,
-      boolean namespacedServiceReleaseOwner,
-      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
-      FullMoveParams moveParams,
-      @Nullable Integer oldMasterDiskSize,
-      @Nullable Integer oldTserverDiskSize,
-      boolean useNewMasterDeviceInfo,
-      boolean useNewTserverDeviceInfo,
-      @Nullable String tserverMasterAddrs) {
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     Cluster primaryCluster = taskParams().getPrimaryCluster();
@@ -2631,7 +2541,6 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.fullMoveParams = moveParams;
     params.useNewMasterDeviceInfo = useNewMasterDeviceInfo;
     params.useNewTserverDeviceInfo = useNewTserverDeviceInfo;
-    params.tserverMasterAddrs = tserverMasterAddrs;
 
     // Since create universe is running helm installs in parallel
     // we need to make sure only one enables namespaced service to prevent
@@ -2644,15 +2553,6 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     return task;
   }
 
-  /**
-   * @param tserverMasterAddrs the master list to write into this AZ's tserver Secret. Null keeps
-   *     the list the chart writes.
-   *     <p>Used by a full move of masters, which creates the new master StatefulSets with an empty
-   *     masterAddresses. The chart would then list only the AZ's new masters, which have not joined
-   *     the quorum yet.
-   *     <p>Example: an edit changes the master storage class. An az-1 tserver that restarts during
-   *     the move must still find the current leader.
-   */
   protected KubernetesCommandExecutor createFullMoveSubTask(
       boolean isReadOnlyCluster,
       UUID providerUUID,
@@ -2673,8 +2573,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       @Nullable Integer oldTserverDiskSize,
       boolean useNewMasterDeviceInfo,
       boolean useNewTserverDeviceInfo,
-      FullMoveParams fullMoveParams,
-      @Nullable String tserverMasterAddrs) {
+      FullMoveParams fullMoveParams) {
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     params.providerUUID = providerUUID;
@@ -2727,7 +2626,6 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.usePreviousCertChecksum = false;
     params.useNewMasterDeviceInfo = useNewMasterDeviceInfo;
     params.useNewTserverDeviceInfo = useNewTserverDeviceInfo;
-    params.tserverMasterAddrs = tserverMasterAddrs;
     // full move for AZs runs after disk resize, set params accordingly
     if (oldMasterDiskSize != null) {
       params.oldMasterDiskSize = oldMasterDiskSize;
