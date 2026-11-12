@@ -890,8 +890,6 @@ typedef struct {
 typedef struct {
   YbcAshMetadata* metadata;
   unsigned char top_level_node_id[16];
-  // length of host should be equal to INET6_ADDRSTRLEN
-  char host[46];
 } YbcPgAshConfig;
 
 typedef struct {

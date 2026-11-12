@@ -205,30 +205,33 @@ public class TestPgStatActivity extends BaseYsqlConnMgr {
 
     private static final int ASH_PG_SLEEP_SECONDS = 3;
 
-    private String clockTimestamp(Connection conn) throws Exception {
-        ResultSet rs = conn.createStatement().executeQuery("SELECT clock_timestamp()::text");
-        assertTrue(rs.next());
-        return rs.getString(1);
+    /*
+     * Runs a write, which makes tserver RPCs, and a pg_sleep, which is always
+     * sampled, on the client's own table so that the queries have the client's
+     * own query ids.
+     */
+    private void runAshWorkload(Connection conn, String table) throws Exception {
+        conn.createStatement().execute(
+            "INSERT INTO " + table + " SELECT i FROM generate_series(1, 1000) i");
+        conn.createStatement().execute(
+            "SELECT pg_sleep(" + ASH_PG_SLEEP_SECONDS + ") FROM " + table + " LIMIT 1");
     }
 
     /*
-     * Runs pg_sleep on conn and checks that the ASH samples taken meanwhile
-     * report the expected logical client.
+     * Checks that every ASH sample of the queries on table, from postgres and
+     * from the tserver RPCs they made, reports the expected logical client.
      */
-    private void assertAshClientNodeIp(Connection conn, InetSocketAddress expected)
-            throws Exception {
-        String start = clockTimestamp(conn);
-        conn.createStatement().execute("SELECT pg_sleep(" + ASH_PG_SLEEP_SECONDS + ")");
-        String end = clockTimestamp(conn);
-
-        ResultSet rs = conn.createStatement().executeQuery(String.format(
-            "SELECT client_node_ip FROM yb_active_session_history" +
-            " WHERE wait_event = 'PgSleep' AND sample_time BETWEEN '%s' AND '%s'",
-            start, end));
-        int samples = 0;
+    private void assertAshClientNodeIp(Connection conn, String table,
+            InetSocketAddress expected) throws Exception {
+        ResultSet rs = conn.createStatement().executeQuery(
+            "SELECT wait_event_component, wait_event, client_node_ip" +
+            " FROM yb_active_session_history WHERE query_id IN" +
+            " (SELECT queryid FROM pg_stat_statements WHERE query LIKE '%" + table + "%')");
+        int pgSleepSamples = 0;
         while (rs.next()) {
-            String clientNodeIp = rs.getString(1);
-            LOG.info("client_node_ip={}", clientNodeIp);
+            String clientNodeIp = rs.getString("client_node_ip");
+            LOG.info("{} {} client_node_ip={}", rs.getString("wait_event_component"),
+                rs.getString("wait_event"), clientNodeIp);
             assertNotNull("client_node_ip should be populated", clientNodeIp);
             // ip:port for IPv4, [ip]:port for IPv6.
             int lastColon = clientNodeIp.lastIndexOf(':');
@@ -236,9 +239,12 @@ public class TestPgStatActivity extends BaseYsqlConnMgr {
             int port = Integer.parseInt(clientNodeIp.substring(lastColon + 1));
             assertEquals("client_node_ip should match the logical client",
                 expected, new InetSocketAddress(addr, port));
-            ++samples;
+            if ("PgSleep".equals(rs.getString("wait_event"))) {
+                ++pgSleepSamples;
+            }
         }
-        assertTrue("expected PgSleep samples in yb_active_session_history", samples > 0);
+        assertTrue("expected PgSleep samples in yb_active_session_history",
+            pgSleepSamples > 0);
     }
 
     /*
@@ -264,12 +270,17 @@ public class TestPgStatActivity extends BaseYsqlConnMgr {
                 InetSocketAddress client2 = newConnection(afterConn1,
                     getJvmConnectionsTo(ysqlConnMgrHost, ysqlConnMgrPort));
 
+                conn1.createStatement().execute("CREATE TABLE ash_t1 (k INT)");
+                conn2.createStatement().execute("CREATE TABLE ash_t2 (k INT)");
+
                 // Alternate between the clients so that a shared backend is
                 // re-attached to a different logical client each time.
                 for (int i = 0; i < 2; ++i) {
-                    assertAshClientNodeIp(conn1, client1);
-                    assertAshClientNodeIp(conn2, client2);
+                    runAshWorkload(conn1, "ash_t1");
+                    runAshWorkload(conn2, "ash_t2");
                 }
+                assertAshClientNodeIp(conn1, "ash_t1", client1);
+                assertAshClientNodeIp(conn2, "ash_t2", client2);
             }
         }
     }
