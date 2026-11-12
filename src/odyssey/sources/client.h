@@ -104,7 +104,8 @@ struct od_client {
 
 	/*
 	 * Logical client's ip addr and port, sent to Postgres as reserved
-	 * startup parameters (empty if unknown).
+	 * startup parameters (empty if unknown). Saved here to propagate
+	 * to authentication after these are determined
 	 */
 	char yb_ycm_client_addr[64];
 	char yb_ycm_client_port[8];
