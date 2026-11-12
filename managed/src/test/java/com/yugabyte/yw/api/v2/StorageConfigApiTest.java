@@ -71,6 +71,7 @@ import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.net.ConnectException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
@@ -620,6 +621,44 @@ public class StorageConfigApiTest extends FakeDBApplication {
     assertEquals(List.of("NFS-schedules", "nfs-backups"), names(second));
     assertTrue(second.getHasPrev());
     assertFalse(second.getHasNext());
+  }
+
+  @Test
+  public void schedulesCountedAsTheDeleteCountsThem() throws ApiException {
+    Universe universe = ModelFactory.createUniverse("schedules", customer.getId());
+    UUID stopped =
+        storageConfigApi
+            .createStorageConfig(customer.getUuid(), nfsSpec("stopped", "/mnt/a"), null)
+            .getInfo()
+            .getUuid();
+    UUID createBackup =
+        storageConfigApi
+            .createStorageConfig(customer.getUuid(), nfsSpec("create-backup", "/mnt/b"), null)
+            .getInfo()
+            .getUuid();
+    UUID deleting =
+        storageConfigApi
+            .createStorageConfig(customer.getUuid(), nfsSpec("deleting", "/mnt/c"), null)
+            .getInfo()
+            .getUuid();
+    // A stopped schedule still keeps the v1 delete from removing the config.
+    ModelFactory.createScheduleBackup(customer.getUuid(), universe.getUniverseUUID(), stopped)
+        .setStatus(Schedule.State.Stopped);
+    ModelFactory.createScheduleBackup(
+        customer.getUuid(), universe.getUniverseUUID(), createBackup, TaskType.CreateBackup);
+    // One being deleted doesn't.
+    ModelFactory.createScheduleBackup(customer.getUuid(), universe.getUniverseUUID(), deleting)
+        .setStatus(Schedule.State.Deleting);
+
+    assertTrue(usageOf(stopped).getInUse());
+    assertTrue(usageOf(createBackup).getInUse());
+    assertFalse(usageOf(deleting).getInUse());
+    assertEquals(
+        List.of("create-backup", "stopped"), names(list(new StorageConfigApiFilter().inUse(true))));
+  }
+
+  private StorageConfigUsage usageOf(UUID configUuid) throws ApiException {
+    return storageConfigApi.getStorageConfig(customer.getUuid(), configUuid).getInfo().getUsage();
   }
 
   @Test

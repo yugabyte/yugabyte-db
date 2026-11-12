@@ -2,26 +2,26 @@ title: StorageConfigUsage
 description: |
   StorageConfigUsage
 
-  What uses a storage configuration. A configuration in use can't be deleted. Part of
-  StorageConfigInfo.
+  What uses a storage configuration: backups stored with it, and the backup schedules and DR
+  configs that write to it. Part of StorageConfigInfo.
 type: object
 readOnly: true
 required:
   - in_use
 properties:
   in_use:
-    description: 'Whether an in-progress or completed backup, an active backup schedule or a DR config uses the configuration'
+    description: 'Whether in-progress or completed backups are stored with the configuration, or a backup schedule (other than one being deleted or failed) or a DR config uses it'
     type: boolean
     readOnly: true
   universe_uuids:
-    description: 'Existing universes whose in-progress or completed backups or active backup schedules use the configuration, and the universes of DR configs that use it'
+    description: 'Existing universes whose in-progress or completed backups or backup schedules use the configuration, and the universes of DR configs that use it'
     type: array
     items:
       type: string
       format: uuid
     readOnly: true
   schedule_uuids:
-    description: Active backup schedules that use the configuration
+    description: 'Backup schedules that use the configuration, other than those being deleted or failed'
     type: array
     items:
       type: string

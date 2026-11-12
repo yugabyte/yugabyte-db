@@ -21,12 +21,12 @@ import java.util.stream.Collectors;
 
 /**
  * What uses each of a customer's storage configs: in-progress or completed backups stored with it,
- * active backup schedules that write to it, and DR configs that use it. Any of these makes the
- * config in use, as each blocks its deletion.
+ * backup schedules that write to it (as the v1 delete counts them: all but those being deleted or
+ * failed), and DR configs that use it. Any of these makes the config in use.
  *
  * <p>One query per kind for a whole set of configs: backups and DR configs by their indexed
- * storage_config_uuid, schedules among the customer's active backup schedules, whose storage config
- * is only in their JSON task params.
+ * storage_config_uuid, schedules among the customer's backup schedules, whose storage config is
+ * only in their JSON task params.
  */
 final class StorageConfigUsages {
 
@@ -98,7 +98,7 @@ final class StorageConfigUsages {
       usage.inUse = true;
       usage.universes.add(backup.getUniverseUUID());
     }
-    for (Schedule schedule : Schedule.getActiveBackupSchedules(customerUUID)) {
+    for (Schedule schedule : Schedule.findBackupSchedulesUsingStorageConfig(customerUUID)) {
       UUID configUuid = uuidOrNull(schedule.getTaskParams().path("storageConfigUUID").asText());
       if (configUuid == null || !configUuids.contains(configUuid)) {
         continue;
