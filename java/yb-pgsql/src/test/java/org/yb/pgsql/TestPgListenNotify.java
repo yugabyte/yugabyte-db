@@ -24,6 +24,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -51,6 +52,7 @@ import org.yb.client.SnapshotScheduleInfo;
 import org.yb.client.TestUtils;
 import org.yb.client.YBClient;
 import org.yb.util.ProcessUtil;
+import org.yb.util.ThrowingRunnable;
 import org.yb.util.Timeouts;
 import org.yb.util.YBBackupUtil;
 
@@ -75,6 +77,10 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     Arrays.fill(chars, 'x');
     LARGE_PAYLOAD = new String(chars);
   }
+  // Notifies, then blocks on a row another session holds; see payloadsAfterRetriedUpdate.
+  private static final String RETRIED_UPDATE =
+      "UPDATE notify_kv SET v = (SELECT v + 1 FROM notify_kv WHERE k = 1) WHERE k = 1"
+      + " AND pg_notify('" + CHANNEL + "', 'attempt_' || clock_timestamp()) IS NOT NULL";
 
   @Override
   protected Map<String, String> getMasterFlags() {
@@ -760,6 +766,111 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
         assertTrue("Should not receive notification from rolled-back subtransaction, got: "
             + n.getParameter(), !n.getParameter().equals("subtxn_abort"));
       }
+    }
+  }
+
+  /**
+   * A NOTIFY from a statement that reads a table, outside a transaction block, succeeds and is
+   * delivered once with both query protocols.
+   */
+  @Test
+  public void testNotifyAfterTableReadDeliveredOnce() throws Exception {
+    try (Connection listenerConn = getConnectionBuilder().connect();
+         Statement listenerStmt = listenerConn.createStatement()) {
+      listenerStmt.execute("CREATE TABLE notify_src (id INT PRIMARY KEY)");
+      listenerStmt.execute("INSERT INTO notify_src VALUES (1)");
+      listenerStmt.execute("LISTEN " + CHANNEL);
+
+      for (String queryMode : Arrays.asList("simple", "extended")) {
+        try (Connection notifierConn =
+                 getConnectionBuilder().withPreferQueryMode(queryMode).connect();
+             Statement stmt = notifierConn.createStatement()) {
+          stmt.execute("SELECT pg_notify('" + CHANNEL + "', '" + queryMode + "') FROM notify_src");
+          stmt.execute("NOTIFY " + CHANNEL + ", '" + queryMode + "_sentinel'");
+        }
+        assertEquals(Arrays.asList(queryMode, queryMode + "_sentinel"),
+            payloadsOf(waitForNotification(listenerConn, CHANNEL, queryMode + "_sentinel")));
+      }
+    }
+  }
+
+  /**
+   * Runs notifier while another session holds the row RETRIED_UPDATE needs, releases it once the
+   * UPDATE is blocked so the UPDATE is retried, and returns the payloads delivered up to a sentinel
+   * sent afterwards on notifierStmt.
+   */
+  private List<String> payloadsAfterRetriedUpdate(Statement notifierStmt,
+      ThrowingRunnable notifier) throws Exception {
+    try (Connection listenerConn = getConnectionBuilder().connect();
+         Statement listenerStmt = listenerConn.createStatement();
+         Connection holderConn = getConnectionBuilder().connect();
+         Statement holderStmt = holderConn.createStatement()) {
+      listenerStmt.execute("CREATE TABLE notify_kv (k INT PRIMARY KEY, v INT)");
+      listenerStmt.execute("INSERT INTO notify_kv VALUES (1, 0)");
+      listenerStmt.execute("LISTEN " + CHANNEL);
+      holderStmt.execute("BEGIN");
+      holderStmt.execute("UPDATE notify_kv SET v = v + 1 WHERE k = 1");
+
+      AtomicReference<Exception> error = new AtomicReference<>();
+      Thread thread = new Thread(() -> {
+        try {
+          notifier.run();
+        } catch (Exception e) {
+          error.set(e);
+        }
+      });
+      thread.start();
+      TestUtils.waitFor(() -> getSingleRow(listenerStmt,
+          "SELECT EXISTS (SELECT 1 FROM pg_locks"
+              + " WHERE NOT granted AND relation = 'notify_kv'::regclass)").getBoolean(0),
+          Timeouts.adjustTimeoutSecForBuildType(30_000));
+      holderStmt.execute("COMMIT");
+      thread.join(Timeouts.adjustTimeoutSecForBuildType(60_000));
+      assertTrue("Notifier failed: " + error.get(), error.get() == null);
+
+      notifierStmt.execute("NOTIFY " + CHANNEL + ", 'sentinel'");
+      return payloadsOf(waitForNotification(listenerConn, CHANNEL, "sentinel"));
+    }
+  }
+
+  /**
+   * A statement retried after a conflict delivers only its last attempt's notifications and keeps
+   * the ones queued earlier in its transaction.
+   */
+  @Test
+  public void testNotifyFromRetriedStatementDeliveredOnce() throws Exception {
+    try (Connection notifierConn = getConnectionBuilder().connect();
+         Statement notifierStmt = notifierConn.createStatement()) {
+      List<String> payloads = payloadsAfterRetriedUpdate(notifierStmt, () -> {
+        notifierStmt.addBatch("NOTIFY " + CHANNEL + ", 'kept'");
+        notifierStmt.addBatch(RETRIED_UPDATE);
+        notifierStmt.executeBatch();
+      });
+      assertEquals("Notifications: " + payloads, 3, payloads.size());
+      assertTrue("Notifications: " + payloads, payloads.contains("kept"));
+    }
+  }
+
+  /**
+   * Same in a READ COMMITTED block over the simple query protocol, where the previous statement's
+   * notifications leave its internal subtransaction only once the retried statement has started.
+   */
+  @Test
+  public void testNotifyFromRetriedStatementInReadCommittedBlock() throws Exception {
+    restartClusterWithFlags(Collections.emptyMap(),
+        Collections.singletonMap("yb_enable_read_committed_isolation", "true"));
+    waitForNotificationsTableReady(connection, getConnectionBuilder());
+
+    try (Connection notifierConn = getConnectionBuilder().withPreferQueryMode("simple").connect();
+         Statement notifierStmt = notifierConn.createStatement()) {
+      List<String> payloads = payloadsAfterRetriedUpdate(notifierStmt, () -> {
+        notifierStmt.execute("BEGIN");
+        notifierStmt.execute("NOTIFY " + CHANNEL + ", 'kept'");
+        notifierStmt.execute(RETRIED_UPDATE);
+        notifierStmt.execute("COMMIT");
+      });
+      assertEquals("Notifications: " + payloads, 3, payloads.size());
+      assertTrue("Notifications: " + payloads, payloads.contains("kept"));
     }
   }
 
