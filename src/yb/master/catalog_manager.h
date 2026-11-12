@@ -1121,6 +1121,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                                  const TSDescriptorVector& ts_descs,
                                  ValidateReplicationInfoResponsePB* resp);
 
+  // How many replicas SelectReplicasForPlacement can put on ts_descs under placement_info:
+  // exact unless placement blocks overlap, then an upper bound.
+  Result<size_t> CountPlaceableReplicas(
+      const PlacementInfoPB& placement_info, const TSDescriptorVector& ts_descs);
+
   // The tservers allowed to host a table's replicas under one PlacementInfoPB (live or read
   // replica). Built once per table and reused for every tablet of that table; the bool vectors
   // are indexed like the ts_descs the candidates were built from.
