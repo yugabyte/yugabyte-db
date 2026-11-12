@@ -2146,6 +2146,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   FRIEND_TEST(TestCatalogManager, PlaceReplicasExcludesOtherPlacementUuids);
   FRIEND_TEST(TestCatalogManager, PlaceReplicasBlockWithTooFewTservers);
   FRIEND_TEST(TestCatalogManager, PlaceReplicasOverlappingBlocksFail);
+  FRIEND_TEST(MasterTestXRepl, TestXReplBgTasksRunDuringSharedLockHold);
 
   // Called by SysCatalog::SysCatalogStateChanged when this node
   // becomes the leader of a consensus configuration.

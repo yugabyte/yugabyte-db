@@ -21,13 +21,18 @@
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/master/catalog_manager.h"
 #include "yb/master/master-test_base.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_replication.proxy.h"
+#include "yb/master/mini_master.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/test_thread_holder.h"
 
 DECLARE_int32(cdc_state_table_num_tablets);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
@@ -39,6 +44,7 @@ DECLARE_bool(cdc_pg_create_grpc_stream);
 DECLARE_bool(cdc_enable_postgres_replica_identity);
 DECLARE_uint32(max_replication_slots);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
+DECLARE_bool(TEST_pause_catalog_manager_bg_loop_start);
 
 namespace yb {
 namespace master {
@@ -893,6 +899,31 @@ TEST_F(MasterTestXRepl, DropNamespaceWithLiveCDCStream) {
   ASSERT_OK(DeleteNamespace(ns_id, YQL_DATABASE_PGSQL));
   ASSERT_OK(WaitForDeleteNamespaceToComplete(
       ns_id, MonoDelta::FromSeconds(30), "Failed waiting for database drop to complete"));
+}
+
+// RunXReplBgTasks runs on every background pass. With no failed universe or bootstrap to clear, it
+// must finish while another thread holds the catalog manager lock shared.
+TEST_F(MasterTestXRepl, TestXReplBgTasksRunDuringSharedLockHold) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_catalog_manager_bg_loop_start) = true;
+  // The paused loop does not check for shutdown, so resume it before the master stops.
+  auto resume_bg_loop = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_catalog_manager_bg_loop_start) = false;
+  });
+  // Let the background loop reach its pause point, so it does not run during the shared hold.
+  SleepFor(MonoDelta::FromMilliseconds(2 * FLAGS_catalog_manager_bg_task_wait_ms));
+
+  auto& catalog_manager = mini_master_->catalog_manager_impl();
+  const auto epoch = catalog_manager.GetLeaderEpochInternal();
+  CountDownLatch done(1);
+  TestThreadHolder thread_holder;
+  {
+    CatalogManager::SharedLock lock(catalog_manager.mutex_);
+    thread_holder.AddThreadFunctor([&catalog_manager, &epoch, &done] {
+      catalog_manager.RunXReplBgTasks(epoch);
+      done.CountDown();
+    });
+    ASSERT_TRUE(done.WaitFor(MonoDelta::FromSeconds(10)));
+  }
 }
 
 } // namespace master

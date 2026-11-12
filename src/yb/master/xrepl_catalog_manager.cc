@@ -6326,6 +6326,13 @@ Status CatalogManager::ClearFailedUniverse(const LeaderEpoch& epoch) {
 
   xcluster::ReplicationGroupId replication_group_id;
   {
+    // Check under the shared lock first, so the bg task takes mutex_ for write only with work.
+    SharedLock lock(mutex_);
+    if (universes_to_clear_.empty()) {
+      return Status::OK();
+    }
+  }
+  {
     LockGuard lock(mutex_);
 
     if (universes_to_clear_.empty()) {
@@ -6435,6 +6442,13 @@ Status CatalogManager::DoClearFailedReplicationBootstrap(
 
 Status CatalogManager::ClearFailedReplicationBootstrap() {
   xcluster::ReplicationGroupId replication_id;
+  {
+    // Check under the shared lock first, so the bg task takes mutex_ for write only with work.
+    SharedLock lock(mutex_);
+    if (replication_bootstraps_to_clear_.empty()) {
+      return Status::OK();
+    }
+  }
   {
     LockGuard lock(mutex_);
 
