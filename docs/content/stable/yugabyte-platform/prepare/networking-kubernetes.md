@@ -48,7 +48,7 @@ To enable MCS on your GKE clusters, see [Configuring multi-cluster Services](htt
 
 ### Prepare OpenShift clusters for MCS
 
-To prepare OpenShift clusters for MCS, follow [Prepare OpenShift clusters for MCS](../configure-yugabyte-platform/openshift/#prepare-openshift-clusters-for-mcs).
+To prepare OpenShift clusters for MCS, follow [Prepare OpenShift clusters for MCS](../../configure-yugabyte-platform/openshift/#prepare-openshift-clusters-for-mcs).
 
 ### Prepare Istio service mesh-based clusters for MCS
 
