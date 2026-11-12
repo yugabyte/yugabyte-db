@@ -8134,12 +8134,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLDropColumn)) {
   ASSERT_FALSE(set_resp.has_error());
 
   // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
-  const int expected_count[] = {2, 10, 0, 0, 0, 0, 4, 4};
+  const int expected_count[] = {3, 10, 0, 0, 0, 0, 4, 4};
   int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
-  // Fail the ALTER TABLE DROP column
+  // Fail the ALTER TABLE DROP column. Its first CHANGE_METADATA_OP is streamed while no schema is
+  // cached yet, so it gets a DDL record; the successful DROP's first op below is filtered out.
   ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=1"));
   ASSERT_NOK(DropColumn(&test_cluster_, test_namespace_name, kTableName, kValueColumnName, &conn));
 
