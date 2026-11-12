@@ -2121,8 +2121,10 @@ Status Log::Close() {
       }
       // Now that we have shut background_sync_threadpool_token_, don't call ::Sync.
       // call ::DoSync instead.
+      // Also without an active segment, so the entries replayed at bootstrap become durable.
+      // WalState can no longer start a sync, and waiters for those entries would never finish.
+      RETURN_NOT_OK(DoSync(last_appended_entry_op_id_));
       if (active_segment_) {
-        RETURN_NOT_OK(DoSync(last_appended_entry_op_id_));
         RETURN_NOT_OK(CloseCurrentSegment());
         RETURN_NOT_OK(ReplaceSegmentInReaderUnlocked());
       }

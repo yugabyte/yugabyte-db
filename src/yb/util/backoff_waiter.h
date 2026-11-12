@@ -180,8 +180,8 @@ Status LoggedWaitFor(
 void BusyWait(
     const LWFunction<bool()>& is_done,
     std::string_view description,
-    MonoDelta poll_interval = MonoDelta::FromMilliseconds(10),
-    MonoDelta warn_after = MonoDelta::FromSeconds(1),
-    MonoDelta max_poll_interval = MonoDelta());
+    MonoDelta poll_interval,
+    MonoDelta warn_after,
+    MonoDelta max_poll_interval);
 
 } // namespace yb
