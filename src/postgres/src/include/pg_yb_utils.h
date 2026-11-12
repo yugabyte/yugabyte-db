@@ -120,6 +120,12 @@ extern void YbSendMasterLogicalClientVersionToFrontend();
 
 extern void YbResetCatalogCacheVersion();
 
+extern bool YbIsCatalogPinnedToReadTime();
+
+extern void YbSetObjectLockingForCurrTxn();
+
+extern bool YbIsHistoricalCatalogRead();
+
 extern YbcPgLastKnownCatalogVersionInfo YbGetCatalogCacheVersionForTablePrefetching();
 
 extern void YbUpdateLastKnownCatalogCacheVersion(uint64_t catalog_cache_version);
@@ -1436,6 +1442,7 @@ extern void assign_yb_xcluster_consistency_level(const char *newval,
 void		YbUpdateSessionStats(YbInstrumentation *yb_instr);
 
 extern bool check_yb_read_time(char **newval, void **extra, GucSource source);
+extern bool YbCanResetYbReadTime(const char *reset_val, int elevel);
 extern void assign_yb_read_time(const char *newval, void *extra);
 extern bool check_yb_read_time_skip_catalog(bool *newval, void **extra,
 											GucSource source);
