@@ -47,7 +47,7 @@ static inline void release_sleepy_with_lock(mm_wait_list_t *wait_list,
 	}
 }
 
-mm_wait_list_t *mm_wait_list_create()
+mm_wait_list_t *mm_wait_list_create(atomic_uint_fast64_t *word)
 {
 	mm_wait_list_t *wait_list = malloc(sizeof(mm_wait_list_t));
 	if (wait_list == NULL) {
@@ -59,6 +59,7 @@ mm_wait_list_t *mm_wait_list_create()
 
 	mm_list_init(&wait_list->sleepies);
 	mm_atomic_u64_set(&wait_list->sleepies_count, 0ULL);
+	wait_list->word = word;
 
 	return wait_list;
 }
@@ -90,10 +91,10 @@ static inline int wait_sleepy(mm_wait_list_t *wait_list, mm_sleepy_t *sleepy,
 
 	// timeout or cancel
 	if (sleepy->event.call.status != 0) {
-		return 1;
+		return MACHINE_WAIT_LIST_ERR_TIMEOUT_OR_CANCEL;
 	}
 
-	return 0;
+	return MACHINE_WAIT_LIST_SUCCESS;
 }
 
 int mm_wait_list_wait(mm_wait_list_t *wait_list, uint32_t timeout_ms)
@@ -102,6 +103,31 @@ int mm_wait_list_wait(mm_wait_list_t *wait_list, uint32_t timeout_ms)
 	init_sleepy(&this);
 
 	mm_sleeplock_lock(&wait_list->lock);
+
+	mm_list_append(&wait_list->sleepies, &this.link);
+	mm_atomic_u64_inc(&wait_list->sleepies_count);
+
+	mm_sleeplock_unlock(&wait_list->lock);
+
+	int rc;
+	rc = wait_sleepy(wait_list, &this, timeout_ms);
+
+	return rc;
+}
+
+int mm_wait_list_compare_wait(mm_wait_list_t *wait_list, uint64_t expected,
+			      uint32_t timeout_ms)
+{
+	mm_sleeplock_lock(&wait_list->lock);
+
+	if (atomic_load(wait_list->word) != expected) {
+		mm_sleeplock_unlock(&wait_list->lock);
+
+		return MACHINE_WAIT_LIST_ERR_AGAIN;
+	}
+
+	mm_sleepy_t this;
+	init_sleepy(&this);
 
 	mm_list_append(&wait_list->sleepies, &this.link);
 	mm_atomic_u64_inc(&wait_list->sleepies_count);
@@ -137,10 +163,11 @@ void mm_wait_list_notify(mm_wait_list_t *wait_list)
 	}
 }
 
-MACHINE_API machine_wait_list_t *machine_wait_list_create()
+MACHINE_API machine_wait_list_t *
+machine_wait_list_create(atomic_uint_fast64_t *word)
 {
 	mm_wait_list_t *wl;
-	wl = mm_wait_list_create();
+	wl = mm_wait_list_create(word);
 	if (wl == NULL) {
 		return NULL;
 	}
@@ -164,6 +191,19 @@ MACHINE_API int machine_wait_list_wait(machine_wait_list_t *wait_list,
 
 	int rc;
 	rc = mm_wait_list_wait(wl, timeout_ms);
+
+	return rc;
+}
+
+MACHINE_API int machine_wait_list_compare_wait(machine_wait_list_t *wait_list,
+					       uint64_t value,
+					       uint32_t timeout_ms)
+{
+	mm_wait_list_t *wl;
+	wl = mm_cast(mm_wait_list_t *, wait_list);
+
+	int rc;
+	rc = mm_wait_list_compare_wait(wl, value, timeout_ms);
 
 	return rc;
 }

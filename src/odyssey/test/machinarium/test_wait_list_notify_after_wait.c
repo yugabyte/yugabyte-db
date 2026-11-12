@@ -28,7 +28,7 @@ static inline void test_notify_after_wait(void *arg)
 {
 	(void)arg;
 
-	machine_wait_list_t *wl = machine_wait_list_create();
+	machine_wait_list_t *wl = machine_wait_list_create(NULL);
 
 	int consumer_id;
 	consumer_id = machine_coroutine_create(consumer_coroutine, wl);
