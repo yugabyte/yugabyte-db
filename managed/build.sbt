@@ -223,11 +223,11 @@ libraryDependencies ++= Seq(
   "io.prometheus" % "prometheus-metrics-exporter-httpserver" % "1.4.3",
   "org.glassfish.jaxb" % "jaxb-runtime" % "2.3.2",
   // pac4j and nimbusds libraries need to be upgraded together.
-  "org.pac4j" %% "play-pac4j" % "11.0.0-PLAY2.8",
-  "org.pac4j" % "pac4j-oauth" % "5.7.10" exclude("commons-io" , "commons-io"),
-  "org.pac4j" % "pac4j-oidc" % "5.7.10"  exclude("commons-io" , "commons-io"),
-  "com.nimbusds" % "nimbus-jose-jwt" % "10.8",
-  "com.nimbusds" % "oauth2-oidc-sdk" % "11.34",
+  "org.pac4j" %% "play-pac4j" % "13.0.3-PLAY3.0",
+  "org.pac4j" % "pac4j-oauth" % "6.5.9" exclude("commons-io" , "commons-io"),
+  "org.pac4j" % "pac4j-oidc" % "6.5.9"  exclude("commons-io" , "commons-io"),
+  "com.nimbusds" % "nimbus-jose-jwt" % "10.9.1",
+  "com.nimbusds" % "oauth2-oidc-sdk" % "11.38.2",
   "commons-validator" % "commons-validator" % "1.10.0",
   "org.apache.velocity" % "velocity-engine-core" % "2.4.1",
   "com.fasterxml.woodstox" % "woodstox-core" % "6.4.0",
@@ -1106,6 +1106,11 @@ dependencyOverrides ++= Seq(
   "io.opentelemetry" % "opentelemetry-sdk-logs",
   "io.opentelemetry" % "opentelemetry-sdk-extension-autoconfigure-spi",
 ).map(_ % openTelemetryVersion)
+
+// pac4j 6 pulls spring-core 6.x, but Play forms and spring-security use Spring 5.3 modules.
+// pac4j only needs the core.io resources, which 5.3 has.
+dependencyOverrides += "org.springframework" % "spring-core" % "5.3.39"
+dependencyOverrides += "org.springframework" % "spring-jcl" % "5.3.39"
 
 // cron-utils pulls org.glassfish:javax.el 3.0.0 (CVE-2021-28170), which has no fixed release.
 // The fix shipped as org.glassfish:jakarta.el 3.0.4, which keeps the javax.el package.
