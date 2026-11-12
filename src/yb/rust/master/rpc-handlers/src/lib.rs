@@ -43,6 +43,7 @@ use yb_host_api::{Status, StatusCode};
 use yb_proto::pb::common_types::PeerRole;
 use yb_proto::pb::consensus_metadata::ConsensusStatePB;
 use yb_proto::pb::master_admin::{
+    CreateTransactionStatusTableRequestPB, CreateTransactionStatusTableResponsePB,
     DeleteNotServingTabletRequestPB, DeleteNotServingTabletResponsePB,
     DisableTabletSplittingRequestPB, DisableTabletSplittingResponsePB, IsInitDbDoneRequestPB,
     IsInitDbDoneResponsePB, IsTabletSplittingCompleteRequestPB,
@@ -715,12 +716,26 @@ impl Shared {
                 |req, resp| tables.get_namespace_info(&snapshot, &req, &mut resp)
             ),
             "ListTables" => serve_ddl!(ListTablesRequestPB, ListTablesResponsePB, |req, resp| {
-                tables.list_tables(&snapshot, &req, &mut resp)
+                let listed = tables.list_tables(&snapshot, &req, &mut resp);
+                if listed.is_ok() {
+                    tables
+                        .fill_list_tables_schema_names(&snapshot, &mut resp)
+                        .await;
+                }
+                listed
             }),
             "GetTableSchema" => serve_ddl!(
                 GetTableSchemaRequestPB,
                 GetTableSchemaResponsePB,
-                |req, resp| tables.get_table_schema(&snapshot, &req, &mut resp)
+                |req, resp| {
+                    let found = tables.get_table_schema(&snapshot, &req, &mut resp);
+                    if found.is_ok() {
+                        tables
+                            .fill_table_schema_name(&snapshot, &req, &mut resp)
+                            .await;
+                    }
+                    found
+                }
             ),
             "CreateTable" => {
                 serve_ddl!(CreateTableRequestPB, CreateTableResponsePB, |req, resp| {
@@ -856,6 +871,76 @@ impl Shared {
                     leader.get_table_locations(&snapshot, masters.as_ref(), &req, &mut resp)
                 }
             ),
+            "CreateTransactionStatusTable" => serve_ddl!(
+                CreateTransactionStatusTableRequestPB,
+                CreateTransactionStatusTableResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    tables
+                        .create_transaction_status_table_rpc(&token, deadline, &req)
+                        .await
+                }
+            ),
+            "RollbackDocdbSchemaToSubtxn" => serve_ddl!(
+                yb_proto::pb::master_ddl::RollbackDocdbSchemaToSubtxnRequestPB,
+                yb_proto::pb::master_ddl::RollbackDocdbSchemaToSubtxnResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    tables
+                        .rollback_docdb_schema_to_subtxn(&token, deadline, &req)
+                        .await
+                }
+            ),
+            "IsRollbackDocdbSchemaToSubtxnDone" => serve_ddl!(
+                yb_proto::pb::master_ddl::IsRollbackDocdbSchemaToSubtxnDoneRequestPB,
+                yb_proto::pb::master_ddl::IsRollbackDocdbSchemaToSubtxnDoneResponsePB,
+                |req, resp| tables
+                    .is_rollback_docdb_schema_to_subtxn_done(&snapshot, &req, &mut resp)
+            ),
+            "GetTableDiskSize" => serve_ddl!(
+                yb_proto::pb::master_ddl::GetTableDiskSizeRequestPB,
+                yb_proto::pb::master_ddl::GetTableDiskSizeResponsePB,
+                |req, resp| tables.get_table_disk_size(&snapshot, &req, &mut resp)
+            ),
+            "GetTablegroupSchema" => serve_ddl!(
+                yb_proto::pb::master_ddl::GetTablegroupSchemaRequestPB,
+                yb_proto::pb::master_ddl::GetTablegroupSchemaResponsePB,
+                |req, resp| tables
+                    .get_tablegroup_schema(&snapshot, &req, &mut resp)
+                    .await
+            ),
+            "GetColocatedTabletSchema" => serve_ddl!(
+                yb_proto::pb::master_ddl::GetColocatedTabletSchemaRequestPB,
+                yb_proto::pb::master_ddl::GetColocatedTabletSchemaResponsePB,
+                |req, resp| tables
+                    .get_colocated_tablet_schema(&snapshot, &req, &mut resp)
+                    .await
+            ),
+            "GetIndexBackfillProgress" => serve!(
+                yb_proto::pb::master_client::GetIndexBackfillProgressRequestPB,
+                yb_proto::pb::master_client::GetIndexBackfillProgressResponsePB,
+                |req, resp| {
+                    tables.get_index_backfill_progress(&snapshot, &req, &mut resp);
+                    Ok::<(), Status>(())
+                }
+            ),
+            "IsObjectPartOfXRepl" => serve_ddl!(
+                yb_proto::pb::master_replication::IsObjectPartOfXReplRequestPB,
+                yb_proto::pb::master_replication::IsObjectPartOfXReplResponsePB,
+                |req, resp| tables.is_object_part_of_xrepl(&snapshot, &req, &mut resp)
+            ),
+            "ValidateReplicationInfo" => serve!(
+                yb_proto::pb::master_replication::ValidateReplicationInfoRequestPB,
+                yb_proto::pb::master_replication::ValidateReplicationInfoResponsePB,
+                |req, resp| {
+                    if let Err(e) = tables
+                        .validate_replication_info(&snapshot, req.replication_info.get_or_default())
+                    {
+                        resp.error = Some(e).into();
+                    }
+                    Ok::<(), Status>(())
+                }
+            ),
             "GetStatefulServiceLocation" => serve!(
                 GetStatefulServiceLocationRequestPB,
                 GetStatefulServiceLocationResponsePB,
@@ -864,7 +949,7 @@ impl Shared {
             "GetTransactionStatusTablets" => serve!(
                 GetTransactionStatusTabletsRequestPB,
                 GetTransactionStatusTabletsResponsePB,
-                |_req, resp| { leader.get_transaction_status_tablets(&snapshot, &mut resp) }
+                |req, resp| leader.get_transaction_status_tablets(&snapshot, &req, &mut resp)
             ),
             "SplitTablet" => {
                 serve_ddl!(SplitTabletRequestPB, SplitTabletResponsePB, |req, resp| {
@@ -1151,7 +1236,10 @@ impl Shared {
                     }
                 }
             }
-            "GetAutoFlagsConfig" | "ValidateAutoFlagsConfig" | "GetYsqlYbSystemTableInfo" => {
+            "GetAutoFlagsConfig"
+            | "ValidateAutoFlagsConfig"
+            | "GetYsqlYbSystemTableInfo"
+            | "CheckIfPitrActive" => {
                 let request = call.request().to_vec();
                 self.serve_on_host(call, method, request).await
             }

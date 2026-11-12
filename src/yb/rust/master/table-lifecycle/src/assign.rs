@@ -48,9 +48,7 @@ use yb_proto::pb::tserver_admin::{CreateTabletRequestPB, CreateTabletResponsePB}
 use yb_proto::pb::tserver_types::tablet_server_error_pb;
 
 use crate::namespaces::unused_id;
-use crate::placement::{
-    cluster_config, live_tservers, select_replicas, table_replication_info, Load,
-};
+use crate::placement::{cluster_config, live_tservers, select_replicas, Load};
 use crate::schedules::covering_schedules;
 use crate::TableLifecycle;
 
@@ -173,7 +171,12 @@ impl TabletAssigner {
         }
         let table_pb: SysTablesEntryPB = table.parse().map_err(corrupt)?;
         let config = cluster_config(snapshot);
-        let replication = table_replication_info(table_pb.replication_info.as_ref(), &config);
+        // `BuildPlacementCandidates`: by the tablespace the table was created in, as the last
+        // refresh knows it, else the cluster's.
+        let replication = self
+            .lifecycle
+            .tablespaces
+            .table_replication_info_or_cluster(&table.key.id, &table_pb, &config);
         let placement = replication.live_replicas.clone().unwrap_or_default();
         let tservers = live_tservers(
             &self.lifecycle.ts_manager,

@@ -304,7 +304,11 @@ async fn truncate_tablet(
 }
 
 /// `IsTablePartOfCDCSDK`: a live CDCSDK stream of the namespace includes the table.
-fn cdcsdk_streamed(snapshot: &CatalogSnapshot, namespace_id: &[u8], table_id: &[u8]) -> bool {
+pub(crate) fn cdcsdk_streamed(
+    snapshot: &CatalogSnapshot,
+    namespace_id: &[u8],
+    table_id: &[u8],
+) -> bool {
     snapshot.iter(SysRowEntryType::CDC_STREAM).any(|stream| {
         stream.parse::<SysCDCStreamEntryPB>().is_ok_and(|pb| {
             !pb.namespace_id().is_empty()

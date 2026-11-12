@@ -130,8 +130,7 @@ pub(crate) fn record_alter_in_ddl_txn(
 }
 
 impl TableLifecycle {
-    /// `CreateTable` of a YSQL table or index in the default tablespace, colocated in a
-    /// tablegroup or not.
+    /// `CreateTable` of a YSQL table or index, colocated in a tablegroup or not.
     pub(crate) async fn create_ysql_table(
         &self,
         token: &LeaderToken,
@@ -166,9 +165,6 @@ impl TableLifecycle {
         };
         if req.index_info.vector_idx_options.is_some() {
             return Err(not_yet("A vector index"));
-        }
-        if !req.tablespace_id().is_empty() {
-            return Err(not_yet("A YSQL table in a tablespace"));
         }
         if crate::placement::replication_info_set(&req.replication_info) {
             return Err(error(
@@ -224,10 +220,11 @@ impl TableLifecycle {
         let ns_name = String::from_utf8_lossy(ns.name()).into_owned();
 
         let config = cluster_config(&snapshot);
-        let placement = config
-            .replication_info
+        let placement = self
+            .placement_for_new_table(req, &config)
+            .await
+            .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?
             .live_replicas
-            .clone()
             .unwrap_or_default();
         let tservers = live_tservers(&self.ts_manager, &config, placement.placement_uuid());
         let replication_factor = (self.options.replication_factor)();
@@ -669,6 +666,215 @@ impl TableLifecycle {
         }
     }
 
+    /// `RollbackDocdbSchemaToSubtxn` (`ROLLBACK TO SAVEPOINT` after DDL): each table the
+    /// transaction changed undoes what it did from sub-transaction `sub_txn` on
+    /// (`RollbackYsqlTxnDdlStates` from the first state at or after it). A table created there is
+    /// dropped, unless it is an index whose table is dropped with it; one altered there gets the
+    /// schema from before that state back, as an alter of its own; a drop there is forgotten.
+    /// The states from there on are removed, and the transaction too when none is left.
+    pub async fn rollback_docdb_schema_to_subtxn(
+        &self,
+        token: &LeaderToken,
+        deadline: Instant,
+        req: &yb_proto::pb::master_ddl::RollbackDocdbSchemaToSubtxnRequestPB,
+    ) -> Result<(), MasterErrorPB> {
+        let txn_id = req.transaction_id().to_vec();
+        if txn_id.is_empty() {
+            return Err(error(
+                Code::UNKNOWN_ERROR,
+                StatusCode::IllegalState,
+                "Received RollbackDocdbSchemaToSubtxn request without transaction id",
+            ));
+        }
+        let sub_txn = req.sub_transaction_id();
+        // `kMinSubTransactionId`.
+        if sub_txn < 1 {
+            return Err(error(
+                Code::UNKNOWN_ERROR,
+                StatusCode::IllegalState,
+                format!(
+                    "Received RollbackDocdbSchemaToSubtxn request with an invalid sub-txn id \
+                     {sub_txn}"
+                ),
+            ));
+        }
+        {
+            let mut rollbacks = self.subtxn_rollbacks.lock().unwrap();
+            if let Some(running) = rollbacks.get(&txn_id) {
+                if running.sub_txn == sub_txn && !running.failed {
+                    return Ok(());
+                }
+            }
+            rollbacks.insert(
+                txn_id.clone(),
+                SubTxnRollback {
+                    sub_txn,
+                    altered: Vec::new(),
+                    failed: false,
+                },
+            );
+        }
+        let result = self
+            .rollback_to_subtxn(token, deadline, &txn_id, sub_txn)
+            .await;
+        let mut rollbacks = self.subtxn_rollbacks.lock().unwrap();
+        if let Some(rollback) = rollbacks.get_mut(&txn_id) {
+            match &result {
+                Ok(altered) => rollback.altered = altered.clone(),
+                Err(_) => rollback.failed = true,
+            }
+        }
+        result.map(|_| ())
+    }
+
+    /// The writes of [`Self::rollback_docdb_schema_to_subtxn`]; the tables it altered.
+    async fn rollback_to_subtxn(
+        &self,
+        token: &LeaderToken,
+        deadline: Instant,
+        txn_id: &[u8],
+        sub_txn: u32,
+    ) -> Result<Vec<Vec<u8>>, MasterErrorPB> {
+        let first_at_or_after = |pb: &SysTablesEntryPB| {
+            pb.ysql_ddl_txn_verifier_state
+                .iter()
+                .position(|s| s.sub_transaction_id() >= sub_txn)
+        };
+        let snapshot = self.catalog.snapshot();
+        let tables = tables_of_txn(&snapshot, txn_id);
+        // Created in the rolled back part, with the tables they belong to.
+        let created_there = |id: &[u8]| {
+            snapshot
+                .get(SysRowEntryType::TABLE, id)
+                .and_then(|t| t.parse::<SysTablesEntryPB>().ok())
+                .is_some_and(|pb| {
+                    ddl_txn_id(&pb) == Some(txn_id)
+                        && first_at_or_after(&pb) == Some(0)
+                        && pb.ysql_ddl_txn_verifier_state[0].contains_create_table_op()
+                })
+        };
+        let mut altered = Vec::new();
+        for table_id in tables {
+            let indexed_dropped_too = snapshot
+                .get(SysRowEntryType::TABLE, &table_id)
+                .and_then(|t| t.parse::<SysTablesEntryPB>().ok())
+                .is_some_and(|pb| {
+                    let indexed = if pb.index_info.is_some() {
+                        pb.index_info.indexed_table_id().to_vec()
+                    } else {
+                        pb.indexed_table_id().to_vec()
+                    };
+                    !indexed.is_empty() && created_there(&table_id) && created_there(&indexed)
+                });
+            if indexed_dropped_too {
+                continue;
+            }
+            enum Outcome {
+                Done,
+                Delete,
+                Altered,
+            }
+            let outcome = self
+                .write(token, deadline, |snapshot| {
+                    let Some(table) = snapshot.get(SysRowEntryType::TABLE, &table_id) else {
+                        return Ok((Mutation::new(), Outcome::Done));
+                    };
+                    let mut pb: SysTablesEntryPB = table.parse().map_err(corrupt)?;
+                    if ddl_txn_id(&pb) != Some(txn_id)
+                        || !matches!(pb.state(), TableState::RUNNING | TableState::ALTERING)
+                    {
+                        return Ok((Mutation::new(), Outcome::Done));
+                    }
+                    let Some(index) = first_at_or_after(&pb) else {
+                        return Ok((Mutation::new(), Outcome::Done));
+                    };
+                    let state = pb.ysql_ddl_txn_verifier_state[index].clone();
+                    if state.contains_create_table_op() {
+                        return Ok((Mutation::new(), Outcome::Delete));
+                    }
+                    let alter = state.contains_alter_table_op();
+                    if alter {
+                        pb.schema = state.previous_schema.clone();
+                        pb.set_name(state.previous_table_name().as_bytes().to_vec());
+                        if state.has_previous_next_column_id() {
+                            pb.set_next_column_id(state.previous_next_column_id());
+                        }
+                        pb.set_version(pb.version() + 1);
+                        pb.set_updates_only_index_permissions(false);
+                        pb.state = Some(EnumOrUnknown::new(TableState::ALTERING));
+                        pb.set_state_msg(
+                            format!(
+                                "Rollback of SubTransactions version={} ts={}",
+                                pb.version(),
+                                local_time_string()
+                            )
+                            .into_bytes(),
+                        );
+                    }
+                    pb.ysql_ddl_txn_verifier_state.truncate(index);
+                    if pb.ysql_ddl_txn_verifier_state.is_empty() {
+                        pb.transaction = Default::default();
+                    }
+                    let mutation = Mutation::new()
+                        .read(table)
+                        .upsert_message(SysRowEntryType::TABLE, &table_id, &pb)
+                        .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+                    Ok((
+                        mutation,
+                        if alter {
+                            Outcome::Altered
+                        } else {
+                            Outcome::Done
+                        },
+                    ))
+                })
+                .await?;
+            match outcome {
+                Outcome::Done => {}
+                Outcome::Delete => self.mark_deleting(token, deadline, &table_id).await?,
+                Outcome::Altered => altered.push(table_id),
+            }
+        }
+        Ok(altered)
+    }
+
+    /// `IsRollbackDocdbSchemaToSubtxnDone`: done once every table the rollback altered has the
+    /// alter on its tablets; a failed rollback is done with an error.
+    pub fn is_rollback_docdb_schema_to_subtxn_done(
+        &self,
+        snapshot: &CatalogSnapshot,
+        req: &yb_proto::pb::master_ddl::IsRollbackDocdbSchemaToSubtxnDoneRequestPB,
+        resp: &mut yb_proto::pb::master_ddl::IsRollbackDocdbSchemaToSubtxnDoneResponsePB,
+    ) -> Result<(), MasterErrorPB> {
+        let txn_id = req.transaction.transaction_id();
+        let sub_txn = req.sub_transaction_id();
+        let mut rollbacks = self.subtxn_rollbacks.lock().unwrap();
+        let Some(rollback) = rollbacks.get_mut(txn_id).filter(|r| r.sub_txn == sub_txn) else {
+            resp.set_done(true);
+            return Ok(());
+        };
+        if rollback.failed {
+            resp.set_done(true);
+            return Err(error(
+                Code::UNKNOWN_ERROR,
+                StatusCode::InternalError,
+                "Rollback to sub-transaction failed.",
+            ));
+        }
+        rollback.altered.retain(|id| {
+            snapshot
+                .get(SysRowEntryType::TABLE, id)
+                .and_then(|t| t.table())
+                .is_some_and(|t| t.state == TableState::ALTERING as i32)
+        });
+        let done = rollback.altered.is_empty();
+        if done {
+            rollbacks.remove(txn_id);
+        }
+        resp.set_done(done);
+        Ok(())
+    }
+
     /// `IsYsqlDdlVerificationDone`: no table still carries the transaction's DDL state.
     pub fn is_ysql_ddl_verification_done(
         &self,
@@ -677,6 +883,13 @@ impl TableLifecycle {
         resp: &mut IsYsqlDdlVerificationDoneResponsePB,
     ) -> Result<(), MasterErrorPB> {
         let txn_id = req.transaction.transaction_id();
+        if (self.options.pause_ddl_rollback)() {
+            return Err(error(
+                Code::UNKNOWN_ERROR,
+                StatusCode::InvalidArgument,
+                format!("DDL Rollback is paused for txn {}", hex(txn_id)),
+            ));
+        }
         let mut done = tables_of_txn(snapshot, txn_id).is_empty();
         let mut alters = self.ddl_alters.lock().unwrap();
         if let Some(tables) = alters.get_mut(txn_id) {
@@ -799,6 +1012,20 @@ pub(crate) fn pg_database_oid(id: &[u8]) -> Option<u32> {
 /// `GetPgsqlTableOid`.
 pub(crate) fn pg_table_oid(id: &[u8]) -> Option<u32> {
     pg_oid(id, 24)
+}
+
+/// initdb is not done: the YSQL catalog config row says so (`YsqlCatalogConfig::IsInitDbDone`).
+pub(crate) fn initdb_pending(snapshot: &CatalogSnapshot) -> bool {
+    !snapshot
+        .get(
+            SysRowEntryType::SYS_CONFIG,
+            master_catalog_state::defaults::YSQL_CATALOG_CONFIG_ID,
+        )
+        .and_then(|row| {
+            row.parse::<yb_proto::pb::catalog_entity_info::SysConfigEntryPB>()
+                .ok()
+        })
+        .is_some_and(|config| config.ysql_catalog_config().initdb_done())
 }
 
 /// `IsPriorVersionYsqlCatalogTable`: a catalog table of the previous PG major version.
@@ -1154,6 +1381,15 @@ impl TableLifecycle {
         })
         .await
     }
+}
+
+/// A rollback to a sub-transaction in progress (`YsqlDdlSubTransactionRollbackMetadata`).
+#[derive(Debug, Default)]
+pub(crate) struct SubTxnRollback {
+    sub_txn: u32,
+    /// Tables it altered, until their tablets have the alter.
+    altered: Vec<Vec<u8>>,
+    failed: bool,
 }
 
 /// `kSysCatalogTabletId`.

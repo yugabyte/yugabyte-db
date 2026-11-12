@@ -23,6 +23,7 @@ option java_package = "org.yb.master";
 import "yb/common/common_types.proto";
 import "yb/consensus/metadata.proto";
 import "yb/common/common.proto";
+import "yb/common/common_net.proto";
 import "yb/common/version_info.proto";
 import "yb/master/catalog_entity_info.proto";
 import "yb/master/master_client.proto";
@@ -203,6 +204,73 @@ message RefreshPgCatalogVersionCacheResponsePB {
   optional MasterErrorPB error = 1;
   // False when the read failed; the leader retries sooner.
   optional bool refreshed = 2;
+}
+
+// The Rust leader's tablespace refresh (CatalogManager::DoRefreshTablespaceInfo): the host reads
+// pg_tablespace and, for `databases`, pg_class and pg_yb_tablegroup.
+message ReadYsqlTablespacesRequestPB {
+  message Database {
+    optional uint32 oid = 1;
+    optional bool colocated = 2;
+  }
+  repeated Database databases = 1;
+}
+
+message ReadYsqlTablespacesResponsePB {
+  optional MasterErrorPB error = 1;
+  message Tablespace {
+    optional bytes id = 1;
+    // Absent: the tablespace has no placement.
+    optional ReplicationInfoPB replication_info = 2;
+  }
+  repeated Tablespace tablespaces = 2;
+  message Table {
+    optional bytes table_id = 1;
+    // Absent: the default tablespace.
+    optional bytes tablespace_id = 2;
+  }
+  repeated Table tables = 3;
+}
+
+// The schema names of YSQL tables (YsqlManager::GetCachedPgSchemaName): pg_class.relnamespace's
+// pg_namespace.nspname, for ListTables and GetTableSchema.
+message GetPgSchemaNamesRequestPB {
+  message Table {
+    optional uint32 database_oid = 1;
+    optional uint32 pg_table_oid = 2;
+  }
+  repeated Table tables = 1;
+}
+
+message GetPgSchemaNamesResponsePB {
+  optional MasterErrorPB error = 1;
+  // One per requested table; empty when not found (not committed, or dropped).
+  repeated string names = 2;
+}
+
+// DDL verification of a transaction whose outcome PG did not report (TableSchemaVerificationTask's
+// schema comparison): the host checks the PG catalog against `table`'s row.
+message CheckYsqlDdlSchemaRequestPB {
+  optional bytes table_id = 1;
+  optional SysTablesEntryPB table = 2;
+  // A table in the sys catalog tablet (TableInfo::is_system).
+  optional bool is_system = 3;
+}
+
+message CheckYsqlDdlSchemaResponsePB {
+  optional MasterErrorPB error = 1;
+  // Absent: the PG catalog cannot tell (the DDL did not change the DocDB schema).
+  optional bool committed = 2;
+}
+
+// NamespaceVerificationTask's check: whether pg_database has the database.
+message YsqlDatabaseExistsRequestPB {
+  optional bytes namespace_id = 1;
+}
+
+message YsqlDatabaseExistsResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bool exists = 2;
 }
 
 // The cluster balancer's metrics, which C++ keeps in the "cluster" metric entity

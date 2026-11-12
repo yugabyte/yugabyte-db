@@ -126,6 +126,8 @@ pub struct BalancerFlags {
     /// Publishes the "cluster" metrics after each pass: whether balancing is enabled, and the
     /// run's metrics when it ran (`ReportMetrics`, `UpdatePerRunMetrics`).
     pub report: MetricsReporter,
+    /// YSQL tables' placement by tablespace.
+    pub tablespaces: Option<Arc<master_table_lifecycle::Tablespaces>>,
 }
 
 /// See [`BalancerFlags::report`].
@@ -319,6 +321,20 @@ impl Inner {
                 });
                 continue;
             };
+            // `NeedsRefreshToFindTablePlacement`: its tablespace's placement is not known yet.
+            if self
+                .flags
+                .tablespaces
+                .as_ref()
+                .is_some_and(|t| t.needs_refresh(&table.key.id, &pb))
+            {
+                tables.push(TableInfo {
+                    id,
+                    placement_unknown: true,
+                    ..TableInfo::default()
+                });
+                continue;
+            }
             let tablets = snapshot
                 .tablets_of(&table.key.id)
                 .into_iter()
@@ -368,7 +384,12 @@ impl Inner {
             tables.push(TableInfo {
                 is_transaction_status_table: hot.table_type
                     == yb_proto::pb::common_types::TableType::TRANSACTION_STATUS_TABLE_TYPE.value(),
-                replication_info: table_replication_info(pb.replication_info.as_ref(), &config),
+                replication_info: match &self.flags.tablespaces {
+                    Some(tablespaces) => {
+                        tablespaces.table_replication_info_or_cluster(&table.key.id, &pb, &config)
+                    }
+                    None => table_replication_info(pb.replication_info.as_ref(), &config),
+                },
                 tablets,
                 pending: tasks.get(&id).cloned().unwrap_or_default(),
                 id,

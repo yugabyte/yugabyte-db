@@ -79,6 +79,9 @@ class SysCatalogContext {
   // Used only by YSQL catalog reads and lookups on the master leader. Returns null when the table
   // is unknown or the host keeps no table catalog.
   virtual scoped_refptr<TableInfo> GetTableInfo(const TableId& table_id) = 0;
+  // Whether ReadPgClassInfo keeps a relation's row: a host without a table catalog keeps all of
+  // them, and its caller drops those it has no table for.
+  virtual bool HasTable(const TableId& table_id);
   virtual Result<TableId> GetVersionSpecificCatalogTableId(const TableId& table_id) const = 0;
 };
 

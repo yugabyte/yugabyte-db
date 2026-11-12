@@ -184,6 +184,16 @@ Status GetTabletLocationsByRpc(
   return Status::OK();
 }
 
+Status IsInitDbDoneByRpc(MiniMaster& master, master::IsInitDbDoneResponsePB* resp) {
+  rpc::ProxyCache proxy_cache(&master.messenger());
+  master::MasterAdminProxy proxy(&proxy_cache, master.bound_rpc_addr());
+  master::IsInitDbDoneRequestPB req;
+  rpc::RpcController controller;
+  controller.set_timeout(10s);
+  RETURN_NOT_OK(proxy.IsInitDbDone(req, resp, &controller));
+  return ResponseStatus(*resp);
+}
+
 // The tservers of `tservers` (uuid to instance seqno) the master lists, live ones only when
 // `live_only`. Unlike the C++ path it cannot check that each sent a full tablet report.
 Result<size_t> CountRegisteredTabletServers(
@@ -1627,10 +1637,11 @@ Status WaitForInitDb(MiniCluster* cluster) {
     if (!leader_mini_master.ok()) {
       continue;
     }
-    auto& catalog_manager = (*leader_mini_master)->catalog_manager();
     master::IsInitDbDoneRequestPB req;
     master::IsInitDbDoneResponsePB resp;
-    auto status = catalog_manager.IsInitDbDone(&req, &resp);
+    auto status = (*leader_mini_master)->is_rust()
+        ? IsInitDbDoneByRpc(**leader_mini_master, &resp)
+        : (*leader_mini_master)->catalog_manager().IsInitDbDone(&req, &resp);
     if (!status.ok()) {
       LOG(INFO) << "IsInitDbDone failure: " << status;
       continue;

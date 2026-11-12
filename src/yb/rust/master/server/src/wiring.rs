@@ -31,7 +31,8 @@ use master_table_lifecycle::{
     TableDeleter, TableLifecycle, TabletAssigner, TabletRpc, TruncateOptions, Truncates,
 };
 use master_table_lifecycle::{
-    TransactionTableController, YsqlSystemTablesController, YsqlSystemTablesOptions,
+    DdlVerifier, TablespaceController, TablespaceOptions, TransactionTableController,
+    VerifierOptions, YsqlSystemTablesController, YsqlSystemTablesOptions,
 };
 use master_tablet_split_manager::{
     AutoSplitOptions, SplitController, SplitOptions, TabletSplitManager,
@@ -155,6 +156,23 @@ static AUTO_SPLIT: FlagRef<bool> = FlagRef::new("enable_automatic_tablet_splitti
 static ENABLE_YSQL: FlagRef<bool> = FlagRef::new("enable_ysql");
 static ENABLE_HEARTBEAT_PG_CATALOG_VERSIONS_CACHE: FlagRef<bool> =
     FlagRef::new("enable_heartbeat_pg_catalog_versions_cache");
+static ENABLE_YSQL_TABLESPACES_FOR_PLACEMENT: FlagRef<bool> =
+    FlagRef::new("enable_ysql_tablespaces_for_placement");
+static YSQL_TABLESPACE_INFO_REFRESH_SECS: FlagRef<i32> =
+    FlagRef::new("ysql_tablespace_info_refresh_secs");
+static AUTO_CREATE_LOCAL_TRANSACTION_TABLES: FlagRef<bool> =
+    FlagRef::new("auto_create_local_transaction_tables");
+static ENABLE_TABLESPACE_BASED_TRANSACTION_PLACEMENT: FlagRef<bool> =
+    FlagRef::new("enable_tablespace_based_transaction_placement");
+static NAME_TRANSACTION_TABLES_WITH_TABLESPACE_ID: FlagRef<bool> =
+    FlagRef::new("TEST_name_transaction_tables_with_tablespace_id");
+static YSQL_TRANSACTION_BG_TASK_WAIT_MS: FlagRef<i32> =
+    FlagRef::new("ysql_transaction_bg_task_wait_ms");
+static DISABLE_YSQL_DDL_TXN_VERIFICATION: FlagRef<bool> =
+    FlagRef::new("TEST_disable_ysql_ddl_txn_verification");
+static DDL_VERIFICATION_FAILURE_PROBABILITY: FlagRef<f64> =
+    FlagRef::new("TEST_ysql_ddl_transaction_verification_failure_probability");
+static PAUSE_DDL_ROLLBACK: FlagRef<bool> = FlagRef::new("TEST_pause_ddl_rollback");
 static NUM_ADVISORY_LOCKS_TABLETS: FlagRef<u32> = FlagRef::new("num_advisory_locks_tablets");
 static YSQL_ENABLE_AUTO_ANALYZE_INFRA: FlagRef<bool> =
     FlagRef::new("ysql_enable_auto_analyze_infra");
@@ -467,6 +485,19 @@ impl Core {
                 check_ts_count_for_create_table: || CHECK_TS_COUNT_FOR_CREATE_TABLE.get(),
                 enable_ysql: || ENABLE_YSQL.get(),
                 txn_table_wait_min_ts_count: || TXN_TABLE_WAIT_MIN_TS_COUNT.get(),
+                pause_ddl_rollback: || PAUSE_DDL_ROLLBACK.get(),
+                tablespaces: TablespaceOptions {
+                    enabled: || ENABLE_YSQL_TABLESPACES_FOR_PLACEMENT.get(),
+                    refresh_interval: || {
+                        Duration::from_secs(YSQL_TABLESPACE_INFO_REFRESH_SECS.get().max(0) as u64)
+                    },
+                    auto_create_local_transaction_tables: || {
+                        AUTO_CREATE_LOCAL_TRANSACTION_TABLES.get()
+                    },
+                    name_transaction_tables_with_tablespace_id: || {
+                        NAME_TRANSACTION_TABLES_WITH_TABLESPACE_ID.get()
+                    },
+                },
                 use_create_table_leader_hint: || USE_CREATE_TABLE_LEADER_HINT.get(),
                 ysql_disable_index_backfill: || YSQL_DISABLE_INDEX_BACKFILL.get(),
                 ysql_index_backfill_rpc_timeout: || {
@@ -559,6 +590,9 @@ impl Core {
             },
             delay_leader_blacklist_completion: || DELAY_LEADER_BLACKLIST_COMPLETION.get(),
             ysql_major_version: ENABLE_YSQL.get().then(|| defaults.ysql_major_version()),
+            tablespace_based_transaction_placement: || {
+                ENABLE_TABLESPACE_BASED_TRANSACTION_PLACEMENT.get()
+            },
         });
 
         // Ready only once the catalog reflects everything committed before the election: the
@@ -764,6 +798,11 @@ fn start_term(
         TransactionTableController::new(leader.tables.clone()),
         leader.ts_manager.subscribe(),
     );
+    run_controller(
+        scope,
+        TablespaceController::new(leader.tables.clone()),
+        watch::channel(0).1,
+    );
     let ysql_major_version = leader.ysql_major_version;
     run_controller(
         scope,
@@ -816,6 +855,7 @@ fn start_term(
                         report_cluster_metrics(&*host, enabled, metrics)
                     })
                 },
+                tablespaces: Some(leader.tables.tablespaces()),
             },
             leader.balancer.clone(),
         ),
@@ -853,6 +893,20 @@ fn start_term(
         rpc_timeout: || millis(MASTER_TS_RPC_TIMEOUT_MS.get()),
         retry: retry_policy(false),
     };
+    leader.tables.set_tablet_rpc(tablet_rpc.clone());
+    run_controller(
+        scope,
+        DdlVerifier::new(
+            leader.tables.clone(),
+            tablet_rpc.clone(),
+            VerifierOptions {
+                poll_interval: || millis(YSQL_TRANSACTION_BG_TASK_WAIT_MS.get().max(1)),
+                disabled: || DISABLE_YSQL_DDL_TXN_VERIFICATION.get(),
+                poll_failure_probability: || DDL_VERIFICATION_FAILURE_PROBABILITY.get(),
+            },
+        ),
+        leader.catalog.subscribe(),
+    );
     run_controller(
         scope,
         TableDeleter::new(

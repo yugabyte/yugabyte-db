@@ -96,14 +96,36 @@ pub struct LeaderServices {
     pub blacklist_progress_initial_delay: fn() -> std::time::Duration,
     /// `delay_leader_blacklist_completion_percent_until_tservers_heartbeat`.
     pub delay_leader_blacklist_completion: fn() -> bool,
+    /// `enable_tablespace_based_transaction_placement`.
+    pub tablespace_based_transaction_placement: fn() -> bool,
     /// This build's YSQL major version; None with YSQL off.
     pub ysql_major_version: Option<u32>,
+}
+
+/// A placement's transaction status tables, each with whether it stays in one region.
+type LocalStatusTables = (
+    yb_proto::pb::common_net::PlacementInfoPB,
+    Vec<(Vec<u8>, bool)>,
+);
+
+/// `PlacementInfoSpansMultipleRegions`.
+fn spans_regions(placement: &yb_proto::pb::common_net::PlacementInfoPB) -> bool {
+    let mut blocks = placement
+        .placement_blocks
+        .iter()
+        .map(|b| b.cloud_info.get_or_default());
+    let Some(first) = blocks.next() else {
+        return false;
+    };
+    blocks.any(|ci| {
+        ci.placement_cloud() != first.placement_cloud()
+            || ci.placement_region() != first.placement_region()
+    })
 }
 
 /// Who serves a leader method a layer-2 Rust leader does not.
 pub fn owner(method: &str) -> &'static str {
     match method {
-        "GetIndexBackfillProgress" => "DDL (W7)",
         "RedisConfigSet" | "RedisConfigGet" => "nobody: YEDIS is not supported (D16)",
         _ => "a later layer",
     }
@@ -750,6 +772,7 @@ impl LeaderServices {
     pub fn get_transaction_status_tablets(
         &self,
         snapshot: &CatalogSnapshot,
+        req: &yb_proto::pb::master_client::GetTransactionStatusTabletsRequestPB,
         resp: &mut GetTransactionStatusTabletsResponsePB,
     ) -> Result<(), Status> {
         let table = snapshot
@@ -776,7 +799,107 @@ impl LeaderServices {
                 resp.global_tablet_id.push(tablet.key.id.to_vec());
             }
         }
+        if let Some(placement) = req.placement.as_ref() {
+            self.placement_local_transaction_tablets(snapshot, placement, resp);
+        }
         Ok(())
+    }
+
+    /// `GetPlacementLocalTransactionStatusTables` and `...Tablets`: the transaction status tables
+    /// whose placement (their own, or their tablespace's) contains the requestor's, by tablespace,
+    /// and those within one region. A table still being created is left out until it is done.
+    fn placement_local_transaction_tablets(
+        &self,
+        snapshot: &CatalogSnapshot,
+        placement: &CloudInfoPB,
+        resp: &mut GetTransactionStatusTabletsResponsePB,
+    ) {
+        use yb_proto::pb::master_client::get_transaction_status_tablets_response_pb::TablespaceInfoPB;
+        let tablespaces = self.tables.tablespaces();
+        // By tablespace oid; 0 (kInvalidOid) for tables placed by their own replication info.
+        let mut by_tablespace: std::collections::BTreeMap<u32, LocalStatusTables> =
+            Default::default();
+        for table in snapshot.iter(SysRowEntryType::TABLE) {
+            let Ok(pb) = table.parse::<SysTablesEntryPB>() else {
+                continue;
+            };
+            if pb.table_type()
+                != yb_proto::pb::common_types::TableType::TRANSACTION_STATUS_TABLE_TYPE
+                || pb.state() != sys_tables_entry_pb::State::RUNNING
+            {
+                continue;
+            }
+            let (oid, txn_placement) = if pb
+                .replication_info
+                .as_ref()
+                .is_some_and(master_table_lifecycle::replication_info_set)
+            {
+                (
+                    0,
+                    pb.replication_info
+                        .live_replicas
+                        .clone()
+                        .unwrap_or_default(),
+                )
+            } else if pb.transaction_table_tablespace_id.is_some() {
+                let id = pb.transaction_table_tablespace_id();
+                let Some(oid) = std::str::from_utf8(id.get(..8).unwrap_or_default())
+                    .ok()
+                    .and_then(|v| u32::from_str_radix(v, 16).ok())
+                else {
+                    continue;
+                };
+                match tablespaces.placement(id) {
+                    Ok(Some(info)) if master_table_lifecycle::replication_info_set(&info) => {
+                        (oid, info.live_replicas.unwrap_or_default())
+                    }
+                    _ => continue,
+                }
+            } else {
+                continue;
+            };
+            if !master_ts_manager::placement::placement_contains(&txn_placement, placement) {
+                continue;
+            }
+            let region_local = !spans_regions(&txn_placement);
+            by_tablespace
+                .entry(oid)
+                .or_insert_with(|| (txn_placement.clone(), Vec::new()))
+                .1
+                .push((table.key.id.to_vec(), region_local));
+        }
+        let add_tablespaces = (self.tablespace_based_transaction_placement)();
+        for (oid, (txn_placement, tables)) in by_tablespace {
+            let mut tablespace = (add_tablespaces && oid != 0).then(|| {
+                let mut info = TablespaceInfoPB::new();
+                info.set_tablespace_oid(oid);
+                info.placement = Some(txn_placement.clone()).into();
+                info
+            });
+            for (table_id, region_local) in tables {
+                if tablespace.is_none() && !region_local {
+                    continue;
+                }
+                let usable: Vec<Vec<u8>> = snapshot
+                    .active_tablets_of(&table_id)
+                    .into_iter()
+                    .filter(|t| {
+                        self.tablet_locations(snapshot, None, t, false, true)
+                            .is_ok()
+                    })
+                    .map(|t| t.key.id.to_vec())
+                    .collect();
+                if region_local {
+                    resp.region_local_tablet_id.extend(usable.iter().cloned());
+                }
+                if let Some(tablespace) = tablespace.as_mut() {
+                    tablespace.tablet_id.extend(usable);
+                }
+            }
+            if let Some(tablespace) = tablespace {
+                resp.placement_local_tablespace.push(tablespace);
+            }
+        }
     }
 
     fn expected_replicas(&self, snapshot: &CatalogSnapshot, table: &Entity) -> (i32, i32) {

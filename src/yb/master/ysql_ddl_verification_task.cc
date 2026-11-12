@@ -580,6 +580,16 @@ Status ReadPgAttributeWithReadTime(
 }
 } // namespace
 
+Result<std::optional<bool>> CheckYsqlDdlTableSchema(
+    SysCatalogTable& sys_catalog, const scoped_refptr<TableInfo>& table) {
+  return PgSchemaChecker(sys_catalog, table);
+}
+
+Result<bool> YsqlCatalogEntryExists(
+    SysCatalogTable& sys_catalog, const TableId& pg_table_id, PgOid entry_oid) {
+  return PgEntryExists(sys_catalog, pg_table_id, entry_oid, std::nullopt);
+}
+
 PollTransactionStatusBase::PollTransactionStatusBase(
     const TransactionMetadata& transaction, std::shared_future<client::YBClient*> client_future,
     const std::string& description)

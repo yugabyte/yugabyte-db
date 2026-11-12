@@ -90,6 +90,14 @@ pub(crate) fn live_tservers(
         .collect()
 }
 
+/// `FindTServersForPlacementInfo`: how many of `tservers` are in one of the placement's blocks.
+pub(crate) fn in_placement(tservers: &[TsDescriptor], placement: &PlacementInfoPB) -> usize {
+    tservers
+        .iter()
+        .filter(|d| placement.placement_blocks.iter().any(|b| in_block(d, b)))
+        .count()
+}
+
 /// `TSDescriptor::MatchesCloudInfo(block.cloud_info())`, as `PlacementCandidates` are built.
 fn in_block(descriptor: &TsDescriptor, block: &PlacementBlockPB) -> bool {
     is_cloud_info_prefix(

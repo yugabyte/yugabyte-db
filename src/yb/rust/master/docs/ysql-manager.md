@@ -121,9 +121,10 @@ the cluster config's `oid_cache_invalidations_count`.
 
 With YSQL on, the `transaction-table` controller creates `system.transactions` once
 `max(txn_table_wait_min_ts_count, replication_factor)` tservers have registered, as C++'s leader
-does from its tserver count callback. The transaction tables version is bumped when the table is
-created and again when one of its tablets turns RUNNING from a report: tservers refresh their
-usable status tablets only on a version change, and the first bump comes before any tablet runs.
+does from its tserver count callback. The transaction tables version is bumped when a status table
+is created, once for each of its tablets that turns RUNNING in a report, and once for each status
+table deleted: tservers refresh their usable status tablets only on a version change, and the
+first bump comes before any tablet runs. Tests count on one bump per tablet, as C++ intends.
 
 ## Backends catalog version (`backends.rs`)
 

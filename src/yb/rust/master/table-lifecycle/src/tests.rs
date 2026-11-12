@@ -1184,6 +1184,75 @@ mod ysql {
         assert!(h.verified(5));
     }
 
+    /// `ROLLBACK TO SAVEPOINT` undoes only the DDLs from that sub-transaction on: the rename
+    /// after the savepoint is undone, the one before it stays, and so does the transaction.
+    #[tokio::test]
+    async fn a_rollback_to_a_savepoint_undoes_only_later_ddl() {
+        use yb_proto::pb::master_ddl::{
+            IsRollbackDocdbSchemaToSubtxnDoneRequestPB,
+            IsRollbackDocdbSchemaToSubtxnDoneResponsePB, RollbackDocdbSchemaToSubtxnRequestPB,
+        };
+        let h = ysql_harness().await;
+        h.create_ysql(None).await.unwrap();
+        h.set_table_state(TABLE_ID, sys_tables_entry_pb::State::RUNNING)
+            .await;
+        let rename = |name: &str, sub_txn: u32| {
+            let mut req = AlterTableRequestPB::new();
+            req.table
+                .mut_or_insert_default()
+                .set_table_id(TABLE_ID.to_vec());
+            req.set_new_table_name(name.into());
+            req.transaction = Some(txn(6)).into();
+            req.set_ysql_yb_ddl_rollback_enabled(true);
+            req.set_sub_transaction_id(sub_txn);
+            req
+        };
+        for (name, sub_txn) in [("first", 1), ("second", 3)] {
+            h.lifecycle
+                .alter_table(
+                    &h.token,
+                    Harness::deadline(),
+                    &rename(name, sub_txn),
+                    &mut AlterTableResponsePB::new(),
+                )
+                .await
+                .unwrap();
+            h.set_table_state(TABLE_ID, sys_tables_entry_pb::State::RUNNING)
+                .await;
+        }
+        assert_eq!(h.table_row().ysql_ddl_txn_verifier_state.len(), 2);
+
+        let mut req = RollbackDocdbSchemaToSubtxnRequestPB::new();
+        req.set_transaction_id(vec![6; 16]);
+        req.set_sub_transaction_id(2);
+        h.lifecycle
+            .rollback_docdb_schema_to_subtxn(&h.token, Harness::deadline(), &req)
+            .await
+            .unwrap();
+        let row = h.table_row();
+        assert_eq!(row.name(), b"first");
+        assert_eq!(row.ysql_ddl_txn_verifier_state.len(), 1);
+        assert!(row.transaction.is_some());
+        assert_eq!(row.state(), sys_tables_entry_pb::State::ALTERING);
+
+        let done = |h: &Harness| {
+            let mut req = IsRollbackDocdbSchemaToSubtxnDoneRequestPB::new();
+            req.transaction
+                .mut_or_insert_default()
+                .set_transaction_id(vec![6; 16]);
+            req.set_sub_transaction_id(2);
+            let mut resp = IsRollbackDocdbSchemaToSubtxnDoneResponsePB::new();
+            h.lifecycle
+                .is_rollback_docdb_schema_to_subtxn_done(&h.catalog.snapshot(), &req, &mut resp)
+                .unwrap();
+            resp.done()
+        };
+        assert!(!done(&h));
+        h.set_table_state(TABLE_ID, sys_tables_entry_pb::State::RUNNING)
+            .await;
+        assert!(done(&h));
+    }
+
     const INDEX_ID: &[u8] = b"000033e8000030008000000000004001";
 
     /// A tablegroup is its parent table, which owns one colocated tablet; a table in it owns

@@ -39,8 +39,10 @@ mod namespaces;
 mod placement;
 mod read;
 mod schedules;
+mod tablespaces;
 mod time;
 mod truncate;
+mod verifier;
 mod ysql;
 
 #[cfg(test)]
@@ -57,8 +59,13 @@ pub use drop::TableDeleter;
 pub use flush::{FlushOptions, Flushes};
 pub use placement::{replication_info_set, table_replication_info};
 pub use schedules::covering_schedules;
+pub use tablespaces::{
+    uses_tablespaces, TablespaceController, TablespaceOptions, Tablespaces,
+    TRANSACTION_TABLE_PREFIX,
+};
 pub use time::local_time_string;
 pub use truncate::{TruncateOptions, Truncates};
+pub use verifier::{DdlVerifier, VerifierOptions};
 
 /// The C++ steps the host runs: schema normalization, partitioning and alter steps, which are
 /// engine formats Rust does not reimplement (K4). `method` is a `MasterHost::HandleOnHost` name.
@@ -97,6 +104,10 @@ pub struct LifecycleOptions {
     pub ysql_disable_index_backfill: fn() -> bool,
     /// `ysql_index_backfill_rpc_timeout_ms`.
     pub ysql_index_backfill_rpc_timeout: fn() -> std::time::Duration,
+    /// Tablespace placement.
+    pub tablespaces: TablespaceOptions,
+    /// `TEST_pause_ddl_rollback`: `IsYsqlDdlVerificationDone` fails.
+    pub pause_ddl_rollback: fn() -> bool,
 }
 
 impl Default for LifecycleOptions {
@@ -115,6 +126,13 @@ impl Default for LifecycleOptions {
             use_create_table_leader_hint: || true,
             ysql_disable_index_backfill: || false,
             ysql_index_backfill_rpc_timeout: || std::time::Duration::from_secs(300),
+            tablespaces: TablespaceOptions {
+                enabled: || true,
+                refresh_interval: || std::time::Duration::from_secs(30),
+                auto_create_local_transaction_tables: || true,
+                name_transaction_tables_with_tablespace_id: || false,
+            },
+            pause_ddl_rollback: || false,
         }
     }
 }
@@ -137,9 +155,99 @@ pub struct TableLifecycle {
     /// The YSQL databases being created, by term and id: the rest of the PREPARING ones were
     /// interrupted by a leader change.
     pub(crate) creating_databases: std::sync::Mutex<std::collections::HashSet<(i64, Vec<u8>)>>,
+    /// The tablespace placement the leader knows.
+    pub(crate) tablespaces: Arc<Tablespaces>,
+    /// Rollbacks to a sub-transaction, by transaction id.
+    pub(crate) subtxn_rollbacks:
+        std::sync::Mutex<std::collections::HashMap<Vec<u8>, ysql::SubTxnRollback>>,
+    /// Tserver RPCs for the DDL paths that call tservers directly; set once the master's RPC
+    /// client exists.
+    pub(crate) tablet_rpc: std::sync::OnceLock<TabletRpc>,
+    /// Held while a tablespace's transaction status table is created
+    /// (`tablespace_transaction_table_creation_mutex_`).
+    pub(crate) local_transaction_tables: tokio::sync::Mutex<()>,
 }
 
 impl TableLifecycle {
+    /// Gives the DDL paths that call tservers directly the master's RPC client.
+    pub fn set_tablet_rpc(&self, rpc: TabletRpc) {
+        let _ = self.tablet_rpc.set(rpc);
+    }
+
+    /// `WaitForTransactionTableVersionUpdateToPropagate`: every live tserver gets the current
+    /// transaction tables version (`UpdateTransactionTablesVersion`); the first failure is
+    /// returned. Without an RPC client (tests) the next heartbeats carry it.
+    pub(crate) async fn propagate_transaction_tables_version(
+        &self,
+        token: &LeaderToken,
+    ) -> Result<(), yb_host_api::Status> {
+        use protobuf::Message;
+        use yb_proto::pb::tserver_admin::{
+            UpdateTransactionTablesVersionRequestPB, UpdateTransactionTablesVersionResponsePB,
+        };
+        let Some(rpc) = self.tablet_rpc.get() else {
+            return Ok(());
+        };
+        let version = self
+            .catalog
+            .snapshot()
+            .get(
+                yb_proto::pb::master_types::SysRowEntryType::SYS_CONFIG,
+                master_catalog_state::defaults::TRANSACTION_TABLES_CONFIG_ID,
+            )
+            .and_then(|r| {
+                r.parse::<yb_proto::pb::catalog_entity_info::SysConfigEntryPB>()
+                    .ok()
+            })
+            .map_or(0, |c| c.transaction_tables_config().version());
+        let mut req = UpdateTransactionTablesVersionRequestPB::new();
+        req.set_version(version);
+        let bytes = req.write_to_bytes().map_err(|e| {
+            yb_host_api::Status::new(yb_host_api::StatusCode::Corruption, e.to_string())
+        })?;
+        let timeout = (rpc.rpc_timeout)();
+        let mut calls = tokio::task::JoinSet::new();
+        for descriptor in self.ts_manager.live() {
+            let Some((host, port)) = self.ts_manager.rpc_address(&descriptor.uuid) else {
+                continue;
+            };
+            let client = rpc.rpc.clone();
+            let bytes = bytes.clone();
+            calls.spawn(async move {
+                let resp = client
+                    .call(
+                        &host,
+                        port,
+                        "yb.tserver.TabletServerAdminService",
+                        "UpdateTransactionTablesVersion",
+                        &bytes,
+                        timeout,
+                    )
+                    .await?;
+                let resp = UpdateTransactionTablesVersionResponsePB::parse_from_bytes(&resp)
+                    .map_err(|e| {
+                        yb_host_api::Status::new(yb_host_api::StatusCode::Corruption, e.to_string())
+                    })?;
+                match resp.error.as_ref() {
+                    Some(e) => Err(crate::backfill::ts_status(&e.status)),
+                    None => Ok(()),
+                }
+            });
+        }
+        self.leadership.check(token)?;
+        while let Some(result) = calls.join_next().await {
+            result.map_err(|e| {
+                yb_host_api::Status::new(yb_host_api::StatusCode::InternalError, e.to_string())
+            })??;
+        }
+        Ok(())
+    }
+
+    /// The tablespace placement the leader knows, for everything else that places tablets.
+    pub fn tablespaces(&self) -> Arc<Tablespaces> {
+        self.tablespaces.clone()
+    }
+
     /// Creates the leader's DDL service.
     pub fn new(
         catalog: Arc<Catalog>,
@@ -159,6 +267,10 @@ impl TableLifecycle {
             names: tokio::sync::Mutex::new(()),
             ddl_alters: Default::default(),
             creating_databases: Default::default(),
+            tablespaces: Tablespaces::new(options.tablespaces),
+            subtxn_rollbacks: Default::default(),
+            local_transaction_tables: tokio::sync::Mutex::new(()),
+            tablet_rpc: std::sync::OnceLock::new(),
         })
     }
 

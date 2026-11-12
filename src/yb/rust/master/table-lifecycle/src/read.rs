@@ -18,7 +18,9 @@ use master_catalog_entity::Entity;
 use master_catalog_state::CatalogSnapshot;
 use protobuf::{EnumOrUnknown, MessageField};
 use yb_host_api::StatusCode;
-use yb_proto::pb::catalog_entity_info::{sys_namespace_entry_pb, SysTablesEntryPB};
+use yb_proto::pb::catalog_entity_info::{
+    sys_namespace_entry_pb, sys_tables_entry_pb, SysTablesEntryPB,
+};
 use yb_proto::pb::common_types::TableType;
 use yb_proto::pb::master_ddl::{
     list_tables_response_pb, GetTableSchemaRequestPB, GetTableSchemaResponsePB,
@@ -281,4 +283,354 @@ fn replication_info_set(info: &yb_proto::pb::common_net::ReplicationInfoPB) -> b
     }) || !info.read_replicas.is_empty()
         || !info.affinitized_leaders.is_empty()
         || !info.multi_affinitized_leaders.is_empty()
+}
+
+/// `TableInfo::ShouldLookupPgSchemaName` and `GetPgTableAllOids`: the database and relation oids
+/// of a YSQL relation outside the PG catalog, the sequences database and colocation parents.
+fn pg_schema_lookup(table_id: &[u8], pb: &SysTablesEntryPB) -> Option<(u32, u32)> {
+    if pb.table_type() != TableType::PGSQL_TABLE_TYPE
+        || crate::lookup::is_colocation_parent_table_id(table_id)
+    {
+        return None;
+    }
+    let database = crate::ysql::pg_database_oid(pb.namespace_id())?;
+    if database == 65535 {
+        return None;
+    }
+    let relation = if pb.pg_table_id().is_empty() {
+        crate::ysql::pg_table_oid(table_id)?
+    } else {
+        crate::ysql::pg_table_oid(pb.pg_table_id())?
+    };
+    // Below kPgFirstNormalObjectId: a PG catalog table, which lives in the sys catalog tablet.
+    (relation >= 16384).then_some((database, relation))
+}
+
+impl TableLifecycle {
+    /// The schema names of `tables` (id and row), empty when PG does not have them.
+    async fn pg_schema_names(&self, tables: Vec<(u32, u32)>) -> Vec<String> {
+        use protobuf::Message;
+        use yb_proto::pb::master_rust_peer::{
+            get_pg_schema_names_request_pb, GetPgSchemaNamesRequestPB, GetPgSchemaNamesResponsePB,
+        };
+        let mut req = GetPgSchemaNamesRequestPB::new();
+        for (database, relation) in &tables {
+            let mut table = get_pg_schema_names_request_pb::Table::new();
+            table.set_database_oid(*database);
+            table.set_pg_table_oid(*relation);
+            req.tables.push(table);
+        }
+        let Ok(bytes) = req.write_to_bytes() else {
+            return Vec::new();
+        };
+        let host = self.host.clone();
+        let response = tokio::task::spawn_blocking(move || host.call("GetPgSchemaNames", &bytes))
+            .await
+            .ok()
+            .and_then(|r| r.ok())
+            .and_then(|r| GetPgSchemaNamesResponsePB::parse_from_bytes(&r).ok());
+        match response {
+            Some(resp) if resp.names.len() == tables.len() => resp.names,
+            _ => {
+                tracing::warn!(
+                    "Unable to read the schema names of {} YSQL tables",
+                    tables.len()
+                );
+                Vec::new()
+            }
+        }
+    }
+
+    /// `ListTables`' `pgschema_name` of its YSQL tables.
+    pub async fn fill_list_tables_schema_names(
+        &self,
+        snapshot: &CatalogSnapshot,
+        resp: &mut ListTablesResponsePB,
+    ) {
+        let mut lookups = Vec::new();
+        for (index, table) in resp.tables.iter().enumerate() {
+            let Some(pb) = snapshot
+                .get(SysRowEntryType::TABLE, table.id())
+                .and_then(|t| t.parse::<SysTablesEntryPB>().ok())
+            else {
+                continue;
+            };
+            if let Some(oids) = pg_schema_lookup(table.id(), &pb) {
+                lookups.push((index, oids));
+            }
+        }
+        if lookups.is_empty() {
+            return;
+        }
+        let names = self
+            .pg_schema_names(lookups.iter().map(|(_, oids)| *oids).collect())
+            .await;
+        for ((index, _), name) in lookups.into_iter().zip(names) {
+            if !name.is_empty() {
+                resp.tables[index].set_pgschema_name(name);
+            }
+        }
+    }
+
+    /// `GetTableSchema`'s `deprecated_pgschema_name` of a YSQL table.
+    pub async fn fill_table_schema_name(
+        &self,
+        snapshot: &CatalogSnapshot,
+        req: &GetTableSchemaRequestPB,
+        resp: &mut GetTableSchemaResponsePB,
+    ) {
+        if req.check_exists_only() || resp.schema.is_none() {
+            return;
+        }
+        let Ok(entity) = find_table(snapshot, &req.table, true) else {
+            return;
+        };
+        let Ok(pb) = parse_table(&entity) else {
+            return;
+        };
+        let Some(oids) = pg_schema_lookup(&entity.key.id, &pb) else {
+            return;
+        };
+        if let Some(name) = self.pg_schema_names(vec![oids]).await.pop() {
+            if !name.is_empty() {
+                resp.schema
+                    .mut_or_insert_default()
+                    .set_DEPRECATED_pgschema_name(name);
+            }
+        }
+    }
+}
+
+impl TableLifecycle {
+    /// `GetTableDiskSize`: the leaders' WAL and SST sizes from the tservers' metrics heartbeats; a
+    /// tablet without a leader counts as missing. A colocated child table has no size of its own.
+    pub fn get_table_disk_size(
+        &self,
+        snapshot: &CatalogSnapshot,
+        req: &yb_proto::pb::master_ddl::GetTableDiskSizeRequestPB,
+        resp: &mut yb_proto::pb::master_ddl::GetTableDiskSizeResponsePB,
+    ) -> Result<(), MasterErrorPB> {
+        let table_id = req.table.table_id();
+        let Some(entity) = snapshot.get(SysRowEntryType::TABLE, table_id) else {
+            return Err(error(
+                Code::OBJECT_NOT_FOUND,
+                StatusCode::NotFound,
+                format!(
+                    "Table with id {} does not exist",
+                    String::from_utf8_lossy(table_id)
+                ),
+            ));
+        };
+        let pb = parse_table(entity)?;
+        let mut size = 0i64;
+        let mut missing = 0i32;
+        if !pb.colocated() || crate::lookup::is_colocation_parent_table_id(table_id) {
+            for tablet in snapshot.active_tablets_of(table_id) {
+                let leader = self
+                    .ts_manager
+                    .locations
+                    .get(&tablet.key.id)
+                    .and_then(|r| r.leader().map(|l| l.drive.clone()));
+                match leader {
+                    Some(drive) => {
+                        size += drive.wal_files_size as i64 + drive.sst_files_size as i64;
+                    }
+                    None => missing += 1,
+                }
+            }
+        }
+        resp.set_size(size);
+        resp.set_num_missing_tablets(missing);
+        Ok(())
+    }
+
+    /// The `GetTableSchema` of each of `table_ids`, with schema names, for the tablegroup and
+    /// colocated schema RPCs; the first failure is `OBJECT_NOT_FOUND`.
+    async fn table_schemas(
+        &self,
+        snapshot: &CatalogSnapshot,
+        table_ids: Vec<Vec<u8>>,
+    ) -> Result<Vec<GetTableSchemaResponsePB>, MasterErrorPB> {
+        let mut schemas = Vec::new();
+        for table_id in table_ids {
+            let mut req = GetTableSchemaRequestPB::new();
+            req.table.mut_or_insert_default().set_table_id(table_id);
+            let mut resp = GetTableSchemaResponsePB::new();
+            if let Err(mut e) = self.get_table_schema(snapshot, &req, &mut resp) {
+                e.set_code(Code::OBJECT_NOT_FOUND);
+                return Err(e);
+            }
+            self.fill_table_schema_name(snapshot, &req, &mut resp).await;
+            schemas.push(resp);
+        }
+        Ok(schemas)
+    }
+
+    /// `GetTablegroupSchema`: the schemas of the tables in the tablegroup.
+    pub async fn get_tablegroup_schema(
+        &self,
+        snapshot: &CatalogSnapshot,
+        req: &yb_proto::pb::master_ddl::GetTablegroupSchemaRequestPB,
+        resp: &mut yb_proto::pb::master_ddl::GetTablegroupSchemaResponsePB,
+    ) -> Result<(), MasterErrorPB> {
+        let id = req.tablegroup.id();
+        if id.is_empty() {
+            return Err(error(
+                Code::INVALID_SCHEMA,
+                StatusCode::InvalidArgument,
+                "Invalid GetTablegroupSchema request (missing ID)",
+            ));
+        }
+        let parent = [id, b".tablegroup.parent.uuid".as_slice()].concat();
+        let colocation_parent = [id, b".colocation.parent.uuid".as_slice()].concat();
+        let parent = [parent, colocation_parent]
+            .into_iter()
+            .find(|p| snapshot.get(SysRowEntryType::TABLE, p).is_some())
+            .ok_or_else(|| {
+                error(
+                    Code::UNKNOWN_ERROR,
+                    StatusCode::NotFound,
+                    format!(
+                        "Tablegroup with ID {} not found",
+                        String::from_utf8_lossy(id)
+                    ),
+                )
+            })?;
+        let children: Vec<Vec<u8>> = snapshot
+            .children_of(&parent)
+            .into_iter()
+            .filter(|t| {
+                t.table().is_some_and(|h| {
+                    h.state != sys_tables_entry_pb::State::DELETED as i32
+                        && h.state != sys_tables_entry_pb::State::DELETING as i32
+                })
+            })
+            .map(|t| t.key.id.to_vec())
+            .collect();
+        resp.get_table_schema_response_pbs = self.table_schemas(snapshot, children).await?;
+        Ok(())
+    }
+
+    /// `GetColocatedTabletSchema`: the schemas of the colocated tables of a database colocated
+    /// "via database", given its parent table.
+    pub async fn get_colocated_tablet_schema(
+        &self,
+        snapshot: &CatalogSnapshot,
+        req: &yb_proto::pb::master_ddl::GetColocatedTabletSchemaRequestPB,
+        resp: &mut yb_proto::pb::master_ddl::GetColocatedTabletSchemaResponsePB,
+    ) -> Result<(), MasterErrorPB> {
+        let parent = find_table(snapshot, &req.parent_colocated_table, false)?;
+        check_visible(&parent, false)?;
+        if !parent.key.id.ends_with(b".colocated.parent.uuid") {
+            return Err(error(
+                Code::INVALID_TABLE_TYPE,
+                StatusCode::InvalidArgument,
+                "Table provided is not a parent colocated table",
+            ));
+        }
+        let namespace_id = parse_table(&parent)?.namespace_id().to_vec();
+        let mut children: Vec<Vec<u8>> = snapshot
+            .iter(SysRowEntryType::TABLE)
+            .filter(|t| {
+                t.parse::<SysTablesEntryPB>().is_ok_and(|pb| {
+                    pb.namespace_id() == namespace_id.as_slice()
+                        && pb.colocated()
+                        && pb.table_type() == TableType::PGSQL_TABLE_TYPE
+                        && crate::ysql::pg_table_oid(&t.key.id).is_some_and(|o| o >= 16384)
+                        && !matches!(
+                            pb.state(),
+                            sys_tables_entry_pb::State::DELETED
+                                | sys_tables_entry_pb::State::DELETING
+                        )
+                })
+            })
+            .map(|t| t.key.id.to_vec())
+            .collect();
+        children.sort();
+        resp.get_table_schema_response_pbs = self.table_schemas(snapshot, children).await?;
+        Ok(())
+    }
+
+    /// `GetIndexBackfillProgress`, in request order: from the indexed table's backfill job while
+    /// it runs, else from the index's `IndexInfoPB`; `u64::MAX` and -1 for an unknown index.
+    pub fn get_index_backfill_progress(
+        &self,
+        snapshot: &CatalogSnapshot,
+        req: &yb_proto::pb::master_client::GetIndexBackfillProgressRequestPB,
+        resp: &mut yb_proto::pb::master_client::GetIndexBackfillProgressResponsePB,
+    ) {
+        for index_id in &req.index_ids {
+            let indexed = snapshot
+                .get(SysRowEntryType::TABLE, index_id.as_bytes())
+                .and_then(|t| t.parse::<SysTablesEntryPB>().ok())
+                .map(|pb| {
+                    if pb.index_info.is_some() {
+                        pb.index_info.indexed_table_id().to_vec()
+                    } else {
+                        pb.indexed_table_id().to_vec()
+                    }
+                })
+                .and_then(|id| snapshot.get(SysRowEntryType::TABLE, &id))
+                .and_then(|t| t.parse::<SysTablesEntryPB>().ok());
+            let Some(indexed) = indexed else {
+                resp.num_rows_read_from_table_for_backfill.push(u64::MAX);
+                resp.num_rows_backfilled_in_index.push(-1.0);
+                continue;
+            };
+            if let Some(job) = indexed
+                .backfill_jobs
+                .first()
+                .filter(|j| j.backfill_state.contains_key(index_id))
+            {
+                resp.num_rows_read_from_table_for_backfill
+                    .push(job.num_rows_read_from_table_for_backfill());
+                resp.num_rows_backfilled_in_index.push(
+                    job.num_rows_backfilled_in_index
+                        .get(index_id)
+                        .copied()
+                        .unwrap_or(0.0),
+                );
+                continue;
+            }
+            if let Some(info) = indexed
+                .indexes
+                .iter()
+                .find(|i| i.table_id() == index_id.as_bytes())
+            {
+                resp.num_rows_read_from_table_for_backfill
+                    .push(info.num_rows_read_from_table_for_backfill());
+                resp.num_rows_backfilled_in_index
+                    .push(info.num_rows_backfilled_in_index());
+            }
+        }
+    }
+}
+
+impl TableLifecycle {
+    /// `IsObjectPartOfXRepl`: the table is replicated by xCluster or in a CDCSDK stream. PG asks
+    /// before a DDL that rewrites a table.
+    pub fn is_object_part_of_xrepl(
+        &self,
+        snapshot: &CatalogSnapshot,
+        req: &yb_proto::pb::master_replication::IsObjectPartOfXReplRequestPB,
+        resp: &mut yb_proto::pb::master_replication::IsObjectPartOfXReplResponsePB,
+    ) -> Result<(), MasterErrorPB> {
+        let table_id = req.table_id().as_bytes();
+        let Some(table) = snapshot.get(SysRowEntryType::TABLE, table_id) else {
+            return Err(error(
+                Code::UNKNOWN_ERROR,
+                StatusCode::NotFound,
+                format!(
+                    "Table with id {} does not exist",
+                    String::from_utf8_lossy(table_id)
+                ),
+            ));
+        };
+        let namespace_id = parse_table(table)?.namespace_id().to_vec();
+        resp.set_is_object_part_of_xrepl(
+            crate::drop::xcluster_replicated(snapshot, table_id)
+                || crate::truncate::cdcsdk_streamed(snapshot, &namespace_id, table_id),
+        );
+        Ok(())
+    }
 }

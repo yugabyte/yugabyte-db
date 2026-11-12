@@ -122,7 +122,10 @@ impl TableLifecycle {
         }
 
         let config = cluster_config(&snapshot);
-        let replication = table_replication_info(req.replication_info.as_ref(), &config);
+        let replication = self
+            .placement_for_new_table(req, &config)
+            .await
+            .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
         let placement = replication.live_replicas.clone().unwrap_or_default();
         let tservers = live_tservers(&self.ts_manager, &config, placement.placement_uuid());
         let replication_factor = (self.options.replication_factor)();
@@ -307,32 +310,82 @@ impl TableLifecycle {
         token: &LeaderToken,
         deadline: Instant,
     ) -> Result<(), MasterErrorPB> {
-        let snapshot = self.catalog.snapshot();
-        if snapshot
+        if self
+            .catalog
+            .snapshot()
             .table_by_name(SYSTEM_NAMESPACE_ID, TRANSACTIONS_TABLE)
             .is_some()
         {
             return Ok(());
         }
-        tracing::info!("Creating transaction status table: {TRANSACTIONS_TABLE}");
         let mut req = CreateTableRequestPB::new();
         req.set_name(TRANSACTIONS_TABLE.into());
+        let mut resp = CreateTableResponsePB::new();
+        match self
+            .create_transaction_status_table(token, deadline, &req, &mut resp)
+            .await
+        {
+            Err(e) if e.code() == Code::OBJECT_ALREADY_PRESENT => Ok(()),
+            result => result,
+        }
+    }
+
+    /// `CreateTransactionStatusTableInternal`: a transaction status table named `req.name` in
+    /// the system namespace, placed by `req.tablespace_id` or `req.replication_info`, else by the
+    /// cluster. One tablet per tserver of its placement unless `transaction_table_num_tablets`.
+    pub(crate) async fn create_transaction_status_table(
+        &self,
+        token: &LeaderToken,
+        deadline: Instant,
+        request: &CreateTableRequestPB,
+        resp: &mut CreateTableResponsePB,
+    ) -> Result<(), MasterErrorPB> {
+        let snapshot = self.catalog.snapshot();
+        if snapshot
+            .table_by_name(SYSTEM_NAMESPACE_ID, request.name())
+            .is_some()
+        {
+            return Err(error(
+                Code::OBJECT_ALREADY_PRESENT,
+                StatusCode::AlreadyPresent,
+                format!("Table already exists: {}", request.name()),
+            ));
+        }
+        tracing::info!("Creating transaction status table: {}", request.name());
+        let mut req = CreateTableRequestPB::new();
+        req.set_name(request.name().into());
         req.namespace
             .mut_or_insert_default()
             .set_name("system".into());
         req.table_type = Some(EnumOrUnknown::new(TableType::TRANSACTION_STATUS_TABLE_TYPE));
+        if request.has_tablespace_id() {
+            req.set_tablespace_id(request.tablespace_id().to_vec());
+        }
+        if request.replication_info.is_some() {
+            req.replication_info = request.replication_info.clone();
+        }
         let num_tablets = match (self.options.transaction_table_num_tablets)() {
             n if n > 0 => n,
-            // A negative count (the auto-detect default) makes the host pick, as C++ does.
             _ => {
                 let config = cluster_config(&snapshot);
-                let placement = config
-                    .replication_info
-                    .live_replicas
-                    .placement_uuid()
-                    .to_vec();
-                live_tservers(&self.ts_manager, &config, &placement).len() as i32
-                    * (self.options.transaction_table_num_tablets_per_tserver)()
+                let tservers = if req.has_tablespace_id() || req.replication_info.is_some() {
+                    let placement = self
+                        .placement_for_new_table(&req, &config)
+                        .await
+                        .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?
+                        .live_replicas
+                        .unwrap_or_default();
+                    let live = live_tservers(&self.ts_manager, &config, b"");
+                    crate::placement::in_placement(&live, &placement)
+                } else {
+                    let placement = config
+                        .replication_info
+                        .live_replicas
+                        .placement_uuid()
+                        .to_vec();
+                    live_tservers(&self.ts_manager, &config, &placement).len()
+                };
+                tservers as i32 * (self.options.transaction_table_num_tablets_per_tserver)()
             }
         };
         let schema = req.schema.mut_or_insert_default();
@@ -349,11 +402,70 @@ impl TableLifecycle {
         key.set_is_hash_key(true);
         key.set_is_nullable(false);
         schema.columns.push(key);
-        let mut resp = CreateTableResponsePB::new();
-        match Box::pin(self.create_table(token, deadline, &req, &mut resp)).await {
+        match Box::pin(self.create_table(token, deadline, &req, resp)).await {
             Err(e) if e.code() == Code::OBJECT_ALREADY_PRESENT => Ok(()),
             result => result,
         }
+    }
+
+    /// `CreateTransactionStatusTable`: `OBJECT_ALREADY_PRESENT` for an existing name, else any
+    /// failure is `INTERNAL_ERROR`.
+    pub async fn create_transaction_status_table_rpc(
+        &self,
+        token: &LeaderToken,
+        deadline: Instant,
+        req: &yb_proto::pb::master_admin::CreateTransactionStatusTableRequestPB,
+    ) -> Result<(), MasterErrorPB> {
+        let mut create = CreateTableRequestPB::new();
+        create.set_name(req.table_name().into());
+        if req.replication_info.is_some() {
+            create.replication_info = req.replication_info.clone();
+        }
+        let mut resp = CreateTableResponsePB::new();
+        let snapshot = self.catalog.snapshot();
+        if snapshot
+            .table_by_name(SYSTEM_NAMESPACE_ID, req.table_name())
+            .is_some()
+        {
+            return Err(error(
+                Code::OBJECT_ALREADY_PRESENT,
+                StatusCode::AlreadyPresent,
+                format!("Table already exists: {}", req.table_name()),
+            ));
+        }
+        self.create_transaction_status_table(token, deadline, &create, &mut resp)
+            .await
+            .map_err(|mut e| {
+                if e.code() != Code::OBJECT_ALREADY_PRESENT {
+                    e.set_code(Code::INTERNAL_ERROR);
+                }
+                e
+            })
+    }
+
+    /// `GetTableReplicationInfo(replication_info, tablespace_id)` of a new table: its own
+    /// replication info, else its tablespace's placement, else the cluster's.
+    pub(crate) async fn placement_for_new_table(
+        &self,
+        req: &CreateTableRequestPB,
+        config: &yb_proto::pb::catalog_entity_info::SysClusterConfigEntryPB,
+    ) -> Result<yb_proto::pb::common_net::ReplicationInfoPB, yb_host_api::Status> {
+        if let Some(info) = req
+            .replication_info
+            .as_ref()
+            .filter(|i| crate::placement::replication_info_set(i))
+        {
+            return Ok(info.clone());
+        }
+        if !req.tablespace_id().is_empty() {
+            if let Some(info) = self
+                .tablespace_placement_with_retry(req.tablespace_id())
+                .await?
+            {
+                return Ok(info);
+            }
+        }
+        Ok(table_replication_info(None, config))
     }
 
     /// The host's schema steps of `CreateTable`.
@@ -458,6 +570,9 @@ fn new_table_row(
     table.set_version(0);
     table.set_next_column_id(prepared.next_column_id());
     table.mut_no_custom_tablespace();
+    if req.table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE && req.has_tablespace_id() {
+        table.set_transaction_table_tablespace_id(req.tablespace_id().to_vec());
+    }
     table.hosted_stateful_services = req.hosted_stateful_services.clone();
     if req.replication_info.is_some() {
         table.replication_info = req.replication_info.clone();
@@ -474,9 +589,18 @@ pub(crate) const SYSTEM_NAMESPACE_ID: &[u8] = b"00000000000000000000000000000001
 pub(crate) const TRANSACTIONS_TABLE: &str = "transactions";
 
 /// The transaction tables config with its version + 1.
-fn bump_transaction_tables_version(
+pub(crate) fn bump_transaction_tables_version(
     snapshot: &CatalogSnapshot,
     mutation: Mutation,
+) -> Result<Mutation, MasterErrorPB> {
+    bump_transaction_tables_version_by(snapshot, mutation, 1)
+}
+
+/// The transaction tables config with its version + `by`.
+pub(crate) fn bump_transaction_tables_version_by(
+    snapshot: &CatalogSnapshot,
+    mutation: Mutation,
+    by: u64,
 ) -> Result<Mutation, MasterErrorPB> {
     let Some(row) = snapshot.get(SysRowEntryType::SYS_CONFIG, TRANSACTION_TABLES_CONFIG_ID) else {
         return Ok(mutation);
@@ -485,7 +609,7 @@ fn bump_transaction_tables_version(
         .parse()
         .map_err(|e| error(Code::UNKNOWN_ERROR, StatusCode::Corruption, e.to_string()))?;
     let config = pb.mut_transaction_tables_config();
-    config.set_version(config.version() + 1);
+    config.set_version(config.version() + by);
     Ok(mutation.read(row).upsert(
         SysRowEntryType::SYS_CONFIG,
         TRANSACTION_TABLES_CONFIG_ID,

@@ -137,8 +137,11 @@ impl TableLifecycle {
                         ),
                     ));
                 }
+                let status_table = pb.table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE;
                 match pb.table_type() {
-                    TableType::YQL_TABLE_TYPE | TableType::DEFAULT_TABLE_TYPE => {}
+                    TableType::YQL_TABLE_TYPE
+                    | TableType::DEFAULT_TABLE_TYPE
+                    | TableType::TRANSACTION_STATUS_TABLE_TYPE => {}
                     TableType::PGSQL_TABLE_TYPE => return Err(not_yet("YSQL DROP TABLE (W7)")),
                     other => return Err(not_yet(&format!("DROP TABLE of {other:?}"))),
                 }
@@ -179,9 +182,27 @@ impl TableLifecycle {
                     .upsert_message(SysRowEntryType::TABLE, &table.key.id, &pb)
                     .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
                 deleted.push(table.key.id.to_vec());
+                if status_table {
+                    // Tservers stop picking its tablets on the version change.
+                    mutation = crate::create::bump_transaction_tables_version(snapshot, mutation)?;
+                }
                 Ok((mutation, deleted))
             })
             .await?;
+        // `WaitForTransactionTableVersionUpdateToPropagate`: a status table's deletion is answered
+        // once every live tserver has the new version, so no new transaction picks it.
+        let snapshot = self.catalog.snapshot();
+        let dropped_status_table = deleted.iter().any(|id| {
+            snapshot
+                .get(SysRowEntryType::TABLE, id)
+                .and_then(|t| t.table())
+                .is_some_and(|t| t.table_type == TableType::TRANSACTION_STATUS_TABLE_TYPE.value())
+        });
+        if dropped_status_table {
+            self.propagate_transaction_tables_version(token)
+                .await
+                .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+        }
         resp.deleted_table_ids = deleted;
         Ok(())
     }
@@ -314,6 +335,10 @@ impl TableDeleter {
     /// Marks the table's remaining tablets DELETED, a batch per write, queueing their replicas'
     /// deletes after each write; then the table.
     async fn finish(&self, token: &LeaderToken, table_id: &[u8]) -> Result<(), Status> {
+        if let Some(rpc) = &self.rpc {
+            self.prepare_status_tablets_delete(rpc, token, table_id)
+                .await?;
+        }
         loop {
             let (marked, _) = self
                 .lifecycle
@@ -437,6 +462,73 @@ impl Controller for TableDeleter {
 
     fn reconcile<'a>(&'a self, _scope: &'a TermScope) -> BoxFuture<'a, ()> {
         Box::pin(self.pass())
+    }
+}
+
+impl TableDeleter {
+    /// `SendPrepareDeleteTransactionTabletRequest`: a transaction status tablet's leader stops
+    /// taking transactions and answers once those it coordinates have finished, before the
+    /// tablet is deleted.
+    async fn prepare_status_tablets_delete(
+        &self,
+        rpc: &crate::TabletRpc,
+        token: &LeaderToken,
+        table_id: &[u8],
+    ) -> Result<(), Status> {
+        use yb_proto::pb::tserver_admin::{
+            PrepareDeleteTransactionTabletRequestPB, PrepareDeleteTransactionTabletResponsePB,
+        };
+        use yb_proto::pb::tserver_types::tablet_server_error_pb;
+        let snapshot = self.lifecycle.catalog.snapshot();
+        let is_status_table = snapshot
+            .get(SysRowEntryType::TABLE, table_id)
+            .and_then(|t| t.table())
+            .is_some_and(|t| t.table_type == TableType::TRANSACTION_STATUS_TABLE_TYPE.value());
+        if !is_status_table {
+            return Ok(());
+        }
+        let ctx = rpc.context(&self.lifecycle);
+        for tablet in snapshot.active_tablets_of(table_id) {
+            let tablet_id = tablet.key.id.to_vec();
+            tracing::info!(
+                "Preparing tablet {} of transaction status table {} for deletion",
+                String::from_utf8_lossy(&tablet_id),
+                String::from_utf8_lossy(table_id)
+            );
+            crate::backfill::call_tablet_leader(
+                &ctx,
+                token,
+                &tablet_id,
+                "yb.tserver.TabletServerAdminService",
+                "PrepareDeleteTransactionTablet",
+                |leader| {
+                    let mut req = PrepareDeleteTransactionTabletRequestPB::new();
+                    req.set_dest_uuid(leader.to_vec());
+                    req.set_tablet_id(tablet_id.clone());
+                    req.write_to_bytes().map_err(corrupt)
+                },
+                |bytes| {
+                    let resp = PrepareDeleteTransactionTabletResponsePB::parse_from_bytes(bytes)
+                        .map_err(corrupt)?;
+                    Ok(match resp.error.as_ref() {
+                        None => Ok(()),
+                        Some(e)
+                            if matches!(
+                                e.code(),
+                                tablet_server_error_pb::Code::TABLET_NOT_FOUND
+                                    | tablet_server_error_pb::Code::WRONG_SERVER_UUID
+                            ) =>
+                        {
+                            Ok(())
+                        }
+                        Some(e) => Err((crate::backfill::ts_status(&e.status), false)),
+                    })
+                },
+                rpc.retry,
+            )
+            .await?;
+        }
+        Ok(())
     }
 }
 

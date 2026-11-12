@@ -105,21 +105,29 @@ impl TsManager {
                     WriteOptions::with_timeout(deadline.saturating_duration_since(Instant::now())),
                     |snapshot| {
                         let mut mutation = Mutation::new();
-                        let mut status_tablet_running = false;
+                        // One increment per status tablet that becomes RUNNING, as C++ means to
+                        // ("one increment per status tablet here for easier testing"); tests
+                        // count on it.
+                        let mut status_tablets_running = 0u64;
                         for tablet in &catalog_updates {
                             let Some((entity, pb)) = next_tablet_pb(snapshot, uuid, tablet) else {
                                 continue;
                             };
-                            status_tablet_running |=
-                                becomes_running_status_tablet(snapshot, &entity, &pb);
+                            if becomes_running_status_tablet(snapshot, &entity, &pb) {
+                                status_tablets_running += 1;
+                            }
                             mutation = mutation.read(&entity).upsert_message(
                                 SysRowEntryType::TABLET,
                                 tablet.tablet_id(),
                                 &pb,
                             )?;
                         }
-                        if status_tablet_running {
-                            mutation = bump_transaction_tables_version(snapshot, mutation)?;
+                        if status_tablets_running > 0 {
+                            mutation = bump_transaction_tables_version(
+                                snapshot,
+                                mutation,
+                                status_tablets_running,
+                            )?;
                         }
                         Ok((mutation, ()))
                     },
@@ -589,6 +597,7 @@ fn becomes_running_status_tablet(
 fn bump_transaction_tables_version(
     snapshot: &CatalogSnapshot,
     mutation: Mutation,
+    by: u64,
 ) -> Result<Mutation, Status> {
     let Some(row) = snapshot.get(SysRowEntryType::SYS_CONFIG, TRANSACTION_TABLES_CONFIG_ID) else {
         return Ok(mutation);
@@ -597,7 +606,7 @@ fn bump_transaction_tables_version(
         .parse()
         .map_err(|e| Status::new(StatusCode::Corruption, e.to_string()))?;
     let config = pb.mut_transaction_tables_config();
-    config.set_version(config.version() + 1);
+    config.set_version(config.version() + by);
     mutation.read(row).upsert_message(
         SysRowEntryType::SYS_CONFIG,
         TRANSACTION_TABLES_CONFIG_ID,

@@ -42,6 +42,7 @@
 #include "yb/master/catalog_loaders.h"
 #include "yb/master/master-path-handlers.h"
 #include "yb/master/master_admin.pb.h"
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_auto_flags_manager.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/master_client.pb.h"
@@ -63,6 +64,7 @@
 #include "yb/master/system_tables.h"
 #include "yb/master/system_tablet.h"
 #include "yb/master/table_ddl_util.h"
+#include "yb/master/ysql_ddl_verification_task.h"
 #include "yb/master/encryption_manager.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_rust_peer.pb.h"
@@ -444,6 +446,8 @@ class MasterHost::SysCatalogContextImpl : public master::SysCatalogContext {
   scoped_refptr<master::TableInfo> GetTableInfo(const TableId& table_id) override {
     return nullptr;
   }
+  // The Rust leader drops relations it has no table for.
+  bool HasTable(const TableId&) override { return true; }
   // YsqlManager maps to the prior version's table only during a YSQL major upgrade, which a Rust
   // master does not run.
   Result<TableId> GetVersionSpecificCatalogTableId(const TableId& table_id) const override {
@@ -1646,6 +1650,119 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
             // CatalogManager resets it when the catalog versions task stops on a lost leadership.
             ResetPgCatalogVersionCache();
           }
+          return Status::OK();
+        });
+  }
+  if (name == "ReadYsqlTablespaces") {
+    // CatalogManager::GetYsqlTablespaceInfo and GetYsqlTableToTablespaceMap, the reads only.
+    return HandleRequest<master::ReadYsqlTablespacesRequestPB,
+                         master::ReadYsqlTablespacesResponsePB>(
+        request, [this](const auto& req, auto* resp) -> Status {
+          auto peer = sys_catalog_->tablet_peer();
+          SCHECK(peer, IllegalState, "The sys catalog tablet is not open");
+          auto metadata = peer->tablet_metadata();
+          SCHECK(
+              metadata->GetTableInfo(kPgTablespaceTableId).ok(), InternalError,
+              "pg_tablespace table info not found");
+          auto tablespaces = VERIFY_RESULT(sys_catalog_->ReadPgTablespaceInfo());
+          for (const auto& [id, replication_info] : *tablespaces) {
+            auto* tablespace = resp->add_tablespaces();
+            tablespace->set_id(id);
+            if (replication_info) {
+              *tablespace->mutable_replication_info() = *replication_info;
+            }
+          }
+          master::TableToTablespaceIdMap tables;
+          for (const auto& database : req.databases()) {
+            // A database's failure skips it, as C++ does: its tables keep their persisted ones.
+            WARN_NOT_OK(
+                sys_catalog_->ReadPgClassInfo(database.oid(), database.colocated(), &tables),
+                Format("Refreshing table->tablespace info failed for database $0", database.oid()));
+            if (metadata->GetTableInfo(GetPgsqlTableId(database.oid(), kPgYbTablegroupTableOid))
+                    .ok()) {
+              WARN_NOT_OK(
+                  sys_catalog_->ReadTablespaceInfoFromPgYbTablegroup(
+                      database.oid(), database.colocated(), &tables),
+                  Format(
+                      "Refreshing tablegroup->tablespace info failed for database $0",
+                      database.oid()));
+            }
+          }
+          for (const auto& [table_id, tablespace_id] : tables) {
+            auto* table = resp->add_tables();
+            table->set_table_id(table_id);
+            if (tablespace_id) {
+              table->set_tablespace_id(*tablespace_id);
+            }
+          }
+          return Status::OK();
+        });
+  }
+  if (name == "GetPgSchemaNames") {
+    return HandleRequest<master::GetPgSchemaNamesRequestPB, master::GetPgSchemaNamesResponsePB>(
+        request, [this](const auto& req, auto* resp) -> Status {
+          // Per database: relnamespace by relation oid, and nspname by namespace oid.
+          std::unordered_map<
+              PgOid, std::optional<std::pair<master::PgOidToOidMap, master::PgOidToStringMap>>>
+              databases;
+          for (const auto& table : req.tables()) {
+            auto& maps = databases[table.database_oid()];
+            if (!maps) {
+              auto relnamespaces = sys_catalog_->ReadPgClassColumnWithOidValueMap(
+                  table.database_oid(), master::kPgClassRelNamespaceColumnName);
+              auto names = sys_catalog_->ReadPgNamespaceNspnameMap(table.database_oid());
+              if (relnamespaces.ok() && names.ok()) {
+                maps.emplace(std::move(*relnamespaces), std::move(*names));
+              } else {
+                maps.emplace();
+              }
+            }
+            std::string name;
+            if (auto* nsp = FindOrNull(maps->first, table.pg_table_oid())) {
+              if (auto* found = FindOrNull(maps->second, *nsp)) {
+                name = *found;
+              }
+            }
+            resp->add_names(std::move(name));
+          }
+          return Status::OK();
+        });
+  }
+  if (name == "CheckYsqlDdlSchema") {
+    return HandleRequest<master::CheckYsqlDdlSchemaRequestPB, master::CheckYsqlDdlSchemaResponsePB>(
+        request, [this](const auto& req, auto* resp) -> Status {
+          auto table = make_scoped_refptr<master::TableInfo>(
+              req.table_id(), req.table().colocated());
+          table->mutable_metadata()->StartMutation();
+          table->mutable_metadata()->mutable_dirty()->pb = req.table();
+          table->mutable_metadata()->CommitMutation();
+          if (req.is_system()) {
+            table->set_is_system();
+          }
+          auto committed = VERIFY_RESULT(master::CheckYsqlDdlTableSchema(*sys_catalog_, table));
+          if (committed) {
+            resp->set_committed(*committed);
+          }
+          return Status::OK();
+        });
+  }
+  if (name == "YsqlDatabaseExists") {
+    // NamespaceVerificationTask::CheckNsExists.
+    return HandleRequest<master::YsqlDatabaseExistsRequestPB,
+                         master::YsqlDatabaseExistsResponsePB>(
+        request, [this](const auto& req, auto* resp) -> Status {
+          const auto oid = VERIFY_RESULT(GetPgsqlDatabaseOid(req.namespace_id()));
+          resp->set_exists(VERIFY_RESULT(master::YsqlCatalogEntryExists(
+              *sys_catalog_, GetPgsqlTableId(kTemplate1Oid, kPgDatabaseTableOid), oid)));
+          return Status::OK();
+        });
+  }
+  if (name == "CheckIfPitrActive") {
+    // CatalogManager::CheckIfPitrActive: a snapshot schedule that is not deleted, as the
+    // coordinator applied them.
+    return HandleRequest<master::CheckIfPitrActiveRequestPB, master::CheckIfPitrActiveResponsePB>(
+        request, [this](const auto&, auto* resp) {
+          resp->set_is_pitr_active(snapshot_coordinator_->IsPitrActive());
           return Status::OK();
         });
   }

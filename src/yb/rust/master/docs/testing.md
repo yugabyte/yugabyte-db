@@ -76,6 +76,21 @@ gets `system.transactions` created first.
 
 Java tests read the same variable: `MiniYBCluster` starts those masters as `yb-master-rs`.
 
+### Tests that wait on W14
+
+These read the C++ master's objects, so they run on Rust masters only after W14 ports them to
+RPCs. The second column covers the same area on Rust masters until then.
+
+| Tests | Covered on Rust masters by |
+|---|---|
+| `CqlTest.TestTruncateTableWithIndexes` | `CqlTest.TestTruncateTable` |
+| `AutoFlagsMiniClusterTest.*` (they crash on the null `master()`) | `AutoFlagsExternalMiniClusterTest.*` |
+| `PgDdlSavepointMiniClusterTest.*` (reads the C++ DDL verifier state) | `a_rollback_to_a_savepoint_undoes_only_later_ddl` (`master-table-lifecycle`), `PgDdlTransactionTest.*` |
+| MiniCluster YSQL tests whose helpers call `catalog_manager()` or `master()` (`PgMiniTestBase::RestartMaster`) | `pg_libpq-test`, `pg_catalog_version-test` |
+
+`WaitForInitDb` asks `IsInitDbDone` over RPC on Rust masters, so `PgMiniTestBase` suites that use
+no other C++ accessor (`pg_advisory_lock-test`, `pg_auto_analyze-test`) run on Rust masters.
+
 ## Tserver simulator and the C++ baseline
 
 `master-tserver-sim` runs many fake tservers in one process, each on its own loopback address

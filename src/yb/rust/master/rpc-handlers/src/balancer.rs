@@ -48,7 +48,6 @@ impl LeaderServices {
     }
 
     fn leaders_on_preferred_only(&self, snapshot: &CatalogSnapshot) -> Result<(), Status> {
-        use master_table_lifecycle::table_replication_info;
         use protobuf::Enum;
         use yb_proto::pb::catalog_entity_info::{sys_tables_entry_pb, SysTablesEntryPB};
         use yb_proto::pb::common_types::TableType;
@@ -85,7 +84,11 @@ impl LeaderServices {
             let Ok(pb) = table.parse::<SysTablesEntryPB>() else {
                 continue;
             };
-            let info = table_replication_info(pb.replication_info.as_ref(), &config);
+            let info = self.tables.tablespaces().table_replication_info_or_cluster(
+                &table.key.id,
+                &pb,
+                &config,
+            );
             let accepting: Vec<&[u8]> = tservers
                 .iter()
                 .filter(|d| master_ts_manager::placement::is_accepting_leader_load(d, &info))

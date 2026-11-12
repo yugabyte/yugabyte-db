@@ -1288,6 +1288,10 @@ Status SysCatalogTable::ReadTablespaceInfoFromPgYbTablegroup(
   return Status::OK();
 }
 
+bool SysCatalogContext::HasTable(const TableId& table_id) {
+  return GetTableInfo(table_id) != nullptr;
+}
+
 Status SysCatalogTable::ReadPgClassInfo(
     const uint32_t database_oid,
     const bool is_colocated_database,
@@ -1404,9 +1408,7 @@ Status SysCatalogTable::ReadPgClassInfo(
       table_id = GetPgsqlTableId(database_oid, relfilenode_oid);
     }
 
-    auto table_info = context_->GetTableInfo(table_id);
-
-    if (!table_info) {
+    if (!context_->HasTable(table_id)) {
       // Some relations (eg: primary key indexes) may exist in pg_class but not in
       // YugaByte's catalog manager. So, we skip them here.
       continue;

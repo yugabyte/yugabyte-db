@@ -20,11 +20,10 @@ YCQL keyspaces and tables that are not indexes:
 | `FlushTables`, `IsFlushTablesDone` | `flush.rs`, as C++'s `FlushManager`: one `FlushTablets` per tserver with a replica of the tables' (and with `add_indexes`, their indexes') tablets; a compaction records `last_full_compaction_request_time`. Not persisted, so a new leader answers NotFound for an old leader's request, as C++ does. |
 | `TruncateTable`, `IsTruncateTableDone` | `truncate.rs`. As C++: `Truncate` to each tablet's leader, and a YCQL table's indexes too (PG truncates each YSQL index itself). Not persisted, so a new leader reports an unfinished truncate as done, as C++ does. A table in a CDCSDK stream is refused until W11. |
 
-YSQL databases that are not colocated, and YSQL tables and indexes that are not colocated and in
-the default tablespace (below), in a tablegroup or not. `AlterNamespace` renames a running
-namespace. Tables of a legacy colocated database (colocated "via database", before tablegroups),
-vector indexes and tablespaces answer `NotSupported`. Roles, permissions and
-UDTs are `master-ycql`'s.
+YSQL databases, tables and indexes (below), in a tablegroup or not, in any tablespace.
+`AlterNamespace` renames a running namespace. Tables of a legacy colocated database (colocated
+"via database", before tablegroups) and vector indexes answer `NotSupported`. Roles, permissions
+and UDTs are `master-ycql`'s.
 
 ## YSQL tables and DDL verification (`ysql.rs`)
 
@@ -44,7 +43,8 @@ A YSQL `CreateTable` names its table id (from the database and relation OIDs); i
 not by name, since names are pg_class's. The host builds the row (`PrepareTableSchema` with the
 namespace, `FillNewTableEntry`), so the YSQL-only fields (vector reverse mapping, matview,
 `pg_table_id`, shared tables) stay C++'s. A replication info is refused: YSQL places tables by
-tablespace.
+tablespace. `ListTables` and `GetTableSchema` give YSQL relations their PG schema name, read from
+`pg_class` and `pg_namespace` through the host (`GetPgSchemaNames`).
 
 A table a DDL transaction creates or drops carries the transaction and a
 `ysql_ddl_txn_verifier_state` (`contains_create_table_op`, `contains_drop_table_op`, the
@@ -56,8 +56,40 @@ An ALTER of a YSQL table in a DDL transaction records the table as it was (`prev
 `previous_table_name`) with `contains_alter_table_op`. An abort restores that as an alter of its
 own; a commit drops the columns the transaction marked for deletion, also as an alter. Either way
 `IsYsqlDdlVerificationDone` waits until the tablets have the alter, as C++ waits for the schema
-version. Not done yet: rollback to a savepoint, and verifying a transaction whose outcome is never
-reported (C++ polls the transaction status and compares the PG catalog).
+version.
+
+`ROLLBACK TO SAVEPOINT` after DDL (`RollbackDocdbSchemaToSubtxn`) undoes, on each table carrying
+the transaction, its states from the first one at or after the sub-transaction: a table created
+there is dropped (an index whose table is dropped with it is left to that drop), one altered there
+gets that state's `previous_schema` and name back as an alter of its own, and a drop there is
+forgotten. Those states are removed, and the transaction too when none is left.
+`IsRollbackDocdbSchemaToSubtxnDone` waits until the altered tables' tablets have the alter. The
+rollback's progress is kept in memory, as C++ keeps it, so a new leader answers done.
+
+A transaction PG never reports (a backend that crashed, a lost connection) is settled by the
+`ysql-ddl-verifier` controller (`verifier.rs`, C++'s `TableSchemaVerificationTask` and
+`NamespaceVerificationTask`). For each DDL transaction the rows carry, it polls the status
+tablet (`GetTransactionStatus`; COMMITTED is pending until applied) every
+`ysql_transaction_bg_task_wait_ms`, and once the transaction is done asks the host whether the PG
+catalog has its change (`CheckYsqlDdlSchema`, C++'s `PgSchemaChecker` over the row the leader
+sends). The first table that tells decides; a transaction that changed no DocDB schema is applied
+as committed. The outcome goes through the same path as `ReportYsqlDdlTxnStatus`, so whichever
+comes first wins. A database created in a transaction keeps the transaction until the verifier
+finds the database in `pg_database` (it is then cleared) or not (the database becomes DELETING).
+The work is derived from the rows, so a new leader verifies what the old one left.
+`TEST_disable_ysql_ddl_txn_verification`, `TEST_ysql_ddl_transaction_verification_failure_probability`
+and `TEST_pause_ddl_rollback` act as in C++.
+
+Not done yet, as `pg_ddl_atomicity-test` shows (22 of its 27 ExternalMiniCluster tests pass): a
+DDL on a table whose previous DDL transaction is still being verified is refused where C++ waits
+for or refuses it differently (`ConcurrentDdl`, `TestParallelDdl`, `CreateFailureRollback`), and
+a verification that a master restart interrupts does not finish in time
+(`TestCreateDbAndRestartGC`, `DdlRollbackMasterRestart`).
+
+`GetTableDiskSize` sums the leaders' WAL and SST sizes from the tservers' metrics heartbeats (a
+colocated table has none of its own). `GetTablegroupSchema` and `GetColocatedTabletSchema` return
+`GetTableSchema` of each table in the group or colocated database. `GetIndexBackfillProgress`
+reads the indexed table's running backfill job, else the index's `IndexInfoPB`.
 
 Lookups follow `FindNamespace` and `FindTable`: by id, else by name (and database type, from
 `GetDatabaseType`). A name is unique per database type; uniqueness is checked and written under a
@@ -199,6 +231,49 @@ A database with a shared table goes to FAILED, as C++'s check fails it. Not done
 database's CDCSDK streams (a database with one is refused until W11), erasing its xCluster
 persistence block, and removing the DELETED row on the next leader load (C++ keeps it as a
 tombstone until then).
+
+## Tablespaces (`tablespaces.rs`)
+
+PG owns tablespaces: a tablespace's placement is in `pg_tablespace`, and a relation's tablespace is
+`pg_class.reltablespace` (`pg_yb_tablegroup.grptablespace` for a tablegroup). The
+`ysql-tablespaces` controller reads them through the host (`ReadYsqlTablespaces`) every
+`ysql_tablespace_info_refresh_secs`. It reads `pg_class` only when there are tablespaces besides
+`pg_default` and `pg_global`. The result goes into the shared `Tablespaces` object, as in C++'s
+`DoRefreshTablespaceInfo`:
+
+- Each placement gets the cluster's live placement uuid, and the read replica uuid when the
+  cluster has a single read replica cluster. A placement that does not fit the cluster
+  (`ValidateTableReplicationInfo`) counts as no placement.
+- Each table's tablespace is written into its row (`tablespace_id`, or `no_custom_tablespace`),
+  at most 128 rows per refresh. A table missing from `pg_class` (dropped, truncated or rewritten)
+  is placed by the value in its row.
+- A tablespace that holds tables gets a transaction status table, `transactions_<uuid>`, with
+  `auto_create_local_transaction_tables`. A transaction status table whose tablespace is gone
+  loses it and is deleted. The transaction tables version goes up by one per such table.
+
+Dropping a transaction status table (`DeleteTable`) bumps the transaction tables version in the
+same write and answers once every live tserver has the new version (`UpdateTransactionTablesVersion`,
+as `WaitForTransactionTableVersionUpdateToPropagate` does), so no new transaction picks it. The
+table deleter first asks each status tablet's leader to stop taking transactions and wait for its
+running ones (`PrepareDeleteTransactionTablet`), then deletes the tablets.
+
+A table's placement is its own replication info, else its tablespace's placement, else the
+cluster's. A new YSQL table re-reads `pg_tablespace` if its tablespace is newer than the last
+refresh (`GetTablespaceReplicationInfoWithRetry`). Tablet assignment and the balancer read the same
+`Tablespaces` object. The balancer skips a table whose tablespace the last refresh did not see
+(`NeedsRefreshToFindTablePlacement`). Tablet splitting still sizes a tablespace table's split
+phases by the cluster's placement.
+
+`ValidateReplicationInfo`, which PG calls for `CREATE TABLESPACE` and `ALTER ... SET TABLESPACE`,
+checks the per-block maximums, enough live tservers for a quorum, and leader preferences inside
+the placement. `CreateTransactionStatusTable` creates a named status table.
+`GetTransactionStatusTablets` with a placement also returns the status tablets whose placement
+contains it: grouped by tablespace with `enable_tablespace_based_transaction_placement`, and as
+region-local ones when that placement stays in one region. `AddTransactionStatusTablet` is not
+served.
+
+The host's `ReadPgClassInfo` keeps every relation (`SysCatalogContext::HasTable`), because the host
+has no table catalog; the controller drops relations with no table row.
 
 ## YSQL indexes and backfill (`ysql.rs`, `backfill.rs`)
 

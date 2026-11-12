@@ -81,7 +81,7 @@ pub struct TabletRpc {
 }
 
 impl TabletRpc {
-    fn context(&self, lifecycle: &Arc<TableLifecycle>) -> BackfillContext {
+    pub(crate) fn context(&self, lifecycle: &Arc<TableLifecycle>) -> BackfillContext {
         BackfillContext {
             lifecycle: lifecycle.clone(),
             rpc: self.rpc.clone(),

@@ -75,6 +75,15 @@ struct BackgroundDdlCallbacks {
 };
 
 // Helper class that encapsulates the logic to poll the transaction status.
+// The checks the verification tasks make, for a master without CatalogManager (the Rust master's
+// host): whether the PG catalog has a DDL transaction's change to `table` (true), has it undone
+// (false), or cannot tell (nullopt, the change did not alter the DocDB schema).
+Result<std::optional<bool>> CheckYsqlDdlTableSchema(
+    SysCatalogTable& sys_catalog, const scoped_refptr<TableInfo>& table);
+// Whether the PG catalog table `pg_table_id` has a row with oid `entry_oid`.
+Result<bool> YsqlCatalogEntryExists(
+    SysCatalogTable& sys_catalog, const TableId& pg_table_id, PgOid entry_oid);
+
 class PollTransactionStatusBase {
  public:
   PollTransactionStatusBase(
