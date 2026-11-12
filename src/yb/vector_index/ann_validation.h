@@ -52,13 +52,12 @@ class GroundTruth {
       const std::vector<Vector>& queries,
       const PrecomputedGroundTruthMatrix& precomputed_ground_truth,
       bool validate_precomputed_ground_truth,
-      const IndexReader& index_reader,
       const std::vector<VectorId>& vertex_ids);
 
-  // Brute-force searches the top max_k results of the queries without precomputed ground truth, or
-  // of all queries if the precomputed ground truth has to be validated. Recall is then scored
-  // against these results, because the validation does not check the order of the precomputed
-  // ones. Must be called once before EvaluateRecall.
+  // Brute-force searches the top max_k results of the queries without precomputed ground truth, and
+  // of the precomputed ones that ShouldValidate selects. Recall is then scored against these
+  // results, because the validation does not check the order of the precomputed ones. Must be
+  // called once before EvaluateRecall.
   Status Prepare(size_t num_threads);
 
   // The correct top max_k results of every query, available after Prepare.
@@ -69,19 +68,26 @@ class GroundTruth {
   // Returns a vector with i-recall@k stored at each element with index i - 1.
   // i@k recall means we execute ANN search to get top k results and check what percentage of the
   // true i results were included in that list, averaged over all queries.
-  // k must not exceed max_k, and ef is passed to the index searches.
+  // k must not exceed max_k, and ef is passed to the searches of index_reader.
   //
   // The result is always a FloatVector -- it is a vector of recall values.
-  Result<FloatVector> EvaluateRecall(size_t num_threads, size_t k, size_t ef);
+  Result<FloatVector> EvaluateRecall(
+      const IndexReader& index_reader, size_t num_threads, size_t k, size_t ef);
 
  private:
   // Copies or computes the correct results of a single query, and validates the precomputed ones
   // if needed.
   Status PrepareQuery(size_t query_index);
 
+  // Whether to validate the precomputed results of a query: all of them with
+  // validate_precomputed_ground_truth, otherwise about ten of a precomputed ground truth that
+  // covers only the first queries, since the computed ones are merged with it and must match it.
+  bool ShouldValidate(size_t query_index) const;
+
   // Searches the index and increments stats of correct result vs. returned result overlap for
   // various sizes of the result set. Invoked from multiple threads once for each query.
   Status DoApproxSearchAndUpdateStats(
+      const IndexReader& index_reader,
       const Vector& query,
       size_t k,
       size_t ef,
@@ -98,7 +104,6 @@ class GroundTruth {
   const std::vector<Vector>& queries_;
   const PrecomputedGroundTruthMatrix& precomputed_ground_truth_;
   bool validate_precomputed_ground_truth_;
-  const IndexReader& index_reader_;
   const std::vector<VectorId>& vertex_ids_;
   // Precomputed and brute-force results of all queries, empty if Prepare did not compute any.
   PrecomputedGroundTruthMatrix computed_ground_truth_;
