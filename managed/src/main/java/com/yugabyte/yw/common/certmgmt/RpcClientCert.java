@@ -56,7 +56,7 @@ public class RpcClientCert {
 
   // Under cert-manager's default renewBefore of 15 days, so the issuer has renewed by then.
   @VisibleForTesting static final Duration REFETCH_BEFORE_EXPIRY = Duration.ofDays(10);
-  // While the current cert is still valid, how often to ask the issuer for a renewed one.
+  // While the current cert is still valid, how often we ask the issuer for a renewed one.
   @VisibleForTesting static final Duration REFETCH_INTERVAL = Duration.ofMinutes(5);
   // Builds whose bundled YBC presents client certs and accepts require_client_certificates,
   // which YBA sets on these universes. Set two builds past the latest at the YBC 2.2.0.4-b13
