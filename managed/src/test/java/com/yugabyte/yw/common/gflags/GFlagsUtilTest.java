@@ -1374,8 +1374,9 @@ public class GFlagsUtilTest extends FakeDBApplication {
   public void testCheckLdapBindPasswdQuoting() {
     String record =
         "\"host all all 0.0.0.0/0 ldap ldapserver=x ldapbindpasswd=%s\",local all all trust";
-    // HBA reads these as se,cret, pa,ss, pass and secret. The last two are passwords with a space
-    // or a comma typed without quotes, which HBA ends at the space or comma.
+    // HBA reads these as se,cret, pa,ss, pass and secret. The rest are passwords with a space or a
+    // comma typed without quotes, which HBA ends at the space or comma. key and ss aren't HBA
+    // options.
     for (String password :
         List.of(
             "se\"\",cret\"\"",
@@ -1383,7 +1384,11 @@ public class GFlagsUtilTest extends FakeDBApplication {
             "\"\"pa\"\"ss",
             "se\"\"cret",
             "Two Word Secret",
-            "pa,ss")) {
+            "pa,ss",
+            "secret key=abc",
+            "pa,ss=x",
+            "pa, ss=x",
+            " secret")) {
       UserIntent userIntent = hbaUserIntent(String.format(record, password));
       PlatformServiceException exception =
           assertThrows(
@@ -1414,6 +1419,7 @@ public class GFlagsUtilTest extends FakeDBApplication {
         List.of(
             String.format(record, "secret"),
             String.format(record, "secret ldaptls=0"),
+            String.format(record, "secret,ldaptls=0"),
             String.format(record, "\"\"pa,ss\"\""),
             String.format(record, "\"\"pa\"\"\"\"ss\"\""),
             String.format(record, "\"\"\"\""),

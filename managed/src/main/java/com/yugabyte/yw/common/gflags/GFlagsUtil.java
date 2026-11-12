@@ -1519,9 +1519,9 @@ public class GFlagsUtil {
   /**
    * Refuses an ldapbindpasswd whose end redaction can't be sure of, such as pa",ss" (quoted only in
    * part, for pa,ss) or Two Word Secret (unquoted, which Postgres ends at the space). Redaction
-   * hides the rest of its CSV field, so API responses would lose the HBA options after it. HBA
-   * values the universe already stores pass, so one saved before this check doesn't block other
-   * edits.
+   * hides everything after it up to the next record, so API responses would lose the HBA options
+   * after it. HBA values the universe already stores pass, so one saved before this check doesn't
+   * block other edits.
    */
   public static void checkLdapBindPasswdQuoting(
       UniverseDefinitionTaskParams.UserIntent userIntent, @Nullable Universe universe) {
@@ -1544,11 +1544,7 @@ public class GFlagsUtil {
       @Nullable Map<String, String> tserverGFlags,
       Universe universe) {
     Set<String> hbaConfs = new HashSet<>();
-    for (Map<String, String> gflags : Arrays.asList(masterGFlags, tserverGFlags)) {
-      if (gflags != null && gflags.get(YSQL_HBA_CONF_CSV) != null) {
-        hbaConfs.add(gflags.get(YSQL_HBA_CONF_CSV));
-      }
-    }
+    addYsqlHbaConfCsvs(hbaConfs, Arrays.asList(masterGFlags, tserverGFlags));
     checkLdapBindPasswdQuoting(hbaConfs, universe);
   }
 
@@ -1583,13 +1579,18 @@ public class GFlagsUtil {
     gflagMaps.add(userIntent.masterGFlags);
     gflagMaps.add(userIntent.tserverGFlags);
     Set<String> result = new HashSet<>();
+    addYsqlHbaConfCsvs(result, gflagMaps);
+    addYsqlHbaConfCsvsOfOverrides(result, userIntent.universeOverrides, userIntent.azOverrides);
+    return result;
+  }
+
+  private static void addYsqlHbaConfCsvs(
+      Set<String> result, Collection<Map<String, String>> gflagMaps) {
     for (Map<String, String> gflags : gflagMaps) {
       if (gflags != null && gflags.get(YSQL_HBA_CONF_CSV) != null) {
         result.add(gflags.get(YSQL_HBA_CONF_CSV));
       }
     }
-    addYsqlHbaConfCsvsOfOverrides(result, userIntent.universeOverrides, userIntent.azOverrides);
-    return result;
   }
 
   private static void addYsqlHbaConfCsvsOfOverrides(

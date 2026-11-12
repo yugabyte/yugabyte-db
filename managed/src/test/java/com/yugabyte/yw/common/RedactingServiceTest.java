@@ -128,7 +128,7 @@ public class RedactingServiceTest {
         "ysql_hba_conf_csv",
         "host all all 0.0.0.0/0 ldap ldapbindpasswd=pa,ss ldaptls=0,local all all trust");
     assertEquals(
-        "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + SECRET_REPLACEMENT,
+        "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + SECRET_REPLACEMENT + ",local all all trust",
         RedactingService.filterSecretFields(root, RedactionTarget.APIS, null, null, true)
             .get("ysql_hba_conf_csv")
             .asText());
@@ -503,13 +503,17 @@ public class RedactingServiceTest {
         RedactingService.redactSensitiveInfoInString(hba));
   }
 
-  /** Text after a comma in an unquoted password may be password, so a later record is hidden. */
+  /**
+   * Text after a comma in an unquoted password may be password, so it's hidden to the next record.
+   */
   @Test
-  public void testLdapBindPasswdUnquotedCommaRedactsRestOfField() {
+  public void testLdapBindPasswdUnquotedCommaRedactsToNextRecord() {
     String hba =
         "host all all 0.0.0.0/0 ldap ldapbindpasswd=a,b,hostssl all all 127.0.0.1/32 trust";
     assertEquals(
-        "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + SECRET_REPLACEMENT,
+        "host all all 0.0.0.0/0 ldap ldapbindpasswd="
+            + SECRET_REPLACEMENT
+            + ",hostssl all all 127.0.0.1/32 trust",
         RedactingService.redactSensitiveInfoInString(hba));
   }
 

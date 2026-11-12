@@ -35,7 +35,7 @@ public class LdapBindPasswdHbaFormatTest {
 
   @Test
   public void redactAllValuesPreservesDoubledCsvQuoting() {
-    String in = "host ldap ldapbindpasswd=\"\"p\"\"a\"\"ss\"\" ldapsearch=x";
+    String in = "host ldap ldapbindpasswd=\"\"p\"\"a\"\"ss\"\" ldapsearchattribute=x";
     String out = LdapBindPasswdHbaFormat.redactAllValues(in, SECRET_REPLACEMENT);
     assertFalse(out.contains("p\"a\"ss"));
     assertTrue(out.contains("ldapbindpasswd=\"\"" + SECRET_REPLACEMENT + "\"\""));
@@ -280,8 +280,17 @@ public class LdapBindPasswdHbaFormatTest {
 
   @Test
   public void redactAllValuesRedactsUnquotedPasswordWithSpaceOrCommaToFieldEnd() {
-    // key=abc looks like an option but is still password.
-    for (String password : List.of("Two Word Secret", "pa,ss", "a b,c", "my secret key=abc")) {
+    // key=abc and ss=x look like options, but HBA has no such options. " secret" follows an empty
+    // value.
+    for (String password :
+        List.of(
+            "Two Word Secret",
+            "pa,ss",
+            "a b,c",
+            "my secret key=abc",
+            "secret key=abc",
+            "pa,ss=x",
+            " secret")) {
       String hba =
           "\"host all all 0.0.0.0/0 ldap ldapbindpasswd="
               + password
@@ -307,10 +316,79 @@ public class LdapBindPasswdHbaFormatTest {
   }
 
   @Test
+  public void redactAllValuesRedactsUnquotedPasswordToNextRecord() {
+    for (String next : List.of(",local all all trust", ", hostssl all all ::1/128 trust")) {
+      for (String password : List.of("Two Word Secret", "a,b", "secret key=abc")) {
+        String hba = "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + password + " ldaptls=0" + next;
+        String expected = "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + SECRET_REPLACEMENT + next;
+        assertEquals(
+            password, expected, LdapBindPasswdHbaFormat.redactAllValues(hba, SECRET_REPLACEMENT));
+        String in = Json.newObject().put("ysql_hba_conf_csv", hba).toString();
+        String out = LdapBindPasswdHbaFormat.redactAllValues(in, SECRET_REPLACEMENT);
+        assertEquals(password, expected, Json.parse(out).get("ysql_hba_conf_csv").asText());
+      }
+    }
+    // A quoted next record keeps its own password redacted.
+    String hba =
+        "host all all 0.0.0.0/0 ldap ldapbindpasswd=Two Word,\"host all all ::1/128 ldap"
+            + " ldapbindpasswd=\"\"later\"\"\"";
+    assertEquals(
+        "host all all 0.0.0.0/0 ldap ldapbindpasswd="
+            + SECRET_REPLACEMENT
+            + ",\"host all all ::1/128 ldap ldapbindpasswd=\"\""
+            + SECRET_REPLACEMENT
+            + "\"\"\"",
+        LdapBindPasswdHbaFormat.redactAllValues(hba, SECRET_REPLACEMENT));
+  }
+
+  @Test
+  public void redactAllValuesKeepsLoggedMapEntryAfterUnquotedPassword() {
+    String hba = "host all all 0.0.0.0/0 ldap ldapbindpasswd=secret";
+    assertEquals(
+        "{ysql_hba_conf_csv=host all all 0.0.0.0/0 ldap ldapbindpasswd="
+            + SECRET_REPLACEMENT
+            + ", max_log_size=256}",
+        LdapBindPasswdHbaFormat.redactAllValues(
+            "{ysql_hba_conf_csv=" + hba + ", max_log_size=256}", SECRET_REPLACEMENT));
+    assertTrue(LdapBindPasswdHbaFormat.hasValueWithUnknownEnd(hba + ", max_log_size=256"));
+  }
+
+  @Test
+  public void redactAllValuesRedactsUnclosedQuotedPasswordToLineEnd() {
+    String in =
+        "--ysql_hba_conf_csv=host all all 0.0.0.0/0 ldap ldapbindpasswd=\"secret"
+            + "\n--placement_cloud=aws\n";
+    assertEquals(
+        "--ysql_hba_conf_csv=host all all 0.0.0.0/0 ldap ldapbindpasswd="
+            + SECRET_REPLACEMENT
+            + "\n--placement_cloud=aws\n",
+        LdapBindPasswdHbaFormat.redactAllValues(in, SECRET_REPLACEMENT));
+    assertTrue(
+        LdapBindPasswdHbaFormat.hasValueWithUnknownEnd(
+            "host all all 0.0.0.0/0 ldap ldapbindpasswd=\"secret"));
+  }
+
+  @Test
+  public void redactAllValuesRedactsTrailingBackslashAfterRecordTypeInOptionValue() {
+    // local in the filter isn't the record start, so the record's quote decides that the
+    // backslash is password.
+    String hba =
+        "\"host all all 0.0.0.0/0 ldap ldapsearchfilter=\"\"(cn=local x)\"\""
+            + " ldapbindpasswd=abc\\\",local all all trust";
+    assertEquals(
+        "\"host all all 0.0.0.0/0 ldap ldapsearchfilter=\"\"(cn=local x)\"\" ldapbindpasswd="
+            + SECRET_REPLACEMENT
+            + "\",local all all trust",
+        LdapBindPasswdHbaFormat.redactAllValues(hba, SECRET_REPLACEMENT));
+  }
+
+  @Test
   public void redactAllValuesEndsUnquotedPasswordBeforeOptionRecordOrComment() {
     for (String hba :
         List.of(
             "host all all 0.0.0.0/0 ldap ldapbindpasswd=secret ldaptls=0",
+            "host all all 0.0.0.0/0 ldap ldapbindpasswd=secret,ldaptls=0",
+            "host all all 0.0.0.0/0 ldap ldapbindpasswd=secret jwt_audiences=a",
             "host all all 0.0.0.0/0 ldap ldapbindpasswd=secret,local all all trust",
             "host all all 0.0.0.0/0 ldap ldapbindpasswd=secret ,local all all trust",
             "host all all 0.0.0.0/0 ldap ldapbindpasswd=secret,\"local all all trust\"",

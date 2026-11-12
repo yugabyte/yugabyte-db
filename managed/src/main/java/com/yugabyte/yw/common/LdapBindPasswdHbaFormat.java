@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common;
 
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -15,10 +16,11 @@ import java.util.regex.Pattern;
  * value is kept as is, so redacted JSON still parses.
  *
  * <p>Some values have no end this parser can be sure of: one quoted only in part, such as {@code
- * "pa"ss}; an unquoted one followed by more text that isn't an option, such as {@code Two Word
- * Secret}; or one quoted in a way this parser doesn't read, such as an HBA line's {@code
- * \"secret\"} inside a JSON string. Such a value is redacted to the end of the CSV field or JSON
- * string that holds it.
+ * "pa"ss}; an unquoted one followed by more text that isn't an HBA option, such as {@code Two Word
+ * Secret} or {@code secret key=abc}; or one quoted in a way this parser doesn't read, such as an
+ * HBA line's {@code \"secret\"} inside a JSON string. Such a value is redacted up to the next HBA
+ * record, or else to the end of the line or of the quoted CSV field or JSON string that holds it.
+ * In an unquoted CSV field or a logged map, that can hide later options and map entries too.
  */
 public final class LdapBindPasswdHbaFormat {
 
@@ -43,6 +45,44 @@ public final class LdapBindPasswdHbaFormat {
 
   private static final String LDAPBINDPASSWD_KEY = "ldapbindpasswd=";
 
+  // The authentication options Postgres's hba.c accepts. A value ends before whitespace only if one
+  // of these follows; any other name= is more of a password typed without quotes. An option missing
+  // here makes checkLdapBindPasswdQuoting refuse an unquoted ldapbindpasswd placed right before it.
+  private static final Set<String> HBA_OPTION_NAMES =
+      Set.of(
+          "map",
+          "clientcert",
+          "clientname",
+          "pamservice",
+          "pam_use_hostname",
+          "ldapurl",
+          "ldaptls",
+          "ldapscheme",
+          "ldapserver",
+          "ldapport",
+          "ldapbinddn",
+          "ldapbindpasswd",
+          "ldapsearchattribute",
+          "ldapsearchfilter",
+          "ldapbasedn",
+          "ldapprefix",
+          "ldapsuffix",
+          "krb_realm",
+          "include_realm",
+          "compat_realm",
+          "upn_username",
+          "radiusservers",
+          "radiusports",
+          "radiussecrets",
+          "radiusidentifiers",
+          "jwt_jwks_path",
+          "jwt_jwks_url",
+          "jwt_audiences",
+          "jwt_issuers",
+          "jwt_matching_claim_key");
+
+  private static final String YSQL_HBA_CONF_CSV = "ysql_hba_conf_csv";
+
   // The connection type that starts an HBA record.
   private static final Pattern HBA_RECORD_TYPE =
       Pattern.compile("(?<![\\w.-])(?:local|host(?:ssl|nossl|gssenc|nogssenc)?)[ \\t]");
@@ -63,18 +103,23 @@ public final class LdapBindPasswdHbaFormat {
     if (input == null || input.isEmpty()) {
       return input;
     }
-    return redact(input, replacement).text();
+    return redact(input, replacement, true).text();
   }
 
   /**
-   * True if some ldapbindpasswd value in {@code input} has no end redactAllValues can be sure of
-   * (see the class comment).
+   * True if some ldapbindpasswd value in the ysql_hba_conf_csv value {@code hbaConf} has no end
+   * redactAllValues can be sure of (see the class comment).
    */
-  public static boolean hasValueWithUnknownEnd(String input) {
-    return input != null && redact(input, "").anyEndUnknown();
+  public static boolean hasValueWithUnknownEnd(String hbaConf) {
+    return hbaConf != null && redact(hbaConf, "", false).anyEndUnknown();
   }
 
-  private static Redaction redact(String input, String replacement) {
+  /**
+   * {@code mapEntriesMayFollow} is set when the input may be a logged Java map, where ", name="
+   * starts the next entry. A ysql_hba_conf_csv value has no such entries, so there ", name=" after
+   * an unquoted value is more of the password.
+   */
+  private static Redaction redact(String input, String replacement, boolean mapEntriesMayFollow) {
     StringBuilder out = new StringBuilder();
     // Set for a value with no sure end (see the class comment). checkLdapBindPasswdQuoting in
     // GFlagsUtil refuses new values like this, but a refused request is still logged, and a
@@ -90,10 +135,12 @@ public final class LdapBindPasswdHbaFormat {
       if (parsed != null
           && endsValue(input, parsed.endExclusive())
           && (parsed.style() != QuoteStyle.UNQUOTED
-              || unquotedValueEndsThere(input, parsed.endExclusive()))) {
+              || unquotedValueEndsThere(input, parsed.endExclusive(), mapEntriesMayFollow))) {
         out.append(encode(parsed.style(), replacement));
         last = parsed.endExclusive();
-      } else if (endsValue(input, eq)) {
+      } else if (endsValue(input, eq) && unquotedValueEndsThere(input, eq, mapEntriesMayFollow)) {
+        // An empty value. One followed by other text, as in ldapbindpasswd= secret, takes the next
+        // branch: that text is most likely the password.
         last = eq;
       } else {
         out.append(replacement);
@@ -107,10 +154,10 @@ public final class LdapBindPasswdHbaFormat {
 
   /**
    * True if an unquoted value that stops at s[i] ends there. Postgres ends one at any whitespace or
-   * comma, but unless the next option, record, comment or the end of the field follows, the text
-   * after it is most likely more of the password, typed without the quotes it needs.
+   * comma, but unless an HBA option, the next record, a comment or the end of the field follows,
+   * the text after it is most likely more of the password, typed without the quotes it needs.
    */
-  private static boolean unquotedValueEndsThere(String s, int i) {
+  private static boolean unquotedValueEndsThere(String s, int i, boolean mapEntriesMayFollow) {
     if (i >= s.length()) {
       return true;
     }
@@ -130,14 +177,18 @@ public final class LdapBindPasswdHbaFormat {
       return true;
     }
     if (!comma && s.charAt(j) == ',') {
-      return unquotedValueEndsThere(s, j);
+      return unquotedValueEndsThere(s, j, mapEntriesMayFollow);
     }
     if (quoteLengthAt(s, j) > 0) {
       // After a comma, a quote opens the next CSV field; after whitespace, it must close this one.
       return comma || endsValue(s, j);
     }
-    return isOptionAssignment(s, j)
-        || (comma && HBA_RECORD_TYPE.matcher(s).region(j, s.length()).lookingAt());
+    if (isHbaOptionAssignment(s, j)) {
+      return true;
+    }
+    return comma
+        && (HBA_RECORD_TYPE.matcher(s).region(j, s.length()).lookingAt()
+            || (mapEntriesMayFollow && j > i + 1 && nameAssignmentEnd(s, j) > 0));
   }
 
   /**
@@ -169,13 +220,14 @@ public final class LdapBindPasswdHbaFormat {
 
   /**
    * Where to stop redacting a value with no known end. Anything up to the end of its field may be
-   * password: stop at a line break, or at the first quote (at any escape depth) that isn't doubled
-   * and closes the CSV field or JSON string holding the record.
+   * password: stop at a line break, at a comma that starts the next HBA record, or at the first
+   * quote (at any escape depth) that isn't doubled and closes the CSV field or JSON string holding
+   * the record.
    */
   private static int enclosingFieldEnd(String s, int i) {
     while (i < s.length()) {
       char c = s.charAt(i);
-      if (c == '\n' || c == '\r') {
+      if (c == '\n' || c == '\r' || (c == ',' && startsNextRecord(s, i + 1))) {
         return i;
       }
       int quoteLength = quoteLengthAt(s, i);
@@ -190,6 +242,15 @@ public final class LdapBindPasswdHbaFormat {
       }
     }
     return s.length();
+  }
+
+  /** True if s[i], just after a comma, starts a CSV field that holds an HBA record. */
+  private static boolean startsNextRecord(String s, int i) {
+    while (i < s.length() && (s.charAt(i) == ' ' || s.charAt(i) == '\t')) {
+      i++;
+    }
+    i += quoteLengthAt(s, i);
+    return HBA_RECORD_TYPE.matcher(s).region(i, s.length()).lookingAt();
   }
 
   /**
@@ -282,8 +343,8 @@ public final class LdapBindPasswdHbaFormat {
 
   /**
    * True if what follows a possible closing quote shows the value ended there: the end, a comma, a
-   * closing brace or bracket, a quote that isn't doubled, or whitespace and the next option's
-   * name=. Anything else means the quote is part of the password.
+   * closing brace or bracket, a quote that isn't doubled, or whitespace and an HBA option's name=.
+   * Anything else means the quote is part of the password.
    */
   private static boolean isClosingDelimiterFollowedByTerminator(String s, int indexAfterDelimiter) {
     int j = indexAfterDelimiter;
@@ -310,16 +371,22 @@ public final class LdapBindPasswdHbaFormat {
     }
     // Postgres separates options with whitespace, so a quote followed by whitespace and an option
     // name closes the value.
-    return j > indexAfterDelimiter && isOptionAssignment(s, j);
+    return j > indexAfterDelimiter && isHbaOptionAssignment(s, j);
   }
 
   /** True if s[i..] is an HBA option name, such as ldapserver or clientcert, followed by '='. */
-  private static boolean isOptionAssignment(String s, int i) {
+  private static boolean isHbaOptionAssignment(String s, int i) {
+    int end = nameAssignmentEnd(s, i);
+    return end > 0 && HBA_OPTION_NAMES.contains(s.substring(i, end));
+  }
+
+  /** End of a lowercase name at s[i] that is followed by '=', or -1 if none starts there. */
+  private static int nameAssignmentEnd(String s, int i) {
     int k = i;
     while (k < s.length() && ((s.charAt(k) >= 'a' && s.charAt(k) <= 'z') || s.charAt(k) == '_')) {
       k++;
     }
-    return k > i && k < s.length() && s.charAt(k) == '=';
+    return k > i && k < s.length() && s.charAt(k) == '=' ? k : -1;
   }
 
   /**
@@ -351,7 +418,8 @@ public final class LdapBindPasswdHbaFormat {
 
   /**
    * Reads a SINGLE_CSV value from just after its opening quote into {@code decodedOut}, taking ""
-   * as a quote character. Returns the index after the closing quote, or the input length.
+   * as a quote character. Returns the index after the closing quote, or -1 if the line or the input
+   * ends first.
    */
   private static int scanSingleCsvInner(String s, int i, StringBuilder decodedOut) {
     while (i < s.length()) {
@@ -362,12 +430,14 @@ public final class LdapBindPasswdHbaFormat {
         } else {
           return i + 1;
         }
+      } else if (s.charAt(i) == '\n' || s.charAt(i) == '\r') {
+        return -1;
       } else {
         decodedOut.append(s.charAt(i));
         i++;
       }
     }
-    return i;
+    return -1;
   }
 
   /**
@@ -454,7 +524,7 @@ public final class LdapBindPasswdHbaFormat {
     if (eqIndex < s.length() && s.charAt(eqIndex) == '"') {
       StringBuilder decoded = new StringBuilder();
       int end = scanSingleCsvInner(s, eqIndex + 1, decoded);
-      if (end > eqIndex + 1) {
+      if (end >= 0) {
         return new ParsedValue(end, decoded.toString(), QuoteStyle.SINGLE_CSV);
       }
       return null;
@@ -514,19 +584,40 @@ public final class LdapBindPasswdHbaFormat {
     Matcher record = HBA_RECORD_TYPE.matcher(s).useTransparentBounds(true);
     for (int i = valueStart - 1; i >= Math.max(0, valueStart - RECORD_SEARCH_LIMIT); i--) {
       char c = s.charAt(i);
+      if (c == '\n' || c == '\r') {
+        break;
+      }
       if ((c != 'l' && c != 'h') || !record.region(i, valueStart).lookingAt()) {
         continue;
       }
-      if (i == 0 || s.charAt(i - 1) != '"') {
+      if (i > 0 && s.charAt(i - 1) == '"') {
+        int k = i - 1;
+        while (k > 0 && s.charAt(k - 1) == '\\') {
+          k--;
+        }
+        return i - 1 - k;
+      }
+      if (startsUnquotedRecord(s, i)) {
         break;
       }
-      int k = i - 1;
-      while (k > 0 && s.charAt(k - 1) == '\\') {
-        k--;
-      }
-      return i - 1 - k;
+      // Otherwise it's a word in an earlier option value, as in ldapsearchfilter=""(cn=local x)"".
     }
     return backslashes % 2;
+  }
+
+  /**
+   * True if the record type at s[i] starts a record with no quote before it: at the start of the
+   * input, or after a comma or ysql_hba_conf_csv= (ysql_hba_conf_csv: in YAML), blanks allowed.
+   */
+  private static boolean startsUnquotedRecord(String s, int i) {
+    while (i > 0 && (s.charAt(i - 1) == ' ' || s.charAt(i - 1) == '\t')) {
+      i--;
+    }
+    if (i == 0 || s.charAt(i - 1) == ',') {
+      return true;
+    }
+    return (s.charAt(i - 1) == '=' || s.charAt(i - 1) == ':')
+        && s.startsWith(YSQL_HBA_CONF_CSV, i - 1 - YSQL_HBA_CONF_CSV.length());
   }
 
   /** Index of the unescaped quote or line break ending the JSON string that s[i] is in. */
