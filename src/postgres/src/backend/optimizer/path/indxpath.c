@@ -5662,10 +5662,7 @@ yb_finalize_merge_scan_path(PlannerInfo *root, RelOptInfo *rel,
 	if (yb_merge_scan_stream_cols == NIL)
 		return useful_pathkeys;
 
-	/*
-	 * TODO(#36017): an index only scan compares the index row, so embedded
-	 * should be false for it.
-	 */
+	/* TODO(#36017): an index only scan needs no embedded truncation. */
 	embedded = yb_is_embedded_index(root, rel, index);
 	*yb_merge_scan_info =
 		yb_finalize_merge_scan_info(index, rel->relids,
