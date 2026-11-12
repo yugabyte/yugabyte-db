@@ -7284,6 +7284,13 @@ static struct config_string ConfigureNamesString[] =
 		{"default_table_access_method", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Sets the default table access method for new tables."),
 			NULL,
+			/*
+			 * YB: ConnMgr can't replay this safely since the check hook looks
+			 * up the name again. The access method might have been dropped
+			 * between the SET and the replay, making the replay fail. So,
+			 * setting this GUC makes the connection sticky.
+			 */
+			GUC_YB_CONN_MGR_STICKY |
 			GUC_IS_NAME
 		},
 		&default_table_access_method,
@@ -7799,7 +7806,14 @@ static struct config_string ConfigureNamesString[] =
 	{
 		{"default_text_search_config", PGC_USERSET, CLIENT_CONN_LOCALE,
 			gettext_noop("Sets default text search configuration."),
-			NULL
+			NULL,
+			/*
+			 * YB: ConnMgr can't replay this safely since the check hook looks
+			 * up the name again. The config might have been dropped between
+			 * the SET and the replay, making the replay fail. So, setting this
+			 * GUC makes the connection sticky.
+			 */
+			GUC_YB_CONN_MGR_STICKY
 		},
 		&TSCurrentConfig,
 		"pg_catalog.simple",
@@ -12621,15 +12635,6 @@ set_config_option_ext(const char *name, const char *value,
 													 true,
 													 elevel,
 													 false);
-
-					if ((conf->gen.flags & GUC_YB_CUSTOM_STICKY) &&
-						(source == PGC_S_SESSION || source == PGC_S_CLIENT) &&
-						action == GUC_ACTION_SET &&
-						YbIsClientYsqlConnMgr())
-					{
-						elog(LOG, "Making connection sticky for setting %s", name);
-						yb_ysql_conn_mgr_sticky_guc = true;
-					}
 				}
 
 				if (makeDefault)
@@ -12822,6 +12827,23 @@ set_config_option_ext(const char *name, const char *value,
 		GetUserId() != GetSessionUserId())
 	{
 		elog(LOG, "Making connection sticky for setting %s as a user other than the session user",
+			 name);
+		yb_ysql_conn_mgr_sticky_guc = true;
+	}
+
+	/*
+	 * YB: Only a session-level SET or a startup-packet value of a
+	 * GUC_YB_CONN_MGR_STICKY variable is replayed by ConnMgr, so only those
+	 * make the connection sticky. SET LOCAL and function-level SET don't
+	 * outlive the transaction or call.
+	 */
+	if (changeVal &&
+		(record->flags & GUC_YB_CONN_MGR_STICKY) &&
+		(source == PGC_S_SESSION || source == PGC_S_CLIENT) &&
+		action == GUC_ACTION_SET &&
+		YbIsClientYsqlConnMgr())
+	{
+		elog(LOG, "Making connection sticky for setting %s, which is marked GUC_YB_CONN_MGR_STICKY",
 			 name);
 		yb_ysql_conn_mgr_sticky_guc = true;
 	}
@@ -14131,7 +14153,7 @@ DefineCustomStringVariable(const char *name,
 	define_custom_variable(&var->gen);
 
 	/* YB: make custom string variables sticky for connection manager */
-	var->gen.flags |= GUC_YB_CUSTOM_STICKY;
+	var->gen.flags |= GUC_YB_CONN_MGR_STICKY;
 }
 
 void
