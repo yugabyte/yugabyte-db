@@ -131,6 +131,10 @@ class DocVectorIndexReverseMappingReader {
   // Returns ybctid which corresponds to the specified vector_id. Returns empty value if
   // no ybctid is found or kTombstone corresponds to the specified vector_id.
   Result<Slice> FetchYbctid(const vector_index::VectorId& vector_id);
+
+  // Read restart data for entries the fetches observed in the uncertainty window, see
+  // IntentAwareIterator::GetReadRestartData.
+  virtual Result<ReadRestartData> GetReadRestartData() const = 0;
 };
 
 using DocVectorIndexReverseMappingReaderPtr = std::unique_ptr<DocVectorIndexReverseMappingReader>;
@@ -143,6 +147,9 @@ class DocVectorIndexContext {
 
   // Bounds of the keys served by the tablet. Initialized only for a tablet created by a split.
   virtual const KeyBounds& key_bounds() const = 0;
+
+  // Blocks until the WAL entry with op_id is durable, see VectorLSMOptions::wait_frontier_durable.
+  virtual void WaitWalDurable(const OpId& op_id) const = 0;
 };
 
 using DocVectorIndexContextPtr = std::unique_ptr<DocVectorIndexContext>;

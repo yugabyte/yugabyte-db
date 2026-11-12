@@ -3098,5 +3098,86 @@ TEST_F(DocRowwiseIteratorTest, FastBackwardScanColocatedSeesIntentAfterForwardSe
       R"#({string:"a",int64:1,string:"committed",missing,missing})#"}));
 }
 
+// A split child still has the parent's SST files, with keys below its lower bound, and
+// an IN-list scan can reach the child with values below that bound. With the variable
+// bloom filter, the scan skips a file for one value and seeks it again for a later value.
+// Without the fix, that seek stops below the bound, the iterator reports the end of data,
+// and the scan returns no more rows. Covers GH #36918.
+TEST_F(DocRowwiseIteratorTest, InListScanOfSplitChildWithParentFiles) {
+  const std::vector<std::string> left_keys = {"l1", "l2"};
+  const std::vector<std::string> right_keys = {"r1", "r2", "r3"};
+  auto write_row = [this](const std::string& a, int64_t b) {
+    return SetPrimitive(
+        DocPath(dockv::MakeDocKey(a, b).Encode(), KeyEntryValue::MakeColumnId(30_ColId)),
+        QLValue::Primitive("v"), 1000_usec_ht);
+  };
+
+  // File 1 has a row for every key. File 2 has only the rows (l2, 2) and (r1, 2). Its bloom filter
+  // skips it for l1 and matches it for l2, so the scan seeks it at l2. The scan must still return
+  // (r1, 2) from it.
+  std::vector<std::pair<std::string, int64_t>> rows;
+  for (const auto& keys : {left_keys, right_keys}) {
+    for (const auto& a : keys) {
+      ASSERT_OK(write_row(a, 1));
+      rows.emplace_back(a, 1);
+    }
+  }
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+  for (const auto& a : {left_keys[1], right_keys[0]}) {
+    ASSERT_OK(write_row(a, 2));
+    rows.emplace_back(a, 2);
+  }
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+  ASSERT_EQ(rocksdb()->GetCurrentVersionNumSSTFiles(), 2U);
+  std::sort(rows.begin(), rows.end());
+
+  PgsqlConditionPB cond;
+  cond.add_operands()->mutable_tuple()->add_elems()->set_column_id(10_ColId);
+  cond.set_op(QL_OP_IN);
+  auto* options = cond.add_operands()->mutable_value()->mutable_list_value();
+  for (const auto& keys : {left_keys, right_keys}) {
+    for (const auto& a : keys) {
+      options->add_elems()->mutable_tuple_value()->add_elems()->set_string_value(a);
+    }
+  }
+  const DocPgsqlScanSpec spec(doc_read_context().schema(), &cond);
+
+  Schema projection;
+  ASSERT_OK(doc_read_context().schema().TEST_CreateProjectionByNames({"a", "b", "c"}, &projection));
+
+  // Key bounds of the child tablet, as values of column a: both children of a split at "m", and
+  // a child with both bounds (the second child split again at "r2"). The bug shows only on
+  // children with a lower bound. The first child of the split at "m" has none, so it passes even
+  // without the fix.
+  const std::vector<std::pair<std::string, std::string>> bounds = {
+      {"m", ""}, {"", "m"}, {"m", "r2"}};
+  for (const auto& [lower_a, upper_a] : bounds) {
+    const auto lower = lower_a.empty() ? dockv::KeyBytes() : dockv::MakeDocKey(lower_a).Encode();
+    const auto upper = upper_a.empty() ? dockv::KeyBytes() : dockv::MakeDocKey(upper_a).Encode();
+    const KeyBounds key_bounds(lower.AsSlice(), upper.AsSlice());
+    const DocDB db{rocksdb(), intents_db(), &key_bounds};
+    std::string expected;
+    for (const auto& [a, b] : rows) {
+      if (a >= lower_a && (upper_a.empty() || a < upper_a)) {
+        expected += Format("{string:\"$0\",int64:$1,string:\"v\",missing,missing}\n", a, b);
+      }
+    }
+    for (auto variable_bloom_filter : {false, true}) {
+      SCOPED_TRACE(Format(
+          "bounds: [$0, $1), variable bloom filter: $2", lower_a, upper_a, variable_bloom_filter));
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_scan_choices_variable_bloom_filter) =
+          variable_bloom_filter;
+      auto pending_op = ScopedRWOperation::TEST_Create();
+      auto iter = MakeIterator(
+          projection, doc_read_context(), kNonTransactionalOperationContext, db,
+          ReadOperationData::FromSingleReadTime(2000_usec_ht), pending_op);
+      ASSERT_OK(iter->Init(spec));
+      EXPECT_EQ(ASSERT_RESULT(ConvertIteratorRowsToString(
+                    iter.get(), IteratorMode::kPg, doc_read_context().schema(), &projection)),
+                expected);
+    }
+  }
+}
+
 }  // namespace docdb
 }  // namespace yb

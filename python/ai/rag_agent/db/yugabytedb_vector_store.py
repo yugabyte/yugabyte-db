@@ -1,6 +1,7 @@
 import logging
 import psycopg
 import os
+import time
 import json
 import hashlib
 import uuid
@@ -200,12 +201,14 @@ class YugabyteDBVectorStore:
                      embedding_vector, document_id, tenant_id, metadata_json)
                 )
                 if len(batch) >= batch_size:
+                    started = time.perf_counter()
                     rows_inserted = execute_sql(
                         cur,
                         insert_stmt,
                         batch,
                         many=True
                     )
+                    insert_ms = (time.perf_counter() - started) * 1000
                     total_inserted += rows_inserted
                     self._check_lease(lease_check, document_id)
                     # update_embeddings_persisted stores the value as-is, so
@@ -217,33 +220,41 @@ class YugabyteDBVectorStore:
                         pipeline_id=pipeline_id,
                         embeddings_count=total_inserted
                     )
+                    started = time.perf_counter()
+                    conn.commit()
+                    commit_ms = (time.perf_counter() - started) * 1000
                     self.logger.info(
                         f"Inserted batch of {rows_inserted} rows into "
                         f"{target_schema}.{table_name} (total so far: "
-                        f"{total_inserted}, items yielded: {items_yielded})"
+                        f"{total_inserted}, items yielded: {items_yielded}; "
+                        f"insert {insert_ms:.0f} ms, commit {commit_ms:.0f} ms)"
                     )
-                    conn.commit()
                     batch.clear()
 
             # Insert any remaining items in the batch
             if batch:
+                started = time.perf_counter()
                 rows_inserted = execute_sql(
                     cur,
                     insert_stmt,
                     batch,
                     many=True
                 )
+                insert_ms = (time.perf_counter() - started) * 1000
                 total_inserted += rows_inserted
                 self._check_lease(lease_check, document_id)
                 self.pipeline_tracking.update_embeddings_persisted(
                     pipeline_id=pipeline_id,
                     embeddings_count=total_inserted
                 )
+                started = time.perf_counter()
+                conn.commit()
+                commit_ms = (time.perf_counter() - started) * 1000
                 self.logger.info(
                     f"Inserted final batch of {rows_inserted} rows into "
-                    f"{target_schema}.{table_name} (total: {total_inserted})"
+                    f"{target_schema}.{table_name} (total: {total_inserted}; "
+                    f"insert {insert_ms:.0f} ms, commit {commit_ms:.0f} ms)"
                 )
-                conn.commit()
 
             self.logger.info(
                 f"Completed inserting all {total_inserted} embeddings into "

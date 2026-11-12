@@ -4844,6 +4844,12 @@ YBRefreshCacheWrapperImpl(uint64_t catalog_master_version, bool is_retry,
 	/* The reason that we need a full catalog cache refresh. */
 	int			reason = 0;
 
+	if (YbIsCatalogPinnedToReadTime())
+	{
+		yb_need_cache_refresh = false;
+		return false;
+	}
+
 	if (enable_inval_messages)
 	{
 		if (is_retry &&
@@ -5167,8 +5173,12 @@ YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 
 		/* Refresh cache now so that the retry uses latest version. */
 		if (need_global_cache_refresh)
+		{
 			YBStopAuthPrefetcherAndRefreshCache(catalog_master_version,
 												true /* is_retry */ );
+			/* The refresh may have moved past the catalog read time. */
+			YbInvalidateCatalogSnapshot();
+		}
 
 		*need_retry = true;
 	}
@@ -7124,6 +7134,13 @@ PostgresMain(const char *dbname, const char *username)
 			ReadyForQuery(whereToSendOutput);
 			send_ready_for_query = false;
 
+			/*
+			 * YB: ReadyForQuery flushed the reply, so the client does not
+			 * wait for the release.
+			 */
+			if (IsYugaByteEnabled())
+				YbReleaseTCMallocMemoryAfterStatement();
+
 			yb_refresh_stats_before_exec = true;
 
 			YbToggleSessionStatsTimer(yb_enable_pg_stat_statements_rpc_stats);
@@ -8789,4 +8806,14 @@ void
 YbIncrementHintCacheMisses()
 {
 	YbNumHintCacheMisses++;
+}
+
+/*
+ * YB: True from the moment start_xact_command starts a statement's
+ * transaction until finish_xact_command or error recovery ends it.
+ */
+bool
+YbIsStatementTransactionStarted(void)
+{
+	return xact_started;
 }

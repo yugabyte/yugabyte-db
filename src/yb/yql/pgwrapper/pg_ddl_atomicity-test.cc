@@ -1393,8 +1393,10 @@ TEST_F(PgDdlAtomicitySnapshotTest, SnapshotTest) {
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "false"));
   VerifyTableNotExists(client.get(), kDatabase, kCreateTable, 60);
 
-  // Verify all the other tables are unchanged by all of the DDLs.
+  // Verify all the other tables are unchanged by all of the DDLs. Wait for their rollback to
+  // finish so that the DDLs below do not hit TABLE_SCHEMA_CHANGE_IN_PROGRESS.
   for (const auto& table : tables_to_create) {
+    ASSERT_OK(WaitForDdlVerification(client.get(), kDatabase, table));
     ASSERT_OK(VerifySchema(client.get(), kDatabase, table, {"key", "value", "num"}));
   }
 

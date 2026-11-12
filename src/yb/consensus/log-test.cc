@@ -125,6 +125,34 @@ class LogTest : public LogTestBase {
     return Status::OK();
   }
 
+  // Writes ops 1.1 to 1.10, then reopens the log and replays them the way bootstrap does, which
+  // leaves the log without an active segment until the next append.
+  void ReplayWithoutActiveSegment() {
+    options_.durable_wal_write = false;
+    options_.interval_durable_wal_write = MonoDelta::FromSeconds(3600);
+    options_.bytes_durable_wal_write_mb = 1024;
+    BuildLog();
+    auto op_id = MakeOpId(1, 1);
+    ASSERT_OK(AppendNoOps(&op_id, 10));
+    ASSERT_OK(log_->Close());
+
+    BuildLog(/* byte_limit = */ -1, CreateNewSegment::kFalse);
+    log_->DisableSync();
+    SegmentSequence segments;
+    ASSERT_OK(ASSERT_RESULT(log_->GetLogReader())->GetSegmentsSnapshot(&segments));
+    for (const auto& segment : segments) {
+      auto read_result = segment->ReadEntries();
+      ASSERT_OK(read_result.status);
+      for (size_t i = 0; i != read_result.entries.size(); ++i) {
+        ASSERT_OK(log_->Append(
+            read_result.entries[i], read_result.entry_metadata[i], SkipWalWrite::kTrue));
+      }
+    }
+    ASSERT_OK(log_->EnsureSegmentInitialized());
+    ASSERT_OK(log_->ReEnableSyncIfRequired());
+    ASSERT_EQ(log_->GetLatestEntryOpId(), OpId(1, 10));
+  }
+
   Status AppendNewEmptySegmentToReader(int sequence_number,
                                        int first_repl_index,
                                        LogReader* reader) {
@@ -590,34 +618,20 @@ TEST_F(LogTest, WalStateAfterTailReplacedByEarlierTerm) {
 // Entries replayed from closed segments become durable before the first append starts a segment,
 // otherwise memtable flushes of them would wait for a WAL fsync.
 TEST_F(LogTest, WalStateOfReplayedEntriesWithoutActiveSegment) {
-  options_.durable_wal_write = false;
-  options_.interval_durable_wal_write = MonoDelta::FromSeconds(3600);
-  options_.bytes_durable_wal_write_mb = 1024;
-  BuildLog();
-  auto op_id = MakeOpId(1, 1);
-  ASSERT_OK(AppendNoOps(&op_id, 10));
-  ASSERT_OK(log_->Close());
-
-  BuildLog(/* byte_limit = */ -1, CreateNewSegment::kFalse);
-  log_->DisableSync();
-  SegmentSequence segments;
-  ASSERT_OK(ASSERT_RESULT(log_->GetLogReader())->GetSegmentsSnapshot(&segments));
-  for (const auto& segment : segments) {
-    auto read_result = segment->ReadEntries();
-    ASSERT_OK(read_result.status);
-    for (size_t i = 0; i != read_result.entries.size(); ++i) {
-      ASSERT_OK(log_->Append(
-          read_result.entries[i], read_result.entry_metadata[i], SkipWalWrite::kTrue));
-    }
-  }
-  ASSERT_OK(log_->EnsureSegmentInitialized());
-  ASSERT_OK(log_->ReEnableSyncIfRequired());
+  ASSERT_NO_FATALS(ReplayWithoutActiveSegment());
   const OpId last_op_id(1, 10);
-  ASSERT_EQ(log_->GetLatestEntryOpId(), last_op_id);
   ASSERT_OK(WaitFor(
       [this, &last_op_id] { return log_->WalState(last_op_id) == WalEntryState::kDurable; },
       10s, "Replayed entries durable"));
   ASSERT_OK(log_->Close());
+}
+
+// WalState can no longer start a sync once the log is closed, so Close makes the replayed entries
+// durable itself, otherwise waiters for them would never finish.
+TEST_F(LogTest, WalStateOfReplayedEntriesAfterCloseWithoutActiveSegment) {
+  ASSERT_NO_FATALS(ReplayWithoutActiveSegment());
+  ASSERT_OK(log_->Close());
+  ASSERT_EQ(log_->WalState(OpId(1, 10)), WalEntryState::kDurable);
 }
 
 // Regression test for part of KUDU-735:
@@ -2006,11 +2020,15 @@ Result<std::vector<LogTest::Op>> LogTest::GenerateOpsAndAppendToLog(
 
         if (RandomActWithProbability(commit_probability)) {
           last_committed_op_id = current_op_id;
-          // Commit not yet committed ops from this term.
-          for (auto op = ops.end() - 1;
-               op >= ops.begin() && op->id.term == current_op_id.term && !op->committed;
-               op--) {
-            op->committed = true;
+          // Commit every op up to this one that no later op has overwritten, including earlier-term
+          // ops that this commit commits implicitly. An op survives if all later ops have larger
+          // indexes.
+          auto min_later_index = std::numeric_limits<int64_t>::max();
+          for (auto op = ops.rbegin(); op != ops.rend() && !op->committed; ++op) {
+            if (op->id.index < min_later_index) {
+              op->committed = true;
+              min_later_index = op->id.index;
+            }
           }
         }
         if (RandomActWithProbability(1.0 * num_approx_term_changes / num_entries)) {
@@ -2128,6 +2146,11 @@ TEST_F(LogTest, CopyUpTo) {
   const auto log_copy_path = GetLogCopyPath(kLogCopyIdx);
   for (size_t copy_num_ops = 1; copy_num_ops <= ops.size(); ++copy_num_ops) {
     const auto& max_included_op = ops[copy_num_ops - 1];
+    // CopyTo requires a committed op: an uncommitted one can be overwritten by later entries with
+    // the same or a smaller index.
+    if (!max_included_op.committed) {
+      continue;
+    }
     const auto& max_included_op_id = max_included_op.id;
     ASSERT_OK(options_.env->DeleteRecursively(log_copy_path));
     VLOG(1) << "max_included_op_id: " << AsString(max_included_op_id);
@@ -2245,6 +2268,56 @@ void VerifyRaftLogOps(LogReader* log_reader, const LogEntries& expected_entries)
   }
   const int64_t last_op_index = meta_by_index.empty() ? 0 : meta_by_index.rbegin()->first;
   ASSERT_OK(CheckLogIndex(log_reader, meta_by_index, last_op_index));
+}
+
+// The first segment's max index equals the copied op's index, but only because of an older-term
+// entry that the second segment overwrites. The copy must not stop at the first segment.
+TEST_F(LogTest, CopyUpToPastOverwrittenEntryWithSameIndex) {
+  options_.segment_size_bytes = std::numeric_limits<size_t>::max();
+  BuildLog();
+
+  auto op_id = MakeOpId(1, 1);
+  ASSERT_OK(AppendNoOps(&op_id, 5));
+  ASSERT_OK(RollLog());
+  op_id = MakeOpId(2, 4);
+  ASSERT_OK(AppendNoOps(&op_id, 2));
+  ASSERT_OK(RollLog());
+
+  auto source_reader = ASSERT_RESULT(log_->GetLogReader());
+  const auto source_entries = ASSERT_RESULT(ReadRaftLogData(source_reader.get())).entries;
+  ASSERT_EQ(source_entries.size(), 7U);
+
+  ASSERT_OK(log_->CopyTo(GetLogCopyPath(0), OpId(2, 5)));
+  // Both segments are classified from their footers.
+  ASSERT_EQ(log_->TEST_NumSegmentOpIdRelationReads(), 0U);
+  auto copy_reader = ASSERT_RESULT(GetLogCopyReader(0));
+  VerifyRaftLogOps(copy_reader.get(), source_entries);
+
+  ASSERT_OK(log_->Close());
+}
+
+// Copying up to the last entry of a segment, as tablet split apply usually does, must not read the
+// segment. Copying up to an entry inside it still has to.
+TEST_F(LogTest, CopyUpToLastEntryOfSegmentSkipsRead) {
+  options_.segment_size_bytes = std::numeric_limits<size_t>::max();
+  BuildLog();
+
+  auto op_id = MakeOpId(1, 1);
+  ASSERT_OK(AppendNoOps(&op_id, 10));
+  ASSERT_OK(RollLog());
+
+  auto source_reader = ASSERT_RESULT(log_->GetLogReader());
+  const auto source_entries = ASSERT_RESULT(ReadRaftLogData(source_reader.get())).entries;
+
+  ASSERT_OK(log_->CopyTo(GetLogCopyPath(0), OpId(1, 10)));
+  ASSERT_EQ(log_->TEST_NumSegmentOpIdRelationReads(), 0U);
+  auto copy_reader = ASSERT_RESULT(GetLogCopyReader(0));
+  VerifyRaftLogOps(copy_reader.get(), source_entries);
+
+  ASSERT_OK(log_->CopyTo(GetLogCopyPath(1), OpId(1, 5)));
+  ASSERT_EQ(log_->TEST_NumSegmentOpIdRelationReads(), 1U);
+
+  ASSERT_OK(log_->Close());
 }
 
 // Parametrized on reuse_unclosed_segment_threshold_bytes to test both Log::CopyTo ->

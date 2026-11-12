@@ -32,7 +32,11 @@
 
 #pragma once
 
+#include <cstdint>
+#include <unordered_map>
+
 #include "yb/client/client_fwd.h"
+#include "yb/common/entity_ids_types.h"
 #include "yb/master/master_client.fwd.h"
 #include "yb/master/master_fwd.h"
 #include "yb/util/status_fwd.h"
@@ -46,6 +50,11 @@ Status WaitForRunningTabletCount(MiniMaster* mini_master,
                                  const client::YBTableName& table_name,
                                  int expected_count,
                                  GetTableLocationsResponsePB* resp);
+
+// What the replica load counters must agree with: every replica of every live tablet.
+std::unordered_map<TabletServerId, int64_t> ExpectedReplicaLoad(MiniMaster* mini_master);
+
+bool ReplicaLoadMatchesReplicaMaps(MiniMaster* mini_master);
 
 
 } // namespace master

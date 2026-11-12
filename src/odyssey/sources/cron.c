@@ -79,7 +79,7 @@ static int od_cron_stat_cb(od_route_t *route, od_stat_t *current,
 					instance->config.yb_max_pools);
 				if (route->id.yb_stats_index == -1) {
 					od_error(&instance->logger, "stats", NULL, NULL,
-						 "Unable to find the index for (%s, %s, %d, %d) pool",
+						 "Unable to find the index for (%s, %s, %d) pool",
 						 (char *)route->yb_database_name,
 						 (char *)route->yb_user_name,
 						 route->id.logical_rep);

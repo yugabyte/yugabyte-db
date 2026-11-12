@@ -8134,12 +8134,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLDropColumn)) {
   ASSERT_FALSE(set_resp.has_error());
 
   // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
-  const int expected_count[] = {2, 10, 0, 0, 0, 0, 4, 4};
+  const int expected_count[] = {3, 10, 0, 0, 0, 0, 4, 4};
   int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
-  // Fail the ALTER TABLE DROP column
+  // Fail the ALTER TABLE DROP column. Its first CHANGE_METADATA_OP is streamed while no schema is
+  // cached yet, so it gets a DDL record; the successful DROP's first op below is filtered out.
   ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=1"));
   ASSERT_NOK(DropColumn(&test_cluster_, test_namespace_name, kTableName, kValueColumnName, &conn));
 
@@ -12828,20 +12829,25 @@ TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTables) {
   // ALTER TABLE will give one update to pg_class in debug builds and one insert in release builds.
   // Creation of 2 replication origins gives 2 inserts to pg_replication_origin and dropping one
   // gives 1 delete.
-  // We will not receive any record corresponding to the addition of column in other catalog tables
-  // such as pg_attribute.
+  // With transactional DDL, pg_attribute and pg_publication_rel_prpubid_index are polled too. We
+  // receive a DDL for each, 10 inserts to pg_attribute per CREATE TABLE (2 columns and 7 system
+  // columns of the table, 1 column of its pk index) and 1 for ALTER TABLE, and an insert or delete
+  // to pg_publication_rel_prpubid_index along with each one to pg_publication_rel.
   const int expected_count_without_packed_row[] = {4, 12, 4, 2, 0, 0, 11, 11};
   const int expected_count_with_packed_row[] = {4, 16, 0, 2, 0, 0, 11, 11};
+  const int txn_ddl_extra_count[] = {2, 33, 0, 1, 0, 0, 0, 0};
 
   for (auto record : change_resp.cdc_sdk_proto_records()) {
     UpdateRecordCount(record, record_count);
   }
 
   for (int i = 0; i < 8; i++) {
+    const int extra_count =
+        FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? txn_ddl_extra_count[i] : 0;
     if (FLAGS_ysql_enable_packed_row) {
-      ASSERT_EQ(record_count[i], expected_count_with_packed_row[i]);
+      ASSERT_EQ(record_count[i], expected_count_with_packed_row[i] + extra_count);
     } else {
-      ASSERT_EQ(record_count[i], expected_count_without_packed_row[i]);
+      ASSERT_EQ(record_count[i], expected_count_without_packed_row[i] + extra_count);
     }
   }
 }
@@ -12882,10 +12888,14 @@ TEST_F(CDCSDKYsqlTest, TestStreamIndependenceWhilePollingCatalogTablet) {
   // Call GetChanges on sys catalog tablet using stream_1. We will get 11 records:
   // 1 DDL corresponding to the CHANGE_METADATA_OP performed during creation of stream_2, 6 recprds
   // corresponding to the CREATE TABLES (BEGIN, DDL, 2 INSERTS, 1 UPDATE, COMMIT) and 4 records
-  // corresponding to the ALTER PUB (BEGIN, DDL, INSERT, COMMIT).
-  auto change_resp = ASSERT_RESULT(GetChangesFromMaster(stream_id_1));
-  ASSERT_FALSE(change_resp.has_error());
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 11);
+  // corresponding to the ALTER PUB (BEGIN, DDL, INSERT, COMMIT). With transactional DDL, we also
+  // get 12 records of pg_attribute and pg_publication_rel_prpubid_index: a DDL for each, 9 inserts
+  // to pg_attribute for the CREATE TABLE and 1 insert to pg_publication_rel_prpubid_index.
+  const int expected_records =
+      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 23 : 11;
+  auto change_resp =
+      ASSERT_RESULT(GetChangesFromMasterUntilRecordCount(stream_id_1, expected_records));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), expected_records);
 
   // Call GetChanges on sys catalog tablet using stream_2. We will not get any DMLs as sys catalog
   // tablet only has change records corresponding to the DB 1. These records will be filtered by CDC
@@ -12921,16 +12931,26 @@ TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTablesAfterLeaderStepDown) {
 
   ASSERT_OK(conn.Execute("CREATE TABLE test_2 (a int primary key, b text)"));
 
-  auto change_resp = ASSERT_RESULT(GetChangesFromMaster(stream_id));
-
   // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
   // We will receive records only corresponding to the creation of test_2.
   // Without packed row wer will receive 1 Insert in pg_class for test_2 entry, 1 insert in pg_class
   // for pk index table and 1 Update to the originally added entry (first insert) regarding pk
   // addition. With packed row instead of the Update we will receive another Insert.
+  // With transactional DDL, we also receive a DDL and 10 inserts to pg_attribute for test_2.
   int record_count[] = {0, 0, 0, 0, 0, 0, 0, 0};
   const int expected_count_without_packed_row[] = {1, 2, 1, 0, 0, 0, 1, 1};
   const int expected_count_with_packed_row[] = {1, 3, 0, 0, 0, 0, 1, 1};
+  const int txn_ddl_extra_count[] = {1, 10, 0, 0, 0, 0, 0, 0};
+
+  const auto& expected_count = FLAGS_ysql_enable_packed_row ? expected_count_with_packed_row
+                                                            : expected_count_without_packed_row;
+  int expected_total = 0;
+  for (int i = 0; i < 8; i++) {
+    expected_total += expected_count[i] +
+        (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? txn_ddl_extra_count[i] : 0);
+  }
+  auto change_resp =
+      ASSERT_RESULT(GetChangesFromMasterUntilRecordCount(stream_id, expected_total));
 
   // None of the records should belong to the DDL which was performed before stream creation.
   for (auto record : change_resp.cdc_sdk_proto_records()) {
@@ -12943,10 +12963,12 @@ TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTablesAfterLeaderStepDown) {
   }
 
   for (int i = 0; i < 8; i++) {
+    const int extra_count =
+        FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? txn_ddl_extra_count[i] : 0;
     if (FLAGS_ysql_enable_packed_row) {
-      ASSERT_EQ(record_count[i], expected_count_with_packed_row[i]);
+      ASSERT_EQ(record_count[i], expected_count_with_packed_row[i] + extra_count);
     } else {
-      ASSERT_EQ(record_count[i], expected_count_without_packed_row[i]);
+      ASSERT_EQ(record_count[i], expected_count_without_packed_row[i] + extra_count);
     }
   }
 }
