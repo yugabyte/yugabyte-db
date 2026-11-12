@@ -104,6 +104,59 @@ class LoadBalancerMockedBase : public YBTest {
     cb_.ResetTableStatePtr(cur_table_uuid_, nullptr);
   }
 
+  // Analyzes `table` into the same global state as the current table, so the global load and
+  // leader counts cover both, then points the balancer back at the current table.
+  Status AnalyzeAdditionalTable(const TableInfoPtr& table) NO_THREAD_SAFETY_ANALYSIS {
+    cb_.ResetTableStatePtr(table->id(), nullptr);
+    RETURN_NOT_OK(cb_.PopulateReplicationInfo(table, cb_.GetTableReplicationInfo(table)));
+    cb_.InitializeTSDescriptors();
+    int adds = 0, removes = 0, stepdowns = 0;
+    RETURN_NOT_OK(cb_.CountPendingTasks(table, &adds, &removes, &stepdowns));
+    RETURN_NOT_OK(cb_.AnalyzeTablets(table));
+    cb_.state_ = cb_.per_table_states_[cur_table_uuid_].get();
+    return Status::OK();
+  }
+
+  struct ExtraTable {
+    TableInfoPtr table;
+    std::vector<TabletInfoPtr> tablets;
+  };
+
+  // Creates a table of `num_tablets` tablets, each with a running replica on every tserver and
+  // its leader on `leader_ts`, registered with the balancer's table and tablet maps.
+  Result<ExtraTable> CreateExtraTable(
+      const TableId& table_id, int num_tablets, const std::shared_ptr<TSDescriptor>& leader_ts) {
+    ExtraTable extra;
+    extra.table = new TableInfo(table_id, /* colocated */ false);
+    std::vector<std::string> splits;
+    for (int i = 0; i < num_tablets - 1; ++i) {
+      splits.push_back(Format("$0-$1", table_id, i));
+    }
+    RETURN_NOT_OK(CreateTable(splits, NumReplicas(), false, extra.table.get(), &extra.tablets));
+    for (const auto& tablet : extra.tablets) {
+      auto replica_map = std::make_shared<TabletReplicaMap>();
+      for (const auto& ts_desc : ts_descs_) {
+        TabletReplica replica;
+        NewReplica(
+            ts_desc, tablet::RUNNING, ts_desc == leader_ts ? PeerRole::LEADER : PeerRole::FOLLOWER,
+            consensus::PeerMemberType::VOTER, &replica);
+        InsertOrDie(replica_map.get(), ts_desc->permanent_uuid(), replica);
+      }
+      tablet->SetReplicaLocations(replica_map);
+      tablet_map_[tablet->tablet_id()] = tablet;
+    }
+    tables_.AddOrReplace(extra.table);
+    return extra;
+  }
+
+  void SetCanPerformGlobalOperations(bool can_perform) {
+    cb_.can_perform_global_operations_ = can_perform;
+  }
+
+  void SetNumTabletsInSkippedTables(size_t num_tablets) {
+    cb_.global_state_->num_tablets_in_skipped_tables_ = num_tablets;
+  }
+
   void StopTsHeartbeat(std::shared_ptr<TSDescriptor> ts_desc) {
     std::lock_guard l(ts_desc->mutex_);
     ts_desc->last_heartbeat_ = MonoTime();

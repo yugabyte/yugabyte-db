@@ -402,6 +402,52 @@ YbResetCatalogCacheVersion()
 	yb_pgstat_set_catalog_version(yb_catalog_cache_version);
 }
 
+static bool yb_is_historical_catalog_read = false;
+
+/*
+ * A transaction that starts with yb_read_time set runs without object locks:
+ * it reads the catalog and the data as of yb_read_time, so locks taken as of
+ * now protect nothing and only make it wait on, and block, concurrent DDLs.
+ * Since it skips object locking, it uses the legacy catalog read path, and
+ * the tserver keeps the catalog version check for its requests, which is what
+ * rejects reads across a breaking catalog change made after yb_read_time.
+ *
+ * yb_read_time_skip_catalog sessions read the current catalog, so they keep
+ * object locks.
+ */
+void
+YbSetObjectLockingForCurrTxn()
+{
+	yb_is_historical_catalog_read = (yb_read_time != 0 &&
+									 !yb_read_time_skip_catalog);
+	YBCSetObjectLockingForCurrTxn(yb_enable_object_locking_infra &&
+								  !yb_is_historical_catalog_read);
+}
+
+bool
+YbIsHistoricalCatalogRead()
+{
+	return yb_is_historical_catalog_read;
+}
+
+/*
+ * Whether the catalog caches and the local catalog version were loaded as of
+ * yb_read_time and must stay that way: until yb_read_time is reset, catalog
+ * changes are neither refreshed nor applied from invalidation messages. Keeping
+ * the version as of yb_read_time is what lets the tserver catalog version check
+ * reject reads across a breaking catalog change made after yb_read_time.
+ *
+ * Changing yb_read_time resets the local catalog version, so the first refresh
+ * after it loads the catalog as of the new value.
+ */
+bool
+YbIsCatalogPinnedToReadTime()
+{
+	return (yb_read_time != 0 &&
+			!yb_read_time_skip_catalog &&
+			yb_catalog_cache_version != YB_CATCACHE_VERSION_UNINITIALIZED);
+}
+
 /* These values are lazily initialized based on corresponding environment variables. */
 int			ybc_pg_double_write = -1;
 int			ybc_disable_pg_locking = -1;
@@ -7571,6 +7617,44 @@ YbCanResetCatalogVersion(void)
 			!IsTransactionBlock());
 }
 
+#define YB_READ_TIME_FIXED_IN_TXN_ERRMSG \
+	"yb_read_time cannot be changed inside a transaction block that started " \
+	"with it set"
+
+/*
+ * A transaction that started with yb_read_time set took no object locks
+ * (YbSetObjectLockingForCurrTxn); the rest of it must not run as of now
+ * without them.
+ */
+static bool
+YbCanChangeYbReadTimeInTxn(unsigned long long value_ull, bool is_ht_unit)
+{
+	return !(YbIsHistoricalCatalogRead() && IsTransactionBlock() &&
+			 (value_ull != yb_read_time || is_ht_unit != yb_is_read_time_ht));
+}
+
+/*
+ * guc.c restores a GUC's reset value without calling its check hook (RESET,
+ * SET ... TO DEFAULT, set_config() with a NULL value, RESET ALL), so those
+ * paths call this for yb_read_time instead.
+ */
+bool
+YbCanResetYbReadTime(const char *reset_val, int elevel)
+{
+	unsigned long long value_ull;
+	bool		is_ht_unit;
+
+	if (reset_val == NULL ||
+		!parse_yb_read_time(reset_val, &value_ull, &is_ht_unit) ||
+		YbCanChangeYbReadTimeInTxn(value_ull, is_ht_unit))
+		return true;
+
+	ereport(elevel,
+			(errcode(ERRCODE_ACTIVE_SQL_TRANSACTION),
+			 errmsg(YB_READ_TIME_FIXED_IN_TXN_ERRMSG)));
+	return false;
+}
+
 bool
 check_yb_read_time(char **newval, void **extra, GucSource source)
 {
@@ -7624,6 +7708,13 @@ check_yb_read_time(char **newval, void **extra, GucSource source)
 
 	if (!parse_yb_read_time(*newval, &value_ull, &is_ht_unit))
 	{
+		return false;
+	}
+
+	if (!YbCanChangeYbReadTimeInTxn(value_ull, is_ht_unit))
+	{
+		GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
+		GUC_check_errmsg(YB_READ_TIME_FIXED_IN_TXN_ERRMSG);
 		return false;
 	}
 
