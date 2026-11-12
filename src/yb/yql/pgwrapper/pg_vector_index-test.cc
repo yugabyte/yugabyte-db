@@ -250,39 +250,11 @@ std::vector<tablet::TabletPeerPtr> ListTabletPeersWithVectorIndexes(
   return result;
 }
 
-// Unlike WaitAllReplicasSynchronizedWithLeader, which only waits for the followers to commit,
-// waits for every replica to apply all the ops its leader has committed.
+// Waits for every replica to apply all the ops its leader has committed. The leader must be
+// LEADER_AND_READY, since a new leader's committed op id may lag writes already acknowledged.
 Status WaitAllReplicasAppliedLeaderCommitted(MiniCluster* cluster, CoarseDuration timeout) {
-  std::unordered_map<TabletId, int64_t> leader_committed_idx;
-  const auto deadline = CoarseMonoClock::Now() + timeout;
-  // After a restart, some tablets may still be electing a leader.
-  RETURN_NOT_OK(Wait(
-      [cluster, &leader_committed_idx]() -> Result<bool> {
-        leader_committed_idx.clear();
-        for (const auto& peer : ListTabletPeers(cluster, ListPeersFilter::kLeaders)) {
-          leader_committed_idx.emplace(
-              peer->tablet_id(),
-              VERIFY_RESULT(peer->GetConsensus())->GetLastCommittedOpId().index);
-        }
-        for (const auto& peer : ListTabletPeers(cluster, ListPeersFilter::kAll)) {
-          if (!leader_committed_idx.contains(peer->tablet_id())) {
-            return false;
-          }
-        }
-        return true;
-      },
-      deadline, "Wait for all tablet leaders"));
-  for (const auto& peer : ListTabletPeers(cluster, ListPeersFilter::kAll)) {
-    auto it = leader_committed_idx.find(peer->tablet_id());
-    SCHECK(it != leader_committed_idx.end(), IllegalState,
-           Format("No leader for tablet $0", peer->tablet_id()));
-    RETURN_NOT_OK(Wait(
-        [idx = it->second, &peer]() -> Result<bool> {
-          return VERIFY_RESULT(peer->GetConsensus())->GetLastAppliedOpId().index >= idx;
-        },
-        deadline, Format("$0apply op index $1", peer->LogPrefix(), it->second)));
-  }
-  return Status::OK();
+  return WaitAllReplicasSynchronizedWithLeader(
+      cluster, timeout, RequireLeaderIsReady::kTrue, WaitForApplied::kTrue);
 }
 
 ////////////////////////////////////////////////////////
