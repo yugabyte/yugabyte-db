@@ -2421,8 +2421,9 @@ retry1:
 			 * YB: The connection manager writes its reserved parameters,
 			 * then the end marker, then the logical client's parameters.
 			 * A reserved name after the marker came from the client.
-			 * IsYugaByteEnabled() is false here, as pggate isn't
-			 * initialized until after the startup packet is processed.
+			 * Check the env var rather than IsYugaByteEnabled(), which is
+			 * false on a backend's first startup packet, as pggate isn't
+			 * initialized until after that packet is processed.
 			 */
 			if (YBIsEnabledInPostgresEnvVar() &&
 				YbIsConnMgrReservedStartupParameter(nameptr))
