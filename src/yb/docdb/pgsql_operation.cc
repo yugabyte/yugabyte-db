@@ -1571,6 +1571,18 @@ Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
     return Status::OK();
   }
 
+  // A backfill writes below newer writes, at its read time, which is only safe while the index
+  // keeps the delete markers that hide what was deleted since. A chunk that outlived its backfill
+  // could otherwise write under tombstones a compaction has since dropped, and bring deleted rows
+  // back into the index.
+  if (request_.is_backfill() &&
+      !doc_read_context_->schema().table_properties().retain_delete_markers()) {
+    // A per-operation error, which fails the statement rather than having the client retry.
+    response_->set_status(PgsqlResponsePB::PGSQL_STATUS_RUNTIME_ERROR);
+    response_->ref_error_message("Backfill write to a table that no longer retains delete markers");
+    return Status::OK();
+  }
+
   switch (request_.stmt_type()) {
     case PgsqlWriteRequestPB::PGSQL_INSERT:
       return ApplyInsert(data, IsUpsert::kFalse);

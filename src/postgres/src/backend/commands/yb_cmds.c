@@ -2194,6 +2194,11 @@ YbBackfillIndex(YbBackfillIndexStmt *stmt, DestReceiver *dest)
 	indexInfo->ii_Concurrent = true;
 	indexInfo->ii_BrokenHotChain = false;
 
+	if (yb_test_block_index_phase[0] != '\0')
+		YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
+									"backfill_chunk",
+									"index backfill chunk");
+
 	out_param = YbCreateExecOutParam();
 	index_tuples = yb_index_backfill(heapRel,
 									 indexRel,
