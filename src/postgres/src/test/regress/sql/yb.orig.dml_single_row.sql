@@ -1150,3 +1150,215 @@ DROP TABLE t_temp;
 DROP TYPE rt;
 DROP TYPE two_int;
 DROP TYPE two_text;
+
+--
+-- Test single-row UPDATE/DELETE where the WHERE value has another type than the
+-- primary key column (GH#35476).  A value must not be reinterpreted as the
+-- column type: statements must update the same rows as they do in PostgreSQL.
+--
+CREATE TABLE sr_cross_int4 (k int PRIMARY KEY, v int);
+INSERT INTO sr_cross_int4 VALUES (-2147483648, 0), (1, 0), (2, 0), (3, 0), (2147483647, 0);
+CREATE TABLE sr_cross_int2 (k smallint PRIMARY KEY, v int);
+INSERT INTO sr_cross_int2 VALUES (-32768, 0), (1, 0), (2, 0), (32767, 0);
+CREATE TABLE sr_cross_int8 (k bigint PRIMARY KEY, v int);
+INSERT INTO sr_cross_int8 VALUES (-1, 0), (2, 0), (4294967295, 0);
+
+-- bigint values that do not fit an int4 column match no row.  Their low 32 bits
+-- are the keys 1 and 2.
+UPDATE sr_cross_int4 SET v = 1 WHERE k = 4294967297;
+DELETE FROM sr_cross_int4 WHERE k = 4294967298;
+-- One past either end of the int4 range.
+UPDATE sr_cross_int4 SET v = 1 WHERE k = 2147483648;
+UPDATE sr_cross_int4 SET v = 1 WHERE k = -2147483649;
+SELECT * FROM sr_cross_int4 ORDER BY k;
+-- bigint values that fit still use single-row.
+EXPLAIN (COSTS OFF) UPDATE sr_cross_int4 SET v = 5 WHERE k = 2::bigint;
+UPDATE sr_cross_int4 SET v = 5 WHERE k = 2::bigint;
+UPDATE sr_cross_int4 SET v = 5 WHERE k = 2147483647::bigint;
+UPDATE sr_cross_int4 SET v = 5 WHERE k = -2147483648::bigint;
+SELECT * FROM sr_cross_int4 ORDER BY k;
+
+-- Same for smallint with int4 and bigint values.
+UPDATE sr_cross_int2 SET v = 1 WHERE k = 65537;
+DELETE FROM sr_cross_int2 WHERE k = 4294967298;
+UPDATE sr_cross_int2 SET v = 1 WHERE k = 32768;
+UPDATE sr_cross_int2 SET v = 1 WHERE k = -32769;
+SELECT * FROM sr_cross_int2 ORDER BY k;
+
+-- A wider column holds every narrower value: single-row.
+EXPLAIN (COSTS OFF) UPDATE sr_cross_int8 SET v = 1 WHERE k = -1;
+UPDATE sr_cross_int8 SET v = 1 WHERE k = -1;
+SELECT * FROM sr_cross_int8 ORDER BY k;
+
+-- The same with an int parameter in a generic plan (GH#36130).
+SET plan_cache_mode = force_generic_plan;
+PREPARE sr_cross_pw(int) AS UPDATE sr_cross_int8 SET v = 2 WHERE k = $1;
+EXPLAIN (COSTS OFF) EXECUTE sr_cross_pw(-1);
+EXECUTE sr_cross_pw(-1);
+SELECT * FROM sr_cross_int8 ORDER BY k;
+DEALLOCATE sr_cross_pw;
+RESET plan_cache_mode;
+
+-- A bind parameter in a generic plan, which is still single-row, gives the same
+-- result.
+SET plan_cache_mode = force_generic_plan;
+PREPARE sr_cross_p(bigint) AS UPDATE sr_cross_int4 SET v = 9 WHERE k = $1;
+EXPLAIN (COSTS OFF) EXECUTE sr_cross_p(3);
+EXECUTE sr_cross_p(4294967297);
+EXECUTE sr_cross_p(2147483648);
+EXECUTE sr_cross_p(NULL);
+EXECUTE sr_cross_p(3);
+SELECT * FROM sr_cross_int4 ORDER BY k;
+DEALLOCATE sr_cross_p;
+RESET plan_cache_mode;
+
+-- Partitioned table: 4294967446 is 2^32 + 150, its low 32 bits are the key 150.
+CREATE TABLE sr_cross_part (k int PRIMARY KEY, v int) PARTITION BY RANGE (k);
+CREATE TABLE sr_cross_part_lo PARTITION OF sr_cross_part FOR VALUES FROM (MINVALUE) TO (100);
+CREATE TABLE sr_cross_part_hi PARTITION OF sr_cross_part FOR VALUES FROM (100) TO (MAXVALUE);
+INSERT INTO sr_cross_part VALUES (1, 0), (150, 0);
+UPDATE sr_cross_part SET v = 1 WHERE k = 4294967446;
+SELECT * FROM sr_cross_part ORDER BY k;
+UPDATE sr_cross_part SET v = 2 WHERE k = 150::bigint;
+SELECT * FROM sr_cross_part ORDER BY k;
+
+-- A two-column key: 4294967297 and 4294967298 are 2^32 + 1 and 2^32 + 2, their
+-- low 32 bits are the keys 1 and 2.  A generic plan checks the values of both
+-- columns at execution.
+CREATE TABLE sr_cross_two (a int, b int, v int, PRIMARY KEY (a, b));
+INSERT INTO sr_cross_two VALUES (1, 1, 0), (1, 2, 0), (2, 1, 0);
+UPDATE sr_cross_two SET v = 1 WHERE a = 4294967297 AND b = 1;
+EXPLAIN (COSTS OFF) UPDATE sr_cross_two SET v = 2 WHERE a = 1::bigint AND b = 2::bigint;
+UPDATE sr_cross_two SET v = 2 WHERE a = 1::bigint AND b = 2::bigint;
+SET plan_cache_mode = force_generic_plan;
+PREPARE sr_cross_p2(bigint, bigint) AS UPDATE sr_cross_two SET v = 3 WHERE a = $1 AND b = $2;
+EXPLAIN (COSTS OFF) EXECUTE sr_cross_p2(2, 1);
+EXECUTE sr_cross_p2(2, 4294967297);
+EXECUTE sr_cross_p2(4294967298, 1);
+EXECUTE sr_cross_p2(2, 1);
+SELECT * FROM sr_cross_two ORDER BY a, b;
+DEALLOCATE sr_cross_p2;
+RESET plan_cache_mode;
+
+-- A key of columns of different types, each with values of another type.
+-- 65537 and 65538 are 2^16 + 1 and 2^16 + 2, their low 16 bits are the keys 1
+-- and 2.
+CREATE TABLE sr_cross_mixed (a smallint, b bigint, c varchar, v int,
+	PRIMARY KEY (a, b, c));
+INSERT INTO sr_cross_mixed VALUES (1, 1, 'x', 0), (1, 2, 'x', 0), (2, 1, 'x', 0);
+UPDATE sr_cross_mixed SET v = 1 WHERE a = 65537 AND b = 1 AND c = 'x';
+EXPLAIN (COSTS OFF) UPDATE sr_cross_mixed SET v = 2
+	WHERE a = 1::bigint AND b = 2::int AND c = 'x'::text;
+UPDATE sr_cross_mixed SET v = 2 WHERE a = 1::bigint AND b = 2::int AND c = 'x'::text;
+SET plan_cache_mode = force_generic_plan;
+PREPARE sr_cross_pm(int, smallint, text) AS
+	UPDATE sr_cross_mixed SET v = 3 WHERE a = $1 AND b = $2 AND c = $3;
+EXPLAIN (COSTS OFF) EXECUTE sr_cross_pm(2, 1, 'x');
+EXECUTE sr_cross_pm(65538, 1, 'x');
+EXECUTE sr_cross_pm(2, 1, 'x');
+PREPARE sr_cross_dm(bigint, int, text) AS
+	DELETE FROM sr_cross_mixed WHERE a = $1 AND b = $2 AND c = $3 RETURNING *;
+EXECUTE sr_cross_dm(65537, 2, 'x');
+EXECUTE sr_cross_dm(1, 2, 'x');
+SELECT * FROM sr_cross_mixed ORDER BY a, b, c;
+DEALLOCATE sr_cross_pm;
+DEALLOCATE sr_cross_dm;
+RESET plan_cache_mode;
+
+-- An ascending (range) key.
+CREATE TABLE sr_cross_asc (k int, v int, PRIMARY KEY (k ASC));
+INSERT INTO sr_cross_asc VALUES (1, 0), (2, 0);
+UPDATE sr_cross_asc SET v = 1 WHERE k = 4294967297;
+EXPLAIN (COSTS OFF) UPDATE sr_cross_asc SET v = 2 WHERE k = 2::bigint;
+UPDATE sr_cross_asc SET v = 2 WHERE k = 2::bigint;
+SELECT * FROM sr_cross_asc ORDER BY k;
+
+-- A value that needs no conversion is the key as is: a varchar column with
+-- text values, and a domain column with values of the domain's base type.
+CREATE TABLE sr_cross_varchar (k varchar PRIMARY KEY, v int);
+INSERT INTO sr_cross_varchar VALUES ('a', 0), ('b', 0);
+EXPLAIN (COSTS OFF) UPDATE sr_cross_varchar SET v = 1 WHERE k = 'a';
+UPDATE sr_cross_varchar SET v = 1 WHERE k = 'a';
+SET plan_cache_mode = force_generic_plan;
+PREPARE sr_cross_pv(text) AS UPDATE sr_cross_varchar SET v = 2 WHERE k = $1;
+EXPLAIN (COSTS OFF) EXECUTE sr_cross_pv('b');
+EXECUTE sr_cross_pv('b');
+SELECT * FROM sr_cross_varchar ORDER BY k;
+DEALLOCATE sr_cross_pv;
+RESET plan_cache_mode;
+CREATE DOMAIN sr_cross_dom AS int;
+CREATE TABLE sr_cross_domain (k sr_cross_dom PRIMARY KEY, v int);
+INSERT INTO sr_cross_domain VALUES (1, 0), (2, 0);
+EXPLAIN (COSTS OFF) UPDATE sr_cross_domain SET v = 1 WHERE k = 1;
+UPDATE sr_cross_domain SET v = 1 WHERE k = 1;
+SELECT * FROM sr_cross_domain ORDER BY k;
+
+-- Values of other types use the scan, which compares them as PostgreSQL does.
+-- A double column with real values (the real 0.1 is the double
+-- 0.10000000149011612), and a text column with name values.
+CREATE TABLE sr_cross_double (k float8 PRIMARY KEY, v int);
+INSERT INTO sr_cross_double VALUES (0.1, 0), (0.10000000149011612, 0), (1.5, 0);
+EXPLAIN (COSTS OFF) UPDATE sr_cross_double SET v = 1 WHERE k = '0.1'::real;
+UPDATE sr_cross_double SET v = 1 WHERE k = '0.1'::real;
+SELECT * FROM sr_cross_double ORDER BY k;
+CREATE TABLE sr_cross_text (k text COLLATE "C" PRIMARY KEY, v int);
+INSERT INTO sr_cross_text VALUES ('abc', 0), ('bbbb', 0);
+EXPLAIN (COSTS OFF) UPDATE sr_cross_text SET v = 1 WHERE k = 'bbbb'::name;
+UPDATE sr_cross_text SET v = 1 WHERE k = 'bbbb'::name;
+SELECT * FROM sr_cross_text ORDER BY k;
+
+-- A real column with double values: only a double that is a real matches.
+CREATE TABLE sr_cross_real (k real PRIMARY KEY, v int);
+INSERT INTO sr_cross_real VALUES (0.1, 0), (1.5, 0);
+EXPLAIN (COSTS OFF) UPDATE sr_cross_real SET v = 1 WHERE k = 1.5::float8;
+UPDATE sr_cross_real SET v = 1 WHERE k = 1.5::float8;
+UPDATE sr_cross_real SET v = 1 WHERE k = 0.1::float8;
+SELECT * FROM sr_cross_real ORDER BY k;
+
+-- A date column with timestamp values: only a midnight matches.
+CREATE TABLE sr_cross_date (k date PRIMARY KEY, v int);
+INSERT INTO sr_cross_date VALUES ('2000-01-01', 0), ('2000-01-02', 0);
+EXPLAIN (COSTS OFF) UPDATE sr_cross_date SET v = 1 WHERE k = '2000-01-02 00:00:00'::timestamp;
+UPDATE sr_cross_date SET v = 1 WHERE k = '2000-01-02 00:00:00'::timestamp;
+UPDATE sr_cross_date SET v = 1 WHERE k = '2000-01-01 00:00:00.000001'::timestamp;
+SELECT * FROM sr_cross_date ORDER BY k;
+
+-- A name column with text values.  A name holds 63 bytes, so a longer text
+-- matches no row.
+CREATE TABLE sr_cross_name (k name PRIMARY KEY, v int);
+INSERT INTO sr_cross_name VALUES ('abc', 0), (repeat('a', 63), 0);
+EXPLAIN (COSTS OFF) UPDATE sr_cross_name SET v = 1 WHERE k = 'abc'::text;
+UPDATE sr_cross_name SET v = 1 WHERE k = 'abc'::text;
+UPDATE sr_cross_name SET v = 1 WHERE k = repeat('a', 64);
+SELECT length(k), v FROM sr_cross_name ORDER BY k;
+
+-- Each single-row case above keeps the single-shard fast path.  Values that
+-- use the scan do not.
+CALL check_fast_path_txn('UPDATE sr_cross_int4 SET v = 6 WHERE k = 1::bigint', true);
+CALL check_fast_path_txn('UPDATE sr_cross_int4 SET v = 6 WHERE k = 1::smallint', true);
+CALL check_fast_path_txn('UPDATE sr_cross_int2 SET v = 6 WHERE k = 1::int', true);
+CALL check_fast_path_txn('UPDATE sr_cross_int2 SET v = 6 WHERE k = 1::bigint', true);
+CALL check_fast_path_txn('UPDATE sr_cross_int8 SET v = 6 WHERE k = 2::int', true);
+CALL check_fast_path_txn('UPDATE sr_cross_int8 SET v = 6 WHERE k = 2::smallint', true);
+CALL check_fast_path_txn('UPDATE sr_cross_part SET v = 6 WHERE k = 150::bigint', true);
+CALL check_fast_path_txn('UPDATE sr_cross_two SET v = 6 WHERE a = 1::bigint AND b = 1::bigint', true);
+CALL check_fast_path_txn('UPDATE sr_cross_mixed SET v = 6 WHERE a = 1::bigint AND b = 1::int AND c = ''x''::text', true);
+CALL check_fast_path_txn('UPDATE sr_cross_asc SET v = 6 WHERE k = 1::bigint', true);
+SET plan_cache_mode = force_generic_plan;
+PREPARE sr_cross_pf(bigint) AS UPDATE sr_cross_int4 SET v = 7 WHERE k = $1;
+CALL check_fast_path_txn('EXECUTE sr_cross_pf(1)', true);
+DEALLOCATE sr_cross_pf;
+PREPARE sr_cross_pwf(int) AS UPDATE sr_cross_int8 SET v = 7 WHERE k = $1;
+CALL check_fast_path_txn('EXECUTE sr_cross_pwf(2)', true);
+DEALLOCATE sr_cross_pwf;
+RESET plan_cache_mode;
+CALL check_fast_path_txn('UPDATE sr_cross_double SET v = 6 WHERE k = 1.5::real', false);
+CALL check_fast_path_txn('UPDATE sr_cross_text SET v = 6 WHERE k = ''abc''::name', false);
+CALL check_fast_path_txn('UPDATE sr_cross_real SET v = 6 WHERE k = 1.5::float8', false);
+CALL check_fast_path_txn('UPDATE sr_cross_date SET v = 6 WHERE k = ''2000-01-02''::timestamp', false);
+CALL check_fast_path_txn('UPDATE sr_cross_name SET v = 6 WHERE k = ''abc''::text', false);
+
+DROP TABLE sr_cross_int4, sr_cross_int2, sr_cross_int8, sr_cross_part, sr_cross_two,
+	sr_cross_mixed, sr_cross_asc, sr_cross_varchar, sr_cross_domain, sr_cross_double,
+	sr_cross_text, sr_cross_real, sr_cross_date, sr_cross_name;
+DROP DOMAIN sr_cross_dom;
