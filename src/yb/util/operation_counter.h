@@ -97,6 +97,7 @@ class OperationCounter {
   explicit OperationCounter(const std::string& log_prefix);
 
   void Shutdown();
+  bool ReadyToShutdown() const;
 
   void Acquire();
   void Release();
@@ -114,6 +115,7 @@ class ScopedOperation {
  public:
   ScopedOperation() = default;
   explicit ScopedOperation(OperationCounter* counter);
+  explicit ScopedOperation(OperationCounter& counter) : ScopedOperation(&counter) {}
 
  private:
   struct ScopedCounterDeleter {

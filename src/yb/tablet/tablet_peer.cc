@@ -128,7 +128,8 @@ DEFINE_RUNTIME_uint32(log_retention_diagnostics_min_age_secs, 0,
     "the first retained segment is at least this old in seconds. 0 disables.");
 TAG_FLAG(log_retention_diagnostics_min_age_secs, advanced);
 
-DEFINE_RUNTIME_int32(quiescent_tablet_idle_sec, 600,
+// TODO: Restore the default to 600 when enabling quiescent tablets by default.
+DEFINE_RUNTIME_int32(quiescent_tablet_idle_sec, 0,
     "A tablet enters the quiescent mode after nothing was appended to its log for this many "
     "seconds. 0 disables entering the mode.");
 
@@ -451,6 +452,11 @@ void TabletPeer::ListenNumSSTFilesChanged(std::function<void()> listener) {
   tablet_->ListenNumSSTFilesChanged(std::move(listener));
 }
 
+bool TabletPeer::PendingPostSplitCompaction() {
+  auto tablet = shared_tablet_maybe_null();
+  return tablet && tablet->ShouldDisableLbMove();
+}
+
 Status TabletPeer::CheckOperationAllowed(const OpId& op_id, consensus::OperationType op_type) {
   return tablet_->CheckOperationAllowed(op_id, op_type);
 }
@@ -527,6 +533,8 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
                               "Incorrect state to start TabletPeer, "));
   }
   tablet_->Start();
+
+  TEST_SYNC_POINT_CALLBACK("TabletPeer::Start:BeforeStartedNotification", this);
 
   // The context tracks that the current caller does not hold the lock for consensus state.
   // So mark dirty callback, e.g., consensus->ConsensusState() for master consensus callback of

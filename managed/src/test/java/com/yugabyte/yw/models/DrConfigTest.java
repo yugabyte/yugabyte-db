@@ -18,6 +18,7 @@ import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams.Bootst
 import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 import org.junit.Before;
 import org.junit.Test;
@@ -47,6 +48,40 @@ public class DrConfigTest extends FakeDBApplication {
 
     backupRequestParams = new BootstrapBackupParams();
     backupRequestParams.storageConfigUUID = config.getConfigUUID();
+  }
+
+  @Test
+  public void testGetByStorageConfigUuids() {
+    DrConfig drConfig =
+        DrConfig.create(
+            "replication1",
+            sourceUniverse.getUniverseUUID(),
+            targetUniverse.getUniverseUUID(),
+            backupRequestParams,
+            new PitrParams(),
+            Set.of("db1"),
+            false);
+    Customer otherCustomer = ModelFactory.testCustomer("oc", "other customer");
+    CustomerConfig otherConfig = ModelFactory.createS3StorageConfig(otherCustomer, "OTHER");
+    BootstrapBackupParams otherBackupParams = new BootstrapBackupParams();
+    otherBackupParams.storageConfigUUID = otherConfig.getConfigUUID();
+    DrConfig.create(
+        "replication2",
+        createUniverse("other source", otherCustomer.getId()).getUniverseUUID(),
+        createUniverse("other target", otherCustomer.getId()).getUniverseUUID(),
+        otherBackupParams,
+        new PitrParams(),
+        Set.of("db2"),
+        false);
+
+    List<DrConfig> found = DrConfig.getByStorageConfigUuids(Set.of(config.getConfigUUID()));
+    assertEquals(1, found.size());
+    assertEquals(drConfig.getUuid(), found.get(0).getUuid());
+    assertTrue(found.get(0).hasActiveXClusterConfig());
+    assertEquals(
+        targetUniverse.getUniverseUUID(),
+        found.get(0).getActiveXClusterConfig().getTargetUniverseUUID());
+    assertTrue(DrConfig.getByStorageConfigUuids(Set.of()).isEmpty());
   }
 
   @Test

@@ -336,6 +336,23 @@ TEST(TestCatalogManager, CheckIfCanDeleteSingleTablet) {
   }
 }
 
+// Adding the same tablet to a table twice should succeed. This happens when the table_ids list of
+// a tablet lists the same table id twice, see github issue 34672.
+TEST(TableInfoTest, AddSameTabletTwice) {
+  scoped_refptr<TableInfo> table(new TableInfo(CURRENT_TEST_NAME(), /* colocated */ false));
+  auto tablet = ASSERT_RESULT(CreateTablet(table, "tablet", "" /* start_key */, "" /* end_key */));
+  {
+    // TabletLoader::Visit holds the tablet's write lock while adding it to its tables.
+    auto l = tablet->LockForWrite();
+    ASSERT_OK(table->AddTablet(tablet));
+  }
+  ASSERT_EQ(table->TabletCount(), 1);
+  ASSERT_EQ(table->NumPartitions(), 1);
+  auto tablets = ASSERT_RESULT(table->GetTablets());
+  ASSERT_EQ(tablets.size(), 1);
+  ASSERT_EQ(tablets[0], tablet);
+}
+
 TEST(TestCatalogManager, TestSetPreferredZones) {
   std::string z1 = "a", z2 = "b", z3 = "c";
   CloudInfoPB ci1;
@@ -657,6 +674,49 @@ TEST(TestCatalogManager, PerTableLoadStateAddReplica) {
   // The global load follows the picks.
   ASSERT_EQ(2, ASSERT_RESULT(global_state.GetGlobalReplicaLoad("2222")));
   ASSERT_EQ(1, ASSERT_RESULT(global_state.GetGlobalReplicaLoad("0000")));
+}
+
+TEST(TestCatalogManager, TabletInfoCountsReplicaLoad) {
+  TSDescriptorVector ts_descs = {SetupTS("0000", "a"), SetupTS("1111", "a"), SetupTS("2222", "a")};
+  auto replicas_on = [&ts_descs](std::initializer_list<size_t> indexes) {
+    auto replicas = std::make_shared<TabletReplicaMap>();
+    for (auto i : indexes) {
+      TabletReplica replica;
+      NewReplica(
+          ts_descs[i], tablet::RaftGroupStatePB::RUNNING, PeerRole::FOLLOWER,
+          consensus::PeerMemberType::VOTER, &replica);
+      InsertOrDie(replicas.get(), ts_descs[i]->permanent_uuid(), replica);
+    }
+    return replicas;
+  };
+  auto loads = [&ts_descs]() {
+    std::vector<int64_t> result;
+    for (const auto& ts : ts_descs) {
+      result.push_back(ts->replica_load());
+    }
+    return result;
+  };
+
+  scoped_refptr<TableInfo> table(new TableInfo("table", /* colocated */ false));
+  auto tablet = std::make_shared<TabletInfo>(table, "tablet-1");
+  tablet->SetReplicaLocations(replicas_on({0, 1}));
+  ASSERT_EQ(loads(), (std::vector<int64_t>{1, 1, 0}));
+  tablet->SetReplicaLocations(replicas_on({0, 2}));
+  ASSERT_EQ(loads(), (std::vector<int64_t>{1, 0, 1}));
+
+  auto other = std::make_shared<TabletInfo>(table, "tablet-2");
+  other->SetReplicaLocations(replicas_on({1, 2}));
+  ASSERT_EQ(loads(), (std::vector<int64_t>{1, 1, 2}));
+
+  // Stopping is idempotent and later map changes stay out of the count.
+  tablet->StopCountingReplicaLoad();
+  tablet->StopCountingReplicaLoad();
+  ASSERT_EQ(loads(), (std::vector<int64_t>{0, 1, 1}));
+  tablet->SetReplicaLocations(replicas_on({0, 1}));
+  ASSERT_EQ(loads(), (std::vector<int64_t>{0, 1, 1}));
+
+  other.reset();
+  ASSERT_EQ(loads(), (std::vector<int64_t>{0, 0, 0}));
 }
 
 using consensus::PeerMemberType;

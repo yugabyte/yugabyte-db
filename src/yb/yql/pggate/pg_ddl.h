@@ -23,6 +23,9 @@
 
 namespace yb::pggate {
 
+// Deadline for a single DDL RPC to the master, from FLAGS_ysql_ddl_rpc_timeout_sec.
+CoarseTimePoint DdlDeadline();
+
 class PgDdl : public PgStatement {
  protected:
   explicit PgDdl(const PgSessionPtr& pg_session) : PgStatement(pg_session) {}

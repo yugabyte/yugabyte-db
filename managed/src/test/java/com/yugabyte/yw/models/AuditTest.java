@@ -11,6 +11,7 @@ import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -216,8 +217,71 @@ public class AuditTest extends FakeDBApplication {
     assertEquals(entries.get(0).getTaskUUID(), taskUUID);
     assertEquals(entries.get(0).getPayload(), testPayload);
     assertEquals(entries.get(0).getAdditionalDetails(), testAdditionalDetails);
+    assertNull(entries.get(0).getTaskDiff());
     assertNotNull(entries.get(0).getTimestamp());
     assertEquals(entries.get(0).getUserAddress(), request.remoteAddress());
+  }
+
+  @Test
+  public void testAdditionalDetailsRedactSensitiveGFlagChanges() {
+    UUID taskUUID = UUID.randomUUID();
+    ObjectNode redactedChanges = gflagChanges(SECRET_REPLACEMENT, SECRET_REPLACEMENT);
+
+    auditService.createAuditEntry(
+        request,
+        Audit.TargetType.Universe,
+        "Test TargetID",
+        Audit.ActionType.UpgradeGFlags,
+        null,
+        taskUUID,
+        gflagChanges("createOld", "createNew"));
+    assertEquals(redactedChanges, Audit.getFromTaskUUID(taskUUID).getAdditionalDetails());
+
+    auditService.updateAdditionalDetails(taskUUID, gflagChanges("updateOld", "updateNew"));
+    assertEquals(redactedChanges, Audit.getFromTaskUUID(taskUUID).getAdditionalDetails());
+  }
+
+  private static ObjectNode gflagChanges(String oldPassword, String newPassword) {
+    ObjectNode details = Json.newObject();
+    ArrayNode tserver = details.putObject("gflags").putArray("tserver");
+    tserver
+        .addObject()
+        .put("name", "ycql_ldap_bind_passwd")
+        .put("old", oldPassword)
+        .put("new", newPassword);
+    tserver
+        .addObject()
+        .put("name", "ysql_hba_conf_csv")
+        .put("old", "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + oldPassword + " ldaptls=0")
+        .put("new", "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + newPassword + " ldaptls=0");
+    tserver.addObject().put("name", "webserver_port").put("old", "9000").put("new", "9100");
+    return details;
+  }
+
+  @Test
+  public void testCreateAndUpdateTaskDiff() {
+    UUID taskUUID = UUID.randomUUID();
+    ObjectNode taskDiff =
+        Json.newObject().put("field", "numNodes").put("before", "3").put("after", "6");
+    ObjectNode secretDiff = taskDiff.deepCopy().put("password", "qwerty");
+    ObjectNode expectedDiff = taskDiff.deepCopy().put("password", SECRET_REPLACEMENT);
+
+    auditService.createAuditEntry(
+        request,
+        Audit.TargetType.Universe,
+        "Test TargetID",
+        Audit.ActionType.Edit,
+        null,
+        taskUUID,
+        null,
+        secretDiff);
+    Audit created = Audit.getFromTaskUUID(taskUUID);
+    assertEquals(expectedDiff, created.getTaskDiff());
+
+    ObjectNode updatedDiff =
+        Json.newObject().put("field", "numNodes").put("before", "6").put("after", "9");
+    auditService.updateTaskDiff(taskUUID, updatedDiff);
+    assertEquals(updatedDiff, Audit.getFromTaskUUID(taskUUID).getTaskDiff());
   }
 
   @Test

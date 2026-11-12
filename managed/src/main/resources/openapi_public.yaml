@@ -369,9 +369,12 @@ paths:
             the caller's customer (including a customer that doesn't exist), or the
             caller's role has no create permission on the customer
         '409':
-          description: The customer already has a certificate with this label
+          description: The customer already has a certificate with this label. Also
+            returned while a request with the same Idempotency-Key is still in progress.
         '500':
           description: Server error
+        '422':
+          description: The Idempotency-Key was already used for a different request
       security:
       - apiKeyAuth: []
       - authTokenAuth: []
@@ -386,8 +389,11 @@ paths:
         resourceLocation:
           path: customers
           sourceType: endpoint
+      x-yba-api-idempotent: true
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
   /customers/{cUUID}/auto-yba-backups:
     parameters:
     - name: cUUID
@@ -7799,7 +7805,15 @@ components:
             '
           type: string
         params:
-          description: Arguments appended after the script (entrypoint + flags).
+          description: 'Arguments appended after the script (entrypoint + flags).
+
+            YBA replaces them with the arguments its support bundle manifest
+
+            gives component_name; the request''s collection window and options
+
+            such as filter_pg_audit_logs still apply.
+
+            '
           type: array
           items:
             type: string
@@ -7828,7 +7842,13 @@ components:
             '
           type: string
         timeout_secs:
-          description: Script execution timeout in seconds.
+          description: 'Script execution timeout in seconds.
+
+            YBA uses the timeout its support bundle manifest gives
+
+            component_name instead.
+
+            '
           type: integer
           format: int64
     BashComponentSpec:
@@ -7858,7 +7878,13 @@ components:
             '
           type: string
         params:
-          description: Arguments appended after the script (entrypoint + flags).
+          description: 'Arguments appended after the script (entrypoint + flags).
+
+            YBA replaces them with the arguments its support bundle manifest
+
+            gives component_name.
+
+            '
           type: array
           items:
             type: string
@@ -7887,7 +7913,13 @@ components:
             '
           type: string
         timeout_secs:
-          description: Script execution timeout in seconds.
+          description: 'Script execution timeout in seconds.
+
+            YBA uses the timeout its support bundle manifest gives
+
+            component_name instead.
+
+            '
           type: integer
           format: int64
     YSQLComponentSpec:
@@ -7922,6 +7954,12 @@ components:
 
             additionally runs with default_transaction_read_only=on.
 
+            After these checks YBA runs the queries its support bundle manifest
+
+            lists for component_name instead, and rejects a component_name the
+
+            manifest doesn''t list.
+
             '
           type: array
           items:
@@ -7935,7 +7973,13 @@ components:
             '
           type: string
         timeout_secs:
-          description: Command timeout in seconds.
+          description: 'Command timeout in seconds.
+
+            YBA uses the timeout its support bundle manifest gives
+
+            component_name instead.
+
+            '
           type: integer
           format: int64
     YCQLComponentSpec:
@@ -7964,6 +8008,12 @@ components:
 
             than one statement are rejected.
 
+            After these checks YBA runs the queries its support bundle manifest
+
+            lists for component_name instead, and rejects a component_name the
+
+            manifest doesn''t list.
+
             '
           type: array
           items:
@@ -7977,7 +8027,13 @@ components:
             '
           type: string
         timeout_secs:
-          description: Command timeout in seconds.
+          description: 'Command timeout in seconds.
+
+            YBA uses the timeout its support bundle manifest gives
+
+            component_name instead.
+
+            '
           type: integer
           format: int64
     YbAdminComponentSpec:
@@ -8009,7 +8065,15 @@ components:
             type: string
           minItems: 1
         yb_admin_args:
-          description: Additional arguments after the subcommand.
+          description: 'Additional arguments after the subcommand. YBA replaces
+
+            them with the arguments its support bundle manifest lists for
+
+            component_name, and rejects a component_name the manifest doesn''t
+
+            list.
+
+            '
           type: array
           items:
             type: string
@@ -8021,7 +8085,13 @@ components:
             '
           type: string
         timeout_secs:
-          description: Command timeout in seconds.
+          description: 'Command timeout in seconds.
+
+            YBA uses the timeout its support bundle manifest gives
+
+            component_name instead.
+
+            '
           type: integer
           format: int64
     YbaComponentSpec:
@@ -8075,7 +8145,13 @@ components:
             '
           type: string
         timeout_secs:
-          description: Script execution timeout in seconds.
+          description: 'Script execution timeout in seconds.
+
+            YBA uses the timeout its support bundle manifest gives
+
+            component_name instead.
+
+            '
           type: integer
           format: int64
     PrometheusMetricsFormat:
@@ -8123,6 +8199,39 @@ components:
         are resolved
 
         server side and not persisted with the bundle.
+
+
+        Leaving every `*_component_specs` list empty makes the server build
+
+        them from the support bundle manifest shipped with YBA, keeping the
+
+        entries named in `components`. Populating any one list turns the
+
+        fill off for all of them, and
+
+        each spec is then checked against the same manifest: a component it
+
+        doesn''t list, a different script or entrypoint, or a `linux_user` other
+
+        than yugabyte is rejected with 400. Either way, each spec runs with the
+
+        manifest''s Files and Bash arguments, YSQL and YCQL queries, yb-admin
+
+        arguments, timeout and tar path, whatever the request carries; the
+
+        request still chooses the components, `db_name` and `keyspace`, and the
+
+        yb-admin commands within the allowed set. Scalars the request does
+
+        send, such as `filter_pg_audit_logs`, `max_num_recent_cores`,
+
+        `max_core_file_size` and the `prom_*` fields, override what the manifest
+
+        carries. The fill applies to the universe create and estimate-size
+
+        endpoints; the YBA-only endpoints don''t fill, but check their specs and
+
+        set the tar path the same way.
 
         '
       type: object
@@ -8188,13 +8297,13 @@ components:
           description: 'Specs driving the generic node-level FilesComponent. Required
             when components contains
 
-            FilesComponent. On Kubernetes universes the SystemLogs and NodeAgent specs
-            are dropped, since
+            FilesComponent, unless the manifest fill applies. On Kubernetes universes
+            the SystemLogs and
 
-            a pod has neither the host''s /var/log nor a node agent, and the YbcLogs
-            spec is collected from
+            NodeAgent specs are dropped, since a pod has neither the host''s /var/log
+            nor a node agent, and
 
-            tserver pods only.
+            the YbcLogs spec is collected from tserver pods only.
 
             '
           type: array
@@ -8202,15 +8311,15 @@ components:
             $ref: '#/components/schemas/FilesComponentSpec'
         bash_component_specs:
           description: 'Specs driving the node-level BashComponent. Required when
-            components contains BashComponent.
+            components contains BashComponent,
 
-            On Kubernetes universes the collect_cdc_state and collect_threadz_memz_rpcz_stats
-            specs are
+            unless the manifest fill applies. On Kubernetes universes the collect_cdc_state
+            and
 
-            collected from tserver pods only, and collect_heap_snapshot skips its
-            tserver endpoints on a
+            collect_threadz_memz_rpcz_stats specs are collected from tserver pods
+            only, and
 
-            master pod.
+            collect_heap_snapshot skips its tserver endpoints on a master pod.
 
             '
           type: array
@@ -8218,9 +8327,10 @@ components:
             $ref: '#/components/schemas/BashComponentSpec'
         ysql_component_specs:
           description: 'Specs driving the node-level YSQLComponent. Required when
-            components contains YSQLComponent.
+            components contains YSQLComponent,
 
-            Collected from tserver pods only on Kubernetes universes.
+            unless the manifest fill applies. Collected from tserver pods only on
+            Kubernetes universes.
 
             '
           type: array
@@ -8228,9 +8338,10 @@ components:
             $ref: '#/components/schemas/YSQLComponentSpec'
         ycql_component_specs:
           description: 'Specs driving the node-level YCQLComponent. Required when
-            components contains YCQLComponent.
+            components contains YCQLComponent,
 
-            Collected from tserver pods only on Kubernetes universes.
+            unless the manifest fill applies. Collected from tserver pods only on
+            Kubernetes universes.
 
             '
           type: array
@@ -8238,13 +8349,13 @@ components:
             $ref: '#/components/schemas/YCQLComponentSpec'
         yb_admin_component_specs:
           description: Specs driving the node-level YbAdminComponent. Required when
-            components contains YbAdminComponent.
+            components contains YbAdminComponent, unless the manifest fill applies.
           type: array
           items:
             $ref: '#/components/schemas/YbAdminComponentSpec'
         yba_component_specs:
           description: Specs driving the global-level YBAComponent. Required when
-            components contains YBAComponent.
+            components contains YBAComponent, unless the manifest fill applies.
           type: array
           items:
             $ref: '#/components/schemas/YbaComponentSpec'
@@ -10037,10 +10148,11 @@ components:
       description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
         version 2.31.0.0 that could change.</b></p>Load balancers that YBA creates,
         manages and deletes for the cluster. Each enabled kind gives one L4 load balancer
-        in every region of the cluster, serving all zones of the region. When set,
+        in every region of the cluster, serving all zones of the region. At create,
         this object must enable at least one load balancer. ClusterInfo.load_balancers
-        lists them with their scheme and address. The settings are fixed when the
-        universe is created. Part of ClusterNetworkingSpec.'
+        lists them with their scheme and address. An edit of the universe can turn
+        them on or off; in an edit, an object that enables none turns them off. Part
+        of ClusterNetworkingSpec and ClusterNetworkingEditSpec.'
       type: object
       properties:
         enable_private:
@@ -10076,7 +10188,8 @@ components:
             - $ref: '#/components/schemas/ExposingServiceState'
           managed_load_balancer:
             description: Load balancers that YBA creates, manages and deletes. Set
-              when the universe is created. Do not combine with enable_lb.
+              it when the universe is created, or turn it on or off later with an
+              edit of the universe. Do not combine with enable_lb.
             $ref: '#/components/schemas/ManagedLoadBalancerSpec'
             x-yba-api-since: 2.31.0.0
             x-yba-api-visibility: preview
@@ -10680,9 +10793,9 @@ components:
       x-yba-api-since: 2.31.0.0
       title: ManagedLoadBalancerInfo
       description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
-        version 2.31.0.0 that could change.</b></p>A load balancer that YBA created
-        for the cluster. It serves a set of availability zones in one region. Part
-        of ClusterInfo.'
+        version 2.31.0.0 that could change.</b></p>A load balancer that YBA manages
+        for the cluster, because YBA created it or took it over. It serves a set of
+        availability zones in one region. Part of ClusterInfo.'
       type: object
       properties:
         scheme:
@@ -10730,7 +10843,7 @@ components:
         load_balancers:
           description: '<b style="color:#FFA500">WARNING: This is a preview API in
             YBA version 2.31.0.0 that could change.</b></p>The load balancers that
-            YBA created for this cluster.'
+            YBA manages for this cluster.'
           type: array
           items:
             $ref: '#/components/schemas/ManagedLoadBalancerInfo'
@@ -11191,6 +11304,15 @@ components:
         enable_exposing_service:
           description: Whether to create a load balancer service for this cluster.
           $ref: '#/components/schemas/ExposingServiceState'
+        managed_load_balancer:
+          description: '<b style="color:#FFA500">WARNING: This is a preview API in
+            YBA version 2.31.0.0 that could change.</b></p>Turns the load balancers
+            that YBA manages on or off. When turned on, YBA takes over the load balancer
+            that every zone of a region names in lb_name. Omit to leave the existing
+            value unchanged.'
+          $ref: '#/components/schemas/ManagedLoadBalancerSpec'
+          x-yba-api-since: 2.31.0.0
+          x-yba-api-visibility: preview
     ClusterProviderEditSpec:
       title: ClusterProviderEditSpec
       description: Edit Cloud Provider settings for the cluster. Part of ClusterAddSpec
@@ -13216,3 +13338,61 @@ components:
             $ref: '#/components/schemas/UserCreateSpec'
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      description: 'Makes the request safe to retry. A unique client-generated value,
+        such as a UUID, for this request.
+
+
+        The first request with a key runs the operation. If it succeeds, its response
+        is kept for 24 hours
+
+        (yb.api.idempotency.retention), and a retry with the same key and the same
+        request returns that
+
+        response with an X-IDEMPOTENT-REPLAYED: true header, without running the operation
+        again. A retry
+
+        while the first request is still running gets 409; the same key with a different
+        request gets 422.
+
+        A failed request does not keep the key, so it can be retried with the same
+        one.
+
+
+        Keys are scoped to the caller''s customer.
+
+
+        If the operation starts a task, that task''s UUID is derived from the key:
+        the version 5 UUID of
+
+        "<customer UUID>:<key>" in the namespace 3bf373dd-d374-4df5-bdea-c3cd942ae7f4.
+        A client can
+
+        follow the task even if it lost the response. If that task was started, for
+        example before YBA
+
+        restarted and lost the response, a retry gets 409 instead of starting the
+        operation again, with
+
+        the task''s UUID in error.task_uuid, and in error.latest_task_uuid the UUID
+        of its newest retry if
+
+        YBA retried it (a restart fails or aborts running tasks, and may retry them
+        under a new UUID).
+
+        If the task failed while being submitted, the retry runs the operation again
+        under a new task
+
+        UUID.
+
+        '
+      required: false
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 255
+      example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+      x-yba-api-idempotency-key: true

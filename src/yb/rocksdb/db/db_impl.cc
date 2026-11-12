@@ -6819,6 +6819,11 @@ void DBImpl::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
   versions_->GetLiveFilesMetaData(metadata);
 }
 
+void DBImpl::GetLiveFileNumbersNotOnPath(uint32_t path_id, std::vector<uint64_t>* out) {
+  InstrumentedMutexLock l(&mutex_);
+  versions_->GetLiveFileNumbersNotOnPath(path_id, out);
+}
+
 yb::storage::FrontierInfo DBImpl::GetFrontiers(yb::storage::FrontierKinds kinds) {
   using yb::storage::FrontierKind;
   using yb::storage::UpdateUserValueType;

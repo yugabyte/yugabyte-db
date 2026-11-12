@@ -204,6 +204,13 @@ class MiniCluster : public MiniClusterBase {
 
   Result<TabletServerId> StepDownMasterLeader(const std::string& new_leader_uuid = "");
 
+  // Repeats master leader step down until new_leader_uuid is the leader, or, if it is empty, until
+  // any other master is the leader. Retrying is needed because the protege's election may fail and
+  // let another master win.
+  Status StepDownMasterLeaderAndWaitForNewLeader(
+      const TabletServerId& new_leader_uuid = "",
+      MonoDelta timeout = MonoDelta::FromSeconds(60) * kTimeMultiplier);
+
   ssize_t LeaderMasterIdx();
 
   // Returns the Master at index 'idx' for this MiniCluster.
@@ -414,6 +421,12 @@ std::vector<tablet::TabletPeerPtr> ListTableTabletPeers(
 
 Result<std::vector<tablet::TabletPeerPtr>> ListTabletPeersForTableName(
     MiniCluster* cluster, const std::string& table_name,
+    ListPeersFilter filter = ListPeersFilter::kAll);
+
+// Waits until ListTabletPeersForTableName returns num_peers peers and returns them.
+// A replica is listed only after it applies the table's creation, so followers may lag.
+Result<std::vector<tablet::TabletPeerPtr>> WaitForTableNumPeers(
+    MiniCluster* cluster, const std::string& table_name, size_t num_peers, MonoDelta timeout,
     ListPeersFilter filter = ListPeersFilter::kAll);
 
 Result<std::vector<tablet::TabletPtr>> ListTabletsForTableName(

@@ -98,8 +98,8 @@ Depending on the use case, the database may need to support diverse workloads, s
 Transaction isolation is foundational to handling concurrent transactions in databases. YugabyteDB supports three strict transaction isolation levels in [YSQL](../../api/ysql/).
 
 - [Read Committed](../transactions/read-committed/), which maps to the SQL isolation level of the same name
-- [Serializable](../../explore/transactions/isolation-levels/#serializable-isolation), which maps to the SQL isolation level of the same name
-- [Snapshot](../../explore/transactions/isolation-levels/#snapshot-isolation), which maps to the SQL Repeatable Read isolation level
+- [Serializable](../transactions/isolation-levels/), which maps to the SQL isolation level of the same name
+- [Snapshot](../transactions/isolation-levels/), which maps to the SQL Repeatable Read isolation level
 
 In [YCQL](../../api/ycql/), it supports only [Snapshot isolation](/stable/develop/learn/transactions/acid-transactions-ycql/#note-on-linearizability) using the `BEGIN TRANSACTION` syntax.
 
@@ -119,7 +119,7 @@ In addition:
   - [Joins](../../explore/ysql-language-features/queries/#join-columns) - inner join, outer join, full outer join, cross join, natural join
   - [Constraints](../../explore/ysql-language-features/indexes-constraints/) - primary key, foreign key, unique, not null, check
   - [Secondary indexes](../../explore/ysql-language-features/indexes-constraints/secondary-indexes-ysql/) (including multi-column and covering columns)
-  - [Distributed transactions](../../explore/transactions/distributed-transactions-ysql/) (Serializable, Snapshot, and Read Committed Isolation)
+  - [Distributed transactions](../transactions/distributed-txns/) (Serializable, Snapshot, and Read Committed Isolation)
   - [Views](../../explore/ysql-language-features/advanced-features/views/)
   - [Stored procedures](../../explore/ysql-language-features/advanced-features/stored-procedures/)
   - [Triggers](../../explore/ysql-language-features/advanced-features/triggers/)
@@ -162,7 +162,7 @@ YugabyteDB has been designed with several cloud-native principles in mind.
 
 ## Kubernetes-ready
 
-YugabyteDB works natively in Kubernetes and other containerized environments as a stateful application. {{<link dest="../../deploy/kubernetes/">}}
+YugabyteDB works natively in Kubernetes and other containerized environments as a stateful application.
 
 {{<lead link="../../deploy/kubernetes/">}}
 Deploy in Kubernetes

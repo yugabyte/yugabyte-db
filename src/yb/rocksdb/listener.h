@@ -117,6 +117,9 @@ YB_DEFINE_ENUM(FlushReason,
   // `TabletVectorIndexes::Backfill` flushes regular DB before dependent steps.
   (kVectorIndexBackfill)
 
+  // `TabletVectorIndexes::RepairReverseMapping` flushes regular DB before clearing the repair mark.
+  (kVectorReverseMappingRepair)
+
   // `Tablet::CreateSplitChildTablet`: sync flush before RocksDB checkpoint for the split child.
   (kSplitChildTabletCreation)
 

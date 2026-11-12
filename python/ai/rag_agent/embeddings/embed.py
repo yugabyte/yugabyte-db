@@ -8,6 +8,10 @@ import logging
 import psycopg
 import os
 import mimetypes
+import time
+from concurrent.futures import ThreadPoolExecutor
+
+from botocore.config import Config
 
 from rag_pipeline.markdown_finetuning_chunker import is_markdown_finetuning_enabled
 from rag_pipeline.markdown_finetuning_chunker import chunk_markdown_whole_file
@@ -18,6 +22,25 @@ AI_PROVIDER_OPENAI = "OPENAI"
 AI_PROVIDER_AWS_BEDROCK = "AWS_BEDROCK"
 
 SUPPORTED_AI_PROVIDERS = {AI_PROVIDER_OPENAI, AI_PROVIDER_AWS_BEDROCK}
+
+# Concurrent embedding calls per batch, for Bedrock models that take one text
+# per call (Titan). 1 keeps the sequential path. All workers in an AWS account
+# share one requests-per-minute quota (2,000/min by default for Titan Text
+# Embeddings v1), and one sequential worker already uses about 600/min, so
+# values above 4 mostly buy throttling.
+EMBED_CONCURRENCY_ENV = "EMBED_CONCURRENCY"
+MAX_EMBED_CONCURRENCY = 32
+
+
+def embed_concurrency_from_env() -> int:
+    """Read EMBED_CONCURRENCY, falling back to 1 on a missing or bad value."""
+    raw = os.getenv(EMBED_CONCURRENCY_ENV, "1").strip()
+    try:
+        value = int(raw)
+    except ValueError:
+        logging.warning(f"Ignoring {EMBED_CONCURRENCY_ENV}={raw!r}: not an integer")
+        return 1
+    return max(1, min(value, MAX_EMBED_CONCURRENCY))
 
 
 class EmbeddingsGenerator:
@@ -30,6 +53,7 @@ class EmbeddingsGenerator:
         embedding_model_params: dict = None,
         batch_size: int = 100,
         ai_provider: str = AI_PROVIDER_OPENAI,
+        embed_concurrency: int = 1,
     ):
         """
         Initialize the EmbeddingsGenerator.
@@ -56,14 +80,27 @@ class EmbeddingsGenerator:
                 Defaults to 100. Max supported by OpenAI is 2048.
             ai_provider (str): Embedding provider. One of "OPENAI" or
                 "AWS_BEDROCK". Defaults to "OPENAI".
+            embed_concurrency (int): Concurrent embedding calls per batch, for
+                Bedrock models that take one text per call. KB ingestion passes
+                embed_concurrency_from_env(). Other callers keep 1, so their
+                Bedrock clients keep botocore's default retries.
         """
         self.embedding_model = embedding_model
         self.embedding_model_params = embedding_model_params or {}
         self.embedding_dimensions = self.embedding_model_params.get('dimensions')
         self.batch_size = batch_size
+        self.embed_concurrency = max(1, min(int(embed_concurrency or 1),
+                                            MAX_EMBED_CONCURRENCY))
         self.ai_provider = (ai_provider or AI_PROVIDER_OPENAI).upper()
         self.llm_api_key = llm_api_key or os.getenv("OPENAI_API_KEY")
         self.embedder = self._build_embedder()
+        # Cohere sends a whole batch in one request, so only other Bedrock
+        # models (Titan) fan out.
+        self.embeds_concurrently = (
+            self.embed_concurrency > 1
+            and self.ai_provider == AI_PROVIDER_AWS_BEDROCK
+            and self._bedrock_provider() != "cohere"
+        )
 
         # self.model = ChatOpenAI(temperature=0.6, model="gpt-4o-mini",
         #                         callbacks=[ConsoleCallbackHandler()])
@@ -71,6 +108,46 @@ class EmbeddingsGenerator:
         self.pdf_processor = PDFProcessor()
         self.html_processor = HTMLProcessor()
         self.pipeline_tracking = PipelineTracking()
+
+    def _embed_batch(self, texts):
+        """Embed one batch of chunks and log how long the provider took.
+
+        The time is logged per batch so ingestion logs show how much of a
+        document's run goes to the embedding provider and how much to the
+        database (see the insert timing in yugabytedb_vector_store).
+        """
+        started = time.perf_counter()
+        workers = 1
+        if self.embeds_concurrently and len(texts) > 1:
+            workers = min(self.embed_concurrency, len(texts))
+            # embed_documents on one text, not embed_query: newer langchain-aws
+            # embeds a Cohere query as input_type "search_query", so only
+            # embed_documents is sure to give the vectors the sequential path
+            # stores. map() returns them in input order, which chunk ids
+            # depend on. The first error propagates.
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                vectors = list(pool.map(
+                    lambda text: self.embedder.embed_documents([text])[0], texts))
+        else:
+            vectors = self.embedder.embed_documents(texts)
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        if texts:
+            logging.info(
+                f"Embedded batch of {len(texts)} chunks in {elapsed_ms:.0f} ms "
+                f"({elapsed_ms / len(texts):.1f} ms per chunk, "
+                f"{workers} concurrent, model {self.embedding_model})"
+            )
+        return vectors
+
+    def _bedrock_provider(self) -> str:
+        """The model provider as langchain-aws infers it. Newer releases strip
+        a cross-region prefix ("us.cohere..." is Cohere) in _inferred_provider;
+        0.2.15 exposes model_id.split(".")[0] as provider."""
+        for attr in ("_inferred_provider", "provider"):
+            value = getattr(self.embedder, attr, None)
+            if isinstance(value, str) and value:
+                return value
+        return str(self.embedding_model).split(".")[0]
 
     def _build_embedder(self):
         """Construct the underlying LangChain embedder for the configured provider."""
@@ -81,9 +158,19 @@ class EmbeddingsGenerator:
                 dimensions=self.embedding_dimensions,
             )
         if self.ai_provider == AI_PROVIDER_AWS_BEDROCK:
+            kwargs = {}
+            if self.embed_concurrency > 1:
+                # One client serves every thread. Size its connection pool to
+                # the thread count, and use adaptive retries: on a throttle
+                # they back off and slow the whole client, not one thread.
+                kwargs["config"] = Config(
+                    max_pool_connections=max(10, self.embed_concurrency),
+                    retries={"mode": "adaptive", "max_attempts": 10},
+                )
             return BedrockEmbeddings(
                 model_id=self.embedding_model,
                 region_name=os.getenv("AWS_REGION"),
+                **kwargs,
             )
         raise ValueError(
             f"Unsupported ai_provider: {self.ai_provider!r}. "
@@ -103,8 +190,17 @@ class EmbeddingsGenerator:
         empty_chunk_count = 0
         batch_texts = []
 
+        def record_plan(plan):
+            # Not optional: a retry reads this back to chunk the same way, so
+            # an attempt must not insert chunks without its strategy recorded.
+            self.pipeline_tracking.record_chunking_plan(pipeline_id, plan)
+
+        def earlier_strategy():
+            return self.pipeline_tracking.get_earlier_chunking_strategy(pipeline_id)
+
         for chunk_text in stream_partition_and_chunk(
-            pipeline_id, file_location, chunk_args
+            pipeline_id, file_location, chunk_args,
+            on_plan=record_plan, earlier_strategy=earlier_strategy,
         ):
             chunk_count += 1
             if chunk_text.strip():
@@ -112,7 +208,7 @@ class EmbeddingsGenerator:
 
                 if len(batch_texts) >= self.batch_size:
                     try:
-                        vectors = self.embedder.embed_documents(batch_texts)
+                        vectors = self._embed_batch(batch_texts)
                     except Exception as e:
                         # Log with batch context for forensics, then re-raise so
                         # the surrounding pipeline marks the task as FAILED.
@@ -144,7 +240,7 @@ class EmbeddingsGenerator:
 
         if batch_texts:
             try:
-                vectors = self.embedder.embed_documents(batch_texts)
+                vectors = self._embed_batch(batch_texts)
             except Exception as e:
                 logging.error(
                     f"Failed to generate embeddings for final batch "
@@ -212,7 +308,7 @@ class EmbeddingsGenerator:
 
                 if len(batch_texts) >= self.batch_size:
                     try:
-                        vectors = self.embedder.embed_documents(batch_texts)
+                        vectors = self._embed_batch(batch_texts)
                     except Exception as e:
                         logging.error(
                             f"Failed to generate embeddings for batch "
@@ -230,7 +326,7 @@ class EmbeddingsGenerator:
 
         if batch_texts:
             try:
-                vectors = self.embedder.embed_documents(batch_texts)
+                vectors = self._embed_batch(batch_texts)
             except Exception as e:
                 logging.error(
                     f"Failed to generate embeddings for final batch "
@@ -307,7 +403,7 @@ class EmbeddingsGenerator:
             batch_texts.append(chunk_doc.page_content)
 
             if len(batch_texts) >= self.batch_size:
-                vectors = self.embedder.embed_documents(batch_texts)
+                vectors = self._embed_batch(batch_texts)
                 for text, vec in zip(batch_texts, vectors):
                     yielded_count += 1
                     yield text, vec
@@ -323,7 +419,7 @@ class EmbeddingsGenerator:
                     )
 
         if batch_texts:
-            vectors = self.embedder.embed_documents(batch_texts)
+            vectors = self._embed_batch(batch_texts)
             for text, vec in zip(batch_texts, vectors):
                 yielded_count += 1
                 yield text, vec
@@ -368,7 +464,7 @@ class EmbeddingsGenerator:
             batch_texts.append(chunk_doc.page_content)
 
             if len(batch_texts) >= self.batch_size:
-                vectors = self.embedder.embed_documents(batch_texts)
+                vectors = self._embed_batch(batch_texts)
                 for text, vec in zip(batch_texts, vectors):
                     yielded_count += 1
                     yield text, vec
@@ -384,7 +480,7 @@ class EmbeddingsGenerator:
                     )
 
         if batch_texts:
-            vectors = self.embedder.embed_documents(batch_texts)
+            vectors = self._embed_batch(batch_texts)
             for text, vec in zip(batch_texts, vectors):
                 yielded_count += 1
                 yield text, vec
