@@ -543,8 +543,8 @@ void YsqlManager::ScheduleRefreshPgCatalogVersionsTask(std::chrono::milliseconds
   // std::nullopt to stop the loop entirely.
   // The body runs on pg_catalog_versions_refresh_pool_ rather than the catalog manager's shared
   // background pool; see that member for why. Submitting fails only once that pool is shut down,
-  // and then the chain dies (running_=false) and is restarted by
-  // StartPgCatalogVersionsBgTaskIfStopped on the next outer bg loop tick.
+  // and CompleteShutdown shuts it down only after this timer, so no callback gets there. The
+  // failure branch below is a safeguard that is not expected to run.
   refresh_ysql_pg_catalog_versions_task_.Bind(&master_.messenger()->scheduler());
   refresh_ysql_pg_catalog_versions_task_.Schedule(
       [this](const Status& status) {

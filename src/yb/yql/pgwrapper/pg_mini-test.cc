@@ -5288,18 +5288,27 @@ TEST_F(PgMiniTest, CatalogVersionsCacheRefreshesWhileBackgroundPoolIsBusy) {
 
   // The shared pool is built with the default worker count, NumEffectiveCPUs(). Hold every worker,
   // and wait until each holder runs, so nothing queued behind them can be running.
+  //
+  // Each holder shares the latches rather than reaching them on this stack: the test can return
+  // while holders are still running or, after the ASSERT below fails, still queued in the pool,
+  // and the master outlives the test body.
+  struct Holders {
+    explicit Holders(int num_workers) : started(num_workers) {}
+    CountDownLatch started;
+    CountDownLatch release{1};
+  };
   const auto num_workers = NumEffectiveCPUs();
-  CountDownLatch started(num_workers);
-  CountDownLatch release(1);
-  auto release_workers = ScopeExit([&release] { release.CountDown(); });
+  auto holders = std::make_shared<Holders>(num_workers);
+  auto release_workers = ScopeExit([holders] { holders->release.CountDown(); });
   for (int i = 0; i != num_workers; ++i) {
-    ASSERT_OK(catalog_manager.SubmitBackgroundTask([&started, &release] {
-      started.CountDown();
-      release.Wait();
+    ASSERT_OK(catalog_manager.SubmitBackgroundTask([holders] {
+      holders->started.CountDown();
+      holders->release.Wait();
     }));
   }
-  ASSERT_TRUE(started.WaitFor(30s * kTimeMultiplier))
-      << started.count() << " of " << num_workers << " background workers never started";
+  ASSERT_TRUE(holders->started.WaitFor(30s * kTimeMultiplier))
+      << holders->started.count() << " of " << num_workers
+      << " background workers never started";
 
   // The refresh runs every heartbeat_interval_ms / 2. Allow many periods, so only a refresh that
   // cannot run at all fails this.
