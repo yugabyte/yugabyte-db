@@ -282,7 +282,7 @@ SET hnsw.ef_search = 100;
 - Vector indexes are not supported for [point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/) (PITR).
 - Vector indexes are not supported for [instant database cloning](../../../manage/backup-restore/point-in-time-recovery/clone/).
 - [Inspect at PIT](../../../manage/backup-restore/point-in-time-recovery/inspect/) (time travel queries) is not currently supported.
-- Restoring a backup onto a cluster with tablet splitting enabled can omit rows from a vector index. ANN queries on the restored index can then return incomplete results without an error. After the restore, drop and rebuild the vector indexes, or disable tablet splitting before the restore. {{<issue 20500>}}
+- Restoring a backup onto a cluster with tablet splitting enabled can omit rows from a vector index. ANN queries on the restored index can then return incomplete results without an error. After the restore, drop and rebuild the vector indexes, or disable tablet splitting before the restore. {{<issue 30622>}}
 - Backup restore across major versions is not supported for a database that contains vector indexes.
 
 ### Notes
@@ -380,9 +380,9 @@ Alternatively, you can create and populate the new table in one step using `CREA
 
 ### Vector index backend flag
 
-The flags `vector_index_use_yb_hnsw` and `vector_index_use_hnswlib` were replaced by `vector_index_backend`. Valid values are `yb_hnsw_hnswlib` (the default) and `yb_hnsw_usearch`.
+`vector_index_backend` replaces `vector_index_use_yb_hnsw` and `vector_index_use_hnswlib` in v2025.2.3.0 and in v2026.1. Valid values are `yb_hnsw_hnswlib` (the default) and `yb_hnsw_usearch`. v2025.1 does not define this flag, and neither does v2025.2.0 through v2025.2.2.
 
-If either old flag is set, change the configuration to `vector_index_backend` before upgrading to v2026.1. The old flags are deprecated: they no longer select the backend, and the process logs a deprecation warning when they are set.
+If either old flag is set, remove it and set `vector_index_backend` as part of the upgrade, in the same rolling restart that moves to v2025.2.3.0 or later. The old flags are deprecated: they no longer select the backend, and the process logs a deprecation warning when they are set.
 
 ### Colocated databases
 

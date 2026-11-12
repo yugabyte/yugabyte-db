@@ -378,9 +378,9 @@ Alternatively, you can create and populate the new table in one step using `CREA
 
 ### Vector index backend flag
 
-The flags `vector_index_use_yb_hnsw` and `vector_index_use_hnswlib` were replaced by `vector_index_backend` in v2026.1. Valid values are `yb_hnsw_hnswlib` (the default) and `yb_hnsw_usearch`.
+`vector_index_backend` replaces `vector_index_use_yb_hnsw` and `vector_index_use_hnswlib` in v2025.2.3.0. Valid values are `yb_hnsw_hnswlib` (the default) and `yb_hnsw_usearch`. v2025.2.0 through v2025.2.2 do not define this flag, and neither does v2025.1.
 
-If either old flag is set, change the configuration to `vector_index_backend` before upgrading to v2026.1. The old flags are deprecated: they no longer select the backend, and the process logs a deprecation warning when they are set.
+If either old flag is set, remove it and set `vector_index_backend` as part of the upgrade, in the same rolling restart that moves to v2025.2.3.0 or later. The old flags are deprecated: they no longer select the backend, and the process logs a deprecation warning when they are set.
 
 ### Colocated databases
 
