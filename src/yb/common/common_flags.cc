@@ -91,10 +91,16 @@ DEFINE_NON_RUNTIME_uint32(master_ts_ysql_catalog_lease_ms, 10000, // 10s
 TAG_FLAG(master_ts_ysql_catalog_lease_ms, advanced);
 TAG_FLAG(master_ts_ysql_catalog_lease_ms, hidden);
 
-DEFINE_NON_RUNTIME_bool(ysql_enable_colocated_tables_with_tablespaces, false,
-    "Enable creation of colocated tables with a specified placement policy via a tablespace."
-    "If true, creating a colocated table  will colocate the table on an implicit "
-    "tablegroup that is determined by the tablespace it uses. We turn the feature off by default.");
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_colocated_tables_with_tablespaces,
+    kExternal, false, true,
+    "Place a colocated table or index that is created with a tablespace in an implicit tablegroup "
+    "of that tablespace, so that the tablespace decides the placement of its colocation tablet. "
+    "If false, a colocated table created with a tablespace stays in the default implicit "
+    "tablegroup of the database, where the tablespace does not affect its placement, and a "
+    "tablespace on an index of a colocated table is refused.");
+
+// Replaced by the AutoFlag above.
+DEPRECATE_FLAG(bool, ysql_enable_colocated_tables_with_tablespaces, "11_2026");
 
 DEFINE_NON_RUNTIME_bool(ysql_enable_pg_per_database_oid_allocator, true,
     "If true, enable per-database PG new object identifier allocator.");
@@ -145,7 +151,8 @@ DEFINE_NON_RUNTIME_bool(TEST_hide_details_for_pg_regress, false,
 TAG_FLAG(TEST_hide_details_for_pg_regress, hidden);
 
 DEFINE_NON_RUNTIME_uint32(max_replication_slots, 10,
-     "Controls the maximum number of replication slots that are allowed to exist on a cluster.");
+     "Controls the maximum number of replication slots that are allowed to exist on a cluster. "
+     "Must be set on both tserver and master with the same value.");
 
 // The following flags related to the cloud, region and availability zone that an instance is
 // started in. These are passed in from whatever provisioning mechanics start the servers. They

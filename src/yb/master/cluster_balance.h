@@ -102,6 +102,11 @@ class ClusterLoadBalancer {
 
   bool CanBalanceGlobalLoad() const;
 
+  // Minimum global load variance between two tservers for a global tablet move. Widened by the
+  // tablets missing from the global counts because their table was skipped this run. Global leader
+  // moves do not use this, they keep kMinLoadVarianceToBalance.
+  double MinGlobalLoadVarianceToBalance() const;
+
   void ReportMetrics();
 
   MonoTime LastRunTime() const;
@@ -419,8 +424,8 @@ class ClusterLoadBalancer {
 
   // Check if we are able to balance global load. With the current algorithm, we only allow for
   // global load balancing once all tables are themselves balanced.
-  // This value is only set to true once is_idle_ becomes true, and this value is only set to false
-  // once we perform a non-global move.
+  // This value is only set to true once ClusterBalancerActivityInfo::CanPerformGlobalMoves()
+  // becomes true, and this value is only set to false once we perform a non-global move.
   bool can_perform_global_operations_ = false;
 
   typedef rw_spinlock LockType;

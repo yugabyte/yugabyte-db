@@ -302,6 +302,70 @@ TEST(PackedRowTest, UpdateFlagV2) {
   }
 }
 
+// After a concurrent ALTER TABLE ... ADD COLUMN, YSQL can send an insert without the new columns.
+// Each of them, not only the last one, should be packed with its missing value.
+template <class Packer, class Decoder>
+void TestCompleteWithMissingColumns() {
+  SchemaBuilder builder;
+  ASSERT_OK(builder.AddHashKeyColumn("h1", DataType::INT32));
+  ASSERT_OK(builder.AddNullableColumn("v1", DataType::INT32));
+  QLValuePB missing_bool;
+  missing_bool.set_bool_value(false);
+  ColumnSchema c1("c1", DataType::BOOL, ColumnKind::VALUE, Nullable::kTrue);
+  c1.set_missing_value(missing_bool);
+  ASSERT_OK(builder.AddColumn(c1));
+  ASSERT_OK(builder.AddNullableColumn("c2", DataType::INT16));
+  QLValuePB missing_int;
+  missing_int.set_int64_value(42);
+  ColumnSchema c3("c3", DataType::INT64, ColumnKind::VALUE, Nullable::kTrue);
+  c3.set_missing_value(missing_int);
+  ASSERT_OK(builder.AddColumn(c3));
+  auto schema = builder.Build();
+
+  constexpr int kVersion = 1;
+  SchemaPacking schema_packing(TableType::PGSQL_TABLE_TYPE, schema);
+  QLValuePB v1;
+  v1.set_int32_value(7);
+  auto pack = [&](size_t packed_size_limit) {
+    Packer packer(
+        kVersion, schema_packing, packed_size_limit, /* value_control_fields= */ Slice());
+    EXPECT_TRUE(EXPECT_RESULT(packer.AddValue(schema_packing.column_packing_data(0).id, v1)));
+    return EXPECT_RESULT(packer.Complete()).ToBuffer();
+  };
+  const auto full_row = pack(std::numeric_limits<int64_t>::max());
+  Slice packed(full_row);
+  ASSERT_EQ(static_cast<ValueEntryType>(packed.consume_byte()), Decoder::kValueEntryType);
+  auto version = ASSERT_RESULT(FastDecodeUnsignedVarInt(&packed));
+  ASSERT_EQ(version, kVersion);
+
+  Decoder decoder(schema_packing, packed.data());
+  const std::vector<QLValuePB> expected = {v1, missing_bool, QLValuePB(), missing_int};
+  for (size_t i = 0; i != expected.size(); ++i) {
+    const auto& column = schema.column(schema.num_key_columns() + i);
+    SCOPED_TRACE(Format("column: $0", column.name()));
+    auto value_slice = decoder.FetchValue(i);
+    ASSERT_EQ(value_slice.IsNull(), IsNull(expected[i]));
+    if (IsNull(expected[i])) {
+      continue;
+    }
+    auto decoded_value = ASSERT_RESULT(UnpackPrimitiveValue(
+        value_slice, column.type_info()->type));
+    ASSERT_EQ(decoded_value, PrimitiveValue::FromQLValuePB(expected[i]));
+  }
+
+  // With the limit right after v1, every missing value goes over it and still gets packed.
+  const auto v1_end = Decoder(schema_packing, packed.data()).FetchValue(0)->end();
+  ASSERT_EQ(pack(v1_end - Slice(full_row).data()), full_row);
+}
+
+TEST(PackedRowTest, CompleteWithMissingColumns) {
+  TestCompleteWithMissingColumns<RowPackerV1, PackedRowDecoderV1>();
+}
+
+TEST(PackedRowTest, CompleteWithMissingColumnsV2) {
+  TestCompleteWithMissingColumns<RowPackerV2, PackedRowDecoderV2>();
+}
+
 template <class Packer>
 std::string TestPackWithControlFields() {
   auto schema = EXPECT_RESULT(BuildSchema(
