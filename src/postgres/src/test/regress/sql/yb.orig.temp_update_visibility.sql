@@ -57,4 +57,24 @@ SELECT count(*) FROM ta;
 COMMIT;
 SELECT count(*) FROM ta;
 
+-- One transaction on a temp table and a YB table
+CREATE TABLE ym (k int PRIMARY KEY, v text);
+INSERT INTO ym SELECT g, 'x' FROM generate_series(1, 1000) g;
+CREATE TEMP TABLE tm (k int PRIMARY KEY, v text);
+INSERT INTO tm SELECT g, repeat('x', 200) FROM generate_series(1, 1000) g;
+BEGIN;
+DELETE FROM ym WHERE k <= 500;
+UPDATE tm SET v = v || 'y';
+UPDATE ym SET v = 'y';
+SAVEPOINT s;
+DELETE FROM ym WHERE k > 900;
+DELETE FROM tm WHERE k > 900;
+ROLLBACK TO s;
+SELECT count(*), count(DISTINCT k), count(*) FILTER (WHERE v = 'y') FROM ym;
+SELECT count(*), count(DISTINCT k) FROM tm;
+COMMIT;
+SELECT count(*), count(DISTINCT k), count(*) FILTER (WHERE v = 'y') FROM ym;
+SELECT count(*), count(DISTINCT k) FROM tm;
+DROP TABLE ym;
+
 DROP EXTENSION pageinspect;
