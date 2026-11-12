@@ -555,9 +555,11 @@ ybIsCopyOfEarlierIndexCol(IndexOptInfo *index, int indexcol)
 
 /*
  * Whether index column indexcol, before the last merge sort column, is a gap
- * column, one the merge sorts on beyond the pathkeys: a range column without
- * an equality index clause that is neither a SAOP stream column nor a copy of
- * an earlier index column.  Such a column is one of three kinds (see
+ * column: one the merge sorts on beyond the columns the pathkeys name.  Each
+ * stream returns its rows in index order, so merging on gap columns too keeps
+ * every stream in merge order.  A gap column is a range column without an
+ * equality index clause that is neither a SAOP stream column nor a copy of an
+ * earlier index column, and is one of three kinds (see
  * yb_finalize_merge_scan_info):
  * - a column a partial index predicate implies
  * - a column tied by a filter that runs before the merge
@@ -567,8 +569,9 @@ ybIsCopyOfEarlierIndexCol(IndexOptInfo *index, int indexcol)
  * Only the last kind needs the merge to sort on it, or the merged rows can
  * come out of order.  A copy needs no merge either, and is easy to tell apart.
  * Telling the first two kinds apart takes a proof that the predicate implies
- * the column or knowing where each filter runs (see #37497), so all three are
- * gap columns.  That costs the first two kinds:
+ * the column or knowing where each filter runs (see #37497), so err on the
+ * side of correct order and make all three gap columns, at a cost to the first
+ * two kinds:
  * - extra comparisons that always tie
  * - for an expression column of an embedded index scan, the pathkey cut in
  *   yb_finalize_merge_scan_info, which in the worst case leaves the index path
@@ -586,8 +589,7 @@ ybIsMergeGapCol(IndexOptInfo *index, List *indexclauses, Bitmapset *saop_idxs,
 
 /*
  * Append gap column indexcol (see ybIsMergeGapCol) to the merge sort columns
- * in sort_info.  Each stream returns its rows in index order, so merging on
- * these columns too keeps the merged rows in index order.
+ * in sort_info.
  */
 static void
 ybAppendMergeGapCol(YbSortInfo *sort_info, IndexOptInfo *index,
