@@ -97,6 +97,11 @@ public class UniverseControllerRequestBinder {
     // 2. encryptionAtRestConfig - See @JsonAlias annotations on the EncryptionAtRestConfig props
     // 3. cluster.userIntent gflags list to maps - TODO
 
+    // This is only for until we need the config switch for Usek8sCustomResources.
+    // Once we turn turn default we can remove this.
+    // Also eventually we will deprecate instanceType for k8s.
+    RuntimeConfGetter runtimeConfGetter =
+        StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
     try {
       ObjectNode formData = (ObjectNode) request.body().asJson();
       List<UniverseDefinitionTaskParams.Cluster> clusters = mapClustersInParams(formData, true);
@@ -106,11 +111,15 @@ public class UniverseControllerRequestBinder {
       taskParams.creatingUser = CommonUtils.getUserFromContext();
       taskParams.platformUrl = request.host();
 
-      // After PLAT-7020 the GlobalConfKeys.usek8sCustomResources gate is open.
       // Before we completely replace instance type with resourceSpec for k8s,
-      // initializing resource spec from instanceType.
-      // If instanceType is not provided, resources spec is left untouched.
-      KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(taskParams);
+      // initializing tserverK8SNodeResourceSpec from instanceType
+      // and masterK8SNodeResourceSpec from masterInstanceType.
+      // Previously masterK8SNodeResourceSpec was also initialized from instanceType,
+      // which is incorrect, but in general that worked since masterInstanceType is equal
+      // to instanceType by default.
+      // If instanceType/masterInstanceType is not provided,
+      // the respective resources spec is left untouched.
+      KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(taskParams, runtimeConfGetter);
 
       return taskParams;
     } catch (JsonProcessingException exception) {

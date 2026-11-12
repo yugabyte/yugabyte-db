@@ -279,9 +279,9 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         UniverseDefinitionTaskParamsMapper.INSTANCE.toV1UniverseDefinitionTaskParamsFromCreateSpec(
             universeSpec);
     // Before we completely replace instance type with resourceSpec for k8s,
-    // initializing missing resource specs from instanceType.
+    // initializing missing tserver/master resource specs from respective instanceType.
     // Explicitly requested resource specs are kept as is.
-    KubernetesUtil.fillMissingK8sNodeResourceSpecsFromInstanceType(v1DefnParams);
+    KubernetesUtil.fillMissingK8sNodeResourceSpecsFromInstanceType(v1DefnParams, confGetter);
     UniverseConfigureTaskParams v1Params =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toUniverseConfigureTaskParams(
             v1DefnParams, request);
@@ -371,10 +371,10 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       clearNonDedicatedFields(cluster.userIntent);
     }
     // Before we completely replace instance type with resourceSpec for k8s,
-    // initializing missing resource specs from instanceType.
+    // initializing missing tserver/master resource specs from respective instanceType.
     // Explicitly requested specs and specs of clusters not changed by the request are kept as is
     // (the mapper clears them when the node spec is passed without them).
-    KubernetesUtil.fillMissingK8sNodeResourceSpecsFromInstanceType(v1Params);
+    KubernetesUtil.fillMissingK8sNodeResourceSpecsFromInstanceType(v1Params, confGetter);
     log.debug("Edit Universe translated to v1 spec: {}", prettyPrint(v1Params));
 
     // edit universe with v1 spec
@@ -603,7 +603,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     // Before we completely replace instance type with resourceSpec for k8s,
     // initializing missing resource specs from instanceType.
     KubernetesUtil.fillMissingK8sNodeResourceSpecsFromInstanceType(
-        newReadReplica.clusterType, newReadReplica.userIntent);
+        newReadReplica.clusterType, newReadReplica.userIntent, confGetter);
     v1Params.newUI =
         (hasPartitions(dbUniverse.getUniverseDetails()) || hasPartitions(v1Params)) && isNewUI();
     if (v1Params.newUI) {

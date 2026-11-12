@@ -12,6 +12,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase.KubernetesPlacement;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.helm.HelmUtils;
@@ -1949,8 +1950,8 @@ public class KubernetesUtil {
    * Clusters without an instance type are left untouched.
    */
   public static void initializeK8sNodeResourceSpecsFromInstanceType(
-      UniverseDefinitionTaskParams taskParams) {
-    initializeK8sNodeResourceSpecsFromInstanceType(taskParams, true /* overwrite */);
+      UniverseDefinitionTaskParams taskParams, RuntimeConfGetter runtimeConfGetter) {
+    initializeK8sNodeResourceSpecsFromInstanceType(taskParams, true /* overwrite */, runtimeConfGetter);
   }
 
   /**
@@ -1958,12 +1959,12 @@ public class KubernetesUtil {
    * but keeps specs that are already set, so explicitly requested specs are not replaced.
    */
   public static void fillMissingK8sNodeResourceSpecsFromInstanceType(
-      UniverseDefinitionTaskParams taskParams) {
-    initializeK8sNodeResourceSpecsFromInstanceType(taskParams, false /* overwrite */);
+      UniverseDefinitionTaskParams taskParams, RuntimeConfGetter runtimeConfGetter) {
+    initializeK8sNodeResourceSpecsFromInstanceType(taskParams, false /* overwrite */, runtimeConfGetter);
   }
 
   private static void initializeK8sNodeResourceSpecsFromInstanceType(
-      UniverseDefinitionTaskParams taskParams, boolean overwrite) {
+      UniverseDefinitionTaskParams taskParams, boolean overwrite, RuntimeConfGetter runtimeConfGetter) {
     if (taskParams == null
         || taskParams.clusters == null
         || !Util.isKubernetesBasedUniverse(taskParams)) {
@@ -1971,23 +1972,26 @@ public class KubernetesUtil {
     }
     for (Cluster cluster : taskParams.clusters) {
       initializeK8sNodeResourceSpecsFromInstanceType(
-          cluster.clusterType, cluster.userIntent, overwrite);
+          cluster.clusterType, cluster.userIntent, overwrite, runtimeConfGetter);
     }
   }
 
   public static void initializeK8sNodeResourceSpecsFromInstanceType(
-      ClusterType clusterType, UserIntent userIntent) {
-    initializeK8sNodeResourceSpecsFromInstanceType(clusterType, userIntent, true /* overwrite */);
+      ClusterType clusterType, UserIntent userIntent, RuntimeConfGetter runtimeConfGetter) {
+    initializeK8sNodeResourceSpecsFromInstanceType(clusterType, userIntent, true /* overwrite */, runtimeConfGetter);
   }
 
   public static void fillMissingK8sNodeResourceSpecsFromInstanceType(
-      ClusterType clusterType, UserIntent userIntent) {
-    initializeK8sNodeResourceSpecsFromInstanceType(clusterType, userIntent, false /* overwrite */);
+      ClusterType clusterType, UserIntent userIntent, RuntimeConfGetter runtimeConfGetter) {
+    initializeK8sNodeResourceSpecsFromInstanceType(clusterType, userIntent, false /* overwrite */, runtimeConfGetter);
   }
 
   private static void initializeK8sNodeResourceSpecsFromInstanceType(
-      ClusterType clusterType, UserIntent userIntent, boolean overwrite) {
+      ClusterType clusterType, UserIntent userIntent, boolean overwrite, RuntimeConfGetter runtimeConfGetter) {
     if (userIntent == null || !Util.isKubernetesBased(userIntent)) {
+      return;
+    }
+    if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
       return;
     }
     UUID providerUUID = Util.getSingleProviderUUID(userIntent);
