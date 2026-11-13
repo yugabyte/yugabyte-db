@@ -209,7 +209,7 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
       const TabletReportPB* report_ptr,
       const LeaderEpoch& epoch,
       TabletReportUpdatesPB* report_update,
-      rpc::RpcContext* rpc);
+      rpc::RpcContext* rpc) REQUIRES_SHARED(catalog_manager_->leader_mutex());
 
   Status ProcessTabletReportBatch(
       const TSDescriptorPtr& ts_desc,
@@ -220,7 +220,8 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
       const LeaderEpoch& epoch,
       CoarseTimePoint deadline,
       TabletReportUpdatesPB* full_report_update,
-      std::vector<RetryingTSRpcTaskWithTablePtr>* rpcs);
+      std::vector<RetryingTSRpcTaskWithTablePtr>* rpcs)
+      REQUIRES_SHARED(catalog_manager_->leader_mutex());
 
   void DeleteOrphanedTabletReplica(
       const TabletId& tablet_id, const LeaderEpoch& epoch, const TSDescriptorPtr& ts_desc);
