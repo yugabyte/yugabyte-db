@@ -248,6 +248,26 @@ public class HbaConfRedactorTest {
         HbaConfRedactor.redactFreeText("error: ldapbindpasswd=x\n\tat com.yugabyte.Foo"));
   }
 
+  @Test
+  public void testFreeTextFoldsAfterGflagLineRedactedToEnd() {
+    assertEquals(
+        "--ysql_hba_conf_csv="
+            + LDAP
+            + "ldapbindpasswd=REDACTED\n      REDACTED\n--max_log_size=256",
+        HbaConfRedactor.redactFreeText(
+            "--ysql_hba_conf_csv="
+                + LDAP
+                + "ldapbindpasswd=pa\n      ss-tail\n--max_log_size=256"));
+    assertEquals(
+        "--ysql_hba_conf_csv=\"" + LDAP + "ldapbindpasswd=REDACTED\"\n  REDACTED",
+        HbaConfRedactor.redactFreeText(
+            "--ysql_hba_conf_csv=\"" + LDAP + "ldapbindpasswd=pa\"\n  ss-tail"));
+    assertEquals(
+        "--ysql_hba_conf_csv=" + LDAP + "ldapbindpasswd=REDACTED ldaptls=1\n  next",
+        HbaConfRedactor.redactFreeText(
+            "--ysql_hba_conf_csv=" + LDAP + "ldapbindpasswd=pa ldaptls=1\n  next"));
+  }
+
   /**
    * Checks the redactor against how YB's Postgres parses each line of hba_pg_rules.jsonl: [line,
    * "valid" | "invalid" | "none" (no rule, e.g. a comment), the ldapbindpasswd Postgres read]. The

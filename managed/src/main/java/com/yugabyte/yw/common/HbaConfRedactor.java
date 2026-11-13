@@ -134,7 +134,8 @@ public final class HbaConfRedactor {
    * Redacts ldapbindpasswd in text with no structure to rely on, such as logs and command output:
    * from the name to the end of the line, and the lines after it that are indented with more
    * spaces, because Helm folds long YAML values onto those. A {@code --ysql_hba_conf_csv=} gflag
-   * line is redacted like the gflag value.
+   * line is redacted like the gflag value, and folds the same way when that redaction reaches the
+   * end of the line.
    */
   public static String redactFreeText(String text) {
     if (text == null || indexOfKey(text, 0, true) < 0) {
@@ -165,7 +166,12 @@ public final class HbaConfRedactor {
         }
         if (line.startsWith(GFLAG_LINE_PREFIX, k)) {
           int valueStart = k + GFLAG_LINE_PREFIX.length();
-          out.append(line, 0, valueStart).append(redact(line.substring(valueStart)));
+          String value = line.substring(valueStart);
+          String redacted = redact(value);
+          if (!redacted.equals(value) && endsRedacted(redacted)) {
+            foldIndent = indent;
+          }
+          out.append(line, 0, valueStart).append(redacted);
         } else {
           String redacted = redactToEnd(line, true);
           if (!redacted.equals(line)) {
@@ -178,6 +184,15 @@ public final class HbaConfRedactor {
       p = next;
     }
     return out.toString();
+  }
+
+  /** Whether s ends with REDACTED, past any closing quotes. */
+  private static boolean endsRedacted(String s) {
+    int end = s.length();
+    while (end > 0 && s.charAt(end - 1) == '"') {
+      end--;
+    }
+    return s.startsWith(REPLACEMENT, end - REPLACEMENT.length());
   }
 
   /** Joins fields into lines the way tokenize_auth_file joins lines ending in a backslash. */

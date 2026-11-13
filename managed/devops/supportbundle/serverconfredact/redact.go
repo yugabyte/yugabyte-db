@@ -241,12 +241,13 @@ func WriteIfRedacted(path, redacted string, sensitiveGflags []string) error {
 	return os.WriteFile(path, []byte(redacted), 0)
 }
 
-// VerifyRedacted checks RedactSensitiveInfo's output without its parsers' boundaries:
-// ldapbindpasswd as verifyLdapBindPasswd describes, every radiussecrets value must start with
-// REDACTED, and the whole rest of the line after each --<sensitive>= flag that starts one must read
-// REDACTED, quotes aside; an empty flag value passes. The caller must not write the file when it
-// fails, so a gap in the parsers costs the node its copy of server.conf rather than the secret. The
-// error names the field and line, never the value.
+// VerifyRedacted checks RedactSensitiveInfo's output: ldapbindpasswd as verifyLdapBindPasswd
+// describes, every radiussecrets value must start with REDACTED, and the whole rest of the line
+// after each --<sensitive>= flag that starts one must read REDACTED, quotes aside; an empty flag
+// value passes. The caller must not write the file when it fails, so a gap in the parsers costs the
+// node its copy of server.conf rather than the secret. The exception is where an ldapbindpasswd
+// value ends: that check reads it with the redactors' parsers, and without them checks only that
+// the value starts with REDACTED. The error names the field and line, never the value.
 func VerifyRedacted(output string, sensitiveGflags []string) error {
 	if err := verifyLdapBindPasswd(output); err != nil {
 		return err

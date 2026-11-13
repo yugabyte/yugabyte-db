@@ -106,7 +106,7 @@ func redactHbaConfCSV(value string) string {
 // redactLdapBindPasswdText redacts ldapbindpasswd in text with no structure to rely on: from the
 // name to the end of the line, and the lines after it that are indented with more spaces, because
 // Helm folds long YAML values onto those. A --ysql_hba_conf_csv= gflag line is redacted like the
-// gflag value.
+// gflag value, and folds the same way when that redaction reaches the end of the line.
 func redactLdapBindPasswdText(text string) string {
 	if indexOfHbaKey(text, 0, true) < 0 {
 		return text
@@ -127,8 +127,13 @@ func redactLdapBindPasswdText(text string) string {
 			foldIndent = -1
 			line := text[p:end]
 			if valueStart := hbaGflagValueStart(line); valueStart >= 0 {
+				value := line[valueStart:]
+				redacted := redactHbaConfCSV(value)
+				if redacted != value && endsRedacted(redacted) {
+					foldIndent = indent
+				}
 				out.WriteString(line[:valueStart])
-				out.WriteString(redactHbaConfCSV(line[valueStart:]))
+				out.WriteString(redacted)
 			} else {
 				redacted := redactHbaToEnd(line, true)
 				if redacted != line {
@@ -141,6 +146,11 @@ func redactLdapBindPasswdText(text string) string {
 		p = next
 	}
 	return out.String()
+}
+
+// endsRedacted reports whether s ends with REDACTED, past any closing quotes.
+func endsRedacted(s string) bool {
+	return strings.HasSuffix(strings.TrimRight(s, `"`), SecretReplacement)
 }
 
 // hbaTextLine returns where the line starting at p ends, before and after its line break.
@@ -486,7 +496,8 @@ func spliceFieldEdits(value string, fields []csvField, fieldEdits [][]hbaEdit) s
 // read REDACTED and be followed only by options Postgres knows, a comment beside one must read
 // REDACTED, and the lines after a rule that ends redacted must be blank or REDACTED unless they
 // start a rule. Any other ldapbindpasswd text must be followed by REDACTED and nothing else on its
-// line.
+// line. Reading the value uses the redactor's parsers, which would share a mistake with it, so
+// ldapBindPasswdValuesRedacted checks each line without them too.
 func verifyLdapBindPasswd(text string) error {
 	if indexOfHbaKey(text, 0, true) < 0 {
 		return nil
@@ -500,12 +511,31 @@ func verifyLdapBindPasswd(text string) error {
 		} else {
 			ok = redactedToEnd(line, true)
 		}
-		if !ok {
+		if !ok || !ldapBindPasswdValuesRedacted(line) {
 			return fmt.Errorf("%s %w on line %d", hbaKey, ErrUnredacted, lineNo)
 		}
 		p = next
 	}
 	return nil
+}
+
+// ldapBindPasswdValuesRedacted reports whether every ldapbindpasswd in s that is followed by '=' is
+// followed by REDACTED, past any quotes, backslashes and commas. It matches only the name, in any
+// case and with quotes inside it, and parses nothing else.
+func ldapBindPasswdValuesRedacted(s string) bool {
+	for from := indexOfHbaKey(s, 0, false); from >= 0; {
+		nameEnd := matchHbaKey(s, from, false)
+		if v := hbaKeptEnd(s, nameEnd); v > nameEnd {
+			for v < len(s) && strings.IndexByte(`"'\,`, s[v]) >= 0 {
+				v++
+			}
+			if !strings.HasPrefix(s[v:], SecretReplacement) {
+				return false
+			}
+		}
+		from = indexOfHbaKey(s, nameEnd, false)
+	}
+	return true
 }
 
 // redactedToEnd reports whether s holds no ldapbindpasswd text, or only REDACTED after the first.

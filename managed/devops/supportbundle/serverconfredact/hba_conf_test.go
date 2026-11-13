@@ -116,6 +116,13 @@ func TestRedactLdapBindPasswdText(t *testing.T) {
 				"      phrase tail\"\n    max_log_size: 256\n"},
 		// Java stack frames are indented with a tab, not spaces.
 		{"error: ldapbindpasswd=REDACTED\n\tat com.yugabyte.Foo", "error: ldapbindpasswd=x\n\tat com.yugabyte.Foo"},
+		// A gflag line folds when its redaction reaches the end of the line, and only then.
+		{"--ysql_hba_conf_csv=" + ldapRule + "ldapbindpasswd=REDACTED\n      REDACTED\n--max_log_size=256",
+			"--ysql_hba_conf_csv=" + ldapRule + "ldapbindpasswd=pa\n      ss-tail\n--max_log_size=256"},
+		{"--ysql_hba_conf_csv=\"" + ldapRule + "ldapbindpasswd=REDACTED\"\n  REDACTED",
+			"--ysql_hba_conf_csv=\"" + ldapRule + "ldapbindpasswd=pa\"\n  ss-tail"},
+		{"--ysql_hba_conf_csv=" + ldapRule + "ldapbindpasswd=REDACTED ldaptls=1\n  next",
+			"--ysql_hba_conf_csv=" + ldapRule + "ldapbindpasswd=pa ldaptls=1\n  next"},
 	}
 	for _, c := range cases {
 		got := redactLdapBindPasswdText(c.in)
@@ -124,6 +131,26 @@ func TestRedactLdapBindPasswdText(t *testing.T) {
 		}
 		if err := verifyLdapBindPasswd(got); err != nil {
 			t.Errorf("%q: %v", got, err)
+		}
+	}
+}
+
+func TestLdapBindPasswdValuesRedacted(t *testing.T) {
+	cases := []struct {
+		in string
+		ok bool
+	}{
+		{"ldapbindpasswd=REDACTED ldaptls=1", true},
+		{`"ldapbindpasswd"=""REDACTED""`, true},
+		{`LdapBindPasswd =\,REDACTED`, true},
+		{"ldapbindpasswd in a comment", true},
+		{"x LDAPBINDPASSWD=secret", false},
+		{`ldap"bind"passwd= "secret"`, false},
+		{"ldapbindpasswd=REDACTED ldapbindpasswd=secret", false},
+	}
+	for _, c := range cases {
+		if got := ldapBindPasswdValuesRedacted(c.in); got != c.ok {
+			t.Errorf("%q: got %v, want %v", c.in, got, c.ok)
 		}
 	}
 }

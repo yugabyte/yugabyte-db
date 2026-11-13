@@ -2,4 +2,4 @@
 # by HbaConfRedactorTest.testOutputMatchesGoPort and by its Go port in
 # managed/devops/supportbundle/serverconfredact (hba_conf_test.go).
 golden 01500716ad4a779ed71fded53e42b13613ed58293f6e33d865353a24dde50f3e
-generated d91142f0295aea7387123136c6d95ecddfb0360af85c245c1a24001b0dd5b4a0
+generated 4008042c9ab1e22c4afcd1d1c1c6d6022ce76fb33d34afabfdb77d3f17862205

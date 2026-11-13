@@ -8,14 +8,17 @@
 // shapes. Each redactor is a byte-preserving splicer: it finds the secret's byte span, replaces only
 // those bytes, and emits the rest unchanged, since support diffs the file against the live node.
 // That rules out encoding/json (reorders and reformats), strconv.Unquote/QuotedPrefix (Go syntax;
-// under-redacts `""abc""`), text/scanner, line splitting (values contain newlines) and RE2 (no
-// lookahead; see ldap_hba.go).
+// under-redacts `""abc""`), text/scanner, line splitting (values contain newlines; ldapbindpasswd
+// is the exception below) and RE2 (no lookahead; see ldap_hba.go).
 //
 // This is a port of RedactingService.java, with names and branch order mirrored, and of
 // HbaConfRedactor.java (hba_conf.go), which redacts ldapbindpasswd by parsing ysql_hba_conf_csv as
-// Postgres does; hba_conf_test.go checks that the port's output matches YBA's byte for byte. It
-// differs where RedactingService leaked: a --<sensitive>= flag runs to the end of the line (gflags
-// reads one flag per line), and the hba attribute radiussecrets is redacted in place
+// Postgres does; hba_conf_test.go checks that the port's output matches YBA's byte for byte.
+// Outside a ysql_hba_conf_csv value, ldapbindpasswd is redacted one line at a time, as YBA's
+// redactFreeText does: from the name to the end of its line, plus the more-indented lines Helm
+// folds onto it. The DB reads server.conf one flag per line, so the value can't continue further.
+// It differs where RedactingService leaked: a --<sensitive>= flag runs to the end of the line
+// (gflags reads one flag per line), and the hba attribute radiussecrets is redacted in place
 // (ldap_hba.go). VerifyRedacted then checks the output before anything is written.
 //
 // Contract with support_bundle_utils.sh: exit 0 redacted, 1 I/O or decode failure, 2 usage error,
