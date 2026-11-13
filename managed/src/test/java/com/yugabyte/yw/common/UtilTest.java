@@ -26,6 +26,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -76,6 +77,16 @@ public class UtilTest extends FakeDBApplication {
       Util.getNodePrefix(1L, "demo");
     } catch (Exception e) {
       assertEquals("Invalid Customer Id: 1", e.getMessage());
+    }
+  }
+
+  @Test
+  public void randomPasswordsMeetTheDefaultPolicy() {
+    Customer customer = ModelFactory.testCustomer();
+    PasswordPolicyService policy = app.injector().instanceOf(PasswordPolicyService.class);
+    // Decoding random bytes as UTF-8 put a disallowed ` in about 6% of passwords.
+    for (int i = 0; i < 1000; i++) {
+      policy.checkPasswordPolicy(customer.getUuid(), Util.getRandomPassword());
     }
   }
 

@@ -69,12 +69,12 @@ import java.net.Socket;
 import java.net.URL;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
-import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
@@ -90,7 +90,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Random;
 import java.util.Set;
 import java.util.TimeZone;
 import java.util.UUID;
@@ -2114,21 +2113,34 @@ public class Util {
     return ipValidator.isValidInet4Address(maybeIp) || ipValidator.isValidInet6Address(maybeIp);
   }
 
-  /** Get randomly generated password inline with YB's password policy */
+  private static final String RANDOM_PASSWORD_CHARS =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+
+  private static final SecureRandom RANDOM_PASSWORD_SOURCE = new SecureRandom();
+
+  /**
+   * A random password that meets the default password policy: 16 letters and digits, then a special
+   * character, a lower and an upper case letter, and digits. Decoding random bytes as UTF-8 instead
+   * produced the default disallowed character (`) in about 6% of passwords.
+   */
   public static String getRandomPassword() {
-    byte[] password = new byte[16];
-    new Random().nextBytes(password);
-    String generatedPassword = new String(password, Charset.forName("UTF-8"));
+    StringBuilder password = new StringBuilder();
+    for (int i = 0; i < 16; i++) {
+      password.append(
+          RANDOM_PASSWORD_CHARS.charAt(
+              RANDOM_PASSWORD_SOURCE.nextInt(RANDOM_PASSWORD_CHARS.length())));
+    }
     // To be consistent with password policy
-    Integer randomInt = new Random().nextInt(26);
+    int randomInt = RANDOM_PASSWORD_SOURCE.nextInt(26);
     String lowercaseLetter = String.valueOf((char) (randomInt + 'a'));
     String uppercaseLetter = lowercaseLetter.toUpperCase();
-    generatedPassword +=
-        (SPECIAL_CHARACTERS_STRING_LIST.get(
-                new Random().nextInt(SPECIAL_CHARACTERS_STRING_LIST.size()))
+    String generatedPassword =
+        password
+            + SPECIAL_CHARACTERS_STRING_LIST.get(
+                RANDOM_PASSWORD_SOURCE.nextInt(SPECIAL_CHARACTERS_STRING_LIST.size()))
             + lowercaseLetter
             + uppercaseLetter
-            + String.valueOf(randomInt));
+            + randomInt;
     return generatedPassword;
   }
 
