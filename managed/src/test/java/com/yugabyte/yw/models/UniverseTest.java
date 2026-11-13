@@ -2,6 +2,7 @@
 package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static com.yugabyte.yw.common.RedactingService.SECRET_REPLACEMENT;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.equalTo;
@@ -37,7 +38,10 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -48,6 +52,7 @@ import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import io.ebean.DB;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -62,6 +67,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
@@ -169,6 +175,63 @@ public class UniverseTest extends FakeDBApplication {
     Universe updUniv = Universe.getOrBadRequest(u.getUniverseUUID());
     assertEquals(numNodes, updUniv.getNodes().size());
     assertEquals(numNodes + 1, updUniv.getVersion());
+  }
+
+  @Test
+  public void testStoredDetailsRedactDbPasswordsAndKeepSensitiveGFlags() {
+    mutableConfigFactory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey(), "true");
+    String hba =
+        "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com ldapbindpasswd=hba-secret";
+    Map<String, String> tserverGFlags =
+        Map.of("ycql_ldap_bind_passwd", "ycql-ldap-secret", GFlagsUtil.YSQL_HBA_CONF_CSV, hba);
+    Consumer<UserIntent> setDbPasswords =
+        userIntent -> {
+          userIntent.ysqlPassword = "ysql-secret";
+          userIntent.ycqlPassword = "ycql-secret";
+        };
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(UUID.randomUUID());
+    UserIntent userIntent = new UserIntent();
+    userIntent.universeName = "stored-secrets";
+    userIntent.specificGFlags = SpecificGFlags.construct(Map.of(), tserverGFlags);
+    setDbPasswords.accept(userIntent);
+    taskParams.upsertPrimaryCluster(userIntent, null, null);
+    UUID universeUUID = Universe.create(taskParams, defaultCustomer.getId()).getUniverseUUID();
+    assertStoredDetails(universeUUID, tserverGFlags);
+
+    Universe.saveDetails(
+        universeUUID,
+        u -> setDbPasswords.accept(u.getUniverseDetails().getPrimaryCluster().userIntent));
+    assertStoredDetails(universeUUID, tserverGFlags);
+
+    // Universe attach persists through setUniverseDetails and Ebean's save(), not save(boolean).
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    setDbPasswords.accept(details.getPrimaryCluster().userIntent);
+    universe.setUniverseDetails(details);
+    universe.save();
+    assertStoredDetails(universeUUID, tserverGFlags);
+  }
+
+  private static void assertStoredDetails(UUID universeUUID, Map<String, String> tserverGFlags) {
+    String storedJson =
+        DB.sqlQuery("SELECT universe_details_json FROM universe WHERE universe_uuid = :uuid")
+            .setParameter("uuid", universeUUID)
+            .findOne()
+            .getString("universe_details_json");
+    UniverseDefinitionTaskParams stored =
+        Json.fromJson(Json.parse(storedJson), UniverseDefinitionTaskParams.class);
+    Cluster primary = stored.getPrimaryCluster();
+    assertEquals(SECRET_REPLACEMENT, primary.userIntent.ysqlPassword);
+    assertEquals(SECRET_REPLACEMENT, primary.userIntent.ycqlPassword);
+    // Nodes get their gflags from the stored details.
+    Map<String, String> nodeGFlags =
+        GFlagsUtil.getGFlagsForNode(
+            null, UniverseTaskBase.ServerType.TSERVER, primary, stored.clusters);
+    tserverGFlags.forEach((name, value) -> assertEquals(value, nodeGFlags.get(name)));
   }
 
   @Test
