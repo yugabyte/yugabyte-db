@@ -76,6 +76,7 @@
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/one_time_bool.h"
+#include "yb/util/rw_mutex.h"
 #include "yb/util/status_fwd.h"
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -246,7 +247,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     return object_lock_shared_state_manager_.get();
   }
 
-  Status PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) EXCLUDES(lock_);
+  Status PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp)
+      EXCLUDES(live_tservers_mutex_);
   Result<YSQLLeaseInfo> GetYSQLLeaseInfo() const override;
 
   // Conditionally restart PG: while the persistence gate is enforced and this TServer holds no
@@ -265,17 +267,18 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   bool IsXClusterLeaseRequirementMet() const;
 
   Status GetLiveTServers(std::vector<master::TSInformationPB>* live_tservers) const
-      EXCLUDES(lock_) override;
+      EXCLUDES(live_tservers_mutex_) override;
 
   // Returns connection info of all live tservers available at this tserver. The information about
   // live tservers is refreshed by the master heartbeat.
   virtual Result<std::vector<client::internal::RemoteTabletServerPtr>>
-      GetRemoteTabletServers() const EXCLUDES(lock_) override;
+      GetRemoteTabletServers() const EXCLUDES(live_tservers_mutex_) override;
 
   // Returns connection info for the passed in 'ts_uuids', if available. If unavailable,
   // returns a bad status. The information about live tservers is refreshed by the master heartbeat.
   virtual Result<std::vector<client::internal::RemoteTabletServerPtr>> GetRemoteTabletServers(
-      const std::unordered_set<std::string>& ts_uuids) const EXCLUDES(lock_) override;
+      const std::unordered_set<std::string>& ts_uuids) const
+      EXCLUDES(live_tservers_mutex_) override;
 
   Status GetTabletStatus(const GetTabletStatusRequestPB* req,
                          GetTabletStatusResponsePB* resp) const override;
@@ -621,22 +624,27 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Map of tserver connection info, keyed by the tserver uuid, that are alive from the master's
   // perspective. It is refreshed on every successfull heartbeat exchange between the current
   // tserver and the master leader.
-  std::unordered_map<std::string, master::TSInformationPB> live_tservers_ GUARDED_BY(lock_);
+  std::unordered_map<std::string, master::TSInformationPB> live_tservers_
+      GUARDED_BY(live_tservers_mutex_);
 
   // Map of 'RemoteTablerServer' shared ptrs keyed by the corresponding tsever uuid. This is used
   // to obtain a proxy handle to the local/remote tserver. It is updated synchronously with
   // 'live_tservers_'.
   std::unordered_map<std::string, client::internal::RemoteTabletServerPtr>
-      remote_tservers_ GUARDED_BY(lock_);
+      remote_tservers_ GUARDED_BY(live_tservers_mutex_);
 
-  // Lock to protect live_tservers_, cluster_uuid_.
-  mutable rw_spinlock lock_;
+  // Protects live_tservers_ and remote_tservers_.
+  mutable RWMutex live_tservers_mutex_{RWMutex::Priority::PREFER_WRITING};
+
+  // Protects the members marked GUARDED_BY(lock_).
+  // RPCs take it in shared mode to check catalog versions, so waiters block rather than spin.
+  mutable RWMutex lock_{RWMutex::Priority::PREFER_WRITING};
 
   // Proxy to call this tablet server locally.
   std::shared_ptr<TabletServerServiceProxy> proxy_;
 
   // Cluster uuid. This is sent by the master leader during the first heartbeat.
-  std::string cluster_uuid_;
+  std::string cluster_uuid_ GUARDED_BY(lock_);
 
   // Serializes ApplyXClusterGuardedInfoIfNewer, whose copies arrive via heartbeat responses and
   // ApplyXClusterGuardedInfoIfNewer RPCs, and guards the version below.
