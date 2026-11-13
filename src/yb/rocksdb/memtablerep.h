@@ -259,10 +259,7 @@ class SkipListFactory : public MemTableRepFactory {
   const ConcurrentWrites concurrent_writes_;
 };
 
-/**
- * Creates B+-tree memtables with inline user key windows, for a single writer and lock-free
- * readers.
- */
+// Single-writer B+-tree memtables with inline user key windows and lock-free readers.
 class BTreeFactory : public MemTableRepFactory {
  public:
   MemTableRep* CreateMemTableRep(const MemTableRep::KeyComparator&,

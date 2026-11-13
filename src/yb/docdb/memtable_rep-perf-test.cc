@@ -27,6 +27,8 @@
 #include "yb/dockv/doc_kv_util.h"
 #include "yb/dockv/intent.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/db/writebuffer.h"
@@ -34,12 +36,14 @@
 #include "yb/rocksdb/memtablerep.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/table/internal_iterator.h"
+#include "yb/rocksdb/table/scoped_arena_iterator.h"
 #include "yb/rocksdb/util/arena.h"
 #include "yb/rocksdb/util/mutable_cf_options.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/random_util.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
@@ -57,6 +61,9 @@ DEFINE_NON_RUNTIME_string(memtable_perf_workloads, "",
 namespace yb::docdb {
 
 namespace {
+
+YB_STRONGLY_TYPED_BOOL(Ascending);
+YB_STRONGLY_TYPED_BOOL(ReadNewest);
 
 constexpr size_t kValueSize = 64;
 // First tablet of a table with three hash tablets.
@@ -76,7 +83,7 @@ struct Workload {
 };
 
 uint16_t HashOf(int64_t pk) {
-  return static_cast<uint16_t>(((static_cast<uint64_t>(pk) * 0x9E3779B97F4A7C15ULL) >> 32) %
+  return narrow_cast<uint16_t>(((static_cast<uint64_t>(pk) * 0x9E3779B97F4A7C15ULL) >> 32) %
                                kTabletHashEnd);
 }
 
@@ -210,7 +217,7 @@ Workload HashUpdates(std::mt19937_64* rng) {
 }
 
 // Intents DB: a strong intent and its reverse index entry per row, 16 rows a transaction.
-Workload Intents(std::mt19937_64* rng, bool ascending = false) {
+Workload Intents(std::mt19937_64* rng, Ascending ascending) {
   Workload result;
   result.name = "intents";
   auto rows = FLAGS_memtable_perf_entries / 2;
@@ -229,7 +236,7 @@ Workload Intents(std::mt19937_64* rng, bool ascending = false) {
   auto make_doc_key = ascending ? &RangeDocKey : &HashDocKey;
   auto intent_types = dockv::GetIntentTypesForWrite(IsolationLevel::SNAPSHOT_ISOLATION);
   char intent_type[2] = {
-      dockv::KeyEntryTypeAsChar::kIntentTypeSet, static_cast<char>(intent_types.ToUIntPtr())};
+      dockv::KeyEntryTypeAsChar::kIntentTypeSet, narrow_cast<char>(intent_types.ToUIntPtr())};
   HybridTimeSource hts;
   TransactionId transaction_id = TransactionId::Nil();
   HybridTime ht;
@@ -260,7 +267,7 @@ Workload Intents(std::mt19937_64* rng, bool ascending = false) {
 
 // Intents of applied transactions are erased from the memtable soon after they are written.
 Workload IntentsApplied(std::mt19937_64* rng) {
-  auto result = Intents(rng);
+  auto result = Intents(rng, Ascending::kFalse);
   result.name = "intents_applied";
   result.erase_lag = 64 * kRowsPerTransaction * 2;
   return result;
@@ -268,7 +275,7 @@ Workload IntentsApplied(std::mt19937_64* rng) {
 
 // The same for a range partitioned table written in ascending key order.
 Workload RangeIntentsApplied(std::mt19937_64* rng) {
-  auto result = Intents(rng, /* ascending= */ true);
+  auto result = Intents(rng, Ascending::kTrue);
   result.name = "range_intents_applied";
   result.erase_lag = 64 * kRowsPerTransaction * 2;
   return result;
@@ -330,28 +337,6 @@ class MemTableHolder {
   rocksdb::MemTable* mem_;
 };
 
-class IteratorHolder {
- public:
-  explicit IteratorHolder(const MemTableHolder& mem)
-      : iter_(mem->NewIterator(rocksdb::ReadOptions(), &arena_)) {}
-
-  ~IteratorHolder() {
-    iter_->~InternalIterator();
-  }
-
-  rocksdb::InternalIterator* get() const {
-    return iter_;
-  }
-
-  rocksdb::InternalIterator* operator->() const {
-    return iter_;
-  }
-
- private:
-  rocksdb::Arena arena_;
-  rocksdb::InternalIterator* iter_;
-};
-
 uint64_t Fold(uint64_t checksum, Slice key) {
   return checksum * 31 + key.size() + (key.empty() ? 0 : static_cast<uint8_t>(key.end()[-1]));
 }
@@ -373,7 +358,7 @@ void InsertAll(const Workload& workload, MemTableHolder* mem, std::atomic<size_t
   }
 }
 
-// Seeks each target, reading the entry found and the one after it.
+// Seeks each target, reading next_steps entries from the one found.
 uint64_t SeekAll(
     rocksdb::InternalIterator* iter, const std::vector<std::string>& targets, size_t next_steps,
     uint64_t checksum) {
@@ -390,7 +375,7 @@ uint64_t SeekAll(
 // Inserts all keys while readers seek inserted keys. Returns ns per insert and per seek.
 std::pair<double, double> InsertWithReaders(
     const Workload& workload, const std::vector<std::string>& targets,
-    std::shared_ptr<rocksdb::MemTableRepFactory> factory, bool newest) {
+    std::shared_ptr<rocksdb::MemTableRepFactory> factory, ReadNewest newest) {
   MemTableHolder mem(factory);
   std::atomic<size_t> published{0};
   std::atomic<size_t> seeks{0};
@@ -398,19 +383,22 @@ std::pair<double, double> InsertWithReaders(
   TestThreadHolder thread_holder;
   for (size_t i = 0; i != FLAGS_memtable_perf_readers; ++i) {
     thread_holder.AddThreadFunctor([&, i] {
-      IteratorHolder iter(mem);
+      rocksdb::Arena arena;
+      rocksdb::ScopedArenaIterator iter(mem->NewIterator(rocksdb::ReadOptions(), &arena));
       std::mt19937_64 rng(i);
       size_t count = 0;
       auto start = Clock::now();
-      for (; !thread_holder.stop_flag().load(std::memory_order_acquire); ++count) {
+      while (!thread_holder.stop_flag().load(std::memory_order_acquire)) {
         auto inserted = published.load(std::memory_order_acquire);
         if (inserted == 0) {
+          start = Clock::now();
           continue;
         }
         auto index = newest ? inserted - 1 : RandomUniformInt<size_t>(0, inserted - 1, &rng);
         auto& entry = iter->Seek(targets[index]);
         CHECK(entry);
         iter->Next();
+        ++count;
       }
       seek_nanos.fetch_add(
           std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - start).count());
@@ -434,7 +422,8 @@ Results RunWorkload(
     results.insert_ns = NanosPer(Clock::now() - start, workload.keys.size());
     results.memory = mem->ApproximateMemoryUsage();
 
-    IteratorHolder iter(mem);
+    rocksdb::Arena arena;
+    rocksdb::ScopedArenaIterator iter(mem->NewIterator(rocksdb::ReadOptions(), &arena));
 
     start = Clock::now();
     results.checksum = SeekAll(iter.get(), workload.hits, 2, results.checksum);
@@ -456,8 +445,9 @@ Results RunWorkload(
       ++entries;
     }
     results.full_scan_ns = NanosPer(Clock::now() - start, entries);
-    CHECK_EQ(entries, workload.keys.size() - (
-        workload.erase_lag ? workload.keys.size() - workload.erase_lag : 0));
+    // Only the last erase_lag keys stay.
+    CHECK_EQ(entries, workload.erase_lag
+        ? std::min(workload.keys.size(), workload.erase_lag) : workload.keys.size());
   }
   if (workload.erase_lag) {
     return results;
@@ -470,9 +460,9 @@ Results RunWorkload(
         key, rocksdb::kMaxSequenceNumber, rocksdb::kValueTypeForSeek).Encode().ToBuffer());
   }
   std::tie(results.concurrent_insert_ns, results.concurrent_seek_ns) =
-      InsertWithReaders(workload, targets, factory, /* newest= */ false);
+      InsertWithReaders(workload, targets, factory, ReadNewest::kFalse);
   std::tie(results.hot_insert_ns, results.hot_seek_ns) =
-      InsertWithReaders(workload, targets, factory, /* newest= */ true);
+      InsertWithReaders(workload, targets, factory, ReadNewest::kTrue);
   return results;
 }
 
@@ -487,7 +477,7 @@ TEST_F(MemTableRepPerfTest, Compare) {
     {"range_sequential", &RangeSequential},
     {"hash_columns", &HashColumns},
     {"hash_updates", &HashUpdates},
-    {"intents", [](std::mt19937_64* rng) { return Intents(rng); }},
+    {"intents", [](std::mt19937_64* rng) { return Intents(rng, Ascending::kFalse); }},
     {"intents_applied", &IntentsApplied},
     {"range_intents_applied", &RangeIntentsApplied},
   };

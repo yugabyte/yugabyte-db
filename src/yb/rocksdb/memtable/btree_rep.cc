@@ -36,15 +36,21 @@
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/memtable.h"
+#include "yb/rocksdb/memtable/btree_rep.h"
 #include "yb/rocksdb/memtablerep.h"
 #include "yb/rocksdb/util/arena.h"
 #include "yb/rocksdb/util/coding.h"
 
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/tsan_util.h"
 
 namespace rocksdb {
 namespace {
+
+YB_STRONGLY_TYPED_BOOL(UseWindows);
+YB_STRONGLY_TYPED_BOOL(LeftSpine);
+YB_STRONGLY_TYPED_BOOL(ToLeft);
 
 constexpr size_t kNodeSize = 1024;
 constexpr size_t kNodeAlign = 64;
@@ -93,8 +99,9 @@ struct Internal : NodeBase {
 static_assert(sizeof(Leaf) <= kNodeSize);
 static_assert(sizeof(Internal) <= kNodeSize);
 
-// Nodes below the root keep at least this many keys, as in bbtree: removals rebalance, and 1/8
-// leaves enough room that a split half does not merge back soon.
+// A node below the root that an erase leaves under this count merges with a sibling or takes one
+// entry from it, as in bbtree, so it can stay under. Inserts do not rebalance: a split of the
+// last leaf leaves one key on the right.
 constexpr size_t kLeafMinCount = std::max<size_t>(Leaf::kCapacity / 8, 4);
 constexpr size_t kInternalMinCount = std::max<size_t>(Internal::kCapacity / 8, 4);
 
@@ -205,9 +212,9 @@ inline size_t LoadCount(const Node* node) {
 }
 
 enum class Route {
-  // Child holding the first key >= target.
+  // Child whose range contains the target; a key equal to a separator goes right.
   kUpperBound,
-  // Child holding the last key < target.
+  // Child whose range contains the target; a key equal to a separator goes left.
   kLowerBound,
   kFirst,
   kLast,
@@ -223,7 +230,7 @@ struct Position {
 
 class BTreeRep : public MemTableRep {
  public:
-  BTreeRep(const KeyComparator& compare, MemTableAllocator* allocator, bool use_windows)
+  BTreeRep(const KeyComparator& compare, MemTableAllocator* allocator, UseWindows use_windows)
       : MemTableRep(allocator), cmp_(compare), use_windows_(use_windows) {}
 
   void Insert(KeyHandle handle) override;
@@ -268,11 +275,7 @@ class BTreeRep : public MemTableRep {
   }
 
   void SeekFirst(Position* pos) const {
-    const Leaf* leaf;
-    uint64_t version;
-    while (!Descend(nullptr, Route::kFirst, &leaf, &version)) {}
-    // A merge keeps the left node, so the first leaf stays first.
-    FirstFrom(leaf, nullptr, 0, pos);
+    while (!TrySeekFirst(pos)) {}
   }
 
   void SeekLast(Position* pos) const {
@@ -286,6 +289,12 @@ class BTreeRep : public MemTableRep {
   struct PathEntry {
     Internal* node;
     size_t index;
+  };
+
+  // Estimated fractions of all keys that sort before a leaf and that the leaf holds.
+  struct Share {
+    double before = 0;
+    double leaf = 1;
   };
 
   int Compare(const char* entry, const SearchKey& key) const {
@@ -322,11 +331,13 @@ class BTreeRep : public MemTableRep {
   bool LeafLowerBound(const Leaf* leaf, const SearchKey& key, size_t count, size_t* index) const;
 
   // Descends to the leaf for key along route. Returns false to restart. Sets *leaf to null for an
-  // empty tree.
-  bool Descend(const SearchKey* key, Route route, const Leaf** leaf, uint64_t* version) const;
+  // empty tree. Fills share, if not null, from the child counts along the path.
+  bool Descend(
+      const SearchKey* key, Route route, const Leaf** leaf, uint64_t* version, Share* share) const;
 
   bool TrySeekGE(const SearchKey& key, Position* pos) const;
   bool TrySeekLT(const SearchKey& key, Position* pos) const;
+  bool TrySeekFirst(Position* pos) const;
   bool TrySeekLast(Position* pos) const;
 
   // Positions at the first entry of leaf or of a leaf after it, where leaf followed `from` at
@@ -347,7 +358,7 @@ class BTreeRep : public MemTableRep {
 
   void InitRoot(const char* entry, const SearchKey& key);
   void ShrinkSharedPrefix(Slice user_key);
-  void ShrinkSpine(size_t prefix_len, bool left);
+  void ShrinkSpine(size_t prefix_len, LeftSpine left);
 
   size_t PrefixFor(const char* low, const char* high) const;
   static void Fences(const PathEntry* path, size_t depth, const char** low, const char** high);
@@ -378,9 +389,9 @@ class BTreeRep : public MemTableRep {
   void MergeInternals(Internal* parent, size_t left_index, const char* low, const char* high);
   // Move one entry between children left_index and left_index + 1 of parent.
   void MoveBetweenLeaves(
-      Internal* parent, size_t left_index, bool to_left, const char* low, const char* high);
+      Internal* parent, size_t left_index, ToLeft to_left, const char* low, const char* high);
   void MoveBetweenInternals(
-      Internal* parent, size_t left_index, bool to_left, const char* low, const char* high);
+      Internal* parent, size_t left_index, ToLeft to_left, const char* low, const char* high);
   static void ChildFences(
       const Internal* parent, size_t index, const char* low, const char* high,
       const char** child_low, const char** child_high);
@@ -412,8 +423,8 @@ class BTreeRep : public MemTableRep {
   char* chunk_ = nullptr;
   size_t chunk_left_ = 0;
 
-  // Leaf of the last insert and its fences, null where missing. Its fences change only when it
-  // splits, which only an insert does, so inserts near the last one skip the descent.
+  // Leaf of the last insert and its fences, null where missing, so inserts near the last one skip
+  // the descent. A split updates them; Rebalance, which merges and moves, drops the hint.
   Leaf* hint_leaf_ = nullptr;
   const char* hint_low_ = nullptr;
   const char* hint_high_ = nullptr;
@@ -547,7 +558,7 @@ bool BTreeRep::LeafLowerBound(
 }
 
 bool BTreeRep::Descend(
-    const SearchKey* key, Route route, const Leaf** leaf, uint64_t* version) const {
+    const SearchKey* key, Route route, const Leaf** leaf, uint64_t* version, Share* share) const {
   DEBUG_ONLY_TEST_SYNC_POINT("BTreeRep::Descend:Start");
   const NodeBase* node = root_.load(std::memory_order_acquire);
   if (!node) {
@@ -576,6 +587,11 @@ bool BTreeRep::Descend(
     if (!IsUnchanged(node, node_version)) {
       return false;
     }
+    if (share) {
+      auto children = LoadCount(internal) + 1;
+      share->before += share->leaf * index / children;
+      share->leaf /= children;
+    }
     node = child;
     node_version = child_version;
   }
@@ -601,7 +617,7 @@ bool BTreeRep::TrySeekGE(const SearchKey& key, Position* pos) const {
   }
   const Leaf* leaf;
   uint64_t version;
-  if (!Descend(&key, Route::kUpperBound, &leaf, &version)) {
+  if (!Descend(&key, Route::kUpperBound, &leaf, &version, /* share= */ nullptr)) {
     return false;
   }
   auto count = LoadCount(leaf);
@@ -638,7 +654,7 @@ bool BTreeRep::TrySeekLT(const SearchKey& key, Position* pos) const {
   }
   const Leaf* leaf;
   uint64_t version;
-  if (!Descend(&key, Route::kLowerBound, &leaf, &version)) {
+  if (!Descend(&key, Route::kLowerBound, &leaf, &version, /* share= */ nullptr)) {
     return false;
   }
   auto count = LoadCount(leaf);
@@ -658,10 +674,20 @@ bool BTreeRep::TrySeekLT(const SearchKey& key, Position* pos) const {
   return LastBefore(prev, leaf, version, pos);
 }
 
+bool BTreeRep::TrySeekFirst(Position* pos) const {
+  const Leaf* leaf;
+  uint64_t version;
+  if (!Descend(nullptr, Route::kFirst, &leaf, &version, /* share= */ nullptr)) {
+    return false;
+  }
+  // A merge keeps the left node, so the first leaf stays first.
+  return FirstFrom(leaf, nullptr, 0, pos);
+}
+
 bool BTreeRep::TrySeekLast(Position* pos) const {
   const Leaf* leaf;
   uint64_t version;
-  if (!Descend(nullptr, Route::kLast, &leaf, &version)) {
+  if (!Descend(nullptr, Route::kLast, &leaf, &version, /* share= */ nullptr)) {
     return false;
   }
   if (!leaf) {
@@ -830,58 +856,31 @@ bool BTreeRep::PrevInChangedLeaf(Position* pos) const {
 }
 
 uint64_t BTreeRep::EstimateCount(const SearchKey& key) const {
+  // The root is never reset once set.
+  if (!root_.load(std::memory_order_acquire)) {
+    return 0;
+  }
   auto total = num_entries_.load(std::memory_order_relaxed);
+  // The shared prefix only shrinks, so a key that shares it keeps sharing it.
+  size_t shared_len;
+  auto shared = CompareWithSharedPrefix(key, &shared_len);
+  if (shared != 0) {
+    return shared < 0 ? 0 : total;
+  }
   for (;;) {
-    const NodeBase* node = root_.load(std::memory_order_acquire);
-    if (!node) {
-      return 0;
-    }
-    size_t shared_len;
-    auto shared = CompareWithSharedPrefix(key, &shared_len);
-    if (shared != 0) {
-      return shared < 0 ? 0 : total;
-    }
-    double fraction = 0;
-    double scale = 1;
-    auto version = StableVersion(node);
-    if (!IsRoot(node)) {
+    const Leaf* leaf;
+    uint64_t version;
+    Share share;
+    if (!Descend(&key, Route::kUpperBound, &leaf, &version, &share)) {
       continue;
     }
-    bool restart = false;
-    while (node->level != 0) {
-      auto internal = static_cast<const Internal*>(node);
-      size_t index;
-      if (!RouteInternal(internal, &key, Route::kUpperBound, &index)) {
-        restart = true;
-        break;
-      }
-      auto children = LoadCount(internal) + 1;
-      const NodeBase* child = internal->children[index].load(std::memory_order_acquire);
-      if (!child) {
-        restart = true;
-        break;
-      }
-      auto child_version = StableVersion(child);
-      if (!IsUnchanged(node, version)) {
-        restart = true;
-        break;
-      }
-      fraction += scale * index / children;
-      scale /= children;
-      node = child;
-      version = child_version;
-    }
-    if (restart) {
-      continue;
-    }
-    auto leaf = static_cast<const Leaf*>(node);
     auto count = LoadCount(leaf);
     size_t index;
     if (!LeafLowerBound(leaf, key, count, &index) || !IsUnchanged(leaf, version)) {
       continue;
     }
-    fraction += scale * index / std::max<size_t>(count, 1);
-    return static_cast<uint64_t>(fraction * total);
+    share.before += share.leaf * index / std::max<size_t>(count, 1);
+    return static_cast<uint64_t>(share.before * total);
   }
 }
 
@@ -983,7 +982,7 @@ void BTreeRep::WindowsAfterShrink(Node* node, size_t count, size_t old_count, si
   }
 }
 
-void BTreeRep::ShrinkSpine(size_t prefix_len, bool left) {
+void BTreeRep::ShrinkSpine(size_t prefix_len, LeftSpine left) {
   NodeBase* node = root_.load(std::memory_order_relaxed);
   for (;;) {
     if (node->prefix_len.load(std::memory_order_relaxed) > prefix_len) {
@@ -1013,8 +1012,8 @@ void BTreeRep::ShrinkSharedPrefix(Slice user_key) {
     return;
   }
   // Only a key before or after every key shares less, and only the border nodes lack a fence.
-  ShrinkSpine(common, /* left= */ true);
-  ShrinkSpine(common, /* left= */ false);
+  ShrinkSpine(common, LeftSpine::kTrue);
+  ShrinkSpine(common, LeftSpine::kFalse);
   shared_len_.store(common, std::memory_order_release);
 }
 
@@ -1377,7 +1376,7 @@ void BTreeRep::Rebalance(const PathEntry* path, size_t depth) {
         MergeLeaves(parent, left_index, low, high);
         continue;
       }
-      MoveBetweenLeaves(parent, left_index, /* to_left= */ index == 0, low, high);
+      MoveBetweenLeaves(parent, left_index, ToLeft(index == 0), low, high);
       return;
     }
     auto left_internal = static_cast<Internal*>(left);
@@ -1387,7 +1386,7 @@ void BTreeRep::Rebalance(const PathEntry* path, size_t depth) {
       MergeInternals(parent, left_index, low, high);
       continue;
     }
-    MoveBetweenInternals(parent, left_index, /* to_left= */ index == 0, low, high);
+    MoveBetweenInternals(parent, left_index, ToLeft(index == 0), low, high);
     return;
   }
   // An internal root left with a single child is replaced by it.
@@ -1463,7 +1462,7 @@ void BTreeRep::MergeLeaves(
 }
 
 void BTreeRep::MoveBetweenLeaves(
-    Internal* parent, size_t left_index, bool to_left, const char* low, const char* high) {
+    Internal* parent, size_t left_index, ToLeft to_left, const char* low, const char* high) {
   auto left = static_cast<Leaf*>(parent->children[left_index].load(std::memory_order_relaxed));
   auto right =
       static_cast<Leaf*>(parent->children[left_index + 1].load(std::memory_order_relaxed));
@@ -1531,7 +1530,7 @@ void BTreeRep::MergeInternals(
 }
 
 void BTreeRep::MoveBetweenInternals(
-    Internal* parent, size_t left_index, bool to_left, const char* low, const char* high) {
+    Internal* parent, size_t left_index, ToLeft to_left, const char* low, const char* high) {
   auto left =
       static_cast<Internal*>(parent->children[left_index].load(std::memory_order_relaxed));
   auto right =
@@ -1606,10 +1605,18 @@ bool IsBytewise(const MemTableRep::KeyComparator& compare) {
 
 } // namespace
 
+size_t TEST_BTreeLeafCapacity() {
+  return Leaf::kCapacity;
+}
+
+size_t TEST_BTreeLeafMinCount() {
+  return kLeafMinCount;
+}
+
 MemTableRep* BTreeFactory::CreateMemTableRep(
     const MemTableRep::KeyComparator& compare, MemTableAllocator* allocator,
     const SliceTransform* transform, Logger* logger) {
-  return new BTreeRep(compare, allocator, IsBytewise(compare));
+  return new BTreeRep(compare, allocator, UseWindows(IsBytewise(compare)));
 }
 
 } // namespace rocksdb

@@ -15,20 +15,23 @@
 #include <functional>
 #include <random>
 #include <set>
-#include <thread>
 
 #include <gtest/gtest.h>
+
+#include "yb/gutil/casts.h"
 
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/db/memtable_allocator.h"
 #include "yb/rocksdb/db/writebuffer.h"
+#include "yb/rocksdb/memtable/btree_rep.h"
 #include "yb/rocksdb/memtablerep.h"
 #include "yb/rocksdb/util/arena.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/testutil.h"
 
+#include "yb/util/format.h"
 #include "yb/util/random_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
@@ -51,7 +54,7 @@ class BTreeRepTest : public RocksDBTest, public ::testing::WithParamInterface<bo
         VarintLength(internal_key.size()) + internal_key.size() + VarintLength(0);
     char* buf;
     auto handle = rep_->Allocate(encoded_len, &buf);
-    auto p = EncodeVarint32(buf, static_cast<uint32_t>(internal_key.size()));
+    auto p = EncodeVarint32(buf, narrow_cast<uint32_t>(internal_key.size()));
     memcpy(p, internal_key.data(), internal_key.size());
     EncodeVarint32(p + internal_key.size(), 0);
     rep_->Insert(handle);
@@ -62,6 +65,11 @@ class BTreeRepTest : public RocksDBTest, public ::testing::WithParamInterface<bo
     std::string result = user_key;
     PutFixed64(&result, PackSequenceAndType(seq, kTypeValue));
     return result;
+  }
+
+  // Keys that sort by i under the bytewise comparator.
+  static std::string NumberedKey(const std::string& prefix, size_t i, size_t width) {
+    return MakeInternalKey(yb::Format("$0$1", prefix, yb::ZeroPadded(i, width)), 1);
   }
 
   static std::string KeyOf(const char* entry) {
@@ -212,14 +220,22 @@ TEST_P(BTreeRepTest, Sequential) {
   std::mt19937_64 rng(42);
   auto model = NewModel();
   for (size_t i = 0; i != kNumKeys; ++i) {
-    char buf[32];
-    snprintf(buf, sizeof(buf), "row/%010zu", GetParam() ? kNumKeys - i : i);
-    auto key = MakeInternalKey(buf, 1);
+    auto key = NumberedKey("row/", GetParam() ? kNumKeys - i : i, 10);
     model.insert(key);
     Add(key);
   }
   ASSERT_NO_FATALS(CheckScan(model));
   ASSERT_NO_FATALS(CheckRandomWalks(model, &rng, 10000));
+
+  std::vector<std::string> sorted(model.begin(), model.end());
+  uint64_t prev = 0;
+  for (size_t i = 0; i < sorted.size(); i += 97) {
+    auto estimate = rep_->ApproximateNumEntries(sorted.front(), sorted[i]);
+    ASSERT_GE(estimate, prev) << i;
+    prev = estimate;
+  }
+  auto past_last = MakeInternalKey(GetParam() ? "a" : "s", 1);
+  ASSERT_GE(rep_->ApproximateNumEntries(sorted.front(), past_last), kNumKeys - 1);
 }
 
 // Keys that share less than every key before them shrink the shared prefix.
@@ -249,34 +265,32 @@ TEST_P(BTreeRepTest, ReaderRacesRootSplit) {
   GTEST_SKIP() << "Sync points work only in debug builds";
 #endif
   // Fills the root leaf, keeping the middle key for the split, so the split cuts the root in half.
-  constexpr int kNumKeys = 63;
-  constexpr int kMiddle = kNumKeys / 2;
-  auto key = [](int i) {
-    char buf[16];
-    snprintf(buf, sizeof(buf), "key%03d", i);
-    return MakeInternalKey(buf, 1);
+  const auto num_keys = TEST_BTreeLeafCapacity() + 1;
+  const auto middle = num_keys / 2;
+  auto key = [](size_t i) {
+    return NumberedKey("key", i, 3);
   };
-  for (int i = 0; i != kNumKeys; ++i) {
-    if (i != kMiddle) {
+  for (size_t i = 0; i != num_keys; ++i) {
+    if (i != middle) {
       Add(key(i));
     }
   }
 
-  auto* sync_point = yb::SyncPoint::GetInstance();
+  // Destroyed before thread_holder, releasing a thread parked at a sync point on early exit.
+  yb::TestThreadHolder thread_holder;
+  yb::SyncPointScope sync_point;
   sync_point->LoadDependency({
       {"BTreeRep::Descend:RootLoaded", "BTreeRep::InsertIntoParent:NewRoot"},
       {"BTreeRep::SplitLeaf:Done", "BTreeRep::Descend:ReadRootVersion"},
   });
   sync_point->EnableProcessing();
-  std::thread writer([this, &key] {
-    Add(key(kMiddle));
+  thread_holder.AddThreadFunctor([this, &key, middle] {
+    Add(key(middle));
   });
-  auto last = key(GetParam() ? 0 : kNumKeys - 1);
+  auto last = key(GetParam() ? 0 : num_keys - 1);
   std::unique_ptr<MemTableRep::Iterator> iter(rep_->GetIterator(nullptr));
   auto entry = iter->Seek(last);
-  writer.join();
-  sync_point->DisableProcessing();
-  sync_point->ClearTrace();
+  thread_holder.JoinAll();
 
   ASSERT_NE(entry, nullptr);
   ASSERT_EQ(KeyOf(entry), last);
@@ -288,22 +302,21 @@ TEST_P(BTreeRepTest, ReaderRacesRootCollapse) {
 #ifdef NDEBUG
   GTEST_SKIP() << "Sync points work only in debug builds";
 #endif
-  constexpr int kNumKeys = 63;
-  constexpr int kMiddle = kNumKeys / 2;
+  const auto num_keys = TEST_BTreeLeafCapacity() + 1;
+  const auto middle = num_keys / 2;
+  const auto min_count = TEST_BTreeLeafMinCount();
   std::vector<std::string> keys;
-  for (int i = 0; i != kNumKeys; ++i) {
-    char buf[16];
-    snprintf(buf, sizeof(buf), "key%03d", i);
-    keys.push_back(MakeInternalKey(buf, 1));
+  for (size_t i = 0; i != num_keys; ++i) {
+    keys.push_back(NumberedKey("key", i, 3));
   }
   std::sort(keys.begin(), keys.end(), ModelCompare{&icmp_});
-  // Splits the root leaf in the middle: keys [0, kMiddle) on the left.
-  for (int i = 0; i != kNumKeys; ++i) {
-    if (i != kMiddle) {
+  // Splits the root leaf in the middle: keys [0, middle) on the left.
+  for (size_t i = 0; i != num_keys; ++i) {
+    if (i != middle) {
       Add(keys[i]);
     }
   }
-  Add(keys[kMiddle]);
+  Add(keys[middle]);
   // Erases the left leaf down to its minimum; the next erase merges the two leaves.
   std::vector<const char*> entries;
   {
@@ -312,11 +325,13 @@ TEST_P(BTreeRepTest, ReaderRacesRootCollapse) {
       entries.push_back(entry);
     }
   }
-  for (int i = 0; i != kMiddle - 7; ++i) {
+  for (size_t i = 0; i != middle - min_count; ++i) {
     ASSERT_TRUE(rep_->Erase(const_cast<char*>(entries[i]), key_cmp_));
   }
 
-  auto* sync_point = yb::SyncPoint::GetInstance();
+  // Destroyed before thread_holder, releasing a thread parked at a sync point on early exit.
+  yb::TestThreadHolder thread_holder;
+  yb::SyncPointScope sync_point;
   sync_point->LoadDependency({
       {"BTreeRep::Rebalance:CollapseRoot", "BTreeRep::Descend:Start"},
       {"BTreeRep::Descend:RootChecked", "BTreeRep::Rebalance:ReplaceRoot"},
@@ -324,19 +339,17 @@ TEST_P(BTreeRepTest, ReaderRacesRootCollapse) {
   });
   sync_point->EnableProcessing();
   const char* found = nullptr;
-  std::thread reader([this, &keys, &found] {
+  thread_holder.AddThreadFunctor([this, &keys, &found] {
     std::unique_ptr<MemTableRep::Iterator> iter(rep_->GetIterator(nullptr));
     found = iter->Seek(keys.back());
   });
-  ASSERT_TRUE(rep_->Erase(const_cast<char*>(entries[kMiddle - 7]), key_cmp_));
+  ASSERT_TRUE(rep_->Erase(const_cast<char*>(entries[middle - min_count]), key_cmp_));
   // Refills the merged root leaf and splits it in the middle.
-  for (int i = 0; i != kMiddle - 6; ++i) {
+  for (size_t i = 0; i != middle - min_count + 1; ++i) {
     Add(keys[i]);
   }
   TEST_SYNC_POINT("BTreeRepTest::ReaderRacesRootCollapse:WritesDone");
-  reader.join();
-  sync_point->DisableProcessing();
-  sync_point->ClearTrace();
+  thread_holder.JoinAll();
 
   ASSERT_NE(found, nullptr);
   ASSERT_EQ(KeyOf(found), keys.back());
