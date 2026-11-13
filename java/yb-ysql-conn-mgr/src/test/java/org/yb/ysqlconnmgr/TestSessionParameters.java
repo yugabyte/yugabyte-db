@@ -1211,7 +1211,8 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
   }
 
   // A SET of these GUCs makes the connection sticky. A value from ALTER ROLE/DATABASE ... SET or
-  // from ysql_pg_conf_csv is applied by every backend of the pool, so it must not.
+  // from the config file (ysql_pg_conf_csv), at startup or on SIGHUP, is applied by every backend
+  // of the pool, so it must not.
   private static final String[][] STICKY_ON_SET_SETTINGS = {
       {"default_tablespace", "pg_default"},
       {"temp_tablespaces", "pg_default"},
@@ -1250,6 +1251,7 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     try (Connection conn = builder.connect();
          Statement stmt = conn.createStatement()) {
       assertSettingValues(stmt);
+      // Both clients connect after the ALTERs, so they get the same LCV and can share the backend.
       startQueuedClient(builder).assertServed();
     }
     assertSetMakesConnectionSticky(builder);
@@ -1278,6 +1280,9 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
       }, 30000);
       assertEquals(pid, queryInt(stmt, "SELECT pg_backend_pid()"));
       assertSettingValues(stmt);
+      // The reload doesn't bump the LCV, since only PGC_BACKEND GUCs do, so the second client can
+      // share the client's backend. With a single backend, it is served only if the client isn't
+      // sticky.
       startQueuedClient(builder).assertServed();
     }
     assertSetMakesConnectionSticky(builder);
