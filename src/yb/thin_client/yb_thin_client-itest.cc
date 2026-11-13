@@ -1745,8 +1745,8 @@ Status UpsertKeysWithRetries(
 // the server picks.
 std::future<ReadOutcome> StartReadKeys(
     ybthin_client* client, ybthin_table* table, int hash_key, int32_t v_id, uint64_t limit,
-    const std::vector<uint8_t>& paging_state, bool forward_scan = true,
-    const ybthin_read_options* options = nullptr) {
+    const std::vector<uint8_t>& paging_state, const ybthin_read_options* options,
+    bool forward_scan = true) {
   ybthin_bind hash_values[] = {I32(hash_key)};
   int32_t target_ids[] = {v_id};
   ybthin_read_op op = {};
@@ -1773,10 +1773,10 @@ std::future<ReadOutcome> StartReadKeys(
 // One page of the scan over `hash_key`, returning column `v_id`.
 ReadOutcome ReadKeys(
     ybthin_client* client, ybthin_table* table, int hash_key, int32_t v_id, uint64_t limit,
-    const std::vector<uint8_t>& paging_state, bool forward_scan = true,
-    const ybthin_read_options* options = nullptr) {
+    const std::vector<uint8_t>& paging_state, const ybthin_read_options* options,
+    bool forward_scan = true) {
   return StartReadKeys(
-      client, table, hash_key, v_id, limit, paging_state, forward_scan, options).get();
+      client, table, hash_key, v_id, limit, paging_state, options, forward_scan).get();
 }
 
 // The v values of the scan over `hash_key` from `paging_state` on, in scan order. An empty
@@ -1790,7 +1790,8 @@ Result<std::vector<int32_t>> ContinueScanKeys(
     if (pages++ == max_pages) {
       return STATUS(IllegalState, "paging did not terminate");
     }
-    auto out = ReadKeys(client, table, hash_key, v_id, limit, paging_state, forward_scan);
+    auto out = ReadKeys(
+        client, table, hash_key, v_id, limit, paging_state, /* options= */ nullptr, forward_scan);
     if (out.code != YBTHIN_OK) {
       return STATUS_FORMAT(
           IllegalState, "read failed with code $0: $1", static_cast<int>(out.code), out.message);
@@ -1854,7 +1855,8 @@ TEST_F(PgThinClientTest, LateFailureKeepsTheReopenedSession) {
     auto out = UpsertKeys(client.get(), table.get(), kHashKey, 0, kRows);
     ASSERT_EQ(out.code, YBTHIN_OK) << out.message;
   }
-  auto old_page = ReadKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit, {});
+  auto old_page =
+      ReadKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit, {}, /* options= */ nullptr);
   ASSERT_EQ(old_page.code, YBTHIN_OK) << old_page.message;
   ASSERT_FALSE(old_page.paging_state.empty());
 
@@ -1862,16 +1864,19 @@ TEST_F(PgThinClientTest, LateFailureKeepsTheReopenedSession) {
   // timeout after the first. They are held longer than the test runs, so neither is applied while
   // the cluster shuts down.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_thin_client_perform_delay_ms) = 600000;
-  auto dropping_read = StartReadKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit, {});
+  auto dropping_read = StartReadKeys(
+      client.get(), table.get(), kHashKey, v_id, kPageLimit, {}, /* options= */ nullptr);
   SleepFor(MonoDelta::FromMilliseconds(rpc_timeout_ms / 2));
-  auto late_read = StartReadKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit, {});
+  auto late_read = StartReadKeys(
+      client.get(), table.get(), kHashKey, v_id, kPageLimit, {}, /* options= */ nullptr);
   {
     auto out = dropping_read.get();
     ASSERT_EQ(out.code, YBTHIN_NETWORK) << out.message;
   }
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_thin_client_perform_delay_ms) = 0;
 
-  auto new_page = ReadKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit, {});
+  auto new_page =
+      ReadKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit, {}, /* options= */ nullptr);
   ASSERT_EQ(new_page.code, YBTHIN_OK) << new_page.message;
   ASSERT_FALSE(new_page.paging_state.empty());
   ASSERT_EQ(late_read.wait_for(0s), std::future_status::timeout)
@@ -1879,7 +1884,8 @@ TEST_F(PgThinClientTest, LateFailureKeepsTheReopenedSession) {
       << "already failed";
   {
     auto out = ReadKeys(
-        client.get(), table.get(), kHashKey, v_id, kPageLimit, old_page.paging_state);
+        client.get(), table.get(), kHashKey, v_id, kPageLimit, old_page.paging_state,
+        /* options= */ nullptr);
     ASSERT_EQ(out.code, YBTHIN_READ_RESTART) << out.message;
     ASSERT_STR_CONTAINS(out.message, "reopened");
   }
@@ -1890,7 +1896,8 @@ TEST_F(PgThinClientTest, LateFailureKeepsTheReopenedSession) {
   }
   {
     auto out = ReadKeys(
-        client.get(), table.get(), kHashKey, v_id, kPageLimit, new_page.paging_state);
+        client.get(), table.get(), kHashKey, v_id, kPageLimit, new_page.paging_state,
+        /* options= */ nullptr);
     ASSERT_EQ(out.code, YBTHIN_OK) << out.message;
   }
 }
@@ -1907,7 +1914,8 @@ TEST_F(PgThinClientTest, FencedBatchKeepsOtherSessionsOpen) {
   const int32_t v_id = table.ColumnId(1);
 
   ASSERT_EQ(UpsertKeys(client.get(), table.get(), kHashKey, 0, kRows).code, YBTHIN_OK);
-  auto first_page = ReadKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit, {});
+  auto first_page =
+      ReadKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit, {}, /* options= */ nullptr);
   ASSERT_EQ(first_page.code, YBTHIN_OK) << first_page.message;
   ASSERT_FALSE(first_page.paging_state.empty());
 
@@ -1917,7 +1925,8 @@ TEST_F(PgThinClientTest, FencedBatchKeepsOtherSessionsOpen) {
   ASSERT_EQ(fenced.code, YBTHIN_FENCED) << fenced.message;
 
   auto next_page = ReadKeys(
-      client.get(), table.get(), kHashKey, v_id, kPageLimit, first_page.paging_state);
+      client.get(), table.get(), kHashKey, v_id, kPageLimit, first_page.paging_state,
+      /* options= */ nullptr);
   ASSERT_EQ(next_page.code, YBTHIN_OK) << next_page.message;
 }
 
@@ -1949,7 +1958,8 @@ class PgThinClientSessionExpiryTest : public PgThinClientTest {
     const int32_t v_id = table.ColumnId(1);
 
     ASSERT_EQ(UpsertKeys(client.get(), table.get(), kHashKey, 0, kRows).code, YBTHIN_OK);
-    auto first_page = ReadKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit, {});
+    auto first_page =
+        ReadKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit, {}, /* options= */ nullptr);
     ASSERT_EQ(first_page.code, YBTHIN_OK) << first_page.message;
     ASSERT_FALSE(first_page.paging_state.empty());
 
@@ -1963,7 +1973,8 @@ class PgThinClientSessionExpiryTest : public PgThinClientTest {
 
     // The read session shares the connection, so the scan pinned to it restarts.
     auto next_page = ReadKeys(
-        client.get(), table.get(), kHashKey, v_id, kPageLimit, first_page.paging_state);
+        client.get(), table.get(), kHashKey, v_id, kPageLimit, first_page.paging_state,
+        /* options= */ nullptr);
     ASSERT_EQ(next_page.code, YBTHIN_READ_RESTART) << next_page.message;
     // The write session reopens, so the retried upsert lands.
     auto retried = UpsertKeys(client.get(), table.get(), kHashKey, kRows, 2 * kRows);
@@ -2025,7 +2036,8 @@ TEST_F(PgThinClientFailoverTest, OneConnectionPoolMovesOffAStoppedTserver) {
     auto out = UpsertKeys(client.get(), table.get(), kHashKey, 0, kRowsBefore);
     ASSERT_EQ(out.code, YBTHIN_OK) << out.message;
   }
-  auto first_page = ReadKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit, {});
+  auto first_page =
+      ReadKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit, {}, /* options= */ nullptr);
   ASSERT_EQ(first_page.code, YBTHIN_OK) << first_page.message;
   ASSERT_FALSE(first_page.paging_state.empty());
   ASSERT_GT(PerformCount(kStoppedTs), 0U);
@@ -2039,7 +2051,8 @@ TEST_F(PgThinClientFailoverTest, OneConnectionPoolMovesOffAStoppedTserver) {
   ASSERT_GT(PerformCount(kLiveTs), 0U);
 
   auto next_page = ReadKeys(
-      client.get(), table.get(), kHashKey, v_id, kPageLimit, first_page.paging_state);
+      client.get(), table.get(), kHashKey, v_id, kPageLimit, first_page.paging_state,
+      /* options= */ nullptr);
   ASSERT_EQ(next_page.code, YBTHIN_READ_RESTART) << next_page.message;
   ASSERT_EQ(
       ASSERT_RESULT(ScanKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit)).size(),
@@ -2100,7 +2113,8 @@ TEST_F(PgThinClientFailoverTest, ScansOnOtherConnectionsKeepPaging) {
   // Fresh scans round-robin the read sessions, so scan i is pinned to read session i.
   std::vector<ReadOutcome> first_pages;
   for (uint32_t scan_idx = 0; scan_idx < kReadSessions; ++scan_idx) {
-    first_pages.push_back(ReadKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit, {}));
+    first_pages.push_back(ReadKeys(
+        client.get(), table.get(), kHashKey, v_id, kPageLimit, {}, /* options= */ nullptr));
     ASSERT_EQ(first_pages.back().code, YBTHIN_OK) << first_pages.back().message;
     ASSERT_FALSE(first_pages.back().paging_state.empty());
   }
@@ -2114,10 +2128,12 @@ TEST_F(PgThinClientFailoverTest, ScansOnOtherConnectionsKeepPaging) {
       // The first call to reach the stopped tserver gets NETWORK and drops its session, so the
       // retry restarts. If the keepalive got there first, the first try restarts.
       auto out = ReadKeys(
-          client.get(), table.get(), kHashKey, v_id, kPageLimit, first_page.paging_state);
+          client.get(), table.get(), kHashKey, v_id, kPageLimit, first_page.paging_state,
+          /* options= */ nullptr);
       if (out.code == YBTHIN_NETWORK) {
         out = ReadKeys(
-            client.get(), table.get(), kHashKey, v_id, kPageLimit, first_page.paging_state);
+            client.get(), table.get(), kHashKey, v_id, kPageLimit, first_page.paging_state,
+            /* options= */ nullptr);
       }
       ASSERT_EQ(out.code, YBTHIN_READ_RESTART) << "scan " << scan_idx << ": " << out.message;
       continue;
@@ -2306,8 +2322,7 @@ TEST_F(PgThinClientFollowerReadTest, StaleReadIsServedByAFollower) {
 
   const auto before = ASSERT_RESULT(ConsistentPrefixReads(replicas));
   const auto options = FollowerOptions();
-  auto out = ReadKeys(
-      client.get(), table.get(), kHashKey, v_id, /* limit= */ 0, {}, true, &options);
+  auto out = ReadKeys(client.get(), table.get(), kHashKey, v_id, /* limit= */ 0, {}, &options);
   ASSERT_EQ(out.code, YBTHIN_OK) << out.message;
   ASSERT_EQ(out.n_rows, static_cast<size_t>(kRows));
   const auto after = ASSERT_RESULT(ConsistentPrefixReads(replicas));
@@ -2355,8 +2370,7 @@ TEST_F(PgThinClientFollowerReadTest, LaggingFollowerHandsTheReadOver) {
   const auto before = ASSERT_RESULT(ConsistentPrefixReads(replicas));
   const auto options = FollowerOptions();
   const auto start = MonoTime::Now();
-  auto out = ReadKeys(
-      client.get(), table.get(), kHashKey, v_id, kPageLimit, {}, true, &options);
+  auto out = ReadKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit, {}, &options);
   const auto elapsed = MonoTime::Now() - start;
   ASSERT_EQ(out.code, YBTHIN_OK) << out.message;
   ASSERT_EQ(out.n_rows, kPageLimit);
@@ -2394,7 +2408,7 @@ TEST_F(PgThinClientFollowerReadTest, PagedFollowerScanHoldsItsSnapshot) {
 
   const auto before = ASSERT_RESULT(ConsistentPrefixReads(replicas));
   const auto options = FollowerOptions();
-  auto page = ReadKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit, {}, true, &options);
+  auto page = ReadKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit, {}, &options);
   ASSERT_EQ(page.code, YBTHIN_OK) << page.message;
   ASSERT_FALSE(page.paging_state.empty());
   const uint64_t snapshot_ht = page.used_read_time_ht;
@@ -2416,7 +2430,7 @@ TEST_F(PgThinClientFollowerReadTest, PagedFollowerScanHoldsItsSnapshot) {
     }
     ASSERT_LT(++pages, 100) << "paging did not terminate";
     page = ReadKeys(
-        client.get(), table.get(), kHashKey, v_id, kPageLimit, page.paging_state, true,
+        client.get(), table.get(), kHashKey, v_id, kPageLimit, page.paging_state,
         /* options= */ nullptr);
     ASSERT_EQ(page.code, YBTHIN_OK) << page.message;
   }
@@ -2586,7 +2600,8 @@ TEST_F(PgThinClientFollowerReadTest, ReadWithoutOptionsStaysOnTheLeader) {
   ASSERT_EQ(UpsertKeys(client.get(), table.get(), kHashKey, 0, kRows).code, YBTHIN_OK);
   const auto leader_reads_before = ReadRpcCount(replicas.leader_idx);
   const auto follower_reads_before = ReadRpcCount(follower_idx);
-  auto out = ReadKeys(client.get(), table.get(), kHashKey, v_id, /* limit= */ 0, {});
+  auto out = ReadKeys(
+      client.get(), table.get(), kHashKey, v_id, /* limit= */ 0, {}, /* options= */ nullptr);
   ASSERT_EQ(out.code, YBTHIN_OK) << out.message;
   ASSERT_EQ(out.n_rows, static_cast<size_t>(kRows));
   ASSERT_GT(ReadRpcCount(replicas.leader_idx), leader_reads_before);
@@ -2614,8 +2629,8 @@ TEST_F(PgThinClientFollowerReadTest, ContinuationKeepsTheScansReplicaChoice) {
   ASSERT_OK(WaitUntilFollowersCanServe(
       follower_idx, {ASSERT_RESULT(PeerOn(replicas, follower_idx))}, NowOn(follower_idx)));
 
-  auto page = ReadKeys(
-      client.get(), table.get(), kHashKey, v_id, kPageLimit, {}, true, /* options= */ nullptr);
+  auto page =
+      ReadKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit, {}, /* options= */ nullptr);
   ASSERT_EQ(page.code, YBTHIN_OK) << page.message;
   ASSERT_FALSE(page.paging_state.empty());
 
@@ -2626,7 +2641,7 @@ TEST_F(PgThinClientFollowerReadTest, ContinuationKeepsTheScansReplicaChoice) {
   while (!page.paging_state.empty()) {
     ASSERT_LT(++pages, 100) << "paging did not terminate";
     page = ReadKeys(
-        client.get(), table.get(), kHashKey, v_id, kPageLimit, page.paging_state, true, &options);
+        client.get(), table.get(), kHashKey, v_id, kPageLimit, page.paging_state, &options);
     ASSERT_EQ(page.code, YBTHIN_OK) << page.message;
     rows += page.n_rows;
   }
@@ -2637,6 +2652,69 @@ TEST_F(PgThinClientFollowerReadTest, ContinuationKeepsTheScansReplicaChoice) {
     ASSERT_EQ(after[ts_idx], before[ts_idx])
         << "tserver " << ts_idx << " served a continuation of a leader scan as a follower read";
   }
+}
+
+// A follower scan whose paging state holds no read time continues as a leader read. Only a first
+// page served by a tserver that predates read_from_followers leaves one like that: it serves the
+// page at the leader, unpinned, and a page that ends at a tablet boundary carries no read time.
+// Its continuation can still reach a tserver that knows the flag, which refuses
+// read_from_followers without a read time. The test builds that paging state from a leader scan
+// by setting the follower flag in the shim's envelope.
+TEST_F(PgThinClientFollowerReadTest, FollowerContinuationWithoutAReadTimeReadsAtTheLeader) {
+  constexpr int kRows = 20;
+  constexpr uint64_t kPageLimit = 32;  // above the first tablet's 10 rows
+  // The envelope's flags byte, after the magic, the version, two u32s and a u64
+  // (WrapPagingState in yb_thin_client.cc).
+  constexpr size_t kEnvelopeFlagsOffset = 2 + 2 * sizeof(uint32_t) + sizeof(uint64_t);
+  constexpr uint8_t kReadFromFollowersFlag = 0x01;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE rs (r int, v int, PRIMARY KEY(r ASC)) SPLIT AT VALUES ((10))"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO rs SELECT g, g FROM generate_series(0, $0) g", kRows - 1));
+  const TableOids oids{
+      ASSERT_RESULT(FetchOid(&conn, kDbOidQuery)),
+      ASSERT_RESULT(FetchOid(&conn, "SELECT 'rs'::regclass::oid"))};
+  auto client = ASSERT_RESULT(CreateThinClient({TServerAddrOf(0)}, nullptr, kRpcTimeoutMs));
+  auto table = ASSERT_RESULT(ThinTable::Open(client.get(), oids));
+  const int32_t r_id = table.ColumnId(0);
+
+  auto read_page = [&](const std::vector<uint8_t>& paging_state) {
+    int32_t target_ids[] = {r_id};
+    ybthin_read_op op = {};
+    op.table = table.get();
+    op.spec.target_ids = target_ids;
+    op.spec.n_targets = 1;
+    op.spec.limit = kPageLimit;
+    op.spec.is_forward_scan = 1;
+    op.paging_state_in = paging_state.empty() ? nullptr : paging_state.data();
+    op.paging_state_in_len = paging_state.size();
+    std::promise<ReadOutcome> promise;
+    auto future = promise.get_future();
+    ybthin_read_async(client.get(), &op, 1, /* options= */ nullptr, &OnReadDone, &promise);
+    return future.get();
+  };
+
+  auto page = read_page({});
+  ASSERT_EQ(page.code, YBTHIN_OK) << page.message;
+  ASSERT_EQ(page.n_rows, 10u) << "the first page should end at the first tablet's end";
+  ASSERT_EQ(page.used_read_time_ht, 0u) << "the tablet-boundary paging state carried a read time";
+  ASSERT_GT(page.paging_state.size(), kEnvelopeFlagsOffset);
+  page.paging_state[kEnvelopeFlagsOffset] |= kReadFromFollowersFlag;
+
+  const auto before = ASSERT_RESULT(TableConsistentPrefixReads("rs"));
+  size_t rows = page.n_rows;
+  int pages = 0;
+  while (!page.paging_state.empty()) {
+    ASSERT_LT(++pages, 100) << "paging did not terminate";
+    page = read_page(page.paging_state);
+    ASSERT_EQ(page.code, YBTHIN_OK) << page.message;
+    rows += page.n_rows;
+  }
+  ASSERT_EQ(rows, static_cast<size_t>(kRows));
+  ASSERT_EQ(ASSERT_RESULT(TableConsistentPrefixReads("rs")), before)
+      << "a continuation without a read time was sent as a follower read";
 }
 
 // The staleness only makes sense for follower reads; the server refuses it on a write batch, and on
@@ -2705,20 +2783,19 @@ TEST_F(PgThinClientFollowerReadTest, ZeroStalenessIsInvalidAtTheShim) {
 
   ybthin_read_options zero_staleness = {};
   zero_staleness.read_from_followers = 1;
-  auto out = ReadKeys(
-      client.get(), table.get(), kHashKey, v_id, kPageLimit, {}, true, &zero_staleness);
+  auto out = ReadKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit, {}, &zero_staleness);
   ASSERT_EQ(out.code, YBTHIN_INVALID) << out.message;
   ASSERT_STR_CONTAINS(out.message, "follower_read_staleness_ms");
 
   // Pinned to an earlier follower batch's snapshot, the batch has nothing to derive from the
   // staleness, so none is needed.
   const auto options = FollowerOptions();
-  auto stale = ReadKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit, {}, true, &options);
+  auto stale = ReadKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit, {}, &options);
   ASSERT_EQ(stale.code, YBTHIN_OK) << stale.message;
   ASSERT_NE(stale.used_read_time_ht, 0u);
   zero_staleness.read_time_ht = stale.used_read_time_ht;
-  auto pinned = ReadKeys(
-      client.get(), table.get(), kHashKey, v_id, kPageLimit, {}, true, &zero_staleness);
+  auto pinned =
+      ReadKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit, {}, &zero_staleness);
   ASSERT_EQ(pinned.code, YBTHIN_OK) << pinned.message;
   ASSERT_EQ(pinned.used_read_time_ht, stale.used_read_time_ht);
 }
@@ -3235,7 +3312,8 @@ TEST_F(PgThinClientExternalFailoverTest, PagedScanAcrossAFrozenTserver) {
     auto out = UpsertKeys(client.get(), table.get(), kHashKey, 0, kRows);
     ASSERT_EQ(out.code, YBTHIN_OK) << out.message;
   }
-  auto first_page = ReadKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit, {});
+  auto first_page =
+      ReadKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit, {}, /* options= */ nullptr);
   ASSERT_EQ(first_page.code, YBTHIN_OK) << first_page.message;
   ASSERT_FALSE(first_page.paging_state.empty());
 
@@ -3244,12 +3322,14 @@ TEST_F(PgThinClientExternalFailoverTest, PagedScanAcrossAFrozenTserver) {
 
   {
     auto out = ReadKeys(
-        client.get(), table.get(), kHashKey, v_id, kPageLimit, first_page.paging_state);
+        client.get(), table.get(), kHashKey, v_id, kPageLimit, first_page.paging_state,
+        /* options= */ nullptr);
     ASSERT_EQ(out.code, YBTHIN_NETWORK) << out.message;
   }
   {
     auto out = ReadKeys(
-        client.get(), table.get(), kHashKey, v_id, kPageLimit, first_page.paging_state);
+        client.get(), table.get(), kHashKey, v_id, kPageLimit, first_page.paging_state,
+        /* options= */ nullptr);
     ASSERT_EQ(out.code, YBTHIN_READ_RESTART) << out.message;
     ASSERT_STR_CONTAINS(out.message, "no longer open");
   }
@@ -3281,7 +3361,8 @@ TEST_F(PgThinClientExternalFailoverTest, PageInFlightWhenItsTserverDies) {
     auto out = UpsertKeys(client.get(), table.get(), kHashKey, 0, kRows);
     ASSERT_EQ(out.code, YBTHIN_OK) << out.message;
   }
-  auto first_page = ReadKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit, {});
+  auto first_page =
+      ReadKeys(client.get(), table.get(), kHashKey, v_id, kPageLimit, {}, /* options= */ nullptr);
   ASSERT_EQ(first_page.code, YBTHIN_OK) << first_page.message;
   ASSERT_FALSE(first_page.paging_state.empty());
 
@@ -3290,7 +3371,8 @@ TEST_F(PgThinClientExternalFailoverTest, PageInFlightWhenItsTserverDies) {
   ScopedResumeExternalDaemon resume_dying_ts(dying_ts);
   ASSERT_OK(Freeze(dying_ts));
   auto in_flight = StartReadKeys(
-      client.get(), table.get(), kHashKey, v_id, kPageLimit, first_page.paging_state);
+      client.get(), table.get(), kHashKey, v_id, kPageLimit, first_page.paging_state,
+      /* options= */ nullptr);
   ASSERT_EQ(in_flight.wait_for(1s), std::future_status::timeout);
   dying_ts->Shutdown();
   {
@@ -3299,7 +3381,8 @@ TEST_F(PgThinClientExternalFailoverTest, PageInFlightWhenItsTserverDies) {
   }
   {
     auto out = ReadKeys(
-        client.get(), table.get(), kHashKey, v_id, kPageLimit, first_page.paging_state);
+        client.get(), table.get(), kHashKey, v_id, kPageLimit, first_page.paging_state,
+        /* options= */ nullptr);
     ASSERT_EQ(out.code, YBTHIN_READ_RESTART) << out.message;
   }
   ASSERT_EQ(

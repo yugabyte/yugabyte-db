@@ -1299,11 +1299,16 @@ void ybthin_read_async(
   call->pinned_generation = pinned_generation;
   call->pinned_read_ht = pinned_read_ht;
   // A scan keeps the replica choice of its first page, whatever the options of a later page say:
-  // a follower scan asks for a follower again, and a leader scan stays at the leader. Letting a
-  // continuation switch a leader scan to followers would send read_from_followers with no read
-  // time whenever the scan's paging state carries none, which the server refuses.
+  // a follower scan asks for a follower again, and a leader scan stays at the leader. A
+  // continuation whose paging state holds no read time is a leader read either way: no follower
+  // can serve a read without one, and the server refuses read_from_followers without one. A
+  // follower scan's paging state lacks a read time only when its first page came from a tserver
+  // that predates read_from_followers, which served it at the leader. The continuation may still
+  // reach a newer tserver: a restarted tserver issues session ids from 1 again, so the scan's
+  // session id can name a new session there.
   if (have_pinned) {
-    call->read_from_followers = pinned_read_from_followers;
+    call->read_from_followers =
+        ReadFromFollowers(pinned_read_from_followers && pinned_read_ht != 0);
   }
   // A fresh follower batch reads at now - staleness, so a zero staleness would read at now, which
   // no follower can serve: refuse it here rather than hand every such read to the leader.
@@ -1481,10 +1486,9 @@ void ybthin_read_async(
   if (call->read_from_followers) {
     rto->set_read_from_followers(true);
     // The staleness only applies to a fresh, unpinned batch. A pinned one reads at its snapshot,
-    // and a continuation at the one in its paging state, set below when it holds one: a follower
-    // scan's always does, unless its first page came from a tserver too old to know
-    // read_from_followers, which ignores the flag here as well. Sending both a read time and a
-    // staleness would leave the server to pick, so the request carries at most one.
+    // and a follower continuation at the one in its paging state, set below (one without a read
+    // time is not a follower read, see above). Sending both a read time and a staleness would
+    // leave the server to pick, so the request carries at most one.
     if (read_time_ht == 0 && !call->has_continuation) {
       rto->set_follower_read_staleness_ms(options->follower_read_staleness_ms);
     }
