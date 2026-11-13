@@ -54,11 +54,14 @@ TEST_F(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
   // finalize, and V76 cannot replace the view.
   // pg_locks fails while a transaction status tablet has no leader, and the tservers restarted
   // just above, so retry until every status tablet has elected one.
-  ASSERT_OK(WaitFor([&conn, &kPgLocksQuery]() -> Result<bool> {
-    auto result = conn.Fetch(kPgLocksQuery);
-    WARN_NOT_OK(ResultToStatus(result), "Failed to read pg_locks");
-    return result.ok();
-  }, 15s * kTimeMultiplier, "pg_locks read after the tserver restarts"));
+  Status last_pg_locks_status;
+  auto waited = WaitFor([&conn, &kPgLocksQuery, &last_pg_locks_status]() -> Result<bool> {
+    last_pg_locks_status = ResultToStatus(conn.Fetch(kPgLocksQuery));
+    WARN_NOT_OK(last_pg_locks_status, "Failed to read pg_locks");
+    return last_pg_locks_status.ok();
+  }, 15s * kTimeMultiplier, "pg_locks read after the tserver restarts");
+  ASSERT_OK(last_pg_locks_status);
+  ASSERT_OK(waited);
   // Acquire advisory locks and a row lock, and hold them across the upgrade.
   ASSERT_OK(conn.Fetch("SELECT pg_advisory_lock(1);"));
   ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
