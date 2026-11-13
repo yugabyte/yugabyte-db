@@ -348,6 +348,7 @@ void MemTableList::PickMemtablesToFlush(
       imm_flush_needed.store(false, std::memory_order_release);
     }
     m->flush_in_progress_ = true;  // flushing will start very soon
+    m->MarkPickedForFlush();
     ret->push_back(m);
   }
 
