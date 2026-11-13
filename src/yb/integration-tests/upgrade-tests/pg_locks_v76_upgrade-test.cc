@@ -53,15 +53,20 @@ TEST_F(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
   // finalize takes local object locks, so a read in that transaction locks the view across
   // finalize, and V76 cannot replace the view.
   // pg_locks fails while a transaction status tablet has no leader, and the tservers restarted
-  // just above, so retry until every status tablet has elected one.
-  Status last_pg_locks_status;
-  auto waited = WaitFor([&conn, &kPgLocksQuery, &last_pg_locks_status]() -> Result<bool> {
-    last_pg_locks_status = ResultToStatus(conn.Fetch(kPgLocksQuery));
-    WARN_NOT_OK(last_pg_locks_status, "Failed to read pg_locks");
-    return last_pg_locks_status.ok();
-  }, 15s * kTimeMultiplier, "pg_locks read after the tserver restarts");
-  ASSERT_OK(last_pg_locks_status);
-  ASSERT_OK(waited);
+  // just above, so retry that error until every status tablet has elected one.
+  ASSERT_OK(WaitFor([&conn, &kPgLocksQuery]() -> Result<bool> {
+    auto status = ResultToStatus(conn.Fetch(kPgLocksQuery));
+    if (status.ok()) {
+      return true;
+    }
+    if (status.message().ToString().find(
+            "Couldn't fetch old transactions for the following status tablets") ==
+        std::string::npos) {
+      return status;
+    }
+    LOG(WARNING) << "Retrying pg_locks read: " << status;
+    return false;
+  }, 15s * kTimeMultiplier, "pg_locks read after the tserver restarts"));
   // Acquire advisory locks and a row lock, and hold them across the upgrade.
   ASSERT_OK(conn.Fetch("SELECT pg_advisory_lock(1);"));
   ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
