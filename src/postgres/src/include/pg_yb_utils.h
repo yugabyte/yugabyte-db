@@ -1552,6 +1552,8 @@ extern void decrement_sticky_object_count();
  */
 extern bool YbIsStickyConnection(int *change);
 
+extern bool YbHasReplicationOriginSetup(void);
+
 /*
  * Creates a shallow copy of the pointer list.
  */

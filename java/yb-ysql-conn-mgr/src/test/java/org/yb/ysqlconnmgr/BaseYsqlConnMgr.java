@@ -64,6 +64,9 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   protected static final int TSERVER_IDX = 0;
   private static final long QUEUED_CLIENT_BLOCKED_MS = 2000;
   private static final long QUEUED_CLIENT_SERVED_TIMEOUT_MS = 30000;
+  protected static final String EXCLUSIONS_FLAG =
+      "ysql_yb_conn_mgr_reversible_stickiness_exclusions";
+  private static final String[] STICKY_SOURCES = {"replication_origin"};
   private boolean warmup_random_mode = true;
   private static boolean ysql_conn_mgr_superuser_sticky = false;
   private static boolean ysql_conn_mgr_optimized_extended_query_protocol = true;
@@ -150,6 +153,7 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   protected void restartClusterWithAdditionalFlags(
       Map<String, String> additionalMasterFlags,
       Map<String, String> additionalTserverFlags) throws Exception {
+    markClusterNeedsRecreation();
     destroyMiniCluster();
     waitForProperShutdown();
     createMiniCluster(-1, -1, builder -> {
@@ -207,6 +211,7 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
 
   protected void disableWarmupModeAndRestartCluster() throws Exception {
     warmup_random_mode = false;
+    markClusterNeedsRecreation();
     destroyMiniCluster();
     waitForProperShutdown();
     createMiniCluster();
@@ -746,6 +751,16 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     return new QueuedClient();
   }
 
+  protected void assertQueuedClientServed() throws Exception {
+    startQueuedClient().assertServed();
+  }
+
+  protected Connection connectToConnMgr() throws Exception {
+    return getConnectionBuilder()
+        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+        .connect();
+  }
+
   protected Connection connectToPostgres() throws Exception {
     return getConnectionBuilder()
         .withConnectionEndpoint(ConnectionEndpoint.POSTGRES)
@@ -759,9 +774,52 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     }
   }
 
+  protected void setServerFlagOnAll(String flag, String value) throws Exception {
+    for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
+      setServerFlag(tserver, flag, value);
+    }
+  }
+
+  protected void setReversibleStickinessExclusions(Statement stmt, String exclusions)
+      throws Exception {
+    setServerFlagOnAll(EXCLUSIONS_FLAG, exclusions);
+    List<String> listed = new ArrayList<>();
+    for (String token : exclusions.split(",")) {
+      listed.add(token.trim().toLowerCase());
+    }
+    TestUtils.waitFor(() -> {
+      for (String source : STICKY_SOURCES) {
+        String expected = listed.contains(source) ? "on" : "off";
+        if (!verifySessionParameterValue(
+                stmt, "yb_conn_mgr_" + source + "_permanent_sticky", expected)) {
+          return false;
+        }
+      }
+      return true;
+    }, 30000);
+  }
+
+  protected static String otherStickySources(String source) {
+    List<String> others = new ArrayList<>();
+    for (String s : STICKY_SOURCES) {
+      if (!s.equals(source)) {
+        others.add(s);
+      }
+    }
+    return String.join(",", others);
+  }
+
+  protected void clearReversibleStickinessExclusions() throws Exception {
+    try (Connection conn = connectToPostgres();
+         Statement stmt = conn.createStatement()) {
+      setReversibleStickinessExclusions(stmt, "");
+    }
+  }
+
   protected void restartClusterWithFlags(
       Map<String, String> additionalMasterFlags,
       Map<String, String> additionalTserverFlags) throws Exception {
+    markClusterNeedsRecreation();
     destroyMiniCluster();
     waitForProperShutdown();
 

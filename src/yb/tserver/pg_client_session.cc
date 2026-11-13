@@ -3298,6 +3298,16 @@ class PgClientSession::Impl {
       transaction->SetOriginId(options.xrepl_origin_id());
     }
 
+    // A catalog read time picked here rather than by the storage layer is not echoed back via
+    // used_read_time, so report it explicitly to keep all further catalog reads of the session on
+    // the same snapshot. See ProcessUsedReadTime for the other case.
+    if (options.use_legacy_catalog_session() && !options.read_time_options().has_read_time()) {
+      const auto read_time = session->read_point()->GetReadTime();
+      if (read_time) {
+        read_time.ToPB(data->resp.mutable_catalog_read_time());
+      }
+    }
+
     TracePtr trace = Trace::CurrentTrace();
     bool trace_created_locally = false;
     MonoTime start_time = MonoTime::kUninitialized;
@@ -3707,7 +3717,6 @@ class PgClientSession::Impl {
       }
     }
 
-    // Do not clamp uncertainty window for legacy catalog reads.
     // TODO(#30357): Measure the performance of picking time here instead of the storage layer.
     if (read_time_options.clamp_uncertainty_window() && !session.read_point()->GetReadTime()) {
       RSTATUS_DCHECK(
