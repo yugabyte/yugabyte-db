@@ -12,6 +12,9 @@
 
 #include "yb/util/tcmalloc_util.h"
 
+#include <sys/resource.h>
+
+#include <cerrno>
 #include <cstdint>
 #include <limits>
 #include <mutex>
@@ -22,6 +25,7 @@
 
 #include "yb/gutil/sysinfo.h"
 
+#include "yb/util/errno.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -317,6 +321,23 @@ void SetTCMallocSamplingPeriod(int64_t sample_period_bytes) {
 #endif
 }
 
+#if YB_GOOGLE_TCMALLOC
+namespace {
+
+// Linux nice values apply per thread, so this changes only the calling thread.
+void RunTCMallocBackgroundActions() {
+  constexpr int kNice = -20;
+  if (setpriority(PRIO_PROCESS, 0 /* calling thread */, kNice) != 0) {
+    LOG(WARNING) << "Could not raise the TCMalloc background thread to nice " << kNice << ": "
+                 << ErrnoToString(errno) << ". This needs CAP_SYS_NICE or an RLIMIT_NICE of at "
+                 << "least " << 20 - kNice << " (systemd LimitNICE=" << kNice << ").";
+  }
+  tcmalloc::MallocExtension::ProcessBackgroundActions();
+}
+
+} // namespace
+#endif
+
 Status StartTCMallocBackgroundThread() {
 #if YB_GOOGLE_TCMALLOC
   static std::mutex mutex;
@@ -333,9 +354,8 @@ Status StartTCMallocBackgroundThread() {
   // several MB of metadata per process. That is a poor trade for processes with few allocating
   // threads, such as Postgres backends, so keep the slab at its initial size.
   TCMalloc_Internal_SetPerCpuCachesDynamicSlabGrowThreshold(std::numeric_limits<double>::max());
-  RETURN_NOT_OK(Thread::Create(
-      "tcmalloc", "tcmalloc_bkgrnd", [] { tcmalloc::MallocExtension::ProcessBackgroundActions(); },
-      nullptr));
+  RETURN_NOT_OK(
+      Thread::Create("tcmalloc", "tcmalloc_bkgrnd", RunTCMallocBackgroundActions, nullptr));
   started = true;
 #endif
   return Status::OK();

@@ -75,8 +75,10 @@ void SetTCMallocSamplingPeriod(int64_t sample_period_bytes);
 
 // Starts a thread that runs Google TCMalloc's ProcessBackgroundActions loop for the rest of the
 // process lifetime: it drains idle per-CPU and transfer caches and releases page heap memory at the
-// background release rate. The thread inherits the caller's signal mask. Does nothing if the thread
-// was already started or if Google TCMalloc is not used.
+// background release rate. The thread inherits the caller's signal mask and runs at the highest CPU
+// priority (nice -20) if the process may raise it, so that other threads on a busy host do not
+// preempt it while it holds TCMalloc locks that the caller's threads need. Does nothing if the
+// thread was already started or if Google TCMalloc is not used.
 Status StartTCMallocBackgroundThread();
 
 void SetTCMallocBackgroundReleaseRate(int64_t bytes_per_sec);
