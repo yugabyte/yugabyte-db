@@ -1801,7 +1801,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   public void testRollbackOfFailedTakeOverLeavesTheUsersLoadBalancer() throws InterruptedException {
     factory.globalRuntimeConf().setValue("yb.task.allow_edit_universe_rollback", "true");
     Universe universe = givenUserLoadBalancer();
-    // A removed read replica's load balancer whose forced delete failed: the destroy's to delete.
+    // A removed read replica's load balancer whose forced delete failed: an edit's to retry.
     ManagedLoadBalancer removedReadReplicaLb =
         new ManagedLoadBalancer(
             UUID.randomUUID(),

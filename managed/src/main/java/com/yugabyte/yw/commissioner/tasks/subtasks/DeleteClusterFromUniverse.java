@@ -60,8 +60,8 @@ public class DeleteClusterFromUniverse extends UniverseTaskBase {
             public void run(Universe universe) {
               UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
               Cluster cluster = universe.getCluster(taskParams().clusterUUID);
-              // Drop the user's load balancers (an unfinished takeover), which a universe destroy
-              // would delete once the cluster is gone. YBA's stay for the destroy to delete.
+              // Drop the user's load balancers (an unfinished takeover), which a later delete would
+              // remove once the cluster is gone. YBA's stay, so that a later delete retries them.
               universeDetails.updateManagedLoadBalancerState(
                   state ->
                       state

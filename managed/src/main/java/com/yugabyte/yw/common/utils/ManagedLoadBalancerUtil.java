@@ -97,6 +97,11 @@ public class ManagedLoadBalancerUtil {
     return cluster.userIntent.isManagedLoadBalancerEnabled();
   }
 
+  // Add-on clusters run no master or tserver, so a load balancer would serve nothing.
+  private static boolean runsTservers(Cluster cluster) {
+    return cluster.clusterType == ClusterType.PRIMARY || cluster.clusterType == ClusterType.ASYNC;
+  }
+
   public static boolean isPrivateEnabled(Cluster cluster) {
     ManagedLoadBalancerConfig config = cluster.userIntent.getManagedLoadBalancer();
     return config != null && config.isEnablePrivate();
@@ -118,13 +123,14 @@ public class ManagedLoadBalancerUtil {
    * <p>Name: the saved state's, so a taken-over load balancer keeps its name; else the zones'
    * lbName, set only in the edit that turns this on; else {@link #getPrivateName(UUID, Region)}.
    *
-   * @return nothing for a null cluster or one without a managed load balancer.
+   * @return nothing for a null cluster, an add-on cluster, or one without a managed load balancer.
    */
   public static List<ManagedLoadBalancer> planLoadBalancers(
       @Nullable Cluster cluster, @Nullable ManagedLoadBalancerState state) {
     PlacementInfo placement = cluster == null ? null : cluster.getOverallPlacement();
-    // validateNewCluster rejects enablePublic until PLAT-22813 adds public load balancers.
-    if (placement == null || !isPrivateEnabled(cluster)) {
+    // validateNewCluster rejects enablePublic until PLAT-22813 adds public load balancers. An
+    // add-on cluster can carry the setting: createAddOnCluster copies it without validating.
+    if (placement == null || !isPrivateEnabled(cluster) || !runsTservers(cluster)) {
       return Collections.emptyList();
     }
     Map<UUID, String> names = new HashMap<>();
@@ -227,7 +233,7 @@ public class ManagedLoadBalancerUtil {
 
   private static void validateCanEnable(
       Cluster cluster, RuntimeConfGetter confGetter, CloudAPI.Factory cloudAPIFactory) {
-    if (cluster.clusterType != ClusterType.PRIMARY && cluster.clusterType != ClusterType.ASYNC) {
+    if (!runsTservers(cluster)) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "A managed load balancer is available only for the primary and read replica clusters");

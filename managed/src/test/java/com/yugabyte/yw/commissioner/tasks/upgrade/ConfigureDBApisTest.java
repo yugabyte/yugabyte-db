@@ -11,6 +11,7 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -198,7 +199,7 @@ public class ConfigureDBApisTest extends UpgradeTaskTest {
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),
             ApiUtils.mockUniverseUpdaterWithReadReplica(userIntent, pi));
-    // An add-on cluster runs no tserver, so its setting makes no load balancer.
+    // An add-on cluster runs no tserver, so its setting makes and fills no load balancer.
     Cluster addOn = new Cluster(ClusterType.ADDON, userIntent.clone());
     addOn.placementInfo = pi;
     defaultUniverse =
@@ -227,6 +228,14 @@ public class ConfigureDBApisTest extends UpgradeTaskTest {
             any(), eq("region-1"), eq(lbName), any(), eq(List.of(5434, 9042)), any());
     verify(cloudAPI, times(1)).validateManagedLoadBalancerPorts(any(), any(), any(), any());
     verify(cloudAPI, times(1)).ensureManagedLoadBalancer(any(), any(), any(), any(), any(), any());
+    verify(cloudAPI, never())
+        .manageNodeGroup(
+            any(),
+            any(),
+            eq(ManagedLoadBalancerUtil.getPrivateName(addOn.uuid)),
+            any(),
+            any(),
+            any());
   }
 
   // The collector's yugabyte scrape targets depend on the node's API flags and ports, so each

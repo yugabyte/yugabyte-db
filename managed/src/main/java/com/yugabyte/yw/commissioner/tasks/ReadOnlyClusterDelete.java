@@ -106,7 +106,7 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
         // After node teardown, as in DestroyUniverse. A force delete removes the cluster even if a
         // delete fails.
         createDeleteManagedLoadBalancerTasks(
-            lb -> lb.getClusterUuid().equals(params().clusterUUID),
+            lb -> lb.getClusterUuid().equals(cluster.uuid),
             params().isForceDelete /* ignoreErrors */);
 
         // Remove the cluster entry from the universe db entry.

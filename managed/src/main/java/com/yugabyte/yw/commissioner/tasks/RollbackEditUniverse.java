@@ -180,8 +180,8 @@ public class RollbackEditUniverse extends EditUniverseTaskBase {
           before.clusters.stream()
               .flatMap(c -> ManagedLoadBalancerUtil.planLoadBalancers(c, lbState).stream())
               .collect(Collectors.toList());
-      // A removed read replica's load balancer, whose forced delete failed, is left for the
-      // universe destroy.
+      // A removed read replica's load balancer, whose forced delete failed, is the next edit's to
+      // retry, with errors ignored, so it can't block a rollback.
       Set<UUID> clusterUuids =
           before.clusters.stream().map(c -> c.uuid).collect(Collectors.toSet());
       createDeleteManagedLoadBalancerTasks(

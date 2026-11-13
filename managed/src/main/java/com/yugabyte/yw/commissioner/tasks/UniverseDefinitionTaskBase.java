@@ -4739,6 +4739,17 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
+   * Retries the delete of load balancers whose cluster is gone, which a forced read replica delete
+   * leaves when its cloud delete fails. Errors are ignored, so the caller can't fail on a load
+   * balancer it doesn't use, and the entry stays for the next try.
+   */
+  protected void createDeleteOrphanedManagedLoadBalancerTasks() {
+    Universe universe = getUniverse();
+    createDeleteManagedLoadBalancerTasks(
+        lb -> universe.getCluster(lb.getClusterUuid()) == null, true /* ignoreErrors */);
+  }
+
+  /**
    * Restarts, one at a time, the tservers whose YSQL or YCQL proxy doesn't listen where its gflags
    * now say: GFlagsUtil binds the proxies of a GCP cluster with a load balancer to 0.0.0.0. A node
    * whose running proxies already match is skipped. Plan it after the new settings are saved.

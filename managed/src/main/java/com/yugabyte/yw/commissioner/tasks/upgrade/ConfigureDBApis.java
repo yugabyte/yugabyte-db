@@ -20,7 +20,6 @@ import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.MultiTenancyConfig;
 import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
@@ -48,13 +47,6 @@ public class ConfigureDBApis extends UpgradeTaskBase {
     this.cloudAPIFactory = cloudAPIFactory;
   }
 
-  // Add-on cluster nodes run no tserver, so a load balancer for them would serve nothing.
-  private static List<Cluster> getDbClusters(Universe universe) {
-    return universe.getUniverseDetails().clusters.stream()
-        .filter(c -> c.clusterType == ClusterType.PRIMARY || c.clusterType == ClusterType.ASYNC)
-        .collect(Collectors.toList());
-  }
-
   @Override
   public void validateParams(boolean isFirstTry) {
     super.validateParams(isFirstTry);
@@ -63,7 +55,7 @@ public class ConfigureDBApis extends UpgradeTaskBase {
     }
     // The task ensures the load balancers with the new ports last, after the rolling restart.
     Universe universe = getUniverse();
-    for (Cluster cluster : getDbClusters(universe)) {
+    for (Cluster cluster : universe.getUniverseDetails().clusters) {
       List<Integer> ports =
           ManageLoadBalancerGroup.getForwardedPorts(
               targetUserIntent(cluster), taskParams().communicationPorts);
@@ -217,7 +209,7 @@ public class ConfigureDBApis extends UpgradeTaskBase {
           // The load balancers forward the API ports, which these subtasks read when they run.
           // Last,
           // so a load balancer error can't leave auth on with the default password.
-          for (Cluster cluster : getDbClusters(universe)) {
+          for (Cluster cluster : universe.getUniverseDetails().clusters) {
             createEnsureManagedLoadBalancerTasks(cluster);
           }
           createManageLoadBalancerTasks(

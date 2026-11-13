@@ -239,6 +239,7 @@ public class EditUniverse extends EditUniverseTaskBase {
       if (deleteCapacityReservation) {
         createDeleteCapacityReservationTask();
       }
+      createDeleteOrphanedManagedLoadBalancerTasks();
       if (taskParams().communicationPorts != null
           && !Objects.equals(
               universe.getUniverseDetails().communicationPorts, taskParams().communicationPorts)) {

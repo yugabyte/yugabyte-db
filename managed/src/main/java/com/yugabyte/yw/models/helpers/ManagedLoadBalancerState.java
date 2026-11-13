@@ -13,7 +13,7 @@ import lombok.Data;
  * The load balancers that YBA created or took over for a universe. A subtask records a load
  * balancer before the cloud call and removes it after the cloud delete, so the list names every
  * load balancer that may exist. An entry can outlive its cluster: a force delete of a read replica
- * whose cloud delete failed leaves it for the universe destroy.
+ * whose cloud delete failed leaves it for the next edit or the universe destroy to delete.
  */
 @Data
 public class ManagedLoadBalancerState {
