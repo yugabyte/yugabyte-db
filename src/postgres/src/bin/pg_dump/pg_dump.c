@@ -17210,7 +17210,7 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 	 * create extension objects), and then this work-around can be removed
 	 * (tracked in GH issue #26566).
 	 *
-	 * YB_TODO_PG19MERGE: once master's rewrite of this ACL to the PG15
+	 * TODO(#35687): once master's rewrite of this ACL to the PG15
 	 * signature (#31239) merges in, rewrite a PG15 source's ACL to the PG19
 	 * signature instead of skipping it, so a GRANT on it survives the upgrade.
 	 */

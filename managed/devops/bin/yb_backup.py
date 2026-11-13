@@ -119,7 +119,7 @@ YB_VERSION_RE = re.compile(r'^version (\d+\.\d+\.\d+\.\d+).*')
 MIN_DB_VERSION_WITH_YSQL_DUMP_STATISTICS = (2, 27, 0, 0)
 # ysql_dump's --with-statistics was renamed to --statistics for pg19. Pick the option name by the
 # version of the database being backed up, since yb_backup.py runs the target node's ysql_dump.
-# YB_TODO_PG19MERGE: (2,31,0,0) is the release version currently on the pg19 branch. This will
+# TODO(#37892): (2,31,0,0) is the release version currently on the pg19 branch. This will
 # change: the preview version for 2026.2 will be 2.31 and for 2027.1 will be 2.33, so this cutoff
 # will need revisiting once those release lines exist.
 MIN_DB_VERSION_WITH_YSQL_DUMP_STATISTICS_RENAMED = (2, 31, 0, 0)
