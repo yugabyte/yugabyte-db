@@ -216,6 +216,8 @@ class DocKeyColumnPathBuilderHolder {
 };
 
 YB_STRONGLY_TYPED_BOOL(KeyOnlyRequested);
+// The iterator is positioned by FetchTuple, see ReadOperationData::bound_single_tuple_fetches.
+YB_STRONGLY_TYPED_BOOL(BoundTupleFetches);
 
 YB_DEFINE_ENUM(IntentFeature, (kRegularRead)(kKeyOnlyRead)(kRowLock));
 
@@ -453,9 +455,12 @@ Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
     const PgsqlReadRequestMsg& request,
     const dockv::ReaderProjection& projection,
     std::reference_wrapper<const DocReadContext> doc_read_context,
-    SkipSeek skip_seek = SkipSeek::kFalse) {
+    SkipSeek skip_seek = SkipSeek::kFalse,
+    BoundTupleFetches bound_tuple_fetches = BoundTupleFetches::kFalse) {
   VLOG_IF(2, request.is_for_backfill()) << "Creating iterator for " << AsString(request);
 
+  auto read_operation_data = data.read_operation_data;
+  read_operation_data.bound_single_tuple_fetches = bound_tuple_fetches.get();
   YQLRowwiseIteratorIf::UniPtr result;
   // TODO(neil) Remove the following IF block when it is completely obsolete.
   // The following IF block gets used in the CREATE INDEX codepath.
@@ -463,7 +468,7 @@ Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
     Slice value = request.ybctid_column_value().value().binary_value();
     result = VERIFY_RESULT(data.ql_storage.GetIteratorForYbctid(
         request.stmt_id(), projection, doc_read_context, data.txn_op_context,
-        data.read_operation_data, {value, value}, data.pending_op));
+        read_operation_data, {value, value}, data.pending_op));
   } else {
     SubDocKey start_sub_doc_key;
     auto actual_read_time = data.read_operation_data.read_time;
@@ -492,7 +497,7 @@ Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
       }
     }
     RETURN_NOT_OK(data.ql_storage.GetIterator(
-        request, projection, doc_read_context, data.txn_op_context, data.read_operation_data,
+        request, projection, doc_read_context, data.txn_op_context, read_operation_data,
         start_sub_doc_key.doc_key(), data.pending_op, skip_seek, &result));
   }
 
@@ -561,10 +566,12 @@ YB_DEFINE_ENUM(FetchResult, (NotFound)(FilteredOut)(Found));
 Result<std::unique_ptr<YQLRowwiseIteratorIf>> CreateYbctidIterator(
     const PgsqlReadOperationData& data, const dockv::ReaderProjection& projection,
       std::reference_wrapper<const DocReadContext> read_context, const YbctidBounds& bounds,
-      SkipSeek skip_seek) {
+      SkipSeek skip_seek, BoundTupleFetches bound_tuple_fetches) {
+  auto read_operation_data = data.read_operation_data;
+  read_operation_data.bound_single_tuple_fetches = bound_tuple_fetches.get();
   return data.ql_storage.GetIteratorForYbctid(
       data.request.stmt_id(), projection, read_context, data.txn_op_context,
-      data.read_operation_data, bounds, data.pending_op, skip_seek);
+      read_operation_data, bounds, data.pending_op, skip_seek);
 }
 
 class FilteringIterator {
@@ -580,7 +587,8 @@ class FilteringIterator {
     RETURN_NOT_OK(InitCommon(request, read_context.get().schema(), projection));
     // For an index request the table iterator is positioned by tuple id, see FetchTuple.
     iterator_holder_ = VERIFY_RESULT(CreateIterator(
-        data, request, projection, read_context, SkipSeek(request.has_index_request())));
+        data, request, projection, read_context, SkipSeek(request.has_index_request()),
+        BoundTupleFetches(request.has_index_request())));
     return Status::OK();
   }
 
@@ -588,11 +596,12 @@ class FilteringIterator {
       const PgsqlReadOperationData& data,
       const dockv::ReaderProjection& projection,
       std::reference_wrapper<const DocReadContext> read_context,
-      const YbctidBounds& bounds) {
+      const YbctidBounds& bounds,
+      BoundTupleFetches bound_tuple_fetches = BoundTupleFetches::kTrue) {
     RETURN_NOT_OK(InitCommon(data.request, read_context.get().schema(), projection));
     if (!iterator_holder_) {
       iterator_holder_ = VERIFY_RESULT(CreateYbctidIterator(
-          data, projection, read_context, bounds, SkipSeek::kTrue));
+          data, projection, read_context, bounds, SkipSeek::kTrue, bound_tuple_fetches));
     } else {
       Refresh();
     }
@@ -891,7 +900,8 @@ Result<std::vector<std::string>> ReadIntentRowKeys(
   std::unique_ptr<YQLRowwiseIteratorIf> iterator_holder;
   FilteringIterator iterator(&iterator_holder);
   auto projection = CreateProjection(data.doc_read_context.schema(), data.request);
-  RETURN_NOT_OK(iterator.InitForYbctid(data, projection, data.doc_read_context, {}));
+  RETURN_NOT_OK(iterator.InitForYbctid(
+      data, projection, data.doc_read_context, {}, BoundTupleFetches::kFalse));
   auto& iterator_impl = down_cast<DocRowwiseIterator&>(iterator.impl());
   iterator_impl.Refresh(SeekFilter::kIntentsOnly);
   iterator_impl.Seek(Slice());

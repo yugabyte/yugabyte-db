@@ -572,7 +572,7 @@ Status DocRowwiseIterator::InitIterator(
       txn_op_context_,
       read_operation_data_,
       file_filter,
-      &regular_db_upper_bound_,
+      read_operation_data_.bound_single_tuple_fetches ? &regular_db_upper_bound_ : nullptr,
       flags);
   InitResult();
 

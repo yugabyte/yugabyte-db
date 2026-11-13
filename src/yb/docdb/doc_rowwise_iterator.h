@@ -93,8 +93,9 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
   void SeekTuple(
       Slice tuple_id, UpdateFilterKey update_filter_key = UpdateFilterKey::kTrue) override;
 
-  // Bounds the regular DB read to the tuple until the next seek. Past a tuple, a read could
-  // otherwise step over many entries filtered out by a restore, see rocksdb::FilteringIterator.
+  // With ReadOperationData::bound_single_tuple_fetches, bounds the regular DB read to the tuple
+  // until the next seek. Past a tuple, a read could otherwise step over many entries filtered out
+  // by a restore, see rocksdb::FilteringIterator.
   void SeekSingleTuple(Slice tuple_id) override;
 
   // Returns true if tuple was fetched, false otherwise.
