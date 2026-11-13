@@ -68,6 +68,17 @@ extern std::shared_ptr<Cache> NewLRUCache(size_t capacity, int num_shard_bits);
 extern std::shared_ptr<Cache> NewLRUCache(size_t capacity, int num_shard_bits,
                                      bool strict_capacity_limit);
 
+// Create a cache with a lock-free CLOCK replacement policy, ported from upstream RocksDB's
+// HyperClockCache. Lookup and Release do not take a lock, so hot entries do not serialize
+// readers the way LRU shard mutexes do. It keeps a single pool: query ids only set how much clock
+// credit a new entry starts with.
+//
+// With estimated_entry_charge == 0, the hash table of each shard grows as needed. Otherwise each
+// shard's table is sized up front for entries of about that charge.
+extern std::shared_ptr<Cache> NewHyperClockCache(
+    size_t capacity, int num_shard_bits, bool strict_capacity_limit = false,
+    size_t estimated_entry_charge = 0);
+
 using QueryId = int64_t;
 // Query ids to represent values for the default query id.
 constexpr QueryId kDefaultQueryId = 0;
