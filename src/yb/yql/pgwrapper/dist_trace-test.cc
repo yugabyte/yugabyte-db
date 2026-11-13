@@ -2011,6 +2011,7 @@ TEST_F(DistTraceTest, TestExtendedQueryProtocolPreparedStatementReuse) {
   ASSERT_OK(collector_.VerifySpanCountInTrace(tp.trace_id, "ext.parse", 1));
   ASSERT_OK(collector_.VerifySpanCountInTrace(tp.trace_id, "ext.bind", 3));
   ASSERT_OK(collector_.VerifySpanCountInTrace(tp.trace_id, "ext.execute", 3));
+  ASSERT_OK(collector_.VerifySpanCountInTrace(tp.trace_id, "query", 4));
   ASSERT_EQ(collector_.NumTraces(), 1);
   ASSERT_EQ(collector_.CountSpansInTrace(tp.trace_id, "query"), 4);
 
