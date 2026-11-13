@@ -858,20 +858,9 @@ YbAshSetOneTimeMetadata()
 }
 
 /*
- * Sets the client address and port for ASH metadata. With Ysql Connection
- * Manager, MyProcPort is the connection manager's socket, so the logical
- * client's address and port are used instead.
- *
- * If the address family is not AF_INET or AF_INET6, then the PGPPROC ASH metadata
- * fields for client address and port don't mean anything. Otherwise, if
- * pg_getnameinfo_all returns non-zero value, a warning is printed with the error
- * code and ASH keeps working without client address and port for the current PG
- * backend.
- *
- * With Ysql Connection Manager, this runs at the start of every request. A
- * sampler that saw the previous request may still be about to copy the
- * metadata, so the fields are written under the lock, and only when they
- * change.
+ * Sets the client address and port in ASH metadata. With Ysql Connection
+ * Manager they are the logical client's and can change on any request, while
+ * a sampler may still be copying them, so they are written under the lock.
  */
 static void
 YbAshSetClientAddr(void)
