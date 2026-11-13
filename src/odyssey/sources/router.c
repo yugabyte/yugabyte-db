@@ -1019,6 +1019,19 @@ void yb_release_backend_slot(od_router_t *router)
 	}
 }
 
+uint64_t od_router_wait_end_time_ms(od_router_t *router)
+{
+	/*
+	 * YB: a global option instead of the rule's pool_timeout, so that a
+	 * reload changes it without making every rule obsolete.
+	 */
+	uint32_t timeout_ms =
+		router->global->instance->config.yb_query_wait_timeout_ms;
+	if (timeout_ms == 0)
+		return UINT64_MAX;
+	return machine_time_ms() + timeout_ms;
+}
+
 /*
  * od_router_attach is a function used to attach a client object to a server object.
  * client_for_router represents the internal client used for
@@ -1035,6 +1048,17 @@ od_router_status_t od_router_attach(od_router_t *router,
 				    od_client_t *client_for_router,
 				    bool wait_for_idle,
 				    od_client_t *external_client)
+{
+	return od_router_attach_until(router, client_for_router, wait_for_idle,
+				      external_client,
+				      od_router_wait_end_time_ms(router));
+}
+
+od_router_status_t od_router_attach_until(od_router_t *router,
+					  od_client_t *client_for_router,
+					  bool wait_for_idle,
+					  od_client_t *external_client,
+					  uint64_t end_time_ms)
 {
 	(void)router;
 	od_route_t *route = client_for_router->route;
@@ -1307,19 +1331,19 @@ od_router_status_t od_router_attach(od_router_t *router,
 			return OD_ROUTER_ERROR;
 
 		/*
-		 * Wait wakeup condition for yb_query_wait_timeout_ms milliseconds.
+		 * Wait wakeup condition until end_time_ms.
 		 *
 		 * The condition triggered when a server connection
 		 * put into idle state by DETACH events.
-		 *
-		 * YB: a global option instead of the rule's pool_timeout, so that a
-		 * reload changes it without making every rule obsolete.
 		 */
-		uint32_t timeout = instance->config.yb_query_wait_timeout_ms;
-		if (timeout == 0)
-			timeout = UINT32_MAX;
-		rc = od_route_wait(route, timeout);
-		if (rc == -1)
+		uint64_t now_ms = machine_time_ms();
+		if (now_ms >= end_time_ms)
+			return OD_ROUTER_ERROR_TIMEDOUT;
+		uint64_t wait_ms = end_time_ms - now_ms;
+		if (wait_ms > UINT32_MAX)
+			wait_ms = UINT32_MAX;
+		rc = od_route_wait(route, (uint32_t)wait_ms);
+		if (rc == -1 && machine_time_ms() >= end_time_ms)
 			return OD_ROUTER_ERROR_TIMEDOUT;
 
 		od_route_lock(route);

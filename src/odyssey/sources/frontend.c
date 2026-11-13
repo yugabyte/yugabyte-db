@@ -337,9 +337,11 @@ od_frontend_attach(od_client_t *client, char *context,
 	od_route_t *route = client->route;
 
 	bool wait_for_idle = false;
+	uint64_t end_time_ms = od_router_wait_end_time_ms(router);
 	for (;;) {
 		od_router_status_t status;
-		status = od_router_attach(router, client, wait_for_idle, client);
+		status = od_router_attach_until(router, client, wait_for_idle,
+						client, end_time_ms);
 		if (status != OD_ROUTER_OK) {
 			if (status == OD_ROUTER_ERROR_TIMEDOUT) {
 				od_error(&instance->logger, "router", client,
