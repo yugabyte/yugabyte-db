@@ -282,6 +282,9 @@ static void yb_get_roundtrip_transfer_costs(Oid tablespace_id,
 											Cost *transfer_cost);
 static Cardinality yb_first_fetch_limit(PlannerInfo *root, Path *path,
 										bool has_local_quals);
+static bool yb_derived_clause_is_redundant(RestrictInfo *rinfo, List *clauses);
+static List *yb_strip_redundant_derived_clauses(List *clauses);
+static List *yb_bitmap_and_rinfos(Path *bitmapqual, List *rinfos);
 
 
 /*
@@ -8362,7 +8365,8 @@ yb_bitmap_index_selectivity(IndexPath *path,
 
 	all_index_quals = list_concat(index_remote_quals, index_conds);
 
-	sel = clauselist_selectivity(root, all_index_quals,
+	sel = clauselist_selectivity(root,
+								 yb_strip_redundant_derived_clauses(all_index_quals),
 								 index->rel->relid, JOIN_INNER, NULL);
 
 	list_free(all_index_quals);
@@ -9825,7 +9829,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 
 	if (list_length(index_conditions) > 0)
 		index_conditions_selectivity =
-			clauselist_selectivity(root, index_conditions,
+			clauselist_selectivity(root,
+								   yb_strip_redundant_derived_clauses(index_conditions),
 								   baserel->relid, JOIN_INNER, NULL);
 	else
 		index_conditions_selectivity = 1.0;
@@ -9852,7 +9857,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 
 	if (list_length(index_conditions_and_filters) > 0)
 		index_selectivity =
-			clauselist_selectivity(root, index_conditions_and_filters,
+			clauselist_selectivity(root,
+								   yb_strip_redundant_derived_clauses(index_conditions_and_filters),
 								   baserel->relid, JOIN_INNER, NULL);
 	else
 		index_selectivity = 1.0;
@@ -10114,7 +10120,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 
 	if (list_length(all_conditions_and_remote_filters) > 0)
 		all_conditions_and_remote_filters_selectivity =
-			clauselist_selectivity(root, all_conditions_and_remote_filters,
+			clauselist_selectivity(root,
+								   yb_strip_redundant_derived_clauses(all_conditions_and_remote_filters),
 								   baserel->relid, JOIN_INNER, NULL);
 	else
 		all_conditions_and_remote_filters_selectivity = 1.0;
@@ -10706,10 +10713,14 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
  *
  * 'bitmapqual' is a tree of IndexPaths, BitmapAndPaths, and BitmapOrPaths
  * 'scan_clauses' is a list of all conditions given to the bitmap path
+ * 'strip_redundant_derived' leaves out the derived equalities
+ *		(yb_derive_equal_cond) that a path's other index clauses imply.
+ *		Costing passes true, so the selectivity of the result does not count
+ *		them; plan creation passes false and keeps every qual DocDB is given.
  */
 List *
 yb_get_bitmap_index_quals(PlannerInfo *root, Path *bitmapqual,
-						  List *scan_clauses)
+						  List *scan_clauses, bool strip_redundant_derived)
 {
 	if (IsA(bitmapqual, BitmapAndPath))
 	{
@@ -10721,7 +10732,8 @@ yb_get_bitmap_index_quals(PlannerInfo *root, Path *bitmapqual,
 		{
 			List	   *subindexqual = yb_get_bitmap_index_quals(root,
 																 (Path *) lfirst(l),
-																 scan_clauses);
+																 scan_clauses,
+																 strip_redundant_derived);
 
 			subindexquals = list_concat_unique(subindexquals, subindexqual);
 		}
@@ -10738,7 +10750,8 @@ yb_get_bitmap_index_quals(PlannerInfo *root, Path *bitmapqual,
 		{
 			List	   *subindexqual = yb_get_bitmap_index_quals(root,
 																 (Path *) lfirst(l),
-																 scan_clauses);
+																 scan_clauses,
+																 strip_redundant_derived);
 
 			subindexquals = lappend(subindexquals,
 									make_ands_explicit(subindexqual));
@@ -10754,6 +10767,7 @@ yb_get_bitmap_index_quals(PlannerInfo *root, Path *bitmapqual,
 		IndexScan  *iscan;
 		List	   *subquals;
 		List	   *subindexquals;
+		List	   *index_rinfos;
 		ListCell   *l;
 
 		/* Use the regular indexscan plan build machinery... */
@@ -10766,12 +10780,22 @@ yb_get_bitmap_index_quals(PlannerInfo *root, Path *bitmapqual,
 		/* Extract original index clauses, actual index quals, relevant ECs */
 		subquals = NIL;
 		subindexquals = NIL;
+		index_rinfos = NIL;
+		if (strip_redundant_derived)
+		{
+			foreach(l, ipath->indexclauses)
+				index_rinfos = lappend(index_rinfos,
+									   ((IndexClause *) lfirst(l))->rinfo);
+		}
 		foreach(l, ipath->indexclauses)
 		{
 			IndexClause *iclause = (IndexClause *) lfirst(l);
 			RestrictInfo *rinfo = iclause->rinfo;
 
 			Assert(!rinfo->pseudoconstant);
+			if (strip_redundant_derived &&
+				yb_derived_clause_is_redundant(rinfo, index_rinfos))
+				continue;
 			subquals = lappend(subquals, rinfo->clause);
 			subindexquals = list_concat(subindexquals,
 										get_actual_clauses(iclause->indexquals));
@@ -10907,7 +10931,8 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	}
 
 	indexquals = yb_get_bitmap_index_quals(root, bitmapqual,
-										   baserel->baserestrictinfo);
+										   baserel->baserestrictinfo,
+										   true /* strip_redundant_derived */ );
 
 	/* Determine what clauses remain to be checked by this node */
 	foreach(l, baserel->baserestrictinfo)
@@ -10945,11 +10970,31 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 														  baserel->relid,
 														  JOIN_INNER, NULL));
 
+	/*
+	 * yb_get_bitmap_index_quals dropped the derived equalities the index
+	 * clauses imply.  One derived from a table filter instead was kept, as
+	 * it bounds the index sweep, but the result counts that filter too, so
+	 * it is dropped from the result quals (cf. the all-conditions list of
+	 * yb_cost_index).  Only the quals AND-ed at the top of the bitmap tree
+	 * can be dropped: an OR arm's quals are nested in one expression, and
+	 * their sources sit in that arm anyway.
+	 */
+	List	   *result_quals = list_union(indexquals, remote_table_quals);
+	List	   *and_rinfos = yb_bitmap_and_rinfos(bitmapqual, NIL);
+	List	   *and_clauses = list_concat(list_copy(and_rinfos),
+										  remote_table_quals);
+
+	foreach(l, and_rinfos)
+	{
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, l);
+
+		if (yb_derived_clause_is_redundant(rinfo, and_clauses))
+			result_quals = list_delete_ptr(result_quals, rinfo->clause);
+	}
+
 	result_tuples =
 		clamp_row_est(adjusted_baserel_tuples *
-					  clauselist_selectivity(root,
-											 list_union(indexquals,
-														remote_table_quals),
+					  clauselist_selectivity(root, result_quals,
 											 baserel->relid, JOIN_INNER, NULL));
 
 	pages_fetched = ceil(tuples_fetched * tuple_width / YB_DEFAULT_DOCDB_BLOCK_SIZE);
@@ -11327,4 +11372,142 @@ yb_first_fetch_limit(PlannerInfo *root, Path *path, bool has_local_quals)
 	}
 
 	return root->yb_limit_tuples;
+}
+
+/*
+ * yb_node_is_var
+ *	  True if node is the Var 'var', looking through a binary-compatible
+ *	  relabeling.
+ */
+static bool
+yb_node_is_var(Node *node, Var *var)
+{
+	while (node && IsA(node, RelabelType))
+		node = (Node *) ((RelabelType *) node)->arg;
+	return (node && IsA(node, Var) &&
+			((Var *) node)->varno == var->varno &&
+			((Var *) node)->varattno == var->varattno &&
+			((Var *) node)->varlevelsup == 0);
+}
+
+/*
+ * yb_derived_clause_is_redundant
+ *	  True if rinfo is an equality yb_derive_equal_cond derived for an index
+ *	  key, and every Var it was derived from is bound by an equality elsewhere
+ *	  in 'clauses'.  The derivation is then implied by those clauses, so an
+ *	  estimate over the list must not count its selectivity on top of theirs;
+ *	  without its sources it keeps its own selectivity, which is then the
+ *	  range the scan really sweeps.
+ *
+ * 'clauses' holds RestrictInfos or bare clause expressions, as the
+ * clauselist_selectivity inputs in this file do.  Only a non-derived equality
+ * binds a Var: one derived clause never vouches for another.
+ */
+static bool
+yb_derived_clause_is_redundant(RestrictInfo *rinfo, List *clauses)
+{
+	ListCell   *lc;
+
+	if (rinfo->yb_derived_source_vars == NIL)
+		return false;
+
+	foreach(lc, rinfo->yb_derived_source_vars)
+	{
+		Var		   *var = lfirst_node(Var, lc);
+		bool		bound = false;
+		ListCell   *lc2;
+
+		foreach(lc2, clauses)
+		{
+			Node	   *node = lfirst(lc2);
+			OpExpr	   *op;
+			Node	   *left;
+
+			if (IsA(node, RestrictInfo))
+			{
+				RestrictInfo *other = (RestrictInfo *) node;
+
+				if (other == rinfo || other->yb_derived_source_vars != NIL)
+					continue;
+				node = (Node *) other->clause;
+			}
+			if (!is_opclause(node) ||
+				list_length(((OpExpr *) node)->args) != 2)
+				continue;
+			op = (OpExpr *) node;
+			left = (Node *) linitial(op->args);
+			if (!op_mergejoinable(op->opno, exprType(left)))
+				continue;
+			if (yb_node_is_var(left, var) ||
+				yb_node_is_var((Node *) lsecond(op->args), var))
+			{
+				bound = true;
+				break;
+			}
+		}
+		if (!bound)
+			return false;
+	}
+	return true;
+}
+
+/*
+ * yb_strip_redundant_derived_clauses
+ *	  'clauses' without the derived equalities the rest of the list makes
+ *	  redundant (see yb_derived_clause_is_redundant), for the list-level
+ *	  selectivity estimates.  The per-column estimates of the seek models keep
+ *	  every clause: a derived equality still pins one value of its own column,
+ *	  it only adds no rows beyond its sources.  Returns 'clauses' itself when
+ *	  nothing is stripped.
+ */
+static List *
+yb_strip_redundant_derived_clauses(List *clauses)
+{
+	List	   *result = NIL;
+	bool		stripped = false;
+	ListCell   *lc;
+
+	foreach(lc, clauses)
+	{
+		Node	   *node = lfirst(lc);
+
+		if (IsA(node, RestrictInfo) &&
+			yb_derived_clause_is_redundant((RestrictInfo *) node, clauses))
+		{
+			stripped = true;
+			continue;
+		}
+		result = lappend(result, node);
+	}
+	if (!stripped)
+	{
+		list_free(result);
+		return clauses;
+	}
+	return result;
+}
+
+/*
+ * yb_bitmap_and_rinfos
+ *	  Appends to 'rinfos' the index-clause RestrictInfos AND-ed at the top of
+ *	  the bitmap tree 'bitmapqual': those of every IndexPath reached through
+ *	  BitmapAndPaths alone.  The clauses under a BitmapOrPath hold for their
+ *	  arm only and are left out.
+ */
+static List *
+yb_bitmap_and_rinfos(Path *bitmapqual, List *rinfos)
+{
+	ListCell   *l;
+
+	if (IsA(bitmapqual, BitmapAndPath))
+	{
+		foreach(l, ((BitmapAndPath *) bitmapqual)->bitmapquals)
+			rinfos = yb_bitmap_and_rinfos((Path *) lfirst(l), rinfos);
+	}
+	else if (IsA(bitmapqual, IndexPath))
+	{
+		foreach(l, ((IndexPath *) bitmapqual)->indexclauses)
+			rinfos = lappend(rinfos, lfirst_node(IndexClause, l)->rinfo);
+	}
+	return rinfos;
 }
