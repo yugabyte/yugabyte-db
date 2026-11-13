@@ -27,7 +27,7 @@ var RestartCmd = &cobra.Command{
 		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
 		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(universeName) == 0 {
 			cmd.Help()
@@ -38,12 +38,12 @@ var RestartCmd = &cobra.Command{
 		// universeutil.Validations before restart operation
 		skipValidations, err := cmd.Flags().GetBool("skip-validations")
 		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if !skipValidations {
 			_, _, err := universeutil.Validations(cmd, util.UpgradeOperation)
 			if err != nil {
-				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+				logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 		}
 		err = util.ConfirmCommand(
@@ -58,7 +58,7 @@ var RestartCmd = &cobra.Command{
 
 		authAPI, universe, err := universeutil.Validations(cmd, util.UpgradeOperation)
 		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		universeName := universe.GetName()
