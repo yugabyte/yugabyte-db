@@ -66,7 +66,9 @@ RESET TimeZone;
 --
 -- d is not in the index, and the equalities the planner generates from c2 = d
 -- and c1 = d reference it, so they are pushed to the table.  With c1 = c2
--- instead, the filter runs on the index.
+-- instead, the filter runs on the index, within each stream, before the merge.
+-- That query needs no merge on c2, but the merge sorts on it anyway (see
+-- ybIsMergeGapCol).
 CREATE TABLE gap_idx_tbl (k int, s int, c1 int, c2 int, c3 int, d int,
     PRIMARY KEY (k ASC));
 CREATE INDEX NONCONCURRENTLY gap_idx_tbl_idx ON gap_idx_tbl (s ASC, c1 ASC, c2 ASC, c3 ASC);
@@ -207,8 +209,11 @@ DROP TABLE gap_pk_tbl;
 
 -- The same expression gap column on a colocated index.  For an embedded index
 -- scan, an expression column is not available for sort, so the merge stops
--- before the column and sorts on c1 alone.  With expression pushdown off, the
--- filter runs after the merge, and the rows stay in order.
+-- before the column and sorts on c1 alone.  With expression pushdown on, the
+-- filter runs within each stream, before the merge, so a merge on c1 and c3
+-- would keep the order, and the cut costs the merge on c3 (see
+-- ybIsMergeGapCol).  With expression pushdown off, the filter runs after the
+-- merge, and the rows stay in order.
 \set Q1 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_idx) Set(yb_max_merge_scan_streams 0)*/'
 \set Q2 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_idx) Set(yb_max_merge_scan_streams 64)*/'
 \set query ':P :Q SELECT c1, c3, s, c2 FROM gap_expr_tbl WHERE s IN (1, 2) AND c1 = c2 + 0 ORDER BY c1, c3;'

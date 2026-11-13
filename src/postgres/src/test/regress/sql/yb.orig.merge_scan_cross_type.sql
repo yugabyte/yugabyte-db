@@ -35,6 +35,7 @@ RESET yb_enable_advanced_index_cond_fold;
 -- - Q5, on a partial index whose predicate implies the equality.  The planner
 --   drops the index condition f4 = :R, and every index row carries the constant
 --   anyway, so f4 should not be declared a stream key.  Neither R errors.
+--   The merge also sorts on f4, which always ties (see ybIsMergeGapCol).
 -- TODO(#33450): the planner should pick a plan that does not throw an error.
 SELECT $$'2.5'::real$$ AS "R1" \gset
 SELECT $$'2.5'::float8$$ AS "R2" \gset
