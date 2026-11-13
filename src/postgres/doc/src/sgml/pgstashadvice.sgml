@@ -16,7 +16,7 @@
   strings. Whenever a session is asked to plan a query whose query ID appears
   in the relevant advice stash, the plan advice string is automatically applied
   to guide planning. Note that advice stashes are stored in dynamically
-  allocated shared memory. This means both that it is important to be mindful
+  allocated shared memory. This means that it is important to be mindful
   of memory consumption when deciding how much plan advice to stash.
   Optionally, advice stashes and their contents can automatically be persisted
   to disk and reloaded from disk; see
@@ -66,6 +66,14 @@
  </para>
 
  <para>
+  Stashed advice is applied only when a query is planned. Adding, replacing,
+  or removing a stash entry, or changing
+  <literal>pg_stash_advice.stash_name</literal>, does not affect plans that
+  have already been cached. See
+  <xref linkend="pgplanadvice-limitations"/>.
+ </para>
+
+ <para>
   Generally, the fact that the planner is able to change query plans as
   the underlying distribution of data changes is a feature, not a bug.
   Moreover, applying plan advice can have a noticeable performance cost even
@@ -84,7 +92,7 @@
   <literal>pg_stash_advice.stash_name</literal> for their session, and this
   may reveal the contents of any advice stash with that name. Users should
   assume that information embedded in stashed advice strings may become visible
-  to nonprivileged users.
+  to non-privileged users.
  </para>
 
  <sect2 id="pgstashadvice-functions">

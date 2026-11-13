@@ -334,20 +334,6 @@ on_exit_close_archive(Archive *AHX)
 }
 
 /*
- * Update the archive handle in the on_exit callback registered by
- * on_exit_close_archive(). When pg_restore processes a pg_dumpall archive
- * containing multiple databases, each database is restored from a separate
- * archive. After closing one archive and opening the next, we update the
- * shutdown_info to reference the new archive handle so the cleanup callback
- * will close the correct archive on exit.
- */
-void
-replace_on_exit_close_archive(Archive *AHX)
-{
-	shutdown_info.AHX = AHX;
-}
-
-/*
  * on_exit_nicely handler for shutting down database connections and
  * worker processes cleanly.
  */
@@ -568,9 +554,9 @@ sigTermHandler(SIGNAL_ARGS)
 	 * signal handler.  That could muck up our attempt to send PQcancel, so
 	 * disable the signals that set_cancel_handler enabled.
 	 */
-	pqsignal(SIGINT, SIG_IGN);
-	pqsignal(SIGTERM, SIG_IGN);
-	pqsignal(SIGQUIT, SIG_IGN);
+	pqsignal(SIGINT, PG_SIG_IGN);
+	pqsignal(SIGTERM, PG_SIG_IGN);
+	pqsignal(SIGQUIT, PG_SIG_IGN);
 
 	/*
 	 * If we're in the leader, forward signal to all workers.  (It seems best
@@ -990,6 +976,8 @@ ParallelBackupStart(ArchiveHandle *AH)
 
 		handle = _beginthreadex(NULL, 0, (void *) &init_spawned_worker_win32,
 								wi, 0, &(slot->threadId));
+		if (handle == 0)
+			pg_fatal("could not create worker thread: %m");
 		slot->hThread = handle;
 		slot->workerStatus = WRKR_IDLE;
 #else							/* !WIN32 */
@@ -1049,7 +1037,7 @@ ParallelBackupStart(ArchiveHandle *AH)
 	 * the workers to inherit this setting, though.
 	 */
 #ifndef WIN32
-	pqsignal(SIGPIPE, SIG_IGN);
+	pqsignal(SIGPIPE, PG_SIG_IGN);
 #endif
 
 	/*

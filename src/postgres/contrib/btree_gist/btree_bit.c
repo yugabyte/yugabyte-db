@@ -217,7 +217,7 @@ gbt_bit_ssup_cmp(Datum x, Datum y, SortSupport ssup)
 	Datum		result;
 
 	/* for leaf items we expect lower == upper, so only compare lower */
-	result = DirectFunctionCall2(byteacmp,
+	result = DirectFunctionCall2(bitcmp,
 								 PointerGetDatum(arg1.lower),
 								 PointerGetDatum(arg2.lower));
 

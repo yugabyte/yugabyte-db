@@ -68,23 +68,24 @@ $node->init;
 $node->append_conf('postgresql.conf', "log_connections = on\n");
 # Needed to allow connect_fails to inspect postmaster log:
 $node->append_conf('postgresql.conf', "log_min_messages = debug2");
-$node->append_conf('postgresql.conf', "password_expiration_warning_threshold = '1100d'");
+$node->append_conf('postgresql.conf',
+	"password_expiration_warning_threshold = '1100d'");
 $node->start;
 
 # Set up roles for password_expiration_warning_threshold test
 my $current_year = 1900 + ${ [ localtime(time) ] }[5];
 my $expire_year = $current_year - 1;
-$node->safe_psql(
-	'postgres',
-	"CREATE ROLE expired LOGIN VALID UNTIL '$expire_year-01-01' PASSWORD 'pass'");
+$node->safe_psql('postgres',
+	"CREATE ROLE expired LOGIN VALID UNTIL '$expire_year-01-01' PASSWORD 'pass'"
+);
 $expire_year = $current_year + 2;
-$node->safe_psql(
-	'postgres',
-	"CREATE ROLE expiration_warnings LOGIN VALID UNTIL '$expire_year-01-01' PASSWORD 'pass'");
+$node->safe_psql('postgres',
+	"CREATE ROLE expiration_warnings LOGIN VALID UNTIL '$expire_year-01-01' PASSWORD 'pass'"
+);
 $expire_year = $current_year + 5;
-$node->safe_psql(
-	'postgres',
-	"CREATE ROLE no_warnings LOGIN VALID UNTIL '$expire_year-01-01' PASSWORD 'pass'");
+$node->safe_psql('postgres',
+	"CREATE ROLE no_warnings LOGIN VALID UNTIL '$expire_year-01-01' PASSWORD 'pass'"
+);
 
 # Test behavior of log_connections GUC
 #
@@ -156,6 +157,14 @@ is( $node->psql(
 	),
 	$md5_works ? 0 : 3,
 	'created user with md5 password');
+is( $node->psql(
+		'postgres',
+		"SET password_encryption='md5';
+		 CREATE ROLE md5_role_no_warnings LOGIN PASSWORD 'pass';
+		 ALTER ROLE md5_role_no_warnings SET md5_password_warnings = off;"
+	),
+	$md5_works ? 0 : 3,
+	'created user with md5 password and MD5 warnings disabled');
 # Set up a table for tests of SYSTEM_USER.
 $node->safe_psql(
 	'postgres',
@@ -376,9 +385,19 @@ SKIP:
 {
 	skip "MD5 not supported" unless $md5_works;
 	test_conn($node, 'user=md5_role', 'password', 0,
+		expected_stderr => qr/authenticated with an MD5-encrypted password/,
 		log_like =>
 		  [qr/connection authenticated: identity="md5_role" method=password/]
 	);
+
+	$node->connect_ok(
+		'user=md5_role_no_warnings',
+		'password with warnings disabled',
+		sql => 'SHOW md5_password_warnings',
+		expected_stdout => qr/^off$/,
+		log_like => [
+			qr/connection authenticated: identity="md5_role_no_warnings" method=password/
+		]);
 }
 
 # require_auth succeeds here with a plaintext password.
@@ -498,11 +517,20 @@ test_conn($node, 'user=scram_role', 'md5', 0,
 SKIP:
 {
 	skip "MD5 not supported" unless $md5_works;
-	test_conn($node, 'user=md5_role', 'md5', 0,
-		expected_stderr =>
-		  qr/authenticated with an MD5-encrypted password/,
+	test_conn(
+		$node, 'user=md5_role', 'md5', 0,
+		expected_stderr => qr/authenticated with an MD5-encrypted password/,
 		log_like =>
 		  [qr/connection authenticated: identity="md5_role" method=md5/]);
+
+	$node->connect_ok(
+		'user=md5_role_no_warnings',
+		'md5 with warnings disabled',
+		sql => 'SHOW md5_password_warnings',
+		expected_stdout => qr/^off$/,
+		log_like => [
+			qr/connection authenticated: identity="md5_role_no_warnings" method=md5/
+		]);
 }
 
 # require_auth succeeds with SCRAM required.
@@ -553,19 +581,13 @@ $node->connect_fails(
 $node->connect_fails(
 	"user=expired dbname=postgres",
 	"connection fails due to expired password",
-	expected_stderr =>
-	  qr/password authentication failed for user "expired"/
-);
+	expected_stderr => qr/password authentication failed for user "expired"/);
 $node->connect_ok(
 	"user=expiration_warnings dbname=postgres",
 	"connection succeeds with password expiration warning",
-	expected_stderr =>
-	  qr/role password will expire soon/
-);
-$node->connect_ok(
-	"user=no_warnings dbname=postgres",
-	"connection succeeds with no password expiration warning"
-);
+	expected_stderr => qr/role password will expire soon/);
+$node->connect_ok("user=no_warnings dbname=postgres",
+	"connection succeeds with no password expiration warning");
 
 # Test SYSTEM_USER <> NULL with parallel workers.
 $node->safe_psql(

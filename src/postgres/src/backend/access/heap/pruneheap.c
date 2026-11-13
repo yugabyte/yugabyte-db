@@ -27,6 +27,7 @@
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "storage/bufmgr.h"
+#include "storage/freespace.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
 
@@ -205,7 +206,7 @@ static void prune_freeze_setup(PruneFreezeParams *params,
 							   PruneState *prstate);
 static void heap_page_fix_vm_corruption(PruneState *prstate,
 										OffsetNumber offnum,
-										VMCorruptionType ctype);
+										VMCorruptionType corruption_type);
 static void prune_freeze_fast_path(PruneState *prstate,
 								   PruneFreezeResult *presult);
 static void prune_freeze_plan(PruneState *prstate,
@@ -321,6 +322,17 @@ heap_page_prune_opt(Relation relation, Buffer buffer, Buffer *vmbuffer,
 
 	if (PageIsFull(page) || PageGetHeapFreeSpace(page) < minfree)
 	{
+		bool		record_free_space = false;
+		Size		freespace = 0;
+
+		/*
+		 * Pin the VM page before taking the heap cleanup lock. This may
+		 * occasionally lead to an unnecessary pin when the buffer is
+		 * contended, but the same VM page covers many heap pages, so there is
+		 * a good chance for the work to be reusable.
+		 */
+		visibilitymap_pin(relation, BufferGetBlockNumber(buffer), vmbuffer);
+
 		/* OK, try to get exclusive buffer lock */
 		if (!ConditionalLockBufferForCleanup(buffer))
 			return;
@@ -335,9 +347,6 @@ heap_page_prune_opt(Relation relation, Buffer buffer, Buffer *vmbuffer,
 			OffsetNumber dummy_off_loc;
 			PruneFreezeResult presult;
 			PruneFreezeParams params;
-
-			visibilitymap_pin(relation, BufferGetBlockNumber(buffer),
-							  vmbuffer);
 
 			params.relation = relation;
 			params.buffer = buffer;
@@ -376,16 +385,32 @@ heap_page_prune_opt(Relation relation, Buffer buffer, Buffer *vmbuffer,
 			if (presult.ndeleted > presult.nnewlpdead)
 				pgstat_update_heap_dead_tuples(relation,
 											   presult.ndeleted - presult.nnewlpdead);
+
+			/*
+			 * If this prune newly set the page all-visible, VACUUM may later
+			 * skip the page and not update the free space map (FSM) for it.
+			 * Keep the FSM from going stale by recording it now. We do not
+			 * want to update the freespace map otherwise, to reserve
+			 * freespace on this page for HOT updates.
+			 */
+			if (presult.newly_all_visible)
+			{
+				record_free_space = true;
+				freespace = PageGetHeapFreeSpace(page);
+			}
 		}
 
 		/* And release buffer lock */
 		LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
 
 		/*
-		 * We avoid reuse of any free space created on the page by unrelated
-		 * UPDATEs/INSERTs by opting to not update the FSM at this point.  The
-		 * free space should be reused by UPDATEs to *this* page.
+		 * RecordPageWithFreeSpace() only dirties the FSM when the recorded
+		 * free-space category actually changes. Note that vacuum will still
+		 * do FreeSpaceMapVacuum() for ranges of pages that are skipped, so we
+		 * don't have to worry about that here.
 		 */
+		if (record_free_space)
+			RecordPageWithFreeSpace(relation, BufferGetBlockNumber(buffer), freespace);
 	}
 }
 
@@ -418,7 +443,13 @@ prune_freeze_setup(PruneFreezeParams *params,
 	prstate->buffer = params->buffer;
 	prstate->page = BufferGetPage(params->buffer);
 
-	Assert(BufferIsValid(params->vmbuffer));
+	/*
+	 * The caller must have pinned the VM page covering this heap block. If it
+	 * doesn't have the correct page pinned, visibilitymap_get_status() will
+	 * silently release the caller's pin and take its own, leaving the caller
+	 * holding a stale buffer and leaking ours.
+	 */
+	Assert(visibilitymap_pin_ok(prstate->block, params->vmbuffer));
 	prstate->vmbuffer = params->vmbuffer;
 	prstate->new_vmbits = 0;
 	prstate->old_vmbits = visibilitymap_get_status(prstate->relation,
@@ -927,9 +958,12 @@ heap_page_fix_vm_corruption(PruneState *prstate, OffsetNumber offnum,
 
 	if (do_clear_vm)
 	{
-		visibilitymap_clear(prstate->relation, prstate->block,
-							prstate->vmbuffer,
-							VISIBILITYMAP_VALID_BITS);
+		LockBuffer(prstate->vmbuffer, BUFFER_LOCK_EXCLUSIVE);
+		/* This VM clear is not WAL-logged, so its return value is not needed. */
+		(void) visibilitymap_clear(prstate->relation, prstate->block,
+								   prstate->vmbuffer,
+								   VISIBILITYMAP_VALID_BITS);
+		LockBuffer(prstate->vmbuffer, BUFFER_LOCK_UNLOCK);
 		prstate->old_vmbits = 0;
 	}
 }
@@ -957,16 +991,39 @@ heap_page_will_set_vm(PruneState *prstate, PruneReason reason,
 		return false;
 
 	/*
-	 * If this is an on-access call and we're not actually pruning, avoid
-	 * setting the visibility map if it would newly dirty the heap page or, if
-	 * the page is already dirty, if doing so would require including a
-	 * full-page image (FPI) of the heap page in the WAL.
+	 * If this is an on-access call and we're not actually pruning or
+	 * freezing, consider whether setting the VM would cost us an additional
+	 * heap page FPI. If the relation isn't WAL-logged, or if hint bits are
+	 * not WAL-logged, setting the VM won't include a heap page FPI (the
+	 * latter passes REGBUF_NO_IMAGE for the heap page), apart from a page
+	 * that has never been WAL-logged, which we don't bother about here.
 	 */
 	if (reason == PRUNE_ON_ACCESS && !do_prune && !do_freeze &&
-		(!BufferIsDirty(prstate->buffer) || XLogCheckBufferNeedsBackup(prstate->buffer)))
+		RelationNeedsWAL(prstate->relation) && XLogHintBitIsNeeded())
 	{
-		prstate->set_all_visible = prstate->set_all_frozen = false;
-		return false;
+		/*
+		 * Because the page is known to be all-visible, we will clear
+		 * pd_prune_xid regardless of whether we actually set the page
+		 * all-visible in the VM. That clear is a hint update which is not
+		 * WAL-logged, other than an FPI for torn-page protection, so in some
+		 * cases we want to avoid setting the VM if doing so would cost us a
+		 * heap page FPI that clearing pd_prune_xid wouldn't have.
+		 *
+		 * Since hint bits are WAL-logged, if the buffer is clean, clearing
+		 * pd_prune_xid will already emit a heap page FPI if one is needed, so
+		 * there's no reason to avoid setting the VM.
+		 *
+		 * However, if the heap buffer is already dirty, clearing pd_prune_xid
+		 * will never emit an FPI. So avoid setting the VM if the page hasn't
+		 * been WAL-logged since the current checkpoint began, as the record
+		 * setting the VM would then include a heap page FPI.
+		 */
+		if (BufferIsDirty(prstate->buffer) &&
+			XLogCheckBufferNeedsBackup(prstate->buffer))
+		{
+			prstate->set_all_visible = prstate->set_all_frozen = false;
+			return false;
+		}
 	}
 
 	prstate->new_vmbits = VISIBILITYMAP_ALL_VISIBLE;
@@ -1287,8 +1344,9 @@ heap_page_prune_and_freeze(PruneFreezeParams *params,
 			 */
 			PageSetAllVisible(prstate.page);
 			PageClearPrunable(prstate.page);
-			visibilitymap_set(prstate.block, prstate.vmbuffer, prstate.new_vmbits,
-							  prstate.relation->rd_locator);
+			(void) visibilitymap_set(prstate.block, prstate.vmbuffer,
+									 prstate.new_vmbits,
+									 prstate.relation->rd_locator);
 		}
 
 		MarkBufferDirty(prstate.buffer);
@@ -1302,7 +1360,7 @@ heap_page_prune_and_freeze(PruneFreezeParams *params,
 									  do_set_vm ? prstate.vmbuffer : InvalidBuffer,
 									  do_set_vm ? prstate.new_vmbits : 0,
 									  conflict_xid,
-									  true, /* cleanup lock */
+									  do_prune, /* cleanup lock */
 									  params->reason,
 									  prstate.frozen, prstate.nfrozen,
 									  prstate.redirected, prstate.nredirected,
@@ -2352,14 +2410,14 @@ heap_get_root_tuples(Page page, OffsetNumber *root_offsets)
 		for (;;)
 		{
 			/* Sanity check (pure paranoia) */
-			if (offnum < FirstOffsetNumber)
+			if (nextoffnum < FirstOffsetNumber)
 				break;
 
 			/*
 			 * An offset past the end of page's line pointer array is possible
 			 * when the array was truncated
 			 */
-			if (offnum > maxoff)
+			if (nextoffnum > maxoff)
 				break;
 
 			lp = PageGetItemId(page, nextoffnum);

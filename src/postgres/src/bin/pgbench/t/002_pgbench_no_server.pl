@@ -92,7 +92,7 @@ my @options = (
 	[ 'too many scripts', '-S ' x 129, [qr{at most 128 SQL scripts}] ],
 	[
 		'bad #clients', '-c three',
-		[qr{invalid value "three" for option -c/--clients}]
+		[qr{invalid value "three" for option -c/--client}]
 	],
 	[
 		'bad #threads', '-j eleven',

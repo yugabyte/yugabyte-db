@@ -102,7 +102,7 @@ static void tarClose(ArchiveHandle *AH, TAR_MEMBER *th);
 #ifdef __NOT_USED__
 static char *tarGets(char *buf, size_t len, TAR_MEMBER *th);
 #endif
-static int	tarPrintf(TAR_MEMBER *th, const char *fmt,...) pg_attribute_printf(2, 3);
+static int	tarPrintf(TAR_MEMBER *th, const char *fmt, ...) pg_attribute_printf(2, 3);
 
 static void _tarAddFile(ArchiveHandle *AH, TAR_MEMBER *th);
 static TAR_MEMBER *_tarPositionTo(ArchiveHandle *AH, const char *filename);
@@ -584,7 +584,7 @@ _PrintFileData(ArchiveHandle *AH, char *filename)
 
 /*
  * Print data for a given TOC entry
-*/
+ */
 static void
 _PrintTocData(ArchiveHandle *AH, TocEntry *te)
 {
@@ -826,7 +826,7 @@ _CloseArchive(ArchiveHandle *AH)
 		savVerbose = AH->public.verbose;
 		AH->public.verbose = 0;
 
-		RestoreArchive((Archive *) AH, false);
+		RestoreArchive((Archive *) AH);
 
 		SetArchiveOptions((Archive *) AH, savDopt, savRopt);
 
@@ -951,7 +951,7 @@ _EndLOs(ArchiveHandle *AH, TocEntry *te)
  */
 
 static int
-tarPrintf(TAR_MEMBER *th, const char *fmt,...)
+tarPrintf(TAR_MEMBER *th, const char *fmt, ...)
 {
 	int			save_errno = errno;
 	char	   *p;
@@ -1085,6 +1085,17 @@ _tarPositionTo(ArchiveHandle *AH, const char *filename)
 	{
 		pg_log_debug("skipping tar member %s", th->targetFile);
 
+		/*
+		 * If anything precedes toc.dat, we get here before the TOC has been
+		 * read.  pg_dump never writes such an archive, and calling
+		 * TocIDRequired() now would build the dump ID lookup arrays from an
+		 * empty TOC (they are never rebuilt, so later lookups would index
+		 * past their ends), so treat it as corruption.
+		 */
+		if (AH->toc->next == AH->toc)
+			pg_fatal("tar member \"%s\" precedes \"%s\" -- perhaps a corrupt archive",
+					 th->targetFile, filename);
+
 		id = atoi(th->targetFile);
 		if ((TocIDRequired(AH, id) & REQ_DATA) != 0)
 			pg_fatal("restoring data out of order is not supported in this archive format: "
@@ -1175,6 +1186,15 @@ _tarGetHeader(ArchiveHandle *AH, TAR_MEMBER *th)
 	if (chk != sum)
 		pg_fatal("corrupt tar header found in %s (expected %d, computed %d) file position %llu",
 				 tag, sum, chk, (unsigned long long) ftello(ctx->tarFH));
+
+	/*
+	 * read_tar_number() can return a value too large for a pgoff_t.  Reject a
+	 * negative result, because tarRead() would then compute a huge number of
+	 * bytes remaining and overrun its caller's buffer.
+	 */
+	if (len < 0)
+		pg_fatal("corrupt tar header found in %s (invalid file length) file position %lld",
+				 tag, (long long) ftello(ctx->tarFH));
 
 	th->targetFile = pg_strdup(tag);
 	th->fileLen = len;

@@ -408,6 +408,10 @@ SELECT jsonb_object_agg_unique(i, null) OVER (ORDER BY i)
 SELECT jsonb_object_agg_unique_strict(i, null) OVER (ORDER BY i)
   FROM generate_series(1, 10) g(i);
 
+-- a NULL-valued pair must still count as a duplicate key
+SELECT i, jsonb_object_agg_unique_strict(k, v) OVER (ORDER BY i)
+  FROM (VALUES (1, 'a', null::int), (2, 'a', 1)) t(i, k, v);
+
 CREATE TEMP TABLE foo (serial_num int, name text, type text);
 INSERT INTO foo VALUES (847001,'t15','GE1043');
 INSERT INTO foo VALUES (847002,'t16','GE1043');
@@ -420,6 +424,10 @@ SELECT jsonb_object_agg(name, type) FROM foo;
 
 INSERT INTO foo VALUES (999999, NULL, 'bar');
 SELECT jsonb_object_agg(name, type) FROM foo;
+
+-- the final function runs once per row, but later pairs must still win
+SELECT g, jsonb_object_agg(k, v) OVER (ORDER BY g)
+  FROM (VALUES (1,'a',1),(1,'a',2),(1,'a',3),(1,'b',5),(2,'b',6),(3,'a',7)) t(g,k,v);
 
 -- edge case for parser
 SELECT jsonb_object_agg(DISTINCT 'a', 'abc');
@@ -470,6 +478,9 @@ select jsonb_object('{a,b,NULL,"d e f"}','{1,2,3,"a b c"}');
 -- empty key is allowed
 
 select jsonb_object('{a,b,"","d e f"}','{1,2,3,"a b c"}');
+
+-- jsonb_object_agg_unique requires unique keys
+select jsonb_object_agg_unique(mod(i,100), i) from generate_series(0, 199) i;
 
 
 
@@ -843,6 +854,7 @@ SELECT count(*) FROM testjsonb WHERE j @@ '"CC" == $.wait';
 SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == "CC" && true == $.public';
 SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25';
 SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25.0';
+SELECT count(*) FROM testjsonb WHERE j @@ '$.age == "25".double()';
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($)';
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public)';
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.bar)';
@@ -884,8 +896,10 @@ SELECT count(*) FROM testjsonb WHERE j @@ '"CC" == $.wait';
 SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == "CC" && true == $.public';
 SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25';
 SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25.0';
+SELECT count(*) FROM testjsonb WHERE j @@ '$.age == "25".double()';
 SELECT count(*) FROM testjsonb WHERE j @@ '$.array[*] == "foo"';
 SELECT count(*) FROM testjsonb WHERE j @@ '$.array[*] == "bar"';
+SELECT count(*) FROM testjsonb WHERE j @@ '!(!($.bad == false) && $.coauthors == 98)';
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($ ? (@.array[*] == "bar"))';
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.array ? (@[*] == "bar"))';
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.array[*] ? (@ == "bar"))';
@@ -907,6 +921,14 @@ SELECT count(*) FROM testjsonb WHERE j @? '$.array[*] ? (@ == "bar")';
 SELECT count(*) FROM testjsonb WHERE j @? '$';
 SELECT count(*) FROM testjsonb WHERE j @? '$.public';
 SELECT count(*) FROM testjsonb WHERE j @? '$.bar';
+
+-- check indexed lookup of root scalars
+INSERT INTO testjsonb VALUES('"a scalar"');
+SELECT count(*) FROM testjsonb WHERE j @@ 'strict $ == "a scalar"';
+SELECT count(*) FROM testjsonb WHERE j @? 'strict $ ? (@ == "a scalar")';
+SELECT count(*) FROM testjsonb WHERE j @@ 'lax $ == "a scalar"';
+SELECT count(*) FROM testjsonb WHERE j @? 'lax $ ? (@ == "a scalar")';
+DELETE FROM testjsonb WHERE j = '"a scalar"';
 
 -- array exists - array elements should behave as keys (for GIN index scans too)
 CREATE INDEX jidx_array ON testjsonb USING gin((j->'array'));
@@ -964,8 +986,10 @@ SELECT count(*) FROM testjsonb WHERE j @@ '"CC" == $.wait';
 SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == "CC" && true == $.public';
 SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25';
 SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25.0';
+SELECT count(*) FROM testjsonb WHERE j @@ '$.age == "25".double()';
 SELECT count(*) FROM testjsonb WHERE j @@ '$.array[*] == "foo"';
 SELECT count(*) FROM testjsonb WHERE j @@ '$.array[*] == "bar"';
+SELECT count(*) FROM testjsonb WHERE j @@ '!(!($.bad == false) && $.coauthors == 98)';
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($ ? (@.array[*] == "bar"))';
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.array ? (@[*] == "bar"))';
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.array[*] ? (@ == "bar"))';
@@ -1277,6 +1301,16 @@ select jsonb_set_lax('{"a":1,"b":2}', '{b}', null, null_value_treatment => 'rais
 select jsonb_set_lax('{"a":1,"b":2}', '{b}', null, null_value_treatment => 'return_target') as return_target;
 select jsonb_set_lax('{"a":1,"b":2}', '{b}', null, null_value_treatment => 'delete_key') as delete_key;
 select jsonb_set_lax('{"a":1,"b":2}', '{b}', null, null_value_treatment => 'use_json_null') as use_json_null;
+
+-- multi-row cases with a constant NULL new_value
+select jsonb_set_lax(j, '{a}', null, true, t)
+from (values ('{"a":1}'::jsonb, 'use_json_null'),
+             ('{"a":1}'::jsonb, 'delete_key')) v(j, t);
+select jsonb_set_lax(j, '{a}', null, true, t)
+from (values ('{"a":1}'::jsonb, 'use_json_null'),
+             ('{"a":1}'::jsonb, 'return_target')) v(j, t);
+select jsonb_set_lax(j, '{a}', null)
+from (values ('{"a":1}'::jsonb), ('{"a":2}'::jsonb), ('{"a":3}'::jsonb)) v(j);
 
 \pset null ''
 

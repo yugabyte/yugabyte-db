@@ -56,7 +56,6 @@ typedef enum ParseExprKind
 	EXPR_KIND_UPDATE_SOURCE,	/* UPDATE assignment source item */
 	EXPR_KIND_UPDATE_TARGET,	/* UPDATE assignment target item */
 	EXPR_KIND_MERGE_WHEN,		/* MERGE WHEN [NOT] MATCHED condition */
-	EXPR_KIND_FOR_PORTION,		/* UPDATE/DELETE FOR PORTION OF item */
 	EXPR_KIND_GROUP_BY,			/* GROUP BY */
 	EXPR_KIND_ORDER_BY,			/* ORDER BY */
 	EXPR_KIND_DISTINCT_ON,		/* DISTINCT ON */
@@ -83,7 +82,6 @@ typedef enum ParseExprKind
 	EXPR_KIND_COPY_WHERE,		/* WHERE condition in COPY FROM */
 	EXPR_KIND_GENERATED_COLUMN, /* generation expression for a column */
 	EXPR_KIND_CYCLE_MARK,		/* cycle mark value */
-	EXPR_KIND_PROPGRAPH_PROPERTY,	/* derived property expression */
 } ParseExprKind;
 
 
@@ -97,24 +95,6 @@ typedef Node *(*CoerceParamHook) (ParseState *pstate, Param *param,
 								  Oid targetTypeId, int32 targetTypeMod,
 								  int location);
 
-/*
- * Namespace for the GRAPH_TABLE reference being transformed.
- *
- * Labels, properties and variables used in the GRAPH_TABLE form the namespace.
- * The names of the labels and properties used in GRAPH_TABLE are looked up using
- * the OID of the property graph. Variables are collected in a list as graph
- * patterns are transformed. This namespace is used to resolve label and property
- * references in the GRAPH_TABLE.
- */
-typedef struct GraphTableParseState
-{
-	Oid			graphid;		/* OID of the graph being referenced */
-	List	   *variables;		/* list of element pattern variables in
-								 * GRAPH_TABLE */
-	GraphElementPattern *cur_gep;	/* The element pattern being transformed.
-									 * NULL if no element pattern is being
-									 * transformed. */
-} GraphTableParseState;
 
 /*
  * State information used during parse analysis
@@ -194,9 +174,6 @@ typedef struct GraphTableParseState
  * p_resolve_unknowns: resolve unknown-type SELECT output columns as type TEXT
  * (this is true by default).
  *
- * p_graph_table_pstate: Namespace for the GRAPH_TABLE reference being
- * transformed, if any.
- *
  * p_hasAggs, p_hasWindowFuncs, etc: true if we've found any of the indicated
  * constructs in the query.
  *
@@ -239,8 +216,6 @@ struct ParseState
 									 * type text */
 
 	QueryEnvironment *p_queryEnv;	/* curr env, incl refs to enclosing env */
-	GraphTableParseState *p_graph_table_pstate; /* Current graph table
-												 * namespace, if any */
 
 	/* Flags telling about things found in the query: */
 	bool		p_hasAggs;

@@ -9,6 +9,8 @@
 
 #include "postgres_fe.h"
 
+#include "access/multixact.h"
+#include "access/transam.h"
 #include "catalog/pg_am_d.h"
 #include "catalog/pg_authid_d.h"
 #include "catalog/pg_class_d.h"
@@ -40,6 +42,7 @@ static void check_new_cluster_subscription_configuration(void);
 static void check_old_cluster_for_valid_slots(void);
 static void check_old_cluster_subscription_state(void);
 static void check_old_cluster_global_names(ClusterInfo *cluster);
+static void check_for_oldestxid_consistency(ClusterInfo *cluster);
 
 /* YB functions */
 static void yb_check_upgrade_compatibility_guc(PGconn *old_cluster_conn);
@@ -682,6 +685,9 @@ check_and_dump_old_cluster(void)
 		/* Yugabyte does not support prepared transactions, see #1125 */
 		check_for_prepared_transactions(&old_cluster);
 	if (!is_yugabyte_enabled())
+		/* YB: there is no clog or multixact data to protect */
+		check_for_oldestxid_consistency(&old_cluster);
+	if (!is_yugabyte_enabled())
 		/* YB: See comment above call to check_cluster_compatibility */
 		check_for_isn_and_int8_passing_mismatch(&old_cluster);
 
@@ -1071,7 +1077,7 @@ check_for_new_tablespace_dir(void)
 	int			tblnum;
 	char		new_tablespace_dir[MAXPGPATH];
 
-	prep_status("Checking for new cluster tablespace directories");
+	prep_status("Checking new cluster tablespace directories");
 
 	for (tblnum = 0; tblnum < new_cluster.num_tablespaces; tblnum++)
 	{
@@ -1951,10 +1957,10 @@ check_for_gist_inet_ops(ClusterInfo *cluster)
 		fclose(report.file);
 		if (!is_yugabyte_enabled())
 			pg_log(PG_REPORT, "fatal");
-		yb_fatal("Your installation contains indexes that use btree_gist's\n"
-				 "gist_inet_ops or gist_cidr_ops opclasses,\n"
-				 "which cannot be binary-upgraded.  Replace them with indexes\n"
-				 "that use the built-in GiST inet_ops opclass.\n"
+		yb_fatal("Your installation contains indexes that use the btree_gist extension's\n"
+				 "gist_inet_ops or gist_cidr_ops operator classes, which cannot be\n"
+				 "binary-upgraded.  Replace them with indexes that use the built-in GiST\n"
+				 "inet_ops operator class.\n"
 				 "A list of indexes with the problem is in the file:\n"
 				 "    %s", report.path);
 	}
@@ -2286,11 +2292,11 @@ check_for_unicode_update(ClusterInfo *cluster)
  * check_new_cluster_replication_slots()
  *
  * Validate the new cluster's readiness for migrating replication slots:
- * - Ensures no existing logical replication slots on the new cluster when
+ * - Ensures no existing logical replication slots in the new cluster when
  *   migrating logical slots.
- * - Ensure conflict detection slot does not exist on the new cluster when
+ * - Ensure conflict detection slot does not exist in the new cluster when
  *   migrating subscriptions with retain_dead_tuples enabled.
- * - Ensure that the parameter settings on the new cluster necessary for
+ * - Ensure that the parameter settings in the new cluster necessary for
  *   creating slots are sufficient.
  */
 static void
@@ -2302,6 +2308,7 @@ check_new_cluster_replication_slots(void)
 	int			nslots_on_new;
 	int			rdt_slot_on_new;
 	int			max_replication_slots;
+	char	   *output_plugin_libraries;
 	char	   *wal_level;
 	int			i_nslots_on_new;
 	int			i_rdt_slot_on_new;
@@ -2324,7 +2331,7 @@ check_new_cluster_replication_slots(void)
 
 	conn = connectToServer(&new_cluster, "template1");
 
-	prep_status("Checking for new cluster replication slots");
+	prep_status("Checking new cluster replication slots");
 
 	res = executeQueryOrDie(conn, "SELECT %s AS nslots_on_new, %s AS rdt_slot_on_new "
 							"FROM pg_catalog.pg_replication_slots",
@@ -2355,16 +2362,16 @@ check_new_cluster_replication_slots(void)
 	if (rdt_slot_on_new)
 	{
 		Assert(old_cluster.sub_retain_dead_tuples);
-		pg_fatal("The replication slot \"pg_conflict_detection\" already exists on the new cluster");
+		pg_fatal("replication slot \"%s\" already exists in the new cluster", "pg_conflict_detection");
 	}
 
 	PQclear(res);
 
 	res = executeQueryOrDie(conn, "SELECT setting FROM pg_settings "
-							"WHERE name IN ('wal_level', 'max_replication_slots') "
+							"WHERE name IN ('wal_level', 'output_plugin_libraries', 'max_replication_slots') "
 							"ORDER BY name DESC;");
 
-	if (PQntuples(res) != 2)
+	if (PQntuples(res) != 3)
 		pg_fatal("could not determine parameter settings on new cluster");
 
 	wal_level = PQgetvalue(res, 0, 0);
@@ -2374,18 +2381,96 @@ check_new_cluster_replication_slots(void)
 		pg_fatal("\"wal_level\" must be \"replica\" or \"logical\" but is set to \"%s\"",
 				 wal_level);
 
-	max_replication_slots = atoi(PQgetvalue(res, 1, 0));
+	output_plugin_libraries = PQgetvalue(res, 1, 0);
+
+	/*
+	 * Make sure the output_plugin_libraries setting covers all plugins needed
+	 * by any migrated slots.
+	 */
+	if (nslots_on_old > 0)
+	{
+		char	   *guc_copy = pg_strdup(output_plugin_libraries);
+		char	  **allowed_plugins;
+		char		output_path[MAXPGPATH];
+		FILE	   *script = NULL;
+
+		if (!SplitGUCList(guc_copy, ',', &allowed_plugins))
+		{
+			/*
+			 * Should not happen. (Frontend and backend GUC_LIST_QUOTE parsing
+			 * have to remain compatible for pg_dump at minimum.)
+			 */
+			pg_fatal("could not parse \"output_plugin_libraries\" setting '%s'",
+					 output_plugin_libraries);
+		}
+
+		snprintf(output_path, sizeof(output_path), "%s/%s",
+				 log_opts.basedir,
+				 "disallowed_output_plugins.txt");
+
+		for (int dbnum = 0; dbnum < old_cluster.dbarr.ndbs; dbnum++)
+		{
+			LogicalSlotInfoArr *slot_arr = &old_cluster.dbarr.dbs[dbnum].slot_arr;
+
+			for (int slotnum = 0; slotnum < slot_arr->nslots; slotnum++)
+			{
+				LogicalSlotInfo *slot = &slot_arr->slots[slotnum];
+				bool		allowed = false;
+
+				/*
+				 * We expect the output_plugin_libraries length to be small in
+				 * practice; O(n*m) shouldn't be a problem here.
+				 */
+				for (char **p = allowed_plugins; *p; p++)
+				{
+					if (strcmp(slot->plugin, *p) == 0)
+					{
+						allowed = true;
+						break;
+					}
+				}
+
+				if (!allowed)
+				{
+					if (script == NULL &&
+						(script = fopen_priv(output_path, "w")) == NULL)
+						pg_fatal("could not open file \"%s\": %m", output_path);
+
+					fprintf(script, "The slot \"%s\" uses plugin \"%s\"\n",
+							slot->slotname, slot->plugin);
+				}
+			}
+		}
+
+		if (script)
+		{
+			fclose(script);
+
+			pg_log(PG_REPORT, "fatal");
+			pg_fatal("Your installation contains logical replication slots with plugins\n"
+					 "that are not allowed by the new cluster's output_plugin_libraries\n"
+					 "setting. You can add trusted plugins to output_plugin_libraries\n"
+					 "and/or remove affected slots, and then restart the upgrade.\n"
+					 "A list of the problematic slots is in the file:\n"
+					 "    %s", output_path);
+		}
+
+		pg_free(allowed_plugins);
+		pg_free(guc_copy);
+	}
+
+	max_replication_slots = atoi(PQgetvalue(res, 2, 0));
 
 	if (old_cluster.sub_retain_dead_tuples &&
 		nslots_on_old + 1 > max_replication_slots)
 		pg_fatal("\"max_replication_slots\" (%d) must be greater than or equal to the number of "
-				 "logical replication slots on the old cluster plus one additional slot required "
+				 "logical replication slots in the old cluster plus one additional slot required "
 				 "for retaining conflict detection information (%d)",
 				 max_replication_slots, nslots_on_old + 1);
 
 	if (nslots_on_old > max_replication_slots)
 		pg_fatal("\"max_replication_slots\" (%d) must be greater than or equal to the number of "
-				 "logical replication slots (%d) on the old cluster",
+				 "logical replication slots (%d) in the old cluster",
 				 max_replication_slots, nslots_on_old);
 
 	PQclear(res);
@@ -2416,7 +2501,7 @@ check_new_cluster_subscription_configuration(void)
 	if (old_cluster.nsubs == 0)
 		return;
 
-	prep_status("Checking for new cluster configuration for subscriptions");
+	prep_status("Checking new cluster configuration for subscriptions");
 
 	conn = connectToServer(&new_cluster, "template1");
 
@@ -2429,7 +2514,7 @@ check_new_cluster_subscription_configuration(void)
 	max_active_replication_origins = atoi(PQgetvalue(res, 0, 0));
 	if (old_cluster.nsubs > max_active_replication_origins)
 		pg_fatal("\"max_active_replication_origins\" (%d) must be greater than or equal to the number of "
-				 "subscriptions (%d) on the old cluster",
+				 "subscriptions (%d) in the old cluster",
 				 max_active_replication_origins, old_cluster.nsubs);
 
 	PQclear(res);
@@ -2450,7 +2535,7 @@ check_old_cluster_for_valid_slots(void)
 	char		output_path[MAXPGPATH];
 	FILE	   *script = NULL;
 
-	prep_status("Checking for valid logical replication slots");
+	prep_status("Checking logical replication slots");
 
 	snprintf(output_path, sizeof(output_path), "%s/%s",
 			 log_opts.basedir,
@@ -2576,7 +2661,7 @@ check_old_cluster_subscription_state(void)
 	PGconn	   *conn;
 	int			ntup;
 
-	prep_status("Checking for subscription state");
+	prep_status("Checking subscription state");
 
 	report.file = NULL;
 	snprintf(report.path, sizeof(report.path), "%s/%s",
@@ -2684,7 +2769,7 @@ check_old_cluster_global_names(ClusterInfo *cluster)
 	char		output_path[MAXPGPATH];
 	int			count = 0;
 
-	prep_status("Checking names of databases, roles and tablespaces");
+	prep_status("Checking names of databases, roles, and tablespaces");
 
 	snprintf(output_path, sizeof(output_path), "%s/%s",
 			 log_opts.basedir,
@@ -2693,7 +2778,7 @@ check_old_cluster_global_names(ClusterInfo *cluster)
 	conn_template1 = connectToServer(cluster, "template1");
 
 	/*
-	 * Get database, user/role and tablespacenames from cluster.  Can't use
+	 * Get database, user/role and tablespace names from cluster.  Can't use
 	 * pg_authid because only superusers can view it.
 	 */
 	res = executeQueryOrDie(conn_template1,
@@ -2728,14 +2813,90 @@ check_old_cluster_global_names(ClusterInfo *cluster)
 		fclose(script);
 		if (!is_yugabyte_enabled())
 			pg_log(PG_REPORT, "fatal");
-		yb_fatal("All the database, role and tablespace names should have only valid characters. A newline or \n"
-				 "carriage return character is not allowed in these object names.  To fix this, please \n"
-				 "rename these names with valid names. \n"
-				 "To see all %d invalid object names, refer db_role_tablespace_invalid_names.txt file. \n"
-				 "    %s", count, output_path);
+		yb_fatal("Your installation contains databases, roles, or tablespaces with names\n"
+				 "with invalid characters (newline or carriage return).  To fix this,\n"
+				 "rename these objects.\n"
+				 "A list of all objects with invalid names is in the file:\n"
+				 "    %s", output_path);
 	}
 	else
 		check_ok();
+}
+
+/*
+ * check_for_oldestxid_consistency()
+ *
+ * Check that the oldestXid and oldestMultiXID values in the control file are
+ * consistent with the 'datfrozenxid' and 'datminmxid' values in pg_database.
+ *
+ * The invariant is that all 'datfrozenxid' and 'datminmxid' values must be
+ * greater than or equal to the values in the control file.  Otherwise you
+ * might already have truncated away clog or multixids that are still needed.
+ * If that has happened, we refuse the upgrade and require the administrator
+ * to deal with the situation first.
+ *
+ * One scenario where that is known to happen is if the cluster was upgraded
+ * in the past to version 9.3 with a buggy pg_upgrade version that didn't copy
+ * the oldestMulti value from the old cluster.  See commit a61daa14d5.
+ * That was a long time ago, though, so you're not very likely to encounter
+ * that bug in the wild anymore.  Therefore we don't assume that's the cause
+ * or try to do anything clever here.  In any case, it's still good to check
+ * to prevent further damage.
+ */
+static void
+check_for_oldestxid_consistency(ClusterInfo *cluster)
+{
+	PGconn	   *conn_template1;
+	PGresult   *dbres;
+	int			ntups;
+	int			i_datname;
+	int			i_datfrozenxid;
+	int			i_datminmxid;
+
+	/*
+	 * Version 9.2 didn't have datminmxid.  We could still cross-check
+	 * datfrozenxid, but doesn't seem worth it since we're primarily worried
+	 * about the rewriting of the multixact SLRUs losing data if the
+	 * oldestMulti is set incorrectly.
+	 */
+	if (GET_MAJOR_VERSION(old_cluster.major_version) < 903)
+		return;
+
+	prep_status("Checking oldestXID and oldestMultiXid consistency");
+
+	conn_template1 = connectToServer(cluster, "template1");
+
+	dbres = executeQueryOrDie(conn_template1,
+							  "SELECT datname, datfrozenxid, datminmxid "
+							  "FROM	pg_catalog.pg_database");
+
+	i_datname = PQfnumber(dbres, "datname");
+	i_datfrozenxid = PQfnumber(dbres, "datfrozenxid");
+	i_datminmxid = PQfnumber(dbres, "datminmxid");
+
+	ntups = PQntuples(dbres);
+	for (int dbnum = 0; dbnum < ntups; dbnum++)
+	{
+		char	   *datname = PQgetvalue(dbres, dbnum, i_datname);
+		TransactionId datfrozenxid = (TransactionId) str2uint(PQgetvalue(dbres, dbnum, i_datfrozenxid));
+		MultiXactId datminmxid = (MultiXactId) str2uint(PQgetvalue(dbres, dbnum, i_datminmxid));
+
+		if (TransactionIdPrecedes(datfrozenxid, cluster->controldata.chkpnt_oldstxid))
+		{
+			pg_fatal("oldestXID (%u) in the control file is newer than the datfrozenxid (%u) of database \"%s\"",
+					 cluster->controldata.chkpnt_oldstxid, datfrozenxid, datname);
+		}
+		if (MultiXactIdPrecedes(datminmxid, cluster->controldata.chkpnt_oldstMulti))
+		{
+			pg_fatal("oldestMultiXid (%u) in control file is newer than the datminmxid (%u) of database \"%s\"",
+					 cluster->controldata.chkpnt_oldstMulti, datminmxid, datname);
+		}
+	}
+
+	PQclear(dbres);
+	PQfinish(conn_template1);
+
+	check_ok();
 }
 
 /*

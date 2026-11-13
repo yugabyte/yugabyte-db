@@ -313,8 +313,6 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 		cmdtype = PROGRESS_COMMAND_BASEBACKUP;
 	else if (pg_strcasecmp(cmd, "COPY") == 0)
 		cmdtype = PROGRESS_COMMAND_COPY;
-	else if (pg_strcasecmp(cmd, "DATACHECKSUMS") == 0)
-		cmdtype = PROGRESS_COMMAND_DATACHECKSUMS;
 	else
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -1438,6 +1436,9 @@ pg_stat_get_db_checksum_failures(PG_FUNCTION_ARGS)
 	int64		result;
 	PgStat_StatDBEntry *dbentry;
 
+	if (!DataChecksumsEnabled())
+		PG_RETURN_NULL();
+
 	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) == NULL)
 		result = 0;
 	else
@@ -1452,6 +1453,9 @@ pg_stat_get_db_checksum_last_failure(PG_FUNCTION_ARGS)
 	Oid			dbid = PG_GETARG_OID(0);
 	TimestampTz result;
 	PgStat_StatDBEntry *dbentry;
+
+	if (!DataChecksumsEnabled())
+		PG_RETURN_NULL();
 
 	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) == NULL)
 		result = 0;
@@ -1591,10 +1595,10 @@ pg_stat_get_buf_alloc(PG_FUNCTION_ARGS)
 }
 
 /*
-* When adding a new column to the pg_stat_io view and the
-* pg_stat_get_backend_io() function, add a new enum value here above
-* IO_NUM_COLUMNS.
-*/
+ * When adding a new column to the pg_stat_io view and the
+ * pg_stat_get_backend_io() function, add a new enum value here above
+ * IO_NUM_COLUMNS.
+ */
 typedef enum io_stat_col
 {
 	IO_COL_INVALID = -1,
@@ -2015,7 +2019,7 @@ pg_stat_get_lock(PG_FUNCTION_ARGS)
 
 		values[i++] = CStringGetTextDatum(locktypename);
 		values[i++] = Int64GetDatum(lck_stats->waits);
-		values[i++] = Int64GetDatum(lck_stats->wait_time);
+		values[i++] = Float8GetDatum(pg_stat_us_to_ms(lck_stats->wait_time));
 		values[i++] = Int64GetDatum(lck_stats->fastpath_exceeded);
 		values[i] = TimestampTzGetDatum(lock_stats->stat_reset_timestamp);
 
@@ -2241,7 +2245,7 @@ pg_stat_reset_shared(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("unrecognized reset target: \"%s\"", target),
-				 errhint("Target must be \"archiver\", \"bgwriter\", \"checkpointer\", \"io\", \"recovery_prefetch\", \"slru\", or \"wal\".")));
+				 errhint("Target must be \"archiver\", \"bgwriter\", \"checkpointer\", \"io\", \"lock\", \"recovery_prefetch\", \"slru\", or \"wal\".")));
 
 	PG_RETURN_VOID();
 }

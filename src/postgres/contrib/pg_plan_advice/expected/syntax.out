@@ -65,13 +65,13 @@ EXPLAIN (COSTS OFF) SELECT 1;
    SEQ_SCAN(x#2) /* not matched */
 (3 rows)
 
-SET pg_plan_advice.advice = 'SEQ_SCAN (x/y)';
+SET pg_plan_advice.advice = 'SEQ_SCAN(x#1_0)';
 EXPLAIN (COSTS OFF) SELECT 1;
-            QUERY PLAN             
------------------------------------
+             QUERY PLAN             
+------------------------------------
  Result
  Supplied Plan Advice:
-   SEQ_SCAN(x/y) /* not matched */
+   SEQ_SCAN(x#10) /* not matched */
 (3 rows)
 
 SET pg_plan_advice.advice = '  SEQ_SCAN ( x / y . z )  ';
@@ -114,17 +114,31 @@ DETAIL:  Could not parse advice: syntax error at end of input
 SET pg_plan_advice.advice = 'SEQ_SCAN(#';
 ERROR:  invalid value for parameter "pg_plan_advice.advice": "SEQ_SCAN(#"
 DETAIL:  Could not parse advice: syntax error at or near "#"
+SET pg_plan_advice.advice = 'SEQ_SCAN(x#1_0_)';
+ERROR:  invalid value for parameter "pg_plan_advice.advice": "SEQ_SCAN(x#1_0_)"
+DETAIL:  Could not parse advice: trailing junk after numeric literal at or near "1_0_"
 SET pg_plan_advice.advice = '()';
 ERROR:  invalid value for parameter "pg_plan_advice.advice": "()"
 DETAIL:  Could not parse advice: syntax error at or near "("
 SET pg_plan_advice.advice = '123';
 ERROR:  invalid value for parameter "pg_plan_advice.advice": "123"
 DETAIL:  Could not parse advice: syntax error at or near "123"
+-- Out of range values.
+SET pg_plan_advice.advice = 'SEQ_SCAN(x#99999999999_99)';
+ERROR:  invalid value for parameter "pg_plan_advice.advice": "SEQ_SCAN(x#99999999999_99)"
+DETAIL:  Could not parse advice: integer out of range at or near "99999999999_99"
+-- Partition schema is missing.
+SET pg_plan_advice.advice = 'SEQ_SCAN(x/y)';
+ERROR:  invalid value for parameter "pg_plan_advice.advice": "SEQ_SCAN(x/y)"
+DETAIL:  Could not parse advice: syntax error at or near ")"
 -- Tags like SEQ_SCAN and NO_GATHER don't allow sublists at all; other tags,
 -- except for JOIN_ORDER, allow at most one level of sublist. Hence, these
 -- examples should error out.
 SET pg_plan_advice.advice = 'SEQ_SCAN((x))';
 ERROR:  invalid value for parameter "pg_plan_advice.advice": "SEQ_SCAN((x))"
+DETAIL:  Could not parse advice: syntax error at or near "("
+SET pg_plan_advice.advice = 'DO_NOT_SCAN((x))';
+ERROR:  invalid value for parameter "pg_plan_advice.advice": "DO_NOT_SCAN((x))"
 DETAIL:  Could not parse advice: syntax error at or near "("
 SET pg_plan_advice.advice = 'GATHER(((x)))';
 ERROR:  invalid value for parameter "pg_plan_advice.advice": "GATHER(((x)))"
@@ -155,13 +169,13 @@ EXPLAIN (COSTS OFF) SELECT 1;
    HASH_JOIN(y) /* not matched */
 (3 rows)
 
-SET pg_plan_advice.advice = '/* comment */ HASH_JOIN(y//*x*/z)';
+SET pg_plan_advice.advice = '/* comment */ HASH_JOIN(y//*x*/z.zz)';
 EXPLAIN (COSTS OFF) SELECT 1;
-             QUERY PLAN             
-------------------------------------
+              QUERY PLAN               
+---------------------------------------
  Result
  Supplied Plan Advice:
-   HASH_JOIN(y/z) /* not matched */
+   HASH_JOIN(y/z.zz) /* not matched */
 (3 rows)
 
 -- Unterminated comments.
@@ -190,6 +204,16 @@ DETAIL:  Could not parse advice: FOREIGN_JOIN targets must contain more than one
 SET pg_plan_advice.advice = 'FOREIGN_JOIN((a))';
 ERROR:  invalid value for parameter "pg_plan_advice.advice": "FOREIGN_JOIN((a))"
 DETAIL:  Could not parse advice: FOREIGN_JOIN targets must contain more than one relation identifier at or near ")"
+SET pg_plan_advice.advice = 'FOREIGN_JOIN(())';
+ERROR:  invalid value for parameter "pg_plan_advice.advice": "FOREIGN_JOIN(())"
+DETAIL:  Could not parse advice: FOREIGN_JOIN targets must contain more than one relation identifier at or near ")"
+-- Join order requires at least one relation identifier.
+SET pg_plan_advice.advice = 'JOIN_ORDER(())';
+ERROR:  invalid value for parameter "pg_plan_advice.advice": "JOIN_ORDER(())"
+DETAIL:  Could not parse advice: JOIN_ORDER targets must contain at least one relation identifier at or near ")"
+SET pg_plan_advice.advice = 'JOIN_ORDER(a ({}))';
+ERROR:  invalid value for parameter "pg_plan_advice.advice": "JOIN_ORDER(a ({}))"
+DETAIL:  Could not parse advice: JOIN_ORDER targets must contain at least one relation identifier at or near "}"
 -- Tag keywords used as alias names work fine, because the 'identifier'
 -- nonterminal accepts all token types.
 SET pg_plan_advice.advice = 'SEQ_SCAN(hash_join)';

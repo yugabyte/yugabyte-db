@@ -25,9 +25,10 @@ static bool have_iostats = false;
 
 /*
  * Check that stats have not been counted for any combination of IOObject,
- * IOContext, and IOOp which are not tracked for the passed-in BackendType. If
- * stats are tracked for this combination and IO times are non-zero, counts
- * should be non-zero.
+ * IOContext, and IOOp which are not tracked for the passed-in BackendType.
+ * Non-zero time with a zero operation count is allowed as there are cases
+ * where this may be appropriate -- like when a backend is waiting on IO
+ * initiated by another backend.
  *
  * The passed-in PgStat_BktypeIO must contain stats from the BackendType
  * specified by the second parameter. Caller is responsible for locking the
@@ -43,19 +44,10 @@ pgstat_bktype_io_stats_valid(PgStat_BktypeIO *backend_io,
 		{
 			for (int io_op = 0; io_op < IOOP_NUM_TYPES; io_op++)
 			{
-				/* we do track it */
-				if (pgstat_tracks_io_op(bktype, io_object, io_context, io_op))
-				{
-					/* ensure that if IO times are non-zero, counts are > 0 */
-					if (backend_io->times[io_object][io_context][io_op] != 0 &&
-						backend_io->counts[io_object][io_context][io_op] <= 0)
-						return false;
-
-					continue;
-				}
-
 				/* we don't track it, and it is not 0 */
-				if (backend_io->counts[io_object][io_context][io_op] != 0)
+				if (!pgstat_tracks_io_op(bktype, io_object, io_context, io_op) &&
+					(backend_io->counts[io_object][io_context][io_op] != 0 ||
+					 backend_io->times[io_object][io_context][io_op] != 0))
 					return false;
 			}
 		}
@@ -331,22 +323,22 @@ pgstat_io_snapshot_cb(void)
 }
 
 /*
-* IO statistics are not collected for all BackendTypes.
-*
-* The following BackendTypes do not participate in the cumulative stats
-* subsystem or do not perform IO on which we currently track:
-* - Dead-end backend because it is not connected to shared memory and
-*   doesn't do any IO
-* - Syslogger because it is not connected to shared memory
-* - Archiver because most relevant archiving IO is delegated to a
-*   specialized command or module
-*
-* Function returns true if BackendType participates in the cumulative stats
-* subsystem for IO and false if it does not.
-*
-* When adding a new BackendType, also consider adding relevant restrictions to
-* pgstat_tracks_io_object() and pgstat_tracks_io_op().
-*/
+ * IO statistics are not collected for all BackendTypes.
+ *
+ * The following BackendTypes do not participate in the cumulative stats
+ * subsystem or do not perform IO on which we currently track:
+ * - Dead-end backend because it is not connected to shared memory and
+ *   doesn't do any IO
+ * - Syslogger because it is not connected to shared memory
+ * - Archiver because most relevant archiving IO is delegated to a
+ *   specialized command or module
+ *
+ * Function returns true if BackendType participates in the cumulative stats
+ * subsystem for IO and false if it does not.
+ *
+ * When adding a new BackendType, also consider adding relevant restrictions to
+ * pgstat_tracks_io_object() and pgstat_tracks_io_op().
+ */
 bool
 pgstat_tracks_io_bktype(BackendType bktype)
 {
@@ -362,8 +354,6 @@ pgstat_tracks_io_bktype(BackendType bktype)
 		case B_LOGGER:
 			return false;
 
-		case B_DATACHECKSUMSWORKER_LAUNCHER:
-		case B_DATACHECKSUMSWORKER_WORKER:
 		case B_AUTOVAC_LAUNCHER:
 		case B_AUTOVAC_WORKER:
 		case B_BACKEND:
@@ -515,8 +505,8 @@ pgstat_tracks_io_op(BackendType bktype, IOObject io_object,
 		 (io_op == IOOP_EVICT || io_op == IOOP_HIT)))
 		return false;
 
-	if ((bktype == B_AUTOVAC_LAUNCHER || bktype == B_BG_WRITER ||
-		 bktype == B_CHECKPOINTER) && io_op == IOOP_EXTEND)
+	if ((bktype == B_BG_WRITER || bktype == B_CHECKPOINTER) &&
+		io_op == IOOP_EXTEND)
 		return false;
 
 	/*

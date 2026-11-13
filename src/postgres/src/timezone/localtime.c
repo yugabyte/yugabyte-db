@@ -86,7 +86,7 @@ static struct pg_tm *gmtsub(pg_time_t const *timep, int_fast32_t offset,
 							struct pg_tm *tmp);
 static bool increment_overflow(int *ip, int j);
 static bool increment_overflow_time(pg_time_t *tp, int_fast32_t j);
-static int_fast64_t leapcorr(struct state const *sp, pg_time_t);
+static int_fast64_t leapcorr(struct state const *sp, pg_time_t t);
 static struct pg_tm *timesub(pg_time_t const *timep,
 							 int_fast32_t offset, struct state const *sp,
 							 struct pg_tm *tmp);
@@ -201,7 +201,8 @@ union local_storage
 	/* We don't need the "fullname" member */
 };
 
-/* Load tz data from the file named NAME into *SP.  Read extended
+/*
+ * Load tz data from the file named NAME into *SP.  Read extended
  * format if DOEXTEND.  Use *LSP for temporary storage.  Return 0 on
  * success, an errno value on failure.
  * PG: If "canonname" is not NULL, then on success the canonical spelling of
@@ -578,7 +579,8 @@ tzloadbody(char const *name, char *canonname, struct state *sp, bool doextend,
 	return 0;
 }
 
-/* Load tz data from the file named NAME into *SP.  Read extended
+/*
+ * Load tz data from the file named NAME into *SP.  Read extended
  * format if DOEXTEND.  Return 0 on success, an errno value on failure.
  * PG: If "canonname" is not NULL, then on success the canonical spelling of
  * given name is stored there (the buffer must be > TZ_STRLEN_MAX bytes!).
@@ -586,17 +588,31 @@ tzloadbody(char const *name, char *canonname, struct state *sp, bool doextend,
 int
 tzload(char const *name, char *canonname, struct state *sp, bool doextend)
 {
-	union local_storage *lsp = malloc(sizeof *lsp);
+	/*
+	 * PG: by default, we allocate the "union local_storage" space via malloc,
+	 * since it's about 70kB which seems like a lot of stack space, and we're
+	 * hardly concerned about an extra malloc/free cycle here.  But under
+	 * USE_VALGRIND, put the variable on the stack, to intentionally increase
+	 * the amount of stack space allocated in the postmaster.  This prevents a
+	 * bad interaction between Valgrind and Python 3.14, for reasons that are
+	 * obscure and most likely no fault of ours.
+	 */
+	int			r;
+	union local_storage *lsp;
+#ifdef USE_VALGRIND
+	union local_storage ls;
 
+	lsp = &ls;
+#else
+	lsp = malloc(sizeof *lsp);
 	if (!lsp)
 		return errno;
-	else
-	{
-		int			err = tzloadbody(name, canonname, sp, doextend, lsp);
-
-		free(lsp);
-		return err;
-	}
+#endif
+	r = tzloadbody(name, canonname, sp, doextend, lsp);
+#ifndef USE_VALGRIND
+	free(lsp);
+#endif
+	return r;
 }
 
 static bool

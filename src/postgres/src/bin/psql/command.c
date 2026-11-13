@@ -249,7 +249,9 @@ HandleSlashCmds(PsqlScanState scan_state,
 	 * If we are in "restricted" mode, the only allowable backslash command is
 	 * \unrestrict (to exit restricted mode).
 	 */
-	if (restricted && strcmp(cmd, "unrestrict") != 0)
+	if (cmd == NULL)
+		status = PSQL_CMD_ERROR;
+	else if (restricted && strcmp(cmd, "unrestrict") != 0)
 	{
 		pg_log_error("backslash commands are restricted; only \\unrestrict is allowed");
 		status = PSQL_CMD_ERROR;
@@ -1056,7 +1058,7 @@ exec_command_d(PsqlScanState scan_state, bool active_branch, const char *cmd)
 					success = describeTableDetails(pattern, show_verbose, show_system);
 				else
 					/* standard listing of interesting things */
-					success = listTables("tvmsEG", NULL, show_verbose, show_system);
+					success = listTables("tvmsE", NULL, show_verbose, show_system);
 				break;
 			case 'A':
 				{
@@ -1199,7 +1201,6 @@ exec_command_d(PsqlScanState scan_state, bool active_branch, const char *cmd)
 			case 'i':
 			case 's':
 			case 'E':
-			case 'G':
 				success = listTables(&cmd[1], pattern, show_verbose, show_system);
 				break;
 			case 'r':
@@ -1943,10 +1944,8 @@ exec_command_getresults(PsqlScanState scan_state, bool active_branch)
 	if (active_branch)
 	{
 		char	   *opt;
-		int			num_results;
+		int			num_results = 0;
 
-		pset.send_mode = PSQL_SEND_GET_RESULTS;
-		status = PSQL_CMD_SEND;
 		opt = psql_scan_slash_option(scan_state, OT_NORMAL, NULL, false);
 
 		pset.requested_results = 0;
@@ -1959,8 +1958,11 @@ exec_command_getresults(PsqlScanState scan_state, bool active_branch)
 				pg_log_error("\\getresults: invalid number of requested results");
 				return PSQL_CMD_ERROR;
 			}
-			pset.requested_results = num_results;
 		}
+
+		pset.requested_results = num_results;
+		pset.send_mode = PSQL_SEND_GET_RESULTS;
+		status = PSQL_CMD_SEND;
 	}
 	else
 		ignore_slash_options(scan_state);
@@ -2394,7 +2396,7 @@ exec_command_lo(PsqlScanState scan_state, bool active_branch, const char *cmd)
 
 		if (strcmp(cmd + 3, "export") == 0)
 		{
-			if (!opt2)
+			if (!opt1 || !opt2)
 			{
 				pg_log_error("\\%s: missing required argument", cmd);
 				success = false;
@@ -2801,6 +2803,12 @@ exec_command_restrict(PsqlScanState scan_state, bool active_branch,
 
 		Assert(!restricted);
 
+		/*
+		 * Unlike \unrestrict, this argument may safely undergo backquote and
+		 * variable expansion: HandleSlashCmds() rejects \restrict in
+		 * restricted mode before its argument is scanned, so we only get here
+		 * when the input could execute such things anyway.
+		 */
 		opt = psql_scan_slash_option(scan_state, OT_NORMAL, NULL, true);
 		if (opt == NULL || opt[0] == '\0')
 		{
@@ -3211,7 +3219,7 @@ exec_command_unrestrict(PsqlScanState scan_state, bool active_branch,
 	{
 		char	   *opt;
 
-		opt = psql_scan_slash_option(scan_state, OT_NORMAL, NULL, true);
+		opt = psql_scan_slash_option(scan_state, OT_WHOLE_LINE, NULL, true);
 		if (opt == NULL || opt[0] == '\0')
 		{
 			pg_log_error("\\%s: missing required argument", cmd);
@@ -3239,7 +3247,7 @@ exec_command_unrestrict(PsqlScanState scan_state, bool active_branch,
 		}
 	}
 	else
-		ignore_slash_options(scan_state);
+		ignore_slash_whole_line(scan_state);
 
 	return PSQL_CMD_SKIP_LINE;
 }
@@ -3812,8 +3820,8 @@ is_branching_command(const char *cmd)
  * Prepare to possibly restore query buffer to its current state
  * (cf. discard_query_text).
  *
- * We need to remember the length of the query buffer, and the lexer's
- * notion of the parenthesis nesting depth.
+ * We need to remember the length of the query buffer, and assorted
+ * lexer internal state such as parenthesis nesting depth.
  */
 static void
 save_query_text_state(PsqlScanState scan_state, ConditionalStack cstack,
@@ -3821,8 +3829,8 @@ save_query_text_state(PsqlScanState scan_state, ConditionalStack cstack,
 {
 	if (query_buf)
 		conditional_stack_set_query_len(cstack, query_buf->len);
-	conditional_stack_set_paren_depth(cstack,
-									  psql_scan_get_paren_depth(scan_state));
+	conditional_stack_set_lex_state(cstack,
+									psql_scan_get_lex_state(scan_state));
 }
 
 /*
@@ -3831,9 +3839,7 @@ save_query_text_state(PsqlScanState scan_state, ConditionalStack cstack,
  * We must discard data that was appended to query_buf during an inactive
  * \if branch.  We don't have to do anything there if there's no query_buf.
  *
- * Also, reset the lexer state to the same paren depth there was before.
- * (The rest of its state doesn't need attention, since we could not be
- * inside a comment or literal or partial token.)
+ * Also, reset the lexer's state to what it was before.
  */
 static void
 discard_query_text(PsqlScanState scan_state, ConditionalStack cstack,
@@ -3847,8 +3853,8 @@ discard_query_text(PsqlScanState scan_state, ConditionalStack cstack,
 		query_buf->len = new_len;
 		query_buf->data[new_len] = '\0';
 	}
-	psql_scan_set_paren_depth(scan_state,
-							  conditional_stack_get_paren_depth(cstack));
+	psql_scan_set_lex_state(scan_state,
+							conditional_stack_get_lex_state(cstack));
 }
 
 /*
@@ -4590,7 +4596,6 @@ SyncVariables(void)
 	char		vbuf[32];
 	const char *server_version;
 	char	   *service_name;
-	char	   *service_file;
 
 	/* get stuff from connection */
 	pset.encoding = PQclientEncoding(pset.db);
@@ -4609,11 +4614,6 @@ SyncVariables(void)
 	SetVariable(pset.vars, "SERVICE", service_name);
 	if (service_name)
 		pg_free(service_name);
-
-	service_file = get_conninfo_value("servicefile");
-	SetVariable(pset.vars, "SERVICEFILE", service_file);
-	if (service_file)
-		pg_free(service_file);
 
 	/* this bit should match connection_warnings(): */
 	/* Try to get full text form of version, might include "devel" etc */
@@ -4644,7 +4644,6 @@ UnsyncVariables(void)
 {
 	SetVariable(pset.vars, "DBNAME", NULL);
 	SetVariable(pset.vars, "SERVICE", NULL);
-	SetVariable(pset.vars, "SERVICEFILE", NULL);
 	SetVariable(pset.vars, "USER", NULL);
 	SetVariable(pset.vars, "HOST", NULL);
 	SetVariable(pset.vars, "PORT", NULL);
@@ -5697,6 +5696,10 @@ savePsetInfo(const printQueryOpt *popt)
 		save->topt.tableAttr = pg_strdup(popt->topt.tableAttr);
 	if (popt->nullPrint)
 		save->nullPrint = pg_strdup(popt->nullPrint);
+	if (popt->truePrint)
+		save->truePrint = pg_strdup(popt->truePrint);
+	if (popt->falsePrint)
+		save->falsePrint = pg_strdup(popt->falsePrint);
 	if (popt->title)
 		save->title = pg_strdup(popt->title);
 
@@ -5724,6 +5727,8 @@ restorePsetInfo(printQueryOpt *popt, printQueryOpt *save)
 	free(popt->topt.recordSep.separator);
 	free(popt->topt.tableAttr);
 	free(popt->nullPrint);
+	free(popt->truePrint);
+	free(popt->falsePrint);
 	free(popt->title);
 
 	/*
@@ -6219,7 +6224,7 @@ lookup_object_oid(EditableObjectType obj_type, const char *desc,
 			 * query to retrieve the function's OID using a cast to regproc or
 			 * regprocedure (as appropriate).
 			 */
-			printfPQExpBuffer(query, "/* %s */\n", _("Get function's OID"));
+			addQueryComment(query, "Get function's OID");
 			appendPQExpBufferStr(query, "SELECT ");
 			appendStringLiteralConn(query, desc, pset.db);
 			appendPQExpBuffer(query, "::pg_catalog.%s::pg_catalog.oid",
@@ -6233,7 +6238,7 @@ lookup_object_oid(EditableObjectType obj_type, const char *desc,
 			 * this code doesn't check if the relation is actually a view.
 			 * We'll detect that in get_create_object_cmd().
 			 */
-			printfPQExpBuffer(query, "/* %s */\n", _("Get view's OID"));
+			addQueryComment(query, "Get view's OID");
 			appendPQExpBufferStr(query, "SELECT ");
 			appendStringLiteralConn(query, desc, pset.db);
 			appendPQExpBufferStr(query, "::pg_catalog.regclass::pg_catalog.oid");
@@ -6275,7 +6280,7 @@ get_create_object_cmd(EditableObjectType obj_type, Oid oid,
 	switch (obj_type)
 	{
 		case EditableFunction:
-			printfPQExpBuffer(query, "/* %s */\n", _("Get function's definition"));
+			addQueryComment(query, "Get function's definition");
 			appendPQExpBuffer(query,
 							  "SELECT pg_catalog.pg_get_functiondef(%u)",
 							  oid);
@@ -6295,7 +6300,7 @@ get_create_object_cmd(EditableObjectType obj_type, Oid oid,
 			 * separately.  Materialized views (introduced in 9.3) may have
 			 * arbitrary storage parameter reloptions.
 			 */
-			printfPQExpBuffer(query, "/* %s */\n", _("Get view's definition and details"));
+			addQueryComment(query, "Get view's definition and details");
 			if (pset.sversion >= 90400)
 			{
 				appendPQExpBuffer(query,

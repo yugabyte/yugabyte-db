@@ -583,12 +583,12 @@ pg_base64_decode_internal(const char *src, size_t len, char *dst, bool url)
 		}
 	}
 
-	if (pos == 2)
+	if (url && pos == 2)
 	{
 		buf <<= 12;
 		*p++ = (buf >> 16) & 0xFF;
 	}
-	else if (pos == 3)
+	else if (url && pos == 3)
 	{
 		buf <<= 6;
 		*p++ = (buf >> 16) & 0xFF;

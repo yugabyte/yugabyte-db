@@ -17,6 +17,7 @@
 #include "postgres.h"
 
 #include "access/heapam.h"
+#include "access/relation.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_collation_d.h"
@@ -234,7 +235,7 @@ expand_stxkind(HeapTuple tup, StakindFlags *enabled)
 								   Anum_pg_statistic_ext_stxkind);
 	arr = DatumGetArrayTypeP(datum);
 	if (ARR_NDIM(arr) != 1 || ARR_HASNULL(arr) || ARR_ELEMTYPE(arr) != CHAROID)
-		elog(ERROR, "stxkind is not a one-dimension char array");
+		elog(ERROR, "stxkind is not a one-dimensional char array");
 
 	kinds = (char *) ARR_DATA_PTR(arr);
 
@@ -320,6 +321,7 @@ extended_statistics_update(FunctionCallInfo fcinfo)
 	char	   *stxname;
 	bool		inherited;
 	Relation	pg_stext = NULL;
+	Relation	targetrel = NULL;
 	HeapTuple	tup = NULL;
 
 	StakindFlags enabled = {false, false, false, false};
@@ -395,6 +397,16 @@ extended_statistics_update(FunctionCallInfo fcinfo)
 	relid = RangeVarGetRelidExtended(makeRangeVar(relnspname, relname, -1),
 									 ShareUpdateExclusiveLock, 0,
 									 RangeVarCallbackForStats, &locked_table);
+
+	/*
+	 * Parsing the MCV and expression inputs below can run user-defined code
+	 * (such as a domain's CHECK constraint) that alters a column's type
+	 * within our own transaction, which our lock does not prevent.  Hold the
+	 * relation open so that such a reentrant ALTER TABLE is rejected by
+	 * CheckTableNotInUse().  NoLock is fine here as we already hold
+	 * ShareUpdateExclusiveLock on it.
+	 */
+	targetrel = relation_open(relid, NoLock);
 
 	nspoid = get_namespace_oid(nspname, true);
 	if (nspoid == InvalidOid)
@@ -520,7 +532,7 @@ extended_statistics_update(FunctionCallInfo fcinfo)
 		{
 			ereport(WARNING,
 					errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					errmsg("cannot specify parameters \"%s\", \"%s\" or \"%s\"",
+					errmsg("cannot specify parameters \"%s\", \"%s\", or \"%s\"",
 						   extarginfo[MOST_COMMON_VALS_ARG].argname,
 						   extarginfo[MOST_COMMON_FREQS_ARG].argname,
 						   extarginfo[MOST_COMMON_BASE_FREQS_ARG].argname),
@@ -544,7 +556,7 @@ extended_statistics_update(FunctionCallInfo fcinfo)
 		{
 			ereport(WARNING,
 					errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					errmsg("could not use \"%s\", \"%s\" and \"%s\": missing one or more parameters",
+					errmsg("could not use \"%s\", \"%s\", and \"%s\": missing one or more parameters",
 						   extarginfo[MOST_COMMON_VALS_ARG].argname,
 						   extarginfo[MOST_COMMON_FREQS_ARG].argname,
 						   extarginfo[MOST_COMMON_BASE_FREQS_ARG].argname));
@@ -571,7 +583,7 @@ extended_statistics_update(FunctionCallInfo fcinfo)
 
 	/*
 	 * Either of these statistic types requires that we supply a semi-filled
-	 * VacAttrStatP array.
+	 * VacAttrStatsP array.
 	 *
 	 * It is not possible to use the existing lookup_var_attr_stats() and
 	 * examine_attribute() because these functions will skip attributes where
@@ -586,8 +598,8 @@ extended_statistics_update(FunctionCallInfo fcinfo)
 
 		/*
 		 * The leading stxkeys are attribute numbers up through numattnums.
-		 * These keys must be in ascending AttNumber order, but we do not rely
-		 * on that.
+		 * These keys must be in ascending AttrNumber order, but we do not
+		 * rely on that.
 		 */
 		for (int i = 0; i < numattnums; i++)
 		{
@@ -724,7 +736,7 @@ extended_statistics_update(FunctionCallInfo fcinfo)
 		/*
 		 * Generate the expressions array.
 		 *
-		 * The attytypids, attytypmods, and atttypcolls arrays have all the
+		 * The atttypids, atttypmods, and atttypcolls arrays have all the
 		 * regular attributes listed first, so we can pass those arrays with a
 		 * start point after the last regular attribute.  There are numexprs
 		 * elements remaining.
@@ -749,9 +761,22 @@ extended_statistics_update(FunctionCallInfo fcinfo)
 			success = false;
 	}
 
+	/*
+	 * The user-defined code run while parsing the inputs above can also drop
+	 * the statistics object itself, which holding the relation open does not
+	 * prevent.  The object must not go away in the middle of restoring its
+	 * statistics, so error out, which also rolls back the drop.
+	 */
+	if (!SearchSysCacheExists1(STATEXTOID, ObjectIdGetDatum(stxform->oid)))
+		ereport(ERROR,
+				errcode(ERRCODE_UNDEFINED_OBJECT),
+				errmsg("could not restore extended statistics object \"%s.%s\": it was dropped during the import",
+					   nspname, stxname));
+
 	upsert_pg_statistic_ext_data(values, nulls, replaces);
 
 cleanup:
+	relation_close(targetrel, NoLock);
 	if (HeapTupleIsValid(tup))
 		heap_freetuple(tup);
 	if (pg_stext != NULL)
@@ -851,6 +876,21 @@ import_mcv(const ArrayType *mcv_arr, const ArrayType *freqs_arr,
 	 * the reference array for determining their length.
 	 */
 	nitems = ARR_DIMS(mcv_arr)[0];
+
+	/*
+	 * Reject a MCV list larger than what statext_mcv_deserialize() is able to
+	 * accept.
+	 */
+	if (nitems > STATS_MCVLIST_MAX_ITEMS)
+	{
+		ereport(WARNING,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("could not parse array \"%s\": number of items (%d) exceeds maximum (%d)",
+					   extarginfo[MOST_COMMON_VALS_ARG].argname,
+					   nitems, STATS_MCVLIST_MAX_ITEMS));
+		goto mcv_error;
+	}
+
 	if (!check_mcvlist_array(freqs_arr, MOST_COMMON_FREQS_ARG, 1, nitems) ||
 		!check_mcvlist_array(base_freqs_arr, MOST_COMMON_BASE_FREQS_ARG, 1, nitems))
 	{
@@ -886,7 +926,8 @@ key_in_expr_argnames(JsonbValue *key)
 	Assert(key->type == jbvString);
 	for (int i = 0; i < NUM_ATTRIBUTE_STATS_ELEMS; i++)
 	{
-		if (strncmp(extexprargname[i], key->val.string.val, key->val.string.len) == 0)
+		if (strlen(extexprargname[i]) == key->val.string.len &&
+			strncmp(extexprargname[i], key->val.string.val, key->val.string.len) == 0)
 			return true;
 	}
 	return false;
@@ -929,8 +970,8 @@ check_all_expr_argnames_valid(JsonbContainer *cont, AttrNumber exprnum)
 		Assert(jitok == WJB_KEY);
 		Assert(jkey.type == jbvString);
 
-		/* A value must follow the key */
-		jitok = JsonbIteratorNext(&jbit, &jval, false);
+		/* A value must follow the key.  Skip nested containers. */
+		jitok = JsonbIteratorNext(&jbit, &jval, true);
 		Assert(jitok == WJB_VALUE);
 
 		/*
@@ -944,14 +985,10 @@ check_all_expr_argnames_valid(JsonbContainer *cont, AttrNumber exprnum)
 
 		if (!key_in_expr_argnames(&jkey))
 		{
-			char	   *bad_element_name = jbv_string_get_cstr(&jkey);
-
 			ereport(WARNING,
 					errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					errmsg("could not import element in expression %d: invalid key name",
 						   exprnum));
-
-			pfree(bad_element_name);
 			all_keys_valid = false;
 		}
 	}
@@ -1017,7 +1054,7 @@ jbv_to_infunc_datum(JsonbValue *jval, PGFunction func, AttrNumber exprnum,
 }
 
 /*
- * Build an array datum with element type elemtypid from a text datum, used as
+ * Build an array datum with element type typid from a text datum, used as
  * value of an attribute in a pg_statistic tuple.
  *
  * If an error is encountered, capture it, and reduce the elevel to WARNING.
@@ -1028,7 +1065,6 @@ static Datum
 array_in_safe(FmgrInfo *array_in, const char *s, Oid typid, int32 typmod,
 			  AttrNumber exprnum, const char *element_name, bool *ok)
 {
-	LOCAL_FCINFO(fcinfo, 3);
 	Datum		result;
 
 	ErrorSaveContext escontext = {
@@ -1037,17 +1073,6 @@ array_in_safe(FmgrInfo *array_in, const char *s, Oid typid, int32 typmod,
 	};
 
 	*ok = false;
-	InitFunctionCallInfoData(*fcinfo, array_in, 3, InvalidOid,
-							 (Node *) &escontext, NULL);
-
-	fcinfo->args[0].value = CStringGetDatum(s);
-	fcinfo->args[0].isnull = false;
-	fcinfo->args[1].value = ObjectIdGetDatum(typid);
-	fcinfo->args[1].isnull = false;
-	fcinfo->args[2].value = Int32GetDatum(typmod);
-	fcinfo->args[2].isnull = false;
-
-	result = FunctionCallInvoke(fcinfo);
 
 	/*
 	 * If the array_in function returned an error, we will want to report that
@@ -1055,7 +1080,8 @@ array_in_safe(FmgrInfo *array_in, const char *s, Oid typid, int32 typmod,
 	 * Overwriting the existing hint (if any) is not ideal, and an error
 	 * context would only work for level >= ERROR.
 	 */
-	if (escontext.error_occurred)
+	if (!InputFunctionCallSafe(array_in, (char *) s, typid, typmod,
+							   (Node *) &escontext, &result))
 	{
 		StringInfoData hint_str;
 
@@ -1067,6 +1093,15 @@ array_in_safe(FmgrInfo *array_in, const char *s, Oid typid, int32 typmod,
 		escontext.error_data->hint = hint_str.data;
 		ThrowErrorData(escontext.error_data);
 		pfree(hint_str.data);
+		return (Datum) 0;
+	}
+
+	if (ARR_NDIM(DatumGetArrayTypeP(result)) != 1)
+	{
+		ereport(WARNING,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("could not import element \"%s\" in expression %d: must be a one-dimensional array",
+						element_name, exprnum)));
 		return (Datum) 0;
 	}
 
@@ -1091,7 +1126,7 @@ array_in_safe(FmgrInfo *array_in, const char *s, Oid typid, int32 typmod,
  * still return a legit tuple datum.
  *
  * Set pg_statistic_ok to true if all of the values found in the container
- * were imported without issue.  pg_statistic_ok is swicthed to "true" once
+ * were imported without issue.  pg_statistic_ok is switched to "true" once
  * the full pg_statistic tuple has been built and validated.
  */
 static Datum
@@ -1101,7 +1136,7 @@ import_pg_statistic(Relation pgsd, JsonbContainer *cont,
 					bool *pg_statistic_ok)
 {
 	const char *argname = extarginfo[EXPRESSIONS_ARG].argname;
-	TypeCacheEntry *typcache;
+	TypeCacheEntry *basetypcache;
 	Datum		values[Natts_pg_statistic];
 	bool		nulls[Natts_pg_statistic];
 	bool		replaces[Natts_pg_statistic];
@@ -1109,6 +1144,7 @@ import_pg_statistic(Relation pgsd, JsonbContainer *cont,
 	Datum		pgstdat = (Datum) 0;
 	Oid			elemtypid = InvalidOid;
 	Oid			elemeqopr = InvalidOid;
+	Oid			rtypid = InvalidOid;
 	bool		found[NUM_ATTRIBUTE_STATS_ELEMS] = {0};
 	JsonbValue	val[NUM_ATTRIBUTE_STATS_ELEMS] = {0};
 
@@ -1150,7 +1186,7 @@ import_pg_statistic(Relation pgsd, JsonbContainer *cont,
 				ereport(WARNING,
 						errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						errmsg("could not parse \"%s\": invalid element in expression %d", argname, exprnum),
-						errhint("Value of element \"%s\" must be type a null or a string.", s));
+						errhint("Value of element \"%s\" must be a null or a string.", s));
 				goto pg_statistic_error;
 		}
 	}
@@ -1207,7 +1243,13 @@ import_pg_statistic(Relation pgsd, JsonbContainer *cont,
 	}
 
 	/* This finds the right operators even if atttypid is a domain */
-	typcache = lookup_type_cache(typid, TYPECACHE_LT_OPR | TYPECACHE_EQ_OPR);
+	basetypcache = lookup_type_cache(typid, TYPECACHE_LT_OPR |
+									 TYPECACHE_EQ_OPR |
+									 TYPECACHE_DOMAIN_BASE_INFO);
+	if (OidIsValid(basetypcache->domainBaseType))
+		basetypcache = lookup_type_cache(basetypcache->domainBaseType,
+										 TYPECACHE_LT_OPR |
+										 TYPECACHE_EQ_OPR);
 
 	statatt_init_empty_tuple(InvalidOid, InvalidAttrNumber, false,
 							 values, nulls, replaces);
@@ -1216,7 +1258,7 @@ import_pg_statistic(Relation pgsd, JsonbContainer *cont,
 	 * Special case: collation for tsvector is DEFAULT_COLLATION_OID. See
 	 * compute_tsvector_stats().
 	 */
-	if (typid == TSVECTOROID)
+	if (basetypcache->type_id == TSVECTOROID)
 		typcoll = DEFAULT_COLLATION_OID;
 
 	/*
@@ -1226,8 +1268,7 @@ import_pg_statistic(Relation pgsd, JsonbContainer *cont,
 	 */
 	if (found[MOST_COMMON_ELEMS_ELEM] || found[ELEM_COUNT_HISTOGRAM_ELEM])
 	{
-		if (!statatt_get_elem_type(typid, typcache->typtype,
-								   &elemtypid, &elemeqopr))
+		if (!statatt_get_elem_type(basetypcache, &elemtypid, &elemeqopr))
 		{
 			ereport(WARNING,
 					errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -1245,8 +1286,7 @@ import_pg_statistic(Relation pgsd, JsonbContainer *cont,
 		found[RANGE_EMPTY_FRAC_ELEM] ||
 		found[RANGE_BOUNDS_HISTOGRAM_ELEM])
 	{
-		if (typcache->typtype != TYPTYPE_RANGE &&
-			typcache->typtype != TYPTYPE_MULTIRANGE)
+		if (!statatt_get_range_type(basetypcache, &rtypid))
 		{
 			ereport(WARNING,
 					errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -1307,10 +1347,6 @@ import_pg_statistic(Relation pgsd, JsonbContainer *cont,
 	 * if they aren't then we need to reject that stakind completely.
 	 * Currently we go a step further and reject the expression array
 	 * completely.
-	 *
-	 * Once it is established that the pairs are in NULL/NOT-NULL alignment,
-	 * we can test either expr_nulls[] value to see if the stakind has
-	 * value(s) that we can set or not.
 	 */
 
 	if (found[MOST_COMMON_VALS_ELEM])
@@ -1336,10 +1372,27 @@ import_pg_statistic(Relation pgsd, JsonbContainer *cont,
 
 		/* Only set the slot if both datums have been built */
 		if (val_ok && num_ok)
+		{
+			ArrayType  *vals_arr = DatumGetArrayTypeP(stavalues);
+			ArrayType  *nums_arr = DatumGetArrayTypeP(stanumbers);
+			int			nvals = ARR_DIMS(vals_arr)[0];
+			int			nnums = ARR_DIMS(nums_arr)[0];
+
+			if (nvals != nnums)
+			{
+				ereport(WARNING,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("could not parse \"%s\": incorrect number of elements (same as \"%s\" required)",
+								"most_common_vals",
+								"most_common_freqs")));
+				goto pg_statistic_error;
+			}
+
 			statatt_set_slot(values, nulls, replaces,
 							 STATISTIC_KIND_MCV,
-							 typcache->eq_opr, typcoll,
+							 basetypcache->eq_opr, typcoll,
 							 stanumbers, false, stavalues, false);
+		}
 		else
 			goto pg_statistic_error;
 	}
@@ -1359,7 +1412,7 @@ import_pg_statistic(Relation pgsd, JsonbContainer *cont,
 		if (val_ok)
 			statatt_set_slot(values, nulls, replaces,
 							 STATISTIC_KIND_HISTOGRAM,
-							 typcache->lt_opr, typcoll,
+							 basetypcache->lt_opr, typcoll,
 							 0, true, stavalues, false);
 		else
 			goto pg_statistic_error;
@@ -1378,7 +1431,7 @@ import_pg_statistic(Relation pgsd, JsonbContainer *cont,
 
 			statatt_set_slot(values, nulls, replaces,
 							 STATISTIC_KIND_CORRELATION,
-							 typcache->lt_opr, typcoll,
+							 basetypcache->lt_opr, typcoll,
 							 stanumbers, false, 0, true);
 		}
 		else
@@ -1449,14 +1502,8 @@ import_pg_statistic(Relation pgsd, JsonbContainer *cont,
 		Datum		stavalues;
 		bool		val_ok = false;
 		char	   *s;
-		Oid			rtypid = typid;
 
-		/*
-		 * If it's a multirange, step down to the range type, as is done by
-		 * multirange_typanalyze().
-		 */
-		if (type_is_multirange(typid))
-			rtypid = get_multirange_range(typid);
+		Assert(OidIsValid(rtypid));
 
 		s = jbv_string_get_cstr(&val[RANGE_BOUNDS_HISTOGRAM_ELEM]);
 
@@ -1570,7 +1617,7 @@ import_expressions(Relation pgsd, int numexprs,
 		ereport(WARNING,
 				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				errmsg("could not parse \"%s\": incorrect number of elements (%d required)",
-					   argname, num_root_elements));
+					   argname, numexprs));
 		goto exprs_error;
 	}
 
@@ -1794,6 +1841,7 @@ pg_clear_extended_stats(PG_FUNCTION_ARGS)
 	 */
 	if (stxform->stxrelid != relid)
 	{
+		heap_freetuple(tup);
 		table_close(pg_stext, RowExclusiveLock);
 		ereport(WARNING,
 				errcode(ERRCODE_INVALID_PARAMETER_VALUE),

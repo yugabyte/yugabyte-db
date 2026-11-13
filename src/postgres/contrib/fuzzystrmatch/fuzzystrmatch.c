@@ -100,9 +100,11 @@ soundex_code(char letter)
 ****************************************************************************/
 
 
-/*	I add modifications to the traditional metaphone algorithm that you
-	might find in books.  Define this if you want metaphone to behave
-	traditionally */
+/*
+ * I add modifications to the traditional metaphone algorithm that you
+ * might find in books.  Define this if you want metaphone to behave
+ * traditionally
+ */
 #undef USE_TRADITIONAL_METAPHONE
 
 /* Special encodings */
@@ -317,8 +319,10 @@ metaphone(PG_FUNCTION_ARGS)
  * function (palloc, etc).
  */
 
-/* I suppose I could have been using a character pointer instead of
- * accessing the array directly... */
+/*
+ * I suppose I could have been using a character pointer instead of
+ * accessing the array directly...
+ */
 
 /* Look at the next letter in the word */
 #define Next_Letter (pg_ascii_toupper((unsigned char) word[w_idx+1]))

@@ -1312,6 +1312,29 @@ numeric		(PG_FUNCTION_ARGS)
 	PG_RETURN_NUMERIC(new);
 }
 
+/*
+ * make_numeric_typmod_safe() -
+ *
+ *	Validate a numeric precision/scale and pack them into a typmod value,
+ *	with soft error handling.
+ */
+int32
+make_numeric_typmod_safe(int32 precision, int32 scale, Node *escontext)
+{
+	if (precision < 1 || precision > NUMERIC_MAX_PRECISION)
+		ereturn(escontext, -1,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("NUMERIC precision %d must be between 1 and %d",
+						precision, NUMERIC_MAX_PRECISION)));
+	if (scale < NUMERIC_MIN_SCALE || scale > NUMERIC_MAX_SCALE)
+		ereturn(escontext, -1,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("NUMERIC scale %d must be between %d and %d",
+						scale, NUMERIC_MIN_SCALE, NUMERIC_MAX_SCALE)));
+
+	return make_numeric_typmod(precision, scale);
+}
+
 Datum
 numerictypmodin(PG_FUNCTION_ARGS)
 {
@@ -1323,28 +1346,11 @@ numerictypmodin(PG_FUNCTION_ARGS)
 	tl = ArrayGetIntegerTypmods(ta, &n);
 
 	if (n == 2)
-	{
-		if (tl[0] < 1 || tl[0] > NUMERIC_MAX_PRECISION)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("NUMERIC precision %d must be between 1 and %d",
-							tl[0], NUMERIC_MAX_PRECISION)));
-		if (tl[1] < NUMERIC_MIN_SCALE || tl[1] > NUMERIC_MAX_SCALE)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("NUMERIC scale %d must be between %d and %d",
-							tl[1], NUMERIC_MIN_SCALE, NUMERIC_MAX_SCALE)));
-		typmod = make_numeric_typmod(tl[0], tl[1]);
-	}
+		typmod = make_numeric_typmod_safe(tl[0], tl[1], NULL);
 	else if (n == 1)
 	{
-		if (tl[0] < 1 || tl[0] > NUMERIC_MAX_PRECISION)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("NUMERIC precision %d must be between 1 and %d",
-							tl[0], NUMERIC_MAX_PRECISION)));
 		/* scale defaults to zero */
-		typmod = make_numeric_typmod(tl[0], 0);
+		typmod = make_numeric_typmod_safe(tl[0], 0, NULL);
 	}
 	else
 	{
@@ -5016,7 +5022,15 @@ numeric_combine(PG_FUNCTION_ARGS)
 	state2 = PG_ARGISNULL(1) ? NULL : (NumericAggState *) PG_GETARG_POINTER(1);
 
 	if (state2 == NULL)
+	{
+		/*
+		 * NULL state2 is easy, just return state1, which we know is already
+		 * in the agg_context
+		 */
+		if (state1 == NULL)
+			PG_RETURN_NULL();
 		PG_RETURN_POINTER(state1);
+	}
 
 	/* manually copy all fields from state2 to state1 */
 	if (state1 == NULL)
@@ -5108,7 +5122,15 @@ numeric_avg_combine(PG_FUNCTION_ARGS)
 	state2 = PG_ARGISNULL(1) ? NULL : (NumericAggState *) PG_GETARG_POINTER(1);
 
 	if (state2 == NULL)
+	{
+		/*
+		 * NULL state2 is easy, just return state1, which we know is already
+		 * in the agg_context
+		 */
+		if (state1 == NULL)
+			PG_RETURN_NULL();
 		PG_RETURN_POINTER(state1);
+	}
 
 	/* manually copy all fields from state2 to state1 */
 	if (state1 == NULL)
@@ -5353,7 +5375,7 @@ numeric_deserialize(PG_FUNCTION_ARGS)
 	initReadOnlyStringInfo(&buf, VARDATA_ANY(sstate),
 						   VARSIZE_ANY_EXHDR(sstate));
 
-	result = makeNumericAggStateCurrentContext(false);
+	result = makeNumericAggStateCurrentContext(true);
 
 	/* N */
 	result->N = pq_getmsgint64(&buf);
@@ -5572,7 +5594,15 @@ numeric_poly_combine(PG_FUNCTION_ARGS)
 	state2 = PG_ARGISNULL(1) ? NULL : (Int128AggState *) PG_GETARG_POINTER(1);
 
 	if (state2 == NULL)
+	{
+		/*
+		 * NULL state2 is easy, just return state1, which we know is already
+		 * in the agg_context
+		 */
+		if (state1 == NULL)
+			PG_RETURN_NULL();
 		PG_RETURN_POINTER(state1);
+	}
 
 	/* manually copy all fields from state2 to state1 */
 	if (state1 == NULL)
@@ -5678,7 +5708,7 @@ numeric_poly_deserialize(PG_FUNCTION_ARGS)
 	initReadOnlyStringInfo(&buf, VARDATA_ANY(sstate),
 						   VARSIZE_ANY_EXHDR(sstate));
 
-	result = makeInt128AggStateCurrentContext(false);
+	result = makeInt128AggStateCurrentContext(true);
 
 	/* N */
 	result->N = pq_getmsgint64(&buf);
@@ -5733,7 +5763,15 @@ int8_avg_combine(PG_FUNCTION_ARGS)
 	state2 = PG_ARGISNULL(1) ? NULL : (Int128AggState *) PG_GETARG_POINTER(1);
 
 	if (state2 == NULL)
+	{
+		/*
+		 * NULL state2 is easy, just return state1, which we know is already
+		 * in the agg_context
+		 */
+		if (state1 == NULL)
+			PG_RETURN_NULL();
 		PG_RETURN_POINTER(state1);
+	}
 
 	/* manually copy all fields from state2 to state1 */
 	if (state1 == NULL)

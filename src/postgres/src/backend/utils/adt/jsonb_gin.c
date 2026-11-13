@@ -436,13 +436,14 @@ jsonb_ops__extract_nodes(JsonPathGinContext *cxt, JsonPathGinPath path,
 			 * keys, we may extract key or non-key entry or even both.  In the
 			 * latter case we create OR-node.  It is possible in lax mode
 			 * where arrays are automatically unwrapped, or in strict mode for
-			 * jpiAny items.
+			 * jpiAny items.  Also, root scalars are stored as single-element
+			 * arrays, so those will be key entries.
 			 */
 
 			if (cxt->lax)
 				key_entry = GIN_MAYBE;
 			else if (!last)		/* root ($) */
-				key_entry = GIN_FALSE;
+				key_entry = GIN_TRUE;
 			else if (last->type == jpiAnyArray || last->type == jpiIndexArray)
 				key_entry = GIN_TRUE;
 			else if (last->type == jpiAny)
@@ -558,6 +559,7 @@ extract_jsp_path_expr_nodes(JsonPathGinContext *cxt, JsonPathGinPath path,
  * Extract an expression node from one of following jsonpath path expressions:
  *   EXISTS(jsp)    (when 'scalar' is NULL)
  *   jsp == scalar  (when 'scalar' is not NULL).
+ * Returns NULL if no usable filter expression can be extracted.
  *
  * The current path (@) is passed in 'path'.
  */
@@ -579,7 +581,10 @@ extract_jsp_path_expr(JsonPathGinContext *cxt, JsonPathGinPath path,
 	return make_jsp_expr_node_args(JSP_GIN_AND, nodes);
 }
 
-/* Recursively extract nodes from the boolean jsonpath expression. */
+/*
+ * Recursively extract a GIN qual from the boolean jsonpath expression.
+ * Returns NULL if no usable indexqual can be extracted.
+ */
 static JsonPathGinNode *
 extract_jsp_bool_expr(JsonPathGinContext *cxt, JsonPathGinPath path,
 					  JsonPathItem *jsp, bool not)
@@ -591,6 +596,8 @@ extract_jsp_bool_expr(JsonPathGinContext *cxt, JsonPathGinPath path,
 		case jpiAnd:			/* expr && expr */
 		case jpiOr:				/* expr || expr */
 			{
+				/* We use De Morgan's laws to handle a passed-down NOT */
+				bool		is_and = (not ^ (jsp->type == jpiAnd));
 				JsonPathItem arg;
 				JsonPathGinNode *larg;
 				JsonPathGinNode *rarg;
@@ -604,13 +611,19 @@ extract_jsp_bool_expr(JsonPathGinContext *cxt, JsonPathGinPath path,
 
 				if (!larg || !rarg)
 				{
-					if (jsp->type == jpiOr)
+					/*
+					 * For OR, we have to fail if either arm is unsupported.
+					 * For AND, we can just ignore the unsupported arm and
+					 * apply the supported one, relying on indexscan qual
+					 * recheck to reject rows that don't match the other arm.
+					 */
+					if (!is_and)
 						return NULL;
 
 					return larg ? larg : rarg;
 				}
 
-				type = not ^ (jsp->type == jpiAnd) ? JSP_GIN_AND : JSP_GIN_OR;
+				type = is_and ? JSP_GIN_AND : JSP_GIN_OR;
 
 				return make_jsp_expr_node_binary(type, larg, rarg);
 			}
@@ -662,24 +675,28 @@ extract_jsp_bool_expr(JsonPathGinContext *cxt, JsonPathGinPath path,
 				JsonPathItem *scalar_item;
 				JsonbValue	scalar;
 
+				/* Can't support !(x == y) */
 				if (not)
 					return NULL;
 
 				jspGetLeftArg(jsp, &left_item);
 				jspGetRightArg(jsp, &right_item);
 
-				if (jspIsScalar(left_item.type))
+				/* To build an indexqual, one side must be a simple scalar */
+				if (jspIsScalar(left_item.type) &&
+					!jspHasNext(&left_item))
 				{
 					scalar_item = &left_item;
 					path_item = &right_item;
 				}
-				else if (jspIsScalar(right_item.type))
+				else if (jspIsScalar(right_item.type) &&
+						 !jspHasNext(&right_item))
 				{
 					scalar_item = &right_item;
 					path_item = &left_item;
 				}
 				else
-					return NULL;	/* at least one operand should be a scalar */
+					return NULL;
 
 				switch (scalar_item->type)
 				{

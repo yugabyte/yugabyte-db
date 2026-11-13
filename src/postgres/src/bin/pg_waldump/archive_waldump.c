@@ -202,8 +202,8 @@ init_archive_reader(XLogDumpPrivate *privateInfo,
 
 	if (!IsValidWalSegSize(longhdr->xlp_seg_size))
 	{
-		pg_log_error(ngettext("invalid WAL segment size in WAL file from archive \"%s\" (%d byte)",
-							  "invalid WAL segment size in WAL file from archive \"%s\" (%d bytes)",
+		pg_log_error(ngettext("invalid WAL segment size in WAL file from archive \"%s\" (%u byte)",
+							  "invalid WAL segment size in WAL file from archive \"%s\" (%u bytes)",
 							  longhdr->xlp_seg_size),
 					 privateInfo->archive_name, longhdr->xlp_seg_size);
 		pg_log_error_detail("The WAL segment size must be a power of two between 1 MB and 1 GB.");
@@ -216,11 +216,11 @@ init_archive_reader(XLogDumpPrivate *privateInfo,
 	 * With the WAL segment size available, we can now initialize the
 	 * dependent start and end segment numbers.
 	 */
-	Assert(!XLogRecPtrIsInvalid(privateInfo->startptr));
+	Assert(XLogRecPtrIsValid(privateInfo->startptr));
 	XLByteToSeg(privateInfo->startptr, privateInfo->start_segno,
 				privateInfo->segsize);
 
-	if (!XLogRecPtrIsInvalid(privateInfo->endptr))
+	if (XLogRecPtrIsValid(privateInfo->endptr))
 		XLByteToSeg(privateInfo->endptr, privateInfo->end_segno,
 					privateInfo->segsize);
 
@@ -299,10 +299,10 @@ free_archive_reader(XLogDumpPrivate *privateInfo)
  */
 int
 read_archive_wal_page(XLogDumpPrivate *privateInfo, XLogRecPtr targetPagePtr,
-					  Size count, char *readBuff)
+					  size_t count, char *readBuff)
 {
 	char	   *p = readBuff;
-	Size		nbytes = count;
+	size_t		nbytes = count;
 	XLogRecPtr	recptr = targetPagePtr;
 	int			segsize = privateInfo->segsize;
 	XLogSegNo	segno;
@@ -364,15 +364,13 @@ read_archive_wal_page(XLogDumpPrivate *privateInfo, XLogRecPtr targetPagePtr,
 			 * archive reached EOF.
 			 */
 			if (privateInfo->cur_file != entry)
-				pg_fatal("WAL segment \"%s\" in archive \"%s\" is too short: read %lld of %lld bytes",
+				pg_fatal("WAL segment \"%s\" in archive \"%s\" is too short: read %zu of %zu bytes",
 						 fname, privateInfo->archive_name,
-						 (long long int) (count - nbytes),
-						 (long long int) count);
+						 (count - nbytes), count);
 			if (!read_archive_file(privateInfo))
-				pg_fatal("unexpected end of archive \"%s\" while reading \"%s\": read %lld of %lld bytes",
+				pg_fatal("unexpected end of archive \"%s\" while reading \"%s\": read %zu of %zu bytes",
 						 privateInfo->archive_name, fname,
-						 (long long int) (count - nbytes),
-						 (long long int) count);
+						 (count - nbytes), count);
 
 			/*
 			 * Loading more data may have moved hash table entries, so we must

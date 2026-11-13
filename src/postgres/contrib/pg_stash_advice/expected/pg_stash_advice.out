@@ -315,7 +315,7 @@ SELECT pg_create_advice_stash('   ');
 ERROR:  advice stash name must begin with a letter or underscore and contain only letters, digits, and underscores
 SET pg_stash_advice.stash_name = '99bottles';
 ERROR:  invalid value for parameter "pg_stash_advice.stash_name": "99bottles"
-DETAIL:  advice stash name must begin with a letter or underscore and contain only letters, digits, and underscores
+DETAIL:  Advice stash name must begin with a letter or underscore and contain only letters, digits, and underscores.
 -- Clean up state in dynamic shared memory.
 SELECT pg_drop_advice_stash('regress_stash');
  pg_drop_advice_stash 

@@ -92,6 +92,7 @@ tests += {
   'tap': {
     'env': {
       'GZIP_PROGRAM': gzip.found() ? gzip.full_path() : '',
+      'TAR': tar.found() ? tar.full_path() : '',
       'LZ4': program_lz4.found() ? program_lz4.full_path() : '',
       'ZSTD': program_zstd.found() ? program_zstd.full_path() : '',
       'with_icu': icu.found() ? 'yes' : 'no',
@@ -103,8 +104,8 @@ tests += {
       't/004_pg_dump_parallel.pl',
       't/005_pg_dump_filterfile.pl',
       't/006_pg_dump_compress.pl',
-	  't/007_pg_dumpall.pl',
       't/010_dump_connstr.pl',
+      't/011_restore.pl',
     ],
   },
 }

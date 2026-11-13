@@ -310,6 +310,47 @@ $result = $node_subscriber->safe_psql('postgres',
 is($result, qq(0), 'transaction is aborted on subscriber');
 
 ###############################
+# Test that an empty prepared transaction is not replicated.
+#
+# A transaction that is assigned an XID but makes no change decoded by logical
+# replication (here, via a row lock) must not be sent to the subscriber.
+# Otherwise the subscriber would receive a PREPARE with no preceding BEGIN
+# PREPARE and error out, breaking replication.
+###############################
+
+# An empty prepared transaction that is committed.
+$node_publisher->safe_psql(
+	'postgres', "
+	BEGIN;
+	SELECT a FROM tab_full WHERE a = 1 FOR SHARE;
+	PREPARE TRANSACTION 'test_empty_prepared';
+	COMMIT PREPARED 'test_empty_prepared';");
+
+# An empty prepared transaction that is rolled back.
+$node_publisher->safe_psql(
+	'postgres', "
+	BEGIN;
+	SELECT a FROM tab_full WHERE a = 1 FOR SHARE;
+	PREPARE TRANSACTION 'test_empty_prepared';
+	ROLLBACK PREPARED 'test_empty_prepared';");
+
+# A subsequent normal change must still replicate.  Reaching catchup confirms
+# the apply worker was not stalled by the empty prepared transactions above.
+$node_publisher->safe_psql('postgres', "INSERT INTO tab_full VALUES (31);");
+$node_publisher->wait_for_catchup($appname);
+
+# The empty transactions must not have been prepared on the subscriber.
+$result = $node_subscriber->safe_psql('postgres',
+	"SELECT count(*) FROM pg_prepared_xacts;");
+is($result, qq(0), 'empty prepared transaction is not replicated');
+
+# The subsequent change is visible, so replication is healthy.
+$result = $node_subscriber->safe_psql('postgres',
+	"SELECT count(*) FROM tab_full WHERE a = 31;");
+is($result, qq(1),
+	'replication continues after an empty prepared transaction');
+
+###############################
 # copy_data=false and two_phase
 ###############################
 
@@ -390,8 +431,8 @@ is($result, qq(2), 'replicated data in subscriber table');
 $node_subscriber->safe_psql('postgres', "DROP SUBSCRIPTION tap_sub");
 
 ###############################
-# Alter the subscription to set two_phase to false.
-# Verify that the altered subscription reflects the new two_phase option.
+# Verify that setting two_phase to true when it is already enabled does not
+# overwrite subtwophasestate to 'p' (pending).
 ###############################
 
 # Confirm that the two-phase slot option is enabled before altering
@@ -400,12 +441,22 @@ $result = $node_publisher->safe_psql('postgres',
 );
 is($result, qq(t), 'two-phase is enabled');
 
-# Alter subscription two_phase to false
 $node_subscriber->safe_psql('postgres',
 	"ALTER SUBSCRIPTION tap_sub_copy DISABLE;");
 $node_subscriber->poll_query_until('postgres',
 	"SELECT count(*) = 0 FROM pg_stat_activity WHERE backend_type = 'logical replication apply worker'"
 );
+$node_subscriber->safe_psql('postgres',
+	"ALTER SUBSCRIPTION tap_sub_copy SET (two_phase = true);");
+$result = $node_subscriber->safe_psql('postgres',
+	"SELECT subtwophasestate FROM pg_subscription WHERE subname = 'tap_sub_copy';"
+);
+is($result, qq(e), 'two-phase subscription option remains enabled');
+
+###############################
+# Alter the subscription to set two_phase to false.
+# Verify that the altered subscription reflects the new two_phase option.
+###############################
 $node_subscriber->safe_psql(
 	'postgres', "
     ALTER SUBSCRIPTION tap_sub_copy SET (two_phase = false);

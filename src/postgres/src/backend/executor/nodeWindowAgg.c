@@ -76,6 +76,7 @@ typedef struct WindowObjectData
 	int64	   *num_notnull_info;	/* track size (number of tuples in
 									 * partition) of the notnull_info array
 									 * for each func args */
+	bool	   *notnull_info_cacheable; /* can we cache notnull_info? */
 
 	/*
 	 * Null treatment options. One of: NO_NULLTREATMENT, PARSER_IGNORE_NULLS,
@@ -109,7 +110,6 @@ typedef struct WindowStatePerFuncData
 
 	bool		plain_agg;		/* is it just a plain aggregate function? */
 	int			aggno;			/* if so, index of its WindowStatePerAggData */
-	uint8		ignore_nulls;	/* ignore nulls */
 
 	WindowObject winobj;		/* object used in window function API */
 } WindowStatePerFuncData;
@@ -1084,6 +1084,20 @@ eval_windowfunction(WindowAggState *winstate, WindowStatePerFunc perfuncstate,
 	MemoryContext oldContext;
 
 	oldContext = MemoryContextSwitchTo(winstate->ss.ps.ps_ExprContext->ecxt_per_tuple_memory);
+
+	/*
+	 * Protect fixed-size fcinfo.  Ordinarily this would have been checked
+	 * while creating the WindowFunc, but it's possible that we are looking at
+	 * a parsetree from a stored view that was made by a server executable
+	 * with a different value of FUNC_MAX_ARGS.
+	 */
+	if (perfuncstate->numArguments > FUNC_MAX_ARGS)
+		ereport(ERROR,
+				(errcode(ERRCODE_TOO_MANY_ARGUMENTS),
+				 errmsg_plural("cannot pass more than %d argument to a function",
+							   "cannot pass more than %d arguments to a function",
+							   FUNC_MAX_ARGS,
+							   FUNC_MAX_ARGS)));
 
 	/*
 	 * We don't pass any normal arguments to a window function, but we do pass
@@ -2736,17 +2750,14 @@ ExecInitWindowAgg(WindowAgg *node, EState *estate, int eflags)
 			elog(ERROR, "WindowFunc with winref %u assigned to WindowAgg with winref %u",
 				 wfunc->winref, node->winref);
 
-		/*
-		 * Look for a previous duplicate window function, which needs the same
-		 * ignore_nulls value
-		 */
+		/* Look for a previous duplicate window function */
 		for (i = 0; i <= wfuncno; i++)
 		{
 			if (equal(wfunc, perfunc[i].wfunc) &&
 				!contain_volatile_functions((Node *) wfunc))
 				break;
 		}
-		if (i <= wfuncno && wfunc->ignore_nulls == perfunc[i].ignore_nulls)
+		if (i <= wfuncno)
 		{
 			/* Found a match to an existing entry, so just mark it */
 			wfuncstate->wfuncno = i;
@@ -2957,6 +2968,25 @@ initialize_peragg(WindowAggState *winstate, WindowFunc *wfunc,
 	ListCell   *lc;
 
 	numArguments = list_length(wfunc->args);
+
+	/*
+	 * Check the number of arguments, to protect fixed-size arrays here and
+	 * later in node execution.
+	 *
+	 * Aggregates can have at most FUNC_MAX_ARGS-1 args (compare
+	 * AggregateCreate, whose error message we want to match).  Ordinarily
+	 * this would have been checked while creating the WindowFunc, but it's
+	 * possible that we are looking at a parsetree from a stored view that was
+	 * made by a server executable with a different value of FUNC_MAX_ARGS, or
+	 * an executable in which parse_func.c didn't enforce the correct limit.
+	 */
+	if (numArguments > FUNC_MAX_ARGS - 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_TOO_MANY_ARGUMENTS),
+				 errmsg_plural("aggregates cannot have more than %d argument",
+							   "aggregates cannot have more than %d arguments",
+							   FUNC_MAX_ARGS - 1,
+							   FUNC_MAX_ARGS - 1)));
 
 	i = 0;
 	foreach(lc, wfunc->args)
@@ -3336,7 +3366,8 @@ window_gettupleslot(WindowObject winobj, int64 pos, TupleTableSlot *slot)
 	return true;
 }
 
-/* gettuple_eval_partition
+/*
+ * gettuple_eval_partition
  * get tuple in a partition and evaluate the window function's argument
  * expression on it.
  */
@@ -3384,8 +3415,8 @@ ignorenulls_getfuncarginframe(WindowObject winobj, int argno,
 	Datum		datum;
 	int64		abs_pos;
 	int64		mark_pos;
-	int			notnull_offset;
-	int			notnull_relpos;
+	int64		notnull_offset;
+	int64		notnull_relpos;
 	int			forward;
 
 	Assert(WindowObjectIsValid(winobj));
@@ -3394,7 +3425,7 @@ ignorenulls_getfuncarginframe(WindowObject winobj, int argno,
 	slot = winstate->temp_slot_1;
 	datum = (Datum) 0;
 	notnull_offset = 0;
-	notnull_relpos = abs(relpos);
+	notnull_relpos = pg_abs_s32(relpos);
 
 	switch (seektype)
 	{
@@ -3435,12 +3466,27 @@ ignorenulls_getfuncarginframe(WindowObject winobj, int argno,
 		int			inframe;
 		int			v;
 
+		/* we may skip many rows without fetching any of them */
+		CHECK_FOR_INTERRUPTS();
+
 		/*
 		 * Check apparent out of frame case.  We need to do this because we
 		 * may not call window_gettupleslot before row_is_in_frame, which
 		 * supposes abs_pos is never negative.
 		 */
 		if (abs_pos < 0)
+			goto out_of_frame;
+
+		/*
+		 * Likewise, stop at the end of the partition, which row_is_in_frame
+		 * expects its caller to have checked.  It cannot always detect that
+		 * itself: for a frame ending at UNBOUNDED FOLLOWING with EXCLUDE
+		 * GROUP or EXCLUDE TIES and no ORDER BY, it reports every row other
+		 * than the current one as excluded, wherever it is, so we would never
+		 * reach the end of the loop.
+		 */
+		spool_tuples(winstate, abs_pos);
+		if (abs_pos >= winstate->spooled_rows)
 			goto out_of_frame;
 
 		/* check whether row is in frame */
@@ -3517,8 +3563,23 @@ init_notnull_info(WindowObject winobj, WindowStatePerFunc perfuncstate)
 
 	if (winobj->ignore_nulls == PARSER_IGNORE_NULLS)
 	{
+		int			argno = 0;
+		ListCell   *lc;
+
 		winobj->notnull_info = palloc0_array(uint8 *, numargs);
 		winobj->num_notnull_info = palloc0_array(int64, numargs);
+		winobj->notnull_info_cacheable = palloc_array(bool, numargs);
+
+		foreach(lc, perfuncstate->wfunc->args)
+		{
+			Node	   *arg = (Node *) lfirst(lc);
+
+			winobj->notnull_info_cacheable[argno] =
+				!contain_volatile_functions(arg) &&
+				!contain_subplans(arg);
+
+			argno++;
+		}
 	}
 }
 
@@ -3527,7 +3588,7 @@ init_notnull_info(WindowObject winobj, WindowStatePerFunc perfuncstate)
  * expand notnull_info if necessary.
  * pos: not null info position
  * argno: argument number
-*/
+ */
 static void
 grow_notnull_info(WindowObject winobj, int64 pos, int argno)
 {
@@ -3579,6 +3640,9 @@ get_notnull_info(WindowObject winobj, int64 pos, int argno)
 	uint8		mb;
 	int64		bpos;
 
+	if (!winobj->notnull_info_cacheable[argno])
+		return NN_UNKNOWN;
+
 	grow_notnull_info(winobj, pos, argno);
 	bpos = NN_POS_TO_BYTES(pos);
 	mbp = winobj->notnull_info[argno];
@@ -3601,6 +3665,9 @@ put_notnull_info(WindowObject winobj, int64 pos, int argno, bool isnull)
 	int64		bpos;
 	uint8		val = isnull ? NN_NULL : NN_NOTNULL;
 	int			shift;
+
+	if (!winobj->notnull_info_cacheable[argno])
+		return;
 
 	grow_notnull_info(winobj, pos, argno);
 	bpos = NN_POS_TO_BYTES(pos);
@@ -3807,10 +3874,11 @@ WinGetFuncArgInPartition(WindowObject winobj, int argno,
 	int64		mark_pos;
 	Datum		datum;
 	bool		null_treatment;
-	int			notnull_offset;
-	int			notnull_relpos;
+	int64		notnull_offset;
+	int64		notnull_relpos;
 	int			forward;
 	bool		myisout;
+	bool		got_datum;
 
 	Assert(WindowObjectIsValid(winobj));
 	winstate = winobj->winstate;
@@ -3856,9 +3924,10 @@ WinGetFuncArgInPartition(WindowObject winobj, int argno,
 
 	/* Prepare for loop */
 	notnull_offset = 0;
-	notnull_relpos = abs(relpos);
+	notnull_relpos = pg_abs_s32(relpos);
 	forward = relpos > 0 ? 1 : -1;
 	myisout = false;
+	got_datum = false;
 	datum = 0;
 
 	/*
@@ -3904,25 +3973,29 @@ WinGetFuncArgInPartition(WindowObject winobj, int argno,
 		{
 			/*
 			 * NOT NULL info does not exist yet.  Get tuple and evaluate func
-			 * arg in partition. We ignore the return value from
-			 * gettuple_eval_partition because we are just interested in
-			 * whether we are inside or outside of partition, NULL or NOT
-			 * NULL.
+			 * arg in partition. Keep the return value in case this row is the
+			 * target; re-evaluating a volatile argument could give a
+			 * different nullness status.
 			 */
-			(void) gettuple_eval_partition(winobj, argno,
-										   abs_pos, isnull, &myisout);
+			datum = gettuple_eval_partition(winobj, argno,
+											abs_pos, isnull, &myisout);
 			if (myisout)		/* out of partition? */
 				break;
 			if (!*isnull)
+			{
 				notnull_offset++;
+				if (notnull_offset >= notnull_relpos)
+					got_datum = true;
+			}
 			/* record the row status */
 			put_notnull_info(winobj, abs_pos, argno, *isnull);
 		}
 	} while (notnull_offset < notnull_relpos);
 
 	/* get tuple and evaluate func arg in partition */
-	datum = gettuple_eval_partition(winobj, argno,
-									abs_pos, isnull, &myisout);
+	if (!got_datum)
+		datum = gettuple_eval_partition(winobj, argno,
+										abs_pos, isnull, &myisout);
 	if (!myisout && set_mark)
 		WinSetMarkPosition(winobj, mark_pos);
 	if (isout)

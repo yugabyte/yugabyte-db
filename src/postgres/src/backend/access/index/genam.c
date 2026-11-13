@@ -417,14 +417,6 @@ systable_beginscan(Relation heapRelation,
 	Relation	irel;
 
 	/*
-	 * If this backend promised that it won't access shared catalogs during
-	 * logical decoding, this it the right place to verify.
-	 */
-	Assert(!HistoricSnapshotActive() ||
-		   accessSharedCatalogsInDecoding ||
-		   !heapRelation->rd_rel->relisshared);
-
-	/*
 	 * PG sometimes calls systable_beginscan on non-YB tables.
 	 * e.g. toast_delete_datum, which uses systable_beginscan
 	 * on TOAST tables, which can be temporary (and thus non-YB).

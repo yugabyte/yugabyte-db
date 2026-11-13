@@ -91,9 +91,8 @@ static int	ldapServiceLookup(const char *purl, PQconninfoOption *options,
 
 /* This is part of the protocol so just define it */
 #define ERRCODE_INVALID_PASSWORD "28P01"
-/* These too */
+/* This too */
 #define ERRCODE_CANNOT_CONNECT_NOW "57P03"
-#define ERRCODE_PROTOCOL_VIOLATION "08P01"
 
 /*
  * Cope with the various platform-specific ways to spell TCP keepalive socket
@@ -202,10 +201,6 @@ static const internalPQconninfoOption PQconninfoOptions[] = {
 	{"service", "PGSERVICE", NULL, NULL,
 		"Database-Service", "", 20,
 	offsetof(struct pg_conn, pgservice)},
-
-	{"servicefile", "PGSERVICEFILE", NULL, NULL,
-		"Database-Service-File", "", 64,
-	offsetof(struct pg_conn, pgservicefile)},
 
 	{"user", "PGUSER", NULL, NULL,
 		"Database-User", "", 20,
@@ -2175,13 +2170,15 @@ pqConnectOptions2(PGconn *conn)
 	else
 	{
 		/*
-		 * Default to PG_PROTOCOL_GREASE, which is larger than all real
-		 * versions, to test negotiation. The server should automatically
-		 * downgrade to a supported version.
-		 *
-		 * This behavior is for 19beta only. It will be reverted before RC1.
+		 * To not break connecting to older servers/poolers that do not yet
+		 * support NegotiateProtocolVersion, default to the 3.0 protocol at
+		 * least for a while longer. Except when min_protocol_version is set
+		 * to something larger, then we might as well default to the latest.
 		 */
-		conn->max_pversion = PG_PROTOCOL_GREASE;
+		if (conn->min_pversion > PG_PROTOCOL(3, 0))
+			conn->max_pversion = PG_PROTOCOL_LATEST;
+		else
+			conn->max_pversion = PG_PROTOCOL(3, 0);
 	}
 
 	if (conn->min_pversion > conn->max_pversion)
@@ -3312,7 +3309,8 @@ keep_going:						/* We will come back to here until there is
 						}
 						if (conn->gcred == GSS_C_NO_CREDENTIAL)
 						{
-							if (!pg_GSS_have_cred_cache(&conn->gcred))
+							conn->gcred = pg_GSS_get_cred_cache();
+							if (conn->gcred == GSS_C_NO_CREDENTIAL)
 							{
 								libpq_append_conn_error(conn,
 														"GSSAPI encryption required but no credential cache");
@@ -4189,32 +4187,6 @@ keep_going:						/* We will come back to here until there is
 					/* Check to see if we should mention pgpassfile */
 					pgpassfileWarning(conn);
 
-					/*
-					 * ...and whether we should mention grease. If the error
-					 * message contains the PG_PROTOCOL_GREASE number (in
-					 * major.minor, decimal, or hex format) or a complaint
-					 * about a protocol violation before we've even started an
-					 * authentication exchange, it's probably caused by a
-					 * grease interaction.
-					 */
-					if (conn->max_pversion == PG_PROTOCOL_GREASE &&
-						!conn->auth_req_received)
-					{
-						const char *sqlstate = PQresultErrorField(conn->result,
-																  PG_DIAG_SQLSTATE);
-
-						if ((sqlstate &&
-							 strcmp(sqlstate, ERRCODE_PROTOCOL_VIOLATION) == 0) ||
-							(conn->errorMessage.len > 0 &&
-							 (strstr(conn->errorMessage.data, "3.9999") ||
-							  strstr(conn->errorMessage.data, "206607") ||
-							  strstr(conn->errorMessage.data, "3270F") ||
-							  strstr(conn->errorMessage.data, "3270f"))))
-						{
-							libpq_append_grease_info(conn);
-						}
-					}
-
 					CONNECTION_FAILED();
 				}
 				/* Handle NegotiateProtocolVersion */
@@ -4442,14 +4414,6 @@ keep_going:						/* We will come back to here until there is
 						conn->errorMessage.data[conn->errorMessage.len - 1] != '\n')
 						appendPQExpBufferChar(&conn->errorMessage, '\n');
 					PQclear(res);
-					goto error_return;
-				}
-
-				if (conn->max_pversion == PG_PROTOCOL_GREASE &&
-					conn->pversion == PG_PROTOCOL_GREASE)
-				{
-					libpq_append_conn_error(conn, "server incorrectly accepted \"grease\" protocol version 3.9999 without negotiation");
-					libpq_append_grease_info(conn);
 					goto error_return;
 				}
 
@@ -4901,15 +4865,16 @@ select_next_encryption_method(PGconn *conn, bool have_valid_connection)
 	if ((remaining_methods & ENC_GSSAPI) != 0)
 	{
 		/*
-		 * If GSSAPI encryption is enabled, then call pg_GSS_have_cred_cache()
-		 * which will return true if we can acquire credentials (and give us a
-		 * handle to use in conn->gcred), and then send a packet to the server
+		 * If GSSAPI encryption is enabled, then call pg_GSS_get_cred_cache()
+		 * to try to acquire credentials, and then send a packet to the server
 		 * asking for GSSAPI Encryption (and skip past SSL negotiation and
 		 * regular startup below).
 		 */
 		if (!conn->gctx)
 		{
-			if (!pg_GSS_have_cred_cache(&conn->gcred))
+			if (conn->gcred == GSS_C_NO_CREDENTIAL)
+				conn->gcred = pg_GSS_get_cred_cache();
+			if (conn->gcred == GSS_C_NO_CREDENTIAL)
 			{
 				conn->allowed_enc_methods &= ~ENC_GSSAPI;
 				remaining_methods &= ~ENC_GSSAPI;
@@ -5074,6 +5039,10 @@ pqMakeEmptyPGconn(void)
 	conn->altsock = PGINVALID_SOCKET;
 	conn->Pfdebug = NULL;
 
+#ifdef ENABLE_GSS
+	conn->gcred = GSS_C_NO_CREDENTIAL;	/* let's not assume this is 0 */
+#endif
+
 	/*
 	 * We try to send at least 8K at a time, which is the usual size of pipe
 	 * buffers on Unix systems.  That way, when we are sending a large amount
@@ -5144,7 +5113,6 @@ freePGconn(PGconn *conn)
 	free(conn->dbName);
 	free(conn->replication);
 	free(conn->pgservice);
-	free(conn->pgservicefile);
 	free(conn->pguser);
 	if (conn->pgpass)
 	{
@@ -6024,7 +5992,6 @@ static int
 parseServiceInfo(PQconninfoOption *options, PQExpBuffer errorMessage)
 {
 	const char *service = conninfo_getval(options, "service");
-	const char *service_fname = conninfo_getval(options, "servicefile");
 	char		serviceFile[MAXPGPATH];
 	char	   *env;
 	bool		group_found = false;
@@ -6044,13 +6011,10 @@ parseServiceInfo(PQconninfoOption *options, PQExpBuffer errorMessage)
 		return 0;
 
 	/*
-	 * First, try the "servicefile" option in connection string.  Then, try
-	 * the PGSERVICEFILE environment variable.  Finally, check
-	 * ~/.pg_service.conf (if that exists).
+	 * Try PGSERVICEFILE if specified, else try ~/.pg_service.conf (if that
+	 * exists).
 	 */
-	if (service_fname != NULL)
-		strlcpy(serviceFile, service_fname, sizeof(serviceFile));
-	else if ((env = getenv("PGSERVICEFILE")) != NULL)
+	if ((env = getenv("PGSERVICEFILE")) != NULL)
 		strlcpy(serviceFile, env, sizeof(serviceFile));
 	else
 	{
@@ -6206,17 +6170,7 @@ parseServiceFile(const char *serviceFile,
 				if (strcmp(key, "service") == 0)
 				{
 					libpq_append_error(errorMessage,
-									   "nested \"service\" specifications not supported in service file \"%s\", line %d",
-									   serviceFile,
-									   linenr);
-					result = 3;
-					goto exit;
-				}
-
-				if (strcmp(key, "servicefile") == 0)
-				{
-					libpq_append_error(errorMessage,
-									   "nested \"servicefile\" specifications not supported in service file \"%s\", line %d",
+									   "nested service specifications not supported in service file \"%s\", line %d",
 									   serviceFile,
 									   linenr);
 					result = 3;
@@ -6259,33 +6213,6 @@ parseServiceFile(const char *serviceFile,
 	}
 
 exit:
-
-	/*
-	 * If a service has been successfully found, set the "servicefile" option
-	 * if not already set.  This matters when we use a default service file or
-	 * PGSERVICEFILE, where we want to be able track the value.
-	 */
-	if (*group_found && result == 0)
-	{
-		for (i = 0; options[i].keyword; i++)
-		{
-			if (strcmp(options[i].keyword, "servicefile") != 0)
-				continue;
-
-			/* If value is already set, nothing to do */
-			if (options[i].val != NULL)
-				break;
-
-			options[i].val = strdup(serviceFile);
-			if (options[i].val == NULL)
-			{
-				libpq_append_error(errorMessage, "out of memory");
-				result = 3;
-			}
-			break;
-		}
-	}
-
 	fclose(f);
 
 	return result;

@@ -363,9 +363,8 @@ This tries to connect to the server, to test whether it works or not,,
 so the server is up and running. Otherwise this can return 0 even if
 there's nothing wrong with raw_connect() itself.
 
-Notably, raw_connect() does not work on Unix domain sockets on
-Strawberry perl 5.26.3.1 on Windows, which we use in Cirrus CI images
-as of this writing. It dies with "not implemented on this
+Notably, raw_connect() does not work on Unix domain sockets on at least
+Strawberry perl 5.26.3.1 on Windows. It dies with "not implemented on this
 architecture".
 
 =cut
@@ -658,12 +657,15 @@ sub init
 	# disabled, use a previously initdb'd cluster as a template by copying it.
 	# For a lot of tests, that's substantially cheaper. It does not seem
 	# worth figuring out whether extra parameters affect compatibility, so
-	# initdb is forced if any are defined.
+	# initdb is forced if any are defined.  The template was created by the
+	# installation under test, so it can't be used for a node using a
+	# different installation.
 	#
 	# There's very similar code in pg_regress.c, but we can't easily
 	# deduplicate it until we require perl at build time.
 	if (   $params{force_initdb}
 		or defined $params{extra}
+		or defined $self->{_install_path}
 		or !defined $ENV{INITDB_TEMPLATE})
 	{
 		note("initializing database system by running initdb");
@@ -1352,9 +1354,9 @@ sub restart
 		my $log =
 		  PostgreSQL::Test::Utils::slurp_file($self->logfile, $log_location);
 		unlike($log, $params{log_unlike}, "unexpected fragment found in log")
-			if defined $params{log_unlike};
+		  if defined $params{log_unlike};
 		like($log, $params{log_like}, "expected fragment not found in log")
-			if defined $params{log_like};
+		  if defined $params{log_like};
 	}
 
 	if ($ret != 0)
@@ -2270,7 +2272,7 @@ sub psql
 		my $exc_save = $@;
 
 		# we need a dummy $stderr from hereon, if we didn't collect it
-		if (! defined $stderr)
+		if (!defined $stderr)
 		{
 			my $errtxt = "<not collected>";
 			$stderr = \$errtxt;
@@ -2797,8 +2799,10 @@ sub poll_query_until
 
 	# Give up. Print the output from the last attempt, hopefully that's useful
 	# for debugging.
+	my $msg_query = $query;
+	$msg_query = '(connection attempt only)' unless defined $query;
 	diag qq(poll_query_until timed out executing this query:
-$query
+$msg_query
 expecting this output:
 $expected
 last actual query output:
@@ -3960,7 +3964,8 @@ sub validate_slot_inactive_since
 		),
 		't',
 		"last inactive time for slot $slot_name is valid on node $name")
-	  or croak "could not validate captured inactive_since for slot $slot_name";
+	  or croak
+	  "could not validate captured inactive_since for slot $slot_name";
 
 	return $inactive_since;
 }
@@ -3988,42 +3993,6 @@ sub advance_wal
 			SELECT pg_switch_wal();
 			});
 	}
-}
-
-=item $node->checksum_enable_offline()
-
-Enable data page checksums in an offline cluster with B<pg_checksums>. The
-caller is responsible for ensuring that the cluster is in the right state for
-this operation.
-
-=cut
-
-sub checksum_enable_offline
-{
-	my ($self) = @_;
-
-	print "# Enabling checksums in \"$self->data_dir\"\n";
-	PostgreSQL::Test::Utils::system_or_bail('pg_checksums', '-D',
-		$self->data_dir, '-e');
-	return;
-}
-
-=item $node->checksum_disable_offline()
-
-Disable data page checksums in an offline cluster with B<pg_checksums>. The
-caller is responsible for ensuring that the cluster is in the right state for
-this operation.
-
-=cut
-
-sub checksum_disable_offline
-{
-	my ($self) = @_;
-
-	print "# Disabling checksums in \"$self->data_dir\"\n";
-	PostgreSQL::Test::Utils::system_or_bail('pg_checksums', '-D',
-		$self->data_dir, '-d');
-	return;
 }
 
 =pod

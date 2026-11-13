@@ -452,11 +452,12 @@ pqTraceOutput_CopyOutResponse(FILE *f, const char *message, int *cursor)
 }
 
 static void
-pqTraceOutput_BackendKeyData(FILE *f, const char *message, int *cursor, bool regress)
+pqTraceOutput_BackendKeyData(FILE *f, const char *message, int *cursor, int length,
+							 bool regress)
 {
 	fprintf(f, "BackendKeyData\t");
 	pqTraceOutputInt32(f, message, cursor, regress);
-	pqTraceOutputInt32(f, message, cursor, regress);
+	pqTraceOutputNchar(f, length - *cursor + 1, message, cursor, regress);
 }
 
 static void
@@ -762,7 +763,8 @@ pqTraceOutputMessage(PGconn *conn, const char *message, bool toServer)
 			/* No message content */
 			break;
 		case PqMsg_BackendKeyData:
-			pqTraceOutput_BackendKeyData(conn->Pfdebug, message, &logCursor, regress);
+			pqTraceOutput_BackendKeyData(conn->Pfdebug, message, &logCursor,
+										 length, regress);
 			break;
 		case PqMsg_NoData:
 			fprintf(conn->Pfdebug, "NoData");
@@ -876,7 +878,8 @@ pqTraceOutputNoTypeByteMessage(PGconn *conn, const char *message)
 		pqTraceOutputInt16(conn->Pfdebug, message, &logCursor);
 		pqTraceOutputInt16(conn->Pfdebug, message, &logCursor);
 		pqTraceOutputInt32(conn->Pfdebug, message, &logCursor, regress);
-		pqTraceOutputInt32(conn->Pfdebug, message, &logCursor, regress);
+		pqTraceOutputNchar(conn->Pfdebug, length - logCursor, message,
+						   &logCursor, regress);
 	}
 	else if (version == NEGOTIATE_SSL_CODE)
 	{

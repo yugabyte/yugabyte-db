@@ -165,7 +165,15 @@ extern PGDLLIMPORT int32 timing_tsc_frequency_khz;
 
 extern void pg_initialize_timing_tsc(void);
 
-extern uint32 pg_tsc_calibrate_frequency(void);
+typedef struct TscClockSourceInfo
+{
+	int32		frequency_khz;	/* from CPUID or calibration */
+	int32		calibrated_frequency_khz;	/* from calibration */
+	char		frequency_source[128];	/* describes how frequency was
+										 * determined */
+} TscClockSourceInfo;
+
+extern const TscClockSourceInfo *pg_timing_tsc_clock_source_info(void);
 
 #endif							/* PG_INSTR_TSC_CLOCK */
 
@@ -368,7 +376,7 @@ pg_rdtscp(void)
  * only inlining the function partially.
  * See https://gcc.gnu.org/bugzilla/show_bug.cgi?id=124795
  */
-static pg_attribute_always_inline instr_time
+static pg_always_inline instr_time
 pg_get_ticks(void)
 {
 	if (likely(timing_tsc_enabled))
@@ -382,7 +390,7 @@ pg_get_ticks(void)
 	return pg_get_ticks_system();
 }
 
-static pg_attribute_always_inline instr_time
+static pg_always_inline instr_time
 pg_get_ticks_fast(void)
 {
 	if (likely(timing_tsc_enabled))
@@ -398,13 +406,13 @@ pg_get_ticks_fast(void)
 
 #else
 
-static pg_attribute_always_inline instr_time
+static pg_always_inline instr_time
 pg_get_ticks(void)
 {
 	return pg_get_ticks_system();
 }
 
-static pg_attribute_always_inline instr_time
+static pg_always_inline instr_time
 pg_get_ticks_fast(void)
 {
 	return pg_get_ticks_system();

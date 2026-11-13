@@ -25,6 +25,12 @@ PG_MODULE_MAGIC_EXT(
 					.version = PG_VERSION
 );
 
+/* Local helpers for stats file I/O */
+#define write_chunk(fpout, ptr, len) (fwrite(ptr, len, 1, fpout) == 1)
+#define write_chunk_s(fpout, ptr) write_chunk(fpout, ptr, sizeof(*ptr))
+#define read_chunk(fpin, ptr, len) (fread(ptr, 1, len, fpin) == (len))
+#define read_chunk_s(fpin, ptr) read_chunk(fpin, ptr, sizeof(*ptr))
+
 #define TEST_CUSTOM_VAR_MAGIC_NUMBER (0xBEEFBEEF)
 
 /*--------------------------------------------------------------------------
@@ -88,7 +94,7 @@ static bool test_custom_stats_var_flush_pending_cb(PgStat_EntryRef *entry_ref,
 												   bool nowait);
 
 /* Serialization callback: write auxiliary entry data */
-static void test_custom_stats_var_to_serialized_data(const PgStat_HashKey *key,
+static bool test_custom_stats_var_to_serialized_data(const PgStat_HashKey *key,
 													 const PgStatShared_Common *header,
 													 FILE *statfile);
 
@@ -129,10 +135,6 @@ static const PgStat_KindInfo custom_stats = {
 void
 _PG_init(void)
 {
-	/* Must be loaded via shared_preload_libraries */
-	if (!process_shared_preload_libraries_in_progress)
-		return;
-
 	/* Register custom statistics kind */
 	pgstat_register_kind(PGSTAT_KIND_TEST_CUSTOM_VAR_STATS, &custom_stats);
 }
@@ -191,7 +193,7 @@ test_custom_stats_var_flush_pending_cb(PgStat_EntryRef *entry_ref, bool nowait)
  * - The length of the description.
  * - The description data itself.
  */
-static void
+static bool
 test_custom_stats_var_to_serialized_data(const PgStat_HashKey *key,
 										 const PgStatShared_Common *header,
 										 FILE *statfile)
@@ -206,7 +208,8 @@ test_custom_stats_var_to_serialized_data(const PgStat_HashKey *key,
 	 * First mark the main file with a magic number, keeping a trace that some
 	 * auxiliary data will exist in the secondary statistics file.
 	 */
-	pgstat_write_chunk_s(statfile, &magic_number);
+	if (!write_chunk_s(statfile, &magic_number))
+		return false;
 
 	/* Open statistics file for writing. */
 	if (!fd_description)
@@ -218,7 +221,7 @@ test_custom_stats_var_to_serialized_data(const PgStat_HashKey *key,
 					(errcode_for_file_access(),
 					 errmsg("could not open statistics file \"%s\" for writing: %m",
 							TEST_CUSTOM_AUX_DATA_DESC)));
-			return;
+			return false;
 		}
 
 		/* Initialize offset for secondary statistics file. */
@@ -226,14 +229,16 @@ test_custom_stats_var_to_serialized_data(const PgStat_HashKey *key,
 	}
 
 	/* Write offset to the main data file */
-	pgstat_write_chunk_s(statfile, &fd_description_offset);
+	if (!write_chunk_s(statfile, &fd_description_offset))
+		return false;
 
 	/*
 	 * First write the entry key to the secondary statistics file.  This will
 	 * be cross-checked with the key read from main stats file at loading
 	 * time.
 	 */
-	pgstat_write_chunk_s(fd_description, (PgStat_HashKey *) key);
+	if (!write_chunk_s(fd_description, (PgStat_HashKey *) key))
+		return false;
 	fd_description_offset += sizeof(PgStat_HashKey);
 
 	if (!custom_stats_description_dsa)
@@ -244,9 +249,10 @@ test_custom_stats_var_to_serialized_data(const PgStat_HashKey *key,
 	{
 		/* length to description file */
 		len = 0;
-		pgstat_write_chunk_s(fd_description, &len);
+		if (!write_chunk_s(fd_description, &len))
+			return false;
 		fd_description_offset += sizeof(size_t);
-		return;
+		return true;
 	}
 
 	/*
@@ -256,14 +262,17 @@ test_custom_stats_var_to_serialized_data(const PgStat_HashKey *key,
 	description = dsa_get_address(custom_stats_description_dsa,
 								  entry->description);
 	len = strlen(description) + 1;
-	pgstat_write_chunk_s(fd_description, &len);
-	pgstat_write_chunk(fd_description, description, len);
+	if (!write_chunk_s(fd_description, &len))
+		return false;
+	if (!write_chunk(fd_description, description, len))
+		return false;
 
 	/*
 	 * Update offset for next entry, counting for the length (size_t) of the
 	 * description and the description contents.
 	 */
 	fd_description_offset += len + sizeof(size_t);
+	return true;
 }
 
 /*
@@ -291,7 +300,7 @@ test_custom_stats_var_from_serialized_data(const PgStat_HashKey *key,
 	PgStat_HashKey file_key;
 
 	/* Check the magic number first, in the main file. */
-	if (!pgstat_read_chunk_s(statfile, &magic_number))
+	if (!read_chunk_s(statfile, &magic_number))
 	{
 		elog(WARNING, "failed to read magic number from statistics file");
 		return false;
@@ -308,7 +317,7 @@ test_custom_stats_var_from_serialized_data(const PgStat_HashKey *key,
 	 * Read the offset from the main stats file, to be able to read the
 	 * auxiliary data from the secondary statistics file.
 	 */
-	if (!pgstat_read_chunk_s(statfile, &offset))
+	if (!read_chunk_s(statfile, &offset))
 	{
 		elog(WARNING, "failed to read metadata offset from statistics file");
 		return false;
@@ -339,7 +348,7 @@ test_custom_stats_var_from_serialized_data(const PgStat_HashKey *key,
 	}
 
 	/* Read the hash key from the secondary statistics file */
-	if (!pgstat_read_chunk_s(fd_description, &file_key))
+	if (!read_chunk_s(fd_description, &file_key))
 	{
 		elog(WARNING, "failed to read hash key from file");
 		return false;
@@ -359,7 +368,7 @@ test_custom_stats_var_from_serialized_data(const PgStat_HashKey *key,
 	entry = (PgStatShared_CustomVarEntry *) header;
 
 	/* Read the description length and its data */
-	if (!pgstat_read_chunk_s(fd_description, &len))
+	if (!read_chunk_s(fd_description, &len))
 	{
 		elog(WARNING, "failed to read metadata length from statistics file");
 		return false;
@@ -383,7 +392,7 @@ test_custom_stats_var_from_serialized_data(const PgStat_HashKey *key,
 	}
 
 	buffer = palloc(len);
-	if (!pgstat_read_chunk(fd_description, buffer, len))
+	if (!read_chunk(fd_description, buffer, len))
 	{
 		pfree(buffer);
 		elog(WARNING, "failed to read description from file");
@@ -600,7 +609,7 @@ test_custom_stats_var_drop(PG_FUNCTION_ARGS)
 
 	/* Drop entry and request GC if the entry could not be freed */
 	if (!pgstat_drop_entry(PGSTAT_KIND_TEST_CUSTOM_VAR_STATS, InvalidOid,
-						   PGSTAT_CUSTOM_VAR_STATS_IDX(stat_name)))
+						   PGSTAT_CUSTOM_VAR_STATS_IDX(stat_name), false))
 		pgstat_request_entry_refs_gc();
 
 	PG_RETURN_VOID();

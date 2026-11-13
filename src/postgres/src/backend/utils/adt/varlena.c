@@ -1395,7 +1395,8 @@ varstr_cmp(const char *arg1, int len1, const char *arg2, int len2, Oid collid)
 	return result;
 }
 
-/* text_cmp()
+/*
+ * text_cmp()
  * Internal comparison function for text strings.
  * Returns -1, 0 or 1
  */
@@ -2672,7 +2673,8 @@ bttext_pattern_sortsupport(PG_FUNCTION_ARGS)
 }
 
 
-/* text_name()
+/*
+ * text_name()
  * Converts a text type to a Name type.
  */
 Datum
@@ -2695,7 +2697,8 @@ text_name(PG_FUNCTION_ARGS)
 	PG_RETURN_NAME(result);
 }
 
-/* name_text()
+/*
+ * name_text()
  * Converts a Name type to a text type.
  */
 Datum
@@ -3041,7 +3044,7 @@ SplitDirectoriesString(char *rawstring, char separator,
  * However, it's not clear that having one function with a bunch of option
  * flags would be much better.
  *
- * XXX there is a version of this function in src/bin/pg_dump/dumputils.c.
+ * XXX there is a version of this function in src/fe_utils/string_utils.c.
  * Be sure to update that if you have to change this.
  *
  * Inputs:
@@ -4711,7 +4714,18 @@ text_right(PG_FUNCTION_ARGS)
 	int			off;
 
 	if (n < 0)
-		n = -n;
+	{
+		/*
+		 * Negating PG_INT32_MIN would overflow, so clamp instead.  Any n
+		 * whose absolute value is at least the string's length skips the
+		 * whole string, and len can't exceed PG_INT32_MAX, so this is
+		 * equivalent.
+		 */
+		if (unlikely(n == PG_INT32_MIN))
+			n = PG_INT32_MAX;
+		else
+			n = -n;
+	}
 	else
 		n = pg_mbstrlen_with_len(p, len) - n;
 	off = pg_mbcharcliplen(p, len, n);
@@ -5303,6 +5317,20 @@ rest_of_char_same(const char *s1, const char *s2, int len)
 	return true;
 }
 
+/*
+ * Helper function for checking return value of Levenshtein distance functions.
+ * We calculate it as an int64, but the distance functions return an int32.
+ */
+static inline int
+levenshtein_result(int64 res)
+{
+	if (unlikely(res < PG_INT32_MIN || res > PG_INT32_MAX))
+		ereport(ERROR,
+				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+				 errmsg("levenshtein distance out of range")));
+	return res;
+}
+
 /* Expand each Levenshtein distance variant */
 #include "levenshtein.c"
 #define LEVENSHTEIN_LESS_EQUAL
@@ -5490,18 +5518,18 @@ unicode_normalize_func(PG_FUNCTION_ARGS)
 	text	   *input = PG_GETARG_TEXT_PP(0);
 	char	   *formstr = text_to_cstring(PG_GETARG_TEXT_PP(1));
 	UnicodeNormalizationForm form;
-	int			size;
+	size_t		size;
 	char32_t   *input_chars;
 	char32_t   *output_chars;
 	unsigned char *p;
 	text	   *result;
-	int			i;
+	size_t		i;
 
 	form = unicode_norm_form_from_string(formstr);
 
 	/* convert to char32_t */
 	size = pg_mbstrlen_with_len(VARDATA_ANY(input), VARSIZE_ANY_EXHDR(input));
-	input_chars = palloc((size + 1) * sizeof(char32_t));
+	input_chars = palloc_array(char32_t, size + 1);
 	p = (unsigned char *) VARDATA_ANY(input);
 	for (i = 0; i < size; i++)
 	{
@@ -5556,20 +5584,20 @@ unicode_is_normalized(PG_FUNCTION_ARGS)
 	text	   *input = PG_GETARG_TEXT_PP(0);
 	char	   *formstr = text_to_cstring(PG_GETARG_TEXT_PP(1));
 	UnicodeNormalizationForm form;
-	int			size;
+	size_t		size;
 	char32_t   *input_chars;
 	char32_t   *output_chars;
 	unsigned char *p;
-	int			i;
+	size_t		i;
 	UnicodeNormalizationQC quickcheck;
-	int			output_size;
+	size_t		output_size;
 	bool		result;
 
 	form = unicode_norm_form_from_string(formstr);
 
 	/* convert to char32_t */
 	size = pg_mbstrlen_with_len(VARDATA_ANY(input), VARSIZE_ANY_EXHDR(input));
-	input_chars = palloc((size + 1) * sizeof(char32_t));
+	input_chars = palloc_array(char32_t, size + 1);
 	p = (unsigned char *) VARDATA_ANY(input);
 	for (i = 0; i < size; i++)
 	{

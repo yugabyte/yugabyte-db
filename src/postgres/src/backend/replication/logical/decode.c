@@ -211,22 +211,6 @@ xlog_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 	}
 }
 
-void
-xlog2_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
-{
-	uint8		info = XLogRecGetInfo(buf->record) & ~XLR_INFO_MASK;
-
-	ReorderBufferProcessXid(ctx->reorder, XLogRecGetXid(buf->record), buf->origptr);
-
-	switch (info)
-	{
-		case XLOG2_CHECKSUMS:
-			break;
-		default:
-			elog(ERROR, "unexpected RM_XLOG2_ID record type: %u", info);
-	}
-}
-
 /*
  * Handle rmgr XACT_ID records for LogicalDecodingProcessRecord().
  */
@@ -407,12 +391,8 @@ standby_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 				 * Update this decoder's idea of transactions currently
 				 * running.  In doing so we will determine whether we have
 				 * reached consistent status.
-				 *
-				 * If the output plugin doesn't need access to shared
-				 * catalogs, we can ignore transactions in other databases.
 				 */
-				SnapBuildProcessRunningXacts(builder, buf->origptr, running,
-											 !ctx->options.need_shared_catalogs);
+				SnapBuildProcessRunningXacts(builder, buf->origptr, running);
 
 				/*
 				 * Abort all transactions that we keep track of, that are
@@ -422,12 +402,8 @@ standby_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 				 * all running transactions which includes prepared ones,
 				 * while shutdown checkpoints just know that no non-prepared
 				 * transactions are in progress.
-				 *
-				 * The database-specific records might work here too, but it's
-				 * not their purpose.
 				 */
-				if (!OidIsValid(running->dbid))
-					ReorderBufferAbortOld(ctx->reorder, running->oldestRunningXid);
+				ReorderBufferAbortOld(ctx->reorder, running->oldestRunningXid);
 			}
 			break;
 		case XLOG_STANDBY_LOCK:
@@ -889,7 +865,6 @@ DecodeAbort(LogicalDecodingContext *ctx, XLogRecordBuffer *buf,
 			xl_xact_parsed_abort *parsed, TransactionId xid,
 			bool two_phase)
 {
-	int			i;
 	XLogRecPtr	origin_lsn = InvalidXLogRecPtr;
 	TimestampTz abort_time = parsed->xact_time;
 	ReplOriginId origin_id = XLogRecGetOrigin(buf->record);
@@ -921,7 +896,15 @@ DecodeAbort(LogicalDecodingContext *ctx, XLogRecordBuffer *buf,
 	}
 	else
 	{
-		for (i = 0; i < parsed->nsubxacts; i++)
+		/*
+		 * Remove tuplecid changes queued by the aborted subtransactions from
+		 * the toplevel's list.
+		 */
+		ReorderBufferCleanupAbortedTupleCids(ctx->reorder, xid,
+											 parsed->nsubxacts,
+											 parsed->subxacts);
+
+		for (int i = 0; i < parsed->nsubxacts; i++)
 		{
 			ReorderBufferAbort(ctx->reorder, parsed->subxacts[i],
 							   buf->record->EndRecPtr, abort_time);
@@ -1009,6 +992,15 @@ DecodeUpdate(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 	RelFileLocator target_locator;
 
 	xlrec = (xl_heap_update *) XLogRecGetData(r);
+
+	/*
+	 * Ignore update records without a new tuple. This happens when the update
+	 * is done on a catalog relation, or when the caller of heap_update()
+	 * asked for the change not to be decoded, as REPACK (CONCURRENTLY) does
+	 * for the transient heap.
+	 */
+	if (!(xlrec->flags & XLH_UPDATE_CONTAINS_NEW_TUPLE))
+		return;
 
 	/* only interested in our database */
 	XLogRecGetBlockTag(r, 0, &target_locator, NULL, NULL);

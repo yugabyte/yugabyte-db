@@ -132,6 +132,15 @@ SELECT * FROM JSON_TABLE(jsonb '{"d1": "foo"}', '$'
 SELECT * FROM JSON_TABLE(jsonb '{"d1": "foo"}', '$'
     COLUMNS (js1 oid[] PATH '$.d2' DEFAULT '{1}'::int[]::oid[] ON EMPTY));
 
+-- A DEFAULT expression whose base type matches the column type must still be
+-- coerced to the column's typmod.
+SELECT * FROM JSON_TABLE(jsonb '{}', '$'
+    COLUMNS (c numeric(4,1) PATH '$.x' DEFAULT 99999.999 ON EMPTY));
+SELECT * FROM JSON_TABLE(jsonb '{}', '$'
+    COLUMNS (c bit(3) PATH '$.x' DEFAULT b'10101' ON EMPTY));
+SELECT * FROM JSON_TABLE(jsonb '{}', '$'
+    COLUMNS (c numeric(4,1) PATH '$.x' DEFAULT abs(NULL::numeric) ON EMPTY));
+
 -- JSON_TABLE: Test backward parsing
 
 CREATE VIEW jsonb_table_view2 AS
@@ -282,6 +291,11 @@ SELECT a, a::bool FROM JSON_TABLE(jsonb '{"a":1}', '$' COLUMNS (a dint4_0 EXISTS
 SELECT a, a::bool FROM JSON_TABLE(jsonb '{"a":1}', '$' COLUMNS (a dint4_0 EXISTS PATH '$.b' ERROR ON ERROR));
 SELECT a, a::bool FROM JSON_TABLE(jsonb '{"a":1}', '$' COLUMNS (a dint4_0 EXISTS PATH '$.b' FALSE ON ERROR));
 SELECT a, a::bool FROM JSON_TABLE(jsonb '{"a":1}', '$' COLUMNS (a dint4_0 EXISTS PATH '$.b' TRUE ON ERROR));
+-- soft errors in the ON EMPTY expression must be rethrown
+SELECT * FROM JSON_TABLE('{}', '$' COLUMNS (a int PATH '$.a' DEFAULT (0::dint4_0 + 0) ON EMPTY));
+SELECT * FROM JSON_TABLE('{}', '$' COLUMNS (a int PATH '$.a' KEEP QUOTES DEFAULT (0::dint4_0 + 0) ON EMPTY));
+SELECT * FROM JSON_TABLE('{}', '$' COLUMNS (a int PATH '$.a' DEFAULT (('a' || (random() * 0)::int)::int + 0) ON EMPTY));
+SELECT * FROM JSON_TABLE('{}', '$' COLUMNS (a int PATH '$.a' KEEP QUOTES DEFAULT (('a' || (random() * 0)::int)::int + 0) ON EMPTY));
 DROP DOMAIN dint4, dint4_0;
 
 -- JSON_TABLE: WRAPPER/QUOTES clauses on scalar columns
@@ -316,6 +330,55 @@ FROM JSON_TABLE(
 		PASSING 10 AS x, 3 AS y
 		COLUMNS (a text FORMAT JSON PATH '$ ? (@ < $y)')
 	) jt;
+
+-- PASSING arguments containing sublinks, used by the row pattern and by
+-- regular, FORMAT JSON and EXISTS columns
+SELECT *
+FROM JSON_TABLE(
+	jsonb '[1,2,3]',
+	'$[*] ? (@ < $x)'
+		PASSING (SELECT 3) AS x, 1 + (SELECT 1) AS y
+		COLUMNS (
+			a int PATH '$',
+			b text FORMAT JSON PATH '$ ? (@ == $y)',
+			c bool EXISTS PATH '$ ? (@ >= $y)'
+		)
+	) jt;
+
+-- Correlated sublinks of various kinds in PASSING, used only under NESTED PATH
+SELECT x, jt.*
+FROM
+	generate_series(1, 3) x,
+	JSON_TABLE(
+		jsonb '[[1,2,3]]',
+		'$[*]'
+		PASSING (SELECT x) AS x,
+				EXISTS (SELECT 1 WHERE x > 1) AS e,
+				x IN (SELECT 2) AS i,
+				to_jsonb(ARRAY(SELECT x)) AS arr
+		COLUMNS (
+			NESTED PATH '$[*] ? (@ >= $x)'
+			COLUMNS (
+				z int PATH '$',
+				e bool PATH '$e',
+				i bool PATH '$i',
+				arr jsonb PATH '$arr'
+			)
+		)
+	) jt;
+
+-- Sublinks in PASSING arguments survive a view's definition
+CREATE VIEW jsonb_table_view_passing_sublink AS
+SELECT *
+FROM JSON_TABLE(
+	jsonb '[1,2,3]',
+	'$[*] ? (@ < $x)'
+		PASSING (SELECT 3) AS x
+		COLUMNS (a int PATH '$', b bool EXISTS PATH '$ ? (@ == $x - 1)')
+	) jt;
+\sv jsonb_table_view_passing_sublink
+SELECT * FROM jsonb_table_view_passing_sublink;
+DROP VIEW jsonb_table_view_passing_sublink;
 
 -- Should fail (not supported)
 SELECT * FROM JSON_TABLE(jsonb '{"a": 123}', '$' || '.' || 'a' COLUMNS (foo int));
@@ -561,3 +624,14 @@ CREATE VIEW json_table_view9 AS SELECT * from JSON_TABLE('"a"', '$' COLUMNS (a t
 \sv json_table_view9;
 
 DROP VIEW json_table_view8, json_table_view9;
+
+-- Collations must be assigned to expressions in the context item and in
+-- the PASSING arguments (bug #19768)
+SELECT * FROM JSON_TABLE(jsonb_build_object('k', ROW(1, 2) < ROW(3, 4)), '$'
+	COLUMNS (a bool PATH '$.k'));
+SELECT * FROM JSON_TABLE(jsonb_build_object('k', 'a' < 'b' COLLATE "C"), '$'
+	COLUMNS (a bool PATH '$.k'));
+SELECT * FROM JSON_TABLE(jsonb '{}', '$' PASSING 'a' < 'b' COLLATE "C" AS x
+	COLUMNS (a bool PATH '$x'));
+SELECT * FROM JSON_TABLE(jsonb '{}', '$' PASSING ROW(1, 2) < ROW(3, 4) AS x
+	COLUMNS (a bool PATH '$x'));

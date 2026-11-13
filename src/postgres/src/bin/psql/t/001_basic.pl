@@ -142,8 +142,10 @@ my ($ret, $out, $err) = $node->psql('postgres',
 is($ret, 2, 'server crash: psql exit code');
 like($out, qr/before/, 'server crash: output before crash');
 unlike($out, qr/AFTER/, 'server crash: no output after crash');
-like( $err, qr/psql:<stdin>:2: FATAL:  terminating connection due to administrator command
-(?:DETAIL:  Signal sent by PID \d+, UID \d+\.\n)?psql:<stdin>:2: server closed the connection unexpectedly
+like(
+	$err,
+	qr/psql:<stdin>:2: FATAL:  terminating connection due to administrator command
+psql:<stdin>:2: server closed the connection unexpectedly
 	This probably means the server terminated abnormally
 	before or while processing the request.
 psql:<stdin>:2: error: connection to server was lost/,
@@ -450,6 +452,8 @@ psql_fails_like(
 	'\set WATCH_INTERVAL 1e500',
 	qr/is out of range/,
 	'WATCH_INTERVAL variable is out of range');
+psql_like($node, '\echo :WATCH_INTERVAL',
+	qr/^2$/m, 'WATCH_INTERVAL variable was not altered');
 
 # Test \g output piped into a program.
 # The program is perl -pe '' to simply copy the input to the output.
@@ -529,11 +533,48 @@ psql_fails_like(
 	qr/COPY in a pipeline is not supported, aborting connection/,
 	'\copy to in pipeline: fails');
 
+# Test execution of COPY FROM STDIN in -c.  This case is a bit weird
+# because it will read from psql's stdin not from the command source.
+# To make it even weirder, try two such commands, to stress psql's logic
+# that counts them.  Also test both \. and EOF termination.
+{
+	$node->safe_psql('postgres', 'CREATE TABLE copy_stdin_count (a int)');
+	my ($stdin, $stdout, $stderr) = ("50\n\\.\n60\n", '', '');
+	my $ret = IPC::Run::run(
+		[
+			'psql', '--no-psqlrc',
+			'--set' => 'ON_ERROR_STOP=1',
+			'--dbname' => $node->connstr('postgres'),
+			'--command' =>
+			  'COPY copy_stdin_count FROM STDIN; COPY copy_stdin_count FROM STDIN',
+		],
+		'<' => \$stdin,
+		'>' => \$stdout,
+		'2>' => \$stderr);
+
+	ok($ret, '-c COPY FROM STDIN: psql exits 0');
+	unlike(
+		$stderr,
+		qr/unexpected COPY_IN result/,
+		'-c COPY FROM STDIN: unexpected COPY_IN result');
+
+	my $data = $node->safe_psql('postgres', 'SELECT * FROM copy_stdin_count');
+	is($data, "50\n60", '-c COPY FROM STDIN: correct data loaded');
+}
+
+# Test \restrict and \unrestrict.
 psql_fails_like(
 	$node,
 	qq{\\restrict test
 \\! should_fail},
 	qr/backslash commands are restricted; only \\unrestrict is allowed/,
 	'meta-command in restrict mode fails');
+
+psql_fails_like(
+	$node,
+	qq{\\restrict test
+\\unrestrict `echo test`},
+	qr/wrong key/,
+	'\unrestrict does not do backquote expansion');
 
 done_testing();

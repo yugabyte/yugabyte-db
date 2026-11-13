@@ -1,0 +1,477 @@
+<!--
+doc/src/sgml/ref/wait.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-wait">
+ <indexterm zone="sql-wait">
+  <primary>WAIT</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>WAIT</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>WAIT</refname>
+  <refpurpose>wait for WAL to reach a target <acronym>LSN</acronym></refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+WAIT FOR LSN '<replaceable class="parameter">lsn</replaceable>'
+    [ WITH ( <replaceable class="parameter">option</replaceable> [, ...] ) ]
+
+<phrase>where <replaceable class="parameter">option</replaceable> can be:</phrase>
+
+    MODE '<replaceable class="parameter">mode</replaceable>'
+    TIMEOUT '<replaceable class="parameter">timeout</replaceable>'
+    NO_THROW
+
+<phrase>and <replaceable class="parameter">mode</replaceable> can be:</phrase>
+
+    standby_replay | standby_write | standby_flush | primary_flush
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   Waits until the specified <parameter>lsn</parameter> is reached
+   according to the specified <parameter>mode</parameter>,
+   which determines whether to wait for WAL to be written, flushed, or replayed.
+   If no <parameter>timeout</parameter> is specified or it is set to
+   zero, this command waits indefinitely for the
+   <parameter>lsn</parameter>.
+  </para>
+
+  <para>
+   On timeout, an error is emitted unless <literal>NO_THROW</literal>
+   is specified in the WITH clause. For standby modes
+   (<literal>standby_replay</literal>, <literal>standby_write</literal>,
+   <literal>standby_flush</literal>), an error is also emitted if the
+   server is promoted before the <parameter>lsn</parameter> is reached.
+   If <parameter>NO_THROW</parameter> is specified, the command reports
+   these outcomes as a status string instead of raising an error.
+  </para>
+
+  <para>
+   The possible return values are <literal>success</literal>,
+   <literal>timeout</literal>, and <literal>not in recovery</literal>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">lsn</replaceable></term>
+    <listitem>
+     <para>
+      Specifies the target <acronym>LSN</acronym> to wait for.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>WITH ( <replaceable class="parameter">option</replaceable> [, ...] )</literal></term>
+    <listitem>
+     <para>
+      This clause specifies optional parameters for the wait operation.
+      The following parameters are supported:
+
+      <variablelist>
+       <varlistentry>
+        <term><literal>MODE</literal> '<replaceable class="parameter">mode</replaceable>'</term>
+        <listitem>
+         <para>
+          Specifies the type of LSN processing to wait for. If not specified,
+          the default is <literal>standby_replay</literal>. The valid modes are:
+         </para>
+         <itemizedlist>
+          <listitem>
+           <para>
+            <literal>standby_replay</literal>: Wait for the LSN to be replayed
+            (applied to the database) on a standby server. After successful
+            completion, <function>pg_last_wal_replay_lsn()</function> will
+            return a value greater than or equal to the target LSN. This mode
+            can only be used during recovery.
+           </para>
+          </listitem>
+          <listitem>
+           <para>
+            <literal>standby_write</literal>: Wait for the WAL containing the
+            LSN to be written to disk on a standby server, but not yet
+            necessarily flushed.  This is faster than
+            <literal>standby_flush</literal> but provides weaker durability
+            guarantees since the data may still be in operating system
+            buffers.  This is satisfied by WAL already present on the
+            standby from a base backup, archive restore, or prior
+            streaming, as well as WAL newly received from the primary.
+            This mode can only be used during recovery.
+           </para>
+          </listitem>
+          <listitem>
+           <para>
+            <literal>standby_flush</literal>: Wait for the WAL containing the
+            LSN to be flushed to disk on a standby server.  This provides
+            a durability guarantee without waiting for the WAL to be
+            applied.  This is satisfied by WAL already present on the
+            standby from a base backup, archive restore, or prior
+            streaming, as well as WAL newly received from the primary.
+            This mode can only be used during recovery.
+           </para>
+          </listitem>
+          <listitem>
+           <para>
+            <literal>primary_flush</literal>: Wait for the WAL containing the
+            LSN to be flushed to disk on a primary server. After successful
+            completion, <function>pg_current_wal_flush_lsn()</function> will
+            return a value greater than or equal to the target LSN. This mode
+            can only be used on a primary server (not during recovery).
+           </para>
+          </listitem>
+         </itemizedlist>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry>
+        <term><literal>TIMEOUT</literal> '<replaceable class="parameter">timeout</replaceable>'</term>
+        <listitem>
+         <para>
+          When specified and <parameter>timeout</parameter> is greater than zero,
+          the command waits until <parameter>lsn</parameter> is reached or
+          the specified <parameter>timeout</parameter> has elapsed.  A value
+          of zero (the default) means the command waits indefinitely.
+         </para>
+         <para>
+          The <parameter>timeout</parameter> is an amount of time in
+          milliseconds.  It may also be specified as a string containing the
+          numerical value followed by a time unit
+          (see <xref linkend="config-setting-names-values"/>).  The maximum
+          value is <literal>2147483647 ms</literal>.
+         </para>
+         <para>
+          Fractional values are rounded to the nearest millisecond.  Note
+          that a <parameter>timeout</parameter> of half a millisecond or
+          less therefore rounds down to zero, which means waiting
+          indefinitely.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry>
+        <term><literal>NO_THROW</literal></term>
+        <listitem>
+         <para>
+          Specify to not throw an error in the case of timeout or
+          running on the primary.  In this case the result status can be
+          obtained from the return value.
+         </para>
+
+         <para>
+          Use this option when <literal>timeout</literal> or
+          <literal>not in recovery</literal> is an expected result that the
+          application intends to handle, for example by retrying the wait,
+          reporting replication delay, or choosing another server for a
+          subsequent operation.  The command then returns the result as a
+          status, which the application must check before assuming that the
+          target <acronym>LSN</acronym> was reached.  Omit the option when
+          the application must not proceed unless the target
+          <acronym>LSN</acronym> is reached, so that an unsuccessful wait
+          stops normal execution with an error.
+         </para>
+
+         <para>
+          Returning a status also leaves an explicit transaction usable;
+          without this option, the corresponding error requires rolling back
+          the transaction, or rolling back to a savepoint, before further
+          commands can be issued.
+         </para>
+
+         <para>
+          This option changes only how <literal>timeout</literal> and
+          <literal>not in recovery</literal> are reported.  Other errors are
+          still raised.  That covers invalid input, such as a malformed
+          <acronym>LSN</acronym> or an unrecognized option value, and every
+          condition that is checked before the wait begins, such as
+          requesting <literal>primary_flush</literal> during recovery or
+          holding a lock while waiting for a standby
+          <acronym>LSN</acronym>.  The option also does not limit the
+          duration of the wait; specify <literal>TIMEOUT</literal> for that
+          purpose.
+         </para>
+        </listitem>
+       </varlistentry>
+      </variablelist>
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Outputs</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>success</literal></term>
+    <listitem>
+     <para>
+      This return value denotes that we have successfully reached
+      the target <parameter>lsn</parameter>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>timeout</literal></term>
+    <listitem>
+     <para>
+      This return value denotes that the timeout happened before reaching
+      the target <parameter>lsn</parameter>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>not in recovery</literal></term>
+    <listitem>
+     <para>
+      This return value denotes that the database server is not in a recovery
+      state. This might mean either the database server was not in recovery
+      at the moment of receiving the command (i.e., executed on a primary),
+      or it was promoted before reaching the target <parameter>lsn</parameter>.
+      In the promotion case, this status indicates a timeline change occurred,
+      and the application should re-evaluate whether the target LSN is still
+      relevant.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+  <para>
+   <command>WAIT</command> must be executed as a top-level command.
+   It cannot be executed from a function, procedure, or
+   <command>DO</command> block.  It also cannot be executed while the
+   current transaction holds a snapshot.  <command>WAIT</command> itself
+   acquires none, so it can run before the first snapshot-taking statement
+   of a <literal>REPEATABLE READ</literal> or <literal>SERIALIZABLE</literal>
+   transaction, but not after it, and not while a cursor or an exported
+   snapshot holds one at any isolation level.  A snapshot held here could
+   delay replay, which <literal>standby_replay</literal> waits for and which
+   other standby modes can end up waiting for too.  That is also why
+   <command>WAIT</command> is a command rather than a function or a
+   procedure, which execute with one held.
+  </para>
+
+  <para>
+   While recovery is in progress, a wait in <literal>standby_replay</literal>
+   (the default), <literal>standby_write</literal>, or
+   <literal>standby_flush</literal> mode is rejected when the session already
+   holds a lock and the target <parameter>lsn</parameter> has not been reached
+   yet.  Such a lock can make the startup process wait for this session, either
+   directly or through another session, while this session waits for the
+   startup process to advance recovery.  That cycle involves no lock wait on
+   this side, so deadlock detection does not see it and nothing breaks it.  A
+   wait whose target has already been reached returns immediately and is
+   therefore always allowed.
+  </para>
+
+  <para>
+   Issue <command>WAIT FOR</command> outside a transaction block, or as the
+   first statement of one, before running anything that takes locks.  That is
+   also the natural order for the read-your-writes pattern shown in the
+   examples below: wait for the target <parameter>lsn</parameter> first, then
+   run the queries that have to see it.  Note that a lock taken by an earlier
+   statement is still held at <literal>READ COMMITTED</literal>, even though
+   its snapshot is gone, so a wait placed after such a statement is rejected
+   even when the isolation level permits it.
+  </para>
+
+  <para>
+   The restriction covers <literal>standby_write</literal> and
+   <literal>standby_flush</literal> as well, even though streaming replication
+   can advance those positions without the startup process.  Both positions are
+   at least the replay position, so without an active walreceiver replay can
+   be their only source of progress.  If a held lock blocks replay, the session
+   waits for replay to advance while replay waits for the session to release
+   the lock.  Under streaming replication the positions advance independently
+   only while WAL keeps arriving.  If reception stops before the target is
+   reached, a blocked startup process cannot restart the walreceiver.  It also
+   cannot replay newer checkpoint records needed to advance restartpoints and
+   recycle WAL, so <filename>pg_wal</filename> can fill up and reception can
+   stop before the target is reached.  The restriction therefore also applies
+   when streaming is active at the start of the wait.
+  </para>
+
+  <para>
+   <command>WAIT</command> waits until the specified
+   <parameter>lsn</parameter> is reached according to the specified
+   <parameter>mode</parameter>. The <literal>standby_replay</literal> mode
+   waits for the LSN to be replayed (applied to the database), which is
+   useful to achieve read-your-writes consistency while using an async
+   replica for reads and the primary for writes, provided that the target
+   <acronym>LSN</acronym> is at or after the end of the relevant write
+   transaction's <literal>COMMIT</literal> record on the primary. The
+   <literal>standby_flush</literal> mode waits for the WAL to be flushed
+   to durable storage on the replica, or to have already been replayed
+   from WAL present on the standby. The <literal>standby_write</literal> mode
+   waits for the WAL to be written to the operating system, or to have
+   already been replayed, which is faster than flush for newly received
+   WAL but provides weaker durability guarantees. The
+   <literal>primary_flush</literal> mode waits for WAL to be flushed on
+   a primary server. In all cases, the <acronym>LSN</acronym> of the last
+   modification should be stored on the client application side or the
+   connection pooler side.
+  </para>
+
+  <para>
+   The standby modes (<literal>standby_replay</literal>,
+   <literal>standby_write</literal>, <literal>standby_flush</literal>)
+   can only be used during recovery, and <literal>primary_flush</literal>
+   can only be used on a primary server. Using the wrong mode for the
+   current server state will result in an error. If a standby is promoted
+   while waiting with a standby mode, the command will return
+   <literal>not in recovery</literal> (or throw an error if
+   <literal>NO_THROW</literal> is not specified). Promotion creates a new
+   timeline, and the LSN being waited for may refer to WAL from the old
+   timeline.
+  </para>
+
+  <para>
+   <command>WAIT</command> compares only the numeric
+   <acronym>LSN</acronym>; it has no notion of which timeline a WAL
+   record belongs to.  This matters when a standby continues recovery
+   across an upstream timeline switch &mdash; for example, a cascading
+   standby whose upstream gets promoted.  In that case
+   <command>WAIT</command> will return <literal>success</literal>
+   as soon as the position used by the selected wait mode reaches or
+   passes the numeric <acronym>LSN</acronym>, regardless of which
+   timeline that <acronym>LSN</acronym> belongs to.  Applications that need to
+   confirm the target refers to the expected timeline must validate
+   the timeline themselves.
+  </para>
+
+  <para>
+   On a standby server, <command>WAIT</command> sessions may be
+   interrupted by recovery conflicts.  Some recovery conflicts are
+   unavoidable: for example, replaying a tablespace drop resolves
+   conflicts by terminating all backends, regardless of what they are
+   doing.  Applications using <command>WAIT</command> on a standby
+   should be prepared to handle such interruptions, for example by
+   retrying the command or falling back to an alternative mechanism.
+  </para>
+
+</refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   You can use the <command>WAIT</command> command to wait for
+   the <type>pg_lsn</type> value.  For example, an application could update
+   the <literal>movie</literal> table and get an <acronym>lsn</acronym> that
+   is at or after the end of the relevant write transaction's
+   <literal>COMMIT</literal> record.  In the default autocommit mode shown
+   here, the <command>UPDATE</command> commits before the subsequent
+   <command>SELECT</command>.  This example uses
+   <function>pg_current_wal_insert_lsn</function> on primary server to get
+   the <acronym>lsn</acronym> given that
+   <varname>synchronous_commit</varname> could be set to
+   <literal>off</literal>.
+
+   <programlisting>
+postgres=# UPDATE movie SET genre = 'Dramatic' WHERE genre = 'Drama';
+UPDATE 100
+postgres=# SELECT pg_current_wal_insert_lsn();
+ pg_current_wal_insert_lsn
+---------------------------
+ 0/0306EE20
+(1 row)
+</programlisting>
+
+   Then an application could run <command>WAIT</command>
+   with the <parameter>lsn</parameter> obtained from the primary after the
+   commit.  After that, the changes made on the primary should be guaranteed
+   to be visible on the replica.
+
+<programlisting>
+postgres=# WAIT FOR LSN '0/0306EE20';
+ status
+---------
+ success
+(1 row)
+postgres=# SELECT * FROM movie WHERE genre = 'Drama';
+ genre
+-------
+(0 rows)
+</programlisting>
+  </para>
+
+  <para>
+   Wait for flush (data durable on replica):
+
+<programlisting>
+postgres=# WAIT FOR LSN '0/0306EE20' WITH (MODE 'standby_flush');
+ status
+---------
+ success
+(1 row)
+</programlisting>
+  </para>
+
+  <para>
+   Wait for write with timeout:
+
+<programlisting>
+postgres=# WAIT FOR LSN '0/0306EE20' WITH (MODE 'standby_write', TIMEOUT '100ms', NO_THROW);
+ status
+---------
+ success
+(1 row)
+</programlisting>
+  </para>
+
+  <para>
+   Wait for flush on primary:
+
+<programlisting>
+postgres=# WAIT FOR LSN '0/0306EE20' WITH (MODE 'primary_flush');
+ status
+---------
+ success
+(1 row)
+</programlisting>
+  </para>
+
+  <para>
+   If the target LSN is not reached before the timeout, an error is thrown:
+
+<programlisting>
+postgres=# WAIT FOR LSN '0/0306EE20' WITH (TIMEOUT '0.1s');
+ERROR:  timed out while waiting for target LSN 0/0306EE20 to be replayed; current standby_replay LSN 0/0306EA60
+</programlisting>
+  </para>
+
+  <para>
+   The same example uses <command>WAIT</command> with the
+   <parameter>NO_THROW</parameter> option:
+
+<programlisting>
+postgres=# WAIT FOR LSN '0/0306EE20' WITH (TIMEOUT '100ms', NO_THROW);
+ status
+---------
+ timeout
+(1 row)
+</programlisting>
+  </para>
+ </refsect1>
+</refentry>

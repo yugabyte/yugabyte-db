@@ -31,6 +31,7 @@
 
 #include "access/commit_ts.h"
 #include "access/gin.h"
+#include "access/htup_details.h"
 #include "access/slru.h"
 #include "access/toast_compression.h"
 #include "access/twophase.h"
@@ -72,6 +73,7 @@
 #include "postmaster/syslogger.h"
 #include "postmaster/walsummarizer.h"
 #include "postmaster/walwriter.h"
+#include "replication/logical.h"
 #include "replication/logicallauncher.h"
 #include "replication/slot.h"
 #include "replication/slotsync.h"
@@ -321,6 +323,13 @@ static const struct config_enum_entry backslash_quote_options[] = {
 	{NULL, 0, false}
 };
 
+static const struct config_enum_entry composite_type_mismatch_options[] = {
+	{"error", COMPOSITE_TYPE_MISMATCH_ERROR, false},
+	{"warn", COMPOSITE_TYPE_MISMATCH_WARN, false},
+	{"disabled", COMPOSITE_TYPE_MISMATCH_DISABLED, false},
+	{NULL, 0, false}
+};
+
 /*
  * Although only "on", "off", and "auto" are documented, we accept
  * all the likely variants of "on" and "off".
@@ -508,13 +517,13 @@ static const struct config_enum_entry wal_compression_options[] = {
 #ifdef USE_ZSTD
 	{"zstd", WAL_COMPRESSION_ZSTD, false},
 #endif
-	{"on", WAL_COMPRESSION_PGLZ, false},
+	{"on", WAL_COMPRESSION_ON, false},
 	{"off", WAL_COMPRESSION_NONE, false},
-	{"true", WAL_COMPRESSION_PGLZ, true},
+	{"true", WAL_COMPRESSION_ON, true},
 	{"false", WAL_COMPRESSION_NONE, true},
-	{"yes", WAL_COMPRESSION_PGLZ, true},
+	{"yes", WAL_COMPRESSION_ON, true},
 	{"no", WAL_COMPRESSION_NONE, true},
-	{"1", WAL_COMPRESSION_PGLZ, true},
+	{"1", WAL_COMPRESSION_ON, true},
 	{"0", WAL_COMPRESSION_NONE, true},
 	{NULL, 0, false}
 };
@@ -532,14 +541,6 @@ static const struct config_enum_entry file_extend_method_options[] = {
 	{"posix_fallocate", FILE_EXTEND_METHOD_POSIX_FALLOCATE, false},
 #endif
 	{"write_zeros", FILE_EXTEND_METHOD_WRITE_ZEROS, false},
-	{NULL, 0, false}
-};
-
-static const struct config_enum_entry data_checksums_options[] = {
-	{"on", PG_DATA_CHECKSUM_VERSION, true},
-	{"off", PG_DATA_CHECKSUM_OFF, true},
-	{"inprogress-on", PG_DATA_CHECKSUM_INPROGRESS_ON, true},
-	{"inprogress-off", PG_DATA_CHECKSUM_INPROGRESS_OFF, true},
 	{NULL, 0, false}
 };
 
@@ -747,6 +748,7 @@ static int	shared_memory_size_in_huge_pages;
 static int	wal_block_size;
 static int	num_os_semaphores;
 static int	effective_wal_level = WAL_LEVEL_REPLICA;
+static bool data_checksums;
 static bool integer_datetimes;
 
 #ifdef USE_ASSERT_CHECKING

@@ -256,7 +256,7 @@ index_form_tuple_context(TupleDesc tupleDescriptor,
  *		nocache_index_getattr
  *
  *		This gets called from index_getattr() macro, and only in cases
- *		where we can't use cacheoffset and the value is not null.
+ *		where we can't use attcacheoff and the value is not null.
  * ----------------
  */
 Datum
@@ -563,8 +563,9 @@ index_truncate_tuple(TupleDesc sourceDescriptor, IndexTuple source,
 	Assert(IndexTupleSize(truncated) <= IndexTupleSize(source));
 
 	/*
-	 * Cannot leak memory here, TupleDescCopy() doesn't allocate any inner
-	 * structure, so, plain pfree() should clean all allocated memory
+	 * Cannot leak memory here, CreateTupleDescTruncatedCopy() doesn't
+	 * allocate any inner structure, so, plain pfree() should clean all
+	 * allocated memory
 	 */
 	pfree(truncdesc);
 

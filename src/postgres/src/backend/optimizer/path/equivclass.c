@@ -92,6 +92,7 @@ static void ec_build_derives_hash(PlannerInfo *root, EquivalenceClass *ec);
 static void ec_add_derived_clauses(EquivalenceClass *ec, List *clauses);
 static void ec_add_derived_clause(EquivalenceClass *ec, RestrictInfo *clause);
 static void ec_add_clause_to_derives_hash(EquivalenceClass *ec, RestrictInfo *rinfo);
+static void ec_clear_derived_clauses(EquivalenceClass *ec);
 static RestrictInfo *ec_search_clause_for_ems(PlannerInfo *root, EquivalenceClass *ec,
 											  EquivalenceMember *leftem,
 											  EquivalenceMember *rightem,
@@ -1023,7 +1024,8 @@ find_ec_member_matching_expr(EquivalenceClass *ec,
  * compute an expression in this way, setrefs.c is going to insist on exact
  * matches of Vars to the source tlist.
  *
- * Child EC members are ignored unless they belong to given 'relids'.
+ * If 'relids' is given, EC members are ignored unless they belong to it.  If
+ * 'relids' is NULL, all child members are ignored.
  * Also, non-parallel-safe expressions are ignored if 'require_parallel_safe'.
  *
  * Note: some callers pass root == NULL for notational reasons.  This is OK
@@ -1065,9 +1067,13 @@ find_computable_ec_member(PlannerInfo *root,
 			continue;
 
 		/*
-		 * Ignore child members unless they belong to the requested rel.
+		 * Ignore child members unless they belong to the requested rel.  If
+		 * 'relids' is given, ignore parent members that don't belong to it
+		 * either: for a child rel, a parent member's PlaceHolderVars would
+		 * otherwise match the translated ones in "exprs", since equal()
+		 * ignores phexpr and phrels when comparing PlaceHolderVars.
 		 */
-		if (em->em_is_child &&
+		if ((em->em_is_child || relids != NULL) &&
 			!bms_is_subset(em->em_relids, relids))
 			continue;
 
@@ -1494,8 +1500,7 @@ generate_base_implied_equalities_no_const(PlannerInfo *root,
 	 * For the moment we force all the Vars to be available at all join nodes
 	 * for this eclass.  Perhaps this could be improved by doing some
 	 * pre-analysis of which members we prefer to join, but it's no worse than
-	 * what happened in the pre-8.3 code.  (Note: rebuild_eclass_attr_needed
-	 * needs to match this code.)
+	 * what happened in the pre-8.3 code.
 	 */
 	foreach(lc, ec->ec_members)
 	{
@@ -2065,23 +2070,46 @@ create_join_clause(PlannerInfo *root,
 										ec->ec_min_security);
 
 	/*
-	 * If either EM is a child, force the clause's clause_relids to include
-	 * the relid(s) of the child rel.  In normal cases it would already, but
-	 * not if we are considering appendrel child relations with pseudoconstant
-	 * translated variables (i.e., UNION ALL sub-selects with constant output
-	 * items).  We must do this so that join_clause_is_movable_into() will
-	 * think that the clause should be evaluated at the correct place.
+	 * If either EM is a child, set the clause's clause_relids from the
+	 * members' em_relids rather than the relids found in the expressions.
+	 * These normally match, but not for UNION ALL sub-selects whose output
+	 * items are constants (mentioning no rels) or contain lateral references
+	 * (mentioning rels that the child's parameterization supplies).  We must
+	 * do this so that join_clause_is_movable_into() will think that the
+	 * clause should be evaluated at the correct place.
 	 */
-	if (leftem->em_is_child)
-		rinfo->clause_relids = bms_add_members(rinfo->clause_relids,
-											   leftem->em_relids);
-	if (rightem->em_is_child)
-		rinfo->clause_relids = bms_add_members(rinfo->clause_relids,
-											   rightem->em_relids);
+	if (leftem->em_is_child || rightem->em_is_child)
+	{
+		Relids		baserels;
+
+		rinfo->clause_relids = bms_union(leftem->em_relids,
+										 rightem->em_relids);
+
+		/* keep num_base_rels in sync, as in make_restrictinfo() */
+		baserels = bms_difference(rinfo->clause_relids,
+								  root->outer_join_rels);
+		rinfo->num_base_rels = bms_num_members(baserels);
+		bms_free(baserels);
+	}
 
 	/* If it's a child clause, copy the parent's rinfo_serial */
 	if (parent_rinfo)
 		rinfo->rinfo_serial = parent_rinfo->rinfo_serial;
+	else
+	{
+		RestrictInfo *counterpart;
+
+		/*
+		 * If a clause comparing the same two EMs already exists with the
+		 * opposite parent_ec marking, adopt its rinfo_serial: the two clauses
+		 * enforce the same condition, and they must share a serial number
+		 * lest we enforce that condition more than once in a plan.
+		 */
+		counterpart = ec_search_clause_for_ems(root, ec, leftem, rightem,
+											   parent_ec ? NULL : ec);
+		if (counterpart)
+			rinfo->rinfo_serial = counterpart->rinfo_serial;
+	}
 
 	/* Mark the clause as redundant, or not */
 	rinfo->parent_ec = parent_ec;
@@ -2171,6 +2199,12 @@ create_join_clause(PlannerInfo *root,
  * We handle this by generating a constant-TRUE clause that is marked with
  * the same required_relids etc as the removed outer-join clause, thus
  * making it a join clause between the correct relations.
+ *
+ * However, we can't do that for a clone clause, since it may be applied
+ * above a commuted outer join that has already null-extended OUTERVAR but
+ * whose relid has not yet been added to the joinrel.  The original strict
+ * clause is needed there to reject the null-extended rows, so we throw
+ * back a clone as-is, marked redundant for selectivity estimation.
  */
 void
 reconsider_outer_join_clauses(PlannerInfo *root)
@@ -2196,6 +2230,15 @@ reconsider_outer_join_clauses(PlannerInfo *root)
 				/* remove it from the list */
 				root->left_join_clauses =
 					foreach_delete_current(root->left_join_clauses, cell);
+				/* throw back a clone as-is (see notes above) */
+				if (rinfo->has_clone || rinfo->is_clone)
+				{
+					/* but the thrown-back clause has no extra selectivity */
+					rinfo->norm_selec = 2.0;
+					rinfo->outer_selec = 1.0;
+					distribute_restrictinfo_to_rels(root, rinfo);
+					continue;
+				}
 				/* throw back a dummy replacement clause (see notes above) */
 				rinfo = make_restrictinfo(root,
 										  (Expr *) makeBoolConst(true, false),
@@ -2224,6 +2267,15 @@ reconsider_outer_join_clauses(PlannerInfo *root)
 				/* remove it from the list */
 				root->right_join_clauses =
 					foreach_delete_current(root->right_join_clauses, cell);
+				/* throw back a clone as-is (see notes above) */
+				if (rinfo->has_clone || rinfo->is_clone)
+				{
+					/* but the thrown-back clause has no extra selectivity */
+					rinfo->norm_selec = 2.0;
+					rinfo->outer_selec = 1.0;
+					distribute_restrictinfo_to_rels(root, rinfo);
+					continue;
+				}
 				/* throw back a dummy replacement clause (see notes above) */
 				rinfo = make_restrictinfo(root,
 										  (Expr *) makeBoolConst(true, false),
@@ -2603,51 +2655,6 @@ reconsider_full_join_clause(PlannerInfo *root, OuterJoinClauseInfo *ojcinfo)
 }
 
 /*
- * rebuild_eclass_attr_needed
- *	  Put back attr_needed bits for Vars/PHVs needed for join eclasses.
- *
- * This is used to rebuild attr_needed/ph_needed sets after removal of a
- * useless outer join.  It should match what
- * generate_base_implied_equalities_no_const did, except that we call
- * add_vars_to_attr_needed not add_vars_to_targetlist.
- */
-void
-rebuild_eclass_attr_needed(PlannerInfo *root)
-{
-	ListCell   *lc;
-
-	foreach(lc, root->eq_classes)
-	{
-		EquivalenceClass *ec = (EquivalenceClass *) lfirst(lc);
-
-		/*
-		 * We don't expect any EC child members to exist at this point. Ensure
-		 * that's the case, otherwise, we might be getting asked to do
-		 * something this function hasn't been coded for.
-		 */
-		Assert(ec->ec_childmembers == NULL);
-
-		/* Need do anything only for a multi-member, no-const EC. */
-		if (list_length(ec->ec_members) > 1 && !ec->ec_has_const)
-		{
-			ListCell   *lc2;
-
-			foreach(lc2, ec->ec_members)
-			{
-				EquivalenceMember *cur_em = (EquivalenceMember *) lfirst(lc2);
-				List	   *vars = pull_var_clause((Node *) cur_em->em_expr,
-												   PVC_RECURSE_AGGREGATES |
-												   PVC_RECURSE_WINDOWFUNCS |
-												   PVC_INCLUDE_PLACEHOLDERS);
-
-				add_vars_to_attr_needed(root, vars, ec->ec_relids);
-				list_free(vars);
-			}
-		}
-	}
-}
-
-/*
  * find_join_domain
  *	  Find the highest JoinDomain enclosed within the given relid set.
  *
@@ -2924,7 +2931,6 @@ add_child_rel_equivalences(PlannerInfo *root,
 			{
 				/* OK, generate transformed child version */
 				Expr	   *child_expr;
-				Relids		new_relids;
 
 				if (parent_rel->reloptkind == RELOPT_BASEREL)
 				{
@@ -2945,20 +2951,17 @@ add_child_rel_equivalences(PlannerInfo *root,
 				}
 
 				/*
-				 * Transform em_relids to match.  Note we do *not* do
+				 * The member's relids are all within the parent, so the child
+				 * version's relids are just the child's.  Note we do *not* do
 				 * pull_varnos(child_expr) here, as for example the
 				 * transformation might have substituted a constant, but we
 				 * don't want the child member to be marked as constant.
 				 */
-				new_relids = bms_difference(cur_em->em_relids,
-											top_parent_relids);
-				new_relids = bms_add_members(new_relids, child_relids);
-
 				add_child_eq_member(root,
 									cur_ec,
 									i,
 									child_expr,
-									new_relids,
+									bms_copy(child_relids),
 									cur_em->em_jdomain,
 									cur_em,
 									cur_em->em_datatype,
@@ -3036,12 +3039,14 @@ add_child_join_rel_equivalences(PlannerInfo *root,
 			if (bms_membership(cur_em->em_relids) != BMS_MULTIPLE)
 				continue;
 
-			/* Does this member reference child's topmost parent rel? */
-			if (bms_overlap(cur_em->em_relids, top_parent_relids))
+			/*
+			 * Consider only members that can be computed at child's topmost
+			 * parent joinrel, as in add_child_rel_equivalences.
+			 */
+			if (bms_is_subset(cur_em->em_relids, top_parent_relids))
 			{
-				/* Yes, generate transformed child version */
+				/* OK, generate transformed child version */
 				Expr	   *child_expr;
-				Relids		new_relids;
 
 				if (parent_joinrel->reloptkind == RELOPT_JOINREL)
 				{
@@ -3063,16 +3068,6 @@ add_child_join_rel_equivalences(PlannerInfo *root,
 				}
 
 				/*
-				 * Transform em_relids to match.  Note we do *not* do
-				 * pull_varnos(child_expr) here, as for example the
-				 * transformation might have substituted a constant, but we
-				 * don't want the child member to be marked as constant.
-				 */
-				new_relids = bms_difference(cur_em->em_relids,
-											top_parent_relids);
-				new_relids = bms_add_members(new_relids, child_relids);
-
-				/*
 				 * Add new child member to the EquivalenceClass.  Because this
 				 * is a RELOPT_OTHER_JOINREL which has multiple component
 				 * relids, there is no ideal place to store these members in
@@ -3091,17 +3086,98 @@ add_child_join_rel_equivalences(PlannerInfo *root,
 				 * for all the component relids, then that would just result
 				 * in eclass_member_iterator_next() finding the member
 				 * multiple times, which is a waste of effort.
+				 *
+				 * As in add_child_rel_equivalences, the child member's relids
+				 * are just the child's.
 				 */
 				add_child_eq_member(root,
 									cur_ec,
 									-1,
 									child_expr,
-									new_relids,
+									bms_copy(child_relids),
 									cur_em->em_jdomain,
 									cur_em,
 									cur_em->em_datatype,
 									bms_next_member(child_joinrel->relids, -1));
 			}
+		}
+	}
+
+	MemoryContextSwitchTo(oldcontext);
+}
+
+/*
+ * add_child_rel_pathkey_equivalences
+ *	  Make sure the ECs of the given pathkeys have members for child_rel.
+ *
+ * An EC created after its relations' children were processed has no child
+ * members, so child_rel could not be sorted by it.  Add them here.
+ */
+void
+add_child_rel_pathkey_equivalences(PlannerInfo *root, RelOptInfo *child_rel,
+								   List *pathkeys)
+{
+	Relids		top_parent_relids = child_rel->top_parent_relids;
+	MemoryContext oldcontext;
+	ListCell   *lc;
+
+	Assert(IS_OTHER_REL(child_rel));
+
+	/* As in add_child_join_rel_equivalences, new members must survive GEQO */
+	oldcontext = MemoryContextSwitchTo(root->planner_cxt);
+
+	foreach(lc, pathkeys)
+	{
+		EquivalenceClass *ec = lfirst_node(PathKey, lc)->pk_eclass;
+
+		if (ec->ec_has_volatile)
+			continue;
+
+		foreach_node(EquivalenceMember, cur_em, ec->ec_members)
+		{
+			EquivalenceMemberIterator it;
+			EquivalenceMember *em;
+			Expr	   *child_expr;
+			Relids		new_relids;
+			int			child_relid;
+
+			/* Consider only members computable at the topmost parent */
+			if (cur_em->em_is_const ||
+				!bms_is_subset(cur_em->em_relids, top_parent_relids))
+				continue;
+
+			/* Skip members that already have a child version for this rel */
+			setup_eclass_member_iterator(&it, ec, child_rel->relids);
+			while ((em = eclass_member_iterator_next(&it)) != NULL)
+			{
+				if (em->em_parent == cur_em &&
+					bms_is_subset(em->em_relids, child_rel->relids))
+					break;
+			}
+			if (em != NULL)
+				continue;
+
+			new_relids = adjust_child_relids_multilevel(root,
+														cur_em->em_relids,
+														child_rel,
+														child_rel->top_parent);
+
+			/* Store the member under one of its child relations */
+			child_relid = bms_next_member(bms_difference(new_relids,
+														 top_parent_relids),
+										  -1);
+			if (child_relid < 0)
+				continue;
+
+			child_expr = (Expr *)
+				adjust_appendrel_attrs_multilevel(root,
+												  (Node *) cur_em->em_expr,
+												  child_rel,
+												  child_rel->top_parent);
+
+			add_child_eq_member(root, ec, -1, child_expr, new_relids,
+								cur_em->em_jdomain, cur_em,
+								cur_em->em_datatype, child_relid);
 		}
 	}
 
@@ -3868,7 +3944,7 @@ ec_add_clause_to_derives_hash(EquivalenceClass *ec, RestrictInfo *rinfo)
  * when thousands of partitions are involved, so we free it as well -- even
  * though we do not typically free lists.
  */
-void
+static void
 ec_clear_derived_clauses(EquivalenceClass *ec)
 {
 	list_free(ec->ec_derives_list);

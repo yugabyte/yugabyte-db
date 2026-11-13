@@ -523,6 +523,13 @@ select jsonb_path_query('0.0012345', '$.decimal(2,4)');
 select jsonb_path_query('-0.00123456', '$.decimal(2,-4)');
 select jsonb_path_query('12.3', '$.decimal(12345678901,1)');
 select jsonb_path_query('12.3', '$.decimal(1,12345678901)');
+-- An out-of-range precision or scale does not fail in silent mode.
+select jsonb_path_query('12345.678', '$.decimal(0, 6)', silent => true);
+select jsonb_path_query('12345.678', '$.decimal(1001, 6)', silent => true);
+select jsonb_path_query('1234.5678', '$.decimal(-6, +2)', silent => true);
+select jsonb_path_query('1234.5678', '$.decimal(6, -1001)', silent => true);
+select jsonb_path_query('1234.5678', '$.decimal(6, 1001)', silent => true);
+select '1234.5678'::jsonb @? '$.decimal(0)';
 
 -- Test .integer()
 select jsonb_path_query('null', '$.integer()');
@@ -721,6 +728,10 @@ select jsonb_path_query('"hello world"', '$.replace("hello","bye") starts with "
 -- Test .split_part()
 select jsonb_path_query('"abc~@~def~@~ghi"', '$.split_part("~@~", 2)');
 select jsonb_path_query('"abc,def,ghi,jkl"', '$.split_part(",", -2)');
+select jsonb_path_query('"a,b"', '$.split_part(",", 0)');
+select jsonb_path_query('"a,b"', '$.split_part(",", 0)', silent => true);
+select jsonb_path_query('"a,b"', '$.split_part(",", 2147483648)');
+select jsonb_path_query('"a,b"', '$.split_part(",", 2147483648)', silent => true);
 
 -- Test string methods play nicely together
 select jsonb_path_query('"hello world"', '$.replace("hello","bye").upper()');

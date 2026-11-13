@@ -41,6 +41,10 @@ static List *textarray_to_stringlist(ArrayType *textarray);
 
 /*
  * Add a comma-separated list of publication names to the 'dest' string.
+ *
+ * If quote_literal is true, the returned list can be used to construct an SQL
+ * command, thus no translation is applied.  Otherwise, the string can be used
+ * to create a user-facing message, so translatable quote marks are added.
  */
 void
 GetPublicationsStr(List *publications, StringInfo dest, bool quote_literal)
@@ -54,27 +58,31 @@ GetPublicationsStr(List *publications, StringInfo dest, bool quote_literal)
 	{
 		char	   *pubname = strVal(lfirst(lc));
 
-		if (first)
-			first = false;
-		else
-			appendStringInfoString(dest, ", ");
-
 		if (quote_literal)
+		{
+			if (!first)
+				appendStringInfoString(dest, ", ");
 			appendStringInfoString(dest, quote_literal_cstr(pubname));
+		}
 		else
 		{
-			appendStringInfoChar(dest, '"');
-			appendStringInfoString(dest, pubname);
-			appendStringInfoChar(dest, '"');
+			if (first)
+				appendStringInfo(dest, _("\"%s\""), pubname);
+			else
+				appendStringInfo(dest, _(", \"%s\""), pubname);
 		}
+
+		first = false;
 	}
 }
 
 /*
  * Fetch the subscription from the syscache.
+ *
+ * Callers that need conninfo must call SubscriptionConninfo().
  */
 Subscription *
-GetSubscription(Oid subid, bool missing_ok, bool aclcheck)
+GetSubscription(Oid subid, bool missing_ok)
 {
 	HeapTuple	tup;
 	Subscription *sub;
@@ -100,7 +108,13 @@ GetSubscription(Oid subid, bool missing_ok, bool aclcheck)
 
 	subform = (Form_pg_subscription) GETSTRUCT(tup);
 
-	sub = palloc_object(Subscription);
+	/*
+	 * It's only safe to access subscriptions from another database from the
+	 * launcher process, which does not call GetSubscription().
+	 */
+	Assert(subform->subdbid == MyDatabaseId);
+
+	sub = palloc0_object(Subscription);
 	sub->cxt = cxt;
 	sub->oid = subid;
 	sub->dbid = subform->subdbid;
@@ -118,40 +132,6 @@ GetSubscription(Oid subid, bool missing_ok, bool aclcheck)
 	sub->retaindeadtuples = subform->subretaindeadtuples;
 	sub->maxretention = subform->submaxretention;
 	sub->retentionactive = subform->subretentionactive;
-
-	/* Get conninfo */
-	if (OidIsValid(subform->subserver))
-	{
-		AclResult	aclresult;
-		ForeignServer *server;
-
-		server = GetForeignServer(subform->subserver);
-
-		/* recheck ACL if requested */
-		if (aclcheck)
-		{
-			aclresult = object_aclcheck(ForeignServerRelationId,
-										subform->subserver,
-										subform->subowner, ACL_USAGE);
-
-			if (aclresult != ACLCHECK_OK)
-				ereport(ERROR,
-						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-						 errmsg("subscription owner \"%s\" does not have permission on foreign server \"%s\"",
-								GetUserNameFromId(subform->subowner, false),
-								server->servername)));
-		}
-
-		sub->conninfo = ForeignServerConnectionString(subform->subowner,
-													  server);
-	}
-	else
-	{
-		datum = SysCacheGetAttrNotNull(SUBSCRIPTIONOID,
-									   tup,
-									   Anum_pg_subscription_subconninfo);
-		sub->conninfo = TextDatumGetCString(datum);
-	}
 
 	/* Get slotname */
 	datum = SysCacheGetAttr(SUBSCRIPTIONOID,
@@ -195,6 +175,62 @@ GetSubscription(Oid subid, bool missing_ok, bool aclcheck)
 	MemoryContextSwitchTo(oldcxt);
 
 	return sub;
+}
+
+/*
+ * Generate the connection string for a subscription.
+ *
+ * This is deliberately separate from GetSubscription() because resolving
+ * conninfo for a server-based subscription has its own error paths (foreign
+ * server USAGE, user mapping, ForeignServerConnectionString()).  Keeping it
+ * separate lets a caller load the subscription and decide whether a
+ * connection is actually needed, and check things such as whether the
+ * subscription is enabled, before risking those errors.  Callers that never
+ * connect thus never hit them, which matters during restore.
+ */
+char *
+SubscriptionConninfo(Subscription *sub)
+{
+	HeapTuple	tup;
+	Form_pg_subscription subform;
+	Datum		datum;
+	char	   *conninfo;
+
+	tup = SearchSysCache1(SUBSCRIPTIONOID, ObjectIdGetDatum(sub->oid));
+	if (!HeapTupleIsValid(tup))
+		elog(ERROR, "cache lookup failed for subscription %u", sub->oid);
+
+	subform = (Form_pg_subscription) GETSTRUCT(tup);
+
+	if (OidIsValid(subform->subserver))
+	{
+		ForeignServer *server;
+		AclResult	aclresult;
+
+		server = GetForeignServer(subform->subserver);
+
+		aclresult = object_aclcheck(ForeignServerRelationId,
+									subform->subserver,
+									sub->owner, ACL_USAGE);
+		if (aclresult != ACLCHECK_OK)
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("subscription owner \"%s\" does not have permission on foreign server \"%s\"",
+							GetUserNameFromId(sub->owner, false),
+							server->servername)));
+
+		conninfo = ForeignServerConnectionString(sub->owner, server);
+	}
+	else
+	{
+		datum = SysCacheGetAttrNotNull(SUBSCRIPTIONOID, tup,
+									   Anum_pg_subscription_subconninfo);
+		conninfo = TextDatumGetCString(datum);
+	}
+
+	ReleaseSysCache(tup);
+
+	return conninfo;
 }
 
 /*
@@ -248,6 +284,9 @@ DisableSubscription(Oid subid)
 
 	if (!HeapTupleIsValid(tup))
 		elog(ERROR, "cache lookup failed for subscription %u", subid);
+
+	/* Must only modify subscriptions belonging to the current database. */
+	Assert(((Form_pg_subscription) GETSTRUCT(tup))->subdbid == MyDatabaseId);
 
 	LockSharedObject(SubscriptionRelationId, subid, 0, AccessShareLock);
 
@@ -638,19 +677,32 @@ GetSubscriptionRelations(Oid subid, bool tables, bool sequences,
 
 		subrel = (Form_pg_subscription_rel) GETSTRUCT(tup);
 
-		/* Relation is either a sequence or a table */
 		relkind = get_rel_relkind(subrel->srrelid);
-		Assert(relkind == RELKIND_SEQUENCE || relkind == RELKIND_RELATION ||
-			   relkind == RELKIND_PARTITIONED_TABLE);
 
-		/* Skip sequences if they were not requested */
-		if ((relkind == RELKIND_SEQUENCE) && !sequences)
+		/* The relation may have been dropped concurrently. */
+		if (relkind == '\0')
 			continue;
 
-		/* Skip tables if they were not requested */
-		if ((relkind == RELKIND_RELATION ||
-			 relkind == RELKIND_PARTITIONED_TABLE) && !tables)
-			continue;
+		/*
+		 * The relation must be either a sequence or a table. Anything else
+		 * indicates an unexpected relation kind for a subscription relation.
+		 */
+		if (relkind == RELKIND_SEQUENCE)
+		{
+			/* Skip sequences if they were not requested */
+			if (!sequences)
+				continue;
+		}
+		else if (relkind == RELKIND_RELATION ||
+				 relkind == RELKIND_PARTITIONED_TABLE)
+		{
+			/* Skip tables if they were not requested */
+			if (!tables)
+				continue;
+		}
+		else
+			elog(ERROR, "unexpected relkind \"%c\" for relation %u in subscription %u",
+				 relkind, subrel->srrelid, subid);
 
 		relstate = palloc_object(SubscriptionRelState);
 		relstate->relid = subrel->srrelid;
@@ -691,6 +743,9 @@ UpdateDeadTupleRetentionStatus(Oid subid, bool active)
 	if (!HeapTupleIsValid(tup))
 		elog(ERROR, "cache lookup failed for subscription %u", subid);
 
+	/* Must only modify subscriptions belonging to the current database. */
+	Assert(((Form_pg_subscription) GETSTRUCT(tup))->subdbid == MyDatabaseId);
+
 	LockSharedObject(SubscriptionRelationId, subid, 0, AccessShareLock);
 
 	/* Form a new tuple. */
@@ -699,7 +754,7 @@ UpdateDeadTupleRetentionStatus(Oid subid, bool active)
 	memset(replaces, false, sizeof(replaces));
 
 	/* Set the subscription to disabled. */
-	values[Anum_pg_subscription_subretentionactive - 1] = active;
+	values[Anum_pg_subscription_subretentionactive - 1] = BoolGetDatum(active);
 	replaces[Anum_pg_subscription_subretentionactive - 1] = true;
 
 	/* Update the catalog */

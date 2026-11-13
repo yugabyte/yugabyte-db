@@ -43,7 +43,7 @@ static void help(const char *progname);
 static int	compare_block_numbers(const void *a, const void *b);
 static int	walsummary_read_callback(void *callback_arg, void *data,
 									 int length);
-static void walsummary_error_callback(void *callback_arg, char *fmt,...) pg_attribute_printf(2, 3);
+static void walsummary_error_callback(void *callback_arg, char *fmt, ...) pg_attribute_printf(2, 3);
 
 /*
  * Main program.
@@ -134,12 +134,6 @@ dump_one_relation(ws_options *opt, RelFileLocator *rlocator,
 	BlockNumber startblock = InvalidBlockNumber;
 	BlockNumber endblock = InvalidBlockNumber;
 
-	/* Dump limit block, if any. */
-	if (limit_block != InvalidBlockNumber)
-		printf("TS %u, DB %u, REL %u, FORK %s: limit %u\n",
-			   rlocator->spcOid, rlocator->dbOid, rlocator->relNumber,
-			   forkNames[forknum], limit_block);
-
 	/* If we haven't allocated a block buffer yet, do that now. */
 	if (block_buffer == NULL)
 		block_buffer = palloc_array(BlockNumber, block_buffer_size);
@@ -173,6 +167,12 @@ dump_one_relation(ws_options *opt, RelFileLocator *rlocator,
 	/* If we don't need to produce any output, skip the rest of this. */
 	if (opt->quiet)
 		return;
+
+	/* Dump limit block, if any. */
+	if (limit_block != InvalidBlockNumber)
+		printf("TS %u, DB %u, REL %u, FORK %s: limit %u\n",
+			   rlocator->spcOid, rlocator->dbOid, rlocator->relNumber,
+			   forkNames[forknum], limit_block);
 
 	/*
 	 * Sort the returned block numbers. If the block reference table was using
@@ -227,7 +227,7 @@ compare_block_numbers(const void *a, const void *b)
  * Error callback.
  */
 void
-walsummary_error_callback(void *callback_arg, char *fmt,...)
+walsummary_error_callback(void *callback_arg, char *fmt, ...)
 {
 	va_list		ap;
 

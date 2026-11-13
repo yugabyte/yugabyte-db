@@ -421,9 +421,8 @@ SET client_min_messages = DEBUG1;
 
  <para>
   <filename>amcheck</filename> can be effective at detecting various types of
-  failure modes that <link
-  linkend="app-initdb-data-checksums"><application>data
-  checksums</application></link> will fail to catch.  These include:
+  failure modes that <link linkend="checksums">data checksums</link> will fail
+  to catch.  These include:
 
   <itemizedlist>
    <listitem>

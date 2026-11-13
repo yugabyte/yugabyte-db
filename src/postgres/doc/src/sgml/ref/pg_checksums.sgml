@@ -23,13 +23,13 @@ PostgreSQL documentation
   <cmdsynopsis>
    <command>pg_checksums</command>
    <arg rep="repeat" choice="opt"><replaceable class="parameter">option</replaceable></arg>
-   <group choice="opt">
+   <arg choice="opt">
     <group choice="opt">
      <arg choice="plain"><option>-D</option></arg>
      <arg choice="plain"><option>--pgdata</option></arg>
     </group>
     <replaceable class="parameter">datadir</replaceable>
-   </group>
+   </arg>
   </cmdsynopsis>
  </refsynopsisdiv>
 
@@ -38,17 +38,12 @@ PostgreSQL documentation
   <para>
    <application>pg_checksums</application> checks, enables or disables data
    checksums in a <productname>PostgreSQL</productname> cluster.  The server
-   must be shut down cleanly before running
-   <application>pg_checksums</application>. When verifying checksums, the exit
+   must be shut down cleanly before running <application>pg_checksums</application>.
+   See <xref linkend="checksums"/> for further details on data checksums.
+   When verifying checksums, the exit
    status is zero if there are no checksum errors, and nonzero if at least one
    checksum failure is detected. When enabling or disabling checksums, the
    exit status is nonzero if the operation failed.
-  </para>
-
-  <para>
-   When enabling checksums, if checksums were in the process of being enabled
-   when the cluster was shut down, <application>pg_checksums</application>
-   will still process all relations regardless of the online processing.
   </para>
 
   <para>

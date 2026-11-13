@@ -141,12 +141,13 @@ int			client_connection_check_interval = 0;
 int			restrict_nonsystem_relation_kind;
 
 /*
- * Include signal sender PID/UID as errdetail when available (SA_SIGINFO).
- * The caller must supply the (already-captured) pid and uid values.
+ * Include signal sender PID/UID in the server log when available
+ * (SA_SIGINFO). The caller must supply the already-captured pid and uid
+ * values.
  */
 #define ERRDETAIL_SIGNAL_SENDER(pid, uid) \
 	((pid) == 0 ? 0 : \
-	 errdetail("Signal sent by PID %d, UID %d.", (int) (pid), (int) (uid)))
+	 errdetail_log("Signal sent by PID %d, UID %d.", (int) (pid), (int) (uid)))
 
 /* ----------------
  *		private typedefs etc
@@ -2247,6 +2248,8 @@ exec_bind_message(StringInfo input_message)
 	else
 		portal = CreatePortal(portal_name, false, false);
 
+	INJECTION_POINT("bind-portal-created", NULL);
+
 	/*
 	 * Prepare to copy stuff into the portal's memory context.  We do all this
 	 * copying first, because it could possibly fail (out-of-memory) and we
@@ -2519,6 +2522,8 @@ exec_bind_message(StringInfo input_message)
 					  psrc->commandTag,
 					  cplan->stmt_list,
 					  cplan);
+
+	INJECTION_POINT("bind-portal-defined", NULL);
 
 	/* Portal is defined, set the plan ID based on its contents. */
 	foreach(lc, portal->stmts)
@@ -3630,6 +3635,17 @@ die(SIGNAL_ARGS)
 	{
 		InterruptPending = true;
 		ProcDiePending = true;
+
+		/*
+		 * Record who sent the signal.  Will be 0 on platforms without
+		 * SA_SIGINFO, which is fine -- ProcessInterrupts() checks for that.
+		 * Only set on the first SIGTERM so we report the original sender.
+		 */
+		if (ProcDieSenderPid == 0)
+		{
+			ProcDieSenderPid = pg_siginfo->pid;
+			ProcDieSenderUid = pg_siginfo->uid;
+		}
 	}
 
 	if (IsYugaByteEnabled())
@@ -3689,7 +3705,7 @@ void
 YbCriticalSignalHandler(SIGNAL_ARGS)
 {
 	/* reset to default handler */
-	pqsignal(postgres_signal_arg, SIG_DFL);
+	pqsignal(postgres_signal_arg, PG_SIG_DFL);
 
 	ereport(LOG,
 			(errcode(ERRCODE_INTERNAL_ERROR),
@@ -6678,9 +6694,9 @@ PostgresMain(const char *dbname, const char *username)
 		 * returns to outer loop.  This seems safer than forcing exit in the
 		 * midst of output during who-knows-what operation...
 		 */
-		pqsignal(SIGPIPE, SIG_IGN);
+		pqsignal(SIGPIPE, PG_SIG_IGN);
 		pqsignal(SIGUSR1, procsignal_sigusr1_handler);
-		pqsignal(SIGUSR2, SIG_IGN);
+		pqsignal(SIGUSR2, PG_SIG_IGN);
 		pqsignal(SIGFPE, FloatExceptionHandler);
 		pqsignal(SIGSEGV, YbCriticalSignalHandler);
 		pqsignal(SIGABRT, YbCriticalSignalHandler);
@@ -6688,8 +6704,8 @@ PostgresMain(const char *dbname, const char *username)
 		 * Reset some signals that are accepted by postmaster but not by
 		 * backend
 		 */
-		pqsignal(SIGCHLD, SIG_DFL); /* system() requires this on some
-									 * platforms */
+		pqsignal(SIGCHLD, PG_SIG_DFL);	/* system() requires this on some
+										 * platforms */
 	}
 
 	/* Early initialization */

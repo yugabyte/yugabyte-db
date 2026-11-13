@@ -276,7 +276,7 @@ SELECT * FROM agg_bad;
 ALTER FOREIGN TABLE agg_bad OPTIONS (ADD reject_limit '1'); -- ERROR
 SELECT * FROM agg_bad;
 ERROR:  skipped more than REJECT_LIMIT (1) rows due to data type incompatibility
-CONTEXT:  COPY agg_bad, line 5, column b: "bbb"
+CONTEXT:  COPY agg_bad, line 5: "1;@bbb@"
 ALTER FOREIGN TABLE agg_bad OPTIONS (SET reject_limit '2');
 SELECT * FROM agg_bad;
   a  |   b    
@@ -535,6 +535,16 @@ SELECT id, text_value, ts_value FROM copy_default;
   2 | test       | Sun Jul 03 00:00:00 2022
   3 | test       | Tue Jul 05 00:00:00 2022
 (3 rows)
+
+ANALYZE copy_default;
+SELECT most_common_vals
+FROM pg_stats
+WHERE schemaname = 'public' AND tablename = 'copy_default'
+  AND attname = 'text_value';
+ most_common_vals 
+------------------
+ {test}
+(1 row)
 
 DROP FOREIGN TABLE copy_default;
 -- privilege tests

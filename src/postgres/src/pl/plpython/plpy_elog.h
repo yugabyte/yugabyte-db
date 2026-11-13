@@ -17,14 +17,14 @@ extern PyObject *PLy_exc_spi_error;
  *
  * See comments at elog() about the compiler hinting.
  */
-#ifdef HAVE__BUILTIN_CONSTANT_P
+#ifdef HAVE_PG_INTEGER_CONSTANT_P
 #define PLy_elog(elevel, ...) \
 	do { \
 		PLy_elog_impl(elevel, __VA_ARGS__); \
-		if (__builtin_constant_p(elevel) && (elevel) >= ERROR) \
+		if (pg_integer_constant_p(elevel) && (elevel) >= ERROR) \
 			pg_unreachable(); \
 	} while(0)
-#else							/* !HAVE__BUILTIN_CONSTANT_P */
+#else							/* !HAVE_PG_INTEGER_CONSTANT_P */
 #define PLy_elog(elevel, ...)  \
 	do { \
 		const int elevel_ = (elevel); \
@@ -32,14 +32,14 @@ extern PyObject *PLy_exc_spi_error;
 		if (elevel_ >= ERROR) \
 			pg_unreachable(); \
 	} while(0)
-#endif							/* HAVE__BUILTIN_CONSTANT_P */
+#endif							/* HAVE_PG_INTEGER_CONSTANT_P */
 
-extern PGDLLEXPORT void PLy_elog_impl(int elevel, const char *fmt,...) pg_attribute_printf(2, 3);
+extern PGDLLEXPORT void PLy_elog_impl(int elevel, const char *fmt, ...) pg_attribute_printf(2, 3);
 
-extern PGDLLEXPORT void PLy_exception_set(PyObject *exc, const char *fmt,...) pg_attribute_printf(2, 3);
+extern PGDLLEXPORT void PLy_exception_set(PyObject *exc, const char *fmt, ...) pg_attribute_printf(2, 3);
 
 extern PGDLLEXPORT void PLy_exception_set_plural(PyObject *exc, const char *fmt_singular, const char *fmt_plural,
-												 unsigned long n,...) pg_attribute_printf(2, 5) pg_attribute_printf(3, 5);
+												 unsigned long n, ...) pg_attribute_printf(2, 5) pg_attribute_printf(3, 5);
 
 extern PGDLLEXPORT void PLy_exception_set_with_details(PyObject *excclass, ErrorData *edata);
 

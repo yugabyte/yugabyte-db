@@ -46,6 +46,18 @@ SELECT EXISTS (
 EOM
 ok($result, "WAL summarization caught up after insert");
 
+# --quiet must also suppress limit blocks caused by relation creation.
+my $summary_dir = $node1->data_dir . '/pg_wal/summaries';
+my @summaries = map { "$summary_dir/$_" }
+  sort grep { /^[0-9A-F]{40}\.summary$/ } slurp_dir($summary_dir);
+command_like(
+	[ 'pg_walsummary', @summaries ],
+	qr/: limit 0$/m,
+	'relation creation produces limit blocks');
+
+command_like([ 'pg_walsummary', '-q', @summaries ],
+	qr/\A\z/, "-q suppresses all output");
+
 # The WAL summarizer should have generated some IO statistics.
 $node1->poll_query_until(
 	'postgres',
@@ -93,13 +105,14 @@ my $filename = sprintf "%s/pg_wal/summaries/%08s%08s%08s%08s%08s.summary",
   split(m@/@, $end_lsn);
 ok(-f $filename, "WAL summary file exists");
 
-# Run pg_walsummary on it. We expect exactly two blocks to be modified,
-# block 0 and one other.
+# Run pg_walsummary on it. We expect exactly three blocks to be modified,
+# block 0 (old tuple), another block (new tuple), and the block for the VM.
 my ($stdout, $stderr) = run_command([ 'pg_walsummary', '-i', $filename ]);
 note($stdout);
 @lines = split(/\n/, $stdout);
 like($stdout, qr/FORK main: block 0$/m, "stdout shows block 0 modified");
+like($stdout, qr/FORK vm: block 0$/m, "stdout shows VM block 0 modified");
 is($stderr, '', 'stderr is empty');
-is(0 + @lines, 2, "UPDATE modified 2 blocks");
+is(0 + @lines, 3, "UPDATE modified 3 blocks");
 
 done_testing();

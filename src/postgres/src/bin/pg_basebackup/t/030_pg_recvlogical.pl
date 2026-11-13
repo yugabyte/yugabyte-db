@@ -84,6 +84,41 @@ $node->command_ok(
 	],
 	'slot dropped');
 
+# Check that pgoutput rejects options that require a parameter when passed
+# without a value.
+$node->safe_psql('postgres',
+	"SELECT pg_create_logical_replication_slot('pgoutput_slot', 'pgoutput')");
+
+$node->command_fails_like(
+	[
+		'pg_recvlogical',
+		'--slot' => 'pgoutput_slot',
+		'--dbname' => $node->connstr('postgres'),
+		'--start',
+		'--option' => 'proto_version',
+		'--no-loop',
+		'--file' => '-',
+	],
+	qr/proto_version requires a parameter/,
+	'pgoutput proto_version option without a value');
+
+$node->command_fails_like(
+	[
+		'pg_recvlogical',
+		'--slot' => 'pgoutput_slot',
+		'--dbname' => $node->connstr('postgres'),
+		'--start',
+		'--option' => 'proto_version=1',
+		'--option' => 'publication_names',
+		'--no-loop',
+		'--file' => '-',
+	],
+	qr/publication_names requires a parameter/,
+	'pgoutput publication_names option without a value');
+
+$node->safe_psql('postgres',
+	"SELECT pg_drop_replication_slot('pgoutput_slot')");
+
 #test with two-phase option enabled
 $node->command_ok(
 	[
@@ -198,6 +233,8 @@ my $recv = IPC::Run::start(
 # Wait for pg_recvlogical to receive and write the first INSERT
 my $first_ins = wait_for_file($outfile, qr/INSERT/);
 
+my $log_offset = -s $node->logfile;
+
 # Terminate the walsender to force pg_recvlogical to reconnect
 my $backend_pid = $node->safe_psql('postgres',
 	"SELECT active_pid FROM pg_replication_slots WHERE slot_name = 'reconnect_test'"
@@ -205,9 +242,8 @@ my $backend_pid = $node->safe_psql('postgres',
 $node->safe_psql('postgres', "SELECT pg_terminate_backend($backend_pid)");
 
 # Wait for pg_recvlogical to reconnect
-$node->poll_query_until('postgres',
-	"SELECT active_pid IS NOT NULL AND active_pid != $backend_pid FROM pg_replication_slots WHERE slot_name = 'reconnect_test'"
-) or die "Timed out while waiting for pg_recvlogical to reconnect";
+$node->wait_for_log(qr/acquired logical replication slot \"reconnect_test\"/,
+	$log_offset);
 
 # Insert the second record for this test
 $node->safe_psql('postgres', 'INSERT INTO test_table VALUES (2)');
@@ -235,6 +271,52 @@ my $outfiledata = slurp_file("$outfile");
 my $count = (() = $outfiledata =~ /INSERT/g);
 cmp_ok($count, '==', 2,
 	'pg_recvlogical has received and written two INSERTs');
+
+# Check that pg_recvlogical derives output file permissions from the source
+# cluster.
+SKIP:
+{
+	skip "unix-style permissions not supported on Windows", 2
+	  if ($Config{osname} eq 'MSWin32' || $Config{osname} eq 'cygwin');
+
+	# The cluster was initialized without group access, so pg_recvlogical
+	# should create the output file as 0600 (-rw-------).
+	my $mode = sprintf('%04o', (stat($outfile))[2] & 07777);
+	is($mode, '0600',
+		'pg_recvlogical output file has no group permissions (0600)');
+
+	# Enable group access on the source cluster and its files, then restart
+	# so pg_recvlogical observes the updated source cluster permissions.
+	$node->stop;
+	chmod_recursive($node->data_dir, 0750, 0640);
+	$node->start;
+
+	$outfile = $node->basedir . '/group_access.out';
+	@pg_recvlogical_cmd = (
+		'pg_recvlogical',
+		'--slot' => 'reconnect_test',
+		'--dbname' => $node->connstr('postgres'),
+		'--start',
+		'--file' => $outfile,
+		'--fsync-interval' => '1');
+
+	$recv = IPC::Run::start(
+		[@pg_recvlogical_cmd],
+		'>' => \$stdout,
+		'2>' => \$stderr);
+
+	$node->safe_psql('postgres', 'INSERT INTO test_table VALUES (3)');
+	wait_for_file($outfile, qr/INSERT/);
+
+	$recv->signal('TERM');
+	$recv->finish();
+
+	# With group access enabled on the source cluster, pg_recvlogical should
+	# create the output file as 0640 (-rw-r-----).
+	$mode = sprintf('%04o', (stat($outfile))[2] & 07777);
+	is($mode, '0640',
+		'pg_recvlogical output file respects group permissions (0640)');
+}
 
 $node->command_ok(
 	[

@@ -2143,6 +2143,28 @@ from generate_series(-9223372036854775806, -9223372036854775804) x;
  -9223372036854775806 | -9223372036854775806
 (3 rows)
 
+SELECT x,
+       lead(x, -2147483648) over w as respect_nulls,
+       lead(x, -2147483648) ignore nulls over w as ignore_nulls
+from (values (1), (2)) as t(x)
+window w as (order by x);
+ x | respect_nulls | ignore_nulls 
+---+---------------+--------------
+ 1 |               |             
+ 2 |               |             
+(2 rows)
+
+SELECT x,
+       lag(x, -2147483648) over w as respect_nulls,
+       lag(x, -2147483648) ignore nulls over w as ignore_nulls
+from (values (1), (2)) as t(x)
+window w as (order by x);
+ x | respect_nulls | ignore_nulls 
+---+---------------+--------------
+ 1 |               |             
+ 2 |               |             
+(2 rows)
+
 -- Test in_range for other numeric datatypes
 create temp table numerics(
     id int,
@@ -4232,22 +4254,58 @@ WHERE c <= 3;
 (8 rows)
 
 -- Ensure we get the correct run condition when the window function is both
--- monotonically increasing and decreasing.
+-- monotonically increasing and decreasing in RANGE mode without an ORDER BY
 EXPLAIN (COSTS OFF)
 SELECT * FROM
   (SELECT empno,
           depname,
           salary,
-          count(empno) OVER () c
+          count(empno) OVER (RANGE BETWEEN CURRENT ROW AND CURRENT ROW) c
    FROM empsalary) emp
 WHERE c = 1;
-                      QUERY PLAN                       
--------------------------------------------------------
+                         QUERY PLAN                          
+-------------------------------------------------------------
  WindowAgg
-   Window: w1 AS ()
+   Window: w1 AS (RANGE BETWEEN CURRENT ROW AND CURRENT ROW)
    Run Condition: (count(empsalary.empno) OVER w1 = 1)
    ->  Seq Scan on empsalary
 (4 rows)
+
+-- As above, but check we detect it's monotonically increasing
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT empno,
+          depname,
+          salary,
+          count(empno) OVER (RANGE BETWEEN CURRENT ROW AND CURRENT ROW) c
+   FROM empsalary) emp
+WHERE c <= 3;
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ WindowAgg
+   Window: w1 AS (RANGE BETWEEN CURRENT ROW AND CURRENT ROW)
+   Run Condition: (count(empsalary.empno) OVER w1 <= 3)
+   ->  Seq Scan on empsalary
+(4 rows)
+
+-- Ensure that ROWS mode without an ORDER BY doesn't think it's monotonically
+-- decreasing, i.e. don't push down the run condition.
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT empno,
+          depname,
+          salary,
+          count(empno) OVER (ROWS BETWEEN CURRENT ROW AND CURRENT ROW) c
+   FROM empsalary) emp
+WHERE c > 1;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Subquery Scan on emp
+   Filter: (emp.c > 1)
+   ->  WindowAgg
+         Window: w1 AS (ROWS BETWEEN CURRENT ROW AND CURRENT ROW)
+         ->  Seq Scan on empsalary
+(5 rows)
 
 -- Try another case with a WindowFunc with a byref return type
 SELECT * FROM
@@ -4435,6 +4493,181 @@ WHERE c = 1;
                Sort Key: empsalary.empno DESC
                ->  Seq Scan on empsalary
 (9 rows)
+
+--
+-- Ensure we get the correct behavior for run condition pushdown when the
+-- frame option has an EXCLUDE clause
+--
+-- Ensure pushdown occurs for ROWS BETWEEN UNBOUNDED PRECEDING with EXCLUDE
+-- CURRENT ROW with COUNT(*)
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT empno,
+          salary,
+          count(*) OVER (ORDER BY salary ROWS BETWEEN UNBOUNDED PRECEDING AND 0 PRECEDING EXCLUDE CURRENT ROW) c
+   FROM empsalary) emp
+WHERE c <= 3;
+                                                         QUERY PLAN                                                         
+----------------------------------------------------------------------------------------------------------------------------
+ WindowAgg
+   Window: w1 AS (ORDER BY empsalary.salary ROWS BETWEEN UNBOUNDED PRECEDING AND '0'::bigint PRECEDING EXCLUDE CURRENT ROW)
+   Run Condition: (count(*) OVER w1 <= 3)
+   ->  Sort
+         Sort Key: empsalary.salary
+         ->  Seq Scan on empsalary
+(6 rows)
+
+-- Ensure pushdown occurs for GROUPS BETWEEN UNBOUNDED PRECEDING with EXCLUDE
+-- CURRENT ROW with COUNT(*)
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT empno,
+          salary,
+          count(*) OVER (ORDER BY salary GROUPS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW EXCLUDE CURRENT ROW) c
+   FROM empsalary) emp
+WHERE c <= 3;
+                                                     QUERY PLAN                                                     
+--------------------------------------------------------------------------------------------------------------------
+ WindowAgg
+   Window: w1 AS (ORDER BY empsalary.salary GROUPS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW EXCLUDE CURRENT ROW)
+   Run Condition: (count(*) OVER w1 <= 3)
+   ->  Sort
+         Sort Key: empsalary.salary
+         ->  Seq Scan on empsalary
+(6 rows)
+
+-- Ensure pushdown occurs for RANGE BETWEEN UNBOUNDED PRECEDING with EXCLUDE
+-- CURRENT ROW with COUNT(*)
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT empno,
+          salary,
+          count(*) OVER (ORDER BY salary RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW EXCLUDE CURRENT ROW) c
+   FROM empsalary) emp
+WHERE c <= 3;
+                                                    QUERY PLAN                                                     
+-------------------------------------------------------------------------------------------------------------------
+ WindowAgg
+   Window: w1 AS (ORDER BY empsalary.salary RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW EXCLUDE CURRENT ROW)
+   Run Condition: (count(*) OVER w1 <= 3)
+   ->  Sort
+         Sort Key: empsalary.salary
+         ->  Seq Scan on empsalary
+(6 rows)
+
+-- Ensure we don't get pushdown when a FILTER clause is present
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT empno,
+          salary,
+          count(*) FILTER (WHERE salary > 4000) OVER (ORDER BY salary ROWS BETWEEN UNBOUNDED PRECEDING AND 0 PRECEDING EXCLUDE CURRENT ROW) c
+   FROM empsalary) emp
+WHERE c <= 3;
+                                                            QUERY PLAN                                                            
+----------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on emp
+   Filter: (emp.c <= 3)
+   ->  WindowAgg
+         Window: w1 AS (ORDER BY empsalary.salary ROWS BETWEEN UNBOUNDED PRECEDING AND '0'::bigint PRECEDING EXCLUDE CURRENT ROW)
+         ->  Sort
+               Sort Key: empsalary.salary
+               ->  Seq Scan on empsalary
+(7 rows)
+
+-- Ensure we don't get pushdown with COUNT(ANY)
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT empno,
+          salary,
+          count(salary) OVER (ORDER BY salary ROWS BETWEEN UNBOUNDED PRECEDING AND 0 PRECEDING EXCLUDE CURRENT ROW) c
+   FROM empsalary) emp
+WHERE c <= 3;
+                                                            QUERY PLAN                                                            
+----------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on emp
+   Filter: (emp.c <= 3)
+   ->  WindowAgg
+         Window: w1 AS (ORDER BY empsalary.salary ROWS BETWEEN UNBOUNDED PRECEDING AND '0'::bigint PRECEDING EXCLUDE CURRENT ROW)
+         ->  Sort
+               Sort Key: empsalary.salary
+               ->  Seq Scan on empsalary
+(7 rows)
+
+-- Ensure we don't get pushdown with EXCLUDE GROUP
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT empno,
+          salary,
+          count(*) OVER (ORDER BY salary ROWS BETWEEN UNBOUNDED PRECEDING AND 0 PRECEDING EXCLUDE GROUP) c
+   FROM empsalary) emp
+WHERE c <= 3;
+                                                         QUERY PLAN                                                         
+----------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on emp
+   Filter: (emp.c <= 3)
+   ->  WindowAgg
+         Window: w1 AS (ORDER BY empsalary.salary ROWS BETWEEN UNBOUNDED PRECEDING AND '0'::bigint PRECEDING EXCLUDE GROUP)
+         ->  Sort
+               Sort Key: empsalary.salary
+               ->  Seq Scan on empsalary
+(7 rows)
+
+-- Ensure we don't get pushdown with EXCLUDE TIES
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT empno,
+          salary,
+          count(*) OVER (ORDER BY salary ROWS BETWEEN UNBOUNDED PRECEDING AND 0 PRECEDING EXCLUDE TIES) c
+   FROM empsalary) emp
+WHERE c <= 3;
+                                                        QUERY PLAN                                                         
+---------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on emp
+   Filter: (emp.c <= 3)
+   ->  WindowAgg
+         Window: w1 AS (ORDER BY empsalary.salary ROWS BETWEEN UNBOUNDED PRECEDING AND '0'::bigint PRECEDING EXCLUDE TIES)
+         ->  Sort
+               Sort Key: empsalary.salary
+               ->  Seq Scan on empsalary
+(7 rows)
+
+-- Ensure we don't get pushdown with GROUPS mode and EXCLUDE GROUP
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT empno,
+          salary,
+          count(*) OVER (ORDER BY salary GROUPS BETWEEN UNBOUNDED PRECEDING AND 0 PRECEDING EXCLUDE GROUP) c
+   FROM empsalary) emp
+WHERE c <= 3;
+                                                          QUERY PLAN                                                          
+------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on emp
+   Filter: (emp.c <= 3)
+   ->  WindowAgg
+         Window: w1 AS (ORDER BY empsalary.salary GROUPS BETWEEN UNBOUNDED PRECEDING AND '0'::bigint PRECEDING EXCLUDE GROUP)
+         ->  Sort
+               Sort Key: empsalary.salary
+               ->  Seq Scan on empsalary
+(7 rows)
+
+-- Ensure we don't get pushdown with GROUPS mode and EXCLUDE TIES
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT empno,
+          salary,
+          count(*) OVER (ORDER BY salary GROUPS BETWEEN UNBOUNDED PRECEDING AND 0 PRECEDING EXCLUDE TIES) c
+   FROM empsalary) emp
+WHERE c <= 3;
+                                                         QUERY PLAN                                                          
+-----------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on emp
+   Filter: (emp.c <= 3)
+   ->  WindowAgg
+         Window: w1 AS (ORDER BY empsalary.salary GROUPS BETWEEN UNBOUNDED PRECEDING AND '0'::bigint PRECEDING EXCLUDE TIES)
+         ->  Sort
+               Sort Key: empsalary.salary
+               ->  Seq Scan on empsalary
+(7 rows)
 
 -- Test Sort node collapsing
 EXPLAIN (COSTS OFF)
@@ -5748,6 +5981,19 @@ WINDOW w AS (ORDER BY name ROWS BETWEEN 2 PRECEDING AND 2 FOLLOWING EXCLUDE CURR
 (10 rows)
 
 -- valid and invalid functions
+SELECT abs(1) IGNORE NULLS; -- fails
+ERROR:  RESPECT/IGNORE NULLS specified, but abs is not a window function
+LINE 1: SELECT abs(1) IGNORE NULLS;
+               ^
+SELECT no_such_window_func() IGNORE NULLS; -- fails, but not because of null treatment
+ERROR:  function no_such_window_func() does not exist
+LINE 1: SELECT no_such_window_func() IGNORE NULLS;
+               ^
+DETAIL:  There is no function of that name.
+SELECT sum(orbit) IGNORE NULLS FROM planets; -- fails
+ERROR:  aggregate functions do not accept RESPECT/IGNORE NULLS
+LINE 1: SELECT sum(orbit) IGNORE NULLS FROM planets;
+               ^
 SELECT sum(orbit) OVER () FROM planets; -- succeeds
   sum   
 --------
@@ -5963,6 +6209,112 @@ WINDOW w AS (ORDER BY x ROWS BETWEEN 2 PRECEDING AND 2 FOLLOWING);
  4 |         3
  5 |         4
 (5 rows)
+
+-- EXCLUDE GROUP/TIES without ORDER BY: every row is a peer of the current
+-- row, so the IGNORE NULLS scan must stop at the end of the partition
+SELECT x,
+       first_value(x) IGNORE NULLS OVER w,
+       nth_value(x, 2) IGNORE NULLS OVER w
+FROM (VALUES (1), (NULL), (3)) v(x)
+WINDOW w AS (ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING EXCLUDE GROUP)
+ORDER BY x;
+ x | first_value | nth_value 
+---+-------------+-----------
+ 1 |             |          
+ 3 |             |          
+   |             |          
+(3 rows)
+
+SELECT x,
+       first_value(x) IGNORE NULLS OVER w,
+       nth_value(x, 2) IGNORE NULLS OVER w
+FROM (VALUES (1), (NULL), (3)) v(x)
+WINDOW w AS (RANGE BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING EXCLUDE TIES)
+ORDER BY x;
+ x | first_value | nth_value 
+---+-------------+-----------
+ 1 |           1 |          
+ 3 |           3 |          
+   |             |          
+(3 rows)
+
+SELECT p, x,
+       first_value(x) IGNORE NULLS OVER w
+FROM (VALUES (1, 1), (1, NULL), (2, NULL)) v(p, x)
+WINDOW w AS (PARTITION BY p ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING EXCLUDE TIES)
+ORDER BY p, x;
+ p | x | first_value 
+---+---+-------------
+ 1 | 1 |           1
+ 1 |   |            
+ 2 |   |            
+(3 rows)
+
+-- volatile arguments cannot use the IGNORE NULLS nullness cache
+CREATE TEMPORARY SEQUENCE null_treatment_seq;
+CREATE FUNCTION pg_temp.volatile_null(i int) RETURNS int
+LANGUAGE sql VOLATILE AS
+$$
+  SELECT CASE WHEN nextval('null_treatment_seq') % 2 = 0 THEN i ELSE NULL END;
+$$;
+SELECT x,
+       first_value(pg_temp.volatile_null(x)) IGNORE NULLS
+         OVER (ORDER BY x ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+FROM generate_series(1,5) g(x);
+ x | first_value 
+---+-------------
+ 1 |            
+ 2 |           1
+ 3 |           2
+ 4 |           2
+ 5 |           2
+(5 rows)
+
+SELECT last_value FROM null_treatment_seq;
+ last_value 
+------------
+          8
+(1 row)
+
+ALTER SEQUENCE null_treatment_seq RESTART WITH 1;
+SELECT x,
+       lead(pg_temp.volatile_null(x), 1) IGNORE NULLS OVER (ORDER BY x)
+FROM generate_series(1,5) g(x);
+ x | lead 
+---+------
+ 1 |    3
+ 2 |    4
+ 3 |    5
+ 4 |     
+ 5 |     
+(5 rows)
+
+SELECT last_value FROM null_treatment_seq;
+ last_value 
+------------
+          7
+(1 row)
+
+ALTER SEQUENCE null_treatment_seq RESTART WITH 1;
+SELECT x,
+       first_value((SELECT CASE WHEN nextval('null_treatment_seq') % 2 = 0
+                                THEN x ELSE NULL END)) IGNORE NULLS
+         OVER (ORDER BY x ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+FROM generate_series(1,5) g(x);
+ x | first_value 
+---+-------------
+ 1 |            
+ 2 |           1
+ 3 |           2
+ 4 |           2
+ 5 |           2
+(5 rows)
+
+SELECT last_value FROM null_treatment_seq;
+ last_value 
+------------
+          8
+(1 row)
 
 --cleanup
 DROP TABLE planets CASCADE;

@@ -40,13 +40,14 @@ extension_control_path = '\$system$sep@{[ $windows_os ? ($ext_dir =~ s/\\/\\\\/g
 # Start node
 $node->start;
 
-# Create an user to test permissions to read extension locations.
+# Create a user to test permissions to read extension locations.
 my $user = "user01";
 $node->safe_psql('postgres', "CREATE USER $user");
 
 my $ecp = $node->safe_psql('postgres', 'show extension_control_path;');
 
-is($ecp, "\$system$sep$ext_dir$sep$ext_dir2",
+is( $ecp,
+	"\$system$sep$ext_dir$sep$ext_dir2",
 	"custom extension control directory path configured");
 
 $node->safe_psql('postgres', "CREATE EXTENSION $ext_name");
@@ -79,21 +80,25 @@ is( $ret,
 
 # Test that a non-superuser is not able to read the extension location in
 # pg_available_extensions
-$ret = $node->safe_psql('postgres',
+$ret = $node->safe_psql(
+	'postgres',
 	"select location from pg_available_extensions where name = '$ext_name2'",
 	connstr => "user=$user");
 is( $ret,
 	"<insufficient privilege>",
-	"extension location is hidden in pg_available_extensions for users with insufficient privilege");
+	"extension location is hidden in pg_available_extensions for users with insufficient privilege"
+);
 
 # Test that a non-superuser is not able to read the extension location in
 # pg_available_extension_versions
-$ret = $node->safe_psql('postgres',
+$ret = $node->safe_psql(
+	'postgres',
 	"select location from pg_available_extension_versions where name = '$ext_name2'",
 	connstr => "user=$user");
 is( $ret,
 	"<insufficient privilege>",
-	"extension location is hidden in pg_available_extension_versions for users with insufficient privilege");
+	"extension location is hidden in pg_available_extension_versions for users with insufficient privilege"
+);
 
 # Ensure that extensions installed in $system are still visible when used with
 # custom extension control path.
@@ -104,10 +109,10 @@ is($ret, "t",
 	"\$system extension is shown correctly in pg_available_extensions");
 
 $ret = $node->safe_psql('postgres',
-	"set extension_control_path = ''; select count(*) > 0 as ok from pg_available_extensions where name = 'plpgsql'"
+	"set extension_control_path = ''; select location from pg_available_extensions where name = 'plpgsql'"
 );
-is($ret, "t",
-	"\$system extension is shown correctly in pg_available_extensions with empty extension_control_path"
+is($ret, "\$system",
+	"\$system location is shown correctly in pg_available_extensions with empty extension_control_path"
 );
 
 # Test with an extension that does not exists

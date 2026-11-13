@@ -194,6 +194,10 @@ static bool targetIsInAllPartitionLists(TargetEntry *tle, Query *query);
 static pushdown_safe_type qual_is_pushdown_safe(Query *subquery, Index rti,
 												RestrictInfo *rinfo,
 												pushdown_safety_info *safetyInfo);
+static Oid	pushdown_var_grouping_eqop(Var *var, void *context);
+static Oid	subquery_column_grouping_eqop(Query *subquery, AttrNumber attno);
+static Oid	setop_column_grouping_eqop(Node *setop, AttrNumber attno);
+static bool setop_has_grouping(Node *setop);
 static void subquery_push_qual(Query *subquery,
 							   RangeTblEntry *rte, Index rti, Node *qual);
 static void recurse_push_qual(Node *setOp, Query *topquery,
@@ -891,16 +895,6 @@ set_rel_consider_parallel(PlannerInfo *root, RelOptInfo *rel,
 		case RTE_RESULT:
 			/* RESULT RTEs, in themselves, are no problem. */
 			break;
-
-		case RTE_GRAPH_TABLE:
-
-			/*
-			 * Shouldn't happen since these are replaced by subquery RTEs when
-			 * rewriting queries.
-			 */
-			Assert(false);
-			return;
-
 		case RTE_GROUP:
 			/* Shouldn't happen; we're only considering baserels here. */
 			Assert(false);
@@ -1252,13 +1246,22 @@ set_append_rel_size(PlannerInfo *root, RelOptInfo *rel,
 		 * for the child.  This saves some effort while processing the child
 		 * rel, and it also avoids an implementation restriction in
 		 * adjust_appendrel_attrs (it can't apply nullingrels to a non-Var).
+		 *
+		 * clause_relids does not reflect references to this rel that appear
+		 * within PlaceHolderVars, but those are lateral references, so we
+		 * also skip quals that use any rel laterally referencing this rel.
+		 * This is safe since such quals are useless for the child: enforcing
+		 * one at a scan of this rel would require the scan to be
+		 * parameterized by a rel that laterally references this rel, which is
+		 * impossible since that rel needs this rel's output first.
 		 */
 		childrinfos = NIL;
 		foreach(lc, rel->joininfo)
 		{
 			RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
 
-			if (!bms_overlap(rinfo->clause_relids, rel->nulling_relids))
+			if (!bms_overlap(rinfo->clause_relids, rel->nulling_relids) &&
+				!bms_overlap(rinfo->clause_relids, rel->lateral_referencers))
 				childrinfos = lappend(childrinfos,
 									  adjust_appendrel_attrs(root,
 															 (Node *) rinfo,
@@ -1468,10 +1471,15 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		 * If set_append_rel_size() decided the parent appendrel was
 		 * parallel-unsafe at some point after visiting this child rel, we
 		 * need to propagate the unsafety marking down to the child, so that
-		 * we don't generate useless partial paths for it.
+		 * we don't generate useless partial paths for it.  Also, zap any
+		 * partial paths that already exist from places such as
+		 * set_subquery_pathlist().
 		 */
 		if (!rel->consider_parallel)
+		{
+			childrel->partial_pathlist = NIL;
 			childrel->consider_parallel = false;
+		}
 
 		/*
 		 * Compute the child's access paths.
@@ -3781,6 +3789,10 @@ generate_grouped_paths(PlannerInfo *root, RelOptInfo *grouped_rel,
 		group_pathkeys =
 			make_pathkeys_for_sortclauses(root, agg_info->group_clauses,
 										  top_group_tlist);
+
+		/* The ECs just made for extra grouping keys lack child members */
+		if (IS_OTHER_REL(rel))
+			add_child_rel_pathkey_equivalences(root, rel, group_pathkeys);
 	}
 
 	/*
@@ -4137,7 +4149,8 @@ make_rel_from_joinlist(PlannerInfo *root, List *joinlist)
 		 * using a plugin, GEQO, or the regular join search code.
 		 *
 		 * We put the initial_rels list into a PlannerInfo field because
-		 * has_legal_joinclause() needs to look at it (ugly :-().
+		 * has_legal_joinclause() and join_is_legal() need to look at it (ugly
+		 * :-().
 		 */
 		root->initial_rels = initial_rels;
 
@@ -4720,7 +4733,7 @@ check_output_expressions(Query *subquery, pushdown_safety_info *safetyInfo)
 		/* If subquery uses window functions, check point 4 */
 		if (subquery->hasWindowFuncs &&
 			(safetyInfo->unsafeFlags[tle->resno] &
-			 UNSAFE_NOTIN_DISTINCTON_CLAUSE) == 0 &&
+			 UNSAFE_NOTIN_PARTITIONBY_CLAUSE) == 0 &&
 			!targetIsInAllPartitionLists(tle, subquery))
 		{
 			/* not present in all PARTITION BY clauses, so mark it unsafe */
@@ -4822,6 +4835,16 @@ targetIsInAllPartitionLists(TargetEntry *tle, Query *query)
  *
  * 5. rinfo's clause must not refer to any subquery output columns that were
  * found to be unsafe to reference by subquery_is_pushdown_safe().
+ *
+ * 6. If the subquery has a grouping layer (DISTINCT, DISTINCT ON, window
+ * PARTITION BY, or a set operation that groups rows by equality), rinfo's
+ * clause must not apply a different equivalence relation to a grouping column
+ * than the grouping uses; otherwise it would distinguish rows the grouping
+ * considers equal, and pushing such a clause past the grouping would drop
+ * members of a group and change which row becomes the group's representative
+ * (or, for window functions, change per-partition values such as ranks and
+ * counts).  See expression_has_grouping_conflict for the kinds of conflict
+ * detected.
  */
 static pushdown_safe_type
 qual_is_pushdown_safe(Query *subquery, Index rti, RestrictInfo *rinfo,
@@ -4918,7 +4941,172 @@ qual_is_pushdown_safe(Query *subquery, Index rti, RestrictInfo *rinfo,
 
 	list_free(vars);
 
+	/* Check point 6 */
+	if (safe == PUSHDOWN_SAFE &&
+		(subquery->hasWindowFuncs ||
+		 subquery->distinctClause != NIL ||
+		 (subquery->setOperations != NULL &&
+		  setop_has_grouping(subquery->setOperations))))
+	{
+		if (expression_has_grouping_conflict(qual, pushdown_var_grouping_eqop,
+											 subquery))
+			safe = PUSHDOWN_UNSAFE;
+	}
+
 	return safe;
+}
+
+/*
+ * pushdown_var_grouping_eqop
+ *		grouping_eqop_callback for qual_is_pushdown_safe.
+ *
+ * Returns the grouping equality operator for 'var' if it references a subquery
+ * output column that participates in the subquery's grouping layer; InvalidOid
+ * otherwise.
+ *
+ * 'context' is the subquery Query whose pushdown safety we're checking.
+ */
+static Oid
+pushdown_var_grouping_eqop(Var *var, void *context)
+{
+	Query	   *subquery = (Query *) context;
+	Oid			eqop;
+
+	if (var->varlevelsup != 0)
+		return InvalidOid;
+
+	eqop = subquery_column_grouping_eqop(subquery, var->varattno);
+
+	/*
+	 * qual_is_pushdown_safe ensures any level-0 subquery Var that reaches us
+	 * references a grouping column.
+	 */
+	Assert(OidIsValid(eqop));
+
+	return eqop;
+}
+
+/*
+ * subquery_column_grouping_eqop
+ *		Return the equality operator that the subquery uses to group rows on
+ *		the given output column, or InvalidOid if the column doesn't
+ *		participate in any grouping mechanism.
+ *
+ * A subquery output column is grouping-relevant if it appears in
+ * subquery->distinctClause (covering both DISTINCT and DISTINCT ON), in every
+ * window's PARTITION BY clause, or is grouped by some node in a set-operation
+ * tree.  In all of these cases the parser builds the SortGroupClause with the
+ * column's type-default equality operator via get_sort_group_operators, so any
+ * matching SortGroupClause carries the correct eqop.
+ */
+static Oid
+subquery_column_grouping_eqop(Query *subquery, AttrNumber attno)
+{
+	TargetEntry *tle;
+	ListCell   *lc;
+
+	if (attno <= 0 || attno > list_length(subquery->targetList))
+		return InvalidOid;
+
+	tle = list_nth_node(TargetEntry, subquery->targetList, attno - 1);
+
+	/* DISTINCT or DISTINCT ON */
+	foreach(lc, subquery->distinctClause)
+	{
+		SortGroupClause *sgc = lfirst_node(SortGroupClause, lc);
+
+		if (sgc->tleSortGroupRef == tle->ressortgroupref)
+			return sgc->eqop;
+	}
+
+	/* Window function PARTITION BY: must appear in every window's list. */
+	if (subquery->hasWindowFuncs && subquery->windowClause != NIL)
+	{
+		Oid			eqop = InvalidOid;
+
+		foreach(lc, subquery->windowClause)
+		{
+			WindowClause *wc = (WindowClause *) lfirst(lc);
+			ListCell   *lc2;
+
+			foreach(lc2, wc->partitionClause)
+			{
+				SortGroupClause *sgc = lfirst_node(SortGroupClause, lc2);
+
+				if (sgc->tleSortGroupRef == tle->ressortgroupref)
+					break;
+			}
+			if (lc2 == NULL)
+				break;			/* not present in this window's list */
+			eqop = lfirst_node(SortGroupClause, lc2)->eqop;
+		}
+		if (lc == NULL)
+			return eqop;		/* matched in every window */
+	}
+
+	/* Set operation */
+	if (subquery->setOperations != NULL)
+		return setop_column_grouping_eqop(subquery->setOperations, attno);
+
+	return InvalidOid;
+}
+
+/*
+ * setop_column_grouping_eqop
+ *		Recursively search a SetOperationStmt tree for any node that groups
+ *		rows by equality, and return the equality operator used for the given
+ *		output column.  Returns InvalidOid if no node in the tree groups (i.e.,
+ *		an entirely-UNION-ALL tree).
+ *
+ * For any set operation other than UNION ALL, groupClauses is a positional
+ * list of SortGroupClauses, with element N-1 corresponding to output column N
+ * (see makeSortGroupClauseForSetOp).
+ */
+static Oid
+setop_column_grouping_eqop(Node *setop, AttrNumber attno)
+{
+	SetOperationStmt *op;
+	Oid			eqop;
+
+	if (setop == NULL || !IsA(setop, SetOperationStmt))
+		return InvalidOid;
+
+	op = (SetOperationStmt *) setop;
+
+	if (op->groupClauses != NIL &&
+		attno >= 1 && attno <= list_length(op->groupClauses))
+	{
+		SortGroupClause *sgc = list_nth_node(SortGroupClause,
+											 op->groupClauses, attno - 1);
+
+		return sgc->eqop;
+	}
+
+	/* Recurse into children to find any inner grouping */
+	eqop = setop_column_grouping_eqop(op->larg, attno);
+	if (OidIsValid(eqop))
+		return eqop;
+	return setop_column_grouping_eqop(op->rarg, attno);
+}
+
+/*
+ * setop_has_grouping
+ *		Return true if any node in the SetOperationStmt tree groups rows by
+ *		equality (i.e., has non-NIL groupClauses).
+ */
+static bool
+setop_has_grouping(Node *setop)
+{
+	SetOperationStmt *op;
+
+	if (setop == NULL || !IsA(setop, SetOperationStmt))
+		return false;
+
+	op = (SetOperationStmt *) setop;
+	if (op->groupClauses != NIL)
+		return true;
+
+	return setop_has_grouping(op->larg) || setop_has_grouping(op->rarg);
 }
 
 /*

@@ -166,7 +166,6 @@ typedef struct ArrayType Acl;
 #define ACL_ALL_RIGHTS_LANGUAGE		(ACL_USAGE)
 #define ACL_ALL_RIGHTS_LARGEOBJECT	(ACL_SELECT|ACL_UPDATE)
 #define ACL_ALL_RIGHTS_PARAMETER_ACL (ACL_SET|ACL_ALTER_SYSTEM)
-#define ACL_ALL_RIGHTS_PROPGRAPH	(ACL_SELECT)
 #define ACL_ALL_RIGHTS_SCHEMA		(ACL_USAGE|ACL_CREATE)
 #define ACL_ALL_RIGHTS_TABLEGROUP	(ACL_CREATE)
 #define ACL_ALL_RIGHTS_TABLESPACE	(ACL_CREATE)
@@ -217,6 +216,7 @@ extern void check_can_set_role(Oid member, Oid role);
 extern bool is_member_of_role(Oid member, Oid role);
 extern bool is_member_of_role_nosuper(Oid member, Oid role);
 extern bool is_admin_of_role(Oid member, Oid role);
+extern bool has_admin_privs_of_role(Oid member, Oid role);
 extern Oid	select_best_admin(Oid member, Oid role);
 extern Oid	get_role_oid(const char *rolname, bool missing_ok);
 extern Oid	get_role_oid_or_public(const char *rolname);
@@ -228,6 +228,9 @@ extern char *get_rolespec_name(const RoleSpec *role);
 extern void select_best_grantor(const RoleSpec *grantedBy, AclMode privileges,
 								const Acl *acl, Oid ownerId,
 								Oid *grantorId, AclMode *grantOptions);
+
+/* DATABASEOID syscache hash value for our own database, set by initialize_acl */
+extern PGDLLIMPORT uint32 cached_db_hash;
 
 extern void initialize_acl(void);
 

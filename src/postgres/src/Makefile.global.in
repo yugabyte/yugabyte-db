@@ -393,7 +393,7 @@ DOWNLOAD = wget -O $@ --no-use-server-timestamps
 UNICODE_VERSION = 17.0.0
 
 # Pick a release from here: <http://cldr.unicode.org/index/downloads>
-CLDR_VERSION = 47
+CLDR_VERSION = 48.2
 
 
 # Tree-wide build support
@@ -1077,12 +1077,12 @@ LCOVFLAGS = -q --no-external
 all_gcno_files = $(shell find . -name '*.gcno' -print)
 
 lcov_base.info: $(all_gcno_files)
-	$(LCOV) $(LCOVFLAGS) -c -i -d . -d $(srcdir) -o $@
+	$(LCOV) $(LCOVFLAGS) -c -i -d . $(if $(filter yes,$(vpath_build)),-d $(srcdir)) -o $@
 
 all_gcda_files = $(shell find . -name '*.gcda' -print)
 
 lcov_test.info: $(all_gcda_files)
-	$(LCOV) $(LCOVFLAGS) -c -d . -d $(srcdir) -o $@
+	$(LCOV) $(LCOVFLAGS) -c -d . $(if $(filter yes,$(vpath_build)),-d $(srcdir)) -o $@
 
 
 # hook for clean-up

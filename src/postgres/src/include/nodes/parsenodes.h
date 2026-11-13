@@ -110,10 +110,13 @@ typedef uint64 AclMode;			/* a bitmask of privilege bits */
  *	  Planning converts a Query tree into a Plan tree headed by a PlannedStmt
  *	  node --- the Query structure is not used by the executor.
  *
- *	  All the fields ignored for the query jumbling are not semantically
- *	  significant (such as alias names), as is ignored anything that can
- *	  be deduced from child nodes (else we'd just be double-hashing that
- *	  piece of information).
+ *	  We ignore fields for query jumbling if they are not semantically
+ *	  significant (such as alias names).  We also ignore anything that can
+ *	  be deduced from other fields or child nodes, else we'd just be
+ *	  double-hashing that piece of information.  In some places query jumbling
+ *	  deliberately ignores fields that are semantically significant, such as
+ *	  Const values, because we have made a policy decision to combine queries
+ *	  that differ only in those respects.
  */
 typedef struct Query
 {
@@ -126,8 +129,8 @@ typedef struct Query
 
 	/*
 	 * query identifier (can be set by plugins); ignored for equal, as it
-	 * might not be set; also not stored.  This is the result of the query
-	 * jumble, hence ignored.
+	 * might not be set; also not stored.  This is the output of query
+	 * jumbling, hence it must be ignored as an input.
 	 *
 	 * We store this as a signed value as this is the form it's displayed to
 	 * users in places such as EXPLAIN and pg_stat_statements.  Primarily this
@@ -143,13 +146,9 @@ typedef struct Query
 
 	/*
 	 * rtable index of target relation for INSERT/UPDATE/DELETE/MERGE; 0 for
-	 * SELECT.  This is ignored in the query jumble as unrelated to the
-	 * compilation of the query ID.
+	 * SELECT.
 	 */
 	int			resultRelation pg_node_attr(query_jumble_ignore);
-
-	/* FOR PORTION OF clause for UPDATE/DELETE */
-	ForPortionOfExpr *forPortionOf;
 
 	/* has aggregates in tlist or havingQual */
 	bool		hasAggs pg_node_attr(query_jumble_ignore);
@@ -219,7 +218,6 @@ typedef struct Query
 
 	List	   *groupClause;	/* a list of SortGroupClause's */
 	bool		groupDistinct;	/* was GROUP BY DISTINCT used? */
-	bool		groupByAll;		/* was GROUP BY ALL used? */
 
 	List	   *groupingSets;	/* a list of GroupingSet's if present */
 
@@ -715,19 +713,6 @@ typedef struct RangeTableFuncCol
 } RangeTableFuncCol;
 
 /*
- * RangeGraphTable - raw form of GRAPH_TABLE clause
- */
-typedef struct RangeGraphTable
-{
-	NodeTag		type;
-	RangeVar   *graph_name;
-	struct GraphPattern *graph_pattern;
-	List	   *columns;
-	Alias	   *alias;			/* table alias & optional column aliases */
-	ParseLoc	location;		/* token location, or -1 if unknown */
-} RangeGraphTable;
-
-/*
  * RangeTableSample - TABLESAMPLE appearing in a raw FROM clause
  *
  * This node, appearing only in raw parse trees, represents
@@ -993,77 +978,15 @@ typedef struct PartitionRangeDatum
 } PartitionRangeDatum;
 
 /*
- * PartitionDesc - info about a single partition for the ALTER TABLE SPLIT
- *	  PARTITION command
- */
-typedef struct SinglePartitionSpec
-{
-	NodeTag		type;
-
-	RangeVar   *name;			/* name of partition */
-	PartitionBoundSpec *bound;	/* FOR VALUES, if attaching */
-} SinglePartitionSpec;
-
-/*
- * PartitionCmd - info for ALTER TABLE/INDEX ATTACH/DETACH PARTITION and for
- *	  ALTER TABLE SPLIT/MERGE PARTITION(S) commands
+ * PartitionCmd - info for ALTER TABLE/INDEX ATTACH/DETACH PARTITION commands
  */
 typedef struct PartitionCmd
 {
 	NodeTag		type;
-
-	/* name of partition to attach/detach/merge/split */
-	RangeVar   *name;
-
-	/* FOR VALUES, if attaching */
-	PartitionBoundSpec *bound;
-
-	/*
-	 * list of partitions to be split/merged, used in ALTER TABLE MERGE
-	 * PARTITIONS and ALTER TABLE SPLIT PARTITIONS. For merge partitions,
-	 * partlist is a list of RangeVar; For split partition, it is a list of
-	 * SinglePartitionSpec.
-	 */
-	List	   *partlist;
-
+	RangeVar   *name;			/* name of partition to attach/detach */
+	PartitionBoundSpec *bound;	/* FOR VALUES, if attaching */
 	bool		concurrent;
 } PartitionCmd;
-
-/*
- * Nodes for graph pattern
- */
-
-typedef struct GraphPattern
-{
-	NodeTag		type;
-	List	   *path_pattern_list;
-	Node	   *whereClause;
-} GraphPattern;
-
-typedef enum GraphElementPatternKind
-{
-	VERTEX_PATTERN,
-	EDGE_PATTERN_LEFT,
-	EDGE_PATTERN_RIGHT,
-	EDGE_PATTERN_ANY,
-	PAREN_EXPR,
-} GraphElementPatternKind;
-
-#define IS_EDGE_PATTERN(kind) ((kind) == EDGE_PATTERN_ANY || \
-							   (kind) == EDGE_PATTERN_RIGHT || \
-							   (kind) == EDGE_PATTERN_LEFT)
-
-typedef struct GraphElementPattern
-{
-	NodeTag		type;
-	GraphElementPatternKind kind;
-	const char *variable;
-	Node	   *labelexpr;
-	List	   *subexpr;
-	Node	   *whereClause;
-	List	   *quantifier;
-	ParseLoc	location;
-} GraphElementPattern;
 
 /****************************************************************************
  *	Nodes for a Query tree
@@ -1137,7 +1060,6 @@ typedef enum RTEKind
 	RTE_VALUES,					/* VALUES (<exprlist>), (<exprlist>), ... */
 	RTE_CTE,					/* common table expr (WITH list element) */
 	RTE_NAMEDTUPLESTORE,		/* tuplestore, e.g. for AFTER triggers */
-	RTE_GRAPH_TABLE,			/* GRAPH_TABLE clause */
 	RTE_RESULT,					/* RTE represents an empty FROM clause; such
 								 * RTEs are added by the planner, they're not
 								 * present during parsing or rewriting */
@@ -1305,12 +1227,6 @@ typedef struct RangeTblEntry
 	TableFunc  *tablefunc;
 
 	/*
-	 * Fields valid for a graph table RTE (else NULL):
-	 */
-	GraphPattern *graph_pattern;
-	List	   *graph_table_columns;
-
-	/*
 	 * Fields valid for a values RTE (else NIL):
 	 */
 	/* list of expression lists */
@@ -1445,8 +1361,6 @@ typedef struct RTEPermissionInfo
  * time.  We do however remember how many columns we thought the type had
  * (including dropped columns!), so that we can successfully ignore any
  * columns added after the query was parsed.
- *
- * The query jumbling only needs to track the function expression.
  */
 typedef struct RangeTblFunction
 {
@@ -1498,6 +1412,10 @@ typedef enum WCOKind
 								 * policy */
 	WCO_RLS_MERGE_UPDATE_CHECK, /* RLS MERGE UPDATE USING policy */
 	WCO_RLS_MERGE_DELETE_CHECK, /* RLS MERGE DELETE USING policy */
+	WCO_VIEW_CONFLICT_CHECK,	/* auto-updatable view's WHERE quals, checked
+								 * against the existing row by ON CONFLICT DO
+								 * SELECT/UPDATE; neither a true WITH CHECK
+								 * OPTION check nor an RLS check */
 } WCOKind;
 
 typedef struct WithCheckOption
@@ -1665,9 +1583,6 @@ typedef struct GroupingSet
  * When refname isn't null, the partitionClause is always copied from there;
  * the orderClause might or might not be copied (see copiedOrder); the framing
  * options are never copied, per spec.
- *
- * The information relevant for the query jumbling is the partition clause
- * type and its bounds.
  */
 typedef struct WindowClause
 {
@@ -1717,22 +1632,6 @@ typedef struct RowMarkClause
 	LockWaitPolicy waitPolicy;	/* NOWAIT and SKIP LOCKED */
 	bool		pushedDown;		/* pushed down from higher query level? */
 } RowMarkClause;
-
-/*
- * ForPortionOfClause
- *		representation of FOR PORTION OF <range-name> FROM <target-start> TO
- *		<target-end> or FOR PORTION OF <range-name> (<target>)
- */
-typedef struct ForPortionOfClause
-{
-	NodeTag		type;
-	char	   *range_name;		/* column name of the range/multirange */
-	ParseLoc	location;		/* token location, or -1 if unknown */
-	ParseLoc	target_location;	/* token location, or -1 if unknown */
-	Node	   *target;			/* Expr from FOR PORTION OF col (...) syntax */
-	Node	   *target_start;	/* Expr from FROM ... TO ... syntax */
-	Node	   *target_end;		/* Expr from FROM ... TO ... syntax */
-} ForPortionOfClause;
 
 /*
  * WithClause -
@@ -1841,7 +1740,7 @@ typedef struct CommonTableExpr
 
 	/*
 	 * Number of RTEs referencing this CTE (excluding internal
-	 * self-references), irrelevant for query jumbling.
+	 * self-references).
 	 */
 	int			cterefcount pg_node_attr(query_jumble_ignore);
 	/* list of output column names */
@@ -2248,7 +2147,6 @@ typedef struct DeleteStmt
 	Node	   *whereClause;	/* qualifications */
 	ReturningClause *returningClause;	/* RETURNING clause */
 	WithClause *withClause;		/* WITH clause */
-	ForPortionOfClause *forPortionOf;	/* FOR PORTION OF clause */
 } DeleteStmt;
 
 /* ----------------------
@@ -2264,7 +2162,6 @@ typedef struct UpdateStmt
 	List	   *fromClause;		/* optional from clause for more tables */
 	ReturningClause *returningClause;	/* RETURNING clause */
 	WithClause *withClause;		/* WITH clause */
-	ForPortionOfClause *forPortionOf;	/* FOR PORTION OF clause */
 } UpdateStmt;
 
 /* ----------------------
@@ -2318,7 +2215,6 @@ typedef struct SelectStmt
 	Node	   *whereClause;	/* WHERE qualification */
 	List	   *groupClause;	/* GROUP BY clauses */
 	bool		groupDistinct;	/* Is this GROUP BY DISTINCT? */
-	bool		groupByAll;		/* Is this GROUP BY ALL? */
 	Node	   *havingClause;	/* HAVING conditional-expression */
 	List	   *windowClause;	/* WINDOW window_name AS (...), ... */
 
@@ -2382,7 +2278,7 @@ typedef struct SetOperationStmt
 	Node	   *rarg;			/* right child */
 	/* Eventually add fields for CORRESPONDING spec here */
 
-	/* Fields derived during parse analysis (irrelevant for query jumbling): */
+	/* Fields derived during parse analysis: */
 	/* OID list of output column type OIDs */
 	List	   *colTypes pg_node_attr(query_jumble_ignore);
 	/* integer list of output column typmods */
@@ -2476,8 +2372,8 @@ typedef enum ObjectType
 	OBJECT_PARAMETER_ACL,
 	OBJECT_POLICY,
 	OBJECT_PROCEDURE,
-	OBJECT_PROPGRAPH,
 	OBJECT_PUBLICATION,
+	OBJECT_PUBLICATION_EXCLUDED_REL,
 	OBJECT_PUBLICATION_NAMESPACE,
 	OBJECT_PUBLICATION_REL,
 	OBJECT_ROLE,
@@ -2603,8 +2499,6 @@ typedef enum AlterTableType
 	AT_AttachPartition,			/* ATTACH PARTITION */
 	AT_DetachPartition,			/* DETACH PARTITION */
 	AT_DetachPartitionFinalize, /* DETACH PARTITION FINALIZE */
-	AT_SplitPartition,			/* SPLIT PARTITION */
-	AT_MergePartitions,			/* MERGE PARTITIONS */
 	AT_AddIdentity,				/* ADD IDENTITY */
 	AT_SetIdentity,				/* SET identity column options */
 	AT_DropIdentity,			/* DROP IDENTITY */
@@ -3750,6 +3644,7 @@ typedef struct CreateStatsStmt
 	char	   *stxcomment;		/* comment to apply to stats, or NULL */
 	bool		transformed;	/* true when transformStatsStmt is finished */
 	bool		if_not_exists;	/* do nothing if stats name already exists */
+	Oid			owner;			/* OID of owner, or InvalidOid for default */
 } CreateStatsStmt;
 
 /*
@@ -3855,8 +3750,6 @@ typedef struct InlineCodeBlock
  * list contains copies of the expressions for all output arguments, in the
  * order of the procedure's declared arguments.  (outargs is never evaluated,
  * but is useful to the caller as a reference for what to assign to.)
- * The transformed call state is not relevant in the query jumbling, only the
- * function call is.
  * ----------------------
  */
 typedef struct CallStmt
@@ -4411,88 +4304,6 @@ typedef struct CreateCastStmt
 } CreateCastStmt;
 
 /* ----------------------
- *	CREATE PROPERTY GRAPH Statement
- * ----------------------
- */
-typedef struct CreatePropGraphStmt
-{
-	NodeTag		type;
-	RangeVar   *pgname;
-	List	   *vertex_tables;
-	List	   *edge_tables;
-} CreatePropGraphStmt;
-
-typedef struct PropGraphVertex
-{
-	NodeTag		type;
-	RangeVar   *vtable;
-	List	   *vkey;
-	List	   *labels;
-	ParseLoc	location;
-} PropGraphVertex;
-
-typedef struct PropGraphEdge
-{
-	NodeTag		type;
-	RangeVar   *etable;
-	List	   *ekey;
-	List	   *esrckey;
-	char	   *esrcvertex;
-	List	   *esrcvertexcols;
-	List	   *edestkey;
-	char	   *edestvertex;
-	List	   *edestvertexcols;
-	List	   *labels;
-	ParseLoc	location;
-} PropGraphEdge;
-
-typedef struct PropGraphLabelAndProperties
-{
-	NodeTag		type;
-	const char *label;
-	struct PropGraphProperties *properties;
-	ParseLoc	location;
-} PropGraphLabelAndProperties;
-
-typedef struct PropGraphProperties
-{
-	NodeTag		type;
-	List	   *properties;
-	bool		all;
-	ParseLoc	location;
-} PropGraphProperties;
-
-/* ----------------------
- *	ALTER PROPERTY GRAPH Statement
- * ----------------------
- */
-
-typedef enum AlterPropGraphElementKind
-{
-	PROPGRAPH_ELEMENT_KIND_VERTEX = 1,
-	PROPGRAPH_ELEMENT_KIND_EDGE = 2,
-} AlterPropGraphElementKind;
-
-typedef struct AlterPropGraphStmt
-{
-	NodeTag		type;
-	RangeVar   *pgname;
-	bool		missing_ok;
-	List	   *add_vertex_tables;
-	List	   *add_edge_tables;
-	List	   *drop_vertex_tables;
-	List	   *drop_edge_tables;
-	DropBehavior drop_behavior;
-	AlterPropGraphElementKind element_kind;
-	const char *element_alias;
-	List	   *add_labels;
-	const char *drop_label;
-	const char *alter_label;
-	PropGraphProperties *add_properties;
-	List	   *drop_properties;
-} AlterPropGraphStmt;
-
-/* ----------------------
  *	CREATE TRANSFORM Statement
  * ----------------------
  */
@@ -4742,8 +4553,12 @@ typedef struct DropSubscriptionStmt
 typedef struct WaitStmt
 {
 	NodeTag		type;
-	char	   *lsn_literal;	/* LSN string from grammar */
-	List	   *options;		/* List of DefElem nodes */
+	/* LSN string from grammar */
+	char	   *lsn_literal pg_node_attr(query_jumble_ignore);
+	/* List of DefElem nodes */
+	List	   *options;
+	/* token location, or -1 if unknown */
+	ParseLoc	lsn_location pg_node_attr(query_jumble_location);
 } WaitStmt;
 
 

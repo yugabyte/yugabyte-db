@@ -2337,17 +2337,17 @@ select a.f1, b.f1, t.thousand, t.tenthous from
   (select sum(f1)+1 as f1 from int4_tbl i4a) a,
   (select sum(f1) as f1 from int4_tbl i4b) b
 where b.f1 = t.thousand and a.f1 = b.f1 and (a.f1+b.f1+999) = t.tenthous;
-                                                   QUERY PLAN                                                    
------------------------------------------------------------------------------------------------------------------
+                                                      QUERY PLAN                                                       
+-----------------------------------------------------------------------------------------------------------------------
  Nested Loop
+   ->  Aggregate
+         ->  Seq Scan on int4_tbl i4a
    ->  Nested Loop
          Join Filter: ((sum(i4b.f1)) = ((sum(i4a.f1) + 1)))
          ->  Aggregate
-               ->  Seq Scan on int4_tbl i4a
-         ->  Aggregate
                ->  Seq Scan on int4_tbl i4b
-   ->  Index Only Scan using tenk1_thous_tenthous on tenk1 t
-         Index Cond: ((thousand = (sum(i4b.f1))) AND (tenthous = ((((sum(i4a.f1) + 1)) + (sum(i4b.f1))) + 999)))
+         ->  Index Only Scan using tenk1_thous_tenthous on tenk1 t
+               Index Cond: ((thousand = (sum(i4b.f1))) AND (tenthous = ((((sum(i4a.f1) + 1)) + (sum(i4b.f1))) + 999)))
 (9 rows)
 
 select a.f1, b.f1, t.thousand, t.tenthous from
@@ -3358,6 +3358,42 @@ where t3.a is null;
          ->  Seq Scan on tenk1 t1
 (13 rows)
 
+-- Test that quals made redundant by reducing an outer join to an antijoin are
+-- removed from the jointree
+-- (fallout from the fix for bug #19560)
+create temp table tbl_anti_pk (a int primary key);
+-- t3.a IS NULL is redundant, and the t2/t3 join can be removed
+explain (costs off)
+select 1 from tbl_anti_pk t1 left join
+  (tbl_anti_pk t2 left join tbl_anti_pk t3 on t3.a = t2.a) on t2.a = t1.a
+where t2.a is null and t3.a is null;
+               QUERY PLAN               
+----------------------------------------
+ Hash Anti Join
+   Hash Cond: (t1.a = t2.a)
+   ->  Seq Scan on tbl_anti_pk t1
+   ->  Hash
+         ->  Seq Scan on tbl_anti_pk t2
+(5 rows)
+
+-- the redundant qual can also be a degenerate ON clause of an upper join
+explain (costs off)
+select 1 from tbl_anti_pk t1 left join
+  (tbl_anti_pk t2 left join
+   (tbl_anti_pk t3 left join tbl_anti_pk t5 on t5.a = t3.a) on t3.a = t2.a)
+  on t3.a is null and t5.a is null;
+                     QUERY PLAN                     
+----------------------------------------------------
+ Nested Loop Left Join
+   ->  Seq Scan on tbl_anti_pk t1
+   ->  Materialize
+         ->  Hash Anti Join
+               Hash Cond: (t2.a = t3.a)
+               ->  Seq Scan on tbl_anti_pk t2
+               ->  Hash
+                     ->  Seq Scan on tbl_anti_pk t3
+(8 rows)
+
 rollback;
 --
 -- regression test for bogus RTE_GROUP entries
@@ -3487,6 +3523,71 @@ where f2 = 53;
  53 |    |    | 
 (1 row)
 
+-- the zt3/zt1b join clause must be kept when zt2/zt3 is commuted into zt1/zt2
+explain (costs off)
+select * from
+  zt1 left join zt2 on (zt1.f1 = f2)
+      left join zt3 on (f2 = f3)
+      left join zt1 zt1b on (f3 = zt1b.f1)
+where zt1.f1 = 53;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Nested Loop Left Join
+   Join Filter: (zt3.f3 = zt1b.f1)
+   ->  Nested Loop Left Join
+         Join Filter: (zt2.f2 = zt3.f3)
+         ->  Nested Loop Left Join
+               ->  Index Only Scan using zt1_pkey on zt1
+                     Index Cond: (f1 = 53)
+               ->  Index Only Scan using zt2_pkey on zt2
+                     Index Cond: (f2 = 53)
+         ->  Index Only Scan using zt3_pkey on zt3
+               Index Cond: (f3 = 53)
+   ->  Index Only Scan using zt1_pkey on zt1 zt1b
+         Index Cond: (f1 = 53)
+(13 rows)
+
+select * from
+  zt1 left join zt2 on (zt1.f1 = f2)
+      left join zt3 on (f2 = f3)
+      left join zt1 zt1b on (f3 = zt1b.f1)
+where zt1.f1 = 53;
+ f1 | f2 | f3 | f1 
+----+----+----+----
+ 53 | 53 |    |   
+(1 row)
+
+-- likewise for the zt3/zt2 join clause when zt1b/zt3 is commuted into zt1/zt1b
+explain (costs off)
+select * from
+  zt1 left join zt1 zt1b on (zt1.f1 = zt1b.f1 and zt1b.f1 = 53)
+      left join (zt3 left join zt2 on (f3 = f2)) on (zt1b.f1 = f3);
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Hash Left Join
+   Hash Cond: (zt1.f1 = zt1b.f1)
+   ->  Seq Scan on zt1
+   ->  Hash
+         ->  Nested Loop Left Join
+               Join Filter: (zt3.f3 = zt2.f2)
+               ->  Nested Loop Left Join
+                     Join Filter: (zt1b.f1 = zt3.f3)
+                     ->  Index Only Scan using zt1_pkey on zt1 zt1b
+                           Index Cond: (f1 = 53)
+                     ->  Index Only Scan using zt3_pkey on zt3
+                           Index Cond: (f3 = 53)
+               ->  Index Only Scan using zt2_pkey on zt2
+                     Index Cond: (f2 = 53)
+(14 rows)
+
+select * from
+  zt1 left join zt1 zt1b on (zt1.f1 = zt1b.f1 and zt1b.f1 = 53)
+      left join (zt3 left join zt2 on (f3 = f2)) on (zt1b.f1 = f3);
+ f1 | f1 | f3 | f2 
+----+----+----+----
+ 53 | 53 |    |   
+(1 row)
+
 --
 -- regression test for improper extraction of OR indexqual conditions
 -- (as seen in early 8.3.x releases)
@@ -3612,6 +3713,291 @@ group by t1.q2 order by 1;
                456 |     0
   4567890123456789 |     6
 (4 rows)
+
+-- nulled whole-row Var of a join alias in aggregate queries
+select t1.q2, count(t23)
+from int8_tbl t1 left join
+  (int8_tbl t2 join int4_tbl t3 on t3.f1 = 0) t23
+  on (t1.q2 = t23.q1)
+group by t1.q2 order by 1;
+        q2         | count 
+-------------------+-------
+ -4567890123456789 |     0
+               123 |     2
+               456 |     0
+  4567890123456789 |     6
+(4 rows)
+
+select t23, count(*)
+from int8_tbl t1 left join
+  (int8_tbl t2 join int4_tbl t3 on t3.f1 = 0) t23
+  on (t1.q2 = t23.q1)
+group by t23 order by 1;
+                  t23                   | count 
+----------------------------------------+-------
+ (123,456,0)                            |     1
+ (123,4567890123456789,0)               |     1
+ (4567890123456789,-4567890123456789,0) |     2
+ (4567890123456789,123,0)               |     2
+ (4567890123456789,4567890123456789,0)  |     2
+                                        |     2
+(6 rows)
+
+-- nulled whole-row Var of a zero-column join, referenced from a subquery
+explain (verbose, costs off)
+select t1.q1, t1.q2, (select t23::text)
+from int8_tbl t1 left join
+  ((select from int4_tbl where f1 = 0) t2
+   cross join (select from int4_tbl where f1 = 0) t3) t23
+  on (t1.q1 = 123)
+order by 1, 2;
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Sort
+   Output: t1.q1, t1.q2, ((SubPlan expr_1))
+   Sort Key: t1.q1, t1.q2
+   ->  Nested Loop Left Join
+         Output: t1.q1, t1.q2, (SubPlan expr_1)
+         Join Filter: (t1.q1 = 123)
+         ->  Seq Scan on public.int8_tbl t1
+               Output: t1.q1, t1.q2
+         ->  Materialize
+               Output: ('()'::record)
+               ->  Nested Loop
+                     Output: '()'::record
+                     ->  Seq Scan on public.int4_tbl
+                           Output: int4_tbl.f1
+                           Filter: (int4_tbl.f1 = 0)
+                     ->  Seq Scan on public.int4_tbl int4_tbl_1
+                           Output: int4_tbl_1.f1
+                           Filter: (int4_tbl_1.f1 = 0)
+         SubPlan expr_1
+           ->  Result
+                 Output: (('()'::record))::text
+(21 rows)
+
+select t1.q1, t1.q2, (select t23::text)
+from int8_tbl t1 left join
+  ((select from int4_tbl where f1 = 0) t2
+   cross join (select from int4_tbl where f1 = 0) t3) t23
+  on (t1.q1 = 123)
+order by 1, 2;
+        q1        |        q2         | t23 
+------------------+-------------------+-----
+              123 |               456 | ()
+              123 |  4567890123456789 | ()
+ 4567890123456789 | -4567890123456789 | 
+ 4567890123456789 |               123 | 
+ 4567890123456789 |  4567890123456789 | 
+(5 rows)
+
+-- nulled whole-row Var of a zero-column outer join
+explain (verbose, costs off)
+select t1.q1, t1.q2, f
+from int8_tbl t1 left join
+  ((select from int4_tbl where f1 = 0) t2
+   left join (select from int4_tbl where f1 = 0) t3 on true) t23
+  on (t1.q1 = 123),
+  length(t23::text) f
+order by 1, 2;
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Sort
+   Output: t1.q1, t1.q2, f.f
+   Sort Key: t1.q1, t1.q2
+   ->  Nested Loop
+         Output: t1.q1, t1.q2, f.f
+         ->  Nested Loop Left Join
+               Output: t1.q1, t1.q2, ('()'::record)
+               Join Filter: (t1.q1 = 123)
+               ->  Seq Scan on public.int8_tbl t1
+                     Output: t1.q1, t1.q2
+               ->  Materialize
+                     Output: ('()'::record)
+                     ->  Nested Loop Left Join
+                           Output: '()'::record
+                           ->  Seq Scan on public.int4_tbl
+                                 Output: int4_tbl.f1
+                                 Filter: (int4_tbl.f1 = 0)
+                           ->  Seq Scan on public.int4_tbl int4_tbl_1
+                                 Output: int4_tbl_1.f1
+                                 Filter: (int4_tbl_1.f1 = 0)
+         ->  Function Scan on pg_catalog.length f
+               Output: f.f
+               Function Call: length((('()'::record))::text)
+(23 rows)
+
+select t1.q1, t1.q2, f
+from int8_tbl t1 left join
+  ((select from int4_tbl where f1 = 0) t2
+   left join (select from int4_tbl where f1 = 0) t3 on true) t23
+  on (t1.q1 = 123),
+  length(t23::text) f
+order by 1, 2;
+        q1        |        q2         | f 
+------------------+-------------------+---
+              123 |               456 | 2
+              123 |  4567890123456789 | 2
+ 4567890123456789 | -4567890123456789 |  
+ 4567890123456789 |               123 |  
+ 4567890123456789 |  4567890123456789 |  
+(5 rows)
+
+-- nulled whole-row Var of a join with a variable-free merged column
+explain (verbose, costs off)
+select 1 from (unnest(array[1, (select sum(f1) from int4_tbl)]) as u(b)
+               right join (values (1)) as v(b) using (b)
+               full join int8_tbl i8 on true) as j,
+  length(j::text) f;
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Nested Loop
+   Output: 1
+   InitPlan expr_1
+     ->  Aggregate
+           Output: sum(int4_tbl.f1)
+           ->  Seq Scan on public.int4_tbl
+                 Output: int4_tbl.f1
+   ->  Merge Full Join
+         Output: ('1'::bigint), i8.q1, i8.q2
+         ->  Nested Loop Left Join
+               Output: '1'::bigint
+               ->  Result
+               ->  Function Scan on pg_catalog.unnest u
+                     Output: u.b
+                     Function Call: unnest(ARRAY['1'::bigint, (InitPlan expr_1).col1])
+                     Filter: (u.b = 1)
+         ->  Materialize
+               Output: i8.q1, i8.q2
+               ->  Seq Scan on public.int8_tbl i8
+                     Output: i8.q1, i8.q2
+   ->  Function Scan on pg_catalog.length f
+         Output: f.f
+         Function Call: length((ROW(('1'::bigint), i8.q1, i8.q2))::text)
+(23 rows)
+
+select 1 from (unnest(array[1, (select sum(f1) from int4_tbl)]) as u(b)
+               right join (values (1)) as v(b) using (b)
+               full join int8_tbl i8 on true) as j,
+  length(j::text) f;
+ ?column? 
+----------
+        1
+        1
+        1
+        1
+        1
+(5 rows)
+
+-- nulled whole-row Var of a join containing a lateral reference
+explain (verbose, costs off)
+select (j is null) from int4_tbl i4
+  left join (int8_tbl i8 join lateral (select i4.f1 from (values (3)) v) ss(x) on true) as j
+  on false;
+                   QUERY PLAN                   
+------------------------------------------------
+ Nested Loop Left Join
+   Output: ((ROW(i8.q1, i8.q2, i4.f1)) IS NULL)
+   Join Filter: false
+   ->  Seq Scan on public.int4_tbl i4
+         Output: i4.f1
+   ->  Result
+         Output: ROW(i8.q1, i8.q2, i4.f1)
+         Replaces: Scan on i8
+         One-Time Filter: false
+(9 rows)
+
+select (j is null) from int4_tbl i4
+  left join (int8_tbl i8 join lateral (select i4.f1 from (values (3)) v) ss(x) on true) as j
+  on false;
+ ?column? 
+----------
+ t
+ t
+ t
+ t
+ t
+(5 rows)
+
+-- same, but the PHV must be passed up through another join
+explain (verbose, costs off)
+select j from int4_tbl i4
+  left join (lateral (values (i4.f1)) as v(a) cross join int8_tbl i8) as j
+  on (j.q1 = 123 and j.q2 = 456),
+  int4_tbl i4b
+where i4.f1 = 0
+order by 1;
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Sort
+   Output: (ROW(i4.f1, i8.q1, i8.q2))
+   Sort Key: (ROW(i4.f1, i8.q1, i8.q2))
+   ->  Nested Loop
+         Output: (ROW(i4.f1, i8.q1, i8.q2))
+         ->  Nested Loop Left Join
+               Output: (ROW(i4.f1, i8.q1, i8.q2))
+               ->  Seq Scan on public.int4_tbl i4
+                     Output: i4.f1
+                     Filter: (i4.f1 = 0)
+               ->  Seq Scan on public.int8_tbl i8
+                     Output: ROW(i4.f1, i8.q1, i8.q2)
+                     Filter: ((i8.q1 = 123) AND (i8.q2 = 456))
+         ->  Seq Scan on public.int4_tbl i4b
+               Output: i4b.f1
+(15 rows)
+
+select j from int4_tbl i4
+  left join (lateral (values (i4.f1)) as v(a) cross join int8_tbl i8) as j
+  on (j.q1 = 123 and j.q2 = 456),
+  int4_tbl i4b
+where i4.f1 = 0
+order by 1;
+      j      
+-------------
+ (0,123,456)
+ (0,123,456)
+ (0,123,456)
+ (0,123,456)
+ (0,123,456)
+(5 rows)
+
+-- same, referenced from a subquery, with only lateral references and constants
+explain (verbose, costs off)
+select i4.f1, (select j::text)
+from int4_tbl i4
+  left join (lateral (select i4.f1) ss(x) cross join (select 1) s2(y)) j
+  on (i4.f1 = 0)
+order by 1;
+                   QUERY PLAN                    
+-------------------------------------------------
+ Sort
+   Output: i4.f1, ((SubPlan expr_1))
+   Sort Key: i4.f1
+   ->  Nested Loop Left Join
+         Output: i4.f1, (SubPlan expr_1)
+         Join Filter: (i4.f1 = 0)
+         ->  Seq Scan on public.int4_tbl i4
+               Output: i4.f1
+         ->  Result
+               Output: ROW(i4.f1, 1)
+         SubPlan expr_1
+           ->  Result
+                 Output: ((ROW(i4.f1, 1)))::text
+(13 rows)
+
+select i4.f1, (select j::text)
+from int4_tbl i4
+  left join (lateral (select i4.f1) ss(x) cross join (select 1) s2(y)) j
+  on (i4.f1 = 0)
+order by 1;
+     f1      |   j   
+-------------+-------
+ -2147483647 | 
+     -123456 | 
+           0 | (0,1)
+      123456 | 
+  2147483647 | 
+(5 rows)
 
 --
 -- test incorrect failure to NULL pulled-up subexpressions
@@ -4051,17 +4437,17 @@ select t1.unique2, t1.stringu1, t2.unique1, t2.stringu2 from
   left join tenk1 t2
   on (subq1.y1 = t2.unique1)
 where t1.unique2 < 42 and t1.stringu1 > t2.stringu2;
-                              QUERY PLAN                               
------------------------------------------------------------------------
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
  Nested Loop
    ->  Nested Loop
          Join Filter: (t1.stringu1 > t2.stringu2)
          ->  Nested Loop
+               ->  Seq Scan on onerow onerow_1
                ->  Nested Loop
                      ->  Seq Scan on onerow
-                     ->  Seq Scan on onerow onerow_1
-               ->  Index Scan using tenk1_unique2 on tenk1 t1
-                     Index Cond: ((unique2 = (11)) AND (unique2 < 42))
+                     ->  Index Scan using tenk1_unique2 on tenk1 t1
+                           Index Cond: ((unique2 = (11)) AND (unique2 < 42))
          ->  Index Scan using tenk1_unique1 on tenk1 t2
                Index Cond: (unique1 = (3))
    ->  Seq Scan on int4_tbl i1
@@ -4106,7 +4492,6 @@ where t1.unique1 < i4.f1;
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Nested Loop
    Output: (64)::information_schema.cardinal_number
-   Join Filter: (t1.tenthous = ((64)::information_schema.cardinal_number)::integer)
    ->  Seq Scan on public.tenk1 t3
          Output: t3.unique1, t3.unique2, t3.two, t3.four, t3.ten, t3.twenty, t3.hundred, t3.thousand, t3.twothousand, t3.fivethous, t3.tenthous, t3.odd, t3.even, t3.stringu1, t3.stringu2, t3.string4
          Filter: (t3.fivethous < 0)
@@ -4137,7 +4522,7 @@ where t1.unique1 < i4.f1;
          ->  Seq Scan on public.int8_tbl i8
                Output: i8.q1, i8.q2
                Filter: (i8.q1 = ((64)::information_schema.cardinal_number)::integer)
-(33 rows)
+(32 rows)
 
 select ss1.d1 from
   tenk1 as t1
@@ -4227,6 +4612,116 @@ select * from
 ---+---+---
  1 | 2 | 2
 (1 row)
+
+-- Also, we mustn't remove an RTE_RESULT that is the only baserel where a PHV
+-- can be evaluated, even when the PHV's phrels also mention an outer join.
+explain (verbose, costs off)
+select * from (values (1),(2)) v(x)
+  left join (select q from (select 7 as q from (select where false) ss1) ss2
+             left join (select 8 as z) ss3 on true) ss4 on true;
+             QUERY PLAN             
+------------------------------------
+ Nested Loop Left Join
+   Output: "*VALUES*".column1, (7)
+   Join Filter: false
+   ->  Values Scan on "*VALUES*"
+         Output: "*VALUES*".column1
+   ->  Result
+         Output: 7
+         One-Time Filter: false
+(8 rows)
+
+select * from (values (1),(2)) v(x)
+  left join (select q from (select 7 as q from (select where false) ss1) ss2
+             left join (select 8 as z) ss3 on true) ss4 on true;
+ x | q 
+---+---
+ 1 |  
+ 2 |  
+(2 rows)
+
+-- Nor an RTE_RESULT whose PHV is nested in a PHV evaluated at some but not
+-- all of the sibling rels
+explain (verbose, costs off)
+select ss.z
+from (select 1) s1 left join
+  ((select 1) s2 left join (select 1 as x) v on true
+   cross join (lateral (select coalesce(v.x, 0) as z, f1 from int4_tbl) ss
+               cross join lateral (select ss.f1 offset 0) g))
+  on true;
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Nested Loop Left Join
+   Output: (COALESCE((1), 0))
+   ->  Result
+   ->  Nested Loop
+         Output: (COALESCE((1), 0))
+         ->  Nested Loop
+               Output: int4_tbl.f1, (COALESCE((1), 0))
+               ->  Result
+                     Output: 1
+               ->  Seq Scan on public.int4_tbl
+                     Output: int4_tbl.f1, COALESCE((1), 0)
+         ->  Result
+               Output: NULL::integer
+(13 rows)
+
+select ss.z
+from (select 1) s1 left join
+  ((select 1) s2 left join (select 1 as x) v on true
+   cross join (lateral (select coalesce(v.x, 0) as z, f1 from int4_tbl) ss
+               cross join lateral (select ss.f1 offset 0) g))
+  on true;
+ z 
+---
+ 1
+ 1
+ 1
+ 1
+ 1
+(5 rows)
+
+-- Same, with the PHVs coming from grouping sets
+explain (costs off)
+select s1.x
+from (values (1)) as v(x),
+     lateral (select v.x + 1, 2) as s1(x, y)
+     cross join generate_series(s1.y, s1.y) as g
+group by grouping sets (1, 1);
+                   QUERY PLAN                   
+------------------------------------------------
+ HashAggregate
+   Hash Key: (((1) + 1))
+   Hash Key: (((1) + 1))
+   ->  Nested Loop
+         ->  Nested Loop
+               ->  Result
+               ->  Result
+         ->  Function Scan on generate_series g
+(8 rows)
+
+select s1.x
+from (values (1)) as v(x),
+     lateral (select v.x + 1, 2) as s1(x, y)
+     cross join generate_series(s1.y, s1.y) as g
+group by grouping sets (1, 1);
+ x 
+---
+ 2
+ 2
+(2 rows)
+
+-- But we can remove it if the outer PHV covers all of the sibling rels
+explain (costs off)
+select s.y from (values (1)) v(x), lateral (select v.x + f1 as y from int4_tbl) s
+group by grouping sets (1, ());
+          QUERY PLAN           
+-------------------------------
+ MixedAggregate
+   Hash Key: (1 + int4_tbl.f1)
+   Group Key: ()
+   ->  Seq Scan on int4_tbl
+(4 rows)
 
 -- This example demonstrates the folly of our old "have_dangerous_phv" logic
 begin;
@@ -4333,6 +4828,59 @@ select * from
 (21 rows)
 
 rollback;
+-- nestloop parameter PHV whose ph_eval_at mentions an outer join that is
+-- computed in the rels supplying the parameters
+explain (verbose, costs off)
+select v.k from (select 1) d
+  left join (select t1.f1, 1 from int4_tbl t1, onerow t2
+               left join onerow t3 on true) s(x, y) on true
+  left join lateral (select s.y from onerow t4) v(k) on true
+where v.k > s.x;
+                 QUERY PLAN                 
+--------------------------------------------
+ Nested Loop
+   Output: ((1))
+   ->  Nested Loop Left Join
+         ->  Seq Scan on pg_temp.onerow t2
+         ->  Seq Scan on pg_temp.onerow t3
+   ->  Nested Loop
+         Output: ((1))
+         ->  Seq Scan on public.int4_tbl t1
+               Output: t1.f1, 1
+         ->  Seq Scan on pg_temp.onerow t4
+               Output: (1)
+               Filter: ((1) > t1.f1)
+(12 rows)
+
+-- likewise, where an upper nestloop could wrongly claim the parameter
+explain (verbose, costs off)
+select v.k, g from (select 1) d
+  left join (select t1.f1, 1 from int4_tbl t1, onerow t2
+               left join onerow t3 on true) s(x, y) on true
+  left join lateral (select s.y from onerow t4) v(k) on true,
+  lateral generate_series(v.k, 1) g
+where v.k > s.x;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Nested Loop
+   Output: ((1)), g.g
+   ->  Nested Loop
+         Output: ((1))
+         ->  Nested Loop Left Join
+               ->  Seq Scan on pg_temp.onerow t2
+               ->  Seq Scan on pg_temp.onerow t3
+         ->  Nested Loop
+               Output: ((1))
+               ->  Seq Scan on public.int4_tbl t1
+                     Output: t1.f1, 1
+               ->  Seq Scan on pg_temp.onerow t4
+                     Output: (1)
+                     Filter: ((1) > t1.f1)
+   ->  Function Scan on pg_catalog.generate_series g
+         Output: g.g
+         Function Call: generate_series(((1)), 1)
+(17 rows)
+
 -- PHVs containing SubLinks are quite tricky to get right
 explain (verbose, costs off)
 select *
@@ -4510,6 +5058,84 @@ where ss.x is null;
                ->  Result
                      Output: 'bar'::text
 (12 rows)
+
+-- Test a join qual referencing a nulled appendrel output only within a PHV
+explain (verbose, costs off)
+select 1 from int4_tbl t1
+  left join (select 1 as x union all select 2) s on true
+  left join lateral (select s.x as y from int4_tbl t2) ss on true
+  left join int4_tbl t3 on ss.y is null;
+                    QUERY PLAN                    
+--------------------------------------------------
+ Nested Loop Left Join
+   Output: 1
+   Join Filter: (((1)) IS NULL)
+   ->  Nested Loop Left Join
+         Output: ((1))
+         ->  Nested Loop Left Join
+               Output: (1)
+               ->  Seq Scan on public.int4_tbl t1
+                     Output: t1.f1
+               ->  Materialize
+                     Output: (1)
+                     ->  Append
+                           ->  Result
+                                 Output: 1
+                           ->  Result
+                                 Output: 2
+         ->  Memoize
+               Output: ((1))
+               Cache Key: (1)
+               Cache Mode: binary
+               ->  Seq Scan on public.int4_tbl t2
+                     Output: (1)
+   ->  Materialize
+         ->  Seq Scan on public.int4_tbl t3
+(24 rows)
+
+-- Same, but the join qual's required_relids don't include the nulling OJ
+explain (verbose, costs off)
+select 1 from ((int4_tbl t1 left join (select 1 as x union all select 2) s on t1.f1 < s.x)
+   join lateral (select coalesce(s.x, t2.f1) as y from int4_tbl t2) ss on true)
+  full join int4_tbl t3 on t3.f1 = t1.f1 and ss.y = t3.f1
+  right join int4_tbl t4 on t3.f1 = t4.f1;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Hash Right Join
+   Output: 1
+   Hash Cond: (t3.f1 = t4.f1)
+   ->  Hash Right Join
+         Output: t3.f1
+         Hash Cond: ((t1.f1 = t3.f1) AND ((COALESCE((1), t2.f1)) = t3.f1))
+         ->  Nested Loop
+               Output: t1.f1, (COALESCE((1), t2.f1))
+               ->  Nested Loop Left Join
+                     Output: t1.f1, (1)
+                     Join Filter: (t1.f1 < (1))
+                     ->  Seq Scan on public.int4_tbl t1
+                           Output: t1.f1
+                     ->  Materialize
+                           Output: (1)
+                           ->  Append
+                                 ->  Result
+                                       Output: 1
+                                 ->  Result
+                                       Output: 2
+               ->  Memoize
+                     Output: (COALESCE((1), t2.f1))
+                     Cache Key: (1)
+                     Cache Mode: binary
+                     ->  Seq Scan on public.int4_tbl t2
+                           Output: COALESCE((1), t2.f1)
+         ->  Hash
+               Output: t3.f1
+               ->  Seq Scan on public.int4_tbl t3
+                     Output: t3.f1
+   ->  Hash
+         Output: t4.f1
+         ->  Seq Scan on public.int4_tbl t4
+               Output: t4.f1
+(34 rows)
 
 -- Test computation of varnullingrels when translating appendrel Var
 begin;
@@ -5681,6 +6307,7 @@ where tt1.f1 = ss1.c0;
                Output: tt4.f1
                ->  Nested Loop Left Join
                      Output: tt4.f1
+                     Join Filter: (tt3.f1 = tt4.f1)
                      ->  Seq Scan on public.text_tbl tt3
                            Output: tt3.f1
                            Filter: (tt3.f1 = 'foo'::text)
@@ -5698,7 +6325,7 @@ where tt1.f1 = ss1.c0;
                      Output: (tt4.f1)
                      ->  Seq Scan on public.text_tbl tt5
                            Output: tt4.f1
-(32 rows)
+(33 rows)
 
 select 1 from
   text_tbl as tt1
@@ -5817,6 +6444,319 @@ where ss1.c2 = 0;
 ----+----+----+----+----+----
 (0 rows)
 
+--
+-- check that a join is disallowed when a lateral reference to an outer-join
+-- output would have to be passed down into that outer join's own input
+--
+explain (costs off)
+select count(*) from int4_tbl t1 left join
+  (select b.q1 as bx, 1 as one from int4_tbl a left join int8_tbl b on a.f1 = b.q2) t2
+    on true
+  left join lateral
+    (select c.f1 as cnt from int4_tbl c where c.f1 = t2.one offset 0) t3
+    on t2.bx = t3.cnt;
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop Left Join
+         ->  Seq Scan on int4_tbl t1
+         ->  Materialize
+               ->  Nested Loop Left Join
+                     ->  Hash Left Join
+                           Hash Cond: (a.f1 = b.q2)
+                           ->  Seq Scan on int4_tbl a
+                           ->  Hash
+                                 ->  Seq Scan on int8_tbl b
+                     ->  Subquery Scan on t3
+                           Filter: (b.q1 = t3.cnt)
+                           ->  Seq Scan on int4_tbl c
+                                 Filter: (f1 = (1))
+(14 rows)
+
+select count(*) from int4_tbl t1 left join
+  (select b.q1 as bx, 1 as one from int4_tbl a left join int8_tbl b on a.f1 = b.q2) t2
+    on true
+  left join lateral
+    (select c.f1 as cnt from int4_tbl c where c.f1 = t2.one offset 0) t3
+    on t2.bx = t3.cnt;
+ count 
+-------
+    25
+(1 row)
+
+--
+-- check that a join is disallowed when its lateral reference can only be
+-- satisfied by way of a rel that laterally references the join itself
+--
+explain (costs off)
+select 1 from int4_tbl t1 left join int4_tbl t2 on true,
+  lateral (select t2.f1 offset 0) s1 left join int8_tbl t3 on s1.f1 = t3.q1,
+  lateral (select t3.q2 offset 0) s2
+where s2.q2 > t1.f1;
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Nested Loop
+   Join Filter: ((t3.q2) > t1.f1)
+   ->  Hash Left Join
+         Hash Cond: ((t2.f1) = t3.q1)
+         ->  Nested Loop
+               ->  Nested Loop Left Join
+                     ->  Seq Scan on int4_tbl t1
+                     ->  Materialize
+                           ->  Seq Scan on int4_tbl t2
+               ->  Result
+         ->  Hash
+               ->  Seq Scan on int8_tbl t3
+   ->  Result
+(13 rows)
+
+select 1 from int4_tbl t1 left join int4_tbl t2 on true,
+  lateral (select t2.f1 offset 0) s1 left join int8_tbl t3 on s1.f1 = t3.q1,
+  lateral (select t3.q2 offset 0) s2
+where s2.q2 > t1.f1;
+ ?column? 
+----------
+(0 rows)
+
+-- likewise when the outer join above the lateral referencer is a full join
+explain (costs off)
+select count(*) from int4_tbl t1 left join int4_tbl t2 on true,
+  lateral (select t2.f1 offset 0) s1 full join int8_tbl t3 on s1.f1 = t3.q1,
+  lateral (select t3.q2 offset 0) s2
+where s2.q2 > t1.f1;
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         Join Filter: ((t3.q2) > t1.f1)
+         ->  Nested Loop
+               ->  Nested Loop Left Join
+                     ->  Seq Scan on int4_tbl t1
+                     ->  Materialize
+                           ->  Seq Scan on int4_tbl t2
+               ->  Hash Full Join
+                     Hash Cond: (t3.q1 = (t2.f1))
+                     ->  Seq Scan on int8_tbl t3
+                     ->  Hash
+                           ->  Result
+         ->  Result
+(14 rows)
+
+select count(*) from int4_tbl t1 left join int4_tbl t2 on true,
+  lateral (select t2.f1 offset 0) s1 full join int8_tbl t3 on s1.f1 = t3.q1,
+  lateral (select t3.q2 offset 0) s2
+where s2.q2 > t1.f1;
+ count 
+-------
+    80
+(1 row)
+
+-- likewise when the lateral referencer is part of a sub-joinlist
+set from_collapse_limit to 4;
+explain (costs off)
+select count(*) from int4_tbl t1 left join int4_tbl t2 on true,
+  lateral (select t2.f1 offset 0) s1 join int8_tbl t3 on s1.f1 = t3.q1,
+  lateral (select t3.q2 offset 0) s2
+where s2.q2 > t1.f1;
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         Join Filter: ((t3.q2) > t1.f1)
+         ->  Nested Loop
+               ->  Nested Loop Left Join
+                     ->  Seq Scan on int4_tbl t1
+                     ->  Materialize
+                           ->  Seq Scan on int4_tbl t2
+               ->  Hash Join
+                     Hash Cond: (t3.q1 = (t2.f1))
+                     ->  Seq Scan on int8_tbl t3
+                     ->  Hash
+                           ->  Result
+         ->  Result
+(14 rows)
+
+select count(*) from int4_tbl t1 left join int4_tbl t2 on true,
+  lateral (select t2.f1 offset 0) s1 join int8_tbl t3 on s1.f1 = t3.q1,
+  lateral (select t3.q2 offset 0) s2
+where s2.q2 > t1.f1;
+ count 
+-------
+     0
+(1 row)
+
+reset from_collapse_limit;
+--
+-- check that an outer join is not taken to commute with a lower outer join
+-- when its clause references the lower join's RHS only laterally within a
+-- PlaceHolderVar
+--
+explain (costs off)
+select 1 from int4_tbl t1
+  left join int4_tbl t2 on true
+  left join lateral (select t2.f1, 1 from int4_tbl t3) s(x, y) on true
+  left join int4_tbl t4 on t4.f1 = s.x
+  join int4_tbl t5 on true
+where s.y is not null;
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Nested Loop
+   ->  Hash Left Join
+         Hash Cond: ((t2.f1) = t4.f1)
+         ->  Nested Loop
+               ->  Nested Loop Left Join
+                     ->  Seq Scan on int4_tbl t1
+                     ->  Materialize
+                           ->  Seq Scan on int4_tbl t2
+               ->  Memoize
+                     Cache Key: t2.f1
+                     Cache Mode: binary
+                     ->  Seq Scan on int4_tbl t3
+                           Filter: (1 IS NOT NULL)
+         ->  Hash
+               ->  Seq Scan on int4_tbl t4
+   ->  Materialize
+         ->  Seq Scan on int4_tbl t5
+(17 rows)
+
+--
+-- check that a cloned outer-join qual is not enforced multiple times when
+-- it is moved into a parameterized join
+--
+explain (costs off)
+select count(*) from int4_tbl t1 left join
+  (select b.q1 as bx, 1 as one from int4_tbl a left join int8_tbl b on a.f1 = b.q2) t2
+    on true
+  left join
+    (lateral (select c.f1 as cnt from int4_tbl c where c.f1 = t2.one offset 0) t3
+     join int4_tbl t4 on t3.cnt = t4.f1)
+    on t2.bx = t3.cnt + t4.f1;
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop Left Join
+         ->  Seq Scan on int4_tbl t1
+         ->  Materialize
+               ->  Nested Loop Left Join
+                     ->  Hash Left Join
+                           Hash Cond: (a.f1 = b.q2)
+                           ->  Seq Scan on int4_tbl a
+                           ->  Hash
+                                 ->  Seq Scan on int8_tbl b
+                     ->  Hash Join
+                           Hash Cond: (t4.f1 = c.f1)
+                           Join Filter: (b.q1 = (c.f1 + t4.f1))
+                           ->  Seq Scan on int4_tbl t4
+                           ->  Hash
+                                 ->  Seq Scan on int4_tbl c
+                                       Filter: (f1 = (1))
+(17 rows)
+
+select count(*) from int4_tbl t1 left join
+  (select b.q1 as bx, 1 as one from int4_tbl a left join int8_tbl b on a.f1 = b.q2) t2
+    on true
+  left join
+    (lateral (select c.f1 as cnt from int4_tbl c where c.f1 = t2.one offset 0) t3
+     join int4_tbl t4 on t3.cnt = t4.f1)
+    on t2.bx = t3.cnt + t4.f1;
+ count 
+-------
+    25
+(1 row)
+
+--
+-- check that identical clone variants of an outer-join qual are not
+-- enforced multiple times in a parameterized path
+--
+explain (costs off)
+select * from onek t1
+    left join onek t2 on t1.unique1 = t2.unique1
+    left join onek t3 on t2.unique1 = t3.unique1
+    left join onek t4 on t3.unique1 = t4.unique1 and t3.ten = t4.ten + 0
+                     and t2.unique2 = t4.unique2 + 0
+where t1.unique1 < 1;
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Nested Loop Left Join
+   Join Filter: (t2.unique2 = (t4.unique2 + 0))
+   ->  Nested Loop Left Join
+         ->  Nested Loop Left Join
+               ->  Index Scan using onek_unique1 on onek t1
+                     Index Cond: (unique1 < 1)
+               ->  Index Scan using onek_unique1 on onek t2
+                     Index Cond: (unique1 = t1.unique1)
+         ->  Index Scan using onek_unique1 on onek t3
+               Index Cond: (unique1 = t2.unique1)
+   ->  Index Scan using onek_unique1 on onek t4
+         Index Cond: (unique1 = t3.unique1)
+         Filter: (t3.ten = (ten + 0))
+(13 rows)
+
+explain (costs off)
+select * from onek t1
+    left join onek t2 on t1.unique1 = t2.unique1
+    left join onek t3 on t2.unique1 = t3.unique1
+    left join (onek t4 join onek t5 on t4.ten = t5.ten)
+      on t3.unique1 = t5.unique1 and t3.hundred = t4.unique1 + t5.two
+         and t2.unique2 = t4.unique2
+where t1.unique1 < 1;
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Nested Loop Left Join
+   ->  Nested Loop Left Join
+         ->  Nested Loop Left Join
+               ->  Index Scan using onek_unique1 on onek t1
+                     Index Cond: (unique1 < 1)
+               ->  Index Scan using onek_unique1 on onek t2
+                     Index Cond: (unique1 = t1.unique1)
+         ->  Index Scan using onek_unique1 on onek t3
+               Index Cond: (unique1 = t2.unique1)
+   ->  Nested Loop
+         Join Filter: ((t4.ten = t5.ten) AND (t3.hundred = (t4.unique1 + t5.two)))
+         ->  Index Scan using onek_unique2 on onek t4
+               Index Cond: (unique2 = t2.unique2)
+         ->  Index Scan using onek_unique1 on onek t5
+               Index Cond: (unique1 = t3.unique1)
+(15 rows)
+
+--
+-- check that an EC-derived condition is not enforced twice, both within a
+-- parameterized path and at the join above it
+--
+begin;
+set local from_collapse_limit to 1;
+explain (costs off)
+select count(*) from int4_tbl t1,
+  lateral (select * from tenk1 t2,
+           lateral (select t2.ten as x offset 0) s0
+           join tenk1 t3 on t3.unique2 = t1.f1
+           where t3.unique1 = t2.hundred + s0.x) ss1;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         Join Filter: (t3.unique2 = t1.f1)
+         ->  Nested Loop
+               ->  Seq Scan on tenk1 t2
+               ->  Nested Loop
+                     ->  Result
+                     ->  Index Scan using tenk1_unique1 on tenk1 t3
+                           Index Cond: (unique1 = (t2.hundred + (t2.ten)))
+         ->  Materialize
+               ->  Seq Scan on int4_tbl t1
+(11 rows)
+
+select count(*) from int4_tbl t1,
+  lateral (select * from tenk1 t2,
+           lateral (select t2.ten as x offset 0) s0
+           join tenk1 t3 on t3.unique2 = t1.f1
+           where t3.unique1 = t2.hundred + s0.x) ss1;
+ count 
+-------
+     0
+(1 row)
+
+rollback;
 --
 -- test successful handling of full join underneath left join (bug #14105)
 --
@@ -6230,6 +7170,346 @@ from int8_tbl t1
          ->  Seq Scan on onek t4
 (13 rows)
 
+-- bug #19460: we need to clean up RestrictInfos more than we had been doing
+explain (costs off)
+select * from
+  (select 1::int as id) as lhs
+full join
+  (select dummy_source.id
+   from (select null::int as id) as dummy_source
+   left join (select a.id from a where a.id = 42) as sub
+   on sub.id = dummy_source.id
+  ) as rhs
+on lhs.id = rhs.id;
+              QUERY PLAN              
+--------------------------------------
+ Hash Full Join
+   Hash Cond: ((1) = (NULL::integer))
+   ->  Result
+   ->  Hash
+         ->  Result
+(5 rows)
+
+explain (costs off)
+select * from
+  (select 1::int as id) as lhs
+full join
+  (select dummy_source.id
+   from (select 2::int as id) as dummy_source
+   left join (select a.id from a) as sub
+   on sub.id = dummy_source.id
+  ) as rhs
+on lhs.id = rhs.id;
+        QUERY PLAN        
+--------------------------
+ Hash Full Join
+   Hash Cond: ((1) = (2))
+   ->  Result
+   ->  Hash
+         ->  Result
+(5 rows)
+
+-- check handling of a removed Var that's pushed down into a subquery
+-- (fallout from the fix for bug #19560)
+explain (verbose, costs off)
+select c1, c2
+from (select case when false then remov.id end as c1
+      from int4_tbl i41 left join a remov on i41.f1 = remov.id) ss1
+     right join int4_tbl i42 on false,
+     lateral (select ss1.c1 as c2 from int4_tbl i43 offset 0) ss2;
+                  QUERY PLAN                  
+----------------------------------------------
+ Nested Loop
+   Output: (NULL::integer), ((NULL::integer))
+   ->  Nested Loop Left Join
+         Output: (NULL::integer)
+         Join Filter: false
+         ->  Seq Scan on public.int4_tbl i42
+               Output: i42.f1
+         ->  Result
+               Output: NULL::integer
+               Replaces: Scan on i41
+               One-Time Filter: false
+   ->  Memoize
+         Output: ((NULL::integer))
+         Cache Key: (NULL::integer)
+         Cache Mode: binary
+         ->  Seq Scan on public.int4_tbl i43
+               Output: (NULL::integer)
+(17 rows)
+
+-- likewise, where the subquery is a UNION ALL whose arms are appendrel
+-- children that are not simple enough to be pulled up
+explain (verbose, costs off)
+select c1, c2
+from (select case when false then remov.id end as c1
+      from int4_tbl i41 left join a remov on i41.f1 = remov.id) ss1
+     right join int4_tbl i42 on false,
+     lateral ((select ss1.c1 as c2 from int4_tbl i43 offset 0)
+              union all
+              (select ss1.c1 from int4_tbl i44 offset 0)) ss2;
+                    QUERY PLAN                     
+---------------------------------------------------
+ Nested Loop
+   Output: (NULL::integer), ((NULL::integer))
+   ->  Nested Loop Left Join
+         Output: (NULL::integer)
+         Join Filter: false
+         ->  Seq Scan on public.int4_tbl i42
+               Output: i42.f1
+         ->  Result
+               Output: NULL::integer
+               Replaces: Scan on i41
+               One-Time Filter: false
+   ->  Memoize
+         Output: ((NULL::integer))
+         Cache Key: (NULL::integer)
+         Cache Mode: binary
+         ->  Append
+               ->  Seq Scan on public.int4_tbl i43
+                     Output: (NULL::integer)
+               ->  Seq Scan on public.int4_tbl i44
+                     Output: (NULL::integer)
+(20 rows)
+
+-- likewise, where the PHV contains a SubPlan and the subquery has a join, so
+-- that its planner runs flatten_join_alias_vars over the outer-level PHV
+explain (verbose, costs off)
+select c1, c2
+from (select case when false then remov.id else (select i41.f1) end as c1
+      from int4_tbl i41 left join a remov on i41.f1 = remov.id) ss1
+     right join int4_tbl i42 on false,
+     lateral (select ss1.c1 as c2 from int4_tbl i43 join int4_tbl i44 on true
+              offset 0) ss2;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Nested Loop
+   Output: ((SubPlan expr_1)), (((SubPlan expr_1)))
+   ->  Nested Loop Left Join
+         Output: ((SubPlan expr_1))
+         Join Filter: false
+         ->  Seq Scan on public.int4_tbl i42
+               Output: i42.f1
+         ->  Result
+               Output: (SubPlan expr_1)
+               Replaces: Scan on i41
+               One-Time Filter: false
+               SubPlan expr_1
+                 ->  Result
+                       Output: i41.f1
+   ->  Memoize
+         Output: (((SubPlan expr_1)))
+         Cache Key: ((SubPlan expr_1))
+         Cache Mode: binary
+         ->  Nested Loop
+               Output: ((SubPlan expr_1))
+               ->  Seq Scan on public.int4_tbl i43
+                     Output: i43.f1
+               ->  Materialize
+                     ->  Seq Scan on public.int4_tbl i44
+(24 rows)
+
+-- likewise, where the PHV copy is pushed into a SubLink's subselect rather
+-- than a LATERAL subquery
+explain (verbose, costs off)
+select (select ss1.c1 from int4_tbl i43 offset 0) as c2
+from (select case when false then remov.id end as c1
+      from int4_tbl i41 left join a remov on i41.f1 = remov.id) ss1
+     right join int4_tbl i42 on true;
+                 QUERY PLAN                  
+---------------------------------------------
+ Nested Loop Left Join
+   Output: (SubPlan expr_1)
+   ->  Seq Scan on public.int4_tbl i42
+         Output: i42.f1
+   ->  Materialize
+         Output: (NULL::integer)
+         ->  Seq Scan on public.int4_tbl i41
+               Output: NULL::integer
+   SubPlan expr_1
+     ->  Seq Scan on public.int4_tbl i43
+           Output: (NULL::integer)
+(11 rows)
+
+-- likewise, where the pushed-down PHV's expression itself contains a SubLink,
+-- so it must be preprocessed once at the outer level rather than again while
+-- building the SubPlan that references it
+explain (verbose, costs off)
+select (select ss1.c1 from int4_tbl i43 offset 0) as c2
+from (select case when false then remov.id else (select i41.f1) end as c1
+      from int4_tbl i41 left join a remov on i41.f1 = remov.id) ss1
+     right join int4_tbl i42 on true;
+                 QUERY PLAN                  
+---------------------------------------------
+ Nested Loop Left Join
+   Output: (SubPlan expr_2)
+   ->  Seq Scan on public.int4_tbl i42
+         Output: i42.f1
+   ->  Materialize
+         Output: ((SubPlan expr_1))
+         ->  Seq Scan on public.int4_tbl i41
+               Output: (SubPlan expr_1)
+               SubPlan expr_1
+                 ->  Result
+                       Output: i41.f1
+   SubPlan expr_2
+     ->  Seq Scan on public.int4_tbl i43
+           Output: ((SubPlan expr_1))
+(14 rows)
+
+-- likewise, where the pushed-down PHV sits within an outer-level aggregate
+explain (verbose, costs off)
+select (select sum(ss1.c1) from int4_tbl i43) as c2
+from (select (select i41.f1) as c1 from int4_tbl i41) ss1
+     right join int4_tbl i42 on true;
+                    QUERY PLAN                     
+---------------------------------------------------
+ Aggregate
+   Output: (SubPlan expr_2)
+   ->  Nested Loop Left Join
+         Output: ((SubPlan expr_1))
+         ->  Seq Scan on public.int4_tbl i42
+               Output: i42.f1
+         ->  Materialize
+               Output: ((SubPlan expr_1))
+               ->  Seq Scan on public.int4_tbl i41
+                     Output: (SubPlan expr_1)
+                     SubPlan expr_1
+                       ->  Result
+                             Output: i41.f1
+   SubPlan expr_2
+     ->  Seq Scan on public.int4_tbl i43
+           Output: sum(((SubPlan expr_1)))
+(16 rows)
+
+-- likewise, where the pushed-down PHV's expression contains another PHV of
+-- the same level, which must not be preprocessed separately from its parent
+explain (verbose, costs off)
+select ss3.c2
+from int4_tbl i41
+     left join (select coalesce(ss1.c1, 0) as c1
+                from int4_tbl i42
+                     left join (select (select i43.f1) as c1
+                                from int4_tbl i43) ss1 on true) ss2
+       on true,
+     lateral (select ss2.c1 as c2 from int4_tbl i44 offset 0) ss3;
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Nested Loop
+   Output: ((COALESCE(((SubPlan expr_1)), 0)))
+   ->  Nested Loop Left Join
+         Output: (COALESCE(((SubPlan expr_1)), 0))
+         ->  Seq Scan on public.int4_tbl i41
+               Output: i41.f1
+         ->  Materialize
+               Output: (COALESCE(((SubPlan expr_1)), 0))
+               ->  Nested Loop Left Join
+                     Output: COALESCE(((SubPlan expr_1)), 0)
+                     ->  Seq Scan on public.int4_tbl i42
+                           Output: i42.f1
+                     ->  Materialize
+                           Output: ((SubPlan expr_1))
+                           ->  Seq Scan on public.int4_tbl i43
+                                 Output: (SubPlan expr_1)
+                                 SubPlan expr_1
+                                   ->  Result
+                                         Output: i43.f1
+   ->  Memoize
+         Output: ((COALESCE(((SubPlan expr_1)), 0)))
+         Cache Key: (COALESCE(((SubPlan expr_1)), 0))
+         Cache Mode: binary
+         ->  Seq Scan on public.int4_tbl i44
+               Output: (COALESCE(((SubPlan expr_1)), 0))
+(25 rows)
+
+-- likewise, where the PHV copy is only inserted into the LATERAL subquery by
+-- expanding a join alias Var of the outer level
+explain (verbose, costs off)
+select ss2.c2
+from ((select (select i41.f1) as c1 from int4_tbl i41) ss1
+      full join int4_tbl i42(c1) using (c1)) j,
+     lateral (select j.c1 as c2 from int4_tbl i43 offset 0) ss2;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Nested Loop
+   Output: (COALESCE(((SubPlan expr_1)), i42.c1))
+   ->  Hash Full Join
+         Output: ((SubPlan expr_1)), i42.c1
+         Hash Cond: (((SubPlan expr_1)) = i42.c1)
+         ->  Seq Scan on public.int4_tbl i41
+               Output: (SubPlan expr_1)
+               SubPlan expr_1
+                 ->  Result
+                       Output: i41.f1
+         ->  Hash
+               Output: i42.c1
+               ->  Seq Scan on public.int4_tbl i42
+                     Output: i42.c1
+   ->  Seq Scan on public.int4_tbl i43
+         Output: COALESCE(((SubPlan expr_1)), i42.c1)
+(16 rows)
+
+-- likewise, where the join alias is expanded within a SubLink's subselect
+explain (verbose, costs off)
+select (select j.c1 from int4_tbl i43 offset 0) as c2
+from ((select (select i41.f1) as c1 from int4_tbl i41) ss1
+      full join int4_tbl i42(c1) using (c1)) j;
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Hash Full Join
+   Output: (SubPlan expr_2)
+   Hash Cond: (((SubPlan expr_1)) = i42.c1)
+   ->  Seq Scan on public.int4_tbl i41
+         Output: (SubPlan expr_1)
+         SubPlan expr_1
+           ->  Result
+                 Output: i41.f1
+   ->  Hash
+         Output: i42.c1
+         ->  Seq Scan on public.int4_tbl i42
+               Output: i42.c1
+   SubPlan expr_2
+     ->  Seq Scan on public.int4_tbl i43
+           Output: COALESCE(((SubPlan expr_1)), i42.c1)
+(15 rows)
+
+-- likewise, where the SubLink holding the copy ends up in the translated
+-- Vars of an appendrel child pulled up from a LATERAL UNION ALL subquery
+explain (verbose, costs off)
+select ss2.c2
+from (select case when false then remov.id end as c1
+      from int4_tbl i41 left join a remov on i41.f1 = remov.id) ss1
+     right join int4_tbl i42 on true,
+     lateral ((select (select ss1.c1) as c2) union all (select (select ss1.c1))) ss2;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Nested Loop
+   Output: ((SubPlan expr_1))
+   ->  Nested Loop Left Join
+         Output: (NULL::integer)
+         ->  Seq Scan on public.int4_tbl i42
+               Output: i42.f1
+         ->  Materialize
+               Output: (NULL::integer)
+               ->  Seq Scan on public.int4_tbl i41
+                     Output: NULL::integer
+   ->  Memoize
+         Output: ((SubPlan expr_1))
+         Cache Key: (NULL::integer)
+         Cache Mode: binary
+         ->  Append
+               ->  Result
+                     Output: (SubPlan expr_1)
+                     SubPlan expr_1
+                       ->  Result
+                             Output: (NULL::integer)
+               ->  Result
+                     Output: (SubPlan expr_2)
+                     SubPlan expr_2
+                       ->  Result
+                             Output: (NULL::integer)
+(25 rows)
+
 -- More tests of correct placement of pseudoconstant quals
 -- simple constant-false condition
 explain (costs off)
@@ -6431,6 +7711,39 @@ select d.* from d left join (select distinct * from b) s
          ->  Seq Scan on d
 (9 rows)
 
+-- join removal is not possible when the subquery has DISTINCT ON and a
+-- set-returning function that is not a DISTINCT ON column
+explain (costs off)
+select d.* from d left join
+  (select distinct on (id) id, generate_series(1, 2) as g from b order by id) s
+  on d.a = s.id
+  order by 1, 2;
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Sort
+   Sort Key: d.a, d.b
+   ->  Hash Left Join
+         Hash Cond: (d.a = s.id)
+         ->  Seq Scan on d
+         ->  Hash
+               ->  Subquery Scan on s
+                     ->  ProjectSet
+                           ->  Unique
+                                 ->  Index Only Scan using b_pkey on b
+(10 rows)
+
+select d.* from d left join
+  (select distinct on (id) id, generate_series(1, 2) as g from b order by id) s
+  on d.a = s.id
+  order by 1, 2;
+ a | b 
+---+---
+ 1 | 3
+ 1 | 3
+ 2 | 2
+ 3 | 1
+(4 rows)
+
 -- join removal is not possible here
 explain (costs off)
 select 1 from a t1
@@ -6494,6 +7807,18 @@ select c.id, ss.a from c
          ->  Seq Scan on c
 (7 rows)
 
+-- check join removal when Vars reference the removed join via its alias
+explain (verbose, costs off)
+select j.b_id, (select j.b_id) from (a left join b on a.b_id = b.id) j;
+             QUERY PLAN             
+------------------------------------
+ Seq Scan on pg_temp.a
+   Output: a.b_id, (SubPlan expr_1)
+   SubPlan expr_1
+     ->  Result
+           Output: a.b_id
+(5 rows)
+
 -- check the case when the placeholder relates to an outer join and its
 -- inner in the press field but actually uses only the outer side of the join
 explain (costs off)
@@ -6524,6 +7849,40 @@ select a.* from a left join parted_b pb on a.b_id = pb.id;
 ---------------
  Seq Scan on a
 (1 row)
+
+-- test that clauses that still embed PHVs are not referencing the removed
+-- relation when rebuilt for a partition of the kept relation
+explain (costs off)
+select 1 from (select t1.id from parted_b t1 left join parted_b t2 on t1.id = t2.id) s
+where s.id = 1 group by ();
+      QUERY PLAN       
+-----------------------
+ Result
+   Replaces: Aggregate
+(2 rows)
+
+explain (costs off)
+select 1 from parted_b t1
+  join (select t2.id from parted_b t2 left join parted_b t3 on t2.id = t3.id) s
+  on t1.id = s.id
+group by ();
+      QUERY PLAN       
+-----------------------
+ Result
+   Replaces: Aggregate
+(2 rows)
+
+-- likewise for a PHV embedded in an OR join clause
+explain (costs off)
+select 1 from parted_b t1
+  join (select t2.id from parted_b t2 left join parted_b t3 on t2.id = t3.id) s
+  on (t1.id = 1 and s.id = 2) or (t1.id = 3 and s.id = 4)
+group by ();
+      QUERY PLAN       
+-----------------------
+ Result
+   Replaces: Aggregate
+(2 rows)
 
 rollback;
 create temp table parent (k int primary key, pd int);
@@ -6606,6 +7965,17 @@ select p.* from
    Replaces: Join on p, x
    One-Time Filter: false
 (3 rows)
+
+-- Ensure multiple gating quals are evaluated correctly
+select * from (
+  select c0 from
+    (select null::int as c0 from ((select 1) union all (select 2))) t1
+  full join (select 1) t2 on true
+  where c0 is not null
+) t3 where now() is not null;
+ c0 
+----
+(0 rows)
 
 -- bug 5255: this is not optimizable by join removal
 begin;
@@ -6791,6 +8161,38 @@ where t1.a = s.c;
 (0 rows)
 
 rollback;
+-- join removal bug #19560: removing a join can leave an EquivalenceClass that
+-- now yields a base restriction clause, so we must redo equivalence
+-- processing from scratch
+begin;
+create temp table items (id text, owner text);
+create temp table follows (item_id text, user_id text,
+                           unique (user_id, item_id));
+insert into items values ('item1', 'alice');
+explain (costs off)
+with viewer as (select 'bob' as id)
+select count(*) from items
+  left join follows on follows.item_id = items.id and follows.user_id = 'bob'
+  left join viewer on true
+where items.owner = viewer.id;
+              QUERY PLAN               
+---------------------------------------
+ Aggregate
+   ->  Seq Scan on items
+         Filter: (owner = 'bob'::text)
+(3 rows)
+
+with viewer as (select 'bob' as id)
+select count(*) from items
+  left join follows on follows.item_id = items.id and follows.user_id = 'bob'
+  left join viewer on true
+where items.owner = viewer.id;
+ count 
+-------
+     0
+(1 row)
+
+rollback;
 -- check handling of semijoins after join removal: we must suppress
 -- unique-ification of known-constant values
 begin;
@@ -6815,17 +8217,17 @@ where exists (select 1 from t t4
                Output: t1.a
                Index Cond: (t1.a = 1)
          ->  HashAggregate
-               Output: t5.a
+               Output: t4.a, t5.a
                Group Key: t5.a
                ->  Hash Join
-                     Output: t5.a
+                     Output: t4.a, t5.a
                      Hash Cond: (t6.b = t4.b)
                      ->  Seq Scan on pg_temp.t t6
                            Output: t6.a, t6.b
                      ->  Hash
-                           Output: t4.b, t5.b, t5.a
+                           Output: t4.b, t4.a, t5.b, t5.a
                            ->  Hash Join
-                                 Output: t4.b, t5.b, t5.a
+                                 Output: t4.b, t4.a, t5.b, t5.a
                                  Inner Unique: true
                                  Hash Cond: (t5.b = t4.b)
                                  ->  Seq Scan on pg_temp.t t5
@@ -7257,7 +8659,7 @@ on q1.ax = q2.a;
  Nested Loop Left Join
    Join Filter: (t2.a = t4.a)
    ->  Seq Scan on sj t2
-         Filter: ((b IS NULL) AND (a IS NOT NULL) AND ((c * c) = (c + 2)))
+         Filter: ((a IS NOT NULL) AND (b IS NULL) AND ((c * c) = (c + 2)))
    ->  Seq Scan on sj t4
          Filter: (c IS NOT NULL)
 (6 rows)
@@ -7340,11 +8742,69 @@ select t1.a from sj t1 where t1.b in (
    ->  Seq Scan on public.sj t1
          Output: t1.a, t1.b, t1.c
    ->  Materialize
-         Output: t3.c, t3.b
+         Output: t3.b
          ->  Seq Scan on public.sj t3
-               Output: t3.c, t3.b
+               Output: t3.b
                Filter: (t3.c IS NOT NULL)
 (10 rows)
+
+-- Check that quals get hoisted to the appropriate join level after SJE removal
+explain (verbose, costs off)
+select a2.a
+from sj b1
+  join sj a1 on b1.b = a1.a
+  join sj a2 on a2.a = a1.a and a2.b = a1.b;
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Nested Loop
+   Output: a2.a
+   Join Filter: (b1.b = a2.a)
+   ->  Seq Scan on public.sj a2
+         Output: a2.a, a2.b, a2.c
+         Filter: ((a2.a IS NOT NULL) AND (a2.b IS NOT NULL))
+   ->  Seq Scan on public.sj b1
+         Output: b1.a, b1.b, b1.c
+(8 rows)
+
+-- Same, when a semijoin removal happens first
+explain (verbose, costs off)
+select a1.a from sj b1 join sj a1 on a1.a = b1.b
+  where exists (select 1 from sj s where s.a = a1.a);
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Output: s.a
+   Inner Unique: true
+   Join Filter: (b1.b = s.a)
+   ->  Seq Scan on public.sj b1
+         Output: b1.a, b1.b, b1.c
+   ->  Materialize
+         Output: s.a
+         ->  Seq Scan on public.sj s
+               Output: s.a
+               Filter: (s.a IS NOT NULL)
+(11 rows)
+
+-- A different case, where modified qual is on a lower join level
+explain (verbose, costs off)
+select a2.a
+from ((sj b1 join sj a1 on true) join sj c1 on c1.b = a1.a)
+  join sj a2 on a2.a = a1.a and a2.b = a1.b;
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Nested Loop
+   Output: a2.a
+   ->  Nested Loop
+         Output: a2.a
+         Join Filter: (c1.b = a2.a)
+         ->  Seq Scan on public.sj a2
+               Output: a2.a, a2.b, a2.c
+               Filter: ((a2.a IS NOT NULL) AND (a2.b IS NOT NULL))
+         ->  Seq Scan on public.sj c1
+               Output: c1.a, c1.b, c1.c
+   ->  Seq Scan on public.sj b1
+         Output: b1.a, b1.b, b1.c
+(12 rows)
 
 --
 -- SJE corner case: uniqueness of an inner is [partially] derived from
@@ -7676,15 +9136,15 @@ explain (costs off) select * from sj p join sj q on p.a = q.a
          ->  Seq Scan on sj r
 (6 rows)
 
--- FIXME this constant false filter doesn't look good. Should we merge
--- equivalence classes?
+-- Check that we detect constant-false condition after merging ECs.
 explain (costs off)
 select * from sj p, sj q where p.a = q.a and p.b = 1 and q.b = 2;
-                     QUERY PLAN                      
------------------------------------------------------
- Seq Scan on sj q
-   Filter: ((a IS NOT NULL) AND (b = 2) AND (b = 1))
-(2 rows)
+        QUERY PLAN        
+--------------------------
+ Result
+   Replaces: Scan on q
+   One-Time Filter: false
+(3 rows)
 
 -- Check that attr_needed is updated correctly after self-join removal. In this
 -- test, the join of j1 with j2 is removed. k1.b is required at either j1 or j2.
@@ -7820,11 +9280,9 @@ where s1.x = 1;
    ->  Seq Scan on public.emp1 t1
          Output: t1.id, t1.code
    ->  Materialize
-         Output: t3.id
          ->  Seq Scan on public.emp1 t3
-               Output: t3.id
                Filter: (1 = 1)
-(9 rows)
+(7 rows)
 
 -- Check that PHVs do not impose any constraints on removing self joins
 explain (verbose, costs off)
@@ -7874,14 +9332,14 @@ SELECT 1 FROM tbl_phv t1 LEFT JOIN
     (SELECT y FROM tbl_phv tr) t4
   ON t4.y = t3.y
 ON true WHERE t3.extra IS NOT NULL AND t3.x = t1.x % 2;
-                       QUERY PLAN                        
----------------------------------------------------------
+                          QUERY PLAN                          
+--------------------------------------------------------------
  Nested Loop
    Output: 1
    ->  Seq Scan on public.tbl_phv t1
          Output: t1.x, t1.y
-   ->  Index Scan using tbl_phv_idx on public.tbl_phv tr
-         Output: tr.x, tr.y
+   ->  Index Only Scan using tbl_phv_idx on public.tbl_phv tr
+         Output: tr.x
          Index Cond: (tr.x = (t1.x % 2))
          Filter: (1 IS NOT NULL)
 (8 rows)
@@ -8062,7 +9520,7 @@ where t1.b = t2.b and t2.a = 3 and t1.a = 3
 ---------------------------------------------------------------------------------------------
  Seq Scan on public.sl t2
    Output: t2.a, t2.b, t2.c, t2.a, t2.b, t2.c
-   Filter: ((t2.c IS NOT NULL) AND (t2.b IS NOT NULL) AND (t2.a IS NOT NULL) AND (t2.a = 3))
+   Filter: ((t2.b IS NOT NULL) AND (t2.c IS NOT NULL) AND (t2.a IS NOT NULL) AND (t2.a = 3))
 (3 rows)
 
 -- Join qual isn't mergejoinable, but inner is unique.
@@ -8104,9 +9562,34 @@ SELECT 1 AS c1 FROM sl sl1 LEFT JOIN (sl AS sl2 NATURAL JOIN sl AS sl3)
    ->  Nested Loop Left Join
          Join Filter: sl3.bool_col
          ->  Seq Scan on sl sl3
-               Filter: (bool_col AND (a IS NOT NULL) AND (b IS NOT NULL) AND (c IS NOT NULL) AND (bool_col IS NOT NULL))
+               Filter: ((a IS NOT NULL) AND (b IS NOT NULL) AND (c IS NOT NULL) AND (bool_col IS NOT NULL) AND bool_col)
          ->  Seq Scan on sl sl4
 (7 rows)
+
+-- Check that quals of a jointree node that becomes empty when the self-join
+-- is removed are not lost, and that they don't migrate above an outer join
+EXPLAIN (COSTS OFF)
+SELECT s.a FROM (SELECT * FROM sl WHERE c IS NOT NULL) s, sl t
+WHERE t.a = s.a AND t.b = s.b;
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Seq Scan on sl
+   Filter: ((c IS NOT NULL) AND (a IS NOT NULL) AND (b IS NOT NULL))
+(2 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT t1.a, ss.a FROM sl t1
+  LEFT JOIN (SELECT s.a FROM (SELECT * FROM sl WHERE c IS NOT NULL) s
+                             JOIN sl t ON t.a = s.a AND t.b = s.b) ss
+    ON ss.a = t1.a;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Nested Loop Left Join
+   Join Filter: (sl.a = t1.a)
+   ->  Seq Scan on sl t1
+   ->  Seq Scan on sl
+         Filter: ((c IS NOT NULL) AND (a IS NOT NULL) AND (b IS NOT NULL))
+(5 rows)
 
 -- Check optimization disabling if it will violate special join conditions.
 -- Two identical joined relations satisfies self join removal conditions but
@@ -8162,6 +9645,30 @@ ON sj_t1.id = _t2t3t4.id;
                Index Cond: (id = sj_t2_1.id)
    ->  Seq Scan on sj_t1
 (24 rows)
+
+-- Check SJE interaction with aggpresorted optimization.
+CREATE TEMP TABLE sje_agg (id int PRIMARY KEY, p int, q int);
+INSERT INTO sje_agg SELECT i, i % 3, (i * 7) % 10 FROM generate_series(1, 30) i;
+ANALYZE sje_agg;
+EXPLAIN (COSTS OFF)
+SELECT count(DISTINCT a.p) AS dp, count(DISTINCT a.q) AS dq,
+       sum(DISTINCT a2.q) AS sq
+FROM sje_agg a JOIN sje_agg a2 ON a.id = a2.id;
+             QUERY PLAN             
+------------------------------------
+ Aggregate
+   ->  Sort
+         Sort Key: a2.q
+         ->  Seq Scan on sje_agg a2
+(4 rows)
+
+SELECT count(DISTINCT a.p) AS dp, count(DISTINCT a.q) AS dq,
+       sum(DISTINCT a2.q) AS sq
+FROM sje_agg a JOIN sje_agg a2 ON a.id = a2.id;
+ dp | dq | sq 
+----+----+----
+  3 | 10 | 45
+(1 row)
 
 --
 -- Test RowMarks-related code
@@ -8396,6 +9903,281 @@ select * from generate_series(100,200) g,
  123 |              123 | 4567890123456789
  123 | 4567890123456789 |              123
 (3 rows)
+
+-- lateral with UNION ALL subselect, where a member is a subquery whose
+-- output contains a lateral reference
+explain (costs off)
+  select ss.v from int8_tbl x,
+    lateral (select x.q1 from (select distinct q2 from int8_tbl) s union all
+             select q2 from int8_tbl) ss(v);
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on int8_tbl x
+   ->  Append
+         ->  Subquery Scan on s
+               ->  HashAggregate
+                     Group Key: int8_tbl_1.q2
+                     ->  Seq Scan on int8_tbl int8_tbl_1
+         ->  Seq Scan on int8_tbl
+(8 rows)
+
+-- lateral UNION ALL referencing a join alias Var that needs a PHV; the
+-- appendrel parent and children must share the PHV
+-- Here the Var is a whole-row reference to a nullable join.
+explain (verbose, costs off)
+select ss.j from
+  int4_tbl a left join (int4_tbl b cross join int4_tbl c) j on true,
+  lateral ((select j offset 0) union all select null) ss;
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Nested Loop
+   Output: ((ROW(b.f1, c.f1)))
+   ->  Nested Loop Left Join
+         Output: (ROW(b.f1, c.f1))
+         ->  Seq Scan on public.int4_tbl a
+               Output: a.f1
+         ->  Materialize
+               Output: (ROW(b.f1, c.f1))
+               ->  Nested Loop
+                     Output: ROW(b.f1, c.f1)
+                     ->  Seq Scan on public.int4_tbl b
+                           Output: b.f1
+                     ->  Materialize
+                           Output: c.f1
+                           ->  Seq Scan on public.int4_tbl c
+                                 Output: c.f1
+   ->  Append
+         ->  Result
+               Output: (ROW(b.f1, c.f1))
+         ->  Result
+               Output: NULL::record
+(21 rows)
+
+explain (verbose, costs off)
+select ss.j from
+  int4_tbl a left join (int4_tbl b cross join int4_tbl c) j on true,
+  lateral (select j union all select null) ss;
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Nested Loop
+   Output: ((ROW(b.f1, c.f1)))
+   ->  Nested Loop Left Join
+         Output: (ROW(b.f1, c.f1))
+         ->  Seq Scan on public.int4_tbl a
+               Output: a.f1
+         ->  Materialize
+               Output: (ROW(b.f1, c.f1))
+               ->  Nested Loop
+                     Output: ROW(b.f1, c.f1)
+                     ->  Seq Scan on public.int4_tbl b
+                           Output: b.f1
+                     ->  Materialize
+                           Output: c.f1
+                           ->  Seq Scan on public.int4_tbl c
+                                 Output: c.f1
+   ->  Append
+         ->  Result
+               Output: (ROW(b.f1, c.f1))
+         ->  Result
+               Output: NULL::record
+(21 rows)
+
+-- Here the Var is a merged column of a full join with a non-Var input
+explain (verbose, costs off)
+select ss.c from
+  int4_tbl a left join
+  ((select f1 + 0 as c from int4_tbl) s full join int4_tbl b(c) using (c)) j
+  on true,
+  lateral ((select j.c offset 0) union all select 1) ss;
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Nested Loop
+   Output: ((COALESCE((int4_tbl.f1 + 0), b.c)))
+   ->  Nested Loop Left Join
+         Output: (COALESCE((int4_tbl.f1 + 0), b.c))
+         ->  Seq Scan on public.int4_tbl a
+               Output: a.f1
+         ->  Materialize
+               Output: (COALESCE((int4_tbl.f1 + 0), b.c))
+               ->  Hash Full Join
+                     Output: COALESCE((int4_tbl.f1 + 0), b.c)
+                     Hash Cond: ((int4_tbl.f1 + 0) = b.c)
+                     ->  Seq Scan on public.int4_tbl
+                           Output: int4_tbl.f1
+                     ->  Hash
+                           Output: b.c
+                           ->  Seq Scan on public.int4_tbl b
+                                 Output: b.c
+   ->  Append
+         ->  Result
+               Output: (COALESCE((int4_tbl.f1 + 0), b.c))
+         ->  Result
+               Output: 1
+(22 rows)
+
+explain (verbose, costs off)
+select ss.c from
+  int4_tbl a left join
+  ((select f1 + 0 as c from int4_tbl) s full join int4_tbl b(c) using (c)) j
+  on true,
+  lateral (select j.c union all select 1) ss;
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Nested Loop
+   Output: ((COALESCE((int4_tbl.f1 + 0), b.c)))
+   ->  Nested Loop Left Join
+         Output: (COALESCE((int4_tbl.f1 + 0), b.c))
+         ->  Seq Scan on public.int4_tbl a
+               Output: a.f1
+         ->  Materialize
+               Output: (COALESCE((int4_tbl.f1 + 0), b.c))
+               ->  Hash Full Join
+                     Output: COALESCE((int4_tbl.f1 + 0), b.c)
+                     Hash Cond: ((int4_tbl.f1 + 0) = b.c)
+                     ->  Seq Scan on public.int4_tbl
+                           Output: int4_tbl.f1
+                     ->  Hash
+                           Output: b.c
+                           ->  Seq Scan on public.int4_tbl b
+                                 Output: b.c
+   ->  Append
+         ->  Result
+               Output: (COALESCE((int4_tbl.f1 + 0), b.c))
+         ->  Result
+               Output: 1
+(22 rows)
+
+-- Here the UNION ALL is nested in a pulled-up lateral subquery
+explain (verbose, costs off)
+select ss.j from
+  int4_tbl a left join (int4_tbl b cross join int4_tbl c) j on true,
+  lateral (select * from ((select j offset 0) union all select null) s) ss;
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Nested Loop
+   Output: ((ROW(b.f1, c.f1)))
+   ->  Nested Loop Left Join
+         Output: (ROW(b.f1, c.f1))
+         ->  Seq Scan on public.int4_tbl a
+               Output: a.f1
+         ->  Materialize
+               Output: (ROW(b.f1, c.f1))
+               ->  Nested Loop
+                     Output: ROW(b.f1, c.f1)
+                     ->  Seq Scan on public.int4_tbl b
+                           Output: b.f1
+                     ->  Materialize
+                           Output: c.f1
+                           ->  Seq Scan on public.int4_tbl c
+                                 Output: c.f1
+   ->  Append
+         ->  Result
+               Output: (ROW(b.f1, c.f1))
+         ->  Result
+               Output: NULL::record
+(21 rows)
+
+explain (verbose, costs off)
+select ss.j from
+  int4_tbl a left join (int4_tbl b cross join int4_tbl c) j on true,
+  lateral (select * from (select j union all select null) s) ss;
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Nested Loop
+   Output: ((ROW(b.f1, c.f1)))
+   ->  Nested Loop Left Join
+         Output: (ROW(b.f1, c.f1))
+         ->  Seq Scan on public.int4_tbl a
+               Output: a.f1
+         ->  Materialize
+               Output: (ROW(b.f1, c.f1))
+               ->  Nested Loop
+                     Output: ROW(b.f1, c.f1)
+                     ->  Seq Scan on public.int4_tbl b
+                           Output: b.f1
+                     ->  Materialize
+                           Output: c.f1
+                           ->  Seq Scan on public.int4_tbl c
+                                 Output: c.f1
+   ->  Append
+         ->  Result
+               Output: (ROW(b.f1, c.f1))
+         ->  Result
+               Output: NULL::record
+(21 rows)
+
+-- join alias Var needing a PHV, referenced in both the tlist and the quals of
+-- a pulled-up subquery; both references must share the PHV
+explain (verbose, costs off)
+select * from
+  (select v.k from int4_tbl a
+     left join (int4_tbl b cross join int4_tbl c) j on true
+     left join lateral (select j as k from int4_tbl d) v on true
+   where v.k::text is not null) ss;
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Nested Loop
+   Output: ((ROW(b.f1, c.f1)))
+   ->  Nested Loop Left Join
+         Output: (ROW(b.f1, c.f1))
+         ->  Seq Scan on public.int4_tbl a
+               Output: a.f1
+         ->  Materialize
+               Output: (ROW(b.f1, c.f1))
+               ->  Nested Loop
+                     Output: ROW(b.f1, c.f1)
+                     ->  Seq Scan on public.int4_tbl b
+                           Output: b.f1
+                     ->  Materialize
+                           Output: c.f1
+                           ->  Seq Scan on public.int4_tbl c
+                                 Output: c.f1
+   ->  Seq Scan on public.int4_tbl d
+         Output: (ROW(b.f1, c.f1))
+         Filter: (((ROW(b.f1, c.f1)))::text IS NOT NULL)
+(19 rows)
+
+-- join alias Var needing a PHV, inside the PHV that grouping sets put around
+-- a pulled-up subquery's output; the qual must not compute ROW(NULL, 1)
+explain (verbose, costs off)
+select ss.x, count(*) from
+  int8_tbl a left join (int4_tbl b cross join (select 1 as c) s) j
+  on a.q1 = j.f1
+  cross join lateral (select j as x) ss
+where ss.x::text is not null
+group by rollup (ss.x);
+                         QUERY PLAN                         
+------------------------------------------------------------
+ GroupAggregate
+   Output: (ROW(b.f1, 1)), count(*)
+   Group Key: (ROW(b.f1, 1))
+   Group Key: ()
+   ->  Sort
+         Output: (ROW(b.f1, 1))
+         Sort Key: (ROW(b.f1, 1))
+         ->  Hash Left Join
+               Output: (ROW(b.f1, 1))
+               Hash Cond: (a.q1 = b.f1)
+               Filter: (((ROW(b.f1, 1)))::text IS NOT NULL)
+               ->  Seq Scan on public.int8_tbl a
+                     Output: a.q1, a.q2
+               ->  Hash
+                     Output: b.f1, (ROW(b.f1, 1))
+                     ->  Seq Scan on public.int4_tbl b
+                           Output: b.f1, ROW(b.f1, 1)
+(17 rows)
+
+select ss.x, count(*) from
+  int8_tbl a left join (int4_tbl b cross join (select 1 as c) s) j
+  on a.q1 = j.f1
+  cross join lateral (select j as x) ss
+where ss.x::text is not null
+group by rollup (ss.x);
+ x | count 
+---+-------
+   |     0
+(1 row)
 
 -- lateral with VALUES
 explain (costs off)
@@ -8811,6 +10593,135 @@ select * from
  4567890123456789 | -4567890123456789 |                  |                   |                 
 (10 rows)
 
+-- check EC-derived clauses for a UNION ALL member with nullable lateral refs
+explain (costs off)
+select * from
+  int8_tbl x left join int8_tbl y on x.q2 = y.q1,
+  lateral (select x.q1 as v union all select x.q1 + y.q2) ss
+where x.q2 = ss.v;
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Nested Loop
+   ->  Hash Left Join
+         Hash Cond: (x.q2 = y.q1)
+         ->  Seq Scan on int8_tbl x
+         ->  Hash
+               ->  Seq Scan on int8_tbl y
+   ->  Append
+         ->  Result
+               One-Time Filter: (x.q2 = x.q1)
+         ->  Result
+               One-Time Filter: (x.q2 = (x.q1 + y.q2))
+(11 rows)
+
+select * from
+  int8_tbl x left join int8_tbl y on x.q2 = y.q1,
+  lateral (select x.q1 as v union all select x.q1 + y.q2) ss
+where x.q2 = ss.v;
+        q1        |        q2        |        q1        |        q2         |        v         
+------------------+------------------+------------------+-------------------+------------------
+ 4567890123456789 | 4567890123456789 | 4567890123456789 | -4567890123456789 | 4567890123456789
+ 4567890123456789 | 4567890123456789 | 4567890123456789 |  4567890123456789 | 4567890123456789
+ 4567890123456789 | 4567890123456789 | 4567890123456789 |               123 | 4567890123456789
+(3 rows)
+
+-- likewise when the member is scanned below the outer join nulling those refs
+explain (costs off)
+select * from
+  int8_tbl x left join int8_tbl y on true
+  left join (int8_tbl z join
+             lateral (select z.q1 as v union all select y.q1 + z.q1) ss
+             on z.q2 = ss.v)
+    on y.q1 = 1;
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ Nested Loop Left Join
+   ->  Seq Scan on int8_tbl x
+   ->  Materialize
+         ->  Nested Loop Left Join
+               Join Filter: (y.q1 = 1)
+               ->  Seq Scan on int8_tbl y
+               ->  Nested Loop
+                     ->  Seq Scan on int8_tbl z
+                     ->  Append
+                           ->  Result
+                                 One-Time Filter: (z.q2 = z.q1)
+                           ->  Result
+                                 One-Time Filter: (z.q2 = (y.q1 + z.q1))
+(13 rows)
+
+select * from
+  int8_tbl x left join int8_tbl y on true
+  left join (int8_tbl z join
+             lateral (select z.q1 as v union all select y.q1 + z.q1) ss
+             on z.q2 = ss.v)
+    on y.q1 = 1;
+        q1        |        q2         |        q1        |        q2         | q1 | q2 | v 
+------------------+-------------------+------------------+-------------------+----+----+---
+              123 |               456 |              123 |               456 |    |    |  
+              123 |               456 |              123 |  4567890123456789 |    |    |  
+              123 |               456 | 4567890123456789 |               123 |    |    |  
+              123 |               456 | 4567890123456789 |  4567890123456789 |    |    |  
+              123 |               456 | 4567890123456789 | -4567890123456789 |    |    |  
+              123 |  4567890123456789 |              123 |               456 |    |    |  
+              123 |  4567890123456789 |              123 |  4567890123456789 |    |    |  
+              123 |  4567890123456789 | 4567890123456789 |               123 |    |    |  
+              123 |  4567890123456789 | 4567890123456789 |  4567890123456789 |    |    |  
+              123 |  4567890123456789 | 4567890123456789 | -4567890123456789 |    |    |  
+ 4567890123456789 |               123 |              123 |               456 |    |    |  
+ 4567890123456789 |               123 |              123 |  4567890123456789 |    |    |  
+ 4567890123456789 |               123 | 4567890123456789 |               123 |    |    |  
+ 4567890123456789 |               123 | 4567890123456789 |  4567890123456789 |    |    |  
+ 4567890123456789 |               123 | 4567890123456789 | -4567890123456789 |    |    |  
+ 4567890123456789 |  4567890123456789 |              123 |               456 |    |    |  
+ 4567890123456789 |  4567890123456789 |              123 |  4567890123456789 |    |    |  
+ 4567890123456789 |  4567890123456789 | 4567890123456789 |               123 |    |    |  
+ 4567890123456789 |  4567890123456789 | 4567890123456789 |  4567890123456789 |    |    |  
+ 4567890123456789 |  4567890123456789 | 4567890123456789 | -4567890123456789 |    |    |  
+ 4567890123456789 | -4567890123456789 |              123 |               456 |    |    |  
+ 4567890123456789 | -4567890123456789 |              123 |  4567890123456789 |    |    |  
+ 4567890123456789 | -4567890123456789 | 4567890123456789 |               123 |    |    |  
+ 4567890123456789 | -4567890123456789 | 4567890123456789 |  4567890123456789 |    |    |  
+ 4567890123456789 | -4567890123456789 | 4567890123456789 | -4567890123456789 |    |    |  
+(25 rows)
+
+-- check that a clause the UNION ALL members cannot enforce is not dropped
+-- from the join above as already enforced, even through a Materialize
+begin;
+set local join_collapse_limit to 1;
+explain (costs off)
+select * from int4_tbl t1 join
+  (int4_tbl t2 cross join lateral
+     (select q1 from int8_tbl where q2 < t1.f1
+      union all
+      select q1 from int8_tbl where q2 < t1.f1) s)
+  on t1.f1 = s.q1 + t1.f1;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Nested Loop
+   Join Filter: (t1.f1 = (int8_tbl.q1 + t1.f1))
+   ->  Seq Scan on int4_tbl t1
+   ->  Nested Loop
+         ->  Seq Scan on int4_tbl t2
+         ->  Materialize
+               ->  Append
+                     ->  Seq Scan on int8_tbl
+                           Filter: (q2 < t1.f1)
+                     ->  Seq Scan on int8_tbl int8_tbl_1
+                           Filter: (q2 < t1.f1)
+(11 rows)
+
+select * from int4_tbl t1 join
+  (int4_tbl t2 cross join lateral
+     (select q1 from int8_tbl where q2 < t1.f1
+      union all
+      select q1 from int8_tbl where q2 < t1.f1) s)
+  on t1.f1 = s.q1 + t1.f1;
+ f1 | f1 | q1 
+----+----+----
+(0 rows)
+
+rollback;
 -- lateral can result in join conditions appearing below their
 -- real semantic level
 explain (verbose, costs off)
@@ -9299,6 +11210,193 @@ lateral (select * from int8_tbl t1,
   0 | 4567890123456789 | -4567890123456789 | 4567890123456789 | 4567890123456789
 (3 rows)
 
+-- check that lateral references hidden in a whole-row join alias Var
+-- prevent pullup of a LATERAL subquery
+explain (verbose, costs off)
+select i4.f1, ss.x, i8.q1
+from int4_tbl i4,
+  lateral (select (j is null)::int
+           from ((select i4.f1) s left join (select 1) v on false) j) ss(x)
+  left join int8_tbl i8 on ss.x = i8.q1
+order by 1;
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Sort
+   Output: i4.f1, ((((i4.f1 IS NULL) AND ((1) IS NULL)))::integer), i8.q1
+   Sort Key: i4.f1
+   ->  Hash Left Join
+         Output: i4.f1, ((((i4.f1 IS NULL) AND ((1) IS NULL)))::integer), i8.q1
+         Hash Cond: (((((i4.f1 IS NULL) AND ((1) IS NULL)))::integer) = i8.q1)
+         ->  Nested Loop
+               Output: i4.f1, ((((i4.f1 IS NULL) AND ((1) IS NULL)))::integer)
+               ->  Seq Scan on public.int4_tbl i4
+                     Output: i4.f1
+               ->  Nested Loop Left Join
+                     Output: (((i4.f1 IS NULL) AND ((1) IS NULL)))::integer
+                     Join Filter: false
+                     ->  Result
+                     ->  Result
+                           Output: 1
+                           One-Time Filter: false
+         ->  Hash
+               Output: i8.q1
+               ->  Seq Scan on public.int8_tbl i8
+                     Output: i8.q1
+(21 rows)
+
+select i4.f1, ss.x, i8.q1
+from int4_tbl i4,
+  lateral (select (j is null)::int
+           from ((select i4.f1) s left join (select 1) v on false) j) ss(x)
+  left join int8_tbl i8 on ss.x = i8.q1
+order by 1;
+     f1      | x | q1 
+-------------+---+----
+ -2147483647 | 0 |   
+     -123456 | 0 |   
+           0 | 0 |   
+      123456 | 0 |   
+  2147483647 | 0 |   
+(5 rows)
+
+-- same, with the lateral reference hidden in the subquery's quals
+explain (verbose, costs off)
+select i4.f1, i8.q1, ss.y
+from int4_tbl i4,
+  int8_tbl i8 left join
+  lateral (select 1 from ((select i4.f1) s left join (select 1) v on false) j
+           where length(j::text) > 3) ss(y) on true
+where i4.f1 = 0
+order by 1, 2;
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ Sort
+   Output: i4.f1, i8.q1, (1)
+   Sort Key: i8.q1
+   ->  Nested Loop
+         Output: i4.f1, i8.q1, (1)
+         ->  Seq Scan on public.int4_tbl i4
+               Output: i4.f1
+               Filter: (i4.f1 = 0)
+         ->  Nested Loop Left Join
+               Output: i8.q1, (1)
+               ->  Seq Scan on public.int8_tbl i8
+                     Output: i8.q1, i8.q2
+               ->  Materialize
+                     Output: (1)
+                     ->  Nested Loop Left Join
+                           Output: 1
+                           Join Filter: false
+                           Filter: (length((ROW(i4.f1, (1)))::text) > 3)
+                           ->  Result
+                           ->  Result
+                                 Output: 1
+                                 One-Time Filter: false
+(22 rows)
+
+select i4.f1, i8.q1, ss.y
+from int4_tbl i4,
+  int8_tbl i8 left join
+  lateral (select 1 from ((select i4.f1) s left join (select 1) v on false) j
+           where length(j::text) > 3) ss(y) on true
+where i4.f1 = 0
+order by 1, 2;
+ f1 |        q1        | y 
+----+------------------+---
+  0 |              123 | 1
+  0 |              123 | 1
+  0 | 4567890123456789 | 1
+  0 | 4567890123456789 | 1
+  0 | 4567890123456789 | 1
+(5 rows)
+
+-- check that lateral references in a sort key added below a mergejoin are
+-- replaced with nestloop params
+set enable_hashjoin to off;
+set enable_nestloop to off;
+explain (verbose, costs off)
+select * from int4_tbl t1
+  left join lateral
+    (select t1.f1 from int4_tbl t3 where t3.f1 = 0) s(x) on true
+  join int4_tbl t2 on -s.x = t2.f1
+where t1.f1 = 123456;
+                    QUERY PLAN                    
+--------------------------------------------------
+ Nested Loop
+   Disabled: true
+   Output: t1.f1, (t1.f1), t2.f1
+   ->  Seq Scan on public.int4_tbl t1
+         Output: t1.f1
+         Filter: (t1.f1 = 123456)
+   ->  Merge Join
+         Output: (t1.f1), t2.f1
+         Merge Cond: (((- t1.f1)) = t2.f1)
+         ->  Sort
+               Output: (t1.f1), ((- t1.f1))
+               Sort Key: ((- t1.f1))
+               ->  Seq Scan on public.int4_tbl t3
+                     Output: t1.f1, (- t1.f1)
+                     Filter: (t3.f1 = 0)
+         ->  Sort
+               Output: t2.f1
+               Sort Key: t2.f1
+               ->  Seq Scan on public.int4_tbl t2
+                     Output: t2.f1
+(20 rows)
+
+select * from int4_tbl t1
+  left join lateral
+    (select t1.f1 from int4_tbl t3 where t3.f1 = 0) s(x) on true
+  join int4_tbl t2 on -s.x = t2.f1
+where t1.f1 = 123456;
+   f1   |   x    |   f1    
+--------+--------+---------
+ 123456 | 123456 | -123456
+(1 row)
+
+reset enable_nestloop;
+-- same, with the sort key computed atop a join
+explain (verbose, costs off)
+select count(*) from int4_tbl t1
+  left join lateral
+    (select t1.f1, t3.g from generate_series(1, 1000) t3(g), int4_tbl t4) s(x, y) on true
+  join tenk1 t2 on s.x + s.y = t2.unique1
+where t1.f1 = 0;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Aggregate
+   Output: count(*)
+   ->  Nested Loop
+         ->  Seq Scan on public.int4_tbl t1
+               Output: t1.f1
+               Filter: (t1.f1 = 0)
+         ->  Merge Join
+               Merge Cond: (((t1.f1 + t3.g)) = t2.unique1)
+               ->  Sort
+                     Output: t3.g, (t1.f1), ((t1.f1 + t3.g))
+                     Sort Key: ((t1.f1 + t3.g))
+                     ->  Nested Loop
+                           Output: t3.g, t1.f1, (t1.f1 + t3.g)
+                           ->  Function Scan on pg_catalog.generate_series t3
+                                 Output: t3.g
+                                 Function Call: generate_series(1, 1000)
+                           ->  Materialize
+                                 ->  Seq Scan on public.int4_tbl t4
+               ->  Index Only Scan using tenk1_unique1 on public.tenk1 t2
+                     Output: t2.unique1
+(20 rows)
+
+select count(*) from int4_tbl t1
+  left join lateral
+    (select t1.f1, t3.g from generate_series(1, 1000) t3(g), int4_tbl t4) s(x, y) on true
+  join tenk1 t2 on s.x + s.y = t2.unique1
+where t1.f1 = 0;
+ count 
+-------
+  5000
+(1 row)
+
+reset enable_hashjoin;
 -- test some error cases where LATERAL should have been used but wasn't
 select f1,g from int4_tbl a, (select f1 as g) ss;
 ERROR:  column "f1" does not exist
@@ -10104,3 +12202,66 @@ SELECT COUNT(*) FROM onek t1 LEFT JOIN tenk1 t2
  19000
 (1 row)
 
+--
+-- Test that a qual from above an antijoin made from a sublink is not pushed
+-- down into the antijoin's RHS.
+--
+EXPLAIN (COSTS OFF)
+SELECT s.*
+FROM (VALUES (1)) AS v(z) LEFT JOIN
+  (SELECT 123456 AS c, t1.f1 AS x FROM int4_tbl t1
+   WHERE NOT EXISTS (SELECT 1 FROM tenk1 t2 WHERE t2.unique1 = t1.f1)) s ON true
+WHERE s.x = s.c;
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Nested Loop Anti Join
+   Filter: (t1.f1 = 123456)
+   ->  Seq Scan on int4_tbl t1
+   ->  Index Only Scan using tenk1_unique1 on tenk1 t2
+         Index Cond: (unique1 = t1.f1)
+(5 rows)
+
+SELECT s.*
+FROM (VALUES (1)) AS v(z) LEFT JOIN
+  (SELECT 123456 AS c, t1.f1 AS x FROM int4_tbl t1
+   WHERE NOT EXISTS (SELECT 1 FROM tenk1 t2 WHERE t2.unique1 = t1.f1)) s ON true
+WHERE s.x = s.c;
+   c    |   x    
+--------+--------
+ 123456 | 123456
+(1 row)
+
+-- Test the same for NOT IN, which needs non-nullable inputs to become an
+-- antijoin
+BEGIN;
+CREATE TEMP TABLE not_null_tab (f1 int4 NOT NULL);
+INSERT INTO not_null_tab VALUES (0), (123456), (-123456);
+ANALYZE not_null_tab;
+EXPLAIN (COSTS OFF)
+SELECT s.*
+FROM (VALUES (1)) AS v(z) LEFT JOIN
+  (SELECT 123456 AS c, t1.f1 AS x FROM not_null_tab t1
+   WHERE t1.f1 NOT IN (SELECT t2.unique1 FROM tenk1 t2
+                       WHERE t2.unique1 IS NOT NULL)) s ON true
+WHERE s.x = s.c;
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Nested Loop Anti Join
+   Filter: (t1.f1 = 123456)
+   ->  Seq Scan on not_null_tab t1
+   ->  Index Only Scan using tenk1_unique1 on tenk1 t2
+         Index Cond: ((unique1 = t1.f1) AND (unique1 IS NOT NULL))
+(5 rows)
+
+SELECT s.*
+FROM (VALUES (1)) AS v(z) LEFT JOIN
+  (SELECT 123456 AS c, t1.f1 AS x FROM not_null_tab t1
+   WHERE t1.f1 NOT IN (SELECT t2.unique1 FROM tenk1 t2
+                       WHERE t2.unique1 IS NOT NULL)) s ON true
+WHERE s.x = s.c;
+   c    |   x    
+--------+--------
+ 123456 | 123456
+(1 row)
+
+ROLLBACK;

@@ -61,11 +61,11 @@ step s2_upd_a_data:
     WHERE
         noisy_oper('upd', key, '=', 'key-a') AND
         noisy_oper('upk', data, '<>', 'mismatch')
-    RETURNING *;
+    RETURNING *, new.data = old.data || '-ups2' AS check_old_and_new;
 
-key  |data              
------+------------------
-key-a|val-a-s1-ups1-ups2
+key  |data              |check_old_and_new
+-----+------------------+-----------------
+key-a|val-a-s1-ups1-ups2|t                
 (1 row)
 
 step s2_c: COMMIT;
@@ -132,11 +132,11 @@ step s2_upd_a_data:
     WHERE
         noisy_oper('upd', key, '=', 'key-a') AND
         noisy_oper('upk', data, '<>', 'mismatch')
-    RETURNING *;
+    RETURNING *, new.data = old.data || '-ups2' AS check_old_and_new;
 
-key  |data         
------+-------------
-key-a|val-a-s1-ups2
+key  |data         |check_old_and_new
+-----+-------------+-----------------
+key-a|val-a-s1-ups2|t                
 (1 row)
 
 step s2_c: COMMIT;
@@ -205,11 +205,11 @@ step s2_del_a:
     WHERE
         noisy_oper('upd', key, '=', 'key-a') AND
         noisy_oper('upk', data, '<>', 'mismatch')
-    RETURNING *
+    RETURNING *, data = old.data AS check_old;
 
-key  |data         
------+-------------
-key-a|val-a-s1-ups1
+key  |data         |check_old
+-----+-------------+---------
+key-a|val-a-s1-ups1|t        
 (1 row)
 
 step s2_c: COMMIT;
@@ -277,11 +277,11 @@ step s2_del_a:
     WHERE
         noisy_oper('upd', key, '=', 'key-a') AND
         noisy_oper('upk', data, '<>', 'mismatch')
-    RETURNING *
+    RETURNING *, data = old.data AS check_old;
 
-key  |data    
------+--------
-key-a|val-a-s1
+key  |data    |check_old
+-----+--------+---------
+key-a|val-a-s1|t        
 (1 row)
 
 step s2_c: COMMIT;
@@ -343,7 +343,7 @@ step s2_upd_a_data:
     WHERE
         noisy_oper('upd', key, '=', 'key-a') AND
         noisy_oper('upk', data, '<>', 'mismatch')
-    RETURNING *;
+    RETURNING *, new.data = old.data || '-ups2' AS check_old_and_new;
  <waiting ...>
 step s1_c: COMMIT;
 s2: NOTICE:  upd: text key-a = text key-a: t
@@ -352,9 +352,9 @@ s2: NOTICE:  trigger: name rep_b_u; when: BEFORE; lev: ROWs; op: UPDATE; old: (k
 s2: NOTICE:  upd: text key-b = text key-a: f
 s2: NOTICE:  trigger: name rep_a_u; when: AFTER; lev: ROWs; op: UPDATE; old: (key-a,val-a-s1-ups1) new: (key-a,val-a-s1-ups1-ups2)
 step s2_upd_a_data: <... completed>
-key  |data              
------+------------------
-key-a|val-a-s1-ups1-ups2
+key  |data              |check_old_and_new
+-----+------------------+-----------------
+key-a|val-a-s1-ups1-ups2|t                
 (1 row)
 
 step s2_c: COMMIT;
@@ -417,16 +417,16 @@ step s2_upd_a_data:
     WHERE
         noisy_oper('upd', key, '=', 'key-a') AND
         noisy_oper('upk', data, '<>', 'mismatch')
-    RETURNING *;
+    RETURNING *, new.data = old.data || '-ups2' AS check_old_and_new;
  <waiting ...>
 step s1_r: ROLLBACK;
 s2: NOTICE:  trigger: name rep_b_u; when: BEFORE; lev: ROWs; op: UPDATE; old: (key-a,val-a-s1) new: (key-a,val-a-s1-ups2)
 s2: NOTICE:  upd: text key-b = text key-a: f
 s2: NOTICE:  trigger: name rep_a_u; when: AFTER; lev: ROWs; op: UPDATE; old: (key-a,val-a-s1) new: (key-a,val-a-s1-ups2)
 step s2_upd_a_data: <... completed>
-key  |data         
------+-------------
-key-a|val-a-s1-ups2
+key  |data         |check_old_and_new
+-----+-------------+-----------------
+key-a|val-a-s1-ups2|t                
 (1 row)
 
 step s2_c: COMMIT;
@@ -491,7 +491,7 @@ step s2_upd_a_data:
     WHERE
         noisy_oper('upd', key, '=', 'key-a') AND
         noisy_oper('upk', data, '<>', 'mismatch')
-    RETURNING *;
+    RETURNING *, new.data = old.data || '-ups2' AS check_old_and_new;
  <waiting ...>
 step s1_c: COMMIT;
 s2: NOTICE:  upd: text key-a = text key-a: t
@@ -500,9 +500,9 @@ s2: NOTICE:  trigger: name rep_b_u; when: BEFORE; lev: ROWs; op: UPDATE; old: (k
 s2: NOTICE:  upd: text key-b = text key-a: f
 s2: NOTICE:  trigger: name rep_a_u; when: AFTER; lev: ROWs; op: UPDATE; old: (key-a,val-a-s1-ups1) new: (key-a,val-a-s1-ups1-ups2)
 step s2_upd_a_data: <... completed>
-key  |data              
------+------------------
-key-a|val-a-s1-ups1-ups2
+key  |data              |check_old_and_new
+-----+------------------+-----------------
+key-a|val-a-s1-ups1-ups2|t                
 (1 row)
 
 step s2_c: COMMIT;
@@ -567,16 +567,16 @@ step s2_upd_a_data:
     WHERE
         noisy_oper('upd', key, '=', 'key-a') AND
         noisy_oper('upk', data, '<>', 'mismatch')
-    RETURNING *;
+    RETURNING *, new.data = old.data || '-ups2' AS check_old_and_new;
  <waiting ...>
 step s1_r: ROLLBACK;
 s2: NOTICE:  trigger: name rep_b_u; when: BEFORE; lev: ROWs; op: UPDATE; old: (key-a,val-a-s1) new: (key-a,val-a-s1-ups2)
 s2: NOTICE:  upd: text key-b = text key-a: f
 s2: NOTICE:  trigger: name rep_a_u; when: AFTER; lev: ROWs; op: UPDATE; old: (key-a,val-a-s1) new: (key-a,val-a-s1-ups2)
 step s2_upd_a_data: <... completed>
-key  |data         
------+-------------
-key-a|val-a-s1-ups2
+key  |data         |check_old_and_new
+-----+-------------+-----------------
+key-a|val-a-s1-ups2|t                
 (1 row)
 
 step s2_c: COMMIT;
@@ -641,13 +641,13 @@ step s2_upd_a_data:
     WHERE
         noisy_oper('upd', key, '=', 'key-a') AND
         noisy_oper('upk', data, '<>', 'mismatch')
-    RETURNING *;
+    RETURNING *, new.data = old.data || '-ups2' AS check_old_and_new;
  <waiting ...>
 step s1_c: COMMIT;
 s2: NOTICE:  upd: text key-b = text key-a: f
 step s2_upd_a_data: <... completed>
-key|data
----+----
+key|data|check_old_and_new
+---+----+-----------------
 (0 rows)
 
 step s2_c: COMMIT;
@@ -711,16 +711,16 @@ step s2_upd_a_data:
     WHERE
         noisy_oper('upd', key, '=', 'key-a') AND
         noisy_oper('upk', data, '<>', 'mismatch')
-    RETURNING *;
+    RETURNING *, new.data = old.data || '-ups2' AS check_old_and_new;
  <waiting ...>
 step s1_r: ROLLBACK;
 s2: NOTICE:  trigger: name rep_b_u; when: BEFORE; lev: ROWs; op: UPDATE; old: (key-a,val-a-s1) new: (key-a,val-a-s1-ups2)
 s2: NOTICE:  upd: text key-b = text key-a: f
 s2: NOTICE:  trigger: name rep_a_u; when: AFTER; lev: ROWs; op: UPDATE; old: (key-a,val-a-s1) new: (key-a,val-a-s1-ups2)
 step s2_upd_a_data: <... completed>
-key  |data         
------+-------------
-key-a|val-a-s1-ups2
+key  |data         |check_old_and_new
+-----+-------------+-----------------
+key-a|val-a-s1-ups2|t                
 (1 row)
 
 step s2_c: COMMIT;
@@ -873,7 +873,7 @@ step s2_upsert_a_data:
         WHERE
             noisy_oper('upd', trigtest.key, '=', 'key-a') AND
             noisy_oper('upk', trigtest.data, '<>', 'mismatch')
-    RETURNING *;
+    RETURNING *, new.data = old.data || '-upserts2' AS check_old_and_new;
  <waiting ...>
 step s1_c: COMMIT;
 s2: NOTICE:  upd: text key-a = text key-a: t
@@ -881,9 +881,9 @@ s2: NOTICE:  upk: text val-a-s1-ups1 <> text mismatch: t
 s2: NOTICE:  trigger: name rep_b_u; when: BEFORE; lev: ROWs; op: UPDATE; old: (key-a,val-a-s1-ups1) new: (key-a,val-a-s1-ups1-upserts2)
 s2: NOTICE:  trigger: name rep_a_u; when: AFTER; lev: ROWs; op: UPDATE; old: (key-a,val-a-s1-ups1) new: (key-a,val-a-s1-ups1-upserts2)
 step s2_upsert_a_data: <... completed>
-key  |data                  
------+----------------------
-key-a|val-a-s1-ups1-upserts2
+key  |data                  |check_old_and_new
+-----+----------------------+-----------------
+key-a|val-a-s1-ups1-upserts2|t                
 (1 row)
 
 step s2_c: COMMIT;
@@ -955,7 +955,7 @@ step s2_upsert_a_data:
         WHERE
             noisy_oper('upd', trigtest.key, '=', 'key-a') AND
             noisy_oper('upk', trigtest.data, '<>', 'mismatch')
-    RETURNING *;
+    RETURNING *, new.data = old.data || '-upserts2' AS check_old_and_new;
  <waiting ...>
 step s1_c: COMMIT;
 s2: NOTICE:  upd: text key-a = text key-a: t
@@ -963,9 +963,9 @@ s2: NOTICE:  upk: text val-a-s1-ups1 <> text mismatch: t
 s2: NOTICE:  trigger: name rep_b_u; when: BEFORE; lev: ROWs; op: UPDATE; old: (key-a,val-a-s1-ups1) new: (key-a,val-a-s1-ups1-upserts2)
 s2: NOTICE:  trigger: name rep_a_u; when: AFTER; lev: ROWs; op: UPDATE; old: (key-a,val-a-s1-ups1) new: (key-a,val-a-s1-ups1-upserts2)
 step s2_upsert_a_data: <... completed>
-key  |data                  
------+----------------------
-key-a|val-a-s1-ups1-upserts2
+key  |data                  |check_old_and_new
+-----+----------------------+-----------------
+key-a|val-a-s1-ups1-upserts2|t                
 (1 row)
 
 step s2_c: COMMIT;
@@ -1012,7 +1012,7 @@ step s2_upsert_a_data:
         WHERE
             noisy_oper('upd', trigtest.key, '=', 'key-a') AND
             noisy_oper('upk', trigtest.data, '<>', 'mismatch')
-    RETURNING *;
+    RETURNING *, new.data = old.data || '-upserts2' AS check_old_and_new;
  <waiting ...>
 step s1_c: COMMIT;
 s2: NOTICE:  upd: text key-a = text key-a: t
@@ -1020,9 +1020,9 @@ s2: NOTICE:  upk: text val-a-s1 <> text mismatch: t
 s2: NOTICE:  trigger: name rep_b_u; when: BEFORE; lev: ROWs; op: UPDATE; old: (key-a,val-a-s1) new: (key-a,val-a-s1-upserts2)
 s2: NOTICE:  trigger: name rep_a_u; when: AFTER; lev: ROWs; op: UPDATE; old: (key-a,val-a-s1) new: (key-a,val-a-s1-upserts2)
 step s2_upsert_a_data: <... completed>
-key  |data             
------+-----------------
-key-a|val-a-s1-upserts2
+key  |data             |check_old_and_new
+-----+-----------------+-----------------
+key-a|val-a-s1-upserts2|t                
 (1 row)
 
 step s2_c: COMMIT;
@@ -1068,14 +1068,14 @@ step s2_upsert_a_data:
         WHERE
             noisy_oper('upd', trigtest.key, '=', 'key-a') AND
             noisy_oper('upk', trigtest.data, '<>', 'mismatch')
-    RETURNING *;
+    RETURNING *, new.data = old.data || '-upserts2' AS check_old_and_new;
  <waiting ...>
 step s1_r: ROLLBACK;
 s2: NOTICE:  trigger: name rep_a_i; when: AFTER; lev: ROWs; op: INSERT; old: <NULL> new: (key-a,val-a-upss2)
 step s2_upsert_a_data: <... completed>
-key  |data       
------+-----------
-key-a|val-a-upss2
+key  |data       |check_old_and_new
+-----+-----------+-----------------
+key-a|val-a-upss2|                 
 (1 row)
 
 step s2_c: COMMIT;
@@ -1137,7 +1137,7 @@ step s2_upsert_a_data:
         WHERE
             noisy_oper('upd', trigtest.key, '=', 'key-a') AND
             noisy_oper('upk', trigtest.data, '<>', 'mismatch')
-    RETURNING *;
+    RETURNING *, new.data = old.data || '-upserts2' AS check_old_and_new;
  <waiting ...>
 step s1_c: COMMIT;
 s2: NOTICE:  upd: text key-a = text key-a: t
@@ -1145,9 +1145,9 @@ s2: NOTICE:  upk: text val-a-s1-ups1 <> text mismatch: t
 s2: NOTICE:  trigger: name rep_b_u; when: BEFORE; lev: ROWs; op: UPDATE; old: (key-a,val-a-s1-ups1) new: (key-a,val-a-s1-ups1-upserts2)
 s2: NOTICE:  trigger: name rep_a_u; when: AFTER; lev: ROWs; op: UPDATE; old: (key-a,val-a-s1-ups1) new: (key-a,val-a-s1-ups1-upserts2)
 step s2_upsert_a_data: <... completed>
-key  |data                  
------+----------------------
-key-a|val-a-s1-ups1-upserts2
+key  |data                  |check_old_and_new
+-----+----------------------+-----------------
+key-a|val-a-s1-ups1-upserts2|t                
 (1 row)
 
 step s2_c: COMMIT;
@@ -1209,14 +1209,14 @@ step s2_upsert_a_data:
         WHERE
             noisy_oper('upd', trigtest.key, '=', 'key-a') AND
             noisy_oper('upk', trigtest.data, '<>', 'mismatch')
-    RETURNING *;
+    RETURNING *, new.data = old.data || '-upserts2' AS check_old_and_new;
  <waiting ...>
 step s1_r: ROLLBACK;
 s2: NOTICE:  trigger: name rep_a_i; when: AFTER; lev: ROWs; op: INSERT; old: <NULL> new: (key-a,val-a-upss2)
 step s2_upsert_a_data: <... completed>
-key  |data       
------+-----------
-key-a|val-a-upss2
+key  |data       |check_old_and_new
+-----+-----------+-----------------
+key-a|val-a-upss2|                 
 (1 row)
 
 step s2_c: COMMIT;
@@ -1276,7 +1276,7 @@ step s2_upd_a_data:
     WHERE
         noisy_oper('upd', key, '=', 'key-a') AND
         noisy_oper('upk', data, '<>', 'mismatch')
-    RETURNING *;
+    RETURNING *, new.data = old.data || '-ups2' AS check_old_and_new;
  <waiting ...>
 step s1_c: COMMIT;
 s2: NOTICE:  upd: text key-a = text key-a: t
@@ -1284,9 +1284,9 @@ s2: NOTICE:  upk: text val-a-s1-ups1 <> text mismatch: t
 s2: NOTICE:  upd: text key-b = text key-a: f
 s2: NOTICE:  trigger: name rep_a_u; when: AFTER; lev: ROWs; op: UPDATE; old: (key-a,val-a-s1-ups1) new: (key-a,val-a-s1-ups1-ups2)
 step s2_upd_a_data: <... completed>
-key  |data              
------+------------------
-key-a|val-a-s1-ups1-ups2
+key  |data              |check_old_and_new
+-----+------------------+-----------------
+key-a|val-a-s1-ups1-ups2|t                
 (1 row)
 
 step s2_c: COMMIT;
@@ -1347,15 +1347,15 @@ step s2_upd_a_data:
     WHERE
         noisy_oper('upd', key, '=', 'key-a') AND
         noisy_oper('upk', data, '<>', 'mismatch')
-    RETURNING *;
+    RETURNING *, new.data = old.data || '-ups2' AS check_old_and_new;
  <waiting ...>
 step s1_r: ROLLBACK;
 s2: NOTICE:  upd: text key-b = text key-a: f
 s2: NOTICE:  trigger: name rep_a_u; when: AFTER; lev: ROWs; op: UPDATE; old: (key-a,val-a-s1) new: (key-a,val-a-s1-ups2)
 step s2_upd_a_data: <... completed>
-key  |data         
------+-------------
-key-a|val-a-s1-ups2
+key  |data         |check_old_and_new
+-----+-------------+-----------------
+key-a|val-a-s1-ups2|t                
 (1 row)
 
 step s2_c: COMMIT;
@@ -1417,7 +1417,7 @@ step s2_del_a:
     WHERE
         noisy_oper('upd', key, '=', 'key-a') AND
         noisy_oper('upk', data, '<>', 'mismatch')
-    RETURNING *
+    RETURNING *, data = old.data AS check_old;
  <waiting ...>
 step s1_c: COMMIT;
 s2: NOTICE:  upd: text key-a = text key-a: t
@@ -1425,9 +1425,9 @@ s2: NOTICE:  upk: text val-a-s1-ups1 <> text mismatch: t
 s2: NOTICE:  upd: text key-b = text key-a: f
 s2: NOTICE:  trigger: name rep_a_d; when: AFTER; lev: ROWs; op: DELETE; old: (key-a,val-a-s1-ups1) new: <NULL>
 step s2_del_a: <... completed>
-key  |data         
------+-------------
-key-a|val-a-s1-ups1
+key  |data         |check_old
+-----+-------------+---------
+key-a|val-a-s1-ups1|t        
 (1 row)
 
 step s2_c: COMMIT;
@@ -1488,15 +1488,15 @@ step s2_del_a:
     WHERE
         noisy_oper('upd', key, '=', 'key-a') AND
         noisy_oper('upk', data, '<>', 'mismatch')
-    RETURNING *
+    RETURNING *, data = old.data AS check_old;
  <waiting ...>
 step s1_r: ROLLBACK;
 s2: NOTICE:  upd: text key-b = text key-a: f
 s2: NOTICE:  trigger: name rep_a_d; when: AFTER; lev: ROWs; op: DELETE; old: (key-a,val-a-s1) new: <NULL>
 step s2_del_a: <... completed>
-key  |data    
------+--------
-key-a|val-a-s1
+key  |data    |check_old
+-----+--------+---------
+key-a|val-a-s1|t        
 (1 row)
 
 step s2_c: COMMIT;
@@ -1557,13 +1557,13 @@ step s2_upd_a_data:
     WHERE
         noisy_oper('upd', key, '=', 'key-a') AND
         noisy_oper('upk', data, '<>', 'mismatch')
-    RETURNING *;
+    RETURNING *, new.data = old.data || '-ups2' AS check_old_and_new;
  <waiting ...>
 step s1_c: COMMIT;
 s2: NOTICE:  upd: text key-b = text key-a: f
 step s2_upd_a_data: <... completed>
-key|data
----+----
+key|data|check_old_and_new
+---+----+-----------------
 (0 rows)
 
 step s2_c: COMMIT;
@@ -1624,15 +1624,15 @@ step s2_upd_a_data:
     WHERE
         noisy_oper('upd', key, '=', 'key-a') AND
         noisy_oper('upk', data, '<>', 'mismatch')
-    RETURNING *;
+    RETURNING *, new.data = old.data || '-ups2' AS check_old_and_new;
  <waiting ...>
 step s1_r: ROLLBACK;
 s2: NOTICE:  upd: text key-b = text key-a: f
 s2: NOTICE:  trigger: name rep_a_u; when: AFTER; lev: ROWs; op: UPDATE; old: (key-a,val-a-s1) new: (key-a,val-a-s1-ups2)
 step s2_upd_a_data: <... completed>
-key  |data         
------+-------------
-key-a|val-a-s1-ups2
+key  |data         |check_old_and_new
+-----+-------------+-----------------
+key-a|val-a-s1-ups2|t                
 (1 row)
 
 step s2_c: COMMIT;
@@ -1693,13 +1693,13 @@ step s2_del_a:
     WHERE
         noisy_oper('upd', key, '=', 'key-a') AND
         noisy_oper('upk', data, '<>', 'mismatch')
-    RETURNING *
+    RETURNING *, data = old.data AS check_old;
  <waiting ...>
 step s1_c: COMMIT;
 s2: NOTICE:  upd: text key-b = text key-a: f
 step s2_del_a: <... completed>
-key|data
----+----
+key|data|check_old
+---+----+---------
 (0 rows)
 
 step s2_c: COMMIT;
@@ -1759,15 +1759,15 @@ step s2_del_a:
     WHERE
         noisy_oper('upd', key, '=', 'key-a') AND
         noisy_oper('upk', data, '<>', 'mismatch')
-    RETURNING *
+    RETURNING *, data = old.data AS check_old;
  <waiting ...>
 step s1_r: ROLLBACK;
 s2: NOTICE:  upd: text key-b = text key-a: f
 s2: NOTICE:  trigger: name rep_a_d; when: AFTER; lev: ROWs; op: DELETE; old: (key-a,val-a-s1) new: <NULL>
 step s2_del_a: <... completed>
-key  |data    
------+--------
-key-a|val-a-s1
+key  |data    |check_old
+-----+--------+---------
+key-a|val-a-s1|t        
 (1 row)
 
 step s2_c: COMMIT;
@@ -1829,14 +1829,14 @@ step s2_upd_a_data:
     WHERE
         noisy_oper('upd', key, '=', 'key-a') AND
         noisy_oper('upk', data, '<>', 'mismatch')
-    RETURNING *;
+    RETURNING *, new.data = old.data || '-ups2' AS check_old_and_new;
  <waiting ...>
 step s1_c: COMMIT;
 s2: NOTICE:  upd: text key-b = text key-a: f
 s2: NOTICE:  upd: text key-c = text key-a: f
 step s2_upd_a_data: <... completed>
-key|data
----+----
+key|data|check_old_and_new
+---+----+-----------------
 (0 rows)
 
 step s2_c: COMMIT;
@@ -1899,16 +1899,16 @@ step s2_upd_a_data:
     WHERE
         noisy_oper('upd', key, '=', 'key-a') AND
         noisy_oper('upk', data, '<>', 'mismatch')
-    RETURNING *;
+    RETURNING *, new.data = old.data || '-ups2' AS check_old_and_new;
  <waiting ...>
 step s1_r: ROLLBACK;
 s2: NOTICE:  trigger: name rep_b_u; when: BEFORE; lev: ROWs; op: UPDATE; old: (key-a,val-a-s1) new: (key-a,val-a-s1-ups2)
 s2: NOTICE:  upd: text key-c = text key-a: f
 s2: NOTICE:  trigger: name rep_a_u; when: AFTER; lev: ROWs; op: UPDATE; old: (key-a,val-a-s1) new: (key-a,val-a-s1-ups2)
 step s2_upd_a_data: <... completed>
-key  |data         
------+-------------
-key-a|val-a-s1-ups2
+key  |data         |check_old_and_new
+-----+-------------+-----------------
+key-a|val-a-s1-ups2|t                
 (1 row)
 
 step s2_c: COMMIT;
@@ -2038,7 +2038,7 @@ step s2_upd_all_data:
     WHERE
         noisy_oper('upd', key, '<>', 'mismatch') AND
         noisy_oper('upk', data, '<>', 'mismatch')
-    RETURNING *;
+    RETURNING *, new.data = old.data || '-ups2' AS check_old_and_new;
  <waiting ...>
 step s1_c: COMMIT;
 s2: NOTICE:  upd: text key-b <> text mismatch: t
@@ -2050,10 +2050,10 @@ s2: NOTICE:  trigger: name rep_b_u; when: BEFORE; lev: ROWs; op: UPDATE; old: (k
 s2: NOTICE:  trigger: name rep_a_u; when: AFTER; lev: ROWs; op: UPDATE; old: (key-b,val-a-s1-tobs1) new: (key-b,val-a-s1-tobs1-ups2)
 s2: NOTICE:  trigger: name rep_a_u; when: AFTER; lev: ROWs; op: UPDATE; old: (key-c,val-c-s1) new: (key-c,val-c-s1-ups2)
 step s2_upd_all_data: <... completed>
-key  |data               
------+-------------------
-key-b|val-a-s1-tobs1-ups2
-key-c|val-c-s1-ups2      
+key  |data               |check_old_and_new
+-----+-------------------+-----------------
+key-b|val-a-s1-tobs1-ups2|t                
+key-c|val-c-s1-ups2      |t                
 (2 rows)
 
 step s2_c: COMMIT;
@@ -2118,13 +2118,13 @@ step s2_upd_a_data:
     WHERE
         noisy_oper('upd', key, '=', 'key-a') AND
         noisy_oper('upk', data, '<>', 'mismatch')
-    RETURNING *;
+    RETURNING *, new.data = old.data || '-ups2' AS check_old_and_new;
  <waiting ...>
 step s1_c: COMMIT;
 s2: NOTICE:  upd: text key-c = text key-a: f
 step s2_upd_a_data: <... completed>
-key|data
----+----
+key|data|check_old_and_new
+---+----+-----------------
 (0 rows)
 
 step s2_c: COMMIT;
@@ -2188,16 +2188,16 @@ step s2_upd_a_data:
     WHERE
         noisy_oper('upd', key, '=', 'key-a') AND
         noisy_oper('upk', data, '<>', 'mismatch')
-    RETURNING *;
+    RETURNING *, new.data = old.data || '-ups2' AS check_old_and_new;
  <waiting ...>
 step s1_r: ROLLBACK;
 s2: NOTICE:  trigger: name rep_b_u; when: BEFORE; lev: ROWs; op: UPDATE; old: (key-a,val-a-s1) new: (key-a,val-a-s1-ups2)
 s2: NOTICE:  upd: text key-c = text key-a: f
 s2: NOTICE:  trigger: name rep_a_u; when: AFTER; lev: ROWs; op: UPDATE; old: (key-a,val-a-s1) new: (key-a,val-a-s1-ups2)
 step s2_upd_a_data: <... completed>
-key  |data         
------+-------------
-key-a|val-a-s1-ups2
+key  |data         |check_old_and_new
+-----+-------------+-----------------
+key-a|val-a-s1-ups2|t                
 (1 row)
 
 step s2_c: COMMIT;
@@ -2260,13 +2260,13 @@ step s2_del_a:
     WHERE
         noisy_oper('upd', key, '=', 'key-a') AND
         noisy_oper('upk', data, '<>', 'mismatch')
-    RETURNING *
+    RETURNING *, data = old.data AS check_old;
  <waiting ...>
 step s1_c: COMMIT;
 s2: NOTICE:  upd: text key-c = text key-a: f
 step s2_del_a: <... completed>
-key|data
----+----
+key|data|check_old
+---+----+---------
 (0 rows)
 
 step s2_c: COMMIT;
@@ -2328,16 +2328,16 @@ step s2_del_a:
     WHERE
         noisy_oper('upd', key, '=', 'key-a') AND
         noisy_oper('upk', data, '<>', 'mismatch')
-    RETURNING *
+    RETURNING *, data = old.data AS check_old;
  <waiting ...>
 step s1_r: ROLLBACK;
 s2: NOTICE:  trigger: name rep_b_d; when: BEFORE; lev: ROWs; op: DELETE; old: (key-a,val-a-s1) new: <NULL>
 s2: NOTICE:  upd: text key-c = text key-a: f
 s2: NOTICE:  trigger: name rep_a_d; when: AFTER; lev: ROWs; op: DELETE; old: (key-a,val-a-s1) new: <NULL>
 step s2_del_a: <... completed>
-key  |data    
------+--------
-key-a|val-a-s1
+key  |data    |check_old
+-----+--------+---------
+key-a|val-a-s1|t        
 (1 row)
 
 step s2_c: COMMIT;
@@ -2507,7 +2507,7 @@ step s2_upd_a_data:
     WHERE
         noisy_oper('upd', key, '=', 'key-a') AND
         noisy_oper('upk', data, '<>', 'mismatch')
-    RETURNING *;
+    RETURNING *, new.data = old.data || '-ups2' AS check_old_and_new;
  <waiting ...>
 step s1_c: COMMIT;
 step s2_upd_a_data: <... completed>
@@ -2572,16 +2572,16 @@ step s2_upd_a_data:
     WHERE
         noisy_oper('upd', key, '=', 'key-a') AND
         noisy_oper('upk', data, '<>', 'mismatch')
-    RETURNING *;
+    RETURNING *, new.data = old.data || '-ups2' AS check_old_and_new;
  <waiting ...>
 step s1_r: ROLLBACK;
 s2: NOTICE:  trigger: name rep_b_u; when: BEFORE; lev: ROWs; op: UPDATE; old: (key-a,val-a-s1) new: (key-a,val-a-s1-ups2)
 s2: NOTICE:  upd: text key-b = text key-a: f
 s2: NOTICE:  trigger: name rep_a_u; when: AFTER; lev: ROWs; op: UPDATE; old: (key-a,val-a-s1) new: (key-a,val-a-s1-ups2)
 step s2_upd_a_data: <... completed>
-key  |data         
------+-------------
-key-a|val-a-s1-ups2
+key  |data         |check_old_and_new
+-----+-------------+-----------------
+key-a|val-a-s1-ups2|t                
 (1 row)
 
 step s2_c: COMMIT;
@@ -2646,7 +2646,7 @@ step s2_upd_a_data:
     WHERE
         noisy_oper('upd', key, '=', 'key-a') AND
         noisy_oper('upk', data, '<>', 'mismatch')
-    RETURNING *;
+    RETURNING *, new.data = old.data || '-ups2' AS check_old_and_new;
  <waiting ...>
 step s1_c: COMMIT;
 step s2_upd_a_data: <... completed>
@@ -2712,16 +2712,16 @@ step s2_upd_a_data:
     WHERE
         noisy_oper('upd', key, '=', 'key-a') AND
         noisy_oper('upk', data, '<>', 'mismatch')
-    RETURNING *;
+    RETURNING *, new.data = old.data || '-ups2' AS check_old_and_new;
  <waiting ...>
 step s1_r: ROLLBACK;
 s2: NOTICE:  trigger: name rep_b_u; when: BEFORE; lev: ROWs; op: UPDATE; old: (key-a,val-a-s1) new: (key-a,val-a-s1-ups2)
 s2: NOTICE:  upd: text key-b = text key-a: f
 s2: NOTICE:  trigger: name rep_a_u; when: AFTER; lev: ROWs; op: UPDATE; old: (key-a,val-a-s1) new: (key-a,val-a-s1-ups2)
 step s2_upd_a_data: <... completed>
-key  |data         
------+-------------
-key-a|val-a-s1-ups2
+key  |data         |check_old_and_new
+-----+-------------+-----------------
+key-a|val-a-s1-ups2|t                
 (1 row)
 
 step s2_c: COMMIT;

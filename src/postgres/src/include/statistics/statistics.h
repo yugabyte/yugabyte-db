@@ -129,4 +129,29 @@ extern StatisticExtInfo *choose_best_statistics(List *stats, char requiredkind,
 												int nclauses);
 extern HeapTuple statext_expressions_load(Oid stxoid, bool inh, int idx);
 
+extern bool import_relation_statistics(Relation rel,
+									   const NullableDatum *version,
+									   const NullableDatum *relpages,
+									   const NullableDatum *reltuples,
+									   const NullableDatum *relallvisible,
+									   const NullableDatum *relallfrozen);
+extern bool import_attribute_statistics(Relation rel,
+										AttrNumber attnum, bool inherited,
+										const NullableDatum *version,
+										const NullableDatum *null_frac,
+										const NullableDatum *avg_width,
+										const NullableDatum *n_distinct,
+										const NullableDatum *most_common_vals,
+										const NullableDatum *most_common_freqs,
+										const NullableDatum *histogram_bounds,
+										const NullableDatum *correlation,
+										const NullableDatum *most_common_elems,
+										const NullableDatum *most_common_elem_freqs,
+										const NullableDatum *elem_count_histogram,
+										const NullableDatum *range_length_histogram,
+										const NullableDatum *range_empty_frac,
+										const NullableDatum *range_bounds_histogram);
+extern bool delete_attribute_statistics(Relation rel,
+										AttrNumber attnum, bool inherited);
+
 #endif							/* STATISTICS_H */
