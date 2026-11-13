@@ -1132,11 +1132,12 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestConcurrentTxnsMayNotTakeTabl
   ASSERT_OK(conn2.Execute("INSERT INTO test SELECT generate_series(1,11), 0"));
 }
 
-// A transaction must not change how it reads the catalog partway through: catalog reads would move
-// between the legacy catalog session and the transactional session with a catalog snapshot read
-// time, changing catalog visibility under an open transaction. A transaction that takes object
-// locks reads the catalog the transactional way from its first statement, whether or not it
-// latched the object locking infra auto flag, so promoting the flag under it changes nothing.
+// A transaction must not change its mode of catalog operations partway through: catalog reads
+// would move between the legacy mode (the catalog session, with its own catalog read time) and the
+// PG mode (the transactional session, with a catalog snapshot read time), changing catalog
+// visibility under an open transaction. A transaction that takes object locks uses the PG mode of
+// catalog operations from its first statement, whether or not it latched the object locking infra
+// auto flag, so promoting the flag under it changes nothing.
 //
 // The read path is observed through the read point that PgSession::UpdateReadPointForCatalogOps()
 // logs under yb_debug_log_snapshot_mgmt, which runs only on the non-legacy path.
@@ -1178,8 +1179,8 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestCatalogOpModeStableAcrossPro
     ASSERT_OK(conn.Execute("COMMIT"));
   }
 
-  // The next transaction latches the promoted value and reads the catalog the same way. It needs a
-  // catalog read of its own, so read another relation this backend has not seen before.
+  // The next transaction latches the promoted value and uses the same mode of catalog operations.
+  // It needs a catalog read of its own, so read another relation this backend has not seen before.
   {
     ASSERT_OK(admin.Execute("CREATE TABLE cold2(k INT PRIMARY KEY, v INT)"));
     LogWaiter log_waiter(ts1, kCatalogSnapshotLogLine);

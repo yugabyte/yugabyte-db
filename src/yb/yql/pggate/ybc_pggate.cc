@@ -2200,12 +2200,12 @@ bool YBCIsLegacyModeForCatalogOps() {
   //     (i.e., with transactional DDL enabled) go via the kTransactional session type and would use
   //     the TransactionSnapshot's read time serial number.
   //
-  // A transaction without global object locks takes local DML locks too, so it reads the catalog
-  // the same way: a DDL with global object locks that changes an object the transaction reads
-  // either committed before the transaction's lock on that object, or waits for it. Only a
-  // transaction that takes no object locks, such as an autonomous DDL in its separate DDL
-  // transaction, reads the legacy way. Against such a DDL a reader still has the old fences: the
-  // tablets' catalog version and table schema version checks.
+  // A transaction without global object locks takes local DML locks too, so it also uses the PG
+  // mode of catalog operations: a DDL with global object locks that changes an object the
+  // transaction reads either committed before the transaction's lock on that object, or waits for
+  // it. Only a transaction that takes no object locks, such as an autonomous DDL in its separate
+  // DDL transaction, uses the legacy mode of catalog operations. Against such a DDL a reader still
+  // has the old fences: the tablets' catalog version and table schema version checks.
   //
   return !pgapi || !pgapi->UsingObjectLocksLocally() || YBCIsInitDbModeEnvVarSet() ||
       YBCIsSysTablePrefetchingStarted() || pgapi->IsParallelWorker();
