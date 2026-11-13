@@ -152,13 +152,10 @@ tserver::ReadTimeManipulation GetActualReadTimeManipulator(
       return ensure_read_time
           ? tserver::ReadTimeManipulation::ENSURE_READ_TIME_IS_SET : manipulator;
 
-    case tserver::ReadTimeManipulation::RESTART:
-      DCHECK(!ensure_read_time);
-      return manipulator;
-
     case tserver::ReadTimeManipulation::ENSURE_READ_TIME_IS_SET:
       return manipulator;
 
+    case tserver::ReadTimeManipulation::RESTART:
     case tserver::ReadTimeManipulation::ReadTimeManipulation_INT_MIN_SENTINEL_DO_NOT_USE_:
     case tserver::ReadTimeManipulation::ReadTimeManipulation_INT_MAX_SENTINEL_DO_NOT_USE_:
       break;
@@ -294,9 +291,10 @@ Status PgTxnManager::BeginTransaction(int64_t start_time, uint64_t origination_t
   return RecreateTransaction(SavePriority::kFalse);
 }
 
-Status PgTxnManager::RecreateTransaction() {
+Status PgTxnManager::RecreateTransaction(SetupPerformOptionsAccessorTag tag) {
   VLOG_TXN_STATE(2);
-  return RecreateTransaction(SavePriority::kTrue);
+  RETURN_NOT_OK(RecreateTransaction(SavePriority::kTrue));
+  return ResultToStatus(RestartTransactionForRetry(tag, RetryRestartKind::kRecreateTransaction));
 }
 
 Status PgTxnManager::RecreateTransaction(SavePriority save_priority) {
@@ -468,9 +466,40 @@ Status PgTxnManager::CalculateIsolation(
   return Status::OK();
 }
 
-Status PgTxnManager::RestartTransaction() {
-  need_restart_ = true;
+Status PgTxnManager::RestartTransaction(SetupPerformOptionsAccessorTag tag) {
+  ConstrainRetryReadTimes(
+      VERIFY_RESULT(RestartTransactionForRetry(tag, RetryRestartKind::kRestartTransaction)));
   return Status::OK();
+}
+
+Result<PgClient::RetryReadTimes> PgTxnManager::RestartTransactionForRetry(
+    SetupPerformOptionsAccessorTag tag, RetryRestartKind kind) {
+  tserver::PgPerformOptionsPB options;
+  const auto read_point_only = kind == RetryRestartKind::kReadPointOnly;
+  if (!read_point_only) {
+    RETURN_NOT_OK(SetupPerformOptions(
+        tag, options, NonTransactionalWrites::kFalse, /* read_time_action= */ {},
+        SkipReadTimeOptions::kTrue));
+    if (kind == RetryRestartKind::kRestartTransaction) {
+      options.mutable_read_time_options()->set_restart_transaction(true);
+    }
+  }
+  return client_->RestartTransactionForRetry(&options, read_point_only);
+}
+
+void PgTxnManager::ConstrainRetryReadTimes(const PgClient::RetryReadTimes& times) {
+  if (times.global_limit &&
+      (!retry_global_limit_cap_ || times.global_limit < retry_global_limit_cap_)) {
+    retry_global_limit_cap_ = times.global_limit;
+  }
+  if (times.restart_read) {
+    retry_read_time_floor_.MakeAtLeast(times.restart_read);
+  }
+}
+
+void PgTxnManager::ResetRetryReadTimeConstraints() {
+  retry_global_limit_cap_ = HybridTime::kInvalid;
+  retry_read_time_floor_ = HybridTime::kInvalid;
 }
 
 // Reset to a new read point. This corresponds to a new latest snapshot.
@@ -501,19 +530,14 @@ Status PgTxnManager::ResetTransactionReadPoint(bool is_catalog_snapshot) {
 }
 
 Status PgTxnManager::EnsureReadPoint() {
-  DCHECK(read_time_manipulation_ != tserver::ReadTimeManipulation::RESTART);
   read_time_manipulation_ = tserver::ReadTimeManipulation::ENSURE_READ_TIME_IS_SET;
   return Status::OK();
 }
 
-/* This is called when a read committed transaction wants to restart its read point */
-Status PgTxnManager::RestartReadPoint() {
-  read_time_manipulation_ = tserver::ReadTimeManipulation::RESTART;
+Status PgTxnManager::RestartReadPoint(SetupPerformOptionsAccessorTag tag) {
+  ConstrainRetryReadTimes(
+      VERIFY_RESULT(RestartTransactionForRetry(tag, RetryRestartKind::kReadPointOnly)));
   return Status::OK();
-}
-
-bool PgTxnManager::IsRestartReadPointRequested() {
-  return read_time_manipulation_ == tserver::ReadTimeManipulation::RESTART;
 }
 
 void PgTxnManager::SetActiveSubTransactionId(SubTransactionId id) {
@@ -727,8 +751,7 @@ Status PgTxnManager::CheckConflictsAcrossReadTimeOptions(
     bool need_defer_read_point) const {
   const auto has_read_time = read_time_options.has_read_time();
 
-  if (read_time_options.restart_transaction() ||
-      manipulation == tserver::ReadTimeManipulation::RESTART) {
+  if (read_time_options.restart_transaction()) {
     RSTATUS_DCHECK(
         !IsSerializableIsolation(), IllegalState,
         "Serializable transactions do not face read restart errors.");
@@ -806,11 +829,6 @@ Status PgTxnManager::SetupReadTimeOptions(
     NonTransactionalWrites ops_has_non_transactional_writes,
     SkipReadTimeOptions skip_read_time_options,
     IsCatalogSnapshot is_catalog_snapshot) {
-  if (need_restart_) {
-    read_time_options.set_restart_transaction(true);
-    need_restart_ = false;
-  }
-
   read_time_options.set_read_time_serial_no_history_min(serial_no_.min_read_time());
 
   if (skip_read_time_options) {
@@ -822,6 +840,12 @@ Status PgTxnManager::SetupReadTimeOptions(
   }
 
   read_time_options.set_read_time_serial_no(serial_no_.read_time());
+  if (retry_global_limit_cap_) {
+    read_time_options.set_global_limit_cap_ht(retry_global_limit_cap_.ToUint64());
+    if (retry_read_time_floor_) {
+      read_time_options.set_read_time_floor_ht(retry_read_time_floor_.ToUint64());
+    }
+  }
 
   // read_time may be set by
   // - PgSession::SetReadTimeIfPresent.
@@ -883,12 +907,6 @@ Status PgTxnManager::SetupReadTimeOptions(
   if (UsesFollowerReads()) {
     read_time_options.mutable_follower_read_staleness_ms()->set_value(
         static_cast<uint32_t>(*follower_read_staleness_ms_));
-    return Status::OK();
-  }
-
-  if (!IsDdlModeWithSeparateTransaction() &&
-      manipulation == tserver::ReadTimeManipulation::RESTART) {
-    read_time_options.set_read_time_manipulation(tserver::ReadTimeManipulation::RESTART);
     return Status::OK();
   }
 
@@ -1132,8 +1150,7 @@ Status PgTxnManager::CheckConflictWithCrossTxnSnapshotTime(
       !deferrable_,
       NotSupported, "Deferred read point can't be used with exported/imported snapshot.");
   RSTATUS_DCHECK(
-      !need_restart_ && !restart_transaction &&
-          read_time_manipulation_ != tserver::ReadTimeManipulation::RESTART,
+      !restart_transaction,
       IllegalState,
       "Exported/imported snapshots must not be retried at a different read point.");
   SCHECK(
