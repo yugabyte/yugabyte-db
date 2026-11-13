@@ -50,7 +50,7 @@ block_indexing = true
 | :--------- | :------ | :------------ | :----------- |
 | **Drivers** | | | |
 | YugabyteDB Psycopg 2 Smart Driver<br/>[Recommended] | [2.9.3.5](https://pypi.org/project/psycopg2-yugabytedb-binary/#files) |Full | [CRUD](/stable/develop/drivers-orms/python/yugabyte-psycopg2/) |
-| YugabyteDB Psycopg 3 Smart Driver | [3.3.4.1](https://pypi.org/project/psycopg-yugabytedb/) | Full | [CRUD](/stable/develop/drivers-orms/python/yugabyte-psycopg3/) |
+| YugabyteDB Psycopg 3 Smart Driver | [3.3.4.2](https://pypi.org/project/psycopg-yugabytedb/) | Full | [CRUD](/stable/develop/drivers-orms/python/yugabyte-psycopg3/) |
 | PostgreSQL Psycopg 2 Driver | [2.9.3](https://github.com/psycopg/psycopg2) | Full | [CRUD](/stable/develop/drivers-orms/python/postgres-psycopg2/) |
 | PostgreSQL Psycopg 3 Driver | [3.3.4](https://github.com/psycopg/psycopg) | Full | [CRUD](/stable/develop/drivers-orms/python/postgres-psycopg3/) |
 | aiopg      | 1.4          | Full | [Hello World](/stable/develop/drivers-orms/python/aiopg/) |

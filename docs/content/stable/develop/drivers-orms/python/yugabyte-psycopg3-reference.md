@@ -91,7 +91,7 @@ The following connection properties need to be added to enable load balancing:
 - `load_balance_hosts` - enable cluster-aware load balancing by setting this property to `true`; disabled by default (omit the parameter or set to `false`). The libpq values `disable` and `random` pass through unchanged.
 - `topology_keys` - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud.region.zone` (use `*` for any zone in that cloud/region). List multiple placements to allow more than one zone; a tserver matches if it satisfies _any_ listed key (OR logic). Ignored if `load_balance_hosts` is `false`. Cloud and region wildcards are rejected at parse time.
 
-By default, the driver refreshes the list of nodes every 300 seconds (5 minutes). You can change this value by including the `yb_servers_refresh_interval` parameter (clamped to [0, 600] seconds). After a failed connect to a TServer, the driver quarantines that host for `failed_host_reconnect_delay_secs` seconds (default 5, clamped to [0, 60]) before reconsidering it. A host that refuses the connection is quarantined after the first failure; a host that doesn't answer within `connect_timeout` is quarantined after three consecutive timeouts, so that a briefly slow node stays in rotation.
+By default, the driver refreshes the list of nodes every 300 seconds (5 minutes). You can change this value by including the `yb_servers_refresh_interval` parameter (clamped to [0, 600] seconds). When [xCluster failover](#xcluster-failover) is enabled, the same interval also sets how often the circuit breakers are checked (at most once per second). After a failed connect to a TServer, the driver quarantines that host for `failed_host_reconnect_delay_secs` seconds (default 5, clamped to [0, 60]) before reconsidering it. A host that refuses the connection is quarantined after the first failure; a host that doesn't answer within `connect_timeout` is quarantined after three consecutive timeouts, so that a briefly slow node stays in rotation.
 
 The driver uses one contact host from the `host` parameter to bootstrap (one is enough, the rest of the cluster is discovered via `yb_servers()`), and then keeps a long-lived control connection per cluster for periodic refresh.
 
@@ -204,7 +204,7 @@ The following connection properties enable xCluster failover and control its mai
 - `load_balance_hosts` - must be set to `true`; xCluster failover is part of the smart driver.
 - `host` - the hosts of the primary universe. One reachable host is enough; the rest of the universe is discovered.
 - `yb.failover.secondaryClusterHosts` - comma-separated hosts of the secondary universe. Setting this property turns on xCluster failover.
-- `yb_servers_refresh_interval` - how often, in seconds, the circuit breakers are checked (default 300). Set it to a few seconds for timely detection.
+- `yb_servers_refresh_interval` - the node-list refresh interval described in [Load balancing connection properties](#load-balancing-connection-properties), which with xCluster failover also sets how often, in seconds, the circuit breakers are checked (default 300). Set it to a few seconds for timely failure detection.
 - `yb.failover.drainTimeoutSecs` - how long running transactions get to finish during the drain (default 10). `-1` waits for all of them; `0` closes connections immediately.
 - `yb.failover.lagWaitTimeoutSecs` - maximum duration of the replication lag wait (default 30).
 - `yb.failover.globalTimeBudgetSecs` - an upper limit on the whole switch (unset by default). When set, it is split between the drain (40%) and the replication lag wait (60%), unless those are set explicitly.
@@ -241,7 +241,7 @@ To enable the replication lag wait, add the YugabyteDB Anywhere properties:
 ```python
 DSN += (
     " yb.failover.ybaEndpoint=https://yba.example.com"
-    " yb.failover.ybaApiToken=<YBA API token>"
+    " yb.failover.ybaApiToken=<yba-api-token>"
     " yb.failover.replicationName=primary-to-secondary"
     " yb.failback.replicationName=secondary-to-primary"
     " yb.failover.lagWaitTimeoutSecs=30"
@@ -286,7 +286,7 @@ pool = ConnectionPool(DSN, check=xcluster_check, min_size=4, max_size=20)
 ```
 
 {{< note title="Set statement_timeout" >}}
-YugabyteDB doesn't cancel a running query when its client connection is closed. For the drain to stop work on the old universe, set `statement_timeout` to no more than `yb.failover.drainTimeoutSecs`, in the connection string (as in the preceding example) or for the role. The driver logs a warning at startup if `statement_timeout` is unset or larger than the drain timeout.
+YugabyteDB doesn't cancel a running query when its client connection is closed. For the drain to stop work on the old universe, set `statement_timeout` to no more than the drain timeout. Note that `statement_timeout` is in milliseconds and `yb.failover.drainTimeoutSecs` is in seconds; for example, use `statement_timeout=10000` for `drainTimeoutSecs=10`. Set it in the connection string (as in the preceding example) or for the role. The driver logs a warning at startup if `statement_timeout` is unset or larger than the drain timeout.
 {{< /note >}}
 
 ### Manual failback
