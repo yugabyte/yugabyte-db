@@ -6495,7 +6495,11 @@ Result<PrepareSlotForTxnDdlResult> CatalogManager::PrepareStreamForTransactional
     if (!pb.detect_publication_changes_implicitly()) {
       marked_unusable = !pb.cdcsdk_paused_for_upgrade() ||
                         !VERIFY_RESULT(HasSysCatalogRetentionBarrier(stream->StreamId()));
-      if (!marked_unusable) {
+      if (marked_unusable) {
+        // The sys catalog entry holding the barrier is deleted below.
+        pb.clear_cdcsdk_implicit_conversion_barrier_ht();
+        pb.set_cdcsdk_unusable_with_transactional_ddl(true);
+      } else {
         // The sys catalog entry was last active when the barrier was set. The converted slot's
         // consumer gets cdc_intent_retention_ms from now to resume.
         cdc::CDCStateTableEntry entry(kSysCatalogTabletId, stream->StreamId());
@@ -6505,12 +6509,8 @@ Result<PrepareSlotForTxnDdlResult> CatalogManager::PrepareStreamForTransactional
         converted = true;
       }
       pb.clear_cdcsdk_paused_for_upgrade();
-      if (marked_unusable) {
-        // The sys catalog entry holding the barrier is deleted below.
-        pb.clear_cdcsdk_implicit_conversion_barrier_ht();
-        pb.set_cdcsdk_unusable_with_transactional_ddl(true);
-      }
     }
+
     if (!marked_unusable) {
       for (const auto& table_id : catalog_table_ids) {
         if (std::ranges::find(pb.table_id(), table_id) != pb.table_id().end()) {
@@ -6534,7 +6534,7 @@ Result<PrepareSlotForTxnDdlResult> CatalogManager::PrepareStreamForTransactional
   }
 
   if (marked_unusable) {
-    // If this fails, the entry expires like any unused one.
+    // This is just a warning because even if it fails, the entry expires like any unused one.
     WARN_NOT_OK(
         cdc_state_table_->DeleteEntries({{kSysCatalogTabletId, stream->StreamId()}}),
         Format("Failed to delete the sys catalog entry of CDC stream $0", stream->id()));

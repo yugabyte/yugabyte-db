@@ -1194,7 +1194,6 @@ service MasterReplication {
   rpc PrepareReplicationSlotsForTransactionalDDL(
       PrepareReplicationSlotsForTransactionalDDLRequestPB)
       returns (PrepareReplicationSlotsForTransactionalDDLResponsePB);
-  // Prepare a pub-refresh replication slot for conversion to an implicit slot.
   rpc SetReplicationSlotCatalogBarrier(SetReplicationSlotCatalogBarrierRequestPB)
       returns (SetReplicationSlotCatalogBarrierResponsePB);
   rpc PauseReplicationSlot(PauseReplicationSlotRequestPB)
