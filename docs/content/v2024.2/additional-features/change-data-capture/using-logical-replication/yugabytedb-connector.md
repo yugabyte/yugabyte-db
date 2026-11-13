@@ -45,6 +45,8 @@ Debezium supports databases with UTF-8 character encoding only. With a single-by
 
 ## Connector compatibility
 
+The YugabyteDB connector for logical replication is based on Debezium and is published as a Kafka Connect plugin. Download the JAR and read the release notes on the [CDC connector releases](/stable/releases/cdc-connector/logical-replication/) page.
+
 When installing the connector for the first time, always use the latest stable release, whatever version of YugabyteDB you have. After it's installed, you don't need to change it when you upgrade YugabyteDB, as long as you stay on the same major version (such as v2026.1).
 
 Connector versions follow one of these schemes.
@@ -1445,7 +1447,7 @@ To deploy the connector, you install the connector archive, configure the connec
 
 **Procedure**
 
-1. Download the latest [YugabyteDB connector plugin archive](https://github.com/yugabyte/debezium/releases/).
+1. Download the latest connector JAR from the [CDC connector releases](/stable/releases/cdc-connector/logical-replication/) page.
 2. Extract the files into your Kafka Connect environment.
 3. Add the directory with the JAR files to the [Kafka Connect `plugin.path`](https://kafka.apache.org/documentation/#connectconfigs).
 4. Restart your Kafka Connect process to pick up the new JAR files.
