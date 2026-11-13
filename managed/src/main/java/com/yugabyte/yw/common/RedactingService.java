@@ -5,6 +5,7 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.core.io.JsonStringEncoder;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.jayway.jsonpath.DocumentContext;
 import com.jayway.jsonpath.JsonPath;
@@ -1270,6 +1271,12 @@ public class RedactingService {
   public static void invalidateTelemetrySecrets() {
     telemetrySecretsVersion.incrementAndGet();
     telemetrySecretForms = null;
+  }
+
+  /** Sets the cached credentials, so a unit test without the DB does not load providers. */
+  @VisibleForTesting
+  static void setTelemetrySecretsForTesting(List<String> secrets) {
+    telemetrySecretForms = secrets == null ? null : secretForms(secrets);
   }
 
   private static List<String> telemetrySecretForms() {

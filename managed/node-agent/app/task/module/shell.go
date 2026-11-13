@@ -37,10 +37,12 @@ var (
 
 // CommandInfo holds command information.
 type CommandInfo struct {
-	User   string
-	Desc   string
-	Cmd    string
-	Args   []string
+	User string
+	Desc string
+	Cmd  string
+	Args []string
+	// Env is added to the user environment. It cannot override HOME, PWD or the user name vars.
+	Env    []string
 	StdOut util.Buffer
 	StdErr util.Buffer
 }
@@ -135,6 +137,7 @@ func (cmdInfo *CommandInfo) RunCmd(ctx context.Context) error {
 	util.FileLogger().Debugf(ctx, "Using user: %s, uid: %d, gid: %d",
 		userDetail.User.Username, userDetail.UserID, userDetail.GroupID)
 	env, _ := userEnv(ctx, userDetail)
+	env = append(env, cmdInfo.Env...)
 	// Handle cancellation in runCommand. Otherwise, when the context is cancelled,
 	// the command is killed without cleaning up the process group.
 	cmd := createCmd(context.WithoutCancel(ctx), userDetail, env, cmdInfo.Cmd, cmdInfo.Args...)
@@ -253,11 +256,23 @@ func RunShellCmd(
 	user, desc, cmdStr string,
 	logOut util.Buffer,
 ) (*CommandInfo, error) {
+	return RunShellCmdWithEnv(ctx, user, desc, cmdStr, nil, logOut)
+}
+
+// RunShellCmdWithEnv runs a shell command with the specified user and extra env variables. The
+// env is not logged, so it can carry credentials.
+func RunShellCmdWithEnv(
+	ctx context.Context,
+	user, desc, cmdStr string,
+	env []string,
+	logOut util.Buffer,
+) (*CommandInfo, error) {
 	cmdInfo := &CommandInfo{
 		User:   user,
 		Desc:   desc,
 		Cmd:    util.DefaultShell,
 		Args:   []string{"-c", cmdStr},
+		Env:    env,
 		StdOut: util.NewBuffer(MaxBufferCapacity),
 		StdErr: util.NewBuffer(MaxBufferCapacity),
 	}
