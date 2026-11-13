@@ -195,6 +195,8 @@ public class ShellProcessHandlerTest extends TestCase {
             + "      blockSecret\n"
             + "  - ycql_ldap_bind_passwd:\n"
             + "      nextLineSecret\n"
+            + "    ysql_hba_conf_csv: host all all 0.0.0.0/0 ldap ldapbindpasswd=\"hbaSecret\n"
+            + "      hbaFoldedSecret\"\n"
             + "    webserver_port: 9100\n";
     Path yamlFile = Files.write(Paths.get(TMP_STORAGE_PATH, "values.yaml"), yaml.getBytes());
     Logger logger = (Logger) LoggerFactory.getLogger(ShellProcessHandler.class);
@@ -216,7 +218,14 @@ public class ShellProcessHandlerTest extends TestCase {
             .map(ILoggingEvent::getFormattedMessage)
             .collect(Collectors.joining("\n"));
     assertThat(logged, containsString("    webserver_port: 9100"));
-    for (String secret : List.of("plainSecret", "foldedSecret", "blockSecret", "nextLineSecret")) {
+    for (String secret :
+        List.of(
+            "plainSecret",
+            "foldedSecret",
+            "blockSecret",
+            "nextLineSecret",
+            "hbaSecret",
+            "hbaFoldedSecret")) {
       assertFalse(logged, logged.contains(secret));
     }
   }
