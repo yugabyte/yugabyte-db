@@ -652,7 +652,7 @@ TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTimeWithHiddenTables) {
 }
 
 // Test that export_snapshot does not hold the catalog manager mutex while it repacks the snapshot
-// entries (#37813). The repack reads the YSQL catalog for every table. If it held the mutex in
+// entries. The repack reads the YSQL catalog for every table. If it held the mutex in
 // shared mode during the reads, a thread waiting to take the mutex exclusively would block both
 // itself and every other reader of the mutex until the repack finished.
 // 1. Pause the export inside the repack loop, after it looks up the first table.
@@ -684,6 +684,8 @@ TEST_P(MasterExportSnapshotTest, ExportSnapshotDoesNotBlockCatalogManagerMutex) 
   });
   sync->EnableProcessing();
 
+  // Declared before cleanup so that it outlives the export thread, which cleanup joins.
+  Status export_status;
   TestThreadHolder threads;
   auto cleanup = ScopeExit([&] {
     ddl_done.CountDown();
@@ -693,7 +695,6 @@ TEST_P(MasterExportSnapshotTest, ExportSnapshotDoesNotBlockCatalogManagerMutex) 
     // Also on assertion failure: the messenger must be shut down before it is destroyed.
     messenger_->Shutdown();
   });
-  Status export_status;
   threads.AddThreadFunctor(
       [&] { export_status = ResultToStatus(ExportSnapshot(backup_proxy.get(), snapshot_id)); });
 
