@@ -47,7 +47,6 @@ public class AnsibleSetupServer extends NodeTaskBase {
     public boolean useTimeSync = false;
 
     public String machineImage;
-    @Deprecated public UUID imageBundleUUID;
 
     // To use custom image flow if it is a VM upgrade with custom images.
     public VmUpgradeTaskType vmUpgradeTaskType = VmUpgradeTaskType.None;
