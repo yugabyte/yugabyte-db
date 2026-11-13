@@ -72,7 +72,7 @@ Kafka Connect 3.9 remains supported and needs no configuration change.
 
 ### Versioning change
 
-Starting with this release, connector versions follow `dz.<debezium-version>.yb.grpc.<yugabytedb-version>.<connector-patch>`: the YugabyteDB part is now the full four-part release number and the trailing number is the connector patch for that database version. So `dz.1.9.5.yb.grpc.2026.1.2.0.1` is connector patch 1 for YugabyteDB 2026.1.2.0 on Debezium 1.9.5, whereas the previous stable `dz.1.9.5.yb.grpc.2026.1.2` carried only a three-part series with no patch slot.
+Starting with this release, connector versions follow `dz.<debezium-version>.yb.grpc.<yugabytedb-version>.<connector-patch>`: the YugabyteDB part is now the full four-part release number and the trailing number is the connector patch for that database version. So `dz.1.9.5.yb.grpc.2026.1.2.0.1` is connector patch 1 for YugabyteDB 2026.1.2.0 on Debezium 1.9.5, whereas the previous stable `dz.1.9.5.yb.grpc.2026.1.2` was release series 2026.1, connector patch 2.
 
 ### What's changed
 
@@ -124,7 +124,7 @@ Some quick points to help with utilisation of this change:
 
 ### Upgrade recommendation
 
-* It is recommended to use this connector version, or any later version, with YugabyteDB versions **2026.1.1.0 and later**.
+* Use this connector version with YugabyteDB **v2026.1.1.x** only. YugabyteDB **v2026.1.2.0 and later** need `dz.1.9.5.yb.grpc.2026.1.2` or later. Connector versions `dz.1.9.5.yb.grpc.2026.1.1` and earlier fail to start against those clusters.
 * Note: This connector is backward compatible with any previous YugabyteDB version.
 
 **Full changelog**: [vdz.1.9.5.yb.grpc.2026.1...vdz.1.9.5.yb.grpc.2026.1.1](https://github.com/yugabyte/debezium-connector-yugabytedb/compare/vdz.1.9.5.yb.grpc.2026.1...vdz.1.9.5.yb.grpc.2026.1.1)
@@ -145,7 +145,7 @@ Some quick points to help with utilisation of this change:
 
 ### Upgrade recommendation
 
-* This connector version, and all earlier connector versions, are **not compatible** with YugabyteDB **2026.1.1.0 and later**. Please upgrade to **vdz.1.9.5.yb.grpc.2026.1.1** or a later connector version.
+* This connector version, and all earlier connector versions, are **not compatible** with YugabyteDB **v2026.1.1.0 and later**. For **v2026.1.1.x**, upgrade to `dz.1.9.5.yb.grpc.2026.1.1`. For **v2026.1.2.0 and later**, upgrade to `dz.1.9.5.yb.grpc.2026.1.2` or a later connector version.
 
 **Full changelog**: [vdz.1.9.5.yb.grpc.2025.2...vdz.1.9.5.yb.grpc.2026.1](https://github.com/yugabyte/debezium-connector-yugabytedb/compare/vdz.1.9.5.yb.grpc.2025.2...vdz.1.9.5.yb.grpc.2026.1)
 

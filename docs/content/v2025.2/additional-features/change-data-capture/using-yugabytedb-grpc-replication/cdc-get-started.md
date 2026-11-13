@@ -37,7 +37,7 @@ To set up YugabyteDB for use with the YugabyteDB gRPC connector, do the followin
 To stream data change events from YugabyteDB databases, follow these steps to deploy the YugabyteDB gRPC Connector:
 
 - Download the connector JAR from the [CDC connector releases](/stable/releases/cdc-connector/grpc/) page.
-- Install the Connector: Extract and install the connector archive in your Kafka Connect environment.
+- Copy the JAR into a directory on the Kafka Connect `plugin.path`.
 - Configure the Connector: Modify the connector configuration to suit your specific requirements.
 - Start the Connector: Add the connector's configuration to Kafka Connect and start the connector.
 

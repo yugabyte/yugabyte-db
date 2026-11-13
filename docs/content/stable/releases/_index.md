@@ -18,7 +18,7 @@ This section describes the release support policy, versioning, and feature avail
 
 -> For information on YugabyteDB Voyager releases, refer to the [YugabyteDB Voyager release notes](../yugabyte-voyager/release-notes/).
 
--> For CDC connector downloads and release notes, refer to [CDC connector releases](cdc-connector/grpc/).
+-> For CDC connector downloads and release notes, refer to [CDC connector releases](cdc-connector/).
 
 ## Current releases
 

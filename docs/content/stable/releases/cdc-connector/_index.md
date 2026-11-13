@@ -7,19 +7,19 @@ headcontent: Release notes and JAR downloads for the gRPC and logical replicatio
 type: indexpage
 ---
 
-The CDC connectors ship separately from YugabyteDB. Stable releases are listed newest first.
+The YugabyteDB CDC connectors are based on the Debezium platform, and published separately from YugabyteDB.
 
 {{<index/block>}}
 
   {{<index/item
     title="gRPC"
-    body="Release notes and JAR downloads for the Debezium-based gRPC connector. JARs are published to the Yugabyte Maven repository."
+    body="Release notes and downloads for the gRPC connector. JARs are published to the Yugabyte Maven repository."
     href="grpc/"
     icon="fa-thin fa-plug">}}
 
   {{<index/item
     title="Logical replication"
-    body="Release notes and JAR downloads for the Debezium-based logical replication connector. Plugin JARs are attached to each GitHub release."
+    body="Release notes and downloads for the logical replication connector. Plugin JARs are attached to each GitHub release."
     href="logical-replication/"
     icon="fa-thin fa-arrows-left-right">}}
 

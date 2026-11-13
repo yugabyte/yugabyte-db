@@ -28,7 +28,7 @@ For compatibility and configuration, see [YugabyteDB connector](/stable/addition
 
 ### Versioning change
 
-Starting with this release, connector versions follow `dz.<debezium-version>.yb.<yugabytedb-version>.<connector-patch>`: the YugabyteDB part is now the full four-part release number and the trailing number is the connector patch for that database version. So `dz.2.5.2.yb.2026.1.2.0.1` is connector patch 1 for YugabyteDB 2026.1.2.0 on Debezium 2.5.2, whereas the previous stable `dz.2.5.2.yb.2026.1` carried only a three-part series with no patch slot.
+Starting with this release, connector versions follow `dz.<debezium-version>.yb.<yugabytedb-version>.<connector-patch>`: the YugabyteDB part is now the full four-part release number and the trailing number is the connector patch for that database version. So `dz.2.5.2.yb.2026.1.2.0.1` is connector patch 1 for YugabyteDB 2026.1.2.0 on Debezium 2.5.2, whereas the previous stable `dz.2.5.2.yb.2026.1` carried only the release series, with an optional connector patch.
 
 ### What's changed
 
@@ -107,7 +107,7 @@ Starting with this release, connector versions follow `dz.<debezium-version>.yb.
 * Introduce YSQL major upgrade config property. {{<issue 27177>}} ([#185](https://github.com/yugabyte/debezium/pull/185))
 * Make yb.load.balance.connections connector config a string instead of boolean. {{<issue 28533>}} ([#184](https://github.com/yugabyte/debezium/pull/184))
 
-**Full changelog**: [dz.2.5.2.yb.2024.2.5...dz.2.5.2.yb.2025.1.SNAPSHOT.1](https://github.com/yugabyte/debezium/compare/dz.2.5.2.yb.2024.2.5...dz.2.5.2.yb.2025.1.SNAPSHOT.1)
+**Full changelog**: [dz.2.5.2.yb.2024.2.5...dz.2.5.2.yb.2025.1](https://github.com/yugabyte/debezium/compare/dz.2.5.2.yb.2024.2.5...dz.2.5.2.yb.2025.1)
 
 ## dz.2.5.2.yb.2024.2.5 - July 31, 2025
 

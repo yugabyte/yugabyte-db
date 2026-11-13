@@ -1438,7 +1438,7 @@ See `slot.name` and `publication.name` on how to set a unique replication slot n
 
 ## Deployment
 
-To deploy the connector, you install the connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect.
+To deploy the connector, you install the connector JAR, configure the connector, and start the connector by adding its configuration to Kafka Connect.
 
 **Prerequisites**
 
@@ -1447,10 +1447,9 @@ To deploy the connector, you install the connector archive, configure the connec
 
 **Procedure**
 
-1. Download the latest connector JAR from the [CDC connector releases](/stable/releases/cdc-connector/logical-replication/) page.
-2. Extract the files into your Kafka Connect environment.
-3. Add the directory with the JAR files to the [Kafka Connect `plugin.path`](https://kafka.apache.org/documentation/#connectconfigs).
-4. Restart your Kafka Connect process to pick up the new JAR files.
+1. Download the latest connector JAR (`yugabytedb-source-connector-<version>-jar-with-dependencies.jar`) from the [CDC connector releases](/stable/releases/cdc-connector/logical-replication/) page.
+2. Copy the JAR into a directory on the Kafka Connect [plugin.path](https://kafka.apache.org/documentation/#connectconfigs).
+3. Restart your Kafka Connect process to pick up the new JAR.
 
 {{< note title="Note" >}}
 
