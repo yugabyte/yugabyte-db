@@ -1128,31 +1128,11 @@ void CatalogManager::ScheduleReleaseObjectLocks(const TransactionId& txn_id) {
       Format("Failed to submit task for releasing object locks of txn $0", txn_id));
 }
 
-void CatalogManager::SaveDeferredObjectLockReleasesForRestore() {
-  const auto term = LeaderTerm();
-  LockGuard lock(ddl_txn_verifier_mutex_);
-  ysql_ddl_txns_release_all_deferred_.clear();
-  ysql_ddl_txns_release_all_deferred_term_ = OpId::kUnknownTerm;
-  // A map loaded in an earlier term may hold stale entries.
-  if (catalog_loaded_term() != term) {
-    return;
-  }
-  for (const auto& [txn_id, verifier_state] : ysql_ddl_txn_verfication_state_map_) {
-    // The flag means the txn has finished. A still running DDL txn keeps its locks and releases
-    // them itself when it finishes.
-    if (verifier_state.release_all_deferred) {
-      ysql_ddl_txns_release_all_deferred_.insert(txn_id);
-    }
-  }
-  ysql_ddl_txns_release_all_deferred_term_ = term;
-}
-
 void CatalogManager::ReleaseObjectLocksOfDeferredTxnsPostLoad() {
   std::unordered_set<TransactionId> txns;
   {
     LockGuard lock(ddl_txn_verifier_mutex_);
     txns.swap(ysql_ddl_txns_release_all_deferred_);
-    ysql_ddl_txns_release_all_deferred_term_ = OpId::kUnknownTerm;
   }
   if (FLAGS_TEST_disable_release_object_locks_on_ddl_verification) {
     return;

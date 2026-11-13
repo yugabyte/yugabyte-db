@@ -3583,11 +3583,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Submits DoReleaseObjectLocksIfNecessary for txn_id to the background pool.
   void ScheduleReleaseObjectLocks(const TransactionId& txn_id);
 
-  // Called by the leader before reloading the sys catalog after a PITR, so that the reload keeps
-  // the release-alls deferred by ysql_ddl_txn_verfication_state_map_. Does nothing if the map was
-  // not built in the current term.
-  void SaveDeferredObjectLockReleasesForRestore() EXCLUDES(ddl_txn_verifier_mutex_);
-
   // Releases the object locks of txns in ysql_ddl_txns_release_all_deferred_, i.e. those whose
   // deferred release-all was carried across a sys catalog reload but got no verification entry.
   void ReleaseObjectLocksOfDeferredTxnsPostLoad() EXCLUDES(ddl_txn_verifier_mutex_);
@@ -3658,14 +3653,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   std::unordered_map<TransactionId, YsqlDdlSubTransactionRollbackMetadata>
       ysql_ddl_txn_undergoing_subtransaction_rollback_map_ GUARDED_BY(ddl_txn_verifier_mutex_);
 
-  // Txns whose release_all_deferred was set when a PITR reloaded the sys catalog. The flag lives
-  // only in memory and the finished txn will not resend its release-all, so it is reattached to
-  // the txn's reloaded entry.
+  // Txns whose release_all_deferred was set when a reload in the same term (e.g. after a PITR)
+  // cleared ysql_ddl_txn_verfication_state_map_. The flag lives only in memory and the finished
+  // txn will not resend its release-all, so it is reattached to the txn's reloaded entry.
   std::unordered_set<TransactionId> ysql_ddl_txns_release_all_deferred_
       GUARDED_BY(ddl_txn_verifier_mutex_);
-  // Leader term ysql_ddl_txns_release_all_deferred_ was saved in.
-  int64_t ysql_ddl_txns_release_all_deferred_term_ GUARDED_BY(ddl_txn_verifier_mutex_) =
-      OpId::kUnknownTerm;
 
   ServerRegistrationPB server_registration_;
 
