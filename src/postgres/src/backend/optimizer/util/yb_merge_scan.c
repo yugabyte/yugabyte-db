@@ -529,6 +529,20 @@ ybEqualityIndexClause(IndexOptInfo *index, List *indexclauses, int indexcol)
 }
 
 /*
+ * Whether index column indexcol, one the pathkeys walk skipped as redundant,
+ * is a single-value stream key: a column with an equality index clause, or a
+ * hash column (see yb_finalize_merge_scan_info).  Sets *clause to its equality
+ * index clause, or to NULL for a hash column without one.
+ */
+static bool
+ybIsSingleValueStreamCol(IndexOptInfo *index, List *indexclauses,
+						 int indexcol, Expr **clause)
+{
+	*clause = ybEqualityIndexClause(index, indexclauses, indexcol);
+	return *clause != NULL || indexcol < index->nhashcolumns;
+}
+
+/*
  * Whether index column indexcol is a copy of an earlier index column, possibly
  * relabeled, and so holds the same value in every index row.
  */
@@ -573,9 +587,11 @@ static bool
 ybIsMergeGapCol(IndexOptInfo *index, List *indexclauses, Bitmapset *saop_idxs,
 				int indexcol)
 {
-	return (indexcol >= index->nhashcolumns &&
-			!bms_is_member(indexcol, saop_idxs) &&
-			!ybEqualityIndexClause(index, indexclauses, indexcol) &&
+	Expr	   *clause;
+
+	return (!bms_is_member(indexcol, saop_idxs) &&
+			!ybIsSingleValueStreamCol(index, indexclauses, indexcol,
+									  &clause) &&
 			!ybIsCopyOfEarlierIndexCol(index, indexcol));
 }
 
@@ -759,6 +775,7 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 		gap_indexcol = -1;
 		while ((gap_indexcol = bms_next_member(gap_idxs, gap_indexcol)) >= 0)
 			ybAppendMergeGapCol(sort_info, index, gap_indexcol, scandir);
+		sort_idxs = bms_add_members(sort_idxs, gap_idxs);
 
 		/*
 		 * Look up the correct sort operator from the PathKey's slightly
@@ -797,8 +814,7 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 		if (bms_is_member(indexcol, sort_idxs))
 			continue;
 
-		clause = ybEqualityIndexClause(index, indexclauses, indexcol);
-		if (!clause && indexcol >= index->nhashcolumns)
+		if (!ybIsSingleValueStreamCol(index, indexclauses, indexcol, &clause))
 			continue;
 
 		info = makeNode(YbMergeScanStreamColInfo);
