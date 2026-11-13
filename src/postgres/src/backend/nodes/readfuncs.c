@@ -1642,6 +1642,7 @@ _readPlannedStmt(void)
 	READ_INT_FIELD(stmt_len);
 	READ_INT_FIELD(yb_num_referenced_relations);
 	READ_UINT64_FIELD(ybPlanId);
+	READ_BOOL_FIELD(ybHintGenerationFailed);
 
 	READ_DONE();
 }

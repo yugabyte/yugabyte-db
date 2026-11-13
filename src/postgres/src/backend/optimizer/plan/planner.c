@@ -670,6 +670,7 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 	result->stmt_len = parse->stmt_len;
 	result->yb_num_referenced_relations = root->yb_num_referenced_relations;
 	result->ybPlanId = 0;
+	result->ybHintGenerationFailed = false;
 
 	result->jitFlags = PGJIT_NONE;
 	if (jit_enabled && jit_above_cost >= 0 &&
@@ -8231,7 +8232,6 @@ ybGenerateHintStringBlock(PlannedStmt *plannedStmt, Plan *plan, int *maxBlockSca
 			}
 
 			appendStringInfoString(&leadingBuf, methodBuf.data);
-			pfree(methodBuf.data);
 		}
 
 		if (subPlanHintStrings != NULL)
@@ -8256,18 +8256,16 @@ ybGenerateHintStringBlock(PlannedStmt *plannedStmt, Plan *plan, int *maxBlockSca
 				appendStringInfoString(&leadingBuf, subPlanHintStr);
 				first = false;
 			}
-
-			list_free_deep(subPlanHintStrings);
 		}
 
 		if (leadingBuf.len > 0)
-		{
 			hintStr = pstrdup(leadingBuf.data);
-			pfree(leadingBuf.data);
-		}
-
-		list_free(scanList);
 	}
+
+	pfree(leadingBuf.data);
+	pfree(methodBuf.data);
+	list_free(scanList);
+	list_free_deep(subPlanHintStrings);
 
 	return hintStr;
 }
@@ -9834,6 +9832,7 @@ ybCalculatePlanId(PlannedStmt *plannedStmt)
 	/* Clean up. */
 	list_free(sortedRtable);
 	pfree(jstate->ybRtIndexMap);
+	pfree(jstate->jumble);
 	pfree(jstate);
 }
 

@@ -134,6 +134,12 @@ typedef struct PlannedStmt
 	int			yb_num_referenced_relations;
 
 	uint64		ybPlanId;		/* plan id */
+
+	/*
+	 * Set once QPM finds it cannot generate hints for this plan, so later
+	 * executions skip QPM.  Hint generation depends only on the plan shape.
+	 */
+	bool		ybHintGenerationFailed;
 } PlannedStmt;
 
 /* macro for fetching the Plan associated with a SubPlan node */

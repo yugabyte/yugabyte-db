@@ -114,6 +114,7 @@ _copyPlannedStmt(const PlannedStmt *from)
 
 	COPY_SCALAR_FIELD(yb_num_referenced_relations);
 	COPY_SCALAR_FIELD(ybPlanId);
+	COPY_SCALAR_FIELD(ybHintGenerationFailed);
 
 	return newnode;
 }

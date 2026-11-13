@@ -833,14 +833,34 @@ qpmProcess(QueryDesc *queryDesc)
 		 queryDesc->plannedstmt->commandType == CMD_MERGE ||
 		 queryDesc->plannedstmt->commandType == CMD_INSERT) &&
 		queryDesc->plannedstmt->queryId > 0 &&
+		!queryDesc->plannedstmt->ybHintGenerationFailed &&
 		queryDesc->sourceText != NULL &&
 		strstr(queryDesc->sourceText, QPM_SKIP_TEXT) == NULL &&
 		(yb_qpm_configuration.track_catalog_queries ||
 		 !qpmReferencesCatalogRelation(queryDesc)))
 	{
+		MemoryContext qpmContext;
+		MemoryContext oldContext;
+
 		CHECK_GLOBALS;
 		if (queryDesc->totaltime != NULL)
 			InstrEndLoop(queryDesc->totaltime);
+
+		/*
+		 * Computing the plan id caches strings on the plan, so it must run in
+		 * the plan's context, not in qpmContext.
+		 */
+		(void) ybGetPlanId(queryDesc->plannedstmt);
+
+		/*
+		 * The caller's context can outlive many executions (e.g. statements
+		 * in a SQL function live until the outer statement ends), so keep
+		 * QPM's scratch allocations out of it.
+		 */
+		qpmContext = AllocSetContextCreate(CurrentMemoryContext,
+										   "QPM insert",
+										   ALLOCSET_DEFAULT_SIZES);
+		oldContext = MemoryContextSwitchTo(qpmContext);
 
 		/*
 		 * Insert or update an entry.
@@ -848,6 +868,9 @@ qpmProcess(QueryDesc *queryDesc)
 		qpmInsert(0, 0, queryDesc->plannedstmt->queryId, 0,
 				  NULL, NULL, NULL,
 				  queryDesc, NULL, NULL, 0.0, 0.0);
+
+		MemoryContextSwitchTo(oldContext);
+		MemoryContextDelete(qpmContext);
 	}
 }
 
@@ -965,7 +988,13 @@ qpmPrepareParamsForInsert(QueryDesc *queryDesc, char **paramText,
 	 */
 	*hintText = ybGenerateHintString(queryDesc->plannedstmt);
 
-	if (*hintText != NULL)
+	/*
+	 * QPM only creates entries for plans it can hint, so later executions of
+	 * this plan have nothing to update and can skip QPM.
+	 */
+	if (*hintText == NULL)
+		queryDesc->plannedstmt->ybHintGenerationFailed = true;
+	else
 	{
 		*freeHintText = true;
 		Assert(strlen(*hintText) > 0);
