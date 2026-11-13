@@ -3160,7 +3160,8 @@ get_db_info(const char *name, LOCKMODE lockmode,
 		 * RPC path), so PG's local caches are already invalidated and a
 		 * manual flush is unnecessary.
 		 */
-		if (IsYugaByteEnabled() && !YBCIsGlobalObjectLockingEnabledForCurrentTxn())
+		if (IsYugaByteEnabled() &&
+			!YBCIsObjectLockingEnabledGloballyForCurrentTxn())
 			SysCacheInvalidate(DATABASEOID,
 							   GetSysCacheHashValue1(DATABASEOID,
 													 ObjectIdGetDatum(dbOid)));

@@ -1881,7 +1881,7 @@ ProcessUtilitySlow(ParseState *pstate,
 					 * out during its WaitForYsqlBackendsCatalogVersion call.
 					 */
 					if (IsYugaByteEnabled() &&
-						YBCIsGlobalObjectLockingEnabledForCurrentTxn() &&
+						YBCIsObjectLockingEnabledGloballyForCurrentTxn() &&
 						GetCurrentTransactionNestLevel() == 1 &&
 						YbGetTriggerDepth() == 0)
 					{

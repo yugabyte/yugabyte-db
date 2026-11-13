@@ -3098,7 +3098,8 @@ index_update_stats(Relation rel,
 	  * on the (indexed) main table reasonably accurate, so we can skip updating statistics here.
 	  */
 	update_stats = update_stats &&
-		(!YBCIsGlobalObjectLockingEnabledForCurrentTxn() || !YBCIsAutoAnalyzeEnabled());
+		(!YBCIsObjectLockingEnabledGloballyForCurrentTxn() ||
+		 !YBCIsAutoAnalyzeEnabled());
 	if (update_stats)
 	{
 		if (rd_rel->relpages != (int32) relpages)

@@ -1602,7 +1602,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 				 * non-retryable schema version mismatch inside a transaction
 				 * block.
 				 */
-				if (YBCIsGlobalObjectLockingEnabledForCurrentTxn() &&
+				if (YBCIsObjectLockingEnabledGloballyForCurrentTxn() &&
 					(cmd->subtype == AT_ValidateConstraint ||
 					 cmd->subtype == AT_ValidateConstraintRecurse ||
 					 cmd->subtype == AT_SetStatistics))
