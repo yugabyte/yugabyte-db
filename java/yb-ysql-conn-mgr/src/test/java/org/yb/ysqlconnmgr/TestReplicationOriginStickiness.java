@@ -23,13 +23,10 @@ import java.sql.Statement;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.YBTestRunner;
 import org.yb.client.TestUtils;
 import org.yb.minicluster.MiniYBClusterBuilder;
-import org.yb.util.RequiresLinux;
 
-@RequiresLinux
-@RunWith(value = YBTestRunner.class)
+@RunWith(value = YBTestRunnerYsqlConnMgr.class)
 public class TestReplicationOriginStickiness extends BaseYsqlConnMgr {
   private static final String ORIGIN = "sticky_origin";
   private static final String SETUP = "SELECT pg_replication_origin_session_setup('%s')";
