@@ -1564,7 +1564,7 @@ And a related read query might look like the following:
 SELECT * FROM orders WHERE created_at >= NOW() - INTERVAL '1 month';
 ```
 
-For YugabyteDB v2025.2.1.0 and later, use a [bucket-based index](../../../develop/data-modeling/bucket-based-index-ysql/). Queries don't need to change.
+For YugabyteDB v2025.2.1.0 and later, use a [bucket-based index](../../../develop/data-modeling/bucket-based-index-ysql/) (early access). Queries don't need to change, provided you set `yb_enable_derived_equalities` and `yb_enable_derived_saops` to `true`, set `yb_max_merge_scan_streams` to a value greater than 0 (recommended: 64; in v2025.2.1.0 and v2025.2.2.0, set `yb_max_saop_merge_streams` instead), and enable the [cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/). These settings are off by default. Without them, queries on the timestamp column can't use the bucket column, and you must filter on all bucket values in the query, as shown for earlier versions.
 
 An example schema on the source database is as follows:
 
@@ -1626,7 +1626,9 @@ And a related read query might look like the following:
 SELECT * FROM event_log WHERE event_logged_at >= NOW() - INTERVAL '1 month';
 ```
 
-For YugabyteDB v2025.2.1.0 and later, add a stored generated bucket column and make it the leading key column. See [bucket-based indexes](../../../develop/data-modeling/bucket-based-index-ysql/). Queries don't need to change.
+For YugabyteDB v2025.2.1.0 and later, add a stored generated bucket column and make it the leading key column. See [bucket-based indexes](../../../develop/data-modeling/bucket-based-index-ysql/) (early access). Queries don't need to change, provided you set `yb_enable_derived_equalities` and `yb_enable_derived_saops` to `true`, set `yb_max_merge_scan_streams` to a value greater than 0 (recommended: 64; in v2025.2.1.0 and v2025.2.2.0, set `yb_max_saop_merge_streams` instead), and enable the [cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/). These settings are off by default. Without them, queries on the timestamp column can't use the bucket column, and you must filter on all bucket values in the query, as shown for earlier versions.
+
+You can't change the number of buckets after the table is created, so choose the bucket count carefully.
 
 An example schema on the source database is as follows:
 

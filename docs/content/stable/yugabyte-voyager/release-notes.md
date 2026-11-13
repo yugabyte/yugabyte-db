@@ -22,8 +22,8 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 | Source | Migration type | Status | Effective date |
 | :----- | :------------- | :----- | :------------- |
 | Oracle | [Live migration](../migrate/live-migrate/), including<br>[fall-forward](../migrate/live-fall-forward/) and [fall-back](../migrate/live-fall-back/) | Not supported | - |
-| Oracle | [Offline migration](../migrate/migrate-steps/) | Deprecated | Support ended October 13, 2026 |
-| MySQL | [Offline migration](../migrate/migrate-steps/) | Deprecated | Support ended October 13, 2026 |
+| Oracle | [Offline migration](../migrate/migrate-steps/) | Not supported | October 13, 2026 |
+| MySQL | [Offline migration](../migrate/migrate-steps/) | Not supported | October 13, 2026 |
 
 Oracle and MySQL [offline migration](../migrate/migrate-steps/) was deprecated on July 13, 2026. PostgreSQL migrations are unaffected.
 

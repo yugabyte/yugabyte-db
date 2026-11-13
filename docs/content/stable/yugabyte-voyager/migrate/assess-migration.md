@@ -86,9 +86,9 @@ Before you run a migration assessment, do the following:
       </div>
       <div id="oracle" class="tab-pane fade" role="tabpanel" aria-labelledby="oracle-tab">
 
-      {{< warning title="Oracle offline migration deprecated" >}}
+      {{< warning title="Oracle offline migration no longer supported" >}}
 
-Oracle offline migration using YugabyteDB Voyager is deprecated and will no longer be supported after October 13, 2026. Contact {{% support-general %}} for guidance on migration options.
+Oracle offline migration using YugabyteDB Voyager is no longer supported as of October 13, 2026. Contact {{% support-general %}} for guidance on migration options.
 
       {{< /warning >}}
 
