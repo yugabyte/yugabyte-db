@@ -3748,7 +3748,11 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCreationOfSlotOnNewDBAfterUpg
   // These arrays store counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, and COMMIT in
   // that order.
   int expected_count_old_model[] = {2, 2, 0, 1, 0, 0, 3, 3};
-  int expected_count_new_model[] = {0, 1, 0, 0, 0, 0, 1, 1};
+  // With transactional DDL support, the replication slot stream also ships the BEGIN and COMMIT of
+  // the 2 catalog transactions before the insert, which touch no published table.
+  const int num_txns_new_model =
+      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 3 : 1;
+  int expected_count_new_model[] = {0, 1, 0, 0, 0, 0, num_txns_new_model, num_txns_new_model};
   int actual_count_old_model[] = {0, 0, 0, 0, 0, 0, 0, 0};
   int actual_count_new_model[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
@@ -3844,8 +3848,10 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCreationOfSlotOnNewDBAfterUpg
 
   auto change_resp_2 = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
       stream_id_2, {table_2.table_id()}, 1, true /* init_virtual_wal */));
-  // 1 BEGIN + 1 INSERT + 1 COMMIT
-  ASSERT_EQ(change_resp_2.records.size(), 3);
+  // 1 BEGIN + 1 INSERT + 1 COMMIT, plus 2 empty catalog transactions with transactional DDL.
+  ASSERT_EQ(
+      change_resp_2.records.size(),
+      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 7 : 3);
   for (auto record : change_resp_2.records) {
     UpdateRecordCount(record, actual_count_new_model);
   }
@@ -5953,7 +5959,10 @@ TEST_F(
   auto resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
       stream_id, {old_table.table_id()}, 20, false /* init_vwal */, kVWALSessionId1,
       true /* allow_sending_feedback */, nullptr /* slot_hash_range */, {new_table.table_id()}));
-  ASSERT_EQ(resp.records.size(), 60);
+  // With transactional DDL support, the TRUNCATE's catalog transaction also ships, as an empty
+  // transaction.
+  ASSERT_EQ(
+      resp.records.size(), FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 62 : 60);
 
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
