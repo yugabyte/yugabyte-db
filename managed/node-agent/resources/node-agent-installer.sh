@@ -137,7 +137,7 @@ set_node_agent_base_url() {
   local RESPONSE_FILE="/tmp/session_info_${INSTALL_USER}.json"
   local STATUS_CODE=""
   set +e
-  STATUS_CODE=$(curl -s ${SKIP_VERIFY_CERT:+ "-k"} -w "%{http_code}" -L --request GET \
+  STATUS_CODE=$(curl -s ${SKIP_VERIFY_CERT:+-k} -w "%{http_code}" -L --request GET \
     "$SESSION_INFO_URL" --header "$HEADER: $HEADER_VAL" --output "$RESPONSE_FILE"
     )
   if [ "$STATUS_CODE" != "200" ]; then
@@ -155,7 +155,7 @@ uninstall_node_agent() {
   local RESPONSE_FILE="/tmp/node_agent_${INSTALL_USER}.json"
   local STATUS_CODE=""
   set +e
-  STATUS_CODE=$(curl -s ${SKIP_VERIFY_CERT:+ "-k"} -w "%{http_code}" -L --request GET \
+  STATUS_CODE=$(curl -s ${SKIP_VERIFY_CERT:+-k} -w "%{http_code}" -L --request GET \
     "$NODE_AGENT_BASE_URL?nodeIp=$NODE_IP" --header "$HEADER: $HEADER_VAL" \
     --output "$RESPONSE_FILE"
     )
@@ -172,7 +172,7 @@ uninstall_node_agent() {
   stop_systemd_service
   if [ -n "$NODE_AGENT_UUID" ]; then
     local STATUS_CODE=""
-    STATUS_CODE=$(curl -s ${SKIP_VERIFY_CERT:+ "-k"} -w "%{http_code}" -L --request DELETE \
+    STATUS_CODE=$(curl -s ${SKIP_VERIFY_CERT:+-k} -w "%{http_code}" -L --request DELETE \
     "$NODE_AGENT_BASE_URL/$NODE_AGENT_UUID" --header "$HEADER: $HEADER_VAL" --output /dev/null
     )
     if [ "$STATUS_CODE" != "200" ]; then
@@ -199,7 +199,7 @@ download_package() {
     pushd "$NODE_AGENT_RELEASE_PATH"
     local RESPONSE_CODE=""
     set +e
-    RESPONSE_CODE=$(curl -s ${SKIP_VERIFY_CERT:+ "-k"} -w "%{http_code}" --location --request GET \
+    RESPONSE_CODE=$(curl -s ${SKIP_VERIFY_CERT:+-k} -w "%{http_code}" --location --request GET \
     "$NODE_AGENT_DOWNLOAD_URL?downloadType=package&os=$OS&arch=$GO_ARCH_TYPE" \
     --header "$HEADER: $HEADER_VAL" --output "$NODE_AGENT_PKG_TGZ")
     set -e
@@ -597,7 +597,7 @@ main() {
       stop_systemd_service
       download_package
       NODE_AGENT_CONFIG_ARGS+=(--api_token "$API_TOKEN" --url "$PLATFORM_URL" \
-      --node_port "$NODE_PORT" "${SKIP_VERIFY_CERT:+ "--skip_verify_cert"}")
+      --node_port "$NODE_PORT")
       if [ -n "$CERTIFICATE_NAME" ]; then
         NODE_AGENT_CONFIG_ARGS+=(--certificate_name "$CERTIFICATE_NAME")
       fi
@@ -640,7 +640,7 @@ main() {
       stop_systemd_service
       NODE_AGENT_CONFIG_ARGS+=(--disable_egress --id "$NODE_AGENT_ID" --customer_id "$CUSTOMER_ID" \
       --cert_dir "$CERT_DIR" --node_name "$NODE_NAME" --node_ip "$NODE_IP" \
-      --node_port "$NODE_PORT" "${SKIP_VERIFY_CERT:+ "--skip_verify_cert"}")
+      --node_port "$NODE_PORT")
       # if bind ip is provided use that.
       if [ -n "$BIND_IP" ]; then
         NODE_AGENT_CONFIG_ARGS+=( --bind_ip "$BIND_IP" )
@@ -649,10 +649,13 @@ main() {
     setup_node_agent_dir
     extract_package
     setup_symlink
+    if [ -n "$SKIP_VERIFY_CERT" ]; then
+      NODE_AGENT_CONFIG_ARGS+=(--skip_verify_cert)
+    fi
     if [ "$FIPS_ENABLED" = "true" ]; then
       NODE_AGENT_CONFIG_ARGS+=(--fips_enabled)
     fi
-    node-agent node configure ${NODE_AGENT_CONFIG_ARGS[@]}
+    node-agent node configure "${NODE_AGENT_CONFIG_ARGS[@]}"
     if [ $? -ne 0 ]; then
       echo "Node agent setup failed."
       exit 1

@@ -229,8 +229,8 @@ TEST_F(PgPartmanNativeWithoutTxnDdlTest, TakesFlagOffPathAndWarns) {
   ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(60 * kTimeMultiplier)));
 }
 
-// The flag and its prerequisites are on, but an infra auto flag is off, as before an upgrade is
-// finalized.
+// The flag and its prerequisites are on, but an infra auto flag is off, as before an upgrade that
+// adds it is finalized.
 class PgPartmanNativeWithoutInfraTest : public PgPartmanTestBase,
                                         public ::testing::WithParamInterface<std::string> {
  protected:
@@ -246,7 +246,7 @@ TEST_P(PgPartmanNativeWithoutInfraTest, TakesFlagOffPath) {
 
 INSTANTIATE_TEST_SUITE_P(
     InfraAutoFlags, PgPartmanNativeWithoutInfraTest,
-    ::testing::Values("ysql_enable_object_locking_infra", "ysql_yb_enable_ddl_savepoint_infra"));
+    ::testing::Values("ysql_yb_enable_object_locking_infra", "ysql_yb_enable_ddl_savepoint_infra"));
 
 // Turning the flag off once partition sets have default partitions, as its description says to.
 // Set a follows the documented steps first, set b does not.

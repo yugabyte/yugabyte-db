@@ -6819,6 +6819,41 @@ void DBImpl::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
   versions_->GetLiveFilesMetaData(metadata);
 }
 
+void DBImpl::GetLiveFileNumbersNotOnPath(uint32_t path_id, std::vector<uint64_t>* out) {
+  InstrumentedMutexLock l(&mutex_);
+  versions_->GetLiveFileNumbersNotOnPath(path_id, out);
+}
+
+size_t DBImpl::EvictTableReaders() {
+  std::vector<uint64_t> file_numbers;
+  {
+    InstrumentedMutexLock l(&mutex_);
+    for (auto cfd : *versions_->GetColumnFamilySet()) {
+      if (cfd->IsDropped()) {
+        continue;
+      }
+      for (int level = 0; level < cfd->NumberLevels(); level++) {
+        for (const auto& file : cfd->current()->storage_info()->LevelFiles(level)) {
+          // The version holds the reader when max_open_files == -1, so evicting it from the table
+          // cache would not close it.
+          if (file->fd.table_reader) {
+            continue;
+          }
+          file_numbers.push_back(file->fd.GetNumber());
+        }
+      }
+    }
+  }
+  // Outside the mutex: dropping the last reference closes the file.
+  size_t evicted = 0;
+  for (const auto file_number : file_numbers) {
+    if (TableCache::EvictIfOpen(table_cache_.get(), file_number)) {
+      ++evicted;
+    }
+  }
+  return evicted;
+}
+
 yb::storage::FrontierInfo DBImpl::GetFrontiers(yb::storage::FrontierKinds kinds) {
   using yb::storage::FrontierKind;
   using yb::storage::UpdateUserValueType;

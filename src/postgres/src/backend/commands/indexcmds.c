@@ -150,6 +150,9 @@ static bool YbChildIndexesMatch(Relation rootIrel, TupleDesc rootHeapDesc);
 /* Defined in publicationcmds.c. */
 extern bool YbIsSimpleRowFilterExpr(Node *node);
 
+static void YbCheckDerivedNameHeldByInvalidIndex(const char *relname,
+												 Oid namespaceid);
+
 /*
  * callback argument type for RangeVarCallbackForReindexIndex()
  */
@@ -1176,7 +1179,7 @@ DefineIndex(ParseState *pstate,
 
 		bool		is_colocated_via_database = is_colocated && MyDatabaseColocated;
 		bool		is_colocated_tables_with_tablespace_enabled =
-			*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
+			yb_enable_colocated_tables_with_tablespaces;
 
 		/*
 		 * A copartitioned index (e.g. a ybhnsw vector index) stores its rows
@@ -2080,6 +2083,9 @@ DefineIndex(ParseState *pstate,
 								continue;
 							}
 						}
+
+						/* YB: xCluster source cannot adopt an invalid index. */
+						YbCheckAttachedIndexIsValid(cldidx);
 
 						/* Attach index to parent and we're done. */
 						IndexSetParentIndex(cldidx, indexRelationId);
@@ -3766,6 +3772,9 @@ ChooseRelationName(const char *name1, const char *name2,
 				!ConstraintNameExists(relname, namespaceid))
 				break;
 		}
+
+		/* YB: an xCluster source must not skip a name the target would use. */
+		YbCheckDerivedNameHeldByInvalidIndex(relname, namespaceid);
 
 		/* found a conflict, so try a new name component */
 		pfree(relname);
@@ -6201,4 +6210,60 @@ YbChildIndexesMatch(Relation rootIrel, TupleDesc rootHeapDesc)
 	}
 
 	return match;
+}
+
+/*
+ * An invalid leaf index on an xCluster automatic mode source is left over
+ * from a failed CREATE INDEX and does not exist on the target. A DDL whose
+ * outcome depends on it would replay differently on the target and halt DDL
+ * replication, so the two checks below reject it.
+ */
+
+/* Reject skipping a derived name held by an invalid leaf index. */
+static void
+YbCheckDerivedNameHeldByInvalidIndex(const char *relname, Oid namespaceid)
+{
+	Oid			relid = get_relname_relid(relname, namespaceid);
+
+	if (!OidIsValid(relid) ||
+		get_rel_relkind(relid) != RELKIND_INDEX ||
+		get_index_isvalid(relid))
+		return;
+
+	if (!IsYugaByteEnabled() || !yb_xcluster_invalid_index_ddl_check ||
+		YBCGetXClusterRole(MyDatabaseId) != XCLUSTER_ROLE_AUTOMATIC_SOURCE)
+		return;
+
+	ereport(ERROR,
+			(errcode(ERRCODE_DUPLICATE_OBJECT),
+			 errmsg("default name \"%s\" is already used by an invalid index", relname),
+			 errdetail("The xCluster target does not have this index and would choose "
+					   "a different name."),
+			 errhint("Drop the invalid index first, or specify a name explicitly.")));
+}
+
+/*
+ * Reject attaching an invalid leaf index to a partitioned index, whether
+ * CREATE INDEX adopts it or ALTER INDEX ... ATTACH PARTITION names it. An
+ * invalid partitioned index (CREATE INDEX ... ON ONLY) exists on the target
+ * too, since the DDL that created it succeeded and was replicated, so
+ * attaching one is fine.
+ */
+void
+YbCheckAttachedIndexIsValid(Relation cldidx)
+{
+	if (cldidx->rd_index->indisvalid ||
+		cldidx->rd_rel->relkind != RELKIND_INDEX)
+		return;
+
+	if (!IsYugaByteEnabled() || !yb_xcluster_invalid_index_ddl_check ||
+		YBCGetXClusterRole(MyDatabaseId) != XCLUSTER_ROLE_AUTOMATIC_SOURCE)
+		return;
+
+	ereport(ERROR,
+			(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+			 errmsg("cannot attach invalid index \"%s\" to a partitioned index",
+					RelationGetRelationName(cldidx)),
+			 errdetail("The xCluster target does not have this index."),
+			 errhint("Drop the invalid index first.")));
 }

@@ -1,17 +1,24 @@
-import { MetricTypes, MetricTypesWithOperations, metricsForTab } from './constants';
+import {
+  MetricTypes,
+  MetricTypesWithOperations,
+  NODE_EXPORTER_PANEL_SOURCES,
+  metricsForTab
+} from './constants';
+
+const SIDECAR_METRICS = Object.keys(NODE_EXPORTER_PANEL_SOURCES);
 
 describe('metricsForTab', () => {
   it('returns the tab keys unchanged on VMs for non-master views', () => {
-    expect(metricsForTab(MetricTypes.SERVER, false, false)).toEqual(
+    expect(metricsForTab(MetricTypes.SERVER, false, false, true)).toEqual(
       MetricTypesWithOperations[MetricTypes.SERVER].metrics
     );
-    expect(metricsForTab(MetricTypes.DISK_IO, false, false)).toEqual(
+    expect(metricsForTab(MetricTypes.DISK_IO, false, false, true)).toEqual(
       MetricTypesWithOperations[MetricTypes.DISK_IO].metrics
     );
   });
 
   it('swaps the Resource tab to Kubernetes keys and adds the sidecar memory panel last', () => {
-    const metrics = metricsForTab(MetricTypes.SERVER, true, false);
+    const metrics = metricsForTab(MetricTypes.SERVER, true, false, true);
     expect(metrics).toContain('k8s_cpu_usage');
     expect(metrics).toContain('k8s_memory_usage');
     expect(metrics).toContain('k8s_volume_disk_usage_percent');
@@ -28,16 +35,16 @@ describe('metricsForTab', () => {
   });
 
   it('keeps the sidecar memory panel off VMs and off other tabs', () => {
-    expect(metricsForTab(MetricTypes.SERVER, false, false)).not.toContain(
+    expect(metricsForTab(MetricTypes.SERVER, false, false, true)).not.toContain(
       'k8s_node_exporter_memory_usage'
     );
-    expect(metricsForTab(MetricTypes.DISK_IO, true, false)).not.toContain(
+    expect(metricsForTab(MetricTypes.DISK_IO, true, false, true)).not.toContain(
       'k8s_node_exporter_memory_usage'
     );
   });
 
   it('swaps the Disk I/O tab DB keys to master keys for masters', () => {
-    const metrics = metricsForTab(MetricTypes.DISK_IO, false, true);
+    const metrics = metricsForTab(MetricTypes.DISK_IO, false, true, true);
     expect(metrics).toEqual(
       expect.arrayContaining([
         'master_lsm_rocksdb_flush_size',
@@ -53,15 +60,51 @@ describe('metricsForTab', () => {
   });
 
   it('applies both swaps to master Disk I/O on Kubernetes', () => {
-    const metrics = metricsForTab(MetricTypes.DISK_IO, true, true);
+    const metrics = metricsForTab(MetricTypes.DISK_IO, true, true, true);
     expect(metrics).toContain('k8s_volume_disk_usage_percent');
     expect(metrics).toContain('master_lsm_rocksdb_flush_size');
     expect(metrics).not.toContain('disk_usage_percent');
   });
 
+  it('drops the sidecar panels on Kubernetes when the sidecar is not scraped', () => {
+    const resource = metricsForTab(MetricTypes.SERVER, true, false, false);
+    SIDECAR_METRICS.forEach((metric) => expect(resource).not.toContain(metric));
+    expect(resource).not.toContain('k8s_node_exporter_memory_usage');
+    expect(resource).toEqual([
+      'k8s_cpu_usage',
+      'k8s_memory_usage',
+      'k8s_volume_disk_usage_percent',
+      'k8s_volume_disk_used_size_total',
+      'k8s_volume_disk_volume_usage_percent',
+      'k8s_volume_disk_volume_used',
+      'node_clock_skew'
+    ]);
+
+    const diskIo = metricsForTab(MetricTypes.DISK_IO, true, false, false);
+    SIDECAR_METRICS.forEach((metric) => expect(diskIo).not.toContain(metric));
+    expect(diskIo).toContain('k8s_volume_disk_usage_percent');
+    expect(diskIo).toContain('lsm_rocksdb_flush_size');
+  });
+
+  it('keeps the master swap on Kubernetes when the sidecar is not scraped', () => {
+    const metrics = metricsForTab(MetricTypes.DISK_IO, true, true, false);
+    expect(metrics).toContain('master_lsm_rocksdb_flush_size');
+    expect(metrics).not.toContain('lsm_rocksdb_flush_size');
+    expect(metrics).not.toContain('disk_iops');
+  });
+
+  it('ignores the sidecar flag on VMs', () => {
+    expect(metricsForTab(MetricTypes.SERVER, false, false, false)).toEqual(
+      metricsForTab(MetricTypes.SERVER, false, false, true)
+    );
+    expect(metricsForTab(MetricTypes.DISK_IO, false, true, false)).toEqual(
+      metricsForTab(MetricTypes.DISK_IO, false, true, true)
+    );
+  });
+
   it('does not change the shared tab definition', () => {
     const before = [...MetricTypesWithOperations[MetricTypes.SERVER].metrics];
-    metricsForTab(MetricTypes.SERVER, true, true);
+    metricsForTab(MetricTypes.SERVER, true, true, true);
     expect(MetricTypesWithOperations[MetricTypes.SERVER].metrics).toEqual(before);
   });
 });

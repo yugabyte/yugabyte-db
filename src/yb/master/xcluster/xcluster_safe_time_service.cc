@@ -14,6 +14,8 @@
 
 #include <chrono>
 
+#include <boost/asio/dispatch.hpp>
+#include <boost/asio/post.hpp>
 
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
@@ -76,15 +78,12 @@ XClusterSafeTimeService::XClusterSafeTimeService(
     : master_(master),
       catalog_manager_(catalog_manager),
       poller_("XClusterSafeTimeService: ", [this] {
-        WARN_NOT_OK(
-          master_->messenger()->ThreadPool().Submit(
-              poll_strand_->wrap([this] { ProcessTaskPeriodically(); })),
-          "Failed to submit periodic task");
+        boost::asio::post(*poll_strand_, [this] { ProcessTaskPeriodically(); });
       }),
       metric_registry_(metric_registry) {
   poller_.Pause();
   if (master_) {
-    poll_strand_.emplace(master->messenger()->io_service());
+    poll_strand_.emplace(boost::asio::make_strand(master->messenger()->io_service()));
     poller_.Start(
         master->messenger()->scheduler(),
         FLAGS_xcluster_safe_time_update_interval_secs * 1s);
@@ -100,9 +99,7 @@ void XClusterSafeTimeService::Shutdown() {
 }
 
 void XClusterSafeTimeService::ScheduleTaskIfNeeded() {
-  poll_strand_->dispatch([this] {
-    poller_.Resume();
-  });
+  boost::asio::dispatch(*poll_strand_, [this] { poller_.Resume(); });
 }
 
 void XClusterSafeTimeService::ProcessTaskPeriodically() {

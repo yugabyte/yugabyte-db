@@ -57,7 +57,7 @@ public class TestConnectionManagerLoadPasswordcheck extends BaseYsqlConnMgr {
   }
 
   /**
-   * LOAD must increment the sticky object count and pin the logical connection to a single backend,
+   * LOAD must pin the logical connection to a single backend,
    * without affecting other connections in the pool.
    */
   @Test
@@ -71,21 +71,11 @@ public class TestConnectionManagerLoadPasswordcheck extends BaseYsqlConnMgr {
 
       try (Statement loaderStmt = loaderConn.createStatement();
            Statement otherStmt = otherConn.createStatement()) {
-        assertTrue("Loader should not be sticky before LOAD",
-            verifySessionParameterValue(loaderStmt,
-                "ysql_conn_mgr_sticky_object_count", "0"));
-        assertTrue("Other connection should not be sticky before LOAD",
-            verifySessionParameterValue(otherStmt,
-                "ysql_conn_mgr_sticky_object_count", "0"));
+        waitForStickyConnections(0);
 
         loaderStmt.execute(LOAD_PASSWORDCHECK);
 
-        assertTrue("Loader should be sticky after LOAD",
-            verifySessionParameterValue(loaderStmt,
-                "ysql_conn_mgr_sticky_object_count", "1"));
-        assertTrue("Other connection should not be affected by LOAD on loader",
-            verifySessionParameterValue(otherStmt,
-                "ysql_conn_mgr_sticky_object_count", "0"));
+        waitForStickyConnections(1);
       }
 
       // The loader is pinned to a single physical backend across repeated queries.
@@ -126,9 +116,7 @@ public class TestConnectionManagerLoadPasswordcheck extends BaseYsqlConnMgr {
                 .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
                 .connect();
             Statement churnStmt = churnConn.createStatement()) {
-          assertTrue("Churn connection should not be sticky (it never ran LOAD)",
-              verifySessionParameterValue(churnStmt,
-                  "ysql_conn_mgr_sticky_object_count", "0"));
+          waitForStickyConnections(1);
           assertTrue("Without LOAD the passwordcheck hook is absent on the churn backend; "
               + "a weak password should be accepted",
               trySetPassword(churnStmt, churnRole, WEAK_PASSWORD));

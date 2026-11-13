@@ -65,8 +65,10 @@
 /* YB includes */
 #include "catalog/namespace.h"
 #include "catalog/partition.h"
+#include "commands/defrem.h"
 #include "commands/explain.h"
 #include "common/hashfn.h"
+#include "nodes/makefuncs.h"
 #include "pg_yb_utils.h"
 #include "utils/catcache.h"
 #include "utils/inval.h"
@@ -295,6 +297,9 @@ struct Hint
 	HintDescFunction desc_func;
 	HintCmpFunction cmp_func;
 	HintParseFunction parse_func;
+
+	/* YB fields */
+	List	   *ybOptions;
 };
 
 /* scan method hints */
@@ -317,6 +322,9 @@ typedef struct ParentIndexInfo
 	Oid		   *opclass;
 	int16	   *indoption;
 	char	   *indpred_str;
+
+	/* YB fields */
+	char	   *ybIndexName;	/* parent index name as written in the hint */
 } ParentIndexInfo;
 
 /* join method hints */
@@ -451,6 +459,17 @@ typedef enum YbBadHintMode
 	BAD_HINT_ERROR,
 	BAD_HINT_UNRECORNIZED
 } YbBadHintMode;
+
+typedef struct YbValidOptionPairs
+{
+	const HintKeyword hintKeyword;
+	const char *optionList;
+} YbValidOptionPairs;
+
+static const YbValidOptionPairs ybValidOptionPairs[] = {
+	{ HINT_KEYWORD_INDEXSCAN,  YB_MERGE_OPTION_NAME},
+	{ HINT_KEYWORD_INDEXONLYSCAN, YB_MERGE_OPTION_NAME}
+};
 
 /*
  * Hint cache.
@@ -629,6 +648,19 @@ static bool check_index_match(IndexOptInfo *info,
 							  Oid relationObjectId);
 static void set_parent_index_infos(Index parent_relid, List *indexnames,
 								   PlannerInfo *root);
+
+static void ybSetIndexOptions(ScanMethodHint *hint, RelOptInfo *rel);
+static void ybApplyIndexOptionList(IndexOptInfo *info, List *option_list,
+								   bool index_specific);
+static void ybApplyPerIndexOptions(ScanMethodHint *hint, IndexOptInfo *info,
+								   char *hint_index_name);
+
+static bool ybIsValidOption(char *option, HintKeyword keyword);
+static bool ybIsValidOptionValue(char *key, char *value);
+static bool yb_parse_equal_pair(char *pair, char **key, char **value);
+static void yb_trim_string(char *str);
+static bool yb_parse_options_list(char *optionsStr, List **options_list, HintKeyword keyword);
+static void ybHintOptionsDelete(List *optionsList);
 
 /* GUC variables */
 static bool pg_hint_plan_enable_hint = true;
@@ -1052,8 +1084,42 @@ ScanMethodHintCreate(const char *hint_str, const char *keyword,
 	hint->indexnames = NIL;
 	hint->regexp = false;
 	hint->enforce_mask = 0;
+	hint->base.ybOptions = NIL;
 
 	return (Hint *) hint;
+}
+
+static void
+ybHintOptionsDelete(List *optionsList)
+{
+	if (optionsList != NIL)
+	{
+		ListCell *lc;
+		foreach (lc, optionsList)
+		{
+			DefElem *elem = (DefElem *) lfirst(lc);
+			char *name = elem->defname;
+
+			if (name)
+				pfree(name);
+			List *option_list = (List *) elem->arg;
+
+			ListCell *lc2;
+			foreach(lc2, option_list)
+			{
+				DefElem *elem = (DefElem *) lfirst(lc2);
+				char *optionName  = elem->defname;
+				char *optionValue = defGetString(elem);
+
+				pfree(optionName);
+				pfree(optionValue);
+			}
+
+			list_free(option_list);
+		}
+
+		list_free(optionsList);
+	}
 }
 
 static void
@@ -1065,6 +1131,9 @@ ScanMethodHintDelete(ScanMethodHint *hint)
 	if (hint->relname)
 		pfree(hint->relname);
 	list_free_deep(hint->indexnames);
+
+	ybHintOptionsDelete(hint->base.ybOptions);
+
 	pfree(hint);
 }
 
@@ -1090,6 +1159,7 @@ JoinMethodHintCreate(const char *hint_str, const char *keyword,
 	hint->enforce_mask = 0;
 	hint->joinrelids = NULL;
 	hint->inner_joinrelids = NULL;
+	hint->base.ybOptions = NIL;
 
 	return (Hint *) hint;
 }
@@ -1132,6 +1202,7 @@ LeadingHintCreate(const char *hint_str, const char *keyword,
 	hint->base.parse_func = (HintParseFunction) LeadingHintParse;
 	hint->relations = NIL;
 	hint->outer_inner = NULL;
+	hint->base.ybOptions = NIL;
 
 	return (Hint *) hint;
 }
@@ -1167,6 +1238,7 @@ SetHintCreate(const char *hint_str, const char *keyword,
 	hint->name = NULL;
 	hint->value = NULL;
 	hint->words = NIL;
+	hint->base.ybOptions = NIL;
 
 	return (Hint *) hint;
 }
@@ -1210,6 +1282,7 @@ RowsHintCreate(const char *hint_str, const char *keyword,
 	hint->rows_str = NULL;
 	hint->value_type = RVT_ABSOLUTE;
 	hint->rows = 0;
+	hint->base.ybOptions = NIL;
 
 	return (Hint *) hint;
 }
@@ -1253,6 +1326,7 @@ ParallelHintCreate(const char *hint_str, const char *keyword,
 	hint->relname = NULL;
 	hint->nworkers = 0;
 	hint->nworkers_str = "0";
+	hint->base.ybOptions = NIL;
 
 	return (Hint *) hint;
 }
@@ -1286,6 +1360,7 @@ DisableIndexHintCreate(const char *hint_str, const char *keyword,
 	hint->base.parse_func = (HintParseFunction) DisableIndexHintParse;
 	hint->relname = NULL;
 	hint->indexnames = NULL;
+	hint->base.ybOptions = NIL;
 
 	return (Hint *) hint;
 }
@@ -1428,6 +1503,39 @@ quote_value(StringInfo buf, const char *value)
 		appendStringInfoCharMacro(buf, '"');
 }
 
+static bool
+ybDescOptions(Hint *hint, StringInfo buf, char *name, bool is_rel)
+{
+	bool		described = false;
+	ListCell   *lc;
+
+	foreach(lc, hint->ybOptions)
+	{
+		DefElem    *elem = (DefElem *) lfirst(lc);
+		char	   *object_name = elem->defname;
+		bool		match;
+
+		/*
+		 * Relation-level options have NULL defname (parse-time position).
+		 * Per-index options are keyed by the hint's index name.
+		 */
+		if (is_rel)
+			match = (object_name == NULL);
+		else
+			match = (object_name != NULL && strcmp(name, object_name) == 0);
+
+		if (match)
+		{
+			appendStringInfoSpaces(buf, 1);
+			ybGenerateHintStringOptions(buf, (List *) elem->arg, true);
+			described = true;
+			break;
+		}
+	}
+
+	return described;
+}
+
 static void
 ScanMethodHintDesc(ScanMethodHint *hint, StringInfo buf, bool nolf)
 {
@@ -1437,10 +1545,15 @@ ScanMethodHintDesc(ScanMethodHint *hint, StringInfo buf, bool nolf)
 	if (hint->relname != NULL)
 	{
 		quote_value(buf, hint->relname);
+
+		(void) ybDescOptions((Hint *) hint, buf, hint->relname, true);
+
 		foreach(l, hint->indexnames)
 		{
 			appendStringInfoCharMacro(buf, ' ');
 			quote_value(buf, (char *) lfirst(l));
+
+			(void) ybDescOptions((Hint *) hint, buf, (char *) lfirst(l), false);
 		}
 	}
 	appendStringInfoString(buf, ")");
@@ -1996,11 +2109,174 @@ parse_parentheses_Leading(const char *str, List **name_list,
 	return str;
 }
 
-static const char *
-parse_parentheses(const char *str, List **name_list, HintKeyword keyword)
+static void
+yb_trim_string(char *str)
 {
-	char	   *name;
+    char *start = str;
+    char *end;
+
+    /* Skip leading whitespace */
+    while (isspace((unsigned char) *start))
+        start++;
+
+    /* Move trimmed string to front */
+    if (start != str)
+        memmove(str, start, strlen(start) + 1);
+
+    /* Empty string? */
+    if (*str == '\0')
+        return;
+
+    /* Find end of string */
+    end = str + strlen(str) - 1;
+
+    /* Remove trailing whitespace */
+    while (end >= str && isspace((unsigned char) *end))
+        end--;
+
+    *(end + 1) = '\0';
+}
+
+static bool
+yb_parse_equal_pair(char *pair, char **key, char **value)
+{
+	const char *eq = strchr(pair, '=');
+
+	/* Must contain exactly one '=' */
+	if (eq == NULL || strchr(eq + 1, '=') != NULL)
+		return false;
+
+	size_t key_len = eq - pair;
+	size_t value_len = strlen(eq + 1);
+
+	/* Neither side can be empty */
+	if (key_len == 0 || value_len == 0)
+		return false;
+
+	char *new_key = (char *) palloc0(key_len + 1);
+	strncpy(new_key, pair, key_len);
+	yb_trim_string(new_key);
+	if (strlen(new_key) == 0)
+		return false;
+
+	char *new_value = (char *) palloc0(value_len + 1);
+	strcpy(new_value, eq + 1);
+	yb_trim_string(new_value);
+	if (strlen(new_value) == 0)
+		return false;
+
+	/*
+	 * Fold to lowercase so later lookups can use strcmp.  Otherwise
+	 * IndexScan(t (MERGE=on) t_pkey (merge=off)) keeps both entries and
+	 * ybGetValueForOption() returns the first.
+	 */
+	{
+		char	   *folded;
+
+		folded = downcase_identifier(new_key, strlen(new_key), false, false);
+		pfree(new_key);
+		new_key = folded;
+		folded = downcase_identifier(new_value, strlen(new_value), false, false);
+		pfree(new_value);
+		new_value = folded;
+	}
+
+	*key = new_key;
+	*value = new_value;
+
+	return true;
+}
+
+static bool
+ybIsValidOption(char *option, HintKeyword keyword) 
+{
+	bool isValidOption = false;
+	int count = sizeof(ybValidOptionPairs) / sizeof(ybValidOptionPairs[0]);
+
+    for (int i = 0; i < count && !isValidOption; i++) 
+	{
+        if (ybValidOptionPairs[i].hintKeyword == keyword)
+		{
+			size_t len = strlen(option);
+
+			const char *p = ybValidOptionPairs[i].optionList;
+
+			while (*p && !isValidOption) 
+			{
+				const char *end = strchr(p, ':');
+
+				if (!end)
+					end = p + strlen(p);
+
+				if ((size_t) (end - p) == len &&
+					strncmp(p, option, len) == 0) 
+					isValidOption = true;
+				else
+					p = (*end == ':') ? end + 1 : end;
+			}
+		}
+	}
+
+	return isValidOption;
+}
+
+static bool
+ybIsValidOptionValue(char *key, char *value)
+{
+	if (strcmp(key, YB_MERGE_OPTION_NAME) == 0)
+		return (strcmp(value, "on") == 0 ||
+				strcmp(value, "true") == 0 ||
+				strcmp(value, "off") == 0 ||
+				strcmp(value, "false") == 0);
+
+	return true;
+}
+
+static bool
+yb_parse_options_list(char *optionsStr, List **options_list, HintKeyword keyword)
+{
+	char *option = strtok(optionsStr, ",");
+
+	while (option != NULL)
+	{
+		char *key;
+		char *value;
+
+		if (!yb_parse_equal_pair(option, &key, &value))
+		{
+			hint_ereport(optionsStr, ("Bad options list"));
+			return false;
+		}
+
+		if (!ybIsValidOption(key, keyword)) 
+		{
+			hint_ereport(option, ("Bad option"));
+			return false;
+		}
+
+		if (!ybIsValidOptionValue(key, value))
+		{
+			hint_ereport(option, ("Bad option value"));
+			return false;
+		}
+
+		*options_list = lappend(*options_list,
+								makeDefElem(key, (Node *) makeString(value), -1));
+
+		option = strtok(NULL, ",");
+	}
+
+	return true;
+}
+
+static const char *
+parse_parentheses(const char *str, List **name_list, List **yb_options_list, HintKeyword keyword)
+{
 	bool		truncate = true;
+
+	/* YB declarations */
+	char	   *yb_name = NULL;
+	char	   *yb_last_name = NULL;
 
 	if ((str = skip_parenthesis(str, '(')) == NULL)
 		return NULL;
@@ -2010,21 +2286,90 @@ parse_parentheses(const char *str, List **name_list, HintKeyword keyword)
 	/* Store words in parentheses into name_list. */
 	while (*str != ')' && *str != '\0')
 	{
-		if ((str = parse_quoted_value(str, &name, truncate)) == NULL)
+		/*
+		 * YB : Process options list.
+		 */
+		if (*str == '(')
 		{
-			list_free(*name_list);
-			return NULL;
+			if (yb_options_list == NULL)
+			{
+				hint_ereport(str, ("Options list not supported for this hint"));
+				return NULL;
+			}
+
+			++str;
+			skip_space(str);
+			char *closingParenPos = strchr(str, ')');
+			if (closingParenPos == NULL)
+			{
+				hint_ereport(str, ("No closing parens for options list"));
+				return NULL;
+			}
+
+			int optionsLen = closingParenPos - str ;
+			char *optionsStr = (char *) palloc0(optionsLen + 1);
+			strncpy(optionsStr, str, optionsLen);
+
+			if (yb_last_name == NULL)
+			{
+				hint_ereport(str, ("Bad options list placement"));
+				return NULL;
+			}
+
+			List *yb_one_options_list = NIL;
+			if (!yb_parse_options_list(optionsStr, &yb_one_options_list, keyword) ||
+				yb_one_options_list == NIL)
+			{
+				hint_ereport(optionsStr, ("Bad options list"));
+				return NULL;
+			}
+
+			/*
+			 * Options right after the first name are relation-level.
+			 * Record that here (NULL defname) so application does not
+			 * re-derive it from the alias: a partition's alias is not
+			 * the parent's, and an index can share the relation name.
+			 */
+			if (list_length(*name_list) == 1)
+				*yb_options_list = lappend(*yb_options_list,
+										   makeDefElem(NULL,
+													   (Node *) yb_one_options_list, -1));
+			else
+			{
+				char	   *yb_last_name_copy = pstrdup(yb_last_name);
+
+				*yb_options_list = lappend(*yb_options_list,
+										   makeDefElem(yb_last_name_copy,
+													   (Node *) yb_one_options_list, -1));
+			}
+
+			str = closingParenPos + 1;
+			skip_space(str);
+
+			pfree(optionsStr);
+
+			yb_last_name = NULL;
 		}
-
-		*name_list = lappend(*name_list, name);
-		skip_space(str);
-
-		if (keyword == HINT_KEYWORD_INDEXSCANREGEXP ||
-			keyword == HINT_KEYWORD_INDEXONLYSCANREGEXP ||
-			keyword == HINT_KEYWORD_BITMAPSCANREGEXP ||
-			keyword == HINT_KEYWORD_SET)
+		else 
 		{
-			truncate = false;
+			if ((str = parse_quoted_value(str, &yb_name, truncate)) == NULL)
+			{
+				list_free(*name_list);
+				return NULL;
+			}
+
+			*name_list = lappend(*name_list, yb_name);
+			skip_space(str);
+
+			if (keyword == HINT_KEYWORD_INDEXSCANREGEXP ||
+				keyword == HINT_KEYWORD_INDEXONLYSCANREGEXP ||
+				keyword == HINT_KEYWORD_BITMAPSCANREGEXP ||
+				keyword == HINT_KEYWORD_SET)
+			{
+				truncate = false;
+			}
+
+			yb_last_name = yb_name;
 		}
 	}
 
@@ -3680,7 +4025,16 @@ ScanMethodHintParse(ScanMethodHint *hint, const char *str)
 	List	   *name_list = NIL;
 	int			length;
 
-	if ((str = parse_parentheses(str, &name_list, hint_keyword)) == NULL)
+	/* YB declarations */
+	List		  **yb_options_list_pp;
+
+	/* YB */
+	if (hint_keyword == HINT_KEYWORD_INDEXONLYSCAN || hint_keyword == HINT_KEYWORD_INDEXSCAN)
+		yb_options_list_pp = &(hint->base.ybOptions);
+	else
+		yb_options_list_pp = NULL;
+
+	if ((str = parse_parentheses(str, &name_list, yb_options_list_pp, hint_keyword)) == NULL)
 		return NULL;
 
 	/* Parse relation name and index name(s) if given hint accepts. */
@@ -3769,7 +4123,10 @@ JoinMethodHintParse(JoinMethodHint *hint, const char *str)
 	HintKeyword hint_keyword = hint->base.hint_keyword;
 	List	   *name_list = NIL;
 
-	if ((str = parse_parentheses(str, &name_list, hint_keyword)) == NULL)
+	/*
+	 * YB: join hints do not currently allow an options list
+	 */
+	if ((str = parse_parentheses(str, &name_list, (List **) NULL, hint_keyword)) == NULL)
 		return NULL;
 
 	hint->nrels = list_length(name_list);
@@ -3852,7 +4209,10 @@ DisableIndexHintParse(DisableIndexHint *hint, const char *str)
 	List	   *name_list = NIL;
 	int			length;
 
-	if ((str = parse_parentheses(str, &name_list, hint_keyword)) == NULL)
+	/*
+	 * YB: DisableIndex hints do not allow an options list
+	 */
+	if ((str = parse_parentheses(str, &name_list, (List **) NULL, hint_keyword)) == NULL)
 		return NULL;
 
 	/* Parse relation name and index name(s) if given hint accepts. */
@@ -3963,7 +4323,10 @@ SetHintParse(SetHint *hint, const char *str)
 {
 	List	   *name_list = NIL;
 
-	if ((str = parse_parentheses(str, &name_list, hint->base.hint_keyword))
+	/*
+	 * YB: set hints do not allow an options list
+	 */
+	if ((str = parse_parentheses(str, &name_list, (List **) NULL, hint->base.hint_keyword))
 		== NULL)
 		return NULL;
 
@@ -3996,7 +4359,10 @@ RowsHintParse(RowsHint *hint, const char *str)
 	ListCell   *l;
 	int			i = 0;
 
-	if ((str = parse_parentheses(str, &name_list, hint_keyword)) == NULL)
+	/*
+	 * YB: row hints do not allow an options list
+	 */
+	if ((str = parse_parentheses(str, &name_list, (List **) NULL, hint_keyword)) == NULL)
 		return NULL;
 
 	/* Last element must be rows specification */
@@ -4093,7 +4459,10 @@ ParallelHintParse(ParallelHint *hint, const char *str)
 	int			nworkers;
 	bool		force_parallel = false;
 
-	if ((str = parse_parentheses(str, &name_list, hint_keyword)) == NULL)
+	/*
+	 * YB: parallel hints do not currently allow an options list
+	 */
+	if ((str = parse_parentheses(str, &name_list, (List **) NULL, hint_keyword)) == NULL)
 		return NULL;
 
 	/* Parse relation name and index name(s) if given hint accepts. */
@@ -5246,6 +5615,108 @@ regexpeq(const char *s1, const char *s2)
 	return DatumGetBool(result);
 }
 
+/*
+ * Merge option_list onto info.  Per-index options (index_specific) replace
+ * an already-applied relation-level option of the same name.
+ */
+static void
+ybApplyIndexOptionList(IndexOptInfo *info, List *option_list, bool index_specific)
+{
+	Assert(info->ybIndexName != NULL);
+	if (info->yb_options == NIL)
+		info->yb_options = list_copy(option_list);
+	else
+	{
+		ListCell   *lc;
+
+		foreach(lc, option_list)
+		{
+			DefElem    *elem = (DefElem *) lfirst(lc);
+			char	   *optionName = elem->defname;
+			char	   *optionValue = defGetString(elem);
+			ListCell   *lc2;
+			DefElem    *foundElem = NULL;
+
+			foreach(lc2, info->yb_options)
+			{
+				DefElem    *elem2 = (DefElem *) lfirst(lc2);
+
+				if (strcmp(optionName, elem2->defname) == 0)
+				{
+					foundElem = elem2;
+					break;
+				}
+			}
+
+			if (foundElem == NULL)
+				info->yb_options = lappend(info->yb_options,
+										   makeDefElem(optionName,
+													   (Node *) makeString(optionValue), -1));
+			else if (index_specific)
+			{
+				info->yb_options = list_delete_ptr(info->yb_options, foundElem);
+				info->yb_options = lappend(info->yb_options,
+										   makeDefElem(optionName,
+													   (Node *) makeString(optionValue), -1));
+			}
+		}
+	}
+}
+
+/*
+ * Apply per-index options keyed by the hint name that matched this index,
+ * including the parent index name on the inheritance/partition path.
+ */
+static void
+ybApplyPerIndexOptions(ScanMethodHint *hint, IndexOptInfo *info,
+					   char *hint_index_name)
+{
+	ListCell   *lc;
+
+	if (hint_index_name == NULL)
+		return;
+
+	foreach(lc, hint->base.ybOptions)
+	{
+		DefElem    *elem = (DefElem *) lfirst(lc);
+		char	   *optname = elem->defname;
+
+		if (optname == NULL)
+			continue;
+		if (RelnameCmp(&optname, &hint_index_name) != 0)
+			continue;
+		ybApplyIndexOptionList(info, (List *) elem->arg, true);
+		break;
+	}
+}
+
+/*
+ * Apply relation-level options (NULL defname) to every remaining index.
+ * Per-index options are applied in restrict_indexes() when use_index is
+ * decided, keyed by the matching hint name.
+ */
+static void
+ybSetIndexOptions(ScanMethodHint *hint, RelOptInfo *rel)
+{
+	ListCell   *lc;
+
+	Assert(rel->ybRelationName != NULL);
+	foreach(lc, hint->base.ybOptions)
+	{
+		DefElem    *elem = (DefElem *) lfirst(lc);
+		ListCell   *lc2;
+
+		if (elem->defname != NULL)
+			continue;
+
+		foreach(lc2, rel->indexlist)
+		{
+			IndexOptInfo *info = (IndexOptInfo *) lfirst(lc2);
+
+			ybApplyIndexOptionList(info, (List *) elem->arg, false);
+		}
+	}
+}
 
 /*
  * Filter out indexes instructed in the hint as not to be used.
@@ -5289,7 +5760,10 @@ restrict_indexes(PlannerInfo *root, ScanMethodHint *hint, RelOptInfo *rel,
 	 * When a list of indexes is not specified, we just use all indexes.
 	 */
 	if (hint->indexnames == NIL)
+	{
+		ybSetIndexOptions(hint, rel);
 		return true;
+	}								/* YB */
 
 	/*
 	 * Leaving only an specified index, we delete it from a IndexOptInfo list
@@ -5320,6 +5794,7 @@ restrict_indexes(PlannerInfo *root, ScanMethodHint *hint, RelOptInfo *rel,
 			if (result)
 			{
 				use_index = true;
+				ybApplyPerIndexOptions(hint, info, hintname);
 				if (debug_level > 0)
 				{
 					appendStringInfoCharMacro(&buf, ' ');
@@ -5345,6 +5820,7 @@ restrict_indexes(PlannerInfo *root, ScanMethodHint *hint, RelOptInfo *rel,
 					continue;
 
 				use_index = true;
+				ybApplyPerIndexOptions(hint, info, p_info->ybIndexName);
 
 				/* to log the candidate of index */
 				if (debug_level > 0)
@@ -5394,6 +5870,14 @@ restrict_indexes(PlannerInfo *root, ScanMethodHint *hint, RelOptInfo *rel,
 
 	list_free(unused_indexes);
 
+	/*
+	 * Apply options only once the hint is usable.  Otherwise a relation-level
+	 * merge=on plus a bogus index name would stamp every IndexOptInfo before
+	 * we skipped the hint.
+	 */
+	if (restrict_result)
+		ybSetIndexOptions(hint, rel);
+
 	if (debug_level > 0)
 	{
 		StringInfoData rel_buf;
@@ -5442,6 +5926,7 @@ get_parent_index_info(Oid indexoid, Oid relid)
 
 	p_info->indisunique = index->indisunique;
 	p_info->method = indexRelation->rd_rel->relam;
+	p_info->ybIndexName = NULL;		/* YB */
 
 	p_info->column_names = NIL;
 	p_info->indcollation = (Oid *) palloc0(sizeof(Oid) * index->indnatts);
@@ -6960,6 +7445,7 @@ set_parent_index_infos(Index parent_relid,
 		 */
 		parent_index_info =
 			get_parent_index_info(indexoid, parentrel_oid);
+		parent_index_info->ybIndexName = pstrdup((char *) lfirst(lc));
 		current_hint_state->parent_index_infos =
 			lappend(current_hint_state->parent_index_infos,
 					parent_index_info);

@@ -2884,16 +2884,16 @@ hll_set_max_sparse(PG_FUNCTION_ARGS)
                 (errcode(ERRCODE_DATA_EXCEPTION),
                  errmsg("sparse threshold must be in range [-1,MAXINT]")));
 
+    g_max_sparse = maxsparse;
+
     // YB: The max sparse threshold is set only on the backend where the query is executed.
     // To ensure that the logical connection uses the same physical connection, we make the
     // connection sticky.
     if (YbIsClientYsqlConnMgr())
     {
-        elog(LOG, "Incrementing sticky object count for setting hll max sparse to %d", maxsparse);
-        increment_sticky_object_count();
+        elog(LOG, "Making connection sticky for setting hll max sparse to %d", maxsparse);
+        yb_ysql_conn_mgr_sticky_nontxn_object = true;
     }
-
-    g_max_sparse = maxsparse;
 
     PG_RETURN_INT32(old_maxsparse);
 }
@@ -2923,6 +2923,13 @@ hll_set_defaults(PG_FUNCTION_ARGS)
     g_default_regwidth = regwidth;
     g_default_expthresh = expthresh;
     g_default_sparseon = sparseon;
+
+    /* YB: The defaults are backend state, so make the connection sticky */
+    if (YbIsClientYsqlConnMgr())
+    {
+        elog(LOG, "Making connection sticky for setting hll defaults");
+        yb_ysql_conn_mgr_sticky_nontxn_object = true;
+    }
 
     // Build the result tuple.
 	{

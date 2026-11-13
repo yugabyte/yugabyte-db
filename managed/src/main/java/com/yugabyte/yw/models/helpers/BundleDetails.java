@@ -195,7 +195,7 @@ public class BundleDetails {
     @ApiModelProperty(
         value =
             "Arguments appended after the script (entrypoint + flags), e.g."
-                + " [collect_top_stats, --remote_tar_path, /tmp/top.tar.gz, ...].")
+                + " [collect_top_ps_pmap_stats, --remote_tar_path, /tmp/top.tar.gz, ...].")
     private List<String> params;
 
     @ApiModelProperty(

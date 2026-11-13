@@ -1941,9 +1941,16 @@ public class AWSUtil implements CloudUtil {
           EXPECTATION_FAILED,
           "Created object " + objectName + " was not found in bucket " + bucketName);
     } catch (S3Exception e) {
-      throw new PlatformServiceException(
-          EXPECTATION_FAILED,
-          "Error reading test object " + objectName + ", exception occurred: " + getStackTrace(e));
+      PlatformServiceException error =
+          new PlatformServiceException(
+              EXPECTATION_FAILED,
+              "Error reading test object "
+                  + objectName
+                  + ", exception occurred: "
+                  + getStackTrace(e));
+      // Lets the v2 storage config API classify the error by S3's answer.
+      error.initCause(e);
+      throw error;
     }
   }
 

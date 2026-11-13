@@ -93,8 +93,11 @@ YbSeqNext(YbSeqScanState *node)
 		}
 
 		YbSeqScan  *plan = (YbSeqScan *) node->ss.ps.plan;
-		YbPushdownExprs *yb_pushdown =
-			YbInstantiatePushdownExprs(&plan->yb_pushdown, estate);
+		YbPushdownExprs *yb_pushdown;
+
+		YbResetScanPushdownCxt(node->pushdown_cxt);
+		yb_pushdown = YbInstantiateScanPushdownExprs(&node->pushdown_cxt, estate,
+													 &plan->yb_pushdown);
 		int			rowmark = YBC_NO_ROW_MARK;
 		LockWaitPolicy wait_policy = LockWaitBlock;
 

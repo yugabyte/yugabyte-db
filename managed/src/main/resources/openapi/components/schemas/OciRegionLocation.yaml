@@ -1,0 +1,23 @@
+title: OciRegionLocation
+description: |
+  OciRegionLocation
+
+  Backup location of one region of an OCI storage configuration. Part of OciStorageSpec.
+type: object
+required:
+  - region
+  - location
+properties:
+  region:
+    description: Region of the universe whose backups go to this location
+    type: string
+    minLength: 1
+  location:
+    description: 'Location of the region''s backups, in the format of backup_location'
+    type: string
+    minLength: 1
+  host_base:
+    description: 'Host of the S3-compatible endpoint for this region, with S3_COMPATIBLE credentials'
+    type: string
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

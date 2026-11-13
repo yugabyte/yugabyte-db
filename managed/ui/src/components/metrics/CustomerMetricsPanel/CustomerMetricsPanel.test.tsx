@@ -43,12 +43,15 @@ const tabsFor = (selectedUniverse: any, currentSelectedNodeType: string = NodeTy
     (tab: any) => tab.props.eventKey
   );
 
-const diskIoKeysFor = (selectedUniverse: any, nodeName: string): string[] => {
+const tabKeysFor = (selectedUniverse: any, type: string, nodeName = 'all'): string[] => {
   const tab = tabElements(renderBody(selectedUniverse, NodeType.ALL, nodeName)).find(
-    (t: any) => t.props.eventKey === MetricTypes.DISK_IO
+    (t: any) => t.props.eventKey === type
   );
   return tab.props.children.props.metricsKey;
 };
+
+const diskIoKeysFor = (selectedUniverse: any, nodeName: string): string[] =>
+  tabKeysFor(selectedUniverse, MetricTypes.DISK_IO, nodeName);
 
 describe('PanelBody tabs on Kubernetes', () => {
   it('shows Resource and Disk I/O when YBA scrapes the node_exporter sidecar', () => {
@@ -60,15 +63,26 @@ describe('PanelBody tabs on Kubernetes', () => {
   });
 
   it.each([false, undefined])(
-    'hides Resource and Disk I/O when the sidecar is not scraped (%s)',
+    'shows Resource and Disk I/O when the sidecar is not scraped (%s)',
     (scraped) => {
       const tabs = tabsFor(universe('kubernetes', scraped));
-      expect(tabs).not.toContain(MetricTypes.SERVER);
-      expect(tabs).not.toContain(MetricTypes.DISK_IO);
+      expect(tabs).toContain(MetricTypes.SERVER);
+      expect(tabs).toContain(MetricTypes.DISK_IO);
       expect(tabs).toContain(MetricTypes.CONTAINER);
       expect(tabs).not.toContain(MetricTypes.PER_PROCESS);
     }
   );
+
+  it('shows the sidecar panels only when the sidecar is scraped', () => {
+    const scraped = tabKeysFor(universe('kubernetes', true), MetricTypes.SERVER);
+    expect(scraped).toContain('disk_iops');
+    expect(scraped).toContain('k8s_node_exporter_memory_usage');
+
+    const notScraped = tabKeysFor(universe('kubernetes', false), MetricTypes.SERVER);
+    expect(notScraped).not.toContain('disk_iops');
+    expect(notScraped).not.toContain('k8s_node_exporter_memory_usage');
+    expect(notScraped).toContain('k8s_cpu_usage');
+  });
 
   it('shows Disk I/O for the Master node type', () => {
     expect(tabsFor(universe('kubernetes', true), NodeType.MASTER)).toContain(MetricTypes.DISK_IO);

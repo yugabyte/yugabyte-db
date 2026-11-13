@@ -756,9 +756,13 @@
   max => 'MAX_STATISTICS_TARGET',
 },
 
+# YB: ConnMgr can't replay this safely since the check hook looks up the
+# name again. The access method might have been dropped between the SET and
+# the replay, making the replay fail. So, setting this GUC makes the
+# connection sticky.
 { name => 'default_table_access_method', type => 'string', context => 'PGC_USERSET', group => 'CLIENT_CONN_STATEMENT',
   short_desc => 'Sets the default table access method for new tables.',
-  flags => 'GUC_IS_NAME',
+  flags => 'GUC_YB_CONN_MGR_STICKY | GUC_IS_NAME',
   variable => 'default_table_access_method',
   boot_val => 'DEFAULT_TABLE_ACCESS_METHOD',
   check_hook => 'check_default_table_access_method',
@@ -773,8 +777,13 @@
   check_hook => 'check_default_tablespace',
 },
 
+# YB: ConnMgr can't replay this safely since the check hook looks up the
+# name again. The config might have been dropped between the SET and the
+# replay, making the replay fail. So, setting this GUC makes the connection
+# sticky.
 { name => 'default_text_search_config', type => 'string', context => 'PGC_USERSET', group => 'CLIENT_CONN_LOCALE',
   short_desc => 'Sets default text search configuration.',
+  flags => 'GUC_YB_CONN_MGR_STICKY',
   variable => 'TSCurrentConfig',
   boot_val => '"pg_catalog.simple"',
   check_hook => 'check_default_text_search_config',
@@ -970,9 +979,9 @@
 },
 
 { name => 'enable_object_locking_infra', type => 'bool', context => 'PGC_SIGHUP', group => 'LOCK_MANAGEMENT',
-  short_desc => 'Allow enabling object-level locking for table locks.',
+  short_desc => 'DEPRECATED: no-op.',
   flags => 'GUC_NOT_IN_SAMPLE',
-  variable => 'enable_object_locking_infra',
+  variable => 'yb_deprecated_enable_object_locking_infra',
   boot_val => 'true',
 },
 
@@ -2640,9 +2649,14 @@
   assign_hook => 'assign_search_path',
 },
 
+# YB: We don't report this variable to ConnMgr because:
+# - Setting this from startup packet is ignored by the check hook
+# - Setting this using SET makes the connection sticky
+# - Its show hook reports "unavailable", so ConnMgr can't replay it and
+#   replaying it would also be wrong as it would reset RNG state.
 { name => 'seed', type => 'real', context => 'PGC_USERSET', group => 'UNGROUPED',
   short_desc => 'Sets the seed for random-number generation.',
-  flags => 'GUC_NO_SHOW_ALL | GUC_NO_RESET | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE',
+  flags => 'GUC_YB_NO_CONN_MGR_REPORT | GUC_NO_SHOW_ALL | GUC_NO_RESET | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE',
   variable => 'phony_random_seed',
   boot_val => '0.0',
   min => '-1.0',
@@ -3851,10 +3865,12 @@
 },
 
 # YB: Internal GUCs written by YSQL Connection Manager on every logical
-# client attach.
+# client attach. PGC_BACKEND so that users can't SET them, since
+# pg_stat_activity and inet_client_addr() report them.
 # YB: Internal GUCs written by YSQL Connection Manager on every logical
-# client attach.
-{ name => 'yb_conn_mgr_client_hostname', type => 'string', context => 'PGC_USERSET', group => 'UNGROUPED',
+# client attach. PGC_BACKEND so that users can't SET them, since
+# pg_stat_activity and inet_client_addr() report them.
+{ name => 'yb_conn_mgr_client_hostname', type => 'string', context => 'PGC_BACKEND', group => 'UNGROUPED',
   short_desc => 'Hostname of the logical client connected through YSQL Connection Manager.',
   flags => 'GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL',
   variable => 'yb_conn_mgr_client_hostname',
@@ -3863,8 +3879,18 @@
   assign_hook => 'assign_yb_conn_mgr_client_hostname',
 },
 
+{ name => 'yb_conn_mgr_replication_origin_permanent_sticky', type => 'bool', context => 'PGC_SIGHUP', group => 'CUSTOM_OPTIONS',
+  short_desc => 'Keeps a Connection Manager connection that sets up a replication origin in its session sticky until disconnect instead of unsticking it once the origin is reset.',
+  long_desc => 'Set through the ysql_yb_conn_mgr_reversible_stickiness_exclusions gflag.',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'yb_conn_mgr_replication_origin_permanent_sticky',
+  boot_val => 'false',
+  assign_hook => 'yb_assign_conn_mgr_replication_origin_permanent_sticky',
+},
+
 # YB: Internal GUCs written by YSQL Connection Manager on every logical
-# client attach.
+# client attach. PGC_BACKEND so that users can't SET them, since
+# pg_stat_activity and inet_client_addr() report them.
 { name => 'yb_conn_mgr_selective_deallocate', type => 'bool', context => 'PGC_SIGHUP', group => 'CUSTOM_OPTIONS',
   short_desc => 'DEPRECATED: no-op.',
   flags => 'GUC_NOT_IN_SAMPLE',
@@ -4128,6 +4154,13 @@
   assign_hook => 'assign_yb_enable_cbo',
 },
 
+{ name => 'yb_enable_colocated_tables_with_tablespaces', type => 'bool', context => 'PGC_SIGHUP', group => 'CUSTOM_OPTIONS',
+  short_desc => 'Place a colocated table or index that is created with a tablespace in an implicit tablegroup of that tablespace.',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'yb_enable_colocated_tables_with_tablespaces',
+  boot_val => 'true',
+},
+
 { name => 'yb_enable_consistent_replication_from_hash_range', type => 'bool', context => 'PGC_SUSET', group => 'DEVELOPER_OPTIONS',
   short_desc => 'Enable replication slot consumption of consistent changes from a hash range of table.',
   flags => 'GUC_NOT_IN_SAMPLE',
@@ -4332,6 +4365,13 @@
   boot_val => 'true',
 },
 
+{ name => 'yb_enable_object_locking_infra', type => 'bool', context => 'PGC_SIGHUP', group => 'LOCK_MANAGEMENT',
+  short_desc => 'Allow enabling object-level locking for table locks.',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'yb_enable_object_locking_infra',
+  boot_val => 'true',
+},
+
 { name => 'yb_enable_optimizer_statistics', type => 'bool', context => 'PGC_USERSET', group => 'QUERY_TUNING_METHOD',
   short_desc => 'Enables use of the PostgreSQL selectivity estimation which utilizes table statistics collected with ANALYZE. When disabled, a simpler heuristics based selectivity estimation is used.  DEPRECATED: This settting is deprecated and will be removed in a future release.  Use "yb_enable_cbo" instead.',
   flags => 'GUC_EXPLAIN',
@@ -4384,7 +4424,7 @@
 
 { name => 'yb_enable_pg_stat_statements_docdb_metrics', type => 'bool', context => 'PGC_SUSET', group => 'STATS_MONITORING',
   short_desc => 'If true, enable DocDB metrics collection for pg_stat_statements.',
-  long_desc => 'This enables collection of the following metrics: docdb_seeks, docdb_nexts, docdb_prevs, docdb_read_time, docdb_write_time and docdb_obsolete_rows_scanned',
+  long_desc => 'This enables collection of the following metrics: docdb_seeks, docdb_nexts, docdb_prevs, docdb_read_time, docdb_write_time, docdb_obsolete_rows_scanned, docdb_bloom_filter_useful and docdb_bloom_filter_checked',
   flags => 'GUC_NOT_IN_SAMPLE',
   variable => 'yb_enable_pg_stat_statements_docdb_metrics',
   boot_val => 'true',
@@ -4496,7 +4536,7 @@
 
 { name => 'yb_enable_stale_catalog_prefetch', type => 'bool', context => 'PGC_SIGHUP', group => 'CLIENT_CONN_OTHER',
   short_desc => 'Let a connection start from a catalog version this node already has cached.',
-  long_desc => 'A connection beginning while the master leader reports that it is shedding catalog prefetches reads the catalog at a version this node already holds, rather than fetching the whole catalog from the leader, and applies the invalidation messages in between before it runs anything. Turning this off makes every connection fetch from the leader as before, and returns the read a backend makes ahead of authentication to the ordinary admission priority on the master.',
+  long_desc => 'A connection beginning while the master leader reports that it is shedding catalog prefetches, or while another connection is already filling the catalog for its database, reads the catalog at a version this node already holds, rather than fetching the whole catalog from the leader, and applies the invalidation messages in between before it runs anything. Turning this off makes every connection fetch from the leader as before, and returns the read a backend makes ahead of authentication to the ordinary admission priority on the master.',
   flags => 'GUC_NOT_IN_SAMPLE',
   variable => 'yb_enable_stale_catalog_prefetch',
   boot_val => 'true',
@@ -4802,7 +4842,7 @@
   short_desc => 'Sets the maximum number of streams tolerated for merge scan.',
   long_desc => 'For YB LSM index scans, when multiple merge-scan-eligible scalar array operations are involved, they are combined until their cartesian product\'s cardinality reaches this limit. Merge scan is per index scan, and the limit applies per index scan, not globally. Set to 0 to disable.',
   variable => 'yb_max_merge_scan_streams',
-  boot_val => '64',
+  boot_val => 'YB_DEFAULT_MERGE_SCAN_MAX_STREAMS',
   min => '0',
   max => '1024',
 },
@@ -5194,12 +5234,27 @@
 
 { name => 'yb_startup_free_memory_release_threshold', type => 'int', context => 'PGC_SIGHUP', group => 'RESOURCES_MEM',
   short_desc => 'When a backend finishes connection startup, return the free memory held by TCMalloc to the operating system if it is at least this amount.',
-  long_desc => '0 (the default) always releases. -1 disables the release.',
+  long_desc => '0 (the default) always releases. -1 disables the release. Has no effect while yb_tcmalloc_release_after_statement is on, which releases when the backend first becomes ready for queries.',
   flags => 'GUC_UNIT_KB',
   variable => 'yb_startup_free_memory_release_threshold',
   boot_val => '0',
   min => '-1',
   max => 'INT_MAX',
+},
+
+{ name => 'yb_tcmalloc_drain_cpu_caches_after_statement', type => 'bool', context => 'PGC_SUSET', group => 'RESOURCES_MEM',
+  short_desc => 'After each statement, return the objects cached in the TCMalloc per-CPU caches of the backend to the central free lists.',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'yb_tcmalloc_drain_cpu_caches_after_statement',
+  boot_val => 'false',
+},
+
+{ name => 'yb_tcmalloc_release_after_statement', type => 'bool', context => 'PGC_SUSET', group => 'RESOURCES_MEM',
+  short_desc => 'After each statement, return the free TCMalloc page heap memory of the backend to the operating system.',
+  long_desc => 'Free pages in partially used hugepages are kept only if yb_tcmalloc_skip_subrelease_short_interval or yb_tcmalloc_skip_subrelease_long_interval attributes them to recent demand.',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'yb_tcmalloc_release_after_statement',
+  boot_val => 'true',
 },
 
 { name => 'yb_tcmalloc_sample_period', type => 'int', context => 'PGC_SUSET', group => 'STATS_MONITORING',
@@ -5211,6 +5266,26 @@
   max => 'INT_MAX',
   assign_hook => 'assign_tcmalloc_sample_period',
   show_hook => 'show_tcmalloc_sample_period',
+},
+
+{ name => 'yb_tcmalloc_skip_subrelease_long_interval', type => 'int', context => 'PGC_SUSET', group => 'RESOURCES_MEM',
+  short_desc => 'How far back the release after each statement looks for the long-term demand trend when it decides which free pages in partially used hugepages to keep instead of returning them to the operating system.',
+  long_desc => '0 disables this lookback. Other TCMalloc releases keep TCMalloc\'s own lookback.',
+  flags => 'GUC_UNIT_MS | GUC_NOT_IN_SAMPLE',
+  variable => 'yb_tcmalloc_skip_subrelease_long_interval',
+  boot_val => '0',
+  min => '0',
+  max => 'INT_MAX',
+},
+
+{ name => 'yb_tcmalloc_skip_subrelease_short_interval', type => 'int', context => 'PGC_SUSET', group => 'RESOURCES_MEM',
+  short_desc => 'How far back the release after each statement looks for short-term peaks in demand when it decides which free pages in partially used hugepages to keep instead of returning them to the operating system.',
+  long_desc => '0 disables this lookback. Other TCMalloc releases keep TCMalloc\'s own lookback.',
+  flags => 'GUC_UNIT_MS | GUC_NOT_IN_SAMPLE',
+  variable => 'yb_tcmalloc_skip_subrelease_short_interval',
+  boot_val => '0',
+  min => '0',
+  max => 'INT_MAX',
 },
 
 { name => 'yb_test_analyze_dont_reset_mutations', type => 'bool', context => 'PGC_USERSET', group => 'DEVELOPER_OPTIONS',
@@ -5625,7 +5700,14 @@
   assign_hook => 'assign_yb_xcluster_consistency_level',
 },
 
-{ name => 'yb_ycm_internal_client_addr', type => 'string', context => 'PGC_USERSET', group => 'UNGROUPED',
+{ name => 'yb_xcluster_invalid_index_ddl_check', type => 'bool', context => 'PGC_SUSET', group => 'DEVELOPER_OPTIONS',
+  short_desc => 'On an xCluster automatic mode source, reject DDLs whose outcome depends on an invalid index.',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'yb_xcluster_invalid_index_ddl_check',
+  boot_val => 'true',
+},
+
+{ name => 'yb_ycm_internal_client_addr', type => 'string', context => 'PGC_BACKEND', group => 'UNGROUPED',
   short_desc => 'IP address of the logical client connected through YSQL Connection Manager.',
   flags => 'GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL',
   variable => 'yb_ycm_internal_client_addr',
@@ -5634,7 +5716,7 @@
   assign_hook => 'assign_yb_conn_mgr_client_addr',
 },
 
-{ name => 'yb_ycm_internal_client_port', type => 'int', context => 'PGC_USERSET', group => 'UNGROUPED',
+{ name => 'yb_ycm_internal_client_port', type => 'int', context => 'PGC_BACKEND', group => 'UNGROUPED',
   short_desc => 'TCP port of the logical client connected through YSQL Connection Manager.',
   flags => 'GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL',
   variable => 'yb_ycm_internal_client_port',

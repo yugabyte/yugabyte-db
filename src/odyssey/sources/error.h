@@ -32,6 +32,7 @@ static inline void od_error_init(od_error_t *error)
 	error->line = 0;
 }
 
+__attribute__((format(printf, 5, 0)))
 static inline void od_error_setv(od_error_t *error, const char *file,
 				 const char *function, int line, char *fmt,
 				 va_list args)
@@ -46,6 +47,7 @@ static inline void od_error_setv(od_error_t *error, const char *file,
 	error->error_len = len;
 }
 
+__attribute__((format(printf, 5, 6)))
 static inline int od_error_set(od_error_t *error, const char *file,
 			       const char *function, int line, char *fmt, ...)
 {

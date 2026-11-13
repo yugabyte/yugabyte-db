@@ -42,7 +42,7 @@ public class RequestLoggingFilter extends Filter {
       // But, correlation ID is tracked even if request ID is absent.
       // E.g background jobs are tracked with correlation ID.
       correlationId = optional.get();
-      MDC.put("request-id", correlationId);
+      MDC.put(LogUtil.REQUEST_ID, correlationId);
     } else {
       correlationId = UUID.randomUUID().toString();
     }

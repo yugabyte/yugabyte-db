@@ -124,16 +124,15 @@ uint64_t TableFileNameToNumber(const std::string& name) {
   return number;
 }
 
+uint32_t EffectivePathId(const std::vector<DbPath>& db_paths, uint32_t path_id) {
+  assert(!db_paths.empty());
+  return path_id < db_paths.size() ? path_id : static_cast<uint32_t>(db_paths.size() - 1);
+}
+
 std::string TableFileName(const std::vector<DbPath>& db_paths, uint64_t number,
                           uint32_t path_id) {
   assert(number > 0);
-  std::string path;
-  if (path_id >= db_paths.size()) {
-    path = db_paths.back().path;
-  } else {
-    path = db_paths[path_id].path;
-  }
-  return MakeTableFileName(path, number);
+  return MakeTableFileName(db_paths[EffectivePathId(db_paths, path_id)].path, number);
 }
 
 extern std::string TableBaseToDataFileName(const std::string& base_fname) {

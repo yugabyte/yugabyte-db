@@ -145,10 +145,12 @@ typedef enum pgssVersion
 	YB_PGSS_V1_10,
 	YB_V2_0_PGSS_V1_10,
 	YB_V2_1_PGSS_V1_10,
+	YB_V2_2_PGSS_V1_10,
 	PGSS_V1_11,
 	PGSS_V1_12,
 	PGSS_V1_13,
 	YB_PGSS_V1_13,
+	YB_V1_1_PGSS_V1_13,
 } pgssVersion;
 
 /*
@@ -211,6 +213,8 @@ typedef enum YbIntCounters
 	YB_INT_DOCDB_SEEKS,
 	YB_INT_DOCDB_NEXTS,
 	YB_INT_DOCDB_PREVS,
+	YB_INT_DOCDB_BLOOM_FILTER_USEFUL,
+	YB_INT_DOCDB_BLOOM_FILTER_CHECKED,
 
 	YB_INT_COUNTERS_LAST = YB_NUM_COUNTERS_INT
 } YbIntCounters;
@@ -523,7 +527,9 @@ PG_FUNCTION_INFO_V1(yb_pg_stat_statements_1_4);
 PG_FUNCTION_INFO_V1(yb_pg_stat_statements_1_10);
 PG_FUNCTION_INFO_V1(yb_2_0_pg_stat_statements_1_10);
 PG_FUNCTION_INFO_V1(yb_2_1_pg_stat_statements_1_10);
+PG_FUNCTION_INFO_V1(yb_2_2_pg_stat_statements_1_10);
 PG_FUNCTION_INFO_V1(yb_pg_stat_statements_1_13);
+PG_FUNCTION_INFO_V1(yb_1_1_pg_stat_statements_1_13);
 
 static void pgss_shmem_shutdown(int code, Datum arg);
 static void pgss_post_parse_analyze(ParseState *pstate, Query *query,
@@ -2367,6 +2373,10 @@ pgss_store(const char *query, int64 queryId,
 					yb_stats->read_metrics.gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_NEXT];
 				entry->counters.yb_counters.counters[YB_INT_DOCDB_PREVS] +=
 					yb_stats->read_metrics.gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_PREV];
+				entry->counters.yb_counters.counters[YB_INT_DOCDB_BLOOM_FILTER_USEFUL] +=
+					yb_stats->read_metrics.gauges[YB_STORAGE_GAUGE_REGULARDB_BLOOM_FILTER_USEFUL];
+				entry->counters.yb_counters.counters[YB_INT_DOCDB_BLOOM_FILTER_CHECKED] +=
+					yb_stats->read_metrics.gauges[YB_STORAGE_GAUGE_REGULARDB_BLOOM_FILTER_CHECKED];
 				entry->counters.yb_counters.counters_dbl[YB_DBL_DOCDB_READ_TIME_MS] +=
 					yb_stats->read_metrics.events[YB_STORAGE_EVENT_QL_READ_LATENCY].sum / 1000.0;
 			}
@@ -2381,6 +2391,10 @@ pgss_store(const char *query, int64 queryId,
 					yb_stats->write_metrics.gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_NEXT];
 				entry->counters.yb_counters.counters[YB_INT_DOCDB_PREVS] +=
 					yb_stats->write_metrics.gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_PREV];
+				entry->counters.yb_counters.counters[YB_INT_DOCDB_BLOOM_FILTER_USEFUL] +=
+					yb_stats->write_metrics.gauges[YB_STORAGE_GAUGE_REGULARDB_BLOOM_FILTER_USEFUL];
+				entry->counters.yb_counters.counters[YB_INT_DOCDB_BLOOM_FILTER_CHECKED] +=
+					yb_stats->write_metrics.gauges[YB_STORAGE_GAUGE_REGULARDB_BLOOM_FILTER_CHECKED];
 				entry->counters.yb_counters.counters_dbl[YB_DBL_DOCDB_WRITE_TIME_MS] +=
 					yb_stats->write_metrics.events[YB_STORAGE_EVENT_QL_WRITE_LATENCY].sum / 1000.0;
 			}
@@ -2467,8 +2481,10 @@ pg_stat_statements_reset(PG_FUNCTION_ARGS)
 #define YB_PG_STAT_STATEMENTS_COLS_V1_10	44
 #define YB_V2_0_PG_STAT_STATEMENTS_COLS_V1_10	55
 #define YB_V2_1_PG_STAT_STATEMENTS_COLS_V1_10	61
+#define YB_V2_2_PG_STAT_STATEMENTS_COLS_V1_10	63
 #define YB_PG_STAT_STATEMENTS_COLS_V1_13	72
-#define PG_STAT_STATEMENTS_COLS			72	/* maximum of above */
+#define YB_V1_1_PG_STAT_STATEMENTS_COLS_V1_13	74
+#define PG_STAT_STATEMENTS_COLS			74	/* maximum of above */
 
 
 /*
@@ -2517,6 +2533,26 @@ yb_2_1_pg_stat_statements_1_10(PG_FUNCTION_ARGS)
 	bool		showtext = PG_GETARG_BOOL(0);
 
 	pg_stat_statements_internal(fcinfo, YB_V2_1_PGSS_V1_10, showtext);
+
+	return (Datum) 0;
+}
+
+Datum
+yb_2_2_pg_stat_statements_1_10(PG_FUNCTION_ARGS)
+{
+	bool		showtext = PG_GETARG_BOOL(0);
+
+	pg_stat_statements_internal(fcinfo, YB_V2_2_PGSS_V1_10, showtext);
+
+	return (Datum) 0;
+}
+
+Datum
+yb_1_1_pg_stat_statements_1_13(PG_FUNCTION_ARGS)
+{
+	bool		showtext = PG_GETARG_BOOL(0);
+
+	pg_stat_statements_internal(fcinfo, YB_V1_1_PGSS_V1_13, showtext);
 
 	return (Datum) 0;
 }
@@ -2719,8 +2755,16 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 			if (api_version != YB_V2_1_PGSS_V1_10)
 				elog(ERROR, "incorrect number of output arguments");
 			break;
+		case YB_V2_2_PG_STAT_STATEMENTS_COLS_V1_10:
+			if (api_version != YB_V2_2_PGSS_V1_10)
+				elog(ERROR, "incorrect number of output arguments");
+			break;
 		case YB_PG_STAT_STATEMENTS_COLS_V1_13:
 			if (api_version != YB_PGSS_V1_13)
+				elog(ERROR, "incorrect number of output arguments");
+			break;
+		case YB_V1_1_PG_STAT_STATEMENTS_COLS_V1_13:
+			if (api_version != YB_V1_1_PGSS_V1_13)
 				elog(ERROR, "incorrect number of output arguments");
 			break;
 		default:
@@ -2989,7 +3033,8 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 
 		if (api_version == YB_PGSS_V1_4 || api_version == YB_PGSS_V1_10 ||
 			api_version == YB_V2_0_PGSS_V1_10 || api_version == YB_V2_1_PGSS_V1_10 ||
-			api_version == YB_PGSS_V1_13)
+			api_version == YB_V2_2_PGSS_V1_10 || api_version == YB_PGSS_V1_13 ||
+			api_version == YB_V1_1_PGSS_V1_13)
 		{
 			values[i++] = yb_get_histogram_jsonb_args(queryid,
 													  entry->key.userid,
@@ -3022,6 +3067,12 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 			values[i++] = Float8GetDatumFast(tmp.yb_counters.counters_dbl[YB_DBL_DOCDB_WRITE_TIME_MS]);
 		}
 
+		if (api_version == YB_V2_2_PGSS_V1_10 || api_version == YB_V1_1_PGSS_V1_13)
+		{
+			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_DOCDB_BLOOM_FILTER_USEFUL]);
+			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_DOCDB_BLOOM_FILTER_CHECKED]);
+		}
+
 		Assert(i == (api_version == PGSS_V1_0 ? PG_STAT_STATEMENTS_COLS_V1_0 :
 					 api_version == PGSS_V1_1 ? PG_STAT_STATEMENTS_COLS_V1_1 :
 					 api_version == PGSS_V1_2 ? PG_STAT_STATEMENTS_COLS_V1_2 :
@@ -3036,7 +3087,9 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 					 api_version == YB_PGSS_V1_10 ? YB_PG_STAT_STATEMENTS_COLS_V1_10 :
 					 api_version == YB_V2_0_PGSS_V1_10 ? YB_V2_0_PG_STAT_STATEMENTS_COLS_V1_10 :
 					 api_version == YB_V2_1_PGSS_V1_10 ? YB_V2_1_PG_STAT_STATEMENTS_COLS_V1_10 :
+					 api_version == YB_V2_2_PGSS_V1_10 ? YB_V2_2_PG_STAT_STATEMENTS_COLS_V1_10 :
 					 api_version == YB_PGSS_V1_13 ? YB_PG_STAT_STATEMENTS_COLS_V1_13 :
+					 api_version == YB_V1_1_PGSS_V1_13 ? YB_V1_1_PG_STAT_STATEMENTS_COLS_V1_13 :
 					 -1 /* fail if you forget to update this assert */ ));
 
 		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);

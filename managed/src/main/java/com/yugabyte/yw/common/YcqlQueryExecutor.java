@@ -19,7 +19,6 @@ import com.yugabyte.yw.forms.DatabaseSecurityFormData;
 import com.yugabyte.yw.forms.DatabaseUserFormData;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.models.Universe;
-import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -95,15 +94,12 @@ public class YcqlQueryExecutor {
 
   private CqlSession createCassandraConnection(
       UUID universeUUID, Boolean authEnabled, String username, String password) {
-    List<InetSocketAddress> addresses = Util.getNodesAsInet(universeUUID);
-    if (addresses.isEmpty()) {
-      throw new RuntimeException("Addresses list is empty for universe " + universeUUID);
-    }
-    CqlSessionBuilder builder = CqlSession.builder().addContactPoints(addresses);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    CqlSessionBuilder builder = YcqlSessionBuilder.forUniverse(universe);
     if (authEnabled) {
       builder.withAuthCredentials(username.trim(), password.trim());
     }
-    String certificate = Universe.getOrBadRequest(universeUUID).getCertificateClientToNode();
+    String certificate = universe.getCertificateClientToNode();
     if (certificate != null) {
       builder.withSslEngineFactory(SslHelper.getSSLOptions(certificate));
     }

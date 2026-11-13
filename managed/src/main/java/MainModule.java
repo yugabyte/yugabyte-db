@@ -6,8 +6,8 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.name.Names;
+import com.nimbusds.jose.util.DefaultResourceRetriever;
 import com.nimbusds.oauth2.sdk.ParseException;
-import com.nimbusds.oauth2.sdk.auth.ClientAuthenticationMethod;
 import com.nimbusds.oauth2.sdk.http.HTTPRequest;
 import com.nimbusds.openid.connect.sdk.op.OIDCProviderMetadata;
 import com.typesafe.config.Config;
@@ -61,6 +61,7 @@ import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.YBALifeCycle;
 import com.yugabyte.yw.common.YamlWrapper;
 import com.yugabyte.yw.common.YbaOidcCallbackUrlResolver;
+import com.yugabyte.yw.common.YbaOidcOpMetadataResolver;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
@@ -405,22 +406,17 @@ public class MainModule extends AbstractModule {
               DEFAULT_OIDC_SCOPE);
         }
         oidcConfiguration.setScope(scope);
-        setProviderMetadata(config, oidcConfiguration);
         oidcConfiguration.setMaxClockSkew(3600);
         oidcConfiguration.setResponseType("code");
-        OIDCProviderMetadata metadata = oidcConfiguration.findProviderMetadata();
-        // Retain existing behaviour.
-        if (metadata
-            .getTokenEndpointAuthMethods()
-            .contains(ClientAuthenticationMethod.CLIENT_SECRET_POST)) {
-          oidcConfiguration.setClientAuthenticationMethod(
-              ClientAuthenticationMethod.CLIENT_SECRET_POST);
-        } else if (metadata
-            .getTokenEndpointAuthMethods()
-            .contains(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)) {
-          oidcConfiguration.setClientAuthenticationMethod(
-              ClientAuthenticationMethod.CLIENT_SECRET_BASIC);
-        }
+        YbaOidcOpMetadataResolver metadataResolver =
+            createOpMetadataResolver(config, oidcConfiguration);
+        // init() builds the ID token validator, so its JWKS retriever must exist first.
+        oidcConfiguration.setResourceRetriever(
+            new DefaultResourceRetriever(
+                oidcConfiguration.getConnectTimeout(), oidcConfiguration.getReadTimeout()));
+        // Fetches the metadata now, so a bad OIDC config fails here as before.
+        metadataResolver.init();
+        oidcConfiguration.setOpMetadataResolver(metadataResolver);
         return new OidcClient(oidcConfiguration);
       } catch (Exception e) {
         log.error(
@@ -434,22 +430,24 @@ public class MainModule extends AbstractModule {
     }
   }
 
-  private void setProviderMetadata(Config config, OidcConfiguration oidcConfiguration) {
+  private YbaOidcOpMetadataResolver createOpMetadataResolver(
+      Config config, OidcConfiguration oidcConfiguration) throws ParseException {
     String providerMetadata = config.getString("yb.security.oidcProviderMetadata");
     if (providerMetadata.isEmpty()) {
       String discoveryURI = config.getString("yb.security.discoveryURI");
       if (discoveryURI.isEmpty()) {
         throw new PlatformServiceException(
             BAD_REQUEST, "OIDC setup error: Both discoveryURL and provider metadata are empty!");
-      } else {
-        oidcConfiguration.setDiscoveryURI(discoveryURI);
       }
-    } else {
-      try {
-        oidcConfiguration.setProviderMetadata(OIDCProviderMetadata.parse(providerMetadata));
-      } catch (ParseException e) {
-        log.error("Provider metadata invalid", e);
-      }
+      oidcConfiguration.setDiscoveryURI(discoveryURI);
+      return new YbaOidcOpMetadataResolver(oidcConfiguration, null);
+    }
+    try {
+      return new YbaOidcOpMetadataResolver(
+          oidcConfiguration, OIDCProviderMetadata.parse(providerMetadata));
+    } catch (ParseException e) {
+      log.error("Provider metadata invalid", e);
+      throw e;
     }
   }
 

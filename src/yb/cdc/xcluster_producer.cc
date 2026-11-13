@@ -148,6 +148,9 @@ Status PopulateWriteRecord(
 
       // Process intent records.
       record->set_time(msg.hybrid_time());
+      if (msg.write().has_external_hybrid_time()) {
+        record->set_external_hybrid_time(msg.write().external_hybrid_time());
+      }
       if (batch.has_transaction()) {
         auto* transaction_state = record->mutable_transaction_state();
         transaction_state->set_transaction_id(batch.transaction().transaction_id().ToBuffer());

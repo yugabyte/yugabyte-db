@@ -920,15 +920,21 @@ HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 DROP TABLEGROUP "default" CASCADE;
 NOTICE:  drop cascades to table tbl
 ERROR:  cannot drop an implicit tablegroup in a colocated database.
-DROP TABLE tbl;
-DROP TABLEGROUP "default";
-ERROR:  cannot drop an implicit tablegroup in a colocated database.
 -- Cannot set privileges of an implicit tablegroup
 CREATE ROLE test_role;
 GRANT CREATE ON TABLEGROUP "default" TO test_role;
 ERROR:  cannot set privileges of an implicit tablegroup in a colocated database
 REVOKE CREATE ON TABLEGROUP "default" FROM test_role;
 ERROR:  cannot set privileges of an implicit tablegroup in a colocated database
+-- An implicit tablegroup is dropped along with its last table
+DROP TABLE tbl;
+SELECT * FROM pg_yb_tablegroup;
+ oid | grpname | grpowner | grptablespace | grpacl | grpoptions 
+-----+---------+----------+---------------+--------+------------
+(0 rows)
+
+DROP TABLEGROUP "default";
+ERROR:  tablegroup "default" does not exist
 -- Any user can create tables/indexes in an implicit tablegroup
 GRANT CREATE ON SCHEMA public TO test_role;
 SET SESSION AUTHORIZATION test_role;

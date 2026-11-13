@@ -1823,6 +1823,7 @@ class YBBackup:
             for key, value in self.secondary_to_primary_ip_map.items():
                 if val == value:
                     return key
+            return val
 
         master_addresses = self.args.masters
         if self.args.local_yb_admin_binary:

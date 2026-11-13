@@ -1086,6 +1086,9 @@ public class NodeAgentClient {
    * re-open-quote).
    */
   private static String shellQuote(String s) {
+    if (s == null) {
+      return "''";
+    }
     return "'" + s.replace("'", "'\\''") + "'";
   }
 

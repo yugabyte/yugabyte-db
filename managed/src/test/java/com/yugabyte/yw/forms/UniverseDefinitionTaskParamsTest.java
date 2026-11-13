@@ -96,28 +96,31 @@ public class UniverseDefinitionTaskParamsTest extends FakeDBApplication {
     NodeDetails otherClusterEphemeral = node(UUID.randomUUID(), "i3.xlarge");
 
     // i3 on another cluster is ephemeral; it must not fail this cluster's GP2 storage check.
-    cluster.validate(false, false, false, Set.of(thisClusterNode, otherClusterEphemeral));
+    cluster.validate(false, false, false, false, Set.of(thisClusterNode, otherClusterEphemeral));
 
     NodeDetails thisClusterEphemeral = node(cluster.uuid, "i3.xlarge");
     PlatformServiceException storageEx =
         assertThrows(
             PlatformServiceException.class,
-            () -> cluster.validate(false, false, false, Set.of(thisClusterEphemeral)));
+            () -> cluster.validate(false, false, false, false, Set.of(thisClusterEphemeral)));
     assertTrue(storageEx.getMessage().contains("ephemeral storage"));
 
     UserIntent userIntent = new UserIntent();
     TestUtils.specificationProviderInitializer(userIntent, UUID.randomUUID())
         .setProviderType(Common.CloudType.gcp)
-        .setInstanceType("n1-standard-2");
+        .setInstanceType("n1-standard-2")
+        .setDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 1));
     Cluster multicloud = new Cluster(ClusterType.PRIMARY, userIntent);
     multicloud.uuid = UUID.randomUUID();
     multicloud.placementInfo = new PlacementInfo();
 
-    multicloud.validate(false, false, false, Set.of(node(UUID.randomUUID(), "m5.large")));
+    multicloud.validate(false, false, false, false, Set.of(node(UUID.randomUUID(), "m5.large")));
 
     assertThrows(
         NoSuchElementException.class,
-        () -> multicloud.validate(false, false, false, Set.of(node(multicloud.uuid, "m5.large"))));
+        () ->
+            multicloud.validate(
+                false, false, false, false, Set.of(node(multicloud.uuid, "m5.large"))));
   }
 
   @Test

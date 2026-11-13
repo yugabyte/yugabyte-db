@@ -2299,7 +2299,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
   /** UUID of the first table with specified name. **/
-  private String getTableUUID(String tableName)  throws Exception {
+  protected String getTableUUID(String tableName)  throws Exception {
     for (MasterDdlOuterClass.ListTablesResponsePB.TableInfo table :
         miniCluster.getClient().getTablesList().getTableInfoList()) {
       if (table.getName().equals(tableName)) {

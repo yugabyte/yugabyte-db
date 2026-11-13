@@ -58,6 +58,7 @@ The following additional CRDs support day 2 operations.
 | [PitrRestore](#restore-from-pitr) | Restore a universe to a point in time using a PITR configuration. |
 | [DrConfig](#configure-xcluster-dr) | Create and manage [xCluster DR](../../back-up-restore-universes/disaster-recovery/) configurations. |
 | [YBCertificate](#configure-tls-certificates) | Configure TLS certificates for encryption in transit (self-signed or cert-manager). |
+| [UniverseServerCertRotation](#rotate-server-certificates) | Rotate node and client certificates on a universe that already has encryption in transit (available in v2026.1.3 or later). |
 | [KMSConfig](#configure-encryption-at-rest) | Configure a KMS for encryption at rest (available in v2026.1.2 or later). |
 | [UniverseKeyRotation](#rotate-the-universe-key) | Rotate the universe key for an encryption-at-rest-enabled universe (available in v2026.1.2 or later). |
 
@@ -497,7 +498,11 @@ To change storage class or volume count on a running universe, use the `tserverV
 
 ### Create a universe with placement information
 
-You can specify `placementInfo` in the YBUniverse CRD to control regional and zonal placement of nodes. Use `defaultRegion` and `regions` with zone-level `numNodes` and optional `preferred` to define where nodes are placed. You need a Kubernetes provider (for example, one created via [YBProvider](#create-a-provider)) and set `spec.providerName` to its name.
+You can specify `placementInfo` in the YBUniverse CRD to control regional and zonal placement of nodes. Use `defaultRegion` and `regions` with zone-level `numNodes` and optional `leaderPreference` to define where nodes are placed. You need a Kubernetes provider (for example, one created via [YBProvider](#create-a-provider)) and set `spec.providerName` to its name.
+
+In v2026.1.3.0 and later, set `leaderPreference` on each zone to rank where tablet leaders are placed. `0` means the zone is not preferred. A lower positive value is a higher priority, and `1` is the most preferred. Zones can share a value. The values you set must be contiguous non-negative integers, with no gaps. If you omit it, the zone defaults to `1`. See [Preferred region](../../create-deployments/create-universes-overview/#preferred-region).
+
+The boolean `preferred` field is deprecated. It applies only when `leaderPreference` is not set.
 
 `placementInfo` also supports multi-region universes that span multiple Kubernetes clusters. Configure per-zone kubeconfigs in your YBProvider via [kubeConfigSecret](#using-a-custom-kubeconfig). Multi-cluster deployments require proper network connectivity between clusters; see [Configure Kubernetes multi-cluster environment](../../configure-yugabyte-platform/kubernetes/#configure-kubernetes-multi-cluster-environment) and [Networking for Kubernetes](../../prepare/networking-kubernetes/).
 
@@ -519,10 +524,10 @@ spec:
       zones:
       - code: us-west1-a
         numNodes: 2
-        preferred: true
+        leaderPreference: 1
       - code: us-west1-b
         numNodes: 1
-        preferred: true
+        leaderPreference: 1
   providerName: test-provider
   numNodes: 3
   replicationFactor: 3
@@ -1250,7 +1255,9 @@ spec:
 
 ### Configure encryption at rest
 
-Starting from YugabyteDB Anywhere v2026.1.2, use the KMSConfig CRD to create a [KMS configuration](../../security/create-kms-config/aws-kms/), then set `encryptionAtRest` on the YBUniverse CR to [enable encryption at rest](../../security/enable-encryption-at-rest/).
+Available in v2026.1.2.0 and later.
+
+Use the KMSConfig CRD to create a [KMS configuration](../../security/create-kms-config/aws-kms/), then set `encryptionAtRest` on the YBUniverse CR to [enable encryption at rest](../../security/enable-encryption-at-rest/).
 
 Supported KMS providers are AWS, GCP, Azure (`AZU`), OCI, CipherTrust (`CIPHERTRUST`), and HashiCorp Vault (`HASHICORP`). Put credentials in Kubernetes Secrets and reference those Secrets from the CR; don't put secrets in plaintext. `spec.name` and `spec.provider` are immutable after you create the CR.
 
@@ -1369,6 +1376,41 @@ spec:
     namespace: yb-operator # Optional: defaults to operator namespace
 ```
 
+### Edit encryption in transit
+
+Available in YugabyteDB Anywhere v2026.1.3.0 and later.
+
+You can change [encryption in transit](../../security/enable-encryption-in-transit/) on an existing universe by editing the YBUniverse resource:
+
+- Set `enableNodeToNodeEncrypt` and `enableClientToNodeEncrypt` to turn encryption in transit on or off.
+- Set `rootCA` to the name of a YBCertificate to use that certificate as the root CA. Changing `rootCA` while leaving the encryption flags unchanged rotates the root certificate.
+
+You can change the encryption flags while a root CA is already set. Keep `rootCA` set to that same certificate. The operator treats a flag change as a TLS toggle, and a toggle cannot replace the existing root CA. To switch to a different root CA, change `rootCA` in a separate edit that leaves the encryption flags unchanged. Combining both changes in one edit fails with `Cannot update root certificate, if already created`.
+
+Turning `enableNodeToNodeEncrypt` or `enableClientToNodeEncrypt` on or off restarts all nodes at the same time, resulting in downtime. The operator always performs either change as a non-rolling restart, regardless of the `upgradeOption` set on the universe.
+
+Rotating the root certificate by changing `rootCA` uses the universe's `upgradeOption`. When the node-to-node certificates have expired, set that option to `Non-Rolling` first. `Rolling` and `Non-Restart` are rejected, and the operator does not switch the rotation to non-rolling for you.
+
+If the task fails, the operator retries it.
+
+#### Rotate server certificates
+
+To reissue the node and client certificates under the current root CA, create a UniverseServerCertRotation resource. `universe` is the name of the YBUniverse in the same namespace.
+
+For certificates that cert-manager issues, renew the Certificate resources first (for example, with `cmctl renew`), then apply the rotation. The operator rolls the renewed certificates onto the nodes. To rotate the root CA itself, change `rootCA` on the YBUniverse instead.
+
+```yaml
+# rotate-server-certs.yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: UniverseServerCertRotation
+metadata:
+  name: rotate-server-certs-1
+spec:
+  universe: operator-universe-demo
+```
+
+`upgradeOption` (`Rolling`, `Non-Rolling`, or `Non-Restart`) controls how the reissued certificates are applied. When you omit it, the rotation uses the universe's `upgradeOption`. When the node-to-node certificates have expired, only `Non-Rolling` is accepted, unless node-to-node encryption is off and this rotation reissues only the client certificate.
+
 ### Support bundle
 
 Use the SupportBundle CRD to create a [support bundle](../../troubleshoot/universe-issues/#use-support-bundles):
@@ -1403,8 +1445,6 @@ spec:
 ```
 
 ## Import universe
-
-Available in YugabyteDB Anywhere v2025.2.2 and later.
 
 Use the operator import universe feature to import existing YugabyteDB Anywhere Kubernetes universes that are managed via Helm charts to be managed by the Kubernetes Operator. After import, change storage class or volume count using the Operator CRD fields described in [Full move for Kubernetes universes](../../scale-deployments/kubernetes-full-move/#operator-universes).
 
@@ -1486,8 +1526,5 @@ Importing a universe to the operator creates or adopts the following in the targ
 
 ## Limitations
 
-- Currently, YugabyteDB Kubernetes Operator does not support the following features:
-  - Software upgrade rollback
-  - [Encryption at rest](../../security/enable-encryption-at-rest/) (prior to v2026.1.2)
-- [Encryption in transit](../../security/enable-encryption-in-transit/) configuration cannot be edited after it is initially configured.
+- Currently, YugabyteDB Kubernetes Operator does not support software upgrade rollback.
 - `replicationFactor` cannot be changed after the universe is created. To increase replication factor on a Kubernetes universe that YugabyteDB Anywhere manages directly, refer to [Scale universes](../../scale-deployments/edit-universe/#horizontal-scaling).

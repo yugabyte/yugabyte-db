@@ -89,6 +89,7 @@ import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -407,6 +408,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getImageBundleUtil()).thenReturn(imageBundleUtil);
     when(mockBaseTaskDependencies.getRestoreManagerYb()).thenReturn(restoreManagerYb);
     when(mockBaseTaskDependencies.getAutoFlagUtil()).thenReturn(mockAutoFlagUtil);
+    when(mockBaseTaskDependencies.getAuditService()).thenReturn(mock(AuditService.class));
     releaseMetadata =
         ReleaseManager.ReleaseMetadata.create("1.0.0.0-b1").withFilePath("/fakedb-x86_64.tar.gz");
     ybcReleaseMetadata =

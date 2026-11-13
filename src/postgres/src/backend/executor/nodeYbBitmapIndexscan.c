@@ -69,12 +69,15 @@ yb_init_bitmap_index_scandesc(YbBitmapIndexScanState *node)
 	 * primary keys on colocated indexes don't have a secondary index in their
 	 * request
 	 */
+	YbResetScanPushdownCxt(node->biss_pushdown_cxt);
 	if (is_colocated && is_primary)
 		scandesc->yb_rel_pushdown =
-			YbInstantiatePushdownExprs(&plan->yb_idx_pushdown, estate);
+			YbInstantiateScanPushdownExprs(&node->biss_pushdown_cxt, estate,
+										   &plan->yb_idx_pushdown);
 	else
 		scandesc->yb_idx_pushdown =
-			YbInstantiatePushdownExprs(&plan->yb_idx_pushdown, estate);
+			YbInstantiateScanPushdownExprs(&node->biss_pushdown_cxt, estate,
+										   &plan->yb_idx_pushdown);
 }
 
 /* ----------------------------------------------------------------
@@ -230,15 +233,6 @@ ExecEndYbBitmapIndexScan(YbBitmapIndexScanState *node)
 	 */
 	indexRelationDesc = node->biss_RelationDesc;
 	indexScanDesc = node->biss_ScanDesc;
-
-	if (IsYugaByteEnabled())
-	{
-		if (indexScanDesc && indexScanDesc->yb_idx_pushdown)
-		{
-			pfree(indexScanDesc->yb_idx_pushdown);
-			indexScanDesc->yb_idx_pushdown = NULL;
-		}
-	}
 
 	/*
 	 * close the index relation (no-op if we didn't open it)
