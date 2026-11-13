@@ -127,19 +127,23 @@ RESET yb_enable_expression_pushdown;
 --
 -- Gap column with NULLs first
 --
--- The index sorts c2 with NULLs first, and the decoy's c2 is NULL.
+-- The index sorts c2 with NULLs first.  Each scan direction has its own decoy,
+-- (1, 1, 1, NULL, 9) for the forward scan and (6, 1, 1, 2, -1) for the backward
+-- scan, where c2 sorts with NULLs last.
 CREATE TABLE gap_null_tbl (k int, s int, c1 int, c2 int, c3 int,
     PRIMARY KEY (k ASC));
 CREATE INDEX NONCONCURRENTLY gap_null_tbl_idx ON gap_null_tbl (s ASC, c1 ASC, c2 ASC NULLS FIRST, c3 ASC);
 INSERT INTO gap_null_tbl VALUES
     (1, 1, 1, NULL, 9), (2, 1, 1, 1, 0), (3, 2, 1, 1, 4), (4, 1, 5, 5, 1),
-    (5, 2, 5, 5, 2);
+    (5, 2, 5, 5, 2), (6, 1, 1, 2, -1), (7, 1, 1, 1, 6);
 ANALYZE gap_null_tbl;
 
 SET yb_enable_expression_pushdown = off;
 \set Q1 '/*+IndexOnlyScan(gap_null_tbl gap_null_tbl_idx) Set(yb_max_merge_scan_streams 0)*/'
 \set Q2 '/*+IndexOnlyScan(gap_null_tbl gap_null_tbl_idx) Set(yb_max_merge_scan_streams 64)*/'
 \set query ':P :Q SELECT c1, c3, s, c2 FROM gap_null_tbl WHERE s IN (1, 2) AND c1 = c2 ORDER BY c1, c3;'
+\i :run_query
+\set query ':P :Q SELECT c1, c3, s, c2 FROM gap_null_tbl WHERE s IN (1, 2) AND c1 = c2 ORDER BY c1 DESC, c3 DESC;'
 \i :run_query
 RESET yb_enable_expression_pushdown;
 
@@ -227,6 +231,25 @@ SET yb_enable_expression_pushdown = off;
 \i :run_query
 RESET yb_enable_expression_pushdown;
 DROP TABLE gap_expr_tbl;
+
+-- A gap column that the partial index predicate implies, as an expression
+-- column of a colocated index.  For an embedded index scan, an expression
+-- column is not available for sort, and the gap column (c2 % 2) comes before
+-- the only merge sort column, so the cut leaves the scan without a merge.
+-- TODO(#37784): the merge should leave out (c2 % 2), which the predicate
+-- implies, and merge on c3.
+\set Q1 '/*+IndexScan(gap_pred_tbl gap_pred_tbl_idx) Set(yb_max_merge_scan_streams 0)*/'
+\set Q2 '/*+IndexScan(gap_pred_tbl gap_pred_tbl_idx) Set(yb_max_merge_scan_streams 64)*/'
+\set query ':P :Q SELECT c3, s, c2 FROM gap_pred_tbl WHERE s IN (1, 2) AND c2 % 2 = 0 ORDER BY c3;'
+CREATE TABLE gap_pred_tbl (k int, s int, c2 int, c3 int, PRIMARY KEY (k ASC));
+CREATE INDEX NONCONCURRENTLY gap_pred_tbl_idx ON gap_pred_tbl (s ASC, (c2 % 2) ASC, c3 ASC)
+    WHERE c2 % 2 = 0;
+INSERT INTO gap_pred_tbl VALUES
+    (1, 1, 0, 9), (2, 1, 2, 0), (3, 2, 0, 4), (4, 1, 4, 1), (5, 2, 2, 2),
+    (6, 1, 1, 3);
+ANALYZE gap_pred_tbl;
+\i :run_query
+DROP TABLE gap_pred_tbl;
 
 -- The same with the gap column c2::text, a relabeled varchar column, which is
 -- also an expression column of the index.
