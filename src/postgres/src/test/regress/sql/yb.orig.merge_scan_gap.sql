@@ -152,20 +152,15 @@ RESET yb_enable_expression_pushdown;
 --
 -- Expression gap column
 --
--- c1 = c2 + 0 makes the index expression c2 + 0 redundant, and the merge sorts
--- on the expression's values in the index rows.
-\set Q1 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_idx) Set(yb_max_merge_scan_streams 0)*/'
-\set Q2 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_idx) Set(yb_max_merge_scan_streams 64)*/'
-\set query ':P :Q SELECT c1, c3, s, c2 FROM gap_expr_tbl WHERE s IN (1, 2) AND c1 = c2 + 0 ORDER BY c1, c3;'
-CREATE TABLE gap_expr_tbl (k int, s int, c1 int, c2 int, c3 int,
-    PRIMARY KEY (k ASC));
-CREATE INDEX NONCONCURRENTLY gap_expr_tbl_idx ON gap_expr_tbl (s ASC, c1 ASC, (c2 + 0) ASC, c3 ASC);
-INSERT INTO gap_expr_tbl VALUES
-    (1, 1, 1, 0, 9), (2, 1, 1, 1, 0), (3, 2, 1, 1, 4), (4, 1, 5, 5, 1),
-    (5, 2, 5, 5, 2);
-ANALYZE gap_expr_tbl;
+-- On gap_idx_tbl again, an index with the expression c2 + 0.  c1 = c2 + 0 makes
+-- the index expression redundant, and the merge sorts on the expression's
+-- values in the index rows.
+\set Q1 '/*+IndexScan(gap_idx_tbl gap_idx_tbl_expr_idx) Set(yb_max_merge_scan_streams 0)*/'
+\set Q2 '/*+IndexScan(gap_idx_tbl gap_idx_tbl_expr_idx) Set(yb_max_merge_scan_streams 64)*/'
+\set query ':P :Q SELECT c1, c3, s, c2 FROM gap_idx_tbl WHERE s IN (1, 2) AND c1 = c2 + 0 ORDER BY c1, c3;'
+CREATE INDEX NONCONCURRENTLY gap_idx_tbl_expr_idx ON gap_idx_tbl (s ASC, c1 ASC, (c2 + 0) ASC, c3 ASC);
+ANALYZE gap_idx_tbl;
 \i :run_query
-DROP TABLE gap_expr_tbl;
 
 RESET enable_sort;
 
@@ -232,29 +227,24 @@ ANALYZE gap_expr_tbl;
 SET yb_enable_expression_pushdown = off;
 \i :run_query
 RESET yb_enable_expression_pushdown;
-DROP TABLE gap_expr_tbl;
 
--- A gap column that the partial index predicate implies, as an expression
--- column of a colocated index.  For an embedded index scan, an expression
--- column is not available for sort, and the gap column (c2 % 2) comes before
--- the only merge sort column, so the cut leaves the scan without a merge.
+-- On the same table, a gap column that a partial index predicate implies, as an
+-- expression column.  For an embedded index scan, an expression column is not
+-- available for sort, and the gap column (c2 % 2) comes before the only merge
+-- sort column, so the cut leaves the scan without a merge.
 -- TODO(#37784): the merge should leave out (c2 % 2), which the predicate
 -- implies, and merge on c3.
-\set Q1 '/*+IndexScan(gap_pred_tbl gap_pred_tbl_idx) Set(yb_max_merge_scan_streams 0)*/'
-\set Q2 '/*+IndexScan(gap_pred_tbl gap_pred_tbl_idx) Set(yb_max_merge_scan_streams 64)*/'
-\set query ':P :Q SELECT c3, s, c2 FROM gap_pred_tbl WHERE s IN (1, 2) AND c2 % 2 = 0 ORDER BY c3;'
-CREATE TABLE gap_pred_tbl (k int, s int, c2 int, c3 int, PRIMARY KEY (k ASC));
-CREATE INDEX NONCONCURRENTLY gap_pred_tbl_idx ON gap_pred_tbl (s ASC, (c2 % 2) ASC, c3 ASC)
-    WHERE c2 % 2 = 0;
-INSERT INTO gap_pred_tbl VALUES
-    (1, 1, 0, 9), (2, 1, 2, 0), (3, 2, 0, 4), (4, 1, 4, 1), (5, 2, 2, 2),
-    (6, 1, 1, 3);
-ANALYZE gap_pred_tbl;
+\set Q1 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 0)*/'
+\set Q2 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 64)*/'
+\set query ':P :Q SELECT c3, s, c2 FROM gap_expr_tbl WHERE s IN (1, 2) AND c2 % 2 = 1 ORDER BY c3;'
+CREATE INDEX NONCONCURRENTLY gap_expr_tbl_pred_idx ON gap_expr_tbl (s ASC, (c2 % 2) ASC, c3 ASC)
+    WHERE c2 % 2 = 1;
+ANALYZE gap_expr_tbl;
 \i :run_query
-DROP TABLE gap_pred_tbl;
+DROP TABLE gap_expr_tbl;
 
--- The same with the gap column c2::text, a relabeled varchar column, which is
--- also an expression column of the index.
+-- The colocated expression gap column again, now c2::text, a relabeled varchar
+-- column, which is also an expression column of the index.
 \set Q1 '/*+IndexScan(gap_relabel_tbl gap_relabel_tbl_idx) Set(yb_max_merge_scan_streams 0)*/'
 \set Q2 '/*+IndexScan(gap_relabel_tbl gap_relabel_tbl_idx) Set(yb_max_merge_scan_streams 64)*/'
 \set query ':P :Q SELECT c1, c3, s, c2 FROM gap_relabel_tbl WHERE s IN (1, 2) AND c1 = c2 ORDER BY c1, c3;'
