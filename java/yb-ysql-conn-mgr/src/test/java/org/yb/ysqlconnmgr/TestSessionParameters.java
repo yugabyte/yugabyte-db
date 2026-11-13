@@ -1259,7 +1259,7 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
   // run on a Connection Manager backend. The 'fluctuating' strategy keeps that backend in use
   // after the reload.
   @Test
-  public void testPgConfSettingsDontMakeConnectionSticky() throws Exception {
+  public void testSighupSettingsDontMakeConnectionSticky() throws Exception {
     Map<String, String> tserverFlags = new HashMap<>(SINGLE_BACKEND_FLAGS);
     tserverFlags.put("ysql_conn_mgr_alter_guc_adoption_strategy", "fluctuating");
     restartClusterWithAdditionalFlags(Collections.emptyMap(), tserverFlags);
