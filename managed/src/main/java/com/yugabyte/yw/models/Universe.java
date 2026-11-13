@@ -186,8 +186,12 @@ public class Universe extends Model {
   @Transient private UniverseDefinitionTaskParams universeDetails;
 
   public void setUniverseDetails(UniverseDefinitionTaskParams details) {
-    universeDetailsJson = Json.stringify(Json.toJson(details));
+    universeDetailsJson = toStoredDetailsJson(details);
     universeDetails = details;
+  }
+
+  private static String toStoredDetailsJson(UniverseDefinitionTaskParams details) {
+    return Json.stringify(RedactingService.filterSecretFieldsForStorage(Json.toJson(details)));
   }
 
   public void resetVersion() {
@@ -271,10 +275,7 @@ public class Universe extends Model {
     universe.setCustomerId(customerId);
     // Create the default universe details. This should be updated after creation.
     universe.universeDetails = taskParams;
-    universe.universeDetailsJson =
-        Json.stringify(
-            RedactingService.filterSecretFields(
-                Json.toJson(universe.universeDetails), RedactionTarget.APIS));
+    universe.universeDetailsJson = toStoredDetailsJson(universe.universeDetails);
     universe.swamperConfigWritten = true;
     LOG.info(
         "Created db entry for universe {} [{}]", universe.getName(), universe.getUniverseUUID());
@@ -1059,10 +1060,7 @@ public class Universe extends Model {
    */
   public void save(boolean incrementVersion) {
     // Update the universe details json.
-    this.universeDetailsJson =
-        Json.stringify(
-            RedactingService.filterSecretFields(
-                Json.toJson(universeDetails), RedactionTarget.APIS));
+    this.universeDetailsJson = toStoredDetailsJson(universeDetails);
     this.setVersion(incrementVersion ? this.getVersion() + 1 : this.getVersion());
     super.save();
   }

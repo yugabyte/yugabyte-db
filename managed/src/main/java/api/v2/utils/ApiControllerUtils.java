@@ -12,12 +12,15 @@ package api.v2.utils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.util.concurrent.ExecutionException;
@@ -107,11 +110,12 @@ public class ApiControllerUtils {
     return auditService;
   }
 
-  /** Pretty print a json serializable object */
+  /** Pretty print a json serializable object for logging, with secrets redacted. */
   protected String prettyPrint(Object obj) {
     try {
       ObjectNode objNode = CommonUtils.maskConfig((ObjectNode) Json.toJson(obj));
-      return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(objNode);
+      JsonNode redacted = RedactingService.filterSecretFields(objNode, RedactionTarget.LOGS);
+      return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(redacted);
     } catch (JsonProcessingException e) {
       log.error("Failed at pretty printing object", e);
       throw new PlatformServiceException(
