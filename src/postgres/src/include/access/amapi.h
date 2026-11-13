@@ -57,7 +57,11 @@ typedef enum IndexAMProperty
 	AMPROP_CAN_UNIQUE,
 	AMPROP_CAN_MULTI_COL,
 	AMPROP_CAN_EXCLUDE,
-	AMPROP_CAN_INCLUDE
+	AMPROP_CAN_INCLUDE,
+	/* YB properties */
+	AMPROP_YB_IS_FOR_YB_RELATION,	/* is AM for YB relations? */
+	AMPROP_YB_IS_COPARTITIONED,		/* is AM for YB copartitioned index? */
+	AMPROP_YB_CAN_UPDATE_TUPLE_INPLACE	/* does AM support in-place update? */
 } IndexAMProperty;
 
 /*
