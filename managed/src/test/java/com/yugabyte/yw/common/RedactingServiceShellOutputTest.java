@@ -36,4 +36,13 @@ public class RedactingServiceShellOutputTest extends FakeDBApplication {
         RedactingService.redactShellProcessOutput(
             "https://example.com/c?sv=1&sig=dummySig\nnext line\n", RedactionTarget.QUERY_PARAMS));
   }
+
+  @Test
+  public void testShellOutputKeepsTheLinesAfterAnUnclosedValue() {
+    assertEquals(
+        "run --ycql_ldap_bind_passwd, " + SECRET_REPLACEMENT + "\nerror: next line\n",
+        RedactingService.redactShellProcessOutput(
+            "run --ycql_ldap_bind_passwd dummySecret\nerror: next line\n",
+            RedactionTarget.QUERY_PARAMS));
+  }
 }

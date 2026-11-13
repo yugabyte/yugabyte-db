@@ -1131,8 +1131,9 @@ public class RedactingService {
    * Redacts the YAML form field: value, as in Kubernetes overrides and Helm --debug output. A value
    * that is not quoted runs to the end of its line plus any following lines indented past the key,
    * which covers block scalars, values on the next line and plain scalars folded over several
-   * lines. In serialized JSON the line breaks are escaped, so such a value would run to the end of
-   * the input; redactSensitiveGFlagFields redacts the parsed string values instead.
+   * lines. In serialized JSON the line breaks are escaped, so such a value runs to the end of the
+   * input. redactSensitiveGFlagFields redacts the parsed string values instead; only its fallback,
+   * after the tree walk fails, scans the serialized JSON and redacts too much.
    */
   private static String redactYamlKeyValue(String input, String field, String replacement) {
     String needle = field + ":";
@@ -1207,7 +1208,12 @@ public class RedactingService {
     return i;
   }
 
-  /** End of the line at start and of any following lines indented more than column. */
+  /**
+   * End of the line at start and of any following lines indented more than column, skipping blank
+   * lines, which a block scalar can hold. HbaConfRedactor.redactFreeText's fold rule differs on
+   * purpose: ldapbindpasswd sits inside a value, so it has no key column to measure from, and the
+   * HBA value Helm folds has no blank lines.
+   */
   private static int yamlIndentedLinesEnd(String s, int start, int column) {
     int n = s.length();
     int end = yamlLineEnd(s, start);
@@ -1572,8 +1578,15 @@ public class RedactingService {
         default:
           break;
       }
-      output = redactSensitiveInfoInString(output);
-      return output;
+      Set<String> names = sensitiveNames(null, null);
+      // YAML values and the ldapbindpasswd text Helm folds continue on the lines below their key,
+      // so these passes see the whole output. They run first: redactFreeText only follows a fold
+      // from a line it redacts itself.
+      output = HbaConfRedactor.redactFreeText(output);
+      for (String name : names) {
+        output = redactYamlKeyValue(output, name, SECRET_REPLACEMENT);
+      }
+      return redactEachLine(output, line -> redactSensitiveInfoInString(line, names));
     } catch (Exception e) {
       log.error("Error redacting shell process output", e);
       return input;
@@ -1581,8 +1594,9 @@ public class RedactingService {
   }
 
   /**
-   * redactrootCAKeys checks only its first match, and both its regex and redactQueryParams' run
-   * past line ends, so they take one line at a time. The YAML pass needs the whole output.
+   * For passes that must not run past a line end: redactrootCAKeys checks only its first match, and
+   * its regex, redactQueryParams and several string-scan passes run to the end of their input when
+   * a value isn't closed.
    */
   private static String redactEachLine(String input, UnaryOperator<String> redact) {
     return Arrays.stream(input.split("\n", -1)).map(redact).collect(Collectors.joining("\n"));
