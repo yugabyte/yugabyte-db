@@ -6975,7 +6975,9 @@ class PgLibPqTestTxnDdlCommitRetry : public PgLibPqTest {
 // the table's CHECK constraints.  yb_test_fail_next_ddl = 5 (kConflict) and 6
 // (kDeadlock) raise the error at the start of YBCommitTransactionContainingDDL;
 // 7 (kConflict) and 8 (kDeadlock) raise it in place of an error from the commit
-// RPC, after the DDL transaction state has been cleared.
+// RPC, after the DDL transaction state has been cleared.  Each mode runs the
+// ALTER both on its own and inside a DO block: a retry would re-run the whole
+// DO block, DDL included, with the same stale caches.
 TEST_F(PgLibPqTestTxnDdlCommitRetry, AddCheckConstraintCommitRetry) {
   struct FailMode {
     int mode;
@@ -6987,32 +6989,37 @@ TEST_F(PgLibPqTestTxnDdlCommitRetry, AddCheckConstraintCommitRetry) {
            {6, "failed DDL operation with deadlock as requested"},
            {7, "failed DDL commit with conflict as requested"},
            {8, "failed DDL commit with deadlock as requested"}}) {
-    SCOPED_TRACE(Format("yb_test_fail_next_ddl = $0", mode));
-    const auto table = Format("t$0", mode);
-    const auto alter = Format("ALTER TABLE $0 ADD CONSTRAINT c CHECK (a > 0) NOT VALID", table);
-    const auto check_query = Format(
-        "SELECT relchecks, (SELECT count(*) FROM pg_constraint "
-        "WHERE conrelid = '$0'::regclass AND contype = 'c') "
-        "FROM pg_class WHERE oid = '$0'::regclass", table);
-    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (a INT)", table));
+    for (const bool in_do_block : {false, true}) {
+      SCOPED_TRACE(Format("yb_test_fail_next_ddl = $0, in DO block: $1", mode, in_do_block));
+      const auto table = Format("t$0$1", mode, in_do_block ? "_do" : "");
+      const auto alter =
+          Format("ALTER TABLE $0 ADD CONSTRAINT c CHECK (a > 0) NOT VALID", table);
+      const auto stmt = in_do_block ? "DO $$ BEGIN " + alter + "; END $$" : alter;
+      const auto check_query = Format(
+          "SELECT relchecks, (SELECT count(*) FROM pg_constraint "
+          "WHERE conrelid = '$0'::regclass AND contype = 'c') "
+          "FROM pg_class WHERE oid = '$0'::regclass", table);
+      ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (a INT)", table));
 
-    // The failed commit must not be retried internally: the PG-side transaction
-    // is not aborted before such a retry, and the re-run used to see the failed
-    // attempt's constraint in the backend's caches and set relchecks to 2.
-    ASSERT_OK(conn.ExecuteFormat("SET yb_test_fail_next_ddl = $0", mode));
-    ASSERT_NOK_STR_CONTAINS(conn.Execute(alter), error);
-    auto [relchecks, check_rows] =
-        ASSERT_RESULT((conn.FetchRow<int16_t, int64_t>(check_query)));
-    ASSERT_EQ(relchecks, 0);
-    ASSERT_EQ(check_rows, 0);
+      // The failed commit must not be retried internally: the PG-side
+      // transaction is not aborted before such a retry, and the re-run used to
+      // see the failed attempt's constraint in the backend's caches and set
+      // relchecks to 2.
+      ASSERT_OK(conn.ExecuteFormat("SET yb_test_fail_next_ddl = $0", mode));
+      ASSERT_NOK_STR_CONTAINS(conn.Execute(stmt), error);
+      auto [relchecks, check_rows] =
+          ASSERT_RESULT((conn.FetchRow<int16_t, int64_t>(check_query)));
+      ASSERT_EQ(relchecks, 0);
+      ASSERT_EQ(check_rows, 0);
 
-    // Running the statement again works and leaves the catalog consistent.
-    ASSERT_OK(conn.Execute(alter));
-    std::tie(relchecks, check_rows) =
-        ASSERT_RESULT((conn.FetchRow<int16_t, int64_t>(check_query)));
-    ASSERT_EQ(relchecks, 1);
-    ASSERT_EQ(check_rows, 1);
-    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1)", table));
+      // Running the statement again works and leaves the catalog consistent.
+      ASSERT_OK(conn.Execute(stmt));
+      std::tie(relchecks, check_rows) =
+          ASSERT_RESULT((conn.FetchRow<int16_t, int64_t>(check_query)));
+      ASSERT_EQ(relchecks, 1);
+      ASSERT_EQ(check_rows, 1);
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1)", table));
+    }
   }
 }
 

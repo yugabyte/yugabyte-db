@@ -5680,6 +5680,9 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 	 * Check whether the transaction contains a DDL, or is committing one, as
 	 * well: the DDL transaction state is cleared before the commit RPC, so
 	 * YBGetDdlUseRegularTransactionBlock() alone misses an error from it.
+	 * This also refuses the retry of a statement that is not itself a DDL but
+	 * ran one, such as a DO block or a function call: its retry would re-run
+	 * the whole statement, DDL included, with the same stale caches.
 	 */
 	if (IsYBReadCommitted() &&
 		YBIsDdlTransactionBlockEnabled() &&
@@ -5689,7 +5692,8 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		   YBIsDdlTxnBlockCommitInProgress()))))
 	{
 		const char *retry_err = ("query layer retry isn't possible because "
-								 "retrying DDL statements are not supported in "
+								 "retrying a DDL statement, or a statement "
+								 "that ran DDL, is not supported in "
 								 "READ COMMITTED isolation level when "
 								 "transactional DDL is enabled. If object "
 								 "locking is enabled, kConflict and "
