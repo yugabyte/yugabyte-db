@@ -153,6 +153,8 @@ DEFAULT_BOOT_VOLUME_SIZE_GB = 50
 MIN_BOOT_VOLUME_SIZE_GB = 50
 BOOT_VOLUME_REPLACEMENT_TIMEOUT_SECONDS = 600
 OCI_WORK_REQUEST_TERMINAL_STATES = ("SUCCEEDED", "FAILED", "CANCELED")
+# Instance tags replace_boot_volume copies to the boot volume it keeps.
+NODE_TAG_KEYS = ("universe-uuid", "node-uuid")
 
 AARCH64_ARCHITECTURES = ("aarch64", "arm64")
 
@@ -1045,8 +1047,8 @@ class OciCloudAdmin:
         The current boot volume is kept, carrying the node's universe-uuid and node-uuid tags, so
         it can still be recovered if the node fails later in the upgrade, and
         delete_detached_boot_volumes can find it afterwards.
-        Unless force is set, a boot volume already created from image_id is left as is, so a
-        repeated call changes nothing.
+        Unless force is set, a boot volume already created from image_id is not replaced again,
+        so a repeated call only finishes what an earlier one left undone.
         The instance ends in the state it was in before the call.
         """
         instance = self.get_instance(instance_id)
@@ -1062,14 +1064,22 @@ class OciCloudAdmin:
                 self._wait_for_work_request(work_request_client, pending.id)
 
         boot_volume = self._get_attached_boot_volume(instance)
+        # The VPUs/GB to keep. Once the volume is from image_id, an earlier call replaced it and
+        # may have failed before setting them, so only the volume it kept still has them.
+        vpus_per_gb = boot_volume.vpus_per_gb
+        if boot_volume.image_id == image_id:
+            kept_boot_volume = self._get_kept_boot_volume(instance, boot_volume.id, image_id)
+            if kept_boot_volume:
+                vpus_per_gb = kept_boot_volume.vpus_per_gb
         if not force and boot_volume.image_id == image_id:
             logging.info("[app] Boot volume {} of instance {} is already from image {}".format(
                 boot_volume.id, instance_id, image_id))
+            self._set_boot_volume_vpus(boot_volume, vpus_per_gb)
             return
 
         tags = dict(boot_volume.freeform_tags or {})
         instance_tags = instance.freeform_tags or {}
-        for key in ("universe-uuid", "node-uuid"):
+        for key in NODE_TAG_KEYS:
             if key in instance_tags:
                 tags[key] = instance_tags[key]
         # Boot volumes YBA launches already carry these, and OCI rejects an update that changes
@@ -1104,17 +1114,36 @@ class OciCloudAdmin:
                 "Boot volume replacement of instance {} ended {}: {}".format(
                     instance_id, work_request.status, "; ".join(e.message for e in errors)))
 
-        # The replacement can't set the performance, so OCI creates the new volume at its default
-        # of 10 VPUs/GB. Put back the old volume's, which may have been changed in OCI.
-        new_boot_volume = self._get_attached_boot_volume(instance)
-        if (boot_volume.vpus_per_gb is not None
-                and new_boot_volume.vpus_per_gb != boot_volume.vpus_per_gb):
-            logging.info("[app] Setting boot volume {} of instance {} to {} VPUs/GB".format(
-                new_boot_volume.id, instance_id, boot_volume.vpus_per_gb))
-            self.blockstorage_client.update_boot_volume(
-                new_boot_volume.id, UpdateBootVolumeDetails(vpus_per_gb=boot_volume.vpus_per_gb))
-            self._wait_for_resource_state(
-                self.blockstorage_client.get_boot_volume, new_boot_volume.id, "AVAILABLE")
+        # The replacement can't set VPUs/GB, so OCI creates the new volume at its default of 10.
+        # Put back the old volume's, which may have been changed in OCI.
+        self._set_boot_volume_vpus(self._get_attached_boot_volume(instance), vpus_per_gb)
+
+    def _set_boot_volume_vpus(self, boot_volume, vpus_per_gb):
+        if vpus_per_gb is None or boot_volume.vpus_per_gb == vpus_per_gb:
+            return
+        logging.info("[app] Setting boot volume {} to {} VPUs/GB".format(
+            boot_volume.id, vpus_per_gb))
+        self.blockstorage_client.update_boot_volume(
+            boot_volume.id, UpdateBootVolumeDetails(vpus_per_gb=vpus_per_gb))
+        self._wait_for_resource_state(
+            self.blockstorage_client.get_boot_volume, boot_volume.id, "AVAILABLE")
+
+    def _get_kept_boot_volume(self, instance, attached_boot_volume_id, image_id):
+        """The newest boot volume replace_boot_volume kept for the node, from another image."""
+        instance_tags = instance.freeform_tags or {}
+        tags = {key: instance_tags[key] for key in NODE_TAG_KEYS if key in instance_tags}
+        if not tags:
+            return None
+        boot_volumes = self._list_all(
+            self.blockstorage_client.list_boot_volumes,
+            availability_domain=instance.availability_domain,
+            compartment_id=instance.compartment_id)
+        kept = [
+            v for v in boot_volumes
+            if v.id != attached_boot_volume_id and v.lifecycle_state == "AVAILABLE"
+            and v.image_id != image_id
+            and all((v.freeform_tags or {}).get(k) == tags[k] for k in tags)]
+        return max(kept, key=lambda v: v.time_created, default=None)
 
     def _get_attached_boot_volume(self, instance):
         attachments = self._list_all(

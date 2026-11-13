@@ -105,6 +105,45 @@ class TestReplaceBootVolume(TestCase):
         self.assertEqual("replacement", volume_id)
         self.assertEqual(20, details.vpus_per_gb)
 
+    def replaced_earlier(self, *kept_boot_volumes):
+        """The attached volume is from IMAGE_ID at 10 VPUs/GB, the earlier ones were kept."""
+        current = self.blockstorage.get_boot_volume.return_value.data
+        current.image_id = IMAGE_ID
+        current.lifecycle_state = "AVAILABLE"
+        self.blockstorage.list_boot_volumes.return_value = [current] + [
+            SimpleNamespace(
+                id=volume_id, image_id=image_id, vpus_per_gb=vpus_per_gb,
+                time_created=time_created, lifecycle_state="AVAILABLE", freeform_tags=tags)
+            for volume_id, image_id, vpus_per_gb, time_created, tags in kept_boot_volumes]
+
+    def test_retry_restores_vpus_from_kept_volume(self):
+        # An earlier call replaced the volume but failed before setting its VPUs.
+        self.replaced_earlier(
+            ("old", "ocid1.image.oc1..current", 20, 1, NODE_TAGS),
+            ("other-node", "ocid1.image.oc1..current", 30, 2,
+             dict(NODE_TAGS, **{"node-uuid": "node-2"})))
+
+        self.admin.replace_boot_volume(INSTANCE_ID, IMAGE_ID)
+
+        self.compute.update_instance.assert_not_called()
+        self.blockstorage.update_boot_volume.assert_called_once()
+        (volume_id, details), _ = self.blockstorage.update_boot_volume.call_args
+        self.assertEqual("current", volume_id)
+        self.assertEqual(20, details.vpus_per_gb)
+
+    def test_forced_retry_restores_vpus_of_volume_from_another_image(self):
+        # An earlier forced call also kept the volume it had built from IMAGE_ID.
+        self.replaced_earlier(
+            ("old", "ocid1.image.oc1..current", 20, 1, NODE_TAGS),
+            ("first-replacement", IMAGE_ID, 10, 2, NODE_TAGS))
+
+        self.admin.replace_boot_volume(INSTANCE_ID, IMAGE_ID, force=True)
+
+        self.compute.update_instance.assert_called_once()
+        (volume_id, details), _ = self.blockstorage.update_boot_volume.call_args
+        self.assertEqual("current", volume_id)
+        self.assertEqual(20, details.vpus_per_gb)
+
     def test_raises_boot_volume_below_minimum_to_minimum(self):
         self.blockstorage.get_boot_volume.return_value.data.size_in_gbs = 47
 
