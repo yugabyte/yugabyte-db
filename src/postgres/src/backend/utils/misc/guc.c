@@ -7365,6 +7365,13 @@ static struct config_string ConfigureNamesString[] =
 		{"default_tablespace", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Sets the default tablespace to create tables and indexes in."),
 			gettext_noop("An empty string selects the database's default tablespace."),
+			/*
+			 * YB: ConnMgr can't replay this safely since the check hook looks
+			 * up the name again. The tablespace might have been dropped
+			 * between the SET and the replay, making the replay fail. So,
+			 * setting this GUC makes the connection sticky.
+			 */
+			GUC_YB_CONN_MGR_STICKY |
 			GUC_IS_NAME
 		},
 		&default_tablespace,
@@ -7376,6 +7383,13 @@ static struct config_string ConfigureNamesString[] =
 		{"temp_tablespaces", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Sets the tablespace(s) to use for temporary tables and sort files."),
 			NULL,
+			/*
+			 * YB: The check hook resolves the names to tablespace OIDs, so a
+			 * ConnMgr replay after a DROP or RENAME TABLESPACE would resolve
+			 * them differently. So, setting this GUC makes the connection
+			 * sticky.
+			 */
+			GUC_YB_CONN_MGR_STICKY |
 			GUC_LIST_INPUT | GUC_LIST_QUOTE
 		},
 		&temp_tablespaces,
@@ -8656,7 +8670,12 @@ static struct config_enum ConfigureNamesEnum[] =
 						 " (c) deferred: Defers read point. Higher latency but read-after-commit-visibility"
 						 " guarantee is maintained."
 			),
-			0
+			/*
+			 * ConnMgr can't replay this since the check hook rejects it
+			 * inside a transaction block, so setting it makes the connection
+			 * sticky.
+			 */
+			GUC_YB_CONN_MGR_STICKY
 		},
 		&yb_read_after_commit_visibility,
 		YB_STRICT_READ_AFTER_COMMIT_VISIBILITY,
@@ -18277,17 +18296,6 @@ yb_check_no_txn(int *newVal, void **extra, GucSource source)
 	{
 		GUC_check_errdetail("Cannot be set within a txn block.");
 		return false;
-	}
-
-	/*
-	 * If YSQL Connection Manager is enabled, make the connection sticky
-	 * for any variables that can only be set outside the context of an
-	 * explicit transaction block.
-	 */
-	if (YbIsClientYsqlConnMgr())
-	{
-		elog(LOG, "Making connection sticky for non-transactional GUC variable");
-		yb_ysql_conn_mgr_sticky_guc = true;
 	}
 	return true;
 }

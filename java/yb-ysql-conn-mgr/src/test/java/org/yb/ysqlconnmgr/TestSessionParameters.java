@@ -1210,6 +1210,62 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
         "DROP ACCESS METHOD IF EXISTS cm_am_set");
   }
 
+  // A value from ALTER ROLE/DATABASE ... SET is applied by every backend of the pool at startup,
+  // so it must not make the connection sticky, even for a GUC whose SET does. Each case uses a new
+  // role or database, so its pool starts a backend after the ALTER. With a single backend per
+  // pool, a second client is served only while the first one is not sticky.
+  @Test
+  public void testRoleAndDatabaseSettingsDontMakeConnectionSticky() throws Exception {
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
+    String[][] settings = {
+        {"default_tablespace", "pg_default"},
+        {"temp_tablespaces", "pg_default"},
+        {"yb_read_after_commit_visibility", "relaxed"},
+    };
+    try (Connection pg = connectToPostgres();
+         Statement pgStmt = pg.createStatement()) {
+      pgStmt.execute("CREATE ROLE cm_settings_role LOGIN");
+      pgStmt.execute("CREATE DATABASE cm_settings_db");
+      ConnectionBuilder roleBuilder = getConnectionBuilder()
+          .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+          .withUser("cm_settings_role");
+      ConnectionBuilder dbBuilder = getConnectionBuilder()
+          .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+          .withDatabase("cm_settings_db");
+      try {
+        checkSettingsDontMakeConnectionSticky(pgStmt, "ROLE cm_settings_role", roleBuilder,
+            settings);
+        checkSettingsDontMakeConnectionSticky(pgStmt, "DATABASE cm_settings_db", dbBuilder,
+            settings);
+      } finally {
+        pgStmt.execute("DROP DATABASE IF EXISTS cm_settings_db");
+        pgStmt.execute("DROP ROLE IF EXISTS cm_settings_role");
+      }
+    }
+  }
+
+  private void checkSettingsDontMakeConnectionSticky(Statement pgStmt, String target,
+      ConnectionBuilder builder, String[][] settings) throws Exception {
+    for (String[] setting : settings) {
+      pgStmt.execute("ALTER " + target + " SET " + setting[0] + " = '" + setting[1] + "'");
+    }
+    QueuedClient queued;
+    try (Connection conn = builder.connect();
+         Statement stmt = conn.createStatement()) {
+      for (String[] setting : settings) {
+        ResultSet rs = stmt.executeQuery("SHOW " + setting[0]);
+        assertTrue(rs.next());
+        assertEquals(setting[1], rs.getString(1));
+      }
+      startQueuedClient(builder).assertServed();
+
+      stmt.execute("SET yb_read_after_commit_visibility = 'deferred'");
+      queued = startQueuedClient(builder);
+      queued.assertBlocked();
+    }
+    queued.assertServed();
+  }
+
   // The client sets guc to value, then another session changes the object it names. With a single
   // backend, a second client is queued behind the client. If the client were not sticky, the
   // second client would take the backend, and the client's next query would replay value on it
