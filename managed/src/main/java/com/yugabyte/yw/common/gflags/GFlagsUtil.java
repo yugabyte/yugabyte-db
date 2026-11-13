@@ -1516,10 +1516,11 @@ public class GFlagsUtil {
   }
 
   /**
-   * A new universe has no stored value to put back in place of REDACTED, so a gflag copied from an
-   * API response would otherwise be applied and stored as the literal token. Checks the same gflags
-   * as mergeSensitiveGFlags: the version's sensitive gflags, which must not contain REDACTED, and
-   * ysql_hba_conf_csv, which must not contain it anywhere. Other gflags may contain the word.
+   * A new cluster, in a new universe or added to one, has no stored value to put back in place of
+   * REDACTED, so a gflag copied from an API response would otherwise be applied and stored as the
+   * literal token. Checks the same gflags as mergeSensitiveGFlags: the version's sensitive gflags,
+   * which must not contain REDACTED, and ysql_hba_conf_csv, which must not contain it anywhere.
+   * Other gflags may contain the word.
    */
   public static void checkNoRedactedGFlagsOnCreate(
       UniverseDefinitionTaskParams.UserIntent userIntent,
@@ -1542,7 +1543,7 @@ public class GFlagsUtil {
           throw new PlatformServiceException(
               BAD_REQUEST,
               String.format(
-                  "GFlag %s in %s contains %s: a new universe has no stored value to restore it"
+                  "GFlag %s in %s contains %s: a new cluster has no stored value to restore it"
                       + " from. Submit the actual value.",
                   gflag.getKey(), gflags.getKey(), RedactingService.SECRET_REPLACEMENT));
         }
