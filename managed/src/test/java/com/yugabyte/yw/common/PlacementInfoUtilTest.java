@@ -2082,6 +2082,12 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     // Some additional tests for raised problems.
     "Case 21, 1, r1-az1-1-1-0;r1-az2-3-0-1, 1",
     "Case 22, 5, r1-az1-3-0-3;r2-az2-3-0-2, 0",
+
+    // rf=9, 6 zones, 5 regions, 13 nodes (3 in az1, 2 in each other zone).
+    // After one master per zone, 3 remain and 7 nodes are free (share 3/7).
+    // az1 rounds to 1; the other zones round to 0. Both masters lost to
+    // rounding still have to be placed: 3-2-1-1-1-1.
+    "Case 23, 9, r1-az1-3-0-3;r2-az2-2-0-2;r2-az3-2-0-1;r3-az4-2-0-1;r4-az5-2-0-1;r5-az6-2-0-1, 0",
   })
   // @formatter:on
   public void testSelectMasters_Extended(String name, int rf, String zones, int removedCount) {
@@ -2198,6 +2204,11 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     "Case 4a, 3, r1-az1-2-2-0-1;r1-az2-2-0-1-1;r1-az3-1-0-2-1, 1",
     // Case 5a. Master without tserver.
     "Case 5a, 3, r1-az1-2-0-1-1;r1-az2-0-1-0-1;r1-az3-1-0-1-1, 0",
+    // Fewer tservers than masters. Spare onprem nodes in the zone cover the gap.
+    "Case 6a, 5, r1-az1-1-0-3-3;r1-az2-1-0-1-1;r1-az3-1-0-1-1, 0",
+    "Case 7a, 3, r1-az1-1-1-2-3, 0",
+    // Zone with no tserver: extra masters are cloned from the existing master.
+    "Case 8a, 3, r1-az1-1-0-1-1;r1-az2-0-1-1-2, 0",
   })
   // @formatter:on
   public void testSelectMastersForDedicatedOnprem(

@@ -75,6 +75,7 @@ class BoundedRocksDbIterator final : public rocksdb::Iterator {
 
  private:
   const rocksdb::KeyValueEntry& FilterEntry(const rocksdb::KeyValueEntry& entry) const;
+  Slice ClampToLowerKeyBound(Slice key) const;
 
   std::unique_ptr<rocksdb::Iterator> iterator_;
   const KeyBounds* key_bounds_ = nullptr;

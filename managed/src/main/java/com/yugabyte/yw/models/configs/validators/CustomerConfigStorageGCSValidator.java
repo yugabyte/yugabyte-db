@@ -118,7 +118,7 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
             permissions,
             gcsData.immutableStorage);
       } catch (StorageException exp) {
-        throwBeanConfigDataValidatorError(fieldName, exp.getMessage());
+        throwBeanConfigDataValidatorError(fieldName, exp.getMessage(), exp);
       }
     }
   }

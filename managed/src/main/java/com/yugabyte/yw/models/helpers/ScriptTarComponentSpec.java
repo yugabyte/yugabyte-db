@@ -15,7 +15,13 @@ public interface ScriptTarComponentSpec {
 
   String getRemoteTarPath();
 
+  void setRemoteTarPath(String remoteTarPath);
+
+  void setParams(List<String> params);
+
   String getLinuxUser();
 
   long getTimeoutSecs();
+
+  void setTimeoutSecs(long timeoutSecs);
 }

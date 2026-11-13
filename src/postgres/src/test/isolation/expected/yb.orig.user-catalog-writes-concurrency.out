@@ -1,0 +1,153 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s1_begin_rr s2_begin_rr s1_increment_a s2_increment_a s1_commit s2_commit s2_select_relpages
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_increment_a: UPDATE pg_class SET relpages = relpages + 1 WHERE relname = 'a';
+step s2_increment_a: UPDATE pg_class SET relpages = relpages + 1 WHERE relname = 'a';
+ERROR:  could not serialize access due to concurrent update (yb_max_query_layer_retries set to 0 are exhausted)
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+step s2_select_relpages: SELECT relname, relpages FROM pg_class WHERE relname IN ('a', 'b') ORDER BY relname;
+relname|relpages
+-------+--------
+a      |       1
+b      |       0
+(2 rows)
+
+
+starting permutation: s1_begin_sr s2_begin_sr s1_increment_a s2_increment_a s1_commit s2_commit s2_select_relpages
+step s1_begin_sr: BEGIN ISOLATION LEVEL SERIALIZABLE;
+step s2_begin_sr: BEGIN ISOLATION LEVEL SERIALIZABLE;
+step s1_increment_a: UPDATE pg_class SET relpages = relpages + 1 WHERE relname = 'a';
+step s2_increment_a: UPDATE pg_class SET relpages = relpages + 1 WHERE relname = 'a';
+ERROR:  could not serialize access due to concurrent update (yb_max_query_layer_retries set to 0 are exhausted)
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+step s2_select_relpages: SELECT relname, relpages FROM pg_class WHERE relname IN ('a', 'b') ORDER BY relname;
+relname|relpages
+-------+--------
+a      |       1
+b      |       0
+(2 rows)
+
+
+starting permutation: s1_begin_rr s2_begin_rr s1_read_a s2_read_a s1_increment_a s1_commit s2_increment_a s2_commit s2_select_relpages
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_read_a: SELECT relpages FROM pg_class WHERE relname = 'a';
+relpages
+--------
+       0
+(1 row)
+
+step s2_read_a: SELECT relpages FROM pg_class WHERE relname = 'a';
+relpages
+--------
+       0
+(1 row)
+
+step s1_increment_a: UPDATE pg_class SET relpages = relpages + 1 WHERE relname = 'a';
+step s1_commit: COMMIT;
+step s2_increment_a: UPDATE pg_class SET relpages = relpages + 1 WHERE relname = 'a';
+step s2_commit: COMMIT;
+step s2_select_relpages: SELECT relname, relpages FROM pg_class WHERE relname IN ('a', 'b') ORDER BY relname;
+relname|relpages
+-------+--------
+a      |       2
+b      |       0
+(2 rows)
+
+
+starting permutation: s1_begin_sr s2_begin_sr s1_read_a s2_read_a s1_increment_a s1_commit s2_increment_a s2_commit s2_select_relpages
+step s1_begin_sr: BEGIN ISOLATION LEVEL SERIALIZABLE;
+step s2_begin_sr: BEGIN ISOLATION LEVEL SERIALIZABLE;
+step s1_read_a: SELECT relpages FROM pg_class WHERE relname = 'a';
+relpages
+--------
+       0
+(1 row)
+
+step s2_read_a: SELECT relpages FROM pg_class WHERE relname = 'a';
+relpages
+--------
+       0
+(1 row)
+
+step s1_increment_a: UPDATE pg_class SET relpages = relpages + 1 WHERE relname = 'a';
+step s1_commit: COMMIT;
+step s2_increment_a: UPDATE pg_class SET relpages = relpages + 1 WHERE relname = 'a';
+step s2_commit: COMMIT;
+step s2_select_relpages: SELECT relname, relpages FROM pg_class WHERE relname IN ('a', 'b') ORDER BY relname;
+relname|relpages
+-------+--------
+a      |       2
+b      |       0
+(2 rows)
+
+
+starting permutation: s1_begin_rr s2_begin_rr s1_read_sum s2_read_sum s1_set_a_if_sum_zero s2_set_b_if_sum_zero s1_commit s2_commit s2_select_relpages
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_read_sum: SELECT sum(relpages) FROM pg_class WHERE relname IN ('a', 'b');
+sum
+---
+  0
+(1 row)
+
+step s2_read_sum: SELECT sum(relpages) FROM pg_class WHERE relname IN ('a', 'b');
+sum
+---
+  0
+(1 row)
+
+step s1_set_a_if_sum_zero: 
+  UPDATE pg_class SET relpages = 1 WHERE relname = 'a' AND
+    (SELECT sum(relpages) FROM pg_class WHERE relname IN ('a', 'b')) = 0;
+
+step s2_set_b_if_sum_zero: 
+  UPDATE pg_class SET relpages = 1 WHERE relname = 'b' AND
+    (SELECT sum(relpages) FROM pg_class WHERE relname IN ('a', 'b')) = 0;
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+step s2_select_relpages: SELECT relname, relpages FROM pg_class WHERE relname IN ('a', 'b') ORDER BY relname;
+relname|relpages
+-------+--------
+a      |       1
+b      |       1
+(2 rows)
+
+
+starting permutation: s1_begin_sr s2_begin_sr s1_read_sum s2_read_sum s1_set_a_if_sum_zero s2_set_b_if_sum_zero s1_commit s2_commit s2_select_relpages
+step s1_begin_sr: BEGIN ISOLATION LEVEL SERIALIZABLE;
+step s2_begin_sr: BEGIN ISOLATION LEVEL SERIALIZABLE;
+step s1_read_sum: SELECT sum(relpages) FROM pg_class WHERE relname IN ('a', 'b');
+sum
+---
+  0
+(1 row)
+
+step s2_read_sum: SELECT sum(relpages) FROM pg_class WHERE relname IN ('a', 'b');
+sum
+---
+  0
+(1 row)
+
+step s1_set_a_if_sum_zero: 
+  UPDATE pg_class SET relpages = 1 WHERE relname = 'a' AND
+    (SELECT sum(relpages) FROM pg_class WHERE relname IN ('a', 'b')) = 0;
+
+step s2_set_b_if_sum_zero: 
+  UPDATE pg_class SET relpages = 1 WHERE relname = 'b' AND
+    (SELECT sum(relpages) FROM pg_class WHERE relname IN ('a', 'b')) = 0;
+
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+step s2_select_relpages: SELECT relname, relpages FROM pg_class WHERE relname IN ('a', 'b') ORDER BY relname;
+relname|relpages
+-------+--------
+a      |       1
+b      |       1
+(2 rows)
+

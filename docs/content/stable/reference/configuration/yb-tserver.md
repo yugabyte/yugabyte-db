@@ -551,18 +551,17 @@ When set to true, tables and indexes are hash-partitioned based on the first col
 
 {{% tags/wrap %}}
 
-{{<tags/feature/restart-needed>}}
-Default: `0` (disabled)
+Default: `1024`
 {{% /tags/wrap %}}
 
-Set the level of batching for [INSERT ... ON CONFLICT](../../../api/ysql/the-sql-language/statements/dml_insert/#on-conflict-clause). Set to 0 to disable batching. Batching is always disabled for the following:
+Maximum batch size for arbiter index reads during [INSERT ... ON CONFLICT](../../../api/ysql/the-sql-language/statements/dml_insert/#on-conflict-clause). Set to `0` to disable batching. Only a superuser can change this setting.
+
+Batching is always disabled for the following:
 
 - temporary relations
 - foreign relations
 - system relations
 - relations that have row triggers (excluding those created internally for FOREIGN KEY constraints)
-
-The higher the number, the more batching is done. 1024 is recommended.
 
 ##### yb_read_from_followers
 
@@ -572,7 +571,7 @@ The higher the number, the more batching is done. 1024 is recommended.
 Default: `false`
 {{% /tags/wrap %}}
 
-Controls whether or not reading from followers is enabled. For more information, refer to [Follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/).
+Controls whether or not reading from followers is enabled. For more information, refer to [Follower reads](../../../additional-features/follower-reads/).
 
 ##### yb_follower_read_staleness_ms
 
@@ -582,7 +581,11 @@ Controls whether or not reading from followers is enabled. For more information,
 Default: `30000` (30 seconds)
 {{% /tags/wrap %}}
 
-Sets the maximum allowable staleness. Although the default is recommended, you can set the staleness to a shorter value. The tradeoff is the shorter the staleness, the more likely some reads may be redirected to the leader if the follower isn't sufficiently caught up. You shouldn't set `yb_follower_read_staleness_ms` to less than 2x the `raft_heartbeat_interval_ms` (which by default is 500 ms).
+The staleness of YSQL follower reads, in milliseconds. A follower read runs at the current time minus this value. Although the default is recommended, you can set a shorter value. A shorter value makes it more likely that a follower has not caught up to the read time. Such a read is retried at the leader, or waits for the follower to catch up, depending on [--ysql_follower_reads_avoid_waiting_for_safe_time](#ysql-follower-reads-avoid-waiting-for-safe-time).
+
+YugabyteDB rejects a value less than twice [--max_clock_skew_usec](#max-clock-skew-usec) (500 ms by default, so the minimum is 1000 ms). Also keep it at least twice [raft_heartbeat_interval_ms](#raft-heartbeat-interval-ms) (500 ms by default).
+
+For more information, see [Follower reads](../../../additional-features/follower-reads/#when-a-follower-can-serve-the-read).
 
 ##### default_transaction_read_only
 
@@ -592,7 +595,7 @@ Sets the maximum allowable staleness. Although the default is recommended, you c
 Default: `false`
 {{% /tags/wrap %}}
 
-Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/#read-only-transaction).
+Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [follower reads](../../../additional-features/follower-reads/#read-only-transaction).
 
 ##### default_transaction_isolation
 
@@ -767,6 +770,17 @@ Default: `0`
 {{% /tags/wrap %}}
 
 Deprecated in v2025.2.3.0. Use [yb_max_merge_scan_streams](#yb-max-merge-scan-streams) instead.
+
+##### yb_refresh_matview_in_place
+
+{{% tags/wrap %}}
+
+Default: `false`
+{{% /tags/wrap %}}
+
+When `true`, [REFRESH MATERIALIZED VIEW](../../../api/ysql/the-sql-language/statements/ddl_refresh_matview/) deletes all rows from the [materialized view](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) and inserts the new query result into the same table. When `false`, refresh builds a new table and swaps it in.
+
+During a YSQL major upgrade, refresh always runs in place, regardless of this setting.
 
 ## Networking
 
@@ -1060,6 +1074,20 @@ Default: `9223372036854775807`
 
 When the server restarts from a previous crash, if the tablet's last WAL file size is less than or equal to this threshold value, the last WAL file will be reused. Otherwise, WAL will allocate a new file at bootstrap. To disable WAL reuse, set the value to `-1`.
 
+### Disk space
+
+##### --reject_writes_min_disk_space_pct
+
+{{% tags/wrap %}}
+
+Default: `5`
+{{% /tags/wrap %}}
+
+Available in v2026.1.3.0 and later.
+
+Minimum free disk space, as a percentage of the total disk capacity, that must be available on the WAL or data directory. When free space falls below this percentage and [reject_writes_when_disk_full](../all-flags-yb-tserver/#reject-writes-when-disk-full) is enabled, the YB-TServer rejects writes to the tablet and aborts remote bootstrap transfers to that node.
+
+Because the threshold is a percentage, it scales automatically with disk size. If both this flag and [reject_writes_min_disk_space_mb](../all-flags-yb-tserver/#reject-writes-min-disk-space-mb) yield a threshold, the larger of the two is used. Set this flag to `0` to disable the percentage-based threshold.
 
 ### Sharding flags
 
@@ -1226,6 +1254,15 @@ After a DDL statement that includes updating DocDB system catalog completes, YB-
 
 When the flag `ysql_ddl_transaction_wait_for_ddl_verification` is enabled, YSQL waits for any YB-Master background operations to finish before returning control to the user.
 {{< /note >}}
+
+##### --ysql_ddl_rpc_timeout_sec
+
+{{% tags/wrap %}}
+
+Default: `180`
+{{% /tags/wrap %}}
+
+Timeout, in seconds, for YSQL DDL operations. This flag can be changed at runtime, but the flag is read by the PostgreSQL process, so a change takes effect only after PostgreSQL restarts.
 
 ### Change data capture (CDC) flags
 
@@ -1416,6 +1453,24 @@ Default: `900`
 
 Interval in seconds at which the table list in the publication will be refreshed. Applies in versions earlier than v2026.1, or on v2026.1 and later when [ysql_yb_enable_implicit_dynamic_tables_logical_replication](#ysql-yb-enable-implicit-dynamic-tables-logical-replication) is set to `false`.
 
+##### --cdcsdk_update_restart_time_when_nothing_to_stream
+
+{{% tags/wrap %}}
+
+Default: `true`
+{{% /tags/wrap %}}
+
+When set to `true`, the restart time of a replication slot moves forward while there is nothing to stream, provided the client has acknowledged everything it received. The restart time advances to the commit time of the most recent commit or safepoint record processed by the virtual WAL, at the interval set by [cdcsdk_update_restart_time_interval_secs](#cdcsdk-update-restart-time-interval-secs). This keeps an idle slot from holding back WAL, intent, and history retention.
+
+##### --cdcsdk_update_restart_time_interval_secs
+
+{{% tags/wrap %}}
+
+Default: `60`
+{{% /tags/wrap %}}
+
+Interval in seconds at which the virtual WAL checks whether the restart time of an idle replication slot can be moved forward. Applies when [cdcsdk_update_restart_time_when_nothing_to_stream](#cdcsdk-update-restart-time-when-nothing-to-stream) is `true`.
+
 ##### --cdc_stream_records_threshold_size_bytes
 
 {{% tags/wrap %}}
@@ -1514,7 +1569,7 @@ Timeout after which it is inferred that a particular tablet is not of interest f
 Default: `false`
 {{% /tags/wrap %}}
 
-Available in v2026.1.2.0 and later.
+Available in v2025.2.7.0, v2026.1.2.0, and later.
 
 When set to `true`, Virtual WAL (VWAL) skips unqualified tables (expired or not-of-interest) and keeps streaming qualified tables. The check runs when VWAL initializes a replication slot and when it refreshes a publication's table list. VWAL does not poll a skipped table's tablets on a later refresh, so changes to that table are never streamed by this slot.
 
@@ -1923,10 +1978,10 @@ Leader lease duration should be longer than the heartbeat interval, and less tha
 
 {{% tags/wrap %}}
 
-Default: `10000` (10 seconds)
+Default: `60000` (60 seconds)
 {{% /tags/wrap %}}
 
-Specifies the maximum bounded staleness (duration), in milliseconds, before a follower forwards a read request to the leader.
+How far the follower's safe time may be behind now, in milliseconds, before the follower rejects the read and the client retries it at the leader.
 
 In a geo-distributed cluster, with followers located a long distance from the tablet leader, you can use this setting to increase the maximum bounded staleness.
 
@@ -2187,11 +2242,35 @@ Default: `50`
 
 Assigns an extra priority to automatic (minor) compactions when automatic tablet splitting is enabled. This deprioritizes post-split compactions and ensures that smaller compactions are not starved. Suggested values are between 0 and 50.
 
-### Vector Index LSM compaction flags
+### Vector Index LSM flags
 
-Use these flags to control background compaction of Vector LSM chunk files used by [vector indexes](../../../additional-features/pg-extensions/extension-pgvector/#vector-indexing).
+Use these flags to control the memory and background compaction of Vector LSM chunks used by [vector indexes](../../../additional-features/pg-extensions/extension-pgvector/#vector-indexing).
 
-##### --vector_index_compaction_chunk_max_mem_store_size_mb
+##### --vector_index_initial_chunk_memstore_size_mb
+
+{{% tags/wrap %}}
+
+Default: `256`
+{{% /tags/wrap %}}
+
+Available in v2026.1.4.0 and later.
+
+In-memory size, in megabytes, of a vector index mutable chunk: the in-memory chunk that new vectors are inserted into before it is flushed to disk. The size is converted to a number of vectors using the index's per-vector memory estimate, so the more dimensions the vectors have, the fewer vectors a chunk holds. A chunk holds the smaller of this number of vectors and [`--vector_index_initial_chunk_size`](#vector-index-initial-chunk-size). Set to `0` for no memory limit.
+
+A chunk can be larger than this size when a single insert batch does not fit in it, or when vector index backfill sizes its own chunk (`--vector_index_backfill_single_chunk_size_bytes` is non-zero). Backfill also inserts rows in batches of at most the same number of vectors, which bounds the memory each batch uses.
+
+##### --vector_index_initial_chunk_size
+
+{{% tags/wrap %}}
+
+Default: `100000`
+{{% /tags/wrap %}}
+
+Number of vectors in a vector index mutable chunk: the in-memory chunk that new vectors are inserted into before it is flushed to disk. A chunk holds the smaller of this number and the number of vectors that fit into [`--vector_index_initial_chunk_memstore_size_mb`](#vector-index-initial-chunk-memstore-size-mb). Set to `0` for no limit by the number of vectors; if both flags are `0`, each chunk is sized to the batch of vectors inserted into it. Avoid setting both flags to `0`: vector index backfill then inserts all of a tablet's rows in one batch and builds a single chunk for the whole tablet.
+
+As with the memory limit, a chunk can be larger when a single insert batch does not fit in it, or when vector index backfill sizes its own chunk (`--vector_index_backfill_single_chunk_size_bytes` is non-zero).
+
+##### --vector_index_compaction_chunk_max_memstore_size_mb
 
 {{% tags/wrap %}}
 
@@ -2200,27 +2279,31 @@ Default: `0`
 
 Available in v2026.1.1.0 and later.
 
-Maximum in-memory size in megabytes for a single output chunk built during Vector LSM compaction. When set to `0` (the default), there is no limit and a single output chunk is produced. When set to a non-zero value, this flag enables chunked compaction, allowing the output to be split into multiple chunks bounded by the specified memory budget.
+Maximum in-memory size in megabytes for a single output chunk built during Vector LSM compaction. When set to `0` (the default), the limit comes from [`--vector_index_compaction_chunk_max_memstore_size_percentage`](#vector-index-compaction-chunk-max-memstore-size-percentage). When set to a non-zero value, the output is split into multiple chunks bounded by the specified memory budget.
 
-This flag takes priority over [`--vector_index_compaction_chunk_max_mem_store_size_percentage`](#vector-index-compaction-chunk-max-mem-store-size-percentage). When concurrent compactions are allowed ([`--vector_index_num_compactions_limit`](#vector-index-num-compactions-limit) is not `1`), you should set this flag instead of relying on the percentage-based limit.
+This flag takes priority over [`--vector_index_compaction_chunk_max_memstore_size_percentage`](#vector-index-compaction-chunk-max-memstore-size-percentage). When concurrent compactions are allowed ([`--vector_index_num_compactions_limit`](#vector-index-num-compactions-limit) is not `1`), you should set this flag instead of relying on the percentage-based limit.
 
-##### --vector_index_compaction_chunk_max_mem_store_size_percentage
+Before v2026.1.4.0, this flag was named `--vector_index_compaction_chunk_max_mem_store_size_mb`. The old name is still accepted, but its value is ignored.
+
+##### --vector_index_compaction_chunk_max_memstore_size_percentage
 
 {{% tags/wrap %}}
 
 Default: `60`
 {{% /tags/wrap %}}
 
-Available in v2026.1.1.0 and later.
+Available in v2026.1.2.0 and later.
 
 Maximum in-memory size for a single output chunk built during Vector LSM compaction, expressed as a percentage of the vector index block cache capacity. A value of `0` means no limit (single output chunk). Values above `100` are treated as `100`.
 
 This flag is ignored when:
 
-- [`--vector_index_compaction_chunk_max_mem_store_size_mb`](#vector-index-compaction-chunk-max-mem-store-size-mb) is set to a non-zero value
+- [`--vector_index_compaction_chunk_max_memstore_size_mb`](#vector-index-compaction-chunk-max-memstore-size-mb) is set to a non-zero value
 - Concurrent compactions are allowed ([`--vector_index_num_compactions_limit`](#vector-index-num-compactions-limit) is not `1`)
 
 When both this flag and the MB-based limit are at their defaults, chunked compaction is enabled with output chunks capped at 60% of the vector index block cache capacity, which reduces the risk of out-of-memory (OOM) errors during compaction.
+
+Before v2026.1.4.0, this flag was named `--vector_index_compaction_chunk_max_mem_store_size_percentage`. The old name is still accepted, but its value is ignored.
 
 ##### --vector_index_num_compactions_limit
 
@@ -2231,7 +2314,7 @@ Default: `1`
 
 Maximum number of concurrent Vector LSM compactions per tablet server. Set to `0` for no per-tserver limit.
 
-When this flag is not `1` (concurrent compactions are allowed), [`--vector_index_compaction_chunk_max_mem_store_size_percentage`](#vector-index-compaction-chunk-max-mem-store-size-percentage) is ignored. Set an absolute limit with [`--vector_index_compaction_chunk_max_mem_store_size_mb`](#vector-index-compaction-chunk-max-mem-store-size-mb) instead, and account for total memory across concurrent merges.
+When this flag is not `1` (concurrent compactions are allowed), [`--vector_index_compaction_chunk_max_memstore_size_percentage`](#vector-index-compaction-chunk-max-memstore-size-percentage) is ignored. Set an absolute limit with [`--vector_index_compaction_chunk_max_memstore_size_mb`](#vector-index-compaction-chunk-max-memstore-size-mb) instead, and account for total memory across concurrent merges.
 
 ##### --vector_index_files_number_compaction_trigger
 
@@ -2531,7 +2614,7 @@ Enable per table mutation (INSERT, UPDATE, DELETE) counting. The Auto Analyze se
 
 ### Explicit row locking flags
 
-To learn about explicit row locking, see [Row-level locks](../../../explore/transactions/explicit-locking/#row-level-locks) and [Explicit row locking modes](../../../explore/transactions/explicit-locking/#explicit-row-locking-modes).
+To learn about explicit row locking, see [Row-level locks](../../../architecture/transactions/concurrency-control/#row-level-explicit-locking-clauses) and [Explicit row locking modes](../../../explore/transactions/explicit-locking/#explicit-row-locking-modes).
 
 ##### --ysql_yb_explicit_row_locking_batch_size
 
@@ -2852,6 +2935,24 @@ Enable server-server (node-to-node) encryption between YugabyteDB YB-Master and 
 
 When enabled, [--allow_insecure_connections](#allow-insecure-connections) should be set to false to disallow insecure connections.
 
+##### --openssl_require_fips
+
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+{{<tags/feature/t-server>}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Requires the YB-TServer and its YSQL processes to use the OpenSSL FIPS provider. In v2026.1.3.0 and later, this includes YSQL Connection Manager. When enabled, these processes fail to start if the FIPS provider can't be loaded.
+
+Set the same value on every YB-Master and YB-TServer. See [--openssl_require_fips](../yb-master/#openssl-require-fips) for the YB-Master.
+
+The flag selects the OpenSSL FIPS provider. To encrypt client connections, also enable [use_client_to_server_encryption](#use-client-to-server-encryption).
+
+When [ysql_enable_auth](#ysql-enable-auth) is enabled, the auto-generated `ysql_hba.conf` entry uses `scram-sha-256` and ignores `ysql_auth_method`. Rules in [ysql_hba_conf_csv](#ysql-hba-conf-csv) are checked first, so an earlier `md5` rule still applies to the connections it matches. A role whose password is stored as an MD5 hash cannot sign in through the SCRAM rule until you change that password. [Migrate existing MD5 passwords](../../../secure/authentication/password-authentication/#migrate-existing-md5-passwords-to-scram-sha-256) before you enable this flag.
+
+The flag also sets `pgcrypto.builtin_crypto_enabled` to `fips`. pgcrypto then rejects built-in algorithms that are not FIPS-validated.
+
 ##### --cipher_list
 
 {{% tags/wrap %}}
@@ -2998,9 +3099,7 @@ Default: `"host all all 0.0.0.0/0 trust,host all all ::0/0 trust"`
 
 Specifies a comma-separated list of PostgreSQL client authentication settings that is written to the `ysql_hba.conf` file. To see the current values in the `ysql_hba.conf` file, run the `SHOW hba_file;` statement and then view the file. Because the file is autogenerated, direct edits are overwritten by the autogenerated content.
 
-The `--ysql_hba_conf_csv` flag is read on start-up of your cluster. If you edit the file on an active cluster, you need to restart your yb-tserver processes for changes to take effect.
-
-Changes to `--ysql_hba_conf_csv` should be applied to all yb-tserver servers in a rolling upgrade, making sure that all YB-TServers are not stopped at the same time.
+This flag can be updated at runtime without restarting the server. Changes take effect immediately. Set the flag on every YB-TServer, and save the new value in each YB-TServer configuration file or in YugabyteDB Anywhere so the change survives a restart.
 
 For details on using `--ysql_hba_conf_csv` to specify client authentication, refer to [Host-based authentication](../../../secure/authentication/host-based-authentication/).
 
@@ -3039,9 +3138,7 @@ Default: `""`
 
 Specifies a comma-separated list of PostgreSQL user name mapping rules that is written to the `ysql_ident.conf` file. These rules define mappings from external users to database roles. See [Authentication methods](../../../secure/authentication/) for details.
 
-The `--ysql_ident_conf_csv` flag is read on start-up of your cluster. If you edit the file on an active cluster, you need to restart your yb-tserver processes for changes to take effect.
-
-Changes to `--ysql_ident_conf_csv` should be applied to all yb-tserver servers in a rolling upgrade, making sure that all YB-TServers are not stopped at the same time.
+This flag can be updated at runtime without restarting the server. Changes take effect immediately. Set the flag on every YB-TServer, and save the new value in each YB-TServer configuration file or in YugabyteDB Anywhere so the change survives a restart.
 
 For example:
 
@@ -3129,7 +3226,7 @@ Specifies the default transaction isolation level.
 
 Valid values: `serializable`, `'repeatable read'`, `'read committed'`, and `'read uncommitted'`.
 
-[Read Committed isolation](../../../explore/transactions/isolation-levels/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`.
+[Read Committed isolation](../../../architecture/transactions/read-committed/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`.
 
 For new universes running v2025.2 or later, `yb_enable_read_committed_isolation` is set to `true` by default when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
 
@@ -3142,11 +3239,11 @@ If `yb_enable_read_committed_isolation` is `false`, the Read Committed isolation
 Default: `false`
 {{% /tags/wrap %}}
 
-Enables Read Committed isolation.
+Enables [Read Committed isolation](../../../architecture/transactions/read-committed/).
 
 For new universes running v2025.2 or later, `yb_enable_read_committed_isolation` is set to `true` by default when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
 
-When set to false, Read Committed (and Read Uncommitted) isolation level of YSQL fall back to the stricter [Snapshot isolation](../../../explore/transactions/isolation-levels/). See also the [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag.
+When set to false, Read Committed (and Read Uncommitted) isolation level of YSQL fall back to the stricter Snapshot isolation. See also the [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag.
 
 ##### --pg_client_use_shared_memory
 
@@ -3268,6 +3365,23 @@ Specifies the database where pg_cron is to be installed. You can create the data
 The [pg_cron extension](../../../additional-features/pg-extensions/extension-pgcron/) is installed on only one database (by default, `yugabyte`).
 
 To change the database after the extension is created, you must first drop the extension and then change the flag value.
+
+##### --pg_cron_leader_lease_sec
+
+{{% tags/wrap %}}
+
+Default: `60`
+{{% /tags/wrap %}}
+
+The time, in seconds, that the [pg_cron](../../../additional-features/pg-extensions/extension-pgcron/) leader holds its lease.
+
+In v2026.1.4.0 and later, when the pg_cron leader moves to another node, the old leader lets its running jobs continue for at least `pg_cron_leader_lease_sec` minus 15 seconds before canceling them, and the new leader waits about this long before it starts running jobs. Increase this value to give long-running jobs more time to complete during a planned leader change; a larger value also delays jobs after any leader change.
+
+In earlier v2026.1 releases, a leader change cancels running jobs immediately, and the new leader runs no jobs for the first minute.
+
+For more information, see [Failures and leader changes](../../../additional-features/pg-extensions/extension-pgcron/#failures-and-leader-changes).
+
+Set this flag on all YB-TServers. The value must be greater than `--pg_cron_leadership_refresh_sec` (default `10`).
 
 ##### --ysql_output_buffer_size
 

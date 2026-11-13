@@ -23,5 +23,6 @@
         "licenseName": "POLYFORM-FREE-TRIAL-LICENSE-1.0.0",
         "enumPropertyNaming": "legacy",
         "removeEnumValuePrefix": true,
-        "useBeanValidation": true
+        "useBeanValidation": true,
+        "useOneOfInterfaces": true
     }

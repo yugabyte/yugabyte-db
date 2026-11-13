@@ -58,9 +58,11 @@ public class RpcClientCert {
   @VisibleForTesting static final Duration REFETCH_BEFORE_EXPIRY = Duration.ofDays(10);
   // While the current cert is still valid, how often to ask the issuer for a renewed one.
   @VisibleForTesting static final Duration REFETCH_INTERVAL = Duration.ofMinutes(5);
-  // Earlier versions' postgres can't connect to servers requiring client certs (#7335).
-  @VisibleForTesting static final String MIN_STABLE_VERSION = "2025.2.1.0-b50";
-  @VisibleForTesting static final String MIN_PREVIEW_VERSION = "2.29.0.0-b259";
+  // Builds whose bundled YBC presents client certs and accepts require_client_certificates,
+  // which YBA sets on these universes. Set two builds past the latest at the YBC 2.2.0.4-b13
+  // bump (PLAT-23360).
+  @VisibleForTesting static final String MIN_STABLE_VERSION = "2026.1.4.0-b22";
+  @VisibleForTesting static final String MIN_PREVIEW_VERSION = "2.31.0.0-b636";
 
   private final CertManagerClientCert certManagerClientCert;
   // Keyed by the client cert file, so universes on one CA load it once.

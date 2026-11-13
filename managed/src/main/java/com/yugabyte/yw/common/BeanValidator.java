@@ -92,6 +92,7 @@ public class BeanValidator {
     int errorCode = BAD_REQUEST;
     Map<String, List<String>> validationErrors = new HashMap<>();
     JsonNode requestJson;
+    Throwable cause;
 
     public ErrorMessageBuilder forField(String fieldName, String message) {
       validationErrors.computeIfAbsent(fieldName, k -> new ArrayList<>()).add(message);
@@ -117,9 +118,22 @@ public class BeanValidator {
       return this;
     }
 
+    /**
+     * The exception that caused the error, such as a cloud SDK's error during a storage check. It
+     * doesn't change the response; callers can classify the error by it.
+     */
+    public ErrorMessageBuilder cause(Throwable cause) {
+      this.cause = cause;
+      return this;
+    }
+
     public void throwError() {
       JsonNode errJson = Json.toJson(validationErrors);
-      throw new PlatformServiceException(errorCode, errJson, requestJson);
+      PlatformServiceException e = new PlatformServiceException(errorCode, errJson, requestJson);
+      if (cause != null) {
+        e.initCause(cause);
+      }
+      throw e;
     }
   }
 }

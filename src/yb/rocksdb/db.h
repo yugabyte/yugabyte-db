@@ -925,6 +925,19 @@ class DB {
     return result;
   }
 
+  // Appends to *out the file numbers of the live SSTs, in every column family, that are not on
+  // db_paths[path_id]. The cheap form of GetLiveFilesMetaData for a caller that only needs to
+  // know which files are still off a path, such as a periodic scan over every DB: nothing is
+  // built per file.
+  virtual void GetLiveFileNumbersNotOnPath(
+      uint32_t /*path_id*/, std::vector<uint64_t>* /*out*/) {}
+
+  // Closes every open table reader of this DB by evicting it from the table cache, so the next read
+  // reopens each file and reloads its footer and filter index. Readers that in-flight reads still
+  // reference are released when those reads finish; readers pinned by a version
+  // (max_open_files == -1) are not affected. Returns the number of readers evicted.
+  virtual size_t EvictTableReaders() { return 0; }
+
   // Computes the requested frontiers atomically (under a single lock) so the returned views are
   // mutually consistent. This is the single primitive subclasses override; the accessors below are
   // expressed in terms of it.
