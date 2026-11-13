@@ -1013,9 +1013,8 @@ TEST_F_EX(PgBackendsTest, RetryRefreshAcrossIndexCreate, PgBackendsTestRf3TableL
                 "unfreeze tserver");
   });
   const auto version_before = ASSERT_RESULT(GetCatalogVersion(&builder));
-  // Only the index raises the catalog version; NONCONCURRENTLY skips waiting on writer_ts.
-  ASSERT_OK(builder.Execute("CREATE TABLE other (k int)"));
-  ASSERT_OK(builder.Execute("CREATE INDEX NONCONCURRENTLY other_k ON other (k)"));
+  // Unlike CREATE TABLE, CREATE SCHEMA raises the catalog version under default settings.
+  ASSERT_OK(builder.Execute("CREATE SCHEMA other"));
   const auto version_raised = ASSERT_RESULT(GetCatalogVersion(&builder));
   ASSERT_GT(version_raised, version_before);
 
