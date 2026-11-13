@@ -283,6 +283,41 @@ public class HbaConfRedactorTest {
     assertEquals(
         "error: ldapbindpasswd=REDACTED\n\tat com.yugabyte.Foo",
         HbaConfRedactor.redactFreeText("error: ldapbindpasswd=x\n\tat com.yugabyte.Foo"));
+    // JSON array elements and indented log lines don't continue a value.
+    assertEquals(
+        "  \"args\": [\n    \"--fs_data_dirs=/mnt/d0\",\n    \"--ysql_hba_conf_csv="
+            + LDAP
+            + "ldapbindpasswd=REDACTED\n    \"--max_log_size=256\"\n  ]",
+        HbaConfRedactor.redactFreeText(
+            "  \"args\": [\n    \"--fs_data_dirs=/mnt/d0\",\n    \"--ysql_hba_conf_csv="
+                + LDAP
+                + "ldapbindpasswd=x\",\n    \"--max_log_size=256\"\n  ]"));
+    assertEquals(
+        "Running command:\n  yb-admin ldapbindpasswd=REDACTED\n  next output line",
+        HbaConfRedactor.redactFreeText(
+            "Running command:\n  yb-admin ldapbindpasswd=x\n  next output line"));
+    // A value can start on the line below its key.
+    assertEquals(
+        "    ysql_hba_conf_csv:\n      "
+            + LDAP
+            + "\n      ldapbindpasswd=REDACTED\n      REDACTED\n    max_log_size: 256",
+        HbaConfRedactor.redactFreeText(
+            "    ysql_hba_conf_csv:\n      "
+                + LDAP
+                + "\n"
+                + "      ldapbindpasswd=\"long pass\n"
+                + "      phrase tail\"\n"
+                + "    max_log_size: 256"));
+  }
+
+  @Test
+  public void testFreeTextRedactsAKeysValueOnTheNextLine() {
+    assertEquals(
+        "\"ldapbindpasswdREDACTED\nREDACTED\n\"next\": 1",
+        HbaConfRedactor.redactFreeText("\"ldapbindpasswd\":\n\"secret\",\n\"next\": 1"));
+    assertEquals(
+        "  \"ldapbindpasswdREDACTED\n\n  REDACTED",
+        HbaConfRedactor.redactFreeText("  \"ldapbindpasswd\":\n\n  \"secret\""));
   }
 
   @Test

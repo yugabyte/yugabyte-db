@@ -136,19 +136,22 @@ public final class HbaConfRedactor {
    * Redacts ldapbindpasswd in text with no structure to rely on, such as logs and command output:
    * from the name to the end of the line, and the lines after it that are indented with more
    * spaces, because Helm folds long YAML values onto those. A line that doesn't start a YAML or
-   * JSON entry may itself be folded from the nearest line above it with less indent, and the lines
-   * after it at its own indent continue the same value, so those are redacted too. A {@code
-   * --ysql_hba_conf_csv=} gflag line is redacted like the gflag value, and folds the same way when
-   * that redaction reaches the end of the line.
+   * JSON entry, below an entry whose value isn't a JSON array or object, continues that entry's
+   * value, so the lines after it indented past the entry are redacted too. Where the name is a key
+   * with nothing after its ':', the next line that isn't blank holds its value and is redacted
+   * whatever its indent. A {@code --ysql_hba_conf_csv=} gflag line is redacted like the gflag
+   * value, and folds the same way when that redaction reaches the end of the line.
    */
   public static String redactFreeText(String text) {
     if (text == null || indexOfKey(text, 0, true) < 0) {
       return text;
     }
     StringBuilder out = new StringBuilder(text.length());
-    // Indents of earlier lines, each less than the one pushed after it.
-    Deque<Integer> indents = new ArrayDeque<>();
+    // Earlier lines, each indented less than the one pushed after it: its indent, and the indent of
+    // the entry whose value it continues, or -1.
+    Deque<int[]> parents = new ArrayDeque<>();
     int foldIndent = -1;
+    boolean valueBelow = false;
     int p = 0;
     while (p < text.length()) {
       int next = text.indexOf('\n', p);
@@ -162,23 +165,31 @@ public final class HbaConfRedactor {
         indent++;
       }
       boolean blank = p + indent == end;
-      int parentIndent = -1;
-      if (!blank) {
-        while (!indents.isEmpty() && indents.peek() >= indent) {
-          indents.pop();
-        }
-        parentIndent = indents.isEmpty() ? -1 : indents.peek();
-        indents.push(indent);
+      String line = text.substring(p, end);
+      int k = indent;
+      while (k < line.length() && isBlank(line.charAt(k))) {
+        k++;
       }
-      if (foldIndent >= 0 && indent > foldIndent && !blank) {
+      int entryValue = -1;
+      int parentAnchor = -1;
+      if (!blank) {
+        while (!parents.isEmpty() && parents.peek()[0] >= indent) {
+          parents.pop();
+        }
+        parentAnchor = parents.isEmpty() ? -1 : parents.peek()[1];
+        entryValue = entryValueStart(line, k);
+        boolean opensCollection =
+            entryValue >= 0
+                && entryValue < line.length()
+                && (line.charAt(entryValue) == '[' || line.charAt(entryValue) == '{');
+        int anchor = entryValue < 0 ? parentAnchor : opensCollection ? -1 : indent;
+        parents.push(new int[] {indent, anchor});
+      }
+      if (!blank && (valueBelow || (foldIndent >= 0 && indent > foldIndent))) {
         out.append(text, p, p + indent).append(REPLACEMENT);
+        valueBelow = false;
       } else {
         foldIndent = -1;
-        String line = text.substring(p, end);
-        int k = 0;
-        while (k < line.length() && isBlank(line.charAt(k))) {
-          k++;
-        }
         if (line.startsWith(GFLAG_LINE_PREFIX, k)) {
           int valueStart = k + GFLAG_LINE_PREFIX.length();
           String value = line.substring(valueStart);
@@ -190,7 +201,8 @@ public final class HbaConfRedactor {
         } else {
           String redacted = redactToEnd(line, true);
           if (!redacted.equals(line)) {
-            foldIndent = parentIndent >= 0 && !startsEntry(line, k) ? parentIndent : indent;
+            foldIndent = entryValue < 0 && parentAnchor >= 0 ? parentAnchor : indent;
+            valueBelow = valueStartsBelow(line);
           }
           out.append(redacted);
         }
@@ -210,32 +222,68 @@ public final class HbaConfRedactor {
     return s.startsWith(REPLACEMENT, end - REPLACEMENT.length());
   }
 
-  /** Whether line starts at k with a YAML or JSON key and its ':', or a YAML sequence item. */
-  private static boolean startsEntry(String line, int k) {
+  /**
+   * If line starts at k with a YAML or JSON key and its ':', or a YAML sequence item, where its
+   * value starts past the blanks after the ':' or '-'; else -1.
+   */
+  private static int entryValueStart(String line, int k) {
     int n = line.length();
+    int j;
     if (k < n && line.charAt(k) == '-' && (k + 1 == n || isBlank(line.charAt(k + 1)))) {
-      return true;
-    }
-    boolean quoted = k < n && line.charAt(k) == '"';
-    int j = k;
-    if (quoted) {
-      j = line.indexOf('"', k + 1) + 1;
-      if (j == 0) {
-        return false;
-      }
+      j = k + 1;
     } else {
-      while (j < n && isKeyChar(line.charAt(j))) {
+      boolean quoted = k < n && line.charAt(k) == '"';
+      j = k;
+      if (quoted) {
+        j = line.indexOf('"', k + 1) + 1;
+        if (j == 0) {
+          return -1;
+        }
+      } else {
+        while (j < n && isKeyChar(line.charAt(j))) {
+          j++;
+        }
+        if (j == k) {
+          return -1;
+        }
+      }
+      while (j < n && isBlank(line.charAt(j))) {
         j++;
       }
-      if (j == k) {
-        return false;
+      // A plain YAML key needs a blank after its ':', so that "host:port" isn't one.
+      if (j == n
+          || line.charAt(j) != ':'
+          || !(quoted || j + 1 == n || isBlank(line.charAt(j + 1)))) {
+        return -1;
       }
+      j++;
     }
     while (j < n && isBlank(line.charAt(j))) {
       j++;
     }
-    // A plain YAML key needs a blank after its ':', so that "host:port" isn't one.
-    return j < n && line.charAt(j) == ':' && (quoted || j + 1 == n || isBlank(line.charAt(j + 1)));
+    return j;
+  }
+
+  /** Whether an ldapbindpasswd in line is a key with nothing after its ':', past any quotes. */
+  private static boolean valueStartsBelow(String line) {
+    int n = line.length();
+    for (int at = indexOfKey(line, 0, true); at >= 0; at = indexOfKey(line, at + 1, true)) {
+      int j = matchKey(line, at, true)[1];
+      while (j < n
+          && (line.charAt(j) == '"' || line.charAt(j) == '\'' || isBlank(line.charAt(j)))) {
+        j++;
+      }
+      if (j < n && line.charAt(j) == ':') {
+        j++;
+        while (j < n && isBlank(line.charAt(j))) {
+          j++;
+        }
+        if (j == n) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   private static boolean isKeyChar(char c) {

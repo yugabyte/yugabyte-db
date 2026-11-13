@@ -134,6 +134,21 @@ func TestRedactLdapBindPasswdText(t *testing.T) {
 			"args:\n  - --ysql_hba_conf_csv=" + ldapRule + "ldapbindpasswd=x\n  - --max_log_size=256"},
 		// Java stack frames are indented with a tab, not spaces.
 		{"error: ldapbindpasswd=REDACTED\n\tat com.yugabyte.Foo", "error: ldapbindpasswd=x\n\tat com.yugabyte.Foo"},
+		// JSON array elements and indented log lines don't continue a value.
+		{"  \"args\": [\n    \"--fs_data_dirs=/mnt/d0\",\n    \"--ysql_hba_conf_csv=" + ldapRule +
+			"ldapbindpasswd=REDACTED\n    \"--max_log_size=256\"\n  ]",
+			"  \"args\": [\n    \"--fs_data_dirs=/mnt/d0\",\n    \"--ysql_hba_conf_csv=" + ldapRule +
+				"ldapbindpasswd=x\",\n    \"--max_log_size=256\"\n  ]"},
+		{"Running command:\n  yb-admin ldapbindpasswd=REDACTED\n  next output line",
+			"Running command:\n  yb-admin ldapbindpasswd=x\n  next output line"},
+		// A value can start on the line below its key.
+		{"    ysql_hba_conf_csv:\n      " + ldapRule +
+			"\n      ldapbindpasswd=REDACTED\n      REDACTED\n    max_log_size: 256",
+			"    ysql_hba_conf_csv:\n      " + ldapRule +
+				"\n      ldapbindpasswd=\"long pass\n      phrase tail\"\n    max_log_size: 256"},
+		// A key with nothing after its ':' has its value on the next line that isn't blank.
+		{"\"ldapbindpasswdREDACTED\nREDACTED\n\"next\": 1", "\"ldapbindpasswd\":\n\"secret\",\n\"next\": 1"},
+		{"  \"ldapbindpasswdREDACTED\n\n  REDACTED", "  \"ldapbindpasswd\":\n\n  \"secret\""},
 		// A gflag line folds when its redaction reaches the end of the line, and only then.
 		{"--ysql_hba_conf_csv=" + ldapRule + "ldapbindpasswd=REDACTED\n      REDACTED\n--max_log_size=256",
 			"--ysql_hba_conf_csv=" + ldapRule + "ldapbindpasswd=pa\n      ss-tail\n--max_log_size=256"},
@@ -166,6 +181,8 @@ func TestLdapBindPasswdValuesRedacted(t *testing.T) {
 		{"ldapbindpasswd in a comment", true},
 		// Inside CSV quotes, a comma doesn't end the field, so this is not the name.
 		{`"ldapbind\,passwd=="`, true},
+		// A quote inside an unquoted field is a literal character, so the comma after it ends the field.
+		{`local all all trust # it"s,host all all 0.0.0.0/0 ldap ldapbind\,passwd=secret`, false},
 		{"x LDAPBINDPASSWD=secret", false},
 		{`ldap"bind"passwd= "secret"`, false},
 		{"ldapbindpasswd=REDACTED ldapbindpasswd=secret", false},
@@ -286,6 +303,14 @@ func checkHbaRuleAgainstPostgres(t *testing.T, r hbaGoldenRule, value string) {
 	}
 	if want := r.line[:m[1]] + SecretReplacement; redacted != want {
 		t.Errorf("%q: got %q, want %q", r.line, redacted, want)
+	}
+}
+
+// The backstop reads CSV quotes from the gflag value, where a quote right after the '=' opens the
+// first field.
+func TestVerifyReadsCSVQuotesFromTheGflagValue(t *testing.T) {
+	if err := verifyLdapBindPasswd(hbaGflagLinePrefix + `"ldapbind\,passwd=="`); err != nil {
+		t.Error(err)
 	}
 }
 

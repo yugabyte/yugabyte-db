@@ -105,20 +105,23 @@ func redactHbaConfCSV(value string) string {
 
 // redactLdapBindPasswdText redacts ldapbindpasswd in text with no structure to rely on: from the
 // name to the end of the line, and the lines after it that are indented with more spaces, because
-// Helm folds long YAML values onto those. A line that doesn't start a YAML or JSON entry may itself
-// be folded from the nearest line above it with less indent, and the lines after it at its own
-// indent continue the same value, so those are redacted too. A --ysql_hba_conf_csv= gflag line is
-// redacted like the gflag value, and folds the same way when that redaction reaches the end of the
-// line.
+// Helm folds long YAML values onto those. A line that doesn't start a YAML or JSON entry, below an
+// entry whose value isn't a JSON array or object, continues that entry's value, so the lines after
+// it indented past the entry are redacted too. Where the name is a key with nothing after its ':',
+// the next line that isn't blank holds its value and is redacted whatever its indent. A
+// --ysql_hba_conf_csv= gflag line is redacted like the gflag value, and folds the same way when that
+// redaction reaches the end of the line.
 func redactLdapBindPasswdText(text string) string {
 	if indexOfHbaKey(text, 0, true) < 0 {
 		return text
 	}
 	var out strings.Builder
 	out.Grow(len(text))
-	// Indents of earlier lines, each less than the one appended after it.
-	var indents []int
+	// Earlier lines, each indented less than the one appended after it.
+	type parent struct{ indent, anchor int }
+	var parents []parent
 	foldIndent := -1
+	valueBelow := false
 	for p := 0; p < len(text); {
 		next, end := hbaTextLine(text, p)
 		indent := 0
@@ -126,22 +129,31 @@ func redactLdapBindPasswdText(text string) string {
 			indent++
 		}
 		blank := p+indent == end
-		parentIndent := -1
+		line := text[p:end]
+		entryValue, parentAnchor := -1, -1
 		if !blank {
-			for len(indents) > 0 && indents[len(indents)-1] >= indent {
-				indents = indents[:len(indents)-1]
+			for len(parents) > 0 && parents[len(parents)-1].indent >= indent {
+				parents = parents[:len(parents)-1]
 			}
-			if len(indents) > 0 {
-				parentIndent = indents[len(indents)-1]
+			if len(parents) > 0 {
+				parentAnchor = parents[len(parents)-1].anchor
 			}
-			indents = append(indents, indent)
+			// anchor is the indent of the entry whose value this line continues, or -1.
+			anchor := parentAnchor
+			if entryValue = entryValueStart(line); entryValue >= 0 {
+				anchor = indent
+				if entryValue < len(line) && (line[entryValue] == '[' || line[entryValue] == '{') {
+					anchor = -1
+				}
+			}
+			parents = append(parents, parent{indent, anchor})
 		}
-		if foldIndent >= 0 && indent > foldIndent && !blank {
+		if !blank && (valueBelow || foldIndent >= 0 && indent > foldIndent) {
 			out.WriteString(text[p : p+indent])
 			out.WriteString(SecretReplacement)
+			valueBelow = false
 		} else {
 			foldIndent = -1
-			line := text[p:end]
 			if valueStart := hbaGflagValueStart(line); valueStart >= 0 {
 				value := line[valueStart:]
 				redacted := redactHbaConfCSV(value)
@@ -154,9 +166,10 @@ func redactLdapBindPasswdText(text string) string {
 				redacted := redactHbaToEnd(line, true)
 				if redacted != line {
 					foldIndent = indent
-					if parentIndent >= 0 && !startsEntry(line) {
-						foldIndent = parentIndent
+					if entryValue < 0 && parentAnchor >= 0 {
+						foldIndent = parentAnchor
 					}
+					valueBelow = hbaValueStartsBelow(line)
 				}
 				out.WriteString(redacted)
 			}
@@ -172,38 +185,69 @@ func endsRedacted(s string) bool {
 	return strings.HasSuffix(strings.TrimRight(s, `"`), SecretReplacement)
 }
 
-// startsEntry reports whether line starts, past its blanks, with a YAML or JSON key and its ':', or
-// a YAML sequence item.
-func startsEntry(line string) bool {
+// entryValueStart is, if line starts past its blanks with a YAML or JSON key and its ':', or a YAML
+// sequence item, where its value starts past the blanks after the ':' or '-'; else -1.
+func entryValueStart(line string) int {
 	k := 0
 	for k < len(line) && isHbaBlank(line[k]) {
 		k++
 	}
 	n := len(line)
+	var j int
 	if k < n && line[k] == '-' && (k+1 == n || isHbaBlank(line[k+1])) {
-		return true
-	}
-	quoted := k < n && line[k] == '"'
-	j := k
-	if quoted {
-		closing := strings.IndexByte(line[k+1:], '"')
-		if closing < 0 {
-			return false
-		}
-		j = k + 1 + closing + 1
+		j = k + 1
 	} else {
-		for j < n && isKeyChar(line[j]) {
+		quoted := k < n && line[k] == '"'
+		j = k
+		if quoted {
+			closing := strings.IndexByte(line[k+1:], '"')
+			if closing < 0 {
+				return -1
+			}
+			j = k + 1 + closing + 1
+		} else {
+			for j < n && isKeyChar(line[j]) {
+				j++
+			}
+			if j == k {
+				return -1
+			}
+		}
+		for j < n && isHbaBlank(line[j]) {
 			j++
 		}
-		if j == k {
-			return false
+		// A plain YAML key needs a blank after its ':', so that "host:port" isn't one.
+		if j == n || line[j] != ':' || !(quoted || j+1 == n || isHbaBlank(line[j+1])) {
+			return -1
 		}
+		j++
 	}
 	for j < n && isHbaBlank(line[j]) {
 		j++
 	}
-	// A plain YAML key needs a blank after its ':', so that "host:port" isn't one.
-	return j < n && line[j] == ':' && (quoted || j+1 == n || isHbaBlank(line[j+1]))
+	return j
+}
+
+// hbaValueStartsBelow reports whether an ldapbindpasswd in line is a key with nothing after its ':',
+// past any quotes.
+func hbaValueStartsBelow(line string) bool {
+	n := len(line)
+	for at := indexOfHbaKey(line, 0, true); at >= 0; at = indexOfHbaKey(line, at+1, true) {
+		j := matchHbaKey(line, at, true)
+		for j < n && (line[j] == '"' || line[j] == '\'' || isHbaBlank(line[j])) {
+			j++
+		}
+		if j < n && line[j] == ':' {
+			j++
+			for j < n && isHbaBlank(line[j]) {
+				j++
+			}
+			if j == n {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func isKeyChar(c byte) bool {
@@ -564,12 +608,15 @@ func verifyLdapBindPasswd(text string) error {
 		next, end := hbaTextLine(text, p)
 		line := text[p:end]
 		var ok bool
+		// The backstop reads CSV quotes from the start of the gflag value, where its first field starts.
+		hba := line
 		if valueStart := hbaGflagValueStart(line); valueStart >= 0 {
-			ok = hbaConfRedacted(line[valueStart:])
+			hba = line[valueStart:]
+			ok = hbaConfRedacted(hba)
 		} else {
 			ok = redactedToEnd(line, true)
 		}
-		if !ok || !ldapBindPasswdValuesRedacted(line) {
+		if !ok || !ldapBindPasswdValuesRedacted(hba) {
 			return fmt.Errorf("%s %w on line %d", hbaKey, ErrUnredacted, lineNo)
 		}
 		p = next
@@ -641,11 +688,36 @@ func skipHbaKeyGap(s string, j int) int {
 		for m < len(s) && s[m] == '"' {
 			m++
 		}
-		if m >= len(s) || s[m] != ',' || strings.Count(s[:m], `"`)%2 != 0 {
+		if m >= len(s) || s[m] != ',' || inCSVQuotes(s, m) {
 			return j
 		}
 		j = m + 1
 	}
+}
+
+// inCSVQuotes reports whether byte m of s is inside a quoted field, reading s from its start as
+// splitCSVFields does: a quote opens a field only as its first byte, and "" inside one is a quote.
+func inCSVQuotes(s string, m int) bool {
+	quoted, fieldStart := false, true
+	for i := 0; i < m; i++ {
+		switch c := s[i]; {
+		case quoted:
+			if c == '"' {
+				if i+1 < m && s[i+1] == '"' {
+					i++
+				} else {
+					quoted = false
+				}
+			}
+		case c == ',':
+			fieldStart = true
+			continue
+		case c == '"' && fieldStart:
+			quoted = true
+		}
+		fieldStart = false
+	}
+	return quoted
 }
 
 // redactedToEnd reports whether s holds no ldapbindpasswd text, or only REDACTED after the first.
