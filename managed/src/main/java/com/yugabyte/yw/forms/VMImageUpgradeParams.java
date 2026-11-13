@@ -7,6 +7,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
@@ -274,6 +275,22 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
     UUID providerUUID = cluster.getProviderUUIDForNode(node);
     ImageBundle bundle =
         ImageBundle.getOrBadRequest(providerUUID, bundleUpgradeInfo.getImageBundleUuid());
+    // An image of another architecture cannot boot on the node's instance type.
+    UUID currentBundleUuid = cluster.userIntent.getImageBundleUUIDForProvider(providerUUID);
+    ImageBundle currentBundle =
+        currentBundleUuid == null ? null : ImageBundle.get(currentBundleUuid);
+    Architecture nodeArch =
+        currentBundle != null
+            ? currentBundle.getDetails().getArch()
+            : universe.getUniverseDetails().arch;
+    Architecture bundleArch = bundle.getDetails().getArch();
+    if (nodeArch != null && bundleArch != null && nodeArch != bundleArch) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST,
+          String.format(
+              "Image bundle %s is for %s, but the nodes of cluster %s run on %s.",
+              bundle.getName(), bundleArch, cluster.uuid, nodeArch));
+    }
     if (bundle.getProvider().getCloudCode().usesPerRegionImages()
         && !super.runtimeConfGetter.getStaticConf().getBoolean("yb.cloud.enabled")
         && !super.runtimeConfGetter.getGlobalConf(GlobalConfKeys.disableImageBundleValidation)) {
