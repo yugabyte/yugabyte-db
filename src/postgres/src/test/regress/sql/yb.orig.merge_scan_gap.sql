@@ -155,156 +155,34 @@ DROP TABLE gap_tbl, gap_coll_tbl, gap_ts_tbl, gap_idx_tbl, gap_dist_tbl,
     gap_desc_tbl, gap_null_tbl;
 
 --
--- Decoded primary key column: filter kept local on an index-only scan
+-- Cells run in both databases (yb_commands/merge_scan_gap_cells.sql)
 --
--- With yb_enable_primary_key_decode_from_index on, an index-only scan returns
--- k1 by decoding it from the base table row reference, and a filter on it runs
--- locally, after the merge.  This runs on a secondary index that is not
--- embedded, and again in the colocated database, where the index is embedded.
--- There the scan pushes a table filter within each stream, but not a filter on
--- k1.
--- Here c2 = k1 and c1 = k1 make c2 redundant, and the first row is the decoy.
-\set Q1 '/*+IndexOnlyScan(gap_pk_tbl gap_pk_tbl_idx) Set(yb_max_merge_scan_streams 0)*/'
-\set Q2 '/*+IndexOnlyScan(gap_pk_tbl gap_pk_tbl_idx) Set(yb_max_merge_scan_streams 64)*/'
-\set query ':P :Q SELECT c1, c3, s, c2, k1 FROM gap_pk_tbl WHERE s IN (1, 2) AND c2 = k1 AND c1 = k1 ORDER BY c1, c3;'
+-- In this database, the expression gap filters run after the merge: with
+-- expression pushdown on, each is a storage table filter, since the index does
+-- not hold c2 itself, and with it off, a local filter.  The merge sorts on
+-- every gap column.
+-- TODO(#37784): the predicate gap merge should leave out (c2 % 2), whose
+-- comparisons always tie.
+\set gap_cells :abs_srcdir '/yb_commands/merge_scan_gap_cells.sql'
 SET enable_sort = off;
 SET yb_enable_primary_key_decode_from_index = on;
 SET yb_enable_base_scans_cost_model = on;
-CREATE TABLE gap_pk_tbl (k1 int, k2 int, s int, c1 int, c2 int, c3 int,
-    PRIMARY KEY (k1 ASC, k2 ASC));
-CREATE INDEX NONCONCURRENTLY gap_pk_tbl_idx ON gap_pk_tbl (s ASC, c1 ASC, c2 ASC, c3 ASC);
-INSERT INTO gap_pk_tbl VALUES
-    (1, 100, 1, 1, 0, 9), (1, 1, 1, 1, 1, 0), (1, 2, 2, 1, 1, 4), (5, 1, 1, 5, 5, 1),
-    (5, 2, 2, 5, 5, 2);
-ANALYZE gap_pk_tbl;
-\i :run_query
-DROP TABLE gap_pk_tbl;
-
---
--- Expression gap columns
---
--- Each gap column here is an expression column of the index, tied by a partial
--- index predicate, by a filter, or by a filter through a relabel.  The same
--- cells run again on embedded indexes in the colocated database.  Here a filter
--- runs after the merge: with expression pushdown on, it is a storage table
--- filter, since the index does not hold c2 itself, and with it off, it is a
--- local filter.
-CREATE TABLE gap_expr_tbl (k int, s int, c1 int, c2 int, c3 int,
-    PRIMARY KEY (k ASC));
-CREATE INDEX NONCONCURRENTLY gap_expr_tbl_pred_idx ON gap_expr_tbl (s ASC, (c2 % 2) ASC, c3 ASC)
-    WHERE c2 % 2 = 1;
-CREATE INDEX NONCONCURRENTLY gap_expr_tbl_idx ON gap_expr_tbl (s ASC, c1 ASC, (c2 + 0) ASC, c3 ASC);
-INSERT INTO gap_expr_tbl VALUES
-    (1, 1, 1, 0, 9), (2, 1, 1, 1, 0), (3, 2, 1, 1, 4), (4, 1, 5, 5, 1),
-    (5, 2, 5, 5, 2);
-ANALYZE gap_expr_tbl;
-
--- Predicate gap: the predicate implies (c2 % 2), which comes before the only
--- merge sort column c3, so the merge sorts on (c2 % 2) and c3.
--- TODO(#37784): the merge should leave out (c2 % 2), whose comparisons always
--- tie.
-\set Q1 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 0)*/'
-\set Q2 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 64)*/'
-\set query ':P :Q SELECT c3, s, c2 FROM gap_expr_tbl WHERE s IN (1, 2) AND c2 % 2 = 1 ORDER BY c3;'
-\i :run_query
-
--- Filter gap: c1 = c2 + 0 ties (c2 + 0) to c1, and the merge sorts on the
--- expression's values in the index rows.
-\set Q1 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_idx) Set(yb_max_merge_scan_streams 0)*/'
-\set Q2 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_idx) Set(yb_max_merge_scan_streams 64)*/'
-\set query ':P :Q SELECT c1, c3, s, c2 FROM gap_expr_tbl WHERE s IN (1, 2) AND c1 = c2 + 0 ORDER BY c1, c3;'
-\i :run_query
-SET yb_enable_expression_pushdown = off;
-\i :run_query
-RESET yb_enable_expression_pushdown;
-
--- Relabeled filter gap: c2::text, a relabeled varchar column, is still an
--- expression column of the index, and the merge sorts on it.
-\set Q1 '/*+IndexScan(gap_relabel_tbl gap_relabel_tbl_idx) Set(yb_max_merge_scan_streams 0)*/'
-\set Q2 '/*+IndexScan(gap_relabel_tbl gap_relabel_tbl_idx) Set(yb_max_merge_scan_streams 64)*/'
-\set query ':P :Q SELECT c1, c3, s, c2 FROM gap_relabel_tbl WHERE s IN (1, 2) AND c1 = c2 ORDER BY c1, c3;'
-CREATE TABLE gap_relabel_tbl (k int, s int, c1 text, c2 varchar, c3 int,
-    PRIMARY KEY (k ASC));
-CREATE INDEX NONCONCURRENTLY gap_relabel_tbl_idx ON gap_relabel_tbl (s ASC, c1 ASC, (c2::text) ASC, c3 ASC);
-INSERT INTO gap_relabel_tbl VALUES
-    (1, 1, 'b', 'a', 9), (2, 1, 'b', 'b', 0), (3, 2, 'b', 'b', 4), (4, 1, 'e', 'e', 1),
-    (5, 2, 'e', 'e', 2);
-ANALYZE gap_relabel_tbl;
-\i :run_query
-SET yb_enable_expression_pushdown = off;
-\i :run_query
-RESET yb_enable_expression_pushdown;
-DROP TABLE gap_expr_tbl, gap_relabel_tbl;
+\i :gap_cells
 
 \c co
-\set Q1 '/*+IndexOnlyScan(gap_pk_tbl gap_pk_tbl_idx) Set(yb_max_merge_scan_streams 0)*/'
-\set Q2 '/*+IndexOnlyScan(gap_pk_tbl gap_pk_tbl_idx) Set(yb_max_merge_scan_streams 64)*/'
-\set query ':P :Q SELECT c1, c3, s, c2, k1 FROM gap_pk_tbl WHERE s IN (1, 2) AND c2 = k1 AND c1 = k1 ORDER BY c1, c3;'
+-- The same cells on embedded indexes.  For an embedded index scan, an
+-- expression column is not available for sort (see also #36017), so the merge
+-- stops before an expression gap column: the predicate gap scan has no merge,
+-- and the filter gap scans merge on c1 alone.  A pushed down filter runs within
+-- each stream, before the merge, since the scan reads the index and table rows
+-- of a stream in one request, but the filter on the decoded k1 still runs after
+-- the merge.
+-- TODO(#37784): the predicate gap merge should leave out (c2 % 2), which the
+-- predicate implies, and merge on c3.
+-- TODO(#37785): with expression pushdown on, the filter gap and relabeled
+-- filter gap filters run within each stream, before the merge, so those merges
+-- should sort on c1 and c3.
 SET enable_sort = off;
 SET yb_enable_primary_key_decode_from_index = on;
 SET yb_enable_base_scans_cost_model = on;
-CREATE TABLE gap_pk_tbl (k1 int, k2 int, s int, c1 int, c2 int, c3 int,
-    PRIMARY KEY (k1 ASC, k2 ASC));
-CREATE INDEX NONCONCURRENTLY gap_pk_tbl_idx ON gap_pk_tbl (s ASC, c1 ASC, c2 ASC, c3 ASC);
-INSERT INTO gap_pk_tbl VALUES
-    (1, 100, 1, 1, 0, 9), (1, 1, 1, 1, 1, 0), (1, 2, 2, 1, 1, 4), (5, 1, 1, 5, 5, 1),
-    (5, 2, 2, 5, 5, 2);
-ANALYZE gap_pk_tbl;
-\i :run_query
-DROP TABLE gap_pk_tbl;
-
--- The expression gap column cells again, on embedded indexes.  For an embedded
--- index scan, an expression column is not available for sort (see also #36017),
--- so the merge stops before the gap column.  A pushed down filter runs within
--- each stream, before the merge, since the scan reads the index and table rows
--- of a stream in one request.
-CREATE TABLE gap_expr_tbl (k int, s int, c1 int, c2 int, c3 int,
-    PRIMARY KEY (k ASC));
-CREATE INDEX NONCONCURRENTLY gap_expr_tbl_pred_idx ON gap_expr_tbl (s ASC, (c2 % 2) ASC, c3 ASC)
-    WHERE c2 % 2 = 1;
-CREATE INDEX NONCONCURRENTLY gap_expr_tbl_idx ON gap_expr_tbl (s ASC, c1 ASC, (c2 + 0) ASC, c3 ASC);
-INSERT INTO gap_expr_tbl VALUES
-    (1, 1, 1, 0, 9), (2, 1, 1, 1, 0), (3, 2, 1, 1, 4), (4, 1, 5, 5, 1),
-    (5, 2, 5, 5, 2);
-ANALYZE gap_expr_tbl;
-
--- Predicate gap: (c2 % 2) comes before the only merge sort column, so the cut
--- leaves the scan without a merge.
--- TODO(#37784): the merge should leave out (c2 % 2), which the predicate
--- implies, and merge on c3.
-\set Q1 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 0)*/'
-\set Q2 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 64)*/'
-\set query ':P :Q SELECT c3, s, c2 FROM gap_expr_tbl WHERE s IN (1, 2) AND c2 % 2 = 1 ORDER BY c3;'
-\i :run_query
-
--- Filter gap: the merge sorts on c1 alone.  With expression pushdown off, the
--- filter runs after the merge, and the rows stay in order.
--- TODO(#37785): with expression pushdown on, the filter runs within each
--- stream, before the merge, so the merge should sort on c1 and c3.
-\set Q1 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_idx) Set(yb_max_merge_scan_streams 0)*/'
-\set Q2 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_idx) Set(yb_max_merge_scan_streams 64)*/'
-\set query ':P :Q SELECT c1, c3, s, c2 FROM gap_expr_tbl WHERE s IN (1, 2) AND c1 = c2 + 0 ORDER BY c1, c3;'
-\i :run_query
-SET yb_enable_expression_pushdown = off;
-\i :run_query
-RESET yb_enable_expression_pushdown;
-
--- Relabeled filter gap: c2::text is still an expression column of the index, so
--- the merge stops before it, as for c2 + 0.
--- TODO(#37785): with expression pushdown on, the filter runs within each
--- stream, before the merge, so the merge should sort on c1 and c3.
-\set Q1 '/*+IndexScan(gap_relabel_tbl gap_relabel_tbl_idx) Set(yb_max_merge_scan_streams 0)*/'
-\set Q2 '/*+IndexScan(gap_relabel_tbl gap_relabel_tbl_idx) Set(yb_max_merge_scan_streams 64)*/'
-\set query ':P :Q SELECT c1, c3, s, c2 FROM gap_relabel_tbl WHERE s IN (1, 2) AND c1 = c2 ORDER BY c1, c3;'
-CREATE TABLE gap_relabel_tbl (k int, s int, c1 text, c2 varchar, c3 int,
-    PRIMARY KEY (k ASC));
-CREATE INDEX NONCONCURRENTLY gap_relabel_tbl_idx ON gap_relabel_tbl (s ASC, c1 ASC, (c2::text) ASC, c3 ASC);
-INSERT INTO gap_relabel_tbl VALUES
-    (1, 1, 'b', 'a', 9), (2, 1, 'b', 'b', 0), (3, 2, 'b', 'b', 4), (4, 1, 'e', 'e', 1),
-    (5, 2, 'e', 'e', 2);
-ANALYZE gap_relabel_tbl;
-\i :run_query
-SET yb_enable_expression_pushdown = off;
-\i :run_query
-RESET yb_enable_expression_pushdown;
-DROP TABLE gap_expr_tbl, gap_relabel_tbl;
+\i :gap_cells
