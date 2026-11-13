@@ -18,7 +18,8 @@ import org.mapstruct.factory.Mappers;
     uses = {
       UniverseDefinitionTaskParamsMapper.class,
       CommunicationPortsMapper.class,
-      ClusterMapper.class
+      ClusterMapper.class,
+      RollMaxBatchSizeMapper.class
     })
 public interface UniverseRespMapper {
   UniverseRespMapper INSTANCE = Mappers.getMapper(UniverseRespMapper.class);

@@ -7,7 +7,7 @@ import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
 import org.mapstruct.factory.Mappers;
 
-@Mapper(config = CentralConfig.class)
+@Mapper(config = CentralConfig.class, uses = RollMaxBatchSizeMapper.class)
 public interface UniverseRollbackUpgradeMapper {
   UniverseRollbackUpgradeMapper INSTANCE = Mappers.getMapper(UniverseRollbackUpgradeMapper.class);
 

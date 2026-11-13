@@ -9,7 +9,7 @@ import org.mapstruct.factory.Mappers;
 
 @Mapper(
     config = CentralConfig.class,
-    uses = {ClusterMapper.class})
+    uses = {ClusterMapper.class, RollMaxBatchSizeMapper.class})
 public interface UniverseResizeNodeParamsMapper {
   UniverseResizeNodeParamsMapper INSTANCE = Mappers.getMapper(UniverseResizeNodeParamsMapper.class);
 

@@ -144,7 +144,7 @@ public class UniverseApiControllerUpgradeTest extends UniverseTestBase {
     req.setAllowRollback(true);
     req.setVersion(upgradeRelease.getVersion());
     YBATask resp =
-        apiClient.startSoftwareUpgrade(customer.getUuid(), universe.getUniverseUUID(), req);
+        apiClient.startSoftwareUpgrade(customer.getUuid(), universe.getUniverseUUID(), req, null);
     assertEquals(taskUUID, resp.getTaskUuid());
     ArgumentCaptor<SoftwareUpgradeParams> captor =
         ArgumentCaptor.forClass(SoftwareUpgradeParams.class);
@@ -162,7 +162,7 @@ public class UniverseApiControllerUpgradeTest extends UniverseTestBase {
     UniverseSoftwareUpgradeStart req = new UniverseSoftwareUpgradeStart();
     req.setVersion(upgradeRelease.getVersion());
     YBATask resp =
-        apiClient.startSoftwareUpgrade(customer.getUuid(), universe.getUniverseUUID(), req);
+        apiClient.startSoftwareUpgrade(customer.getUuid(), universe.getUniverseUUID(), req, null);
     assertEquals(taskUUID, resp.getTaskUuid());
     ArgumentCaptor<SoftwareUpgradeParams> captor =
         ArgumentCaptor.forClass(SoftwareUpgradeParams.class);
@@ -181,7 +181,7 @@ public class UniverseApiControllerUpgradeTest extends UniverseTestBase {
     req.setAllowRollback(false);
     req.setVersion(upgradeRelease.getVersion());
     YBATask resp =
-        apiClient.startSoftwareUpgrade(customer.getUuid(), universe.getUniverseUUID(), req);
+        apiClient.startSoftwareUpgrade(customer.getUuid(), universe.getUniverseUUID(), req, null);
     assertEquals(taskUUID, resp.getTaskUuid());
     ArgumentCaptor<SoftwareUpgradeParams> captor =
         ArgumentCaptor.forClass(SoftwareUpgradeParams.class);
@@ -192,23 +192,45 @@ public class UniverseApiControllerUpgradeTest extends UniverseTestBase {
   }
 
   @Test
-  public void testV2UniverseUpgradeRunOnlyPrechecksTrue() throws ApiException {
+  public void testV2UniverseUpgradeRunOnlyPrechecksQueryParam() throws ApiException {
     UUID taskUUID = UUID.randomUUID();
     when(mockUpgradeUniverseHandler.upgradeDBVersion(any(), eq(customer), eq(universe)))
         .thenReturn(taskUUID);
     UniverseSoftwareUpgradeStart req = new UniverseSoftwareUpgradeStart();
     req.setAllowRollback(true);
     req.setVersion(upgradeRelease.getVersion());
-    req.setRunOnlyPrechecks(true);
-    YBATask resp =
-        apiClient.startSoftwareUpgrade(customer.getUuid(), universe.getUniverseUUID(), req);
-    assertEquals(taskUUID, resp.getTaskUuid());
+    apiClient.startSoftwareUpgrade(customer.getUuid(), universe.getUniverseUUID(), req, true);
     ArgumentCaptor<SoftwareUpgradeParams> captor =
         ArgumentCaptor.forClass(SoftwareUpgradeParams.class);
     verify(mockUpgradeUniverseHandler)
         .upgradeDBVersion(captor.capture(), eq(customer), eq(universe));
-    SoftwareUpgradeParams params = captor.getValue();
-    assertTrue("runOnlyPrechecks should be true", Boolean.TRUE.equals(params.runOnlyPrechecks));
+    assertTrue(captor.getValue().isRunOnlyPrechecks());
+  }
+
+  @Test
+  public void testV2RollbackRunOnlyPrechecksQueryParam() throws ApiException {
+    UUID taskUUID = UUID.randomUUID();
+    when(mockUpgradeUniverseHandler.rollbackUpgrade(any(), eq(customer), eq(universe)))
+        .thenReturn(taskUUID);
+    apiClient.rollbackSoftwareUpgrade(customer.getUuid(), universe.getUniverseUUID(), true, null);
+    ArgumentCaptor<RollbackUpgradeParams> captor =
+        ArgumentCaptor.forClass(RollbackUpgradeParams.class);
+    verify(mockUpgradeUniverseHandler)
+        .rollbackUpgrade(captor.capture(), eq(customer), eq(universe));
+    assertTrue(captor.getValue().isRunOnlyPrechecks());
+  }
+
+  @Test
+  public void testV2TlsToggleRunOnlyPrechecksQueryParam() throws ApiException {
+    UUID taskUUID = UUID.randomUUID();
+    when(mockUpgradeUniverseHandler.toggleTls(any(), eq(customer), eq(universe)))
+        .thenReturn(taskUUID);
+    UniverseEditEncryptionInTransit req = new UniverseEditEncryptionInTransit();
+    apiClient.encryptionInTransitToggle(
+        customer.getUuid(), universe.getUniverseUUID(), req, true);
+    ArgumentCaptor<TlsToggleParams> captor = ArgumentCaptor.forClass(TlsToggleParams.class);
+    verify(mockUpgradeUniverseHandler).toggleTls(captor.capture(), eq(customer), eq(universe));
+    assertTrue(captor.getValue().isRunOnlyPrechecks());
   }
 
   @Test
@@ -220,7 +242,7 @@ public class UniverseApiControllerUpgradeTest extends UniverseTestBase {
     req.setAllowRollback(false);
     req.setVersion(upgradeRelease.getVersion());
     YBATask resp =
-        apiClient.startSoftwareUpgrade(customer.getUuid(), universe.getUniverseUUID(), req);
+        apiClient.startSoftwareUpgrade(customer.getUuid(), universe.getUniverseUUID(), req, null);
     assertEquals(taskUUID, resp.getTaskUuid());
     ArgumentCaptor<SoftwareUpgradeParams> captor =
         ArgumentCaptor.forClass(SoftwareUpgradeParams.class);
@@ -319,7 +341,7 @@ public class UniverseApiControllerUpgradeTest extends UniverseTestBase {
     req.setForceAll(false);
     YBATask resp =
         apiClient.startThirdPartySoftwareUpgrade(
-            customer.getUuid(), universe.getUniverseUUID(), req);
+            customer.getUuid(), universe.getUniverseUUID(), null, req);
     assertEquals(taskUUID, resp.getTaskUuid());
     ArgumentCaptor<ThirdpartySoftwareUpgradeParams> captor =
         ArgumentCaptor.forClass(ThirdpartySoftwareUpgradeParams.class);
@@ -336,7 +358,8 @@ public class UniverseApiControllerUpgradeTest extends UniverseTestBase {
     when(mockUpgradeUniverseHandler.rollbackUpgrade(any(), eq(customer), eq(universe)))
         .thenReturn(taskUUID);
     YBATask resp =
-        apiClient.rollbackSoftwareUpgrade(customer.getUuid(), universe.getUniverseUUID(), null);
+        apiClient.rollbackSoftwareUpgrade(
+            customer.getUuid(), universe.getUniverseUUID(), null, null);
     ArgumentCaptor<RollbackUpgradeParams> captor =
         ArgumentCaptor.forClass(RollbackUpgradeParams.class);
     verify(mockUpgradeUniverseHandler)
@@ -355,7 +378,8 @@ public class UniverseApiControllerUpgradeTest extends UniverseTestBase {
     req.setSleepAfterTserverRestartMillis(10000);
     req.setRollingUpgrade(false);
     YBATask resp =
-        apiClient.rollbackSoftwareUpgrade(customer.getUuid(), universe.getUniverseUUID(), req);
+        apiClient.rollbackSoftwareUpgrade(
+            customer.getUuid(), universe.getUniverseUUID(), null, req);
     ArgumentCaptor<RollbackUpgradeParams> captor =
         ArgumentCaptor.forClass(RollbackUpgradeParams.class);
     verify(mockUpgradeUniverseHandler)
@@ -447,7 +471,8 @@ public class UniverseApiControllerUpgradeTest extends UniverseTestBase {
         .thenReturn(taskUUID);
     UniverseSystemdEnableStart req = new UniverseSystemdEnableStart();
     req.setSleepAfterTserverRestartMillis(10000);
-    YBATask resp = apiClient.systemdEnable(customer.getUuid(), cronUniverse.getUniverseUUID(), req);
+    YBATask resp =
+        apiClient.systemdEnable(customer.getUuid(), cronUniverse.getUniverseUUID(), null, req);
     ArgumentCaptor<SystemdUpgradeParams> captor =
         ArgumentCaptor.forClass(SystemdUpgradeParams.class);
     verify(mockUpgradeUniverseHandler)
@@ -472,7 +497,8 @@ public class UniverseApiControllerUpgradeTest extends UniverseTestBase {
     req.setRootCa(nodeCert);
     ;
     YBATask resp =
-        apiClient.encryptionInTransitToggle(customer.getUuid(), universe.getUniverseUUID(), req);
+        apiClient.encryptionInTransitToggle(
+            customer.getUuid(), universe.getUniverseUUID(), req, null);
     ArgumentCaptor<TlsToggleParams> captor = ArgumentCaptor.forClass(TlsToggleParams.class);
     verify(mockUpgradeUniverseHandler).toggleTls(captor.capture(), eq(customer), eq(universe));
     TlsToggleParams params = captor.getValue();
@@ -499,7 +525,7 @@ public class UniverseApiControllerUpgradeTest extends UniverseTestBase {
     req.setClientRootCa(clientCert);
     YBATask resp =
         apiClient.encryptionInTransitCertRotate(
-            customer.getUuid(), universe.getUniverseUUID(), req);
+            customer.getUuid(), universe.getUniverseUUID(), req, null);
     ArgumentCaptor<CertsRotateParams> captor = ArgumentCaptor.forClass(CertsRotateParams.class);
     verify(mockUpgradeUniverseHandler).rotateCerts(captor.capture(), eq(customer), eq(universe));
     CertsRotateParams params = captor.getValue();
@@ -521,7 +547,8 @@ public class UniverseApiControllerUpgradeTest extends UniverseTestBase {
     azOverrides.put("az1", "az1_overrides");
     req.setAzOverrides(azOverrides);
     YBATask resp =
-        apiClient.editKubernetesOverrides(customer.getUuid(), universe.getUniverseUUID(), req);
+        apiClient.editKubernetesOverrides(
+            customer.getUuid(), universe.getUniverseUUID(), req, null);
     ArgumentCaptor<KubernetesOverridesUpgradeParams> captor =
         ArgumentCaptor.forClass(KubernetesOverridesUpgradeParams.class);
     verify(mockUpgradeUniverseHandler)
@@ -765,7 +792,7 @@ public class UniverseApiControllerUpgradeTest extends UniverseTestBase {
                     .addProviderNodesSpecsItem(providerNodesSpec));
 
     YBATask resp =
-        apiClient.resizeNodes(customer.getUuid(), multicloudUniverse.getUniverseUUID(), req);
+        apiClient.resizeNodes(customer.getUuid(), multicloudUniverse.getUniverseUUID(), req, null);
     assertEquals(taskUUID, resp.getTaskUuid());
 
     ArgumentCaptor<ResizeNodeParams> captor = ArgumentCaptor.forClass(ResizeNodeParams.class);
@@ -815,7 +842,7 @@ public class UniverseApiControllerUpgradeTest extends UniverseTestBase {
     ApiException ex =
         assertThrows(
             ApiException.class,
-            () -> apiClient.resizeNodes(customer.getUuid(), universe.getUniverseUUID(), req));
+            () -> apiClient.resizeNodes(customer.getUuid(), universe.getUniverseUUID(), req, null));
     assertEquals(422, ex.getCode());
     assertThat(ex.getResponseBody(), containsString("multicloud"));
   }

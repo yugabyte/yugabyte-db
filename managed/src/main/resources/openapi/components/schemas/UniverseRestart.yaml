@@ -16,7 +16,8 @@ allOf:
       roll_max_batch_size:
         description: Suggested number of tservers to roll during restart if available.
         $ref: "./RollMaxBatchSize.yaml"
-        x-yba-api-visibility: internal
+        x-yba-api-since: 2026.2.0.0
+        x-yba-api-visibility: preview
       restart_type:
         description: |
           The method to reboot the node. This is not required for kubernetes universes, as the pods 

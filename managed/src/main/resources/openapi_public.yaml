@@ -3015,6 +3015,8 @@ paths:
         YugabyteDB Universe.'
       tags:
       - Universe
+      parameters:
+      - $ref: '#/components/parameters/RunOnlyPrechecks'
       requestBody:
         $ref: '#/components/requestBodies/UniverseEditReq'
       responses:
@@ -3200,6 +3202,8 @@ paths:
         cluster) to a YugabyteDB universe.'
       tags:
       - Universe
+      parameters:
+      - $ref: '#/components/parameters/RunOnlyPrechecks'
       requestBody:
         $ref: '#/components/requestBodies/ClusterAddReq'
       responses:
@@ -3376,6 +3380,8 @@ paths:
         and [YB-TServer configuration flags](https://docs.yugabyte.com/preview/reference/configuration/yb-tserver/#configuration-flags).'
       tags:
       - Universe
+      parameters:
+      - $ref: '#/components/parameters/RunOnlyPrechecks'
       requestBody:
         $ref: '#/components/requestBodies/UniverseEditGFlagsReq'
       responses:
@@ -3434,6 +3440,8 @@ paths:
         Software upgrade.'
       tags:
       - Universe
+      parameters:
+      - $ref: '#/components/parameters/RunOnlyPrechecks'
       requestBody:
         $ref: '#/components/requestBodies/UniverseSoftwareUpgradeReq'
       responses:
@@ -3577,6 +3585,8 @@ paths:
         party software upgrade.'
       tags:
       - Universe
+      parameters:
+      - $ref: '#/components/parameters/RunOnlyPrechecks'
       requestBody:
         $ref: '#/components/requestBodies/UniverseThirdPartySoftwareUpgradeReq'
       responses:
@@ -3698,6 +3708,8 @@ paths:
         Software upgrade.'
       tags:
       - Universe
+      parameters:
+      - $ref: '#/components/parameters/RunOnlyPrechecks'
       requestBody:
         $ref: '#/components/requestBodies/UniverseRollbackUpgradeReq'
       responses:
@@ -3865,6 +3877,8 @@ paths:
         version 2024.2.0.0 that could change.</b></p>Restart a YugabyteDB Universe.'
       tags:
       - Universe
+      parameters:
+      - $ref: '#/components/parameters/RunOnlyPrechecks'
       requestBody:
         $ref: '#/components/requestBodies/UniverseRestartReq'
       responses:
@@ -3931,6 +3945,8 @@ paths:
         '
       tags:
       - Universe
+      parameters:
+      - $ref: '#/components/parameters/RunOnlyPrechecks'
       requestBody:
         $ref: '#/components/requestBodies/UniverseSystemdEnableReq'
       responses:
@@ -3993,6 +4009,8 @@ paths:
         '
       tags:
       - Universe
+      parameters:
+      - $ref: '#/components/parameters/RunOnlyPrechecks'
       requestBody:
         $ref: '#/components/requestBodies/UniverseEncryptionInTransitReq'
       responses:
@@ -4050,6 +4068,8 @@ paths:
         in transit.'
       tags:
       - Universe
+      parameters:
+      - $ref: '#/components/parameters/RunOnlyPrechecks'
       requestBody:
         $ref: '#/components/requestBodies/UniverseCertRotateReq'
       responses:
@@ -4120,6 +4140,8 @@ paths:
         '
       tags:
       - Universe
+      parameters:
+      - $ref: '#/components/parameters/RunOnlyPrechecks'
       requestBody:
         $ref: '#/components/requestBodies/UniverseKubernetesOverridesReq'
       responses:
@@ -4443,6 +4465,8 @@ paths:
         '
       tags:
       - Universe
+      parameters:
+      - $ref: '#/components/parameters/RunOnlyPrechecks'
       requestBody:
         $ref: '#/components/requestBodies/ExportTelemetryConfigReq'
       responses:
@@ -4754,6 +4778,8 @@ paths:
         '
       tags:
       - Universe
+      parameters:
+      - $ref: '#/components/parameters/RunOnlyPrechecks'
       requestBody:
         $ref: '#/components/requestBodies/UniverseResizeNodesReq'
       responses:
@@ -4870,6 +4896,8 @@ paths:
         of a universe nodes'
       tags:
       - Universe
+      parameters:
+      - $ref: '#/components/parameters/RunOnlyPrechecks'
       requestBody:
         $ref: '#/components/requestBodies/UniverseVMImageUpgradeReq'
       responses:
@@ -12011,6 +12039,36 @@ components:
           items:
             type: string
             format: uuid
+    RollMaxBatchSize:
+      title: RollMaxBatchSize
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>RollMaxBatchSize
+
+
+        Suggested number of nodes to roll at a time during a rolling operation, if
+        available. Part of
+
+        the UniverseRestart, UniverseResizeNodes, UniverseUpgradeOptionRolling and
+
+        UniverseUpgradeOptionsAll request schemas, and the UniverseInfo response schema.
+
+        '
+      type: object
+      x-yba-api-visibility: preview
+      x-yba-api-since: 2026.2.0.0
+      properties:
+        primary_batch_size:
+          description: Suggested number nodes for primary cluster.
+          type: number
+          format: int32
+          example: 1
+          default: 1
+        read_replica_batch_size:
+          description: Suggested number nodes for readonly cluster.
+          type: number
+          format: int32
+          example: 1
+          default: 1
     ManagedLoadBalancerScheme:
       x-yba-api-visibility: preview
       x-yba-api-since: 2.31.0.0
@@ -12487,6 +12545,13 @@ components:
           readOnly: true
         x_cluster_info:
           $ref: '#/components/schemas/XClusterInfo'
+        roll_max_batch_size:
+          description: '<b style="color:#FFA500">WARNING: This is a preview API in
+            YBA version 2026.2.0.0 that could change.</b></p>Suggested number of nodes
+            to roll at a time during a rolling operation, if available.'
+          $ref: '#/components/schemas/RollMaxBatchSize'
+          x-yba-api-since: 2026.2.0.0
+          x-yba-api-visibility: preview
         clusters:
           type: array
           items:
@@ -12822,6 +12887,13 @@ components:
           - Rolling
           - Non-rolling
           - Non-restart
+        roll_max_batch_size:
+          description: '<b style="color:#FFA500">WARNING: This is a preview API in
+            YBA version 2026.2.0.0 that could change.</b></p>Suggested number of tservers
+            to roll during upgrade if available.'
+          $ref: '#/components/schemas/RollMaxBatchSize'
+          x-yba-api-since: 2026.2.0.0
+          x-yba-api-visibility: preview
     UniverseEditGFlags:
       title: UniverseEditGFlags
       description: 'UniverseEditGFlags
@@ -12858,6 +12930,13 @@ components:
             '
           type: boolean
           default: true
+        roll_max_batch_size:
+          description: '<b style="color:#FFA500">WARNING: This is a preview API in
+            YBA version 2026.2.0.0 that could change.</b></p>Suggested number of tservers
+            to roll during upgrade if available.'
+          $ref: '#/components/schemas/RollMaxBatchSize'
+          x-yba-api-since: 2026.2.0.0
+          x-yba-api-visibility: preview
     SoftwareUpgradeAZStep:
       title: SoftwareUpgradeAZStep
       description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
@@ -12943,11 +13022,6 @@ components:
             description: Upgrade the YugabyteDB Catalog
             type: boolean
             default: true
-          run_only_prechecks:
-            description: If true, only run prechecks for the upgrade without executing
-              the upgrade.
-            type: boolean
-            default: false
           version:
             description: The target release version to upgrade to.
             type: string
@@ -13142,6 +13216,11 @@ components:
               nodes will be restarted at the same time.
             type: boolean
             default: true
+          roll_max_batch_size:
+            description: Suggested number of tservers to roll during restart if available.
+            $ref: '#/components/schemas/RollMaxBatchSize'
+            x-yba-api-since: 2026.2.0.0
+            x-yba-api-visibility: preview
           restart_type:
             description: "The method to reboot the node. This is not required for\
               \ kubernetes universes, as the pods \nwill get restarted no matter what.\
@@ -13770,6 +13849,11 @@ components:
           clusters:
             items:
               $ref: '#/components/schemas/UniverseResizeNodesCluster'
+          roll_max_batch_size:
+            description: Suggested number of tservers to roll during resize if available.
+            $ref: '#/components/schemas/RollMaxBatchSize'
+            x-yba-api-since: 2026.2.0.0
+            x-yba-api-visibility: preview
     CheckResizeOptionsSpec:
       title: CheckResizeOptionsSpec
       description: 'Request to check which resize-related operations are available
@@ -14600,6 +14684,19 @@ components:
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
   parameters:
+    RunOnlyPrechecks:
+      name: run_only_prechecks
+      in: query
+      description: 'If true, only run the prechecks for the operation and make no
+        changes to the universe. The
+
+        returned task reports the outcome of the prechecks.
+
+        '
+      required: false
+      schema:
+        type: boolean
+        default: false
     IdempotencyKey:
       name: Idempotency-Key
       in: header

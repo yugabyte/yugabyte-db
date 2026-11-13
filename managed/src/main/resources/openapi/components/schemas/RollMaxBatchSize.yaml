@@ -1,7 +1,13 @@
 title: RollMaxBatchSize
-description: Suggested number of tservers to roll during upgrade if available.
+description: |
+  RollMaxBatchSize
+
+  Suggested number of nodes to roll at a time during a rolling operation, if available. Part of
+  the UniverseRestart, UniverseResizeNodes, UniverseUpgradeOptionRolling and
+  UniverseUpgradeOptionsAll request schemas, and the UniverseInfo response schema.
 type: object
-x-yba-api-visibility: internal
+x-yba-api-visibility: preview
+x-yba-api-since: 2026.2.0.0
 properties:
   primary_batch_size:
     description: Suggested number nodes for primary cluster.

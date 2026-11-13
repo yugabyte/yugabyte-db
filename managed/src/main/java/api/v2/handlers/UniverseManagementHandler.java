@@ -320,7 +320,11 @@ public class UniverseManagementHandler extends ApiControllerUtils {
   }
 
   public YBATask editUniverse(
-      Request request, UUID cUUID, UUID uniUUID, UniverseEditSpec universeEditSpec) {
+      Request request,
+      UUID cUUID,
+      UUID uniUUID,
+      UniverseEditSpec universeEditSpec,
+      Boolean runOnlyPrechecks) {
     boolean isNewUI = isNewUI();
     Customer customer = Customer.getOrNotFound(cUUID);
     Universe dbUniverse = Universe.getOrBadRequest(uniUUID, customer);
@@ -359,6 +363,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     UniverseConfigureTaskParams v1Params =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toUniverseConfigureTaskParams(
             v1DefnParams, request);
+    v1Params.runOnlyPrechecks = Boolean.TRUE.equals(runOnlyPrechecks);
     for (Cluster cluster : v1Params.clusters) {
       // Since in V2 API is based on partial updates,
       // we cannot detect the case when these fields are removed (during dedicated mode switch)
@@ -562,7 +567,11 @@ public class UniverseManagementHandler extends ApiControllerUtils {
   }
 
   public YBATask addCluster(
-      Request request, UUID cUUID, UUID uniUUID, ClusterAddSpec clusterAddSpec) {
+      Request request,
+      UUID cUUID,
+      UUID uniUUID,
+      ClusterAddSpec clusterAddSpec,
+      Boolean runOnlyPrechecks) {
     Customer customer = Customer.getOrNotFound(cUUID);
     Universe dbUniverse = Universe.getOrBadRequest(uniUUID, customer);
     log.info("Add cluster to Universe with v2 spec: {}", prettyPrint(clusterAddSpec));
@@ -570,6 +579,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     UniverseConfigureTaskParams v1Params =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toUniverseConfigureTaskParams(
             dbUniverse.getUniverseDetails(), request);
+    v1Params.runOnlyPrechecks = Boolean.TRUE.equals(runOnlyPrechecks);
     v1Params.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
     v1Params.currentClusterType = ClusterType.ASYNC;
     // to construct the new v1 cluster, start with a copy of primary cluster
