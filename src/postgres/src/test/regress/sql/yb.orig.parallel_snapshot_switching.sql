@@ -9,6 +9,7 @@
 SET max_parallel_workers_per_gather = 4;
 SET parallel_setup_cost = 0;
 SET parallel_tuple_cost = 0;
+SET yb_parallel_setup_cost_per_relation = 0;
 SET yb_parallel_range_rows = 1;
 SET yb_enable_cbo = on;
 
@@ -56,5 +57,6 @@ SET DEFAULT_TRANSACTION_ISOLATION = 'SERIALIZABLE';
 RESET max_parallel_workers_per_gather;
 RESET parallel_setup_cost;
 RESET parallel_tuple_cost;
+RESET yb_parallel_setup_cost_per_relation;
 RESET yb_parallel_range_rows;
 RESET yb_enable_cbo;

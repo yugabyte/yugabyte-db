@@ -14,6 +14,7 @@ set yb_enable_base_scans_cost_model to true;
 set enable_parallel_append to false;
 set parallel_setup_cost to 0;
 set parallel_tuple_cost to 0;
+set yb_parallel_setup_cost_per_relation to 0;
 -- simple union
 explain (costs off)
 select * from t1 union select * from t2;

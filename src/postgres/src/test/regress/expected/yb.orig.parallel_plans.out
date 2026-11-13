@@ -629,6 +629,7 @@ BEGIN;
   SET LOCAL yb_enable_base_scans_cost_model = on;
   SET LOCAL parallel_setup_cost = 0;
   SET LOCAL parallel_tuple_cost = 0;
+  SET LOCAL yb_parallel_setup_cost_per_relation = 0;
   SET LOCAL enable_bitmapscan = off;
   SELECT explain_filter_to_json('EXPLAIN (FORMAT json, SUMMARY off) SELECT * FROM t10k WHERE v LIKE ''Value_9'' ORDER BY k2 DESC') #> '{0, "Plan", "Total Cost"}';
  ?column? 
