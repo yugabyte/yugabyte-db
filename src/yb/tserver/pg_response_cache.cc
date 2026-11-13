@@ -558,9 +558,14 @@ class PgResponseCache::Impl : private GarbageCollector {
   // Whether any fill is under way for this key group, including one the asking caller shares a
   // token with. Parallel workers share their leader's token slot and each run a connection start
   // of their own, so counting every fill is what sends a sibling to the older version this node
-  // holds, rather than queueing it behind the fills another sibling still has in flight. A
-  // backend running a prefetch of its own has nothing counted here yet: pggate asks on the
-  // opening round and on no rerun.
+  // holds, rather than queueing it behind the fills another sibling still has in flight.
+  //
+  // A backend's connection start usually has nothing of its own counted here: pggate asks on
+  // the opening round and on no rerun. A connection to template1 is the exception, because the
+  // auth prefetch fills under Template1DbOid with an ordinary token, and that token lives in
+  // its setter until the request object goes away -- past the response that lets the backend
+  // send this round. Such a connection can be sent away by its own finished auth read, which
+  // costs it a stale attempt or a rerun, not a wrong read.
   //
   // Counted per key group rather than per entry because a connection start wants a different
   // entry from the fill it is sent away from -- it pinned a version of its own.
@@ -795,8 +800,10 @@ class PgResponseCache::Impl : private GarbageCollector {
         // and catches up from there, and asks again without send_away_if_fill_in_flight if it
         // cannot, so this cannot be answered the same way twice.
         //
-        // The group check above sees a fill only once it is counted, which its setter does a
-        // moment after the entry is marked as filling. This arm covers that gap.
+        // The group check above misses a fill in two windows: before its setter counts it, a
+        // moment after the entry is marked as filling, and after a sibling's completing round
+        // releases the token the siblings share while another round of theirs is still
+        // filling. This arm covers both.
         send_aways_->Increment();
         return STATUS(Incomplete, "A fill for this key is already under way");
       case Data::JoinState::kFill:
