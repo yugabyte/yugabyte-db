@@ -1025,8 +1025,8 @@ uint64_t od_router_wait_end_time_ms(od_router_t *router)
 	 * YB: a global option instead of the rule's pool_timeout, so that a
 	 * reload changes it without making every rule obsolete.
 	 */
-	uint32_t timeout_ms =
-		router->global->instance->config.yb_query_wait_timeout_ms;
+	od_instance_t *instance = router->global->instance;
+	uint32_t timeout_ms = instance->config.yb_query_wait_timeout_ms;
 	if (timeout_ms == 0)
 		return UINT64_MAX;
 	return machine_time_ms() + timeout_ms;
