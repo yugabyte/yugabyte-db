@@ -871,6 +871,24 @@ Status UpgradeTestBase::RestartTServerInOldVersion(
   return Status::OK();
 }
 
+Result<std::string> UpgradeTestBase::FetchPgLocksAfterUpgrade(
+    pgwrapper::PGConn& conn, const std::string& query) {
+  std::string rows;
+  RETURN_NOT_OK(LoggedWaitFor(
+      [&conn, &query, &rows]() -> Result<bool> {
+        auto result = conn.FetchAllAsString(query);
+        if (!result.ok() &&
+            result.status().ToString().find("Couldn't fetch old transactions") !=
+                std::string::npos) {
+          return false;
+        }
+        rows = VERIFY_RESULT(std::move(result));
+        return true;
+      },
+      30s * kTimeMultiplier, "pg_locks to be readable after the upgrade"));
+  return rows;
+}
+
 Status UpgradeTestBase::WaitForClusterToStabilize() {
   RETURN_NOT_OK(cluster_->WaitForTabletServerCount(cluster_->num_tablet_servers(), 5min));
 

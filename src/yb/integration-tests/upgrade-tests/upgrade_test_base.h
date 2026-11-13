@@ -19,6 +19,10 @@
 
 namespace yb {
 
+namespace pgwrapper {
+class PGConn;
+} // namespace pgwrapper
+
 struct BuildInfo {
   std::string version;
   std::string build_number;
@@ -100,6 +104,10 @@ class UpgradeTestBase : public ExternalMiniClusterITestBase {
   // Waits for all tservers to register with the master leader, which happens after all tablets
   // have been bootstrapped.
   Status WaitForClusterToStabilize();
+
+  // Right after an upgrade, pg_locks can fail for a few seconds with "Couldn't fetch old
+  // transactions" while the transaction status tablets settle (#37761). Retries on that error.
+  Result<std::string> FetchPgLocksAfterUpgrade(pgwrapper::PGConn& conn, const std::string& query);
 
   BuildInfo old_version_info() const { return old_version_info_; }
   // Can only be used after the cluster has been started in the old version.

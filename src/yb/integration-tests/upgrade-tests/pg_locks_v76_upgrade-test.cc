@@ -47,7 +47,7 @@ TEST_F(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
   // row type either way. Read before BEGIN: since #36572, a transaction that starts before
   // finalize takes local object locks, so a read in that transaction locks the view across
   // finalize, and V76 cannot replace the view.
-  ASSERT_OK(conn.Fetch(kPgLocksQuery));
+  ASSERT_RESULT(FetchPgLocksAfterUpgrade(conn, kPgLocksQuery));
   // Acquire advisory locks and a row lock, and hold them across the upgrade.
   ASSERT_OK(conn.Fetch("SELECT pg_advisory_lock(1);"));
   ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
