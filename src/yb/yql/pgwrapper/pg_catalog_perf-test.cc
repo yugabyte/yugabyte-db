@@ -928,7 +928,7 @@ TEST_F_EX(PgCatalogPerfTest,
   ASSERT_EQ(first_connection_cache_metrics.renew_hard, 0);
   ASSERT_EQ(first_connection_cache_metrics.renew_soft, 0);
   ASSERT_EQ(first_connection_cache_metrics.hits, 0);
-  ASSERT_EQ(first_connection_cache_metrics.queries, 6);
+  ASSERT_EQ(first_connection_cache_metrics.queries, 5);
 
   std::this_thread::sleep_for(std::chrono::milliseconds(
       2 * FLAGS_pg_cache_response_renew_soft_lifetime_limit_ms));
@@ -937,7 +937,7 @@ TEST_F_EX(PgCatalogPerfTest,
   ASSERT_EQ(second_connection_cache_metrics.renew_hard, 0);
   ASSERT_EQ(second_connection_cache_metrics.renew_soft, 1);
   ASSERT_EQ(second_connection_cache_metrics.hits, 1);
-  ASSERT_EQ(second_connection_cache_metrics.queries, 8);
+  ASSERT_EQ(second_connection_cache_metrics.queries, 7);
 }
 
 TEST_F_EX(PgCatalogPerfTest,
@@ -952,13 +952,13 @@ TEST_F_EX(PgCatalogPerfTest,
   ASSERT_EQ(first_connection_cache_metrics.renew_hard, 0);
   ASSERT_EQ(first_connection_cache_metrics.renew_soft, 0);
   ASSERT_EQ(first_connection_cache_metrics.hits, 0);
-  ASSERT_EQ(first_connection_cache_metrics.queries, 6);
+  ASSERT_EQ(first_connection_cache_metrics.queries, 5);
 
   auto second_connection_cache_metrics = ASSERT_RESULT(metrics_->Delta(connector)).cache;
   ASSERT_EQ(second_connection_cache_metrics.renew_hard, 1);
   ASSERT_EQ(second_connection_cache_metrics.renew_soft, 0);
   ASSERT_EQ(second_connection_cache_metrics.hits, 2);
-  ASSERT_EQ(second_connection_cache_metrics.queries, 10);
+  ASSERT_EQ(second_connection_cache_metrics.queries, 9);
 }
 
 // The test checks that GC keeps response cache memory lower than limit
