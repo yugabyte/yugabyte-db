@@ -22,12 +22,11 @@
 #include "nodes/ybbitmatrix.h"
 
 /*
- * YB_TODO_PG19MERGE: upstream PG commit 964d01ae90c314eb31132c2e7712d5d9fc237331
- * auto-generates node copy functions from struct definitions in header files.
- * All manually-written YB copy functions have been removed in favor of
- * auto-generation. Adding a todo for a more thorough audit of all the changes.
- * Kept YbUpdateAffectedEntities custom copy function due to
- * YbCopyBitMatrix. See also readfuncs.c, outfuncs.c, equalfuncs.c.
+ * YB: YB node support is generated from the headers, except for
+ * YbUpdateAffectedEntities (YbBitMatrix) and YbBatchedNestLoop
+ * (hashClauseInfos, an array of non-node structs holding Exprs).  Their
+ * hand-written functions are here and in equalfuncs.c, outfuncs.c and
+ * readfuncs.c.
  */
 
 
@@ -191,7 +190,11 @@ _copyYbUpdateAffectedEntities(const YbUpdateAffectedEntities *from)
 	return newnode;
 }
 
-/* YB: custom copy for YbBatchedNestLoop due to pointer arrays needing deep copy */
+/*
+ * YB: custom copy for YbBatchedNestLoop due to pointer arrays needing deep copy.
+ * Inherited Plan/Join/NestLoop fields are listed by hand: keep them in sync
+ * with plannodes.h.
+ */
 static YbBatchedNestLoop *
 _copyYbBatchedNestLoop(const YbBatchedNestLoop *from)
 {
@@ -218,6 +221,7 @@ _copyYbBatchedNestLoop(const YbBatchedNestLoop *from)
 	COPY_STRING_FIELD(nl.join.plan.ybInheritedHintAlias);
 	COPY_SCALAR_FIELD(nl.join.plan.ybIsHinted);
 	COPY_SCALAR_FIELD(nl.join.plan.ybHasHintedUid);
+	COPY_SCALAR_FIELD(nl.join.plan.ybReadAheadCapable);
 	COPY_SCALAR_FIELD(nl.join.jointype);
 	COPY_SCALAR_FIELD(nl.join.inner_unique);
 	COPY_NODE_FIELD(nl.join.joinqual);
