@@ -482,6 +482,9 @@ pgstat_bestart_final(void)
 	volatile PgBackendStatus *beentry = MyBEEntry;
 	Oid			userid;
 
+	char		yb_databasename[NAMEDATALEN];
+	bool		yb_have_databasename = false;
+
 	/* pgstats state must be initialized from pgstat_beinit() */
 	Assert(beentry != NULL);
 
@@ -495,6 +498,26 @@ pgstat_bestart_final(void)
 		userid = GetSessionUserId();
 	else
 		userid = InvalidOid;
+
+	/*
+	 * YB: the database name is published together with st_databaseid below,
+	 * inside the st_changecount bracket, so readers such as yb_pg_metrics'
+	 * rpcz never pair an id with another backend's name.  Look it up here
+	 * because the syscache lookup can fail, which the bracket must not.
+	 */
+	if (YBIsEnabledInPostgresEnvVar() && OidIsValid(MyDatabaseId))
+	{
+		HeapTuple	tuple;
+
+		tuple = SearchSysCache1(DATABASEOID, ObjectIdGetDatum(MyDatabaseId));
+		if (!HeapTupleIsValid(tuple))
+			elog(ERROR, "cache lookup failed for database %u", MyDatabaseId);
+		strlcpy(yb_databasename,
+				NameStr(((Form_pg_database) GETSTRUCT(tuple))->datname),
+				NAMEDATALEN);
+		ReleaseSysCache(tuple);
+		yb_have_databasename = true;
+	}
 
 	/*
 	 * Update my status entry, following the protocol of bumping
@@ -515,6 +538,12 @@ pgstat_bestart_final(void)
 	beentry->st_userid = userid;
 	beentry->st_state = STATE_UNDEFINED;
 
+	if (yb_have_databasename)
+	{
+		strcpy(beentry->st_databasename, yb_databasename);
+		beentry->yb_st_allocated_mem_bytes = PgMemTracker.backend_cur_allocated_mem_bytes;
+	}
+
 	PGSTAT_END_WRITE_ACTIVITY(beentry);
 
 	/* Create the backend statistics entry */
@@ -524,22 +553,6 @@ pgstat_bestart_final(void)
 	/* Update app name to current GUC setting */
 	if (application_name)
 		pgstat_report_appname(application_name);
-
-	/* YB_TODO_PG19MERGE: lbeentry -> beentry. */
-	if (YBIsEnabledInPostgresEnvVar() && beentry->st_databaseid > 0)
-	{
-		HeapTuple	tuple;
-
-		tuple = SearchSysCache1(DATABASEOID, ObjectIdGetDatum(beentry->st_databaseid));
-		Form_pg_database dbForm;
-
-		dbForm = (Form_pg_database) GETSTRUCT(tuple);
-		strcpy(beentry->st_databasename, dbForm->datname.data);
-		ReleaseSysCache(tuple);
-
-		/* Initialization of allocated memory measurement value */
-		beentry->yb_st_allocated_mem_bytes = PgMemTracker.backend_cur_allocated_mem_bytes;
-	}
 }
 
 /*

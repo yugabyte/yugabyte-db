@@ -18,14 +18,21 @@ import static org.yb.AssertionWrappers.assertGreaterThan;
 import static org.yb.AssertionWrappers.assertNotEquals;
 import static org.yb.AssertionWrappers.assertTrue;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import java.net.URL;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Scanner;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.minicluster.MiniYBDaemon;
 import org.yb.util.BuildTypeUtil;
 import org.yb.util.SystemUtil;
 import org.yb.YBTestRunner;
@@ -343,6 +350,55 @@ public class TestYbPgStatActivity extends BasePgSQLTest {
       assertTrue(String.format(
           "the refresh's temp-table I/O should be counted (before %d, after %d)",
           before, after), after > before);
+    }
+  }
+
+  /*
+   * /rpcz copies each backend's database name inside the st_changecount bracket, so the name has to
+   * be published there together with the database id.
+   */
+  @Test
+  public void testRpczReportsDatabaseName() throws Exception {
+    final String dbName = "rpcz_db";
+    final String appName = "rpcz_db_name_test";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE DATABASE " + dbName);
+    }
+
+    try (Connection conn = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.POSTGRES)
+             .withTServer(0)
+             .withDatabase(dbName)
+             .connect();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("SET application_name = '" + appName + "'");
+      ResultSet rs = stmt.executeQuery(
+          "SELECT oid FROM pg_database WHERE datname = current_database()");
+      assertTrue(rs.next());
+      long dbOid = rs.getLong(1);
+
+      int matches = 0;
+      for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
+        URL url = new URL(String.format("http://%s:%d/rpcz", ts.getLocalhostIP(),
+                                        ts.getPgsqlWebPort()));
+        try (Scanner scanner = new Scanner(url.openConnection().getInputStream())) {
+          JsonArray connections = JsonParser.parseString(scanner.useDelimiter("\\A").next())
+              .getAsJsonObject().getAsJsonArray("connections");
+          for (JsonElement element : connections) {
+            JsonObject entry = element.getAsJsonObject();
+            if (!appName.equals(entry.get("application_name").getAsString()))
+              continue;
+            matches++;
+            assertEquals(dbOid, entry.get("db_oid").getAsLong());
+            assertEquals(dbName, entry.get("db_name").getAsString());
+          }
+        }
+      }
+      assertEquals("expected exactly one /rpcz entry for " + appName, 1, matches);
+    }
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP DATABASE " + dbName);
     }
   }
 
