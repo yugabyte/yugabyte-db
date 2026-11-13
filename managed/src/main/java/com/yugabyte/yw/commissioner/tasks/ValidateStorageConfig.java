@@ -91,12 +91,25 @@ public class ValidateStorageConfig extends AbstractTaskBase {
     try {
       check(config);
     } catch (RuntimeException e) {
-      deleteIfValidating();
+      // Kept if it left the Validating state meanwhile, e.g. queued for deletion through v1.
+      if (CustomerConfig.deleteIfValidating(config.getConfigUUID())) {
+        log.info(
+            "Deleted storage config {} ({}), which failed its storage check",
+            config.getConfigUUID(),
+            config.getConfigName());
+      }
       throw e;
     }
-    // A no-op if the config was queued for deletion meanwhile.
-    config.updateState(ConfigState.Active);
-    log.info("Storage config {} passed its storage check", config.getConfigUUID());
+    // Not through the bean loaded above: its state is from before the check, so saving it would
+    // undo a deletion requested meanwhile.
+    if (CustomerConfig.updateStateIfValidating(config.getConfigUUID(), ConfigState.Active)) {
+      log.info("Storage config {} passed its storage check", config.getConfigUUID());
+    } else {
+      log.info(
+          "Storage config {} passed its storage check, but left the Validating state meanwhile;"
+              + " leaving it as it is",
+          config.getConfigUUID());
+    }
   }
 
   private void check(CustomerConfig config) {
@@ -104,19 +117,6 @@ public class ValidateStorageConfig extends AbstractTaskBase {
       configValidator.validateConfigDataWithValidator(config);
     } catch (Exception e) {
       throw StorageValidationErrors.toTaskError(e);
-    }
-  }
-
-  // Re-read, so that a config that left the Validating state meanwhile, e.g. queued for deletion
-  // through v1, is left alone.
-  private void deleteIfValidating() {
-    CustomerConfig config = CustomerConfig.get(params().customerUUID, params().configUUID);
-    if (config != null && config.getState() == ConfigState.Validating) {
-      log.info(
-          "Deleting storage config {} ({}), which failed its storage check",
-          config.getConfigUUID(),
-          config.getConfigName());
-      config.delete();
     }
   }
 }

@@ -7,6 +7,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 
@@ -201,6 +202,27 @@ public class ValidateStorageConfigTest extends FakeDBApplication {
     assertThrows(
         TaskExecutionException.class,
         () -> task(params(customer.getUuid(), config.getConfigUUID())).run());
+    config.refresh();
+    assertEquals(ConfigState.QueuedForDeletion, config.getState());
+  }
+
+  @Test
+  public void deletionDuringAPassingCheckIsKept() {
+    CustomerConfig config = validatingNfs("deleted", "/mnt/nfs");
+    // A v1 delete arrives while the storage is being checked.
+    CustomerConfigValidator validator = mock(CustomerConfigValidator.class);
+    doAnswer(
+            invocation -> {
+              CustomerConfig row = CustomerConfig.get(config.getConfigUUID());
+              row.setState(ConfigState.QueuedForDeletion);
+              row.update();
+              return null;
+            })
+        .when(validator)
+        .validateConfigDataWithValidator(any());
+
+    task(validator, params(customer.getUuid(), config.getConfigUUID())).run();
+
     config.refresh();
     assertEquals(ConfigState.QueuedForDeletion, config.getState());
   }

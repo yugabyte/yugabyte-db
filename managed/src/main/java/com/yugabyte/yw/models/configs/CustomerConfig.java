@@ -387,6 +387,36 @@ public class CustomerConfig extends Model {
         .findList();
   }
 
+  /**
+   * Moves the config from Validating to the given state in one statement, so that a state set
+   * meanwhile by another request (e.g. QueuedForDeletion) is kept. Returns whether it was moved.
+   */
+  public static boolean updateStateIfValidating(UUID configUUID, ConfigState newState) {
+    return CustomerConfig.find
+            .query()
+            .asUpdate()
+            .set("state", newState)
+            .where()
+            .idEq(configUUID)
+            .eq("state", ConfigState.Validating)
+            .update()
+        > 0;
+  }
+
+  /**
+   * Deletes the config if it is still Validating, in one statement, so that a config another
+   * request moved out of that state meanwhile is kept. Returns whether it was deleted.
+   */
+  public static boolean deleteIfValidating(UUID configUUID) {
+    return CustomerConfig.find
+            .query()
+            .where()
+            .idEq(configUUID)
+            .eq("state", ConfigState.Validating)
+            .delete()
+        > 0;
+  }
+
   public static CustomerConfig createCallHomeConfig(UUID customerUUID) {
     return createCallHomeConfig(customerUUID, "MEDIUM");
   }
