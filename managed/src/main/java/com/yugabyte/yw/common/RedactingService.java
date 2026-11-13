@@ -1147,18 +1147,28 @@ public class RedactingService {
     int n = input.length();
     StringBuilder out = new StringBuilder(n);
     int from = 0;
+    // Matches only move forward, so the line start is carried along rather than searched back for
+    // each match, which is quadratic when one line holds many.
+    int lineStart = 0;
+    int scanned = 0;
     while (pos >= 0) {
       int next = pos + needle.length();
       if (pos > 0 && isFlagNameChar(input.charAt(pos - 1))) {
         pos = input.indexOf(needle, next);
         continue;
       }
-      int column = pos - yamlLineStart(input, pos);
+      for (; scanned < pos; scanned++) {
+        char ch = input.charAt(scanned);
+        if (ch == '\n' || ch == '\r') {
+          lineStart = scanned + 1;
+        }
+      }
+      int column = pos - lineStart;
       int vs = next;
       while (vs < n && (input.charAt(vs) == ' ' || input.charAt(vs) == '\t')) {
         vs++;
       }
-      if (yamlLineEnd(input, vs) == vs) {
+      if (vs == n || input.charAt(vs) == '\n' || input.charAt(vs) == '\r') {
         // Nothing follows on this line, so the value (if any) is on the lines indented below it.
         int end = yamlIndentedLinesEnd(input, vs, column);
         if (end > vs) {
@@ -1194,14 +1204,6 @@ public class RedactingService {
     }
     out.append(input, from, n);
     return out.toString();
-  }
-
-  private static int yamlLineStart(String s, int pos) {
-    int i = pos;
-    while (i > 0 && s.charAt(i - 1) != '\n' && s.charAt(i - 1) != '\r') {
-      i--;
-    }
-    return i;
   }
 
   private static int yamlLineEnd(String s, int i) {
@@ -1466,6 +1468,9 @@ public class RedactingService {
   public static String redactQueryParams(String input) {
     String output = input;
     for (String param : SECRET_QUERY_PARAMS_FOR_LOGS) {
+      if (!output.contains(param + "=")) {
+        continue;
+      }
       String regex = "([?&]" + param + "=)([^&]+)";
       String replacement = "$1" + SECRET_REPLACEMENT;
       output = output.replaceAll(regex, replacement);
@@ -1474,6 +1479,10 @@ public class RedactingService {
   }
 
   public static String redactrootCAKeys(String input) {
+    // KEY_REGEX backtracks from every position of a line, so skip text it can't match.
+    if (!input.contains("key:")) {
+      return input;
+    }
     String output = input;
     Matcher matcher = KEY_SEARCH_PATTERN.matcher(input);
     if (matcher.find()) {
@@ -1572,10 +1581,14 @@ public class RedactingService {
       // Redact based on target
       switch (target) {
         case QUERY_PARAMS:
-          output = redactEachLine(output, RedactingService::redactQueryParams);
+          if (SECRET_QUERY_PARAMS_FOR_LOGS.stream().anyMatch(p -> input.contains(p + "="))) {
+            output = redactEachLine(output, RedactingService::redactQueryParams);
+          }
           break;
         case HELM_VALUES:
-          output = redactEachLine(output, RedactingService::redactrootCAKeys);
+          if (output.contains("key:")) {
+            output = redactEachLine(output, RedactingService::redactrootCAKeys);
+          }
           output = redactTelemetryCredentials(output);
           break;
         default:
@@ -1589,10 +1602,29 @@ public class RedactingService {
       for (String name : names) {
         output = redactYamlKeyValue(output, name, SECRET_REPLACEMENT);
       }
-      return redactEachLine(output, line -> redactSensitiveInfoInString(line, names));
+      // The other passes run one line at a time. For ldapbindpasswd, redactPatternOccurrences is
+      // redactFreeText again, so it is left out.
+      String redacted = output;
+      List<String> lineNames =
+          names.stream()
+              .filter(name -> !name.equals("ldapbindpasswd") && redacted.contains(name))
+              .collect(Collectors.toList());
+      if (lineNames.isEmpty()) {
+        return redacted;
+      }
+      return redactEachLine(
+          redacted,
+          line -> {
+            String l = line;
+            for (String name : lineNames) {
+              l = redactPatternOccurrences(name, l);
+            }
+            return l;
+          });
     } catch (Exception e) {
       log.error("Error redacting shell process output", e);
-      return input;
+      // Callers only log the result, so log none of it rather than all of it unredacted.
+      return SECRET_REPLACEMENT;
     }
   }
 

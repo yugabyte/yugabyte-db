@@ -714,6 +714,15 @@ public class RedactingServiceTest {
         RedactingService.redactSensitiveInfoInString("    ycql_ldap_bind_passwd: before\\nafter"));
   }
 
+  @Test(timeout = 10_000)
+  public void testYamlRedactionStaysLinearWithManyValuesOnOneLine() {
+    StringBuilder line = new StringBuilder();
+    for (int i = 0; i < 40_000; i++) {
+      line.append("ycql_ldap_bind_passwd: \"v\" ");
+    }
+    assertFalse(RedactingService.redactSensitiveInfoInString(line.toString()).contains("\"v\""));
+  }
+
   @Test
   public void testLogsRedactionRedactsYamlOverridesInsideJson() {
     ObjectNode payload = Json.newObject();
