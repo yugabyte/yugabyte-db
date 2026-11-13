@@ -16,6 +16,10 @@
           "class": 3
         },
         {
+          "name": "cdc_enable_dynamic_schema_changes",
+          "class": 2
+        },
+        {
           "name": "cdc_write_post_apply_metadata",
           "class": 2
         },
@@ -28,6 +32,10 @@
           "class": 2
         },
         {
+          "name": "cdcsdk_enable_selective_retention_barrier_revision",
+          "class": 1
+        },
+        {
           "name": "enable_automatic_tablet_splitting",
           "class": 3
         },
@@ -36,11 +44,31 @@
           "class": 2
         },
         {
+          "name": "enable_quiescent_tablets",
+          "class": 2
+        },
+        {
           "name": "enable_rpc_pool_tags",
           "class": 1
         },
         {
+          "name": "enable_transaction_metadata_update",
+          "class": 2
+        },
+        {
+          "name": "enable_write_pipelining_infra",
+          "class": 1
+        },
+        {
           "name": "enable_xcluster_auto_flag_validation",
+          "class": 2
+        },
+        {
+          "name": "enforce_xcluster_guarded_lease",
+          "class": 2
+        },
+        {
+          "name": "fs_root_pin_write",
           "class": 2
         },
         {
@@ -64,6 +92,10 @@
           "class": 2
         },
         {
+          "name": "skip_fields_moved_to_xcluster_guarded_info",
+          "class": 1
+        },
+        {
           "name": "skip_prefix_locks_for_upgrade",
           "class": 2
         },
@@ -74,6 +106,14 @@
         {
           "name": "store_min_start_ht_running_txns",
           "class": 2
+        },
+        {
+          "name": "vector_index_delete_list_after_rows",
+          "class": 2
+        },
+        {
+          "name": "vector_index_enable_pk_routing",
+          "class": 1
         },
         {
           "name": "xcluster_automatic_mode_schema_handling_v2",
@@ -89,6 +129,10 @@
         },
         {
           "name": "yb_enable_cdc_consistent_snapshot_streams",
+          "class": 2
+        },
+        {
+          "name": "yb_hnsw_write_block_checksums",
           "class": 2
         },
         {
@@ -112,6 +156,10 @@
           "class": 3
         },
         {
+          "name": "ysql_use_packed_row_v2",
+          "class": 3
+        },
+        {
           "name": "ysql_yb_allow_block_based_sampling_algorithm",
           "class": 1
         },
@@ -130,6 +178,14 @@
         {
           "name": "ysql_yb_bypass_cond_recheck",
           "class": 1
+        },
+        {
+          "name": "ysql_yb_cdcsdk_stream_tables_without_primary_key",
+          "class": 2
+        },
+        {
+          "name": "ysql_yb_dump_presplit_in_create",
+          "class": 3
         },
         {
           "name": "ysql_yb_enable_add_column_missing_default",
@@ -168,6 +224,10 @@
           "class": 1
         },
         {
+          "name": "ysql_yb_enable_object_locking_infra",
+          "class": 2
+        },
+        {
           "name": "ysql_yb_enable_pg_export_snapshot",
           "class": 2
         },
@@ -194,6 +254,10 @@
         {
           "name": "ysql_yb_enable_sequence_pushdown",
           "class": 1
+        },
+        {
+          "name": "ysql_yb_enable_xcluster_analyze_replication",
+          "class": 3
         },
         {
           "name": "ysql_yb_pg_locks_integrate_advisory_locks",
@@ -245,6 +309,10 @@
           "class": 2
         },
         {
+          "name": "cdc_pg_create_grpc_stream",
+          "class": 2
+        },
+        {
           "name": "cdc_write_post_apply_metadata",
           "class": 2
         },
@@ -265,8 +333,20 @@
           "class": 2
         },
         {
+          "name": "cdcsdk_enable_selective_retention_barrier_revision",
+          "class": 1
+        },
+        {
+          "name": "cdcsdk_use_dropped_table_list_for_cleanup",
+          "class": 2
+        },
+        {
           "name": "enable_automatic_tablet_splitting",
           "class": 3
+        },
+        {
+          "name": "enable_db_clone",
+          "class": 2
         },
         {
           "name": "enable_export_snapshot_using_relfilenode",
@@ -281,16 +361,40 @@
           "class": 2
         },
         {
+          "name": "enable_quiescent_tablets",
+          "class": 2
+        },
+        {
           "name": "enable_rpc_pool_tags",
           "class": 1
+        },
+        {
+          "name": "enable_table_owned_vector_reverse_mapping",
+          "class": 3
         },
         {
           "name": "enable_tablespace_based_transaction_placement",
           "class": 2
         },
         {
+          "name": "enable_tablet_split_of_tables_with_vector_index",
+          "class": 3
+        },
+        {
+          "name": "enable_tablet_split_of_xcluster_bootstrapping_tables_with_recorded_tablets",
+          "class": 3
+        },
+        {
           "name": "enable_tablet_split_of_xcluster_replicated_tables",
           "class": 3
+        },
+        {
+          "name": "enable_transaction_metadata_update",
+          "class": 2
+        },
+        {
+          "name": "enable_write_pipelining_infra",
+          "class": 1
         },
         {
           "name": "enable_xcluster_api_v2",
@@ -298,6 +402,22 @@
         },
         {
           "name": "enable_xcluster_auto_flag_validation",
+          "class": 2
+        },
+        {
+          "name": "enable_xcluster_wal_anchor_stream_infra",
+          "class": 3
+        },
+        {
+          "name": "enable_ysql_catalog_prefetch_admission",
+          "class": 1
+        },
+        {
+          "name": "enforce_xcluster_guarded_lease",
+          "class": 2
+        },
+        {
+          "name": "fs_root_pin_write",
           "class": 2
         },
         {
@@ -329,6 +449,10 @@
           "class": 2
         },
         {
+          "name": "skip_fields_moved_to_xcluster_guarded_info",
+          "class": 1
+        },
+        {
           "name": "skip_prefix_locks_for_upgrade",
           "class": 2
         },
@@ -345,6 +469,18 @@
           "class": 2
         },
         {
+          "name": "use_tablet_report_pending_config_op_id",
+          "class": 1
+        },
+        {
+          "name": "vector_index_delete_list_after_rows",
+          "class": 2
+        },
+        {
+          "name": "vector_index_enable_pk_routing",
+          "class": 1
+        },
+        {
           "name": "xcluster_automatic_mode_schema_handling_v2",
           "class": 3
         },
@@ -357,6 +493,10 @@
           "class": 3
         },
         {
+          "name": "xcluster_enable_target_applied_filter",
+          "class": 3
+        },
+        {
           "name": "xcluster_store_older_schema_versions",
           "class": 2
         },
@@ -366,6 +506,10 @@
         },
         {
           "name": "yb_enable_cdc_consistent_snapshot_streams",
+          "class": 2
+        },
+        {
+          "name": "yb_hnsw_write_block_checksums",
           "class": 2
         },
         {
@@ -397,6 +541,10 @@
           "class": 3
         },
         {
+          "name": "ysql_use_packed_row_v2",
+          "class": 3
+        },
+        {
           "name": "ysql_yb_allow_block_based_sampling_algorithm",
           "class": 1
         },
@@ -415,6 +563,14 @@
         {
           "name": "ysql_yb_bypass_cond_recheck",
           "class": 1
+        },
+        {
+          "name": "ysql_yb_cdcsdk_stream_tables_without_primary_key",
+          "class": 2
+        },
+        {
+          "name": "ysql_yb_dump_presplit_in_create",
+          "class": 3
         },
         {
           "name": "ysql_yb_enable_add_column_missing_default",
@@ -453,6 +609,10 @@
           "class": 1
         },
         {
+          "name": "ysql_yb_enable_object_locking_infra",
+          "class": 2
+        },
+        {
           "name": "ysql_yb_enable_pg_export_snapshot",
           "class": 2
         },
@@ -479,6 +639,10 @@
         {
           "name": "ysql_yb_enable_sequence_pushdown",
           "class": 1
+        },
+        {
+          "name": "ysql_yb_enable_xcluster_analyze_replication",
+          "class": 3
         },
         {
           "name": "ysql_yb_pg_locks_integrate_advisory_locks",
