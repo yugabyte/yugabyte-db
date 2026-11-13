@@ -1543,12 +1543,15 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWitDDLStatemen
   expected_dml_records = 2 * num_batches * inserts_per_batch;
   int expected_min_txn_id_after_restart = last_received_txn_id + 1;
   // We should receive all 6 DDLs (2 DDLs per tablet) after restart since we havent acknowledged the
-  // DDLs to the cdc_service.
-  int expected_ddl_records = 2 * 3;
+  // DDLs to the cdc_service. With transactional DDL support, the DDLs come in their own
+  // transactions instead, checked below.
+  int expected_ddl_records =
+      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 0 : 2 * 3;
   auto resp_after_restart = ASSERT_RESULT(
       GetAllPendingTxnsFromVirtualWAL(stream_id, {table.table_id()}, expected_dml_records, true));
 
-  // First 6 records recevied after restart should be DDL records.
+  // Without transactional DDL support, the first 6 records recevied after restart should be DDL
+  // records.
   for (int i = 0; i < expected_ddl_records; i++) {
     ASSERT_TRUE(resp_after_restart.records[i].row_message().op() == RowMessage_Op_DDL);
   }
@@ -1558,6 +1561,14 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWitDDLStatemen
   CheckRecordCount(
       resp_after_restart, expected_dml_records, expected_ddl_records,
       expected_min_txn_id_after_restart);
+
+  // With transactional DDL support, like the inserts, a DDL transaction received before the restart
+  // doesn't come again, so the ADD and DROP's 2 and 1 synthetic DDL records arrive once, before or
+  // after the restart.
+  if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
+    ASSERT_EQ(
+        get_all_pending_changes_resp.record_count[0] + resp_after_restart.record_count[0], 3);
+  }
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWithMultipleAlter) {
