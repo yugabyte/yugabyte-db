@@ -24,7 +24,7 @@ class YsqlMajorExtensionUpgradeTest : public YsqlMajorUpgradeTestBase {
   YsqlMajorExtensionUpgradeTest() = default;
 
   void SetUpOptions(ExternalMiniClusterOptions& opts) override {
-    // YB_TODO_PG19MERGE: postgresql_anonymizer is not built on pg19, see
+    // TODO(#37181): postgresql_anonymizer is not built on pg19, see
     // external_extension_subdirs in build_postgres.py. Preloading a library that does not exist
     // stops the upgraded cluster's postmaster from starting, which failed every test in this file.
     // Restore these once the extension is ported.
@@ -281,7 +281,7 @@ TEST_F(YsqlMajorExtensionUpgradeTest, Orafce) {
   ASSERT_EQ(role_count, 1U);
 }
 
-// YB_TODO_PG19MERGE: no pg_hint_plan update path from 1.5.1-yb-1.0.
+// TODO(#31987): no pg_hint_plan update path from 1.5.1-yb-1.0.
 TEST_F(YsqlMajorExtensionUpgradeTest, YB_DISABLE_TEST(PgHintPlan)) {
   ASSERT_OK(ExecuteStatement(Format("CREATE EXTENSION pg_hint_plan")));
   std::vector<std::string> tables = {"t_hint", "t_hint2", "t_hint3"};
@@ -469,7 +469,7 @@ TEST_F(YsqlMajorExtensionUpgradeTest, PgStatMonitor) {
       "extension \"pg_stat_monitor\" is not available");
 }
 
-// YB_TODO_PG19MERGE: postgresql_anonymizer is not built on pg19.
+// TODO(#37181): postgresql_anonymizer is not built on pg19.
 TEST_F(YsqlMajorExtensionUpgradeTest, YB_DISABLE_TEST(Anon)) {
   ASSERT_OK(ExecuteStatement("CREATE EXTENSION anon"));
   auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));

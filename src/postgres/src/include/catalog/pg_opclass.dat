@@ -552,7 +552,7 @@
   opcfamily => 'lsm/text_ops', opcintype => 'text' },
 { opcmethod => 'lsm', opcname => 'time_ops',
   opcfamily => 'lsm/time_ops', opcintype => 'time' },
-# YB_TODO_PG19MERGE collision with PG; changed from 9947 to 9812
+# TODO(#37895): collision with PG; changed from 9947 to 9812
 { oid => '9812', oid_symbol => 'TIMESTAMPTZ_LSM_OPS_OID',
   opcmethod => 'lsm', opcname => 'timestamptz_ops',
   opcfamily => 'lsm/datetime_ops', opcintype => 'timestamptz' },
@@ -562,7 +562,7 @@
   opcfamily => 'lsm/varbit_ops', opcintype => 'varbit' },
 { opcmethod => 'lsm', opcname => 'varchar_ops',
   opcfamily => 'lsm/text_ops', opcintype => 'text', opcdefault => 'f' },
-# YB_TODO_PG19MERGE collision with PG; changed from 9948 to 9813
+# TODO(#37895): collision with PG; changed from 9948 to 9813
 { oid => '9813', oid_symbol => 'TIMESTAMP_LSM_OPS_OID',
   opcmethod => 'lsm', opcname => 'timestamp_ops',
   opcfamily => 'lsm/datetime_ops', opcintype => 'timestamp' },
