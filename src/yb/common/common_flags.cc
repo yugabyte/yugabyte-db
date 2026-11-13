@@ -237,6 +237,14 @@ DEFINE_NON_RUNTIME_bool(enable_object_locking_for_table_locks,
     "This flag enables the object lock APIs provided by tservers and masters - "
     "AcquireObject(Global)Lock, ReleaseObject(Global)Lock. These APIs are used to "
     "implement pg table locks.");
+DEFINE_NON_RUNTIME_bool(ysql_enable_global_object_locks, true,
+    "[This is an advanced flag, avoid using it unless recommended by Yugabyte support.] "
+    "Whether transactions on this node take global object locks, that is, run in the new mode of "
+    "DDLs and DMLs. To stop using global object locks on a running cluster, turn this off with a "
+    "rolling restart, together with ysql_enable_concurrent_ddl and "
+    "ysql_yb_ddl_transaction_block_enabled. Local object locks stay on, so new mode DDLs on other "
+    "nodes still wait for this node's DMLs. Turning enable_object_locking_for_table_locks off on a "
+    "running cluster is not supported.");
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, enable_object_locking_infra, kLocalPersisted, false, true,
     "DEPRECATED: no-op. Use ysql_yb_enable_object_locking_infra.");
 // Gates the new mode for DDLs/DMLs: transactional DDL, object locking for table locks, and
@@ -279,11 +287,15 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_concurrent_ddl, kEnableDdlTransactionBlocks,
     "support.] Use this flag to toggle support for concurrent DDLs.");
 DEFINE_validator(ysql_enable_concurrent_ddl,
     FLAG_REQUIRES_FLAG_VALIDATOR(enable_object_locking_for_table_locks),
-    FLAG_REQUIRED_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
+    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_enable_global_object_locks));
 
 DEFINE_validator(enable_object_locking_for_table_locks,
-    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled),
-    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_enable_concurrent_ddl),
+    FLAG_DELAYED_COND_VALIDATOR(
+        !_value || !FINAL_FLAG_VALUE(ysql_enable_global_object_locks) ||
+            (FINAL_FLAG_VALUE(ysql_yb_ddl_transaction_block_enabled) &&
+             FINAL_FLAG_VALUE(ysql_enable_concurrent_ddl)),
+        "Requires ysql_yb_ddl_transaction_block_enabled and ysql_enable_concurrent_ddl while "
+        "ysql_enable_global_object_locks is on"),
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_enable_invalidation_messages),
     FLAG_REQUIRES_NONZERO_FLAG_VALIDATOR(refresh_waiter_timeout_ms),
     FLAG_REQUIRED_BY_FLAG_VALIDATOR(ysql_enable_concurrent_ddl),
@@ -317,7 +329,10 @@ DEFINE_validator(ysql_yb_ddl_transaction_block_enabled,
         (!_value || FINAL_FLAG_VALUE(ysql_yb_ddl_rollback_enabled)),
         "ysql_yb_ddl_rollback_enabled must be enabled"),
     FLAG_REQUIRES_FLAG_VALIDATOR(enable_object_locking_for_table_locks),
-    FLAG_REQUIRED_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
+    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_enable_global_object_locks));
+DEFINE_validator(ysql_enable_global_object_locks,
+    FLAG_REQUIRED_BY_FLAG_VALIDATOR(ysql_enable_concurrent_ddl),
+    FLAG_REQUIRED_BY_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled));
 DEFINE_validator(refresh_waiter_timeout_ms,
     FLAG_REQUIRED_NONZERO_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks),
     FLAG_DELAYED_COND_VALIDATOR(

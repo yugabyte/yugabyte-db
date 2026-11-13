@@ -55,6 +55,7 @@ DECLARE_int32(tablet_overhead_size_percentage);
 DECLARE_int64(db_block_cache_size_bytes);
 DECLARE_int64(memory_limit_hard_bytes);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_global_object_locks);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_enable_auto_analyze_service);
 DECLARE_bool(ysql_enable_table_mutation_counter);
@@ -258,6 +259,9 @@ void WarnIfPgPartmanFlagHasNoEffect() {
   }
   if (!FLAGS_enable_object_locking_for_table_locks) {
     off.push_back("enable_object_locking_for_table_locks=false");
+  }
+  if (!FLAGS_ysql_enable_global_object_locks) {
+    off.push_back("ysql_enable_global_object_locks=false");
   }
   if (!FLAGS_ysql_yb_enable_ddl_savepoint_support) {
     off.push_back("ysql_yb_enable_ddl_savepoint_support=false");

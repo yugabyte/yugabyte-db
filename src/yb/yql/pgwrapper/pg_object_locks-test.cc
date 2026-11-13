@@ -4063,4 +4063,80 @@ TEST_P(PgObjectLocksGlobalLockPromotionTest, MasterAndTserverOlmDeadlock) {
       20s * kTimeMultiplier));
 }
 
+// Tests for #37355.
+//
+// ysql_enable_global_object_locks set to false stops a node from taking global object locks,
+// so its DDLs run in the legacy mode, while it still takes local object locks: a new mode DDL on
+// another node keeps waiting for its DMLs. It is the way back from global object locks on a
+// running cluster, since enable_object_locking_for_table_locks cannot be turned off there.
+class PgObjectLocksTestGlobalLocksOff : public PgObjectLocksTest {
+ protected:
+  // Creates table test, then restarts ts with global object locks off. The flags are appended
+  // after the fixture's, so they take precedence.
+  void SetUpGlobalLocksOffNode(ExternalTabletServer* ts) {
+    {
+      auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*cluster_->tablet_server(0)));
+      ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+      ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
+    }
+    ts->Shutdown();
+    LogWaiter log_waiter(ts, "Received new lease epoch");
+    auto& flags = *ts->mutable_flags();
+    ToggleDDLMode(flags, /* use_legacy = */ true);
+    flags.push_back("--enable_object_locking_for_table_locks=true");
+    flags.push_back("--ysql_enable_global_object_locks=false");
+    ASSERT_OK(ts->Restart(ExternalMiniClusterOptions::kDefaultStartCqlProxy));
+    ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 10)));
+    ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("ysql_enable_global_object_locks")), "false");
+    ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("enable_object_locking_for_table_locks")), "true");
+  }
+};
+
+// A strong lock on the node takes no global lock, so a reader on another node does not wait.
+TEST_F(PgObjectLocksTestGlobalLocksOff, StrongLockIsNotGlobal) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  ASSERT_NO_FATALS(SetUpGlobalLocksOffNode(ts2));
+
+  auto locker_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(locker_conn.Execute("BEGIN"));
+  ASSERT_OK(locker_conn.Execute("LOCK TABLE test IN ACCESS EXCLUSIVE MODE"));
+
+  auto read_future = std::async(std::launch::async, [&]() -> Result<int64_t> {
+    auto conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    return conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test");
+  });
+  const auto read_done =
+      read_future.wait_for(30s * kTimeMultiplier) == std::future_status::ready;
+  ASSERT_OK(locker_conn.Execute("COMMIT"));
+  ASSERT_TRUE(read_done);
+  ASSERT_EQ(ASSERT_RESULT(read_future.get()), 10);
+}
+
+// A writer on the node still takes a local lock, so a new mode CREATE INDEX on another node waits
+// for it, and the index has the writer's row.
+TEST_F(PgObjectLocksTestGlobalLocksOff, NewDdlWaitsForWriter) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  ASSERT_NO_FATALS(SetUpGlobalLocksOffNode(ts2));
+
+  auto writer_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(writer_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(writer_conn.Execute("UPDATE test SET v = 42 WHERE k = 1"));
+
+  auto create_index_future = std::async(std::launch::async, [&]() -> Status {
+    auto ddl_conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    return ddl_conn.Execute("CREATE INDEX test_v_idx ON test(v)");
+  });
+  const auto create_index_waited =
+      create_index_future.wait_for(3s * kTimeMultiplier) == std::future_status::timeout;
+  ASSERT_OK(writer_conn.Execute("COMMIT"));
+  ASSERT_TRUE(create_index_waited);
+  ASSERT_OK(create_index_future.get());
+
+  auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test WHERE v = 42")), 1);
+}
+
 }  // namespace yb::pgwrapper
