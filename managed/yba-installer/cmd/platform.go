@@ -19,6 +19,7 @@ import (
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/yugaware"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/replicated/replicatedctl"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/systemd"
@@ -282,19 +283,8 @@ func (plat Platform) copyYbcPackages() error {
 	return nil
 }
 
-func (plat Platform) deleteNodeAgentPackages() error {
-	log.Debug("Deleting old node agent packages")
-	// It deletes existing node-agent packages on upgrade.
-	// Even if it fails, it is ok.
-	releasesFolderPath := common.GetBaseInstall() + "/data/yb-platform/node-agent/releases"
-	nodeAgentPattern := releasesFolderPath + "/node_agent-*.tar.gz"
-	matches, err := filepath.Glob(nodeAgentPattern)
-	if err == nil {
-		for _, f := range matches {
-			os.Remove(f)
-		}
-	}
-	return nil
+func nodeAgentReleasesDir() string {
+	return common.GetBaseInstall() + "/data/yb-platform/node-agent/releases"
 }
 
 func (plat Platform) copyNodeAgentPackages() error {
@@ -311,7 +301,7 @@ func (plat Platform) copyNodeAgentPackages() error {
 
 	for _, f := range matches {
 		_, fileName := filepath.Split(f)
-		dest := common.GetBaseInstall() + "/data/yb-platform/node-agent/releases/" + fileName
+		dest := filepath.Join(nodeAgentReleasesDir(), fileName)
 		if _, err := os.Stat(dest); errors.Is(err, os.ErrNotExist) {
 			common.CopyFile(f, dest)
 		}
@@ -464,8 +454,13 @@ func (plat Platform) Upgrade() error {
 	if err := plat.copyYbcPackages(); err != nil {
 		return err
 	}
-	if err := plat.deleteNodeAgentPackages(); err != nil {
-		return err
+	// Keep the installed version's packages: a failed upgrade rolls back to that version, and
+	// rollback does not copy them back. upgradeCmd prunes them once the upgrade succeeds.
+	if installedVersion, err := yugaware.InstalledVersionFromMetadata(); err != nil {
+		log.Warn("Not pruning node agent packages, cannot read the installed YBA version: " +
+			err.Error())
+	} else {
+		common.PruneNodeAgentPackages(nodeAgentReleasesDir(), installedVersion)
 	}
 	if err := plat.copyNodeAgentPackages(); err != nil {
 		return err
