@@ -2958,16 +2958,21 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     assertEquals(
         addressSet(oldMasters, podHost("yb-master", "az-4") + ":7100"),
         addressSet(helmMasterAddresses(createAz1Master.get(0))));
-    // Before the az-4 add, az-2 and az-3 render the old masters and az-4's. The full move's az-1
-    // is left to it.
+    // Before the az-4 add, every AZ that runs now renders the old masters and az-4's. az-1's full
+    // move has not started, so az-1 renders its one master StatefulSet with the disk spec it runs
+    // with.
     List<List<TaskInfo>> beforeAz4Add = earlySecretUpdates(plan, -1, adds.get(0).getPosition());
     List<TaskInfo> addedMastersRender = beforeAz4Add.get(beforeAz4Add.size() - 1);
-    assertEquals(ImmutableSet.of("az-2", "az-3"), azCodes(addedMastersRender));
+    assertEquals(ImmutableSet.of("az-1", "az-2", "az-3"), azCodes(addedMastersRender));
     for (TaskInfo t : addedMastersRender) {
       assertEquals(
           addressSet(oldMasters, podHost("yb-master", "az-4") + ":7100"),
           addressSet(helmMasterAddresses(t)));
+      assertEquals(0, helmAZ(t).path("masterStsIndex").asInt());
     }
+    TaskInfo az1Render = helmUpgradesInAZs(addedMastersRender, ImmutableSet.of("az-1")).get(0);
+    assertFalse(az1Render.getTaskParams().path("useNewMasterDeviceInfo").asBoolean());
+    assertEquals(1, plainAz1RendersBeforeFullMove(plan).size());
     // Before the az-1 add, every AZ that runs now renders the old and the new masters: az-1
     // through the full move's own helm upgrade, the others through the non-restart render.
     int createPos = createAz1Master.get(0).getPosition();
@@ -3006,6 +3011,49 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
                           .getCode()));
       assertTrue(azs.toString(), azs.contains("az-4"));
     }
+  }
+
+  /**
+   * A retry after the masters outside a master full move joined skips their render of the full-move
+   * AZ: the full move may have created its second master StatefulSet, which a plain render would
+   * delete.
+   */
+  @Test
+  public void testZoneReplaceWithMasterFullMoveRetryAfterAddsSkipsFullMoveZoneRender() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    TestUtils.updateDeviceInfo(newIntent, ServerType.MASTER, d -> d.storageClass = "fast");
+    PlacementInfo pi = zoneReplacePlacement();
+    pi.azStream()
+        .filter(az -> az.name.equals("PlacementAZ 1"))
+        .forEach(az -> az.masterStsIndex = 1);
+    TaskInfo attempt = submitEdit(newIntent, pi, null);
+    assertEquals(1, plainAz1RendersBeforeFullMove(plan(attempt)).size());
+
+    attempt =
+        retryEdit(
+            attempt,
+            p -> p.getPrimaryCluster().setMasterMoveStage(MasterMoveStage.ADDED_MASTERS_RUNNING));
+    assertEquals(1, plainAz1RendersBeforeFullMove(plan(attempt)).size());
+    attempt =
+        retryEdit(
+            attempt,
+            p -> p.getPrimaryCluster().setMasterMoveStage(MasterMoveStage.ADDED_MASTERS_JOINED));
+    assertTrue(plainAz1RendersBeforeFullMove(plan(attempt)).isEmpty());
+  }
+
+  /** The non-restart renders of az-1 before its master full move creates the new master pods. */
+  private static List<TaskInfo> plainAz1RendersBeforeFullMove(List<TaskInfo> plan) {
+    List<TaskInfo> az1Helm = helmUpgradesInAZs(helmUpgrades(plan), ImmutableSet.of("az-1"));
+    int fullMoveCreate =
+        az1Helm.stream()
+            .filter(t -> !keepsGflagsChecksum(t))
+            .mapToInt(TaskInfo::getPosition)
+            .min()
+            .getAsInt();
+    return between(az1Helm, -1, fullMoveCreate).stream()
+        .filter(EditKubernetesUniverseTest::keepsGflagsChecksum)
+        .collect(Collectors.toList());
   }
 
   @Test

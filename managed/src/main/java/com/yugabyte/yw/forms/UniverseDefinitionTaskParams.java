@@ -471,6 +471,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     STARTED,
     // The masters the edit adds outside a master full move run, and may be in the Raft config.
     ADDED_MASTERS_RUNNING,
+    // Those masters are in the Raft config. Recorded only before a master full move, which then
+    // creates its pods.
+    ADDED_MASTERS_JOINED,
     // The master full move's new masters run too, and may be in the Raft config.
     FULL_MOVE_MASTERS_RUNNING,
     OLD_MASTERS_REMOVED,
