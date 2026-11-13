@@ -99,6 +99,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -2526,7 +2527,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   /**
    * A retry starts master pods with the masters that run by then, which depends on how far the
    * earlier attempts got: after every new master joined, a remove may have made a new one the
-   * leader; after the master steps, the old master pods may be gone.
+   * leader; after the removes, the old master pods may be gone. After the master steps, a retry
+   * skips the full move.
    */
   @Test
   public void testMasterFullMoveRetryStartsMasterPodsWithRunningMasters() {
@@ -2554,15 +2556,15 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             ImmutableList.of(
                 addressSet(oldMasters, newMasters), addressSet(oldMasters, newMasters)),
             MasterMoveStage.OLD_MASTERS_REMOVED,
-            ImmutableList.of(addressSet(newMasters), addressSet(newMasters)),
-            MasterMoveStage.MASTERS_SETTLED,
             ImmutableList.of(addressSet(newMasters), addressSet(newMasters)));
+    Function<TaskInfo, List<TaskInfo>> masterHelmOf =
+        a ->
+            helmUpgrades(plan(a)).stream()
+                .filter(t -> "MASTER".equals(t.getTaskParams().path("serverType").asText()))
+                .collect(Collectors.toList());
     for (Map.Entry<MasterMoveStage, List<Set<String>>> c : cases.entrySet()) {
       attempt = retryEdit(attempt, p -> p.getPrimaryCluster().setMasterMoveStage(c.getKey()));
-      List<TaskInfo> masterHelm =
-          helmUpgrades(plan(attempt)).stream()
-              .filter(t -> "MASTER".equals(t.getTaskParams().path("serverType").asText()))
-              .collect(Collectors.toList());
+      List<TaskInfo> masterHelm = masterHelmOf.apply(attempt);
       // The full move's first group creates the new master pods.
       int create = firstPosition(masterHelm);
       int next = between(masterHelm, create, Integer.MAX_VALUE).get(0).getPosition();
@@ -2575,6 +2577,11 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         }
       }
     }
+    attempt =
+        retryEdit(
+            attempt,
+            p -> p.getPrimaryCluster().setMasterMoveStage(MasterMoveStage.MASTERS_SETTLED));
+    assertEquals(Collections.emptyList(), masterHelmOf.apply(attempt));
   }
 
   @Test
@@ -2913,8 +2920,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   }
 
   /**
-   * After the master steps, a retry renders no master list: one at the pre-edit pod counts would
-   * scale back tservers the earlier attempt added.
+   * After the master steps, a retry renders no master list and skips the master full move: both
+   * render the pre-edit pod counts, which would scale back tservers the earlier attempt added.
    */
   @Test
   public void testMasterFullMoveRetryAfterSettledKeepsAddedTservers() {
@@ -2924,30 +2931,42 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     PlacementInfo pi = currentPlacement();
     pi.azStream()
         .filter(az -> az.name.equals("PlacementAZ 1"))
-        .forEach(az -> az.masterStsIndex = 1);
+        .forEach(
+            az -> {
+              az.masterStsIndex = 1;
+              az.numNodesInAZ = 2;
+            });
     pi.azStream().filter(az -> az.name.equals("PlacementAZ 2")).forEach(az -> az.numNodesInAZ = 2);
-    newIntent.numNodes += 1;
+    newIntent.numNodes += 2;
+    Set<String> grownAZs = ImmutableSet.of("az-1", "az-2");
 
     TaskInfo attempt = submitEdit(newIntent, pi, null);
-    // The first attempt renders az-2 at its current count only before the tservers are added.
-    List<TaskInfo> az2Helm =
-        helmUpgradesInAZs(helmUpgrades(plan(attempt)), ImmutableSet.of("az-2"));
+    // The first attempt renders the grown AZs at their current count only before the tservers
+    // are added.
+    List<TaskInfo> grownHelm = helmUpgradesInAZs(helmUpgrades(plan(attempt)), grownAZs);
     int firstAt2 =
-        az2Helm.stream()
+        grownHelm.stream()
             .filter(t -> helmAZ(t).path("numNodesInAZ").asInt() == 2)
             .mapToInt(TaskInfo::getPosition)
             .min()
             .getAsInt();
-    for (TaskInfo t : between(az2Helm, firstAt2, Integer.MAX_VALUE)) {
+    for (TaskInfo t : between(grownHelm, firstAt2, Integer.MAX_VALUE)) {
       assertEquals(2, helmAZ(t).path("numNodesInAZ").asInt());
     }
     attempt =
         retryEdit(
             attempt,
             p -> p.getPrimaryCluster().setMasterMoveStage(MasterMoveStage.MASTERS_SETTLED));
-    for (TaskInfo t : helmUpgradesInAZs(helmUpgrades(plan(attempt)), ImmutableSet.of("az-2"))) {
+    List<TaskInfo> retryPlan = plan(attempt);
+    for (TaskInfo t : helmUpgradesInAZs(helmUpgrades(retryPlan), grownAZs)) {
       assertEquals(2, helmAZ(t).path("numNodesInAZ").asInt());
     }
+    assertTrue(
+        retryPlan.stream()
+            .noneMatch(
+                t ->
+                    "VOLUME_DELETE_SHELL_MODE_MASTER"
+                        .equals(t.getTaskParams().path("commandType").asText())));
   }
 
   @Test

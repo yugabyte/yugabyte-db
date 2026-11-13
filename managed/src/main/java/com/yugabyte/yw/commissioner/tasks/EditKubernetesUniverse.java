@@ -843,7 +843,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       // Rollback checkpoint: a full move replaces existing pods and deletes their PVCs.
       createMarkRollbackUnsafeTaskOnce();
     }
-    if (CollectionUtils.isNotEmpty(fullMoveMasterAZs)) {
+    // MASTERS_SETTLED is recorded once the master full move has finished. Its helm upgrades render
+    // the pre-edit tserver counts, so rerunning it would scale back tservers added since.
+    if (CollectionUtils.isNotEmpty(fullMoveMasterAZs) && stage != MasterMoveStage.MASTERS_SETTLED) {
       // Ybc is not present on master-only nodes currently
       createFullMoveTasks(
           universe,
