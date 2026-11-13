@@ -339,9 +339,11 @@ od_frontend_attach(od_client_t *client, char *context,
 	od_route_t *route = client->route;
 
 	bool wait_for_idle = false;
+	uint64_t end_time_ms = od_router_wait_end_time_ms(router);
 	for (;;) {
 		od_router_status_t status;
-		status = od_router_attach(router, client, wait_for_idle, client);
+		status = od_router_attach_until(router, client, wait_for_idle,
+						client, end_time_ms);
 		if (status != OD_ROUTER_OK) {
 			if (status == OD_ROUTER_ERROR_TIMEDOUT) {
 				od_error(&instance->logger, "router", client,
@@ -397,10 +399,11 @@ od_frontend_attach(od_client_t *client, char *context,
 		od_atomic_u32_dec(&router->servers_routing);
 		if (rc == -1) {
 			/* In case of 'too many connections' error, retry attach attempt by
-			 * waiting for a idle server connection for pool_timeout ms
+			 * waiting for a idle server connection for
+			 * yb_query_wait_timeout_ms
 			 */
 			wait_for_idle =
-				route->rule->pool->timeout > 0 &&
+				instance->config.yb_query_wait_timeout_ms > 0 &&
 				od_frontend_error_is_too_many_connections(
 					client);
 			if (wait_for_idle) {

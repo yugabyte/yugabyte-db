@@ -38,7 +38,7 @@ public class TestAuthPoolTimeout extends BaseYsqlConnMgr {
     protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
         super.customizeMiniClusterBuilder(builder);
 
-        builder.addCommonTServerFlag("ysql_conn_mgr_pool_timeout",
+        builder.addCommonTServerFlag("ysql_conn_mgr_query_wait_timeout_ms",
             Integer.toString(POOL_TIMEOUT));
         builder.addCommonTServerFlag("ysql_conn_mgr_use_auth_backend", "true");
         builder.addCommonTServerFlag("ysql_max_connections",

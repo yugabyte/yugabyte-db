@@ -143,10 +143,15 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_control_connection_pool_size, 0,
     "Maximum number of concurrent control connections in Ysql Connection Manager. "
     "If the value is zero, the default value is 0.1 * ysql_max_connections");
 
+DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, query_wait_timeout_ms, 120000,
+    "Maximum time in milliseconds a client waits in Ysql Connection Manager for a server "
+    "connection, after which the client is disconnected. If the value is set to zero, the client "
+    "waits for the server connection indefinitely. Counterpart of PgBouncer's "
+    "query_wait_timeout, which is in seconds.");
+
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_pool_timeout, 0,
-    "Server pool wait timeout(in ms) in Ysql Connection Manager. Time to wait in "
-    "milliseconds for an available server. Disconnect client on timeout reach. "
-    "If the value is set to zero, the client waits for the server connection indefinitely");
+    "Deprecated, use ysql_conn_mgr_query_wait_timeout_ms instead. Used only when "
+    "ysql_conn_mgr_query_wait_timeout_ms is not set.");
 
 DEPRECATE_FLAG(bool, ysql_conn_mgr_optimized_extended_query_protocol, "10_2026");
 
