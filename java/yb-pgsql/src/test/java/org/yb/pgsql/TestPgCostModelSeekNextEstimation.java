@@ -8,7 +8,19 @@ import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_ONLY_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_SEQ_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_YB_BATCHED_NESTED_LOOP;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_YB_BITMAP_TABLE_SCAN;
+import static org.yb.pgsql.ExplainAnalyzeUtils.PLAN;
+import static org.yb.pgsql.ExplainAnalyzeUtils.getExplainOutput;
+import static org.yb.pgsql.ExplainAnalyzeUtils.getExplainTotalCost;
+import static org.yb.pgsql.ExplainAnalyzeUtils.testExplain;
 import static org.yb.pgsql.ExplainAnalyzeUtils.testExplainDebug;
+
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
 import java.sql.Connection;
 import java.sql.Statement;
@@ -21,6 +33,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
+import org.yb.pgsql.ExplainAnalyzeUtils.Cost;
 import org.yb.pgsql.ExplainAnalyzeUtils.MetricsCheckerBuilder;
 import org.yb.pgsql.ExplainAnalyzeUtils.PlanCheckerBuilder;
 import org.yb.pgsql.ExplainAnalyzeUtils.TopLevelCheckerBuilder;
@@ -1377,6 +1390,163 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
         NODE_YB_BATCHED_NESTED_LOOP,
         "t2_26463", NODE_SEQ_SCAN, 97656248.0, 100097654198.0,
         "t1_26463", NODE_INDEX_SCAN, 1024.0, 2048.0);
+    }
+  }
+
+  // The first node of type nodeType in the plan of query, with its DEBUG estimates.  DEBUG needs
+  // DIST, which needs ANALYZE, so the query runs.
+  private JsonObject getPlanNode(Statement stmt, String query, String nodeType) throws Exception {
+    JsonObject plan = JsonParser.parseString(getExplainOutput(stmt, query, "json",
+        true /* analyze */, true /* costs */, true /* debug */, true /* dist */,
+        false /* summary */, false /* timing */, false /* verbose */))
+        .getAsJsonArray().get(0).getAsJsonObject().getAsJsonObject(PLAN);
+    JsonObject node = findPlanNode(plan, nodeType);
+    assertNotNull("No " + nodeType + " in the plan of " + query, node);
+    return node;
+  }
+
+  private static JsonObject findPlanNode(JsonObject plan, String nodeType) {
+    if (nodeType.equals(plan.get("Node Type").getAsString()))
+      return plan;
+    if (plan.has("Plans")) {
+      for (JsonElement child : plan.getAsJsonArray("Plans")) {
+        JsonObject node = findPlanNode(child.getAsJsonObject(), nodeType);
+        if (node != null)
+          return node;
+      }
+    }
+    return null;
+  }
+
+  private void assertSameSeeksAndNexts(JsonObject expected, JsonObject actual) {
+    for (String field : new String[] {"Estimated Seeks", "Estimated Nexts"}) {
+      double value = expected.get(field).getAsDouble();
+      assertEquals(field, value, actual.get(field).getAsDouble(),
+          value * SEEK_ESTIMATE_TOLERANCE_RATE + NEXT_PREV_FAULT_TOLERANCE_OFFSET);
+    }
+  }
+
+  // The nodeType node of query has the same seek and next estimates whether or not the planner
+  // adds derived equalities.
+  private void assertDerivedEqualitiesKeepSeeksAndNexts(Statement stmt, String query,
+                                                        String nodeType) throws Exception {
+    stmt.execute("SET yb_enable_derived_equalities = false");
+    JsonObject without = getPlanNode(stmt, query, nodeType);
+    stmt.execute("SET yb_enable_derived_equalities = true");
+    assertSameSeeksAndNexts(without, getPlanNode(stmt, query, nodeType));
+  }
+
+  @Test
+  public void test37603DerivedEqualitySelectivity() throws Exception {
+    /*
+     * #37603: a derived equality is implied by the clause it was derived from, so it must not
+     * change what a scan is estimated to read.  The bucket index below is (yb_hash_code(c2) % 16,
+     * c2); from c2 = 7 the planner derives the bucket condition, and the scan sweeps the 100 rows
+     * with c2 = 7 whether or not it does.  Counting the derived bucket again had sized the scan
+     * at 6 rows.
+     */
+    try (Statement stmt = this.connection2.createStatement()) {
+      stmt.execute("CREATE TABLE t_37603 (id INT PRIMARY KEY, c2 INT, c3 INT) "
+          + "WITH (colocation = false)");
+      stmt.execute("CREATE INDEX t_37603_bucket_idx ON t_37603 "
+          + "((yb_hash_code(c2) % 16) ASC, c2 ASC)");
+      stmt.execute("CREATE INDEX t_37603_c3_idx ON t_37603 (c3 ASC)");
+      stmt.execute("INSERT INTO t_37603 SELECT s, s % 100, s % 500 "
+          + "FROM generate_series(1, 10000) s");
+      stmt.execute("CREATE TABLE t_37603_outer (x INT PRIMARY KEY) WITH (colocation = false)");
+      stmt.execute("INSERT INTO t_37603_outer SELECT s FROM generate_series(1, 50) s");
+      stmt.execute("ANALYZE t_37603, t_37603_outer");
+      stmt.execute("SET yb_enable_bitmapscan = true");
+
+      assertDerivedEqualitiesKeepSeeksAndNexts(stmt,
+          "/*+ IndexScan(t_37603 t_37603_bucket_idx) */ SELECT id FROM t_37603 WHERE c2 = 7",
+          NODE_INDEX_SCAN);
+      assertDerivedEqualitiesKeepSeeksAndNexts(stmt,
+          "/*+ BitmapScan(t_37603 t_37603_bucket_idx) */ SELECT id FROM t_37603 WHERE c2 = 7",
+          NODE_YB_BITMAP_TABLE_SCAN);
+      // Each arm of an OR derives its own bucket.
+      assertDerivedEqualitiesKeepSeeksAndNexts(stmt,
+          "/*+ BitmapScan(t_37603 t_37603_bucket_idx) */ SELECT id FROM t_37603 "
+              + "WHERE c2 = 7 OR c2 = 9",
+          NODE_YB_BITMAP_TABLE_SCAN);
+      // A batched nested loop derives the bucket from the batched join clause.
+      assertDerivedEqualitiesKeepSeeksAndNexts(stmt,
+          "/*+ Leading((t_37603_outer t_37603)) YbBatchedNL(t_37603_outer t_37603) "
+              + "IndexScan(t_37603 t_37603_bucket_idx) */ "
+              + "SELECT t_37603.id FROM t_37603_outer JOIN t_37603 ON t_37603.c2 = t_37603_outer.x",
+          NODE_INDEX_SCAN);
+
+      // The issue's query: c2 = 7 matches 100 rows and c3 = 107 matches 20, so the c3 index is
+      // the cheaper path.  The derived bucket condition lets the bucket scan seek into one bucket
+      // instead of probing all 16, so it may only make that scan cheaper, never cheaper than the
+      // c3 scan.
+      String query = "SELECT id FROM t_37603 WHERE c2 = 7 AND c3 = 107";
+      String bucketScan = "/*+ IndexScan(t_37603 t_37603_bucket_idx) */ " + query;
+      String c3Scan = "/*+ IndexScan(t_37603 t_37603_c3_idx) */ " + query;
+      stmt.execute("SET yb_enable_derived_equalities = false");
+      Cost bucketCostWithout = getExplainTotalCost(stmt, bucketScan);
+      stmt.execute("SET yb_enable_derived_equalities = true");
+      Cost bucketCost = getExplainTotalCost(stmt, bucketScan);
+      assertTrue(bucketCost.compareTo(bucketCostWithout) <= 0);
+      assertTrue(getExplainTotalCost(stmt, c3Scan).compareTo(bucketCost) < 0);
+      testExplain(stmt, query,
+          makeTopLevelBuilder()
+              .plan(makePlanBuilder()
+                  .nodeType(NODE_INDEX_SCAN)
+                  .indexName("t_37603_c3_idx")
+                  .build())
+              .build());
+    }
+  }
+
+  @Test
+  public void test37603DerivedEqualitySourceOutsideIndex() throws Exception {
+    /*
+     * #37603, with the bucket index (yb_hash_code(c2) % 16, c3): c2 = 7 is now a table filter,
+     * not an index condition.  The derived bucket condition is what bounds the index sweep and
+     * keeps its selectivity there, but the result is bounded by c2 = 7 and must not count the
+     * bucket on top of it.  The result rows are paged into the table round trips: with 1 kB rows
+     * and 30 kB response pages, 29 rows fit a page and the 100 result rows take 4 round trips,
+     * for the index scan and the bitmap scan alike.  (The sweep of one bucket fits a single index
+     * page, so it sets no higher floor.)  Counting the bucket again sized the result at 6 rows,
+     * one page.
+     */
+    try (Statement stmt = this.connection2.createStatement()) {
+      stmt.execute("CREATE TABLE t_37603 (id INT PRIMARY KEY, c2 INT, c3 INT, pad TEXT, "
+          + "g INT GENERATED ALWAYS AS (c2 * 3) STORED) WITH (colocation = false)");
+      stmt.execute("CREATE INDEX t_37603_bucket_idx ON t_37603 "
+          + "((yb_hash_code(c2) % 16) ASC, c3 ASC)");
+      stmt.execute("INSERT INTO t_37603 (id, c2, c3, pad) "
+          + "SELECT s, s % 100, s % 500, repeat('x', 1000) FROM generate_series(1, 10000) s");
+      stmt.execute("ANALYZE t_37603");
+      stmt.execute("SET yb_enable_bitmapscan = true");
+      stmt.execute("SET yb_fetch_row_limit = 0");
+      stmt.execute("SET yb_fetch_size_limit = 30000");
+
+      JsonObject indexScan = getPlanNode(stmt,
+          "/*+ IndexScan(t_37603 t_37603_bucket_idx) */ SELECT pad FROM t_37603 WHERE c2 = 7",
+          NODE_INDEX_SCAN);
+      assertEquals(1, indexScan.get("Estimated Index Roundtrips").getAsDouble(), 0);
+      assertEquals(4, indexScan.get("Estimated Table Roundtrips").getAsDouble(), 0);
+      JsonObject bitmapScan = getPlanNode(stmt,
+          "/*+ BitmapScan(t_37603 t_37603_bucket_idx) */ SELECT pad FROM t_37603 WHERE c2 = 7",
+          NODE_YB_BITMAP_TABLE_SCAN);
+      assertEquals(4, bitmapScan.get("Estimated Table Roundtrips").getAsDouble(), 0);
+
+      // A generated column derives like an index expression: the index on (g, c2) with
+      // g = c2 * 3 is estimated like the index on (c2 * 3, c2).
+      stmt.execute("RESET yb_fetch_row_limit");
+      stmt.execute("RESET yb_fetch_size_limit");
+      stmt.execute("CREATE INDEX t_37603_g_idx ON t_37603 (g ASC, c2 ASC)");
+      stmt.execute("CREATE INDEX t_37603_expr_idx ON t_37603 ((c2 * 3) ASC, c2 ASC)");
+      stmt.execute("ANALYZE t_37603");
+      assertSameSeeksAndNexts(
+          getPlanNode(stmt,
+              "/*+ IndexScan(t_37603 t_37603_expr_idx) */ SELECT id FROM t_37603 WHERE c2 = 7",
+              NODE_INDEX_SCAN),
+          getPlanNode(stmt,
+              "/*+ IndexScan(t_37603 t_37603_g_idx) */ SELECT id FROM t_37603 WHERE c2 = 7",
+              NODE_INDEX_SCAN));
     }
   }
 }

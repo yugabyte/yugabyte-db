@@ -2398,6 +2398,13 @@ typedef struct LimitPath
  * apply only one.  We mark clauses of this kind by setting parent_ec to
  * point to the generating EquivalenceClass.  Multiple clauses with the same
  * parent_ec in the same join are redundant.
+ *
+ * YB: yb_derived_source_vars is set on an equality that yb_derive_equal_cond
+ * derived for an index key from a generated column's or index expression's
+ * generation expression; it holds the Vars of that expression.  Such a clause
+ * is implied by whatever binds those Vars, so a selectivity estimate over a
+ * list that also binds them must not count it (see
+ * yb_derived_clause_is_redundant in costsize.c).  NIL on every other clause.
  */
 
 typedef struct RestrictInfo
@@ -2483,6 +2490,8 @@ typedef struct RestrictInfo
 	List	   *yb_batched_rinfo;	/* If there is a batched version of this
 									 * clause, this is a pointer to a list of
 									 * possible batched versions. */
+	List	   *yb_derived_source_vars; /* Vars a derived equality was
+										 * inferred from, else NIL */
 } RestrictInfo;
 
 /*

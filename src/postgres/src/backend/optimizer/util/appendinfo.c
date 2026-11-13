@@ -455,6 +455,16 @@ adjust_appendrel_attrs_mutator(Node *node,
 									context);
 
 		/*
+		 * YB: The Vars a derived equality was inferred from follow its
+		 * clause; a table child's translation of a Var is a Var, which is
+		 * what yb_derived_clause_is_redundant reads.
+		 */
+		newinfo->yb_derived_source_vars = (List *)
+			expression_tree_mutator((Node *) oldinfo->yb_derived_source_vars,
+									adjust_appendrel_attrs_mutator,
+									context);
+
+		/*
 		 * Reset cached derivative fields, since these might need to have
 		 * different values when considering the child relation.  Note we
 		 * don't reset left_ec/right_ec: each child variable is implicitly

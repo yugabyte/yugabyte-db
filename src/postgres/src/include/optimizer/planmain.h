@@ -124,7 +124,8 @@ extern Scan *create_indexscan_plan(PlannerInfo *root, IndexPath *best_path,
 								   List *tlist, List *scan_clauses,
 								   bool indexonly, bool bitmapindex);
 extern List *yb_get_bitmap_index_quals(PlannerInfo *root, Path *bitmapqual,
-									   List *scan_clauses);
+									   List *scan_clauses,
+									   bool strip_redundant_derived);
 extern bool is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
 										 bool bitmapindex);
 extern RestrictInfo *yb_try_derive_equal_from_ec(PlannerInfo *root, Index rti,
@@ -136,7 +137,8 @@ extern OpExpr *yb_create_derived_clause(Expr *inferrable_expr,
 										Expr *substituted_expr, Oid opfamily);
 extern RestrictInfo *yb_make_derived_restrictinfo(PlannerInfo *root,
 												  OpExpr *clause,
-												  Relids nullable_relids);
+												  Relids nullable_relids,
+												  Expr *generation_expr);
 extern Node *yb_safely_fold_substituted(PlannerInfo *root, Expr *substituted);
 
 #endif							/* PLANMAIN_H */

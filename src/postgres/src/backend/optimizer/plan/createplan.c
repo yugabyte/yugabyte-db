@@ -5067,7 +5067,8 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 	 * pushed-down filters and is the same function used during costing.
 	 */
 	allindexquals = yb_get_bitmap_index_quals(root, best_path->bitmapqual,
-											  scan_clauses);
+											  scan_clauses,
+											  false /* strip_redundant_derived */ );
 	indexquals = allindexquals;
 
 	/*
