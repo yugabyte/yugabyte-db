@@ -2761,9 +2761,9 @@ YBGetDdlUseRegularTransactionBlock()
  * new catalog version with entries from before it.
  */
 bool
-YbIsObjectLockingEnabledLocally(void)
+YbUsingObjectLocksLocally(void)
 {
-	return YBCPgIsObjectLockingEnabledLocally();
+	return YBCPgUsingObjectLocksLocally();
 }
 
 void
@@ -4499,7 +4499,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 				}
 				is_breaking_change = false;
 				should_run_in_autonomous_transaction = !IsInTransactionBlock(is_top_level) &&
-						!YBCIsObjectLockingEnabledGloballyForCurrentTxn();
+						!YBCUsingObjectLocksGloballyForCurrentTxn();
 				break;
 			}
 

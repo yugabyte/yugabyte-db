@@ -910,7 +910,7 @@ Status PgApiImpl::InsertSequenceTuple(
     int64_t last_val, bool is_called) {
   return pg_client_.InsertSequenceTuple(
       db_oid, seq_oid, ysql_catalog_version,
-      pg_txn_manager_->IsObjectLockingEnabledGloballyForCurrentTxn(), last_val, is_called);
+      pg_txn_manager_->UsingObjectLocksGloballyForCurrentTxn(), last_val, is_called);
 }
 
 Status PgApiImpl::UpdateSequenceTupleConditionally(
@@ -919,7 +919,7 @@ Status PgApiImpl::UpdateSequenceTupleConditionally(
     bool *skipped) {
   *skipped = VERIFY_RESULT(pg_client_.UpdateSequenceTuple(
       db_oid, seq_oid, ysql_catalog_version,
-      pg_txn_manager_->IsObjectLockingEnabledGloballyForCurrentTxn(), last_val, is_called,
+      pg_txn_manager_->UsingObjectLocksGloballyForCurrentTxn(), last_val, is_called,
       expected_last_val, expected_is_called));
   return Status::OK();
 }
@@ -929,7 +929,7 @@ Status PgApiImpl::UpdateSequenceTuple(
     int64_t last_val, bool is_called, bool* skipped) {
   auto result = VERIFY_RESULT(pg_client_.UpdateSequenceTuple(
       db_oid, seq_oid, ysql_catalog_version,
-      pg_txn_manager_->IsObjectLockingEnabledGloballyForCurrentTxn(), last_val,
+      pg_txn_manager_->UsingObjectLocksGloballyForCurrentTxn(), last_val,
       is_called, std::nullopt, std::nullopt));
   if (skipped) {
     *skipped = result;
@@ -943,7 +943,7 @@ Status PgApiImpl::FetchSequenceTuple(
     int64_t *first_value, int64_t *last_value) {
   auto res = VERIFY_RESULT(pg_client_.FetchSequenceTuple(
       db_oid, seq_oid, ysql_catalog_version,
-      pg_txn_manager_->IsObjectLockingEnabledGloballyForCurrentTxn(), fetch_count, inc_by,
+      pg_txn_manager_->UsingObjectLocksGloballyForCurrentTxn(), fetch_count, inc_by,
       min_value, max_value, cycle));
   *first_value = res.first;
   *last_value = res.second;
@@ -958,7 +958,7 @@ Status PgApiImpl::ReadSequenceTuple(
   const auto actual_yb_read_time = yb_read_time ? std::optional(yb_read_time) : std::nullopt;
   const auto res = VERIFY_RESULT(pg_client_.ReadSequenceTuple(
       db_oid, seq_oid, actual_ysql_catalog_version,
-      pg_txn_manager_->IsObjectLockingEnabledGloballyForCurrentTxn(), actual_yb_read_time));
+      pg_txn_manager_->UsingObjectLocksGloballyForCurrentTxn(), actual_yb_read_time));
   if (last_val) {
     *last_val = res.first;
   }
@@ -2396,12 +2396,12 @@ bool PgApiImpl::IsDdlModeWithRegularTransactionBlock() const {
   return pg_txn_manager_->IsDdlModeWithRegularTransactionBlock();
 }
 
-bool PgApiImpl::IsObjectLockingEnabledLocally() const {
-  return pg_txn_manager_->IsObjectLockingEnabledLocally();
+bool PgApiImpl::UsingObjectLocksLocally() const {
+  return pg_txn_manager_->UsingObjectLocksLocally();
 }
 
-bool PgApiImpl::IsObjectLockingEnabledGloballyForCurrentTxn() const {
-  return pg_txn_manager_->IsObjectLockingEnabledGloballyForCurrentTxn();
+bool PgApiImpl::UsingObjectLocksGloballyForCurrentTxn() const {
+  return pg_txn_manager_->UsingObjectLocksGloballyForCurrentTxn();
 }
 
 Result<bool> PgApiImpl::CurrentTransactionUsesFastPath() const {

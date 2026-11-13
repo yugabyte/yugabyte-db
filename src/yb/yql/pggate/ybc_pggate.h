@@ -827,10 +827,10 @@ YbcStatus YBCPgGetSelfActiveTransaction(YbcPgUuid *txn_id, bool *is_null);
 YbcStatus YBCPgActiveTransactions(YbcPgSessionTxnInfo *infos, size_t num_infos);
 bool YBCPgIsDdlMode();
 bool YBCPgIsDdlModeWithRegularTransactionBlock();
-bool YBCPgIsObjectLockingEnabledLocally();
+bool YBCPgUsingObjectLocksLocally();
 bool YBCCurrentTransactionUsesFastPath();
 bool YBCIsLegacyModeForCatalogOps();
-bool YBCIsObjectLockingEnabledGloballyForCurrentTxn();
+bool YBCUsingObjectLocksGloballyForCurrentTxn();
 
 // Whether DDLs run inside the enclosing transaction block.
 // ysql_yb_ddl_transaction_block_enabled is validated to be turned on and off together with

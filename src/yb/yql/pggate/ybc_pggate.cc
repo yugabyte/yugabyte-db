@@ -2155,9 +2155,9 @@ bool YBCPgIsDdlModeWithRegularTransactionBlock() {
   return pgapi->IsDdlModeWithRegularTransactionBlock();
 }
 
-bool YBCPgIsObjectLockingEnabledLocally() {
+bool YBCPgUsingObjectLocksLocally() {
   // pgapi is null when YB is not enabled, as in a tserver's local initdb.
-  return pgapi && pgapi->IsObjectLockingEnabledLocally();
+  return pgapi && pgapi->UsingObjectLocksLocally();
 }
 
 bool YBCCurrentTransactionUsesFastPath() {
@@ -2198,17 +2198,17 @@ bool YBCIsLegacyModeForCatalogOps() {
   // transaction, reads the legacy way. Against such a DDL a reader still has the old fences: the
   // tablets' catalog version and table schema version checks.
   //
-  return !pgapi || !pgapi->IsObjectLockingEnabledLocally() || YBCIsInitDbModeEnvVarSet() ||
+  return !pgapi || !pgapi->UsingObjectLocksLocally() || YBCIsInitDbModeEnvVarSet() ||
       YBCIsSysTablePrefetchingStarted() || pgapi->IsParallelWorker();
 }
 
-bool YBCIsObjectLockingEnabledGloballyForCurrentTxn() {
-  return pgapi && pgapi->IsObjectLockingEnabledGloballyForCurrentTxn();
+bool YBCUsingObjectLocksGloballyForCurrentTxn() {
+  return pgapi && pgapi->UsingObjectLocksGloballyForCurrentTxn();
 }
 
 bool YBCIsDdlTransactionBlockEnabled() {
   return pgapi && yb_ddl_transaction_block_enabled &&
-      pgapi->IsObjectLockingEnabledGloballyForCurrentTxn();
+      pgapi->UsingObjectLocksGloballyForCurrentTxn();
 }
 
 //------------------------------------------------------------------------------------------------

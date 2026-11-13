@@ -196,8 +196,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
         [this, original_value] { is_read_time_history_cutoff_disabled_ = original_value; });
   }
 
-  bool IsObjectLockingEnabledGloballyForCurrentTxn() const;
-  bool IsObjectLockingEnabledLocally() const;
+  bool UsingObjectLocksGloballyForCurrentTxn() const;
+  bool UsingObjectLocksLocally() const;
 
   void SetClampUncertaintyWindow(bool clamp) { clamp_uncertainty_window_ = clamp; }
 

@@ -453,7 +453,7 @@ vacuum(List *relations, VacuumParams *params,
 			use_own_xacts = true;
 		else if (in_outer_xact)
 			use_own_xacts = false;
-		else if (YBCIsObjectLockingEnabledGloballyForCurrentTxn() ||
+		else if (YBCUsingObjectLocksGloballyForCurrentTxn() ||
 			 list_length(relations) > 1)
 			use_own_xacts = true;
 		else
