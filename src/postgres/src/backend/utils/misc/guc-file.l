@@ -209,10 +209,9 @@ YbValidateConfigFile(const char *config_file)
 }
 
 /*
- * Given the name of an integer parameter, return its value in ysql_pg.conf, or
- * its default if the file does not set it or has an error: the value a login
- * starts from, before ALTER ROLE and ALTER DATABASE settings. The file is read
- * the way the pg_file_settings view reads it.
+ * Given the name of an integer parameter, return its value in ysql_pg.conf,
+ * read the way the pg_file_settings view reads it, or its default if the file
+ * does not set it or has an error.
  */
 int
 YbGetConfigFileIntValue(const char *name)
