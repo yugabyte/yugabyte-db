@@ -155,7 +155,7 @@ public class BundleDetails {
     @ApiModelProperty(
         value =
             "Path on the YBA host to the script file to execute on the node (e.g."
-                + " bin/node_utils.sh). May be relative to yb.devops.home.")
+                + " bin/support_bundle_utils.sh). May be relative to yb.devops.home.")
     private String scriptPath;
 
     @ApiModelProperty(
@@ -189,7 +189,7 @@ public class BundleDetails {
     @ApiModelProperty(
         value =
             "Path on the YBA host to the script file to execute on the node (e.g."
-                + " bin/node_utils.sh). May be relative to yb.devops.home.")
+                + " bin/support_bundle_utils.sh). May be relative to yb.devops.home.")
     private String scriptPath;
 
     @ApiModelProperty(

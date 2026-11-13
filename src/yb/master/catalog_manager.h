@@ -205,6 +205,9 @@ YB_DEFINE_ENUM(DeleteYsqlDBTablesType,
 
 YB_DEFINE_ENUM(CDCStreamType, (kNone)(kLogicalReplication)(kgRPC));
 
+YB_DEFINE_ENUM(PrepareSlotForTxnDdlResult,
+               (kPrepared)(kNotLogicalReplication)(kNotificationSlot)(kDeleting)(kNotImplicit));
+
 struct YsqlTableDdlTxnState;
 using google::protobuf::RepeatedPtrField;
 using TabletIdWithEntry = std::pair<TabletId, SysTabletsEntryPB>;
@@ -1118,6 +1121,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                                  const TSDescriptorVector& ts_descs,
                                  ValidateReplicationInfoResponsePB* resp);
 
+  // How many replicas SelectReplicasForPlacement can put on ts_descs under placement_info:
+  // exact unless placement blocks overlap, then an upper bound.
+  Result<size_t> CountPlaceableReplicas(
+      const PlacementInfoPB& placement_info, const TSDescriptorVector& ts_descs);
+
   // The tservers allowed to host a table's replicas under one PlacementInfoPB (live or read
   // replica). Built once per table and reused for every tablet of that table; the bool vectors
   // are indexed like the ts_descs the candidates were built from.
@@ -1658,6 +1666,13 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // were created with an empty plugin name.
   Status BackfillNotificationsStreamsPluginName(const LeaderEpoch& epoch);
 
+  // Adds the catalog tables used to decode transactional DDL to implicit streams created without
+  // them.
+  Status PrepareReplicationSlotsForTransactionalDDL(
+      const PrepareReplicationSlotsForTransactionalDDLRequestPB* req,
+      PrepareReplicationSlotsForTransactionalDDLResponsePB* resp, rpc::RpcContext* rpc)
+      EXCLUDES(mutex_);
+
   Status DisableDynamicTableAdditionOnCDCSDKStream(
       const DisableDynamicTableAdditionOnCDCSDKStreamRequestPB* req,
       DisableDynamicTableAdditionOnCDCSDKStreamResponsePB* resp, rpc::RpcContext* rpc);
@@ -1886,6 +1901,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Delete specified CDC streams metadata.
   Status CleanUpCDCSDKStreamsMetadata(const LeaderEpoch& epoch) EXCLUDES(mutex_);
+
+  Result<PrepareSlotForTxnDdlResult> AddTransactionalDdlCatalogTablesToStream(
+      const CDCStreamInfoPtr& stream) EXCLUDES(mutex_);
 
   // Returns CDCSDK streams that need metadata cleanup. This includes streams with non-empty
   // dropped_table_id list and, when FLAGS_cdcsdk_use_dropped_table_list_for_cleanup is false,
@@ -2409,7 +2427,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const AlterTableRequestPB* req = nullptr,
       std::shared_ptr<AlterTableBatchTracker> cdc_alter_batch_tracker = nullptr);
 
-  // The target and its existing indexes.
+  // The target and its indexes: the capture trigger writes tombstones into all of them. Indexes
+  // that have since been dropped are skipped.
   std::vector<scoped_refptr<TableInfo>> GetOnlineSchemaChangePinnedTables(
       const scoped_refptr<TableInfo>& target);
 

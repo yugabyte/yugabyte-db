@@ -38,9 +38,8 @@ class VectorIndexReaderAdapter
  public:
   using Base = VectorIndexReaderIf<DestinationVector, DestinationDistanceResult>;
   using DestinationIteratorValue = VectorIndexIteratorEntry<DestinationVector>;
-  using DestinationIterator      = AbstractIterator<DestinationIteratorValue>;
-  using SourceIteratorValue      = VectorIndexIteratorEntry<SourceVector>;
-  using SourceIterator           = PolymorphicIterator<SourceIteratorValue>;
+  using DestinationIterator      = VectorIndexIterator<DestinationVector>;
+  using SourceIteratorPtr        = std::unique_ptr<VectorIndexIterator<SourceVector>>;
 
   // Constructor takes the underlying vector index reader
   explicit VectorIndexReaderAdapter(
@@ -72,14 +71,8 @@ class VectorIndexReaderAdapter
     return STATUS(NotSupported, "GetVector not implemented");
   }
 
-  std::unique_ptr<DestinationIterator> BeginImpl() const override {
-    SourceIterator source_begin_iterator = source_reader_.begin();
-    return std::make_unique<VectorIteratorAdapter>(std::move(source_begin_iterator));
-  }
-
-  std::unique_ptr<DestinationIterator> EndImpl() const override {
-    SourceIterator source_end_iterator = source_reader_.end();
-    return std::make_unique<VectorIteratorAdapter>(std::move(source_end_iterator));
+  std::unique_ptr<DestinationIterator> CreateIterator() const override {
+    return std::make_unique<VectorIteratorAdapter>(source_reader_.CreateIterator());
   }
 
   DestinationDistanceResult Distance(
@@ -97,12 +90,11 @@ class VectorIndexReaderAdapter
 
   class VectorIteratorAdapter : public DestinationIterator {
    public:
-    explicit VectorIteratorAdapter(SourceIterator&& source_iterator)
+    explicit VectorIteratorAdapter(SourceIteratorPtr&& source_iterator)
         : source_iterator_(std::move(source_iterator)) {}
 
-   protected:
-    DestinationIteratorValue Dereference() const override {
-      auto source_entry = *source_iterator_;
+    DestinationIteratorValue Entry() const override {
+      auto source_entry = source_iterator_->Entry();
       return DestinationIteratorValue {
         .vector_id = source_entry.vector_id,
         .vector = vector_cast<DestinationVector>(source_entry.vector),
@@ -110,16 +102,19 @@ class VectorIndexReaderAdapter
       };
     }
 
-    void Next() override { ++source_iterator_; }
+    void Next() override { source_iterator_->Next(); }
 
-    bool NotEquals(const DestinationIterator& other)
-        const override {
-      const auto* other_adapter = down_cast<const VectorIteratorAdapter*>(&other);
-      return source_iterator_ != other_adapter->source_iterator_;
+   protected:
+    bool DoValid() const override {
+      return source_iterator_->Valid();
+    }
+
+    Status DoStatus() const override {
+      return source_iterator_->status();
     }
 
    private:
-    SourceIterator source_iterator_;
+    SourceIteratorPtr source_iterator_;
   };
 };
 

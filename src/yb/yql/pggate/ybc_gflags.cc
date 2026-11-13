@@ -102,10 +102,11 @@ DEFINE_NON_RUNTIME_uint64(ysql_catalog_prefetch_size_limit, 5 * 1024 * 1024,
 // Backs the yb_enable_stale_catalog_prefetch GUC: pg_wrapper writes this into postgresql.conf
 // under the name without the ysql_ prefix, and a runtime change reloads it.
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_stale_catalog_prefetch, true,
-    "Whether a connection starting while the master leader reports that it is shedding catalog "
-    "prefetches may read the catalog at a version this node already has cached, instead of "
-    "fetching the whole catalog from the leader. Also decides the admission priority of the read "
-    "a backend makes ahead of authentication: on, that read is admitted ahead of prefetches "
+    "Whether a connection starting may read the catalog at a version this node already has "
+    "cached, instead of fetching the whole catalog from the leader. It does so while the master "
+    "leader reports that it is shedding catalog prefetches, and when another connection is "
+    "already filling the catalog for its database. Also decides the admission priority of the "
+    "read a backend makes ahead of authentication: on, that read is admitted ahead of prefetches "
     "waiting to begin; off, it takes the ordinary priority.");
 
 DEFINE_RUNTIME_bool(ysql_preload_pg_authid_for_auth, true,
@@ -203,7 +204,6 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_replication_slot_query_api, false
     "When set to true, enables the query API for logical replication in YSQL via the "
     "pg_logical_slot_get/peek_changes functions.");
 
-DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
 DECLARE_bool(TEST_ysql_enable_db_logical_client_version_mode);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 DECLARE_bool(ysql_yb_pg_partman_use_native_txn_ddl_and_locks);
@@ -275,8 +275,6 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_disable_global_impact_ddl_statements =
           &FLAGS_ysql_disable_global_impact_ddl_statements,
       .ysql_minimal_catalog_caches_preload      = &FLAGS_ysql_minimal_catalog_caches_preload,
-      .ysql_enable_colocated_tables_with_tablespaces =
-          &FLAGS_ysql_enable_colocated_tables_with_tablespaces,
       .ysql_enable_create_database_oid_collision_retry =
           &FLAGS_ysql_enable_create_database_oid_collision_retry,
       .ysql_catalog_preload_additional_table_list =

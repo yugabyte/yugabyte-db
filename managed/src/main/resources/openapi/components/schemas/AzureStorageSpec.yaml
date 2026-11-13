@@ -1,0 +1,31 @@
+title: AzureStorageSpec
+description: |
+  AzureStorageSpec
+
+  Azure Blob Storage. Part of StorageSpec.
+type: object
+required:
+  - storage_type
+  - backup_location
+  - credentials
+properties:
+  storage_type:
+    $ref: "./StorageType.yaml"
+  backup_location:
+    description: 'Default location of backups, as https://<account>.blob.core.windows.net/<container>[/<path>]. Can''t be changed after creation.'
+    type: string
+    example: 'https://example.blob.core.windows.net/backups'
+    minLength: 1
+  immutable_storage:
+    description: 'Whether the container keeps blobs immutable. If true, deleting a backup removes only its YBA metadata, not its files.'
+    type: boolean
+    default: false
+  credentials:
+    $ref: "./AzureCredentials.yaml"
+  region_locations:
+    description: 'Per-region backup locations, for universes that store each region''s backup in that region'
+    type: array
+    items:
+      $ref: "./AzureRegionLocation.yaml"
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

@@ -1458,7 +1458,10 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWitDDLStatemen
   t4.join();
 
   int expected_dml_records = 4 * num_batches * inserts_per_batch;
-  int expected_ddl_records = 2 * 3;  // 2 DDL / tablet
+  // Without transactional DDL, 2 DDL / tablet. With it, the ADD and DROP ship 2 and 1 synthetic
+  // DDL records.
+  int expected_ddl_records =
+      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 3 : 2 * 3;
   auto get_all_pending_changes_resp = ASSERT_RESULT(
       GetAllPendingTxnsFromVirtualWAL(stream_id, {table.table_id()}, expected_dml_records, true));
 
@@ -1592,7 +1595,10 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWithMultipleAl
   }
   LOG(INFO) << "Added columns and pushed required records";
 
-  int expected_ddl_records = 13 * 3;  // 13 DDL / tablet
+  // Without transactional DDL, 13 DDL / tablet. With it, each ADD COLUMN ships 2 synthetic DDL
+  // records.
+  int expected_ddl_records =
+      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 13 * 2 : 13 * 3;
   expected_dml_records = 13 * 10;     /* number of add columns 'times' insert per batch */
   auto consistent_change_resp_after_alter = ASSERT_RESULT(
       GetAllPendingTxnsFromVirtualWAL(stream_id, {table.table_id()}, expected_dml_records, false));
@@ -1649,14 +1655,17 @@ void CDCSDKConsumptionConsistentChangesTest::TestVectorIndexAlterDoesNotLeakInde
       stream_id, {table.table_id()}, 5 /* expected_dml_records */, true /* init_virtual_wal */));
 
   int seen_inserts = 0;
-  bool seen_ddl_with_c = false;
+  bool seen_table_ddl = false;
   for (const auto& record : resp.records) {
     const auto& row_message = record.row_message();
-    if (row_message.op() == RowMessage::DDL) {
+    if (row_message.op() == RowMessage::DDL && !row_message.has_schema()) {
+      ASSERT_EQ(row_message.table_id(), table.table_id()) << row_message.ShortDebugString();
+      seen_table_ddl = true;
+    } else if (row_message.op() == RowMessage::DDL) {
       ASSERT_EQ(row_message.table(), "test_vec") << row_message.ShortDebugString();
       for (const auto& column : row_message.schema().column_info()) {
         ASSERT_NE(column.name(), "ybidxbasectid") << row_message.ShortDebugString();
-        seen_ddl_with_c |= column.name() == "c";
+        seen_table_ddl |= column.name() == "c";
       }
     } else if (row_message.op() == RowMessage::INSERT) {
       ++seen_inserts;
@@ -1671,7 +1680,7 @@ void CDCSDKConsumptionConsistentChangesTest::TestVectorIndexAlterDoesNotLeakInde
     }
   }
   ASSERT_EQ(seen_inserts, 5);
-  ASSERT_TRUE(seen_ddl_with_c);
+  ASSERT_TRUE(seen_table_ddl);
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVectorIndexAlterDoesNotLeakIndexSchema) {
@@ -3969,7 +3978,8 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestStreamExpiry) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 100_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 1;
+  // Long enough that the stream does not expire while CREATE_REPLICATION_SLOT is still running.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 5000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 100;
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
@@ -3995,7 +4005,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestStreamExpiry) {
 
   // Sleep for few seconds to ensure that the stream expires and master background task runs to
   // delete table's cdc_state table entries and remove it from stream metadata.
-  SleepFor(MonoDelta::FromSeconds(10));
+  SleepFor(MonoDelta::FromSeconds(15));
 
   auto init_vwal_result = InitVirtualWAL(stream_id, {table.table_id()}, kVWALSessionId1);
   ASSERT_NOK(init_vwal_result);
@@ -5057,7 +5067,9 @@ void CDCSDKConsumptionConsistentChangesTest::TestExplcictCheckpointMovementAfter
         stream_id, {table.table_id()}, 1 /* expected_dml_records */,
         false /* init_virtual_wal */, kVWALSessionId1,
         false /* allow_sending_feedback */));
-    ASSERT_EQ(change_resp.records.size(), 4);
+    ASSERT_EQ(
+        change_resp.records.size(),
+        FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 7 : 4);
 
     // Since we haven't acknowledged anything after getting the old_checkpoint, the checkpoints in
     // the state table should not move.
@@ -5124,7 +5136,9 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestExplcictCheckpointMovementAft
       stream_id, {table.table_id()}, 1 /* expected_dml_records */,
       false /* init_virtual_wal */, kVWALSessionId1,
       false /* allow_sending_feedback */));
-  ASSERT_EQ(change_resp.records.size(), 4);
+  ASSERT_EQ(
+      change_resp.records.size(),
+      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 7 : 4);
   auto record = change_resp.records.back();
   ASSERT_EQ(record.row_message().op(), RowMessage_Op_COMMIT);
   auto commit_lsn_1 = record.row_message().pg_lsn();
@@ -5138,7 +5152,9 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestExplcictCheckpointMovementAft
       stream_id, {table.table_id()}, 1 /* expected_dml_records */,
       false /* init_virtual_wal */, kVWALSessionId1,
       false /* allow_sending_feedback */));
-  ASSERT_EQ(change_resp.records.size(), 4);
+  ASSERT_EQ(
+      change_resp.records.size(),
+      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 7 : 4);
   auto record_2 = change_resp.records.back();
   ASSERT_EQ(record_2.row_message().op(), RowMessage_Op_COMMIT);
   auto commit_lsn_2 = record_2.row_message().pg_lsn();
@@ -7356,6 +7372,103 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALDetectAddDropColumnFromPg
   ASSERT_EQ(shipped_ops.front(), RowMessage_Op_BEGIN);
   ASSERT_EQ(shipped_ops.back(), RowMessage_Op_COMMIT);
   CheckRecordCount(resp, kExpectedDmlRecords);
+}
+
+// A stream created without TEST_ysql_yb_enable_replication_slot_transactional_ddl lacks the
+// catalog tables that transactional DDLs are decoded from. The master keeps serving the sys catalog
+// from the stream metadata it cached until prepare_replication_slots_for_transactional_ddl adds the
+// tables and invalidates it on every master.
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestPrepareSlotForTransactionalDdl) {
+  ToggleDDLMode(/* use_legacy = */ false);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+
+  ASSERT_OK(SetUpWithParams(3, 3, false, true));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName, 1));
+  constexpr auto kSlotName = "test_slot";
+  xrepl::StreamId stream_id =
+      ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(kSlotName));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 ($1, $2) VALUES (1, 10)", kTableName, kKeyColumnName, kValueColumnName));
+  // An implicit stream polls pg_class and pg_publication_rel on the sys catalog tablet, so this
+  // caches the stream metadata on the master leader.
+  ASSERT_OK(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, 1 /* expected_dml_records */, true /* init_virtual_wal */));
+  ASSERT_OK(DestroyVirtualWAL());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
+  // InitVirtualWAL retries this error until it times out.
+  InitVirtualWALForCDCRequestPB init_req;
+  init_req.set_stream_id(stream_id.ToString());
+  init_req.set_session_id(kVWALSessionId2);
+  init_req.add_table_id(table.table_id());
+  InitVirtualWALForCDCResponsePB init_resp;
+  RpcController init_rpc;
+  ASSERT_OK(cdc_proxy_->InitVirtualWALForCDC(init_req, &init_resp, &init_rpc));
+  ASSERT_TRUE(init_resp.has_error());
+  ASSERT_STR_CONTAINS(
+      StatusFromPB(init_resp.error().status()).ToString(),
+      "prepare_replication_slots_for_transactional_ddl");
+
+  // The command fails naming the stopped master. Rerunning it once the master is back finishes the
+  // invalidation.
+  auto* leader = ASSERT_RESULT(test_cluster()->GetLeaderMiniMaster());
+  auto* master = test_cluster()->mini_master(leader == test_cluster()->mini_master(0) ? 1 : 0);
+  const auto master_uuid = master->permanent_uuid();
+  const auto master_addresses = test_cluster()->GetMasterAddresses();
+  std::vector<uint16_t> master_ports;
+  for (size_t i = 0; i != test_cluster()->num_masters(); ++i) {
+    master_ports.push_back(test_cluster()->mini_master(i)->bound_rpc_addr().port());
+  }
+  master->Shutdown();
+  ASSERT_NOK_STR_CONTAINS(
+      PrepareReplicationSlotsForTransactionalDDL(master_addresses, kSlotName),
+      Format("master $0", master_uuid));
+  ASSERT_OK(master->StartDistributedMaster(master_ports));
+  ASSERT_OK(WaitFor(
+      [&]() {
+        return PrepareReplicationSlotsForTransactionalDDL(master_addresses, kSlotName).ok();
+      },
+      MonoDelta::FromSeconds(60) * kTimeMultiplier,
+      "Prepare the slot once every master is reachable"));
+  // Without a slot name, the command prepares every implicit slot.
+  ASSERT_STR_CONTAINS(
+      ASSERT_RESULT(PrepareReplicationSlotsForTransactionalDDL(master_addresses, "")),
+      Format("Prepared replication slots for transactional DDL: [$0]", kSlotName));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 ($1, $2) VALUES (2, 20)", kTableName, kKeyColumnName, kValueColumnName));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN value_2 text", kTableName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 ($1, $2, value_2) VALUES (3, 30, 'foo')", kTableName, kKeyColumnName,
+      kValueColumnName));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN value_2", kTableName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 ($1, $2) VALUES (4, 40)", kTableName, kKeyColumnName, kValueColumnName));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  constexpr int kExpectedDmlRecords = 3;
+  auto resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, kExpectedDmlRecords, true /* init_virtual_wal */,
+      kVWALSessionId2));
+  std::vector<uint64_t> insert_record_times;
+  std::vector<uint64_t> ddl_record_times;
+  for (const auto& record : resp.records) {
+    const auto& row_message = record.row_message();
+    if (row_message.op() == RowMessage_Op_INSERT) {
+      insert_record_times.push_back(row_message.record_time());
+    } else if (row_message.op() == RowMessage_Op_DDL) {
+      ddl_record_times.push_back(row_message.record_time());
+    }
+  }
+  ASSERT_EQ(insert_record_times.size(), kExpectedDmlRecords);
+  // DROP COLUMN changes pg_attribute but not pg_class, so its DDL record comes only from the
+  // catalog tables added to the stream.
+  ASSERT_TRUE(std::ranges::any_of(ddl_record_times, [&](uint64_t record_time) {
+    return record_time > insert_record_times[1] && record_time < insert_record_times[2];
+  }));
 }
 
 // The walsender reads the catalog within the transaction of each record. Intents of a

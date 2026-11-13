@@ -16,8 +16,9 @@ export const RRInstanceSettingsValidationSchema = (
   const requireInstanceFields = !isK8s || (isK8s && !useK8CustomResources);
   const volumeInfoSchema =
     isK8s && useK8CustomResources
-      ? K8VolumeInfoValidationSchema(t, maxVolumeCount)
-      : DeviceInfoValidationSchema(t, maxVolumeCount);
+      ? K8VolumeInfoValidationSchema(t, maxVolumeCount, false)
+      : // VolumeInfoField (rendered here) has no storage-class input
+        DeviceInfoValidationSchema(t, maxVolumeCount, false);
 
   return Yup.object().shape({
     imageBundleUUID: Yup.string()

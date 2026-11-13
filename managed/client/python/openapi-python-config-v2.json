@@ -1,5 +1,6 @@
     {
         "hideGenerationTimestamp": "true",
         "packageName": "yba_client",
-        "projectName": "yba_client"
+        "projectName": "yba_client",
+        "useOneOfDiscriminatorLookup": true
     }

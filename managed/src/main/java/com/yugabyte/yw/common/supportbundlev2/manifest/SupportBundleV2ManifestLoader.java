@@ -27,7 +27,7 @@ import org.apache.commons.lang3.StringUtils;
 
 /**
  * Reads the support bundle v2 manifest that ships in the devops directory, next to the {@code
- * node_utils.sh} and {@code yba_utils.sh} scripts it references.
+ * support_bundle_utils.sh} and {@code yba_utils.sh} scripts it references.
  *
  * <p>Every {@link #load()} hands back a private deep copy. Callers overlay request supplied values
  * onto the component params before building specs, so a shared instance would leak one request's

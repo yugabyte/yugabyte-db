@@ -17,8 +17,8 @@
 // attribute radiussecrets is redacted like ldapbindpasswd. VerifyRedacted then checks the output
 // before anything is written.
 //
-// Contract with node_utils.sh: exit 0 redacted, 1 I/O or decode failure, 2 usage error, 3 a value
-// was left unredacted (the file is not written); `smoke` prints the replacement token. On any
-// non-zero exit the node drops its copy of server.conf and reports REDACTION_FAILURE; YBA does not
-// redact.
+// Contract with support_bundle_utils.sh: exit 0 redacted, 1 I/O or decode failure, 2 usage error,
+// 3 a value was left unredacted (the file is not written); `smoke` prints the replacement token. On
+// any non-zero exit the node drops its copy of server.conf and reports REDACTION_FAILURE; YBA does
+// not redact.
 package serverconfredact

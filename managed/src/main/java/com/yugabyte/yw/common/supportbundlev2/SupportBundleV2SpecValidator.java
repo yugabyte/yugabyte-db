@@ -53,7 +53,7 @@ public class SupportBundleV2SpecValidator {
 
   /** The only scripts the shipped manifest ever references. */
   static final Set<String> ALLOWED_SCRIPT_FILE_NAMES =
-      ImmutableSet.of("node_utils.sh", "yba_utils.sh");
+      ImmutableSet.of("support_bundle_utils.sh", "yba_utils.sh");
 
   /**
    * Read only yb-admin subcommands, taken from the {@code REGISTER_COMMAND} list in {@code

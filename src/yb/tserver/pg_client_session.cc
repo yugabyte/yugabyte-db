@@ -350,11 +350,16 @@ struct FetchedVector {
 struct VectorIndexQueryPartitionData {
   size_t number_of_vectors_returned_to_postgres = 0;
   size_t number_of_vectors_fetched_from_tablet = 0;
+  // Fetched vectors that were dropped as not farther than max_fetched_distance.
+  size_t number_of_vectors_dropped = 0;
+  std::optional<uint64_t> max_fetched_distance;
+  bool last_fetch_dropped = false;
   bool whether_all_vectors_was_fetched = false;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
         number_of_vectors_returned_to_postgres, number_of_vectors_fetched_from_tablet,
+        number_of_vectors_dropped, max_fetched_distance, last_fetch_dropped,
         whether_all_vectors_was_fetched);
   }
 };
@@ -400,9 +405,7 @@ class VectorIndexQuery {
         partition_state.whether_all_vectors_was_fetched = true;
       }
       VLOG_WITH_FUNC(4) << partition_idx << ": " << partition_state.ToString();
-      if (!partition_state.whether_all_vectors_was_fetched &&
-          partition_state.number_of_vectors_returned_to_postgres + prefetch_size_
-              > partition_state.number_of_vectors_fetched_from_tablet) {
+      if (NeedsFetch(partition_state)) {
         auto new_read_req = arena->NewArenaObject<LWPgsqlReadRequestPB>(read_req);
         new_read_req->dup_partition_key(key);
         auto& vector_idx_options = *new_read_req->mutable_index_request()
@@ -474,7 +477,17 @@ class VectorIndexQuery {
     auto& out_resp = *responses.Add();
     auto& write_buffer = sidecars.Start();
 
+    // Rows are merged in order only while each partition that could have more has prefetch_size_
+    // rows buffered. A partition left short by dropped rows could have nearer rows than those
+    // buffered, so return nothing and requery it, which moves past the dropped rows. Other short
+    // pages are returned: their requery may repeat itself and stall the query. The gate applies to
+    // stale pages too: their buffered rows may be out of order as well.
     size_t response_size = std::min(prefetch_size_, vectors_.size());
+    if (std::ranges::any_of(partitions_, [this](const auto& partition) {
+      return partition.last_fetch_dropped && NeedsFetch(partition);
+    })) {
+      response_size = 0;
+    }
 
     pggate::PgWire::WriteInt64(response_size, &write_buffer);
     for (size_t i = 0; i != response_size; ++i) {
@@ -612,6 +625,13 @@ class VectorIndexQuery {
     return Status::OK();
   }
 
+  // Whether the partition could have more rows and has fewer than prefetch_size_ buffered.
+  bool NeedsFetch(const VectorIndexQueryPartitionData& partition) const {
+    return !partition.whether_all_vectors_was_fetched &&
+           partition.number_of_vectors_fetched_from_tablet - partition.number_of_vectors_dropped
+               - partition.number_of_vectors_returned_to_postgres < prefetch_size_;
+  }
+
   bool CouldFetchMore() const {
     if (!vectors_.empty()) {
       return true;
@@ -648,17 +668,35 @@ class VectorIndexQuery {
       }
       auto& distances = op_resp.vector_index_distances();
       auto& ends = op_resp.vector_index_ends();
+      auto& partition_state = partitions_[op.partition_idx];
+      // A later page re-runs the search and skips the rows fetched before by count. The new search
+      // may find rows the earlier one missed, so a skipped row may be returned again. Keep only
+      // the rows farther than all fetched before. Rows the re-run newly finds within that distance
+      // are lost, as approximate search allows, and so are ties past
+      // vector_index_max_extra_tied_results.
+      const auto skip_distances_up_to = partition_state.max_fetched_distance;
+      const auto dropped_before = partition_state.number_of_vectors_dropped;
       size_t sidecar_offset = 8;
       for (size_t index = 0; index != distances.size(); ++index) {
         auto new_offset = ends[index];
-        vectors_.push_back(FetchedVector {
-          .distance = distances[index],
-          .data = op_sidecars.SubSlice(sidecar_offset, new_offset),
-          .partition_idx = op.partition_idx,
-        });
+        auto distance = distances[index];
+        if (!skip_distances_up_to || distance > *skip_distances_up_to) {
+          vectors_.push_back(FetchedVector {
+            .distance = distance,
+            .data = op_sidecars.SubSlice(sidecar_offset, new_offset),
+            .partition_idx = op.partition_idx,
+          });
+          partition_state.max_fetched_distance = std::max(
+              partition_state.max_fetched_distance.value_or(0), distance);
+        } else {
+          ++partition_state.number_of_vectors_dropped;
+        }
         sidecar_offset = new_offset;
       }
-      partitions_[op.partition_idx].number_of_vectors_fetched_from_tablet += distances.size();
+      partition_state.last_fetch_dropped =
+          partition_state.number_of_vectors_dropped != dropped_before;
+      // Counts the dropped rows too: the tablet skips them on the next page.
+      partition_state.number_of_vectors_fetched_from_tablet += distances.size();
       if (!op_resp.vector_index_could_have_more_data()) {
         partitions_[op.partition_idx].whether_all_vectors_was_fetched = true;
       }
@@ -3658,11 +3696,43 @@ class PgClientSession::Impl {
       WARN_NOT_OK(MoveSessionToDatabaseCgroup(*database_oid), "Setting cgroup of PgClientSession");
     }
 
+    // A request that is not part of a connection start's prefetch drops the session's
+    // reference to the claim here rather than leaving it for the session to go away. A round
+    // still in flight holds the same token, so the database stays counted until that round
+    // lands. Such a request usually means the prefetch is over, having finished or given up.
+    //
+    // The exception is a read of a sys table the prefetch did not register, which carries no
+    // caching info either: it drops the claim while the prefetch is still running, so the gaps
+    // between its remaining requests go uncounted until its next fill takes a fresh token.
+    // What is lost is the gap cover, not the protection while a round is filling. pggate logs
+    // such a read as not prefetched, and the answer to it is to register the table.
+    //
+    // TODO(#34309): a connection start whose last YbPrefetch has nothing registered issues no
+    // request at all -- the preload note beside that call in relcache.c -- so no completing
+    // round reaches the cache and no round ends its claim. A pooled backend idle after startup
+    // sends nothing outside a prefetch either, so its database stays counted until the session
+    // exits. In that configuration nothing records a version either, so nothing asks and the
+    // held claim costs nothing; it bites only on a node that recorded one before the preload
+    // list grew to cover that round.
+    //
+    // TODO(#34309): the no-cache starter is the wider case. It runs a connection start's
+    // rounds with no caching info at all -- YBCStartSysTablePrefetchingNoCache passes none --
+    // so its first round ends the claim and the whole uncached catalog read runs uncounted,
+    // not just the gaps. Reaching it needs the earlier starters to fail on a snapshot too old
+    // in turn, which is why this is a note rather than a fix: carrying
+    // part_of_connection_prefetch there means giving a prefetch that wants no cache something
+    // to put it in.
+    if (!options.has_caching_info() ||
+        !options.caching_info().part_of_connection_prefetch()) {
+      prefetch_fill_token_.reset();
+    }
+
     if (options.has_caching_info()) {
       VLOG_WITH_PREFIX(3)
           << "Executing read from response cache for session " << data->req.session_id();
       data->cache_setter = VERIFY_RESULT(response_cache().Get(
-          options.mutable_caching_info(), deadline, data));
+          options.mutable_caching_info(), deadline, data, data->req.session_id(),
+          &prefetch_fill_token_));
       if (!data->cache_setter) {
         return Status::OK();
       }
@@ -5030,6 +5100,18 @@ class PgClientSession::Impl {
   // Whether a Perform has moved this session's thread into the database's cgroup; see DoPerform.
   // Only accessed under the session lock.
   bool moved_to_database_cgroup_ = false;
+
+  // This session's claim on its database while a connection start's prefetch runs. Held here
+  // rather than by the request that took it, so the gaps between that prefetch's requests do
+  // not read as an idle database. Three things end it: the request that completes the prefetch,
+  // the next request that is not part of one, which DoPerform resets it on, and the session.
+  //
+  // The pointer is only touched under the session lock, but the token it names is not: the
+  // setter releases it from FlushDone with the lock already dropped. That is one thread; a
+  // second arrives only where parallel workers run a connection start of their own, which
+  // needs preload_rel_cache, since they share their leader's session and so this slot.
+  // FillToken::Release carries both.
+  PgResponseCache::FillTokenPtr prefetch_fill_token_;
 
   std::optional<SubTransactionId> subtxn_with_session_object_locks_;
 

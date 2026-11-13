@@ -348,14 +348,15 @@ yb_index_delete(Relation indexRelation,
 				bool *isnull,
 				Datum ybctid,
 				Relation heapRelation,
-				IndexInfo *indexInfo)
+				IndexInfo *indexInfo,
+				bool persist_missing_row)
 {
 	RELATION_CHECKS;
 	CHECK_REL_PROCEDURE(yb_amdelete);
 
 	indexRelation->rd_indam->yb_amdelete(indexRelation, values, isnull,
 										 ybctid, heapRelation,
-										 indexInfo);
+										 indexInfo, persist_missing_row);
 }
 
 void

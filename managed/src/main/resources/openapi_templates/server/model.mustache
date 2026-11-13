@@ -1,0 +1,30 @@
+package {{package}};
+
+{{#imports}}import {{import}};
+{{/imports}}
+{{#serializableModel}}
+import java.io.Serializable;
+{{/serializableModel}}
+import com.fasterxml.jackson.annotation.*;
+import java.util.Set;
+import {{javaxPackage}}.validation.*;
+{{#models}}
+{{#model}}
+{{#isEnum}}
+{{>enumOuterClass}}
+
+{{/isEnum}}
+{{^isEnum}}
+{{! Yugabyte modification: a oneOf schema becomes an interface that its variants implement,
+    so that Jackson picks the variant by the discriminator (useOneOfInterfaces). }}
+{{#vendorExtensions.x-is-one-of-interface}}
+{{>oneof_interface}}
+{{/vendorExtensions.x-is-one-of-interface}}
+{{^vendorExtensions.x-is-one-of-interface}}
+{{>pojo}}
+{{/vendorExtensions.x-is-one-of-interface}}
+{{! End Yugabyte modification}}
+
+{{/isEnum}}
+{{/model}}
+{{/models}}

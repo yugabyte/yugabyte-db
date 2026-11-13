@@ -271,7 +271,8 @@ CatalogIndexDelete(CatalogIndexState indstate, HeapTuple heapTuple)
 						isnull, /* is-null flags */
 						HEAPTUPLE_YBCTID(heapTuple),	/* heap tuple */
 						heapRelation,
-						indexInfo);
+						indexInfo,
+						false /* persist_missing_row */ );
 	}
 
 	ExecDropSingleTupleTableSlot(slot);

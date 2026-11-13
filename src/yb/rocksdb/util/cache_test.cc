@@ -23,6 +23,7 @@
 
 #include <forward_list>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -30,13 +31,17 @@
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/util/coding.h"
 
+#include "yb/util/format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
+#include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 
 using std::shared_ptr;
 
 DECLARE_double(cache_single_touch_ratio);
+DECLARE_bool(cache_overflow_single_touch);
+DECLARE_bool(cache_overflow_multi_touch);
 
 namespace rocksdb {
 
@@ -740,23 +745,36 @@ TEST_F(CacheTest, OverFlowTest) {
   }
   AssertCacheSizes(cache.get(), 2, 8);
 
-  // Perform more lookup and make sure that the size of multi-touch doesn't grow.
+  // Perform more lookups. Multi-touch grows into the unused single-touch space, and the cache
+  // stays full.
   {
     Cache::Handle* h = cache->Lookup(ToString(9), 100 /* query_id */);
     cache->Release(h);
-    AssertCacheSizes(cache.get(), 1, 8);
+    AssertCacheSizes(cache.get(), 1, 9);
   }
   {
     Cache::Handle* h = cache->Lookup(ToString(10), 100 /* query_id */);
     cache->Release(h);
-    AssertCacheSizes(cache.get(), 0, 8);
+    AssertCacheSizes(cache.get(), 0, 10);
   }
 
-  // Perform 2 more insertions to make sure we can insert again.
-  for (int i = 11; i <= 12; ++i) {
-    ASSERT_OK(InsertIntoCache(cache, i /* key */, i /* value */));
-  }
+  // Single-touch insertions take back the single-touch share from the oldest multi-touch entries.
+  ASSERT_OK(InsertIntoCache(cache, 11 /* key */, 11 /* value */));
+  AssertCacheSizes(cache.get(), 1, 9);
+  ASSERT_OK(InsertIntoCache(cache, 12 /* key */, 12 /* value */));
   AssertCacheSizes(cache.get(), 2, 8);
+  for (int i = 1; i <= 2; ++i) {
+    Cache::Handle* h = cache->Lookup(ToString(i), 100 /* query_id */);
+    ASSERT_EQ(h, nullptr);
+  }
+
+  // Once multi-touch is back to its share, single-touch insertions evict single-touch entries.
+  ASSERT_OK(InsertIntoCache(cache, 13 /* key */, 13 /* value */));
+  AssertCacheSizes(cache.get(), 2, 8);
+  {
+    Cache::Handle* h = cache->Lookup(ToString(11), 100 /* query_id */);
+    ASSERT_EQ(h, nullptr);
+  }
 
   // Make sure that direct insertion into the multi-touch cache works properly.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_single_touch_ratio) = 0.4;
@@ -774,6 +792,427 @@ TEST_F(CacheTest, OverFlowTest) {
     ASSERT_OK(InsertIntoCache(cache, i /* key */, i /* value */, -1 /* query_id */));
   }
   cache->Release(h);
+}
+
+TEST_F(CacheTest, MultiTouchOverflow) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_single_touch_ratio) = 0.2;
+  std::shared_ptr<Cache> cache = NewLRUCache(10, 0);
+
+  for (int i = 0; i < 10; ++i) {
+    ASSERT_OK(InsertIntoCache(cache, i /* key */, i /* value */));
+  }
+  AssertCacheSizes(cache.get(), 10, 0);
+
+  // Promote every entry while it is pinned. Promotions only move entries between the sub-caches,
+  // so they must not evict anything.
+  std::vector<Cache::Handle*> handles;
+  for (int i = 0; i < 10; ++i) {
+    handles.push_back(cache->Lookup(ToString(i), 100 /* query_id */));
+    ASSERT_NE(handles.back(), nullptr);
+  }
+  AssertCacheSizes(cache.get(), 0, 10);
+
+  // Releasing the handles keeps the entries in the cache.
+  for (auto* h : handles) {
+    cache->Release(h);
+  }
+  AssertCacheSizes(cache.get(), 0, 10);
+  for (int i = 0; i < 10; ++i) {
+    Cache::Handle* h = cache->Lookup(ToString(i), 100 /* query_id */);
+    ASSERT_NE(h, nullptr);
+    cache->Release(h);
+  }
+
+  // Shrinking the cache evicts multi-touch entries only down to the space that single-touch is not
+  // using, and later single-touch insertions take back the single-touch share.
+  cache->SetCapacity(5);
+  AssertCacheSizes(cache.get(), 0, 5);
+  ASSERT_OK(InsertIntoCache(cache, 10 /* key */, 10 /* value */));
+  AssertCacheSizes(cache.get(), 1, 4);
+  ASSERT_OK(InsertIntoCache(cache, 11 /* key */, 11 /* value */));
+  AssertCacheSizes(cache.get(), 1, 4);
+}
+
+TEST_F(CacheTest, MultiTouchOverflowDisabled) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_single_touch_ratio) = 0.2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_overflow_multi_touch) = false;
+  std::shared_ptr<Cache> cache = NewLRUCache(10, 0);
+
+  for (int i = 0; i < 10; ++i) {
+    ASSERT_OK(InsertIntoCache(cache, i /* key */, i /* value */));
+  }
+  AssertCacheSizes(cache.get(), 10, 0);
+
+  // Multi-touch stays at its share, so promotions past it evict multi-touch entries.
+  for (int i = 0; i < 10; ++i) {
+    Cache::Handle* h = cache->Lookup(ToString(i), 100 /* query_id */);
+    ASSERT_NE(h, nullptr);
+    cache->Release(h);
+  }
+  AssertCacheSizes(cache.get(), 0, 8);
+
+  // Single-touch can still overflow into unused multi-touch space.
+  ASSERT_OK(InsertIntoCache(cache, 10 /* key */, 10 /* value */));
+  ASSERT_OK(InsertIntoCache(cache, 11 /* key */, 11 /* value */));
+  AssertCacheSizes(cache.get(), 2, 8);
+}
+
+TEST_F(CacheTest, MultiTouchOverShareWithoutOverflow) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_single_touch_ratio) = 0.2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_overflow_multi_touch) = false;
+  std::shared_ptr<Cache> cache = NewLRUCache(10, 0);
+
+  // Fill the multi-touch share with pinned entries.
+  std::vector<Cache::Handle*> handles;
+  for (int i = 0; i < 8; ++i) {
+    ASSERT_OK(InsertIntoCache(cache, i /* key */, i /* value */));
+    handles.push_back(cache->Lookup(ToString(i), 100 /* query_id */));
+    ASSERT_NE(handles.back(), nullptr);
+  }
+  AssertCacheSizes(cache.get(), 0, 8);
+
+  // A second query loading the same block inserts it directly into multi-touch, past its share.
+  ASSERT_OK(InsertIntoCache(cache, 8 /* key */, 8 /* value */));
+  ASSERT_OK(InsertIntoCache(cache, 8 /* key */, 8 /* value */, 2 /* query_id */));
+  ASSERT_OK(InsertIntoCache(cache, 9 /* key */, 9 /* value */));
+  AssertCacheSizes(cache.get(), 1, 9);
+
+  // Without multi-touch overflow, a single-touch insertion evicts single-touch entries only.
+  ASSERT_OK(InsertIntoCache(cache, 10 /* key */, 10 /* value */));
+  AssertCacheSizes(cache.get(), 1, 9);
+  {
+    Cache::Handle* h = cache->Lookup(ToString(9), 100 /* query_id */);
+    ASSERT_EQ(h, nullptr);
+  }
+
+  // Releasing the pinned entries evicts the entry that is past the multi-touch share, not them.
+  for (auto* h : handles) {
+    cache->Release(h);
+  }
+  AssertCacheSizes(cache.get(), 1, 8);
+  {
+    Cache::Handle* h = cache->Lookup(ToString(8), 100 /* query_id */);
+    ASSERT_EQ(h, nullptr);
+  }
+}
+
+TEST_F(CacheTest, SingleTouchOverflowDisabled) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_single_touch_ratio) = 0.5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_overflow_single_touch) = false;
+  std::shared_ptr<Cache> cache = NewLRUCache(4, 0);
+
+  auto promote = [&cache](int key) {
+    Cache::Handle* h = cache->Lookup(ToString(key), 100 /* query_id */);
+    ASSERT_NE(h, nullptr);
+    cache->Release(h);
+  };
+  auto assert_evicted = [&cache](int key) {
+    ASSERT_EQ(cache->Lookup(ToString(key), 100 /* query_id */), nullptr);
+  };
+
+  // Single-touch is capped at its share.
+  for (int i = 0; i < 4; ++i) {
+    ASSERT_OK(InsertIntoCache(cache, i /* key */, i /* value */));
+  }
+  AssertCacheSizes(cache.get(), 2, 0);
+
+  // Multi-touch can still grow into unused single-touch space.
+  promote(2);
+  promote(3);
+  AssertCacheSizes(cache.get(), 0, 2);
+  ASSERT_OK(InsertIntoCache(cache, 4 /* key */, 4 /* value */));
+  ASSERT_OK(InsertIntoCache(cache, 5 /* key */, 5 /* value */));
+  AssertCacheSizes(cache.get(), 2, 2);
+  promote(4);
+  promote(5);
+  AssertCacheSizes(cache.get(), 0, 4);
+
+  // Single-touch insertions take back the single-touch share from the oldest multi-touch entries.
+  ASSERT_OK(InsertIntoCache(cache, 6 /* key */, 6 /* value */));
+  AssertCacheSizes(cache.get(), 1, 3);
+  assert_evicted(2);
+  ASSERT_OK(InsertIntoCache(cache, 7 /* key */, 7 /* value */));
+  AssertCacheSizes(cache.get(), 2, 2);
+  assert_evicted(3);
+
+  // Once multi-touch is back to its share, single-touch insertions evict single-touch entries.
+  ASSERT_OK(InsertIntoCache(cache, 8 /* key */, 8 /* value */));
+  AssertCacheSizes(cache.get(), 2, 2);
+  assert_evicted(6);
+}
+
+TEST_F(CacheTest, EvictNotFull) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_single_touch_ratio) = 0.2;
+  std::shared_ptr<Cache> cache = NewLRUCache(10, 0);
+
+  for (int i = 0; i < 9; ++i) {
+    ASSERT_OK(InsertIntoCache(cache, i /* key */, i /* value */));
+  }
+  for (int i = 0; i < 4; ++i) {
+    Cache::Handle* h = cache->Lookup(ToString(i), 100 /* query_id */);
+    ASSERT_NE(h, nullptr);
+    cache->Release(h);
+  }
+  AssertCacheSizes(cache.get(), 5, 4);
+
+  // Evict releases the requested amount even though the cache has room for it, taking the oldest
+  // single-touch entries first and then the oldest multi-touch entries.
+  ASSERT_EQ(cache->Evict(1), 1U);
+  AssertCacheSizes(cache.get(), 4, 4);
+  ASSERT_EQ(cache->Evict(6), 6U);
+  AssertCacheSizes(cache.get(), 0, 2);
+
+  // Pinned entries are not evicted.
+  std::vector<Cache::Handle*> handles;
+  for (int i = 2; i < 4; ++i) {
+    handles.push_back(cache->Lookup(ToString(i), 100 /* query_id */));
+    ASSERT_NE(handles.back(), nullptr);
+  }
+  ASSERT_EQ(cache->Evict(5), 0U);
+  for (auto* h : handles) {
+    cache->Release(h);
+  }
+  AssertCacheSizes(cache.get(), 0, 2);
+}
+
+TEST_F(CacheTest, EvictMultiTouchOverShare) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_single_touch_ratio) = 0.2;
+  std::shared_ptr<Cache> cache = NewLRUCache(10, 0);
+
+  for (int i = 0; i < 10; ++i) {
+    ASSERT_OK(InsertIntoCache(cache, i /* key */, i /* value */));
+  }
+  for (int i = 0; i < 9; ++i) {
+    Cache::Handle* h = cache->Lookup(ToString(i), 100 /* query_id */);
+    ASSERT_NE(h, nullptr);
+    cache->Release(h);
+  }
+  AssertCacheSizes(cache.get(), 1, 9);
+
+  // Like Insert, Evict takes the oldest multi-touch entries above the multi-touch share first.
+  ASSERT_EQ(cache->Evict(1), 1U);
+  AssertCacheSizes(cache.get(), 1, 8);
+  ASSERT_EQ(cache->Lookup(ToString(0), 100 /* query_id */), nullptr);
+
+  // Then single-touch entries, then the remaining multi-touch entries.
+  ASSERT_EQ(cache->Evict(2), 2U);
+  AssertCacheSizes(cache.get(), 0, 7);
+  ASSERT_EQ(cache->Lookup(ToString(9), 100 /* query_id */), nullptr);
+  ASSERT_EQ(cache->Lookup(ToString(1), 100 /* query_id */), nullptr);
+}
+
+TEST_F(CacheTest, StrictCapacityLimitRefusedPromotion) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_single_touch_ratio) = 0.2;
+  std::shared_ptr<Cache> cache = NewLRUCache(10, 0, true /* strict_capacity_limit */);
+
+  // Fill the multi-touch share, with all entries but the last one pinned.
+  std::vector<Cache::Handle*> handles;
+  for (int i = 0; i < 8; ++i) {
+    ASSERT_OK(InsertIntoCache(cache, i /* key */, i /* value */));
+    handles.push_back(cache->Lookup(ToString(i), 100 /* query_id */));
+    ASSERT_NE(handles.back(), nullptr);
+  }
+  cache->Release(handles.back());
+  handles.pop_back();
+  AssertCacheSizes(cache.get(), 0, 8);
+
+  // The pinned multi-touch entries leave no room to promote this entry, so the promotion is
+  // refused, and it does not evict the unpinned multi-touch entry.
+  ASSERT_OK(InsertIntoCache(
+      cache, 8 /* key */, 8 /* value */, CacheTest::kTestQueryId, 2 /* charge */));
+  Cache::Handle* h = cache->Lookup(ToString(8), 100 /* query_id */);
+  ASSERT_NE(h, nullptr);
+  ASSERT_EQ(cache->GetSubCacheType(h), SINGLE_TOUCH);
+  cache->Release(h);
+  AssertCacheSizes(cache.get(), 2, 8);
+  h = cache->Lookup(ToString(7), 100 /* query_id */);
+  ASSERT_NE(h, nullptr);
+  cache->Release(h);
+
+  for (auto* handle : handles) {
+    cache->Release(handle);
+  }
+}
+
+// Runs random operations on a cache with several shards. After each one, checks that the usage
+// matches the cache entries, that pinned entries stay in the cache, and that unpinned entries fit
+// in the capacity.
+void RunRandomOperations(bool strict_capacity_limit) {
+  constexpr size_t kShards = 4;
+  constexpr int kMaxCharge = 4;
+  // With cache_single_touch_ratio = 0.2, a shard with this much room fits an entry of kMaxCharge
+  // in both its single touch and multi touch shares.
+  constexpr int kRoomForEntryInEachShare = 20;
+  constexpr int kMaxShardCapacity = 48;
+  // The consumed space can exceed the capacity, which leaves no room at all.
+  constexpr int kMaxShardSpaceConsumed = 8;
+  constexpr int kMaxHandlesLog = 5;
+  constexpr int kRecentKeys = 64;
+  constexpr int kStepsPerPhase = 500;
+  constexpr int kSteps = 10000;
+
+  struct HeldHandle {
+    Cache::Handle* handle;
+    int key;
+    // Whether the entry was erased or replaced while pinned.
+    bool detached;
+  };
+
+  Random rnd(test::RandomSeed());
+  size_t shard_capacity = 32;
+  size_t shard_space_consumed = 0;
+  auto cache = NewLRUCache(
+      kShards * shard_capacity, 2 /* num_shard_bits */, strict_capacity_limit);
+  std::vector<HeldHandle> handles;
+  // The most entries to keep pinned during the current phase.
+  size_t max_handles = 0;
+  int next_key = 0;
+  int next_value = 1;
+
+  auto recent_key = [&] {
+    return next_key - 1 - static_cast<int>(rnd.Uniform(std::min(next_key, kRecentKeys)));
+  };
+  auto detach = [&handles](int key) {
+    for (auto& h : handles) {
+      if (h.key == key) {
+        h.detached = true;
+      }
+    }
+  };
+  auto check = [&] {
+    callback_state.clear();
+    cache->ApplyToAllCacheEntries(callback, true /* thread_safe */);
+    size_t usage = 0;
+    std::unordered_set<int> values;
+    for (const auto& [value, charge] : callback_state) {
+      usage += charge;
+      values.insert(value);
+    }
+    std::unordered_set<Cache::Handle*> detached;
+    for (const auto& h : handles) {
+      if (h.detached) {
+        detached.insert(h.handle);
+      } else {
+        ASSERT_TRUE(values.contains(DecodeValue(cache->Value(h.handle)))) << "key: " << h.key;
+      }
+    }
+    for (auto* handle : detached) {
+      usage += cache->GetUsage(handle);
+    }
+    ASSERT_EQ(cache->GetUsage(), usage);
+
+    const size_t shard_space =
+        shard_capacity > shard_space_consumed ? shard_capacity - shard_space_consumed : 0;
+    // An insertion keeps its entry even when there is no room for it. If both shares fit an
+    // entry, unpinned usage still stays within the capacity. Otherwise each share can keep one
+    // entry that does not fit.
+    const size_t max_unpinned = shard_space >= kRoomForEntryInEachShare
+        ? shard_space : shard_space + 2 * kMaxCharge;
+    ASSERT_LE(cache->GetUsage() - cache->GetPinnedUsage(), kShards * max_unpinned);
+    if (handles.empty()) {
+      for (const auto& [single_touch, multi_touch] : cache->TEST_GetIndividualUsages()) {
+        ASSERT_LE(single_touch + multi_touch, max_unpinned);
+      }
+    }
+  };
+
+  for (int step = 0; step < kSteps; ++step) {
+    if (step % kStepsPerPhase == 0) {
+      // Mostly a few pinned entries, so that unpinned entries fill the cache, and sometimes more
+      // than a shard can hold.
+      max_handles = rnd.Skewed(kMaxHandlesLog);
+    }
+    const auto op = rnd.Uniform(20);
+    if (op < 8 || next_key == 0) {
+      // Inserting a key that is already in the cache replaces its entry, and puts the new one in
+      // multi touch if the query id differs.
+      const int key = next_key > 0 && rnd.OneIn(4) ? recent_key() : next_key++;
+      const QueryId query_id = rnd.OneIn(8) ? kInMultiTouchId : 1 + rnd.Uniform(2);
+      Cache::Handle* handle = nullptr;
+      const bool pin = handles.size() < max_handles && rnd.OneIn(2);
+      auto s = cache->Insert(
+          EncodeKey(key), query_id, EncodeValue(next_value++), 1 + rnd.Uniform(kMaxCharge),
+          &dumbDeleter, pin ? &handle : nullptr);
+      if (s.ok()) {
+        detach(key);
+        if (handle != nullptr) {
+          handles.push_back({handle, key, false /* detached */});
+        }
+      } else {
+        ASSERT_TRUE(strict_capacity_limit && s.IsIncomplete()) << s;
+      }
+    } else if (op < 14) {
+      const int key = recent_key();
+      Cache::Handle* handle = cache->Lookup(EncodeKey(key), 1 + rnd.Uniform(3) /* query_id */);
+      if (handle != nullptr) {
+        if (handles.size() < max_handles) {
+          handles.push_back({handle, key, false /* detached */});
+        } else {
+          cache->Release(handle);
+        }
+      }
+    } else if (op < 17) {
+      if (!handles.empty() && (handles.size() > max_handles || rnd.OneIn(4))) {
+        const size_t i = rnd.Uniform(static_cast<int>(handles.size()));
+        cache->Release(handles[i].handle);
+        handles[i] = handles.back();
+        handles.pop_back();
+      }
+    } else if (op == 17) {
+      const int key = recent_key();
+      cache->Erase(EncodeKey(key));
+      detach(key);
+    } else if (op == 18) {
+      cache->Evict(1 + rnd.Uniform(4 * kMaxCharge));
+    } else if (rnd.OneIn(2)) {
+      // Usually leave room for an entry in each share after the consumed space, but not always.
+      constexpr int kMinLargeShardCapacity = kRoomForEntryInEachShare + kMaxShardSpaceConsumed;
+      shard_capacity = rnd.OneIn(4)
+          ? rnd.Uniform(kMinLargeShardCapacity)
+          : kMinLargeShardCapacity + rnd.Uniform(kMaxShardCapacity - kMinLargeShardCapacity + 1);
+      cache->SetCapacity(kShards * shard_capacity);
+    } else {
+      const size_t consumed = rnd.Uniform(kMaxShardSpaceConsumed + 1);
+      if (consumed > shard_space_consumed) {
+        ASSERT_RESULT(cache->ConsumeSpace(
+            kShards * (consumed - shard_space_consumed), Cache::ReservationMode::kAlways));
+      } else {
+        cache->ReleaseSpace(kShards * (shard_space_consumed - consumed));
+      }
+      shard_space_consumed = consumed;
+    }
+    ASSERT_NO_FATALS(check()) << "step: " << step;
+  }
+
+  for (const auto& h : handles) {
+    cache->Release(h.handle);
+  }
+  handles.clear();
+  ASSERT_NO_FATALS(check());
+}
+
+TEST_F(CacheTest, RandomOperations) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_single_touch_ratio) = 0.2;
+  for (const bool overflow_single_touch : {true, false}) {
+    for (const bool overflow_multi_touch : {true, false}) {
+      SCOPED_TRACE(yb::Format(
+          "overflow_single_touch: $0, overflow_multi_touch: $1",
+          overflow_single_touch, overflow_multi_touch));
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_overflow_single_touch) = overflow_single_touch;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_overflow_multi_touch) = overflow_multi_touch;
+      ASSERT_NO_FATALS(RunRandomOperations(false /* strict_capacity_limit */));
+    }
+  }
+  SCOPED_TRACE("strict_capacity_limit");
+  ASSERT_NO_FATALS(RunRandomOperations(true /* strict_capacity_limit */));
 }
 
 }  // namespace rocksdb
