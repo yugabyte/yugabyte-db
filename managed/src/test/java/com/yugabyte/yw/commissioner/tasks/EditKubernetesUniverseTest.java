@@ -2248,19 +2248,29 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> removes = changeMasterConfigs(plan, "RemoveMaster");
     List<TaskInfo> pushes = masterAddrPushes(plan);
     List<TaskInfo> preRemove = between(pushes, lastPosition(adds), firstPosition(removes));
-    // The post-remove push is the groups right after the leader wait and the record that the old
-    // masters are removed: masters, tservers, and the best-effort push to tservers the edit
-    // removes.
+    // After the leader wait, the final masters are rendered and the stage recorded. The post-remove
+    // push is the groups right after the record: masters, tservers, and the best-effort push to
+    // tservers the edit removes.
     int leaderWait =
         firstPosition(
             between(
                 subtasks(plan, TaskType.WaitForMasterLeader, p -> true),
                 lastPosition(removes),
                 Integer.MAX_VALUE));
-    int stageRecord = leaderWait + 1;
-    assertTrue(
-        subtasks(plan, TaskType.UpdateParentTaskParams, p -> true).stream()
-            .anyMatch(t -> t.getPosition() == stageRecord));
+    int stageRecord =
+        firstPosition(
+            between(
+                subtasks(plan, TaskType.UpdateParentTaskParams, p -> true),
+                leaderWait,
+                Integer.MAX_VALUE));
+    // No render when every AZ is in the master full move or without non-restart support.
+    List<TaskInfo> postRemoveRender = between(helmUpgrades(plan), leaderWait, stageRecord);
+    for (TaskInfo t : postRemoveRender) {
+      assertEquals(
+          addressSet(helmMasterAddresses(postRemoveRender.get(0))),
+          addressSet(helmMasterAddresses(t)));
+      assertTrue(keepsGflagsChecksum(t));
+    }
     List<TaskInfo> postRemove = between(pushes, stageRecord, stageRecord + 4);
     Set<Integer> postRemoveGroups =
         postRemove.stream().map(TaskInfo::getPosition).collect(Collectors.toSet());
@@ -2545,7 +2555,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
                 addressSet(oldMasters, newMasters), addressSet(oldMasters, newMasters)),
             MasterMoveStage.OLD_MASTERS_REMOVED,
             ImmutableList.of(addressSet(newMasters), addressSet(newMasters)),
-            MasterMoveStage.DONE,
+            MasterMoveStage.MASTERS_SETTLED,
             ImmutableList.of(addressSet(newMasters), addressSet(newMasters)));
     for (Map.Entry<MasterMoveStage, List<Set<String>>> c : cases.entrySet()) {
       attempt = retryEdit(attempt, p -> p.getPrimaryCluster().setMasterMoveStage(c.getKey()));
@@ -2902,6 +2912,44 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         lastPosition(earlySecretUpdate) < firstPosition(changeMasterConfigs(plan, "AddMaster")));
   }
 
+  /**
+   * After the master steps, a retry renders no master list: one at the pre-edit pod counts would
+   * scale back tservers the earlier attempt added.
+   */
+  @Test
+  public void testMasterFullMoveRetryAfterSettledKeepsAddedTservers() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    TestUtils.updateDeviceInfo(newIntent, ServerType.MASTER, d -> d.storageClass = "fast");
+    PlacementInfo pi = currentPlacement();
+    pi.azStream()
+        .filter(az -> az.name.equals("PlacementAZ 1"))
+        .forEach(az -> az.masterStsIndex = 1);
+    pi.azStream().filter(az -> az.name.equals("PlacementAZ 2")).forEach(az -> az.numNodesInAZ = 2);
+    newIntent.numNodes += 1;
+
+    TaskInfo attempt = submitEdit(newIntent, pi, null);
+    // The first attempt renders az-2 at its current count only before the tservers are added.
+    List<TaskInfo> az2Helm =
+        helmUpgradesInAZs(helmUpgrades(plan(attempt)), ImmutableSet.of("az-2"));
+    int firstAt2 =
+        az2Helm.stream()
+            .filter(t -> helmAZ(t).path("numNodesInAZ").asInt() == 2)
+            .mapToInt(TaskInfo::getPosition)
+            .min()
+            .getAsInt();
+    for (TaskInfo t : between(az2Helm, firstAt2, Integer.MAX_VALUE)) {
+      assertEquals(2, helmAZ(t).path("numNodesInAZ").asInt());
+    }
+    attempt =
+        retryEdit(
+            attempt,
+            p -> p.getPrimaryCluster().setMasterMoveStage(MasterMoveStage.MASTERS_SETTLED));
+    for (TaskInfo t : helmUpgradesInAZs(helmUpgrades(plan(attempt)), ImmutableSet.of("az-2"))) {
+      assertEquals(2, helmAZ(t).path("numNodesInAZ").asInt());
+    }
+  }
+
   @Test
   public void testZoneReplaceWithMasterFullMoveWaitsForAllMasters() {
     setupMasterMoveUniverse(FULL_MOVE_VERSION);
@@ -2933,19 +2981,22 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             .collect(Collectors.toList()));
     assertTrue(firstPosition(removes) > lastPosition(adds));
 
-    List<TaskInfo> pushes = masterAddrPushes(plan);
-    Set<String> masters =
-        ImmutableSet.of("yb-master-1-0_az-1", "yb-master-0_az-2", "yb-master-0_az-4");
-    List<TaskInfo> preRemove = between(pushes, lastPosition(adds), firstPosition(removes));
     List<TaskInfo> postRemove =
-        between(pushes, lastPosition(removes), Integer.MAX_VALUE).stream()
-            // After the leader wait and the stage record.
-            .filter(t -> t.getPosition() <= lastPosition(removes) + 5)
-            .collect(Collectors.toList());
-    for (List<TaskInfo> push : ImmutableList.of(preRemove, postRemove)) {
-      assertEquals(masters, nodeNames(push, ServerType.MASTER));
-      assertEquals(tservers, nodeNames(push, ServerType.TSERVER));
+        assertPushesAroundMasterChange(
+            plan,
+            ImmutableSet.of("yb-master-1-0_az-1", "yb-master-0_az-2", "yb-master-0_az-4"),
+            tservers);
+    // Right after the removes, before any old master pod is deleted, az-2 and az-3 get the final
+    // masters. az-1's full move writes its own.
+    List<TaskInfo> postRemoveRender =
+        between(helmUpgrades(plan), lastPosition(removes), firstPosition(postRemove));
+    assertEquals(ImmutableSet.of("az-2", "az-3"), azCodes(postRemoveRender));
+    for (TaskInfo t : postRemoveRender) {
+      assertEquals(addressSet(expectedMasterAddresses(pi)), addressSet(helmMasterAddresses(t)));
     }
+    assertTrue(
+        lastPosition(postRemoveRender)
+            < firstPosition(subtasks(plan, TaskType.CheckNodeSafeToDelete, p -> true)));
 
     // The full move creates the new az-1 master after the az-4 one joined, so its pods list both.
     Set<String> allMasters = addressSet(oldMasters, expectedMasterAddresses(pi));
@@ -3312,10 +3363,26 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     PlacementInfo rrPlacement = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(
         AvailabilityZone.getByCode(kubernetesProvider, "az-1").getUuid(), rrPlacement, 1, 2, true);
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        ApiUtils.mockUniverseUpdaterWithReadReplica(rrIntent, rrPlacement));
+    // The pod names K8s gives the read replica's tservers, which the edit looks them up by.
     defaultUniverse =
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),
-            ApiUtils.mockUniverseUpdaterWithReadReplica(rrIntent, rrPlacement));
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              UUID rrUUID = details.getReadOnlyClusters().get(0).uuid;
+              List<NodeDetails> rrNodes =
+                  details.getNodesInCluster(rrUUID).stream()
+                      .sorted(Comparator.comparing(n -> n.nodeName))
+                      .collect(Collectors.toList());
+              for (int i = 0; i < rrNodes.size(); i++) {
+                rrNodes.get(i).nodeName =
+                    String.format("yb-tserver-%d_az-1%s", i, Universe.READONLY);
+              }
+              u.setUniverseDetails(details);
+            });
     Cluster readReplica = defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0);
     Set<String> rrTservers =
         defaultUniverse.getUniverseDetails().getNodesInCluster(readReplica.uuid).stream()
@@ -3383,6 +3450,31 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         Sets.union(
             ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2", "yb-tserver-0_az-3"),
             rrTservers));
+  }
+
+  /** A read replica tserver that the same request removes may be down, like a primary one. */
+  @Test
+  public void testZoneReplaceWithReadReplicaScaleDownPushesToItBestEffort() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    Set<String> rrTservers = addTwoTserverReadReplica();
+    Cluster readReplica =
+        Json.fromJson(
+            Json.toJson(defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0)),
+            Cluster.class);
+    readReplica.userIntent.numNodes = 1;
+    readReplica.placementInfo.azStream().forEach(az -> az.numNodesInAZ = 1);
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
+    taskParams.clusters = new ArrayList<>(Collections.singletonList(readReplica));
+    List<TaskInfo> plan = plan(submitTask(taskParams, currentIntent(), zoneReplacePlacement()));
+
+    Set<String> bestEffort = bestEffortNodeNames(masterAddrPushes(plan));
+    assertEquals(bestEffort.toString(), 2, bestEffort.size());
+    assertTrue(bestEffort.contains("yb-tserver-0_az-3"));
+    assertEquals(1, Sets.intersection(bestEffort, rrTservers).size());
   }
 
   /** Non-restart renders of the read replica's releases. */
@@ -3457,8 +3549,12 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     assertEquals(
         addressSet(oldMasters, newMasters), addressSet(helmMasterAddresses(beforeRemove.get(0))));
 
-    // Right after the full move, and again in the read replica's own pass.
+    // Right after the removes, before any old master pod is deleted, and again in the read
+    // replica's own pass.
     List<TaskInfo> afterRemoves = between(rrRenders, lastPosition(removes), Integer.MAX_VALUE);
+    assertTrue(
+        firstPosition(afterRemoves)
+            < firstPosition(subtasks(plan, TaskType.CheckNodeSafeToDelete, p -> true)));
     Map<Integer, List<TaskInfo>> afterRemovesByGroup =
         afterRemoves.stream()
             .collect(
@@ -3665,7 +3761,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     assertTrue(describeFailure(taskInfo), describeFailure(taskInfo).contains("stop after"));
     assertTrue(events.toString(), events.contains("REMOVE " + masterC));
     assertEquals(
-        MasterMoveStage.DONE,
+        MasterMoveStage.MASTERS_SETTLED,
         Json.fromJson(
                 TaskInfo.getOrBadRequest(taskInfo.getUuid()).getTaskParams(),
                 UniverseDefinitionTaskParams.class)
@@ -3734,7 +3830,12 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         ImmutableSet.of("HELM az-1", "HELM az-2", "HELM az-3"),
         new java.util.HashSet<>(log.subList(add - 3, add)));
     List<String> preRemove = log.subList(prePush, remove);
-    List<String> postRemove = log.subList(remove + 1, log.size());
+    // Right after the remove, before any old master pod is deleted, every AZ but az-4 renders the
+    // final list.
+    assertEquals(
+        ImmutableSet.of("HELM az-1", "HELM az-2", "HELM az-3"),
+        new java.util.HashSet<>(log.subList(remove + 1, remove + 4)));
+    List<String> postRemove = log.subList(remove + 4, log.size());
 
     // Before the remove: the live Raft config, old masters plus the new one.
     String raftConfig =
@@ -3752,7 +3853,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         Json.fromJson(
             TaskInfo.getOrBadRequest(taskInfo.getUuid()).getTaskParams(),
             UniverseDefinitionTaskParams.class);
-    assertEquals(MasterMoveStage.DONE, retryParams.getPrimaryCluster().getMasterMoveStage());
+    assertEquals(
+        MasterMoveStage.MASTERS_SETTLED, retryParams.getPrimaryCluster().getMasterMoveStage());
     retryParams.setPreviousTaskUUID(taskInfo.getUuid());
     doThrow(new RuntimeException("stop after planning"))
         .when(mockKubernetesManager)

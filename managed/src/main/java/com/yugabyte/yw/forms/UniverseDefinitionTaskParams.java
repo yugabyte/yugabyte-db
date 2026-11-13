@@ -477,7 +477,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // The master full move's new masters run too, and may be in the Raft config.
     FULL_MOVE_MASTERS_RUNNING,
     OLD_MASTERS_REMOVED,
-    DONE
+    // Every master step is over. From here tserver pods change, so a retry renders and pushes no
+    // master list: one at the pre-edit pod counts would undo those changes.
+    MASTERS_SETTLED
   }
 
   /** A wrapper for all the clusters that will make up the universe. */
