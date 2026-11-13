@@ -1,4 +1,5 @@
 from embeddings import EmbeddingsGenerator
+from embeddings.embed import embed_concurrency_from_env
 from db import YugabyteDBVectorStore, PipelineTracking, PipelineStatus
 from source_location_crawlers import S3BucketCrawler
 from observability import meko_observe
@@ -88,7 +89,8 @@ class RagPipelineHandler:
         embedder = EmbeddingsGenerator(
             embedding_model=embedding_model,
             embedding_model_params=embedding_model_params,
-            ai_provider=ai_provider
+            ai_provider=ai_provider,
+            embed_concurrency=embed_concurrency_from_env(),
         )
         # 1. Process file and Generate embeddings
         embedding_iterator = embedder.generate_embeddings(

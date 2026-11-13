@@ -2,8 +2,11 @@
 
 package com.yugabyte.yw.common;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.io.JsonStringEncoder;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
@@ -27,7 +30,9 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.atomic.AtomicLong;
@@ -65,7 +70,8 @@ public class RedactingService {
           "$..ysqlNewPassword",
           "$..ycqlCurrentPassword",
           "$..ysqlCurrentPassword",
-          "$..sshPrivateKeyContent");
+          "$..sshPrivateKeyContent",
+          "$..dbuserPassword");
 
   private static final String YCQL_LDAP_BIND_PASSWD_PATH = "$..ycql_ldap_bind_passwd";
 
@@ -133,6 +139,11 @@ public class RedactingService {
           // OCI S3-compatible storage credentials
           .add("$..OCI_S3_ACCESS_KEY_ID")
           .add("$..OCI_S3_SECRET_ACCESS_KEY")
+          // v2 storage config credentials (S3, GCS, Azure, OCI)
+          .add("$..access_key_id")
+          .add("$..secret_access_key")
+          .add("$..credentials_json")
+          .add("$..sas_token")
           // SmartKey API key
           .add("$..api_key")
           // SMTP password
@@ -151,7 +162,6 @@ public class RedactingService {
           .add("$..hook.hookText")
           .add("$..hook.runtimeArgs")
           // LDAP - DB Universe Sync
-          .add("$..dbuserPassword")
           .add("$..ldapBindPassword")
           // HA Config
           .add("$..cluster_key")
@@ -176,7 +186,10 @@ public class RedactingService {
 
   private static final String REDACTED_PAYLOAD_KEY = "_redactedPayload";
 
-  /** Returns a safe fallback ObjectNode when JSON reparsing after redaction fails. */
+  /** Value fields of a gflag change in audit details: {"name": ..., "old": ..., "new": ...}. */
+  private static final List<String> GFLAG_CHANGE_FIELDS = List.of("old", "new", "default");
+
+  /** Returns a placeholder ObjectNode when redaction fails. */
   private static ObjectNode redactionParseErrorFallback(String redactedPayload) {
     ObjectNode fallback = Json.mapper().createObjectNode();
     fallback.put("_redactionParseError", true);
@@ -204,6 +217,21 @@ public class RedactingService {
         ybSoftwareVersion,
         gFlagsValidation,
         isGFlagsSensitiveDataApiRedactionEnabled());
+  }
+
+  /**
+   * Redacts JSON that YBA persists and reads back to act on: universe details and task params.
+   * Stored gflags are what gets written to server.conf, and what a task retry re-applies, so only
+   * {@link #SECRET_PATHS_FOR_APIS} apply here and the gflags-sensitive-data API redaction never
+   * does, whatever its runtime config says.
+   */
+  public static JsonNode filterSecretFieldsForStorage(JsonNode input) {
+    return filterSecretFields(
+        input,
+        RedactionTarget.APIS,
+        /* ybSoftwareVersion */ null,
+        /* gFlagsValidation */ null,
+        /* enableGFlagsSensitiveDataApiRedaction */ false);
   }
 
   public static boolean isGFlagsSensitiveDataApiRedactionEnabled() {
@@ -255,7 +283,7 @@ public class RedactingService {
     JsonNode afterJsonPath = context.json();
 
     if (target == RedactionTarget.LOGS) {
-      return redactSensitiveGFlagFields(afterJsonPath, ybSoftwareVersion, gFlagsValidation);
+      return redactSensitiveGFlagFieldsInPlace(afterJsonPath, ybSoftwareVersion, gFlagsValidation);
     }
 
     if (target == RedactionTarget.APIS) {
@@ -284,48 +312,112 @@ public class RedactingService {
     return redactSensitiveGFlagFields(input, null, null);
   }
 
+  /**
+   * Redacts sensitive gflags in a JSON tree: values of fields named after them, ysql_hba_conf_csv
+   * values, and text values that mention them. Returns a redacted copy.
+   */
   public static JsonNode redactSensitiveGFlagFields(
       JsonNode input, String ybSoftwareVersion, GFlagsValidation gFlagsValidation) {
-    final JsonNode original = input;
+    if (input == null || input.isMissingNode() || input.isNull()) {
+      return input;
+    }
+    return redactSensitiveGFlagFieldsInPlace(input.deepCopy(), ybSoftwareVersion, gFlagsValidation);
+  }
+
+  private static JsonNode redactSensitiveGFlagFieldsInPlace(
+      JsonNode input, String ybSoftwareVersion, GFlagsValidation gFlagsValidation) {
+    if (input == null || input.isMissingNode() || input.isNull()) {
+      return input;
+    }
     try {
-      if (input == null || input.isMissingNode() || input.isNull()) {
-        return input;
-      }
-      input = redactAuditAdditionalDetails(input, null, gFlagsValidation);
-      String jsonString = input.toString();
-      Set<String> patterns = getPatternsToRedact(ybSoftwareVersion, gFlagsValidation);
-      String redactedString = redactSensitiveInfoInString(jsonString, patterns, false);
-
-      JsonNode redacted;
-      try {
-        redacted = Json.parse(redactedString);
-      } catch (Exception parseException) {
-        log.warn(
-            "Failed to parse JSON after sensitive gflag redaction; returning fallback wrapper"
-                + " with string-redacted payload. Error: ",
-            parseException);
-        return redactionParseErrorFallback(
-            redactSensitiveInfoInString(redactedString, patterns, true));
-      }
-      redactYamlInStrings(redacted, patterns);
-      return redacted;
-
+      redactAuditAdditionalDetails(input, null, gFlagsValidation);
+      return redactTree(input, sensitiveNames(ybSoftwareVersion, gFlagsValidation));
     } catch (Exception e) {
-      log.warn(
-          "Failed to apply sensitive gflag redaction; returning string-redacted fallback. Error: ",
-          e);
-      if (original == null || original.isNull() || original.isMissingNode()) {
-        return original;
-      }
+      log.warn("Failed to apply sensitive gflag redaction; returning a string-redacted copy: ", e);
       try {
-        String redactedString =
-            redactSensitiveInfoInString(original.toString(), ybSoftwareVersion, gFlagsValidation);
-        return redactionParseErrorFallback(redactedString);
+        // The audit job saves this, so keep what the string scan can redact. Gflag change values
+        // are out of its reach; the additionalDetails rule replaces a copy that names LDAP gflags.
+        return redactAuditAdditionalDetails(
+            redactionParseErrorFallback(
+                redactSensitiveInfoInString(input.toString(), ybSoftwareVersion, gFlagsValidation)),
+            null,
+            gFlagsValidation);
       } catch (Exception e2) {
         log.warn("String redaction after sensitive gflag redaction failure also failed: ", e2);
         return redactionParseErrorFallback(SECRET_REPLACEMENT);
       }
     }
+  }
+
+  private static JsonNode redactTree(JsonNode node, Set<String> names) {
+    if (node.isTextual()) {
+      return TextNode.valueOf(redactTextValue(node.asText(), names));
+    }
+    if (node.isObject()) {
+      ObjectNode object = (ObjectNode) node;
+      boolean hbaChange = GFlagsUtil.YSQL_HBA_CONF_CSV.equals(object.path("name").asText());
+      List<String> fieldNames = new ArrayList<>();
+      object.fieldNames().forEachRemaining(fieldNames::add);
+      for (String name : fieldNames) {
+        JsonNode value = object.get(name);
+        if (names.contains(name)) {
+          if (!value.isNull()) {
+            object.put(name, SECRET_REPLACEMENT);
+          }
+        } else if (value.isTextual()) {
+          String text = value.asText();
+          String redacted =
+              GFlagsUtil.YSQL_HBA_CONF_CSV.equals(name)
+                      || (hbaChange && GFLAG_CHANGE_FIELDS.contains(name))
+                  ? HbaConfRedactor.redact(text)
+                  : redactTextValue(text, names);
+          if (!redacted.equals(text)) {
+            object.put(name, redacted);
+          }
+        } else if (value.isContainerNode()) {
+          redactTree(value, names);
+        }
+      }
+    } else if (node.isArray()) {
+      ArrayNode array = (ArrayNode) node;
+      for (int i = 0; i < array.size(); i++) {
+        JsonNode element = array.get(i);
+        if (element.isTextual()) {
+          String text = element.asText();
+          String redacted = redactTextValue(text, names);
+          if (!redacted.equals(text)) {
+            array.set(i, TextNode.valueOf(redacted));
+          }
+        } else if (element.isContainerNode()) {
+          redactTree(element, names);
+        }
+      }
+    }
+    return node;
+  }
+
+  /** A text value holding serialized JSON is redacted as a tree; any other as free text. */
+  private static String redactTextValue(String text, Set<String> names) {
+    if (!HbaConfRedactor.mentionsLdapBindPasswd(text) && names.stream().noneMatch(text::contains)) {
+      return text;
+    }
+    String trimmed = text.trim();
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+      try {
+        // Trailing text would otherwise be dropped silently.
+        ObjectReader reader =
+            Json.mapper().reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
+        JsonNode parsed = reader.readTree(text);
+        if (parsed != null && parsed.isContainerNode()) {
+          return redactTree(parsed, names).toString();
+        }
+      } catch (JsonProcessingException e) {
+        log.trace("Text value is not JSON; redacting it as text");
+      } catch (RuntimeException e) {
+        log.warn("Failed to redact the JSON in a text value; redacting it as text: ", e);
+      }
+    }
+    return redactSensitiveInfoInString(text, names);
   }
 
   /** Redacts all sensitive field values (LDAP passwords, sensitive gflags) found in a string. */
@@ -336,71 +428,90 @@ public class RedactingService {
   public static String redactSensitiveInfoInString(
       String input, String ybSoftwareVersion, GFlagsValidation gFlagsValidation) {
     if (input == null) {
-      return input;
+      return null;
     }
-    return redactSensitiveInfoInString(
-        input, getPatternsToRedact(ybSoftwareVersion, gFlagsValidation), true);
+    return redactSensitiveInfoInString(input, sensitiveNames(ybSoftwareVersion, gFlagsValidation));
   }
 
-  /**
-   * @param yaml whether to also redact YAML field: values. Pass false for serialized JSON that is
-   *     parsed afterwards: the YAML in its strings has escaped line breaks, so it's redacted on the
-   *     parsed strings instead. redactSensitiveGFlagFields' fallbacks, which can't parse, pass
-   *     true: an unquoted YAML value in JSON text is then redacted to the end of the input, which
-   *     hides more than it should but not less.
-   */
-  private static String redactSensitiveInfoInString(
-      String input, Set<String> patterns, boolean yaml) {
+  private static String redactSensitiveInfoInString(String input, Set<String> names) {
     String output = input;
-    for (String pattern : patterns) {
+    for (String pattern : names) {
       output = redactPatternOccurrences(pattern, output);
+      output = redactYamlKeyValue(output, pattern, SECRET_REPLACEMENT);
     }
-    return yaml ? redactYaml(output, patterns) : output;
+    return output;
   }
 
-  private static Set<String> getPatternsToRedact(
+  /** Names whose values are secrets, apart from ysql_hba_conf_csv, which keeps all but them. */
+  private static Set<String> sensitiveNames(
       String ybSoftwareVersion, GFlagsValidation gFlagsValidation) {
-    Set<String> allPatternsToRedact = new HashSet<>();
-    allPatternsToRedact.add("ldapbindpasswd");
-    allPatternsToRedact.add("ldapBindPassword");
-    allPatternsToRedact.add("ycql_ldap_bind_passwd");
-    allPatternsToRedact.add("ldapServiceAccountPassword");
-
-    if (gFlagsValidation != null) {
+    Set<String> names = new HashSet<>();
+    names.add("ldapbindpasswd");
+    names.add("ldapBindPassword");
+    names.add("ycql_ldap_bind_passwd");
+    names.add("ldapServiceAccountPassword");
+    if (gFlagsValidation != null && ybSoftwareVersion != null) {
       try {
-        if (ybSoftwareVersion != null) {
-          Set<String> sensitiveGflags =
-              getSensitiveGflagsForRedaction(ybSoftwareVersion, gFlagsValidation);
-          // ysql_hba_conf_csv is redacted field-by-field (ldapbindpasswd only), not wholesale.
-          Set<String> filteredGflags =
-              sensitiveGflags.stream()
-                  .filter(gflag -> !gflag.equals("ysql_hba_conf_csv"))
-                  .collect(Collectors.toSet());
-          allPatternsToRedact.addAll(filteredGflags);
+        for (String gflag : getSensitiveGflagsForRedaction(ybSoftwareVersion, gFlagsValidation)) {
+          if (!gflag.equals(GFlagsUtil.YSQL_HBA_CONF_CSV)) {
+            names.add(gflag);
+          }
         }
       } catch (Exception e) {
         log.warn("Exception in sensitive gflags processing: ", e);
       }
     }
-    return allPatternsToRedact;
+    return names;
+  }
+
+  /** Redacts a gflag map before it is logged or shown. */
+  public static Map<String, String> redactGFlags(
+      Map<String, String> gflags, String ybSoftwareVersion, GFlagsValidation gFlagsValidation) {
+    Set<String> names = sensitiveNames(ybSoftwareVersion, gFlagsValidation);
+    Map<String, String> redacted = new LinkedHashMap<>();
+    gflags.forEach((name, value) -> redacted.put(name, redactGFlag(name, value, names)));
+    return redacted;
+  }
+
+  /** Redacts the {@code --name=value} gflag arguments of a command before it is logged. */
+  public static List<String> redactGFlagCommand(
+      List<String> command, String ybSoftwareVersion, GFlagsValidation gFlagsValidation) {
+    Set<String> names = sensitiveNames(ybSoftwareVersion, gFlagsValidation);
+    List<String> redacted = new ArrayList<>(command.size());
+    for (String arg : command) {
+      int eq = arg.indexOf('=');
+      if (arg.startsWith("--") && eq > 2) {
+        redacted.add(
+            arg.substring(0, eq + 1)
+                + redactGFlag(arg.substring(2, eq), arg.substring(eq + 1), names));
+      } else {
+        redacted.add(redactSensitiveInfoInString(arg, names));
+      }
+    }
+    return redacted;
+  }
+
+  private static String redactGFlag(String name, String value, Set<String> names) {
+    if (value == null) {
+      return null;
+    }
+    if (GFlagsUtil.YSQL_HBA_CONF_CSV.equals(name)) {
+      return HbaConfRedactor.redact(value);
+    }
+    if (names.contains(name)) {
+      return SECRET_REPLACEMENT;
+    }
+    return redactSensitiveInfoInString(value, names);
   }
 
   /**
    * Routes a single field name through all applicable string-scan redaction helpers. ldapbindpasswd
-   * uses the HBA parser first (to preserve quoting), then only JSON-key fallbacks. All other
-   * patterns go through the full set of JSON, assignment, CLI-flag, and Python-dict redactors.
+   * is redacted to the end of the line, since its value may be quoted or escaped any number of
+   * ways. All other patterns go through the JSON, assignment, CLI-flag, and Python-dict redactors.
    */
   private static String redactPatternOccurrences(String pattern, String output) {
     if ("ldapbindpasswd".equals(pattern)) {
-      output = redactAllLdapBindPasswdHbaFormattedValues(output);
-      if (!output.contains(pattern)) {
-        return output;
-      }
-      // HBA parser handles all HBA quoting; only JSON-key forms ("ldapbindpasswd": ...) remain.
-      output = redactStandardJsonQuotedStringValue(output, pattern, SECRET_REPLACEMENT);
-      output = redactBackslashEscapedJsonQuotedKeyValue(output, pattern, SECRET_REPLACEMENT);
-      output = redactJsonBareValue(output, pattern, SECRET_REPLACEMENT);
-      return output;
+      return HbaConfRedactor.redactFreeText(output);
     }
     if (!output.contains(pattern)) {
       return output;
@@ -1017,11 +1128,11 @@ public class RedactingService {
   }
 
   /**
-   * Redacts the YAML form field: value, as in Kubernetes overrides and Helm --debug output. The
-   * YAML must be raw: in JSON its line breaks are escaped, so redactSensitiveGFlagFields redacts it
-   * on the parsed strings. A value that is not quoted runs to the end of its line plus any
-   * following lines indented past the key, which covers block scalars, values on the next line and
-   * plain scalars folded over several lines.
+   * Redacts the YAML form field: value, as in Kubernetes overrides and Helm --debug output. A value
+   * that is not quoted runs to the end of its line plus any following lines indented past the key,
+   * which covers block scalars, values on the next line and plain scalars folded over several
+   * lines. In serialized JSON the line breaks are escaped, so such a value would run to the end of
+   * the input; redactSensitiveGFlagFields redacts the parsed string values instead.
    */
   private static String redactYamlKeyValue(String input, String field, String replacement) {
     String needle = field + ":";
@@ -1132,47 +1243,6 @@ public class RedactingService {
     return -1;
   }
 
-  private static String redactYaml(String input, Set<String> patterns) {
-    String output = input;
-    for (String pattern : patterns) {
-      output = redactYamlKeyValue(output, pattern, SECRET_REPLACEMENT);
-    }
-    return output;
-  }
-
-  /** Runs redactYaml on the string values in a parsed JSON tree, where line breaks are real. */
-  private static void redactYamlInStrings(JsonNode node, Set<String> patterns) {
-    if (node.isObject()) {
-      ObjectNode objNode = (ObjectNode) node;
-      node.fieldNames()
-          .forEachRemaining(
-              fieldName -> {
-                JsonNode fieldValue = objNode.get(fieldName);
-                if (fieldValue.isTextual()) {
-                  String redacted = redactYaml(fieldValue.asText(), patterns);
-                  if (!redacted.equals(fieldValue.asText())) {
-                    objNode.put(fieldName, redacted);
-                  }
-                } else {
-                  redactYamlInStrings(fieldValue, patterns);
-                }
-              });
-    } else if (node.isArray()) {
-      ArrayNode arrayNode = (ArrayNode) node;
-      for (int i = 0; i < arrayNode.size(); i++) {
-        JsonNode element = arrayNode.get(i);
-        if (element.isTextual()) {
-          String redacted = redactYaml(element.asText(), patterns);
-          if (!redacted.equals(element.asText())) {
-            arrayNode.set(i, TextNode.valueOf(redacted));
-          }
-        } else {
-          redactYamlInStrings(element, patterns);
-        }
-      }
-    }
-  }
-
   /** Redacts sensitive gflags in the additionalDetails section of audit entries. */
   public static JsonNode redactAuditAdditionalDetails(
       JsonNode jsonData, Universe universe, GFlagsValidation gFlagsValidation) {
@@ -1221,9 +1291,9 @@ public class RedactingService {
     }
   }
 
-  /** Redacts all ldapbindpasswd values in HBA-formatted strings, preserving quoting style. */
+  /** Redacts every ldapbindpasswd value in a ysql_hba_conf_csv value, keeping everything else. */
   public static String redactAllLdapBindPasswdHbaFormattedValues(String input) {
-    return LdapBindPasswdHbaFormat.redactAllValues(input, SECRET_REPLACEMENT);
+    return HbaConfRedactor.redact(input);
   }
 
   /** Redacts ldapbindpasswd within ysql_hba_conf_csv fields in API response JSON. */
@@ -1292,17 +1362,14 @@ public class RedactingService {
               if (sensitiveGflags.contains(flagName)
                   || flagName.equals(GFlagsUtil.YSQL_HBA_CONF_CSV)) {
                 ObjectNode flagNode = (ObjectNode) flag;
-                for (String field : new String[] {"old", "new", "default"}) {
+                for (String field : GFLAG_CHANGE_FIELDS) {
                   if (flag.has(field)) {
                     JsonNode fieldValue = flag.get(field);
                     if (!fieldValue.isNull()
                         && !(fieldValue.isTextual() && fieldValue.asText().isEmpty())) {
                       if (flagName.equals(GFlagsUtil.YSQL_HBA_CONF_CSV)) {
                         // ysql_hba_conf_csv is redacted field-by-field (ldapbindpasswd only).
-                        flagNode.put(
-                            field,
-                            redactSensitiveInfoInString(
-                                fieldValue.asText(), ybSoftwareVersion, gFlagsValidation));
+                        flagNode.put(field, HbaConfRedactor.redact(fieldValue.asText()));
                       } else {
                         flagNode.put(field, SECRET_REPLACEMENT);
                       }

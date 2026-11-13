@@ -41,7 +41,7 @@ printf '%s\n' "$CONF_BODY" > "$STAGING/master/conf/server.conf"
 printf '%s\n' "$CONF_BODY" > "$STAGING/tserver/conf/server.conf"
 
 # shellcheck source=/dev/null
-source "$DEVOPS_BIN/node_utils.sh"
+source "$DEVOPS_BIN/support_bundle_utils.sh"
 
 status_output="$(redact_server_conf_in_staging "$STAGING" "$REDACT_BIN" "" "")"
 if [ "$status_output" != "REDACTION_STATUS=NODE" ]; then

@@ -141,28 +141,30 @@ GroundTruth<Vector, DistanceResult>::GroundTruth(
     const std::vector<Vector>& queries,
     const PrecomputedGroundTruthMatrix& precomputed_ground_truth,
     bool validate_precomputed_ground_truth,
-    const IndexReader& index_reader,
     const std::vector<VectorId>& vertex_ids)
     : distance_fn_(distance_fn),
       max_k_(max_k),
       queries_(queries),
       precomputed_ground_truth_(precomputed_ground_truth),
       validate_precomputed_ground_truth_(validate_precomputed_ground_truth),
-      index_reader_(index_reader),
       vertex_ids_(vertex_ids) {
-  if (!precomputed_ground_truth_.empty()) {
-    CHECK_EQ(precomputed_ground_truth_.size(), queries_.size());
-  }
+  CHECK_LE(precomputed_ground_truth_.size(), queries_.size());
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status GroundTruth<Vector, DistanceResult>::Prepare(size_t num_threads) {
-  if (!precomputed_ground_truth_.empty() && !validate_precomputed_ground_truth_) {
+  const auto num_precomputed = precomputed_ground_truth_.size();
+  size_t num_validated = 0;
+  for (size_t i = 0; i != num_precomputed; ++i) {
+    num_validated += ShouldValidate(i);
+  }
+  const auto num_to_compute = queries_.size() - num_precomputed + num_validated;
+  if (num_to_compute == 0) {
     return Status::OK();
   }
-  LOG(INFO) << (precomputed_ground_truth_.empty() ? "Computing" : "Validating precomputed")
-            << " top " << max_k_ << " ground truth of " << queries_.size() << " queries using "
-            << num_threads << " threads";
+  LOG(INFO) << "Computing top " << max_k_ << " ground truth of " << num_to_compute
+            << " queries using " << num_threads << " threads"
+            << (num_validated ? Format(", validating $0 precomputed ones", num_validated) : "");
   auto start_time = MonoTime::Now();
   computed_ground_truth_.resize(queries_.size());
   RETURN_NOT_OK(ProcessInParallel(
@@ -178,12 +180,11 @@ Status GroundTruth<Vector, DistanceResult>::Prepare(size_t num_threads) {
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Result<FloatVector> GroundTruth<Vector, DistanceResult>::EvaluateRecall(
-    size_t num_threads, size_t k, size_t ef) {
+    const IndexReader& index_reader, size_t num_threads, size_t k, size_t ef) {
   SCHECK_GE(num_threads, static_cast<size_t>(1),
             InvalidArgument, "Number of threads must be at least 1");
   SCHECK_LE(k, max_k_, InvalidArgument, "k exceeds max_k");
-  const auto& ground_truth =
-      computed_ground_truth_.empty() ? precomputed_ground_truth_ : computed_ground_truth_;
+  const auto& ground_truth = this->ground_truth();
   SCHECK_EQ(ground_truth.size(), queries_.size(), IllegalState, "Ground truth is not prepared");
 
   // For each index i we maintain the total overlap (set intersection cardinality) between the
@@ -198,9 +199,10 @@ Result<FloatVector> GroundTruth<Vector, DistanceResult>::EvaluateRecall(
       num_threads,
       /* start_index= */ static_cast<size_t>(0),
       /* end_index_exclusive= */ queries_.size(),
-      [this, k, ef, &ground_truth, &total_overlap](size_t query_index) -> Status {
+      [this, &index_reader, k, ef, &ground_truth, &total_overlap](size_t query_index) -> Status {
         return DoApproxSearchAndUpdateStats(
-            queries_[query_index], k, ef, ground_truth[query_index], total_overlap);
+            index_reader, queries_[query_index], k, ef, ground_truth[query_index],
+            total_overlap);
       }));
 
   // The result is always a vector of floats, regardless of the coordinate type.
@@ -218,13 +220,32 @@ Result<FloatVector> GroundTruth<Vector, DistanceResult>::EvaluateRecall(
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+bool GroundTruth<Vector, DistanceResult>::ShouldValidate(size_t query_index) const {
+  if (validate_precomputed_ground_truth_) {
+    return true;
+  }
+  const auto num_precomputed = precomputed_ground_truth_.size();
+  if (num_precomputed == queries_.size()) {
+    return false;
+  }
+  constexpr size_t kNumSampled = 10;
+  return query_index % ((num_precomputed + kNumSampled - 1) / kNumSampled) == 0;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status GroundTruth<Vector, DistanceResult>::PrepareQuery(size_t query_index) {
+  const bool precomputed = query_index < precomputed_ground_truth_.size();
+  if (precomputed && !ShouldValidate(query_index)) {
+    computed_ground_truth_[query_index] = precomputed_ground_truth_[query_index];
+    return Status::OK();
+  }
+
   const auto& query = queries_[query_index];
   auto our_correct_top_k = BruteForcePreciseNearestNeighbors<Vector, DistanceResult>(
       query, vertex_ids_, distance_fn_, max_k_);
 
   computed_ground_truth_[query_index] = VertexIdsOnly(our_correct_top_k);
-  if (precomputed_ground_truth_.empty()) {
+  if (!precomputed) {
     return Status::OK();
   }
 
@@ -267,12 +288,13 @@ GroundTruth<Vector, DistanceResult>::AugmentWithDistancesAndTrimToK(
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status GroundTruth<Vector, DistanceResult>::DoApproxSearchAndUpdateStats(
+    const IndexReader& index_reader,
     const Vector& query,
     size_t k,
     size_t ef,
     const std::vector<VectorId>& correct_result,
     AtomicUInt64Vector& total_overlap_counters) {
-  auto approx_result = VERIFY_RESULT(index_reader_.Search(
+  auto approx_result = VERIFY_RESULT(index_reader.Search(
       vector_cast<Vector>(query), SearchOptions{.max_num_results = k, .ef = ef}));
   std::unordered_set<VectorId> approx_set;
   for (const auto& approx_entry : approx_result) {
@@ -290,6 +312,10 @@ Status GroundTruth<Vector, DistanceResult>::DoApproxSearchAndUpdateStats(
     // We have calculated the overlap between the true top j results and our list of ANN result of
     // size k. This goes into the computation of what's known as j-recall@k. We apply all the
     // denominators later.
+    total_overlap_counters[j - 1].fetch_add(overlap, std::memory_order_acq_rel);
+  }
+  // With fewer than k base vectors, the true top j for larger j is the same n vectors.
+  for (size_t j = n + 1; j <= k; ++j) {
     total_overlap_counters[j - 1].fetch_add(overlap, std::memory_order_acq_rel);
   }
   return Status::OK();

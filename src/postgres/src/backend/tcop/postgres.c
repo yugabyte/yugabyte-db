@@ -4844,6 +4844,12 @@ YBRefreshCacheWrapperImpl(uint64_t catalog_master_version, bool is_retry,
 	/* The reason that we need a full catalog cache refresh. */
 	int			reason = 0;
 
+	if (YbIsCatalogPinnedToReadTime())
+	{
+		yb_need_cache_refresh = false;
+		return false;
+	}
+
 	if (enable_inval_messages)
 	{
 		if (is_retry &&
@@ -7127,6 +7133,13 @@ PostgresMain(const char *dbname, const char *username)
 
 			ReadyForQuery(whereToSendOutput);
 			send_ready_for_query = false;
+
+			/*
+			 * YB: ReadyForQuery flushed the reply, so the client does not
+			 * wait for the release.
+			 */
+			if (IsYugaByteEnabled())
+				YbReleaseTCMallocMemoryAfterStatement();
 
 			yb_refresh_stats_before_exec = true;
 

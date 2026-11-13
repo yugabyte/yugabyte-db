@@ -40,6 +40,8 @@ class StubVectorIndexContext : public DocVectorIndexContext {
   const KeyBounds& key_bounds() const override {
     return KeyBounds::kNoBounds;
   }
+
+  void WaitWalDurable(const OpId&) const override {}
 };
 
 } // namespace

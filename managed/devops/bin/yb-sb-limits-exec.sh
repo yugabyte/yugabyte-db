@@ -9,7 +9,8 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 # Runs one support-bundle command on a DB node with best-effort CPU and memory limits, as the
-# calling user and without sudo. YBA stages this file next to node_utils.sh for each bundle.
+# calling user and without sudo. YBA stages this file next to support_bundle_utils.sh for each
+# bundle.
 #
 # Every bundle command on a node shares one budget. On cgroup v2 with a user systemd, the command
 # runs in a transient scope under --slice, whose MemoryHigh, MemoryMax and CPUQuota cap all of them

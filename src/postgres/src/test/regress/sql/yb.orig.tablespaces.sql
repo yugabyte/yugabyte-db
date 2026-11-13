@@ -477,9 +477,10 @@ CREATE TABLESPACE storage_tier_ts WITH (replica_placement='{"num_replicas":1, "s
 CREATE TABLESPACE storage_tier_ts2 WITH (replica_placement='{"num_replicas":1, "storage_tier":"ssd", "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}');
 SELECT spcoptions IS NOT NULL FROM pg_tablespace WHERE spcname = 'storage_tier_ts';
 SELECT spcoptions IS NOT NULL FROM pg_tablespace WHERE spcname = 'storage_tier_ts2';
+-- Placement checks the tier. This cluster's data dirs are unlabeled, so every tserver is on ssd:
+-- a table in the hdd tablespace has no tserver to go to and is rejected, the ssd one is created.
 CREATE TABLE storage_tier_tab (i int) TABLESPACE storage_tier_ts;
 CREATE TABLE storage_tier_tab2 (i int) TABLESPACE storage_tier_ts2;
-DROP TABLE storage_tier_tab;
 DROP TABLE storage_tier_tab2;
 DROP TABLESPACE storage_tier_ts;
 DROP TABLESPACE storage_tier_ts2;

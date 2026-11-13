@@ -274,9 +274,9 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
                     </YBTag>
                   </div>
                   <div>
-                    Use appropriate <b>disk throttling</b> values to throttle disk usage. 0 means use maximum available.
+                    To limit disk usage, set <b>disk throughput</b> limits. Enter 0 for no limit.
                     <YBTag type={YBTag_Types.YB_GRAY}>
-                      Min {convertBytesToMB(getPresetValues('disk_read_bytes_per_sec', 'min')).toFixed(0)} MB/s
+                      Min {convertBytesToMB(getPresetValues('disk_read_bytes_per_sec', 'min')).toFixed(0)} MiB/s
                     </YBTag>
                   </div>
                 </Col>
@@ -330,9 +330,9 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
                   </Row>
                   <Row>
                     <Col lg={12} className="no-padding">
-                      Disk read bytes per second to throttle disk usage during backups
+                      Maximum disk read throughput (MiB/s) during backups
                       <span className="text-secondary">
-                        - Default {initialValues.disk_read_bytes_per_sec.presetValues.defaultValue}
+                        - Default {initialValues.disk_read_bytes_per_sec.presetValues.defaultValue}{Number(initialValues.disk_read_bytes_per_sec.presetValues.defaultValue) === 0 && ' (unlimited)'}
                       </span>
                     </Col>
                     <Col lg={5} className="no-padding">
@@ -404,9 +404,9 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
                   </Row>
                   <Row>
                     <Col lg={12} className="no-padding">
-                      Disk write bytes per second to throttle disk usage during restore
+                      Maximum disk write throughput (MiB/s) during restores
                       <span className="text-secondary">
-                        - Default {initialValues.disk_write_bytes_per_sec.presetValues.defaultValue}
+                        - Default {initialValues.disk_write_bytes_per_sec.presetValues.defaultValue}{Number(initialValues.disk_write_bytes_per_sec.presetValues.defaultValue) === 0 && ' (unlimited)'}
                       </span>
                     </Col>
                     <Col lg={5} className="no-padding">
@@ -451,8 +451,10 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
           <b>{initialValues.per_upload_num_objects.presetValues.defaultValue}</b>
         </div>
         <div>
-          Disk read bytes per second to throttle disk usage during backups ={' '}
-          <b>{initialValues.disk_read_bytes_per_sec.presetValues.defaultValue}</b>
+          Maximum disk read throughput (MiB/s) during backups ={' '}
+          <b>
+            {initialValues.disk_read_bytes_per_sec.presetValues.defaultValue}{Number(initialValues.disk_read_bytes_per_sec.presetValues.defaultValue) === 0 && ' (unlimited)'}
+          </b>
         </div>
         <br />
         <h5>Restore</h5>
@@ -465,8 +467,10 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
           <b>{initialValues.per_download_num_objects.presetValues.defaultValue}</b>
         </div>
         <div>
-          Disk write bytes per second to throttle disk usage during restores ={' '}
-          <b>{initialValues.disk_write_bytes_per_sec.presetValues.defaultValue}</b>
+          Maximum disk write throughput (MiB/s) during restores ={' '}
+          <b>
+            {initialValues.disk_write_bytes_per_sec.presetValues.defaultValue}{Number(initialValues.disk_write_bytes_per_sec.presetValues.defaultValue) === 0 && ' (unlimited)'}
+          </b>
         </div>
       </YBConfirmModal>
     </>

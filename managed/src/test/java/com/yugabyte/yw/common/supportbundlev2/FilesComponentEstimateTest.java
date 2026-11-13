@@ -80,10 +80,10 @@ public class FilesComponentEstimateTest {
   public void scriptEstimatesInstallNoHelper() throws Exception {
     FilesComponentSpec universeLogs = new FilesComponentSpec();
     universeLogs.setComponentName("UniverseLogs");
-    universeLogs.setScriptPath("bin/node_utils.sh");
+    universeLogs.setScriptPath("bin/support_bundle_utils.sh");
     FilesComponentSpec coreFiles = new FilesComponentSpec();
     coreFiles.setComponentName("CoreFiles");
-    coreFiles.setScriptPath("bin/node_utils.sh");
+    coreFiles.setScriptPath("bin/support_bundle_utils.sh");
 
     SupportBundleFormData bundleData = new SupportBundleFormData();
     BundleDetails bundleDetails = new BundleDetails();
@@ -108,10 +108,10 @@ public class FilesComponentEstimateTest {
   public void aCancelledEstimateStopsTheNodeAndStillCleansUp() {
     FilesComponentSpec universeLogs = new FilesComponentSpec();
     universeLogs.setComponentName("UniverseLogs");
-    universeLogs.setScriptPath("bin/node_utils.sh");
+    universeLogs.setScriptPath("bin/support_bundle_utils.sh");
     FilesComponentSpec coreFiles = new FilesComponentSpec();
     coreFiles.setComponentName("CoreFiles");
-    coreFiles.setScriptPath("bin/node_utils.sh");
+    coreFiles.setScriptPath("bin/support_bundle_utils.sh");
     BundleDetails bundleDetails = new BundleDetails();
     bundleDetails.setFilesComponentSpecs(java.util.List.of(universeLogs, coreFiles));
     when(mockScriptEstimateSupport.runNodeScriptEstimate(
@@ -155,7 +155,7 @@ public class FilesComponentEstimateTest {
   public void anInterruptedEstimateRunsNoScript() {
     FilesComponentSpec universeLogs = new FilesComponentSpec();
     universeLogs.setComponentName("UniverseLogs");
-    universeLogs.setScriptPath("bin/node_utils.sh");
+    universeLogs.setScriptPath("bin/support_bundle_utils.sh");
     BundleDetails bundleDetails = new BundleDetails();
     bundleDetails.setFilesComponentSpecs(Collections.singletonList(universeLogs));
     NodeDetails node = new NodeDetails();
@@ -185,7 +185,7 @@ public class FilesComponentEstimateTest {
   public void bashEstimateFileComponentDelegatesToScriptSupport() throws Exception {
     FilesComponentSpec universeLogs = new FilesComponentSpec();
     universeLogs.setComponentName("UniverseLogs");
-    universeLogs.setScriptPath("bin/node_utils.sh");
+    universeLogs.setScriptPath("bin/support_bundle_utils.sh");
 
     SupportBundleFormData bundleData = new SupportBundleFormData();
     BundleDetails bundleDetails = new BundleDetails();
@@ -210,10 +210,10 @@ public class FilesComponentEstimateTest {
   public void eachNodesEstimateStagingIsRemovedUnderTheIdItUsed() throws Exception {
     FilesComponentSpec universeLogs = new FilesComponentSpec();
     universeLogs.setComponentName("UniverseLogs");
-    universeLogs.setScriptPath("bin/node_utils.sh");
+    universeLogs.setScriptPath("bin/support_bundle_utils.sh");
     FilesComponentSpec coreFiles = new FilesComponentSpec();
     coreFiles.setComponentName("CoreFiles");
-    coreFiles.setScriptPath("bin/node_utils.sh");
+    coreFiles.setScriptPath("bin/support_bundle_utils.sh");
     BundleDetails bundleDetails = new BundleDetails();
     bundleDetails.setFilesComponentSpecs(java.util.List.of(universeLogs, coreFiles));
     ArgumentCaptor<UUID> stagingIds = ArgumentCaptor.forClass(UUID.class);

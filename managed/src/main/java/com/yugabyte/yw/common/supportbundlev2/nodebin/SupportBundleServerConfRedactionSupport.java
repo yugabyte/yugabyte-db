@@ -43,7 +43,10 @@ public class SupportBundleServerConfRedactionSupport {
 
   public static final String REDACT_BINARY_NAME = "yb-redact-server-conf";
 
-  /** Tells node_utils.sh to drop every staged server.conf: no verified helper to redact it. */
+  /**
+   * Tells support_bundle_utils.sh to drop every staged server.conf: no verified helper to redact
+   * it.
+   */
   static final String DROP_SERVER_CONF_PARAM = "--drop_server_conf";
 
   /** Prefix of the error lines YBA logs for each server.conf, or component, not collected. */

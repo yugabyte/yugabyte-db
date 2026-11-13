@@ -495,10 +495,14 @@ public class OCIUtil implements CloudUtil {
       } catch (PlatformServiceException e) {
         throw e;
       } catch (Exception e) {
-        throw new PlatformServiceException(
-            BAD_REQUEST,
-            OCIErrorFormatter.logAndShorten(
-                "OCI IAM credentials cannot access location " + entry.getValue(), e));
+        PlatformServiceException error =
+            new PlatformServiceException(
+                BAD_REQUEST,
+                OCIErrorFormatter.logAndShorten(
+                    "OCI IAM credentials cannot access location " + entry.getValue(), e));
+        // Lets the v2 storage config API tell an OCI error from an invalid field.
+        error.initCause(e);
+        throw error;
       }
     }
   }

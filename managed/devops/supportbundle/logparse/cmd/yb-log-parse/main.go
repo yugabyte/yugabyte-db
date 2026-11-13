@@ -2,9 +2,10 @@
 
 // Command yb-log-parse answers log-file questions for support bundle collection on a DB node.
 //
-// Invoked by devops/bin/node_utils.sh, which captures stdout with $(...) and falls back to inline
-// Python on a non-zero exit. See the logparse package doc for the output contract; in particular
-// stdout carries no trailing newline, and `add-days 20260101 0` is the contracted pre-flight probe.
+// Invoked by devops/bin/support_bundle_utils.sh, which captures stdout with $(...) and falls back
+// to inline Python on a non-zero exit. See the logparse package doc for the output contract; in
+// particular stdout carries no trailing newline, and `add-days 20260101 0` is the contracted
+// pre-flight probe.
 package main
 
 import (
