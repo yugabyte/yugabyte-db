@@ -10,7 +10,6 @@ import (
 	"io/fs"
 	"os"
 	"path"
-	"strconv"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -870,7 +869,7 @@ func (pg Postgres) createDatabase(name string) error {
 // whose version is stale.
 func (pg Postgres) refreshCollationVersions() error {
 	// postgres records collation versions per database from 15 on.
-	if pgMajorVersion(pg.version) < 15 {
+	if common.PostgresMajorVersion(pg.version) < 15 {
 		return nil
 	}
 	out := pg.psql("postgres", "SELECT datname FROM pg_database WHERE datallowconn AND "+
@@ -1062,16 +1061,4 @@ func runPsqlFile(psql string, connArgs []string, sql string) error {
 		return fmt.Errorf("%w: %s", out.Error, out.StderrString())
 	}
 	return nil
-}
-
-func pgmajorVersion(version string) int {
-	parts := strings.Split(version, ".")
-	if len(parts) < 2 {
-		return 0
-	}
-	major, err := strconv.Atoi(parts[0])
-	if err != nil {
-		return 0
-	}
-	return major
 }

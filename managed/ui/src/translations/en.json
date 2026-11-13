@@ -4300,6 +4300,7 @@
       },
       "instanceSettings": {
         "title": "Instance Settings",
+        "validationFailed": "Some instance settings are invalid. Please review and try again.",
         "validation": {
           "invalidArchitecture": "Invalid CPU Architecture",
           "positiveNumber": "{{field}} must be a positive number",

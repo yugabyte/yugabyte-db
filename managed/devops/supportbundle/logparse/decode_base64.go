@@ -8,7 +8,8 @@ import (
 	"strings"
 )
 
-// DecodeBase64String decodes a base64-encoded UTF-8 string (mirrors decode_base64_string in node_utils.sh).
+// DecodeBase64String decodes a base64-encoded UTF-8 string (mirrors decode_base64_string in
+// support_bundle_utils.sh).
 func DecodeBase64String(encoded string) (string, error) {
 	encoded = strings.TrimSpace(encoded)
 	if encoded == "" {

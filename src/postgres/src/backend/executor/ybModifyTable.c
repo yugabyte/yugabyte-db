@@ -485,10 +485,22 @@ YBCExecuteInsertInternal(Oid dboid,
 						 Datum *ybctid,
 						 YbcPgTransactionSetting transaction_setting)
 {
+	uint64_t backfill_time = yb_backfill_timestamp;
+
+	if (backfill_time != 0)
+		transaction_setting = YB_NON_TRANSACTIONAL;
+
 	YbcPgStatement insert_stmt = YbNewInsertForDb(dboid, rel, transaction_setting);
 
 	YBCApplyInsertRow(insert_stmt, rel, slot, onConflictAction, ybctid,
 					  transaction_setting, true /* add_fk_reference_cache */ );
+
+	if (backfill_time != 0)
+	{
+		HandleYBStatus(YBCPgInsertStmtSetIsBackfill(insert_stmt,
+													true /* is_backfill */ ));
+		HandleYBStatus(YBCPgInsertStmtSetWriteTime(insert_stmt, backfill_time));
+	}
 	/* Execute the insert */
 	YBCApplyWriteStmt(insert_stmt, rel);
 }
@@ -976,6 +988,18 @@ YBCExecuteInsertIndexForDb(Oid dboid,
 	Assert(index->rd_rel->relkind == RELKIND_INDEX);
 	Assert(ybctid != 0);
 
+	/*
+	 * YB: During an online schema change backfill, an insert into a user index
+	 * must be a backfill write at the backfill time like the base-table
+	 * insert: one batch cannot mix transactional and non-transactional
+	 * ops.  This covers every index access method that reaches here.
+	 */
+	uint64_t	osc_backfill_time = yb_backfill_timestamp;
+
+	if (backfill_write_time == NULL && osc_backfill_time != 0 &&
+		!IsSystemRelation(index))
+		backfill_write_time = &osc_backfill_time;
+
 	const bool	is_backfill = (backfill_write_time != NULL);
 	const bool	is_non_distributed_txn_write = (is_backfill ||
 												(!IsSystemRelation(index) &&
@@ -1020,6 +1044,7 @@ YBCExecuteDelete(Relation rel,
 				 bool target_tuple_fetched,
 				 YbcPgTransactionSetting transaction_setting,
 				 bool changingPart,
+				 bool persist_missing_row,
 				 EState *estate)
 {
 	TupleDesc	tupleDesc = RelationGetDescr(rel);
@@ -1029,6 +1054,9 @@ YBCExecuteDelete(Relation rel,
 	Assert((transaction_setting != YB_SINGLE_SHARD_TRANSACTION) || !target_tuple_fetched);
 
 	YbcPgStatement delete_stmt = YbNewDelete(rel, transaction_setting);
+
+	if (persist_missing_row)
+		HandleYBStatus(YBCPgDeleteStmtSetIsPersistNeeded(delete_stmt, true));
 
 	/*
 	 * Look for ybctid. Raise error if ybctid is not found.
@@ -1133,9 +1161,15 @@ YBCExecuteDelete(Relation rel,
 		}
 	}
 
+	/*
+	 * Asking for the affected-row count makes the write non-bufferable.  A
+	 * blind tombstone is written whether or not the row exists, so the count
+	 * is meaningless for it.
+	 */
 	YBCExecWriteStmt(delete_stmt,
 					 rel,
-					 target_tuple_fetched ? NULL : &rows_affected_count);
+					 (target_tuple_fetched || persist_missing_row) ?
+					 NULL : &rows_affected_count);
 
 	/*
 	 * Fetch values of the columns required to evaluate returning clause
@@ -1195,6 +1229,7 @@ YBCExecuteDeleteIndex(Relation index,
 					  Datum *values,
 					  bool *isnull,
 					  Datum ybctid,
+					  bool persist_missing_row,
 					  yb_bind_for_write_function callback,
 					  void *indexstate)
 {
@@ -1217,11 +1252,88 @@ YBCExecuteDeleteIndex(Relation index,
 	 * deletes when indisready is false.
 	 * TODO(jason): consider how this will unnecessarily cause deletes to be
 	 * persisted when online dropping an index (issue #4936).
+	 *
+	 * persist_missing_row forces the same for a valid index: the capture
+	 * trigger's tombstone must hide a backfill write of the entry at an
+	 * earlier hybrid time that has not landed yet.
 	 */
-	if (!*YBCGetGFlags()->ysql_disable_index_backfill && !index->rd_index->indisvalid)
+	if (persist_missing_row ||
+		(!*YBCGetGFlags()->ysql_disable_index_backfill && !index->rd_index->indisvalid))
 		HandleYBStatus(YBCPgDeleteStmtSetIsPersistNeeded(delete_stmt, true));
 
 	YBCApplyWriteStmt(delete_stmt, index);
+}
+
+/*
+ * YbExecInsertRow -- insert one row into a table and its indexes.
+ *
+ * Checks NOT NULL and CHECK constraints, like ExecInsert, but without a
+ * ModifyTable node: no RETURNING, ON CONFLICT, partition routing or row
+ * triggers.  Stored generated columns are not computed; the slot must already
+ * hold their values.  Primary key and unique index violations are raised by
+ * DocDB when the buffered writes are flushed, not by this call.
+ */
+void
+YbExecInsertRow(ResultRelInfo *resultRelInfo, TupleTableSlot *slot,
+				EState *estate)
+{
+	Relation	rel = resultRelInfo->ri_RelationDesc;
+
+	if (RelationGetDescr(rel)->constr)
+		ExecConstraints(resultRelInfo, slot, estate, NULL /* mtstate */ );
+
+	YBCExecuteInsert(rel, slot, ONCONFLICT_NONE);
+
+	if (resultRelInfo->ri_NumIndices > 0)
+		ExecInsertIndexTuples(resultRelInfo, slot, estate,
+							  false /* update */ ,
+							  false /* noDupErr */ ,
+							  NULL /* specConflict */ ,
+							  NIL /* arbiterIndexes */ );
+}
+
+/*
+ * YbExecBlindDeleteRow -- write tombstones for one row of a table and its
+ * index entries, whether or not the row exists.
+ *
+ * The base ybctid and the index keys are computed from the slot's values, not
+ * read by a scan, so this requires a table with a primary key.  The tombstones
+ * are persisted even for a missing row, so that they hide a backfill write of
+ * the row at an earlier hybrid time that has not landed yet.
+ */
+void
+YbExecBlindDeleteRow(ResultRelInfo *resultRelInfo, TupleTableSlot *slot,
+					 EState *estate)
+{
+	Relation	rel = resultRelInfo->ri_RelationDesc;
+
+	Assert(OidIsValid(RelationGetPrimaryKeyIndex(rel)));
+
+	slot_getallattrs(slot);
+
+	/*
+	 * Always transactional, so the tombstones commit atomically with the
+	 * statement that caused them.  YBCExecuteDelete stores the computed
+	 * ybctid back on the slot.
+	 */
+	YBCExecuteDelete(rel, slot, NIL /* returning_columns */ ,
+					 false /* target_tuple_fetched */ ,
+					 YB_TRANSACTIONAL,
+					 false /* changingPart */ ,
+					 true /* persist_missing_row */ , estate);
+
+	if (YBCRelInfoHasSecondaryIndices(resultRelInfo))
+	{
+		Datum		ybctid = YBCGetYBTupleIdFromSlot(slot);
+		bool		shouldFree;
+		HeapTuple	tuple = ExecFetchSlotHeapTuple(slot, false, &shouldFree);
+
+		ExecDeleteIndexTuples(resultRelInfo, ybctid, tuple,
+							  true /* persist_missing_row */ , estate);
+
+		if (shouldFree)
+			pfree(tuple);
+	}
 }
 
 bool
@@ -1605,6 +1717,7 @@ YBCExecuteUpdateReplace(Relation rel,
 					 true /* target_tuple_fetched */ ,
 					 YB_TRANSACTIONAL,
 					 false /* changingPart */ ,
+					 false /* persist_missing_row */ ,
 					 estate);
 
 	/* Update the tuple with table oid */

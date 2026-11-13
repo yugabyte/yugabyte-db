@@ -22,7 +22,7 @@ SUBDIRS = access backup bootstrap catalog parser commands executor \
 	main nodes optimizer partitioning port postmaster \
 	regex replication rewrite \
 	statistics storage tcop tsearch utils $(top_builddir)/src/timezone \
-	jit ybgate
+	jit ybgate yb_online_schema_change
 
 include $(srcdir)/common.mk
 

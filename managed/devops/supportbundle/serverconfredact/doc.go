@@ -11,14 +11,16 @@
 // under-redacts `""abc""`), text/scanner, line splitting (values contain newlines) and RE2 (no
 // lookahead; see ldap_hba.go).
 //
-// This is a port of RedactingService.java and LdapBindPasswdHbaFormat.java, with names and branch
-// order mirrored. It differs where the Java leaks: a quoted hba value ends at any <name>=, a
+// This is a port of RedactingService.java and the former LdapBindPasswdHbaFormat.java, with names
+// and branch order mirrored. YBA has since replaced the latter with HbaConfRedactor.java, which
+// parses hba values as Postgres does; this port keeps the old rules. It also differs where the old
+// Java leaked: a quoted hba value ends at any <name>=, a
 // --<sensitive>= flag runs to the end of the line (gflags reads one flag per line), and the hba
 // attribute radiussecrets is redacted like ldapbindpasswd. VerifyRedacted then checks the output
 // before anything is written.
 //
-// Contract with node_utils.sh: exit 0 redacted, 1 I/O or decode failure, 2 usage error, 3 a value
-// was left unredacted (the file is not written); `smoke` prints the replacement token. On any
-// non-zero exit the node drops its copy of server.conf and reports REDACTION_FAILURE; YBA does not
-// redact.
+// Contract with support_bundle_utils.sh: exit 0 redacted, 1 I/O or decode failure, 2 usage error,
+// 3 a value was left unredacted (the file is not written); `smoke` prints the replacement token. On
+// any non-zero exit the node drops its copy of server.conf and reports REDACTION_FAILURE; YBA does
+// not redact.
 package serverconfredact

@@ -312,6 +312,13 @@ class CDCSDKTestBase : public YBTest {
   Result<GetChangesResponsePB> GetChangesFromMaster(
       const xrepl::StreamId& stream_id, const CDCSDKCheckpointPB* explicit_checkpoint = nullptr);
 
+  // Repeats GetChangesFromMaster until the response has at least expected_records records.
+  // Needed because a committed DDL txn is applied to the sys catalog asynchronously.
+  Result<GetChangesResponsePB> GetChangesFromMasterUntilRecordCount(
+      const xrepl::StreamId& stream_id, int expected_records,
+      const CDCSDKCheckpointPB* explicit_checkpoint = nullptr,
+      MonoDelta timeout = MonoDelta::FromSeconds(30) * kTimeMultiplier);
+
  protected:
   // Every test needs to initialize this cdc_proxy_.
   std::unique_ptr<CDCServiceProxy> cdc_proxy_;

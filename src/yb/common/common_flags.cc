@@ -151,7 +151,8 @@ DEFINE_NON_RUNTIME_bool(TEST_hide_details_for_pg_regress, false,
 TAG_FLAG(TEST_hide_details_for_pg_regress, hidden);
 
 DEFINE_NON_RUNTIME_uint32(max_replication_slots, 10,
-     "Controls the maximum number of replication slots that are allowed to exist on a cluster.");
+     "Controls the maximum number of replication slots that are allowed to exist on a cluster. "
+     "Must be set on both tserver and master with the same value.");
 
 // The following flags related to the cloud, region and availability zone that an instance is
 // started in. These are passed in from whatever provisioning mechanics start the servers. They

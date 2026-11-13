@@ -2321,7 +2321,7 @@ StartTransaction(void)
 		 * COMMIT in a procedure).
 		 */
 		if (!YbIsStatementTransactionStarted())
-			YBCSetObjectLockingInfraForCurrTxn();
+			YbSetObjectLockingForCurrTxn();
 
 		/*
 		 * A background worker receives no messages, so it takes a fresh
