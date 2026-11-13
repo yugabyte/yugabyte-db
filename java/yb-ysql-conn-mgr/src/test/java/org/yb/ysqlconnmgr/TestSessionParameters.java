@@ -1210,33 +1210,31 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
         "DROP ACCESS METHOD IF EXISTS cm_am_set");
   }
 
-  // A value from ALTER ROLE/DATABASE ... SET is applied by every backend of the pool at startup,
-  // so it must not make the connection sticky, even for a GUC whose SET does. Each case uses a new
-  // role or database, so its pool starts a backend after the ALTER. With a single backend per
-  // pool, a second client is served only while the first one is not sticky.
+  // A SET of these GUCs makes the connection sticky. A value from ALTER ROLE/DATABASE ... SET or
+  // from ysql_pg_conf_csv is applied by every backend of the pool, so it must not.
+  private static final String[][] STICKY_ON_SET_SETTINGS = {
+      {"default_tablespace", "pg_default"},
+      {"temp_tablespaces", "pg_default"},
+      {"yb_read_after_commit_visibility", "relaxed"},
+  };
+
+  // Each case uses a new role or database, so its pool starts a backend after the ALTER.
   @Test
   public void testRoleAndDatabaseSettingsDontMakeConnectionSticky() throws Exception {
     restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
-    String[][] settings = {
-        {"default_tablespace", "pg_default"},
-        {"temp_tablespaces", "pg_default"},
-        {"yb_read_after_commit_visibility", "relaxed"},
-    };
     try (Connection pg = connectToPostgres();
          Statement pgStmt = pg.createStatement()) {
       pgStmt.execute("CREATE ROLE cm_settings_role LOGIN");
       pgStmt.execute("CREATE DATABASE cm_settings_db");
-      ConnectionBuilder roleBuilder = getConnectionBuilder()
-          .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
-          .withUser("cm_settings_role");
-      ConnectionBuilder dbBuilder = getConnectionBuilder()
-          .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
-          .withDatabase("cm_settings_db");
       try {
-        checkSettingsDontMakeConnectionSticky(pgStmt, "ROLE cm_settings_role", roleBuilder,
-            settings);
-        checkSettingsDontMakeConnectionSticky(pgStmt, "DATABASE cm_settings_db", dbBuilder,
-            settings);
+        checkAlterSettingsDontMakeConnectionSticky(pgStmt, "ROLE cm_settings_role",
+            getConnectionBuilder()
+                .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                .withUser("cm_settings_role"));
+        checkAlterSettingsDontMakeConnectionSticky(pgStmt, "DATABASE cm_settings_db",
+            getConnectionBuilder()
+                .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                .withDatabase("cm_settings_db"));
       } finally {
         pgStmt.execute("DROP DATABASE IF EXISTS cm_settings_db");
         pgStmt.execute("DROP ROLE IF EXISTS cm_settings_role");
@@ -1244,26 +1242,70 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     }
   }
 
-  private void checkSettingsDontMakeConnectionSticky(Statement pgStmt, String target,
-      ConnectionBuilder builder, String[][] settings) throws Exception {
-    for (String[] setting : settings) {
+  private void checkAlterSettingsDontMakeConnectionSticky(Statement pgStmt, String target,
+      ConnectionBuilder builder) throws Exception {
+    for (String[] setting : STICKY_ON_SET_SETTINGS) {
       pgStmt.execute("ALTER " + target + " SET " + setting[0] + " = '" + setting[1] + "'");
     }
-    QueuedClient queued;
     try (Connection conn = builder.connect();
          Statement stmt = conn.createStatement()) {
-      for (String[] setting : settings) {
-        ResultSet rs = stmt.executeQuery("SHOW " + setting[0]);
-        assertTrue(rs.next());
-        assertEquals(setting[1], rs.getString(1));
-      }
+      assertSettingValues(stmt);
       startQueuedClient(builder).assertServed();
-
-      stmt.execute("SET yb_read_after_commit_visibility = 'deferred'");
-      queued = startQueuedClient(builder);
-      queued.assertBlocked();
     }
-    queued.assertServed();
+    assertSetMakesConnectionSticky(builder);
+  }
+
+  // The backend applies a reloaded ysql_pg_conf_csv while serving the client, so the check hooks
+  // run on a Connection Manager backend. The 'fluctuating' strategy keeps that backend in use
+  // after the reload.
+  @Test
+  public void testPgConfSettingsDontMakeConnectionSticky() throws Exception {
+    Map<String, String> tserverFlags = new HashMap<>(SINGLE_BACKEND_FLAGS);
+    tserverFlags.put("ysql_conn_mgr_alter_guc_adoption_strategy", "fluctuating");
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), tserverFlags);
+    ConnectionBuilder builder = getConnectionBuilder()
+        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR);
+    List<String> confEntries = new ArrayList<>();
+    for (String[] setting : STICKY_ON_SET_SETTINGS) {
+      confEntries.add(setting[0] + "=" + setting[1]);
+    }
+    try (Connection conn = builder.connect();
+         Statement stmt = conn.createStatement()) {
+      int pid = queryInt(stmt, "SELECT pg_backend_pid()");
+      for (HostAndPort tServer : miniCluster.getTabletServers().keySet()) {
+        setServerFlag(tServer, "ysql_pg_conf_csv", String.join(",", confEntries));
+      }
+      TestUtils.waitFor(() -> {
+        ResultSet rs = stmt.executeQuery("SHOW " + STICKY_ON_SET_SETTINGS[0][0]);
+        return rs.next() && rs.getString(1).equals(STICKY_ON_SET_SETTINGS[0][1]);
+      }, 30000);
+      assertEquals(pid, queryInt(stmt, "SELECT pg_backend_pid()"));
+      assertSettingValues(stmt);
+      startQueuedClient(builder).assertServed();
+    }
+    assertSetMakesConnectionSticky(builder);
+  }
+
+  private void assertSettingValues(Statement stmt) throws Exception {
+    for (String[] setting : STICKY_ON_SET_SETTINGS) {
+      ResultSet rs = stmt.executeQuery("SHOW " + setting[0]);
+      assertTrue(rs.next());
+      assertEquals(setting[1], rs.getString(1));
+    }
+  }
+
+  // With a single backend per pool, a second client is queued while the first one is sticky.
+  private void assertSetMakesConnectionSticky(ConnectionBuilder builder) throws Exception {
+    for (String[] setting : STICKY_ON_SET_SETTINGS) {
+      QueuedClient queued;
+      try (Connection conn = builder.connect();
+           Statement stmt = conn.createStatement()) {
+        stmt.execute("SET " + setting[0] + " = '" + setting[1] + "'");
+        queued = startQueuedClient(builder);
+        queued.assertBlocked();
+      }
+      queued.assertServed();
+    }
   }
 
   // The client sets guc to value, then another session changes the object it names. With a single
