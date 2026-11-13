@@ -196,3 +196,22 @@ YbIsScanCompatible(Oid column_typid,
 			return false;
 	}
 }
+
+/*
+ * Whether a YB index scan binds a search array condition, indexkey op ANY
+ * (array), of the given strategy.  DocDB binds an array only as an IN list,
+ * so only the equality strategy qualifies.
+ *
+ * Scan-key setup counts only such an array key as a search condition on its
+ * column (YbShouldPushdownScanKey()), and the planner makes only such a
+ * condition an index condition (match_saopclause_to_indexcol()).  The
+ * planner's refusal is what keeps any other array key from scan-key setup,
+ * whose range handling takes a key by its strategy and would read the array
+ * as a single value.
+ * TODO(#37239): bind an inequality on a range column as a range bound.
+ */
+bool
+YbCanBindSearchArray(StrategyNumber strategy)
+{
+	return strategy == BTEqualStrategyNumber;
+}

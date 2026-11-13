@@ -38,6 +38,7 @@
 /* YB includes */
 #include "access/table.h"
 #include "access/yb_cost.h"
+#include "access/yb_scan_plan.h"
 #include "catalog/pg_proc.h"
 #include "executor/ybExpr.h"
 #include "optimizer/planmain.h"
@@ -3708,18 +3709,14 @@ match_saopclause_to_indexcol(PlannerInfo *root,
 		!contain_volatile_functions(rightop))
 	{
 		/*
-		 * YB: refuse a non-equality array condition, such as indexkey > ANY
-		 * (array), on an LSM index.  Unlike upstream PG's btree, an LSM
-		 * index scan cannot bind such a condition, because DocDB binds an
-		 * array only as an IN list, so as an index condition it could only
-		 * be rechecked.  As a filter, it is evaluated in DocDB when it can
-		 * be pushed down.
-		 * TODO(#37239): accept it on a range column once the scan binds it
-		 * as a range bound.
+		 * YB: refuse an array condition that an LSM index scan does not
+		 * bind, such as indexkey > ANY (array), so that it is a filter,
+		 * which is evaluated in DocDB when it can be pushed down.
+		 * Scan-key setup relies on this refusal, because its range handling
+		 * does not expect an array key: see YbCanBindSearchArray().
 		 */
 		if (index->relam == LSM_AM_OID &&
-			get_op_opfamily_strategy(expr_op, opfamily) !=
-			BTEqualStrategyNumber)
+			!YbCanBindSearchArray(get_op_opfamily_strategy(expr_op, opfamily)))
 			return NULL;
 
 		if (IndexCollMatchesExprColl(idxcollation, expr_coll) &&
