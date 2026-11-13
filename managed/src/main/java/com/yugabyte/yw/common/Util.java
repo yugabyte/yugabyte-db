@@ -82,6 +82,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -2119,29 +2120,28 @@ public class Util {
   private static final SecureRandom RANDOM_PASSWORD_SOURCE = new SecureRandom();
 
   /**
-   * A random password that meets the default password policy: 16 letters and digits, then a special
-   * character, a lower and an upper case letter, and digits. Decoding random bytes as UTF-8 instead
-   * produced the default disallowed character (`) in about 6% of passwords.
+   * A random password that meets the default password policy: 16 letters and digits plus a special
+   * character, a lower and an upper case letter and a digit, in random order. Decoding random bytes
+   * as UTF-8 instead produced the default disallowed character (`) in about 6% of passwords.
    */
   public static String getRandomPassword() {
-    StringBuilder password = new StringBuilder();
+    List<String> chars = new ArrayList<>();
     for (int i = 0; i < 16; i++) {
-      password.append(
-          RANDOM_PASSWORD_CHARS.charAt(
-              RANDOM_PASSWORD_SOURCE.nextInt(RANDOM_PASSWORD_CHARS.length())));
+      chars.add(randomCharOf(RANDOM_PASSWORD_CHARS));
     }
-    // To be consistent with password policy
-    int randomInt = RANDOM_PASSWORD_SOURCE.nextInt(26);
-    String lowercaseLetter = String.valueOf((char) (randomInt + 'a'));
-    String uppercaseLetter = lowercaseLetter.toUpperCase();
-    String generatedPassword =
-        password
-            + SPECIAL_CHARACTERS_STRING_LIST.get(
-                RANDOM_PASSWORD_SOURCE.nextInt(SPECIAL_CHARACTERS_STRING_LIST.size()))
-            + lowercaseLetter
-            + uppercaseLetter
-            + randomInt;
-    return generatedPassword;
+    // One of each kind the password policy requires.
+    chars.add(
+        SPECIAL_CHARACTERS_STRING_LIST.get(
+            RANDOM_PASSWORD_SOURCE.nextInt(SPECIAL_CHARACTERS_STRING_LIST.size())));
+    chars.add(randomCharOf("abcdefghijklmnopqrstuvwxyz"));
+    chars.add(randomCharOf("ABCDEFGHIJKLMNOPQRSTUVWXYZ"));
+    chars.add(randomCharOf("0123456789"));
+    Collections.shuffle(chars, RANDOM_PASSWORD_SOURCE);
+    return String.join("", chars);
+  }
+
+  private static String randomCharOf(String alphabet) {
+    return String.valueOf(alphabet.charAt(RANDOM_PASSWORD_SOURCE.nextInt(alphabet.length())));
   }
 
   /**
