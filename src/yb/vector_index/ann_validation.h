@@ -75,9 +75,8 @@ class GroundTruth {
       const IndexReader& index_reader, size_t num_threads, size_t k, size_t ef);
 
  private:
-  // Copies or computes the correct results of a single query, and validates the precomputed ones
-  // if needed.
-  Status PrepareQuery(size_t query_index);
+  // Brute-forces the correct results of a query and validates its precomputed ones, if any.
+  Status ComputeQuery(size_t query_index);
 
   // Whether to validate the precomputed results of a query: all of them with
   // validate_precomputed_ground_truth, otherwise about ten of a precomputed ground truth that

@@ -14,7 +14,10 @@
 #include <execution>
 #include <future>
 #include <algorithm>
+#include <cmath>
 #include <unordered_set>
+
+#include "yb/gutil/strings/human_readable.h"
 
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
@@ -45,55 +48,31 @@ std::vector<VectorId> VertexIdsOnly(
   return result;
 }
 
-// Checks if the given two result sets are non-contradictory. This means that consecutive items
-// with the same distance to the query could be ordered in different ways, and that at the end of
-// the result set, we might have different vertex ids altogether provided that they all have the
-// same distance to the query. This corresponds to a situation when a group of items with the same
-// distance to the query, ordered differently in the two result sets, was cut in the middle by the
-// result set boundary.
+template<ValidDistanceResultType DistanceResult>
+bool DistancesMatch(DistanceResult a, DistanceResult b) {
+  if constexpr (std::is_floating_point_v<DistanceResult>) {
+    // Kernels and tools differ in summation order and approximate normalization. The errors of
+    // 1 - dot and 1 - cos scale with the norms, so the floor of 1 assumes near-unit vectors.
+    constexpr DistanceResult kTolerance = 1e-5;
+    return std::abs(a - b) <= kTolerance * std::max({DistanceResult(1), std::abs(a), std::abs(b)});
+  } else {
+    return a == b;
+  }
+}
+
+// Whether two result sets of a query are equally good: the same distances when sorted.
 template<ValidDistanceResultType DistanceResult>
 bool ResultSetsEquivalent(const VerticesWithDistances<DistanceResult>& a,
                           const VerticesWithDistances<DistanceResult>& b) {
   if (a.size() != b.size()) {
     return false;
   }
-  const auto k = a.size();
-  bool matches = true;
-  for (size_t i = 0; i < k; ++i) {
-    if (a[i] != b[i]) {
-      matches = false;
-      break;
-    }
-  }
-  if (matches) {
-    return true;
-  }
-
-  // Sort both result sets by increasing distance, and for the same distance, increasing vertex id.
   auto a_sorted = a;
   std::sort(a_sorted.begin(), a_sorted.end());
   auto b_sorted = b;
   std::sort(b_sorted.begin(), b_sorted.end());
-
-  size_t discrepancy_index = k;
-  for (size_t i = 0; i < k; ++i) {
-    if (a_sorted[i] != b_sorted[i]) {
-      discrepancy_index = i;
-      break;
-    }
-  }
-  if (discrepancy_index == k) {
-    // The arrays became the same after sorting.
-    return true;
-  }
-
-  // We allow a situation where vertex ids are different as long as distances are the same until
-  // the end of both result sets. In that case we still consider the two result sets equivalent.
-  float expected_distance = a_sorted[discrepancy_index].distance;
-  for (size_t i = discrepancy_index; i < k; ++i) {
-    float a_dist = a_sorted[i].distance;
-    float b_dist = b_sorted[i].distance;
-    if (a_dist != expected_distance && b_dist != expected_distance) {
+  for (size_t i = 0; i < a.size(); ++i) {
+    if (!DistancesMatch(a_sorted[i].distance, b_sorted[i].distance)) {
       return false;
     }
   }
@@ -132,6 +111,41 @@ std::string ResultSetDifferenceStr(const VerticesWithDistances<DistanceResult>& 
   return "No differences";
 }
 
+// Logs the progress of a brute force search, which takes hours on large datasets.
+class BruteForceProgress {
+ public:
+  explicit BruteForceProgress(size_t num_queries)
+      : num_queries_(num_queries),
+        start_time_(CoarseMonoClock::Now()),
+        next_log_time_(start_time_ + kLogInterval) {}
+
+  // Called once per computed query, from multiple threads.
+  void QueryDone() {
+    const auto num_done = num_done_.fetch_add(1, std::memory_order_relaxed) + 1;
+    const auto now = CoarseMonoClock::Now();
+    auto next_log_time = next_log_time_.load(std::memory_order_relaxed);
+    if (now < next_log_time ||
+        !next_log_time_.compare_exchange_strong(
+            next_log_time, now + kLogInterval, std::memory_order_relaxed)) {
+      return;
+    }
+    const auto elapsed = ToSeconds(now - start_time_);
+    LOG(INFO) << "Computed the ground truth of " << num_done << " of " << num_queries_
+              << " queries in " << HumanReadableElapsedTime::ToShortString(elapsed) << ", about "
+              << HumanReadableElapsedTime::ToShortString(
+                     elapsed * (num_queries_ - num_done) / num_done)
+              << " left";
+  }
+
+ private:
+  static constexpr auto kLogInterval = std::chrono::minutes(1);
+
+  const size_t num_queries_;
+  const CoarseTimePoint start_time_;
+  std::atomic<size_t> num_done_{0};
+  std::atomic<CoarseTimePoint> next_log_time_;
+};
+
 } // namespace
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -167,12 +181,19 @@ Status GroundTruth<Vector, DistanceResult>::Prepare(size_t num_threads) {
             << (num_validated ? Format(", validating $0 precomputed ones", num_validated) : "");
   auto start_time = MonoTime::Now();
   computed_ground_truth_.resize(queries_.size());
+  BruteForceProgress progress(num_to_compute);
   RETURN_NOT_OK(ProcessInParallel(
       num_threads,
       /* start_index= */ static_cast<size_t>(0),
       /* end_index_exclusive= */ queries_.size(),
-      [this](size_t query_index) -> Status {
-        return PrepareQuery(query_index);
+      [this, &progress](size_t query_index) -> Status {
+        if (query_index < precomputed_ground_truth_.size() && !ShouldValidate(query_index)) {
+          computed_ground_truth_[query_index] = precomputed_ground_truth_[query_index];
+          return Status::OK();
+        }
+        RETURN_NOT_OK(ComputeQuery(query_index));
+        progress.QueryDone();
+        return Status::OK();
       }));
   LOG(INFO) << "Ground truth finished in " << MonoTime::Now() - start_time;
   return Status::OK();
@@ -233,19 +254,13 @@ bool GroundTruth<Vector, DistanceResult>::ShouldValidate(size_t query_index) con
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-Status GroundTruth<Vector, DistanceResult>::PrepareQuery(size_t query_index) {
-  const bool precomputed = query_index < precomputed_ground_truth_.size();
-  if (precomputed && !ShouldValidate(query_index)) {
-    computed_ground_truth_[query_index] = precomputed_ground_truth_[query_index];
-    return Status::OK();
-  }
-
+Status GroundTruth<Vector, DistanceResult>::ComputeQuery(size_t query_index) {
   const auto& query = queries_[query_index];
   auto our_correct_top_k = BruteForcePreciseNearestNeighbors<Vector, DistanceResult>(
       query, vertex_ids_, distance_fn_, max_k_);
 
   computed_ground_truth_[query_index] = VertexIdsOnly(our_correct_top_k);
-  if (!precomputed) {
+  if (query_index >= precomputed_ground_truth_.size()) {
     return Status::OK();
   }
 
