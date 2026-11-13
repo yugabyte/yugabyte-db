@@ -94,15 +94,25 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
 
   @Override
   public YBATask editUniverse(
-      Request request, UUID cUUID, UUID uniUUID, UniverseEditSpec universeEditSpec)
+      Request request,
+      UUID cUUID,
+      UUID uniUUID,
+      UniverseEditSpec universeEditSpec,
+      Boolean runOnlyPrechecks)
       throws Exception {
-    return universeHandler.editUniverse(request, cUUID, uniUUID, universeEditSpec);
+    return universeHandler.editUniverse(
+        request, cUUID, uniUUID, universeEditSpec, runOnlyPrechecks);
   }
 
   @Override
   public YBATask addCluster(
-      Request request, UUID cUUID, UUID uniUUID, ClusterAddSpec clusterAddSpec) throws Exception {
-    return universeHandler.addCluster(request, cUUID, uniUUID, clusterAddSpec);
+      Request request,
+      UUID cUUID,
+      UUID uniUUID,
+      ClusterAddSpec clusterAddSpec,
+      Boolean runOnlyPrechecks)
+      throws Exception {
+    return universeHandler.addCluster(request, cUUID, uniUUID, clusterAddSpec, runOnlyPrechecks);
   }
 
   @Override
@@ -114,9 +124,14 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
 
   @Override
   public YBATask editGFlags(
-      Request request, UUID cUUID, UUID uniUUID, UniverseEditGFlags universeEditGFlags)
+      Request request,
+      UUID cUUID,
+      UUID uniUUID,
+      UniverseEditGFlags universeEditGFlags,
+      Boolean runOnlyPrechecks)
       throws Exception {
-    return universeUpgradeHandler.editGFlags(request, cUUID, uniUUID, universeEditGFlags);
+    return universeUpgradeHandler.editGFlags(
+        request, cUUID, uniUUID, universeEditGFlags, runOnlyPrechecks);
   }
 
   @Override
@@ -124,10 +139,11 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
       Request request,
       UUID cUUID,
       UUID uniUUID,
-      UniverseVMImageUpgradeSpec universeVMImageUpgradeSpec)
+      UniverseVMImageUpgradeSpec universeVMImageUpgradeSpec,
+      Boolean runOnlyPrechecks)
       throws Exception {
     return universeUpgradeHandler.vmImageUpgrade(
-        request, cUUID, uniUUID, universeVMImageUpgradeSpec);
+        request, cUUID, uniUUID, universeVMImageUpgradeSpec, runOnlyPrechecks);
   }
 
   @Override
@@ -139,9 +155,14 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
 
   @Override
   public YBATask startSoftwareUpgrade(
-      Request request, UUID cUUID, UUID uniUUID, UniverseSoftwareUpgradeStart uniUpgrade)
+      Request request,
+      UUID cUUID,
+      UUID uniUUID,
+      UniverseSoftwareUpgradeStart uniUpgrade,
+      Boolean runOnlyPrechecks)
       throws Exception {
-    return universeUpgradeHandler.startSoftwareUpgrade(request, cUUID, uniUUID, uniUpgrade);
+    return universeUpgradeHandler.startSoftwareUpgrade(
+        request, cUUID, uniUUID, uniUpgrade, runOnlyPrechecks);
   }
 
   @Override
@@ -159,16 +180,26 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
 
   @Override
   public YBATask startThirdPartySoftwareUpgrade(
-      Request request, UUID cUUID, UUID uniUUID, UniverseThirdPartySoftwareUpgradeStart uniUpgrade)
+      Request request,
+      UUID cUUID,
+      UUID uniUUID,
+      Boolean runOnlyPrechecks,
+      UniverseThirdPartySoftwareUpgradeStart uniUpgrade)
       throws Exception {
     return universeUpgradeHandler.startThirdPartySoftwareUpgrade(
-        request, cUUID, uniUUID, uniUpgrade);
+        request, cUUID, uniUUID, uniUpgrade, runOnlyPrechecks);
   }
 
   @Override
   public YBATask rollbackSoftwareUpgrade(
-      Request request, UUID cUUID, UUID uniUUID, UniverseRollbackUpgradeReq req) throws Exception {
-    return universeUpgradeHandler.rollbackSoftwareUpgrade(request, cUUID, uniUUID, req);
+      Request request,
+      UUID cUUID,
+      UUID uniUUID,
+      Boolean runOnlyPrechecks,
+      UniverseRollbackUpgradeReq req)
+      throws Exception {
+    return universeUpgradeHandler.rollbackSoftwareUpgrade(
+        request, cUUID, uniUUID, req, runOnlyPrechecks);
   }
 
   @Override
@@ -186,35 +217,59 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
 
   @Override
   public YBATask restartUniverse(
-      Request request, UUID cUUID, UUID uniUUID, UniverseRestart uniUpgrade) throws Exception {
-    return universeUpgradeHandler.restartUniverse(request, cUUID, uniUUID, uniUpgrade);
+      Request request,
+      UUID cUUID,
+      UUID uniUUID,
+      Boolean runOnlyPrechecks,
+      UniverseRestart uniUpgrade)
+      throws Exception {
+    return universeUpgradeHandler.restartUniverse(
+        request, cUUID, uniUUID, uniUpgrade, runOnlyPrechecks);
   }
 
   @Override
   public YBATask systemdEnable(
-      Request request, UUID cUUID, UUID uniUUID, UniverseSystemdEnableStart systemd)
+      Request request,
+      UUID cUUID,
+      UUID uniUUID,
+      Boolean runOnlyPrechecks,
+      UniverseSystemdEnableStart systemd)
       throws Exception {
-    return universeUpgradeHandler.systemdEnable(request, cUUID, uniUUID, systemd);
+    return universeUpgradeHandler.systemdEnable(request, cUUID, uniUUID, systemd, runOnlyPrechecks);
   }
 
   @Override
   public YBATask encryptionInTransitToggle(
-      Request request, UUID cUUID, UUID uniUUID, UniverseEditEncryptionInTransit spec)
+      Request request,
+      UUID cUUID,
+      UUID uniUUID,
+      UniverseEditEncryptionInTransit spec,
+      Boolean runOnlyPrechecks)
       throws Exception {
-    return universeUpgradeHandler.tlsToggle(request, cUUID, uniUUID, spec);
+    return universeUpgradeHandler.tlsToggle(request, cUUID, uniUUID, spec, runOnlyPrechecks);
   }
 
   @Override
   public YBATask encryptionInTransitCertRotate(
-      Request request, UUID cUUID, UUID uniUUID, UniverseCertRotateSpec spec) throws Exception {
-    return universeUpgradeHandler.certRotate(request, cUUID, uniUUID, spec);
+      Request request,
+      UUID cUUID,
+      UUID uniUUID,
+      UniverseCertRotateSpec spec,
+      Boolean runOnlyPrechecks)
+      throws Exception {
+    return universeUpgradeHandler.certRotate(request, cUUID, uniUUID, spec, runOnlyPrechecks);
   }
 
   @Override
   public YBATask editKubernetesOverrides(
-      Request request, UUID cUUID, UUID uniUUID, UniverseEditKubernetesOverrides spec)
+      Request request,
+      UUID cUUID,
+      UUID uniUUID,
+      UniverseEditKubernetesOverrides spec,
+      Boolean runOnlyPrechecks)
       throws Exception {
-    return universeUpgradeHandler.editKubernetesOverrides(request, cUUID, uniUUID, spec);
+    return universeUpgradeHandler.editKubernetesOverrides(
+        request, cUUID, uniUUID, spec, runOnlyPrechecks);
   }
 
   @Override
@@ -286,8 +341,14 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
 
   @Override
   public YBATask configureQueryLogging(
-      Request request, UUID cUUID, UUID uniUUID, UniverseQueryLogsExport req) throws Exception {
-    return universeUpgradeHandler.configureQueryLogging(request, cUUID, uniUUID, req);
+      Request request,
+      UUID cUUID,
+      UUID uniUUID,
+      Boolean runOnlyPrechecks,
+      UniverseQueryLogsExport req)
+      throws Exception {
+    return universeUpgradeHandler.configureQueryLogging(
+        request, cUUID, uniUUID, req, runOnlyPrechecks);
   }
 
   @Override
@@ -297,9 +358,14 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   }
 
   public YBATask configureExportTelemetryConfig(
-      Request request, UUID cUUID, UUID uniUUID, ExportTelemetryConfigSpec reqBody)
+      Request request,
+      UUID cUUID,
+      UUID uniUUID,
+      Boolean runOnlyPrechecks,
+      ExportTelemetryConfigSpec reqBody)
       throws Exception {
-    return universeUpgradeHandler.configureExportTelemetryConfig(request, cUUID, uniUUID, reqBody);
+    return universeUpgradeHandler.configureExportTelemetryConfig(
+        request, cUUID, uniUUID, reqBody, runOnlyPrechecks);
   }
 
   @Override
@@ -391,9 +457,14 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   }
 
   @Override
-  public YBATask resizeNodes(Request request, UUID cUUID, UUID uniUUID, UniverseResizeNodes spec)
+  public YBATask resizeNodes(
+      Request request,
+      UUID cUUID,
+      UUID uniUUID,
+      UniverseResizeNodes spec,
+      Boolean runOnlyPrechecks)
       throws Exception {
-    return universeUpgradeHandler.resizeNodes(request, cUUID, uniUUID, spec);
+    return universeUpgradeHandler.resizeNodes(request, cUUID, uniUUID, spec, runOnlyPrechecks);
   }
 
   @Override
