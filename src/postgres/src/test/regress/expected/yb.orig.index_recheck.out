@@ -1280,6 +1280,52 @@ INSERT INTO t_nonequality_array SELECT g, k FROM generate_series(0, 1) g, genera
          Storage Table Rows Scanned: 20
 (9 rows)
 
+-- the other two operators
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k >= ANY ('{8,9}');
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Index Scan using t_nonequality_array_pkey on t_nonequality_array (actual rows=2 loops=1)
+   Index Cond: (g = 0)
+   Storage Filter: (k >= ANY ('{8,9}'::integer[]))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 10
+(6 rows)
+
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k <= ANY ('{1,0}');
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Index Scan using t_nonequality_array_pkey on t_nonequality_array (actual rows=2 loops=1)
+   Index Cond: (g = 0)
+   Storage Filter: (k <= ANY ('{1,0}'::integer[]))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 10
+(6 rows)
+
+-- a NULL element and an empty array
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k > ANY ('{NULL,5}');
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Index Scan using t_nonequality_array_pkey on t_nonequality_array (actual rows=4 loops=1)
+   Index Cond: (g = 0)
+   Storage Filter: (k > ANY ('{NULL,5}'::integer[]))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 10
+(6 rows)
+
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k > ANY ('{}');
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Index Scan using t_nonequality_array_pkey on t_nonequality_array (actual rows=0 loops=1)
+   Index Cond: (g = 0)
+   Storage Filter: (k > ANY ('{}'::integer[]))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 10
+(6 rows)
+
 -- the aggregate is pushed down over the filter
 :explain_analyze SELECT count(*) FROM t_nonequality_array WHERE g = 0 AND k >= 0 AND k > ANY ('{2,5}');
                                            QUERY PLAN                                           
@@ -1325,6 +1371,40 @@ EXECUTE nonequality_array_count('{3000000000}');
 
 RESET plan_cache_mode;
 DEALLOCATE nonequality_array_count;
+-- a YB bitmap scan, which the planner does not choose over the index scan
+-- here unless hinted
+SET yb_enable_bitmapscan = true;
+:explain_analyze /*+ BitmapScan(t_nonequality_array) */ SELECT * FROM t_nonequality_array WHERE g = 0 AND k >= 0 AND k > ANY ('{2,5}');
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ YB Bitmap Table Scan on t_nonequality_array (actual rows=7 loops=1)
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 7
+   ->  Bitmap Index Scan on t_nonequality_array_pkey (actual rows=7 loops=1)
+         Index Cond: ((g = 0) AND (k >= 0))
+         Storage Index Filter: (k > ANY ('{2,5}'::integer[]))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 10
+(10 rows)
+
+RESET yb_enable_bitmapscan;
+-- a collation that DocDB does not evaluate, so the filter runs in PostgreSQL
+CREATE TABLE t_nonequality_array_icu(k text COLLATE "en-US-x-icu", PRIMARY KEY(k ASC));
+INSERT INTO t_nonequality_array_icu VALUES ('a'), ('b'), ('c'), ('d');
+:explain_analyze SELECT * FROM t_nonequality_array_icu WHERE k >= 'a' AND k > ANY ('{b,c}');
+                                            QUERY PLAN                                            
+--------------------------------------------------------------------------------------------------
+ Index Scan using t_nonequality_array_icu_pkey on t_nonequality_array_icu (actual rows=2 loops=1)
+   Index Cond: (k >= 'a'::text)
+   Filter: (k > ANY ('{b,c}'::text[]))
+   Rows Removed by Filter: 2
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 4
+(7 rows)
+
 -- The setting selects the code that binds the scan keys.  As an index
 -- condition, the array would be read as a bound of its column by either.
 SET yb_enable_advanced_index_cond_fold = off;
@@ -1452,4 +1532,4 @@ SET yb_enable_advanced_index_cond_fold = off;
 (6 rows)
 
 RESET yb_enable_advanced_index_cond_fold;
-DROP TABLE t_nonequality_array, t_nonequality_array_hash, t_nonequality_array_hash_f4;
+DROP TABLE t_nonequality_array, t_nonequality_array_hash, t_nonequality_array_hash_f4, t_nonequality_array_icu;

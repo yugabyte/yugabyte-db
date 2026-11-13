@@ -308,6 +308,12 @@ INSERT INTO t_nonequality_array SELECT g, k FROM generate_series(0, 1) g, genera
 :explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k IN (1, 4, 8) AND k > ANY ('{2,5}');
 -- an IN list and a non-equality array with the same elements
 :explain_analyze SELECT * FROM t_nonequality_array WHERE g IN (0, 1) AND g > ANY ('{0,1}') ORDER BY k;
+-- the other two operators
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k >= ANY ('{8,9}');
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k <= ANY ('{1,0}');
+-- a NULL element and an empty array
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k > ANY ('{NULL,5}');
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k > ANY ('{}');
 -- the aggregate is pushed down over the filter
 :explain_analyze SELECT count(*) FROM t_nonequality_array WHERE g = 0 AND k >= 0 AND k > ANY ('{2,5}');
 -- a parameter array of a wider integer type, with an element that the
@@ -319,6 +325,15 @@ EXECUTE nonequality_array_count('{5,3000000000}');
 EXECUTE nonequality_array_count('{3000000000}');
 RESET plan_cache_mode;
 DEALLOCATE nonequality_array_count;
+-- a YB bitmap scan, which the planner does not choose over the index scan
+-- here unless hinted
+SET yb_enable_bitmapscan = true;
+:explain_analyze /*+ BitmapScan(t_nonequality_array) */ SELECT * FROM t_nonequality_array WHERE g = 0 AND k >= 0 AND k > ANY ('{2,5}');
+RESET yb_enable_bitmapscan;
+-- a collation that DocDB does not evaluate, so the filter runs in PostgreSQL
+CREATE TABLE t_nonequality_array_icu(k text COLLATE "en-US-x-icu", PRIMARY KEY(k ASC));
+INSERT INTO t_nonequality_array_icu VALUES ('a'), ('b'), ('c'), ('d');
+:explain_analyze SELECT * FROM t_nonequality_array_icu WHERE k >= 'a' AND k > ANY ('{b,c}');
 -- The setting selects the code that binds the scan keys.  As an index
 -- condition, the array would be read as a bound of its column by either.
 SET yb_enable_advanced_index_cond_fold = off;
@@ -348,4 +363,4 @@ SET yb_enable_advanced_index_cond_fold = off;
 :explain_analyze SELECT * FROM t_nonequality_array_hash_f4 WHERE h = 1.5::float8 AND h > ANY ('{1.0}'::real[]);
 RESET yb_enable_advanced_index_cond_fold;
 
-DROP TABLE t_nonequality_array, t_nonequality_array_hash, t_nonequality_array_hash_f4;
+DROP TABLE t_nonequality_array, t_nonequality_array_hash, t_nonequality_array_hash_f4, t_nonequality_array_icu;
