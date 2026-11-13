@@ -4,9 +4,11 @@ package com.yugabyte.yw.common;
 
 import com.yugabyte.yw.common.CsvFieldSplitter.CsvField;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.List;
 import java.util.Set;
 
@@ -133,15 +135,19 @@ public final class HbaConfRedactor {
   /**
    * Redacts ldapbindpasswd in text with no structure to rely on, such as logs and command output:
    * from the name to the end of the line, and the lines after it that are indented with more
-   * spaces, because Helm folds long YAML values onto those. A {@code --ysql_hba_conf_csv=} gflag
-   * line is redacted like the gflag value, and folds the same way when that redaction reaches the
-   * end of the line.
+   * spaces, because Helm folds long YAML values onto those. A line that doesn't start a YAML or
+   * JSON entry may itself be folded from the nearest line above it with less indent, and the lines
+   * after it at its own indent continue the same value, so those are redacted too. A {@code
+   * --ysql_hba_conf_csv=} gflag line is redacted like the gflag value, and folds the same way when
+   * that redaction reaches the end of the line.
    */
   public static String redactFreeText(String text) {
     if (text == null || indexOfKey(text, 0, true) < 0) {
       return text;
     }
     StringBuilder out = new StringBuilder(text.length());
+    // Indents of earlier lines, each less than the one pushed after it.
+    Deque<Integer> indents = new ArrayDeque<>();
     int foldIndent = -1;
     int p = 0;
     while (p < text.length()) {
@@ -155,7 +161,16 @@ public final class HbaConfRedactor {
       while (p + indent < end && text.charAt(p + indent) == ' ') {
         indent++;
       }
-      if (foldIndent >= 0 && indent > foldIndent && p + indent < end) {
+      boolean blank = p + indent == end;
+      int parentIndent = -1;
+      if (!blank) {
+        while (!indents.isEmpty() && indents.peek() >= indent) {
+          indents.pop();
+        }
+        parentIndent = indents.isEmpty() ? -1 : indents.peek();
+        indents.push(indent);
+      }
+      if (foldIndent >= 0 && indent > foldIndent && !blank) {
         out.append(text, p, p + indent).append(REPLACEMENT);
       } else {
         foldIndent = -1;
@@ -175,7 +190,7 @@ public final class HbaConfRedactor {
         } else {
           String redacted = redactToEnd(line, true);
           if (!redacted.equals(line)) {
-            foldIndent = indent;
+            foldIndent = parentIndent >= 0 && !startsEntry(line, k) ? parentIndent : indent;
           }
           out.append(redacted);
         }
@@ -193,6 +208,43 @@ public final class HbaConfRedactor {
       end--;
     }
     return s.startsWith(REPLACEMENT, end - REPLACEMENT.length());
+  }
+
+  /** Whether line starts at k with a YAML or JSON key and its ':', or a YAML sequence item. */
+  private static boolean startsEntry(String line, int k) {
+    int n = line.length();
+    if (k < n && line.charAt(k) == '-' && (k + 1 == n || isBlank(line.charAt(k + 1)))) {
+      return true;
+    }
+    boolean quoted = k < n && line.charAt(k) == '"';
+    int j = k;
+    if (quoted) {
+      j = line.indexOf('"', k + 1) + 1;
+      if (j == 0) {
+        return false;
+      }
+    } else {
+      while (j < n && isKeyChar(line.charAt(j))) {
+        j++;
+      }
+      if (j == k) {
+        return false;
+      }
+    }
+    while (j < n && isBlank(line.charAt(j))) {
+      j++;
+    }
+    // A plain YAML key needs a blank after its ':', so that "host:port" isn't one.
+    return j < n && line.charAt(j) == ':' && (quoted || j + 1 == n || isBlank(line.charAt(j + 1)));
+  }
+
+  private static boolean isKeyChar(char c) {
+    return (c >= 'a' && c <= 'z')
+        || (c >= 'A' && c <= 'Z')
+        || (c >= '0' && c <= '9')
+        || c == '_'
+        || c == '-'
+        || c == '.';
   }
 
   /** Joins fields into lines the way tokenize_auth_file joins lines ending in a backslash. */

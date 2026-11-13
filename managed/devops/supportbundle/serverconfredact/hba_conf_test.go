@@ -114,6 +114,24 @@ func TestRedactLdapBindPasswdText(t *testing.T) {
 			"    max_log_size: 256\n",
 			"  gflags:\n    ysql_hba_conf_csv: " + ldapRule + "ldapbindpasswd=\"long pass\n" +
 				"      phrase tail\"\n    max_log_size: 256\n"},
+		// Helm usually folds before ldapbindpasswd, so the rest of the value shares its line's indent.
+		{"    ysql_hba_conf_csv: local all yugabyte trust,host all all 0.0.0.0/0 ldap ldapserver=h\n" +
+			"      ldapport=389 ldapbindpasswd=REDACTED\n      REDACTED\n    max_log_size: 256",
+			"    ysql_hba_conf_csv: local all yugabyte trust,host all all 0.0.0.0/0 ldap ldapserver=h\n" +
+				"      ldapport=389 ldapbindpasswd=\"long pass\n      phrase tail\" ldaptls=1\n" +
+				"    max_log_size: 256"},
+		{"    ysql_hba_conf_csv: \"host all all 0.0.0.0/0 ldap ldapserver=h\n" +
+			"      ldapbindpasswd=REDACTED\n      REDACTED\n    max_log_size: 256",
+			"    ysql_hba_conf_csv: \"host all all 0.0.0.0/0 ldap ldapserver=h\n" +
+				`      ldapbindpasswd=\"long pass` + "\n" + `      phrase tail\" ldaptls=1"` + "\n" +
+				"    max_log_size: 256"},
+		// A JSON or YAML entry starts its own value, so the entries after it are kept.
+		{"{\n  \"gflags\": {\n    \"ysql_hba_conf_csv\": \"" + ldapRule +
+			"ldapbindpasswd=REDACTED\n    \"max_log_size\": \"256\"\n  }\n}",
+			"{\n  \"gflags\": {\n    \"ysql_hba_conf_csv\": \"" + ldapRule +
+				"ldapbindpasswd=x\",\n    \"max_log_size\": \"256\"\n  }\n}"},
+		{"args:\n  - --ysql_hba_conf_csv=" + ldapRule + "ldapbindpasswd=REDACTED\n  - --max_log_size=256",
+			"args:\n  - --ysql_hba_conf_csv=" + ldapRule + "ldapbindpasswd=x\n  - --max_log_size=256"},
 		// Java stack frames are indented with a tab, not spaces.
 		{"error: ldapbindpasswd=REDACTED\n\tat com.yugabyte.Foo", "error: ldapbindpasswd=x\n\tat com.yugabyte.Foo"},
 		// A gflag line folds when its redaction reaches the end of the line, and only then.

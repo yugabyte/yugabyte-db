@@ -15,8 +15,8 @@
 // HbaConfRedactor.java (hba_conf.go), which redacts ldapbindpasswd by parsing ysql_hba_conf_csv as
 // Postgres does; hba_conf_test.go checks that the port's output matches YBA's byte for byte.
 // Outside a ysql_hba_conf_csv value, ldapbindpasswd is redacted one line at a time, as YBA's
-// redactFreeText does: from the name to the end of its line, plus the more-indented lines Helm
-// folds onto it. The DB reads server.conf one flag per line, so the value can't continue further.
+// redactFreeText does: from the name to the end of its line, plus the lines Helm folds the rest of
+// the value onto. The DB reads server.conf one flag per line, so the value can't continue further.
 // It differs where RedactingService leaked: a --<sensitive>= flag runs to the end of the line
 // (gflags reads one flag per line), and the hba attribute radiussecrets is redacted in place
 // (ldap_hba.go). VerifyRedacted then checks the output before anything is written.

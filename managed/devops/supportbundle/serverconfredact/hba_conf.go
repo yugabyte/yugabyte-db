@@ -105,14 +105,19 @@ func redactHbaConfCSV(value string) string {
 
 // redactLdapBindPasswdText redacts ldapbindpasswd in text with no structure to rely on: from the
 // name to the end of the line, and the lines after it that are indented with more spaces, because
-// Helm folds long YAML values onto those. A --ysql_hba_conf_csv= gflag line is redacted like the
-// gflag value, and folds the same way when that redaction reaches the end of the line.
+// Helm folds long YAML values onto those. A line that doesn't start a YAML or JSON entry may itself
+// be folded from the nearest line above it with less indent, and the lines after it at its own
+// indent continue the same value, so those are redacted too. A --ysql_hba_conf_csv= gflag line is
+// redacted like the gflag value, and folds the same way when that redaction reaches the end of the
+// line.
 func redactLdapBindPasswdText(text string) string {
 	if indexOfHbaKey(text, 0, true) < 0 {
 		return text
 	}
 	var out strings.Builder
 	out.Grow(len(text))
+	// Indents of earlier lines, each less than the one appended after it.
+	var indents []int
 	foldIndent := -1
 	for p := 0; p < len(text); {
 		next, end := hbaTextLine(text, p)
@@ -120,7 +125,18 @@ func redactLdapBindPasswdText(text string) string {
 		for p+indent < end && text[p+indent] == ' ' {
 			indent++
 		}
-		if foldIndent >= 0 && indent > foldIndent && p+indent < end {
+		blank := p+indent == end
+		parentIndent := -1
+		if !blank {
+			for len(indents) > 0 && indents[len(indents)-1] >= indent {
+				indents = indents[:len(indents)-1]
+			}
+			if len(indents) > 0 {
+				parentIndent = indents[len(indents)-1]
+			}
+			indents = append(indents, indent)
+		}
+		if foldIndent >= 0 && indent > foldIndent && !blank {
 			out.WriteString(text[p : p+indent])
 			out.WriteString(SecretReplacement)
 		} else {
@@ -138,6 +154,9 @@ func redactLdapBindPasswdText(text string) string {
 				redacted := redactHbaToEnd(line, true)
 				if redacted != line {
 					foldIndent = indent
+					if parentIndent >= 0 && !startsEntry(line) {
+						foldIndent = parentIndent
+					}
 				}
 				out.WriteString(redacted)
 			}
@@ -151,6 +170,45 @@ func redactLdapBindPasswdText(text string) string {
 // endsRedacted reports whether s ends with REDACTED, past any closing quotes.
 func endsRedacted(s string) bool {
 	return strings.HasSuffix(strings.TrimRight(s, `"`), SecretReplacement)
+}
+
+// startsEntry reports whether line starts, past its blanks, with a YAML or JSON key and its ':', or
+// a YAML sequence item.
+func startsEntry(line string) bool {
+	k := 0
+	for k < len(line) && isHbaBlank(line[k]) {
+		k++
+	}
+	n := len(line)
+	if k < n && line[k] == '-' && (k+1 == n || isHbaBlank(line[k+1])) {
+		return true
+	}
+	quoted := k < n && line[k] == '"'
+	j := k
+	if quoted {
+		closing := strings.IndexByte(line[k+1:], '"')
+		if closing < 0 {
+			return false
+		}
+		j = k + 1 + closing + 1
+	} else {
+		for j < n && isKeyChar(line[j]) {
+			j++
+		}
+		if j == k {
+			return false
+		}
+	}
+	for j < n && isHbaBlank(line[j]) {
+		j++
+	}
+	// A plain YAML key needs a blank after its ':', so that "host:port" isn't one.
+	return j < n && line[j] == ':' && (quoted || j+1 == n || isHbaBlank(line[j+1]))
+}
+
+func isKeyChar(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' ||
+		c == '-' || c == '.'
 }
 
 // hbaTextLine returns where the line starting at p ends, before and after its line break.
