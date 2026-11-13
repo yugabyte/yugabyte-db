@@ -1028,6 +1028,12 @@ YbGetSessionReplicationOriginId(void)
 	return replorigin_session_origin;
 }
 
+bool
+YbHasReplicationOriginSetup(void)
+{
+	return replorigin_session_origin != InvalidRepOriginId;
+}
+
 void
 YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *init_info)
 {
@@ -7980,6 +7986,10 @@ bool		yb_ysql_conn_mgr_sticky_locks = false;
  */
 bool		yb_ysql_conn_mgr_sticky_nontxn_object = false;
 
+bool		yb_ysql_conn_mgr_sticky_replication_origin = false;
+
+bool		yb_conn_mgr_replication_origin_permanent_sticky = false;
+
 bool		yb_enable_mage = false;
 
 bool
@@ -8028,7 +8038,9 @@ YbIsStickyConnection(int *change)
 	return (ysql_conn_mgr_sticky_object_count > 0) ||
 		YbIsConnectionMadeStickyUsingGUC() ||
 		yb_ysql_conn_mgr_sticky_locks ||
-		yb_ysql_conn_mgr_sticky_nontxn_object;
+		yb_ysql_conn_mgr_sticky_nontxn_object ||
+		yb_ysql_conn_mgr_sticky_replication_origin ||
+		YbHasReplicationOriginSetup();
 }
 
 void	  **
