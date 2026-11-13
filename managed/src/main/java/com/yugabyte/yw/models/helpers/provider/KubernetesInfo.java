@@ -48,11 +48,14 @@ public class KubernetesInfo implements CloudInfoInterface {
   @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
   private String kubernetesPullSecret;
 
+  // PLAT-21218: kubeconfig rotation is allowed for in-use k8s providers/zones/regions.
   @JsonAlias("KUBECONFIG_NAME")
+  @EditableInUseProvider(name = "Kubernetes Kube Config Name", allowed = true)
   @ApiModelProperty
   private String kubeConfigName;
 
   @JsonAlias("KUBECONFIG_CONTENT")
+  @EditableInUseProvider(name = "Kubernetes Kube Config Content", allowed = true)
   @ApiModelProperty
   private String kubeConfigContent;
 
@@ -61,6 +64,7 @@ public class KubernetesInfo implements CloudInfoInterface {
    * credentials).
    */
   @JsonAlias("KUBECONFIG")
+  @EditableInUseProvider(name = "Kubernetes Kube Config", allowed = true)
   @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
   private String kubeConfig;
 
