@@ -1532,9 +1532,14 @@ class PgObjectLocksTestLegacyTxnVsNewDdl : public PgObjectLocksTestMixModeDuring
   void WaitForWaitForLockers() {
     auto observer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*cluster_->tablet_server(1)));
     ASSERT_OK(LoggedWaitFor([&observer]() -> Result<bool> {
-      return VERIFY_RESULT(observer.FetchRow<int64_t>(
+      auto waiting = observer.FetchRow<int64_t>(
           "SELECT COUNT(*) FROM yb_active_session_history"
-          " WHERE wait_event_aux = 'WaitForLockersMultiple'")) > 0;
+          " WHERE wait_event_aux = 'WaitForLockersMultiple'");
+      if (!waiting.ok()) {
+        LOG(INFO) << "yb_active_session_history: " << waiting.status();
+        return false;
+      }
+      return *waiting > 0;
     }, 30s * kTimeMultiplier, "the CREATE INDEX to wait in WaitForLockers"));
   }
 
@@ -1981,9 +1986,14 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyDdlLeavesNoStaleCatalogEnt
   });
   auto observer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
   ASSERT_OK(LoggedWaitFor([&observer]() -> Result<bool> {
-    return VERIFY_RESULT(observer.FetchRow<int64_t>(
+    auto sleeping = observer.FetchRow<int64_t>(
         "SELECT COUNT(*) FROM pg_stat_activity"
-        " WHERE query = 'CREATE TABLE c (LIKE p)' AND wait_event = 'PgSleep'")) > 0;
+        " WHERE query = 'CREATE TABLE c (LIKE p)' AND wait_event = 'PgSleep'");
+    if (!sleeping.ok()) {
+      LOG(INFO) << "pg_stat_activity: " << sleeping.status();
+      return false;
+    }
+    return *sleeping > 0;
   }, 30s * kTimeMultiplier, "the CREATE TABLE to sleep in the event trigger"));
   {
     auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));

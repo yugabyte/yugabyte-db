@@ -102,9 +102,14 @@ TEST_F(ObjectLockingPromotionUpgradeTest, CreateIndexWaitsForLegacyWriterAcrossP
   // The CREATE INDEX waits for the writer in WaitForLockers, which does not show in pg_locks.
   ASSERT_OK(LoggedWaitFor(
       [&ash_observer]() -> Result<bool> {
-        return VERIFY_RESULT(ash_observer.FetchRow<int64_t>(
+        auto waiting = ash_observer.FetchRow<int64_t>(
             "SELECT COUNT(*) FROM yb_active_session_history"
-            " WHERE wait_event_aux = 'WaitForLockersMultiple'")) > 0;
+            " WHERE wait_event_aux = 'WaitForLockersMultiple'");
+        if (!waiting.ok()) {
+          LOG(INFO) << "yb_active_session_history: " << waiting.status();
+          return false;
+        }
+        return *waiting > 0;
       },
       MonoDelta::FromSeconds(kTimeMultiplier * 30), "the CREATE INDEX to wait in WaitForLockers"));
   ASSERT_EQ(create_index_future.wait_for(0s), std::future_status::timeout);
