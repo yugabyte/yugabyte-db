@@ -1177,7 +1177,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Lock-free: this master's sys catalog role is LEADER and leader_ready_term_ is its term. These
   // are the checks CheckIsLeaderAndReady adds to a passed ScopedLeaderSharedLock; use inside one.
-  Status CheckLeaderRoleAndReadyTerm() const;
+  Status CheckLeaderRoleAndReadyTerm() const REQUIRES_SHARED(leader_mutex_);
 
   Status IsEpochValid(const LeaderEpoch& epoch) const;
 
@@ -1329,6 +1329,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   void AssertLeaderLockAcquiredForWriting() const {
     leader_mutex_.AssertAcquiredForWriting();
   }
+
+  // For thread safety annotations outside this class.
+  const RWMutex& leader_mutex() const RETURN_CAPABILITY(leader_mutex_) { return leader_mutex_; }
 
   std::string GenerateId() override { return GenerateId(std::nullopt); }
 
