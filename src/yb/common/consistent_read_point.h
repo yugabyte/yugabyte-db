@@ -69,6 +69,10 @@ class ConsistentReadPoint {
   // Restart read.
   void Restart() EXCLUDES(mutex_);
 
+  // Move the read time up to read_floor and lower the global limit to global_limit_cap, never below
+  // the read time. Local limits are kept within [read time, global limit].
+  void ConstrainForRetry(HybridTime read_floor, HybridTime global_limit_cap) EXCLUDES(mutex_);
+
   // Defer read hybrid time to global limit.
   void Defer() EXCLUDES(mutex_);
 

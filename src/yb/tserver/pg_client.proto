@@ -86,6 +86,8 @@ service PgClientService {
   rpc ReserveOids(PgReserveOidsRequestPB) returns (PgReserveOidsResponsePB);
   rpc RollbackToSubTransaction(PgRollbackToSubTransactionRequestPB)
       returns (PgRollbackToSubTransactionResponsePB);
+  rpc RestartTransactionForRetry(PgRestartTransactionForRetryRequestPB)
+      returns (PgRestartTransactionForRetryResponsePB);
 
   rpc TabletServerCount(PgTabletServerCountRequestPB) returns (PgTabletServerCountResponsePB);
   rpc TruncateTable(PgTruncateTableRequestPB) returns (PgTruncateTableResponsePB);
@@ -927,6 +929,11 @@ message PgPerformOptionsPB {
     // See the commit desc for more info.
     bool clamp_uncertainty_window = 7;
     OptionalUint32PB follower_read_staleness_ms = 8;
+    // While a statement is retried after a read restart, read points picked for it read no earlier
+    // than read_time_floor_ht and get a global limit no later than global_limit_cap_ht, so each
+    // restart shrinks the uncertainty window and the retry converges.
+    fixed64 global_limit_cap_ht = 9;
+    fixed64 read_time_floor_ht = 10;
   }
 
   // Cannot use IsolationLevel enum, since we cannot use proto2 enum in proto3 messages.
@@ -1039,6 +1046,21 @@ message PgRollbackToSubTransactionRequestPB {
 
 message PgRollbackToSubTransactionResponsePB {
   AppStatusPB status = 1;
+}
+
+message PgRestartTransactionForRetryRequestPB {
+  uint64 session_id = 1;
+  PgPerformOptionsPB options = 2;
+  // Only report the global limit of the read point that faced the restart; used by READ COMMITTED
+  // statement retries, which don't restart the transaction.
+  bool read_point_only = 3;
+}
+
+message PgRestartTransactionForRetryResponsePB {
+  AppStatusPB status = 1;
+  // Global limit of the plain session's read point before the restart, and its read time after it.
+  fixed64 global_limit_ht = 2;
+  fixed64 restart_read_ht = 3;
 }
 
 message PgTabletServerCountRequestPB {
