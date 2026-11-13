@@ -4507,12 +4507,13 @@ static struct config_int ConfigureNamesInt[] =
 		{"yb_test_fail_next_ddl", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("When set to non-zero, the next DDL will fail: "
 						 "1=ERROR, 2=FATAL, 3=PANIC, 4=crash, 5=conflict, "
-						 "6=deadlock."),
+						 "6=deadlock, 7=conflict at commit RPC, "
+						 "8=deadlock at commit RPC."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_test_fail_next_ddl,
-		0, 0, 6,
+		0, 0, 8,
 		NULL, NULL, NULL
 	},
 	{

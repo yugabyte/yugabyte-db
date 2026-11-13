@@ -219,7 +219,7 @@ static uint64_t function_cache_generation = 0;
  */
 static bool ddl_txn_block_commit_in_progress = false;
 
-static void yb_maybe_test_fail_ddl(void);
+static void yb_maybe_test_fail_ddl(bool before_commit_rpc);
 static YbcPgSkipIntentsOptimizationInfo YbGetSkipIntentsOptimizationInfoRead(Relation rel);
 
 uint64_t
@@ -2821,6 +2821,17 @@ YBGetDdlUseRegularTransactionBlock()
 	return ddl_transaction_state.use_regular_txn_block;
 }
 
+/*
+ * True from just before the commit RPC of a transaction block that ran DDL
+ * until that RPC succeeds or the transaction is aborted.  The DDL transaction
+ * state, including use_regular_txn_block, is already cleared by then.
+ */
+bool
+YBIsDdlTxnBlockCommitInProgress()
+{
+	return ddl_txn_block_commit_in_progress;
+}
+
 void
 YBGetDdlOriginalStmtState(YbDdlOriginalStmtState *state)
 {
@@ -3451,7 +3462,7 @@ YBCommitTransactionContainingDDL()
 									has_change);
 
 	Assert(ddl_transaction_state.nesting_level == 0);
-	yb_maybe_test_fail_ddl();
+	yb_maybe_test_fail_ddl(false /* before_commit_rpc */ );
 
 	if (yb_test_delay_next_ddl > 0)
 	{
@@ -3661,6 +3672,7 @@ YBCommitTransactionContainingDDL()
 
 	if (use_regular_txn_block)
 	{
+		yb_maybe_test_fail_ddl(true /* before_commit_rpc */ );
 		HandleYBStatus(YBCPgCommitPlainTransactionContainingDDL(MyDatabaseId, is_silent_altering));
 		ddl_txn_block_commit_in_progress = false;
 		/*
@@ -10743,14 +10755,19 @@ YbNewTruncateColocatedIgnoreNotFound(Relation rel, YbcPgTransactionSetting trans
 
 /*
  * Check yb_test_fail_next_ddl and trigger the appropriate error if set.
- * 0 = disabled, 1 = ERROR, 2 = FATAL, 3 = PANIC, 4 = crash.
+ * 0 = disabled, 1 = ERROR, 2 = FATAL, 3 = PANIC, 4 = crash, 5 = conflict,
+ * 6 = deadlock, all raised at the start of YBCommitTransactionContainingDDL.
+ * 7 = conflict and 8 = deadlock are raised later, in place of an error from
+ * the commit RPC of a DDL transaction block (before_commit_rpc).
  * Resets to 0 after triggering.
  */
 static void
-yb_maybe_test_fail_ddl(void)
+yb_maybe_test_fail_ddl(bool before_commit_rpc)
 {
 	int fail_mode = yb_test_fail_next_ddl;
-	if (fail_mode == 0)
+	bool		commit_rpc_mode = (fail_mode == 7 || fail_mode == 8);
+
+	if (fail_mode == 0 || commit_rpc_mode != before_commit_rpc)
 		return;
 	yb_test_fail_next_ddl = 0;
 	if (YbIsClientYsqlConnMgr())
@@ -10783,6 +10800,16 @@ yb_maybe_test_fail_ddl(void)
 			ereport(ERROR,
 					(errcode(ERRCODE_YB_DEADLOCK),
 					 errmsg("failed DDL operation with deadlock as requested")));
+			break;
+		case 7:
+			ereport(ERROR,
+					(errcode(ERRCODE_YB_TXN_CONFLICT),
+					 errmsg("failed DDL commit with conflict as requested")));
+			break;
+		case 8:
+			ereport(ERROR,
+					(errcode(ERRCODE_YB_DEADLOCK),
+					 errmsg("failed DDL commit with deadlock as requested")));
 			break;
 		default:
 			break;

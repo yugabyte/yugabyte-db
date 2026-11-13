@@ -6971,15 +6971,24 @@ class PgLibPqTestTxnDdlCommitRetry : public PgLibPqTest {
 };
 
 // Test for #37717: a retryable error raised while committing an autocommit DDL
-// (yb_test_fail_next_ddl = 5 raises kConflict and 6 raises kDeadlock at the
-// start of YBCommitTransactionContainingDDL) must reach the client, and must not
-// leave pg_class.relchecks out of step with the table's CHECK constraints.
+// must reach the client, and must not leave pg_class.relchecks out of step with
+// the table's CHECK constraints.  yb_test_fail_next_ddl = 5 (kConflict) and 6
+// (kDeadlock) raise the error at the start of YBCommitTransactionContainingDDL;
+// 7 (kConflict) and 8 (kDeadlock) raise it in place of an error from the commit
+// RPC, after the DDL transaction state has been cleared.
 TEST_F(PgLibPqTestTxnDdlCommitRetry, AddCheckConstraintCommitRetry) {
+  struct FailMode {
+    int mode;
+    std::string error;
+  };
   auto conn = ASSERT_RESULT(Connect());
-  for (const auto& [mode, error_kind] :
-       std::vector<std::pair<int, std::string>>{{5, "conflict"}, {6, "deadlock"}}) {
+  for (const auto& [mode, error] : std::vector<FailMode>{
+           {5, "failed DDL operation with conflict as requested"},
+           {6, "failed DDL operation with deadlock as requested"},
+           {7, "failed DDL commit with conflict as requested"},
+           {8, "failed DDL commit with deadlock as requested"}}) {
     SCOPED_TRACE(Format("yb_test_fail_next_ddl = $0", mode));
-    const auto table = Format("t_$0", error_kind);
+    const auto table = Format("t$0", mode);
     const auto alter = Format("ALTER TABLE $0 ADD CONSTRAINT c CHECK (a > 0) NOT VALID", table);
     const auto check_query = Format(
         "SELECT relchecks, (SELECT count(*) FROM pg_constraint "
@@ -6991,8 +7000,7 @@ TEST_F(PgLibPqTestTxnDdlCommitRetry, AddCheckConstraintCommitRetry) {
     // is not aborted before such a retry, and the re-run used to see the failed
     // attempt's constraint in the backend's caches and set relchecks to 2.
     ASSERT_OK(conn.ExecuteFormat("SET yb_test_fail_next_ddl = $0", mode));
-    ASSERT_NOK_STR_CONTAINS(
-        conn.Execute(alter), Format("failed DDL operation with $0 as requested", error_kind));
+    ASSERT_NOK_STR_CONTAINS(conn.Execute(alter), error);
     auto [relchecks, check_rows] =
         ASSERT_RESULT((conn.FetchRow<int16_t, int64_t>(check_query)));
     ASSERT_EQ(relchecks, 0);
