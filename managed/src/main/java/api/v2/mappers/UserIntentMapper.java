@@ -67,6 +67,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.mapstruct.InheritInverseConfiguration;
@@ -1044,14 +1045,20 @@ public interface UserIntentMapper {
     if (v2ClusterGFlags == null) {
       return new SpecificGFlags();
     }
+    // SpecificGFlags.construct and clone() throw on a null map, and either map may be omitted.
     SpecificGFlags specificGFlags =
-        SpecificGFlags.construct(v2ClusterGFlags.getMaster(), v2ClusterGFlags.getTserver());
+        SpecificGFlags.construct(
+            Objects.requireNonNullElseGet(v2ClusterGFlags.getMaster(), HashMap::new),
+            Objects.requireNonNullElseGet(v2ClusterGFlags.getTserver(), HashMap::new));
     if (v2ClusterGFlags.getAzGflags() != null) {
       Map<UUID, PerProcessFlags> perAz = new HashMap<>();
       for (Entry<String, AvailabilityZoneGFlags> entry : v2ClusterGFlags.getAzGflags().entrySet()) {
+        AvailabilityZoneGFlags azGFlags = entry.getValue();
         PerProcessFlags perProc = new PerProcessFlags();
-        perProc.value.put(ServerType.MASTER, entry.getValue().getMaster());
-        perProc.value.put(ServerType.TSERVER, entry.getValue().getTserver());
+        perProc.value.put(
+            ServerType.MASTER, Objects.requireNonNullElseGet(azGFlags.getMaster(), HashMap::new));
+        perProc.value.put(
+            ServerType.TSERVER, Objects.requireNonNullElseGet(azGFlags.getTserver(), HashMap::new));
         perAz.put(UUID.fromString(entry.getKey()), perProc);
       }
       specificGFlags.setPerAZ(perAz);

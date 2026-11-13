@@ -19,11 +19,14 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static play.test.Helpers.contentAsString;
 
 import api.v2.handlers.UniverseManagementHandler;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yba.v2.client.ApiException;
 import com.yugabyte.yba.v2.client.api.UniverseApi;
@@ -54,6 +57,8 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ProviderInitializer;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
@@ -67,6 +72,7 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import io.ebean.DB;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -85,6 +91,8 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.slf4j.LoggerFactory;
+import play.libs.Json;
+import play.mvc.Result;
 
 /** Tests for Create/Get/Delete of Universe using v2.UniverseApiControllerImp */
 @Slf4j
@@ -295,6 +303,115 @@ public class UniverseApiControllerTest extends UniverseTestBase {
         api.getUniverse(customer.getUuid(), uUUID);
     validateUniverseSpec(universeResp.getSpec(), dbUniverse);
     validateUniverseInfo(universeResp.getInfo(), dbUniverse);
+  }
+
+  private static final String YCQL_LDAP_SECRET = "ycql-ldap-lr23812";
+  private static final String HBA_WITH_SECRET =
+      "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com ldapbindpasswd=hba-lr23812";
+  private static final String HBA_REDACTED =
+      "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com ldapbindpasswd=REDACTED";
+
+  /**
+   * The primary holds the LDAP gflags per process and per AZ. The stored row holds the admin
+   * passwords, as rows saved before storage redaction still do.
+   */
+  private Universe createUniverseWithSecrets() {
+    Universe universe = createUniverse("secrets-universe", customer.getId());
+    Map<String, String> ldapGFlags =
+        Map.of(
+            "ycql_ldap_bind_passwd",
+            YCQL_LDAP_SECRET,
+            GFlagsUtil.YSQL_HBA_CONF_CSV,
+            HBA_WITH_SECRET);
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          UserIntent userIntent = u.getUniverseDetails().getPrimaryCluster().userIntent;
+          userIntent.specificGFlags = SpecificGFlags.construct(ldapGFlags, ldapGFlags);
+          SpecificGFlags.PerProcessFlags azFlags = new SpecificGFlags.PerProcessFlags();
+          azFlags.value.put(ServerType.TSERVER, ldapGFlags);
+          userIntent.specificGFlags.setPerAZ(Map.of(UUID.randomUUID(), azFlags));
+        });
+    ObjectNode details =
+        (ObjectNode)
+            Json.parse(
+                DB.sqlQuery(
+                        "SELECT universe_details_json FROM universe WHERE universe_uuid = :uuid")
+                    .setParameter("uuid", universe.getUniverseUUID())
+                    .findOne()
+                    .getString("universe_details_json"));
+    ObjectNode userIntent = (ObjectNode) details.at("/clusters/0/userIntent");
+    userIntent.put("ysqlPassword", "ysql-admin-lr23812");
+    userIntent.put("ycqlPassword", "ycql-admin-lr23812");
+    DB.sqlUpdate("UPDATE universe SET universe_details_json = :json WHERE universe_uuid = :uuid")
+        .setParameter("json", details.toString())
+        .setParameter("uuid", universe.getUniverseUUID())
+        .execute();
+    return universe;
+  }
+
+  private JsonNode rawGetUniverse(UUID universeUUID) {
+    Result result =
+        doRequestWithAuthToken(
+            "GET",
+            String.format("/api/v2/customers/%s/universes/%s", customer.getUuid(), universeUUID),
+            authToken);
+    assertEquals(contentAsString(result), 200, result.status());
+    return Json.parse(contentAsString(result));
+  }
+
+  private JsonNode rawPageListUniverses() {
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "POST",
+            String.format("/api/v2/customers/%s/universes/page", customer.getUuid()),
+            authToken,
+            Json.newObject());
+    assertEquals(contentAsString(result), 200, result.status());
+    return Json.parse(contentAsString(result));
+  }
+
+  private static void assertSecretsRedacted(JsonNode universe) {
+    assertFalse(universe.toString(), universe.toString().contains("lr23812"));
+    JsonNode gflags = universe.at("/spec/clusters/0/gflags");
+    for (JsonNode processGFlags :
+        List.of(
+            gflags.get("tserver"),
+            gflags.get("master"),
+            gflags.get("az_gflags").elements().next().get("tserver"))) {
+      assertEquals("REDACTED", processGFlags.get("ycql_ldap_bind_passwd").asText());
+      assertEquals(HBA_REDACTED, processGFlags.get(GFlagsUtil.YSQL_HBA_CONF_CSV).asText());
+    }
+    assertEquals("REDACTED", universe.at("/spec/ysql/password").asText());
+    assertEquals("REDACTED", universe.at("/spec/ycql/password").asText());
+  }
+
+  @Test
+  public void testGetAndListUniverseV2RedactSecrets() throws IOException {
+    when(mockRuntimeConfig.getBoolean(
+            GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey()))
+        .thenReturn(true);
+    stubGFlagsValidation();
+    Universe universe = createUniverseWithSecrets();
+
+    assertSecretsRedacted(rawGetUniverse(universe.getUniverseUUID()));
+    JsonNode page = rawPageListUniverses();
+    assertThat(page.get("entities").size(), is(1));
+    assertSecretsRedacted(page.get("entities").get(0));
+  }
+
+  @Test
+  public void testGetUniverseV2KeepsLdapGFlagsWithApiRedactionOff() throws IOException {
+    // The mocked runtime config leaves enableGFlagsSensitiveDataApiRedaction off.
+    stubGFlagsValidation();
+    Universe universe = createUniverseWithSecrets();
+
+    JsonNode resp = rawGetUniverse(universe.getUniverseUUID());
+    JsonNode tserver = resp.at("/spec/clusters/0/gflags/tserver");
+    assertEquals(YCQL_LDAP_SECRET, tserver.get("ycql_ldap_bind_passwd").asText());
+    assertEquals(HBA_WITH_SECRET, tserver.get(GFlagsUtil.YSQL_HBA_CONF_CSV).asText());
+    assertEquals("REDACTED", resp.at("/spec/ysql/password").asText());
+    assertEquals("REDACTED", resp.at("/spec/ycql/password").asText());
   }
 
   @Test
