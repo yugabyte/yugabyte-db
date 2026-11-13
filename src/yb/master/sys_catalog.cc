@@ -156,6 +156,12 @@ DEFINE_UNKNOWN_uint64(copy_tables_batch_bytes, 500_KB,
     "Max bytes per batch for copy pg sql tables");
 DEFINE_RUNTIME_uint64(delete_systable_rows_batch_bytes, 500_KB,
     "Max bytes per batch for delete pg sql table rows");
+DEFINE_RUNTIME_uint64(ysql_invalidation_messages_master_read_window, 4096,
+    "How many catalog versions back from a database's current version the master reads from "
+    "pg_yb_invalidation_messages. Must be at least the tservers' "
+    "ysql_max_invalidation_message_queue_size, otherwise the master drops messages the tservers "
+    "would keep and backends fall back to a full catalog refresh. 0 turns the bound off: the "
+    "master reads the whole table.");
 
 DEFINE_test_flag(int32, sys_catalog_write_rejection_percentage, 0,
   "Reject specified percentage of sys catalog writes.");
@@ -1909,7 +1915,7 @@ Result<MaxOidPerSpace> SysCatalogTable::ReadHighestPreservableOids(uint32_t data
 }
 
 Result<DbOidVersionToMessageListMap>
-SysCatalogTable::ReadYsqlCatalogInvalationMessages() {
+SysCatalogTable::ReadYsqlCatalogInvalationMessages(const DbOidToCatalogVersionMap* versions) {
   if (RandomActWithProbability(FLAGS_TEST_simulate_catalog_message_read_failure)) {
     return STATUS(InternalError, "Injected pg_yb_invalidation_messages read failure for testing.");
   }
@@ -1917,10 +1923,10 @@ SysCatalogTable::ReadYsqlCatalogInvalationMessages() {
   TRACE_EVENT0("master", "ReadYsqlCatalogInvalationMessages");
   DbOidVersionToMessageListMap messages;
   RETURN_NOT_OK(ReadWithRestarts(
-      [this, &messages](
+      [this, versions, &messages](
           const ReadHybridTime& read_ht, HybridTime* read_restart_ht) -> Status {
         return SysCatalogTable::ReadYsqlCatalogInvalationMessagesImpl(
-            read_ht, read_restart_ht, messages);
+            read_ht, read_restart_ht, versions, messages);
       }));
   return messages;
 }
@@ -1928,6 +1934,7 @@ SysCatalogTable::ReadYsqlCatalogInvalationMessages() {
 Status SysCatalogTable::ReadYsqlCatalogInvalationMessagesImpl(
     const ReadHybridTime& read_time,
     HybridTime* read_restart_ht,
+    const DbOidToCatalogVersionMap* versions,
     DbOidVersionToMessageListMap& messages) {
 
   auto read_data = VERIFY_RESULT(TableReadData(kTemplate1Oid, kPgYbInvalidationMessagesTableOid,
@@ -1944,40 +1951,78 @@ Status SysCatalogTable::ReadYsqlCatalogInvalationMessagesImpl(
   dockv::ReaderProjection projection(schema, {db_oid_col_id, current_version_col_id,
                                               messages_col_id});
   auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
-  auto iter = VERIFY_RESULT(read_data.NewIterator(projection));
 
   qlexpr::QLTableRow source_row;
 
   // Loop through the pg_yb_invalidation_messages catalog table. Each row in this table represents
   // a list of invalidation messages associated with a pair of (db_oid, current_version).
   // Populate 'messages' with (db_oid, current_version, messages).
-  while (VERIFY_RESULT(iter->FetchNext(&source_row))) {
-    // Fetch the db_oid.
-    const auto db_oid_col = source_row.GetValue(db_oid_col_id);
-    SCHECK(db_oid_col, IllegalState, "Could not read db_oid from pg_yb_invalidation_messages");
-    const uint32_t db_oid = db_oid_col->get().uint32_value();
+  *read_restart_ht = HybridTime::kInvalid;
+  auto read_rows = [&](docdb::YQLRowwiseIteratorIf* iter) -> Status {
+    while (VERIFY_RESULT(iter->FetchNext(&source_row))) {
+      // Fetch the db_oid.
+      const auto db_oid_col = source_row.GetValue(db_oid_col_id);
+      SCHECK(db_oid_col, IllegalState, "Could not read db_oid from pg_yb_invalidation_messages");
+      const uint32_t db_oid = db_oid_col->get().uint32_value();
 
-    // Fetch the current_version.
-    const auto& current_version_col = source_row.GetValue(current_version_col_id);
-    SCHECK(
-        current_version_col, IllegalState,
-        "Could not read current_version from pg_yb_invalidation_messages");
-    const auto current_version = static_cast<uint64_t>(current_version_col->get().int64_value());
+      // Fetch the current_version.
+      const auto& current_version_col = source_row.GetValue(current_version_col_id);
+      SCHECK(
+          current_version_col, IllegalState,
+          "Could not read current_version from pg_yb_invalidation_messages");
+      const auto current_version = static_cast<uint64_t>(current_version_col->get().int64_value());
 
-    // Fetch the messages.
-    const auto& messages_col = source_row.GetValue(messages_col_id);
-    SCHECK(messages_col, IllegalState, "Could not read messages from pg_yb_invalidation_messages");
-    const std::optional<std::string> message_list =
-        messages_col->get().has_binary_value()
-            ? std::optional<std::string>(
-                  static_cast<std::string>(messages_col->get().binary_value()))
-            : std::nullopt;
-    auto insert_result =
-        messages.insert(std::make_pair(std::make_pair(db_oid, current_version), message_list));
-    // There should not be any duplicate (db_oid, current_version) because it is a primary key.
-    DCHECK(insert_result.second);
+      // Fetch the messages.
+      const auto& messages_col = source_row.GetValue(messages_col_id);
+      SCHECK(
+          messages_col, IllegalState,
+          "Could not read messages from pg_yb_invalidation_messages");
+      const std::optional<std::string> message_list =
+          messages_col->get().has_binary_value()
+              ? std::optional<std::string>(
+                    static_cast<std::string>(messages_col->get().binary_value()))
+              : std::nullopt;
+      auto insert_result =
+          messages.insert(std::make_pair(std::make_pair(db_oid, current_version), message_list));
+      // There should not be any duplicate (db_oid, current_version) because it is a primary key.
+      DCHECK(insert_result.second);
+    }
+    // A valid restart time from any iterator restarts the whole read, at the latest one.
+    const auto restart_time = VERIFY_RESULT(iter->GetReadRestartData()).restart_time;
+    if (restart_time.is_valid() &&
+        (!read_restart_ht->is_valid() || restart_time > *read_restart_ht)) {
+      *read_restart_ht = restart_time;
+    }
+    return Status::OK();
+  };
+
+  // With 'versions': one iterator per database, bounded to db_oid = <oid> AND
+  // current_version > <that db's current version> - max_versions_behind, so the scan seeks past
+  // the expired rows and their tombstones. Without 'versions': one iterator over the whole table.
+  const uint64_t max_versions_behind = FLAGS_ysql_invalidation_messages_master_read_window;
+  if (versions) {
+    for (const auto& [db_oid, version] : *versions) {
+      PgsqlConditionPB cond;
+      cond.set_op(QL_OP_AND);
+      auto* db_cond = cond.add_operands()->mutable_condition();
+      db_cond->add_operands()->set_column_id(db_oid_col_id);
+      db_cond->set_op(QL_OP_EQUAL);
+      db_cond->add_operands()->mutable_value()->set_uint32_value(db_oid);
+      auto* version_cond = cond.add_operands()->mutable_condition();
+      version_cond->add_operands()->set_column_id(current_version_col_id);
+      version_cond->set_op(QL_OP_GREATER_THAN);
+      version_cond->add_operands()->mutable_value()->set_int64_value(
+          max_versions_behind != 0 && version.current_version > max_versions_behind
+              ? version.current_version - max_versions_behind : 0);
+      docdb::DocPgsqlScanSpec spec(schema, &cond);
+      auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
+      RETURN_NOT_OK(iter->Init(spec));
+      RETURN_NOT_OK(read_rows(iter.get()));
+    }
+  } else {
+    auto iter = VERIFY_RESULT(read_data.NewIterator(projection));
+    RETURN_NOT_OK(read_rows(iter.get()));
   }
-  *read_restart_ht = VERIFY_RESULT(iter->GetReadRestartData()).restart_time;
   return Status::OK();
 }
 

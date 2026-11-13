@@ -92,10 +92,14 @@ class PgCatalogVersionsCache {
   //
   // 'read_ht' must be valid; an invalid one is refused, since HybridTime::kInvalid is kMax - 1 and
   // would both install out of order and disarm the ordering check for the next install.
+  //
+  // With 'refreshed_dbs', 'messages' holds only those databases' rows: they replace the cached
+  // rows of those databases, and the cached rows of the other databases in 'versions' stay.
   bool Install(
       uint64_t generation, HybridTime read_ht, DbOidToCatalogVersionMap versions,
       uint64_t fingerprint, bool update_messages,
-      std::optional<DbOidVersionToMessageListMap> messages) EXCLUDES(mutex_);
+      std::optional<DbOidVersionToMessageListMap> messages,
+      const DbOidToCatalogVersionMap* refreshed_dbs = nullptr) EXCLUDES(mutex_);
 
   // Copies out the cached versions, and the fingerprint and the snapshot's read time when those are
   // set. Returns false only before the first Install(), in which case the outputs are untouched and
@@ -125,6 +129,12 @@ class PgCatalogVersionsCache {
   // evaluated under one lock so they cannot disagree with each other. It does not consider
   // --ysql_yb_enable_invalidation_messages, so the caller must still gate on that flag.
   bool NeedsMessagesRefresh(uint64_t fingerprint) const EXCLUDES(mutex_);
+
+  // Subset of 'versions' whose messages a refresh must re-read: all of them when the cached
+  // messages are unavailable, otherwise the databases that are new or whose current_version
+  // moved. A database's pg_yb_invalidation_messages rows change only together with its version.
+  DbOidToCatalogVersionMap DbsNeedingMessagesRefresh(
+      const DbOidToCatalogVersionMap& versions) const EXCLUDES(mutex_);
 
  private:
   mutable rw_spinlock mutex_;

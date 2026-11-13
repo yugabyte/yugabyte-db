@@ -50,7 +50,8 @@ void PgCatalogVersionsCache::Reset() {
 bool PgCatalogVersionsCache::Install(
     uint64_t generation, HybridTime read_ht, DbOidToCatalogVersionMap versions,
     uint64_t fingerprint, bool update_messages,
-    std::optional<DbOidVersionToMessageListMap> messages) {
+    std::optional<DbOidVersionToMessageListMap> messages,
+    const DbOidToCatalogVersionMap* refreshed_dbs) {
   if (!read_ht.is_valid()) {
     // Callers must pass the read time of an actual read. Installing an invalid one would both
     // install out of order -- HybridTime::kInvalid is kMax - 1, so it beats every real snapshot in
@@ -89,7 +90,18 @@ bool PgCatalogVersionsCache::Install(
   if (update_messages) {
     // nullopt marks the messages unavailable so the next refresh re-reads them; the versions above
     // are unaffected, since messages are only an optimization on top of them.
-    inval_messages_ = std::move(messages);
+    if (!messages || !refreshed_dbs || refreshed_dbs->size() == versions_->size()) {
+      inval_messages_ = std::move(messages);
+    } else if (inval_messages_) {
+      const auto& installed_versions = *versions_;
+      std::erase_if(*inval_messages_, [&](const auto& entry) {
+        const auto db_oid = entry.first.first;
+        return refreshed_dbs->contains(db_oid) || !installed_versions.contains(db_oid);
+      });
+      inval_messages_->merge(*messages);
+    }
+    // Otherwise the messages became unavailable after the caller chose what to read; a partial
+    // set cannot replace them, so they stay unavailable and the next refresh reads everything.
   }
   LOG_IF(INFO, PREDICT_FALSE(FLAGS_TEST_log_catalog_version_cache_events))
       << "PgCatalogVersionsCache: installed snapshot at " << read_ht
@@ -142,6 +154,22 @@ bool PgCatalogVersionsCache::NeedsMessagesRefresh(uint64_t fingerprint) const {
   // nullopt means the previous read of pg_yb_invalidation_messages failed, so retry it even though
   // the versions may look unchanged.
   return fingerprint_ != fingerprint || !inval_messages_.has_value();
+}
+
+DbOidToCatalogVersionMap PgCatalogVersionsCache::DbsNeedingMessagesRefresh(
+    const DbOidToCatalogVersionMap& versions) const {
+  SharedLock lock(mutex_);
+  if (!versions_ || !inval_messages_) {
+    return versions;
+  }
+  DbOidToCatalogVersionMap result;
+  for (const auto& [db_oid, version] : versions) {
+    auto it = versions_->find(db_oid);
+    if (it == versions_->end() || it->second.current_version != version.current_version) {
+      result.emplace(db_oid, version);
+    }
+  }
+  return result;
 }
 
 }  // namespace yb::master
