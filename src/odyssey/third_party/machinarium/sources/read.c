@@ -16,19 +16,12 @@ static void mm_read_cb(mm_fd_t *handle)
 }
 
 /*
- * YB: Bytes already read off the socket and buffered by TLS or compression,
- * which generate no poller event. For compression this can also return 1
- * when nothing is buffered (deferred_rx_call stays set after a read that
- * returned data); the caller then just gets an extra wakeup whose read
- * returns EAGAIN.
+ * YB: Bytes already read off the socket and buffered by TLS, which generate
+ * no poller event.
  */
 static inline int yb_mm_read_pending(mm_io_t *io)
 {
-	if (mm_tls_is_active(io) && mm_tls_read_pending(io))
-		return 1;
-	if (mm_compression_is_active(io) && mm_compression_read_pending(io))
-		return 1;
-	return 0;
+	return mm_tls_is_active(io) && mm_tls_read_pending(io);
 }
 
 static inline int mm_read_start(mm_io_t *io, machine_cond_t *on_read)
@@ -36,12 +29,18 @@ static inline int mm_read_start(mm_io_t *io, machine_cond_t *on_read)
 	mm_machine_t *machine = mm_self;
 	io->on_read = on_read;
 	/*
-	   Check situation when there are buffered TLS or compressed data,
-	   since this will not generate any poller event we must
+	   Check situation when there are buffered TLS data, since this
+	   will not generate any poller event we must
 	   check it right away.
 	*/
 	if (yb_mm_read_pending(io))
 		mm_cond_signal((mm_cond_t *)io->on_read, &mm_self->scheduler);
+
+	/* Also check for buffered compressed data, since this also won't
+	 * generate any poller event. */
+	if (mm_compression_is_active(io) && mm_compression_read_pending(io)) {
+		mm_cond_signal((mm_cond_t *)io->on_read, &mm_self->scheduler);
+	}
 
 	int rc;
 	rc = mm_loop_read(&machine->loop, &io->handle, mm_read_cb, io);
