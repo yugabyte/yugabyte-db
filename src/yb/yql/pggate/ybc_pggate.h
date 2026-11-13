@@ -827,7 +827,7 @@ YbcStatus YBCPgGetSelfActiveTransaction(YbcPgUuid *txn_id, bool *is_null);
 YbcStatus YBCPgActiveTransactions(YbcPgSessionTxnInfo *infos, size_t num_infos);
 bool YBCPgIsDdlMode();
 bool YBCPgIsDdlModeWithRegularTransactionBlock();
-bool YBCPgIsObjectLockingEnabledLocallyForCurrentTxn();
+bool YBCPgIsObjectLockingEnabledLocally();
 bool YBCCurrentTransactionUsesFastPath();
 bool YBCIsLegacyModeForCatalogOps();
 bool YBCIsObjectLockingEnabledGloballyForCurrentTxn();

@@ -994,7 +994,7 @@ void
 AcceptInvalidationMessages(void)
 {
 	if (OidIsValid(MyDatabaseId) &&
-		YbIsObjectLockingEnabledLocallyForCurrentTxn() &&
+		YbIsObjectLockingEnabledLocally() &&
 		YbIsInvalidationMessageEnabled())
 	{
 		YbMaybeRefreshCache();

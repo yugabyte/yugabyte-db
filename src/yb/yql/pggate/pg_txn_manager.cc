@@ -236,7 +236,7 @@ void PgTxnManager::DEBUG_CheckOptionsForPerform(
   // Functions like YBCheckSharedCatalogCacheVersion, being executed outside scope of a
   // transaction block seem to issue custom selects on pg_yb_catalog_version table using
   // YBCPgNewSelect, skipping object locks. Skip the assertion for such cases for now.
-  if (!IsObjectLockingEnabledLocallyForCurrentTxn() || options.ddl_mode() ||
+  if (!IsObjectLockingEnabledLocally() || options.ddl_mode() ||
       options.use_legacy_catalog_session() || options.yb_non_ddl_txn_for_sys_tables_allowed() ||
       YBCIsInitDbModeEnvVarSet() || !YBCIsLegacyModeForCatalogOps()) {
     return;
@@ -260,15 +260,15 @@ bool PgTxnManager::IsObjectLockingEnabledGloballyForCurrentTxn() const {
   // Computed rather than latched: the gflags are fixed for the process and
   // YBCIsObjectLockingInfraEnabled() is a snapshot PG takes once per transaction, so the result
   // cannot change under an open transaction.
-  VLOG_WITH_FUNC(1) << "object locks: " << IsObjectLockingEnabledLocallyForCurrentTxn()
+  VLOG_WITH_FUNC(1) << "object locks: " << IsObjectLockingEnabledLocally()
                     << " infra: " << YBCIsObjectLockingInfraEnabled();
-  return IsObjectLockingEnabledLocallyForCurrentTxn() && YBCIsObjectLockingInfraEnabled();
+  return IsObjectLockingEnabledLocally() && YBCIsObjectLockingInfraEnabled();
 }
 
 // An autonomous DDL takes no object locks: every DDL of a transaction without global object locks
 // runs in a separate DDL transaction, and the tserver never releases that transaction's locks, so a
 // lock it sent would stay held.
-bool PgTxnManager::IsObjectLockingEnabledLocallyForCurrentTxn() const {
+bool PgTxnManager::IsObjectLockingEnabledLocally() const {
   return backend_can_take_object_locks_ && FLAGS_enable_object_locking_for_table_locks &&
          !IsDdlModeWithSeparateTransaction();
 }
@@ -413,7 +413,7 @@ Status PgTxnManager::CalculateIsolation(
   //
   // TODO(table-locks): Need to explicitly handle READ_COMMITTED case since YSQL internally bumps up
   // subtxn id for every statement. Else, every RC read-only txn would burn a docdb txn.
-  if (IsObjectLockingEnabledLocallyForCurrentTxn() &&
+  if (IsObjectLockingEnabledLocally() &&
       active_sub_transaction_id_ > kMinSubTransactionId &&
       pg_isolation_level_ != PgIsolationLevel::READ_COMMITTED) {
     read_only_op = false;
@@ -566,7 +566,7 @@ Status PgTxnManager::FinishPlainTransaction(
 
   const auto is_read_only = isolation_level_ == IsolationLevel::NON_TRANSACTIONAL;
   if (is_read_only &&
-      (!IsObjectLockingEnabledLocallyForCurrentTxn() ||
+      (!IsObjectLockingEnabledLocally() ||
        client_->TryReleaseAllObjectLocksInSharedMemory())) {
     VLOG_TXN_STATE(2) << "This was a read-only transaction, nothing to commit.";
     ResetTxnAndSession();
@@ -1168,7 +1168,7 @@ Status PgTxnManager::RollbackToSubTransaction(
     return Status::OK();
   }
   if (isolation_level_ == IsolationLevel::NON_TRANSACTIONAL &&
-      !IsObjectLockingEnabledLocallyForCurrentTxn()) {
+      !IsObjectLockingEnabledLocally()) {
     VLOG(4) << "This isn't a distributed transaction, so nothing to rollback.";
     return Status::OK();
   }

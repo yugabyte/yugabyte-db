@@ -2761,9 +2761,9 @@ YBGetDdlUseRegularTransactionBlock()
  * new catalog version with entries from before it.
  */
 bool
-YbIsObjectLockingEnabledLocallyForCurrentTxn(void)
+YbIsObjectLockingEnabledLocally(void)
 {
-	return YBCPgIsObjectLockingEnabledLocallyForCurrentTxn();
+	return YBCPgIsObjectLockingEnabledLocally();
 }
 
 void

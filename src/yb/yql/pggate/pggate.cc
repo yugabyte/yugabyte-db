@@ -2396,8 +2396,8 @@ bool PgApiImpl::IsDdlModeWithRegularTransactionBlock() const {
   return pg_txn_manager_->IsDdlModeWithRegularTransactionBlock();
 }
 
-bool PgApiImpl::IsObjectLockingEnabledLocallyForCurrentTxn() const {
-  return pg_txn_manager_->IsObjectLockingEnabledLocallyForCurrentTxn();
+bool PgApiImpl::IsObjectLockingEnabledLocally() const {
+  return pg_txn_manager_->IsObjectLockingEnabledLocally();
 }
 
 bool PgApiImpl::IsObjectLockingEnabledGloballyForCurrentTxn() const {
