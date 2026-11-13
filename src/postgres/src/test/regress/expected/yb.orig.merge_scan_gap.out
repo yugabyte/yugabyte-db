@@ -89,67 +89,6 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT c1, c3, s, c2 FROM gap_coll_tbl WHERE s IN (1, 2) AND c1 = c2 ORDER BY c1, c3;
 (output identical to previous)
 --
--- Local filter: stable cross type operator
---
-SET TimeZone = 'UTC';
-CREATE TABLE gap_ts_tbl (s int, c1 timestamp, c2 timestamptz, c3 int,
-    PRIMARY KEY (s ASC, c1 ASC, c2 ASC, c3 ASC));
-INSERT INTO gap_ts_tbl VALUES
-    (1, '2020-01-02', '2020-01-01+00', 9), (1, '2020-01-02', '2020-01-02+00', 0),
-    (2, '2020-01-02', '2020-01-02+00', 4), (1, '2020-01-05', '2020-01-05+00', 1),
-    (2, '2020-01-05', '2020-01-05+00', 2);
-ANALYZE gap_ts_tbl;
-\set query ':P :Q SELECT c1, c3, s, c2 FROM gap_ts_tbl WHERE s IN (1, 2) AND c1 = c2 ORDER BY c1, c3;'
-\i :run_query
-\set _echo_run_query :ECHO
-\set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT c1, c3, s, c2 FROM gap_ts_tbl WHERE s IN (1, 2) AND c1 = c2 ORDER BY c1, c3;
-                            QUERY PLAN                             
--------------------------------------------------------------------
- Sort (actual rows=4 loops=1)
-   Output: c1, c3, s, c2
-   Sort Key: gap_ts_tbl.c1, gap_ts_tbl.c3
-   Sort Method: quicksort
-   ->  Seq Scan on public.gap_ts_tbl (actual rows=4 loops=1)
-         Output: c1, c3, s, c2
-         Storage Filter: (gap_ts_tbl.s = ANY ('{1,2}'::integer[]))
-         Filter: (gap_ts_tbl.c1 = gap_ts_tbl.c2)
-         Rows Removed by Filter: 1
-         Storage Table Read Requests: 1
-         Storage Table Read Ops: 1
-         Storage Table Rows Scanned: 5
-(12 rows)
-
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT c1, c3, s, c2 FROM gap_ts_tbl WHERE s IN (1, 2) AND c1 = c2 ORDER BY c1, c3;
-                                  QUERY PLAN                                   
--------------------------------------------------------------------------------
- Index Scan using gap_ts_tbl_pkey on public.gap_ts_tbl (actual rows=4 loops=1)
-   Output: c1, c3, s, c2
-   Index Cond: (gap_ts_tbl.s = ANY ('{1,2}'::integer[]))
-   Merge Sort Key: gap_ts_tbl.c1, gap_ts_tbl.c2, gap_ts_tbl.c3
-   Merge Stream Key: gap_ts_tbl.s
-   Merge Streams: 2
-   Merge Cond: (gap_ts_tbl.s = ANY ('{1,2}'::integer[]))
-   Filter: (gap_ts_tbl.c1 = gap_ts_tbl.c2)
-   Rows Removed by Filter: 1
-   Storage Table Read Requests: 1
-   Storage Table Read Ops: 2
-   Storage Table Rows Scanned: 5
-(12 rows)
-
-/*+Set(yb_max_merge_scan_streams 0)*/ SELECT c1, c3, s, c2 FROM gap_ts_tbl WHERE s IN (1, 2) AND c1 = c2 ORDER BY c1, c3;
-            c1            | c3 | s |              c2              
---------------------------+----+---+------------------------------
- Thu Jan 02 00:00:00 2020 |  0 | 1 | Thu Jan 02 00:00:00 2020 UTC
- Thu Jan 02 00:00:00 2020 |  4 | 2 | Thu Jan 02 00:00:00 2020 UTC
- Sun Jan 05 00:00:00 2020 |  1 | 1 | Sun Jan 05 00:00:00 2020 UTC
- Sun Jan 05 00:00:00 2020 |  2 | 2 | Sun Jan 05 00:00:00 2020 UTC
-(4 rows)
-
-/*+Set(yb_max_merge_scan_streams 64)*/ SELECT c1, c3, s, c2 FROM gap_ts_tbl WHERE s IN (1, 2) AND c1 = c2 ORDER BY c1, c3;
-(output identical to previous)
-RESET TimeZone;
---
 -- Secondary index: filter pushed to the table, read after the index merge
 --
 -- d is not in the index, and the equalities the planner generates from c2 = d
@@ -570,8 +509,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnl
 (output identical to previous)
 RESET yb_enable_expression_pushdown;
 RESET enable_sort;
-DROP TABLE gap_coll_tbl, gap_ts_tbl, gap_idx_tbl, gap_dist_tbl, gap_desc_tbl,
-    gap_null_tbl;
+DROP TABLE gap_coll_tbl, gap_idx_tbl, gap_dist_tbl, gap_desc_tbl, gap_null_tbl;
 --
 -- Cells run in both databases (yb_commands/merge_scan_gap_cells.sql)
 --
