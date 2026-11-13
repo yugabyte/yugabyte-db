@@ -472,6 +472,9 @@ public class CustomerTask extends Model {
     @EnumValue("UnregisterFromPACollector")
     UnregisterFromPACollector,
 
+    @EnumValue("Validate")
+    Validate,
+
     @JsonEnumDefaultValue
     Unknown;
 
@@ -508,6 +511,8 @@ public class CustomerTask extends Model {
           return completed ? "Updated" : "Updating";
         case Delete:
           return completed ? "Deleted" : "Deleting";
+        case Validate:
+          return completed ? "Validated" : "Validating";
         case Edit:
           return completed ? "Edited" : "Editing";
         case Sync:

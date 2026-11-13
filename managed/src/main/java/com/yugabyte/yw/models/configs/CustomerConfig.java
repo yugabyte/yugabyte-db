@@ -110,7 +110,13 @@ public class CustomerConfig extends Model {
     Active,
 
     @EnumValue("QueuedForDeletion")
-    QueuedForDeletion
+    QueuedForDeletion,
+
+    // Created through the v2 API and waiting for its storage check (the ValidateStorageConfig
+    // task), which makes it Active or deletes it. Like a config queued for deletion, it can't be
+    // used for backups.
+    @EnumValue("Validating")
+    Validating
   }
 
   @Id
@@ -156,7 +162,8 @@ public class CustomerConfig extends Model {
   private ObjectNode data;
 
   @ApiModelProperty(
-      value = "state of the customerConfig. Possible values are Active, QueuedForDeletion.",
+      value =
+          "state of the customerConfig. Possible values are Active, QueuedForDeletion, Validating.",
       accessMode = READ_ONLY)
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
@@ -350,6 +357,16 @@ public class CustomerConfig extends Model {
             .eq("state", ConfigState.QueuedForDeletion)
             .findList();
     return configList;
+  }
+
+  /** Returns the storage configs of all customers in the given state. */
+  public static List<CustomerConfig> getAllStorageConfigsInState(ConfigState state) {
+    return CustomerConfig.find
+        .query()
+        .where()
+        .eq("type", ConfigType.STORAGE)
+        .eq("state", state)
+        .findList();
   }
 
   public static CustomerConfig createCallHomeConfig(UUID customerUUID) {

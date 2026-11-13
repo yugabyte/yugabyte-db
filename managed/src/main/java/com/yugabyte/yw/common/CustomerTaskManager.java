@@ -86,6 +86,7 @@ import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.YBAError;
@@ -459,6 +460,28 @@ public class CustomerTaskManager {
       }
     } catch (Exception e) {
       log.error("Encountered error failing pending tasks", e);
+    }
+    deleteValidatingStorageConfigs();
+  }
+
+  /**
+   * Deletes the storage configs still waiting for their storage check: the ValidateStorageConfig
+   * task that would make them Active or delete them can't be running at startup.
+   */
+  @VisibleForTesting
+  void deleteValidatingStorageConfigs() {
+    try {
+      for (CustomerConfig config :
+          CustomerConfig.getAllStorageConfigsInState(CustomerConfig.ConfigState.Validating)) {
+        log.info(
+            "Deleting storage config {} ({}) of customer {}, whose storage check was interrupted",
+            config.getConfigUUID(),
+            config.getConfigName(),
+            config.getCustomerUUID());
+        config.delete();
+      }
+    } catch (Exception e) {
+      log.error("Encountered error deleting storage configs being validated", e);
     }
   }
 

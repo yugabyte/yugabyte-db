@@ -237,7 +237,6 @@
 | "Skip PA Collector memory validation" | "yb.pa.skip_memory_validation" | "GLOBAL" | "Skip memory availability validation when enabling Performance Advisor Collection" | "Boolean" |
 | "Enable new universe experience for all users" | "yb.ui.enable_new_universe_experience_for_all_users" | "GLOBAL" | "Enable new universe experience for all users" | "Boolean" |
 | "Node Agent Max Describe Output Buffer Lines" | "yb.node_agent.max_describe_output_buffer_lines" | "GLOBAL" | "Maximum number of lines to buffer in memory for node agent describe output" | "Integer" |
-| "Storage config validation timeout" | "yb.storage_config.validation_timeout" | "GLOBAL" | "How long the v2 storage config API waits for the storage validators to reach the backup storage before it answers that validation timed out." | "Duration" |
 | "Task Executor Shutdown Max Wait Time" | "yb.task_executor.shutdown_max_wait_time" | "GLOBAL" | "Maximum time to wait for task executor to shutdown gracefully before forcefully terminating it" | "Duration" |
 | "Node Agent Health Checker Disabled" | "yb.node_agent.health_checker.disabled" | "GLOBAL" | "Node agent checker offloaded to run asynchronously on its own schedule" | "Boolean" |
 | "HTTP conditional GET (ETag / 304)" | "yb.api.conditional_get.enabled" | "GLOBAL" | "When enabled, eligible single-resource GET endpoints may return 304 Not Modified when the client sends a matching If-None-Match ETag, skipping heavy response construction. When disabled, those endpoints always return a full 200 body." | "Boolean" |
