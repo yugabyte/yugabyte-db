@@ -271,8 +271,18 @@
     imageUrl = "/icons/api.svg"
 
 [[main]]
-  name = "Tech Advisories"
+  name = "CDC connector"
   weight = 6
+  identifier = "cdc-connector-releases"
+  parent = "releases"
+  url = "/stable/releases/cdc-connector/"
+  [main.params]
+    excludeVersion = true
+    imageUrl = "/icons/connect.svg"
+
+[[main]]
+  name = "Tech Advisories"
+  weight = 7
   identifier = "tech-advisories-menu"
   parent = "releases"
   url = "/stable/releases/techadvisories/"
@@ -945,6 +955,14 @@
   weight = 6
   identifier = "yb-clients"
   url = "/stable/releases/yugabyte-clients/"
+  [stable_releases.params]
+    showSection = true
+
+[[stable_releases]]
+  name = "CDC connector"
+  weight = 7
+  identifier = "cdc-connector"
+  url = "/stable/releases/cdc-connector/"
   [stable_releases.params]
     classes = "separator"
     showSection = true
