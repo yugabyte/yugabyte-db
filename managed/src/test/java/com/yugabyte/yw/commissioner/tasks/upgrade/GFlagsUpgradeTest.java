@@ -9,8 +9,10 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -22,6 +24,9 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -34,6 +39,7 @@ import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
+import com.yugabyte.yw.commissioner.tasks.subtasks.SetFlagInMemory;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeManager.NodeCommandType;
@@ -41,6 +47,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
@@ -78,6 +85,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import org.slf4j.LoggerFactory;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
@@ -1078,6 +1086,38 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
   }
 
   @Test
+  public void testGFlagsUpgradeNonRestartLogsNoGFlagValues() {
+    String ycqlSecret = "dummy-ycql-bind-secret";
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(
+            ImmutableMap.of("master-flag", "m1111"),
+            ImmutableMap.of("ycql_ldap_bind_passwd", ycqlSecret));
+    taskParams.upgradeOption = UpgradeOption.NON_RESTART_UPGRADE;
+
+    Logger setFlagLogger = (Logger) LoggerFactory.getLogger(SetFlagInMemory.class);
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    setFlagLogger.addAppender(appender);
+    TaskInfo taskInfo;
+    try {
+      taskInfo = submitTask(taskParams);
+    } finally {
+      setFlagLogger.detachAppender(appender);
+    }
+
+    assertEquals(Success, taskInfo.getTaskState());
+    List<String> setFlagLogs =
+        appender.list.stream()
+            .map(ILoggingEvent::getFormattedMessage)
+            .filter(m -> m.contains("via non-restart rpc"))
+            .toList();
+    assertTrue(setFlagLogs.stream().anyMatch(m -> m.contains("ycql_ldap_bind_passwd")));
+    setFlagLogs.forEach(m -> assertFalse(m, m.contains(ycqlSecret)));
+  }
+
+  @Test
   public void testGFlagsUpgradeNonRestartKeepsNewInstallYsqlPgConfCsv() throws Exception {
     Map<String, String> userTserverGFlags =
         ImmutableMap.of(GFlagsUtil.YSQL_PG_CONF_CSV, "log_statement=DDL");
@@ -1183,6 +1223,62 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t2");
     taskInfo = submitTask(taskParams, -1);
     assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testGFlagsUpgradeRetryAppliesSensitiveGFlags() throws InterruptedException {
+    factory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey(), "true");
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> u.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQLAuth = true);
+    ShellResponse dummyShellResponse = new ShellResponse();
+    doAnswer(
+            inv -> {
+              AnsibleClusterServerCtl.Params params =
+                  (AnsibleClusterServerCtl.Params) inv.getArgument(1);
+              if (params.process.equalsIgnoreCase("tserver")
+                  && params.command.equalsIgnoreCase("stop")) {
+                throw new RuntimeException("Stop failed");
+              }
+              return dummyShellResponse;
+            })
+        .when(mockNodeManager)
+        .nodeCommand(eq(NodeCommandType.Control), any());
+    String hba =
+        "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com ldapbindpasswd=hba-secret";
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of("master-flag", "m1");
+    taskParams.tserverGFlags =
+        ImmutableMap.of(
+            "ycql_ldap_bind_passwd", "ycql-ldap-secret", GFlagsUtil.YSQL_HBA_CONF_CSV, hba);
+    TaskInfo taskInfo = submitTask(taskParams, -1);
+    assertEquals(Failure, taskInfo.getTaskState());
+
+    when(mockNodeManager.nodeCommand(eq(NodeCommandType.Control), any()))
+        .thenReturn(dummyShellResponse);
+    // submitTask goes straight to the commissioner, so there is no CustomerTask for the retry yet.
+    CustomerTask.create(
+        defaultCustomer,
+        defaultUniverse.getUniverseUUID(),
+        taskInfo.getUuid(),
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.GFlagsUpgrade,
+        defaultUniverse.getName());
+    CustomerTask retry =
+        customerTaskManager.retryCustomerTask(defaultCustomer.getUuid(), taskInfo.getUuid());
+    assertEquals(Success, waitForTask(retry.getTaskUUID()).getTaskState());
+
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    Map<String, String> tserverGFlags =
+        GFlagsUtil.getGFlagsForNode(
+            null,
+            TSERVER,
+            universe.getUniverseDetails().getPrimaryCluster(),
+            universe.getUniverseDetails().clusters);
+    assertEquals("ycql-ldap-secret", tserverGFlags.get("ycql_ldap_bind_passwd"));
+    assertEquals(hba, tserverGFlags.get(GFlagsUtil.YSQL_HBA_CONF_CSV));
   }
 
   @Test
