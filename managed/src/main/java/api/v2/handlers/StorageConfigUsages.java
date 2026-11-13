@@ -4,7 +4,6 @@ package api.v2.handlers;
 
 import api.v2.models.StorageConfigUsage;
 import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
@@ -12,7 +11,6 @@ import com.yugabyte.yw.models.XClusterConfig;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -83,21 +81,13 @@ final class StorageConfigUsages {
     if (configUuids.isEmpty()) {
       return usages;
     }
-    List<Backup> backups =
-        Backup.find
-            .query()
-            .setDistinct(true)
-            .select("storageConfigUUID, universeUUID")
-            .where()
-            .in("storageConfigUUID", configUuids)
-            .eq("customerUUID", customerUUID)
-            .in("state", BackupState.InProgress, BackupState.Completed)
-            .findList();
-    for (Backup backup : backups) {
-      Usage usage = usages.computeIfAbsent(backup.getStorageConfigUUID(), k -> new Usage());
-      usage.inUse = true;
-      usage.universes.add(backup.getUniverseUUID());
-    }
+    Backup.getInProgressAndCompletedUniversesByStorageConfig(customerUUID, configUuids)
+        .forEach(
+            (configUuid, universeUuids) -> {
+              Usage usage = usages.computeIfAbsent(configUuid, k -> new Usage());
+              usage.inUse = true;
+              usage.universes.addAll(universeUuids);
+            });
     for (Schedule schedule : Schedule.findBackupSchedulesUsingStorageConfig(customerUUID)) {
       UUID configUuid = uuidOrNull(schedule.getTaskParams().path("storageConfigUUID").asText());
       if (configUuid == null || !configUuids.contains(configUuid)) {
@@ -115,9 +105,8 @@ final class StorageConfigUsages {
       Usage usage = usages.computeIfAbsent(drConfig.getStorageConfigUuid(), k -> new Usage());
       usage.inUse = true;
       usage.drConfigs.add(drConfig.getUuid());
-      XClusterConfig xClusterConfig =
-          drConfig.hasActiveXClusterConfig() ? drConfig.getActiveXClusterConfig() : null;
-      if (xClusterConfig != null) {
+      // The active xCluster config and the failover one, if any, link the same two universes.
+      for (XClusterConfig xClusterConfig : drConfig.getXClusterConfigs()) {
         if (xClusterConfig.getSourceUniverseUUID() != null) {
           usage.universes.add(xClusterConfig.getSourceUniverseUUID());
         }

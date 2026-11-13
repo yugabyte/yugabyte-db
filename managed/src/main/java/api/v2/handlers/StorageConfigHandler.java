@@ -186,7 +186,8 @@ public class StorageConfigHandler {
                 .collect(Collectors.toList()));
       }
       if (filter.getInUse() != null) {
-        // Configs are few per customer; what uses them is looked up by the indexed column.
+        // Configs are few per customer, so the in_use filter runs on the candidates the other
+        // filters leave (see StorageConfigUsages for how each kind of use is looked up).
         List<UUID> candidates =
             where.query().copy().select("configUUID").findIds().stream()
                 .map(UUID.class::cast)

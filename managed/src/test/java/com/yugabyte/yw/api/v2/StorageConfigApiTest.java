@@ -67,6 +67,7 @@ import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
@@ -583,6 +584,20 @@ public class StorageConfigApiTest extends FakeDBApplication {
     assertEquals(
         usage.get(backedUp),
         storageConfigApi.getStorageConfig(customer.getUuid(), backedUp).getInfo().getUsage());
+
+    // A DR config whose only xCluster config is the failover one still lists its universes.
+    for (XClusterConfig xClusterConfig : drConfig.getXClusterConfigs()) {
+      xClusterConfig.setSecondary(true);
+      xClusterConfig.update();
+    }
+    assertEquals(
+        Set.of(source.getUniverseUUID(), target.getUniverseUUID()),
+        Set.copyOf(
+            storageConfigApi
+                .getStorageConfig(customer.getUuid(), dr)
+                .getInfo()
+                .getUsage()
+                .getUniverseUuids()));
 
     assertEquals(
         List.of("s3-dr"),
