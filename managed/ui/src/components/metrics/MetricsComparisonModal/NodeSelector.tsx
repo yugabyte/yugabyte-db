@@ -1,4 +1,4 @@
-import { FC } from 'react';
+import { FC, Fragment } from 'react';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import { MetricConsts, NodeType } from '../../metrics/constants';
 import { isNonEmptyObject, isNonEmptyString } from '../../../utils/ObjectUtils';
@@ -18,6 +18,93 @@ interface NodeSelectorProps {
   selectedProvider?: any | null;
 }
 
+export interface NodeOption {
+  key: string;
+  kind: 'zone' | 'node';
+  zone: string;
+  nodeName?: string;
+  nodeType?: string;
+  privateIp?: string;
+}
+
+interface UniverseNodeOptionsParams {
+  selectedUniverse: any;
+  selectedRegionClusterUUID: string | null;
+  selectedRegionCode: string | null;
+  currentSelectedNodeType?: string;
+}
+
+export const getUniverseNodeOptions = ({
+  selectedUniverse,
+  selectedRegionClusterUUID,
+  selectedRegionCode,
+  currentSelectedNodeType
+}: UniverseNodeOptionsParams): { nodeItems: any[]; options: NodeOption[] } => {
+  let nodeItems: any[] = [];
+  let hasSelectedReadReplica = false;
+  if (
+    isNonEmptyObject(selectedUniverse) &&
+    selectedUniverse !== MetricConsts.ALL &&
+    selectedUniverse.universeDetails.nodeDetailsSet
+  ) {
+    nodeItems = [...selectedUniverse.universeDetails.nodeDetailsSet].sort((a: any, b: any) => {
+      if (a.cloudInfo.az === null) {
+        return -1;
+      } else if (b.cloudInfo.az === null) {
+        return 1;
+      } else {
+        return a.cloudInfo.az.toLowerCase() < b.cloudInfo.az.toLowerCase() ? -1 : 1;
+      }
+    });
+  }
+
+  // Show nodes based on the region selected (we filter this by cluster id)
+  if (selectedRegionClusterUUID) {
+    const readReplicaCluster = getReadOnlyCluster(selectedUniverse.universeDetails.clusters);
+    const readReplicaClusterUUID = readReplicaCluster?.uuid;
+    hasSelectedReadReplica = selectedRegionClusterUUID === readReplicaClusterUUID;
+
+    nodeItems = nodeItems.filter((nodeItem: any) =>
+      selectedRegionCode
+        ? selectedRegionClusterUUID === nodeItem.placementUuid &&
+          nodeItem.cloudInfo?.region === selectedRegionCode
+        : selectedRegionClusterUUID === nodeItem.placementUuid
+    );
+  }
+
+  // Show nodes based on node type in case of Primary cluster
+  if (currentSelectedNodeType !== NodeType.ALL && !hasSelectedReadReplica) {
+    nodeItems = nodeItems.filter((nodeItem: any) =>
+      currentSelectedNodeType === NodeType.MASTER
+        ? nodeItem.dedicatedTo === NodeType.MASTER.toUpperCase()
+        : nodeItem.dedicatedTo === NodeType.TSERVER.toUpperCase() || nodeItem.isTserver
+    );
+  }
+
+  const options: NodeOption[] = [];
+  let zone = '';
+  nodeItems.forEach((nodeItem: any, nodeIdx: number) => {
+    // Logic to decide when AZ and divider needs to be shown
+    if (zone !== nodeItem.cloudInfo.az) {
+      options.push({
+        key: `${nodeItem.cloudInfo.az}-zone-${nodeIdx}`,
+        kind: 'zone',
+        zone: nodeItem.cloudInfo.az
+      });
+      zone = nodeItem.cloudInfo.az;
+    }
+    options.push({
+      key: `${nodeItem.nodeName}-node-${nodeIdx}`,
+      kind: 'node',
+      zone: nodeItem.cloudInfo.az,
+      nodeName: nodeItem.nodeName,
+      nodeType: nodeItem.dedicatedTo?.toLowerCase() ?? NodeType.TSERVER.toLowerCase(),
+      privateIp: nodeItem.cloudInfo.private_ip
+    });
+  });
+  return { nodeItems, options };
+};
+
 export const NodeSelector: FC<NodeSelectorProps> = ({
   selectedUniverse,
   nodeItemChanged,
@@ -33,113 +120,60 @@ export const NodeSelector: FC<NodeSelectorProps> = ({
 }) => {
   let nodeItems: any[] = [];
   let nodeItemsElement: any = [];
-  let zone = '';
   let renderItem = null;
   let nodeData = null;
-  let hasSelectedReadReplica = false;
 
   const isDisabled = filterRegionsByUniverse
     ? selectedUniverse === MetricConsts.ALL
     : selectedProvider === MetricConsts.ALL;
 
   if (filterRegionsByUniverse) {
-    if (
-      isNonEmptyObject(selectedUniverse) &&
-      selectedUniverse !== MetricConsts.ALL &&
-      selectedUniverse.universeDetails.nodeDetailsSet
-    ) {
-      nodeItems = selectedUniverse.universeDetails.nodeDetailsSet.sort((a: any, b: any) => {
-        if (a.cloudInfo.az === null) {
-          return -1;
-        } else if (b.cloudInfo.az === null) {
-          return 1;
-        } else {
-          return a.cloudInfo.az.toLowerCase() < b.cloudInfo.az.toLowerCase() ? -1 : 1;
-        }
-      });
-    }
-
-    // Show nodes based on the region selected (we filter this by cluster id)
-    if (selectedRegionClusterUUID) {
-      const readReplicaCluster = getReadOnlyCluster(selectedUniverse.universeDetails.clusters);
-      const readReplicaClusterUUID = readReplicaCluster?.uuid;
-      hasSelectedReadReplica = selectedRegionClusterUUID === readReplicaClusterUUID;
-
-      nodeItems = nodeItems.filter((nodeItem: any) =>
-        selectedRegionCode
-          ? selectedRegionClusterUUID === nodeItem.placementUuid &&
-            nodeItem.cloudInfo?.region === selectedRegionCode
-          : selectedRegionClusterUUID === nodeItem.placementUuid
-      );
-    }
-
-    // Show nodes based on node type in case of Primary cluster
-    if (currentSelectedNodeType !== NodeType.ALL && !hasSelectedReadReplica) {
-      nodeItems = nodeItems.filter((nodeItem: any) =>
-        currentSelectedNodeType === NodeType.MASTER
-          ? nodeItem.dedicatedTo === NodeType.MASTER.toUpperCase()
-          : nodeItem.dedicatedTo === NodeType.TSERVER.toUpperCase() || nodeItem.isTserver
-      );
-    }
-
-    // eslint-disable-next-line react/display-name
-    nodeItemsElement = nodeItems?.map((nodeItem: any, nodeIdx: number) => {
-      let zoneNameElement = null;
-      let zoneDividerElement = null;
-      const nodeKey = `${nodeItem.nodeName}-node-${nodeIdx}`;
-      const zoneKey = `${nodeItem.cloudInfo.az}-zone-${nodeIdx}`;
-      // Logic to decide when AZ and divider needs to be shown
-      if (zone !== nodeItem.cloudInfo.az) {
-        zoneDividerElement = <div id="zone-divider" className="divider" />;
-        zoneNameElement = (
-          <MenuItem
-            onSelect={() => nodeItemChanged(MetricConsts.ALL, nodeItem.cloudInfo.az, nodeItems)}
-            key={zoneKey}
-            // Added this line due to the issue that dropdown does not close
-            // when a menu item is selected
-            onClick={() => {
-              document.body.click();
-            }}
-            eventKey={nodeItem.cloudInfo.az}
-            active={selectedZoneName === nodeItem.cloudInfo.az}
-          >
-            <span className="cluster-az-name">{nodeItem.cloudInfo.az}</span>
-          </MenuItem>
-        );
-        zone = nodeItem.cloudInfo.az;
-      }
-
-      return (
-        // eslint-disable-next-line react/jsx-key
-        <>
-          {zoneDividerElement}
-          {zoneNameElement}
-          <MenuItem
-            onSelect={() => nodeItemChanged(nodeItem.nodeName, null, nodeItems)}
-            key={nodeKey}
-            // Added this line due to the issue that dropdown does not close
-            // when a menu item is selected
-            onClick={() => {
-              document.body.click();
-            }}
-            eventKey={nodeIdx}
-            active={selectedNode === nodeItem.nodeName}
-          >
-            <span className={'node-name'}>
-              {nodeItem.nodeName}
-              &nbsp;
-            </span>
-            {isDedicatedNodes ? (
-              <span className={'node-type-label'}>
-                {nodeItem.dedicatedTo?.toLowerCase() ?? NodeType.TSERVER.toLowerCase()}
-              </span>
-            ) : null}
-            &nbsp;&nbsp;
-            <span className={'node-ip-address'}>{nodeItem.cloudInfo.private_ip}</span>
-          </MenuItem>
-        </>
-      );
+    const universeNodeOptions = getUniverseNodeOptions({
+      selectedUniverse,
+      selectedRegionClusterUUID,
+      selectedRegionCode,
+      currentSelectedNodeType
     });
+    nodeItems = universeNodeOptions.nodeItems;
+    nodeItemsElement = universeNodeOptions.options.map((option) =>
+      option.kind === 'zone' ? (
+        <Fragment key={option.key}>
+          <div id="zone-divider" className="divider" />
+          <MenuItem
+            onSelect={() => nodeItemChanged(MetricConsts.ALL, option.zone, nodeItems)}
+            // Added this line due to the issue that dropdown does not close
+            // when a menu item is selected
+            onClick={() => {
+              document.body.click();
+            }}
+            eventKey={option.zone}
+            active={selectedZoneName === option.zone}
+          >
+            <span className="cluster-az-name">{option.zone}</span>
+          </MenuItem>
+        </Fragment>
+      ) : (
+        <MenuItem
+          key={option.key}
+          onSelect={() => nodeItemChanged(option.nodeName!, null, nodeItems)}
+          // Added this line due to the issue that dropdown does not close
+          // when a menu item is selected
+          onClick={() => {
+            document.body.click();
+          }}
+          eventKey={option.key}
+          active={selectedNode === option.nodeName}
+        >
+          <span className={'node-name'}>
+            {option.nodeName}
+            &nbsp;
+          </span>
+          {isDedicatedNodes ? <span className={'node-type-label'}>{option.nodeType}</span> : null}
+          &nbsp;&nbsp;
+          <span className={'node-ip-address'}>{option.privateIp}</span>
+        </MenuItem>
+      )
+    );
   } else {
     // eslint-disable-next-line no-lonely-if
     if (isNonEmptyObject(selectedProvider) && selectedProvider !== MetricConsts.ALL) {

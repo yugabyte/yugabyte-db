@@ -262,7 +262,10 @@ export const DEFAULT_TIMEZONE = { value: 'Default', label: `${getBrowserTimezone
 
 export const I18N_DURATION_KEY_PREFIX = 'common.duration';
 export const I18N_ACCESSABILITY_ALT_TEXT_KEY_PREFIX = 'iconAltText';
+
+// Legacy universe tab path; redirected to MONITORING_PATH.
 export const PERF_ADVISOR_PATH = 'perfAdvisor';
+export const MONITORING_PATH = 'monitoring';
 
 export const PerfAdvisorModalIntention = {
   ENABLE_OR_DISABLE_PA_COLLECTOR: 'enableOrDisablePACollector',

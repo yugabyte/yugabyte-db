@@ -74,7 +74,8 @@ import { UniverseState, getUniverseStatus, SoftwareUpgradeState } from '../helpe
 import { TaskDetailBanner } from '../../../redesign/features/tasks/components/TaskDetailBanner';
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
-import { RegisterYBAToPerfAdvisor } from '../AttachUniverseToPerfAdvisor/RegisterYBAToPerfAdvisor';
+import { MonitoringTab } from '../Monitoring/MonitoringTab';
+import { getLegacyMonitoringRedirect, isMonitoringPath } from '../Monitoring/monitoringUrlHelpers';
 import {
   VM_PATCHING_RUNTIME_CONFIG,
   isImgBundleSupportedByProvider
@@ -87,11 +88,9 @@ import { YBMenuItemLabel } from '../../../redesign/components/YBDropdownMenu/YBM
 import {
   EDIT_ROLLBACK_TASK_TYPES,
   PerfAdvisorModalIntention,
-  PERF_ADVISOR_PATH,
   RuntimeConfigKey,
   UNIVERSE_TASKS
 } from '../../../redesign/helpers/constants';
-import { AppName } from '@app/redesign/helpers/dtos';
 import { isActionFrozen } from '../../../redesign/helpers/utils';
 import { isK8OperatorApiBlocked } from '../../../redesign/helpers/k8OperatorResourceUtils';
 import {
@@ -179,7 +178,7 @@ const isEmbeddedPerfAdvisorUiEnabled = (runtimeConfigs) =>
   runtimeConfigEnabled(runtimeConfigs, RuntimeConfigKey.ENABLE_NEW_PERF_ADVISOR_UI);
 
 // Basic and advanced both store data locally. Online forwards everything elsewhere, so it has no
-// local data behind the Performance tab.
+// local data behind Monitoring's Perf Advisor views.
 const isPerformanceTabEnabled = (runtimeConfigs, paStatus) =>
   isEmbeddedPerfAdvisorUiEnabled(runtimeConfigs) &&
   !!paStatus?.data?.success &&
@@ -200,6 +199,14 @@ class UniverseDetail extends Component {
       isOnboardingExperienceEnabled: isOnboardingNewExperienceEnabled()
     };
   }
+
+  redirectLegacyMonitoringUrl = () => {
+    const { location, router } = this.props;
+    const target = getLegacyMonitoringRedirect(location?.pathname, location?.query);
+    if (target) {
+      router.replace(target);
+    }
+  };
 
   hasReadReplica = (universeInfo) => {
     const clusters = universeInfo.universeDetails.clusters;
@@ -231,6 +238,7 @@ class UniverseDetail extends Component {
   };
 
   componentDidMount() {
+    this.redirectLegacyMonitoringUrl();
     this.props.fetchPerfAdvisorList();
     this.unsubscribeOnboardingExperience = subscribeOnboardingNewExperienceChange(
       this.handleOnboardingExperienceChange
@@ -282,6 +290,12 @@ class UniverseDetail extends Component {
       customer: { ybaToPaServiceDetails },
       universeTables
     } = this.props;
+    if (
+      prevProps.location?.pathname !== this.props.location?.pathname ||
+      prevProps.location?.search !== this.props.location?.search
+    ) {
+      this.redirectLegacyMonitoringUrl();
+    }
     // Always refresh universe info on Overview tab or when universe uuid in the route changes.
     if (prevProps.params.uuid !== this.props.params.uuid) {
       // Clear stale universe so we never paint the previous universe under a new route.
@@ -346,26 +360,14 @@ class UniverseDetail extends Component {
       this.props.getUniversePaRegistrationStatus(currentUniverse.data.universeUUID);
     }
 
-    // Redirect to Overview when the Performance tab should no longer be shown. Wait until both
-    // requests settle so a loading flag does not bounce a local registration to Overview.
-    const isOnPerfAdvisorTab = this.props.location?.pathname?.includes(PERF_ADVISOR_PATH);
-    const { universePaRegistrationStatus: paStatus } = this.props.universe;
-    const runtimeConfigs = this.props.customer?.runtimeConfigs;
-    const paPromiseState = getPromiseState(paStatus);
-    // Runtime configs arrive after the first universe update. getPromiseState reads `.data`.
-    const runtimeConfigsState = runtimeConfigs ? getPromiseState(runtimeConfigs) : undefined;
-    const shouldShowPerformanceTab =
-      !!runtimeConfigsState?.isSuccess() && isPerformanceTabEnabled(runtimeConfigs, paStatus);
-    const paStatusResolved = paPromiseState.isError() || paPromiseState.isSuccess();
-    const runtimeConfigsResolved =
-      !!runtimeConfigsState?.isError() || !!runtimeConfigsState?.isSuccess();
+    // The Perf Advisor list can arrive after the universe; fetch the status then too.
     if (
-      isOnPerfAdvisorTab &&
-      paStatusResolved &&
-      runtimeConfigsResolved &&
-      !shouldShowPerformanceTab
+      !isNonEmptyArray(prevProps.customer.ybaToPaServiceDetails?.data) &&
+      isNonEmptyArray(ybaToPaServiceDetails?.data) &&
+      getPromiseState(currentUniverse).isSuccess() &&
+      getPromiseState(this.props.universe.universePaRegistrationStatus).isInit()
     ) {
-      this.props.router.push(`/universes/${this.props.params.uuid}/overview`);
+      this.props.getUniversePaRegistrationStatus(currentUniverse.data.universeUUID);
     }
   }
 
@@ -623,6 +625,32 @@ class UniverseDetail extends Component {
 
     const isPATabEnabled = isPerformanceTabEnabled(runtimeConfigs, universePaRegistrationStatus);
 
+    const isFeatureShown = (feature) => !isNonAvailable(currentCustomer.data.features, feature);
+    const showClassicMetrics = isFeatureShown('universes.details.metrics');
+    const showQueries = isFeatureShown('universes.details.queries');
+    const showPerfAdvisor =
+      isFeatureShown('universes.details.performance') &&
+      !!isPATabEnabled &&
+      ybaToPaServiceDetails?.data?.length > 0;
+
+    // Cluster Load and Advanced Metrics read Prometheus, which only advanced mode writes.
+    const showClusterLoad =
+      showPerfAdvisor && universePaRegistrationStatus?.data?.mode === PaRegistrationMode.ADVANCED;
+    const isLoaded = (state) => {
+      const promiseState = state && getPromiseState(state);
+      return !!promiseState && !promiseState.isInit() && !promiseState.isLoading();
+    };
+
+    // Until these load, a Perf Advisor link waits rather than falling back to another view.
+    const isPerfAdvisorPending =
+      !isLoaded(runtimeConfigs) ||
+      (isEmbeddedPAEnabled &&
+        (!isLoaded(ybaToPaServiceDetails) ||
+          (ybaToPaServiceDetails?.data?.length > 0 && !isLoaded(universePaRegistrationStatus))));
+    const isOnMonitoringPath = isMonitoringPath(location?.pathname);
+    const showMonitoringTab =
+      showClassicMetrics || showQueries || showPerfAdvisor || isOnMonitoringPath;
+
     const isAuditLogEnabled =
       runtimeConfigs?.data?.configEntries?.find(
         (config) => config.key === RuntimeConfigKey.ENABLE_AUDIT_LOG
@@ -842,11 +870,12 @@ class UniverseDetail extends Component {
     const defaultTab = isNotHidden(currentCustomer.data.features, 'universes.details.overview')
       ? 'overview'
       : 'overview';
-    // Check if the pathname contains "performance" to determine if we should show the performance tab
-    const isPerfAdvisorPath = location?.pathname?.includes(PERF_ADVISOR_PATH);
+    // Old Metrics, Queries and Performance URLs show Monitoring until they are redirected there.
+    const isMonitoringTabPath =
+      isOnMonitoringPath || !!getLegacyMonitoringRedirect(location?.pathname, location?.query);
     const isSettingsPath = location?.pathname?.includes('/settings');
-    const activeTab = isPerfAdvisorPath
-      ? PERF_ADVISOR_PATH
+    const activeTab = isMonitoringTabPath
+      ? 'monitoring'
       : isSettingsPath || tab === 'settings'
         ? 'settings'
         : tab || defaultTab;
@@ -899,44 +928,6 @@ class UniverseDetail extends Component {
           </Tab.Pane>
         ),
 
-        isNotHidden(currentCustomer.data.features, 'universes.details.metrics') && (
-          <Tab.Pane
-            eventKey={'metrics'}
-            tabtitle="Metrics"
-            key="metrics-tab"
-            mountOnEnter={true}
-            unmountOnExit={true}
-            disabled={isDisabled(currentCustomer.data.features, 'universes.details.metrics')}
-          >
-            <div className="universe-detail-content-container">
-              <CustomerMetricsPanel
-                customer={customer}
-                origin={'universe'}
-                width={width}
-                nodePrefixes={nodePrefixes}
-                isKubernetesUniverse={isKubernetesUniverse}
-                visibleModal={visibleModal}
-                featureFlags={featureFlags}
-                graph={graph}
-                provider={provider}
-              />
-            </div>
-          </Tab.Pane>
-        ),
-
-        isNotHidden(currentCustomer.data.features, 'universes.details.queries') && (
-          <Tab.Pane
-            eventKey={'queries'}
-            tabtitle="Queries"
-            key="queries-tab"
-            mountOnEnter={true}
-            unmountOnExit={true}
-            onExit={this.stripQueryParams}
-            disabled={isDisabled(currentCustomer.data.features, 'universes.details.queries')}
-          >
-            <QueriesViewer isLegacyPAEnabled={isLegacyPAEnabled} />
-          </Tab.Pane>
-        ),
         isNotHidden(currentCustomer.data.features, 'universes.details.recovery') && isDrEnabled && (
           <Tab.Pane
             eventKey={'recovery'}
@@ -983,37 +974,55 @@ class UniverseDetail extends Component {
             />
           </Tab.Pane>
         ),
-        isNotHidden(currentCustomer.data.features, 'universes.details.performance') &&
-          isPATabEnabled &&
-          ybaToPaServiceDetails?.data?.length > 0 && (
-            <Tab.Pane
-              eventKey={'perfAdvisor'}
-              tabtitle={
-                <>
-                  {'Performance'}
-                  <YBTag
-                    variant="light"
-                    size="small"
-                    color="gradient"
-                    customSx={{ marginLeft: '8px' }}
-                  >
-                    {'Beta'}
-                  </YBTag>
-                </>
+        showMonitoringTab && (
+          <Tab.Pane
+            eventKey={'monitoring'}
+            tabtitle={
+              <>
+                {'Monitoring'}
+                <YBTag
+                  variant="light"
+                  size="small"
+                  color="gradient"
+                  customSx={{ marginLeft: '8px' }}
+                >
+                  {'New'}
+                </YBTag>
+              </>
+            }
+            key="monitoring-tab"
+            mountOnEnter={true}
+            unmountOnExit={true}
+            onExit={this.stripQueryParams}
+          >
+            <MonitoringTab
+              universeUuid={currentUniverse.data.universeUUID}
+              timezone={currentUser.data.timezone}
+              showClassicMetrics={showClassicMetrics}
+              showQueries={showQueries}
+              showClusterLoad={showClusterLoad}
+              showDatabases={showPerfAdvisor}
+              registrationMode={universePaRegistrationStatus?.data?.mode}
+              isPerfAdvisorPending={isPerfAdvisorPending}
+              classicMetrics={
+                <div className="universe-detail-content-container">
+                  <CustomerMetricsPanel
+                    customer={customer}
+                    origin={'universe'}
+                    width={width}
+                    nodePrefixes={nodePrefixes}
+                    isKubernetesUniverse={isKubernetesUniverse}
+                    visibleModal={visibleModal}
+                    featureFlags={featureFlags}
+                    graph={graph}
+                    provider={provider}
+                  />
+                </div>
               }
-              key="performance-tab"
-              mountOnEnter={true}
-              unmountOnExit={true}
-              disabled={isDisabled(currentCustomer.data.features, 'universes.details.performance')}
-            >
-              <RegisterYBAToPerfAdvisor
-                universeUuid={currentUniverse.data.universeUUID}
-                timezone={currentUser.data.timezone}
-                appName={AppName.YBA}
-                registrationMode={universePaRegistrationStatus?.data?.mode}
-              />
-            </Tab.Pane>
-          )
+              queries={<QueriesViewer isLegacyPAEnabled={isLegacyPAEnabled} />}
+            />
+          </Tab.Pane>
+        )
       ],
       //tabs relevant for non-imported universes only
       ...(isReadOnlyUniverse
@@ -2418,7 +2427,7 @@ class UniverseDetail extends Component {
             id={'universe-tab-panel'}
             className={`universe-detail${
               activeTab === 'settings' ? ' universe-detail-settings' : ''
-            }`}
+            }${activeTab === 'monitoring' ? ' universe-detail-monitoring' : ''}`}
           >
             {[...tabElements, <div title={actionMenuButtons} />]}
           </YBTabsWithLinksPanel>

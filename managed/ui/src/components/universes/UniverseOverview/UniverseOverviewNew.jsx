@@ -47,6 +47,7 @@ import {
   getUniverseStatus,
   UniverseState
 } from '../helpers/universeHelpers';
+import { MonitoringItem, getMonitoringItemPath } from '../Monitoring/monitoringUrlHelpers';
 
 class DatabasePanel extends PureComponent {
   static propTypes = {
@@ -602,7 +603,12 @@ export default class UniverseOverviewNew extends Component {
               noMargin
               headerRight={
                 isNonEmptyObject(universeInfo) ? (
-                  <Link to={`/universes/${universeInfo.universeUUID}/metrics?tab=${subTab}`}>
+                  <Link
+                    to={`${getMonitoringItemPath(
+                      universeInfo.universeUUID,
+                      MonitoringItem.METRICS
+                    )}?tab=${subTab}`}
+                  >
                     Details
                   </Link>
                 ) : null
@@ -654,7 +660,12 @@ export default class UniverseOverviewNew extends Component {
                 noMargin
                 headerLeft={'CPU Usage'}
                 headerRight={
-                  <Link to={`/universes/${universeInfo.universeUUID}/metrics?tab=${subTab}`}>
+                  <Link
+                    to={`${getMonitoringItemPath(
+                      universeInfo.universeUUID,
+                      MonitoringItem.METRICS
+                    )}?tab=${subTab}`}
+                  >
                     Details
                   </Link>
                 }

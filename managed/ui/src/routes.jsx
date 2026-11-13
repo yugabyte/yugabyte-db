@@ -289,6 +289,8 @@ export default (store) => {
           <Route path="/universes/:uuid/tables/:tableUUID" component={TableDetail} />
           <Route path="/universes/:uuid/replication/:replicationUUID" component={Replication} />
           <Route path="/universes/:uuid/recovery/:drConfigUuid" component={DrPanel} />
+          <Route path="/universes/:uuid/monitoring/**" component={UniverseDetail} />
+          {/* Legacy Performance tab URLs; UniverseDetail redirects them. */}
           <Route path="/universes/:uuid/perfAdvisor/**" component={UniverseDetail} />
           <Route path="/universes/:uuid/settings/:settingsTab" component={UniverseDetail} />
           <Route path="/universes/:uuid/:mode/:type" component={UniverseNewView} />

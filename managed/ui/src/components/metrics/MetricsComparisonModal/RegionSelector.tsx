@@ -13,6 +13,75 @@ interface RegionSelectorProps {
   selectedProvider?: any | null;
 }
 
+export interface RegionOption {
+  key: string;
+  label: string;
+  regionCode: string | null;
+  clusterUUID: string;
+  isCluster: boolean;
+  startsGroup: boolean;
+}
+
+export const getUniverseRegionOptions = (
+  selectedUniverse: any,
+  selectedProvider?: any
+): { options: RegionOption[]; isDisabled: boolean } => {
+  if (
+    !isNonEmptyObject(selectedUniverse) ||
+    selectedUniverse === MetricConsts.ALL ||
+    !selectedUniverse.universeDetails.nodeDetailsSet
+  ) {
+    return { options: [], isDisabled: selectedUniverse === MetricConsts.ALL };
+  }
+  const universeClusters = selectedUniverse.universeDetails.clusters;
+  const universeClustersLength = universeClusters?.length;
+
+  // We do not need to display dropdown when there is only one cluster with one region
+  if (universeClustersLength === 1 && universeClusters[0].regions.length === 1) {
+    return { options: [], isDisabled: true };
+  }
+
+  const options: RegionOption[] = [];
+  universeClusters?.forEach((cluster: any, clusterIdx: number) => {
+    // Universe in YBA cannot have more than 1 Read Replica cluster
+    const clusterDisplayName =
+      cluster.clusterType === MetricConsts.PRIMARY ? 'Primary Cluster' : `Read Replica Cluster`;
+    // Display cluster name only when there are multiple clusters
+    if (universeClustersLength > 1) {
+      options.push({
+        key: `${cluster.clusterType}-${clusterIdx}`,
+        label: clusterDisplayName,
+        regionCode: null,
+        clusterUUID: cluster.uuid,
+        isCluster: true,
+        startsGroup: clusterIdx > 0
+      });
+    }
+    cluster.placementInfo?.cloudList?.[0]?.regionList?.forEach((region: any, regionIdx: number) => {
+      let regionName = region?.name;
+      if (!regionName) {
+        regionName =
+          selectedProvider?.regions?.find((r: Region) => r.uuid === region.uuid)?.name ??
+          region.code;
+      }
+      const matches = regionName?.match(/\((.*?)\)/);
+      // Return display name based on region name and code
+      const regionDisplayName = matches
+        ? `${matches?.[1]} (${region.code})`
+        : `${region.name} (${region.code})`;
+      options.push({
+        key: `${clusterIdx}-region-${regionIdx}`,
+        label: regionDisplayName,
+        regionCode: region.code,
+        clusterUUID: cluster.uuid,
+        isCluster: false,
+        startsGroup: false
+      });
+    });
+  });
+  return { options, isDisabled: false };
+};
+
 export const RegionSelector: FC<RegionSelectorProps> = ({
   selectedUniverse,
   onRegionChanged,
@@ -27,88 +96,30 @@ export const RegionSelector: FC<RegionSelectorProps> = ({
     : selectedProvider === MetricConsts.ALL;
 
   if (filterRegionsByUniverse) {
-    if (
-      isNonEmptyObject(selectedUniverse) &&
-      selectedUniverse !== MetricConsts.ALL &&
-      selectedUniverse.universeDetails.nodeDetailsSet
-    ) {
-      const universeClusters = selectedUniverse.universeDetails.clusters;
-      const universeClustersLength = universeClusters?.length;
-
-      // We do not need to display dropdown when there is only one cluster with one region
-      if (universeClustersLength === 1 && universeClusters[0].regions.length === 1) {
-        regionItems = [];
-        isDisabled = true;
-      } else if (universeClustersLength >= 1) {
-        regionItems = universeClusters.map((cluster: any, clusterIdx: number) => {
-          // Universe in YBA cannot have more than 1 Read Replica cluster
-          const clusterDisplayName =
-            cluster.clusterType === MetricConsts.PRIMARY
-              ? 'Primary Cluster'
-              : `Read Replica Cluster`;
-
-          return cluster.placementInfo?.cloudList?.[0]?.regionList?.map(
-            // eslint-disable-next-line react/display-name
-            (region: any, regionIdx: number) => {
-              const key = `${clusterIdx}-region-${regionIdx}`;
-              let regionName = region?.name;
-              if (!regionName) {
-                regionName =
-                  selectedProvider?.regions?.find((r: Region) => r.uuid === region.uuid)?.name ??
-                  region.code;
-              }
-              const matches = regionName?.match(/\((.*?)\)/);
-              // Return display name based on region name and code
-              const regionDisplayName = matches
-                ? `${matches?.[1]} (${region.code})`
-                : `${region.name} (${region.code})`;
-
-              return (
-                // eslint-disable-next-line react/jsx-key
-                <Fragment>
-                  {clusterIdx > 0 && regionIdx === 0 && (
-                    <div id="region-divider" className="divider" />
-                  )}
-                  {/* Display cluster name only when there are multiple clusters */}
-                  {universeClustersLength > 1 && regionIdx === 0 ? (
-                    <MenuItem
-                      key={`${cluster.clusterType}-${clusterIdx}`}
-                      onSelect={() => onRegionChanged(clusterDisplayName, null, cluster.uuid)}
-                      onClick={() => {
-                        document.body.click();
-                      }}
-                      eventKey={`${cluster.clusterType}-${regionIdx}`}
-                      active={
-                        cluster.uuid === selectedRegionClusterUUID &&
-                        currentSelectedRegion === clusterDisplayName
-                      }
-                    >
-                      <span className="cluster-az-name">{clusterDisplayName}</span>
-                    </MenuItem>
-                  ) : null}
-                  <MenuItem
-                    onSelect={() => onRegionChanged(regionDisplayName, region.code, cluster.uuid)}
-                    key={key}
-                    // Added this line due to the issue that dropdown does not close
-                    // when a menu item is selected
-                    onClick={() => {
-                      document.body.click();
-                    }}
-                    eventKey={`${region.uuid}-${regionIdx}`}
-                    active={
-                      currentSelectedRegion === regionDisplayName &&
-                      cluster.uuid === selectedRegionClusterUUID
-                    }
-                  >
-                    <span className="region-name">{regionDisplayName}</span>
-                  </MenuItem>
-                </Fragment>
-              );
-            }
-          );
-        });
-      }
-    }
+    const regionOptions = getUniverseRegionOptions(selectedUniverse, selectedProvider);
+    isDisabled = regionOptions.isDisabled;
+    regionItems = regionOptions.options.map((option) => (
+      <Fragment key={option.key}>
+        {option.startsGroup && <div id="region-divider" className="divider" />}
+        <MenuItem
+          onSelect={() => onRegionChanged(option.label, option.regionCode, option.clusterUUID)}
+          // Added this line due to the issue that dropdown does not close
+          // when a menu item is selected
+          onClick={() => {
+            document.body.click();
+          }}
+          eventKey={option.key}
+          active={
+            currentSelectedRegion === option.label &&
+            option.clusterUUID === selectedRegionClusterUUID
+          }
+        >
+          <span className={option.isCluster ? 'cluster-az-name' : 'region-name'}>
+            {option.label}
+          </span>
+        </MenuItem>
+      </Fragment>
+    ));
   } else {
     // eslint-disable-next-line no-lonely-if
     if (isNonEmptyObject(selectedProvider) && selectedProvider !== MetricConsts.ALL) {

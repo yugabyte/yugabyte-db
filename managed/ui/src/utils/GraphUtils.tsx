@@ -1,3 +1,4 @@
+import { ReactNode } from 'react';
 import { MetricMeasure, MetricTypes } from '../components/metrics/constants';
 import { MetricsPanel } from '../components/metrics';
 import { getIsKubernetesUniverse } from './UniverseUtils';
@@ -16,9 +17,11 @@ export const getTabContent = (
   isGranularMetricsEnabled: boolean,
   isMetricsTimezoneEnabled: boolean,
   updateTimestamp: (start: 'object' | number, end: 'object' | number) => void,
-  printMode: boolean
+  printMode: boolean,
+  containerWidth: number | null = null,
+  loader: ReactNode = null
 ) => {
-  let tabData: any = <YBLoading />;
+  let tabData: any = loader ?? <YBLoading />;
   if (graph.error?.data && !graph.loading) {
     return (
       <YBErrorIndicator
@@ -80,7 +83,7 @@ export const getTabContent = (
             metric={metric}
             metricType={type}
             className={'metrics-panel-container'}
-            containerWidth={null}
+            containerWidth={containerWidth}
             prometheusQueryEnabled={prometheusQueryEnabled}
             metricMeasure={metricMeasure}
             operations={uniqueOperations}

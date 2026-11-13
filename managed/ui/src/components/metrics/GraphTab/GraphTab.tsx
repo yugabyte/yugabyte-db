@@ -1,6 +1,6 @@
 // Copyright (c) YugabyteDB, Inc.
 
-import { FC, useEffect, useState } from 'react';
+import { FC, useContext, useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
 import {
@@ -23,6 +23,8 @@ import {
 } from '../../metrics/constants';
 import { getIsKubernetesUniverse } from '../../../utils/UniverseUtils';
 import { SplitType, NodeAggregation } from '../dtos';
+import { MetricsContainerWidthContext } from '../MetricsContainerWidthContext';
+import { MetricsCardLoaderContext } from '../MonitoringMetrics/MetricsCardContext';
 
 interface MetricsData {
   type: string;
@@ -48,6 +50,8 @@ export const GraphTab: FC<MetricsData> = ({
   printMode = false
 }) => {
   let tabContent = null;
+  const containerWidth = useContext(MetricsContainerWidthContext);
+  const cardLoader = useContext(MetricsCardLoaderContext);
   const { currentUser } = useSelector((state: any) => state.customer);
   const graph = useSelector((state: any) => state.graph);
   const {
@@ -204,7 +208,9 @@ export const GraphTab: FC<MetricsData> = ({
     isGranularMetricsEnabled,
     isMetricsTimezoneEnabled,
     updateTimestamp,
-    printMode
+    printMode,
+    containerWidth,
+    cardLoader
   );
 
   return <>{tabContent}</>;

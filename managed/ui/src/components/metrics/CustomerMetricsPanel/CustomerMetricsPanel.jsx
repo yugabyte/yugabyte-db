@@ -21,6 +21,7 @@ import {
 } from '../../metrics/constants';
 import { YBTabsPanel } from '../../panels';
 import { GraphTab } from '../GraphTab/GraphTab';
+import { MonitoringMetricsCard } from '../MonitoringMetrics/MonitoringMetricsCard';
 import { showOrRedirect } from '../../../utils/LayoutUtils';
 import { getIsKubernetesUniverse, getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
@@ -114,6 +115,8 @@ export const PanelBody = ({
       currentSelectedNodeType === NodeType.MASTER ? MetricTypes.MASTER : MetricTypes.TSERVER;
   }
 
+  const useMonitoringCard = origin === MetricOrigin.UNIVERSE && !printMode;
+
   const isDrEnabled =
     runtimeConfigs?.data?.configEntries?.find(
       (config) => config.key === RuntimeConfigKey.DISASTER_RECOVERY_FEATURE_FLAG
@@ -160,26 +163,33 @@ export const PanelBody = ({
               </div>
             );
           } else {
+            const graphTab = (
+              <GraphTab
+                type={type}
+                metricsKey={metricsKey}
+                nodePrefixes={nodePrefixes}
+                selectedUniverse={selectedUniverse}
+                title={metricContent.title}
+                width={width}
+                tableName={tableName}
+                isGranularMetricsEnabled={isGranularMetricsEnabled}
+                isMetricsTimezoneEnabled={isMetricsTimezoneEnabled}
+              />
+            );
             prevTabs.push(
-              <Tab
-                eventKey={type}
-                title={tabTitle}
-                key={`${type}-${metricMeasure}-tab`}
-                mountOnEnter={true}
-                unmountOnExit={true}
-              >
-                <GraphTab
-                  type={type}
-                  metricsKey={metricsKey}
-                  nodePrefixes={nodePrefixes}
-                  selectedUniverse={selectedUniverse}
-                  title={metricContent.title}
-                  width={width}
-                  tableName={tableName}
-                  isGranularMetricsEnabled={isGranularMetricsEnabled}
-                  isMetricsTimezoneEnabled={isMetricsTimezoneEnabled}
-                />
-              </Tab>
+              useMonitoringCard ? (
+                { key: type, title: tabTitle, content: graphTab }
+              ) : (
+                <Tab
+                  eventKey={type}
+                  title={tabTitle}
+                  key={`${type}-${metricMeasure}-tab`}
+                  mountOnEnter={true}
+                  unmountOnExit={true}
+                >
+                  {graphTab}
+                </Tab>
+              )
             );
           }
         }
@@ -187,34 +197,43 @@ export const PanelBody = ({
       return prevTabs;
     }, []);
     if (origin === MetricOrigin.UNIVERSE && isDrEnabled && hasDrConfig) {
+      const drMetricsLink = (
+        <Box marginTop="16px" textAlign="center">
+          <Link to={`/universes/${selectedUniverse.universeUUID}/recovery`}>
+            <span className="dr-metrics-link">See xCluster DR Metrics</span>
+          </Link>
+        </Box>
+      );
       if (printMode) {
-        metricTabs.push(
-          <Box marginTop="16px" textAlign="center">
-            <Link to={`/universes/${selectedUniverse.universeUUID}/recovery`}>
-              <span className="dr-metrics-link">See xCluster DR Metrics</span>
-            </Link>
-          </Box>
-        );
+        metricTabs.push(drMetricsLink);
       } else {
         metricTabs.push(
-          <Tab
-            eventKey={'xClusterDr'}
-            title={'xCluster DR'}
-            key={`xClusterDr-${metricMeasure}-tab`}
-            mountOnEnter={true}
-            unmountOnExit={true}
-          >
-            <Box marginTop="16px" textAlign="center">
-              <Link to={`/universes/${selectedUniverse.universeUUID}/recovery`}>
-                <span className="dr-metrics-link">See xCluster DR Metrics</span>
-              </Link>
-            </Box>
-          </Tab>
+          useMonitoringCard ? (
+            { key: 'xClusterDr', title: 'xCluster DR', content: drMetricsLink }
+          ) : (
+            <Tab
+              eventKey={'xClusterDr'}
+              title={'xCluster DR'}
+              key={`xClusterDr-${metricMeasure}-tab`}
+              mountOnEnter={true}
+              unmountOnExit={true}
+            >
+              {drMetricsLink}
+            </Tab>
+          )
         );
       }
     }
     if (printMode) {
       result = <div id="print-metrics">{metricTabs}</div>;
+    } else if (useMonitoringCard) {
+      result = (
+        <MonitoringMetricsCard
+          tabs={metricTabs}
+          defaultTab={defaultTabToDisplay}
+          contentKey={metricMeasure}
+        />
+      );
     } else {
       result = (
         <YBTabsPanel defaultTab={defaultTabToDisplay} className="overall-metrics-by-origin">
@@ -230,22 +249,40 @@ export const PanelBody = ({
       metricMeasure === MetricMeasure.OUTLIER_TABLES
         ? MetricTypes.OUTLIER_TABLES
         : MetricTypes.OUTLIER_DATABASES;
+    const outlierGraphTab = (
+      <GraphTab
+        type={typeSelected}
+        metricsKey={MetricTypesWithOperations[typeSelected].metrics}
+        nodePrefixes={nodePrefixes}
+        selectedUniverse={selectedUniverse}
+        title={MetricTypesWithOperations[typeSelected].title}
+        width={width}
+        tableName={tableName}
+        isMetricsTimezoneEnabled={isMetricsTimezoneEnabled}
+        isGranularMetricsEnabled={isGranularMetricsEnabled}
+        printMode={printMode}
+      />
+    );
     if (printMode) {
       result = (
         <div id="print-metrics" style={{ marginBottom: '20px' }}>
-          <GraphTab
-            type={typeSelected}
-            metricsKey={MetricTypesWithOperations[typeSelected].metrics}
-            nodePrefixes={nodePrefixes}
-            selectedUniverse={selectedUniverse}
-            title={MetricTypesWithOperations[typeSelected].title}
-            width={width}
-            tableName={tableName}
-            isMetricsTimezoneEnabled={isMetricsTimezoneEnabled}
-            isGranularMetricsEnabled={isGranularMetricsEnabled}
-            printMode={printMode}
-          />
+          {outlierGraphTab}
         </div>
+      );
+    } else if (useMonitoringCard) {
+      result = (
+        <MonitoringMetricsCard
+          tabs={[
+            {
+              key: typeSelected,
+              title: MetricTypesWithOperations[typeSelected].title,
+              content: outlierGraphTab
+            }
+          ]}
+          defaultTab={typeSelected}
+          activeTab={typeSelected}
+          contentKey={metricMeasure}
+        />
       );
     } else {
       result = (
@@ -261,17 +298,7 @@ export const PanelBody = ({
             mountOnEnter={true}
             unmountOnExit={true}
           >
-            <GraphTab
-              type={typeSelected}
-              metricsKey={MetricTypesWithOperations[typeSelected].metrics}
-              nodePrefixes={nodePrefixes}
-              selectedUniverse={selectedUniverse}
-              title={MetricTypesWithOperations[typeSelected].title}
-              width={width}
-              tableName={tableName}
-              isMetricsTimezoneEnabled={isMetricsTimezoneEnabled}
-              isGranularMetricsEnabled={isGranularMetricsEnabled}
-            />
+            {outlierGraphTab}
           </Tab>
         </YBTabsPanel>
       );
@@ -298,7 +325,7 @@ export default class CustomerMetricsPanel extends Component {
 
   componentDidMount() {
     const {
-      customer: { currentCustomer },
+      customer: { currentCustomer }
     } = this.props;
     showOrRedirect(currentCustomer.data.features, 'menu.metrics');
   }
