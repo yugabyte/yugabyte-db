@@ -16,6 +16,9 @@ import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import api.v2.mappers.UniverseVMImageUpgradeMapper;
+import api.v2.models.UniverseVMImageUpgradeSpec;
+import api.v2.models.VMImageClusterSpec;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
@@ -770,6 +773,39 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
     replaced = getReplaceRootVolumeParams();
     assertEquals(ImmutableSet.of("host-n4", "host-n5"), replaced.keySet());
     replaced.values().forEach(p -> assertTrue(p.forceReplacement));
+  }
+
+  @Test
+  public void testVMImageUpgradeV2Spec() {
+    ImageBundle bundle =
+        ImageBundle.create(defaultProvider, "ib-1", getImageBundleDetails(1), true);
+    VMImageUpgradeParams params =
+        v2VMImageUpgradeParams(
+            new VMImageClusterSpec()
+                .clusterUuid(defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid)
+                .providerUuid(defaultProvider.getUuid())
+                .imageBundleUuid(bundle.getUuid()));
+    params.verifyParams(defaultUniverse, true);
+  }
+
+  @Test
+  public void testVMImageUpgradeV2SpecOci() {
+    ImageBundle ociBundle = addOciNodes();
+    VMImageUpgradeParams params =
+        v2VMImageUpgradeParams(
+            new VMImageClusterSpec()
+                .clusterUuid(defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid)
+                .providerUuid(ociBundle.getProvider().getUuid())
+                .imageBundleUuid(ociBundle.getUuid()));
+    params.verifyParams(defaultUniverse, true);
+  }
+
+  /** Builds the params the way the v2 vm-image API does. */
+  private static VMImageUpgradeParams v2VMImageUpgradeParams(VMImageClusterSpec bundle) {
+    UniverseVMImageUpgradeSpec spec = new UniverseVMImageUpgradeSpec().addImageBundlesItem(bundle);
+    VMImageUpgradeParams params = new VMImageUpgradeParams();
+    UniverseVMImageUpgradeMapper.INSTANCE.copyToV1VMImageUpgradeParams(spec, params);
+    return params;
   }
 
   private TaskInfo submitOciOnlyUpgrade(ImageBundle ociBundle, boolean force) {
