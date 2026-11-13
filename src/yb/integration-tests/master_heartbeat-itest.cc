@@ -44,6 +44,7 @@
 #include "yb/master/master_cluster_client.h"
 #include "yb/master/master_heartbeat.proxy.h"
 #include "yb/master/master_types.pb.h"
+#include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 
@@ -701,6 +702,7 @@ TEST_F(MasterHeartbeatITestThreeMasters, LeaderRoleAndReadyTermFollowsLeadership
     ASSERT_OK(leader->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
     for (size_t i = 0; i < cluster_->num_masters(); ++i) {
       auto* mini_master = cluster_->mini_master(i);
+      SCOPED_LEADER_SHARED_LOCK(l, &mini_master->catalog_manager_impl());
       auto s = mini_master->catalog_manager_impl().CheckLeaderRoleAndReadyTerm();
       ASSERT_EQ(s.ok(), mini_master->catalog_manager().CheckIsLeaderAndReady().ok()) << s;
       if (mini_master == leader) {
@@ -721,6 +723,7 @@ TEST_F(MasterHeartbeatITestThreeMasters, LeaderRoleAndReadyTermFollowsLeadership
   auto* successor = cluster_->mini_master(leader == cluster_->mini_master(0) ? 1 : 0);
   ASSERT_OK(StepDown(leader->tablet_peer(), successor->permanent_uuid(), ForceStepDown::kTrue));
   ASSERT_OK(WaitFor([leader]() -> Result<bool> {
+    SCOPED_LEADER_SHARED_LOCK(l, &leader->catalog_manager_impl());
     return !leader->catalog_manager_impl().CheckLeaderRoleAndReadyTerm().ok();
   }, 10s, "old leader fails the lock-free leader check"));
 
