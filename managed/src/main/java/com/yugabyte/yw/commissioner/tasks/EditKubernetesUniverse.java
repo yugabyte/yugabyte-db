@@ -13,6 +13,7 @@ package com.yugabyte.yw.commissioner.tasks;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -35,6 +36,7 @@ import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -601,7 +603,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         isReadOnlyCluster ? null : taskParams().getClusterByUuid(newCluster.uuid);
     if (paramsCluster != null && isFirstTry()) {
       paramsCluster.setMasterMoveStage(MasterMoveStage.STARTED);
-      TaskInfo.updateInTxn(getUserTaskUUID(), tf -> tf.setTaskParams(Json.toJson(taskParams())));
+      TaskInfo.updateInTxn(getUserTaskUUID(), tf -> tf.setTaskParams(taskParamsForStorage()));
     }
     MasterMoveStage stage = paramsCluster == null ? null : paramsCluster.getMasterMoveStage();
     boolean propagateMasterAddrs = stage != null && stage != MasterMoveStage.DONE;
@@ -1362,7 +1364,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             getUpdateParentTaskParamsTask(
                 tf -> {
                   taskParams().getPrimaryCluster().setMasterMoveStage(stage);
-                  tf.setTaskParams(Json.toJson(taskParams()));
+                  tf.setTaskParams(taskParamsForStorage());
                 }));
   }
 
@@ -2390,7 +2392,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           } else {
             taskParams().getClusterByUuid(clusterUUID).setCurrentMasterFullMoveBatchIndex(index);
           }
-          tf.setTaskParams(Json.toJson(taskParams()));
+          tf.setTaskParams(taskParamsForStorage());
         };
     return getUpdateParentTaskParamsTask(taskInfoConsumer);
   }
@@ -2820,6 +2822,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     return task;
   }
 
+  private JsonNode taskParamsForStorage() {
+    return RedactingService.filterSecretFieldsForStorage(Json.toJson(taskParams()));
+  }
+
   protected void persistGflagsChecksumInTaskParams(String universeName) {
     if (MapUtils.isNotEmpty(
         taskParams().getPrimaryCluster().getPerAZServerTypeGflagsChecksumMap())) {
@@ -2836,7 +2842,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         log.debug("Persisting gflags checksum");
       }
     }
-    TaskInfo.updateInTxn(getUserTaskUUID(), tf -> tf.setTaskParams(Json.toJson(taskParams())));
+    TaskInfo.updateInTxn(getUserTaskUUID(), tf -> tf.setTaskParams(taskParamsForStorage()));
   }
 
   protected void persistCertChecksumInTaskParams(String universeName) {
@@ -2851,7 +2857,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     for (Cluster newCluster : taskParams().clusters) {
       newCluster.setCertChecksum(certChecksum);
     }
-    TaskInfo.updateInTxn(getUserTaskUUID(), tf -> tf.setTaskParams(Json.toJson(taskParams())));
+    TaskInfo.updateInTxn(getUserTaskUUID(), tf -> tf.setTaskParams(taskParamsForStorage()));
   }
 
   protected void persistOriginalDiskSizeInTaskParams(UUID clusterUUID) {
@@ -2875,7 +2881,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               originalDiskSizeMap.put(azUUID, diskSizes);
             });
     taskParams().getClusterByUuid(cluster.uuid).setOriginalDiskSize(originalDiskSizeMap);
-    TaskInfo.updateInTxn(getUserTaskUUID(), tf -> tf.setTaskParams(Json.toJson(taskParams())));
+    TaskInfo.updateInTxn(getUserTaskUUID(), tf -> tf.setTaskParams(taskParamsForStorage()));
   }
 
   private void createCheckNodeSafeToDeleteTasks(

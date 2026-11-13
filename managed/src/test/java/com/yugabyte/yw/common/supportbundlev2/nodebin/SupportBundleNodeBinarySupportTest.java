@@ -855,7 +855,7 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
             mockShellProcessHandler);
     FilesComponentSpec spec = new FilesComponentSpec();
     spec.setComponentName("SystemLogs");
-    spec.setScriptPath("bin/node_utils.sh");
+    spec.setScriptPath("bin/support_bundle_utils.sh");
     spec.setLinuxUser("yugabyte");
 
     estimateSupport.runNodeScriptEstimate(
@@ -939,7 +939,7 @@ public class SupportBundleNodeBinarySupportTest extends FakeDBApplication {
             mockShellProcessHandler);
     FilesComponentSpec nodeSpec = new FilesComponentSpec();
     nodeSpec.setComponentName("SystemLogs");
-    nodeSpec.setScriptPath("bin/node_utils.sh");
+    nodeSpec.setScriptPath("bin/support_bundle_utils.sh");
     nodeSpec.setLinuxUser("yugabyte");
     Files.write(devopsHome.resolve("bin").resolve("yba_utils.sh"), new byte[0]);
     FilesComponentSpec ybaSpec = new FilesComponentSpec();

@@ -386,6 +386,9 @@ message ConsensusResponsePB {
 
   // The trace for the RPC as a string, returned only if requested.
   optional string trace_buffer = 7;
+
+  // If set, the leader prefers another remote bootstrap source.
+  optional bool pending_post_split_compaction = 8;
 }
 
 message MultiRaftConsensusRequestPB {

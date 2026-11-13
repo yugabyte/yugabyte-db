@@ -140,8 +140,6 @@ class LazyHybridTime {
   std::optional<Result<HybridTime>> value_;
 };
 
-constexpr auto kUnlimitedTail = std::numeric_limits<ssize_t>::min();
-
 Result<CompactionSchemaInfo> GetCompactionSchemaInfoForCoprefix(
     SchemaPackingProvider* schema_packing_provider, Slice coprefix,
     HistoryCutoff history_cutoff) {
@@ -243,6 +241,7 @@ class PackedRowData {
 
   Status ProcessPackedRow(
       Slice internal_key, size_t doc_key_size, Slice full_value, size_t control_fields_size,
+      const ValueControlFields& control_fields, Slice intent_doc_ht,
       const EncodedDocHybridTime& encoded_row_doc_ht, size_t new_doc_key_serial,
       RepackAllowed repack_allowed) {
     VLOG_WITH_FUNC(4)
@@ -257,7 +256,13 @@ class PackedRowData {
     RETURN_NOT_OK(UsedSchemaVersion(new_packing_.schema_version));
 
     InitKey(internal_key, doc_key_size, new_doc_key_serial);
-    control_fields_size_ = control_fields_size;
+
+    // The control fields of the row being repacked carry over, unless a newer liveness entry
+    // replaces the CDR stamp among them (ProcessLivenessColumn). They are kept decoded and encoded
+    // only when the packer is created, so replacing a field does not depend on the encoding.
+    row_control_fields_ = control_fields;
+    row_intent_doc_ht_.Assign(intent_doc_ht);
+    row_cdr_doc_ht_ = encoded_row_doc_ht;
     encoded_doc_ht_ = encoded_row_doc_ht;
     repack_allowed_ = repack_allowed;
     packing_from_individual_columns_ = false;
@@ -279,16 +284,44 @@ class PackedRowData {
   Status StartPacking(
       const Slice& internal_key, size_t doc_key_size,
       const EncodedDocHybridTime& encoded_doc_ht,
-      size_t new_doc_key_serial) {
+      size_t new_doc_key_serial,
+      const ValueControlFields& liveness_control_fields) {
     RETURN_NOT_OK(UsedSchemaVersion(new_packing_.schema_version));
 
     InitKey(internal_key, doc_key_size, new_doc_key_serial);
-    control_fields_size_ = 0;
+
+    // The liveness column has the CDR stamp for a row that is not packed, so the stamp has
+    // to move onto the packed row or it will be lost at the first compaction.
+    row_control_fields_ = {};
+    row_control_fields_.cdr_metadata = liveness_control_fields.cdr_metadata;
+    row_intent_doc_ht_.Reset();
+    row_cdr_doc_ht_ = encoded_doc_ht;
     encoded_doc_ht_ = encoded_doc_ht;
     old_value_slice_ = Slice();
     repack_allowed_ = true;
     packing_from_individual_columns_ = true;
     return InitPacker();
+  }
+
+  Status ProcessLivenessColumn(
+      const EncodedDocHybridTime& doc_ht, const ValueControlFields& control_fields) {
+    if (doc_ht <= row_cdr_doc_ht_) {
+      return Status::OK();
+    }
+    row_cdr_doc_ht_ = doc_ht;
+
+    if (row_control_fields_.cdr_metadata == control_fields.cdr_metadata) {
+      return Status::OK();
+    }
+    row_control_fields_.cdr_metadata = control_fields.cdr_metadata;
+
+    // Resetting the packer is safe only before any column is packed: liveness entries sort ahead
+    // of every column entry of the row.
+    RSTATUS_DCHECK(
+        !packing_started_ || PackerBase(&*packer_).Empty(), IllegalState,
+        "Liveness column processed after packing other columns");
+    packer_.reset();
+    return packing_started_ ? InitPacker() : StartRepacking();
   }
 
   // Returns true if column was processed. Otherwise caller should handle this column.
@@ -345,11 +378,9 @@ class PackedRowData {
     }
     if (control_fields_copy) {
       control_fields_buffer_.clear();
-      if (PREDICT_FALSE(FLAGS_TEST_keep_intent_doc_ht) && !intent_doc_ht.empty()) {
-        control_fields_buffer_.PushBack(dockv::KeyEntryTypeAsChar::kHybridTime);
-        control_fields_buffer_.Append(intent_doc_ht);
-      }
-      control_fields_copy->AppendEncoded(&control_fields_buffer_);
+      control_fields_copy->AppendEncodedWithIntentDocHt(
+          PREDICT_FALSE(FLAGS_TEST_keep_intent_doc_ht) ? intent_doc_ht : Slice(),
+          &control_fields_buffer_);
       dockv::PackedValueV1 value_v1(value.WithoutPrefix(encoded_control_fields_size));
       return std::visit([this, column_id, value_v1, tail_size](auto& packer) {
         return packer.AddValue(column_id, control_fields_buffer_.AsSlice(), value_v1, tail_size);
@@ -403,6 +434,9 @@ class PackedRowData {
         LOG(DFATAL) << "Attempted to start V2 packing without data type";
         packed_row_version = dockv::PackedRowVersion::kV1;
       }
+      control_fields_buffer_.clear();
+      row_control_fields_.AppendEncodedWithIntentDocHt(
+          row_intent_doc_ht_.AsSlice(), &control_fields_buffer_);
       switch (packed_row_version) {
         case dockv::PackedRowVersion::kV1:
           InitPackerHelper<dockv::RowPackerV1>();
@@ -422,7 +456,7 @@ class PackedRowData {
   void InitPackerHelper() {
     packer_.emplace(
         std::in_place_type_t<Packer>(), new_packing_.schema_version, *new_packing_.schema_packing,
-        new_packing_.pack_limit(), old_value_.AsSlice().Prefix(control_fields_size_),
+        new_packing_.pack_limit(), control_fields_buffer_.AsSlice(),
         /* is_update= */ false,
         new_packing_.table_owns_vector_reverse_mapping
             ? dockv::VectorValueFormat::kTyped : dockv::VectorValueFormat::kLegacy);
@@ -468,7 +502,7 @@ class PackedRowData {
             dockv::PackerBase(&*packer_).NextColumnData()).missing_value;
         return CheckPackOldValueResult(
             column_id, std::visit([column_id, missing_value](auto& packer) {
-          return packer.AddValue(column_id, missing_value, kUnlimitedTail);
+          return packer.AddValue(column_id, missing_value, dockv::kUnlimitedTail);
         }, *packer_));
       }
       return DoPackOldValue(column_id, decoder.FetchValue(decoder.GetPackedIndex(column_id)));
@@ -486,7 +520,7 @@ class PackedRowData {
     VLOG(4) << "Keep value for column " << column_id << ": " << column_value->ToDebugHexString();
     // Use min ssize_t value to be sure that packing always succeed.
     return CheckPackOldValueResult(column_id, std::visit([column_id, column_value](auto& packer) {
-      return packer.AddValue(column_id, column_value, kUnlimitedTail);
+      return packer.AddValue(column_id, column_value, dockv::kUnlimitedTail);
     }, *packer_));
   }
 
@@ -565,7 +599,9 @@ class PackedRowData {
   PackedRowFeed& feed_;
   SchemaPackingProvider* schema_packing_provider_; // Owned externally.
 
-  size_t control_fields_size_ = 0;
+  ValueControlFields row_control_fields_;
+  EncodedDocHybridTime row_intent_doc_ht_;
+  EncodedDocHybridTime row_cdr_doc_ht_;
   size_t doc_key_serial_ = std::numeric_limits<size_t>::max();
   KeyBuffer key_;
   EncodedDocHybridTime encoded_doc_ht_;
@@ -1413,15 +1449,17 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
           << ", repack allowed: " << packed_row_.repack_allowed();
       if (start_packing) {
         RETURN_NOT_OK(packed_row_.StartPacking(
-            internal_key, doc_key_size, encoded_doc_ht, doc_key_serial_));
+            internal_key, doc_key_size, encoded_doc_ht, doc_key_serial_, control_fields));
         AssignPrevKey(key.cdata(), same_bytes);
       }
       if (packed_row_.can_start_packing() && packed_row_.repack_allowed()) {
-        if (sub_key_type == dockv::KeyEntryType::kSystemColumnId &&
-            column_id == dockv::KeyEntryValue::kLivenessColumn.GetColumnId()) {
-          return Status::OK();
-        }
+        // Like a column, a liveness entry at or above the repack window is kept: data outside this
+        // compaction may sit between it and the packed row, and its CDR stamp must stay above that.
         if (encoded_doc_ht < encoded_repack_max_ht_) {
+          if (sub_key_type == dockv::KeyEntryType::kSystemColumnId &&
+              column_id == dockv::KeyEntryValue::kLivenessColumn.GetColumnId()) {
+            return packed_row_.ProcessLivenessColumn(encoded_doc_ht, control_fields);
+          }
           // Return if column was processed by packed row.
           auto encoded_control_fields_size = value_slice.data() - value.data();
           if (VERIFY_RESULT(packed_row_.ProcessColumn(
@@ -1560,7 +1598,8 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   } else if (IsPackedRow(value_type)) {
     return packed_row_.ProcessPackedRow(
         internal_key, sub_key_ends_.back(), value, value_slice.data() - value.data(),
-        encoded_doc_ht, doc_key_serial_, RepackAllowed(encoded_doc_ht > encoded_repack_min_ht_));
+        control_fields, intent_doc_ht, encoded_doc_ht, doc_key_serial_,
+        RepackAllowed(encoded_doc_ht > encoded_repack_min_ht_));
   } else if (!intent_doc_ht.empty()) {
     // Cleanup intent doc hybrid time when we don't need it anymore.
     // See https://github.com/yugabyte/yugabyte-db/issues/4535 for details.

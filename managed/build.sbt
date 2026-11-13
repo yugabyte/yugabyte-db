@@ -174,7 +174,7 @@ Global / onChangedBuildSource := ReloadOnSourceChanges
 // Flyway 10+ ships database support as separate modules; the postgresql one is required.
 val flywayVersion = "13.8.0"
 val bouncyCastleFipsVersion = "2.1.1"
-val bouncyCastleUtilFipsVersion = "2.1.7"
+val bouncyCastleUtilFipsVersion = "2.1.8"
 
 libraryDependencies ++= Seq(
   javaJdbc,
@@ -321,7 +321,7 @@ libraryDependencies ++= Seq(
   // aarch64 binaries (same PG 14.5) so the embedded server starts natively there.
   "io.zonky.test.postgres" % "embedded-postgres-binaries-darwin-arm64v8" % "14.5.0" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
-  "com.yugabyte" % "yba-client-v2" % "1.8.15" % Test,
+  "com.yugabyte" % "yba-client-v2" % "1.8.16" % Test,
   // yba-client-v2's ApiClient registers MultiPartFeature. The POM it installs is the shade
   // plugin's dependency-reduced one, which drops all compile deps, so declare this one here.
   "org.glassfish.jersey.media" % "jersey-media-multipart" % "2.41" % Test,
@@ -757,7 +757,7 @@ lazy val javagen = project.in(file("client/java"))
     openApiGenerateApiTests := SettingDisabled,
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/java/openapi-java-config.json",
-    version := "1.0.3",
+    version := "1.0.4",
     openApiHttpUserAgent := s"yba-java-client/${version.value}",
     target := file("client/java/target/v1"),
   )
@@ -774,7 +774,7 @@ lazy val javaGenV2Client = project.in(file("client/java"))
     openApiConfigFile := "client/java/openapi-java-config-v2.json",
     openApiGlobalProperties += ("skipFormModel" -> "false"),
     openApiTemplateDir := (baseDirectory.value / resDir / "openapi_templates/clients/v2").absolutePath,
-    version := "1.8.15",
+    version := "1.8.16",
     openApiHttpUserAgent := s"yba-java-client/${version.value}",
     target := file("client/java/target/v2"),
   )

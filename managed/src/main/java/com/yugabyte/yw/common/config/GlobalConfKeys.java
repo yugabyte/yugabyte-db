@@ -2531,6 +2531,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " configs are unaffected.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> storageConfigValidationTimeout =
+      new ConfKeyInfo<>(
+          "yb.storage_config.validation_timeout",
+          ScopeType.GLOBAL,
+          "Storage config validation timeout",
+          "How long the v2 storage config API waits for the storage validators to reach the"
+              + " backup storage before it answers that validation timed out.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> taskExecutorShutdownMaxWaitTime =
       new ConfKeyInfo<>(
           "yb.task_executor.shutdown_max_wait_time",

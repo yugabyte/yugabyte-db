@@ -1227,6 +1227,14 @@ TEST_F_EX(TSLocalLockManager, TestLockBeforeSharedMemorySetup,
   ASSERT_OK(ReleaseLocksForOwner(kTxn3));
 }
 
+TEST_F(TSLocalLockManagerTest, AllocateSharedStateAfterLeaseManagerShutdown) {
+  auto& server = *mini_server_->server();
+  server.ShutdownYSQLLeaseManager();
+  auto result = server.object_lock_shared_state_manager()->AllocateShared();
+  ASSERT_NOK(result);
+  ASSERT_TRUE(result.status().IsShutdownInProgress()) << result.status();
+}
+
 TEST_F(TSLocalLockManagerTest, TestAcquireMetrics) {
   {
     auto txn1 = ASSERT_RESULT(RegisterTransaction(kTxn1.txn_id));

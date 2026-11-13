@@ -1,20 +1,28 @@
 /*-------------------------------------------------------------------------
  *
  * yb_table_scan.h
- *	  Public YB table scan interface.
+ *	  Interim accessors for YB table scans.
  *
  *	  Opaque accessor functions that let executor nodes interact
  *	  with a YB-backed TableScanDesc without depending on the
  *	  internal scan types defined in yb_scan_core.h.
  *
- *	  To start a scan, callers use the table_beginscan_*_yb()
- *	  variants in tableam.h together with yb_table_scan_options.h.
- *	  This header only covers post-beginscan operations.
+ *	  To start a scan, callers use the table_beginscan_yb() wrappers
+ *	  in tableam.h together with yb_table_scan_options.h.  This
+ *	  header only covers post-beginscan operations.
  *
  *	  Each accessor here is an interim workaround for a
  *	  YB-specific operation not yet routed through tableam.
  *	  The goal is to eventually replace each one with a proper
  *	  tableam callback or existing API.
+ *
+ *	  #32268 tracks that replacement for the accessors already here.
+ *	  Besides yb_table_scan.c, only the executor nodes it covers
+ *	  (nodeYbSeqscan.c, nodeTidscan.c, and nodeYbBitmapTablescan.c)
+ *	  include this header.  Add an accessor here only when going
+ *	  through tableam is blocked on #32268 itself, and list it
+ *	  there.  yb_table_scan.c defines only the accessors declared
+ *	  here.
  *
  * Copyright (c) YugabyteDB, Inc.
  *

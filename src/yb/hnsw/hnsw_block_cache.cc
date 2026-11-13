@@ -22,6 +22,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/unique_lock.h"
 
@@ -91,6 +92,19 @@ void ConvertField(const Value& value, Writer& writer) {
 template <class Converter, class Type>
 using RefForConverter = std::conditional_t<HasRead<uint64_t, Converter>, Type, const Type>&;
 
+template <class Writer>
+requires(HasAppend<uint64_t, uint64_t, Writer>)
+void Convert(size_t flags, const std::string& value, Writer& writer) {
+  writer.template Append<uint64_t>(value.size());
+  writer.AppendBytes(value);
+}
+
+template <class Reader>
+requires(HasRead<uint64_t, Reader>)
+void Convert(size_t flags, std::string& value, Reader& reader) {
+  value = reader.ReadBytes(reader.template Read<uint64_t>()).ToBuffer();
+}
+
 template <class Converter>
 void Convert(size_t flags, RefForConverter<Converter, LayerInfo> entry, Converter& serializer) {
   ConvertField<uint64_t>(entry.size, serializer);
@@ -130,6 +144,23 @@ void Convert(size_t flags, RefForConverter<Converter, Config> config, Converter&
   ConvertField<uint64_t>(config.connectivity_base, serializer);
 }
 
+// The first byte of the footer is a set of flags for the fields it holds:
+//   0x01, always set: the fields of every release.
+//   0x02: every block ends with a CRC32C trailer, see kBlockTrailerSize.
+//   0x04: the tenant directory, see Header::tenant_directory_block.
+// A chunk without trailers and tenants holds 0x01 alone, which older releases read as their
+// version 1. They also read 0x03 like version 1: they find data inside a block by offsets from
+// other blocks and never read past them, so they ignore the trailers, keeping rollback possible.
+constexpr uint8_t kFooterBase = 0x01;
+constexpr uint8_t kFooterBlockTrailers = 0x02;
+constexpr uint8_t kFooterTenantDirectory = 0x04;
+constexpr uint8_t kFooterKnownFlags = kFooterBase | kFooterBlockTrailers | kFooterTenantDirectory;
+
+uint8_t FooterFlags(const Header& header, HasBlockTrailers has_block_trailers) {
+  return kFooterBase | (has_block_trailers ? kFooterBlockTrailers : 0) |
+         (header.num_tenant_directory_blocks ? kFooterTenantDirectory : 0);
+}
+
 template <class Converter>
 void Convert(size_t flags, RefForConverter<Converter, Header> header, Converter& serializer) {
   ConvertField<uint64_t>(header.dimensions, serializer);
@@ -142,6 +173,11 @@ void Convert(size_t flags, RefForConverter<Converter, Header> header, Converter&
   ConvertField<uint64_t>(header.vector_data_block, serializer);
   ConvertField<uint64_t>(header.vector_data_amount_per_block, serializer);
   ConvertVector(flags, header.layers, serializer);
+  if (flags & kFooterTenantDirectory) {
+    ConvertField<uint64_t>(header.tenant_directory_block, serializer);
+    ConvertField<uint64_t>(header.num_tenant_directory_blocks, serializer);
+    ConvertVector(flags, header.tenant_directory_boundaries, serializer);
+  }
 }
 
 class WriteCounter {
@@ -155,34 +191,17 @@ class WriteCounter {
     value_ += sizeof(Value);
   }
 
+  void AppendBytes(const std::string& value) {
+    value_ += value.size();
+  }
+
  private:
   size_t value_ = 0;
 };
 
-// The first byte of the footer is a set of flags for the fields it holds:
-//   0x01, always set: the fields of every release.
-//   0x02: every block ends with a CRC32C trailer, see kBlockTrailerSize. 0x04 is left for the
-//   tenant directory of #36086.
-// A chunk without trailers holds 0x01 alone, which older releases read as their version 1. They
-// also read 0x03 like version 1: they find data inside a block by offsets from other blocks and
-// never read past them, so they ignore the trailers, keeping rollback possible.
-constexpr uint8_t kFooterBase = 0x01;
-constexpr uint8_t kFooterBlockTrailers = 0x02;
-constexpr uint8_t kFooterKnownFlags = kFooterBase | kFooterBlockTrailers;
-
-// TODO(vector_index): #36086 computes the flags from the header alone, FooterFlags(header). When
-// merging, take both, FooterFlags(header, has_block_trailers), since the trailer decision is the
-// builder's, fixed once per file.
-uint8_t FooterFlags(HasBlockTrailers has_block_trailers) {
-  return kFooterBase | (has_block_trailers ? kFooterBlockTrailers : 0);
-}
-
-size_t SerializedSize(const Header& header) {
+size_t SerializedSize(const Header& header, size_t flags) {
   WriteCounter counter;
-  // No footer field depends on kFooterBlockTrailers.
-  // TODO(vector_index): the tenant directory fields of #36086 depend on its flag, so when merging
-  // pass the flags of the header here instead of kFooterBase, as #36086 does.
-  Convert(kFooterBase, header, counter);
+  Convert(flags, header, counter);
   return counter.value();
 }
 
@@ -199,6 +218,12 @@ class SliceReader {
     Value result;
     memcpy(&result, input_.data(), sizeof(result));
     input_.RemovePrefix(sizeof(Value));
+    return result;
+  }
+
+  Slice ReadBytes(size_t size) {
+    auto result = input_.Prefix(size);
+    input_.RemovePrefix(size);
     return result;
   }
  private:
@@ -407,13 +432,13 @@ FileBlockCacheBuilder::FileBlockCacheBuilder()
 }
 
 DataBlock FileBlockCacheBuilder::MakeFooter(const Header& header) const {
+  const auto flags = FooterFlags(header, has_block_trailers_);
   DataBlock buffer(
     sizeof(uint8_t) +
-    SerializedSize(header) + sizeof(uint64_t) * blocks_.size() +
+    SerializedSize(header, flags) + sizeof(uint64_t) * blocks_.size() +
     sizeof(uint32_t) + // CRC32
     sizeof(uint64_t)); // Size
   BlockWriter writer(buffer);
-  const auto flags = FooterFlags(has_block_trailers_);
   writer.Append<uint8_t>(flags);
   Convert(flags, header, writer);
   uint64_t sum = 0;
@@ -474,7 +499,8 @@ Result<Header> FileBlockCache::Load() {
   // SliceReader does not check bounds, so require the flags and the header without layers.
   SCHECK_GE(
       footer_size,
-      sizeof(uint8_t) + SerializedSize(Header()) + sizeof(uint32_t) + sizeof(FooterSizeType),
+      sizeof(uint8_t) + SerializedSize(Header(), kFooterBase) + sizeof(uint32_t) +
+          sizeof(FooterSizeType),
       Corruption, "Footer size too small");
   if (footer_size > buffer.size()) {
     buffer.resize(footer_size);
@@ -493,6 +519,9 @@ Result<Header> FileBlockCache::Load() {
   SCHECK(
       (flags & kFooterBase) && !(flags & ~kFooterKnownFlags), Corruption,
       Format("Unsupported vector index file flags: $0", flags));
+  // The size check above covers only the fields of every release.
+  SCHECK_GE(
+      reader.Left(), SerializedSize(Header(), flags), Corruption, "Footer size too small");
   has_block_trailers_ = HasBlockTrailers(
       (flags & kFooterBlockTrailers) && !FLAGS_TEST_yb_hnsw_ignore_block_trailers);
   Deserialize(flags, header, reader);
