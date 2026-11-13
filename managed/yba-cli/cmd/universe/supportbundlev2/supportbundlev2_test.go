@@ -469,8 +469,8 @@ func TestBuildSupportBundleCreateRequestBashComponents(t *testing.T) {
 		if len(spec.Params) == 0 || spec.Params[0] != spec.GetComponentName() {
 			t.Fatalf("Params entrypoint = %#v, want %q", spec.Params, spec.GetComponentName())
 		}
-		if spec.GetScriptPath() != "bin/node_utils.sh" {
-			t.Fatalf("ScriptPath = %q, want bin/node_utils.sh", spec.GetScriptPath())
+		if spec.GetScriptPath() != "bin/support_bundle_utils.sh" {
+			t.Fatalf("ScriptPath = %q, want bin/support_bundle_utils.sh", spec.GetScriptPath())
 		}
 		if !paramsContainFlag(spec.Params, "--remote_tar_path") {
 			t.Fatalf("Params = %#v, want --remote_tar_path", spec.Params)
@@ -1754,7 +1754,7 @@ func TestPrometheusMetricsTypesRejectsCommaList(t *testing.T) {
 // buildGenericComponentParams is how a manifest adds a component without a Go change. It once
 // emitted values verbatim: templates unresolved, lists as Go's "[a b]", remoteTarPathTemplate under
 // a flag no script accepts, timeoutSecs leaking into the argv. The last two abort the component,
-// since every node_utils.sh function exits 1 on an unrecognized argument.
+// since every support_bundle_utils.sh function exits 1 on an unrecognized argument.
 func TestBuildGenericComponentParamsFollowsScriptConventions(t *testing.T) {
 	cfg := &supportBundleV2Config{
 		Spec: supportBundleV2Spec{
@@ -1766,7 +1766,7 @@ func TestBuildGenericComponentParamsFollowsScriptConventions(t *testing.T) {
 				"custom_component": {
 					Enabled: true,
 					Script: supportBundleV2Script{
-						ScriptFile: "bin/node_utils.sh",
+						ScriptFile: "bin/support_bundle_utils.sh",
 						Entrypoint: "collect_custom",
 					},
 					Params: map[string]interface{}{
@@ -1907,7 +1907,7 @@ func TestDisabledComponentStillExcludedFromRequest(t *testing.T) {
 	cfg.Spec.ComponentConfigs["UniverseLogs"] = supportBundleV2Component{
 		Enabled: true,
 		Script: supportBundleV2Script{
-			ScriptFile: "bin/node_utils.sh",
+			ScriptFile: "bin/support_bundle_utils.sh",
 			Entrypoint: "create_universe_logs_bundle",
 		},
 		Params: map[string]interface{}{"remoteTarPathTemplate": "/tmp/u.tar.gz"},

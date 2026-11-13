@@ -21,6 +21,8 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.FetchServerConf;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ProviderInitializer;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
@@ -304,8 +306,10 @@ public class ImportUniverse extends UniverseTaskBase {
                           log.error(
                               "Some servers have different common {} gflags - {} vs {}",
                               serverType,
-                              prev.gflags,
-                              curr.gflags);
+                              RedactingService.filterSecretFields(
+                                  Json.toJson(prev.gflags), RedactionTarget.LOGS),
+                              RedactingService.filterSecretFields(
+                                  Json.toJson(curr.gflags), RedactionTarget.LOGS));
                           throw new PlatformServiceException(
                               BAD_REQUEST,
                               "Some servers have different common gflags for " + serverType);

@@ -932,6 +932,12 @@ class DB {
   virtual void GetLiveFileNumbersNotOnPath(
       uint32_t /*path_id*/, std::vector<uint64_t>* /*out*/) {}
 
+  // Closes every open table reader of this DB by evicting it from the table cache, so the next read
+  // reopens each file and reloads its footer and filter index. Readers that in-flight reads still
+  // reference are released when those reads finish; readers pinned by a version
+  // (max_open_files == -1) are not affected. Returns the number of readers evicted.
+  virtual size_t EvictTableReaders() { return 0; }
+
   // Computes the requested frontiers atomically (under a single lock) so the returned views are
   // mutually consistent. This is the single primitive subclasses override; the accessors below are
   // expressed in terms of it.

@@ -1,0 +1,17 @@
+title: StorageConfig
+description: |
+  StorageConfig
+
+  A backup storage configuration: where YBA stores backups and the credentials it uses to reach
+  that storage. Part of StorageConfigResp.
+type: object
+required:
+  - spec
+  - info
+properties:
+  spec:
+    $ref: "./StorageConfigSpec.yaml"
+  info:
+    $ref: "./StorageConfigInfo.yaml"
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

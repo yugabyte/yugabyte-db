@@ -7,7 +7,9 @@ file="$1"
 # out of the formatted output and show it only when formatting fails.
 errfile=$(mktemp)
 trap 'rm -f "$errfile"' EXIT
-if ! formatted=$(java -jar managed/lint/google-java-format-1.17.0-all-deps.jar "$file" 2>"$errfile"); then
+# The formatter parses with the JVM it runs on, so it needs Java 17 for managed/'s sources.
+if ! formatted=$("${JAVA_HOME:+$JAVA_HOME/bin/}java" \
+    -jar managed/lint/google-java-format-1.17.0-all-deps.jar "$file" 2>"$errfile"); then
   printf 'error: google-java-format failed on %s:\n%s\n' "$file" "$(cat "$errfile")"
 elif ! delta=$(diff "$file" - <<< "$formatted"); then
   printf 'error: %s is not formatted; run "sbt javafmtAll" in managed/.\n%s\n' "$file" "$delta"

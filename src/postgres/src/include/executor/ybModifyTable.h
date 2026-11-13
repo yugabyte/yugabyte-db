@@ -176,6 +176,9 @@ extern void YBCExecuteInsertIndexForDb(Oid dboid,
  * it is a single row op. 'changingPart' indicates if this delete is part of an
  * UPDATE operation on a partitioned table that moves a row from one partition
  * to anoter.
+ *
+ * 'persist_missing_row' makes DocDB write the tombstone even if the row does
+ * not exist; see YbExecBlindDeleteRow.  No affected-row count is returned then.
  */
 extern bool YBCExecuteDelete(Relation rel,
 							 TupleTableSlot *planSlot,
@@ -183,16 +186,19 @@ extern bool YBCExecuteDelete(Relation rel,
 							 bool target_tuple_fetched,
 							 YbcPgTransactionSetting transaction_setting,
 							 bool changingPart,
+							 bool persist_missing_row,
 							 EState *estate);
 
 /*
  * Delete a tuple (identified by index columns and base table ybctid) from an
- * index's backing YugaByte index table.
+ * index's backing YugaByte index table.  'persist_missing_row' is as for
+ * YBCExecuteDelete.
  */
 extern void YBCExecuteDeleteIndex(Relation index,
 								  Datum *values,
 								  bool *isnull,
 								  Datum ybctid,
+								  bool persist_missing_row,
 								  yb_bind_for_write_function callback,
 								  void *indexstate);
 
@@ -202,6 +208,15 @@ extern void YBCExecuteUpdateIndex(Relation index,
 								  Datum oldYbctid,
 								  Datum newYbctid,
 								  yb_assign_for_write_function callback);
+
+/*
+ * Insert, or write tombstones for, one row and its index entries without a
+ * ModifyTable node.
+ */
+extern void YbExecInsertRow(ResultRelInfo *resultRelInfo,
+							TupleTableSlot *slot, EState *estate);
+extern void YbExecBlindDeleteRow(ResultRelInfo *resultRelInfo,
+								 TupleTableSlot *slot, EState *estate);
 
 /*
  * Update a row (identified by ybctid) in a YugaByte table.

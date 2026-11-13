@@ -107,18 +107,20 @@
 #include "yb/tools/tools_utils.h"
 #include "yb/tools/xcluster_verify.h"
 
+#include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/encryption/encryption_util.h"
 
 #include "yb/util/countdown_latch.h"
+#include "yb/util/enums.h"
 #include "yb/util/format.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/protobuf_util.h"
-#include "yb/util/slice.h"
 #include "yb/util/random_util.h"
+#include "yb/util/slice.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
@@ -172,6 +174,7 @@ using client::YBClientBuilder;
 using client::YBTableName;
 using rpc::RpcController;
 using pb_util::ParseFromSlice;
+using tserver::TabletServerAdminServiceProxy;
 using tserver::TabletServerServiceProxy;
 
 using consensus::ConsensusServiceProxy;
@@ -1521,56 +1524,128 @@ Status ClusterAdminClient::ListAllMasters() {
   return Status::OK();
 }
 
-Status ClusterAdminClient::ListTabletServersLogLocations() {
+Status ClusterAdminClient::ForEachLiveTabletServer(
+    const std::function<void(
+        const ListTabletServersResponsePB::Entry& server, const HostPort& ts_addr)>& visit,
+    const std::function<void(
+        const ListTabletServersResponsePB::Entry& server,
+        TabletServerSkipReason reason)>& on_skip) {
   RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
   RETURN_NOT_OK(ListTabletServers(&servers));
-  // Sort alive tservers first so unreachable (DEAD/unknown) nodes appear last,
-  // matching the ordering of list_all_tablet_servers.
+  // Alive tservers first, matching the ordering of list_all_tablet_servers.
   SortListTabletServerEntries(servers);
 
-  if (!servers.empty()) {
-    cout << RightPadToUuidWidth("TS UUID") << kColumnSep
-         << kRpcHostPortHeading << kColumnSep
-         << "LogLocation"
-         << endl;
-  }
-
   for (const ListTabletServersResponsePB::Entry& server : servers) {
-    const auto& ts_uuid = server.instance_id().permanent_uuid();
-    const auto ts_addr_str = FormatFirstHostPort(
-        server.registration().common().private_rpc_addresses());
-
-    // Skip RPCs to known-dead tservers and report them as unavailable so one
-    // unreachable node does not abort listing for the rest of the cluster.
+    // Waiting out the RPC timeout of a dead tserver would stall the rest.
     if (server.has_alive() && !server.alive()) {
-      cout << ts_uuid << kColumnSep << ts_addr_str << kColumnSep << "N/A" << endl;
+      on_skip(server, TabletServerSkipReason::kMarkedDead);
       continue;
     }
 
     const auto rpc_address = SelectServerAddress(server.registration().common());
     if (rpc_address.host().empty()) {
-      LOG(WARNING) << "Tablet server " << ts_uuid << " has no RPC address registered";
-      cout << ts_uuid << kColumnSep << ts_addr_str << kColumnSep << "N/A" << endl;
+      on_skip(server, TabletServerSkipReason::kNoRpcAddress);
       continue;
     }
 
-    HostPort ts_addr = HostPortFromPB(rpc_address);
-    TabletServerServiceProxy ts_proxy(proxy_cache_.get(), ts_addr);
-
-    auto resp = InvokeRpc(
-        &TabletServerServiceProxy::GetLogLocation, ts_proxy, tserver::GetLogLocationRequestPB());
-    if (!resp.ok()) {
-      LOG(WARNING) << "Unable to get log location from tablet server " << ts_uuid
-                   << " at " << ts_addr << ": " << resp.status();
-      cout << ts_uuid << kColumnSep << ts_addr_str << kColumnSep << "N/A" << endl;
-      continue;
-    }
-    cout << ts_uuid << kColumnSep
-         << ts_addr_str << kColumnSep
-         << resp->log_location() << endl;
+    visit(server, HostPortFromPB(rpc_address));
   }
-
   return Status::OK();
+}
+
+Status ClusterAdminClient::ListTabletServersLogLocations() {
+  bool header_printed = false;
+  auto print_row = [&header_printed](
+                       const ListTabletServersResponsePB::Entry& server,
+                       const std::string& location) {
+    if (!header_printed) {
+      cout << RightPadToUuidWidth("TS UUID") << kColumnSep << kRpcHostPortHeading << kColumnSep
+           << "LogLocation" << endl;
+      header_printed = true;
+    }
+    cout << server.instance_id().permanent_uuid() << kColumnSep
+         << FormatFirstHostPort(server.registration().common().private_rpc_addresses())
+         << kColumnSep << location << endl;
+  };
+
+  // An unreachable tserver is reported as N/A rather than failing the listing.
+  return ForEachLiveTabletServer(
+      [&](const ListTabletServersResponsePB::Entry& server, const HostPort& ts_addr) {
+        TabletServerServiceProxy ts_proxy(proxy_cache_.get(), ts_addr);
+        auto resp = InvokeRpc(
+            &TabletServerServiceProxy::GetLogLocation, ts_proxy,
+            tserver::GetLogLocationRequestPB());
+        if (!resp.ok()) {
+          LOG(WARNING) << "Unable to get log location from tablet server "
+                       << server.instance_id().permanent_uuid() << " at " << ts_addr << ": "
+                       << resp.status();
+          print_row(server, "N/A");
+          return;
+        }
+        print_row(server, resp->log_location());
+      },
+      [&](const ListTabletServersResponsePB::Entry& server, TabletServerSkipReason reason) {
+        switch (reason) {
+          case TabletServerSkipReason::kMarkedDead:
+            print_row(server, "N/A");
+            return;
+          case TabletServerSkipReason::kNoRpcAddress:
+            LOG(WARNING) << "Tablet server " << server.instance_id().permanent_uuid()
+                         << " has no RPC address registered";
+            print_row(server, "N/A");
+            return;
+        }
+        FATAL_INVALID_ENUM_VALUE(TabletServerSkipReason, reason);
+      });
+}
+
+Status ClusterAdminClient::ClearRocksDBCache() {
+  // Every reachable tserver is attempted; the last failure, if any, is returned.
+  Status result;
+  RETURN_NOT_OK(ForEachLiveTabletServer(
+      [&](const ListTabletServersResponsePB::Entry& server, const HostPort& ts_addr) {
+        const auto& ts_uuid = server.instance_id().permanent_uuid();
+        TabletServerAdminServiceProxy ts_admin_proxy(proxy_cache_.get(), ts_addr);
+        tserver::ClearRocksDBCacheRequestPB req;
+        req.set_dest_uuid(ts_uuid);
+        auto resp = InvokeRpc(
+            &TabletServerAdminServiceProxy::ClearRocksDBCache, ts_admin_proxy, req);
+        if (!resp.ok()) {
+          result = resp.status().CloneAndPrepend(Format("tserver $0 at $1", ts_uuid, ts_addr));
+          LOG(WARNING) << result;
+          return;
+        }
+        cout << "Cleared RocksDB cache on tserver " << ts_uuid << " at " << ts_addr << ": closed "
+             << resp->table_readers_evicted() << " table readers, "
+             << (resp->has_block_cache_evicted_bytes()
+                     ? Format(
+                           "evicted $0 bytes from block cache", resp->block_cache_evicted_bytes())
+                     : "block cache disabled")
+             << endl;
+      },
+      [&](const ListTabletServersResponsePB::Entry& server, TabletServerSkipReason reason) {
+        const auto& ts_uuid = server.instance_id().permanent_uuid();
+        switch (reason) {
+          case TabletServerSkipReason::kMarkedDead:
+            cout << "Skipped tserver " << ts_uuid << ": marked DEAD by the master" << endl;
+            return;
+          case TabletServerSkipReason::kNoRpcAddress:
+            // The process may well be running with a warm cache, so this is a failure of the
+            // command.
+            result = STATUS_FORMAT(NotFound, "tserver $0 has no RPC address registered", ts_uuid);
+            LOG(WARNING) << result;
+            return;
+        }
+        FATAL_INVALID_ENUM_VALUE(TabletServerSkipReason, reason);
+      }));
+
+  // Printed after the per-tserver lines so scripts that match those lines are unaffected.
+  cout << "Note: the OS page cache and table readers still used by in-flight scans can still "
+          "hold RocksDB data, so reads are warmer than after a restart; YSQL-level caches are "
+          "untouched. To drop the page cache on Linux, run "
+          "'sync; echo 3 > /proc/sys/vm/drop_caches' as root on each host." << endl;
+
+  return result;
 }
 
 Status ClusterAdminClient::ListTables(bool include_db_type,

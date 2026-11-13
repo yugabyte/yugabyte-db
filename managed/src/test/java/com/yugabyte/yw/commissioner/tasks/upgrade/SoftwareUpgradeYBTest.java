@@ -36,6 +36,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseSoftwareUpgrade
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellResponse;
@@ -828,6 +829,19 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     assertEquals(
         baseVersion,
         defaultUniverse.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion());
+
+    // The generated superuser password must not be stored in plain text.
+    int storedPasswords = 0;
+    for (TaskInfo subTask : taskInfo.getSubTasks()) {
+      if (subTask.getTaskType() == TaskType.ManageCatalogUpgradeSuperUser
+          && subTask.getTaskParams().hasNonNull("catalogUpgradePassword")) {
+        assertEquals(
+            RedactingService.SECRET_REPLACEMENT,
+            subTask.getTaskParams().get("catalogUpgradePassword").asText());
+        storedPasswords++;
+      }
+    }
+    assertTrue(storedPasswords > 0);
   }
 
   @Test

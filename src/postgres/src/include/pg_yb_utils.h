@@ -120,6 +120,12 @@ extern void YbSendMasterLogicalClientVersionToFrontend();
 
 extern void YbResetCatalogCacheVersion();
 
+extern bool YbIsCatalogPinnedToReadTime();
+
+extern void YbSetObjectLockingForCurrTxn();
+
+extern bool YbIsHistoricalCatalogRead();
+
 extern YbcPgLastKnownCatalogVersionInfo YbGetCatalogCacheVersionForTablePrefetching();
 
 extern void YbUpdateLastKnownCatalogCacheVersion(uint64_t catalog_cache_version);
@@ -169,6 +175,27 @@ extern bool yb_enable_spi_dist_tracing;
 extern bool yb_read_from_followers;
 extern bool yb_follower_reads_behavior_before_fixing_20482;
 extern int32_t yb_follower_read_staleness_ms;
+
+/*
+ * Set by yb_backfill_online_schema_change_chunk for the duration of one call.
+ *
+ *   yb_backfill_timestamp - hybrid time at which reads and writes run, and
+ *       writes become non-transactional backfill writes; zero when inactive.
+ *   yb_osc_backfill_partition_key - hex partition_key_start of the one
+ *       tablet the chunk's scan is limited to.
+ *   yb_osc_backfill_bfinstr - hex PgsqlBackfillSpecPB carrying the resume
+ *       key and row limit of that scan.
+ *   yb_osc_backfill_out_param - receives the backfill spec that the scan
+ *       returns, with the key to resume at.
+ *   yb_osc_backfill_outer_started - set once the chunk's own statement has
+ *       started, so standard_ExecutorStart can tell nested executors apart.
+ */
+struct YbPgExecOutParam;
+extern uint64_t yb_backfill_timestamp;
+extern char *yb_osc_backfill_partition_key;
+extern char *yb_osc_backfill_bfinstr;
+extern struct YbPgExecOutParam *yb_osc_backfill_out_param;
+extern bool yb_osc_backfill_outer_started;
 
 /*
  * Parsed span context from the yb_dist_tracecontext GUC.
@@ -1439,6 +1466,7 @@ extern void assign_yb_xcluster_consistency_level(const char *newval,
 void		YbUpdateSessionStats(YbInstrumentation *yb_instr);
 
 extern bool check_yb_read_time(char **newval, void **extra, GucSource source);
+extern bool YbCanResetYbReadTime(const char *reset_val, int elevel);
 extern void assign_yb_read_time(const char *newval, void *extra);
 extern bool check_yb_read_time_skip_catalog(bool *newval, void **extra,
 											GucSource source);

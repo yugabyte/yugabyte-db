@@ -405,12 +405,14 @@ static void yb_delete_entity(EState *estate, ResultRelInfo *resultRelInfo,
                      true /* target_tuple_fetched */,
                      YB_TRANSACTIONAL,
                      false /* changingPart */,
+                     false /* persist_missing_row */,
                      estate);
 
     if (YBCRelInfoHasSecondaryIndices(resultRelInfo))
     {
         Datum ybctid = YBCGetYBTupleIdFromSlot(slot);
-        ExecDeleteIndexTuples(resultRelInfo, ybctid, tuple, estate);
+        ExecDeleteIndexTuples(resultRelInfo, ybctid, tuple,
+                              false /* persist_missing_row */, estate);
     }
 
     /*

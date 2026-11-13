@@ -1,0 +1,27 @@
+title: AzureRegionLocation
+description: |
+  AzureRegionLocation
+
+  Backup location of one region of an Azure storage configuration. Part of AzureStorageSpec.
+type: object
+required:
+  - region
+  - location
+properties:
+  region:
+    description: Region of the universe whose backups go to this location
+    type: string
+    example: westus2
+    minLength: 1
+  location:
+    description: 'Location of the region''s backups, as https://<account>.blob.core.windows.net/<container>[/<path>]'
+    type: string
+    example: 'https://examplewestus2.blob.core.windows.net/backups'
+    minLength: 1
+  sas_token:
+    description: 'SAS token of this region''s container, with SAS_TOKEN credentials. Required on create with those credentials; never returned.'
+    type: string
+    minLength: 4
+    writeOnly: true
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

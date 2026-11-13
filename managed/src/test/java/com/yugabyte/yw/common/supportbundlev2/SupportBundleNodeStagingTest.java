@@ -48,7 +48,7 @@ import org.slf4j.LoggerFactory;
 @RunWith(MockitoJUnitRunner.class)
 public class SupportBundleNodeStagingTest {
 
-  private static final Path LOCAL = Paths.get("/opt/yugaware/devops/bin/node_utils.sh");
+  private static final Path LOCAL = Paths.get("/opt/yugaware/devops/bin/support_bundle_utils.sh");
   private static final ShellProcessContext CONTEXT = ShellProcessContext.builder().build();
 
   @Mock private NodeUniverseManager mockNodeUniverseManager;
@@ -95,7 +95,7 @@ public class SupportBundleNodeStagingTest {
     String first = staging.stage(id, universe, node1, LOCAL, CONTEXT);
     String second = staging.stage(id, universe, node1, LOCAL, CONTEXT);
 
-    String expected = dir(id, "10.0.0.1") + "/node_utils.sh";
+    String expected = dir(id, "10.0.0.1") + "/support_bundle_utils.sh";
     assertEquals(expected, first);
     assertEquals(expected, second);
     verify(mockNodeUniverseManager, times(1))
@@ -107,7 +107,7 @@ public class SupportBundleNodeStagingTest {
             eq(false));
     verify(mockNodeUniverseManager, times(1))
         .uploadFileToNode(node1, universe, LOCAL.toString(), expected, "755", CONTEXT);
-    assertTrue(staging.isStaged(id, node1, "node_utils.sh"));
+    assertTrue(staging.isStaged(id, node1, "support_bundle_utils.sh"));
     assertFalse(staging.isStaged(id, node1, "other.sh"));
   }
 
@@ -117,11 +117,12 @@ public class SupportBundleNodeStagingTest {
     UUID other = UUID.randomUUID();
 
     assertEquals(
-        dir(id, "10.0.0.2") + "/node_utils.sh", staging.stage(id, universe, node2, LOCAL, CONTEXT));
+        dir(id, "10.0.0.2") + "/support_bundle_utils.sh",
+        staging.stage(id, universe, node2, LOCAL, CONTEXT));
     assertEquals(
-        dir(other, "10.0.0.1") + "/node_utils.sh",
+        dir(other, "10.0.0.1") + "/support_bundle_utils.sh",
         staging.stage(other, universe, node1, LOCAL, CONTEXT));
-    assertFalse(staging.isStaged(id, node1, "node_utils.sh"));
+    assertFalse(staging.isStaged(id, node1, "support_bundle_utils.sh"));
   }
 
   @Test
@@ -133,10 +134,10 @@ public class SupportBundleNodeStagingTest {
         assertThrows(
             RuntimeException.class, () -> staging.stage(id, universe, node1, LOCAL, CONTEXT));
     assertTrue(thrown.getMessage(), thrown.getMessage().contains("Permission denied"));
-    assertFalse(staging.isStaged(id, node1, "node_utils.sh"));
+    assertFalse(staging.isStaged(id, node1, "support_bundle_utils.sh"));
 
     staging.stage(id, universe, node1, LOCAL, CONTEXT);
-    assertTrue(staging.isStaged(id, node1, "node_utils.sh"));
+    assertTrue(staging.isStaged(id, node1, "support_bundle_utils.sh"));
   }
 
   @Test
@@ -147,7 +148,7 @@ public class SupportBundleNodeStagingTest {
         .uploadFileToNode(any(), any(), anyString(), anyString(), anyString(), any());
 
     assertThrows(RuntimeException.class, () -> staging.stage(id, universe, node1, LOCAL, CONTEXT));
-    assertFalse(staging.isStaged(id, node1, "node_utils.sh"));
+    assertFalse(staging.isStaged(id, node1, "support_bundle_utils.sh"));
   }
 
   @Test
@@ -178,8 +179,8 @@ public class SupportBundleNodeStagingTest {
     verify(mockNodeUniverseManager, never())
         .runCommand(
             any(), any(), eq(List.of("rm", "-rf", dir(other, "10.0.0.1"))), any(), eq(false));
-    assertFalse(staging.isStaged(id, node1, "node_utils.sh"));
-    assertTrue(staging.isStaged(other, node1, "node_utils.sh"));
+    assertFalse(staging.isStaged(id, node1, "support_bundle_utils.sh"));
+    assertTrue(staging.isStaged(other, node1, "support_bundle_utils.sh"));
   }
 
   @Test
@@ -190,7 +191,7 @@ public class SupportBundleNodeStagingTest {
     staging.stage(id, universe, node1, LOCAL, CONTEXT);
 
     assertEquals(1, staging.cleanup(id, universe).size());
-    assertFalse(staging.isStaged(id, node1, "node_utils.sh"));
+    assertFalse(staging.isStaged(id, node1, "support_bundle_utils.sh"));
   }
 
   @Test
@@ -399,7 +400,8 @@ public class SupportBundleNodeStagingTest {
     String expected = "/data/tmp/yba-support-bundle-" + id + "-10_0_0_1";
 
     assertEquals(expected, staging.dir(id, universe, node1, CONTEXT));
-    assertEquals(expected + "/node_utils.sh", staging.stage(id, universe, node1, LOCAL, CONTEXT));
+    assertEquals(
+        expected + "/support_bundle_utils.sh", staging.stage(id, universe, node1, LOCAL, CONTEXT));
     staging.cleanup(id, universe);
 
     verify(mockNodeUniverseManager, times(1))

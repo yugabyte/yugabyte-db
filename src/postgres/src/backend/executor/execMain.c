@@ -110,6 +110,9 @@ static char *ExecBuildSlotValueDescription(Relation rel,
 										   int maxfieldlen);
 static void EvalPlanQualStart(EPQState *epqstate, Plan *planTree);
 
+/* YB declarations */
+static void ybOscRejectNestedTableAccess(PlannedStmt *plannedstmt);
+
 /* end of local decls */
 
 static bool
@@ -201,6 +204,35 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	 */
 	estate = CreateExecutorState();
 	queryDesc->estate = estate;
+
+	/* YB: An online schema change backfill chunk reads at its fixed backfill time. */
+	if (yb_backfill_timestamp != 0)
+	{
+		estate->yb_exec_params.backfill_read_time = yb_backfill_timestamp;
+	}
+
+	/*
+	 * YB: The online schema change backfill's tablet scope, resume point and
+	 * out_param belong only to the chunk's own INSERT ... SELECT, which is the
+	 * first executor started while they are set.  An executor nested under it
+	 * must not get them, or it would be limited to the source tablet and would
+	 * overwrite the chunk's resume key.
+	 */
+	if (yb_osc_backfill_partition_key != NULL)
+	{
+		if (yb_osc_backfill_outer_started)
+			ybOscRejectNestedTableAccess(queryDesc->plannedstmt);
+		else
+		{
+			yb_osc_backfill_outer_started = true;
+
+			estate->yb_exec_params.partition_key = yb_osc_backfill_partition_key;
+			if (yb_osc_backfill_bfinstr != NULL)
+				estate->yb_exec_params.bfinstr = yb_osc_backfill_bfinstr;
+			if (yb_osc_backfill_out_param != NULL)
+				estate->yb_exec_params.out_param = yb_osc_backfill_out_param;
+		}
+	}
 
 	oldcontext = MemoryContextSwitchTo(estate->es_query_cxt);
 
@@ -806,6 +838,40 @@ ExecCheckRTEPermsModified(Oid relOid, Oid userid, Bitmapset *modifiedCols,
 		}
 	}
 	return true;
+}
+
+/*
+ * YB: Reject a statement nested under an online schema change backfill chunk
+ * if it accesses a user table.
+ *
+ * Such a statement comes from a function called by the transform or from an
+ * RI trigger on the target.  It still runs with yb_backfill_timestamp set, so
+ * it would read at the fixed backfill time and write non-transactionally.
+ * Catalog and temp relations are allowed so that ordinary function bodies
+ * keep working.
+ */
+static void
+ybOscRejectNestedTableAccess(PlannedStmt *plannedstmt)
+{
+	ListCell   *l;
+
+	foreach(l, plannedstmt->rtable)
+	{
+		RangeTblEntry *rte = (RangeTblEntry *) lfirst(l);
+
+		if (rte->rtekind != RTE_RELATION)
+			continue;
+		if (IsCatalogRelationOid(rte->relid) ||
+			isTempNamespace(get_rel_namespace(rte->relid)))
+			continue;
+
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("statement nested in an online schema change copy may not access table \"%s\"",
+						get_rel_name(rte->relid)),
+				 errdetail("The transform function may not read from or write to tables, "
+						   "and the target table may not have constraints that query other tables.")));
+	}
 }
 
 /*

@@ -233,7 +233,7 @@ public class FilesComponentTest extends FakeDBApplication {
   private FilesComponentSpec baseSpec() {
     FilesComponentSpec spec = new FilesComponentSpec();
     spec.setComponentName("UniverseLogs");
-    spec.setScriptPath("bin/node_utils.sh");
+    spec.setScriptPath("bin/support_bundle_utils.sh");
     spec.setParams(
         Arrays.asList(
             "create_universe_logs_bundle", "--remote_tar_path", "/tmp/${nodeName}-files.tar.gz"));
@@ -615,7 +615,7 @@ public class FilesComponentTest extends FakeDBApplication {
     assertEquals(1, parsed.getFilesComponentSpecs().size());
     FilesComponentSpec parsedSpec = parsed.getFilesComponentSpecs().get(0);
     assertEquals("UniverseLogs", parsedSpec.getComponentName());
-    assertEquals("bin/node_utils.sh", parsedSpec.getScriptPath());
+    assertEquals("bin/support_bundle_utils.sh", parsedSpec.getScriptPath());
     assertEquals("/tmp/${nodeName}-files.tar.gz", parsedSpec.getRemoteTarPath());
     assertEquals("yugabyte", parsedSpec.getLinuxUser());
     assertEquals(60L, parsedSpec.getTimeoutSecs());
@@ -663,7 +663,7 @@ public class FilesComponentTest extends FakeDBApplication {
   private FilesComponentSpec gFlagsSpec() {
     FilesComponentSpec spec = new FilesComponentSpec();
     spec.setComponentName("GFlags");
-    spec.setScriptPath("bin/node_utils.sh");
+    spec.setScriptPath("bin/support_bundle_utils.sh");
     spec.setParams(
         Arrays.asList(
             "create_gflags_bundle", "--remote_tar_path", "/tmp/${nodeName}-gflags.tar.gz"));

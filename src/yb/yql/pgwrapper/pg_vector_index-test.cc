@@ -38,6 +38,7 @@
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/partition.h"
 #include "yb/dockv/value_type.h"
+#include "yb/fs/fs_manager.h"
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/master/catalog_entity_info.pb.h"
@@ -128,6 +129,7 @@ DECLARE_bool(TEST_disable_apply_committed_transactions);
 DECLARE_bool(TEST_disable_wal_retention_time);
 DECLARE_bool(TEST_fail_vector_index_backfill);
 DECLARE_bool(TEST_skip_process_apply);
+DECLARE_bool(TEST_simulate_abrupt_server_restart);
 DECLARE_bool(TEST_skip_vector_index_stamp_after_restore_reopen);
 DECLARE_bool(TEST_use_custom_varz);
 DECLARE_bool(TEST_vector_index_corrupt_inserted_payloads);
@@ -139,7 +141,9 @@ DECLARE_bool(TEST_vector_index_skip_reverse_mapping_write);
 DECLARE_bool(vector_index_require_parent_data_compacted_before_split);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
+DECLARE_int32(bytes_durable_wal_write_mb);
 DECLARE_int32(heartbeat_interval_ms);
+DECLARE_int32(interval_durable_wal_write_ms);
 DECLARE_int32(max_nexts_to_avoid_seek);
 DECLARE_int32(log_min_segments_to_retain);
 DECLARE_int32(priority_thread_pool_size);
@@ -171,6 +175,7 @@ DECLARE_uint32(vector_index_tenant_hash_group_and_range_components);
 DECLARE_uint64(vector_index_compaction_chunk_max_memstore_size_mb);
 DECLARE_uint64(vector_index_initial_chunk_memstore_size_mb);
 DECLARE_uint64(vector_index_initial_chunk_size);
+DECLARE_uint64(vector_index_max_extra_tied_results);
 DECLARE_uint64(vector_index_max_insert_tasks);
 DECLARE_uint64(vector_index_max_merge_tasks);
 DECLARE_uint64(vector_index_task_size);
@@ -246,39 +251,11 @@ std::vector<tablet::TabletPeerPtr> ListTabletPeersWithVectorIndexes(
   return result;
 }
 
-// Unlike WaitAllReplicasSynchronizedWithLeader, which only waits for the followers to commit,
-// waits for every replica to apply all the ops its leader has committed.
+// Waits for every replica to apply all the ops its leader has committed. The leader must be
+// LEADER_AND_READY, since a new leader's committed op id may lag writes already acknowledged.
 Status WaitAllReplicasAppliedLeaderCommitted(MiniCluster* cluster, CoarseDuration timeout) {
-  std::unordered_map<TabletId, int64_t> leader_committed_idx;
-  const auto deadline = CoarseMonoClock::Now() + timeout;
-  // After a restart, some tablets may still be electing a leader.
-  RETURN_NOT_OK(Wait(
-      [cluster, &leader_committed_idx]() -> Result<bool> {
-        leader_committed_idx.clear();
-        for (const auto& peer : ListTabletPeers(cluster, ListPeersFilter::kLeaders)) {
-          leader_committed_idx.emplace(
-              peer->tablet_id(),
-              VERIFY_RESULT(peer->GetConsensus())->GetLastCommittedOpId().index);
-        }
-        for (const auto& peer : ListTabletPeers(cluster, ListPeersFilter::kAll)) {
-          if (!leader_committed_idx.contains(peer->tablet_id())) {
-            return false;
-          }
-        }
-        return true;
-      },
-      deadline, "Wait for all tablet leaders"));
-  for (const auto& peer : ListTabletPeers(cluster, ListPeersFilter::kAll)) {
-    auto it = leader_committed_idx.find(peer->tablet_id());
-    SCHECK(it != leader_committed_idx.end(), IllegalState,
-           Format("No leader for tablet $0", peer->tablet_id()));
-    RETURN_NOT_OK(Wait(
-        [idx = it->second, &peer]() -> Result<bool> {
-          return VERIFY_RESULT(peer->GetConsensus())->GetLastAppliedOpId().index >= idx;
-        },
-        deadline, Format("$0apply op index $1", peer->LogPrefix(), it->second)));
-  }
-  return Status::OK();
+  return WaitAllReplicasSynchronizedWithLeader(
+      cluster, timeout, RequireLeaderIsReady::kTrue, WaitForApplied::kTrue);
 }
 
 ////////////////////////////////////////////////////////
@@ -1745,8 +1722,8 @@ TEST_P(PgVectorIndexTest, BackfillLargeTransactionAppliedAfterCommit) {
   ASSERT_OK(InsertBatch(conn, 1, kNumRows));
   ASSERT_OK(conn.CommitTransaction());
 
-  auto peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"));
-  ASSERT_EQ(peers.size(), cluster_->num_tablet_servers());
+  auto peers = ASSERT_RESULT(WaitForTableNumPeers(
+      cluster_.get(), "test", cluster_->num_tablet_servers(), 30s * kTimeMultiplier));
   for (const auto& peer : peers) {
     auto tablet = ASSERT_RESULT(peer->shared_tablet());
     ASSERT_OK(WaitFor([&tablet]() -> Result<bool> {
@@ -2174,6 +2151,67 @@ TEST_P(PgVectorIndexTest, NullVectorsInIntents) {
 
 TEST_P(PgVectorIndexTest, NullVectorsInNotAppliedIntents) {
   TestNullVectorsInIntents(/* commit= */ true);
+}
+
+// In skip prefix locks mode a serializable write takes a strong intent on the table's top level
+// key. The search must not take it for a row with intents, neither in the writing transaction nor
+// after the transaction committed but before it was applied (GH#36749). Only a colocated table's
+// scan reaches this key, and skip prefix locks mode requires packed rows. The row packing version
+// and the vector index engine don't matter, so these tests run with the defaults only.
+class PgVectorIndexSkipPrefixLocksTest : public PgVectorIndexTestBase {
+ protected:
+  bool IsColocated() const override {
+    return true;
+  }
+
+  VectorIndexEngine Engine() const override {
+    return VectorIndexEngine::kYbHnswHnswlib;
+  }
+
+  PackingMode GetPackingMode() const override {
+    return PackingMode::kV2;
+  }
+
+  void TestSearchAfterSerializableWrite(bool commit);
+};
+
+void PgVectorIndexSkipPrefixLocksTest::TestSearchAfterSerializableWrite(bool commit) {
+  constexpr size_t kNumRows = 64;
+  const std::string kCloseVector = "[0.125, 0.25, 0.375]";
+  const std::string kCloserVector = "[0.0625, 0.125, 0.1875]";
+
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+  // So the search finds the filled rows in the index, not in intents.
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kTrue, 30s * kTimeMultiplier));
+  if (commit) {
+    // Keep the committed rows in intents.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
+  }
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES (1000, '$0')", kCloserVector));
+  ASSERT_OK(conn.ExecuteFormat("UPDATE test SET embedding = '$0' WHERE id = 10", kCloseVector));
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 1"));
+  if (commit) {
+    ASSERT_OK(conn.CommitTransaction());
+  }
+
+  std::vector<std::string> expected = {
+    BuildRow(1000, kCloserVector),
+    BuildRow(10, kCloseVector),
+    ExpectedRow(2),
+    ExpectedRow(3),
+  };
+  ASSERT_NO_FATALS(VerifyRows(conn, AddFilter::kFalse, expected));
+  ASSERT_NO_FATALS(VerifyRows(conn, AddFilter::kTrue, {ExpectedRow(2)}));
+}
+
+TEST_F(PgVectorIndexSkipPrefixLocksTest, SearchAfterSerializableWrite) {
+  TestSearchAfterSerializableWrite(/* commit= */ false);
+}
+
+TEST_F(PgVectorIndexSkipPrefixLocksTest, SearchAfterCommittedNotAppliedSerializableWrite) {
+  TestSearchAfterSerializableWrite(/* commit= */ true);
 }
 
 TEST_P(PgVectorIndexTest, IndexCheck) {
@@ -5751,11 +5789,52 @@ TEST_P(PgVectorIndexPowerLossTest, FlushedChunkSurvives) {
   DisableFlushOnShutdown(*cluster_, true);
   auto* ts = cluster_->mini_tablet_server(0);
   ts->Shutdown();
-  // Drop only the chunk data: a vector index flush can persist ops past the fsynced WAL, #36244.
+  // Drop only the chunk data, FlushAheadOfUnsyncedWal covers the WAL.
   ASSERT_OK(power_loss_env_.DropUnsyncedData(is_chunk_file));
 
   ASSERT_OK(ts->Start());
   conn = ASSERT_RESULT(Connect());
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
+}
+
+// A power loss drops the WAL tail that was not fsynced, along with the unflushed regular DB rows
+// written by it.
+// A vector index flush done before the power loss must not have persisted vectors of those rows.
+// See issue #36244.
+TEST_P(PgVectorIndexPowerLossTest, FlushAheadOfUnsyncedWal) {
+  constexpr size_t kNumRows = 64;
+  constexpr size_t kQueryLimit = 5;
+  auto is_wal_segment = [](const std::string& path) {
+    return FsManager::IsWalSegmentFileName(BaseName(path));
+  };
+
+  // Fsync WAL only when forced to: segment allocation, rollover or close.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_interval_durable_wal_write_ms) = 3600 * 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_bytes_durable_wal_write_mb) = 1024;
+
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(
+      conn, 1, kNumRows, /* keep_vectors= */ false, NonTransactionalWrites::kTrue));
+  // Otherwise the WAL tail is already durable and the scenario is not exercised.
+  ASSERT_GT(power_loss_env_.UnsyncedBytes(is_wal_segment), 0U);
+
+  // A regular DB flush would fsync the WAL itself, so flush the vector indexes only.
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kVectorIndexes));
+
+  // Crash: neither the shutdown flush nor the WAL close syncs the WAL.
+  DisableFlushOnShutdown(*cluster_, true);
+  auto* ts = cluster_->mini_tablet_server(0);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_abrupt_server_restart) = true;
+  ts->Shutdown();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_abrupt_server_restart) = false;
+  ASSERT_OK(power_loss_env_.DropUnsyncedData(is_wal_segment));
+
+  ASSERT_OK(ts->Start());
+  conn = ASSERT_RESULT(Connect());
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
+  auto num_rows = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test"));
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = true;
+  ASSERT_EQ(num_rows, static_cast<int64_t>(kNumRows));
   ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
 }
 
@@ -7346,6 +7425,134 @@ TEST_F(PgVectorIndexUtilTest, NumTopVectorsToRemoveExceedsResultEntries) {
 
   // Make sure the test hit the test path that clears result entries.
   ASSERT_FALSE(ANNOTATE_UNPROTECTED_READ(docdb::TEST_vector_index_clear_result_entries_once));
+}
+
+// Covers https://github.com/yugabyte/yugabyte-db/issues/37003.
+// The prefetch size is the scan's limit, so WITH TIES needs more than one page. A page returns the
+// whole tie at its end, so the next page, which skips rows by count, does not cut it. Ties past
+// vector_index_max_extra_tied_results are cut, then the rows of the tie after the cut are left out,
+// but no row is returned twice.
+TEST_F(PgVectorIndexUtilTest, PagedSearchWithTies) {
+  constexpr int kNumGroups = 10;
+  constexpr int kGroupSize = 8;
+  constexpr size_t kMaxExtraTiedResults = 2;
+
+  num_pre_split_tablets_ = 1;
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(CreateIndex(conn));
+
+  // All rows of group g share the vector [10 * g, 0, 0].
+  std::vector<std::vector<int64_t>> groups(kNumGroups);
+  int64_t id = 0;
+  for (int g = 0; g != kNumGroups; ++g) {
+    for (int i = 0; i != kGroupSize; ++i) {
+      groups[g].push_back(++id);
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES ($0, '[$1, 0, 0]')", id, 10 * g));
+    }
+  }
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+
+  auto rounds = [this] {
+    uint64_t result = 0;
+    for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      result += cluster_->mini_tablet_server(i)->metric_entity()
+          .FindOrCreateMetric<EventStats>(&METRIC_vector_index_partitions_queried)->underlying()
+          ->TotalCount();
+    }
+    return result;
+  };
+
+  auto check = [&](const std::string& stage) -> Status {
+    const auto max_extra_tied_results = FLAGS_vector_index_max_extra_tied_results;
+    for (int g = 0; g != kNumGroups; ++g) {
+      auto rounds_before = rounds();
+      auto rows = VERIFY_RESULT(conn.FetchRows<int64_t>(Format(
+          "SELECT id FROM test ORDER BY embedding $0 '[$1, 0, 0]' FETCH FIRST 1 ROWS WITH TIES",
+          pgwrapper::DistanceOpName(distance_kind_), 10 * g)));
+      auto context = Format("$0, group $1: $2", stage, g, AsString(rows));
+      // The search must have paged for the test to cover the issue.
+      SCHECK_GT(rounds() - rounds_before, 1U, IllegalState, context);
+      std::ranges::sort(rows);
+      SCHECK(std::ranges::adjacent_find(rows) == rows.end(), IllegalState,
+             "Duplicate rows, " + context);
+      SCHECK(std::ranges::includes(groups[g], rows), IllegalState,
+             "Rows of another group, " + context);
+      const size_t expected_size = std::min<size_t>(kGroupSize, 1 + max_extra_tied_results);
+      SCHECK_EQ(rows.size(), expected_size, IllegalState, context);
+    }
+    return Status::OK();
+  };
+
+  // Before the flush the mutable hnswlib chunk serves the search, after the compaction YbHnsw does.
+  ASSERT_OK(check("Before flush"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_max_extra_tied_results) = kMaxExtraTiedResults;
+  ASSERT_OK(check("Before flush, ties cut"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_max_extra_tied_results) = 1024;
+  ASSERT_OK(cluster_->CompactTablets());
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+  ASSERT_OK(check("After compaction"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_max_extra_tied_results) = kMaxExtraTiedResults;
+  ASSERT_OK(check("After compaction, ties cut"));
+}
+
+// Covers https://github.com/yugabyte/yugabyte-db/issues/37003.
+// The join rejects the rows at the query point. With vector_index_max_extra_tied_results = 0 the
+// pages cut the tie there, so each page drops the tied rows the re-run search returns again. A
+// tablet that is still dropping ties must not let another tablet's farther row out before its own
+// nearer one.
+TEST_F(PgVectorIndexUtilTest, PagedSearchWithTiesAcrossTablets) {
+  constexpr int kNumClusters = 20;
+  constexpr int kNumTies = 20;
+  constexpr int kNumFar = 10;
+
+  num_pre_split_tablets_ = 2;
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(CreateIndex(conn));
+  ASSERT_OK(conn.Execute("CREATE TABLE keep (id BIGINT PRIMARY KEY)"));
+
+  // Cluster c has kNumTies rows at its center [100 * c, 0, 0], the nearest row to the center after
+  // them at distance 10, and kNumFar rows at distance 20.
+  std::vector<int64_t> nearest(kNumClusters);
+  int64_t id = 0;
+  for (int c = 0; c != kNumClusters; ++c) {
+    for (int i = 0; i != kNumTies; ++i) {
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES ($0, '[$1, 0, 0]')", ++id, 100 * c));
+    }
+    nearest[c] = ++id;
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES ($0, '[$1, 10, 0]')", id, 100 * c));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO keep VALUES ($0)", id));
+    for (int i = 0; i != kNumFar; ++i) {
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES ($0, '[$1, 0, 20]')", ++id, 100 * c));
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO keep VALUES ($0)", id));
+    }
+  }
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+
+  // A batched nested loop or a hash join would sort the joined rows by distance again.
+  ASSERT_OK(conn.Execute("SET yb_bnl_batch_size = 1"));
+  ASSERT_OK(conn.Execute("SET enable_hashjoin = off"));
+  ASSERT_OK(conn.Execute("SET enable_mergejoin = off"));
+
+  auto rounds = [this] {
+    return cluster_->mini_tablet_server(0)->metric_entity()
+        .FindOrCreateMetric<EventStats>(&METRIC_vector_index_partitions_queried)->underlying()
+        ->TotalCount();
+  };
+
+  for (auto max_extra_tied_results : {uint64_t{1024}, uint64_t{0}}) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_max_extra_tied_results) = max_extra_tied_results;
+    for (int c = 0; c != kNumClusters; ++c) {
+      auto query = Format(
+          "SELECT test.id FROM test INNER JOIN keep ON test.id = keep.id "
+          "ORDER BY test.embedding $0 '[$1, 0, 0]' LIMIT 1",
+          pgwrapper::DistanceOpName(distance_kind_), 100 * c);
+      auto rounds_before = rounds();
+      auto rows = ASSERT_RESULT(conn.FetchRows<int64_t>(query));
+      auto context = Format("Cluster $0, max extra tied results $1", c, max_extra_tied_results);
+      ASSERT_GT(rounds() - rounds_before, 1U) << context;
+      ASSERT_EQ(rows, std::vector<int64_t>{nearest[c]}) << context;
+    }
+  }
 }
 
 // Rows 1..20 hold [i, 2i, 3i]: row 20 is the nearest of them to kQueryA and row 1 to kQueryB. Each
