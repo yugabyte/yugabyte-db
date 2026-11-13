@@ -2011,10 +2011,10 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyDdlLeavesNoStaleCatalogEnt
   ASSERT_OK(legacy_conn.Fetch("SELECT w FROM p"));
 }
 
-// Tests for turning table locks off on a running cluster (#37326).
+// Tests for turning global object locks off on a running cluster (#37326).
 //
-// enable_object_locking_for_table_locks is not a runtime flag, so a rolling restart turns it off
-// one node at a time. Nodes not yet restarted run in new mode; restarted nodes run in legacy mode.
+// ysql_enable_global_object_locks is not a runtime flag, so a rolling restart turns it off one node
+// at a time. Nodes not yet restarted run in new mode; restarted nodes run in legacy mode.
 // A DDL on either kind of node must not miss a write from a transaction on the other kind.
 class PgObjectLocksTestNewTxnVsLegacyDdl : public PgObjectLocksTestMixModeDuringPromotion {
  protected:
@@ -2025,13 +2025,16 @@ class PgObjectLocksTestNewTxnVsLegacyDdl : public PgObjectLocksTestMixModeDuring
     }
   }
 
-  // Restarts ts in the state a node is in after a rolling restart turns table locks off: the
-  // legacy DDL mode flags (table locks off needs concurrent and transactional DDL off too), and
-  // the infra AutoFlag still promoted. The flags replace the fixture's stored ones because flags
-  // passed to Restart come first on the command line, so the fixture's values would win.
-  void RestartWithTableLocksOff(ExternalTabletServer* ts) {
+  // Restarts ts in the state a node is in after a rolling restart turns global object locks off:
+  // the legacy DDL mode flags (global locks off needs concurrent and transactional DDL off too)
+  // with table locks still on, and the infra AutoFlag still promoted. The flags replace the
+  // fixture's stored ones because flags passed to Restart come first on the command line, so the
+  // fixture's values would win.
+  void RestartWithGlobalLocksOff(ExternalTabletServer* ts) {
     std::vector<std::string> flags;
     ToggleDDLMode(flags, /* use_legacy = */ true);
+    std::erase(flags, "--enable_object_locking_for_table_locks=false");
+    flags.push_back("--ysql_enable_global_object_locks=false");
     flags.push_back("--ysql_yb_enable_object_locking_infra=true");
     for (const auto& flag : flags) {
       const auto eq = flag.find('=');
@@ -2044,7 +2047,8 @@ class PgObjectLocksTestNewTxnVsLegacyDdl : public PgObjectLocksTestMixModeDuring
     ASSERT_OK(LoggedWaitFor(
         [this, ts]() -> Result<bool> { return LibPqTestBase::ConnectToTs(*ts).ok(); },
         MonoDelta::FromSeconds(kTimeMultiplier * 60), "restarted tserver to accept connections"));
-    ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("enable_object_locking_for_table_locks")), "false");
+    ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("ysql_enable_global_object_locks")), "false");
+    ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("enable_object_locking_for_table_locks")), "true");
     ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("ysql_yb_enable_object_locking_infra")), "true");
   }
 
@@ -2072,7 +2076,7 @@ TEST_F(PgObjectLocksTestNewTxnVsLegacyDdl, LegacyCreateIndexWithNewModeWriter) {
   ASSERT_OK(new_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
   ASSERT_OK(new_conn.Execute("UPDATE test SET v = 42 WHERE k = 1"));
 
-  ASSERT_NO_FATALS(RestartWithTableLocksOff(ts2));
+  ASSERT_NO_FATALS(RestartWithGlobalLocksOff(ts2));
   auto create_index_future = std::async(std::launch::async, [&]() -> Status {
     auto ddl_conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts2));
     return ddl_conn.Execute("CREATE INDEX test_v_idx ON test(v)");
@@ -2104,7 +2108,7 @@ TEST_F(PgObjectLocksTestNewTxnVsLegacyDdl, NewModeWriteAfterLegacyCreateIndex) {
   ASSERT_OK(new_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
   ASSERT_EQ(ASSERT_RESULT(new_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
 
-  ASSERT_NO_FATALS(RestartWithTableLocksOff(ts2));
+  ASSERT_NO_FATALS(RestartWithGlobalLocksOff(ts2));
   auto create_index_future = std::async(std::launch::async, [&]() -> Status {
     auto ddl_conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts2));
     return ddl_conn.Execute("CREATE INDEX test_v_idx ON test(v)");
@@ -2138,7 +2142,7 @@ TEST_F(PgObjectLocksTestNewTxnVsLegacyDdl, NewModeCreateIndexWithLegacyWriter) {
     ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
   }
 
-  ASSERT_NO_FATALS(RestartWithTableLocksOff(ts2));
+  ASSERT_NO_FATALS(RestartWithGlobalLocksOff(ts2));
   auto legacy_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
   ASSERT_OK(legacy_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
   ASSERT_OK(legacy_conn.Execute("UPDATE test SET v = 42 WHERE k = 1"));
@@ -2149,10 +2153,15 @@ TEST_F(PgObjectLocksTestNewTxnVsLegacyDdl, NewModeCreateIndexWithLegacyWriter) {
     auto observer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
     ASSERT_OK(observer.Execute("SET yb_locks_min_txn_age = '0s'"));
     ASSERT_OK(WaitFor([&]() -> Result<bool> {
-      auto rows = observer.FetchAllAsString(
+      auto rows = observer.FetchRows<std::string, bool>(
           "SELECT mode, granted FROM pg_locks WHERE relation = 'test'::regclass");
-      LOG(INFO) << "pg_locks on ts2: " << AsString(rows);
-      return rows.ok() && rows->find("RowExclusiveLock, 1") != std::string::npos;
+      if (!rows.ok()) {
+        LOG(INFO) << "pg_locks on ts2: " << rows.status();
+        return false;
+      }
+      return std::ranges::any_of(*rows, [](const auto& row) {
+        return std::get<0>(row) == "RowExclusiveLock" && std::get<1>(row);
+      });
     }, 30s * kTimeMultiplier, "pg_locks on ts2 to show the legacy writer's lock"));
   }
 
@@ -2187,7 +2196,7 @@ TEST_F(PgObjectLocksTestNewTxnVsLegacyDdl, NewModeAddForeignKeyWithLegacyWriter)
     ASSERT_OK(conn.Execute("INSERT INTO parent VALUES (1)"));
   }
 
-  ASSERT_NO_FATALS(RestartWithTableLocksOff(ts2));
+  ASSERT_NO_FATALS(RestartWithGlobalLocksOff(ts2));
   auto legacy_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
   ASSERT_OK(legacy_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
   ASSERT_OK(legacy_conn.Execute("INSERT INTO child VALUES (1, 2)"));
