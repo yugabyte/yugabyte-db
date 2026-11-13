@@ -58,7 +58,6 @@ public class AnsibleCreateServer extends NodeTaskBase {
     // instance profile instead of an access key id and secret
     public String ipArnString;
     @Getter @Setter private String machineImage;
-    @Deprecated public UUID imageBundleUUID;
     public String capacityReservation;
   }
 

@@ -3012,7 +3012,7 @@ public class UniverseCRUDHandler {
     for (Cluster newCluster : taskParams.clusters) {
       // enforce user tags for cloud instances.
       validateUserTags(customer, newCluster.userIntent);
-      GFlagsUtil.validateGFlagValues(cluster.userIntent);
+      GFlagsUtil.validateGFlagValues(newCluster.userIntent);
 
       Cluster curCluster = universe.getCluster(newCluster.uuid);
       if (isK8s
@@ -3062,9 +3062,15 @@ public class UniverseCRUDHandler {
       if (!newPartitioned && currentPartitioned) {
         throw new PlatformServiceException(BAD_REQUEST, "Cannot change geo partitions state");
       }
+      if (newPartitioned) {
+        if (!currentPartitioned) {
+          PlacementInfoUtil.validatePartitions(newCluster, null);
+        } else {
+          PlacementInfoUtil.validatePartitions(newCluster, curCluster);
+        }
+      }
       // Validating the case when both old and new have partitions.
       if (newPartitioned && currentPartitioned) {
-        PlacementInfoUtil.validatePartitions(newCluster, curCluster);
         Map<UUID, UniverseDefinitionTaskParams.PartitionInfo> currentMap =
             curCluster.getPartitions().stream().collect(Collectors.toMap(g -> g.getUuid(), g -> g));
         Map<UUID, UniverseDefinitionTaskParams.PartitionInfo> newMap =

@@ -71,6 +71,7 @@ public class InstallNodeAgent extends NodeTaskBase {
     params.setUniverseUUID(taskParams.getUniverseUUID());
     params.nodeAgentInstallDir = taskParams.nodeAgentInstallDir;
     params.sudoAccess = taskParams.sudoAccess;
+    params.userIntent = taskParams.userIntent;
     return params;
   }
 

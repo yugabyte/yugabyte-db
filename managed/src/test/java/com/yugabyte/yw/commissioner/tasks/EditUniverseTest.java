@@ -371,7 +371,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
         .thenAnswer(
             inv -> {
-              List<String> cmd = inv.getArgument(2);
+              List<String> cmd = inv.getArgument(1);
               if (cmd != null && cmd.toString().contains("command-execution-test")) {
                 return ShellResponse.create(
                     0, ShellResponse.RUN_COMMAND_OUTPUT_PREFIX + " command-execution-test");
