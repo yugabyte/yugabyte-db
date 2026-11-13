@@ -44,9 +44,6 @@
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
 
-#if YB_GOOGLE_TCMALLOC
-#include <tcmalloc/malloc_extension.h>
-#endif
 
 using std::string;
 
@@ -90,7 +87,7 @@ namespace {
 YB_DEFINE_ENUM(ThreadStackState, (kNone)(kSendFailed)(kReady));
 
 // Why the signal handler could not collect a stack.
-enum class EmptyStackReason : uint8_t { kNone, kInAllocDealloc, kCollectingStack };
+enum class EmptyStackReason : uint8_t { kNone, kCollectingStack };
 
 struct ThreadStackEntry : public MPSCQueueEntry<ThreadStackEntry> {
   ThreadIdForStack tid;
@@ -210,11 +207,9 @@ struct ThreadStackHelper {
         if (entry->stack) {
           entry_out = entry->stack;
         } else {
-          static const Status in_alloc_status = STATUS(TryAgain, kThreadStackInAllocDeallocMsg);
           static const Status collecting_status = STATUS(TryAgain, kThreadStackCollectingMsg);
           static const Status unknown_status = STATUS(TryAgain, kThreadStackUnknownReasonMsg);
-          entry_out = entry->empty_reason == EmptyStackReason::kInAllocDealloc ? in_alloc_status
-              : entry->empty_reason == EmptyStackReason::kCollectingStack ? collecting_status
+          entry_out = entry->empty_reason == EmptyStackReason::kCollectingStack ? collecting_status
               : unknown_status;
         }
       }
@@ -248,14 +243,6 @@ ThreadStackHelper thread_stack_helper;
 void HandleStackTraceSignal(int signum) {
   int old_errno = errno;
   StackTrace stack_trace;
-#if YB_GOOGLE_TCMALLOC
-  // TODO(#17889): retry in this case. For now, just produce an empty stack trace.
-  if (tcmalloc::MallocExtension::IsCurThreadInAllocDealloc()) {
-    thread_stack_helper.RecordStackTrace(stack_trace, EmptyStackReason::kInAllocDealloc);
-    errno = old_errno;
-    return;
-  }
-#endif
   if (is_collecting_stack) {
     thread_stack_helper.RecordStackTrace(stack_trace, EmptyStackReason::kCollectingStack);
     errno = old_errno;

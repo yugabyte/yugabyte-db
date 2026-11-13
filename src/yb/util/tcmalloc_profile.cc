@@ -22,6 +22,7 @@
 #include "yb/util/tcmalloc_util.h"
 
 #include "absl/debugging/symbolize.h"
+#include "absl/time/clock.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/util/flags/flag_tags.h"
@@ -94,32 +95,58 @@ Result<std::vector<Sample>> GetAggregateAndSortHeapSnapshot(
   }
   return GetAggregateAndSortHeapSnapshotGperftools(order, separator);
 #elif YB_GOOGLE_TCMALLOC
+  if (filter == SampleFilter::kGrowthOnly) {
+    return STATUS(NotSupported, "growth-only filter is only supported for heap profiles");
+  }
   auto current_profile = GetHeapSnapshot(snapshot_type);
-  return AggregateAndSortProfile(current_profile, filter, order, separator);
+  return AggregateAndSortProfile(current_profile, order, separator, absl::InfinitePast());
 #else
   return STATUS(NotSupported, "Heap snapshot is only available if tcmalloc is enabled.");
 #endif
 }
 
 #if YB_GOOGLE_TCMALLOC
-Result<tcmalloc::Profile> GetHeapProfile(int seconds, int64_t sample_freq_bytes) {
+Result<HeapProfile> CollectHeapProfile(
+    int64_t sample_freq_bytes, const std::function<void()>& workload) {
   static std::atomic<bool> heap_profile_running{false};
   bool expected = false;
   if (!heap_profile_running.compare_exchange_strong(expected, /* desired= */ true)) {
     return STATUS_FORMAT(IllegalState, "A heap profile is already running.");
   }
 
-  auto prev_sample_rate = tcmalloc::MallocExtension::GetProfileSamplingRate();
-  tcmalloc::MallocExtension::SetProfileSamplingRate(sample_freq_bytes);
-  auto token =
-      tcmalloc::MallocExtension::StartLifetimeProfiling(/* seed_with_live_allocs= */ false);
+  auto prev_sample_rate = tcmalloc::MallocExtension::GetProfileSamplingInterval();
+  tcmalloc::MallocExtension::SetProfileSamplingInterval(sample_freq_bytes);
+  HeapProfile profile;
+  // tcmalloc timestamps sampled allocations with absl::Now().
+  profile.start_time = absl::Now();
+  // Not the lifetime profiler: upstream tcmalloc seeds it with every live sampled allocation.
+  auto token = tcmalloc::MallocExtension::StartAllocationProfiling();
 
-  LOG(INFO) << Format("Sleeping for $0 seconds while profile is collected.", seconds);
-  SleepFor(MonoDelta::FromSeconds(seconds));
-  tcmalloc::MallocExtension::SetProfileSamplingRate(prev_sample_rate);
-  auto profile = std::move(token).Stop();
+  workload();
+
+  tcmalloc::MallocExtension::SetProfileSamplingInterval(prev_sample_rate);
+  profile.allocations = std::move(token).Stop();
+  profile.heap_at_end = GetHeapSnapshot(HeapSnapshotType::kCurrentHeap);
   heap_profile_running = false;
   return profile;
+}
+
+Result<HeapProfile> GetHeapProfile(int seconds, int64_t sample_freq_bytes) {
+  return CollectHeapProfile(sample_freq_bytes, [seconds] {
+    LOG(INFO) << Format("Sleeping for $0 seconds while profile is collected.", seconds);
+    SleepFor(MonoDelta::FromSeconds(seconds));
+  });
+}
+
+std::vector<Sample> AggregateAndSortHeapProfile(
+    const HeapProfile& profile, SampleFilter filter, SampleOrder order) {
+  switch (filter) {
+    case SampleFilter::kAllSamples:
+      return AggregateAndSortProfile(profile.allocations, order, "\n", absl::InfinitePast());
+    case SampleFilter::kGrowthOnly:
+      return AggregateAndSortProfile(profile.heap_at_end, order, "\n", profile.start_time);
+  }
+  FATAL_INVALID_ENUM_VALUE(SampleFilter, filter);
 }
 
 tcmalloc::Profile GetHeapSnapshot(HeapSnapshotType snapshot_type) {
@@ -135,8 +162,8 @@ tcmalloc::Profile GetHeapSnapshot(HeapSnapshotType snapshot_type) {
 }
 
 std::vector<Sample> AggregateAndSortProfile(
-    const tcmalloc::Profile& profile, SampleFilter filter, SampleOrder order,
-    const std::string& separator) {
+    const tcmalloc::Profile& profile, SampleOrder order, const std::string& separator,
+    absl::Time allocated_since) {
   LOG(INFO) << "Analyzing TCMalloc sampling profile";
   int failed_symbolizations = 0;
   std::unordered_map<std::string, SampleInfo> samples_map;
@@ -149,10 +176,7 @@ std::vector<Sample> AggregateAndSortProfile(
       return;
     }
 
-    // If we only want growth, exclude samples for which we saw a deallocation event.
-    // "Censored" means we observed an allocation but not a deallocation. (Deallocation-only events
-    // are not reported).
-    if (filter == SampleFilter::kGrowthOnly && !sample.is_censored) {
+    if (sample.allocation_time < allocated_since) {
       return;
     }
 
@@ -182,8 +206,7 @@ std::vector<Sample> AggregateAndSortProfile(
             << ", count: " << sample.count
             << ", requested_size: " << sample.requested_size
             << ", allocated_size: " << sample.allocated_size
-            << ", is_censored: " << sample.is_censored
-            << ", avg_lifetime: " << sample.avg_lifetime;
+            << ", allocation_time: " << sample.allocation_time;
   });
   if (failed_symbolizations > 0) {
     LOG(WARNING) << Format("Failed to symbolize $0 symbols", failed_symbolizations);
