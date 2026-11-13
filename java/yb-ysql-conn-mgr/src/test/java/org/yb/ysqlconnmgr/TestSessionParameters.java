@@ -1256,13 +1256,10 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
   }
 
   // The backend applies a reloaded ysql_pg_conf_csv while serving the client, so the check hooks
-  // run on a Connection Manager backend. The 'fluctuating' strategy keeps that backend in use
-  // after the reload.
+  // run on a Connection Manager backend.
   @Test
   public void testSighupSettingsDontMakeConnectionSticky() throws Exception {
-    Map<String, String> tserverFlags = new HashMap<>(SINGLE_BACKEND_FLAGS);
-    tserverFlags.put("ysql_conn_mgr_alter_guc_adoption_strategy", "fluctuating");
-    restartClusterWithAdditionalFlags(Collections.emptyMap(), tserverFlags);
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
     ConnectionBuilder builder = getConnectionBuilder()
         .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR);
     List<String> confEntries = new ArrayList<>();
