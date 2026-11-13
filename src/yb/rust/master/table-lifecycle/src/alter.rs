@@ -63,6 +63,11 @@ impl TableLifecycle {
         req: &AlterTableRequestPB,
         resp: &mut AlterTableResponsePB,
     ) -> Result<(), MasterErrorPB> {
+        if self.ysql_major_upgrade_in_progress(&self.catalog.snapshot()) {
+            // Only pg_upgrade's restore can alter during the upgrade, and only PG metadata.
+            tracing::info!("Ignoring alter table request during a major YSQL upgrade");
+            return Ok(());
+        }
         // A rename takes a name; hold the name lock across the check and the write.
         let _names = self.names.lock().await;
         let version = self

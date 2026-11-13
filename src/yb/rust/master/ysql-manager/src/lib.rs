@@ -17,6 +17,7 @@ pub mod catalog_versions;
 pub mod initdb;
 pub mod lease;
 pub mod locks;
+pub mod major_upgrade;
 pub mod upgrade;
 
 #[cfg(test)]

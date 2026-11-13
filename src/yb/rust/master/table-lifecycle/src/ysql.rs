@@ -38,9 +38,10 @@ use yb_proto::pb::master_types::{master_error_pb::Code, MasterErrorPB, SysRowEnt
 
 use crate::create::add_new_tablets;
 use crate::lookup::{find_namespace, find_table};
+use crate::major_upgrade::{is_prior_version_catalog_table, DbTables};
 use crate::placement::{check_placement, cluster_config, live_tservers, num_replicas};
 use crate::time::local_time_string;
-use crate::{error, TableLifecycle};
+use crate::{error, tagged_error, TableLifecycle};
 
 use sys_tables_entry_pb::State as TableState;
 
@@ -74,15 +75,15 @@ pub(crate) fn check_no_other_ddl_txn(
     txn_id: &[u8],
 ) -> Result<(), MasterErrorPB> {
     match ddl_txn_id(pb) {
-        Some(other) if other != txn_id => Err(error(
+        Some(other) if other != txn_id => Err(tagged_error(
             Code::TABLE_SCHEMA_CHANGE_IN_PROGRESS,
             StatusCode::TryAgain,
             format!(
                 "DDL transaction {} cannot continue as table {} is undergoing DDL transaction \
                  verification for {}",
-                hex(txn_id),
+                uuid(txn_id),
                 String::from_utf8_lossy(pb.name()),
-                hex(other)
+                uuid(other)
             ),
         )),
         _ => Ok(()),
@@ -152,8 +153,13 @@ impl TableLifecycle {
         resp: &mut CreateTableResponsePB,
         tablegroup_parent: bool,
     ) -> Result<(), MasterErrorPB> {
+        if let Some(reused) =
+            self.reuse_table_during_major_upgrade(&self.catalog.snapshot(), req, resp)
+        {
+            return reused;
+        }
         if req.is_pg_catalog_table() {
-            return Err(not_yet("Creating a PG catalog table (initdb)"));
+            return self.create_ysql_sys_table(token, deadline, req, resp).await;
         }
         // An index's indexed table: `index_info.indexed_table_id`, or the deprecated field.
         let indexed_table_id: Option<Vec<u8>> = if req.index_info.is_some() {
@@ -388,6 +394,13 @@ impl TableLifecycle {
             })
             .await?;
         resp.set_table_id(table_id);
+        if created.is_ok() && (self.options.fail_table_creation_at_preparing_state)() {
+            return Err(error(
+                Code::UNKNOWN_ERROR,
+                StatusCode::IllegalState,
+                "Failing table creation at PREPARING state",
+            ));
+        }
         created
     }
 
@@ -548,6 +561,15 @@ impl TableLifecycle {
             ));
         }
         let committed = req.is_committed();
+        if (self.options.pause_ddl_rollback)() {
+            // C++ completes on a background thread that `TEST_pause_ddl_rollback` holds; the
+            // tables keep the transaction's DDL state, and the verifier finishes once unpaused.
+            tracing::info!(
+                "TEST: DDL rollback is paused for transaction {}",
+                hex(&txn_id)
+            );
+            return Ok(());
+        }
         let tables: Vec<Vec<u8>> = tables_of_txn(&self.catalog.snapshot(), &txn_id);
         for table_id in tables {
             self.complete_ddl_txn(token, deadline, &table_id, &txn_id, committed)
@@ -986,9 +1008,25 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 /// `kPgFirstNormalObjectId`.
-const PG_FIRST_NORMAL_OID: u32 = 16384;
+pub(crate) const PG_FIRST_NORMAL_OID: u32 = 16384;
 
 /// `IsPgsqlId`: a 32-digit id whose UUID version is 3, which YSQL ids repurpose.
+/// A transaction id as `TransactionId::ToString` prints it (a dashed UUID).
+fn uuid(bytes: &[u8]) -> String {
+    let h = hex(bytes);
+    if h.len() != 32 {
+        return h;
+    }
+    format!(
+        "{}-{}-{}-{}-{}",
+        &h[0..8],
+        &h[8..12],
+        &h[12..16],
+        &h[16..20],
+        &h[20..32]
+    )
+}
+
 pub(crate) fn is_pgsql_id(id: &[u8]) -> bool {
     id.len() == 32
         && std::str::from_utf8(&id[12..14])
@@ -1028,15 +1066,6 @@ pub(crate) fn initdb_pending(snapshot: &CatalogSnapshot) -> bool {
         .is_some_and(|config| config.ysql_catalog_config().initdb_done())
 }
 
-/// `IsPriorVersionYsqlCatalogTable`: a catalog table of the previous PG major version.
-fn is_prior_version_catalog_table(id: &[u8]) -> bool {
-    pg_table_oid(id).is_some_and(|oid| oid < PG_FIRST_NORMAL_OID)
-        && std::str::from_utf8(&id[18..20])
-            .ok()
-            .and_then(|v| u8::from_str_radix(v, 16).ok())
-            != Some(1)
-}
-
 impl TableLifecycle {
     /// `CreateNamespace` of a YSQL database: the row is written PREPARING, the template's PG
     /// catalog tables are copied (`ProcessPendingNamespace`), and then it is RUNNING, or FAILED.
@@ -1074,7 +1103,35 @@ impl TableLifecycle {
                     );
                     Ok((Mutation::new(), Err((id.to_vec(), e))))
                 };
-                if !req.namespace_id().is_empty() {
+                let upgrading = self.ysql_major_upgrade_in_progress(snapshot);
+                // pg_upgrade "creates" every database again, and the system ones twice (initdb,
+                // then a restore after a drop); each reuses the database the old version has.
+                let reused = if upgrading {
+                    let by_id = !req.namespace_id().is_empty();
+                    let found = if by_id {
+                        snapshot
+                            .get(SysRowEntryType::NAMESPACE, req.namespace_id())
+                            .cloned()
+                    } else {
+                        crate::lookup::find_namespace_by_name(snapshot, req.name(), pgsql as i32)
+                    };
+                    let Some(found) = found else {
+                        return Err(error(
+                            Code::NAMESPACE_NOT_FOUND,
+                            StatusCode::IllegalState,
+                            if by_id {
+                                "No new namespaces can be created during a major YSQL upgrade"
+                            } else {
+                                "Namespace is unexpectedly missing from the namespace names \
+                                 mapper during a major YSQL upgrade"
+                            },
+                        ));
+                    };
+                    Some(found.key.id.to_vec())
+                } else {
+                    None
+                };
+                if reused.is_none() && !req.namespace_id().is_empty() {
                     if let Some(found) = snapshot
                         .get(SysRowEntryType::NAMESPACE, req.namespace_id())
                         .filter(|e| {
@@ -1094,6 +1151,7 @@ impl TableLifecycle {
                 }
                 if let Some(found) =
                     crate::lookup::find_namespace_by_name(snapshot, req.name(), pgsql as i32)
+                        .filter(|_| reused.is_none())
                 {
                     return existing(
                         &found.key.id,
@@ -1120,7 +1178,9 @@ impl TableLifecycle {
                         PG_FIRST_NORMAL_OID
                     }
                 };
-                let id = if req.namespace_id().is_empty() {
+                let id = if let Some(id) = reused.clone() {
+                    id
+                } else if req.namespace_id().is_empty() {
                     crate::namespaces::unused_id(snapshot, SysRowEntryType::NAMESPACE)
                 } else {
                     req.namespace_id().to_vec()
@@ -1132,11 +1192,21 @@ impl TableLifecycle {
                 let previous = snapshot
                     .get(SysRowEntryType::NAMESPACE, &id)
                     .and_then(|e| e.parse::<SysNamespaceEntryPB>().ok());
-                let mut ns = SysNamespaceEntryPB::new();
+                // A reused database keeps the rest of its row.
+                let mut ns = match (&reused, &previous) {
+                    (Some(_), Some(previous)) => previous.clone(),
+                    _ => SysNamespaceEntryPB::new(),
+                };
                 ns.set_name(req.name().as_bytes().to_vec());
                 ns.set_database_type(pgsql);
                 ns.set_colocated(req.colocated());
                 ns.set_state(sys_namespace_entry_pb::State::PREPARING);
+                if upgrading {
+                    // Tells this PREPARING from an abandoned creation's, which is reaped.
+                    ns.set_ysql_next_major_version_state(
+                        sys_namespace_entry_pb::YsqlNextMajorVersionState::NEXT_VER_PREPARING,
+                    );
+                }
                 ns.set_next_normal_pg_oid(
                     next_oid.max(previous.as_ref().map_or(0, |p| p.next_normal_pg_oid())),
                 );
@@ -1198,7 +1268,18 @@ impl TableLifecycle {
                     "Creating YSQL database {name} failed: {}",
                     e.status.message()
                 );
-                let _ = lifecycle.set_namespace_state(&token, &id, false).await;
+                if lifecycle.ysql_major_upgrade_in_progress(&lifecycle.catalog.snapshot()) {
+                    // The old version's catalog and user tables still need the database.
+                    let _ = lifecycle
+                        .set_next_version_state(
+                            &token,
+                            &id,
+                            sys_namespace_entry_pb::YsqlNextMajorVersionState::NEXT_VER_FAILED,
+                        )
+                        .await;
+                } else {
+                    let _ = lifecycle.set_namespace_state(&token, &id, false).await;
+                }
             }
             lifecycle
                 .creating_databases
@@ -1252,6 +1333,7 @@ impl TableLifecycle {
         if let Some(e) = response.error.into_option() {
             return Err(e);
         }
+        self.pause_before_upsert_ysql_sys_table().await;
         let deadline = Instant::now() + std::time::Duration::from_secs(60);
         self.write(token, deadline, |snapshot| {
             let namespace = snapshot
@@ -1265,6 +1347,9 @@ impl TableLifecycle {
                 )));
             }
             ns.set_state(sys_namespace_entry_pb::State::RUNNING);
+            ns.set_ysql_next_major_version_state(
+                sys_namespace_entry_pb::YsqlNextMajorVersionState::NEXT_VER_RUNNING,
+            );
             let mut mutation = Mutation::new()
                 .read(namespace)
                 .upsert_message(SysRowEntryType::NAMESPACE, id, &ns)
@@ -1300,8 +1385,9 @@ impl TableLifecycle {
 
     /// What C++'s namespace loader does with a YSQL database whose creation a leader change
     /// interrupted (PREPARING) or that failed: DELETING, so the drop pass removes what was made of
-    /// it. PG never committed it, so no client can see or drop it. A database whose next major
-    /// version catalog was being made (`NEXT_VER_PREPARING`) is left to the major upgrade.
+    /// it. PG never committed it, so no client can see or drop it. A live database whose next
+    /// major version catalog was being made (`NEXT_VER_PREPARING`) is kept, with that copy
+    /// `NEXT_VER_FAILED`.
     pub(crate) async fn fail_interrupted_ysql_databases(
         &self,
         token: &LeaderToken,
@@ -1334,6 +1420,17 @@ impl TableLifecycle {
                 if ns.ysql_next_major_version_state()
                     == sys_namespace_entry_pb::YsqlNextMajorVersionState::NEXT_VER_PREPARING
                 {
+                    tracing::info!(
+                        "YSQL major catalog copy of database {} was interrupted",
+                        String::from_utf8_lossy(&namespace.key.id)
+                    );
+                    ns.set_ysql_next_major_version_state(
+                        sys_namespace_entry_pb::YsqlNextMajorVersionState::NEXT_VER_FAILED,
+                    );
+                    mutation = mutation
+                        .read(namespace)
+                        .upsert_message(SysRowEntryType::NAMESPACE, &namespace.key.id, &ns)
+                        .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
                     continue;
                 }
                 tracing::info!(
@@ -1368,11 +1465,14 @@ impl TableLifecycle {
             if ns.state() != sys_namespace_entry_pb::State::PREPARING {
                 return Ok((Mutation::new(), ()));
             }
-            ns.set_state(if running {
-                sys_namespace_entry_pb::State::RUNNING
+            if running {
+                ns.set_state(sys_namespace_entry_pb::State::RUNNING);
+                ns.set_ysql_next_major_version_state(
+                    sys_namespace_entry_pb::YsqlNextMajorVersionState::NEXT_VER_RUNNING,
+                );
             } else {
-                sys_namespace_entry_pb::State::FAILED
-            });
+                ns.set_state(sys_namespace_entry_pb::State::FAILED);
+            }
             let mutation = Mutation::new()
                 .read(namespace)
                 .upsert_message(SysRowEntryType::NAMESPACE, id, &ns)
@@ -1463,43 +1563,86 @@ pub(crate) fn start_database_drop(
         .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))
 }
 
+/// `DeleteNamespace` during a YSQL major upgrade, which only pg_upgrade reaches: the database
+/// stays, and only its new-version catalog is dropped (`NEXT_VER_DELETING`), to be created again.
+pub(crate) fn start_next_version_drop(
+    namespace: &std::sync::Arc<master_catalog_entity::Entity>,
+) -> Result<Mutation, MasterErrorPB> {
+    use sys_namespace_entry_pb::YsqlNextMajorVersionState as NextVer;
+    let mut ns: SysNamespaceEntryPB = namespace.parse().map_err(corrupt)?;
+    let refuse = |message: String| {
+        Err(error(
+            Code::UNKNOWN_ERROR,
+            StatusCode::IllegalState,
+            message,
+        ))
+    };
+    if ns.database_type() != YQLDatabase::YQL_DATABASE_PGSQL {
+        return refuse("keyspace deletion during a major YSQL upgrade is not allowed".to_string());
+    }
+    if ns.state() != sys_namespace_entry_pb::State::RUNNING {
+        return refuse(format!(
+            "Deleting the namespace for the new YSQL version isn't allowed if the primary state \
+             of the namespace isn't RUNNING. Current state is {:?}",
+            ns.state()
+        ));
+    }
+    if ns.ysql_next_major_version_state() != NextVer::NEXT_VER_RUNNING {
+        return refuse(format!(
+            "Deleting the namespace for the new YSQL version isn't allowed if the upgrade state \
+             isn't RUNNING. Current upgrade state is {:?}",
+            ns.ysql_next_major_version_state()
+        ));
+    }
+    ns.set_ysql_next_major_version_state(NextVer::NEXT_VER_DELETING);
+    Mutation::new()
+        .read(namespace)
+        .upsert_message(SysRowEntryType::NAMESPACE, &namespace.key.id, &ns)
+        .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))
+}
+
 impl TableLifecycle {
-    /// `DeleteYsqlDatabaseAsync` and `DeleteYsqlDBTables` for a DELETING database, which the
-    /// table-deletes controller calls each pass, so a new leader finishes a drop the last one
-    /// started. Its PG catalog tables leave the sys-catalog tablet (through the host, skipping
-    /// any already gone), then one write sets every table DELETING, takes the catalog tables off
-    /// the sys-catalog tablet's row and sets the database DELETED. The controller then deletes the
-    /// tables' tablets as for DROP TABLE. A database with a shared table goes to FAILED, as C++'s
-    /// check fails it.
+    /// `DeleteYsqlDatabaseAsync` for a database being dropped, which the table-deletes controller
+    /// calls each pass, so a new leader finishes a drop the last one started: a DELETING database,
+    /// or, during a YSQL major upgrade, one whose new-version catalog pg_upgrade drops
+    /// (`NEXT_VER_DELETING`). A database with a shared table goes to FAILED, as C++'s check fails
+    /// it.
     pub(crate) async fn drop_ysql_database(
         &self,
         token: &LeaderToken,
         id: &[u8],
     ) -> Result<(), MasterErrorPB> {
-        use protobuf::Message;
-        use std::collections::HashSet;
-        use yb_proto::pb::catalog_entity_info::SysTabletsEntryPB;
-        use yb_proto::pb::master_rust_peer::{
-            DeleteYsqlSystemTablesRequestPB, DeleteYsqlSystemTablesResponsePB,
-        };
-        let live_tables =
-            |snapshot: &CatalogSnapshot| -> Vec<std::sync::Arc<master_catalog_entity::Entity>> {
-                snapshot
-                    .iter(SysRowEntryType::TABLE)
-                    .filter(|t| {
-                        t.table().is_some_and(|h| {
-                            h.namespace_id == id
-                                && h.state != TableState::DELETING as i32
-                                && h.state != TableState::DELETED as i32
-                        })
-                    })
-                    .cloned()
-                    .collect()
-            };
         let snapshot = self.catalog.snapshot();
-        let tables = live_tables(&snapshot);
-        let shared = tables.iter().any(|t| {
-            t.parse::<SysTablesEntryPB>()
+        let Some(namespace) = snapshot.get(SysRowEntryType::NAMESPACE, id) else {
+            return Ok(());
+        };
+        let ns: SysNamespaceEntryPB = namespace.parse().map_err(corrupt)?;
+        if ns.ysql_next_major_version_state()
+            == sys_namespace_entry_pb::YsqlNextMajorVersionState::NEXT_VER_DELETING
+        {
+            return match self
+                .delete_ysql_db_tables(token, id, DbTables::NextVersionDrop)
+                .await
+            {
+                Ok(_) => Ok(()),
+                Err(e) => {
+                    self.set_next_version_state(
+                        token,
+                        id,
+                        sys_namespace_entry_pb::YsqlNextMajorVersionState::NEXT_VER_FAILED,
+                    )
+                    .await?;
+                    Err(e)
+                }
+            };
+        }
+        let shared = snapshot.iter(SysRowEntryType::TABLE).any(|t| {
+            t.table().is_some_and(|h| {
+                h.namespace_id == id
+                    && h.state != TableState::DELETING as i32
+                    && h.state != TableState::DELETED as i32
+            }) && t
+                .parse::<SysTablesEntryPB>()
                 .is_ok_and(|pb| pb.is_pg_shared_table())
         });
         if shared {
@@ -1509,11 +1652,81 @@ impl TableLifecycle {
             );
             return self.set_dropped_namespace_state(token, id, false).await;
         }
+        self.delete_ysql_db_tables(token, id, DbTables::All)
+            .await
+            .map(|_| ())
+    }
+
+    /// `DeleteYsqlDBTables`: the database's tables `kind` selects. PG catalog tables leave the
+    /// sys-catalog tablet (through the host, skipping any already gone), with their rows deleted
+    /// first when new identical rows are coming (a major upgrade's drop or rollback); then one
+    /// write sets every selected table DELETING, takes the catalog tables off the sys-catalog
+    /// tablet's row and moves the database on (`All`: DELETED; `NextVersionDrop`:
+    /// `NEXT_VER_DELETED`). The table-deletes controller then deletes the tables' tablets as for
+    /// DROP TABLE. Returns how many tables it set DELETING.
+    pub(crate) async fn delete_ysql_db_tables(
+        &self,
+        token: &LeaderToken,
+        id: &[u8],
+        kind: DbTables,
+    ) -> Result<usize, MasterErrorPB> {
+        use protobuf::Message;
+        use std::collections::HashSet;
+        use yb_proto::pb::catalog_entity_info::SysTabletsEntryPB;
+        use yb_proto::pb::master_rust_peer::{
+            ysql_major_upgrade_catalog_step_request_pb::Step, DeleteYsqlSystemTablesRequestPB,
+            DeleteYsqlSystemTablesResponsePB, YsqlMajorUpgradeCatalogStepRequestPB,
+            YsqlMajorUpgradeCatalogStepResponsePB,
+        };
+        let selected =
+            |snapshot: &CatalogSnapshot| -> Vec<std::sync::Arc<master_catalog_entity::Entity>> {
+                snapshot
+                    .iter(SysRowEntryType::TABLE)
+                    .filter(|t| {
+                        t.table().is_some_and(|h| {
+                            h.namespace_id == id
+                                && h.state != TableState::DELETING as i32
+                                && h.state != TableState::DELETED as i32
+                        }) && kind.selects(&t.key.id, || {
+                            t.parse::<SysTablesEntryPB>()
+                                .is_ok_and(|pb| pb.is_pg_shared_table())
+                        })
+                    })
+                    .cloned()
+                    .collect()
+            };
+        let snapshot = self.catalog.snapshot();
+        let tables = selected(&snapshot);
         let system: Vec<Vec<u8>> = tables
             .iter()
             .filter(|t| crate::lookup::is_system_table(&snapshot, t))
             .map(|t| t.key.id.to_vec())
             .collect();
+        if kind != DbTables::All && system.len() != tables.len() {
+            return Err(corrupt(
+                "Unexpected non system tables found during ysql major upgrade or cleanup",
+            ));
+        }
+        if !system.is_empty() && kind.deletes_rows() {
+            // New identical rows are inserted soon after; left for compaction they would conflict.
+            let mut req = YsqlMajorUpgradeCatalogStepRequestPB::new();
+            req.set_step(Step::DELETE_ROWS);
+            req.set_term(token.term());
+            req.table_ids = system.clone();
+            let bytes = req.write_to_bytes().map_err(corrupt)?;
+            let host = self.host.clone();
+            let response = tokio::task::spawn_blocking(move || {
+                host.call("YsqlMajorUpgradeCatalogStep", &bytes)
+            })
+            .await
+            .map_err(corrupt)?
+            .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+            let response = YsqlMajorUpgradeCatalogStepResponsePB::parse_from_bytes(&response)
+                .map_err(corrupt)?;
+            if let Some(e) = response.error.into_option() {
+                return Err(e);
+            }
+        }
         if !system.is_empty() {
             let mut req = DeleteYsqlSystemTablesRequestPB::new();
             req.table_ids = system.clone();
@@ -1533,18 +1746,27 @@ impl TableLifecycle {
         }
         let system: HashSet<Vec<u8>> = system.into_iter().collect();
         let deadline = Instant::now() + std::time::Duration::from_secs(60);
-        let dropped = self
+        let deleted = self
             .write(token, deadline, |snapshot| {
                 let Some(namespace) = snapshot.get(SysRowEntryType::NAMESPACE, id) else {
                     return Ok((Mutation::new(), 0));
                 };
                 let mut ns: SysNamespaceEntryPB = namespace.parse().map_err(corrupt)?;
-                if ns.state() != sys_namespace_entry_pb::State::DELETING {
-                    return Ok((Mutation::new(), 0));
+                match kind {
+                    DbTables::All if ns.state() != sys_namespace_entry_pb::State::DELETING => {
+                        return Ok((Mutation::new(), 0));
+                    }
+                    DbTables::NextVersionDrop
+                        if ns.ysql_next_major_version_state()
+                            != sys_namespace_entry_pb::YsqlNextMajorVersionState::NEXT_VER_DELETING =>
+                    {
+                        return Ok((Mutation::new(), 0));
+                    }
+                    _ => {}
                 }
                 let message = format!("Started deleting at {}", local_time_string());
                 let mut mutation = Mutation::new().read(namespace);
-                let tables = live_tables(snapshot);
+                let tables = selected(snapshot);
                 for table in &tables {
                     let mut pb: SysTablesEntryPB = table.parse().map_err(corrupt)?;
                     pb.state = Some(EnumOrUnknown::new(TableState::DELETING));
@@ -1567,18 +1789,55 @@ impl TableLifecycle {
                             .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
                     }
                 }
-                ns.set_state(sys_namespace_entry_pb::State::DELETED);
-                mutation = mutation
-                    .upsert_message(SysRowEntryType::NAMESPACE, id, &ns)
-                    .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+                let next_state = match kind {
+                    DbTables::All => {
+                        ns.set_state(sys_namespace_entry_pb::State::DELETED);
+                        true
+                    }
+                    DbTables::NextVersionDrop => {
+                        ns.set_ysql_next_major_version_state(
+                            sys_namespace_entry_pb::YsqlNextMajorVersionState::NEXT_VER_DELETED,
+                        );
+                        true
+                    }
+                    DbTables::CurrentVersion | DbTables::PriorVersion => false,
+                };
+                if next_state {
+                    mutation = mutation
+                        .upsert_message(SysRowEntryType::NAMESPACE, id, &ns)
+                        .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+                }
                 Ok((mutation, tables.len()))
             })
             .await?;
         tracing::info!(
-            "Dropped YSQL database {} ({dropped} tables to delete)",
+            "Deleted {deleted} tables of YSQL database {} ({kind:?})",
             String::from_utf8_lossy(id)
         );
-        Ok(())
+        Ok(deleted)
+    }
+
+    /// Sets a database's `ysql_next_major_version_state`.
+    pub(crate) async fn set_next_version_state(
+        &self,
+        token: &LeaderToken,
+        id: &[u8],
+        state: sys_namespace_entry_pb::YsqlNextMajorVersionState,
+    ) -> Result<(), MasterErrorPB> {
+        let deadline = Instant::now() + std::time::Duration::from_secs(60);
+        self.write(token, deadline, |snapshot| {
+            let Some(namespace) = snapshot.get(SysRowEntryType::NAMESPACE, id) else {
+                return Ok((Mutation::new(), ()));
+            };
+            let mut ns: SysNamespaceEntryPB = namespace.parse().map_err(corrupt)?;
+            ns.set_ysql_next_major_version_state(state);
+            let mutation = Mutation::new()
+                .read(namespace)
+                .upsert_message(SysRowEntryType::NAMESPACE, id, &ns)
+                .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+            Ok((mutation, ()))
+        })
+        .await
     }
 
     /// Marks a DELETING database DELETED or FAILED.

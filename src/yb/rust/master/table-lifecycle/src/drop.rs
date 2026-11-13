@@ -29,11 +29,11 @@ use master_ts_manager::DeleteReplica;
 use protobuf::{Enum, EnumOrUnknown, Message};
 use tokio::time::Instant;
 use yb_host_api::{Status, StatusCode};
-use yb_proto::pb::catalog_entity_info::sys_namespace_entry_pb;
 use yb_proto::pb::catalog_entity_info::{
     sys_cdcstream_entry_pb, sys_tables_entry_pb, sys_tablets_entry_pb, SysCDCStreamEntryPB,
     SysTablesEntryPB, SysTabletsEntryPB,
 };
+use yb_proto::pb::catalog_entity_info::{sys_namespace_entry_pb, SysNamespaceEntryPB};
 use yb_proto::pb::common_types::{TableType, YQLDatabase};
 use yb_proto::pb::master_ddl::{
     DeleteTableRequestPB, DeleteTableResponsePB, IsDeleteTableDoneRequestPB,
@@ -291,15 +291,21 @@ impl TableDeleter {
                 ),
             }
         }
-        let databases: Vec<Vec<u8>> = self
-            .lifecycle
-            .catalog
-            .snapshot()
+        let snapshot = self.lifecycle.catalog.snapshot();
+        // During a major upgrade only the new version's catalog of a database is dropped
+        // (NEXT_VER_DELETING); a DELETING database waits for the upgrade to end, as C++'s
+        // DeleteYsqlDatabaseAsync refuses it then.
+        let upgrading = self.lifecycle.ysql_major_upgrade_in_progress(&snapshot);
+        let databases: Vec<Vec<u8>> = snapshot
             .iter(SysRowEntryType::NAMESPACE)
             .filter(|n| {
                 n.namespace().is_some_and(|h| {
-                    h.state == sys_namespace_entry_pb::State::DELETING as i32
-                        && h.database_type == YQLDatabase::YQL_DATABASE_PGSQL as i32
+                    h.database_type == YQLDatabase::YQL_DATABASE_PGSQL as i32
+                        && ((!upgrading && h.state == sys_namespace_entry_pb::State::DELETING as i32)
+                            || n.parse::<SysNamespaceEntryPB>().is_ok_and(|pb| {
+                                pb.ysql_next_major_version_state()
+                                    == sys_namespace_entry_pb::YsqlNextMajorVersionState::NEXT_VER_DELETING
+                            }))
                 })
             })
             .map(|n| n.key.id.to_vec())

@@ -616,6 +616,21 @@ mod leader_tests {
                     retry: Default::default,
                 },
             );
+            let major_upgrade = master_ysql_manager::major_upgrade::MajorUpgrade::new(
+                catalog.clone(),
+                writer.clone(),
+                leadership.clone(),
+                ts_manager.clone(),
+                Arc::new(NoSchemaHost),
+                tables.clone(),
+                Some(15),
+                master_ysql_manager::major_upgrade::MajorUpgradeOptions {
+                    enable_ysql: || true,
+                    fail_transition_from: String::new,
+                    fail_cleanup: || false,
+                    skip_tserver_version_checks: || false,
+                },
+            );
             Arc::new(LeaderServices {
                 catalog,
                 writer,
@@ -639,6 +654,7 @@ mod leader_tests {
                 delay_leader_blacklist_completion: || false,
                 ysql_major_version: Some(15),
                 tablespace_based_transaction_placement: || true,
+                major_upgrade,
             })
         });
         harness.leader = Some(leader);

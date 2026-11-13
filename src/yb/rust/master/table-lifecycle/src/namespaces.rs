@@ -161,7 +161,21 @@ impl TableLifecycle {
             Some(State::RUNNING) | Some(State::DELETING) | Some(State::DELETED) => {
                 resp.set_done(true)
             }
-            Some(State::PREPARING) => resp.set_done(false),
+            Some(State::PREPARING) => {
+                // A failed new-version catalog copy during a major upgrade.
+                if namespace.parse::<SysNamespaceEntryPB>().is_ok_and(|pb| {
+                    pb.ysql_next_major_version_state()
+                        == sys_namespace_entry_pb::YsqlNextMajorVersionState::NEXT_VER_FAILED
+                }) {
+                    resp.set_done(true);
+                    return Err(error(
+                        Code::UNKNOWN_ERROR,
+                        StatusCode::InternalError,
+                        "Namespace Create Failed: YSQL major upgrade catalog copy failed",
+                    ));
+                }
+                resp.set_done(false)
+            }
             Some(State::FAILED) => {
                 resp.set_done(true);
                 return Err(error(
@@ -200,6 +214,9 @@ impl TableLifecycle {
                     StatusCode::NotFound,
                     format!("Keyspace not found: {}", ns.name),
                 ));
+            }
+            if self.ysql_major_upgrade_in_progress(snapshot) {
+                return crate::ysql::start_next_version_drop(&namespace).map(|m| (m, ()));
             }
             match State::from_i32(ns.state) {
                 Some(State::RUNNING) | Some(State::FAILED) => {}
@@ -301,6 +318,23 @@ impl TableLifecycle {
             resp.set_done(true);
             return Ok(());
         };
+        if self.ysql_major_upgrade_in_progress(snapshot) {
+            use sys_namespace_entry_pb::YsqlNextMajorVersionState as NextVer;
+            match namespace
+                .parse::<SysNamespaceEntryPB>()
+                .map(|pb| pb.ysql_next_major_version_state())
+            {
+                Ok(NextVer::NEXT_VER_DELETED) => {
+                    resp.set_done(true);
+                    return Ok(());
+                }
+                Ok(NextVer::NEXT_VER_DELETING) => {
+                    resp.set_done(false);
+                    return Ok(());
+                }
+                _ => {}
+            }
+        }
         let state = namespace_state(&namespace);
         match State::from_i32(state) {
             Some(State::DELETED) => resp.set_done(true),

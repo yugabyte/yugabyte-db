@@ -100,6 +100,8 @@ pub struct LeaderServices {
     pub tablespace_based_transaction_placement: fn() -> bool,
     /// This build's YSQL major version; None with YSQL off.
     pub ysql_major_version: Option<u32>,
+    /// The YSQL major catalog upgrade.
+    pub major_upgrade: Arc<master_ysql_manager::major_upgrade::MajorUpgrade>,
 }
 
 /// A placement's transaction status tables, each with whether it stays in one region.

@@ -355,6 +355,104 @@ message DeleteYsqlSystemTablesResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+// A PG catalog table initdb creates (CatalogManager::CreateYsqlSysTable): the host adds it to the
+// sys catalog tablet and returns its row, RUNNING; the leader writes the row.
+message CreateYsqlSysTableRequestPB {
+  optional CreateTableRequestPB request = 1;
+  optional bytes namespace_name = 2;
+  optional int64 term = 3;
+}
+
+message CreateYsqlSysTableResponsePB {
+  optional MasterErrorPB error = 1;
+  optional TableRowPB table = 2;
+}
+
+// What the host's YSQL catalog reads and writes need to know of a YSQL major upgrade
+// (YsqlManager::IsMajorUpgradeInProgress and the persisted state). The leader sends it at the start
+// of each term and after each state change.
+message SetYsqlMajorUpgradeStateRequestPB {
+  optional bool in_progress = 1;
+  optional YsqlMajorCatalogUpgradeInfoPB.State state = 2;
+}
+
+message SetYsqlMajorUpgradeStateResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+// PgWrapper::InitDbForYSQL on the leader. For a major upgrade, initdb keeps these databases'
+// OIDs.
+message RunYsqlInitDbRequestPB {
+  message DatabaseOidPB {
+    optional string name = 1;
+    optional uint32 oid = 2;
+  }
+  repeated DatabaseOidPB database_oids = 1;
+  optional bool is_major_upgrade = 2;
+}
+
+message RunYsqlInitDbResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+// YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade against the postgres of the closest of
+// these live tservers (CatalogManager::GetClosestLiveTserver, which the host runs since it knows
+// this master's registration).
+message RunYsqlPgUpgradeRequestPB {
+  repeated TSInformationPB live_tservers = 1;
+}
+
+message RunYsqlPgUpgradeResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+// MasterAdmin.ClientUpgradeYsql: UpgradeYsql on the live tserver closest to this master, as
+// pg_upgrade picks it.
+message ForwardUpgradeYsqlRequestPB {
+  repeated TSInformationPB live_tservers = 1;
+  optional bool use_single_connection = 2;
+  // The client's remaining deadline.
+  optional uint64 timeout_ms = 3;
+}
+
+message ForwardUpgradeYsqlResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+// TSManager::ValidateAllTserverVersions against this build's version.
+message ValidateTserverVersionsRequestPB {
+  enum Op {
+    VERSION_EQ = 1;
+    YSQL_MAJOR_VERSION_LT = 2;
+  }
+  optional Op op = 1;
+  repeated AutoFlagsChangeRequestPB.TserverVersion live_tservers = 2;
+}
+
+message ValidateTserverVersionsResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+// Steps of the major upgrade that work on the sys catalog tablet's YSQL rows.
+message YsqlMajorUpgradeCatalogStepRequestPB {
+  enum Step {
+    // Abort every active sys catalog transaction (RunMajorVersionUpgradeImpl).
+    ABORT_TRANSACTIONS = 1;
+    // UpdateCatalogVersions: pg_yb_catalog_version from the prior version's table, and no
+    // invalidation messages.
+    UPDATE_CATALOG_VERSIONS = 2;
+    // DeleteAllYsqlCatalogTableRows of table_ids (a rollback, before the tables are dropped).
+    DELETE_ROWS = 3;
+  }
+  optional Step step = 1;
+  optional int64 term = 2;
+  repeated bytes table_ids = 3;
+}
+
+message YsqlMajorUpgradeCatalogStepResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 // The host's hybrid clock (MasterHost::HandleOnHost "HybridTimeNow").
 message HybridTimeNowRequestPB {
 }

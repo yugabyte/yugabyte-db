@@ -330,6 +330,14 @@ void UpgradeTestBase::SetUpOptions(ExternalMiniClusterOptions& opts) {
   AddUnDefOkAndSetFlag(
       opts.extra_tserver_flags, "TEST_always_return_consensus_info_for_succeeded_rpc", "false");
 
+  // With YB_RUST_MASTER, the masters run yb-master-rs once restarted in the current version. The
+  // old release has no Rust master, so the cluster starts on C++ masters.
+  rust_current_masters_ = opts.rust_masters == master::RustMasters::kAll;
+  opts.rust_masters = master::RustMasters::kNone;
+  if (rust_current_masters_) {
+    AddUnDefOkAndSetFlag(opts.extra_master_flags, "TEST_rust_master_allow_leadership", "true");
+  }
+
   ExternalMiniClusterITestBase::SetUpOptions(opts);
 }
 
@@ -360,7 +368,9 @@ Status UpgradeTestBase::StartClusterInOldVersion(const ExternalMiniClusterOption
 
   RETURN_NOT_OK(cluster_->DeduceBinRoot(&current_version_bin_path_));
   cluster_->SetDaemonBinPath(current_version_bin_path_);
-  current_version_master_bin_path_ = cluster_->GetMasterBinaryPath();
+  current_version_master_bin_path_ = rust_current_masters_
+      ? cluster_->GetRustMasterBinaryPath()
+      : cluster_->GetMasterBinaryPath();
   current_version_tserver_bin_path_ = cluster_->GetTServerBinaryPath();
   cluster_->SetDaemonBinPath(old_version_bin_path_);
 

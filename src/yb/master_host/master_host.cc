@@ -37,6 +37,7 @@
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/casts.h"
+#include "yb/gutil/strings/join.h"
 
 #include "yb/master/catalog_entity_parser.h"
 #include "yb/master/catalog_loaders.h"
@@ -65,6 +66,7 @@
 #include "yb/master/system_tablet.h"
 #include "yb/master/table_ddl_util.h"
 #include "yb/master/ysql_ddl_verification_task.h"
+#include "yb/master/ysql/ysql_initdb_major_upgrade_handler.h"
 #include "yb/master/encryption_manager.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_rust_peer.pb.h"
@@ -95,6 +97,7 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/tserver/pg_client_service.h"
 #include "yb/tserver/remote_bootstrap_client.h"
 #include "yb/tserver/remote_bootstrap_service.h"
 #include "yb/tserver/tablet_peer_lookup.h"
@@ -103,6 +106,10 @@
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/rpc/poller.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/outbound_call.h"
+#include "yb/tserver/tserver_admin.proxy.h"
+#include "yb/yql/pgwrapper/pg_wrapper.h"
 
 #include "yb/util/crypt.h"
 #include "yb/util/enum_parse.h"
@@ -119,6 +126,8 @@
 #include "yb/util/ulimit_util.h"
 
 #include "yb/tserver/tserver.messages.h"
+
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 #include "master/server/src/ffi.rs.h"
 
@@ -138,6 +147,7 @@ DECLARE_bool(enable_leader_failure_detection);
 DECLARE_int64(inbound_rpc_memory_limit);
 DECLARE_string(initial_sys_catalog_snapshot_path);
 DECLARE_bool(skip_tserver_version_checks);
+DECLARE_bool(TEST_fail_yugabyte_namespace_creation_on_second_attempt);
 DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
 DECLARE_int32(master_consensus_svc_queue_length);
 DECLARE_bool(master_join_existing_universe);
@@ -146,6 +156,8 @@ DECLARE_int32(master_remote_bootstrap_svc_queue_length);
 DECLARE_int32(master_svc_queue_length);
 DECLARE_int32(master_tserver_svc_queue_length);
 DECLARE_int32(master_yb_client_default_timeout_ms);
+DECLARE_int32(master_ts_rpc_timeout_ms);
+DECLARE_string(tmp_dir);
 DECLARE_int32(master_ysql_lease_svc_queue_length);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 DECLARE_string(webserver_authentication_domain);
@@ -229,32 +241,39 @@ rust::Vec<uint8_t> HandleRequest(rust::Slice<const uint8_t> request, const F& f)
 // The checks MasterAutoFlagsManager::PromoteAutoFlags makes against the C++ Master
 // (YsqlManager::IsMajorUpgradeInProgress, TSManager::ValidateAllTserverVersions), from what the
 // Rust leader sends.
+// TSManager::ValidateAllTserverVersions, over the live tservers the Rust leader sent.
+Status ValidateTserverVersions(
+    const google::protobuf::RepeatedPtrField<master::AutoFlagsChangeRequestPB::TserverVersion>&
+        live_tservers,
+    ValidateVersionInfoOp op) {
+  if (FLAGS_skip_tserver_version_checks) {
+    return Status::OK();
+  }
+  std::vector<std::string> invalid_tservers;
+  for (const auto& ts : live_tservers) {
+    auto version_info =
+        ts.has_version_info() ? std::optional(std::cref(ts.version_info())) : std::nullopt;
+    if (!VersionInfo::ValidateVersion(version_info, op)) {
+      invalid_tservers.push_back(Format(
+          "[TS $0; Version $1]", ts.uuid(),
+          version_info ? version_info->get().ShortDebugString() : "<NA>"));
+    }
+  }
+  SCHECK_FORMAT(
+      invalid_tservers.empty(), IllegalState, "yb-tserver(s) not on the correct version: $0",
+      yb::ToString(invalid_tservers));
+  return Status::OK();
+}
+
 Status CheckAutoFlagsPromotion(
     const master::AutoFlagsChangeRequestPB& req, AutoFlagClass max_flag_class) {
   SCHECK(
       max_flag_class == AutoFlagClass::kLocalVolatile || !req.ysql_major_upgrade_in_progress(),
       InvalidArgument,
       "Cannot promote non-volatile AutoFlags before YSQL major catalog upgrade is complete");
-  if (FLAGS_skip_tserver_version_checks) {
-    return Status::OK();
-  }
-  std::vector<std::string> invalid_tservers;
-  for (const auto& ts : req.live_tservers()) {
-    auto version_info =
-        ts.has_version_info() ? std::optional(std::cref(ts.version_info())) : std::nullopt;
-    if (!VersionInfo::ValidateVersion(version_info, ValidateVersionInfoOp::kVersionEQ)) {
-      invalid_tservers.push_back(Format(
-          "[TS $0; Version $1]", ts.uuid(),
-          version_info ? version_info->get().ShortDebugString() : "<NA>"));
-    }
-  }
-  if (!invalid_tservers.empty()) {
-    return STATUS_FORMAT(
-        IllegalState,
-        "Cannot promote AutoFlags before all yb-tservers have been upgraded to the current "
-        "version: yb-tserver(s) not on the correct version: $0",
-        yb::ToString(invalid_tservers));
-  }
+  RETURN_NOT_OK_PREPEND(
+      ValidateTserverVersions(req.live_tservers(), ValidateVersionInfoOp::kVersionEQ),
+      "Cannot promote AutoFlags before all yb-tservers have been upgraded to the current version");
   return Status::OK();
 }
 
@@ -273,8 +292,7 @@ rust::Vec<uint8_t> HandleAutoFlagsChange(rust::Slice<const uint8_t> request, con
 }  // namespace
 
 // What MasterTabletServer and MasterTabletServiceImpl use of the master: the sys catalog tablet,
-// read under the Rust leader's readiness, and its catalog versions. YSQL's other master-side
-// state (major upgrades, initdb run by the master) is not served on a Rust master.
+// read under the Rust leader's readiness, and its catalog versions.
 class MasterHost::TabletServerContextImpl : public master::MasterTabletServerContext {
  public:
   explicit TabletServerContextImpl(MasterHost* host) : host_(*host) {}
@@ -338,6 +356,9 @@ class MasterHost::TabletServerContextImpl : public master::MasterTabletServerCon
   // CatalogManager skips the checks until initdb is done; pg_yb_catalog_version exists from
   // then on, so once it is readable it stays so.
   bool SkipCatalogVersionChecks() override {
+    if (host_.ysql_major_upgrade_in_progress_.load()) {
+      return true;
+    }
     if (catalog_versions_readable_.load()) {
       return false;
     }
@@ -349,30 +370,80 @@ class MasterHost::TabletServerContextImpl : public master::MasterTabletServerCon
     }
     return true;
   }
-  // YsqlManager refuses only writes a YSQL major upgrade forbids, which a Rust master does not
-  // run.
-  Status ValidateWriteToCatalogTableAllowed(TableIdView, bool) const override {
+  // YsqlInitDBAndMajorUpgradeHandler::IsWriteToCatalogTableAllowed, as YsqlManager reports it.
+  Status ValidateWriteToCatalogTableAllowed(
+      TableIdView table_id, bool is_forced_update) const override {
+    bool allowed;
+    if (host_.ysql_major_upgrade_in_progress_.load()) {
+      // The catalog versions are fixed up after pg_upgrade (UpdateCatalogVersions).
+      if (table_id == kPgYbCatalogVersionTableIdPriorVersion ||
+          (table_id == kPgYbCatalogVersionTableId &&
+           host_.ysql_major_upgrade_state_.load() ==
+               master::YsqlMajorCatalogUpgradeInfoPB::MONITORING)) {
+        LOG(DFATAL) << "Invalid attempt to update catalog version table " << table_id
+                    << " during ysql major upgrade";
+        allowed = false;
+      } else {
+        allowed = is_forced_update;
+      }
+    } else {
+      allowed = IsCurrentVersionYsqlCatalogTable(table_id);
+    }
+    SCHECK(
+        allowed, InternalError,
+        "YSQL DDLs, and catalog modifications are not allowed during a major YSQL upgrade");
     return Status::OK();
   }
 
+  // Master::get_ysql_db_oid_to_cat_version_info_map: only PG run by this master's initdb asks.
+  // Databases are only created during initdb, with increasing oids, so shm_index++ keeps each
+  // database's index stable across calls.
   Status get_ysql_db_oid_to_cat_version_info_map(
-      const tserver::GetTserverCatalogVersionInfoRequestPB&,
-      tserver::GetTserverCatalogVersionInfoResponsePB*) const override {
-    return STATUS(NotSupported, "A Rust master does not run initdb");
+      const tserver::GetTserverCatalogVersionInfoRequestPB& req,
+      tserver::GetTserverCatalogVersionInfoResponsePB* resp) const override {
+    master::DbOidToCatalogVersionMap versions;
+    auto peer = host_.sys_catalog_->tablet_peer();
+    SCHECK(peer, IllegalState, "The sys catalog tablet is not open");
+    // pg_yb_catalog_version may not exist yet early in initdb.
+    if (peer->tablet_metadata()
+            ->GetTableInfo(host_.VersionSpecificCatalogTableId(kPgYbCatalogVersionTableId))
+            .ok()) {
+      RETURN_NOT_OK(host_.sys_catalog_->ReadYsqlAllDBCatalogVersions(
+          kPgYbCatalogVersionTableId, &versions, /* out_read_ht= */ nullptr));
+    }
+    if (req.size_only()) {
+      resp->set_num_entries(narrow_cast<uint32_t>(versions.size()));
+      return Status::OK();
+    }
+    const auto db_oid = req.db_oid();
+    int shm_index = 0;
+    for (const auto& [oid, _] : versions) {
+      if (db_oid == kInvalidOid || db_oid == oid) {
+        auto* entry = resp->add_entries();
+        entry->set_db_oid(oid);
+        entry->set_shm_index(shm_index);
+        if (db_oid != kInvalidOid) {
+          break;
+        }
+      }
+      shm_index++;
+    }
+    return Status::OK();
   }
   Status GetTserverCatalogMessageLists(
       const tserver::GetTserverCatalogMessageListsRequestPB&,
       tserver::GetTserverCatalogMessageListsResponsePB*) const override {
-    return STATUS(NotSupported, "A Rust master does not run initdb");
+    return STATUS(NotSupported, "Unexpected call of GetTserverCatalogMessageLists");
   }
+  // Called while pg_restore runs the major upgrade's restore script; as in C++, a no-op.
   Status SetTserverCatalogMessageList(
       uint32_t, bool, uint64_t, const std::optional<std::string>&) override {
-    return STATUS(NotSupported, "A Rust master does not run initdb");
+    return Status::OK();
   }
   void TriggerRelcacheInitConnection(
       const tserver::TriggerRelcacheInitConnectionRequestPB&,
       StdStatusCallback callback) override {
-    callback(STATUS(NotSupported, "A Rust master does not run initdb"));
+    callback(STATUS(NotSupported, "Unexpected call of TriggerRelcacheInitConnection"));
   }
 
   Result<master::SysClusterConfigEntryPB> GetClusterConfig() override {
@@ -448,10 +519,8 @@ class MasterHost::SysCatalogContextImpl : public master::SysCatalogContext {
   }
   // The Rust leader drops relations it has no table for.
   bool HasTable(const TableId&) override { return true; }
-  // YsqlManager maps to the prior version's table only during a YSQL major upgrade, which a Rust
-  // master does not run.
   Result<TableId> GetVersionSpecificCatalogTableId(const TableId& table_id) const override {
-    return table_id;
+    return host_.VersionSpecificCatalogTableId(table_id);
   }
 
  private:
@@ -665,6 +734,10 @@ Status MasterHost::DoInit() {
   estimated_data_to_balance_bytes_metric_ =
       METRIC_estimated_data_to_balance_bytes.Instantiate(metric_entity_cluster_, 0);
   RETURN_NOT_OK(fs_manager_->ListTabletIds(CleanupTemporaryFiles::kTrue));
+
+  WARN_NOT_OK(
+      master::YsqlInitDBAndMajorUpgradeHandler::CleanupStalePgUpgradeSocketDir(),
+      "Failed to clean up stale pg_upgrade socket directory");
 
   RegisterWebPages();
   return Status::OK();
@@ -928,6 +1001,14 @@ Status MasterHost::DoStart() {
       FLAGS_master_tserver_svc_queue_length,
       std::make_shared<master::MasterTabletServiceImpl>(
           tablet_server_.get(), tablet_server_context_.get())));
+  // initdb, including the major upgrade's, runs PG against this master as its tserver.
+  RETURN_NOT_OK(RegisterService(
+      FLAGS_master_svc_queue_length,
+      std::make_shared<tserver::PgClientServiceImpl>(
+          *tablet_server_, client_future(), clock(),
+          std::bind(&MasterHost::TransactionManager, this),
+          std::bind(&MasterHost::TransactionPool, this), mem_tracker(), metric_entity(),
+          messenger(), fs_manager_->uuid(), options())));
   RETURN_NOT_OK(DbServerBase::Start());
 
   auto reg = std::make_unique<ServerRegistrationPB>();
@@ -1051,6 +1132,111 @@ Status MasterHost::ResetMemoryState(const RaftConfigPB& config) {
   }
   opts_.SetMasterAddresses(std::move(master_addr));
   return Status::OK();
+}
+
+TableId MasterHost::VersionSpecificCatalogTableId(const TableId& table_id) const {
+  if (!ysql_major_upgrade_in_progress_.load() || !IsCurrentVersionYsqlCatalogTable(table_id)) {
+    return table_id;
+  }
+  // The current version's catalog may not exist yet, is only written by pg_restore, and can be
+  // dropped by a rollback; reads use the prior version's until finalize.
+  auto database_oid = GetPgsqlDatabaseOid(table_id);
+  auto table_oid = GetPgsqlTableOid(table_id);
+  if (!database_oid.ok() || !table_oid.ok()) {
+    return table_id;
+  }
+  return GetPriorVersionYsqlCatalogTableId(*database_oid, *table_oid);
+}
+
+// CatalogManager::GetClosestLiveTserver.
+Result<MasterHost::ClosestTserver> MasterHost::ClosestLiveTserver(
+    const google::protobuf::RepeatedPtrField<master::TSInformationPB>& live_tservers) const {
+  ServerRegistrationPB local_registration;
+  RETURN_NOT_OK(GetMasterRegistration(&local_registration));
+  std::unordered_set<std::string> local_hosts;
+  for (const auto& addr : local_registration.private_rpc_addresses()) {
+    local_hosts.insert(addr.host());
+  }
+  const auto& local_cloud_info = local_registration.cloud_info();
+  using Similarity = master::CatalogManagerUtil::CloudInfoSimilarity;
+  auto best_score = Similarity::NO_MATCH;
+  const master::TSInformationPB* best = nullptr;
+  bool local_ts = false;
+  for (const auto& ts_info : live_tservers) {
+    if (!ts_info.has_registration()) {
+      continue;
+    }
+    const auto ts_score = master::CatalogManagerUtil::ComputeCloudInfoSimilarity(
+        ts_info.registration().common().cloud_info(), local_cloud_info);
+    if (ts_score < best_score) {
+      continue;
+    }
+    if (ts_score == Similarity::ZONE_MATCH) {
+      for (const auto& addr : ts_info.registration().common().private_rpc_addresses()) {
+        if (local_hosts.contains(addr.host())) {
+          local_ts = true;
+          break;
+        }
+      }
+    }
+    best_score = ts_score;
+    best = &ts_info;
+    if (local_ts) {
+      break;
+    }
+  }
+  SCHECK(best, NotFound, "Couldn't find a live tablet server to connect to");
+  const auto& common = best->registration().common();
+  const auto& addr = DesiredHostPort(common, local_cloud_info);
+  SCHECK(
+      !addr.host().empty(), NetworkError, "Unable to find the TS address for $0",
+      best->tserver_instance().permanent_uuid());
+  return ClosestTserver{
+      .rpc_address = HostPortFromPB(addr),
+      .pg_port = narrow_cast<uint16_t>(common.pg_port()),
+      .local = local_ts,
+  };
+}
+
+Status MasterHost::ForwardUpgradeYsql(const master::ForwardUpgradeYsqlRequestPB& req) {
+  // MasterAdminServiceImpl::ForwardUpgradeYsqlToClosestTserver.
+  const auto ts = VERIFY_RESULT(ClosestLiveTserver(req.live_tservers()));
+  tserver::TabletServerAdminServiceProxy proxy(&proxy_cache(), ts.rpc_address);
+  tserver::UpgradeYsqlRequestPB ts_req;
+  ts_req.set_use_single_connection(req.use_single_connection());
+  tserver::UpgradeYsqlResponsePB ts_resp;
+  rpc::RpcController controller;
+  controller.set_timeout(MonoDelta::FromMilliseconds(req.timeout_ms()));
+  RETURN_NOT_OK(proxy.UpgradeYsql(ts_req, &ts_resp, &controller));
+  if (ts_resp.has_error()) {
+    return StatusFromPB(ts_resp.error().status());
+  }
+  return Status::OK();
+}
+
+Status MasterHost::RunYsqlPgUpgrade(const master::RunYsqlPgUpgradeRequestPB& req) {
+  const auto ts = VERIFY_RESULT(ClosestLiveTserver(req.live_tservers()));
+  const auto& rpc_address = ts.rpc_address;
+  HostPort tserver_pg(rpc_address.host(), ts.pg_port);
+  return master::PerformYsqlPgUpgrade(
+      *this, opts_, *fs_manager_, std::move(tserver_pg), ts.local,
+      [this, &rpc_address]() -> Result<std::optional<HostPort>> {
+        // The C++ handler's GetPgSocketDir.
+        tserver::TabletServerAdminServiceProxy proxy(&proxy_cache(), rpc_address);
+        tserver::GetPgSocketDirRequestPB req;
+        tserver::GetPgSocketDirResponsePB resp;
+        rpc::RpcController rpc;
+        rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_master_ts_rpc_timeout_ms));
+        auto status = proxy.GetPgSocketDir(req, &resp, &rpc);
+        if (!status.ok() && rpc::RpcError(status) == rpc::ErrorStatusPB::ERROR_NO_SUCH_METHOD) {
+          return std::nullopt;
+        }
+        RETURN_NOT_OK(status);
+        if (resp.has_error()) {
+          return StatusFromPB(resp.error().status());
+        }
+        return HostPortFromPB(resp.pg_socket_dir());
+      });
 }
 
 docdb::HistoryCutoff MasterHost::AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata) {
@@ -1416,6 +1602,15 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
     return HandleRequest<master::CopyPgsqlSysTablesRequestPB,
                          master::CopyPgsqlSysTablesResponsePB>(
         request, [this](const auto& req, auto* resp) -> Status {
+          if (FLAGS_TEST_fail_yugabyte_namespace_creation_on_second_attempt &&
+              req.namespace_name() == "yugabyte") {
+            static std::atomic<int32_t> attempt{0};
+            const auto n = ++attempt;
+            LOG(INFO) << "TEST: yugabyte namespace creation attempt #" << n;
+            if (n == 2) {
+              return STATUS(InternalError, "TEST: Injected CopyPgsqlSysTables failure for yugabyte");
+            }
+          }
           const auto db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(req.namespace_id()));
           tablet::ChangeMetadataRequestPB change;
           change.set_tablet_id(master::kSysCatalogTabletId);
@@ -1492,6 +1687,146 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
           RETURN_NOT_OK(
               tablet::SyncReplicateChangeMetadataOperation(&change, peer.get(), req.term()));
           return sys_catalog_->CopyPgsqlTables(source_ids, target_ids, req.term());
+        });
+  }
+  if (name == "CreateYsqlSysTable") {
+    // CatalogManager::CreateYsqlSysTable: CreateYsqlSysTableData::CompleteInit, the table added
+    // to the sys catalog tablet, and its row for the leader to write.
+    return HandleRequest<master::CreateYsqlSysTableRequestPB,
+                         master::CreateYsqlSysTableResponsePB>(
+        request, [this](const auto& req, auto* resp) -> Status {
+          const auto& create = req.request();
+          SCHECK(
+              !create.partition_schema().has_hash_schema(), InvalidArgument,
+              "PostgreSQL system catalog tables are non-partitioned");
+          SCHECK_EQ(
+              create.table_type(), PGSQL_TABLE_TYPE, InvalidArgument,
+              "Expected table type to be PGSQL_TABLE_TYPE");
+          Schema schema;
+          RETURN_NOT_OK(SchemaFromPB(create.schema(), &schema));
+          RETURN_NOT_OK(master::ValidateCreateTableSchema(schema));
+          if (!schema.has_column_ids()) {
+            schema.InitColumnIdsByDefault();
+          }
+          schema.mutable_table_properties()->set_is_ysql_catalog_table(true);
+          dockv::PartitionSchema partition_schema;
+          std::vector<dockv::Partition> partitions;
+          RETURN_NOT_OK(partition_schema.CreatePartitions(1, &partitions));
+
+          auto peer = sys_catalog_->tablet_peer();
+          SCHECK(peer, IllegalState, "The sys catalog tablet is not open");
+          const auto& table_id = create.table_id();
+          tablet::ChangeMetadataRequestPB change;
+          change.set_tablet_id(master::kSysCatalogTabletId);
+          if (create.transaction().has_using_table_locks() &&
+              create.transaction().using_table_locks()) {
+            change.set_only_abort_txns_not_using_table_locks(true);
+          }
+          // A new leader repeating a creation whose row was never written finds the table already
+          // on the tablet.
+          if (!peer->tablet_metadata()->GetTableInfo(table_id).ok()) {
+            master::CatalogManagerUtil::FillTableInfoPB(
+                table_id, create.name(), PGSQL_TABLE_TYPE, schema, /* schema_version= */ 0,
+                partition_schema, change.mutable_add_table());
+            RETURN_NOT_OK(
+                tablet::SyncReplicateChangeMetadataOperation(&change, peer.get(), req.term()));
+          }
+          auto* row = resp->mutable_table();
+          row->set_id(table_id);
+          auto* table = row->mutable_table();
+          master::FillNewTableEntry(
+              create, schema, partition_schema, create.namespace_().id(), req.namespace_name(),
+              /* colocated= */ false, table);
+          table->set_state(master::SysTablesEntryPB::RUNNING);
+          if (create.has_transaction()) {
+            *table->mutable_transaction() = create.transaction();
+          }
+          return Status::OK();
+        });
+  }
+  if (name == "SetYsqlMajorUpgradeState") {
+    return HandleRequest<master::SetYsqlMajorUpgradeStateRequestPB,
+                         master::SetYsqlMajorUpgradeStateResponsePB>(
+        request, [this](const auto& req, auto*) -> Status {
+          ysql_major_upgrade_state_.store(req.state());
+          if (ysql_major_upgrade_in_progress_.exchange(req.in_progress()) != req.in_progress()) {
+            LOG(INFO) << "YSQL major upgrade in progress: " << req.in_progress();
+            // The cached versions were read from the other version's table.
+            ResetPgCatalogVersionCache();
+          }
+          return Status::OK();
+        });
+  }
+  if (name == "RunYsqlInitDb") {
+    // YsqlInitDBAndMajorUpgradeHandler::InitDBAndSnapshotSysCatalog without the snapshot.
+    return HandleRequest<master::RunYsqlInitDbRequestPB, master::RunYsqlInitDbResponsePB>(
+        request, [this](const auto& req, auto*) -> Status {
+          std::vector<std::pair<std::string, YbcPgOid>> database_oids;
+          for (const auto& entry : req.database_oids()) {
+            database_oids.emplace_back(entry.name(), entry.oid());
+          }
+          return pgwrapper::PgWrapper::InitDbForYSQL(
+              this, opts_, *fs_manager_, FLAGS_tmp_dir, std::move(database_oids),
+              req.is_major_upgrade());
+        });
+  }
+  if (name == "ForwardUpgradeYsql") {
+    return HandleRequest<master::ForwardUpgradeYsqlRequestPB,
+                         master::ForwardUpgradeYsqlResponsePB>(
+        request, [this](const auto& req, auto*) { return ForwardUpgradeYsql(req); });
+  }
+  if (name == "RunYsqlPgUpgrade") {
+    return HandleRequest<master::RunYsqlPgUpgradeRequestPB, master::RunYsqlPgUpgradeResponsePB>(
+        request, [this](const auto& req, auto*) { return RunYsqlPgUpgrade(req); });
+  }
+  if (name == "ValidateTserverVersions") {
+    return HandleRequest<master::ValidateTserverVersionsRequestPB,
+                         master::ValidateTserverVersionsResponsePB>(
+        request, [](const auto& req, auto*) {
+          return ValidateTserverVersions(
+              req.live_tservers(),
+              req.op() == master::ValidateTserverVersionsRequestPB::VERSION_EQ
+                  ? ValidateVersionInfoOp::kVersionEQ
+                  : ValidateVersionInfoOp::kYsqlMajorVersionLT);
+        });
+  }
+  if (name == "YsqlMajorUpgradeCatalogStep") {
+    return HandleRequest<master::YsqlMajorUpgradeCatalogStepRequestPB,
+                         master::YsqlMajorUpgradeCatalogStepResponsePB>(
+        request, [this](const auto& req, auto*) -> Status {
+          using Step = master::YsqlMajorUpgradeCatalogStepRequestPB;
+          auto peer = sys_catalog_->tablet_peer();
+          SCHECK(peer, IllegalState, "The sys catalog tablet is not open");
+          switch (req.step()) {
+            case Step::ABORT_TRANSACTIONS:
+              LOG(INFO) << "Killing any in-flight transactions before starting the YSQL major "
+                           "catalog upgrade";
+              peer->AbortActiveTransactions();
+              return Status::OK();
+            case Step::UPDATE_CATALOG_VERSIONS:
+              // YsqlInitDBAndMajorUpgradeHandler::UpdateCatalogVersions.
+              RETURN_NOT_OK(sys_catalog_->DeleteAllYsqlCatalogTableRows(
+                  {kPgYbCatalogVersionTableId}, req.term()));
+              RETURN_NOT_OK(sys_catalog_->CopyPgsqlTables(
+                  {kPgYbCatalogVersionTableIdPriorVersion}, {kPgYbCatalogVersionTableId},
+                  req.term()));
+              return sys_catalog_->DeleteAllYsqlCatalogTableRows(
+                  {GetPgsqlTableId(kTemplate1Oid, kPgYbInvalidationMessagesTableOid)},
+                  req.term());
+            case Step::DELETE_ROWS: {
+              std::vector<TableId> table_ids;
+              for (const auto& id : req.table_ids()) {
+                if (peer->tablet_metadata()->GetTableInfo(id).ok()) {
+                  table_ids.push_back(id);
+                }
+              }
+              if (table_ids.empty()) {
+                return Status::OK();
+              }
+              return sys_catalog_->DeleteAllYsqlCatalogTableRows(table_ids, req.term());
+            }
+          }
+          return STATUS_FORMAT(InvalidArgument, "Unknown step $0", req.step());
         });
   }
   if (name == "DeleteYsqlSystemTables") {
@@ -1662,7 +1997,7 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
           SCHECK(peer, IllegalState, "The sys catalog tablet is not open");
           auto metadata = peer->tablet_metadata();
           SCHECK(
-              metadata->GetTableInfo(kPgTablespaceTableId).ok(), InternalError,
+              metadata->GetTableInfo(VersionSpecificCatalogTableId(kPgTablespaceTableId)).ok(), InternalError,
               "pg_tablespace table info not found");
           auto tablespaces = VERIFY_RESULT(sys_catalog_->ReadPgTablespaceInfo());
           for (const auto& [id, replication_info] : *tablespaces) {
@@ -1678,7 +2013,8 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
             WARN_NOT_OK(
                 sys_catalog_->ReadPgClassInfo(database.oid(), database.colocated(), &tables),
                 Format("Refreshing table->tablespace info failed for database $0", database.oid()));
-            if (metadata->GetTableInfo(GetPgsqlTableId(database.oid(), kPgYbTablegroupTableOid))
+            if (metadata->GetTableInfo(VersionSpecificCatalogTableId(
+                    GetPgsqlTableId(database.oid(), kPgYbTablegroupTableOid)))
                     .ok()) {
               WARN_NOT_OK(
                   sys_catalog_->ReadTablespaceInfoFromPgYbTablegroup(
@@ -2467,7 +2803,30 @@ void MasterHost::SetupAsyncClientInit(client::AsyncClientInitializer* async_clie
       .set_master_address_flag_name("master_addresses")
       .default_admin_operation_timeout(default_client_timeout())
       .AddMasterAddressSource([this] {
+        // CatalogManager::GetMasterAddresses: the sys catalog's Raft config, which a restarted
+        // master has even when its options carry no addresses. Before the tablet is open, the
+        // options.
         std::vector<std::string> result;
+        auto peer = sys_catalog_initialized_.load() ? sys_catalog_->tablet_peer() : nullptr;
+        auto consensus = peer ? peer->GetConsensus() : STATUS(IllegalState, "No tablet peer");
+        if (consensus.ok()) {
+          const auto state =
+              (*consensus)->ConsensusState(consensus::CONSENSUS_CONFIG_COMMITTED);
+          for (const auto& p : state.config().peers()) {
+            std::vector<std::string> addresses;
+            for (const auto& list : {p.last_known_private_addr(), p.last_known_broadcast_addr()}) {
+              for (const auto& entry : list) {
+                addresses.push_back(HostPort::FromPB(entry).ToString());
+              }
+            }
+            if (!addresses.empty()) {
+              result.push_back(JoinStrings(addresses, ","));
+            }
+          }
+          if (!result.empty()) {
+            return result;
+          }
+        }
         for (const auto& list : *opts_.GetMasterAddresses()) {
           for (const auto& hp : list) {
             result.push_back(hp.ToString());

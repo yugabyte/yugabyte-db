@@ -35,6 +35,7 @@ mod create;
 mod drop;
 mod flush;
 pub mod lookup;
+pub mod major_upgrade;
 mod namespaces;
 mod placement;
 mod read;
@@ -106,8 +107,18 @@ pub struct LifecycleOptions {
     pub ysql_index_backfill_rpc_timeout: fn() -> std::time::Duration,
     /// Tablespace placement.
     pub tablespaces: TablespaceOptions,
-    /// `TEST_pause_ddl_rollback`: `IsYsqlDdlVerificationDone` fails.
+    /// `TEST_pause_ddl_rollback`: a DDL transaction's tables keep their DDL state while it is
+    /// set, and `IsYsqlDdlVerificationDone` fails.
     pub pause_ddl_rollback: fn() -> bool,
+    /// `TEST_fail_table_creation_at_preparing_state`: a YSQL `CreateTable` fails after
+    /// persisting the table, so the DDL transaction has to roll it back.
+    pub fail_table_creation_at_preparing_state: fn() -> bool,
+    /// `TEST_pause_before_upsert_ysql_sys_table`: a new YSQL system table's row, or a new
+    /// database's copied catalog rows, wait to be written while set.
+    pub pause_before_upsert_ysql_sys_table: fn() -> bool,
+    /// This build's YSQL major version; None when YSQL is off. A catalog on another version is
+    /// mid major upgrade.
+    pub ysql_major_version: Option<u32>,
 }
 
 impl Default for LifecycleOptions {
@@ -133,6 +144,9 @@ impl Default for LifecycleOptions {
                 name_transaction_tables_with_tablespace_id: || false,
             },
             pause_ddl_rollback: || false,
+            fail_table_creation_at_preparing_state: || false,
+            pause_before_upsert_ysql_sys_table: || false,
+            ysql_major_version: None,
         }
     }
 }
@@ -309,6 +323,38 @@ impl TableLifecycle {
 /// A `MasterErrorPB` with `code` and a status.
 pub(crate) fn error(code: Code, status: StatusCode, message: impl Into<String>) -> MasterErrorPB {
     master_error(code, status, &message.into())
+}
+
+/// `STATUS_EC_FORMAT(.., MasterError(code), ..)`: the status constructor appends the code's name
+/// to the message ("<message>: <CODE>", which PG shows and tests match), and `StatusToPB` encodes
+/// the code (`MasterErrorTag` category 9, the code as a little-endian `int32`, then the
+/// terminating 0).
+impl TableLifecycle {
+    /// Waits while `TEST_pause_before_upsert_ysql_sys_table` is set, as C++'s
+    /// `CompleteCreateYsqlSysTable` does before its write.
+    pub(crate) async fn pause_before_upsert_ysql_sys_table(&self) {
+        if !(self.options.pause_before_upsert_ysql_sys_table)() {
+            return;
+        }
+        tracing::info!("TEST: pausing before writing YSQL system table rows");
+        while (self.options.pause_before_upsert_ysql_sys_table)() {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+    }
+}
+
+pub(crate) fn tagged_error(
+    code: Code,
+    status: StatusCode,
+    message: impl Into<String>,
+) -> MasterErrorPB {
+    const MASTER_ERROR_CATEGORY: u8 = 9;
+    let mut pb = error(code, status, format!("{}: {code:?}", message.into()));
+    let mut errors = vec![MASTER_ERROR_CATEGORY];
+    errors.extend_from_slice(&protobuf::Enum::value(&code).to_le_bytes());
+    errors.push(0);
+    pb.status.mut_or_insert_default().set_errors(errors);
+    pb
 }
 
 /// The error for a failed catalog write.

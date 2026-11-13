@@ -13,6 +13,9 @@
 
 #pragma once
 
+#include <functional>
+#include <optional>
+
 #include "yb/master/master_admin.pb.h"
 
 #include "yb/master/master_fwd.h"
@@ -22,12 +25,30 @@
 
 namespace yb {
 
+class FsManager;
 class IsOperationDoneResult;
 class ThreadPool;
 class VersionInfoPB;
 
+namespace pgwrapper {
+class PgWrapperContext;
+}  // namespace pgwrapper
+
+namespace server {
+class ServerBaseOptions;
+}  // namespace server
+
 namespace master {
 struct LeaderEpoch;
+
+// The pg_upgrade step of a YSQL major upgrade: a temporary new-version postgres in binary upgrade
+// mode, and pg_upgrade from the postgres of the closest live tserver (`tserver_pg`, its host and
+// pg port). For a tserver on this node, `get_pg_socket_dir` asks it for its socket directory;
+// nullopt means it is too old to answer. Shared by the C++ master and the Rust master's host.
+Status PerformYsqlPgUpgrade(
+    pgwrapper::PgWrapperContext& server, const server::ServerBaseOptions& options,
+    FsManager& fs_manager, HostPort tserver_pg, bool local_tserver,
+    const std::function<Result<std::optional<HostPort>>()>& get_pg_socket_dir);
 class YsqlCatalogConfig;
 
 // Helper class to handle global initdb and major version upgrade for YSQL.
@@ -60,8 +81,9 @@ class YsqlInitDBAndMajorUpgradeHandler {
   // to a clean state.
   Status RollbackYsqlMajorCatalogVersion(const LeaderEpoch& epoch);
 
-  // Removes the pg_upgrade socket directory a killed yb-master could not clean up itself.
-  Status CleanupStalePgUpgradeSocketDir();
+  // Removes the pg_upgrade socket directory a killed yb-master could not clean up itself. Also run
+  // by the Rust master's host at startup.
+  static Status CleanupStalePgUpgradeSocketDir();
 
   // Are we in a ysql major upgrade?
   // The upgrade is considered to have started when the yb-master leader has upgraded to a new major

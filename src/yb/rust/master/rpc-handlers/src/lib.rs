@@ -43,11 +43,17 @@ use yb_host_api::{Status, StatusCode};
 use yb_proto::pb::common_types::PeerRole;
 use yb_proto::pb::consensus_metadata::ConsensusStatePB;
 use yb_proto::pb::master_admin::{
-    CreateTransactionStatusTableRequestPB, CreateTransactionStatusTableResponsePB,
-    DeleteNotServingTabletRequestPB, DeleteNotServingTabletResponsePB,
-    DisableTabletSplittingRequestPB, DisableTabletSplittingResponsePB, IsInitDbDoneRequestPB,
-    IsInitDbDoneResponsePB, IsTabletSplittingCompleteRequestPB,
-    IsTabletSplittingCompleteResponsePB, SplitTabletRequestPB, SplitTabletResponsePB,
+    ClientUpgradeYsqlRequestPB, ClientUpgradeYsqlResponsePB, CreateTransactionStatusTableRequestPB,
+    CreateTransactionStatusTableResponsePB, DeleteNotServingTabletRequestPB,
+    DeleteNotServingTabletResponsePB, DisableTabletSplittingRequestPB,
+    DisableTabletSplittingResponsePB, FinalizeYsqlMajorCatalogUpgradeRequestPB,
+    FinalizeYsqlMajorCatalogUpgradeResponsePB, GetYsqlMajorCatalogUpgradeStateRequestPB,
+    GetYsqlMajorCatalogUpgradeStateResponsePB, IsInitDbDoneRequestPB, IsInitDbDoneResponsePB,
+    IsTabletSplittingCompleteRequestPB, IsTabletSplittingCompleteResponsePB,
+    IsYsqlMajorCatalogUpgradeDoneRequestPB, IsYsqlMajorCatalogUpgradeDoneResponsePB,
+    RollbackYsqlMajorCatalogVersionRequestPB, RollbackYsqlMajorCatalogVersionResponsePB,
+    SplitTabletRequestPB, SplitTabletResponsePB, StartYsqlMajorCatalogUpgradeRequestPB,
+    StartYsqlMajorCatalogUpgradeResponsePB,
 };
 use yb_proto::pb::master_admin::{
     FlushTablesRequestPB, FlushTablesResponsePB, IsFlushTablesDoneRequestPB,
@@ -449,6 +455,27 @@ impl Shared {
                     return respond(call, &resp);
                 }
             };
+            // RegisterTServerOrRespond: a tserver on the wrong YSQL major version is told to stop.
+            if let Some(version) = req.registration.version_info.as_ref() {
+                let ysql_major = version
+                    .has_ysql_major_version()
+                    .then(|| version.ysql_major_version());
+                if let Err(status) = leader.major_upgrade.validate_tserver_version(ysql_major) {
+                    tracing::warn!(
+                        "yb-tserver {} running invalid version: {:?}",
+                        String::from_utf8_lossy(req.common.ts_instance.permanent_uuid()),
+                        version
+                    );
+                    let mut resp = TSHeartbeatResponsePB::new();
+                    resp.set_is_fatal_error(true);
+                    resp.error = Some(master_error_from(
+                        master_error_pb::Code::INTERNAL_ERROR,
+                        &status,
+                    ))
+                    .into();
+                    return respond(call, &resp);
+                }
+            }
             let ctx = master_ts_manager::HeartbeatContext {
                 token,
                 writer: &leader.writer,
@@ -1018,6 +1045,60 @@ impl Shared {
                         .wait_for_lockers_global(&token, &req, deadline)
                         .await;
                     lock_error(result, &mut resp.error)
+                }
+            ),
+            "StartYsqlMajorCatalogUpgrade" => serve!(
+                StartYsqlMajorCatalogUpgradeRequestPB,
+                StartYsqlMajorCatalogUpgradeResponsePB,
+                |_req, resp| {
+                    let _ = &mut resp;
+                    leader.major_upgrade.start(&token).await
+                }
+            ),
+            "IsYsqlMajorCatalogUpgradeDone" => serve!(
+                IsYsqlMajorCatalogUpgradeDoneRequestPB,
+                IsYsqlMajorCatalogUpgradeDoneResponsePB,
+                |_req, resp| {
+                    let (done, error) = leader.major_upgrade.is_done();
+                    resp.set_done(done);
+                    error.map_or(Ok(()), Err)
+                }
+            ),
+            "FinalizeYsqlMajorCatalogUpgrade" => serve!(
+                FinalizeYsqlMajorCatalogUpgradeRequestPB,
+                FinalizeYsqlMajorCatalogUpgradeResponsePB,
+                |_req, resp| {
+                    let _ = &mut resp;
+                    leader.major_upgrade.finalize(&token).await
+                }
+            ),
+            "RollbackYsqlMajorCatalogVersion" => serve!(
+                RollbackYsqlMajorCatalogVersionRequestPB,
+                RollbackYsqlMajorCatalogVersionResponsePB,
+                |_req, resp| {
+                    let _ = &mut resp;
+                    leader.major_upgrade.rollback(&token).await
+                }
+            ),
+            "GetYsqlMajorCatalogUpgradeState" => serve!(
+                GetYsqlMajorCatalogUpgradeStateRequestPB,
+                GetYsqlMajorCatalogUpgradeStateResponsePB,
+                |_req, resp| {
+                    leader
+                        .major_upgrade
+                        .upgrade_state()
+                        .map(|state| resp.set_state(state))
+                }
+            ),
+            "ClientUpgradeYsql" => serve!(
+                ClientUpgradeYsqlRequestPB,
+                ClientUpgradeYsqlResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    leader
+                        .major_upgrade
+                        .forward_upgrade_ysql(req.use_single_connection(), call.time_to_deadline())
+                        .await
                 }
             ),
             "IsInitDbDone" => serve!(

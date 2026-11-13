@@ -82,14 +82,15 @@ hold back a release of the transaction it verifies.
 PG reads and writes its catalog on the leader's sys catalog tablet through
 `TabletServerService`. The host registers the C++ `MasterTabletServiceImpl` over
 `MasterTabletServer`, both of which now take a `MasterTabletServerContext` instead of the C++
-`Master`. The host's context:
+`Master`. It also registers `PgClientService` over `MasterTabletServer`, as C++ does, because
+initdb (including the major upgrade's) runs PG with this master as its tserver. The host's context:
 
 - serves only in the term the Rust leader reported ready in (`SetLeaderReadyTerm`, sent on every
   leadership phase change), as `ScopedLeaderSharedLock` checks `leader_ready_term_`;
 - reads catalog versions from `pg_yb_catalog_version`, and skips version checks until that table
-  is readable (initdb done);
-- refuses the protobuf catalog version and initdb run by the master, and allows every catalog
-  write, since a Rust master runs no YSQL major upgrade.
+  is readable (initdb done) and during a YSQL major upgrade;
+- refuses the protobuf catalog version, and gates catalog writes as
+  `IsWriteToCatalogTableAllowed` does (below).
 
 Tablet locations of system tablets (the sys catalog tablet and the YCQL system keyspaces' virtual
 tables) are the masters, with the current leader, from the quorum's committed consensus state, as
@@ -103,6 +104,36 @@ failed read), and so does each `ReportYsqlDdlTxnStatus`, so a DDL's new version 
 next heartbeat. The invalidation messages are re-read only when the versions changed. The host
 resets the cache whenever the ready term changes, and drops a refresh read before the reset or
 older than what it holds. The tablet service's version reads that allow the cache use it too.
+
+## YSQL major upgrade (`major_upgrade.rs`)
+
+`MajorUpgrade` is `YsqlInitDBAndMajorUpgradeHandler`. Its state is the YSQL catalog config's
+`ysql_major_catalog_upgrade_info`, moved by `kAllowedTransitions` (DONE -> PERFORMING_INIT_DB ->
+PERFORMING_PG_UPGRADE -> MONITORING -> DONE, a running state -> FAILED or PERFORMING_ROLLBACK,
+FAILED -> PERFORMING_ROLLBACK -> DONE). The upgrade is in progress while that `catalog_version` is
+not this build's YSQL major version. Rust keeps the state machine and the order of the steps; what
+runs a process or works on the sys catalog tablet's YSQL rows runs on the host:
+
+| Step | Where |
+|---|---|
+| Abort the sys catalog's transactions, then copy `pg_yb_catalog_version` from the prior version's table and empty `pg_yb_invalidation_messages` (`UpdateCatalogVersions`) | host `YsqlMajorUpgradeCatalogStep` |
+| initdb in major upgrade mode, keeping the oids of template0 and yugabyte | host `RunYsqlInitDb` (`PgWrapper::InitDbForYSQL`) |
+| pg_upgrade against the closest live tserver's postgres | host `RunYsqlPgUpgrade` (`master::PerformYsqlPgUpgrade`, shared with the C++ handler) |
+| Finalize and rollback version checks of the live tservers | host `ValidateTserverVersions` |
+| New-version catalog tables, pg_upgrade's drop and re-create of each database (`ysql_next_major_version_state`), rollback and the old catalog's cleanup | `master_table_lifecycle::major_upgrade` |
+
+The leader sends the host the state (`SetYsqlMajorUpgradeState`) before its term is ready and
+after each change. The host then reads PG catalog tables through the prior version's ids
+(`GetVersionSpecificCatalogTableId`), skips catalog version checks, and allows only forced catalog
+writes, never one to `pg_yb_catalog_version`. A new leader fails an operation the last one was
+running, and starts an unfinished cleanup of the old catalog again.
+A registering tserver whose YSQL major version the state does not allow (`ValidateTServerVersion`)
+gets a fatal heartbeat error.
+
+`ClientUpgradeYsql` (`yb-admin finalize_upgrade` ends with it) is sent on, through the host
+(`ForwardUpgradeYsql`), to `UpgradeYsql` of the live tserver pg_upgrade would pick. At startup the
+host removes the pg_upgrade socket directory a killed master left behind
+(`CleanupStalePgUpgradeSocketDir`), as `Master::Init` does.
 
 ## YSQL system tables
 

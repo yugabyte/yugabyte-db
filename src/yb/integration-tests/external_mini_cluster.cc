@@ -528,6 +528,10 @@ std::string ExternalMiniCluster::GetMasterBinaryPath() const {
   return GetBinaryPath(GetMasterBinaryName());
 }
 
+std::string ExternalMiniCluster::GetRustMasterBinaryPath() const {
+  return GetBinaryPath(GetRustMasterBinaryName());
+}
+
 std::string ExternalMiniCluster::GetTServerBinaryPath() const {
   return GetBinaryPath(GetTServerBinaryName());
 }

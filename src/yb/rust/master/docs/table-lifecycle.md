@@ -36,8 +36,9 @@ does, adds them all to the sys catalog tablet in one `ChangeMetadata` and copies
 database RUNNING in one mutation, or FAILED. A new leader marks a YSQL database DELETING if it is
 FAILED, or PREPARING and not being created in its term (a creation a leader change interrupted),
 as C++'s namespace loader does, so the drop pass removes it; PG never committed it, so no client
-can see it. A database whose next major version catalog was being made
-(`NEXT_VER_PREPARING`) is left alone. The creating transaction is not verified yet.
+can see it. A live database whose next major version catalog was being made
+(`NEXT_VER_PREPARING`) is kept, with that copy `NEXT_VER_FAILED`. The creating transaction is not
+verified yet.
 
 A YSQL `CreateTable` names its table id (from the database and relation OIDs); it is unique by id,
 not by name, since names are pg_class's. The host builds the row (`PrepareTableSchema` with the
@@ -231,6 +232,30 @@ A database with a shared table goes to FAILED, as C++'s check fails it. Not done
 database's CDCSDK streams (a database with one is refused until W11), erasing its xCluster
 persistence block, and removing the DELETED row on the next leader load (C++ keeps it as a
 tombstone until then).
+
+## During a YSQL major upgrade (`major_upgrade.rs`)
+
+While the catalog is on another YSQL major version than the build, initdb and pg_upgrade build the
+new version's catalog next to the old one, and DDL behaves as C++'s does then:
+
+- `CreateTable` of a PG catalog table creates it on the sys-catalog tablet (`CreateYsqlSysTable`,
+  through the host, which also serves initdb outside an upgrade); any other table must already
+  exist and is reused. `AlterTable` is ignored (only pg_upgrade's restore reaches it).
+- `CreateNamespace` reuses the existing database: `PREPARING` with `NEXT_VER_PREPARING` while the
+  template's current-version catalog tables are copied, then `RUNNING` and `NEXT_VER_RUNNING`; a
+  failed copy leaves `NEXT_VER_FAILED`, which `IsCreateNamespaceDone` reports.
+- `DeleteNamespace` keeps the database and drops only its current-version, non-shared catalog
+  tables (`NEXT_VER_DELETING`, then `NEXT_VER_DELETED`), deleting their rows first since identical
+  rows are inserted again soon.
+- A database left DELETING is not dropped until the upgrade ends, as C++'s
+  `DeleteYsqlDatabaseAsync` refuses one that is not RUNNING then.
+
+`TEST_pause_before_upsert_ysql_sys_table` pauses the new catalog tables' write in both
+`CreateYsqlSysTable` and the database copy, as in C++.
+
+`DbTables` selects what `delete_ysql_db_tables` deletes, for DROP DATABASE, that drop, a rollback
+(every current-version catalog table, rows first) and the cleanup after finalize (the prior
+version's catalog tables, rows left for compaction).
 
 ## Tablespaces (`tablespaces.rs`)
 

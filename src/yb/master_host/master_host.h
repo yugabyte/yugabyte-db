@@ -275,8 +275,25 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   bool CachedDBCatalogVersion(
       uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version) const;
   Status StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req);
+  // YsqlManager::GetVersionSpecificCatalogTableId: during a YSQL major upgrade, a current-version
+  // PG catalog table is read from the prior version's table.
+  TableId VersionSpecificCatalogTableId(const TableId& table_id) const;
+  // YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade.
+  struct ClosestTserver {
+    HostPort rpc_address;
+    uint16_t pg_port;
+    // In this master's zone and on one of its hosts.
+    bool local;
+  };
+  Result<ClosestTserver> ClosestLiveTserver(
+      const google::protobuf::RepeatedPtrField<master::TSInformationPB>& live_tservers) const;
+  Status RunYsqlPgUpgrade(const master::RunYsqlPgUpgradeRequestPB& req);
+  Status ForwardUpgradeYsql(const master::ForwardUpgradeYsqlRequestPB& req);
 
   master::MasterOptions opts_;
+  // What the Rust leader last sent of the YSQL major upgrade (SetYsqlMajorUpgradeState).
+  std::atomic<bool> ysql_major_upgrade_in_progress_{false};
+  std::atomic<int> ysql_major_upgrade_state_{master::YsqlMajorCatalogUpgradeInfoPB::DONE};
   std::unique_ptr<SysCatalogContextImpl> sys_catalog_context_;
   std::unique_ptr<SnapshotContextImpl> snapshot_context_;
   std::unique_ptr<TabletPeerLookupImpl> tablet_peer_lookup_;

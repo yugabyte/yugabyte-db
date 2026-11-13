@@ -705,6 +705,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   std::string GetDaemonBinPath() const { return daemon_bin_path_; }
   void SetDaemonBinPath(const std::string& bin_path);
   std::string GetMasterBinaryPath() const;
+  std::string GetRustMasterBinaryPath() const;
   std::string GetTServerBinaryPath() const;
 
   // Checks whether user has enabled connection manager

@@ -253,6 +253,24 @@ fn tserver(uuid: &str, zone: &str) -> TSInformationPB {
     info
 }
 
+/// The bytes `StatusToPB` writes for `MasterError(TABLE_SCHEMA_CHANGE_IN_PROGRESS)`, which PG
+/// shows as "master error TABLE_SCHEMA_CHANGE_IN_PROGRESS".
+#[test]
+fn tagged_error_encodes_master_error_code() {
+    let e = crate::tagged_error(
+        Code::TABLE_SCHEMA_CHANGE_IN_PROGRESS,
+        StatusCode::TryAgain,
+        "busy",
+    );
+    let code = protobuf::Enum::value(&Code::TABLE_SCHEMA_CHANGE_IN_PROGRESS);
+    let mut expected = vec![9u8];
+    expected.extend_from_slice(&code.to_le_bytes());
+    expected.push(0);
+    assert_eq!(e.status.errors(), expected.as_slice());
+    assert_eq!(e.status.message(), "busy: TABLE_SCHEMA_CHANGE_IN_PROGRESS");
+    assert_eq!(e.code(), Code::TABLE_SCHEMA_CHANGE_IN_PROGRESS);
+}
+
 #[test]
 fn object_ids_are_uuid_v4_hex() {
     let id = generate_object_id();

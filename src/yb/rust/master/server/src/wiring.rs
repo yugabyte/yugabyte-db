@@ -49,6 +49,7 @@ use master_ysql_manager::catalog_versions::{CatalogVersionsController, CatalogVe
 use master_ysql_manager::initdb;
 use master_ysql_manager::lease::{LeaseExpiryController, LeaseOptions, YsqlLeases};
 use master_ysql_manager::locks::{LockOptions, ObjectLocks};
+use master_ysql_manager::major_upgrade::{MajorUpgrade, MajorUpgradeOptions};
 use protobuf::Message;
 use tokio::sync::watch;
 use yb_flags::{yb_flag, FlagRef, FlagTag};
@@ -173,6 +174,15 @@ static DISABLE_YSQL_DDL_TXN_VERIFICATION: FlagRef<bool> =
 static DDL_VERIFICATION_FAILURE_PROBABILITY: FlagRef<f64> =
     FlagRef::new("TEST_ysql_ddl_transaction_verification_failure_probability");
 static PAUSE_DDL_ROLLBACK: FlagRef<bool> = FlagRef::new("TEST_pause_ddl_rollback");
+static FAIL_UPGRADE_TRANSITION_FROM: FlagRef<String> =
+    FlagRef::new("TEST_fail_ysql_catalog_upgrade_state_transition_from");
+static SKIP_TSERVER_VERSION_CHECKS: FlagRef<bool> = FlagRef::new("skip_tserver_version_checks");
+static FAIL_PREVIOUS_CATALOG_CLEANUP: FlagRef<bool> =
+    FlagRef::new("TEST_ysql_fail_cleanup_previous_version_catalog");
+static FAIL_TABLE_CREATION_AT_PREPARING: FlagRef<bool> =
+    FlagRef::new("TEST_fail_table_creation_at_preparing_state");
+static PAUSE_BEFORE_UPSERT_YSQL_SYS_TABLE: FlagRef<bool> =
+    FlagRef::new("TEST_pause_before_upsert_ysql_sys_table");
 static NUM_ADVISORY_LOCKS_TABLETS: FlagRef<u32> = FlagRef::new("num_advisory_locks_tablets");
 static YSQL_ENABLE_AUTO_ANALYZE_INFRA: FlagRef<bool> =
     FlagRef::new("ysql_enable_auto_analyze_infra");
@@ -486,6 +496,9 @@ impl Core {
                 enable_ysql: || ENABLE_YSQL.get(),
                 txn_table_wait_min_ts_count: || TXN_TABLE_WAIT_MIN_TS_COUNT.get(),
                 pause_ddl_rollback: || PAUSE_DDL_ROLLBACK.get(),
+                fail_table_creation_at_preparing_state: || FAIL_TABLE_CREATION_AT_PREPARING.get(),
+                pause_before_upsert_ysql_sys_table: || PAUSE_BEFORE_UPSERT_YSQL_SYS_TABLE.get(),
+                ysql_major_version: ENABLE_YSQL.get().then(|| defaults.ysql_major_version()),
                 tablespaces: TablespaceOptions {
                     enabled: || ENABLE_YSQL_TABLESPACES_FOR_PLACEMENT.get(),
                     refresh_interval: || {
@@ -566,6 +579,21 @@ impl Core {
                 retry: || retry_policy(false),
             },
         );
+        let major_upgrade = MajorUpgrade::new(
+            catalog.clone(),
+            writer.clone(),
+            leadership.clone(),
+            ts_manager.clone(),
+            schema.clone(),
+            tables.clone(),
+            ENABLE_YSQL.get().then(|| defaults.ysql_major_version()),
+            MajorUpgradeOptions {
+                enable_ysql: || ENABLE_YSQL.get(),
+                fail_transition_from: || FAIL_UPGRADE_TRANSITION_FROM.get(),
+                fail_cleanup: || FAIL_PREVIOUS_CATALOG_CLEANUP.get(),
+                skip_tserver_version_checks: || SKIP_TSERVER_VERSION_CHECKS.get(),
+            },
+        );
         let leader = Arc::new(LeaderServices {
             catalog: catalog.clone(),
             writer: writer.clone(),
@@ -593,6 +621,7 @@ impl Core {
             tablespace_based_transaction_placement: || {
                 ENABLE_TABLESPACE_BASED_TRANSACTION_PLACEMENT.get()
             },
+            major_upgrade: major_upgrade.clone(),
         });
 
         // Ready only once the catalog reflects everything committed before the election: the
@@ -609,6 +638,7 @@ impl Core {
         leadership.add_ready_hook(Box::new(move |term| {
             let schema = hook_schema.clone();
             let locks = hook_locks.clone();
+            let major_upgrade = major_upgrade.clone();
             let catalog = hook_catalog.clone();
             let ts_manager = hook_ts_manager.clone();
             let writer = hook_writer.clone();
@@ -630,6 +660,8 @@ impl Core {
                     .await?;
                 // The DDL locks persisted by earlier terms, before any lock request is served.
                 locks.on_term_start(&catalog.snapshot())?;
+                // Before any YSQL catalog read or write the upgrade gates.
+                major_upgrade.on_term_start(&token).await?;
                 ts_manager.on_leader_ready(&catalog.snapshot());
                 Ok(())
             })
@@ -779,6 +811,9 @@ fn start_term(
         watch::channel(0).1,
     );
     if ENABLE_YSQL.get() {
+        if let Ok(token) = leader.leadership.token() {
+            leader.major_upgrade.resume_cleanup(token);
+        }
         run_controller(
             scope,
             CatalogVersionsController::new(

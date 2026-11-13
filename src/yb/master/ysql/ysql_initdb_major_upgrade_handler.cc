@@ -525,10 +525,22 @@ YsqlInitDBAndMajorUpgradeHandler::GetDbNameToOidListForMajorUpgrade() {
 }
 
 Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epoch) {
-  const auto& master_opts = master_.opts();
+  bool local_ts = false;
+  auto closest_ts = VERIFY_RESULT(master_.catalog_manager()->GetClosestLiveTserver(&local_ts));
+  auto closest_ts_hp = HostPort(
+      VERIFY_RESULT(closest_ts->GetHostPort()).host(),
+      narrow_cast<uint16_t>(closest_ts->GetRegistration().pg_port()));
+  return PerformYsqlPgUpgrade(
+      master_, master_.opts(), *master_.fs_manager(), std::move(closest_ts_hp), local_ts,
+      [&closest_ts] { return GetPgSocketDir(closest_ts); });
+}
 
+Status PerformYsqlPgUpgrade(
+    pgwrapper::PgWrapperContext& server, const server::ServerBaseOptions& options,
+    FsManager& fs_manager, HostPort closest_ts_hp, bool local_ts,
+    const std::function<Result<std::optional<HostPort>>()>& get_pg_socket_dir) {
   const auto pg_upgrade_data_dir =
-      JoinPathSegments(master_opts.fs_opts.data_paths.front(), "pg_upgrade_data");
+      JoinPathSegments(options.fs_opts.data_paths.front(), "pg_upgrade_data");
 
   RETURN_NOT_OK(PgWrapper::CleanupPgData(pg_upgrade_data_dir));
 
@@ -538,15 +550,15 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
   auto pg_conf = VERIFY_RESULT(pgwrapper::PgProcessConf::CreateValidateAndRunInitDb(
       bind_address, pg_upgrade_data_dir));
 
-  pg_conf.master_addresses = master_opts.master_addresses_flag;
+  pg_conf.master_addresses = options.master_addresses_flag;
   pg_conf.pg_port = FLAGS_ysql_upgrade_postgres_port;
   pg_conf.run_in_binary_upgrade = true;
-  RETURN_NOT_OK(pg_conf.SetSslConf(master_.options(), *master_.fs_manager()));
+  RETURN_NOT_OK(pg_conf.SetSslConf(options, fs_manager));
 
   LOG(INFO) << "Starting PostgreSQL server listening on " << pg_conf.listen_addresses << ", port "
             << pg_conf.pg_port;
 
-  pgwrapper::PgSupervisor pg_supervisor(pg_conf, &master_);
+  pgwrapper::PgSupervisor pg_supervisor(pg_conf, &server);
   auto se = ScopeExit([&pg_supervisor]() { pg_supervisor.Stop(); });
   RETURN_NOT_OK(pg_supervisor.Start());
 
@@ -571,14 +583,8 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
   pg_upgrade_params.new_version_pg_port = pg_conf.pg_port;
   pg_upgrade_params.no_statistics = !FLAGS_ysql_upgrade_import_stats;
 
-  bool local_ts = false;
-  auto closest_ts = VERIFY_RESULT(master_.catalog_manager()->GetClosestLiveTserver(&local_ts));
-  auto closest_ts_hp = HostPort(
-      VERIFY_RESULT(closest_ts->GetHostPort()).host(),
-      narrow_cast<uint16_t>(closest_ts->GetRegistration().pg_port()));
-
   if (local_ts) {
-    auto pg_socket_dir_opt = VERIFY_RESULT(GetPgSocketDir(closest_ts));
+    auto pg_socket_dir_opt = VERIFY_RESULT(get_pg_socket_dir());
     if (pg_socket_dir_opt) {
       closest_ts_hp = std::move(*pg_socket_dir_opt);
       pg_upgrade_params.old_version_socket_dir = closest_ts_hp.host();
