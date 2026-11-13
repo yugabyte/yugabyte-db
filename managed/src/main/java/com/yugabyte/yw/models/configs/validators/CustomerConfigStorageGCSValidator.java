@@ -51,30 +51,27 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
 
     CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) data;
 
-    // Should not contain neither or both json creds and use GCP IAM flag.
-    if (StringUtils.isBlank(gcsData.gcsCredentialsJson) ^ (gcsData.useGcpIam)) {
+    // Both are allowed: YBA then uses its own identity and YBC on the nodes uses the key.
+    if (!gcsData.useGcpIam && StringUtils.isBlank(gcsData.gcsCredentialsJson)) {
       SetMultimap<String, String> validationErrorsMap = HashMultimap.create();
       validationErrorsMap.put(
           CustomerConfigConsts.USE_GCP_IAM_FIELDNAME,
-          "Must pass only one of 'GCS_CREDENTIALS_JSON' or 'USE_GCP_IAM'.");
+          "Must pass 'GCS_CREDENTIALS_JSON' or 'USE_GCP_IAM'.");
       validationErrorsMap.put(
           CustomerConfigConsts.GCS_CREDENTIALS_JSON_FIELDNAME,
-          "Must pass only one of 'GCS_CREDENTIALS_JSON' or 'USE_GCP_IAM'.");
+          "Must pass 'GCS_CREDENTIALS_JSON' or 'USE_GCP_IAM'.");
       throwMultipleBeanConfigDataValidatorError(validationErrorsMap, "storageConfigValidation");
     }
 
-    // A federation config has no audience until a universe resolves one. Without it,
-    // getStorageService falls back to YBA's own credentials, the wrong identity to probe.
-    if (gcsData.useGcpIam && GCPUtil.isCrossCloudFederationConfig(gcsData)) {
-      return;
-    }
-
+    // Null storage means: check the location format only, don't probe the bucket.
     Storage storage = null;
-    try {
-      storage = factory.createGcpStorage(gcsData);
-    } catch (IOException ex) {
-      throwBeanConfigDataValidatorError(
-          CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, ex.getMessage());
+    if (!GCPUtil.isUnresolvedFederationConfig(gcsData)) {
+      try {
+        storage = factory.createGcpStorage(gcsData);
+      } catch (IOException ex) {
+        throwBeanConfigDataValidatorError(
+            CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, ex.getMessage());
+      }
     }
 
     validateGCSUrl(
@@ -107,7 +104,7 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
     if (gsUriPath.length() < 5 || !GCS_URL_SCHEMES.contains(protocol)) {
       String exceptionMsg = "Invalid gsUriPath format: " + gsUriPath;
       throwBeanConfigDataValidatorError(fieldName, exceptionMsg);
-    } else {
+    } else if (storage != null) {
       CloudLocationInfo locationInfo = gcpUtil.getCloudLocationInfo(region, gcsData, gsUriPath);
       try {
         gcpUtil.validateOnBucket(

@@ -187,6 +187,16 @@ public class GCPUtil implements CloudUtil {
     return gcsData != null && gcsData.useCrossCloudFederation;
   }
 
+  /**
+   * A federation config with no audience yet, as at config create or edit. YBA cannot check its
+   * bucket: getStorageService would fall back to YBA's own credentials, the wrong identity.
+   */
+  public static boolean isUnresolvedFederationConfig(CustomerConfigStorageGCSData gcsData) {
+    return gcsData.useGcpIam
+        && isCrossCloudFederationConfig(gcsData)
+        && StringUtils.isBlank(gcsData.crossCloudFederationAudience);
+  }
+
   public static Storage getStorageService(CustomerConfigStorageGCSData gcsData) throws IOException {
     if (gcsData.useGcpIam) {
       if (isCrossCloudFederationConfig(gcsData)
@@ -316,11 +326,8 @@ public class GCPUtil implements CloudUtil {
     boolean isGcsIam =
         configData instanceof CustomerConfigStorageGCSData
             && ((CustomerConfigStorageGCSData) configData).useGcpIam;
-    if (isGcsIam
-        && StringUtils.isBlank(
-            ((CustomerConfigStorageGCSData) configData).crossCloudFederationAudience)) {
-      // useGcpIam with no audience: YBA would check with its own credentials, not the identity the
-      // nodes back up with. YBC checks the bucket on the node.
+    if (isGcsIam && isUnresolvedFederationConfig((CustomerConfigStorageGCSData) configData)) {
+      // YBC checks the bucket on the node.
       return true;
     }
     if (MapUtils.isEmpty(regionLocationsMap)) {
@@ -375,10 +382,8 @@ public class GCPUtil implements CloudUtil {
     boolean isGcsIam =
         configData instanceof CustomerConfigStorageGCSData
             && ((CustomerConfigStorageGCSData) configData).useGcpIam;
-    if (isGcsIam
-        && StringUtils.isBlank(
-            ((CustomerConfigStorageGCSData) configData).crossCloudFederationAudience)) {
-      // See canCredentialListObjects.
+    if (isGcsIam && isUnresolvedFederationConfig((CustomerConfigStorageGCSData) configData)) {
+      // YBC checks the bucket on the node.
       return;
     }
     Map<String, ResponseCloudStoreSpec.BucketLocation> regionPrefixesMap =
@@ -583,11 +588,8 @@ public class GCPUtil implements CloudUtil {
     boolean isGcsIam =
         configData instanceof CustomerConfigStorageGCSData
             && ((CustomerConfigStorageGCSData) configData).useGcpIam;
-    if (isGcsIam
-        && StringUtils.isBlank(
-            ((CustomerConfigStorageGCSData) configData).crossCloudFederationAudience)) {
-      // See canCredentialListObjects. Federation backups are always YBC, so report present and let
-      // YBC on the node do the authoritative check.
+    if (isGcsIam && isUnresolvedFederationConfig((CustomerConfigStorageGCSData) configData)) {
+      // Federation backups are always YBC, so report present and let YBC on the node check.
       return true;
     }
     try {

@@ -17,7 +17,6 @@ import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_S3;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_FIELDNAME;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_LOCATIONS_FIELDNAME;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_LOCATION_FIELDNAME;
-import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.any;
@@ -691,7 +690,7 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     setupGCPListAndDeleteValidation(storage, "itest-backup", fileName, false, false);
 
     customerConfigValidator.validateConfig(createGcsIamConfig(false));
-    // Delete is the probe's last step.
+    // The probe reached the delete step; returning normally proves it passed.
     verify(storage).delete(BlobId.of("itest-backup", fileName));
   }
 
@@ -717,17 +716,12 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
   }
 
   @Test
-  public void testValidateDataContent_Storage_GCS_IamWithCredentialsJsonRejected() {
+  public void testValidateDataContent_Storage_GCS_IamWithCredentialsJsonAccepted() {
     ObjectNode data = Json.newObject();
     data.put(BACKUP_LOCATION_FIELDNAME, "gs://itest-backup/test");
     data.put("USE_GCP_IAM", true);
     data.put(GCS_CREDENTIALS_JSON_FIELDNAME, "{}");
-    CustomerConfig config = createConfig(ConfigType.STORAGE, NAME_GCS, data);
-    assertThat(
-        () -> customerConfigValidator.validateConfig(config),
-        thrown(
-            PlatformServiceException.class,
-            containsString("Must pass only one of 'GCS_CREDENTIALS_JSON' or 'USE_GCP_IAM'.")));
+    customerConfigValidator.validateConfig(createConfig(ConfigType.STORAGE, NAME_GCS, data));
   }
 
   @Test
