@@ -131,7 +131,10 @@ class XClusterSafeTimeService {
   CatalogManager* const catalog_manager_;
 
   rpc::Poller poller_;
-  std::optional<boost::asio::io_context::strand> poll_strand_;
+  // Serializes ProcessTaskPeriodically with the poller_.Resume() in ScheduleTaskIfNeeded.
+  // Uses an executor strand: legacy io_context::strands share a fixed pool of
+  // implementations, so the blocking task could stall unrelated strands such as the scheduler's.
+  std::optional<boost::asio::strand<boost::asio::io_context::executor_type>> poll_strand_;
 
   mutable std::shared_mutex mutex_;
   bool safe_time_table_ready_ GUARDED_BY(mutex_) = false;

@@ -937,6 +937,7 @@ macro(yb_setup_odyssey)
   # TODO: Add -Werror=strict-prototypes
   set(OD_EXTRA_COMPILER_FLAGS
       -Werror=enum-conversion
+      -Wformat-nonliteral
       -Wno-missing-field-initializers
       -Wno-unused-but-set-variable
       -Wno-unused-function

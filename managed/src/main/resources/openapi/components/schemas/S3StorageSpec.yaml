@@ -1,0 +1,50 @@
+title: S3StorageSpec
+description: |
+  S3StorageSpec
+
+  AWS S3 or S3-compatible storage. Part of StorageSpec.
+type: object
+required:
+  - storage_type
+  - backup_location
+  - credentials
+properties:
+  storage_type:
+    $ref: "./StorageType.yaml"
+  backup_location:
+    description: 'Default location of backups, as s3://<bucket>[/<path>]. Can''t be changed after creation.'
+    type: string
+    example: 's3://backups.example.com/yba'
+    minLength: 6
+  immutable_storage:
+    description: 'Whether the bucket keeps objects immutable (object lock). If true, deleting a backup removes only its YBA metadata, not its files.'
+    type: boolean
+    default: false
+  host_base:
+    description: 'Host of the S3 endpoint, for S3-compatible storage. Defaults to s3.amazonaws.com.'
+    type: string
+    example: s3.amazonaws.com
+  signing_region:
+    description: 'AWS region to sign requests for, when it can''t be derived from the bucket, as with some S3-compatible stores'
+    type: string
+  path_style_access:
+    description: 'Whether to address the bucket in the path (https://host/bucket) rather than in the host name (https://bucket.host), as some S3-compatible stores require'
+    type: boolean
+    default: false
+  use_chunked_encoding:
+    description: Whether to use chunked transfer encoding for uploads
+    type: boolean
+    default: true
+  global_bucket_access:
+    description: 'Whether the bucket is reachable from every region. If false, YBA addresses it through its own region.'
+    type: boolean
+    default: true
+  credentials:
+    $ref: "./S3Credentials.yaml"
+  region_locations:
+    description: 'Per-region backup locations, for universes that store each region''s backup in that region'
+    type: array
+    items:
+      $ref: "./S3RegionLocation.yaml"
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

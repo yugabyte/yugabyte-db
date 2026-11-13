@@ -45,6 +45,7 @@
 
 /* YB includes */
 #include "access/htup_details.h"
+#include "access/yb_scan_plan.h"
 #include "access/yb_target.h"
 #include "catalog/partition.h"
 #include "catalog/pg_am.h"
@@ -56,6 +57,7 @@
 #include "executor/ybExpr.h"
 #include "optimizer/yb_merge_scan.h"
 #include "optimizer/ybplan.h"
+#include "parser/parse_coerce.h"
 #include "pg_yb_utils.h"
 #include "utils/fmgroids.h"
 #include "utils/rel.h"
@@ -3404,6 +3406,33 @@ has_applicable_triggers(Relation rel, CmdType operation, Bitmapset *updated_attr
 }
 
 /*
+ * Returns true if the given relation captures transition tables for the given
+ * operation.  For a partitioned target, the transition-table triggers live
+ * only on the relation named in the query, not on the leaf that
+ * has_applicable_triggers() examines.
+ */
+static bool
+yb_target_has_transition_tables(Oid relid, CmdType operation)
+{
+	Relation	target_rel;
+	TriggerDesc *trigdesc;
+	bool		result = false;
+
+	target_rel = RelationIdGetRelation(relid);
+	trigdesc = target_rel->trigdesc;
+	if (trigdesc)
+	{
+		if (operation == CMD_DELETE)
+			result = trigdesc->trig_delete_old_table;
+		else if (operation == CMD_UPDATE)
+			result = (trigdesc->trig_update_old_table ||
+					  trigdesc->trig_update_new_table);
+	}
+	RelationClose(target_rel);
+	return result;
+}
+
+/*
  * yb_leaf_update_modifies_partition_key
  *
  * Returns true if any column in the input bitmapset is a partition key column
@@ -3490,6 +3519,47 @@ yb_fetch_subpaths(ModifyTablePath *path, IndexPath **index_path,
 }
 
 /*
+ * yb_single_row_key_value
+ *
+ * Helper function for yb_single_row_update_or_delete_path.  Return the
+ * expression for the one primary key value that "column = expr" can match, or
+ * NULL to use the scan path instead.  expr can be of another type than the
+ * column, as in int4_col = int8_value.
+ */
+static Expr *
+yb_single_row_key_value(Expr *expr, Oid coltype)
+{
+	Oid			valtype = exprType((Node *) expr);
+	Oid			basetype = getBaseType(coltype);
+
+	if (valtype == coltype)
+		return expr;
+
+	/*
+	 * True if the value's bytes mean the same value in the column's type: then
+	 * only the type label changes.
+	 */
+	if (IsBinaryCoercible(valtype, basetype))
+		return (Expr *) makeRelabelType(expr, coltype, -1,
+										get_typcollation(coltype),
+										COERCE_IMPLICIT_CAST);
+
+	/*
+	 * Otherwise:
+	 * (1) A value that scan keys bind with the column's type
+	 *     (YbIsScanCompatible): an integer of another width, a text, varchar
+	 *     or bpchar value for a column of another of these types, or an OID
+	 *     type value for a column of another OID type.  Keep it, and let
+	 *     YBCComputeYBTupleIdFromSlot bind it with the column's type.
+	 * (2) Any other type, such as a double for a real column: use the scan.
+	 */
+	if (!YbIsScanCompatible(basetype, valtype, false /* is_value_scalar */ ,
+							(Datum) 0))
+		return NULL;
+	return expr;
+}
+
+/*
  * yb_single_row_update_or_delete_path
  *
  * Returns whether a path can support a YB single row modify. The advantage of
@@ -3543,6 +3613,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 {
 	RelOptInfo *relInfo = NULL;
 	Oid			relid;
+	Oid			query_target_relid;
 	Relation	relation;
 	TupleDesc	tupDesc;
 	IndexPath  *index_path;
@@ -3662,7 +3733,6 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		foreach(values, build_path_tlist(root, (Path *) projection_path))
 		{
 			TargetEntry *tle = lfirst_node(TargetEntry, values);
-			AttrNumber	varattno = InvalidAttrNumber;
 
 			/* Ignore junk columns. */
 			if (IsA(tle->expr, Var))
@@ -3676,8 +3746,6 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 				{
 					continue;
 				}
-
-				varattno = var->varattno;
 			}
 
 			/*
@@ -3728,32 +3796,6 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			{
 				RelationClose(relation);
 				return false;
-			}
-
-			/* The column is set to itself (SET col = col). */
-			if (varattno == resno)
-			{
-				/*
-				 * If the column has a NOT NULL constraint, avoid the single row
-				 * path. NOT NULL constraint checks happen in the postgres
-				 * executor and require the value of the column to be populated.
-				 * Since the single row path skips fetching the target tuple,
-				 * the check cannot correctly distinguish between missing values
-				 * and NULL values.
-				 * TODO(kramanathan): Optimizing this path requires code
-				 * refactor.
-				 */
-				if (TupleDescAttr(tupDesc, resno - 1)->attnotnull)
-				{
-					RelationClose(relation);
-					return false;
-				}
-
-				/*
-				 * In all other cases, the column has no impact on the single
-				 * row computation.
-				 */
-				continue;
 			}
 
 			subpath_tlist = lappend(subpath_tlist, tle);
@@ -3876,8 +3918,15 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	/*
 	 * Cannot support before row triggers for single-row update/delete, as the
 	 * old row will need to be passed to the trigger, requiring the scan.
+	 * Transition tables likewise need the old row.
 	 */
-	*no_row_trigger = !has_applicable_triggers(relation, path->operation, update_attrs);
+	query_target_relid = planner_rt_fetch(root->parse->resultRelation,
+										  root)->relid;
+	*no_row_trigger = (!has_applicable_triggers(relation, path->operation,
+												update_attrs) &&
+					   (relid == query_target_relid ||
+						!yb_target_has_transition_tables(query_target_relid,
+														 path->operation)));
 	if (!*no_row_trigger)
 	{
 		RelationClose(relation);
@@ -4020,17 +4069,12 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		}
 		var = castNode(Var, leftop);
 
-		/*
-		 * If const expression has a different type than the column (var), wrap in a relabel
-		 * expression with the proper type so it is coerced at execution time.
-		 */
-		if (IsA(expr, Const) && castNode(Const, expr)->consttype != var->vartype)
+		/* The value may be of another type than the column. */
+		expr = yb_single_row_key_value(expr, var->vartype);
+		if (expr == NULL)
 		{
-			expr = (Expr *) makeRelabelType(expr,
-											var->vartype,
-											-1,
-											get_typcollation(var->vartype),
-											COERCE_IMPLICIT_CAST);
+			RelationClose(relation);
+			return false;
 		}
 
 		tle = makeNode(TargetEntry);
@@ -4877,6 +4921,11 @@ create_indexscan_plan(PlannerInfo *root,
 	{
 		Assert(indexinfo->ybIndexName != NULL);
 		scan_plan->ybScannedObjectName = pstrdup(indexinfo->ybIndexName);
+
+		if (indexinfo->yb_options != NIL)
+		{
+			scan_plan->ybOptions = copyObject(indexinfo->yb_options);
+		}
 	}
 
 	return scan_plan;

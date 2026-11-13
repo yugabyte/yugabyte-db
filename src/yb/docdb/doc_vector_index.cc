@@ -47,6 +47,7 @@
 
 #include "yb/vector_index/vectorann_util.h"
 #include "yb/vector_index/vector_lsm.h"
+#include "yb/vector_index/vector_lsm_metadata.h"
 
 METRIC_DEFINE_event_stats(table, vector_index_convert_us,
     "Time to convert list of vector ids to ybctids", yb::MetricUnit::kMicroseconds,
@@ -81,6 +82,11 @@ METRIC_DEFINE_counter(table, vector_index_backfill_inserted_entries,
     "Number of entries inserted into the vector index during backfill. Tracks the progress of "
     "vector index backfill.");
 
+DEFINE_RUNTIME_uint64(vector_index_max_extra_tied_results, 1024,
+    "Max number of vectors tied in distance with the last vector of a vector index search page "
+    "that the page returns past its size. A tie cut by a page may be left out of the search "
+    "results. 0 disables returning such vectors.");
+
 DEFINE_test_flag(bool, vector_index_skip_insert, false,
     "Skip inserting vectors into vector indexes, leaving the rows without index entries.");
 
@@ -104,6 +110,20 @@ DECLARE_bool(vector_index_skip_filter_check);
 namespace yb::docdb {
 
 namespace {
+
+// Shared by the forced OpId stamps of an open index, DocVectorIndex::ModifyFlushedFrontier, and
+// of one that is not open, ForceVectorIndexStorageOpId, so both write the same frontiers.
+void SetChunkOpId(storage::UserFrontiers& frontiers, const OpId& op_id) {
+  down_cast<ConsensusFrontier&>(frontiers.Smallest()).set_op_id(op_id);
+  down_cast<ConsensusFrontier&>(frontiers.Largest()).set_op_id(op_id);
+}
+
+// The frontiers of the chunk without a file that a stamp adds.
+ConsensusFrontiers StampChunkFrontiers(const OpId& op_id) {
+  ConsensusFrontiers frontiers;
+  frontiers.Largest().set_op_id(op_id);
+  return frontiers;
+}
 
 vector_index::DistanceKind ConvertDistanceKind(PgVectorDistanceType dist_type) {
   switch (dist_type) {
@@ -140,9 +160,16 @@ Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> HnswTraits(
     case HnswBackend::YB_HNSW_USEARCH:
       return ann_methods::CreateUsearchIndexTraits<Vector, DistanceResult>(
           block_cache, hnsw_options, mem_tracker);
-    case HnswBackend::YB_HNSW_HNSWLIB:
+    case HnswBackend::YB_HNSW_HNSWLIB: {
+      vector_index::VectorTenantExtractor tenant_extractor;
+      if (options.tenant_hash_group_and_range_components()) {
+        tenant_extractor = [](Slice payload) -> Result<Slice> {
+          return VERIFY_RESULT(dockv::DecodeDocVectorIndexPayload(payload)).tenant;
+        };
+      }
       return ann_methods::CreateHnswlibIndexTraits<Vector, DistanceResult>(
-          block_cache, hnsw_options, mem_tracker);
+          block_cache, hnsw_options, mem_tracker, std::move(tenant_extractor));
+    }
     case HnswBackend::DEPRECATED_USEARCH: [[fallthrough]];
     case HnswBackend::DEPRECATED_HNSWLIB:
       break;
@@ -256,7 +283,9 @@ class DocVectorIndexViewImpl : public DocVectorIndexView {
   Status ForEachVector(const DocVectorIndexEntryCallback& callback) const override {
     ValueBuffer buffer;
     for (const auto& index : indexes_) {
-      for (const auto& entry : *index) {
+      auto it = index->CreateIterator();
+      for (; it->Valid(); it->Next()) {
+        const auto& entry = it->Entry();
         VectorToYSQL(entry.vector, &buffer);
         RETURN_NOT_OK(callback(DocVectorIndexEntry {
           .vector_id = entry.vector_id,
@@ -264,6 +293,7 @@ class DocVectorIndexViewImpl : public DocVectorIndexView {
           .payload = entry.payload,
         }));
       }
+      RETURN_NOT_OK(it->status());
     }
     return Status::OK();
   }
@@ -451,6 +481,9 @@ class DocVectorIndexImpl : public DocVectorIndex {
       .insert_thread_pool = thread_pools.insert_thread_pool,
       .compaction_token = thread_pools.compaction_token,
       .frontiers_factory = [] { return std::make_unique<docdb::ConsensusFrontiers>(); },
+      .wait_frontier_durable = [this](const storage::UserFrontier& frontier) {
+        context_->WaitWalDurable(down_cast<const ConsensusFrontier&>(frontier).op_id());
+      },
       .vector_merge_filter_factory = std::move(merge_filter_factory),
       .file_extension = GetVectorIndexChunkFileExtension(options_),
       .metric_entity = metric_entity_,
@@ -505,8 +538,39 @@ class DocVectorIndexImpl : public DocVectorIndex {
   Result<DocVectorIndexSearchResult> Search(
       Slice vector, const vector_index::SearchOptions& options, bool could_have_missing_entries,
       DocVectorIndexReverseMappingReader& reverse_mapping_reader) override {
-    auto entries = VERIFY_RESULT(SearchWithinKeyBounds(
-        VERIFY_RESULT(VectorFromYSQL<Vector>(vector)), options));
+    auto query_vector = VERIFY_RESULT(VectorFromYSQL<Vector>(vector));
+
+    // The next page skips the vectors of this one by count, which would cut a tie at the end of
+    // this page arbitrarily. So look one vector past the limit, and while it ties with the last
+    // one, widen the search to return the whole tie.
+    // TODO(vector_index) The tied vectors may take the page past the response size limit, which
+    // fails the search since a vector search page can't be paginated, see #25788.
+    const auto limit = options.max_num_results;
+    const size_t max_search_limit = limit == 0 ? 0 : limit + std::min<size_t>(
+        FLAGS_vector_index_max_extra_tied_results, std::numeric_limits<size_t>::max() - limit);
+    auto search_options = options;
+    search_options.max_num_results = limit < max_search_limit ? limit + 1 : limit;
+    typename LSM::SearchResults entries;
+    for (;;) {
+      entries = VERIFY_RESULT(SearchWithinKeyBounds(query_vector, search_options));
+      const auto search_limit = search_options.max_num_results;
+      if (entries.size() < search_limit || search_limit == max_search_limit ||
+          entries.back().distance != entries[limit - 1].distance) {
+        break;
+      }
+      search_options.max_num_results += std::min(search_limit, max_search_limit - search_limit);
+    }
+    auto could_have_more_entries = could_have_missing_entries && entries.size() >= limit;
+    if (entries.size() > limit) {
+      auto tie_end = std::find_if(
+          entries.begin() + limit, entries.end(),
+          [distance = entries[limit - 1].distance](const auto& entry) {
+            return entry.distance != distance;
+          });
+      // The erased vectors are left to the next page.
+      could_have_more_entries = could_have_more_entries || tie_end != entries.end();
+      entries.erase(tie_end, entries.end());
+    }
 
     auto dump_stats = FLAGS_vector_index_dump_stats;
     auto start_time = MonoTime::Now();
@@ -525,8 +589,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
     VLOG_WITH_FUNC(4) << "could_have_missing_entries: " << could_have_missing_entries
                       << ", entries.size(): " << entries.size()
                       << ", options.max_num_results: " << options.max_num_results;
-    result.could_have_more_data =
-        could_have_missing_entries && entries.size() >= options.max_num_results;
+    result.could_have_more_data = could_have_more_entries;
     result.entries.reserve(entries.size());
     for (auto& entry : entries) {
       Slice ybctid;
@@ -607,14 +670,12 @@ class DocVectorIndexImpl : public DocVectorIndex {
       const ConsensusFrontier& frontier, rocksdb::FrontierModificationMode mode) override {
     if (mode == rocksdb::FrontierModificationMode::kForce) {
       RETURN_NOT_OK(lsm_.ModifyChunkFrontiers([&frontier](storage::UserFrontiers& frontiers) {
-        down_cast<ConsensusFrontier&>(frontiers.Smallest()).set_op_id(frontier.op_id());
-        down_cast<ConsensusFrontier&>(frontiers.Largest()).set_op_id(frontier.op_id());
+        SetChunkOpId(frontiers, frontier.op_id());
       }));
     }
     // An empty insert only carries the frontier into the mutable chunk, the following flush
     // persists it. Same shape as the split generation update above.
-    ConsensusFrontiers frontiers;
-    frontiers.Largest().set_op_id(frontier.op_id());
+    auto frontiers = StampChunkFrontiers(frontier.op_id());
     RETURN_NOT_OK(Insert(
         DocVectorIndexInsertEntries{}, InsertOptions{ .frontiers = &frontiers, }));
     // Wait for the flush: callers stamp an OpId to make it durable, and an ungraceful restart
@@ -893,6 +954,15 @@ void DocVectorIndex::ApplyReverseEntry(
   auto value_buffer = dockv::DocVectorMetaValue(table_key_prefix, ybctid, column_id);
   auto value_slice = value_buffer.AsSlice();
   handler.Put(dockv::DocVectorKeyAsParts(vector_id, encoded_write_time), { &value_slice, 1 });
+}
+
+Result<bool> ForceVectorIndexStorageOpId(const std::string& storage_dir, const OpId& op_id) {
+  // The added chunk gives an index restored without chunks the OpId too.
+  // The same env VectorLSM loads its manifest with.
+  return vector_index::VectorLSMMetadataModifyChunkFrontiers(
+      Env::Default(), storage_dir, [] { return std::make_unique<ConsensusFrontiers>(); },
+      [&op_id](storage::UserFrontiers& frontiers) { SetChunkOpId(frontiers, op_id); },
+      StampChunkFrontiers(op_id));
 }
 
 Result<DocVectorIndexPtr> CreateDocVectorIndex(

@@ -53,6 +53,7 @@ add_dependencies(
 set(PQ_UTILS_SRCS
     libpq_test_utils.cc
     libpq_utils.cc
+    logical_replication_test_utils.cc
     pgvector_utils.cc)
 set(PQ_UTILS_DEPS
     pq

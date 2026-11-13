@@ -31,6 +31,7 @@
 
 DECLARE_int32(cdc_state_table_num_tablets);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
+DECLARE_int32(catalog_manager_cdc_bg_task_wait_ms);
 DECLARE_bool(disable_truncate_table);
 DECLARE_bool(ysql_yb_enable_replication_commands);
 DECLARE_bool(ysql_yb_enable_replica_identity);
@@ -747,8 +748,8 @@ TEST_F(MasterTestXRepl, TestCreateDropCDCStreamWithReplicationSlotName) {
 
   auto stream_id = ASSERT_RESULT(
       CreateCDCStreamForNamespace(ns_id, kPgReplicationSlotName, kPgReplicationSlotPgOutput));
-  // Wait for background task to run (length of two wait intervals).
-  SleepFor(MonoDelta::FromMilliseconds(2 * FLAGS_catalog_manager_bg_task_wait_ms));
+  // Wait for CDC background task to run (length of two wait intervals).
+  SleepFor(MonoDelta::FromMilliseconds(2 * FLAGS_catalog_manager_cdc_bg_task_wait_ms));
 
   // Ensure that the created stream wasn't deleted from the cdcsdk_replication_slots_to_stream_map_
   // map.

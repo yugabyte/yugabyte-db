@@ -167,6 +167,8 @@ class RetryingRpcTask : public server::RunnableMonitoredTask {
   // A deadline for a single retry/attempt.
   virtual MonoTime ComputeDeadline() const;
 
+  virtual int max_delay_ms();
+
   // Callback meant to be invoked from asynchronous RPC service proxy calls.
   void RpcCallback();
 
@@ -245,7 +247,6 @@ class RetryingRpcTask : public server::RunnableMonitoredTask {
   void SaveFinalStatusAndCallFinished(const Status& status);
 
   virtual int num_max_retries();
-  virtual int max_delay_ms();
 
   // Trace context active when this task was created, re-activated at the top of Run() so the task's
   // RPCs nest under it.

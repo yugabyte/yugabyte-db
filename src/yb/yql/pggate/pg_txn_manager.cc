@@ -258,11 +258,11 @@ PgTxnManager::PgTxnManager(
 
 bool PgTxnManager::IsTableLockingEnabledForCurrentTxn() const {
   // Computed rather than latched: enable_table_locking_ is fixed for the session and
-  // YBCIsObjectLockingInfraEnabled() is a snapshot PG takes once per transaction, so the result
-  // cannot change under an open transaction.
+  // YBCIsObjectLockingLatchedForCurrTxn() is a snapshot PG takes once per transaction, so the
+  // result cannot change under an open transaction.
   VLOG_WITH_FUNC(1) << "enable_table_locking_: " << enable_table_locking_
-                    << " object locking infra: " << YBCIsObjectLockingInfraEnabled();
-  return enable_table_locking_ && YBCIsObjectLockingInfraEnabled();
+                    << " object locking for txn: " << YBCIsObjectLockingLatchedForCurrTxn();
+  return enable_table_locking_ && YBCIsObjectLockingLatchedForCurrTxn();
 }
 
 PgTxnManager::~PgTxnManager() = default;
@@ -855,14 +855,19 @@ Status PgTxnManager::SetupReadTimeOptions(
     return Status::OK();
   }
 
-  if (IsSerializableIsolation() ||
-      ops_has_non_transactional_writes ||
-      read_time_options.has_read_time()) {
+  if (ops_has_non_transactional_writes || read_time_options.has_read_time()) {
     return Status::OK(); // Other read time options below do not apply.
   }
 
+  // Catalog reads of a SERIALIZABLE transaction take a read time too, and the tserver serves them
+  // as snapshot reads: this is to avoid taking read intents and conflict resolution for catalog
+  // reads.
   if (is_catalog_snapshot) {
     ClampCatalogReadTime(read_time_options);
+    return Status::OK();
+  }
+
+  if (IsSerializableIsolation()) {
     return Status::OK();
   }
 
@@ -938,6 +943,7 @@ Status PgTxnManager::SetupPerformOptions(
   options.set_connected_database_oid(connected_database_oid_);
   options.set_origination_ht(GetOriginationHt());
   options.set_is_using_table_locks(IsTableLockingEnabledForCurrentTxn());
+  options.set_uses_catalog_snapshot(is_catalog_snapshot);
   // Follower reads are applicable on user tables and as such catalog ops bypass it.
   options.set_read_from_followers(UsesFollowerReads() && !is_catalog_snapshot);
 

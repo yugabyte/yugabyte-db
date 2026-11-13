@@ -27,6 +27,7 @@
 #include "nodes/pathnodes.h"	/* TODO: is needed? */
 #include "nodes/ybbitmatrix.h"
 
+#define YB_MERGE_OPTION_NAME "merge"
 
 /*
  * YB: info used by YbMergeScanInfo.
@@ -552,8 +553,9 @@ typedef struct Scan
 	Plan		plan;
 	Index		scanrelid;		/* relid is index into the range table */
 
-	/* YB */
+	/* YB declarations */
 	char	   *ybScannedObjectName;
+	List	   *ybOptions;
 } Scan;
 
 /* ----------------

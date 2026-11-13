@@ -89,7 +89,7 @@ DEFINE_RUNTIME_bool(cdc_populate_end_markers_transactions, true,
     "If 'true', we will also send 'BEGIN' and 'COMMIT' records for both single shard and multi "
     "shard transactions");
 
-DEFINE_NON_RUNTIME_int64(cdc_resolve_intent_lag_threshold_ms, 5 * 60 * 1000,
+DEFINE_NON_RUNTIME_int64(cdc_resolve_intent_lag_threshold_ms, 500,
     "The lag threshold in milli seconds between the hybrid time returned by "
     "GetMinStartHTRunningTxnsForCDCProducer and LeaderSafeTime, when we decide the "
     "ConsistentStreamSafeTime for CDCSDK by resolving all committed intetns");
@@ -796,8 +796,7 @@ Result<TableName> GetColocatedTableName(
 Result<SchemaDetails> GetOrPopulateRequiredSchemaDetails(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, uint64 read_hybrid_time,
     SchemaDetailsMap* cached_schema_details, client::YBClient* client, const TableId& req_table_id,
-    GetChangesResponsePB* resp, CDCThroughputMetrics* throughput_metrics,
-    bool emit_ddl_record = true) {
+    GetChangesResponsePB* resp, CDCThroughputMetrics* throughput_metrics) {
   auto iter = cached_schema_details->find(req_table_id);
   if (iter != cached_schema_details->end()) {
     return iter->second;
@@ -840,9 +839,7 @@ Result<SchemaDetails> GetOrPopulateRequiredSchemaDetails(
             << " tablet " << tablet->tablet_id();
 
     const auto& schema_details = (*cached_schema_details)[cur_table_id];
-    if (emit_ddl_record) {
-      FillDDLInfo(tablet_peer, schema_details, table_name, cur_table_id, resp, throughput_metrics);
-    }
+    FillDDLInfo(tablet_peer, schema_details, table_name, cur_table_id, resp, throughput_metrics);
 
     return schema_details;
   }
@@ -918,7 +915,7 @@ Result<std::pair<SchemaVersion, Schema>> GetSchemaAndVersion(
     uint64 read_hybrid_time, SchemaDetailsMap* cached_schema_details,
     SchemaPackingStorage* schema_packing_storage, bool is_packed_row, Slice packed_row,
     client::YBClient* client, GetChangesResponsePB* resp,
-    CDCThroughputMetrics* throughput_metrics, bool emit_ddl_record = true) {
+    CDCThroughputMetrics* throughput_metrics) {
   // A packed row embeds the schema version it was packed with. Its packing is tried to be resolved
   // from, in order:
   // - the schema_packing_storage cache,
@@ -950,7 +947,7 @@ Result<std::pair<SchemaVersion, Schema>> GetSchemaAndVersion(
 
   const auto& schema_details = VERIFY_RESULT(GetOrPopulateRequiredSchemaDetails(
       tablet_peer, read_hybrid_time, cached_schema_details, client, table_id, resp,
-      throughput_metrics, emit_ddl_record));
+      throughput_metrics));
   auto schema_version = schema_details.schema_version;
   auto schema = *schema_details.schema;
 
@@ -973,6 +970,29 @@ Result<std::pair<SchemaVersion, Schema>> GetSchemaAndVersion(
   return std::make_pair(schema_version, *schema_details.schema);
 }
 
+bool IsDuplicateDDLForColumnsMarkedForDeletion(
+    const Schema& schema, const Schema* previous_schema) {
+  if (!YsqlDdlRollbackEnabled()) {
+    return false;
+  }
+
+  const auto& columns = schema.columns();
+  if (std::none_of(columns.begin(), columns.end(), [](const ColumnSchema& column) {
+        return column.marked_for_deletion();
+      })) {
+    return false;
+  }
+
+  // If there is nothing cached to compare against (e.g. after a restart), then send it. This is
+  // just a duplicate DDL record.
+  if (!previous_schema || !schema.EquivalentForDataCopy(*previous_schema)) {
+    return false;
+  }
+
+  VLOG(1) << "Skipping DDL record for a CHANGE_METADATA_OP that only marks columns for deletion";
+  return true;
+}
+
 bool IsColumnIdNotFound(const Status& status) {
   return status.IsInvalidArgument() &&
          status.message().ToBuffer().find("Column id ") == 0;
@@ -988,7 +1008,7 @@ Result<std::pair<SchemaVersion, Schema>> ReloadSchemaAtIntentTime(
   return GetSchemaAndVersion(
       tablet_peer, table_id, read_hybrid_time, cached_schema_details,
       /*schema_packing_storage=*/nullptr, /*is_packed_row=*/false, Slice(), client, resp,
-      throughput_metrics, /*emit_ddl_record=*/false);
+      throughput_metrics);
 }
 
 Result<tablet::TableInfoPtr> WarnIfNotFoundOrReturn(
@@ -1866,8 +1886,8 @@ void SetKeyWriteId(string key, int32_t write_id, CDCSDKCheckpointPB* checkpoint)
 
 void FillBeginRecord(
     const TransactionId& transaction_id, const uint64_t& commit_timestamp,
-    uint32_t xrepl_origin_id, GetChangesResponsePB* resp,
-    CDCThroughputMetrics* throughput_metrics) {
+    uint32_t xrepl_origin_id, const SubtxnSet& aborted, CDCSDKRequestSource request_source,
+    GetChangesResponsePB* resp, CDCThroughputMetrics* throughput_metrics) {
   CDCSDKProtoRecordPB* proto_record = resp->add_cdc_sdk_proto_records();
   RowMessage* row_message = proto_record->mutable_row_message();
 
@@ -1876,6 +1896,12 @@ void FillBeginRecord(
   row_message->set_commit_time(commit_timestamp);
   if (xrepl_origin_id) {
     row_message->set_xrepl_origin_id(xrepl_origin_id);
+  }
+  // The walsender's catalog reads within the transaction need it to skip the intents of
+  // subtransactions rolled back to a savepoint.
+  if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+      request_source == CDCSDKRequestSource::WALSENDER && !aborted.IsEmpty()) {
+    aborted.ToPB(row_message->mutable_aborted_subtxns()->mutable_set());
   }
   // No need to add record_time to the Begin record since it does not have any intent associated
   // with it.
@@ -1923,7 +1949,8 @@ Status ProcessIntents(
   if (stream_state->key.empty() && stream_state->write_id == 0 &&
       FLAGS_cdc_populate_end_markers_transactions) {
     FillBeginRecord(
-        transaction_id, commit_time.ToUint64(), xrepl_origin_id, resp, throughput_metrics);
+        transaction_id, commit_time.ToUint64(), xrepl_origin_id, aborted, request_source, resp,
+        throughput_metrics);
     TEST_SYNC_POINT("AddBeginRecord::End");
   }
 
@@ -3249,11 +3276,13 @@ Status GetChangesForCDCSDK(
             // We cross-verify the scheam details from the replicated message with the schema
             // details from the SysCatalog table.
             auto previous_schema_version = std::numeric_limits<uint32_t>::max();
+            std::shared_ptr<Schema> previous_schema;
             uint32_t changed_schema_version;
             {
               auto iter = cached_schema_details->find(table_id);
               if (iter != cached_schema_details->end()) {
                 previous_schema_version = iter->second.schema_version;
+                previous_schema = iter->second.schema;
               }
             }
 
@@ -3280,20 +3309,8 @@ Status GetChangesForCDCSDK(
               schema_packing_storage->AddSchema(changed_schema_version, current_schema);
             }
 
-            bool has_columns_marked_for_deletion = false;
-            if (YsqlDdlRollbackEnabled()) {
-              for (auto column : current_schema.columns()) {
-                if (column.marked_for_deletion()) {
-                  has_columns_marked_for_deletion = true;
-                  LOG(INFO) << "The CHANGE_METADATA_OP contains a column marked for deletion. "
-                  << "Will NOT populate a DDL record corresponding to it.";
-                  break;
-                }
-              }
-            }
-
             if (previous_schema_version != changed_schema_version &&
-                !has_columns_marked_for_deletion &&
+                !IsDuplicateDDLForColumnsMarkedForDeletion(current_schema, previous_schema.get()) &&
                 !boost::ends_with(table_name, kTablegroupParentTableNameSuffix) &&
                 !boost::ends_with(table_name, kColocationParentTableNameSuffix)) {
               RETURN_NOT_OK(PopulateCDCSDKDDLRecord(

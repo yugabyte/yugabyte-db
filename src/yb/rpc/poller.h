@@ -25,7 +25,6 @@
 namespace yb::rpc {
 
 // Utility class to invoke specified callback with defined interval using scheduler.
-// TODO Add separate test for poller.
 class Poller {
  public:
   explicit Poller(const std::string& log_prefix, std::function<void()> callback);
