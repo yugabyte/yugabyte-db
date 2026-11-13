@@ -1542,11 +1542,7 @@ Note that if the table is colocated, this hotspot concern can safely be ignored,
 
 **Workaround**:
 
-To address this issue and improve query performance, the recommendation is to change the sharding key to a value that is well distributed among all nodes while keeping the timestamp column as the clustering key. The new sharding key will be a modulo of the hash of the timestamp column value, which is then used to distribute data using a hash-based strategy, effectively spreading the load across multiple nodes.
-
-To fully implement this solution also requires minor adjustments to queries. In addition to range conditions on the timestamp/date column, include the new sharding key values in the query filters to benefit from distributed execution.
-
-Ensure that the index on the column is configured to be range-sharded.
+To address this issue and improve query performance, spread the writes across multiple tablets by adding a bucket value as the leading key of the index, while keeping the timestamp column as the clustering key. The approach depends on your YugabyteDB version.
 
 **Example**
 
@@ -1554,7 +1550,7 @@ An example schema on the source database is as follows:
 
 ```sql
 CREATE TABLE orders (
-    order_id int PRIMARY,
+    order_id int PRIMARY KEY,
     ...
     created_at timestamp
 );
@@ -1568,31 +1564,48 @@ And a related read query might look like the following:
 SELECT * FROM orders WHERE created_at >= NOW() - INTERVAL '1 month';
 ```
 
-Suggested change to the schema is to add the sharding key as the modulo of the hash of the timestamp column value, which gives a key in a range (for example, 0-15). This can change depending on the use case. This key will be used to distribute the data among various tablets and hence help in distributing the data evenly.
+For YugabyteDB v2025.2.1.0 and later, use a [bucket-based index](../../../develop/data-modeling/bucket-based-index-ysql/). Queries don't need to change.
 
-In addition, modify range queries to include the modulo of the hash of timestamp column value to be in the range in the filter to help the optimizer. In this example, you specify the modulo of the hash of the timestamp column value in the IN clause.
+An example schema on the source database is as follows:
 
 ```sql
-CREATE TABLE orders (
-    order_id int PRIMARY,
-    ...
-    created_at timestamp
-);
-CREATE INDEX idx_orders_created ON orders( (yb_hash_code(created_at) % 16) HASH, created_at DESC);
+CREATE INDEX idx_orders_created ON orders (created_at DESC);
+```
 
--- fetch orders for the previous month
-SELECT * FROM orders WHERE yb_hash_code(created_at) % 16 IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15) AND created_at >= NOW() - INTERVAL '1 month';
+Suggested changes to the schema is as follows:
+
+```sql
+CREATE INDEX idx_orders_created ON orders ((yb_hash_code(created_at) % 3) ASC, created_at DESC)
+    SPLIT AT VALUES ((1), (2));
+```
+
+For earlier YugabyteDB versions, add a hash-sharded bucket as the leading key, and filter on all bucket values in queries.
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE INDEX idx_orders_created ON orders (created_at DESC);
+```
+
+Suggested changes to the schema is as follows:
+
+```sql
+CREATE INDEX idx_orders_created ON orders ((yb_hash_code(created_at) % 16) HASH, created_at DESC);
+```
+
+Suggested changes to the query is as follows:
+
+```sql
+SELECT * FROM orders
+WHERE yb_hash_code(created_at) % 16 IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15)
+  AND created_at >= NOW() - INTERVAL '1 month';
 ```
 
 #### For primary key or unique key constraints
 
 **Workaround**:
 
-To address this issue and improve query performance, the recommendation is to change the sharding key to a value that is well distributed among all nodes while keeping the timestamp column as the clustering key. Add a new column to the table that acts as the sharding key; the column value will be in some fixed range, which is then used to distribute data using a hash-based strategy, effectively spreading the load across multiple nodes.
-
-To fully implement this solution also requires minor adjustments to queries. In addition to range conditions on the timestamp/date column, include the new sharding key values in the query filters to benefit from distributed execution.
-
-Ensure that the index on the timestamp column is configured to be range-sharded.
+To address this issue and improve query performance, spread the writes across multiple tablets by adding a bucket column as the leading key of the primary key or unique constraint, while keeping the timestamp column as the clustering key. The approach depends on your YugabyteDB version.
 
 **Example**
 
@@ -1600,10 +1613,9 @@ An example schema on the source database is as follows:
 
 ```sql
 CREATE TABLE event_log (
-   event_type text,
-   ...
-   event_logged_at timestamp,
-   PRIMARY KEY (event_logged_at DESC)
+    event_type text,
+    event_logged_at timestamp,
+    PRIMARY KEY (event_logged_at DESC)
 );
 ```
 
@@ -1614,22 +1626,58 @@ And a related read query might look like the following:
 SELECT * FROM event_log WHERE event_logged_at >= NOW() - INTERVAL '1 month';
 ```
 
-Suggested change to the schema is to add a column `shard_id` to the table that will have a default value in a fixed range (for example, 0-15), and then use this column as the sharding key in the constraint. This can change depending on the use case. This key will be used to distribute the data evenly among various tablets.
+With YugabyteDB v2025.2.1.0 and later, add a stored generated bucket column and make it the leading key column. See [bucket-based indexes](../../../develop/data-modeling/bucket-based-index-ysql/). Queries don't need to change.
 
-In addition, modify range queries to include the `shard_id` value to be in the range in the filter to help the optimizer. In this example, you specify the modulo of the hash of the timestamp column value in the IN clause.
+An example schema on the source database is as follows:
 
 ```sql
 CREATE TABLE event_log (
-   event_type text,
-   shard_id int DEFAULT (floor(random() * 100)::int % 16),
-   ...
-   event_logged_at timestamp,
-   PRIMARY KEY (shard_id HASH, event_logged_at DESC)
-
+    event_type text,
+    event_logged_at timestamp,
+    PRIMARY KEY (event_logged_at DESC)
 );
+```
 
--- fetch event activity of last one month
-SELECT * FROM event_log WHERE shard_id IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15) AND event_logged_at >= NOW() - INTERVAL '1 month';
+Suggested changes to the schema is as follows:
+
+```sql
+CREATE TABLE event_log (
+    event_type text,
+    event_logged_at timestamp,
+    shard_id int GENERATED ALWAYS AS (yb_hash_code(event_logged_at) % 3) STORED,
+    PRIMARY KEY (shard_id ASC, event_logged_at DESC)
+) SPLIT AT VALUES ((1), (2));
+```
+
+For earlier versions, add a fixed-range `shard_id` column as the hash-sharded leading key, and filter on all `shard_id` values in queries.
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE event_log (
+    event_type text,
+    event_logged_at timestamp,
+    PRIMARY KEY (event_logged_at DESC)
+);
+```
+
+Suggested changes to the schema is as follows:
+
+```sql
+CREATE TABLE event_log (
+    event_type text,
+    shard_id int DEFAULT (floor(random() * 100)::int % 16),
+    event_logged_at timestamp,
+    PRIMARY KEY (shard_id HASH, event_logged_at DESC)
+);
+```
+
+Suggested changes to the query is as follows:
+
+```sql
+SELECT * FROM event_log
+WHERE shard_id IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15)
+  AND event_logged_at >= NOW() - INTERVAL '1 month';
 ```
 
 ---
