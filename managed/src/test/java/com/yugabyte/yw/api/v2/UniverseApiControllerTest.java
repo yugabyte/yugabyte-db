@@ -17,6 +17,7 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -306,6 +307,26 @@ public class UniverseApiControllerTest extends UniverseTestBase {
 
     // validate that the Universe create params matches properties specified in the createSpec
     validateUniverseCreateSpec(universeCreateSpec, v1CreateParams);
+  }
+
+  // Placing the universe in two providers that are copies of each other puts the same
+  // cloud:region:zone in the placement twice. The master would reject that, so YBA must answer 400
+  // and not submit the task.
+  @Test
+  public void testCreateUniverseV2MultiproviderDuplicateZones() throws ApiException, IOException {
+    setNewUIEnabled();
+    UniverseCreateSpec universeCreateSpec =
+        getUniverseCreateSpecV2DuplicateZones(createDuplicateProvider());
+    stubGFlagsValidation();
+    when(mockRuntimeConfig.getInt("yb.universe.otel_collector_metrics_port")).thenReturn(8889);
+
+    ApiException e =
+        assertThrows(
+            ApiException.class,
+            () -> universeApi().createUniverse(customer.getUuid(), universeCreateSpec));
+
+    assertDuplicateZoneRejected(e);
+    verify(mockCommissioner, never()).submit(any(TaskType.class), any());
   }
 
   @Test

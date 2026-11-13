@@ -15,6 +15,7 @@ import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
@@ -1554,6 +1555,43 @@ public class PlacementInfoUtil {
                         || serverType == ServerType.MASTER && n.isMaster
                         || serverType == ServerType.TSERVER && n.isTserver))
         .collect(Collectors.toSet());
+  }
+
+  /**
+   * Mirrors the duplicate check in {@code CatalogManagerUtil::IsPlacementInfoValid} (yb-master), so
+   * that a placement the master would reject is refused up front with a clear error instead of
+   * failing later in the universe task. Only the duplicate check is mirrored; the master's prefix
+   * and overlap checks are not.
+   *
+   * <p>A zone is identified the way the master does it: {@code cloud code:region code:zone code}.
+   * The zone code is read from the DB by the AZ uuid, because {@link PlacementAZ#name} is not the
+   * code the master sees.
+   *
+   * @param placementInfo placement to validate; {@code null} is accepted and not validated.
+   * @throws PlatformServiceException with {@code BAD_REQUEST} if the same cloud/region/zone appears
+   *     more than once, or if a zone in the placement does not exist.
+   */
+  public static void validateNoZoneDuplicates(PlacementInfo placementInfo) {
+    if (placementInfo == null) {
+      return;
+    }
+    Set<String> allZones = new HashSet<>();
+    UpdatePlacementInfo.ModifyUniverseConfig.mapToCloudInfoPB(
+        placementInfo,
+        (az, block) -> {
+          String zoneId =
+              String.format(
+                  "%s:%s:%s",
+                  block.getPlacementCloud(), block.getPlacementRegion(), block.getPlacementZone());
+          if (!allZones.add(zoneId)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "Found duplicate zone: %s in region %s in cloud %s",
+                    block.getPlacementZone(), block.getPlacementRegion(),
+                    block.getPlacementCloud()));
+          }
+        });
   }
 
   @Data

@@ -8,6 +8,8 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -52,6 +54,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
@@ -192,6 +195,162 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
         ex.getLocalizedMessage(),
         ex.getMessage()
             .contains("Cannot have number of replicas 3 greater than the number of nodes 2"));
+  }
+
+  /*--- Zones that share a code are the same zone to the master, which rejects such a placement ---*/
+
+  private static void makeZoneCodesCollide(Provider provider, String zoneCode, String newCode) {
+    AvailabilityZone az = AvailabilityZone.getByCode(provider, zoneCode);
+    az.setCode(newCode);
+    az.save();
+  }
+
+  private void assertDuplicateZoneRejected(PlatformServiceException ex) {
+    assertEquals(BAD_REQUEST, ex.getHttpStatus());
+    assertTrue(
+        ex.getUserVisibleMessage(),
+        ex.getUserVisibleMessage()
+            .contains(
+                String.format(
+                    "Found duplicate zone: az1 in region r1 in cloud %s", provider.getCode())));
+    verify(mockCommissioner, never()).submit(any(TaskType.class), any());
+  }
+
+  @Test
+  public void updatePrimaryRejectsDuplicateZoneCodes() {
+    Universe universe =
+        ModelFactory.createFromConfig(provider, "dup-zone-edit", "r1-az1-3-3;r1-az2-2-2");
+    UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
+    addInstanceTag(taskParams.getPrimaryCluster());
+    makeZoneCodesCollide(provider, "az2", "az1");
+
+    assertDuplicateZoneRejected(
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                universeCRUDHandler.update(
+                    customer, Universe.getOrBadRequest(universe.getUniverseUUID()), taskParams)));
+  }
+
+  @Test
+  public void updatePrimaryAcceptsDistinctZoneCodes() {
+    Universe universe =
+        ModelFactory.createFromConfig(provider, "no-dup-zone-edit", "r1-az1-3-3;r1-az2-2-2");
+    UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
+    addInstanceTag(taskParams.getPrimaryCluster());
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse));
+
+    universeCRUDHandler.update(
+        customer, Universe.getOrBadRequest(universe.getUniverseUUID()), taskParams);
+
+    verify(mockCommissioner).submit(eq(TaskType.EditUniverse), any());
+  }
+
+  /** An edit is rejected as a no-op unless something changes; a tag is the simplest change. */
+  private static void addInstanceTag(Cluster cluster) {
+    cluster.userIntent.instanceTags = new HashMap<>(Map.of("zone-test", "1"));
+  }
+
+  /**
+   * Configures a two-node read replica spread over the two zones of region r1 and returns params
+   * with the primary and the read replica clusters.
+   */
+  private UniverseDefinitionTaskParams configureReadReplica(Universe universe) {
+    UserIntent rrIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+    rrIntent.numNodes = 2;
+    rrIntent.replicationFactor = 2;
+    Cluster asyncCluster = new Cluster(ClusterType.ASYNC, rrIntent);
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    taskParams.nodePrefix = universe.getUniverseDetails().nodePrefix;
+    taskParams.clusters =
+        new ArrayList<>(
+            Arrays.asList(universe.getUniverseDetails().getPrimaryCluster(), asyncCluster));
+    taskParams.nodeDetailsSet = universe.getUniverseDetails().nodeDetailsSet;
+    taskParams.expectedUniverseVersion = -1;
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams, customer.getId(), asyncCluster.uuid, ClusterOperationType.CREATE);
+    assertEquals(2, asyncCluster.placementInfo.azStream().count());
+    return taskParams;
+  }
+
+  /** Keeps only the read replica and its nodes in the params, as a create request does. */
+  private UniverseDefinitionTaskParams readReplicaOnly(UniverseDefinitionTaskParams taskParams) {
+    UUID rrUuid = taskParams.getReadOnlyClusters().get(0).uuid;
+    taskParams.clusters =
+        new ArrayList<>(Collections.singletonList(taskParams.getClusterByUuid(rrUuid)));
+    taskParams.nodeDetailsSet =
+        taskParams.nodeDetailsSet.stream()
+            .filter(n -> n.isInPlacement(rrUuid))
+            .collect(Collectors.toSet());
+    return taskParams;
+  }
+
+  @Test
+  public void createReadReplicaRejectsDuplicateZoneCodes() {
+    Universe universe =
+        ModelFactory.createFromConfig(provider, "dup-zone-rr", "r1-az1-3-3;r1-az2-0-0");
+    UniverseDefinitionTaskParams taskParams = readReplicaOnly(configureReadReplica(universe));
+    makeZoneCodesCollide(provider, "az2", "az1");
+
+    assertDuplicateZoneRejected(
+        assertThrows(
+            PlatformServiceException.class,
+            () -> universeCRUDHandler.createCluster(customer, universe, taskParams)));
+  }
+
+  @Test
+  public void createReadReplicaAcceptsDistinctZoneCodes() {
+    Universe universe =
+        ModelFactory.createFromConfig(provider, "no-dup-zone-rr", "r1-az1-3-3;r1-az2-0-0");
+    UniverseDefinitionTaskParams taskParams = readReplicaOnly(configureReadReplica(universe));
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(FakeDBApplication.buildTaskInfo(null, TaskType.ReadOnlyClusterCreate));
+
+    universeCRUDHandler.createCluster(customer, universe, taskParams);
+
+    verify(mockCommissioner).submit(eq(TaskType.ReadOnlyClusterCreate), any());
+  }
+
+  @Test
+  public void updateReadReplicaRejectsDuplicateZoneCodes() {
+    Universe universe =
+        ModelFactory.createFromConfig(provider, "dup-zone-rr-edit", "r1-az1-3-3;r1-az2-0-0");
+    UniverseDefinitionTaskParams configured = configureReadReplica(universe);
+    // Persist the read replica so that it is an existing cluster that can be edited. The nodes
+    // are named by the create task, so name them here. They are shared with `configured`.
+    UUID rrUuid = configured.getReadOnlyClusters().get(0).uuid;
+    AtomicInteger nodeIdx = new AtomicInteger();
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          details.clusters.add(configured.getReadOnlyClusters().get(0));
+          configured.nodeDetailsSet.stream()
+              .filter(n -> n.isInPlacement(rrUuid))
+              .forEach(
+                  n -> {
+                    n.state = NodeState.Live;
+                    n.nodeName = "host-rr-n" + nodeIdx.incrementAndGet();
+                    n.nodeUuid = UUID.randomUUID();
+                    details.nodeDetailsSet.add(n);
+                  });
+          u.setUniverseDetails(details);
+        });
+    // An edit request carries only the read replica cluster, but all the universe nodes.
+    Cluster readReplica = configured.getReadOnlyClusters().get(0);
+    addInstanceTag(readReplica);
+    configured.clusters = new ArrayList<>(Collections.singletonList(readReplica));
+    configured.currentClusterType = ClusterType.ASYNC;
+    makeZoneCodesCollide(provider, "az2", "az1");
+
+    assertDuplicateZoneRejected(
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                universeCRUDHandler.update(
+                    customer, Universe.getOrBadRequest(universe.getUniverseUUID()), configured)));
   }
 
   private UniverseDefinitionTaskParams.UserIntent testIntent() {
