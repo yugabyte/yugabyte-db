@@ -15,11 +15,13 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
 
 #include "yb/dockv/value.h"
 #include "yb/dockv/value_type.h"
 
+#include "yb/util/kv_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -64,12 +66,12 @@ TEST_F(ValueControlFieldsTest, LocalWriteEncodesNothing) {
 
 TEST_F(ValueControlFieldsTest, RoundTripBothFields) {
   ValueControlFields fields;
-  fields.cdr_source_origin = kOrigin;
-  fields.cdr_source_write_ht = kSourceHt;
+  fields.cdr_metadata.source_origin = kOrigin;
+  fields.cdr_metadata.source_write_ht = kSourceHt;
 
   auto decoded = ASSERT_RESULT(RoundTrip(fields));
-  ASSERT_EQ(decoded.cdr_source_origin, kOrigin);
-  ASSERT_EQ(decoded.cdr_source_write_ht, kSourceHt);
+  ASSERT_EQ(decoded.cdr_metadata.source_origin, kOrigin);
+  ASSERT_EQ(decoded.cdr_metadata.source_write_ht, kSourceHt);
   ASSERT_TRUE(decoded.has_cdr_metadata());
 }
 
@@ -77,8 +79,8 @@ TEST_F(ValueControlFieldsTest, RoundTripBothFields) {
 // present-but-zero origin.
 TEST_F(ValueControlFieldsTest, ZeroOriginIsAbsent) {
   ValueControlFields fields;
-  fields.cdr_source_origin = 0;
-  fields.cdr_source_write_ht = kSourceHt;
+  fields.cdr_metadata.source_origin = 0;
+  fields.cdr_metadata.source_write_ht = kSourceHt;
 
   ASSERT_TRUE(Encode(fields).empty());
 }
@@ -90,15 +92,15 @@ TEST_F(ValueControlFieldsTest, CoexistsWithTtlAndUserTimestamp) {
   fields.merge_flags = 1;
   fields.ttl = MonoDelta::FromMilliseconds(5000);
   fields.timestamp = 12345;
-  fields.cdr_source_origin = kOrigin;
-  fields.cdr_source_write_ht = kSourceHt;
+  fields.cdr_metadata.source_origin = kOrigin;
+  fields.cdr_metadata.source_write_ht = kSourceHt;
 
   auto decoded = ASSERT_RESULT(RoundTrip(fields));
   ASSERT_EQ(decoded.merge_flags, 1);
   ASSERT_EQ(decoded.ttl, MonoDelta::FromMilliseconds(5000));
   ASSERT_EQ(decoded.timestamp, 12345);
-  ASSERT_EQ(decoded.cdr_source_origin, kOrigin);
-  ASSERT_EQ(decoded.cdr_source_write_ht, kSourceHt);
+  ASSERT_EQ(decoded.cdr_metadata.source_origin, kOrigin);
+  ASSERT_EQ(decoded.cdr_metadata.source_write_ht, kSourceHt);
 }
 
 // A value written before these fields existed has no CDR markers, and must decode unchanged.
@@ -118,8 +120,8 @@ TEST_F(ValueControlFieldsTest, DecodesPreExistingEncoding) {
 // packed row. That is what makes delete_origin_differs expressible.
 TEST_F(ValueControlFieldsTest, StampsATombstone) {
   ValueControlFields fields;
-  fields.cdr_source_origin = kOrigin;
-  fields.cdr_source_write_ht = kSourceHt;
+  fields.cdr_metadata.source_origin = kOrigin;
+  fields.cdr_metadata.source_write_ht = kSourceHt;
 
   std::string encoded;
   fields.AppendEncoded(&encoded);
@@ -128,8 +130,8 @@ TEST_F(ValueControlFieldsTest, StampsATombstone) {
   Value value;
   ASSERT_OK(value.Decode(encoded));
   ASSERT_EQ(value.value_type(), ValueEntryType::kTombstone);
-  ASSERT_EQ(value.control_fields().cdr_source_origin, kOrigin);
-  ASSERT_EQ(value.control_fields().cdr_source_write_ht, kSourceHt);
+  ASSERT_EQ(value.control_fields().cdr_metadata.source_origin, kOrigin);
+  ASSERT_EQ(value.control_fields().cdr_metadata.source_write_ht, kSourceHt);
 }
 
 // Only the varint field is exercised here. The fixed-width source write hybrid time is read
@@ -153,8 +155,8 @@ TEST_F(ValueControlFieldsTest, EveryFieldIsRecognisedAsAControlFieldMarker) {
       {"user timestamp", [] { ValueControlFields f; f.timestamp = 1; return f; }()},
       {"cdr metadata", [] {
         ValueControlFields f;
-        f.cdr_source_origin = kOrigin;
-        f.cdr_source_write_ht = kSourceHt;
+        f.cdr_metadata.source_origin = kOrigin;
+        f.cdr_metadata.source_write_ht = kSourceHt;
         return f;
       }()},
   };
@@ -175,8 +177,8 @@ TEST_F(ValueControlFieldsTest, EveryFieldIsRecognisedAsAControlFieldMarker) {
 
 TEST_F(ValueControlFieldsTest, ToStringReportsCdrMetadata) {
   ValueControlFields fields;
-  fields.cdr_source_origin = kOrigin;
-  fields.cdr_source_write_ht = kSourceHt;
+  fields.cdr_metadata.source_origin = kOrigin;
+  fields.cdr_metadata.source_write_ht = kSourceHt;
 
   auto str = fields.ToString();
   ASSERT_STR_CONTAINS(str, "source origin: 42");
@@ -192,8 +194,8 @@ TEST_F(ValueControlFieldsTest, ReEncodingKeepsStamp) {
   ValueControlFields fields;
   fields.ttl = MonoDelta::FromMilliseconds(1000);
   fields.timestamp = 999;
-  fields.cdr_source_origin = kOrigin;
-  fields.cdr_source_write_ht = kSourceHt;
+  fields.cdr_metadata.source_origin = kOrigin;
+  fields.cdr_metadata.source_write_ht = kSourceHt;
 
   auto stamped = Encode(fields);
   auto decoded = ASSERT_RESULT(Decode(stamped));

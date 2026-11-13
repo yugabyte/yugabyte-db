@@ -959,20 +959,26 @@ char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len) {
   return YBCPAllocStdString(ToString(doc_key.range_group()));
 }
 
-// False until PG makes the first YBCSetObjectLockingInfraForCurrTxn() call of the backend from
+// False until PG makes the first YBCSetObjectLockingForCurrTxn() call of the backend from
 // StartTransaction. pggate only reads it inside a transaction, so the is_using_table_locks it sends
 // to the tserver never comes from the unset value: PgTxnManager reads it through
 // UsingObjectLocksGloballyForCurrentTxn() from BeginTransaction onwards, and the sequence RPCs
 // are only issued while a statement runs. A PG caller that reads it earlier sees false, that is,
 // no global object locks.
-static bool object_locking_infra_for_curr_txn = false;
+static bool object_locking_for_curr_txn = false;
+static bool historical_catalog_read_for_curr_txn = false;
 
-void YBCSetObjectLockingInfraForCurrTxn() {
-  object_locking_infra_for_curr_txn = yb_enable_object_locking_infra;
+void YBCSetObjectLockingForCurrTxn(bool enabled, bool historical_catalog_read) {
+  object_locking_for_curr_txn = enabled;
+  historical_catalog_read_for_curr_txn = historical_catalog_read;
 }
 
-bool YBCIsObjectLockingInfraEnabled() {
-  return object_locking_infra_for_curr_txn;
+bool YBCIsObjectLockingLatchedForCurrTxn() {
+  return object_locking_for_curr_txn;
+}
+
+bool YBCIsHistoricalCatalogReadForCurrTxn() {
+  return historical_catalog_read_for_curr_txn;
 }
 
 bool YBCIsAutoAnalyzeEnabled() {

@@ -263,7 +263,7 @@ func tryParseHbaValue(s string, eqIndex int, secret hbaSecret) *parsedValue {
 		}
 		return nil
 	}
-	// Only a literal '"' is excluded here, matching the negative lookahead in Java's
+	// Only a literal '"' is excluded here, matching the negative lookahead in the former Java
 	// LdapBindPasswdHbaFormat.UNQUOTED_VALUE. A backslash must NOT be excluded: every well-formed
 	// backslash form is already claimed by the escaped-doubled branches above, so a value still
 	// starting with one is a shape neither side has a quote style for -- such as the single-escaped
@@ -287,7 +287,7 @@ func tryParseHbaValue(s string, eqIndex int, secret hbaSecret) *parsedValue {
 // look ahead past the whitespace and check whether such an attribute name followed by '=' actually
 // begins there.
 //
-// The Java uses a lookahead regex for this (LdapBindPasswdHbaFormat.UNQUOTED_VALUE). Go's regexp
+// The Java used a lookahead regex for this (LdapBindPasswdHbaFormat.UNQUOTED_VALUE). Go's regexp
 // is RE2 and supports no lookaround, hence a hand-written scanner. github.com/dlclark/regexp2
 // could run the Java pattern verbatim, but it was measured against this scanner and must not be
 // swapped in: the pattern is strictly less safe here.

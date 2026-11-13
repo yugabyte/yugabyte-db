@@ -1157,7 +1157,7 @@ DefineIndex(Oid relationId,
 
 		bool		is_colocated_via_database = is_colocated && MyDatabaseColocated;
 		bool		is_colocated_tables_with_tablespace_enabled =
-			*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
+			yb_enable_colocated_tables_with_tablespaces;
 
 		/*
 		 * A copartitioned index (e.g. a ybhnsw vector index) stores its rows

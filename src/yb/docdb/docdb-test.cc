@@ -15,10 +15,14 @@
 
 #include "yb/common/transaction.h"
 
+#include "yb/docdb/doc_read_context.h"
+
 #include "yb/dockv/reader_projection.h"
 
+#include "yb/util/fast_varint.h"
 #include "yb/util/minmax.h"
 
+DECLARE_bool(ycql_enable_packed_row);
 DECLARE_bool(ysql_enable_cdr_metadata);
 
 namespace yb::docdb {
@@ -288,6 +292,406 @@ SubDocKey(DocKey($0, [], ["r1"]), [HT{ physical: 5000 }]) -> { }
 SubDocKey(DocKey($0, [], ["r1"]), [SystemColumnId(0); HT{ physical: 5000 }]) -> null
       )#";
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(fmt, IdToString(id)));
+}
+
+// Compaction repacks loose column entries into a packed row and drops the liveness column on the
+// way. That is where a replication apply puts the stamp for a row that is not stored packed, so
+// without carrying it onto the packed row the origin of every remote partial UPDATE would be lost
+// at the first compaction.
+class DocDBCdrRepackTest : public DocDBTestQl {
+ protected:
+  void SetUp() override {
+    // This fixture's compaction packs rows only with ycql_enable_packed_row, which defaults to off
+    // in release builds. YBTest restores the flag after each test.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_enable_packed_row) = true;
+    DocDBTestQl::SetUp();
+  }
+
+  // Writes a row as a replication apply would when it cannot pack: the stamp on the liveness
+  // column, the changed column on its own.
+  void WriteStampedRow(HybridTime write_ht) {
+    DocKey doc_key;
+    doc_key.ResizeRangeComponents(1);
+    doc_key.SetRangeComponent(KeyEntryValue("r1"), 0 /* idx */);
+    const auto encoded = doc_key.Encode();
+
+    auto dwb = MakeDocWriteBatch();
+    dwb.SetCdrMetadata({.source_origin = kOrigin, .source_write_ht = kSourceWriteHt});
+    ASSERT_OK(dwb.SetPrimitive(
+        DocPath(encoded, KeyEntryValue::kLivenessColumn), dwb.RowControlFields(),
+        ValueRef(ValueEntryType::kNullLow)));
+    auto c1 = MakeLWValue(QLValue::Primitive("v1"));
+    ASSERT_OK(dwb.SetPrimitive(
+        DocPath(encoded, KeyEntryValue::MakeColumnId(ColumnId(1))), ValueRef(*c1)));
+    ASSERT_OK(WriteToRocksDB(dwb, write_ht));
+  }
+
+  // A packed row, built the way the packer builds one: the control fields are part of the
+  // encoded value. They cannot be passed to SetPrimitive instead - it discards the ones it is
+  // given when the value is already encoded, which is why RowPackContext hands them to the packer.
+  void WritePackedRow(
+      HybridTime write_ht, uint32_t origin = kOrigin,
+      MonoDelta ttl = ValueControlFields::kMaxTtl,
+      const EncodedDocHybridTime& intent_doc_ht = EncodedDocHybridTime()) {
+    auto dwb = MakeDocWriteBatch();
+    if (origin != ValueControlFields::kInvalidSourceOrigin) {
+      dwb.SetCdrMetadata({.source_origin = origin, .source_write_ht = kSourceWriteHt});
+    }
+    auto control_fields = dwb.RowControlFields();
+    control_fields.ttl = ttl;
+    ValueBuffer packed;
+    control_fields.AppendEncodedWithIntentDocHt(intent_doc_ht.AsSlice(), &packed);
+    packed.PushBack(dockv::ValueEntryTypeAsChar::kPackedRowV1);
+    FastAppendUnsignedVarInt(0 /* schema_version */, &packed);
+    const auto packed_slice = packed.AsSlice();
+    ASSERT_OK(dwb.SetPrimitive(
+        DocPath(EncodedRowKey()), ValueControlFields(), ValueRef(std::cref(packed_slice))));
+    ASSERT_OK(WriteToRocksDB(dwb, write_ht));
+  }
+
+  // Writes a partial update as PgsqlWriteOperation does with CDR enabled: the liveness column
+  // carries the writer's stamp - none for a local update - and the changed column goes on its own.
+  void WritePartialUpdate(
+      HybridTime write_ht, uint32_t origin = ValueControlFields::kInvalidSourceOrigin,
+      HybridTime source_write_ht = kSourceWriteHt) {
+    const auto encoded = EncodedRowKey();
+    auto dwb = MakeDocWriteBatch();
+    if (origin != ValueControlFields::kInvalidSourceOrigin) {
+      dwb.SetCdrMetadata({.source_origin = origin, .source_write_ht = source_write_ht});
+    }
+    ASSERT_OK(dwb.SetPrimitive(
+        DocPath(encoded, KeyEntryValue::kLivenessColumn), dwb.RowControlFields(),
+        ValueRef(ValueEntryType::kNullLow)));
+    auto c1 = MakeLWValue(QLValue::Primitive("v2"));
+    ASSERT_OK(dwb.SetPrimitive(
+        DocPath(encoded, KeyEntryValue::MakeColumnId(ColumnId(1))), ValueRef(*c1)));
+    ASSERT_OK(WriteToRocksDB(dwb, write_ht));
+  }
+
+  static dockv::KeyBytes EncodedRowKey() {
+    DocKey doc_key;
+    doc_key.ResizeRangeComponents(1);
+    doc_key.SetRangeComponent(KeyEntryValue("r1"), 0 /* idx */);
+    return doc_key.Encode();
+  }
+
+  void Repack() {
+    ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+    FullyCompactHistoryBefore(10000_usec_ht);
+  }
+
+  // Compaction repacks a row to the latest schema version, which the base fixture always reports
+  // as 0. Raising it makes a row packed at an older version get repacked.
+  Result<CompactionSchemaInfo> CotablePacking(
+      const Uuid& table_id, uint32_t schema_version, HybridTime history_cutoff) override {
+    if (schema_version == kLatestSchemaVersion) {
+      schema_version = latest_schema_version_;
+    }
+    return DocDBTestQl::CotablePacking(table_id, schema_version, history_cutoff);
+  }
+
+  SchemaVersion latest_schema_version_ = 0;
+
+  // The base fixture's compactions always see a full repack window. Narrowing it stands in for data
+  // outside the compaction, such as a running transaction or a memtable.
+  Status InitRocksDBOptions() override {
+    RETURN_NOT_OK(DocDBTestQl::InitRocksDBOptions());
+    regular_db_options_.compaction_context_factory = CreateCompactionContextFactory(
+        retention_policy_, &KeyBounds::kNoBounds,
+        [this](const std::vector<rocksdb::FileMetaData*>&) {
+          return CompactionHybridTimeConstraints {
+            .other_min = delete_marker_retention_time_,
+            .repack_range_max = repack_range_max_,
+          };
+        },
+        this, /* vector_metadata_iterator_provider= */ nullptr, CompactionMetrics{});
+    return Status::OK();
+  }
+
+  HybridTime repack_range_max_ = HybridTime::kMax;
+
+  static constexpr uint32_t kOrigin = 42;
+  static constexpr uint32_t kOtherOrigin = 7;
+  static const HybridTime kSourceWriteHt;
+};
+
+const HybridTime DocDBCdrRepackTest::kSourceWriteHt = 2500_usec_ht;
+
+TEST_F(DocDBCdrRepackTest, CdrStampSurvivesRepack) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_cdr_metadata) = true;
+
+  WriteStampedRow(3000_usec_ht);
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey([], ["r1"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> null; \
+    cdr source origin: 42; cdr source write ht: { physical: 2500 }
+SubDocKey(DocKey([], ["r1"]), [ColumnId(1); HT{ physical: 3000 w: 1 }]) -> "v1"
+      )#");
+
+  Repack();
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey([], ["r1"]), [HT{ physical: 3000 }]) -> { }; cdr source origin: 42; \
+    cdr source write ht: { physical: 2500 }
+      )#");
+}
+
+// Compaction rewrites bytes that are already on disk, so turning the feature off must not erase a
+// stamp that a previous write put there. This is why the repack path encodes the CDR fields
+// without consulting the flag.
+TEST_F(DocDBCdrRepackTest, CdrStampSurvivesRepackWithFeatureOff) {
+  google::FlagSaver flag_saver;
+  {
+    google::FlagSaver write_saver;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_cdr_metadata) = true;
+    WriteStampedRow(3000_usec_ht);
+  }
+
+  ASSERT_FALSE(FLAGS_ysql_enable_cdr_metadata);
+  Repack();
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey([], ["r1"]), [HT{ physical: 3000 }]) -> { }; cdr source origin: 42; \
+    cdr source write ht: { physical: 2500 }
+      )#");
+}
+
+// Now that a local update also writes the row-level entry, a row can hold an old stamped liveness
+// entry under a newer unstamped one. Repacking must take the newest, or compaction would resurrect
+// an origin that no longer wrote the row.
+TEST_F(DocDBCdrRepackTest, RepackTakesTheNewestLivenessEntry) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_cdr_metadata) = true;
+
+  DocKey doc_key;
+  doc_key.ResizeRangeComponents(1);
+  doc_key.SetRangeComponent(KeyEntryValue("r1"), 0 /* idx */);
+  const auto encoded = doc_key.Encode();
+
+  WriteStampedRow(3000_usec_ht);
+
+  // A later local update: the row-level entry with no stamp on it.
+  auto dwb = MakeDocWriteBatch();
+  ASSERT_OK(dwb.SetPrimitive(
+      DocPath(encoded, KeyEntryValue::kLivenessColumn), dwb.RowControlFields(),
+      ValueRef(ValueEntryType::kNullLow)));
+  auto c1 = MakeLWValue(QLValue::Primitive("v2"));
+  ASSERT_OK(dwb.SetPrimitive(
+      DocPath(encoded, KeyEntryValue::MakeColumnId(ColumnId(1))), ValueRef(*c1)));
+  ASSERT_OK(WriteToRocksDB(dwb, 4000_usec_ht));
+
+  Repack();
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey([], ["r1"]), [HT{ physical: 4000 }]) -> { }
+      )#");
+}
+
+// The other repack path: a row already stored packed, rewritten because the schema version moved
+// on. ProcessPackedRow carries the old row's control fields over, so the stamp rides along. The
+// column the new version adds is what shows the row really was repacked.
+TEST_F(DocDBCdrRepackTest, CdrStampSurvivesRepackOfAnAlreadyPackedRow) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_cdr_metadata) = true;
+
+  WritePackedRow(3000_usec_ht);
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey([], ["r1"]), [HT{ physical: 3000 }]) -> { }; cdr source origin: 42; \
+    cdr source write ht: { physical: 2500 }
+      )#");
+
+  doc_read_context().schema_packing_storage.AddSchema(
+      1, Schema({ColumnSchema("c1", DataType::STRING, ColumnKind::VALUE, Nullable::kTrue)},
+                {ColumnId(1)}));
+  latest_schema_version_ = 1;
+
+  Repack();
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey([], ["r1"]), [HT{ physical: 3000 }]) -> { 1: NULL }; cdr source origin: 42; \
+    cdr source write ht: { physical: 2500 }
+      )#");
+}
+
+// A partial update on top of a packed row is the newest writer of the row, and its liveness entry
+// is the only record of that. Compaction merging the update into the packed row must take the
+// stamp from it: keeping the packed row's own would credit the row to the write the update
+// replaced.
+TEST_F(DocDBCdrRepackTest, LocalUpdateOnStampedPackedRowClearsStampOnRepack) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_cdr_metadata) = true;
+
+  WritePackedRow(3000_usec_ht);
+  WritePartialUpdate(4000_usec_ht);
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey([], ["r1"]), [HT{ physical: 3000 }]) -> { }; cdr source origin: 42; \
+    cdr source write ht: { physical: 2500 }
+SubDocKey(DocKey([], ["r1"]), [SystemColumnId(0); HT{ physical: 4000 }]) -> null
+SubDocKey(DocKey([], ["r1"]), [ColumnId(1); HT{ physical: 4000 w: 1 }]) -> "v2"
+      )#");
+
+  Repack();
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey([], ["r1"]), [HT{ physical: 3000 }]) -> { }
+      )#");
+}
+
+TEST_F(DocDBCdrRepackTest, RemoteUpdateOnStampedPackedRowRestampsOnRepack) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_cdr_metadata) = true;
+
+  WritePackedRow(3000_usec_ht);
+  WritePartialUpdate(4000_usec_ht, kOtherOrigin, 3500_usec_ht);
+
+  Repack();
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey([], ["r1"]), [HT{ physical: 3000 }]) -> { }; cdr source origin: 7; \
+    cdr source write ht: { physical: 3500 }
+      )#");
+}
+
+// One-way replication of an INSERT and then an UPDATE of the same row: the origin does not change,
+// but the source write time must move on to the update's.
+TEST_F(DocDBCdrRepackTest, SameOriginUpdateOnStampedPackedRowAdvancesWriteHtOnRepack) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_cdr_metadata) = true;
+
+  WritePackedRow(3000_usec_ht);
+  WritePartialUpdate(4000_usec_ht, kOrigin, 3500_usec_ht);
+
+  Repack();
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey([], ["r1"]), [HT{ physical: 3000 }]) -> { }; cdr source origin: 42; \
+    cdr source write ht: { physical: 3500 }
+      )#");
+}
+
+TEST_F(DocDBCdrRepackTest, RemoteUpdateOnLocalPackedRowStampsOnRepack) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_cdr_metadata) = true;
+
+  WritePackedRow(3000_usec_ht, ValueControlFields::kInvalidSourceOrigin);
+  WritePartialUpdate(4000_usec_ht, kOtherOrigin, 3500_usec_ht);
+
+  Repack();
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey([], ["r1"]), [HT{ physical: 3000 }]) -> { }; cdr source origin: 7; \
+    cdr source write ht: { physical: 3500 }
+      )#");
+}
+
+// Two updates on top of the packed row: their liveness entries arrive newest first, and only the
+// newest may decide the stamp.
+TEST_F(DocDBCdrRepackTest, RepackTakesTheNewestUpdateOnAPackedRow) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_cdr_metadata) = true;
+
+  WritePackedRow(3000_usec_ht);
+  WritePartialUpdate(4000_usec_ht, kOtherOrigin, 3500_usec_ht);
+  WritePartialUpdate(5000_usec_ht);
+
+  Repack();
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey([], ["r1"]), [HT{ physical: 3000 }]) -> { }
+      )#");
+}
+
+// The first compaction leaves out a file holding an update at an earlier hybrid time than one it
+// does see, as a transaction still running at the time would. Its liveness entry is above the
+// repack window, so it has to stay where it is: moved onto the packed row, its stamp would sit
+// below the left-out update, and the next compaction would replace it with that older one.
+TEST_F(DocDBCdrRepackTest, LivenessAboveTheRepackWindowKeepsItsStamp) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_cdr_metadata) = true;
+
+  WritePackedRow(3000_usec_ht);
+  WritePartialUpdate(4000_usec_ht, kOtherOrigin, 3500_usec_ht);
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+  WritePartialUpdate(3500_usec_ht);
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+
+  repack_range_max_ = 3500_usec_ht;
+  MinorCompaction(10000_usec_ht, 1 /* num_files_to_compact */, 0 /* start_index */);
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey([], ["r1"]), [HT{ physical: 3000 }]) -> { }; cdr source origin: 42; \
+    cdr source write ht: { physical: 2500 }
+SubDocKey(DocKey([], ["r1"]), [SystemColumnId(0); HT{ physical: 4000 }]) -> null; \
+    cdr source origin: 7; cdr source write ht: { physical: 3500 }
+SubDocKey(DocKey([], ["r1"]), [SystemColumnId(0); HT{ physical: 3500 }]) -> null
+SubDocKey(DocKey([], ["r1"]), [ColumnId(1); HT{ physical: 4000 w: 1 }]) -> "v2"
+SubDocKey(DocKey([], ["r1"]), [ColumnId(1); HT{ physical: 3500 w: 1 }]) -> "v2"
+      )#");
+
+  repack_range_max_ = HybridTime::kMax;
+  Repack();
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey([], ["r1"]), [HT{ physical: 3000 }]) -> { }; cdr source origin: 7; \
+    cdr source write ht: { physical: 3500 }
+      )#");
+}
+
+// Only the stamp is replaced. The packed row's other control fields describe the row and stay.
+TEST_F(DocDBCdrRepackTest, RestampingKeepsTheRowTtl) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_cdr_metadata) = true;
+
+  WritePackedRow(3000_usec_ht, kOrigin, MonoDelta::FromSeconds(1000));
+  WritePartialUpdate(4000_usec_ht, kOtherOrigin, 3500_usec_ht);
+
+  Repack();
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey([], ["r1"]), [HT{ physical: 3000 }]) -> { }; ttl: 1000.000s; \
+    cdr source origin: 7; cdr source write ht: { physical: 3500 }
+      )#");
+}
+
+// A row applied from a distributed transaction starts with its intent's hybrid time, which reads
+// use for read restarts. It is not a ValueControlFields field, so restamping has to carry it
+// separately.
+TEST_F(DocDBCdrRepackTest, RestampingKeepsTheIntentDocHt) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_cdr_metadata) = true;
+
+  const EncodedDocHybridTime intent_doc_ht(2900_usec_ht, 0 /* write_id */);
+  WritePackedRow(3000_usec_ht, kOrigin, ValueControlFields::kMaxTtl, intent_doc_ht);
+  WritePartialUpdate(4000_usec_ht, kOtherOrigin, 3500_usec_ht);
+
+  Repack();
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey([], ["r1"]), [HT{ physical: 3000 }]) -> { }; cdr source origin: 7; \
+    cdr source write ht: { physical: 3500 }
+      )#");
+
+  // The dump does not show the intent doc hybrid time, so read it from the stored value.
+  std::unique_ptr<rocksdb::Iterator> iter(rocksdb()->NewIterator(rocksdb::ReadOptions()));
+  iter->SeekToFirst();
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
+  auto value = iter->value();
+  ASSERT_TRUE(value.TryConsumeByte(dockv::KeyEntryTypeAsChar::kHybridTime))
+      << value.ToDebugHexString();
+  ASSERT_TRUE(value.starts_with(intent_doc_ht.AsSlice())) << value.ToDebugHexString();
+}
+
+// A locally written row repacks to exactly what it repacked to before this change.
+TEST_F(DocDBCdrRepackTest, LocalRowRepacksWithoutCdrMetadata) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_cdr_metadata) = true;
+
+  DocKey doc_key;
+  doc_key.ResizeRangeComponents(1);
+  doc_key.SetRangeComponent(KeyEntryValue("r1"), 0 /* idx */);
+  const auto encoded = doc_key.Encode();
+
+  auto dwb = MakeDocWriteBatch();
+  ASSERT_OK(dwb.SetPrimitive(
+      DocPath(encoded, KeyEntryValue::kLivenessColumn), dwb.RowControlFields(),
+      ValueRef(ValueEntryType::kNullLow)));
+  auto c1 = MakeLWValue(QLValue::Primitive("v1"));
+  ASSERT_OK(dwb.SetPrimitive(
+      DocPath(encoded, KeyEntryValue::MakeColumnId(ColumnId(1))), ValueRef(*c1)));
+  ASSERT_OK(WriteToRocksDB(dwb, 3000_usec_ht));
+
+  Repack();
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey([], ["r1"]), [HT{ physical: 3000 }]) -> { }
+      )#");
 }
 
 TEST_F(DocDBTestQl, ColocatedTableTombstoneCompaction) {

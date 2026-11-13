@@ -141,6 +141,11 @@ DECLARE_bool(enable_ysql_tablespaces_for_placement);
 
 DEPRECATE_FLAG(bool, load_balancer_count_move_as_add, "03_2025");
 
+DEFINE_test_flag(string, load_balancer_skip_table_id, "",
+    "Skip this table every cluster balancer run, as if its placement could not be looked up, "
+    "counting the same warning. Lets tests exercise global balancing with a table missing from "
+    "the global load counts.");
+
 DEFINE_RUNTIME_bool(load_balancer_drive_aware, true,
     "When LB decides to move a tablet from server A to B, on the target LB "
     "should select the tablet to move from most loaded drive.");
@@ -250,6 +255,13 @@ std::vector<std::pair<TabletId, std::string>> GetLeadersOnTSToMove(
   do { \
     YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 30, vlog_level) << warn_msg; \
     global_state_->activity_info_.CountWarning(type, warn_msg); \
+  } while (false)
+
+#define LOG_AND_COUNT_SKIPPED_TABLE(vlog_level, table, warn_msg) \
+  do { \
+    LOG_AND_COUNT_WARNING( \
+        vlog_level, ClusterBalancerWarningType::kSkipTableLoadBalancing, warn_msg); \
+    global_state_->num_tablets_in_skipped_tables_ += (table)->TabletCount(IncludeInactive::kTrue); \
   } while (false)
 
 ReplicationInfoPB ClusterLoadBalancer::GetTableReplicationInfo(const TableInfoPtr& table) const {
@@ -460,6 +472,14 @@ void ClusterLoadBalancer::RunClusterBalancerWithOptions(
     }
     const TableId& table_id = table->id();
 
+    if (PREDICT_FALSE(table_id == FLAGS_TEST_load_balancer_skip_table_id)) {
+      LOG_AND_COUNT_SKIPPED_TABLE(
+          1 /* vlog_level */, table,
+          Format("Skipping cluster balancing for table $0 as requested by "
+                 "FLAGS_TEST_load_balancer_skip_table_id", table_id));
+      continue;
+    }
+
     if (tablespace_manager_->NeedsRefreshToFindTablePlacement(table)) {
       // Placement information was not present in catalog manager cache. This is probably a
       // recently created table, skip cluster balancing for now, hopefully by the next run,
@@ -467,9 +487,8 @@ void ClusterLoadBalancer::RunClusterBalancerWithOptions(
       // for this table from the PG catalog tables.
       // TODO(deepthi) Keep track of the number of times this happens, take appropriate action
       // if placement stays missing over period of time.
-      LOG_AND_COUNT_WARNING(
-          1 /* vlog_level */,
-          ClusterBalancerWarningType::kSkipTableLoadBalancing,
+      LOG_AND_COUNT_SKIPPED_TABLE(
+          1 /* vlog_level */, table,
           Format("Skipping cluster balancing for table $0 as its placement information is not "
                  "available yet", table_id));
       continue;
@@ -498,9 +517,8 @@ void ClusterLoadBalancer::RunClusterBalancerWithOptions(
     if (!s.ok()) {
       // Found uninitialized ts_meta, so don't load balance this table yet.
       per_table_states_.erase(table_id);
-      LOG_AND_COUNT_WARNING(
-          1 /* vlog_level */,
-          ClusterBalancerWarningType::kSkipTableLoadBalancing,
+      LOG_AND_COUNT_SKIPPED_TABLE(
+          1 /* vlog_level */, table,
           Format("Skipping cluster balancing for table $0: $1", table_id, StatusToString(s)));
       continue;
     }
@@ -546,9 +564,8 @@ void ClusterLoadBalancer::RunClusterBalancerWithOptions(
     // Prepare the in-memory structures.
     auto handle_analyze_tablets = AnalyzeTablets(table);
     if (!handle_analyze_tablets.ok()) {
-      LOG_AND_COUNT_WARNING(
-          1 /* vlog_level */,
-          ClusterBalancerWarningType::kSkipTableLoadBalancing,
+      LOG_AND_COUNT_SKIPPED_TABLE(
+          1 /* vlog_level */, table,
           Format("Skipping cluster balancing for table $0: $1", table->id(),
                  StatusToString(handle_analyze_tablets)));
       per_table_states_.erase(table->id());
@@ -677,7 +694,7 @@ void ClusterLoadBalancer::RunClusterBalancerWithOptions(
       if (!handle_leader.ok()) {
       LOG_AND_COUNT_WARNING(
           2 /* vlog_level */,
-            ClusterBalancerWarningType::kTableAddReplicas,
+            ClusterBalancerWarningType::kTableLeaderMoves,
             Format("Skipping moving leaders for table $0: $1", table->id(),
                 StatusToString(handle_leader)));
         break;
@@ -707,14 +724,19 @@ void ClusterLoadBalancer::RunClusterBalancerWithOptions(
   global_state_->activity_info_.run_end_time_ = MonoTime::Now();
 
   // Two interesting cases when updating can_perform_global_operations_ state:
-  // If we previously couldn't balance global load, but now the LB is idle, enable global
-  // balancing.
+  // If we previously couldn't balance global load, but now nothing is in flight for the tables
+  // this run did not skip, enable global balancing.
   // If we previously could balance global load, but now the LB is busy, then it is busy balancing
   // global load or doing other operations (remove, etc.). In this case, we keep global balancing
-  // enabled up until we perform a non-global balancing move (see GetLoadToMove()).
+  // enabled up until we perform a non-global balancing move (see GetLoadToMove() and
+  // GetLeaderToMove()).
+  // Warnings do not keep global balancing disabled, unless
+  // FLAGS_load_balancer_allow_global_balancing_with_warnings is false. Tables the run skipped
+  // are missing from the global load counts, MinGlobalLoadVarianceToBalance() accounts for them
+  // for tablet moves.
   // TODO(julien) some small improvements can be made here, such as ignoring leader stepdown
   // tasks.
-  can_perform_global_operations_ |= global_state_->activity_info_.IsIdle();
+  can_perform_global_operations_ |= global_state_->activity_info_.CanPerformGlobalMoves();
 
   // TODO(asrivastava): Once we have instrumentation for which bottleneck we are hitting, we could
   // add a check here to verify that either:
@@ -837,6 +859,18 @@ ClusterBalancerActivityInfo ClusterLoadBalancer::GetLatestActivityInfo() const {
 
 bool ClusterLoadBalancer::CanBalanceGlobalLoad() const {
   return FLAGS_enable_global_load_balancing && can_perform_global_operations_;
+}
+
+double ClusterLoadBalancer::MinGlobalLoadVarianceToBalance() const {
+  // Tablets of tables this run skipped are missing from the global counts, so the measured
+  // variance between two tservers can be off by up to their number in either direction. Requiring
+  // that much on top of the minimum guarantees the true variance is still at least the minimum,
+  // so the move is one the complete counts would also make and it will not be reversed once the
+  // skipped tables are counted again.
+  // Only tablet moves use this, since reversing one costs a remote bootstrap. Global leader moves
+  // are cheap to reverse and keep the plain minimum.
+  return state_->options_->kMinLoadVarianceToBalance +
+         global_state_->num_tablets_in_skipped_tables_;
 }
 
 void ClusterLoadBalancer::ReportMetrics() {
@@ -1272,7 +1306,7 @@ Result<bool> ClusterLoadBalancer::GetLoadToMove(
         if (load_variance > 0 && CanBalanceGlobalLoad()) {
           int global_load_variance = global_state_->GetGlobalLoad(high_load_uuid) -
                                      global_state_->GetGlobalLoad(low_load_uuid);
-          if (global_load_variance < state_->options_->kMinLoadVarianceToBalance) {
+          if (global_load_variance < MinGlobalLoadVarianceToBalance()) {
             if (right == last_pos) {
               return false;
             } else {
@@ -1564,6 +1598,8 @@ Result<std::optional<ClusterLoadBalancer::LeaderMoveDetails>>
           // to move from the high load TS to the low load TS (assuming proper placements). But for
           // leader balancing, we have the additional constraint that both tservers must have a peer
           // for this tablet. Thus we must continue to the next left tserver.
+          // Unlike GetLoadToMove(), the minimum is not widened by the tablets of skipped tables: a
+          // leader move is cheap to reverse if the complete counts later disagree.
           if (global_load_variance < state_->options_->kMinLoadVarianceToBalance /* 2 */) {
             break;
           }

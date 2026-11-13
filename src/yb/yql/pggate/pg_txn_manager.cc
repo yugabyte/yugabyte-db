@@ -258,20 +258,22 @@ PgTxnManager::PgTxnManager(
 
 bool PgTxnManager::UsingObjectLocksGloballyForCurrentTxn() const {
   // Computed rather than latched. It cannot change under an open transaction: the gflags are fixed
-  // for the process, YBCIsObjectLockingInfraEnabled() is a snapshot PG takes once per transaction,
-  // and the one per-statement input, the autonomous DDL check in UsingObjectLocksLocally(), never
-  // fires here, since a transaction that latched the flag on runs its DDLs inside itself.
+  // for the process, YBCIsObjectLockingLatchedForCurrTxn() is a snapshot PG takes once per
+  // transaction, and the one per-statement input, the autonomous DDL check in
+  // UsingObjectLocksLocally(), never fires here, since a transaction that latched the flag on runs
+  // its DDLs inside itself.
   VLOG_WITH_FUNC(1) << "object locks: " << UsingObjectLocksLocally()
-                    << " infra: " << YBCIsObjectLockingInfraEnabled();
-  return UsingObjectLocksLocally() && YBCIsObjectLockingInfraEnabled();
+                    << " latched: " << YBCIsObjectLockingLatchedForCurrTxn();
+  return UsingObjectLocksLocally() && YBCIsObjectLockingLatchedForCurrTxn();
 }
 
 // An autonomous DDL takes no object locks: every DDL of a transaction without global object locks
 // runs in a separate DDL transaction, and the tserver never releases that transaction's locks, so a
 // lock it sent would stay held.
 bool PgTxnManager::UsingObjectLocksLocally() const {
+  // A transaction that starts with yb_read_time set takes none either (#34349, #29466).
   return backend_can_take_object_locks_ && FLAGS_enable_object_locking_for_table_locks &&
-         !IsDdlModeWithSeparateTransaction();
+         !IsDdlModeWithSeparateTransaction() && !YBCIsHistoricalCatalogReadForCurrTxn();
 }
 
 PgTxnManager::~PgTxnManager() = default;

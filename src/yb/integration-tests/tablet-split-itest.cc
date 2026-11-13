@@ -1895,11 +1895,26 @@ TEST_F(AutomaticTabletSplitITest, PrioritizeLowPhaseTablets) {
       }
       return largest;
     };
+    // Candidacy also needs every replica reported RUNNING to the master, which can lag the
+    // leader's size report.
+    const auto has_candidate = [&](const client::TableHandle& table) -> Result<bool> {
+      for (const auto& tablet :
+           VERIFY_RESULT(catalog_mgr->GetTableInfo(table->id())->GetTablets())) {
+        auto drive_info = tablet->GetLeaderReplicaDriveInfo();
+        if (drive_info.ok() && catalog_mgr->ShouldSplitValidCandidate(*tablet, *drive_info).ok()) {
+          return true;
+        }
+      }
+      return false;
+    };
     low_phase_size = VERIFY_RESULT(largest_tablet_size(low_phase_table));
     largest_high_phase_size = VERIFY_RESULT(largest_tablet_size(high_phase_table));
-    return low_phase_size > 0 && low_phase_size * kSizeGapFactor < largest_high_phase_size;
+    return low_phase_size > 0 && low_phase_size * kSizeGapFactor < largest_high_phase_size &&
+           VERIFY_RESULT(has_candidate(low_phase_table)) &&
+           VERIFY_RESULT(has_candidate(high_phase_table));
   }, 30s * kTimeMultiplier,
-     "Wait for the low phase tablet to be clearly smaller than the largest high phase tablet."));
+     "Wait for the low phase tablet to be clearly smaller than the largest high phase tablet "
+     "and for both tables to have a split candidate."));
 
   LOG(INFO) << Format("Low phase tablet size: $0. Largest high phase tablet size: $1.",
                       low_phase_size, largest_high_phase_size);
