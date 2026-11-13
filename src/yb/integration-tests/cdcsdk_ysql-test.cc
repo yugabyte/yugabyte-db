@@ -395,6 +395,9 @@ TEST_F(CDCSDKYsqlTest, TestSentLagNoSpikeWhenNoDataRecord) {
   // Stop UpdateMetrics before this peer is leader again. Only the GetChanges below can publish
   // sent lag.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_collect_cdc_metrics) = false;
+  // Let an UpdateMetrics pass that began before the flag flip finish while this peer is still a
+  // follower; otherwise it can see the peer as leader and set lag from cdc_state.
+  SleepFor(MonoDelta::FromSeconds(1) * kTimeMultiplier);
 
   ASSERT_OK(StepDownLeader(leader_index, tablet_id));
   WaitUntilPeerLeaderState(
