@@ -26,7 +26,6 @@
 
 #include "postgres.h"
 
-#include <arpa/inet.h>
 #include <assert.h>
 #include <inttypes.h>
 #ifdef HAVE_SYS_RESOURCE_H
@@ -1066,34 +1065,6 @@ YbSqlErrorCodeToTransactionError(int sqlerrcode)
 
 static YbcPgAshConfig ash_config;
 
-static void
-IpAddressToBytes(YbcPgAshConfig *ash_config)
-{
-	if (!YbAshIsClientAddrSet())
-		return;
-
-	uint8_t		addr_family = ash_config->metadata->addr_family;
-
-	switch (addr_family)
-	{
-		case AF_UNIX:
-			yb_switch_fallthrough();
-		case AF_UNSPEC:
-			break;
-		case AF_INET:
-			yb_switch_fallthrough();
-		case AF_INET6:
-			if (inet_ntop(addr_family, ash_config->metadata->client_addr,
-						  ash_config->host, INET6_ADDRSTRLEN) == NULL)
-				ereport(LOG,
-						(errmsg("failed converting IP address from binary to string")));
-			break;
-		default:
-			ereport(LOG,
-					(errmsg("unknown address family found: %u", addr_family)));
-	}
-}
-
 static uint16_t
 YbGetSessionReplicationOriginId(void)
 {
@@ -1193,7 +1164,6 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 
 		ash_config.metadata = &MyProc->yb_ash_metadata;
 
-		IpAddressToBytes(&ash_config);
 		const YbcPgInitPostgresInfo default_init_info = {
 			.parallel_leader_session_id = NULL,
 			.shared_data = &MyProc->yb_shared_data
