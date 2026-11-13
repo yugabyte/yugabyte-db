@@ -1141,9 +1141,10 @@ class OciCloudAdmin:
     def _get_previous_boot_volume(self, instance, boot_volume):
         """The newest boot volume kept for the node that is older than boot_volume."""
         instance_tags = instance.freeform_tags or {}
-        tags = {key: instance_tags[key] for key in NODE_TAG_KEYS if key in instance_tags}
-        if not tags:
+        # Without both, the tags can match other nodes' boot volumes.
+        if not all(key in instance_tags for key in NODE_TAG_KEYS):
             return None
+        tags = {key: instance_tags[key] for key in NODE_TAG_KEYS}
         older = [
             v for v in self._list_node_boot_volumes(
                 instance.availability_domain, instance.compartment_id, tags)

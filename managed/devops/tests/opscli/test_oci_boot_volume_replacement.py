@@ -152,6 +152,17 @@ class TestReplaceBootVolume(TestCase):
         self.assertEqual("current", volume_id)
         self.assertEqual(20, details.vpus_per_gb)
 
+    def test_retry_ignores_kept_volumes_without_node_uuid_on_instance(self):
+        # Volumes tagged only with the universe can be other nodes'.
+        self.compute.get_instance.return_value.data.freeform_tags = {
+            "universe-uuid": "universe-1"}
+        self.replaced_earlier(("other-node", "ocid1.image.oc1..current", 20, 1,
+                               dict(NODE_TAGS, **{"node-uuid": "node-2"})))
+
+        self.admin.replace_boot_volume(INSTANCE_ID, IMAGE_ID)
+
+        self.blockstorage.update_boot_volume.assert_not_called()
+
     def test_retry_keeps_vpus_changed_after_replacement(self):
         self.replaced_earlier(("old", "ocid1.image.oc1..current", 20, 1, NODE_TAGS))
         self.blockstorage.get_boot_volume.return_value.data.vpus_per_gb = 30
