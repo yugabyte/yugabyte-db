@@ -17,6 +17,7 @@
 
 #include "yb/docdb/deadline_info.h"
 
+#include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/external_mini_cluster_validator.h"
 #include "yb/integration-tests/mini_cluster_utils.h"
@@ -404,6 +405,13 @@ TEST_F_EX(CqlIndexTest, ConcurrentIndexUpdate, CqlIndexSmallWorkersTest) {
   thread_holder.Stop();
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_txn_get_status_delay_ms) = 0;
+
+  // ysck Checksum RPCs block an rpc worker while resolving intents via a local
+  // GetTransactionStatus queued on the same pool, so they must not take all 4 rpc workers.
+  ClusterVerifier verifier(cluster_.get());
+  verifier.SetScanConcurrency(1);
+  ASSERT_NO_FATALS(verifier.CheckCluster());
+  DontVerifyClusterBeforeNextTearDown();
 }
 
 int64_t GetFailedBatchLockNum(MiniCluster* cluster)  {
