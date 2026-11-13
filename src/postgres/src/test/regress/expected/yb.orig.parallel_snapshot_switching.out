@@ -8,6 +8,7 @@
 SET max_parallel_workers_per_gather = 4;
 SET parallel_setup_cost = 0;
 SET parallel_tuple_cost = 0;
+SET yb_parallel_setup_cost_per_relation = 0;
 SET yb_parallel_range_rows = 1;
 SET yb_enable_cbo = on;
 CREATE TABLE pss_test (k INT PRIMARY KEY, v TEXT) SPLIT INTO 5 TABLETS;
@@ -351,5 +352,6 @@ SELECT count(*) FROM (SELECT k FROM pss_test WHERE pss_snapshot_fn(k) = k ORDER 
 RESET max_parallel_workers_per_gather;
 RESET parallel_setup_cost;
 RESET parallel_tuple_cost;
+RESET yb_parallel_setup_cost_per_relation;
 RESET yb_parallel_range_rows;
 RESET yb_enable_cbo;

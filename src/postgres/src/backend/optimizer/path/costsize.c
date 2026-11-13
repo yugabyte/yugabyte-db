@@ -183,6 +183,7 @@ double		yb_local_roundtrip_cost = YB_DEFAULT_LOCAL_ROUNDTRIP_COST;
 double		yb_local_transfer_cost = YB_DEFAULT_LOCAL_TRANSFER_COST;
 double		yb_merge_scan_row_cost_factor = YB_DEFAULT_MERGE_SCAN_ROW_COST_FACTOR;
 double		yb_merge_scan_stream_cost_factor = YB_DEFAULT_MERGE_SCAN_STREAM_COST_FACTOR;
+double		yb_parallel_setup_cost_per_relation = YB_DEFAULT_PARALLEL_SETUP_COST_PER_RELATION;
 
 
 double		recursive_worktable_factor = DEFAULT_RECURSIVE_WORKTABLE_FACTOR;
@@ -282,6 +283,7 @@ static void yb_get_roundtrip_transfer_costs(Oid tablespace_id,
 											Cost *transfer_cost);
 static Cardinality yb_first_fetch_limit(PlannerInfo *root, Path *path,
 										bool has_local_quals);
+static int	yb_count_scan_relations(Path *path);
 
 
 /*
@@ -515,6 +517,16 @@ cost_gather(GatherPath *path, PlannerInfo *root,
 
 	/* Parallel setup and communication cost. */
 	startup_cost += parallel_setup_cost;
+
+	/*
+	 * YB: a worker starts with empty catalog caches and builds a relcache
+	 * entry for every relation its plan opens, each a few round trips to the
+	 * master.  The workers prime concurrently, so the delay before the first
+	 * tuple grows with the relation count rather than the worker count.
+	 */
+	startup_cost += yb_parallel_setup_cost_per_relation *
+		yb_count_scan_relations(path->subpath);
+
 	run_cost += parallel_tuple_cost * path->path.rows;
 
 	path->path.startup_cost = startup_cost;
@@ -582,6 +594,11 @@ cost_gather_merge(GatherMergePath *path, PlannerInfo *root,
 	 * For lack of a better idea, charge an extra 5%.
 	 */
 	startup_cost += parallel_setup_cost;
+
+	/* YB: see the matching comment in cost_gather. */
+	startup_cost += yb_parallel_setup_cost_per_relation *
+		yb_count_scan_relations(path->subpath);
+
 	run_cost += parallel_tuple_cost * path->path.rows * 1.05;
 
 	path->path.startup_cost = startup_cost + input_startup_cost;
@@ -11328,3 +11345,98 @@ yb_first_fetch_limit(PlannerInfo *root, Path *path, bool has_local_quals)
 
 	return root->yb_limit_tuples;
 }
+
+/*
+ * yb_count_scan_relations
+ *	  Count the base relations the given path tree scans.
+ *
+ * A parallel worker starts with empty catalog caches, so each of these costs
+ * it a relcache build against the master before its first fetch.  Only the
+ * partitions left after plan-time pruning are in the tree; run-time pruning
+ * is not modeled.
+ */
+static int
+yb_count_scan_relations(Path *path)
+{
+	int			count = 0;
+	ListCell   *lc;
+
+	if (path == NULL)
+		return 0;
+
+	switch (nodeTag(path))
+	{
+		case T_Path:
+		case T_ForeignPath:
+			if (path->parent->rtekind == RTE_RELATION)
+				count = 1;
+			break;
+		case T_IndexPath:
+			/* The table and the index it uses are primed together. */
+			count = 1;
+			break;
+		case T_BitmapHeapPath:
+		case T_YbBitmapTablePath:
+			count = 1;
+			break;
+		case T_TidPath:
+		case T_TidRangePath:
+			count = 1;
+			break;
+		case T_AppendPath:
+			foreach(lc, ((AppendPath *) path)->subpaths)
+				count += yb_count_scan_relations((Path *) lfirst(lc));
+			break;
+		case T_MergeAppendPath:
+			foreach(lc, ((MergeAppendPath *) path)->subpaths)
+				count += yb_count_scan_relations((Path *) lfirst(lc));
+			break;
+		case T_HashPath:
+		case T_MergePath:
+		case T_NestPath:
+			count = yb_count_scan_relations(((JoinPath *) path)->outerjoinpath) +
+				yb_count_scan_relations(((JoinPath *) path)->innerjoinpath);
+			break;
+		case T_AggPath:
+			count = yb_count_scan_relations(((AggPath *) path)->subpath);
+			break;
+		case T_GroupPath:
+			count = yb_count_scan_relations(((GroupPath *) path)->subpath);
+			break;
+		case T_IncrementalSortPath:
+			count = yb_count_scan_relations(((IncrementalSortPath *) path)->spath.subpath);
+			break;
+		case T_LimitPath:
+			count = yb_count_scan_relations(((LimitPath *) path)->subpath);
+			break;
+		case T_MaterialPath:
+			count = yb_count_scan_relations(((MaterialPath *) path)->subpath);
+			break;
+		case T_MemoizePath:
+			count = yb_count_scan_relations(((MemoizePath *) path)->subpath);
+			break;
+		case T_ProjectSetPath:
+			count = yb_count_scan_relations(((ProjectSetPath *) path)->subpath);
+			break;
+		case T_ProjectionPath:
+			count = yb_count_scan_relations(((ProjectionPath *) path)->subpath);
+			break;
+		case T_SortPath:
+			count = yb_count_scan_relations(((SortPath *) path)->subpath);
+			break;
+		case T_SubqueryScanPath:
+			count = yb_count_scan_relations(((SubqueryScanPath *) path)->subpath);
+			break;
+		case T_UniquePath:
+			count = yb_count_scan_relations(((UniquePath *) path)->subpath);
+			break;
+		case T_UpperUniquePath:
+			count = yb_count_scan_relations(((UpperUniquePath *) path)->subpath);
+			break;
+		default:
+			break;
+	}
+
+	return count;
+}
+

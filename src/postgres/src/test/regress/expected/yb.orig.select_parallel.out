@@ -12,6 +12,7 @@ set yb_enable_base_scans_cost_model to true;
 -- encourage use of parallel plans
 set parallel_setup_cost=0;
 set parallel_tuple_cost=0;
+set yb_parallel_setup_cost_per_relation=0;
 set min_parallel_table_scan_size=0;
 set max_parallel_workers_per_gather=4;
 -- Note: The test below was copied from upstream `select_parallel.sql`.

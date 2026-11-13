@@ -36,6 +36,13 @@
 /* YB */
 #define YB_DEFAULT_PARALLEL_TUPLE_COST  0.22
 #define YB_DEFAULT_PARALLEL_SETUP_COST  4080.0
+/*
+ * A parallel worker starts with empty catalog caches and builds a relcache
+ * entry for every relation its plan opens, about six catalog reads apiece at
+ * the local round-trip cost (yb_local_roundtrip_cost).  Charged per relation
+ * in Gather and Gather Merge startup_cost.
+ */
+#define YB_DEFAULT_PARALLEL_SETUP_COST_PER_RELATION  120.0
 #define YB_DEFAULT_INTERCLOUD_COST 10.0
 #define	YB_DEFAULT_INTERREGION_COST 10.0
 #define	YB_DEFAULT_INTERZONE_COST 9.5
@@ -319,5 +326,6 @@ extern void yb_init_bnl_workspace(JoinCostWorkspace *workspace,
 								  Path *outer_path, Path *inner_path,
 								  List *pathkeys, JoinType jointype,
 								  JoinPathExtraData *extra);
+extern PGDLLIMPORT double yb_parallel_setup_cost_per_relation;
 
 #endif							/* COST_H */
