@@ -81,6 +81,8 @@
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 
 #include "yb/util/sync_point.h"
@@ -647,6 +649,63 @@ TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTimeWithHiddenTables) {
       pb_util::ArePBsEqual(std::move(ground_truth), std::move(snapshot_info_as_of_time), &diff))
       << diff;
   messenger_->Shutdown();
+}
+
+// Test that export_snapshot does not hold the catalog manager mutex while it repacks the snapshot
+// entries (#37813). The repack reads the YSQL catalog for every table. If it held the mutex in
+// shared mode during the reads, a thread waiting to take the mutex exclusively would block both
+// itself and every other reader of the mutex until the repack finished.
+// 1. Pause the export inside the repack loop, after it looks up the first table.
+// 2. While it is paused, run CREATE TABLE, which takes the catalog manager mutex exclusively.
+// 3. Check that CREATE TABLE finished while the export was still paused.
+TEST_P(MasterExportSnapshotTest, ExportSnapshotDoesNotBlockCatalogManagerMutex) {
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (key INT PRIMARY KEY, value INT)"));
+  auto snapshot_id = ASSERT_RESULT(WaitNewSnapshot(backup_proxy.get(), schedule_id));
+  ASSERT_OK(WaitForSnapshotComplete(backup_proxy.get(), snapshot_id));
+
+  // Must stay below the 30s * kTimeMultiplier RPC timeout used by ExportSnapshot.
+  const auto kMaxPause = 20s * kTimeMultiplier;
+  CountDownLatch export_paused(1);
+  CountDownLatch ddl_done(1);
+  std::atomic<bool> pause_used{false};
+  std::atomic<bool> pause_timed_out{false};
+  auto* sync = SyncPoint::GetInstance();
+  sync->SetCallBack("CatalogManager::RepackSnapshotsForBackup:TableLookedUp", [&](void*) {
+    // Only pause on the first table.
+    if (pause_used.exchange(true)) {
+      return;
+    }
+    export_paused.CountDown();
+    // Wait with a timeout so that a regression fails the test instead of hanging it.
+    if (!ddl_done.WaitFor(kMaxPause)) {
+      pause_timed_out = true;
+    }
+  });
+  sync->EnableProcessing();
+
+  TestThreadHolder threads;
+  auto cleanup = ScopeExit([&] {
+    ddl_done.CountDown();
+    threads.JoinAll();
+    sync->DisableProcessing();
+    sync->ClearAllCallBacks();
+    // Also on assertion failure: the messenger must be shut down before it is destroyed.
+    messenger_->Shutdown();
+  });
+  Status export_status;
+  threads.AddThreadFunctor(
+      [&] { export_status = ResultToStatus(ExportSnapshot(backup_proxy.get(), snapshot_id)); });
+
+  // 1.
+  ASSERT_TRUE(export_paused.WaitFor(kMaxPause));
+  // 2.
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (key INT PRIMARY KEY, value INT)"));
+  ddl_done.CountDown();
+  // 3.
+  threads.JoinAll();
+  ASSERT_OK(export_status);
+  ASSERT_FALSE(pause_timed_out) << "CREATE TABLE was blocked while export_snapshot was paused";
 }
 
 class PgCloneInitiallyEmptyDBTest : public PostgresMiniClusterTest {
