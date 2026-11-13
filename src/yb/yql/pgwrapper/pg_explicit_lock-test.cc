@@ -145,6 +145,8 @@ class PgExplicitLockTestTxnBase : public PgExplicitLockTest {
     ASSERT_EQ(PQntuples(res.get()), 2);
     if (level == IsolationLevel::SERIALIZABLE_ISOLATION) {
       ASSERT_NOK(join_conn.Execute("COMMIT"));
+      // Same as test case 1.
+      ASSERT_OK(join_conn.Execute("ROLLBACK"));
     } else {
       ASSERT_OK(join_conn.Execute("COMMIT"));
     }
