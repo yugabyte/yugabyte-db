@@ -284,21 +284,16 @@ public class ShellProcessHandler {
   private String getOutputLines(BufferedReader reader, boolean logOutput, RedactionTarget target) {
     Marker fileMarker = MarkerFactory.getMarker("fileOnly");
     Marker consoleMarker = MarkerFactory.getMarker("consoleOnly");
-    String lines =
-        reader
-            .lines()
-            .peek(
-                line -> {
-                  if (logOutput) {
-                    log.debug(fileMarker, RedactingService.redactShellProcessOutput(line, target));
-                  }
-                })
-            .collect(Collectors.joining("\n"))
-            .trim();
-    if (logOutput && cloudLoggingEnabled && lines.length() > 0) {
-      log.debug(consoleMarker, RedactingService.redactShellProcessOutput(lines, target));
+    String lines = reader.lines().collect(Collectors.joining("\n"));
+    if (logOutput) {
+      // Redacted as a whole, not line by line: a YAML value can continue on lines below its key.
+      String redacted = RedactingService.redactShellProcessOutput(lines, target);
+      redacted.lines().forEach(line -> log.debug(fileMarker, line));
+      if (cloudLoggingEnabled && !redacted.isBlank()) {
+        log.debug(consoleMarker, redacted.trim());
+      }
     }
-    return lines;
+    return lines.trim();
   }
 
   private long getMaxLogMsgSize() {
