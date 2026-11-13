@@ -15,6 +15,8 @@
 
 #include <absl/synchronization/mutex.h>
 
+#include "yb/common/entity_ids_types.h"
+
 #include "yb/docdb/docdb_compaction_context.h"
 
 #include "yb/server/clock.h"
@@ -27,13 +29,16 @@ namespace tablet {
 using AllowedHistoryCutoffProvider =
     std::function<docdb::HistoryCutoff(RaftGroupMetadata*)>;
 
+using IsTransactionalXClusterTargetProvider = std::function<bool(const NamespaceId&)>;
+
 // History retention policy used by a tablet. It is based on pending reads and a fixed retention
 // interval configured by the user.
 class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
  public:
   explicit TabletRetentionPolicy(
       server::ClockPtr clock, const AllowedHistoryCutoffProvider& allowed_history_cutoff_provider,
-      RaftGroupMetadata* metadata);
+      RaftGroupMetadata* metadata,
+      const IsTransactionalXClusterTargetProvider& is_transactional_xcluster_target_provider);
 
   docdb::HistoryRetentionDirective GetRetentionDirective() override;
 
@@ -83,6 +88,7 @@ class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
 
   const server::ClockPtr clock_;
   const AllowedHistoryCutoffProvider allowed_history_cutoff_provider_;
+  const IsTransactionalXClusterTargetProvider is_transactional_xcluster_target_provider_;
   RaftGroupMetadata& metadata_;
   const std::string log_prefix_;
   const bool apply_history_cutoff_floor_;
