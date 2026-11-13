@@ -10779,6 +10779,11 @@ yb_maybe_test_fail_ddl(void)
 					(errcode(ERRCODE_YB_TXN_CONFLICT),
 					 errmsg("failed DDL operation with conflict as requested")));
 			break;
+		case 6:
+			ereport(ERROR,
+					(errcode(ERRCODE_YB_DEADLOCK),
+					 errmsg("failed DDL operation with deadlock as requested")));
+			break;
 		default:
 			break;
 	}

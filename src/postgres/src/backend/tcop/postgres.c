@@ -5670,10 +5670,19 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 	 * don't support retrying it, if transactional DDL is enabled. This is
 	 * because we don't support savepoint rollback for DDLs, so we can't rely
 	 * on that mechanism to perform statement level retries.
+	 *
+	 * YBIsCurrentStmtDdl() is cleared once the DDL statement finishes, so it
+	 * misses an error raised while committing an autocommit DDL (one not in
+	 * a transaction block), for example while incrementing the catalog
+	 * version as part of that commit. The PG-side transaction is not aborted
+	 * before such a retry, so the backend's caches still reflect the failed
+	 * attempt and the re-run can write inconsistent catalog entries (#37717).
+	 * Check whether the transaction contains a DDL as well.
 	 */
 	if (IsYBReadCommitted() &&
 		YBIsDdlTransactionBlockEnabled() &&
-		YBIsCurrentStmtDdl())
+		(YBIsCurrentStmtDdl() ||
+		 (!IsTransactionBlock() && YBGetDdlUseRegularTransactionBlock())))
 	{
 		const char *retry_err = ("query layer retry isn't possible because "
 								 "retrying DDL statements are not supported in "

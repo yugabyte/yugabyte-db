@@ -6956,6 +6956,58 @@ TEST_F(PgLibPqTestDropTableIfExistsCascadeRetry, DropTableIfExistsCascadeRetryCr
   ASSERT_OK(conn.FetchMatrix("SELECT * FROM drop_retry_test_crash", 0, 1));
 }
 
+class PgLibPqTestTxnDdlCommitRetry : public PgLibPqTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+    // Table locks and transactional DDL on, as on the cluster where #37717 was seen.
+    options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=true");
+    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");
+    options->extra_master_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+    options->extra_master_flags.push_back("--yb_enable_read_committed_isolation=true");
+    options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=true");
+  }
+};
+
+// Test for #37717: a retryable error raised while committing an autocommit DDL
+// (yb_test_fail_next_ddl = 5 raises kConflict and 6 raises kDeadlock at the
+// start of YBCommitTransactionContainingDDL) must reach the client, and must not
+// leave pg_class.relchecks out of step with the table's CHECK constraints.
+TEST_F(PgLibPqTestTxnDdlCommitRetry, AddCheckConstraintCommitRetry) {
+  auto conn = ASSERT_RESULT(Connect());
+  for (const auto& [mode, error_kind] :
+       std::vector<std::pair<int, std::string>>{{5, "conflict"}, {6, "deadlock"}}) {
+    SCOPED_TRACE(Format("yb_test_fail_next_ddl = $0", mode));
+    const auto table = Format("t_$0", error_kind);
+    const auto alter = Format("ALTER TABLE $0 ADD CONSTRAINT c CHECK (a > 0) NOT VALID", table);
+    const auto check_query = Format(
+        "SELECT relchecks, (SELECT count(*) FROM pg_constraint "
+        "WHERE conrelid = '$0'::regclass AND contype = 'c') "
+        "FROM pg_class WHERE oid = '$0'::regclass", table);
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (a INT)", table));
+
+    // The failed commit must not be retried internally: the PG-side transaction
+    // is not aborted before such a retry, and the re-run used to see the failed
+    // attempt's constraint in the backend's caches and set relchecks to 2.
+    ASSERT_OK(conn.ExecuteFormat("SET yb_test_fail_next_ddl = $0", mode));
+    ASSERT_NOK_STR_CONTAINS(
+        conn.Execute(alter), Format("failed DDL operation with $0 as requested", error_kind));
+    auto [relchecks, check_rows] =
+        ASSERT_RESULT((conn.FetchRow<int16_t, int64_t>(check_query)));
+    ASSERT_EQ(relchecks, 0);
+    ASSERT_EQ(check_rows, 0);
+
+    // Running the statement again works and leaves the catalog consistent.
+    ASSERT_OK(conn.Execute(alter));
+    std::tie(relchecks, check_rows) =
+        ASSERT_RESULT((conn.FetchRow<int16_t, int64_t>(check_query)));
+    ASSERT_EQ(relchecks, 1);
+    ASSERT_EQ(check_rows, 1);
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1)", table));
+  }
+}
+
 class PgMinimalPrefetchStaleRelcacheTest : public PgLibPqTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
