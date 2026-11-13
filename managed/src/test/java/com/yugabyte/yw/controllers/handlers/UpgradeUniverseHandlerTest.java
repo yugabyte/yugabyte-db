@@ -48,6 +48,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagDetails;
@@ -118,6 +119,10 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     runtimeConfGetter = mock(RuntimeConfGetter.class);
     mockRuntimeConfigFactory = mock(RuntimeConfigFactory.class);
     mockCertificateHelper = mock(CertificateHelper.class);
+    app.injector()
+        .instanceOf(SettableRuntimeConfigFactory.class)
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey(), "true");
 
     // Mock KubernetesManagerFactory
     KubernetesManagerFactory mockKubernetesManagerFactory = mock(KubernetesManagerFactory.class);
