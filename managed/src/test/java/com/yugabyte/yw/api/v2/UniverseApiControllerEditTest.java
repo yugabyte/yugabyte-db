@@ -811,7 +811,7 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
             .tserver(
                 Map.of(
                     GFlagsUtil.YSQL_HBA_CONF_CSV,
-                    "host all all 10.0.0.0/8 ldap ldapserver=ldap.example.com"
+                    "host all all 192.0.2.0/24 ldap ldapserver=ldap.example.com"
                         + " ldapbindpasswd=REDACTED")));
 
     ApiException e =
