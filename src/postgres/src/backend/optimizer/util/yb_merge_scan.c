@@ -568,9 +568,9 @@ ybIsCopyOfEarlierIndexCol(IndexOptInfo *index, int indexcol)
  *   embedded
  * Only the last kind needs the merge to sort on it, or the merged rows can
  * come out of order.  Telling the first two kinds apart takes a proof that the
- * predicate implies the column or knowing where each filter runs (see #37497),
- * so err on the side of correct order and make all three gap columns, at a
- * cost to the first two kinds:
+ * predicate implies the column (see #37784) or knowing where each filter runs
+ * (see #37785), so err on the side of correct order and make all three gap
+ * columns, at a cost to the first two kinds:
  * - extra comparisons that always tie
  * - for an expression column of an embedded index scan, the pathkey cut in
  *   yb_finalize_merge_scan_info, which in the worst case leaves the index path
@@ -745,8 +745,8 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 		 * for sort (see also #36017).  That holds for the merge sort column of
 		 * this pathkey and for a gap column before it, which the merge sorts
 		 * on as well, even when the gap column needs no merge: the filters
-		 * that tie it run before the merge (see also #37497), or the index
-		 * predicate implies it.
+		 * that tie it run before the merge (see also #37785), or the index
+		 * predicate implies it (see also #37784).
 		 */
 		if (embedded &&
 			(index->indexkeys[tle->resno - 1] == 0 || expression_gap))
