@@ -3,17 +3,20 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.google.inject.Inject;
+import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ManageLoadBalancerGroup;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -35,9 +38,33 @@ import lombok.extern.slf4j.Slf4j;
 @Abortable
 public class ConfigureDBApis extends UpgradeTaskBase {
 
+  private final CloudAPI.Factory cloudAPIFactory;
+
   @Inject
-  protected ConfigureDBApis(BaseTaskDependencies baseTaskDependencies) {
+  protected ConfigureDBApis(
+      BaseTaskDependencies baseTaskDependencies, CloudAPI.Factory cloudAPIFactory) {
     super(baseTaskDependencies);
+    this.cloudAPIFactory = cloudAPIFactory;
+  }
+
+  @Override
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    if (!isFirstTry) {
+      return;
+    }
+    // The task ensures the load balancers with the new ports last, after the rolling restart.
+    Universe universe = getUniverse();
+    Cluster primary = universe.getUniverseDetails().getPrimaryCluster();
+    List<Integer> ports =
+        ManageLoadBalancerGroup.getForwardedPorts(
+            targetUserIntent(primary), taskParams().communicationPorts);
+    if (ManagedLoadBalancerUtil.isEnabled(primary)
+        && !ports.equals(
+            ManageLoadBalancerGroup.getForwardedPorts(
+                primary.userIntent, universe.getUniverseDetails().communicationPorts))) {
+      ManagedLoadBalancerUtil.validatePorts(universe, primary, ports, cloudAPIFactory);
+    }
   }
 
   @Override

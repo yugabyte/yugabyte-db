@@ -84,6 +84,36 @@ $$
       -- Fix the migration checksum
        UPDATE schema_version SET checksum = -1546684527 WHERE version = '223' AND checksum = 105101608;
 
+       -- PLAT-23479: master and the 2025.2 / 2026.1 release branches numbered the same two
+       -- migrations the other way round. The release branches shipped
+       -- V466 = XCluster Table Bad State Alert Duration, while master had
+       -- V466 = Recreate swamper targets and V467 = XCluster Table Bad State Alert Duration.
+       -- Master now uses the released numbering, so a database migrated under the old master
+       -- numbering only needs its history rows relabelled: both migrations already ran. Checksums
+       -- are matched exactly, so any other mismatch on these versions still fails validation.
+       IF EXISTS (SELECT 1 FROM schema_version
+                  WHERE version = '466' AND checksum = 1316434762) THEN
+         IF EXISTS (SELECT 1 FROM schema_version
+                    WHERE version = '467' AND checksum = 1058880285) THEN
+           UPDATE schema_version
+           SET description = 'XCluster Table Bad State Alert Duration',
+               script = 'V466__XCluster_Table_Bad_State_Alert_Duration.sql',
+               checksum = 1058880285
+           WHERE version = '466' AND checksum = 1316434762;
+           UPDATE schema_version
+           SET description = 'Recreate swamper targets',
+               script = 'V467__Recreate_swamper_targets.sql',
+               checksum = 1316434762
+           WHERE version = '467' AND checksum = 1058880285;
+         ELSIF NOT EXISTS (SELECT 1 FROM schema_version WHERE version = '467') THEN
+           -- Only the swamper migration ran under the old numbering. Move it to V467 so that
+           -- the xCluster migration is still applied as V466.
+           UPDATE schema_version
+           SET version = '467', script = 'V467__Recreate_swamper_targets.sql'
+           WHERE version = '466' AND checksum = 1316434762;
+         END IF;
+       END IF;
+
        -- Fix next migration here
     END IF;
   END;

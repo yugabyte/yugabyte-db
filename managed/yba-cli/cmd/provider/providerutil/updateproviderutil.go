@@ -197,9 +197,25 @@ func BuildZoneMapFromString(
 	return zone
 }
 
-// BuildRegionMapFromString is for region flags
+// BuildRegionMapFromString is for region flags.
 func BuildRegionMapFromString(
 	regionString, operation string,
+) map[string]string {
+	return buildRegionMapFromString(regionString, operation, false)
+}
+
+// BuildRegionMapFromStringAllowingClearInstanceTemplate is BuildRegionMapFromString
+// for an edit that may clear instance-template with an empty value. Only the OCI
+// and GCP edit paths read that value; other providers must keep rejecting it.
+func BuildRegionMapFromStringAllowingClearInstanceTemplate(
+	regionString, operation string,
+) map[string]string {
+	return buildRegionMapFromString(regionString, operation, true)
+}
+
+func buildRegionMapFromString(
+	regionString, operation string,
+	allowClearInstanceTemplate bool,
 ) map[string]string {
 	region := map[string]string{}
 	for _, regionInfo := range strings.Split(regionString, util.Separator) {
@@ -245,6 +261,11 @@ func BuildRegionMapFromString(
 		case "instance-template":
 			if !util.IsEmptyString(val) {
 				region["instance-template"] = val
+			} else if allowClearInstanceTemplate && operation == "edit" {
+				// OCI and GCP edits write an empty template back as a clear.
+				// Other providers never read the key, so an empty value there
+				// must stay an error rather than a silent no-op.
+				region["instance-template"] = ""
 			} else {
 				ValueNotFoundForKeyError(key)
 			}

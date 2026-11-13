@@ -7,44 +7,27 @@ import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.KubernetesUtil;
-import com.yugabyte.yw.common.NodeUniverseManager;
-import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
-import com.yugabyte.yw.common.supportbundle.SupportBundleComponentFactory;
-import com.yugabyte.yw.common.supportbundle.SupportBundleFormDataV2Mapper;
-import com.yugabyte.yw.common.supportbundle.SupportBundleV2K8sSupport;
-import com.yugabyte.yw.common.supportbundle.SupportBundleV2NodeSelector;
-import com.yugabyte.yw.common.supportbundle.SupportBundleV2SpecValidator;
-import com.yugabyte.yw.common.utils.Pair;
-import com.yugabyte.yw.forms.SupportBundleFormData;
+import com.yugabyte.yw.common.supportbundle.SupportBundleK8sSupport;
+import com.yugabyte.yw.common.supportbundlev2.SupportBundleV2NodeSelector;
+import com.yugabyte.yw.common.supportbundlev2.SupportBundleV2SizeEstimator;
+import com.yugabyte.yw.common.supportbundlev2.SupportBundleV2SpecValidator;
+import com.yugabyte.yw.common.supportbundlev2.manifest.SupportBundleV2ManifestLoader;
 import com.yugabyte.yw.forms.SupportBundleFormDataV2;
 import com.yugabyte.yw.forms.SupportBundleSizeEstimateResponse;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.BundleDetails;
 import com.yugabyte.yw.models.helpers.BundleDetails.ComponentType;
 import com.yugabyte.yw.models.helpers.BundleDetails.PromExportType;
 import com.yugabyte.yw.models.helpers.BundleDetails.PrometheusMetricsFormat;
 import com.yugabyte.yw.models.helpers.BundleDetails.PrometheusMetricsType;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.ScriptTarComponentSpec;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -55,10 +38,8 @@ public class SupportBundleHandlerV2 {
 
   private final SupportBundleUtil supportBundleUtil;
   private final RuntimeConfGetter confGetter;
-  private final SupportBundleComponentFactory componentFactory;
   private final Config staticConf;
-  private final PlatformExecutorFactory executorFactory;
-  private final NodeUniverseManager nodeUniverseManager;
+  private final SupportBundleV2SizeEstimator sizeEstimator;
   private final SupportBundleV2SpecValidator specValidator;
   private final SupportBundleV2NodeSelector nodeSelector;
 
@@ -66,18 +47,14 @@ public class SupportBundleHandlerV2 {
   public SupportBundleHandlerV2(
       SupportBundleUtil supportBundleUtil,
       RuntimeConfGetter confGetter,
-      SupportBundleComponentFactory componentFactory,
       Config staticConf,
-      PlatformExecutorFactory executorFactory,
-      NodeUniverseManager nodeUniverseManager,
+      SupportBundleV2SizeEstimator sizeEstimator,
       SupportBundleV2SpecValidator specValidator,
       SupportBundleV2NodeSelector nodeSelector) {
     this.supportBundleUtil = supportBundleUtil;
     this.confGetter = confGetter;
-    this.componentFactory = componentFactory;
     this.staticConf = staticConf;
-    this.executorFactory = executorFactory;
-    this.nodeUniverseManager = nodeUniverseManager;
+    this.sizeEstimator = sizeEstimator;
     this.specValidator = specValidator;
     this.nodeSelector = nodeSelector;
   }
@@ -114,6 +91,24 @@ public class SupportBundleHandlerV2 {
    * @param bundleData
    * @param universe
    */
+  /**
+   * Whether this request would collect core files, asked of what actually drives collection rather
+   * than of the component list alone.
+   *
+   * <p>The list carries group names in v2: the manifest merge records a requested CoreFiles as a
+   * FilesComponent and moves the work item into filesComponentSpecs, and a caller supplying those
+   * specs itself skips the merge altogether. Either way the list stops naming CoreFiles while
+   * FilesComponent still collects it, so the component list is checked for requests that never
+   * merge and the specs are checked for the rest.
+   */
+  private static boolean requestsCoreFiles(SupportBundleFormDataV2 bundleData) {
+    if (bundleData.components != null && bundleData.components.contains(ComponentType.CoreFiles)) {
+      return true;
+    }
+    return CollectionUtils.emptyIfNull(bundleData.filesComponentSpecs).stream()
+        .anyMatch(spec -> ComponentType.CoreFiles.name().equals(spec.getComponentName()));
+  }
+
   public void bundleDataValidation(SupportBundleFormDataV2 bundleData, Universe universe) {
     // Support bundle for onprem and k8s universes was originally behind a runtime flag.
     // Now both are enabled by default.
@@ -164,7 +159,7 @@ public class SupportBundleHandlerV2 {
                 "Nothing in this request can be collected from a kubernetes universe. The"
                     + " sub-components %s run outside the yb-master / yb-tserver pod and are not"
                     + " supported there.",
-                SupportBundleV2K8sSupport.K8S_UNSUPPORTED_COMPONENTS.stream()
+                SupportBundleK8sSupport.K8S_UNSUPPORTED_COMPONENTS.stream()
                     .sorted()
                     .collect(Collectors.joining(", "))));
       }
@@ -181,12 +176,20 @@ public class SupportBundleHandlerV2 {
 
     if (bundleData.components.contains(ComponentType.FilesComponent)) {
       validateScriptTarSpecs(
-          "FilesComponent", "filesComponentSpecs", bundleData.filesComponentSpecs, universe);
+          "FilesComponent",
+          "filesComponentSpecs",
+          SupportBundleV2ManifestLoader.FILES_NODE_GROUP,
+          bundleData.filesComponentSpecs,
+          universe);
     }
 
     if (bundleData.components.contains(ComponentType.BashComponent)) {
       validateScriptTarSpecs(
-          "BashComponent", "bashComponentSpecs", bundleData.bashComponentSpecs, universe);
+          "BashComponent",
+          "bashComponentSpecs",
+          SupportBundleV2ManifestLoader.BASH_NODE_GROUP,
+          bundleData.bashComponentSpecs,
+          universe);
     }
 
     if (bundleData.components.contains(ComponentType.YSQLComponent)) {
@@ -205,6 +208,7 @@ public class SupportBundleHandlerV2 {
             specValidator.validateFileNameSegment(
                 specLabel, "outputFileName", spec.getOutputFileName());
             specValidator.validateYsqlQueries(specLabel, spec.getQueries());
+            specValidator.validateDbName(specLabel, spec.getDbName());
           });
     }
 
@@ -224,6 +228,7 @@ public class SupportBundleHandlerV2 {
             specValidator.validateFileNameSegment(
                 specLabel, "outputFileName", spec.getOutputFileName());
             specValidator.validateYcqlQueries(specLabel, spec.getQueries());
+            specValidator.validateKeyspace(specLabel, spec.getKeyspace());
           });
     }
 
@@ -253,7 +258,7 @@ public class SupportBundleHandlerV2 {
       validateYbaComponent("YBAComponent", "ybaComponentSpecs", bundleData.ybaComponentSpecs);
     }
 
-    if (bundleData.components.contains(ComponentType.CoreFiles) && !allowCoresCollection) {
+    if (!allowCoresCollection && requestsCoreFiles(bundleData)) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "Core file collection is disabled globally. Either remove core files component from"
@@ -337,112 +342,12 @@ public class SupportBundleHandlerV2 {
    */
   public SupportBundleSizeEstimateResponse estimateBundleSize(
       Customer customer, SupportBundleFormDataV2 bundleData, Universe universe) throws Exception {
-
-    SupportBundleFormData v1FormData =
-        SupportBundleFormDataV2Mapper.INSTANCE.toV1FormData(bundleData);
-    // Map to track sizes for all components.
-    Map<String, Map<String, Long>> resp = new HashMap<>();
-    Pair<Date, Date> datePair =
-        supportBundleUtil.getValidStartAndEndDates(
-            staticConf, v1FormData.startDate, v1FormData.endDate);
-    Date startDate = datePair.getFirst(), endDate = datePair.getSecond();
-
-    // Threadpool with same configs as default task threadpool.
-    ThreadPoolExecutor threadpool =
-        executorFactory.createExecutor("task", Executors.defaultThreadFactory());
-    try {
-      // Estimate only from the nodes the request targets, so the estimate matches what collection
-      // will actually do. The selector returns every node when no selection was requested.
-      Set<NodeDetails> selectedNodes =
-          nodeSelector.resolve(universe, bundleData.nodeNames).getSelectedNodes();
-      Set<NodeDetails> reachableNodes = getReachableNodes(threadpool, universe, selectedNodes);
-
-      // Submit tasks to the threadpool to collect file size for all components in parallel.
-      List<Pair<Pair<String, ComponentType>, Future<Map<String, Long>>>> futures =
-          new ArrayList<>();
-      for (ComponentType componentType : v1FormData.components) {
-        if (componentType.getComponentLevel().equals(BundleDetails.ComponentLevel.NodeLevel)) {
-          // For node level components, collect sizes from all nodes.
-          for (NodeDetails node : reachableNodes) {
-            SupportBundleComponent component = componentFactory.getComponent(componentType);
-            Callable<Map<String, Long>> callable =
-                () -> {
-                  return component.getFilesListWithSizes(
-                      customer, v1FormData, universe, startDate, endDate, node);
-                };
-            Pair<Pair<String, ComponentType>, Future<Map<String, Long>>> taskPair =
-                new Pair<>(
-                    new Pair<>(node.getNodeName(), componentType), threadpool.submit(callable));
-            futures.add(taskPair);
-          }
-        } else {
-          SupportBundleComponent component = componentFactory.getComponent(componentType);
-          Callable<Map<String, Long>> callable =
-              () -> {
-                return component.getFilesListWithSizes(
-                    customer, v1FormData, universe, startDate, endDate, null);
-              };
-          Pair<Pair<String, ComponentType>, Future<Map<String, Long>>> taskPair =
-              new Pair<>(new Pair<>("YBA", componentType), threadpool.submit(callable));
-          futures.add(taskPair);
-        }
-      }
-
-      for (Pair<Pair<String, ComponentType>, Future<Map<String, Long>>> p : futures) {
-        String nodeName = p.getFirst().getFirst();
-        ComponentType component = p.getFirst().getSecond();
-        try {
-          Map<String, Long> componentSizeMap = p.getSecond().get();
-          Long componentSize = componentSizeMap.values().stream().mapToLong(Long::longValue).sum();
-          Map<String, Long> nodeComponentSizeMap = resp.getOrDefault(nodeName, new HashMap<>());
-          nodeComponentSizeMap.put(component.toString(), componentSize);
-          resp.put(nodeName, nodeComponentSizeMap);
-        } catch (InterruptedException | ExecutionException e) {
-          log.error("Error while getting file sizes for component: {}", component.toString(), e);
-        }
-      }
-    } finally {
-      threadpool.shutdown();
-    }
-    return new SupportBundleSizeEstimateResponse(resp);
+    return sizeEstimator.estimate(customer, bundleData, universe);
   }
 
-  /** PR1 stub - real estimation lands in a follow-up component PR. */
   public SupportBundleSizeEstimateResponse estimateBundleSizeYbaOnly(
       Customer customer, SupportBundleFormDataV2 bundleData) throws Exception {
-    return new SupportBundleSizeEstimateResponse(new HashMap<>());
-  }
-
-  /** Check for reachable nodes among the given nodes of a universe in parallel. */
-  private Set<NodeDetails> getReachableNodes(
-      ThreadPoolExecutor threadpool, Universe universe, Set<NodeDetails> nodes) {
-    Set<NodeDetails> reachableNodes = new HashSet<>();
-    List<Pair<NodeDetails, Future<Boolean>>> futures = new ArrayList<>();
-    for (NodeDetails node : nodes) {
-      Callable<Boolean> callable =
-          () -> {
-            return nodeUniverseManager.isNodeReachable(
-                node,
-                universe,
-                confGetter.getGlobalConf(GlobalConfKeys.supportBundleNodeCheckTimeoutSec));
-          };
-      futures.add(new Pair<NodeDetails, Future<Boolean>>(node, threadpool.submit(callable)));
-    }
-    // Wait for tasks to complete.
-    for (Pair<NodeDetails, Future<Boolean>> p : futures) {
-      try {
-        if (p.getSecond().get()) {
-          reachableNodes.add(p.getFirst());
-        }
-      } catch (InterruptedException | ExecutionException e) {
-        log.error("Error while collecting reachable nodes for universe: {}", universe.getName(), e);
-      }
-    }
-    log.info(
-        "Reachable nodes for universe {} = {}",
-        universe.getName(),
-        reachableNodes.stream().map(NodeDetails::getNodeName).collect(Collectors.joining(", ")));
-    return reachableNodes;
+    return sizeEstimator.estimateYbaOnly(customer, bundleData);
   }
 
   /**
@@ -476,8 +381,7 @@ public class SupportBundleHandlerV2 {
         specs.stream()
             .filter(
                 spec ->
-                    spec == null
-                        || SupportBundleV2K8sSupport.supportedOnK8s(spec.getComponentName()))
+                    spec == null || SupportBundleK8sSupport.supportedOnK8s(spec.getComponentName()))
             .collect(Collectors.toList());
     if (kept.size() == specs.size()) {
       return specs;
@@ -487,7 +391,7 @@ public class SupportBundleHandlerV2 {
             .filter(
                 spec ->
                     spec != null
-                        && !SupportBundleV2K8sSupport.supportedOnK8s(spec.getComponentName()))
+                        && !SupportBundleK8sSupport.supportedOnK8s(spec.getComponentName()))
             .map(ScriptTarComponentSpec::getComponentName)
             .collect(Collectors.joining(", "));
     log.warn(
@@ -527,12 +431,18 @@ public class SupportBundleHandlerV2 {
 
   private void validateYbaComponent(
       String componentName, String specsFieldName, List<? extends ScriptTarComponentSpec> specs) {
-    validateScriptTarSpecs(componentName, specsFieldName, specs, null /* universe */);
+    validateScriptTarSpecs(
+        componentName,
+        specsFieldName,
+        SupportBundleV2ManifestLoader.YBA_GLOBAL_GROUP,
+        specs,
+        null /* universe */);
   }
 
   private void validateScriptTarSpecs(
       String componentName,
       String specsFieldName,
+      String manifestGroup,
       List<? extends ScriptTarComponentSpec> specs,
       Universe universe) {
     if (specs == null || specs.isEmpty()) {
@@ -563,6 +473,7 @@ public class SupportBundleHandlerV2 {
           specValidator.validateRemoteTarPath(specLabel, spec.getRemoteTarPath());
           specValidator.validateLinuxUser(specLabel, spec.getLinuxUser(), universe);
         });
+    specValidator.validateManifestEntrypoints(manifestGroup, specs);
   }
 
   private void validateNodeCommandComponent(String componentName, List<?> specs) {

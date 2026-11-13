@@ -6,8 +6,13 @@ OBJS = \
 	pg_stat_statements.o
 
 EXTENSION = pg_stat_statements
-DATA = pg_stat_statements--1.13-yb-1.0.sql \
+DATA = pg_stat_statements--1.13-yb-1.1.sql \
+	pg_stat_statements--1.13-yb-1.0--1.13-yb-1.1.sql \
+	pg_stat_statements--1.10-yb-2.2--1.13-yb-1.1.sql \
+	pg_stat_statements--1.13-yb-1.0.sql \
 	pg_stat_statements--1.10-yb-2.1--1.13-yb-1.0.sql \
+	pg_stat_statements--1.10-yb-2.2.sql \
+	pg_stat_statements--1.10-yb-2.1--1.10-yb-2.2.sql \
 	pg_stat_statements--1.10-yb-2.1.sql \
 	pg_stat_statements--1.10-yb-1.0.sql \
 	pg_stat_statements--1.10-yb-2.0--1.10-yb-2.1.sql \

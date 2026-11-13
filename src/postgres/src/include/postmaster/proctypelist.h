@@ -66,3 +66,4 @@ PG_PROCTYPE(YB_RELCACHE_INIT_BACKEND, "backend", gettext_noop("yb relcache init 
 PG_PROCTYPE(YB_GLOBAL_VIEW_BACKEND, "backend", gettext_noop("yb global view backend"), NULL, true)
 PG_PROCTYPE(YB_XCLUSTER_DDL_QUEUE_BACKEND, "backend", gettext_noop("yb xcluster ddl queue backend"), NULL, true)
 PG_PROCTYPE(YB_XCLUSTER_SETUP_BACKEND, "backend", gettext_noop("yb xcluster setup backend"), NULL, true)
+PG_PROCTYPE(YB_OSC_BACKFILL_BACKEND, "backend", gettext_noop("yb online schema change backfill backend"), NULL, true)

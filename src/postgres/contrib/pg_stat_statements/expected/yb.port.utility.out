@@ -99,12 +99,14 @@ CREATE TABLE tab_expr_stats (a int, b int);
 CREATE STATISTICS tab_expr_stats_1 (mcv) ON a, (2*a), (3*b) FROM tab_expr_stats;
 DROP TABLE tab_expr_stats;
 -- YB note: YB's online CREATE INDEX backfill emits internal statements (BACKFILL INDEX, a
--- pg_stat_activity catalog-version poll, SET default_transaction_isolation) that pgss records;
--- the display filters them out to stay deterministic and focused on the user DDL.
+-- pg_stat_activity catalog-version poll, SET default_transaction_isolation,
+-- SET yb_origination_time_override) that pgss records; the display filters them out to stay
+-- deterministic and focused on the user DDL.
 SELECT calls, rows, query FROM pg_stat_statements
   WHERE query NOT LIKE 'BACKFILL INDEX%'
     AND query NOT LIKE 'SELECT count(*) FROM pg_stat_activity%'
     AND query NOT LIKE 'SET default_transaction_isolation%'
+    AND query NOT LIKE 'SET yb_origination_time_override%'
   ORDER BY query COLLATE "C";
  calls | rows |                                        query                                        
 -------+------+-------------------------------------------------------------------------------------

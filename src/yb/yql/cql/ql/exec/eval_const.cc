@@ -44,7 +44,7 @@ namespace ql {
 template <class Col, class KeyExtractor>
 void CleanupDuplicates(Col& col, KeyExtractor key_extractor) {
   std::stable_sort(col.begin(), col.end(), [&key_extractor](const auto& lhs, const auto& rhs) {
-    return *key_extractor(lhs) < *key_extractor(rhs);
+    return FrozenCollectionLess()(*key_extractor(lhs), *key_extractor(rhs));
   });
   auto w = col.begin();
   if (w == col.end()) {

@@ -333,8 +333,7 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
         stmt.execute("PREPARE testPlan AS SELECT 123");
         stmt.execute("EXECUTE testPlan");
 
-        verifySessionParameterValue(stmt,
-          "ysql_conn_mgr_sticky_object_count", "1");
+        waitForStickyConnections(1);
 
         stmt.execute("DEALLOCATE ALL");
         rs = stmt.executeQuery(QUERY_ALL_PREP_STMTS);
@@ -380,8 +379,7 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
       rs.next();
       assertEquals(123, rs.getInt(1));
 
-      verifySessionParameterValue(stmt,
-        "ysql_conn_mgr_sticky_object_count", "1");
+      waitForStickyConnections(1);
 
       rs = stmt.executeQuery(queryPgPreparedStatements);
       rs.next();

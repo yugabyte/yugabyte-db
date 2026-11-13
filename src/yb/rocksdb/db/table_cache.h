@@ -119,6 +119,11 @@ class TableCache {
   // Evict any entry for the specified file number
   static void Evict(Cache* cache, uint64_t file_number);
 
+  // Evicts the reader for the specified file number if one is open, so the next read reopens the
+  // file and reloads its footer and filter index. A reader that an in-flight read still references
+  // is released when that read finishes. Returns true if a reader was evicted.
+  static bool EvictIfOpen(Cache* cache, uint64_t file_number);
+
   // Returns table reader, tries to get it in following order:
   // - From fd.table_reader
   // - From table cache

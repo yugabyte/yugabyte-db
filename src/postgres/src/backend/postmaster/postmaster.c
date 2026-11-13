@@ -164,7 +164,8 @@ typedef struct
 
 StaticAssertDecl(BACKEND_NUM_TYPES < 32, "too many backend types for uint32");
 
-static const BackendTypeMask BTYPE_MASK_ALL = {(1 << BACKEND_NUM_TYPES) - 1};
+/* YB: unsigned shift, since YB's BACKEND_NUM_TYPES can be 31 */
+static const BackendTypeMask BTYPE_MASK_ALL = {(1U << BACKEND_NUM_TYPES) - 1};
 static const BackendTypeMask BTYPE_MASK_NONE = {0};
 
 static inline BackendTypeMask

@@ -17,5 +17,6 @@
         "dateLibrary": "java8",
         "enumPropertyNaming": "legacy",
         "removeEnumValuePrefix": true,
-        "defaultToEmptyContainer": "array|map"
+        "defaultToEmptyContainer": "array|map",
+        "useOneOfDiscriminatorLookup": true
     }

@@ -35,6 +35,7 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <queue>
 #include <string>
 #include <unordered_map>
@@ -414,8 +415,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // per-drive min-count policy as GetAndRegisterDataAndWalDir, but restricts the candidate set
   // to data roots tagged with target_tier in FsManager (from --fs_data_dirs parsing).
   //
-  // This is the primitive that AlterTabletTier will call to resolve which path_id to pass to
-  // ScheduleDBPathMove when migrating SSTs to a different tier.
+  // The AlterTabletTier RPC handler calls this for a request that names a different tier than
+  // the persisted one, and for the same tier when IsTargetTierPathIdValid rejects the persisted
+  // path_id; the migration's moves then target the returned path_id.
   //
   // This call is read-only: it only reads table_data_assignment_map_ / data_dirs_per_drive_
   // (via PickMinLoadDataRootUnlocked) and does not write to them. Callers that actually
@@ -429,22 +431,34 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       const std::string& table_id,
       const std::string& target_tier) EXCLUDES(dir_assignment_mutex_);
 
+  // Tiered storage: whether path_id can be trusted as a target_tier disk for this tablet on this
+  // node. A persisted (target_storage_tier, target_tier_path_id) pair is the cached resolution
+  // from a prior AlterTabletTier/creation, only trustworthy on the node that wrote it, so:
+  //   - path_id must be a real entry in meta's tier_paths.
+  //   - that entry's tier must equal target_tier (catches stale ids after e.g. a split child got
+  //     a different tier_paths layout than its parent).
+  //   - that entry's data root must still be configured for target_tier on this node (catches
+  //     disks removed from --fs_data_dirs or relabeled to a different tier).
+  // Read-only: ResolveTargetTierPathId repairs what this rejects at tablet open, and the
+  // AlterTabletTier handler re-resolves instead, so the tablet's guarded write stays the only
+  // writer of an open tablet's target. A caller that read the pair itself passes the values it
+  // read, so what it validates is what it goes on to use.
+  bool IsTargetTierPathIdValid(
+      const tablet::RaftGroupMetadata& meta, const std::string& target_tier,
+      uint32_t path_id) const;
+  // The same for meta's own persisted pair; false when no target tier is persisted.
+  bool IsTargetTierPathIdValid(const tablet::RaftGroupMetadata& meta) const;
+
   // Tiered storage: repairs and returns the path_id this tablet's regular DB should target for
-  // new flushes/compactions.
-  //
-  // meta's persisted (target_storage_tier, target_tier_path_id) is the cached resolution from a
-  // prior AlterTabletTier/creation. It is only trustworthy on the node that wrote it, so it is
-  // re-validated here on every load:
-  //   - target_tier_path_id must be a real entry in meta's tier_paths.
-  //   - that entry's tier must equal target_storage_tier (catches stale ids after e.g. a split
-  //     child got a different tier_paths layout than its parent).
-  //   - that entry's data root must still be configured for target_storage_tier on this node
-  //     (catches disks removed from --fs_data_dirs or relabeled to a different tier).
-  // If any check fails, re-resolves via SelectPathIdForTier and persists the repair so this
+  // new flushes/compactions. Run on every load (OpenTablet). If IsTargetTierPathIdValid rejects
+  // the persisted path_id, re-resolves via SelectPathIdForTier and persists the repair so this
   // does not need to happen again on the next load. If the tier has no disks on this node at
-  // all, returns 0 (home) without touching the persisted value, so the intent survives until a
-  // disk for that tier reappears. With tiered storage disabled, returns 0 and clears a persisted
-  // path_id, again leaving target_storage_tier alone.
+  // all, returns 0 without touching the persisted value, so the intent survives until a disk for
+  // that tier reappears. OpenTablet uses only the status of that result: the regular DB still
+  // opens with the stale path_id, so flushes, compaction output and reconciler passes keep
+  // targeting its directory until then (follow-up work); only the AlterTabletTier handler, via
+  // IsTargetTierPathIdValid, declines to trust it. With tiered storage disabled, returns 0 and
+  // clears a persisted path_id, again leaving target_storage_tier alone.
   Result<uint32_t> ResolveTargetTierPathId(const tablet::RaftGroupMetadataPtr& meta)
       EXCLUDES(dir_assignment_mutex_);
   // Updates the map of table to the set of tablets assigned per table per disk
@@ -496,6 +510,16 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   const std::shared_future<client::YBClient*>& client_future();
 
   tablet::TabletOptions* TEST_tablet_options() { return &tablet_options_; }
+
+  struct ClearRocksDBCacheResult {
+    // Unset when the block cache is disabled.
+    std::optional<size_t> block_cache_evicted_bytes;
+    size_t table_readers_evicted = 0;
+  };
+
+  // Closes every tablet's open table readers, then evicts every unreferenced entry from the shared
+  // RocksDB block cache.
+  ClearRocksDBCacheResult ClearRocksDBCache();
 
   // Trigger admin full compactions concurrently on the provided tablets.
   // should_wait determines whether this function is asynchronous or not.

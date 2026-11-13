@@ -2061,6 +2061,9 @@ yb_should_report_guc(struct config_generic *record)
 
 	if (YbIsClientYsqlConnMgr())
 	{
+		if (record->flags & GUC_YB_NO_CONN_MGR_REPORT)
+			return false;
+
 		shouldReportGUC =
 			shouldReportGUC ||
 			(record->status & (YB_GUC_VALUE_RESET | YB_GUC_DEFAULT_RESET)) ||
@@ -2257,6 +2260,11 @@ ResetAllOptions(void)
 			case PGC_STRING:
 				{
 					struct config_string *conf = &gconf->_string;
+
+					/* YB: the check hook isn't called for the reset value. */
+					if (IsYugaByteEnabled() &&
+						strcmp(gconf->name, "yb_read_time") == 0)
+						(void) YbCanResetYbReadTime(conf->reset_val, ERROR);
 
 					if (conf->assign_hook)
 						conf->assign_hook(conf->reset_val,
@@ -2756,12 +2764,6 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 								set_extra_field(gconf, &gconf->extra,
 												newextra);
 								changed = true;
-								if (gconf->flags & GUC_YB_CUSTOM_STICKY)
-								{
-									elog(LOG, "Making connection sticky for %s",
-										 gconf->name);
-									yb_ysql_conn_mgr_sticky_guc = true;
-								}
 							}
 
 							/*
@@ -2805,6 +2807,7 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 				 * set by the user is rolled back
 				 */
 				if (YbIsClientYsqlConnMgr() && changed &&
+					!(gconf->flags & GUC_YB_NO_CONN_MGR_REPORT) &&
 					(gconf->context == PGC_SUSET ||
 					 gconf->context == PGC_USERSET) &&
 					gconf->source == PGC_S_SESSION)
@@ -4249,6 +4252,15 @@ set_config_with_handle(const char *name, config_handle *handle,
 		}
 	}
 
+	/*
+	 * YB: the check hook isn't called for the reset value. GUC_NO_RESET below
+	 * rejects every reset, so it can't replace this conditional check.
+	 */
+	if (IsYugaByteEnabled() && value == NULL && source != PGC_S_DEFAULT &&
+		strcmp(record->name, "yb_read_time") == 0 &&
+		!YbCanResetYbReadTime(record->_string.reset_val, elevel))
+		return 0;
+
 	/* Disallow resetting and saving GUC_NO_RESET values */
 	if (record->flags & GUC_NO_RESET)
 	{
@@ -4862,12 +4874,6 @@ set_config_with_handle(const char *name, config_handle *handle,
 													  true,
 													  elevel,
 													  false);
-
-					if (record->flags & GUC_YB_CUSTOM_STICKY)
-					{
-						elog(LOG, "Making connection sticky for setting %s", name);
-						yb_ysql_conn_mgr_sticky_guc = true;
-					}
 				}
 
 				if (makeDefault)
@@ -5041,6 +5047,41 @@ set_config_with_handle(const char *name, config_handle *handle,
 		 value == NULL))		/* RESET statement */
 	{
 		YbAddToChangedSessionParametersList(name);
+	}
+
+	/*
+	 * YB: Make the connection sticky when a PGC_SUSET GUC is set while running
+	 * as a user other than the session user (e.g. a SECURITY DEFINER function).
+	 * Conn Mgr replays the GUC as the session user, which can fail with a
+	 * permission error.
+	 */
+	if (changeVal &&
+		YbIsClientYsqlConnMgr() &&
+		record->context == PGC_SUSET &&
+		source == PGC_S_SESSION &&
+		action == GUC_ACTION_SET &&
+		GetUserId() != GetSessionUserId())
+	{
+		elog(LOG, "Making connection sticky for setting %s as a user other than the session user",
+			 name);
+		yb_ysql_conn_mgr_sticky_guc = true;
+	}
+
+	/*
+	 * YB: Only a session-level SET or a startup-packet value of a
+	 * GUC_YB_CONN_MGR_STICKY variable is replayed by ConnMgr, so only those
+	 * make the connection sticky. SET LOCAL and function-level SET don't
+	 * outlive the transaction or call.
+	 */
+	if (changeVal &&
+		(record->flags & GUC_YB_CONN_MGR_STICKY) &&
+		(source == PGC_S_SESSION || source == PGC_S_CLIENT) &&
+		action == GUC_ACTION_SET &&
+		YbIsClientYsqlConnMgr())
+	{
+		elog(LOG, "Making connection sticky for setting %s, which is marked GUC_YB_CONN_MGR_STICKY",
+			 name);
+		yb_ysql_conn_mgr_sticky_guc = true;
 	}
 
 	return changeVal ? 1 : -1;
@@ -6026,7 +6067,7 @@ DefineCustomStringVariable(const char *name,
 	define_custom_variable(var);
 
 	/* YB: make custom string variables sticky for connection manager */
-	var->flags |= GUC_YB_CUSTOM_STICKY;
+	var->flags |= GUC_YB_CONN_MGR_STICKY;
 }
 
 void
@@ -8489,6 +8530,13 @@ void
 yb_assign_extra_commands_to_retry_in_proc(const char *newval, void *extra)
 {
 	yb_extra_commands_to_retry_in_proc = (bool *) extra;
+}
+
+void
+yb_assign_conn_mgr_replication_origin_permanent_sticky(bool newval, void *extra)
+{
+	if (newval && YbHasReplicationOriginSetup())
+		yb_ysql_conn_mgr_sticky_replication_origin = true;
 }
 
 bool

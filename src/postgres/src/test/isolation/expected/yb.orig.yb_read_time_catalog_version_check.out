@@ -1,0 +1,350 @@
+Parsed test spec with 2 sessions
+
+starting permutation: ddl_read_time ddl_rename tt_set tt_sel tt_sel
+step ddl_read_time: 
+  INSERT INTO read_time
+    SELECT (extract(epoch FROM clock_timestamp()) * 1000000)::BIGINT;
+
+step ddl_rename: 
+  ALTER TABLE t RENAME COLUMN v TO v2;
+  SELECT pg_sleep(2);
+
+pg_sleep
+--------
+        
+(1 row)
+
+tt: NOTICE:  yb_read_time should only be set for read-only queries. Write-DML or DDL queries are not allowed when yb_read_time is set.
+step tt_set: 
+  SELECT set_config('yb_read_time', t::text, false) IS NOT NULL AS set FROM read_time;
+
+set
+---
+t  
+(1 row)
+
+step tt_sel: SELECT * FROM t ORDER BY k;
+ERROR:  The catalog snapshot used for this transaction has been invalidated: MISMATCHED_SCHEMA
+step tt_sel: SELECT * FROM t ORDER BY k;
+ERROR:  The catalog snapshot used for this transaction has been invalidated: MISMATCHED_SCHEMA
+
+starting permutation: ddl_read_time ddl_rename tt_set tt_begin tt_sel tt_sel tt_rollback tt_sel
+step ddl_read_time: 
+  INSERT INTO read_time
+    SELECT (extract(epoch FROM clock_timestamp()) * 1000000)::BIGINT;
+
+step ddl_rename: 
+  ALTER TABLE t RENAME COLUMN v TO v2;
+  SELECT pg_sleep(2);
+
+pg_sleep
+--------
+        
+(1 row)
+
+tt: NOTICE:  yb_read_time should only be set for read-only queries. Write-DML or DDL queries are not allowed when yb_read_time is set.
+step tt_set: 
+  SELECT set_config('yb_read_time', t::text, false) IS NOT NULL AS set FROM read_time;
+
+set
+---
+t  
+(1 row)
+
+step tt_begin: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step tt_sel: SELECT * FROM t ORDER BY k;
+ERROR:  The catalog snapshot used for this transaction has been invalidated: MISMATCHED_SCHEMA
+step tt_sel: SELECT * FROM t ORDER BY k;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+step tt_rollback: ROLLBACK;
+step tt_sel: SELECT * FROM t ORDER BY k;
+ERROR:  The catalog snapshot used for this transaction has been invalidated: MISMATCHED_SCHEMA
+
+starting permutation: ddl_read_time tt_set tt_sel ddl_rename tt_sel
+step ddl_read_time: 
+  INSERT INTO read_time
+    SELECT (extract(epoch FROM clock_timestamp()) * 1000000)::BIGINT;
+
+tt: NOTICE:  yb_read_time should only be set for read-only queries. Write-DML or DDL queries are not allowed when yb_read_time is set.
+step tt_set: 
+  SELECT set_config('yb_read_time', t::text, false) IS NOT NULL AS set FROM read_time;
+
+set
+---
+t  
+(1 row)
+
+step tt_sel: SELECT * FROM t ORDER BY k;
+k| v|  w
+-+--+---
+1|10|100
+2|20|200
+(2 rows)
+
+step ddl_rename: 
+  ALTER TABLE t RENAME COLUMN v TO v2;
+  SELECT pg_sleep(2);
+
+pg_sleep
+--------
+        
+(1 row)
+
+step tt_sel: SELECT * FROM t ORDER BY k;
+ERROR:  The catalog snapshot used for this transaction has been invalidated: MISMATCHED_SCHEMA
+
+starting permutation: ddl_read_time ddl_rename tt_set tt_seq tt_seq
+step ddl_read_time: 
+  INSERT INTO read_time
+    SELECT (extract(epoch FROM clock_timestamp()) * 1000000)::BIGINT;
+
+step ddl_rename: 
+  ALTER TABLE t RENAME COLUMN v TO v2;
+  SELECT pg_sleep(2);
+
+pg_sleep
+--------
+        
+(1 row)
+
+tt: NOTICE:  yb_read_time should only be set for read-only queries. Write-DML or DDL queries are not allowed when yb_read_time is set.
+step tt_set: 
+  SELECT set_config('yb_read_time', t::text, false) IS NOT NULL AS set FROM read_time;
+
+set
+---
+t  
+(1 row)
+
+step tt_seq: SELECT last_value FROM s;
+ERROR:  The catalog snapshot used for this transaction has been invalidated: MISMATCHED_SCHEMA
+step tt_seq: SELECT last_value FROM s;
+ERROR:  The catalog snapshot used for this transaction has been invalidated: MISMATCHED_SCHEMA
+
+starting permutation: ddl_read_time ddl_rename tt_no_check tt_set tt_sel
+step ddl_read_time: 
+  INSERT INTO read_time
+    SELECT (extract(epoch FROM clock_timestamp()) * 1000000)::BIGINT;
+
+step ddl_rename: 
+  ALTER TABLE t RENAME COLUMN v TO v2;
+  SELECT pg_sleep(2);
+
+pg_sleep
+--------
+        
+(1 row)
+
+step tt_no_check: SET yb_disable_catalog_version_check = on;
+step tt_set: 
+  SELECT set_config('yb_read_time', t::text, false) IS NOT NULL AS set FROM read_time;
+
+set
+---
+t  
+(1 row)
+
+step tt_sel: SELECT * FROM t ORDER BY k;
+k| v|  w
+-+--+---
+1|10|100
+2|20|200
+(2 rows)
+
+
+starting permutation: ddl_read_time ddl_rename tt_set tt_sel tt_reset tt_sel
+step ddl_read_time: 
+  INSERT INTO read_time
+    SELECT (extract(epoch FROM clock_timestamp()) * 1000000)::BIGINT;
+
+step ddl_rename: 
+  ALTER TABLE t RENAME COLUMN v TO v2;
+  SELECT pg_sleep(2);
+
+pg_sleep
+--------
+        
+(1 row)
+
+tt: NOTICE:  yb_read_time should only be set for read-only queries. Write-DML or DDL queries are not allowed when yb_read_time is set.
+step tt_set: 
+  SELECT set_config('yb_read_time', t::text, false) IS NOT NULL AS set FROM read_time;
+
+set
+---
+t  
+(1 row)
+
+step tt_sel: SELECT * FROM t ORDER BY k;
+ERROR:  The catalog snapshot used for this transaction has been invalidated: MISMATCHED_SCHEMA
+step tt_reset: RESET yb_read_time;
+step tt_sel: SELECT * FROM t ORDER BY k;
+k|v2|  w
+-+--+---
+1|10|100
+2|20|200
+(2 rows)
+
+
+starting permutation: ddl_read_time ddl_add_col tt_set tt_sel tt_sel
+step ddl_read_time: 
+  INSERT INTO read_time
+    SELECT (extract(epoch FROM clock_timestamp()) * 1000000)::BIGINT;
+
+step ddl_add_col: ALTER TABLE t ADD COLUMN c INT;
+tt: NOTICE:  yb_read_time should only be set for read-only queries. Write-DML or DDL queries are not allowed when yb_read_time is set.
+step tt_set: 
+  SELECT set_config('yb_read_time', t::text, false) IS NOT NULL AS set FROM read_time;
+
+set
+---
+t  
+(1 row)
+
+step tt_sel: SELECT * FROM t ORDER BY k;
+k| v|  w
+-+--+---
+1|10|100
+2|20|200
+(2 rows)
+
+step tt_sel: SELECT * FROM t ORDER BY k;
+k| v|  w
+-+--+---
+1|10|100
+2|20|200
+(2 rows)
+
+
+starting permutation: ddl_read_time ddl_revoke tt_set tt_role tt_sel tt_sel tt_reset_role
+step ddl_read_time: 
+  INSERT INTO read_time
+    SELECT (extract(epoch FROM clock_timestamp()) * 1000000)::BIGINT;
+
+step ddl_revoke: 
+  REVOKE SELECT ON t FROM yb_tt_user;
+  SELECT pg_sleep(2);
+
+pg_sleep
+--------
+        
+(1 row)
+
+tt: NOTICE:  yb_read_time should only be set for read-only queries. Write-DML or DDL queries are not allowed when yb_read_time is set.
+step tt_set: 
+  SELECT set_config('yb_read_time', t::text, false) IS NOT NULL AS set FROM read_time;
+
+set
+---
+t  
+(1 row)
+
+step tt_role: SET ROLE yb_tt_user;
+step tt_sel: SELECT * FROM t ORDER BY k;
+ERROR:  The catalog snapshot used for this transaction has been invalidated: MISMATCHED_SCHEMA
+step tt_sel: SELECT * FROM t ORDER BY k;
+ERROR:  The catalog snapshot used for this transaction has been invalidated: MISMATCHED_SCHEMA
+step tt_reset_role: RESET ROLE;
+
+starting permutation: ddl_read_time ddl_rls tt_set tt_role tt_sel tt_reset_role
+step ddl_read_time: 
+  INSERT INTO read_time
+    SELECT (extract(epoch FROM clock_timestamp()) * 1000000)::BIGINT;
+
+step ddl_rls: ALTER TABLE t ENABLE ROW LEVEL SECURITY;
+tt: NOTICE:  yb_read_time should only be set for read-only queries. Write-DML or DDL queries are not allowed when yb_read_time is set.
+step tt_set: 
+  SELECT set_config('yb_read_time', t::text, false) IS NOT NULL AS set FROM read_time;
+
+set
+---
+t  
+(1 row)
+
+step tt_role: SET ROLE yb_tt_user;
+step tt_sel: SELECT * FROM t ORDER BY k;
+k| v|  w
+-+--+---
+1|10|100
+2|20|200
+(2 rows)
+
+step tt_reset_role: RESET ROLE;
+
+starting permutation: ddl_read_time ddl_add_col tt_set tt_parallel tt_explain_analyze tt_sel
+step ddl_read_time: 
+  INSERT INTO read_time
+    SELECT (extract(epoch FROM clock_timestamp()) * 1000000)::BIGINT;
+
+step ddl_add_col: ALTER TABLE t ADD COLUMN c INT;
+tt: NOTICE:  yb_read_time should only be set for read-only queries. Write-DML or DDL queries are not allowed when yb_read_time is set.
+step tt_set: 
+  SELECT set_config('yb_read_time', t::text, false) IS NOT NULL AS set FROM read_time;
+
+set
+---
+t  
+(1 row)
+
+step tt_parallel: SET debug_parallel_query = on;
+tt: NOTICE:  yb_read_time should only be set for read-only queries. Write-DML or DDL queries are not allowed when yb_read_time is set.
+step tt_explain_analyze: 
+  EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM t;
+
+QUERY PLAN                                    
+----------------------------------------------
+Gather (actual rows=2.00 loops=1)             
+  Workers Planned: 1                          
+  Workers Launched: 1                         
+  Single Copy: true                           
+  ->  Seq Scan on t (actual rows=2.00 loops=1)
+(5 rows)
+
+tt: NOTICE:  yb_read_time should only be set for read-only queries. Write-DML or DDL queries are not allowed when yb_read_time is set.
+step tt_sel: SELECT * FROM t ORDER BY k;
+k| v|  w
+-+--+---
+1|10|100
+2|20|200
+(2 rows)
+
+
+starting permutation: ddl_read_time ddl_rename tt_set tt_parallel tt_explain tt_sel tt_sel
+step ddl_read_time: 
+  INSERT INTO read_time
+    SELECT (extract(epoch FROM clock_timestamp()) * 1000000)::BIGINT;
+
+step ddl_rename: 
+  ALTER TABLE t RENAME COLUMN v TO v2;
+  SELECT pg_sleep(2);
+
+pg_sleep
+--------
+        
+(1 row)
+
+tt: NOTICE:  yb_read_time should only be set for read-only queries. Write-DML or DDL queries are not allowed when yb_read_time is set.
+step tt_set: 
+  SELECT set_config('yb_read_time', t::text, false) IS NOT NULL AS set FROM read_time;
+
+set
+---
+t  
+(1 row)
+
+step tt_parallel: SET debug_parallel_query = on;
+step tt_explain: EXPLAIN (COSTS OFF) SELECT * FROM t;
+QUERY PLAN          
+--------------------
+Gather              
+  Workers Planned: 1
+  Single Copy: true 
+  ->  Seq Scan on t 
+(4 rows)
+
+tt: NOTICE:  yb_read_time should only be set for read-only queries. Write-DML or DDL queries are not allowed when yb_read_time is set.
+step tt_sel: SELECT * FROM t ORDER BY k;
+ERROR:  The catalog snapshot used for this transaction has been invalidated: MISMATCHED_SCHEMA
+tt: NOTICE:  yb_read_time should only be set for read-only queries. Write-DML or DDL queries are not allowed when yb_read_time is set.
+step tt_sel: SELECT * FROM t ORDER BY k;
+ERROR:  The catalog snapshot used for this transaction has been invalidated: MISMATCHED_SCHEMA

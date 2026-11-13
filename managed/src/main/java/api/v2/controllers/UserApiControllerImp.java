@@ -26,8 +26,7 @@ public class UserApiControllerImp extends UserApiControllerImpInterface {
   }
 
   @Override
-  public UserCreation createUser(
-      Http.Request request, UUID cUUID, UserCreateSpec userCreateSpec) {
+  public UserCreation createUser(Http.Request request, UUID cUUID, UserCreateSpec userCreateSpec) {
     return userHandler.createUser(cUUID, userCreateSpec);
   }
 }

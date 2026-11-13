@@ -416,6 +416,7 @@ pgstat_tracks_backend_bktype(BackendType bktype)
 		case YB_GLOBAL_VIEW_BACKEND:
 		case YB_XCLUSTER_DDL_QUEUE_BACKEND:
 		case YB_XCLUSTER_SETUP_BACKEND:
+		case YB_OSC_BACKFILL_BACKEND:
 			return true;
 	}
 

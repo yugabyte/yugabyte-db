@@ -362,7 +362,7 @@ RemoveTablegroupById(Oid grp_oid, bool remove_implicit)
 	 * tablegroup exists to give proper error message if DROP TABLEGROUP ...
 	 * CASCADE is executed. This is because during DROP CASCADE, the implicit
 	 * tablegroup will be implicitly deleted when dependent tables are dropped
-	 * (if ysql_enable_colocated_tables_with_tablespaces is enabled) and we
+	 * (if yb_enable_colocated_tables_with_tablespaces is enabled) and we
 	 * would get a "tablegroup with oid does not exist" error message.
 	 */
 	if (MyDatabaseColocated && !remove_implicit)

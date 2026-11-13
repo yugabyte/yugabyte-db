@@ -792,6 +792,7 @@ static char *yb_test_catalog_preload_cache_list_string;
 static bool yb_conn_mgr_selective_deallocate;
 static bool yb_disable_ddl_transaction_block_for_read_committed;
 static bool yb_bypass_cond_recheck;
+static bool yb_deprecated_enable_object_locking_infra;
 static bool yb_pushdown_is_not_null;
 static bool yb_pushdown_strict_inequality;
 
