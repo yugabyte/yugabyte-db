@@ -573,6 +573,7 @@ grep -nEB1 '}\s+else(.*[^\])?$' "$1" \
   | sed 's/^/error:bad_closing_brace:'\
 'Brace should not be on the same line as else:/'
 if ! [[ "$1" == src/postgres/contrib/bloom/bloom.h ||
+        "$1" == src/postgres/src/backend/replication/logical/logicalctl.c ||
         "$1" == src/postgres/src/include/replication/reorderbuffer.h ||
         "$1" == src/postgres/src/timezone/zic.c ]]; then
   # - Exclude cases where ( is followed by a line starting with '#' (for #ifdef,

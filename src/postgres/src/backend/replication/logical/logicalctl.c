@@ -311,7 +311,8 @@ EnsureLogicalDecodingEnabled(void)
 	 * MyReplicationSlot is not set here.
 	 */
 	Assert(IsYugaByteEnabled() || MyReplicationSlot);
-	Assert(wal_level >= WAL_LEVEL_REPLICA);
+	/* YB: wal_level does not apply to YSQL; see CheckSlotRequirements(). */
+	Assert(IsYugaByteEnabled() || wal_level >= WAL_LEVEL_REPLICA);
 
 	/* Logical decoding is always enabled */
 	if (wal_level >= WAL_LEVEL_LOGICAL)
