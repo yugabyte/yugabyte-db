@@ -522,6 +522,7 @@ extern void assign_recovery_prefetch(int new_value, void *extra);
 
 /* YB declarations */
 extern void YbValidateConfigFile(const char *config_file);
+extern int	YbGetConfigFileIntValue(const char *name);
 extern void YbSetYsqlConnMgrGucDefaults(const char *data, int len);
 extern void YbResetYsqlConnMgrGucDefaults(void);
 extern void YbSetParallelWorker();

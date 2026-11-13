@@ -209,6 +209,39 @@ YbValidateConfigFile(const char *config_file)
 }
 
 /*
+ * Given the name of an integer parameter, return its value in ysql_pg.conf, or
+ * its default if the file does not set it or has an error: the value a login
+ * starts from, before ALTER ROLE and ALTER DATABASE settings. The file is read
+ * the way the pg_file_settings view reads it.
+ */
+int
+YbGetConfigFileIntValue(const char *name)
+{
+	struct config_generic *record = find_option(name, false, false, ERROR);
+	struct config_int *conf = (struct config_int *) record;
+	ConfigVariable *head;
+	ConfigVariable *item;
+	int			result;
+
+	Assert(record->vartype == PGC_INT);
+
+	/* No ALTER ROLE or ALTER DATABASE setting replaced this session's value. */
+	if (record->source <= PGC_S_ARGV)
+		return *conf->variable;
+
+	result = conf->boot_val;
+	head = ProcessConfigFileInternal(NULL /* yb_config_file */ , PGC_SIGHUP,
+									 false /* applySettings */ , DEBUG3);
+	for (item = head; item; item = item->next)
+	{
+		if (item->applied && guc_name_compare(item->name, record->name) == 0)
+			(void) parse_int(item->value, &result, record->flags, NULL);
+	}
+	FreeConfigVariables(head);
+	return result;
+}
+
+/*
  * This function handles both actual config file (re)loads and execution of
  * show_all_file_settings() (i.e., the pg_file_settings view).  In the latter
  * case we don't apply any of the settings, but we make all the usual validity

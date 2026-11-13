@@ -43,4 +43,10 @@ extern bool YbApplyPasswordHistory(Oid roleid, const char *rolename,
  */
 extern int	YbDeletePasswordHistory(Oid roleid);
 
+/*
+ * Returns roleid's own yb_password_validity, in minutes, for the expiration
+ * CreateRole() and AlterRole() stamp on a new password.
+ */
+extern int	YbRolePasswordValidity(Oid roleid);
+
 #endif							/* YB_PASSWORD_HISTORY_H */

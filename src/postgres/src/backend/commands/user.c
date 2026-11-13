@@ -68,19 +68,26 @@ static void DelRoleMems(const char *rolename, Oid roleid,
 
 /*
  * YB: Compute the pg_authid.rolvaliduntil implied by the yb_password_validity
- * policy for a password that is being stored right now.
+ * policy for a password that is being stored right now for roleid
+ * (InvalidOid for a role being created).
  * Returns false when no policy in effect.
  */
 static bool
-YbComputePasswordValidUntil(bool has_valid_until_clause,
+YbComputePasswordValidUntil(Oid roleid, bool has_valid_until_clause,
 							Datum *validUntil_datum)
 {
-	if (has_valid_until_clause || yb_password_validity == 0)
+	int			validity;
+
+	if (has_valid_until_clause)
+		return false;
+
+	validity = YbRolePasswordValidity(roleid);
+	if (validity == 0)
 		return false;
 
 	*validUntil_datum =
 		TimestampTzGetDatum(GetCurrentTimestamp() +
-							yb_password_validity * USECS_PER_MINUTE);
+							validity * USECS_PER_MINUTE);
 	return true;
 }
 
@@ -357,7 +364,8 @@ CreateRole(ParseState *pstate, CreateRoleStmt *stmt)
 
 	/* YB: apply the policy early so later hooks see the expiration we store. */
 	if (password && password[0] != '\0' &&
-		YbComputePasswordValidUntil(dvalidUntil != NULL, &validUntil_datum))
+		YbComputePasswordValidUntil(InvalidOid, dvalidUntil != NULL,
+									&validUntil_datum))
 		validUntil_null = false;
 
 	/*
@@ -854,7 +862,8 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 
 	/* YB: apply the policy before the hook so it sees the expiration we store. */
 	if (password && password[0] != '\0' &&
-		YbComputePasswordValidUntil(dvalidUntil != NULL, &validUntil_datum))
+		YbComputePasswordValidUntil(roleid, dvalidUntil != NULL,
+									&validUntil_datum))
 		validUntil_null = false;
 
 	/*
