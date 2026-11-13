@@ -1259,6 +1259,42 @@ public class GFlagsUtil {
   }
 
   /**
+   * A new cluster, in a new universe or added to one, has no stored value to put back in place of
+   * REDACTED, so a gflag copied from an API response would otherwise be applied and stored as the
+   * literal token. Checks the same gflags as mergeSensitiveGFlags: the version's sensitive gflags,
+   * which must not contain REDACTED, and ysql_hba_conf_csv, which must not contain it anywhere.
+   * Other gflags may contain the word.
+   */
+  public static void checkNoRedactedGFlagsOnCreate(
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      String ybSoftwareVersion,
+      GFlagsValidation gFlagsValidation) {
+    if (!RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()) {
+      return;
+    }
+    Set<String> redactedGFlags =
+        new HashSet<>(
+            RedactingService.getSensitiveGflagsForRedaction(ybSoftwareVersion, gFlagsValidation));
+    redactedGFlags.add(YSQL_HBA_CONF_CSV);
+    for (Map.Entry<String, Map<String, String>> gflags : getUserGFlagMaps(userIntent).entrySet()) {
+      if (gflags.getValue() == null) {
+        continue;
+      }
+      for (Map.Entry<String, String> gflag : gflags.getValue().entrySet()) {
+        if (redactedGFlags.contains(gflag.getKey())
+            && RedactingService.isGFlagRedacted(gflag.getValue())) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "GFlag %s in %s contains %s: a new cluster has no stored value to restore it"
+                      + " from. Submit the actual value.",
+                  gflag.getKey(), gflags.getKey(), RedactingService.SECRET_REPLACEMENT));
+        }
+      }
+    }
+  }
+
+  /**
    * useNodeToNodeClientCerts owns node_to_node_encryption_use_client_certificates, so the gflag
    * can't be set by hand, except to false on a universe without it; while it is on, the identity
    * checks the chart's client cert can't pass stay off.
@@ -2448,8 +2484,11 @@ public class GFlagsUtil {
       Map<String, String> newGFlags,
       GFlagsValidation gFlagsValidation,
       String ybSoftwareVersion) {
-    if (existingGFlags == null || newGFlags == null) {
-      return newGFlags;
+    if (newGFlags == null) {
+      return null;
+    }
+    if (existingGFlags == null) {
+      existingGFlags = Collections.emptyMap();
     }
 
     Map<String, String> mergedGFlags = new HashMap<>(newGFlags);
@@ -2459,11 +2498,24 @@ public class GFlagsUtil {
           RedactingService.getSensitiveGflagsForRedaction(ybSoftwareVersion, gFlagsValidation);
 
       for (String sensitiveFlag : sensitiveGFlagFields) {
+        if (sensitiveFlag.equals(YSQL_HBA_CONF_CSV)) {
+          continue;
+        }
         String newValue = newGFlags.get(sensitiveFlag);
         String existingValue = existingGFlags.get(sensitiveFlag);
 
         if (RedactingService.isGFlagRedacted(newValue)) {
-          if (existingValue != null && existingValue.equals(RedactingService.SECRET_REPLACEMENT)) {
+          if (existingValue == null) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                sensitiveFlag
+                    + " cannot be submitted as "
+                    + RedactingService.SECRET_REPLACEMENT
+                    + ": the universe stores no value for it in the same place (server type,"
+                    + " and AZ for an AZ override) to restore it from."
+                    + " Provide the actual value in the request.");
+          }
+          if (existingValue.equals(RedactingService.SECRET_REPLACEMENT)) {
             throw new PlatformServiceException(
                 BAD_REQUEST,
                 "The stored value of "
@@ -2473,11 +2525,9 @@ public class GFlagsUtil {
                     + "; the real value cannot be recovered."
                     + " Provide the actual value in the request.");
           }
-          if (existingValue != null) {
-            mergedGFlags.put(sensitiveFlag, existingValue);
-            LOG.debug(
-                "Merged sensitive gflag {}: REDACTED -> preserved existing value", sensitiveFlag);
-          }
+          mergedGFlags.put(sensitiveFlag, existingValue);
+          LOG.debug(
+              "Merged sensitive gflag {}: REDACTED -> preserved existing value", sensitiveFlag);
         }
       }
 
@@ -2490,8 +2540,9 @@ public class GFlagsUtil {
               BAD_REQUEST,
               "ysql_hba_conf_csv cannot be submitted with "
                   + RedactingService.SECRET_REPLACEMENT
-                  + " in ldapbindpasswd: no prior universe value exists to restore the password"
-                  + " from. Submit the full ysql_hba_conf_csv with the actual ldapbindpasswd.");
+                  + " in ldapbindpasswd: the universe stores no value for it in the same place"
+                  + " (server type, and AZ for an AZ override) to restore the password from."
+                  + " Submit the full ysql_hba_conf_csv with the actual ldapbindpasswd.");
         }
         if (existingYsqlHbaConf.contains(RedactingService.SECRET_REPLACEMENT)) {
           throw new PlatformServiceException(
@@ -2555,8 +2606,11 @@ public class GFlagsUtil {
       SpecificGFlags newSpecificGFlags,
       GFlagsValidation gFlagsValidation,
       String ybSoftwareVersion) {
-    if (existingSpecificGFlags == null || newSpecificGFlags == null) {
-      return newSpecificGFlags;
+    if (newSpecificGFlags == null) {
+      return null;
+    }
+    if (existingSpecificGFlags == null) {
+      existingSpecificGFlags = new SpecificGFlags();
     }
 
     // Merge per-process flags
