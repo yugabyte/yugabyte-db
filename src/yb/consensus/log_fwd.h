@@ -17,6 +17,7 @@
 
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/util/enums.h"
 #include "yb/util/numbered_deque.h"
 
 namespace yb {
@@ -52,6 +53,15 @@ using ReadableLogSegmentPtr = scoped_refptr<ReadableLogSegment>;
 using SegmentSequence = NumberedDeque<int64_t, ReadableLogSegmentPtr>;
 
 YB_STRONGLY_TYPED_BOOL(ObeyMemoryLimit);
+
+YB_DEFINE_ENUM(WalEntryState,
+  // Appended or queued for append to the WAL, but not yet fsynced.
+  // A write op could be applied while it is still queued, see ApplyPendingOperationsUnlocked.
+  (kAppended)
+  // Appended to the WAL, but the last WAL fsync failed, so it may never become durable.
+  (kSyncFailed)
+  // Appended to the WAL and fsynced.
+  (kDurable));
 
 }  // namespace log
 }  // namespace yb

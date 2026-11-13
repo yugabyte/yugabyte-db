@@ -33,6 +33,7 @@
 #include "yb/tablet/tablet.h"
 
 #include <algorithm>
+#include <deque>
 #include <tuple>
 #include <utility>
 
@@ -46,6 +47,7 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/pgsql_error.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/transaction.h"
@@ -78,9 +80,11 @@
 #include "yb/docdb/rocksdb_writer.h"
 
 #include "yb/dockv/key_bytes.h"
+#include "yb/dockv/value.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
+#include "yb/gutil/endian.h"
 
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/memtable.h"
@@ -117,7 +121,9 @@
 #include "yb/tserver/tserver_error.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/file_util.h"
 #include "yb/util/flag_validators.h"
@@ -187,6 +193,17 @@ DEFINE_RUNTIME_int32(verify_index_rate_rows_per_sec, 0,
     "This is a per-tablet flag, i.e. a tserver responsible for multiple tablets could be "
     "processing more than this.");
 TAG_FLAG(verify_index_rate_rows_per_sec, advanced);
+
+DEFINE_RUNTIME_uint64(online_schema_change_backfill_rows_per_chunk, 10000000,
+    "How many source rows one online schema change backfill chunk RPC copies before returning to "
+    "the master. The master persists the chunk's resume key and refreshes progress on every "
+    "response, and applies an operator cancel between chunks, so this bounds how much work a crash "
+    "repeats, how stale pg_yb_online_schema_change's counters can be, and how long a cancel takes "
+    "to be honored -- against one master sys_catalog write and one new postgres backend per chunk. "
+    "The chunk is also bounded by the RPC deadline, which at the default usually ends it first. "
+    "Rounded up to a whole prefetch page (yb_fetch_row_limit), since the chunk only stops between "
+    "pages. 0 leaves the chunk bounded only by the RPC deadline.");
+TAG_FLAG(online_schema_change_backfill_rows_per_chunk, advanced);
 
 DEFINE_RUNTIME_int32(backfill_index_timeout_grace_margin_ms, -1,
              "The time we give the backfill process to wrap up the current set "
@@ -625,6 +642,15 @@ class Tablet::RocksDbListener : public rocksdb::EventListener {
   RocksDbListener(Tablet& tablet, const std::string& log_prefix)
       : tablet_(tablet), log_prefix_(log_prefix) {}
 
+  void OnFlushScheduled(rocksdb::DB*, const storage::UserFrontier* largest_frontier) override {
+    // WalState starts the WAL fsync if needed, so the flush filter usually finds the memtables
+    // durable on the first attempt.
+    if (largest_frontier) {
+      tablet_.tablet_context_->WalState(
+          down_cast<const docdb::ConsensusFrontier&>(*largest_frontier).op_id());
+    }
+  }
+
   void OnFlushCompleted(rocksdb::DB*, const rocksdb::FlushJobInfo&) override {
     if (auto* participant = tablet_.transaction_participant()) {
       VLOG_WITH_PREFIX_AND_FUNC(2)
@@ -824,6 +850,7 @@ Tablet::Tablet(const TabletInitData& data)
       metadata_cache_(data.metadata_cache),
       local_tablet_filter_(data.local_tablet_filter),
       log_prefix_suffix_(data.log_prefix_suffix),
+      tablet_context_(DCHECK_NOTNULL(data.tablet_context)),
       is_sys_catalog_(data.is_sys_catalog),
       txns_enabled_(data.txns_enabled),
       allowed_history_cutoff_provider_(data.allowed_history_cutoff_provider),
@@ -1077,6 +1104,54 @@ struct Tablet::IntentsDbFlushFilterState {
   }
 };
 
+bool Tablet::WalAllowsPersist(const OpId& op_id, const char* what) {
+  auto state = tablet_context_->WalState(op_id);
+  switch (state) {
+    case log::WalEntryState::kAppended:
+      // A power loss could drop the ops from the WAL while their data is persisted.
+      return false;
+    case log::WalEntryState::kSyncFailed:
+      // Waiting could block flushes, including the shutdown one, for as long as fsync keeps
+      // failing, so risk the power loss case instead.
+      YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 10)
+          << "Flushing " << what << " with ops not fsynced in log, op id: " << op_id;
+      return true;
+    case log::WalEntryState::kDurable:
+      return true;
+  }
+  FATAL_INVALID_ENUM_VALUE(log::WalEntryState, state);
+}
+
+Result<bool> Tablet::RegularDbFlushFilter(const rocksdb::MemTable& memtable) {
+  auto frontiers = memtable.Frontiers();
+  if (frontiers) {
+    const auto& op_id = down_cast<const docdb::ConsensusFrontier&>(frontiers->Largest()).op_id();
+    // Otherwise bootstrap after a power loss could fail with "WAL files missing".
+    // A skipped flush is retried after the fsync.
+    return WalAllowsPersist(op_id, "memtable");
+  }
+
+  // It is correct to not have frontiers when memtable is empty
+  if (memtable.IsEmpty()) {
+    return true;
+  }
+
+  // This is a degenerate case that should ideally never occur. An empty memtable got into the
+  // list of immutable memtables. We say it is OK to flush it and move on.
+  static const char* error_msg =
+      "A memtable with no frontiers set found when deciding what memtables to "
+      "flush! This should not happen.";
+  LOG_WITH_PREFIX(DFATAL) << error_msg;
+  return STATUS(IllegalState, error_msg);
+}
+
+void Tablet::WaitWalDurable(const OpId& op_id) {
+  BusyWait(
+      make_lw_function([this, &op_id] { return WalAllowsPersist(op_id, "vector index"); }),
+      Format("$0op $1 to become durable in log", LogPrefix(), op_id),
+      /* poll_interval= */ 1ms, /* warn_after= */ 10s, /* max_poll_interval= */ 100ms);
+}
+
 Result<bool> Tablet::IntentsDbFlushFilter(
     const rocksdb::MemTable& memtable, bool write_blocked,
     std::shared_ptr<Tablet::IntentsDbFlushFilterState> state) {
@@ -1087,9 +1162,11 @@ Result<bool> Tablet::IntentsDbFlushFilter(
   }
 
   auto frontiers = memtable.Frontiers();
+  OpId memtable_op_id;
   int64_t memtable_index = std::numeric_limits<int64_t>::max();
   if (frontiers) {
-    memtable_index = down_cast<const docdb::ConsensusFrontier&>(frontiers->Largest()).op_id().index;
+    memtable_op_id = down_cast<const docdb::ConsensusFrontier&>(frontiers->Largest()).op_id();
+    memtable_index = memtable_op_id.index;
 
     if (state->largest_flushed_index.empty()) {
       // We allow to flush intents DB only after regular DB.
@@ -1134,11 +1211,26 @@ Result<bool> Tablet::IntentsDbFlushFilter(
     VLOG_WITH_PREFIX_AND_FUNC(4) << "Flush ability: " << AsString(state->flush_ability);
   }
 
+  // A failed vector save cannot satisfy an intents durability dependency. Check even when flush
+  // ability was cached as kAlreadyFlushing; no further save task may remain to make progress.
+  if (state->vector_indexes) {
+    for (size_t idx = 0; idx != state->vector_indexes->size(); ++idx) {
+      if (state->flush_ability[idx + 1] != rocksdb::FlushAbility::kNoNewData &&
+          !state->Flushed(idx + 1, memtable_index)) {
+        RETURN_NOT_OK((*state->vector_indexes)[idx]->GetFlushStatus());
+      }
+    }
+  }
+
   // If regular db does not have anything to flush, it means that we have just added intents,
   // without apply, so it is OK to flush the intents RocksDB.
   if (!state->HasNewData(memtable_index)) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "No new data: " << state->ToString();
-    return true;
+    // Regular DB flushed op id does not bound this flush, so the intents must be durable in WAL.
+    if (!frontiers) {
+      return true;
+    }
+    return WalAllowsPersist(memtable_op_id, "intents");
   }
 
   // Force flush of regular DB if we were not able to flush for too long.
@@ -1162,6 +1254,7 @@ Result<bool> Tablet::IntentsDbFlushFilter(
     }
   }
 
+  TEST_SYNC_POINT_CALLBACK("Tablet::IntentsDbFlushFilter:Blocked", this);
   return false;
 }
 
@@ -1354,13 +1447,9 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
       docdb::CreateCompactionMetrics(tablet_metrics_entity_));
 
   regular_rocksdb_options.mem_table_flush_filter_factory = MakeMemTableFlushFilterFactory([this] {
-    {
-      std::lock_guard lock(flush_filter_mutex_);
-      if (mem_table_flush_filter_factory_) {
-        return mem_table_flush_filter_factory_();
-      }
-    }
-    return rocksdb::MemTableFilter();
+    return [this](const rocksdb::MemTable& memtable, bool) {
+      return RegularDbFlushFilter(memtable);
+    };
   });
 
   regular_rocksdb_options.listeners.push_back(
@@ -1415,7 +1504,8 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
           << ") does not match home rocksdb_dir (" << db_dir << ")";
 
       // Point flushes and compaction output at the persisted target disk. OpenTablet validated or
-      // repaired target_tier_path_id (ResolveTargetTierPathId) before this runs.
+      // repaired target_tier_path_id (ResolveTargetTierPathId) before this runs, except for a
+      // target tier with no disks on this node, whose stale path_id is used as is (follow-up).
       regular_rocksdb_options.target_path_id = metadata()->target_tier_path_id();
       LOG_WITH_PREFIX(INFO) << "Opening RocksDB with " << tier_paths.size()
                             << " tiered db_paths (target_path_id="
@@ -2820,6 +2910,19 @@ void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteQuery> que
   WriteQuery::Execute(std::move(query));
 }
 
+Result<size_t> Tablet::EvictTableReaders() {
+  auto scoped_read_operation = CreateScopedRWOperationBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_read_operation);
+
+  size_t evicted = 0;
+  for (auto* db : {regular_db_.get(), intents_db_.get()}) {
+    if (db) {
+      evicted += db->EvictTableReaders();
+    }
+  }
+  return evicted;
+}
+
 Status Tablet::Flush(
     FlushMode mode, FlushFlags flags, int64_t ignore_if_flushed_after_tick,
     rocksdb::FlushReason rocksdb_flush_reason) {
@@ -2835,10 +2938,22 @@ Status Tablet::Flush(
     RETURN_NOT_OK(pending_op);
   }
 
+  // A failed vector index flush is returned last, so it does not keep the RocksDB flushes, e.g.
+  // the memory manager's, from running.
   VectorIndexList vector_indexes_list;
+  Status vector_indexes_flush_status;
   if (HasFlags(flags, FlushFlags::kVectorIndexes)) {
     vector_indexes_list = vector_indexes_->List();
-    vector_indexes_list.Flush();
+    vector_indexes_flush_status = vector_indexes_list.Flush();
+    // VectorIndexList::Flush skips indexes that are shutting down. A caller holding a blocking
+    // operation only sees that for a dropped index, but one holding a non-blocking operation, e.g.
+    // DoCleanupIntentFiles, can race tablet shutdown, which stops the indexes before pausing such
+    // operations. Their unflushed vectors still need the log and the intents. StartShutdown marks
+    // the tablet's indexes before stopping each one, so this check sees it.
+    if (vector_indexes_flush_status.ok() && vector_indexes_->ShutdownStarted()) {
+      vector_indexes_flush_status = STATUS_FORMAT(
+          ShutdownInProgress, "$0Vector indexes are shutting down", LogPrefix());
+    }
   }
 
   rocksdb::FlushOptions options(rocksdb_flush_reason);
@@ -2861,7 +2976,7 @@ Status Tablet::Flush(
     RETURN_NOT_OK(vector_indexes_list.WaitForFlush());
   }
 
-  return Status::OK();
+  return vector_indexes_flush_status;
 }
 
 Status Tablet::Flush(FlushMode mode, FlushFlags flags, rocksdb::FlushReason rocksdb_flush_reason) {
@@ -3137,18 +3252,21 @@ Status Tablet::SetAllCDCRetentionBarriersUnlocked(
                                                       initial_retention_barrier,
                                                       barrier_move_selector));
   // Intents Retention setting on txn_participant
-  // 1. cdc_sdk_intents_op_id - opid beyond which GC will not happen
+  // 1. cdc_sdk_intents_op_id - opid beyond which GC will not happen. This is same as what is
+  // persisted in the tablet metadata above.
   // 2. cdc_sdk_op_id_expiration - time limit upto which intents barrier setting holds
   // 3. min_start_ht_cdc_unstreamed_txns - time up to which intents SST files retained for CDC can
   // be deleted, provided their maximum record time is earlier than this value.
   auto txn_participant = transaction_participant();
   if (barrier_move_selector.move_cdc_sdk_min_checkpoint_op_id && txn_participant) {
+    const auto intents_op_id = metadata_->cdc_sdk_min_checkpoint_op_id();
     VLOG_WITH_PREFIX_AND_FUNC(1)
-        << "Intents opid retention duration = " << cdc_sdk_op_id_expiration
+        << "Intents op id = " << intents_op_id << " (requested " << cdc_sdk_intents_op_id
+        << "), intents opid retention duration = " << cdc_sdk_op_id_expiration
         << ", Minimum start time for CDC unstreamed txns from available gc log segments = "
         << min_start_ht_cdc_unstreamed_txns;
     txn_participant->SetIntentRetainOpIdAndTime(
-        cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration, min_start_ht_cdc_unstreamed_txns);
+        intents_op_id, cdc_sdk_op_id_expiration, min_start_ht_cdc_unstreamed_txns);
     if (FLAGS_cdc_immediate_transaction_cleanup) {
       CleanupIntentFiles();
     }
@@ -3301,13 +3419,21 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
     index_info.emplace(table_info.index_info());
   }
 
+  // Decided before the table is added, so that the mark goes into the superblock together with the
+  // table: a flush in between would record this operation as applied without the mark.
+  const bool repair_pending =
+      NeedsVectorReverseMappingRepair(schema, table_info.old_schema_packings()) &&
+      !metadata_->HasTable(table_info.table_id());
   auto table_info_ptr = VERIFY_RESULT(metadata_->AddTable(
       table_info.table_id(), table_info.namespace_name(), table_info.namespace_id(),
       table_info.table_name(),
       table_info.table_type(), schema, qlexpr::IndexMap(), partition_schema, index_info,
       table_info.schema_version(), op_id, ht, table_info.pg_table_id(),
       SkipTableTombstoneCheck(table_info.skip_table_tombstone_check()),
-      table_info.old_schema_packings()));
+      table_info.old_schema_packings(), repair_pending));
+  if (repair_pending && state_ != State::kBootstrapping) {
+    vector_indexes_->ScheduleReverseMappingRepair(table_info.table_id());
+  }
 
   if (table_info_ptr->NeedVectorIndex()) {
     auto indexed_table_info = VERIFY_RESULT(metadata_->GetTableInfo(
@@ -3349,6 +3475,198 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
     }
   }
 
+  return Status::OK();
+}
+
+namespace {
+
+// Buffers the entries VectorIndexesUpdater writes, so they can be written after the scan that
+// produced them, and writes them as a DirectWriter.
+class BufferedReverseMappingWriter
+    : public rocksdb::DirectWriteHandler, public rocksdb::DirectWriter {
+ public:
+  std::pair<Slice, Slice> Put(const SliceParts& key, const SliceParts& value) override {
+    auto& entry = entries_.emplace_back(
+        std::string(key.SumSizes(), '\0'), std::string(value.SumSizes(), '\0'));
+    key.CopyAllTo(entry.first.data());
+    value.CopyAllTo(entry.second.data());
+    return {entry.first, entry.second};
+  }
+
+  void SingleDelete(const Slice& key) override {
+    LOG(DFATAL) << "Unexpected single delete: " << key.ToDebugHexString();
+  }
+
+  Status Apply(rocksdb::DirectWriteHandler& handler) override {
+    for (const auto& [key, value] : entries_) {
+      Slice key_slice(key);
+      Slice value_slice(value);
+      handler.Put({&key_slice, 1}, {&value_slice, 1});
+    }
+    return Status::OK();
+  }
+
+  size_t size() const {
+    return entries_.size();
+  }
+
+  void Clear() {
+    entries_.clear();
+  }
+
+ private:
+  // A deque keeps the slices Put returns valid.
+  std::deque<std::pair<std::string, std::string>> entries_;
+};
+
+// A vector column added by an ALTER before an xCluster target's CREATE TABLE is only in the old
+// packings the table is created with.
+bool HasVectorColumn(
+    const Schema& schema,
+    const google::protobuf::RepeatedPtrField<dockv::SchemaPackingPB>& old_schema_packings) {
+  for (const auto& column : schema.columns()) {
+    if (column.type()->main() == DataType::VECTOR) {
+      return true;
+    }
+  }
+  for (const auto& packing : old_schema_packings) {
+    for (const auto& column : packing.columns()) {
+      if (column.data_type() == PersistentDataType::VECTOR) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+} // namespace
+
+// An automatic mode xCluster target applies the rows of a new colocated table before the DDL queue
+// creates the table there (#34504). With no packing for the colocation id, the apply path wrote
+// none of the reverse mapping entries the table owns.
+bool Tablet::NeedsVectorReverseMappingRepair(
+    const Schema& schema,
+    const google::protobuf::RepeatedPtrField<dockv::SchemaPackingPB>& old_schema_packings) {
+  const auto& table_properties = schema.table_properties();
+  if (!schema.has_colocation_id() || !table_properties.owns_vector_reverse_mapping() ||
+      !table_properties.writes_vector_reverse_mapping() || !regular_db_ ||
+      !HasVectorColumn(schema, old_schema_packings)) {
+    return false;
+  }
+  // The key prefix of a colocated YSQL table, as DocReadContext::UpdateKeyPrefix builds it.
+  char table_key_prefix_buffer[1 + sizeof(ColocationId)];
+  table_key_prefix_buffer[0] = dockv::KeyEntryTypeAsChar::kColocationId;
+  BigEndian::Store32(table_key_prefix_buffer + 1, schema.colocation_id());
+  const Slice table_key_prefix(table_key_prefix_buffer, sizeof(table_key_prefix_buffer));
+
+  rocksdb::ReadOptions read_options;
+  read_options.fill_cache = false;
+  std::unique_ptr<rocksdb::Iterator> iter(regular_db_->NewIterator(read_options));
+  iter->Seek(table_key_prefix);
+  if (iter->Valid()) {
+    return iter->key().starts_with(table_key_prefix);
+  }
+  if (!iter->status().ok()) {
+    // A spurious repair only costs a scan, a missed one leaves the rows unreachable.
+    LOG_WITH_PREFIX(WARNING)
+        << "Failed to check for rows of colocation " << schema.colocation_id()
+        << " applied before its table, repairing its reverse mapping: " << iter->status();
+    return true;
+  }
+  return false;
+}
+
+// Writes the entries each at the write time of the value it maps, as the apply path would have, so
+// later tombstones of those vectors still win.
+Status Tablet::WriteMissingVectorReverseMappings(const TableInfo& table_info, const OpId& op_id) {
+  constexpr size_t kEntriesPerWrite = 10000;
+
+  const auto start = MonoTime::Now();
+  const auto table_key_prefix = table_info.doc_read_context->table_key_prefix();
+  // An empty prefix would scan, and write entries for, every table of the tablet.
+  SCHECK_FORMAT(
+      table_key_prefix.starts_with(dockv::KeyEntryTypeAsChar::kColocationId), IllegalState,
+      "Unexpected key prefix of colocated table $0: $1", table_info.table_id,
+      table_key_prefix.ToDebugHexString());
+  docdb::ConsensusFrontiers write_frontiers;
+  write_frontiers.Smallest().set_op_id(op_id);
+  write_frontiers.Largest().set_op_id(op_id);
+  BufferedReverseMappingWriter writer;
+  size_t num_scanned = 0;
+  size_t num_written = 0;
+  auto write = [this, &writer, &write_frontiers, &num_written] {
+    if (writer.size() == 0) {
+      return;
+    }
+    rocksdb::WriteBatch write_batch;
+    write_batch.SetDirectWriter(&writer);
+    WriteToRocksDB(write_frontiers, &write_batch, docdb::StorageDbType::kRegular);
+    num_written += writer.size();
+    writer.Clear();
+  };
+
+  // Raw entries, every version: the rows were applied at their source commit times, which can be
+  // above the hybrid time of the operation that added the table.
+  rocksdb::ReadOptions read_options;
+  read_options.fill_cache = false;
+  std::unique_ptr<rocksdb::Iterator> iter(regular_db_->NewIterator(read_options));
+  auto decode_key = [&iter]() -> Result<std::pair<Slice, DocHybridTime>> {
+    Slice key = iter->key();
+    auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(&key));
+    SCHECK(
+        key.ends_with(dockv::KeyEntryTypeAsChar::kHybridTime), Corruption,
+        Format("Missing hybrid time marker: $0", iter->key().ToDebugHexString()));
+    key.remove_suffix(1);
+    return std::pair(key, doc_ht);
+  };
+
+  // The colocation id can be reused after a DROP TABLE, whose rows stay behind the table tombstone
+  // until compaction removes them. They are not rows of this table.
+  dockv::KeyBytes table_tombstone_key(table_key_prefix);
+  table_tombstone_key.AppendKeyEntryType(dockv::KeyEntryType::kGroupEnd);
+  DocHybridTime table_tombstone_time = DocHybridTime::kMin;
+  for (iter->Seek(table_tombstone_key.AsSlice());
+       iter->Valid() && iter->key().starts_with(table_tombstone_key.AsSlice()); iter->Next()) {
+    auto [key, doc_ht] = VERIFY_RESULT(decode_key());
+    // A colocated DROP or TRUNCATE writes the tombstone in a transaction, with control fields.
+    auto is_tombstone = dockv::Value::IsTombstoned(iter->value());
+    if (key == table_tombstone_key.AsSlice() && is_tombstone.ok() && *is_tombstone) {
+      table_tombstone_time = std::max(table_tombstone_time, doc_ht);
+    }
+  }
+  RETURN_NOT_OK(iter->status());
+
+  docdb::ConsensusFrontiers frontiers;
+  vector_index::VectorLSMChunkHolds chunk_holds;
+  docdb::VectorIndexesUpdater updater(
+      /* indexes= */ nullptr, *metadata_, frontiers, docdb::StorageSet::All(), chunk_holds);
+  for (iter->Seek(table_key_prefix);
+       iter->Valid() && iter->key().starts_with(table_key_prefix); iter->Next()) {
+    if (++num_scanned % kEntriesPerWrite == 0) {
+      // Raised while pending operations are drained, for a shutdown but also for a truncate or a
+      // restore, which wait for this scan otherwise. The latter return TryAgain to repeat the
+      // repair once the storages are back.
+      if (auto status = abort_pending_op_source_.AbortStatus(); !status.ok()) {
+        return IsShutdownRequested()
+            ? status : STATUS_FORMAT(TryAgain, "Storages are being replaced: $0", status);
+      }
+    }
+    auto [key, doc_ht] = VERIFY_RESULT(decode_key());
+    if (doc_ht <= table_tombstone_time) {
+      continue;
+    }
+    RETURN_NOT_OK(updater.Feed(writer, key, iter->value(), doc_ht));
+    if (writer.size() >= kEntriesPerWrite) {
+      write();
+    }
+  }
+  RETURN_NOT_OK(iter->status());
+  write();
+
+  LOG_WITH_PREFIX(INFO)
+      << "Scanned " << num_scanned << " entries of " << table_info.table_id << " for reverse "
+      << "mapping entries applied before the table, wrote " << num_written << " in "
+      << MonoTime::Now() - start;
   return Status::OK();
 }
 
@@ -3577,40 +3895,45 @@ constexpr auto kBackfillReadSnapshotTooOldRemedy =
     "Consider increasing tserver timestamp_history_retention_interval_sec above the expected "
     "CREATE INDEX duration and retrying";
 
+// Maps the error of a YSQL backfill query to the status the backfill reports. Returns one of
+// - TryAgain: for retryable errors
+// - IllegalState: for nonretryable errors
+Status BackfillChunkQueryError(const Status& query_status, const string& query) {
+  const auto libpq_error_msg = AuxilaryMessage(query_status).value();
+  LOG(WARNING) << "libpq query \"" << query << "\" returned " << query_status << ": "
+               << libpq_error_msg;
+  const auto pg_error_code = PgsqlError::ValueFromStatus(query_status);
+  // Keep the SQLSTATE so that an error which reaches the CREATE INDEX backend is raised with
+  // the PostgreSQL error code it failed with.
+  const auto keep_pg_error_code = [&pg_error_code](Status status) {
+    return pg_error_code ? status.CloneAndAddErrorCode(PgsqlError(*pg_error_code)) : status;
+  };
+  // The 2 spaces after ERROR: is necessary to match the error message.
+  constexpr auto kSchemaMismatchSubstring = "ERROR:  schema version mismatch";
+  if (libpq_error_msg.starts_with(kSchemaMismatchSubstring)) {
+    return STATUS(TryAgain, libpq_error_msg, query_status.ErrorCodesSlice(), size_t(0));
+  }
+  // Attach the remedy hint to SnapshotTooOld errors.  The SQLSTATE does not say which read was
+  // rejected, so the hint may also land on a SnapshotTooOld arising from something other than
+  // the indexed-table scan, such as the syscatalog snapshot.  That is acceptable: such cases are
+  // practically unreachable from a fresh per-chunk backend, and the hint is merely advisory.
+  if (pg_error_code && *pg_error_code == YBPgErrorCode::YB_PG_SNAPSHOT_TOO_OLD) {
+    return keep_pg_error_code(STATUS(IllegalState, Format(
+        "$0. $1", libpq_error_msg, kBackfillReadSnapshotTooOldRemedy)));
+  }
+  return keep_pg_error_code(STATUS(IllegalState, libpq_error_msg));
+}
+
 // On success, returns
 // - backfilled_until
 // - num rows processed in table
 // - num rows backfilled to index
-// On failure, returns one of
-// - TryAgain: for retryable errors
-// - IllegalState: for nonretryable errors
+// On failure, returns what BackfillChunkQueryError does.
 Result<std::tuple<std::string, uint64_t, double>> QueryPostgresToDoBackfill(
     pgwrapper::PGConn* conn, const string& query) {
   auto result = conn->FetchRow<std::string, double, double>(query);
   if (!result.ok()) {
-    const auto libpq_error_msg = AuxilaryMessage(result.status()).value();
-    LOG(WARNING) << "libpq query \"" << query << "\" returned " << result.status() << ": "
-                 << libpq_error_msg;
-    const auto pg_error_code = PgsqlError::ValueFromStatus(result.status());
-    // Keep the SQLSTATE so that an error which reaches the CREATE INDEX backend is raised with
-    // the PostgreSQL error code it failed with.
-    const auto keep_pg_error_code = [&pg_error_code](Status status) {
-      return pg_error_code ? status.CloneAndAddErrorCode(PgsqlError(*pg_error_code)) : status;
-    };
-    // The 2 spaces after ERROR: is necessary to match the error message.
-    constexpr auto kSchemaMismatchSubstring = "ERROR:  schema version mismatch";
-    if (libpq_error_msg.starts_with(kSchemaMismatchSubstring)) {
-      return STATUS(TryAgain, libpq_error_msg, result.status().ErrorCodesSlice(), size_t(0));
-    }
-    // Attach the remedy hint to SnapshotTooOld errors.  The SQLSTATE does not say which read was
-    // rejected, so the hint may also land on a SnapshotTooOld arising from something other than
-    // the indexed-table scan, such as the syscatalog snapshot.  That is acceptable: such cases are
-    // practically unreachable from a fresh per-chunk backend, and the hint is merely advisory.
-    if (pg_error_code && *pg_error_code == YBPgErrorCode::YB_PG_SNAPSHOT_TOO_OLD) {
-      return keep_pg_error_code(STATUS(IllegalState, Format(
-          "$0. $1", libpq_error_msg, kBackfillReadSnapshotTooOldRemedy)));
-    }
-    return keep_pg_error_code(STATUS(IllegalState, libpq_error_msg));
+    return BackfillChunkQueryError(result.status(), query);
   }
   const auto [returned_spec, num_rows_backfilled_in_index, num_rows_scanned] = *result;
   PgsqlBackfillSpecPB spec;
@@ -3623,6 +3946,42 @@ Result<std::tuple<std::string, uint64_t, double>> QueryPostgresToDoBackfill(
   // scanned separately, which is the number of base table rows that were processed.
   return std::make_tuple(
       spec.next_row_key(), static_cast<uint64_t>(num_rows_scanned), num_rows_backfilled_in_index);
+}
+
+struct BackfillChunkResult {
+  PgsqlBackfillSpecPB spec;
+  double num_rows;
+};
+
+// On failure, returns what BackfillChunkQueryError does.
+Result<BackfillChunkResult> QueryPostgresBackfillChunk(
+    pgwrapper::PGConn* conn, const string& query) {
+  auto result = conn->FetchRow<std::string, double>(query);
+  if (!result.ok()) {
+    return BackfillChunkQueryError(result.status(), query);
+  }
+  const auto& [returned_spec, num_rows] = *result;
+  BackfillChunkResult chunk;
+  chunk.spec.ParseFromString(a2b_hex(returned_spec));
+  chunk.num_rows = num_rows;
+  VLOG(3) << "Returned backfill spec: { " << chunk.spec.ShortDebugString() << " }";
+  VLOG(4) << "Returned backfill spec (raw): " << returned_spec;
+  return chunk;
+}
+
+// Opens an internal PG connection for a YSQL backfill. It uses snapshot isolation because the
+// backfill reads at a fixed read time, which SERIALIZABLE does not allow.
+Result<pgwrapper::PGConn> CreateBackfillPGConn(
+    const HostPort& pgsql_proxy_bind_address, const std::string& database_name,
+    uint64_t postgres_auth_key, CoarseTimePoint deadline,
+    std::string_view yb_internal_conn_kind = {}) {
+  auto conn_result = pgwrapper::CreateInternalPGConnBuilder(
+                         pgsql_proxy_bind_address, database_name,
+                         pgwrapper::PGConnSettings::kDefaultUser, postgres_auth_key, deadline,
+                         yb_internal_conn_kind)
+                         .Connect();
+  return pgwrapper::SetDefaultTransactionIsolation(
+      std::move(conn_result), IsolationLevel::SNAPSHOT_ISOLATION);
 }
 
 struct BackfillParams {
@@ -3708,6 +4067,37 @@ void SlowdownBackfillForTests() {
   }
 }
 
+struct YsqlBackfillPage {
+  std::string backfilled_until;
+  uint64_t num_rows;
+};
+
+// Runs YSQL backfill pages over one PG connection until the tablet is done, the deadline is near,
+// or max_rows rows are processed (0 means no row limit). run_page runs the page described by a
+// serialized backfill spec.
+template <class RunPage>
+Status RunYsqlBackfillPages(
+    const BackfillParams& backfill_params, uint64_t max_rows, const RunPage& run_page,
+    uint64_t* number_of_rows_processed, std::string* backfilled_until) {
+  do {
+    // Rebuild the spec from the resume key rather than reuse the returned one: the returned
+    // spec's `count` accumulates across pages, so reusing it would put `count` past `limit` from
+    // the second page on.
+    const auto page = VERIFY_RESULT(run_page(
+        GenerateSerializedBackfillSpec(backfill_params.batch_size, *backfilled_until)));
+    *backfilled_until = page.backfilled_until;
+    *number_of_rows_processed += page.num_rows;
+
+    VLOG(2) << "Processed " << *number_of_rows_processed << " rows so far in this chunk. "
+            << "Setting backfilled_until to \"" << b2a_hex(*backfilled_until) << "\"";
+
+    MaybeSleepToThrottleBackfill(backfill_params.start_time, *number_of_rows_processed);
+  } while (CanProceedToBackfillMoreRows(
+               backfill_params, *backfilled_until, *number_of_rows_processed) &&
+           (max_rows == 0 || *number_of_rows_processed < max_rows));
+  return Status::OK();
+}
+
 }  // namespace
 
 // Assume that we are already in the Backfilling mode.
@@ -3716,6 +4106,7 @@ Status Tablet::BackfillIndexesForYsql(
     const std::string& backfill_from,
     const CoarseTimePoint deadline,
     const HybridTime read_time,
+    const HybridTime origination_ht,
     const HostPort& pgsql_proxy_bind_address,
     const std::string& database_name,
     const uint64_t postgres_auth_key,
@@ -3729,14 +4120,9 @@ Status Tablet::BackfillIndexesForYsql(
   SlowdownBackfillForTests();
   *backfilled_until = backfill_from;
   BackfillParams backfill_params(deadline, true /* is_ysql */);
-  auto conn_result  = pgwrapper::CreateInternalPGConnBuilder(
-                          pgsql_proxy_bind_address, database_name,
-                          pgwrapper::PGConnSettings::kDefaultUser, postgres_auth_key,
-                          backfill_params.modified_deadline)
-                          .Connect();
-  // BACKFILL passes a read time and SERIALIZABLE is incompatible with fixed read time.
-  auto conn = VERIFY_RESULT(pgwrapper::SetDefaultTransactionIsolation(
-      std::move(conn_result), IsolationLevel::SNAPSHOT_ISOLATION));
+  auto conn = VERIFY_RESULT(CreateBackfillPGConn(
+      pgsql_proxy_bind_address, database_name, postgres_auth_key,
+      backfill_params.modified_deadline));
 
   if (is_xcluster_target) {
     // For xCluster targets, we don't need to use the xCluster safe time as we are reading at
@@ -3744,6 +4130,15 @@ Status Tablet::BackfillIndexesForYsql(
     // For automatic mode colocated indexes, this is necessary since the ddl_queue table would
     // hold up the xCluster safe time, and thus backfill would get stuck.
     RETURN_NOT_OK(conn.Execute("SET yb_xcluster_consistency_level = tablet;"));
+  }
+
+  // The backfill's writes are made on behalf of a CREATE INDEX DDL, so they need to carry its
+  // origination time, not that of the BACKFILL INDEX statements.
+  if (origination_ht) {
+    VLOG(1) << "Backfilling index " << index.table_id() << " with origination time "
+            << origination_ht.GetPhysicalValueMicros();
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "SET yb_origination_time_override = $0;", origination_ht.GetPhysicalValueMicros()));
   }
 
   // Cannot use Oid type because for large OID such as 2147500041, it overflows Postgres
@@ -3756,34 +4151,85 @@ Status Tablet::BackfillIndexesForYsql(
   DCHECK_EQ(*num_rows_backfilled_in_index, 0.0);
 
   SCOPED_WAIT_STATUS(BackfillIndex_WaitToBackfillTablet);
-  do {
-    std::string serialized_backfill_spec =
-        GenerateSerializedBackfillSpec(backfill_params.batch_size, *backfilled_until);
+  RETURN_NOT_OK(RunYsqlBackfillPages(
+      backfill_params, 0 /* max_rows */,
+      [&](const std::string& serialized_backfill_spec) -> Result<YsqlBackfillPage> {
+        // This should be safe from injection attacks because the parameters only consist of
+        // characters [-,0-9a-f].
+        std::string query_str = Format(
+            "BACKFILL INDEX $0 WITH x'$1' READ TIME $2 PARTITION x'$3';",
+            index_oid_int,
+            b2a_hex(serialized_backfill_spec),
+            read_time.ToUint64(),
+            b2a_hex(partition_key));
+        VLOG(1) << "BackfillIndexesForYsql: libpq query string: " << query_str;
 
-    // This should be safe from injection attacks because the parameters only consist of characters
-    // [-,0-9a-f].
-    std::string query_str = Format(
-        "BACKFILL INDEX $0 WITH x'$1' READ TIME $2 PARTITION x'$3';",
-        index_oid_int,
-        b2a_hex(serialized_backfill_spec),
-        read_time.ToUint64(),
-        b2a_hex(partition_key));
-    VLOG(1) << __func__ << ": libpq query string: " << query_str;
-
-    const auto tup = VERIFY_RESULT(QueryPostgresToDoBackfill(&conn, query_str));
-    *backfilled_until = std::get<0>(tup);
-    *number_of_rows_processed += std::get<1>(tup);
-    *num_rows_backfilled_in_index += std::get<2>(tup);
-
-    VLOG(2) << "Processed " << *number_of_rows_processed << " base table rows so far in this "
-            << "chunk. Setting backfilled_until to \"" << b2a_hex(*backfilled_until) << "\"";
-
-    MaybeSleepToThrottleBackfill(backfill_params.start_time, *number_of_rows_processed);
-  } while (CanProceedToBackfillMoreRows(
-      backfill_params, *backfilled_until, *number_of_rows_processed));
+        const auto tup = VERIFY_RESULT(QueryPostgresToDoBackfill(&conn, query_str));
+        *num_rows_backfilled_in_index += std::get<2>(tup);
+        return YsqlBackfillPage{std::get<0>(tup), std::get<1>(tup)};
+      },
+      number_of_rows_processed, backfilled_until));
 
   VLOG(1) << "Processed " << *number_of_rows_processed << " base table rows in this chunk. "
           << "Set backfilled_until to \"" << b2a_hex(*backfilled_until) << "\"";
+  return Status::OK();
+}
+
+Status Tablet::BackfillTableForYsql(
+    uint32_t src_oid, uint32_t dst_oid, uint32_t transform_oid,
+    const std::string& backfill_from,
+    const CoarseTimePoint deadline,
+    const HybridTime read_time,
+    const HostPort& pgsql_proxy_bind_address,
+    const std::string& database_name,
+    const uint64_t postgres_auth_key,
+    uint64_t* number_of_rows_processed,
+    std::string* backfilled_until) {
+  LOG(INFO) << "Begin " << __func__ << " of tablet " << tablet_id() << " at " << read_time
+            << " from row \"" << strings::b2a_hex(backfill_from)
+            << "\" for online schema change src_oid=" << src_oid << " dst_oid=" << dst_oid;
+  SlowdownBackfillForTests();
+
+  BackfillParams backfill_params(deadline, true /* is_ysql */);
+  auto conn = VERIFY_RESULT(CreateBackfillPGConn(
+      pgsql_proxy_bind_address, database_name, postgres_auth_key,
+      backfill_params.modified_deadline,
+      pgwrapper::YbInternalConnKindWireName::kOnlineSchemaChangeBackfill));
+
+  const std::string partition_key = metadata_->partition()->partition_key_start();
+
+  // backfill_from is the DocDB key to resume at; empty means the start of the tablet.
+  *number_of_rows_processed = 0;
+  *backfilled_until = backfill_from;
+
+  // Also bound the chunk by rows, so the master gets resume points, progress and a chance to
+  // cancel at a tunable interval.
+  RETURN_NOT_OK(RunYsqlBackfillPages(
+      backfill_params, FLAGS_online_schema_change_backfill_rows_per_chunk,
+      [&](const std::string& bfinstr) -> Result<YsqlBackfillPage> {
+        // A NULL next_bfinstr becomes an empty spec, which has no next_row_key and so also means
+        // done.
+        std::string query_str = Format(
+            "SELECT COALESCE(encode(next_bfinstr, 'hex'), ''), rows_processed::float8 "
+            "FROM pg_catalog.yb_backfill_online_schema_change_chunk("
+            "$0, $1, $2, $3, decode('$4', 'hex'), decode('$5', 'hex'))",
+            src_oid, dst_oid, transform_oid,
+            read_time.ToUint64(),
+            b2a_hex(partition_key),
+            b2a_hex(bfinstr));
+        VLOG(1) << "BackfillTableForYsql: libpq query: " << query_str;
+
+        const auto chunk = VERIFY_RESULT(QueryPostgresBackfillChunk(&conn, query_str));
+        // next_row_key is empty only when the scan reached the end of the tablet.
+        return YsqlBackfillPage{
+            chunk.spec.next_row_key(), static_cast<uint64_t>(chunk.num_rows)};
+      },
+      number_of_rows_processed, backfilled_until));
+
+  VLOG(1) << "Done " << __func__ << " of tablet " << tablet_id()
+          << " processed " << *number_of_rows_processed << " rows"
+          << " backfilled_until: \""
+          << (backfilled_until->empty() ? "<end>" : b2a_hex(*backfilled_until)) << "\"";
   return Status::OK();
 }
 
@@ -4422,18 +4868,24 @@ Status Tablet::ModifyFlushedFrontier(
     const docdb::ConsensusFrontier& frontier,
     rocksdb::FrontierModificationMode mode,
     FlushFlags flags) {
+  LongOperationTracker long_operation_tracker("Modify flushed frontier", 5s);
+  // Snapshot operations modify the flushed frontier on the Raft apply path, so its steps are
+  // logged like theirs.
+  auto step_start = MonoTime::Now();
   // We should always flush RocksDBs before modifying their frontiers, otherwise if we crash between
   // frontier is modified and regular DB is flushed we can lose data because of skipping ops replay
   // during local bootstrap.
   RETURN_NOT_OK(Flush(
       FlushMode::kSync, flags | FlushFlags::kRegular | FlushFlags::kIntents,
       rocksdb::FlushOptions::kNeverIgnore, rocksdb::FlushReason::kFlushedFrontierModification));
+  step_start = LogSnapshotStepDone(LogPrefix(), "Flushed frontier flush", step_start);
   const Status s = regular_db_->ModifyFlushedFrontier(frontier.Clone(), mode);
   if (PREDICT_FALSE(!s.ok())) {
     auto status = STATUS(IllegalState, "Failed to set flushed frontier", s.ToString());
     LOG_WITH_PREFIX(WARNING) << status;
     return status;
   }
+  step_start = LogSnapshotStepDone(LogPrefix(), "Regular DB flushed frontier write", step_start);
   {
     auto flushed_frontier = regular_db_->GetFlushedFrontier();
     const auto& consensus_flushed_frontier = *down_cast<docdb::ConsensusFrontier*>(
@@ -4481,6 +4933,7 @@ Status Tablet::ModifyFlushedFrontier(
     // because it would wait for flush of regular DB if we have unflushed intents.
     // Otherwise it does not matter which flushed op id is stored.
     RETURN_NOT_OK(intents_db_->ModifyFlushedFrontier(frontier.Clone(), mode));
+    LogSnapshotStepDone(LogPrefix(), "Intents DB flushed frontier write", step_start);
   }
 
   return Status::OK();
@@ -5109,58 +5562,111 @@ struct TierMigrationPass {
   Status first_hard_error;
 };
 
-Result<std::string> Tablet::LookupTierDir(uint32_t path_id) const {
+Result<TierPathInfo> Tablet::LookupTierPath(uint32_t path_id) const {
   for (const auto& tier_path : metadata()->tier_paths()) {
     if (tier_path.path_id == path_id) {
-      return tier_path.path;
+      return tier_path;
     }
   }
   return STATUS_FORMAT(
       InvalidArgument, "Tablet $0 has no directory pinned for path_id $1", tablet_id(), path_id);
 }
 
-std::vector<uint64_t> Tablet::CollectTierMigrationCandidates(const std::string& target_dir) const {
+Result<std::string> Tablet::LookupTierDir(uint32_t path_id) const {
+  return VERIFY_RESULT(LookupTierPath(path_id)).path;
+}
+
+std::vector<uint64_t> Tablet::CollectTierMigrationCandidates(uint32_t target_path_id) const {
   std::vector<uint64_t> candidates;
-  if (!regular_db_) {
-    return candidates;
-  }
-  for (const auto& file : regular_db_->GetLiveFilesMetaData()) {
-    if (file.db_path != target_dir) {
-      candidates.push_back(file.name_id);
-    }
+  if (regular_db_) {
+    // Not GetLiveFilesMetaData: the reconciler scans every targeted tablet each pass, converged
+    // ones included, and that builds a LiveFileMetaData per live SST under the DB mutex when only
+    // the file numbers are wanted.
+    regular_db_->GetLiveFileNumbersNotOnPath(target_path_id, &candidates);
   }
   return candidates;
 }
 
-Status Tablet::SetTierMigrationTarget(const std::string& target_tier, uint32_t target_path_id) {
+Result<ScopedRWOperation> Tablet::CheckTierTargetUsable(
+    const std::string& target_tier, uint32_t target_path_id) {
   auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_operation);
   if (!regular_db_) {
     return STATUS(IllegalState, "Tablet has no regular RocksDB open");
   }
-  RETURN_NOT_OK(LookupTierDir(target_path_id));
-
-  {
-    std::lock_guard lock(tier_target_mutex_);
-    if (metadata()->target_storage_tier() != target_tier ||
-        metadata()->target_tier_path_id() != target_path_id) {
-      RETURN_NOT_OK(metadata()->SetTargetTier(target_tier, target_path_id));
-    }
-    RETURN_NOT_OK_PREPEND(
-        regular_db_->SetOptions({{"target_path_id", std::to_string(target_path_id)}}),
-        "Failed to set target_path_id on regular DB");
+  const auto tier_path = VERIFY_RESULT(LookupTierPath(target_path_id));
+  if (tier_path.tier != target_tier) {
+    // A caller that read the tier and the path_id separately pairs a tier with another tier's
+    // disk when a concurrent AlterTabletTier switches the tablet in between. Persisting that
+    // pair would move every SST to the wrong tier and let a scan declare kDone for the tier the
+    // operator asked for.
+    return STATUS_FORMAT(
+        InvalidArgument, "Tablet $0: path_id $1 is a '$2' disk, not '$3'",
+        tablet_id(), target_path_id, tier_path.tier, target_tier);
   }
+  return scoped_operation;
+}
 
-  // Intent (re)asserted: convergence is unproven again, and earlier failures no longer count.
+Status Tablet::SetTierMigrationTarget(const std::string& target_tier, uint32_t target_path_id) {
+  auto scoped_operation = VERIFY_RESULT(CheckTierTargetUsable(target_tier, target_path_id));
+  std::lock_guard lock(tier_target_mutex_);
+  return SetTierMigrationTargetUnlocked(target_tier, target_path_id);
+}
+
+Status Tablet::SetTierMigrationTargetUnlocked(
+    const std::string& target_tier, uint32_t target_path_id) {
+  const bool same_target = IsPersistedTierTarget(target_tier, target_path_id);
+  {
+    std::lock_guard lock(tier_migration_mutex_);
+    if (tier_migration_status_.migration_pass_in_flight && !same_target) {
+      // ScheduleDBPathMove has no cancel: the pass would keep copying to the old disk, and
+      // FinishTierMigrationPass would book its outcome against the new target. The same target
+      // re-asserts what the pass is already doing, so it goes through as usual.
+      return STATUS_FORMAT(
+          ServiceUnavailable,
+          "Tier migration pass toward tier '$0' (path_id $1) is in flight; retry when it ends",
+          metadata()->target_storage_tier(), metadata()->target_tier_path_id());
+    }
+  }
+  if (!same_target) {
+    RETURN_NOT_OK(metadata()->SetTargetTier(target_tier, target_path_id));
+  }
+  RETURN_NOT_OK_PREPEND(
+      regular_db_->SetOptions({{"target_path_id", std::to_string(target_path_id)}}),
+      "Failed to set target_path_id on regular DB");
+
   std::lock_guard lock(tier_migration_mutex_);
-  tier_migration_status_.state = TierMigrationStatus::State::kInProgress;
-  tier_migration_status_.consecutive_failed_passes = 0;
-  tier_migration_status_.last_error = Status::OK();
+  ReassertTierIntentUnlocked();
   return Status::OK();
 }
 
+void Tablet::ReassertTierIntentUnlocked() {
+  tier_migration_status_.state = TierMigrationStatus::State::kInProgress;
+  tier_migration_status_.consecutive_failed_passes = 0;
+  tier_migration_status_.last_error = Status::OK();
+}
+
+bool Tablet::IsPersistedTierTarget(
+    const std::string& target_tier, uint32_t target_path_id) const {
+  return metadata()->target_storage_tier() == target_tier &&
+         metadata()->target_tier_path_id() == target_path_id;
+}
+
+Status Tablet::CheckTierTargetStillPersisted(
+    const std::string& target_tier, uint32_t target_path_id) const {
+  if (IsPersistedTierTarget(target_tier, target_path_id)) {
+    return Status::OK();
+  }
+  return STATUS_FORMAT(
+      ServiceUnavailable,
+      "Target replaced by a concurrent request with tier '$0' (path_id $1) before this one's "
+      "pass could start",
+      metadata()->target_storage_tier(), metadata()->target_tier_path_id());
+}
+
 Result<TierReconcileResult> Tablet::RunTierMigrationPass(
-    const TierReconcileOptions& options, ReconcilerPass reconciler_pass) {
+    const TierReconcileOptions& options, ReconcilerPass reconciler_pass,
+    const std::optional<TierTarget>& expected_target) {
   using State = TierMigrationStatus::State;
 
   auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
@@ -5168,26 +5674,38 @@ Result<TierReconcileResult> Tablet::RunTierMigrationPass(
   if (!regular_db_) {
     return STATUS(IllegalState, "Tablet has no regular RocksDB open");
   }
-  if (metadata()->target_storage_tier().empty()) {
-    return STATUS(IllegalState, "Tablet has no target storage tier");
-  }
-  const auto target_path_id = metadata()->target_tier_path_id();
-  const auto target_dir = VERIFY_RESULT(LookupTierDir(target_path_id));
 
   TierReconcileResult result;
-  // Check if post-split compaction is needed
-  if (NeedPostSplitCompaction()) {
-    result.awaiting_post_split_compaction = true;
-    result.status = tier_migration_status();
-    VLOG_WITH_PREFIX(1) << "Tier migration pass deferred until the post-split compaction has run";
-    return result;
-  }
-
+  uint32_t target_path_id = 0;
+  std::string target_dir;
   auto state_before = State::kNone;
   {
+    // Held from reading the target to claiming the pass, so the pass is toward the persisted
+    // target and AlterTabletTier cannot swap it for another until the pass ends. Not held across
+    // the scan or the scheduling below.
+    std::lock_guard target_lock(tier_target_mutex_);
+    if (metadata()->target_storage_tier().empty()) {
+      return STATUS(IllegalState, "Tablet has no target storage tier");
+    }
+    if (expected_target) {
+      // A concurrent AlterTabletTier may have replaced the target the caller wrote; a pass toward
+      // the replacement would be reported to the caller as its own.
+      RETURN_NOT_OK(
+          CheckTierTargetStillPersisted(expected_target->tier, expected_target->path_id));
+    }
+    target_path_id = metadata()->target_tier_path_id();
+    target_dir = VERIFY_RESULT(LookupTierDir(target_path_id));
+
+    if (NeedPostSplitCompaction()) {
+      result.awaiting_post_split_compaction = true;
+      result.status = tier_migration_status();
+      VLOG_WITH_PREFIX(1) << "Tier migration pass deferred until the post-split compaction has run";
+      return result;
+    }
+
     std::lock_guard lock(tier_migration_mutex_);
     auto& status = tier_migration_status_;
-    if (status.pass_in_flight) {
+    if (status.migration_pass_in_flight) {
       return STATUS(
           ServiceUnavailable, "A tier migration pass is already in flight for this tablet");
     }
@@ -5196,29 +5714,20 @@ Result<TierReconcileResult> Tablet::RunTierMigrationPass(
       result.status = status;
       return result;
     }
-    status.pass_in_flight = true;
+    status.migration_pass_in_flight = true;
     state_before = status.state;
   }
 
-  auto candidates = CollectTierMigrationCandidates(target_dir);
+  auto candidates = CollectTierMigrationCandidates(target_path_id);
   result.candidates = candidates.size();
-  // Lets a test change the target between the scan and the verdict on it.
+  // Lets a test send a target change between the scan and the verdict on it.
   DEBUG_ONLY_TEST_SYNC_POINT("Tablet::RunTierMigrationPass:AfterScan");
 
   {
     std::lock_guard lock(tier_migration_mutex_);
     auto& status = tier_migration_status_;
-    // The target may have changed since the scan started, so the candidates are no longer valid.
-    if (metadata()->target_tier_path_id() != target_path_id) {
-      status.pass_in_flight = false;
-      result.candidates = 0;
-      result.target_changed = true;
-      result.state_changed = status.state != state_before;
-      result.status = status;
-      return result;
-    }
     if (candidates.empty()) {
-      status.pass_in_flight = false;
+      status.migration_pass_in_flight = false;
       status.files_total = 0;
       status.files_moved = 0;
       status.files_deferred = 0;
@@ -5241,7 +5750,7 @@ Result<TierReconcileResult> Tablet::RunTierMigrationPass(
     if (reconciler_pass && options.failed_pass_threshold > 0 &&
         status.consecutive_failed_passes >= options.failed_pass_threshold) {
       // The counters of the last failed pass stay as they were, for GetTierInfo.
-      status.pass_in_flight = false;
+      status.migration_pass_in_flight = false;
       status.state = State::kFailed;
       result.state_changed = status.state != state_before;
       result.status = status;
@@ -5278,13 +5787,13 @@ Result<TierReconcileResult> Tablet::RunTierMigrationPass(
   return result;
 }
 
-Result<TierMigrationStatus> Tablet::StartTierMigrationPass() {
+Result<TierMigrationStatus> Tablet::StartTierMigrationPass(
+    const std::optional<TierTarget>& expected_target) {
   auto result = VERIFY_RESULT(
-      RunTierMigrationPass(TierReconcileOptions{}, ReconcilerPass::kFalse));
-  // Nothing to move, or a scan the target change made moot: the verdict, or the new target, is
-  // the reconciler's to act on now. A pass that scheduled moves wakes it from
-  // FinishTierMigrationPass instead, and one waiting on the post-split compaction has nothing
-  // for it yet.
+      RunTierMigrationPass(TierReconcileOptions{}, ReconcilerPass::kFalse, expected_target));
+  // Nothing to move: the verdict is the reconciler's to act on now. A pass that scheduled moves
+  // wakes it from FinishTierMigrationPass instead, and one waiting on the post-split compaction
+  // has nothing for it yet.
   if (result.scheduled == 0 && !result.awaiting_post_split_compaction) {
     WakeTierMigrationReconciler();
   }
@@ -5292,7 +5801,7 @@ Result<TierMigrationStatus> Tablet::StartTierMigrationPass() {
 }
 
 Result<TierReconcileResult> Tablet::RunTierReconcilePass(const TierReconcileOptions& options) {
-  return RunTierMigrationPass(options, ReconcilerPass::kTrue);
+  return RunTierMigrationPass(options, ReconcilerPass::kTrue, /* expected_target = */ std::nullopt);
 }
 
 TierMigrationStatus Tablet::tier_migration_status() const {
@@ -5302,13 +5811,32 @@ TierMigrationStatus Tablet::tier_migration_status() const {
 
 Result<TierMigrationStatus> Tablet::AlterTabletTier(
     const std::string& target_tier, uint32_t target_path_id) {
-  RETURN_NOT_OK(SetTierMigrationTarget(target_tier, target_path_id));
-  auto status = StartTierMigrationPass();
+  auto scoped_operation = VERIFY_RESULT(CheckTierTargetUsable(target_tier, target_path_id));
+
+  {
+    std::lock_guard target_lock(tier_target_mutex_);
+    RETURN_NOT_OK(SetTierMigrationTargetUnlocked(target_tier, target_path_id));
+    std::lock_guard lock(tier_migration_mutex_);
+    if (tier_migration_status_.migration_pass_in_flight) {
+      // Only the same target gets past the write with a pass in flight: that pass already serves
+      // this request, re-asserted just now like any accepted one, so report it.
+      return tier_migration_status_;
+    }
+  }
+
+  // Lets a test slip another target in after the write, before the pass starts.
+  DEBUG_ONLY_TEST_SYNC_POINT("Tablet::AlterTabletTier:BeforeStartPass");
+
+  auto status = StartTierMigrationPass(TierTarget{.tier = target_tier, .path_id = target_path_id});
   if (status.ok() || !status.status().IsServiceUnavailable()) {
     return status;
   }
-  // A pass is already in flight. It keeps moving toward the target it started with; the next
-  // pass picks up the intent just persisted. Report its progress rather than failing.
+  // A pass is in flight, or the target was replaced. While the target is still this one, the pass
+  // read it after the write above and serves this request, so report its progress. Checked again
+  // here rather than inferred from the status: the pass that refused the start may have ended and
+  // the target been replaced since.
+  std::lock_guard target_lock(tier_target_mutex_);
+  RETURN_NOT_OK(CheckTierTargetStillPersisted(target_tier, target_path_id));
   std::lock_guard lock(tier_migration_mutex_);
   return tier_migration_status_;
 }
@@ -5382,12 +5910,12 @@ void Tablet::FinishTierMigrationPass(const std::shared_ptr<TierMigrationPass>& p
 
   // Even a pass with nothing left behind proves nothing by itself: a flush or compaction that was
   // already running when the target switched can have landed a file on the old disk since the
-  // scan, and the target may have changed while this pass ran. Deciding that the tablet has
-  // converged (kDone) is the background reconciler's job, from a fresh scan of its own.
+  // scan. Deciding that the tablet has converged (kDone) is the background reconciler's job, from
+  // a fresh scan of its own.
   {
     std::lock_guard lock(tier_migration_mutex_);
     auto& status = tier_migration_status_;
-    status.pass_in_flight = false;
+    status.migration_pass_in_flight = false;
     status.files_moved = moved;
     status.files_deferred = deferred;
     status.files_failed = hard_failed;
@@ -6862,6 +7390,13 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
       while (intent_iter->Valid() && intent_iter->key().compare_prefix(reverse_key) == 0 &&
              (!max_txn_locks_per_tablet || txn_intents_count <= max_txn_locks_per_tablet)) {
         DCHECK_EQ(intent_iter->key()[0], KeyEntryTypeAsChar::kTransactionId);
+
+        // The delete-list record of a batch holds vector ids, not an intent key.
+        if (intent_iter->value().starts_with(dockv::ValueEntryTypeAsChar::kDeleteVectorIds)) {
+          intent_iter->Next();
+          continue;
+        }
+
         // We should only consider intents whose value is within the tablet's key bounds.
         // Else, we would observe duplicate results in case of tablet split.
         if (key_bounds_.IsWithinBounds(intent_iter->value())) {
@@ -7401,6 +7936,7 @@ docdb::HistoryCutoff Tablet::AllowedHistoryCutoff() {
     result.MakeAtMost(allowed_history_cutoff_provider_(metadata_.get()));
   }
   result.primary_cutoff_ht.MakeAtMost(snapshots_->AllowedHistoryCutoff());
+  result.primary_cutoff_ht.MakeAtMost(vector_indexes_->AllowedHistoryCutoff());
   return result;
 }
 

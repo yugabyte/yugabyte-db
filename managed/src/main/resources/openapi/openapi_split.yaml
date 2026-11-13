@@ -54,6 +54,8 @@ tags:
     description: CRUD operations for external Perf Advisor destinations
   - name: Session
     description: Session management
+  - name: Storage Config
+    description: Backup storage configuration management
   - name: Support Bundle
     description: Support bundle management for universes
   - name: Task
@@ -62,6 +64,8 @@ tags:
     description: Operations for Telemetry Providers
   - name: Universe
     description: CRUD operations for a Universe
+  - name: User
+    description: User management
   - name: YBA Instance
     description: YBA Instance operations
 paths:

@@ -18,8 +18,6 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.LdapBindPasswdHbaFormat;
-import com.yugabyte.yw.common.LdapBindPasswdHbaFormat.QuoteStyle;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
@@ -34,8 +32,10 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -44,6 +44,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -688,13 +689,14 @@ public class GFlagsUtilTest extends FakeDBApplication {
                       existingGFlags3, newGFlags3, gFlagsValidation, "2.18"));
       assertEquals(BAD_REQUEST, ex3.getHttpStatus());
 
-      // Test case 4: Double-quote CSV format with special characters (real user case)
+      // Test case 4: Double-quote CSV format with special characters (real user case). The # is
+      // outside quotes, so Postgres reads a comment, which is redacted too.
       String originalYsqlHbaConf4 =
           "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com "
               + "ldapbindpasswd=\"\"My$ecret!With@Special#Chars\"\"";
       String newYsqlHbaConf4 =
-          "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com "
-              + "ldapbindpasswd=\"\"REDACTED\"\"";
+          "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com"
+              + " ldapbindpasswd=\"REDACTED\"#REDACTED";
 
       Map<String, String> existingGFlags4 = new HashMap<>();
       existingGFlags4.put("ysql_hba_conf_csv", originalYsqlHbaConf4);
@@ -895,7 +897,7 @@ public class GFlagsUtilTest extends FakeDBApplication {
       };
 
       for (String password : passwords) {
-        String encoded = LdapBindPasswdHbaFormat.encode(QuoteStyle.DOUBLED_CSV, password);
+        String encoded = "\"\"" + password.replace("\"", "\"\"") + "\"\"";
         String hbaOriginal =
             "host all all 0.0.0.0/0 ldap ldapserver="
                 + ldapHost
@@ -1077,7 +1079,31 @@ public class GFlagsUtilTest extends FakeDBApplication {
             PlatformServiceException.class,
             () -> GFlagsUtil.validateFipsCompliancy(userIntent, true));
     assertEquals(
-        "FIPS enabled YBAnywhere only supports FIPS enabled universe",
+        "A FIPS enabled universe needs openssl_require_fips set to true or left unset, but the"
+            + " master gflags set it to false.",
+        exception.getLocalizedMessage());
+  }
+
+  @Test
+  public void testValidateFipsCompliancyNamesTheAzThatDisablesTheFipsGFlag() {
+    Customer customer = ModelFactory.testCustomer();
+    Provider provider = ModelFactory.awsProvider(customer);
+    Region region = Region.create(provider, "region-1", "Region 1", "default-image");
+    AvailabilityZone az = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
+    UserIntent userIntent = new UserIntent();
+    userIntent.providerType = Common.CloudType.aws;
+    userIntent.specificGFlags = SpecificGFlags.construct(Map.of(), Map.of());
+    PerProcessFlags azFlags = new PerProcessFlags();
+    azFlags.value = Map.of(ServerType.TSERVER, Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "1"));
+    userIntent.specificGFlags.setPerAZ(new HashMap<>(Map.of(az.getUuid(), azFlags)));
+
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> GFlagsUtil.validateFipsCompliancy(userIntent, true));
+    assertEquals(
+        "A FIPS enabled universe needs openssl_require_fips set to true or left unset, but the"
+            + " tserver gflags of AZ az-1 set it to 1.",
         exception.getLocalizedMessage());
   }
 
@@ -1098,7 +1124,10 @@ public class GFlagsUtilTest extends FakeDBApplication {
               PlatformServiceException.class,
               () -> GFlagsUtil.validateFipsCompliancy(userIntent, true));
       assertEquals(
-          "FIPS enabled YBAnywhere only supports FIPS enabled universe",
+          String.format(
+              "A FIPS enabled universe needs openssl_require_fips set to true or left unset, but"
+                  + " the %s gflags set it to false.",
+              serverType.name().toLowerCase()),
           exception.getLocalizedMessage());
     }
   }
@@ -1125,8 +1154,44 @@ public class GFlagsUtilTest extends FakeDBApplication {
 
       GFlagsUtil.processUserGFlags(node, userGFlags, platformGFlags, allowOverrideAll, null, null);
 
-      assertEquals(Map.of("max_log_size", "100"), userGFlags);
+      assertEquals(
+          Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "true", "max_log_size", "100"), userGFlags);
     }
+  }
+
+  @Test
+  public void testProcessUserGFlagsKeepsFipsOnWhenPlatformAndUserGFlagsAreMerged() {
+    NodeDetails node = new NodeDetails();
+    node.nodeName = "host-n1";
+    Map<String, String> platformGFlags =
+        new HashMap<>(Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "true", "max_log_size", "256"));
+    for (String value : List.of("false", "True", "1")) {
+      // The node agent path merges both and passes the result as the user gflags.
+      Map<String, String> gflags = new HashMap<>(platformGFlags);
+      gflags.put(GFlagsUtil.OPENSSL_REQUIRE_FIPS, value);
+
+      GFlagsUtil.processUserGFlags(node, gflags, platformGFlags, false, null, null);
+
+      assertEquals("true", gflags.get(GFlagsUtil.OPENSSL_REQUIRE_FIPS));
+    }
+  }
+
+  @Test
+  public void testProcessUserGFlagsResetsForbiddenGFlagToPlatformValue() {
+    NodeDetails node = new NodeDetails();
+    node.nodeName = "host-n1";
+    Map<String, String> platformGFlags =
+        new HashMap<>(Map.of(GFlagsUtil.PLACEMENT_CLOUD, "aws", "max_log_size", "256"));
+    // The node agent path merges both and passes the result as the user gflags.
+    Map<String, String> gflags = new HashMap<>(platformGFlags);
+    gflags.put(GFlagsUtil.PLACEMENT_CLOUD, "gcp");
+
+    GFlagsUtil.processUserGFlags(node, gflags, platformGFlags, false, null, null);
+    assertEquals("aws", gflags.get(GFlagsUtil.PLACEMENT_CLOUD));
+
+    gflags.put(GFlagsUtil.PLACEMENT_CLOUD, "gcp");
+    GFlagsUtil.processUserGFlags(node, gflags, platformGFlags, true, null, null);
+    assertEquals("gcp", gflags.get(GFlagsUtil.PLACEMENT_CLOUD));
   }
 
   @Test
@@ -1153,13 +1218,13 @@ public class GFlagsUtilTest extends FakeDBApplication {
             PlatformServiceException.class,
             () -> GFlagsUtil.validateFipsCompliancy(userIntent, true));
     assertEquals(
-        "FIPS enabled YBAnywhere only supports FIPS enabled universe: Kubernetes overrides cannot"
-            + " set master openssl_require_fips to false",
+        "A FIPS enabled universe needs openssl_require_fips set to true or left unset, but the"
+            + " Kubernetes universe overrides (gflags.master) set it to false.",
         exception.getLocalizedMessage());
   }
 
   @Test
-  public void testValidateFipsCompliancyOfHelmOverridesChecksAzOverridesAndYamlBooleans() {
+  public void testValidateHelmOverridesGFlagsChecksAzOverridesAndYamlBooleans() {
     // A YAML boolean is as much a way to turn the flag off as the quoted string is.
     Map<String, String> azOverrides =
         Map.of("az-1", "gflags:\n  tserver:\n    openssl_require_fips: false\n");
@@ -1167,38 +1232,142 @@ public class GFlagsUtilTest extends FakeDBApplication {
     PlatformServiceException exception =
         assertThrows(
             PlatformServiceException.class,
-            () -> GFlagsUtil.validateFipsCompliancyOfHelmOverrides("", azOverrides, true));
+            () -> GFlagsUtil.validateHelmOverridesGFlags("", azOverrides, true));
     assertEquals(
-        "FIPS enabled YBAnywhere only supports FIPS enabled universe: Kubernetes overrides cannot"
-            + " set tserver openssl_require_fips to false",
+        "A FIPS enabled universe needs openssl_require_fips set to true or left unset, but the"
+            + " Kubernetes overrides of AZ az-1 (gflags.tserver) set it to false.",
         exception.getLocalizedMessage());
   }
 
   @Test
-  public void testValidateFipsCompliancyOfHelmOverridesRejectsUnparseableYaml() {
+  public void testValidateHelmOverridesGFlagsRejectsUnparseableYaml() {
     // Overrides the check cannot read are not accepted, since the flag could be hidden in them.
     PlatformServiceException exception =
         assertThrows(
             PlatformServiceException.class,
-            () -> GFlagsUtil.validateFipsCompliancyOfHelmOverrides("not: [valid", null, true));
+            () -> GFlagsUtil.validateHelmOverridesGFlags("not: [valid", null, true));
     assertTrue(
         exception.getLocalizedMessage(),
         exception.getLocalizedMessage().startsWith("Kubernetes overrides are not valid YAML: "));
     // Only a FIPS universe is checked.
-    GFlagsUtil.validateFipsCompliancyOfHelmOverrides("not: [valid", null, false);
+    GFlagsUtil.validateHelmOverridesGFlags("not: [valid", null, false);
   }
 
   @Test
-  public void testValidateFipsCompliancyOfHelmOverridesAllowsOtherOverrides() {
+  public void testValidateHelmOverridesGFlagsAllowsOtherOverrides() {
     String universeOverrides =
         "gflags:\n  master:\n    openssl_require_fips: \"true\"\n"
             + "  tserver:\n    ysql_enable_auth: \"true\"\n"
             + "tserver:\n  podLabels:\n    env: test\n";
-    GFlagsUtil.validateFipsCompliancyOfHelmOverrides(universeOverrides, null, true);
-    GFlagsUtil.validateFipsCompliancyOfHelmOverrides(null, null, true);
+    GFlagsUtil.validateHelmOverridesGFlags(universeOverrides, null, true);
+    GFlagsUtil.validateHelmOverridesGFlags(null, null, true);
     // Nothing is checked on a non-FIPS YBA.
-    GFlagsUtil.validateFipsCompliancyOfHelmOverrides(
+    GFlagsUtil.validateHelmOverridesGFlags(
         "gflags:\n  master:\n    openssl_require_fips: \"false\"\n", null, false);
+  }
+
+  @Test
+  public void testValidateGFlagValuesRejectsLineBreaks() {
+    // Each would add a --openssl_require_fips=false line to the flagfile after the forced one.
+    for (String value : List.of("/tmp\n--openssl_require_fips=false", "/tmp\r--a=b")) {
+      UserIntent userIntent = new UserIntent();
+      userIntent.specificGFlags =
+          SpecificGFlags.construct(Collections.emptyMap(), Map.of("tmp_dir", value));
+      PlatformServiceException exception =
+          assertThrows(
+              PlatformServiceException.class, () -> GFlagsUtil.validateGFlagValues(userIntent));
+      assertEquals("GFlag tmp_dir cannot contain a line break", exception.getLocalizedMessage());
+    }
+
+    UserIntent deprecatedFields = new UserIntent();
+    deprecatedFields.masterGFlags = Map.of("tmp_dir", "/tmp\n--a=b");
+    assertThrows(
+        PlatformServiceException.class, () -> GFlagsUtil.validateGFlagValues(deprecatedFields));
+
+    UserIntent overrides = new UserIntent();
+    overrides.universeOverrides = "gflags:\n  tserver:\n    tmp_dir: \"/tmp\\n--a=b\"\n";
+    assertThrows(PlatformServiceException.class, () -> GFlagsUtil.validateGFlagValues(overrides));
+
+    UserIntent valid = new UserIntent();
+    valid.specificGFlags =
+        SpecificGFlags.construct(Map.of("tmp_dir", "/tmp"), Map.of("ysql_pg_conf_csv", "a=1,b=2"));
+    valid.universeOverrides = "gflags:\n  tserver:\n    tmp_dir: /tmp\n";
+    GFlagsUtil.validateGFlagValues(valid);
+  }
+
+  @Test
+  public void testValidateFipsCompliancyRejectsFipsGFlagFromEnv() {
+    for (String value : List.of("openssl_require_fips", "a, openssl_require_fips")) {
+      for (String flag : List.of("fromenv", "tryfromenv")) {
+        UserIntent userIntent = new UserIntent();
+        userIntent.providerType = Common.CloudType.kubernetes;
+        userIntent.specificGFlags =
+            SpecificGFlags.construct(Collections.emptyMap(), Map.of(flag, value));
+        assertThrows(
+            PlatformServiceException.class,
+            () -> GFlagsUtil.validateFipsCompliancy(userIntent, true));
+        GFlagsUtil.validateFipsCompliancy(userIntent, false);
+      }
+    }
+    UserIntent otherFlags = new UserIntent();
+    otherFlags.providerType = Common.CloudType.kubernetes;
+    otherFlags.specificGFlags =
+        SpecificGFlags.construct(Collections.emptyMap(), Map.of("tryfromenv", "tmp_dir"));
+    GFlagsUtil.validateFipsCompliancy(otherFlags, true);
+  }
+
+  @Test
+  public void testValidateHelmOverridesGFlagsRejectsFipsGFlagFromEnv() {
+    String fromEnv = "gflags:\n  tserver:\n    tryfromenv: openssl_require_fips\n";
+    String extraEnv =
+        "tserver:\n  extraEnv:\n  - name: FLAGS_openssl_require_fips\n    value: \"false\"\n";
+    for (String overrides : List.of(fromEnv, extraEnv)) {
+      assertThrows(
+          PlatformServiceException.class,
+          () -> GFlagsUtil.validateHelmOverridesGFlags(overrides, null, true));
+      assertThrows(
+          PlatformServiceException.class,
+          () -> GFlagsUtil.validateHelmOverridesGFlags(null, Map.of("az-1", overrides), true));
+      GFlagsUtil.validateHelmOverridesGFlags(overrides, null, false);
+    }
+    GFlagsUtil.validateHelmOverridesGFlags(
+        "tserver:\n  extraEnv:\n  - name: FLAGS_tmp_dir\n    value: /tmp\n", null, true);
+  }
+
+  @Test
+  public void testProcessUserGFlagsRejectsInjectedGFlags() {
+    NodeDetails node = new NodeDetails();
+    node.nodeName = "host-n1";
+    Map<String, String> fipsPlatformGFlags =
+        new HashMap<>(Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "true"));
+    assertThrows(
+        PlatformServiceException.class,
+        () ->
+            GFlagsUtil.processUserGFlags(
+                node,
+                new HashMap<>(Map.of("tmp_dir", "/tmp\n--openssl_require_fips=false")),
+                new HashMap<>(),
+                true,
+                null,
+                null));
+    assertThrows(
+        PlatformServiceException.class,
+        () ->
+            GFlagsUtil.processUserGFlags(
+                node,
+                new HashMap<>(Map.of("tryfromenv", GFlagsUtil.OPENSSL_REQUIRE_FIPS)),
+                fipsPlatformGFlags,
+                true,
+                null,
+                null));
+    // Not a FIPS universe: reading the flag from the environment is left alone.
+    GFlagsUtil.processUserGFlags(
+        node,
+        new HashMap<>(Map.of("tryfromenv", GFlagsUtil.OPENSSL_REQUIRE_FIPS)),
+        new HashMap<>(),
+        false,
+        null,
+        null);
   }
 
   private static Cluster lbCluster(Common.CloudType cloud, boolean enableLB, boolean managedLb) {

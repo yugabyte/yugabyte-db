@@ -582,7 +582,9 @@ public class TaskExecutor {
       taskInfo = TaskInfo.maybeGet(taskUUID).orElse(null);
     }
     if (taskInfo == null) {
-      taskInfo = new TaskInfo(taskType, null);
+      // A new task takes the caller's UUID if it has one: an idempotent request's task gets the
+      // UUID derived from its key (see IdempotencyService.taskUuidFor).
+      taskInfo = new TaskInfo(taskType, taskUUID);
     } else {
       taskInfo.setTaskState(State.Created);
     }
@@ -615,8 +617,7 @@ public class TaskExecutor {
       log.info("Did not inherit runtime info due to unsatisfied conditions");
     }
     // Set the task params.
-    taskInfo.setTaskParams(
-        RedactingService.filterSecretFields(task.getTaskParams(), RedactionTarget.APIS));
+    taskInfo.setTaskParams(RedactingService.filterSecretFieldsForStorage(task.getTaskParams()));
     // Set the owner info.
     taskInfo.setOwner(taskOwner);
     taskInfo.setTaskVersion(taskVersion);

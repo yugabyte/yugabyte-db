@@ -326,6 +326,9 @@ class TabletInfo : public MetadataCowWrapper<PersistentTabletInfo> {
   // TODO: Make Set/Update private so users are forced to use the catalog manager wrappers which
   // update the tablet locations version.
   void SetReplicaLocations(std::shared_ptr<TabletReplicaMap> replica_locations);
+  // Removes this tablet's replicas from their tservers' replica load; later replica changes do not
+  // count. Called when the tablet is deleted or replaced.
+  void StopCountingReplicaLoad() EXCLUDES(lock_);
   std::shared_ptr<const TabletReplicaMap> GetReplicaLocations() const;
   Result<TSDescriptorPtr> GetLeader() const;
   Result<TabletReplicaDriveInfo> GetLeaderReplicaDriveInfo() const;
@@ -426,6 +429,9 @@ class TabletInfo : public MetadataCowWrapper<PersistentTabletInfo> {
   std::shared_ptr<TabletReplicaMap> replica_locations_ GUARDED_BY(lock_) =
       std::make_shared<TabletReplicaMap>();
 
+  // Whether replica_locations_ is counted in TSDescriptor::replica_load_.
+  bool counts_replica_load_ GUARDED_BY(lock_) = true;
+
   // Reported schema version (in-memory only).
   std::unordered_map<TableId, uint32_t> reported_schema_version_ GUARDED_BY(lock_);
 
@@ -474,7 +480,9 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
            pb.state() == SysTablesEntryPB::ALTERING;
   }
 
-  bool visible_to_client() const { return is_running() && !is_hidden(); }
+  // A HIDING table is already dropped or removed by PITR. Exposing it would let a client with a
+  // stale cache write to a colocated table whose parent tablet still accepts writes.
+  bool visible_to_client() const { return is_running() && !started_hiding(); }
 
   bool is_hiding() const {
     return pb.hide_state() == SysTablesEntryPB::HIDING;

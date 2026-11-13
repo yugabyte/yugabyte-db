@@ -1029,6 +1029,17 @@ select \if false \\ (bogus \else \\ 42 \endif \\ forty_two;
 	\echo 'should print #8-1'
 \endif
 
+-- test that begin/end matching ignores to-be-ignored text
+create function silly_function(int) returns int
+begin atomic select $1;
+\if false
+end
+\endif
+;
+end;
+\sf silly_function(int)
+drop function silly_function(int);
+
 -- :{?...} defined variable test
 \set i 1
 \if :{?i}
@@ -1382,6 +1393,15 @@ SELECT 1 AS one \; SELECT warn('1.5') \; SELECT 2 AS two ;
 
 \set SHOW_ALL_RESULTS on
 DROP FUNCTION warn(TEXT);
+
+-- \copy must skip in-line data, even if the issued COPY command fails.
+\copy no_such_table from stdin
+foo
+\echo this should not get output
+bar
+\echo this should not get output
+\.
+\echo this should get output
 
 --
 -- AUTOCOMMIT and combined queries

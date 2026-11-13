@@ -12,15 +12,20 @@
 
 #include <algorithm>
 
+#include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_state_table.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/entity_ids.h"
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
+#include "yb/master/master.h"
+#include "yb/master/master_tserver.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/flags.h"
 #include "yb/util/test_macros.h"
+
+DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 
 namespace yb {
 namespace cdc {
@@ -201,6 +206,10 @@ TEST_F(
   // 1.6 WRITE OP (aborted multi-shard txn)
   // 1.7 WRITE OP (aborted multi-shard txn)
   log::SegmentSequence segments;
+  // The committed index check below is a one-shot read on every replica, so followers must already
+  // know index 7 is committed.
+  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(
+      test_cluster(), 30s * kTimeMultiplier, RequireLeaderIsReady::kTrue));
   for (int i = 0; i < num_tservers; i++) {
     for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
       auto tablet_id = peer->tablet_id();
@@ -1452,7 +1461,10 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWitDDLStatemen
   t4.join();
 
   int expected_dml_records = 4 * num_batches * inserts_per_batch;
-  int expected_ddl_records = 2 * 3;  // 2 DDL / tablet
+  // Without transactional DDL, 2 DDL / tablet. With it, the ADD and DROP ship 2 and 1 synthetic
+  // DDL records.
+  int expected_ddl_records =
+      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 3 : 2 * 3;
   auto get_all_pending_changes_resp = ASSERT_RESULT(
       GetAllPendingTxnsFromVirtualWAL(stream_id, {table.table_id()}, expected_dml_records, true));
 
@@ -1586,7 +1598,10 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWithMultipleAl
   }
   LOG(INFO) << "Added columns and pushed required records";
 
-  int expected_ddl_records = 13 * 3;  // 13 DDL / tablet
+  // Without transactional DDL, 13 DDL / tablet. With it, each ADD COLUMN ships 2 synthetic DDL
+  // records.
+  int expected_ddl_records =
+      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 13 * 2 : 13 * 3;
   expected_dml_records = 13 * 10;     /* number of add columns 'times' insert per batch */
   auto consistent_change_resp_after_alter = ASSERT_RESULT(
       GetAllPendingTxnsFromVirtualWAL(stream_id, {table.table_id()}, expected_dml_records, false));
@@ -1643,14 +1658,17 @@ void CDCSDKConsumptionConsistentChangesTest::TestVectorIndexAlterDoesNotLeakInde
       stream_id, {table.table_id()}, 5 /* expected_dml_records */, true /* init_virtual_wal */));
 
   int seen_inserts = 0;
-  bool seen_ddl_with_c = false;
+  bool seen_table_ddl = false;
   for (const auto& record : resp.records) {
     const auto& row_message = record.row_message();
-    if (row_message.op() == RowMessage::DDL) {
+    if (row_message.op() == RowMessage::DDL && !row_message.has_schema()) {
+      ASSERT_EQ(row_message.table_id(), table.table_id()) << row_message.ShortDebugString();
+      seen_table_ddl = true;
+    } else if (row_message.op() == RowMessage::DDL) {
       ASSERT_EQ(row_message.table(), "test_vec") << row_message.ShortDebugString();
       for (const auto& column : row_message.schema().column_info()) {
         ASSERT_NE(column.name(), "ybidxbasectid") << row_message.ShortDebugString();
-        seen_ddl_with_c |= column.name() == "c";
+        seen_table_ddl |= column.name() == "c";
       }
     } else if (row_message.op() == RowMessage::INSERT) {
       ++seen_inserts;
@@ -1665,7 +1683,7 @@ void CDCSDKConsumptionConsistentChangesTest::TestVectorIndexAlterDoesNotLeakInde
     }
   }
   ASSERT_EQ(seen_inserts, 5);
-  ASSERT_TRUE(seen_ddl_with_c);
+  ASSERT_TRUE(seen_table_ddl);
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVectorIndexAlterDoesNotLeakIndexSchema) {
@@ -3739,7 +3757,11 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCreationOfSlotOnNewDBAfterUpg
   // These arrays store counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, and COMMIT in
   // that order.
   int expected_count_old_model[] = {2, 2, 0, 1, 0, 0, 3, 3};
-  int expected_count_new_model[] = {0, 1, 0, 0, 0, 0, 1, 1};
+  // With transactional DDL support, the replication slot stream also ships the BEGIN and COMMIT of
+  // the 2 catalog transactions before the insert, which touch no published table.
+  const int num_txns_new_model =
+      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 3 : 1;
+  int expected_count_new_model[] = {0, 1, 0, 0, 0, 0, num_txns_new_model, num_txns_new_model};
   int actual_count_old_model[] = {0, 0, 0, 0, 0, 0, 0, 0};
   int actual_count_new_model[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
@@ -3795,6 +3817,10 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCreationOfSlotOnNewDBAfterUpg
   ASSERT_NE(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Invalid());
   ASSERT_NE(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
 
+  // Wait for dynamic table addition to complete on CDC bg thread.
+  SleepFor(MonoDelta::FromMilliseconds(
+      2 * FLAGS_catalog_manager_cdc_bg_task_wait_ms * kTimeMultiplier));
+
   set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id_1, dynamic_tablets_1, OpId::Min()));
   ASSERT_FALSE(set_resp.has_error());
 
@@ -3831,8 +3857,10 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCreationOfSlotOnNewDBAfterUpg
 
   auto change_resp_2 = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
       stream_id_2, {table_2.table_id()}, 1, true /* init_virtual_wal */));
-  // 1 BEGIN + 1 INSERT + 1 COMMIT
-  ASSERT_EQ(change_resp_2.records.size(), 3);
+  // 1 BEGIN + 1 INSERT + 1 COMMIT, plus 2 empty catalog transactions with transactional DDL.
+  ASSERT_EQ(
+      change_resp_2.records.size(),
+      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 7 : 3);
   for (auto record : change_resp_2.records) {
     UpdateRecordCount(record, actual_count_new_model);
   }
@@ -3959,7 +3987,8 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestStreamExpiry) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 100_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 1;
+  // Long enough that the stream does not expire while CREATE_REPLICATION_SLOT is still running.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 5000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 100;
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
@@ -3985,7 +4014,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestStreamExpiry) {
 
   // Sleep for few seconds to ensure that the stream expires and master background task runs to
   // delete table's cdc_state table entries and remove it from stream metadata.
-  SleepFor(MonoDelta::FromSeconds(10));
+  SleepFor(MonoDelta::FromSeconds(15));
 
   auto init_vwal_result = InitVirtualWAL(stream_id, {table.table_id()}, kVWALSessionId1);
   ASSERT_NOK(init_vwal_result);
@@ -5047,7 +5076,9 @@ void CDCSDKConsumptionConsistentChangesTest::TestExplcictCheckpointMovementAfter
         stream_id, {table.table_id()}, 1 /* expected_dml_records */,
         false /* init_virtual_wal */, kVWALSessionId1,
         false /* allow_sending_feedback */));
-    ASSERT_EQ(change_resp.records.size(), 4);
+    ASSERT_EQ(
+        change_resp.records.size(),
+        FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 7 : 4);
 
     // Since we haven't acknowledged anything after getting the old_checkpoint, the checkpoints in
     // the state table should not move.
@@ -5114,7 +5145,9 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestExplcictCheckpointMovementAft
       stream_id, {table.table_id()}, 1 /* expected_dml_records */,
       false /* init_virtual_wal */, kVWALSessionId1,
       false /* allow_sending_feedback */));
-  ASSERT_EQ(change_resp.records.size(), 4);
+  ASSERT_EQ(
+      change_resp.records.size(),
+      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 7 : 4);
   auto record = change_resp.records.back();
   ASSERT_EQ(record.row_message().op(), RowMessage_Op_COMMIT);
   auto commit_lsn_1 = record.row_message().pg_lsn();
@@ -5128,7 +5161,9 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestExplcictCheckpointMovementAft
       stream_id, {table.table_id()}, 1 /* expected_dml_records */,
       false /* init_virtual_wal */, kVWALSessionId1,
       false /* allow_sending_feedback */));
-  ASSERT_EQ(change_resp.records.size(), 4);
+  ASSERT_EQ(
+      change_resp.records.size(),
+      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 7 : 4);
   auto record_2 = change_resp.records.back();
   ASSERT_EQ(record_2.row_message().op(), RowMessage_Op_COMMIT);
   auto commit_lsn_2 = record_2.row_message().pg_lsn();
@@ -5940,7 +5975,10 @@ TEST_F(
   auto resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
       stream_id, {old_table.table_id()}, 20, false /* init_vwal */, kVWALSessionId1,
       true /* allow_sending_feedback */, nullptr /* slot_hash_range */, {new_table.table_id()}));
-  ASSERT_EQ(resp.records.size(), 60);
+  // With transactional DDL support, the TRUNCATE's catalog transaction also ships, as an empty
+  // transaction.
+  ASSERT_EQ(
+      resp.records.size(), FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 62 : 60);
 
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
@@ -6956,7 +6994,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetentionBarriersPropagateToF
 
   ASSERT_LT(initial_wal_barrier, OpId::Max().index);
   ASSERT_LT(initial_intents_barrier, OpId::Max());
-  ASSERT_LT(initial_history_barrier, HybridTime::kMax);
+  ASSERT_LT(initial_history_barrier, HybridTime::kInvalid);
 
   ASSERT_OK(WriteRows(0 /* start */, 10 /* end */, &test_cluster_));
 
@@ -6989,7 +7027,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetentionBarriersPropagateToF
       ASSERT_LT(initial_wal_barrier, wal_barrier);
       ASSERT_LT(intents_barrier, OpId::Max());
       ASSERT_LT(initial_intents_barrier, intents_barrier);
-      ASSERT_LT(history_barrier, HybridTime::kMax);
+      ASSERT_LT(history_barrier, HybridTime::kInvalid);
       ASSERT_LT(initial_history_barrier, history_barrier);
     }
   };
@@ -7000,28 +7038,47 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetentionBarriersPropagateToF
   // Sleep for a few multiples of the stale interval to ensure barriers won't be released because
   // CDCMasterBgTask is correctly refreshing them.
   SleepFor(
-      MonoDelta::FromSeconds(
-          FLAGS_cdc_min_replicated_index_considered_stale_secs_master * 2 * kTimeMultiplier));
+      MonoDelta::FromSeconds(FLAGS_cdc_min_replicated_index_considered_stale_secs_master * 2));
   check_all_masters_barriers();
+
+  auto* cluster = test_cluster_.mini_cluster_.get();
+  // The stale interval is raised while waiting because the new leader's first CDCMasterBgTask
+  // run can be delayed (e.g. sys_catalog lookup in sanitizer builds), letting followers go stale.
+  auto wait_for_leader_propagation = [&](const std::string& expected_leader_uuid) {
+    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+      auto leader = cluster->GetLeaderMiniMaster();
+      if (!leader.ok() ||
+          (!expected_leader_uuid.empty() &&
+           (*leader)->permanent_uuid() != expected_leader_uuid)) {
+        return false;
+      }
+      return (*leader)->master()->tablet_server()->GetCDCService()
+          ->HasCDCMasterBgTaskRunOnce();
+    }, MonoDelta::FromSeconds(60 * kTimeMultiplier), "New leader did not propagate barriers"));
+  };
 
   // Step down the master leader to simulate a failover. Then verify that retention barriers on all
   // masters are still valid (ahead of initial barriers). On the new leader, the barriers should not
   // have been reset despite the stale sleep, because the leader propagation kept refreshing them.
-  ASSERT_OK(test_cluster_.mini_cluster_->StepDownMasterLeader("" /* new_leader_uuid */));
-  // Wait for the new leader to be elected and CDCMasterBgTask to run.
-  SleepFor(
-      MonoDelta::FromSeconds(
-          FLAGS_update_min_cdc_indices_master_interval_secs * 5 * kTimeMultiplier));
+  auto old_leader = ASSERT_RESULT(cluster->GetLeaderMiniMaster());
+  auto new_leader_uuid =
+      cluster->mini_master(old_leader == cluster->mini_master(0) ? 1 : 0)->permanent_uuid();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs_master) = 14400;
+  ASSERT_OK(cluster->StepDownMasterLeader(new_leader_uuid));
+  ASSERT_NO_FATALS(wait_for_leader_propagation(new_leader_uuid));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs_master) = 10;
+  SleepFor(MonoDelta::FromSeconds(10 * 2));
   check_all_masters_barriers();
 
   // Restart all 3 masters and verify barriers are still propagated after a full cycle.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs_master) = 14400;
   for (size_t i = 0; i < num_masters; i++) {
-    ASSERT_OK(test_cluster_.mini_cluster_->mini_master(i)->Restart());
+    ASSERT_OK(cluster->mini_master(i)->Restart());
   }
-  ASSERT_OK(test_cluster_.mini_cluster_->WaitForAllTabletServers());
-  SleepFor(
-      MonoDelta::FromSeconds(
-          FLAGS_update_min_cdc_indices_master_interval_secs * 5 * kTimeMultiplier));
+  ASSERT_OK(cluster->WaitForAllTabletServers());
+  ASSERT_NO_FATALS(wait_for_leader_propagation("" /* expected_leader_uuid */));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs_master) = 10;
+  SleepFor(MonoDelta::FromSeconds(10 * 2));
   check_all_masters_barriers();
 }
 
@@ -7124,6 +7181,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCheckPointMovesForwardWithAbo
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestAbortedTxnDoesntMoveCheckpointWhenCantStream) {
   // Disabling the implicit dynamic table addition in this test to make the outcome of each
   // GetConsistentChanges call deterministic.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_resolve_intent_lag_threshold_ms) = 5 * 60 * 1000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
       false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
@@ -7344,6 +7402,184 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALDetectAddDropColumnFromPg
   // Streamed sequence must be BEGIN, then interleaved INSERT/DDL, then COMMIT.
   ASSERT_EQ(shipped_ops.front(), RowMessage_Op_BEGIN);
   ASSERT_EQ(shipped_ops.back(), RowMessage_Op_COMMIT);
+  CheckRecordCount(resp, kExpectedDmlRecords);
+}
+
+// A stream created without TEST_ysql_yb_enable_replication_slot_transactional_ddl lacks the
+// catalog tables that transactional DDLs are decoded from. The master keeps serving the sys catalog
+// from the stream metadata it cached until prepare_replication_slots_for_transactional_ddl adds the
+// tables and invalidates it on every master.
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestPrepareSlotForTransactionalDdl) {
+  ToggleDDLMode(/* use_legacy = */ false);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+
+  ASSERT_OK(SetUpWithParams(3, 3, false, true));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName, 1));
+  constexpr auto kSlotName = "test_slot";
+  xrepl::StreamId stream_id =
+      ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(kSlotName));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 ($1, $2) VALUES (1, 10)", kTableName, kKeyColumnName, kValueColumnName));
+  // An implicit stream polls pg_class and pg_publication_rel on the sys catalog tablet, so this
+  // caches the stream metadata on the master leader.
+  ASSERT_OK(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, 1 /* expected_dml_records */, true /* init_virtual_wal */));
+  ASSERT_OK(DestroyVirtualWAL());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
+  // InitVirtualWAL retries this error until it times out.
+  InitVirtualWALForCDCRequestPB init_req;
+  init_req.set_stream_id(stream_id.ToString());
+  init_req.set_session_id(kVWALSessionId2);
+  init_req.add_table_id(table.table_id());
+  InitVirtualWALForCDCResponsePB init_resp;
+  RpcController init_rpc;
+  ASSERT_OK(cdc_proxy_->InitVirtualWALForCDC(init_req, &init_resp, &init_rpc));
+  ASSERT_TRUE(init_resp.has_error());
+  ASSERT_STR_CONTAINS(
+      StatusFromPB(init_resp.error().status()).ToString(),
+      "prepare_replication_slots_for_transactional_ddl");
+
+  // The command fails naming the stopped master. Rerunning it once the master is back finishes the
+  // invalidation.
+  auto* leader = ASSERT_RESULT(test_cluster()->GetLeaderMiniMaster());
+  auto* master = test_cluster()->mini_master(leader == test_cluster()->mini_master(0) ? 1 : 0);
+  const auto master_uuid = master->permanent_uuid();
+  const auto master_addresses = test_cluster()->GetMasterAddresses();
+  std::vector<uint16_t> master_ports;
+  for (size_t i = 0; i != test_cluster()->num_masters(); ++i) {
+    master_ports.push_back(test_cluster()->mini_master(i)->bound_rpc_addr().port());
+  }
+  master->Shutdown();
+  ASSERT_NOK_STR_CONTAINS(
+      PrepareReplicationSlotsForTransactionalDDL(master_addresses, kSlotName),
+      Format("master $0", master_uuid));
+  ASSERT_OK(master->StartDistributedMaster(master_ports));
+  ASSERT_OK(WaitFor(
+      [&]() {
+        return PrepareReplicationSlotsForTransactionalDDL(master_addresses, kSlotName).ok();
+      },
+      MonoDelta::FromSeconds(60) * kTimeMultiplier,
+      "Prepare the slot once every master is reachable"));
+  // Without a slot name, the command prepares every implicit slot.
+  ASSERT_STR_CONTAINS(
+      ASSERT_RESULT(PrepareReplicationSlotsForTransactionalDDL(master_addresses, "")),
+      Format("Prepared replication slots for transactional DDL: [$0]", kSlotName));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 ($1, $2) VALUES (2, 20)", kTableName, kKeyColumnName, kValueColumnName));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN value_2 text", kTableName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 ($1, $2, value_2) VALUES (3, 30, 'foo')", kTableName, kKeyColumnName,
+      kValueColumnName));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN value_2", kTableName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 ($1, $2) VALUES (4, 40)", kTableName, kKeyColumnName, kValueColumnName));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  constexpr int kExpectedDmlRecords = 3;
+  auto resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, kExpectedDmlRecords, true /* init_virtual_wal */,
+      kVWALSessionId2));
+  std::vector<uint64_t> insert_record_times;
+  std::vector<uint64_t> ddl_record_times;
+  for (const auto& record : resp.records) {
+    const auto& row_message = record.row_message();
+    if (row_message.op() == RowMessage_Op_INSERT) {
+      insert_record_times.push_back(row_message.record_time());
+    } else if (row_message.op() == RowMessage_Op_DDL) {
+      ddl_record_times.push_back(row_message.record_time());
+    }
+  }
+  ASSERT_EQ(insert_record_times.size(), kExpectedDmlRecords);
+  // DROP COLUMN changes pg_attribute but not pg_class, so its DDL record comes only from the
+  // catalog tables added to the stream.
+  ASSERT_TRUE(std::ranges::any_of(ddl_record_times, [&](uint64_t record_time) {
+    return record_time > insert_record_times[1] && record_time < insert_record_times[2];
+  }));
+}
+
+// The walsender reads the catalog within the transaction of each record. Intents of a
+// subtransaction rolled back to a savepoint are still in the intents DB, so the BEGIN record of
+// such a transaction carries the aborted subtransactions for the walsender to skip them (#36047).
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALShipsAbortedSubtxnsOfTransactionalDdl) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
+  ToggleDDLMode(/* use_legacy = */ false);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_use_byte_threshold_for_vwal_changes) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 100;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false, true));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName, 1));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 10)", kTableName));
+  ASSERT_OK(conn.Execute("SAVEPOINT s1"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN value_2 text", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (2, 20, 'rolled_back')", kTableName));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT s1"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (3, 30)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN value_3 int", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (4, 40, 4)", kTableName));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (5, 50, 5)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN value_4 int", kTableName));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  constexpr int kExpectedDmlRecords = 4;
+  auto resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, kExpectedDmlRecords, true /* init_virtual_wal */));
+
+  std::string savepoint_txn_id;
+  std::string other_txn_id;
+  std::vector<int32_t> inserted_keys;
+  for (const auto& record : resp.records) {
+    const auto& row_message = record.row_message();
+    if (row_message.op() != RowMessage_Op_INSERT) {
+      continue;
+    }
+    const auto key = row_message.new_tuple(0).pg_ql_value().int32_value();
+    inserted_keys.push_back(key);
+    auto& txn_id = key == 5 ? other_txn_id : savepoint_txn_id;
+    if (txn_id.empty()) {
+      txn_id = row_message.transaction_id();
+    }
+    ASSERT_EQ(row_message.transaction_id(), txn_id);
+  }
+  ASSERT_EQ(inserted_keys, (std::vector<int32_t>{1, 3, 4, 5}));
+  ASSERT_NE(savepoint_txn_id, other_txn_id);
+
+  // Only the BEGIN record of the transaction with the savepoint rollback carries the set.
+  int savepoint_txn_begin_records = 0;
+  int other_txn_begin_records = 0;
+  for (const auto& record : resp.records) {
+    const auto& row_message = record.row_message();
+    SCOPED_TRACE(record.ShortDebugString());
+    if (row_message.op() == RowMessage_Op_BEGIN &&
+        row_message.transaction_id() == savepoint_txn_id) {
+      ASSERT_TRUE(row_message.has_aborted_subtxns());
+      auto aborted = ASSERT_RESULT(SubtxnSet::FromPB(row_message.aborted_subtxns().set()));
+      ASSERT_FALSE(aborted.IsEmpty());
+      ++savepoint_txn_begin_records;
+      continue;
+    }
+    ASSERT_FALSE(row_message.has_aborted_subtxns());
+    if (row_message.op() == RowMessage_Op_BEGIN) {
+      ASSERT_EQ(row_message.transaction_id(), other_txn_id);
+      ++other_txn_begin_records;
+    }
+  }
+  ASSERT_EQ(savepoint_txn_begin_records, 1);
+  ASSERT_EQ(other_txn_begin_records, 1);
   CheckRecordCount(resp, kExpectedDmlRecords);
 }
 

@@ -52,6 +52,7 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/callsite_profiling.h"
+#include "yb/util/crc32c_accelerated.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flags.h"
@@ -107,7 +108,6 @@
 #include "yb/rocksdb/util/autovector.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/compression.h"
-#include "yb/rocksdb/util/crc32c.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/file_util.h"
 #include "yb/rocksdb/util/log_buffer.h"
@@ -988,8 +988,8 @@ void DumpSupportInfo(Logger* logger) {
   RLOG(InfoLogLevel::INFO_LEVEL, logger, "\tBzip supported: %d",
       BZip2_Supported());
   RLOG(InfoLogLevel::INFO_LEVEL, logger, "\tLZ4 supported: %d", LZ4_Supported());
-  RLOG(InfoLogLevel::INFO_LEVEL, logger, "Fast CRC32 supported: %d",
-      crc32c::IsFastCrc32Supported());
+  RLOG(InfoLogLevel::INFO_LEVEL, logger, "CRC32C implementation: %s",
+      yb::crc::Crc32cImplementations().front().name);
 }
 
 }  // namespace
@@ -2306,13 +2306,18 @@ Result<FileNumbersHolder> DBImpl::FlushMemTableToOutputFile(
         << cfd->current()->storage_info()->LevelSummary(&tmp);
   }
 
-  if (!file_number_holder.ok() && !file_number_holder.status().IsShutdownInProgress()
-      && db_options_.paranoid_checks && bg_error_.ok()) {
-    // if a bad error happened (not ShutdownInProgress) and paranoid_checks is
-    // true, mark DB read-only
+  if (!file_number_holder.ok() && bg_error_.ok() &&
+      (flush_job.filter_failed() ||
+       (!file_number_holder.status().IsShutdownInProgress() && db_options_.paranoid_checks))) {
+    // A failed dependency cannot be retried indefinitely, even with paranoid checks disabled or
+    // when the dependency (rather than this DB) is shutting down. Wake waiters with the error.
     bg_error_.TrySet(file_number_holder.status());
   }
   RETURN_NOT_OK(file_number_holder);
+  if (!flush_job.picked_memtables()) {
+    // Nothing was flushed, so there is no flush or file to report.
+    return file_number_holder;
+  }
   MAYBE_FAULT(FLAGS_fault_crash_after_rocksdb_flush);
   // may temporarily unlock and lock the mutex.
   NotifyOnFlushCompleted(
@@ -3803,8 +3808,12 @@ ColumnFamilyData* DBImpl::PopFirstFromFlushQueue(FlushReason* flush_reason_out) 
 
 void DBImpl::SchedulePendingFlush(ColumnFamilyData* cfd, FlushReason reason) {
   if (!cfd->pending_flush() && cfd->imm()->IsFlushPending()) {
-    for (auto listener : db_options_.listeners) {
-      listener->OnFlushScheduled(this);
+    if (!db_options_.listeners.empty()) {
+      auto largest_frontier =
+          cfd->imm()->GetFrontier({}, yb::storage::UpdateUserValueType::kLargest);
+      for (auto listener : db_options_.listeners) {
+        listener->OnFlushScheduled(this, largest_frontier.get());
+      }
     }
     VLOG_WITH_PREFIX_AND_FUNC(2) << "Flush scheduled for CF: " << cfd->GetName()
                                  << ", reason: " << ToString(reason);
@@ -3952,6 +3961,7 @@ void DBImpl::WaitAfterBackgroundError(
             "Waiting after background $0 error: $1, Accumulated background error counts: $2",
             job_name, s, error_cnt).c_str());
     LogFlush(db_options_.info_log);
+    TEST_SYNC_POINT_CALLBACK("DBImpl::WaitAfterBackgroundError", this);
     env_->SleepForMicroseconds(1000000);
     mutex_.Lock();
   }
@@ -3992,6 +4002,7 @@ void DBImpl::BackgroundJobComplete(
 }
 
 void DBImpl::BackgroundCallFlush(ColumnFamilyData* cfd) {
+  TEST_SYNC_POINT_CALLBACK("DBImpl::BackgroundCallFlush:Start", this);
   bool made_progress = false;
   JobContext job_context(next_job_id_.fetch_add(1), true);
 
@@ -6806,6 +6817,41 @@ Status DBImpl::DeleteFilesInRange(ColumnFamilyHandle* column_family,
 void DBImpl::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
   InstrumentedMutexLock l(&mutex_);
   versions_->GetLiveFilesMetaData(metadata);
+}
+
+void DBImpl::GetLiveFileNumbersNotOnPath(uint32_t path_id, std::vector<uint64_t>* out) {
+  InstrumentedMutexLock l(&mutex_);
+  versions_->GetLiveFileNumbersNotOnPath(path_id, out);
+}
+
+size_t DBImpl::EvictTableReaders() {
+  std::vector<uint64_t> file_numbers;
+  {
+    InstrumentedMutexLock l(&mutex_);
+    for (auto cfd : *versions_->GetColumnFamilySet()) {
+      if (cfd->IsDropped()) {
+        continue;
+      }
+      for (int level = 0; level < cfd->NumberLevels(); level++) {
+        for (const auto& file : cfd->current()->storage_info()->LevelFiles(level)) {
+          // The version holds the reader when max_open_files == -1, so evicting it from the table
+          // cache would not close it.
+          if (file->fd.table_reader) {
+            continue;
+          }
+          file_numbers.push_back(file->fd.GetNumber());
+        }
+      }
+    }
+  }
+  // Outside the mutex: dropping the last reference closes the file.
+  size_t evicted = 0;
+  for (const auto file_number : file_numbers) {
+    if (TableCache::EvictIfOpen(table_cache_.get(), file_number)) {
+      ++evicted;
+    }
+  }
+  return evicted;
 }
 
 yb::storage::FrontierInfo DBImpl::GetFrontiers(yb::storage::FrontierKinds kinds) {

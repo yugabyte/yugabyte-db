@@ -11,7 +11,6 @@ import { createErrorMessage, getPrimaryCluster } from '../../universe-form/utils
 import { Universe } from '../../universe-form/utils/dto';
 import { PROVIDER_ROUTE_PREFIX } from '../../../../../components/configRedesign/providerRedesign/constants';
 
-import InfoIcon from '../../../../assets/info-blue.svg';
 import AlertIcon from '../../../../assets/alert.svg';
 
 // Sizes and colours follow the Cross-Cloud Federated IAM Figma (section 4, universe "Actions").
@@ -54,9 +53,6 @@ const useStyles = makeStyles((theme) => ({
     gap: theme.spacing(1),
     padding: theme.spacing(1),
     borderRadius: 8
-  },
-  info: {
-    backgroundColor: theme.palette.info[100]
   },
   warning: {
     backgroundColor: theme.palette.warning[100],
@@ -196,22 +192,6 @@ export const CrossCloudFederationModal: FC<CrossCloudFederationModalProps> = ({
           />
         </Box>
         {/* Per the design, a banner shows only once the toggle moves away from the saved state. */}
-        {isEnabling && isProviderFederationEnabled && (
-          <Box className={clsx(classes.banner, classes.info)}>
-            <InfoIcon width={24} height={24} className={classes.icon} />
-            <Box className={classes.bannerText}>
-              <span className={classes.bannerTitle}>{t('enableInfoTitle')}</span>
-              <span>
-                <Trans
-                  t={t}
-                  i18nKey="enableInfoText"
-                  values={{ providerName }}
-                  components={{ bold: <span className={classes.bannerTitle} /> }}
-                />
-              </span>
-            </Box>
-          </Box>
-        )}
         {isEnabling && !isProviderFederationEnabled && (
           <Box className={clsx(classes.banner, classes.warning)}>
             <AlertIcon width={24} height={24} className={classes.icon} />

@@ -49,6 +49,7 @@
 #include "yb/common/pgsql_error.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/transaction_priority.h"
@@ -58,6 +59,7 @@
 #include "yb/docdb/object_lock_shared_state_manager.h"
 
 #include "yb/dockv/doc_vector_id.h"
+#include "yb/dockv/key_bytes.h"
 #include "yb/dockv/partition.h"
 
 #include "yb/master/master_ddl.pb.h"
@@ -96,6 +98,7 @@
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/lw_function.h"
+#include "yb/util/operation_counter.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
@@ -193,7 +196,7 @@ DECLARE_bool(ysql_yb_allow_replication_slot_ordering_modes);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_enable_object_locking_infra);
+DECLARE_bool(ysql_yb_enable_object_locking_infra);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 
 DECLARE_string(ysql_sequence_cache_method);
@@ -347,11 +350,16 @@ struct FetchedVector {
 struct VectorIndexQueryPartitionData {
   size_t number_of_vectors_returned_to_postgres = 0;
   size_t number_of_vectors_fetched_from_tablet = 0;
+  // Fetched vectors that were dropped as not farther than max_fetched_distance.
+  size_t number_of_vectors_dropped = 0;
+  std::optional<uint64_t> max_fetched_distance;
+  bool last_fetch_dropped = false;
   bool whether_all_vectors_was_fetched = false;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
         number_of_vectors_returned_to_postgres, number_of_vectors_fetched_from_tablet,
+        number_of_vectors_dropped, max_fetched_distance, last_fetch_dropped,
         whether_all_vectors_was_fetched);
   }
 };
@@ -397,9 +405,7 @@ class VectorIndexQuery {
         partition_state.whether_all_vectors_was_fetched = true;
       }
       VLOG_WITH_FUNC(4) << partition_idx << ": " << partition_state.ToString();
-      if (!partition_state.whether_all_vectors_was_fetched &&
-          partition_state.number_of_vectors_returned_to_postgres + prefetch_size_
-              > partition_state.number_of_vectors_fetched_from_tablet) {
+      if (NeedsFetch(partition_state)) {
         auto new_read_req = arena->NewArenaObject<LWPgsqlReadRequestPB>(read_req);
         new_read_req->dup_partition_key(key);
         auto& vector_idx_options = *new_read_req->mutable_index_request()
@@ -471,7 +477,17 @@ class VectorIndexQuery {
     auto& out_resp = *responses.Add();
     auto& write_buffer = sidecars.Start();
 
+    // Rows are merged in order only while each partition that could have more has prefetch_size_
+    // rows buffered. A partition left short by dropped rows could have nearer rows than those
+    // buffered, so return nothing and requery it, which moves past the dropped rows. Other short
+    // pages are returned: their requery may repeat itself and stall the query. The gate applies to
+    // stale pages too: their buffered rows may be out of order as well.
     size_t response_size = std::min(prefetch_size_, vectors_.size());
+    if (std::ranges::any_of(partitions_, [this](const auto& partition) {
+      return partition.last_fetch_dropped && NeedsFetch(partition);
+    })) {
+      response_size = 0;
+    }
 
     pggate::PgWire::WriteInt64(response_size, &write_buffer);
     for (size_t i = 0; i != response_size; ++i) {
@@ -609,6 +625,13 @@ class VectorIndexQuery {
     return Status::OK();
   }
 
+  // Whether the partition could have more rows and has fewer than prefetch_size_ buffered.
+  bool NeedsFetch(const VectorIndexQueryPartitionData& partition) const {
+    return !partition.whether_all_vectors_was_fetched &&
+           partition.number_of_vectors_fetched_from_tablet - partition.number_of_vectors_dropped
+               - partition.number_of_vectors_returned_to_postgres < prefetch_size_;
+  }
+
   bool CouldFetchMore() const {
     if (!vectors_.empty()) {
       return true;
@@ -645,17 +668,35 @@ class VectorIndexQuery {
       }
       auto& distances = op_resp.vector_index_distances();
       auto& ends = op_resp.vector_index_ends();
+      auto& partition_state = partitions_[op.partition_idx];
+      // A later page re-runs the search and skips the rows fetched before by count. The new search
+      // may find rows the earlier one missed, so a skipped row may be returned again. Keep only
+      // the rows farther than all fetched before. Rows the re-run newly finds within that distance
+      // are lost, as approximate search allows, and so are ties past
+      // vector_index_max_extra_tied_results.
+      const auto skip_distances_up_to = partition_state.max_fetched_distance;
+      const auto dropped_before = partition_state.number_of_vectors_dropped;
       size_t sidecar_offset = 8;
       for (size_t index = 0; index != distances.size(); ++index) {
         auto new_offset = ends[index];
-        vectors_.push_back(FetchedVector {
-          .distance = distances[index],
-          .data = op_sidecars.SubSlice(sidecar_offset, new_offset),
-          .partition_idx = op.partition_idx,
-        });
+        auto distance = distances[index];
+        if (!skip_distances_up_to || distance > *skip_distances_up_to) {
+          vectors_.push_back(FetchedVector {
+            .distance = distance,
+            .data = op_sidecars.SubSlice(sidecar_offset, new_offset),
+            .partition_idx = op.partition_idx,
+          });
+          partition_state.max_fetched_distance = std::max(
+              partition_state.max_fetched_distance.value_or(0), distance);
+        } else {
+          ++partition_state.number_of_vectors_dropped;
+        }
         sidecar_offset = new_offset;
       }
-      partitions_[op.partition_idx].number_of_vectors_fetched_from_tablet += distances.size();
+      partition_state.last_fetch_dropped =
+          partition_state.number_of_vectors_dropped != dropped_before;
+      // Counts the dropped rows too: the tablet skips them on the next page.
+      partition_state.number_of_vectors_fetched_from_tablet += distances.size();
       if (!op_resp.vector_index_could_have_more_data()) {
         partitions_[op.partition_idx].whether_all_vectors_was_fetched = true;
       }
@@ -981,13 +1022,21 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
  public:
   SharedExchangeQuery(
       PrivateTag, std::shared_ptr<PgClientSession>&& session, SharedExchange& exchange,
-      const EventStatsPtr& stats_exchange_response_size)
-      : req_(arena_.get()), resp_(arena_.get()), session_(std::move(session)), exchange_(exchange),
+      const EventStatsPtr& stats_exchange_response_size, OperationCounter& queries)
+      : operation_(queries), req_(arena_.get()), resp_(arena_.get()),
+        session_(std::move(session)), exchange_(exchange),
         stats_exchange_response_size_(stats_exchange_response_size) {}
 
   ~SharedExchangeQuery() {
-    exchange_.ResetBusy();
+    // Timed out local calls could read the request from the exchange until the query is destroyed,
+    // so only now the response is written over it. Busy is reset before the response is posted, so
+    // pggate does not find the exchange busy when it sends the next request.
     LOG_IF(DFATAL, !responded_.load()) << "Response did not send";
+    const auto response_size = responded_.load() ? WriteResponse() : 0;
+    exchange_.ResetBusy();
+    if (response_size) {
+      exchange_.Respond(response_size);
+    }
   }
 
   using RequestInfo = std::pair<std::shared_ptr<QueryData<T>>, CoarseTimePoint>;
@@ -1063,10 +1112,16 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
   void SendResponse() {
     EndSharedMemSpan(
         &trace_span_, resp_.has_status() ? StatusFromPB(resp_.status()) : Status::OK());
+    responded_ = true;
+  }
+
+  // Runs from the destructor, so everything the response references without a copy must be owned
+  // by the query: arena_, sidecars_ or the ops in data_, which hold their RPC response buffers.
+  // Returns the size to post to the exchange, 0 when the session is gone.
+  size_t WriteResponse() {
     auto locked_session = session_.lock();
     if (!locked_session) {
-      responded_ = true;
-      return;
+      return 0;
     }
 
     using google::protobuf::io::CodedOutputStream;
@@ -1118,10 +1173,12 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
       auto id = locked_session->SaveData(buffer, std::move(sidecars_.buffer()));
       response_size = kTooBigResponseMark | id;
     }
-    exchange_.Respond(response_size);
-    responded_ = true;
+    return response_size;
   }
 
+  // Destroyed last, after the destructor is done with the exchange. The session waits for it
+  // before the exchange is unmapped.
+  ScopedOperation operation_;
   ThreadSafeArenaPtr arena_ = SharedThreadSafeArena();
   std::remove_const_t<typename T::ReqPB> req_;
   typename T::RespPB resp_;
@@ -1733,6 +1790,27 @@ void ClearTransaction(client::YBSession& session) {
   session.read_point()->SetMomento(momento);
 }
 
+// Returns the key used to route a GetTableKeyRanges request with the specified exclusive upper
+// bound. Tablet::GetTabletKeyRanges returns the boundary between hash tablets as the encoded hash
+// partition key [kUInt16Hash, B]. InitHashPartitionKey decodes it as the inclusive max hash code
+// B, so the backward request would be routed back to the tablet starting at B. We route it by
+// [kUInt16Hash, B - 1, kHighest] instead, which has the same keys below it. Other representations
+// of the same boundary (see PartitionSchema::DecodeEncodedHashPartitionKeyBound) are routed the
+// same way.
+std::string UpperBoundRoutingKey(const Schema& schema, Slice upper_bound_key) {
+  if (schema.num_hash_key_columns() == 0) {
+    return upper_bound_key.ToBuffer();
+  }
+  const auto hash_code =
+      dockv::PartitionSchema::DecodeEncodedHashPartitionKeyBound(upper_bound_key);
+  // Hash code 0 is the start of the first tablet, it is never returned as the boundary.
+  if (!hash_code || *hash_code == 0) {
+    return upper_bound_key.ToBuffer();
+  }
+  return dockv::PartitionSchema::HashCodeToDocKeyBound(
+      schema, *hash_code - 1, /* is_lower = */ false).ToStringBuffer();
+}
+
 } // namespace
 
 class PgClientSession::Impl {
@@ -1756,6 +1834,11 @@ class PgClientSession::Impl {
             object_lock_shared_state_ ? object_lock_shared_state_->get() : nullptr),
         big_shared_mem_expiration_task_("big_shared_mem_expiration_task", &scheduler),
         read_point_history_(PrefixLogger(id_, pid_)) {}
+
+  ~Impl() {
+    // The session shared memory is unmapped right after the session is destroyed.
+    shared_exchange_queries_.Shutdown();
+  }
 
   [[nodiscard]] auto id() const {return id_; }
   [[nodiscard]] pid_t pid() const { return pid_; }
@@ -2115,6 +2198,17 @@ class PgClientSession::Impl {
         PgObjectId::GetYbTableIdFromPB(req.table_id()),
         std::move(txn_metadata),
         /* wait= */ true, context->GetClientDeadline());
+  }
+
+  Status StartTableBackfill(
+      const PgStartTableBackfillRequestPB& req,
+      PgStartTableBackfillResponsePB* resp,
+      rpc::RpcContext* context) {
+    return client_.StartTableBackfill(
+        PgObjectId::GetYbTableIdFromPB(req.source_table_id()),
+        req.target_table_oid(), req.transform_fn_oid(),
+        req.backfill_timestamp(), req.pg_job_id(),
+        context->GetClientDeadline());
   }
 
   Status CreateTablegroup(
@@ -2749,11 +2843,9 @@ class PgClientSession::Impl {
     }
     if (!req.upper_bound_key().empty()) {
       read_request->mutable_upper_bound()->set_is_inclusive(false);
-      for (auto* dest_key :
-           {embedded_req->mutable_upper_bound_key(),
-            read_request->mutable_upper_bound()->mutable_key()}) {
-        *dest_key = req.upper_bound_key();
-      }
+      *embedded_req->mutable_upper_bound_key() = req.upper_bound_key();
+      read_request->mutable_upper_bound()->dup_key(
+          UpperBoundRoutingKey((*table)->InternalSchema(), req.upper_bound_key()));
     }
     embedded_req->set_range_size_bytes(req.range_size_bytes());
     embedded_req->set_max_key_length(req.max_key_length());
@@ -2815,7 +2907,8 @@ class PgClientSession::Impl {
       const RequestProcessingPreconditionWaiter& precondition_waiter,
       SharedExchange& exchange, uint8_t* input, size_t size, Args&&... args) {
     auto query = SharedExchangeQuery<T>::MakeShared(
-        SharedSessionFromThis(), exchange, stats_exchange_response_size());
+        SharedSessionFromThis(), exchange, stats_exchange_response_size(),
+        shared_exchange_queries_);
     const auto status = DoHandleSharedExchangeQuery(
         precondition_waiter, *query, input, size, id(), pid_, std::forward<Args>(args)...);
     if (!status.ok()) {
@@ -3151,19 +3244,22 @@ class PgClientSession::Impl {
       LOG_AND_RETURN(WARNING, STATUS(InvalidArgument, txn_meta_res.status().message()));
     }
 
-    std::optional<SubTransactionId> opt_subtxn_id;
-    if (!req.release_all()) {
-      opt_subtxn_id = session_data->transaction->GetActiveSubTransactionId();
-    } else {
+    SCHECK(
+        subtxn_with_session_object_locks_.has_value(), InvalidArgument,
+        "Session object lock release without active session object locks");
+    const SubTransactionId subtxn_id = *subtxn_with_session_object_locks_;
+    RSTATUS_DCHECK_EQ(
+        session_data->transaction->GetActiveSubTransactionId(), subtxn_id, IllegalState,
+        "Expected the session txn's active subtxn to hold the session object locks");
+    if (req.release_all()) {
       // All session object locks as part of a phased DDLs are tagged to the same subtxn id.
       // When releasing all of them, abort the subtxn and bump up the active subtxn id.
-      const auto rollback_to_subtxn = *subtxn_with_session_object_locks_;
       subtxn_with_session_object_locks_.reset();
       RETURN_NOT_OK(session_data->transaction->RollbackToSubTransaction(
-          rollback_to_subtxn, context->GetClientDeadline()));
+          subtxn_id, context->GetClientDeadline()));
       const auto new_subtxn_id = session_data->transaction->IncrementAndGetSubTransactionId();
       RSTATUS_DCHECK(
-          rollback_to_subtxn == new_subtxn_id - 1, IllegalState,
+          subtxn_id == new_subtxn_id - 1, IllegalState,
           "Expected all session object locks to be associated with the same subtxn");
     }
     RSTATUS_DCHECK(
@@ -3171,9 +3267,9 @@ class PgClientSession::Impl {
         "Expected to see valid lock id in session lock release request or release_all option set");
     auto release_req = std::make_shared<master::ReleaseObjectLocksGlobalRequestPB>(
         ReleaseRequestFor<master::ReleaseObjectLocksGlobalRequestPB>(
-            instance_uuid(), txn_meta_res->transaction_id, opt_subtxn_id, lease_epoch_,
+            instance_uuid(), txn_meta_res->transaction_id, subtxn_id, lease_epoch_,
             context_.clock.get()));
-    if (opt_subtxn_id) {
+    if (!req.release_all()) {
       auto* lock = release_req->add_object_locks();
       lock->set_database_oid(req.lock_oid().database_oid());
       lock->set_relation_oid(req.lock_oid().relation_oid());
@@ -3183,7 +3279,7 @@ class PgClientSession::Impl {
     }
     ReleaseWithRetriesGlobal(
         client_, ts_lock_manager(), txn_meta_res->transaction_id,
-        opt_subtxn_id, release_req);
+        subtxn_id, release_req);
     TEST_PAUSE_IF_FLAG(TEST_pause_session_lock_after_release);
     // Release control to the pg backend, and let the release continue in async mode.
     return Status::OK();
@@ -3266,7 +3362,8 @@ class PgClientSession::Impl {
   }
 
   bool ReadyToShutdown() {
-    return big_shared_mem_expiration_task_.ReadyToShutdown();
+    return big_shared_mem_expiration_task_.ReadyToShutdown() &&
+           shared_exchange_queries_.ReadyToShutdown();
   }
 
   void CompleteShutdown() {
@@ -3599,11 +3696,43 @@ class PgClientSession::Impl {
       WARN_NOT_OK(MoveSessionToDatabaseCgroup(*database_oid), "Setting cgroup of PgClientSession");
     }
 
+    // A request that is not part of a connection start's prefetch drops the session's
+    // reference to the claim here rather than leaving it for the session to go away. A round
+    // still in flight holds the same token, so the database stays counted until that round
+    // lands. Such a request usually means the prefetch is over, having finished or given up.
+    //
+    // The exception is a read of a sys table the prefetch did not register, which carries no
+    // caching info either: it drops the claim while the prefetch is still running, so the gaps
+    // between its remaining requests go uncounted until its next fill takes a fresh token.
+    // What is lost is the gap cover, not the protection while a round is filling. pggate logs
+    // such a read as not prefetched, and the answer to it is to register the table.
+    //
+    // TODO(#34309): a connection start whose last YbPrefetch has nothing registered issues no
+    // request at all -- the preload note beside that call in relcache.c -- so no completing
+    // round reaches the cache and no round ends its claim. A pooled backend idle after startup
+    // sends nothing outside a prefetch either, so its database stays counted until the session
+    // exits. In that configuration nothing records a version either, so nothing asks and the
+    // held claim costs nothing; it bites only on a node that recorded one before the preload
+    // list grew to cover that round.
+    //
+    // TODO(#34309): the no-cache starter is the wider case. It runs a connection start's
+    // rounds with no caching info at all -- YBCStartSysTablePrefetchingNoCache passes none --
+    // so its first round ends the claim and the whole uncached catalog read runs uncounted,
+    // not just the gaps. Reaching it needs the earlier starters to fail on a snapshot too old
+    // in turn, which is why this is a note rather than a fix: carrying
+    // part_of_connection_prefetch there means giving a prefetch that wants no cache something
+    // to put it in.
+    if (!options.has_caching_info() ||
+        !options.caching_info().part_of_connection_prefetch()) {
+      prefetch_fill_token_.reset();
+    }
+
     if (options.has_caching_info()) {
       VLOG_WITH_PREFIX(3)
           << "Executing read from response cache for session " << data->req.session_id();
       data->cache_setter = VERIFY_RESULT(response_cache().Get(
-          options.mutable_caching_info(), deadline, data));
+          options.mutable_caching_info(), deadline, data, data->req.session_id(),
+          &prefetch_fill_token_));
       if (!data->cache_setter) {
         return Status::OK();
       }
@@ -3705,6 +3834,26 @@ class PgClientSession::Impl {
         IsTxnUsingTableLocks(options.is_using_table_locks()),
         context_.metrics,
         MakeOriginationInfo(options.origination_ht())));
+    // PrepareOperations has already applied the ops to the session. Failing out before the flush
+    // must drop them, or they would go out with the next one.
+    CancelableScopeExit abort_se{[session] { session->Abort(); }};
+    if (options.uses_catalog_snapshot()) {
+      const auto serializable =
+          data->transaction && data->transaction->isolation() == SERIALIZABLE_ISOLATION;
+      for (const auto& op_data : data->ops) {
+        RSTATUS_DCHECK(
+            op_data.op->table()->InternalSchema().table_properties().is_ysql_catalog_table(),
+            IllegalState, "Non-catalog op on $0 uses the catalog snapshot",
+            op_data.op->table()->name());
+        if (!op_data.op->read_only()) {
+          continue;
+        }
+        auto& read_op = down_cast<client::YBPgsqlReadOp&>(*op_data.op);
+        if (serializable && !IsValidRowMarkType(GetRowMarkTypeFromPB(read_op.request()))) {
+          read_op.set_force_snapshot_read();
+        }
+      }
+    }
     if (VLOG_IS_ON(2) || options.trace_requested()) {
       const auto& read_point = *session->read_point();
       const char* session_kind_str =
@@ -3737,6 +3886,7 @@ class PgClientSession::Impl {
     }
 
     applier_se.Cancel();
+    abort_se.Cancel();
     session->FlushAsync([this, data, trace, trace_created_locally,
                          start_time](client::FlushStatus* flush_status) {
       ADOPT_TRACE(trace.get());
@@ -3893,7 +4043,9 @@ class PgClientSession::Impl {
     metadata.transaction_id = read_txn_id;
     metadata.isolation = IsolationLevel::SNAPSHOT_ISOLATION;
     metadata.is_read_only_historical_committed_txn = true;
-    txn = client::YBTransaction::Fabricate(&context_.transaction_manager_provider(), metadata);
+    txn = client::YBTransaction::Fabricate(
+        &context_.transaction_manager_provider(), metadata,
+        VERIFY_RESULT(SubtxnSet::FromPB(options.historical_read_aborted_subtxns().set())));
     txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
     session->SetTransaction(txn);
     VLOG_WITH_PREFIX(2) << "Fabricated historical read transaction " << read_txn_id;
@@ -3991,8 +4143,8 @@ class PgClientSession::Impl {
         // Therefore, override the restarted read point here with the current time.
         // This override loses the restart read information until TODO(#31142) is fixed.
         RSTATUS_DCHECK(
-          !(txn && txn->isolation() == SERIALIZABLE_ISOLATION),
-          IllegalState, "Clamping does not apply to SERIALIZABLE txns.");
+          options.uses_catalog_snapshot() || !(txn && txn->isolation() == SERIALIZABLE_ISOLATION),
+          IllegalState, "Clamping applies to SERIALIZABLE txns only for catalog snapshot reads.");
         session.read_point()->SetCurrentReadTime(ClampUncertaintyWindow::kTrue);
         VLOG_WITH_PREFIX(2) << "Clamping read time to " << session.read_point()->GetReadTime();
       }
@@ -4088,8 +4240,8 @@ class PgClientSession::Impl {
       // TODO(#30357): Measure the performance of picking time here instead of the storage layer.
       if (read_time_options.clamp_uncertainty_window() && !session.read_point()->GetReadTime()) {
         RSTATUS_DCHECK(
-          !(txn && txn->isolation() == SERIALIZABLE_ISOLATION),
-          IllegalState, "Clamping does not apply to SERIALIZABLE txns.");
+          options.uses_catalog_snapshot() || !(txn && txn->isolation() == SERIALIZABLE_ISOLATION),
+          IllegalState, "Clamping applies to SERIALIZABLE txns only for catalog snapshot reads.");
         session.read_point()->SetCurrentReadTime(ClampUncertaintyWindow::kTrue);
         VLOG_WITH_PREFIX(2) << "Clamping read time to " << session.read_point()->GetReadTime();
       }
@@ -4757,7 +4909,7 @@ class PgClientSession::Impl {
   [[nodiscard]] bool IsObjectLockingEnabled() const {
     return ts_lock_manager() != nullptr &&
            FLAGS_enable_object_locking_for_table_locks &&
-           FLAGS_ysql_enable_object_locking_infra;
+           FLAGS_ysql_yb_enable_object_locking_infra;
   }
 
   Result<TransactionMetadata> NextObjectLockingTxnMeta(
@@ -4926,6 +5078,8 @@ class PgClientSession::Impl {
   SharedMemorySegmentHandle big_shared_mem_handle_ GUARDED_BY(big_shared_mem_mutex_);
   bool big_shared_mem_expiration_task_scheduled_ GUARDED_BY(big_shared_mem_mutex_) = false;
   rpc::ScheduledTaskTracker big_shared_mem_expiration_task_;
+  // Shared exchange queries, which use the session shared memory until destroyed.
+  OperationCounter shared_exchange_queries_{Format("Session $0: ", id_)};
 
   std::array<SessionData, kPgClientSessionKindMapSize> sessions_;
   uint64_t txn_serial_no_ = 0;
@@ -4946,6 +5100,18 @@ class PgClientSession::Impl {
   // Whether a Perform has moved this session's thread into the database's cgroup; see DoPerform.
   // Only accessed under the session lock.
   bool moved_to_database_cgroup_ = false;
+
+  // This session's claim on its database while a connection start's prefetch runs. Held here
+  // rather than by the request that took it, so the gaps between that prefetch's requests do
+  // not read as an idle database. Three things end it: the request that completes the prefetch,
+  // the next request that is not part of one, which DoPerform resets it on, and the session.
+  //
+  // The pointer is only touched under the session lock, but the token it names is not: the
+  // setter releases it from FlushDone with the lock already dropped. That is one thread; a
+  // second arrives only where parallel workers run a connection start of their own, which
+  // needs preload_rel_cache, since they share their leader's session and so this slot.
+  // FillToken::Release carries both.
+  PgResponseCache::FillTokenPtr prefetch_fill_token_;
 
   std::optional<SubTransactionId> subtxn_with_session_object_locks_;
 

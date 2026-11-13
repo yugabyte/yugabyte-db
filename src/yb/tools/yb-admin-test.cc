@@ -70,6 +70,8 @@
 #include "yb/tools/yb-admin_util.h"
 
 #include "yb/tools/tools_test_utils.h"
+#include "yb/tserver/server_main_util.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/date_time.h"
 #include "yb/util/format.h"
@@ -3142,9 +3144,9 @@ TEST_F_EX(AdminCliTest, AddStuckTransactionStatusTablet, AddTransactionTabletTes
   // by some other means.
   cluster_->tablet_server(0)->Shutdown();
   {
+    // CreateTablet RPCs are sent only after the CREATING state is persisted.
+    auto log_waiter = cluster_->GetMasterLogWaiter("Create Tablet RPC failed for tablet");
     ASSERT_OK(CallAdmin("add_transaction_tablet", global_txn_table_id));
-    auto log_waiter = cluster_->GetMasterLogWaiter(
-        Format("Processing pending assignments for table: $0", global_txn_table_id));
     ASSERT_OK(log_waiter.WaitFor(5s));
   }
   cluster_->master()->Shutdown(SafeShutdown::kFalse);
@@ -3181,8 +3183,7 @@ TEST_F_EX(AdminCliTest, AddStuckTransactionStatusTablet, AddTransactionTabletTes
 
   cluster_->tablet_server(0)->Shutdown();
   {
-    auto log_waiter = cluster_->GetMasterLogWaiter(
-        Format("Processing pending assignments for table: $0", local_txn_table_id));
+    auto log_waiter = cluster_->GetMasterLogWaiter("Create Tablet RPC failed for tablet");
     ASSERT_OK(CallAdmin("add_transaction_tablet", local_txn_table_id));
     ASSERT_OK(log_waiter.WaitFor(5s));
   }
@@ -4051,6 +4052,63 @@ TEST_F(AdminCliTest, TestListTabletServerLogLocationsWithDeadTServer) {
   ASSERT_NE(alive_pos, std::string::npos);
   ASSERT_NE(dead_pos, std::string::npos);
   ASSERT_LT(alive_pos, dead_pos);
+}
+
+// clear_rocksdb_cache must skip DEAD tservers rather than abort on the first one it cannot reach,
+// and still clear the alive ones.
+TEST_F(AdminCliTest, TestClearRocksDBCacheWithDeadTServer) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
+  BuildAndStart({}, {"--enable_load_balancing=false", "--tserver_unresponsive_timeout_ms=5000"});
+
+  auto* dead_ts = cluster_->tablet_server(0);
+  const auto dead_uuid = dead_ts->uuid();
+  const auto alive_uuid = cluster_->tablet_server(1)->uuid();
+
+  auto output = ASSERT_RESULT(CallAdmin("clear_rocksdb_cache"));
+  ASSERT_STR_CONTAINS(output, "Cleared RocksDB cache on tserver " + dead_uuid);
+  ASSERT_STR_CONTAINS(output, "Cleared RocksDB cache on tserver " + alive_uuid);
+
+  dead_ts->Shutdown();
+  auto cluster_client =
+      master::MasterClusterClient(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>());
+  ASSERT_OK(WaitFor(
+      [&cluster_client, &dead_uuid]() -> Result<bool> {
+        auto tserver = VERIFY_RESULT(cluster_client.GetTabletServer(dead_uuid));
+        return tserver && !tserver->alive();
+      },
+      30s, "tserver not marked dead"));
+
+  output = ASSERT_RESULT(CallAdmin("clear_rocksdb_cache"));
+  ASSERT_STR_CONTAINS(output, "Skipped tserver " + dead_uuid + ": marked DEAD by the master");
+  ASSERT_STR_CONTAINS(output, "Cleared RocksDB cache on tserver " + alive_uuid);
+}
+
+// With the block cache disabled, clear_rocksdb_cache must still succeed, still close the table
+// readers, and say that there was no block cache to clear.
+TEST_F(AdminCliTest, TestClearRocksDBCacheWithBlockCacheDisabled) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
+  BuildAndStart({Format("--db_block_cache_size_bytes=$0", DB_CACHE_SIZE_CACHE_DISABLED)});
+
+  // Flushing leaves a table reader open per SST file written.
+  TestYcqlWorkload workload(cluster_.get());
+  workload.set_table_name(kTableName);
+  workload.set_num_write_threads(1);
+  workload.set_sequential_write(true);
+  workload.Setup();
+  workload.Start();
+  ASSERT_OK(WaitFor(
+      [&workload] { return workload.rows_inserted() >= 100; }, 30s, "rows inserted"));
+  workload.StopAndJoin();
+  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(0, {}));
+
+  const auto output = ASSERT_RESULT(CallAdmin("clear_rocksdb_cache"));
+  ASSERT_STR_CONTAINS(output, "block cache disabled");
+  std::smatch match;
+  ASSERT_TRUE(std::regex_search(output, match, std::regex(R"(closed (\d+) table readers)")))
+      << output;
+  ASSERT_GT(std::stoi(match[1].str()), 0) << output;
 }
 
 TEST_F(AdminCliTest, TestDisallowImplicitStreamCreation) {

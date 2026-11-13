@@ -13,7 +13,7 @@
 
 #include "yb/tablet/tablet_snapshots.h"
 
-#include <unordered_set>
+#include <set>
 
 #include <boost/algorithm/string/predicate.hpp>
 
@@ -42,6 +42,7 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/file_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
@@ -70,6 +71,12 @@ TAG_FLAG(max_wait_for_aborting_transactions_during_restore_ms, advanced);
 DEFINE_NON_RUNTIME_int32(snapshot_cleanup_pool_size, 4,
     "Maximum number of concurrent tablet snapshot directory cleanup tasks per process.");
 TAG_FLAG(snapshot_cleanup_pool_size, advanced);
+
+DEFINE_RUNTIME_int32(tablet_snapshot_op_slow_log_threshold_ms, 1000,
+    "Steps of tablet snapshot operations and of flushed frontier updates (also done by truncate "
+    "and by bootstrap with --force_recover_flushed_frontier) that take at least this many "
+    "milliseconds are logged at INFO level. Faster steps are logged at VLOG(1).");
+TAG_FLAG(tablet_snapshot_op_slow_log_threshold_ms, advanced);
 
 DEFINE_test_flag(int32, delay_tablet_split_metadata_restore_secs, 0,
     "How much time in secs to delay restoring tablet split metadata after restoring "
@@ -125,6 +132,10 @@ DEFINE_test_flag(bool, pause_create_checkpoint, false,
 DEFINE_test_flag(int32, snapshot_cleanup_retry_delay_ms, 0,
     "If positive, override the snapshot cleanup retry backoff in tests.");
 
+DEFINE_test_flag(bool, skip_vector_index_stamp_after_restore_reopen, false,
+    "If true, a checkpoint restore does not stamp the restore op id on the vector indexes after "
+    "reopening them, as if the tserver crashed right after the reopen.");
+
 namespace yb::tablet {
 
 namespace {
@@ -166,40 +177,6 @@ void CleanupLastSnapshotHybridTime(
   VLOG(2) << "Cleanup snapshot ht: " << path;
   if (env.FileExists(path)) {
     WARN_NOT_OK(env.DeleteFile(path), "Failed to cleanup last snapshot time");
-  }
-}
-
-// The snapshot holds the storage of every vector index the tablet had at snapshot time, including
-// dropped ones a snapshot schedule retains and, in a clone, ones the clone does not have. The
-// tablet destroys only the storages of the indexes its metadata lists, and a storage dir is named
-// by index oid, so a later index of a clone that reuses such an oid would load its chunks.
-// Best effort: a failure here would fail the restore apply, which is fatal for the tserver, after
-// the frontier patch that keeps the restore from being replayed.
-void DeleteUnlistedVectorIndexStorages(
-    Env& env, const std::string& snapshot_dir, const RaftGroupMetadata& metadata) {
-  auto children = env.GetChildren(snapshot_dir, ExcludeDots::kTrue);
-  if (!children.ok()) {
-    LOG(WARNING) << metadata.LogPrefix() << "Failed to list " << snapshot_dir
-                 << " for vector index storages to delete: " << children.status();
-    return;
-  }
-  const auto listed_dirs_list = metadata.vector_index_dirs();
-  const std::unordered_set<std::string> listed_dirs(
-      listed_dirs_list.begin(), listed_dirs_list.end());
-  for (const auto& child : *children) {
-    if (!child.starts_with(docdb::kVectorIndexDirPrefix)) {
-      continue;
-    }
-    auto dir = docdb::GetStorageDir(metadata.rocksdb_dir(), child);
-    if (listed_dirs.contains(dir) || !env.DirExists(dir)) {
-      continue;
-    }
-    LOG(INFO) << metadata.LogPrefix() << "Deleting storage of vector index not in the tablet: "
-              << dir;
-    auto status = env.DeleteRecursively(dir);
-    LOG_IF(WARNING, !status.ok())
-        << metadata.LogPrefix() << "Failed to delete vector index storage " << dir << ": "
-        << status;
   }
 }
 
@@ -357,6 +334,17 @@ std::string TabletSnapshots::SnapshotsDirName(const std::string& rocksdb_dir) {
   return docdb::GetStorageDir(rocksdb_dir, docdb::kSnapshotsDirName);
 }
 
+MonoTime LogSnapshotStepDone(const std::string& log_prefix, std::string_view step, MonoTime start) {
+  const auto now = MonoTime::Now();
+  const auto elapsed = now - start;
+  if (elapsed >= MonoDelta::FromMilliseconds(FLAGS_tablet_snapshot_op_slow_log_threshold_ms)) {
+    LOG(INFO) << log_prefix << step << " done in " << elapsed;
+  } else {
+    VLOG(1) << log_prefix << step << " done in " << elapsed;
+  }
+  return now;
+}
+
 bool TabletSnapshots::IsTempSnapshotDir(const std::string& dir) {
   return dir.ends_with(kTempSnapshotDirSuffix);
 }
@@ -403,10 +391,6 @@ bool TabletSnapshots::IsLastSnapshotTimeFilePath(const std::string& dir) {
   return dir.starts_with(kLastSnapshotPrefix);
 }
 
-Status TabletSnapshots::Prepare(SnapshotOperation* operation) {
-  return Status::OK();
-}
-
 Status TabletSnapshots::Create(SnapshotOperation* operation) {
   return Create(CreateSnapshotData {
     .snapshot_hybrid_time = HybridTime::FromPB(operation->request()->snapshot_hybrid_time()),
@@ -428,16 +412,21 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
   ScopedRWOperation scoped_read_operation(&pending_op_counter_blocking_rocksdb_shutdown_start());
   RETURN_NOT_OK(scoped_read_operation);
 
+  auto step_start = MonoTime::Now();
   Status s;
   {
     SCOPED_WAIT_STATUS(Snapshot_WaitingForFlush);
-    s = regular_db().Flush(rocksdb::FlushOptions(rocksdb::FlushReason::kSnapshotCreation));
+    // Flush all DBs, not just the regular DB, so the flushes triggered internally by checkpoint
+    // creation below need not flush intents while additionally holding create_checkpoint_lock().
+    // Preflushing before submission does not cover intervening writes or follower catch-up.
+    s = Flush(FlushMode::kSync, FlushFlags::kAllDbs, rocksdb::FlushReason::kSnapshotCreation);
   }
 
   if (PREDICT_FALSE(!s.ok())) {
-    LOG_WITH_PREFIX(WARNING) << "RocksDB flush status: " << s;
-    return s.CloneAndPrepend("Unable to flush RocksDB");
+    LOG_WITH_PREFIX(WARNING) << "Tablet flush status: " << s;
+    return s.CloneAndPrepend("Unable to flush tablet storages");
   }
+  step_start = LogSnapshotStepDone(LogPrefix(), "Snapshot flush", step_start);
 
   const std::string& snapshot_dir = data.snapshot_dir;
 
@@ -455,6 +444,7 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
 
   // Delete temp directory if it exists.
   RETURN_NOT_OK(CleanupSnapshotDir(tmp_snapshot_dir));
+  step_start = LogSnapshotStepDone(LogPrefix(), "Snapshot old dirs cleanup", step_start);
 
   bool exit_on_failure = true;
   // Delete snapshot (RocksDB checkpoint) directories on exit.
@@ -499,6 +489,7 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
     LOG_WITH_PREFIX(WARNING) << "Cannot create RocksDB checkpoint: " << s;
     return s.CloneAndPrepend("Cannot create RocksDB checkpoint");
   }
+  step_start = LogSnapshotStepDone(LogPrefix(), "Snapshot checkpoint", step_start);
 
   if (is_transactional_snapshot) {
     rocksdb::Options rocksdb_options;
@@ -508,6 +499,7 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
 
     RETURN_NOT_OK(patcher.Load());
     RETURN_NOT_OK(patcher.SetHybridTimeFilter(std::nullopt, snapshot_hybrid_time));
+    step_start = LogSnapshotStepDone(LogPrefix(), "Snapshot hybrid time filter", step_start);
   }
 
   AtomicFlagSleepMs(&FLAGS_TEST_delay_tablet_export_metadata_ms);
@@ -515,16 +507,20 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
   bool need_flush = data.schedule_id && tablet().metadata()->AddSnapshotSchedule(data.schedule_id);
 
   RETURN_NOT_OK(tablet().metadata()->SaveTo(TabletMetadataFile(tmp_snapshot_dir)));
+  step_start = LogSnapshotStepDone(LogPrefix(), "Snapshot metadata save", step_start);
 
   RETURN_NOT_OK_PREPEND(
       env.RenameFile(tmp_snapshot_dir, snapshot_dir),
       Format("Cannot rename temp snapshot dir $0 to $1", tmp_snapshot_dir, snapshot_dir));
+  step_start = LogSnapshotStepDone(LogPrefix(), "Snapshot dir rename", step_start);
   RETURN_NOT_OK_PREPEND(
       env.SyncDir(top_snapshots_dir),
       Format("Cannot sync top snapshots dir $0", top_snapshots_dir));
+  step_start = LogSnapshotStepDone(LogPrefix(), "Snapshot rename parent dir sync", step_start);
 
   if (need_flush) {
     RETURN_NOT_OK(tablet().metadata()->Flush());
+    step_start = LogSnapshotStepDone(LogPrefix(), "Tablet metadata flush", step_start);
   }
 
   LOG_WITH_PREFIX(INFO) << "Complete snapshot creation in folder: " << snapshot_dir
@@ -545,6 +541,7 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
       CleanupLastSnapshotHybridTime(
           env, top_snapshots_dir, data.schedule_id, previous_last_snapshot_ht);
     }
+    LogSnapshotStepDone(LogPrefix(), "Snapshot last hybrid time file write", step_start);
   }
 
   exit_on_failure = false;
@@ -789,6 +786,36 @@ Status TabletSnapshots::RestoreCheckpoint(
     }
   }
 
+  // Force the restore op id on the restored vector index storages. With the snapshot's lower
+  // OpIds, bootstrap would replay the rolled back writes into them. With the higher OpIds of
+  // another Raft group, e.g. the source of a clone or of an imported backup, it would skip this
+  // group's writes to them. This must precede the regular DB patch: once the regular DB has the
+  // restore op id, a crash no longer replays the restore. The storages are the snapshot's or,
+  // without a snapshot dir, those of the listed indexes. The restored metadata, which can rename
+  // them, is merged only later, so the storages it leaves unlisted are stamped too and deleted
+  // below. A listing failure fails the restore before the patch, so the restore is replayed.
+  std::vector<std::string> snapshot_children;
+  if (!snapshot_dir.empty()) {
+    snapshot_children = VERIFY_RESULT(env().GetChildren(snapshot_dir, ExcludeDots::kTrue));
+  }
+  {
+    std::set<std::string> vector_index_dirs;
+    for (auto& dir : metadata().vector_index_dirs()) {
+      vector_index_dirs.insert(std::move(dir));
+    }
+    for (const auto& child : snapshot_children) {
+      if (child.starts_with(docdb::kVectorIndexDirPrefix)) {
+        vector_index_dirs.insert(docdb::GetStorageDir(db_dir, child));
+      }
+    }
+    // A storage whose manifest cannot be loaded is left unstamped rather than failing the restore,
+    // which bootstrap would then replay and fail again: the merge may leave it unlisted, and it is
+    // deleted below. One that stays listed fails OpenStorages as without the stamp.
+    for (const auto& dir : vector_index_dirs) {
+      RETURN_NOT_OK(ResultToStatus(docdb::ForceVectorIndexStorageOpId(dir, frontier.op_id())));
+    }
+  }
+
   {
     rocksdb::Options rocksdb_options;
     tablet().InitRocksDBOptions(
@@ -806,7 +833,8 @@ Status TabletSnapshots::RestoreCheckpoint(
   bool need_flush = false;
 
   if (restore_metadata.schema) {
-    // TODO(pitr) check deleted columns
+    // SetSchema forgets deleted columns that the restored schema brings back.
+    // TODO(pitr) record the columns that the restore removes as deleted.
     // OpId::Invalid() is used to indicate the callee to not
     // set last_applied_change_metadata_op_id field of tablet metadata.
     tablet().metadata()->SetSchema(
@@ -848,10 +876,13 @@ Status TabletSnapshots::RestoreCheckpoint(
     RefreshYBMetaDataCache();
   }
 
-  // After MergeWithRestored: it can change the id, and so the storage dir, of a listed index.
-  if (!snapshot_dir.empty()) {
-    DeleteUnlistedVectorIndexStorages(env(), snapshot_dir, metadata());
-  }
+  // The snapshot holds the storage of every vector index the tablet had at snapshot time, including
+  // dropped ones a snapshot schedule retains and, in a clone, ones the clone does not have. A
+  // storage dir is named by index oid, so a later index of a clone that reuses such an oid would
+  // load its chunks. Best effort: a failure here would fail the restore apply, which is fatal for
+  // the tserver. A crash before this point is covered by the startup sweep in TSTabletManager.
+  // Runs after MergeWithRestored: it can change the id, and so the storage dir, of a listed index.
+  metadata().DeleteUnlistedVectorIndexStorages(snapshot_children);
 
   // Reopen database from copied checkpoint.
   // Note: db_dir == metadata()->rocksdb_dir() is still valid db dir.
@@ -861,13 +892,14 @@ Status TabletSnapshots::RestoreCheckpoint(
     return s;
   }
 
-  // The restore replaced the vector index storages together with the regular DB, but the patcher
-  // above moved only the regular DB's flushed frontier to the restore op id. Force the same op id
-  // on the vector indexes. With a lower snapshot time OpId, bootstrap would replay the rolled back
-  // writes back into them. With a higher OpId of another Raft group, e.g. the source of a clone
-  // or of an imported backup, it would skip this group's writes to them.
-  RETURN_NOT_OK(tablet().vector_indexes().ModifyFlushedFrontier(
-      frontier, rocksdb::FrontierModificationMode::kForce));
+  // The storages stamped above already have the restore op id and are skipped. This covers a listed
+  // index whose storage was not stamped: one the restore did not bring, e.g. created after the
+  // snapshot, or a leftover one the restored metadata lists, which can carry the OpIds of another
+  // Raft group.
+  if (!FLAGS_TEST_skip_vector_index_stamp_after_restore_reopen) {
+    RETURN_NOT_OK(tablet().vector_indexes().ModifyFlushedFrontier(
+        frontier, rocksdb::FrontierModificationMode::kForce));
+  }
 
   LOG_WITH_PREFIX(INFO) << "Checkpoint restored from " << snapshot_dir;
   LOG_WITH_PREFIX(INFO) << "Re-enabling compactions";
@@ -913,7 +945,10 @@ Result<std::string> TabletSnapshots::RestoreToTemporary(
 
 TabletSnapshots::TombstoneState TabletSnapshots::TryTombstoneSnapshotDir(
     PendingSnapshotDeletion* deletion) {
+  LongOperationTracker long_operation_tracker("Tombstone snapshot dir", 5s);
+  auto step_start = MonoTime::Now();
   std::lock_guard lock(create_checkpoint_lock());
+  step_start = LogSnapshotStepDone(LogPrefix(), "Tombstone checkpoint lock wait", step_start);
   Result<bool> snapshot_dir_exists = false;
   if (!deletion->active_dir.empty()) {
     snapshot_dir_exists = DirectoryExists(env(), deletion->active_dir);
@@ -967,6 +1002,7 @@ TabletSnapshots::TombstoneState TabletSnapshots::TryTombstoneSnapshotDir(
     if (metrics_) {
       metrics_->tombstone_successes->Increment();
     }
+    step_start = LogSnapshotStepDone(LogPrefix(), "Tombstone rename", step_start);
     LOG_WITH_PREFIX(INFO) << "Tombstoned snapshot dir " << deletion->active_dir << " as "
                           << deletion->tombstone_dir;
   }
@@ -982,6 +1018,7 @@ TabletSnapshots::TombstoneState TabletSnapshots::TryTombstoneSnapshotDir(
                              << sync_status;
     return TombstoneState::kRetry;
   }
+  LogSnapshotStepDone(LogPrefix(), "Tombstone parent dir sync", step_start);
   deletion->logical_pending = false;
   return TombstoneState::kTombstoned;
 }
@@ -1030,6 +1067,7 @@ bool TabletSnapshots::CleanupTombstonedSnapshot(PendingSnapshotDeletion* deletio
   }
 
   TEST_PAUSE_IF_FLAG(TEST_pause_after_tombstoning_snapshot);
+  auto step_start = MonoTime::Now();
   {
     SCOPED_WAIT_STATUS(Snapshot_CleanupSnapshotDir);
     const Status deletion_status = env().DeleteRecursively(deletion->tombstone_dir);
@@ -1047,6 +1085,9 @@ bool TabletSnapshots::CleanupTombstonedSnapshot(PendingSnapshotDeletion* deletio
   if (metrics_) {
     metrics_->cleanup_successes->Increment();
   }
+  step_start = LogSnapshotStepDone(
+      LogPrefix(), Format("Tombstoned snapshot dir $0 delete", deletion->tombstone_dir),
+      step_start);
   const auto top_snapshots_dir = DirName(deletion->tombstone_dir);
   const Status sync_status = env().SyncDir(top_snapshots_dir);
   if (PREDICT_FALSE(!sync_status.ok())) {
@@ -1060,6 +1101,9 @@ bool TabletSnapshots::CleanupTombstonedSnapshot(PendingSnapshotDeletion* deletio
     PublishPendingDeletionState(*deletion);
     return false;
   }
+  LogSnapshotStepDone(
+      LogPrefix(), Format("Tombstoned snapshot dir $0 parent dir sync", deletion->tombstone_dir),
+      step_start);
   deletion->physical_pending = false;
   PublishPendingDeletionState(*deletion);
   return !deletion->logical_pending;
@@ -1254,7 +1298,10 @@ Status TabletSnapshots::Delete(const SnapshotOperation& operation) {
     // Preserve the pre-async behavior: best-effort synchronous recursive deletion under the
     // checkpoint lock, without creating a tombstone. Tombstones left over from a period when the
     // flag was enabled are reconciled by the startup scan.
+    LongOperationTracker long_operation_tracker("Delete snapshot", 5s);
+    auto step_start = MonoTime::Now();
     std::lock_guard lock(create_checkpoint_lock());
+    step_start = LogSnapshotStepDone(LogPrefix(), "Snapshot delete lock wait", step_start);
     if (env().FileExists(snapshot_dir)) {
       const Status deletion_status = env().DeleteRecursively(snapshot_dir);
       if (PREDICT_FALSE(!deletion_status.ok())) {
@@ -1262,12 +1309,14 @@ Status TabletSnapshots::Delete(const SnapshotOperation& operation) {
                                  << ": " << deletion_status;
         return Status::OK();
       }
+      step_start = LogSnapshotStepDone(LogPrefix(), "Snapshot dir delete", step_start);
 
       const Status sync_status = env().SyncDir(top_snapshots_dir);
       if (PREDICT_FALSE(!sync_status.ok())) {
         LOG_WITH_PREFIX(WARNING) << "Cannot sync top snapshots dir " << top_snapshots_dir
                                  << ": " << sync_status;
       }
+      LogSnapshotStepDone(LogPrefix(), "Snapshot parent dir sync", step_start);
     }
     LOG_WITH_PREFIX(INFO) << "Complete snapshot deletion on tablet in folder: " << snapshot_dir;
     return Status::OK();
@@ -1296,12 +1345,14 @@ Status TabletSnapshots::CreateCheckpoint(
 
   Status status;
   {
+    const auto lock_wait_start = MonoTime::Now();
     std::unique_lock lock(create_checkpoint_lock(), std::defer_lock);
     if (!use_try_lock) {
       lock.lock();
     } else if (!lock.try_lock()) {
         return STATUS(InternalError, "Unable to acquire checkpoint lock");
     }
+    LogSnapshotStepDone(LogPrefix(), "Checkpoint lock wait", lock_wait_start);
 
     if (!has_regular_db()) {
       LOG_WITH_PREFIX(INFO) << "Skipped creating checkpoint in " << dir;
@@ -1334,10 +1385,13 @@ Status TabletSnapshots::DoCreateCheckpoint(
     const std::string& dir, CreateCheckpointIn create_checkpoint_in,
     SkipVectorIndexFlush skip_vector_index_flush) {
   const auto temp_intents_dir = docdb::GetStorageDir(dir, docdb::kIntentsDirName);
+  auto step_start = MonoTime::Now();
   if (has_intents_db()) {
     RETURN_NOT_OK(rocksdb::checkpoint::CreateCheckpoint(&intents_db(), temp_intents_dir));
+    step_start = LogSnapshotStepDone(LogPrefix(), "Intents DB checkpoint", step_start);
   }
   RETURN_NOT_OK(rocksdb::checkpoint::CreateCheckpoint(&regular_db(), dir));
+  step_start = LogSnapshotStepDone(LogPrefix(), "Regular DB checkpoint", step_start);
 
   // Vector indexes checkpoint must be created after rocksdb checkpoint
   // to be in sync with the flushed data.
@@ -1346,10 +1400,13 @@ Status TabletSnapshots::DoCreateCheckpoint(
       // A vector index checkpoint only takes chunks that are already flushed. Vectors are queued
       // inside the write that adds their row, so flushing after the regular DB checkpoint puts the
       // vectors of every row in it into the chunks below, including rows written during the
-      // checkpoint. See #34759. A failed chunk save leaves WaitForFlush blocked, and other flush
-      // errors are only logged (#35156).
-      vector_indexes.Flush();
-      RETURN_NOT_OK(vector_indexes.WaitForFlush());
+      // checkpoint. See #34759.
+      // Waits for the saves started by the other indexes also when one failed.
+      auto flush_status = vector_indexes.Flush();
+      auto wait_status = vector_indexes.WaitForFlush();
+      RETURN_NOT_OK(flush_status);
+      RETURN_NOT_OK(wait_status);
+      step_start = LogSnapshotStepDone(LogPrefix(), "Vector indexes flush", step_start);
     }
     for (const auto& vector_index : *vector_indexes) {
       const auto storage_name = docdb::GetVectorIndexStorageName(vector_index->options());
@@ -1358,6 +1415,7 @@ Status TabletSnapshots::DoCreateCheckpoint(
           : docdb::GetStorageDir(dir, storage_name);
       RETURN_NOT_OK(vector_index->CreateCheckpoint(checkpoint_dir));
     }
+    LogSnapshotStepDone(LogPrefix(), "Vector indexes checkpoint", step_start);
   }
 
   // TODO: not clear why temp dir is used rather than direct creation by the corresponding path.

@@ -87,6 +87,9 @@ message CDCStreamInfoPB {
 
   // See SysCDCStreamEntryPB.cdcsdk_ysql_bound_publication_name.
   optional string cdcsdk_ysql_bound_publication_name = 21;
+
+  // See SysCDCStreamEntryPB.xcluster_bootstrap_info.
+  optional XClusterStreamBootstrapInfoPB xcluster_bootstrap_info = 22;
 }
 
 message ValidateReplicationInfoRequestPB {
@@ -838,6 +841,20 @@ message DeleteXClusterWalAnchorStreamsResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+// Sent by the tserver that ran BootstrapProducer, after it has written the checkpoints to
+// cdc_state.
+message RecordXClusterStreamBootstrapInfoRequestPB {
+  message StreamInfoPB {
+    optional bytes stream_id = 1;
+    repeated bytes checkpointed_tablet_ids = 2;
+  }
+  repeated StreamInfoPB streams = 1;
+}
+
+message RecordXClusterStreamBootstrapInfoResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 message GetXClusterOutboundReplicationGroupsRequestPB {
   optional string namespace_id = 1;
 }
@@ -897,6 +914,28 @@ message GetUniverseReplicationInfoResponsePB {
 
   repeated DbScopedInfoPB db_scoped_infos = 5;
   optional bool automatic_ddl_mode = 6; // [default = false]
+}
+
+message PrepareReplicationSlotsForTransactionalDDLRequestPB {
+  // The replication slot to prepare. If not set, then all replication slots that detect
+  // publication changes implicitly are prepared.
+  optional string replication_slot_name = 1;
+}
+
+message PrepareReplicationSlotsForTransactionalDDLResponsePB {
+  message SlotPB {
+    optional string replication_slot_name = 1;
+  }
+
+  message SkippedSlotPB {
+    optional string replication_slot_name = 1;
+    optional string reason = 2;
+  }
+
+  optional MasterErrorPB error = 1;
+  // The prepared replication slots.
+  repeated SlotPB slots = 2;
+  repeated SkippedSlotPB skipped_slots = 3;
 }
 
 message DisableDynamicTableAdditionOnCDCSDKStreamRequestPB {
@@ -1088,6 +1127,8 @@ service MasterReplication {
       returns (RepairOutboundXClusterReplicationGroupRemoveTableResponsePB);
   rpc DeleteXClusterWalAnchorStreams(DeleteXClusterWalAnchorStreamsRequestPB)
       returns (DeleteXClusterWalAnchorStreamsResponsePB);
+  rpc RecordXClusterStreamBootstrapInfo(RecordXClusterStreamBootstrapInfoRequestPB)
+      returns (RecordXClusterStreamBootstrapInfoResponsePB);
   rpc GetXClusterOutboundReplicationGroups(
       GetXClusterOutboundReplicationGroupsRequestPB)
       returns (GetXClusterOutboundReplicationGroupsResponsePB);
@@ -1117,6 +1158,9 @@ service MasterReplication {
       returns (ValidateAndSyncCDCStateEntriesForCDCSDKStreamResponsePB);
   rpc CleanupStaleCDCStreams(CleanupStaleCDCStreamsRequestPB)
       returns (CleanupStaleCDCStreamsResponsePB);
+  rpc PrepareReplicationSlotsForTransactionalDDL(
+      PrepareReplicationSlotsForTransactionalDDLRequestPB)
+      returns (PrepareReplicationSlotsForTransactionalDDLResponsePB);
   // Introduced for bug (#22876, #22773)
   rpc RemoveTablesFromCDCSDKStream (RemoveTablesFromCDCSDKStreamRequestPB)
       returns (RemoveTablesFromCDCSDKStreamResponsePB);

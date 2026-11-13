@@ -136,6 +136,9 @@ message ServerRegistrationPB {
   optional CloudInfoPB cloud_info = 3;
   // Placement uuid of the tserver's cluster.
   optional bytes placement_uuid = 4;
+
+  // Storage tiers of the tserver's data dirs ("ssd", "hdd"), from the --fs_data_dirs labels.
+  repeated string storage_tiers = 7;
 }
 
 message ServerEntryPB {

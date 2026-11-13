@@ -313,6 +313,7 @@ DECLARE_bool(enable_db_history_retention_pins);
 DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_qos);
+DECLARE_bool(enable_tiered_storage);
 DECLARE_bool(enable_update_local_peer_min_index);
 DECLARE_bool(qos_system_dbs_use_shared_pool);
 DECLARE_bool(skip_fields_moved_to_xcluster_guarded_info);
@@ -897,6 +898,16 @@ Status TabletServer::GetRegistration(ServerRegistrationPB* reg, server::RpcOnly 
   } else {
     reg->set_pg_port(pgsql_proxy_bind_address().port());
   }
+  // Tiered storage is a preview feature: with it off the master must not learn or persist tiers,
+  // so a tserver registers none and the master treats its tiers as unknown, as for a tserver that
+  // predates the field. With it on, unlabeled data dirs are on kDefaultStorageTier, so this is
+  // never empty once the fs is open.
+  reg->clear_storage_tiers();
+  if (FLAGS_enable_tiered_storage) {
+    for (const auto& [tier, _] : fs_manager_->GetDataRootsByTier()) {
+      reg->add_storage_tiers(tier);
+    }
+  }
   return Status::OK();
 }
 
@@ -925,9 +936,10 @@ Status TabletServer::RegisterServices() {
       std::make_unique<CDCServiceContextImpl>(this), metric_entity(), metric_registry(),
       client_future(), []() { return FLAGS_update_min_cdc_indices_interval_secs; });
 
-  RETURN_NOT_OK(RegisterService(
-      FLAGS_ts_backup_svc_queue_length,
-      std::make_shared<TabletServiceBackupImpl>(tablet_manager_.get(), metric_entity())));
+  auto backup_service =
+      std::make_shared<TabletServiceBackupImpl>(tablet_manager_.get(), metric_entity());
+  backup_service_ = backup_service;
+  RETURN_NOT_OK(RegisterService(FLAGS_ts_backup_svc_queue_length, std::move(backup_service)));
 
   RETURN_NOT_OK(RegisterService(FLAGS_xcluster_svc_queue_length, cdc_service_));
 
@@ -1136,6 +1148,11 @@ void TabletServer::Shutdown() {
     remote_bootstrap_service->StartShutdown();
   }
 
+  // Release pending snapshot history guards before tablet storage teardown. Outstanding flush
+  // callbacks retain only their result/admission state, not the backup service or snapshot RPC.
+  if (auto backup_service = backup_service_.lock()) {
+    backup_service->Shutdown();
+  }
   tablet_manager_->StartShutdown();
   WARN_NOT_OK(relinquish_lease_future.get(), "Couldn't relinquish ysql lease");
 
@@ -2761,6 +2778,7 @@ Status TabletServer::XClusterHandleMasterHeartbeatResponse(
         resp.xcluster_config_version()));
   }
 
+  xcluster_producer_state_known_.store(true, std::memory_order_release);
   return Status::OK();
 }
 
@@ -3197,7 +3215,8 @@ TabletServer::AllocateObjectLockSharedState() const {
     if (result.ok()) {
       return std::move(*result);
     }
-    LOG(DFATAL) << "Failed to allocate new object lock shared state: " << result.status();
+    LOG_IF(DFATAL, !result.status().IsShutdownInProgress())
+        << "Failed to allocate new object lock shared state: " << result.status();
   }
   return std::nullopt;
 }

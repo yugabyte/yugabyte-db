@@ -30,6 +30,9 @@
 // under the License.
 //
 
+#include <set>
+#include <string>
+
 #include "yb/common/constants.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager-test_base.h"
@@ -37,6 +40,7 @@
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/util/format.h"
+#include "yb/util/storage_tier.h"
 
 namespace yb {
 namespace master {
@@ -112,6 +116,37 @@ TEST(TestTSDescriptor, TestReplicaCreationsDecay) {
     SleepFor(MonoDelta::FromSeconds(10));
     ASSERT_NEAR(0.891, ts.RecentReplicaCreations(), 0.05);
   }
+}
+
+// The tier set comes from the persisted registration alone. A tserver that registered none (a
+// binary from before the field) has an unknown, empty set, and its path metrics do not fill it in:
+// they cover WAL roots too, and they are lost on master failover.
+TEST(TestTSDescriptor, StorageTiersComeFromRegistrationOnly) {
+  TSDescriptor ts("test", RegisteredThroughHeartbeat::kTrue, CloudInfoPB(), nullptr);
+  ASSERT_TRUE(ts.GetStorageTiers().empty());
+  ASSERT_FALSE(ts.HasStorageTier(kDefaultStorageTier));
+  ASSERT_FALSE(ts.HasStorageTier("hdd"));
+
+  TServerMetricsPB metrics;
+  auto* path_metric = metrics.add_path_metrics();
+  path_metric->set_path_id("/mnt/d0");
+  path_metric->set_storage_tier("hdd");
+  ts.UpdateMetrics(metrics);
+  ASSERT_TRUE(ts.GetStorageTiers().empty());
+  ASSERT_FALSE(ts.HasStorageTier("hdd"));
+
+  NodeInstancePB instance;
+  instance.set_permanent_uuid("test");
+  instance.set_instance_seqno(1);
+  TSRegistrationPB registration;
+  registration.mutable_common()->add_storage_tiers("ssd");
+  registration.mutable_common()->add_storage_tiers("hdd");
+  auto lock = ASSERT_RESULT(
+      ts.UpdateRegistration(instance, registration, RegisteredThroughHeartbeat::kTrue));
+  lock.Commit();
+  ASSERT_EQ(ts.GetStorageTiers(), (std::set<std::string>{"hdd", "ssd"}));
+  ASSERT_TRUE(ts.HasStorageTier("ssd"));
+  ASSERT_TRUE(ts.HasStorageTier("hdd"));
 }
 
 TEST(TestCatalogManager, TestLoadCountMultiAZ) {
@@ -334,6 +369,23 @@ TEST(TestCatalogManager, CheckIfCanDeleteSingleTablet) {
   for (const auto& source_tablet : pre_split_tablets) {
     ASSERT_OK(CatalogManagerUtil::CheckIfCanDeleteSingleTablet(source_tablet));
   }
+}
+
+// Adding the same tablet to a table twice should succeed. This happens when the table_ids list of
+// a tablet lists the same table id twice, see github issue 34672.
+TEST(TableInfoTest, AddSameTabletTwice) {
+  scoped_refptr<TableInfo> table(new TableInfo(CURRENT_TEST_NAME(), /* colocated */ false));
+  auto tablet = ASSERT_RESULT(CreateTablet(table, "tablet", "" /* start_key */, "" /* end_key */));
+  {
+    // TabletLoader::Visit holds the tablet's write lock while adding it to its tables.
+    auto l = tablet->LockForWrite();
+    ASSERT_OK(table->AddTablet(tablet));
+  }
+  ASSERT_EQ(table->TabletCount(), 1);
+  ASSERT_EQ(table->NumPartitions(), 1);
+  auto tablets = ASSERT_RESULT(table->GetTablets());
+  ASSERT_EQ(tablets.size(), 1);
+  ASSERT_EQ(tablets[0], tablet);
 }
 
 TEST(TestCatalogManager, TestSetPreferredZones) {
@@ -657,6 +709,49 @@ TEST(TestCatalogManager, PerTableLoadStateAddReplica) {
   // The global load follows the picks.
   ASSERT_EQ(2, ASSERT_RESULT(global_state.GetGlobalReplicaLoad("2222")));
   ASSERT_EQ(1, ASSERT_RESULT(global_state.GetGlobalReplicaLoad("0000")));
+}
+
+TEST(TestCatalogManager, TabletInfoCountsReplicaLoad) {
+  TSDescriptorVector ts_descs = {SetupTS("0000", "a"), SetupTS("1111", "a"), SetupTS("2222", "a")};
+  auto replicas_on = [&ts_descs](std::initializer_list<size_t> indexes) {
+    auto replicas = std::make_shared<TabletReplicaMap>();
+    for (auto i : indexes) {
+      TabletReplica replica;
+      NewReplica(
+          ts_descs[i], tablet::RaftGroupStatePB::RUNNING, PeerRole::FOLLOWER,
+          consensus::PeerMemberType::VOTER, &replica);
+      InsertOrDie(replicas.get(), ts_descs[i]->permanent_uuid(), replica);
+    }
+    return replicas;
+  };
+  auto loads = [&ts_descs]() {
+    std::vector<int64_t> result;
+    for (const auto& ts : ts_descs) {
+      result.push_back(ts->replica_load());
+    }
+    return result;
+  };
+
+  scoped_refptr<TableInfo> table(new TableInfo("table", /* colocated */ false));
+  auto tablet = std::make_shared<TabletInfo>(table, "tablet-1");
+  tablet->SetReplicaLocations(replicas_on({0, 1}));
+  ASSERT_EQ(loads(), (std::vector<int64_t>{1, 1, 0}));
+  tablet->SetReplicaLocations(replicas_on({0, 2}));
+  ASSERT_EQ(loads(), (std::vector<int64_t>{1, 0, 1}));
+
+  auto other = std::make_shared<TabletInfo>(table, "tablet-2");
+  other->SetReplicaLocations(replicas_on({1, 2}));
+  ASSERT_EQ(loads(), (std::vector<int64_t>{1, 1, 2}));
+
+  // Stopping is idempotent and later map changes stay out of the count.
+  tablet->StopCountingReplicaLoad();
+  tablet->StopCountingReplicaLoad();
+  ASSERT_EQ(loads(), (std::vector<int64_t>{0, 1, 1}));
+  tablet->SetReplicaLocations(replicas_on({0, 1}));
+  ASSERT_EQ(loads(), (std::vector<int64_t>{0, 1, 1}));
+
+  other.reset();
+  ASSERT_EQ(loads(), (std::vector<int64_t>{0, 0, 0}));
 }
 
 using consensus::PeerMemberType;

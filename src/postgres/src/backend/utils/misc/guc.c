@@ -323,6 +323,7 @@ static bool yb_check_extra_commands_to_retry_in_proc(char **newval,
 													 GucSource source);
 static void yb_assign_extra_commands_to_retry_in_proc(const char *newval,
 													  void *extra);
+static void yb_assign_conn_mgr_replication_origin_permanent_sticky(bool newval, void *extra);
 static bool yb_disable_auto_analyze_check_hook(bool *newval, void **extra, GucSource source);
 static const char *show_tcmalloc_sample_period(void);
 static const char *yb_show_maxconnections(void);
@@ -917,6 +918,7 @@ static bool yb_conn_mgr_modifying_defaults = false;
 bool		yb_test_skip_binding_scan_keys;
 bool		yb_enable_advanced_index_cond_fold;
 static bool yb_bypass_cond_recheck;
+static bool yb_deprecated_enable_object_locking_infra;
 static bool yb_pushdown_is_not_null;
 static bool yb_pushdown_strict_inequality;
 static bool yb_conn_mgr_selective_deallocate;
@@ -2709,11 +2711,12 @@ static struct config_bool ConfigureNamesBool[] =
 			gettext_noop("Let a connection start from a catalog version this node already has "
 						 "cached."),
 			gettext_noop("A connection beginning while the master leader reports that it is "
-						 "shedding catalog prefetches reads the catalog at a version this node "
-						 "already holds, rather than fetching the whole catalog from the leader, "
-						 "and applies the invalidation messages in between before it runs "
-						 "anything. Turning this off makes every connection fetch from the "
-						 "leader as before, and returns the read a backend makes ahead of "
+						 "shedding catalog prefetches, or while another connection is already "
+						 "filling the catalog for its database, reads the catalog at a version "
+						 "this node already holds, rather than fetching the whole catalog from "
+						 "the leader, and applies the invalidation messages in between before "
+						 "it runs anything. Turning this off makes every connection fetch from "
+						 "the leader as before, and returns the read a backend makes ahead of "
 						 "authentication to the ordinary admission priority on the master."),
 			GUC_NOT_IN_SAMPLE
 		},
@@ -2804,11 +2807,22 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"enable_object_locking_infra", PGC_SIGHUP, LOCK_MANAGEMENT,
+			gettext_noop("DEPRECATED: no-op."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_deprecated_enable_object_locking_infra,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_object_locking_infra", PGC_SIGHUP, LOCK_MANAGEMENT,
 			gettext_noop("Allow enabling object-level locking for table locks."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
-		&enable_object_locking_infra,
+		&yb_enable_object_locking_infra,
 		true,
 		NULL, NULL, NULL
 	},
@@ -2979,6 +2993,18 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_test_fail_stale_catalog_message_check,
 		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_xcluster_invalid_index_ddl_check", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("On an xCluster automatic mode source, reject DDLs "
+						 "whose outcome depends on an invalid index."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_xcluster_invalid_index_ddl_check,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -3752,6 +3778,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_alter_type_reuse_expr_and_partial_indexes", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Skip rebuild of expression and partial indexes when ALTER TABLE ... "
+				"ALTER COLUMN ... TYPE changes only a column's type modifier and does not rewrite "
+				"the table."),
+				gettext_noop("When turned off, such indexes are dropped and rebuilt."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_alter_type_reuse_expr_and_partial_indexes,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_planner_trace", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enables planner tracing."),
 			NULL
@@ -4261,8 +4300,10 @@ static struct config_bool ConfigureNamesBool[] =
 			gettext_noop("If true, enable DocDB metrics collection for pg_stat_statements."),
 			gettext_noop("This enables collection of the following metrics: "
 									"docdb_seeks, docdb_nexts, docdb_prevs, "
-									"docdb_read_time, docdb_write_time and "
-									"docdb_obsolete_rows_scanned"),
+									"docdb_read_time, docdb_write_time, "
+									"docdb_obsolete_rows_scanned, "
+									"docdb_bloom_filter_useful and "
+									"docdb_bloom_filter_checked"),
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_pg_stat_statements_docdb_metrics,
@@ -4360,6 +4401,20 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_conn_mgr_replication_origin_permanent_sticky", PGC_SIGHUP, CUSTOM_OPTIONS,
+			gettext_noop("Keeps a Connection Manager connection that sets up a "
+						 "replication origin in its session sticky until disconnect "
+						 "instead of unsticking it once the origin is reset."),
+			gettext_noop("Set through the ysql_yb_conn_mgr_reversible_stickiness_exclusions "
+						 "gflag."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_conn_mgr_replication_origin_permanent_sticky,
+		false,
+		NULL, yb_assign_conn_mgr_replication_origin_permanent_sticky, NULL
+	},
+
+	{
 		{"yb_enable_mage", PGC_POSTMASTER, DEVELOPER_OPTIONS,
 			gettext_noop("Enable the use of mage extension. "
 						 "NOTE: This is for internal use only."),
@@ -4404,6 +4459,18 @@ static struct config_bool ConfigureNamesBool[] =
 		&yb_enable_new_relation_fastpath_write_in_txn_blocks,
 		kEnableDdlTransactionBlocks,
 		check_yb_enable_new_relation_fastpath_write_in_txn_blocks, NULL, NULL
+	},
+
+	{
+		{"yb_enable_colocated_tables_with_tablespaces", PGC_SIGHUP, CUSTOM_OPTIONS,
+			gettext_noop("Place a colocated table or index that is created with a tablespace "
+						 "in an implicit tablegroup of that tablespace."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_colocated_tables_with_tablespaces,
+		true,
+		NULL, NULL, NULL
 	},
 
 	/* End-of-list marker */
@@ -4653,6 +4720,18 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_replication_slot_wait_max_retries,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_test_notifs_poller_init_delay_ms", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("Time in milliseconds for which the notifications "
+						 "poller waits before it initializes, for testing."),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_UNIT_MS
+		},
+		&yb_test_notifs_poller_init_delay_ms,
 		0, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
@@ -6403,7 +6482,7 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"yb_major_version_upgrade_compatibility", PGC_SIGHUP, CUSTOM_OPTIONS,
 			gettext_noop("The compatibility level to use during a YSQL Major version upgrade. "
-						 "Allowed values are 0 and 11."),
+						 "Allowed values are 0, 11 and 15."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
@@ -6440,6 +6519,18 @@ static struct config_int ConfigureNamesInt[] =
 			NULL
 		},
 		&yb_test_delay_set_local_tserver_inval_message_ms,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_test_delay_relation_grant_update_ms", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("When > 0, GRANT and REVOKE on a relation sleep this many ms "
+						 "between reading and updating its pg_class row."),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_UNIT_MS
+		},
+		&yb_test_delay_relation_grant_update_ms,
 		0, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
@@ -6633,7 +6724,7 @@ static struct config_int ConfigureNamesInt[] =
 						 "to 0 to disable."),
 		},
 		&yb_max_merge_scan_streams,
-		64, 0, 1024,
+		YB_DEFAULT_MERGE_SCAN_MAX_STREAMS, 0, 1024,
 		NULL, NULL, NULL
 	},
 
@@ -6650,10 +6741,11 @@ static struct config_int ConfigureNamesInt[] =
 
 	/*
 	 * YB: Internal GUCs written by YSQL Connection Manager on every logical
-	 * client attach.
+	 * client attach. PGC_BACKEND so that users can't SET them, since
+	 * pg_stat_activity and inet_client_addr() report them.
 	 */
 	{
-		{YB_YCM_CLIENT_PORT, PGC_USERSET, UNGROUPED,
+		{YB_YCM_CLIENT_PORT, PGC_BACKEND, UNGROUPED,
 			gettext_noop("TCP port of the logical client connected through "
 						 "YSQL Connection Manager."),
 			NULL,
@@ -6896,6 +6988,15 @@ static struct config_real ConfigureNamesReal[] =
 		{"seed", PGC_USERSET, UNGROUPED,
 			gettext_noop("Sets the seed for random-number generation."),
 			NULL,
+			/*
+			 * YB: We don't report this variable to ConnMgr because:
+			 * - Setting this from startup packet is ignored by the check hook
+			 * - Setting this using SET makes the connection sticky
+			 * - Its show hook reports "unavailable", so ConnMgr can't replay
+			 *   it and replaying it would also be wrong as it would reset RNG
+			 *   state.
+			 */
+			GUC_YB_NO_CONN_MGR_REPORT |
 			GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 		},
 		&phony_random_seed,
@@ -7277,6 +7378,13 @@ static struct config_string ConfigureNamesString[] =
 		{"default_table_access_method", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Sets the default table access method for new tables."),
 			NULL,
+			/*
+			 * YB: ConnMgr can't replay this safely since the check hook looks
+			 * up the name again. The access method might have been dropped
+			 * between the SET and the replay, making the replay fail. So,
+			 * setting this GUC makes the connection sticky.
+			 */
+			GUC_YB_CONN_MGR_STICKY |
 			GUC_IS_NAME
 		},
 		&default_table_access_method,
@@ -7792,7 +7900,14 @@ static struct config_string ConfigureNamesString[] =
 	{
 		{"default_text_search_config", PGC_USERSET, CLIENT_CONN_LOCALE,
 			gettext_noop("Sets default text search configuration."),
-			NULL
+			NULL,
+			/*
+			 * YB: ConnMgr can't replay this safely since the check hook looks
+			 * up the name again. The config might have been dropped between
+			 * the SET and the replay, making the replay fail. So, setting this
+			 * GUC makes the connection sticky.
+			 */
+			GUC_YB_CONN_MGR_STICKY
 		},
 		&TSCurrentConfig,
 		"pg_catalog.simple",
@@ -7864,10 +7979,11 @@ static struct config_string ConfigureNamesString[] =
 
 	/*
 	 * YB: Internal GUCs written by YSQL Connection Manager on every logical
-	 * client attach.
+	 * client attach. PGC_BACKEND so that users can't SET them, since
+	 * pg_stat_activity and inet_client_addr() report them.
 	 */
 	{
-		{YB_YCM_CLIENT_ADDR, PGC_USERSET, UNGROUPED,
+		{YB_YCM_CLIENT_ADDR, PGC_BACKEND, UNGROUPED,
 			gettext_noop("IP address of the logical client connected through "
 						 "YSQL Connection Manager."),
 			NULL,
@@ -7880,10 +7996,11 @@ static struct config_string ConfigureNamesString[] =
 
 	/*
 	 * YB: Internal GUCs written by YSQL Connection Manager on every logical
-	 * client attach.
+	 * client attach. PGC_BACKEND so that users can't SET them, since
+	 * pg_stat_activity and inet_client_addr() report them.
 	 */
 	 {
-		{"yb_conn_mgr_client_hostname", PGC_USERSET, UNGROUPED,
+		{"yb_conn_mgr_client_hostname", PGC_BACKEND, UNGROUPED,
 			gettext_noop("Hostname of the logical client connected through "
 						 "YSQL Connection Manager."),
 			NULL,
@@ -9915,6 +10032,9 @@ yb_should_report_guc(struct config_generic *record)
 
 	if (YbIsClientYsqlConnMgr())
 	{
+		if (record->flags & GUC_YB_NO_CONN_MGR_REPORT)
+			return false;
+
 		shouldReportGUC =
 			shouldReportGUC ||
 			(record->status & (YB_GUC_VALUE_RESET | YB_GUC_DEFAULT_RESET)) ||
@@ -10038,7 +10158,18 @@ ResetAllOptions(void)
 
 		/* Don't reset non-SET-able values */
 		if (gconf->context != PGC_SUSET &&
-			gconf->context != PGC_USERSET)
+			gconf->context != PGC_USERSET &&
+			/*
+			 * YB: The conn mgr reset undoes everything its 'G' set, i.e. every
+			 * GUC with a conn mgr saved default. set_config_option() only lets
+			 * 'G' (context PGC_BACKEND / PGC_SU_BACKEND) set PGC_USERSET,
+			 * PGC_SUSET, PGC_BACKEND and PGC_SU_BACKEND GUCs, so this only
+			 * extends the reset to the BACKEND contexts. The backend's own
+			 * startup settings (e.g. yb_ycm_internal_is_client_ysqlconnmgr)
+			 * were not set by 'G', have no saved default, and are left alone.
+			 */
+			!(yb_conn_mgr_modifying_defaults &&
+			  gconf->ysql_conn_mgr_saved_default))
 			continue;
 
 		/* YB: Reset defaults set by connection manager */
@@ -10123,6 +10254,11 @@ ResetAllOptions(void)
 			case PGC_STRING:
 				{
 					struct config_string *conf = (struct config_string *) gconf;
+
+					/* YB: the check hook isn't called for the reset value. */
+					if (IsYugaByteEnabled() &&
+						conf->variable == &yb_read_time_string)
+						(void) YbCanResetYbReadTime(conf->reset_val, ERROR);
 
 					if (conf->assign_hook)
 						conf->assign_hook(conf->reset_val,
@@ -10592,12 +10728,6 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 								set_extra_field(&conf->gen, &conf->gen.extra,
 												newextra);
 								changed = true;
-								if (conf->gen.flags & GUC_YB_CUSTOM_STICKY)
-								{
-									elog(LOG, "Making connection sticky for %s",
-										 conf->gen.name);
-									yb_ysql_conn_mgr_sticky_guc = true;
-								}
 							}
 
 							/*
@@ -10641,6 +10771,7 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 				 * set by the user is rolled back
 				 */
 				if (YbIsClientYsqlConnMgr() && changed &&
+					!(gconf->flags & GUC_YB_NO_CONN_MGR_REPORT) &&
 					(gconf->context == PGC_SUSET ||
 					 gconf->context == PGC_USERSET) &&
 					gconf->source == PGC_S_SESSION)
@@ -12519,6 +12650,17 @@ set_config_option_ext(const char *name, const char *value,
 					source = conf->gen.reset_source;
 					context = conf->gen.reset_scontext;
 					srole = conf->gen.reset_srole;
+
+					/*
+					 * YB: the check hook isn't called for the reset value.
+					 * TODO(PG16 merge): upstream 3853664265 adds GUC_NO_RESET,
+					 * checked on this path. It rejects every reset, so it can't
+					 * replace this conditional check, but move this next to it.
+					 */
+					if (IsYugaByteEnabled() &&
+						conf->variable == &yb_read_time_string &&
+						!YbCanResetYbReadTime(newval, elevel))
+						return 0;
 				}
 
 				if (prohibitValueChange)
@@ -12605,12 +12747,6 @@ set_config_option_ext(const char *name, const char *value,
 													 true,
 													 elevel,
 													 false);
-
-					if (conf->gen.flags & GUC_YB_CUSTOM_STICKY)
-					{
-						elog(LOG, "Making connection sticky for setting %s", name);
-						yb_ysql_conn_mgr_sticky_guc = true;
-					}
 				}
 
 				if (makeDefault)
@@ -12787,6 +12923,41 @@ set_config_option_ext(const char *name, const char *value,
 		 value == NULL))		/* RESET statement */
 	{
 		YbAddToChangedSessionParametersList(name);
+	}
+
+	/*
+	 * YB: Make the connection sticky when a PGC_SUSET GUC is set while running
+	 * as a user other than the session user (e.g. a SECURITY DEFINER function).
+	 * Conn Mgr replays the GUC as the session user, which can fail with a
+	 * permission error.
+	 */
+	if (changeVal &&
+		YbIsClientYsqlConnMgr() &&
+		record->context == PGC_SUSET &&
+		source == PGC_S_SESSION &&
+		action == GUC_ACTION_SET &&
+		GetUserId() != GetSessionUserId())
+	{
+		elog(LOG, "Making connection sticky for setting %s as a user other than the session user",
+			 name);
+		yb_ysql_conn_mgr_sticky_guc = true;
+	}
+
+	/*
+	 * YB: Only a session-level SET or a startup-packet value of a
+	 * GUC_YB_CONN_MGR_STICKY variable is replayed by ConnMgr, so only those
+	 * make the connection sticky. SET LOCAL and function-level SET don't
+	 * outlive the transaction or call.
+	 */
+	if (changeVal &&
+		(record->flags & GUC_YB_CONN_MGR_STICKY) &&
+		(source == PGC_S_SESSION || source == PGC_S_CLIENT) &&
+		action == GUC_ACTION_SET &&
+		YbIsClientYsqlConnMgr())
+	{
+		elog(LOG, "Making connection sticky for setting %s, which is marked GUC_YB_CONN_MGR_STICKY",
+			 name);
+		yb_ysql_conn_mgr_sticky_guc = true;
 	}
 
 	return changeVal ? 1 : -1;
@@ -14094,7 +14265,7 @@ DefineCustomStringVariable(const char *name,
 	define_custom_variable(&var->gen);
 
 	/* YB: make custom string variables sticky for connection manager */
-	var->gen.flags |= GUC_YB_CUSTOM_STICKY;
+	var->gen.flags |= GUC_YB_CONN_MGR_STICKY;
 }
 
 void
@@ -18359,6 +18530,13 @@ static void
 yb_assign_extra_commands_to_retry_in_proc(const char *newval, void *extra)
 {
 	yb_extra_commands_to_retry_in_proc = (bool *) extra;
+}
+
+static void
+yb_assign_conn_mgr_replication_origin_permanent_sticky(bool newval, void *extra)
+{
+	if (newval && YbHasReplicationOriginSetup())
+		yb_ysql_conn_mgr_sticky_replication_origin = true;
 }
 
 static bool

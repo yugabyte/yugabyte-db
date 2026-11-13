@@ -22,6 +22,7 @@ import com.oracle.bmc.objectstorage.requests.ListObjectsRequest;
 import com.oracle.bmc.objectstorage.responses.BatchDeleteObjectsResponse;
 import com.oracle.bmc.objectstorage.responses.GetObjectResponse;
 import com.oracle.bmc.objectstorage.responses.ListObjectsResponse;
+import com.yugabyte.yw.cloud.oci.OCIErrorFormatter;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
@@ -494,11 +495,14 @@ public class OCIUtil implements CloudUtil {
       } catch (PlatformServiceException e) {
         throw e;
       } catch (Exception e) {
-        throw new PlatformServiceException(
-            BAD_REQUEST,
-            String.format(
-                "OCI IAM credentials cannot access location %s: %s",
-                entry.getValue(), e.getMessage()));
+        PlatformServiceException error =
+            new PlatformServiceException(
+                BAD_REQUEST,
+                OCIErrorFormatter.logAndShorten(
+                    "OCI IAM credentials cannot access location " + entry.getValue(), e));
+        // Lets the v2 storage config API tell an OCI error from an invalid field.
+        error.initCause(e);
+        throw error;
       }
     }
   }
@@ -580,8 +584,8 @@ public class OCIUtil implements CloudUtil {
       closeQuietly(client);
       throw new PlatformServiceException(
           BAD_REQUEST,
-          "Failed to create OCI Object Storage client with instance principal credentials: "
-              + e.getMessage());
+          OCIErrorFormatter.logAndShorten(
+              "Failed to create OCI Object Storage client with instance principal credentials", e));
     }
   }
 
@@ -710,7 +714,10 @@ public class OCIUtil implements CloudUtil {
                 locationInfo.bucket, prefix);
         log.error(msg, e);
         throw new PlatformServiceException(
-            PRECONDITION_FAILED, msg + ": " + e.getLocalizedMessage());
+            PRECONDITION_FAILED,
+            OCIErrorFormatter.isOciError(e)
+                ? OCIErrorFormatter.userMessage(msg, e)
+                : msg + ": " + e.getLocalizedMessage());
       }
     }
   }
@@ -903,7 +910,8 @@ public class OCIUtil implements CloudUtil {
         throw e;
       }
       throw new PlatformServiceException(
-          BAD_REQUEST, "Failed to get OCI cloud file input stream: " + e.getMessage());
+          BAD_REQUEST,
+          OCIErrorFormatter.logAndShorten("Failed to get OCI cloud file input stream", e));
     }
   }
 

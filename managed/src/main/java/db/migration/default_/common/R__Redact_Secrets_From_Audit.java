@@ -16,7 +16,7 @@ public class R__Redact_Secrets_From_Audit extends BaseJavaMigration {
 
   @Override
   public Integer getChecksum() {
-    int codeChecksum = 82918230; // Change me if you want to force migration to run
+    int codeChecksum = 82918232; // Change me if you want to force migration to run
     MurmurHash3 murmurHash3 = new MurmurHash3();
     return murmurHash3.arrayHash(RedactingService.SECRET_PATHS_FOR_LOGS.toArray(), codeChecksum);
   }
