@@ -32,6 +32,8 @@
 #include "utils/syscache.h"
 
 /* YB includes */
+#include "catalog/namespace.h"
+#include "catalog/pg_namespace.h"
 #include "catalog/pg_yb_tablegroup_d.h"
 #include "pg_yb_utils.h"
 #include "utils/syscache.h"
@@ -112,6 +114,12 @@ recordMultipleDependencies(const ObjectAddress *depender,
 		 */
 		if (isObjectPinned(referenced))
 			continue;
+
+		/* YB */
+		if (YbIsClientYsqlConnMgr() &&
+			referenced->classId == NamespaceRelationId &&
+			isTempNamespace(referenced->objectId))
+			increment_sticky_object_count();
 
 		if (slot_init_count < max_slots)
 		{

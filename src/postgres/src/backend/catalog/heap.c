@@ -1768,13 +1768,6 @@ heap_create_with_catalog(const char *relname,
 	if (oncommit != ONCOMMIT_NOOP)
 		register_on_commit_action(relid, oncommit);
 
-	/* Increment sticky object count if the object is a TEMP TABLE. */
-	if (YbIsClientYsqlConnMgr() && new_rel_desc->rd_islocaltemp)
-	{
-		elog(LOG, "Incrementing sticky object count for TEMP TABLE %s", relname);
-		increment_sticky_object_count();
-	}
-
 	/*
 	 * ok, the relation has been cataloged, so close our relations and return
 	 * the OID of the newly created relation.
