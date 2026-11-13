@@ -2875,6 +2875,13 @@ hll_set_defaults(PG_FUNCTION_ARGS)
     g_default_expthresh = expthresh;
     g_default_sparseon = sparseon;
 
+    /* YB: The defaults are backend state, so make the connection sticky */
+    if (YbIsClientYsqlConnMgr())
+    {
+        elog(LOG, "Making connection sticky for setting hll defaults");
+        yb_ysql_conn_mgr_sticky_nontxn_object = true;
+    }
+
     // Build the result tuple.
 	{
 		TupleDesc tupleDesc;
