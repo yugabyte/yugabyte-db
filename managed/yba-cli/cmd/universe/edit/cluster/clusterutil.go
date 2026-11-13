@@ -176,10 +176,17 @@ func editClusterUtil(
 	placementInfo.SetCloudList(cloudList)
 	cluster.SetPlacementInfo(placementInfo)
 
+	zonesEdited := len(removeZones) > 0 || len(editZones) > 0 || len(addZones) > 0
+
 	if cmd.Flags().Changed("num-nodes") {
 		numNode, err := cmd.Flags().GetInt("num-nodes")
 		if err != nil {
 			return nil, ybaclient.UniverseResp{}, ybaclient.UniverseConfigureTaskParams{}, err
+		}
+		if zonesEdited {
+			if err := checkNumNodesMatchZones(int32(numNode), cloudList); err != nil {
+				return nil, ybaclient.UniverseResp{}, ybaclient.UniverseConfigureTaskParams{}, err
+			}
 		}
 
 		if int32(numNode) != userIntent.GetNumNodes() {
@@ -305,7 +312,31 @@ func editClusterUtil(
 		CommunicationPorts: universeDetails.CommunicationPorts,
 	}
 
+	// Makes YBA use the zone node counts as given; otherwise it can rebuild the placement.
+	if zonesEdited {
+		req.SetUserAZSelected(true)
+	}
+
 	return authAPI, universe, req, nil
+}
+
+// checkNumNodesMatchZones rejects a --num-nodes that differs from the zone node counts,
+// because YBA uses the zone counts when zones are edited.
+func checkNumNodesMatchZones(numNodes int32, cloudList []ybaclient.PlacementCloud) error {
+	var zoneNodes int32
+	for _, cloud := range cloudList {
+		for _, region := range cloud.GetRegionList() {
+			for _, az := range region.GetAzList() {
+				zoneNodes += az.GetNumNodesInAZ()
+			}
+		}
+	}
+	if numNodes != zoneNodes {
+		return fmt.Errorf(
+			"--num-nodes is %d but the zones have %d nodes in total; "+
+				"set num-nodes in --add-zones or --edit-zones instead", numNodes, zoneNodes)
+	}
+	return nil
 }
 
 func editUserTags(cmd *cobra.Command, userTags map[string]string) (map[string]string, error) {
