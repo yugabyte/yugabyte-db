@@ -47,12 +47,7 @@ final class StorageConfigUsages {
         usages.values().stream()
             .flatMap(usage -> usage.universes.stream())
             .collect(Collectors.toSet());
-    Set<UUID> existing =
-        universeUuids.isEmpty()
-            ? Set.of()
-            : Universe.getAllWithoutResources(universeUuids).stream()
-                .map(Universe::getUniverseUUID)
-                .collect(Collectors.toSet());
+    Set<UUID> existing = Universe.getExistingUUIDs(universeUuids);
     Map<UUID, StorageConfigUsage> result = new HashMap<>();
     for (UUID configUuid : configUuids) {
       Usage usage = usages.getOrDefault(configUuid, new Usage());
