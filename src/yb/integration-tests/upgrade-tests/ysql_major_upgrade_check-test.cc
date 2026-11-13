@@ -70,7 +70,54 @@ static const std::initializer_list<UpgradeIncompatibilityCheck> kCheckList{
      .expected_errors =
          {"yb_test_role",
           "Your installation contains roles starting with \"yb_\"."},
-     .teardown_stmts = {"DROP ROLE yb_test_role"}}};
+     .teardown_stmts = {"DROP ROLE yb_test_role"}},
+
+    {// aclitem check in data_types_usage_checks
+     .setup_stmts = {"CREATE TABLE aclitem_check (id int primary key, a aclitem)"},
+     .expected_errors =
+         {"public.aclitem_check.a",
+          "Your installation contains the \"aclitem\" data type in user tables."},
+     .teardown_stmts = {"DROP TABLE aclitem_check"}},
+
+    {// check_for_not_null_inheritance
+     .setup_stmts =
+         {"CREATE TABLE not_null_parent (a int)",
+          "CREATE TABLE not_null_child () INHERITS (not_null_parent)",
+          "ALTER TABLE ONLY not_null_parent ALTER COLUMN a SET NOT NULL"},
+     .expected_errors =
+         {"public.not_null_child.a",
+          "Your installation contains inconsistent NOT NULL constraints."},
+     .teardown_stmts = {"DROP TABLE not_null_child", "DROP TABLE not_null_parent"}},
+
+    {// check_old_cluster_global_names
+     .setup_stmts =
+         {"CREATE DATABASE \"name_check_db\nx\"",
+          "CREATE ROLE \"name_check_role\nx\""},
+     .expected_errors =
+         {"database name = \"name_check_db",
+          "role name = \"name_check_role",
+          "All the database, role and tablespace names should have only valid characters."},
+     .teardown_stmts =
+         {"DROP DATABASE \"name_check_db\nx\"",
+          "DROP ROLE \"name_check_role\nx\""}},
+
+    {// check_for_unsupported_encodings
+     .setup_stmts =
+         {"CREATE DATABASE encoding_check",
+          // YSQL creates only UTF8 databases, so set the encoding in the catalog.
+          "SET yb_non_ddl_txn_for_sys_tables_allowed TO on",
+          "UPDATE pg_database SET encoding = pg_char_to_encoding('MULE_INTERNAL') "
+          "WHERE datname = 'encoding_check'",
+          "RESET yb_non_ddl_txn_for_sys_tables_allowed"},
+     .expected_errors =
+         {"encoding_check",
+          "Your installation contains databases using encodings that are"},
+     .teardown_stmts =
+         {"SET yb_non_ddl_txn_for_sys_tables_allowed TO on",
+          "UPDATE pg_database SET encoding = pg_char_to_encoding('UTF8') "
+          "WHERE datname = 'encoding_check'",
+          "RESET yb_non_ddl_txn_for_sys_tables_allowed",
+          "DROP DATABASE encoding_check"}}};
 
 // The following checks only apply to PG13 or older sources, so a PG15 source skips them:
 // check_for_user_defined_postfix_ops, check_for_incompatible_polymorphics,
@@ -85,6 +132,7 @@ static const std::initializer_list<UpgradeIncompatibilityCheck> kCheckList{
 // check_for_pg_role_prefix
 // check_for_jsonb_9_4_usage
 // old_9_3_check_for_line_data_type_usage
+// check_for_gist_inet_ops (YSQL tables have no GiST indexes, and btree_gist is not allowed)
 
 TEST_F(YsqlMajorUpgradeCheckTest, PgUpgradeChecks) {
   auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
