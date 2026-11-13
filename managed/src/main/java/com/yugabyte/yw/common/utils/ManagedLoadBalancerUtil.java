@@ -407,14 +407,14 @@ public class ManagedLoadBalancerUtil {
     return requested;
   }
 
-  /** Also decides the cert reissue: exactly the edits that change {@link #getCertNames}. */
+  /** On or off, or other dnsNames. */
   public static boolean isChanged(Cluster current, Cluster updated) {
     return isPrivateEnabled(current) != isPrivateEnabled(updated)
         || isPublicEnabled(current) != isPublicEnabled(updated)
         || !sameDnsNames(getDnsNames(current), getDnsNames(updated));
   }
 
-  // DNS names are case-insensitive; a case change alone must not restart tservers.
+  // DNS names are case-insensitive, so a case change alone is no change.
   private static boolean sameDnsNames(@Nullable List<String> a, @Nullable List<String> b) {
     return lowerCaseSet(a).equals(lowerCaseSet(b));
   }

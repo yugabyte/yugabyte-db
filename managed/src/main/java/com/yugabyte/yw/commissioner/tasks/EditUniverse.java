@@ -19,13 +19,11 @@ import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageLoadBalancerGroup;
-import com.yugabyte.yw.common.NodeManager.CertRotateAction;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
-import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -43,6 +41,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -183,26 +182,17 @@ public class EditUniverse extends EditUniverseTaskBase {
                   Comparator.<Cluster, Integer>comparing(
                       c -> c.clusterType == ClusterType.PRIMARY ? -1 : c.index))
               .collect(Collectors.toList());
-      Set<String> lbCertNodes = getLoadBalancerCertNodes(universe);
+      UniverseDefinitionTaskParams beforeEdit = getBeforeEditDetails(universe);
+      Set<String> lbCertNodes = getLoadBalancerCertNodes(universe, beforeEdit);
       // Before VM creation and tserver restarts, so that a cloud permission error fails the edit
       // first. This creates the load balancers of new regions and reconciles the existing ones.
       for (Cluster cluster : clusters) {
         createEnsureManagedLoadBalancerTasks(cluster);
       }
+      Predicate<String> isLbCertStale = isLoadBalancerCertStale(beforeEdit);
       // After ensure: it saves the addresses the certs carry.
       if (!lbCertNodes.isEmpty()) {
-        // Rollback would restore the old names but not the certs on the nodes.
-        createMarkRollbackUnsafeTaskOnce();
-        Set<String> restarted = getLoadBalancerCertRestartedNodes();
-        // Processes keep the old cert until they restart; same CA, so TLS works in between.
-        createCertUpdateTasks(
-            universe.getNodes().stream()
-                .filter(n -> lbCertNodes.contains(n.nodeName) && !restarted.contains(n.nodeName))
-                .collect(Collectors.toList()),
-            CertRotateAction.ROTATE_CERTS,
-            SubTaskGroupType.RotatingCert,
-            CertRotationType.None,
-            CertRotationType.ServerCert);
+        createLoadBalancerCertCopyTasks(lbCertNodes, isLbCertStale);
       }
       // GCP proxies need 0.0.0.0 once the LB is on. A retry rechecks every node: the last attempt
       // may have saved the state and stopped mid-rebind.
@@ -219,7 +209,8 @@ public class EditUniverse extends EditUniverseTaskBase {
                               .noneMatch(lb -> lb.getClusterUuid().equals(c.uuid)))
               .map(c -> c.uuid)
               .collect(Collectors.toSet()),
-          lbCertNodes);
+          lbCertNodes,
+          isLbCertStale);
       Set<NodeDetails> nodesToProvision =
           PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet);
       if (!nodesToProvision.isEmpty()) {
@@ -342,26 +333,34 @@ public class EditUniverse extends EditUniverseTaskBase {
   }
 
   /**
-   * Compares with the pre-edit snapshot, not the saved setting: the first attempt's freeze already
-   * saved the new names, so a retry would see no change. prevState is the fallback; on a first
-   * attempt it is still pre-edit.
+   * The pre-edit snapshot, not the saved universe: the first attempt's freeze already saved the new
+   * setting. prevState is the fallback; on a first attempt it is still pre-edit.
    */
-  private Set<String> getLoadBalancerCertNodes(Universe universe) {
-    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+  private UniverseDefinitionTaskParams getBeforeEditDetails(Universe universe) {
     StateTransitionDetails transition = universe.getStateTransitionDetails();
+    return transition != null ? transition.getBeforeUniverseDetails() : prevState;
+  }
+
+  /**
+   * Live tservers whose client cert names a managed load balancer before or after the edit. Which
+   * of them get a new cert is decided at run time, after ensure saves the addresses.
+   */
+  private Set<String> getLoadBalancerCertNodes(
+      Universe universe, UniverseDefinitionTaskParams before) {
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
     CertificateInfo clientCa =
         details.getClientRootCA() == null ? null : CertificateInfo.get(details.getClientRootCA());
     if (clientCa == null || clientCa.getCertType() != CertConfigType.SelfSigned) {
       return Set.of();
     }
-    UniverseDefinitionTaskParams before =
-        transition != null ? transition.getBeforeUniverseDetails() : prevState;
     return taskParams().clusters.stream()
         .filter(cluster -> cluster.userIntent.enableClientToNodeEncrypt)
         .filter(
             cluster -> {
               Cluster old = before.getClusterByUuid(cluster.uuid);
-              return old != null && ManagedLoadBalancerUtil.isChanged(old, cluster);
+              return old != null
+                  && (ManagedLoadBalancerUtil.isEnabled(old)
+                      || ManagedLoadBalancerUtil.isEnabled(cluster));
             })
         .flatMap(cluster -> taskParams().getNodesInCluster(cluster.uuid).stream())
         .filter(n -> n.isTserver && n.state == NodeDetails.NodeState.Live)

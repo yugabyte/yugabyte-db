@@ -51,6 +51,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
@@ -82,6 +83,7 @@ import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
@@ -94,6 +96,7 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
 import com.yugabyte.yw.models.helpers.StateTransitionDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.nodeagent.ServerControlInput;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -1638,6 +1641,14 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         .thenReturn(new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null));
     when(mockClient.isServerReady(any(HostAndPort.class), anyBoolean()))
         .thenReturn(new IsServerReadyResponse(0, "", null, 0, 0));
+    // The agent's IP tells serverCommandsRun the node.
+    when(mockNodeAgentClient.getAndUpgradeOrThrow(any()))
+        .thenAnswer(
+            invocation -> {
+              NodeAgent agent = new NodeAgent();
+              agent.setIp(invocation.getArgument(0));
+              return agent;
+            });
     return Universe.saveDetails(
         universe.getUniverseUUID(),
         u -> {
@@ -1661,21 +1672,91 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         .collect(Collectors.toList());
   }
 
-  private static Set<String> nodeNames(List<TaskInfo> subTasks) {
-    return subTasks.stream().map(t -> param(t, "nodeName")).collect(Collectors.toSet());
+  // A skipped subtask ends in Success too, so ask the mocks what ran.
+  private Set<String> certCopiesRun() {
+    return Mockito.mockingDetails(mockNodeManager).getInvocations().stream()
+        .filter(i -> i.getMethod().getName().equals("nodeCommand"))
+        .filter(i -> i.getArgument(0) == NodeManager.NodeCommandType.Configure)
+        .map(i -> i.getArgument(1))
+        .filter(p -> p instanceof AnsibleConfigureServers.Params)
+        .map(p -> (AnsibleConfigureServers.Params) p)
+        .filter(p -> p.type == UpgradeTaskParams.UpgradeTaskType.Certs)
+        .map(p -> p.nodeName)
+        .collect(Collectors.toSet());
   }
 
-  /** Per node, in order: "<process> <command>". */
-  private static Map<String, List<String>> serverCommands(TaskInfo taskInfo) {
-    return taskInfo.getSubTasks().stream()
-        .filter(t -> t.getTaskType() == TaskType.AnsibleClusterServerCtl)
-        .filter(t -> t.getTaskState() == Success)
-        .sorted(Comparator.comparing(TaskInfo::getPosition))
+  /** Per node, in order: "<server> <command>". Runs through the node agent on AWS and GCP. */
+  private Map<String, List<String>> serverCommandsRun() {
+    Map<String, String> nodeNameByIp =
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getNodes().stream()
+            .collect(Collectors.toMap(n -> n.cloudInfo.private_ip, n -> n.nodeName));
+    return Mockito.mockingDetails(mockNodeAgentClient).getInvocations().stream()
+        .filter(i -> i.getMethod().getName().equals("runServerControl"))
         .collect(
             Collectors.groupingBy(
-                t -> param(t, "nodeName"),
+                i -> nodeNameByIp.get(((NodeAgent) i.getArgument(0)).getIp()),
                 Collectors.mapping(
-                    t -> param(t, "process") + " " + param(t, "command"), Collectors.toList())));
+                    i -> {
+                      ServerControlInput input = i.getArgument(1);
+                      return input.getServerName() + " " + input.getControlType();
+                    },
+                    Collectors.toList())));
+  }
+
+  private Universe givenManagedLoadBalancer(List<String> dnsNames) {
+    allowManagedLoadBalancer();
+    UUID clusterUUID = defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid;
+    return Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig lbConfig = privateLb();
+          lbConfig.setDnsNames(dnsNames);
+          details.getPrimaryCluster().userIntent.setManagedLoadBalancer(lbConfig);
+          ManagedLoadBalancerState state = new ManagedLoadBalancerState();
+          state.put(
+              new ManagedLoadBalancer(
+                  clusterUUID,
+                  Region.getByCode(defaultProvider, "region-1").getUuid(),
+                  ManagedLoadBalancer.Scheme.PRIVATE,
+                  u.getNodes().stream().map(n -> n.azUuid).distinct().collect(Collectors.toList()),
+                  ManagedLoadBalancerUtil.getPrivateName(clusterUUID),
+                  "lbi-0123.elb.us-west-2.amazonaws.com"));
+          details.setManagedLoadBalancerState(state);
+        });
+  }
+
+  private static UniverseDefinitionTaskParams unchangedEdit(Universe universe) {
+    UniverseDefinitionTaskParams taskParams =
+        Universe.getOrBadRequest(universe.getUniverseUUID()).getUniverseDetails();
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    taskParams.expectedUniverseVersion = -1;
+    return taskParams;
+  }
+
+  @Test
+  public void testEditReissuesTheCertsOnlyWhenEnsureGivesTheLoadBalancerANewAddress()
+      throws Exception {
+    givenManagedLoadBalancer(List.of("db.example.com"));
+    Universe universe = givenSelfSignedClientTls(defaultUniverse);
+    Set<String> tservers =
+        universe.getTServers().stream().map(n -> n.nodeName).collect(Collectors.toSet());
+    when(cloudAPI.ensureManagedLoadBalancer(any(), any(), any(), any(), any(), any()))
+        .thenReturn("lbi-0123.elb.us-west-2.amazonaws.com");
+
+    assertEquals(Success, submitTask(unchangedEdit(universe)).getTaskState());
+    assertEquals(Set.of(), certCopiesRun());
+    assertEquals(Map.of(), serverCommandsRun());
+
+    // Deleted outside YBA, so ensure recreates it under a new name.
+    when(cloudAPI.ensureManagedLoadBalancer(any(), any(), any(), any(), any(), any()))
+        .thenReturn("lbi-4567.elb.us-west-2.amazonaws.com");
+    assertEquals(Success, submitTask(unchangedEdit(universe)).getTaskState());
+
+    assertEquals(tservers, certCopiesRun());
+    Map<String, List<String>> commands = serverCommandsRun();
+    assertEquals(tservers, commands.keySet());
+    commands.values().forEach(c -> assertEquals(List.of("yb-tserver STOP", "yb-tserver START"), c));
   }
 
   @Test
@@ -1704,7 +1785,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
       assertEquals(CertRotationType.None.name(), param(copy, "rootCARotationType"));
       assertEquals(CertRotationType.ServerCert.name(), param(copy, "clientRootCARotationType"));
     }
-    assertEquals(tservers, nodeNames(copies));
+    assertEquals(tservers, certCopiesRun());
     // The copy needs the address that ensure saves; a tserver loads the new cert when it restarts.
     List<TaskType> subTasks = subTaskTypes(taskInfo);
     int firstCopy = copies.stream().mapToInt(TaskInfo::getPosition).min().getAsInt();
@@ -1713,35 +1794,16 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         subTasks.toString(), subTasks.indexOf(TaskType.EnsureManagedLoadBalancer) < firstCopy);
     assertTrue(subTasks.toString(), lastCopy < subTasks.indexOf(TaskType.AnsibleClusterServerCtl));
     // One tserver down at a time, each once, and no master: masters don't serve the clients.
-    Map<String, List<String>> commands = serverCommands(taskInfo);
+    Map<String, List<String>> commands = serverCommandsRun();
     assertEquals(tservers, commands.keySet());
-    commands.values().forEach(c -> assertEquals(List.of("tserver stop", "tserver start"), c));
+    commands.values().forEach(c -> assertEquals(List.of("yb-tserver STOP", "yb-tserver START"), c));
     assertEquals(tservers.size(), countRunSubTasks(taskInfo, TaskType.CheckFollowerLag));
   }
 
   @Test
   public void testRetryOfAnEditThatChangesOnlyDnsNamesReissuesTheCertsOfTserversNotYetRestarted()
       throws Exception {
-    allowManagedLoadBalancer();
-    UUID clusterUUID = defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid;
-    Universe.saveDetails(
-        defaultUniverse.getUniverseUUID(),
-        u -> {
-          UniverseDefinitionTaskParams details = u.getUniverseDetails();
-          UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig lbConfig = privateLb();
-          lbConfig.setDnsNames(List.of("db.example.com"));
-          details.getPrimaryCluster().userIntent.setManagedLoadBalancer(lbConfig);
-          ManagedLoadBalancerState state = new ManagedLoadBalancerState();
-          state.put(
-              new ManagedLoadBalancer(
-                  clusterUUID,
-                  Region.getByCode(defaultProvider, "region-1").getUuid(),
-                  ManagedLoadBalancer.Scheme.PRIVATE,
-                  ImmutableList.of(),
-                  ManagedLoadBalancerUtil.getPrivateName(clusterUUID),
-                  "lbi-0123.elb.us-west-2.amazonaws.com"));
-          details.setManagedLoadBalancerState(state);
-        });
+    givenManagedLoadBalancer(List.of("db.example.com"));
     Universe universe = givenSelfSignedClientTls(defaultUniverse);
     when(cloudAPI.ensureManagedLoadBalancer(any(), any(), any(), any(), any(), any()))
         .thenReturn("lbi-0123.elb.us-west-2.amazonaws.com");
@@ -1776,6 +1838,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
             .collect(Collectors.toSet());
     assertEquals(1, restarted.size());
     // The first attempt saved the new names, so a retry can no longer see that they changed.
+    clearInvocations(mockNodeManager, mockNodeAgentClient);
     TaskInfo retried = retry(failed);
 
     assertEquals(Success, retried.getTaskState());
@@ -1784,8 +1847,8 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
             .map(n -> n.nodeName)
             .filter(name -> !restarted.contains(name))
             .collect(Collectors.toSet());
-    assertEquals(notRestarted, nodeNames(loadBalancerCertCopies(retried)));
-    assertEquals(notRestarted, serverCommands(retried).keySet());
+    assertEquals(notRestarted, certCopiesRun());
+    assertEquals(notRestarted, serverCommandsRun().keySet());
   }
 
   @Test
@@ -1818,10 +1881,10 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     assertEquals(Success, taskInfo.getTaskState());
     Set<String> tservers =
         universe.getTServers().stream().map(n -> n.nodeName).collect(Collectors.toSet());
-    assertEquals(tservers.size(), loadBalancerCertCopies(taskInfo).size());
-    Map<String, List<String>> commands = serverCommands(taskInfo);
+    assertEquals(tservers, certCopiesRun());
+    Map<String, List<String>> commands = serverCommandsRun();
     assertEquals(tservers, commands.keySet());
-    commands.values().forEach(c -> assertEquals(List.of("tserver stop", "tserver start"), c));
+    commands.values().forEach(c -> assertEquals(List.of("yb-tserver STOP", "yb-tserver START"), c));
   }
 
   private TaskInfo rollback(TaskInfo failed) throws InterruptedException {
