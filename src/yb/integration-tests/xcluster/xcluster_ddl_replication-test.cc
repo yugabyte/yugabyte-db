@@ -4752,6 +4752,32 @@ TEST_F(XClusterDDLReplicationTest, TruncateTable) {
   ASSERT_OK(verify_data());
 }
 
+// A rewrite of a colocated table writes tombstones for its old indexes. They replicate to the
+// target, which also replays the rewrite and writes its own.
+TEST_F(XClusterDDLReplicationTest, RewriteColocatedTableWithIndex) {
+  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+  params.is_colocated = true;
+  ASSERT_OK(SetUpClustersAndReplication(params));
+  for (auto* conn : {producer_conn_.get(), consumer_conn_.get()}) {
+    // Use index-only scans, which read only the index rows.
+    ASSERT_OK(conn->Execute("SET enable_seqscan = off"));
+    ASSERT_OK(conn->Execute("SET enable_bitmapscan = off"));
+  }
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE t (k int PRIMARY KEY, v int, w int)"));
+  ASSERT_OK(producer_conn_->Execute("CREATE UNIQUE INDEX t_v ON t (v)"));
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO t SELECT i, i, i FROM generate_series(1, 10) i"));
+  ASSERT_OK(producer_conn_->Execute("TRUNCATE t"));
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO t SELECT i, i, i FROM generate_series(11, 15) i"));
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE t ALTER COLUMN w TYPE bigint"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  for (auto* conn : {producer_conn_.get(), consumer_conn_.get()}) {
+    ASSERT_EQ(
+        ASSERT_RESULT(conn->FetchRows<int>("SELECT v FROM t WHERE v > 0")),
+        (std::vector<int>{11, 12, 13, 14, 15}));
+  }
+}
+
 // ANALYZE is not a DDL and is not replayed on the target. The target is told which relation was
 // analyzed and marks it as needing an ANALYZE of its own, which the auto analyze service then
 // performs. Sampling on the target is what keeps its statistics consistent with the data it has

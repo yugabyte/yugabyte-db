@@ -1697,6 +1697,63 @@ TEST_F(PgMiniTest, TestNoStaleDataOnColocationIdReuse) {
   ASSERT_TRUE(scan_result.empty());
 }
 
+// DROP INDEX and table rewrites drop colocated indexes, which must not leave their rows behind.
+TEST_F(PgMiniTest, TestNoStaleIndexDataOnColocationIdReuse) {
+  const std::string kDbName = "testdb";
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated=true", kDbName));
+  conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  // Use index-only scans, which read only the index rows.
+  ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
+  ASSERT_OK(conn.Execute("SET enable_bitmapscan = off"));
+
+  auto CreateIndexedTable = [&](const std::string& table, int index_colocation_id) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k int PRIMARY KEY, v int, w int)", table));
+    ASSERT_OK(conn.ExecuteFormat("CREATE UNIQUE INDEX $0_v ON $0 (v) WITH (colocation_id=$1)",
+        table, index_colocation_id));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT i, i, i FROM generate_series(1, 10) i",
+        table));
+  };
+
+  auto VerifyNoStaleIndexRows = [&](int colocation_id) {
+    const auto table = Format("reuse_$0", colocation_id);
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k int PRIMARY KEY, v int)", table));
+    ASSERT_OK(conn.ExecuteFormat("CREATE UNIQUE INDEX ON $0 (v) WITH (colocation_id=$1)",
+        table, colocation_id));
+    auto result = ASSERT_RESULT(conn.FetchRows<int>(
+        Format("SELECT v FROM $0 WHERE v > 0", table)));
+    ASSERT_TRUE(result.empty()) << AsString(result);
+  };
+
+  CreateIndexedTable("t0", 20001);
+  ASSERT_OK(conn.Execute("DROP INDEX t0_v"));
+  VerifyNoStaleIndexRows(20001);
+
+  CreateIndexedTable("t1", 20002);
+  // A failed TRUNCATE keeps the old index, so the tombstone must roll back with it.
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION fail() RETURNS trigger LANGUAGE plpgsql AS "
+      "$$ BEGIN RAISE EXCEPTION 'injected failure'; END $$"));
+  ASSERT_OK(conn.Execute("CREATE TRIGGER fail AFTER TRUNCATE ON t1 EXECUTE FUNCTION fail()"));
+  ASSERT_NOK_STR_CONTAINS(conn.Execute("TRUNCATE t1"), "injected failure");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t1 WHERE v > 0")), 10);
+  ASSERT_OK(conn.Execute("DROP TRIGGER fail ON t1"));
+  ASSERT_OK(conn.Execute("TRUNCATE t1"));
+  VerifyNoStaleIndexRows(20002);
+
+  CreateIndexedTable("t2", 20003);
+  ASSERT_OK(conn.Execute("ALTER TABLE t2 ALTER COLUMN w TYPE bigint"));
+  VerifyNoStaleIndexRows(20003);
+  // The rebuilt index keeps its rows.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2 WHERE v > 0")), 10);
+
+  ASSERT_OK(conn.Execute("CREATE MATERIALIZED VIEW mv AS SELECT * FROM t2"));
+  ASSERT_OK(conn.Execute("CREATE UNIQUE INDEX mv_v ON mv (v) WITH (colocation_id=20004)"));
+  ASSERT_OK(conn.Execute("REFRESH MATERIALIZED VIEW mv"));
+  VerifyNoStaleIndexRows(20004);
+}
+
 TEST_F_EX(PgMiniTest, VerifyTombstoneTimeCache, PgMiniTestSingleNode) {
   const std::string kDbName = "testdb";
   const std::string kTableName = "tombstone_test";

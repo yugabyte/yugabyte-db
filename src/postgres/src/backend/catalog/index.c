@@ -4406,6 +4406,13 @@ reindex_relation(Oid relid, int flags, ReindexParams *params, bool is_yb_table_r
 				* commits/aborts.
 				*/
 				YBCDropIndex(iRel);
+			else if (!iRel->rd_index->indisprimary)
+				/*
+				 * The table drop writes no tombstone for this index, so a
+				 * colocated index's rows would come back when its
+				 * colocation id is reused.
+				 */
+				YbWriteColocatedIndexTombstone(iRel);
 		}
 		index_close(iRel, AccessExclusiveLock);
 
