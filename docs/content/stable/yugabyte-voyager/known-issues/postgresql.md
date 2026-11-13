@@ -1626,7 +1626,7 @@ And a related read query might look like the following:
 SELECT * FROM event_log WHERE event_logged_at >= NOW() - INTERVAL '1 month';
 ```
 
-With YugabyteDB v2025.2.1.0 and later, add a stored generated bucket column and make it the leading key column. See [bucket-based indexes](../../../develop/data-modeling/bucket-based-index-ysql/). Queries don't need to change.
+For YugabyteDB v2025.2.1.0 and later, add a stored generated bucket column and make it the leading key column. See [bucket-based indexes](../../../develop/data-modeling/bucket-based-index-ysql/). Queries don't need to change.
 
 An example schema on the source database is as follows:
 
