@@ -127,9 +127,11 @@ RESET yb_enable_expression_pushdown;
 --
 -- Gap column with NULLs first
 --
--- The index sorts c2 with NULLs first.  Each scan direction has its own decoy,
--- (1, 1, 1, NULL, 9) for the forward scan and (6, 1, 1, 2, -1) for the backward
--- scan, where c2 sorts with NULLs last.
+-- The index sorts c2 with NULLs first, so a backward scan returns c2 with NULLs
+-- last.  Each scan direction has its own decoy, (1, 1, 1, NULL, 9) for the
+-- forward scan and (6, 1, 1, 2, -1) for the backward scan.  The NULL row comes
+-- last in its stream on the backward scan, so the rows there cannot check the
+-- NULLs order of the merge, and the Merge Sort Key of the backward plan does.
 CREATE TABLE gap_null_tbl (k int, s int, c1 int, c2 int, c3 int,
     PRIMARY KEY (k ASC));
 CREATE INDEX NONCONCURRENTLY gap_null_tbl_idx ON gap_null_tbl (s ASC, c1 ASC, c2 ASC NULLS FIRST, c3 ASC);
