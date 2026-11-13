@@ -45,7 +45,7 @@ static inline void test_multiple_consumers(void *arg)
 {
 	(void)arg;
 
-	machine_wait_list_t *wl = machine_wait_list_create();
+	machine_wait_list_t *wl = machine_wait_list_create(NULL);
 
 	int producer_id;
 	producer_id = machine_coroutine_create(producer_coroutine, wl);

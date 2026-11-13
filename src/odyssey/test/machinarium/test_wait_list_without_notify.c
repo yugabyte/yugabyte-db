@@ -5,7 +5,7 @@ static inline void test_wait_without_notify_coroutine(void *arg)
 {
 	(void)arg;
 
-	machine_wait_list_t *wait_list = machine_wait_list_create();
+	machine_wait_list_t *wait_list = machine_wait_list_create(NULL);
 
 	uint64_t start, end;
 	start = machine_time_ms();

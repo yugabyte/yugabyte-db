@@ -1071,6 +1071,15 @@ od_router_status_t od_router_attach(od_router_t *router,
 		 client_for_router->yb_logical_client_version);
 
 	for (;;) {
+		/*
+		 * YB: Read the version before any check, as in odyssey 579a7b0.
+		 * Upstream later reads it right before parking, under the route lock
+		 * (odyssey f7f5909), but the checks below can drop the route lock to
+		 * close an idle server of another route, and a server freed on this
+		 * route meanwhile would then be missed.
+		 */
+		uint64_t version = atomic_load(&route->version);
+
 		if (route->status == YB_ROUTE_INACTIVE) {
 			od_route_unlock(route);
 			return OD_ROUTER_ERROR;
@@ -1311,11 +1320,15 @@ od_router_status_t od_router_attach(od_router_t *router,
 		 *
 		 * The condition triggered when a server connection
 		 * put into idle state by DETACH events.
+		 *
+		 * Returns at once if the version changed since it was read above,
+		 * so a server freed after the route was unlocked, before this
+		 * client joined the wait list, is not missed.
 		 */
 		uint32_t timeout = route->rule->pool->timeout;
 		if (timeout == 0)
 			timeout = UINT32_MAX;
-		rc = od_route_wait(route, timeout);
+		rc = od_route_wait(route, version, timeout);
 		if (rc == -1)
 			return OD_ROUTER_ERROR_TIMEDOUT;
 
