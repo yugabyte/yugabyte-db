@@ -665,6 +665,10 @@ public class UniverseCRUDHandler {
       // Set the provider code.
       c.userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
       c.validate(!cloudEnabled, isAuthEnforced, taskParams.fipsEnabled, taskParams.nodeDetailsSet);
+      GFlagsUtil.checkNoRedactedGFlagsOnCreate(
+          c.userIntent,
+          taskParams.getPrimaryCluster().userIntent.ybSoftwareVersion,
+          gFlagsValidation);
       // Enforce user tags.
       validateUserTags(customer, c.userIntent);
       // Check if for a new create, no value is set, we explicitly set it to UNEXPOSED.
