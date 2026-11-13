@@ -503,6 +503,7 @@ ybcFetchNextHeapTuple(YbOpaque ybScan, ScanDirection dir)
 		if (has_data)
 		{
 			tuple = heap_form_tuple(tupdesc, values, nulls);
+			HeapTupleHeaderClearDatum(tuple->t_data);
 
 			if (syscols.ybctid != NULL)
 			{

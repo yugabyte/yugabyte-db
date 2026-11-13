@@ -93,6 +93,7 @@ YbFetchHeapTuple(Relation relation, Datum ybctid, HeapTuple *tuple)
 	if (has_data)
 	{
 		*tuple = heap_form_tuple(tupdesc, values, nulls);
+		HeapTupleHeaderClearDatum((*tuple)->t_data);
 		(*tuple)->t_tableOid = RelationGetRelid(relation);
 		if (syscols.ybctid != NULL)
 			HEAPTUPLE_YBCTID(*tuple) = PointerGetDatum(syscols.ybctid);

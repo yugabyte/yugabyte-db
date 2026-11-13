@@ -1219,6 +1219,11 @@ YbCollectCommitStats(DestReceiver *receiver, int16 *format)
 	/* Finally, destroy the receiver */
 	receiver->rDestroy(receiver);
 
+	/*
+	 * PortalDrop() refuses portals that are still being set up, and this one
+	 * never goes through PortalStart(). Mark it ready so it can be dropped.
+	 */
+	yb_portal->status = PORTAL_READY;
 	PortalDrop(yb_portal, false);
 
 	/* Commit the no-op transaction */

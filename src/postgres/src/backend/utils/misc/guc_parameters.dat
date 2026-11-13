@@ -2341,7 +2341,7 @@
   # Note that src/bin/pg_upgrade/check.c assumes GUC_LIST_QUOTE here.
   flags => 'GUC_LIST_INPUT | GUC_LIST_QUOTE | GUC_SUPERUSER_ONLY',
   variable => 'output_plugin_libraries_string',
-  boot_val => '"pgoutput, test_decoding"',
+  boot_val => '"pgoutput, test_decoding, yboutput"', # YB: add yboutput
   check_hook => 'check_output_plugin_libraries',
 },
 

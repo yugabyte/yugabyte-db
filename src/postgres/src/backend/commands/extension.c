@@ -1249,6 +1249,13 @@ CheckNamespaceLockedByMe(Oid schemaOid, LOCKMODE lockmode, bool orstronger)
 {
 	LOCKTAG		tag;
 
+	/*
+	 * YB: unless object locks are taken in PG mode, LockAcquire() does not
+	 * record them locally, see CheckRelationLockedByMe().
+	 */
+	if (YBGetObjectLockMode() != PG_OBJECT_LOCK_MODE)
+		return true;
+
 	SET_LOCKTAG_OBJECT(tag, MyDatabaseId, NamespaceRelationId, schemaOid, 0);
 
 	return LockHeldByMe(&tag, lockmode, orstronger);

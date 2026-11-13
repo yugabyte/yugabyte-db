@@ -83,6 +83,7 @@
 #include "catalog/pg_init_privs.h"
 #include "catalog/pg_yb_tablegroup.h"
 #include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 
 /* Potentially set by pg_upgrade_support functions */
@@ -1174,6 +1175,23 @@ SetBinaryUpgradeAttributeVersions(TupleDesc tupdesc, const char *relname)
 XLogRecPtr
 GetNextAttributeVersion(void)
 {
+	/*
+	 * YB: there is no WAL, so the WAL insert position does not advance.  Use
+	 * the current time as a hybrid time instead, kept strictly increasing
+	 * within the backend so that versions assigned within the same
+	 * microsecond still differ.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		static XLogRecPtr yb_last_version = InvalidXLogRecPtr;
+		XLogRecPtr	yb_version = YBCGetCurrentHybridTimeLsn();
+
+		if (yb_version <= yb_last_version)
+			yb_version = yb_last_version + 1;
+		yb_last_version = yb_version;
+		return yb_version;
+	}
+
 	return GetXLogInsertRecPtr();
 }
 

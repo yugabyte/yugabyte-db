@@ -17382,8 +17382,8 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation *yb_mutable_rel,
 	 * heap_modify_tuple(), given that we have very similar code above for
 	 * atthasmissing.
 	 */
-	Assert(HasVersionedAttributes(rel) || allowSystemTableMods);
-	if (HasVersionedAttributes(rel))
+	Assert(yb_clone_table || HasVersionedAttributes(rel) || allowSystemTableMods);
+	if (!yb_clone_table && HasVersionedAttributes(rel))
 	{
 		HeapTuple	newTup;
 
