@@ -3707,6 +3707,21 @@ match_saopclause_to_indexcol(PlannerInfo *root,
 		!bms_is_member(index_relid, right_relids) &&
 		!contain_volatile_functions(rightop))
 	{
+		/*
+		 * YB: refuse a non-equality array condition, such as indexkey > ANY
+		 * (array), on an LSM index.  Unlike upstream PG's btree, an LSM
+		 * index scan cannot bind such a condition, because DocDB binds an
+		 * array only as an IN list, so as an index condition it could only
+		 * be rechecked.  As a filter, it is evaluated in DocDB when it can
+		 * be pushed down.
+		 * TODO(#37239): accept it on a range column once the scan binds it
+		 * as a range bound.
+		 */
+		if (index->relam == LSM_AM_OID &&
+			get_op_opfamily_strategy(expr_op, opfamily) !=
+			BTEqualStrategyNumber)
+			return NULL;
+
 		if (IndexCollMatchesExprColl(idxcollation, expr_coll) &&
 			op_in_opfamily(expr_op, opfamily))
 		{

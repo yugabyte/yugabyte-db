@@ -1327,20 +1327,20 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 > ANY (ARRAY[0, 2, 4, 6, 8]) ORDER BY r2, r3, r4, r5, n LIMIT 5;
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: r2, r3, r4, r5, n, r1
    ->  Sort (actual rows=5 loops=1)
          Output: r2, r3, r4, r5, n, r1
          Sort Key: r5n.r2, r5n.r3, r5n.r4, r5n.r5, r5n.n
          Sort Method: top-N heapsort
-         ->  Index Scan using r5n_pkey on public.r5n (actual rows=4571 loops=1)
+         ->  Seq Scan on public.r5n (actual rows=4571 loops=1)
                Output: r2, r3, r4, r5, n, r1
-               Index Cond: (r5n.r1 > ANY ('{0,2,4,6,8}'::integer[]))
+               Storage Filter: (r5n.r1 > ANY ('{0,2,4,6,8}'::integer[]))
                Storage Table Read Requests: 224
                Storage Table Read Ops: 291
-               Storage Table Rows Scanned: 4571
+               Storage Table Rows Scanned: 5048
 (12 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 > ANY (ARRAY[0, 2, 4, 6, 8]) ORDER BY r2, r3, r4, r5, n LIMIT 5;
@@ -5203,15 +5203,15 @@ EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(r5n 
 \set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 -- (Drop this index)
 DROP INDEX r5n_r2_expr_r21_expr1_r22_r5_idx;
--- A non-equality array condition on a stream column binds as a range bound,
--- even when its array equals the stream IN list (#35030).
+-- A non-equality array condition on a stream column is a filter, even when
+-- its array equals the stream IN list (#35030).
 \set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 2, 4, 6, 8) AND r1 > ANY (ARRAY[0, 2, 4, 6, 8]) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 2, 4, 6, 8) AND r1 > ANY (ARRAY[0, 2, 4, 6, 8]) ORDER BY r2, r3, r4, r5, n LIMIT 5;
-                                                     QUERY PLAN                                                      
----------------------------------------------------------------------------------------------------------------------
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: r2, r3, r4, r5, n, r1
    ->  Sort (actual rows=5 loops=1)
@@ -5220,15 +5220,16 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
          Sort Method: top-N heapsort
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=2083 loops=1)
                Output: r2, r3, r4, r5, n, r1
-               Index Cond: ((r5n.r1 = ANY ('{0,2,4,6,8}'::integer[])) AND (r5n.r1 > ANY ('{0,2,4,6,8}'::integer[])))
-               Storage Table Read Requests: 98
-               Storage Table Read Ops: 134
-               Storage Table Rows Scanned: 2083
-(12 rows)
+               Index Cond: (r5n.r1 = ANY ('{0,2,4,6,8}'::integer[]))
+               Storage Filter: (r5n.r1 > ANY ('{0,2,4,6,8}'::integer[]))
+               Storage Table Read Requests: 99
+               Storage Table Read Ops: 136
+               Storage Table Rows Scanned: 2560
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 2, 4, 6, 8) AND r1 > ANY (ARRAY[0, 2, 4, 6, 8]) ORDER BY r2, r3, r4, r5, n LIMIT 5;
-                                                     QUERY PLAN                                                      
----------------------------------------------------------------------------------------------------------------------
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: r2, r3, r4, r5, n, r1
    ->  Incremental Sort (actual rows=5 loops=1)
@@ -5238,15 +5239,16 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
          Full-sort Groups: 1  Sort Method: quicksort
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=6 loops=1)
                Output: r2, r3, r4, r5, n, r1
-               Index Cond: ((r5n.r1 = ANY ('{0,2,4,6,8}'::integer[])) AND (r5n.r1 > ANY ('{0,2,4,6,8}'::integer[])))
+               Index Cond: (r5n.r1 = ANY ('{0,2,4,6,8}'::integer[]))
                Merge Sort Key: r5n.r2, r5n.r3, r5n.r4, r5n.r5
                Merge Stream Key: r5n.r1
                Merge Streams: 5
                Merge Cond: (r5n.r1 = ANY ('{0,2,4,6,8}'::integer[]))
+               Storage Filter: (r5n.r1 > ANY ('{0,2,4,6,8}'::integer[]))
                Storage Table Read Requests: 1
-               Storage Table Read Ops: 4
-               Storage Table Rows Scanned: 20
-(17 rows)
+               Storage Table Read Ops: 5
+               Storage Table Rows Scanned: 497
+(18 rows)
 
 /*+Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 2, 4, 6, 8) AND r1 > ANY (ARRAY[0, 2, 4, 6, 8]) ORDER BY r2, r3, r4, r5, n LIMIT 5;
  r2 | r3 | r4 | r5 |   n   | r1 
@@ -5502,15 +5504,16 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5, 6) AND r1 IN (3, 4, 5, 6, 7) AND r1 IN (5, 6, 7, 8, 9, 10) ORDER BY r2, r3, r4, r5, n LIMIT 5;
 (output identical to previous)
--- The stream IN list is bound first, so the range bound of the non-equality
--- array condition with the same elements is left to the recheck (#35030).
+-- With the setting off too, the non-equality array condition with the stream
+-- IN list's elements is a filter, not a second IN list on the stream column
+-- (#35030).
 \set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 2, 4, 6, 8) AND r1 > ANY (ARRAY[0, 2, 4, 6, 8]) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 2, 4, 6, 8) AND r1 > ANY (ARRAY[0, 2, 4, 6, 8]) ORDER BY r2, r3, r4, r5, n LIMIT 5;
-                                                     QUERY PLAN                                                      
----------------------------------------------------------------------------------------------------------------------
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: r2, r3, r4, r5, n, r1
    ->  Sort (actual rows=5 loops=1)
@@ -5519,16 +5522,16 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
          Sort Method: top-N heapsort
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=2083 loops=1)
                Output: r2, r3, r4, r5, n, r1
-               Index Cond: ((r5n.r1 = ANY ('{0,2,4,6,8}'::integer[])) AND (r5n.r1 > ANY ('{0,2,4,6,8}'::integer[])))
-               Rows Removed by Index Recheck: 477
+               Index Cond: (r5n.r1 = ANY ('{0,2,4,6,8}'::integer[]))
+               Storage Filter: (r5n.r1 > ANY ('{0,2,4,6,8}'::integer[]))
                Storage Table Read Requests: 99
-               Storage Table Read Ops: 165
+               Storage Table Read Ops: 136
                Storage Table Rows Scanned: 2560
 (13 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 2, 4, 6, 8) AND r1 > ANY (ARRAY[0, 2, 4, 6, 8]) ORDER BY r2, r3, r4, r5, n LIMIT 5;
-                                                     QUERY PLAN                                                      
----------------------------------------------------------------------------------------------------------------------
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: r2, r3, r4, r5, n, r1
    ->  Incremental Sort (actual rows=5 loops=1)
@@ -5538,15 +5541,16 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
          Full-sort Groups: 1  Sort Method: quicksort
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=6 loops=1)
                Output: r2, r3, r4, r5, n, r1
-               Index Cond: ((r5n.r1 = ANY ('{0,2,4,6,8}'::integer[])) AND (r5n.r1 > ANY ('{0,2,4,6,8}'::integer[])))
+               Index Cond: (r5n.r1 = ANY ('{0,2,4,6,8}'::integer[]))
                Merge Sort Key: r5n.r2, r5n.r3, r5n.r4, r5n.r5
                Merge Stream Key: r5n.r1
                Merge Streams: 5
                Merge Cond: (r5n.r1 = ANY ('{0,2,4,6,8}'::integer[]))
+               Storage Filter: (r5n.r1 > ANY ('{0,2,4,6,8}'::integer[]))
                Storage Table Read Requests: 1
                Storage Table Read Ops: 5
-               Storage Table Rows Scanned: 25
-(17 rows)
+               Storage Table Rows Scanned: 497
+(18 rows)
 
 /*+Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 2, 4, 6, 8) AND r1 > ANY (ARRAY[0, 2, 4, 6, 8]) ORDER BY r2, r3, r4, r5, n LIMIT 5;
  r2 | r3 | r4 | r5 |   n   | r1 

@@ -772,8 +772,8 @@ ANALYZE r5n;
 -- (Drop this index)
 DROP INDEX r5n_r2_expr_r21_expr1_r22_r5_idx;
 
--- A non-equality array condition on a stream column binds as a range bound,
--- even when its array equals the stream IN list (#35030).
+-- A non-equality array condition on a stream column is a filter, even when
+-- its array equals the stream IN list (#35030).
 \set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 2, 4, 6, 8) AND r1 > ANY (ARRAY[0, 2, 4, 6, 8]) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
 \i :run_query
 
@@ -811,8 +811,9 @@ SET yb_enable_advanced_index_cond_fold = off;
 \i :run_query
 \set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5, 6) AND r1 IN (3, 4, 5, 6, 7) AND r1 IN (5, 6, 7, 8, 9, 10) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
 \i :run_query
--- The stream IN list is bound first, so the range bound of the non-equality
--- array condition with the same elements is left to the recheck (#35030).
+-- With the setting off too, the non-equality array condition with the stream
+-- IN list's elements is a filter, not a second IN list on the stream column
+-- (#35030).
 \set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 2, 4, 6, 8) AND r1 > ANY (ARRAY[0, 2, 4, 6, 8]) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
 \i :run_query
 RESET yb_enable_advanced_index_cond_fold;
