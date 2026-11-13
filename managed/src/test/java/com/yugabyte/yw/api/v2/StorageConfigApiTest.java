@@ -355,11 +355,12 @@ public class StorageConfigApiTest extends FakeDBApplication {
     assertEquals(first.getTaskUuid(), retry.getTaskUuid());
     assertEquals(first.getResourceUuid(), retry.getResourceUuid());
     submittedParams(1);
-    assertEquals(
-        1,
-        CustomerConfig.getAll(customer.getUuid()).stream()
-            .filter(c -> c.getConfigName().equals("s3"))
-            .count());
+    assertEquals(1, savedConfigs());
+  }
+
+  /** All of the customer's configs, including those being validated, which getAll leaves out. */
+  private int savedConfigs() {
+    return CustomerConfig.find.query().where().eq("customer_uuid", customer.getUuid()).findCount();
   }
 
   @Test
@@ -430,7 +431,7 @@ public class StorageConfigApiTest extends FakeDBApplication {
 
     assertBadRequest(nfsSpec("   ", "/mnt"), "name must not be blank");
 
-    assertTrue(CustomerConfig.getAll(customer.getUuid()).isEmpty());
+    assertEquals(0, savedConfigs());
     verify(mockCommissioner, never()).submit(any(TaskType.class), any(ITaskParams.class));
   }
 
@@ -459,7 +460,7 @@ public class StorageConfigApiTest extends FakeDBApplication {
             customer.getUuid(), nfsSpec("nfs", "relative"), null);
     assertNotNull(task.getTaskUuid());
     assertNull(task.getResourceUuid());
-    assertTrue(CustomerConfig.getAll(customer.getUuid()).isEmpty());
+    assertEquals(0, savedConfigs());
 
     ValidateStorageConfig.Params params = submittedParams(1);
     assertTrue(params.dryRun);

@@ -182,10 +182,18 @@ public class CustomerConfig extends Model {
 
   public static final Finder<UUID, CustomerConfig> find = new Finder<>(CustomerConfig.class) {};
 
+  /**
+   * A page of the customer's configs, without those still being checked (Validating): their state
+   * is unknown to older clients, and the config can't be used until its check passes.
+   */
   public static PagedList<CustomerConfig> getPagedList(
       UUID customerUUID, NormalizedPaginationSpec normalized) {
     ExpressionList<CustomerConfig> expr =
-        CustomerConfig.find.query().where().eq("customer_uuid", customerUUID);
+        CustomerConfig.find
+            .query()
+            .where()
+            .eq("customer_uuid", customerUUID)
+            .ne("state", ConfigState.Validating);
     String order = normalized.order();
     String orderBy = String.format("coalesce(lower(name), '') %s, config_uuid %s", order, order);
     return HandlerPagingSupport.getPagedList(expr, normalized, orderBy);
@@ -239,8 +247,18 @@ public class CustomerConfig extends Model {
     return customerConfig;
   }
 
+  /**
+   * The customer's configs, without those still being checked (Validating): their state is unknown
+   * to older v1 clients, which fail to read a list that has one, and the config can't be used until
+   * its check passes.
+   */
   public static List<CustomerConfig> getAll(UUID customerUUID) {
-    return CustomerConfig.find.query().where().eq("customer_uuid", customerUUID).findList();
+    return CustomerConfig.find
+        .query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .ne("state", ConfigState.Validating)
+        .findList();
   }
 
   public static CustomerConfig get(UUID customerUUID, UUID configUUID) {
