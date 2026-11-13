@@ -1,6 +1,8 @@
 // Copyright (c) YugabyteDB, Inc.
 package api.v2.mappers;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import api.v2.models.CloudSpecificInfo;
 import api.v2.models.ClusterInfo;
 import api.v2.models.ClusterSpec;
@@ -14,6 +16,7 @@ import api.v2.models.UniverseEditSpec;
 import api.v2.models.UniverseInfo;
 import api.v2.models.UniverseNetworkingSpec;
 import api.v2.models.UniverseSpec;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -154,15 +157,22 @@ public abstract class UniverseDefinitionTaskParamsDecorator
     return params;
   }
 
-  private UniverseSpec inheritFromPrimaryBeforeMapping(UniverseSpec universeSpec) {
+  private UniverseSpec inheritFromPrimaryBeforeMapping(UniverseCreateSpec universeCreateSpec) {
+    if (universeCreateSpec == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot inherit for null spec");
+    }
+    UniverseSpec universeSpec = universeCreateSpec.getSpec();
     if (universeSpec == null || universeSpec.getClusters() == null) {
       return universeSpec;
     }
     ClusterSpec primaryClusterSpec =
         universeSpec.getClusters().stream()
-            .filter(c -> c.getClusterType().equals(ClusterTypeEnum.PRIMARY))
+            .filter(c -> ClusterTypeEnum.PRIMARY.equals(c.getClusterType()))
             .findAny()
-            .orElse(null);
+            .orElseThrow(
+                () ->
+                    new PlatformServiceException(
+                        BAD_REQUEST, "Primary cluster should be provided"));
     List<ClusterSpec> clusters = new ArrayList<>();
     clusters.add(primaryClusterSpec);
     for (ClusterSpec otherCluster : universeSpec.getClusters()) {
@@ -181,7 +191,7 @@ public abstract class UniverseDefinitionTaskParamsDecorator
   public UniverseDefinitionTaskParams toV1UniverseDefinitionTaskParamsFromCreateSpec(
       UniverseCreateSpec universeCreateSpec) {
     // Copy unset RR/async properties from primary (excludes placement, partitions, nodeSpec).
-    UniverseSpec universeSpec = inheritFromPrimaryBeforeMapping(universeCreateSpec.getSpec());
+    UniverseSpec universeSpec = inheritFromPrimaryBeforeMapping(universeCreateSpec);
     UniverseDefinitionTaskParams params = toV1UniverseDefinitionTaskParams(universeSpec);
     // set Arch
     params.arch = toV1Arch(universeCreateSpec.getArch());

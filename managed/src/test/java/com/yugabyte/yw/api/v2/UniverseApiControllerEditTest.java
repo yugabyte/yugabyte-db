@@ -75,6 +75,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -120,12 +121,13 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
   }
 
   // pass the edit payload to invoke the edit api and verify result
-  private void runEditUniverseV2(UniverseEditSpec universeEditSpec) throws ApiException {
-    runEditUniverseV2(universeUuid, universeEditSpec);
+  private UniverseConfigureTaskParams runEditUniverseV2(UniverseEditSpec universeEditSpec)
+      throws ApiException {
+    return runEditUniverseV2(universeUuid, universeEditSpec);
   }
 
-  private void runEditUniverseV2(UUID targetUniverseUuid, UniverseEditSpec universeEditSpec)
-      throws ApiException {
+  private UniverseConfigureTaskParams runEditUniverseV2(
+      UUID targetUniverseUuid, UniverseEditSpec universeEditSpec) throws ApiException {
     UniverseApi api = new UniverseApi();
     // setup mocks for edit universe
     UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
@@ -145,6 +147,7 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     com.yugabyte.yba.v2.client.models.Universe v2UniverseResp =
         api.getUniverse(customer.getUuid(), targetUniverseUuid);
     validateUniverseEditSpec(universeEditSpec, v1EditParams, v2UniverseResp.getSpec());
+    return v1EditParams;
   }
 
   @Test
@@ -878,6 +881,260 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
 
     // run the edit universe
     runEditUniverseV2(universeEditSpec);
+  }
+
+  // Fields omitted from a read replica edit spec must keep the replica's own values rather than
+  // be filled in from the primary.
+  @Test
+  public void testEditUniverseV2EditReadReplicaDoesNotInheritFromPrimary() throws ApiException {
+    List<UUID> primaryRegionList =
+        Universe.getOrBadRequest(universeUuid)
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .regionList;
+    // Place the replica in a region the primary does not use, so region_list differs.
+    Region region =
+        Region.getByProvider(providerUuid).stream()
+            .filter(r -> !primaryRegionList.contains(r.getUuid()))
+            .findFirst()
+            .orElseThrow();
+    UUID rrClusterUuid = addReadReplicaInDB(region).uuid;
+    Map<String, String> primaryTags = Map.of("env", "primary");
+    Map<String, String> rrTags = Map.of("env", "replica");
+    String primaryArn = "arn:aws:iam::123456789012:instance-profile/primary";
+    String rrArn = "arn:aws:iam::123456789012:instance-profile/replica";
+    ImageBundleDetails rrImageDetails = new ImageBundleDetails();
+    rrImageDetails.setArch(Architecture.aarch64);
+    rrImageDetails.setGlobalYbImage("yb-image-global-rr");
+    ImageBundle rrImageBundle =
+        ImageBundle.create(
+            Provider.getOrBadRequest(providerUuid), "rr-image", rrImageDetails, false);
+    UUID primaryImageBundleUuid =
+        Universe.getOrBadRequest(universeUuid)
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .getImageBundleUUIDForProvider(providerUuid);
+    // Give the replica a value different from the primary's for the single-provider fields that
+    // ClusterEditSpec shares with ClusterSpec and that edit used to inherit from the primary:
+    // instance tags, networking_spec exposing service, and provider_spec region list, image bundle
+    // and AWS instance profile. dedicated_nodes and provider_specs need a dedicated or multicloud
+    // primary and are covered by the two tests that follow.
+    Universe.saveDetails(
+        universeUuid,
+        universe -> {
+          UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+          UserIntent primaryIntent = details.getPrimaryCluster().userIntent;
+          UserIntent rrIntent = details.getReadOnlyClusters().get(0).userIntent;
+          TestUtils.existingProviderInitializer(rrIntent)
+              .setImageBundleUUID(rrImageBundle.getUuid())
+              .setInstanceTags(rrTags)
+              .setAwsInstanceProfile(rrArn);
+          rrIntent.regionList = new ArrayList<>(List.of(region.getUuid()));
+          TestUtils.existingProviderInitializer(primaryIntent)
+              .setInstanceTags(primaryTags)
+              .setAwsInstanceProfile(primaryArn);
+          // TODO: will be migrated in PLAT-19849.
+          primaryIntent.enableExposingService =
+              UniverseDefinitionTaskParams.ExposingServiceState.EXPOSED;
+          rrIntent.enableExposingService =
+              UniverseDefinitionTaskParams.ExposingServiceState.UNEXPOSED;
+          universe.setUniverseDetails(details);
+        });
+
+    // only numNodes is specified; every other field is omitted
+    ClusterEditSpec rrClusterEditSpec = new ClusterEditSpec().uuid(rrClusterUuid).numNodes(4);
+    UniverseEditSpec universeEditSpec =
+        new UniverseEditSpec().expectedUniverseVersion(-1).addClustersItem(rrClusterEditSpec);
+
+    UniverseConfigureTaskParams v1EditParams = runEditUniverseV2(universeEditSpec);
+
+    Cluster v1Primary = v1EditParams.getPrimaryCluster();
+    Cluster v1Rr =
+        v1EditParams.getReadOnlyClusters().stream()
+            .filter(c -> c.uuid.equals(rrClusterUuid))
+            .findAny()
+            .orElseThrow();
+    UserIntent rrIntent = v1Rr.userIntent;
+    assertThat(rrIntent.numNodes, is(4));
+    assertThat(rrIntent.getInstanceTagsForProvider(providerUuid), is(rrTags));
+    assertThat(rrIntent.getImageBundleUUIDForProvider(providerUuid), is(rrImageBundle.getUuid()));
+    assertThat(rrIntent.getAwsInstanceProfileForProvider(providerUuid), is(rrArn));
+    assertThat(rrIntent.regionList, is(List.of(region.getUuid())));
+    assertThat(
+        rrIntent.enableExposingService,
+        is(UniverseDefinitionTaskParams.ExposingServiceState.UNEXPOSED));
+
+    // The primary is untouched.
+    UserIntent primaryIntent = v1Primary.userIntent;
+    assertThat(primaryIntent.getInstanceTagsForProvider(providerUuid), is(primaryTags));
+    assertThat(
+        primaryIntent.getImageBundleUUIDForProvider(providerUuid), is(primaryImageBundleUuid));
+    assertThat(primaryIntent.getAwsInstanceProfileForProvider(providerUuid), is(primaryArn));
+    assertThat(primaryIntent.regionList, is(primaryRegionList));
+    assertThat(
+        primaryIntent.enableExposingService,
+        is(UniverseDefinitionTaskParams.ExposingServiceState.EXPOSED));
+  }
+
+  // A non-dedicated read replica of a dedicated primary must stay non-dedicated when its edit spec
+  // omits dedicated_nodes. ClusterSpec always carries the primary's dedicated_nodes, so inheriting
+  // it would turn the replica dedicated.
+  @Test
+  public void testEditUniverseV2EditReadReplicaDoesNotInheritDedicatedNodesFromPrimary()
+      throws ApiException, IOException {
+    UniverseCreateSpec dedicatedSpec = getUniverseCreateSpecV2Dedicated();
+    dedicatedSpec.getSpec().name("dedicatedUniverse");
+    universeUuid = setupUniverse(dedicatedSpec, null);
+    assertTrue(
+        Universe.getOrBadRequest(universeUuid)
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .dedicatedNodes);
+    Region region = Region.getByProvider(providerUuid).get(0);
+    UUID rrClusterUuid = addReadReplicaInDB(region).uuid;
+    // addReadReplicaInDB clones the primary's intent; make the replica non-dedicated, as addCluster
+    // does.
+    Universe.saveDetails(
+        universeUuid,
+        universe -> {
+          UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+          UserIntent rrIntent = details.getReadOnlyClusters().get(0).userIntent;
+          rrIntent.dedicatedNodes = false;
+          rrIntent.masterInstanceType = null;
+          rrIntent.masterDeviceInfo = null;
+          universe.setUniverseDetails(details);
+        });
+
+    ClusterEditSpec rrClusterEditSpec = new ClusterEditSpec().uuid(rrClusterUuid).numNodes(4);
+    UniverseEditSpec universeEditSpec =
+        new UniverseEditSpec().expectedUniverseVersion(-1).addClustersItem(rrClusterEditSpec);
+
+    UniverseConfigureTaskParams v1EditParams = runEditUniverseV2(universeEditSpec);
+
+    Cluster v1Rr = v1EditParams.getClusterByUuid(rrClusterUuid);
+    assertThat(v1Rr.userIntent.numNodes, is(4));
+    assertFalse(v1Rr.userIntent.dedicatedNodes);
+    assertTrue(v1EditParams.getPrimaryCluster().userIntent.dedicatedNodes);
+  }
+
+  // On a multicloud universe, provider_specs omitted from a read replica edit spec must keep the
+  // replica's own per-provider settings rather than be overwritten with the primary's.
+  @Test
+  public void testEditUniverseV2EditReadReplicaDoesNotInheritProviderSpecsFromPrimary()
+      throws ApiException, IOException {
+    setNewUIEnabled();
+    universeUuid = setupUniverse(true);
+    Region region = Region.getByProvider(providerUuid).get(0);
+    Cluster rrCluster = addReadReplicaInDB(region);
+    UUID rrClusterUuid = rrCluster.uuid;
+    Map<String, String> rrTags = Map.of("env", "replica");
+    String primaryArn = "arn:aws:iam::123456789012:instance-profile/primary";
+    String rrArn = "arn:aws:iam::123456789012:instance-profile/replica";
+    String rrAccessKeyCode = "rr-access-key";
+    ImageBundleDetails rrImageDetails = new ImageBundleDetails();
+    rrImageDetails.setArch(Architecture.aarch64);
+    rrImageDetails.setGlobalYbImage("yb-image-global-rr");
+    ImageBundle rrImageBundle =
+        ImageBundle.create(
+            Provider.getOrBadRequest(providerUuid), "rr-image", rrImageDetails, false);
+    // addReadReplicaInDB clones the primary's provider specifications; make each field that
+    // applyClusterPerProviderSpecToProviderSpecification would overwrite differ from the primary:
+    // access key, image bundle, AWS instance profile, instance tags, nodes specs (tserver volume
+    // count) and networking (load balancer, exposing service).
+    Universe.saveDetails(
+        universeUuid,
+        universe -> {
+          UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+          details
+              .getPrimaryCluster()
+              .userIntent
+              .getProviderSpecification(providerUuid)
+              .setAwsInstanceProfile(primaryArn);
+          ProviderSpecification rrSpec =
+              details
+                  .getReadOnlyClusters()
+                  .get(0)
+                  .userIntent
+                  .getProviderSpecification(providerUuid);
+          rrSpec.setAccessKeyCode(rrAccessKeyCode);
+          rrSpec.setImageBundleUUID(rrImageBundle.getUuid());
+          rrSpec.setInstanceTags(new HashMap<>(rrTags));
+          rrSpec.setAwsInstanceProfile(rrArn);
+          rrSpec.getNodesSpecs().getTserverSpecification().getDeviceInfo().numVolumes = 1;
+          rrSpec.setEnableLoadBalancer(false);
+          rrSpec.setExposingServiceState(
+              UniverseDefinitionTaskParams.ExposingServiceState.UNEXPOSED);
+          universe.setUniverseDetails(details);
+        });
+    ProviderSpecification primarySpecBefore =
+        Universe.getOrBadRequest(universeUuid)
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .getProviderSpecification(providerUuid)
+            .clone();
+    assertThat(
+        primarySpecBefore.getExposingServiceState(),
+        is(UniverseDefinitionTaskParams.ExposingServiceState.EXPOSED));
+    assertThat(primarySpecBefore.getAccessKeyCode(), is(ApiUtils.DEFAULT_ACCESS_KEY_CODE));
+    assertTrue(primarySpecBefore.isEnableLoadBalancer());
+    int primaryNumVolumes =
+        Universe.getOrBadRequest(universeUuid)
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .getBaseDeviceInfo(providerUuid, ServerType.TSERVER)
+            .numVolumes;
+    assertThat(primaryNumVolumes, is(2));
+
+    // With the new UI enabled the node count follows the placement, so grow both together.
+    PlacementCloud rrPlacementCloud =
+        expandNumNodes(toPlacementSpec(rrCluster.placementInfo).getCloudList().get(0), 1);
+    ClusterEditSpec rrClusterEditSpec =
+        new ClusterEditSpec()
+            .uuid(rrClusterUuid)
+            .numNodes(4)
+            .placementSpec(new ClusterPlacementSpec().cloudList(List.of(rrPlacementCloud)));
+    UniverseEditSpec universeEditSpec =
+        new UniverseEditSpec().expectedUniverseVersion(-1).addClustersItem(rrClusterEditSpec);
+
+    UniverseConfigureTaskParams v1EditParams = runEditUniverseV2(universeEditSpec);
+
+    UserIntent rrIntent = v1EditParams.getClusterByUuid(rrClusterUuid).userIntent;
+    assertThat(rrIntent.numNodes, is(4));
+    assertThat(rrIntent.providerSpecifications, hasSize(1));
+    ProviderSpecification rrSpec = rrIntent.getProviderSpecification(providerUuid);
+    assertThat(rrSpec.getAccessKeyCode(), is(rrAccessKeyCode));
+    assertThat(rrSpec.getImageBundleUUID(), is(rrImageBundle.getUuid()));
+    assertThat(rrSpec.getInstanceTags(), is(rrTags));
+    assertThat(rrSpec.getAwsInstanceProfile(), is(rrArn));
+    assertThat(rrIntent.getBaseDeviceInfo(providerUuid, ServerType.TSERVER).numVolumes, is(1));
+    assertFalse(rrSpec.isEnableLoadBalancer());
+    assertThat(
+        rrSpec.getExposingServiceState(),
+        is(UniverseDefinitionTaskParams.ExposingServiceState.UNEXPOSED));
+
+    // The primary is untouched.
+    ProviderSpecification primarySpec =
+        v1EditParams.getPrimaryCluster().userIntent.getProviderSpecification(providerUuid);
+    assertThat(primarySpec.getAccessKeyCode(), is(ApiUtils.DEFAULT_ACCESS_KEY_CODE));
+    assertThat(primarySpec.getImageBundleUUID(), is(primarySpecBefore.getImageBundleUUID()));
+    assertThat(primarySpec.getInstanceTags(), is(primarySpecBefore.getInstanceTags()));
+    assertThat(primarySpec.getAwsInstanceProfile(), is(primaryArn));
+    assertThat(
+        v1EditParams
+            .getPrimaryCluster()
+            .userIntent
+            .getBaseDeviceInfo(providerUuid, ServerType.TSERVER)
+            .numVolumes,
+        is(primaryNumVolumes));
+    assertTrue(primarySpec.isEnableLoadBalancer());
+    assertThat(
+        primarySpec.getExposingServiceState(),
+        is(UniverseDefinitionTaskParams.ExposingServiceState.EXPOSED));
   }
 
   @Test
