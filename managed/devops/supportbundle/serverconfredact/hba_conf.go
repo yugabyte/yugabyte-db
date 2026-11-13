@@ -520,22 +520,74 @@ func verifyLdapBindPasswd(text string) error {
 }
 
 // ldapBindPasswdValuesRedacted reports whether every ldapbindpasswd in s that is followed by '=' is
-// followed by REDACTED, past any quotes, backslashes and commas. It matches only the name, in any
-// case and with quotes inside it, and parses nothing else.
+// followed by REDACTED, past any quotes, backslashes and commas. It parses nothing but the name,
+// which it matches in any case, with skipHbaKeyGap's gaps between its letters and before the '='.
 func ldapBindPasswdValuesRedacted(s string) bool {
-	for from := indexOfHbaKey(s, 0, false); from >= 0; {
-		nameEnd := matchHbaKey(s, from, false)
-		if v := hbaKeptEnd(s, nameEnd); v > nameEnd {
-			for v < len(s) && strings.IndexByte(`"'\,`, s[v]) >= 0 {
-				v++
-			}
-			if !strings.HasPrefix(s[v:], SecretReplacement) {
-				return false
-			}
+	for i := 0; i < len(s); i++ {
+		if s[i] != 'l' && s[i] != 'L' {
+			continue
 		}
-		from = indexOfHbaKey(s, nameEnd, false)
+		nameEnd := matchSplitHbaKey(s, i)
+		if nameEnd < 0 {
+			continue
+		}
+		j := skipHbaKeyGap(s, nameEnd)
+		for j < len(s) && isHbaBlank(s[j]) {
+			j++
+		}
+		if j >= len(s) || s[j] != '=' {
+			continue
+		}
+		v := j + 1
+		for v < len(s) && strings.IndexByte(`"'\,`, s[v]) >= 0 {
+			v++
+		}
+		if !strings.HasPrefix(s[v:], SecretReplacement) {
+			return false
+		}
 	}
 	return true
+}
+
+// matchSplitHbaKey is the end of ldapbindpasswd starting at i, with skipHbaKeyGap's gaps between
+// its letters, or -1.
+func matchSplitHbaKey(s string, i int) int {
+	j := i
+	for k := 0; k < len(hbaKey); k++ {
+		if k > 0 {
+			j = skipHbaKeyGap(s, j)
+		}
+		if j >= len(s) {
+			return -1
+		}
+		r, size := utf8.DecodeRuneInString(s[j:])
+		if unicode.ToLower(r) != rune(hbaKey[k]) {
+			return -1
+		}
+		j += size
+	}
+	return j
+}
+
+// skipHbaKeyGap skips quotes and continuations from j. A continuation is a backslash then a comma
+// outside CSV quotes, with quotes around either: two fields that joinHbaLines joins.
+func skipHbaKeyGap(s string, j int) int {
+	for {
+		for j < len(s) && s[j] == '"' {
+			j++
+		}
+		if j >= len(s) || s[j] != '\\' {
+			return j
+		}
+		m := j + 1
+		for m < len(s) && s[m] == '"' {
+			m++
+		}
+		if m >= len(s) || s[m] != ',' || strings.Count(s[:m], `"`)%2 != 0 {
+			return j
+		}
+		j = m + 1
+	}
 }
 
 // redactedToEnd reports whether s holds no ldapbindpasswd text, or only REDACTED after the first.

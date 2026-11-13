@@ -143,10 +143,17 @@ func TestLdapBindPasswdValuesRedacted(t *testing.T) {
 		{"ldapbindpasswd=REDACTED ldaptls=1", true},
 		{`"ldapbindpasswd"=""REDACTED""`, true},
 		{`LdapBindPasswd =\,REDACTED`, true},
+		{`ldapbind\,passwd=REDACTED`, true},
+		{`"ldapbind\","passwd=REDACTED"`, true},
 		{"ldapbindpasswd in a comment", true},
+		// Inside CSV quotes, a comma doesn't end the field, so this is not the name.
+		{`"ldapbind\,passwd=="`, true},
 		{"x LDAPBINDPASSWD=secret", false},
 		{`ldap"bind"passwd= "secret"`, false},
 		{"ldapbindpasswd=REDACTED ldapbindpasswd=secret", false},
+		{`"ldapbindpasswd"=secret`, false},
+		{`ldapbind\,passwd=secret`, false},
+		{`"ldapbind\","passwd=secret"`, false},
 	}
 	for _, c := range cases {
 		if got := ldapBindPasswdValuesRedacted(c.in); got != c.ok {
