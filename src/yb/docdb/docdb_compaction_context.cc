@@ -121,8 +121,6 @@ class LazyHybridTime {
   std::optional<Result<HybridTime>> value_;
 };
 
-constexpr auto kUnlimitedTail = std::numeric_limits<ssize_t>::min();
-
 Result<CompactionSchemaInfo> GetCompactionSchemaInfoForCoprefix(
     SchemaPackingProvider* schema_packing_provider, Slice coprefix,
     HistoryCutoff history_cutoff) {
@@ -449,7 +447,7 @@ class PackedRowData {
             dockv::PackerBase(&*packer_).NextColumnData()).missing_value;
         return CheckPackOldValueResult(
             column_id, std::visit([column_id, missing_value](auto& packer) {
-          return packer.AddValue(column_id, missing_value, kUnlimitedTail);
+          return packer.AddValue(column_id, missing_value, dockv::kUnlimitedTail);
         }, *packer_));
       }
       return DoPackOldValue(column_id, decoder.FetchValue(decoder.GetPackedIndex(column_id)));
@@ -467,7 +465,7 @@ class PackedRowData {
     VLOG(4) << "Keep value for column " << column_id << ": " << column_value->ToDebugHexString();
     // Use min ssize_t value to be sure that packing always succeed.
     return CheckPackOldValueResult(column_id, std::visit([column_id, column_value](auto& packer) {
-      return packer.AddValue(column_id, column_value, kUnlimitedTail);
+      return packer.AddValue(column_id, column_value, dockv::kUnlimitedTail);
     }, *packer_));
   }
 
