@@ -23,7 +23,6 @@
 
 #include "postgres.h"
 
-#include "access/amapi.h"
 #include "access/genam.h"
 #include "access/htup_details.h"
 #include "access/skey.h"
@@ -32,9 +31,14 @@
 #include "access/tableam.h"
 #include "access/xact.h"
 #include "catalog/index.h"
+#include "catalog/namespace.h"
+#include "catalog/objectaccess.h"
+#include "catalog/pg_am_d.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_constraint.h"
+#include "catalog/pg_index.h"
 #include "catalog/pg_namespace.h"
+#include "catalog/pg_proc.h"
 #include "commands/trigger.h"
 #include "executor/executor.h"
 #include "executor/spi.h"
@@ -42,12 +46,14 @@
 #include "miscadmin.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_relation.h"
+#include "tcop/utility.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
 #include "utils/hsearch.h"
+#include "utils/injection_point.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -109,6 +115,14 @@
 
 typedef struct FastPathMeta FastPathMeta;
 
+/* Eligibility checks that require the referenced table and index to be open. */
+typedef enum RI_FastPathState
+{
+	RI_FASTPATH_UNKNOWN,
+	RI_FASTPATH_USABLE,
+	RI_FASTPATH_UNUSABLE
+} RI_FastPathState;
+
 /*
  * RI_ConstraintInfo
  *
@@ -152,6 +166,7 @@ typedef struct RI_ConstraintInfo
 
 	Oid			conindid;		/* index supporting this constraint */
 	bool		pk_is_partitioned;
+	RI_FastPathState fastpath_state;	/* populated lazily under lock */
 
 	FastPathMeta *fpmeta;
 
@@ -186,16 +201,16 @@ typedef struct RI_ConstraintInfo
 														 * Cache */
 } RI_ConstraintInfo;
 
-typedef struct RI_CompareHashEntry RI_CompareHashEntry;
-
 /* Fast-path metadata for RI checks on foreign key referencing tables */
 typedef struct FastPathMeta
 {
-	FmgrInfo	eq_opr_finfo[RI_MAX_NUMKEYS];
-	FmgrInfo	cast_func_finfo[RI_MAX_NUMKEYS];
 	RegProcedure regops[RI_MAX_NUMKEYS];
 	Oid			subtypes[RI_MAX_NUMKEYS];
 	int			strats[RI_MAX_NUMKEYS];
+	AttrNumber	index_attnos[RI_MAX_NUMKEYS];	/* index column positions */
+
+	/* Link in ri_fpmeta_dead_list while awaiting deferred release */
+	struct FastPathMeta *next_dead;
 } FastPathMeta;
 
 /*
@@ -241,56 +256,6 @@ typedef struct RI_CompareHashEntry
 } RI_CompareHashEntry;
 
 /*
- * Maximum number of FK rows buffered before flushing.
- *
- * Larger batches amortize per-flush overhead and let the SK_SEARCHARRAY
- * path walk more leaf pages in a single sorted traversal.  But each
- * buffered row is a materialized HeapTuple in flush_cxt, and the matched[]
- * scan in ri_FastPathFlushArray() is O(batch_size) per index match.
- * Benchmarking showed little difference between 16 and 64, with 256
- * consistently slower.  64 is a reasonable default.
- */
-#define RI_FASTPATH_BATCH_SIZE	64
-
-/*
- * RI_FastPathEntry
- *		Per-constraint cache of resources needed by ri_FastPathBatchFlush().
- *
- * One entry per constraint, keyed by pg_constraint OID.  Created lazily
- * by ri_FastPathGetEntry() on first use within a trigger-firing batch
- * and torn down by ri_FastPathTeardown() at batch end.
- *
- * FK tuples are buffered in batch[] across trigger invocations and
- * flushed when the buffer fills or the batch ends.
- *
- * RI_FastPathEntry is not subject to cache invalidation.  The cached
- * relations are held open with locks for the transaction duration, preventing
- * relcache invalidation.  The entry itself is torn down at batch end by
- * ri_FastPathEndBatch(); on abort, ResourceOwner releases the cached
- * relations and the XactCallback/SubXactCallback NULL the static cache pointer
- * to prevent any subsequent access.
- */
-typedef struct RI_FastPathEntry
-{
-	Oid			conoid;			/* hash key: pg_constraint OID */
-	Oid			fk_relid;		/* for ri_FastPathEndBatch() */
-	Relation	pk_rel;
-	Relation	idx_rel;
-	TupleTableSlot *pk_slot;
-	TupleTableSlot *fk_slot;
-	MemoryContext flush_cxt;	/* short-lived context for per-flush work */
-
-	/*
-	 * TODO: batch[] is HeapTuple[] because the AFTER trigger machinery
-	 * currently passes tuples as HeapTuples.  Once trigger infrastructure is
-	 * slotified, this should use a slot array or whatever batched tuple
-	 * storage abstraction exists at that point to be TAM-agnostic.
-	 */
-	HeapTuple	batch[RI_FASTPATH_BATCH_SIZE];
-	int			batch_count;
-} RI_FastPathEntry;
-
-/*
  * Local data
  */
 static HTAB *ri_constraint_cache = NULL;
@@ -298,8 +263,33 @@ static HTAB *ri_query_cache = NULL;
 static HTAB *ri_compare_cache = NULL;
 static dclist_head ri_constraint_cache_valid_list;
 
-static HTAB *ri_fastpath_cache = NULL;
-static bool ri_fastpath_callback_registered = false;
+/*
+ * FastPathMeta objects detached from their cache entry by invalidation, but
+ * possibly still referenced by an RI check further up the stack.  Released
+ * by AtEOXact_RI(), where no such reference can exist.  See
+ * InvalidateConstraintCacheCallBack().
+ */
+static FastPathMeta *ri_fpmeta_dead_list = NULL;
+
+/*
+ * Stack of the plans being executed by ri_PerformCheck() calls currently
+ * running, i.e. RI queries whose SPI_execute_snapshot() has not returned.
+ * Innermost of those appears last in the array.  A plan that
+ * ri_FetchPreparedPlan() finds invalid cannot be freed while it is on this
+ * stack.  It instead goes on ri_plan_dead_list and is freed by
+ * ri_FreeDeadPlans() once it is no longer on the stack, which is checked
+ * whenever a check finishes normally, or by AtEOXact_RI() at the latest.
+ * Both live in TopMemoryContext.
+ *
+ * ri_PerformCheck() pops its plan whether the query returns or an error
+ * is thrown, by restoring the depth it saw at push time, so the stack is
+ * exact at all times.  A plan on the stack is never freed until the stack
+ * is cut back past it, so no entry can dangle.
+ */
+static SPIPlanPtr *ri_executing_plans = NULL;
+static int	ri_executing_depth = 0;
+static int	ri_executing_maxdepth = 0;
+static List *ri_plan_dead_list = NIL;
 
 /*
  * Local function prototypes
@@ -334,14 +324,15 @@ static void YbInvalidateRIFkPkCastCacheCallBack(Datum arg, SysCacheIdentifier ca
 												uint32 hashvalue);
 static SPIPlanPtr ri_FetchPreparedPlan(RI_QueryKey *key);
 static void ri_HashPreparedPlan(RI_QueryKey *key, SPIPlanPtr plan);
+static int	ri_PushExecutingPlan(SPIPlanPtr plan);
+static bool ri_PlanIsExecuting(SPIPlanPtr plan);
+static void ri_FreeDeadPlans(void);
 static RI_CompareHashEntry *ri_HashCompareOp(Oid eq_opr, Oid typeid);
 
 static void ri_CheckTrigger(FunctionCallInfo fcinfo, const char *funcname,
 							int tgkind);
-static const RI_ConstraintInfo *ri_FetchConstraintInfo(Trigger *trigger,
-													   Relation trig_rel, bool rel_is_pk);
-
-/* YB: non-const return so that we can populate the coercion cache in ri_FetchConstraintInfo */
+static RI_ConstraintInfo *ri_FetchConstraintInfo(Trigger *trigger,
+												 Relation trig_rel, bool rel_is_pk);
 static RI_ConstraintInfo *ri_LoadConstraintInfo(Oid constraintOid);
 static Oid	get_ri_constraint_root(Oid constrOid);
 static SPIPlanPtr ri_PlanCheck(const char *querystr, int nargs, Oid *argtypes,
@@ -352,18 +343,8 @@ static bool ri_PerformCheck(const RI_ConstraintInfo *riinfo,
 							TupleTableSlot *oldslot, TupleTableSlot *newslot,
 							bool is_restrict,
 							bool detectNewRows, int expect_OK);
-static void ri_FastPathCheck(const RI_ConstraintInfo *riinfo,
+static bool ri_FastPathCheck(RI_ConstraintInfo *riinfo,
 							 Relation fk_rel, TupleTableSlot *newslot);
-static void ri_FastPathBatchAdd(const RI_ConstraintInfo *riinfo,
-								Relation fk_rel, TupleTableSlot *newslot);
-static void ri_FastPathBatchFlush(RI_FastPathEntry *fpentry, Relation fk_rel,
-								  const RI_ConstraintInfo *riinfo);
-static int	ri_FastPathFlushArray(RI_FastPathEntry *fpentry, TupleTableSlot *fk_slot,
-								  const RI_ConstraintInfo *riinfo, Relation fk_rel,
-								  Snapshot snapshot, IndexScanDesc scandesc);
-static int	ri_FastPathFlushLoop(RI_FastPathEntry *fpentry, TupleTableSlot *fk_slot,
-								 const RI_ConstraintInfo *riinfo, Relation fk_rel,
-								 Snapshot snapshot, IndexScanDesc scandesc);
 static bool ri_FastPathProbeOne(Relation pk_rel, Relation idx_rel,
 								IndexScanDesc scandesc, TupleTableSlot *slot,
 								Snapshot snapshot, const RI_ConstraintInfo *riinfo,
@@ -371,14 +352,21 @@ static bool ri_FastPathProbeOne(Relation pk_rel, Relation idx_rel,
 static bool ri_LockPKTuple(Relation pk_rel, TupleTableSlot *slot, Snapshot snap,
 						   bool *concurrently_updated);
 static bool ri_fastpath_is_applicable(const RI_ConstraintInfo *riinfo);
-static void ri_CheckPermissions(Relation query_rel);
+static bool ri_check_fastpath_index(RI_ConstraintInfo *riinfo,
+									Relation fk_rel, Relation pk_rel,
+									Relation idx_rel);
+static void ri_CheckPermissions(const RI_ConstraintInfo *riinfo,
+								Relation query_rel);
 static bool recheck_matched_pk_tuple(Relation idxrel, ScanKeyData *skeys,
 									 int nkeys, TupleTableSlot *new_slot);
+static void ri_CheckFunctionPermissions(const RI_ConstraintInfo *riinfo,
+										const FastPathMeta *fpmeta);
 static void build_index_scankeys(const RI_ConstraintInfo *riinfo,
-								 Relation idx_rel, Datum *pk_vals,
-								 char *pk_nulls, ScanKey skeys);
+								 const FastPathMeta *fpmeta,
+								 Relation idx_rel, const Datum *pk_vals,
+								 ScanKey skeys);
 static void ri_populate_fastpath_metadata(RI_ConstraintInfo *riinfo,
-										  Relation fk_rel, Relation idx_rel);
+										  Relation idx_rel);
 static void ri_ExtractValues(Relation rel, TupleTableSlot *slot,
 							 const RI_ConstraintInfo *riinfo, bool rel_is_pk,
 							 Datum *vals, char *nulls);
@@ -386,10 +374,6 @@ pg_noreturn static void ri_ReportViolation(const RI_ConstraintInfo *riinfo,
 										   Relation pk_rel, Relation fk_rel,
 										   TupleTableSlot *violatorslot, TupleDesc tupdesc,
 										   int queryno, bool is_restrict, bool partgone);
-static RI_FastPathEntry *ri_FastPathGetEntry(const RI_ConstraintInfo *riinfo,
-											 Relation fk_rel);
-static void ri_FastPathEndBatch(void *arg);
-static void ri_FastPathTeardown(void);
 static bool YbFkToPkTypePairWhitelisted(Oid pk_typid, Oid fk_typid);
 static bool YbFkColToPkColCoercionPath(Oid pk_typid, Oid fk_typid,
 									   CoercionPathType *pathtype, Oid *castfunc);
@@ -706,7 +690,7 @@ YBCBuildYBTupleIdDescriptor(const RI_ConstraintInfo *riinfo,
 static Datum
 RI_FKey_check(TriggerData *trigdata)
 {
-	const RI_ConstraintInfo *riinfo;
+	RI_ConstraintInfo *riinfo;
 	Relation	fk_rel;
 	Relation	pk_rel;
 	TupleTableSlot *newslot;
@@ -810,24 +794,14 @@ RI_FKey_check(TriggerData *trigdata)
 	 * lock.  This is semantically equivalent to the SPI path below but avoids
 	 * the per-row executor overhead.
 	 *
-	 * ri_FastPathBatchAdd() and ri_FastPathCheck() report the violation
-	 * themselves if no matching PK row is found, so they only return on
-	 * success.
+	 * ri_FastPathCheck() reports the violation itself if no matching PK row
+	 * is found.  It returns false if the checks made after opening the
+	 * relations, on the index and on whether the FK values need a coercion to
+	 * reach the equality operator's input type, require a SPI fallback.
 	 */
-	if (!IsYBRelation(fk_rel) && ri_fastpath_is_applicable(riinfo))
-	{
-		if (AfterTriggerIsActive())
-		{
-			/* Batched path: buffer and probe in groups */
-			ri_FastPathBatchAdd(riinfo, fk_rel, newslot);
-		}
-		else
-		{
-			/* ALTER TABLE validation: per-row, no cache */
-			ri_FastPathCheck(riinfo, fk_rel, newslot);
-		}
+	if (!IsYBRelation(fk_rel) && ri_fastpath_is_applicable(riinfo) &&
+		ri_FastPathCheck(riinfo, fk_rel, newslot))
 		return PointerGetDatum(NULL);
-	}
 
 	/*
 	 * pk_rel is opened in RowShareLock mode since that's what our eventual
@@ -2746,12 +2720,10 @@ ri_CheckTrigger(FunctionCallInfo fcinfo, const char *funcname, int tgkind)
 /*
  * Fetch the RI_ConstraintInfo struct for the trigger's FK constraint.
  */
-static const RI_ConstraintInfo *
+static RI_ConstraintInfo *
 ri_FetchConstraintInfo(Trigger *trigger, Relation trig_rel, bool rel_is_pk)
 {
 	Oid			constraintOid = trigger->tgconstraint;
-
-	/* YB: non-const pointer from ri_LoadConstraintInfo for coercion cache */
 	RI_ConstraintInfo *riinfo;
 
 	/*
@@ -2824,7 +2796,7 @@ ri_FetchConstraintInfo(Trigger *trigger, Relation trig_rel, bool rel_is_pk)
  * YB: Returns non-const pointer so that we can populate the coercion
  * cache in ri_FetchConstraintInfo.
  */
-static /* YB */ RI_ConstraintInfo *
+static RI_ConstraintInfo *
 ri_LoadConstraintInfo(Oid constraintOid)
 {
 	RI_ConstraintInfo *riinfo;
@@ -2909,6 +2881,7 @@ ri_LoadConstraintInfo(Oid constraintOid)
 	riinfo->conindid = conForm->conindid;
 	riinfo->pk_is_partitioned =
 		(get_rel_relkind(riinfo->pk_relid) == RELKIND_PARTITIONED_TABLE);
+	riinfo->fastpath_state = RI_FASTPATH_UNKNOWN;
 
 	ReleaseSysCache(tup);
 
@@ -2956,7 +2929,7 @@ get_ri_constraint_root(Oid constrOid)
 }
 
 /*
- * Callback for pg_constraint inval events
+ * Callback for pg_constraint, pg_amop and pg_cast inval events
  *
  * While most syscache callbacks just flush all their entries, pg_constraint
  * gets enough update traffic that it's probably worth being smarter.
@@ -2968,6 +2941,10 @@ get_ri_constraint_root(Oid constrOid)
  * from the cache, but only mark them invalid, which is harmless to active
  * uses.  (Any query using an entry should hold a lock sufficient to keep that
  * data from changing under it --- but we may get cache flushes anyway.)
+ *
+ * The fast-path metadata hanging off an entry is subject to the same rule.
+ * We unlink it so that the next check rebuilds it, but the object itself is
+ * only queued here and is actually released by AtEOXact_RI().
  */
 static void
 InvalidateConstraintCacheCallBack(Datum arg, SysCacheIdentifier cacheid,
@@ -2976,6 +2953,25 @@ InvalidateConstraintCacheCallBack(Datum arg, SysCacheIdentifier cacheid,
 	dlist_mutable_iter iter;
 
 	Assert(ri_constraint_cache != NULL);
+
+	/*
+	 * pg_amop changes can affect any constraint's fast-path metadata, and
+	 * this pg_amop hashvalue can't be matched against the pg_constraint-keyed
+	 * cache entries, so flush them all via the match-everything path below as
+	 * the large-list reset below does.  Being selective would mean mapping
+	 * the change back to the affected constraints, not worth it for DDL this
+	 * rare.
+	 */
+	if (cacheid == AMOPOPID)
+		hashvalue = 0;
+
+	/*
+	 * Likewise for pg_cast: whether a constraint's FK values are
+	 * binary-coercible to the operator's input type, which decides fast-path
+	 * eligibility, can depend on a binary cast, which may be replaced.
+	 */
+	if (cacheid == CASTSOURCETARGET)
+		hashvalue = 0;
 
 	/*
 	 * If the list of currently valid entries gets excessively large, we mark
@@ -3001,11 +2997,24 @@ InvalidateConstraintCacheCallBack(Datum arg, SysCacheIdentifier cacheid,
 			riinfo->rootHashValue == hashvalue)
 		{
 			riinfo->valid = false;
+
+			/*
+			 * Detach any fast-path metadata so that the next check
+			 * repopulates it, but do not free it here.  ri_FastPathCheck()
+			 * copies riinfo->fpmeta into a local and then does catalog
+			 * lookups, index scans, tuple locking, and calls equality
+			 * functions, all of which can accept invalidation messages and
+			 * reach this callback.  Freeing now would leave it reading freed
+			 * memory.  Queue it instead; AtEOXact_RI() releases it once no RI
+			 * check can be running.
+			 */
 			if (riinfo->fpmeta)
 			{
-				pfree(riinfo->fpmeta);
+				riinfo->fpmeta->next_dead = ri_fpmeta_dead_list;
+				ri_fpmeta_dead_list = riinfo->fpmeta;
 				riinfo->fpmeta = NULL;
 			}
+
 			/* Remove invalidated entries from the list, too */
 			dclist_delete_from(&ri_constraint_cache_valid_list, iter.cur);
 		}
@@ -3105,6 +3114,7 @@ ri_PerformCheck(const RI_ConstraintInfo *riinfo,
 	Snapshot	crosscheck_snapshot;
 	int			limit;
 	int			spi_result;
+	int			exec_depth;
 	Oid			save_userid;
 	int			save_sec_context;
 	Datum		vals[RI_MAX_NUMKEYS * 2];
@@ -3190,31 +3200,50 @@ ri_PerformCheck(const RI_ConstraintInfo *riinfo,
 						   save_sec_context | SECURITY_LOCAL_USERID_CHANGE |
 						   SECURITY_NOFORCE_RLS);
 
-	/* YB: wrap in try-catch */
+	/*
+	 * Finally we can run the query.
+	 *
+	 * Set fire_triggers to false to ensure that AFTER triggers are queued in
+	 * the outer query's after-trigger context and fire after all RI updates
+	 * on the same row are complete, rather than immediately.
+	 *
+	 * The plan is on the stack of executing plans while the query runs, so
+	 * that a nested check finding it invalid does not free it; see
+	 * ri_FetchPreparedPlan().  Pop it even if the query throws an error, so
+	 * that, whatever catches the error, the stack holds only the plans still
+	 * executing.  We don't free anything in the finally block, so if the
+	 * query throws an error, whatever was queued while it ran stays queued.
+	 * The next check that finishes normally frees it, once no check is
+	 * executing it, or at the latest AtEOXact_RI() does.
+	 */
+	exec_depth = ri_PushExecutingPlan(qplan);
 	PG_TRY();
 	{
-		/*
-		 * Finally we can run the query.
-		 *
-		 * Set fire_triggers to false to ensure that AFTER triggers are queued in
-		 * the outer query's after-trigger context and fire after all RI updates
-		 * on the same row are complete, rather than immediately.
-		 */
 		spi_result = SPI_execute_snapshot(qplan,
 										  vals, nulls,
 										  test_snapshot, crosscheck_snapshot,
 										  false, false, limit);
 	}
-	PG_CATCH();
+	PG_FINALLY();
 	{
+		/* Pop qplan, whether the query returned normally or threw an error. */
+		ri_executing_depth = exec_depth;
+
 		/* YB: Restore UID and security context in case of execution failure */
 		SetUserIdAndSecContext(save_userid, save_sec_context);
-		PG_RE_THROW();
 	}
 	PG_END_TRY();
 
 	/* Restore UID and security context */
 	SetUserIdAndSecContext(save_userid, save_sec_context);
+
+	/*
+	 * Free the queued plans that no check is executing any more, which may
+	 * include qplan itself now that it is popped.  Checks further up the
+	 * stack may still be executing others, which stay queued.
+	 */
+	if (ri_plan_dead_list != NIL)
+		ri_FreeDeadPlans();
 
 	/* Check result */
 	if (spi_result < 0)
@@ -3247,14 +3276,12 @@ ri_PerformCheck(const RI_ConstraintInfo *riinfo,
  *		Perform per row FK existence check via direct index probe,
  *		bypassing SPI.
  *
- * If no matching PK row exists, report the violation via ri_ReportViolation(),
- * otherwise, the function returns normally.
- *
- * Note: This is only used by the ALTER TABLE validation path. Other paths use
- * ri_FastPathBatchAdd().
+ * Return false if the index is unsuitable, so the caller can use SPI.
+ * Otherwise, report any violation via ri_ReportViolation(), or return true
+ * after a successful check.
  */
-static void
-ri_FastPathCheck(const RI_ConstraintInfo *riinfo,
+static bool
+ri_FastPathCheck(RI_ConstraintInfo *riinfo,
 				 Relation fk_rel, TupleTableSlot *newslot)
 {
 	Relation	pk_rel;
@@ -3268,47 +3295,106 @@ ri_FastPathCheck(const RI_ConstraintInfo *riinfo,
 	Oid			saved_userid;
 	int			saved_sec_context;
 	Snapshot	snapshot;
+	FastPathMeta *fpmeta;
 
-	/*
-	 * Advance the command counter so the snapshot sees the effects of prior
-	 * triggers in this statement.  Mirrors what the SPI path does in
-	 * ri_PerformCheck().
-	 */
-	CommandCounterIncrement();
-	snapshot = RegisterSnapshot(GetTransactionSnapshot());
+	INJECTION_POINT("ri-before-pk-lock", NULL);
 
 	pk_rel = table_open(riinfo->pk_relid, RowShareLock);
+
+	/*
+	 * The row lock taken below is refused in a read-only transaction unless
+	 * the referenced table is temporary, as ExecCheckXactReadOnly() refuses
+	 * the SPI path's SELECT ... FOR KEY SHARE.
+	 */
+	if (XactReadOnly && !isTempNamespace(RelationGetNamespace(pk_rel)))
+		PreventCommandIfReadOnly("SELECT FOR KEY SHARE");
+
+	/*
+	 * Advance the command counter so the check sees the effects of prior
+	 * triggers in this statement, as SPI does when executing the query issued
+	 * by ri_PerformCheck().  Do this after locking the referenced relation
+	 * and before reloading the constraint information, so local invalidations
+	 * are processed under the lock.
+	 */
+	CommandCounterIncrement();
+
+	/* Re-read the constraint under that lock. */
+	riinfo = ri_LoadConstraintInfo(riinfo->constraint_id);
+
 	idx_rel = index_open(riinfo->conindid, AccessShareLock);
 
+	if (!ri_check_fastpath_index(riinfo, fk_rel, pk_rel, idx_rel))
+	{
+		index_close(idx_rel, NoLock);
+		table_close(pk_rel, NoLock);
+		return false;
+	}
+
+	/*
+	 * Only now take the snapshot the scan will use.  Acquiring it before
+	 * table_open() would let an unbounded amount of time pass while we wait
+	 * for the lock, during which another transaction can commit the very row
+	 * we are about to look for.  The scan would not see it and the check
+	 * would report a violation for a key that exists.
+	 *
+	 * The SPI path does not have this problem: for this check it passes
+	 * InvalidSnapshot, so SPI takes the snapshot after the
+	 * referenced-relation lock has been acquired.
+	 *
+	 * Make this snapshot active too, as SPI does.  STABLE equality functions
+	 * use the active snapshot, so leaving the outer query's snapshot active
+	 * could hide changes made by earlier triggers even though the index scan
+	 * can see them.
+	 */
+	snapshot = RegisterSnapshot(GetTransactionSnapshot());
+	PushActiveSnapshot(snapshot);
+
 	slot = table_slot_create(pk_rel, NULL);
-	scandesc = index_beginscan(pk_rel, idx_rel,
-							   snapshot, NULL,
-							   riinfo->nkeys, 0,
-							   SO_NONE);
 
 	GetUserIdAndSecContext(&saved_userid, &saved_sec_context);
 	SetUserIdAndSecContext(RelationGetForm(pk_rel)->relowner,
 						   saved_sec_context |
 						   SECURITY_LOCAL_USERID_CHANGE |
 						   SECURITY_NOFORCE_RLS);
-	ri_CheckPermissions(pk_rel);
+	ri_CheckPermissions(riinfo, pk_rel);
+
+	/*
+	 * Begin the scan under the switched user id, so that any access method
+	 * code invoked by index_beginscan() runs as the PK relation's owner.  For
+	 * btree this has no functional consequence, but it keeps the ordering
+	 * correct for out-of-tree access methods.
+	 */
+	scandesc = index_beginscan(pk_rel, idx_rel,
+							   snapshot, NULL,
+							   riinfo->nkeys, 0,
+							   SO_NONE);
 
 	if (riinfo->fpmeta == NULL)
 	{
 		/* Reload to ensure it's valid. */
 		riinfo = ri_LoadConstraintInfo(riinfo->constraint_id);
-		ri_populate_fastpath_metadata((RI_ConstraintInfo *) riinfo,
-									  fk_rel, idx_rel);
+		ri_populate_fastpath_metadata(riinfo, idx_rel);
 	}
-	Assert(riinfo->fpmeta);
+
+	/*
+	 * Use our own pointer to the metadata from here on.  The permission
+	 * checks below look up catalog entries and so can process invalidation
+	 * messages, which detach riinfo->fpmeta (see
+	 * InvalidateConstraintCacheCallBack()); the detached object stays valid
+	 * until AtEOXact_RI().
+	 */
+	fpmeta = riinfo->fpmeta;
+	Assert(fpmeta);
+	ri_CheckFunctionPermissions(riinfo, fpmeta);
 	ri_ExtractValues(fk_rel, newslot, riinfo, false, pk_vals, pk_nulls);
-	build_index_scankeys(riinfo, idx_rel, pk_vals, pk_nulls, skey);
+	build_index_scankeys(riinfo, fpmeta, idx_rel, pk_vals, skey);
 	found = ri_FastPathProbeOne(pk_rel, idx_rel, scandesc, slot,
 								snapshot, riinfo, skey, riinfo->nkeys);
 	SetUserIdAndSecContext(saved_userid, saved_sec_context);
 	index_endscan(scandesc);
 	ExecDropSingleTupleTableSlot(slot);
 	UnregisterSnapshot(snapshot);
+	PopActiveSnapshot();
 
 	if (!found)
 		ri_ReportViolation(riinfo, pk_rel, fk_rel,
@@ -3317,332 +3403,7 @@ ri_FastPathCheck(const RI_ConstraintInfo *riinfo,
 
 	index_close(idx_rel, NoLock);
 	table_close(pk_rel, NoLock);
-}
-
-/*
- * ri_FastPathBatchAdd
- *		Buffer a FK row for batched probing.
- *
- * Adds the row to the batch buffer.  When the buffer is full, flushes all
- * buffered rows by probing the PK index.  Any violation is reported
- * immediately during the flush via ri_ReportViolation (which does not return).
- *
- * Uses the per-batch cache (RI_FastPathEntry) to avoid per-row relation
- * open/close, slot creation, etc.
- *
- * The batch is also flushed at end of trigger-firing cycle via
- * ri_FastPathEndBatch().
- */
-static void
-ri_FastPathBatchAdd(const RI_ConstraintInfo *riinfo,
-					Relation fk_rel, TupleTableSlot *newslot)
-{
-	RI_FastPathEntry *fpentry = ri_FastPathGetEntry(riinfo, fk_rel);
-	MemoryContext oldcxt;
-
-	oldcxt = MemoryContextSwitchTo(fpentry->flush_cxt);
-	fpentry->batch[fpentry->batch_count] =
-		ExecCopySlotHeapTuple(newslot);
-	fpentry->batch_count++;
-	MemoryContextSwitchTo(oldcxt);
-
-	if (fpentry->batch_count >= RI_FASTPATH_BATCH_SIZE)
-		ri_FastPathBatchFlush(fpentry, fk_rel, riinfo);
-}
-
-/*
- * ri_FastPathBatchFlush
- *		Flush all buffered FK rows by probing the PK index.
- *
- * Dispatches to ri_FastPathFlushArray() for single-column FKs
- * (using SK_SEARCHARRAY) or ri_FastPathFlushLoop() for multi-column
- * FKs (per-row probing).  Violations are reported immediately via
- * ri_ReportViolation(), which does not return.
- */
-static void
-ri_FastPathBatchFlush(RI_FastPathEntry *fpentry, Relation fk_rel,
-					  const RI_ConstraintInfo *riinfo)
-{
-	Relation	pk_rel = fpentry->pk_rel;
-	Relation	idx_rel = fpentry->idx_rel;
-	TupleTableSlot *fk_slot = fpentry->fk_slot;
-	Snapshot	snapshot;
-	IndexScanDesc scandesc;
-	Oid			saved_userid;
-	int			saved_sec_context;
-	MemoryContext oldcxt;
-	int			violation_index;
-
-	if (fpentry->batch_count == 0)
-		return;
-
-	/*
-	 * CCI and security context switch are done once for the entire batch.
-	 * Per-row CCI is unnecessary because by the time a flush runs, all AFTER
-	 * triggers for the buffered rows have already fired (trigger invocations
-	 * strictly alternate per row), so a single CCI advances past all their
-	 * effects.  Per-row security context switch is unnecessary because each
-	 * row's probe runs entirely as the PK table owner, same as the SPI path
-	 * -- the only difference is that the SPI path sets and restores the
-	 * context per row whereas we do it once around the whole batch.
-	 */
-	CommandCounterIncrement();
-	snapshot = RegisterSnapshot(GetTransactionSnapshot());
-
-	/*
-	 * build_index_scankeys() may palloc cast results for cross-type FKs. Use
-	 * the entry's short-lived flush context so these don't accumulate across
-	 * batches.
-	 */
-	oldcxt = MemoryContextSwitchTo(fpentry->flush_cxt);
-
-	scandesc = index_beginscan(pk_rel, idx_rel, snapshot, NULL,
-							   riinfo->nkeys, 0, SO_NONE);
-
-	GetUserIdAndSecContext(&saved_userid, &saved_sec_context);
-	SetUserIdAndSecContext(RelationGetForm(pk_rel)->relowner,
-						   saved_sec_context |
-						   SECURITY_LOCAL_USERID_CHANGE |
-						   SECURITY_NOFORCE_RLS);
-
-	/*
-	 * Check that the current user has permission to access pk_rel. Done here
-	 * rather than at entry creation so that permission changes between
-	 * flushes are respected, matching the per-row behavior of the SPI path,
-	 * albeit checked once per flush rather than once per row, like in
-	 * ri_FastPathCheck().
-	 */
-	ri_CheckPermissions(pk_rel);
-
-	if (riinfo->fpmeta == NULL)
-	{
-		/* Reload to ensure it's valid. */
-		riinfo = ri_LoadConstraintInfo(riinfo->constraint_id);
-		ri_populate_fastpath_metadata((RI_ConstraintInfo *) riinfo,
-									  fk_rel, idx_rel);
-	}
-	Assert(riinfo->fpmeta);
-
-	/* Skip array overhead for single-row batches. */
-	if (riinfo->nkeys == 1 && fpentry->batch_count > 1)
-		violation_index = ri_FastPathFlushArray(fpentry, fk_slot, riinfo,
-												fk_rel, snapshot, scandesc);
-	else
-		violation_index = ri_FastPathFlushLoop(fpentry, fk_slot, riinfo,
-											   fk_rel, snapshot, scandesc);
-
-	SetUserIdAndSecContext(saved_userid, saved_sec_context);
-	UnregisterSnapshot(snapshot);
-	index_endscan(scandesc);
-
-	if (violation_index >= 0)
-	{
-		ExecStoreHeapTuple(fpentry->batch[violation_index], fk_slot, false);
-		ri_ReportViolation(riinfo, pk_rel, fk_rel,
-						   fk_slot, NULL,
-						   RI_PLAN_CHECK_LOOKUPPK, false, false);
-	}
-
-	MemoryContextReset(fpentry->flush_cxt);
-	MemoryContextSwitchTo(oldcxt);
-
-	/* Reset. */
-	fpentry->batch_count = 0;
-}
-
-/*
- * ri_FastPathFlushLoop
- *		Multi-column fallback: probe the index once per buffered row.
- *
- * Used for composite foreign keys where SK_SEARCHARRAY does not
- * apply, and also for single-row batches of single-column FKs where
- * the array overhead is not worth it.
- *
- * Returns the index of the first violating row in the batch array, or -1 if
- * all rows are valid.
- */
-static int
-ri_FastPathFlushLoop(RI_FastPathEntry *fpentry, TupleTableSlot *fk_slot,
-					 const RI_ConstraintInfo *riinfo, Relation fk_rel,
-					 Snapshot snapshot, IndexScanDesc scandesc)
-{
-	Relation	pk_rel = fpentry->pk_rel;
-	Relation	idx_rel = fpentry->idx_rel;
-	TupleTableSlot *pk_slot = fpentry->pk_slot;
-	Datum		pk_vals[INDEX_MAX_KEYS];
-	char		pk_nulls[INDEX_MAX_KEYS];
-	ScanKeyData skey[INDEX_MAX_KEYS];
-	bool		found = true;
-
-	for (int i = 0; i < fpentry->batch_count; i++)
-	{
-		ExecStoreHeapTuple(fpentry->batch[i], fk_slot, false);
-		ri_ExtractValues(fk_rel, fk_slot, riinfo, false, pk_vals, pk_nulls);
-		build_index_scankeys(riinfo, idx_rel, pk_vals, pk_nulls, skey);
-
-		found = ri_FastPathProbeOne(pk_rel, idx_rel, scandesc, pk_slot,
-									snapshot, riinfo, skey, riinfo->nkeys);
-
-		/* Report first unmatched row */
-		if (!found)
-			return i;
-	}
-
-	/* All pass. */
-	return -1;
-}
-
-/*
- * ri_FastPathFlushArray
- *		Single-column fast path using SK_SEARCHARRAY.
- *
- * Builds an array of FK values and does one index scan with
- * SK_SEARCHARRAY.  The index AM sorts and deduplicates the array
- * internally, then walks matching leaf pages in order.  Each
- * matched PK tuple is locked and rechecked as before; a matched[]
- * bitmap tracks which batch items were satisfied.
- *
- * Returns the index of the first violating row in the batch array, or -1 if
- * all rows are valid.
- */
-static int
-ri_FastPathFlushArray(RI_FastPathEntry *fpentry, TupleTableSlot *fk_slot,
-					  const RI_ConstraintInfo *riinfo, Relation fk_rel,
-					  Snapshot snapshot, IndexScanDesc scandesc)
-{
-	FastPathMeta *fpmeta = riinfo->fpmeta;
-	Relation	pk_rel = fpentry->pk_rel;
-	Relation	idx_rel = fpentry->idx_rel;
-	TupleTableSlot *pk_slot = fpentry->pk_slot;
-	Datum		search_vals[RI_FASTPATH_BATCH_SIZE];
-	bool		matched[RI_FASTPATH_BATCH_SIZE];
-	int			nvals = fpentry->batch_count;
-	Datum		pk_vals[INDEX_MAX_KEYS];
-	char		pk_nulls[INDEX_MAX_KEYS];
-	ScanKeyData skey[1];
-	FmgrInfo   *cast_func_finfo;
-	FmgrInfo   *eq_opr_finfo;
-	Oid			elem_type;
-	int16		elem_len;
-	bool		elem_byval;
-	char		elem_align;
-	ArrayType  *arr;
-
-	Assert(fpmeta);
-
-	memset(matched, 0, nvals * sizeof(bool));
-
-	/*
-	 * Extract FK values, casting to the operator's expected input type if
-	 * needed (e.g. int8 FK -> int4 for int48eq).
-	 */
-	cast_func_finfo = &fpmeta->cast_func_finfo[0];
-	eq_opr_finfo = &fpmeta->eq_opr_finfo[0];
-	for (int i = 0; i < nvals; i++)
-	{
-		ExecStoreHeapTuple(fpentry->batch[i], fk_slot, false);
-		ri_ExtractValues(fk_rel, fk_slot, riinfo, false, pk_vals, pk_nulls);
-
-		/* Cast if needed (e.g. int8 FK -> numeric PK) */
-		if (OidIsValid(cast_func_finfo->fn_oid))
-			search_vals[i] = FunctionCall3(cast_func_finfo,
-										   pk_vals[0],
-										   Int32GetDatum(-1),
-										   BoolGetDatum(false));
-		else
-			search_vals[i] = pk_vals[0];
-	}
-
-	/*
-	 * Array element type must match the operator's right-hand input type,
-	 * which is what the index comparison expects on the search side.
-	 * ri_populate_fastpath_metadata() stores exactly this via
-	 * get_op_opfamily_properties(), which returns the operator's right-hand
-	 * type as the subtype for cross-type operators (e.g. int8 for int48eq)
-	 * and the common type for same-type operators.
-	 */
-	elem_type = fpmeta->subtypes[0];
-	Assert(OidIsValid(elem_type));
-	get_typlenbyvalalign(elem_type, &elem_len, &elem_byval, &elem_align);
-
-	arr = construct_array(search_vals, nvals,
-						  elem_type, elem_len, elem_byval, elem_align);
-
-	/*
-	 * Build scan key with SK_SEARCHARRAY.  The index AM code will internally
-	 * sort and deduplicate, then walk leaf pages in order.
-	 *
-	 * PK indexes are always btree, which supports SK_SEARCHARRAY.
-	 */
-	Assert(idx_rel->rd_indam->amsearcharray);
-	ScanKeyEntryInitialize(&skey[0],
-						   SK_SEARCHARRAY,
-						   1,	/* attno */
-						   fpmeta->strats[0],
-						   fpmeta->subtypes[0],
-						   idx_rel->rd_indcollation[0],
-						   fpmeta->regops[0],
-						   PointerGetDatum(arr));
-
-	index_rescan(scandesc, skey, 1, NULL, 0);
-
-	/*
-	 * Walk all matches.  The index AM returns them in index order.  For each
-	 * match, find which batch item(s) it satisfies.
-	 */
-	while (index_getnext_slot(scandesc, ForwardScanDirection, pk_slot))
-	{
-		Datum		found_val;
-		bool		found_null;
-		bool		concurrently_updated;
-		ScanKeyData recheck_skey[1];
-
-		if (!ri_LockPKTuple(pk_rel, pk_slot, snapshot, &concurrently_updated))
-			continue;
-
-		/* Extract the PK value from the matched and locked tuple */
-		found_val = slot_getattr(pk_slot, riinfo->pk_attnums[0], &found_null);
-		Assert(!found_null);
-
-		if (concurrently_updated)
-		{
-			/*
-			 * Build a single-key scankey for recheck.  We need the actual PK
-			 * value that was found, not the FK search value.
-			 */
-			ScanKeyEntryInitialize(&recheck_skey[0], 0, 1,
-								   fpmeta->strats[0],
-								   fpmeta->subtypes[0],
-								   idx_rel->rd_indcollation[0],
-								   fpmeta->regops[0],
-								   found_val);
-			if (!recheck_matched_pk_tuple(idx_rel, recheck_skey, 1, pk_slot))
-				continue;
-		}
-
-		/*
-		 * Linear scan to mark all batch items matching this PK value.
-		 * O(batch_size) per match, O(batch_size^2) worst case -- fine for the
-		 * current batch size of 64.
-		 */
-		for (int i = 0; i < nvals; i++)
-		{
-			if (!matched[i] &&
-				DatumGetBool(FunctionCall2Coll(eq_opr_finfo,
-											   idx_rel->rd_indcollation[0],
-											   found_val,
-											   search_vals[i])))
-				matched[i] = true;
-		}
-	}
-
-	/* Report first unmatched row */
-	for (int i = 0; i < nvals; i++)
-		if (!matched[i])
-			return i;
-
-	/* All pass. */
-	return -1;
+	return true;
 }
 
 /*
@@ -3704,8 +3465,16 @@ ri_LockPKTuple(Relation pk_rel, TupleTableSlot *slot, Snapshot snap,
 	if (!IsolationUsesXactSnapshot())
 		lockflags |= TUPLE_LOCK_FLAG_FIND_LAST_VERSION;
 
+	/*
+	 * Lock as of the command ID the scan's snapshot was taken with, as
+	 * ExecLockRows() uses the es_output_cid fixed when its query started.
+	 * User code run during the scan, such as an equality function, may have
+	 * advanced the current command ID since; with that, a row it updated
+	 * would look updated by an earlier command (TM_Invisible) rather than by
+	 * this one (TM_SelfModified).
+	 */
 	result = table_tuple_lock(pk_rel, &slot->tts_tid, snap,
-							  slot, GetCurrentCommandId(false),
+							  slot, snap->curcid,
 							  LockTupleKeyShare, LockWaitBlock,
 							  lockflags, &tmfd);
 
@@ -3720,7 +3489,7 @@ ri_LockPKTuple(Relation pk_rel, TupleTableSlot *slot, Snapshot snap,
 			if (IsolationUsesXactSnapshot())
 				ereport(ERROR,
 						(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
-						 errmsg("could not serialize access due to concurrent update")));
+						 errmsg("could not serialize access due to concurrent delete")));
 			return false;
 
 		case TM_Updated:
@@ -3731,8 +3500,8 @@ ri_LockPKTuple(Relation pk_rel, TupleTableSlot *slot, Snapshot snap,
 
 			/*
 			 * In READ COMMITTED, FIND_LAST_VERSION should have chased the
-			 * chain and returned TM_Ok.  Getting here means something
-			 * unexpected -- fall through to error.
+			 * chain rather than returning TM_Updated.  As in ExecLockRows(),
+			 * treat this as an unexpected result.
 			 */
 			elog(ERROR, "unexpected table_tuple_lock status: %u", result);
 			break;
@@ -3740,10 +3509,8 @@ ri_LockPKTuple(Relation pk_rel, TupleTableSlot *slot, Snapshot snap,
 		case TM_SelfModified:
 
 			/*
-			 * The current command or a later command in this transaction
-			 * modified the PK row.  This shouldn't normally happen during an
-			 * FK check (we're not modifying pk_rel), but handle it safely by
-			 * treating the tuple as not found.
+			 * As in ExecLockRows(), ignore a tuple updated or deleted by the
+			 * current command or a later command in this transaction.
 			 */
 			return false;
 
@@ -3759,6 +3526,13 @@ ri_LockPKTuple(Relation pk_rel, TupleTableSlot *slot, Snapshot snap,
 	return false;				/* keep compiler quiet */
 }
 
+/*
+ * Apply the cheap checks that depend only on riinfo; this runs for every
+ * row.  Checks that need the referenced index or catalog lookups are made
+ * once by ri_check_fastpath_index(), which caches the result in
+ * fastpath_state; an unknown state still needs it before using the fast
+ * path.
+ */
 static bool
 ri_fastpath_is_applicable(const RI_ConstraintInfo *riinfo)
 {
@@ -3778,18 +3552,128 @@ ri_fastpath_is_applicable(const RI_ConstraintInfo *riinfo)
 	if (riinfo->hasperiod)
 		return false;
 
+	return riinfo->fastpath_state != RI_FASTPATH_UNUSABLE;
+}
+
+/*
+ * Check eligibility that depends on the index or on the FK column types
+ * lazily, like fast-path scan metadata.  Cache both success and failure until
+ * the constraint information is reloaded.
+ *
+ * The caller has locked the referenced table, reloaded conindid, and opened
+ * the index.  Looking up index properties in ri_LoadConstraintInfo() would
+ * race with REINDEX CONCURRENTLY dropping an index read before that lock.
+ * The index-property checks use the held relation descriptors, and the check
+ * of the FK column types uses fk_rel.
+ */
+static bool
+ri_check_fastpath_index(RI_ConstraintInfo *riinfo, Relation fk_rel,
+						Relation pk_rel, Relation idx_rel)
+{
+	/* Opening the index can have processed further invalidations. */
+	if (!riinfo->valid)
+		riinfo = ri_LoadConstraintInfo(riinfo->constraint_id);
+
+	if (riinfo->fastpath_state != RI_FASTPATH_UNKNOWN)
+		return riinfo->fastpath_state == RI_FASTPATH_USABLE;
+
+	/*
+	 * The fast path probes the referenced index directly.  A foreign key's
+	 * referenced index need not be a primary key; transformFkeyCheckAttrs()
+	 * accepts any unique index, so an out-of-tree amcanunique access method
+	 * could reach here.  Restrict the fast path to btree; other access
+	 * methods fall back to SPI.
+	 */
+	if (idx_rel->rd_rel->relam != BTREE_AM_OID)
+	{
+		riinfo->fastpath_state = RI_FASTPATH_UNUSABLE;
+		return false;
+	}
+
+	/*
+	 * Leave comparisons with a different index and referenced-column
+	 * collation to SPI.  Map index keys to table attributes because the FK
+	 * columns need not be listed in index order.  Ignore INCLUDE columns.
+	 */
+	for (int i = 0; i < idx_rel->rd_index->indnkeyatts; i++)
+	{
+		AttrNumber	attnum = idx_rel->rd_index->indkey.values[i];
+
+		if (idx_rel->rd_indcollation[i] != RIAttCollation(pk_rel, attnum))
+		{
+			riinfo->fastpath_state = RI_FASTPATH_UNUSABLE;
+			return false;
+		}
+	}
+
+	/*
+	 * The equality operator stored in pg_constraint must still be an equality
+	 * member of the index opfamily.  When it is not, the direct fast-path
+	 * probe errors, so mark the fast path unusable and fall back to SPI,
+	 * which uses the same operator in a query where the planner simply
+	 * declines the index.
+	 */
+	for (int i = 0; i < riinfo->nkeys; i++)
+	{
+		int			idx_col;
+
+		for (idx_col = 0; idx_col < idx_rel->rd_index->indnkeyatts; idx_col++)
+		{
+			if (idx_rel->rd_index->indkey.values[idx_col] ==
+				riinfo->pk_attnums[i])
+				break;
+		}
+		Assert(idx_col < idx_rel->rd_index->indnkeyatts);
+
+		if (get_op_opfamily_strategy(riinfo->pf_eq_oprs[i],
+									 idx_rel->rd_opfamily[idx_col]) != BTEqualStrategyNumber)
+		{
+			riinfo->fastpath_state = RI_FASTPATH_UNUSABLE;
+			return false;
+		}
+	}
+
+	/*
+	 * The fast path passes FK values to the equality operator as they are, so
+	 * it needs the FK type to be binary-coercible to the operator's right
+	 * input type.  That covers cross-type operators, which take the FK type
+	 * directly, domains, and binary-compatible types.  Any other coercion is
+	 * left to SPI, which applies it as part of the query.
+	 */
+	for (int i = 0; i < riinfo->nkeys; i++)
+	{
+		Oid			fk_type = RIAttType(fk_rel, riinfo->fk_attnums[i]);
+		Oid			lefttype;
+		Oid			righttype;
+
+		op_input_types(riinfo->pf_eq_oprs[i], &lefttype, &righttype);
+		if (!IsBinaryCoercible(fk_type, righttype))
+		{
+			riinfo->fastpath_state = RI_FASTPATH_UNUSABLE;
+			return false;
+		}
+	}
+
+	riinfo->fastpath_state = RI_FASTPATH_USABLE;
 	return true;
 }
 
 /*
  * ri_CheckPermissions
- *   Check that the current user has permissions to look into the schema of
- *   and SELECT from 'query_rel'
+ *		Check permissions for the SELECT ... FOR KEY SHARE used by the SPI
+ *		path, as the referenced table's owner.
+ *
+ * Go through ExecCheckPermissions() with a manufactured range table so that
+ * ExecutorCheckPerms_hook gets control, as it does for the query the SPI
+ * path executes.
  */
 static void
-ri_CheckPermissions(Relation query_rel)
+ri_CheckPermissions(const RI_ConstraintInfo *riinfo, Relation query_rel)
 {
 	AclResult	aclresult;
+	AclMode		requiredPerms = ACL_SELECT | ACL_SELECT_FOR_UPDATE;
+	RangeTblEntry *rte;
+	RTEPermissionInfo *perminfo;
 
 	/* USAGE on schema. */
 	aclresult = object_aclcheck(NamespaceRelationId,
@@ -3799,12 +3683,29 @@ ri_CheckPermissions(Relation query_rel)
 		aclcheck_error(aclresult, OBJECT_SCHEMA,
 					   get_namespace_name(RelationGetNamespace(query_rel)));
 
-	/* SELECT on relation. */
-	aclresult = pg_class_aclcheck(RelationGetRelid(query_rel), GetUserId(),
-								  ACL_SELECT);
-	if (aclresult != ACLCHECK_OK)
-		aclcheck_error(aclresult, OBJECT_TABLE,
-					   RelationGetRelationName(query_rel));
+	/*
+	 * SELECT is needed only on the referenced key columns.  FOR KEY SHARE
+	 * also needs UPDATE privilege, which may be granted on any column; leave
+	 * updatedCols empty as the SPI query does.
+	 */
+	perminfo = makeNode(RTEPermissionInfo);
+	perminfo->relid = RelationGetRelid(query_rel);
+	perminfo->requiredPerms = requiredPerms;
+	for (int i = 0; i < riinfo->nkeys; i++)
+	{
+		int			attno = riinfo->pk_attnums[i] - FirstLowInvalidHeapAttributeNumber;
+
+		perminfo->selectedCols = bms_add_member(perminfo->selectedCols, attno);
+	}
+
+	rte = makeNode(RangeTblEntry);
+	rte->rtekind = RTE_RELATION;
+	rte->relid = RelationGetRelid(query_rel);
+	rte->relkind = query_rel->rd_rel->relkind;
+	rte->rellockmode = RowShareLock;
+	rte->perminfoindex = 1;
+
+	(void) ExecCheckPermissions(list_make1(rte), list_make1(perminfo), true);
 }
 
 /*
@@ -3843,9 +3744,14 @@ recheck_matched_pk_tuple(Relation idxrel, ScanKeyData *skeys, int nkeys,
 	{
 		ScanKeyData *skey = &skeys[i];
 
-		/* A PK column can never be set to NULL. */
-		Assert(!isnull[i]);
-		if (!DatumGetBool(FunctionCall2Coll(&skey->sk_func,
+		/*
+		 * A foreign key may reference a nullable unique column, so the
+		 * version we chased the update chain to may have a NULL in a key
+		 * column.  A NULL never equals the value we searched for, so treat it
+		 * as no match, as the SPI path's requalification would.
+		 */
+		if (isnull[i] ||
+			!DatumGetBool(FunctionCall2Coll(&skey->sk_func,
 											skey->sk_collation,
 											values[i],
 											skey->sk_argument)))
@@ -3859,48 +3765,68 @@ recheck_matched_pk_tuple(Relation idxrel, ScanKeyData *skeys, int nkeys,
 }
 
 /*
+ * ri_CheckFunctionPermissions
+ *		Check EXECUTE privilege on the functions the fast path invokes on the
+ *		FK values, as the referenced table's owner.
+ *
+ * This parallels the checks ExecInitFunc() performs when the SPI path
+ * initializes its generated query, where the equality operator's function
+ * appears in the WHERE clause.  The fast path is not used when the FK values
+ * need coercion (see ri_check_fastpath_index()), so that is the only function
+ * to check.  Call with the user id already switched to the referenced table's
+ * owner.
+ */
+static void
+ri_CheckFunctionPermissions(const RI_ConstraintInfo *riinfo,
+							const FastPathMeta *fpmeta)
+{
+	for (int i = 0; i < riinfo->nkeys; i++)
+	{
+		Oid			funcid = fpmeta->regops[i];
+		AclResult	aclresult;
+
+		aclresult = object_aclcheck(ProcedureRelationId, funcid,
+									GetUserId(), ACL_EXECUTE);
+		if (aclresult != ACLCHECK_OK)
+			aclcheck_error(aclresult, OBJECT_FUNCTION,
+						   get_func_name(funcid));
+		InvokeFunctionExecuteHook(funcid);
+	}
+}
+
+/*
  * build_index_scankeys
  *		Build ScanKeys for a direct index probe of the PK's unique index.
  *
- * Uses cached compare entries, operator procedures, and strategy numbers
- * from ri_populate_fastpath_metadata() rather than looking them up on
- * each invocation.  Casts FK values to the operator's expected input
- * type if needed.
+ * Uses operator procedures and strategy numbers cached by
+ * ri_populate_fastpath_metadata() rather than looking them up on each
+ * invocation.  The FK values are used as they are: the fast path is only
+ * used when they need no coercion to the operator's input type.
  */
 static void
 build_index_scankeys(const RI_ConstraintInfo *riinfo,
-					 Relation idx_rel, Datum *pk_vals,
-					 char *pk_nulls, ScanKey skeys)
+					 const FastPathMeta *fpmeta,
+					 Relation idx_rel, const Datum *pk_vals,
+					 ScanKey skeys)
 {
-	FastPathMeta *fpmeta = riinfo->fpmeta;
-
 	Assert(fpmeta);
 
 	/*
-	 * May need to cast each of the individual values of the foreign key to
-	 * the corresponding PK column's type if the equality operator demands it.
-	 */
-	for (int i = 0; i < riinfo->nkeys; i++)
-	{
-		if (pk_nulls[i] != 'n' &&
-			OidIsValid(fpmeta->cast_func_finfo[i].fn_oid))
-			pk_vals[i] = FunctionCall3(&fpmeta->cast_func_finfo[i],
-									   pk_vals[i],
-									   Int32GetDatum(-1),	/* typmod */
-									   BoolGetDatum(false));	/* implicit coercion */
-	}
-
-	/*
 	 * Set up ScanKeys for the index scan. This is essentially how
-	 * ExecIndexBuildScanKeys() sets them up.
+	 * ExecIndexBuildScanKeys() sets them up.  Use the cached index_attnos and
+	 * the corresponding collation since FK columns may be in a different
+	 * order than PK index columns.  Place each scan key at the array position
+	 * corresponding to its index column, since btree requires keys to be
+	 * ordered by attribute number.
 	 */
 	for (int i = 0; i < riinfo->nkeys; i++)
 	{
-		int			pkattrno = i + 1;
+		AttrNumber	pkattrno = fpmeta->index_attnos[i];
+		int			skey_pos = pkattrno - 1;	/* 0-based array position */
 
-		ScanKeyEntryInitialize(&skeys[i], 0, pkattrno,
+		ScanKeyEntryInitialize(&skeys[skey_pos], 0, pkattrno,
 							   fpmeta->strats[i], fpmeta->subtypes[i],
-							   idx_rel->rd_indcollation[i], fpmeta->regops[i],
+							   idx_rel->rd_indcollation[skey_pos], fpmeta->regops[i],
 							   pk_vals[i]);
 	}
 }
@@ -3909,35 +3835,48 @@ build_index_scankeys(const RI_ConstraintInfo *riinfo,
  * ri_populate_fastpath_metadata
  *		Cache per-key metadata needed by build_index_scankeys().
  *
- * Looks up the compare hash entry, operator procedure OID, and index
- * strategy/subtype for each key column.  Called lazily on first use
- * and persists for the lifetime of the RI_ConstraintInfo entry.
+ * Looks up the operator procedure OID and index strategy/subtype for each
+ * key column.  Called lazily on first use and persists for the lifetime of
+ * the RI_ConstraintInfo entry.
  */
 static void
-ri_populate_fastpath_metadata(RI_ConstraintInfo *riinfo,
-							  Relation fk_rel, Relation idx_rel)
+ri_populate_fastpath_metadata(RI_ConstraintInfo *riinfo, Relation idx_rel)
 {
 	FastPathMeta *fpmeta;
 	MemoryContext oldcxt = MemoryContextSwitchTo(TopMemoryContext);
 
 	Assert(riinfo != NULL && riinfo->valid);
+	Assert(riinfo->fpmeta == NULL);
 
 	fpmeta = palloc_object(FastPathMeta);
+	fpmeta->next_dead = NULL;
+
 	for (int i = 0; i < riinfo->nkeys; i++)
 	{
 		Oid			eq_opr = riinfo->pf_eq_oprs[i];
-		Oid			typeid = RIAttType(fk_rel, riinfo->fk_attnums[i]);
 		Oid			lefttype;
-		RI_CompareHashEntry *entry = ri_HashCompareOp(eq_opr, typeid);
+		int			idx_col;
 
-		fmgr_info_copy(&fpmeta->cast_func_finfo[i], &entry->cast_func_finfo,
-					   CurrentMemoryContext);
-		fmgr_info_copy(&fpmeta->eq_opr_finfo[i], &entry->eq_opr_finfo,
-					   CurrentMemoryContext);
+		/*
+		 * Find the index column position for this constraint key.  The FK
+		 * constraint may reference columns in a different order than they
+		 * appear in the PK index, so we must map pk_attnums[i] to the
+		 * corresponding index column position.
+		 */
+		for (idx_col = 0; idx_col < riinfo->nkeys; idx_col++)
+		{
+			if (idx_rel->rd_index->indkey.values[idx_col] == riinfo->pk_attnums[i])
+				break;
+		}
+		Assert(idx_col < riinfo->nkeys);
+
+		/* 1-based attribute number */
+		fpmeta->index_attnos[i] = idx_col + 1;
+
 		fpmeta->regops[i] = get_opcode(eq_opr);
 
 		get_op_opfamily_properties(eq_opr,
-								   idx_rel->rd_opfamily[i],
+								   idx_rel->rd_opfamily[idx_col],
 								   false,
 								   &fpmeta->strats[i],
 								   &lefttype,
@@ -4200,8 +4139,14 @@ ri_InitHashTables(void)
 									  RI_INIT_CONSTRAINTHASHSIZE,
 									  &ctl, HASH_ELEM | HASH_BLOBS);
 
-	/* Arrange to flush cache on pg_constraint changes */
+	/* Arrange to flush cache on pg_constraint, pg_amop or pg_cast changes */
 	CacheRegisterSyscacheCallback(CONSTROID,
+								  InvalidateConstraintCacheCallBack,
+								  (Datum) 0);
+	CacheRegisterSyscacheCallback(AMOPOPID,
+								  InvalidateConstraintCacheCallBack,
+								  (Datum) 0);
+	CacheRegisterSyscacheCallback(CASTSOURCETARGET,
 								  InvalidateConstraintCacheCallBack,
 								  (Datum) 0);
 
@@ -4281,12 +4226,32 @@ ri_FetchPreparedPlan(RI_QueryKey *key)
 		return plan;
 
 	/*
-	 * Otherwise we might as well flush the cached plan now, to free a little
-	 * memory space before we make a new one.
+	 * Otherwise, detach the stale plan from the entry so that the caller's
+	 * replacement can be hashed under the same key, and free it if we can.
+	 *
+	 * We can't if an RI check further up the stack is executing this very
+	 * plan.  The check's query can run user-defined code (a cast function
+	 * applied to the FK values, or a trigger fired by a cascaded update or
+	 * delete, say) whose DML fires another RI check for the same constraint,
+	 * and hence the same query key, before the outer SPI_execute_snapshot()
+	 * returns.  If the plan has been invalidated in between, freeing it here
+	 * would pull the SPIPlan out from under the outer _SPI_execute_plan(). So
+	 * in that case queue it on ri_plan_dead_list, to be freed once no check
+	 * is executing it any more.
 	 */
 	entry->plan = NULL;
 	if (plan)
-		SPI_freeplan(plan);
+	{
+		if (!ri_PlanIsExecuting(plan))
+			SPI_freeplan(plan);
+		else
+		{
+			MemoryContext oldcxt = MemoryContextSwitchTo(TopMemoryContext);
+
+			ri_plan_dead_list = lappend(ri_plan_dead_list, plan);
+			MemoryContextSwitchTo(oldcxt);
+		}
+	}
 
 	return NULL;
 }
@@ -4318,6 +4283,91 @@ ri_HashPreparedPlan(RI_QueryKey *key, SPIPlanPtr plan)
 											  HASH_ENTER, &found);
 	Assert(!found || entry->plan == NULL);
 	entry->plan = plan;
+}
+
+
+/*
+ * ri_PushExecutingPlan -
+ *
+ * Record that ri_PerformCheck() is about to execute plan.  Returns the depth
+ * of the stack before the push; the caller pops by setting
+ * ri_executing_depth back to it when SPI_execute_snapshot() returns or
+ * throws an error.
+ */
+static int
+ri_PushExecutingPlan(SPIPlanPtr plan)
+{
+	int			depth = ri_executing_depth;
+
+	if (ri_executing_depth >= ri_executing_maxdepth)
+	{
+		int			newmax = Max(8, ri_executing_maxdepth * 2);
+
+		if (ri_executing_plans == NULL)
+			ri_executing_plans = (SPIPlanPtr *)
+				MemoryContextAlloc(TopMemoryContext,
+								   newmax * sizeof(SPIPlanPtr));
+		else
+			ri_executing_plans = (SPIPlanPtr *)
+				repalloc(ri_executing_plans, newmax * sizeof(SPIPlanPtr));
+		ri_executing_maxdepth = newmax;
+	}
+	ri_executing_plans[ri_executing_depth++] = plan;
+
+	return depth;
+}
+
+/*
+ * ri_PlanIsExecuting -
+ *
+ * Is plan being executed by an ri_PerformCheck() call in progress?  The
+ * stack is as deep as RI checks nest, so a linear scan is fine.
+ */
+static bool
+ri_PlanIsExecuting(SPIPlanPtr plan)
+{
+	for (int i = 0; i < ri_executing_depth; i++)
+	{
+		if (ri_executing_plans[i] == plan)
+			return true;
+	}
+	return false;
+}
+
+/*
+ * ri_FreeDeadPlans -
+ *
+ * Free the plans queued on ri_plan_dead_list that no RI check is executing
+ * any more, keeping the others queued.  With the stack empty, that is all of
+ * them.
+ */
+static void
+ri_FreeDeadPlans(void)
+{
+	List	   *plans = ri_plan_dead_list;
+	ListCell   *lc;
+
+	/*
+	 * Detach the list from the static before freeing, so that an error while
+	 * freeing a plan does not leave a dangling pointer to a half-freed plan
+	 * in it.  Not expected, but we may be called from the abort path, where
+	 * no further cleanup pass would come to fix that up.
+	 */
+	ri_plan_dead_list = NIL;
+
+	foreach(lc, plans)
+	{
+		SPIPlanPtr	plan = (SPIPlanPtr) lfirst(lc);
+
+		if (ri_PlanIsExecuting(plan))
+			continue;
+		SPI_freeplan(plan);
+		plans = foreach_delete_current(plans, lc);
+	}
+
+	/* Put back whatever is still executing, if any. */
+	Assert(plans == NIL || ri_executing_depth > 0);
+	ri_plan_dead_list = plans;
 }
 
 
@@ -4429,6 +4479,16 @@ ri_CompareWithCast(Oid eq_opr, Oid typeid, Oid collid,
 	/* Do we need to cast the values? */
 	if (OidIsValid(entry->cast_func_finfo.fn_oid))
 	{
+		Oid			castfunc = entry->cast_func_finfo.fn_oid;
+		AclResult	aclresult;
+
+		aclresult = object_aclcheck(ProcedureRelationId, castfunc,
+									GetUserId(), ACL_EXECUTE);
+		if (aclresult != ACLCHECK_OK)
+			aclcheck_error(aclresult, OBJECT_FUNCTION,
+						   get_func_name(castfunc));
+		InvokeFunctionExecuteHook(castfunc);
+
 		lhs = FunctionCall3(&entry->cast_func_finfo,
 							lhs,
 							Int32GetDatum(-1),	/* typmod */
@@ -4463,11 +4523,8 @@ ri_CompareWithCast(Oid eq_opr, Oid typeid, Oid collid,
 /*
  * ri_HashCompareOp -
  *
- * Look up or create a cache entry for the given equality operator and
- * the caller's value type (typeid).  The entry holds the operator's
- * FmgrInfo and, if typeid doesn't match what the operator expects as
- * its right-hand input, a cast function to coerce the value before
- * comparison.
+ * See if we know how to compare two values, and create a new hash entry
+ * if not.
  */
 static RI_CompareHashEntry *
 ri_HashCompareOp(Oid eq_opr, Oid typeid)
@@ -4523,14 +4580,8 @@ ri_HashCompareOp(Oid eq_opr, Oid typeid)
 		 * moment since that will never be generated for implicit coercions.
 		 */
 		op_input_types(eq_opr, &lefttype, &righttype);
-
-		/*
-		 * pf_eq_oprs (used by the fast path) can be cross-type when the FK
-		 * and PK columns differ in type, e.g. int48eq for int4 PK / int8 FK.
-		 * If the FK column's type already matches what the operator expects
-		 * as its right-hand input, no cast is needed.
-		 */
-		if (typeid == righttype)
+		Assert(lefttype == righttype);
+		if (typeid == lefttype)
 			castfunc = InvalidOid;	/* simplest case */
 		else
 		{
@@ -4798,196 +4849,53 @@ RI_FKey_trigger_type(Oid tgfoid)
 }
 
 /*
- * ri_FastPathEndBatch
- *		Flush remaining rows and tear down cached state.
+ * AtEOXact_RI
+ *		End-of-transaction cleanup for referential integrity.
  *
- * Registered as an AfterTriggerBatchCallback.  Note: the flush can
- * do real work (CCI, security context switch, index probes) and can
- * throw ERROR on a constraint violation.  If that happens,
- * ri_FastPathTeardown never runs; ResourceOwner + XactCallback
- * handle resource cleanup on the abort path.
+ * This releases objects that were detached from the RI caches during the
+ * transaction but could not be freed on the spot, because an RI check
+ * further up the stack might still have been using them:
+ *
+ * - fast-path metadata detached by InvalidateConstraintCacheCallBack(),
+ *   queued on ri_fpmeta_dead_list;
+ *
+ * - SPI plans found invalid by ri_FetchPreparedPlan() while a check was
+ *   executing them, queued on ri_plan_dead_list.  These are normally freed
+ *   as soon as the check executing them finishes; we only see them here if
+ *   an error interrupted that check and no later check finished normally in
+ *   the transaction.
+ *
+ * Here no RI check can be in progress, so both can be released.  The
+ * release is the same on the commit and the abort path; isCommit only
+ * decides whether we can assert that the stack of executing plans is empty.
+ *
+ * There is no AtEOSubXact_RI() counterpart.  Nothing here is scoped to a
+ * subtransaction: a detached object stays reachable from its dead list
+ * whichever subtransaction detached it, and a check using one may be
+ * running at an outer level, so releasing at subtransaction end would be
+ * unsafe as well as unnecessary.
  */
-static void
-ri_FastPathEndBatch(void *arg)
+void
+AtEOXact_RI(bool isCommit)
 {
-	HASH_SEQ_STATUS status;
-	RI_FastPathEntry *entry;
-
-	if (ri_fastpath_cache == NULL)
-		return;
-
-	/* Flush any partial batches -- can throw ERROR */
-	hash_seq_init(&status, ri_fastpath_cache);
-	while ((entry = hash_seq_search(&status)) != NULL)
+	while (ri_fpmeta_dead_list != NULL)
 	{
-		if (entry->batch_count > 0)
-		{
-			Relation	fk_rel = table_open(entry->fk_relid, AccessShareLock);
-			const RI_ConstraintInfo *riinfo = ri_LoadConstraintInfo(entry->conoid);
+		FastPathMeta *dead = ri_fpmeta_dead_list;
 
-			ri_FastPathBatchFlush(entry, fk_rel, riinfo);
-			table_close(fk_rel, NoLock);
-		}
+		ri_fpmeta_dead_list = dead->next_dead;
+		pfree(dead);
 	}
 
-	ri_FastPathTeardown();
-}
-
-/*
- * ri_FastPathTeardown
- *		Tear down all cached fast-path state.
- *
- * Called from ri_FastPathEndBatch() after flushing any remaining rows.
- */
-static void
-ri_FastPathTeardown(void)
-{
-	HASH_SEQ_STATUS status;
-	RI_FastPathEntry *entry;
-
-	if (ri_fastpath_cache == NULL)
-		return;
-
-	hash_seq_init(&status, ri_fastpath_cache);
-	while ((entry = hash_seq_search(&status)) != NULL)
-	{
-		if (entry->idx_rel)
-			index_close(entry->idx_rel, NoLock);
-		if (entry->pk_rel)
-			table_close(entry->pk_rel, NoLock);
-		if (entry->pk_slot)
-			ExecDropSingleTupleTableSlot(entry->pk_slot);
-		if (entry->fk_slot)
-			ExecDropSingleTupleTableSlot(entry->fk_slot);
-		if (entry->flush_cxt)
-			MemoryContextDelete(entry->flush_cxt);
-	}
-
-	hash_destroy(ri_fastpath_cache);
-	ri_fastpath_cache = NULL;
-	ri_fastpath_callback_registered = false;
-}
-
-static bool ri_fastpath_xact_callback_registered = false;
-
-static void
-ri_FastPathXactCallback(XactEvent event, void *arg)
-{
 	/*
-	 * On abort, ResourceOwner already released relations; on commit,
-	 * ri_FastPathTeardown already ran.  Either way, just NULL the static
-	 * pointers so they don't dangle into the next transaction.
+	 * No RI check can be in progress here, so clear the stack.  On commit it
+	 * must be empty already, since ri_PerformCheck() pops its plan whether
+	 * the query returns or throws.  On abort it may not be, because a FATAL
+	 * error skips those pops.
 	 */
-	ri_fastpath_cache = NULL;
-	ri_fastpath_callback_registered = false;
-}
-
-static void
-ri_FastPathSubXactCallback(SubXactEvent event, SubTransactionId mySubid,
-						   SubTransactionId parentSubid, void *arg)
-{
-	if (event == SUBXACT_EVENT_ABORT_SUB)
-	{
-		/*
-		 * ResourceOwner already released relations.  NULL the static pointers
-		 * so the still-registered batch callback becomes a no-op for the rest
-		 * of this transaction.
-		 */
-		ri_fastpath_cache = NULL;
-		ri_fastpath_callback_registered = false;
-	}
-}
-
-/*
- * ri_FastPathGetEntry
- *		Look up or create a per-batch cache entry for the given constraint.
- *
- * On first call for a constraint within a batch: opens pk_rel and the index,
- * allocates slots for both FK row and the looked up PK row, and registers the
- * cleanup callback.
- *
- * On subsequent calls: returns the existing entry.
- */
-static RI_FastPathEntry *
-ri_FastPathGetEntry(const RI_ConstraintInfo *riinfo, Relation fk_rel)
-{
-	RI_FastPathEntry *entry;
-	bool		found;
-
-	/* Create hash table on first use in this batch */
-	if (ri_fastpath_cache == NULL)
-	{
-		HASHCTL		ctl;
-
-		if (!ri_fastpath_xact_callback_registered)
-		{
-			RegisterXactCallback(ri_FastPathXactCallback, NULL);
-			RegisterSubXactCallback(ri_FastPathSubXactCallback, NULL);
-			ri_fastpath_xact_callback_registered = true;
-		}
-
-		ctl.keysize = sizeof(Oid);
-		ctl.entrysize = sizeof(RI_FastPathEntry);
-		ctl.hcxt = TopTransactionContext;
-		ri_fastpath_cache = hash_create("RI fast-path cache",
-										16,
-										&ctl,
-										HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
-	}
-
-	entry = hash_search(ri_fastpath_cache, &riinfo->constraint_id,
-						HASH_ENTER, &found);
-
-	if (!found)
-	{
-		MemoryContext oldcxt;
-
-		/*
-		 * Zero out non-key fields so ri_FastPathTeardown is safe if we error
-		 * out during partial initialization below.
-		 */
-		memset(((char *) entry) + offsetof(RI_FastPathEntry, pk_rel), 0,
-			   sizeof(RI_FastPathEntry) - offsetof(RI_FastPathEntry, pk_rel));
-
-		oldcxt = MemoryContextSwitchTo(TopTransactionContext);
-
-		entry->fk_relid = RelationGetRelid(fk_rel);
-
-		/*
-		 * Open PK table and its unique index.
-		 *
-		 * RowShareLock on pk_rel matches what the SPI path's SELECT ... FOR
-		 * KEY SHARE would acquire as a relation-level lock. AccessShareLock
-		 * on the index is standard for index scans.
-		 *
-		 * We don't release these locks until end of transaction, matching SPI
-		 * behavior.
-		 */
-		entry->pk_rel = table_open(riinfo->pk_relid, RowShareLock);
-		entry->idx_rel = index_open(riinfo->conindid, AccessShareLock);
-		entry->pk_slot = table_slot_create(entry->pk_rel, NULL);
-
-		/*
-		 * Must be TTSOpsHeapTuple because ExecStoreHeapTuple() is used to
-		 * load entries from batch[] into this slot for value extraction.
-		 */
-		entry->fk_slot = MakeSingleTupleTableSlot(RelationGetDescr(fk_rel),
-												  &TTSOpsHeapTuple);
-
-		entry->flush_cxt = AllocSetContextCreate(TopTransactionContext,
-												 "RI fast path flush temporary context",
-												 ALLOCSET_SMALL_SIZES);
-		MemoryContextSwitchTo(oldcxt);
-
-		/* Ensure cleanup at end of this trigger-firing batch */
-		if (!ri_fastpath_callback_registered)
-		{
-			RegisterAfterTriggerBatchCallback(ri_FastPathEndBatch, NULL);
-			ri_fastpath_callback_registered = true;
-		}
-	}
-
-	return entry;
+	Assert(ri_executing_depth == 0 || !isCommit);
+	ri_executing_depth = 0;
+	if (ri_plan_dead_list != NIL)
+		ri_FreeDeadPlans();
 }
 
 void

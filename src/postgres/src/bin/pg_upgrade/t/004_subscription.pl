@@ -74,7 +74,7 @@ command_checks_all(
 	],
 	1,
 	[
-		qr/"max_active_replication_origins" \(0\) must be greater than or equal to the number of subscriptions \(1\) on the old cluster/
+		qr/"max_active_replication_origins" \(0\) must be greater than or equal to the number of subscriptions \(1\) in the old cluster/
 	],
 	[qr//],
 	'run of pg_upgrade where the new cluster has insufficient max_active_replication_origins'
@@ -123,7 +123,7 @@ command_checks_all(
 	],
 	1,
 	[
-		qr/"max_replication_slots" \(0\) must be greater than or equal to the number of logical replication slots on the old cluster plus one additional slot required for retaining conflict detection information \(1\)/
+		qr/"max_replication_slots" \(0\) must be greater than or equal to the number of logical replication slots in the old cluster plus one additional slot required for retaining conflict detection information \(1\)/
 	],
 	[qr//],
 	'run of pg_upgrade where the new cluster has insufficient max_replication_slots'
@@ -390,7 +390,8 @@ is($result, qq($remote_lsn), "remote_lsn should have been preserved");
 
 # The conflict detection slot should be created
 $result = $new_sub->safe_psql('postgres',
-	"SELECT xmin IS NOT NULL from pg_replication_slots WHERE slot_name = 'pg_conflict_detection'");
+	"SELECT xmin IS NOT NULL from pg_replication_slots WHERE slot_name = 'pg_conflict_detection'"
+);
 is($result, qq(t), "conflict detection slot exists");
 
 # Resume the initial sync and wait until all tables of subscription

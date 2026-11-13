@@ -41,14 +41,14 @@
    <listitem>
     <para>
      Sending incremental changes in a single database or a subset of a
-     database to subscribers as they occur
+     database to subscribers as they occur.
     </para>
    </listitem>
 
    <listitem>
     <para>
      Sending a subset of the database to multiple databases (i.e.,
-     broadcast)
+     broadcast).
     </para>
    </listitem>
 
@@ -61,14 +61,14 @@
 
    <listitem>
     <para>
-     Replicating between different major versions of PostgreSQL
+     Replicating between different major versions of PostgreSQL.
     </para>
    </listitem>
 
    <listitem>
     <para>
      Replicating between PostgreSQL instances on different platforms (for
-     example Linux to Windows)
+     example Linux to Windows).
     </para>
    </listitem>
 
@@ -90,7 +90,7 @@
  <para>
   The subscriber database behaves in the same way as any other PostgreSQL
   instance and can be used as a publisher for other databases by defining its
-  own publications.  When the subscriber is treated as read-only by
+  own publications.  When the subscriber is treated as read-only by an
   application, there will be no conflicts from a single subscription.  On the
   other hand, if there are other writes done either by an application or by other
   subscribers to the same set of tables, conflicts can arise.
@@ -211,8 +211,8 @@
    A <firstterm>subscription</firstterm> is the downstream side of logical
    replication.  The node where a subscription is defined is referred to as
    the <firstterm>subscriber</firstterm>.  A subscription defines the connection
-   to another database and set of publications (one or more) to which it wants
-   to subscribe.
+   to another database and the set of publications (one or more) to which it
+   wants to subscribe.
   </para>
 
   <para>
@@ -988,7 +988,7 @@ HINT:  To initiate replication, you must manually create the replication slot, e
 
    <note>
     <para>
-     If the subscriber is in a release prior to 15, copy pre-existing data
+     If the subscriber is in a release prior to 15, copying pre-existing data
      doesn't use row filters even if they are defined in the publication.
      This is because old releases can only copy the entire table data.
     </para>
@@ -1099,7 +1099,7 @@ Tables:
  c      | text    |           | not null |
 Indexes:
     "t1_pkey" PRIMARY KEY, btree (a, c)
-Publications:
+Included in publications:
     "p1" WHERE ((a > 5) AND (c = 'NSW'::text))
     "p2"
 
@@ -1112,7 +1112,7 @@ Publications:
  f      | integer |           |          |
 Indexes:
     "t2_pkey" PRIMARY KEY, btree (d)
-Publications:
+Included in publications:
     "p2" WHERE (e = 99)
     "p3" WHERE (d = 10)
 
@@ -1125,7 +1125,7 @@ Publications:
  i      | integer |           |          |
 Indexes:
     "t3_pkey" PRIMARY KEY, btree (g)
-Publications:
+Included in publications:
     "p3" WHERE (g = 10)
 ]]></programlisting></para>
 
@@ -1526,7 +1526,7 @@ Tables:
  e      | text    |           |          |
 Indexes:
     "t1_pkey" PRIMARY KEY, btree (id)
-Publications:
+Included in publications:
     "p1" (id, a, b, d)
 </programlisting></para>
 
@@ -1769,7 +1769,9 @@ Publications:
     <listitem>
      <para>
       use <link linkend="sql-createsubscription"><command>CREATE SUBSCRIPTION</command></link>
-      to initially synchronize the published sequences.
+      with <link linkend="sql-createsubscription-params-with-copy-data">
+      <literal>copy_data = true</literal></link> (the default) to copy the
+      initial sequence values from the publisher.
      </para>
     </listitem>
     <listitem>
@@ -1800,6 +1802,13 @@ Publications:
    <varname>max_sync_workers_per_subscription</varname></link>
    configuration.
   </para>
+
+  <note>
+   <para>
+    Sequence synchronization requires the publisher to be running
+    <productname>PostgreSQL</productname> 19 or later.
+   </para>
+  </note>
 
   <sect2 id="sequence-definition-mismatches">
    <title>Sequence Definition Mismatches</title>
@@ -2066,7 +2075,7 @@ Publications:
        <link linkend="guc-track-commit-timestamp"><varname>track_commit_timestamp</varname></link>
        and <link linkend="sql-createsubscription-params-with-retain-dead-tuples"><literal>retain_dead_tuples</literal></link>
        are enabled. Note that if a tuple cannot be found due to the table being
-       truncated, only a <literal>update_missing</literal> conflict will
+       truncated, only an <literal>update_missing</literal> conflict will
        arise. Additionally, if the tuple was deleted by the same origin, an
        <literal>update_missing</literal> conflict will arise.
       </para>
@@ -2351,7 +2360,16 @@ CONTEXT:  processing remote data for replication origin "pg_16395" during "INSER
      <command>ALTER SUBSCRIPTION ... REFRESH SEQUENCES</command></link>
      or by copying the current data from the publisher (perhaps using
      <command>pg_dump</command>) or by determining a sufficiently high value
-     from the tables themselves.
+     from the tables themselves.  Note that
+     <link linkend="sql-altersubscription-params-refresh-sequences">
+     <command>ALTER SUBSCRIPTION ... REFRESH SEQUENCES</command></link> only
+     re-synchronizes sequences that are already known to the subscription
+     (see <xref linkend="logical-replication-sequences"/>); in particular, it
+     requires the publisher to be running <productname>PostgreSQL</productname>
+     19 or later. Before relying on it to prepare for a switchover or
+     failover, confirm that the publisher's version supports sequence
+     replication and that the sequences of interest are already known to the
+     subscription.
     </para>
    </listitem>
 
@@ -2458,7 +2476,7 @@ CONTEXT:  processing remote data for replication origin "pg_16395" during "INSER
   <sect2 id="logical-replication-snapshot">
     <title>Initial Snapshot</title>
     <para>
-     The initial data in existing subscribed tables are snapshotted and
+     The initial data in existing subscribed tables is snapshotted and
      copied in parallel instances of a special kind of apply process.
      These special apply processes are dedicated table synchronization
      workers, spawned for each table to be synchronized.  Each table
@@ -2542,9 +2560,19 @@ CONTEXT:  processing remote data for replication origin "pg_16395" during "INSER
   </para>
 
   <para>
-   In order to be able to copy the initial table or sequence data, the role
-   used for the replication connection must have the <literal>SELECT</literal>
-   privilege on a published table or sequence (or be a superuser).
+   The name of the output plugin used by the replication connection must be
+   included in the server's <xref linkend="guc-output-plugin-libraries"/>. (For
+   subscriptions, the plugin name that is used is <literal>pgoutput</literal>.)
+   Superusers may modify the trusted list per-connection, by including
+   <literal>options=-coutput_plugin_libraries=...</literal> in the connection
+   string.
+  </para>
+
+  <para>
+   In order to be able to copy the initial table data or synchronize
+   sequences, the role used for the replication connection must have the
+   <literal>SELECT</literal> privilege on a published table or sequence (or be
+   a superuser).
   </para>
 
   <para>
@@ -2609,6 +2637,13 @@ CONTEXT:  processing remote data for replication origin "pg_16395" during "INSER
    Because it is usually undesirable to allow one role to freely assume
    the privileges of another, this option should be avoided unless user
    security within the database is of no concern.
+  </para>
+
+  <para>
+   When synchronizing sequences with
+   <literal>run_as_owner = true</literal>, the subscription owner similarly
+   needs <literal>UPDATE</literal> privilege on the target sequence and does
+   not need privileges to <literal>SET ROLE</literal> to the sequence owner.
   </para>
 
   <para>
@@ -2773,8 +2808,10 @@ CONTEXT:  processing remote data for replication origin "pg_16395" during "INSER
     </listitem>
     <listitem>
      <para>
-      The output plugins referenced by the slots on the old cluster must be
-      installed in the new PostgreSQL executable directory.
+      The output plugins referenced by the slots in the old cluster must be
+      installed in the new PostgreSQL executable directory. They must also be
+      included in the new cluster's <xref linkend="guc-output-plugin-libraries"/>;
+      see that parameter's documentation for safety information.
      </para>
     </listitem>
     <listitem>
@@ -2785,18 +2822,17 @@ CONTEXT:  processing remote data for replication origin "pg_16395" during "INSER
     </listitem>
     <listitem>
      <para>
-      All slots on the old cluster must be usable, i.e., there are no slots
-      whose
+      All slots in the old cluster must be usable, i.e., their
       <link linkend="view-pg-replication-slots">pg_replication_slots</link>.<structfield>conflicting</structfield>
-      is not <literal>true</literal>.
+      is <literal>false</literal>.
      </para>
     </listitem>
     <listitem>
      <para>
-      The new cluster must not have permanent logical slots, i.e.,
-      there must be no slots where
+      The new cluster must not have any permanent logical slots; i.e., any
+      existing logical slots must have
       <link linkend="view-pg-replication-slots">pg_replication_slots</link>.<structfield>temporary</structfield>
-      is <literal>false</literal>.
+      set to <literal>true</literal>.
      </para>
     </listitem>
    </itemizedlist>
@@ -2869,7 +2905,7 @@ CONTEXT:  processing remote data for replication origin "pg_16395" during "INSER
      <para>
       If there are subscriptions with retain_dead_tuples enabled, the reserved
       replication slot <quote><literal>pg_conflict_detection</literal></quote>
-      must not exist on the new cluster. Additionally, the
+      must not exist in the new cluster. Additionally, the
       <link linkend="guc-wal-level"><varname>wal_level</varname></link> on the
       new cluster must be set to <literal>replica</literal> or
       <literal>logical</literal>.

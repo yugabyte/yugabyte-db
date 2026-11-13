@@ -415,6 +415,7 @@ build_minmax_path(PlannerInfo *root, MinMaxAggInfo *mminfo,
 										   sizeof(int64),
 										   Int64GetDatum(1), false,
 										   true);
+	parse->limitOption = LIMIT_OPTION_COUNT;
 
 	/*
 	 * Generate the best paths for this query, telling query_planner that we
@@ -539,6 +540,23 @@ fetch_agg_sort_op(Oid aggfnoid)
 	aggform = (Form_pg_aggregate) GETSTRUCT(aggTuple);
 	aggsortop = aggform->aggsortop;
 	ReleaseSysCache(aggTuple);
+
+	/*
+	 * Check the aggregate's pg_proc entry to verify input type = result type;
+	 * if not, report that there is no sortop.  This guards against incorrect
+	 * usage of the SORTOP option.
+	 */
+	if (OidIsValid(aggsortop))
+	{
+		Oid			rettype;
+		Oid		   *argtypes;
+		int			nargs;
+
+		rettype = get_func_signature(aggfnoid, &argtypes, &nargs);
+		if (nargs != 1 || rettype != argtypes[0])
+			aggsortop = InvalidOid;
+		pfree(argtypes);
+	}
 
 	return aggsortop;
 }

@@ -18,6 +18,7 @@ $node->init();
 # Set up our desired configuration.
 $node->append_conf('postgresql.conf', <<EOM);
 shared_preload_libraries='test_plan_advice'
+wal_level=replica
 pg_plan_advice.always_explain_supplied_advice=false
 pg_plan_advice.feedback_warnings=true
 EOM
@@ -40,8 +41,10 @@ my $rc =
   system($ENV{PG_REGRESS} . " "
 	  . "--bindir= "
 	  . "--dlpath=\"$dlpath\" "
-	  . "--host=" . $node->host . " "
-	  . "--port=" . $node->port . " "
+	  . "--host="
+	  . $node->host . " "
+	  . "--port="
+	  . $node->port . " "
 	  . "--schedule=$srcdir/src/test/regress/parallel_schedule "
 	  . "--max-concurrent-tests=20 "
 	  . "--inputdir=\"$inputdir\" "

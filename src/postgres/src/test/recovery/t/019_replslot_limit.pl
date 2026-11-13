@@ -44,8 +44,12 @@ $node_standby->append_conf('postgresql.conf', "primary_slot_name = 'rep1'");
 
 $node_standby->start;
 
-# Wait until standby has replayed enough data
-$node_primary->wait_for_catchup($node_standby);
+# Wait until the primary has processed standby feedback and advanced the
+# slot's restart_lsn.  For a physical slot, restart_lsn is updated from
+# the standby's reported flush position, so this waits for the primary-side
+# slot state that the following wal_status checks depend on.
+$node_primary->wait_for_slot_catchup('rep1', 'restart',
+	$node_primary->lsn('write'));
 
 # Stop standby
 $node_standby->stop;
@@ -56,7 +60,7 @@ $result = $node_primary->safe_psql('postgres',
 );
 is($result, "reserved|t", 'check the catching-up state');
 
-# Advance WAL by five segments (= 5MB) on primary
+# Advance WAL by one segment (= 1MB) on primary
 $node_primary->advance_wal(1);
 $node_primary->safe_psql('postgres', "CHECKPOINT;");
 
@@ -79,7 +83,8 @@ is($result, "reserved|t", 'check that slot is working');
 # The standby can reconnect to primary
 $node_standby->start;
 
-$node_primary->wait_for_catchup($node_standby);
+$node_primary->wait_for_slot_catchup('rep1', 'restart',
+	$node_primary->lsn('write'));
 
 $node_standby->stop;
 
@@ -105,17 +110,18 @@ $node_primary->safe_psql('postgres', "CHECKPOINT;");
 $result = $node_primary->safe_psql('postgres',
 	"SELECT wal_status FROM pg_replication_slots WHERE slot_name = 'rep1'");
 is($result, "reserved",
-	'check that safe_wal_size gets close to the current LSN');
+	'check that slot remains reserved after advancing WAL');
 
 # The standby can reconnect to primary
 $node_standby->start;
-$node_primary->wait_for_catchup($node_standby);
+$node_primary->wait_for_slot_catchup('rep1', 'restart',
+	$node_primary->lsn('write'));
 $node_standby->stop;
 
 # wal_keep_size overrides max_slot_wal_keep_size
 $result = $node_primary->safe_psql('postgres',
 	"ALTER SYSTEM SET wal_keep_size to '8MB'; SELECT pg_reload_conf();");
-# Advance WAL again then checkpoint, reducing remain by 6 MB.
+# Advance WAL again, reducing remain by 6 MB.
 $node_primary->advance_wal(6);
 $result = $node_primary->safe_psql('postgres',
 	"SELECT wal_status as remain FROM pg_replication_slots WHERE slot_name = 'rep1'"
@@ -128,13 +134,14 @@ $result = $node_primary->safe_psql('postgres',
 
 # The standby can reconnect to primary
 $node_standby->start;
-$node_primary->wait_for_catchup($node_standby);
+$node_primary->wait_for_slot_catchup('rep1', 'restart',
+	$node_primary->lsn('write'));
 $node_standby->stop;
 
 # Advance WAL again without checkpoint, reducing remain by 6 MB.
 $node_primary->advance_wal(6);
 
-# Slot gets into 'reserved' state
+# Slot gets into 'extended' state
 $result = $node_primary->safe_psql('postgres',
 	"SELECT wal_status FROM pg_replication_slots WHERE slot_name = 'rep1'");
 is($result, "extended", 'check that the slot state changes to "extended"');
@@ -155,7 +162,8 @@ is($result, "unreserved|t",
 # The standby still can connect to primary before a checkpoint
 $node_standby->start;
 
-$node_primary->wait_for_catchup($node_standby);
+$node_primary->wait_for_slot_catchup('rep1', 'restart',
+	$node_primary->lsn('write'));
 
 $node_standby->stop;
 
@@ -298,8 +306,6 @@ my $node_primary3 = PostgreSQL::Test::Cluster->new('primary3');
 $node_primary3->init(allows_streaming => 1, extra => ['--wal-segsize=1']);
 $node_primary3->append_conf(
 	'postgresql.conf', qq(
-	min_wal_size = 2MB
-	max_wal_size = 2MB
 	log_checkpoints = yes
 	max_slot_wal_keep_size = 1MB
 	));
@@ -366,6 +372,16 @@ $logstart = -s $node_primary3->logfile;
 kill 'STOP', $senderpid, $receiverpid;
 $node_primary3->advance_wal(2);
 
+# Run CHECKPOINT in the background.  It is expected to reach slot
+# invalidation, signal the stopped walsender, and then wait until the
+# walsender releases the slot.
+my $checkpoint = $node_primary3->background_psql('postgres');
+$checkpoint->query_until(
+	qr/starting_checkpoint/, q(
+	\echo starting_checkpoint
+	CHECKPOINT;
+));
+
 my $msg_logged = 0;
 my $max_attempts = $PostgreSQL::Test::Utils::timeout_default;
 while ($max_attempts-- >= 0)
@@ -389,6 +405,7 @@ $node_primary3->poll_query_until('postgres',
 	"SELECT wal_status FROM pg_replication_slots WHERE slot_name = 'rep3'",
 	"lost")
   or die "timed out waiting for slot to be lost";
+$checkpoint->quit;
 
 $msg_logged = 0;
 $max_attempts = $PostgreSQL::Test::Utils::timeout_default;
@@ -471,8 +488,6 @@ is( $primary4->safe_psql(
 	),
 	't',
 	'last inactive time for an inactive physical slot is updated correctly');
-
-$standby4->stop;
 
 # Testcase end: Check inactive_since property of the streaming standby's slot
 # =============================================================================

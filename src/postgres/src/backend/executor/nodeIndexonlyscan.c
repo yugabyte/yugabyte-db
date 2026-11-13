@@ -31,6 +31,7 @@
 #include "postgres.h"
 
 #include "access/genam.h"
+#include "access/htup_details.h"
 #include "access/relscan.h"
 #include "access/tableam.h"
 #include "access/tupdesc.h"
@@ -53,7 +54,8 @@
 
 static TupleTableSlot *IndexOnlyNext(IndexOnlyScanState *node);
 static void StoreIndexTuple(IndexOnlyScanState *node, TupleTableSlot *slot,
-							IndexTuple itup, TupleDesc itupdesc);
+							IndexScanDesc scandesc);
+
 static void yb_init_indexonly_scandesc(IndexOnlyScanState *node);
 static void yb_agg_pushdown_init_scan_slot(IndexOnlyScanState *node);
 static void yb_store_index_tuple_decoded_pk(IndexOnlyScanState *node,
@@ -253,31 +255,11 @@ IndexOnlyNext(IndexOnlyScanState *node)
 			tuple_from_heap = true;
 		}
 
-		/*
-		 * Fill the scan tuple slot with data from the index.  This might be
-		 * provided in either HeapTuple or IndexTuple format.  Conceivably an
-		 * index AM might fill both fields, in which case we prefer the heap
-		 * format, since it's probably a bit cheaper to fill a slot from.
-		 */
-		if (scandesc->xs_hitup)
+		if (IsYugaByteEnabled() && scandesc->yb_aggrefs &&
+			!scandesc->xs_hitup && !scandesc->xs_itup)
 		{
 			/*
-			 * We don't take the trouble to verify that the provided tuple has
-			 * exactly the slot's format, but it seems worth doing a quick
-			 * check on the number of fields.
-			 */
-			Assert(slot->tts_tupleDescriptor->natts ==
-				   scandesc->xs_hitupdesc->natts);
-			ExecForceStoreHeapTuple(scandesc->xs_hitup, slot, false);
-		}
-		else if (scandesc->xs_itup)
-			StoreIndexTuple(node, slot,
-							scandesc->xs_itup,
-							scandesc->xs_itupdesc);
-		else if (IsYugaByteEnabled() && scandesc->yb_aggrefs)
-		{
-			/*
-			 * Slot should have already been updated by YB amgettuple.
+			 * YB: Slot should have already been updated by YB amgettuple.
 			 *
 			 * Also, index only aggregate pushdown cannot support recheck, and
 			 * this should have been prevented by earlier logic.
@@ -285,7 +267,10 @@ IndexOnlyNext(IndexOnlyScanState *node)
 			Assert(!scandesc->xs_recheck);
 		}
 		else
-			elog(ERROR, "no data returned for index-only scan");
+		{
+			/* Fill the scan tuple slot with data from the index */
+			StoreIndexTuple(node, slot, scandesc);
+		}
 
 		/*
 		 * If the index was lossy, we have to recheck the index quals.
@@ -346,70 +331,98 @@ IndexOnlyNext(IndexOnlyScanState *node)
 
 /*
  * StoreIndexTuple
- *		Fill the slot with data from the index tuple.
+ *		Fill the slot with the data the index AM returned.
+ *
+ * The data might be provided in either HeapTuple (xs_hitup) or IndexTuple
+ * (xs_itup) format.  Conceivably an index AM might fill both fields, in which
+ * case we prefer the heap format, since it's probably a bit cheaper to fill a
+ * slot from.
  *
  * At some point this might be generally-useful functionality, but
  * right now we don't need it elsewhere.
  */
 static void
 StoreIndexTuple(IndexOnlyScanState *node, TupleTableSlot *slot,
-				IndexTuple itup, TupleDesc itupdesc)
+				IndexScanDesc scandesc)
 {
-	/*
-	 * Note: we must use the tupdesc supplied by the AM in index_deform_tuple,
-	 * not the slot's tupdesc, in case the latter has different datatypes
-	 * (this happens for btree name_ops in particular).  They'd better have
-	 * the same number of columns though, as well as being datatype-compatible
-	 * which is something we can't so easily check.
-	 */
-
-	/* YB: index may provide base table's PK columns out of the base ybctid. */
-	Assert(slot->tts_tupleDescriptor->natts == itupdesc->natts +
-												node->yb_ioss_num_decoded_pk_cols);
-
 	ExecClearTuple(slot);
-	index_deform_tuple(itup, itupdesc, slot->tts_values, slot->tts_isnull);
 
 	/*
-	 * Copy all name columns stored as cstrings back into a NAMEDATALEN byte
-	 * sized allocation.  We mark this branch as unlikely as generally "name"
-	 * is used only for the system catalogs and this would have to be a user
-	 * query running on those or some other user table with an index on a name
-	 * column.
+	 * We must deform the tuple using the tupdesc the index AM formed it with
+	 * (xs_hitupdesc or xs_itupdesc), not the slot's tupdesc.  The datums
+	 * returned by the index AM must be binary compatible, but the descriptors
+	 * may align each column differently in certain rare cases. (Actually,
+	 * btree's "name" opclass stores cstring tuples that _aren't_ even binary
+	 * compatible, in the strictest sense.  We directly handle that here.)
 	 */
-	if (unlikely(node->ioss_NameCStringAttNums != NULL))
+	if (scandesc->xs_hitup)
 	{
-		int			attcount = node->ioss_NameCStringCount;
+		Assert(slot->tts_tupleDescriptor->natts == scandesc->xs_hitupdesc->natts);
 
-		for (int idx = 0; idx < attcount; idx++)
-		{
-			int			attnum = node->ioss_NameCStringAttNums[idx];
-			Name		name;
-
-			/* skip null Datums */
-			if (slot->tts_isnull[attnum])
-				continue;
-
-			/* allocate the NAMEDATALEN and copy the datum into that memory */
-			name = (Name) MemoryContextAlloc(node->ss.ps.ps_ExprContext->ecxt_per_tuple_memory,
-											 NAMEDATALEN);
-
-			/* use namestrcpy to zero-pad all trailing bytes */
-			namestrcpy(name, DatumGetCString(slot->tts_values[attnum]));
-			slot->tts_values[attnum] = NameGetDatum(name);
-		}
+		heap_deform_tuple(scandesc->xs_hitup, scandesc->xs_hitupdesc,
+						  slot->tts_values, slot->tts_isnull);
 	}
+	else if (scandesc->xs_itup)
+	{
+		/* YB: index may provide base table's PK columns out of the base ybctid. */
+		Assert(slot->tts_tupleDescriptor->natts == scandesc->xs_itupdesc->natts +
+			   node->yb_ioss_num_decoded_pk_cols);
 
-	/* YB: Decode PK columns into any remaining slot positions */
-	if (node->yb_ioss_num_decoded_pk_cols > 0)
-		yb_store_index_tuple_decoded_pk(node, slot, itup, itupdesc);
+		index_deform_tuple(scandesc->xs_itup, scandesc->xs_itupdesc,
+						   slot->tts_values, slot->tts_isnull);
+
+		/*
+		 * Copy all name columns stored as cstrings back into a NAMEDATALEN
+		 * byte sized allocation.  We mark this branch as unlikely as
+		 * generally "name" is used only for the system catalogs and this
+		 * would have to be a user query running on those or some other user
+		 * table with an index on a name column.
+		 */
+		if (unlikely(node->ioss_NameCStringAttNums != NULL))
+		{
+			int			attcount = node->ioss_NameCStringCount;
+
+			for (int idx = 0; idx < attcount; idx++)
+			{
+				int			attnum = node->ioss_NameCStringAttNums[idx];
+				Name		name;
+
+				/* skip null Datums */
+				if (slot->tts_isnull[attnum])
+					continue;
+
+				/*
+				 * allocate the NAMEDATALEN and copy the datum into that
+				 * memory
+				 */
+				name = (Name) MemoryContextAlloc(node->ss.ps.ps_ExprContext->ecxt_per_tuple_memory,
+												 NAMEDATALEN);
+
+				/* use namestrcpy to zero-pad all trailing bytes */
+				namestrcpy(name, DatumGetCString(slot->tts_values[attnum]));
+				slot->tts_values[attnum] = NameGetDatum(name);
+			}
+		}
+
+		/* YB: Decode PK columns into any remaining slot positions */
+		if (node->yb_ioss_num_decoded_pk_cols > 0)
+			yb_store_index_tuple_decoded_pk(node, slot, scandesc->xs_itup,
+											scandesc->xs_itupdesc);
+	}
+	else
+		elog(ERROR, "no data returned for index-only scan");
 
 	ExecStoreVirtualTuple(slot);
 
-	/* Fields used by yb_index_check() */
-	slot->tts_ybidxbasectid = INDEXTUPLE_BASECTID(itup);	/* ybidxbasectid */
-	slot->tts_ybuniqueidxkeysuffix = itup->t_ybuniqueidxkeysuffix;	/* ybuniqueidxkeysuffix */
-	slot->tts_ybctid = itup->t_ybindexrowybctid;	/* index row's ybctid */
+	/* YB: Fields used by yb_index_check() */
+	if (scandesc->xs_itup)
+	{
+		IndexTuple	itup = scandesc->xs_itup;
+
+		slot->tts_ybidxbasectid = INDEXTUPLE_BASECTID(itup);	/* ybidxbasectid */
+		slot->tts_ybuniqueidxkeysuffix = itup->t_ybuniqueidxkeysuffix;	/* ybuniqueidxkeysuffix */
+		slot->tts_ybctid = itup->t_ybindexrowybctid;	/* index row's ybctid */
+	}
 }
 
 /*

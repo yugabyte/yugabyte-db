@@ -270,7 +270,7 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
-      <term><option>-P <replaceable>plugin</replaceable></option></term>
+      <term id="app-pgrecvlogical-option-plugin"><option>-P <replaceable>plugin</replaceable></option></term>
       <term><option>--plugin=<replaceable>plugin</replaceable></option></term>
       <listitem>
        <para>
@@ -494,7 +494,7 @@ PostgreSQL documentation
 
   <para>
    <application>pg_recvlogical</application> will preserve group permissions on
-   the received WAL files if group permissions are enabled on the source
+   the output files if group permissions are enabled on the source
    cluster.
   </para>
 

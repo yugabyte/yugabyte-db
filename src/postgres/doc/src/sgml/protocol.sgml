@@ -198,17 +198,6 @@
     by default.
    </para>
 
-   <note>
-     <para>
-      During the PostgreSQL 19 beta period, libpq will instead default to
-      requesting protocol version 3.9999, to test that servers and middleware
-      properly implement protocol version negotiation. Servers that support
-      negotiation will automatically downgrade to version 3.2 or 3.0. Users can
-      bypass this beta-only behavior by explicitly setting
-      <literal>max_protocol_version=3.0</literal> in their connection string.
-     </para>
-   </note>
-
    <para>
     A single server can support multiple protocol versions.  The initial
     startup-request message tells the server which protocol version the client
@@ -2095,6 +2084,16 @@ SELCT 1/0;<!-- this typo is intentional -->
     server.
    </para>
 
+   <note>
+    <para>
+     The bearer token is sent across the connection, as part of the client
+     initial response, and grants access to the database like a clear-text
+     password. On an unencrypted connection it can be captured by network
+     sniffing. For this reason <literal>OAUTHBEARER</literal> should only be
+     used over SSL connections.
+    </para>
+   </note>
+
    <para>
     <literal>OAUTHBEARER</literal> does not support channel binding, and there
     is no "OAUTHBEARER-PLUS" mechanism. This mechanism does not make use of
@@ -2798,7 +2797,7 @@ psql "dbname=postgres replication=database" -c "IDENTIFY_SYSTEM;"
            <term>Int64</term>
            <listitem>
             <para>
-             The latest WAL write position on the server.
+             The end of the last inserted WAL record on the server.
             </para>
            </listitem>
           </varlistentry>
@@ -3211,7 +3210,9 @@ psql "dbname=postgres replication=database" -c "IDENTIFY_SYSTEM;"
            before the transfer is even started, and might as such have a
            negative impact on the performance.  In particular, it might take
            longer before the first data
-           is streamed. Since the database files can change during the backup,
+           is streamed. For an incremental backup, each file is counted at the
+           size it will occupy in the archive rather than its size on disk.
+           Since the database files can change during the backup,
            the size is only approximate and might both grow and shrink between
            the time of approximation and the sending of the actual files.
            The default is false.
@@ -3436,8 +3437,15 @@ psql "dbname=postgres replication=database" -c "IDENTIFY_SYSTEM;"
          <term><literal>size</literal> (<type>int8</type>)</term>
          <listitem>
           <para>
-           The approximate size of the tablespace, in kilobytes (1024 bytes),
-           if progress report has been requested; otherwise it's null.
+           The approximate size of the archive that will be generated for the
+           tablespace, in kilobytes (1024 bytes), if progress report has been
+           requested; otherwise it's null. This size is measured before any
+           server-side compression.
+           For an incremental backup this can be much smaller than the
+           size of the tablespace, since a relation file that has not changed
+           since the prior backup, or has changed only in part, can be replaced
+           by a smaller incremental file containing just the blocks that have
+           changed.
           </para>
          </listitem>
         </varlistentry>
@@ -3535,8 +3543,9 @@ psql "dbname=postgres replication=database" -c "IDENTIFY_SYSTEM;"
           <varlistentry>
            <term>Int64</term>
            <listitem><para>
-            The number of bytes from the current tablespace for which
-            processing has been completed.
+            The cumulative number of bytes processed across all tablespaces
+            since the backup began. This counts archive data before any
+            server-side compression.
            </para></listitem>
           </varlistentry>
          </variablelist>

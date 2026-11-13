@@ -60,6 +60,24 @@ INSERT INTO vegetables (name, genus)
 		   ('cabbage', 'brassica'), ('kohlrabi', 'brassica'),
 		   ('rutabaga', 'brassica'), ('turnip', 'brassica');
 VACUUM ANALYZE vegetables;
+-- Create a multi-level partitioned table.
+CREATE TABLE creatures (id serial, name text, class text, clade text)
+	PARTITION BY LIST (class);
+CREATE TABLE mammalia PARTITION OF creatures FOR VALUES IN ('mammalia')
+	PARTITION BY LIST (clade);
+CREATE TABLE carnivora PARTITION OF mammalia FOR VALUES IN ('carnivora');
+CREATE TABLE rodentia PARTITION OF mammalia FOR VALUES IN ('rodentia');
+CREATE TABLE aves PARTITION OF creatures FOR VALUES IN ('aves');
+INSERT INTO creatures (name, class, clade)
+	VALUES ('fossa', 'mammalia', 'carnivora'),
+		   ('meerkat', 'mammalia', 'carnivora'),
+		   ('binturong', 'mammalia', 'carnivora'),
+		   ('capybara', 'mammalia', 'rodentia'),
+		   ('chinchilla', 'mammalia', 'rodentia'),
+		   ('agouti', 'mammalia', 'rodentia'),
+		   ('kakapo', 'aves', NULL),
+		   ('hoatzin', 'aves', NULL);
+VACUUM ANALYZE creatures;
 -- We filter relation OIDs out of the test output in order to avoid
 -- test instability. This is currently only needed for EXPLAIN (DEBUG), not
 -- EXPLAIN (RANGE_TABLE). Also suppress actual row counts, which are not
@@ -294,11 +312,129 @@ $$);
          <Security-Barrier>false</Security-Barrier>                 +
          <Lateral>false</Lateral>                                   +
        </Range-Table-Entry>                                         +
-       <Unprunable-RTIs>1 3 4</Unprunable-RTIs>                     +
-       <Result-RTIs>none</Result-RTIs>                              +
      </Range-Table>                                                 +
+     <Unprunable-RTIs>1 3 4</Unprunable-RTIs>                       +
+     <Result-RTIs>none</Result-RTIs>                                +
    </Query>                                                         +
  </explain>
+(1 row)
+
+-- Test JSON format with RANGE_TABLE to verify valid JSON structure.
+SELECT explain_filter($$
+EXPLAIN (RANGE_TABLE, FORMAT JSON, COSTS OFF)
+SELECT genus, array_agg(name ORDER BY name) FROM vegetables GROUP BY genus
+$$);
+                         explain_filter                         
+----------------------------------------------------------------
+ [                                                             +
+   {                                                           +
+     "Plan": {                                                 +
+       "Node Type": "Aggregate",                               +
+       "Strategy": "Sorted",                                   +
+       "Partial Mode": "Simple",                               +
+       "Parallel Aware": false,                                +
+       "Async Capable": false,                                 +
+       "Disabled": false,                                      +
+       "Group Key": ["vegetables.genus"],                      +
+       "Plans": [                                              +
+         {                                                     +
+           "Node Type": "Sort",                                +
+           "Parent Relationship": "Outer",                     +
+           "Parallel Aware": false,                            +
+           "Async Capable": false,                             +
+           "Disabled": false,                                  +
+           "Sort Key": ["vegetables.genus", "vegetables.name"],+
+           "Plans": [                                          +
+             {                                                 +
+               "Node Type": "Append",                          +
+               "Parent Relationship": "Outer",                 +
+               "Parallel Aware": false,                        +
+               "Async Capable": false,                         +
+               "Disabled": false,                              +
+               "Append RTIs": "1",                             +
+               "Child Append RTIs": "none",                    +
+               "Subplans Removed": 0,                          +
+               "Plans": [                                      +
+                 {                                             +
+                   "Node Type": "Seq Scan",                    +
+                   "Parent Relationship": "Member",            +
+                   "Parallel Aware": false,                    +
+                   "Async Capable": false,                     +
+                   "Relation Name": "brassica",                +
+                   "Alias": "vegetables_1",                    +
+                   "Disabled": false,                          +
+                   "Scan RTI": 3                               +
+                 },                                            +
+                 {                                             +
+                   "Node Type": "Seq Scan",                    +
+                   "Parent Relationship": "Member",            +
+                   "Parallel Aware": false,                    +
+                   "Async Capable": false,                     +
+                   "Relation Name": "daucus",                  +
+                   "Alias": "vegetables_2",                    +
+                   "Disabled": false,                          +
+                   "Scan RTI": 4                               +
+                 }                                             +
+               ]                                               +
+             }                                                 +
+           ]                                                   +
+         }                                                     +
+       ]                                                       +
+     },                                                        +
+     "Range Table": [                                          +
+       {                                                       +
+         "RTI": 1,                                             +
+         "Kind": "relation",                                   +
+         "Inherited": true,                                    +
+         "In From Clause": true,                               +
+         "Eref": "vegetables (id, name, genus)",               +
+         "Relation": "vegetables",                             +
+         "Relation Kind": "partitioned_table",                 +
+         "Relation Lock Mode": "AccessShareLock",              +
+         "Permission Info Index": 1,                           +
+         "Security Barrier": false,                            +
+         "Lateral": false                                      +
+       },                                                      +
+       {                                                       +
+         "RTI": 2,                                             +
+         "Kind": "group",                                      +
+         "Inherited": false,                                   +
+         "In From Clause": false,                              +
+         "Eref": "\"*GROUP*\" (genus)",                        +
+         "Security Barrier": false,                            +
+         "Lateral": false                                      +
+       },                                                      +
+       {                                                       +
+         "RTI": 3,                                             +
+         "Kind": "relation",                                   +
+         "Inherited": false,                                   +
+         "In From Clause": true,                               +
+         "Alias": "vegetables (id, name, genus)",              +
+         "Eref": "vegetables (id, name, genus)",               +
+         "Relation": "brassica",                               +
+         "Relation Kind": "relation",                          +
+         "Relation Lock Mode": "AccessShareLock",              +
+         "Security Barrier": false,                            +
+         "Lateral": false                                      +
+       },                                                      +
+       {                                                       +
+         "RTI": 4,                                             +
+         "Kind": "relation",                                   +
+         "Inherited": false,                                   +
+         "In From Clause": true,                               +
+         "Alias": "vegetables (id, name, genus)",              +
+         "Eref": "vegetables (id, name, genus)",               +
+         "Relation": "daucus",                                 +
+         "Relation Kind": "relation",                          +
+         "Relation Lock Mode": "AccessShareLock",              +
+         "Security Barrier": false,                            +
+         "Lateral": false                                      +
+       }                                                       +
+     ],                                                        +
+     "Unprunable RTIs": "1 3 4",                               +
+     "Result RTIs": "none"                                     +
+   }                                                           +
+ ]
 (1 row)
 
 -- Test just the DEBUG option. Verify that it shows information about
@@ -456,6 +592,7 @@ SELECT * FROM vegetables WHERE genus = 'daucus';
    Scan RTI: 2
    Elided Node Type: Append
    Elided Node RTIs: 1
+   Elided Node Child Append RTIs: none
  RTI 1 (relation, inherited, in-from-clause):
    Eref: vegetables (id, name, genus)
    Relation: vegetables
@@ -469,7 +606,7 @@ SELECT * FROM vegetables WHERE genus = 'daucus';
    Relation Kind: relation
    Relation Lock Mode: AccessShareLock
  Unprunable RTIs: 1 2
-(18 rows)
+(19 rows)
 
 -- Also test a case that involves a write.
 EXPLAIN (RANGE_TABLE, COSTS OFF)
@@ -505,6 +642,7 @@ SELECT * FROM vegetables v,
          Scan RTI: 6
          Elided Node Type: Append
          Elided Node RTIs: 5
+         Elided Node Child Append RTIs: none
          Elided Node Type: SubqueryScan
          Elided Node RTIs: 2
    ->  Append
@@ -551,7 +689,7 @@ SELECT * FROM vegetables v,
    Relation Kind: relation
    Relation Lock Mode: AccessShareLock
  Unprunable RTIs: 1 3 4 5 6
-(52 rows)
+(53 rows)
 
 -- should show "Subplan: unnamed_subquery"
 EXPLAIN (RANGE_TABLE, COSTS OFF)
@@ -565,6 +703,7 @@ SELECT * FROM vegetables v,
          Scan RTI: 6
          Elided Node Type: Append
          Elided Node RTIs: 5
+         Elided Node Child Append RTIs: none
          Elided Node Type: SubqueryScan
          Elided Node RTIs: 2
    ->  Append
@@ -610,59 +749,62 @@ SELECT * FROM vegetables v,
    Relation Kind: relation
    Relation Lock Mode: AccessShareLock
  Unprunable RTIs: 1 3 4 5 6
-(51 rows)
+(52 rows)
 
--- Property graph test
-CREATE PROPERTY GRAPH vegetables_graph
-VERTEX TABLES
-(
-	daucus KEY(name) DEFAULT LABEL LABEL vegetables,
-	brassica KEY(name) DEFAULT LABEL LABEL vegetables
-);
+-- test display of child append RTIs
 EXPLAIN (RANGE_TABLE, COSTS OFF)
-SELECT * FROM GRAPH_TABLE (vegetables_graph MATCH (v1 IS vegetables) WHERE v1.genus = 'daucus' COLUMNS (v1.name));
+SELECT * FROM (SELECT * FROM creatures OFFSET 0) ss;
                   QUERY PLAN                  
 ----------------------------------------------
  Append
-   Append RTIs: 1
-   Child Append RTIs: none
-   ->  Seq Scan on daucus
-         Filter: (genus = 'daucus'::text)
-         Scan RTI: 4
-         Elided Node Type: SubqueryScan
-         Elided Node RTIs: 2
-   ->  Seq Scan on brassica
-         Filter: (genus = 'daucus'::text)
+   Append RTIs: 2
+   Child Append RTIs: 4
+   Elided Node Type: SubqueryScan
+   Elided Node RTIs: 1
+   ->  Seq Scan on aves creatures_1
+         Scan RTI: 3
+   ->  Seq Scan on carnivora creatures_2
          Scan RTI: 5
-         Elided Node Type: SubqueryScan
-         Elided Node RTIs: 3
- RTI 1 (subquery, inherited, in-from-clause):
-   Eref: "graph_table" (name)
-   Relation: vegetables_graph
-   Relation Kind: property_graph
+   ->  Seq Scan on rodentia creatures_3
+         Scan RTI: 6
+ RTI 1 (subquery, in-from-clause):
+   Alias: ss ()
+   Eref: ss (id, name, class, clade)
+ RTI 2 (relation, inherited, in-from-clause):
+   Subplan: ss
+   Eref: creatures (id, name, class, clade)
+   Relation: creatures
+   Relation Kind: partitioned_table
    Relation Lock Mode: AccessShareLock
    Permission Info Index: 1
-   Lateral: true
- RTI 2 (subquery):
-   Eref: unnamed_subquery (name)
-   Lateral: true
- RTI 3 (subquery):
-   Eref: unnamed_subquery (name)
-   Lateral: true
- RTI 4 (relation):
-   Subplan: unnamed_subquery
-   Eref: daucus (id, name, genus)
-   Relation: daucus
+ RTI 3 (relation, in-from-clause):
+   Subplan: ss
+   Alias: creatures (id, name, class, clade)
+   Eref: creatures (id, name, class, clade)
+   Relation: aves
    Relation Kind: relation
    Relation Lock Mode: AccessShareLock
-   Permission Info Index: 2
- RTI 5 (relation):
-   Subplan: unnamed_subquery_1
-   Eref: brassica (id, name, genus)
-   Relation: brassica
+ RTI 4 (relation, inherited, in-from-clause):
+   Subplan: ss
+   Alias: creatures (id, name, class, clade)
+   Eref: creatures (id, name, class, clade)
+   Relation: mammalia
+   Relation Kind: partitioned_table
+   Relation Lock Mode: AccessShareLock
+ RTI 5 (relation, in-from-clause):
+   Subplan: ss
+   Alias: creatures (id, name, class, clade)
+   Eref: creatures (id, name, class, clade)
+   Relation: carnivora
    Relation Kind: relation
    Relation Lock Mode: AccessShareLock
-   Permission Info Index: 3
- Unprunable RTIs: 1 4 5
-(41 rows)
+ RTI 6 (relation, in-from-clause):
+   Subplan: ss
+   Alias: creatures (id, name, class, clade)
+   Eref: creatures (id, name, class, clade)
+   Relation: rodentia
+   Relation Kind: relation
+   Relation Lock Mode: AccessShareLock
+ Unprunable RTIs: 2 3 4 5 6
+(50 rows)
 

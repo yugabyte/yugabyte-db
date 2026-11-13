@@ -548,12 +548,12 @@ pushValue_internal(TSQueryParserState state, pg_crc32 valcrc, int distance, int 
 {
 	QueryOperand *tmp;
 
-	if (distance >= MAXSTRPOS)
+	if (distance > MAXSTRPOS)
 		ereturn(state->escontext,,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("value is too big in tsquery: \"%s\"",
 						state->buffer)));
-	if (lenval >= MAXSTRLEN)
+	if (lenval > MAXSTRLEN)
 		ereturn(state->escontext,,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("operand is too long in tsquery: \"%s\"",
@@ -581,7 +581,7 @@ pushValue(TSQueryParserState state, char *strval, int lenval, int16 weight, bool
 {
 	pg_crc32	valcrc;
 
-	if (lenval >= MAXSTRLEN)
+	if (lenval > MAXSTRLEN)
 		ereturn(state->escontext,,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("word is too long in tsquery: \"%s\"",
@@ -633,10 +633,14 @@ typedef struct OperatorElement
 } OperatorElement;
 
 static void
-pushOpStack(OperatorElement *stack, int *lenstack, int8 op, int16 distance)
+pushOpStack(TSQueryParserState state,
+			OperatorElement *stack, int *lenstack,
+			int8 op, int16 distance)
 {
-	if (*lenstack == STACKDEPTH)	/* internal error */
-		elog(ERROR, "tsquery stack too small");
+	if (*lenstack >= STACKDEPTH)
+		ereturn(state->escontext,,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("tsquery is too complex")));
 
 	stack[*lenstack].op = op;
 	stack[*lenstack].distance = distance;
@@ -696,7 +700,7 @@ makepol(TSQueryParserState state,
 				break;
 			case PT_OPR:
 				cleanOpStack(state, opstack, &lenstack, operator);
-				pushOpStack(opstack, &lenstack, operator, weight);
+				pushOpStack(state, opstack, &lenstack, operator, weight);
 				break;
 			case PT_OPEN:
 				makepol(state, pushval, opaque);
@@ -714,7 +718,7 @@ makepol(TSQueryParserState state,
 									state->buffer)));
 				return;
 		}
-		/* detect soft error in pushval or recursion */
+		/* detect soft error in pushval, pushOpStack, or recursion */
 		if (SOFT_ERROR_OCCURRED(state->escontext))
 			return;
 	}
@@ -1273,6 +1277,9 @@ tsqueryrecv(PG_FUNCTION_ARGS)
 			if (weight > 0xF)
 				elog(ERROR, "invalid tsquery: invalid weight bitmap");
 
+			if (val_len == 0)
+				elog(ERROR, "invalid tsquery: empty operand");
+
 			if (val_len > MAXSTRLEN)
 				elog(ERROR, "invalid tsquery: operand too long");
 
@@ -1312,7 +1319,14 @@ tsqueryrecv(PG_FUNCTION_ARGS)
 
 			item->qoperator.oper = oper;
 			if (oper == OP_PHRASE)
-				item->qoperator.distance = (int16) pq_getmsgint(buf, sizeof(int16));
+			{
+				unsigned int dist = pq_getmsgint(buf, sizeof(int16));
+
+				if (dist > MAXENTRYPOS)
+					elog(ERROR, "invalid tsquery: invalid phrase distance %u",
+						 dist);
+				item->qoperator.distance = (int16) dist;
+			}
 		}
 		else
 			elog(ERROR, "unrecognized tsquery node type: %d", item->type);
@@ -1329,10 +1343,13 @@ tsqueryrecv(PG_FUNCTION_ARGS)
 	 * Fill in the left-pointers. Checks that the tree is well-formed as a
 	 * side-effect.
 	 */
-	findoprnd(item, size, &needcleanup);
+	if (size > 0)
+	{
+		findoprnd(item, size, &needcleanup);
 
-	/* Can't have found any QI_VALSTOP nodes */
-	Assert(!needcleanup);
+		/* Can't have found any QI_VALSTOP nodes */
+		Assert(!needcleanup);
+	}
 
 	/* Copy operands to output struct */
 	for (i = 0; i < size; i++)

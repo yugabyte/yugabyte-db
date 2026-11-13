@@ -200,7 +200,7 @@ SELECT pubname, puballtables FROM pg_publication WHERE pubname = 'testpub_forall
  data   | text    |           |          |                                          | extended |              | 
 Indexes:
     "testpub_tbl2_pkey" PRIMARY KEY, lsm (id HASH)
-Publications:
+Included in publications:
     "testpub_foralltables"
 Not-null constraints:
     "testpub_tbl2_id_not_null" NOT NULL "id"
@@ -249,10 +249,10 @@ Except tables:
  data   | text    |           |          | 
 Indexes:
     "testpub_tbl1_pkey" PRIMARY KEY, lsm (id HASH)
-Publications:
+Included in publications:
     "testpub_foralltables"
     "testpub_fortable"
-Except Publications:
+Excluded from publications:
     "testpub_foralltables_excepttable"
     "testpub_foralltables_excepttable1"
 
@@ -482,9 +482,9 @@ Except tables:
 --------+---------+-----------+----------+---------
  a      | integer |           |          | 
 Partition of: testpub_root FOR VALUES FROM (0) TO (100)
-Publications:
+Included in publications:
     "testpub_foralltables"
-Except Publications:
+Excluded from publications:
     "testpub8"
 
 \d testpub_root
@@ -493,14 +493,14 @@ Except Publications:
 --------+---------+-----------+----------+---------
  a      | integer |           |          | 
 Partition key: RANGE (a)
-Publications:
+Included in publications:
     "testpub_foralltables"
-Except Publications:
+Excluded from publications:
     "testpub8"
 Number of partitions: 1 (Use \d+ to list them.)
 
 CREATE PUBLICATION testpub9 FOR ALL TABLES EXCEPT (TABLE testpub_part1);
-ERROR:  cannot specify relation "testpub_part1" in the publication EXCEPT clause
+ERROR:  cannot specify relation "public.testpub_part1" in the publication EXCEPT clause
 DETAIL:  This operation is not supported for individual partitions.
 CREATE TABLE tab_main (a int) PARTITION BY RANGE(a);
 -- Attaching a partition is not allowed if the partitioned table appears in a
@@ -533,7 +533,7 @@ SELECT pubname, puballtables, puballsequences FROM pg_publication WHERE pubname 
   Type  | Start | Minimum |       Maximum       | Increment | Cycles? | Cache 
 --------+-------+---------+---------------------+-----------+---------+-------
  bigint |     1 |       1 | 9223372036854775807 |         1 | no      |   100
-Publications:
+Included in publications:
     "regress_pub_forallsequences1"
 
 \dRp+ regress_pub_forallsequences1
@@ -552,7 +552,7 @@ RESET client_min_messages;
   Type  | Start | Minimum |       Maximum       | Increment | Cycles? | Cache 
 --------+-------+---------+---------------------+-----------+---------+-------
  bigint |     1 |       1 | 9223372036854775807 |         1 | no      |   100
-Publications:
+Included in publications:
     "regress_pub_forallsequences1"
     "regress_pub_forallsequences2"
 
@@ -686,7 +686,7 @@ Tables:
  Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
  e      | integer |           |          | 
-Publications:
+Included in publications:
     "testpub_foralltables"
 
 ALTER PUBLICATION testpub5 ADD TABLE testpub_rf_tbl3 WHERE (e > 1000 AND e < 2000);
@@ -705,7 +705,7 @@ Tables:
  Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
  e      | integer |           |          | 
-Publications:
+Included in publications:
     "testpub5" WHERE ((e > 1000) AND (e < 2000))
     "testpub_foralltables"
 
@@ -734,7 +734,7 @@ Tables:
  Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
  e      | integer |           |          | 
-Publications:
+Included in publications:
     "testpub5" WHERE ((e > 300) AND (e < 500))
     "testpub_foralltables"
 
@@ -749,7 +749,7 @@ RESET client_min_messages;
 --------+---------+-----------+----------+---------
  a      | integer |           |          | 
  b      | text    |           |          | 
-Publications:
+Included in publications:
     "testpub_foralltables"
     "testpub_rf_no"
     "testpub_rf_yes" WHERE (a > 1)
@@ -1166,7 +1166,7 @@ ALTER PUBLICATION testpub_fortable ADD TABLE testpub_tbl7 (a, b);
  c      | text    |           |          |         | extended |              | 
 Indexes:
     "testpub_tbl7_pkey" PRIMARY KEY, lsm (a HASH)
-Publications:
+Included in publications:
     "testpub_foralltables"
     "testpub_fortable" (a, b)
 Not-null constraints:
@@ -1183,7 +1183,7 @@ ALTER PUBLICATION testpub_fortable SET TABLE testpub_tbl7 (a, b);
  c      | text    |           |          |         | extended |              | 
 Indexes:
     "testpub_tbl7_pkey" PRIMARY KEY, lsm (a HASH)
-Publications:
+Included in publications:
     "testpub_foralltables"
     "testpub_fortable" (a, b)
 Not-null constraints:
@@ -1200,7 +1200,7 @@ ALTER PUBLICATION testpub_fortable SET TABLE testpub_tbl7 (a, c);
  c      | text    |           |          |         | extended |              | 
 Indexes:
     "testpub_tbl7_pkey" PRIMARY KEY, lsm (a HASH)
-Publications:
+Included in publications:
     "testpub_foralltables"
     "testpub_fortable" (a, c)
 Not-null constraints:
@@ -1411,7 +1411,7 @@ Tables:
  c      | integer |           | not null |         | plain   |              | 
 Indexes:
     "testpub_tbl_both_filters_pkey" PRIMARY KEY, lsm (a HASH, c ASC)
-Publications:
+Included in publications:
     "testpub_both_filters" (a, c) WHERE (c <> 1)
     "testpub_foralltables"
 Not-null constraints:
@@ -1649,7 +1649,7 @@ ALTER PUBLICATION testpub_ins_trunct ADD TABLE pub_test.testpub_nopk, testpub_tb
 --------+---------+-----------+----------+---------+---------+--------------+-------------
  foo    | integer |           |          |         | plain   |              | 
  bar    | integer |           |          |         | plain   |              | 
-Publications:
+Included in publications:
     "testpub_default"
     "testpub_fortbl"
     "testpub_ins_trunct"
@@ -1662,7 +1662,7 @@ Publications:
  data   | text    |           |          |                                          | extended |              | 
 Indexes:
     "testpub_tbl1_pkey" PRIMARY KEY, lsm (id HASH)
-Publications:
+Included in publications:
     "testpub_default"
     "testpub_fortbl"
     "testpub_ins_trunct"
@@ -1690,7 +1690,7 @@ ERROR:  relation "testpub_nopk" is not part of the publication
  data   | text    |           |          |                                          | extended |              | 
 Indexes:
     "testpub_tbl1_pkey" PRIMARY KEY, lsm (id HASH)
-Publications:
+Included in publications:
     "testpub_fortbl"
     "testpub_ins_trunct"
 Not-null constraints:

@@ -1019,7 +1019,7 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 	}
 
 	/* To add or drop members, you need ADMIN OPTION. */
-	if (drolemembers && !is_admin_of_role(currentUserId, roleid))
+	if (drolemembers && !has_admin_privs_of_role(currentUserId, roleid))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied to alter role"),
@@ -1963,16 +1963,10 @@ ReassignOwnedObjects(ReassignOwnedStmt *stmt)
 							"from superuser")));
 	}
 
-	/* Must have privileges on the receiving side too */
+	/* Must be able to become the new owner, as for ALTER ... OWNER TO */
 	newrole = get_rolespec_oid(stmt->newrole, false);
-
-	if (!has_privs_of_role(GetUserId(), newrole) &&
-		!IsYbDbAdminUser(GetUserId()))
-		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("permission denied to reassign objects"),
-				 errdetail("Only roles with privileges of role \"%s\" may reassign objects to it.",
-						   GetUserNameFromId(newrole, false))));
+	if (!IsYbDbAdminUser(GetUserId()))
+		check_can_set_role(GetUserId(), newrole);
 
 	/* Ok, do it */
 	shdepReassignOwned(role_ids, newrole);
@@ -2499,7 +2493,7 @@ check_role_membership_authorization(Oid currentUserId, Oid roleid,
 		/*
 		 * Otherwise, must have admin option on the role to be changed.
 		 */
-		if (!is_admin_of_role(currentUserId, roleid))
+		if (!has_admin_privs_of_role(currentUserId, roleid))
 		{
 			if (is_grant)
 				ereport(ERROR,

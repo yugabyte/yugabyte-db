@@ -1547,7 +1547,32 @@ retry:
 				*ybConflictSlot = existing_slot;
 			}
 			if (conflictTid)
+			{
 				*conflictTid = existing_slot->tts_tid;
+
+				/*
+				 * The conflicting tuple decides the outcome of INSERT ... ON
+				 * CONFLICT, so for SSI purposes it has been read, even when
+				 * nothing gets written afterwards.  The dirty snapshot used
+				 * by the scan is not an MVCC snapshot, so SSI ignored that
+				 * read.  Read the tuple again with the query snapshot to
+				 * record it. The result is of no interest here, the caller
+				 * checks visibility itself.
+				 *
+				 * Some callers, such as the logical replication apply worker,
+				 * may have not set es_snapshot.  Since such callers are not
+				 * executing INSERT ... ON CONFLICT, there is nothing to
+				 * record for SSI; skip the read in that case.
+				 */
+				if (IsolationIsSerializable() &&
+					estate->es_snapshot != InvalidSnapshot)
+				{
+					INJECTION_POINT("check-exclusion-or-unique-constraint-conflict", NULL);
+					(void) table_tuple_fetch_row_version(heap, conflictTid,
+														 estate->es_snapshot,
+														 existing_slot);
+				}
+			}
 			break;
 		}
 

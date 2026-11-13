@@ -202,6 +202,9 @@ TypeShellMake(const char *typeName, Oid typeNamespace, Oid ownerId)
  *		If newTypeOid is zero (the normal case), a new OID is created;
  *		otherwise we use exactly that OID.
  *
+ *		NB: Caller is responsible for ensuring the user has USAGE
+ *		on all types defaultTypeBin depends on.
+ *
  *		YB NOTE:
  *		If ybRelationIsShared is specified, pg_type entry will be
  *		created for ALL databases. newTypeOid should be free in
@@ -615,6 +618,9 @@ TypeCreate(Oid newTypeOid,
  * type already belongs to the current extension.  That's the behavior we
  * want when replacing a shell type, which is the only case where both flags
  * are true.
+ *
+ * NB: Caller is responsible for ensuring the user has USAGE on all types
+ * defaultExpr depends on.
  */
 void
 GenerateTypeDependencies(HeapTuple typeTuple,

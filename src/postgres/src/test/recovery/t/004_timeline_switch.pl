@@ -30,6 +30,10 @@ $node_standby_2->init_from_backup($node_primary, $backup_name,
 	has_streaming => 1);
 $node_standby_2->start;
 
+# Wait for standby_1 and standby_2 connection to the primary.
+$node_primary->poll_query_until('postgres',
+	"SELECT count(1) = 2 FROM pg_stat_replication");
+
 # Create some content on primary
 $node_primary->safe_psql('postgres',
 	"CREATE TABLE tab_int AS SELECT generate_series(1,1000) AS a");
@@ -47,11 +51,15 @@ $node_standby_1->psql(
 	stdout => \$psql_out);
 is($psql_out, 't', "promotion of standby with pg_promote");
 
-# Switch standby 2 to replay from standby 1
+# Switch standby 2 to replay from standby 1.  During the timeline switch,
+# the WAL receiver process on standby 2 should not be stopped, and the
+# new primary connection string should not be visible
+# in pg_stat_wal_receiver.
+my $secret = 'dont_show_me';
 my $connstr_1 = $node_standby_1->connstr;
 $node_standby_2->append_conf(
 	'postgresql.conf', qq(
-primary_conninfo='$connstr_1'
+primary_conninfo='$connstr_1 password=$secret'
 ));
 
 # Rotate logfile before restarting, for the log checks done below.
@@ -93,6 +101,13 @@ my $wr_pid_after_switch = $node_standby_2->safe_psql('postgres',
 is($wr_pid_before_switch, $wr_pid_after_switch,
 	'WAL receiver PID matches across timeline jumps');
 
+my $raw_conninfo_count = $node_standby_2->safe_psql('postgres',
+	"SELECT count(*) FROM pg_stat_wal_receiver WHERE conninfo LIKE '%$secret%'"
+);
+
+is($raw_conninfo_count, '0',
+	'pg_stat_wal_receiver.conninfo not updated across timeline jumps');
+
 # Ensure that a standby is able to follow a primary on a newer timeline
 # when WAL archiving is enabled.
 
@@ -129,5 +144,48 @@ $node_primary_2->wait_for_catchup($node_standby_3);
 my $result_2 =
   $node_standby_3->safe_psql('postgres', "SELECT count(*) FROM tab_int");
 is($result_2, qq(1), 'check content of standby 3');
+
+# Ensure that a WAL receiver creates a temporary replication slot only once
+# when following an upstream across a timeline switch.
+
+# Initialize primary node
+my $node_primary_3 = PostgreSQL::Test::Cluster->new('primary_3');
+$node_primary_3->init(allows_streaming => 1);
+$node_primary_3->start;
+
+# Take backup
+$node_primary_3->backup($backup_name);
+
+# Create standby node
+my $node_standby_4 = PostgreSQL::Test::Cluster->new('standby_4');
+$node_standby_4->init_from_backup($node_primary_3, $backup_name,
+	has_streaming => 1);
+$node_standby_4->append_conf(
+	'postgresql.conf', qq(
+wal_receiver_create_temp_slot = on
+));
+
+# Restart primary node in standby mode and promote it, switching it
+# to a new timeline.
+$node_primary_3->set_standby_mode;
+$node_primary_3->restart;
+$node_primary_3->promote;
+
+# Start standby node, create some content on primary and check its presence
+# in standby, to ensure that the timeline switch has been done.
+$node_standby_4->start;
+$node_primary_3->safe_psql('postgres',
+	"CREATE TABLE tab_int AS SELECT 1 AS a");
+$node_primary_3->wait_for_catchup($node_standby_4);
+
+ok( !$node_standby_4->log_contains(
+		'could not create replication slot "pg_walreceiver_[0-9]+".*already exists'
+	),
+	'temporary replication slot is not recreated across timeline jumps');
+
+my $temp_slot_name = $node_standby_4->safe_psql('postgres',
+	"SELECT slot_name FROM pg_stat_wal_receiver");
+like($temp_slot_name, qr/^pg_walreceiver_[0-9]+$/,
+	'pg_stat_wal_receiver.slot_name remains set across timeline jumps');
 
 done_testing();

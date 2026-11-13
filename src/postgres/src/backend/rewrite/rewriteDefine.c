@@ -161,6 +161,7 @@ InsertRule(const char *rulname,
 	/*
 	 * Also install dependencies on objects referenced in action and qual.
 	 */
+	CheckUsageOnTypesInExpr((Node *) action, NIL, GetUserId());
 	recordDependencyOnExpr(&myself, (Node *) action, NIL,
 						   DEPENDENCY_NORMAL);
 
@@ -170,6 +171,7 @@ InsertRule(const char *rulname,
 		Query	   *qry = linitial_node(Query, action);
 
 		qry = getInsertSelectQuery(qry, NULL);
+		CheckUsageOnTypesInExpr(event_qual, qry->rtable, GetUserId());
 		recordDependencyOnExpr(&myself, event_qual, qry->rtable,
 							   DEPENDENCY_NORMAL);
 	}
@@ -390,26 +392,11 @@ DefineQueryRewrite(const char *rulename,
 		 * ... and finally the rule must be named _RETURN.
 		 */
 		if (strcmp(rulename, ViewSelectRuleName) != 0)
-		{
-			/*
-			 * In versions before 7.3, the expected name was _RETviewname. For
-			 * backwards compatibility with old pg_dump output, accept that
-			 * and silently change it to _RETURN.  Since this is just a quick
-			 * backwards-compatibility hack, limit the number of characters
-			 * checked to a few less than NAMEDATALEN; this saves having to
-			 * worry about where a multibyte character might have gotten
-			 * truncated.
-			 */
-			if (strncmp(rulename, "_RET", 4) != 0 ||
-				strncmp(rulename + 4, RelationGetRelationName(event_relation),
-						NAMEDATALEN - 4 - 4) != 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						 errmsg("view rule for \"%s\" must be named \"%s\"",
-								RelationGetRelationName(event_relation),
-								ViewSelectRuleName)));
-			rulename = pstrdup(ViewSelectRuleName);
-		}
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+					 errmsg("view rule for \"%s\" must be named \"%s\"",
+							RelationGetRelationName(event_relation),
+							ViewSelectRuleName)));
 	}
 	else
 	{
@@ -842,6 +829,17 @@ RenameRewriteRule(RangeVar *relation, const char *oldName,
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 				 errmsg("renaming an ON SELECT rule is not allowed")));
+
+	/*
+	 * Conversely, if it's not an ON SELECT rule then it must *not* be named
+	 * _RETURN.
+	 */
+	if (strcmp(newName, ViewSelectRuleName) == 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+				 errmsg("non-view rule for \"%s\" must not be named \"%s\"",
+						RelationGetRelationName(targetrel),
+						ViewSelectRuleName)));
 
 	/* OK, do the update */
 	namestrcpy(&(ruleform->rulename), newName);

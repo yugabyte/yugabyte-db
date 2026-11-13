@@ -264,6 +264,8 @@ main(int argc, char *argv[])
 		   ControlFile->checkPointCopy.PrevTimeLineID);
 	printf(_("Latest checkpoint's full_page_writes: %s\n"),
 		   ControlFile->checkPointCopy.fullPageWrites ? _("on") : _("off"));
+	printf(_("Latest checkpoint's logical decoding: %s\n"),
+		   ControlFile->checkPointCopy.logicalDecodingEnabled ? _("on") : _("off"));
 	printf(_("Latest checkpoint's NextXID:          %u:%u\n"),
 		   EpochFromFullTransactionId(ControlFile->checkPointCopy.nextXid),
 		   XidFromFullTransactionId(ControlFile->checkPointCopy.nextXid));
@@ -287,8 +289,6 @@ main(int argc, char *argv[])
 		   ControlFile->checkPointCopy.oldestCommitTsXid);
 	printf(_("Latest checkpoint's newestCommitTsXid:%u\n"),
 		   ControlFile->checkPointCopy.newestCommitTsXid);
-	printf(_("Latest checkpoint's data_checksum_version:%u\n"),
-		   ControlFile->checkPointCopy.dataChecksumState);
 	printf(_("Time of latest checkpoint:            %s\n"),
 		   ckpttime_str);
 	printf(_("Fake LSN counter for unlogged rels:   %X/%08X\n"),

@@ -1297,7 +1297,7 @@ yb_execute_extension_updates()
 static void
 yb_signal_process_group(SIGNAL_ARGS)
 {
-	pqsignal(SIGTERM, SIG_DFL);
+	pqsignal(SIGTERM, PG_SIG_DFL);
 	kill(0, SIGTERM);
 }
 

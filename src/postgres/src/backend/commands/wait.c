@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * wait.c
- *	  Implements WAIT FOR, which allows waiting for events such as
+ *	  Implements WAIT, which allows waiting for events such as
  *	  time passing or LSN having been replayed, flushed, or written.
  *
  * Portions Copyright (c) 2025-2026, PostgreSQL Global Development Group
@@ -13,8 +13,7 @@
  */
 #include "postgres.h"
 
-#include <math.h>
-
+#include "access/xact.h"
 #include "access/xlog.h"
 #include "access/xlogrecovery.h"
 #include "access/xlogwait.h"
@@ -23,18 +22,24 @@
 #include "commands/wait.h"
 #include "executor/executor.h"
 #include "parser/parse_node.h"
+#include "storage/lmgr.h"
+#include "storage/lock.h"
 #include "storage/proc.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/pg_lsn.h"
 #include "utils/snapmgr.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 
 void
-ExecWaitStmt(ParseState *pstate, WaitStmt *stmt, DestReceiver *dest)
+ExecWaitStmt(ParseState *pstate, WaitStmt *stmt, bool isTopLevel,
+			 DestReceiver *dest)
 {
 	XLogRecPtr	lsn;
-	int64		timeout = 0;
+	int			timeout = 0;
 	WaitLSNResult waitLSNResult;
 	WaitLSNType lsnType = WAIT_LSN_TYPE_STANDBY_REPLAY; /* default */
 	bool		throw = true;
@@ -44,6 +49,17 @@ ExecWaitStmt(ParseState *pstate, WaitStmt *stmt, DestReceiver *dest)
 	bool		timeout_specified = false;
 	bool		no_throw_specified = false;
 	bool		mode_specified = false;
+
+	/*
+	 * WAIT must not be run as a non-top-level statement (e.g., inside a
+	 * function, procedure, or DO block). Forbid this case upfront.
+	 */
+	if (!isTopLevel)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("%s can only be executed as a top-level statement",
+						"WAIT"),
+				 errdetail("WAIT cannot be used within a function, procedure, or DO block.")));
 
 	/* Parse and validate the mandatory LSN */
 	lsn = DatumGetLSN(DirectFunctionCall1(pg_lsn_in,
@@ -80,7 +96,6 @@ ExecWaitStmt(ParseState *pstate, WaitStmt *stmt, DestReceiver *dest)
 		{
 			char	   *timeout_str;
 			const char *hintmsg;
-			double		result;
 
 			if (timeout_specified)
 				errorConflictingDefElem(defel, pstate);
@@ -88,33 +103,18 @@ ExecWaitStmt(ParseState *pstate, WaitStmt *stmt, DestReceiver *dest)
 
 			timeout_str = defGetString(defel);
 
-			if (!parse_real(timeout_str, &result, GUC_UNIT_MS, &hintmsg))
-			{
+			if (!parse_int(timeout_str, &timeout, GUC_UNIT_MS, &hintmsg))
 				ereport(ERROR,
 						errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						errmsg("invalid timeout value: \"%s\"", timeout_str),
-						hintmsg ? errhint("%s", _(hintmsg)) : 0);
-			}
+						hintmsg ? errhint("%s", _(hintmsg)) : 0,
+						parser_errposition(pstate, defel->location));
 
-			/*
-			 * Get rid of any fractional part in the input. This is so we
-			 * don't fail on just-out-of-range values that would round into
-			 * range.
-			 */
-			result = rint(result);
-
-			/* Range check */
-			if (unlikely(isnan(result) || !FLOAT8_FITS_IN_INT64(result)))
-				ereport(ERROR,
-						errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-						errmsg("timeout value is out of range"));
-
-			if (result < 0)
+			if (timeout < 0)
 				ereport(ERROR,
 						errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg("timeout cannot be negative"));
-
-			timeout = (int64) result;
+						errmsg("timeout cannot be negative"),
+						parser_errposition(pstate, defel->location));
 		}
 		else if (strcmp(defel->defname, "no_throw") == 0)
 		{
@@ -139,13 +139,12 @@ ExecWaitStmt(ParseState *pstate, WaitStmt *stmt, DestReceiver *dest)
 	 * We are going to wait for the LSN.  We should first care that we don't
 	 * hold a snapshot and correspondingly our MyProc->xmin is invalid.
 	 * Otherwise, our snapshot could prevent the replay of WAL records
-	 * implying a kind of self-deadlock.  This is the reason why WAIT FOR is a
+	 * implying a kind of self-deadlock.  This is the reason why WAIT is a
 	 * command, not a procedure or function.
 	 *
-	 * At first, we should check there is no active snapshot.  According to
-	 * PlannedStmtRequiresSnapshot(), even in an atomic context, CallStmt is
-	 * processed with a snapshot.  Thankfully, we can pop this snapshot,
-	 * because PortalRunUtility() can tolerate this.
+	 * Non-top-level contexts are rejected above, but be defensive and pop any
+	 * active snapshot if one is present.  PortalRunUtility() can tolerate
+	 * utility commands that remove the active snapshot.
 	 */
 	if (ActiveSnapshotSet())
 		PopActiveSnapshot();
@@ -160,8 +159,9 @@ ExecWaitStmt(ParseState *pstate, WaitStmt *stmt, DestReceiver *dest)
 	if (HaveRegisteredOrActiveSnapshot())
 		ereport(ERROR,
 				errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				errmsg("WAIT FOR must be called without an active or registered snapshot"),
-				errdetail("WAIT FOR cannot be executed from a function or procedure, nor within a transaction with an isolation level higher than READ COMMITTED."));
+				errmsg("WAIT cannot be executed while the current transaction holds a snapshot"),
+				IsolationUsesXactSnapshot() ?
+				errdetail("This transaction runs at an isolation level higher than READ COMMITTED, so it holds a snapshot from its first query until it ends.") : 0);
 
 	/*
 	 * As the result we should hold no snapshot, and correspondingly our xmin
@@ -181,6 +181,59 @@ ExecWaitStmt(ParseState *pstate, WaitStmt *stmt, DestReceiver *dest)
 					 errmsg("recovery is in progress"),
 					 errhint("Waiting for primary_flush can only be done on a primary server. "
 							 "Use standby_flush mode on a standby server.")));
+	}
+
+	/*
+	 * Conservatively reject an unsatisfied standby LSN wait while this
+	 * backend holds a granted heavyweight lock.  Recovery may need one of
+	 * those locks, directly or through another backend, before replay can
+	 * advance far enough to satisfy our wait.  This can create a cycle: we
+	 * wait for recovery, while recovery waits for us to release the lock.
+	 *
+	 * However, we do not register our dependency on WAL progress as a lock
+	 * wait, so the deadlock detector cannot see the complete cycle. With
+	 * unlimited recovery-conflict delays and no other timeout or
+	 * cancellation, the cycle can persist indefinitely.
+	 *
+	 * Write and flush waits can also depend on startup.  Without an active
+	 * receiver, their replay floor can be their only source of progress, so
+	 * holding a lock needed by replay can create the same cycle.
+	 *
+	 * Streaming can initially provide independent progress, but reception can
+	 * stop before the target is reached.  Restarting reception requires
+	 * startup, and stalled replay prevents further advancement of
+	 * restartpoints used to recycle old WAL, so continued reception can
+	 * exhaust available space.  An active receiver at the start of the wait
+	 * therefore does not guarantee that the wait can finish while replay
+	 * remains blocked.
+	 *
+	 * Apply the restriction to all standby modes, including some write and
+	 * flush waits that an active receiver could satisfy while locks remain
+	 * held.  Requests whose target is observed as already reached are exempt
+	 * from this restriction.
+	 */
+	if ((lsnType == WAIT_LSN_TYPE_STANDBY_REPLAY ||
+		 lsnType == WAIT_LSN_TYPE_STANDBY_WRITE ||
+		 lsnType == WAIT_LSN_TYPE_STANDBY_FLUSH) &&
+		RecoveryInProgress() &&
+		lsn > GetCurrentLSNForWaitType(lsnType))
+	{
+		LOCKTAG		locktag;
+
+		if (GetAnyGrantedHeavyweightLock(&locktag))
+		{
+			StringInfoData locktagbuf;
+
+			initStringInfo(&locktagbuf);
+			DescribeLockTag(&locktagbuf, &locktag);
+
+			ereport(ERROR,
+					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+					 errmsg("cannot wait for a standby LSN while holding locks"),
+					 errdetail("This session holds a lock on %s, which could make recovery wait for this session while this session waits for recovery.",
+							   locktagbuf.data),
+					 errhint("Release the locks, or execute WAIT before acquiring them.")));
+		}
 	}
 
 	/* Now wait for the LSN */
@@ -291,21 +344,21 @@ ExecWaitStmt(ParseState *pstate, WaitStmt *stmt, DestReceiver *dest)
 							ereport(ERROR,
 									errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 									errmsg("recovery is not in progress"),
-									errhint("Waiting for the standby_replay LSN can only be executed during recovery."));
+									errhint("Waiting for the %s LSN can only be executed during recovery.", "standby_replay"));
 							break;
 
 						case WAIT_LSN_TYPE_STANDBY_WRITE:
 							ereport(ERROR,
 									errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 									errmsg("recovery is not in progress"),
-									errhint("Waiting for the standby_write LSN can only be executed during recovery."));
+									errhint("Waiting for the %s LSN can only be executed during recovery.", "standby_write"));
 							break;
 
 						case WAIT_LSN_TYPE_STANDBY_FLUSH:
 							ereport(ERROR,
 									errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 									errmsg("recovery is not in progress"),
-									errhint("Waiting for the standby_flush LSN can only be executed during recovery."));
+									errhint("Waiting for the %s LSN can only be executed during recovery.", "standby_flush"));
 							break;
 
 						default:

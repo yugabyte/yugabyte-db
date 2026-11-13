@@ -253,7 +253,8 @@ oprfuncid(Operator op)
 }
 
 
-/* binary_oper_exact()
+/*
+ * binary_oper_exact()
  * Check for an "exact" match to the specified operand types.
  *
  * If one operand is an unknown literal, assume it should be taken to be
@@ -300,7 +301,8 @@ binary_oper_exact(List *opname, Oid arg1, Oid arg2)
 }
 
 
-/* oper_select_candidate()
+/*
+ * oper_select_candidate()
  *		Given the input argtype array and one or more candidates
  *		for the operator, attempt to resolve the conflict.
  *
@@ -355,7 +357,8 @@ oper_select_candidate(int nargs,
 }
 
 
-/* oper() -- search for a binary operator
+/*
+ * oper() -- search for a binary operator
  * Given operator name, types of arg1 and arg2, return oper struct.
  *
  * IMPORTANT: the returned operator (if any) is only promised to be
@@ -444,7 +447,8 @@ oper(ParseState *pstate, List *opname, Oid ltypeId, Oid rtypeId,
 	return (Operator) tup;
 }
 
-/* compatible_oper()
+/*
+ * compatible_oper()
  *	given an opname and input datatypes, find a compatible binary operator
  *
  *	This is tighter than oper() because it will not return an operator that
@@ -482,7 +486,8 @@ compatible_oper(ParseState *pstate, List *op, Oid arg1, Oid arg2,
 	return (Operator) NULL;
 }
 
-/* compatible_oper_opid() -- get OID of a binary operator
+/*
+ * compatible_oper_opid() -- get OID of a binary operator
  *
  * This is a convenience routine that extracts only the operator OID
  * from the result of compatible_oper().  InvalidOid is returned if the
@@ -505,7 +510,8 @@ compatible_oper_opid(List *op, Oid arg1, Oid arg2, bool noError)
 }
 
 
-/* left_oper() -- search for a unary left operator (prefix operator)
+/*
+ * left_oper() -- search for a unary left operator (prefix operator)
  * Given operator name and type of arg, return oper struct.
  *
  * IMPORTANT: the returned operator (if any) is only promised to be
@@ -780,6 +786,28 @@ make_op(ParseState *pstate, List *opname, Node *ltree, Node *rtree,
 											   nargs,
 											   opform->oprresult,
 											   false);
+
+	/*
+	 * Reject any attempt to call a function that takes or returns type
+	 * internal from SQL.  This is just like the check in ParseFuncOrColumn,
+	 * but for operator syntax.  (Despite that, we say "function" in the error
+	 * messages; doesn't seem worth having two sets of translatable strings.)
+	 */
+	for (int i = 0; i < nargs; i++)
+	{
+		if (declared_arg_types[i] == INTERNALOID)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("functions accepting type \"%s\" cannot be called explicitly",
+							"internal"),
+					 parser_errposition(pstate, location)));
+	}
+	if (rettype == INTERNALOID)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("functions returning type \"%s\" cannot be called explicitly",
+						"internal"),
+				 parser_errposition(pstate, location)));
 
 	/* perform the necessary typecasting of arguments */
 	make_fn_arguments(pstate, args, actual_arg_types, declared_arg_types);

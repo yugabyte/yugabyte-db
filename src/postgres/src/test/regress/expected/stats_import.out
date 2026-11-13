@@ -440,6 +440,85 @@ WHERE oid = 'stats_import.test'::regclass;
        16 |       500 |             4 |            2
 (1 row)
 
+-- error: reltuples must be finite (rejected with WARNING, returns false)
+SELECT pg_restore_relation_stats(
+        'schemaname', 'stats_import',
+        'relname', 'test',
+        'reltuples', 'Infinity'::real);
+WARNING:  argument "reltuples" must be a finite value
+ pg_restore_relation_stats 
+---------------------------
+ f
+(1 row)
+
+SELECT pg_restore_relation_stats(
+        'schemaname', 'stats_import',
+        'relname', 'test',
+        'reltuples', '-Infinity'::real);
+WARNING:  argument "reltuples" must be a finite value
+ pg_restore_relation_stats 
+---------------------------
+ f
+(1 row)
+
+SELECT pg_restore_relation_stats(
+        'schemaname', 'stats_import',
+        'relname', 'test',
+        'reltuples', 'NaN'::real);
+WARNING:  argument "reltuples" must be a finite value
+ pg_restore_relation_stats 
+---------------------------
+ f
+(1 row)
+
+-- error: reltuples must not be less than -1.0 (rejected with WARNING, returns false)
+SELECT pg_restore_relation_stats(
+        'schemaname', 'stats_import',
+        'relname', 'test',
+        'reltuples', '-5'::real);
+WARNING:  argument "reltuples" must not be less than -1.0
+ pg_restore_relation_stats 
+---------------------------
+ f
+(1 row)
+
+-- reltuples is unchanged (still 500) after the rejected values above
+SELECT relpages, reltuples, relallvisible, relallfrozen
+FROM pg_class
+WHERE oid = 'stats_import.test'::regclass;
+ relpages | reltuples | relallvisible | relallfrozen 
+----------+-----------+---------------+--------------
+       16 |       500 |             4 |            2
+(1 row)
+
+-- ok: -1 (the "unknown" sentinel) is still accepted
+SELECT pg_restore_relation_stats(
+        'schemaname', 'stats_import',
+        'relname', 'test',
+        'reltuples', '-1'::real);
+ pg_restore_relation_stats 
+---------------------------
+ t
+(1 row)
+
+SELECT relpages, reltuples, relallvisible, relallfrozen
+FROM pg_class
+WHERE oid = 'stats_import.test'::regclass;
+ relpages | reltuples | relallvisible | relallfrozen 
+----------+-----------+---------------+--------------
+       16 |        -1 |             4 |            2
+(1 row)
+
+-- restore reltuples to 500 for the following tests
+SELECT pg_restore_relation_stats(
+        'schemaname', 'stats_import',
+        'relname', 'test',
+        'reltuples', '500'::real);
+ pg_restore_relation_stats 
+---------------------------
+ t
+(1 row)
+
 -- ok: set just relallvisible, rest stay same
 SELECT pg_restore_relation_stats(
         'schemaname', 'stats_import',
@@ -824,6 +903,87 @@ AND attname = 'id';
  stats_import | test      | id      | f         |      0.23 |         5 |        0.6 |                  |                   |                  |             |                   |                        |                      |                        |                  | 
 (1 row)
 
+-- warn: mcv / mcf array length mismatch (more vals), mcv-pair fails, rest get set
+SELECT pg_catalog.pg_restore_attribute_stats(
+    'schemaname', 'stats_import',
+    'relname', 'test',
+    'attname', 'id',
+    'inherited', false::boolean,
+    'null_frac', 0.24::real,
+    'most_common_vals', '{2,1,3}'::text,
+    'most_common_freqs', '{0.3,0.25}'::real[]
+    );
+WARNING:  could not parse "most_common_vals": incorrect number of elements (same as "most_common_freqs" required)
+ pg_restore_attribute_stats 
+----------------------------
+ f
+(1 row)
+
+SELECT *
+FROM stats_import.pg_stats_stable
+WHERE schemaname = 'stats_import'
+AND tablename = 'test'
+AND inherited = false
+AND attname = 'id';
+  schemaname  | tablename | attname | inherited | null_frac | avg_width | n_distinct | most_common_vals | most_common_freqs | histogram_bounds | correlation | most_common_elems | most_common_elem_freqs | elem_count_histogram | range_length_histogram | range_empty_frac | range_bounds_histogram 
+--------------+-----------+---------+-----------+-----------+-----------+------------+------------------+-------------------+------------------+-------------+-------------------+------------------------+----------------------+------------------------+------------------+------------------------
+ stats_import | test      | id      | f         |      0.24 |         5 |        0.6 |                  |                   |                  |             |                   |                        |                      |                        |                  | 
+(1 row)
+
+-- warn: mcv / mcf array length mismatch (more freqs), mcv-pair fails, rest get set
+SELECT pg_catalog.pg_restore_attribute_stats(
+    'schemaname', 'stats_import',
+    'relname', 'test',
+    'attname', 'id',
+    'inherited', false::boolean,
+    'null_frac', 0.25::real,
+    'most_common_vals', '{2,1}'::text,
+    'most_common_freqs', '{0.3,0.25,0.05}'::real[]
+    );
+WARNING:  could not parse "most_common_vals": incorrect number of elements (same as "most_common_freqs" required)
+ pg_restore_attribute_stats 
+----------------------------
+ f
+(1 row)
+
+SELECT *
+FROM stats_import.pg_stats_stable
+WHERE schemaname = 'stats_import'
+AND tablename = 'test'
+AND inherited = false
+AND attname = 'id';
+  schemaname  | tablename | attname | inherited | null_frac | avg_width | n_distinct | most_common_vals | most_common_freqs | histogram_bounds | correlation | most_common_elems | most_common_elem_freqs | elem_count_histogram | range_length_histogram | range_empty_frac | range_bounds_histogram 
+--------------+-----------+---------+-----------+-----------+-----------+------------+------------------+-------------------+------------------+-------------+-------------------+------------------------+----------------------+------------------------+------------------+------------------------
+ stats_import | test      | id      | f         |      0.25 |         5 |        0.6 |                  |                   |                  |             |                   |                        |                      |                        |                  | 
+(1 row)
+
+-- warn: most_common_vals is multi-dimensional, mcv-pair fails, rest get set
+SELECT pg_catalog.pg_restore_attribute_stats(
+    'schemaname', 'stats_import',
+    'relname', 'test',
+    'attname', 'id',
+    'inherited', false::boolean,
+    'null_frac', 0.26::real,
+    'most_common_vals', '{{2,1},{3,4}}'::text,
+    'most_common_freqs', '{0.3,0.25,0.05,0.04}'::real[]
+    );
+WARNING:  "most_common_vals" must be a one-dimensional array
+ pg_restore_attribute_stats 
+----------------------------
+ f
+(1 row)
+
+SELECT *
+FROM stats_import.pg_stats_stable
+WHERE schemaname = 'stats_import'
+AND tablename = 'test'
+AND inherited = false
+AND attname = 'id';
+  schemaname  | tablename | attname | inherited | null_frac | avg_width | n_distinct | most_common_vals | most_common_freqs | histogram_bounds | correlation | most_common_elems | most_common_elem_freqs | elem_count_histogram | range_length_histogram | range_empty_frac | range_bounds_histogram 
+--------------+-----------+---------+-----------+-----------+-----------+------------+------------------+-------------------+------------------+-------------+-------------------+------------------------+----------------------+------------------------+------------------+------------------------
+ stats_import | test      | id      | f         |      0.26 |         5 |        0.6 |                  |                   |                  |             |                   |                        |                      |                        |                  | 
+(1 row)
+
 -- ok: mcv+mcf
 SELECT pg_catalog.pg_restore_attribute_stats(
     'schemaname', 'stats_import',
@@ -846,7 +1006,7 @@ AND inherited = false
 AND attname = 'id';
   schemaname  | tablename | attname | inherited | null_frac | avg_width | n_distinct | most_common_vals | most_common_freqs | histogram_bounds | correlation | most_common_elems | most_common_elem_freqs | elem_count_histogram | range_length_histogram | range_empty_frac | range_bounds_histogram 
 --------------+-----------+---------+-----------+-----------+-----------+------------+------------------+-------------------+------------------+-------------+-------------------+------------------------+----------------------+------------------------+------------------+------------------------
- stats_import | test      | id      | f         |      0.23 |         5 |        0.6 | {2,1,3}          | {0.3,0.25,0.05}   |                  |             |                   |                        |                      |                        |                  | 
+ stats_import | test      | id      | f         |      0.26 |         5 |        0.6 | {2,1,3}          | {0.3,0.25,0.05}   |                  |             |                   |                        |                      |                        |                  | 
 (1 row)
 
 -- warn: NULL in histogram array, rest get set
@@ -1272,12 +1432,32 @@ VALUES
   (1, 'red', '{[1,3),[5,9),[20,30)}'::int4multirange),
   (2, 'red', '{[11,13),[15,19),[20,30)}'::int4multirange),
   (3, 'red', '{[21,23),[25,29),[120,130)}'::int4multirange);
--- ensure that we set attribute stats for a multirange
+-- warn: reject range values as ordinary multirange statistics
 SELECT pg_catalog.pg_restore_attribute_stats(
   'schemaname', 'stats_import',
   'relname', 'test_mr',
   'attname', 'mrange',
   'inherited', false,
+  'most_common_vals', ARRAY['[1,3)']::text,
+  'most_common_freqs', ARRAY[1.0]::real[]
+);
+WARNING:  malformed multirange literal: "[1,3)"
+DETAIL:  Missing left brace.
+ pg_restore_attribute_stats 
+----------------------------
+ f
+(1 row)
+
+-- ensure that we set attribute stats for a multirange
+-- MCVs and histograms retain the multirange type.
+SELECT pg_catalog.pg_restore_attribute_stats(
+  'schemaname', 'stats_import',
+  'relname', 'test_mr',
+  'attname', 'mrange',
+  'inherited', false,
+  'most_common_vals', ARRAY['{[1,3),[5,9)}', '{[11,13),[15,19)}']::text,
+  'most_common_freqs', ARRAY[0.6, 0.4]::real[],
+  'histogram_bounds', ARRAY['{[1,3)}', '{[11,13)}', '{[21,23)}']::text,
   'range_length_histogram', '{19,29,109}'::text,
   'range_empty_frac', '0'::real,
   'range_bounds_histogram', '{"[1,30)","[11,30)","[21,130)"}'::text
@@ -1286,6 +1466,231 @@ SELECT pg_catalog.pg_restore_attribute_stats(
 ----------------------------
  t
 (1 row)
+
+-- test for domains over range and multirange types
+CREATE DOMAIN stats_import.dom_int4 AS int4;
+CREATE DOMAIN stats_import.dom_range AS int4range;
+CREATE DOMAIN stats_import.dom_mrange AS int4multirange;
+CREATE TABLE stats_import.test_dom(
+    id stats_import.dom_int4,
+    drange stats_import.dom_range,
+    dmrange stats_import.dom_mrange
+) WITH (autovacuum_enabled = false);
+INSERT INTO stats_import.test_dom
+VALUES (1, '[1,3)', '{[1,3),[5,9),[20,30)}'),
+  (2, '[5,9)', '{[11,13),[15,19),[20,30)}'),
+  (3, '[11,15)', '{[21,23),[25,29),[120,130)}');
+-- warn: domain over a scalar type cannot have range stats
+SELECT pg_catalog.pg_restore_attribute_stats(
+  'schemaname', 'stats_import',
+  'relname', 'test_dom',
+  'attname', 'id',
+  'inherited', false,
+  'null_frac', 0.25::real,
+  'range_length_histogram', '{2,4,4}'::text,
+  'range_empty_frac', '0'::real,
+  'range_bounds_histogram', '{"[1,3)","[5,9)","[11,15)"}'::text
+);
+WARNING:  column "id" is not a range type
+DETAIL:  Cannot set STATISTIC_KIND_RANGE_LENGTH_HISTOGRAM or STATISTIC_KIND_BOUNDS_HISTOGRAM.
+ pg_restore_attribute_stats 
+----------------------------
+ f
+(1 row)
+
+SELECT *
+FROM stats_import.pg_stats_stable
+WHERE schemaname = 'stats_import'
+AND tablename = 'test_dom'
+AND inherited = false
+AND attname = 'id';
+  schemaname  | tablename | attname | inherited | null_frac | avg_width | n_distinct | most_common_vals | most_common_freqs | histogram_bounds | correlation | most_common_elems | most_common_elem_freqs | elem_count_histogram | range_length_histogram | range_empty_frac | range_bounds_histogram 
+--------------+-----------+---------+-----------+-----------+-----------+------------+------------------+-------------------+------------------+-------------+-------------------+------------------------+----------------------+------------------------+------------------+------------------------
+ stats_import | test_dom  | id      | f         |      0.25 |         0 |          0 |                  |                   |                  |             |                   |                        |                      |                        |                  | 
+(1 row)
+
+-- ok: range stats for a domain over a range type
+SELECT pg_catalog.pg_restore_attribute_stats(
+  'schemaname', 'stats_import',
+  'relname', 'test_dom',
+  'attname', 'drange',
+  'inherited', false,
+  'range_length_histogram', '{2,4,4}'::text,
+  'range_empty_frac', '0'::real,
+  'range_bounds_histogram', '{"[1,3)","[5,9)","[11,15)"}'::text
+);
+ pg_restore_attribute_stats 
+----------------------------
+ t
+(1 row)
+
+SELECT *
+FROM stats_import.pg_stats_stable
+WHERE schemaname = 'stats_import'
+AND tablename = 'test_dom'
+AND inherited = false
+AND attname = 'drange';
+  schemaname  | tablename | attname | inherited | null_frac | avg_width | n_distinct | most_common_vals | most_common_freqs | histogram_bounds | correlation | most_common_elems | most_common_elem_freqs | elem_count_histogram | range_length_histogram | range_empty_frac |   range_bounds_histogram    
+--------------+-----------+---------+-----------+-----------+-----------+------------+------------------+-------------------+------------------+-------------+-------------------+------------------------+----------------------+------------------------+------------------+-----------------------------
+ stats_import | test_dom  | drange  | f         |         0 |         0 |          0 |                  |                   |                  |             |                   |                        |                      | {2,4,4}                |                0 | {"[1,3)","[5,9)","[11,15)"}
+(1 row)
+
+-- ok: range stats for a domain over a multirange type.
+SELECT pg_catalog.pg_restore_attribute_stats(
+  'schemaname', 'stats_import',
+  'relname', 'test_dom',
+  'attname', 'dmrange',
+  'inherited', false,
+  'range_length_histogram', '{29,29,109}'::text,
+  'range_empty_frac', '0'::real,
+  'range_bounds_histogram', '{"[1,30)","[11,30)","[21,130)"}'::text
+);
+ pg_restore_attribute_stats 
+----------------------------
+ t
+(1 row)
+
+SELECT *
+FROM stats_import.pg_stats_stable
+WHERE schemaname = 'stats_import'
+AND tablename = 'test_dom'
+AND inherited = false
+AND attname = 'dmrange';
+  schemaname  | tablename | attname | inherited | null_frac | avg_width | n_distinct | most_common_vals | most_common_freqs | histogram_bounds | correlation | most_common_elems | most_common_elem_freqs | elem_count_histogram | range_length_histogram | range_empty_frac |     range_bounds_histogram      
+--------------+-----------+---------+-----------+-----------+-----------+------------+------------------+-------------------+------------------+-------------+-------------------+------------------------+----------------------+------------------------+------------------+---------------------------------
+ stats_import | test_dom  | dmrange | f         |         0 |         0 |          0 |                  |                   |                  |             |                   |                        |                      | {29,29,109}            |                0 | {"[1,30)","[11,30)","[21,130)"}
+(1 row)
+
+-- warn: multirange values in the bounds histogram of a domain.  These
+-- must be ranges.
+SELECT pg_catalog.pg_restore_attribute_stats(
+  'schemaname', 'stats_import',
+  'relname', 'test_dom',
+  'attname', 'dmrange',
+  'inherited', false,
+  'range_length_histogram', '{29,29,109}'::text,
+  'range_empty_frac', '0'::real,
+  'range_bounds_histogram', '{"{[1,30)}","{[11,30)}"}'::text
+);
+WARNING:  malformed range literal: "{[1,30)}"
+DETAIL:  Missing left parenthesis or bracket.
+ pg_restore_attribute_stats 
+----------------------------
+ f
+(1 row)
+
+--
+-- Check that the range stats that ANALYZE generates for domains over range
+-- and multirange types can be restored exactly.
+--
+ANALYZE stats_import.test_dom;
+CREATE TABLE stats_import.test_dom_clone ( LIKE stats_import.test_dom )
+    WITH (autovacuum_enabled = false);
+SELECT s.attname, s.inherited, r.*
+FROM pg_catalog.pg_stats AS s
+CROSS JOIN LATERAL
+    pg_catalog.pg_restore_attribute_stats(
+        'schemaname', 'stats_import',
+        'relname', 'test_dom_clone',
+        'attname', s.attname::text,
+        'inherited', s.inherited,
+        'null_frac', s.null_frac,
+        'avg_width', s.avg_width,
+        'n_distinct', s.n_distinct,
+        'most_common_vals', s.most_common_vals::text,
+        'most_common_freqs', s.most_common_freqs,
+        'histogram_bounds', s.histogram_bounds::text,
+        'correlation', s.correlation,
+        'range_bounds_histogram', s.range_bounds_histogram::text,
+        'range_empty_frac', s.range_empty_frac,
+        'range_length_histogram', s.range_length_histogram::text) AS r
+WHERE s.schemaname = 'stats_import'
+AND s.tablename = 'test_dom'
+ORDER BY s.attname, s.inherited;
+ attname | inherited | r 
+---------+-----------+---
+ dmrange | f         | t
+ drange  | f         | t
+ id      | f         | t
+(3 rows)
+
+SELECT relname, (stats).*
+FROM stats_import.pg_statistic_get_difference('test_dom', 'test_dom_clone')
+\gx
+(0 rows)
+
+-- test for a domain over tsvector.
+CREATE DOMAIN stats_import.dom_tsvector AS tsvector;
+CREATE TABLE stats_import.test_dom_ts(
+    id int,
+    v stats_import.dom_tsvector
+) WITH (autovacuum_enabled = false);
+INSERT INTO stats_import.test_dom_ts
+SELECT g, to_tsvector('english', 'the quick brown fox ' || g)
+FROM generate_series(1, 20) AS g;
+-- ok: mcelem and elem_count_histogram for a domain over tsvector
+SELECT pg_catalog.pg_restore_attribute_stats(
+  'schemaname', 'stats_import',
+  'relname', 'test_dom_ts',
+  'attname', 'v',
+  'inherited', false,
+  'most_common_elems', '{brown,fox,quick}'::text,
+  'most_common_elem_freqs', '{0.3,0.2,0.2,0.3,0.0}'::real[],
+  'elem_count_histogram', '{4,4,4,4,4,4,4,4,4,4}'::real[]);
+ pg_restore_attribute_stats 
+----------------------------
+ t
+(1 row)
+
+SELECT *
+FROM stats_import.pg_stats_stable
+WHERE schemaname = 'stats_import'
+AND tablename = 'test_dom_ts'
+AND inherited = false
+AND attname = 'v';
+  schemaname  |  tablename  | attname | inherited | null_frac | avg_width | n_distinct | most_common_vals | most_common_freqs | histogram_bounds | correlation | most_common_elems | most_common_elem_freqs | elem_count_histogram  | range_length_histogram | range_empty_frac | range_bounds_histogram 
+--------------+-------------+---------+-----------+-----------+-----------+------------+------------------+-------------------+------------------+-------------+-------------------+------------------------+-----------------------+------------------------+------------------+------------------------
+ stats_import | test_dom_ts | v       | f         |         0 |         0 |          0 |                  |                   |                  |             | {brown,fox,quick} | {0.3,0.2,0.2,0.3,0}    | {4,4,4,4,4,4,4,4,4,4} |                        |                  | 
+(1 row)
+
+--
+-- Check that the statistics that ANALYZE generates for a domain over
+-- tsvector can be restored exactly.
+--
+ANALYZE stats_import.test_dom_ts;
+CREATE TABLE stats_import.test_dom_ts_clone ( LIKE stats_import.test_dom_ts )
+    WITH (autovacuum_enabled = false);
+SELECT s.attname, s.inherited, r.*
+FROM pg_catalog.pg_stats AS s
+CROSS JOIN LATERAL
+    pg_catalog.pg_restore_attribute_stats(
+        'schemaname', 'stats_import',
+        'relname', 'test_dom_ts_clone',
+        'attname', s.attname::text,
+        'inherited', s.inherited,
+        'null_frac', s.null_frac,
+        'avg_width', s.avg_width,
+        'n_distinct', s.n_distinct,
+        'most_common_vals', s.most_common_vals::text,
+        'most_common_freqs', s.most_common_freqs,
+        'histogram_bounds', s.histogram_bounds::text,
+        'correlation', s.correlation,
+        'most_common_elems', s.most_common_elems::text,
+        'most_common_elem_freqs', s.most_common_elem_freqs,
+        'elem_count_histogram', s.elem_count_histogram) AS r
+WHERE s.schemaname = 'stats_import'
+AND s.tablename = 'test_dom_ts'
+ORDER BY s.attname, s.inherited;
+ attname | inherited | r 
+---------+-----------+---
+ id      | f         | t
+ v       | f         | t
+(2 rows)
+
+SELECT relname, (stats).*
+FROM stats_import.pg_statistic_get_difference('test_dom_ts', 'test_dom_ts_clone')
+\gx
+(0 rows)
 
 --
 -- Test the ability to exactly copy data from one table to an identical table,
@@ -2021,7 +2426,7 @@ SELECT pg_catalog.pg_restore_extended_stats(
                         {two,"(2,2.2,TWO,02-02-2002,\"[true, 4, \"\"six\"\"]\")"}}'::text[],
   'most_common_freqs', '{0.25,0.25,0.25,0.25}'::double precision[],
   'most_common_base_freqs', '{0.0625,0.0625,0.0625,0.0625}'::double precision[]);
-WARNING:  cannot specify parameters "most_common_vals", "most_common_freqs" or "most_common_base_freqs"
+WARNING:  cannot specify parameters "most_common_vals", "most_common_freqs", or "most_common_base_freqs"
 HINT:  Extended statistics object "stats_import.test_stat_dependencies" does not support statistics of this type.
  pg_restore_extended_stats 
 ---------------------------
@@ -2037,7 +2442,7 @@ SELECT pg_catalog.pg_restore_extended_stats(
   'inherited', false,
   'most_common_freqs', '{0.25,0.25,0.25,0.25}'::double precision[],
   'most_common_base_freqs', '{0.0625,0.0625,0.0625,0.0625}'::double precision[]);
-WARNING:  could not use "most_common_vals", "most_common_freqs" and "most_common_base_freqs": missing one or more parameters
+WARNING:  could not use "most_common_vals", "most_common_freqs", and "most_common_base_freqs": missing one or more parameters
  pg_restore_extended_stats 
 ---------------------------
  f
@@ -2054,7 +2459,7 @@ SELECT pg_catalog.pg_restore_extended_stats(
                         {tre,"(3,3.3,TRE,03-03-2003,)"},
                         {two,"(2,2.2,TWO,02-02-2002,\"[true, 4, \"\"six\"\"]\")"}}'::text[],
   'most_common_base_freqs', '{0.0625,0.0625,0.0625,0.0625}'::double precision[]);
-WARNING:  could not use "most_common_vals", "most_common_freqs" and "most_common_base_freqs": missing one or more parameters
+WARNING:  could not use "most_common_vals", "most_common_freqs", and "most_common_base_freqs": missing one or more parameters
  pg_restore_extended_stats 
 ---------------------------
  f
@@ -2071,7 +2476,7 @@ SELECT pg_catalog.pg_restore_extended_stats(
                         {tre,"(3,3.3,TRE,03-03-2003,)"},
                         {two,"(2,2.2,TWO,02-02-2002,\"[true, 4, \"\"six\"\"]\")"}}'::text[],
   'most_common_freqs', '{0.25,0.25,0.25,0.25}'::double precision[]);
-WARNING:  could not use "most_common_vals", "most_common_freqs" and "most_common_base_freqs": missing one or more parameters
+WARNING:  could not use "most_common_vals", "most_common_freqs", and "most_common_base_freqs": missing one or more parameters
  pg_restore_extended_stats 
 ---------------------------
  f
@@ -2145,6 +2550,25 @@ SELECT pg_catalog.pg_restore_extended_stats(
   'most_common_freqs', '{0.25,0.25,0.25,0.25}'::double precision[],
   'most_common_base_freqs', '{0.00390625,0.015625,0.00390625,0.015625}'::double precision[]);
 WARNING:  could not parse array "most_common_vals": found 4 attributes but expected 2
+ pg_restore_extended_stats 
+---------------------------
+ f
+(1 row)
+
+-- warn: more MCV items than can be handled.
+SELECT pg_catalog.pg_restore_extended_stats(
+  'schemaname', 'stats_import',
+  'relname', 'test',
+  'statistics_schemaname', 'stats_import',
+  'statistics_name', 'test_stat_mcv',
+  'inherited', false,
+  'most_common_vals', (SELECT array_agg(ARRAY[g::text, g::text])
+                       FROM generate_series(1, 10001) g),
+  'most_common_freqs', (SELECT array_agg((1.0 / 10001)::double precision)
+                        FROM generate_series(1, 10001) g),
+  'most_common_base_freqs', (SELECT array_agg((1.0 / 10001)::double precision)
+                             FROM generate_series(1, 10001) g));
+WARNING:  could not parse array "most_common_vals": number of items (10001) exceeds maximum (10000)
  pg_restore_extended_stats 
 ---------------------------
  f
@@ -2345,6 +2769,103 @@ range_length_histogram | {10179,10189,10199}
 range_empty_frac       | 0
 range_bounds_histogram | {"[1,10200)","[11,10200)","[21,10200)"}
 
+-- Check import of range stats for expressions whose type is a domain over a
+-- range or a multirange type.
+CREATE STATISTICS stats_import.test_dom_stat
+  ON id,
+     (range_merge(drange, drange)::stats_import.dom_range),
+     ((dmrange + '{}'::int4multirange)::stats_import.dom_mrange)
+  FROM stats_import.test_dom;
+-- warn: reject multirange values in the bounds histogram of a domain.  These
+-- must be ranges.
+SELECT pg_catalog.pg_restore_extended_stats(
+  'schemaname', 'stats_import',
+  'relname', 'test_dom',
+  'statistics_schemaname', 'stats_import',
+  'statistics_name', 'test_dom_stat',
+  'inherited', false,
+  'exprs', '[{"range_length_histogram": "{2,4,4}",
+              "range_empty_frac": "0",
+              "range_bounds_histogram": "{\"[1,3)\",\"[5,9)\",\"[11,15)\"}"},
+             {"range_length_histogram": "{29,29,109}",
+              "range_empty_frac": "0",
+              "range_bounds_histogram": "{\"{[1,30)}\",\"{[11,30)}\"}"}]'::jsonb);
+WARNING:  malformed range literal: "{[1,30)}"
+DETAIL:  Missing left parenthesis or bracket.
+HINT:  Element "range_bounds_histogram" in expression -2 could not be parsed.
+ pg_restore_extended_stats 
+---------------------------
+ f
+(1 row)
+
+-- ok: range stats for domains over range and multirange types
+SELECT pg_catalog.pg_restore_extended_stats(
+  'schemaname', 'stats_import',
+  'relname', 'test_dom',
+  'statistics_schemaname', 'stats_import',
+  'statistics_name', 'test_dom_stat',
+  'inherited', false,
+  'exprs', '[{"range_length_histogram": "{2,4,4}",
+              "range_empty_frac": "0",
+              "range_bounds_histogram": "{\"[1,3)\",\"[5,9)\",\"[11,15)\"}"},
+             {"range_length_histogram": "{29,29,109}",
+              "range_empty_frac": "0",
+              "range_bounds_histogram": "{\"[1,30)\",\"[11,30)\",\"[21,130)\"}"}]'::jsonb);
+ pg_restore_extended_stats 
+---------------------------
+ t
+(1 row)
+
+SELECT e.expr, e.range_length_histogram, e.range_empty_frac,
+       e.range_bounds_histogram
+FROM pg_stats_ext_exprs AS e
+WHERE e.statistics_schemaname = 'stats_import' AND
+    e.statistics_name = 'test_dom_stat' AND
+    e.inherited = false
+\gx
+-[ RECORD 1 ]----------+--------------------------------------------------------------------------------
+expr                   | (range_merge((drange)::int4range, (drange)::int4range))::stats_import.dom_range
+range_length_histogram | {2,4,4}
+range_empty_frac       | 0
+range_bounds_histogram | {"[1,3)","[5,9)","[11,15)"}
+-[ RECORD 2 ]----------+--------------------------------------------------------------------------------
+expr                   | (((dmrange)::int4multirange + '{}'::int4multirange))::stats_import.dom_mrange
+range_length_histogram | {29,29,109}
+range_empty_frac       | 0
+range_bounds_histogram | {"[1,30)","[11,30)","[21,130)"}
+
+-- Check import of MCELEM stats for an expression whose type is a domain
+-- over tsvector.
+CREATE STATISTICS stats_import.test_dom_ts_stat
+  ON id, (strip(v)::stats_import.dom_tsvector)
+  FROM stats_import.test_dom_ts;
+SELECT pg_catalog.pg_restore_extended_stats(
+  'schemaname', 'stats_import',
+  'relname', 'test_dom_ts',
+  'statistics_schemaname', 'stats_import',
+  'statistics_name', 'test_dom_ts_stat',
+  'inherited', false,
+  'exprs', '[{"most_common_elems": "{brown,fox,quick}",
+              "most_common_elem_freqs": "{0.3,0.2,0.2,0.3,0.0}",
+              "elem_count_histogram": "{4,4,4,4,4,4,4,4,4,4}"}]'::jsonb);
+ pg_restore_extended_stats 
+---------------------------
+ t
+(1 row)
+
+SELECT e.expr, e.most_common_elems, e.most_common_elem_freqs,
+       e.elem_count_histogram
+FROM pg_stats_ext_exprs AS e
+WHERE e.statistics_schemaname = 'stats_import' AND
+    e.statistics_name = 'test_dom_ts_stat' AND
+    e.inherited = false
+\gx
+-[ RECORD 1 ]----------+--------------------------------------------------
+expr                   | (strip((v)::tsvector))::stats_import.dom_tsvector
+most_common_elems      | {brown,fox,quick}
+most_common_elem_freqs | {0.3,0.2,0.2,0.3,0}
+elem_count_histogram   | {4,4,4,4,4,4,4,4,4,4}
+
 -- Incorrect extended stats kind, exprs not supported
 SELECT pg_catalog.pg_restore_extended_stats(
   'schemaname', 'stats_import',
@@ -2374,7 +2895,7 @@ WARNING:  could not parse "exprs": root-level array required
  f
 (1 row)
 
--- wrong number of exprs
+-- wrong number of exprs, too few
 SELECT pg_catalog.pg_restore_extended_stats(
   'schemaname', 'stats_import',
   'relname', 'test_clone',
@@ -2382,7 +2903,21 @@ SELECT pg_catalog.pg_restore_extended_stats(
   'statistics_name', 'test_stat_clone',
   'inherited', false,
   'exprs', '[ { "avg_width": "4" } ]'::jsonb);
-WARNING:  could not parse "exprs": incorrect number of elements (1 required)
+WARNING:  could not parse "exprs": incorrect number of elements (2 required)
+ pg_restore_extended_stats 
+---------------------------
+ f
+(1 row)
+
+-- wrong number of exprs, too many
+SELECT pg_catalog.pg_restore_extended_stats(
+  'schemaname', 'stats_import',
+  'relname', 'test_clone',
+  'statistics_schemaname', 'stats_import',
+  'statistics_name', 'test_stat_clone',
+  'inherited', false,
+  'exprs', '[ { "avg_width": "4" }, { "avg_width": "4" }, { "avg_width": "4" } ]'::jsonb);
+WARNING:  could not parse "exprs": incorrect number of elements (2 required)
  pg_restore_extended_stats 
 ---------------------------
  f
@@ -2398,7 +2933,7 @@ SELECT pg_catalog.pg_restore_extended_stats(
   'exprs', '[ { "null_frac": 1 },
               { "null_frac": "0.25" } ]'::jsonb);
 WARNING:  could not parse "exprs": invalid element in expression -1
-HINT:  Value of element "null_frac" must be type a null or a string.
+HINT:  Value of element "null_frac" must be a null or a string.
  pg_restore_extended_stats 
 ---------------------------
  f
@@ -2524,6 +3059,23 @@ HINT:  "most_common_vals" and "most_common_freqs" must be both either strings or
  f
 (1 row)
 
+-- exprs most_common_vals is multi-dimensional
+SELECT pg_catalog.pg_restore_extended_stats(
+  'schemaname', 'stats_import',
+  'relname', 'test_clone',
+  'statistics_schemaname', 'stats_import',
+  'statistics_name', 'test_stat_clone',
+  'inherited', false,
+  'exprs', '[
+              { "most_common_vals": "{{1,2},{3,4}}", "most_common_freqs": "{0.3,0.25,0.05,0.04}" },
+              { "most_common_vals": "{2}", "most_common_freqs": "{0.5}" }
+          ]'::jsonb);
+WARNING:  could not import element "most_common_vals" in expression -1: must be a one-dimensional array
+ pg_restore_extended_stats 
+---------------------------
+ f
+(1 row)
+
 -- exprs most_common_vals element wrong type
 SELECT pg_catalog.pg_restore_extended_stats(
   'schemaname', 'stats_import',
@@ -2577,6 +3129,23 @@ SELECT pg_catalog.pg_restore_extended_stats(
           ]'::jsonb);
 WARNING:  invalid input syntax for type real: "BADMCF"
 HINT:  Element "most_common_freqs" in expression -1 could not be parsed.
+ pg_restore_extended_stats 
+---------------------------
+ f
+(1 row)
+
+-- exprs most_common_vals / most_common_freqs array length mismatch
+SELECT pg_catalog.pg_restore_extended_stats(
+  'schemaname', 'stats_import',
+  'relname', 'test_clone',
+  'statistics_schemaname', 'stats_import',
+  'statistics_name', 'test_stat_clone',
+  'inherited', false,
+  'exprs', '[
+              { "most_common_vals": "{1,3}", "most_common_freqs": "{0.5}" },
+              { "most_common_vals": "{2}", "most_common_freqs": "{0.5}" }
+          ]'::jsonb);
+WARNING:  could not parse "most_common_vals": incorrect number of elements (same as "most_common_freqs" required)
  pg_restore_extended_stats 
 ---------------------------
  f
@@ -3141,6 +3710,34 @@ most_common_elems      | {-1,0,1,2,3}
 most_common_elem_freqs | {0.25,0.25,0.5,0.25,0.25,0.25,0.5,0.25}
 elem_count_histogram   | {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1.5}
 
+-- bad: exprs param which is a prefix of a valid key name
+SELECT pg_catalog.pg_restore_extended_stats(
+  'schemaname', 'stats_import',
+  'relname', 'test',
+  'statistics_schemaname', 'stats_import',
+  'statistics_name', 'test_stat_mcelem',
+  'inherited', false,
+  'exprs', '[{ "n": "-1" }]'::jsonb);
+WARNING:  could not import element in expression -1: invalid key name
+ pg_restore_extended_stats 
+---------------------------
+ f
+(1 row)
+
+-- bad: exprs with invalid keys and nested values
+SELECT pg_catalog.pg_restore_extended_stats(
+  'schemaname', 'stats_import',
+  'relname', 'test',
+  'statistics_schemaname', 'stats_import',
+  'statistics_name', 'test_stat_mcelem',
+  'inherited', false,
+  'exprs', '[{ "unknown": [] }]'::jsonb);
+WARNING:  could not import element in expression -1: invalid key name
+ pg_restore_extended_stats 
+---------------------------
+ f
+(1 row)
+
 -- ok: tsvector exceptions, test just the collation exceptions
 CREATE STATISTICS stats_import.test_stat_tsvec ON (length(name)), (to_tsvector(name)) FROM stats_import.test;
 SELECT pg_catalog.pg_restore_extended_stats(
@@ -3373,8 +3970,169 @@ SELECT COUNT(*) FROM stats_import.test_range_expr_null
     19
 (1 row)
 
+-- A function invoked while importing attribute statistics (here through a
+-- domain's CHECK constraint) must not be able to alter the target relation
+-- underneath the import.  The relation is held open across the import, so a
+-- reentrant ALTER TABLE is rejected and no mismatched statistics are stored.
+CREATE TABLE stats_import.test_reentrant (id uuid);
+CREATE FUNCTION stats_import.alter_during_import(uuid) RETURNS boolean
+  LANGUAGE plpgsql AS $$
+BEGIN
+  ALTER TABLE stats_import.test_reentrant
+    ALTER COLUMN id TYPE int4range USING int4range(1, 2);
+  RETURN true;
+END;
+$$;
+CREATE DOMAIN stats_import.reentrant_dom AS uuid
+  CHECK (stats_import.alter_during_import(VALUE));
+ALTER TABLE stats_import.test_reentrant
+  ALTER COLUMN id TYPE stats_import.reentrant_dom;
+SELECT pg_catalog.pg_restore_attribute_stats(
+  'schemaname', 'stats_import',
+  'relname', 'test_reentrant',
+  'attname', 'id',
+  'inherited', false,
+  'most_common_vals', '{00000000-0000-0000-0000-000000000000}'::text,
+  'most_common_freqs', '{1}'::real[]);
+ERROR:  cannot ALTER TABLE "test_reentrant" because it is being used by active queries in this session
+CONTEXT:  SQL statement "ALTER TABLE stats_import.test_reentrant
+    ALTER COLUMN id TYPE int4range USING int4range(1, 2)"
+PL/pgSQL function stats_import.alter_during_import(uuid) line 3 at SQL statement
+-- No statistics should have been stored for the column.
+SELECT count(*) FROM pg_statistic
+  WHERE starelid = 'stats_import.test_reentrant'::regclass;
+ count 
+-------
+     0
+(1 row)
+
+-- The same protection applies to extended statistics: a function invoked
+-- while importing them (here when parsing an expression's most-common values
+-- through a domain's CHECK constraint) must not be able to alter the target
+-- relation underneath the import.
+CREATE TABLE stats_import.test_reentrant_ext (id uuid);
+CREATE FUNCTION stats_import.alter_during_import_ext(uuid) RETURNS boolean
+  LANGUAGE plpgsql AS $$
+BEGIN
+  ALTER TABLE stats_import.test_reentrant_ext
+    ALTER COLUMN id TYPE int4range USING int4range(1, 2);
+  RETURN true;
+END;
+$$;
+CREATE DOMAIN stats_import.reentrant_dom_ext AS uuid
+  CHECK (stats_import.alter_during_import_ext(VALUE));
+ALTER TABLE stats_import.test_reentrant_ext
+  ALTER COLUMN id TYPE stats_import.reentrant_dom_ext;
+CREATE STATISTICS stats_import.test_reentrant_stat
+  ON (COALESCE(id, id)) FROM stats_import.test_reentrant_ext;
+SELECT pg_catalog.pg_restore_extended_stats(
+  'schemaname', 'stats_import',
+  'relname', 'test_reentrant_ext',
+  'statistics_schemaname', 'stats_import',
+  'statistics_name', 'test_reentrant_stat',
+  'inherited', false,
+  'exprs', '[
+              {
+                  "most_common_vals": "{00000000-0000-0000-0000-000000000000}",
+                  "most_common_freqs": "{1}"
+              }
+            ]'::jsonb);
+ERROR:  cannot ALTER TABLE "test_reentrant_ext" because it is being used by active queries in this session
+CONTEXT:  SQL statement "ALTER TABLE stats_import.test_reentrant_ext
+    ALTER COLUMN id TYPE int4range USING int4range(1, 2)"
+PL/pgSQL function stats_import.alter_during_import_ext(uuid) line 3 at SQL statement
+-- No extended statistics data should have been stored.
+SELECT count(*) FROM pg_statistic_ext_data d
+  JOIN pg_statistic_ext s ON s.oid = d.stxoid
+  WHERE s.stxname = 'test_reentrant_stat';
+ count 
+-------
+     0
+(1 row)
+
+-- Holding the relation open does not stop a function invoked during the
+-- import from dropping the statistics object itself (DROP STATISTICS does
+-- not go through CheckTableNotInUse).  The import must re-check that the
+-- object still exists before writing and error out if it doesn't, so that no
+-- orphaned row is left in pg_statistic_ext_data.
+CREATE TABLE stats_import.test_reentrant_ext2 (id uuid);
+CREATE FUNCTION stats_import.drop_during_import_ext(uuid) RETURNS boolean
+  LANGUAGE plpgsql AS $$
+BEGIN
+  DROP STATISTICS stats_import.test_reentrant_stat2;
+  RETURN true;
+END;
+$$;
+CREATE DOMAIN stats_import.reentrant_dom_ext2 AS uuid
+  CHECK (stats_import.drop_during_import_ext(VALUE));
+ALTER TABLE stats_import.test_reentrant_ext2
+  ALTER COLUMN id TYPE stats_import.reentrant_dom_ext2;
+CREATE STATISTICS stats_import.test_reentrant_stat2
+  ON (COALESCE(id, id)) FROM stats_import.test_reentrant_ext2;
+SELECT pg_catalog.pg_restore_extended_stats(
+  'schemaname', 'stats_import',
+  'relname', 'test_reentrant_ext2',
+  'statistics_schemaname', 'stats_import',
+  'statistics_name', 'test_reentrant_stat2',
+  'inherited', false,
+  'exprs', '[
+              {
+                  "most_common_vals": "{00000000-0000-0000-0000-000000000000}",
+                  "most_common_freqs": "{1}"
+              }
+            ]'::jsonb);
+ERROR:  could not restore extended statistics object "stats_import.test_reentrant_stat2": it was dropped during the import
+-- No orphaned extended statistics data should remain.
+SELECT count(*) FROM pg_statistic_ext_data d
+  LEFT JOIN pg_statistic_ext s ON s.oid = d.stxoid
+  WHERE s.oid IS NULL;
+ count 
+-------
+     0
+(1 row)
+
+-- Likewise, holding the relation open does not stop a function invoked
+-- during the import from dropping the target column itself.  Dropping the
+-- column's domain with CASCADE removes the column through a dependency,
+-- which does not go through CheckTableNotInUse().  The import must re-check
+-- that the column still exists before writing and error out if it doesn't,
+-- so that no pg_statistic row is left behind for a dropped column.
+CREATE TABLE stats_import.test_reentrant_attr2 (id uuid);
+CREATE FUNCTION stats_import.drop_during_import_attr(uuid) RETURNS boolean
+  LANGUAGE plpgsql AS $$
+BEGIN
+  DROP DOMAIN stats_import.reentrant_dom_attr2 CASCADE;
+  RETURN true;
+END;
+$$;
+CREATE DOMAIN stats_import.reentrant_dom_attr2 AS uuid
+  CHECK (stats_import.drop_during_import_attr(VALUE));
+ALTER TABLE stats_import.test_reentrant_attr2
+  ALTER COLUMN id TYPE stats_import.reentrant_dom_attr2;
+SELECT pg_catalog.pg_restore_attribute_stats(
+  'schemaname', 'stats_import',
+  'relname', 'test_reentrant_attr2',
+  'attname', 'id',
+  'inherited', false,
+  'null_frac', 0.5::real,
+  'most_common_vals', '{00000000-0000-0000-0000-000000000000}'::text,
+  'most_common_freqs', '{1}'::real[]);
+NOTICE:  drop cascades to column id of table stats_import.test_reentrant_attr2
+ERROR:  could not restore statistics for column "id": it was dropped during the import
+-- No pg_statistic row should remain for a dropped column.
+SELECT count(*) FROM pg_statistic s
+  WHERE s.starelid = 'stats_import.test_reentrant_attr2'::regclass
+    AND NOT EXISTS (SELECT FROM pg_attribute a
+                    WHERE a.attrelid = s.starelid
+                      AND a.attnum = s.staattnum
+                      AND NOT a.attisdropped);
+ count 
+-------
+     0
+(1 row)
+
 DROP SCHEMA stats_import CASCADE;
-NOTICE:  drop cascades to 19 other objects
+NOTICE:  drop cascades to 39 other objects
 DETAIL:  drop cascades to view stats_import.pg_stats_stable
 drop cascades to view stats_import.pg_statistic_flat_t
 drop cascades to function stats_import.pg_statistic_flat(text)
@@ -3391,6 +4149,26 @@ drop cascades to table stats_import.test_mr
 drop cascades to table stats_import.part_parent
 drop cascades to sequence stats_import.testseq
 drop cascades to view stats_import.testview
+drop cascades to type stats_import.dom_int4
+drop cascades to type stats_import.dom_range
+drop cascades to type stats_import.dom_mrange
+drop cascades to table stats_import.test_dom
+drop cascades to table stats_import.test_dom_clone
+drop cascades to type stats_import.dom_tsvector
+drop cascades to table stats_import.test_dom_ts
+drop cascades to table stats_import.test_dom_ts_clone
 drop cascades to table stats_import.test_clone
 drop cascades to table stats_import.test_mr_clone
 drop cascades to table stats_import.test_range_expr_null
+drop cascades to table stats_import.test_reentrant
+drop cascades to function stats_import.alter_during_import(uuid)
+drop cascades to type stats_import.reentrant_dom
+drop cascades to table stats_import.test_reentrant_ext
+drop cascades to function stats_import.alter_during_import_ext(uuid)
+drop cascades to type stats_import.reentrant_dom_ext
+drop cascades to table stats_import.test_reentrant_ext2
+drop cascades to function stats_import.drop_during_import_ext(uuid)
+drop cascades to type stats_import.reentrant_dom_ext2
+drop cascades to table stats_import.test_reentrant_attr2
+drop cascades to function stats_import.drop_during_import_attr(uuid)
+drop cascades to type stats_import.reentrant_dom_attr2

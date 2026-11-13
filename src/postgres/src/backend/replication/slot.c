@@ -636,6 +636,8 @@ ReplicationSlotCreate(const char *name, bool db_specific,
 					errmsg("cannot enable failover for a temporary replication slot"));
 	}
 
+	INJECTION_POINT("replication-slot-create-begin", NULL);
+
 	/*
 	 * yb-master is the source of truth for replication slots. Skip the
 	 * ReplicationSlotCtl related stuff as it isn't applicable till we support
@@ -1277,74 +1279,75 @@ ReplicationSlotRelease(void)
 	if (slot->data.persistency == RS_EPHEMERAL)
 	{
 		/*
-		 * Delete the slot. There is no !PANIC case where this is allowed to
-		 * fail, all that may happen is an incomplete cleanup of the on-disk
-		 * data.
+		 * If slot is ephemeral, we drop it upon release, and request logical
+		 * decoding be disabled.
 		 */
-		ReplicationSlotDropAcquired();
-
-		/*
-		 * Request to disable logical decoding, even though this slot may not
-		 * have been the last logical slot. The checkpointer will verify if
-		 * logical decoding should actually be disabled.
-		 */
-		if (is_logical)
-			RequestDisableLogicalDecoding();
-	}
-
-	/*
-	 * If slot needed to temporarily restrain both data and catalog xmin to
-	 * create the catalog snapshot, remove that temporary constraint.
-	 * Snapshots can only be exported while the initial snapshot is still
-	 * acquired.
-	 */
-	if (!IsYugaByteEnabled() &&
-		!TransactionIdIsValid(slot->data.xmin) &&
-		TransactionIdIsValid(slot->effective_xmin))
-	{
-		SpinLockAcquire(&slot->mutex);
-		slot->effective_xmin = InvalidTransactionId;
-		SpinLockRelease(&slot->mutex);
-		ReplicationSlotsComputeRequiredXmin(false);
-	}
-
-	/*
-	 * Set the time since the slot has become inactive. We get the current
-	 * time beforehand to avoid system call while holding the spinlock.
-	 */
-	now = GetCurrentTimestamp();
-
-	if (slot->data.persistency == RS_PERSISTENT)
-	{
-		/*
-		 * Mark persistent slot inactive.  We're not freeing it, just
-		 * disconnecting, but wake up others that may be waiting for it.
-		 */
-		SpinLockAcquire(&slot->mutex);
-		slot->active_proc = INVALID_PROC_NUMBER;
-		ReplicationSlotSetInactiveSince(slot, now, false);
-		SpinLockRelease(&slot->mutex);
-		ConditionVariableBroadcast(&slot->active_cv);
+		ReplicationSlotDropAcquired(is_logical);
 	}
 	else
-		ReplicationSlotSetInactiveSince(slot, now, true);
-
-	if (IsYugaByteEnabled())
 	{
-		if (MyReplicationSlot->data.yb_replica_identities)
-			hash_destroy(MyReplicationSlot->data.yb_replica_identities);
-		/* Release the advisory lock if we are holding one. */
-		if (yb_slot_locktag.locktag_type != 0)
-			YbReleaseReplicationSlotLock();
+		/*
+		 * If slot needed to temporarily restrain both data and catalog xmin
+		 * to create the catalog snapshot, remove that temporary constraint.
+		 * Snapshots can only be exported while the initial snapshot is still
+		 * acquired.
+		 */
+		if (!IsYugaByteEnabled() &&
+			!TransactionIdIsValid(slot->data.xmin) &&
+			TransactionIdIsValid(slot->effective_xmin))
+		{
+			SpinLockAcquire(&slot->mutex);
+			slot->effective_xmin = InvalidTransactionId;
+			SpinLockRelease(&slot->mutex);
+			ReplicationSlotsComputeRequiredXmin(false);
+		}
+
+		/*
+		 * Set the time since the slot has become inactive. We get the current
+		 * time beforehand to avoid system call while holding the spinlock.
+		 */
+		now = GetCurrentTimestamp();
+
+		if (slot->data.persistency == RS_PERSISTENT)
+		{
+			/*
+			 * Mark persistent slot inactive.  We're not freeing it, just
+			 * disconnecting, but wake up others that may be waiting for it.
+			 */
+			SpinLockAcquire(&slot->mutex);
+			slot->active_proc = INVALID_PROC_NUMBER;
+			ReplicationSlotSetInactiveSince(slot, now, false);
+			SpinLockRelease(&slot->mutex);
+			ConditionVariableBroadcast(&slot->active_cv);
+		}
+		else
+			ReplicationSlotSetInactiveSince(slot, now, true);
+
+		if (IsYugaByteEnabled())
+		{
+			if (MyReplicationSlot->data.yb_replica_identities)
+				hash_destroy(MyReplicationSlot->data.yb_replica_identities);
+			/* Release the advisory lock if we are holding one. */
+			if (yb_slot_locktag.locktag_type != 0)
+				YbReleaseReplicationSlotLock();
+		}
+
+		MyReplicationSlot = NULL;
 	}
 
-	MyReplicationSlot = NULL;
-
-	/* might not have been set when we've been a plain slot */
-	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
-	MyProc->statusFlags &= ~PROC_IN_LOGICAL_DECODING;
-	ProcGlobal->statusFlags[MyProc->pgxactoff] = MyProc->statusFlags;
-	LWLockRelease(ProcArrayLock);
+	/*
+	 * Update statusFlags only if PROC_IN_LOGICAL_DECODING is set.  An
+	 * auxiliary process (checkpointer or startup process) may invalidate a
+	 * slot.  Auxiliary processes are not in the proc array, and pgxactoff
+	 * would point at something which is not its own.
+	 */
+	if (MyProc->statusFlags & PROC_IN_LOGICAL_DECODING)
+	{
+		LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+		MyProc->statusFlags &= ~PROC_IN_LOGICAL_DECODING;
+		ProcGlobal->statusFlags[MyProc->pgxactoff] = MyProc->statusFlags;
+		LWLockRelease(ProcArrayLock);
+	}
 
 	if (am_walsender)
 	{
@@ -1429,15 +1432,13 @@ restart:
 }
 
 /*
- * Permanently drop replication slot identified by the passed in name.
+ * Permanently drop the replication slot identified by the passed-in name.
+ *
+ * If this is a logical slot, request that logical decoding be disabled.
  */
 void
 ReplicationSlotDrop(const char *name, bool nowait, bool yb_force, bool yb_if_exists)
 {
-	bool		is_logical;
-
-	Assert(MyReplicationSlot == NULL);
-
 	/*
 	 * yb-master is the source of truth for replication slots. Skip the
 	 * ReplicationSlotCtl related stuff as it isn't applicable till we support
@@ -1518,12 +1519,7 @@ ReplicationSlotDrop(const char *name, bool nowait, bool yb_force, bool yb_if_exi
 				errmsg("cannot drop replication slot \"%s\"", name),
 				errdetail("This replication slot is being synchronized from the primary server."));
 
-	is_logical = SlotIsLogical(MyReplicationSlot);
-
-	ReplicationSlotDropAcquired();
-
-	if (is_logical)
-		RequestDisableLogicalDecoding();
+	ReplicationSlotDropAcquired(SlotIsLogical(MyReplicationSlot));
 }
 
 /*
@@ -1629,18 +1625,28 @@ ReplicationSlotAlter(const char *name, const bool *failover,
 
 /*
  * Permanently drop the currently acquired replication slot.
+ *
+ * If caller requests it, have checkpointer attempt to disable logical
+ * decoding.  Obviously, this should only be done if the slot is logical.
  */
 void
-ReplicationSlotDropAcquired(void)
+ReplicationSlotDropAcquired(bool try_disable)
 {
-	ReplicationSlot *slot = MyReplicationSlot;
+	ReplicationSlot *slot;
 
 	Assert(MyReplicationSlot != NULL);
+	slot = MyReplicationSlot;
+
+	/* Can only disable logical decoding if slot is logical */
+	Assert(!try_disable || SlotIsLogical(slot));
 
 	/* slot isn't acquired anymore */
 	MyReplicationSlot = NULL;
 
 	ReplicationSlotDropPtr(slot);
+
+	if (try_disable)
+		RequestDisableLogicalDecoding();
 }
 
 /*
@@ -2103,7 +2109,7 @@ ReplicationSlotsCountDBSlots(Oid dboid, int *nslots, int *nactive)
  * This routine isn't as efficient as it could be - but we don't drop
  * databases often, especially databases with lots of slots.
  *
- * If it drops the last logical slot in the cluster, it requests to disable
+ * If the last logical slot in the cluster is dropped, request to disable
  * logical decoding.
  */
 void
@@ -2198,7 +2204,7 @@ restart:
 		 * beginning each time we release the lock.
 		 */
 		LWLockRelease(ReplicationSlotControlLock);
-		ReplicationSlotDropAcquired();
+		ReplicationSlotDropAcquired(false);
 		dropped = true;
 		goto restart;
 	}
@@ -2369,7 +2375,7 @@ ReplicationSlotReserveWal(void)
 		XLogRecPtr	flushptr;
 
 		/* make sure we have enough information to start */
-		flushptr = LogStandbySnapshot(InvalidOid);
+		flushptr = LogStandbySnapshot();
 
 		/* and make sure it's fsynced to disk */
 		XLogFlush(flushptr);

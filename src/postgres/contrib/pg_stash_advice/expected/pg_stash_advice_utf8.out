@@ -13,4 +13,4 @@ SELECT pg_create_advice_stash('café');
 ERROR:  advice stash name must not contain non-ASCII characters
 SET pg_stash_advice.stash_name = 'café';
 ERROR:  invalid value for parameter "pg_stash_advice.stash_name": "café"
-DETAIL:  advice stash name must not contain non-ASCII characters
+DETAIL:  Advice stash name must not contain non-ASCII characters.

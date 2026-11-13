@@ -107,6 +107,17 @@ utf_e2u(const char *src)
 #define UTF_E2U(x) \
 	(_pltcl_utf_dst = utf_e2u(_pltcl_utf_src = (x)))
 
+/* This variant always makes a pstrdup'd copy */
+static inline char *
+utf_u2e_copy(const char *src)
+{
+	char	   *dst = pg_any_to_server(src, strlen(src), PG_UTF8);
+
+	if ((const char *) dst == src)
+		dst = pstrdup(dst);
+	return dst;
+}
+
 
 /**********************************************************************
  * Information associated with a Tcl interpreter.  We have one interpreter
@@ -1045,10 +1056,20 @@ pltcl_func_handler(PG_FUNCTION_ARGS, pltcl_call_state *call_state,
 		retval = HeapTupleGetDatum(tup);
 	}
 	else
+	{
+		/*
+		 * Notice that we forcibly copy the result of Tcl_GetStringResult, so
+		 * that the result_in_func is applied to data that doesn't belong to
+		 * the Tcl interpreter.  This avoids use-after-free problems if the
+		 * result_in_func calls another pltcl function.  No need to worry
+		 * about leaking the string, since this happens just once per pltcl
+		 * function call.
+		 */
 		retval = InputFunctionCall(&prodesc->result_in_func,
-								   utf_u2e(Tcl_GetStringResult(interp)),
+								   utf_u2e_copy(Tcl_GetStringResult(interp)),
 								   prodesc->result_typioparam,
 								   -1);
+	}
 
 	return retval;
 }
@@ -1384,7 +1405,7 @@ throw_tcl_error(Tcl_Interp *interp, const char *proname)
 	char	   *econtext;
 	int			emsglen;
 
-	emsg = pstrdup(utf_u2e(Tcl_GetStringResult(interp)));
+	emsg = utf_u2e_copy(Tcl_GetStringResult(interp));
 	econtext = utf_u2e(Tcl_GetVar(interp, "errorInfo", TCL_GLOBAL_ONLY));
 
 	/*
@@ -1430,6 +1451,7 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid,
 	Tcl_DString proc_internal_def;
 	Tcl_DString proc_internal_name;
 	Tcl_DString proc_internal_body;
+	Tcl_DString proc_internal_args;
 
 	/* We'll need the pg_proc tuple in any case... */
 	procTup = SearchSysCache1(PROCOID, ObjectIdGetDatum(fn_oid));
@@ -1479,6 +1501,7 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid,
 	Tcl_DStringInit(&proc_internal_def);
 	Tcl_DStringInit(&proc_internal_name);
 	Tcl_DStringInit(&proc_internal_body);
+	Tcl_DStringInit(&proc_internal_args);
 	PG_TRY();
 	{
 		bool		is_trigger = OidIsValid(tgreloid);
@@ -1488,10 +1511,9 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid,
 		bool		need_underscore;
 		HeapTuple	typeTup;
 		Form_pg_type typeStruct;
-		char		proc_internal_args[33 * FUNC_MAX_ARGS];
 		Datum		prosrcdatum;
 		char	   *proc_source;
-		char		buf[48];
+		char		buf[64];
 		pltcl_interp_desc *interp_desc;
 		Tcl_Interp *interp;
 		int			i;
@@ -1597,8 +1619,8 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid,
 		prodesc->fn_xmin = HeapTupleHeaderGetRawXmin(procTup->t_data);
 		prodesc->fn_tid = procTup->t_self;
 		prodesc->nargs = procStruct->pronargs;
-		prodesc->arg_out_func = (FmgrInfo *) palloc0(prodesc->nargs * sizeof(FmgrInfo));
-		prodesc->arg_is_rowtype = (bool *) palloc0(prodesc->nargs * sizeof(bool));
+		prodesc->arg_out_func = palloc0_array(FmgrInfo, prodesc->nargs);
+		prodesc->arg_is_rowtype = palloc0_array(bool, prodesc->nargs);
 		MemoryContextSwitchTo(oldcontext);
 
 		/* Remember if function is STABLE/IMMUTABLE */
@@ -1660,7 +1682,6 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid,
 		 ************************************************************/
 		if (!is_trigger && !is_event_trigger)
 		{
-			proc_internal_args[0] = '\0';
 			for (i = 0; i < prodesc->nargs; i++)
 			{
 				Oid			argtype = procStruct->proargtypes.values[i];
@@ -1693,8 +1714,8 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid,
 				}
 
 				if (i > 0)
-					strcat(proc_internal_args, " ");
-				strcat(proc_internal_args, buf);
+					Tcl_DStringAppend(&proc_internal_args, " ", -1);
+				Tcl_DStringAppend(&proc_internal_args, buf, -1);
 
 				ReleaseSysCache(typeTup);
 			}
@@ -1702,13 +1723,14 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid,
 		else if (is_trigger)
 		{
 			/* trigger procedure has fixed args */
-			strcpy(proc_internal_args,
-				   "TG_name TG_relid TG_table_name TG_table_schema TG_relatts TG_when TG_level TG_op __PLTcl_Tup_NEW __PLTcl_Tup_OLD args");
+			Tcl_DStringAppend(&proc_internal_args,
+							  "TG_name TG_relid TG_table_name TG_table_schema TG_relatts TG_when TG_level TG_op __PLTcl_Tup_NEW __PLTcl_Tup_OLD args",
+							  -1);
 		}
 		else if (is_event_trigger)
 		{
 			/* event trigger procedure has fixed args */
-			strcpy(proc_internal_args, "TG_event TG_tag");
+			Tcl_DStringAppend(&proc_internal_args, "TG_event TG_tag", -1);
 		}
 
 		/************************************************************
@@ -1721,7 +1743,8 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid,
 		 ************************************************************/
 		Tcl_DStringAppendElement(&proc_internal_def, "proc");
 		Tcl_DStringAppendElement(&proc_internal_def, internal_proname);
-		Tcl_DStringAppendElement(&proc_internal_def, proc_internal_args);
+		Tcl_DStringAppendElement(&proc_internal_def,
+								 Tcl_DStringValue(&proc_internal_args));
 
 		/************************************************************
 		 * prefix procedure body with
@@ -1802,6 +1825,7 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid,
 		Tcl_DStringFree(&proc_internal_def);
 		Tcl_DStringFree(&proc_internal_name);
 		Tcl_DStringFree(&proc_internal_body);
+		Tcl_DStringFree(&proc_internal_args);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -1831,6 +1855,7 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid,
 	Tcl_DStringFree(&proc_internal_def);
 	Tcl_DStringFree(&proc_internal_name);
 	Tcl_DStringFree(&proc_internal_body);
+	Tcl_DStringFree(&proc_internal_args);
 
 	ReleaseSysCache(procTup);
 
@@ -2114,7 +2139,7 @@ pltcl_quote(ClientData cdata, Tcl_Interp *interp,
 	 * grow to and initialize pointers
 	 ************************************************************/
 	cp1 = Tcl_GetStringFromObj(objv[1], &length);
-	tmp = palloc(length * 2 + 1);
+	tmp = palloc(add_size(mul_size(length, 2), 1));
 	cp2 = tmp;
 
 	/************************************************************
@@ -2315,8 +2340,9 @@ pltcl_returnnext(ClientData cdata, Tcl_Interp *interp,
 			if (call_state->ret_tupdesc->natts != 1)
 				elog(ERROR, "wrong result type supplied in return_next");
 
+			/* as in pltcl_func_handler, copy the string out of Tcl */
 			retval = InputFunctionCall(&prodesc->result_in_func,
-									   utf_u2e((char *) Tcl_GetString(objv[1])),
+									   utf_u2e_copy(Tcl_GetString(objv[1])),
 									   prodesc->result_typioparam,
 									   -1);
 			tuplestore_putvalues(call_state->tuple_store, call_state->ret_tupdesc,
@@ -2673,9 +2699,9 @@ pltcl_SPI_prepare(ClientData cdata, Tcl_Interp *interp,
 	qdesc = palloc0_object(pltcl_query_desc);
 	snprintf(qdesc->qname, sizeof(qdesc->qname), "%p", qdesc);
 	qdesc->nargs = nargs;
-	qdesc->argtypes = (Oid *) palloc(nargs * sizeof(Oid));
-	qdesc->arginfuncs = (FmgrInfo *) palloc(nargs * sizeof(FmgrInfo));
-	qdesc->argtypioparams = (Oid *) palloc(nargs * sizeof(Oid));
+	qdesc->argtypes = palloc_array(Oid, nargs);
+	qdesc->arginfuncs = palloc_array(FmgrInfo, nargs);
+	qdesc->argtypioparams = palloc_array(Oid, nargs);
 	MemoryContextSwitchTo(oldcontext);
 
 	/************************************************************
@@ -2774,6 +2800,7 @@ pltcl_SPI_execute_plan(ClientData cdata, Tcl_Interp *interp,
 	int			count = 0;
 	Tcl_Size	callObjc;
 	Tcl_Obj   **callObjv = NULL;
+	char	  **argstrings;
 	Datum	   *argvalues;
 	MemoryContext oldcontext = CurrentMemoryContext;
 	ResourceOwner oldowner = CurrentResourceOwner;
@@ -2915,29 +2942,34 @@ pltcl_SPI_execute_plan(ClientData cdata, Tcl_Interp *interp,
 	PG_TRY();
 	{
 		/************************************************************
-		 * Setup the value array for SPI_execute_plan() using
-		 * the type specific input functions
+		 * As in pltcl_func_handler, copy all the argument strings out
+		 * of Tcl before calling any input function.  An input
+		 * function can re-enter the Tcl interpreter, which might free
+		 * not only the strings but also the callObjv array itself, if
+		 * the argument list object gets converted to some other type.
 		 ************************************************************/
-		argvalues = (Datum *) palloc(callObjc * sizeof(Datum));
+		argstrings = palloc_array(char *, callObjc);
 
 		for (j = 0; j < callObjc; j++)
 		{
 			if (nulls && nulls[j] == 'n')
-			{
-				argvalues[j] = InputFunctionCall(&qdesc->arginfuncs[j],
-												 NULL,
-												 qdesc->argtypioparams[j],
-												 -1);
-			}
+				argstrings[j] = NULL;
 			else
-			{
-				UTF_BEGIN;
-				argvalues[j] = InputFunctionCall(&qdesc->arginfuncs[j],
-												 UTF_U2E(Tcl_GetString(callObjv[j])),
-												 qdesc->argtypioparams[j],
-												 -1);
-				UTF_END;
-			}
+				argstrings[j] = utf_u2e_copy(Tcl_GetString(callObjv[j]));
+		}
+
+		/************************************************************
+		 * Setup the value array for SPI_execute_plan() using
+		 * the type specific input functions
+		 ************************************************************/
+		argvalues = palloc_array(Datum, callObjc);
+
+		for (j = 0; j < callObjc; j++)
+		{
+			argvalues[j] = InputFunctionCall(&qdesc->arginfuncs[j],
+											 argstrings[j],
+											 qdesc->argtypioparams[j],
+											 -1);
 		}
 
 		/************************************************************
@@ -3292,7 +3324,7 @@ pltcl_build_tuple_result(Tcl_Interp *interp, Tcl_Obj **kvObjv, int kvObjc,
 		attinmeta = NULL;
 	}
 
-	values = (char **) palloc0(tupdesc->natts * sizeof(char *));
+	values = palloc0_array(char *, tupdesc->natts);
 
 	if (kvObjc % 2 != 0)
 		ereport(ERROR,
@@ -3331,7 +3363,12 @@ pltcl_build_tuple_result(Tcl_Interp *interp, Tcl_Obj **kvObjv, int kvObjc,
 					 errmsg("cannot set generated column \"%s\"",
 							fieldName)));
 
-		values[attn - 1] = utf_u2e(Tcl_GetString(kvObjv[i + 1]));
+		/*
+		 * As in pltcl_func_handler, copy each string out of the Tcl
+		 * interpreter before proceeding, to ensure it can't get freed or
+		 * overwritten by re-entrant use of the Tcl interpreter.
+		 */
+		values[attn - 1] = utf_u2e_copy(Tcl_GetString(kvObjv[i + 1]));
 	}
 
 	tuple = BuildTupleFromCStrings(attinmeta, values);

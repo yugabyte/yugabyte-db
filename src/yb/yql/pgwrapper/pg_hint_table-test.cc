@@ -48,10 +48,10 @@ class PgHintTableTest : public LibPqTestBase {
   // Recompute with: EXPLAIN (VERBOSE, FORMAT JSON) <query>, and read "Query Identifier".
   static const std::string query;
   static const std::string explain_query;
-  static constexpr int64_t query_id = 2986800428567352605;
+  static constexpr int64_t query_id = -63844750182357057;
 
   static const std::string query_with_param;
-  static constexpr int64_t query_with_param_id = 352084127023756444;
+  static constexpr int64_t query_with_param_id = -1544564546292682552;
 
   Result<PGConn> ConnectWithHintTable() {
     auto conn = VERIFY_RESULT(Connect());

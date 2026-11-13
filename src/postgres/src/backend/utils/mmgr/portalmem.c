@@ -491,6 +491,16 @@ PortalDrop(Portal portal, bool isTopCommit)
 				 errmsg("cannot drop pinned portal \"%s\"", portal->name)));
 
 	/*
+	 * Don't allow dropping a portal being set up.
+	 */
+	if (portal->status == PORTAL_NEW || portal->status == PORTAL_DEFINED)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_CURSOR_STATE),
+				 errmsg("cannot drop portal \"%s\" while it is being set up",
+						portal->name)));
+
+
+	/*
 	 * Not sure if the PORTAL_ACTIVE case can validly happen or not...
 	 */
 	if (portal->status == PORTAL_ACTIVE)
@@ -629,9 +639,48 @@ PortalHashTableDeleteAll(void)
 	{
 		Portal		portal = hentry->portal;
 
-		/* Can't close the active portal (the one running the command) */
-		if (portal->status == PORTAL_ACTIVE)
+		/*
+		 * Can't close the active portal (the one running the command), or
+		 * portals being set up.
+		 */
+		if (portal->status == PORTAL_ACTIVE ||
+			portal->status == PORTAL_NEW ||
+			portal->status == PORTAL_DEFINED)
 			continue;
+
+		PortalDrop(portal, false);
+
+		/* Restart the iteration in case that led to other drops */
+		hash_seq_term(&status);
+		hash_seq_init(&status, PortalHashTable);
+	}
+}
+
+/*
+ * Drop portals dependent on the given queryEnv.
+ */
+void
+DropQueryEnvPortals(QueryEnvironment *queryEnv)
+{
+	HASH_SEQ_STATUS status;
+	PortalHashEnt *hentry;
+
+	if (PortalHashTable == NULL)
+		return;
+
+	hash_seq_init(&status, PortalHashTable);
+	while ((hentry = hash_seq_search(&status)) != NULL)
+	{
+		Portal		portal = hentry->portal;
+
+		if (portal->queryEnv != queryEnv)
+			continue;
+
+		/*
+		 * It's safe to unpin and close, because any reference preserved past
+		 * SPI_finish() must be by name, not a raw pointer.
+		 */
+		portal->portalPinned = false;
 
 		PortalDrop(portal, false);
 
@@ -827,8 +876,13 @@ AtAbort_Portals(void)
 		 * shutdown on a READY portal either; it might refer to objects
 		 * created in the failed transaction.  See comments in
 		 * AtSubAbort_Portals.
+		 *
+		 * A portal that was still being set up is also failed here, so that
+		 * PortalDrop() accepts it later.
 		 */
-		if (portal->status == PORTAL_READY)
+		if (portal->status == PORTAL_NEW ||
+			portal->status == PORTAL_DEFINED ||
+			portal->status == PORTAL_READY)
 			MarkPortalFailed(portal);
 
 		/*
@@ -925,6 +979,10 @@ AtCleanup_Portals(void)
  *
  * This is different from the cleanup at transaction abort.  Auto-held portals
  * are cleaned up on error but not on transaction abort.
+ *
+ * If an error happened while a portal was being set up and the transaction
+ * is already aborted, whoever was setting up the portal is gone, so mark it
+ * as droppable.
  */
 void
 PortalErrorCleanup(void)
@@ -942,6 +1000,12 @@ PortalErrorCleanup(void)
 		{
 			portal->portalPinned = false;
 			PortalDrop(portal, false);
+		}
+		else if (portal->status == PORTAL_NEW ||
+				 portal->status == PORTAL_DEFINED)
+		{
+			portal->portalPinned = false;
+			MarkPortalFailed(portal);
 		}
 	}
 }
@@ -1061,7 +1125,9 @@ AtSubAbort_Portals(SubTransactionId mySubid,
 		 * happen here.  If it does happen, dispose the portal like existing
 		 * MarkPortalActive() callers would.
 		 */
-		if (portal->status == PORTAL_READY ||
+		if (portal->status == PORTAL_NEW ||
+			portal->status == PORTAL_DEFINED ||
+			portal->status == PORTAL_READY ||
 			portal->status == PORTAL_ACTIVE)
 			MarkPortalFailed(portal);
 

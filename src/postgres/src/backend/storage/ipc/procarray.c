@@ -2229,9 +2229,17 @@ GetSnapshotData(Snapshot snapshot)
 		snapshot->subxip = (TransactionId *)
 			malloc(GetMaxSnapshotSubxidCount() * sizeof(TransactionId));
 		if (snapshot->subxip == NULL)
+		{
+			/*
+			 * Clean up the Snapshot state before throwing the error, so that
+			 * a retry does not see a partially-initialized snapshot.
+			 */
+			free(snapshot->xip);
+			snapshot->xip = NULL;
 			ereport(ERROR,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
 					 errmsg("out of memory")));
+		}
 	}
 
 	/*
@@ -2559,8 +2567,13 @@ ProcArrayInstallImportedXmin(TransactionId xmin,
 	if (!sourcevxid)
 		return false;
 
-	/* Get lock so source xact can't end while we're doing this */
-	LWLockAcquire(ProcArrayLock, LW_SHARED);
+	/*
+	 * Take the lock in exclusive mode to ensure that installing xmin is
+	 * atomic with our check that the source transaction is still running.
+	 * (Using shared mode risks a concurrent VACUUM whose ComputeXidHorizons()
+	 * call fails to observe the xmin in either the source proc or our own.)
+	 */
+	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
 
 	/*
 	 * Find the PGPROC entry of the source transaction. (This could use
@@ -2703,11 +2716,9 @@ ProcArrayInstallRestoredXmin(TransactionId xmin, PGPROC *proc)
  *
  * Note that if any transaction has overflowed its cached subtransactions
  * then there is no real need include any subtransactions.
- *
- * If 'dbid' is valid, only gather transactions running in that database.
  */
 RunningTransactions
-GetRunningTransactionData(Oid dbid)
+GetRunningTransactionData(void)
 {
 	/* result workspace */
 	static RunningTransactionsData CurrentRunningXactsData;
@@ -2783,18 +2794,6 @@ GetRunningTransactionData(Oid dbid)
 			continue;
 
 		/*
-		 * Filter by database OID if requested.
-		 */
-		if (OidIsValid(dbid))
-		{
-			int			pgprocno = arrayP->pgprocnos[index];
-			PGPROC	   *proc = &allProcs[pgprocno];
-
-			if (proc->databaseId != dbid)
-				continue;
-		}
-
-		/*
 		 * Be careful not to exclude any xids before calculating the values of
 		 * oldestRunningXid and suboverflowed, since these are used to clean
 		 * up transaction information held on standbys.
@@ -2845,12 +2844,6 @@ GetRunningTransactionData(Oid dbid)
 			int			nsubxids;
 
 			/*
-			 * Filter by database OID if requested.
-			 */
-			if (OidIsValid(dbid) && proc->databaseId != dbid)
-				continue;
-
-			/*
 			 * Save subtransaction XIDs. Other backends can't add or remove
 			 * entries while we're holding XidGenLock.
 			 */
@@ -2883,7 +2876,6 @@ GetRunningTransactionData(Oid dbid)
 	 * increases if slots do.
 	 */
 
-	CurrentRunningXacts->dbid = dbid;
 	CurrentRunningXacts->xcnt = count - subcount;
 	CurrentRunningXacts->subxcnt = subcount;
 	CurrentRunningXacts->subxid_status = suboverflowed ? SUBXIDS_IN_SUBTRANS : SUBXIDS_IN_ARRAY;
@@ -3970,8 +3962,9 @@ TerminateOtherDBBackends(Oid databaseId)
 		 * Permissions checks relax the pg_terminate_backend checks in two
 		 * ways, both by omitting the !OidIsValid(proc->roleId) check:
 		 *
-		 * - Accept terminating autovacuum workers, since DROP DATABASE
-		 * without FORCE terminates them.
+		 * - Accept terminating autovacuum workers and the parallel workers
+		 * launched by them, since DROP DATABASE without FORCE terminates
+		 * them.
 		 *
 		 * - Accept terminating bgworkers.  For bgworker authors, it's
 		 * convenient to be able to recommend FORCE if a worker is blocking
@@ -3988,14 +3981,30 @@ TerminateOtherDBBackends(Oid databaseId)
 
 			if (proc != NULL)
 			{
-				if (superuser_arg(proc->roleId) && !superuser())
+				PGPROC	   *leader = proc->lockGroupLeader;
+				Oid			roleId = proc->roleId;
+
+				/*
+				 * An autovacuum worker and a bgworker with no user name
+				 * advertise no role in PGPROC and run as the bootstrap
+				 * superuser (see InitializeSessionUserIdStandalone()
+				 * callsites in postinit.c). The parallel workers they launch
+				 * inherit the same superuser and advertise it in their
+				 * PGPROC. Accept such parallel workers for terminating as
+				 * well.
+				 */
+				if (leader != NULL && leader != proc &&
+					!OidIsValid(leader->roleId))
+					roleId = leader->roleId;
+
+				if (superuser_arg(roleId) && !superuser())
 					ereport(ERROR,
 							(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 							 errmsg("permission denied to terminate process"),
 							 errdetail("Only roles with the %s attribute may terminate processes of roles with the %s attribute.",
 									   "SUPERUSER", "SUPERUSER")));
 
-				if (!has_privs_of_role(GetUserId(), proc->roleId) &&
+				if (!has_privs_of_role(GetUserId(), roleId) &&
 					!has_privs_of_role(GetUserId(), ROLE_PG_SIGNAL_BACKEND))
 					ereport(ERROR,
 							(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),

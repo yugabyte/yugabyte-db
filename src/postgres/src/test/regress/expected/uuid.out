@@ -261,6 +261,28 @@ SELECT y, ts, prev_ts FROM uuidts WHERE ts < prev_ts;
 ---+----+---------
 (0 rows)
 
+-- uuidv7: infinite intervals are rejected
+SELECT uuidv7('infinity'::interval);
+ERROR:  interval out of range for UUID version 7
+DETAIL:  UUID version 7 does not support infinite intervals.
+SELECT uuidv7('-infinity'::interval);
+ERROR:  interval out of range for UUID version 7
+DETAIL:  UUID version 7 does not support infinite intervals.
+-- uuidv7: timestamps before Unix epoch are rejected
+SELECT uuidv7('-1000 years'::interval);
+ERROR:  timestamp out of range for UUID version 7
+DETAIL:  UUID version 7 supports timestamps from 1970-01-01 to approximately year 10889.
+-- uuidv7: timestamps beyond 48-bit ms field (~year 10889) are rejected
+SELECT uuidv7('9000 years'::interval);
+ERROR:  timestamp out of range for UUID version 7
+DETAIL:  UUID version 7 supports timestamps from 1970-01-01 to approximately year 10889.
+-- uuidv7: a large but in-range forward shift is accepted
+SELECT uuid_extract_timestamp(uuidv7('1000 years'::interval)) > now() + '999 years'::interval;
+ ?column? 
+----------
+ t
+(1 row)
+
 -- extract functions
 -- version
 SELECT uuid_extract_version('11111111-1111-5111-8111-111111111111');  -- 5

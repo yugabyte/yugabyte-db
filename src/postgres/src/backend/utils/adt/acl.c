@@ -81,7 +81,7 @@ enum RoleRecurseType
 };
 static Oid	cached_role[] = {InvalidOid, InvalidOid, InvalidOid};
 static List *cached_roles[] = {NIL, NIL, NIL};
-static uint32 cached_db_hash;
+uint32		cached_db_hash;
 
 /*
  * If the list of roles gathered by roles_is_member_of() grows larger than the
@@ -895,10 +895,6 @@ acldefault(ObjectType objtype, Oid ownerId)
 		case OBJECT_PARAMETER_ACL:
 			world_default = ACL_NO_RIGHTS;
 			owner_default = ACL_ALL_RIGHTS_PARAMETER_ACL;
-			break;
-		case OBJECT_PROPGRAPH:
-			world_default = ACL_NO_RIGHTS;
-			owner_default = ACL_ALL_RIGHTS_PROPGRAPH;
 			break;
 		default:
 			elog(ERROR, "unrecognized object type: %d", (int) objtype);
@@ -5447,6 +5443,8 @@ is_member_of_role_nosuper(Oid member, Oid role)
  * Is member an admin of role?	That is, is member the role itself (subject to
  * restrictions below), a member (directly or indirectly) WITH ADMIN OPTION,
  * or a superuser?
+ *
+ * See also has_admin_privs_of_role() below.
  */
 bool
 is_admin_of_role(Oid member, Oid role)
@@ -5461,6 +5459,31 @@ is_admin_of_role(Oid member, Oid role)
 		return false;
 
 	(void) roles_is_member_of(member, ROLERECURSE_MEMBERS, role, &admin_role);
+	return OidIsValid(admin_role);
+}
+
+/*
+ * Does member hold ADMIN OPTION on role, either directly or through a role
+ * whose privileges member inherits?
+ *
+ * Unlike is_admin_of_role(), this does not recurse through grants that are not
+ * inherited.  Callers that must go on to record a grantor for the operation
+ * should use this rather than is_admin_of_role(), since select_best_admin()
+ * searches the same way.
+ */
+bool
+has_admin_privs_of_role(Oid member, Oid role)
+{
+	Oid			admin_role;
+
+	if (superuser_arg(member))
+		return true;
+
+	/* By policy, a role cannot have WITH ADMIN OPTION on itself. */
+	if (member == role)
+		return false;
+
+	(void) roles_is_member_of(member, ROLERECURSE_PRIVS, role, &admin_role);
 	return OidIsValid(admin_role);
 }
 

@@ -296,19 +296,26 @@ extern "C++"
 #endif
 
 /*
- * Use "pg_attribute_always_inline" in place of "inline" for functions that
+ * Use "pg_always_inline" in place of "inline" for functions that
  * we wish to force inlining of, even when the compiler's heuristics would
  * choose not to.  But, if possible, don't force inlining in unoptimized
  * debug builds.
+ *
+ * XXX The "pg_attribute_always_inline" variant is kept for backwards
+ * compatibility with existing code. All new code should use the shorter
+ * variant "pg_always_inline."
  */
 #if defined(__GNUC__) && defined(__OPTIMIZE__)
 /* GCC supports always_inline via __attribute__ */
+#define pg_always_inline __attribute__((always_inline)) inline
 #define pg_attribute_always_inline __attribute__((always_inline)) inline
 #elif defined(_MSC_VER)
 /* MSVC has a special keyword for this */
+#define pg_always_inline __forceinline
 #define pg_attribute_always_inline __forceinline
 #else
 /* Otherwise, the best we can do is to say "inline" */
+#define pg_always_inline inline
 #define pg_attribute_always_inline inline
 #endif
 
@@ -640,7 +647,6 @@ typedef uint64_t uint64;
 /* snprintf format strings to use for 64-bit integers */
 #define INT64_FORMAT "%" PRId64
 #define UINT64_FORMAT "%" PRIu64
-#define OID8_FORMAT "%" PRIu64
 
 /*
  * 128-bit signed and unsigned integers
@@ -1347,6 +1353,17 @@ typedef struct PGAlignedXLogBlock PGAlignedXLogBlock;
 #if (defined(__x86_64__) || defined(_M_AMD64))
 #define USE_SSE2
 
+#else							/* ! x86_64 */
+
+/*
+ * In "universal" macOS builds, it's possible for AVX-related symbols to
+ * get defined if the build host is x86_64, but we mustn't try to build
+ * that code when cross-compiling to aarch64.
+ */
+#undef USE_AVX2_WITH_RUNTIME_CHECK
+#undef USE_AVX512_CRC32C_WITH_RUNTIME_CHECK
+#undef USE_AVX512_POPCNT_WITH_RUNTIME_CHECK
+
 /*
  * We use the Neon instructions if the compiler provides access to them (as
  * indicated by __ARM_NEON) and we are on aarch64.  While Neon support is
@@ -1355,9 +1372,10 @@ typedef struct PGAlignedXLogBlock PGAlignedXLogBlock;
  * could not realistically use it there without a run-time check, which seems
  * not worth the trouble for now.
  */
-#elif defined(__aarch64__) && defined(__ARM_NEON)
+#if defined(__aarch64__) && defined(__ARM_NEON)
 #define USE_NEON
 #endif
+#endif							/* x86_64 */
 
 /* ----------------------------------------------------------------
  *				Section 9: system-specific hacks
@@ -1448,23 +1466,35 @@ extern int	fdatasync(int fd);
 #endif
 
 /*
- * The following is used as the arg list for signal handlers.  Any ports
- * that take something other than an int argument should override this in
- * their pg_config_os.h file.  Note that variable names are required
- * because it is used in both the prototypes as well as the definitions.
- * Note also the long name.  We expect that this won't collide with
- * other names causing compiler warnings.
+ * Platform independent struct representing additional information about the
+ * received signal.  If the system does not support the extended information,
+ * or a field does not apply to the signal, the value is instead reset to the
+ * documented default value.
  */
 
-#ifndef SIGNAL_ARGS
-#define SIGNAL_ARGS  int postgres_signal_arg
-#endif
+typedef struct pg_signal_info
+{
+	uint32_t	pid;			/* pid of sending process or 0 if unknown */
+	uint32_t	uid;			/* uid of sending process; only meaningful
+								 * when pid is not 0 */
+} pg_signal_info;
+
+/*
+ * The following is used as the arg list for signal handlers. These days we
+ * use the same argument to all signal handlers and hide the difference
+ * between platforms in wrapper functions.
+ *
+ * SIGNAL_ARGS just exists separately from the pqsignal() definition for
+ * historical reasons.
+ */
+#define SIGNAL_ARGS  int postgres_signal_arg, const pg_signal_info *pg_siginfo
 
 /*
  * When there is no sigsetjmp, its functionality is provided by plain
  * setjmp.  We now support the case only on Windows.  However, it seems
  * that MinGW-64 has some longstanding issues in its setjmp support,
  * so on that toolchain we cheat and use gcc's builtins.
+ * If you change this, see also PG_PERL_TRY in plperl.h.
  */
 #ifdef WIN32
 #ifdef __MINGW64__

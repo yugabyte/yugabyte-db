@@ -58,6 +58,8 @@
 #include "nodes/pg_list.h"
 #include "nodes/queryjumble.h"
 #include "storage/fd.h"
+#include "storage/lmgr.h"
+#include "storage/lock.h"
 #include "tcop/utility.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
@@ -516,6 +518,7 @@ is_extension_script_filename(const char *filename)
 static List *
 get_extension_control_directories(void)
 {
+#define EXTENSION_SYSTEM_MACRO  "$system"
 	char		sharepath[MAXPGPATH];
 	char	   *system_dir;
 	char	   *ecp;
@@ -529,7 +532,7 @@ get_extension_control_directories(void)
 	{
 		ExtensionLocation *location = palloc_object(ExtensionLocation);
 
-		location->macro = NULL;
+		location->macro = pstrdup(EXTENSION_SYSTEM_MACRO);
 		location->loc = system_dir;
 		paths = lappend(paths, location);
 	}
@@ -559,10 +562,10 @@ get_extension_control_directories(void)
 			 * Substitute the path macro if needed or append "extension"
 			 * suffix if it is a custom extension control path.
 			 */
-			if (strcmp(piece, "$system") == 0)
+			if (strcmp(piece, EXTENSION_SYSTEM_MACRO) == 0)
 			{
 				location->macro = pstrdup(piece);
-				mangled = substitute_path_macro(piece, "$system", system_dir);
+				mangled = substitute_path_macro(piece, EXTENSION_SYSTEM_MACRO, system_dir);
 			}
 			else
 			{
@@ -585,6 +588,7 @@ get_extension_control_directories(void)
 	}
 
 	return paths;
+#undef EXTENSION_SYSTEM_MACRO
 }
 
 /*
@@ -1238,6 +1242,112 @@ extension_is_trusted(ExtensionControlFile *control)
 	return false;
 }
 
+#ifdef USE_ASSERT_CHECKING
+/* Like CheckRelationLockedByMe(), but for pg_namespace */
+static bool
+CheckNamespaceLockedByMe(Oid schemaOid, LOCKMODE lockmode, bool orstronger)
+{
+	LOCKTAG		tag;
+
+	/*
+	 * YB: unless object locks are taken in PG mode, LockAcquire() does not
+	 * record them locally, see CheckRelationLockedByMe().
+	 */
+	if (YBGetObjectLockMode() != PG_OBJECT_LOCK_MODE)
+		return true;
+
+	SET_LOCKTAG_OBJECT(tag, MyDatabaseId, NamespaceRelationId, schemaOid, 0);
+
+	return LockHeldByMe(&tag, lockmode, orstronger);
+}
+#endif
+
+/*
+ * Block operations that would put a temporary-table namespace (defined per
+ * isAnyTempNamespace()) in search_path.  Extension scripts assume they can
+ * create a function and find it via search_path, but creating in a temp
+ * namespace stifles that.
+ *
+ * Block operations that would otherwise put "$user" in search_path as though
+ * that resolved to the schema having nspname='$user'.  More generally, block
+ * any name that is special to the search_path interpreter.  Checking
+ * "pg_"-prefixed special names is not obligatory, because such schemas won't
+ * exist without allow_system_table_mods intervention.
+ */
+static void
+extension_search_path_element_check(const char *name)
+{
+	if (strncmp(name, "pg_temp_", 8) == 0 ||
+		strncmp(name, "pg_toast_temp_", 14) == 0 ||
+		strcmp(name, "pg_temp") == 0 ||
+		strcmp(name, "$user") == 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_RESERVED_NAME),
+				 errmsg("unacceptable extension schema name \"%s\"",
+						name)));
+}
+
+/*
+ * Check that a name is safe to substitute into an extension script.
+ *
+ * We filter each substitution through quote_identifier(), but names
+ * containing quote characters, comment delimiters, or substitution tokens
+ * could still achieve SQL injection.  To avoid a security snare for
+ * extension authors, error on substitution for names containing these.
+ * extname is the extension whose schema name is being substituted, or NULL
+ * when substituting the owner name.
+ */
+static void
+check_substitution_name(const char *name, const char *extname)
+{
+	const char *quoting_relevant_chars = "\"$'\\";
+
+	if (strpbrk(name, quoting_relevant_chars) != NULL)
+	{
+		if (extname != NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+					 errmsg("invalid character in extension \"%s\" schema: must not contain any of \"%s\"",
+							extname, quoting_relevant_chars)));
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+					 errmsg("invalid character in extension owner: must not contain any of \"%s\"",
+							quoting_relevant_chars)));
+	}
+
+	if (strpbrk(name, "\n\r") != NULL ||
+		strstr(name, "--") != NULL ||
+		strstr(name, "/*") != NULL ||
+		strstr(name, "*/") != NULL)
+	{
+		if (extname != NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+					 errmsg("invalid string in extension \"%s\" schema: must not contain newline, carriage return, \"--\", \"/*\", or \"*/\"",
+							extname)));
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+					 errmsg("invalid string in extension owner: must not contain newline, carriage return, \"--\", \"/*\", or \"*/\"")));
+	}
+
+	if (strstr(name, "@extowner@") != NULL ||
+		strstr(name, "@extschema") != NULL ||
+		strstr(name, "MODULE_PATHNAME") != NULL)
+	{
+		if (extname != NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+					 errmsg("invalid string in extension \"%s\" schema: must not contain \"@extowner@\", \"@extschema\", or \"MODULE_PATHNAME\"",
+							extname)));
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+					 errmsg("invalid string in extension owner: must not contain \"@extowner@\", \"@extschema\", or \"MODULE_PATHNAME\"")));
+	}
+}
+
 /*
  * Execute the appropriate script file for installing or updating the extension
  *
@@ -1250,6 +1360,7 @@ execute_extension_script(Oid extensionOid, ExtensionControlFile *control,
 						 const char *from_version,
 						 const char *version,
 						 List *requiredSchemas,
+						 Oid schemaOid,
 						 const char *schemaName)
 {
 	bool		switch_to_superuser = false;
@@ -1349,15 +1460,45 @@ execute_extension_script(Oid extensionOid, ExtensionControlFile *control,
 	 * searched anyway.  (Listing pg_catalog explicitly in a non-first
 	 * position would be bad for security.)  Finally add pg_temp to ensure
 	 * that temp objects can't take precedence over others.
+	 *
+	 * For trusted extensions, this relies crucially on running inside the
+	 * userid switch to superuser.  Otherwise, a schema permission check could
+	 * cause a schema to silently drop out of the search_path.  For an object
+	 * the script intended to find in that schema, the script could then find
+	 * attacker-controlled substitutes later in this search_path.
+	 *
+	 * This is an exception to the usual <sect1 id="perm-functions"> standard,
+	 * "Remove from search_path any schemas that permit untrusted users to
+	 * create objects."  These schemas may have any owner and any ACL.  To
+	 * make that safe, assure a lock on each schema, and expect scripts to
+	 * follow <sect2 id="extend-extensions-security">.  Without the lock,
+	 * concurrent ALTER SCHEMA extschema RENAME could cause commands in the
+	 * script to reach the wrong objects.
 	 */
+	Assert(CheckNamespaceLockedByMe(schemaOid, AccessShareLock, false));
 	initStringInfo(&pathbuf);
+	extension_search_path_element_check(schemaName);
 	appendStringInfoString(&pathbuf, quote_identifier(schemaName));
 	foreach(lc, requiredSchemas)
 	{
 		Oid			reqschema = lfirst_oid(lc);
-		char	   *reqname = get_namespace_name(reqschema);
+		char	   *reqname;
 
-		if (reqname && strcmp(reqname, "pg_catalog") != 0)
+		Assert(CheckNamespaceLockedByMe(reqschema, AccessShareLock, false));
+		reqname = get_namespace_name(reqschema);
+
+		/*
+		 * While it can't happen apart from catalog corruption, schema lookup
+		 * failure must be a hard failure.  Suppose we just ignored missing
+		 * schemas.  For an object the script intended to find in the schema,
+		 * the script could then find attacker-controlled substitutes later in
+		 * this search_path.
+		 */
+		if (!reqname)
+			elog(ERROR, "cache lookup failed for schema %u", reqschema);
+
+		extension_search_path_element_check(reqname);
+		if (strcmp(reqname, "pg_catalog") != 0)
 			appendStringInfo(&pathbuf, ", %s", quote_identifier(reqname));
 	}
 	appendStringInfoString(&pathbuf, ", pg_temp");
@@ -1377,16 +1518,6 @@ execute_extension_script(Oid extensionOid, ExtensionControlFile *control,
 	{
 		char	   *c_sql = read_extension_script_file(control, filename);
 		Datum		t_sql;
-
-		/*
-		 * We filter each substitution through quote_identifier().  When the
-		 * arg contains one of the following characters, no one collection of
-		 * quoting can work inside $$dollar-quoted string literals$$,
-		 * 'single-quoted string literals', and outside of any literal.  To
-		 * avoid a security snare for extension authors, error on substitution
-		 * for arguments containing these.
-		 */
-		const char *quoting_relevant_chars = "\"$'\\";
 
 		/* We use various functions that want to operate on text datums */
 		t_sql = CStringGetTextDatum(c_sql);
@@ -1417,11 +1548,7 @@ execute_extension_script(Oid extensionOid, ExtensionControlFile *control,
 											t_sql,
 											CStringGetTextDatum("@extowner@"),
 											CStringGetTextDatum(qUserName));
-			if (strpbrk(userName, quoting_relevant_chars))
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-						 errmsg("invalid character in extension owner: must not contain any of \"%s\"",
-								quoting_relevant_chars)));
+			check_substitution_name(userName, NULL);
 		}
 
 		/*
@@ -1441,11 +1568,8 @@ execute_extension_script(Oid extensionOid, ExtensionControlFile *control,
 											t_sql,
 											CStringGetTextDatum("@extschema@"),
 											CStringGetTextDatum(qSchemaName));
-			if (t_sql != old && strpbrk(schemaName, quoting_relevant_chars))
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-						 errmsg("invalid character in extension \"%s\" schema: must not contain any of \"%s\"",
-								control->name, quoting_relevant_chars)));
+			if (t_sql != old)
+				check_substitution_name(schemaName, control->name);
 		}
 
 		/*
@@ -1468,11 +1592,8 @@ execute_extension_script(Oid extensionOid, ExtensionControlFile *control,
 											t_sql,
 											CStringGetTextDatum(repltoken),
 											CStringGetTextDatum(qSchemaName));
-			if (t_sql != old && strpbrk(schemaName, quoting_relevant_chars))
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-						 errmsg("invalid character in extension \"%s\" schema: must not contain any of \"%s\"",
-								reqextname, quoting_relevant_chars)));
+			if (t_sql != old)
+				check_substitution_name(schemaName, reqextname);
 		}
 
 		/*
@@ -1928,12 +2049,19 @@ CreateExtensionInternal(char *extensionName,
 	 */
 	if (schemaName)
 	{
+		ObjectAddress schemaAddress;
+
 		/* If the user is giving us the schema name, it must exist already. */
-		schemaOid = get_namespace_oid(schemaName, false);
+		schemaAddress = get_object_address(OBJECT_SCHEMA,
+										   (Node *) makeString(schemaName),
+										   NULL, AccessShareLock, false);
+		schemaOid = schemaAddress.objectId;
 	}
 
 	if (control->schema != NULL)
 	{
+		ObjectAddress schemaAddress;
+
 		/*
 		 * The extension is not relocatable and the author gave us a schema
 		 * for it.
@@ -1953,7 +2081,10 @@ CreateExtensionInternal(char *extensionName,
 		schemaName = control->schema;
 
 		/* Find or create the schema in case it does not exist. */
-		schemaOid = get_namespace_oid(schemaName, true);
+		schemaAddress = get_object_address(OBJECT_SCHEMA,
+										   (Node *) makeString(schemaName),
+										   NULL, AccessShareLock, true);
+		schemaOid = schemaAddress.objectId;
 
 		if (!OidIsValid(schemaOid))
 		{
@@ -1973,7 +2104,11 @@ CreateExtensionInternal(char *extensionName,
 			 * CreateSchemaCommand includes CommandCounterIncrement, so new
 			 * schema is now visible.
 			 */
-			schemaOid = get_namespace_oid(schemaName, false);
+			schemaAddress =
+				get_object_address(OBJECT_SCHEMA,
+								   (Node *) makeString(schemaName),
+								   NULL, AccessShareLock, false);
+			schemaOid = schemaAddress.objectId;
 		}
 	}
 	else if (!OidIsValid(schemaOid))
@@ -1990,6 +2125,8 @@ CreateExtensionInternal(char *extensionName,
 					(errcode(ERRCODE_UNDEFINED_SCHEMA),
 					 errmsg("no schema has been selected to create in")));
 		schemaOid = linitial_oid(search_path);
+		LockDatabaseObject(NamespaceRelationId, schemaOid, 0,
+						   AccessShareLock);
 		schemaName = get_namespace_name(schemaOid);
 		if (schemaName == NULL) /* recently-deleted namespace? */
 			ereport(ERROR,
@@ -1998,13 +2135,6 @@ CreateExtensionInternal(char *extensionName,
 
 		list_free(search_path);
 	}
-
-	/*
-	 * Make note if a temporary namespace has been accessed in this
-	 * transaction.
-	 */
-	if (isTempNamespace(schemaOid))
-		MyXactFlags |= XACT_FLAGS_ACCESSEDTEMPNAMESPACE;
 
 	/*
 	 * We don't check creation rights on the target namespace here.  If the
@@ -2034,6 +2164,8 @@ CreateExtensionInternal(char *extensionName,
 										parents,
 										is_create);
 		reqschema = get_extension_schema(reqext);
+		LockDatabaseObject(NamespaceRelationId, reqschema, 0,
+						   AccessShareLock);
 		requiredExtensions = lappend_oid(requiredExtensions, reqext);
 		requiredSchemas = lappend_oid(requiredSchemas, reqschema);
 	}
@@ -2061,7 +2193,7 @@ CreateExtensionInternal(char *extensionName,
 	execute_extension_script(extensionOid, control,
 							 NULL, versionName,
 							 requiredSchemas,
-							 schemaName);
+							 schemaOid, schemaName);
 
 	/*
 	 * If additional update scripts have to be executed, apply the updates as
@@ -2070,6 +2202,8 @@ CreateExtensionInternal(char *extensionName,
 	ApplyExtensionUpdates(extensionOid, pcontrol,
 						  versionName, updateVersions,
 						  origSchemaName, cascade, is_create);
+
+	Assert(!isTempNamespace(schemaOid));	/* expect earlier failure */
 
 	return address;
 }
@@ -2085,9 +2219,14 @@ get_required_extension(char *reqExtensionName,
 					   List *parents,
 					   bool is_create)
 {
+	ObjectAddress address;
 	Oid			reqExtensionOid;
 
-	reqExtensionOid = get_extension_oid(reqExtensionName, true);
+	/* Block concurrent ALTER EXTENSION UPDATE */
+	address = get_object_address(OBJECT_EXTENSION,
+								 (Node *) makeString(reqExtensionName),
+								 NULL, ShareUpdateExclusiveLock, true);
+	reqExtensionOid = address.objectId;
 	if (!OidIsValid(reqExtensionOid))
 	{
 		if (cascade)
@@ -2884,7 +3023,9 @@ pg_extension_config_dump(PG_FUNCTION_ARGS)
 
 	/*
 	 * We only allow this to be called from an extension's SQL script. We
-	 * shouldn't need any permissions check beyond that.
+	 * shouldn't need any permissions check beyond that.  No concurrent
+	 * session can mutate the extension: ALTER EXTENSION UPDATE locks the
+	 * extension; during CREATE EXTENSION, it is not yet committed.
 	 */
 	if (!creating_extension)
 		ereport(ERROR,
@@ -3266,6 +3407,7 @@ extension_config_remove(Oid extensionoid, Oid tableoid)
 ObjectAddress
 AlterExtensionNamespace(const char *extensionName, const char *newschema, Oid *oldschema)
 {
+	ObjectAddress extAddr;
 	Oid			extensionOid;
 	Oid			nspOid;
 	Oid			oldNspOid;
@@ -3279,9 +3421,11 @@ AlterExtensionNamespace(const char *extensionName, const char *newschema, Oid *o
 	SysScanDesc depScan;
 	HeapTuple	depTup;
 	ObjectAddresses *objsMoved;
-	ObjectAddress extAddr;
 
-	extensionOid = get_extension_oid(extensionName, false);
+	extAddr = get_object_address(OBJECT_EXTENSION,
+								 (Node *) makeString(pstrdup(extensionName)),
+								 NULL, ShareUpdateExclusiveLock, false);
+	extensionOid = extAddr.objectId;
 
 	nspOid = LookupCreationNamespace(newschema);
 
@@ -3442,7 +3586,7 @@ AlterExtensionNamespace(const char *extensionName, const char *newschema, Oid *o
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("extension \"%s\" does not support SET SCHEMA",
 							NameStr(extForm->extname)),
-					 errdetail("%s is not in the extension's schema \"%s\"",
+					 errdetail("%s is not in the extension's schema \"%s\".",
 							   getObjectDescription(&dep, false),
 							   get_namespace_name(oldNspOid))));
 	}
@@ -3470,8 +3614,6 @@ AlterExtensionNamespace(const char *extensionName, const char *newschema, Oid *o
 
 	InvokeObjectPostAlterHook(ExtensionRelationId, extensionOid, 0);
 
-	ObjectAddressSet(extAddr, ExtensionRelationId, extensionOid);
-
 	return extAddr;
 }
 
@@ -3481,6 +3623,7 @@ AlterExtensionNamespace(const char *extensionName, const char *newschema, Oid *o
 ObjectAddress
 ExecAlterExtensionStmt(ParseState *pstate, AlterExtensionStmt *stmt)
 {
+	ObjectAddress address;
 	DefElem    *d_new_version = NULL;
 	char	   *versionName;
 	char	   *oldVersionName;
@@ -3494,7 +3637,6 @@ ExecAlterExtensionStmt(ParseState *pstate, AlterExtensionStmt *stmt)
 	Datum		datum;
 	bool		isnull;
 	ListCell   *lc;
-	ObjectAddress address;
 
 	/*
 	 * We use global variables to track the extension being created, so we can
@@ -3505,28 +3647,35 @@ ExecAlterExtensionStmt(ParseState *pstate, AlterExtensionStmt *stmt)
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("nested ALTER EXTENSION is not supported")));
 
-	/*
-	 * Look up the extension --- it must already exist in pg_extension
+	/*----------
+	 * Lock the extension --- it must already exist in pg_extension.  Exclude
+	 * other ALTER EXTENSION UPDATE backends; the alternative is not useful
+	 * beyond constructing attacks and would allow this sequence of events:
+	 *
+	 * - I choose script files based on the latest committed extversion.
+	 * - Concurrent ALTER EXTENSION UPDATE commits.
+	 * - I enter ApplyExtensionUpdates() and run script files not appropriate
+	 *   for the latest committed extversion.
 	 */
+	address = get_object_address(OBJECT_EXTENSION,
+								 (Node *) makeString(stmt->extname),
+								 NULL, ShareUpdateExclusiveLock, false);
+	extensionOid = address.objectId;
+
 	extRel = table_open(ExtensionRelationId, AccessShareLock);
 
 	ScanKeyInit(&key[0],
-				Anum_pg_extension_extname,
-				BTEqualStrategyNumber, F_NAMEEQ,
-				CStringGetDatum(stmt->extname));
+				Anum_pg_extension_oid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(extensionOid));
 
-	extScan = systable_beginscan(extRel, ExtensionNameIndexId, true,
+	extScan = systable_beginscan(extRel, ExtensionOidIndexId, true,
 								 NULL, 1, key);
 
 	extTup = systable_getnext(extScan);
 
-	if (!HeapTupleIsValid(extTup))
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("extension \"%s\" does not exist",
-						stmt->extname)));
-
-	extensionOid = ((Form_pg_extension) GETSTRUCT(extTup))->oid;
+	if (!HeapTupleIsValid(extTup))	/* should not happen */
+		elog(ERROR, "could not find tuple for extension %u", extensionOid);
 
 	/*
 	 * Determine the existing version we are updating from
@@ -3612,8 +3761,6 @@ ExecAlterExtensionStmt(ParseState *pstate, AlterExtensionStmt *stmt)
 						  oldVersionName, updateVersions,
 						  NULL, false, false);
 
-	ObjectAddressSet(address, ExtensionRelationId, extensionOid);
-
 	return address;
 }
 
@@ -3684,7 +3831,11 @@ ApplyExtensionUpdates(Oid extensionOid,
 		 * Determine the target schema (set by original install)
 		 */
 		schemaOid = extForm->extnamespace;
+		LockDatabaseObject(NamespaceRelationId, schemaOid, 0,
+						   AccessShareLock);
 		schemaName = get_namespace_name(schemaOid);
+		if (!schemaName)
+			elog(ERROR, "cache lookup failed for schema %u", schemaOid);
 
 		/*
 		 * Modify extrelocatable and extversion in the pg_extension tuple
@@ -3729,6 +3880,8 @@ ApplyExtensionUpdates(Oid extensionOid,
 											NIL,
 											is_create);
 			reqschema = get_extension_schema(reqext);
+			LockDatabaseObject(NamespaceRelationId, reqschema, 0,
+							   AccessShareLock);
 			requiredExtensions = lappend_oid(requiredExtensions, reqext);
 			requiredSchemas = lappend_oid(requiredSchemas, reqschema);
 		}
@@ -3764,7 +3917,7 @@ ApplyExtensionUpdates(Oid extensionOid,
 		execute_extension_script(extensionOid, control,
 								 oldVersionName, versionName,
 								 requiredSchemas,
-								 schemaName);
+								 schemaOid, schemaName);
 
 		/*
 		 * Update prior-version name and loop around.  Since
@@ -3811,16 +3964,12 @@ ExecAlterExtensionContentsStmt(AlterExtensionContentsStmt *stmt,
 	}
 
 	/*
-	 * Find the extension and acquire a lock on it, to ensure it doesn't get
-	 * dropped concurrently.  A sharable lock seems sufficient: there's no
-	 * reason not to allow other sorts of manipulations, such as add/drop of
-	 * other objects, to occur concurrently.  Concurrently adding/dropping the
-	 * *same* object would be bad, but we prevent that by using a non-sharable
-	 * lock on the individual object, below.
+	 * Exclude other mutations of the same extension.  The dependency loop
+	 * check below assumes no concurrent ALTER EXTENSION SET SCHEMA.
 	 */
 	extension = get_object_address(OBJECT_EXTENSION,
 								   (Node *) makeString(stmt->extname),
-								   &relation, AccessShareLock, false);
+								   &relation, ShareUpdateExclusiveLock, false);
 
 	/* Permission check: must own extension */
 	if (!object_ownercheck(ExtensionRelationId, extension.objectId, GetUserId()))

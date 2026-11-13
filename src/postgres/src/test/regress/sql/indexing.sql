@@ -246,6 +246,65 @@ select relname, indisvalid from pg_class join pg_index on indexrelid = oid
    where relname like 'idxpart%' order by relname;
 drop table idxpart;
 
+-- Verify that re-attaching an already-attached partition index can
+-- validate the parent index if it was still invalid, including
+-- indirect ancestors in subpartitions.
+create table idxpart (a int, b int) partition by range (a);
+create table idxpart1 partition of idxpart for values from (0) to (1000) partition by range (a);
+create table idxpart11 partition of idxpart1 for values from (0) to (500);
+-- Partitioned table with no partitions
+create table idxpart2 partition of idxpart for values from (1000) to (2000) partition by range (a);
+-- create parent indexes
+create index on only idxpart ((a/b));
+create index on only idxpart1 ((a/b));
+create index on only idxpart2 ((a/b));
+-- fail, leaves behind an invalid index on the leaf partition
+insert into idxpart11 values (1, 0);
+create index concurrently on idxpart11 ((a/b));
+select relname, indisvalid from pg_class join pg_index on indexrelid = oid
+   where relname like 'idxpart%' order by relname;
+-- attach the indexes; parents stay invalid
+alter index idxpart1_expr_idx attach partition idxpart11_expr_idx;
+alter index idxpart_expr_idx attach partition idxpart1_expr_idx;
+alter index idxpart_expr_idx attach partition idxpart2_expr_idx;
+select relname, indisvalid from pg_class join pg_index on indexrelid = oid
+   where relname like 'idxpart%' order by relname;
+-- fix the index on the leaf partition
+delete from idxpart11 where b = 0;
+reindex index concurrently idxpart11_expr_idx;
+-- reattach the leaf partition index; parents should now be valid
+alter index idxpart1_expr_idx attach partition idxpart11_expr_idx;
+select relname, indisvalid from pg_class join pg_index on indexrelid = oid
+   where relname like 'idxpart%' order by relname;
+drop table idxpart;
+
+-- Verify that re-attaching does not validate the parent when another
+-- child index is still invalid.
+create table idxpart (a int, b int) partition by range (a);
+create table idxpart1 partition of idxpart for values from (0) to (500);
+create table idxpart2 partition of idxpart for values from (500) to (1000);
+create index on only idxpart ((a/b));
+-- create invalid indexes on both children
+insert into idxpart1 values (1, 0);
+insert into idxpart2 values (501, 0);
+create index concurrently on idxpart1 ((a/b));
+create index concurrently on idxpart2 ((a/b));
+select relname, indisvalid from pg_class join pg_index on indexrelid = oid
+   where relname like 'idxpart%' order by relname;
+-- attach both; parent stays invalid
+alter index idxpart_expr_idx attach partition idxpart1_expr_idx;
+alter index idxpart_expr_idx attach partition idxpart2_expr_idx;
+select relname, indisvalid from pg_class join pg_index on indexrelid = oid
+   where relname like 'idxpart%' order by relname;
+-- fix only idxpart1's index, leave idxpart2's still invalid
+delete from idxpart1 where b = 0;
+reindex index concurrently idxpart1_expr_idx;
+-- re-attach the fixed child; parent should stay invalid
+alter index idxpart_expr_idx attach partition idxpart1_expr_idx;
+select relname, indisvalid from pg_class join pg_index on indexrelid = oid
+   where relname like 'idxpart%' order by relname;
+drop table idxpart;
+
 -- verify dependency handling during ALTER TABLE DETACH PARTITION
 create table idxpart (a int) partition by range (a);
 create table idxpart1 (like idxpart);
@@ -946,3 +1005,17 @@ insert into test_pg_wholerow_index values (2, 'addition', 0);
 drop index row_image_index;
 drop function row_image(test_pg_wholerow_index);
 drop table test_pg_wholerow_index;
+
+-- Test of a partitioned index attach, when there are exclusion constraints.
+create table idx_excl_part (a int4range, b int4range) partition by list (a);
+create table idx_excl_part_1 (a int4range, b int4range);
+alter table only idx_excl_part attach partition idx_excl_part_1 for values in ('[0,1)'::int4range);
+alter table only idx_excl_part add constraint idxpart_id_data_excl exclude using gist (a with =, b with &&);
+alter table idx_excl_part_1 add constraint idxpart_1_id_data_excl exclude using gist (a with &&, b with &&);
+-- This should be disallowed, because the constraints don't match.
+alter index idxpart_id_data_excl attach partition idxpart_1_id_data_excl;
+-- but if we recreate the constraint differently, it's allowed:
+alter table idx_excl_part_1 drop constraint idxpart_1_id_data_excl;
+alter table idx_excl_part_1 add constraint idxpart_1_id_data_excl exclude using gist (a with =, b with &&);
+alter index idxpart_id_data_excl attach partition idxpart_1_id_data_excl;
+-- leave these tables around, for pg_upgrade testing

@@ -541,6 +541,12 @@ SELECT * FROM gtest3 ORDER BY a;
  4 | 12
 (4 rows)
 
+-- COPY JSON should exclude generated columns, same as text/CSV
+COPY gtest1 TO stdout WITH (FORMAT json);
+{"a":1}
+{"a":2}
+{"a":3}
+{"a":4}
 -- null values
 CREATE TABLE gtest2 (a int PRIMARY KEY, b int GENERATED ALWAYS AS (NULL) STORED);
 INSERT INTO gtest2 VALUES (1);
@@ -682,6 +688,15 @@ INSERT INTO gtest20c VALUES (1);  -- ok
 INSERT INTO gtest20c VALUES (NULL);  -- fails
 ERROR:  new row for relation "gtest20c" violates check constraint "whole_row_check"
 DETAIL:  Failing row contains (null, null).
+ALTER TABLE gtest20c ALTER COLUMN b SET EXPRESSION AS (NULL::int);  -- violates constraint
+ERROR:  check constraint "whole_row_check" of relation "gtest20c" is violated by some row
+-- index with whole-row reference needs rebuild
+CREATE TABLE gtest20d (a int, b int GENERATED ALWAYS AS (a * 2) STORED);
+INSERT INTO gtest20d VALUES (1), (1);
+CREATE INDEX gtest20d_idx1 ON gtest20d (a) WHERE gtest20d = ROW (1, 2);
+ALTER TABLE gtest20d ALTER COLUMN b SET EXPRESSION AS (a * 2::bigint);  -- index rebuild
+CREATE INDEX gtest20d_idx2 ON gtest20d ((gtest20d = ROW (1, 2)));
+ALTER TABLE gtest20d ALTER COLUMN b SET EXPRESSION AS (a * 3);  -- index rebuild
 -- not-null constraints
 CREATE TABLE gtest21a (a int PRIMARY KEY, b int GENERATED ALWAYS AS (nullif(a, 0)) STORED NOT NULL);
 INSERT INTO gtest21a (a) VALUES (1);  -- ok
@@ -715,6 +730,25 @@ ERROR:  null value in column "b" of relation "gtest21b" violates not-null constr
 DETAIL:  Failing row contains (null, null).
 ALTER TABLE gtest21b ALTER COLUMN b DROP NOT NULL;
 INSERT INTO gtest21b (a) VALUES (0);  -- ok now
+-- virtual generated columns are not physically stored, even when not null
+--CREATE TABLE gtest21c (a int NOT NULL, b int GENERATED ALWAYS AS (a * 2) VIRTUAL NOT NULL, c int NOT NULL);
+--INSERT INTO gtest21c (a, c) VALUES (10, 42);
+--SELECT a, b, c FROM gtest21c;
+--DROP TABLE gtest21c;
+-- try adding a virtual generated column to an existing table with tuples,
+-- then try adding an atthasmissing column before adding a normal nullable
+-- column.
+--CREATE TABLE gtest21d (a int NOT NULL);
+--INSERT INTO gtest21d (a) VALUES(10);
+--ALTER TABLE gtest21d ADD COLUMN b INT GENERATED ALWAYS AS (a * 10) VIRTUAL NOT NULL;
+--SELECT * FROM gtest21d ORDER BY a;
+--INSERT INTO gtest21d (a) VALUES(20);
+--ALTER TABLE gtest21d ADD COLUMN c INT NOT NULL DEFAULT 1234;
+--SELECT * FROM gtest21d ORDER BY a;
+--ALTER TABLE gtest21d ADD COLUMN d INT;
+--INSERT INTO gtest21d (a, c, d) VALUES(30, 12345, 100);
+--SELECT * FROM gtest21d ORDER BY a;
+--DROP TABLE gtest21d;
 -- not-null constraint with partitioned table
 CREATE TABLE gtestnn_parent (
     f1 int,
@@ -1400,6 +1434,57 @@ Inherits:
 
 ALTER TABLE gtest30_1 ALTER COLUMN b DROP EXPRESSION;  -- error
 ERROR:  cannot drop generation expression from inherited column
+BEGIN;
+CREATE TABLE gtest30_1_1 () INHERITS (gtest30_1);
+ALTER TABLE gtest30 ALTER COLUMN b DROP EXPRESSION;
+\d gtest30_1_1
+    Table "generated_stored_tests.gtest30_1_1"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | integer |           |          | 
+Inherits:
+    gtest30_1
+
+ROLLBACK;
+-- test drop expression with subpartitions
+CREATE TABLE gtest_root (a int, b int, c int GENERATED ALWAYS AS (a + b) STORED) PARTITION BY LIST (a);
+CREATE TABLE gtest_node PARTITION OF gtest_root FOR VALUES IN (1) PARTITION BY LIST (b);
+CREATE TABLE gtest_leaf PARTITION OF gtest_node FOR VALUES IN (1);
+ALTER TABLE gtest_node ALTER COLUMN c DROP EXPRESSION;  -- fails
+ERROR:  cannot drop generation expression from inherited column
+ALTER TABLE ONLY gtest_root ALTER COLUMN c DROP EXPRESSION;  -- fails
+ERROR:  ALTER TABLE / DROP EXPRESSION must be applied to child tables too
+ALTER TABLE gtest_root ALTER COLUMN c DROP EXPRESSION;
+\d gtest_(root|node|leaf)
+     Table "generated_stored_tests.gtest_leaf"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | integer |           |          | 
+ c      | integer |           |          | 
+Partition of: gtest_node FOR VALUES IN (1)
+
+Partitioned table "generated_stored_tests.gtest_node"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | integer |           |          | 
+ c      | integer |           |          | 
+Partition of: gtest_root FOR VALUES IN (1)
+Partition key: LIST (b)
+Number of partitions: 1 (Use \d+ to list them.)
+
+Partitioned table "generated_stored_tests.gtest_root"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | integer |           |          | 
+ c      | integer |           |          | 
+Partition key: LIST (a)
+Number of partitions: 1 (Use \d+ to list them.)
+
+DROP TABLE gtest_root;
 -- composite type dependencies
 CREATE TABLE gtest31_1 (a int, b text GENERATED ALWAYS AS ('hello') STORED, c text);
 CREATE TABLE gtest31_2 (x int, y gtest31_1);
@@ -1423,6 +1508,14 @@ CREATE TABLE gtest31_1 (a int, b text GENERATED ALWAYS AS ('hello') STORED, c te
 CREATE TABLE gtest31_2 (x int, y gtest31_1);
 ALTER TABLE gtest31_1 ALTER COLUMN b TYPE varchar;  -- fails
 ERROR:  cannot alter table "gtest31_1" because column "gtest31_2.y" uses its row type
+DROP TABLE gtest31_1, gtest31_2;
+-- Check if the rowtype is used in PARTITION BY expression of another table.
+CREATE TABLE gtest31_1 (a int GENERATED ALWAYS AS (123));
+CREATE TABLE gtest31_2 (b text) PARTITION BY RANGE ((('(1)'::gtest31_1).a + length(b)));
+ALTER TABLE gtest31_1 ALTER COLUMN a TYPE bigint;
+ERROR:  cannot alter table "gtest31_1" because table gtest31_2 uses its row type
+ALTER TABLE gtest31_1 ALTER COLUMN a SET EXPRESSION AS (124);
+ERROR:  unexpected object depending on column: table gtest31_2
 DROP TABLE gtest31_1, gtest31_2;
 -- triggers
 CREATE TABLE gtest26 (
@@ -1598,6 +1691,40 @@ CREATE TABLE gtest28b (LIKE gtest28a INCLUDING GENERATED);
  c      | integer |           |          | 
  x      | integer |           |          | generated always as (b * 2) stored
 
+-- rule actions referring to generated columns:
+-- NEW.b in a rule action should reflect the generated column's new value
+CREATE TABLE gtest_rule (a int, b int GENERATED ALWAYS AS (a * 2) STORED);
+CREATE TABLE gtest_rule_log (op text, old_b int, new_b int);
+CREATE RULE gtest_rule_upd AS ON UPDATE TO gtest_rule
+  DO ALSO INSERT INTO gtest_rule_log VALUES ('UPD', OLD.b, NEW.b);
+CREATE RULE gtest_rule_ins AS ON INSERT TO gtest_rule
+  DO ALSO INSERT INTO gtest_rule_log VALUES ('INS', NULL, NEW.b);
+INSERT INTO gtest_rule (a) VALUES (1);
+UPDATE gtest_rule SET a = 10;
+UPDATE gtest_rule SET a = (SELECT max(b) FROM gtest_rule);
+SELECT * FROM gtest_rule_log;
+ op  | old_b | new_b 
+-----+-------+-------
+ INS |       |     2
+ UPD |     2 |    20
+ UPD |    20 |    40
+(3 rows)
+
+DROP RULE gtest_rule_upd ON gtest_rule;
+DROP RULE gtest_rule_ins ON gtest_rule;
+DROP TABLE gtest_rule_log;
+-- rule quals referring to generated columns:
+-- NEW.b in the rule qual should reflect the generated column's new value
+CREATE RULE gtest_rule_qual AS ON UPDATE TO gtest_rule WHERE NEW.b > 100
+  DO INSTEAD NOTHING;
+UPDATE gtest_rule SET a = 100;
+SELECT * FROM gtest_rule;
+ a  | b  
+----+----
+ 20 | 40
+(1 row)
+
+DROP TABLE gtest_rule;
 -- sanity check of system catalog
 SELECT attrelid, attname, attgenerated FROM pg_attribute WHERE attgenerated NOT IN ('', 's', 'v');
  attrelid | attname | attgenerated 

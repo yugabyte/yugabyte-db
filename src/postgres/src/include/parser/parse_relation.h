@@ -32,6 +32,7 @@ extern void checkNameSpaceConflicts(ParseState *pstate, List *namespace1,
 extern ParseNamespaceItem *GetNSItemByRangeTablePosn(ParseState *pstate,
 													 int varno,
 													 int sublevels_up);
+extern ParseNamespaceItem *GetNSItemByVar(ParseState *pstate, Var *var);
 extern RangeTblEntry *GetRTEByRangeTablePosn(ParseState *pstate,
 											 int varno,
 											 int sublevels_up);
@@ -82,14 +83,6 @@ extern ParseNamespaceItem *addRangeTableEntryForTableFunc(ParseState *pstate,
 														  Alias *alias,
 														  bool lateral,
 														  bool inFromCl);
-extern ParseNamespaceItem *addRangeTableEntryForGraphTable(ParseState *pstate,
-														   Oid graphid,
-														   GraphPattern *graph_pattern,
-														   List *columns,
-														   List *colnames,
-														   Alias *alias,
-														   bool lateral,
-														   bool inFromCl);
 extern ParseNamespaceItem *addRangeTableEntryForJoin(ParseState *pstate,
 													 List *colnames,
 													 ParseNamespaceColumn *nscolumns,

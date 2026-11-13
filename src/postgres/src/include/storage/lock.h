@@ -401,6 +401,7 @@ extern void LockReleaseCurrentOwner(LOCALLOCK **locallocks, int nlocks);
 extern void LockReassignCurrentOwner(LOCALLOCK **locallocks, int nlocks);
 extern bool LockHeldByMe(const LOCKTAG *locktag,
 						 LOCKMODE lockmode, bool orstronger);
+extern bool GetAnyGrantedHeavyweightLock(LOCKTAG *locktag);
 #ifdef USE_ASSERT_CHECKING
 extern HTAB *GetLockMethodLocalHash(void);
 #endif

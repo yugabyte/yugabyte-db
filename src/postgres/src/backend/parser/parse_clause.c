@@ -17,7 +17,6 @@
 
 #include "access/htup_details.h"
 #include "access/nbtree.h"
-#include "access/relation.h"
 #include "access/table.h"
 #include "access/tsmapi.h"
 #include "catalog/catalog.h"
@@ -36,7 +35,6 @@
 #include "parser/parse_collate.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_func.h"
-#include "parser/parse_graphtable.h"
 #include "parser/parse_oper.h"
 #include "parser/parse_relation.h"
 #include "parser/parse_target.h"
@@ -70,8 +68,6 @@ static ParseNamespaceItem *transformRangeFunction(ParseState *pstate,
 												  RangeFunction *r);
 static ParseNamespaceItem *transformRangeTableFunc(ParseState *pstate,
 												   RangeTableFunc *rtf);
-static ParseNamespaceItem *transformRangeGraphTable(ParseState *pstate,
-													RangeGraphTable *rgt);
 static TableSampleClause *transformRangeTableSample(ParseState *pstate,
 													RangeTableSample *rts);
 static ParseNamespaceItem *getNSItemForSpecialRelationTypes(ParseState *pstate,
@@ -304,7 +300,8 @@ extractRemainingColumns(ParseState *pstate,
 	return colcount;
 }
 
-/* transformJoinUsingClause()
+/*
+ * transformJoinUsingClause()
  *	  Build a complete ON clause from a partially-transformed USING list.
  *	  We are given lists of nodes representing left and right match columns.
  *	  Result is a transformed qualification expression.
@@ -364,7 +361,8 @@ transformJoinUsingClause(ParseState *pstate,
 	return result;
 }
 
-/* transformJoinOnClause()
+/*
+ * transformJoinOnClause()
  *	  Transform the qual conditions for JOIN/ON.
  *	  Result is a transformed qualification expression.
  */
@@ -906,126 +904,6 @@ transformRangeTableFunc(ParseState *pstate, RangeTableFunc *rtf)
 }
 
 /*
- * Similar to parserOpenTable() but for property graphs.
- */
-static Relation
-parserOpenPropGraph(ParseState *pstate, const RangeVar *relation, LOCKMODE lockmode)
-{
-	Relation	rel;
-	ParseCallbackState pcbstate;
-
-	setup_parser_errposition_callback(&pcbstate, pstate, relation->location);
-
-	rel = relation_openrv(relation, lockmode);
-
-	/*
-	 * In parserOpenTable(), the relkind check is done inside table_openrv*.
-	 * We do it here since we don't have anything like propgraph_open.
-	 */
-	if (rel->rd_rel->relkind != RELKIND_PROPGRAPH)
-		ereport(ERROR,
-				errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				errmsg("\"%s\" is not a property graph",
-					   RelationGetRelationName(rel)));
-
-	cancel_parser_errposition_callback(&pcbstate);
-	return rel;
-}
-
-/*
- * transformRangeGraphTable -- transform a GRAPH_TABLE clause
- */
-static ParseNamespaceItem *
-transformRangeGraphTable(ParseState *pstate, RangeGraphTable *rgt)
-{
-	Relation	rel;
-	Oid			graphid;
-	GraphTableParseState *gpstate = palloc0_object(GraphTableParseState);
-	Node	   *gp;
-	List	   *columns = NIL;
-	List	   *colnames = NIL;
-	ListCell   *lc;
-	int			resno = 0;
-	bool		saved_hasSublinks;
-
-	rel = parserOpenPropGraph(pstate, rgt->graph_name, AccessShareLock);
-
-	graphid = RelationGetRelid(rel);
-
-	gpstate->graphid = graphid;
-
-	/*
-	 * The syntax does not allow nested GRAPH_TABLE and this function
-	 * prohibits subquery within GRAPH_TABLE. There should be only one
-	 * GRAPH_TABLE being transformed at a time.
-	 */
-	Assert(!pstate->p_graph_table_pstate);
-	pstate->p_graph_table_pstate = gpstate;
-
-	Assert(!pstate->p_lateral_active);
-	pstate->p_lateral_active = true;
-
-	saved_hasSublinks = pstate->p_hasSubLinks;
-	pstate->p_hasSubLinks = false;
-
-	gp = transformGraphPattern(pstate, rgt->graph_pattern);
-
-	/*
-	 * Construct a targetlist representing the COLUMNS specified in the
-	 * GRAPH_TABLE. This uses previously constructed list of element pattern
-	 * variables in the GraphTableParseState.
-	 */
-	foreach(lc, rgt->columns)
-	{
-		ResTarget  *rt = lfirst_node(ResTarget, lc);
-		Node	   *colexpr;
-		TargetEntry *te;
-		char	   *colname;
-
-		colexpr = transformExpr(pstate, rt->val, EXPR_KIND_SELECT_TARGET);
-
-		if (rt->name)
-			colname = rt->name;
-		else
-		{
-			if (IsA(colexpr, GraphPropertyRef))
-				colname = get_propgraph_property_name(castNode(GraphPropertyRef, colexpr)->propid);
-			else
-			{
-				ereport(ERROR,
-						errcode(ERRCODE_SYNTAX_ERROR),
-						errmsg("complex graph table column must specify an explicit column name"),
-						parser_errposition(pstate, rt->location));
-				colname = NULL;
-			}
-		}
-
-		colnames = lappend(colnames, makeString(colname));
-
-		te = makeTargetEntry((Expr *) colexpr, ++resno, colname, false);
-		columns = lappend(columns, te);
-	}
-
-	table_close(rel, NoLock);
-
-	pstate->p_graph_table_pstate = NULL;
-	pstate->p_lateral_active = false;
-
-	/*
-	 * If we support subqueries within GRAPH_TABLE, those need to be
-	 * propagated to the queries resulting from rewriting graph table RTE. We
-	 * don't do that right now, hence prohibit it for now.
-	 */
-	if (pstate->p_hasSubLinks)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("subqueries within GRAPH_TABLE reference are not supported")));
-	pstate->p_hasSubLinks = saved_hasSublinks;
-
-	return addRangeTableEntryForGraphTable(pstate, graphid, castNode(GraphPattern, gp), columns, colnames, rgt->alias, false, true);
-}
-
-/*
  * transformRangeTableSample --- transform a TABLESAMPLE clause
  *
  * Caller has already transformed rts->relation, we just have to validate
@@ -1242,18 +1120,6 @@ transformFromClauseItem(ParseState *pstate, Node *n,
 		else
 			nsitem = transformRangeTableFunc(pstate, (RangeTableFunc *) n);
 
-		*top_nsitem = nsitem;
-		*namespace = list_make1(nsitem);
-		rtr = makeNode(RangeTblRef);
-		rtr->rtindex = nsitem->p_rtindex;
-		return (Node *) rtr;
-	}
-	else if (IsA(n, RangeGraphTable))
-	{
-		RangeTblRef *rtr;
-		ParseNamespaceItem *nsitem;
-
-		nsitem = transformRangeGraphTable(pstate, (RangeGraphTable *) n);
 		*top_nsitem = nsitem;
 		*namespace = list_make1(nsitem);
 		rtr = makeNode(RangeTblRef);
@@ -2737,9 +2603,6 @@ transformGroupingSet(List **flatresult,
  * GROUP BY items will be added to the targetlist (as resjunk columns)
  * if not already present, so the targetlist must be passed by reference.
  *
- * If GROUP BY ALL is specified, the groupClause will be inferred to be all
- * non-aggregate, non-window expressions in the targetlist.
- *
  * This is also used for window PARTITION BY clauses (which act almost the
  * same, but are always interpreted per SQL99 rules).
  *
@@ -2764,7 +2627,6 @@ transformGroupingSet(List **flatresult,
  *
  * pstate		ParseState
  * grouplist	clause to transform
- * groupByAll	is this a GROUP BY ALL statement?
  * groupingSets reference to list to contain the grouping set tree
  * targetlist	reference to TargetEntry list
  * sortClause	ORDER BY clause (SortGroupClause nodes)
@@ -2772,8 +2634,7 @@ transformGroupingSet(List **flatresult,
  * useSQL99		SQL99 rather than SQL92 syntax
  */
 List *
-transformGroupClause(ParseState *pstate, List *grouplist, bool groupByAll,
-					 List **groupingSets,
+transformGroupClause(ParseState *pstate, List *grouplist, List **groupingSets,
 					 List **targetlist, List *sortClause,
 					 ParseExprKind exprKind, bool useSQL99)
 {
@@ -2783,63 +2644,6 @@ transformGroupClause(ParseState *pstate, List *grouplist, bool groupByAll,
 	ListCell   *gl;
 	bool		hasGroupingSets = false;
 	Bitmapset  *seen_local = NULL;
-
-	/* Handle GROUP BY ALL */
-	if (groupByAll)
-	{
-		/* There cannot have been any explicit grouplist items */
-		Assert(grouplist == NIL);
-
-		/* Iterate over targets, adding acceptable ones to the result list */
-		foreach_ptr(TargetEntry, tle, *targetlist)
-		{
-			/* Ignore junk TLEs */
-			if (tle->resjunk)
-				continue;
-
-			/*
-			 * TLEs containing aggregates are not okay to add to GROUP BY
-			 * (compare checkTargetlistEntrySQL92).  But the SQL standard
-			 * directs us to skip them, so it's fine.
-			 */
-			if (pstate->p_hasAggs &&
-				contain_aggs_of_level((Node *) tle->expr, 0))
-				continue;
-
-			/*
-			 * Likewise, TLEs containing window functions are not okay to add
-			 * to GROUP BY.  At this writing, the SQL standard is silent on
-			 * what to do with them, but by analogy to aggregates we'll just
-			 * skip them.
-			 */
-			if (pstate->p_hasWindowFuncs &&
-				contain_windowfuncs((Node *) tle->expr))
-				continue;
-
-			/*
-			 * Otherwise, add the TLE to the result using default sort/group
-			 * semantics.  We specify the parse location as the TLE's
-			 * location, despite the comment for addTargetToGroupList
-			 * discouraging that.  The only other thing we could point to is
-			 * the ALL keyword, which seems unhelpful when there are multiple
-			 * TLEs.
-			 */
-			result = addTargetToGroupList(pstate, tle,
-										  result, *targetlist,
-										  exprLocation((Node *) tle->expr));
-		}
-
-		/* If we found any acceptable targets, we're done */
-		if (result != NIL)
-			return result;
-
-		/*
-		 * Otherwise, the SQL standard says to treat it like "GROUP BY ()".
-		 * Build a representation of that, and let the rest of this function
-		 * handle it.
-		 */
-		grouplist = list_make1(makeGroupingSet(GROUPING_SET_EMPTY, NIL, -1));
-	}
 
 	/*
 	 * Recursively flatten implicit RowExprs. (Technically this is only needed
@@ -3019,7 +2823,6 @@ transformWindowDefinitions(ParseState *pstate,
 										  true /* force SQL99 rules */ );
 		partitionClause = transformGroupClause(pstate,
 											   windef->partitionClause,
-											   false /* not GROUP BY ALL */ ,
 											   NULL,
 											   targetlist,
 											   orderClause,

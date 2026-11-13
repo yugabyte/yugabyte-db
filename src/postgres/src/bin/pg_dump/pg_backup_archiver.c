@@ -92,7 +92,7 @@ static int	RestoringToDB(ArchiveHandle *AH);
 static void dump_lo_buf(ArchiveHandle *AH);
 static void dumpTimestamp(ArchiveHandle *AH, const char *msg, time_t tim);
 static void SetOutput(ArchiveHandle *AH, const char *filename,
-					  const pg_compress_specification compression_spec, bool append_data);
+					  const pg_compress_specification compression_spec);
 static CompressFileHandle *SaveOutput(ArchiveHandle *AH);
 static void RestoreOutput(ArchiveHandle *AH, CompressFileHandle *savedOutput);
 
@@ -406,14 +406,9 @@ ProcessArchiveRestoreOptions(Archive *AHX)
 		StrictNamesCheck(ropt);
 }
 
-/*
- * RestoreArchive
- *
- * If append_data is set, then append data into file as we are restoring dump
- * of multiple databases which was taken by pg_dumpall.
- */
+/* Public */
 void
-RestoreArchive(Archive *AHX, bool append_data)
+RestoreArchive(Archive *AHX)
 {
 	ArchiveHandle *AH = (ArchiveHandle *) AHX;
 	RestoreOptions *ropt = AH->public.ropt;
@@ -530,7 +525,7 @@ RestoreArchive(Archive *AHX, bool append_data)
 	 */
 	sav = SaveOutput(AH);
 	if (ropt->filename || ropt->compression_spec.algorithm != PG_COMPRESSION_NONE)
-		SetOutput(AH, ropt->filename, ropt->compression_spec, append_data);
+		SetOutput(AH, ropt->filename, ropt->compression_spec);
 
 	ahprintf(AH, "--\n-- YSQL database dump\n--\n\n");
 
@@ -832,19 +827,6 @@ RestoreArchive(Archive *AHX, bool append_data)
 		{
 			if ((te->reqs & (REQ_SCHEMA | REQ_DATA | REQ_STATS)) == 0)
 				continue;		/* ignore if not to be dumped at all */
-
-			/* Skip if no-tablespace is given. */
-			if (ropt->noTablespace && te && te->desc &&
-				(strcmp(te->desc, "TABLESPACE") == 0))
-				continue;
-
-			/*
-			 * Skip DROP DATABASE/ROLES/TABLESPACE if we didn't specify
-			 * --clean
-			 */
-			if (!ropt->dropSchema && te && te->desc &&
-				strcmp(te->desc, "DROP_GLOBAL") == 0)
-				continue;
 
 			switch (_tocEntryRestorePass(te))
 			{
@@ -1408,7 +1390,7 @@ PrintTOCSummary(Archive *AHX)
 
 	sav = SaveOutput(AH);
 	if (ropt->filename)
-		SetOutput(AH, ropt->filename, out_compression_spec, false);
+		SetOutput(AH, ropt->filename, out_compression_spec);
 
 	if (strftime(stamp_str, sizeof(stamp_str), PGDUMP_STRFTIME_FMT,
 				 localtime(&AH->createDate)) == 0)
@@ -1747,7 +1729,7 @@ archputs(const char *s, Archive *AH)
 
 /* Public */
 int
-archprintf(Archive *AH, const char *fmt,...)
+archprintf(Archive *AH, const char *fmt, ...)
 {
 	int			save_errno = errno;
 	char	   *p;
@@ -1783,15 +1765,11 @@ archprintf(Archive *AH, const char *fmt,...)
 
 /*******************************
  * Stuff below here should be 'private' to the archiver routines
- *
- * If append_data is set, then append data into file as we are restoring dump
- * of multiple databases which was taken by pg_dumpall.
  *******************************/
 
 static void
 SetOutput(ArchiveHandle *AH, const char *filename,
-		  const pg_compress_specification compression_spec,
-		  bool append_data)
+		  const pg_compress_specification compression_spec)
 {
 	CompressFileHandle *CFH;
 	const char *mode;
@@ -1811,7 +1789,7 @@ SetOutput(ArchiveHandle *AH, const char *filename,
 	else
 		fn = fileno(stdout);
 
-	if (append_data || AH->mode == archModeAppend)
+	if (AH->mode == archModeAppend)
 		mode = PG_BINARY_A;
 	else
 		mode = PG_BINARY_W;
@@ -1851,7 +1829,7 @@ RestoreOutput(ArchiveHandle *AH, CompressFileHandle *savedOutput)
  *	Print formatted text to the output file (usually stdout).
  */
 int
-ahprintf(ArchiveHandle *AH, const char *fmt,...)
+ahprintf(ArchiveHandle *AH, const char *fmt, ...)
 {
 	int			save_errno = errno;
 	char	   *p;
@@ -1989,7 +1967,7 @@ ahwrite(const void *ptr, size_t size, size_t nmemb, ArchiveHandle *AH)
 
 /* on some error, we may decide to go on... */
 void
-warn_or_exit_horribly(ArchiveHandle *AH, const char *fmt,...)
+warn_or_exit_horribly(ArchiveHandle *AH, const char *fmt, ...)
 {
 	va_list		ap;
 
@@ -2487,7 +2465,7 @@ _allocAH(const char *FileSpec, const ArchiveFormat fmt,
 
 	/* initialize for backwards compatible string processing */
 	AH->public.encoding = 0;	/* PG_SQL_ASCII */
-	AH->public.std_strings = true;
+	AH->public.std_strings = false;
 
 	/* sql error handling */
 	AH->public.exit_on_error = true;
@@ -2925,7 +2903,20 @@ ReadToc(ArchiveHandle *AH)
 					depSize *= 2;
 					deps = pg_realloc_array(deps, DumpId, depSize);
 				}
-				sscanf(tmp, "%d", &deps[depIdx]);
+
+				/*
+				 * Sanity check.  Dependencies are used as subscripts into
+				 * arrays indexed by dump ID, so we can't let a corrupt TOC
+				 * hand us a value that isn't a valid dump ID.  Pre-8.0
+				 * archives record OIDs here instead, which needn't fit in a
+				 * DumpId.  Those are only ever used with bounds checks, since
+				 * such archives can't be restored in parallel, so leave them
+				 * be.
+				 */
+				if (sscanf(tmp, "%d", &deps[depIdx]) != 1 ||
+					(AH->version >= K_VERS_1_8 && deps[depIdx] <= 0))
+					pg_fatal("dependency ID \"%s\" out of range -- perhaps a corrupt TOC",
+							 tmp);
 				free(tmp);
 				depIdx++;
 			}
@@ -3124,16 +3115,6 @@ _tocEntryRequired(TocEntry *te, teSection curSection, ArchiveHandle *AH)
 	}
 
 	/*
-	 * Global object TOC entries (e.g., ROLEs or TABLESPACEs) must not be
-	 * ignored.
-	 */
-	if (strcmp(te->desc, "ROLE") == 0 ||
-		strcmp(te->desc, "ROLE PROPERTIES") == 0 ||
-		strcmp(te->desc, "TABLESPACE") == 0 ||
-		strcmp(te->desc, "DROP_GLOBAL") == 0)
-		return REQ_SCHEMA;
-
-	/*
 	 * Process exclusions that affect certain classes of TOC entries.
 	 */
 
@@ -3168,14 +3149,6 @@ _tocEntryRequired(TocEntry *te, teSection curSection, ArchiveHandle *AH)
 		if (ropt->no_subscriptions &&
 			strncmp(te->tag, "SUBSCRIPTION", strlen("SUBSCRIPTION")) == 0)
 			return 0;
-
-		/*
-		 * Comments on global objects (ROLEs or TABLESPACEs) should not be
-		 * skipped, since global objects themselves are never skipped.
-		 */
-		if (strncmp(te->tag, "ROLE", strlen("ROLE")) == 0 ||
-			strncmp(te->tag, "TABLESPACE", strlen("TABLESPACE")) == 0)
-			return REQ_SCHEMA;
 	}
 
 	/*
@@ -3205,18 +3178,12 @@ _tocEntryRequired(TocEntry *te, teSection curSection, ArchiveHandle *AH)
 		if (ropt->no_subscriptions &&
 			strncmp(te->tag, "SUBSCRIPTION", strlen("SUBSCRIPTION")) == 0)
 			return 0;
-
-		/*
-		 * Security labels on global objects (ROLEs or TABLESPACEs) should not
-		 * be skipped, since global objects themselves are never skipped.
-		 */
-		if (strncmp(te->tag, "ROLE", strlen("ROLE")) == 0 ||
-			strncmp(te->tag, "TABLESPACE", strlen("TABLESPACE")) == 0)
-			return REQ_SCHEMA;
 	}
 
 	/* If it's a subscription, maybe ignore it */
-	if (ropt->no_subscriptions && strcmp(te->desc, "SUBSCRIPTION") == 0)
+	if (ropt->no_subscriptions &&
+		(strcmp(te->desc, "SUBSCRIPTION") == 0 ||
+		 strcmp(te->desc, "SUBSCRIPTION TABLE") == 0))
 		return 0;
 
 	/* Ignore it if section is not to be dumped/restored */
@@ -3248,7 +3215,6 @@ _tocEntryRequired(TocEntry *te, teSection curSection, ArchiveHandle *AH)
 	 */
 	if (strcmp(te->desc, "ACL") == 0 ||
 		strcmp(te->desc, "COMMENT") == 0 ||
-		strcmp(te->desc, "STATISTICS DATA") == 0 ||
 		strcmp(te->desc, "SECURITY LABEL") == 0)
 	{
 		/* Database properties react to createDB, not selectivity options. */
@@ -3319,14 +3285,52 @@ _tocEntryRequired(TocEntry *te, teSection curSection, ArchiveHandle *AH)
 
 		if (ropt->selTypes)
 		{
-			if (strcmp(te->desc, "TABLE") == 0 ||
-				strcmp(te->desc, "TABLE DATA") == 0 ||
-				strcmp(te->desc, "VIEW") == 0 ||
-				strcmp(te->desc, "FOREIGN TABLE") == 0 ||
-				strcmp(te->desc, "MATERIALIZED VIEW") == 0 ||
-				strcmp(te->desc, "MATERIALIZED VIEW DATA") == 0 ||
-				strcmp(te->desc, "SEQUENCE") == 0 ||
-				strcmp(te->desc, "SEQUENCE SET") == 0)
+			if (strcmp(te->desc, "STATISTICS DATA") == 0)
+			{
+				bool		dumpthis = false;
+
+				/*
+				 * Statistics data entries can be for tables or indexes. Check
+				 * the parent dependency to determine which type this entry
+				 * belongs to, then apply the appropriate name filter.
+				 */
+				for (int i = 0; i < te->nDeps; i++)
+				{
+					TocEntry   *pte = getTocEntryByDumpId(AH, te->dependencies[i]);
+
+					if (!pte)
+						continue;
+
+					if (ropt->selTable &&
+						(strcmp(pte->desc, "TABLE") == 0 ||
+						 strcmp(pte->desc, "VIEW") == 0 ||
+						 strcmp(pte->desc, "FOREIGN TABLE") == 0 ||
+						 strcmp(pte->desc, "MATERIALIZED VIEW") == 0))
+					{
+						if (ropt->tableNames.head == NULL ||
+							simple_string_list_member(&ropt->tableNames, pte->tag))
+							dumpthis = true;
+					}
+
+					if (ropt->selIndex &&
+						strcmp(pte->desc, "INDEX") == 0)
+					{
+						if (ropt->indexNames.head == NULL ||
+							simple_string_list_member(&ropt->indexNames, pte->tag))
+							dumpthis = true;
+					}
+				}
+				if (!dumpthis)
+					return 0;
+			}
+			else if (strcmp(te->desc, "TABLE") == 0 ||
+					 strcmp(te->desc, "TABLE DATA") == 0 ||
+					 strcmp(te->desc, "VIEW") == 0 ||
+					 strcmp(te->desc, "FOREIGN TABLE") == 0 ||
+					 strcmp(te->desc, "MATERIALIZED VIEW") == 0 ||
+					 strcmp(te->desc, "MATERIALIZED VIEW DATA") == 0 ||
+					 strcmp(te->desc, "SEQUENCE") == 0 ||
+					 strcmp(te->desc, "SEQUENCE SET") == 0)
 			{
 				if (!ropt->selTable)
 					return 0;
@@ -3716,14 +3720,16 @@ _reconnectToDB(ArchiveHandle *AH, const char *dbname)
 		 * Anything added between this line and the following \restrict must
 		 * be careful to avoid any possible meta-command injection vectors.
 		 */
-		ahprintf(AH, "\\unrestrict %s\n", ropt->restrict_key);
+		if (ropt->restrict_key)
+			ahprintf(AH, "\\unrestrict %s\n", ropt->restrict_key);
 
 		initPQExpBuffer(&connectbuf);
 		appendPsqlMetaConnect(&connectbuf, dbname);
 		ahprintf(AH, "%s", connectbuf.data);
 		termPQExpBuffer(&connectbuf);
 
-		ahprintf(AH, "\\restrict %s\n\n", ropt->restrict_key);
+		if (ropt->restrict_key)
+			ahprintf(AH, "\\restrict %s\n\n", ropt->restrict_key);
 	}
 
 	/*
@@ -4035,7 +4041,6 @@ _getObjectDescription(PQExpBuffer buf, const TocEntry *te)
 		strcmp(type, "DOMAIN") == 0 ||
 		strcmp(type, "FOREIGN TABLE") == 0 ||
 		strcmp(type, "MATERIALIZED VIEW") == 0 ||
-		strcmp(type, "PROPERTY GRAPH") == 0 ||
 		strcmp(type, "SEQUENCE") == 0 ||
 		strcmp(type, "STATISTICS") == 0 ||
 		strcmp(type, "TABLE") == 0 ||
@@ -4076,9 +4081,15 @@ _getObjectDescription(PQExpBuffer buf, const TocEntry *te)
 			 strcmp(type, "OPERATOR FAMILY") == 0 ||
 			 strcmp(type, "PROCEDURE") == 0)
 	{
-		/* Chop "DROP " off the front and make a modifiable copy */
-		char	   *first = pg_strdup(te->dropStmt + 5);
+		char	   *first;
 		char	   *last;
+
+		if (strncmp(te->dropStmt, "DROP ", 5) != 0)
+			pg_fatal("unexpected DROP statement for object type \"%s\" -- perhaps a corrupt TOC",
+					 type);
+
+		/* Chop "DROP " off the front and make a modifiable copy */
+		first = pg_strdup(te->dropStmt + 5);
 
 		/* point to last character in string */
 		last = first + strlen(first) - 1;
@@ -4097,9 +4108,6 @@ _getObjectDescription(PQExpBuffer buf, const TocEntry *te)
 	else if (strcmp(type, "CAST") == 0 ||
 			 strcmp(type, "CHECK CONSTRAINT") == 0 ||
 			 strcmp(type, "CONSTRAINT") == 0 ||
-			 strcmp(type, "DROP_GLOBAL") == 0 ||
-			 strcmp(type, "ROLE PROPERTIES") == 0 ||
-			 strcmp(type, "ROLE") == 0 ||
 			 strcmp(type, "DATABASE PROPERTIES") == 0 ||
 			 strcmp(type, "DEFAULT") == 0 ||
 			 strcmp(type, "FK CONSTRAINT") == 0 ||

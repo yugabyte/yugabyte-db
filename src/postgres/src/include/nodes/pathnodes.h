@@ -519,6 +519,9 @@ struct PlannerInfo
 	/* list of PlaceHolderInfos */
 	List	   *placeholder_list;
 
+	/* PHVs made by flatten_join_alias_vars, with phlevelsup = 0 */
+	List	   *join_alias_phvs;
+
 	/* list of AggClauseInfos */
 	List	   *agg_clause_list;
 
@@ -2033,16 +2036,35 @@ typedef struct PathTarget
  * avoid recalculations, but mostly to ensure that the estimated rowcount
  * is in fact the same for every such path.
  *
- * Note: ppi_clauses is only used in ParamPathInfos for base relation paths;
+ * ppi_req_outer, which is the lookup key for ParamPathInfo, is currently
+ * the only field that is guaranteed to be valid in all cases.
+ *
+ * ppi_rows is maintained for base rels and join rels, but it's not presently
+ * meaningful for append relations nor for wrapper paths.  We copy it into
+ * parameterized Paths formed for base and join rels, but append paths and
+ * wrapper paths compute their rows estimates independently of it.
+ *
+ * ppi_clauses is the set of join clauses that could be evaluated at the
+ * given relation given the specified outer rels as parameter sources.
+ * ppi_clauses is only used in ParamPathInfos for base relation paths;
  * in join cases it's NIL because the set of relevant clauses varies depending
  * on how the join is formed.  The relevant clauses will appear in each
  * parameterized join path's joinrestrictinfo list, instead.  ParamPathInfos
- * for append relations don't bother with this, either.
+ * for append relations likewise set ppi_clauses to NIL, mainly because
+ * there could be a join underneath, rendering the append's clause set just
+ * as variable as the join's is.  The exception is that create_append_path
+ * uses get_baserel_parampathinfo for an appendrel that is a baserel; its
+ * ppi_clauses can then include clauses that no child path enforces, such as
+ * one derived from an EquivalenceClass member that also references another
+ * rel and so has no child version.
  *
  * ppi_serials is the set of rinfo_serial numbers for quals that are enforced
- * by this path.  As with ppi_clauses, it's only maintained for baserels.
- * (We could construct it on-the-fly from ppi_clauses, but it seems better
- * to materialize a copy.)
+ * by this path.  As with ppi_clauses, it's only maintained for baserels, and
+ * for a baserel appendrel it can likewise claim clauses that are not really
+ * enforced.  (We could construct it on-the-fly from ppi_clauses, but it seems
+ * better to materialize a copy.)  Use get_param_path_clause_serials() to
+ * compute the set of rinfo_serial numbers for a Path that might not be for a
+ * baserel.
  *
  * YB: yb_ppi_relegated_clauses lists the clauses that are movable into a base
  * relation path but were withheld from ppi_clauses because they reference a
@@ -3030,7 +3052,6 @@ typedef struct ModifyTablePath
 	List	   *returningLists; /* per-target-table RETURNING tlists */
 	List	   *rowMarks;		/* PlanRowMarks (non-locking only) */
 	OnConflictExpr *onconflict; /* ON CONFLICT clause, or NULL */
-	ForPortionOfExpr *forPortionOf; /* FOR PORTION OF clause for UPDATE/DELETE */
 	int			epqParam;		/* ID of Param for EvalPlanQual re-eval */
 	List	   *mergeActionLists;	/* per-target-table lists of actions for
 									 * MERGE */
@@ -3131,7 +3152,7 @@ typedef struct LimitPath
  * clause and null Vars that it uses.  In practice we only bother to populate
  * it for "clone" clauses, as it's currently only needed to prevent multiple
  * clones of the same clause from being accepted for evaluation at the same
- * join level.
+ * plan level, whether at a join or within a parameterized path.
  *
  * There is also an outer_relids field, which is NULL except for outer join
  * clauses; for those, it is the set of relids on the outer side of the
@@ -3294,7 +3315,10 @@ typedef struct RestrictInfo
 	/* eval cost of clause; -1 if not yet set */
 	QualCost	eval_cost pg_node_attr(equal_ignore);
 
-	/* selectivity for "normal" (JOIN_INNER) semantics; -1 if not yet set */
+	/*
+	 * selectivity for "normal" (JOIN_INNER) semantics; -1 if not yet set; >1
+	 * means a redundant clause
+	 */
 	Selectivity norm_selec pg_node_attr(equal_ignore);
 	/* selectivity for outer join semantics; -1 if not yet set */
 	Selectivity outer_selec pg_node_attr(equal_ignore);
@@ -3495,8 +3519,7 @@ typedef struct YbBatchedExpr
  * join_info_list member are only LEFT, FULL, SEMI, or ANTI.
  *
  * ojrelid is the RT index of the join RTE representing this outer join,
- * if there is one.  It is zero when jointype is INNER or SEMI, and can be
- * zero for jointype ANTI (if the join was transformed from a SEMI join).
+ * if there is one.  It is zero when jointype is INNER or SEMI.
  * One use for this field is that when constructing the output targetlist of a
  * join relation that implements this OJ, we add ojrelid to the varnullingrels
  * and phnullingrels fields of nullable (RHS) output columns, so that the
@@ -3704,6 +3727,20 @@ typedef struct RowIdentityVarInfo
 	char	   *rowidname;		/* name of the resjunk column */
 	Relids		rowidrels;		/* RTE indexes of target rels using this */
 } RowIdentityVarInfo;
+
+/*
+ * One element of the list passed to query_is_distinct_for().  Each entry
+ * names a subquery output column that the caller needs to be distinct over,
+ * plus the upper-level equality operator and its input collation, so that
+ * the subquery's own DISTINCT/GROUP BY/set-op clauses can be compared for
+ * compatibility.
+ */
+typedef struct DistinctColInfo
+{
+	int			colno;			/* subquery output column resno */
+	Oid			opid;			/* upper-level equality operator */
+	Oid			collid;			/* input collation of opid */
+} DistinctColInfo;
 
 /*
  * For each distinct placeholder expression generated during planning, we

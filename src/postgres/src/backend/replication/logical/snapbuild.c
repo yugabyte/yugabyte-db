@@ -156,14 +156,6 @@
 static ResourceOwner SavedResourceOwnerDuringExport = NULL;
 static bool ExportInProgress = false;
 
-/*
- * If a backend is going to do logical decoding and the output plugin does
- * not need to access shared catalogs, setting this variable to false can make
- * the decoding startup faster. In particular, the backend will not need to
- * wait for completion of already running transactions in other databases.
- */
-bool		accessSharedCatalogsInDecoding = true;
-
 /* ->committed and ->catchange manipulation */
 static void SnapBuildPurgeOlderTxn(SnapBuild *builder);
 
@@ -237,9 +229,6 @@ AllocateSnapshotBuilder(ReorderBuffer *reorder,
 
 	MemoryContextSwitchTo(oldcontext);
 
-	/* The default is that shared catalog are used. */
-	accessSharedCatalogsInDecoding = true;
-
 	return builder;
 }
 
@@ -257,9 +246,6 @@ FreeSnapshotBuilder(SnapBuild *builder)
 		SnapBuildSnapDecRefcount(builder->snapshot);
 		builder->snapshot = NULL;
 	}
-
-	/* The default is that shared catalog are used. */
-	accessSharedCatalogsInDecoding = true;
 
 	/* other resources are deallocated via memory context reset */
 	MemoryContextDelete(context);
@@ -375,6 +361,12 @@ SnapBuildSnapDecRefcount(Snapshot snap)
  * In-progress transactions with catalog access are *not* allowed to modify
  * these snapshots; they have to copy them and fill in appropriate ->curcid
  * and ->subxip/subxcnt values.
+ *
+ * Note that some of the transactions in the returned snapshot->xip might not
+ * have finished committing yet (we saw their commit WAL records, but we don't
+ * know if they've removed themselves from procarray).  Callers that want to
+ * use the returned snapshot as an MVCC one must wait for this to happen; see
+ * SnapBuildInitialSnapshot().
  */
 static Snapshot
 SnapBuildBuildSnapshot(SnapBuild *builder)
@@ -487,10 +479,39 @@ SnapBuildInitialSnapshot(SnapBuild *builder)
 	snap = SnapBuildBuildSnapshot(builder);
 
 	/*
-	 * We know that snap->xmin is alive, enforced by the logical xmin
-	 * mechanism. Due to that we can do this without locks, we're only
-	 * changing our own value.
+	 * Transactions appear in snap->xip as soon as their commit WAL records
+	 * are decoded, but that doesn't imply they can be considered committed in
+	 * a regular MVCC snapshot: that happens only when they remove themselves
+	 * from procarray.  Wait for this to happen; otherwise somebody using the
+	 * snapshot might set hint bits incorrectly.
 	 *
+	 * This is not needed during recovery, because the decoded commit record
+	 * has been replayed already.
+	 */
+	if (!RecoveryInProgress())
+	{
+		RunningTransactions running;
+
+		running = GetRunningTransactionData();
+		LWLockRelease(ProcArrayLock);
+		LWLockRelease(XidGenLock);
+
+		/*
+		 * Note we walk the array up to running->xcnt only, omitting this wait
+		 * for subtransactions: the subxacts are covered by their top-level
+		 * transaction already, there's no need for an additional wait.
+		 */
+		for (int i = 0; i < running->xcnt; i++)
+		{
+			TransactionId running_xid = running->xids[i];
+
+			if (bsearch(&running_xid, snap->xip, snap->xcnt,
+						sizeof(TransactionId), xidComparator) != NULL)
+				XactLockTableWait(running_xid, NULL, NULL, XLTW_None);
+		}
+	}
+
+	/*
 	 * Building an initial snapshot is expensive and an unenforced xmin
 	 * horizon would have bad consequences, therefore always double-check that
 	 * the horizon is enforced.
@@ -503,6 +524,11 @@ SnapBuildInitialSnapshot(SnapBuild *builder)
 		elog(ERROR, "cannot build an initial slot snapshot as oldest safe xid %u follows snapshot's xmin %u",
 			 safeXid, snap->xmin);
 
+	/*
+	 * We know that snap->xmin is alive, enforced by the logical xmin
+	 * mechanism. Due to that we can do this without locks, we're only
+	 * changing our own value.
+	 */
 	MyProc->xmin = snap->xmin;
 
 	/* allocate in transaction context */
@@ -744,7 +770,7 @@ SnapBuildProcessNewCid(SnapBuild *builder, TransactionId xid,
 	 */
 	ReorderBufferXidSetCatalogChanges(builder->reorder, xid, lsn);
 
-	ReorderBufferAddNewTupleCids(builder->reorder, xlrec->top_xid, lsn,
+	ReorderBufferAddNewTupleCids(builder->reorder, xlrec->top_xid, xid, lsn,
 								 xlrec->target_locator, xlrec->target_tid,
 								 xlrec->cmin, xlrec->cmax,
 								 xlrec->combocid);
@@ -1181,8 +1207,7 @@ SnapBuildXidHasCatalogChanges(SnapBuild *builder, TransactionId xid,
  * anymore.
  */
 void
-SnapBuildProcessRunningXacts(SnapBuild *builder, XLogRecPtr lsn, xl_running_xacts *running,
-							 bool db_specific)
+SnapBuildProcessRunningXacts(SnapBuild *builder, XLogRecPtr lsn, xl_running_xacts *running)
 {
 	ReorderBufferTXN *txn;
 	TransactionId xmin;
@@ -1194,49 +1219,12 @@ SnapBuildProcessRunningXacts(SnapBuild *builder, XLogRecPtr lsn, xl_running_xact
 	 */
 	if (builder->state < SNAPBUILD_CONSISTENT)
 	{
-		/*
-		 * To reduce the potential for unnecessarily waiting for completion of
-		 * unrelated transactions, the caller can declare that only
-		 * transactions of the current database are relevant at this stage.
-		 */
-		if (db_specific)
-		{
-			/*
-			 * If we must only keep track of transactions running in the
-			 * current database, we need transaction info from exactly that
-			 * database.
-			 */
-			if (running->dbid != MyDatabaseId)
-			{
-				LogStandbySnapshot(MyDatabaseId);
-
-				return;
-			}
-
-			/*
-			 * We'd better be able to check during scan if the plugin does not
-			 * lie.
-			 */
-			if (accessSharedCatalogsInDecoding)
-				accessSharedCatalogsInDecoding = false;
-		}
-
 		/* returns false if there's no point in performing cleanup just yet */
 		if (!SnapBuildFindSnapshot(builder, lsn, running))
 			return;
 	}
 	else
 		SnapBuildSerialize(builder, lsn);
-
-	/*
-	 * Database specific transaction info may exist to reach CONSISTENT state
-	 * faster, however the code below makes no use of it. Moreover, such
-	 * record might cause problems because the following normal (cluster-wide)
-	 * record can have lower value of oldestRunningXid. In that case, let's
-	 * wait with the cleanup for the next regular cluster-wide record.
-	 */
-	if (OidIsValid(running->dbid))
-		return;
 
 	/*
 	 * Update range of interesting xids based on the running xacts
@@ -1395,7 +1383,7 @@ SnapBuildFindSnapshot(SnapBuild *builder, XLogRecPtr lsn, xl_running_xacts *runn
 		builder->state = SNAPBUILD_CONSISTENT;
 		builder->next_phase_at = InvalidTransactionId;
 
-		ereport(DEBUG1,
+		ereport(LogicalDecodingLogLevel(),
 				errmsg("logical decoding found consistent point at %X/%08X",
 					   LSN_FORMAT_ARGS(lsn)),
 				errdetail("There are no running transactions."));
@@ -1492,7 +1480,7 @@ SnapBuildFindSnapshot(SnapBuild *builder, XLogRecPtr lsn, xl_running_xacts *runn
 		builder->state = SNAPBUILD_CONSISTENT;
 		builder->next_phase_at = InvalidTransactionId;
 
-		ereport(DEBUG1,
+		ereport(LogicalDecodingLogLevel(),
 				errmsg("logical decoding found consistent point at %X/%08X",
 					   LSN_FORMAT_ARGS(lsn)),
 				errdetail("There are no old transactions anymore."));
@@ -1548,11 +1536,7 @@ SnapBuildWaitSnapshot(xl_running_xacts *running, TransactionId cutoff)
 	 */
 	if (!RecoveryInProgress())
 	{
-		/*
-		 * If the last transaction info was about specific database, so needs
-		 * to be the next one - at least until we're in the CONSISTENT state.
-		 */
-		LogStandbySnapshot(running->dbid);
+		LogStandbySnapshot();
 	}
 }
 
@@ -2002,7 +1986,7 @@ SnapBuildRestore(SnapBuild *builder, XLogRecPtr lsn)
 
 	Assert(builder->state == SNAPBUILD_CONSISTENT);
 
-	ereport(DEBUG1,
+	ereport(LogicalDecodingLogLevel(),
 			errmsg("logical decoding found consistent point at %X/%08X",
 				   LSN_FORMAT_ARGS(lsn)),
 			errdetail("Logical decoding will begin using saved snapshot."));

@@ -219,8 +219,9 @@ slashUsage(unsigned short int pager)
 
 	HELP0("Informational\n");
 	HELP0("  (options: S = show system objects, x = expanded mode, + = additional detail)\n");
-	HELP0("  \\d[Sx+]                list tables, views, sequences, and property graphs\n");
-	HELP0("  \\d[S+]   NAME          describe table, view, sequence, index, or property graph\n");
+	HELP0("  \\d[Sx+]                list tables, views, and sequences\n");
+	HELP0("  \\d[Sx+]  NAME          describe table, view, sequence, or index\n");
+	HELP0("                         (x applies only to sequences)\n");
 	HELP0("  \\da[Sx]  [PATTERN]     list aggregates\n");
 	HELP0("  \\dA[x+]  [PATTERN]     list access methods\n");
 	HELP0("  \\dAc[x+] [AMPTRN [TYPEPTRN]]  list operator classes\n");
@@ -246,7 +247,6 @@ slashUsage(unsigned short int pager)
 	HELP0("  \\dFp[x+] [PATTERN]     list text search parsers\n");
 	HELP0("  \\dFt[x+] [PATTERN]     list text search templates\n");
 	HELP0("  \\dg[Sx+] [PATTERN]     list roles\n");
-	HELP0("  \\dG[Sx+] [PATTERN]     list property graphs\n");
 	HELP0("  \\di[Sx+] [PATTERN]     list indexes\n");
 	HELP0("  \\dl[x+]                list large objects, same as \\lo_list\n");
 	HELP0("  \\dL[Sx+] [PATTERN]     list procedural languages\n");
@@ -480,9 +480,9 @@ helpVariables(unsigned short int pager)
 		  "    field separator for CSV output format (default \"%c\")\n",
 		  DEFAULT_CSV_FIELD_SEP);
 	HELP0("  display_false\n"
-		  "    set the string to be printed in place of a boolean 'false'\n");
+		  "    set the string to be printed in place of a Boolean \"false\"\n");
 	HELP0("  display_true\n"
-		  "    set the string to be printed in place of a boolean 'true'\n");
+		  "    set the string to be printed in place of a Boolean \"true\"\n");
 	HELP0("  expanded (or x)\n"
 		  "    expanded output [on, off, auto]\n");
 	HELPN("  fieldsep\n"

@@ -797,7 +797,7 @@ data. Empty in ordinary tables.</entry>
   (<structname>PageHeaderData</structname>). Its format is detailed in <xref
   linkend="pageheaderdata-table"/>. The first field tracks the most
   recent WAL entry related to this page. The second field contains
-  the page checksum if <xref linkend="app-initdb-data-checksums"/> are
+  the page checksum if <link linkend="checksums">data checksums</link> are
   enabled.  Next is a 2-byte field containing flag bits. This is followed
   by three 2-byte integer fields (<structfield>pd_lower</structfield>,
   <structfield>pd_upper</structfield>, and

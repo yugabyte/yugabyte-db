@@ -405,7 +405,11 @@ FetchStatementTargetList(Node *stmt)
 
 		Assert(!fstmt->ismove);
 		subportal = GetPortalByName(fstmt->portalname);
-		Assert(PortalIsValid(subportal));
+		if (!PortalIsValid(subportal))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_CURSOR),
+					 errmsg("cursor \"%s\" does not exist",
+							fstmt->portalname)));
 		return FetchPortalTargetList(subportal);
 	}
 	if (IsA(stmt, ExecuteStmt))
@@ -1029,8 +1033,8 @@ FillPortalStore(Portal portal, bool isTopLevel)
 									portal->holdStore,
 									portal->holdContext,
 									false,
-									NULL,
-									NULL);
+									portal->tupDesc,
+									gettext_noop("query result type does not match portal result type"));
 
 	switch (portal->strategy)
 	{

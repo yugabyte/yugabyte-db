@@ -130,6 +130,11 @@ do_command(
 	qr/55\r?$/m,
 	"execute command with footer that needs pagination");
 
+do_command(
+	"\\pset expanded on\n\\pset format wrapped\nSELECT repeat('x',80) AS payload FROM generate_series(1,11);\n",
+	qr/34\r?$/m,
+	"execute SELECT query that needs pagination in expanded wrapped mode");
+
 # send psql an explicit \q to shut it down, else pty won't close properly
 $h->quit or die "psql returned $?";
 

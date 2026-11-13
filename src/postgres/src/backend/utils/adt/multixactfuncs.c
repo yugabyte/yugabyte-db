@@ -17,6 +17,7 @@
 #include "access/htup_details.h"
 #include "access/multixact.h"
 #include "access/multixact_internal.h"
+#include "access/xlog.h"
 #include "catalog/pg_authid_d.h"
 #include "funcapi.h"
 #include "miscadmin.h"
@@ -102,22 +103,18 @@ pg_get_multixact_stats(PG_FUNCTION_ARGS)
 	TupleDesc	tupdesc;
 	Datum		values[4];
 	bool		nulls[4];
-	uint64		members;
-	MultiXactId oldestMultiXactId;
-	uint32		multixacts;
-	MultiXactOffset oldestOffset;
-	MultiXactOffset nextOffset;
-	uint64		membersBytes;
+
+	if (RecoveryInProgress())
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("recovery is in progress"),
+				 errhint("%s cannot be executed during recovery.",
+						 "pg_get_multixact_stats()")));
 
 	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("return type must be a row type")));
-
-	GetMultiXactInfo(&multixacts, &nextOffset, &oldestMultiXactId, &oldestOffset);
-	members = nextOffset - oldestOffset;
-
-	membersBytes = MultiXactOffsetStorageSize(nextOffset, oldestOffset);
 
 	if (!has_privs_of_role(GetUserId(), ROLE_PG_READ_ALL_STATS))
 	{
@@ -129,6 +126,17 @@ pg_get_multixact_stats(PG_FUNCTION_ARGS)
 	}
 	else
 	{
+		uint64		members;
+		MultiXactId oldestMultiXactId;
+		uint32		multixacts;
+		MultiXactOffset oldestOffset;
+		MultiXactOffset nextOffset;
+		uint64		membersBytes;
+
+		GetMultiXactInfo(&multixacts, &nextOffset, &oldestMultiXactId, &oldestOffset);
+		members = nextOffset - oldestOffset;
+		membersBytes = MultiXactOffsetStorageSize(nextOffset, oldestOffset);
+
 		values[0] = UInt32GetDatum(multixacts);
 		values[1] = Int64GetDatum(members);
 		values[2] = Int64GetDatum(membersBytes);

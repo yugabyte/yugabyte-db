@@ -60,6 +60,8 @@ static void auth_failed(Port *port, int elevel, int status,
 						const char *logdetail,
 						bool yb_role_is_locked_out);
 static char *recv_password_packet(Port *port);
+static bool md5_password_warning_enabled(void);
+static void queue_md5_password_warning(void);
 
 /*----------------------------------------------------------------
  * Password-based authentication methods (password, md5, and scram-sha-256)
@@ -1061,6 +1063,7 @@ CheckPasswordAuth(Port *port, const char **logdetail)
 	char	   *passwd;
 	int			result;
 	char	   *shadow_pass;
+	bool		md5_password = false;
 
 	sendAuthRequest(port, AUTH_REQ_PASSWORD, NULL, 0);
 
@@ -1073,6 +1076,7 @@ CheckPasswordAuth(Port *port, const char **logdetail)
 	{
 		result = plain_crypt_verify(port->user_name, shadow_pass, passwd,
 									logdetail);
+		md5_password = (get_password_type(shadow_pass) == PASSWORD_TYPE_MD5);
 	}
 	else
 		result = STATUS_ERROR;
@@ -1082,7 +1086,11 @@ CheckPasswordAuth(Port *port, const char **logdetail)
 	pfree(passwd);
 
 	if (result == STATUS_OK)
+	{
+		if (md5_password)
+			queue_md5_password_warning();
 		set_authn_id(port, port->user_name);
+	}
 
 	return result;
 }
@@ -1179,7 +1187,32 @@ CheckMD5Auth(Port *port, char *shadow_pass, const char **logdetail)
 
 	pfree(passwd);
 
+	if (result == STATUS_OK)
+		queue_md5_password_warning();
+
 	return result;
+}
+
+static bool
+md5_password_warning_enabled(void)
+{
+	return md5_password_warnings;
+}
+
+static void
+queue_md5_password_warning(void)
+{
+	MemoryContext oldcontext;
+	char	   *warning;
+	char	   *detail;
+
+	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+
+	warning = pstrdup(_("authenticated with an MD5-encrypted password"));
+	detail = pstrdup(_("MD5 password support is deprecated and will be removed in a future release of PostgreSQL."));
+	StoreConnectionWarning(warning, detail, md5_password_warning_enabled);
+
+	MemoryContextSwitchTo(oldcontext);
 }
 
 /*

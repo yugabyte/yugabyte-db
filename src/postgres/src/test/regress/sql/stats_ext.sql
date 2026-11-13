@@ -41,6 +41,8 @@ CREATE STATISTICS tst ON (x || 'x'), (x || 'x'), (y + 1), (x || 'x'), (x || 'x')
 CREATE STATISTICS tst ON (x || 'x'), (x || 'x'), y FROM ext_stats_test;
 CREATE STATISTICS tst (unrecognized) ON x, y FROM ext_stats_test;
 -- unsupported targets
+CREATE STATISTICS tst ON x, y FROM ext_stats_test, ext_stats_test;
+CREATE STATISTICS tst ON x, y FROM ext_stats_test, (SELECT * FROM ext_stats_test) AS foo;
 CREATE STATISTICS tst ON a FROM (VALUES (x)) AS foo;
 CREATE STATISTICS tst ON a FROM foo NATURAL JOIN bar;
 CREATE STATISTICS tst ON a FROM (SELECT * FROM ext_stats_test) AS foo;
@@ -65,6 +67,22 @@ CREATE STATISTICS tst (ndistinct) ON xmin from ext_stats_test;
 CREATE STATISTICS tst (ndistinct) ON (y + z) FROM ext_stats_test;
 -- multivariate statistics without a less-than operator not supported
 CREATE STATISTICS tst (ndistinct) ON x, w from ext_stats_test;
+-- expressions of a pseudo-type (e.g. an anonymous record) not supported, as
+-- such values cannot be interpreted in another session
+CREATE STATISTICS tst ON (row(x, y)) FROM ext_stats_test;
+CREATE STATISTICS tst ON (array[row(x, y)]) FROM ext_stats_test;
+-- nor are types containing a pseudo-type
+CREATE STATISTICS tst ON (array[NULL::pg_statistic]) FROM ext_stats_test;
+CREATE STATISTICS tst ON (array[x::cstring]) FROM ext_stats_test;
+-- expressions without a derivable collation not supported
+CREATE TABLE ext_stats_coll (a text COLLATE "C", b text COLLATE "POSIX");
+CREATE STATISTICS tst ON ((a || b)) FROM ext_stats_coll;
+DROP TABLE ext_stats_coll;
+-- but an expression of a named composite type is fine
+CREATE TYPE ext_stats_rowtype AS (x text, y int);
+CREATE STATISTICS tst ON (row(x, y)::ext_stats_rowtype) FROM ext_stats_test;
+DROP STATISTICS tst;
+DROP TYPE ext_stats_rowtype;
 DROP TABLE ext_stats_test;
 
 -- Ensure stats are dropped sanely, and test IF NOT EXISTS while at it
@@ -1829,6 +1847,24 @@ DROP TABLE stats_ext_tbl;
 DROP SCHEMA tststats CASCADE;
 DROP SCHEMA sts_sch1, sts_sch2 CASCADE;
 DROP USER regress_stats_user1;
+
+-- CREATE STATISTICS checks for the owner
+CREATE ROLE regress_relowner;
+CREATE ROLE regress_stxowner;
+CREATE TABLE stats_ext_tbl (a int, b int);
+ALTER TABLE stats_ext_tbl OWNER TO regress_relowner;
+CREATE STATISTICS tst ON a, b FROM stats_ext_tbl;
+ALTER STATISTICS tst OWNER TO regress_stxowner;
+SELECT stxowner::regrole FROM pg_statistic_ext WHERE stxname = 'tst';
+
+-- re-creating statistics via ALTER TABLE preserve the statistics owner.
+ALTER TABLE stats_ext_tbl ALTER COLUMN a TYPE bigint;
+SELECT stxowner::regrole FROM pg_statistic_ext WHERE stxname = 'tst';
+
+-- Tidy up
+DROP TABLE stats_ext_tbl;
+DROP ROLE regress_relowner;
+DROP ROLE regress_stxowner;
 
 CREATE TABLE grouping_unique (x integer);
 INSERT INTO grouping_unique (x) SELECT gs FROM generate_series(1,1000) AS gs;

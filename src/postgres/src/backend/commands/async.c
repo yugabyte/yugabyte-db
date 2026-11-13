@@ -114,15 +114,15 @@
  *	  If the current transaction has executed any LISTEN/UNLISTEN actions,
  *	  PreCommit_Notify() prepares to commit those.  For LISTEN, it
  *	  pre-allocates entries in both the per-backend localChannelTable and the
- *	  shared globalChannelTable (with listening=false so that these entries
- *	  are no-ops for the moment).  It also records the final per-channel
- *	  intent in pendingListenActions, so post-commit/abort processing can
- *	  apply that in a single step.  Since all these allocations happen before
- *	  committing to clog, we can safely abort the transaction on failure.
+ *	  shared globalChannelTable, marking new shared entries removeOnAbort.
+ *	  It also records the final per-channel intent in pendingListenActions,
+ *	  so post-commit/abort processing can apply that in a single step.
+ *	  Since all these allocations happen before committing to clog, we can
+ *	  safely abort the transaction on failure.
  *
  *	  After commit, AtCommit_Notify() runs through pendingListenActions and
- *	  updates the backend's per-channel listening flags to activate or
- *	  deactivate listening.  This happens before sending signals.
+ *	  applies the final per-channel listen/unlisten state.  This happens
+ *	  before sending signals.
  *
  *	  SignalBackends() consults the shared global channel table to identify
  *	  listeners for the channels that the current transaction sent
@@ -188,6 +188,7 @@
 #include "utils/ps_status.h"
 #include "utils/snapmgr.h"
 #include "utils/timestamp.h"
+#include "utils/tuplestore.h"
 
 /* YB includes */
 #include "catalog/pg_namespace_d.h"
@@ -402,7 +403,7 @@ static SlruDesc NotifySlruDesc;
  *
  * This hash table maps (database OID, channel name) keys to arrays of
  * ProcNumbers representing the backends listening or about to listen
- * on each channel.  The "listening" flags allow us to create hash table
+ * on each channel.  The removeOnAbort flags allow us to create hash table
  * entries pre-commit and not have to assume that creating them post-commit
  * will succeed.
  */
@@ -417,7 +418,7 @@ typedef struct GlobalChannelKey
 typedef struct ListenerEntry
 {
 	ProcNumber	procNo;			/* listener's ProcNumber */
-	bool		listening;		/* true if committed listener */
+	bool		removeOnAbort;	/* remove entry if current xact aborts */
 } ListenerEntry;
 
 typedef struct GlobalChannelEntry
@@ -1354,53 +1355,38 @@ Async_UnlistenAll(void)
 /*
  * SQL function: return a set of the channel names this backend is actively
  * listening to.
- *
- * Note: this coding relies on the fact that the localChannelTable cannot
- * change within a transaction.
  */
 Datum
 pg_listening_channels(PG_FUNCTION_ARGS)
 {
-	FuncCallContext *funcctx;
-	HASH_SEQ_STATUS *status;
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 
-	/* stuff done only on the first call of the function */
-	if (SRF_IS_FIRSTCALL())
+	InitMaterializedSRF(fcinfo, MAT_SRF_USE_EXPECTED_DESC);
+
+	/*
+	 * Complete the hash scan in one call, since the caller might not fetch
+	 * all the rows and would otherwise leave the scan registered until
+	 * transaction end.
+	 */
+	if (localChannelTable != NULL)
 	{
-		/* create a function context for cross-call persistence */
-		funcctx = SRF_FIRSTCALL_INIT();
+		HASH_SEQ_STATUS status;
+		ChannelName *channelEntry;
 
-		/* Initialize hash table iteration if we have any channels */
-		if (localChannelTable != NULL)
+		hash_seq_init(&status, localChannelTable);
+		while ((channelEntry = (ChannelName *) hash_seq_search(&status)) != NULL)
 		{
-			MemoryContext oldcontext;
+			Datum		values[1];
+			bool		nulls[1];
 
-			oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
-			status = (HASH_SEQ_STATUS *) palloc(sizeof(HASH_SEQ_STATUS));
-			hash_seq_init(status, localChannelTable);
-			funcctx->user_fctx = status;
-			MemoryContextSwitchTo(oldcontext);
-		}
-		else
-		{
-			funcctx->user_fctx = NULL;
+			values[0] = CStringGetTextDatum(channelEntry->channel);
+			nulls[0] = false;
+			tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc,
+								 values, nulls);
 		}
 	}
 
-	/* stuff done on every call of the function */
-	funcctx = SRF_PERCALL_SETUP();
-	status = (HASH_SEQ_STATUS *) funcctx->user_fctx;
-
-	if (status != NULL)
-	{
-		ChannelName *entry;
-
-		entry = (ChannelName *) hash_seq_search(status);
-		if (entry != NULL)
-			SRF_RETURN_NEXT(funcctx, CStringGetTextDatum(entry->channel));
-	}
-
-	SRF_RETURN_DONE(funcctx);
+	return (Datum) 0;
 }
 
 /*
@@ -1880,9 +1866,8 @@ BecomeRegisteredListener(void)
  *
  * Prepare a LISTEN by recording it in pendingListenActions, pre-allocating
  * an entry in localChannelTable, and pre-allocating an entry in the shared
- * globalChannelTable with listening=false.  The listening flag will be set
- * to true in AtCommit_Notify.  If we abort later, unwanted table entries
- * will be removed.
+ * globalChannelTable with removeOnAbort set.  AtCommit_Notify will clear
+ * removeOnAbort; abort processing will remove entries still marked so.
  */
 static void
 PrepareTableEntriesForListen(const char *channel)
@@ -1914,7 +1899,7 @@ PrepareTableEntriesForListen(const char *channel)
 	 */
 	(void) hash_search(localChannelTable, channel, HASH_ENTER, NULL);
 
-	/* Pre-allocate entry in shared globalChannelTable with listening=false */
+	/* Pre-allocate entry in shared globalChannelTable */
 	GlobalChannelKeyInit(&key, MyDatabaseId, channel);
 	entry = dshash_find_or_insert(globalChannelTable, &key, &found);
 
@@ -1949,7 +1934,7 @@ PrepareTableEntriesForListen(const char *channel)
 	{
 		if (listeners[i].procNo == MyProcNumber)
 		{
-			/* Already have an entry; listening flag stays as-is until commit */
+			/* Already have an entry; leave removeOnAbort as-is */
 			dshash_release_lock(globalChannelTable, entry);
 			return;
 		}
@@ -1972,8 +1957,7 @@ PrepareTableEntriesForListen(const char *channel)
 	}
 
 	listeners[entry->numListeners].procNo = MyProcNumber;
-	listeners[entry->numListeners].listening = false;	/* staged, not yet
-														 * committed */
+	listeners[entry->numListeners].removeOnAbort = true;
 	entry->numListeners++;
 
 	dshash_release_lock(globalChannelTable, entry);
@@ -2123,13 +2107,13 @@ ApplyPendingListenActions(bool isCommit)
 					if (pending->action == PENDING_LISTEN)
 					{
 						/*
-						 * LISTEN being committed: set listening=true.
+						 * LISTEN being committed: entry is now permanent.
 						 * localChannelTable entry was created during
 						 * PreCommit and should be kept.
 						 */
-						if (!listeners[i].listening)
+						if (listeners[i].removeOnAbort)
 							ybOnListenCommit(pending->channel);	/* YB */
-						listeners[i].listening = true;
+						listeners[i].removeOnAbort = false;
 						removeLocal = false;
 					}
 					else
@@ -2149,20 +2133,19 @@ ApplyPendingListenActions(bool isCommit)
 					 * pendingListenActions entries, so it's pretty hard to
 					 * test.
 					 */
-					if (!listeners[i].listening)
+					if (listeners[i].removeOnAbort)
 					{
 						/*
 						 * Staged LISTEN (or LISTEN+UNLISTEN) being aborted,
-						 * and we weren't listening before, so remove
-						 * pre-allocated entries from both tables.
+						 * so remove pre-allocated entries from both tables.
 						 */
 						RemoveListenerFromChannel(&entry, listeners, i);
 					}
 					else
 					{
 						/*
-						 * We're aborting, but the previous state was that
-						 * we're listening, so keep localChannelTable entry.
+						 * Entry predates this transaction, so keep the
+						 * localChannelTable entry.
 						 */
 						removeLocal = false;
 					}
@@ -2815,17 +2798,22 @@ SignalBackends(void)
 		listeners = (ListenerEntry *) dsa_get_address(globalChannelDSA,
 													  entry->listenersArray);
 
-		/* Identify listeners that now need waking, add them to arrays */
+		/*
+		 * Identify listeners that now need waking, add them to arrays.
+		 *
+		 * Note that we signal listeners regardless of the state of their
+		 * removeOnAbort flags.  Hence a new listener that reached PreCommit,
+		 * but then failed before AtCommit_Notify, can receive a signal even
+		 * though it was never really listening.  This is okay because it will
+		 * not do anything in response to that signal.  If we did not do it
+		 * like this then a new listener might miss some messages due to the
+		 * direct-advance logic below.
+		 */
 		for (int j = 0; j < entry->numListeners; j++)
 		{
-			ProcNumber	i;
+			ProcNumber	i = listeners[j].procNo;
 			int32		pid;
 			QueuePosition pos;
-
-			if (!listeners[j].listening)
-				continue;		/* ignore not-yet-committed listeners */
-
-			i = listeners[j].procNo;
 
 			if (QUEUE_BACKEND_WAKEUP_PENDING(i))
 				continue;		/* already signaled, no need to repeat */
@@ -2935,13 +2923,24 @@ SignalBackends(void)
  *	This is called at transaction abort.
  *
  *	Revert any staged listen/unlisten changes and clean up transaction state.
- *	This only does anything if we abort after PreCommit_Notify has staged
- *	some entries.
  */
 void
 AtAbort_Notify(void)
 {
-	/* Revert staged listen/unlisten changes */
+	/*
+	 * If we failed during asyncQueueReadAllNotifications(), clear our
+	 * isAdvancing flag, else SignalBackends() would never wake us again.
+	 * Since only our own process changes this flag, it is safe to check it
+	 * without the lock.
+	 */
+	if (amRegisteredListener && QUEUE_BACKEND_IS_ADVANCING(MyProcNumber))
+	{
+		LWLockAcquire(NotifyQueueLock, LW_SHARED);
+		QUEUE_BACKEND_IS_ADVANCING(MyProcNumber) = false;
+		LWLockRelease(NotifyQueueLock);
+	}
+
+	/* Revert any staged listen/unlisten changes */
 	ApplyPendingListenActions(false);
 
 	/* If we're no longer listening on anything, unregister */

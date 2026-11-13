@@ -97,7 +97,7 @@ typedef struct _stringlist
 } _stringlist;
 
 static const char *const auth_methods_host[] = {
-	"trust", "reject", "scram-sha-256", "md5", "password", "ident", "radius",
+	"trust", "reject", "scram-sha-256", "md5", "password", "ident",
 #ifdef ENABLE_GSS
 	"gss",
 #endif
@@ -119,7 +119,7 @@ static const char *const auth_methods_host[] = {
 	NULL
 };
 static const char *const auth_methods_local[] = {
-	"trust", "reject", "scram-sha-256", "md5", "password", "peer", "radius",
+	"trust", "reject", "scram-sha-256", "md5", "password", "peer",
 #ifdef USE_PAM
 	"pam",
 #endif
@@ -669,37 +669,16 @@ replace_guc_value(char **lines, const char *guc_name, const char *guc_value,
 		{
 			/*
 			 * We try to preserve original indentation, which is tedious.
-			 * oldindent and newindent are measured in de-tab-ified columns.
 			 */
-			const char *ptr;
-			int			oldindent = 0;
-			int			newindent;
+			int			oldindent = (int) (where - lines[i]);
+			int			newindent = newline->len;
 
-			for (ptr = lines[i]; ptr < where; ptr++)
-			{
-				if (*ptr == '\t')
-					oldindent += 8 - (oldindent % 8);
-				else
-					oldindent++;
-			}
-			/* ignore the possibility of tabs in guc_value */
-			newindent = newline->len;
-			/* append appropriate tabs and spaces, forcing at least one */
+			/* append appropriate spaces, forcing at least one */
 			oldindent = Max(oldindent, newindent + 1);
 			while (newindent < oldindent)
 			{
-				int			newindent_if_tab = newindent + 8 - (newindent % 8);
-
-				if (newindent_if_tab <= oldindent)
-				{
-					appendPQExpBufferChar(newline, '\t');
-					newindent = newindent_if_tab;
-				}
-				else
-				{
-					appendPQExpBufferChar(newline, ' ');
-					newindent++;
-				}
+				appendPQExpBufferChar(newline, ' ');
+				newindent++;
 			}
 			/* and finally append the old comment */
 			appendPQExpBufferStr(newline, where);
@@ -2665,7 +2644,7 @@ icu_validate_locale(const char *loc_str)
 	/* validate that we can extract the language */
 	status = U_ZERO_ERROR;
 	uloc_getLanguage(loc_str, lang, ULOC_LANG_CAPACITY, &status);
-	if (U_FAILURE(status))
+	if (U_FAILURE(status) || status == U_STRING_NOT_TERMINATED_WARNING)
 	{
 		pg_fatal("could not get language from locale \"%s\": %s",
 				 loc_str, u_errorName(status));
@@ -2685,7 +2664,7 @@ icu_validate_locale(const char *loc_str)
 
 		status = U_ZERO_ERROR;
 		uloc_getLanguage(otherloc, otherlang, ULOC_LANG_CAPACITY, &status);
-		if (U_FAILURE(status))
+		if (U_FAILURE(status) || status == U_STRING_NOT_TERMINATED_WARNING)
 			continue;
 
 		if (strcmp(lang, otherlang) == 0)
@@ -3201,10 +3180,10 @@ setup_signals(void)
 	pqsignal(SIGQUIT, trapsig);
 
 	/* Ignore SIGPIPE when writing to backend, so we can clean up */
-	pqsignal(SIGPIPE, SIG_IGN);
+	pqsignal(SIGPIPE, PG_SIG_IGN);
 
 	/* Prevent SIGSYS so we can probe for kernel calls that might not work */
-	pqsignal(SIGSYS, SIG_IGN);
+	pqsignal(SIGSYS, PG_SIG_IGN);
 #endif
 }
 

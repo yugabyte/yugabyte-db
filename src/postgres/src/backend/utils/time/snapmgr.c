@@ -170,7 +170,7 @@ TransactionId TransactionXmin = FirstNormalTransactionId;
 TransactionId RecentXmin = FirstNormalTransactionId;
 
 /* (table, ctid) => (cmin, cmax) mapping during timetravel */
-static HTAB *tuplecid_data = NULL;
+static HTAB *HistoricTupleCidHash = NULL;
 
 /*
  * Elements of the active snapshot stack.
@@ -1340,8 +1340,10 @@ ExportSnapshot(Snapshot snapshot)
 	TransactionId topXid;
 	TransactionId *children;
 	ExportedSnapshot *esnap;
+	int			nsubxids;
 	int			nchildren;
 	int			addTopXid;
+	bool		suboverflowed;
 	StringInfoData buf;
 	FILE	   *f;
 	int			i;
@@ -1391,6 +1393,31 @@ ExportSnapshot(Snapshot snapshot)
 	 * XIDs to add them to the snapshot.
 	 */
 	nchildren = xactGetCommittedChildren(&children);
+
+	/*
+	 * We export a recovery snapshot's subxip whole (see below), so refuse an
+	 * export that no importer will accept.  This rare edge case only happens
+	 * when a snapshot taken during recovery is imported after its standby is
+	 * promoted, the importing transaction subcommits many subtransactions,
+	 * and then attempts to export the same snapshot a second time.
+	 */
+	if (snapshot->takenDuringRecovery &&
+		snapshot->subxcnt + nchildren > GetMaxSnapshotSubxidCount())
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg_plural("cannot export snapshot with %d running transaction ID",
+							   "cannot export snapshot with %d running transaction IDs",
+							   snapshot->subxcnt + nchildren,
+							   snapshot->subxcnt + nchildren),
+
+		/*
+		 * The singular and plural strings below are identical in English but
+		 * could differ in translations.
+		 */
+				 errdetail_plural("A snapshot taken during recovery is exported with every transaction ID that it treats as running, and at most %d can be stored.",
+								  "A snapshot taken during recovery is exported with every transaction ID that it treats as running, and at most %d can be stored.",
+								  GetMaxSnapshotSubxidCount(),
+								  GetMaxSnapshotSubxidCount())));
 
 	/*
 	 * Generate file path for the snapshot.  We start numbering of snapshots
@@ -1456,16 +1483,29 @@ ExportSnapshot(Snapshot snapshot)
 		appendStringInfo(&buf, "xip:%u\n", topXid);
 
 	/*
-	 * Similarly, we add our subcommitted child XIDs to the subxid data. Here,
-	 * we have to cope with possible overflow.
+	 * Similarly, we add our subcommitted child XIDs to the subxid data.
+	 *
+	 * Report overflow when the snapshot overflowed, and also when our subxids
+	 * won't fit in what a snapshot can hold.  For a snapshot taken outside
+	 * recovery, claiming overflow is always safe, since it just makes
+	 * importers fall back on pg_subtrans.
 	 */
-	if (snapshot->suboverflowed ||
-		snapshot->subxcnt + nchildren > GetMaxSnapshotSubxidCount())
-		appendStringInfoString(&buf, "sof:1\n");
-	else
+	nsubxids = snapshot->subxcnt + nchildren;
+	suboverflowed = snapshot->suboverflowed ||
+		nsubxids > GetMaxSnapshotSubxidCount();
+
+	/*
+	 * Ignore the subxid array if it has overflowed, unless the snapshot was
+	 * taken during recovery - in that case, top-level XIDs are in subxip as
+	 * well, and we mustn't lose them.
+	 */
+	if (suboverflowed && !snapshot->takenDuringRecovery)
+		nsubxids = 0;
+
+	appendStringInfo(&buf, "sof:%u\n", suboverflowed);
+	appendStringInfo(&buf, "sxcnt:%d\n", nsubxids);
+	if (nsubxids > 0)
 	{
-		appendStringInfoString(&buf, "sof:0\n");
-		appendStringInfo(&buf, "sxcnt:%d\n", snapshot->subxcnt + nchildren);
 		for (i = 0; i < snapshot->subxcnt; i++)
 			appendStringInfo(&buf, "sxp:%u\n", snapshot->subxip[i]);
 		for (i = 0; i < nchildren; i++)
@@ -1752,11 +1792,11 @@ ImportSnapshot(const char *idstr)
 			snapshot.xip[i] = parseXidFromText("xip:", &filebuf, path);
 
 		snapshot.suboverflowed = parseIntFromText("sof:", &filebuf, path);
+		snapshot.subxcnt = xcnt = parseIntFromText("sxcnt:", &filebuf, path);
+		snapshot.subxip = NULL;
 
-		if (!snapshot.suboverflowed)
+		if (snapshot.subxcnt)
 		{
-			snapshot.subxcnt = xcnt = parseIntFromText("sxcnt:", &filebuf, path);
-
 			/* sanity-check the xid count before palloc */
 			if (xcnt < 0 || xcnt > GetMaxSnapshotSubxidCount())
 				ereport(ERROR,
@@ -1766,11 +1806,6 @@ ImportSnapshot(const char *idstr)
 			snapshot.subxip = (TransactionId *) palloc(xcnt * sizeof(TransactionId));
 			for (i = 0; i < xcnt; i++)
 				snapshot.subxip[i] = parseXidFromText("sxp:", &filebuf, path);
-		}
-		else
-		{
-			snapshot.subxcnt = 0;
-			snapshot.subxip = NULL;
 		}
 
 		snapshot.takenDuringRecovery = parseIntFromText("rec:", &filebuf, path);
@@ -1936,7 +1971,7 @@ SetupHistoricSnapshot(Snapshot historic_snapshot, HTAB *tuplecids)
 	HistoricSnapshot = historic_snapshot;
 
 	/* setup (cmin, cmax) lookup hash */
-	tuplecid_data = tuplecids;
+	HistoricTupleCidHash = tuplecids;
 }
 
 
@@ -1947,7 +1982,7 @@ void
 TeardownHistoricSnapshot(bool is_error)
 {
 	HistoricSnapshot = NULL;
-	tuplecid_data = NULL;
+	HistoricTupleCidHash = NULL;
 }
 
 bool
@@ -1960,7 +1995,7 @@ HTAB *
 HistoricSnapshotGetTupleCids(void)
 {
 	Assert(HistoricSnapshotActive());
-	return tuplecid_data;
+	return HistoricTupleCidHash;
 }
 
 /*

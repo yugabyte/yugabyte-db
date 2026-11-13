@@ -21,6 +21,7 @@
 #include "access/table.h"
 #include "access/tableam.h"
 #include "access/tupconvert.h"
+#include "access/xlog.h"
 #include "catalog/pg_inherits.h"
 #include "commands/copyapi.h"
 #include "commands/progress.h"
@@ -294,10 +295,10 @@ CopyToCSVOneRow(CopyToState cstate, TupleTableSlot *slot)
 /*
  * Workhorse for CopyToTextOneRow() and CopyToCSVOneRow().
  *
- * We use pg_attribute_always_inline to reduce function call overhead
+ * We use pg_always_inline to reduce function call overhead
  * and to help compilers to optimize away the 'is_csv' condition.
  */
-static pg_attribute_always_inline void
+static pg_always_inline void
 CopyToTextLikeOneRow(CopyToState cstate,
 					 TupleTableSlot *slot,
 					 bool is_csv)
@@ -395,22 +396,38 @@ CopyToJsonOneRow(CopyToState cstate, TupleTableSlot *slot)
 	else
 	{
 		/*
-		 * Full table or query without column list.  For queries, the slot's
-		 * TupleDesc may carry RECORDOID, which is not registered in the type
-		 * cache and would cause composite_to_json's lookup_rowtype_tupdesc
-		 * call to fail.  Build a HeapTuple stamped with the blessed
-		 * descriptor so the type can be looked up correctly.
+		 * Full table or query without column list.  For a query, the slot's
+		 * descriptor is either an unregistered RECORD type, which
+		 * composite_to_json's lookup_rowtype_tupdesc() cannot look up, or,
+		 * when the top plan node does not project, the row type of a scanned
+		 * table, whose column names need not match the query's.  Either way,
+		 * the datum must be stamped with the query's blessed descriptor.
+		 *
+		 * A virtual slot has no physical tuple, so form one directly.
+		 * Otherwise copy the slot's tuple and stamp the copy with the query's
+		 * descriptor.  That is safe because the tuple's physical layout
+		 * matches the query's result descriptor: a scan returns its scan
+		 * tuple unprojected only if tlist_matches_tupdesc() holds, which
+		 * rules out dropped columns and columns with missing values.
 		 */
-		if (!cstate->rel && slot->tts_tupleDescriptor->tdtypeid == RECORDOID)
-		{
-			HeapTuple	tup = heap_form_tuple(cstate->tupDesc,
-											  slot->tts_values,
-											  slot->tts_isnull);
-
-			rowdata = HeapTupleGetDatum(tup);
-		}
-		else
+		if (cstate->rel)
 			rowdata = ExecFetchSlotHeapTupleDatum(slot);
+		else if (TTS_IS_VIRTUAL(slot))
+			rowdata = HeapTupleGetDatum(heap_form_tuple(cstate->tupDesc,
+														slot->tts_values,
+														slot->tts_isnull));
+		else
+		{
+			HeapTuple	tup;
+			bool		shouldFree;
+
+			Assert(slot->tts_tupleDescriptor->natts == cstate->tupDesc->natts);
+
+			tup = ExecFetchSlotHeapTuple(slot, false, &shouldFree);
+			rowdata = heap_copy_tuple_as_datum(tup, cstate->tupDesc);
+			if (shouldFree)
+				heap_freetuple(tup);
+		}
 	}
 
 	composite_to_json(rowdata, cstate->json_buf, false);
@@ -427,7 +444,25 @@ CopyToJsonOneRow(CopyToState cstate, TupleTableSlot *slot)
 		}
 	}
 
-	CopySendData(cstate, cstate->json_buf->data, cstate->json_buf->len);
+	/*
+	 * Convert the JSON output to the target encoding if needed.  Unlike the
+	 * text and CSV paths which convert per-attribute via CopyAttributeOut*,
+	 * composite_to_json() emits the whole row as one buffer, so we transcode
+	 * it here in a single call before sending.
+	 */
+	if (cstate->need_transcoding)
+	{
+		char	   *converted;
+
+		converted = pg_server_to_any(cstate->json_buf->data,
+									 cstate->json_buf->len,
+									 cstate->file_encoding);
+		CopySendData(cstate, converted, strlen(converted));
+		if (converted != cstate->json_buf->data)
+			pfree(converted);
+	}
+	else
+		CopySendData(cstate, cstate->json_buf->data, cstate->json_buf->len);
 
 	CopySendTextLikeEndOfRow(cstate);
 }
@@ -845,9 +880,22 @@ BeginCopyTo(ParseState *pstate,
 					ereport(ERROR,
 							errcode(ERRCODE_WRONG_OBJECT_TYPE),
 							errmsg("cannot copy from foreign table \"%s\"", relation_name),
-							errdetail("Partition \"%s\" is a foreign table in partitioned table \"%s\"",
+							errdetail("Partition \"%s\" is a foreign table in partitioned table \"%s\".",
 									  relation_name, RelationGetRelationName(rel)),
 							errhint("Try the COPY (SELECT ...) TO variant."));
+				}
+
+				/* Unlogged partitions are inaccessible during recovery. */
+				if (RecoveryInProgress() &&
+					get_rel_persistence(child) == RELPERSISTENCE_UNLOGGED)
+				{
+					char	   *relation_name = get_rel_name(child);
+
+					ereport(ERROR,
+							errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							errmsg("cannot access temporary or unlogged relations during recovery"),
+							errdetail("Partition \"%s\" is an unlogged table in partitioned table \"%s\".",
+									  relation_name, RelationGetRelationName(rel)));
 				}
 
 				/* Exclude tables with no data */
@@ -862,6 +910,11 @@ BeginCopyTo(ParseState *pstate,
 							RelationGetRelationName(rel))));
 	}
 
+	/* Temporary and unlogged relations are inaccessible during recovery. */
+	if (rel != NULL && !RelationIsPermanent(rel) && RecoveryInProgress())
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot access temporary or unlogged relations during recovery")));
 
 	/* Allocate workspace and zero all fields */
 	cstate = palloc0_object(CopyToStateData);
@@ -1041,15 +1094,19 @@ BeginCopyTo(ParseState *pstate,
 	{
 		cstate->json_buf = makeStringInfo();
 
-		if (attnamelist != NIL && rel)
+		/*
+		 * Build a projected TupleDesc describing only the selected columns so
+		 * that composite_to_json() emits the right column names and types;
+		 * needed when an explicit column list was given (possibly with a
+		 * different column order) or when generated columns are excluded from
+		 * the output.
+		 */
+		if (rel && (attnamelist != NIL ||
+					list_length(cstate->attnumlist) < tupDesc->natts))
 		{
 			int			natts = list_length(cstate->attnumlist);
 			TupleDesc	resultDesc;
 
-			/*
-			 * Build a TupleDesc describing only the selected columns so that
-			 * composite_to_json() emits the right column names and types.
-			 */
 			resultDesc = CreateTemplateTupleDesc(natts);
 
 			foreach_int(attnum, cstate->attnumlist)
@@ -1338,7 +1395,7 @@ DoCopyTo(CopyToState cstate)
  * root_rel can be set to the root table of rel if rel is a partition
  * table so that we can send tuples in root_rel's rowtype, which might
  * differ from individual partitions.
-*/
+ */
 static void
 CopyRelationTo(CopyToState cstate, Relation rel, Relation root_rel, uint64 *processed)
 {
@@ -1363,8 +1420,8 @@ CopyRelationTo(CopyToState cstate, Relation rel, Relation root_rel, uint64 *proc
 	if (root_rel != NULL)
 	{
 		root_slot = table_slot_create(root_rel, NULL);
-		map = build_attrmap_by_name_if_req(RelationGetDescr(root_rel),
-										   RelationGetDescr(rel),
+		map = build_attrmap_by_name_if_req(RelationGetDescr(rel),
+										   RelationGetDescr(root_rel),
 										   false);
 	}
 

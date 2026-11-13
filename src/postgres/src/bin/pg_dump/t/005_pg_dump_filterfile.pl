@@ -460,8 +460,7 @@ command_fails_like(
 		'postgres'
 	],
 	qr/unsupported filter object type: "table-data"/,
-	"invalid syntax: invalid object type specified"
-);
+	"invalid syntax: invalid object type specified");
 
 # Test missing object identifier pattern
 open $inputfile, '>', "$tempdir/inputfile.txt"
@@ -571,8 +570,8 @@ command_fails_like(
 		'--filter' => "$tempdir/inputfile.txt",
 		'--globals-only'
 	],
-	qr/\Qpg_dumpall: error: options --exclude-database and -g\/--globals-only cannot be used together\E/,
-	'pg_dumpall: options --exclude-database and -g/--globals-only cannot be used together'
+	qr/\Qpg_dumpall: error: option --exclude-database cannot be used together with -g\/--globals-only\E/,
+	'pg_dumpall: option --exclude-database cannot be used together with -g/--globals-only'
 );
 
 # Test invalid filter command

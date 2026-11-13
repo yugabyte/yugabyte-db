@@ -39,7 +39,6 @@
 #include "partitioning/partdefs.h"
 #include "storage/buf.h"
 #include "utils/reltrigger.h"
-#include "utils/typcache.h"
 
 /* YB includes */
 #include "nodes/ybtidbitmap.h"
@@ -475,24 +474,6 @@ typedef struct MergeActionState
 } MergeActionState;
 
 /*
- * ForPortionOfState
- *
- * Executor state of a FOR PORTION OF operation.
- */
-typedef struct ForPortionOfState
-{
-	NodeTag		type;
-
-	char	   *fp_rangeName;	/* the column named in FOR PORTION OF */
-	Oid			fp_rangeType;	/* the type of the FOR PORTION OF expression */
-	int			fp_rangeAttno;	/* the attno of the range column */
-	Datum		fp_targetRange; /* the range/multirange from FOR PORTION OF */
-	TypeCacheEntry *fp_leftoverstypcache;	/* type cache entry of the range */
-	TupleTableSlot *fp_Existing;	/* slot to store old tuple */
-	TupleTableSlot *fp_Leftover;	/* slot to store leftover */
-} ForPortionOfState;
-
-/*
  * ResultRelInfo
  *
  * Whenever we update an existing relation, we have to update indexes on the
@@ -627,9 +608,6 @@ typedef struct ResultRelInfo
 
 	/* for MERGE, expr state for checking the join condition */
 	ExprState  *ri_MergeJoinCondition;
-
-	/* FOR PORTION OF evaluation state */
-	ForPortionOfState *ri_forPortionOf;
 
 	/* partition check expression state (NULL if not set up yet) */
 	ExprState  *ri_PartitionCheckExpr;
@@ -1159,6 +1137,7 @@ typedef struct SubPlanState
 	TupleHashTable hashnulls;	/* hash table for rows with null(s) */
 	bool		havehashrows;	/* true if hashtable is not empty */
 	bool		havenullrows;	/* true if hashnulls is not empty */
+	bool		hashtablestale; /* hash tables must be rebuilt before use */
 	MemoryContext tuplesContext;	/* context containing hash tables' tuples */
 	ExprContext *innerecontext; /* econtext for computing inner tuples */
 	int			numCols;		/* number of columns being hashed */
@@ -1607,13 +1586,15 @@ typedef struct ModifyTableState
 	double		mt_merge_deleted;
 
 	/*
-	 * Lists of valid updateColnosLists, mergeActionLists, and
-	 * mergeJoinConditions.  These contain only entries for unpruned
-	 * relations, filtered from the corresponding lists in ModifyTable.
+	 * Lists of valid updateColnosLists, mergeActionLists,
+	 * mergeJoinConditions, and fdwPrivLists.  These contain only entries for
+	 * unpruned relations, filtered from the corresponding lists in
+	 * ModifyTable.
 	 */
 	List	   *mt_updateColnosLists;
 	List	   *mt_mergeActionLists;
 	List	   *mt_mergeJoinConditions;
+	List	   *mt_fdwPrivLists;
 
 	/* YB specific attributes. */
 
@@ -2546,7 +2527,8 @@ typedef struct MergeJoinState
  *								outer joins
  *		hj_NullInnerTupleSlot	prepared null tuple for left/full outer joins
  *		hj_NullOuterTupleStore	tuplestore holding outer tuples that have
- *								null join keys (but must be emitted anyway)
+ *								null join keys (but must be emitted anyway);
+ *								used only in multi-batch parallel joins
  *		hj_FirstOuterTupleSlot	first tuple retrieved from outer plan
  *		hj_JoinState			current state of ExecHashJoin state machine
  *		hj_KeepNullTuples		true to keep outer tuples with null join keys
@@ -2645,8 +2627,7 @@ typedef struct MemoizeState
 								 * by bit, false when using hash equality ops */
 	MemoizeInstrumentation stats;	/* execution statistics */
 	SharedMemoizeInfo *shared_info; /* statistics for parallel workers */
-	Bitmapset  *keyparamids;	/* Param->paramids of expressions belonging to
-								 * param_exprs */
+	Bitmapset  *keyparamids;	/* copy of Memoize.keyparamids */
 } MemoizeState;
 
 /* ----------------

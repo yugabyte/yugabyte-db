@@ -1120,10 +1120,16 @@ log_select_dml(Oid auditOid, List *rangeTabls, List *permInfos)
          * rewriting but keep their relkind and perminfoindex so permissions
          * on the view/graph are still checked here.
          */
+#ifdef RELKIND_PROPGRAPH
         Assert(rte->rtekind == RTE_RELATION ||
                (rte->rtekind == RTE_SUBQUERY &&
                 (rte->relkind == RELKIND_VIEW ||
                  rte->relkind == RELKIND_PROPGRAPH)));
+#else
+        Assert(rte->rtekind == RTE_RELATION ||
+               (rte->rtekind == RTE_SUBQUERY &&
+                rte->relkind == RELKIND_VIEW));
+#endif
 
         found = true;
 
@@ -1253,9 +1259,11 @@ log_select_dml(Oid auditOid, List *rangeTabls, List *permInfos)
                 auditEventStack->auditEvent.objectType = OBJECT_TYPE_MATVIEW;
                 break;
 
+#ifdef RELKIND_PROPGRAPH
             case RELKIND_PROPGRAPH:
                 auditEventStack->auditEvent.objectType = OBJECT_TYPE_PROPGRAPH;
                 break;
+#endif
 
             default:
                 auditEventStack->auditEvent.objectType = OBJECT_TYPE_UNKNOWN;

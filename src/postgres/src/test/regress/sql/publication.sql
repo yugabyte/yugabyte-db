@@ -76,6 +76,8 @@ ALTER PUBLICATION testpub_fortable SET TABLES IN SCHEMA pub_test;
 
 SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpub_forschema FOR TABLES IN SCHEMA pub_test;
+\dn pub_test
+
 -- should be able to create publication with schema and table of the same
 -- schema
 CREATE PUBLICATION testpub_for_tbl_schema FOR TABLES IN SCHEMA pub_test, TABLE pub_test.testpub_nopk;
@@ -119,8 +121,45 @@ CREATE PUBLICATION testpub_foralltables_excepttable1 FOR ALL TABLES EXCEPT (TABL
 -- Check that the table description shows the publications where it is listed
 -- in the EXCEPT clause
 \d testpub_tbl1
+-- Check object address handling for an EXCEPT entry.
+\a\t
+SELECT (pg_identify_object('pg_publication_rel'::regclass, pr.oid, 0)).*
+FROM pg_publication_rel pr
+JOIN pg_publication p ON p.oid = pr.prpubid
+JOIN pg_class c ON c.oid = pr.prrelid
+WHERE p.pubname = 'testpub_foralltables_excepttable1'
+  AND c.relname = 'testpub_tbl1';
+-- testpub_describe publishes testpub_tbl1, testpub_foralltables_excepttable1
+-- excludes it; an entry of one kind must not be resolved as the other.
+CREATE PUBLICATION testpub_describe FOR TABLE testpub_tbl1;
+SELECT pg_get_object_address('publication excluded relation',
+                             '{public, testpub_tbl1}', '{testpub_describe}');
+SELECT pg_get_object_address('publication relation',
+                             '{public, testpub_tbl1}',
+                             '{testpub_foralltables_excepttable1}');
+-- No entry of either kind.  testpub_default publishes nothing.
+SELECT pg_get_object_address('publication excluded relation',
+                             '{public, testpub_tbl1}', '{testpub_default}');
+-- Check pg_describe_object output for both included and excluded entries
+SELECT p.pubname,
+       pg_describe_object('pg_publication_rel'::regclass, pr.oid, 0) AS description,
+       pr.prexcept
+FROM pg_publication_rel pr
+JOIN pg_publication p ON p.oid = pr.prpubid
+WHERE p.pubname IN ('testpub_describe', 'testpub_foralltables_excepttable1')
+ORDER BY p.pubname;
+DROP PUBLICATION testpub_describe;
+\a\t
 -- fail - first table in the EXCEPT list should use TABLE keyword
 CREATE PUBLICATION testpub_foralltables_excepttable2 FOR ALL TABLES EXCEPT (testpub_tbl1, testpub_tbl2);
+
+-- A table in an EXCEPT clause cannot be changed to UNLOGGED.
+CREATE TABLE testpub_exc_unlogged_tbl (a int);
+CREATE PUBLICATION testpub_exc_unlogged FOR ALL TABLES EXCEPT (TABLE testpub_exc_unlogged_tbl);
+-- fail - the table is referenced in a publication EXCEPT clause
+ALTER TABLE testpub_exc_unlogged_tbl SET UNLOGGED;
+DROP PUBLICATION testpub_exc_unlogged;
+DROP TABLE testpub_exc_unlogged_tbl;
 
 ---------------------------------------------
 -- SET ALL TABLES/SEQUENCES
@@ -208,6 +247,9 @@ CREATE PUBLICATION testpub8 FOR ALL TABLES EXCEPT (TABLE testpub_root);
 \d testpub_part1
 \d testpub_root
 CREATE PUBLICATION testpub9 FOR ALL TABLES EXCEPT (TABLE testpub_part1);
+-- A name that needs quoting must not be quoted twice in the message.
+CREATE TABLE "testpub Part2" PARTITION OF testpub_root FOR VALUES FROM (100) TO (200);
+CREATE PUBLICATION testpub9 FOR ALL TABLES EXCEPT (TABLE "testpub Part2");
 
 CREATE TABLE tab_main (a int) PARTITION BY RANGE(a);
 -- Attaching a partition is not allowed if the partitioned table appears in a
@@ -215,7 +257,7 @@ CREATE TABLE tab_main (a int) PARTITION BY RANGE(a);
 ALTER TABLE tab_main ATTACH PARTITION testpub_root FOR VALUES FROM (0) TO (200);
 
 RESET client_min_messages;
-DROP TABLE testpub_root, testpub_part1, tab_main;
+DROP TABLE testpub_root, testpub_part1, "testpub Part2", tab_main;
 DROP PUBLICATION testpub8;
 
 --- Tests for publications with SEQUENCES

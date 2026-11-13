@@ -262,7 +262,8 @@
 #wal_log_hints = off                    # also do full page writes of non-critical updates
                                         # (change requires restart)
 #wal_compression = off                  # enables compression of full-page writes;
-                                        # off, pglz, lz4, zstd, or on
+                                        # off, on, zstd, lz4, or pglz (on means the first
+                                        # of zstd, lz4 and pglz, supported by the build)
 #wal_init_zero = on                     # zero-fill new WAL files
 #wal_recycle = on                       # recycle WAL files
 #wal_buffers = -1                       # min 32kB, -1 sets based on shared_buffers
@@ -362,7 +363,9 @@
 #max_slot_wal_keep_size = -1    # in megabytes; -1 disables
 #idle_replication_slot_timeout = 0      # in seconds; 0 disables
 #wal_sender_timeout = 60s       # in milliseconds; 0 disables
-#wal_sender_shutdown_timeout = -1      # in milliseconds; -1 disables
+#wal_sender_shutdown_timeout = -1      # in milliseconds
+                                # -1 disables the timeout and waits for catch-up
+                                # 0 does not wait for catch-up
 #track_commit_timestamp = off   # collect timestamp of transaction commit
                                 # (change requires restart)
 
@@ -564,11 +567,11 @@
                                         # archiver              autovacuum
                                         # backend               bgworker
                                         # bgwriter              checkpointer
-                                        # checksums             ioworker
-                                        # postmaster            slotsyncworker
-                                        # startup               syslogger
-                                        # walreceiver           walsummarizer
-                                        # walwriter             walsender
+                                        # ioworker              postmaster
+                                        # slotsyncworker        startup
+                                        # syslogger             walreceiver
+                                        # walsummarizer         walwriter
+                                        # walsender
                                         #
                                         # Level values in order of decreasing
                                         # detail:
@@ -878,6 +881,7 @@
 #dynamic_library_path = '$libdir'
 #extension_control_path = '$system'
 #gin_fuzzy_search_limit = 0
+#output_plugin_libraries = 'pgoutput, test_decoding'  # approved plugins for logical decoding
 
 
 #------------------------------------------------------------------------------

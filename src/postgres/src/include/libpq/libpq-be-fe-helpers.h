@@ -38,11 +38,101 @@
 #include "utils/wait_event.h"
 
 
+extern bool libpqsrv_is_valid_proxy_option(const char *keyword);
+
 static inline void libpqsrv_connect_prepare(void);
-static inline void libpqsrv_connect_internal(PGconn *conn, uint32 wait_event_info);
+static inline void libpqsrv_connect_complete(PGconn *conn, uint32 wait_event_info);
 static inline PGresult *libpqsrv_get_result_last(PGconn *conn, uint32 wait_event_info);
 static inline PGresult *libpqsrv_get_result(PGconn *conn, uint32 wait_event_info);
 
+/*
+ * Ensures that the provided conninfo options are considered safe for use by
+ * server-side proxies (FDWs, subscriptions, et al).
+ *
+ * Server extensions should call this function, which will ereport(ERROR) if an
+ * unblessed libpq parameter has been passed, before calling libpqsrv_connect or
+ * its variants. This keeps new options from later libpq versions from breaking
+ * security assumptions for existing releases during a platform library update.
+ *
+ * Note that the list of blessed options is subject to change during minor
+ * version updates within a major release line.
+ */
+static inline void
+libpqsrv_check_proxy_conninfo_opts(const PQconninfoOption *opts)
+{
+	const PQconninfoOption *opt;
+
+	for (opt = opts; opt->keyword != NULL; opt++)
+	{
+		if (opt->val != NULL && !libpqsrv_is_valid_proxy_option(opt->keyword))
+			ereport(ERROR,
+					errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					errmsg("permission denied to set connection option \"%s\"",
+						   opt->keyword));
+	}
+}
+
+/*
+ * Like libpqsrv_check_proxy_conninfo_opts() above, but additionally parses the
+ * conninfo string for the caller.
+ */
+static inline void
+libpqsrv_check_proxy_conninfo(const char *conninfo)
+{
+	PQconninfoOption *options;
+	char	   *error;
+
+	options = PQconninfoParse(conninfo, &error);
+
+	PG_TRY();
+	{
+		if (!options)
+		{
+			/*
+			 * Most likely an invalid connection string, but it could also be
+			 * memory problems. The message and detail here are chosen to
+			 * mimic the historical behavior of dblink.
+			 */
+			ereport(ERROR,
+					error
+					? errcode(ERRCODE_SQLCLIENT_UNABLE_TO_ESTABLISH_SQLCONNECTION)
+					: errcode(ERRCODE_OUT_OF_MEMORY),
+					errmsg("could not establish connection"),
+					error
+					? errdetail_internal("%s", pchomp(error))
+					: errdetail("out of memory"));
+		}
+
+		libpqsrv_check_proxy_conninfo_opts(options);
+	}
+	PG_FINALLY();
+	{
+		if (error)
+			PQfreemem(error);
+		if (options)
+			PQconninfoFree(options);
+	}
+	PG_END_TRY();
+}
+
+/*
+ * Start a connection using PQconnectStart().
+ *
+ * The returned connection has not yet completed its startup sequence.  Callers
+ * may perform per-connection setup, such as installing a notice receiver,
+ * before calling libpqsrv_connect_complete().
+ *
+ * Callers must call libpqsrv_connect_complete(), even if this function returns
+ * NULL, because libpqsrv_connect_prepare() may already have reserved an
+ * external FD that must be released.
+ */
+static inline PGconn *
+libpqsrv_connect_start(const char *conninfo)
+{
+	libpqsrv_connect_prepare();
+
+	return PQconnectStart(conninfo);
+}
 
 /*
  * PQconnectdb() wrapper that reserves a file descriptor and processes
@@ -55,15 +145,28 @@ static inline PGresult *libpqsrv_get_result(PGconn *conn, uint32 wait_event_info
 static inline PGconn *
 libpqsrv_connect(const char *conninfo, uint32 wait_event_info)
 {
-	PGconn	   *conn = NULL;
+	PGconn	   *conn;
 
-	libpqsrv_connect_prepare();
+	conn = libpqsrv_connect_start(conninfo);
 
-	conn = PQconnectStart(conninfo);
-
-	libpqsrv_connect_internal(conn, wait_event_info);
+	libpqsrv_connect_complete(conn, wait_event_info);
 
 	return conn;
+}
+
+/*
+ * Start a connection using PQconnectStartParams().
+ *
+ * See libpqsrv_connect_start() for the resource-lifetime rules.
+ */
+static inline PGconn *
+libpqsrv_connect_params_start(const char *const *keywords,
+							  const char *const *values,
+							  int expand_dbname)
+{
+	libpqsrv_connect_prepare();
+
+	return PQconnectStartParams(keywords, values, expand_dbname);
 }
 
 /*
@@ -76,13 +179,11 @@ libpqsrv_connect_params(const char *const *keywords,
 						int expand_dbname,
 						uint32 wait_event_info)
 {
-	PGconn	   *conn = NULL;
+	PGconn	   *conn;
 
-	libpqsrv_connect_prepare();
+	conn = libpqsrv_connect_params_start(keywords, values, expand_dbname);
 
-	conn = PQconnectStartParams(keywords, values, expand_dbname);
-
-	libpqsrv_connect_internal(conn, wait_event_info);
+	libpqsrv_connect_complete(conn, wait_event_info);
 
 	return conn;
 }
@@ -90,8 +191,9 @@ libpqsrv_connect_params(const char *const *keywords,
 /*
  * PQfinish() wrapper that additionally releases the reserved file descriptor.
  *
- * It is allowed to call this with a NULL pgconn iff NULL was returned by
- * libpqsrv_connect*.
+ * It is allowed to call this with NULL only when the external FD reservation
+ * has already been released, for example after calling
+ * libpqsrv_connect_complete() with a NULL connection.
  */
 static inline void
 libpqsrv_disconnect(PGconn *conn)
@@ -101,7 +203,7 @@ libpqsrv_disconnect(PGconn *conn)
 	 * already released it). This rule makes it easier to write PG_CATCH()
 	 * handlers for this facility's users.
 	 *
-	 * See also libpqsrv_connect_internal().
+	 * See also libpqsrv_connect_complete().
 	 */
 	if (conn == NULL)
 		return;
@@ -111,7 +213,7 @@ libpqsrv_disconnect(PGconn *conn)
 }
 
 
-/* internal helper functions follow */
+/* lower-level connection helper functions follow */
 
 
 /*
@@ -144,10 +246,11 @@ libpqsrv_connect_prepare(void)
 }
 
 /*
- * Helper function for all connection establishment functions.
+ * Complete a connection started by libpqsrv_connect_start() or
+ * libpqsrv_connect_params_start().
  */
 static inline void
-libpqsrv_connect_internal(PGconn *conn, uint32 wait_event_info)
+libpqsrv_connect_complete(PGconn *conn, uint32 wait_event_info)
 {
 	/*
 	 * With conn == NULL libpqsrv_disconnect() wouldn't release the FD. So do
@@ -467,8 +570,15 @@ libpqsrv_notice_receiver(void *arg, const PGresult *res)
 	if (len > 0 && message[len - 1] == '\n')
 		len--;
 
+	/*
+	 * Omit the local statement and context from each remote message. They can
+	 * help identify the caller, but repeating them for every message could
+	 * greatly increase log volume.
+	 */
 	ereport(LOG,
-			errmsg_internal("%s: %.*s", prefix, len, message));
+			errmsg_internal("%s: %.*s", prefix, len, message),
+			errhidestmt(true),
+			errhidecontext(true));
 }
 
 #define PGresult libpqsrv_PGresult

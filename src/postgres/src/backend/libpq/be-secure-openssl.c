@@ -48,9 +48,7 @@
 #include <openssl/bn.h>
 #include <openssl/conf.h>
 #include <openssl/dh.h>
-#ifndef OPENSSL_NO_ECDH
 #include <openssl/ec.h>
-#endif
 #include <openssl/x509v3.h>
 
 #ifndef YB_CONN_MGR
@@ -63,7 +61,7 @@ typedef struct
 {
 	uint32		status;
 	const char *hostname;
-}			HostCacheEntry;
+} HostCacheEntry;
 static uint32 host_cache_pointer(const char *key);
 #define SH_PREFIX		host_cache
 #define SH_ELEMENT_TYPE	HostCacheEntry
@@ -211,7 +209,7 @@ static void host_context_cleanup_cb(void *arg);
 static int	sni_clienthello_cb(SSL *ssl, int *al, void *arg);
 #endif
 
-static char *X509_NAME_to_cstring(X509_NAME *name);
+static char *X509_NAME_to_cstring(const X509_NAME *name);
 
 static SSL_CTX *SSL_context = NULL;
 static MemoryContext SSL_hosts_memcxt = NULL;
@@ -231,6 +229,11 @@ static struct hosts
 	 * matches the supplied hostname in the SNI extension.
 	 */
 	HostsLine  *default_host;
+
+	/*
+	 * Whether the configuration was loaded with ssl_sni enabled.
+	 */
+	bool		sni_enabled;
 }		   *SSL_hosts;
 
 static bool dummy_ssl_passwd_cb_called = false;
@@ -591,12 +594,13 @@ be_tls_init(bool isServerStart)
 	MemoryContext host_memcxt = NULL;
 	MemoryContextCallback *host_memcxt_cb;
 	char	   *err_msg = NULL;
-	int			res;
+	HostsFileLoadResult res;
 	struct hosts *new_hosts;
 	SSL_CTX    *context = NULL;
 	int			ssl_ver_min = -1;
 	int			ssl_ver_max = -1;
 	host_cache_hash *host_cache = NULL;
+	int			nloaded = 0;
 
 	/*
 	 * Since we don't know which host we're using until the ClientHello is
@@ -612,6 +616,7 @@ be_tls_init(bool isServerStart)
 
 	/* Allocate a tentative replacement for SSL_hosts. */
 	new_hosts = palloc0_object(struct hosts);
+	new_hosts->sni_enabled = ssl_sni;
 
 	/*
 	 * Register a reset callback for the memory context which is responsible
@@ -635,7 +640,7 @@ be_tls_init(bool isServerStart)
 	 *
 	 * The reason for not doing everything in this if-else conditional is that
 	 * we want to use the same processing of postgresql.conf for when ssl_sni
-	 * is off as well as when it's on but the hostsfile is missing etc.  Thus
+	 * is off as well as when it's on but the hosts file is missing etc.  Thus
 	 * we set res to the state and continue with a new conditional instead of
 	 * duplicating logic and risk it diverging over time.
 	 */
@@ -643,7 +648,7 @@ be_tls_init(bool isServerStart)
 	{
 		/*
 		 * The GUC check hook should have already blocked this but to be on
-		 * the safe side we doublecheck here.
+		 * the safe side we double-check here.
 		 */
 #ifndef HAVE_SSL_CTX_SET_CLIENT_HELLO_CB
 		ereport(isServerStart ? FATAL : LOG,
@@ -665,7 +670,7 @@ be_tls_init(bool isServerStart)
 		{
 			ereport(isServerStart ? FATAL : LOG,
 					errcode(ERRCODE_CONFIG_FILE_ERROR),
-					errmsg("could not load \"%s\": %s", "pg_hosts.conf",
+					errmsg("could not load file \"%s\": %s", HostsFileName,
 						   err_msg ? err_msg : "unknown error"));
 			goto error;
 		}
@@ -685,9 +690,6 @@ be_tls_init(bool isServerStart)
 		foreach(line, pg_hosts)
 		{
 			HostsLine  *host = lfirst(line);
-
-			if (!init_host_context(host, isServerStart))
-				goto error;
 
 			/*
 			 * The hostname in the config will be set to NULL for the default
@@ -758,7 +760,25 @@ be_tls_init(bool isServerStart)
 				 */
 				new_hosts->sni = lappend(new_hosts->sni, host);
 			}
+
+			/*
+			 * Create the SSL context only once the entry has been accepted
+			 * and added to new_hosts, as the cleanup callback can only free
+			 * contexts of entries it can reach from there.
+			 *
+			 * An EXEC_BACKEND child has no previous configuration to fall
+			 * back on, so rather than leaving the backend without SSL for all
+			 * hosts we keep a failed entry without a context.  Connections
+			 * selecting it will fail the handshake.
+			 */
+			if (init_host_context(host, isServerStart))
+				nloaded++;
+			else if (!IsUnderPostmaster)
+				goto error;
 		}
+
+		if (nloaded == 0)
+			goto error;
 	}
 
 	/*
@@ -775,10 +795,14 @@ be_tls_init(bool isServerStart)
 			Assert(ssl_sni == false);
 #endif
 
-		pgconf->ssl_cert = ssl_cert_file;
-		pgconf->ssl_key = ssl_key_file;
-		pgconf->ssl_ca = ssl_ca_file;
-		pgconf->ssl_passphrase_cmd = ssl_passphrase_command;
+		/*
+		 * Copy the configuration from the GUC variables since they aren't
+		 * guaranteed to survive a failed reload.
+		 */
+		pgconf->ssl_cert = pstrdup(ssl_cert_file);
+		pgconf->ssl_key = pstrdup(ssl_key_file);
+		pgconf->ssl_ca = pstrdup(ssl_ca_file);
+		pgconf->ssl_passphrase_cmd = pstrdup(ssl_passphrase_command);
 		pgconf->ssl_passphrase_reload = ssl_passphrase_command_supports_reload;
 
 		if (!init_host_context(pgconf, isServerStart))
@@ -801,8 +825,8 @@ be_tls_init(bool isServerStart)
 				errcode(ERRCODE_CONFIG_FILE_ERROR),
 				errmsg("no SSL configurations loaded"),
 		/*- translator: The two %s contain filenames */
-				errhint("If ssl_sni is enabled then add configuration to \"%s\", else \"%s\"",
-						"pg_hosts.conf", "postgresql.conf"));
+				errhint("If ssl_sni is enabled then add configuration to file \"%s\", else file \"%s\".",
+						HostsFileName, "postgresql.conf"));
 		goto error;
 	}
 
@@ -908,7 +932,7 @@ be_tls_init(bool isServerStart)
 			ereport(isServerStart ? FATAL : LOG,
 					(errcode(ERRCODE_CONFIG_FILE_ERROR),
 					 errmsg("could not set SSL protocol version range"),
-					 errdetail("\"%s\" cannot be higher than \"%s\"",
+					 errdetail("\"%s\" cannot be higher than \"%s\".",
 							   "ssl_min_protocol_version",
 							   "ssl_max_protocol_version")));
 			goto error;
@@ -1005,14 +1029,30 @@ be_tls_init(bool isServerStart)
 
 	return 0;
 
+error:
+
 	/*
 	 * Clean up by releasing working SSL contexts as well as allocations
 	 * performed during parsing.  Since all our allocations are done in a
 	 * local memory context all we need to do is delete it.
 	 */
-error:
 	if (context)
 		SSL_CTX_free(context);
+
+	/*
+	 * If the initialization failed, and the ssl_sni setting was changed, we
+	 * issue a WARNING to indicate that the ssl_sni setting won't match the
+	 * SSL configuration in use.
+	 */
+	if (SSL_context && SSL_hosts && SSL_hosts->sni_enabled != ssl_sni)
+	{
+		ereport(WARNING,
+				errcode(ERRCODE_CONFIG_FILE_ERROR),
+				SSL_hosts->sni_enabled ?
+				errmsg("SSL configuration not reloaded, SNI remains on") :
+				errmsg("SSL configuration not reloaded, SNI remains off"),
+				errdetail("The SSL configuration failed to reload; the previous configuration and SNI state will remain active."));
+	}
 
 	MemoryContextSwitchTo(oldcxt);
 	MemoryContextDelete(host_memcxt);
@@ -1081,7 +1121,7 @@ init_host_context(HostsLine *host, bool isServerStart)
 							"Set \"%s\" to \"off\" to make use of the hook "
 							"that is currently installed, or remove the hook "
 							"and use per-host passphrase commands in \"%s\".",
-							"ssl_sni", "pg_hosts.conf"));
+							"ssl_sni", HostsFileName));
 			init_warned = true;
 		}
 
@@ -1281,6 +1321,13 @@ be_tls_destroy(void)
 		SSL_CTX_free(SSL_context);
 	SSL_context = NULL;
 	ssl_loaded_verify_locations = false;
+
+	if (SSL_hosts_memcxt)
+	{
+		MemoryContextDelete(SSL_hosts_memcxt);
+		SSL_hosts_memcxt = NULL;
+		SSL_hosts = NULL;
+	}
 }
 
 /*
@@ -1618,18 +1665,18 @@ yb_be_tls_set_peer_cert_info(Port *port)
 		/* YB: outer int r stayed with be_tls_open_server; this block was factored out */
 		int			r;
 		int			len;
-		X509_NAME  *x509name = X509_get_subject_name(port->peer);
+		const X509_NAME *x509name = X509_get_subject_name(port->peer);
 		char	   *peer_dn;
 		BIO		   *bio = NULL;
 		BUF_MEM    *bio_buf = NULL;
 
-		len = X509_NAME_get_text_by_NID(x509name, NID_commonName, NULL, 0);
+		len = X509_NAME_get_text_by_NID(unconstify(X509_NAME *, x509name), NID_commonName, NULL, 0);
 		if (len != -1)
 		{
 			char	   *peer_cn;
 
 			peer_cn = MemoryContextAlloc(TopMemoryContext, len + 1);
-			r = X509_NAME_get_text_by_NID(x509name, NID_commonName, peer_cn,
+			r = X509_NAME_get_text_by_NID(unconstify(X509_NAME *, x509name), NID_commonName, peer_cn,
 										  len + 1);
 			peer_cn[len] = '\0';
 			if (r != len)
@@ -2490,9 +2537,11 @@ sni_clienthello_cb(SSL *ssl, int *al, void *arg)
 				len;
 	HostsLine  *install_config = NULL;
 
-	if (!ssl_sni)
+	if (!SSL_hosts->sni_enabled)
 	{
+		/* A configuration loaded without SNI must have a default host */
 		install_config = SSL_hosts->default_host;
+		Assert(install_config != NULL);
 		goto found;
 	}
 
@@ -2614,6 +2663,17 @@ sni_clienthello_cb(SSL *ssl, int *al, void *arg)
 	}
 
 found:
+	if (install_config->ssl_ctx == NULL)
+	{
+		*al = SSL_AD_INTERNAL_ERROR;
+		ereport(COMMERROR,
+				errcode(ERRCODE_CONFIG_FILE_ERROR),
+				errmsg("SSL configuration for host could not be loaded, terminating connection"),
+				errcontext("line %d of configuration file \"%s\"",
+						   install_config->linenumber, install_config->sourcefile));
+		return SSL_CLIENT_HELLO_ERROR;
+	}
+
 	if (!ssl_update_ssl(ssl, install_config))
 	{
 		*al = SSL_AD_INTERNAL_ERROR;
@@ -2681,7 +2741,6 @@ initialize_dh(SSL_CTX *context, bool isServerStart)
 static bool
 initialize_ecdh(SSL_CTX *context, bool isServerStart)
 {
-#ifndef OPENSSL_NO_ECDH
 	if (SSL_CTX_set1_groups_list(context, SSLECDHCurve) != 1)
 	{
 		/*
@@ -2699,7 +2758,6 @@ initialize_ecdh(SSL_CTX *context, bool isServerStart)
 				errhint("Ensure that each group name is spelled correctly and supported by the installed version of OpenSSL."));
 		return false;
 	}
-#endif
 
 	return true;
 }
@@ -2916,14 +2974,14 @@ be_tls_get_certificate_hash(Port *port, size_t *len)
  *
  */
 static char *
-X509_NAME_to_cstring(X509_NAME *name)
+X509_NAME_to_cstring(const X509_NAME *name)
 {
 	BIO		   *membuf = BIO_new(BIO_s_mem());
 	int			i,
 				nid,
 				count = X509_NAME_entry_count(name);
-	X509_NAME_ENTRY *e;
-	ASN1_STRING *v;
+	const X509_NAME_ENTRY *e;
+	const ASN1_STRING *v;
 	const char *field_name;
 	size_t		size;
 	char		nullterm;

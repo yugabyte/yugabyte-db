@@ -81,6 +81,7 @@
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
+#include "utils/injection_point.h"
 #include "utils/lsyscache.h"
 #include "utils/pg_locale.h"
 #include "utils/relmapper.h"
@@ -1198,14 +1199,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 		if (pg_strcasecmp(strategy, "wal_log") == 0)
 			dbstrategy = CREATEDB_WAL_LOG;
 		else if (pg_strcasecmp(strategy, "file_copy") == 0)
-		{
-			if (DataChecksumsInProgressOn())
-				ereport(ERROR,
-						errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg("create database strategy \"%s\" not allowed when data checksums are being enabled",
-							   strategy));
 			dbstrategy = CREATEDB_FILE_COPY;
-		}
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -1759,6 +1753,8 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 
 	tuple = heap_form_tuple(RelationGetDescr(pg_database_rel),
 							new_record, new_record_nulls);
+
+	INJECTION_POINT("createdb-before-catalog-insert", NULL);
 
 	CatalogTupleInsert(pg_database_rel, tuple);
 

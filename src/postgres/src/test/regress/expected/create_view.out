@@ -1720,7 +1720,7 @@ rollback;
 -- likewise, altering a referenced column's type is prohibited ...
 alter table tt14t alter column f4 type integer using f4::integer;  -- fail
 ERROR:  cannot alter type of a column used by a view or rule
-DETAIL:  rule _RETURN on view tt14v depends on column "f4"
+DETAIL:  rule _RETURN on view tt14v depends on column "f4".
 -- ... but some bug might let it happen, so check defenses
 begin;
 -- destroy the dependency entry that prevents the ALTER:
@@ -1969,22 +1969,25 @@ select * from
   current_date as d,
   localtimestamp(3) as t,
   cast(1+2 as int4) as i4,
-  cast(1+2 as int8) as i8;
+  cast(1+2 as int8) as i8,
+  cast('foo' is normalized as boolean) as isn;
 select pg_get_viewdef('tt20v', true);
-               pg_get_viewdef                
----------------------------------------------
-  SELECT c.c,                               +
-     col.col,                               +
-     d.d,                                   +
-     t.t,                                   +
-     i4.i4,                                 +
-     i8.i8                                  +
-    FROM COALESCE(1, 2) c(c),               +
-     COLLATION FOR ('x'::text) col(col),    +
-     CURRENT_DATE d(d),                     +
-     LOCALTIMESTAMP(3) t(t),                +
-     CAST(1 + 2 AS integer) i4(i4),         +
-     CAST((1 + 2)::bigint AS bigint) i8(i8);
+                       pg_get_viewdef                       
+------------------------------------------------------------
+  SELECT c.c,                                              +
+     col.col,                                              +
+     d.d,                                                  +
+     t.t,                                                  +
+     i4.i4,                                                +
+     i8.i8,                                                +
+     isn.isn                                               +
+    FROM COALESCE(1, 2) c(c),                              +
+     COLLATION FOR ('x'::text) col(col),                   +
+     CURRENT_DATE d(d),                                    +
+     LOCALTIMESTAMP(3) t(t),                               +
+     CAST(1 + 2 AS integer) i4(i4),                        +
+     CAST((1 + 2)::bigint AS bigint) i8(i8),               +
+     CAST(('foo'::text IS NORMALIZED) AS boolean) isn(isn);
 (1 row)
 
 -- reverse-listing of various special function syntaxes required by SQL
@@ -2251,7 +2254,10 @@ select x + y + z as c1,
        (x > y) AND (y > z OR x > z) as c8,
        (x > y) OR (y > z AND NOT (x > z)) as c9,
        (x,y) <> ALL (values(1,2),(3,4)) as c10,
-       (x,y) <= ANY (values(1,2),(3,4)) as c11
+       (x,y) <= ANY (values(1,2),(3,4)) as c11,
+       (x>0 OR y>0) IN (SELECT false) AS c12,
+       (x < y) <> ALL (SELECT false) AS c13,
+       true = (y = ANY (SELECT 1)) AS c14
 from (values(1,2,3)) v(x,y,z);
 select pg_get_viewdef('tt26v', true);
                    pg_get_viewdef                   
@@ -2266,8 +2272,28 @@ select pg_get_viewdef('tt26v', true);
      x > y AND (y > z OR x > z) AS c8,             +
      x > y OR y > z AND NOT x > z AS c9,           +
      ((x, y) <> ALL ( VALUES (1,2), (3,4))) AS c10,+
-     ((x, y) <= ANY ( VALUES (1,2), (3,4))) AS c11 +
+     ((x, y) <= ANY ( VALUES (1,2), (3,4))) AS c11,+
+     ((x > 0 OR y > 0) IN ( SELECT false)) AS c12, +
+     ((x < y) <> ALL ( SELECT false)) AS c13,      +
+     true = ((y IN ( SELECT 1))) AS c14            +
     FROM ( VALUES (1,2,3)) v(x, y, z);
+(1 row)
+
+-- xml IS DOCUMENT needs to be treated specially
+create operator ||
+  (function = xmlconcat2, leftarg=xml, rightarg=xml);
+create view tt261v as
+select x is document as c1,
+       (x || x) is document as c2,
+       f = (x is document) as c3
+from (values(false,null::xml)) v(f,x);
+select pg_get_viewdef('tt261v', true);
+                pg_get_viewdef                
+----------------------------------------------
+  SELECT x IS DOCUMENT AS c1,                +
+     (x || x) IS DOCUMENT AS c2,             +
+     f = (x IS DOCUMENT) AS c3               +
+    FROM ( VALUES (false,NULL::xml)) v(f, x);
 (1 row)
 
 -- test restriction on non-system view expansion.
@@ -2316,7 +2342,7 @@ drop cascades to view aliased_view_2
 drop cascades to view aliased_view_3
 drop cascades to view aliased_view_4
 DROP SCHEMA testviewschm2 CASCADE;
-NOTICE:  drop cascades to 80 other objects
+NOTICE:  drop cascades to 82 other objects
 DETAIL:  drop cascades to table t1
 drop cascades to view temporal1
 drop cascades to view temporal2
@@ -2395,5 +2421,7 @@ drop cascades to view tt23v
 drop cascades to view tt24v
 drop cascades to view tt25v
 drop cascades to view tt26v
+drop cascades to operator ||(xml,xml)
+drop cascades to view tt261v
 drop cascades to table tt27v_tbl
 drop cascades to view tt27v

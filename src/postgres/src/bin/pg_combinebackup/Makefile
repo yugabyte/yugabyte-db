@@ -12,6 +12,8 @@
 PGFILEDESC = "pg_combinebackup - combine incremental backups"
 PGAPPICON=win32
 
+EXTRA_INSTALL=contrib/pg_visibility
+
 subdir = src/bin/pg_combinebackup
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global

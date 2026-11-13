@@ -48,7 +48,7 @@ test: create_index create_index_spgist create_view index_including index_includi
 # ----------
 # Another group of parallel tests
 # ----------
-test: create_aggregate create_function_sql create_cast constraints triggers select inherit typed_table vacuum drop_if_exists updatable_views roleattributes create_am hash_func errors infinite_recurse create_property_graph for_portion_of
+test: create_aggregate create_function_sql create_cast constraints triggers select inherit typed_table vacuum drop_if_exists updatable_views roleattributes create_am hash_func errors infinite_recurse
 
 # ----------
 # sanity_check does a vacuum, affecting the sort order of SELECT *
@@ -102,7 +102,7 @@ test: publication subscription
 # Another group of parallel tests
 # select_views depends on create_view
 # ----------
-test: select_views portals_p2 foreign_key cluster dependency guc bitmapops combocid tsearch tsdicts foreign_data window xmlmap functional_deps advisory_lock indirect_toast equivclass stats_rewrite graph_table
+test: select_views portals_p2 portals_inflight foreign_key dependency guc bitmapops combocid tsearch tsdicts foreign_data window xmlmap functional_deps advisory_lock indirect_toast equivclass stats_rewrite alter_column_type
 
 # ----------
 # Another group of parallel tests (JSON related)
@@ -117,20 +117,29 @@ test: json jsonb json_encoding jsonpath jsonpath_encoding jsonb_jsonpath sqljson
 # ----------
 test: plancache limit plpgsql copy2 temp domain rangefuncs prepare conversion truncate alter_table sequence polymorphism rowtypes returning largeobject with xml
 
+# rowtypes_alter relies on cached plans surviving across statements, which
+# concurrent DDL can prevent, and on parallel workers being available, so run
+# it by itself
+test: rowtypes_alter
+
 # ----------
 # Another group of parallel tests
 #
 # The stats test resets stats, so nothing else needing stats access can be in
 # this group.
 # ----------
-test: partition_merge partition_split partition_join partition_prune reloptions hash_part indexing partition_aggregate partition_info tuplesort explain compression compression_lz4 memoize stats predicate numa eager_aggregate graph_table_rls planner_est
+test: partition_join partition_prune reloptions hash_part indexing partition_aggregate partition_info tuplesort explain memoize stats predicate numa eager_aggregate planner_est attribute_version
+
+# ----------
+# Another group of parallel tests (compression)
+# ----------
+test: compression compression_lz4 compression_pglz cluster
 
 # event_trigger depends on create_am and cannot run concurrently with
 # any test that runs DDL
 # oidjoins is read-only, though, and should run late for best coverage
 test: oidjoins event_trigger
 
-test: role_ddl tablespace_ddl database_ddl
 
 # event_trigger_login cannot run concurrently with any other tests because
 # on-login event handling could catch connection of a concurrent test.

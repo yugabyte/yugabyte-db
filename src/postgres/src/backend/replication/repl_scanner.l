@@ -203,6 +203,10 @@ TRANSACTION			{ return K_YB_TRANSACTION; }
 					return IDENT;
 				}
 
+<xd>{xddouble}	{
+					addlitchar('"', yyscanner);
+				}
+
 <xd>{xdinside}  {
 					addlit(yytext, yyleng, yyscanner);
 				}

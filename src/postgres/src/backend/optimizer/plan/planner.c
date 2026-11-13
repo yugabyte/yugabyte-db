@@ -106,10 +106,11 @@ bool		yb_lock_pk_single_rpc = false;
 #define EXPRKIND_APPINFO			7
 #define EXPRKIND_PHV				8
 #define EXPRKIND_TABLESAMPLE		9
-#define EXPRKIND_ARBITER_ELEM		10
-#define EXPRKIND_TABLEFUNC			11
-#define EXPRKIND_TABLEFUNC_LATERAL	12
-#define EXPRKIND_GROUPEXPR			13
+#define EXPRKIND_TABLESAMPLE_LATERAL	10
+#define EXPRKIND_ARBITER_ELEM		11
+#define EXPRKIND_TABLEFUNC			12
+#define EXPRKIND_TABLEFUNC_LATERAL	13
+#define EXPRKIND_GROUPEXPR			14
 
 /*
  * Data specific to grouping sets
@@ -146,9 +147,32 @@ typedef struct
 								 * subquery belonging to a set operation */
 } standard_qp_extra;
 
+/*
+ * Context for find_having_conflicts.  This is the callback context passed to
+ * expression_has_grouping_conflict in clauses.c.
+ */
+typedef struct
+{
+	Query	   *parse;
+	Index		group_rtindex;
+} having_grouping_ctx;
+
+/* Context for preprocess_subquery_phvs_walker */
+typedef struct
+{
+	PlannerInfo *root;
+	int			sublevels_up;
+} preprocess_subquery_phvs_context;
+
 /* Local functions */
 static Node *preprocess_expression(PlannerInfo *root, Node *expr, int kind);
 static void preprocess_qual_conditions(PlannerInfo *root, Node *jtnode);
+static Bitmapset *find_having_conflicts(Query *parse, Index group_rtindex);
+static Oid	having_var_grouping_eqop(Var *var, void *context);
+static Oid	group_var_eqop(Query *parse, Var *var);
+static void preprocess_subquery_phvs(PlannerInfo *root, Node *node);
+static bool preprocess_subquery_phvs_walker(Node *node,
+											preprocess_subquery_phvs_context *context);
 static void grouping_planner(PlannerInfo *root, double tuple_fraction,
 							 SetOperationStmt *setops);
 static grouping_sets_data *preprocess_grouping_sets(PlannerInfo *root);
@@ -909,6 +933,8 @@ subquery_planner(PlannerGlobal *glob, Query *parse, char *plan_name,
 	PlannerInfo *root;
 	List	   *newWithCheckOptions;
 	List	   *newHaving;
+	Bitmapset  *havingPushdownConflicts;
+	int			havingIdx;
 	bool		hasOuterJoins;
 	bool		hasResultRTEs;
 	RelOptInfo *final_rel;
@@ -935,12 +961,12 @@ subquery_planner(PlannerGlobal *glob, Query *parse, char *plan_name,
 	root->eq_classes = NIL;
 	root->ec_merging_done = false;
 	root->last_rinfo_serial = 0;
-	root->all_result_relids =
-		parse->resultRelation ? bms_make_singleton(parse->resultRelation) : NULL;
-	root->leaf_result_relids = NULL;	/* we'll find out leaf-ness later */
+	root->all_result_relids = NULL;
+	root->leaf_result_relids = NULL;
 	root->append_rel_list = NIL;
 	root->row_identity_vars = NIL;
 	root->rowMarks = NIL;
+	root->join_alias_phvs = NIL;
 	memset(root->upper_rels, 0, sizeof(root->upper_rels));
 	memset(root->upper_targets, 0, sizeof(root->upper_targets));
 	root->processed_groupClause = NIL;
@@ -1098,19 +1124,6 @@ subquery_planner(PlannerGlobal *glob, Query *parse, char *plan_name,
 	}
 
 	/*
-	 * If we have now verified that the query target relation is
-	 * non-inheriting, mark it as a leaf target.
-	 */
-	if (parse->resultRelation)
-	{
-		RangeTblEntry *rte = rt_fetch(parse->resultRelation, parse->rtable);
-
-		if (!rte->inh)
-			root->leaf_result_relids =
-				bms_make_singleton(parse->resultRelation);
-	}
-
-	/*
 	 * This would be a convenient time to check access permissions for all
 	 * relations mentioned in the query, since it would be better to fail now,
 	 * before doing any detailed planning.  However, for historical reasons,
@@ -1254,10 +1267,15 @@ subquery_planner(PlannerGlobal *glob, Query *parse, char *plan_name,
 		if (rte->rtekind == RTE_RELATION)
 		{
 			if (rte->tablesample)
+			{
+				/* Preprocess the tablesample expression(s) fully */
+				kind = rte->lateral ? EXPRKIND_TABLESAMPLE_LATERAL :
+					EXPRKIND_TABLESAMPLE;
 				rte->tablesample = (TableSampleClause *)
 					preprocess_expression(root,
 										  (Node *) rte->tablesample,
-										  EXPRKIND_TABLESAMPLE);
+										  kind);
+			}
 		}
 		else if (rte->rtekind == RTE_SUBQUERY)
 		{
@@ -1272,6 +1290,14 @@ subquery_planner(PlannerGlobal *glob, Query *parse, char *plan_name,
 				rte->subquery = (Query *)
 					flatten_join_alias_vars(root, root->parse,
 											(Node *) rte->subquery);
+
+			/*
+			 * Likewise for copies of our PlaceHolderVars in the subquery.
+			 * This must be done after the alias expansion above, which can
+			 * insert such copies.
+			 */
+			if (rte->lateral && root->glob->lastPHId != 0)
+				preprocess_subquery_phvs(root, (Node *) rte->subquery);
 		}
 		else if (rte->rtekind == RTE_FUNCTION)
 		{
@@ -1338,6 +1364,16 @@ subquery_planner(PlannerGlobal *glob, Query *parse, char *plan_name,
 	}
 
 	/*
+	 * Before we flatten GROUP Vars, identify HAVING clauses whose equality
+	 * semantics disagree with the GROUP BY's.  See find_having_conflicts.
+	 */
+	if (parse->hasGroupRTE)
+		havingPushdownConflicts = find_having_conflicts(parse,
+														root->group_rtindex);
+	else
+		havingPushdownConflicts = NULL;
+
+	/*
 	 * Replace any Vars in the subquery's targetlist and havingQual that
 	 * reference GROUP outputs with the underlying grouping expressions.
 	 *
@@ -1381,6 +1417,14 @@ subquery_planner(PlannerGlobal *glob, Query *parse, char *plan_name,
 	 * but it's okay: it's just an optimization to avoid running pull_varnos
 	 * when there cannot be any Vars in the HAVING clause.)
 	 *
+	 * We also cannot do this for HAVING clauses that conflict with GROUP BY
+	 * on collation or operator family.  Both kinds of conflict are detected
+	 * before flatten_group_exprs (see find_having_conflicts above) and
+	 * recorded in the havingPushdownConflicts bitmapset.  The bitmapset
+	 * indexes remain valid here because flatten_group_exprs uses
+	 * expression_tree_mutator, which preserves the list length and ordering
+	 * of havingQual.
+	 *
 	 * Also, it may be that the clause is so expensive to execute that we're
 	 * better off doing it only once per group, despite the loss of
 	 * selectivity.  This is hard to estimate short of doing the entire
@@ -1413,6 +1457,7 @@ subquery_planner(PlannerGlobal *glob, Query *parse, char *plan_name,
 	 * as Node *.
 	 */
 	newHaving = NIL;
+	havingIdx = 0;
 	foreach(l, (List *) parse->havingQual)
 	{
 		Node	   *havingclause = (Node *) lfirst(l);
@@ -1420,6 +1465,7 @@ subquery_planner(PlannerGlobal *glob, Query *parse, char *plan_name,
 		if (contain_agg_clause(havingclause) ||
 			contain_volatile_functions(havingclause) ||
 			contain_subplans(havingclause) ||
+			bms_is_member(havingIdx, havingPushdownConflicts) ||
 			(parse->groupClause && parse->groupingSets &&
 			 bms_is_member(root->group_rtindex, pull_varnos(root, havingclause))))
 		{
@@ -1456,6 +1502,8 @@ subquery_planner(PlannerGlobal *glob, Query *parse, char *plan_name,
 			/* ... and also keep it in HAVING */
 			newHaving = lappend(newHaving, havingclause);
 		}
+
+		havingIdx++;
 	}
 	parse->havingQual = (Node *) newHaving;
 
@@ -1592,6 +1640,15 @@ preprocess_expression(PlannerInfo *root, Node *expr, int kind)
 		convert_saop_to_hashed_saop(expr);
 	}
 
+	/*
+	 * Preprocess any copies of our PlaceHolderVars within SubLink subselects.
+	 * This must be done after join alias expansion, which can insert such
+	 * copies, and before the SubLinks are turned into SubPlans, which collect
+	 * those copies as SubPlan arguments.
+	 */
+	if (root->parse->hasSubLinks && root->glob->lastPHId != 0)
+		preprocess_subquery_phvs(root, expr);
+
 	/* Expand SubLinks to SubPlans */
 	if (root->parse->hasSubLinks)
 		expr = SS_process_sublinks(root, expr, (kind == EXPRKIND_QUAL));
@@ -1656,20 +1713,173 @@ preprocess_qual_conditions(PlannerInfo *root, Node *jtnode)
 }
 
 /*
- * preprocess_phv_expression
- *	  Do preprocessing on a PlaceHolderVar expression that's been pulled up.
+ * find_having_conflicts
+ *	  Identify HAVING clauses that must not be moved to WHERE because they
+ *	  apply a different equivalence relation than GROUP BY.  Pushing such a
+ *	  clause to WHERE would filter individual rows before grouping happens,
+ *	  eliminating rows that GROUP BY would have merged into a single group
+ *	  and thereby changing aggregate results.
  *
- * If a LATERAL subquery references an output of another subquery, and that
- * output must be wrapped in a PlaceHolderVar because of an intermediate outer
- * join, then we'll push the PlaceHolderVar expression down into the subquery
- * and later pull it back up during find_lateral_references, which runs after
- * subquery_planner has preprocessed all the expressions that were in the
- * current query level to start with.  So we need to preprocess it then.
+ * The actual walking is done by expression_has_grouping_conflict; see that
+ * function for the kinds of conflict it looks for.  We just iterate over
+ * havingQual and supply a HAVING-specific callback that identifies GROUP
+ * Vars.
+ *
+ * This must be called before flatten_group_exprs, while the HAVING clause
+ * still contains GROUP Vars (Vars referencing RTE_GROUP).  These GROUP Vars
+ * carry the GROUP BY collation as their varcollid and let us recover the
+ * grouping eqop via varattno.  After flattening, those Vars are replaced by
+ * the underlying expressions, and matching back to grouping expressions is
+ * much harder.
+ *
+ * Returns a Bitmapset of zero-based indexes into the havingQual list for
+ * clauses that conflict and must stay in HAVING.
  */
-Expr *
-preprocess_phv_expression(PlannerInfo *root, Expr *expr)
+static Bitmapset *
+find_having_conflicts(Query *parse, Index group_rtindex)
 {
-	return (Expr *) preprocess_expression(root, (Node *) expr, EXPRKIND_PHV);
+	Bitmapset  *result = NULL;
+	having_grouping_ctx ctx;
+	int			idx;
+
+	if (parse->havingQual == NULL)
+		return NULL;
+
+	ctx.parse = parse;
+	ctx.group_rtindex = group_rtindex;
+
+	idx = 0;
+	foreach_ptr(Node, clause, (List *) parse->havingQual)
+	{
+		if (expression_has_grouping_conflict(clause, having_var_grouping_eqop,
+											 &ctx))
+			result = bms_add_member(result, idx);
+		idx++;
+	}
+
+	return result;
+}
+
+/*
+ * having_var_grouping_eqop
+ *	  grouping_eqop_callback for find_having_conflicts.
+ *
+ * Returns the GROUP BY equality operator for 'var' if it references the
+ * query's RTE_GROUP, or InvalidOid otherwise.
+ */
+static Oid
+having_var_grouping_eqop(Var *var, void *context)
+{
+	having_grouping_ctx *ctx = (having_grouping_ctx *) context;
+
+	if (var->varno != ctx->group_rtindex || var->varlevelsup != 0)
+		return InvalidOid;
+
+	return group_var_eqop(ctx->parse, var);
+}
+
+/*
+ * group_var_eqop
+ *	  Return the equality operator that GROUP BY uses for the given GROUP Var.
+ *
+ * A GROUP Var's varattno is its 1-based position in the RTE_GROUP's groupexprs
+ * list, which addRangeTableEntryForGroup built by iterating parse->groupClause
+ * and including every SortGroupClause whose TLE was present in the targetlist.
+ * Replay that traversal here to recover the SortGroupClause for the given
+ * varattno.
+ */
+static Oid
+group_var_eqop(Query *parse, Var *var)
+{
+	int			counter = 0;
+
+	Assert(var->varlevelsup == 0);
+
+	foreach_node(SortGroupClause, sgc, parse->groupClause)
+	{
+		if (get_sortgroupclause_tle(sgc, parse->targetList) == NULL)
+			continue;
+		if (++counter == var->varattno)
+			return sgc->eqop;
+	}
+
+	elog(ERROR, "could not find GROUP clause for GROUP Var attno %d",
+		 var->varattno);
+	return InvalidOid;			/* keep compiler quiet */
+}
+
+/*
+ * preprocess_subquery_phvs
+ *		Preprocess copies of this level's PlaceHolderVars that were pushed
+ *		down into subqueries within the given tree.
+ *
+ * When a subquery (a LATERAL RTE or a SubLink's subselect) references a
+ * pulled-up output that must be wrapped in a PlaceHolderVar, the PHV
+ * expression is pushed down into the subquery.  The subquery's own planning
+ * leaves that copy alone, since it belongs to our level, so we need to
+ * preprocess it.  We modify the PHVs in place, temporarily adjusting each to
+ * our level.  Preprocessing a copy's expression takes care of everything
+ * within it, including any further copies nested inside SubLinks there, so
+ * we don't look inside a copy ourselves.
+ */
+static void
+preprocess_subquery_phvs(PlannerInfo *root, Node *node)
+{
+	preprocess_subquery_phvs_context context;
+
+	context.root = root;
+	context.sublevels_up = 0;
+	(void) preprocess_subquery_phvs_walker(node, &context);
+}
+
+static bool
+preprocess_subquery_phvs_walker(Node *node,
+								preprocess_subquery_phvs_context *context)
+{
+	if (node == NULL)
+		return false;
+	if (IsA(node, Query))
+	{
+		bool		result;
+
+		context->sublevels_up++;
+		result = query_tree_walker((Query *) node,
+								   preprocess_subquery_phvs_walker,
+								   context, 0);
+		context->sublevels_up--;
+		return result;
+	}
+	if (IsA(node, PlaceHolderVar))
+	{
+		PlaceHolderVar *phv = (PlaceHolderVar *) node;
+
+		/* A PHV of an upper level can't contain anything of our level */
+		if (phv->phlevelsup > context->sublevels_up)
+			return false;
+
+		/*
+		 * Is this a copy of one of our PHVs that is pushed down into a
+		 * subquery?
+		 */
+		if (context->sublevels_up > 0 &&
+			phv->phlevelsup == context->sublevels_up)
+		{
+			int			levelsup = phv->phlevelsup;
+			Node	   *expr;
+
+			/* Adjust the expression to our level, preprocess, adjust back */
+			expr = copyObject((Node *) phv->phexpr);
+			IncrementVarSublevelsUp(expr, -levelsup, 0);
+			expr = preprocess_expression(context->root, expr, EXPRKIND_PHV);
+			IncrementVarSublevelsUp(expr, levelsup, 0);
+			phv->phexpr = (Expr *) expr;
+			return false;
+		}
+
+		/* Otherwise, it's ours or a lower level's; look inside it */
+	}
+	return expression_tree_walker(node, preprocess_subquery_phvs_walker,
+								  context);
 }
 
 /*
@@ -2570,7 +2780,6 @@ grouping_planner(PlannerInfo *root, double tuple_fraction,
 										parse->onConflict,
 										mergeActionLists,
 										mergeJoinConditions,
-										parse->forPortionOf,
 										assign_special_exec_param(root));
 		}
 

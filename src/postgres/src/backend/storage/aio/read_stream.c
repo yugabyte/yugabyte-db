@@ -777,10 +777,19 @@ read_stream_begin_impl(int flags,
 	Oid			tablespace_id;
 
 	/*
-	 * Decide how many I/Os we will allow to run at the same time.  That
-	 * currently means advice to the kernel to tell it that we will soon read.
-	 * This number also affects how far we look ahead for opportunities to
-	 * start more I/Os.
+	 * Reject attempts to read non-local temporary relations; we would be
+	 * likely to get wrong data since we have no visibility into the owning
+	 * session's local buffers.
+	 */
+	if (rel && RELATION_IS_OTHER_TEMP(rel))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot access temporary tables of other sessions")));
+
+	/*
+	 * Decide how many I/Os we will allow to run at the same time.  This
+	 * number also affects how far we look ahead for opportunities to start
+	 * more I/Os.
 	 */
 	tablespace_id = smgr->smgr_rlocator.locator.spcOid;
 	if (!OidIsValid(MyDatabaseId) ||
@@ -1396,6 +1405,27 @@ read_stream_resume(ReadStream *stream)
 {
 	stream->readahead_distance = stream->resume_readahead_distance;
 	stream->combine_distance = stream->resume_combine_distance;
+}
+
+/*
+ * Stop using a buffer access strategy for reads from this stream.
+ *
+ * This clears the strategy for all of the stream's ReadBuffersOperations,
+ * including those with in-progress IOs. The completion of an IO whose
+ * strategy was cleared while it was in flight may have a small amount of its
+ * read time attributed to IOCONTEXT_NORMAL instead of the strategy's
+ * IOContext, because WaitReadBuffers() derives the IOContext from the (now
+ * cleared) strategy. This is bounded by the stream's look-ahead window and
+ * happens at most once, when the strategy is first cleared, so it is not worth
+ * the complexity of preserving the original IOContext for those IOs.
+ *
+ * Note that the caller is responsible for freeing the strategy's memory.
+ */
+void
+read_stream_clear_strategy(ReadStream *stream)
+{
+	for (int i = 0; i < stream->max_ios; ++i)
+		stream->ios[i].op.strategy = NULL;
 }
 
 /*

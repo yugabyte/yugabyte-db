@@ -78,6 +78,7 @@ DefineAggregate(ParseState *pstate,
 	char		finalfuncModify = 0;
 	char		mfinalfuncModify = 0;
 	List	   *sortoperatorName = NIL;
+	List	   *supportfuncName = NIL;
 	TypeName   *baseType = NULL;
 	TypeName   *transType = NULL;
 	TypeName   *mtransType = NULL;
@@ -159,6 +160,8 @@ DefineAggregate(ParseState *pstate,
 			mfinalfuncModify = extractModify(defel);
 		else if (strcmp(defel->defname, "sortop") == 0)
 			sortoperatorName = defGetQualifiedName(defel);
+		else if (strcmp(defel->defname, "support") == 0)
+			supportfuncName = defGetQualifiedName(defel);
 		else if (strcmp(defel->defname, "basetype") == 0)
 			baseType = defGetTypeName(defel);
 		else if (strcmp(defel->defname, "hypothetical") == 0)
@@ -466,6 +469,7 @@ DefineAggregate(ParseState *pstate,
 						   finalfuncModify,
 						   mfinalfuncModify,
 						   sortoperatorName,	/* sort operator name */
+						   supportfuncName, /* planner support func name */
 						   transTypeId, /* transition data type */
 						   transSpace,	/* transition space */
 						   mtransTypeId,	/* transition data type */

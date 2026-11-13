@@ -75,7 +75,7 @@ StaticAssertDecl(USECS_PER_SEC % WAITS_PER_SEC == 0,
 
 static bool do_wait = true;
 static int	wait_seconds = DEFAULT_WAIT;
-static bool wait_seconds_arg = false;
+pg_attribute_unused() static bool wait_seconds_arg = false;
 static bool silent_mode = false;
 static ShutdownMode shutdown_mode = FAST_MODE;
 static int	sig = SIGINT;		/* default */
@@ -87,10 +87,10 @@ static char *post_opts = NULL;
 static const char *progname;
 static char *log_file = NULL;
 static char *exec_path = NULL;
-static char *event_source = NULL;
-static char *register_servicename = "PostgreSQL";	/* FIXME: + version ID? */
-static char *register_username = NULL;
-static char *register_password = NULL;
+pg_attribute_unused() static char *event_source = NULL;
+pg_attribute_unused() static char *register_servicename = "PostgreSQL"; /* FIXME: + version ID? */
+pg_attribute_unused() static char *register_username = NULL;
+pg_attribute_unused() static char *register_password = NULL;
 static char *argv0 = NULL;
 static bool allow_core_files = false;
 static time_t start_time;
@@ -114,7 +114,7 @@ static HANDLE shutdownHandles[2];
 #endif
 
 
-static void write_stderr(const char *fmt,...) pg_attribute_printf(1, 2);
+static void write_stderr(const char *fmt, ...) pg_attribute_printf(1, 2);
 static void do_advice(void);
 static void do_help(void);
 static void set_mode(char *modeopt);
@@ -200,7 +200,7 @@ write_eventlog(int level, const char *line)
  * not available).
  */
 static void
-write_stderr(const char *fmt,...)
+write_stderr(const char *fmt, ...)
 {
 	va_list		ap;
 
@@ -868,7 +868,7 @@ trap_sigint_during_startup(SIGNAL_ARGS)
 	 * Clear the signal handler, and send the signal again, to terminate the
 	 * process as normal.
 	 */
-	pqsignal(postgres_signal_arg, SIG_DFL);
+	pqsignal(postgres_signal_arg, PG_SIG_DFL);
 	raise(postgres_signal_arg);
 }
 

@@ -65,6 +65,7 @@
 #include "utils/builtins.h"
 #include "utils/combocid.h"
 #include "utils/guc.h"
+#include "utils/injection_point.h"
 #include "utils/inval.h"
 #include "utils/memutils.h"
 #include "utils/relmapper.h"
@@ -1475,6 +1476,9 @@ RecordTransactionCommit(void)
 													 &RelcacheInitFileInval);
 	wrote_xlog = (XactLastRecEnd != 0);
 
+	/* Load the injection point before entering the critical section */
+	INJECTION_POINT_LOAD("commit-before-clog-update");
+
 	/*
 	 * If we haven't been assigned an XID yet, we neither can, nor do we want
 	 * to write a COMMIT record.
@@ -1640,6 +1644,12 @@ RecordTransactionCommit(void)
 		forceSyncCommit || nrels > 0)
 	{
 		XLogFlush(XactLastRecEnd);
+
+		/*
+		 * The commit record is on disk, but not in CLOG yet.  A test can stop
+		 * here to see what others make of the transaction meanwhile.
+		 */
+		INJECTION_POINT_CACHED("commit-before-clog-update", NULL);
 
 		/*
 		 * Now we may update the CLOG, if we wrote a COMMIT record above
@@ -2013,6 +2023,12 @@ RecordTransactionAbort(bool isSubXact)
 		pfree(rels);
 	if (ndroppedstats)
 		pfree(droppedstats);
+
+	/*
+	 * Test the window where the transaction is aborted in pg_xact but still
+	 * present in ProcArray.
+	 */
+	INJECTION_POINT("transaction-abort-after-clog", NULL);
 
 	return latestXid;
 }
@@ -2831,6 +2847,7 @@ CommitTransaction(void)
 	AtEOXact_Files(true);
 	AtEOXact_ComboCid();
 	AtEOXact_HashTables(true);
+	AtEOXact_RI(true);
 	AtEOXact_PgStat(true, is_parallel_worker);
 	AtEOXact_Snapshot(true, false);
 	AtEOXact_ApplyLauncher(true);
@@ -3144,6 +3161,7 @@ PrepareTransaction(void)
 	AtEOXact_Files(true);
 	AtEOXact_ComboCid();
 	AtEOXact_HashTables(true);
+	AtEOXact_RI(true);
 	/* don't call AtEOXact_PgStat here; we fixed pgstat state above */
 	AtEOXact_Snapshot(true, true);
 	/* we treat PREPARE as ROLLBACK so far as waking workers goes */
@@ -3392,10 +3410,10 @@ AbortTransaction(void)
 		AtEOXact_Files(false);
 		AtEOXact_ComboCid();
 		AtEOXact_HashTables(false);
+		AtEOXact_RI(false);
 		AtEOXact_PgStat(false, is_parallel_worker);
 		AtEOXact_ApplyLauncher(false);
 		AtEOXact_LogicalRepWorkers(false);
-		AtEOXact_LogicalCtl();
 		pgstat_report_xact_timestamp(0);
 	}
 
@@ -3464,6 +3482,17 @@ CleanupTransaction(void)
 
 	XactTopFullTransactionId = InvalidFullTransactionId;
 	nParallelCurrentXids = 0;
+
+	/*
+	 * Apply any pending XLogLogicalInfo update.  This must be done here
+	 * rather than in AbortTransaction(), because a failed transaction block
+	 * keeps its XID until ROLLBACK, so a barrier absorbed meanwhile is
+	 * deferred. Unlike CommitTransaction() and PrepareTransaction(), we are
+	 * not necessarily holding interrupts here, so do this after resetting the
+	 * top-level XID; otherwise a barrier absorbed in between would be left
+	 * pending into the next transaction.
+	 */
+	AtEOXact_LogicalCtl();
 
 	/*
 	 * done with abort processing, set current transaction state back to
@@ -5583,6 +5612,8 @@ RollbackAndReleaseCurrentSubTransaction(void)
 		   s->blockState == TBLOCK_INPROGRESS ||
 		   s->blockState == TBLOCK_IMPLICIT_INPROGRESS ||
 		   s->blockState == TBLOCK_PARALLEL_INPROGRESS ||
+		   s->blockState == TBLOCK_END ||
+		   s->blockState == TBLOCK_PREPARE ||
 		   s->blockState == TBLOCK_STARTED);
 }
 
@@ -5985,6 +6016,11 @@ AbortSubTransaction(void)
 	 * Buffer locks, for example?  I don't think so but I'm not sure.
 	 */
 	LWLockReleaseAll();
+
+	/*
+	 * Cleanup waiting for LSN if any.
+	 */
+	WaitLSNCleanup();
 
 	pgstat_report_wait_end();
 	pgstat_progress_end_command();
@@ -6937,10 +6973,10 @@ xact_redo_commit(xl_xact_parsed_commit *parsed,
 		 * If a transaction completion record arrives that has as-yet
 		 * unobserved subtransactions then this will not have been fully
 		 * handled by the call to RecordKnownAssignedTransactionIds() in the
-		 * main recovery loop in xlog.c. So we need to do bookkeeping again to
-		 * cover that case. This is confusing and it is easy to think this
-		 * call is irrelevant, which has happened three times in development
-		 * already. Leave it in.
+		 * main recovery loop in PerformWalRecovery(). So we need to do
+		 * bookkeeping again to cover that case. This is confusing and it is
+		 * easy to think this call is irrelevant, which has happened three
+		 * times in development already. Leave it in.
 		 */
 		RecordKnownAssignedTransactionIds(max_xid);
 
@@ -7075,10 +7111,10 @@ xact_redo_abort(xl_xact_parsed_abort *parsed, TransactionId xid,
 		 * If a transaction completion record arrives that has as-yet
 		 * unobserved subtransactions then this will not have been fully
 		 * handled by the call to RecordKnownAssignedTransactionIds() in the
-		 * main recovery loop in xlog.c. So we need to do bookkeeping again to
-		 * cover that case. This is confusing and it is easy to think this
-		 * call is irrelevant, which has happened three times in development
-		 * already. Leave it in.
+		 * main recovery loop in PerformWalRecovery(). So we need to do
+		 * bookkeeping again to cover that case. This is confusing and it is
+		 * easy to think this call is irrelevant, which has happened three
+		 * times in development already. Leave it in.
 		 */
 		RecordKnownAssignedTransactionIds(max_xid);
 

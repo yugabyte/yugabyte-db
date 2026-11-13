@@ -58,6 +58,8 @@ static int	pqPutMsgBytes(const void *buf, size_t len, PGconn *conn);
 static int	pqSendSome(PGconn *conn, int len);
 static int	pqSocketCheck(PGconn *conn, int forRead, int forWrite,
 						  pg_usec_time_t end_time);
+static int	pqReadData_internal(PGconn *conn);
+static int	pqDrainPending(PGconn *conn);
 
 /*
  * PQlibVersion: return the libpq version number
@@ -596,6 +598,13 @@ pqPutMsgEnd(PGconn *conn)
 
 /* ----------
  * pqReadData: read more data, if any is available
+ *
+ * Upon a successful return, callers may assume that either 1) all available
+ * bytes have been consumed from the socket, or 2) the socket is still marked
+ * readable by the OS.  (In other words: after a successful pqReadData, it's
+ * safe to tell a client to poll for readable bytes on the socket without any
+ * further draining of the SSL/GSS transport buffers.)
+ *
  * Possible return values:
  *	 1: successfully loaded at least one more byte
  *	 0: no data is presently available, but no error detected
@@ -608,14 +617,47 @@ pqPutMsgEnd(PGconn *conn)
 int
 pqReadData(PGconn *conn)
 {
-	int			someread = 0;
-	int			nread;
+	int			available;
 
 	if (conn->sock == PGINVALID_SOCKET)
 	{
 		libpq_append_conn_error(conn, "connection not open");
 		return -1;
 	}
+
+	available = pqReadData_internal(conn);
+	if (available < 0)
+		return -1;
+	else if (available > 0)
+	{
+		/*
+		 * Make sure there are no bytes stuck in layers between conn->inBuffer
+		 * and the socket, to make it safe for clients to poll on PQsocket().
+		 */
+		if (pqDrainPending(conn))
+			return -1;
+	}
+	else
+	{
+		/*
+		 * If we're not returning any bytes from the underlying transport,
+		 * that must imply there aren't any in the transport buffer...
+		 */
+		Assert(pqsecure_bytes_pending(conn) == 0);
+	}
+
+	return available;
+}
+
+/*
+ * Workhorse for pqReadData().  It's kept separate from the pqDrainPending()
+ * logic to avoid adding to this function's goto complexity.
+ */
+static int
+pqReadData_internal(PGconn *conn)
+{
+	int			someread = 0;
+	int			nread;
 
 	/* Left-justify any data in the buffer to make room */
 	if (conn->inStart < conn->inEnd)
@@ -801,6 +843,110 @@ definitelyFailed:
 	pqDropConnection(conn, false);
 	conn->status = CONNECTION_BAD;	/* No more connection to backend */
 	return -1;
+}
+
+/*---
+ * Drain any transport data that is already buffered in userspace and add it
+ * to conn->inBuffer, enlarging inBuffer if necessary.  The drain fails if
+ * inBuffer cannot be made to hold all available transport data.
+ *
+ * We assume that the underlying secure transport implementation does not
+ * attempt to read any more data from the socket while draining the transport
+ * buffer.  After a successful return, pqsecure_bytes_pending() must be zero.
+ *
+ * This operation is necessary to prevent deadlock, due to a layering
+ * violation designed into our asynchronous client API: pqReadData() and all
+ * the parsing routines above it receive data from the SSL/GSS transport
+ * buffer, but clients poll on the raw PQsocket() handle.  So data can be
+ * "lost" in the intermediate layer if we don't take it out here.
+ *
+ * To illustrate what we're trying to prevent, say that the server is sending
+ * two messages at once in response to a query (Aaaa and Bb), the libpq buffer
+ * is five characters in size, and TLS records max out at three-character
+ * payloads.  Here's what would happen if pqReadData() didn't call
+ * pqDrainPending():
+ *
+ *   Client    libpq      SSL      Socket
+ *     |         |         |         |
+ *     |      [     ]    [   ]     [   ]    [1] Buffers are empty, client is
+ *     x --------------------------> |          polling on socket
+ *     |         |         |         |
+ *     |      [     ]    [   ]     [xxx]    [2] First record is received; poll
+ *     | <-------------------------- |          signals read-ready
+ *     |         |         |         |
+ *     x ---> [     ]    [   ]     [xxx]    [3] Client calls PQconsumeInput()
+ *     |         |         |         |
+ *     |      [     ] -> [   ]     [xxx]    [4] libpq calls pqReadData() to fill
+ *     |         |         |         |          the receive buffer
+ *     |      [     ]    [Aaa] <-- [   ]    [5] SSL pulls payload off the wire
+ *     |         |         |         |          and decrypts it
+ *     |      [Aaa  ] <- [   ]     [   ]    [6] pqsecure_read() takes all data
+ *     |         |         |         |
+ *     | <--- [Aaa  ]    [   ]     [   ]    [7] PQconsumeInput() returns with a
+ *     x --------------------------> |          partial message, PQisBusy() is
+ *     |         |         |         |          still true, client polls again
+ *     |      [Aaa  ]    [   ]     [xxx]    [8] Second record is received; poll
+ *     | <-------------------------- |          signals read-ready
+ *     |         |         |         |
+ *     x ---> [Aaa  ]    [   ]     [xxx]    [9] Client calls PQconsumeInput()
+ *     |         |         |         |
+ *     |      [Aaa  ] -> [   ]     [xxx]   [10] libpq calls pqReadData() to fill
+ *     |         |         |         |          the receive buffer
+ *     |      [Aaa  ]    [aBb] <-- [   ]   [11] SSL decrypts
+ *     |         |         |         |
+ *     |      [AaaaB] <- [b  ]     [   ]   [12] pqsecure_read() fills its
+ *     |         |         |         |          buffer, taking only two bytes
+ *     | <--- [AaaaB]    [b  ]     [   ]   [13] PQconsumeInput() returns with a
+ *     |         |         |         |          complete message buffered;
+ *     |         |         |         |          PQisBusy() is false
+ *     x ---> [AaaaB]    [b  ]     [   ]   [14] Client calls PQgetResult()
+ *     |         |         |         |
+ *     | <--- [B    ]    [b  ]     [   ]   [15] Aaaa is returned; PQisBusy() is
+ *     x --------------------------> |          true and client polls again
+ *     .         |         |         .
+ *     .      [B    ]    [b  ]       .     [16] No packets, and client hangs.
+ *     .         |         |         .
+ *
+ * The pqDrainPending() call fixes the above scenario at step [13].  Before
+ * returning to the Client, it first expands the libpq buffer and moves the
+ * remaining data from the SSL buffer to the libpq buffer.
+ *
+ * The function returns 0 on success and -1 on error.  Success means that
+ * there was no data pending or it was successfully drained to conn->inBuffer.
+ * On error, conn->errorMessage is set.
+ */
+static int
+pqDrainPending(PGconn *conn)
+{
+	ssize_t		bytes_pending;
+	ssize_t		nread;
+
+	bytes_pending = pqsecure_bytes_pending(conn);
+	if (bytes_pending <= 0)
+		return bytes_pending;
+
+	/* Expand the input buffer if necessary. */
+	if (pqCheckInBufferSpace(conn->inEnd + (size_t) bytes_pending, conn))
+		return -1;				/* errorMessage already set */
+
+	nread = pqsecure_read(conn, conn->inBuffer + conn->inEnd,
+						  bytes_pending);
+
+	/*
+	 * When there are bytes pending, pqsecure_read() is not supposed to fail
+	 * or do a short read, but let's check anyway to be safe.
+	 */
+	if (nread < 0)
+		return -1;
+	conn->inEnd += nread;
+	if (nread != bytes_pending)
+	{
+		libpq_append_conn_error(conn,
+								"drained only %zd of %zd pending bytes in transport buffer",
+								nread, bytes_pending);
+		return -1;
+	}
+	return 0;
 }
 
 /*
@@ -1102,14 +1248,12 @@ pqSocketCheck(PGconn *conn, int forRead, int forWrite, pg_usec_time_t end_time)
 			return -1;
 		}
 
-#ifdef USE_SSL
-		/* Check for SSL library buffering read bytes */
-		if (forRead && conn->ssl_in_use && pgtls_read_pending(conn))
+		/* Check for SSL/GSS library buffering read bytes */
+		if (forRead && pqsecure_bytes_pending(conn) != 0)
 		{
 			/* short-circuit the select */
 			return 1;
 		}
-#endif
 	}
 
 	/* We will retry as long as we get EINTR */
@@ -1375,7 +1519,7 @@ libpq_ngettext(const char *msgid, const char *msgid_plural, unsigned long n)
  * newline.
  */
 void
-libpq_append_error(PQExpBuffer errorMessage, const char *fmt,...)
+libpq_append_error(PQExpBuffer errorMessage, const char *fmt, ...)
 {
 	int			save_errno = errno;
 	bool		done;
@@ -1404,7 +1548,7 @@ libpq_append_error(PQExpBuffer errorMessage, const char *fmt,...)
  * format should not end with a newline.
  */
 void
-libpq_append_conn_error(PGconn *conn, const char *fmt,...)
+libpq_append_conn_error(PGconn *conn, const char *fmt, ...)
 {
 	int			save_errno = errno;
 	bool		done;
@@ -1425,22 +1569,4 @@ libpq_append_conn_error(PGconn *conn, const char *fmt,...)
 	} while (!done);
 
 	appendPQExpBufferChar(&conn->errorMessage, '\n');
-}
-
-/*
- * For 19beta only, some protocol errors will have additional information
- * appended to help with the "grease" campaign.
- */
-void
-libpq_append_grease_info(PGconn *conn)
-{
-	/* translator: %s is a URL */
-	libpq_append_conn_error(conn,
-							"\tThis indicates a bug in either the server being contacted\n"
-							"\tor a proxy handling the connection. Please consider\n"
-							"\treporting this to the maintainers of that software.\n"
-							"\tFor more information, including instructions on how to\n"
-							"\twork around this issue for now, visit\n"
-							"\t\t%s",
-							"https://www.postgresql.org/docs/devel/libpq-connect.html#LIBPQ-CONNECT-MAX-PROTOCOL-VERSION");
 }

@@ -120,14 +120,14 @@ step s2_del_a {
     WHERE
         noisy_oper('upd', key, '=', 'key-a') AND
         noisy_oper('upk', data, '<>', 'mismatch')
-    RETURNING *
+    RETURNING *, data = old.data AS check_old;
 }
 step s2_upd_a_data {
     UPDATE trigtest SET data = data || '-ups2'
     WHERE
         noisy_oper('upd', key, '=', 'key-a') AND
         noisy_oper('upk', data, '<>', 'mismatch')
-    RETURNING *;
+    RETURNING *, new.data = old.data || '-ups2' AS check_old_and_new;
 }
 step s2_upd_b_data {
     UPDATE trigtest SET data = data || '-ups2'
@@ -141,7 +141,7 @@ step s2_upd_all_data {
     WHERE
         noisy_oper('upd', key, '<>', 'mismatch') AND
         noisy_oper('upk', data, '<>', 'mismatch')
-    RETURNING *;
+    RETURNING *, new.data = old.data || '-ups2' AS check_old_and_new;
 }
 step s2_upsert_a_data {
     INSERT INTO trigtest VALUES ('key-a', 'val-a-upss2')
@@ -150,7 +150,7 @@ step s2_upsert_a_data {
         WHERE
             noisy_oper('upd', trigtest.key, '=', 'key-a') AND
             noisy_oper('upk', trigtest.data, '<>', 'mismatch')
-    RETURNING *;
+    RETURNING *, new.data = old.data || '-upserts2' AS check_old_and_new;
 }
 
 session s3

@@ -1624,7 +1624,10 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
 
     {
       // pg_attributes and pg_attrdef
-      String sql = "SELECT * FROM pg_attribute attr"
+      // Attribute versions (attoptions pg_attver) are assigned at creation time, so they
+      // legitimately differ between initdb and upgrade; compare only that one is present.
+      String sql = "SELECT regexp_replace(attr::text, 'pg_attver=[0-9]+', 'pg_attver=N', 'g'),"
+          + " def.* FROM pg_attribute attr"
           + " LEFT JOIN pg_attrdef def ON def.adrelid = attr.attrelid AND def.adnum = attr.attnum"
           + " WHERE attr.attrelid = %d ORDER BY attr.attnum";
       TableInfoSqlFormatter fmt = (ti) -> String.format(sql, ti.getOid());

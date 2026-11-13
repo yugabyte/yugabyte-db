@@ -41,6 +41,7 @@
 #include "access/xact.h"
 #include "catalog/binary_upgrade.h"
 #include "catalog/catalog.h"
+#include "catalog/heap.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
 #include "catalog/partition.h"
@@ -56,6 +57,7 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_publication.h"
 #include "catalog/pg_rewrite.h"
+#include "catalog/pg_parameter_acl.h"
 #include "catalog/pg_shseclabel.h"
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_subscription.h"
@@ -154,6 +156,7 @@ static const FormData_pg_attribute Desc_pg_auth_members[Natts_pg_auth_members] =
 static const FormData_pg_attribute Desc_pg_index[Natts_pg_index] = {Schema_pg_index};
 static const FormData_pg_attribute Desc_pg_shseclabel[Natts_pg_shseclabel] = {Schema_pg_shseclabel};
 static const FormData_pg_attribute Desc_pg_subscription[Natts_pg_subscription] = {Schema_pg_subscription};
+static const FormData_pg_attribute Desc_pg_parameter_acl[Natts_pg_parameter_acl] = {Schema_pg_parameter_acl};
 
 static const FormData_pg_attribute Desc_pg_yb_profile[Natts_pg_yb_profile] = {Schema_pg_yb_profile};
 static const FormData_pg_attribute Desc_pg_yb_role_profile[Natts_pg_yb_role_profile] = {Schema_pg_yb_role_profile};
@@ -731,6 +734,7 @@ RelationBuildTupleDesc(Relation relation)
 	TupleConstr *constr;
 	AttrMissing *attrmiss = NULL;
 	int			ndef = 0;
+	bool		hasVersionedAttrs = HasVersionedAttributes(relation);
 
 	/* fill rd_att's type ID fields (compare heap.c's AddNewRelationTuple) */
 	relation->rd_att->tdtypeid =
@@ -788,6 +792,20 @@ RelationBuildTupleDesc(Relation relation)
 			   ATTRIBUTE_FIXED_PART_SIZE);
 
 		populate_compact_attribute(relation->rd_att, attnum - 1);
+
+		/* determine the per-attribute version */
+		if (hasVersionedAttrs)
+		{
+			bool		optnull;
+			Datum		attopts;
+			XLogRecPtr	attVersion;
+
+			attopts = heap_getattr(pg_attribute_tuple, Anum_pg_attribute_attoptions,
+								   pg_attribute_desc->rd_att, &optnull);
+
+			attVersion = attoptions_get_version(attopts, optnull);
+			TupleDescSetAttrVersion(relation->rd_att, attnum, attVersion);
+		}
 
 		/* Update constraint/default info */
 		if (attp->attnotnull)
@@ -864,6 +882,43 @@ RelationBuildTupleDesc(Relation relation)
 	if (need != 0)
 		elog(ERROR, "pg_attribute catalog is missing %d attribute(s) for relation OID %u",
 			 need, RelationGetRelid(relation));
+
+	if (hasVersionedAttrs)
+	{
+		XLogRecPtr	relVersion;
+
+		/*
+		 * The aggregate version is the last attribute's, as versions are
+		 * monotonic across attributes, see
+		 * src/backend/catalog/README.attver.md.
+		 */
+		if (relation->rd_rel->relnatts > 0)
+			relVersion = TupleDescGetAttrVersion(relation->rd_att,
+												 relation->rd_rel->relnatts);
+		else
+			relVersion = InvalidXLogRecPtr;
+		TupleDescSetVersion(relation->rd_att, relVersion);
+
+		/*
+		 * Verify that the attribute versions are monotonic / non-decreasing.
+		 *
+		 * While it may seem attractive to test that attribute versions are
+		 * monotonic as part of the loop above, it's not generally guaranteed
+		 * that attributes are processed in order (mainly due to
+		 * ignore_system_indexes, as we don't compute versions for system
+		 * tables which may be built before criticalRelcachesBuilt). And this
+		 * way we can use the same check function in a bunch of places.
+		 *
+		 * It'd be very nice if we could turn this into an ERROR if the table
+		 * definition has changed in this transaction, but we don't have that
+		 * information here. Even rd_createSubid etc are not accessible here
+		 * in case of a rebuild. Always ERRORing is infeasible as that'd
+		 * prevent the dropping of corrupt tables.
+		 */
+		CheckAttributeVersions(relation->rd_att,
+							   RelationGetRelationName(relation),
+							   WARNING);
+	}
 
 	/*
 	 * Set up constraint/default info
@@ -1350,6 +1405,8 @@ equalPolicy(RowSecurityPolicy *policy1, RowSecurityPolicy *policy2)
 			return false;
 
 		if (policy1->polcmd != policy2->polcmd)
+			return false;
+		if (policy1->permissive != policy2->permissive)
 			return false;
 		if (policy1->hassublinks != policy2->hassublinks)
 			return false;
@@ -5564,14 +5621,15 @@ RelationReloadIndexInfo(Relation relation)
 	RelationInitPhysicalAddr(relation);
 
 	/*
-	 * For a non-system index, there are fields of the pg_index row that are
-	 * allowed to change, so re-read that row and update the relcache entry.
-	 * Most of the info derived from pg_index (such as support function lookup
-	 * info) cannot change, and indeed the whole point of this routine is to
-	 * update the relcache entry without clobbering that data; so wholesale
+	 * For a non-catalog index (this includes the TOAST index of a user
+	 * table), there are fields of the pg_index row that are allowed to
+	 * change, so re-read that row and update the relcache entry.  Most of the
+	 * info derived from pg_index (such as support function lookup info)
+	 * cannot change, and indeed the whole point of this routine is to update
+	 * the relcache entry without clobbering that data; so wholesale
 	 * replacement is not appropriate.
 	 */
-	if (!IsSystemRelation(relation))
+	if (!IsCatalogRelation(relation))
 	{
 		HeapTuple	tuple;
 		Form_pg_index index;
@@ -7534,6 +7592,8 @@ RelationCacheInitializePhase2(void)
 				  Natts_pg_shseclabel, Desc_pg_shseclabel);
 		formrdesc("pg_subscription", SubscriptionRelation_Rowtype_Id, true,
 				  Natts_pg_subscription, Desc_pg_subscription);
+		formrdesc("pg_parameter_acl", ParameterAclRelation_Rowtype_Id, true,
+				  Natts_pg_parameter_acl, Desc_pg_parameter_acl);
 
 		if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
 		{
@@ -7546,8 +7606,8 @@ RelationCacheInitializePhase2(void)
 
 #define NUM_CRITICAL_SHARED_RELS	(*YBCGetGFlags()->ysql_enable_profile && \
 									 YbLoginProfileCatalogsExist \
-									 ? 7 \
-									 : 5)	/* fix if you change list above */
+									 ? 8 \
+									 : 6)	/* fix if you change list above */
 	}
 
 	MemoryContextSwitchTo(oldcxt);
@@ -7941,9 +8001,10 @@ RelationCacheInitializePhase3(void)
 	 * non-shared catalogs at all.  Autovacuum calls InitPostgres with a
 	 * database OID, so it instead depends on DatabaseOidIndexId.  We also
 	 * need to nail up some indexes on pg_authid and pg_auth_members for use
-	 * during client authentication.  SharedSecLabelObjectIndexId isn't
-	 * critical for the core system, but authentication hooks might be
-	 * interested in it.
+	 * during client authentication.  We need indexes on pg_parameter_acl for
+	 * ACL checks on settings specified in the startup packet for a physical
+	 * replication connection.  SharedSecLabelObjectIndexId isn't critical for
+	 * the core system, but authentication hooks might be interested in it.
 	 */
 	if (!criticalSharedRelcachesBuilt)
 	{
@@ -7959,8 +8020,12 @@ RelationCacheInitializePhase3(void)
 							AuthMemRelationId);
 		load_critical_index(SharedSecLabelObjectIndexId,
 							SharedSecLabelRelationId);
+		load_critical_index(ParameterAclParnameIndexId,
+							ParameterAclRelationId);
+		load_critical_index(ParameterAclOidIndexId,
+							ParameterAclRelationId);
 
-#define NUM_CRITICAL_SHARED_INDEXES 6	/* fix if you change list above */
+#define NUM_CRITICAL_SHARED_INDEXES 8	/* fix if you change list above */
 
 		criticalSharedRelcachesBuilt = true;
 	}
@@ -8898,6 +8963,13 @@ RelationGetPrimaryKeyIndex(Relation relation, bool deferrable_ok)
 /*
  * RelationGetReplicaIndex -- get OID of the relation's replica identity index
  *
+ * If replica identity is DEFAULT, then return the OID of the primary key, if
+ * it's not deferrable; if replica identity is INDEX, return the OID of the
+ * index with indisreplident, if one exists.
+ *
+ * Note that a working PK is not returned if identity is INDEX!  This is
+ * surprising if the replica identity index is dropped.  FIXME someday.
+ *
  * Returns InvalidOid if there is no such index.
  */
 Oid
@@ -9780,12 +9852,20 @@ RelationBuildPublicationDesc(Relation relation, PublicationDesc *pubdesc)
 	schemaid = RelationGetNamespace(relation);
 	puboids = list_concat_unique_oid(puboids, GetSchemaPublications(schemaid));
 
+	/*
+	 * A partition whose concurrent detach has been committed but not
+	 * finalized reports no ancestors, even though relispartition is still
+	 * set. Treat such a partition as a standalone table, as after the detach
+	 * is finalized.
+	 */
 	if (relation->rd_rel->relispartition)
+		ancestors = get_partition_ancestors(relid);
+
+	if (ancestors)
 	{
 		Oid			last_ancestor_relid;
 
 		/* Add publications that the ancestors are in too. */
-		ancestors = get_partition_ancestors(relid);
 		last_ancestor_relid = llast_oid(ancestors);
 
 		foreach(lc, ancestors)
@@ -10563,6 +10643,10 @@ load_relcache_init_file(bool shared, bool yb_retry)
 		 */
 		RelationInitLockInfo(rel);
 		RelationInitPhysicalAddr(rel);
+
+		/* system catalogs are not versioned */
+		Assert(!HasVersionedAttributes(rel) &&
+			   TupleDescGetVersion(rel->rd_att) == InvalidXLogRecPtr);
 	}
 
 	/*

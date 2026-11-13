@@ -297,6 +297,9 @@ overexplain_per_node_hook(PlanState *planstate, List *ancestors,
 			ExplainOpenGroup("Elided Node", NULL, true, es);
 			ExplainPropertyText("Elided Node Type", elidednodetag, es);
 			overexplain_bitmapset("Elided Node RTIs", n->relids, es);
+			if (n->elided_type == T_Append || n->elided_type == T_MergeAppend)
+				overexplain_bitmapset_list("Elided Node Child Append RTIs",
+										   n->child_append_relid_sets, es);
 			ExplainCloseGroup("Elided Node", NULL, true, es);
 		}
 		if (opened_elided_nodes)
@@ -459,7 +462,7 @@ overexplain_range_table(PlannedStmt *plannedstmt, ExplainState *es)
 		char	   *relkind;
 		SubPlanRTInfo *next_rtinfo;
 
-		/* Advance to next SubRTInfo, if it's time. */
+		/* Advance to next SubPlanRTInfo, if it's time. */
 		if (lc_subrtinfo != NULL)
 		{
 			next_rtinfo = lfirst(lc_subrtinfo);
@@ -506,17 +509,6 @@ overexplain_range_table(PlannedStmt *plannedstmt, ExplainState *es)
 				break;
 			case RTE_GROUP:
 				kind = "group";
-				break;
-			case RTE_GRAPH_TABLE:
-
-				/*
-				 * We should not see RTE of this kind here since property
-				 * graph RTE gets converted to subquery RTE in
-				 * RewriteGraphTable(). In case we decide not to do the
-				 * conversion and leave RTEkind unchanged in future, print
-				 * correct name of RTE kind.
-				 */
-				kind = "graph_table";
 				break;
 		}
 
@@ -630,9 +622,6 @@ overexplain_range_table(PlannedStmt *plannedstmt, ExplainState *es)
 				break;
 			case RELKIND_PARTITIONED_INDEX:
 				relkind = "partitioned_index";
-				break;
-			case RELKIND_PROPGRAPH:
-				relkind = "property_graph";
 				break;
 			case '\0':
 				relkind = NULL;
@@ -757,12 +746,6 @@ overexplain_range_table(PlannedStmt *plannedstmt, ExplainState *es)
 		}
 
 		/*
-		 * rewriteGraphTable() clears graph_pattern and graph_table_columns
-		 * fields, so skip them. No graph table specific fields are required
-		 * to be printed.
-		 */
-
-		/*
 		 * add_rte_to_flat_rtable will clear groupexprs and securityQuals, so
 		 * skip that field. We have handled inFromCl above, so the only thing
 		 * left to handle here is rte->lateral.
@@ -776,7 +759,14 @@ overexplain_range_table(PlannedStmt *plannedstmt, ExplainState *es)
 		ExplainCloseGroup("Range Table Entry", NULL, true, es);
 	}
 
-	/* Print PlannedStmt fields that contain RTIs. */
+	/* Close the Range Table array before emitting PlannedStmt-level fields. */
+	ExplainCloseGroup("Range Table", "Range Table", false, es);
+
+	/*
+	 * Print PlannedStmt fields that contain RTIs.  These are properties of
+	 * the PlannedStmt, not of individual RTEs, so they belong outside the
+	 * Range Table array.
+	 */
 	if (es->format != EXPLAIN_FORMAT_TEXT ||
 		!bms_is_empty(plannedstmt->unprunableRelids))
 		overexplain_bitmapset("Unprunable RTIs", plannedstmt->unprunableRelids,
@@ -785,9 +775,6 @@ overexplain_range_table(PlannedStmt *plannedstmt, ExplainState *es)
 		!bms_is_empty(plannedstmt->resultRelationRelids))
 		overexplain_bitmapset("Result RTIs", plannedstmt->resultRelationRelids,
 							  es);
-
-	/* Close group, we're all done */
-	ExplainCloseGroup("Range Table", "Range Table", false, es);
 }
 
 /*
