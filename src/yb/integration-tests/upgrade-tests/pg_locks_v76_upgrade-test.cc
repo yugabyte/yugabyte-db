@@ -19,9 +19,11 @@ DECLARE_bool(ysql_yb_enable_advisory_locks);
 
 namespace yb {
 
-// The parameter is enable_object_locking_for_table_locks on every version. Release builds turn it
-// on by default, so without the parameter only the upgraded transaction that refreshes its catalog
-// cache on a new lock would be covered, not the one that keeps its stale catalog cache.
+// false turns enable_object_locking_for_table_locks off on every version; true keeps the build
+// default, which is on in release builds. Without false, release builds would cover only the
+// upgraded transaction that refreshes its catalog cache on a new lock, not the one that keeps its
+// stale catalog cache. Debug builds default to off, so true would repeat false there and is
+// skipped.
 class PgLocksV76UpgradeTest : public UpgradeTestBase, public ::testing::WithParamInterface<bool> {
  public:
   PgLocksV76UpgradeTest() : UpgradeTestBase(kBuild_2_25_0_0) {}
@@ -45,6 +47,11 @@ class PgLocksV76UpgradeTest : public UpgradeTestBase, public ::testing::WithPara
 // Verify that the pg_locks view correctly displays advisory locks and other types of locks
 // during and after the upgrade.
 TEST_P(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
+#ifndef NDEBUG
+  if (GetParam()) {
+    GTEST_SKIP() << "Object locking for table locks is off by default in debug builds";
+  }
+#endif
   constexpr int kMinTxnAgeMs = 0;
   const std::string kPgLocksQuery = "SELECT classid, objid, objsubid, mode FROM pg_locks";
   ASSERT_OK(StartClusterInOldVersion());

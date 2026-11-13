@@ -2827,7 +2827,9 @@ YBGetDdlUseRegularTransactionBlock()
  * the locks it sends and for this. A transaction without locks does not refresh
  * its catalog cache when PG acquires a lock. An autonomous DDL transaction, for
  * one, reads the catalog at its own read time, so a refresh would record the
- * new catalog version with entries from before it.
+ * new catalog version with entries from before it. Parallel workers and binary
+ * upgrade backends take no object locks either (only a parallel query's leader
+ * sends its locks), so they do not refresh on a new lock.
  */
 bool
 YbUsingObjectLocksLocally(void)

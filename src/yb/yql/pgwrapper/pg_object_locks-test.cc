@@ -1664,8 +1664,8 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, AddForeignKeyWaitsForLegacyDelete) {
     RETURN_NOT_OK(ddl_conn.ExecuteFormat("SET statement_timeout = '$0s'", 60 * kTimeMultiplier));
     return ddl_conn.Execute(kAddForeignKey);
   });
-  WaitForWaitingLock("parent", "ShareRowExclusiveLock");
-  EXPECT_EQ(add_fk_future.wait_for(0s), std::future_status::timeout);
+  ASSERT_NO_FATALS(WaitForWaitingLock("parent", "ShareRowExclusiveLock"));
+  ASSERT_EQ(add_fk_future.wait_for(0s), std::future_status::timeout);
 
   ASSERT_OK(legacy_conn.Execute("COMMIT"));
   auto add_fk_status = add_fk_future.get();
@@ -1809,15 +1809,16 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyWriterReleasesLocksAtRollback) 
   ASSERT_OK(legacy_conn.Execute("UPDATE test SET v = 1 WHERE k = 1"));
 
   ASSERT_NO_FATALS(PromoteForDdl());
-  auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
-  ASSERT_OK(ddl_conn.Execute("SET statement_timeout = '5s'"));
-  // The legacy writer holds its lock, so the ALTER waits.
-  auto status = ddl_conn.Execute("ALTER TABLE test ADD COLUMN v2 INT");
-  ASSERT_NOK(status);
-  ASSERT_STR_CONTAINS(status.ToString(), "statement timeout");
-
+  auto alter_future = std::async(std::launch::async, [&]() -> Status {
+    auto ddl_conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+    RETURN_NOT_OK(ddl_conn.ExecuteFormat("SET statement_timeout = '$0s'", 60 * kTimeMultiplier));
+    return ddl_conn.Execute("ALTER TABLE test ADD COLUMN v2 INT");
+  });
+  // The legacy writer holds its lock, so the ALTER waits until the ROLLBACK releases it.
+  ASSERT_NO_FATALS(WaitForWaitingLock("test", "AccessExclusiveLock"));
+  ASSERT_EQ(alter_future.wait_for(0s), std::future_status::timeout);
   ASSERT_OK(legacy_conn.Execute("ROLLBACK"));
-  ASSERT_OK(ddl_conn.Execute("ALTER TABLE test ADD COLUMN v2 INT"));
+  ASSERT_OK(alter_future.get());
 }
 
 // A table rewrite bumps the catalog version as a non-breaking change, so no catalog version check
@@ -1971,9 +1972,10 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyDdlLeavesNoStaleCatalogEnt
   {
     auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
     ASSERT_OK(conn.Execute("CREATE TABLE p(k INT PRIMARY KEY, v INT)"));
-    ASSERT_OK(conn.Execute(
-        "CREATE FUNCTION slow_ddl() RETURNS event_trigger LANGUAGE plpgsql AS $$ BEGIN "
-        "IF current_setting('test.slow', true) = 'on' THEN PERFORM pg_sleep(6); END IF; END $$"));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE FUNCTION slow_ddl() RETURNS event_trigger LANGUAGE plpgsql AS $$$$ BEGIN "
+        "IF current_setting('test.slow', true) = 'on' THEN PERFORM pg_sleep($0); END IF; "
+        "END $$$$", 30 * kTimeMultiplier));
     ASSERT_OK(conn.Execute(
         "CREATE EVENT TRIGGER slow_ddl ON ddl_command_start EXECUTE FUNCTION slow_ddl()"));
   }
@@ -1999,6 +2001,9 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyDdlLeavesNoStaleCatalogEnt
     auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
     ASSERT_OK(conn.Execute("ALTER TABLE p ADD COLUMN w INT"));
   }
+  // The ALTER must commit while the CREATE TABLE is still held in the trigger, or the CREATE
+  // TABLE never reads p from before it and the check below passes either way.
+  ASSERT_EQ(create_future.wait_for(0s), std::future_status::timeout);
   // The outcome of the CREATE TABLE does not matter here. Today it fails in the event trigger
   // with XX000 "plancache reference ... is not owned by resource owner". TODO(#30540)
   LOG(INFO) << "CREATE TABLE: " << create_future.get();
