@@ -115,6 +115,10 @@ class CdcUpgradeTest : public UpgradeTestBase {
   }
 };
 
+// YB_TODO_PG19MERGE: after pg19 becomes master, remove DefaultBehaviorAfterUpgrade,
+// FlagEnabledInOldVersion and RollbackBeforeFinalize. They are meaningful only with a
+// 2024.2 (PG11) source.
+
 // In 2024.x without the flag, USE_SNAPSHOT returns hybrid time format.
 // After upgrade and finalization, EXPORT_SNAPSHOT returns snapshot ID format.
 TEST_F(CdcUpgradeTest, DefaultBehaviorAfterUpgrade) {
