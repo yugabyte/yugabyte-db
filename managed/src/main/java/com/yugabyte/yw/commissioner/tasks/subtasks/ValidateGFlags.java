@@ -345,15 +345,12 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
                 .collect(Collectors.toList());
 
         if (!csvGflags.isEmpty()) {
+          Map<String, String> redactedGFlags =
+              RedactingService.redactGFlags(
+                  gflags, taskParams().ybSoftwareVersion, gFlagsValidation);
           String csvGflagDetails =
               csvGflags.stream()
-                  .map(
-                      key ->
-                          key
-                              + "='"
-                              + RedactingService.redactSensitiveInfoInString(
-                                  gflags.get(key), taskParams().ybSoftwareVersion, gFlagsValidation)
-                              + "'")
+                  .map(key -> key + "='" + redactedGFlags.get(key) + "'")
                   .collect(Collectors.joining(", "));
 
           log.error(
@@ -386,8 +383,7 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
         serverType,
         node.nodeName,
         azUuid,
-        RedactingService.redactSensitiveInfoInString(
-            gflags.toString(), taskParams().ybSoftwareVersion, gFlagsValidation));
+        RedactingService.redactGFlags(gflags, taskParams().ybSoftwareVersion, gFlagsValidation));
 
     return gflags;
   }
@@ -495,8 +491,8 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
 
     log.debug(
         "About to run command: {} using yb-server binary.",
-        RedactingService.redactSensitiveInfoInString(
-            command.toString(), taskParams().ybSoftwareVersion, gFlagsValidation));
+        RedactingService.redactGFlagCommand(
+            command, taskParams().ybSoftwareVersion, gFlagsValidation));
 
     try {
       // Not using bash since some gflag values may have complicated escaping needed for bash case
