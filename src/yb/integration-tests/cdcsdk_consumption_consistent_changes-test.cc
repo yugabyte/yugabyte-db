@@ -6037,22 +6037,52 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestOnlyReWriteCausingDDLsTrigger
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
+  // With transactional DDL support, a DDL comes as its own transaction of synthetic DDL records
+  // once the sys catalog tablet is polled, after a varying number of empty responses, and the pub
+  // refresh signal comes with its first records. This consumes responses up to the DDL's COMMIT
+  // and returns whether any of them had the signal.
+  auto consume_ddl_txn = [&]() -> Result<bool> {
+    bool seen_pub_refresh = false;
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          auto resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+          if (resp.has_needs_publication_table_list_refresh() ||
+              resp.has_publication_refresh_time()) {
+            SCHECK(
+                resp.needs_publication_table_list_refresh() &&
+                    resp.publication_refresh_time() > 0,
+                IllegalState,
+                Format("Bad publication refresh signal: $0", resp.ShortDebugString()));
+            seen_pub_refresh = true;
+          }
+          return std::any_of(
+              resp.cdc_sdk_proto_records().begin(), resp.cdc_sdk_proto_records().end(),
+              [](const auto& record) { return record.row_message().op() == RowMessage_Op_COMMIT; });
+        },
+        MonoDelta::FromSeconds(30), "Timed out waiting for the DDL transaction"));
+    return seen_pub_refresh;
+  };
+
   // Any DDL which causes table rewrite should send the pub refresh signal to the walsender.
   ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN serial_col SERIAL"));
 
-  // Consume the DDL record.
-  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 1);
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records()[0].row_message().op(), RowMessage_Op_DDL);
+  if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
+    ASSERT_TRUE(ASSERT_RESULT(consume_ddl_txn()));
+  } else {
+    // Consume the DDL record.
+    auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+    ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 1);
+    ASSERT_EQ(change_resp.cdc_sdk_proto_records()[0].row_message().op(), RowMessage_Op_DDL);
 
-  // Next GetConsistentChanges will signal for pub refresh.
-  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
-  ASSERT_TRUE(
-      change_resp.has_needs_publication_table_list_refresh() &&
-      change_resp.needs_publication_table_list_refresh() &&
-      change_resp.has_publication_refresh_time());
-  ASSERT_GT(change_resp.publication_refresh_time(), 0);
+    // Next GetConsistentChanges will signal for pub refresh.
+    change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+    ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
+    ASSERT_TRUE(
+        change_resp.has_needs_publication_table_list_refresh() &&
+        change_resp.needs_publication_table_list_refresh() &&
+        change_resp.has_publication_refresh_time());
+    ASSERT_GT(change_resp.publication_refresh_time(), 0);
+  }
 
   auto new_table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, kTableName));
   ASSERT_OK(UpdatePublicationTableList(
@@ -6062,17 +6092,21 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestOnlyReWriteCausingDDLsTrigger
   // walsender.
   ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN text_col text"));
 
-  // No pub refresh, since no table rewrite. This empty response is due to sys catalog tablet queue
-  // becoming empty.
-  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
-  ASSERT_FALSE(
-      change_resp.has_needs_publication_table_list_refresh() ||
-      change_resp.has_publication_refresh_time());
+  if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
+    ASSERT_FALSE(ASSERT_RESULT(consume_ddl_txn()));
+  } else {
+    // No pub refresh, since no table rewrite. This empty response is due to sys catalog tablet
+    // queue becoming empty.
+    auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+    ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
+    ASSERT_FALSE(
+        change_resp.has_needs_publication_table_list_refresh() ||
+        change_resp.has_publication_refresh_time());
 
-  // Consume the DDL record.
-  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records()[0].row_message().op(), RowMessage_Op_DDL);
+    // Consume the DDL record.
+    change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+    ASSERT_EQ(change_resp.cdc_sdk_proto_records()[0].row_message().op(), RowMessage_Op_DDL);
+  }
 }
 
 TEST_F(
