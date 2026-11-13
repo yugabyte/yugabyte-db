@@ -155,6 +155,8 @@ BOOT_VOLUME_REPLACEMENT_TIMEOUT_SECONDS = 600
 OCI_WORK_REQUEST_TERMINAL_STATES = ("SUCCEEDED", "FAILED", "CANCELED")
 # Instance tags replace_boot_volume copies to the boot volume it keeps.
 NODE_TAG_KEYS = ("universe-uuid", "node-uuid")
+# VPUs/GB OCI gives a boot volume when none is set, as on a replacement.
+OCI_DEFAULT_BOOT_VOLUME_VPUS_PER_GB = 10
 
 AARCH64_ARCHITECTURES = ("aarch64", "arm64")
 
@@ -1047,8 +1049,7 @@ class OciCloudAdmin:
         The current boot volume is kept, carrying the node's universe-uuid and node-uuid tags, so
         it can still be recovered if the node fails later in the upgrade, and
         delete_detached_boot_volumes can find it afterwards.
-        Unless force is set, a boot volume already created from image_id is not replaced again,
-        so a repeated call only finishes what an earlier one left undone.
+        Unless force is set, a boot volume already created from image_id is not replaced again.
         The instance ends in the state it was in before the call.
         """
         instance = self.get_instance(instance_id)
@@ -1064,13 +1065,15 @@ class OciCloudAdmin:
                 self._wait_for_work_request(work_request_client, pending.id)
 
         boot_volume = self._get_attached_boot_volume(instance)
-        # The VPUs/GB to keep. Once the volume is from image_id, an earlier call replaced it and
-        # may have failed before setting them, so only the volume it kept still has them.
+        # The VPUs/GB to keep. A volume from image_id still at OCI's default may come from an
+        # earlier call that failed before setting them. The volume it replaced, kept with the
+        # node's tags, still has them.
         vpus_per_gb = boot_volume.vpus_per_gb
-        if boot_volume.image_id == image_id:
-            kept_boot_volume = self._get_kept_boot_volume(instance, boot_volume.id, image_id)
-            if kept_boot_volume:
-                vpus_per_gb = kept_boot_volume.vpus_per_gb
+        if (boot_volume.image_id == image_id
+                and boot_volume.vpus_per_gb == OCI_DEFAULT_BOOT_VOLUME_VPUS_PER_GB):
+            previous_boot_volume = self._get_previous_boot_volume(instance, boot_volume)
+            if previous_boot_volume:
+                vpus_per_gb = previous_boot_volume.vpus_per_gb
         if not force and boot_volume.image_id == image_id:
             logging.info("[app] Boot volume {} of instance {} is already from image {}".format(
                 boot_volume.id, instance_id, image_id))
@@ -1125,25 +1128,37 @@ class OciCloudAdmin:
             boot_volume.id, vpus_per_gb))
         self.blockstorage_client.update_boot_volume(
             boot_volume.id, UpdateBootVolumeDetails(vpus_per_gb=vpus_per_gb))
-        self._wait_for_resource_state(
-            self.blockstorage_client.get_boot_volume, boot_volume.id, "AVAILABLE")
+        # The volume stays AVAILABLE while OCI applies the change.
+        start_time = time.time()
+        while (self.blockstorage_client.get_boot_volume(boot_volume.id).data.vpus_per_gb
+               != vpus_per_gb):
+            if time.time() - start_time >= 300:
+                raise YBOpsRuntimeError(
+                    "Timeout waiting for boot volume {} to reach {} VPUs/GB".format(
+                        boot_volume.id, vpus_per_gb))
+            time.sleep(5)
 
-    def _get_kept_boot_volume(self, instance, attached_boot_volume_id, image_id):
-        """The newest boot volume replace_boot_volume kept for the node, from another image."""
+    def _get_previous_boot_volume(self, instance, boot_volume):
+        """The newest boot volume kept for the node that is older than boot_volume."""
         instance_tags = instance.freeform_tags or {}
         tags = {key: instance_tags[key] for key in NODE_TAG_KEYS if key in instance_tags}
         if not tags:
             return None
+        older = [
+            v for v in self._list_node_boot_volumes(
+                instance.availability_domain, instance.compartment_id, tags)
+            if v.time_created < boot_volume.time_created]
+        return max(older, key=lambda v: v.time_created, default=None)
+
+    def _list_node_boot_volumes(self, availability_domain, compartment_id, tags):
+        """AVAILABLE boot volumes that carry all of tags."""
         boot_volumes = self._list_all(
             self.blockstorage_client.list_boot_volumes,
-            availability_domain=instance.availability_domain,
-            compartment_id=instance.compartment_id)
-        kept = [
+            availability_domain=availability_domain, compartment_id=compartment_id)
+        return [
             v for v in boot_volumes
-            if v.id != attached_boot_volume_id and v.lifecycle_state == "AVAILABLE"
-            and v.image_id != image_id
-            and all((v.freeform_tags or {}).get(k) == tags[k] for k in tags)]
-        return max(kept, key=lambda v: v.time_created, default=None)
+            if v.lifecycle_state == "AVAILABLE"
+            and all((v.freeform_tags or {}).get(k) == tag for k, tag in tags.items())]
 
     def _get_attached_boot_volume(self, instance):
         attachments = self._list_all(
@@ -1167,14 +1182,9 @@ class OciCloudAdmin:
             raise YBOpsRuntimeError("Tags are required to select boot volumes to delete")
         availability_domain = self.resolve_availability_domain(availability_domain)
         deleted = []
-        boot_volumes = self._list_all(
-            self.blockstorage_client.list_boot_volumes,
-            availability_domain=availability_domain, compartment_id=self.compartment_id)
-        for boot_volume in boot_volumes:
-            volume_tags = boot_volume.freeform_tags or {}
-            if (boot_volume.lifecycle_state != "AVAILABLE"
-                    or any(volume_tags.get(k) != v for k, v in tags.items())
-                    or (volume_ids and boot_volume.id not in volume_ids)):
+        for boot_volume in self._list_node_boot_volumes(
+                availability_domain, self.compartment_id, tags):
+            if volume_ids and boot_volume.id not in volume_ids:
                 continue
             attachments = self._list_all(
                 self.compute_client.list_boot_volume_attachments,
