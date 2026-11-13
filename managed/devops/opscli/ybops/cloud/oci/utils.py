@@ -1061,16 +1061,7 @@ class OciCloudAdmin:
                     pending.operation_type, pending.id, instance_id))
                 self._wait_for_work_request(work_request_client, pending.id)
 
-        attachments = self._list_all(
-            self.compute_client.list_boot_volume_attachments,
-            instance.availability_domain, instance.compartment_id, instance_id=instance_id)
-        attached = [a for a in attachments if a.lifecycle_state == "ATTACHED"]
-        if not attached:
-            # OCI does not guarantee its rollback of a failed replacement succeeds.
-            raise YBOpsRuntimeError(
-                "Instance {} has no attached boot volume, possibly left by a failed "
-                "replacement. Reattach its boot volume before retrying.".format(instance_id))
-        boot_volume = self.blockstorage_client.get_boot_volume(attached[0].boot_volume_id).data
+        boot_volume = self._get_attached_boot_volume(instance)
         if not force and boot_volume.image_id == image_id:
             logging.info("[app] Boot volume {} of instance {} is already from image {}".format(
                 boot_volume.id, instance_id, image_id))
@@ -1112,6 +1103,30 @@ class OciCloudAdmin:
             raise YBOpsRuntimeError(
                 "Boot volume replacement of instance {} ended {}: {}".format(
                     instance_id, work_request.status, "; ".join(e.message for e in errors)))
+
+        # The replacement can't set the performance, so OCI creates the new volume at its default
+        # of 10 VPUs/GB. Put back the old volume's, which may have been changed in OCI.
+        new_boot_volume = self._get_attached_boot_volume(instance)
+        if (boot_volume.vpus_per_gb is not None
+                and new_boot_volume.vpus_per_gb != boot_volume.vpus_per_gb):
+            logging.info("[app] Setting boot volume {} of instance {} to {} VPUs/GB".format(
+                new_boot_volume.id, instance_id, boot_volume.vpus_per_gb))
+            self.blockstorage_client.update_boot_volume(
+                new_boot_volume.id, UpdateBootVolumeDetails(vpus_per_gb=boot_volume.vpus_per_gb))
+            self._wait_for_resource_state(
+                self.blockstorage_client.get_boot_volume, new_boot_volume.id, "AVAILABLE")
+
+    def _get_attached_boot_volume(self, instance):
+        attachments = self._list_all(
+            self.compute_client.list_boot_volume_attachments,
+            instance.availability_domain, instance.compartment_id, instance_id=instance.id)
+        attached = [a for a in attachments if a.lifecycle_state == "ATTACHED"]
+        if not attached:
+            # OCI does not guarantee its rollback of a failed replacement succeeds.
+            raise YBOpsRuntimeError(
+                "Instance {} has no attached boot volume, possibly left by a failed "
+                "replacement. Reattach its boot volume before retrying.".format(instance.id))
+        return self.blockstorage_client.get_boot_volume(attached[0].boot_volume_id).data
 
     def delete_detached_boot_volumes(self, availability_domain, tags, volume_ids=None):
         """Deletes detached boot volumes that match tags, such as those replace_boot_volume kept.

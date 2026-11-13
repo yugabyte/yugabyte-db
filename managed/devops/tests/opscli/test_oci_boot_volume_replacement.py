@@ -38,6 +38,7 @@ class TestReplaceBootVolume(TestCase):
         self.compute = self.admin._compute_client
         self.blockstorage = self.admin._blockstorage_client
         self.compute.get_instance.return_value.data = SimpleNamespace(
+            id=INSTANCE_ID,
             availability_domain="AD-1",
             compartment_id="ocid1.compartment.oc1..yb",
             freeform_tags=dict(NODE_TAGS, Name="yb-n1"))
@@ -47,7 +48,8 @@ class TestReplaceBootVolume(TestCase):
         ]
         self.blockstorage.get_boot_volume.return_value.data = SimpleNamespace(
             id="current", freeform_tags={"team": "db"}, size_in_gbs=100,
-            kms_key_id="ocid1.key.oc1..cmk", image_id="ocid1.image.oc1..current")
+            kms_key_id="ocid1.key.oc1..cmk", image_id="ocid1.image.oc1..current",
+            vpus_per_gb=10)
 
         def update_instance(*_):
             # The old volume must be tagged before OCI detaches it.
@@ -74,6 +76,34 @@ class TestReplaceBootVolume(TestCase):
         self.assertEqual("ocid1.key.oc1..cmk", details.source_details.kms_key_id)
         self.assertTrue(details.source_details.is_preserve_boot_volume_enabled)
         self.work_requests.get_work_request.assert_called_once_with("work-request-1")
+        # The new volume has the old one's VPUs, so only the tags were updated.
+        self.blockstorage.update_boot_volume.assert_called_once()
+
+    def test_restores_vpus_of_old_volume_on_new_volume(self):
+        current = self.blockstorage.get_boot_volume.return_value.data
+        current.vpus_per_gb = 20
+        volumes = {
+            "current": current,
+            "replacement": SimpleNamespace(
+                id="replacement", vpus_per_gb=10, lifecycle_state="AVAILABLE"),
+        }
+        self.blockstorage.get_boot_volume.side_effect = (
+            lambda volume_id: SimpleNamespace(data=volumes[volume_id]))
+        attached = ["current"]
+
+        def update_instance(*_):
+            attached[0] = "replacement"
+            return SimpleNamespace(headers={"opc-work-request-id": "work-request-1"})
+
+        self.compute.update_instance.side_effect = update_instance
+        self.compute.list_boot_volume_attachments.side_effect = lambda *_, **__: [
+            SimpleNamespace(lifecycle_state="ATTACHED", boot_volume_id=attached[0])]
+
+        self.admin.replace_boot_volume(INSTANCE_ID, IMAGE_ID)
+
+        (volume_id, details), _ = self.blockstorage.update_boot_volume.call_args
+        self.assertEqual("replacement", volume_id)
+        self.assertEqual(20, details.vpus_per_gb)
 
     def test_raises_boot_volume_below_minimum_to_minimum(self):
         self.blockstorage.get_boot_volume.return_value.data.size_in_gbs = 47
