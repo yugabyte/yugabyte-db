@@ -29,7 +29,13 @@ In YugabyteDB, indexes are sharded - they are split into tablets and distributed
 
 Index creation in YugabyteDB can happen CONCURRENTLY or NONCONCURRENTLY. The default mode is CONCURRENTLY, wherever possible (see [CONCURRENTLY](#concurrently) for restrictions).
 
-Concurrent index creation allows data to be modified in the main table while the index is being built. It is implemented by an online index backfill process, which is a combination of a distributed index backfill process that works on existing data using parallel workers, and an online component that mirrors newer changes to main table rows into the index. Nonconcurrent index builds are not safe to perform while there are ongoing changes to the main table, however, this restriction is currently not enforced. The following table summarizes the differences in these two modes.
+Concurrent index creation allows data to be modified in the main table while the index is being built. It is implemented by an online index backfill process, which is a combination of a distributed index backfill process that works on existing data using parallel workers, and an online component that mirrors newer changes to main table rows into the index. Nonconcurrent index builds are not safe to perform while there are ongoing changes to the main table, however, this restriction is currently not enforced.
+
+A nonconcurrent build reads the table at one read point. If it runs longer than the YB-TServer flag [timestamp_history_retention_interval_sec](../../../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec) (default 900 seconds), it fails with `Snapshot too old`. Before a nonconcurrent build on a large table, raise this flag above the expected build time, and reset it after the build finishes.
+
+Under [READ COMMITTED](../../../../../architecture/transactions/read-committed/), don't run DDL or [ANALYZE](../cmd_analyze) in the same database during an online index build. A concurrent DDL statement or ANALYZE can fail the build with `relation "<index>" already exists` and leave an invalid index. Drop the invalid index before you retry the build.
+
+The following table summarizes the differences in these two modes.
 
 | Condition | Concurrent | Nonconcurrent |
 | :-------- | :--------- | :------------ |
