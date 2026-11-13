@@ -1,0 +1,125 @@
+              List of relations
+ Schema |    Name    | Type  |     Owner     
+--------+------------+-------+---------------
+ public | test_table | table | yugabyte_test
+(1 row)
+
+              List of relations
+ Schema |    Name    | Type  |     Owner     
+--------+------------+-------+---------------
+ public | test_table | table | yugabyte_test
+(1 row)
+
+ id 
+----
+  1
+(1 row)
+
+INSERT 0 1
+              List of relations
+ Schema |    Name    | Type  |     Owner     
+--------+------------+-------+---------------
+ public | test_table | table | yugabyte_test
+(1 row)
+
+ id 
+----
+  1
+(1 row)
+
+              List of relations
+ Schema |    Name    | Type  |     Owner     
+--------+------------+-------+---------------
+ public | test_table | table | yugabyte_test
+(1 row)
+
+ id 
+----
+  1
+(1 row)
+
+              List of relations
+ Schema |    Name    | Type  |     Owner     
+--------+------------+-------+---------------
+ public | test_table | table | yugabyte_test
+(1 row)
+
+ id 
+----
+  1
+(1 row)
+
+              List of relations
+ Schema |    Name    | Type  |     Owner     
+--------+------------+-------+---------------
+ public | test_table | table | yugabyte_test
+(1 row)
+
+ id 
+----
+  1
+(1 row)
+
+              List of relations
+ Schema |    Name    | Type  |     Owner     
+--------+------------+-------+---------------
+ public | test_table | table | yugabyte_test
+(1 row)
+
+ id 
+----
+  1
+(1 row)
+
+              List of relations
+ Schema |    Name    | Type  |     Owner     
+--------+------------+-------+---------------
+ public | test_table | table | yugabyte_test
+(1 row)
+
+ id 
+----
+  1
+(1 row)
+
+              List of relations
+ Schema |    Name    | Type  |     Owner     
+--------+------------+-------+---------------
+ public | test_table | table | yugabyte_test
+(1 row)
+
+ id 
+----
+  1
+(1 row)
+
+              List of relations
+ Schema |    Name    | Type  |     Owner     
+--------+------------+-------+---------------
+ public | test_table | table | yugabyte_test
+(1 row)
+
+ id 
+----
+  1
+(1 row)
+
+              List of relations
+ Schema |    Name    | Type  |     Owner     
+--------+------------+-------+---------------
+ public | test_table | table | yugabyte_test
+(1 row)
+
+ id 
+----
+  1
+(1 row)
+
+ id 
+----
+  1
+  7
+  2
+  3
+(4 rows)
+
