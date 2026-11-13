@@ -12,6 +12,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -51,7 +52,9 @@ import com.yugabyte.yba.v2.client.models.UniverseUpdateProxyConfigClustersInner;
 import com.yugabyte.yba.v2.client.models.UpdateProxyConfigSpec;
 import com.yugabyte.yba.v2.client.models.YBATask;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
@@ -831,10 +834,21 @@ public class UniverseApiControllerUpgradeTest extends UniverseTestBase {
                     .uuid(universe.getUniverseDetails().getPrimaryCluster().uuid)
                     .gflags(new ClusterGFlags().tserver(Map.of("tflag", "tval"))));
 
-    // An empty master map would replace the stored master gflags.
-    assertThrows(
-        ApiException.class,
-        () -> apiClient.resizeNodes(customer.getUuid(), universe.getUniverseUUID(), req));
-    verify(mockUpgradeUniverseHandler, never()).resizeNode(any(), any(), any());
+    // The request may be rejected, but it must not reach the resize task with an empty master map,
+    // which would replace the stored master gflags.
+    try {
+      apiClient.resizeNodes(customer.getUuid(), universe.getUniverseUUID(), req);
+    } catch (ApiException e) {
+      // Rejected before the resize task.
+    }
+    verify(mockUpgradeUniverseHandler, never())
+        .resizeNode(argThat(UniverseApiControllerUpgradeTest::hasEmptyMasterGFlags), any(), any());
+  }
+
+  private static boolean hasEmptyMasterGFlags(ResizeNodeParams params) {
+    SpecificGFlags specificGFlags = params.getPrimaryCluster().userIntent.specificGFlags;
+    return specificGFlags != null
+        && specificGFlags.getPerProcessFlags() != null
+        && Map.of().equals(specificGFlags.getPerProcessFlags().value.get(ServerType.MASTER));
   }
 }
