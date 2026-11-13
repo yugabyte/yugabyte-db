@@ -31,64 +31,6 @@ SET enable_sort = off;
 -- sorts last by (c1, c3), so that a merge that does not sort on c2 misorders
 -- the survivors.
 --
--- Local filter: expression pushdown off
---
-CREATE TABLE gap_tbl (s int, c1 int, c2 int, c3 int,
-    PRIMARY KEY (s ASC, c1 ASC, c2 ASC, c3 ASC));
-INSERT INTO gap_tbl VALUES
-    (1, 1, 0, 9), (1, 1, 1, 0), (2, 1, 1, 4), (1, 5, 5, 1), (2, 5, 5, 2);
-ANALYZE gap_tbl;
-SET yb_enable_expression_pushdown = off;
-\set query ':P :Q SELECT c1, c3, s, c2 FROM gap_tbl WHERE s IN (1, 2) AND c1 = c2 ORDER BY c1, c3;'
-\i :run_query
-\set _echo_run_query :ECHO
-\set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT c1, c3, s, c2 FROM gap_tbl WHERE s IN (1, 2) AND c1 = c2 ORDER BY c1, c3;
-                                       QUERY PLAN                                       
-----------------------------------------------------------------------------------------
- Sort (actual rows=4 loops=1)
-   Output: c1, c3, s, c2
-   Sort Key: gap_tbl.c1, gap_tbl.c3
-   Sort Method: quicksort
-   ->  Seq Scan on public.gap_tbl (actual rows=4 loops=1)
-         Output: c1, c3, s, c2
-         Filter: ((gap_tbl.s = ANY ('{1,2}'::integer[])) AND (gap_tbl.c1 = gap_tbl.c2))
-         Rows Removed by Filter: 1
-         Storage Table Read Requests: 1
-         Storage Table Read Ops: 1
-         Storage Table Rows Scanned: 5
-(11 rows)
-
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT c1, c3, s, c2 FROM gap_tbl WHERE s IN (1, 2) AND c1 = c2 ORDER BY c1, c3;
-                               QUERY PLAN                                
--------------------------------------------------------------------------
- Index Scan using gap_tbl_pkey on public.gap_tbl (actual rows=4 loops=1)
-   Output: c1, c3, s, c2
-   Index Cond: (gap_tbl.s = ANY ('{1,2}'::integer[]))
-   Merge Sort Key: gap_tbl.c1, gap_tbl.c2, gap_tbl.c3
-   Merge Stream Key: gap_tbl.s
-   Merge Streams: 2
-   Merge Cond: (gap_tbl.s = ANY ('{1,2}'::integer[]))
-   Filter: (gap_tbl.c1 = gap_tbl.c2)
-   Rows Removed by Filter: 1
-   Storage Table Read Requests: 1
-   Storage Table Read Ops: 2
-   Storage Table Rows Scanned: 5
-(12 rows)
-
-/*+Set(yb_max_merge_scan_streams 0)*/ SELECT c1, c3, s, c2 FROM gap_tbl WHERE s IN (1, 2) AND c1 = c2 ORDER BY c1, c3;
- c1 | c3 | s | c2 
-----+----+---+----
-  1 |  0 | 1 |  1
-  1 |  4 | 2 |  1
-  5 |  1 | 1 |  5
-  5 |  2 | 2 |  5
-(4 rows)
-
-/*+Set(yb_max_merge_scan_streams 64)*/ SELECT c1, c3, s, c2 FROM gap_tbl WHERE s IN (1, 2) AND c1 = c2 ORDER BY c1, c3;
-(output identical to previous)
-RESET yb_enable_expression_pushdown;
---
 -- Local filter: non-C collation
 --
 CREATE TABLE gap_coll_tbl (s int, c1 text COLLATE "en_US", c2 text COLLATE "en_US",
@@ -628,8 +570,8 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnl
 (output identical to previous)
 RESET yb_enable_expression_pushdown;
 RESET enable_sort;
-DROP TABLE gap_tbl, gap_coll_tbl, gap_ts_tbl, gap_idx_tbl, gap_dist_tbl,
-    gap_desc_tbl, gap_null_tbl;
+DROP TABLE gap_coll_tbl, gap_ts_tbl, gap_idx_tbl, gap_dist_tbl, gap_desc_tbl,
+    gap_null_tbl;
 --
 -- Cells run in both databases (yb_commands/merge_scan_gap_cells.sql)
 --

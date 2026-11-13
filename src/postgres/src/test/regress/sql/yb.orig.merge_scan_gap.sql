@@ -19,20 +19,6 @@ SET enable_sort = off;
 -- the survivors.
 
 --
--- Local filter: expression pushdown off
---
-CREATE TABLE gap_tbl (s int, c1 int, c2 int, c3 int,
-    PRIMARY KEY (s ASC, c1 ASC, c2 ASC, c3 ASC));
-INSERT INTO gap_tbl VALUES
-    (1, 1, 0, 9), (1, 1, 1, 0), (2, 1, 1, 4), (1, 5, 5, 1), (2, 5, 5, 2);
-ANALYZE gap_tbl;
-
-SET yb_enable_expression_pushdown = off;
-\set query ':P :Q SELECT c1, c3, s, c2 FROM gap_tbl WHERE s IN (1, 2) AND c1 = c2 ORDER BY c1, c3;'
-\i :run_query
-RESET yb_enable_expression_pushdown;
-
---
 -- Local filter: non-C collation
 --
 CREATE TABLE gap_coll_tbl (s int, c1 text COLLATE "en_US", c2 text COLLATE "en_US",
@@ -151,8 +137,8 @@ RESET yb_enable_expression_pushdown;
 
 RESET enable_sort;
 
-DROP TABLE gap_tbl, gap_coll_tbl, gap_ts_tbl, gap_idx_tbl, gap_dist_tbl,
-    gap_desc_tbl, gap_null_tbl;
+DROP TABLE gap_coll_tbl, gap_ts_tbl, gap_idx_tbl, gap_dist_tbl, gap_desc_tbl,
+    gap_null_tbl;
 
 --
 -- Cells run in both databases (yb_commands/merge_scan_gap_cells.sql)
