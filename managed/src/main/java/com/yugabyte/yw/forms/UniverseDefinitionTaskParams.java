@@ -469,7 +469,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   /** How far a K8s edit's master move got, in order. A retry reads it to pick master lists. */
   public enum MasterMoveStage {
     STARTED,
-    NEW_MASTERS_JOINED,
+    // The masters the edit adds outside a master full move run, and may be in the Raft config.
+    ADDED_MASTERS_RUNNING,
+    // The master full move's new masters run too, and may be in the Raft config.
+    FULL_MOVE_MASTERS_RUNNING,
     OLD_MASTERS_REMOVED,
     DONE
   }

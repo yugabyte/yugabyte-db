@@ -2314,16 +2314,18 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             .filter(t -> "TSERVER".equals(t.getTaskParams().path("serverType").asText()))
             .collect(Collectors.toList());
     // Master phase, per AZ: create new master pods, render the old and new masters before the
-    // removes, delete the old pods, final render.
+    // adds, delete the old pods, final render.
     assertEquals(12, masterHelm.size());
     List<TaskInfo> adds = changeMasterConfigs(plan, "AddMaster");
-    List<TaskInfo> removes = changeMasterConfigs(plan, "RemoveMaster");
-    List<TaskInfo> createNewMasters = between(masterHelm, 0, firstPosition(adds));
-    List<TaskInfo> beforeRemoves = between(masterHelm, lastPosition(adds), firstPosition(removes));
+    List<TaskInfo> beforeAdds = between(masterHelm, 0, firstPosition(adds));
+    assertEquals(6, beforeAdds.size());
+    int renderPosition = beforeAdds.stream().mapToInt(TaskInfo::getPosition).max().getAsInt();
+    List<TaskInfo> createNewMasters = between(beforeAdds, 0, renderPosition);
+    List<TaskInfo> beforeAddRender = between(beforeAdds, renderPosition - 1, renderPosition + 1);
     List<TaskInfo> afterMastersJoined =
         between(masterHelm, lastPosition(postRemove), Integer.MAX_VALUE);
     assertEquals(3, createNewMasters.size());
-    assertEquals(3, beforeRemoves.size());
+    assertEquals(3, beforeAddRender.size());
     assertEquals(6, afterMastersJoined.size());
     Map<String, TaskInfo> createByAZ =
         createNewMasters.stream()
@@ -2333,9 +2335,9 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
       assertEquals(oldMasters, helmMasterAddresses(t));
       assertFalse(keepsGflagsChecksum(t));
     }
-    // The pre-remove render is the same helm upgrade as the create, with the old and new masters,
+    // The pre-add render is the same helm upgrade as the create, with the old and new masters,
     // so both master StatefulSets and their partitions stay as they are.
-    for (TaskInfo t : beforeRemoves) {
+    for (TaskInfo t : beforeAddRender) {
       assertEquals(addressSet(oldMasters, newMasters), addressSet(helmMasterAddresses(t)));
       TaskInfo create = createByAZ.get(t.getTaskParams().path("azCode").asText());
       for (String field :
@@ -2343,7 +2345,11 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         assertEquals(field, create.getTaskParams().path(field), t.getTaskParams().path(field));
       }
     }
-    assertTrue(lastPosition(beforeRemoves) < firstPosition(masterAddrPushes(plan)));
+    // The render comes once the new master pods run.
+    List<TaskInfo> waitForMasters =
+        between(subtasks(plan, TaskType.WaitForServer, p -> true), 0, renderPosition);
+    assertFalse(waitForMasters.isEmpty());
+    assertTrue(lastPosition(createNewMasters) < firstPosition(waitForMasters));
     for (TaskInfo t : afterMastersJoined) {
       // The pod delete and final render rewrite every gflags Secret in the release, tservers
       // included, without rolling any pod.
@@ -2407,15 +2413,17 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             .map(t -> t.getTaskParams().path("opType").asText())
             .collect(Collectors.toList()));
 
-    // After the add and before the pre-remove push, a non-restart render rewrites the Secrets of
+    // Once az-4's master pod runs and before its add, a non-restart render rewrites the Secrets of
     // every AZ but the one gaining a master, at their current counts, with the old and the new
-    // masters. Nothing scales. The list names quorum members before and after the remove.
+    // masters. Nothing scales. The list names every master that can be leader until the remove.
+    List<TaskInfo> adds = changeMasterConfigs(plan, "AddMaster");
     List<TaskInfo> removes = changeMasterConfigs(plan, "RemoveMaster");
     List<TaskInfo> preRemove = between(masterAddrPushes(plan), 0, firstPosition(removes));
     List<TaskInfo> earlySecretUpdate = earlySecretUpdate(plan);
     assertEquals(ImmutableSet.of("az-1", "az-2", "az-3"), azCodes(earlySecretUpdate));
     assertEquals(3, earlySecretUpdate.size());
-    assertEquals(firstPosition(earlySecretUpdate) + 2, firstPosition(preRemove));
+    assertTrue(lastPosition(installs) < firstPosition(earlySecretUpdate));
+    assertTrue(lastPosition(adds) < firstPosition(preRemove));
     assertEquals(lastPosition(preRemove) + 1, firstPosition(removes));
     for (TaskInfo t : earlySecretUpdate) {
       assertEquals(addressSet(oldMasters, newMasters), addressSet(helmMasterAddresses(t)));
@@ -2521,44 +2529,39 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     String newMasters = expectedMasterAddresses(pi);
     TaskInfo attempt = submitEdit(newIntent, pi, null);
 
-    // Each retry follows the one before, as if that one got further.
-    Map<MasterMoveStage, Set<String>> cases =
+    // Each retry follows the one before, as if that one got further. Per stage: the list the new
+    // master pods start with, and the one the next render writes. No master is added outside the
+    // full move, so ADDED_MASTERS_RUNNING lists the old masters. Until FULL_MOVE_MASTERS_RUNNING,
+    // that render comes before the adds, with the old and the new masters; past it, the pod-delete
+    // render writes the new ones.
+    Map<MasterMoveStage, List<Set<String>>> cases =
         ImmutableMap.of(
             MasterMoveStage.STARTED,
-            addressSet(oldMasters),
-            MasterMoveStage.NEW_MASTERS_JOINED,
-            addressSet(oldMasters, newMasters),
+            ImmutableList.of(addressSet(oldMasters), addressSet(oldMasters, newMasters)),
+            MasterMoveStage.ADDED_MASTERS_RUNNING,
+            ImmutableList.of(addressSet(oldMasters), addressSet(oldMasters, newMasters)),
+            MasterMoveStage.FULL_MOVE_MASTERS_RUNNING,
+            ImmutableList.of(
+                addressSet(oldMasters, newMasters), addressSet(oldMasters, newMasters)),
             MasterMoveStage.OLD_MASTERS_REMOVED,
-            addressSet(newMasters),
+            ImmutableList.of(addressSet(newMasters), addressSet(newMasters)),
             MasterMoveStage.DONE,
-            addressSet(newMasters));
-    for (Map.Entry<MasterMoveStage, Set<String>> c : cases.entrySet()) {
+            ImmutableList.of(addressSet(newMasters), addressSet(newMasters)));
+    for (Map.Entry<MasterMoveStage, List<Set<String>>> c : cases.entrySet()) {
       attempt = retryEdit(attempt, p -> p.getPrimaryCluster().setMasterMoveStage(c.getKey()));
       List<TaskInfo> masterHelm =
           helmUpgrades(plan(attempt)).stream()
               .filter(t -> "MASTER".equals(t.getTaskParams().path("serverType").asText()))
               .collect(Collectors.toList());
       // The full move's first group creates the new master pods.
-      List<TaskInfo> createNewMasters = between(masterHelm, -1, firstPosition(masterHelm) + 1);
-      assertEquals(3, createNewMasters.size());
-      for (TaskInfo t : createNewMasters) {
-        assertEquals(c.getKey().name(), c.getValue(), addressSet(helmMasterAddresses(t)));
-      }
-      // Until DONE, the next group renders the masters that run during the removes: the old and
-      // the new ones, or only the new ones once the removes are done.
-      if (c.getKey() != MasterMoveStage.DONE) {
-        int beforeRemoves =
-            masterHelm.stream()
-                .mapToInt(TaskInfo::getPosition)
-                .filter(pos -> pos > firstPosition(masterHelm))
-                .min()
-                .getAsInt();
-        Set<String> expected =
-            c.getKey() == MasterMoveStage.OLD_MASTERS_REMOVED
-                ? addressSet(newMasters)
-                : addressSet(oldMasters, newMasters);
-        for (TaskInfo t : between(masterHelm, beforeRemoves - 1, beforeRemoves + 1)) {
-          assertEquals(c.getKey().name(), expected, addressSet(helmMasterAddresses(t)));
+      int create = firstPosition(masterHelm);
+      int next = between(masterHelm, create, Integer.MAX_VALUE).get(0).getPosition();
+      for (int i = 0; i < 2; i++) {
+        int pos = i == 0 ? create : next;
+        List<TaskInfo> group = between(masterHelm, pos - 1, pos + 1);
+        assertEquals(3, group.size());
+        for (TaskInfo t : group) {
+          assertEquals(c.getKey().name(), c.getValue().get(i), addressSet(helmMasterAddresses(t)));
         }
       }
     }
@@ -2792,18 +2795,28 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     return pi;
   }
 
-  /** The early Secret update of a plan with a single master step. */
+  /**
+   * The early Secret update of a plan with a single master step: the last one before the master
+   * adds, once the new master pods run.
+   */
   private static List<TaskInfo> earlySecretUpdate(List<TaskInfo> plan) {
-    List<TaskInfo> adds = changeMasterConfigs(plan, "AddMaster");
-    List<TaskInfo> removes = changeMasterConfigs(plan, "RemoveMaster");
-    return earlySecretUpdate(plan, lastPosition(adds), firstPosition(removes));
+    List<List<TaskInfo>> groups =
+        earlySecretUpdates(plan, -1, firstPosition(changeMasterConfigs(plan, "AddMaster")));
+    return groups.isEmpty() ? Collections.emptyList() : groups.get(groups.size() - 1);
+  }
+
+  /** The first early Secret update between the given positions. */
+  private static List<TaskInfo> earlySecretUpdate(List<TaskInfo> plan, int after, int before) {
+    List<List<TaskInfo>> groups = earlySecretUpdates(plan, after, before);
+    return groups.isEmpty() ? Collections.emptyList() : groups.get(0);
   }
 
   /**
-   * The early Secret update: a non-restart helm group between the given positions that waits for
-   * the Secret to sync.
+   * The early Secret updates between the given positions, in order: non-restart helm groups that
+   * wait for the Secret to sync.
    */
-  private static List<TaskInfo> earlySecretUpdate(List<TaskInfo> plan, int after, int before) {
+  private static List<List<TaskInfo>> earlySecretUpdates(
+      List<TaskInfo> plan, int after, int before) {
     Map<Integer, TaskType> typeAt =
         plan.stream()
             .collect(Collectors.toMap(TaskInfo::getPosition, TaskInfo::getTaskType, (x, y) -> x));
@@ -2811,12 +2824,10 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         .filter(t -> t.getPosition() > after && t.getPosition() < before)
         .filter(EditKubernetesUniverseTest::keepsGflagsChecksum)
         .filter(t -> typeAt.get(t.getPosition() + 1) == TaskType.WaitForDuration)
-        .collect(Collectors.groupingBy(TaskInfo::getPosition))
-        .entrySet()
+        .collect(Collectors.groupingBy(TaskInfo::getPosition, TreeMap::new, Collectors.toList()))
+        .values()
         .stream()
-        .min(Map.Entry.comparingByKey())
-        .map(Map.Entry::getValue)
-        .orElse(Collections.emptyList());
+        .collect(Collectors.toList());
   }
 
   private static Set<String> azCodes(List<TaskInfo> helmTasks) {
@@ -2875,7 +2886,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             ImmutableSet.of("yb-master-1-0_az-1", "yb-master-0_az-2", "yb-master-0_az-3"),
             ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2", "yb-tserver-0_az-3"));
     // The full move rewrites only az-1's release, so az-2 and az-3 get the old and new masters
-    // before the old az-1 master is removed instead of the new ones after the data move.
+    // once the new az-1 master pod runs and before its add, instead of the new ones after the data
+    // move.
     List<TaskInfo> earlySecretUpdate = earlySecretUpdate(plan);
     assertEquals(ImmutableSet.of("az-2", "az-3"), azCodes(earlySecretUpdate));
     for (TaskInfo t : earlySecretUpdate) {
@@ -2884,17 +2896,10 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
       assertEquals(1, t.getTaskParams().path("masterPartition").asInt());
       assertEquals(1, t.getTaskParams().path("tserverPartition").asInt());
     }
-    // Before the change, the first render of az-2 and az-3 after the master add was the one at
-    // the end of the task.
-    assertEquals(
-        firstPosition(earlySecretUpdate),
-        firstPosition(
-            helmUpgradesInAZs(
-                between(
-                    helmUpgrades(plan),
-                    lastPosition(changeMasterConfigs(plan, "AddMaster")),
-                    Integer.MAX_VALUE),
-                ImmutableSet.of("az-2", "az-3"))));
+    List<TaskInfo> az1Helm = helmUpgradesInAZs(helmUpgrades(plan), ImmutableSet.of("az-1"));
+    assertTrue(firstPosition(az1Helm) < firstPosition(earlySecretUpdate));
+    assertTrue(
+        lastPosition(earlySecretUpdate) < firstPosition(changeMasterConfigs(plan, "AddMaster")));
   }
 
   @Test
@@ -2945,19 +2950,32 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     // The full move creates the new az-1 master after the az-4 one joined, so its pods list both.
     Set<String> allMasters = addressSet(oldMasters, expectedMasterAddresses(pi));
     List<TaskInfo> az1Helm = helmUpgradesInAZs(helmUpgrades(plan), ImmutableSet.of("az-1"));
-    List<TaskInfo> createAz1Master =
+    List<TaskInfo> az1HelmBetweenAdds =
         between(az1Helm, adds.get(0).getPosition(), lastPosition(adds));
+    List<TaskInfo> createAz1Master =
+        between(az1HelmBetweenAdds, -1, firstPosition(az1HelmBetweenAdds) + 1);
     assertEquals(1, createAz1Master.size());
     assertEquals(
         addressSet(oldMasters, podHost("yb-master", "az-4") + ":7100"),
         addressSet(helmMasterAddresses(createAz1Master.get(0))));
-    // Before the removes, every AZ that runs now renders the old and the new masters: az-1 through
-    // the full move's own helm upgrade, the others through the non-restart render.
-    List<TaskInfo> fullMoveRender = between(az1Helm, lastPosition(adds), firstPosition(preRemove));
+    // Before the az-4 add, az-2 and az-3 render the old masters and az-4's. The full move's az-1
+    // is left to it.
+    List<List<TaskInfo>> beforeAz4Add = earlySecretUpdates(plan, -1, adds.get(0).getPosition());
+    List<TaskInfo> addedMastersRender = beforeAz4Add.get(beforeAz4Add.size() - 1);
+    assertEquals(ImmutableSet.of("az-2", "az-3"), azCodes(addedMastersRender));
+    for (TaskInfo t : addedMastersRender) {
+      assertEquals(
+          addressSet(oldMasters, podHost("yb-master", "az-4") + ":7100"),
+          addressSet(helmMasterAddresses(t)));
+    }
+    // Before the az-1 add, every AZ that runs now renders the old and the new masters: az-1
+    // through the full move's own helm upgrade, the others through the non-restart render.
+    int createPos = createAz1Master.get(0).getPosition();
+    List<TaskInfo> fullMoveRender = between(az1Helm, createPos, adds.get(1).getPosition());
     assertEquals(1, fullMoveRender.size());
     assertEquals(allMasters, addressSet(helmMasterAddresses(fullMoveRender.get(0))));
     List<TaskInfo> earlySecretUpdate =
-        earlySecretUpdate(plan, lastPosition(adds), firstPosition(preRemove));
+        earlySecretUpdate(plan, createPos, adds.get(1).getPosition());
     assertEquals(ImmutableSet.of("az-2", "az-3"), azCodes(earlySecretUpdate));
     for (TaskInfo t : earlySecretUpdate) {
       assertEquals(allMasters, addressSet(helmMasterAddresses(t)));
@@ -3560,17 +3578,14 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
                       + sortedCsv(inv.getArgument(2)));
               return true;
             });
-    // Record the helm upgrades from the master add on, and stop at the first one after the
-    // remove: the new az-4 tserver.
+    // Record the helm upgrades, and stop at the first one after the remove: the new az-4 tserver.
     doAnswer(
             inv -> {
               String ns = inv.getArgument(4);
               if (events.stream().anyMatch(e -> e.startsWith("REMOVE")) && ns.endsWith("az-4")) {
                 throw new RuntimeException("stop after the master move");
               }
-              if (events.stream().anyMatch(e -> e.startsWith("ADD"))) {
-                events.add("HELM " + ns.substring(ns.length() - 4));
-              }
+              events.add("HELM " + ns.substring(ns.length() - 4));
               return null;
             })
         .when(mockKubernetesManager)
@@ -3661,18 +3676,15 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     int add = log.indexOf("ADD " + masterD);
     int remove = log.indexOf("REMOVE " + masterC);
     int prePush = add + 1;
-    while (log.get(prePush).startsWith("HELM")) {
-      prePush++;
-    }
     assertEquals(
         ImmutableList.of("ADD " + masterD, "REMOVE " + masterC),
         log.stream()
             .filter(e -> e.startsWith("ADD") || e.startsWith("REMOVE"))
             .collect(Collectors.toList()));
-    // Every AZ but az-4 renders the new list between the add and the pre-remove push.
+    // Every AZ but az-4 renders the new list right before the add.
     assertEquals(
         ImmutableSet.of("HELM az-1", "HELM az-2", "HELM az-3"),
-        new java.util.HashSet<>(log.subList(add + 1, prePush)));
+        new java.util.HashSet<>(log.subList(add - 3, add)));
     List<String> preRemove = log.subList(prePush, remove);
     List<String> postRemove = log.subList(remove + 1, log.size());
 
