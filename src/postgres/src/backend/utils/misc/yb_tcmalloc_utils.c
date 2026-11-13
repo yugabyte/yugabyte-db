@@ -39,6 +39,7 @@
 #include "storage/procarray.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
+#include "utils/guc_hooks.h"
 #include "utils/tuplestore.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
@@ -352,4 +353,19 @@ YbReleaseFreeMemoryAfterStartup(void)
 	if (stats.pageheap_free_bytes >=
 		(int64) yb_startup_free_memory_release_threshold * 1024)
 		YBCTCMallocReleaseFreeMemory(PG_INT64_MAX);
+}
+
+const char *
+show_tcmalloc_sample_period(void)
+{
+	static char nbuf[32];
+
+	snprintf(nbuf, sizeof(nbuf), "%" PRId64, YBCGetTCMallocSamplingPeriod());
+	return nbuf;
+}
+
+void
+assign_tcmalloc_sample_period(int newval, void *extra)
+{
+	YBCSetTCMallocSamplingPeriod(newval);
 }
