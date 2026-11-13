@@ -24,6 +24,7 @@ import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collection;
 import java.util.Collections;
@@ -35,6 +36,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.UnaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -428,6 +430,7 @@ public class RedactingService {
     String output = input;
     for (String pattern : names) {
       output = redactPatternOccurrences(pattern, output);
+      output = redactYamlKeyValue(output, pattern, SECRET_REPLACEMENT);
     }
     return output;
   }
@@ -1117,6 +1120,133 @@ public class RedactingService {
     return out.toString();
   }
 
+  /**
+   * Redacts the YAML form field: value, as in Kubernetes overrides and Helm --debug output. A
+   * quoted value runs to its closing quote, across line breaks as YAML reads it: bounding it to its
+   * line would leak the rest of a value continued on unindented lines, so a quote left open in
+   * malformed text takes everything up to the next quote instead. A value that is not quoted runs
+   * to the end of its line plus any following lines indented past the key, which covers block
+   * scalars, values on the next line and plain scalars folded over several lines. In serialized
+   * JSON the line breaks are escaped, so such a value runs to the end of the input.
+   * redactSensitiveGFlagFields redacts the parsed string values instead; only its fallback, after
+   * the tree walk fails, scans the serialized JSON and redacts too much.
+   */
+  private static String redactYamlKeyValue(String input, String field, String replacement) {
+    String needle = field + ":";
+    int pos = input.indexOf(needle);
+    if (pos < 0) {
+      return input;
+    }
+    int n = input.length();
+    StringBuilder out = new StringBuilder(n);
+    int from = 0;
+    // Matches only move forward, so the line start is carried along rather than searched back for
+    // each match, which is quadratic when one line holds many.
+    int lineStart = 0;
+    int scanned = 0;
+    while (pos >= 0) {
+      int next = pos + needle.length();
+      if (pos > 0 && isFlagNameChar(input.charAt(pos - 1))) {
+        pos = input.indexOf(needle, next);
+        continue;
+      }
+      for (; scanned < pos; scanned++) {
+        char ch = input.charAt(scanned);
+        if (ch == '\n' || ch == '\r') {
+          lineStart = scanned + 1;
+        }
+      }
+      int column = pos - lineStart;
+      int vs = next;
+      while (vs < n && (input.charAt(vs) == ' ' || input.charAt(vs) == '\t')) {
+        vs++;
+      }
+      if (vs == n || input.charAt(vs) == '\n' || input.charAt(vs) == '\r') {
+        // Nothing follows on this line, so the value (if any) is on the lines indented below it.
+        int end = yamlIndentedLinesEnd(input, vs, column);
+        if (end > vs) {
+          out.append(input, from, next).append(' ').append(replacement);
+          from = end;
+          next = end;
+        }
+        pos = input.indexOf(needle, next);
+        continue;
+      }
+      char c = input.charAt(vs);
+      int end = -1;
+      String quote = "";
+      if (c == '"') {
+        int close = indexOfUnescapedDoubleQuote(input, vs + 1);
+        if (close >= 0) {
+          end = close + 1;
+          quote = "\"";
+        }
+      } else if (c == '\'') {
+        int close = yamlSingleQuoteClose(input, vs + 1);
+        if (close >= 0) {
+          end = close + 1;
+          quote = "'";
+        }
+      }
+      if (end < 0) {
+        end = yamlIndentedLinesEnd(input, vs, column);
+      }
+      out.append(input, from, vs).append(quote).append(replacement).append(quote);
+      from = end;
+      pos = input.indexOf(needle, end);
+    }
+    out.append(input, from, n);
+    return out.toString();
+  }
+
+  private static int yamlLineEnd(String s, int i) {
+    while (i < s.length() && s.charAt(i) != '\n' && s.charAt(i) != '\r') {
+      i++;
+    }
+    return i;
+  }
+
+  /**
+   * End of the line at start and of any following lines indented more than column, skipping blank
+   * lines, which a block scalar can hold. HbaConfRedactor.redactFreeText's fold rule differs on
+   * purpose: ldapbindpasswd sits inside a value, so it has no key column to measure from, and the
+   * HBA value Helm folds has no blank lines.
+   */
+  private static int yamlIndentedLinesEnd(String s, int start, int column) {
+    int n = s.length();
+    int end = yamlLineEnd(s, start);
+    int lineEnd = end;
+    while (lineEnd < n) {
+      int lineStart = s.startsWith("\r\n", lineEnd) ? lineEnd + 2 : lineEnd + 1;
+      int content = lineStart;
+      while (content < n && s.charAt(content) == ' ') {
+        content++;
+      }
+      lineEnd = yamlLineEnd(s, content);
+      if (lineEnd > content) {
+        if (content - lineStart <= column) {
+          break;
+        }
+        end = lineEnd;
+      }
+    }
+    return end;
+  }
+
+  /** Closing quote of a YAML single-quoted value, where '' is a literal quote. */
+  private static int yamlSingleQuoteClose(String s, int start) {
+    for (int i = start; i < s.length(); i++) {
+      if (s.charAt(i) == '\'') {
+        if (i + 1 < s.length() && s.charAt(i + 1) == '\'') {
+          i++;
+          continue;
+        }
+        return i;
+      }
+    }
+    return -1;
+  }
+
   /** Redacts sensitive gflags in the additionalDetails section of audit entries. */
   public static JsonNode redactAuditAdditionalDetails(
       JsonNode jsonData, Universe universe, GFlagsValidation gFlagsValidation) {
@@ -1331,6 +1461,9 @@ public class RedactingService {
   public static String redactQueryParams(String input) {
     String output = input;
     for (String param : SECRET_QUERY_PARAMS_FOR_LOGS) {
+      if (!output.contains(param + "=")) {
+        continue;
+      }
       String regex = "([?&]" + param + "=)([^&]+)";
       String replacement = "$1" + SECRET_REPLACEMENT;
       output = output.replaceAll(regex, replacement);
@@ -1339,6 +1472,10 @@ public class RedactingService {
   }
 
   public static String redactrootCAKeys(String input) {
+    // KEY_REGEX backtracks from every position of a line, so skip text it can't match.
+    if (!input.contains("key:")) {
+      return input;
+    }
     String output = input;
     Matcher matcher = KEY_SEARCH_PATTERN.matcher(input);
     if (matcher.find()) {
@@ -1437,21 +1574,60 @@ public class RedactingService {
       // Redact based on target
       switch (target) {
         case QUERY_PARAMS:
-          output = redactQueryParams(output);
+          if (SECRET_QUERY_PARAMS_FOR_LOGS.stream().anyMatch(p -> input.contains(p + "="))) {
+            output = redactEachLine(output, RedactingService::redactQueryParams);
+          }
           break;
         case HELM_VALUES:
-          output = redactrootCAKeys(output);
+          if (output.contains("key:")) {
+            output = redactEachLine(output, RedactingService::redactrootCAKeys);
+          }
           output = redactTelemetryCredentials(output);
           break;
         default:
           break;
       }
-      output = redactSensitiveInfoInString(output);
-      return output;
+      Set<String> names = sensitiveNames(null, null);
+      // YAML values and the ldapbindpasswd text Helm folds continue on the lines below their key,
+      // so these passes see the whole output. They run first: redactFreeText only follows a fold
+      // from a line it redacts itself.
+      output = HbaConfRedactor.redactFreeText(output);
+      for (String name : names) {
+        output = redactYamlKeyValue(output, name, SECRET_REPLACEMENT);
+      }
+      // The other passes run one line at a time. For ldapbindpasswd, redactPatternOccurrences is
+      // redactFreeText again, so it is left out.
+      String redacted = output;
+      List<String> lineNames =
+          names.stream()
+              .filter(name -> !name.equals("ldapbindpasswd") && redacted.contains(name))
+              .collect(Collectors.toList());
+      if (lineNames.isEmpty()) {
+        return redacted;
+      }
+      return redactEachLine(
+          redacted,
+          line -> {
+            String l = line;
+            for (String name : lineNames) {
+              l = redactPatternOccurrences(name, l);
+            }
+            return l;
+          });
     } catch (Exception e) {
       log.error("Error redacting shell process output", e);
-      return input;
+      // Callers only log the result, so log none of it rather than all of it unredacted.
+      return SECRET_REPLACEMENT;
     }
+  }
+
+  /**
+   * For passes that must not run past a line end: redactrootCAKeys checks only its first match, and
+   * its regex, redactQueryParams and several string-scan passes run to the end of their input when
+   * a value isn't closed.
+   */
+  private static String redactEachLine(String input, UnaryOperator<String> redact) {
+    return Arrays.stream(input.split("\n", -1)).map(redact).collect(Collectors.joining("\n"));
   }
 
   private static boolean isBase64Encoded(String str) {
