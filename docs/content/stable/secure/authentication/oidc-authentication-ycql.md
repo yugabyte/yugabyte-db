@@ -10,16 +10,15 @@ menu:
     weight: 733
 type: docs
 ---
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../oidc-authentication-ycql/" class="nav-link active">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-</ul>
+{{<api-tabs>}}
 
 OIDC authentication is similar to the [password](../password-authentication/) method, except that instead of a user-configured password, YugabyteDB uses the JSON Web Token (JWT) received from an external identity provider (IdP).
+
+{{< note title="Signing key rotation" >}}
+
+YugabyteDB loads the JWKS once, when the YB-TServer starts. After the identity provider rotates signing keys, tokens signed with a new key fail until you restart the YB-TServers in a rolling restart. Providers such as Google rotate signing keys every couple of weeks. [YSQL](../oidc-authentication-ysql/) fetches the JWKS on each login, so a rotation takes effect on the next login.
+
+{{< /note >}}
 
 ## Prerequisites
 
@@ -185,4 +184,5 @@ To use OIDC authentication with role-based usernames on a new universe, follow t
 ## Related articles
 
 - [OAuth 2.0 and OpenID Connect protocols](https://learn.microsoft.com/en-us/entra/identity-platform/v2-protocols) on Microsoft Learn
+- [OIDC authentication in YSQL](../oidc-authentication-ysql/)
 - [OIDC database authentication in YugabyteDB Anywhere](../../../yugabyte-platform/security/authentication/oidc-database-authentication/)
