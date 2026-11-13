@@ -1513,9 +1513,17 @@ class PgObjectLocksTestLegacyTxnVsNewDdl : public PgObjectLocksTestMixModeDuring
     auto observer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*cluster_->tablet_server(0)));
     ASSERT_OK(observer.Execute("SET yb_locks_min_txn_age = '0s'"));
     ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
-      return VERIFY_RESULT(observer.FetchRow<int64_t>(Format(
+      // pg_locks asks every transaction status tablet, and a tablet whose leader just moved fails
+      // the query for a moment (the load balancer still moves leaders right after the cluster
+      // starts), so keep polling on an error.
+      auto waiting = observer.FetchRow<int64_t>(Format(
           "SELECT COUNT(*) FROM pg_locks WHERE relation = '$0'::regclass"
-          " AND mode = '$1' AND NOT granted", table, mode))) > 0;
+          " AND mode = '$1' AND NOT granted", table, mode));
+      if (!waiting.ok()) {
+        LOG(INFO) << "pg_locks: " << waiting.status();
+        return false;
+      }
+      return *waiting > 0;
     }, 15s * kTimeMultiplier, Format("a $0 on $1 to wait", mode, table)));
   }
 
@@ -1621,6 +1629,7 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, CreateIndexWaitsForLegacyWriter) {
   ASSERT_NO_FATALS(PromoteForDdl());
   auto create_index_future = std::async(std::launch::async, [&]() -> Status {
     auto ddl_conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+    RETURN_NOT_OK(ddl_conn.ExecuteFormat("SET statement_timeout = '$0s'", 60 * kTimeMultiplier));
     return ddl_conn.Execute("CREATE INDEX test_v_idx ON test(v)");
   });
   ASSERT_NO_FATALS(WaitForWaitForLockers());
@@ -1647,6 +1656,7 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, AddForeignKeyWaitsForLegacyDelete) {
   ASSERT_NO_FATALS(PromoteForDdl());
   auto add_fk_future = std::async(std::launch::async, [&]() -> Status {
     auto ddl_conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+    RETURN_NOT_OK(ddl_conn.ExecuteFormat("SET statement_timeout = '$0s'", 60 * kTimeMultiplier));
     return ddl_conn.Execute(kAddForeignKey);
   });
   WaitForWaitingLock("parent", "ShareRowExclusiveLock");
@@ -1827,6 +1837,7 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, TableRewriteWaitsForLegacyReader) {
   ASSERT_NO_FATALS(PromoteForDdl());
   auto alter_future = std::async(std::launch::async, [&]() -> Status {
     auto ddl_conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+    RETURN_NOT_OK(ddl_conn.ExecuteFormat("SET statement_timeout = '$0s'", 60 * kTimeMultiplier));
     return ddl_conn.Execute("ALTER TABLE test ALTER COLUMN v TYPE BIGINT");
   });
   ASSERT_NO_FATALS(WaitForWaitingLock("test", "AccessExclusiveLock"));
@@ -1861,6 +1872,7 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, AutonomousDdlKeepsLegacyTxnLocks) {
   ASSERT_NO_FATALS(PromoteForDdl());
   auto alter_future = std::async(std::launch::async, [&]() -> Status {
     auto ddl_conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+    RETURN_NOT_OK(ddl_conn.ExecuteFormat("SET statement_timeout = '$0s'", 60 * kTimeMultiplier));
     return ddl_conn.Execute("ALTER TABLE test ALTER COLUMN v TYPE BIGINT");
   });
   ASSERT_NO_FATALS(WaitForWaitingLock("test", "AccessExclusiveLock"));
