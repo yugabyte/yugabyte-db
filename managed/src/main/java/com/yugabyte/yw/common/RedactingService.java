@@ -1128,12 +1128,15 @@ public class RedactingService {
   }
 
   /**
-   * Redacts the YAML form field: value, as in Kubernetes overrides and Helm --debug output. A value
-   * that is not quoted runs to the end of its line plus any following lines indented past the key,
-   * which covers block scalars, values on the next line and plain scalars folded over several
-   * lines. In serialized JSON the line breaks are escaped, so such a value runs to the end of the
-   * input. redactSensitiveGFlagFields redacts the parsed string values instead; only its fallback,
-   * after the tree walk fails, scans the serialized JSON and redacts too much.
+   * Redacts the YAML form field: value, as in Kubernetes overrides and Helm --debug output. A
+   * quoted value runs to its closing quote, across line breaks as YAML reads it: bounding it to its
+   * line would leak the rest of a value continued on unindented lines, so a quote left open in
+   * malformed text takes everything up to the next quote instead. A value that is not quoted runs
+   * to the end of its line plus any following lines indented past the key, which covers block
+   * scalars, values on the next line and plain scalars folded over several lines. In serialized
+   * JSON the line breaks are escaped, so such a value runs to the end of the input.
+   * redactSensitiveGFlagFields redacts the parsed string values instead; only its fallback, after
+   * the tree walk fails, scans the serialized JSON and redacts too much.
    */
   private static String redactYamlKeyValue(String input, String field, String replacement) {
     String needle = field + ":";
