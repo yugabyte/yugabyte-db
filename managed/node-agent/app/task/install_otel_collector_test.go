@@ -33,7 +33,7 @@ func TestWriteSecretEnvFile(t *testing.T) {
 	}
 	h := NewInstallOtelCollectorHandler(&pb.InstallOtelCollectorInput{
 		OtelColSecretEnv: map[string]string{
-			"YB_OTEL_B_DD_API_KEY":   "key$1",
+			"YB_OTEL_B_DD_API_KEY":   "p'1%s$(id)`id`\\\"",
 			"YB_OTEL_A_SPLUNK_TOKEN": "tok",
 		},
 	}, currentUser.Username)
@@ -52,7 +52,8 @@ func TestWriteSecretEnvFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "YB_OTEL_A_SPLUNK_TOKEN=\"tok\"\nYB_OTEL_B_DD_API_KEY=\"key\\$1\"\n"
+	want := "YB_OTEL_A_SPLUNK_TOKEN=\"tok\"\n" +
+		"YB_OTEL_B_DD_API_KEY=\"p'1%s\\$(id)\\`id\\`\\\\\\\"\"\n"
 	if string(content) != want {
 		t.Errorf("content = %q, want %q", content, want)
 	}
