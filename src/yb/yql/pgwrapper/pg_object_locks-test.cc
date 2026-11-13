@@ -1667,9 +1667,10 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyReadOnlyTxnReleasesLocksAtRollb
 
 // A legacy transaction's lock taken in DDL mode is kept only in PG's local lock table. A DML that
 // later takes the same lock in the same transaction finds it there and does not send it, so a new
-// mode DDL does not wait for the DML. This gap is accepted: only an AccessShare reader can hit it,
-// because DDLs take stronger modes on user tables, so every writer's RowExclusive is still sent.
-// The reader keeps reading its snapshot and commits.
+// mode DDL does not wait for the DML. This gap is accepted. It can hit a lock weaker than a
+// writer's RowExclusive that a DDL of the transaction took first: AccessShare (CREATE VIEW, as
+// here), or RowShare on the referenced table (the row checks of ADD FOREIGN KEY). The reader keeps
+// reading its snapshot and commits.
 TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, NewDdlDoesNotWaitForLockFirstTakenInDdlMode) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
@@ -1879,8 +1880,7 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyDdlLeavesNoStaleCatalogEnt
     ASSERT_OK(conn.Execute("ALTER TABLE p ADD COLUMN w INT"));
   }
   // The outcome of the CREATE TABLE does not matter here. Today it fails in the event trigger
-  // with XX000 "plancache reference ... is not owned by resource owner", also with the kill switch
-  // on. TODO(#30540)
+  // with XX000 "plancache reference ... is not owned by resource owner". TODO(#30540)
   LOG(INFO) << "CREATE TABLE: " << create_future.get();
   ASSERT_OK(legacy_conn.Execute("SET test.slow = 'off'"));
   ASSERT_OK(legacy_conn.Fetch("SELECT w FROM p"));

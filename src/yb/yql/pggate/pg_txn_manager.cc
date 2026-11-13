@@ -257,9 +257,10 @@ PgTxnManager::PgTxnManager(
       backend_can_take_object_locks_(backend_can_take_object_locks) {}
 
 bool PgTxnManager::UsingObjectLocksGloballyForCurrentTxn() const {
-  // Computed rather than latched: the gflags are fixed for the process and
-  // YBCIsObjectLockingInfraEnabled() is a snapshot PG takes once per transaction, so the result
-  // cannot change under an open transaction.
+  // Computed rather than latched. It cannot change under an open transaction: the gflags are fixed
+  // for the process, YBCIsObjectLockingInfraEnabled() is a snapshot PG takes once per transaction,
+  // and the one per-statement input, the autonomous DDL check in UsingObjectLocksLocally(), never
+  // fires here, since a transaction that latched the flag on runs its DDLs inside itself.
   VLOG_WITH_FUNC(1) << "object locks: " << UsingObjectLocksLocally()
                     << " infra: " << YBCIsObjectLockingInfraEnabled();
   return UsingObjectLocksLocally() && YBCIsObjectLockingInfraEnabled();
