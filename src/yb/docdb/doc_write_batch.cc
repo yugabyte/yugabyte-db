@@ -913,8 +913,7 @@ void DocWriteBatch::SetCdrMetadata(const CdrMetadata& cdr_metadata) {
   if (!cdr_enabled_) {
     return;
   }
-  row_control_fields_.cdr_source_origin = cdr_metadata.source_origin;
-  row_control_fields_.cdr_source_write_ht = cdr_metadata.source_write_ht;
+  row_control_fields_.cdr_metadata = cdr_metadata;
 }
 
 void DocWriteBatch::MoveLocksToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb, bool is_lock) const {

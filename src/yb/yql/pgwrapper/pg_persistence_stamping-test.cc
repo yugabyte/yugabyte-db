@@ -28,17 +28,20 @@
 #include "yb/common/pg_types.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/path_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 DECLARE_uint64(TEST_persistence_reject_stamped_before_ht);
+DECLARE_bool(TEST_block_do_backfill);
 DECLARE_bool(TEST_persistence_dfatal_unstamped_pgsql_write);
-DECLARE_bool(ysql_yb_enable_listen_notify);
 DECLARE_bool(ysql_disable_index_backfill);
+DECLARE_bool(ysql_yb_enable_listen_notify);
 
 namespace yb::pgwrapper {
 
@@ -402,6 +405,56 @@ class PgPersistenceStampingBackfillTest : public PgPersistenceStampingTest {
     PgPersistenceStampingTest::BeforePgProcessStart();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_disable_index_backfill) = false;
   }
+
+  void DoTearDown() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_block_do_backfill) = false;
+    PgPersistenceStampingTest::DoTearDown();
+  }
+
+  // Checks that, with the origination time pinned and the rejection threshold above it, CREATE
+  // INDEX on t from a connection to db_name has a backfill chunk rejected and fails; and that with
+  // the threshold at the pinned time, the same CREATE INDEX succeeds and its index is used.
+  void TestBackfillCarriesCreateIndexOrigination(const std::string& db_name) {
+    auto conn = ASSERT_RESULT(ConnectToDB(db_name));
+    ASSERT_OK(conn.Execute("INSERT INTO t SELECT i, i FROM generate_series(1, 100) AS i"));
+
+    ASSERT_OK(PinOriginationTime(conn));
+    RegexWaiterLogSink chunk_rejected(".*backfill failed for tablet.*TEST: persistence rejected.*");
+    RegexWaiterLogSink backfill_blocked(".*Blocking DoBackfill.*");
+
+    Status create_index_status;
+    TestThreadHolder thread_holder;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_block_do_backfill) = true;
+    // Runs before the holder joins the CREATE INDEX thread, so an assertion that fires while the
+    // backfill is blocked fails the test instead of hanging it.
+    auto backfill_unblocker_guard = ScopeExit([] {
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_block_do_backfill) = false;
+    });
+
+    thread_holder.AddThreadFunctor([&conn, &create_index_status] {
+      create_index_status = conn.Execute("CREATE INDEX i ON t (v)");
+    });
+    ASSERT_OK(backfill_blocked.WaitFor(30s));
+
+    // With CREATE INDEX's own writes done and its backfill held, make the gate reject writes
+    // stamped with the pinned time and let the backfill run: a chunk must be rejected.  Were the
+    // backfill writes stamped with the backfill connection's own time instead, no chunk would
+    // fail.  With the threshold still raised, CREATE INDEX must not succeed with that chunk's rows
+    // missing from the index.
+    RejectPinned();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_block_do_backfill) = false;
+    ASSERT_OK(chunk_rejected.WaitFor(30s));
+    thread_holder.JoinAll();
+    ASSERT_NOK(create_index_status);
+
+    RejectBelow(0);
+    ASSERT_OK(conn.Execute("DROP INDEX IF EXISTS i"));
+    AcceptPinned();
+    ASSERT_OK(conn.Execute("CREATE INDEX i ON t (v)"));
+    const auto query = "SELECT k FROM t WHERE v = 50";
+    ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>(query)), 50);
+  }
 };
 
 // Checks that CREATE INDEX with an online backfill stamps the writes and commits of all its
@@ -413,6 +466,23 @@ TEST_F(PgPersistenceStampingBackfillTest, YB_DEBUG_ONLY_TEST(CreateIndex)) {
   // In debug builds, a DFATAL here would mean one of CREATE INDEX's writes or commits went out
   // unstamped.
   ASSERT_OK(conn.Execute("CREATE INDEX ON t (v)"));
+}
+
+// Checks that the index backfill's writes carry the CREATE INDEX statement's origination time.
+TEST_F(PgPersistenceStampingBackfillTest, BackfillCarriesCreateIndexOrigination) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(CreateTable(conn));
+  TestBackfillCarriesCreateIndexOrigination("yugabyte");
+}
+
+// As BackfillCarriesCreateIndexOrigination, for an index on a colocated table.  Tablegroups take
+// the same path.
+TEST_F(PgPersistenceStampingBackfillTest, ColocatedBackfillCarriesCreateIndexOrigination) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE colocated_db WITH colocated = true"));
+  conn = ASSERT_RESULT(ConnectToDB("colocated_db"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+  TestBackfillCarriesCreateIndexOrigination("colocated_db");
 }
 
 // Checks that a transaction starting with a parallel scan commits with the leader's origination

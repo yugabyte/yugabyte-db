@@ -176,10 +176,10 @@ public class SupportBundleCgroupScriptExecutor {
   }
 
   /**
-   * With {@code runTimeoutSecs}, node_utils.sh bounds itself on the node. A run under the limits
-   * script passes 0, since the script bounds it. {@code ybHomeDir} is where node_utils.sh finds the
-   * helpers YBA installs, under its bin directory. {@code tmpDir}, when set, becomes the script's
-   * TMPDIR.
+   * With {@code runTimeoutSecs}, support_bundle_utils.sh bounds itself on the node. A run under the
+   * limits script passes 0, since the script bounds it. {@code ybHomeDir} is where
+   * support_bundle_utils.sh finds the helpers YBA installs, under its bin directory. {@code
+   * tmpDir}, when set, becomes the script's TMPDIR.
    */
   static List<String> scriptCommand(
       String remoteScript,

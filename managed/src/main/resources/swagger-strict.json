@@ -4734,7 +4734,7 @@
           "type" : "string"
         },
         "scriptPath" : {
-          "description" : "Path on the YBA host to the script file to execute on the node (e.g. bin/node_utils.sh). May be relative to yb.devops.home.",
+          "description" : "Path on the YBA host to the script file to execute on the node (e.g. bin/support_bundle_utils.sh). May be relative to yb.devops.home.",
           "type" : "string"
         },
         "timeoutSecs" : {
@@ -8693,7 +8693,7 @@
           "type" : "string"
         },
         "scriptPath" : {
-          "description" : "Path on the YBA host to the script file to execute on the node (e.g. bin/node_utils.sh). May be relative to yb.devops.home.",
+          "description" : "Path on the YBA host to the script file to execute on the node (e.g. bin/support_bundle_utils.sh). May be relative to yb.devops.home.",
           "type" : "string"
         },
         "timeoutSecs" : {

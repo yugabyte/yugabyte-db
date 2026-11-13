@@ -182,7 +182,9 @@ yb_is_conn_mgr_reserved_startup_parameter(const char *name)
 	return strncasecmp(name, YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX,
 			   sizeof(YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX) - 1) == 0 ||
 		   strcasecmp(name, "yb_is_client_ysqlconnmgr") == 0 ||
-		   strcasecmp(name, "yb_use_tserver_key_auth") == 0;
+		   strcasecmp(name, "yb_use_tserver_key_auth") == 0 ||
+		   /* Reported by pg_stat_activity. */
+		   strcasecmp(name, "yb_conn_mgr_client_hostname") == 0;
 }
 
 static inline int

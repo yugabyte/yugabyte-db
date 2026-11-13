@@ -35,6 +35,7 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 
 #include <gtest/gtest_prod.h>
@@ -203,6 +204,15 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   bool IsRunningOn(const HostPortPB& hp) const;
   bool IsBlacklisted(const BlacklistSet& blacklist) const;
 
+  // Storage tiers this tserver registered for its data directories (labels from
+  // ValidStorageTiers()). Persisted with the registration, so it is correct from the first
+  // heartbeat and right after a master failover. Empty until the tserver registers through a
+  // heartbeat on a binary that sends the field: a tserver on an older binary, or one the master
+  // so far knows only from a Raft config, has unknown tiers, and create-time placement does not
+  // choose it for a placement that names a tier. The load balancer does not consider tiers.
+  std::set<std::string> GetStorageTiers() const EXCLUDES(mutex_);
+  bool HasStorageTier(const std::string& tier) const EXCLUDES(mutex_);
+
   // Should this ts have any leader load on it.
   bool IsAcceptingLeaderLoad(const ReplicationInfoPB& replication_info) const;
 
@@ -245,6 +255,9 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
     SharedLock<decltype(mutex_)> l(mutex_);
     return leader_count_;
   }
+
+  void AddReplicaLoad(int64_t delta) { replica_load_.fetch_add(delta, std::memory_order_relaxed); }
+  int64_t replica_load() const { return replica_load_.load(std::memory_order_relaxed); }
 
   void inc_pending_leader_drain_notification() {
     pending_leader_drain_notification_++;
@@ -485,6 +498,10 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   // The number of tablets for which this ts is a leader.
   int leader_count_ GUARDED_BY(mutex_);
+
+  // Replicas of this tserver across the master's tablet replica maps, maintained by TabletInfo as
+  // the maps change. Unlike num_live_replicas_ it does not depend on heartbeat timing.
+  std::atomic<int64_t> replica_load_{0};
 
   // State reflecting that the tserver might be unaware of the leader rebalancing
   // due to leader blacklist.

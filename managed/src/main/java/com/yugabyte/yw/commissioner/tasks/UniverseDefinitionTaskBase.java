@@ -84,7 +84,6 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
-import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableSpaceStructures;
@@ -2268,8 +2267,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public void updateTaskDetailsInDB(UniverseDefinitionTaskParams taskParams) {
     getRunnableTask()
-        .setTaskParams(
-            RedactingService.filterSecretFields(Json.toJson(taskParams), RedactionTarget.APIS));
+        .setTaskParams(RedactingService.filterSecretFieldsForStorage(Json.toJson(taskParams)));
   }
 
   /**

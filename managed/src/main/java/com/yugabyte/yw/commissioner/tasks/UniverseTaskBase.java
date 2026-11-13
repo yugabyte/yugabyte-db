@@ -2146,7 +2146,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     ManageCatalogUpgradeSuperUser.Params params = new ManageCatalogUpgradeSuperUser.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.action = action;
-    params.password = password;
+    params.catalogUpgradePassword = password;
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);

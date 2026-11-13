@@ -144,6 +144,8 @@ class RpcRetrier {
 
   int attempt_num() const { return attempt_num_; }
 
+  const Status& last_error() const { return last_error_; }
+
   void Abort();
 
   std::string ToString() const;

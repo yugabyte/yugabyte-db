@@ -21,6 +21,8 @@
 
 #include "yb/yql/pggate/ybc_pggate.h"
 
+#include "yb/util/size_literals.h"
+
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_int32(heartbeat_interval_ms);
@@ -94,6 +96,39 @@ TEST_F(PgHeapSnapshotTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYsqlHeapSnap
 
   ASSERT_OK(conn1.Execute("DROP TABLE t1"));
   ASSERT_OK(conn1.Execute("DROP TABLE t2"));
+}
+
+TEST_F(PgHeapSnapshotTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TCMallocReleaseAfterStatement)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET work_mem = '1GB'"));
+  // Sorts about 100 MB in memory and frees it when the statement ends.
+  auto page_heap_free_after_sort = [&conn]() -> Result<int64_t> {
+    RETURN_NOT_OK(conn.Fetch(
+        "SELECT count(*) FROM (SELECT repeat('x', 1000) || i AS s "
+        "FROM generate_series(1, 100000) i ORDER BY s) t"));
+    return conn.FetchRow<int64_t>("SELECT cached_free_memory FROM yb_heap_stats()");
+  };
+
+  // TCMalloc's own lookback defaults.
+  ASSERT_OK(conn.Execute("SET yb_tcmalloc_skip_subrelease_short_interval = '60s'"));
+  ASSERT_OK(conn.Execute("SET yb_tcmalloc_skip_subrelease_long_interval = '300s'"));
+  ASSERT_OK(conn.Execute("SET yb_tcmalloc_release_after_statement = off"));
+  const auto free_without_release = ASSERT_RESULT(page_heap_free_after_sort());
+
+  // The lookbacks keep the free pages of partially used hugepages.
+  ASSERT_OK(conn.Execute("RESET yb_tcmalloc_release_after_statement"));
+  const auto free_with_lookback = ASSERT_RESULT(page_heap_free_after_sort());
+
+  ASSERT_OK(conn.Execute("RESET yb_tcmalloc_skip_subrelease_short_interval"));
+  ASSERT_OK(conn.Execute("RESET yb_tcmalloc_skip_subrelease_long_interval"));
+  const auto free_with_defaults = ASSERT_RESULT(page_heap_free_after_sort());
+
+  LOG(INFO) << "Page heap free bytes after the sort: " << free_without_release
+            << " without the release, " << free_with_lookback << " with the lookbacks, "
+            << free_with_defaults << " with the defaults";
+  ASSERT_GT(free_without_release, 2_MB);
+  ASSERT_GT(free_with_lookback, 1_MB);
+  ASSERT_LT(free_with_defaults, 512_KB);
 }
 
 TEST_F(PgHeapSnapshotTest, TestYsqlHeapSnapshotPermissions) {

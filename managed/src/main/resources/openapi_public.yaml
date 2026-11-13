@@ -54,6 +54,8 @@ tags:
   description: CRUD operations for external Perf Advisor destinations
 - name: Session
   description: Session management
+- name: Storage Config
+  description: Backup storage configuration management
 - name: Support Bundle
   description: Support bundle management for universes
 - name: Task
@@ -393,7 +395,8 @@ paths:
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
       parameters:
-      - $ref: '#/components/parameters/IdempotencyKey'
+      - &id001
+        $ref: '#/components/parameters/IdempotencyKey'
   /customers/{cUUID}/auto-yba-backups:
     parameters:
     - name: cUUID
@@ -1909,6 +1912,221 @@ paths:
         noAudit: true
       x-yba-api-authz:
         noAuthz: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+  /customers/{cUUID}/storage-configs:
+    parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    post:
+      operationId: createStorageConfig
+      summary: Create a storage configuration
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Creates a backup storage configuration.
+        Unless yb.storage_config.skip_validation is set,
+
+        YBA first checks the locations and that it can reach the storage with the
+        given
+
+        credentials, as validateStorageConfig does, and creates nothing if it can''t.
+        Retry with the same
+
+        Idempotency-Key to get the configuration created by a request whose response
+        was lost.
+
+        '
+      tags:
+      - Storage Config
+      requestBody:
+        $ref: '#/components/requestBodies/StorageConfigCreateReq'
+      responses:
+        '200':
+          $ref: '#/components/responses/StorageConfigResp'
+        '400':
+          description: Invalid input, such as a missing secret, a blank name or a
+            region listed twice. A malformed location or host found by the storage
+            check has error.code STORAGE_CONFIG_INVALID, with error.errors listing
+            the failures by field.
+        '401':
+          description: The request has no valid API or session token, cUUID is not
+            the caller's customer, or the caller's role has no create permission on
+            the customer
+        '409':
+          description: The customer already has a storage configuration with this
+            name. error.code is STORAGE_CONFIG_NAME_CONFLICT and error.storage_config_uuid
+            names the existing configuration. Also returned while a request with the
+            same Idempotency-Key is still in progress.
+        '422':
+          description: 'The storage check failed: YBA reached the storage, or tried
+            to, and it refused the configuration, e.g. with access denied or no such
+            bucket. error.code is STORAGE_VALIDATION_FAILED, with error.errors listing
+            the failures by field and, when the provider answered, error.provider_status
+            (its HTTP status) and error.provider_error_code. error.code is STORAGE_VALIDATION_TIMEOUT
+            if the check took longer than yb.storage_config.validation_timeout. An
+            error with no error.code means the Idempotency-Key was already used for
+            a different request.'
+        '500':
+          description: Server error
+        '503':
+          description: 'Retry later: error.code is STORAGE_PROVIDER_UNAVAILABLE if
+            the provider throttled or failed the check (HTTP 429 or 5xx, with error.provider_status)
+            or a request to it timed out, or STORAGE_VALIDATION_BUSY if every storage
+            check thread (yb.storage_config_validation.max_threads) is busy.'
+      security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+      x-yba-api-audit:
+        auditTargetType: CustomerConfig
+        auditTargetId: obj.getInfo().getUuid().toString()
+        auditActionType: Create
+      x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: create
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+      x-yba-api-idempotent: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+      parameters:
+      - *id001
+  /customers/{cUUID}/storage-configs/validate:
+    parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    post:
+      operationId: validateStorageConfig
+      summary: Validate a storage configuration
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Checks a storage configuration
+        without creating it: the same checks as
+
+        createStorageConfig, including that the name is free and, unless
+
+        yb.storage_config.skip_validation is set, that YBA can write, read, list and
+        delete a test
+
+        object at each location with the given credentials. Returns 200 with no body
+        if the
+
+        configuration can be created.
+
+        '
+      tags:
+      - Storage Config
+      requestBody:
+        $ref: '#/components/requestBodies/StorageConfigValidateReq'
+      responses:
+        '200':
+          description: The storage configuration can be created
+        '400':
+          description: Invalid input, such as a missing secret, a blank name or a
+            region listed twice. A malformed location or host found by the storage
+            check has error.code STORAGE_CONFIG_INVALID, with error.errors listing
+            the failures by field.
+        '401':
+          description: The request has no valid API or session token, cUUID is not
+            the caller's customer, or the caller's role has no create permission on
+            the customer
+        '409':
+          description: The customer already has a storage configuration with this
+            name. error.code is STORAGE_CONFIG_NAME_CONFLICT and error.storage_config_uuid
+            names the existing configuration.
+        '422':
+          description: 'The storage check failed: YBA reached the storage, or tried
+            to, and it refused the configuration, e.g. with access denied or no such
+            bucket. error.code is STORAGE_VALIDATION_FAILED, with error.errors listing
+            the failures by field and, when the provider answered, error.provider_status
+            (its HTTP status) and error.provider_error_code. error.code is STORAGE_VALIDATION_TIMEOUT
+            if the check took longer than yb.storage_config.validation_timeout.'
+        '500':
+          description: Server error
+        '503':
+          description: 'Retry later: error.code is STORAGE_PROVIDER_UNAVAILABLE if
+            the provider throttled or failed the check (HTTP 429 or 5xx, with error.provider_status)
+            or a request to it timed out, or STORAGE_VALIDATION_BUSY if every storage
+            check thread (yb.storage_config_validation.max_threads) is busy.'
+      security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+      x-yba-api-audit:
+        noAudit: true
+      x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: create
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+  /customers/{cUUID}/storage-configs/{scUUID}:
+    parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: scUUID
+      in: path
+      description: Storage configuration UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    get:
+      operationId: getStorageConfig
+      summary: Get a storage configuration
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Returns a storage configuration,
+        without its secrets.'
+      tags:
+      - Storage Config
+      responses:
+        '200':
+          $ref: '#/components/responses/StorageConfigResp'
+        '401':
+          description: The request has no valid API or session token, cUUID is not
+            the caller's customer, or the caller's role has no read permission on
+            the customer
+        '404':
+          description: The customer has no storage configuration with this UUID
+        '500':
+          description: Server error
+      security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+      x-yba-api-audit:
+        noAudit: true
+      x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
   /customers/{cUUID}/support-bundle/components:
@@ -7722,6 +7940,1028 @@ components:
           readOnly: true
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
+    StorageType:
+      title: StorageType
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>StorageType
+
+
+        Kind of storage a storage configuration points at: AWS S3 or an S3-compatible
+        store, Google
+
+        Cloud Storage, Azure Blob Storage, an NFS mount on the database nodes, or
+        OCI Object Storage.
+
+        Part of StorageSpec.
+
+        '
+      type: string
+      enum:
+      - S3
+      - GCS
+      - AZURE
+      - NFS
+      - OCI
+      x-enum-varnames:
+      - StorageTypeS3
+      - StorageTypeGCS
+      - StorageTypeAzure
+      - StorageTypeNFS
+      - StorageTypeOCI
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    S3CredentialType:
+      title: S3CredentialType
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>S3CredentialType
+
+
+        Kind of S3 credentials: a static access key, the IAM identity of YBA and the
+        nodes, or
+
+        cross-cloud federation for database nodes on GCP. Part of S3Credentials.
+
+        '
+      type: string
+      enum:
+      - ACCESS_KEY
+      - IAM
+      - CROSS_CLOUD_FEDERATION
+      x-enum-varnames:
+      - S3CredentialAccessKey
+      - S3CredentialIam
+      - S3CredentialCrossCloudFederation
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    S3AccessKeyCredentials:
+      title: S3AccessKeyCredentials
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>S3AccessKeyCredentials
+
+
+        A static AWS (or S3-compatible) access key. Part of S3Credentials.
+
+        '
+      type: object
+      required:
+      - credential_type
+      properties:
+        credential_type:
+          $ref: '#/components/schemas/S3CredentialType'
+        access_key_id:
+          description: Access key ID. Required on create; never returned.
+          type: string
+          minLength: 1
+          writeOnly: true
+        secret_access_key:
+          description: Secret access key. Required on create; never returned.
+          type: string
+          minLength: 1
+          writeOnly: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    S3IamCredentialSource:
+      title: S3IamCredentialSource
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>S3IamCredentialSource
+
+
+        Where YBA gets IAM credentials from. DEFAULT tries, in order, a web identity
+        token, an IAM
+
+        user profile, an assumed instance role and the EC2 instance profile. Part
+        of S3IamCredentials.
+
+        '
+      type: string
+      default: DEFAULT
+      enum:
+      - DEFAULT
+      - IAM_USER
+      - WEB_TOKEN
+      - ASSUME_INSTANCE_ROLE
+      - EC2_INSTANCE
+      x-enum-varnames:
+      - S3IamSourceDefault
+      - S3IamSourceIamUser
+      - S3IamSourceWebToken
+      - S3IamSourceAssumeInstanceRole
+      - S3IamSourceEc2Instance
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    S3IamCredentials:
+      title: S3IamCredentials
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>S3IamCredentials
+
+
+        The IAM identity of YBA and of the database nodes, such as an instance profile
+        or a
+
+        Kubernetes service account role. Part of S3Credentials.
+
+        '
+      type: object
+      required:
+      - credential_type
+      properties:
+        credential_type:
+          $ref: '#/components/schemas/S3CredentialType'
+        credential_source:
+          $ref: '#/components/schemas/S3IamCredentialSource'
+        iam_user_profile:
+          description: AWS profile to use with credential_source IAM_USER. Defaults
+            to "default".
+          type: string
+        session_duration_secs:
+          description: Duration of assumed-role sessions, in seconds, when the role's
+            maximum can't be read (no iam:GetRole permission). Defaults to 3600.
+          type: integer
+          format: int32
+          maximum: 43200
+          minimum: 900
+        regional_sts:
+          description: Whether to use the regional STS endpoint rather than the global
+            one. Defaults to true.
+          type: boolean
+        sts_region:
+          description: Region of the STS endpoint, with regional_sts
+          type: string
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    S3CrossCloudFederationCredentials:
+      title: S3CrossCloudFederationCredentials
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>S3CrossCloudFederationCredentials
+
+
+        Cross-cloud federated IAM, for database nodes on GCP that write to S3: they
+        exchange their
+
+        GCP identity for AWS credentials of the role configured on the universe''s
+        provider. YBA can''t
+
+        check this access when the configuration is created, since only a node of
+        such a universe can
+
+        use it. Part of S3Credentials.
+
+        '
+      type: object
+      required:
+      - credential_type
+      properties:
+        credential_type:
+          $ref: '#/components/schemas/S3CredentialType'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    S3Credentials:
+      title: S3Credentials
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>S3Credentials
+
+
+        How YBA and the database nodes authenticate to S3. credential_type selects
+        the variant.
+
+        Part of S3StorageSpec.
+
+        '
+      oneOf:
+      - $ref: '#/components/schemas/S3AccessKeyCredentials'
+      - $ref: '#/components/schemas/S3IamCredentials'
+      - $ref: '#/components/schemas/S3CrossCloudFederationCredentials'
+      discriminator:
+        propertyName: credential_type
+        mapping:
+          ACCESS_KEY: '#/components/schemas/S3AccessKeyCredentials'
+          IAM: '#/components/schemas/S3IamCredentials'
+          CROSS_CLOUD_FEDERATION: '#/components/schemas/S3CrossCloudFederationCredentials'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    S3RegionLocation:
+      title: S3RegionLocation
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>S3RegionLocation
+
+
+        Backup location of one region of an S3 storage configuration. Part of S3StorageSpec.
+
+        '
+      type: object
+      required:
+      - region
+      - location
+      properties:
+        region:
+          description: Region of the universe whose backups go to this location
+          type: string
+          example: us-west-2
+          minLength: 1
+        location:
+          description: Location of the region's backups, as s3://<bucket>[/<path>]
+          type: string
+          example: s3://backups-us-west-2.example.com/yba
+          minLength: 6
+        host_base:
+          description: Host of the S3 endpoint for this region. Defaults to the configuration's
+            host_base.
+          type: string
+        signing_region:
+          description: AWS region to sign this region's requests for
+          type: string
+        global_bucket_access:
+          description: Whether this region's bucket is reachable from every region
+          type: boolean
+          default: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    S3StorageSpec:
+      title: S3StorageSpec
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>S3StorageSpec
+
+
+        AWS S3 or S3-compatible storage. Part of StorageSpec.
+
+        '
+      type: object
+      required:
+      - storage_type
+      - backup_location
+      - credentials
+      properties:
+        storage_type:
+          $ref: '#/components/schemas/StorageType'
+        backup_location:
+          description: Default location of backups, as s3://<bucket>[/<path>]. Can't
+            be changed after creation.
+          type: string
+          example: s3://backups.example.com/yba
+          minLength: 6
+        immutable_storage:
+          description: Whether the bucket keeps objects immutable (object lock). If
+            true, deleting a backup removes only its YBA metadata, not its files.
+          type: boolean
+          default: false
+        host_base:
+          description: Host of the S3 endpoint, for S3-compatible storage. Defaults
+            to s3.amazonaws.com.
+          type: string
+          example: s3.amazonaws.com
+        signing_region:
+          description: AWS region to sign requests for, when it can't be derived from
+            the bucket, as with some S3-compatible stores
+          type: string
+        path_style_access:
+          description: Whether to address the bucket in the path (https://host/bucket)
+            rather than in the host name (https://bucket.host), as some S3-compatible
+            stores require
+          type: boolean
+          default: false
+        use_chunked_encoding:
+          description: Whether to use chunked transfer encoding for uploads
+          type: boolean
+          default: true
+        global_bucket_access:
+          description: Whether the bucket is reachable from every region. If false,
+            YBA addresses it through its own region.
+          type: boolean
+          default: true
+        credentials:
+          $ref: '#/components/schemas/S3Credentials'
+        region_locations:
+          description: Per-region backup locations, for universes that store each
+            region's backup in that region
+          type: array
+          items:
+            $ref: '#/components/schemas/S3RegionLocation'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    GcsCredentialType:
+      title: GcsCredentialType
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>GcsCredentialType
+
+
+        Kind of GCS credentials: a service account key, the GCP identity of YBA and
+        the nodes, or
+
+        cross-cloud federation for YBA on AWS. Part of GcsCredentials.
+
+        '
+      type: string
+      enum:
+      - SERVICE_ACCOUNT_KEY
+      - IAM
+      - CROSS_CLOUD_FEDERATION
+      x-enum-varnames:
+      - GcsCredentialServiceAccountKey
+      - GcsCredentialIam
+      - GcsCredentialCrossCloudFederation
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    GcsServiceAccountKeyCredentials:
+      title: GcsServiceAccountKeyCredentials
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>GcsServiceAccountKeyCredentials
+
+
+        A GCP service account key. Part of GcsCredentials.
+
+        '
+      type: object
+      required:
+      - credential_type
+      properties:
+        credential_type:
+          $ref: '#/components/schemas/GcsCredentialType'
+        credentials_json:
+          description: The service account key file, as JSON. Required on create;
+            never returned.
+          type: string
+          minLength: 2
+          writeOnly: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    GcsIamCredentials:
+      title: GcsIamCredentials
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>GcsIamCredentials
+
+
+        The service account attached to YBA''s and the database nodes'' VMs or Kubernetes
+        pods
+
+        (workload identity). Part of GcsCredentials.
+
+        '
+      type: object
+      required:
+      - credential_type
+      properties:
+        credential_type:
+          $ref: '#/components/schemas/GcsCredentialType'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    GcsCrossCloudFederationCredentials:
+      title: GcsCrossCloudFederationCredentials
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>GcsCrossCloudFederationCredentials
+
+
+        Cross-cloud federated IAM, for YBA running on AWS: YBA exchanges its AWS identity
+        for GCP
+
+        credentials through the workload identity federation audience configured on
+        the universe''s
+
+        provider. YBA can''t check this access when the configuration is created,
+        since it needs a
+
+        universe''s provider. Part of GcsCredentials.
+
+        '
+      type: object
+      required:
+      - credential_type
+      properties:
+        credential_type:
+          $ref: '#/components/schemas/GcsCredentialType'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    GcsCredentials:
+      title: GcsCredentials
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>GcsCredentials
+
+
+        How YBA and the database nodes authenticate to GCS. credential_type selects
+        the variant.
+
+        Part of GcsStorageSpec.
+
+        '
+      oneOf:
+      - $ref: '#/components/schemas/GcsServiceAccountKeyCredentials'
+      - $ref: '#/components/schemas/GcsIamCredentials'
+      - $ref: '#/components/schemas/GcsCrossCloudFederationCredentials'
+      discriminator:
+        propertyName: credential_type
+        mapping:
+          SERVICE_ACCOUNT_KEY: '#/components/schemas/GcsServiceAccountKeyCredentials'
+          IAM: '#/components/schemas/GcsIamCredentials'
+          CROSS_CLOUD_FEDERATION: '#/components/schemas/GcsCrossCloudFederationCredentials'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    GcsRegionLocation:
+      title: GcsRegionLocation
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>GcsRegionLocation
+
+
+        Backup location of one region of a GCS storage configuration. Part of GcsStorageSpec.
+
+        '
+      type: object
+      required:
+      - region
+      - location
+      properties:
+        region:
+          description: Region of the universe whose backups go to this location
+          type: string
+          example: us-west1
+          minLength: 1
+        location:
+          description: Location of the region's backups, as gs://<bucket>[/<path>]
+          type: string
+          example: gs://backups-example-us-west1/yba
+          minLength: 6
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    GcsStorageSpec:
+      title: GcsStorageSpec
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>GcsStorageSpec
+
+
+        Google Cloud Storage. Part of StorageSpec.
+
+        '
+      type: object
+      required:
+      - storage_type
+      - backup_location
+      - credentials
+      properties:
+        storage_type:
+          $ref: '#/components/schemas/StorageType'
+        backup_location:
+          description: Default location of backups, as gs://<bucket>[/<path>]. Can't
+            be changed after creation.
+          type: string
+          example: gs://backups-example/yba
+          minLength: 6
+        immutable_storage:
+          description: Whether the bucket keeps objects immutable (retention policy).
+            If true, deleting a backup removes only its YBA metadata, not its files.
+          type: boolean
+          default: false
+        credentials:
+          $ref: '#/components/schemas/GcsCredentials'
+        region_locations:
+          description: Per-region backup locations, for universes that store each
+            region's backup in that region
+          type: array
+          items:
+            $ref: '#/components/schemas/GcsRegionLocation'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    AzureCredentialType:
+      title: AzureCredentialType
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>AzureCredentialType
+
+
+        Kind of Azure credentials: a SAS token per container, or the managed identity
+        of YBA and the
+
+        nodes. Part of AzureCredentials.
+
+        '
+      type: string
+      enum:
+      - SAS_TOKEN
+      - MANAGED_IDENTITY
+      x-enum-varnames:
+      - AzureCredentialSasToken
+      - AzureCredentialManagedIdentity
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    AzureSasTokenCredentials:
+      title: AzureSasTokenCredentials
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>AzureSasTokenCredentials
+
+
+        A shared access signature for the backup_location container. Each region location
+        carries the
+
+        token of its own container. Part of AzureCredentials.
+
+        '
+      type: object
+      required:
+      - credential_type
+      properties:
+        credential_type:
+          $ref: '#/components/schemas/AzureCredentialType'
+        sas_token:
+          description: SAS token of the backup_location container. Required on create;
+            never returned.
+          type: string
+          minLength: 4
+          writeOnly: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    AzureManagedIdentityCredentials:
+      title: AzureManagedIdentityCredentials
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>AzureManagedIdentityCredentials
+
+
+        The managed identity of YBA''s and the database nodes'' VMs. Part of AzureCredentials.
+
+        '
+      type: object
+      required:
+      - credential_type
+      properties:
+        credential_type:
+          $ref: '#/components/schemas/AzureCredentialType'
+        client_id:
+          description: Client ID of the user-assigned managed identity to use. Omit
+            to use the system-assigned identity.
+          type: string
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    AzureCredentials:
+      title: AzureCredentials
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>AzureCredentials
+
+
+        How YBA and the database nodes authenticate to Azure Blob Storage. credential_type
+        selects
+
+        the variant. Part of AzureStorageSpec.
+
+        '
+      oneOf:
+      - $ref: '#/components/schemas/AzureSasTokenCredentials'
+      - $ref: '#/components/schemas/AzureManagedIdentityCredentials'
+      discriminator:
+        propertyName: credential_type
+        mapping:
+          SAS_TOKEN: '#/components/schemas/AzureSasTokenCredentials'
+          MANAGED_IDENTITY: '#/components/schemas/AzureManagedIdentityCredentials'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    AzureRegionLocation:
+      title: AzureRegionLocation
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>AzureRegionLocation
+
+
+        Backup location of one region of an Azure storage configuration. Part of AzureStorageSpec.
+
+        '
+      type: object
+      required:
+      - region
+      - location
+      properties:
+        region:
+          description: Region of the universe whose backups go to this location
+          type: string
+          example: westus2
+          minLength: 1
+        location:
+          description: Location of the region's backups, as https://<account>.blob.core.windows.net/<container>[/<path>]
+          type: string
+          example: https://examplewestus2.blob.core.windows.net/backups
+          minLength: 1
+        sas_token:
+          description: SAS token of this region's container, with SAS_TOKEN credentials.
+            Required on create with those credentials; never returned.
+          type: string
+          minLength: 4
+          writeOnly: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    AzureStorageSpec:
+      title: AzureStorageSpec
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>AzureStorageSpec
+
+
+        Azure Blob Storage. Part of StorageSpec.
+
+        '
+      type: object
+      required:
+      - storage_type
+      - backup_location
+      - credentials
+      properties:
+        storage_type:
+          $ref: '#/components/schemas/StorageType'
+        backup_location:
+          description: Default location of backups, as https://<account>.blob.core.windows.net/<container>[/<path>].
+            Can't be changed after creation.
+          type: string
+          example: https://example.blob.core.windows.net/backups
+          minLength: 1
+        immutable_storage:
+          description: Whether the container keeps blobs immutable. If true, deleting
+            a backup removes only its YBA metadata, not its files.
+          type: boolean
+          default: false
+        credentials:
+          $ref: '#/components/schemas/AzureCredentials'
+        region_locations:
+          description: Per-region backup locations, for universes that store each
+            region's backup in that region
+          type: array
+          items:
+            $ref: '#/components/schemas/AzureRegionLocation'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    NfsRegionLocation:
+      title: NfsRegionLocation
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>NfsRegionLocation
+
+
+        Backup location of one region of an NFS storage configuration. Part of NfsStorageSpec.
+
+        '
+      type: object
+      required:
+      - region
+      - location
+      properties:
+        region:
+          description: Region of the universe whose backups go to this location
+          type: string
+          minLength: 1
+        location:
+          description: Absolute path of the region's NFS mount on the database nodes
+          type: string
+          minLength: 1
+        bucket:
+          description: Directory under location that holds the backups. Defaults to
+            yugabyte_backup.
+          type: string
+          minLength: 1
+        volumes:
+          description: NFS volumes to check, in the backup prechecks, for being mounted
+            on the region's nodes
+          type: array
+          items:
+            type: string
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    NfsStorageSpec:
+      title: NfsStorageSpec
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>NfsStorageSpec
+
+
+        An NFS share mounted at the same path on every database node. Part of StorageSpec.
+
+        '
+      type: object
+      required:
+      - storage_type
+      - backup_location
+      properties:
+        storage_type:
+          $ref: '#/components/schemas/StorageType'
+        backup_location:
+          description: Absolute path of the NFS mount on the database nodes. Can't
+            be changed after creation.
+          type: string
+          example: /mnt/nfs
+          minLength: 1
+        bucket:
+          description: Directory under backup_location that holds the backups. Defaults
+            to yugabyte_backup.
+          type: string
+          minLength: 1
+        volumes:
+          description: NFS volumes to check, in the backup prechecks, for being mounted
+            on the nodes
+          type: array
+          items:
+            type: string
+        region_locations:
+          description: Per-region backup locations, for universes that store each
+            region's backup in that region
+          type: array
+          items:
+            $ref: '#/components/schemas/NfsRegionLocation'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    OciCredentialType:
+      title: OciCredentialType
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>OciCredentialType
+
+
+        Kind of OCI credentials: the OCI IAM identity of YBA and the nodes with the
+        native API, or a
+
+        customer secret key with the S3-compatible API. Part of OciCredentials.
+
+        '
+      type: string
+      enum:
+      - IAM
+      - S3_COMPATIBLE
+      x-enum-varnames:
+      - OciCredentialIam
+      - OciCredentialS3Compatible
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    OciIamCredentials:
+      title: OciIamCredentials
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>OciIamCredentials
+
+
+        The OCI IAM identity (instance principal) of YBA and the database nodes, with
+        the native
+
+        Object Storage API. Part of OciCredentials.
+
+        '
+      type: object
+      required:
+      - credential_type
+      properties:
+        credential_type:
+          $ref: '#/components/schemas/OciCredentialType'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    OciS3CompatibleCredentials:
+      title: OciS3CompatibleCredentials
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>OciS3CompatibleCredentials
+
+
+        A customer secret key, with the S3-compatible Object Storage API. Part of
+        OciCredentials.
+
+        '
+      type: object
+      required:
+      - credential_type
+      - host_base
+      properties:
+        credential_type:
+          $ref: '#/components/schemas/OciCredentialType'
+        access_key_id:
+          description: Access key of the customer secret key. Required on create;
+            never returned.
+          type: string
+          minLength: 1
+          writeOnly: true
+        secret_access_key:
+          description: Secret of the customer secret key. Required on create; never
+            returned.
+          type: string
+          minLength: 1
+          writeOnly: true
+        host_base:
+          description: Host of the S3-compatible endpoint
+          type: string
+          example: example.compat.objectstorage.us-sanjose-1.oraclecloud.com
+          minLength: 1
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    OciCredentials:
+      title: OciCredentials
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>OciCredentials
+
+
+        How YBA and the database nodes authenticate to OCI Object Storage. credential_type
+        selects
+
+        the variant. Part of OciStorageSpec.
+
+        '
+      oneOf:
+      - $ref: '#/components/schemas/OciIamCredentials'
+      - $ref: '#/components/schemas/OciS3CompatibleCredentials'
+      discriminator:
+        propertyName: credential_type
+        mapping:
+          IAM: '#/components/schemas/OciIamCredentials'
+          S3_COMPATIBLE: '#/components/schemas/OciS3CompatibleCredentials'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    OciRegionLocation:
+      title: OciRegionLocation
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>OciRegionLocation
+
+
+        Backup location of one region of an OCI storage configuration. Part of OciStorageSpec.
+
+        '
+      type: object
+      required:
+      - region
+      - location
+      properties:
+        region:
+          description: Region of the universe whose backups go to this location
+          type: string
+          minLength: 1
+        location:
+          description: Location of the region's backups, in the format of backup_location
+          type: string
+          minLength: 1
+        host_base:
+          description: Host of the S3-compatible endpoint for this region, with S3_COMPATIBLE
+            credentials
+          type: string
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    OciStorageSpec:
+      title: OciStorageSpec
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>OciStorageSpec
+
+
+        OCI Object Storage, through its native API or its S3-compatible API. Part
+        of StorageSpec.
+
+        '
+      type: object
+      required:
+      - storage_type
+      - backup_location
+      - region
+      - credentials
+      properties:
+        storage_type:
+          $ref: '#/components/schemas/StorageType'
+        backup_location:
+          description: 'Default location of backups: an Object Storage URL, https://objectstorage.<region>.oraclecloud.com/n/<namespace>/b/<bucket>/o[/<path>],
+            with IAM credentials, or s3://<bucket>[/<path>] with S3_COMPATIBLE credentials.
+            Can''t be changed after creation.'
+          type: string
+          minLength: 1
+        immutable_storage:
+          description: Whether the bucket keeps objects immutable (retention rules).
+            If true, deleting a backup removes only its YBA metadata, not its files.
+          type: boolean
+          default: false
+        region:
+          description: OCI region of Object Storage. With S3_COMPATIBLE credentials,
+            also the signing region.
+          type: string
+          example: us-sanjose-1
+          minLength: 1
+        namespace:
+          description: Object Storage namespace. Required with IAM credentials; must
+            match the namespace in an Object Storage URL.
+          type: string
+        credentials:
+          $ref: '#/components/schemas/OciCredentials'
+        region_locations:
+          description: Per-region backup locations, for universes that store each
+            region's backup in that region
+          type: array
+          items:
+            $ref: '#/components/schemas/OciRegionLocation'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    StorageSpec:
+      title: StorageSpec
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>StorageSpec
+
+
+        Where backups are stored and how YBA reaches the storage. storage_type selects
+        the variant.
+
+        Part of StorageConfigSpec.
+
+        '
+      oneOf:
+      - $ref: '#/components/schemas/S3StorageSpec'
+      - $ref: '#/components/schemas/GcsStorageSpec'
+      - $ref: '#/components/schemas/AzureStorageSpec'
+      - $ref: '#/components/schemas/NfsStorageSpec'
+      - $ref: '#/components/schemas/OciStorageSpec'
+      discriminator:
+        propertyName: storage_type
+        mapping:
+          S3: '#/components/schemas/S3StorageSpec'
+          GCS: '#/components/schemas/GcsStorageSpec'
+          AZURE: '#/components/schemas/AzureStorageSpec'
+          NFS: '#/components/schemas/NfsStorageSpec'
+          OCI: '#/components/schemas/OciStorageSpec'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    StorageConfigSpec:
+      title: StorageConfigSpec
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>StorageConfigSpec
+
+
+        The client-settable part of a storage configuration. Secrets are accepted
+        here and never
+
+        returned. Part of StorageConfig, StorageConfigCreateReq and StorageConfigValidateReq.
+
+        '
+      type: object
+      required:
+      - name
+      - storage
+      properties:
+        name:
+          description: Name of the storage configuration, unique within the customer
+          type: string
+          maxLength: 100
+          minLength: 1
+        storage:
+          $ref: '#/components/schemas/StorageSpec'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    StorageConfigState:
+      title: StorageConfigState
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>StorageConfigState
+
+
+        State of a storage configuration. QUEUED_FOR_DELETION means a delete was accepted
+        and YBA
+
+        removes the configuration once no backup stored with it is still being deleted.
+        Part of
+
+        StorageConfigInfo.
+
+        '
+      type: string
+      readOnly: true
+      enum:
+      - ACTIVE
+      - QUEUED_FOR_DELETION
+      x-enum-varnames:
+      - StorageConfigActive
+      - StorageConfigQueuedForDeletion
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    StorageConfigInfo:
+      title: StorageConfigInfo
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>StorageConfigInfo
+
+
+        The part of a storage configuration that YBA sets. Part of StorageConfig.
+
+        '
+      type: object
+      required:
+      - uuid
+      - state
+      properties:
+        uuid:
+          description: UUID of the storage configuration
+          type: string
+          format: uuid
+          readOnly: true
+        state:
+          $ref: '#/components/schemas/StorageConfigState'
+        is_kubernetes_operator_controlled:
+          description: Whether the YBA Kubernetes operator manages this configuration
+            through a StorageConfig resource. Change such a configuration through
+            its resource instead.
+          type: boolean
+          readOnly: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    StorageConfig:
+      title: StorageConfig
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>StorageConfig
+
+
+        A backup storage configuration: where YBA stores backups and the credentials
+        it uses to reach
+
+        that storage. Part of StorageConfigResp.
+
+        '
+      type: object
+      required:
+      - spec
+      - info
+      properties:
+        spec:
+          $ref: '#/components/schemas/StorageConfigSpec'
+        info:
+          $ref: '#/components/schemas/StorageConfigInfo'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
     SupportBundleComponentType:
       title: SupportBundleComponentType
       description: Support bundle component type (same values as V1 BundleDetails.ComponentType).
@@ -7794,11 +9034,10 @@ components:
           description: 'Path on the YBA host to the script file to execute on the
             node.
 
-            Must resolve to one of the shipped support bundle scripts, node_utils.sh
-            or
+            Must resolve to one of the shipped support bundle scripts, support_bundle_utils.sh
 
-            yba_utils.sh, under the platform devops directory. A relative path is
-            resolved
+            or yba_utils.sh, under the platform devops directory. A relative path
+            is resolved
 
             against that directory. Any other path is rejected.
 
@@ -7867,11 +9106,10 @@ components:
           description: 'Path on the YBA host to the script file to execute on the
             node.
 
-            Must resolve to one of the shipped support bundle scripts, node_utils.sh
-            or
+            Must resolve to one of the shipped support bundle scripts, support_bundle_utils.sh
 
-            yba_utils.sh, under the platform devops directory. A relative path is
-            resolved
+            or yba_utils.sh, under the platform devops directory. A relative path
+            is resolved
 
             against that directory. Any other path is rejected.
 
@@ -8110,11 +9348,10 @@ components:
         script_path:
           description: 'Path on the YBA host to the script file to execute locally.
 
-            Must resolve to one of the shipped support bundle scripts, node_utils.sh
-            or
+            Must resolve to one of the shipped support bundle scripts, support_bundle_utils.sh
 
-            yba_utils.sh, under the platform devops directory. A relative path is
-            resolved
+            or yba_utils.sh, under the platform devops directory. A relative path
+            is resolved
 
             against that directory. Any other path is rejected.
 
@@ -12877,6 +14114,14 @@ components:
             $ref: '#/components/schemas/Session'
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
+    StorageConfigResp:
+      description: The storage configuration
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StorageConfig'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
     SupportBundleComponentsResp:
       description: List of available support bundle component types
       content:
@@ -13123,6 +14368,22 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/LoginSpec'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    StorageConfigCreateReq:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StorageConfigSpec'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    StorageConfigValidateReq:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StorageConfigSpec'
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
     SupportBundleCreateReq:

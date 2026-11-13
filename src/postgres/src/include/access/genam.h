@@ -159,7 +159,8 @@ extern void yb_index_delete(Relation indexRelation,
 							Datum *values, bool *isnull,
 							Datum ybctid,
 							Relation heapRelation,
-							struct IndexInfo *indexInfo);
+							struct IndexInfo *indexInfo,
+							bool persist_missing_row);
 extern void yb_index_update(Relation indexRelation,
 							Datum *values, bool *isnull,
 							Datum oldYbctid, Datum newYbctid,

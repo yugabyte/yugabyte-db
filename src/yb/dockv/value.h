@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "yb/common/cdr_metadata.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/typedefs.h"
@@ -49,16 +50,15 @@ struct ValueControlFields {
   // The timestamp assigned to this value, if it was externally specified.
   UserTimeMicros timestamp = kInvalidTimestamp;
 
-  // These fields are used for conflict detection and resolution (CDR) in logical replication. The
-  // cdr_source_origin tells us which replication origin last wrote this row version, and the
-  // cdr_source_write_ht tells us when that write committed on the source. They are encoded together
-  // under a single kCdrMetadata marker: both are set for a replication apply and both are absent
-  // for writes that originate locally.
-  uint32_t cdr_source_origin = kInvalidSourceOrigin;
-  HybridTime cdr_source_write_ht = HybridTime::kInvalid;
+  // Used for conflict detection and resolution (CDR) in logical replication. source_origin tells us
+  // which replication origin last wrote this row version, and source_write_ht tells us when that
+  // write committed on the source. They are encoded together under a single kCdrMetadata marker:
+  // both are set for a replication apply and both are absent for writes that originate locally.
+  CdrMetadata cdr_metadata = {};
 
   void AppendEncoded(ValueBuffer* out) const;
   void AppendEncoded(std::string* out) const;
+  void AppendEncodedWithIntentDocHt(Slice intent_doc_ht, ValueBuffer* out) const;
   std::string ToString() const;
 
   // Decode value control fields, w/o decrypting actual value.
@@ -75,7 +75,8 @@ struct ValueControlFields {
 
   // True if this row version was written by a replication apply rather than locally.
   bool has_cdr_metadata() const {
-    return cdr_source_origin != kInvalidSourceOrigin && cdr_source_write_ht.is_valid();
+    return cdr_metadata.source_origin != kInvalidSourceOrigin &&
+           cdr_metadata.source_write_ht.is_valid();
   }
 };
 
