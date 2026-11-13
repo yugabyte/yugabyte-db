@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/spf13/viper"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
@@ -137,6 +138,40 @@ func PrunePastInstalls() {
 		RemoveAll(toDel)
 	}
 
+}
+
+// PruneNodeAgentPackages deletes the node-agent packages in dir of every version except
+// keepVersion. YBA only serves the package matching its own version
+// (NodeAgentManager.getNodeAgentPackagePath), so keepVersion must be the version YBA runs or
+// rolls back to. If no package matches keepVersion, nothing is deleted, so a version string
+// that doesn't match the file names can't empty the directory. Best effort: failures are logged.
+func PruneNodeAgentPackages(dir, keepVersion string) {
+	matches, err := filepath.Glob(filepath.Join(dir, "node_agent-*.tar.gz"))
+	if err != nil {
+		log.Warn(fmt.Sprintf("Not pruning node agent packages in %s: %s", dir, err.Error()))
+		return
+	}
+	keepPrefix := "node_agent-" + keepVersion + "-"
+	var toDelete []string
+	found := false
+	for _, f := range matches {
+		if strings.HasPrefix(filepath.Base(f), keepPrefix) {
+			found = true
+		} else {
+			toDelete = append(toDelete, f)
+		}
+	}
+	if !found {
+		log.Warn(fmt.Sprintf("Not pruning node agent packages in %s: none match version %s",
+			dir, keepVersion))
+		return
+	}
+	for _, f := range toDelete {
+		log.Debug("Deleting node agent package " + f)
+		if err := os.Remove(f); err != nil {
+			log.Warn(fmt.Sprintf("Failed to delete node agent package %s: %s", f, err.Error()))
+		}
+	}
 }
 
 // Default the directory manager to using the install workflow.
