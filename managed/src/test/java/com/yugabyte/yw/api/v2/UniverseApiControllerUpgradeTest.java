@@ -13,6 +13,7 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
@@ -24,6 +25,7 @@ import com.yugabyte.yba.v2.client.ApiClient;
 import com.yugabyte.yba.v2.client.ApiException;
 import com.yugabyte.yba.v2.client.Configuration;
 import com.yugabyte.yba.v2.client.api.UniverseApi;
+import com.yugabyte.yba.v2.client.models.ClusterGFlags;
 import com.yugabyte.yba.v2.client.models.ClusterResizeStorageSpec;
 import com.yugabyte.yba.v2.client.models.NodeProxyConfig;
 import com.yugabyte.yba.v2.client.models.PerProviderResizeNodesSpec;
@@ -818,5 +820,21 @@ public class UniverseApiControllerUpgradeTest extends UniverseTestBase {
             () -> apiClient.resizeNodes(customer.getUuid(), universe.getUniverseUUID(), req));
     assertEquals(422, ex.getCode());
     assertThat(ex.getResponseBody(), containsString("multicloud"));
+  }
+
+  @Test
+  public void testV2ResizeNodesDoesNotEmptyOmittedMasterGFlags() {
+    UniverseResizeNodes req =
+        new UniverseResizeNodes()
+            .addClustersItem(
+                new UniverseResizeNodesCluster()
+                    .uuid(universe.getUniverseDetails().getPrimaryCluster().uuid)
+                    .gflags(new ClusterGFlags().tserver(Map.of("tflag", "tval"))));
+
+    // An empty master map would replace the stored master gflags.
+    assertThrows(
+        ApiException.class,
+        () -> apiClient.resizeNodes(customer.getUuid(), universe.getUniverseUUID(), req));
+    verify(mockUpgradeUniverseHandler, never()).resizeNode(any(), any(), any());
   }
 }

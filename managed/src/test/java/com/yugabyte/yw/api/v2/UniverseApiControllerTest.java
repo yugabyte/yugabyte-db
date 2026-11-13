@@ -17,6 +17,7 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.test.Helpers.contentAsString;
@@ -572,6 +573,26 @@ public class UniverseApiControllerTest extends UniverseTestBase {
       assertTrue(message, message.contains("tval1"));
       assertFalse(message, message.contains("_redactionParseError"));
     }
+  }
+
+  @Test
+  public void testCreateUniverseV2RejectsRedactedPassword() {
+    UniverseApi api = new UniverseApi();
+    UniverseCreateSpec ysqlSpec = getUniverseCreateSpecV2();
+    ysqlSpec.getSpec().getYsql().setPassword("REDACTED");
+    UniverseCreateSpec ycqlSpec = getUniverseCreateSpecV2();
+    ycqlSpec.getSpec().getYcql().setPassword("REDACTED");
+
+    ApiException ysqlEx =
+        assertThrows(ApiException.class, () -> api.createUniverse(customer.getUuid(), ysqlSpec));
+    assertEquals(400, ysqlEx.getCode());
+    assertThat(ysqlEx.getResponseBody(), containsString("spec.ysql.password is REDACTED"));
+    ApiException ycqlEx =
+        assertThrows(ApiException.class, () -> api.createUniverse(customer.getUuid(), ycqlSpec));
+    assertEquals(400, ycqlEx.getCode());
+    assertThat(ycqlEx.getResponseBody(), containsString("spec.ycql.password is REDACTED"));
+    verify(mockCommissioner, never())
+        .submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class));
   }
 
   @Test
