@@ -1674,10 +1674,11 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   // Clear Ddl transaction state.
   {
     LockGuard l(ddl_txn_verifier_mutex_);
-    for (const auto& [txn_id, verifier_state] : ysql_ddl_txn_verfication_state_map_) {
-      if (verifier_state.release_all_deferred) {
-        ysql_ddl_txns_release_all_deferred_.insert(txn_id);
-      }
+    // Only a PITR reload in the term that saved them may use them, see
+    // SaveDeferredObjectLockReleasesForRestore.
+    if (ysql_ddl_txns_release_all_deferred_term_ != state->epoch.leader_term) {
+      ysql_ddl_txns_release_all_deferred_.clear();
+      ysql_ddl_txns_release_all_deferred_term_ = OpId::kUnknownTerm;
     }
     ysql_ddl_txn_verfication_state_map_.clear();
     ysql_ddl_txn_undergoing_subtransaction_rollback_map_.clear();

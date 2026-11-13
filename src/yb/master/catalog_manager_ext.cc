@@ -3238,6 +3238,7 @@ Status CatalogManager::RestoreSysCatalogSlowPitr(
                         << ", wrote " << write_batch.size() << " entries to rocksdb";
 
   if (LeaderTerm() >= 0) {
+    SaveDeferredObjectLockReleasesForRestore();
     RETURN_NOT_OK(ElectedAsLeaderCb());
   }
 
@@ -3296,6 +3297,7 @@ Status CatalogManager::RestoreSysCatalogFastPitr(
                         << write_batch.size() << " entries to rocksdb";
 
   if (LeaderTerm() >= 0) {
+    SaveDeferredObjectLockReleasesForRestore();
     RETURN_NOT_OK(ElectedAsLeaderCb());
   }
 
