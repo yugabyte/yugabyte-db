@@ -535,19 +535,12 @@ ybEqualityIndexClause(IndexOptInfo *index, List *indexclauses, int indexcol)
 static bool
 ybIsCopyOfEarlierIndexCol(IndexOptInfo *index, int indexcol)
 {
-	Expr	   *expr = ((TargetEntry *) list_nth(index->indextlist,
-												 indexcol))->expr;
+	Node	   *expr = (Node *) ((TargetEntry *) list_nth(index->indextlist,
+														   indexcol))->expr;
 
-	if (IsA(expr, RelabelType))
-		expr = ((RelabelType *) expr)->arg;
 	for (int i = 0; i < indexcol; i++)
 	{
-		Expr	   *earlier = ((TargetEntry *) list_nth(index->indextlist,
-														i))->expr;
-
-		if (IsA(earlier, RelabelType))
-			earlier = ((RelabelType *) earlier)->arg;
-		if (equal(expr, earlier))
+		if (match_index_to_operand(expr, i, index))
 			return true;
 	}
 	return false;
