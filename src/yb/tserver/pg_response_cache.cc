@@ -104,9 +104,8 @@ METRIC_DEFINE_counter(server, pg_response_cache_send_aways,
                       "PgClientService Response Cache Send-Aways From An In-Flight Fill",
                       yb::MetricUnit::kCacheQueries,
                       "Number of queries to PgClientService response cache that found a fill "
-                      "already under way -- another connection filling their database, or any "
-                      "session filling the very entry they wanted -- and were told to read a "
-                      "catalog version this node already holds instead of waiting for it. One "
+                      "already under way in their database and were told to read a catalog "
+                      "version this node already holds instead of waiting for it. One "
                       "that cannot use that version reruns its prefetch without the ask and "
                       "proceeds as it would have without it, so this counts the connections "
                       "turned away, not the ones that went on to read the older version. "
@@ -529,7 +528,7 @@ struct PgResponseCache::DisablerType {};
 // mid-prefetch cannot leave its database marked busy for ever.
 class PgResponseCache::FillToken {
  public:
-  FillToken(Impl* impl, KeyGroup group, uint64_t session_id);
+  FillToken(Impl* impl, KeyGroup group);
 
   FillToken(const FillToken&) = delete;
   FillToken& operator=(const FillToken&) = delete;
@@ -546,7 +545,6 @@ class PgResponseCache::FillToken {
   Impl* const impl_;
   std::atomic<bool> released_{false};
   const KeyGroup group_;
-  const uint64_t session_id_;
 };
 
 class PgResponseCache::Impl : private GarbageCollector {
@@ -557,11 +555,12 @@ class PgResponseCache::Impl : private GarbageCollector {
     return key_group_buckets_[group % sz];
   }
 
-  // Whether any connection is filling an entry of this key group, the asking connection
-  // included. Parallel workers adopt their leader's session id, so counting the asker's own
-  // fills is what sends a sibling to the entry another sibling already stored, rather than
-  // queueing it behind the fills that sibling still has in flight. A backend running a prefetch
-  // of its own has nothing counted here yet: pggate asks on the opening round and on no rerun.
+  // Whether any fill is under way for this key group, including one the asking caller shares a
+  // token with. Parallel workers share their leader's token slot and each run a connection start
+  // of their own, so counting every fill is what sends a sibling to the older version this node
+  // holds, rather than queueing it behind the fills another sibling still has in flight. A
+  // backend running a prefetch of its own has nothing counted here yet: pggate asks on the
+  // opening round and on no rerun.
   //
   // Counted per key group rather than per entry because a connection start wants a different
   // entry from the fill it is sent away from -- it pinned a version of its own.
@@ -576,13 +575,12 @@ class PgResponseCache::Impl : private GarbageCollector {
   // to, so today it never holds a token on another.
   [[nodiscard]] FillTokenPtr TakeFillToken(
       PartOfConnectionPrefetch part_of_connection_prefetch, KeyGroup group,
-      uint64_t session_id,
       FillTokenPtr* token) {
     if (!part_of_connection_prefetch || !token) {
-      return std::make_shared<FillToken>(this, group, session_id);
+      return std::make_shared<FillToken>(this, group);
     }
     if (!*token || (*token)->released() || (*token)->group() != group) {
-      *token = std::make_shared<FillToken>(this, group, session_id);
+      *token = std::make_shared<FillToken>(this, group);
     }
     return *token;
   }
@@ -617,23 +615,18 @@ class PgResponseCache::Impl : private GarbageCollector {
   // erase the mark the next round had just made, and a connection arriving then would start a
   // whole-catalog read of its own. A connection start never exceeds one, since its rounds
   // share a token.
-  void NoteFillStarted(KeyGroup group, uint64_t session_id) EXCLUDES(mutex_) {
+  void NoteFillStarted(KeyGroup group) EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
-    ++fills_in_flight_[group][session_id];
+    ++fills_in_flight_[group];
   }
 
-  void NoteFillFinished(KeyGroup group, uint64_t session_id) EXCLUDES(mutex_) {
+  void NoteFillFinished(KeyGroup group) EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
     auto it = fills_in_flight_.find(group);
     if (it == fills_in_flight_.end()) {
       return;
     }
-    auto session_it = it->second.find(session_id);
-    if (session_it == it->second.end() || --session_it->second > 0) {
-      return;
-    }
-    it->second.erase(session_it);
-    if (it->second.empty()) {
+    if (--it->second == 0) {
       fills_in_flight_.erase(it);
     }
   }
@@ -689,7 +682,7 @@ class PgResponseCache::Impl : private GarbageCollector {
  public:
   Result<Setter> Get(
       LWPgPerformOptionsPB::LWCachingInfoPB* cache_info, CoarseTimePoint deadline,
-      const PgResponseCacheWaiterPtr& waiter, uint64_t session_id,
+      const PgResponseCacheWaiterPtr& waiter,
       FillTokenPtr* token) EXCLUDES(mutex_) {
     // The last request of a connection start's prefetch is one of its requests, so the two fields
     // have three valid combinations between them and the wire allows a fourth. Only a bug on the
@@ -819,7 +812,7 @@ class PgResponseCache::Impl : private GarbageCollector {
                 std::make_shared<CancelableScopeExit<decltype(abandon)>>(std::move(abandon)),
             fill = TakeFillToken(
                 PartOfConnectionPrefetch(cache_info->part_of_connection_prefetch()),
-                group, session_id, token),
+                group, token),
             observer = fill_observer_,
             group,
             version,
@@ -1012,10 +1005,9 @@ class PgResponseCache::Impl : private GarbageCollector {
   > entries_ GUARDED_BY(mutex_);
 
   std::vector<KeyGroupBucket> key_group_buckets_ GUARDED_BY(mutex_);
-  // Fills under way, by key group and by the session performing them. The FillToken the filling
-  // caller holds takes the count and drops it, so an abandoned fill clears itself.
-  std::unordered_map<KeyGroup, std::unordered_map<uint64_t, size_t>> fills_in_flight_
-      GUARDED_BY(mutex_);
+  // How many fills are under way for each key group. The FillToken the filling caller holds
+  // takes the count and drops it, so an abandoned fill clears itself.
+  std::unordered_map<KeyGroup, size_t> fills_in_flight_ GUARDED_BY(mutex_);
 
   const PgResponseCache::FillObserver fill_observer_;
 
@@ -1035,13 +1027,13 @@ Result<PgResponseCache::Setter> PgResponseCache::Get(
     LWPgPerformOptionsPB::LWCachingInfoPB* cache_info,
     CoarseTimePoint deadline,
     const PgResponseCacheWaiterPtr& waiter,
-    uint64_t session_id, FillTokenPtr* token) {
-  return impl_->Get(cache_info, deadline, waiter, session_id, token);
+    FillTokenPtr* token) {
+  return impl_->Get(cache_info, deadline, waiter, token);
 }
 
-PgResponseCache::FillToken::FillToken(Impl* impl, KeyGroup group, uint64_t session_id)
-    : impl_(impl), group_(group), session_id_(session_id) {
-  impl->NoteFillStarted(group_, session_id_);
+PgResponseCache::FillToken::FillToken(Impl* impl, KeyGroup group)
+    : impl_(impl), group_(group) {
+  impl->NoteFillStarted(group_);
 }
 
 PgResponseCache::FillToken::~FillToken() {
@@ -1053,10 +1045,10 @@ void PgResponseCache::FillToken::Release() {
   // prefetch from QueryData::FlushDone, which runs on a client thread with the session lock
   // already dropped, while the session releases the same token under that lock -- and parallel
   // workers share a session, so they share its token. Whoever claims the latch owes the single
-  // NoteFillFinished this token carries and the other does nothing, so a late release can only
-  // remove the count it put there itself, never one a newer token has taken since.
+  // NoteFillFinished this token carries and the other does nothing, so a late release takes
+  // back exactly the one count this token added, leaving any a newer token has taken since.
   if (!released_.exchange(true, std::memory_order_acq_rel)) {
-    impl_->NoteFillFinished(group_, session_id_);
+    impl_->NoteFillFinished(group_);
   }
 }
 
