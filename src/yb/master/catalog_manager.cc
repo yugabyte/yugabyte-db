@@ -145,6 +145,7 @@
 #include "yb/master/master_replication.pb.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_util.h"
+#include "yb/master/master_ysql_lease.pb.h"
 #include "yb/master/master.h"
 #include "yb/master/object_lock_info_manager.h"
 #include "yb/master/permissions_manager.h"
@@ -6891,7 +6892,10 @@ Status CatalogManager::RefreshYsqlLease(const RefreshYsqlLeaseRequestPB* req,
                                         RefreshYsqlLeaseResponsePB* resp,
                                         rpc::RpcContext* rpc,
                                         const LeaderEpoch& epoch) {
-  return object_lock_info_manager_->RefreshYsqlLease(*req, *resp, *rpc, epoch);
+  RETURN_NOT_OK(object_lock_info_manager_->RefreshYsqlLease(*req, *resp, *rpc, epoch));
+  xcluster_manager_->ExtendXClusterGuardedLease(
+      req->instance(), epoch.leader_term, *resp->mutable_info());
+  return Status::OK();
 }
 
 Status CatalogManager::RelinquishYsqlLease(const RelinquishYsqlLeaseRequestPB* req,

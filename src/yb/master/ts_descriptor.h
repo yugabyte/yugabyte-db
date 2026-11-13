@@ -381,6 +381,12 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   // have a lease) are possible.
   bool MaybeHasXClusterGuardedLease() const;
 
+  // Records that master extends this TServer's xCluster-guarded information lease other than by a
+  // heartbeat, so that MaybeUpdateLiveness keeps it MAYBE_HAS_LEASE.  Returns false, recording
+  // nothing, if the lock is not acquired by lock_deadline, if the TServer is REPLACED or
+  // REMOVED, or if it is not MAYBE_HAS_LEASE: only a heartbeat grants a lease anew.
+  bool RecordXClusterGuardedLeaseExtension(CoarseTimePoint lock_deadline) EXCLUDES(mutex_);
+
   bool IsLiveAndHasReported() const;
 
   bool HasYsqlCatalogLease() const;
@@ -390,8 +396,8 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   Result<HostPort> GetHostPort() const EXCLUDES(mutex_);
 
-  // Transition this TServer to UNRESPONSIVE and/or DEFINITELY_NO_LEASE if enough time has passed
-  // since its last heartbeat.
+  // Transition this TServer to UNRESPONSIVE if enough time has passed since its last heartbeat,
+  // and/or to DEFINITELY_NO_LEASE if enough has passed since its last heartbeat or lease extension.
   std::optional<TSDescriptor::WriteLock> MaybeUpdateLiveness(MonoTime time) EXCLUDES(mutex_);
 
  private:
@@ -457,6 +463,9 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   // The last time a heartbeat was received for this node.
   MonoTime last_heartbeat_ GUARDED_BY(mutex_);
+  // The last time master extended this node's xCluster-guarded information lease other than by a
+  // heartbeat (see RecordXClusterGuardedLeaseExtension); uninitialized if not since registration.
+  MonoTime last_xcluster_lease_extension_ GUARDED_BY(mutex_);
   const bool registered_through_heartbeat_;
 
   // True after the first heartbeat from this tserver is received by this master leader.

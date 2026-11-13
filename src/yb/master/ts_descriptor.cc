@@ -158,6 +158,8 @@ Result<TSDescriptor::WriteLock> TSDescriptor::UpdateRegistration(
   l.mutable_data()->pb.set_xcluster_guarded_lease_state(
       registered_through_heartbeat ? SysTabletServerEntryPB::MAYBE_HAS_LEASE
                                    : SysTabletServerEntryPB::DEFINITELY_NO_LEASE);
+  // A lease extended to a previous instance of the TServer died with that instance.
+  last_xcluster_lease_extension_ = MonoTime();
   latest_report_seqno_ = std::numeric_limits<int32_t>::min();
   placement_id_ = generate_placement_id(registration.common().cloud_info());
   proxies_.reset();
@@ -589,6 +591,25 @@ bool TSDescriptor::MaybeHasXClusterGuardedLease() const {
   return LockForRead()->MaybeHasXClusterGuardedLease();
 }
 
+bool TSDescriptor::RecordXClusterGuardedLeaseExtension(CoarseTimePoint lock_deadline) {
+  // A write lock, not a read lock: MaybeUpdateLiveness flips the lease state under one and commits
+  // only after persisting the flip, while readers keep seeing the old state until then.
+  auto lock = TryLockForWrite(lock_deadline);
+  if (!lock.ok()) {
+    return false;
+  }
+  const auto& pb = (*lock)->pb;
+  if (pb.state() == SysTabletServerEntryPB::REPLACED ||
+      pb.state() == SysTabletServerEntryPB::REMOVED ||
+      pb.xcluster_guarded_lease_state() != SysTabletServerEntryPB::MAYBE_HAS_LEASE) {
+    return false;
+  }
+  std::lock_guard l(mutex_);
+  last_xcluster_lease_extension_ = MonoTime::Now();
+  // The lock is released uncommitted: nothing persistent changed.
+  return true;
+}
+
 bool TSDescriptor::IsLiveAndHasReported() const {
   return IsLive() && has_tablet_report();
 }
@@ -641,29 +662,38 @@ std::optional<TSDescriptor::WriteLock> TSDescriptor::MaybeUpdateLiveness(MonoTim
     changed = true;
   }
 
+  // Master grants a xCluster lease with each heartbeat and extends it with each YSQL lease refresh
+  // (see RecordXClusterGuardedLeaseExtension); the TServer anchors either to when it sent the
+  // request, before master processed it.
+  //
   // A xCluster lease from a previous master leader must start before last_heartbeat_: this
-  // master loads descriptors (setting last_heartbeat_ to the load time) and serves heartbeats only
-  // once it holds its Raft leader lease, which implies the previous leader's Raft lease has
-  // expired.  Leaders do not grant xCluster leases unless they have a Raft lease.  This relies on
-  // persist_tserver_registry; without it the previous leader's descriptors are not loaded.
+  // master loads descriptors (setting last_heartbeat_ to the load time) and serves heartbeats and
+  // YSQL lease refreshes only once it holds its Raft leader lease, which implies the previous
+  // leader's Raft lease has expired.  Leaders do not grant xCluster leases unless they have a Raft
+  // lease.  This relies on persist_tserver_registry; without it the previous leader's descriptors
+  // are not loaded.
   //
   // Account for possible clock drift between master and TServer: NTP slewing moves CLOCK_MONOTONIC
   // (which MonoTime uses) along with the wall clock, so as long as wall clocks stay within
   // max_clock_skew_usec of each other (which hybrid time already requires), two monotonic clocks
   // can drift apart by at most twice that over any interval.
+  auto last_lease_grant = last_heartbeat_;
+  last_lease_grant.MakeAtLeast(last_xcluster_lease_extension_);
+  const auto since_last_lease_grant = time.GetDeltaSince(last_lease_grant);
   const auto drift_slack = MonoDelta::FromMicroseconds(2 * FLAGS_max_clock_skew_usec);
   const auto lease_duration =
       MonoDelta::FromMilliseconds(FLAGS_xcluster_guarded_lease_duration_ms);
   if (proto_lock->pb.xcluster_guarded_lease_state() !=
           SysTabletServerEntryPB::DEFINITELY_NO_LEASE &&
-      since_last_heartbeat - drift_slack > lease_duration) {
+      since_last_lease_grant - drift_slack > lease_duration) {
     proto_lock.mutable_data()->pb.set_xcluster_guarded_lease_state(
         SysTabletServerEntryPB::DEFINITELY_NO_LEASE);
     const auto& addr = DesiredHostPort(proto_lock->pb.registration(), local_master_cloud_info_);
     LOG(WARNING) << "Marking tserver " << permanent_uuid() << " (" << addr.host() << ":"
                  << addr.port()
                  << ") as definitely not having a xCluster-guarded information lease: "
-                 << "no heartbeat received for at least " << since_last_heartbeat.ToString()
+                 << "no heartbeat or lease extension for at least "
+                 << since_last_lease_grant.ToString()
                  << " (threshold: " << lease_duration.ToString() << " plus "
                  << drift_slack.ToString() << " clock drift slack)";
     changed = true;

@@ -127,6 +127,7 @@ DECLARE_string(TEST_skip_async_insert_packed_schema_for_tablet_id);
 DECLARE_bool(TEST_skip_oid_advance_on_restore);
 DECLARE_int32(TEST_sleep_before_vector_index_backfill_seconds);
 DECLARE_int32(TEST_slowdown_backfill_by_ms);
+DECLARE_bool(TEST_no_grant_xcluster_guarded_lease);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
 DECLARE_bool(TEST_vector_index_exact);
 DECLARE_bool(TEST_xcluster_block_first_poll);
@@ -554,12 +555,14 @@ TEST_F(XClusterDDLReplicationTest, GuardedLeaseExpiration) {
       },
       kLeaseDuration, "Wait for role to initially switch to AUTOMATIC_SOURCE"));
 
-  // Now stop heartbeats and measure how long the lease lasts.  The lease came from the last
-  // heartbeat sent before this point, at most one heartbeat interval ago, and a lease is anchored
-  // to its heartbeat's send time.  So the role should become unavailable between
-  // kLeaseDuration - heartbeat interval and kLeaseDuration from now, give or take slack for
-  // polling, scheduling, and heartbeat timing jitter.
+  // Now stop heartbeats, and the lease extensions YSQL lease refreshes carry, and measure how long
+  // the lease lasts.  The lease came from the last heartbeat or YSQL lease refresh sent before this
+  // point, at most about one heartbeat interval ago (the slack covers YSQL lease refreshes' one
+  // second), and a lease is anchored to its request's send time.  So the role should become
+  // unavailable between kLeaseDuration - heartbeat interval and kLeaseDuration from now, give or
+  // take slack for polling, scheduling, and timing jitter.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_no_grant_xcluster_guarded_lease) = true;
   const auto heartbeats_stopped = MonoTime::Now();
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
@@ -574,8 +577,9 @@ TEST_F(XClusterDDLReplicationTest, GuardedLeaseExpiration) {
   EXPECT_GE(lease_lasted, MonoDelta(kLeaseDuration - heartbeat_interval - slack));
   EXPECT_LE(lease_lasted, MonoDelta(kLeaseDuration + slack));
 
-  // When we resume heartbeats, we should get the role back.
+  // When we resume heartbeats and lease grants, we should get the role back.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_no_grant_xcluster_guarded_lease) = false;
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         return xcluster_context.GetXClusterRole(namespace_id) ==

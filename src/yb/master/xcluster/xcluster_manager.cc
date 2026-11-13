@@ -31,6 +31,7 @@
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_replication.pb.h"
+#include "yb/master/master_ysql_lease.pb.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
@@ -127,9 +128,11 @@ DEFINE_RUNTIME_uint32(xcluster_ddl_tables_retention_secs, /*1 week*/ 7 * 24 * 60
 
 DEFINE_validator(xcluster_ddl_tables_retention_secs, FLAG_GE_VALUE_VALIDATOR(1 * 24 * 60 * 60));
 
+DECLARE_bool(TEST_no_grant_xcluster_guarded_lease);
 DECLARE_bool(enforce_xcluster_guarded_lease);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_bool(persist_tserver_registry);
+DECLARE_uint32(xcluster_guarded_lease_duration_ms);
 
 #define LOG_FUNC_AND_RPC \
   LOG_WITH_FUNC(INFO) << req->ShortDebugString() << ", from: " << RequestorString(rpc)
@@ -291,6 +294,36 @@ Status XClusterManager::FillXClusterGuardedInfo(
   info.set_oid_cache_invalidations_count(
       VERIFY_RESULT(catalog_manager_.GetOidCacheInvalidationsCount()));
   return persistence_block_map_->Fill(*info.mutable_persistence_block_map());
+}
+
+void XClusterManager::ExtendXClusterGuardedLease(
+    const NodeInstancePB& instance, int64_t leader_term, RefreshYsqlLeaseInfoPB& info) {
+  if (FLAGS_TEST_no_grant_xcluster_guarded_lease || !FLAGS_enforce_xcluster_guarded_lease) {
+    return;
+  }
+  auto ts_desc = master_.ts_manager()->LookupTS(instance);
+  if (!ts_desc.ok()) {
+    return;
+  }
+  // As for a heartbeat, record the extension before copying the information it covers; see
+  // PropagateXClusterGuardedInfo.  Waiting longer for the lock would hold up YSQL lease refreshes
+  // behind sys catalog writes, and skipping is safe: the next refresh tries again.
+  if (!(*ts_desc)->RecordXClusterGuardedLeaseExtension(
+          CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(50))) {
+    YB_LOG_EVERY_N_SECS(INFO, 10) << "Not extending the xCluster-guarded information lease of "
+                                  << "TServer " << instance.permanent_uuid()
+                                  << " from its YSQL lease refresh";
+    return;
+  }
+  auto status = FillXClusterGuardedInfo(leader_term, *info.mutable_xcluster_guarded_info());
+  if (!status.ok()) {
+    YB_LOG_EVERY_N_SECS(WARNING, 10)
+        << "Not extending the xCluster-guarded information lease of TServer "
+        << instance.permanent_uuid() << " from its YSQL lease refresh: " << status;
+    info.clear_xcluster_guarded_info();
+    return;
+  }
+  info.set_xcluster_guarded_lease_duration_ms(FLAGS_xcluster_guarded_lease_duration_ms);
 }
 
 Status XClusterManager::PropagateXClusterGuardedInfo(MonoTime deadline) {

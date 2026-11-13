@@ -23,6 +23,12 @@
 #include "yb/master/xcluster/xcluster_source_manager.h"
 #include "yb/master/xcluster/xcluster_target_manager.h"
 
+namespace yb {
+
+class NodeInstancePB;
+
+}  // namespace yb
+
 namespace yb::master {
 
 class CDCStreamInfo;
@@ -31,6 +37,7 @@ class PauseResumeXClusterProducerStreamsRequestPB;
 class PauseResumeXClusterProducerStreamsResponsePB;
 class PersistenceBlockMap;
 class PostTabletCreateTaskBase;
+class RefreshYsqlLeaseInfoPB;
 class SysPersistenceBlockMapEntryPB;
 class TSHeartbeatRequestPB;
 class TSHeartbeatResponsePB;
@@ -80,14 +87,24 @@ class XClusterManager : public XClusterManagerIf,
   Status FillXClusterGuardedInfo(int64_t leader_term, XClusterGuardedInfoPB& info) override
       EXCLUDES(xcluster_guarded_info_version_mutex_);
 
+  // Extends the xCluster-guarded information lease of the TServer instance from a YSQL lease
+  // refresh, filling info with the lease and a fresh copy of the information it guards, as a
+  // heartbeat response does.  Heartbeats share master's normal-priority service queue while YSQL
+  // lease refreshes have a high-priority one, so without this a master too busy for heartbeats lets
+  // every TServer's lease run out while their YSQL leases stay live.  Leaves info unchanged when it
+  // does not extend the lease.
+  void ExtendXClusterGuardedLease(
+      const NodeInstancePB& instance, int64_t leader_term, RefreshYsqlLeaseInfoPB& info)
+      EXCLUDES(xcluster_guarded_info_version_mutex_);
+
   // Ensures that on successful return no TServer will ever give out xCluster-guarded information
   // less recent than master had when this was called.  For example, after SetXClusterRole followed
   // by a successful call to this method, no TServer will ever again give out the previous role.
   //
-  // TServers that have not heartbeated for longer than the xCluster lease duration do not slow this
-  // down; those unresponsive for less than that can make it fail by timing out.  This method may
-  // also fail if master leadership changes during the call; callers wanting to survive that should
-  // retry.  Safe to call concurrently.
+  // TServers whose lease master has neither granted by heartbeat nor extended by YSQL lease refresh
+  // for longer than the xCluster lease duration do not slow this down; those for less than that can
+  // make it fail by timing out.  This method may also fail if master leadership changes during the
+  // call; callers wanting to survive that should retry.  Safe to call concurrently.
   Status PropagateXClusterGuardedInfo(MonoTime deadline)
       EXCLUDES(xcluster_guarded_info_version_mutex_);
 

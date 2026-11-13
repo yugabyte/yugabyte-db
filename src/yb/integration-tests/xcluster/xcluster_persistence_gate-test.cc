@@ -60,6 +60,7 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 DECLARE_bool(TEST_disable_persistence_early_gate);
+DECLARE_bool(TEST_tserver_enable_ysql_lease_refresh);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_persistence_gate);
 DECLARE_bool(enforce_xcluster_guarded_lease);
@@ -170,11 +171,14 @@ class XClusterPersistenceGateTest : public PgMiniTestBase {
         ->value();
   }
 
-  // Cuts every TServer off from master and waits until none of them holds a lease.
+  // Cuts every TServer off from master and waits until none of them holds a lease.  Besides
+  // heartbeats, this stops YSQL lease refreshes, which also extend the lease; only Postgres's
+  // TServer sends them here.  Cuts are short enough for the YSQL lease to survive them.
   Status CutOffTServersFromMaster() {
     for (const auto& tserver : cluster_->mini_tablet_servers()) {
       tserver->FailHeartbeats();
     }
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_enable_ysql_lease_refresh) = false;
     return WaitFor(
         [this]() -> Result<bool> {
           for (const auto& tserver : cluster_->mini_tablet_servers()) {
@@ -187,11 +191,13 @@ class XClusterPersistenceGateTest : public PgMiniTestBase {
         kXClusterLeaseDuration * 3 * kTimeMultiplier, "Leases expired");
   }
 
-  // Resumes every TServer's heartbeats to master, so their leases come back.
+  // Resumes every TServer's heartbeats and YSQL lease refreshes to master, so their leases come
+  // back.
   void ReconnectTServersToMaster() {
     for (const auto& tserver : cluster_->mini_tablet_servers()) {
       tserver->FailHeartbeats(false);
     }
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_enable_ysql_lease_refresh) = true;
   }
 
   Result<tablet::TabletPeerPtr> GetTableLeader(const std::string& table_name) {
@@ -402,6 +408,8 @@ TEST_F(XClusterPersistenceGateTest, SessionRefusesDmlWithoutLease) {
   ASSERT_OK(MoveTableLeader("t", kPgTsIndex + 1));
 
   cluster_->mini_tablet_server(kPgTsIndex)->FailHeartbeats();
+  // Its YSQL lease refreshes, the only ones sent here, would otherwise keep extending its lease.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_enable_ysql_lease_refresh) = false;
   ASSERT_OK(WaitForLease(kPgTsIndex, /*has_lease=*/false));
 
   ASSERT_NOK_STR_CONTAINS(
@@ -410,6 +418,7 @@ TEST_F(XClusterPersistenceGateTest, SessionRefusesDmlWithoutLease) {
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM t")), 0);
 
   cluster_->mini_tablet_server(kPgTsIndex)->FailHeartbeats(false);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_enable_ysql_lease_refresh) = true;
   ASSERT_OK(WaitForLease(kPgTsIndex, /*has_lease=*/true));
 
   ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 1)"));
