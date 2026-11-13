@@ -3740,6 +3740,20 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_tcmalloc_background_thread", PGC_SU_BACKEND, RESOURCES_MEM,
+			gettext_noop("Run a TCMalloc background thread in each backend that "
+						 "drains idle allocator caches and, while the backend "
+						 "is idle, returns free memory to the operating system "
+						 "at yb_tcmalloc_background_release_rate."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_tcmalloc_background_thread,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_fkey_batched_docdb_lookup_when_types_mismatch", PGC_BACKEND, DEVELOPER_OPTIONS,
 			gettext_noop("Enable batched DocDB lookup for foreign key constraint check "
 						 "when types mismatch."),
@@ -6590,10 +6604,12 @@ static struct config_int ConfigureNamesInt[] =
 
 	{
 		{"yb_tcmalloc_skip_subrelease_short_interval", PGC_SUSET, RESOURCES_MEM,
-			gettext_noop("How far back the release after each statement looks "
-						 "for short-term peaks in demand when it decides which "
-						 "free pages in partially used hugepages to keep "
-						 "instead of returning them to the operating system."),
+			gettext_noop("How far back the release after each statement, and "
+						 "the TCMalloc background thread while the backend is "
+						 "idle, look for short-term peaks in demand when they "
+						 "decide which free pages in partially used hugepages "
+						 "to keep instead of returning them to the operating "
+						 "system."),
 			gettext_noop("0 disables this lookback. Other TCMalloc releases "
 						 "keep TCMalloc's own lookback."),
 			GUC_UNIT_MS | GUC_NOT_IN_SAMPLE
@@ -6605,16 +6621,31 @@ static struct config_int ConfigureNamesInt[] =
 
 	{
 		{"yb_tcmalloc_skip_subrelease_long_interval", PGC_SUSET, RESOURCES_MEM,
-			gettext_noop("How far back the release after each statement looks "
-						 "for the long-term demand trend when it decides which "
-						 "free pages in partially used hugepages to keep "
-						 "instead of returning them to the operating system."),
+			gettext_noop("How far back the release after each statement, and "
+						 "the TCMalloc background thread while the backend is "
+						 "idle, look for the long-term demand trend when they "
+						 "decide which free pages in partially used hugepages "
+						 "to keep instead of returning them to the operating "
+						 "system."),
 			gettext_noop("0 disables this lookback. Other TCMalloc releases "
 						 "keep TCMalloc's own lookback."),
 			GUC_UNIT_MS | GUC_NOT_IN_SAMPLE
 		},
 		&yb_tcmalloc_skip_subrelease_long_interval,
 		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_tcmalloc_background_release_rate", PGC_SUSET, RESOURCES_MEM,
+			gettext_noop("Rate in bytes per second at which the TCMalloc "
+						 "background thread returns free page heap memory to "
+						 "the operating system while the backend is idle."),
+			NULL,
+			GUC_UNIT_BYTE | GUC_NOT_IN_SAMPLE
+		},
+		&yb_tcmalloc_background_release_rate,
+		10 * 1024 * 1024, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 

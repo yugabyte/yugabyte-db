@@ -12,22 +12,35 @@
 
 #include "yb/util/tcmalloc_util.h"
 
+#include <sys/resource.h>
+
+#include <cerrno>
 #include <cstdint>
+#include <limits>
+#include <mutex>
+#include <utility>
 
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
 #include "yb/gutil/sysinfo.h"
 
+#include "yb/util/errno.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
 #include "yb/util/tcmalloc_impl_util.h"
+#include "yb/util/thread.h"
 
 #if YB_GPERFTOOLS_TCMALLOC
 #include <gperftools/heap-profiler.h>
+#endif
+
+#if YB_GOOGLE_TCMALLOC
+// Not exposed through MallocExtension.
+extern "C" void TCMalloc_Internal_SetPerCpuCachesDynamicSlabGrowThreshold(double v);
 #endif
 
 using yb::operator""_MB;
@@ -305,6 +318,85 @@ void SetTCMallocSamplingPeriod(int64_t sample_period_bytes) {
   tcmalloc::MallocExtension::SetProfileSamplingRate(sample_period_bytes);
 #elif YB_GPERFTOOLS_TCMALLOC
   MallocExtension::instance()->SetProfileSamplingRate(sample_period_bytes);
+#endif
+}
+
+#if YB_GOOGLE_TCMALLOC
+namespace {
+
+// Linux nice values apply per thread, so this changes only the calling thread.
+void RunTCMallocBackgroundActions() {
+  constexpr int kNice = -20;
+  if (setpriority(PRIO_PROCESS, 0 /* calling thread */, kNice) != 0) {
+    LOG(WARNING) << "Could not raise the TCMalloc background thread to nice " << kNice << ": "
+                 << ErrnoToString(errno) << ". This needs CAP_SYS_NICE or an RLIMIT_NICE of at "
+                 << "least " << 20 - kNice << " (systemd LimitNICE=" << kNice << ").";
+  }
+  tcmalloc::MallocExtension::ProcessBackgroundActions();
+}
+
+} // namespace
+#endif
+
+Status StartTCMallocBackgroundThread() {
+#if YB_GOOGLE_TCMALLOC
+  static std::mutex mutex;
+  static bool started = false;
+  std::lock_guard lock(mutex);
+  if (started) {
+    return Status::OK();
+  }
+  if (!tcmalloc::MallocExtension::NeedsProcessBackgroundActions()) {
+    LOG(INFO) << "TCMalloc background actions are not supported on this platform";
+    return Status::OK();
+  }
+  // The background loop periodically grows the per-CPU slab when caches overflow, which costs
+  // several MB of metadata per process. That is a poor trade for processes with few allocating
+  // threads, such as Postgres backends, so keep the slab at its initial size.
+  TCMalloc_Internal_SetPerCpuCachesDynamicSlabGrowThreshold(std::numeric_limits<double>::max());
+  RETURN_NOT_OK(
+      Thread::Create("tcmalloc", "tcmalloc_bkgrnd", RunTCMallocBackgroundActions, nullptr));
+  started = true;
+#endif
+  return Status::OK();
+}
+
+void SetTCMallocBackgroundReleaseRate(int64_t bytes_per_sec) {
+#if YB_GOOGLE_TCMALLOC
+  tcmalloc::MallocExtension::SetBackgroundReleaseRate(
+      tcmalloc::MallocExtension::BytesPerSecond{static_cast<size_t>(std::max<int64_t>(
+          bytes_per_sec, 0))});
+#endif
+}
+
+#if YB_GOOGLE_TCMALLOC
+namespace {
+
+// TCMalloc's own lookbacks, read before SetTCMallocSkipSubreleaseIntervals first changes them.
+std::pair<absl::Duration, absl::Duration> DefaultSkipSubreleaseIntervals() {
+  static const std::pair<absl::Duration, absl::Duration> intervals{
+      tcmalloc::MallocExtension::GetSkipSubreleaseShortInterval(),
+      tcmalloc::MallocExtension::GetSkipSubreleaseLongInterval()};
+  return intervals;
+}
+
+} // namespace
+#endif
+
+void SetTCMallocSkipSubreleaseIntervals(int64_t short_interval_ms, int64_t long_interval_ms) {
+#if YB_GOOGLE_TCMALLOC
+  DefaultSkipSubreleaseIntervals();
+  tcmalloc::MallocExtension::SetSkipSubreleaseShortInterval(
+      absl::Milliseconds(short_interval_ms));
+  tcmalloc::MallocExtension::SetSkipSubreleaseLongInterval(absl::Milliseconds(long_interval_ms));
+#endif
+}
+
+void RestoreTCMallocSkipSubreleaseIntervals() {
+#if YB_GOOGLE_TCMALLOC
+  const auto [short_interval, long_interval] = DefaultSkipSubreleaseIntervals();
+  tcmalloc::MallocExtension::SetSkipSubreleaseShortInterval(short_interval);
+  tcmalloc::MallocExtension::SetSkipSubreleaseLongInterval(long_interval);
 #endif
 }
 
