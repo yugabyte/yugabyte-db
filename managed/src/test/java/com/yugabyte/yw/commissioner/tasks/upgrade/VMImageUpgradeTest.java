@@ -808,6 +808,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
             defaultUniverse.getUniverseUUID(),
             u -> {
               UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.arch = Architecture.x86_64;
               UserIntent intent = details.getPrimaryCluster().userIntent;
               intent.providerType = cloud;
               intent.setProviderImageBundleUUID(defaultProvider.getUuid(), current.getUuid());
