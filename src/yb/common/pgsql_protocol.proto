@@ -359,7 +359,7 @@ message PgsqlWriteRequestPB {
 
   // Set for a request of a transaction with global object locks, which DDLs order themselves
   // against through object locks.
-  optional bool skip_catalog_version_check = 34 [default = false];
+  optional bool is_using_table_locks = 34 [default = false];
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -671,8 +671,8 @@ message PgsqlReadRequestPB {
   // has not started, and could shed a connection that had already paid for the large read.
   optional bool catalog_prefetch_continuation = 49;
 
-  // See PgsqlWriteRequestPB::skip_catalog_version_check.
-  optional bool skip_catalog_version_check = 50 [default = false];
+  // See PgsqlWriteRequestPB::is_using_table_locks.
+  optional bool is_using_table_locks = 50 [default = false];
 }
 
 //--------------------------------------------------------------------------------------------------

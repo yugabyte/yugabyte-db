@@ -1484,7 +1484,7 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
         index_table = std::move(*next_index_table++);
       }
       if (is_txn_using_table_locks) {
-        read.set_skip_catalog_version_check(true);
+        read.set_is_using_table_locks(true);
       }
       if (read.index_request().has_vector_idx_options()) {
         if (req->ops_size() != 1) {
@@ -1521,7 +1521,7 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
       auto& write = *op.mutable_write();
       RETURN_NOT_OK(GetTable(write.table_id(), tables, &table));
       if (is_txn_using_table_locks) {
-        write.set_skip_catalog_version_check(true);
+        write.set_is_using_table_locks(true);
       }
       auto write_op = std::make_shared<client::YBPgsqlWriteOp>(table, arena, *sidecars, &write);
       if (write_time) {
@@ -4623,8 +4623,8 @@ class PgClientSession::Impl {
     } else if (in_req.ysql_catalog_version()) {
       out_req->set_ysql_catalog_version(in_req.ysql_catalog_version());
     }
-    if (in_req.skip_catalog_version_check()) {
-      out_req->set_skip_catalog_version_check(true);
+    if (in_req.is_using_table_locks()) {
+      out_req->set_is_using_table_locks(true);
     }
     return Status::OK();
   }
