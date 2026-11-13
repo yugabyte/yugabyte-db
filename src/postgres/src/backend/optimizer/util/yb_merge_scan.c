@@ -467,131 +467,6 @@ yb_indexcol_can_merge_scan(PlannerInfo *root,
 }
 
 /*
- * The first entry of tlist, an index target list, whose expression is a member
- * of ec, skipping the index columns in skip_idxs.  Those are the stream key
- * columns, which can belong to a sort EquivalenceClass when they equal a sort
- * column.  Sets *p_em to the member and returns NULL when no entry matches.
- */
-static TargetEntry *
-ybFindPathkeyTle(List *tlist, EquivalenceClass *ec, Relids relids,
-				 Bitmapset *skip_idxs, EquivalenceMember **p_em)
-{
-	ListCell   *lc;
-	int			indexcol = 0;
-
-	foreach(lc, tlist)
-	{
-		TargetEntry *tle = lfirst_node(TargetEntry, lc);
-
-		if (bms_is_member(indexcol++, skip_idxs))
-			continue;
-		*p_em = find_ec_member_matching_expr(ec, tle->expr, relids);
-		if (*p_em)
-			return tle;
-	}
-	return NULL;
-}
-
-/*
- * Get sort info for given pathkeys corresponding to tlist.  In case a pathkey
- * matches multiple columns in tlist, avoid the columns that are pinned as
- * stream key columns.
- *
- * (Parts copied from prepare_sort_from_pathkeys.)
- */
-static void
-yb_get_sort_info_from_pathkeys(List *tlist,
-							   List *pathkeys,
-							   Relids relids,
-							   Bitmapset *stream_col_idxs,
-							   int *p_numsortkeys,
-							   AttrNumber **p_sortColIdx,
-							   Oid **p_sortOperators,
-							   Oid **p_collations,
-							   bool **p_nullsFirst)
-{
-	ListCell   *i;
-	int			numsortkeys;
-	AttrNumber *sortColIdx;
-	Oid		   *sortOperators;
-	Oid		   *collations;
-	bool	   *nullsFirst;
-
-	/*
-	 * We will need at most list_length(pathkeys) sort columns; possibly less
-	 */
-	numsortkeys = list_length(pathkeys);
-	sortColIdx = (AttrNumber *) palloc(numsortkeys * sizeof(AttrNumber));
-	sortOperators = (Oid *) palloc(numsortkeys * sizeof(Oid));
-	collations = (Oid *) palloc(numsortkeys * sizeof(Oid));
-	nullsFirst = (bool *) palloc(numsortkeys * sizeof(bool));
-
-	numsortkeys = 0;
-
-	foreach(i, pathkeys)
-	{
-		PathKey    *pathkey = (PathKey *) lfirst(i);
-		EquivalenceClass *ec = pathkey->pk_eclass;
-		EquivalenceMember *em;
-		TargetEntry *tle = NULL;
-		Oid			pk_datatype = InvalidOid;
-		Oid			sortop;
-
-		{
-			/*
-			 * Otherwise, we can sort by any non-constant expression listed in
-			 * the pathkey's EquivalenceClass.  For now, we take the first
-			 * tlist item found in the EC. If there's no match, we'll generate
-			 * a resjunk entry using the first EC member that is an expression
-			 * in the input's vars.  (The non-const restriction only matters
-			 * if the EC is below_outer_join; but if it isn't, it won't
-			 * contain consts anyway, else we'd have discarded the pathkey as
-			 * redundant.)
-			 *
-			 * XXX if we have a choice, is there any way of figuring out which
-			 * might be cheapest to execute?  (For example, int4lt is likely
-			 * much cheaper to execute than numericlt, but both might appear
-			 * in the same equivalence class...)  Not clear that we ever will
-			 * have an interesting choice in practice, so it may not matter.
-			 */
-			tle = ybFindPathkeyTle(tlist, ec, relids, stream_col_idxs, &em);
-			if (tle)
-				pk_datatype = em->em_datatype;
-		}
-
-		if (!tle)
-			elog(ERROR, "could not find pathkey item to sort");
-
-		/*
-		 * Look up the correct sort operator from the PathKey's slightly
-		 * abstracted representation.
-		 */
-		sortop = get_opfamily_member(pathkey->pk_opfamily,
-									 pk_datatype,
-									 pk_datatype,
-									 pathkey->pk_strategy);
-		if (!OidIsValid(sortop))	/* should not happen */
-			elog(ERROR, "missing operator %d(%u,%u) in opfamily %u",
-				 pathkey->pk_strategy, pk_datatype, pk_datatype,
-				 pathkey->pk_opfamily);
-
-		/* Add the column to the sort arrays */
-		sortColIdx[numsortkeys] = tle->resno;
-		sortOperators[numsortkeys] = sortop;
-		collations[numsortkeys] = ec->ec_collation;
-		nullsFirst[numsortkeys] = pathkey->pk_nulls_first;
-		numsortkeys++;
-	}
-
-	/* Return results */
-	*p_numsortkeys = numsortkeys;
-	*p_sortColIdx = sortColIdx;
-	*p_sortOperators = sortOperators;
-	*p_collations = collations;
-	*p_nullsFirst = nullsFirst;
-}
-
-/*
  * Whether the operator clause is an equality, per the index column's opfamily,
  * between index column indexcol and anything else.  match_index_to_operand
  * matches the column the way the planner matched the clause to it, ignoring a
@@ -693,8 +568,12 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 	ListCell   *lc;
 	Bitmapset  *saop_idxs = NULL;
 	Bitmapset  *sort_idxs = NULL;
-	Bitmapset  *stream_col_idxs = NULL;
 	int			last_sort_indexcol = -1;
+	int			numsortkeys;
+	AttrNumber *sortColIdx;
+	Oid		   *sortOperators;
+	Oid		   *collations;
+	bool	   *nullsFirst;
 	YbMergeScanInfo *merge_scan_info;
 	YbSortInfo *sort_info;
 
@@ -706,14 +585,49 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 		saop_idxs = bms_add_member(saop_idxs, info->indexcol);
 	}
 
-	/* Find the merge sort columns as yb_get_sort_info_from_pathkeys does. */
+	/*
+	 * Find the merge sort columns.  (Parts copied from
+	 * prepare_sort_from_pathkeys.)
+	 *
+	 * We will need at most list_length(pathkeys) sort columns; possibly less
+	 */
+	numsortkeys = list_length(*pathkeys);
+	sortColIdx = (AttrNumber *) palloc(numsortkeys * sizeof(AttrNumber));
+	sortOperators = (Oid *) palloc(numsortkeys * sizeof(Oid));
+	collations = (Oid *) palloc(numsortkeys * sizeof(Oid));
+	nullsFirst = (bool *) palloc(numsortkeys * sizeof(bool));
+
+	numsortkeys = 0;
+
 	foreach(lc, *pathkeys)
 	{
 		PathKey    *pathkey = lfirst_node(PathKey, lc);
+		EquivalenceClass *ec = pathkey->pk_eclass;
 		EquivalenceMember *em;
-		TargetEntry *tle = ybFindPathkeyTle(index->indextlist,
-											pathkey->pk_eclass, relids,
-											saop_idxs, &em);
+		TargetEntry *tle = NULL;
+		Oid			pk_datatype = InvalidOid;
+		Oid			sortop;
+		ListCell   *j;
+
+		/*
+		 * Take the first tlist item found in the EC, skipping the SAOP columns
+		 * in stream_cols.  A SAOP column can belong to a sort EquivalenceClass
+		 * when a clause equates it to a sort column.
+		 */
+		foreach(j, index->indextlist)
+		{
+			if (bms_is_member(foreach_current_index(j), saop_idxs))
+				continue;
+			tle = (TargetEntry *) lfirst(j);
+			em = find_ec_member_matching_expr(ec, tle->expr, relids);
+			if (em)
+			{
+				/* found expr already in tlist */
+				pk_datatype = em->em_datatype;
+				break;
+			}
+			tle = NULL;
+		}
 
 		/* Not an ordering the merge can compare on. */
 		if (!tle)
@@ -732,6 +646,27 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 				*yb_distinct_nkeys = -1;
 			break;
 		}
+
+		/*
+		 * Look up the correct sort operator from the PathKey's slightly
+		 * abstracted representation.
+		 */
+		sortop = get_opfamily_member(pathkey->pk_opfamily,
+									 pk_datatype,
+									 pk_datatype,
+									 pathkey->pk_strategy);
+		if (!OidIsValid(sortop))	/* should not happen */
+			elog(ERROR, "missing operator %d(%u,%u) in opfamily %u",
+				 pathkey->pk_strategy, pk_datatype, pk_datatype,
+				 pathkey->pk_opfamily);
+
+		/* Add the column to the sort arrays */
+		sortColIdx[numsortkeys] = tle->resno;
+		sortOperators[numsortkeys] = sortop;
+		collations[numsortkeys] = ec->ec_collation;
+		nullsFirst[numsortkeys] = pathkey->pk_nulls_first;
+		numsortkeys++;
+
 		sort_idxs = bms_add_member(sort_idxs, tle->resno - 1);
 		last_sort_indexcol = Max(last_sort_indexcol, tle->resno - 1);
 	}
@@ -770,20 +705,13 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 	if (result == NIL)
 		return NULL;
 
-	foreach(lc, result)
-	{
-		YbMergeScanStreamColInfo *info = lfirst_node(YbMergeScanStreamColInfo,
-													 lc);
-
-		stream_col_idxs = bms_add_member(stream_col_idxs, info->indexcol);
-	}
+	/* Return results */
 	sort_info = makeNode(YbSortInfo);
-	yb_get_sort_info_from_pathkeys(index->indextlist, *pathkeys, relids,
-								   stream_col_idxs, &sort_info->numCols,
-								   &sort_info->sortColIdx,
-								   &sort_info->sortOperators,
-								   &sort_info->collations,
-								   &sort_info->nullsFirst);
+	sort_info->numCols = numsortkeys;
+	sort_info->sortColIdx = sortColIdx;
+	sort_info->sortOperators = sortOperators;
+	sort_info->collations = collations;
+	sort_info->nullsFirst = nullsFirst;
 
 	merge_scan_info = makeNode(YbMergeScanInfo);
 	merge_scan_info->stream_cols = result;
