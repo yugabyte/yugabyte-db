@@ -7223,6 +7223,7 @@ class PgVectorIndexUtilTest : public PgVectorIndexSingleServerDumpTestBase {
 
   void TestFastPathVectorDeletion(const std::string& statement);
   void TestRestoreToTime(bool store_payload, bool separate_file);
+  void TestSearchAtOldReadTime(bool store_payload);
   void TestUnappliedVectorUpdates();
   void TestBackfillBatches(uint64_t single_chunk_size_bytes);
 };
@@ -8328,6 +8329,66 @@ TEST_F(PgVectorIndexUtilTest, RestoreToTimeSeparateFile) {
 
 TEST_F(PgVectorIndexUtilTest, StoredPayloadRestoreToTimeSeparateFile) {
   TestRestoreToTime(/* store_payload= */ true, /* separate_file= */ true);
+}
+
+// A search at a read time before most of the vectors were written, e.g. in a REPEATABLE READ
+// transaction, still finds them in the index and checks each of them. A candidate check must not
+// step over the entries written after the read time past the candidate's key, or search time
+// grows with the square of the newer vectors.
+void PgVectorIndexUtilTest::TestSearchAtOldReadTime(bool store_payload) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = store_payload;
+  constexpr size_t kNumRows = 10;
+  const size_t num_newer_rows =
+      getenv("YB_NUM_NEWER_ROWS") ? std::stoul(getenv("YB_NUM_NEWER_ROWS")) : 5000;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  // A replaced vector makes the search check its candidates.
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE test SET embedding = '[100, 100, 100]' WHERE id = $0", kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, 3)), "[1, 2, 3]");
+  auto writer = ASSERT_RESULT(Connect());
+  // Closer to the query vector than any of the older rows, so a search goes through all of them.
+  ASSERT_OK(writer.ExecuteFormat(
+      "INSERT INTO test SELECT i, ('[' || v || ', ' || v || ', ' || v || ']')::vector "
+      "FROM generate_series($0, $1) i, LATERAL (SELECT i * 0.0001 AS v) t",
+      kNumRows + 1, kNumRows + num_newer_rows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  auto tablet = ASSERT_RESULT(peers.front()->shared_tablet());
+  ASSERT_NE(tablet->regulardb_statistics(), nullptr);
+  auto& statistics = *tablet->regulardb_statistics();
+  auto data_blocks = [&statistics] {
+    return statistics.getTickerCount(rocksdb::BLOCK_CACHE_DATA_HIT) +
+           statistics.getTickerCount(rocksdb::BLOCK_CACHE_DATA_MISS);
+  };
+  constexpr int kNumSearches = 3;
+  auto start_blocks = data_blocks();
+  auto start = MonoTime::Now();
+  for (int i = 0; i != kNumSearches; ++i) {
+    ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, 3)), "[1, 2, 3]");
+  }
+  auto search_time = (MonoTime::Now() - start) / kNumSearches;
+  auto data_blocks_per_search = (data_blocks() - start_blocks) / kNumSearches;
+  ASSERT_OK(conn.Execute("COMMIT"));
+  LOG(INFO) << "Newer rows: " << num_newer_rows
+            << ", data blocks per search: " << data_blocks_per_search
+            << ", time per search: " << search_time;
+  ASSERT_LT(data_blocks_per_search, 2 * (kNumRows + num_newer_rows));
+}
+
+TEST_F(PgVectorIndexUtilTest, SearchAtOldReadTime) {
+  TestSearchAtOldReadTime(/* store_payload= */ false);
+}
+
+TEST_F(PgVectorIndexUtilTest, StoredPayloadSearchAtOldReadTime) {
+  TestSearchAtOldReadTime(/* store_payload= */ true);
 }
 
 // A committed transaction is visible through its intents until it is applied, while the index
