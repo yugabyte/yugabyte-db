@@ -1019,6 +1019,7 @@ void yb_release_backend_slot(od_router_t *router)
 	}
 }
 
+/* YB: deadline shared across od_frontend_attach retries */
 uint64_t od_router_wait_end_time_ms(od_router_t *router)
 {
 	/*
@@ -1049,11 +1050,13 @@ od_router_status_t od_router_attach(od_router_t *router,
 				    bool wait_for_idle,
 				    od_client_t *external_client)
 {
+	/* YB */
 	return od_router_attach_until(router, client_for_router, wait_for_idle,
 				      external_client,
 				      od_router_wait_end_time_ms(router));
 }
 
+/* YB */
 od_router_status_t od_router_attach_until(od_router_t *router,
 					  od_client_t *client_for_router,
 					  bool wait_for_idle,
@@ -1335,6 +1338,8 @@ od_router_status_t od_router_attach_until(od_router_t *router,
 		 *
 		 * The condition triggered when a server connection
 		 * put into idle state by DETACH events.
+		 *
+		 * YB: one deadline across wakeups instead of a timeout per wait.
 		 */
 		uint64_t now_ms = machine_time_ms();
 		if (now_ms >= end_time_ms)

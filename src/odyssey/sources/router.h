@@ -65,6 +65,7 @@ od_router_status_t od_router_route(od_router_t *router, od_client_t *client);
 void od_router_unroute(od_router_t *, od_client_t *);
 
 od_router_status_t od_router_attach(od_router_t *, od_client_t *, bool, od_client_t *);
+/* YB */
 od_router_status_t od_router_attach_until(od_router_t *, od_client_t *, bool,
 					  od_client_t *, uint64_t);
 uint64_t od_router_wait_end_time_ms(od_router_t *);
