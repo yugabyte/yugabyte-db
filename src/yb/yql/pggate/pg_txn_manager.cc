@@ -267,9 +267,10 @@ bool PgTxnManager::UsingObjectLocksGloballyForCurrentTxn() const {
   return UsingObjectLocksLocally() && YBCIsObjectLockingLatchedForCurrTxn();
 }
 
-// An autonomous DDL takes no object locks: every DDL of a transaction without global object locks
-// runs in a separate DDL transaction, and the tserver never releases that transaction's locks, so a
-// lock it sent would stay held.
+// An autonomous DDL, which a transaction without global object locks runs in a separate DDL
+// transaction, keeps its pre-promotion behavior: it takes no object locks. It also does not
+// refresh its catalog cache on a new lock: it reads the catalog at its own DDL transaction's read
+// time, so a refresh would record the new catalog version with entries from before it.
 bool PgTxnManager::UsingObjectLocksLocally() const {
   // A transaction that starts with yb_read_time set takes none either (#34349, #29466).
   return backend_can_take_object_locks_ && FLAGS_enable_object_locking_for_table_locks &&

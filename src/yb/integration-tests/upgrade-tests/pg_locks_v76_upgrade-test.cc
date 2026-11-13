@@ -19,14 +19,32 @@ DECLARE_bool(ysql_yb_enable_advisory_locks);
 
 namespace yb {
 
-class PgLocksV76UpgradeTest : public UpgradeTestBase {
+// The parameter is enable_object_locking_for_table_locks on every version. Release builds turn it
+// on by default, so without the parameter only the upgraded transaction that refreshes its catalog
+// cache on a new lock would be covered, not the one that keeps its stale catalog cache.
+class PgLocksV76UpgradeTest : public UpgradeTestBase, public ::testing::WithParamInterface<bool> {
  public:
   PgLocksV76UpgradeTest() : UpgradeTestBase(kBuild_2_25_0_0) {}
+
+ protected:
+  void SetUpOptions(ExternalMiniClusterOptions& opts) override {
+    if (!GetParam()) {
+      for (auto* flags : {&opts.extra_master_flags, &opts.extra_tserver_flags}) {
+        for (const auto* flag :
+             {"enable_object_locking_for_table_locks", "ysql_yb_ddl_transaction_block_enabled",
+              "ysql_enable_concurrent_ddl", "ysql_yb_enable_ddl_savepoint_support",
+              "ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks"}) {
+          AddUnDefOkAndSetFlag(*flags, flag, "false");
+        }
+      }
+    }
+    UpgradeTestBase::SetUpOptions(opts);
+  }
 };
 
 // Verify that the pg_locks view correctly displays advisory locks and other types of locks
 // during and after the upgrade.
-TEST_F(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
+TEST_P(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
   constexpr int kMinTxnAgeMs = 0;
   const std::string kPgLocksQuery = "SELECT classid, objid, objsubid, mode FROM pg_locks";
   ASSERT_OK(StartClusterInOldVersion());
@@ -51,7 +69,7 @@ TEST_F(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
   // row type either way. Read before BEGIN: since #36572, a transaction that starts before
   // finalize takes local object locks, so a read in that transaction locks the view across
   // finalize, and V76 cannot replace the view.
-  ASSERT_RESULT(FetchPgLocksAfterUpgrade(conn, kPgLocksQuery));
+  ASSERT_OK(conn.Fetch(kPgLocksQuery));
   // Acquire advisory locks and a row lock, and hold them across the upgrade.
   ASSERT_OK(conn.Fetch("SELECT pg_advisory_lock(1);"));
   ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
@@ -118,5 +136,8 @@ TEST_F(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
   ASSERT_EQ(pg_locks_result, "0, 1, 1, ExclusiveLock");
 }
 
+
+INSTANTIATE_TEST_SUITE_P(
+    TableLocks, PgLocksV76UpgradeTest, ::testing::Bool(), ::testing::PrintToStringParamName());
 
 } // namespace yb

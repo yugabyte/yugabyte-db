@@ -26,6 +26,13 @@ namespace yb {
 class ObjectLockingPromotionUpgradeTest : public UpgradeTestBase {
  public:
   ObjectLockingPromotionUpgradeTest() : UpgradeTestBase(kBuild_2025_1_1_0) {}
+
+ protected:
+  void SetUpOptions(ExternalMiniClusterOptions& opts) override {
+    // The test reads the CREATE INDEX wait from ASH.
+    opts.extra_tserver_flags.emplace_back("--ysql_yb_enable_ash=true");
+    UpgradeTestBase::SetUpOptions(opts);
+  }
 };
 
 // Test for #36572 on the upgrade path itself.
@@ -56,22 +63,32 @@ TEST_F(ObjectLockingPromotionUpgradeTest, CreateIndexWaitsForLegacyWriterAcrossP
   ASSERT_OK(legacy_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
   ASSERT_OK(legacy_conn.Execute("UPDATE test SET v = 42 WHERE k = 1"));
 
-  // Before finalize, pg_locks on the writer's node shows its local RowExclusive lock.
+  // Before finalize, pg_locks on the writer's node shows its local RowExclusive lock. Right after
+  // the upgrade, pg_locks can fail for a few seconds with "Couldn't fetch old transactions" while
+  // the transaction status tablets settle, so retry on that error.
   auto observer = ASSERT_RESULT(cluster_->ConnectToDB());
   ASSERT_OK(observer.Execute("SET yb_locks_min_txn_age = '0s'"));
   ASSERT_OK(LoggedWaitFor(
-      [this, &observer]() -> Result<bool> {
-        auto rows = VERIFY_RESULT(FetchPgLocksAfterUpgrade(
-            observer,
+      [&observer]() -> Result<bool> {
+        auto rows = observer.FetchAllAsString(
             "SELECT locktype, mode, granted FROM pg_locks WHERE relation = 'test'::regclass"
-            " ORDER BY locktype, mode"));
-        LOG(INFO) << "pg_locks on test before finalize: " << rows;
-        return rows.find("RowExclusiveLock, 1") != std::string::npos;
+            " ORDER BY locktype, mode");
+        if (!rows.ok()) {
+          if (rows.status().ToString().find("Couldn't fetch old transactions") !=
+              std::string::npos) {
+            return false;
+          }
+          return rows.status();
+        }
+        LOG(INFO) << "pg_locks on test before finalize: " << *rows;
+        return rows->find("RowExclusiveLock, 1") != std::string::npos;
       },
       MonoDelta::FromSeconds(kTimeMultiplier * 30), "pg_locks to show the legacy writer's lock"));
 
   ASSERT_OK(PromoteAutoFlags(AutoFlagClass::kLocalPersisted));
-  auto ddl_conn = ASSERT_RESULT(cluster_->ConnectToDB());
+  // ASH is per node, so the CREATE INDEX runs where ash_observer reads it.
+  auto ddl_conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte", /*tserver_index=*/0));
+  auto ash_observer = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte", /*tserver_index=*/0));
   ASSERT_OK(LoggedWaitFor(
       [&ddl_conn]() -> Result<bool> {
         return VERIFY_RESULT(ddl_conn.FetchRow<std::string>(
@@ -82,7 +99,15 @@ TEST_F(ObjectLockingPromotionUpgradeTest, CreateIndexWaitsForLegacyWriterAcrossP
   auto create_index_future = std::async(std::launch::async, [&ddl_conn]() {
     return ddl_conn.Execute("CREATE INDEX test_v_idx ON test(v)");
   });
-  ASSERT_EQ(create_index_future.wait_for(3s * kTimeMultiplier), std::future_status::timeout);
+  // The CREATE INDEX waits for the writer in WaitForLockers, which does not show in pg_locks.
+  ASSERT_OK(LoggedWaitFor(
+      [&ash_observer]() -> Result<bool> {
+        return VERIFY_RESULT(ash_observer.FetchRow<int64_t>(
+            "SELECT COUNT(*) FROM yb_active_session_history"
+            " WHERE wait_event_aux = 'WaitForLockersMultiple'")) > 0;
+      },
+      MonoDelta::FromSeconds(kTimeMultiplier * 30), "the CREATE INDEX to wait in WaitForLockers"));
+  ASSERT_EQ(create_index_future.wait_for(0s), std::future_status::timeout);
   ASSERT_OK(legacy_conn.Execute("COMMIT"));
   ASSERT_OK(create_index_future.get());
 
