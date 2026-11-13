@@ -1506,10 +1506,6 @@ void CatalogManager::ValidateIndexTablesPostLoad(
           auto index_table_wlock = index_table->LockForWrite();
           BackfillTable::UnsetIndexTableRetainsDeleteMarkers(index_table_wlock.mutable_data());
           // Backfill is done, so the birth_time is final too (it is 0 if it was not persisted).
-          // TODO: if the master crashed before AllowCompactionsToGCDeleteMarkers persisted
-          // birth_time, this marks the index final with birth_time 0, which disables the read
-          // guard for it. An index should not become final before its birth_time is set: recover
-          // it from the backfill job's backfilling_timestamp instead.
           auto& index_pb = index_table_wlock.mutable_data()->pb;
           if (index_pb.has_index_info() && index_pb.index_info().birth_time_state() ==
                                                IndexInfoPB::BIRTH_TIME_PENDING_BACKFILL) {

@@ -340,7 +340,8 @@ bool TabletMetadataValidator::Impl::HandleMasterResponse(
 
     // Third step, clean index tables from future synchronization.
     // TODO(#37622): an index that is still pending on the master is dropped here too, so if the
-    // master's finalize RPC is later lost, it is only rechecked when the tablet is reopened.
+    // master's finalize RPC is later lost, it is only rechecked when the tablet is reopened, and
+    // not even then while the cached (pending) answer is kept.
     index_tablets_to_sync_.get<IndexTableIdTag>().erase(index_table_id);
   }
 

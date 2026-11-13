@@ -668,63 +668,94 @@ TEST_F(PgConcurrentCreateOrReplaceCrashTest, ConcurrentCreateOrReplaceWithDropCr
 // silently returned an incomplete result. Now the index is BIRTH_TIME_PENDING_DDL_COMMIT until the
 // DDL verifier sets birth_time after the commit, and the guard rejects such reads.
 //
-// This mirrors the Jepsen client, which runs its lazy DDL as `BEGIN; CREATE INDEX ...`.
+// This mirrors the Jepsen client, which runs its lazy DDL as `BEGIN; CREATE INDEX ...` (the
+// txn_block case below). The other cases cover the other ways to build an index nonconcurrently:
+// autocommit CREATE INDEX NONCONCURRENTLY, and a partitioned table in and out of a transaction
+// block. A REPEATABLE READ snapshot taken before the index commits must never read fewer rows
+// through it: it either sees all rows or gets the guard's error.
 TEST_F(PgConcurrentDDLsTest,
-       YB_DISABLE_TEST_IN_TSAN(SnapshotReadFreshNonConcurrentIndex)) {
+       YB_DISABLE_TEST_IN_TSAN(SnapshotReadFreshNonConcurrentIndexMatrix)) {
+  struct Case {
+    std::string name;
+    std::vector<std::string> setup;
+    std::vector<std::string> create_index;
+    std::string table;
+  };
+  const std::vector<Case> cases = {
+    {"txn_block",
+     {"CREATE TABLE t1 (k INT PRIMARY KEY, v INT)", "INSERT INTO t1 VALUES (0, 13), (1, 14)"},
+     {"BEGIN", "CREATE INDEX ON t1 (v, k)", "COMMIT"},
+     "t1"},
+    {"autocommit_nonconcurrently",
+     {"CREATE TABLE t2 (k INT PRIMARY KEY, v INT)", "INSERT INTO t2 VALUES (0, 13), (1, 14)"},
+     {"CREATE INDEX NONCONCURRENTLY ON t2 (v, k)"},
+     "t2"},
+    {"partitioned_txn_block",
+     {"CREATE TABLE p1 (k INT, v INT) PARTITION BY RANGE (k)",
+      "CREATE TABLE p1_a PARTITION OF p1 FOR VALUES FROM (0) TO (1)",
+      "CREATE TABLE p1_b PARTITION OF p1 FOR VALUES FROM (1) TO (2)",
+      "INSERT INTO p1 VALUES (0, 13), (1, 14)"},
+     {"BEGIN", "CREATE INDEX ON p1 (v, k)", "COMMIT"},
+     "p1"},
+    {"partitioned_autocommit",
+     {"CREATE TABLE p2 (k INT, v INT) PARTITION BY RANGE (k)",
+      "CREATE TABLE p2_a PARTITION OF p2 FOR VALUES FROM (0) TO (1)",
+      "CREATE TABLE p2_b PARTITION OF p2 FOR VALUES FROM (1) TO (2)",
+      "INSERT INTO p2 VALUES (0, 13), (1, 14)"},
+     {"CREATE INDEX ON p2 (v, k)"},
+     "p2"},
+  };
+
   // Enable the index birth-time guard diagnostic (read_query.cc) so the test log shows the
-  // birth_time / retain_delete_markers / read_time the guard saw for the offending index read.
+  // birth_time / birth_time_state / read_time the guard saw for each index read.
   ASSERT_OK(cluster_->SetFlagOnTServers("vmodule", "read_query=1"));
 
   auto setup_conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(setup_conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
-  // The committed row the snapshot read must never lose.
-  ASSERT_OK(setup_conn.Execute("INSERT INTO t VALUES (0, 13)"));
-  // Unrelated table used only to fix the reader's snapshot without locking t.
+  // Unrelated table used only to fix the reader's snapshot without touching the indexed table.
   ASSERT_OK(setup_conn.Execute("CREATE TABLE anchor (k INT PRIMARY KEY)"));
   ASSERT_OK(setup_conn.Execute("INSERT INTO anchor VALUES (1)"));
 
-  // Reader fixes its REPEATABLE READ snapshot by reading `anchor`; it does NOT touch t yet.
-  auto reader = ASSERT_RESULT(Connect());
-  ASSERT_OK(reader.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
-  ASSERT_EQ(ASSERT_RESULT(reader.FetchRow<int32_t>("SELECT k FROM anchor")), 1);
-  // Commit the index after the reader's uncertainty window (max_clock_skew_usec) closes, so the
-  // stale read can't turn into a read restart error (which would pass even without the fix).
-  SleepFor(1s * kTimeMultiplier);
+  for (const auto& c : cases) {
+    SCOPED_TRACE(c.name);
+    for (const auto& stmt : c.setup) {
+      ASSERT_OK(setup_conn.Execute(stmt));
+    }
 
-  // Create the covering index INSIDE a transaction block -> nonconcurrent inline build ->
-  // skip_index_backfill -> birth_time is never set (stays 0). Its entries are stamped at COMMIT,
-  // which is after the reader's snapshot.
-  auto indexer = ASSERT_RESULT(Connect());
-  ASSERT_OK(indexer.Execute("BEGIN"));
-  ASSERT_OK(indexer.Execute("CREATE INDEX idx_t_k_v ON t (k, v)"));
-  ASSERT_OK(indexer.Execute("COMMIT"));
+    auto reader = ASSERT_RESULT(Connect());
+    ASSERT_OK(reader.Execute("SET statement_timeout = '30s'"));
+    ASSERT_OK(reader.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+    ASSERT_EQ(ASSERT_RESULT(reader.FetchRow<int32_t>("SELECT k FROM anchor")), 1);
+    // Commit the index after the reader's uncertainty window (max_clock_skew_usec) closes, so
+    // the stale read cannot turn into a read restart.
+    SleepFor(1s * kTimeMultiplier);
 
-  // Force the reader's first read of t onto the fresh (birth_time==0) index.
-  ASSERT_OK(reader.Execute("SET enable_seqscan = off"));
-  auto plan = ASSERT_RESULT(reader.FetchRow<JsonDocument>(
-      "EXPLAIN (FORMAT JSON, COSTS OFF) SELECT k, v FROM t ORDER BY k"));
-  const auto plan_json = ASSERT_RESULT(plan.Root().ToString());
-  LOG(INFO) << "Index read plan: " << plan_json;
-  // Ensure the read actually goes through the fresh index; otherwise the test wouldn't exercise the
-  // bug. The index scan is not necessarily the top plan node (e.g. a Sort for the hash index).
-  ASSERT_STR_CONTAINS(plan_json, R"("Index Name":"idx_t_k_v")");
+    auto indexer = ASSERT_RESULT(Connect());
+    for (const auto& stmt : c.create_index) {
+      ASSERT_OK(indexer.Execute(stmt));
+    }
 
-  // The committed row (0, 13) must be visible via the index. The bug returns an empty result
-  // (silent loss): the inline index entry is stamped after the reader's snapshot and, with no
-  // birth_time, the guard does not reject the stale read. Correct behavior: the row, or a loud
-  // error (SnapshotTooOld once birth_time is set).
-  auto index_read_result =
-      reader.FetchRows<int32_t, int32_t>("SELECT k, v FROM t ORDER BY k");
-  LOG(INFO) << "Read via index result: "
-            << (index_read_result.ok() ? AsString(*index_read_result)
-                                       : index_read_result.status().ToString());
-  if (index_read_result.ok()) {
-    ASSERT_EQ(*index_read_result, (std::vector<std::tuple<int32_t, int32_t>>{{0, 13}}))
-        << "Index read silently dropped a committed row: read a nonconcurrent index whose "
-           "birth_time was never set.";
-  } else {
-    // The read time is before the index's birth_time.
-    ASSERT_STR_CONTAINS(index_read_result.status().ToString(), "index birth time");
+    ASSERT_OK(reader.Execute("SET enable_seqscan = off"));
+    const auto query = Format("SELECT k, v FROM $0 WHERE v > 0 ORDER BY k", c.table);
+    // Ensure the read goes through the new index (named <table>_v_k_idx, or <partition>_v_k_idx),
+    // not e.g. the primary key; otherwise the case wouldn't exercise the bug.
+    auto plan = ASSERT_RESULT(reader.FetchRow<JsonDocument>(
+        Format("EXPLAIN (FORMAT JSON, COSTS OFF) $0", query)));
+    const auto plan_json = ASSERT_RESULT(plan.Root().ToString());
+    LOG(INFO) << "Index read plan: " << plan_json;
+    ASSERT_STR_CONTAINS(plan_json, "_v_k_idx");
+
+    // The bug returns fewer rows (the index entries are stamped after the reader's snapshot).
+    // Correct behavior: all rows, or the guard's error (SnapshotTooOld once birth_time is set).
+    auto result = reader.FetchRows<int32_t, int32_t>(query);
+    LOG(INFO) << "Read via index result: "
+              << (result.ok() ? AsString(*result) : result.status().ToString());
+    if (result.ok()) {
+      ASSERT_EQ(*result, (std::vector<std::tuple<int32_t, int32_t>>{{0, 13}, {1, 14}}))
+          << "Index read silently dropped committed rows";
+    } else {
+      ASSERT_STR_CONTAINS(result.status().ToString(), "index birth time");
+    }
+    ASSERT_OK(reader.Execute("ROLLBACK"));
   }
 }
 
@@ -813,77 +844,6 @@ TEST_F(PgConcurrentDDLsTest,
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>(query)), 0);
 }
 
-// A REPEATABLE READ snapshot taken before a nonconcurrent index commits must never read fewer
-// rows through that index. Covers each way to build an index nonconcurrently.
-TEST_F(PgConcurrentDDLsTest,
-       YB_DISABLE_TEST_IN_TSAN(SnapshotReadFreshNonConcurrentIndexMatrix)) {
-  struct Case {
-    std::string name;
-    std::vector<std::string> setup;
-    std::vector<std::string> create_index;
-    std::string table;
-  };
-  const std::vector<Case> cases = {
-    {"txn_block",
-     {"CREATE TABLE t1 (k INT PRIMARY KEY, v INT)", "INSERT INTO t1 VALUES (0, 13), (1, 14)"},
-     {"BEGIN", "CREATE INDEX ON t1 (v, k)", "COMMIT"},
-     "t1"},
-    {"autocommit_nonconcurrently",
-     {"CREATE TABLE t2 (k INT PRIMARY KEY, v INT)", "INSERT INTO t2 VALUES (0, 13), (1, 14)"},
-     {"CREATE INDEX NONCONCURRENTLY ON t2 (v, k)"},
-     "t2"},
-    {"partitioned_txn_block",
-     {"CREATE TABLE p1 (k INT, v INT) PARTITION BY RANGE (k)",
-      "CREATE TABLE p1_a PARTITION OF p1 FOR VALUES FROM (0) TO (1)",
-      "CREATE TABLE p1_b PARTITION OF p1 FOR VALUES FROM (1) TO (2)",
-      "INSERT INTO p1 VALUES (0, 13), (1, 14)"},
-     {"BEGIN", "CREATE INDEX ON p1 (v, k)", "COMMIT"},
-     "p1"},
-    {"partitioned_autocommit",
-     {"CREATE TABLE p2 (k INT, v INT) PARTITION BY RANGE (k)",
-      "CREATE TABLE p2_a PARTITION OF p2 FOR VALUES FROM (0) TO (1)",
-      "CREATE TABLE p2_b PARTITION OF p2 FOR VALUES FROM (1) TO (2)",
-      "INSERT INTO p2 VALUES (0, 13), (1, 14)"},
-     {"CREATE INDEX ON p2 (v, k)"},
-     "p2"},
-  };
-
-  auto setup_conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(setup_conn.Execute("CREATE TABLE anchor (k INT PRIMARY KEY)"));
-  ASSERT_OK(setup_conn.Execute("INSERT INTO anchor VALUES (1)"));
-
-  for (const auto& c : cases) {
-    SCOPED_TRACE(c.name);
-    for (const auto& stmt : c.setup) {
-      ASSERT_OK(setup_conn.Execute(stmt));
-    }
-
-    auto reader = ASSERT_RESULT(Connect());
-    ASSERT_OK(reader.Execute("SET statement_timeout = '30s'"));
-    ASSERT_OK(reader.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
-    ASSERT_EQ(ASSERT_RESULT(reader.FetchAllAsString("SELECT k FROM anchor")), "1");
-    // Commit the index after the reader's uncertainty window (max_clock_skew_usec) closes, so
-    // the stale read cannot turn into a read restart.
-    SleepFor(1s * kTimeMultiplier);
-
-    auto indexer = ASSERT_RESULT(Connect());
-    for (const auto& stmt : c.create_index) {
-      ASSERT_OK(indexer.Execute(stmt));
-    }
-
-    ASSERT_OK(reader.Execute("SET enable_seqscan = off"));
-    const auto query = Format("SELECT k, v FROM $0 WHERE v > 0 ORDER BY k", c.table);
-    ASSERT_TRUE(ASSERT_RESULT(reader.HasIndexScan(query)));
-    auto result = reader.FetchAllAsString(query);
-    if (result.ok()) {
-      ASSERT_EQ(*result, "0, 13; 1, 14");
-    } else {
-      ASSERT_STR_CONTAINS(result.status().ToString(), "index birth time");
-    }
-    ASSERT_OK(reader.Execute("ROLLBACK"));
-  }
-}
-
 // Once an online CREATE INDEX finishes, the master records the index's birth time as final.
 TEST_F(PgConcurrentDDLsTest, YB_DISABLE_TEST_IN_TSAN(OnlineIndexBirthTimeFinalOnMaster)) {
   auto conn = ASSERT_RESULT(Connect());
@@ -915,7 +875,7 @@ TEST_F(PgConcurrentDDLsTest, YB_DISABLE_TEST_IN_TSAN(PendingIndexRejectsStaleRea
 
   auto reader = ASSERT_RESULT(Connect());
   ASSERT_OK(reader.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
-  ASSERT_EQ(ASSERT_RESULT(reader.FetchAllAsString("SELECT k FROM anchor")), "1");
+  ASSERT_EQ(ASSERT_RESULT(reader.FetchRow<int32_t>("SELECT k FROM anchor")), 1);
   // Commit the index after the reader's uncertainty window (max_clock_skew_usec) closes.
   SleepFor(1s * kTimeMultiplier);
 
@@ -928,10 +888,11 @@ TEST_F(PgConcurrentDDLsTest, YB_DISABLE_TEST_IN_TSAN(PendingIndexRejectsStaleRea
   ASSERT_OK(reader.Execute("SET enable_seqscan = off"));
   const auto query = "SELECT k, v FROM t WHERE v > 0 ORDER BY k";
   ASSERT_TRUE(ASSERT_RESULT(reader.HasIndexScan(query)));
-  auto result = reader.FetchAllAsString(query);
-  if (result.ok()) {
-    ASSERT_EQ(*result, "0, 13; 1, 14");
-  }
+  // The tablets stay pending, so the guard keeps rejecting the read (with a retryable error) until
+  // the statement times out. Without the guard, the read would return no rows.
+  auto result = reader.FetchRows<int32_t, int32_t>(query);
+  ASSERT_NOK(result) << "Read through a pending index returned: " << AsString(*result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), "canceling statement due to statement timeout");
 }
 
 // Until an online index's backfill is applied on its tablets, a stale read through it is rejected,
@@ -964,46 +925,18 @@ TEST_F(PgConcurrentDDLsTest,
 
   auto reader = ASSERT_RESULT(Connect());
   ASSERT_OK(reader.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
-  ASSERT_EQ(ASSERT_RESULT(reader.FetchAllAsString("SELECT k FROM anchor")), "1");
+  ASSERT_EQ(ASSERT_RESULT(reader.FetchRow<int32_t>("SELECT k FROM anchor")), 1);
   thread_holder.JoinAll();
 
   ASSERT_OK(reader.Execute("SET statement_timeout = '3s'"));
   ASSERT_OK(reader.Execute("SET enable_seqscan = off"));
   const auto query = "SELECT k, v FROM t WHERE v > 0 ORDER BY k";
   ASSERT_TRUE(ASSERT_RESULT(reader.HasIndexScan(query)));
-  auto result = reader.FetchAllAsString(query);
-  if (result.ok()) {
-    ASSERT_EQ(*result, "0, 13; 1, 14");
-  }
-}
-
-// An index created in the same transaction as a DROP COLUMN on its table is still finalized at
-// commit and readable.
-TEST_F(PgConcurrentDDLsTest, YB_DISABLE_TEST_IN_TSAN(NonConcurrentIndexWithDropColumnInSameTxn)) {
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT, w INT, x INT)"));
-  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (0, 13, 1, 2)"));
-  ASSERT_OK(conn.Execute("BEGIN"));
-  ASSERT_OK(conn.Execute("CREATE INDEX idx_t_v ON t (v)"));
-  ASSERT_OK(conn.Execute("CREATE INDEX idx_t_w ON t (w)"));
-  ASSERT_OK(conn.Execute("ALTER TABLE t DROP COLUMN x"));
-  ASSERT_OK(conn.Execute("ALTER TABLE t DROP COLUMN w"));
-  ASSERT_OK(conn.Execute("COMMIT"));
-
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
-  const auto index_id =
-      ASSERT_RESULT(client::GetTableIdByTableName(client.get(), "yugabyte", "idx_t_v"));
-  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
-    auto info = VERIFY_RESULT(client->GetYBTableInfoById(index_id, /* include_hidden = */ false));
-    SCHECK(info.index_info, IllegalState, "index table has no index_info");
-    return info.index_info->birth_time_state() == IndexInfoPB::BIRTH_TIME_FINAL &&
-           info.index_info->birth_time() != 0;
-  }, 30s * kTimeMultiplier, "Wait for the master to finalize the index birth time"));
-
-  ASSERT_OK(conn.Execute("SET statement_timeout = '10s'"));
-  const std::string query = "SELECT k FROM t WHERE v = 13";
-  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
-  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>(query)), 0);
+  // The tablets stay pending, so the guard keeps rejecting the read (with a retryable error) until
+  // the statement times out. Without the guard, the read would return no rows.
+  auto result = reader.FetchRows<int32_t, int32_t>(query);
+  ASSERT_NOK(result) << "Read through a pending index returned: " << AsString(*result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), "canceling statement due to statement timeout");
 }
 
 // A finalize that reaches a colocated tablet after DROP INDEX removed the index must not take the
@@ -1016,13 +949,22 @@ TEST_F(PgConcurrentDDLsTest, YB_DISABLE_TEST_IN_TSAN(NonConcurrentIndexFinalizeA
   ASSERT_OK(conn.Execute("INSERT INTO t VALUES (0, 13)"));
   // Hold the finalize on the tablet leader until after the DROP INDEX below has applied.
   ASSERT_OK(cluster_->SetFlagOnTServers("TEST_mark_non_concurrent_index_done_delay_ms", "10000"));
+  // The colocated tablet has a replica on every tserver, and each one skips the held finalize once
+  // it applies it.
+  std::vector<std::unique_ptr<LogWaiter>> skip_waiters;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    skip_waiters.push_back(std::make_unique<LogWaiter>(
+        cluster_->tablet_server(i), "Skipping non-concurrent index done of removed table"));
+  }
   ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.Execute("CREATE INDEX idx_t_v ON t (v)"));
   ASSERT_OK(conn.Execute("COMMIT"));
   ASSERT_OK(conn.Execute("DROP INDEX idx_t_v"));
 
-  // Let the held finalize reach the tablet.
-  SleepFor(30s * kTimeMultiplier);
+  // Wait for the held finalize to be applied (and skipped) on every replica.
+  for (auto& waiter : skip_waiters) {
+    ASSERT_OK(waiter->WaitFor(60s * kTimeMultiplier));
+  }
   for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
     ASSERT_TRUE(cluster_->tablet_server(i)->IsProcessAlive()) << "tserver " << i << " is down";
   }

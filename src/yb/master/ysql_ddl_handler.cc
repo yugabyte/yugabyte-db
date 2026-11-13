@@ -547,7 +547,9 @@ Status CatalogManager::HandleSuccessfulYsqlDdlTxn(
     // Propagate birth time related information so that the index starts accepting reads.
     // The DDL transaction state is already cleared, so a retry would not get here again: don't
     // fail on a single tablet, but try to reach all of them.
-    // TODO(#37622): nothing re-sends this if a tablet misses it (e.g. on master failover).
+    // TODO(#37622): the master does not resend this if a tablet misses it (e.g. on master
+    // failover). The tablet validator usually repairs that, but not if its single check ran
+    // while the index was still pending.
     if (finalize_index_birth_time) {
       auto tablets = txn_data.table->GetTablets();
       if (!tablets.ok()) {
