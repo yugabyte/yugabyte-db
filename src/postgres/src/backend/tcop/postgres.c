@@ -5690,13 +5690,18 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 
 	/*
 	 * With transactional DDL, a statement outside a transaction block whose
-	 * transaction ran DDL -- an autocommit DDL, or a statement that runs one,
-	 * such as a DO block or a function call -- can't be retried, in any
-	 * isolation level. The retry (yb_restart_transaction) starts a new DocDB
+	 * transaction changed the catalog can't be retried, in any isolation
+	 * level. That is a statement whose transaction has DDL transaction state:
+	 * an autocommit DDL, a statement that runs one (such as a DO block or a
+	 * function call), or one that registers a catalog change through
+	 * YBAddDdlTxnState without a DDL statement (such as the statistics restore
+	 * functions, or a write to the hint table, whose trigger bumps the catalog
+	 * version). The retry (yb_restart_transaction) starts a new DocDB
 	 * transaction but does not abort the PG-side one, so the re-run starts from
 	 * the failed attempt's PG-side state: the backend's caches still reflect
-	 * the failed attempt's catalog changes, which DocDB has discarded, and the
-	 * re-run can write inconsistent catalog entries (#37717).
+	 * the failed attempt's catalog changes, which DocDB has discarded, so the
+	 * re-run can write inconsistent catalog entries (#37717) or fail on other
+	 * state the failed attempt left behind.
 	 *
 	 * YBIsCurrentStmtDdl() is not enough: it is cleared once the DDL statement
 	 * finishes, before the commit, and the error may come from the commit.
@@ -5710,9 +5715,10 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		 YBIsDdlTxnBlockCommitInProgress()))
 	{
 		const char *retry_err = ("query layer retry isn't possible because "
-								 "the statement ran DDL, and retrying it would "
-								 "re-run that DDL without aborting the "
-								 "failed attempt");
+								 "the statement changed the catalog (for "
+								 "example, it ran DDL), and retrying it would "
+								 "redo that without aborting the failed "
+								 "attempt");
 
 		edata->message = psprintf("%s (%s)", edata->message, retry_err);
 		if (yb_debug_log_internal_restarts)

@@ -10760,8 +10760,8 @@ YbNewTruncateColocatedIgnoreNotFound(Relation rel, YbcPgTransactionSetting trans
  * 6 = deadlock, all raised at the start of YBCommitTransactionContainingDDL.
  * 7 = conflict and 8 = deadlock are raised just before the commit RPC
  * (before_commit_rpc), standing in for an error from that RPC.  That point is
- * reached only when a DDL commits through a regular transaction block
- * (transactional DDL); until then they stay set.
+ * reached only when a transaction with DDL transaction state commits through a
+ * regular transaction block (transactional DDL); until then they stay set.
  * Resets to 0 after triggering.
  */
 static void

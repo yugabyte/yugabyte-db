@@ -4508,8 +4508,9 @@ static struct config_int ConfigureNamesInt[] =
 			gettext_noop("When set to non-zero, the next DDL will fail: "
 						 "1=ERROR, 2=FATAL, 3=PANIC, 4=crash, 5=conflict, "
 						 "6=deadlock, 7=conflict and 8=deadlock at the "
-						 "commit RPC of a transactional DDL (they stay set "
-						 "until such a DDL commits)."),
+						 "commit RPC of a transaction with DDL state, "
+						 "which needs transactional DDL (they stay set "
+						 "until one commits)."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
