@@ -43,6 +43,9 @@
 #include "utils/rel.h"
 #include "utils/varlena.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 
 /*
  * Because of backward-compatibility issue, we have decided to have
@@ -463,6 +466,13 @@ pg_relpages_impl(Relation rel)
 				 errmsg("cannot get page count of relation \"%s\"",
 						RelationGetRelationName(rel)),
 				 errdetail_relkind_not_supported(rel->rd_rel->relkind)));
+
+	/* YB: YB relations have no pages, so the count would always be 0. */
+	if (IsYBRelation(rel))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot get page count of YugabyteDB relation \"%s\"",
+						RelationGetRelationName(rel))));
 
 	/* note: this will work OK on non-local temp tables */
 

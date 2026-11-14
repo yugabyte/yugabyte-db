@@ -42,6 +42,9 @@
 #include "utils/snapmgr.h"
 #include "utils/varlena.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 PG_MODULE_MAGIC;
 
 PG_FUNCTION_INFO_V1(pgrowlocks);
@@ -96,6 +99,17 @@ pgrowlocks(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("only heap AM is supported")));
+
+	/*
+	 * YB: row locks on YB tables are held in DocDB, not in tuple headers, and
+	 * the heap scan below would misread the YB scan descriptor.
+	 */
+	if (IsYBRelation(rel))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot get row locks of YugabyteDB table \"%s\"",
+						RelationGetRelationName(rel)),
+				 errhint("Query the pg_locks view instead.")));
 
 	/*
 	 * check permissions: must have SELECT on table or be in
