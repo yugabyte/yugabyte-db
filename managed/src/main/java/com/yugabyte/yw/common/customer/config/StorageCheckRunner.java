@@ -20,9 +20,9 @@ import org.apache.pekko.actor.CoordinatedShutdown;
 /**
  * Runs the storage checks of the ValidateStorageConfig task with a deadline. They block on cloud
  * SDK calls that have no overall deadline of their own, and can't be interrupted reliably: a check
- * that timed out keeps its thread until the SDK call returns. The pool (yb.storage_config_validation)
- * has no queue, so that checks don't time out waiting behind hung ones; when every thread is busy,
- * the check is rejected.
+ * that timed out keeps its thread until the SDK call returns. The pool
+ * (yb.storage_config_validation) has no queue, so that checks don't time out waiting behind hung
+ * ones; when every thread is busy, the check is rejected.
  */
 @Singleton
 public class StorageCheckRunner {
@@ -57,8 +57,7 @@ public class StorageCheckRunner {
    * @throws TimeoutException when the check didn't finish in time
    * @throws InterruptedException when the waiting thread was interrupted
    */
-  public void run(Runnable check, Duration timeout)
-      throws TimeoutException, InterruptedException {
+  public void run(Runnable check, Duration timeout) throws TimeoutException, InterruptedException {
     Future<?> future = executor.submit(check);
     try {
       future.get(timeout.toMillis(), TimeUnit.MILLISECONDS);

@@ -139,8 +139,8 @@ public final class StorageValidationErrors {
    * provider error code AccessDenied)
    * </pre>
    *
-   * followed by the other errors when there is more than one. A provider that is unavailable
-   * gives {@link Code#CONNECTION_ERROR}, any other failure {@link Code#INTERNAL_ERROR}.
+   * followed by the other errors when there is more than one. A provider that is unavailable gives
+   * {@link Code#CONNECTION_ERROR}, any other failure {@link Code#INTERNAL_ERROR}.
    */
   public static TaskExecutionException toTaskError(Throwable failure) {
     PlatformServiceException v2Error = toV2Error(failure);
@@ -172,7 +172,9 @@ public final class StorageValidationErrors {
       }
     }
     if (errors.size() > 1) {
-      message.append(". Other errors: ").append(String.join(", ", errors.subList(1, errors.size())));
+      message
+          .append(". Other errors: ")
+          .append(String.join(", ", errors.subList(1, errors.size())));
     }
     // The task error can't carry the exception behind the failure, such as the SDK's with its
     // request ID, so it goes to the log.

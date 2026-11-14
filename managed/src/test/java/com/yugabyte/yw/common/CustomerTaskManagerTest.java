@@ -613,11 +613,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
     referenced.setState(CustomerConfig.ConfigState.Validating);
     referenced.update();
     ContinuousBackupConfig.create(
-        referenced.getConfigUUID(),
-        1,
-        com.yugabyte.yw.models.helpers.TimeUnit.HOURS,
-        1,
-        "dir");
+        referenced.getConfigUUID(), 1, com.yugabyte.yw.models.helpers.TimeUnit.HOURS, 1, "dir");
     CustomerConfig other = ModelFactory.createNfsStorageConfig(customer, "other");
     other.setState(CustomerConfig.ConfigState.Validating);
     other.update();
