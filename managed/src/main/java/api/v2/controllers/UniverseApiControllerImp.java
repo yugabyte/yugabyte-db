@@ -81,7 +81,7 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   @Override
   public Result getUniverseHttp(Http.Request request, UUID cUUID, UUID uniUUID) throws Exception {
     Universe universe = getUniverse(request, cUUID, uniUUID);
-    redactAdminPasswords(universe);
+    omitAdminPasswords(universe);
     return redactedOk(universe);
   }
 
@@ -95,7 +95,7 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
       Http.Request request, UUID cUUID, UniversePagedQuerySpec universePagedQuerySpec)
       throws Exception {
     UniversePagedResp page = pageListUniverses(request, cUUID, universePagedQuerySpec);
-    page.getEntities().forEach(UniverseApiControllerImp::redactAdminPasswords);
+    page.getEntities().forEach(UniverseApiControllerImp::omitAdminPasswords);
     return redactedOk(page);
   }
 
@@ -112,17 +112,18 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
         RedactingService.filterSecretFields(mapper.valueToTree(response), RedactionTarget.APIS));
   }
 
-  // The v1 rules match the admin passwords by their v1 names, ysqlPassword and ycqlPassword.
-  private static void redactAdminPasswords(Universe universe) {
+  // The admin passwords are writeOnly in the v2 schema, and the v1 rules in redactedOk match them
+  // only by their v1 names, ysqlPassword and ycqlPassword.
+  private static void omitAdminPasswords(Universe universe) {
     UniverseSpec spec = universe.getSpec();
     if (spec == null) {
       return;
     }
-    if (spec.getYsql() != null && spec.getYsql().getPassword() != null) {
-      spec.getYsql().setPassword(RedactingService.SECRET_REPLACEMENT);
+    if (spec.getYsql() != null) {
+      spec.getYsql().setPassword(null);
     }
-    if (spec.getYcql() != null && spec.getYcql().getPassword() != null) {
-      spec.getYcql().setPassword(RedactingService.SECRET_REPLACEMENT);
+    if (spec.getYcql() != null) {
+      spec.getYcql().setPassword(null);
     }
   }
 

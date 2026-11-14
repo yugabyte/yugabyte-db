@@ -278,13 +278,6 @@ public class UniverseManagementHandler extends ApiControllerUtils {
 
   public YBATask createUniverse(Request request, UUID cUUID, UniverseCreateSpec universeSpec) {
     Customer customer = Customer.getOrNotFound(cUUID);
-    UniverseSpec spec = universeSpec.getSpec();
-    if (spec.getYsql() != null) {
-      checkPasswordNotRedacted(spec.getYsql().getPassword(), "spec.ysql.password");
-    }
-    if (spec.getYcql() != null) {
-      checkPasswordNotRedacted(spec.getYcql().getPassword(), "spec.ycql.password");
-    }
     log.info("Create Universe with v2 spec: {}", prettyPrint(universeSpec));
     // map universeSpec to v1 universe details
     UniverseDefinitionTaskParams v1DefnParams =
@@ -309,19 +302,6 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     com.yugabyte.yw.forms.UniverseResp universeResp =
         universeCRUDHandler.createUniverse(customer, v1Params);
     return new YBATask().resourceUuid(universeResp.universeUUID).taskUuid(universeResp.taskUUID);
-  }
-
-  // Universe responses return REDACTED in place of these passwords, so a spec copied from one
-  // would otherwise set the password to that literal.
-  private static void checkPasswordNotRedacted(String password, String field) {
-    if (RedactingService.SECRET_REPLACEMENT.equals(password)) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          String.format(
-              "%s is %s, the placeholder that universe responses return. Submit the actual"
-                  + " password.",
-              field, RedactingService.SECRET_REPLACEMENT));
-    }
   }
 
   private UniverseEditSpec inheritFromPrimaryBeforeMapping(
