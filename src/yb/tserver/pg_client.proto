@@ -961,11 +961,12 @@ message PgPerformOptionsPB {
 
   uint32 xrepl_origin_id = 31;
 
-  // The transaction takes global object locks: DDLs order themselves against it through object
-  // locks, so the tablets skip their catalog version check for its requests and DDLs do not abort
-  // it. A transaction without global object locks keeps both fences, even though it takes local
-  // locks.
-  bool is_using_table_locks = 32;
+  // The transaction runs with global object locking: its DDLs take global object locks, while the
+  // transaction itself may hold only local locks, as a DML-only transaction does. DDLs order
+  // themselves against it through object locks, so the tablets skip their catalog version check
+  // for its requests and DDLs do not abort it. A transaction without global object locking keeps
+  // both fences, even though it takes local locks.
+  bool using_table_locks_globally = 32;
 
   ReadTimeOptionsPB read_time_options = 34;
 
@@ -1096,8 +1097,8 @@ message PgInsertSequenceTupleRequestPB {
   bool is_called = 6;
   reserved 8; // ASH metadata is now passed in RequestHeader PB
   fixed64 origination_ht = 9;
-  // See PgsqlWriteRequestPB::is_using_table_locks.
-  bool is_using_table_locks = 10;
+  // See PgsqlWriteRequestPB::using_table_locks_globally.
+  bool using_table_locks_globally = 10;
 }
 
 message PgInsertSequenceTupleResponsePB {
@@ -1117,8 +1118,8 @@ message PgUpdateSequenceTupleRequestPB {
   bool expected_is_called = 9;
   reserved 11; // ASH metadata is now passed in RequestHeader PB
   fixed64 origination_ht = 12;
-  // See PgsqlWriteRequestPB::is_using_table_locks.
-  bool is_using_table_locks = 13;
+  // See PgsqlWriteRequestPB::using_table_locks_globally.
+  bool using_table_locks_globally = 13;
 }
 
 message PgUpdateSequenceTupleResponsePB {
@@ -1143,8 +1144,8 @@ message PgFetchSequenceTupleRequestPB {
   bool cycle = 9;
   reserved 11; // ASH metadata is now passed in RequestHeader PB
   fixed64 origination_ht = 12;
-  // See PgsqlWriteRequestPB::is_using_table_locks.
-  bool is_using_table_locks = 13;
+  // See PgsqlWriteRequestPB::using_table_locks_globally.
+  bool using_table_locks_globally = 13;
 }
 
 message PgFetchSequenceTupleResponsePB {
@@ -1161,8 +1162,8 @@ message PgReadSequenceTupleRequestPB {
   uint64 ysql_db_catalog_version = 5;
   uint64 read_time = 6;
   reserved 7; // ASH metadata is now passed in RequestHeader PB
-  // See PgsqlWriteRequestPB::is_using_table_locks.
-  bool is_using_table_locks = 8;
+  // See PgsqlWriteRequestPB::using_table_locks_globally.
+  bool using_table_locks_globally = 8;
 }
 
 message PgReadSequenceTupleResponsePB {

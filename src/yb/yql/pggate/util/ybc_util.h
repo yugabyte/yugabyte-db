@@ -184,7 +184,7 @@ char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len);
 
 /*
  * Latch whether the transaction that is about to start uses object locking. PG decides it in
- * YbSetObjectLockingForCurrTxn: the yb_enable_object_locking_infra auto flag is on, and the
+ * YbSetObjectLockingForCurrTxn: the yb_enable_global_object_locking_infra auto flag is on, and the
  * transaction doesn't start with yb_read_time set. The flag is PGC_SIGHUP and yb_read_time can be
  * changed by SET LOCAL, so without a per-transaction copy object locking could flip on or off
  * mid-transaction. Must be called from PG's StartTransaction() before AtStart_Cache(), which

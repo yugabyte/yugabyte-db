@@ -1458,11 +1458,11 @@ Status PgSession::AcquireObjectLock(
     // traffic. However, YB guarantees that there will be no DDLs running at that time.
     return Status::OK();
   }
-  // While yb_enable_object_locking_infra is being promoted, a CREATE INDEX with global object locks
-  // waits for writers only through object locks. If a transaction without global object locks (one
-  // that latched the flag as off) sent no locks, the CREATE INDEX would backfill under its
-  // uncommitted UPDATE, and the index would miss the update once it commits (#36572). So a
-  // transaction without global object locks sends the locks a writer takes. It sends nothing
+  // While yb_enable_global_object_locking_infra is being promoted, a CREATE INDEX with global
+  // object locks waits for writers only through object locks. If a transaction without global
+  // object locks (one that latched the flag as off) sent no locks, the CREATE INDEX would backfill
+  // under its uncommitted UPDATE, and the index would miss the update once it commits (#36572). So
+  // a transaction without global object locks sends the locks a writer takes. It sends nothing
   // stronger, so its LOCK TABLE and DDLs keep their pre-promotion behavior: LOCK TABLE t IN ACCESS
   // EXCLUSIVE MODE still takes no object lock. PG records every lock in its own lock table either
   // way.

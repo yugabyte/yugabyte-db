@@ -2817,12 +2817,12 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_enable_object_locking_infra", PGC_SIGHUP, LOCK_MANAGEMENT,
+		{"yb_enable_global_object_locking_infra", PGC_SIGHUP, LOCK_MANAGEMENT,
 			gettext_noop("Allow enabling object-level locking for table locks."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
-		&yb_enable_object_locking_infra,
+		&yb_enable_global_object_locking_infra,
 		true,
 		NULL, NULL, NULL
 	},

@@ -357,9 +357,10 @@ message PgsqlWriteRequestPB {
   // ON CONFLICT resolution for a PGSQL_INSERT.
   optional PgsqlOnConflictAction on_conflict_action = 33 [default = PGSQL_ON_CONFLICT_NONE];
 
-  // Set for a request of a transaction with global object locks, which DDLs order themselves
-  // against through object locks.
-  optional bool is_using_table_locks = 34 [default = false];
+  // Set when the transaction runs with global object locking: its DDLs take global object locks.
+  // The transaction itself may hold only local locks, as a DML-only transaction does. Tablets skip
+  // the catalog version check for these requests (CatalogVersionChecker in service_util.h).
+  optional bool using_table_locks_globally = 34 [default = false];
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -671,8 +672,8 @@ message PgsqlReadRequestPB {
   // has not started, and could shed a connection that had already paid for the large read.
   optional bool catalog_prefetch_continuation = 49;
 
-  // See PgsqlWriteRequestPB::is_using_table_locks.
-  optional bool is_using_table_locks = 50 [default = false];
+  // See PgsqlWriteRequestPB::using_table_locks_globally.
+  optional bool using_table_locks_globally = 50 [default = false];
 }
 
 //--------------------------------------------------------------------------------------------------

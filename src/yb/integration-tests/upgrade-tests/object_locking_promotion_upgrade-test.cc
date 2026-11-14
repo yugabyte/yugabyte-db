@@ -37,11 +37,11 @@ class ObjectLockingPromotionUpgradeTest : public UpgradeTestBase {
 
 // Test for #36572 on the upgrade path itself.
 //
-// After an upgrade, ysql_yb_enable_object_locking_infra stays off until the AutoFlags are promoted,
-// so transactions on the new binary run without global object locks. Such a writer that is still
-// open when the flag is promoted must hold a local object lock, or the first CREATE INDEX with
-// global object locks does not wait for it and builds an index without the writer's row. Before the
-// promotion, pg_locks on the writer's node must already show that lock.
+// After an upgrade, ysql_yb_enable_global_object_locking_infra stays off until the AutoFlags are
+// promoted, so transactions on the new binary run without global object locks. Such a writer that
+// is still open when the flag is promoted must hold a local object lock, or the first CREATE INDEX
+// with global object locks does not wait for it and builds an index without the writer's row.
+// Before the promotion, pg_locks on the writer's node must already show that lock.
 TEST_F(ObjectLockingPromotionUpgradeTest, CreateIndexWaitsForLegacyWriterAcrossPromotion) {
 #ifndef NDEBUG
   // enable_object_locking_for_table_locks is off by default in debug builds, so the current
@@ -59,7 +59,7 @@ TEST_F(ObjectLockingPromotionUpgradeTest, CreateIndexWaitsForLegacyWriterAcrossP
 
   auto legacy_conn = ASSERT_RESULT(cluster_->ConnectToDB());
   ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<std::string>(
-      "SHOW yb_enable_object_locking_infra")), "off");
+      "SHOW yb_enable_global_object_locking_infra")), "off");
   ASSERT_OK(legacy_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
   ASSERT_OK(legacy_conn.Execute("UPDATE test SET v = 42 WHERE k = 1"));
 
@@ -92,7 +92,7 @@ TEST_F(ObjectLockingPromotionUpgradeTest, CreateIndexWaitsForLegacyWriterAcrossP
   ASSERT_OK(LoggedWaitFor(
       [&ddl_conn]() -> Result<bool> {
         return VERIFY_RESULT(ddl_conn.FetchRow<std::string>(
-                   "SHOW yb_enable_object_locking_infra")) == "on";
+                   "SHOW yb_enable_global_object_locking_infra")) == "on";
       },
       MonoDelta::FromSeconds(kTimeMultiplier * 60), "promotion to reach the backends"));
 

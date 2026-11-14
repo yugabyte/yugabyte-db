@@ -938,7 +938,7 @@ class PgObjectLocksTestMixModeDuringPromotion : public PgObjectLocksTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     PgObjectLocksTest::UpdateMiniClusterOptions(opts);
     // Start off with the flag disabled.
-    opts->extra_tserver_flags.emplace_back("--ysql_yb_enable_object_locking_infra=false");
+    opts->extra_tserver_flags.emplace_back("--ysql_yb_enable_global_object_locking_infra=false");
     // ysql_enable_concurrent_ddl defaults to kEnableDdlTransactionBlocks, which is only true in
     // release builds. YBCIsLegacyModeForCatalogOps() is pinned to legacy without it, which would
     // leave the promotion unobservable in the catalog op mode, so pin it on for every build type.
@@ -952,7 +952,7 @@ class PgObjectLocksTestMixModeDuringPromotion : public PgObjectLocksTest {
   // modes apart: both send its ACCESS SHARE lock.
   Result<PGConn> HoldLockInNewMode(const std::string& db, const std::string& table) {
     auto* ts2 = cluster_->tablet_server(1);
-    RETURN_NOT_OK(cluster_->SetFlag(ts2, "ysql_yb_enable_object_locking_infra", "true"));
+    RETURN_NOT_OK(cluster_->SetFlag(ts2, "ysql_yb_enable_global_object_locking_infra", "true"));
     auto holder = VERIFY_RESULT(LibPqTestBase::ConnectToTsForDB(*ts2, db));
     RETURN_NOT_OK(holder.Execute("BEGIN"));
     RETURN_NOT_OK(holder.ExecuteFormat("LOCK TABLE $0 IN ACCESS EXCLUSIVE MODE", table));
@@ -963,11 +963,11 @@ class PgObjectLocksTestMixModeDuringPromotion : public PgObjectLocksTest {
   // its message loop, so wait until `observer`, a connection to ts1, shows it on.
   Status PromoteInfraFlagAndWait(PGConn& observer) {
     RETURN_NOT_OK(cluster_->SetFlag(
-        cluster_->tablet_server(0), "ysql_yb_enable_object_locking_infra", "true"));
+        cluster_->tablet_server(0), "ysql_yb_enable_global_object_locking_infra", "true"));
     return LoggedWaitFor(
         [&observer]() -> Result<bool> {
           return VERIFY_RESULT(observer.FetchRow<std::string>(
-                     "SHOW yb_enable_object_locking_infra")) == "on";
+                     "SHOW yb_enable_global_object_locking_infra")) == "on";
         },
         MonoDelta::FromSeconds(kTimeMultiplier * 60), "promotion to reach the backends");
   }
@@ -1055,14 +1055,14 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestMixModeDuringPromotion) {
 
   // Promote ts1 to use table locks before the DDL.
   auto* ts1 = cluster_->tablet_server(0);
-  ASSERT_OK(cluster_->SetFlag(ts1, "ysql_yb_enable_object_locking_infra", "true"));
+  ASSERT_OK(cluster_->SetFlag(ts1, "ysql_yb_enable_global_object_locking_infra", "true"));
 
   auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTsForDB(*ts1, "testdb"));
   ASSERT_OK(conn1.Execute("BEGIN TRANSACTION"));
   ASSERT_OK(conn1.Execute("ALTER TABLE test ADD COLUMN v1 INT"));
 
   auto* ts2 = cluster_->tablet_server(1);
-  ASSERT_OK(cluster_->SetFlag(ts2, "ysql_yb_enable_object_locking_infra", "true"));
+  ASSERT_OK(cluster_->SetFlag(ts2, "ysql_yb_enable_global_object_locking_infra", "true"));
   auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTsForDB(*ts2, "testdb"));
   const auto kStatementTimeoutSec = 2;
   ASSERT_OK(conn2.ExecuteFormat("SET statement_timeout = '$0s';", kStatementTimeoutSec));
@@ -1091,8 +1091,8 @@ TEST_F(
   auto* ts2 = cluster_->tablet_server(1);
   auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTsForDB(*ts2, "testdb"));
 
-  ASSERT_OK(cluster_->SetFlag(ts1, "ysql_yb_enable_object_locking_infra", "true"));
-  ASSERT_OK(cluster_->SetFlag(ts2, "ysql_yb_enable_object_locking_infra", "true"));
+  ASSERT_OK(cluster_->SetFlag(ts1, "ysql_yb_enable_global_object_locking_infra", "true"));
+  ASSERT_OK(cluster_->SetFlag(ts2, "ysql_yb_enable_global_object_locking_infra", "true"));
 
   ASSERT_OK(conn1.Execute("BEGIN TRANSACTION"));
   ASSERT_OK(conn1.Execute("ALTER TABLE test ADD COLUMN v1 INT"));
@@ -1120,8 +1120,8 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestConcurrentTxnsMayNotTakeTabl
 
   ASSERT_OK(conn1.Execute("BEGIN TRANSACTION"));
 
-  ASSERT_OK(cluster_->SetFlag(ts1, "ysql_yb_enable_object_locking_infra", "true"));
-  ASSERT_OK(cluster_->SetFlag(ts2, "ysql_yb_enable_object_locking_infra", "true"));
+  ASSERT_OK(cluster_->SetFlag(ts1, "ysql_yb_enable_global_object_locking_infra", "true"));
+  ASSERT_OK(cluster_->SetFlag(ts2, "ysql_yb_enable_global_object_locking_infra", "true"));
 
   ASSERT_OK(conn1.Execute("ALTER TABLE test ADD COLUMN v1 INT"));
 
@@ -1167,7 +1167,7 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestCatalogOpModeStableAcrossPro
       ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 30)));
     }
 
-    ASSERT_OK(cluster_->SetFlag(ts1, "ysql_yb_enable_object_locking_infra", "true"));
+    ASSERT_OK(cluster_->SetFlag(ts1, "ysql_yb_enable_global_object_locking_infra", "true"));
 
     ASSERT_OK(admin.Execute("CREATE TABLE cold(k INT PRIMARY KEY, v INT)"));
     {
@@ -1209,7 +1209,7 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestDdlTxnBlockModeStableAcrossP
   ASSERT_OK(conn.Execute("BEGIN TRANSACTION"));
   ASSERT_OK(conn.Execute("CREATE TABLE pre_promotion(k INT PRIMARY KEY)"));
 
-  ASSERT_OK(cluster_->SetFlag(ts1, "ysql_yb_enable_object_locking_infra", "true"));
+  ASSERT_OK(cluster_->SetFlag(ts1, "ysql_yb_enable_global_object_locking_infra", "true"));
 
   ASSERT_OK(conn.Execute("ROLLBACK"));
   // The DDL ran in an autonomous transaction, so the table is still there.
@@ -1407,7 +1407,7 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyTxnKeepsCatalogVersionChec
 
   for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
     ASSERT_OK(cluster_->SetFlag(
-        cluster_->tablet_server(i), "ysql_yb_enable_object_locking_infra", "true"));
+        cluster_->tablet_server(i), "ysql_yb_enable_global_object_locking_infra", "true"));
   }
 
   // A transaction with global object locks open across a breaking DDL must not be subjected to the
@@ -1464,7 +1464,7 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyCursorStoppedByCatalogVers
 
   for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
     ASSERT_OK(cluster_->SetFlag(
-        cluster_->tablet_server(i), "ysql_yb_enable_object_locking_infra", "true"));
+        cluster_->tablet_server(i), "ysql_yb_enable_global_object_locking_infra", "true"));
   }
   auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
   ASSERT_OK(ddl_conn.Execute("REVOKE SELECT ON test FROM r"));
@@ -1501,10 +1501,10 @@ class PgObjectLocksTestLegacyTxnVsNewDdl : public PgObjectLocksTestMixModeDuring
 
   void PromoteForDdl() {
     ASSERT_OK(cluster_->SetFlag(
-        cluster_->tablet_server(1), "ysql_yb_enable_object_locking_infra", "true"));
+        cluster_->tablet_server(1), "ysql_yb_enable_global_object_locking_infra", "true"));
     if (GetParam()) {
       ASSERT_OK(cluster_->SetFlag(
-          cluster_->tablet_server(0), "ysql_yb_enable_object_locking_infra", "true"));
+          cluster_->tablet_server(0), "ysql_yb_enable_global_object_locking_infra", "true"));
     }
   }
 
@@ -1908,7 +1908,7 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyRewriteNeverEmptiesLegacyR
 
   auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
   ASSERT_EQ(ASSERT_RESULT(ddl_conn.FetchRow<std::string>(
-      "SHOW yb_enable_object_locking_infra")), "off");
+      "SHOW yb_enable_global_object_locking_infra")), "off");
   ASSERT_OK(ddl_conn.Execute("ALTER TABLE test ALTER COLUMN v TYPE BIGINT"));
 
   // A new lock refreshes the reader's catalog cache.
@@ -1945,13 +1945,13 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyCreateIndexAcrossPromotion
 
   for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
     ASSERT_OK(cluster_->SetFlag(
-        cluster_->tablet_server(i), "ysql_yb_enable_object_locking_infra", "true"));
+        cluster_->tablet_server(i), "ysql_yb_enable_global_object_locking_infra", "true"));
   }
   auto observer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
   ASSERT_OK(LoggedWaitFor(
       [&observer]() -> Result<bool> {
         return VERIFY_RESULT(observer.FetchRow<std::string>(
-                   "SHOW yb_enable_object_locking_infra")) == "on";
+                   "SHOW yb_enable_global_object_locking_infra")) == "on";
       },
       MonoDelta::FromSeconds(kTimeMultiplier * 60), "promotion to reach the backends"));
   ASSERT_OK(cluster_->SetFlag(ts1, "ysql_yb_test_block_index_phase", "none"));

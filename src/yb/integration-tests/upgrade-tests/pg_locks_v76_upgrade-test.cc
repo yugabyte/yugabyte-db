@@ -115,12 +115,12 @@ TEST_P(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
   ASSERT_EQ(pg_locks_result, "NULL, NULL, NULL, STRONG_READ,STRONG_WRITE");
 
   // conn's transaction was opened before FinalizeUpgrade(), so it keeps the pre-finalize value of
-  // the yb_enable_object_locking_infra auto flag, latched in StartTransaction. Its first pg_locks
-  // read after finalize is a new lock for the transaction. With object locking on, a transaction
-  // that started before the promotion takes local object locks and refreshes its catalog cache on
-  // a new lock, as PG does (#36572), so it sees the new yb_lock_status row type. With object
-  // locking off, it does not refresh mid-transaction, and the catcache stays stale (21 vs 24
-  // columns).
+  // the yb_enable_global_object_locking_infra auto flag, latched in StartTransaction. Its first
+  // pg_locks read after finalize is a new lock for the transaction. With object locking on, a
+  // transaction that started before the promotion takes local object locks and refreshes its
+  // catalog cache on a new lock, as PG does (#36572), so it sees the new yb_lock_status row type.
+  // With object locking off, it does not refresh mid-transaction, and the catcache stays stale (21
+  // vs 24 columns).
   auto result = conn.FetchAllAsString(Format("$0 WHERE locktype = 'advisory';", kPgLocksQuery));
   if (ASSERT_RESULT(cluster_->GetFlag(
           cluster_->tablet_server(0), "enable_object_locking_for_table_locks")) == "true") {
