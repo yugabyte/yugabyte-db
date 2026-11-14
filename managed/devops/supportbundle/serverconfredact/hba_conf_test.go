@@ -141,6 +141,11 @@ func TestRedactLdapBindPasswdText(t *testing.T) {
 				"ldapbindpasswd=x\",\n    \"--max_log_size=256\"\n  ]"},
 		{"Running command:\n  yb-admin ldapbindpasswd=REDACTED\n  next output line",
 			"Running command:\n  yb-admin ldapbindpasswd=x\n  next output line"},
+		// Neither do the lines of a YAML literal block.
+		{"ysql_hba.conf: |\n  " + ldapRule + "ldapbindpasswd=REDACTED\n  local all all trust",
+			"ysql_hba.conf: |\n  " + ldapRule + "ldapbindpasswd=x\n  local all all trust"},
+		{"- |-\n  " + ldapRule + "ldapbindpasswd=REDACTED\n  local all all trust",
+			"- |-\n  " + ldapRule + "ldapbindpasswd=x\n  local all all trust"},
 		// A value can start on the line below its key.
 		{"    ysql_hba_conf_csv:\n      " + ldapRule +
 			"\n      ldapbindpasswd=REDACTED\n      REDACTED\n    max_log_size: 256",
@@ -336,6 +341,13 @@ func TestRedactedHbaConfPassesVerify(t *testing.T) {
 	for c := 0; c < hbaParityCases; c++ {
 		check(hbaParityCase(&rng))
 	}
+	freeTextRng := splitMix64(freeTextParitySeed)
+	for c := 0; c < hbaParityCases; c++ {
+		in := freeTextParityCase(&freeTextRng)
+		if out := redactLdapBindPasswdText(in); verifyLdapBindPasswd(out) != nil {
+			t.Errorf("%q: verify failed on %q", in, out)
+		}
+	}
 }
 
 // Generated cases, made the same way by HbaConfRedactorTest.java.
@@ -355,6 +367,17 @@ var hbaParityPieces = []string{
 	"\n--ysql_hba_conf_csv=", "--ysql_hba_conf_csv=", "host", "local", "all", "0.0.0.0/0", "ldap",
 	"trust", "pw", "p w", "x=y", "ldaptls=1", "ldapserver=h", "map=m", "clientcert=verify-full",
 	"ldapsearchfilter=(cn=x)", "radiussecrets=r", "\u00e9",
+}
+
+const freeTextParitySeed = 20261114
+
+// The structure redactLdapBindPasswdText's fold rules read: entries, list items, collections,
+// indents.
+var freeTextParityPieces = []string{
+	"ldapbindpasswd=x", "ldapbindpasswd: x", "ldapbindpasswd:", "\"ldapbindpasswd\":",
+	"\"ldapbindpasswd\": \"x\"", "--ysql_hba_conf_csv=", "host all all 0.0.0.0/0 ldap ", "x", " ",
+	"\"", ",", "#", "k: ", "k:", "\"k\": ", "- ", "[", "]", "{", "}", "|", "|-", ">", "Output:",
+	"\r\n", "\n", "\n  ", "\n    ", "\n\n",
 }
 
 // splitMix64 is a generator simple enough to write the same in Java.
@@ -384,14 +407,22 @@ func hbaParityCase(rng *splitMix64) string {
 	return b.String()
 }
 
+func freeTextParityCase(rng *splitMix64) string {
+	var b strings.Builder
+	for k := rng.pick(12) + 1; k > 0; k-- {
+		b.WriteString(freeTextParityPieces[rng.pick(len(freeTextParityPieces))])
+	}
+	return b.String()
+}
+
 func writeHbaParityOutput(h hash.Hash, s string) {
 	h.Write([]byte(s))
 	h.Write([]byte{0})
 }
 
 // The output must be HbaConfRedactor's, byte for byte. hba_redactor_parity.txt holds digests of
-// its output over the golden lines and the generated cases, which HbaConfRedactorTest.java checks
-// too; after changing either redactor, port the change and update the digests in the file.
+// its output over the golden lines and two sets of generated cases, which HbaConfRedactorTest.java
+// checks too; after changing either redactor, port the change and update the digests in the file.
 func TestRedactHbaConfMatchesJava(t *testing.T) {
 	golden := sha256.New()
 	for _, r := range readHbaGoldenRules(t) {
@@ -408,8 +439,14 @@ func TestRedactHbaConfMatchesJava(t *testing.T) {
 		writeHbaParityOutput(generated, redactHbaConfCSV(value))
 		writeHbaParityOutput(generated, redactLdapBindPasswdText(value))
 	}
+	freeText := sha256.New()
+	freeTextRng := splitMix64(freeTextParitySeed)
+	for c := 0; c < hbaParityCases; c++ {
+		writeHbaParityOutput(freeText, redactLdapBindPasswdText(freeTextParityCase(&freeTextRng)))
+	}
 	want := readHbaParityDigests(t)
-	for name, h := range map[string]hash.Hash{"golden": golden, "generated": generated} {
+	digests := map[string]hash.Hash{"golden": golden, "generated": generated, "free_text": freeText}
+	for name, h := range digests {
 		if got := hex.EncodeToString(h.Sum(nil)); got != want[name] {
 			t.Errorf("%s digest %s, want %s", name, got, want[name])
 		}

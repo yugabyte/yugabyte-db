@@ -136,11 +136,12 @@ public final class HbaConfRedactor {
    * Redacts ldapbindpasswd in text with no structure to rely on, such as logs and command output:
    * from the name to the end of the line, and the lines after it that are indented with more
    * spaces, because Helm folds long YAML values onto those. A line that doesn't start a YAML or
-   * JSON entry, below an entry whose value isn't a JSON array or object, continues that entry's
-   * value, so the lines after it indented past the entry are redacted too. Where the name is a key
-   * with nothing after its ':', the next line that isn't blank holds its value and is redacted
-   * whatever its indent. A {@code --ysql_hba_conf_csv=} gflag line is redacted like the gflag
-   * value, and folds the same way when that redaction reaches the end of the line.
+   * JSON entry, below an entry whose value isn't a JSON array or object or a YAML literal block,
+   * continues that entry's value, so the lines after it indented past the entry are redacted too.
+   * Where a ':' ends the line after the name, as after a key whose value starts below, the next
+   * line that isn't blank is redacted whatever its indent, even below a log line that only mentions
+   * the name. A {@code --ysql_hba_conf_csv=} gflag line is redacted like the gflag value, and folds
+   * the same way when that redaction reaches the end of the line.
    */
   public static String redactFreeText(String text) {
     if (text == null || indexOfKey(text, 0, true) < 0) {
@@ -178,11 +179,12 @@ public final class HbaConfRedactor {
         }
         parentAnchor = parents.isEmpty() ? -1 : parents.peek()[1];
         entryValue = entryValueStart(line, k);
-        boolean opensCollection =
+        // The lines of a JSON array or object, or of a YAML literal block, aren't a folded value.
+        boolean separateLines =
             entryValue >= 0
                 && entryValue < line.length()
-                && (line.charAt(entryValue) == '[' || line.charAt(entryValue) == '{');
-        int anchor = entryValue < 0 ? parentAnchor : opensCollection ? -1 : indent;
+                && "[{|".indexOf(line.charAt(entryValue)) >= 0;
+        int anchor = entryValue < 0 ? parentAnchor : separateLines ? -1 : indent;
         parents.push(new int[] {indent, anchor});
       }
       if (!blank && (valueBelow || (foldIndent >= 0 && indent > foldIndent))) {
@@ -264,7 +266,7 @@ public final class HbaConfRedactor {
     return j;
   }
 
-  /** Whether an ldapbindpasswd in line is a key with nothing after its ':', past any quotes. */
+  /** Whether a ':' ends line after an ldapbindpasswd in it, past any quotes. */
   private static boolean valueStartsBelow(String line) {
     int n = line.length();
     for (int at = indexOfKey(line, 0, true); at >= 0; at = indexOfKey(line, at + 1, true)) {

@@ -296,6 +296,13 @@ public class HbaConfRedactorTest {
         "Running command:\n  yb-admin ldapbindpasswd=REDACTED\n  next output line",
         HbaConfRedactor.redactFreeText(
             "Running command:\n  yb-admin ldapbindpasswd=x\n  next output line"));
+    // Neither do the lines of a YAML literal block.
+    for (String block : new String[] {"ysql_hba.conf: |", "- |-"}) {
+      assertEquals(
+          block + "\n  " + LDAP + "ldapbindpasswd=REDACTED\n  local all all trust",
+          HbaConfRedactor.redactFreeText(
+              block + "\n  " + LDAP + "ldapbindpasswd=x\n  local all all trust"));
+    }
     // A value can start on the line below its key.
     assertEquals(
         "    ysql_hba_conf_csv:\n      "
@@ -438,6 +445,41 @@ public class HbaConfRedactorTest {
     "\u00e9"
   };
 
+  private static final long FREE_TEXT_PARITY_SEED = 20261114L;
+
+  /** The structure redactFreeText's fold rules read: entries, list items, collections, indents. */
+  private static final String[] FREE_TEXT_PARITY_PIECES = {
+    "ldapbindpasswd=x",
+    "ldapbindpasswd: x",
+    "ldapbindpasswd:",
+    "\"ldapbindpasswd\":",
+    "\"ldapbindpasswd\": \"x\"",
+    "--ysql_hba_conf_csv=",
+    "host all all 0.0.0.0/0 ldap ",
+    "x",
+    " ",
+    "\"",
+    ",",
+    "#",
+    "k: ",
+    "k:",
+    "\"k\": ",
+    "- ",
+    "[",
+    "]",
+    "{",
+    "}",
+    "|",
+    "|-",
+    ">",
+    "Output:",
+    "\r\n",
+    "\n",
+    "\n  ",
+    "\n    ",
+    "\n\n"
+  };
+
   /** SplitMix64, a generator simple enough to write the same in Go. */
   private static long nextRandom(long[] state) {
     long z = (state[0] += 0x9E3779B97F4A7C15L);
@@ -462,6 +504,14 @@ public class HbaConfRedactorTest {
     return s.toString();
   }
 
+  private static String freeTextParityCase(long[] state) {
+    StringBuilder s = new StringBuilder();
+    for (int k = pick(state, 12) + 1; k > 0; k--) {
+      s.append(FREE_TEXT_PARITY_PIECES[pick(state, FREE_TEXT_PARITY_PIECES.length)]);
+    }
+    return s.toString();
+  }
+
   private static void update(MessageDigest digest, String output) {
     digest.update(output.getBytes(StandardCharsets.UTF_8));
     digest.update((byte) 0);
@@ -470,8 +520,8 @@ public class HbaConfRedactorTest {
   /**
    * The support bundle's node-side redactor (managed/devops/supportbundle/serverconfredact) ports
    * this class to Go and must produce the same output. hba_redactor_parity.txt holds digests of the
-   * output over the golden lines and generated cases, which the Go tests check too; after changing
-   * either redactor, port the change and update the digests in the file.
+   * output over the golden lines and two sets of generated cases, which the Go tests check too;
+   * after changing either redactor, port the change and update the digests in the file.
    */
   @Test
   public void testOutputMatchesGoPort() throws Exception {
@@ -491,6 +541,11 @@ public class HbaConfRedactorTest {
       update(generated, HbaConfRedactor.redact(value));
       update(generated, HbaConfRedactor.redactFreeText(value));
     }
+    MessageDigest freeText = MessageDigest.getInstance("SHA-256");
+    long[] freeTextState = {FREE_TEXT_PARITY_SEED};
+    for (int c = 0; c < PARITY_CASES; c++) {
+      update(freeText, HbaConfRedactor.redactFreeText(freeTextParityCase(freeTextState)));
+    }
     Map<String, String> want = new HashMap<>();
     for (String line : TestUtils.readResource("redaction/hba_redactor_parity.txt").split("\n")) {
       String[] parts = line.split(" ");
@@ -500,5 +555,6 @@ public class HbaConfRedactorTest {
     }
     assertEquals("golden", want.get("golden"), HexFormat.of().formatHex(golden.digest()));
     assertEquals("generated", want.get("generated"), HexFormat.of().formatHex(generated.digest()));
+    assertEquals("free_text", want.get("free_text"), HexFormat.of().formatHex(freeText.digest()));
   }
 }

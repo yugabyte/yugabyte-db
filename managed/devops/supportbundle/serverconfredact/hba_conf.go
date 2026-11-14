@@ -106,9 +106,10 @@ func redactHbaConfCSV(value string) string {
 // redactLdapBindPasswdText redacts ldapbindpasswd in text with no structure to rely on: from the
 // name to the end of the line, and the lines after it that are indented with more spaces, because
 // Helm folds long YAML values onto those. A line that doesn't start a YAML or JSON entry, below an
-// entry whose value isn't a JSON array or object, continues that entry's value, so the lines after
-// it indented past the entry are redacted too. Where the name is a key with nothing after its ':',
-// the next line that isn't blank holds its value and is redacted whatever its indent. A
+// entry whose value isn't a JSON array or object or a YAML literal block, continues that entry's
+// value, so the lines after it indented past the entry are redacted too. Where a ':' ends the line
+// after the name, as after a key whose value starts below, the next line that isn't blank is
+// redacted whatever its indent, even below a log line that only mentions the name. A
 // --ysql_hba_conf_csv= gflag line is redacted like the gflag value, and folds the same way when that
 // redaction reaches the end of the line.
 func redactLdapBindPasswdText(text string) string {
@@ -142,7 +143,8 @@ func redactLdapBindPasswdText(text string) string {
 			anchor := parentAnchor
 			if entryValue = entryValueStart(line); entryValue >= 0 {
 				anchor = indent
-				if entryValue < len(line) && (line[entryValue] == '[' || line[entryValue] == '{') {
+				// The lines of a JSON array or object, or of a YAML literal block, aren't a folded value.
+				if entryValue < len(line) && strings.IndexByte("[{|", line[entryValue]) >= 0 {
 					anchor = -1
 				}
 			}
@@ -228,8 +230,8 @@ func entryValueStart(line string) int {
 	return j
 }
 
-// hbaValueStartsBelow reports whether an ldapbindpasswd in line is a key with nothing after its ':',
-// past any quotes.
+// hbaValueStartsBelow reports whether a ':' ends line after an ldapbindpasswd in it, past any
+// quotes.
 func hbaValueStartsBelow(line string) bool {
 	n := len(line)
 	for at := indexOfHbaKey(line, 0, true); at >= 0; at = indexOfHbaKey(line, at+1, true) {
