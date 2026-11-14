@@ -42,7 +42,8 @@ def main() -> None:
         subprocess.run(build_cmd_list, capture_output=True, check=True)
     except subprocess.CalledProcessError as e:
         logging.exception(f"Failed to run build step:\n"
-                          f"STDOUT: {e.stdout.decode('utf-8')}\n")
+                          f"STDOUT: {e.stdout.decode('utf-8')}\n"
+                          f"STDERR: {e.stderr.decode('utf-8')}\n")
         sys.exit(1)
 
     if not os.path.exists(build_desc_path):
