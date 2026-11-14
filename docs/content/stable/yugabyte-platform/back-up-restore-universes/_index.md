@@ -51,6 +51,12 @@ Starting with YugabyteDB v2025.2.1, taking YSQL backups during DDLs is supported
     icon="fa-thin fa-bucket">}}
 
   {{<index/item
+    title="Federated IAM backups"
+    body="Back up to another cloud using each node's own identity."
+    href="federated-iam-backups/"
+    icon="fa-thin fa-id-card">}}
+
+  {{<index/item
     title="Schedule universe data backups"
     body="Create backup schedules and enable point-in-time recovery for backups."
     href="schedule-data-backups/"

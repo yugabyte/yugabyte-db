@@ -76,6 +76,8 @@ Then use one of the following methods:
 - Obtain a file containing a JSON that describes the service account credentials. You will need to provide this file later when creating the GCP provider configuration.
 - [Attach the service account](https://cloud.google.com/compute/docs/access/create-enable-service-accounts-for-instances#using) to the GCP VM that will run YBA.
 
+Attach a service account to each database VM as well. Grant `roles/storage.objectAdmin` and `roles/storage.bucketViewer` on the bucket to that service account. An Amazon S3 bucket trusts the service account's numeric ID instead. Refer to [Federated IAM backups](../../../back-up-restore-universes/federated-iam-backups/).
+
 | Save for later | To configure |
 | :--- | :--- |
 | Service account JSON | [GCP provider configuration](../../../configure-yugabyte-platform/gcp/) |
@@ -97,7 +99,7 @@ If you will be using your own custom SSH keys, ensure they are authorized for th
 
 ## GKE service account-based IAM (GCP IAM)
 
-Google Kubernetes Engine (GKE) uses a concept known as "Workload Identity" to provide a secure way to allow a Kubernetes service account ([KSA](https://kubernetes.io/docs/concepts/security/service-accounts/)) in your GKE cluster to act as an IAM service account so that your Kubernetes universes can access GCS for backups.
+Google Kubernetes Engine (GKE) uses a concept known as "Workload Identity" to provide a secure way to allow a Kubernetes service account ([KSA](https://kubernetes.io/docs/concepts/security/service-accounts/)) in your GKE cluster to act as an IAM service account so that your Kubernetes universes can access GCS for backups. This section is same-cloud access from GKE pods. VM nodes that back up to Amazon S3 use [federated IAM](../../../back-up-restore-universes/federated-iam-backups/).
 
 In GKE, each pod can be associated with a KSA. The KSA is used to authenticate and authorize the pod to interact with other Google Cloud services. An IAM service account is a Google Cloud resource that allows applications to make authorized calls to Google Cloud APIs.
 

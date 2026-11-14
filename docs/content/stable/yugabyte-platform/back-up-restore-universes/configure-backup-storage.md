@@ -60,6 +60,8 @@ To configure S3 storage, do the following:
 
     To enable universe node IAM roles to access storage in S3, set the **Use S3 IAM roles attached to DB node for Backup/Restore** Universe Configuration option (config key `yb.backup.s3.use_db_nodes_iam_role_for_backup`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
 
+    **IAM Role** is for a bucket in AWS. To back up from GCP nodes to S3, follow [Federated IAM backups](../federated-iam-backups/). Turn on **Federated IAM** here only if YugabyteDB Anywhere is running on GCP. If YugabyteDB Anywhere is running on AWS, leave **Federated IAM** off, leave **IAM Role** on, and set **Use S3 IAM roles attached to DB node for Backup/Restore** (config key `yb.backup.s3.use_db_nodes_iam_role_for_backup`) to true so those nodes use their own credentials. Turn on **Amazon S3** on the provider for the database nodes.
+
 1. If **IAM Role** is disabled, enter values for the **Access Key** and **Access Secret** fields.
 
     For information on AWS access keys, see [Manage access keys for IAM users](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html).
@@ -150,6 +152,8 @@ To create a GCP backup configuration, do the following:
 1. Enter the URI of your GCS bucket in the **GCS Bucket** field. For example, `gs://gcp-bucket/test_backups`.
 
 1. Select **Use GCP IAM** to use the YugabyteDB Anywhere instance's Identity Access Management (IAM) role for the GCS backup.
+
+    **Use GCP IAM** is for a bucket in Google Cloud. To back up from AWS nodes to Google Cloud Storage, follow [Federated IAM backups](../federated-iam-backups/). Turn on **Federated IAM** here only if YugabyteDB Anywhere is running on AWS. Turn on **Google Cloud Storage** on the provider for the database nodes.
 
 1. If **Use GCP IAM** is disabled, enter the credentials for your account in JSON format in the **GCS Credentials** field.
 
