@@ -742,11 +742,9 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     private final Thread thread;
     private volatile Exception error;
 
-    private QueuedClient() {
+    private QueuedClient(ConnectionBuilder builder) {
       thread = new Thread(() -> {
-        try (Connection conn = getConnectionBuilder()
-                .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
-                .connect();
+        try (Connection conn = builder.connect();
              Statement stmt = conn.createStatement()) {
           stmt.execute("SELECT 1");
         } catch (Exception e) {
@@ -772,7 +770,12 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   }
 
   protected QueuedClient startQueuedClient() {
-    return new QueuedClient();
+    return startQueuedClient(getConnectionBuilder()
+        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR));
+  }
+
+  protected QueuedClient startQueuedClient(ConnectionBuilder builder) {
+    return new QueuedClient(builder);
   }
 
   protected void assertQueuedClientServed() throws Exception {
