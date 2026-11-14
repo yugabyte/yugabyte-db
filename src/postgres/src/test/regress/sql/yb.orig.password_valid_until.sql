@@ -54,11 +54,46 @@ SHOW yb_password_validity;
 ALTER ROLE :cur_user RESET yb_password_validity;
 ALTER ROLE regress_pw_scope_role RESET yb_password_validity;
 
--- yb_db_admin cannot set the GUC directly either; it is restricted the same
--- way as any other role for now (extending its access is future work).
-SET SESSION AUTHORIZATION yb_db_admin;
-SET yb_password_validity = '30d';
+-- yb_db_admin cannot set the GUC for its session either.
+CREATE ROLE regress_pw_dbadmin LOGIN;
+GRANT yb_db_admin TO regress_pw_dbadmin;
+SET SESSION AUTHORIZATION regress_pw_dbadmin;
+SET yb_password_validity = '30d'; -- error: session-scoped
+
+-- yb_db_admin can manage another role's per-role password policy without
+-- superuser or CREATEROLE.  The reuse settings use 0 because a non-zero value
+-- is refused while yb_allow_prehashed_passwords is on (the default).
+ALTER ROLE regress_pw_scope_role SET yb_password_validity = '30d';
+ALTER ROLE regress_pw_scope_role SET yb_password_reuse_history = 0;
+ALTER ROLE regress_pw_scope_role SET yb_password_reuse_interval = 0;
+SELECT unnest(setconfig) AS setting FROM pg_db_role_setting
+  WHERE setrole = 'regress_pw_scope_role'::regrole ORDER BY 1;
+ALTER ROLE regress_pw_scope_role RESET yb_password_validity;
+ALTER ROLE regress_pw_scope_role RESET yb_password_reuse_history;
+ALTER ROLE regress_pw_scope_role RESET yb_password_reuse_interval;
+SELECT count(*) FROM pg_db_role_setting
+  WHERE setrole = 'regress_pw_scope_role'::regrole;
+
+-- The scope-role rules still apply.
+ALTER ROLE regress_pw_scope_role IN DATABASE :cur_db
+  SET yb_password_validity = '30d'; -- error: role-scoped only
+
+-- Superuser targets and ALTER ROLE ALL SET remain superuser-only.
+ALTER ROLE :cur_user SET yb_password_validity = '30d'; -- error
+ALTER ROLE ALL SET yb_password_validity = '30d'; -- error
+
+-- The exception covers only the per-role password policy settings.
+ALTER ROLE ALL SET yb_allow_prehashed_passwords = off; -- error
+ALTER ROLE regress_pw_scope_role SET log_statement = 'all'; -- error
 RESET SESSION AUTHORIZATION;
+
+-- Without yb_db_admin, the same role is refused.
+REVOKE yb_db_admin FROM regress_pw_dbadmin;
+SET SESSION AUTHORIZATION regress_pw_dbadmin;
+ALTER ROLE regress_pw_scope_role SET yb_password_validity = '30d'; -- error
+ALTER ROLE regress_pw_scope_role SET yb_password_reuse_history = 0; -- error
+RESET SESSION AUTHORIZATION;
+DROP ROLE regress_pw_dbadmin;
 
 -- ALTER ROLE ALL SET establishes a default for every role's future
 -- sessions, including this one; reconnect to pick it up.
