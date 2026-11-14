@@ -14,11 +14,11 @@ rightNav:
   hideH4: true
 ---
 
-The YugabyteDB connector for logical replication is based on Debezium and is published as a Kafka Connect plugin at [yugabyte/debezium GitHub releases](https://github.com/yugabyte/debezium/releases) {{<icon/github>}}. This page describes how to move an existing connector deployment to a later version without losing your stream position, and how to handle the cases that need additional steps.
+The YugabyteDB connector for logical replication is based on Debezium and is published as a Kafka Connect plugin. JAR downloads and release notes are on the [CDC connector releases](/stable/releases/cdc-connector/logical-replication/) page. This page describes how to move an existing connector deployment to a later version without losing your stream position, and how to handle the cases that need additional steps.
 
 ## When to upgrade
 
-Check [yugabyte/debezium GitHub releases](https://github.com/yugabyte/debezium/releases) for new versions, and review the release notes as part of planning any YugabyteDB upgrade.
+Check the [CDC connector releases](/stable/releases/cdc-connector/logical-replication/) page for new versions, and review the release notes as part of planning any YugabyteDB upgrade.
 
 Upgrade the connector:
 
@@ -66,7 +66,7 @@ If any table uses replica identity `CHANGE`, don't upgrade YugabyteDB from a ver
 
 1. Record the current connector version, `slot.name`, `publication.name`, and the full connector configuration. Confirm the slot is healthy and lag is low.
 
-1. Download the new version of the connector JAR file (`yugabytedb-source-connector-<version>-jar-with-dependencies.jar`) from [GitHub releases](https://github.com/yugabyte/debezium/releases) {{<icon/github>}}.
+1. Download the new version of the connector JAR file (`yugabytedb-source-connector-<version>-jar-with-dependencies.jar`) from the [CDC connector releases](/stable/releases/cdc-connector/logical-replication/) page.
 
 1. Stop the Kafka Connect worker gracefully.
 

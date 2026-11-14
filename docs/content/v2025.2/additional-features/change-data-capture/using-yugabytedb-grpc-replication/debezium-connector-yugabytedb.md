@@ -17,6 +17,8 @@ The YugabyteDB gRPC Connector is based on the Debezium Connector, and captures r
 
 ## Connector compatibility
 
+The YugabyteDB gRPC connector is published as a Kafka Connect plugin. Download the JAR and read the release notes on the [CDC connector releases](/stable/releases/cdc-connector/grpc/) page.
+
 When installing the connector for the first time, always use the latest stable release, whatever version of YugabyteDB you have. After it's installed, you don't need to change it when you upgrade YugabyteDB, as long as you stay on the same major version (such as v2026.1).
 
 Exceptions:
@@ -957,7 +959,7 @@ For example, the connector is lagging behind in streaming the changes. In this c
 
 ## Deployment
 
-To deploy a Debezium connector, you install the YugabyteDB gRPC Connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect. For complete steps, follow the guide to [running the Debezium connector in YugabyteDB](/stable/integrations/cdc/debezium/).
+To deploy a Debezium connector, you install the YugabyteDB gRPC connector JAR, configure the connector, and start the connector by adding its configuration to Kafka Connect. For complete steps, follow the guide to [running the Debezium connector in YugabyteDB](/stable/integrations/cdc/debezium/).
 
 ### Connector configuration example
 
