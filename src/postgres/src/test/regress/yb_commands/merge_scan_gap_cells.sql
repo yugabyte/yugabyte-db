@@ -31,12 +31,13 @@ DROP TABLE gap_pk_tbl;
 
 -- Expression gap columns
 --
--- Each gap column here is an expression column of the index, tied by a partial
--- index predicate, by a filter, or by a filter through a relabel.
+-- Each gap column here is an expression column of the index: the operator
+-- expression (gap || ''), tied by the partial index predicate or by a filter,
+-- or the relabel (gap::text), tied by a filter.
 CREATE TABLE gap_expr_tbl (k int, bkt int, ord1 text, gap varchar, ord2 int,
     PRIMARY KEY (k ASC));
-CREATE INDEX NONCONCURRENTLY gap_expr_tbl_pred_idx ON gap_expr_tbl (bkt ASC, (gap::text) ASC, ord2 ASC)
-    WHERE gap = 'b';
+CREATE INDEX NONCONCURRENTLY gap_expr_tbl_pred_idx ON gap_expr_tbl (bkt ASC, (gap || '') ASC, ord2 ASC)
+    WHERE gap || '' = 'b';
 CREATE INDEX NONCONCURRENTLY gap_expr_tbl_op_idx ON gap_expr_tbl (bkt ASC, ord1 ASC, (gap || '') ASC, ord2 ASC);
 CREATE INDEX NONCONCURRENTLY gap_expr_tbl_relabel_idx ON gap_expr_tbl (bkt ASC, ord1 ASC, (gap::text) ASC, ord2 ASC);
 INSERT INTO gap_expr_tbl VALUES
@@ -44,14 +45,14 @@ INSERT INTO gap_expr_tbl VALUES
     (5, 2, 'e', 'e', 2);
 ANALYZE gap_expr_tbl;
 
--- Predicate gap: the predicate implies (gap::text), which comes before the only
+-- Predicate gap: the predicate implies (gap || ''), which comes before the only
 -- merge sort column ord2.
 \set Q1 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 0)*/'
 \set Q2 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 64)*/'
-\set query ':P :Q SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap = ''b'' ORDER BY ord2;'
+\set query ':P :Q SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '''' = ''b'' ORDER BY ord2;'
 \i :run_query
 
--- Filter gap: ord1 = gap || '' ties (gap || '') to ord1.
+-- Operator filter gap: ord1 = gap || '' ties (gap || '') to ord1.
 \set Q1 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 0)*/'
 \set Q2 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 64)*/'
 \set query ':P :Q SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '''' ORDER BY ord1, ord2;'

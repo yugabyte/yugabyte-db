@@ -454,7 +454,7 @@ DROP TABLE gap_coll_tbl, gap_idx_tbl, gap_desc_tbl, gap_null_tbl;
 -- expression pushdown on, each is a storage table filter, since the index does
 -- not hold gap itself, and with it off, a local filter.  The merge sorts on
 -- every gap column.
--- TODO(#37784): the predicate gap merge should leave out (gap::text), whose
+-- TODO(#37784): the predicate gap merge should leave out (gap || ''), whose
 -- comparisons always tie.
 \set gap_cells :abs_srcdir '/yb_commands/merge_scan_gap_cells.sql'
 SET enable_sort = off;
@@ -540,27 +540,28 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnl
 DROP TABLE gap_pk_tbl;
 -- Expression gap columns
 --
--- Each gap column here is an expression column of the index, tied by a partial
--- index predicate, by a filter, or by a filter through a relabel.
+-- Each gap column here is an expression column of the index: the operator
+-- expression (gap || ''), tied by the partial index predicate or by a filter,
+-- or the relabel (gap::text), tied by a filter.
 CREATE TABLE gap_expr_tbl (k int, bkt int, ord1 text, gap varchar, ord2 int,
     PRIMARY KEY (k ASC));
-CREATE INDEX NONCONCURRENTLY gap_expr_tbl_pred_idx ON gap_expr_tbl (bkt ASC, (gap::text) ASC, ord2 ASC)
-    WHERE gap = 'b';
+CREATE INDEX NONCONCURRENTLY gap_expr_tbl_pred_idx ON gap_expr_tbl (bkt ASC, (gap || '') ASC, ord2 ASC)
+    WHERE gap || '' = 'b';
 CREATE INDEX NONCONCURRENTLY gap_expr_tbl_op_idx ON gap_expr_tbl (bkt ASC, ord1 ASC, (gap || '') ASC, ord2 ASC);
 CREATE INDEX NONCONCURRENTLY gap_expr_tbl_relabel_idx ON gap_expr_tbl (bkt ASC, ord1 ASC, (gap::text) ASC, ord2 ASC);
 INSERT INTO gap_expr_tbl VALUES
     (1, 1, 'b', 'a', 9), (2, 1, 'b', 'b', 0), (3, 2, 'b', 'b', 4), (4, 1, 'e', 'e', 1),
     (5, 2, 'e', 'e', 2);
 ANALYZE gap_expr_tbl;
--- Predicate gap: the predicate implies (gap::text), which comes before the only
+-- Predicate gap: the predicate implies (gap || ''), which comes before the only
 -- merge sort column ord2.
 \set Q1 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 0)*/'
 \set Q2 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 64)*/'
-\set query ':P :Q SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap = ''b'' ORDER BY ord2;'
+\set query ':P :Q SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '''' = ''b'' ORDER BY ord2;'
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap = 'b' ORDER BY ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '' = 'b' ORDER BY ord2;
                                          QUERY PLAN                                          
 ---------------------------------------------------------------------------------------------
  Sort (actual rows=2 loops=1)
@@ -578,13 +579,13 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
          Storage Index Rows Scanned: 2
 (13 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap = 'b' ORDER BY ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '' = 'b' ORDER BY ord2;
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Index Scan using gap_expr_tbl_pred_idx on public.gap_expr_tbl (actual rows=2 loops=1)
    Output: ord2, bkt, gap
    Index Cond: (gap_expr_tbl.bkt = ANY ('{1,2}'::integer[]))
-   Merge Sort Key: (gap_expr_tbl.gap)::text, gap_expr_tbl.ord2
+   Merge Sort Key: ((gap_expr_tbl.gap)::text || ''::text), gap_expr_tbl.ord2
    Merge Stream Key: gap_expr_tbl.bkt
    Merge Streams: 2
    Merge Cond: (gap_expr_tbl.bkt = ANY ('{1,2}'::integer[]))
@@ -596,16 +597,16 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
    Storage Index Rows Scanned: 2
 (13 rows)
 
-/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap = 'b' ORDER BY ord2;
+/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '' = 'b' ORDER BY ord2;
  ord2 | bkt | gap 
 ------+-----+-----
     0 |   1 | b
     4 |   2 | b
 (2 rows)
 
-/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap = 'b' ORDER BY ord2;
+/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '' = 'b' ORDER BY ord2;
 (output identical to previous)
--- Filter gap: ord1 = gap || '' ties (gap || '') to ord1.
+-- Operator filter gap: ord1 = gap || '' ties (gap || '') to ord1.
 \set Q1 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 0)*/'
 \set Q2 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 64)*/'
 \set query ':P :Q SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '''' ORDER BY ord1, ord2;'
@@ -839,11 +840,11 @@ DROP TABLE gap_expr_tbl;
 -- within each stream, before the merge, since the scan reads the index and
 -- table rows of a stream in one request, but the filter on the decoded k1 still
 -- runs after the merge.
--- TODO(#37784): the predicate gap merge should leave out (gap::text), which the
+-- TODO(#37784): the predicate gap merge should leave out (gap || ''), which the
 -- predicate implies, and merge on ord2.
--- TODO(#37785): with expression pushdown on, the filter gap and relabeled
--- filter gap filters run within each stream, before the merge, so those merges
--- should sort on ord1 and ord2.
+-- TODO(#37785): with expression pushdown on, the operator filter gap and
+-- relabeled filter gap filters run within each stream, before the merge, so
+-- those merges should sort on ord1 and ord2.
 SET enable_sort = off;
 SET yb_enable_primary_key_decode_from_index = on;
 SET yb_enable_base_scans_cost_model = on;
@@ -927,27 +928,28 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnl
 DROP TABLE gap_pk_tbl;
 -- Expression gap columns
 --
--- Each gap column here is an expression column of the index, tied by a partial
--- index predicate, by a filter, or by a filter through a relabel.
+-- Each gap column here is an expression column of the index: the operator
+-- expression (gap || ''), tied by the partial index predicate or by a filter,
+-- or the relabel (gap::text), tied by a filter.
 CREATE TABLE gap_expr_tbl (k int, bkt int, ord1 text, gap varchar, ord2 int,
     PRIMARY KEY (k ASC));
-CREATE INDEX NONCONCURRENTLY gap_expr_tbl_pred_idx ON gap_expr_tbl (bkt ASC, (gap::text) ASC, ord2 ASC)
-    WHERE gap = 'b';
+CREATE INDEX NONCONCURRENTLY gap_expr_tbl_pred_idx ON gap_expr_tbl (bkt ASC, (gap || '') ASC, ord2 ASC)
+    WHERE gap || '' = 'b';
 CREATE INDEX NONCONCURRENTLY gap_expr_tbl_op_idx ON gap_expr_tbl (bkt ASC, ord1 ASC, (gap || '') ASC, ord2 ASC);
 CREATE INDEX NONCONCURRENTLY gap_expr_tbl_relabel_idx ON gap_expr_tbl (bkt ASC, ord1 ASC, (gap::text) ASC, ord2 ASC);
 INSERT INTO gap_expr_tbl VALUES
     (1, 1, 'b', 'a', 9), (2, 1, 'b', 'b', 0), (3, 2, 'b', 'b', 4), (4, 1, 'e', 'e', 1),
     (5, 2, 'e', 'e', 2);
 ANALYZE gap_expr_tbl;
--- Predicate gap: the predicate implies (gap::text), which comes before the only
+-- Predicate gap: the predicate implies (gap || ''), which comes before the only
 -- merge sort column ord2.
 \set Q1 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 0)*/'
 \set Q2 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 64)*/'
-\set query ':P :Q SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap = ''b'' ORDER BY ord2;'
+\set query ':P :Q SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '''' = ''b'' ORDER BY ord2;'
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap = 'b' ORDER BY ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '' = 'b' ORDER BY ord2;
                                          QUERY PLAN                                          
 ---------------------------------------------------------------------------------------------
  Sort (actual rows=2 loops=1)
@@ -963,18 +965,18 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
          Storage Index Rows Scanned: 2
 (11 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap = 'b' ORDER BY ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '' = 'b' ORDER BY ord2;
 (output identical to previous)
-/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap = 'b' ORDER BY ord2;
+/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '' = 'b' ORDER BY ord2;
  ord2 | bkt | gap 
 ------+-----+-----
     0 |   1 | b
     4 |   2 | b
 (2 rows)
 
-/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap = 'b' ORDER BY ord2;
+/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '' = 'b' ORDER BY ord2;
 (output identical to previous)
--- Filter gap: ord1 = gap || '' ties (gap || '') to ord1.
+-- Operator filter gap: ord1 = gap || '' ties (gap || '') to ord1.
 \set Q1 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 0)*/'
 \set Q2 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 64)*/'
 \set query ':P :Q SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '''' ORDER BY ord1, ord2;'
