@@ -119,11 +119,21 @@ YbIsSingleRowModifyTxnPlanned(PlannedStmt *pstmt, EState *estate)
 
 	if (ActivePortal->stmts->length != 1 || !YBCIsSingleRowModify(pstmt))
 		return false;
-	if (pstmt->commandType == CMD_UPDATE)
-		return true;
 
 	ResultRelInfo *resultRelInfo =
 		(ResultRelInfo *) linitial(estate->es_opened_result_relations);
+
+	if (pstmt->commandType == CMD_UPDATE)
+	{
+		TriggerDesc *trigdesc = resultRelInfo->ri_TrigDesc;
+
+		/*
+		 * The planner does not check AFTER STATEMENT triggers, so check them
+		 * here on the target root relation. The fast path update is already
+		 * committed if such a trigger raises an error
+		 */
+		return !(trigdesc && trigdesc->trig_update_after_statement);
+	}
 
 	if (!YBCIsSingleRowTxnCapableRel(resultRelInfo))
 		return false;
