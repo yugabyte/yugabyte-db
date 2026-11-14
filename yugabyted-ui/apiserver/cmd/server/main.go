@@ -6,6 +6,7 @@ import (
     "apiserver/cmd/server/logger"
     "apiserver/cmd/server/templates"
     "embed"
+    "flag"
     "io/fs"
     "net"
     "net/http"
@@ -78,6 +79,7 @@ func getStaticFiles() http.FileSystem {
 }
 
 func main() {
+    flag.Parse()
 
     // Initialize logger
     logLevel := getEnv(logLevelEnv, "info")

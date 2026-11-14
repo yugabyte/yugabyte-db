@@ -328,7 +328,7 @@ func (h *HelperContainer) GetMasterAddressesFuture(future chan MasterAddressesFu
         HostList: []string{},
         Error:    nil,
     }
-    mastersFuture := make(chan MastersFuture)
+    mastersFuture := make(chan MastersFuture, 1)
     go h.GetMastersFuture(mastersFuture)
     mastersListFuture := make(chan MastersListFuture)
     go h.GetMastersFromTserverFuture(HOST, mastersListFuture)

@@ -287,6 +287,9 @@ if ! go version 2>/dev/null | grep -q "go${REQUIRED_GO_VERSION} "; then
   log "Using Go toolchain at ${GO_INSTALL_DIR}"
 fi
 
+log "Running Go helper tests..."
+go test -count=1 ./helpers || fatal "Go helper tests failed"
+
 log "Building Go binary..."
 go build -o "${OUT_FILE}" || fatal "Go build failed"
 
