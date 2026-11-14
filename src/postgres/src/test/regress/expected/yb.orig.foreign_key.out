@@ -891,6 +891,40 @@ SELECT * from fk;
 (1 row)
 
 DROP TABLE pk, fk;
+-- #35397: YSQL skipped the ON UPDATE action when an UPDATE changed the
+-- referenced key of a self-referencing foreign key, so rows pointed at a key
+-- that no longer existed. Row 2 points at row 1. Changing the key of row 1
+-- must fail with NO ACTION and must change row 2 with CASCADE. Pointing row 2
+-- at a missing key must still fail.
+CREATE TABLE emp(k INT PRIMARY KEY, code INT UNIQUE,
+                 mgr_code INT REFERENCES emp(code));
+INSERT INTO emp VALUES (1, 10, NULL), (2, 20, 10);
+UPDATE emp SET code = 11 WHERE k = 1; -- should fail
+ERROR:  update or delete on table "emp" violates foreign key constraint "emp_mgr_code_fkey" on table "emp"
+DETAIL:  Key (code)=(10) is still referenced from table "emp".
+UPDATE emp SET mgr_code = 99 WHERE k = 2; -- should fail
+ERROR:  insert or update on table "emp" violates foreign key constraint "emp_mgr_code_fkey"
+DETAIL:  Key (mgr_code)=(99) is not present in table "emp".
+SELECT * FROM emp ORDER BY k;
+ k | code | mgr_code 
+---+------+----------
+ 1 |   10 |         
+ 2 |   20 |       10
+(2 rows)
+
+DROP TABLE emp;
+CREATE TABLE emp(k INT PRIMARY KEY, code INT UNIQUE,
+                 mgr_code INT REFERENCES emp(code) ON UPDATE CASCADE);
+INSERT INTO emp VALUES (1, 10, NULL), (2, 20, 10);
+UPDATE emp SET code = 11 WHERE k = 1;
+SELECT * FROM emp ORDER BY k;
+ k | code | mgr_code 
+---+------+----------
+ 1 |   11 |         
+ 2 |   20 |       11
+(2 rows)
+
+DROP TABLE emp;
 -- FK checks against a range-sharded key with a non-C collation build a
 -- collation sort key for every row (#34725), in a buffer of at least
 -- kTextBufLen (1024) bytes allocated by YBComputeNonCSortKey(). Compare
