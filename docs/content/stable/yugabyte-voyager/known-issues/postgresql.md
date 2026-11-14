@@ -1669,7 +1669,7 @@ CREATE INDEX idx_order_status_order_id on orders (status, order_id);
 Make the index as range-sharded to distribute the data evenly:
 
 ```sql
---making it a range-sharded index explictly
+--making it a range-sharded index explicitly
 CREATE INDEX idx_order_status_order_id on orders (status ASC, order_id);
 ```
 

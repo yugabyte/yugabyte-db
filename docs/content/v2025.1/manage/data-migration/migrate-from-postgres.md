@@ -304,7 +304,7 @@ To learn more about the various useful metrics that can be monitored, see [Metri
 
 Because of the distributed nature of YugabyteDB, queries are executed quite differently from Postgres. This is because the latency across the nodes are taken into account by the query planner. Adopting the following practices will help improve the performance of your applications.
 
-- **Single-row transactions**: YugabyteDB has optimizations to improve the performance of transactions in certain scenarios where transactions operate on a single row. Consider converting multi-statement transactions to single-statement ones to improve performace. {{<link dest="/stable/develop/learn/transactions/transactions-performance-ysql/#fast-single-row-transactions">}}
+- **Single-row transactions**: YugabyteDB has optimizations to improve the performance of transactions in certain scenarios where transactions operate on a single row. Consider converting multi-statement transactions to single-statement ones to improve performance. {{<link dest="/stable/develop/learn/transactions/transactions-performance-ysql/#fast-single-row-transactions">}}
 
 - **Use On Conflict clause**: Use the optional ON CONFLICT clause in the INSERT statement to circumvent certain errors and avoid multiple round trips. {{<link dest="/stable/develop/learn/transactions/transactions-performance-ysql/#minimize-conflict-errors">}}
 
