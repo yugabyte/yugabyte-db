@@ -28,12 +28,14 @@
 #include "postgres_fe.h"
 
 #include <limits.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #ifdef HAVE_SYS_PRCTL_H
 #include <sys/prctl.h>
 #endif
+#include <unistd.h>
 
 #include "common/pg_yb_common.h"
 #include "utils/elog.h"
@@ -320,11 +322,33 @@ YBSetParentDeathSignal()
 		{
 			if (pdeathsig >= 1 && pdeathsig <= 31)
 			{
+				char	   *parent_pid_str = getenv("YB_PG_PARENT_PID");
+				pid_t		parent_pid = parent_pid_str ? atoi(parent_pid_str) : 0;
+				char	   *delay_ms_str =
+					getenv("FLAGS_TEST_pg_delay_before_parent_death_signal_ms");
+
+				/*
+				 * Processes this one starts have a different parent, so do not
+				 * pass the pid on to them.
+				 */
+				unsetenv("YB_PG_PARENT_PID");
+
+				if (delay_ms_str)
+					pg_usleep(atol(delay_ms_str) * 1000L);
+
 				/*
 				 * TODO: prctl(PR_SET_PDEATHSIG) is Linux-specific, look into
 				 * portable ways to prevent orphans when parent is killed.
 				 */
 				prctl(PR_SET_PDEATHSIG, pdeathsig);
+
+				/*
+				 * The signal is only sent if the parent dies after prctl(), so
+				 * a parent that died while this process was starting up leaves
+				 * it orphaned.  Deliver the signal ourselves in that case.
+				 */
+				if (parent_pid != 0 && getppid() != parent_pid)
+					raise(pdeathsig);
 			}
 			else
 			{
