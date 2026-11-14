@@ -3,6 +3,7 @@ extern "C" {
 #include "miscadmin.h"         // GetUserId
 #include "catalog/pg_authid.h" // ROLE_PG_WRITE_SERVER_FILES, ROLE_PG_READ_SERVER_FILES
 #include "utils/acl.h"         // is_member_of_role
+
 /* YB includes */
 #include "executor/executor.h" // ExecCheckRTPerms, ExecutorCheckPerms_hook
 }

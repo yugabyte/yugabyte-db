@@ -22,6 +22,7 @@
 #include "catalog/ag_label.h"
 #include "executor/cypher_executor.h"
 #include "executor/cypher_utils.h"
+
 /* YB includes */
 #include "pg_yb_utils.h"
 #include "utils/age_global_graph.h"

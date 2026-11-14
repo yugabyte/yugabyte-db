@@ -34,6 +34,7 @@
 #include "commands/extension.h"
 #include "pg_yb_utils.h"
 
+
 static Oid	lookup_am_handler_func(List *handler_name, char amtype);
 static const char *get_am_type_string(char amtype);
 

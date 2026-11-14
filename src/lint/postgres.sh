@@ -244,6 +244,11 @@ else
                 fi
                 expect_newline=false
                 continue
+              elif [ -z "$line" ]; then
+                # When the YB includes block is surrounded by blank lines,
+                # diff may attribute the blank line before the block, rather
+                # than the one after, to the YB side.
+                continue
               elif [[ "$line" != '/* YB includes */' ]]; then
                 echo 'error:include_not_in_yb_includes_block:'\
 'YB-added includes should be put in a YB includes block'\
@@ -276,6 +281,52 @@ else
             prev_line=$line
           done < <(grep -n '' "$1" | sed -n "$line_ranges"p)
         done
+
+    # A YB includes block should come with a YB-added blank line; otherwise, it
+    # sits between adjacent upstream lines and can conflict on upstream merges.
+    # diff may put that blank line in a different hunk from the block:
+    #
+    #   diff output                  YB file
+    #   29,30d28                     29 /* YB includes */          YB-added
+    #   < /* YB includes */          30 #include "pg_yb_utils.h"   YB-added
+    #   < #include "pg_yb_utils.h"   31                            upstream
+    #   32d29                        32                            YB-added
+    #   <                            33 static bool ...            upstream
+    #
+    # So split the file into runs of consecutive lines that are YB-added or
+    # blank (29-32 above), and require a YB-added blank line in every run that
+    # has a block.
+    awk '
+      # Input 1, the diff: record which lines of the YB file are YB-added.
+      # A hunk header such as "33,35d32" or "40c38,39" starts with that range.
+      NR == FNR {
+        if (/^[0-9,]+[cd]/) {
+          sub(/[cd].*/, "")
+          n = split($0, range, ",")
+          for (lineno = range[1]; lineno <= range[n]; lineno++)
+            yb_added[lineno] = 1
+        }
+        next
+      }
+
+      # Input 2, the YB file.
+      {
+        if (!yb_added[FNR] && $0 != "")
+          end_run()                 # non-blank upstream line
+        else if (yb_added[FNR] && $0 == "/* YB includes */")
+          block_lineno = FNR
+        else if (yb_added[FNR] && $0 == "")
+          run_has_yb_blank = 1
+      }
+      END { end_run() }
+
+      function end_run() {
+        if (block_lineno && !run_has_yb_blank)
+          print "error:yb_includes_block_without_yb_blank_line:" \
+                "YB includes block should have a YB-added blank line before" \
+                " or after it:" block_lineno ":/* YB includes */"
+        block_lineno = run_has_yb_blank = 0
+      }' - "$1" <<<"$diff_result"
 
     # For kwlist.h, new keywords by YB should have "_YB_" prefix.
     #

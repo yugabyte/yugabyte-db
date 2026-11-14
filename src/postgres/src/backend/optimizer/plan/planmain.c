@@ -33,6 +33,7 @@
 /* YB includes */
 #include "pg_yb_utils.h"
 
+
 /*
  * query_planner
  *	  Generate a path (that is, a simplified plan) for a basic query,
