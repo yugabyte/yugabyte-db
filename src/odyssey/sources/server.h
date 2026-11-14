@@ -94,6 +94,9 @@ struct od_server {
 	 */
 	int64_t yb_logical_client_version;
 
+	/* YB */
+	uint64_t yb_route_seq;
+
 	/*
 	 * YB: If true, this server is marked for expiration to be
 	 * eventually cleaned by cron job
@@ -156,6 +159,8 @@ static inline void od_server_init(od_server_t *server, int reserve_prep_stmts)
 	server->reset_timeout = false;
 	server->yb_auth_backend = false;
 	server->yb_logical_client_version = UINT64_MAX;
+	/* YB */
+	server->yb_route_seq = 0;
 	server->yb_marked_for_close = false;
 	server->yb_expiry_time_us = UINT64_MAX;
 	server->yb_has_unsynced_pending_packets = false;

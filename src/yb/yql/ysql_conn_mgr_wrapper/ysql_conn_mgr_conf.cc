@@ -26,6 +26,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/format.h"
 #include "yb/util/path_util.h"
+#include "yb/util/random_util.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -40,6 +41,7 @@
 #include "ybgate/ybgate_cpp_util.h"
 
 DECLARE_bool(logtostderr);
+DECLARE_uint64(TEST_ysql_conn_mgr_random_seed);
 DECLARE_bool(ysql_conn_mgr_use_unix_conn);
 DECLARE_bool(ysql_conn_mgr_use_auth_backend);
 DECLARE_bool(ysql_conn_mgr_cert_auth);
@@ -522,6 +524,12 @@ Status YsqlConnMgrConf::UpdateConfigFromYsqlPgConf() {
 }
 
 YsqlConnMgrConf::YsqlConnMgrConf(const std::string& data_path) {
+  random_seed_ = FLAGS_TEST_ysql_conn_mgr_random_seed;
+  if (random_seed_ == 0) {
+    random_seed_ = RandomUniformInt<uint64_t>(1, std::numeric_limits<uint64_t>::max());
+  }
+  LOG(INFO) << "Conn mgr random allotment seed: " << random_seed_;
+
   data_dir_ = JoinPathSegments(data_path, "yb-data", "tserver");
   pid_file_ = JoinPathSegments(data_path, "yb-data", "tserver", "ysql-conn-mgr.pid");
   pg_data_dir_ = JoinPathSegments(data_path, "pg_data");
