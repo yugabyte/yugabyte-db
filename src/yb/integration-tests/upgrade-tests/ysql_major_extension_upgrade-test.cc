@@ -204,6 +204,59 @@ TEST_F(YsqlMajorExtensionUpgradeTest, PgStatStatements) {
   ASSERT_NO_FATALS(check_query(kMixedModeTserverPg11, /*after_upgrade=*/ true));
 }
 
+// Ensure the ACL of pg_stat_statements_reset survives its signature going 3 to 4 args in PG17.
+TEST_F(YsqlMajorExtensionUpgradeTest, PgStatStatementsResetAcl) {
+  // Every entry in the ACL, named rather than by OID and sorted, so that it compares across the
+  // upgrade.
+  auto fetch_acl = [](pgwrapper::PGConn& conn) {
+    return conn.FetchRows<std::string, std::string, std::string, bool>(
+        "SELECT pg_get_userbyid(a.grantee), pg_get_userbyid(a.grantor), a.privilege_type, "
+        "a.is_grantable FROM pg_proc p CROSS JOIN LATERAL aclexplode(p.proacl) a "
+        "WHERE p.pronamespace = 'pg_catalog'::regnamespace "
+        "AND p.proname = 'pg_stat_statements_reset' "
+        "ORDER BY 1, 2, 3");
+  };
+
+  // No owner change here: the dump does not carry one for an extension member.
+  auto conn = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg11));
+  const std::string granted_role = "dba_ops";
+  const std::string delegated_role = "dba_reader";
+  const std::string owner = ASSERT_RESULT(conn.FetchRow<std::string>(
+      "SELECT pg_get_userbyid(p.proowner) FROM pg_proc p "
+      "WHERE p.pronamespace = 'pg_catalog'::regnamespace "
+      "AND p.proname = 'pg_stat_statements_reset'"));
+  // The extension grants EXECUTE to the owner alone, so the owner is the one role we can revoke.
+  const std::string revoked_role = owner;
+  const std::string function = "pg_stat_statements_reset(oid, oid, bigint)";
+
+  ASSERT_OK(ExecuteStatement(Format("CREATE ROLE $0 NOLOGIN", granted_role)));
+  ASSERT_OK(ExecuteStatement(Format("CREATE ROLE $0 NOLOGIN", delegated_role)));
+  ASSERT_OK(ExecuteStatement(Format(
+      "GRANT EXECUTE ON FUNCTION $0 TO $1 WITH GRANT OPTION", function, granted_role)));
+  ASSERT_OK(ExecuteStatement(Format("GRANT EXECUTE ON FUNCTION $0 TO PUBLIC", function)));
+  ASSERT_OK(ExecuteStatement(
+      Format("REVOKE EXECUTE ON FUNCTION $0 FROM $1", function, revoked_role)));
+
+  // Granted by a non-owner through its grant option, so the grantor is not the owner.
+  ASSERT_OK(conn.Execute(Format("SET SESSION AUTHORIZATION $0", granted_role)));
+  ASSERT_OK(conn.Execute(
+      Format("GRANT EXECUTE ON FUNCTION $0 TO $1", function, delegated_role)));
+  ASSERT_OK(conn.Execute("RESET SESSION AUTHORIZATION"));
+
+  const auto expected_acl = ASSERT_RESULT(fetch_acl(conn));
+
+  auto check_acl = [&](const std::optional<size_t> tserver_idx) {
+    auto conn = ASSERT_RESULT(CreateConnToTs(tserver_idx));
+    ASSERT_EQ(ASSERT_RESULT(fetch_acl(conn)), expected_acl);
+  };
+
+  ASSERT_OK(UpgradeClusterToMixedMode());
+  ASSERT_NO_FATALS(check_acl(kMixedModeTserverPg15));
+  ASSERT_NO_FATALS(check_acl(kMixedModeTserverPg11));
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+  ASSERT_NO_FATALS(check_acl(kAnyTserver));
+}
+
 TEST_F(YsqlMajorExtensionUpgradeTest, PostgresFdw) {
   // Global views already install postgres_fdw in pg_catalog.
   ASSERT_OK(ExecuteStatement(Format("CREATE EXTENSION IF NOT EXISTS postgres_fdw")));
