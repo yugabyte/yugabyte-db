@@ -104,6 +104,9 @@ class YsqlInitDBAndMajorUpgradeHandler {
 
   Status RunMajorVersionUpgradeImpl(const LeaderEpoch& epoch);
 
+  // Waits until no current version catalog table is still DELETING after a rollback.
+  Status WaitForRolledBackCatalogTablesDeleted();
+
   Status UpdateCatalogVersions(const LeaderEpoch& epoch);
 
   Status RunMajorVersionCatalogUpgrade(const LeaderEpoch& epoch);

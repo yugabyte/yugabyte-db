@@ -468,10 +468,32 @@ Status YsqlInitDBAndMajorUpgradeHandler::RunMajorVersionUpgradeImpl(const Leader
   LOG(INFO) << "Killing any in-flight transactions before starting the YSQL major catalog upgrade";
   sys_catalog_.tablet_peer()->AbortActiveTransactions();
 
+  RETURN_NOT_OK(WaitForRolledBackCatalogTablesDeleted());
   RETURN_NOT_OK(RunMajorVersionCatalogUpgrade(epoch));
   RETURN_NOT_OK_PREPEND(UpdateCatalogVersions(epoch), "Failed to update catalog versions");
 
   return Status::OK();
+}
+
+// A rollback only marks the current version catalog tables DELETING; the catalog manager's
+// background task marks them DELETED later, also after a master restart. initdb recreates them
+// with the same ids, and CreateTable rejects a catalog table that is not DELETED yet.
+Status YsqlInitDBAndMajorUpgradeHandler::WaitForRolledBackCatalogTablesDeleted() {
+  return WaitFor(
+      [this]() -> Result<bool> {
+        for (const auto& table : catalog_manager_.GetTables(GetTablesMode::kAll)) {
+          if (IsCurrentVersionYsqlCatalogTable(table->id()) &&
+              table->LockForRead()->is_deleting()) {
+            YB_LOG_EVERY_N_SECS(INFO, 10)
+                << "Waiting for rolled back catalog table " << table->ToString()
+                << " to be deleted";
+            return false;
+          }
+        }
+        return true;
+      },
+      MonoDelta::FromMinutes(5),
+      "Waiting for the catalog tables of the previous ysql major upgrade to be deleted");
 }
 
 // pg_upgrade does not migrate the catalog version table, so we have to explicitly copy the
