@@ -37,6 +37,8 @@
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/tasks_tracker.h"
 
+#include "yb/rocksdb/db.h"
+
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/mini_tablet_server.h"
@@ -15539,6 +15541,44 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentsNotRetainedAfterDropin
       },
       MonoDelta::FromSeconds(60),
       "Timed out waiting for intent SST file cleanup after dropping the CDC stream"));
+}
+
+// An intents SST file that holds only the post-apply metadata of a transaction applied in a single
+// batch takes its hybrid times from that metadata. They must be valid for cleanup to delete it.
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCleanupIntentFileOfPostApplyMetadata)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_time_based_intent_retention) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_sec_to_retain_intent) = 0;
+
+  ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters */, false /* colocated */));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version */ nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  auto peer = ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets.Get(0).tablet_id()));
+  auto tablet = ASSERT_RESULT(peer->shared_tablet());
+  auto* intents_db = tablet->intents_db();
+  auto flush_intents = [&tablet] {
+    return tablet->Flush(
+        tablet::FlushMode::kSync, tablet::FlushFlags::kIntents, rocksdb::FlushReason::kTestOnly);
+  };
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", kTableName));
+  ASSERT_OK(flush_intents());
+  ASSERT_OK(conn.CommitTransaction());
+  ASSERT_OK(WaitForPostApplyMetadataWritten(1 /* expected_num_transactions */));
+  ASSERT_OK(flush_intents());
+  LOG(INFO) << "Intent SST files: " << AsString(intents_db->GetLiveFilesMetaData());
+
+  ASSERT_OK(WaitFor(
+      [&tablet, intents_db] {
+        tablet->CleanupIntentFiles();
+        return intents_db->GetCurrentVersionNumSSTFiles() == 0;
+      },
+      10s * kTimeMultiplier, "Wait for intent SST files cleanup"));
 }
 
 // Verifies that GetChanges streams rows written after the master has persisted a schema change but
