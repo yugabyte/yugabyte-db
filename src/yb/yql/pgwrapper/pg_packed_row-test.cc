@@ -14,7 +14,9 @@
 #include <atomic>
 #include <optional>
 
+#include "yb/client/client-test-util.h"
 #include "yb/client/snapshot_test_util.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/entity_ids.h"
@@ -1445,6 +1447,7 @@ TEST_P(PgPackedRowTestDisableTableLocks, StaleWriterDuringMultiColumnAdd) {
   auto writer = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE test(key INT PRIMARY KEY, value INT) SPLIT INTO 1 TABLETS"));
   ASSERT_OK(writer.Execute("INSERT INTO test VALUES (1, 1)"));
+  const auto table_id = ASSERT_RESULT(GetTableIdByTableName(client_.get(), "yugabyte", "test"));
 
   // Tablets get the new schema version before the catalog version is incremented.
   ASSERT_OK(conn.ExecuteFormat("SET yb_test_delay_next_ddl = $0", ToMilliseconds(kDdlDelay)));
@@ -1463,6 +1466,12 @@ TEST_P(PgPackedRowTestDisableTableLocks, StaleWriterDuringMultiColumnAdd) {
     RETURN_NOT_OK(writer.Execute("ROLLBACK"));
     return status.ToString().find("schema version mismatch") != std::string::npos;
   }, kDdlDelay / 2, "Waiting for schema version mismatch"));
+  // The master returns the old schema version until it handles the tablets' alter responses.
+  ASSERT_OK(LoggedWaitFor([this, &table_id]() -> Result<bool> {
+    bool in_progress = true;
+    RETURN_NOT_OK(client_->IsAlterTableInProgress(client::YBTableName(), table_id, &in_progress));
+    return !in_progress;
+  }, kDdlDelay / 2, "Waiting for the master to finish the alter"));
   ASSERT_OK(writer.Execute("INSERT INTO test VALUES (2, 2)"));
   // Otherwise the insert could have used the new catalog.
   ASSERT_FALSE(ddl_done);
