@@ -47,6 +47,9 @@ extern bool g_dist_trace_enabled;
 
 inline bool IsDistTraceEnabled() { return internal::g_dist_trace_enabled; }
 
+// Called by the yb_otel_log_throttle_interval_secs GUC assign hook in postgres backends.
+void SetOtelLogThrottleIntervalSecsFromGuc(int32_t secs);
+
 // Sets otel_collector_traces_endpoint and refreshes g_dist_trace_enabled, for in-process tests.
 void TEST_SetOtelCollectorEndpoint(const std::string& endpoint);
 
