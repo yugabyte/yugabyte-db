@@ -81,7 +81,8 @@ bool ConsensusFrontier::Equals(const UserFrontier& pre_rhs) const {
          hybrid_time_filter_ == rhs.hybrid_time_filter_ &&
          max_value_level_ttl_expiration_time_ == rhs.max_value_level_ttl_expiration_time_ &&
          primary_schema_version_ == rhs.primary_schema_version_ &&
-         cotable_schema_versions_ == rhs.cotable_schema_versions_;
+         cotable_schema_versions_ == rhs.cotable_schema_versions_ &&
+         hybrid_time_bounds_entries_ == rhs.hybrid_time_bounds_entries_;
 }
 
 void ConsensusFrontier::ToPB(google::protobuf::Any* any) const {
@@ -116,6 +117,9 @@ void ConsensusFrontier::ToPB(google::protobuf::Any* any) const {
   }
   if (has_vector_deletion_) {
     pb.set_has_vector_deletion(has_vector_deletion_);
+  }
+  if (hybrid_time_bounds_entries_) {
+    pb.set_hybrid_time_bounds_entries(true);
   }
   if (split_generation_) {
     pb.set_split_generation(split_generation_);
@@ -172,6 +176,7 @@ Status ConsensusFrontier::FromPB(const google::protobuf::Any& any) {
   backfill_done_ = pb.backfill_done();
   backfill_key_ = pb.backfill_key();
   has_vector_deletion_ = pb.has_vector_deletion();
+  hybrid_time_bounds_entries_ = pb.hybrid_time_bounds_entries();
   split_generation_ = pb.split_generation();
   split_min_chunk_serial_no_ = pb.split_min_chunk_serial_no();
   VLOG(3) << "ConsensusFrontier: " << ToString();
@@ -225,6 +230,9 @@ std::string ConsensusFrontier::ToString() const {
   }
   if (has_vector_deletion_) {
     fields += Format("has_vector_deletion: $0 ", has_vector_deletion_);
+  }
+  if (hybrid_time_bounds_entries_) {
+    fields += "hybrid_time_bounds_entries: true ";
   }
   if (split_generation_) {
     fields += Format("split_generation: $0 ", split_generation_);
@@ -354,6 +362,9 @@ void ConsensusFrontier::Update(
     } else {
       UpdateField(&it->second, p.second, update_type);
     }
+  }
+  if (update_type == storage::UpdateUserValueType::kSmallest) {
+    hybrid_time_bounds_entries_ = hybrid_time_bounds_entries_ && rhs.hybrid_time_bounds_entries_;
   }
   if (update_type == storage::UpdateUserValueType::kLargest) {
     if (rhs.backfill_done_) {

@@ -21,6 +21,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/yb_partition.h"
 
+DECLARE_bool(drop_sst_files_hidden_by_hybrid_time_filter);
 DECLARE_bool(ysql_enable_cdr_metadata);
 
 namespace yb {
@@ -29,6 +30,32 @@ namespace docdb {
 INSTANTIATE_TEST_CASE_P(DocDBTests,
                         DocDBTestWrapper,
                         testing::Values(TestDocDb::kQlReader, TestDocDb::kRedisReader));
+
+namespace {
+
+// Writes the row of DocDBRocksDBUtil::WriteSimple(index), with frontiers at frontier_ht that are
+// not marked as bounding the hybrid times of its keys: like a write by an older version, or one
+// with an external hybrid time (xCluster, index backfill), whose keys are older than its Raft
+// operation.
+Status WriteSimpleWithFrontierHt(DocDBRocksDBUtil* util, int index, HybridTime frontier_ht) {
+  auto dwb = util->MakeDocWriteBatch();
+  LWQLValuePB value(nullptr);
+  value.set_int32_value(index);
+  RETURN_NOT_OK(dwb.SetPrimitive(
+      DocPath(dockv::MakeDocKey(Format("row$0", index), 11111 * index).Encode(),
+              KeyEntryValue::MakeColumnId(ColumnId(10))),
+      ValueRef(value)));
+  rocksdb::WriteBatch batch;
+  RETURN_NOT_OK(util->PopulateRocksDBWriteBatch(
+      dwb, &batch, HybridTime::FromMicros(1000 * index)));
+  ConsensusFrontiers frontiers;
+  set_op_id(OpId(1, index), &frontiers);
+  set_hybrid_time(frontier_ht, &frontiers);
+  batch.SetFrontiers(&frontiers);
+  return util->rocksdb()->Write(util->write_options(), &batch);
+}
+
+} // namespace
 
 TEST_P(DocDBTestWrapper, DocPathTest) {
   auto doc_key = MakeDocKey("mydockey", 10, "mydockey", 20);
@@ -1924,6 +1951,154 @@ TEST_P(DocDBTestWrapper, SetHybridTimeFilterSingleFile) {
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
       SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(10); HT{ physical: 1000 }]) -> 1
       SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(10); HT{ physical: 2000 }]) -> 2
+  )#");
+}
+
+// A restore removes the files whose keys are all newer than its hybrid time filter, and keeps the
+// filter on the files that also have older keys.
+TEST_P(DocDBTestWrapper, SetHybridTimeFilterRemovesHiddenFiles) {
+  for (bool drop_hidden_files : {false, true}) {
+    SCOPED_TRACE(Format("drop_hidden_files: $0", drop_hidden_files));
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_drop_sst_files_hidden_by_hybrid_time_filter) =
+        drop_hidden_files;
+    ASSERT_OK(DestroyRocksDB());
+    ASSERT_OK(ReopenRocksDB());
+
+    // A file with keys on both sides of the filter, then one with keys only after it.
+    for (int i = 1; i <= 3; ++i) {
+      ASSERT_OK(WriteSimple(i));
+    }
+    ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+    for (int i = 4; i <= 5; ++i) {
+      ASSERT_OK(WriteSimple(i));
+    }
+    ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+    ASSERT_EQ(rocksdb()->GetLiveFilesMetaData().size(), 2);
+
+    CloseRocksDB();
+    {
+      RocksDBPatcher patcher(rocksdb_dir_, regular_db_options_);
+      ASSERT_OK(patcher.Load());
+      ASSERT_OK(patcher.SetHybridTimeFilter(std::nullopt, HybridTime::FromMicros(2000)));
+      ASSERT_TRUE(patcher.TEST_ContainsHybridTimeFilter());
+    }
+    // The removed file is deleted by the patcher, not left for the next DB open.
+    std::vector<std::string> children;
+    ASSERT_OK(regular_db_options_.env->GetChildren(rocksdb_dir_, &children));
+    auto num_sst_files = std::count_if(children.begin(), children.end(), [](const auto& name) {
+      return name.ends_with(".sst");
+    });
+    ASSERT_EQ(num_sst_files, drop_hidden_files ? 1 : 2);
+    ASSERT_OK(OpenRocksDB());
+    ASSERT_EQ(rocksdb()->GetLiveFilesMetaData().size(), drop_hidden_files ? 1 : 2);
+
+    ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+        SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(10); HT{ physical: 1000 }]) -> 1
+        SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(10); HT{ physical: 2000 }]) -> 2
+    )#");
+  }
+}
+
+// A restore trusts a file's smallest frontier only when it is marked as bounding the hybrid times
+// of the file's keys, which is not the case for a write that stores keys older than its frontier.
+TEST_P(DocDBTestWrapper, SetHybridTimeFilterKeepsFileWithKeysOlderThanFrontiers) {
+  for (int i = 1; i <= 2; ++i) {
+    ASSERT_OK(WriteSimpleWithFrontierHt(this, i, HybridTime::FromMicros(5000)));
+  }
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+
+  ASSERT_OK(SetHybridTimeFilter(std::nullopt, HybridTime::FromMicros(2000)));
+
+  ASSERT_EQ(rocksdb()->GetLiveFilesMetaData().size(), 1);
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(10); HT{ physical: 1000 }]) -> 1
+      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(10); HT{ physical: 2000 }]) -> 2
+  )#");
+}
+
+// A file can already carry an older filter, e.g. set by a restore that did not remove it. A later
+// restore removes the file when that older filter hides all its keys, even if the new one alone
+// would not.
+TEST_P(DocDBTestWrapper, SetHybridTimeFilterRemovesFileHiddenByOlderFilter) {
+  ASSERT_OK(WriteSimple(1));
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+  for (int i = 3; i <= 4; ++i) {
+    ASSERT_OK(WriteSimple(i));
+  }
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_drop_sst_files_hidden_by_hybrid_time_filter) = false;
+  ASSERT_OK(SetHybridTimeFilter(std::nullopt, HybridTime::FromMicros(2000)));
+  ASSERT_EQ(rocksdb()->GetLiveFilesMetaData().size(), 2);
+
+  // Keys at 3000 and 4000: not all hidden by 3500, all hidden by the older 2000.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_drop_sst_files_hidden_by_hybrid_time_filter) = true;
+  ASSERT_OK(SetHybridTimeFilter(std::nullopt, HybridTime::FromMicros(3500)));
+  ASSERT_EQ(rocksdb()->GetLiveFilesMetaData().size(), 1);
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(10); HT{ physical: 1000 }]) -> 1
+  )#");
+}
+
+// A compaction output's smallest frontier bounds its keys when every input's does, so a restore
+// can remove it too.
+TEST_P(DocDBTestWrapper, SetHybridTimeFilterRemovesCompactedFile) {
+  for (int i = 3; i <= 6; ++i) {
+    ASSERT_OK(WriteSimple(i));
+    if (i % 2 == 0) {
+      ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+    }
+  }
+  ASSERT_OK(ForceRocksDBCompact(rocksdb(), rocksdb::CompactRangeOptions()));
+  ASSERT_EQ(rocksdb()->GetLiveFilesMetaData().size(), 1);
+  ASSERT_OK(WriteSimple(1));
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+
+  ASSERT_OK(SetHybridTimeFilter(std::nullopt, HybridTime::FromMicros(2000)));
+
+  ASSERT_EQ(rocksdb()->GetLiveFilesMetaData().size(), 1);
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(10); HT{ physical: 1000 }]) -> 1
+  )#");
+}
+
+// A compaction marks its output from the hybrid times of the keys it writes, so a restore can
+// remove the output even when an input's frontier is not marked, e.g. written by an older version.
+TEST_P(DocDBTestWrapper, SetHybridTimeFilterRemovesCompactedFileWithUnmarkedInput) {
+  ASSERT_OK(WriteSimpleWithFrontierHt(this, 3, HybridTime::FromMicros(3000)));
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+  ASSERT_OK(WriteSimple(4));
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+  ASSERT_OK(ForceRocksDBCompact(rocksdb(), rocksdb::CompactRangeOptions()));
+  ASSERT_EQ(rocksdb()->GetLiveFilesMetaData().size(), 1);
+  ASSERT_OK(WriteSimple(1));
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+
+  ASSERT_OK(SetHybridTimeFilter(std::nullopt, HybridTime::FromMicros(2000)));
+
+  ASSERT_EQ(rocksdb()->GetLiveFilesMetaData().size(), 1);
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(10); HT{ physical: 1000 }]) -> 1
+  )#");
+}
+
+// An unmarked input can hold keys older than its frontier, e.g. written with an external hybrid
+// time by an older version. The compaction output's smallest frontier covers them, so a restore
+// keeps the output although the inputs' frontiers are all newer than its filter.
+TEST_P(DocDBTestWrapper, SetHybridTimeFilterKeepsCompactedKeysOlderThanFrontiers) {
+  ASSERT_OK(WriteSimpleWithFrontierHt(this, 1, HybridTime::FromMicros(5000)));
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+  ASSERT_OK(WriteSimple(4));
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+  ASSERT_OK(ForceRocksDBCompact(rocksdb(), rocksdb::CompactRangeOptions()));
+  ASSERT_EQ(rocksdb()->GetLiveFilesMetaData().size(), 1);
+
+  ASSERT_OK(SetHybridTimeFilter(std::nullopt, HybridTime::FromMicros(2000)));
+
+  ASSERT_EQ(rocksdb()->GetLiveFilesMetaData().size(), 1);
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(10); HT{ physical: 1000 }]) -> 1
   )#");
 }
 

@@ -127,6 +127,12 @@ DEFINE_NON_RUNTIME_bool(rocksdb_persist_options_file, false,
     "Write the RocksDB OPTIONS file on every DB open and options change. Nothing reads it, and "
     "with many tablets the rewrites are a noticeable share of the bootstrap I/O.");
 
+DEFINE_RUNTIME_bool(drop_sst_files_hidden_by_hybrid_time_filter, true,
+    "When a restore to a point in time (PITR, clone, transactional snapshot) sets a hybrid time "
+    "filter on the regular RocksDB, remove the SST files whose keys are all newer than the filter "
+    "instead of keeping them hidden behind it until a compaction. Only files whose frontiers "
+    "bound the hybrid times of their keys qualify.");
+
 DEFINE_RUNTIME_bool(rocksdb_advise_random_on_open, true,
     "If set to true, will hint the underlying file system that the file access pattern is random, "
     "when a sst file is opened.");
@@ -819,6 +825,19 @@ void SetLogPrefix(rocksdb::Options* options, const std::string& log_prefix) {
 
 namespace {
 
+// The hybrid time of the file's oldest entry, when its smallest frontier bounds them. See
+// ConsensusFrontierPB::hybrid_time_bounds_entries.
+std::optional<HybridTime> OldestEntryHybridTime(const rocksdb::FileMetaData& file) {
+  if (!file.smallest.user_frontier) {
+    return std::nullopt;
+  }
+  const auto& smallest = down_cast<const ConsensusFrontier&>(*file.smallest.user_frontier);
+  if (!smallest.hybrid_time_bounds_entries() || !smallest.hybrid_time().is_valid()) {
+    return std::nullopt;
+  }
+  return smallest.hybrid_time();
+}
+
 // Helper class for RocksDBPatcher.
 class RocksDBPatcherHelper {
  public:
@@ -844,6 +863,10 @@ class RocksDBPatcherHelper {
   void ModifyFile(int level, const rocksdb::FileMetaData& fmd) {
     delete_edit_->DeleteFile(level, fmd.fd.GetNumber());
     add_edit_->AddCleanedFile(level, fmd);
+  }
+
+  void DeleteFile(int level, const rocksdb::FileMetaData& fmd) {
+    delete_edit_->DeleteFile(level, fmd.fd.GetNumber());
   }
 
   rocksdb::VersionEdit& Edit() {
@@ -929,7 +952,8 @@ class RocksDBPatcherHelper {
 class RocksDBPatcher::Impl {
  public:
   Impl(const std::string& dbpath, const rocksdb::Options& options)
-      : options_(SanitizeOptions(dbpath, &comparator_, options)),
+      : dbpath_(dbpath),
+        options_(SanitizeOptions(dbpath, &comparator_, options)),
         imm_cf_options_(options_),
         env_options_(options_),
         cf_options_(options_),
@@ -945,8 +969,9 @@ class RocksDBPatcher::Impl {
 
   Status SetHybridTimeFilter(std::optional<uint32_t> db_oid, HybridTime value) {
     RocksDBPatcherHelper helper(&version_set_);
+    std::vector<rocksdb::FileDescriptor> dropped_files;
 
-    helper.IterateFiles([&helper, db_oid, value](
+    helper.IterateFiles([&helper, &dropped_files, db_oid, value](
         int level, const rocksdb::FileMetaData& file) {
       if (!file.largest.user_frontier) {
         return;
@@ -981,6 +1006,21 @@ class RocksDBPatcher::Impl {
         helper.ModifyFile(level, fmd);
         return;
       } /* if (db_oid) */
+      // A file whose keys are all hidden by the filter would stay in the DB until a compaction,
+      // and every read that reaches it would step over all of its entries
+      // (rocksdb::FilteringIterator). Remove it, as such a compaction would.
+      if (FLAGS_drop_sst_files_hidden_by_hybrid_time_filter) {
+        auto existing_filter = consensus_frontier.GlobalFilter();
+        auto filter = existing_filter.is_valid() ? std::min(existing_filter, value) : value;
+        auto oldest_entry_ht = OldestEntryHybridTime(file);
+        if (oldest_entry_ht && *oldest_entry_ht > filter) {
+          LOG(INFO) << "Removing " << file.ToString() << ", all its keys are hidden by hybrid time "
+                    << "filter " << filter;
+          helper.DeleteFile(level, file);
+          dropped_files.push_back(file.fd);
+          return;
+        }
+      }
       if (HybridTime(consensus_frontier.GlobalFilter()) <= value) {
         LOG(INFO) << "No need to set hybrid time filter since the largest frontier already"
                   << " has an older filter. Largest frontier HT "
@@ -994,7 +1034,42 @@ class RocksDBPatcher::Impl {
       helper.ModifyFile(level, fmd);
     });
 
-    return helper.Apply(options_, imm_cf_options_);
+    RETURN_NOT_OK(helper.Apply(options_, imm_cf_options_));
+    if (dropped_files.empty()) {
+      return Status::OK();
+    }
+
+    // The patched directory can be the live regular DB of the tablet (a PITR without a snapshot
+    // directory), where a removed file is the only copy of its data. Apply does not fsync the
+    // directory after pointing CURRENT at the new MANIFEST, so a crash could bring back the old
+    // MANIFEST, which still lists the removed files. Delete them only once that is durable.
+    std::unique_ptr<rocksdb::Directory> db_directory;
+    auto status = options_.env->NewDirectory(dbpath_, &db_directory);
+    if (status.ok()) {
+      status = db_directory->Fsync();
+    }
+    if (!status.ok()) {
+      LOG(WARNING) << "Not deleting removed files, failed to fsync " << dbpath_ << ": " << status;
+      return Status::OK();
+    }
+
+    // The patched directory could be a snapshot that is never opened as a DB, so the removed files
+    // are deleted here rather than left to the obsolete file deletion of a DB open.
+    for (const auto& fd : dropped_files) {
+      if (fd.GetPathId() >= options_.db_paths.size()) {
+        LOG(WARNING) << "Not deleting removed file " << fd.GetNumber() << ", unknown path id "
+                     << fd.GetPathId();
+        continue;
+      }
+      auto base_path = rocksdb::MakeTableFileName(
+          options_.db_paths[fd.GetPathId()].path, fd.GetNumber());
+      for (const auto& path : {base_path, rocksdb::TableBaseToDataFileName(base_path)}) {
+        auto delete_status = options_.env->DeleteFile(path);
+        LOG_IF(WARNING, !delete_status.ok())
+            << "Failed to delete removed file " << path << ": " << delete_status;
+      }
+    }
+    return Status::OK();
   }
 
   Status ModifyFlushedFrontier(
@@ -1048,6 +1123,24 @@ class RocksDBPatcher::Impl {
     return helper.Apply(options_, imm_cf_options_);
   }
 
+  Status ClearHybridTimeBoundsEntries() {
+    RocksDBPatcherHelper helper(&version_set_);
+
+    helper.IterateFiles([&helper](int level, const rocksdb::FileMetaData& file) {
+      if (!file.smallest.user_frontier ||
+          !down_cast<const ConsensusFrontier&>(*file.smallest.user_frontier)
+              .hybrid_time_bounds_entries()) {
+        return;
+      }
+      rocksdb::FileMetaData fmd = file;
+      down_cast<ConsensusFrontier&>(*fmd.smallest.user_frontier)
+          .set_hybrid_time_bounds_entries(false);
+      helper.ModifyFile(level, fmd);
+    });
+
+    return helper.Apply(options_, imm_cf_options_);
+  }
+
   Status UpdateFileSizes() {
     RocksDBPatcherHelper helper(&version_set_);
 
@@ -1093,6 +1186,7 @@ class RocksDBPatcher::Impl {
   rocksdb::WriteBuffer write_buffer_{1_KB};
   std::shared_ptr<rocksdb::Cache> block_cache_{rocksdb::NewLRUCache(1_MB)};
 
+  const std::string dbpath_;
   rocksdb::Options options_;
   rocksdb::ImmutableCFOptions imm_cf_options_;
   rocksdb::EnvOptions env_options_;
@@ -1122,6 +1216,10 @@ Status RocksDBPatcher::ModifyFlushedFrontier(
 
 Status RocksDBPatcher::UpdateFileSizes() {
   return impl_->UpdateFileSizes();
+}
+
+Status RocksDBPatcher::ClearHybridTimeBoundsEntries() {
+  return impl_->ClearHybridTimeBoundsEntries();
 }
 
 bool RocksDBPatcher::TEST_ContainsHybridTimeFilter() {

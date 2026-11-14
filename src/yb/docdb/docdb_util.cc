@@ -246,6 +246,8 @@ Status DocDBRocksDBUtil::WriteToRocksDB(
     ++op_id_.index;
     set_op_id(op_id_, &frontiers);
     set_hybrid_time(hybrid_time, &frontiers);
+    // Every entry is written at hybrid_time.
+    frontiers.Smallest().set_hybrid_time_bounds_entries(true);
     rocksdb_write_batch.SetFrontiers(&frontiers);
   }
 

@@ -911,6 +911,7 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
       meta->smallest.user_values = smallest_;
       meta->largest.user_values = largest_;
     }
+    RETURN_NOT_OK(UpdateSmallestFrontier(meta));
     return packed_row_.UpdateMeta(meta);
   }
 
@@ -983,7 +984,33 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
       RETURN_NOT_OK(UpdateBoundaryValues(key));
       last_passed_doc_key_serial_ = doc_key_serial;
     }
+    const auto user_key = key.WithoutSuffix(rocksdb::kLastInternalComponentSize);
+    const auto doc_ht = user_key.Suffix(VERIFY_RESULT(DocHybridTime::GetEncodedSize(user_key)));
+    // Doc hybrid times are encoded in reverse order: the oldest has the greatest encoding.
+    if (doc_ht.compare(oldest_output_doc_ht_.AsSlice()) > 0) {
+      oldest_output_doc_ht_.Assign(doc_ht);
+    }
     return next_feed_.Feed(key, value);
+  }
+
+  // Lowers the output file's smallest frontier to the oldest hybrid time of its keys and marks it
+  // as bounding them, whatever the inputs' frontiers were: an input written by an older version, or
+  // one without a frontier, may hold keys older than its frontier. The compaction job finishes an
+  // output file only between calls to Feed, so the keys passed on since the last output file are
+  // exactly this file's.
+  Status UpdateSmallestFrontier(rocksdb::FileMetaData* meta) {
+    const auto oldest_doc_ht = oldest_output_doc_ht_;
+    oldest_output_doc_ht_.Reset();
+    if (oldest_doc_ht.empty() || !meta->smallest.user_frontier) {
+      return Status::OK();
+    }
+    const auto oldest_ht = VERIFY_RESULT(oldest_doc_ht.Decode()).hybrid_time();
+    auto& frontier = down_cast<ConsensusFrontier&>(*meta->smallest.user_frontier);
+    if (!frontier.hybrid_time().is_valid() || oldest_ht < frontier.hybrid_time()) {
+      frontier.set_hybrid_time(oldest_ht);
+    }
+    frontier.set_hybrid_time_bounds_entries(true);
+    return Status::OK();
   }
 
   Status UpdateBoundaryValues(const Slice& key) {
@@ -1050,6 +1077,8 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
   boost::container::small_vector<size_t, 16> sub_key_ends_;
 
   size_t last_passed_doc_key_serial_ = 0;
+  // The oldest doc hybrid time of the keys passed on to the current output file.
+  EncodedDocHybridTime oldest_output_doc_ht_;
   // Serial number of doc key in processed key stream.
   size_t doc_key_serial_ = 0;
   boost::container::small_vector<rocksdb::UserBoundaryValueRef, 0x10> user_values_;

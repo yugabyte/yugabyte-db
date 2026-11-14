@@ -205,6 +205,10 @@ class RocksDBPatcher {
   // Like all other methods in this class it updates manifest file.
   Status UpdateFileSizes();
 
+  // Clears ConsensusFrontierPB::hybrid_time_bounds_entries on all files, for tools that rewrite the
+  // hybrid times of their entries in place.
+  Status ClearHybridTimeBoundsEntries();
+
   // Returns true if at least one sst file contains a valid hybrid time filter
   // in its largest frontier.
   bool TEST_ContainsHybridTimeFilter();
