@@ -82,12 +82,20 @@ def signal_handler(signum, frame):
 
 
 def get_core_dump_dir():
+    """Returns the directory the kernel writes core dumps into, or None
+    when core_pattern pipes them to a user space handler instead.
+
+    A '|' prefix (systemd-coredump, |/bin/false, ...) hands cores to a
+    program instead of a file, so there is nothing for us to collect,
+    and it is a node level setting the pod cannot change.
+
+    """
     core_pattern = None
     with open("/proc/sys/kernel/core_pattern") as core_pattern_file:
         core_pattern = core_pattern_file.readline()
     logging.info("core_pattern is: {}".format(core_pattern.rstrip()))
     if core_pattern.startswith("|"):
-        raise ValueError("core_pattern starts with |, can't do anything useful")
+        return None
     # abspath resolves any relative path from core_pattern. This
     # script and the child process have same CWD, so the following
     # call resolves to correct directory.
@@ -98,11 +106,20 @@ def create_core_dump_dir():
     """This function tries to create the base directory from the
     core_pattern.
 
+    Returns that directory, or None when core dumps cannot be
+    collected at all.
+
     Any failures in creating the directory are logged as warnings.
 
     """
+    core_dump_dir = None
     try:
         core_dump_dir = get_core_dump_dir()
+        if core_dump_dir is None:
+            logging.warning(
+                "Core dumps will not be collected: the kernel pipes them to a "
+                "handler program, see the core_pattern logged above")
+            return None
         os.makedirs(core_dump_dir)
     except Exception as error:
         # TODO: use os.makedirs(core_dump_dir, exist_ok=True) when we
@@ -116,6 +133,7 @@ def create_core_dump_dir():
                 + "failure while creating the core dump directory: "
                 + "{}: {}".format(type(error).__name__, error)
             )
+    return core_dump_dir
 
 
 def delete_pg_lock_files():
@@ -213,6 +231,8 @@ def copy_cores(dst):
 
     total_files_copied = 0
     dir_path = get_core_dump_dir()
+    if dir_path is None:
+        return total_files_copied
 
     if os.path.samefile(dir_path, dst):
         logging.info(
@@ -532,12 +552,16 @@ if __name__ == "__main__":
 
     # Make sure the directory from core_pattern is present, otherwise
     # core dumps are not collected.
-    create_core_dump_dir()
-    # Copy cores once in 30s
-    copy_cores_thread = threading.Thread(
-        target=background_copy_cores_wrapper, args=(cores_dir, core_collection_interval))
-    copy_cores_thread.daemon = True
-    copy_cores_thread.start()
+    core_dump_dir = create_core_dump_dir()
+    copy_cores_thread = None
+    if core_dump_dir is None:
+        logging.info("Core collection is disabled, not starting the collector thread")
+    else:
+        # Copy cores once in 30s
+        copy_cores_thread = threading.Thread(
+            target=background_copy_cores_wrapper, args=(cores_dir, core_collection_interval))
+        copy_cores_thread.daemon = True
+        copy_cores_thread.start()
     # Substitute environment varibles to gflag template file once in 20s
     subs_env_gflags_thread = threading.Thread(
         target=background_sub_env_gflags, args=(subs_env_gflags_interval, command))
@@ -573,11 +597,12 @@ if __name__ == "__main__":
     # invoking the Post hook
     invoke_hook(hook_stage="post")
     bg_thread_stop_event.set()
-    # Give some time for the thread to finish its job,
-    # we do a 2x core collection interval.
-    copy_cores_thread.join(2*core_collection_interval)
-    # There may be left over cores when we crash, so copy them now.
-    # Do the core copy, and exit with child return code.
-    files_copied = copy_cores(cores_dir)
-    logging.info("Copied {} core files to '{}'".format(files_copied, cores_dir))
+    if copy_cores_thread is not None:
+        # Give some time for the thread to finish its job,
+        # we do a 2x core collection interval.
+        copy_cores_thread.join(2*core_collection_interval)
+        # There may be left over cores when we crash, so copy them now.
+        # Do the core copy, and exit with child return code.
+        files_copied = copy_cores(cores_dir)
+        logging.info("Copied {} core files to '{}'".format(files_copied, cores_dir))
     sys.exit(child_process.returncode)
