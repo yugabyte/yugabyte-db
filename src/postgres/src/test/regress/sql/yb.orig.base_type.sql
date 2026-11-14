@@ -409,8 +409,8 @@ CREATE TYPE cstring_type (
     LIKE = cstring
 );
 CREATE TABLE cstring_table (t cstring_type);
--- TODO: upstream PostgreSQL 19 crashes assert-enabled builds when reading a
--- column of this type; restore these once upstream fixes it.
+-- TODO(#37922): upstream PostgreSQL 19 crashes assert-enabled builds when
+-- reading a column of this type; restore these once upstream fixes it.
 -- INSERT INTO cstring_table (t)
 --     VALUES ('thisiscstring');
 -- SELECT * FROM cstring_table;
