@@ -30,6 +30,9 @@ add_library(yb_rust_bridge_obj OBJECT
   rpc_bridge.cc
   ${RUST_BRIDGE_CXXGEN_SRCS})
 target_include_directories(yb_rust_bridge_obj PUBLIC "${YB_RUST_CXXGEN_DIR}")
+# The bridges include generated protobuf headers (rpc_header.pb.h through the rpc headers); an
+# object library links nothing, so a fresh build needs the order spelled out.
+add_dependencies(yb_rust_bridge_obj yrpc)
 
 # rustfmt, clippy and the Rust unit tests: ./yb_build.sh <type> --target rust_checks
 # Crates that only link inside a CMake-built executable are covered by C++ tests instead.

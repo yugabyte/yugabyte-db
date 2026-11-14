@@ -21,6 +21,8 @@ add_library(yb_master_host_obj OBJECT
   ycql_virtual_tables.cc
   ${MASTER_HOST_CXXGEN_SRCS})
 target_link_libraries(yb_master_host_obj PUBLIC yb_rust_bridge_obj)
+# Its sources include the master's generated protobuf headers.
+add_dependencies(yb_master_host_obj master)
 
 yb_add_rust_staticlib(yb_master_rs master-server)
 
