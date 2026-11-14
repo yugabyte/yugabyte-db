@@ -2988,10 +2988,6 @@ lreplace:
 		*yb_cols_marked_for_update = YbFetchColumnsMarkedForUpdate(context,
 																   resultRelInfo);
 
-		/*
-		 * YB_TODO_PG19MERGE: PG commit 7fee7871b4302e916577df130344060d0f9b8004
-		 * split ri_NumGeneratedNeeded into ...I/...U.
-		 */
 		if (resultRelInfo->ri_NumGeneratedNeededU > 0)
 		{
 			/*
