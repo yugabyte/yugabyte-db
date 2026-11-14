@@ -831,7 +831,7 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf, const string& ysql
     metricsLibs.push_back("pg_documentdb_gw_host");
   }
 
-  // YB_TODO_PG19MERGE: mage is not currently built in the YB PG19 tree
+  // TODO(#35023): mage is not currently built in the YB PG19 tree
   // (not in build_postgres.py external_extension_subdirs). Preloading it
   // makes every backend fail to start when ysql_yb_enable_mage is set,
   // which TestYbBackup does clusterwide. Re-add with the mage port.

@@ -8792,7 +8792,7 @@
   prorettype => 'void', proargtypes => 'bool', proargnames => '{is_breaking_change}',
   prosrc => 'update pg_catalog.pg_yb_catalog_version set current_version = current_version + 1, last_breaking_version = case when is_breaking_change then current_version + 1 else last_breaking_version end' },
 
-# YB_TODO_PG19MERGE collision with PG; changed from 8060 to 9815
+# TODO(#35219): collision with PG; changed from 8060 to 9815
 { oid => '9815', descr => 'sync pg_yb_catalog_version with pg_database (one row per database)',
   proname => 'yb_fix_catalog_version_table', prolang => 'sql', procost => '1000',
   provolatile => 'v', proparallel => 'u',
