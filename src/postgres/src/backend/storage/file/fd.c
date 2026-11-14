@@ -354,6 +354,10 @@ static void unlink_if_exists_fname(const char *fname, bool isdir, int elevel);
 
 static int	fsync_parent_path(const char *fname, int elevel);
 
+/* YB declarations */
+static void YbRemoveDirEntriesWithPrefix(const char *dirname,
+										 const char *prefix);
+
 
 /*
  * pg_fsync --- do fsync with or without writethrough
@@ -3897,4 +3901,84 @@ pg_pwritev_with_retry(int fd, const struct iovec *iov, int iovcnt, off_t offset)
 	}
 
 	return sum;
+}
+
+/*
+ * Remove the files and fileset directories that OpenTemporaryFile and
+ * FileSetInit created for pid, a backend that was killed before it could
+ * remove them.  Without a crash-restart cycle, which YB avoids for such
+ * backends, RemovePgTempFiles does not run until the next postmaster start.
+ * YB creates no tablespace directories, so the files are all in base.
+ */
+void
+YbRemoveTempFilesOfPid(int pid)
+{
+	char		prefix[sizeof(PG_TEMP_FILE_PREFIX) + 16];
+
+	snprintf(prefix, sizeof(prefix), "%s%d.", PG_TEMP_FILE_PREFIX, pid);
+	YbRemoveDirEntriesWithPrefix("base/" PG_TEMP_FILES_DIR, prefix);
+}
+
+/*
+ * Remove the temporary relation files, which mdcreate names
+ * t<backendId>_<relfilenode>, of a backend that was killed before it could
+ * remove them.  A backend creates them only in its own database, and YB
+ * creates no tablespace directories.
+ *
+ * The caller must ensure that no new backend can have been assigned
+ * backendId yet, or its files would be removed too.
+ */
+void
+YbRemoveTempRelationFilesOfBackend(Oid databaseId, int backendId)
+{
+	char		dbspace_path[MAXPGPATH];
+	char		prefix[16];
+
+	snprintf(dbspace_path, sizeof(dbspace_path), "base/%u", databaseId);
+	snprintf(prefix, sizeof(prefix), "t%d_", backendId);
+	YbRemoveDirEntriesWithPrefix(dbspace_path, prefix);
+}
+
+/*
+ * Remove the entries of dirname whose names start with prefix, including the
+ * contents of any directories among them.
+ */
+static void
+YbRemoveDirEntriesWithPrefix(const char *dirname, const char *prefix)
+{
+	char		rm_path[MAXPGPATH * 2];
+	DIR		   *dir;
+	struct dirent *de;
+
+	dir = AllocateDir(dirname);
+
+	if (dir == NULL && errno == ENOENT)
+		return;
+
+	while ((de = ReadDirExtended(dir, dirname, LOG)) != NULL)
+	{
+		struct stat statbuf;
+
+		if (strncmp(de->d_name, prefix, strlen(prefix)) != 0)
+			continue;
+
+		snprintf(rm_path, sizeof(rm_path), "%s/%s", dirname, de->d_name);
+
+		if (lstat(rm_path, &statbuf) == 0 && S_ISDIR(statbuf.st_mode))
+		{
+			RemovePgTempFilesInDir(rm_path, false, true);
+
+			if (rmdir(rm_path) < 0)
+				ereport(LOG,
+						(errcode_for_file_access(),
+						 errmsg("could not remove directory \"%s\": %m",
+								rm_path)));
+		}
+		else if (unlink(rm_path) < 0)
+			ereport(LOG,
+					(errcode_for_file_access(),
+					 errmsg("could not remove file \"%s\": %m", rm_path)));
+	}
+
+	FreeDir(dir);
 }

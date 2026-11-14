@@ -3987,6 +3987,23 @@ CleanupKilledProcess(PGPROC *proc)
 		/* From ProcSignalInit */
 		CleanupProcSignalStateForProc(proc);
 
+		/*
+		 * From BeforeShmemExit_Files and RemoveTempRelationsCallback.  This
+		 * must precede CleanupInvalidationStateForProc, which frees the
+		 * backend ID for reuse.  The temp relations' catalog entries are
+		 * removed when a backend next uses that temp namespace.
+		 *
+		 * tempNamespaceId is set before the first temp relation is created,
+		 * and is reset only by an abort, which removes the files.
+		 */
+		if (remove_temp_files_after_crash)
+		{
+			YbRemoveTempFilesOfPid(proc->pid);
+			if (OidIsValid(proc->tempNamespaceId))
+				YbRemoveTempRelationFilesOfBackend(proc->databaseId,
+												   proc->backendId);
+		}
+
 		/* From SharedInvalBackendInit */
 		CleanupInvalidationStateForProc(proc);
 

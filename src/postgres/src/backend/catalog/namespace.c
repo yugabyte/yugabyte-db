@@ -3347,6 +3347,13 @@ GetTempNamespaceBackendId(Oid namespaceId)
 		result = atoi(nspname + 14);
 	else
 		result = InvalidBackendId;
+	/*
+	 * YB: the name may be pg_temp_<tserver_uuid>_<backend_id>, so take the
+	 * backend ID after the last underscore.  It may refer to a backend on
+	 * another tserver.
+	 */
+	if (result != InvalidBackendId)
+		result = atoi(strrchr(nspname, '_') + 1);
 	pfree(nspname);
 	return result;
 }
