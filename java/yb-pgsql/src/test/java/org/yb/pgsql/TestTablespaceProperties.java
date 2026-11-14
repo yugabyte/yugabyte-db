@@ -629,15 +629,26 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
       alterStatement.execute(String.format(
           "ALTER TABLESPACE %s RESET (read_replica_placement)", tablespaceName));
     }
-    waitForLoadBalancer(expectedTServers);
-    verifyPlacement(tablesWithCustomPlacement, customTablespace);
+    // Read replica removal is fast enough that the load balancer can go active and idle before
+    // waitForLoadBalancerActive() polls, so wait for the expected placement instead.
+    for (final String table : tablesWithCustomPlacement) {
+      waitForTablePlacement(table, customTablespace);
+    }
 
     // Alter tables with custom tablespaces to move to pg_default.
     List<String> movedTables = moveCreatedTestDataToDefaultTablespace("read_replica");
 
-    waitForLoadBalancer();
+    // The old placement has the same total replica count, so poll rather than rely on
+    // waitForLoadBalancer() observing the move.
     for (final String table : movedTables) {
-      verifyPlacementForReadReplica(table);
+      TestUtils.waitFor(() -> {
+        try {
+          verifyPlacementForReadReplica(table);
+          return true;
+        } catch (AssertionError e) {
+          return false;
+        }
+      }, MASTER_LOAD_BALANCER_WAIT_TIME_MS);
     }
   }
 
