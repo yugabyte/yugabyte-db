@@ -15,6 +15,15 @@ static void mm_read_cb(mm_fd_t *handle)
 		mm_cond_signal((mm_cond_t *)io->on_read, &mm_self->scheduler);
 }
 
+/*
+ * YB: Bytes already read off the socket and buffered by TLS, which generate
+ * no poller event.
+ */
+static inline int yb_mm_read_pending(mm_io_t *io)
+{
+	return mm_tls_is_active(io) && mm_tls_read_pending(io);
+}
+
 static inline int mm_read_start(mm_io_t *io, machine_cond_t *on_read)
 {
 	mm_machine_t *machine = mm_self;
@@ -24,7 +33,7 @@ static inline int mm_read_start(mm_io_t *io, machine_cond_t *on_read)
 	   will not generate any poller event we must
 	   check it right away.
 	*/
-	if (mm_tls_is_active(io) && mm_tls_read_pending(io))
+	if (yb_mm_read_pending(io))
 		mm_cond_signal((mm_cond_t *)io->on_read, &mm_self->scheduler);
 
 	/* Also check for buffered compressed data, since this also won't
@@ -80,6 +89,11 @@ MACHINE_API int machine_read_stop(machine_io_t *obj)
 		return -1;
 	}
 	return mm_read_stop(io);
+}
+
+MACHINE_API int yb_machine_read_pending(machine_io_t *obj)
+{
+	return yb_mm_read_pending(mm_cast(mm_io_t *, obj));
 }
 
 MACHINE_API ssize_t machine_read_raw(machine_io_t *obj, void *buf, size_t size)

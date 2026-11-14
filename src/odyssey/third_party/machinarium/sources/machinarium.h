@@ -283,6 +283,12 @@ MACHINE_API int machine_read_stop(machine_io_t *);
 
 MACHINE_API ssize_t machine_read_raw(machine_io_t *, void *, size_t);
 
+/*
+ * YB: Returns 1 if TLS has buffered bytes that are ready to be read. Unlike
+ * unread socket bytes, these do not wake the poller.
+ */
+MACHINE_API int yb_machine_read_pending(machine_io_t *);
+
 MACHINE_API machine_msg_t *machine_read(machine_io_t *, size_t,
 					uint32_t time_ms);
 
