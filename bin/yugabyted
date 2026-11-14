@@ -32,14 +32,14 @@ from threading import Thread, Event
 PY_VERSION = sys.version_info[0]
 if PY_VERSION < 3:
     from urllib2 import Request, urlopen, URLError, HTTPError
-    from urllib import urlencode
+    from urllib import urlencode, quote
     from random import SystemRandom
     _sysrand = SystemRandom()
     PASSWORD_GENNERATOR = _sysrand.choice
 else:
     from urllib.request import Request, urlopen
     from urllib.error import URLError, HTTPError
-    from urllib.parse import urlencode, urlparse
+    from urllib.parse import urlencode, urlparse, quote
     import secrets
     PASSWORD_GENNERATOR = secrets.choice
 
@@ -7021,11 +7021,13 @@ class ControlScript(object):
         else:
             status_info += [ (Output.make_yellow(console_desc), yb_master_status), ]
 
+        # pgJDBC percent-decodes a URL's database and each parameter value: parseURL in
+        # github.com/pgjdbc/pgjdbc/blob/master/pgjdbc/src/main/java/org/postgresql/Driver.java
         jdbc_string = "jdbc:postgresql://{}:{}/{}?user={}&password=".format(
             advertise_url_ip,
             ysql_port,
-            ysql_db,
-            ysql_username)
+            quote(ysql_db, safe=""),
+            quote(ysql_username, safe=""))
         if self.configs.saved_data.get("secure"):
             jdbc_string += Output.make_cyan("<DB_PASSWORD>")
             status_display_info[jdbc_string] = Output.make_cyan
@@ -11856,8 +11858,11 @@ class YsqlProxy(object):
         self.setup_env_init = EnvBasedCredentials()
         self.username, self.password, self.db = self.setup_env_init.get_ysql_credentials(
                                                     get_default_credentials)
-        self.cmd_with_password = [path, "postgresql://{}:{}@{}:{}".format(self.username,
-                self.password, get_url_from_ip(ip), port)]
+        # libpq reads a connection URI's parts percent-encoded
+        # (https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING).
+        self.cmd_with_password = [path, "postgresql://{}:{}@{}:{}".format(
+                quote(self.username, safe=""), quote(self.password, safe=""),
+                get_url_from_ip(ip), port)]
         self.cmd_without_password = [path, "-h", str(ip), "-p", str(port)]
         env_var = os.environ.copy()
         env_var["PGUSER"] = self.username
@@ -11892,7 +11897,7 @@ class YsqlProxy(object):
             db = self.db
 
         cmd=list(self.cmd_with_password)
-        cmd[1] +="/"+db
+        cmd[1] +="/"+quote(db, safe="")
         self.connect(cmd)
 
     # Checks if db exists.
