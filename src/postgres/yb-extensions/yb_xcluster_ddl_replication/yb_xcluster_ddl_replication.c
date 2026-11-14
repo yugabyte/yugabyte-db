@@ -127,6 +127,18 @@ InsideProcessedDdlSubtree()
 }
 
 /*
+ * End-of-statement handlers rely on state that handle_ddl_start sets up (role,
+ * captured query), so they must skip statements it did not process, e.g. the
+ * CREATE EXTENSION that creates our triggers.
+ */
+static bool
+IsProcessedDdl()
+{
+	return processed_ddl_depth != 0 &&
+		   processed_ddl_depth == current_process_utility_depth;
+}
+
+/*
  * Util functions.
  */
 static void RecordTempRelationDDL();
@@ -820,7 +832,7 @@ handle_ddl_end(PG_FUNCTION_ARGS)
 	if (!CALLED_AS_EVENT_TRIGGER(fcinfo))	/* internal error */
 		elog(ERROR, "not fired by event trigger manager");
 
-	if (IsDisabled())
+	if (IsDisabled() || !IsProcessedDdl())
 		PG_RETURN_NULL();
 
 	EventTriggerData *trig_data = (EventTriggerData *) fcinfo->context;
@@ -847,7 +859,7 @@ handle_sql_drop(PG_FUNCTION_ARGS)
 	if (!CALLED_AS_EVENT_TRIGGER(fcinfo))	/* internal error */
 		elog(ERROR, "not fired by event trigger manager");
 
-	if (IsDisabled())
+	if (IsDisabled() || !IsProcessedDdl())
 		PG_RETURN_NULL();
 
 	EventTriggerData *trig_data = (EventTriggerData *) fcinfo->context;
@@ -867,7 +879,7 @@ handle_table_rewrite(PG_FUNCTION_ARGS)
 	if (!CALLED_AS_EVENT_TRIGGER(fcinfo))	/* internal error */
 		elog(ERROR, "not fired by event trigger manager");
 
-	if (IsDisabled())
+	if (IsDisabled() || !IsProcessedDdl())
 		PG_RETURN_NULL();
 
 	EventTriggerData *trig_data = (EventTriggerData *) fcinfo->context;

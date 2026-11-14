@@ -694,6 +694,30 @@ TEST_F(XClusterDDLReplicationTest, BootstrappingEmptyTable) {
   EXPECT_EQ(bootstrap_required, true);
 }
 
+// Test that 'CREATE EXTENSION yb_xcluster_ddl_replication' is processed properly when the database
+// already has an end-of-statement event trigger.
+TEST_F(XClusterDDLReplicationTest, CreateExtensionWithPreexistingEndOfStatementTrigger) {
+  ASSERT_OK(SetUpClusters());
+
+  // pgaudit creates its own ddl_command_end and sql_drop event triggers.
+  ASSERT_OK(producer_conn_->Execute("CREATE EXTENSION pgaudit"));
+
+  ASSERT_OK(producer_conn_->Execute(
+      "SET yb_xcluster_ddl_replication.TEST_replication_role_override = 'source'"));
+  ASSERT_OK(producer_conn_->Execute("CREATE EXTENSION yb_xcluster_ddl_replication"));
+  ASSERT_EQ(
+      ASSERT_RESULT(producer_conn_->FetchAllAsString(
+          "SELECT yb_data FROM yb_xcluster_ddl_replication.ddl_queue")),
+      "");
+
+  // DDLs after the extension is created are still captured.
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE t (key int PRIMARY KEY)"));
+  ASSERT_EQ(
+      ASSERT_RESULT(producer_conn_->FetchAllAsString(
+          "SELECT yb_data->>'query' FROM yb_xcluster_ddl_replication.ddl_queue")),
+      "CREATE TABLE t (key int PRIMARY KEY)");
+}
+
 // TODO(Julien): As part of #24888, undisable this or make this a test that this correctly fails
 // with an error.
 TEST_F(XClusterDDLReplicationTest, YB_DISABLE_TEST(BootstrappingWithNoTables)) {
