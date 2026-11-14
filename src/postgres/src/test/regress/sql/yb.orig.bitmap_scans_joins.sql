@@ -254,5 +254,55 @@ SELECT $$
 $$ AS query \gset
 \i :run_query
 
+--
+-- Join clause pushed down to the Bitmap Index Scan of a reparameterized
+-- partition path (GH#35146).  The outer p.k in "c.k <> p.k" must be pushed down
+-- as a parameter; as a Var it was read as the inner column (k <> k).  The
+-- table is not analyzed and yb_prefer_bnl is at its default, as in the issue.
+--
+CREATE TABLE bm_part (k INT, ver DATE, PRIMARY KEY (k ASC)) PARTITION BY RANGE (k);
+CREATE TABLE bm_part_p0 PARTITION OF bm_part FOR VALUES FROM (MINVALUE) TO (8);
+CREATE TABLE bm_part_p1 PARTITION OF bm_part FOR VALUES FROM (8) TO (MAXVALUE);
+CREATE INDEX bm_part_ver ON bm_part (ver ASC);
+INSERT INTO bm_part SELECT g, DATE '2000-01-01' + (g * 7) % 97 FROM generate_series(0, 126) g;
+INSERT INTO bm_part VALUES (127, DATE '2000-01-06'), (128, DATE '2000-01-06');
+-- "<>" Storage Index Filter lines of a plan, with the outer table alias, which
+-- depends on the outer plan, printed as "outer".
+CREATE FUNCTION bm_part_ne_filters(query text) RETURNS SETOF text
+LANGUAGE plpgsql AS $$
+DECLARE
+    ln text;
+BEGIN
+    FOR ln IN EXECUTE 'EXPLAIN (COSTS OFF) ' || query
+    LOOP
+        CONTINUE WHEN ln !~ 'Storage Index Filter: .* <> ';
+        RETURN NEXT regexp_replace(btrim(ln), '("[^"]*"|\w+)\.', 'outer.', 'g');
+    END LOOP;
+END;
+$$;
+SET yb_enable_cbo = on;
+RESET yb_prefer_bnl;
+SET enable_seqscan = off;
+SET enable_indexscan = off;
+SET enable_indexonlyscan = off;
+-- The pkey Bitmap Index Scan of bm_part_p1 pushes down (k <> outer.k).
+SELECT * FROM bm_part_ne_filters($$
+SELECT coalesce(string_agg(p.k || '->' || c.k, ',' ORDER BY p.k, c.k), 'none') AS r
+  FROM (SELECT k, ver FROM bm_part ORDER BY k DESC LIMIT 2) p
+  JOIN bm_part c ON c.ver = p.ver AND c.k <> p.k AND c.k = ANY (ARRAY[127, 128])
+   AND c.k = (SELECT min(d.k) FROM bm_part d WHERE d.ver = p.ver AND d.k >= c.k)
+$$);
+-- Expected: 127->128,128->127.
+SELECT coalesce(string_agg(p.k || '->' || c.k, ',' ORDER BY p.k, c.k), 'none') AS r
+  FROM (SELECT k, ver FROM bm_part ORDER BY k DESC LIMIT 2) p
+  JOIN bm_part c ON c.ver = p.ver AND c.k <> p.k AND c.k = ANY (ARRAY[127, 128])
+   AND c.k = (SELECT min(d.k) FROM bm_part d WHERE d.ver = p.ver AND d.k >= c.k);
+RESET yb_enable_cbo;
+RESET enable_seqscan;
+RESET enable_indexscan;
+RESET enable_indexonlyscan;
+DROP FUNCTION bm_part_ne_filters;
+DROP TABLE bm_part;
+
 RESET enable_bitmapscan;
 RESET yb_prefer_bnl;
