@@ -32,8 +32,11 @@
 
 #include "yb/util/mem_tracker.h"
 
+#include <sys/resource.h>
+
 #include <chrono>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -43,6 +46,8 @@
 #include "yb/tserver/server_main_util.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/env.h"
+#include "yb/util/faststring.h"
 #include "yb/util/flags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
@@ -51,6 +56,8 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/string_trim.h"
+#include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/tcmalloc_impl_util.h"
 #include "yb/util/tcmalloc_util.h"
@@ -520,6 +527,49 @@ TEST(MemTrackerTest, TcMallocBackgroundRelease) {
   ASSERT_OK(SET_FLAG(tcmalloc_skip_subrelease_long_interval_secs, 20));
   ASSERT_EQ(tcmalloc::MallocExtension::GetSkipSubreleaseShortInterval(), absl::Seconds(5));
   ASSERT_EQ(tcmalloc::MallocExtension::GetSkipSubreleaseLongInterval(), absl::Seconds(20));
+}
+
+// Returns the nice value of the thread with the given /proc/self/task subdirectory.
+Result<int> ThreadNice(const std::string& tid) {
+  faststring stat;
+  RETURN_NOT_OK(ReadFileToString(Env::Default(), Format("/proc/self/task/$0/stat", tid), &stat));
+  // The fields after the parenthesized command name start at field 3, and nice is field 19.
+  const auto str = stat.ToString();
+  const auto fields = StringSplit(str.substr(str.rfind(')') + 2), ' ');
+  SCHECK_GT(
+      fields.size(), 16U, IllegalState, Format("Unexpected stat for thread $0: $1", tid, str));
+  return std::stoi(fields[16]);
+}
+
+TEST(MemTrackerTest, TcMallocBackgroundThreadPriority) {
+  ASSERT_OK(MemTracker::StartTCMallocBackgroundThread());
+  std::string bg_tid;
+  auto* env = Env::Default();
+  for (const auto& tid : ASSERT_RESULT(env->GetChildren("/proc/self/task", ExcludeDots::kTrue))) {
+    faststring comm;
+    ASSERT_OK(ReadFileToString(env, Format("/proc/self/task/$0/comm", tid), &comm));
+    if (util::TrimStr(comm.ToString()) == "tcmalloc_bkgrnd") {
+      bg_tid = tid;
+    }
+  }
+  ASSERT_FALSE(bg_tid.empty());
+
+  // The thread gets the higher priority exactly when another thread of this process may set it.
+  // Otherwise it keeps the nice value of the thread that started it.
+  bool can_raise_priority = false;
+  std::thread([&can_raise_priority] {
+    can_raise_priority =
+        setpriority(PRIO_PROCESS, 0 /* calling thread */, kTCMallocBackgroundThreadNice) == 0;
+  }).join();
+  const auto expected_nice = can_raise_priority
+      ? kTCMallocBackgroundThreadNice
+      : ASSERT_RESULT(ThreadNice(std::to_string(getpid())));
+  LOG(INFO) << "Expected nice " << expected_nice << " for thread " << bg_tid;
+  ASSERT_OK(WaitFor(
+      [&bg_tid, expected_nice]() -> Result<bool> {
+        return VERIFY_RESULT(ThreadNice(bg_tid)) == expected_nice;
+      },
+      10s, "Background thread priority"));
 }
 
 TEST(MemTrackerTest, TcMallocBackgroundReleaseAboveSoftLimit) {

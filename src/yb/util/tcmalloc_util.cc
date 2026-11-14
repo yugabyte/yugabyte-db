@@ -12,12 +12,16 @@
 
 #include "yb/util/tcmalloc_util.h"
 
+#include <sys/resource.h>
+
+#include <cerrno>
 #include <cstdint>
 #include <mutex>
 
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
+#include "yb/util/errno.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -295,6 +299,23 @@ void SetTCMallocSamplingPeriod(int64_t sample_period_bytes) {
 #endif
 }
 
+#if YB_GOOGLE_TCMALLOC
+namespace {
+
+// Linux nice values apply per thread, so this changes only the calling thread.
+void RaiseThreadPriority() {
+  if (setpriority(PRIO_PROCESS, 0 /* calling thread */, kTCMallocBackgroundThreadNice) != 0) {
+    LOG(WARNING) << "Could not raise the TCMalloc background thread to nice "
+                 << kTCMallocBackgroundThreadNice << ": " << ErrnoToString(errno)
+                 << ". This needs CAP_SYS_NICE or an RLIMIT_NICE of at least "
+                 << 20 - kTCMallocBackgroundThreadNice
+                 << " (systemd LimitNICE=" << kTCMallocBackgroundThreadNice << ").";
+  }
+}
+
+} // namespace
+#endif
+
 Result<bool> StartTCMallocBackgroundThread() {
 #if YB_GOOGLE_TCMALLOC
   static std::mutex mutex;
@@ -309,7 +330,11 @@ Result<bool> StartTCMallocBackgroundThread() {
   // Call through a lambda: taking the address of ProcessBackgroundActions would need an eager
   // relocation, which fails to resolve in binaries that link yb_util without tcmalloc.
   RETURN_NOT_OK(Thread::Create(
-      "tcmalloc", "tcmalloc_bkgrnd", [] { tcmalloc::MallocExtension::ProcessBackgroundActions(); },
+      "tcmalloc", "tcmalloc_bkgrnd",
+      [] {
+        RaiseThreadPriority();
+        tcmalloc::MallocExtension::ProcessBackgroundActions();
+      },
       nullptr));
   started = true;
   return true;

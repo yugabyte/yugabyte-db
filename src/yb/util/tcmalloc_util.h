@@ -66,11 +66,14 @@ int64_t GetTCMallocSamplingPeriod();
 
 void SetTCMallocSamplingPeriod(int64_t sample_period_bytes);
 
+constexpr int kTCMallocBackgroundThreadNice = -20;
+
 // Starts a thread that runs Google TCMalloc's ProcessBackgroundActions loop for the rest of the
 // process lifetime: it reclaims idle per-CPU and transfer caches and releases page heap memory at
-// the background release rate. Returns whether the thread runs, which is false if Google TCMalloc
-// is not used or does not support background actions on this platform. Does nothing if the thread
-// was already started.
+// the background release rate. The thread runs at nice kTCMallocBackgroundThreadNice if the process
+// may raise it, so that other threads do not preempt it while it holds the page heap lock. Returns
+// whether the thread runs, which is false if Google TCMalloc is not used or does not support
+// background actions on this platform. Does nothing if the thread was already started.
 Result<bool> StartTCMallocBackgroundThread();
 
 void SetTCMallocBackgroundReleaseRate(int64_t bytes_per_sec);
