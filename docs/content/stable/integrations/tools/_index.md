@@ -83,6 +83,13 @@ Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can use thir
     </a>
   </li>
 
+  <li>
+    <a href="visualeaf/">
+      <img src="/images/develop/tools/visualeaf/visualeaf-icon.svg">
+      VisuaLeaf
+    </a>
+  </li>
+
 </ul>
 
 ## YugabyteDB prerequisites
