@@ -3599,6 +3599,13 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   void DoReleaseObjectLocksIfNecessary(const TransactionId& txn_id);
 
+  // Submits DoReleaseObjectLocksIfNecessary for txn_id to the background pool.
+  void ScheduleReleaseObjectLocks(const TransactionId& txn_id);
+
+  // Releases the object locks of txns in ysql_ddl_txns_release_all_deferred_, i.e. those whose
+  // deferred release-all was carried across a sys catalog reload but got no verification entry.
+  void ReleaseObjectLocksOfDeferredTxnsPostLoad() EXCLUDES(ddl_txn_verifier_mutex_);
+
   Status RegisterFlagCallbacks();
 
   // Should be bumped up when tablet locations are changed.
@@ -3664,6 +3671,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Stores the transaction ids of all the transactions undergoing rollback to a sub-transaction.
   std::unordered_map<TransactionId, YsqlDdlSubTransactionRollbackMetadata>
       ysql_ddl_txn_undergoing_subtransaction_rollback_map_ GUARDED_BY(ddl_txn_verifier_mutex_);
+
+  // Txns whose release_all_deferred was set when a reload in the same term (e.g. after a PITR)
+  // cleared ysql_ddl_txn_verfication_state_map_. The flag lives only in memory and the finished
+  // txn will not resend its release-all, so it is reattached to the txn's reloaded entry.
+  std::unordered_set<TransactionId> ysql_ddl_txns_release_all_deferred_
+      GUARDED_BY(ddl_txn_verifier_mutex_);
 
   ServerRegistrationPB server_registration_;
 

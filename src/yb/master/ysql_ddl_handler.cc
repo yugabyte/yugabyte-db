@@ -149,7 +149,8 @@ bool CatalogManager::CreateOrUpdateDdlTxnVerificationState(
       YsqlDdlTransactionState{TxnState::kUnknown,
                               txn.status_tablet,
                               YsqlDdlVerificationState::kDdlInProgress,
-                              {table}, {} /* processed_tables */, {} /* nochange_tables */});
+                              {table}, {} /* processed_tables */, {} /* nochange_tables */,
+                              ysql_ddl_txns_release_all_deferred_.erase(txn.transaction_id) > 0});
   return true;
 }
 
@@ -887,12 +888,8 @@ void CatalogManager::RemoveDdlTransactionStateUnlocked(
       // 1. Either the alter waits inline successfully before issuing the commit,
       // 2. or when the above times out, this branch is involed by the multi step
       //    TableSchemaVerificationTask's callback post the schema changes have been applied.
-      if (release_locks && !FLAGS_TEST_disable_release_object_locks_on_ddl_verification) {
-        WARN_NOT_OK(
-            background_tasks_thread_pool_->SubmitFunc([this, txn_id]() {
-              DoReleaseObjectLocksIfNecessary(txn_id);
-            }),
-            Format("Failed to submit task for releasing exclusive object locks of txn $0", txn_id));
+      if (release_locks) {
+        ScheduleReleaseObjectLocks(txn_id);
       }
     } else {
       VLOG(1) << "DDL Verification state for " << txn_id << " has "
@@ -1119,6 +1116,32 @@ void CatalogManager::ScheduleTriggerDdlVerificationIfNeeded(
 void CatalogManager::DoReleaseObjectLocksIfNecessary(const TransactionId& txn_id) {
   DEBUG_ONLY_TEST_SYNC_POINT("DoReleaseObjectLocksIfNecessary");
   object_lock_info_manager_->ReleaseLocksForTxn(txn_id);
+}
+
+void CatalogManager::ScheduleReleaseObjectLocks(const TransactionId& txn_id) {
+  if (FLAGS_TEST_disable_release_object_locks_on_ddl_verification) {
+    return;
+  }
+  WARN_NOT_OK(
+      background_tasks_thread_pool_->SubmitFunc(
+          [this, txn_id]() { DoReleaseObjectLocksIfNecessary(txn_id); }),
+      Format("Failed to submit task for releasing object locks of txn $0", txn_id));
+}
+
+void CatalogManager::ReleaseObjectLocksOfDeferredTxnsPostLoad() {
+  std::unordered_set<TransactionId> txns;
+  {
+    LockGuard lock(ddl_txn_verifier_mutex_);
+    txns.swap(ysql_ddl_txns_release_all_deferred_);
+  }
+  if (FLAGS_TEST_disable_release_object_locks_on_ddl_verification) {
+    return;
+  }
+  for (const auto& txn_id : txns) {
+    LOG(INFO) << "No DDL verification state for " << txn_id
+              << " after sys catalog reload, releasing its deferred object locks";
+    DoReleaseObjectLocksIfNecessary(txn_id);
+  }
 }
 
 Status CatalogManager::RollbackDocdbSchemaToSubtxn(
