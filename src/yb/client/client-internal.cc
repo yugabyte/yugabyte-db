@@ -33,7 +33,6 @@
 #include "yb/client/client-internal.h"
 
 #include <algorithm>
-#include <fstream>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -42,7 +41,6 @@
 #include <string>
 #include <vector>
 
-#include <boost/algorithm/string/predicate.hpp>
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/preprocessor/stringize.hpp>
@@ -83,6 +81,7 @@
 #include "yb/server/clock.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
@@ -3118,35 +3117,6 @@ Status YBClient::Data::CreateSnapshot(
   return Status::OK();
 }
 
-namespace {
-
-Result<std::string> ReadMasterAddressesFromFlagFile(
-    const std::string& flag_file_path, const std::string& flag_name) {
-  std::ifstream input_file(flag_file_path);
-  if (!input_file) {
-    return STATUS_FORMAT(IOError, "Unable to open flag file '$0': $1",
-        flag_file_path, strerror(errno));
-  }
-  std::string line;
-
-  std::string master_addrs;
-  while (input_file.good() && std::getline(input_file, line)) {
-    const std::string flag_prefix = "--" + flag_name + "=";
-    if (boost::starts_with(line, flag_prefix)) {
-      master_addrs = line.c_str() + flag_prefix.size();
-    }
-  }
-
-  if (input_file.bad()) {
-    // Do not check input_file.fail() here, reaching EOF may set that.
-    return STATUS_FORMAT(IOError, "Failed reading flag file '$0': $1",
-        flag_file_path, strerror(errno));
-  }
-  return master_addrs;
-}
-
-} // anonymous namespace
-
 // Read the master addresses (from a remote endpoint or a file depending on which is specified), and
 // re-initialize the 'master_server_addrs_' variable.
 Status YBClient::Data::ReinitializeMasterAddresses() {
@@ -3154,8 +3124,7 @@ Status YBClient::Data::ReinitializeMasterAddresses() {
   std::lock_guard l(master_server_addrs_lock_);
   if (!FLAGS_flagfile.empty() && !skip_master_flagfile_) {
     LOG(INFO) << "Reinitialize master addresses from file: " << FLAGS_flagfile;
-    auto master_addrs = ReadMasterAddressesFromFlagFile(
-        FLAGS_flagfile, master_address_flag_name_);
+    auto master_addrs = ReadFlagValueFromFlagFile(FLAGS_flagfile, master_address_flag_name_);
 
     if (!master_addrs.ok()) {
       LOG(WARNING) << "Failure reading flagfile " << FLAGS_flagfile << ": "
