@@ -104,6 +104,7 @@ The Write Ahead Log (or WAL) is used to write and persist updates to disk on eac
 | Metric | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
 | `log_sync_latency` | microseconds | counter | Time spent to flush (fsync) the WAL entries to disk. |
+| `log_wal_sync_overdue_ms` | milliseconds | gauge | How far the oldest unsynced WAL entry is past [interval_durable_wal_write_ms](../../../../reference/configuration/yb-tserver/#interval-durable-wal-write-ms). 0 when the WAL is keeping up. Available in v2024.2.12.0 and later. |
 | `log_append_latency` | microseconds | counter | Time spent on appending a batch of values to the WAL. |
 | `log_group_commit_latency` | microseconds | counter | Time spent on committing an entire group. |
 | `log_bytes_logged`| bytes | counter | Number of bytes written to the WAL after the tablet starts. |
