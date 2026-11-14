@@ -375,6 +375,10 @@ TAG_FLAG(ysql_debug_log_write_requests, unsafe);
 DEFINE_test_flag(bool, cdc_fail_before_setting_barrier, false,
   "Fail CreateTablet before setting CDC retention barriers");
 
+DEFINE_test_flag(int32, mark_non_concurrent_index_done_delay_ms, 0,
+    "Delay handling a MarkNonConcurrentIndexDone RPC by this many milliseconds before submitting "
+    "it.");
+
 double TEST_delay_create_transaction_probability = 0;
 
 namespace yb::tserver {
@@ -751,16 +755,39 @@ std::string TabletServiceAdminImpl::LogPrefix() const {
 void TabletServiceAdminImpl::BackfillDone(
     const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
     rpc::RpcContext context) {
-  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "BackfillDone", req, resp, &context)) {
+  SubmitChangeMetadataOnLeader("BackfillDone", req, resp, &context);
+}
+
+void TabletServiceAdminImpl::MarkNonConcurrentIndexDone(
+    const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
+    rpc::RpcContext context) {
+  // Reject anything else here, where failing is safe: once replicated, a change metadata operation
+  // that fails to apply is fatal.
+  if (!req->has_mark_non_concurrent_index_done()) {
+    SetupErrorAndRespond(
+        resp->mutable_error(), STATUS(InvalidArgument, "mark_non_concurrent_index_done is not set"),
+        &context);
     return;
   }
-  DVLOG(3) << "Received BackfillDone RPC: " << req->DebugString();
+  if (FLAGS_TEST_mark_non_concurrent_index_done_delay_ms > 0) {
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_mark_non_concurrent_index_done_delay_ms));
+  }
+  SubmitChangeMetadataOnLeader("MarkNonConcurrentIndexDone", req, resp, &context);
+}
+
+void TabletServiceAdminImpl::SubmitChangeMetadataOnLeader(
+    const char* method_name, const tablet::ChangeMetadataRequestPB* req,
+    ChangeMetadataResponsePB* resp, rpc::RpcContext* context) {
+  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), method_name, req, resp, context)) {
+    return;
+  }
+  DVLOG(3) << "Received " << method_name << " RPC: " << req->DebugString();
 
   server::UpdateClock(*req, server_->Clock());
 
   // For now, we shall only allow this RPC on the leader.
   auto tablet =
-      LookupLeaderTabletOrRespond(server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
+      LookupLeaderTabletOrRespond(server_->tablet_peer_lookup(), req->tablet_id(), resp, context);
   if (!tablet) {
     return;
   }
@@ -770,9 +797,9 @@ void TabletServiceAdminImpl::BackfillDone(
   operation->AllocateRequest()->CopyFrom(*req);
 
   operation->set_completion_callback(
-      MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
+      MakeRpcOperationCompletionCallback(std::move(*context), resp, server_->Clock()));
 
-  // Submit the alter schema op. The RPC will be responded to asynchronously.
+  // Submit the change metadata op. The RPC will be responded to asynchronously.
   tablet.peer->Submit(std::move(operation), tablet.leader_term);
 }
 

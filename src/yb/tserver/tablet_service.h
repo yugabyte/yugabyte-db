@@ -372,6 +372,11 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
       const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
       rpc::RpcContext context) override;
 
+  // Called on the index table once a nonconcurrently built index's CREATE INDEX commits.
+  void MarkNonConcurrentIndexDone(
+      const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
+      rpc::RpcContext context) override;
+
   // Starts tablet splitting by adding split tablet Raft operation into Raft log of the source
   // tablet.
   void SplitTablet(
@@ -436,6 +441,11 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
 
   Status DoEnableDbConns(
       const EnableDbConnsRequestPB* req, EnableDbConnsResponsePB* resp);
+
+  // Submits a change metadata operation for req on the tablet leader, responding asynchronously.
+  void SubmitChangeMetadataOnLeader(
+      const char* method_name, const tablet::ChangeMetadataRequestPB* req,
+      ChangeMetadataResponsePB* resp, rpc::RpcContext* context);
 
   Status SetupCDCSDKRetention(
       const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,

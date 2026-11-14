@@ -350,6 +350,25 @@ message IndexInfoPB {
   // snapshot predates when the index became consistent.
   optional fixed64 birth_time = 37;
 
+  // Whether birth_time is final. BIRTH_TIME_FINAL (the default, also for indexes created before
+  // this field existed) means birth_time is final; it is 0 if the index has none. The PENDING
+  // states are set at index creation and mean the index may not be consistent yet: while one is set
+  // (and birth_time is 0), the docdb read guard returns a retryable error for reads at the index
+  // instead of serving a possibly-incomplete result. The state records which build path finalizes
+  // birth_time, so each path only finalizes its own indexes.
+  //
+  // TODO(#33155): The birth_time is not yet passed to xcluster targets. However, the state is
+  // still moved to BIRTH_TIME_FINAL on xcluster targets to preserve the old behaviour and allow
+  // reads until we fix this.
+  enum BirthTimeState {
+    BIRTH_TIME_FINAL = 0;
+    // Online (backfilled) build: finalized when backfill completes.
+    BIRTH_TIME_PENDING_BACKFILL = 1;
+    // Nonconcurrent (inline) build: finalized when the CREATE INDEX transaction commits.
+    BIRTH_TIME_PENDING_DDL_COMMIT = 2;
+  }
+  optional BirthTimeState birth_time_state = 39;
+
   // When backfill fails, the status it failed with. Unlike backfill_error_message, this
   // preserves error codes such as the PostgreSQL error code.
   optional AppStatusPB backfill_status = 38;

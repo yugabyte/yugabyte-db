@@ -92,6 +92,9 @@ DEFINE_test_flag(bool, invalidate_last_change_metadata_op, false,
 DEFINE_test_flag(bool, skip_metadata_backfill_done, false,
     "Used in tests to skip triggering of RaftGroupMetadata::OnBackfillDone().");
 
+DEFINE_test_flag(bool, skip_metadata_non_concurrent_index_done, false,
+    "Used in tests to skip triggering of RaftGroupMetadata::OnNonConcurrentIndexDone().");
+
 // Forces RaftGroupMetadata::IsLazySuperblockFlushEnabled() to return true for ALL tablets in
 // this process, bypassing the usual gating on colocated() / IsSysCatalog() / etc.
 //
@@ -2949,6 +2952,25 @@ Status RaftGroupMetadata::SetVectorReverseMappingRepairPending(
   return SetTableInfoUnlocked(it, new_info);
 }
 
+namespace {
+
+// Sets the index's birth_time (unless 0) and, if the index is in pending_state, marks its
+// birth_time_state final. Each finalize path only clears its own pending state.
+void FinalizeIndexBirthTime(
+    TableInfo* table_info, uint64_t birth_time, IndexInfoPB::BirthTimeState pending_state) {
+  IndexInfoPB index_info_pb;
+  table_info->index_info->ToPB(&index_info_pb);
+  if (birth_time != 0) {
+    index_info_pb.set_birth_time(birth_time);
+  }
+  if (index_info_pb.birth_time_state() == pending_state) {
+    index_info_pb.clear_birth_time_state();
+  }
+  table_info->index_info.reset(new qlexpr::IndexInfo(index_info_pb));
+}
+
+} // namespace
+
 Status RaftGroupMetadata::OnBackfillDone(
     const TableId& table_id, uint64_t birth_time) {
   std::lock_guard lock(data_mutex_);
@@ -2980,17 +3002,60 @@ Status RaftGroupMetadata::OnBackfillDoneUnlocked(
   new_schema.SetRetainDeleteMarkers(false);
 
   TableInfoPtr new_table_info = std::make_shared<TableInfo>(*it->second, new_schema);
-  // Persist the index birth time in the index_info if provided.
-  if (birth_time != 0 && new_table_info->index_info) {
-    IndexInfoPB index_info_pb;
-    new_table_info->index_info->ToPB(&index_info_pb);
-    index_info_pb.set_birth_time(birth_time);
-    new_table_info->index_info.reset(new qlexpr::IndexInfo(index_info_pb));
+
+  if (new_table_info->index_info) {
+    // BackfillDone is also sent to nonconcurrently built indexes (e.g. when an online schema change
+    // releases its delete-marker pin), so leave BIRTH_TIME_PENDING_DDL_COMMIT alone.
+    FinalizeIndexBirthTime(
+        new_table_info.get(), birth_time, IndexInfoPB::BIRTH_TIME_PENDING_BACKFILL);
   }
   VLOG_WITH_PREFIX(1) << raft_group_id_ << " Updating table " << target_table_id
                       << " to Schema version " << new_table_info->schema_version
                       << " from \n" << AsString(it->second)
                       << " to \n" << AsString(new_table_info);
+  return SetTableInfoUnlocked(it, std::move(new_table_info));
+}
+
+Status RaftGroupMetadata::OnNonConcurrentIndexDone(const TableId& table_id, uint64_t birth_time) {
+  std::lock_guard lock(data_mutex_);
+  return OnNonConcurrentIndexDoneUnlocked(table_id, birth_time);
+}
+
+Status RaftGroupMetadata::OnNonConcurrentIndexDone(
+    const OpId& op_id, const TableId& table_id, uint64_t birth_time) {
+  std::lock_guard lock(data_mutex_);
+  RETURN_NOT_OK(OnNonConcurrentIndexDoneUnlocked(table_id, birth_time));
+  OnChangeMetadataOperationAppliedUnlocked(op_id);
+  return Status::OK();
+}
+
+Status RaftGroupMetadata::OnNonConcurrentIndexDoneUnlocked(
+    const TableId& table_id, uint64_t birth_time) {
+  if (FLAGS_TEST_skip_metadata_non_concurrent_index_done) {
+    LOG_WITH_PREFIX(INFO) << "Skipping RaftGroupMetadata::OnNonConcurrentIndexDoneUnlocked()";
+    return Status::OK();
+  }
+
+  TableId target_table_id = table_id.empty() ? primary_table_id_ : table_id;
+  auto it = kv_store_.tables.find(target_table_id);
+  if (it == kv_store_.tables.end()) {
+    RETURN_TABLE_NOT_FOUND(table_id, kv_store_.tables);
+  }
+  if (!it->second->index_info) {
+    // Not expected: the master only sends this for index tables. Failing a replicated operation
+    // is fatal, so just ignore it.
+    LOG_WITH_PREFIX(DFATAL) << "Ignoring non-concurrent index done for non-index table "
+                            << target_table_id;
+    return Status::OK();
+  }
+
+  // Unlike OnBackfillDoneUnlocked, this does not touch retain_delete_markers: the index was built
+  // inline, not backfilled.
+  TableInfoPtr new_table_info = std::make_shared<TableInfo>(*it->second, it->second->schema());
+  FinalizeIndexBirthTime(
+      new_table_info.get(), birth_time, IndexInfoPB::BIRTH_TIME_PENDING_DDL_COMMIT);
+  VLOG_WITH_PREFIX(1) << raft_group_id_ << " Finalizing birth time of index " << target_table_id
+                      << ": " << AsString(new_table_info);
   return SetTableInfoUnlocked(it, std::move(new_table_info));
 }
 
