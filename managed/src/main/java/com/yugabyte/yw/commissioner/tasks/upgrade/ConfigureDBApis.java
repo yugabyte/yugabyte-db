@@ -31,6 +31,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 
@@ -208,9 +209,18 @@ public class ConfigureDBApis extends UpgradeTaskBase {
           // The load balancers forward the API ports, which these subtasks read when they run.
           // Last,
           // so a load balancer error can't leave auth on with the default password.
-          createEnsureManagedLoadBalancerTasks(universe.getUniverseDetails().getPrimaryCluster());
-          createManageLoadBalancerTasks(
-              createLoadBalancerMap(universe.getUniverseDetails(), null, null, null));
+          UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+          createEnsureManagedLoadBalancerTasks(details.getPrimaryCluster());
+          createManageLoadBalancerTasks(createLoadBalancerMap(details, null, null, null));
+          // Ensure gives a load balancer deleted outside YBA a new address, which the certs must
+          // name. Not retryable, so details still holds the names the running certs carry.
+          Set<String> lbCertNodes =
+              getLoadBalancerCertNodes(details, ManagedLoadBalancerUtil::isEnabled);
+          if (!lbCertNodes.isEmpty()) {
+            Predicate<String> isLbCertStale = isLoadBalancerCertStale(details);
+            createLoadBalancerCertCopyTasks(lbCertNodes, isLbCertStale);
+            createRebindProxiesTasks(Set.of(), lbCertNodes, isLbCertStale);
+          }
         });
   }
 

@@ -7,6 +7,7 @@ import static com.yugabyte.yw.commissioner.UpgradeTaskBase.isBatchRollEnabled;
 import static com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType.RotatingCert;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -157,11 +158,13 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
@@ -4747,55 +4750,184 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     createRebindProxiesTasks(
         getUniverse().getUniverseDetails().clusters.stream()
             .map(c -> c.uuid)
-            .collect(Collectors.toSet()));
+            .collect(Collectors.toSet()),
+        Collections.emptySet(),
+        nodeName -> false);
   }
 
-  protected void createRebindProxiesTasks(Set<UUID> clusterUuids) {
+  public static class LoadBalancerCertRuntimeInfo {
+    // Names in each tserver's cert after its restart in this task. Runtime info survives a retry.
+    @JsonProperty("lbCertNames")
+    Map<String, Set<String>> certNames = new ConcurrentHashMap<>();
+  }
+
+  // Lower case: DNS names are case-insensitive, and a case change alone must not restart tservers.
+  private static Set<String> getLoadBalancerCertNames(
+      UniverseDefinitionTaskParams details, NodeDetails node) {
+    return ManagedLoadBalancerUtil.getCertNames(details, node).keySet().stream()
+        .map(name -> name.toLowerCase(Locale.ROOT))
+        .collect(Collectors.toSet());
+  }
+
+  /**
+   * Whether a tserver's cert names differ from the load balancer names that the universe holds when
+   * the test runs. Only run time knows: ensure gives a load balancer deleted outside YBA a new
+   * address. A cert that this task hasn't reissued carries the names of {@code before}.
+   */
+  protected Predicate<String> isLoadBalancerCertStale(UniverseDefinitionTaskParams before) {
+    return nodeName -> {
+      Universe universe = getUniverse();
+      NodeDetails node = universe.getNode(nodeName);
+      Set<String> running =
+          getRuntimeInfo(LoadBalancerCertRuntimeInfo.class).certNames.get(nodeName);
+      if (running == null) {
+        running = getLoadBalancerCertNames(before, node);
+      }
+      return !running.equals(getLoadBalancerCertNames(universe.getUniverseDetails(), node));
+    };
+  }
+
+  /**
+   * Live tservers of target's clusters that hasLoadBalancer accepts, whose client cert YBA signs:
+   * client TLS on, self-signed client root CA. Which of them get a new cert is decided at run time,
+   * after ensure saves the addresses.
+   */
+  protected Set<String> getLoadBalancerCertNodes(
+      UniverseDefinitionTaskParams target, Predicate<Cluster> hasLoadBalancer) {
+    UniverseDefinitionTaskParams details = getUniverse().getUniverseDetails();
+    CertificateInfo clientCa =
+        details.getClientRootCA() == null ? null : CertificateInfo.get(details.getClientRootCA());
+    if (clientCa == null || clientCa.getCertType() != CertConfigType.SelfSigned) {
+      return Set.of();
+    }
+    return target.clusters.stream()
+        .filter(cluster -> cluster.userIntent.enableClientToNodeEncrypt)
+        .filter(hasLoadBalancer)
+        .flatMap(cluster -> target.getNodesInCluster(cluster.uuid).stream())
+        .filter(n -> n.isTserver && n.state == NodeState.Live)
+        .map(n -> n.nodeName)
+        .collect(Collectors.toSet());
+  }
+
+  /**
+   * Copies a reissued client-facing cert to each of nodeNames whose cert is stale when the copy
+   * starts. A tserver loads it when createRebindProxiesTasks restarts it.
+   */
+  protected void createLoadBalancerCertCopyTasks(
+      Set<String> nodeNames, Predicate<String> isCertStale) {
+    // Processes keep the old cert until they restart; same CA, so TLS works in between.
+    planToRunOnlyIf(
+        t -> isCertStale.test(t.getTaskParams().path("nodeName").asText()),
+        () ->
+            createCertUpdateTasks(
+                getUniverse().getNodes().stream()
+                    .filter(n -> nodeNames.contains(n.nodeName))
+                    .collect(Collectors.toList()),
+                NodeManager.CertRotateAction.ROTATE_CERTS,
+                SubTaskGroupType.RotatingCert,
+                CertsRotateParams.CertRotationType.None,
+                CertsRotateParams.CertRotationType.ServerCert));
+  }
+
+  /**
+   * Restarts live tservers one at a time: rebind nodes of clusterUuids (gflags rewritten), and
+   * certNodeNames whose cert is stale when the restart starts (to load the copied cert). A node in
+   * both restarts once.
+   */
+  protected void createRebindProxiesTasks(
+      Set<UUID> clusterUuids, Set<String> certNodeNames, Predicate<String> isCertStale) {
     Universe universe = getUniverse();
     boolean cloudEnabled =
         confGetter.getConfForScope(
             Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled);
-    Set<ServerType> tserver = EnumSet.of(ServerType.TSERVER);
-    boolean rebinds = false;
+    boolean restarts = !certNodeNames.isEmpty();
     for (Cluster cluster : universe.getUniverseDetails().clusters) {
-      if (!clusterUuids.contains(cluster.uuid)
-          || !GFlagsUtil.listensOnLoadBalancerAddress(cluster)) {
-        continue;
-      }
-      rebinds = true;
+      boolean rebindCluster =
+          clusterUuids.contains(cluster.uuid) && GFlagsUtil.listensOnLoadBalancerAddress(cluster);
+      restarts |= rebindCluster;
       for (NodeDetails node : universe.getNodesInCluster(cluster.uuid)) {
-        if (!node.isTserver
-            || node.state != NodeState.Live
-            || !needsProxyRebind(universe, cluster, node, cloudEnabled)) {
+        if (!node.isTserver || node.state != NodeState.Live) {
           continue;
         }
-        // A rollback can't undo a restart: it would leave proxies on 0.0.0.0, and a tserver whose
-        // restart failed stays leader-blacklisted until a retry clears it below.
-        createMarkRollbackUnsafeTaskOnce();
-        List<NodeDetails> nodes = Collections.singletonList(node);
-        stopProcessesOnNodes(
-            nodes,
-            tserver,
-            false /* removeMasterFromQuorum */,
-            false /* deconfigure */,
-            false /* flushTablets */,
-            false /* ignoreStopError */,
-            SubTaskGroupType.StoppingNodeProcesses);
-        createGFlagsOverrideTasks(nodes, ServerType.TSERVER);
-        startProcessesOnNode(
-            node,
-            tserver,
-            SubTaskGroupType.StartingNodeProcesses,
-            false /* addMasterToQuorum */,
-            true /* wasStopped */,
-            true /* waitForServerReady */);
+        boolean certNode = certNodeNames.contains(node.nodeName);
+        if (rebindCluster && needsProxyRebind(universe, cluster, node, cloudEnabled)) {
+          // A rollback can't undo a restart: it would leave proxies on 0.0.0.0, and a tserver
+          // whose restart failed stays leader-blacklisted until a retry clears it below. The cert
+          // copy marks a cert-only restart.
+          createMarkRollbackUnsafeTaskOnce();
+          createTserverRestartTasks(node, true /* rebind */, certNode);
+        } else if (certNode) {
+          planToRunOnlyIf(
+              t -> isCertStale.test(node.nodeName),
+              () -> createTserverRestartTasks(node, false /* rebind */, true /* certNode */));
+        }
       }
     }
     // A restart that failed after its stop left the tserver leader-blacklisted, and a retry skips
-    // it once its proxies match.
-    if (rebinds && !isFirstTry()) {
+    // it once its proxies and its cert match.
+    if (restarts && !isFirstTry()) {
       clearLeaderBlacklistIfAvailable(SubTaskGroupType.StartingNodeProcesses);
     }
+  }
+
+  private void createTserverRestartTasks(NodeDetails node, boolean rebind, boolean certNode) {
+    List<NodeDetails> nodes = Collections.singletonList(node);
+    stopProcessesOnNodes(
+        nodes,
+        EnumSet.of(ServerType.TSERVER),
+        false /* removeMasterFromQuorum */,
+        false /* deconfigure */,
+        false /* flushTablets */,
+        false /* ignoreStopError */,
+        SubTaskGroupType.StoppingNodeProcesses);
+    if (rebind) {
+      createGFlagsOverrideTasks(nodes, ServerType.TSERVER);
+    }
+    // startProcessesOnNode, inlined: the cert record needs the restart's last group.
+    createServerControlTask(node, ServerType.TSERVER, "start")
+        .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+    createWaitForServersTasks(nodes, ServerType.TSERVER)
+        .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+    SubTaskGroup restarted =
+        createWaitForServerReady(node, ServerType.TSERVER)
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+    removeFromLeaderBlackListIfAvailable(nodes, SubTaskGroupType.StartingNodeProcesses);
+    // Followers catch up before the next stop, so no tablet loses its majority.
+    if (isFollowerLagCheckEnabled()) {
+      restarted =
+          createCheckFollowerLagTask(node, ServerType.TSERVER)
+              .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+    }
+    if (certNode) {
+      restarted.setAfterGroupRunListener(
+          g ->
+              updateRuntimeInfo(
+                  LoadBalancerCertRuntimeInfo.class,
+                  info ->
+                      info.certNames.put(
+                          node.nodeName,
+                          getLoadBalancerCertNames(getUniverse().getUniverseDetails(), node))));
+    }
+  }
+
+  @Nullable private Predicate<ITask> plannedShouldRun;
+
+  // Each group that planner adds runs only if shouldRun holds when the group starts. Reaches the
+  // groups of helpers that don't return them, such as stopProcessesOnNodes.
+  private void planToRunOnlyIf(Predicate<ITask> shouldRun, Runnable planner) {
+    plannedShouldRun = shouldRun;
+    try {
+      planner.run();
+    } finally {
+      plannedShouldRun = null;
+    }
+  }
+
+  @Override
+  protected SubTaskGroup createSubTaskGroup(
+      String name, SubTaskGroupType defaultSubTaskGroupType, boolean ignoreErrors) {
+    SubTaskGroup group = super.createSubTaskGroup(name, defaultSubTaskGroupType, ignoreErrors);
+    return plannedShouldRun == null ? group : group.setShouldRunPredicate(plannedShouldRun);
   }
 
   private boolean needsProxyRebind(

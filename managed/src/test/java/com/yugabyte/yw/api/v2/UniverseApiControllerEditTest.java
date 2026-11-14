@@ -37,6 +37,7 @@ import com.yugabyte.yba.v2.client.models.ClusterStorageSpec;
 import com.yugabyte.yba.v2.client.models.ClusterStorageType;
 import com.yugabyte.yba.v2.client.models.CommunicationPortsSpec;
 import com.yugabyte.yba.v2.client.models.ExposingServiceState;
+import com.yugabyte.yba.v2.client.models.ManagedLoadBalancerSpec;
 import com.yugabyte.yba.v2.client.models.PlacementAZ;
 import com.yugabyte.yba.v2.client.models.PlacementCloud;
 import com.yugabyte.yba.v2.client.models.PlacementRegion;
@@ -608,6 +609,47 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     UniverseEditSpec universeEditSpec =
         new UniverseEditSpec().expectedUniverseVersion(-1).clusters(List.of(clusterEditSpec));
     runEditUniverseV2(universeEditSpec);
+  }
+
+  @Test
+  public void testEditUniverseV2KeepsTheDnsNamesItLeavesOut() throws ApiException {
+    List<String> names = List.of("db.example.com", "*.db.example.com");
+    Universe.saveDetails(
+        universeUuid,
+        u -> {
+          UserIntent.ManagedLoadBalancerConfig lb = new UserIntent.ManagedLoadBalancerConfig();
+          lb.setEnablePrivate(true);
+          lb.setDnsNames(names);
+          u.getUniverseDetails().getPrimaryCluster().userIntent.setManagedLoadBalancer(lb);
+        });
+    UUID clusterUuid =
+        Universe.getOrBadRequest(universeUuid).getUniverseDetails().getPrimaryCluster().uuid;
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    // A client that sets only enable_private, which the spec requires.
+    new UniverseApi()
+        .editUniverse(
+            customer.getUuid(),
+            universeUuid,
+            new UniverseEditSpec()
+                .expectedUniverseVersion(-1)
+                .clusters(
+                    List.of(
+                        new ClusterEditSpec()
+                            .uuid(clusterUuid)
+                            .networkingSpec(
+                                new ClusterNetworkingEditSpec()
+                                    .managedLoadBalancer(
+                                        new ManagedLoadBalancerSpec().enablePrivate(true))))));
+
+    ArgumentCaptor<UniverseDefinitionTaskParams> params =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.EditUniverse), params.capture());
+    assertEquals(
+        names,
+        params.getValue().getPrimaryCluster().userIntent.getManagedLoadBalancer().getDnsNames());
   }
 
   @Test

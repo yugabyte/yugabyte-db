@@ -254,7 +254,7 @@ public class UniverseCRUDHandler {
                     cluster.userIntent, currentCluster.userIntent, nodesInCluster))
             || cluster.userIntent.enableExposingService
                 != currentCluster.userIntent.enableExposingService
-            || ManagedLoadBalancerUtil.isTurnedOnOrOff(currentCluster, cluster);
+            || ManagedLoadBalancerUtil.isChanged(currentCluster, cluster);
 
     boolean nodeSettingsChanges =
         isAwsArnChanged(cluster, currentCluster)

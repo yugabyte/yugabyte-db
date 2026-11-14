@@ -11388,9 +11388,12 @@ components:
         in every region of the cluster, serving all zones of the region. At create,
         this object must enable at least one load balancer. ClusterInfo.load_balancers
         lists them with their scheme and address. An edit of the universe can turn
-        them on or off; in an edit, an object that enables none turns them off. Part
-        of ClusterNetworkingSpec and ClusterNetworkingEditSpec.'
+        them on or off: enable_private false turns them off. enable_private is required
+        whenever this object is given, so that an edit that only changes dns_names
+        cannot turn them off. Part of ClusterNetworkingSpec and ClusterNetworkingEditSpec.'
       type: object
+      required:
+      - enable_private
       properties:
         enable_private:
           description: Whether YBA creates a private load balancer in each region.
@@ -11398,7 +11401,6 @@ components:
             reach it.
           type: boolean
           example: true
-          default: false
         enable_public:
           description: Whether YBA creates a public load balancer in each region,
             which clients on the internet can reach. Not supported yet. YBA rejects
@@ -11406,6 +11408,19 @@ components:
           type: boolean
           example: false
           default: false
+        dns_names:
+          description: DNS names that clients use to reach the load balancers, for
+            example db.example.com or *.db.example.com. YBA adds them, and the load
+            balancer address, to the server certs that its self-signed CA signs for
+            the nodes behind the load balancers. IP addresses are rejected. In an
+            edit, leaving this out keeps the current names, and an empty list clears
+            them.
+          type: array
+          items:
+            type: string
+          example:
+          - '*.db.example.com'
+          - db.example.com
     ClusterNetworkingSpec:
       title: ClusterNetworkingSpec
       description: The network settings configured at top-level are uniform settings
