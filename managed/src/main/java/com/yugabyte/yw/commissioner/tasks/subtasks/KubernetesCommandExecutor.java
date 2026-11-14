@@ -270,6 +270,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public String command = null;
     public String azCode = null;
     public String pvcName = null;
+    // VOLUME_DELETE_SHELL_MODE_MASTER: pods of serverType that keep their PVCs.
     public int newPlacementAzMasterCount = 0;
     public Map<ServerType, String> previousGflagsChecksumMap = new HashMap<>();
     public boolean usePreviousGflagsChecksum = false;
@@ -494,10 +495,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             .helmDelete(config, taskParams().helmReleaseName, taskParams().namespace);
         break;
       case VOLUME_DELETE_SHELL_MODE_MASTER:
-        // We are deleting only master volumes for now,
-        // perhaps tserver volumes should also be deleted ?
+        // Deletes the PVCs no pod of the server type uses; master unless serverType is TSERVER.
         Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-        String appLabelValue = "yb-master";
+        String appLabelValue =
+            taskParams().serverType == ServerType.TSERVER ? "yb-tserver" : "yb-master";
         kubernetesManagerFactory
             .getManager()
             .deleteUnusedPVCs(
@@ -1792,10 +1793,14 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         serverGFlags.put(GFlagsUtil.USE_CLIENT_CERTIFICATES, "true");
         serverGFlags.remove(GFlagsUtil.NODE_TO_NODE_REQUIRED_UID);
         serverGFlags.remove(GFlagsUtil.VERIFY_CLIENT_ENDPOINT);
-      } else if (overrides.get("gflags") instanceof Map<?, ?> gflags
-          && gflags.get(server) instanceof Map<?, ?> serverGFlags
-          && serverGFlags.containsKey(GFlagsUtil.USE_CLIENT_CERTIFICATES)) {
-        ((Map<String, Object>) serverGFlags).put(GFlagsUtil.USE_CLIENT_CERTIFICATES, "false");
+      } else {
+        // No instanceof patterns: pr-lint runs google-java-format on Java 11.
+        Object gflags = overrides.get("gflags");
+        Object serverGFlags = gflags instanceof Map ? ((Map<?, ?>) gflags).get(server) : null;
+        if (serverGFlags instanceof Map
+            && ((Map<?, ?>) serverGFlags).containsKey(GFlagsUtil.USE_CLIENT_CERTIFICATES)) {
+          ((Map<String, Object>) serverGFlags).put(GFlagsUtil.USE_CLIENT_CERTIFICATES, "false");
+        }
       }
     }
     // Done after all overrides, so none can turn the sidecar on or off or move its port.

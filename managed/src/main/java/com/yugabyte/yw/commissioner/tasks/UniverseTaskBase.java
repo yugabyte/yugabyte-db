@@ -6039,13 +6039,32 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public SubTaskGroup createUpdateMasterAddrsInMemoryTasks(
       Collection<NodeDetails> nodes, ServerType serverType) {
+    return createUpdateMasterAddrsInMemoryTasks(
+        nodes, serverType, getOrCreateExecutionContext().getMasterAddrsSupplier());
+  }
+
+  public SubTaskGroup createUpdateMasterAddrsInMemoryTasks(
+      Collection<NodeDetails> nodes, ServerType serverType, Supplier<String> masterAddresses) {
+    return createUpdateMasterAddrsInMemoryTasks(
+        nodes, serverType, masterAddresses, false /* ignoreErrors */);
+  }
+
+  /**
+   * @param ignoreErrors log a failed push instead of failing the task, for servers that may be down
+   */
+  public SubTaskGroup createUpdateMasterAddrsInMemoryTasks(
+      Collection<NodeDetails> nodes,
+      ServerType serverType,
+      Supplier<String> masterAddresses,
+      boolean ignoreErrors) {
     return createSetFlagInMemoryTasks(
         nodes,
         serverType,
         (node, params) -> {
           params.force = true;
           params.updateMasterAddrs = true;
-          params.masterAddrsOverride = getOrCreateExecutionContext().getMasterAddrsSupplier();
+          params.masterAddrsOverride = masterAddresses;
+          params.ignoreErrors = ignoreErrors;
         });
   }
 

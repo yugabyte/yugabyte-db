@@ -373,6 +373,13 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         });
   }
 
+  /**
+   * @param skipAZs AZs this call does not touch.
+   *     <p>Used by an edit that fully moves serverType in those AZs. The full move builds their new
+   *     pods itself, so this call must not add pods to their old StatefulSets.
+   *     <p>Example: an edit changes the tserver storage class, which K8s cannot change on an
+   *     existing StatefulSet. The AZs are fully moved for tservers and passed here.
+   */
   public void createPodsTask(
       String universeName,
       KubernetesPlacement newPlacement,
@@ -525,6 +532,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         //    unchanged when only tservers are added).
         int tserverPartition = currNumTservers;
         int masterPartition = serverType == ServerType.MASTER ? currNumMasters : newNumMasters;
+        // Tservers are added after every master step, so the master StatefulSets already have the
+        // target disk spec, which can differ from the saved one after a full move of masters.
         helmInstalls.addSubTask(
             createKubernetesExecutorTaskForServerType(
                 universeName,
@@ -541,7 +550,14 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 azOverrides,
                 isReadOnlyCluster,
                 enableYbc,
-                usePreviousGflagsChecksum));
+                usePreviousGflagsChecksum,
+                false /* namespacedServiceReleaseOwner */,
+                null /* ysqlMajorVersionUpgradeState */,
+                null /* moveParams */,
+                null /* oldMasterDiskSize */,
+                null /* oldTserverDiskSize */,
+                serverType == ServerType.TSERVER /* useNewMasterDeviceInfo */,
+                false /* useNewTserverDeviceInfo */));
 
         // When adding masters, the number of tservers will be still the same as before.
         // They get added later.
@@ -588,7 +604,11 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 KubernetesCommandExecutor.CommandType.HELM_INSTALL,
                 tempPI,
                 azCode,
-                masterAddresses,
+                // A helm install with a master list starts masters that create a new universe
+                // (master_join_existing_universe=false). The masters an edit adds must join the
+                // existing one. The new AZ has no tservers yet, so the chart's own list reaches
+                // none.
+                edit && serverType == ServerType.MASTER ? "" : masterAddresses,
                 ybSoftwareVersion,
                 config,
                 universeOverrides,
@@ -1018,6 +1038,61 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       UUID rootCAUUID,
       Set<UUID> skipMasterAZs,
       Set<UUID> skipTserverAZs) {
+    upgradePodsNonRestart(
+        universeName,
+        placement,
+        masterAddresses,
+        serverType,
+        softwareVersion,
+        universeOverridesStr,
+        azsOverrides,
+        newNamingStyle,
+        isReadOnlyCluster,
+        enableYbc,
+        ybcSoftwareVersion,
+        ysqlMajorVersionUpgradeState,
+        rootCAUUID,
+        skipMasterAZs,
+        skipTserverAZs,
+        Collections.emptyMap() /* keepDiskSpecAZs */);
+  }
+
+  /**
+   * @param skipMasterAZs AZs this call does not render. Read when serverType is MASTER or EITHER.
+   *     Each AZ is one helm release holding both its master and tserver StatefulSets, so a skipped
+   *     AZ is not rendered at all.
+   *     <p>Callers pass the AZs that another step of the edit renders. Example: in an edit that
+   *     changes the master storage class, the full move renders the AZs it moves, so the other
+   *     renders of that edit skip them.
+   * @param skipTserverAZs AZs this call does not render. Read instead of skipMasterAZs when
+   *     serverType is TSERVER, as for a read replica.
+   * @param keepDiskSpecAZs AZs to render with the disk spec their StatefulSets run with now, not
+   *     the edit's new spec. Pass the AZs whose StatefulSets the edit has not resized or replaced
+   *     yet when this render runs: K8s rejects a render that changes their volumeClaimTemplates.
+   *     <p>Storage class and volume count then come from the universe, and so does disk size by
+   *     default. If a disk resize earlier in the edit has already saved the new size there, the map
+   *     value holds the original size per server type; otherwise it is empty.
+   *     <p>Example: an edit replaces az-3 with az-4 and changes the storage class. The render
+   *     before the master removes still updates az-3, which the edit never moves, so az-3 is passed
+   *     here and keeps its current storage class.
+   */
+  public void upgradePodsNonRestart(
+      String universeName,
+      KubernetesPlacement placement,
+      String masterAddresses,
+      ServerType serverType,
+      String softwareVersion,
+      String universeOverridesStr,
+      Map<String, String> azsOverrides,
+      boolean newNamingStyle,
+      boolean isReadOnlyCluster,
+      boolean enableYbc,
+      String ybcSoftwareVersion,
+      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
+      UUID rootCAUUID,
+      Set<UUID> skipMasterAZs,
+      Set<UUID> skipTserverAZs,
+      Map<UUID, Map<ServerType, Integer>> keepDiskSpecAZs) {
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster == null) {
       primaryCluster =
@@ -1025,9 +1100,18 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
               .getUniverseDetails()
               .getPrimaryCluster();
     }
+    // An edit of the primary alone also renders the read replica's Secrets, and its task params
+    // have no read replica cluster.
+    List<Cluster> readOnlyClusters = taskParams().getReadOnlyClusters();
+    if (readOnlyClusters.isEmpty()) {
+      readOnlyClusters =
+          Universe.getOrBadRequest(taskParams().getUniverseUUID())
+              .getUniverseDetails()
+              .getReadOnlyClusters();
+    }
     Provider provider =
         isReadOnlyCluster
-            ? Util.getSingleProvider(taskParams().getReadOnlyClusters().get(0))
+            ? Util.getSingleProvider(readOnlyClusters.get(0))
             : Util.getSingleProvider(primaryCluster);
     boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
 
@@ -1084,7 +1168,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                       isReadOnlyCluster,
                       enableYbc,
                       ysqlMajorVersionUpgradeState,
-                      rootCAUUID));
+                      rootCAUUID,
+                      keepDiskSpecAZs.get(azUUID)));
             });
     getRunnableTask().addSubTaskGroup(helmUpgrade);
     // Wait for gflags change to be reflected on mounted locations
@@ -1569,8 +1654,6 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         null /* skipAZs */);
   }
 
-  // Pod deletion subtasks for non-full move edit oprations
-  // Note: Pods delete for K8s full move case is handled separately in its own set of subtasks
   public void deletePodsTask(
       String universeName,
       KubernetesPlacement currPlacement,
@@ -1584,6 +1667,48 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean enableYbc,
       boolean usePreviousGflagsChecksum,
       Set<UUID> skipAZs) {
+    deletePodsTask(
+        universeName,
+        currPlacement,
+        masterAddresses,
+        newPlacement,
+        instanceTypeChanged,
+        isMultiAz,
+        provider,
+        isReadOnlyCluster,
+        newNamingStyle,
+        enableYbc,
+        usePreviousGflagsChecksum,
+        skipAZs,
+        false /* useNewMasterDeviceInfo */);
+  }
+
+  // Pod deletion subtasks for non-full move edit oprations
+  // Note: Pods delete for K8s full move case is handled separately in its own set of subtasks
+  /**
+   * @param skipAZs AZs this call does not touch.
+   *     <p>Used by an edit that fully moves tservers in those AZs. The full move deletes their old
+   *     StatefulSets itself.
+   * @param useNewMasterDeviceInfo true to render the master disk spec from the edit, false to
+   *     render the saved one.
+   *     <p>Pass true when this runs after a full move of masters. The new master StatefulSets
+   *     already have the edit's spec, and K8s rejects changing it back.
+   *     <p>Example: an edit changes the master storage class and removes tservers.
+   */
+  public void deletePodsTask(
+      String universeName,
+      KubernetesPlacement currPlacement,
+      String masterAddresses,
+      KubernetesPlacement newPlacement,
+      boolean instanceTypeChanged,
+      boolean isMultiAz,
+      Provider provider,
+      boolean isReadOnlyCluster,
+      boolean newNamingStyle,
+      boolean enableYbc,
+      boolean usePreviousGflagsChecksum,
+      Set<UUID> skipAZs,
+      boolean useNewMasterDeviceInfo) {
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     if (primaryCluster == null) {
@@ -1614,6 +1739,11 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             KubernetesCommandExecutor.CommandType.VOLUME_DELETE_SHELL_MODE_MASTER
                 .getSubTaskGroupName());
     pvcDeletes.setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+    SubTaskGroup tserverPvcDeletes =
+        createSubTaskGroup(
+            KubernetesCommandExecutor.CommandType.VOLUME_DELETE_SHELL_MODE_MASTER
+                .getSubTaskGroupName());
+    tserverPvcDeletes.setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
     SubTaskGroup podsWait =
         createSubTaskGroup(KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS.getSubTaskGroupName());
     podsWait.setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
@@ -1642,6 +1772,19 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       if (edit) {
         keepDeployment = newPlacement.configs.containsKey(azUUID);
         if (keepDeployment && instanceTypeChanged) {
+          // With a resource change, the rolling upgrade has already scaled this AZ down. Only the
+          // PVC cleanup is left: K8s keeps the PVCs of the pods a scale-down removes (see below).
+          tserverPvcDeletes.addSubTask(
+              garbageCollectVolumes(
+                  universeName,
+                  taskParams().nodePrefix,
+                  azCode,
+                  config,
+                  ServerType.TSERVER,
+                  newPlacement.tservers.getOrDefault(azUUID, 0),
+                  isReadOnlyCluster,
+                  taskParams().useNewHelmNamingStyle,
+                  taskParams().getUniverseUUID()));
           continue;
         }
       }
@@ -1686,7 +1829,13 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 isReadOnlyCluster,
                 enableYbc,
                 usePreviousGflagsChecksum,
-                false /* namespacedServiceReleaseOwner */));
+                false /* namespacedServiceReleaseOwner */,
+                null /* ysqlMajorVersionUpgradeState */,
+                null /* moveParams */,
+                null /* oldMasterDiskSize */,
+                null /* oldTserverDiskSize */,
+                useNewMasterDeviceInfo,
+                false /* useNewTserverDeviceInfo */));
 
         podsWait.addSubTask(
             createKubernetesCheckPodNumTask(
@@ -1696,6 +1845,19 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 config,
                 newPlacement.tservers.get(azUUID) + newPlacement.masters.getOrDefault(azUUID, 0),
                 isReadOnlyCluster));
+        // K8s keeps the PVCs of the pods a scale-down removes. Those tservers are drained, and a
+        // later scale-up would reattach the PVC with the removed tserver's data and UUID.
+        tserverPvcDeletes.addSubTask(
+            garbageCollectVolumes(
+                universeName,
+                taskParams().nodePrefix,
+                azCode,
+                config,
+                ServerType.TSERVER,
+                newPlacement.tservers.getOrDefault(azUUID, 0),
+                isReadOnlyCluster,
+                taskParams().useNewHelmNamingStyle,
+                taskParams().getUniverseUUID()));
         // New Masters are up, garbage colllect the extra master volumes now.
         // Read-only clusters have no master StatefulSets/PVCs, so skip master volume GC there.
         if (!isReadOnlyCluster) {
@@ -1750,6 +1912,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     getRunnableTask().addSubTaskGroup(namespaceDeletes);
     getRunnableTask().addSubTaskGroup(podsWait);
     getRunnableTask().addSubTaskGroup(pvcDeletes);
+    getRunnableTask().addSubTaskGroup(tserverPvcDeletes);
   }
 
   /*
@@ -2120,9 +2283,43 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean isReadOnlyCluster,
       boolean useNewHelmNamingStyle,
       UUID universeUUID) {
+    return garbageCollectVolumes(
+        universeName,
+        nodePrefix,
+        azCode,
+        config,
+        ServerType.MASTER,
+        newPlacementAzMasterCount,
+        isReadOnlyCluster,
+        useNewHelmNamingStyle,
+        universeUUID);
+  }
+
+  /**
+   * Deletes the PVCs of serverType in the AZ that no running pod uses.
+   *
+   * @param serverType the server type whose PVCs to delete.
+   *     <p>TSERVER is used after tservers are removed. K8s keeps a removed pod's PVC, and a later
+   *     scale-up reuses it.
+   *     <p>Example: az-1 goes from 3 tservers to 2. If az-1 later goes back to 3, the new pod
+   *     mounts the removed tserver's PVC and comes up with its old data and UUID.
+   * @param podCount how many pods of serverType the AZ has after the edit. The task first waits for
+   *     that many pods, so a pod that is still starting cannot make its PVC look unused.
+   */
+  public KubernetesCommandExecutor garbageCollectVolumes(
+      String universeName,
+      String nodePrefix,
+      String azCode,
+      Map<String, String> config,
+      ServerType serverType,
+      int podCount,
+      boolean isReadOnlyCluster,
+      boolean useNewHelmNamingStyle,
+      UUID universeUUID) {
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     params.universeName = universeName;
     params.commandType = KubernetesCommandExecutor.CommandType.VOLUME_DELETE_SHELL_MODE_MASTER;
+    params.serverType = serverType;
     params.azCode = azCode;
     params.helmReleaseName =
         KubernetesUtil.getHelmReleaseName(
@@ -2132,7 +2329,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             isReadOnlyCluster,
             useNewHelmNamingStyle);
     params.config = config;
-    params.newPlacementAzMasterCount = newPlacementAzMasterCount;
+    params.newPlacementAzMasterCount = podCount;
     String namespace =
         KubernetesUtil.getKubernetesNamespace(
             nodePrefix, azCode, config, useNewHelmNamingStyle, isReadOnlyCluster);
@@ -3143,6 +3340,48 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean enableYbc,
       YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
       UUID rootCAUUID) {
+    return getSingleNonRestartKubernetesExecutorTaskForServerTypeTask(
+        universeName,
+        pi,
+        az,
+        masterAddresses,
+        ybSoftwareVersion,
+        serverType,
+        masterPartition,
+        tserverPartition,
+        config,
+        universeOverrides,
+        azOverrides,
+        isReadOnlyCluster,
+        enableYbc,
+        ysqlMajorVersionUpgradeState,
+        rootCAUUID,
+        null /* keptDiskSizes */);
+  }
+
+  /**
+   * @param keptDiskSizes null to render the edit's new disk spec. Non-null to render the spec the
+   *     StatefulSets run with now: storage class and volume count from the universe, and disk size
+   *     from this map per server type, or from the universe when the map has none. See
+   *     keepDiskSpecAZs in upgradePodsNonRestart.
+   */
+  public KubernetesCommandExecutor getSingleNonRestartKubernetesExecutorTaskForServerTypeTask(
+      String universeName,
+      PlacementInfo pi,
+      String az,
+      String masterAddresses,
+      String ybSoftwareVersion,
+      ServerType serverType,
+      int masterPartition,
+      int tserverPartition,
+      Map<String, String> config,
+      Map<String, Object> universeOverrides,
+      Map<String, Object> azOverrides,
+      boolean isReadOnlyCluster,
+      boolean enableYbc,
+      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
+      UUID rootCAUUID,
+      @Nullable Map<ServerType, Integer> keptDiskSizes) {
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     Cluster primaryCluster = taskParams().getPrimaryCluster();
@@ -3171,6 +3410,20 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.azOverrides = azOverrides;
     params.universeName = universeName;
     params.universeDetails = taskParams();
+    if (isReadOnlyCluster && taskParams().getReadOnlyClusters().isEmpty()) {
+      // The executor reads the read replica from these details. An edit of the primary alone
+      // renders the read replica's Secrets too, and its params lack the read replica.
+      UniverseDefinitionTaskParams details =
+          Json.fromJson(Json.toJson(taskParams()), UniverseDefinitionTaskParams.class);
+      Cluster readReplica = readonlyClusters.get(0);
+      details.upsertCluster(
+          readReplica.userIntent,
+          readReplica.getPartitions(),
+          readReplica.placementInfo,
+          readReplica.uuid,
+          readReplica.clusterType);
+      params.universeDetails = details;
+    }
     params.universeConfig = universe.getConfig();
     params.telemetryConfig = getDesiredTelemetryConfig();
     if (masterAddresses != null) {
@@ -3208,6 +3461,12 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.useNewTserverDeviceInfo = true;
     params.useNewTserverDeviceInfo = true;
     params.useNewMasterDeviceInfo = true;
+    if (keptDiskSizes != null) {
+      params.useNewMasterDeviceInfo = false;
+      params.useNewTserverDeviceInfo = false;
+      params.oldMasterDiskSize = keptDiskSizes.get(ServerType.MASTER);
+      params.oldTsDiskSize = keptDiskSizes.get(ServerType.TSERVER);
+    }
     params.rootCA = rootCAUUID;
     KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);

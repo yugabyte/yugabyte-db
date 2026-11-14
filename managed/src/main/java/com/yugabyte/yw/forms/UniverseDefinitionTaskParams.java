@@ -466,6 +466,22 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
   }
 
+  /** How far a K8s edit's master move got, in order. A retry reads it to pick master lists. */
+  public enum MasterMoveStage {
+    STARTED,
+    // The masters the edit adds outside a master full move run, and may be in the Raft config.
+    ADDED_MASTERS_RUNNING,
+    // Those masters are in the Raft config. Recorded only before a master full move, which then
+    // creates its pods.
+    ADDED_MASTERS_JOINED,
+    // The master full move's new masters run too, and may be in the Raft config.
+    FULL_MOVE_MASTERS_RUNNING,
+    OLD_MASTERS_REMOVED,
+    // Every master step is over. From here tserver pods change, so a retry renders and pushes no
+    // master list: one at the pre-edit pod counts would undo those changes.
+    MASTERS_SETTLED
+  }
+
   /** A wrapper for all the clusters that will make up the universe. */
   @JsonInclude(value = JsonInclude.Include.NON_NULL)
   @Slf4j
@@ -537,6 +553,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         hidden = true,
         value = "YbaApi Internal. Saved full move batch index for Master")
     private int currentMasterFullMoveBatchIndex = -1;
+
+    @Setter
+    @Getter
+    @ApiModelProperty(hidden = true, value = "YbaApi Internal. How far a K8s master move got")
+    private MasterMoveStage masterMoveStage;
 
     @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.27.0.0")
     @Getter

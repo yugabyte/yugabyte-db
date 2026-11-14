@@ -55,6 +55,9 @@ public class SetFlagInMemory extends ServerSubTaskBase {
     // execution.
     @Nullable public Supplier<String> masterAddrsOverride;
 
+    // Log a failure instead of failing the task.
+    public boolean ignoreErrors = false;
+
     @JsonIgnore
     public String getMasterAddrsOverride() {
       String masterAddresses = masterAddrsOverride == null ? null : masterAddrsOverride.get();
@@ -72,6 +75,17 @@ public class SetFlagInMemory extends ServerSubTaskBase {
 
   @Override
   public void run() {
+    try {
+      setFlags();
+    } catch (RuntimeException e) {
+      if (!taskParams().ignoreErrors) {
+        throw e;
+      }
+      log.warn("Ignoring error from {}: {}", getName(), e.getMessage());
+    }
+  }
+
+  private void setFlags() {
     checkParams();
     // Check if secondary IP is present, and if so, use that for the gflag value.
     boolean isTserverTask = taskParams().serverType == ServerType.TSERVER;
