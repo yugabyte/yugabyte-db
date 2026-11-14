@@ -1304,8 +1304,7 @@ Result<PerformFuture> PgSession::DoRunAsync(
   const auto group_session_type = VERIFY_RESULT(GetRequiredSessionType(
       *pg_txn_manager_, first_table, **first_table_op.operation,
       non_ddl_txn_for_sys_tables_allowed));
-  if (group_session_type != SessionType::kLegacyCatalog &&
-      options.marker != std::optional(PgSessionRunOperationMarker::ExplicitRowLock)) {
+  if (group_session_type != SessionType::kLegacyCatalog) {
     RETURN_NOT_OK(Flush(explicit_row_lock_buffer_));
   }
   auto force_non_bufferable = options.force_non_bufferable;

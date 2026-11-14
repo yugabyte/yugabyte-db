@@ -109,7 +109,7 @@ class RequestCollector {
     return PgDocResponse{std::make_unique<ResponseProvider>(provider_state_)};
   }
 
-  Status Flush(PgSession& session, std::optional<PgSessionRunOperationMarker> marker) {
+  Status Flush(PgSession& session) {
     auto i = ops_.begin();
     PgDocResponse response(
         VERIFY_RESULT(session.RunAsync(make_lw_function(
@@ -120,7 +120,7 @@ class RequestCollector {
               }
               auto& info = *i++;
               return TO{.operation = &info.operation, .table = info.table};
-            }), {.marker = marker})),
+            }), {})),
         {TableType::USER, IsForWritePgDoc::kFalse, IsOpBuffered::kFalse, single_relation_oid_});
     *provider_state_ = VERIFY_RESULT(response.Get(session));
     return Status::OK();
@@ -142,8 +142,7 @@ class RequestCollector {
 
 class Sender {
  public:
-  Sender(std::optional<PgSessionRunOperationMarker> marker, bool skip_collecting)
-      : marker_(marker) {
+  explicit Sender(bool skip_collecting) {
     if (!skip_collecting) {
       collector_.emplace();
     }
@@ -165,15 +164,12 @@ class Sender {
           IllegalState, "Only default run options is expected, got $0", options);
       return (*collector_)(ops, table);
     }
-    DCHECK(!options.marker);
-    auto actual_options = options;
-    actual_options.marker = marker_;
-    return PgDocOp::DefaultSender(session, ops, table, actual_options, IsForWritePgDoc::kFalse);
+    return PgDocOp::DefaultSender(session, ops, table, options, IsForWritePgDoc::kFalse);
   }
 
   Status Flush(PgSession& session) {
     if (collector_) {
-      RETURN_NOT_OK(collector_->Flush(session, marker_));
+      RETURN_NOT_OK(collector_->Flush(session));
     }
     collector_.reset();
     return Status::OK();
@@ -181,7 +177,6 @@ class Sender {
 
  private:
   std::optional<RequestCollector> collector_;
-  const std::optional<PgSessionRunOperationMarker> marker_;
 };
 
 } // namespace
@@ -202,7 +197,7 @@ class YbctidReader::Impl {
     }
 
     auto arena = std::make_shared<ThreadSafeArena>();
-    Sender sender(options.run_marker, /* skip_collecting = */ is_skip_locked);
+    Sender sender(/* skip_collecting = */ is_skip_locked);
     auto request_sender = std::bind_front(&Sender::operator(), &sender);
 
     // Start all the doc_ops to read from docdb in parallel, one doc_op per table ID.

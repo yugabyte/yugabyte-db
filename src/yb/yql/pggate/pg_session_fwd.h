@@ -27,6 +27,4 @@ YB_STRONGLY_TYPED_BOOL(InvalidateOnPgClient);
 YB_STRONGLY_TYPED_BOOL(UseLegacyCatalogSession);
 YB_STRONGLY_TYPED_BOOL(ForceNonBufferable);
 
-YB_DEFINE_ENUM(PgSessionRunOperationMarker, (ExplicitRowLock));
-
 } // namespace yb::pggate
