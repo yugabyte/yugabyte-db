@@ -54,9 +54,4 @@ void InitCommonFlags();
 // enforce_xcluster_guarded_lease are set.
 bool IsPersistenceGateEnforced();
 
-// The flag part of whether a transaction takes global object locks. Shared by pggate, which also
-// needs the infra AutoFlag latched for the transaction, and by the xCluster DDL replay, which
-// decides before any transaction starts.
-bool ObjectLocksCanBeGlobal();
-
 } // namespace yb

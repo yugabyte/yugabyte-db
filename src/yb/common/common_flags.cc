@@ -476,8 +476,4 @@ bool IsPersistenceGateEnforced() {
   return FLAGS_enable_persistence_gate && FLAGS_enforce_xcluster_guarded_lease;
 }
 
-bool ObjectLocksCanBeGlobal() {
-  return FLAGS_enable_object_locking_for_table_locks && !FLAGS_disable_global_object_locks;
-}
-
 } // namespace yb
