@@ -4,23 +4,24 @@
 \c bnl_cost_parity_test
 delete from bnl_inner_queries;
 -- The row estimate of a batched inner scan is the batch size times the rows
--- of one key, once for each batched key column: eqsel multiplies the key's
--- equality selectivity by the batch size, so every key of a batch counts as
--- present, and two batched columns each contribute the factor.  The data
--- here meets both assumptions, so the row estimates hold and the request,
--- seek and next verdicts stand on their own: every outer key has inner rows,
--- the outer keys are unique, and the two-column key's leading column has
--- fewer values than any batch.  Where the assumptions fail, the join's
--- ranking shows it: yb.orig.bnl_cost_parity's 5xx section joins keys most of
--- which have no inner rows, and its 6xx section a two-column key both of
--- whose columns have more values than a batch (#19549).
+-- of one key: eqsel multiplies the key's equality selectivity by the batch
+-- size, so every key of a batch counts as present, and the batched columns of
+-- a multi-column key share one batch size, at least one row per key.  The
+-- data here meets those assumptions, so the row estimates hold and the
+-- request, seek and next verdicts stand on their own: every outer key has
+-- inner rows and the outer keys are unique.  Where presence fails, only a
+-- join's ranking checks the estimate: yb.orig.bnl_cost_parity's 5xx and 6xx
+-- sections join keys most of which have no inner rows.
 --
 -- QID categories (last digit: batch size 1 = 1024, 2 = 128, 3 = 16):
 --   1xxxx: one-column key, inner ce.r (+1000 for the colocated ce.rC): a with
 --          10 rows per value, the unique primary key pk and the unique
 --          secondary index on b
---   2xxxx: two-column key (g, h), inner ce.r3 (+1000 for the colocated ce.r3C,
---          +2000 for the hash-keyed ce.r3H)
+--   2xxxx: two-column key (g, h) whose g follows from h, inner ce.r3 (+1000
+--          for the colocated ce.r3C, +2000 for the hash-keyed ce.r3H)
+--   3xxxx: two-column key (g, h) over independent columns, each with more
+--          values than a batch of 128, inner ce.r2 (+1000 for the colocated
+--          ce.r2C, +2000 for the hash-keyed ce.r2H)
 -- Each outer is 1024 rows, so every batch is full, in the shuffled order of
 -- z or in key order.
 insert into bnl_inner_queries
@@ -65,6 +66,23 @@ keys(qidkey, descr, query) as (
         'select s.id, r.d from ce.s3 s join @R@ r on r.g = s.g and r.h = s.h where s.z <= 1024'),
     (20, 'g,h sorted id<=1024',
         'select s.id, r.d from ce.s3 s join @R@ r on r.g = s.g and r.h = s.h where s.id <= 1024')
+),
+sizes(qidbs, bs) as (
+    values (1, 1024), (2, 128), (3, 16)
+)
+select r.qidrel + k.qidkey + b.qidbs, b.bs, k.descr || ' [' || r.rel || ']',
+       replace(k.query, '@R@', r.rel)
+from rels r, keys k, sizes b;
+insert into bnl_inner_queries
+with rels(rel, qidrel) as (
+    values ('ce.r2', 30000), ('ce.r2C', 31000), ('ce.r2H', 32000)
+),
+keys(qidkey, descr, query) as (
+    values
+    -- The first 1024 ids of ce.s2 are 103 values of g by 10 of h, all on
+    -- the grid.
+    (20, 'g,h sorted id<=1024',
+        'select s.id, r.d from ce.s2 s join @R@ r on r.g = s.g and r.h = s.h where s.id <= 1024')
 ),
 sizes(qidbs, bs) as (
     values (1, 1024), (2, 128), (3, 16)
@@ -129,7 +147,16 @@ select * from bnl_inner_queries order by qid;
  22021 | 1024 | g,h sorted id<=1024 [ce.r3H]       | select s.id, r.d from ce.s3 s join ce.r3H r on r.g = s.g and r.h = s.h where s.id <= 1024
  22022 |  128 | g,h sorted id<=1024 [ce.r3H]       | select s.id, r.d from ce.s3 s join ce.r3H r on r.g = s.g and r.h = s.h where s.id <= 1024
  22023 |   16 | g,h sorted id<=1024 [ce.r3H]       | select s.id, r.d from ce.s3 s join ce.r3H r on r.g = s.g and r.h = s.h where s.id <= 1024
-(54 rows)
+ 30021 | 1024 | g,h sorted id<=1024 [ce.r2]        | select s.id, r.d from ce.s2 s join ce.r2 r on r.g = s.g and r.h = s.h where s.id <= 1024
+ 30022 |  128 | g,h sorted id<=1024 [ce.r2]        | select s.id, r.d from ce.s2 s join ce.r2 r on r.g = s.g and r.h = s.h where s.id <= 1024
+ 30023 |   16 | g,h sorted id<=1024 [ce.r2]        | select s.id, r.d from ce.s2 s join ce.r2 r on r.g = s.g and r.h = s.h where s.id <= 1024
+ 31021 | 1024 | g,h sorted id<=1024 [ce.r2C]       | select s.id, r.d from ce.s2 s join ce.r2C r on r.g = s.g and r.h = s.h where s.id <= 1024
+ 31022 |  128 | g,h sorted id<=1024 [ce.r2C]       | select s.id, r.d from ce.s2 s join ce.r2C r on r.g = s.g and r.h = s.h where s.id <= 1024
+ 31023 |   16 | g,h sorted id<=1024 [ce.r2C]       | select s.id, r.d from ce.s2 s join ce.r2C r on r.g = s.g and r.h = s.h where s.id <= 1024
+ 32021 | 1024 | g,h sorted id<=1024 [ce.r2H]       | select s.id, r.d from ce.s2 s join ce.r2H r on r.g = s.g and r.h = s.h where s.id <= 1024
+ 32022 |  128 | g,h sorted id<=1024 [ce.r2H]       | select s.id, r.d from ce.s2 s join ce.r2H r on r.g = s.g and r.h = s.h where s.id <= 1024
+ 32023 |   16 | g,h sorted id<=1024 [ce.r2H]       | select s.id, r.d from ce.s2 s join ce.r2H r on r.g = s.g and r.h = s.h where s.id <= 1024
+(63 rows)
 
 -- Plan validation: every query plans the batched inner scan it is meant to
 -- (Index Cond lists the batch, a ROW for the two-column key).
@@ -193,7 +220,16 @@ order by q.qid;
  22021 | Index Scan | r3h_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
  22022 | Index Scan | r3h_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $129), ROW($2, $130), ..., ROW($127, $255)]))
  22023 | Index Scan | r3h_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $17), ROW($2, $18), ..., ROW($15, $31)]))
-(54 rows)
+ 30021 | Index Scan | r2_pkey    | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
+ 30022 | Index Scan | r2_pkey    | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $129), ROW($2, $130), ..., ROW($127, $255)]))
+ 30023 | Index Scan | r2_pkey    | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $17), ROW($2, $18), ..., ROW($15, $31)]))
+ 31021 | Index Scan | r2c_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
+ 31022 | Index Scan | r2c_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $129), ROW($2, $130), ..., ROW($127, $255)]))
+ 31023 | Index Scan | r2c_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $17), ROW($2, $18), ..., ROW($15, $31)]))
+ 32021 | Index Scan | r2h_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
+ 32022 | Index Scan | r2h_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $129), ROW($2, $130), ..., ROW($127, $255)]))
+ 32023 | Index Scan | r2h_pkey   | (ROW(g, h) = ANY (ARRAY[ROW(s.g, s.h), ROW($1, $17), ROW($2, $18), ..., ROW($15, $31)]))
+(63 rows)
 
 -- Per-batch estimates of the inner scan against the measured per-batch
 -- averages (see check_bnl_inner_estimates).  Rows and read requests are exact
@@ -219,14 +255,21 @@ order by q.qid;
 -- quarters of the seeks in a batch of 1024, and one to two nexts per key
 -- more than charged in the batches of 128 and 16.
 --
--- g, h (2xxxx): the seek and next estimate takes each key column's IN list on
--- its own: for h, the smaller of the batch and the 772 values of h per value
--- of g, two nexts each, then times the 16 values of g, as if every pair of
--- the two lists were probed: 12345 seeks for a batch of 1024 pairs, 2048 for
--- 128, 256 for 16, and twice as many nexts.  The scan seeks once per run of
--- consecutive pairs, 16 times per batch in key order on the range key and
--- about once per pair or two in shuffled order and on the hash key, and takes
--- one to three nexts per pair.
+-- g, h (2xxxx, 3xxxx): the batched columns share the batch, so the estimate
+-- counts one target per pair of the batch, a seek and two nexts each as for
+-- a one-column key: 1024 seeks for a batch of 1024, 128 for 128 and 16 for
+-- 16, and twice as many nexts.  The scan seeks about once per pair where the
+-- batch's pairs sit apart in the index: on the hash keys and in the shuffled
+-- batches of 128 and 16 on ce.r3, where the seek estimate passes.  A
+-- shuffled batch of 1024 on ce.r3 seeks about once per two pairs, and the
+-- hash keys' batches of 1024 seek 800 to 870 times, inside the tolerance on
+-- ce.r2H only.  In key order on a range key the scan walks each run of
+-- consecutive pairs with nexts and seeks once per run: once per value of g,
+-- 16 times per batch on ce.r3, and once per ten pairs on ce.r2, so the seek
+-- estimate fails there except for ce.r3's batches of 16, whose 16 pairs each
+-- start a run.  The scan takes one to three nexts per pair, and the next
+-- estimate passes only for the shuffled batches of 1024 on ce.r3 and the
+-- hash keys' batches of 16.
 select qid, descr, batches,
        "Row Estimates", "Roundtrip Estimates", "Seek Estimates", "Next Estimates"
 from check_bnl_inner_estimates
@@ -251,23 +294,29 @@ order by qid;
  11061 | b  shuffled z<=1024 [ce.rC]   |       1 | passed        | passed              | failed         | passed
  11062 | b  shuffled z<=1024 [ce.rC]   |       8 | passed        | passed              | passed         | failed
  11063 | b  shuffled z<=1024 [ce.rC]   |      64 | passed        | passed              | passed         | failed
- 20011 | g,h shuffled z<=1024 [ce.r3]  |       1 | passed        | passed              | failed         | failed
- 20012 | g,h shuffled z<=1024 [ce.r3]  |       8 | passed        | passed              | failed         | failed
- 20013 | g,h shuffled z<=1024 [ce.r3]  |      64 | passed        | passed              | failed         | failed
+ 20011 | g,h shuffled z<=1024 [ce.r3]  |       1 | passed        | passed              | failed         | passed
+ 20012 | g,h shuffled z<=1024 [ce.r3]  |       8 | passed        | passed              | passed         | failed
+ 20013 | g,h shuffled z<=1024 [ce.r3]  |      64 | passed        | passed              | passed         | failed
  20021 | g,h sorted id<=1024 [ce.r3]   |       1 | passed        | passed              | failed         | failed
  20022 | g,h sorted id<=1024 [ce.r3]   |       8 | passed        | passed              | failed         | failed
- 20023 | g,h sorted id<=1024 [ce.r3]   |      64 | passed        | passed              | failed         | failed
- 21011 | g,h shuffled z<=1024 [ce.r3C] |       1 | passed        | passed              | failed         | failed
- 21012 | g,h shuffled z<=1024 [ce.r3C] |       8 | passed        | passed              | failed         | failed
- 21013 | g,h shuffled z<=1024 [ce.r3C] |      64 | passed        | passed              | failed         | failed
+ 20023 | g,h sorted id<=1024 [ce.r3]   |      64 | passed        | passed              | passed         | failed
+ 21011 | g,h shuffled z<=1024 [ce.r3C] |       1 | passed        | passed              | failed         | passed
+ 21012 | g,h shuffled z<=1024 [ce.r3C] |       8 | passed        | passed              | passed         | failed
+ 21013 | g,h shuffled z<=1024 [ce.r3C] |      64 | passed        | passed              | passed         | failed
  21021 | g,h sorted id<=1024 [ce.r3C]  |       1 | passed        | passed              | failed         | failed
  21022 | g,h sorted id<=1024 [ce.r3C]  |       8 | passed        | passed              | failed         | failed
- 21023 | g,h sorted id<=1024 [ce.r3C]  |      64 | passed        | passed              | failed         | failed
+ 21023 | g,h sorted id<=1024 [ce.r3C]  |      64 | passed        | passed              | passed         | failed
  22011 | g,h shuffled z<=1024 [ce.r3H] |       1 | passed        | passed              | failed         | failed
- 22012 | g,h shuffled z<=1024 [ce.r3H] |       8 | passed        | passed              | failed         | failed
- 22013 | g,h shuffled z<=1024 [ce.r3H] |      64 | passed        | passed              | failed         | failed
+ 22012 | g,h shuffled z<=1024 [ce.r3H] |       8 | passed        | passed              | passed         | failed
  22021 | g,h sorted id<=1024 [ce.r3H]  |       1 | passed        | passed              | failed         | failed
- 22022 | g,h sorted id<=1024 [ce.r3H]  |       8 | passed        | passed              | failed         | failed
- 22023 | g,h sorted id<=1024 [ce.r3H]  |      64 | passed        | passed              | failed         | failed
-(34 rows)
+ 22022 | g,h sorted id<=1024 [ce.r3H]  |       8 | passed        | passed              | passed         | failed
+ 30021 | g,h sorted id<=1024 [ce.r2]   |       1 | passed        | passed              | failed         | failed
+ 30022 | g,h sorted id<=1024 [ce.r2]   |       8 | passed        | passed              | failed         | failed
+ 30023 | g,h sorted id<=1024 [ce.r2]   |      64 | passed        | passed              | failed         | failed
+ 31021 | g,h sorted id<=1024 [ce.r2C]  |       1 | passed        | passed              | failed         | failed
+ 31022 | g,h sorted id<=1024 [ce.r2C]  |       8 | passed        | passed              | failed         | failed
+ 31023 | g,h sorted id<=1024 [ce.r2C]  |      64 | passed        | passed              | failed         | failed
+ 32021 | g,h sorted id<=1024 [ce.r2H]  |       1 | passed        | passed              | passed         | failed
+ 32022 | g,h sorted id<=1024 [ce.r2H]  |       8 | passed        | passed              | passed         | failed
+(40 rows)
 
