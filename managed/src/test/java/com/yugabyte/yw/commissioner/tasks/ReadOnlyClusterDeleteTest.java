@@ -8,6 +8,7 @@ import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
@@ -313,6 +314,57 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(taskParams, TaskType.ReadOnlyClusterDelete, -1);
     assertEquals(Failure, taskInfo.getTaskState());
     assertEquals(6, univUTP.nodeDetailsSet.size());
+  }
+
+  private void freezeWithFailedTask(TaskType failedTaskType) {
+    TaskInfo failed = new TaskInfo(failedTaskType, null);
+    failed.setOwner("test");
+    failed.setTaskState(Failure);
+    failed.setTaskParams(Json.newObject());
+    failed.save();
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          details.updatingTaskUUID = failed.getUuid();
+          details.placementModificationTaskUuid = failed.getUuid();
+          details.updateSucceeded = false;
+          u.setUniverseDetails(details);
+        });
+  }
+
+  private ReadOnlyClusterDelete.Params readReplicaDeleteParams() {
+    ReadOnlyClusterDelete.Params taskParams = new ReadOnlyClusterDelete.Params();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.clusterUUID = readOnlyCluster.uuid;
+    return taskParams;
+  }
+
+  @Test
+  public void testClusterDeleteAfterFailedCreate() {
+    freezeWithFailedTask(TaskType.ReadOnlyClusterCreate);
+    TaskInfo taskInfo = submitTask(readReplicaDeleteParams(), TaskType.ReadOnlyClusterDelete, -1);
+    assertEquals(Success, taskInfo.getTaskState());
+    // The basic prechecks are skipped on a universe broken by the failed create.
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .noneMatch(t -> t.getTaskType() == TaskType.CheckLeaderlessTablets));
+    UniverseDefinitionTaskParams details =
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getUniverseDetails();
+    assertEquals(1, details.clusters.size());
+    assertEquals(3, details.nodeDetailsSet.size());
+    assertNull(details.placementModificationTaskUuid);
+    assertNull(details.updatingTaskUUID);
+  }
+
+  @Test
+  public void testClusterDeleteRefusedAfterOtherFailedPlacementTask() {
+    freezeWithFailedTask(TaskType.ReplaceNodeInUniverse);
+    RuntimeException e =
+        assertThrows(
+            RuntimeException.class,
+            () -> submitTask(readReplicaDeleteParams(), TaskType.ReadOnlyClusterDelete, -1));
+    assertTrue(e.getMessage().contains("Please retry the previous task first"));
   }
 
   @Test

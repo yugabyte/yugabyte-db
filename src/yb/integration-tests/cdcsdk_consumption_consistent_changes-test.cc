@@ -12,12 +12,15 @@
 
 #include <algorithm>
 
+#include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_state_table.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/entity_ids.h"
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
+#include "yb/master/master.h"
+#include "yb/master/master_tserver.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/flags.h"
 #include "yb/util/test_macros.h"
@@ -1540,12 +1543,15 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWitDDLStatemen
   expected_dml_records = 2 * num_batches * inserts_per_batch;
   int expected_min_txn_id_after_restart = last_received_txn_id + 1;
   // We should receive all 6 DDLs (2 DDLs per tablet) after restart since we havent acknowledged the
-  // DDLs to the cdc_service.
-  int expected_ddl_records = 2 * 3;
+  // DDLs to the cdc_service. With transactional DDL support, the DDLs come in their own
+  // transactions instead, checked below.
+  int expected_ddl_records =
+      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 0 : 2 * 3;
   auto resp_after_restart = ASSERT_RESULT(
       GetAllPendingTxnsFromVirtualWAL(stream_id, {table.table_id()}, expected_dml_records, true));
 
-  // First 6 records recevied after restart should be DDL records.
+  // Without transactional DDL support, the first 6 records recevied after restart should be DDL
+  // records.
   for (int i = 0; i < expected_ddl_records; i++) {
     ASSERT_TRUE(resp_after_restart.records[i].row_message().op() == RowMessage_Op_DDL);
   }
@@ -1555,6 +1561,14 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWitDDLStatemen
   CheckRecordCount(
       resp_after_restart, expected_dml_records, expected_ddl_records,
       expected_min_txn_id_after_restart);
+
+  // With transactional DDL support, like the inserts, a DDL transaction received before the restart
+  // doesn't come again, so the ADD and DROP's 2 and 1 synthetic DDL records arrive once, before or
+  // after the restart.
+  if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
+    ASSERT_EQ(
+        get_all_pending_changes_resp.record_count[0] + resp_after_restart.record_count[0], 3);
+  }
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWithMultipleAlter) {
@@ -3754,7 +3768,11 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCreationOfSlotOnNewDBAfterUpg
   // These arrays store counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, and COMMIT in
   // that order.
   int expected_count_old_model[] = {2, 2, 0, 1, 0, 0, 3, 3};
-  int expected_count_new_model[] = {0, 1, 0, 0, 0, 0, 1, 1};
+  // With transactional DDL support, the replication slot stream also ships the BEGIN and COMMIT of
+  // the 2 catalog transactions before the insert, which touch no published table.
+  const int num_txns_new_model =
+      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 3 : 1;
+  int expected_count_new_model[] = {0, 1, 0, 0, 0, 0, num_txns_new_model, num_txns_new_model};
   int actual_count_old_model[] = {0, 0, 0, 0, 0, 0, 0, 0};
   int actual_count_new_model[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
@@ -3850,8 +3868,10 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCreationOfSlotOnNewDBAfterUpg
 
   auto change_resp_2 = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
       stream_id_2, {table_2.table_id()}, 1, true /* init_virtual_wal */));
-  // 1 BEGIN + 1 INSERT + 1 COMMIT
-  ASSERT_EQ(change_resp_2.records.size(), 3);
+  // 1 BEGIN + 1 INSERT + 1 COMMIT, plus 2 empty catalog transactions with transactional DDL.
+  ASSERT_EQ(
+      change_resp_2.records.size(),
+      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 7 : 3);
   for (auto record : change_resp_2.records) {
     UpdateRecordCount(record, actual_count_new_model);
   }
@@ -5966,7 +5986,10 @@ TEST_F(
   auto resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
       stream_id, {old_table.table_id()}, 20, false /* init_vwal */, kVWALSessionId1,
       true /* allow_sending_feedback */, nullptr /* slot_hash_range */, {new_table.table_id()}));
-  ASSERT_EQ(resp.records.size(), 60);
+  // With transactional DDL support, the TRUNCATE's catalog transaction also ships, as an empty
+  // transaction.
+  ASSERT_EQ(
+      resp.records.size(), FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 62 : 60);
 
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
@@ -6982,7 +7005,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetentionBarriersPropagateToF
 
   ASSERT_LT(initial_wal_barrier, OpId::Max().index);
   ASSERT_LT(initial_intents_barrier, OpId::Max());
-  ASSERT_LT(initial_history_barrier, HybridTime::kMax);
+  ASSERT_LT(initial_history_barrier, HybridTime::kInvalid);
 
   ASSERT_OK(WriteRows(0 /* start */, 10 /* end */, &test_cluster_));
 
@@ -7015,7 +7038,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetentionBarriersPropagateToF
       ASSERT_LT(initial_wal_barrier, wal_barrier);
       ASSERT_LT(intents_barrier, OpId::Max());
       ASSERT_LT(initial_intents_barrier, intents_barrier);
-      ASSERT_LT(history_barrier, HybridTime::kMax);
+      ASSERT_LT(history_barrier, HybridTime::kInvalid);
       ASSERT_LT(initial_history_barrier, history_barrier);
     }
   };
@@ -7026,28 +7049,47 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetentionBarriersPropagateToF
   // Sleep for a few multiples of the stale interval to ensure barriers won't be released because
   // CDCMasterBgTask is correctly refreshing them.
   SleepFor(
-      MonoDelta::FromSeconds(
-          FLAGS_cdc_min_replicated_index_considered_stale_secs_master * 2 * kTimeMultiplier));
+      MonoDelta::FromSeconds(FLAGS_cdc_min_replicated_index_considered_stale_secs_master * 2));
   check_all_masters_barriers();
+
+  auto* cluster = test_cluster_.mini_cluster_.get();
+  // The stale interval is raised while waiting because the new leader's first CDCMasterBgTask
+  // run can be delayed (e.g. sys_catalog lookup in sanitizer builds), letting followers go stale.
+  auto wait_for_leader_propagation = [&](const std::string& expected_leader_uuid) {
+    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+      auto leader = cluster->GetLeaderMiniMaster();
+      if (!leader.ok() ||
+          (!expected_leader_uuid.empty() &&
+           (*leader)->permanent_uuid() != expected_leader_uuid)) {
+        return false;
+      }
+      return (*leader)->master()->tablet_server()->GetCDCService()
+          ->HasCDCMasterBgTaskRunOnce();
+    }, MonoDelta::FromSeconds(60 * kTimeMultiplier), "New leader did not propagate barriers"));
+  };
 
   // Step down the master leader to simulate a failover. Then verify that retention barriers on all
   // masters are still valid (ahead of initial barriers). On the new leader, the barriers should not
   // have been reset despite the stale sleep, because the leader propagation kept refreshing them.
-  ASSERT_OK(test_cluster_.mini_cluster_->StepDownMasterLeader("" /* new_leader_uuid */));
-  // Wait for the new leader to be elected and CDCMasterBgTask to run.
-  SleepFor(
-      MonoDelta::FromSeconds(
-          FLAGS_update_min_cdc_indices_master_interval_secs * 5 * kTimeMultiplier));
+  auto old_leader = ASSERT_RESULT(cluster->GetLeaderMiniMaster());
+  auto new_leader_uuid =
+      cluster->mini_master(old_leader == cluster->mini_master(0) ? 1 : 0)->permanent_uuid();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs_master) = 14400;
+  ASSERT_OK(cluster->StepDownMasterLeader(new_leader_uuid));
+  ASSERT_NO_FATALS(wait_for_leader_propagation(new_leader_uuid));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs_master) = 10;
+  SleepFor(MonoDelta::FromSeconds(10 * 2));
   check_all_masters_barriers();
 
   // Restart all 3 masters and verify barriers are still propagated after a full cycle.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs_master) = 14400;
   for (size_t i = 0; i < num_masters; i++) {
-    ASSERT_OK(test_cluster_.mini_cluster_->mini_master(i)->Restart());
+    ASSERT_OK(cluster->mini_master(i)->Restart());
   }
-  ASSERT_OK(test_cluster_.mini_cluster_->WaitForAllTabletServers());
-  SleepFor(
-      MonoDelta::FromSeconds(
-          FLAGS_update_min_cdc_indices_master_interval_secs * 5 * kTimeMultiplier));
+  ASSERT_OK(cluster->WaitForAllTabletServers());
+  ASSERT_NO_FATALS(wait_for_leader_propagation("" /* expected_leader_uuid */));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs_master) = 10;
+  SleepFor(MonoDelta::FromSeconds(10 * 2));
   check_all_masters_barriers();
 }
 

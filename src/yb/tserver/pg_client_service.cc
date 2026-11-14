@@ -842,15 +842,7 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
       return;
     }
     cdc_state_table_.reset();
-    auto schedulers = {
-        std::reference_wrapper(check_object_id_allocators_),
-        std::reference_wrapper(check_ysql_lease_)};
-    for (auto& task : schedulers) {
-      task.get().StartShutdown();
-    }
-    for (auto& task : schedulers) {
-      task.get().CompleteShutdown();
-    }
+    check_object_id_allocators_.Shutdown();
     if (exchange_thread_pool_) {
       exchange_thread_pool_->Shutdown();
     }
@@ -3174,7 +3166,6 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
   std::unordered_map<uint32_t, OidPrefetchChunk> reserved_oids_map_ GUARDED_BY(mutex_);
 
   rpc::ScheduledTaskTracker check_object_id_allocators_;
-  rpc::ScheduledTaskTracker check_ysql_lease_;
 
   PgResponseCache response_cache_;
 

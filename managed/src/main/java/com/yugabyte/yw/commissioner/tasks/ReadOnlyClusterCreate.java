@@ -14,6 +14,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.CanRollback;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.DnsManager;
@@ -32,6 +33,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @Abortable
 @Retryable
+@CanRollback
 public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
 
   @Inject
