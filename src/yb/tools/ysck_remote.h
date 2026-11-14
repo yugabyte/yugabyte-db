@@ -83,6 +83,12 @@ class RemoteYsckMaster : public YsckMaster {
  public:
   static Status Build(const HostPort& address, std::shared_ptr<YsckMaster>* master);
 
+  // Connects through messenger, which was built with secure_context unless it is null. The master
+  // keeps secure_context alive as long as messenger.
+  static Status Build(
+      const HostPort& address, std::unique_ptr<rpc::SecureContext> secure_context,
+      std::unique_ptr<rpc::Messenger> messenger, std::shared_ptr<YsckMaster>* master);
+
   virtual ~RemoteYsckMaster();
 
   virtual Status Connect() const override;
@@ -95,8 +101,9 @@ class RemoteYsckMaster : public YsckMaster {
   virtual Status RetrieveTabletsList(const std::shared_ptr<YsckTable>& table) override;
 
  private:
-  explicit RemoteYsckMaster(
-      const HostPort& address, std::unique_ptr<rpc::Messenger>&& messenger);
+  RemoteYsckMaster(
+      const HostPort& address, std::unique_ptr<rpc::SecureContext> secure_context,
+      std::unique_ptr<rpc::Messenger> messenger);
 
   Status GetTableInfo(
       const TableId& table_id, Schema* schema, int* num_replicas, bool* is_pg_table);
@@ -111,6 +118,7 @@ class RemoteYsckMaster : public YsckMaster {
       std::string* last_partition_key, std::vector<std::shared_ptr<YsckTablet> >* tablets,
       bool* more_tablets);
 
+  std::unique_ptr<rpc::SecureContext> secure_context_;
   std::unique_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
   const std::shared_ptr<server::GenericServiceProxy> generic_proxy_;

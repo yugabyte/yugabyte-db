@@ -19,6 +19,7 @@
 #include "yb/integration-tests/cql_test_util.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/secure.h"
 #include "yb/rpc/secure_stream.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -217,6 +218,7 @@ TEST_F_EX(ExternalMiniClusterSecureTest, InsecureCql, ExternalMiniClusterSecureA
 }
 
 class ExternalMiniClusterSecureWithClientCertsTest : public ExternalMiniClusterSecureTest {
+ protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_use_client_certificates) = true;
     ExternalMiniClusterSecureTest::SetUp();
@@ -227,12 +229,102 @@ class ExternalMiniClusterSecureWithClientCertsTest : public ExternalMiniClusterS
     opts.enable_ysql = true;
     return opts;
   }
+
+  // Writes the TLS flags of a server.conf, for tools to read with --flagfile.
+  Result<std::string> WriteServerFlagfile(
+      const std::string& cert_node_filename, rpc::UseClientCerts use_client_certs) {
+    auto content = Format(
+        "--certs_dir=$0\n--use_node_to_node_encryption=true\n--allow_insecure_connections=false\n"
+        "--node_to_node_encryption_use_client_certificates=$1\n",
+        FLAGS_certs_dir, use_client_certs.get());
+    if (!cert_node_filename.empty()) {
+      content += Format("--cert_node_filename=$0\n", cert_node_filename);
+    }
+    auto path = JoinPathSegments(
+        GetTestDataDirectory(), Format("server$0.conf", ++num_server_flagfiles_));
+    RETURN_NOT_OK(WriteStringToFile(Env::Default(), content, path));
+    return path;
+  }
+
+  std::vector<std::vector<std::string>> ToolCommands(const std::vector<std::string>& tls_args) {
+    std::vector<std::vector<std::string>> commands = {
+        ToStringVector(
+            GetToolPath("yb-admin"), "--master_addresses", cluster_->GetMasterAddresses(),
+            "--timeout_ms", "5000", "list_tables"),
+        ToStringVector(
+            GetToolPath("yb-ts-cli"), "--server_address",
+            cluster_->tablet_server(0)->bound_rpc_addr(), "--timeout_ms", "5000", "list_tablets"),
+        ToStringVector(
+            GetToolPath("yb-ysck"), "--master_address",
+            cluster_->GetLeaderMaster()->bound_rpc_addr(), "--timeout_ms", "5000"),
+    };
+    for (auto& command : commands) {
+      command.insert(command.end(), tls_args.begin(), tls_args.end());
+    }
+    return commands;
+  }
+
+  int num_server_flagfiles_ = 0;
 };
 
+// How yb-admin, yb-ts-cli and yb-ysck pick the client certificate to present.
 TEST_F_EX(ExternalMiniClusterSecureTest, YbTools, ExternalMiniClusterSecureWithClientCertsTest) {
-  ASSERT_OK(CallYBTSCli("127.0.0.100", "list_tablets",
-                        cluster_->tablet_server(0)->bound_rpc_addr()));
-  ASSERT_OK(CallYBAdmin("127.0.0.100", "list_tables"));
+  // The tools fail fast when a server.conf passed with --flagfile requires client certificates and
+  // none is named.
+  const std::string kNoClientCertName =
+      "no client certificate was specified. Pass --client_node_name";
+  // Otherwise the server rejects the handshake and each tool adds its own hint to the connection
+  // error. yb-ts-cli and yb-ysck add theirs only when they picked no client certificate name.
+  const std::string kHandshakeRejected = "<handshake rejected>";
+  struct Case {
+    std::vector<std::string> tls_args;
+    // Empty when the tools succeed, otherwise expected in their stderr.
+    std::string error;
+  };
+  const auto certs_dir = ToolCertDirectory();
+  const std::vector<Case> cases = {
+      {{"--certs_dir_name", certs_dir, "--client_node_name=127.0.0.100"}, ""},
+      // --cert_node_filename from the server.conf names the client certificate.
+      {{"--flagfile",
+        ASSERT_RESULT(WriteServerFlagfile("127.0.0.100", rpc::UseClientCerts::kTrue))}, ""},
+      {{"--flagfile", ASSERT_RESULT(WriteServerFlagfile("", rpc::UseClientCerts::kTrue))},
+       kNoClientCertName},
+      // --cert_node_filename names a certificate in the server.conf's --certs_dir, so it is not
+      // used with an explicit --certs_dir_name.
+      {{"--flagfile", ASSERT_RESULT(WriteServerFlagfile("127.0.0.100", rpc::UseClientCerts::kTrue)),
+        "--certs_dir_name", certs_dir},
+       kNoClientCertName},
+      // A server.conf that doesn't require client certificates doesn't make the tools read the
+      // node's certificate and key.
+      {{"--flagfile",
+        ASSERT_RESULT(WriteServerFlagfile("no-such-node", rpc::UseClientCerts::kFalse))},
+       kHandshakeRejected},
+      {{"--certs_dir_name", certs_dir}, kHandshakeRejected},
+  };
+  for (const auto& c : cases) {
+    for (const auto& command : ToolCommands(c.tls_args)) {
+      LOG(INFO) << "Running " << AsString(command);
+      if (c.error.empty()) {
+        ASSERT_OK(Subprocess::Call(command));
+        continue;
+      }
+      std::string output, error;
+      ASSERT_NOK(Subprocess::Call(command, &output, &error));
+      LOG(INFO) << "stdout: " << output << ", stderr: " << error;
+      ASSERT_STR_NOT_CONTAINS(error, "No such file");
+      if (c.error != kHandshakeRejected) {
+        ASSERT_STR_CONTAINS(error, c.error);
+      } else if (command[0] == GetToolPath("yb-admin")) {
+        // yb-admin prints its own hint for every connection failure.
+        ASSERT_STR_CONTAINS(
+            error, "or --client_node_name for a cluster that requires client certificates");
+      } else {
+        ASSERT_STR_CONTAINS(
+            error, "No client certificate was presented. If the cluster runs with "
+                   "--node_to_node_encryption_use_client_certificates, pass --client_node_name");
+      }
+    }
+  }
 }
 
 class ExternalMiniClusterSecureReloadTest : public ExternalMiniClusterSecureTest {

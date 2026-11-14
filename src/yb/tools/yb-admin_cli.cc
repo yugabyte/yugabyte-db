@@ -848,7 +848,8 @@ Status ClusterAdminCli::Run(int argc, char** argv) {
   if (PREDICT_FALSE(!s.ok())) {
     cerr << "Unable to establish connection to leader master at [" << addrs << "]."
          << " Please verify the addresses and check if server is up, or if you're"
-         << " missing --certs_dir_name." << endl
+         << " missing --certs_dir_name, or --client_node_name for a cluster that requires"
+         << " client certificates." << endl
          << endl
          << s << endl;
     return STATUS(RuntimeError, "Error connecting to cluster");
@@ -902,6 +903,8 @@ void ClusterAdminCli::SetUsage() {
       << "  --timeout_ms <millisec>                       (default: "
       << FlagDefault("timeout_ms") << ")" << endl
       << "  --certs_dir_name <dir>" << endl
+      << "  --client_node_name <name>                     (client certificate node.<name>.crt)"
+      << endl
       << "  --flagfile <path>                             (use the master's server.conf)" << endl
       << endl
       << "Example:" << endl
