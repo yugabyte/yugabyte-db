@@ -41,7 +41,10 @@ import org.apache.commons.lang3.StringUtils;
  * already-before nodes are skipped so rollback retry can make progress. Classification and the
  * ChangeInstanceType skip also consult the cloud so a modify that aborted before YBA persist is
  * still reverted. A node a failed batch may have left stopped is taken through the batch even when
- * already at before, so its VM and processes are started again.
+ * already at before, so its VM and processes are started again. A resize that changed the cgroup
+ * is different: nodes record no cgroup, so an already-before node can't be told apart, and every
+ * node in the cluster is re-applied (a rolling restart of each node) on every rollback attempt.
+ * See {@link #isCgroupChanging}.
  *
  * <p>Freeze must not recapture {@code state_transition_details} - the failed ResizeNode's delta is
  * the source of truth for the before intent. {@link
@@ -133,6 +136,39 @@ public class RollbackResizeNode extends ResizeNode {
   }
 
   /**
+   * The forward resize applies the cgroup node by node, but saves it to the universe only after
+   * every node is done (nodes have no cgroup of their own). After a partial cgroup resize, the
+   * universe intent still matches {@code before}, so compare with the failed target instead: if the
+   * target changed this node's cgroup, re-apply the {@code before} cgroup. Nodes record no cgroup,
+   * so this can't tell which nodes the forward run (or an earlier rollback attempt) reached: every
+   * node in the cluster is re-applied, which stops and restarts each node in turn, on every
+   * attempt. That is the same rolling restart a forward cgroup-only resize does.
+   */
+  @Override
+  protected boolean isCgroupChanging(
+      NodeDetails node,
+      UniverseDefinitionTaskParams.UserIntent newIntent,
+      UniverseDefinitionTaskParams.UserIntent currentIntent) {
+    return super.isCgroupChanging(node, newIntent, currentIntent)
+        || failedResizeChangesCgroup(node, newIntent);
+  }
+
+  private UniverseDefinitionTaskParams failedResizeTarget() {
+    if (failedResizeTarget == null) {
+      failedResizeTarget = requireStateTransitionDetails(getUniverse()).getTargetUniverseDetails();
+    }
+    return failedResizeTarget;
+  }
+
+  /** Whether the failed resize targeted a different cgroup for this node than {@code before}. */
+  private boolean failedResizeChangesCgroup(
+      NodeDetails node, UniverseDefinitionTaskParams.UserIntent before) {
+    Cluster target = failedResizeTarget().getClusterByUuid(node.placementUuid);
+    return target != null
+        && !Objects.equals(before.getCGroupSize(node), target.userIntent.getCGroupSize(node));
+  }
+
+  /**
    * Whether a batch of the failed resize, or of an earlier attempt of this rollback, may have
    * stopped this node's processes, and possibly its VM, and failed before setting it Live. Its type
    * may already be the target, so nothing else would bring it back. Only nodes whose instance type
@@ -146,19 +182,15 @@ public class RollbackResizeNode extends ResizeNode {
     if (taskParams().isFailedResizeForced()) {
       return true;
     }
-    if (failedResizeTarget == null) {
-      failedResizeTarget = requireStateTransitionDetails(getUniverse()).getTargetUniverseDetails();
-    }
     Cluster before = taskParams().getClusterByUuid(node.placementUuid);
-    Cluster target = failedResizeTarget.getClusterByUuid(node.placementUuid);
+    Cluster target = failedResizeTarget().getClusterByUuid(node.placementUuid);
     if (before == null || target == null) {
       return false;
     }
     return !Objects.equals(
             before.userIntent.getInstanceTypeForNode(node),
             target.userIntent.getInstanceTypeForNode(node))
-        || !Objects.equals(
-            before.userIntent.getCGroupSize(node), target.userIntent.getCGroupSize(node));
+        || failedResizeChangesCgroup(node, before.userIntent);
   }
 
   /** ybops then only starts the VM when its type already matches. */
