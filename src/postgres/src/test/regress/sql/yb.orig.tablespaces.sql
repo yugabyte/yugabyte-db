@@ -349,12 +349,21 @@ DROP ROLE regress_tablespace_user2;
 CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}');
 CREATE DATABASE colocation_test colocation = true;
 \c colocation_test
--- Should succeed in setting tablespace on a table in a colocated database
+-- Should fail to set tablespace on a table in a colocated database
 CREATE TABLE tab_key (a INT) TABLESPACE x;
+SET default_tablespace = x;
+CREATE TABLE tab_key (a INT);
+RESET default_tablespace;
+-- The default tablegroup should be created without a tablespace
+CREATE TABLE tab_default (a INT);
+SELECT grpname, grptablespace FROM pg_yb_tablegroup;
+-- Should succeed for the database's default tablespace
+CREATE TABLE tab_pg_default (a INT) TABLESPACE pg_default;
 -- Should succeed in setting tablespace on a table in a colocated database when opted out
 CREATE TABLE tab_nonkey (a INT) WITH (COLOCATION = false) TABLESPACE x;
 -- cleanup
-DROP TABLE tab_key;
+DROP TABLE tab_default;
+DROP TABLE tab_pg_default;
 DROP TABLE tab_nonkey;
 \c yugabyte
 DROP DATABASE colocation_test;
