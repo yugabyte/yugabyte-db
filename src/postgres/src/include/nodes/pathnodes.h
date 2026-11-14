@@ -139,6 +139,9 @@ typedef struct PlannerGlobal
 	 */
 	List	   *ybPlanHintsAliasMapping;
 
+	/* YB: optional hashtable of the aliases in ybPlanHintsAliasMapping */
+	struct HTAB *ybHintAliasHash;
+
 	/* YB: count of number of blocks */
 	int			ybBlockCnt;
 
