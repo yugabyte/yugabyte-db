@@ -30,7 +30,8 @@ var defaultPatterns = []string{
 //
 // ysql_hba_conf_csv is excluded from the wholesale pass on purpose: it holds the entire pg_hba
 // ACL, so replacing the value outright would destroy configuration the bundle exists to show.
-// Only its hbaSecrets attributes are sensitive, and ldap_hba.go redacts those in place instead.
+// Only its ldapbindpasswd and radiussecrets values are sensitive, and hba_conf.go and ldap_hba.go
+// redact those in place instead.
 //
 // Patterns are sorted before use so that output does not depend on map iteration order. The Java
 // iterates a HashSet here and is order-dependent; sorting is a deliberate improvement, and is
@@ -57,12 +58,19 @@ func RedactSensitiveInfo(input string, sensitiveGflags []string) string {
 
 	output := input
 	for _, pattern := range ordered {
-		if _, ok := findHbaSecret(pattern); !ok {
+		if !isHbaAttribute(pattern) {
 			output = redactFlagLines(output, pattern)
 		}
 		output = redactPatternOccurrences(pattern, output)
 	}
 	return output
+}
+
+// isHbaAttribute reports whether name is a pg_hba attribute, redacted inside ysql_hba_conf_csv
+// rather than as a flag.
+func isHbaAttribute(name string) bool {
+	_, ok := findHbaSecret(name)
+	return ok || name == hbaKey
 }
 
 // redactFlagLines redacts the value of each --<name>= flag that starts a line, up to the end of the
@@ -116,11 +124,15 @@ func quotedValueEnd(s string, i int) int {
 
 // redactPatternOccurrences routes one field name through every applicable redactor.
 //
-// The hbaSecrets attributes take a different path: the HBA parser runs first because it is the only
-// redactor that preserves the surrounding quoting style, and only the JSON-key forms
-// ("ldapbindpasswd": ...) can still remain afterwards. Running the key=value, CLI and
-// Python-dict redactors on them as well would corrupt the hba quoting the parser just preserved.
+// ldapbindpasswd is redacted as YBA redacts it (HbaConfRedactor.redactFreeText). The hbaSecrets
+// attributes take a different path: the HBA parser runs first because it is the only redactor that
+// preserves the surrounding quoting style, and only the JSON-key forms ("radiussecrets": ...) can
+// still remain afterwards. Running the key=value, CLI and Python-dict redactors on them as well
+// would corrupt the hba quoting the parser just preserved.
 func redactPatternOccurrences(pattern, output string) string {
+	if pattern == hbaKey {
+		return redactLdapBindPasswdText(output)
+	}
 	if secret, ok := findHbaSecret(pattern); ok {
 		output = RedactHbaSecretValues(output, secret, SecretReplacement)
 		if !contains(output, pattern) {
@@ -229,12 +241,17 @@ func WriteIfRedacted(path, redacted string, sensitiveGflags []string) error {
 	return os.WriteFile(path, []byte(redacted), 0)
 }
 
-// VerifyRedacted checks RedactSensitiveInfo's output without its parsers' boundaries: every
-// hbaSecrets value must read REDACTED, and so must the whole rest of the line after each
-// --<sensitive>= flag that starts one, quotes aside; an empty value passes. The caller must not
-// write the file when it fails, so a gap in the parsers costs the node its copy of server.conf
-// rather than the secret. The error names the field and line, never the value.
+// VerifyRedacted checks RedactSensitiveInfo's output: ldapbindpasswd as verifyLdapBindPasswd
+// describes, every radiussecrets value must start with REDACTED, and the whole rest of the line
+// after each --<sensitive>= flag that starts one must read REDACTED, quotes aside; an empty flag
+// value passes. The caller must not write the file when it fails, so a gap in the parsers costs the
+// node its copy of server.conf rather than the secret. The exception is where an ldapbindpasswd
+// value ends: that check reads it with the redactors' parsers, and without them checks only that
+// the value starts with REDACTED. The error names the field and line, never the value.
 func VerifyRedacted(output string, sensitiveGflags []string) error {
+	if err := verifyLdapBindPasswd(output); err != nil {
+		return err
+	}
 	for _, secret := range hbaSecrets {
 		field := secret.name + "="
 		for pos := indexOf(output, field, 0); pos >= 0; pos = indexOf(output, field, pos+1) {
@@ -264,11 +281,11 @@ func VerifyRedacted(output string, sensitiveGflags []string) error {
 }
 
 // flagNames is every name RedactSensitiveInfo treats as a flag: the defaults and the given list,
-// less the hbaSecrets attributes and ysql_hba_conf_csv (redacted inside, not wholesale).
+// less the hba attributes and ysql_hba_conf_csv (redacted inside, not wholesale).
 func flagNames(sensitiveGflags []string) []string {
 	var names []string
 	for _, name := range append(append([]string{}, defaultPatterns...), sensitiveGflags...) {
-		if _, hba := findHbaSecret(name); name != "" && !hba && name != "ysql_hba_conf_csv" {
+		if name != "" && !isHbaAttribute(name) && name != "ysql_hba_conf_csv" {
 			names = append(names, name)
 		}
 	}

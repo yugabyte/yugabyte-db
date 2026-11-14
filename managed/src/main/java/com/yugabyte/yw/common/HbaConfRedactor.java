@@ -4,9 +4,11 @@ package com.yugabyte.yw.common;
 
 import com.yugabyte.yw.common.CsvFieldSplitter.CsvField;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.List;
 import java.util.Set;
 
@@ -133,15 +135,24 @@ public final class HbaConfRedactor {
   /**
    * Redacts ldapbindpasswd in text with no structure to rely on, such as logs and command output:
    * from the name to the end of the line, and the lines after it that are indented with more
-   * spaces, because Helm folds long YAML values onto those. A {@code --ysql_hba_conf_csv=} gflag
-   * line is redacted like the gflag value.
+   * spaces, because Helm folds long YAML values onto those. A line that doesn't start a YAML or
+   * JSON entry, below an entry whose value isn't a JSON array or object or a YAML literal block,
+   * continues that entry's value, so the lines after it indented past the entry are redacted too.
+   * Where a ':' ends the line after the name, as after a key whose value starts below, the next
+   * line that isn't blank is redacted whatever its indent, even below a log line that only mentions
+   * the name. A {@code --ysql_hba_conf_csv=} gflag line is redacted like the gflag value, and folds
+   * the same way when that redaction reaches the end of the line.
    */
   public static String redactFreeText(String text) {
     if (text == null || indexOfKey(text, 0, true) < 0) {
       return text;
     }
     StringBuilder out = new StringBuilder(text.length());
+    // Earlier lines, each indented less than the one pushed after it: its indent, and the indent of
+    // the entry whose value it continues, or -1.
+    Deque<int[]> parents = new ArrayDeque<>();
     int foldIndent = -1;
+    boolean valueBelow = false;
     int p = 0;
     while (p < text.length()) {
       int next = text.indexOf('\n', p);
@@ -154,22 +165,46 @@ public final class HbaConfRedactor {
       while (p + indent < end && text.charAt(p + indent) == ' ') {
         indent++;
       }
-      if (foldIndent >= 0 && indent > foldIndent && p + indent < end) {
+      boolean blank = p + indent == end;
+      String line = text.substring(p, end);
+      int k = indent;
+      while (k < line.length() && isBlank(line.charAt(k))) {
+        k++;
+      }
+      int entryValue = -1;
+      int parentAnchor = -1;
+      if (!blank) {
+        while (!parents.isEmpty() && parents.peek()[0] >= indent) {
+          parents.pop();
+        }
+        parentAnchor = parents.isEmpty() ? -1 : parents.peek()[1];
+        entryValue = entryValueStart(line, k);
+        // The lines of a JSON array or object, or of a YAML literal block, aren't a folded value.
+        boolean separateLines =
+            entryValue >= 0
+                && entryValue < line.length()
+                && "[{|".indexOf(line.charAt(entryValue)) >= 0;
+        int anchor = entryValue < 0 ? parentAnchor : separateLines ? -1 : indent;
+        parents.push(new int[] {indent, anchor});
+      }
+      if (!blank && (valueBelow || (foldIndent >= 0 && indent > foldIndent))) {
         out.append(text, p, p + indent).append(REPLACEMENT);
+        valueBelow = false;
       } else {
         foldIndent = -1;
-        String line = text.substring(p, end);
-        int k = 0;
-        while (k < line.length() && isBlank(line.charAt(k))) {
-          k++;
-        }
         if (line.startsWith(GFLAG_LINE_PREFIX, k)) {
           int valueStart = k + GFLAG_LINE_PREFIX.length();
-          out.append(line, 0, valueStart).append(redact(line.substring(valueStart)));
+          String value = line.substring(valueStart);
+          String redacted = redact(value);
+          if (!redacted.equals(value) && endsRedacted(redacted)) {
+            foldIndent = indent;
+          }
+          out.append(line, 0, valueStart).append(redacted);
         } else {
           String redacted = redactToEnd(line, true);
           if (!redacted.equals(line)) {
-            foldIndent = indent;
+            foldIndent = entryValue < 0 && parentAnchor >= 0 ? parentAnchor : indent;
+            valueBelow = valueStartsBelow(line);
           }
           out.append(redacted);
         }
@@ -178,6 +213,88 @@ public final class HbaConfRedactor {
       p = next;
     }
     return out.toString();
+  }
+
+  /** Whether s ends with REDACTED, past any closing quotes. */
+  private static boolean endsRedacted(String s) {
+    int end = s.length();
+    while (end > 0 && s.charAt(end - 1) == '"') {
+      end--;
+    }
+    return s.startsWith(REPLACEMENT, end - REPLACEMENT.length());
+  }
+
+  /**
+   * If line starts at k with a YAML or JSON key and its ':', or a YAML sequence item, where its
+   * value starts past the blanks after the ':' or '-'; else -1.
+   */
+  private static int entryValueStart(String line, int k) {
+    int n = line.length();
+    int j;
+    if (k < n && line.charAt(k) == '-' && (k + 1 == n || isBlank(line.charAt(k + 1)))) {
+      j = k + 1;
+    } else {
+      boolean quoted = k < n && line.charAt(k) == '"';
+      j = k;
+      if (quoted) {
+        j = line.indexOf('"', k + 1) + 1;
+        if (j == 0) {
+          return -1;
+        }
+      } else {
+        while (j < n && isKeyChar(line.charAt(j))) {
+          j++;
+        }
+        if (j == k) {
+          return -1;
+        }
+      }
+      while (j < n && isBlank(line.charAt(j))) {
+        j++;
+      }
+      // A plain YAML key needs a blank after its ':', so that "host:port" isn't one.
+      if (j == n
+          || line.charAt(j) != ':'
+          || !(quoted || j + 1 == n || isBlank(line.charAt(j + 1)))) {
+        return -1;
+      }
+      j++;
+    }
+    while (j < n && isBlank(line.charAt(j))) {
+      j++;
+    }
+    return j;
+  }
+
+  /** Whether a ':' ends line after an ldapbindpasswd in it, past any quotes. */
+  private static boolean valueStartsBelow(String line) {
+    int n = line.length();
+    for (int at = indexOfKey(line, 0, true); at >= 0; at = indexOfKey(line, at + 1, true)) {
+      int j = matchKey(line, at, true)[1];
+      while (j < n
+          && (line.charAt(j) == '"' || line.charAt(j) == '\'' || isBlank(line.charAt(j)))) {
+        j++;
+      }
+      if (j < n && line.charAt(j) == ':') {
+        j++;
+        while (j < n && isBlank(line.charAt(j))) {
+          j++;
+        }
+        if (j == n) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  private static boolean isKeyChar(char c) {
+    return (c >= 'a' && c <= 'z')
+        || (c >= 'A' && c <= 'Z')
+        || (c >= '0' && c <= '9')
+        || c == '_'
+        || c == '-'
+        || c == '.';
   }
 
   /** Joins fields into lines the way tokenize_auth_file joins lines ending in a backslash. */
