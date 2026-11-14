@@ -2822,10 +2822,10 @@ YBGetDdlUseRegularTransactionBlock()
 }
 
 /*
- * True while YBCommitTransactionContainingDDL commits a transaction block that
- * ran DDL: from just before it clears the DDL transaction state (including
- * use_regular_txn_block) and sends the commit RPC, until that RPC succeeds or
- * the transaction is aborted.
+ * True while YBCommitTransactionContainingDDL commits a transaction with DDL
+ * transaction state (use_regular_txn_block), whether or not it ran a DDL
+ * statement: from just before it clears that state and sends the commit RPC,
+ * until that RPC succeeds or the transaction is aborted.
  */
 bool
 YBIsDdlTxnBlockCommitInProgress()
