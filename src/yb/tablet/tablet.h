@@ -1157,6 +1157,8 @@ class Tablet : public AbstractTablet,
       EXCLUDES(operation_filters_mutex_);
 
   void RegisterOperationFilter(OperationFilter* filter) EXCLUDES(operation_filters_mutex_);
+  // Tolerates a filter that is not registered (an operation aborted before it was added as
+  // pending unregisters in RemovedFromPending regardless).
   void UnregisterOperationFilter(OperationFilter* filter) EXCLUDES(operation_filters_mutex_);
 
   void SplitDone();

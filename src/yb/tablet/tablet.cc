@@ -7169,6 +7169,17 @@ void Tablet::UnregisterOperationFilter(OperationFilter* filter) {
 }
 
 void Tablet::UnregisterOperationFilterUnlocked(OperationFilter* filter) {
+  // An operation can be aborted without ever having been added as pending: AddedAsPending runs
+  // at the end of Operation::AddedToLeader, whose earlier steps can fail (e.g. tablet_safe()
+  // while the tablet shuts down), while the abort path infers was_pending from OpId validity,
+  // which the operation driver sets before invoking the operation. Its RemovedFromPending then
+  // unregisters a filter that was never registered; iterator_to on an unlinked hook would
+  // corrupt the list. The hook is safe_link (the list_base_hook<> default), so it answers
+  // "linked" exactly for filters pushed and not yet erased, and it is read under the same mutex
+  // every link and unlink takes.
+  if (!filter->is_linked()) {
+    return;
+  }
   operation_filters_.erase(operation_filters_.iterator_to(*filter));
 }
 
