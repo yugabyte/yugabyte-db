@@ -924,6 +924,9 @@ Status XClusterDDLQueueHandler::RunDdlQueueHandlerPrepareQueries(pgwrapper::PGCo
 
 Status XClusterDDLQueueHandler::InitPGConnection() {
   if (!FLAGS_TEST_xcluster_ddl_queue_handler_cache_connection) {
+    // Release the advisory lock synchronously: closing the connection releases it asynchronously,
+    // so the new connection's pg_try_advisory_lock below could otherwise fail.
+    Shutdown();
     pg_conn_.reset();
     pg_backend_pid_.store(0, std::memory_order_release);
   }
