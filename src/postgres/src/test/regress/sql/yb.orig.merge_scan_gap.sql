@@ -31,7 +31,6 @@ ANALYZE gap_coll_tbl;
 \set query ':P :Q SELECT c1, c3, s, c2 FROM gap_coll_tbl WHERE s IN (1, 2) AND c1 = c2 ORDER BY c1, c3;'
 \i :run_query
 
---
 -- Secondary index: filter pushed to the table, read after the index merge
 --
 -- d is not in the index.  The planner does not evaluate equality clauses as
@@ -63,7 +62,6 @@ ANALYZE gap_idx_tbl;
 \unset R2
 \unset R3
 
---
 -- DISTINCT over a local filter gap
 --
 -- The merge sorts on c2 as well, so the scan returns the rows in (c1, c3)
@@ -84,7 +82,6 @@ SET yb_enable_expression_pushdown = off;
 \i :run_query
 RESET yb_enable_expression_pushdown;
 
---
 -- Descending gap column, forward and backward scans
 --
 -- The index sorts c2 in descending order.  Each scan direction has its own
@@ -106,7 +103,6 @@ SET yb_enable_expression_pushdown = off;
 \i :run_query
 RESET yb_enable_expression_pushdown;
 
---
 -- Gap column with NULLs first
 --
 -- The index sorts c2 with NULLs first, so a backward scan returns c2 with NULLs
@@ -135,7 +131,6 @@ RESET enable_sort;
 
 DROP TABLE gap_coll_tbl, gap_idx_tbl, gap_dist_tbl, gap_desc_tbl, gap_null_tbl;
 
---
 -- Cells run in both databases (yb_commands/merge_scan_gap_cells.sql)
 --
 -- In this database, the expression gap filters run after the merge: with

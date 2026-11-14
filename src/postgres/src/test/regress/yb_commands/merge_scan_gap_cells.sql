@@ -4,7 +4,6 @@
 -- say how the plans differ.
 --
 
---
 -- Decoded primary key column: filter kept local on an index-only scan
 --
 -- With yb_enable_primary_key_decode_from_index on, an index-only scan returns
@@ -27,7 +26,6 @@ ANALYZE gap_pk_tbl;
 \i :run_query
 DROP TABLE gap_pk_tbl;
 
---
 -- Expression gap columns
 --
 -- Each gap column here is an expression column of the index, tied by a partial

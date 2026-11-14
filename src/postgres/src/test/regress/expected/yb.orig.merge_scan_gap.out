@@ -88,7 +88,6 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT c1, c3, s, c2 FROM gap_coll_tbl WHERE s IN (1, 2) AND c1 = c2 ORDER BY c1, c3;
 (output identical to previous)
---
 -- Secondary index: filter pushed to the table, read after the index merge
 --
 -- d is not in the index.  The planner does not evaluate equality clauses as
@@ -212,7 +211,6 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 \unset R1
 \unset R2
 \unset R3
---
 -- DISTINCT over a local filter gap
 --
 -- The merge sorts on c2 as well, so the scan returns the rows in (c1, c3)
@@ -285,7 +283,6 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
 /*+IndexScan(gap_dist_tbl) Set(yb_max_merge_scan_streams 64)*/ SELECT DISTINCT c1, c3 FROM gap_dist_tbl WHERE s IN (1, 2) AND c1 = c2 ORDER BY c1, c3;
 (output identical to previous)
 RESET yb_enable_expression_pushdown;
---
 -- Descending gap column, forward and backward scans
 --
 -- The index sorts c2 in descending order.  Each scan direction has its own
@@ -399,7 +396,6 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT c1, c3, s, c2 FROM gap_desc_tbl WHERE s IN (1, 2) AND c1 = c2 ORDER BY c1 DESC, c3 DESC;
 (output identical to previous)
 RESET yb_enable_expression_pushdown;
---
 -- Gap column with NULLs first
 --
 -- The index sorts c2 with NULLs first, so a backward scan returns c2 with NULLs
@@ -524,7 +520,6 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnl
 RESET yb_enable_expression_pushdown;
 RESET enable_sort;
 DROP TABLE gap_coll_tbl, gap_idx_tbl, gap_dist_tbl, gap_desc_tbl, gap_null_tbl;
---
 -- Cells run in both databases (yb_commands/merge_scan_gap_cells.sql)
 --
 -- In this database, the expression gap filters run after the merge: with
@@ -542,7 +537,6 @@ SET yb_enable_base_scans_cost_model = on;
 -- Cells that yb.orig.merge_scan_gap runs in the default database and again in
 -- the colocated database, where the indexes are embedded.  The comments there
 -- say how the plans differ.
---
 --
 -- Decoded primary key column: filter kept local on an index-only scan
 --
@@ -614,7 +608,6 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnl
 /*+IndexOnlyScan(gap_pk_tbl gap_pk_tbl_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT c1, c3, s, c2, k1 FROM gap_pk_tbl WHERE s IN (1, 2) AND c2 = k1 AND c1 = k1 ORDER BY c1, c3;
 (output identical to previous)
 DROP TABLE gap_pk_tbl;
---
 -- Expression gap columns
 --
 -- Each gap column here is an expression column of the index, tied by a partial
@@ -938,7 +931,6 @@ SET yb_enable_base_scans_cost_model = on;
 -- the colocated database, where the indexes are embedded.  The comments there
 -- say how the plans differ.
 --
---
 -- Decoded primary key column: filter kept local on an index-only scan
 --
 -- With yb_enable_primary_key_decode_from_index on, an index-only scan returns
@@ -1009,7 +1001,6 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnl
 /*+IndexOnlyScan(gap_pk_tbl gap_pk_tbl_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT c1, c3, s, c2, k1 FROM gap_pk_tbl WHERE s IN (1, 2) AND c2 = k1 AND c1 = k1 ORDER BY c1, c3;
 (output identical to previous)
 DROP TABLE gap_pk_tbl;
---
 -- Expression gap columns
 --
 -- Each gap column here is an expression column of the index, tied by a partial
