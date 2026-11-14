@@ -73,6 +73,17 @@ message ThinReadTimeOptionsPB {
   // page was served at on every continuation, so all pages observe one snapshot without the server
   // keeping any per-session read state.
   ReadHybridTimePB read_time = 1;
+  // Serve the batch's reads at CONSISTENT_PREFIX, so the tserver that received the Perform sends
+  // each read to the closest replica of its tablet, a follower included. When that replica cannot
+  // serve the read time, the same tserver retries the read on another replica of the tablet, on
+  // another tserver, within the same Perform. Applies to every page of a scan it starts, so a
+  // continuation must send it again alongside the pinned read_time. Ignored on a write batch.
+  bool read_from_followers = 2;
+  // With read_from_followers and no read_time: the tserver reads at its own clock minus this
+  // staleness, so only the cluster's own clock skew bound applies, as for YSQL follower reads.
+  // Must be positive. Ignored when read_time is set (a continuation keeps the scan's snapshot).
+  // Rejected on a write batch and without read_from_followers.
+  optional uint32 follower_read_staleness_ms = 3;
 }
 
 message ThinPerformRequestPB {
