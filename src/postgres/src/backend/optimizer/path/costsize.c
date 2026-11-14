@@ -10842,6 +10842,9 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	double		first_batch_frac;
 	List	   *local_clauses = NIL;
 	List	   *non_index_clauses = NIL;
+	List	   *fetched_quals = NIL;
+	List	   *result_quals;
+	List	   *result_remote_quals = NIL;
 	int			docdb_result_width;
 	Cardinality	tuples_fetched;
 	Cardinality	pages_fetched;
@@ -10940,16 +10943,45 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 								baserel_oid,
 								NULL);
 
+	/* A RestrictInfo caches its selectivity; a bare clause does not. */
+	foreach(l, indexquals)
+	{
+		Node	   *qual = (Node *) lfirst(l);
+		ListCell   *lc;
+
+		foreach(lc, baserel->baserestrictinfo)
+		{
+			RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc);
+
+			if (equal(rinfo->clause, qual))
+			{
+				qual = (Node *) rinfo;
+				break;
+			}
+		}
+		fetched_quals = lappend(fetched_quals, qual);
+	}
+
+	result_quals = list_copy(fetched_quals);
+	foreach(l, non_index_clauses)
+	{
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, l);
+
+		if (!list_member_ptr(remote_table_quals, rinfo->clause) ||
+			list_member(result_remote_quals, rinfo->clause))
+			continue;
+		result_remote_quals = lappend(result_remote_quals, rinfo->clause);
+		result_quals = lappend(result_quals, rinfo);
+	}
+
 	tuples_fetched = clamp_row_est(adjusted_baserel_tuples *
-								   clauselist_selectivity(root, indexquals,
+								   clauselist_selectivity(root, fetched_quals,
 														  baserel->relid,
 														  JOIN_INNER, NULL));
 
 	result_tuples =
 		clamp_row_est(adjusted_baserel_tuples *
-					  clauselist_selectivity(root,
-											 list_union(indexquals,
-														remote_table_quals),
+					  clauselist_selectivity(root, result_quals,
 											 baserel->relid, JOIN_INNER, NULL));
 
 	pages_fetched = ceil(tuples_fetched * tuple_width / YB_DEFAULT_DOCDB_BLOCK_SIZE);
