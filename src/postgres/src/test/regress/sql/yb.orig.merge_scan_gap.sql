@@ -34,10 +34,18 @@ ANALYZE gap_coll_tbl;
 --
 -- Secondary index: filter pushed to the table, read after the index merge
 --
--- d is not in the index, and the equalities the planner generates from c2 = d
--- and c1 = d reference it, so they are pushed to the table.  With c1 = c2
--- instead, the filter runs on the index, within each stream, before the merge.
--- TODO(#37785): that query should not merge on c2.
+-- d is not in the index.  The planner does not evaluate equality clauses as
+-- written: it chains the members of the class of c1, c2, and d in the order the
+-- clauses bring them in, generates an equality for each link, and pushes an
+-- equality to the index only when it references index columns alone (see
+-- #37785).
+-- - c1 = d AND c2 = d generates c1 = d and d = c2, both pushed to the table, so
+--   a filter ties c2 only at the table read.
+-- - c1 = d AND c1 = c2 generates the same equalities, so the c1 = c2 it writes
+--   does not run on the index.
+-- - c1 = c2 AND c1 = d generates c1 = c2, which runs on the index, within each
+--   stream, before the merge, and c2 = d.
+-- TODO(#37785): the last query should not merge on c2.
 CREATE TABLE gap_idx_tbl (k int, s int, c1 int, c2 int, c3 int, d int,
     PRIMARY KEY (k ASC));
 CREATE INDEX NONCONCURRENTLY gap_idx_tbl_idx ON gap_idx_tbl (s ASC, c1 ASC, c2 ASC, c3 ASC);
@@ -46,10 +54,14 @@ INSERT INTO gap_idx_tbl VALUES
     (5, 2, 5, 5, 2, 5);
 ANALYZE gap_idx_tbl;
 
-\set query ':P :Q SELECT c1, c3, s, c2, d FROM gap_idx_tbl WHERE s IN (1, 2) AND c2 = d AND c1 = d ORDER BY c1, c3;'
+\set R1 'c1 = d AND c2 = d'
+\set R2 'c1 = d AND c1 = c2'
+\set R3 'c1 = c2 AND c1 = d'
+\set query ':P :Q SELECT c1, c3, s, c2, d FROM gap_idx_tbl WHERE s IN (1, 2) AND :R ORDER BY c1, c3;'
 \i :run_query
-\set query ':P :Q SELECT c1, c3, s, c2 FROM gap_idx_tbl WHERE s IN (1, 2) AND c1 = c2 ORDER BY c1, c3;'
-\i :run_query
+\unset R1
+\unset R2
+\unset R3
 
 --
 -- DISTINCT over a local filter gap
