@@ -14,7 +14,6 @@
 #include "yb/yql/pggate/pg_txn_manager.h"
 
 #include "yb/common/common.pb.h"
-#include "yb/common/common_flags.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction_priority.h"
 
@@ -69,6 +68,7 @@ TAG_FLAG(ysql_yb_follower_reads_behavior_before_fixing_20482, advanced);
                      << "; query: { " << ::yb::pggate::GetDebugQueryString(pg_callbacks_) << " }; "
 
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(disable_global_object_locks);
 
 namespace {
 
@@ -264,9 +264,9 @@ bool PgTxnManager::UsingObjectLocksGloballyForCurrentTxn() const {
   // UsingObjectLocksLocally(), never fires here, since a transaction that latched the flag on runs
   // its DDLs inside itself.
   VLOG_WITH_FUNC(1) << "object locks: " << UsingObjectLocksLocally()
-                    << " can be global: " << ObjectLocksCanBeGlobal()
+                    << " global locks disabled: " << FLAGS_disable_global_object_locks
                     << " latched: " << YBCIsObjectLockingLatchedForCurrTxn();
-  return UsingObjectLocksLocally() && ObjectLocksCanBeGlobal() &&
+  return UsingObjectLocksLocally() && !FLAGS_disable_global_object_locks &&
          YBCIsObjectLockingLatchedForCurrTxn();
 }
 

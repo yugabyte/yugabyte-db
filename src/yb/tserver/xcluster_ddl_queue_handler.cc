@@ -23,7 +23,6 @@
 #include "yb/cdc/xcluster_types.h"
 #include "yb/client/client.h"
 #include "yb/client/stateful_services/pg_auto_analyze_service_client.h"
-#include "yb/common/common_flags.h"
 #include "yb/common/constants.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/json_util.h"
@@ -92,6 +91,8 @@ DEFINE_test_flag(string, xcluster_ddl_queue_handler_fail_ddl_matching, "",
     "If non-empty, the ddl_queue handler fails only the ddl commands whose query contains this "
     "substring.");
 
+DECLARE_bool(disable_global_object_locks);
+DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_yb_enable_global_object_locking_infra);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
@@ -466,7 +467,8 @@ bool XClusterDDLQueueHandler::ShouldUseTransactionalDDL(
          FLAGS_xcluster_ddl_queue_enable_transactional_ddl &&
          FLAGS_ysql_yb_ddl_transaction_block_enabled &&
          // ysql_yb_ddl_transaction_block_enabled depends on global object locks
-         ObjectLocksCanBeGlobal() && FLAGS_ysql_yb_enable_global_object_locking_infra;
+         FLAGS_enable_object_locking_for_table_locks && !FLAGS_disable_global_object_locks &&
+         FLAGS_ysql_yb_enable_global_object_locking_infra;
 }
 
 Status XClusterDDLQueueHandler::ProcessQueriesForCommitTime(const HybridTime& commit_time) {
