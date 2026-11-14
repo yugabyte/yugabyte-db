@@ -553,3 +553,22 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ck_ne_ptk_tmp_p1 VALUES (11, 5, 9
 
 SELECT * FROM ck_ne_ptk_tmp_base ORDER BY ck;
 DROP TABLE ck_ne_ptk_tmp_base CASCADE;
+
+-- Case 12: Partition key expression that references the whole row (GH#37960).
+-- Every column is part of such a key, so updates via leaf are distributed.
+CREATE TABLE wr_ptk_base (k INT NOT NULL, v INT) PARTITION BY LIST ((wr_ptk_base IS NOT NULL));
+CREATE TABLE wr_ptk_p1 PARTITION OF wr_ptk_base (PRIMARY KEY (k)) FOR VALUES IN (true);
+INSERT INTO wr_ptk_base VALUES (1, 1), (2, 2);
+
+-- Update moving the row out of its partition via leaf. Should fail.
+EXPLAIN (COSTS OFF) UPDATE wr_ptk_p1 SET v = NULL WHERE k = 1;
+UPDATE wr_ptk_p1 SET v = NULL WHERE k = 1;
+
+-- Same update via root. Should fail: no partition accepts the row.
+UPDATE wr_ptk_base SET v = NULL WHERE k = 1;
+
+-- Update keeping the row in its partition. Should succeed.
+UPDATE wr_ptk_p1 SET v = 10 WHERE k = 1;
+
+SELECT * FROM wr_ptk_base ORDER BY k;
+DROP TABLE wr_ptk_base CASCADE;
