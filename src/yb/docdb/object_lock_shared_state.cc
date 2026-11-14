@@ -19,6 +19,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/flags.h"
 #include "yb/util/crash_point.h"
+#include "yb/util/logging.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/shmem/annotations.h"
 #include "yb/util/shmem/robust_mutex.h"
@@ -323,6 +324,7 @@ class ObjectLockSharedState::Impl {
     std::lock_guard lock(mutex_);
     if (SHARED_MEMORY_LOAD(enabled_) == ActiveState::kDisabled) {
       SHARED_MEMORY_STORE(enabled_, ActiveState::kEnabled);
+      ++enabled_epoch_.Get();
       VLOG_WITH_FUNC(1) << "done";
     }
   }
@@ -366,6 +368,12 @@ class ObjectLockSharedState::Impl {
     VLOG_WITH_FUNC(1) << "set to " << CollectionToString(exclusive_intents.SharedMemorySpan());
   }
 
+  uint64_t ActiveEpoch() const EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    return SHARED_MEMORY_LOAD(enabled_) == ActiveState::kEnabled
+        ? SHARED_MEMORY_LOAD(enabled_epoch_) : 0;
+  }
+
   uint64_t PgLockRequestCount() const {
     std::lock_guard lock(mutex_);
     return shared_requests_.PgLockRequestCount();
@@ -405,9 +413,10 @@ class ObjectLockSharedState::Impl {
     }
 
     if (!shared_requests_.AddLockRequest(request, account_to_pg ? entries.size() : 0)) {
-      LOG(WARNING) << AsString(request) << ": too many active fastpath requests, consider "
-                   << "increasing object_lock_fastpath_buffer_size (current value: "
-                   << FLAGS_object_lock_fastpath_buffer_size << ")";
+      YB_LOG_EVERY_N_SECS(WARNING, 60)
+          << AsString(request) << ": too many active fastpath requests, consider increasing "
+          << "object_lock_fastpath_buffer_size (current value: "
+          << FLAGS_object_lock_fastpath_buffer_size << ")";
       return 0;
     }
 
@@ -475,6 +484,8 @@ class ObjectLockSharedState::Impl {
   PendingLockRequests shared_requests_ GUARDED_BY(mutex_);
   ChildProcessRO<std::span<const ObjectLockExclusiveIntent>> exclusive_intents_;
   ChildProcessRO<ActiveState> enabled_ GUARDED_BY(mutex_) = ActiveState::kDisabled;
+  // Incremented each time the state is enabled, i.e. each time a transaction is registered for it.
+  ChildProcessRO<uint64_t> enabled_epoch_ GUARDED_BY(mutex_) = 0;
 
   // Keep track of whether this session/transaction is registered with ObjectLockManager. If it is,
   // we need to release via ObjectLockManager to release that state, and cannot use fastpath
@@ -539,6 +550,10 @@ void ObjectLockSharedState::ResetExclusiveLockIntentsTo(
 
 void ObjectLockSharedState::ConsumePendingLockRequests(const FastLockRequestConsumer& consume) {
   impl_->ConsumePendingLockRequests(consume);
+}
+
+uint64_t ObjectLockSharedState::ActiveEpoch() const {
+  return impl_->ActiveEpoch();
 }
 
 uint64_t ObjectLockSharedState::PgLockRequestCount() const {

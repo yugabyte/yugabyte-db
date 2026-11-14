@@ -243,6 +243,13 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   YB_STRONGLY_TYPED_BOOL(SavePriority);
 
   void ResetTxnAndSession();
+
+  // Whether the lock is known to be held by the current transaction in a live subtransaction.
+  [[nodiscard]] bool IsObjectLockHeld(
+      const YbcObjectLockId& lock_id, docdb::ObjectLockFastpathLockType lock_type);
+  void RecordObjectLockHeld(
+      const YbcObjectLockId& lock_id, docdb::ObjectLockFastpathLockType lock_type);
+  void ClearHeldObjectLocks();
   void StartNewSession();
   Status RecreateTransaction(SavePriority save_priority);
   Status SetupReadTimeOptions(
@@ -342,6 +349,10 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   const bool enable_table_locking_;
 
   std::unordered_map<YbcReadPointHandle, uint64_t> crosstxn_explicit_snapshot_read_time_;
+
+  // Object locks known to be held by the current transaction, see HeldObjectLocks in the .cc file.
+  class HeldObjectLocks;
+  const std::unique_ptr<HeldObjectLocks> held_object_locks_;
   bool is_read_time_history_cutoff_disabled_{false};
   bool clamp_uncertainty_window_{false};
 

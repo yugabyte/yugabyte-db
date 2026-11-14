@@ -140,6 +140,11 @@ class ObjectLockSharedState {
   void ResetExclusiveLockIntentsTo(const ObjectLockExclusiveIntents& exclusive_intents)
       PARENT_PROCESS_ONLY;
 
+  // Returns a non-zero value identifying the current period during which the state is enabled for a
+  // registered transaction, or 0 if the state is disabled. The value changes whenever the
+  // registration changes, e.g. after the transaction is aborted and a new one registered.
+  uint64_t ActiveEpoch() const;
+
   uint64_t PgLockRequestCount() const;
   uint64_t PgLockReleaseCount() const;
   uint64_t TServerLockRequestCount() const;

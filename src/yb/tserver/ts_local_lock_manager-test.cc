@@ -82,6 +82,7 @@ constexpr auto kDatabase2 = 2;
 constexpr auto kObject1 = 1;
 constexpr auto kObject2 = 2;
 constexpr auto kObject3 = 3;
+constexpr auto kObject4 = 4;
 constexpr uint32_t kDefaultObjectId = 0;
 constexpr uint32_t kDefaultObjectSubId = 0;
 constexpr auto kDefaultTestStatusTabletId = "test_status_tablet";
@@ -1392,6 +1393,17 @@ TEST_F(TSLocalLockManagerTest, TestFastpathOverflow) {
   ASSERT_TRUE(LockRelationTServerFastpath(
       kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject3,
       ObjectLockFastpathLockType::kRowShare));
+  ASSERT_FALSE(LockRelationTServerFastpath(
+      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject4,
+      ObjectLockFastpathLockType::kRowShare));
+
+  // kObject1 is already held in the lock manager, so this acquire is redundant. It should still
+  // consume the buffer for txn1.
+  ASSERT_OK(LockRelation(
+      kTxn1, kDatabase1, kObject1, TableLockType::ROW_SHARE, /*deadline=*/{}));
+  ASSERT_TRUE(LockRelationTServerFastpath(
+      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject4,
+      ObjectLockFastpathLockType::kRowShare));
 
   // Locks were consumed for txn1, fastpath release blocked.
   ASSERT_FALSE(ReleaseLocksPgFastpath(kTxn1.txn_id));
@@ -1401,6 +1413,27 @@ TEST_F(TSLocalLockManagerTest, TestFastpathOverflow) {
   ASSERT_OK(ReleaseLocksForOwner(kTxn1));
 }
 
+// The active epoch is non-zero only while a transaction is registered, and changes with each
+// registration, so that locks known to be held for one transaction are not assumed held for the
+// next one.
+TEST_F(TSLocalLockManagerTest, TestFastpathActiveEpoch) {
+  ParentProcessGuard g;
+  auto shared_state = ASSERT_RESULT(shared_manager_->AllocateShared());
+  auto& state = *shared_state.get();
+  ASSERT_EQ(state.ActiveEpoch(), 0);
+
+  uint64_t first_epoch;
+  {
+    auto registration = lock_owner_registry_->Register(state, kTxn1.txn_id, TabletId());
+    first_epoch = state.ActiveEpoch();
+    ASSERT_NE(first_epoch, 0);
+  }
+  ASSERT_EQ(state.ActiveEpoch(), 0);
+
+  auto registration = lock_owner_registry_->Register(state, kTxn2.txn_id, TabletId());
+  ASSERT_NE(state.ActiveEpoch(), 0);
+  ASSERT_NE(state.ActiveEpoch(), first_epoch);
+}
 
 // A release naming specific objects leaves the subtxn's other locks held, so it must keep the
 // subtxn's tracked acquire deadline. Otherwise the later release-all of the subtxn finds no
