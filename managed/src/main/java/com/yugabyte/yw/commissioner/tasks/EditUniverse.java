@@ -32,10 +32,12 @@ import com.yugabyte.yw.models.helpers.ManagedLoadBalancerState;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -74,10 +76,9 @@ public class EditUniverse extends EditUniverseTaskBase {
   // Here, not in the handlers: the v2 edit skips UniverseCRUDHandler's checks.
   private void validateManagedLoadBalancerChanges() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    Cluster primaryAfterEdit =
-        taskParams().getPrimaryCluster() != null
-            ? taskParams().getPrimaryCluster()
-            : universe.getUniverseDetails().getPrimaryCluster();
+    Map<UUID, Cluster> clustersAfterEdit = new LinkedHashMap<>();
+    universe.getUniverseDetails().clusters.forEach(c -> clustersAfterEdit.put(c.uuid, c));
+    taskParams().clusters.forEach(c -> clustersAfterEdit.put(c.uuid, c));
     CommunicationPorts currentPorts = universe.getUniverseDetails().communicationPorts;
     CommunicationPorts ports =
         taskParams().communicationPorts != null ? taskParams().communicationPorts : currentPorts;
@@ -87,7 +88,7 @@ public class EditUniverse extends EditUniverseTaskBase {
         continue;
       }
       ManagedLoadBalancerUtil.validateEditedCluster(
-          universe, primaryAfterEdit, current, cluster, confGetter, cloudAPIFactory);
+          universe, clustersAfterEdit.values(), current, cluster, confGetter, cloudAPIFactory);
       // The edit ensures the load balancers with these ports last, after the rollback checkpoint.
       List<Integer> forwarded =
           ManageLoadBalancerGroup.getForwardedPorts(cluster.userIntent, ports);
@@ -238,6 +239,7 @@ public class EditUniverse extends EditUniverseTaskBase {
       if (deleteCapacityReservation) {
         createDeleteCapacityReservationTask();
       }
+      createDeleteOrphanedManagedLoadBalancerTasks();
       if (taskParams().communicationPorts != null
           && !Objects.equals(
               universe.getUniverseDetails().communicationPorts, taskParams().communicationPorts)) {

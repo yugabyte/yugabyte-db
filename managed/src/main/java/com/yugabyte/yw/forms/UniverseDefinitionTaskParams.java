@@ -2536,6 +2536,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     clusters.remove(cluster);
   }
 
+  /** Changes the managed load balancer state; an empty state is saved as null. */
+  public void updateManagedLoadBalancerState(Consumer<ManagedLoadBalancerState> updater) {
+    ManagedLoadBalancerState state =
+        managedLoadBalancerState == null
+            ? new ManagedLoadBalancerState()
+            : managedLoadBalancerState;
+    updater.accept(state);
+    managedLoadBalancerState = state.isEmpty() ? null : state;
+  }
+
   /**
    * Helper API to retrieve the Primary Cluster in the Universe represented by these Params.
    *

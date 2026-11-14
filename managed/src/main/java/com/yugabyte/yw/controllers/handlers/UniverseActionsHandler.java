@@ -357,8 +357,7 @@ public class UniverseActionsHandler {
         universe.getName(),
         universe.getUniverseUUID());
     for (UniverseDefinitionTaskParams.Cluster cluster : taskParams.clusters) {
-      ManagedLoadBalancerUtil.validateNoLbNames(
-          universe.getUniverseDetails().getPrimaryCluster(), cluster);
+      ManagedLoadBalancerUtil.validateNoLbNames(universe.getUniverseDetails().clusters, cluster);
     }
     // Set existing LB config
     taskParams.setExistingLBs(universe.getUniverseDetails().clusters);

@@ -13,7 +13,8 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * Deletes one managed load balancer. The state keeps the entry until the cloud delete succeeds, so
- * a retry deletes it again.
+ * a retry deletes it again. When a force delete removes a read replica, the next edit or the
+ * universe destroy is that retry.
  */
 @Slf4j
 public class DeleteManagedLoadBalancer extends UniverseTaskBase {
@@ -33,7 +34,7 @@ public class DeleteManagedLoadBalancer extends UniverseTaskBase {
     public UUID regionUUID;
     public String regionCode;
     public String lbName;
-    // Set on force delete of the universe.
+    // Set on force delete of the universe or of a read replica.
     public boolean ignoreErrors;
   }
 

@@ -1800,14 +1800,33 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   @Test
   public void testRollbackOfFailedTakeOverLeavesTheUsersLoadBalancer() throws InterruptedException {
     factory.globalRuntimeConf().setValue("yb.task.allow_edit_universe_rollback", "true");
+    Universe universe = givenUserLoadBalancer();
+    // A removed read replica's load balancer whose forced delete failed: an edit's to retry.
+    ManagedLoadBalancer removedReadReplicaLb =
+        new ManagedLoadBalancer(
+            UUID.randomUUID(),
+            universe
+                .getUniverseDetails()
+                .getPrimaryCluster()
+                .placementInfo
+                .azStream()
+                .findFirst()
+                .map(az -> AvailabilityZone.getOrBadRequest(az.uuid).getRegion().getUuid())
+                .get(),
+            ManagedLoadBalancer.Scheme.PRIVATE,
+            List.of(),
+            "lbi-removed",
+            null);
     // Only the edit names the user's load balancer; the universe never used it.
-    Universe universe =
+    universe =
         Universe.saveDetails(
-            givenUserLoadBalancer().getUniverseUUID(),
+            universe.getUniverseUUID(),
             u -> {
               Cluster primary = u.getUniverseDetails().getPrimaryCluster();
               primary.userIntent.enableLB = false;
               primary.placementInfo.azStream().forEach(az -> az.lbName = null);
+              u.getUniverseDetails()
+                  .updateManagedLoadBalancerState(state -> state.put(removedReadReplicaLb));
             });
     UniverseDefinitionTaskParams takeOver = flipManagedLoadBalancer(universe, true);
     takeOver.getPrimaryCluster().placementInfo.azStream().forEach(az -> az.lbName = "byo-lb");
@@ -1817,13 +1836,14 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     assertEquals(Failure, failed.getTaskState());
     // The state lists the user's load balancer, which the rollback must leave.
     assertEquals(
-        "byo-lb",
+        List.of("lbi-removed", "byo-lb"),
         Universe.getOrBadRequest(universe.getUniverseUUID())
             .getUniverseDetails()
             .getManagedLoadBalancerState()
             .getLoadBalancers()
-            .get(0)
-            .getName());
+            .stream()
+            .map(ManagedLoadBalancer::getName)
+            .collect(Collectors.toList()));
 
     TaskInfo rolledBack = rollback(failed);
 
@@ -1834,7 +1854,9 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     Cluster primary = universe.getUniverseDetails().getPrimaryCluster();
     assertNull(primary.userIntent.getManagedLoadBalancer());
     primary.placementInfo.azStream().forEach(az -> assertNull(az.lbName));
-    assertNull(universe.getUniverseDetails().getManagedLoadBalancerState());
+    assertEquals(
+        List.of(removedReadReplicaLb),
+        universe.getUniverseDetails().getManagedLoadBalancerState().getLoadBalancers());
   }
 
   private UniverseDefinitionTaskParams getTaskParamsForDiskSizeValidation(Universe universe) {
