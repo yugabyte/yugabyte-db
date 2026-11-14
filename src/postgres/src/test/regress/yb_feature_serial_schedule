@@ -15,3 +15,4 @@ test: yb.orig.feature_copy
 test: yb.orig.feature_copyselect
 test: yb.orig.feature_alter_table
 test: yb.orig.feature_temp
+test: yb.orig.temp_modifying_cte
