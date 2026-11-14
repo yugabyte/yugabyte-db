@@ -450,6 +450,7 @@ public class UpgradeUniverseHandler {
       checkHelmChartExists(
           universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
     }
+    validateTmpDirGflagConsistency(requestParams, universe);
     return submitUpgradeTask(
         Util.isKubernetesBasedUniverse(universe)
             ? TaskType.GFlagsKubernetesUpgrade
@@ -458,6 +459,24 @@ public class UpgradeUniverseHandler {
         requestParams,
         customer,
         universe);
+  }
+
+  private void validateTmpDirGflagConsistency(
+      GFlagsUpgradeParams requestParams, Universe universe) {
+    Map<UUID, UniverseDefinitionTaskParams.Cluster> newByUuid =
+        requestParams.getNewVersionsOfClusters(universe);
+    List<UniverseDefinitionTaskParams.Cluster> clustersAfterEdit = new ArrayList<>();
+    for (UniverseDefinitionTaskParams.Cluster cur : universe.getUniverseDetails().clusters) {
+      UniverseDefinitionTaskParams.Cluster afterEdit = newByUuid.get(cur.uuid);
+      if (afterEdit == null) {
+        continue;
+      }
+      // getNewVersionsOfClusters only clones userIntent; the tmp_dir check iterates placement AZs.
+      afterEdit.placementInfo = cur.placementInfo;
+      afterEdit.setPartitions(cur.getPartitions());
+      clustersAfterEdit.add(afterEdit);
+    }
+    GFlagsUtil.validateTmpDirGflagConsistencyOrThrow(confGetter, clustersAfterEdit);
   }
 
   /**
