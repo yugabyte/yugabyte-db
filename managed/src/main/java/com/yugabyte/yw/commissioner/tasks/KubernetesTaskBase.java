@@ -360,7 +360,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
     createUnivManageAlertDefinitionsTask(true).setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
 
-    createSwamperTargetUpdateTask(false);
+    // The recreated pods may now serve node_exporter over another scheme.
+    createSwamperTargetUpdateTask(
+        false /* removeFile */, KubernetesUtil.isNodeExporterSidecarEnabled(universe, confGetter));
 
     createMarkSourceMetricsTask(universe, MetricSourceState.ACTIVE)
         .setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
@@ -911,6 +913,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       SubTaskGroup setEncKeys =
           createSetActiveUniverseKeysTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       getRunnableTask().addSubTaskGroup(setEncKeys);
+    }
+    // The restarted pods may now serve node_exporter over another scheme.
+    if (KubernetesUtil.isNodeExporterSidecarEnabled(getUniverse(), confGetter)) {
+      createSwamperTargetUpdateTask(false /* removeFile */, true /* readPods */);
     }
   }
 
@@ -1536,6 +1542,11 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
         if (serverType == ServerType.TSERVER && !edit) {
           removeFromLeaderBlackListIfAvailable(nodeList, SubTaskGroupType.ConfigureUniverse);
+        }
+
+        // The restarted pods may now serve node_exporter over another scheme.
+        if (KubernetesUtil.isNodeExporterSidecarEnabled(getUniverse(), confGetter)) {
+          createSwamperTargetUpdateTask(false /* removeFile */, true /* readPods */);
         }
         // Create post upgrade subtasks
         createPostUpgradeChecks(serverType, nodeList);

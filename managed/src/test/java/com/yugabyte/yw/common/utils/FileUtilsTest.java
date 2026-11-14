@@ -2,16 +2,19 @@
 
 package com.yugabyte.yw.common.utils;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,6 +25,7 @@ import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
+import play.libs.Json;
 
 public class FileUtilsTest {
 
@@ -69,6 +73,33 @@ public class FileUtilsTest {
 
     assertEquals(relativeFiles(viaUnTar.toPath()), relativeFiles(viaWithinDir.toPath()));
     assertTrue(new File(viaWithinDir, "master/conf/server.conf").isFile());
+  }
+
+  @Test
+  public void testWriteFileAtomicallyReplacesFileAndLeavesNoTempFile() throws Exception {
+    File dir = tmp.newFolder("atomic");
+    File file = new File(dir, "targets.json");
+    Files.writeString(file.toPath(), "old");
+
+    FileUtils.writeFileAtomically(file.getPath(), "new", "rw-r-----");
+
+    assertEquals("new", Files.readString(file.toPath()));
+    assertEquals(
+        "rw-r-----", PosixFilePermissions.toString(Files.getPosixFilePermissions(file.toPath())));
+    assertArrayEquals(new String[] {"targets.json"}, dir.list());
+  }
+
+  @Test
+  public void testWriteJsonFileAtomicallyWritesPrettyJson() throws Exception {
+    File file = new File(tmp.newFolder("atomic-json"), "targets.json");
+    ArrayNode json = Json.newArray();
+    json.addObject().put("a", 1);
+
+    FileUtils.writeJsonFileAtomically(file.getPath(), json, "rw-r--r--");
+
+    assertEquals(Json.prettyPrint(json), Files.readString(file.toPath()));
+    assertEquals(
+        "rw-r--r--", PosixFilePermissions.toString(Files.getPosixFilePermissions(file.toPath())));
   }
 
   /** A null value is a directory entry. Absolute names are kept as written. */

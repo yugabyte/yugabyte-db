@@ -20,7 +20,9 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Collections;
@@ -137,6 +139,35 @@ public class FileUtils {
     try (FileWriter file = new FileWriter(filePath)) {
       file.write(contents);
       file.flush();
+      LOG.info("Written: {}", filePath);
+    } catch (IOException e) {
+      LOG.error("Unable to write: {}", filePath);
+      throw new RuntimeException(e.getMessage());
+    }
+  }
+
+  /** Replaces the file in one rename, so a reader sees either the old or the new contents. */
+  public static void writeFileAtomically(String filePath, String contents, String permissions)
+      throws IOException {
+    Path path = Paths.get(filePath);
+    Path tmp =
+        Files.createTempFile(
+            path.getParent(),
+            path.getFileName().toString(),
+            ".tmp",
+            PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString(permissions)));
+    try {
+      Files.writeString(tmp, contents);
+      Files.move(tmp, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+    } finally {
+      Files.deleteIfExists(tmp);
+    }
+  }
+
+  /** Writes the JSON with writeFileAtomically, logging as writeFile does. */
+  public static void writeJsonFileAtomically(String filePath, JsonNode json, String permissions) {
+    try {
+      writeFileAtomically(filePath, Json.prettyPrint(json), permissions);
       LOG.info("Written: {}", filePath);
     } catch (IOException e) {
       LOG.error("Unable to write: {}", filePath);

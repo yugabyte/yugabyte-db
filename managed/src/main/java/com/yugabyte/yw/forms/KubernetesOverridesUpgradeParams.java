@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import io.fabric8.kubernetes.api.model.Pod;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
@@ -107,16 +108,8 @@ public class KubernetesOverridesUpgradeParams extends UpgradeTaskParams {
       return;
     }
 
-    // The Helm render also sets the node_exporter sidecar, so this upgrade can still change it.
-    boolean nodeExporterWantedKey =
-        KubernetesUtil.isNodeExporterSidecarEnabled(
-            userIntent.ybSoftwareVersion, universe, runtimeConfGetter);
-    if (changesNodeExporterSidecar(universe, nodeExporterWantedKey)) {
-      log.info(
-          "Accepting upgrade task on unchanged overrides for universe {} "
-              + "to {} the node_exporter sidecar",
-          universe.getUniverseUUID(),
-          nodeExporterWantedKey ? "install" : "remove");
+    // The Helm render also sets the node_exporter sidecar and its TLS, so this can change them.
+    if (changesNodeExporterSidecar(universe)) {
       return;
     }
 
@@ -127,23 +120,27 @@ public class KubernetesOverridesUpgradeParams extends UpgradeTaskParams {
   }
 
   // Each master or tserver node is one pod; a pod that can't be read is skipped.
-  private boolean changesNodeExporterSidecar(Universe universe, boolean nodeExporterWantedKey) {
+  private boolean changesNodeExporterSidecar(Universe universe) {
+    boolean sidecarWanted =
+        KubernetesUtil.isNodeExporterSidecarEnabled(universe, runtimeConfGetter);
+    boolean tlsWanted =
+        sidecarWanted
+            && KubernetesUtil.isNodeExporterSidecarTlsEnabled(universe, runtimeConfGetter);
     KubernetesManagerFactory kubernetesManagerFactory =
         StaticInjectorHolder.injector().instanceOf(KubernetesManagerFactory.class);
     for (NodeDetails node : universe.getUniverseDetails().nodeDetailsSet) {
       boolean hasSidecar;
+      boolean tlsRendered;
       try {
-        hasSidecar =
+        Pod pod =
             kubernetesManagerFactory
                 .getManager()
                 .getPodObject(
                     KubernetesUtil.getKubernetesConfigPerPod(universe, node),
                     node.getK8sNamespace(),
-                    node.getK8sPodName())
-                .getSpec()
-                .getContainers()
-                .stream()
-                .anyMatch(container -> "yb-node-exporter".equals(container.getName()));
+                    node.getK8sPodName());
+        hasSidecar = KubernetesUtil.hasNodeExporterSidecar(pod);
+        tlsRendered = KubernetesUtil.isNodeExporterSidecarTlsRendered(pod);
       } catch (Exception e) {
         log.warn(
             "Unable to read pod {} of universe {} to check the node_exporter sidecar",
@@ -152,7 +149,13 @@ public class KubernetesOverridesUpgradeParams extends UpgradeTaskParams {
             e);
         continue;
       }
-      if (hasSidecar != nodeExporterWantedKey) {
+      if (hasSidecar != sidecarWanted || tlsRendered != tlsWanted) {
+        log.info(
+            "Accepting upgrade task on unchanged overrides for universe {} to {} the"
+                + " node_exporter sidecar: pod {} differs",
+            universe.getUniverseUUID(),
+            sidecarWanted ? "install or update" : "remove",
+            node.getK8sPodName());
         return true;
       }
     }

@@ -8,6 +8,7 @@ import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.*;
 
+import com.yugabyte.yw.commissioner.tasks.NodeExporterSidecarTestUtil;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
@@ -15,6 +16,7 @@ import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -124,6 +126,45 @@ public class TlsToggleKubernetesTest extends KubernetesUpgradeTaskTest {
             .enableNodeToNodeEncrypt);
     assertTrue(defaultUniverse.getUniverseDetails().rootAndClientRootCASame);
     assertFalse(defaultUniverse.getUniverseDetails().allowInsecure);
+  }
+
+  @Test
+  public void testNonRollingRewritesTargetsOnceWithSidecar() throws Exception {
+    assertEquals(1, countForcedTargetRewrites(enableTlsNonRolling(true /* sidecarKey */)));
+  }
+
+  @Test
+  public void testNonRollingDoesNotForceTargetRewriteWithoutSidecar() throws Exception {
+    assertEquals(0, countForcedTargetRewrites(enableTlsNonRolling(false /* sidecarKey */)));
+  }
+
+  private TaskInfo enableTlsNonRolling(boolean sidecarKey) throws Exception {
+    tlsToggleKubernetes.setUserTaskUUID(UUID.randomUUID());
+    setupUniverseSingleAZ(false, true);
+    TestHelper.updateUniverseVersion(
+        defaultUniverse, NodeExporterSidecarTestUtil.SUPPORTED_VERSION);
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    RuntimeConfigEntry.upsert(
+        defaultUniverse, "yb.kubernetes.node_exporter.enabled", String.valueOf(sidecarKey));
+    rootCAUUID = UUID.randomUUID();
+    createRootCAUUID();
+    TlsToggleParams tlsToggleParams = new TlsToggleParams();
+    tlsToggleParams.enableClientToNodeEncrypt = true;
+    tlsToggleParams.enableNodeToNodeEncrypt = true;
+    tlsToggleParams.rootAndClientRootCASame = true;
+    tlsToggleParams.rootCA = rootCAUUID;
+    tlsToggleParams.upgradeOption = SoftwareUpgradeParams.UpgradeOption.NON_ROLLING_UPGRADE;
+    tlsToggleParams.expectedUniverseVersion = -1;
+    TaskInfo taskInfo = submitTask(tlsToggleParams);
+    assertEquals(taskInfo.getErrorMessage(), Success, taskInfo.getTaskState());
+    return taskInfo;
+  }
+
+  private static long countForcedTargetRewrites(TaskInfo taskInfo) {
+    return taskInfo.getSubTasks().stream()
+        .filter(t -> t.getTaskType() == TaskType.SwamperTargetsFileUpdate)
+        .filter(t -> t.getTaskParams().path("readPods").asBoolean())
+        .count();
   }
 
   @Test

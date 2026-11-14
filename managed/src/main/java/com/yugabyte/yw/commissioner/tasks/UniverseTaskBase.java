@@ -3469,6 +3469,17 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param removeFile, flag to state if we want to remove the swamper or not
    */
   public void createSwamperTargetUpdateTask(boolean removeFile) {
+    createSwamperTargetUpdateTask(removeFile, false /* readPods */);
+  }
+
+  /**
+   * Create a task to update the swamper target file
+   *
+   * @param removeFile, flag to state if we want to remove the swamper or not
+   * @param readPods, read each K8s pod's node_exporter scheme even when the previous targets list
+   *     every node
+   */
+  public void createSwamperTargetUpdateTask(boolean removeFile, boolean readPods) {
     if (!config.getBoolean(MetricQueryHelper.PROMETHEUS_MANAGEMENT_ENABLED)) {
       return;
     }
@@ -3477,6 +3488,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     SwamperTargetsFileUpdate task = createTask(SwamperTargetsFileUpdate.class);
     params.universeUUID = taskParams().getUniverseUUID();
     params.removeFile = removeFile;
+    params.readPods = readPods;
     task.initialize(params);
     subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     subTaskGroup.addSubTask(task);

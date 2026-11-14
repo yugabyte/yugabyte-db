@@ -12,7 +12,9 @@ package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.common.utils.FileUtils.writeFile;
 import static com.yugabyte.yw.common.utils.FileUtils.writeJsonFile;
+import static com.yugabyte.yw.common.utils.FileUtils.writeJsonFileAtomically;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
@@ -26,16 +28,22 @@ import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.MetricCollectionLevel;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import io.fabric8.kubernetes.api.model.Pod;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -52,6 +60,9 @@ import play.libs.Json;
 @Singleton
 public class SwamperHelper {
   public static final Logger LOG = LoggerFactory.getLogger(SwamperHelper.class);
+
+  // One lock per universe for its node file.
+  private final Map<UUID, Object> nodeFileLocks = new ConcurrentHashMap<>();
 
   private static final String UUID_PATTERN =
       "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
@@ -83,6 +94,10 @@ public class SwamperHelper {
 
   private static final int IRATE_SCRAPE_PERIODS = 5;
 
+  private static final String SCHEME_LABEL = "__scheme__";
+  private static final String HTTP = "http";
+  private static final String HTTPS = "https";
+
   /*
      Sample targets file
     [
@@ -106,17 +121,20 @@ public class SwamperHelper {
   private final RuntimeConfGetter confGetter;
 
   private final AlertTemplateService alertTemplateService;
+  private final KubernetesManagerFactory kubernetesManagerFactory;
 
   @Inject
   public SwamperHelper(
       RuntimeConfigFactory runtimeConfigFactory,
       Environment environment,
       RuntimeConfGetter confGetter,
-      AlertTemplateService alertTemplateService) {
+      AlertTemplateService alertTemplateService,
+      KubernetesManagerFactory kubernetesManagerFactory) {
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.environment = environment;
     this.confGetter = confGetter;
     this.alertTemplateService = alertTemplateService;
+    this.kubernetesManagerFactory = kubernetesManagerFactory;
   }
 
   @Getter
@@ -241,17 +259,6 @@ public class SwamperHelper {
       MetricCollectionLevel level = getLevel(universe);
       appendCollectionLevelLabels(level, labels);
     }
-    // Prometheus uses the job's scheme only for targets without this label, so one "node" job
-    // serves HTTPS and HTTP universes. Labels starting with __ never reach stored series. The K8s
-    // sidecar serves plain HTTP.
-    if (t == TargetType.NODE_EXPORT) {
-      if (Util.isKubernetesBasedUniverse(universe)) {
-        labels.put("__scheme__", "http");
-      } else if (universe.isNodeExporterHttps()) {
-        labels.put("__scheme__", "https");
-      }
-    }
-
     target.set("targets", targetNodes);
     target.set("labels", labels);
     return target;
@@ -271,11 +278,24 @@ public class SwamperHelper {
   }
 
   public void writeUniverseTargetJson(UUID universeUUID) {
+    writeUniverseTargetJson(universeUUID, false /* readPods */);
+  }
+
+  public void writeUniverseTargetJson(UUID universeUUID, boolean readPods) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    writeUniverseTargetJson(universe);
+    writeUniverseTargetJson(universe, readPods);
   }
 
   public void writeUniverseTargetJson(Universe universe) {
+    writeUniverseTargetJson(universe, false /* readPods */);
+  }
+
+  /**
+   * Writes the universe's target files.
+   *
+   * @param readPods read each K8s pod's sidecar scheme even when the previous file has every node
+   */
+  public void writeUniverseTargetJson(Universe universe, boolean readPods) {
     MetricCollectionLevel level = getLevel(universe);
 
     if (level.isDisableCollection()) {
@@ -291,11 +311,8 @@ public class SwamperHelper {
     }
     // K8s pods are scraped only while the node_exporter sidecar is enabled.
     boolean scrapeKubernetesPods =
-        Util.isKubernetesBasedUniverse(universe)
-            && KubernetesUtil.isNodeExporterSidecarEnabled(
-                universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
-                universe,
-                confGetter);
+        KubernetesUtil.isNodeExporterSidecarEnabled(universe, confGetter);
+    List<NodeDetails> nodeExporterNodes = new ArrayList<>();
     universe
         .getNodes()
         .forEach(
@@ -304,9 +321,22 @@ public class SwamperHelper {
                   && !scrapeKubernetesPods) {
                 return;
               }
-              nodeTargets.add(getIndividualConfig(universe, TargetType.NODE_EXPORT, node));
+              nodeExporterNodes.add(node);
             });
-    writeJsonFile(swamperFile, nodeTargets);
+    // The schemes carry over from the previous file, so a universe's read and write run alone.
+    synchronized (nodeFileLocks.computeIfAbsent(universe.getUniverseUUID(), k -> new Object())) {
+      Map<String, String> schemes = getNodeExporterSchemes(universe, nodeExporterNodes, readPods);
+      for (NodeDetails node : nodeExporterNodes) {
+        ObjectNode target = getIndividualConfig(universe, TargetType.NODE_EXPORT, node);
+        String scheme = schemes.get(node.nodeName);
+        if (scheme != null) {
+          ((ObjectNode) target.get("labels")).put(SCHEME_LABEL, scheme);
+        }
+        nodeTargets.add(target);
+      }
+      // Atomic, as Prometheus may re-read the file at any time.
+      writeJsonFileAtomically(swamperFile, nodeTargets, "rw-r--r--");
+    }
 
     // Write out the otel specific file.
     if (universe.getUniverseDetails().otelCollectorEnabled) {
@@ -394,6 +424,149 @@ public class SwamperHelper {
             });
 
     writeJsonFile(swamperFile, ybTargets);
+  }
+
+  /**
+   * The __scheme__ label of each node_exporter target by node name; a target without one uses the
+   * "node" job's HTTP.
+   */
+  private Map<String, String> getNodeExporterSchemes(
+      Universe universe, List<NodeDetails> nodes, boolean readPods) {
+    if (Util.isKubernetesBasedUniverse(universe)) {
+      return getKubernetesNodeExporterSchemes(universe, nodes, readPods);
+    }
+    if (!universe.isNodeExporterHttps()) {
+      return Collections.emptyMap();
+    }
+    Map<String, String> schemes = new HashMap<>();
+    nodes.forEach(node -> schemes.put(node.nodeName, HTTPS));
+    return schemes;
+  }
+
+  /**
+   * The node_exporter scheme of each K8s node's target, keyed by node name. Pods are read when
+   * asked to or when the previous node file lacks any node, and then every node takes its pod's
+   * scheme; a pod that can't be read keeps its previous scheme, else YBA's wanted one.
+   */
+  private Map<String, String> getKubernetesNodeExporterSchemes(
+      Universe universe, List<NodeDetails> nodes, boolean readPods) {
+    if (nodes.isEmpty()) {
+      return Collections.emptyMap();
+    }
+    String intent =
+        KubernetesUtil.isNodeExporterSidecarTlsEnabled(universe, confGetter) ? HTTPS : HTTP;
+    Map<String, String> previous = readPreviousNodeExporterSchemes(universe.getUniverseUUID());
+    if (!readPods && nodes.stream().allMatch(node -> previous.containsKey(node.nodeName))) {
+      return previous;
+    }
+    Map<UUID, Map<String, Pod>> podsPerAZ = listPodsPerAZ(universe);
+    Map<String, String> schemes = new HashMap<>();
+    for (NodeDetails node : nodes) {
+      Pod pod = podsPerAZ.getOrDefault(node.azUuid, Collections.emptyMap()).get(podKey(node));
+      String scheme;
+      if (pod != null) {
+        scheme = KubernetesUtil.isNodeExporterSidecarTlsRendered(pod) ? HTTPS : HTTP;
+      } else {
+        scheme = previous.getOrDefault(node.nodeName, intent);
+      }
+      schemes.put(node.nodeName, scheme);
+    }
+    return schemes;
+  }
+
+  // The node_name to __scheme__ of the K8s entries in the node file; empty if it can't be read.
+  private Map<String, String> readPreviousNodeExporterSchemes(UUID universeUUID) {
+    Map<String, String> schemes = new HashMap<>();
+    try {
+      File file = new File(getSwamperFile(universeUUID, TARGET_FILE_NODE_PREFIX));
+      if (!file.exists()) {
+        return schemes;
+      }
+      JsonNode entries = Json.parse(Files.readString(file.toPath()));
+      for (JsonNode entry : entries) {
+        JsonNode labels = entry.path("labels");
+        if (labels.hasNonNull(LabelType.NODE_NAME.getLabelName())
+            && labels.hasNonNull(SCHEME_LABEL)) {
+          schemes.put(
+              labels.get(LabelType.NODE_NAME.getLabelName()).asText(),
+              labels.get(SCHEME_LABEL).asText());
+        }
+      }
+    } catch (Exception e) {
+      LOG.warn(
+          "Unable to read the previous node_exporter targets of universe {}: {}",
+          universeUUID,
+          e.getMessage());
+      schemes.clear();
+    }
+    return schemes;
+  }
+
+  // Each AZ's pods by namespace/name; an AZ or cluster whose listing fails gets no pods.
+  private Map<UUID, Map<String, Pod>> listPodsPerAZ(Universe universe) {
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    Map<UUID, Map<String, Pod>> podsPerAZ = new HashMap<>();
+    List<String> failures = new ArrayList<>();
+    for (Cluster cluster : details.clusters) {
+      boolean isReadOnlyCluster = cluster.clusterType == ClusterType.ASYNC;
+      boolean isMultiAZ;
+      Map<UUID, Map<String, String>> azToConfig;
+      try {
+        isMultiAZ = PlacementInfoUtil.isMultiAZ(Util.getSingleProvider(cluster));
+        azToConfig = KubernetesUtil.getConfigPerAZ(cluster.placementInfo);
+      } catch (Exception e) {
+        failures.add("cluster " + cluster.uuid + ": " + e.getMessage());
+        continue;
+      }
+      for (Map.Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
+        try {
+          String azName =
+              isMultiAZ ? AvailabilityZone.getOrBadRequest(entry.getKey()).getCode() : null;
+          Map<String, Pod> pods = podsPerAZ.computeIfAbsent(entry.getKey(), k -> new HashMap<>());
+          for (Pod pod :
+              kubernetesManagerFactory
+                  .getManager()
+                  .getPodInfos(
+                      entry.getValue(),
+                      KubernetesUtil.getHelmReleaseName(
+                          isMultiAZ,
+                          details.nodePrefix,
+                          universe.getName(),
+                          azName,
+                          isReadOnlyCluster,
+                          details.useNewHelmNamingStyle),
+                      KubernetesUtil.getKubernetesNamespace(
+                          isMultiAZ,
+                          details.nodePrefix,
+                          azName,
+                          entry.getValue(),
+                          details.useNewHelmNamingStyle,
+                          isReadOnlyCluster))) {
+            pods.put(pod.getMetadata().getNamespace() + "/" + pod.getMetadata().getName(), pod);
+          }
+        } catch (Exception e) {
+          failures.add("zone " + entry.getKey() + ": " + e.getMessage());
+        }
+      }
+    }
+    if (!failures.isEmpty()) {
+      LOG.warn(
+          "Unable to list pods of universe {}; their nodes keep their previous node_exporter"
+              + " schemes, else YBA's: {}",
+          universe.getUniverseUUID(),
+          failures);
+    }
+    return podsPerAZ;
+  }
+
+  // Namespace and pod name; null when the node lacks either and has no address to infer them from.
+  private static String podKey(NodeDetails node) {
+    if (StringUtils.isBlank(node.cloudInfo.private_ip)
+        && (StringUtils.isBlank(node.cloudInfo.kubernetesPodName)
+            || StringUtils.isBlank(node.cloudInfo.kubernetesNamespace))) {
+      return null;
+    }
+    return node.getK8sNamespace() + "/" + node.getK8sPodName();
   }
 
   public void writeNodeAgentTargetJson(NodeAgent nodeAgent) {

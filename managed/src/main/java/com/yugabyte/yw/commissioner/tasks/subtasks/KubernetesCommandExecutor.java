@@ -1798,7 +1798,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         ((Map<String, Object>) serverGFlags).put(GFlagsUtil.USE_CLIENT_CERTIFICATES, "false");
       }
     }
-    // Done after all overrides, so none can turn the sidecar on or off or move its port.
+    // Done after all overrides, so none can turn the sidecar or its TLS on or off or move its port.
     if (KubernetesUtil.isNodeExporterSidecarEnabled(
         taskParams().ybSoftwareVersion, universeFromDB, confGetter)) {
       Map<String, Object> nodeExporter = getOrCreateMap(overrides, "nodeExporter");
@@ -1807,6 +1807,11 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     } else {
       getOrCreateMap(overrides, "nodeExporter").put("enabled", false);
     }
+    getOrCreateMap(getOrCreateMap(overrides, "nodeExporter"), "tls")
+        .put(
+            "enabled",
+            KubernetesUtil.isNodeExporterSidecarTlsEnabled(
+                taskParams().ybSoftwareVersion, universeFromDB, confGetter));
 
     // For single AZ azUUID may be null, use non-null values
     UUID azUuid =
