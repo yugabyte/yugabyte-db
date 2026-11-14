@@ -4,6 +4,8 @@ package api.v2.controllers;
 
 import api.v2.handlers.StorageConfigHandler;
 import api.v2.models.StorageConfig;
+import api.v2.models.StorageConfigPagedQuerySpec;
+import api.v2.models.StorageConfigPagedResp;
 import api.v2.models.StorageConfigSpec;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
@@ -34,6 +36,12 @@ public class StorageConfigApiControllerImp extends StorageConfigApiControllerImp
   @Override
   public StorageConfig getStorageConfig(Http.Request request, UUID cUUID, UUID scUUID) {
     return storageConfigHandler.getStorageConfig(cUUID, scUUID);
+  }
+
+  @Override
+  public StorageConfigPagedResp pageListStorageConfigs(
+      Http.Request request, UUID cUUID, StorageConfigPagedQuerySpec storageConfigPagedQuerySpec) {
+    return storageConfigHandler.pageListStorageConfigs(cUUID, storageConfigPagedQuerySpec);
   }
 
   @Override

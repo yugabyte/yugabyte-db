@@ -52,6 +52,7 @@ import jakarta.persistence.Id;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
@@ -885,13 +886,30 @@ public class Backup extends Model {
    */
   public static Map<UUID, Set<UUID>> getInProgressAndCompletedUniversesByStorageConfig(
       UUID customerUUID) {
+    return getInProgressAndCompletedUniversesByStorageConfig(customerUUID, null);
+  }
+
+  /**
+   * Same as {@link #getInProgressAndCompletedUniversesByStorageConfig(UUID)}, limited to the given
+   * storage configs (all of them when null).
+   */
+  public static Map<UUID, Set<UUID>> getInProgressAndCompletedUniversesByStorageConfig(
+      UUID customerUUID, @Nullable Collection<UUID> storageConfigUUIDs) {
     Map<UUID, Set<UUID>> result = new HashMap<>();
-    find.query()
-        .setDistinct(true)
-        .select("storageConfigUUID, universeUUID")
-        .where()
-        .eq("customerUUID", customerUUID)
-        .in("state", BackupState.InProgress, BackupState.Completed)
+    if (storageConfigUUIDs != null && storageConfigUUIDs.isEmpty()) {
+      return result;
+    }
+    ExpressionList<Backup> where =
+        find.query()
+            .setDistinct(true)
+            .select("storageConfigUUID, universeUUID")
+            .where()
+            .eq("customerUUID", customerUUID)
+            .in("state", BackupState.InProgress, BackupState.Completed);
+    if (storageConfigUUIDs != null) {
+      where.in("storageConfigUUID", storageConfigUUIDs);
+    }
+    where
         .findList()
         .forEach(
             backup ->
