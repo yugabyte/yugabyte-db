@@ -53,6 +53,10 @@ using namespace std::literals;
 DEFINE_test_flag(int32, transactional_read_delay_ms, 0,
                  "Amount of time to delay between transaction status check and reading start.");
 
+DEFINE_test_flag(int32, delay_reads_with_specified_read_time_ms, 0,
+                 "Amount of time to delay reads that arrive with an explicitly specified read "
+                 "time before execution.");
+
 DEFINE_test_flag(int32, simulate_time_out_failures_msecs, 0, "If greater than 0, we will randomly "
                  "mark read requests as timed out and sleep for the specificed amount of time by "
                  "this flag to simulate time out failures. The requester will mark the timed out "
@@ -511,6 +515,10 @@ Status ReadQuery::DoPerform() {
   read_time_ = ReadHybridTime::FromReadTimePB(*req_);
 
   allow_retry_ = !read_time_;
+  if (PREDICT_FALSE(FLAGS_TEST_delay_reads_with_specified_read_time_ms > 0) && read_time_ &&
+      !abstract_tablet_->system()) {
+    SleepFor(FLAGS_TEST_delay_reads_with_specified_read_time_ms * 1ms);
+  }
   require_lease_ = tablet::RequireLease(req_->consistency_level() == YBConsistencyLevel::STRONG);
   // TODO: should check all the tables referenced by the requests to decide if it is transactional.
   const bool transactional = this->transactional();

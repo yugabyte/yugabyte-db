@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <memory>
 #include <unordered_map>
 
 #include "yb/common/common_fwd.h"
@@ -38,8 +39,6 @@ class ConsistentReadPoint {
   using HybridTimeMap = UnorderedStringMap<TabletId, HybridTime>;
 
   explicit ConsistentReadPoint(const scoped_refptr<ClockBase>& clock);
-
-  void MoveFrom(ConsistentReadPoint* rhs);
 
   // Set the current time as the read point.
   // No uncertainty window when clamp is set.
@@ -72,9 +71,6 @@ class ConsistentReadPoint {
   // Defer read hybrid time to global limit.
   void Defer() EXCLUDES(mutex_);
 
-  // Update the clock used by this consistent read point with the propagated time.
-  void UpdateClock(HybridTime propagated_hybrid_time) EXCLUDES(mutex_);
-
   // Return the current time to propagate.
   [[nodiscard]] HybridTime Now() const EXCLUDES(mutex_);
 
@@ -92,30 +88,7 @@ class ConsistentReadPoint {
   // Sets in transaction limit.
   void SetInTxnLimit(HybridTime value) EXCLUDES(mutex_);
 
-  class Momento {
-   public:
-    const ReadHybridTime& read_time() const { return read_time_; }
-
-   private:
-    Momento(const ReadHybridTime& read_time,
-          HybridTime restart_read_ht,
-          const HybridTimeMap& local_limits,
-          const HybridTimeMap& restarts) :
-        read_time_(read_time),
-        restart_read_ht_(restart_read_ht),
-        local_limits_(local_limits),
-        restarts_(restarts) {}
-
-    ReadHybridTime read_time_;
-    HybridTime restart_read_ht_;
-    HybridTimeMap local_limits_;
-    HybridTimeMap restarts_;
-
-    friend class ConsistentReadPoint;
-  };
-
-  [[nodiscard]] Momento GetMomento() const EXCLUDES(mutex_);
-  void SetMomento(const ConsistentReadPoint::Momento& momento) EXCLUDES(mutex_);
+  [[nodiscard]] const scoped_refptr<ClockBase>& clock() const { return clock_; }
 
  private:
   inline void SetReadTimeUnlocked(
@@ -137,7 +110,7 @@ class ConsistentReadPoint {
   ReadHybridTime read_time_ GUARDED_BY(mutex_);
   HybridTime restart_read_ht_ GUARDED_BY(mutex_);
 
-  // Local limits for separate tablets. Does not change during lifetime of a consistent read.
+  // Local limits for separate tablets. Does not increase during lifetime of a consistent read.
   // Times such that anything happening at that hybrid time or later is definitely after the
   // original request arrived and therefore does not have to be shown in results.
   HybridTimeMap local_limits_ GUARDED_BY(mutex_);
@@ -148,5 +121,7 @@ class ConsistentReadPoint {
 
   DISALLOW_COPY_AND_ASSIGN(ConsistentReadPoint);
 };
+
+using ConsistentReadPointPtr = std::shared_ptr<ConsistentReadPoint>;
 
 } // namespace yb
