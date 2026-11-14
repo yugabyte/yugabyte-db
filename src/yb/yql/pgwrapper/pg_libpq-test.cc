@@ -7058,8 +7058,9 @@ TEST_F(PgLibPqTestTxnDdlCommitRetry, AddCheckConstraintCommitRetry) {
 // error (read restart, kConflict or kDeadlock).  In READ COMMITTED the retry
 // rolls back the statement's internal subtransaction first, so it is allowed
 // and must commit a consistent catalog.  In REPEATABLE READ the retry would
-// restart the transaction without rolling back anything on the PG side, so it
-// must be refused, and the session must stay usable.
+// restart the transaction without aborting the PG-side transaction, with no
+// internal subtransaction to roll back, so it must be refused, and the session
+// must stay usable.
 TEST_F(PgLibPqTestTxnDdlCommitRetry, AddCheckConstraintRetryInBlock) {
   struct Isolation {
     std::string name;
