@@ -779,7 +779,7 @@ PgApiImpl::PgApiImpl(
       // should acquire object locks and issue finish transaction rpcs to ensure correctness.
       pg_txn_manager_(new PgTxnManager(
           &pg_client_, pg_callbacks_,
-          /* backend_can_take_object_locks= */
+          /* backend_should_take_object_locks= */
           !YBCIsInitDbModeEnvVarSet() && !YBCIsBinaryUpgrade() && !is_parallel_worker_,
           pg_shared_data_->next_read_time_serial_no)),
       pg_session_(PgSession::Make(

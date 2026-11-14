@@ -191,9 +191,14 @@ char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len);
  * already consults the value, and must not be called for savepoints or for the internal
  * transaction restarts that happen within one PG transaction.
  */
-void YBCSetObjectLockingForCurrTxn(bool enabled, bool historical_catalog_read);
+void YBCSetObjectLockingForCurrTxn(bool enabled);
+/*
+ * Latch whether the transaction that is about to start reads the catalog as of yb_read_time.
+ * Called next to YBCSetObjectLockingForCurrTxn(), under the same rules.
+ */
+void YBCSetHistoricalCatalogReadForCurrTxn(bool historical_catalog_read);
 
-/* The values latched by YBCSetObjectLockingForCurrTxn(). */
+/* The values latched by the two calls above. */
 bool YBCIsObjectLockingLatchedForCurrTxn();
 bool YBCIsHistoricalCatalogReadForCurrTxn();
 

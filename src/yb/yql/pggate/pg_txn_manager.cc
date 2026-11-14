@@ -249,12 +249,12 @@ void PgTxnManager::DEBUG_CheckOptionsForPerform(
 #endif
 
 PgTxnManager::PgTxnManager(
-    PgClient* client, YbcPgCallbacks pg_callbacks, bool backend_can_take_object_locks,
+    PgClient* client, YbcPgCallbacks pg_callbacks, bool backend_should_take_object_locks,
     std::atomic<uint64_t>& next_read_time_serial_no)
     : client_(client),
       serial_no_(next_read_time_serial_no),
       pg_callbacks_(pg_callbacks),
-      backend_can_take_object_locks_(backend_can_take_object_locks) {}
+      backend_should_take_object_locks_(backend_should_take_object_locks) {}
 
 bool PgTxnManager::UsingObjectLocksGloballyForCurrentTxn() const {
   // Computed rather than latched. It cannot change under an open transaction: the gflags are fixed
@@ -273,7 +273,7 @@ bool PgTxnManager::UsingObjectLocksGloballyForCurrentTxn() const {
 // time, so a refresh would record the new catalog version with entries from before it.
 bool PgTxnManager::UsingObjectLocksLocally() const {
   // A transaction that starts with yb_read_time set takes none either (#34349, #29466).
-  return backend_can_take_object_locks_ && FLAGS_enable_object_locking_for_table_locks &&
+  return backend_should_take_object_locks_ && FLAGS_enable_object_locking_for_table_locks &&
          !IsDdlModeWithSeparateTransaction() && !YBCIsHistoricalCatalogReadForCurrTxn();
 }
 

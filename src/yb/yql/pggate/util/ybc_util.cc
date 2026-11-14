@@ -968,8 +968,11 @@ char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len) {
 static bool object_locking_for_curr_txn = false;
 static bool historical_catalog_read_for_curr_txn = false;
 
-void YBCSetObjectLockingForCurrTxn(bool enabled, bool historical_catalog_read) {
+void YBCSetObjectLockingForCurrTxn(bool enabled) {
   object_locking_for_curr_txn = enabled;
+}
+
+void YBCSetHistoricalCatalogReadForCurrTxn(bool historical_catalog_read) {
   historical_catalog_read_for_curr_txn = historical_catalog_read;
 }
 

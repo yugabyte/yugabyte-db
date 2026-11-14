@@ -2180,7 +2180,7 @@ bool YBCCurrentTransactionUsesFastPath() {
 
 bool YBCIsLegacyModeForCatalogOps() {
   //
-  // If the transaction takes object locks:
+  // If the transaction takes object locks (i.e., non-legacy):
   //
   // (1) Catalog writes will use the CatalogSnapshot's read time serial number instead of the
   //     TransactionSnapshot's read time serial number (which is the legacy pre-object locking
@@ -2194,21 +2194,20 @@ bool YBCIsLegacyModeForCatalogOps() {
   //     see the catalog data modified by the current active transaction (this is required because
   //     transactional DDL is enabled with global object locks).
   //
-  //     In the pre-object locking mode, catalog reads for DML transactions go via the kCatalog
-  //     session type which has a single catalog_read_time_ (see pg_session.h). Catalog reads
-  //     executed as part of a DDL transaction (or) after a DDL in a DDL-DML transaction block
-  //     (i.e., with transactional DDL enabled) go via the kTransactional session type and would use
-  //     the TransactionSnapshot's read time serial number.
+  //     In the pre-object locking (i.e., legacy) mode, catalog reads for DML transactions go via
+  //     the kCatalog session type which has a single catalog_read_time_ (see pg_session.h).
+  //     Catalog reads executed as part of a DDL transaction (or) after a DDL in a DDL-DML
+  //     transaction block (i.e., with transactional DDL enabled) go via the kTransactional session
+  //     type and would use the TransactionSnapshot's read time serial number.
   //
-  // A transaction without global object locks takes local DML locks too, so it also uses the PG
+  // A transaction without global object locks still takes local DML locks, so it also uses the PG
   // mode of catalog operations: a DDL with global object locks that changes an object the
   // transaction reads either committed before the transaction's lock on that object, or waits for
   // it. Only a transaction that takes no object locks, such as an autonomous DDL in its separate
   // DDL transaction, uses the legacy mode of catalog operations. Against such a DDL a reader still
-  // has the old fences: the tablets' catalog version and table schema version checks.
+  // has the old fences: the tablets' breaking catalog version and table schema version checks.
   //
-  return !pgapi || !pgapi->UsingObjectLocksLocally() || YBCIsInitDbModeEnvVarSet() ||
-      YBCIsSysTablePrefetchingStarted() || pgapi->IsParallelWorker();
+  return !pgapi || !pgapi->UsingObjectLocksLocally() || YBCIsSysTablePrefetchingStarted();
 }
 
 bool YBCUsingObjectLocksGloballyForCurrentTxn() {

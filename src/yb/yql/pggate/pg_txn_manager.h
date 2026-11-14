@@ -69,7 +69,7 @@ struct TxnReadPoint {
 class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
  public:
   PgTxnManager(
-      PgClient* pg_client, YbcPgCallbacks pg_callbacks, bool backend_can_take_object_locks,
+      PgClient* pg_client, YbcPgCallbacks pg_callbacks, bool backend_should_take_object_locks,
       std::atomic<uint64_t>& next_read_time_serial_no);
 
   ~PgTxnManager();
@@ -340,7 +340,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   //                 This flag does not include writes made for object locking.
   bool has_writes_ = false;
 
-  const bool backend_can_take_object_locks_;
+  const bool backend_should_take_object_locks_;
 
   std::unordered_map<YbcReadPointHandle, uint64_t> crosstxn_explicit_snapshot_read_time_;
   bool is_read_time_history_cutoff_disabled_{false};

@@ -421,8 +421,8 @@ YbSetObjectLockingForCurrTxn()
 	yb_is_historical_catalog_read = (yb_read_time != 0 &&
 									 !yb_read_time_skip_catalog);
 	YBCSetObjectLockingForCurrTxn(yb_enable_object_locking_infra &&
-								  !yb_is_historical_catalog_read,
-								  yb_is_historical_catalog_read);
+								  !yb_is_historical_catalog_read);
+	YBCSetHistoricalCatalogReadForCurrTxn(yb_is_historical_catalog_read);
 }
 
 bool
@@ -2827,9 +2827,9 @@ YBGetDdlUseRegularTransactionBlock()
  * the locks it sends and for this. A transaction without locks does not refresh
  * its catalog cache when PG acquires a lock. An autonomous DDL transaction, for
  * one, reads the catalog at its own read time, so a refresh would record the
- * new catalog version with entries from before it. Parallel workers and binary
- * upgrade backends take no object locks either (only a parallel query's leader
- * sends its locks), so they do not refresh on a new lock.
+ * new catalog version with entries from before it. Parallel workers, binary
+ * upgrade and initdb backends take no object locks either (only a parallel
+ * query's leader sends its locks), so they do not refresh on a new lock.
  */
 bool
 YbUsingObjectLocksLocally(void)
