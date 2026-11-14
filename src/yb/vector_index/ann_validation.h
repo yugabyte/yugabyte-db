@@ -45,7 +45,8 @@ class GroundTruth {
   using IndexReader = VectorIndexReaderIf<Vector, DistanceResult>;
 
   // precomputed_ground_truth is the ground truth loaded from a provided file. It may cover only the
-  // first queries, or none.
+  // first queries, or none. vertex_ids are the base vectors the brute force search covers, and may
+  // be empty when it covers none.
   GroundTruth(
       const VertexIdToVectorDistanceFunction<Vector, DistanceResult>& distance_fn,
       size_t max_k,
