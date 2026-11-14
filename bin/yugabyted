@@ -12731,12 +12731,15 @@ def retry_op_with_argument(func, argument, timeout=180):
 
 
 class EnvBasedCredentials(object):
+    # A user that YSQL_USER or YCQL_USER names alone takes its name as its password and as its
+    # database or keyspace. The connect command's --username replaces the user alone, so these
+    # defaults are fixed here, from the environment.
     _ysql_user = os.environ.get('YSQL_USER')
-    _ysql_password = os.environ.get('YSQL_PASSWORD')
-    _ysql_db = os.environ.get('YSQL_DB')
+    _ysql_password = os.environ.get('YSQL_PASSWORD') or _ysql_user
+    _ysql_db = os.environ.get('YSQL_DB') or _ysql_user
     _ycql_user = os.environ.get('YCQL_USER')
-    _ycql_password = os.environ.get('YCQL_PASSWORD')
-    _ycql_keyspace = os.environ.get('YCQL_KEYSPACE')
+    _ycql_password = os.environ.get('YCQL_PASSWORD') or _ycql_user
+    _ycql_keyspace = os.environ.get('YCQL_KEYSPACE') or _ycql_user
     _cert_file_path = os.environ.get('SSL_CERTFILE')
 
     def attrsetter(attr):
