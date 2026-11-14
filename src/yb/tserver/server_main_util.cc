@@ -322,6 +322,7 @@ Status MasterTServerParseFlagsAndInit(
   }
 
   MemTracker::ConfigureTCMalloc();
+  RETURN_NOT_OK(MemTracker::StartTCMallocBackgroundThread());
   MemTracker::PrintTCMallocConfigs();
 
   return Status::OK();
