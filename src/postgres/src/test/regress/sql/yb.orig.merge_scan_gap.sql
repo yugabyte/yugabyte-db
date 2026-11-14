@@ -115,8 +115,6 @@ SET yb_enable_expression_pushdown = off;
 \i :run_query
 RESET yb_enable_expression_pushdown;
 
-RESET enable_sort;
-
 DROP TABLE gap_coll_tbl, gap_idx_tbl, gap_desc_tbl, gap_null_tbl;
 
 -- Cells run in both databases (yb_commands/merge_scan_gap_cells.sql)
@@ -128,9 +126,6 @@ DROP TABLE gap_coll_tbl, gap_idx_tbl, gap_desc_tbl, gap_null_tbl;
 -- TODO(#37784): the predicate gap merge should leave out (gap || ''), whose
 -- comparisons always tie.
 \set gap_cells :abs_srcdir '/yb_commands/merge_scan_gap_cells.sql'
-SET enable_sort = off;
-SET yb_enable_primary_key_decode_from_index = on;
-SET yb_enable_base_scans_cost_model = on;
 \i :gap_cells
 
 \c co
@@ -139,14 +134,36 @@ SET yb_enable_base_scans_cost_model = on;
 -- stops before an expression gap column: the predicate gap scan has no merge,
 -- and the filter gap scans merge on ord1 alone.  A pushed down filter runs
 -- within each stream, before the merge, since the scan reads the index and
--- table rows of a stream in one request, but the filter on the decoded k1 still
--- runs after the merge.
+-- table rows of a stream in one request.
 -- TODO(#37784): the predicate gap merge should leave out (gap || ''), which the
 -- predicate implies, and merge on ord2.
 -- TODO(#37785): with expression pushdown on, the operator filter gap and
 -- relabeled filter gap filters run within each stream, before the merge, so
 -- those merges should sort on ord1 and ord2.
 SET enable_sort = off;
-SET yb_enable_primary_key_decode_from_index = on;
-SET yb_enable_base_scans_cost_model = on;
 \i :gap_cells
+
+-- Decoded primary key column: filter kept local on an index-only scan
+--
+-- The query ties gap to ord1 through the primary key column k1, with gap = k1
+-- and ord1 = k1.  With yb_enable_primary_key_decode_from_index on, the
+-- index-only scan returns k1 by decoding it from the base table row reference,
+-- so the filters on k1 run locally, after the merge, though a scan of this
+-- embedded index pushes other filters into each stream.  So the merge sorts on
+-- gap.  The rows are as in the descending gap column section, with a forward
+-- decoy only.
+CREATE TABLE gap_pk_tbl (k1 int, k2 int, bkt int, ord1 int, gap int, ord2 int,
+    PRIMARY KEY (k1 ASC, k2 ASC));
+CREATE INDEX NONCONCURRENTLY gap_pk_tbl_idx ON gap_pk_tbl (bkt ASC, ord1 ASC, gap ASC, ord2 ASC);
+INSERT INTO gap_pk_tbl VALUES
+    (1, 1, 1, 1, 1, 10), (1, 2, 1, 1, 1, 30),  -- stream bkt = 1
+    (1, 3, 2, 1, 1, 20),                       -- stream bkt = 2
+    (1, 4, 1, 1, 0, 99);                       -- decoy, fails gap = k1
+ANALYZE gap_pk_tbl;
+
+SET yb_enable_primary_key_decode_from_index = on;
+\set Q1 '/*+IndexOnlyScan(gap_pk_tbl gap_pk_tbl_idx) Set(yb_max_merge_scan_streams 0)*/'
+\set Q2 '/*+IndexOnlyScan(gap_pk_tbl gap_pk_tbl_idx) Set(yb_max_merge_scan_streams 64)*/'
+\set query ':P :Q SELECT ord1, ord2, bkt, gap, k1 FROM gap_pk_tbl WHERE bkt IN (1, 2) AND gap = k1 AND ord1 = k1 ORDER BY ord1, ord2;'
+\i :run_query
+DROP TABLE gap_pk_tbl;
