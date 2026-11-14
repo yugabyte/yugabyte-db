@@ -149,23 +149,29 @@ static inline char *mm_tls_strerror(int error)
 __attribute__((format(printf, 3, 4)))
 static inline void mm_tls_error(mm_io_t *io, int ssl_rc, char *fmt, ...)
 {
-	/* get error description */
+	/*
+	 * Use OpenSSL error description or strerror if needed
+	 * See https://docs.openssl.org/master/man3/SSL_get_error/#return-values
+	 */
+
 	unsigned int error;
 	error = SSL_get_error(io->tls_ssl, ssl_rc);
-	switch (error) {
-	case SSL_ERROR_NONE:
-	case SSL_ERROR_ZERO_RETURN:
-		/* basically this means connection reset */
-		break;
-	}
 	unsigned int error_peek;
 	char *error_str;
 	error_str = "unknown error";
 	error_peek = ERR_get_error();
-	if (error_peek != 0) {
+	if (error_peek > 0) {
 		error_str = ERR_error_string(error_peek, NULL);
-	} else if (ssl_rc <= 0) {
-		error_str = strerror(mm_errno_get());
+	} else if (ssl_rc == 0) {
+		error_str = "unexpected EOF (connection reset)";
+	} else if (ssl_rc < 0) {
+		int errno_ = mm_errno_get();
+		if (errno_ != 0) {
+			error_str = strerror(errno_);
+		} else {
+			error_str =
+				"no bio underlying error (client closed the connection?)";
+		}
 	}
 
 	/* error message */
@@ -384,6 +390,10 @@ SSL_CTX *mm_tls_get_context(mm_io_t *io, int is_client)
 	}
 cache:
 	ctx_container = malloc(sizeof(*ctx_container));
+	if (ctx_container == NULL) {
+		goto error;
+	}
+
 	ctx_container->key = io->tls;
 	ctx_container->tls_ctx = ctx;
 	ctx_container->yb_cert_hash_len = 0;
