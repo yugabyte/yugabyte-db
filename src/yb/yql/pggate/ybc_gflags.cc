@@ -164,20 +164,22 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_startup_client_connection_check, true,
     "check for client disconnects during backend initialization.");
 TAG_FLAG(ysql_enable_startup_client_connection_check, advanced);
 
-DEFINE_NON_RUNTIME_bool(ysql_enable_read_request_cache_for_connection_auth, false,
+DEFINE_NON_RUNTIME_bool(ysql_enable_read_request_cache_for_connection_auth, true,
     "If true, the connection-auth catalog prefetch (pg_authid, pg_database, "
     "...) is served from the tserver response cache, turning per-connection "
     "master reads for the auth catalogs into shared-cache hits under connection "
     "churn. Applies to both connection manager auth backends and regular (non "
     "connection manager) backends. Cached responses are keyed by catalog "
     "version. Not used when login profiles are active, because "
-    "pg_yb_role_profile is written outside a DDL context and would go stale. "
+    "pg_yb_role_profile is written outside a DDL context and would go stale, "
+    "nor with ysql_disable_global_impact_ddl_statements, because role DDLs then "
+    "do not change the catalog version the cache is keyed on. "
     "The connection-auth cache only affects the per-connection authentication "
     "lookup; the backend still rebuilds its full catalog cache and the shared "
     "relcache init file from fresh master data after authentication. "
-    "Connections opened immediately after a role DDL (e.g. CREATE ROLE r then "
-    "connect as r) may briefly observe the pre-DDL state until the new catalog "
-    "version propagates via heartbeat.");
+    "Without table-level object locking, connections opened immediately after a "
+    "role DDL (e.g. CREATE ROLE r then connect as r) may briefly observe the "
+    "pre-DDL state until the new catalog version propagates via heartbeat.");
 
 DEFINE_NON_RUNTIME_bool(ysql_enable_scram_channel_binding, false,
     "Offer the option of SCRAM-SHA-256-PLUS (i.e. SCRAM with channel binding) as an SASL method if "

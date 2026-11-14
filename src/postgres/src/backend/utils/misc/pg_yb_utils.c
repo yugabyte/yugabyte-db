@@ -10062,11 +10062,15 @@ YbCheckTserverResponseCacheForAuthGflags()
 	 * Do not use tserver cache if we do not have incremental catalog cache
 	 * refresh because the cost of global-impact DDLs (which is needed to
 	 * use tserver cache for auth processing) is too high.
+	 *
+	 * The cache is keyed on template1's catalog version, which role DDLs only
+	 * bump when they are global impact DDLs.
 	 */
 	return
 		*YBCGetGFlags()->ysql_enable_read_request_caching &&
 		*YBCGetGFlags()->ysql_enable_read_request_cache_for_connection_auth &&
-		yb_enable_invalidation_messages;
+		yb_enable_invalidation_messages &&
+		!*YBCGetGFlags()->ysql_disable_global_impact_ddl_statements;
 }
 
 /*
