@@ -594,6 +594,10 @@ Status RemoveNamespaceFromReplicationGroup(
       *universe, l, producer_table_ids, catalog_manager, epoch, /*cleanup_source_streams=*/false));
 
   if (is_automatic_ddl_mode) {
+    // Drop the namespace from the safe time map before its role stops being a target.
+    WARN_NOT_OK(
+        catalog_manager.GetXClusterManager()->RefreshXClusterSafeTimeMap(epoch),
+        "Failed to refresh xCluster safe time map");
     RETURN_NOT_OK(HandleExtensionOnDropReplication(catalog_manager, consumer_namespace_id));
   }
   return Status::OK();
@@ -822,6 +826,11 @@ Status DeleteUniverseReplication(
 
   // For each namespace, also cleanup the DDL Replication extension if needed.
   if (l->IsAutomaticDdlMode()) {
+    // Drop the namespaces from the safe time map before their role stops being a target, so no
+    // heartbeat carries a non-target role while the namespace is still read-only (refusing DMLs).
+    WARN_NOT_OK(
+        xcluster_manager->RefreshXClusterSafeTimeMap(epoch),
+        "Failed to refresh xCluster safe time map");
     for (const auto& namespace_info : l->pb.db_scoped_info().namespace_infos()) {
       RETURN_NOT_OK(HandleExtensionOnDropReplication(
           catalog_manager, namespace_info.consumer_namespace_id()));
