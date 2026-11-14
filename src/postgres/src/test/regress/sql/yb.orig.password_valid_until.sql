@@ -183,3 +183,55 @@ SELECT rolvaliduntil FROM pg_authid WHERE rolname = 'regress_pw_zero';
 DROP ROLE regress_pw_nopolicy, regress_pw_create, regress_pw_nopass,
           regress_pw_explicit, regress_pw_empty, regress_pw_self,
           regress_pw_zero;
+
+--
+-- A password set for another role gets that role's own policy: its ALTER ROLE
+-- ... SET value, else ALTER ROLE ALL SET, else the configuration file or the
+-- default (0 here), the order that role's login applies them in.
+--
+
+-- Resetting an expired account's password gives it the role's own period,
+-- although this session has no policy.
+SHOW yb_password_validity;
+CREATE ROLE regress_pw_target LOGIN PASSWORD 'secret' VALID UNTIL '2020-01-01';
+ALTER ROLE regress_pw_target SET yb_password_validity = '30d';
+ALTER ROLE regress_pw_target PASSWORD 'secret2';
+SELECT rolvaliduntil BETWEEN now() + interval '29 days'
+                         AND now() + interval '31 days' AS expires_in_30_days
+  FROM pg_authid WHERE rolname = 'regress_pw_target';
+
+-- This session's own policy (20d) is not used for another role, including
+-- one exempt with its own 0.
+ALTER ROLE :cur_user SET yb_password_validity = '20d';
+\c - :cur_user
+SHOW yb_password_validity;
+ALTER ROLE regress_pw_target PASSWORD 'secret3';
+SELECT rolvaliduntil BETWEEN now() + interval '29 days'
+                         AND now() + interval '31 days' AS expires_in_30_days
+  FROM pg_authid WHERE rolname = 'regress_pw_target';
+ALTER ROLE regress_pw_target SET yb_password_validity = 0;
+ALTER ROLE regress_pw_target VALID UNTIL 'infinity';
+ALTER ROLE regress_pw_target PASSWORD 'secret4';
+SELECT rolvaliduntil FROM pg_authid WHERE rolname = 'regress_pw_target';
+
+-- A role without a policy of its own gets ALTER ROLE ALL SET, and so does a
+-- new role.
+ALTER ROLE regress_pw_target RESET yb_password_validity;
+ALTER ROLE ALL SET yb_password_validity = '40d';
+ALTER ROLE regress_pw_target PASSWORD 'secret5';
+CREATE ROLE regress_pw_new PASSWORD 'secret';
+SELECT rolname, rolvaliduntil BETWEEN now() + interval '39 days'
+                                  AND now() + interval '41 days' AS expires_in_40_days
+  FROM pg_authid WHERE rolname IN ('regress_pw_target', 'regress_pw_new')
+  ORDER BY rolname;
+
+-- Without ALTER ROLE ALL SET, both get the default, 0: nothing is stamped.
+ALTER ROLE ALL RESET yb_password_validity;
+ALTER ROLE regress_pw_target VALID UNTIL 'infinity';
+ALTER ROLE regress_pw_target PASSWORD 'secret6';
+CREATE ROLE regress_pw_new2 PASSWORD 'secret';
+SELECT rolname, rolvaliduntil FROM pg_authid
+  WHERE rolname IN ('regress_pw_target', 'regress_pw_new2') ORDER BY rolname;
+
+ALTER ROLE :cur_user RESET yb_password_validity;
+DROP ROLE regress_pw_target, regress_pw_new, regress_pw_new2;

@@ -43,4 +43,10 @@ extern bool YbApplyPasswordHistory(Oid roleid, const char *rolename,
  */
 extern int	YbDeletePasswordHistory(Oid roleid);
 
+/*
+ * Returns the yb_password_validity, in minutes, that applies to roleid: its
+ * own value, else ALTER ROLE ALL SET, else ysql_pg.conf, else the default.
+ */
+extern int	YbRolePasswordValidity(Oid roleid);
+
 #endif							/* YB_PASSWORD_HISTORY_H */

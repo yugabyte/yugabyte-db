@@ -26,6 +26,9 @@
  * from pg_db_role_setting, so history stays bounded for a role whose
  * password only an operator changes.
  *
+ * YbRolePasswordValidity() reads the yb_password_validity of the role whose
+ * password is being set, for the expiration CREATE ROLE and ALTER ROLE stamp.
+ *
  * Copyright (c) YugabyteDB, Inc.
  *
  * src/backend/catalog/yb_password_history.c
@@ -551,4 +554,30 @@ YbDeletePasswordHistory(Oid roleid)
 	/* Keep the lock on pg_yb_password_history until commit */
 	table_close(rel, NoLock);
 	return ndeleted;
+}
+
+/*
+ * Given roleid, return the role's yb_password_validity, in minutes.
+ * Check these in order, and return the first one that is set:
+ * 1. the role's own value (ALTER ROLE <role> SET)
+ * 2. the value for all roles (ALTER ROLE ALL SET)
+ * 3. the value in ysql_pg.conf
+ * 4. the default value
+ */
+int
+YbRolePasswordValidity(Oid roleid)
+{
+	const char *name = "yb_password_validity";
+	Relation	settings = table_open(DbRoleSettingRelationId, AccessShareLock);
+	int			validity;
+	bool		found;
+
+	found = (OidIsValid(roleid) &&
+			 yb_role_setting_int(settings, roleid, name, GUC_UNIT_MIN,
+								 &validity)) ||
+		yb_role_setting_int(settings, InvalidOid, name, GUC_UNIT_MIN,
+							&validity);
+	table_close(settings, AccessShareLock);
+
+	return found ? validity : YbGetConfigFileIntValue(name);
 }
