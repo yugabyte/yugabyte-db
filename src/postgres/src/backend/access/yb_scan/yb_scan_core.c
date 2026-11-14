@@ -364,8 +364,8 @@ ybcUpdateFKCache(YbOpaque ybScan, Datum ybctid)
 
 /*
  * Obtain the next parallel range from pscan and apply it to handle.
- * Also sets exec_params for unlimited fetch (parallel ranges are
- * already bounded).
+ * Also sets the configured parallel fetch limits as the fetch limits in
+ * the exec_params.
  *
  * Returns true if a range was applied; false means no more ranges
  * and the worker should stop scanning.
@@ -396,13 +396,11 @@ yb_scan_apply_next_parallel_range(YbcPgStatement handle,
 		pfree((void *) high_bound);
 
 	/*
-	 * Use unlimited fetch.
-	 * Parallel scan range is already of limited size, it is
-	 * unlikely to exceed the message size, but may save some RPCs.
+	 * Parallel scan fetch limits are separately configurable.
 	 */
 	exec_params->plan_limit = 0;
-	exec_params->yb_fetch_row_limit = 0;
-	exec_params->yb_fetch_size_limit = 0;
+	exec_params->yb_fetch_row_limit = yb_parallel_fetch_row_limit;
+	exec_params->yb_fetch_size_limit = yb_parallel_fetch_size_limit;
 	return true;
 }
 

@@ -1110,6 +1110,12 @@ extern bool yb_enable_global_views;
 extern bool yb_enable_pg_stat_statements_docdb_metrics;
 
 /*
+ * Fetch limits for parallel scans.
+ */
+extern int yb_parallel_fetch_row_limit;
+extern int yb_parallel_fetch_size_limit;
+
+/*
  * See also ybc_util.h which contains additional such variable declarations for
  * variables that are (also) used in the pggate layer.
  * Currently: yb_debug_log_docdb_requests.

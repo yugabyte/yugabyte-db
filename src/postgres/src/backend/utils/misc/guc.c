@@ -6308,6 +6308,28 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"yb_parallel_fetch_row_limit", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Maximum number of rows per response in a parallel query. 0 = No limit"),
+			NULL,
+			GUC_EXPLAIN
+		},
+		&yb_parallel_fetch_row_limit,
+		1024, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_parallel_fetch_size_limit", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Maximum number of bytes per response in a parallel query. 0 = No limit"),
+			NULL,
+			GUC_UNIT_BYTE | GUC_EXPLAIN
+		},
+		&yb_parallel_fetch_size_limit,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_update_num_cols_to_compare", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Maximum number of columns whose data is to be"
 						 " compared while seeking to optimize updates."

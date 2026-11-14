@@ -2524,6 +2524,9 @@ bool		yb_enable_pg_stat_statements_docdb_metrics = true;
 
 bool		yb_enable_global_views = false;
 
+int			yb_parallel_fetch_row_limit = 1024;
+int			yb_parallel_fetch_size_limit = 0;
+
 bool
 yb_is_federated_yb_foreign_table(Oid relid)
 {

@@ -3,6 +3,9 @@
 # Test for setting row / size prefetch limits
 #  * yb_fetch_row_limit
 #  * yb_fetch_size_limit
+# Also, parallel query limits
+#  * yb_parallel_fetch_row_limit
+#  * yb_parallel_fetch_size_limit
 ####################################################################################################
 test: yb.orig.fetch_limits
 test: yb.orig.fetch_limits_joins
