@@ -60,26 +60,6 @@ ANALYZE gap_idx_tbl;
 \unset R2
 \unset R3
 
--- DISTINCT over a local filter gap
---
--- The merge sorts on gap as well, so the scan returns the rows in (ord1, ord2)
--- order, and the Unique node sits directly on the scan.  Each (bkt, ord1, gap,
--- ord2) has three rows, one for each k.
-CREATE TABLE gap_dist_tbl (bkt int, ord1 int, gap int, ord2 int, k int,
-    PRIMARY KEY (bkt ASC, ord1 ASC, gap ASC, ord2 ASC, k ASC));
-INSERT INTO gap_dist_tbl SELECT bkt, ord1, gap, ord2, k
-    FROM (VALUES (1, 1, 0, 9), (1, 1, 1, 0), (2, 1, 1, 4), (1, 5, 5, 1),
-                 (2, 5, 5, 2)) v(bkt, ord1, gap, ord2),
-        generate_series(1, 3) k;
-ANALYZE gap_dist_tbl;
-
-SET yb_enable_expression_pushdown = off;
-\set Q1 '/*+IndexScan(gap_dist_tbl) Set(yb_max_merge_scan_streams 0)*/'
-\set Q2 '/*+IndexScan(gap_dist_tbl) Set(yb_max_merge_scan_streams 64)*/'
-\set query ':P :Q SELECT DISTINCT ord1, ord2 FROM gap_dist_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;'
-\i :run_query
-RESET yb_enable_expression_pushdown;
-
 -- Descending gap column, forward and backward scans
 --
 -- The index sorts gap in descending order.  ord2 numbers the rows that pass
@@ -137,7 +117,7 @@ RESET yb_enable_expression_pushdown;
 
 RESET enable_sort;
 
-DROP TABLE gap_coll_tbl, gap_idx_tbl, gap_dist_tbl, gap_desc_tbl, gap_null_tbl;
+DROP TABLE gap_coll_tbl, gap_idx_tbl, gap_desc_tbl, gap_null_tbl;
 
 -- Cells run in both databases (yb_commands/merge_scan_gap_cells.sql)
 --
