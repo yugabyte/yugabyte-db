@@ -38,6 +38,7 @@ import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.XClusterUniverseService;
@@ -137,7 +138,8 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
             mock(XClusterUniverseService.class),
             mock(TelemetryProviderService.class),
             mock(SoftwareUpgradeHelper.class),
-            mock(GFlagsValidation.class));
+            mock(GFlagsValidation.class),
+            mock(ReleaseManager.class));
 
     lenient()
         .when(

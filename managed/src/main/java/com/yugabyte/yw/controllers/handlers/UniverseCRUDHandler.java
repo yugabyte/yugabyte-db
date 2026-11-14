@@ -907,6 +907,12 @@ public class UniverseCRUDHandler {
                 + nodeDetails.nodeIdx);
       }
     }
+    for (Cluster c : taskParams.clusters) {
+      String version = c.userIntent.ybSoftwareVersion;
+      if (StringUtils.isNotBlank(version)) {
+        ReleaseManager.checkActiveForNewUse(releaseManager.getReleaseByVersion(version), version);
+      }
+    }
     List<GroupName> gflagGroups = new ArrayList<>();
     if (taskParams.getPrimaryCluster().userIntent.specificGFlags != null) {
       gflagGroups = taskParams.getPrimaryCluster().userIntent.specificGFlags.getGflagGroups();
