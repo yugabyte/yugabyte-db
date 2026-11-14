@@ -18,9 +18,7 @@ SET enable_sort = off;
 -- sorts last by (c1, c3), so that a merge that does not sort on c2 misorders
 -- the survivors.
 
---
 -- Local filter: non-C collation
---
 CREATE TABLE gap_coll_tbl (s int, c1 text COLLATE "en_US", c2 text COLLATE "en_US",
     c3 int, PRIMARY KEY (s ASC, c1 ASC, c2 ASC, c3 ASC));
 INSERT INTO gap_coll_tbl VALUES
