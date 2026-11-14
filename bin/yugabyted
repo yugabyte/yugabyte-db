@@ -763,6 +763,49 @@ def get_url_from_ip(ip):
         return "[" + str(ip) + "]"
     return str(ip)
 
+def pitr_snapshot_time(schedule):
+    """Return the first snapshot time, or None if the schedule has none yet."""
+    snapshots = schedule.get("snapshots") or []
+    if not snapshots:
+        return None
+    return snapshots[0].get("snapshot_time")
+
+def format_pitr_hybrid_time(token):
+    """Format one hybrid time from a yb-admin restore error.
+
+    Accepts '{ physical: <unix-micros> }' and the older
+    '{ days: N time: HH:MM:SS[.ffffff] }'. Returns None for anything else.
+    """
+    token = token.strip()
+    physical = re.fullmatch(r'physical:\s*(\d+)', token)
+    if physical:
+        try:
+            when = datetime.fromtimestamp(int(physical.group(1)) / 1000000.0)
+        except (OverflowError, OSError, ValueError):
+            return None
+        return when.replace(microsecond=0).strftime("%Y-%m-%d %I:%M:%S %p")
+
+    legacy = re.fullmatch(r'days:\s*(\d+)\s+time:\s*(\S+)', token)
+    if not legacy:
+        return None
+    date = datetime(1970, 1, 1) + timedelta(days=int(legacy.group(1)))
+    clock = legacy.group(2)
+    time_format = "%Y-%m-%d %H:%M:%S.%f" if '.' in clock else "%Y-%m-%d %H:%M:%S"
+    try:
+        when = datetime.strptime('{} {}'.format(date.date(), clock), time_format)
+    except ValueError:
+        return None
+    return when.replace(microsecond=0).strftime("%Y-%m-%d %I:%M:%S %p")
+
+def collect_forward_restore_times(err):
+    """Pull formatted hybrid times out of a forward-restore error, in order."""
+    collected = []
+    for token in re.findall(r'\{([^{}]+)\}', err):
+        formatted = format_pitr_hybrid_time(token)
+        if formatted:
+            collected.append(formatted)
+    return collected
+
 class ControlScript(object):
     def __init__(self):
         self.configs = None
@@ -1028,6 +1071,13 @@ class ControlScript(object):
         # Get the schedule ID to perform pitr
         pitr_object_id, earliest_recoverable_time, _ = self.get_pitr_object_details(
                                                         pitr_object, schedules)
+        if not earliest_recoverable_time:
+            Output.update_animation("Failed to verify Point-In-Time Recovery configs.",
+                    status=Output.ANIMATION_FAIL)
+            Output.log_error_and_exit(
+                Output.make_red("ERROR") + ": No snapshot is available yet for {} {}. "
+                "Wait for the first snapshot before recovering to a point in time.".format(
+                    pitr_yb_api_type, pitr_object_name))
         valid, error_message = self.validate_restore_time(earliest_recoverable_time, restore_time)
         if not valid:
             Output.update_animation("Failed to verify Point-In-Time Recovery configs.",
@@ -1043,34 +1093,22 @@ class ControlScript(object):
         # Catch specific errors
         if ret_code:
             if "Cannot perform a forward restore" in err:
-                # Extract the specific times using regex
-                times = re.findall(r'\{ days: (\d+) time: ([^}]+) \}', err)
-                # Convert and format the times
-                collected_times = []
-                for days, time in times:
-                    days = int(days)
-                    date = datetime(1970, 1, 1) + timedelta(days=days)
-                    # Check if the time string includes fractional seconds
-                    has_fractional = '.' in time
-                    if has_fractional:
-                        time_format = "%Y-%m-%d %H:%M:%S.%f"
-                    else:
-                        time_format = "%Y-%m-%d %H:%M:%S"
-
-                    date_time = datetime.strptime('{} {}'.format(date.date(), time), time_format)
-                    # If there is a fractional part, zero out the microseconds
-                    if has_fractional:
-                        date_time = date_time.replace(microsecond=0)
-                    collected_times.append(date_time.strftime("%Y-%m-%d %I:%M:%S %p"))
-
+                # yb-admin prints '{ physical: <unix-micros> }' now, and older
+                # builds print '{ days: N time: HH:MM:SS }'. Either way, do not
+                # index an empty match list.
+                collected_times = collect_forward_restore_times(err)
                 Output.update_animation("Recovery Failed.",
                         status=Output.ANIMATION_FAIL)
-                Output.log_error_and_exit(Output.make_red("FAILED") +
-                    ": The requested restoration time {} "
-                    "is in between a previous restored to and restored from time. "
-                    "Please do not specify a time between {} and {}."
-                    .format(collected_times[2], collected_times[0], collected_times[1])
-                )
+                if len(collected_times) >= 3:
+                    Output.log_error_and_exit(Output.make_red("FAILED") +
+                        ": The requested restoration time {} "
+                        "is in between a previous restored to and restored from time. "
+                        "Please do not specify a time between {} and {}."
+                        .format(collected_times[2], collected_times[0], collected_times[1])
+                    )
+                Output.log(err)
+                Output.log_error_and_exit(Output.update_animation("Recovery Failed.",
+                        status=Output.ANIMATION_FAIL))
             elif "YSQL upgrade" in err:
                 Output.update_animation("Recovery Failed.",
                         status=Output.ANIMATION_FAIL)
@@ -5761,7 +5799,7 @@ class ControlScript(object):
                     valid_schedule_count += 1
                     pitr_object = options.get("filter", "")
                     retention = options.get("retention")
-                    earliest_recoverable_time = schedule["snapshots"][0]["snapshot_time"]
+                    earliest_recoverable_time = pitr_snapshot_time(schedule)
                     schedule_entry = "Schedule " + str(valid_schedule_count) + ":"
                     status_display_info[schedule_entry] = Output.make_yellow
                     status_details.append((Output.make_yellow(""), schedule_entry))
@@ -5814,11 +5852,11 @@ class ControlScript(object):
             target_object = options.get("filter", "")
             if pitr_object == target_object:
                 schedule_id = schedule.get("id", " ")
-                earliest_recoverable_time = schedule["snapshots"][0]["snapshot_time"]
+                earliest_recoverable_time = pitr_snapshot_time(schedule)
                 retention = options.get("retention")
-                break
+                return schedule_id, earliest_recoverable_time, retention
 
-        return schedule_id, earliest_recoverable_time, retention
+        return None, None, None
 
     # Print output for enabling, disabling and restoring pitr
     def get_pitr_config_details(self, pitr_object, retention = None, restore_time = None):
@@ -5850,11 +5888,16 @@ class ControlScript(object):
     def display_pitr_helper(self, pitr_object, earliest_recoverable_time, retention):
 
         status_details = []
-        # Parsing and formatting the earliest recoverable time and retention
-        earliest_recoverable_time_object = \
-            datetime.strptime(earliest_recoverable_time, "%Y-%m-%d %H:%M:%S.%f")
-        earliest_recoverable_time_object = \
-            (earliest_recoverable_time_object + timedelta(seconds=1)).replace(microsecond=0)
+        # Parsing and formatting the earliest recoverable time and retention.
+        # The schedule exists before its first snapshot, so the time can be missing.
+        if earliest_recoverable_time:
+            earliest_recoverable_time_object = \
+                datetime.strptime(earliest_recoverable_time, "%Y-%m-%d %H:%M:%S.%f")
+            earliest_recoverable_time_object = \
+                (earliest_recoverable_time_object + timedelta(seconds=1)).replace(microsecond=0)
+            earliest_display = earliest_recoverable_time_object.strftime("%Y-%m-%d %I:%M:%S %p")
+        else:
+            earliest_display = "Waiting for the first snapshot"
         retention_days = int(retention.split(' ')[0]) // 1440
         pitr_object_name = pitr_object.split('.', 1)[1]
         if pitr_object.startswith("ysql."):
@@ -5865,7 +5908,7 @@ class ControlScript(object):
         status_details.append((Output.make_yellow(""), "Retention: " +
                                                         str(retention_days) + " days"))
         status_details.append((Output.make_yellow(""), "Earliest Recoverable Time: "
-                    + earliest_recoverable_time_object.strftime("%Y-%m-%d %I:%M:%S %p")))
+                    + earliest_display))
 
         return status_details
 
@@ -8838,9 +8881,13 @@ class ControlScript(object):
             _, month, day = date.split('-')
             hour, minute, second = time.split(':')
 
-            for component in [month, day, hour, minute, second]:
+            # Hour may be one digit. The restore help text and the docs use
+            # '2024-01-29 9:30:00 PM', and strptime %I already accepts that.
+            for component in [month, day, minute, second]:
                 if len(component) != 2:
                     return False
+            if len(hour) not in (1, 2):
+                return False
 
             return True
 
